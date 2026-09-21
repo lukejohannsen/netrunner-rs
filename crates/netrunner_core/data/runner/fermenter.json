@@ -31,20 +31,18 @@
     {
       "trigger": "Paid",
       "cost": {
-        "Clicks": 1
+        "AllOf": [
+          {
+            "Clicks": 1
+          },
+          "TrashSelf"
+        ]
       },
       "effect": {
-        "Sequence": [
-          {
-            "GainCreditsPerCounter": {
-              "side": "Runner",
-              "credits_per_counter": 2
-            }
-          },
-          {
-            "TrashCard": "ThisCard"
-          }
-        ]
+        "GainCreditsPerCounter": {
+          "side": "Runner",
+          "credits_per_counter": 2
+        }
       },
       "text": "[click], [trash]: Gain 2[credit] for each hosted virus counter."
     }

@@ -99,6 +99,44 @@ pub struct ResolutionContext<'a> {
     /// (`play_operation_card`, a fired trigger) builds a context with this
     /// `None`, so a prompt parked by a card Plutus replays is that card's.
     pub prompting_card: Option<&'a CardId>,
+    /// The acting install as it was just before its cost was paid, for an
+    /// effect that reads a card its own cost has taken off the table —
+    /// Fermenter's "[click], [trash]: Gain 2[credit] for each hosted virus
+    /// counter", Clearinghouse's "trash this asset to do 1 meat damage for
+    /// each hosted advancement counter". The cost is paid first (Comprehensive
+    /// Rules 1.16), so without this the effect counted nothing; with the
+    /// trash written as the effect's last step instead, the trash could be
+    /// prevented, which a cost cannot be (1.16.1a).
+    ///
+    /// Taken by the payer (`last_known`) and read only by `counters_of` and
+    /// `advancement_tokens_of`, and by them only when `acting_install` is
+    /// `Some` and has left play — so it is the same object's memory and
+    /// never a sibling copy's. On the context rather than on `GameState`
+    /// because it is read within this one resolution: both cards read it
+    /// before anything they do can park, and it does not survive a park.
+    pub last_known: Option<LastKnown>,
+}
+
+/// What `ResolutionContext::last_known` remembers of an install.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct LastKnown {
+    pub counters: u32,
+    pub advancement_tokens: u32,
+}
+
+/// The acting install's numbers now, for a payer to put on the effect's
+/// context before a cost can remove the install. `None` without an install
+/// to remember.
+pub(crate) fn last_known(state: &GameState, ctx: &ResolutionContext<'_>) -> Option<LastKnown> {
+    ctx.acting_install?;
+    let counters = counters_of(state, ctx)?;
+    Some(LastKnown { counters, advancement_tokens: advancement_tokens_of(state, ctx).unwrap_or(0) })
+}
+
+/// Whether `ctx`'s install was named and is no longer on the table — the
+/// one case `last_known` is read in.
+fn acting_install_has_left(state: &GameState, ctx: &ResolutionContext<'_>) -> bool {
+    ctx.acting_install.is_some() && acting_corp_position(state, ctx).is_none() && acting_rig_position(state, ctx).is_none()
 }
 
 impl<'a> ResolutionContext<'a> {
@@ -2490,13 +2528,19 @@ fn counters_of(state: &GameState, ctx: &ResolutionContext<'_>) -> Option<u32> {
         .or_else(|| acting_rig_card(state, ctx).map(|c| c.counters))
         .or_else(|| acting_scored_position(state, ctx).map(|position| state.corp.scored_agendas[position].agenda_counters))
         .or_else(|| acting_is_corp_identity(state, ctx).then_some(state.corp.identity_counters))
+        .or_else(|| remembered(state, ctx).map(|known| known.counters))
 }
 
 /// `acting_card`'s current advancement token total, if it's a Corp
 /// installed card — `None` otherwise (a Runner rig card, or already
 /// trashed). Read-only counterpart to `advance_card`'s mutation.
 fn advancement_tokens_of(state: &GameState, ctx: &ResolutionContext<'_>) -> Option<u32> {
-    acting_corp_install(state, ctx).map(|c| c.advancement_tokens)
+    acting_corp_install(state, ctx).map(|c| c.advancement_tokens).or_else(|| remembered(state, ctx).map(|known| known.advancement_tokens))
+}
+
+/// `ctx.last_known`, when its install has left play and only then.
+fn remembered(state: &GameState, ctx: &ResolutionContext<'_>) -> Option<LastKnown> {
+    ctx.last_known.filter(|_| acting_install_has_left(state, ctx))
 }
 
 /// Number of Runner rig cards matching `dsl::zone::CardFilter::Icebreaker`'s
