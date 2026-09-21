@@ -90,6 +90,14 @@ A seat is either `Seat::Agent` (resolved in-process from a masked `ClientView`) 
 - **Terminology**: Refer to the game as "Netrunner" and its current rules maintainer as "Null Signal Games" in code and comments — never "NISEI" (Null Signal Games' predecessor).
 - **Doc comments record decisions.** This codebase's comments explain *why* a design was chosen and what alternative was rejected. That is the house style — match it. A comment that only restates the signature is not worth writing.
 
+### Rules Reference
+
+**The Comprehensive Rules are the authority on how the game works; the printed card is the authority on what a card says.** A copy of Null Signal Games' rules is committed under `rules/`: `comprehensive-rules.md` has one line per rule, number and anchor first, so `grep -n "6.9.4" rules/comprehensive-rules.md` lands on the rule. It is theirs, not covered by the GPL, and kept for reference only (`rules/NOTICE.md`). **Read the rule before implementing or changing a mechanic**, and quote it rather than paraphrasing it from memory; the Rules Audit got several things right only by reading the page.
+
+- **Cite a rule as `CR <number>`** (or `Comprehensive Rules <number>`). `crates/netrunner_core/tests/rules_citations.rs` fails on a number the committed copy does not contain, so a citation cannot point at nothing.
+- **`scripts/rules_sync.py` owns the copy; never edit it by hand.** With no flags it rewrites `rules/`; `--check` compares the live page without writing, and names the rules that changed and every citation that points at one. `.github/workflows/rules-watch.yml` runs `--check` every Monday and opens an issue when the page differs. Adopting a new version is one PR: sync, fix what the citation gate names, re-read the changed rules against the engine.
+- **Conformance status lives in `docs/roadmap/rules-conformance.md`**, one row per section of the rules, with the version it was checked against. A deviation found there is fixed like any other rules bug, with the sweeps; the board-layout rules (4.6, 4.4.6b) are read against the desktop board the same way.
+
 ### Listener Rule
 
 Which cards hear an event is one rule, in `rules::listeners`, and it is read off the cards: **the subject of an event always hears it, wherever it is; every other card must be active** (a rezzed non-agenda install, a rig card, an identity, a scored agenda), the active player's cards first and each side's simultaneous triggers that side's to order. A card says which occurrences it means — `TriggeredEffect::subject`, `This` ("when you score **this agenda**", "whenever the Runner approaches **this server**") or `Any` — and `CardDefinition::validate` refuses a card file that leaves it off a trigger that is about a card or a server, or puts it on one that is not. `Trigger::hears` says whether a trigger is phrased about its controller ("when **your** turn begins").

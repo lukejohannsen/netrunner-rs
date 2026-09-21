@@ -6108,7 +6108,7 @@ mod system_gateway {
     /// install this turn" with no "you can advance" clause, so 1.18.3's
     /// restriction — which is about *advancing* — never applies. The rules'
     /// own worked example is Priority Construction placing counters on ice
-    /// (CR 1.12.3a).
+    /// (CR 1.12.2a).
     ///
     /// Nothing pinned this in either direction before, which is why the
     /// prompt offering ice read as a bug.
