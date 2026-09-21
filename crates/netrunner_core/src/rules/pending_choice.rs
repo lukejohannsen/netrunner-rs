@@ -491,7 +491,11 @@ pub(crate) fn resolve_accept(
         other => other.clone(),
     };
 
-    let cost_events = ability::pay_cost_ctx(state, registry, pending.side, &cost_to_pay, Purpose::Other, &ability::ResolutionContext::for_parked(pending.source_install, pending.source_card.as_ref()))?;
+    let payer = ability::ResolutionContext::for_parked(pending.source_install, pending.source_card.as_ref());
+    // Taken before the cost, which may trash the card `if_paid` reads
+    // (Clearinghouse): see `ResolutionContext::last_known`.
+    let last_known = ability::last_known(state, &payer);
+    let cost_events = ability::pay_cost_ctx(state, registry, pending.side, &cost_to_pay, Purpose::Other, &payer)?;
     // A tag paid as a cost (`Cost::TakeTags`, Funhouse's "end the run
     // unless the Runner takes 1 tag") is still the Runner taking a tag:
     // NBN: Reality Plus's `Trigger::OnTagsGiven` must fire for it, exactly
@@ -505,7 +509,7 @@ pub(crate) fn resolve_accept(
         cost_events.iter().filter(|e| matches!(e, GameEvent::TagsGiven { .. })).cloned().collect();
     let mut events = cost_events;
     events.push(GameEvent::PendingPaidChoiceAccepted { side: pending.side });
-    let mut ctx = ability::ResolutionContext::for_parked(pending.source_install, pending.source_card.as_ref());
+    let mut ctx = ability::ResolutionContext { last_known, ..payer };
     ctx.prompting_card = pending.prompting_card.as_ref().or(pending.source_card.as_ref());
     events.extend(ability::evaluate_effect(state, &pending.if_paid, &mut ctx, registry)?);
     for tag_event in cost_tag_events {
