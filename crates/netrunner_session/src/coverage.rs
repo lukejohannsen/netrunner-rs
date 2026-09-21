@@ -523,6 +523,20 @@ pub const LOAD_BEARING_EVENTS: &[&str] = &[
     "VirusCountersPurged",
 ];
 
+/// Events that real play on the sweeps' decks reaches, but rarely: `(name,
+/// why it is rare, games before the gate demands it)` — the events' twin of
+/// `ACTIONS_RARE_WITH_SAMPLE_DECKS`.
+///
+/// `Prevented` is the one: an interrupt has to be installed (one Runner deck
+/// in thirteen fields any — the `DeckCategory::Sweep` list *Safety Net*),
+/// the thing it prevents has to be about to happen, and the Runner has to
+/// choose it. It is what holds the prevention window to having been
+/// *used*, not merely opened; before Rules Audit backlog item 4 no card in
+/// any deck could open it, and both sweeps had been green over a mechanism
+/// with five defects in it.
+pub const EVENTS_RARE_WITH_SWEEP_DECKS: &[(&str, &str, u64)] =
+    &[("Prevented", "needs an interrupt installed, something it prevents about to happen, and the Runner using it", 512)];
+
 /// Every non-identity card the sample decks (`decks::matchups()`) contain,
 /// deduplicated and sorted — the universe the headless report describes
 /// and the deep sweep demands in full.
@@ -545,9 +559,18 @@ pub fn sample_pool_card_ids(registry: &CardRegistry) -> Vec<CardId> {
 /// 16 × 12. The cross product stays what self-play, `bench`, the gym and
 /// `--all-matchups` rotate: they want the pairing distribution and play
 /// thousands of games.
+///
+/// **The sweeps' pool is the samples and the `DeckCategory::Sweep` decks**
+/// — lists built to reach rules no published deck prints (the prevention
+/// window's interrupts are Core Set cards, which no Startup list may
+/// hold). Each is one more entry in its side's rotation, met by the
+/// samples across the table like any other; `matchups()` never yields one.
 pub fn sweep_decks_for_seed(seed: u64) -> (DeckFile, DeckFile) {
     let sample = |side| -> Vec<DeckFile> {
-        netrunner_core::decks::for_side(side).into_iter().filter(|deck| deck.category == DeckCategory::Sample).collect()
+        netrunner_core::decks::for_side(side)
+            .into_iter()
+            .filter(|deck| matches!(deck.category, DeckCategory::Sample | DeckCategory::Sweep))
+            .collect()
     };
     let corps = sample(Side::Corp);
     let runners = sample(Side::Runner);
@@ -632,9 +655,9 @@ impl Coverage {
     }
 
     /// `gate_failures` for a sweep whose decks are narrower than the sample
-    /// pool: `absent_from_these_decks` names actions the cards it played
-    /// cannot produce at all, and they are neither demanded nor reported as
-    /// wrongly-listed.
+    /// pool: `absent_from_these_decks` names actions (and rare events) the
+    /// cards it played cannot produce at all, and they are neither demanded
+    /// nor reported as wrongly-listed.
     ///
     /// One caller, and one reason. The index-path sweep plays a fixed pair
     /// of System Gateway fixture decks rather than the pool (its own card
@@ -693,6 +716,12 @@ impl Coverage {
         for event in LOAD_BEARING_EVENTS {
             if self.events.get(*event).copied().unwrap_or(0) == 0 {
                 failures.push(format!("GameEvent::{event} was never emitted"));
+            }
+        }
+        for (event, _, min_games) in EVENTS_RARE_WITH_SWEEP_DECKS {
+            let demanded = self.games >= *min_games && !absent_from_these_decks.contains(event);
+            if demanded && self.events.get(*event).copied().unwrap_or(0) == 0 {
+                failures.push(format!("GameEvent::{event} was never emitted in {} games", self.games));
             }
         }
 

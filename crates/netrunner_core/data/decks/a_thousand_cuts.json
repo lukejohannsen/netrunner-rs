@@ -1,0 +1,87 @@
+{
+  "id": "a_thousand_cuts",
+  "name": "A Thousand Cuts",
+  "side": "Corp",
+  "category": "Sweep",
+  "description": "Not a published list: built so the sweeps reach the prevention window from the other chair. Personal Evolution dealing net damage, giving tags and trashing programs — Snare!, Urtica Cipher, Neurospike, Public Trail, Retribution, Ansel 1.0, Ballista. Eternal-legal only.",
+  "style": "trap",
+  "identity": "jinteki_personal_evolution",
+  "cards": [
+    {
+      "card": "longevity_serum",
+      "count": 1
+    },
+    {
+      "card": "sericulture_expansion",
+      "count": 3
+    },
+    {
+      "card": "proprionegation",
+      "count": 3
+    },
+    {
+      "card": "offworld_office",
+      "count": 3
+    },
+    {
+      "card": "snare",
+      "count": 3
+    },
+    {
+      "card": "urtica_cipher",
+      "count": 3
+    },
+    {
+      "card": "byte",
+      "count": 2
+    },
+    {
+      "card": "pad_campaign",
+      "count": 2
+    },
+    {
+      "card": "regolith_mining_license",
+      "count": 3
+    },
+    {
+      "card": "hedge_fund",
+      "count": 3
+    },
+    {
+      "card": "neurospike",
+      "count": 2
+    },
+    {
+      "card": "retribution",
+      "count": 3
+    },
+    {
+      "card": "public_trail",
+      "count": 2
+    },
+    {
+      "card": "karuna",
+      "count": 3
+    },
+    {
+      "card": "diviner",
+      "count": 2
+    },
+    {
+      "card": "tithe",
+      "count": 3
+    },
+    {
+      "card": "palisade",
+      "count": 2
+    },
+    {
+      "card": "ansel_1_0",
+      "count": 1
+    },
+    {
+      "card": "ballista",
+      "count": 1
+    }
+  ]
+}

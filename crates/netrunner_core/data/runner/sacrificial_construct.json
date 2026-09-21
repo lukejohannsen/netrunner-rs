@@ -1,0 +1,27 @@
+{
+  "id": "sacrificial_construct",
+  "title": "Sacrificial Construct",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 0,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "text": "[interrupt] → [trash]: Prevent a player from trashing 1 installed program or piece of hardware.",
+      "cost": "TrashSelf",
+      "effect": {
+        "Prevent": {
+          "Trash": {
+            "CardTypeOneOf": [
+              "Program",
+              "Hardware"
+            ]
+          }
+        }
+      }
+    }
+  ],
+  "numeric_id": 1048,
+  "is_playable": true
+}

@@ -1119,7 +1119,8 @@ one.
    reset sites, one second scan and twenty-three free-form tag strings
    are gone; `GameState` gained two, both fixed-size.
 
-4. **Generic prevention — IN PROGRESS (20 September 2026; stages 1–2 of 3)**
+4. **Generic prevention — DONE (20–21 September 2026, three PRs; the last
+   stage's entry closes it)**
    (§2.2; was item 2). As the second pass wrote it: give the existing
    `WindowCheckpoint::Prevention` window a kind parameter, so tags,
    end-the-run, jack-out and expose use the same window that damage and
@@ -1228,6 +1229,98 @@ one.
    claims none. Tests: the armed entry is in both players' views, survives
    determinization, is asked once (a second "End the run" ends the run),
    and an empty root prevents nothing and leaves nothing armed.
+
+   **Stage 3 — the Core Set prevents, and both sweeps reach the window
+   (`feat/the-core-set-prevents`); closes item 4.** Decoy ("[trash]:
+   Prevent 1 tag"), Sacrificial Construct ("[trash]: Prevent a player from
+   trashing 1 installed program or piece of hardware") and Net Shield ("The
+   first time each turn you would suffer net damage, you may pay 1[credit]
+   to prevent 1 net damage") — the first cards in the pool ever to open the
+   prevention window, 22 Core Set cards implemented now. The first two are
+   interrupts a player *uses* and needed nothing stage 1 had not built.
+   **Net Shield is a triggered interrupt, and writing it found that a
+   trigger on damage about to resolve could never have fired in play**: the
+   announcement is dispatched with the damage already parked, and
+   `dispatcher::fire_plan` queues a plan rather than fire it into a parked
+   state, so the trigger would have resolved after the damage it was about —
+   green in every test, because every test dispatched the event by hand.
+   The cards that hear an announcement now resolve in `prevention::settle`,
+   one at a time, before the players are asked. And **damage is always
+   announced** (`GameEvent::AboutToResolve`, whether or not anybody
+   listens), because "the first time each turn" has to count the net damage
+   that came before the card was installed (the Turn History Rule); a tag
+   or a trash about to happen is an occurrence of nothing and is announced
+   only when the players will be asked. "**Net** damage" is a third thing a
+   moment can be about — `TriggerAbout::Damage`, `EventFilter::Damage`,
+   `turn_log::Class::Damage` — where it would otherwise have been an
+   intervening if, under which a point of meat damage is the turn's first.
+   **A list of effects is one sentence** (`ability::evaluate_sequence`):
+   an `Effect::Sequence`, a trigger's `effects` and an access interaction's
+   each had a loop of their own, one dropping the rest at a parked decision
+   and one not stopping at all, so Snare!'s "give the Runner 1 tag and do 3
+   net damage" would have dealt its damage underneath the window its tag
+   opened — unannounced, and Net Shield never asked. (No pool card's list
+   parks early in a way the old loops got wrong — Predictive Planogram's
+   two `EffectIf`s are exclusive — which is why this is a refactor there.)
+   *The decks.* No Core card is Startup-legal and every sample deck is, so
+   `DeckCategory::Sweep`: lists built here to reach rules no published
+   deck prints, Eternal-legal (`DeckCategory::format`), rotated by
+   `sweep_decks_for_seed` beside the samples and yielded by `matchups()`
+   never — nothing trains on one, and no measurement over "one pass of the
+   pool" moves. *Safety Net* (Kate "Mac" McCaffrey, 45 cards, 10 influence:
+   three of each interrupt in an ordinary Shaper rig) and *A Thousand Cuts*
+   (Jinteki: Personal Evolution, 45 cards, 20 agenda points, 12 influence:
+   Snare!, Urtica Cipher, Neurospike, Public Trail, Retribution, Ansel 1.0,
+   Ballista), both on identities no sample deck uses so `determinize`'s
+   guess at a sample list never lands on one, and neither listed on the
+   new-game form. They put 11 of the 22 Core cards under an agent for the
+   first time; the clause gate promptly asked Corroder and Gordian Blade
+   for their printed clauses. **The observation vocabulary would have
+   reindexed:** ranked as `core`, the three cards' `01xxx` numbers put them
+   inside slots 77..=95 and moved every *Elevation* card three along under
+   any trained policy — the *Elevation* bug from the other direction. They
+   are a later wave of their set (`CORE_AFTER_ELEVATION`, slots 178..=180,
+   pinned by a test); `OBS_SIZE` 2262 and `ActionSpace` 1646 unmoved.
+   *Gate:* `EVENTS_RARE_WITH_SWEEP_DECKS` demands a `Prevented` in any
+   batch of 512 games or more, so the window is held to having been *used*.
+   *Measured, 192 games of the two sweep decks against each other, seed 1,
+   `--format eternal`:* random-vs-random — 719 announcements, **66
+   preventions**, Net Shield's trigger fired 142 times and was paid for 62,
+   Decoy used 7 times and Sacrificial Construct twice, every game ended
+   (Corp 156 by flatline; Runner 34 on points, 2 by deck-out).
+   Heuristic-vs-heuristic — **0 preventions: the heuristic Runner installed
+   none of the three in 192 games** and was flatlined in 85. That is a bot
+   blindness, not an engine gap — the evaluator has no term for a card
+   whose value is damage, tags or a program not lost — and it is recorded
+   here as owed (Phase 5) rather than fixed in a rules PR; the random seats
+   are what reach the window in both sweeps, and both 256-seed sweeps pass
+   with the `Prevented` gate on. **One rules correction rode along and is
+   measured apart: none of it is nothing.** `apply_damage` recorded 0
+   damage as `DamageTaken { amount: 0 }` and dispatched it like any other —
+   Urtica Cipher with no counters on it, a Neurospike after no score — so
+   "whenever you do damage" heard it, and announced it would have been the
+   turn's first net damage for a Net Shield to be asked about. Zero of
+   anything is not an occurrence now (`prevention::would`).
+   *`coverage_identical.py main --head-worktree`, 192 games a report, taken
+   three ways because the first answer was not the engine's:* with the
+   whole stage, random differs in two keys and nothing else —
+   `events/AboutToResolve` 0 → 438 and `events/DamageTaken` 371 → 343, the
+   28 zero-damage records, same games otherwise — while heuristic moves
+   broadly (Runner wins 149 → 157 of 192, +0.042, inside Phase 3's
+   0.026–0.047 band). With the three card files and the two decks *moved
+   out of the build* and the engine left as it is, heuristic differs in the
+   same two keys and nothing else (`AboutToResolve` 0 → 244, `DamageTaken`
+   247 → 233), game for game. So the heuristic movement is attribution,
+   not effect: `determinize` shuffles a registry-wide pool with the
+   sampler's own rng, and three more cards in the registry re-roll every
+   sample — exactly the drift the Testing Rule says a heuristic seating
+   carries — and nothing about how the bots play changed. (A first try at
+   the attribution set the cards `is_playable: false` and proved nothing:
+   `register_playable_cards` registers every embedded card whatever the
+   flag says.) Across the item: `Effect` 72 → 71 with two of its five
+   unused variants now one that three cards use (26 of 71 single-use over
+   181 card files, 3 unused), `Trigger` 29 → 28, `EventFilter` 3 → 4, one
+   field of the run and four events gone, one error where there were two.
 5. **Where a payment comes from** (§6.4; new). Pools that compete and a
    player who chooses between them — stealth is the family that forces it.
    Today every pool is spent automatically in a fixed order.

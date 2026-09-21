@@ -53,6 +53,8 @@ pub(crate) enum About {
     /// trigger down.
     Card { card: CardId, install: Option<InstallId>, installed: bool },
     Server(ServerId),
+    /// A kind of damage.
+    Damage(crate::dsl::DamageType),
 }
 
 /// One thing an event is an occurrence of.
@@ -188,7 +190,7 @@ pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
         // "When you would suffer damage" is the one "would" a card in the
         // pool is printed about; a tag or a trash about to happen is an
         // occurrence of nothing until a card listens for one.
-        GameEvent::AboutToResolve { what: WouldHappen::Damage { .. } } => vec![moment(Trigger::OnDamageAboutToResolve, &About::Nothing, None)],
+        GameEvent::AboutToResolve { what: WouldHappen::Damage { kind, .. } } => vec![moment(Trigger::OnDamageAboutToResolve, &About::Damage(*kind), None)],
         GameEvent::AboutToResolve { what: WouldHappen::Tags { .. } | WouldHappen::Trash { .. } } => Vec::new(),
 
         GameEvent::ClickSpent { .. }
@@ -319,7 +321,7 @@ pub(crate) fn plan_for(state: &GameState, registry: &CardRegistry, event: &GameE
 /// server, about the server it is in.
 fn is_this(listener: &Listener, moment: &Moment) -> bool {
     match &moment.about {
-        About::Nothing => false,
+        About::Nothing | About::Damage(_) => false,
         About::Card { install: Some(install), .. } => listener.install == Some(*install),
         // A card with no handle left is "this" only to itself, and it is
         // listening only because it is the subject.
@@ -338,6 +340,7 @@ fn passes(registry: &CardRegistry, filter: &EventFilter, about: &About) -> bool 
             registry.get(card).is_some_and(|definition| crate::dsl::card_matches_filter(definition, filter))
         }
         (EventFilter::Server(servers), About::Server(server)) => servers.contains(server),
+        (EventFilter::Damage(kind), About::Damage(dealt)) => kind == dealt,
         // `CardDefinition::validate` refuses the mismatch in a card file.
         _ => false,
     }

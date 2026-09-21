@@ -1,0 +1,42 @@
+{
+  "id": "net_shield",
+  "title": "Net Shield",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 2,
+  "triggers": [
+    {
+      "trigger": "OnDamageAboutToResolve",
+      "when": {
+        "Damage": "Net"
+      },
+      "first_each_turn": true,
+      "text": "[interrupt] → The first time each turn you would suffer net damage, you may pay 1[credit] to prevent 1 net damage.",
+      "effects": [
+        {
+          "OfferPaidChoice": {
+            "side": "Runner",
+            "cost": {
+              "Credits": 1
+            },
+            "if_paid": {
+              "Prevent": {
+                "Damage": {
+                  "kind": "Net",
+                  "up_to": 1
+                }
+              }
+            },
+            "if_declined": {
+              "Sequence": []
+            },
+            "text": "you may pay 1[credit] to prevent 1 net damage"
+          }
+        }
+      ]
+    }
+  ],
+  "memory_cost": 1,
+  "numeric_id": 1045,
+  "is_playable": true
+}

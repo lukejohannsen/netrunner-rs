@@ -315,6 +315,7 @@ fn category_label(category: DeckCategory) -> &'static str {
         DeckCategory::Sample => "sample",
         DeckCategory::Starter => "starter",
         DeckCategory::Boosted => "boosted",
+        DeckCategory::Sweep => "sweep",
         DeckCategory::Custom => "custom",
     }
 }

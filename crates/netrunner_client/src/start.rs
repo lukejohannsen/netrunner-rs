@@ -139,6 +139,13 @@ impl StartMenu {
     ) -> Result<Self, String> {
         let mut decks: [Vec<DeckRow>; 2] = [Vec::new(), Vec::new()];
         for stored in deck_store::list(decks_dir)? {
+            // A `Sweep` deck is a test deck, legal only in Eternal: listed
+            // here it would be a choice the game then refuses under the
+            // default format. The deck builder still shows it, with its
+            // legality, and a copy of one is the person's own deck.
+            if stored.deck.category == netrunner_core::decks::DeckCategory::Sweep {
+                continue;
+            }
             let identity =
                 registry.get(&stored.deck.identity).map_or_else(|| stored.deck.identity.0.clone(), |card| card.title.clone());
             decks[side_index(stored.deck.side)].push(DeckRow {

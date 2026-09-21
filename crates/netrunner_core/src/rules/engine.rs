@@ -89,7 +89,12 @@ pub fn apply_action(
     // answered first, by the actions its own guard above lets through.
     // `activate_ability` holds the other half, that the ability is an
     // interrupt.
-    if state.pending_prevention.is_some() && !matches!(action, PlayerAction::ActivateAbility { .. } | PlayerAction::PassPriority { .. }) {
+    let answering_something_else =
+        state.active_trace.is_some() || state.pending_paid_choice.is_some() || pending_choice::pending_decision_chooser(state).is_some();
+    if state.pending_prevention.is_some()
+        && !answering_something_else
+        && !matches!(action, PlayerAction::ActivateAbility { .. } | PlayerAction::PassPriority { .. })
+    {
         return Err(RulesError::ActionBlockedByPrevention);
     }
     // Classified before the match consumes `action` — read by the run guard

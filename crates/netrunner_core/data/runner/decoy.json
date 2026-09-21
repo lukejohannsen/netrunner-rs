@@ -1,0 +1,25 @@
+{
+  "id": "decoy",
+  "title": "Decoy",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 1,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "text": "[interrupt] → [trash]: Prevent 1 tag.",
+      "cost": "TrashSelf",
+      "effect": {
+        "Prevent": {
+          "Tags": 1
+        }
+      }
+    }
+  ],
+  "numeric_id": 1032,
+  "is_playable": true,
+  "subtypes": [
+    "Connection"
+  ]
+}

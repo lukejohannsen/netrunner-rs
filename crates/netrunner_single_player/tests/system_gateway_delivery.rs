@@ -190,7 +190,8 @@ fn no_panics_or_deadlocks_across_many_seeds_system_gateway() {
     // that decision can arise here. It is not an exclusion on the *pool* —
     // the view-path sweep reaches both through *Byte!* — so it is declared
     // at this call rather than added to the shared allowlist.
-    let failures = coverage.gate_failures_excluding(&universe, &["PayAccessTrigger", "DeclineAccessTrigger"]);
+    // Nor an interrupt, so nothing is ever prevented here.
+    let failures = coverage.gate_failures_excluding(&universe, &["PayAccessTrigger", "DeclineAccessTrigger", "Prevented"]);
     assert!(
         failures.is_empty(),
         "rules never reached across {} index-path games (rerun with NETRUNNER_SWEEP_SEEDS=256 before \
@@ -241,9 +242,11 @@ fn the_anoetic_void_then_skunkworks_position_plays_out() {
 #[test]
 fn every_sample_deck_matchup_finishes() {
     let mut coverage = Coverage::default();
+    // The schedule's own pool: the samples and the `Sweep` decks, so the
+    // period reaches the prevention decks through the `ActionSpace` too.
     let sample = |side| netrunner_core::decks::for_side(side)
         .into_iter()
-        .filter(|deck| deck.category == netrunner_core::decks::DeckCategory::Sample)
+        .filter(|deck| matches!(deck.category, netrunner_core::decks::DeckCategory::Sample | netrunner_core::decks::DeckCategory::Sweep))
         .count();
     let schedule_period = sample(Side::Corp).max(sample(Side::Runner)) as u64;
     let expected_games = 4 * schedule_period;
