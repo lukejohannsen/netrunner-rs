@@ -1,0 +1,30 @@
+{
+  "id": "crash_space",
+  "title": "Crash Space",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 2,
+  "counter_kind": "Credit",
+  "recurring_credits": 2,
+  "pays_for": [
+    "RemovingTags"
+  ],
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "text": "[interrupt] → [trash]: Prevent up to 3 meat damage.",
+      "cost": "TrashSelf",
+      "effect": {
+        "Prevent": {
+          "Damage": {
+            "kind": "Meat",
+            "up_to": 3
+          }
+        }
+      }
+    }
+  ],
+  "numeric_id": 1030,
+  "is_playable": true
+}

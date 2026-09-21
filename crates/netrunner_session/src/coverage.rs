@@ -534,8 +534,42 @@ pub const LOAD_BEARING_EVENTS: &[&str] = &[
 /// *used*, not merely opened; before Rules Audit backlog item 4 no card in
 /// any deck could open it, and both sweeps had been green over a mechanism
 /// with five defects in it.
-pub const EVENTS_RARE_WITH_SWEEP_DECKS: &[(&str, &str, u64)] =
-    &[("Prevented", "needs an interrupt installed, something it prevents about to happen, and the Runner using it", 512)];
+///
+/// `PaymentChoiceOffered` is the other, and far rarer: a payer asked which
+/// credits go first (`rules::payment`) needs two pools neither of which is
+/// the other's lesser — The Toolbox or Cyberfeeder against bad publicity or
+/// Overclock, Azimat against a run's credits — and a payment too small for
+/// both. Measured: 16 in 192 random games of *Pay As You Go* against
+/// *Hostile Bid*, the two lists built to reach it, and **1 in a 768-game
+/// deep sweep**, whose rotation seldom pairs them; never under a heuristic
+/// Runner, which installs none of those cards. So its threshold is one only
+/// a deliberately deep run meets, and that is said rather than hidden: the
+/// sweeps *reach* the question, and what holds the mechanism is its scripted
+/// tests — including the deadlock this sweep found in it at seed 173, an
+/// action that parked on a payment it could never have completed.
+pub const EVENTS_RARE_WITH_SWEEP_DECKS: &[(&str, &str, u64)] = &[
+    ("Prevented", "needs an interrupt installed, something it prevents about to happen, and the Runner using it", 512),
+    ("PaymentChoiceOffered", "needs two pools neither the other's lesser and a payment too small for both; about 1 in 768 sweep games", 4096),
+];
+
+/// Cards the sweep is asked to see only in a batch of `u64` games or more,
+/// each with the reason — `EVENTS_RARE_WITH_SWEEP_DECKS` for cards, and the
+/// first entry beside an `UNREACHED_IN_SAMPLE_PLAY` that is still empty.
+///
+/// The Toolbox costs 9[c]. It is in one deck (the `DeckCategory::Sweep` list
+/// *Pay As You Go*, three copies), which a 256-seed sweep plays for 16
+/// seeds; the heuristic Runner never installs it — nor Cyberfeeder, Crash
+/// Space or Azimat: its evaluator has no term for a card whose value is a
+/// pool of credits (owed to Phase 5) — so only a random seat does: in 11 of
+/// 192 games of that deck against *Hostile Bid* with two copies, and 3 times
+/// in a 768-game deep sweep with three. At that rate a deep sweep misses it
+/// about one run in fifteen, and a gate that fails now and then teaches
+/// people to re-run it. It stays in the deck because the games that
+/// do install it are the only ones where its credits compete with a run's
+/// under an agent; taking it out would pass the gate with no agent ever
+/// having reached it.
+pub const CARDS_RARE_WITH_SWEEP_DECKS: &[(&str, &str, u64)] =
+    &[("the_toolbox", "a 9[c] console in one sweep deck, installed only by a random seat: the heuristic Runner has no term for a pool card", 2048)];
 
 /// Every non-identity card the sample decks (`decks::matchups()`) contain,
 /// deduplicated and sorted — the universe the headless report describes
@@ -707,7 +741,8 @@ impl Coverage {
         }
 
         for card in card_universe {
-            let allowed = UNREACHED_IN_SAMPLE_PLAY.iter().any(|(id, _)| *id == card.0);
+            let allowed = UNREACHED_IN_SAMPLE_PLAY.iter().any(|(id, _)| *id == card.0)
+                || CARDS_RARE_WITH_SWEEP_DECKS.iter().any(|(id, _, min_games)| *id == card.0 && self.games < *min_games);
             if !allowed && !self.cards.get(&card.0).is_some_and(CardCoverage::seen) {
                 failures.push(format!("card {} was never installed, played, rezzed, accessed or trashed", card.0));
             }

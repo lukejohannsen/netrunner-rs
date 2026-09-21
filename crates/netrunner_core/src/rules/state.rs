@@ -519,15 +519,6 @@ pub struct RunnerState {
     /// Agendas the Runner has stolen, in steal order. Fully public — never
     /// masked. See `CorpState::scored_agendas`'s doc comment.
     pub scored_agendas: Vec<CardId>,
-    /// Static link strength, added to the Runner's bid when resolving a
-    /// trace (see `TraceState`). Seeded at setup from the identity's
-    /// printed `CardDefinition::base_link` (joined from the catalog);
-    /// nothing wrote it before that, so every Runner traced at 0. No
-    /// `Effect` raises it and no hardware in the implemented pool grants
-    /// link — when one does, derive this from the rig the way `memory`
-    /// derives the budget rather than adding a second writer. Public
-    /// information, same treatment as `tags`.
-    pub link_strength: u32,
     /// The Runner's once-per-turn abilities used this turn — see
     /// `CorpState::once_per_turn_used`.
     #[serde(default)]

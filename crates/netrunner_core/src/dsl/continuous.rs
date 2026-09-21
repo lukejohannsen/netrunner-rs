@@ -104,6 +104,13 @@ pub enum ContinuousKind {
     /// trashed T400 Memory Diamond and a forfeited Superconducting Hub kept
     /// paying.
     HandSize(Number),
+    /// The Runner's link — The Toolbox's "+2[link]". What an identity prints
+    /// is its `CardDefinition::base_link`; this is what an installed card
+    /// adds while it is installed. Link was the other standing number still
+    /// stored: `RunnerState::link_strength`, seeded once from the identity
+    /// at setup, so there was nowhere for a console's link to be said at
+    /// all. `continuous::link` is asked by the trace.
+    Link(Number),
     /// Credits to install a card; negative is a discount.
     InstallCost(Number),
     /// Credits to rez a card.

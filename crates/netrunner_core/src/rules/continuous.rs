@@ -227,6 +227,20 @@ pub(crate) fn hand_size(state: &GameState, registry: &CardRegistry, side: Side) 
     })
 }
 
+/// The Runner's link right now: what their identity prints and what their
+/// active cards add (The Toolbox) for as long as each is installed. **Asked,
+/// never kept** — the trace, the view and the bots' encoding all ask here.
+/// It was `RunnerState::link_strength`, written once at setup from the
+/// identity alone. Never below 0.
+pub fn link(state: &GameState, registry: &CardRegistry) -> u32 {
+    let printed = state.runner.identity.as_ref().and_then(|identity| registry.get(identity)).and_then(|definition| definition.base_link).unwrap_or(0);
+    let table = sum(state, registry, Target::Player(Side::Runner), |kind| match kind {
+        ContinuousKind::Link(number) => Some(number),
+        _ => None,
+    });
+    (i64::from(printed) + i64::from(table)).max(0) as u32
+}
+
 /// A rig card's strength right now: what is stored on the install (printed,
 /// plus the boosts paid for) and what the table adds. **The one number** —
 /// the break contest, the view and the bots' pricing all read this, where

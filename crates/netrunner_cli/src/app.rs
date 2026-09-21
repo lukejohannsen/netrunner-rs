@@ -225,7 +225,7 @@ impl App {
         }
         // Past the actions: a route through the encountered ICE.
         let (Some(route), Some(view)) = (self.breaks.get(self.selected - offered.len()), self.view.as_ref()) else { return };
-        let driver = AutoBreak::new(route, view);
+        let driver = AutoBreak::new(route, view, &self.registry);
         match driver.next(view, &self.registry) {
             Next::Submit(step) => {
                 self.breaking = Some(driver);

@@ -1,0 +1,91 @@
+{
+  "id": "hostile_bid",
+  "name": "Hostile Bid",
+  "side": "Corp",
+  "category": "Sweep",
+  "description": "Not a published list: built so the sweeps reach bad publicity, which no other deck gives — Hostile Takeover is the only card in the pool that does — and meat damage for Crash Space to prevent (Measured Response). Weyland Consortium: Building a Better World, an identity no sample deck uses. Eternal-legal only.",
+  "style": "trap",
+  "identity": "weyland_consortium_building_a_better_world",
+  "cards": [
+    {
+      "card": "hostile_takeover",
+      "count": 3
+    },
+    {
+      "card": "above_the_law",
+      "count": 1
+    },
+    {
+      "card": "off_the_books",
+      "count": 3
+    },
+    {
+      "card": "greenmail",
+      "count": 3
+    },
+    {
+      "card": "offworld_office",
+      "count": 2
+    },
+    {
+      "card": "orbital_superiority",
+      "count": 1
+    },
+    {
+      "card": "ice_wall",
+      "count": 3
+    },
+    {
+      "card": "palisade",
+      "count": 3
+    },
+    {
+      "card": "wall_of_static",
+      "count": 2
+    },
+    {
+      "card": "enigma",
+      "count": 2
+    },
+    {
+      "card": "ballista",
+      "count": 2
+    },
+    {
+      "card": "kessleroid",
+      "count": 2
+    },
+    {
+      "card": "tithe",
+      "count": 2
+    },
+    {
+      "card": "whitespace",
+      "count": 2
+    },
+    {
+      "card": "hedge_fund",
+      "count": 3
+    },
+    {
+      "card": "government_subsidy",
+      "count": 1
+    },
+    {
+      "card": "petty_cash",
+      "count": 2
+    },
+    {
+      "card": "measured_response",
+      "count": 3
+    },
+    {
+      "card": "pad_campaign",
+      "count": 3
+    },
+    {
+      "card": "regolith_mining_license",
+      "count": 2
+    }
+  ]
+}

@@ -190,8 +190,9 @@ fn no_panics_or_deadlocks_across_many_seeds_system_gateway() {
     // that decision can arise here. It is not an exclusion on the *pool* —
     // the view-path sweep reaches both through *Byte!* — so it is declared
     // at this call rather than added to the shared allowlist.
-    // Nor an interrupt, so nothing is ever prevented here.
-    let failures = coverage.gate_failures_excluding(&universe, &["PayAccessTrigger", "DeclineAccessTrigger", "Prevented"]);
+    // Nor an interrupt, so nothing is ever prevented here; nor two pools of
+    // credits that could compete for one payment, so no payer is ever asked.
+    let failures = coverage.gate_failures_excluding(&universe, &["PayAccessTrigger", "DeclineAccessTrigger", "Prevented", "PaymentChoiceOffered"]);
     assert!(
         failures.is_empty(),
         "rules never reached across {} index-path games (rerun with NETRUNNER_SWEEP_SEEDS=256 before \

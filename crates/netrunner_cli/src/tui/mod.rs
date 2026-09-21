@@ -819,7 +819,7 @@ impl LocalUiState {
     fn start_break(&mut self) -> Option<PlayerAction> {
         let route = self.breaks.get(self.selected.checked_sub(self.offered_actions().len())?)?;
         let view = self.view.as_ref()?;
-        let driver = AutoBreak::new(route, view);
+        let driver = AutoBreak::new(route, view, &self.registry);
         match driver.next(view, &self.registry) {
             Next::Submit(step) => {
                 self.breaking = Some(driver);

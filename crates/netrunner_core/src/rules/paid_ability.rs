@@ -260,7 +260,7 @@ pub(crate) fn has_usable_paid_ability(state: &GameState, registry: &CardRegistry
             ability.trigger == Trigger::Paid
                 && ability.effect.prevents().is_none()
                 && ability.requirement.as_ref().is_none_or(|req| ability::check_requirement(state, req, side, &ctx, registry).is_ok())
-                && ability.cost.as_ref().is_none_or(|cost| ability::cost_is_affordable(state, registry, side, cost, Purpose::Other, &ctx))
+                && ability.cost.as_ref().is_none_or(|cost| ability::cost_is_affordable(state, registry, side, cost, Purpose::Ability(card), &ctx))
         })
     })
 }

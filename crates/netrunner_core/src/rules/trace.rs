@@ -59,7 +59,7 @@ pub(crate) fn submit_runner_bid(
 
     let trace = state.active_trace.take().expect("checked Some above");
     let corp_total = trace.base_strength.saturating_add(trace.corp_bid.expect("checked Some above"));
-    let runner_total = state.runner.link_strength.saturating_add(amount);
+    let runner_total = crate::rules::continuous::link(state, registry).saturating_add(amount);
     events.push(GameEvent::TraceRunnerBidSubmitted { runner_bid: amount, total_strength: runner_total });
 
     if runner_total >= corp_total {
@@ -108,6 +108,17 @@ mod tests {
         }
     }
 
+    /// Link is asked of the Runner's identity and rig (`continuous::link`),
+    /// so a test that turns on it gives the Runner an identity printing it.
+    fn a_runner_with_link(state: &mut GameState, link: u32) -> CardRegistry {
+        use crate::dsl::{CardDefinition, CardId, CardType};
+        let identity = CardId("an_identity_printing_link".to_string());
+        let mut registry = CardRegistry::new();
+        registry.insert(CardDefinition { id: identity.clone(), side: Side::Runner, card_type: CardType::Identity, base_link: Some(link), ..CardDefinition::default() });
+        state.runner.identity = Some(identity);
+        registry
+    }
+
     fn active_trace(base_strength: u32, corp_bid: Option<u32>, on_success: Effect) -> TraceState {
         TraceState {
             initiating_card: None,
@@ -123,9 +134,9 @@ mod tests {
     fn exact_match_avoids_the_trace() {
         let mut state = game_state();
         state.active_trace = Some(active_trace(3, Some(2), Effect::GiveTags(1)));
-        state.runner.link_strength = 2;
+        let registry = a_runner_with_link(&mut state, 2);
 
-        let events = submit_runner_bid(&mut state, 3, &CardRegistry::new()).unwrap();
+        let events = submit_runner_bid(&mut state, 3, &registry).unwrap();
 
         assert!(state.active_trace.is_none());
         assert_eq!(state.runner.tags, 0, "on_success must not fire when avoided");
@@ -143,9 +154,9 @@ mod tests {
     fn runner_total_below_corp_total_fires_effect_on_success() {
         let mut state = game_state();
         state.active_trace = Some(active_trace(3, Some(2), Effect::GiveTags(1)));
-        state.runner.link_strength = 1;
+        let registry = a_runner_with_link(&mut state, 1);
 
-        let events = submit_runner_bid(&mut state, 3, &CardRegistry::new()).unwrap();
+        let events = submit_runner_bid(&mut state, 3, &registry).unwrap();
 
         assert!(state.active_trace.is_none());
         assert_eq!(state.runner.tags, 1);
@@ -259,9 +270,9 @@ mod tests {
             effect_on_success: Effect::EndTheRun,
             resume: TraceResume::ResumeSubroutines,
         });
-        state.runner.link_strength = 5;
+        let registry = a_runner_with_link(&mut state, 5);
 
-        submit_runner_bid(&mut state, 0, &CardRegistry::new()).unwrap();
+        submit_runner_bid(&mut state, 0, &registry).unwrap();
 
         assert_eq!(state.runner.tags, 3, "remaining subroutine should have fired after resume");
         assert_eq!(state.active_run.as_ref().unwrap().phase, RunPhase::Success, "run should advance past the ICE");
@@ -279,9 +290,9 @@ mod tests {
             effect_on_success: Effect::EndTheRun,
             resume: TraceResume::ResumeSubroutines,
         });
-        state.runner.link_strength = 0;
+        let registry = a_runner_with_link(&mut state, 0);
 
-        submit_runner_bid(&mut state, 0, &CardRegistry::new()).unwrap();
+        submit_runner_bid(&mut state, 0, &registry).unwrap();
 
         assert!(state.active_run.is_none(), "EndTheRun should have fired and ended the run");
         assert_eq!(state.runner.tags, 0, "remaining subroutine must never fire once the run ended");

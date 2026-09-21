@@ -1,0 +1,38 @@
+{
+  "id": "the_toolbox",
+  "title": "The Toolbox",
+  "side": "Runner",
+  "card_type": "Hardware",
+  "cost": 9,
+  "subtypes": [
+    "Console"
+  ],
+  "counter_kind": "Credit",
+  "recurring_credits": 2,
+  "pays_for": [
+    "UsingIcebreakers"
+  ],
+  "continuous": [
+    {
+      "kind": {
+        "Memory": {
+          "per": 2
+        }
+      },
+      "applies_to": "Controller",
+      "text": "+2[mu]"
+    },
+    {
+      "kind": {
+        "Link": {
+          "per": 2
+        }
+      },
+      "applies_to": "Controller",
+      "text": "+2[link]"
+    }
+  ],
+  "triggers": [],
+  "numeric_id": 1041,
+  "is_playable": true
+}
