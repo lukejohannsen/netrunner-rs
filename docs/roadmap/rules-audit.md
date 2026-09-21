@@ -1321,9 +1321,81 @@ one.
    unused variants now one that three cards use (26 of 71 single-use over
    181 card files, 3 unused), `Trigger` 29 → 28, `EventFilter` 3 → 4, one
    field of the run and four events gone, one error where there were two.
-5. **Where a payment comes from** (§6.4; new). Pools that compete and a
-   player who chooses between them — stealth is the family that forces it.
-   Today every pool is spent automatically in a fixed order.
+5. **Where a payment comes from — IN PROGRESS (21 September 2026)**
+   (§6.4; new). As the second pass wrote it: pools that compete and a
+   player who chooses between them — stealth is the family that forces it;
+   today every pool is spent automatically in a fixed order.
+
+   **What reading it found first.** There is no stealth card in the
+   catalog, and the fixed order was the smaller problem. Credits that are
+   not the credit pool lived in six places — bad publicity's and a run
+   event's on `RunState`, Making News's on `CorpState`, and three
+   `hosted_credits_usable_for` purposes — and **each was spent by a
+   different piece of code with its own affordability sum written beside
+   it, and every such sum forgot a pool the payment then took.** So the
+   item is four stages: one door for a payment (this one);
+   "N[recurring-credit]" as a declaration refilled as a step of the turn
+   rather than an `OnTurnStart` trigger a player can be asked to order;
+   the payer's choice of pool, asked only when two pools are incomparable
+   and answered by the existing `ResolvePendingChoice` (no `ActionSpace`
+   growth — splitting one payment credit by credit waits on item 6); then
+   the three Core cards whose pools compete — Cyberfeeder, The Toolbox and
+   Crash Space, the last deferred here by name from item 4 — into the
+   Eternal sweep decks.
+
+   **Stage 1 — a payment has one door**
+   (`feat/a-payment-has-one-door`). `rules::payment::sources` is the one
+   scan: the site that pays says what the payment is *for*
+   (`payment::Purpose`: an install, a rez, a trash cost, a trace, or
+   `Other`), and every place whose credits may be spent on that is a
+   source, the credit pool last. `available` and `pay` both read it, so
+   whether a cost can be paid and paying it cannot disagree. What a card's
+   hosted credits pay for is a word it prints — `dsl::PaysFor`, a list on
+   `CardDefinition::pays_for`, matched against the purpose in one place
+   (`payment::covers`) — where it was `hosted_credits_usable_for`, one
+   `Option` drained by whichever handler knew the purpose. Open Market's
+   "connection and job resources" is an ordinary `CardFilter` now
+   (`Installing(filter)`), so Cyberfeeder's "virus programs" will be a card
+   file. `ability::pay_cost` takes the registry and the purpose, which it
+   deliberately did not across forty call sites; `validate` refuses a
+   `pays_for` on a card that hosts no credits and a `trash_when_empty` no
+   payment can empty. The order pools are spent in is unchanged.
+   *Five sums that disagreed with the payment, each with a test:* (1) **a
+   trash cost could not be paid with bad publicity or Overclock's
+   credits** — `access::resolve_trash` summed the credit pool and Azimat,
+   refused, and never reached the `pay_cost` that takes both; legal actions
+   are probed, so the trash was never offered. (2) A Runner traced mid-run
+   could not bid Overclock's credits (the bid range knew bad publicity
+   only). (3) `ability::cost_is_affordable` — the question a paid-ability
+   window and a prevention are opened on — forgot Overclock's credits.
+   (4) Open Market paid for a click install and not for one made by a
+   card's text. (5) An access trigger and a text install priced ahead of
+   time counted the credit pool alone. The first two were confirmed
+   failing on `main` at play level in a worktree of it.
+   *Measured, one pass of the pool (192 games, seed 1) on a shadow build
+   printing each moment an old sum would have refused what the scan
+   allows:* random-vs-random — **2 game-turns, both a trash on an
+   Overclock run** (old 1 and 0 credits, new 6 and 5, trash cost 2);
+   heuristic-vs-heuristic — 0; `cost_is_affordable` never disagreed in
+   play. Live and reachable, and rare: Overclock's credits were spent 13
+   times in the random pass at all, and **two of the six pools are never
+   reached by an agent**: Hostile Takeover is the only card that gives bad
+   publicity and no deck plays it, and no deck is on NBN: Making News
+   (`BadPublicityGiven` 0, `RecurringCreditsSpent` 0) — which is why the
+   bad-publicity half of (1) is a scripted test and not a measurement, and
+   is owed to the sweep decks in stage 4.
+   *`coverage_identical.py main`, 192 games a report, pinned binaries:*
+   heuristic **identical**, by view and by index; random **differs**, both
+   shapes — and a game-by-game run of the two binaries (`--verbose`) says
+   by how much: **191 of 192 games have the same length and outcome, and
+   one diverges**, seed 68 (`fashion_lab` vs `professional_opportunities`),
+   one of the two the shadow named — Corp by flatline in 605 steps on
+   `main`, Runner on points in 294 once the trash on its Overclock run is
+   offered. That one game is the whole aggregate movement: steps 68,557 →
+   68,246 is its −311, and end reasons move by it alone (flatline 95 → 94,
+   agenda threshold 83 → 84). The other shadow game-turn (seed 14) was
+   offered the trash and the random seat's line is unchanged. Both
+   256-seed sweeps pass, `cargo test --workspace` green, clippy silent.
 6. **A numeric decision** (§6.4; new). `PendingDecision` has no "choose a
    number", so X costs and "pay up to N" have nowhere to park. One variant,
    and an `ActionSpace` segment appended at the end (the append-never-shift

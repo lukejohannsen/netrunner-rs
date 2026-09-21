@@ -8,7 +8,7 @@ mod zone;
 
 pub use ability::{AbilityDef, AccessInteraction, EffectRequirement, InteractiveOnAccess, SubroutineDef};
 pub use card::{
-    CardDefinition, CardId, CardSubtype, CardType, CardValidationError, CounterKind, HostedCreditUse, IceType,
+    CardDefinition, CardId, CardSubtype, CardType, CardValidationError, CounterKind, IceType, PaysFor,
     TriggeredEffect, RezAlternative,
 };
 pub use continuous::{ContinuousEffect, ContinuousKind, Number, Scope};

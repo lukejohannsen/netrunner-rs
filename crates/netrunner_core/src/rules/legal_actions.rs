@@ -22,6 +22,7 @@ use crate::rules::action::PlayerAction;
 use crate::rules::apply_action;
 use crate::rules::continuous;
 use crate::rules::event::GameEvent;
+use crate::rules::payment::{self, Purpose};
 use crate::rules::run::{AccessPhase, RunPhase, ServerId, SubroutineStatus};
 use crate::rules::state::{GamePhase, GameState, InstallId, InstallSlot, Side};
 
@@ -325,7 +326,7 @@ fn candidate_actions(state: &GameState, registry: &CardRegistry) -> Vec<PlayerAc
     candidates.extend(advance_score_trash_candidates(state, registry));
     candidates.extend(access_flow_candidates(state, registry));
     candidates.extend(pass_priority_candidates(state));
-    candidates.extend(trace_bid_candidates(state));
+    candidates.extend(trace_bid_candidates(state, registry));
     candidates.extend(pending_paid_choice_candidates(state));
     candidates.extend(pending_decision_candidates(state, registry));
     candidates
@@ -748,20 +749,20 @@ fn pass_priority_candidates(state: &GameState) -> Vec<PlayerAction> {
     }
 }
 
-/// `ability::pay_cost`'s `Cost::Credits` arm draws Corp trace bids from
-/// `recurring_credits` before the wallet, and Runner trace bids from an
-/// active run's `bad_publicity_credits` before the wallet — bounding the
-/// candidate range by wallet credits alone would miss legal higher bids.
-fn trace_bid_candidates(state: &GameState) -> Vec<PlayerAction> {
+/// Every bid the bidder could pay, which is `rules::payment`'s answer for a
+/// trace attempt — the Corp identity's recurring credits and the run's
+/// pools beside the credit pool. It was a sum written out here, which
+/// knew about bad publicity and not about the credits a run event brought
+/// (Overclock), so a Runner traced mid-run could not bid them.
+fn trace_bid_candidates(state: &GameState, registry: &CardRegistry) -> Vec<PlayerAction> {
     let Some(trace) = &state.active_trace else { return Vec::new() };
     match trace.corp_bid {
         None => {
-            let max = state.corp.resources.credits.0 + state.corp.recurring_credits;
+            let max = payment::available(state, registry, Side::Corp, Purpose::Trace);
             (0..=max).map(|amount| PlayerAction::SubmitCorpTraceBid { amount }).collect()
         }
         Some(_) => {
-            let bad_publicity_credits = state.active_run.as_ref().map_or(0, |r| r.bad_publicity_credits);
-            let max = state.runner.resources.credits.0 + bad_publicity_credits;
+            let max = payment::available(state, registry, Side::Runner, Purpose::Trace);
             (0..=max).map(|amount| PlayerAction::SubmitRunnerTraceBid { amount }).collect()
         }
     }

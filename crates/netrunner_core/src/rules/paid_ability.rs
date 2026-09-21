@@ -8,6 +8,7 @@ use crate::cards::CardRegistry;
 use crate::dsl::{CardId, Trigger};
 use crate::rules::ability;
 use crate::rules::error::RulesError;
+use crate::rules::payment::Purpose;
 use crate::rules::event::GameEvent;
 use crate::rules::run::{self, AccessPhase, RunAction, RunPhase};
 use crate::rules::prevention;
@@ -259,7 +260,7 @@ pub(crate) fn has_usable_paid_ability(state: &GameState, registry: &CardRegistry
             ability.trigger == Trigger::Paid
                 && ability.effect.prevents().is_none()
                 && ability.requirement.as_ref().is_none_or(|req| ability::check_requirement(state, req, side, &ctx, registry).is_ok())
-                && ability.cost.as_ref().is_none_or(|cost| ability::cost_is_affordable(state, side, cost, &ctx))
+                && ability.cost.as_ref().is_none_or(|cost| ability::cost_is_affordable(state, registry, side, cost, Purpose::Other, &ctx))
         })
     })
 }

@@ -53,6 +53,7 @@ use crate::rules::ability::{self, ResolutionContext};
 use crate::rules::damage;
 use crate::rules::dispatcher;
 use crate::rules::error::RulesError;
+use crate::rules::payment::Purpose;
 use crate::rules::event::GameEvent;
 use crate::rules::lingering::Lingering;
 use crate::rules::paid_ability;
@@ -97,7 +98,7 @@ pub(crate) fn could_prevent(state: &GameState, registry: &CardRegistry, what: &W
                 ability.trigger == Trigger::Paid
                     && ability.effect.prevents().is_some_and(|word| matches(&word, what, state, registry))
                     && ability.requirement.as_ref().is_none_or(|req| ability::check_requirement(state, req, user, &ctx, registry).is_ok())
-                    && ability.cost.as_ref().is_none_or(|cost| ability::cost_is_affordable(state, user, cost, &ctx))
+                    && ability.cost.as_ref().is_none_or(|cost| ability::cost_is_affordable(state, registry, user, cost, Purpose::Other, &ctx))
             })
         })
     })

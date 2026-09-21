@@ -12,6 +12,7 @@ use crate::rules::ability;
 use crate::rules::error::RulesError;
 use crate::rules::event::GameEvent;
 use crate::rules::paid_ability;
+use crate::rules::payment::Purpose;
 use crate::rules::state::{GameState, Side, TraceResume};
 
 /// Resolves `PlayerAction::SubmitCorpTraceBid`. Requires an active trace
@@ -19,13 +20,13 @@ use crate::rules::state::{GameState, Side, TraceResume};
 /// otherwise); deducts `amount` via the same `pay_cost` path every other
 /// credit cost in this engine uses, so an unaffordable bid fails with the
 /// generic `RulesError::NotEnoughCredits` rather than a bespoke variant.
-pub(crate) fn submit_corp_bid(state: &mut GameState, amount: u32) -> Result<Vec<GameEvent>, RulesError> {
+pub(crate) fn submit_corp_bid(state: &mut GameState, registry: &CardRegistry, amount: u32) -> Result<Vec<GameEvent>, RulesError> {
     let trace = state.active_trace.as_ref().ok_or(RulesError::TraceNotAwaitingCorpBid)?;
     if trace.corp_bid.is_some() {
         return Err(RulesError::TraceNotAwaitingCorpBid);
     }
 
-    let mut events = ability::pay_cost(state, Side::Corp, &Cost::Credits(amount), None)?;
+    let mut events = ability::pay_cost(state, registry, Side::Corp, &Cost::Credits(amount), Purpose::Trace, None)?;
 
     let trace = state.active_trace.as_mut().expect("checked Some above");
     trace.corp_bid = Some(amount);
@@ -54,7 +55,7 @@ pub(crate) fn submit_runner_bid(
         return Err(RulesError::TraceNotAwaitingRunnerBid);
     }
 
-    let mut events = ability::pay_cost(state, Side::Runner, &Cost::Credits(amount), None)?;
+    let mut events = ability::pay_cost(state, registry, Side::Runner, &Cost::Credits(amount), Purpose::Trace, None)?;
 
     let trace = state.active_trace.take().expect("checked Some above");
     let corp_total = trace.base_strength.saturating_add(trace.corp_bid.expect("checked Some above"));
@@ -183,7 +184,7 @@ mod tests {
         let mut state = game_state();
         state.active_trace = Some(active_trace(2, None, Effect::GiveTags(1)));
 
-        let result = submit_corp_bid(&mut state, 10);
+        let result = submit_corp_bid(&mut state, &CardRegistry::new(), 10);
 
         assert_eq!(result, Err(RulesError::NotEnoughCredits { side: Side::Corp, available: 5, requested: 10 }));
         assert_eq!(state.corp.resources.credits, Credits(5));
@@ -213,7 +214,7 @@ mod tests {
     #[test]
     fn corp_bid_when_no_trace_is_active_errors() {
         let mut state = game_state();
-        assert_eq!(submit_corp_bid(&mut state, 0), Err(RulesError::TraceNotAwaitingCorpBid));
+        assert_eq!(submit_corp_bid(&mut state, &CardRegistry::new(), 0), Err(RulesError::TraceNotAwaitingCorpBid));
     }
 
     fn ice_with_trace_pending_resume(remaining_effect: Effect, on_success: Effect) -> RunState {

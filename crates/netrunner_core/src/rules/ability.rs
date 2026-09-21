@@ -9,6 +9,7 @@ use crate::rules::dispatcher;
 use crate::rules::error::RulesError;
 use crate::rules::listeners;
 use crate::rules::event::GameEvent;
+use crate::rules::payment::{self, Purpose};
 use crate::rules::prevention;
 use crate::rules::run::{self, AccessPhase, RunPhase, ServerId, SubroutineStatus};
 use crate::rules::state::{
@@ -1172,8 +1173,8 @@ pub fn evaluate_effect(
 
         Effect::RezInstalled { install, pay_cost, discount } => {
             // Shares `engine::rez_install` with `PlayerAction::RezIce`, so a
-            // discounted rez pays through the same waterfall (a region's
-            // hosted rez credits before the wallet) and fires `OnRez`
+            // discounted rez is paid the same way (`rules::payment`: a region's
+            // hosted rez credits before the credit pool) and fires `OnRez`
             // identically. Unaffordable is a no-op, not an error: Mycoweb's
             // "you may rez ... paying 2[c] less" and both branches of
             // Biawak's forfeit choice must resolve to *something*, and a
@@ -1755,7 +1756,7 @@ fn gain_credits_from_ability(
     Ok(events)
 }
 
-fn modify_counters(
+pub(crate) fn modify_counters(
     state: &mut GameState,
     ctx: &ResolutionContext<'_>,
     delta: i64,
@@ -1964,7 +1965,7 @@ fn runner_is_accessing(state: &GameState, card_id: &CardId) -> bool {
         })
 }
 
-fn trash_this_card(state: &mut GameState, ctx: &ResolutionContext<'_>) -> Result<Vec<GameEvent>, RulesError> {
+pub(crate) fn trash_this_card(state: &mut GameState, ctx: &ResolutionContext<'_>) -> Result<Vec<GameEvent>, RulesError> {
     let card_id = &ctx.acting_card.ok_or(RulesError::MissingActingCardContext)?.clone();
     if let Some(position) = acting_corp_position(state, ctx) {
         // Same rezzed-or-not rule as `CardTarget::CorpInstalled` above,
@@ -2044,23 +2045,24 @@ fn trash_this_card(state: &mut GameState, ctx: &ResolutionContext<'_>) -> Result
 /// `TakeTags`, `ClearTags`) are always payable and answer `true`.
 pub(crate) fn cost_is_affordable(
     state: &GameState,
+    registry: &CardRegistry,
     side: Side,
     cost: &Cost,
+    purpose: Purpose<'_>,
     ctx: &ResolutionContext<'_>,
 ) -> bool {
     match cost {
-        Cost::Credits(amount) => {
-            let bp = state.active_run.as_ref().map_or(0, |run| run.bad_publicity_credits);
-            state.resources(side).credits.0 + bp >= *amount
-        }
+        // The scan the payment spends from — it used to be a sum of its
+        // own, which counted bad publicity and forgot the run's credits.
+        Cost::Credits(amount) => payment::available(state, registry, side, purpose) >= *amount,
         Cost::Clicks(amount) => state.resources(side).clicks.0 >= *amount,
         Cost::RemoveCounters(amount) => counters_of(state, ctx).is_some_and(|counters| counters >= *amount),
         // Any one alternative being payable is enough — the payer picks.
-        Cost::AnyOf(options) => options.iter().any(|option| cost_is_affordable(state, side, option, ctx)),
+        Cost::AnyOf(options) => options.iter().any(|option| cost_is_affordable(state, registry, side, option, purpose, ctx)),
         // Every part must be payable — read against the same state, which
         // is exact for the shapes in the pool (clicks plus a self-trash
         // draw on different resources).
-        Cost::AllOf(parts) => parts.iter().all(|part| cost_is_affordable(state, side, part, ctx)),
+        Cost::AllOf(parts) => parts.iter().all(|part| cost_is_affordable(state, registry, side, part, purpose, ctx)),
         Cost::TrashSelf | Cost::RemoveSelfFromGame | Cost::TakeTags(_) | Cost::ClearTags => true,
         Cost::TrashRandomFromHq(count) => state.corp.hq.len() as u32 >= *count,
     }
@@ -2071,99 +2073,36 @@ pub(crate) fn cost_is_affordable(
 /// installed card* (an activated ability, a parked choice's cost) must use
 /// `pay_cost_ctx` with the install, or `Cost::RemoveCounters`/`TrashSelf`
 /// act on the first copy of the card.
-pub fn pay_cost(
+///
+/// `purpose` is what the cost is being paid *for*, which only the caller
+/// knows and which decides where credits may come from — see
+/// `rules::payment`. It reaches nothing but `Cost::Credits`.
+pub(crate) fn pay_cost(
     state: &mut GameState,
+    registry: &CardRegistry,
     side: Side,
     cost: &Cost,
+    purpose: Purpose<'_>,
     acting_card: Option<&CardId>,
 ) -> Result<Vec<GameEvent>, RulesError> {
-    pay_cost_ctx(state, side, cost, &ResolutionContext::for_card(acting_card))
+    pay_cost_ctx(state, registry, side, cost, purpose, &ResolutionContext::for_card(acting_card))
 }
 
-pub fn pay_cost_ctx(
+pub(crate) fn pay_cost_ctx(
     state: &mut GameState,
+    registry: &CardRegistry,
     side: Side,
     cost: &Cost,
+    purpose: Purpose<'_>,
     ctx: &ResolutionContext<'_>,
 ) -> Result<Vec<GameEvent>, RulesError> {
     let acting_card = ctx.acting_card;
     match cost {
-        Cost::Credits(amount) => {
-            // During an active run, the Runner draws from their temporary
-            // Bad Publicity credit pool (RunState::bad_publicity_credits)
-            // before their own wallet — see RunState's doc comment. Corp
-            // credit costs, and any Runner cost outside a run, are
-            // unaffected: bp_available is unconditionally 0 for them, so
-            // this collapses to the original wallet-only behavior.
-            let bp_available = match (side, state.active_run.as_ref()) {
-                (Side::Runner, Some(run)) => run.bad_publicity_credits,
-                _ => 0,
-            };
-            // Symmetric pool for a run given its own temporary credits by
-            // whatever initiated it (e.g. Overclock's "you can spend hosted
-            // credits during that run") — drawn from before the Runner's
-            // wallet, same precedent as `bad_publicity_credits`, and
-            // additive with it (both are legitimately spendable during the
-            // same run).
-            let bonus_run_available = match (side, state.active_run.as_ref()) {
-                (Side::Runner, Some(run)) => run.bonus_run_credits,
-                _ => 0,
-            };
-            // Symmetric pool for the Corp: during an active trace, the Corp
-            // draws from `CorpState::recurring_credits` before their own
-            // wallet (e.g. NBN: Making News). Every `Cost::Credits` payment
-            // the Corp makes while a trace is active is necessarily
-            // `trace::submit_corp_bid`'s — `engine::apply_action` rejects
-            // every other action while `active_trace` is `Some` — so keying
-            // on `state.active_trace.is_some()` here is exact, not a
-            // heuristic.
-            let recurring_available = match (side, state.active_trace.is_some()) {
-                (Side::Corp, true) => state.corp.recurring_credits,
-                _ => 0,
-            };
-            let wallet_available = state.resources(side).credits.0;
-            let total_available = bp_available
-                .saturating_add(bonus_run_available)
-                .saturating_add(recurring_available)
-                .saturating_add(wallet_available);
-            if total_available < *amount {
-                return Err(RulesError::NotEnoughCredits {
-                    side,
-                    available: total_available,
-                    requested: *amount,
-                });
-            }
-
-            let from_bp = bp_available.min(*amount);
-            let from_bonus_run = bonus_run_available.min(*amount - from_bp);
-            let from_recurring = recurring_available.min(*amount - from_bp - from_bonus_run);
-            let from_wallet = amount - from_bp - from_bonus_run - from_recurring;
-
-            let mut events = Vec::new();
-            if from_bp > 0 {
-                state
-                    .active_run
-                    .as_mut()
-                    .expect("bp_available > 0 implies an active run")
-                    .bad_publicity_credits -= from_bp;
-                events.push(GameEvent::BadPublicityCreditsSpent { amount: from_bp });
-            }
-            if from_bonus_run > 0 {
-                state
-                    .active_run
-                    .as_mut()
-                    .expect("bonus_run_available > 0 implies an active run")
-                    .bonus_run_credits -= from_bonus_run;
-                events.push(GameEvent::BonusRunCreditsSpent { amount: from_bonus_run });
-            }
-            if from_recurring > 0 {
-                state.corp.recurring_credits -= from_recurring;
-                events.push(GameEvent::RecurringCreditsSpent { amount: from_recurring });
-            }
-            state.resources_mut(side).credits = Credits(wallet_available - from_wallet);
-            events.push(GameEvent::CreditsSpent { side, amount: *amount });
-            Ok(events)
-        }
+        // Where the credits come from is `rules::payment`'s: the run's
+        // pools, an identity's and a card's hosted credits are sources
+        // beside the credit pool, and which of them this payment may use
+        // is read off `purpose`.
+        Cost::Credits(amount) => payment::pay(state, registry, side, *amount, purpose),
 
         Cost::Clicks(amount) => {
             let clicks = state.resources(side).clicks;
@@ -2230,7 +2169,7 @@ pub fn pay_cost_ctx(
         Cost::AllOf(parts) => {
             let mut events = Vec::new();
             for part in parts {
-                events.extend(pay_cost_ctx(state, side, part, ctx)?);
+                events.extend(pay_cost_ctx(state, registry, side, part, purpose, ctx)?);
             }
             Ok(events)
         }
@@ -2561,83 +2500,6 @@ fn installed_icebreaker_count(state: &GameState, registry: &CardRegistry) -> u32
 /// installed/rigged) resolves to `0` rather than erroring — the same
 /// "nothing to do" leniency `Effect::DrawCards`/`TakeAllCountersAsCredits`
 /// already establish for an empty/absent source.
-/// Drains up to `amount` credits from the hosted-credit pools whose card
-/// `usable` accepts, rig order, trashing a pool that empties when its card
-/// says so (`CardDefinition::trash_when_empty` — Open Market). Returns the
-/// events and how much was drained; the caller pays the remainder from the
-/// wallet. The one drain every purpose-restricted pool goes through — see
-/// `CardDefinition::hosted_credits_usable_for` for why it is not in
-/// `pay_cost`.
-pub(crate) fn drain_hosted_credit_pools(
-    state: &mut GameState,
-    registry: &CardRegistry,
-    amount: u32,
-    usable: impl Fn(&crate::dsl::CardDefinition) -> bool,
-) -> Result<(Vec<GameEvent>, u32), RulesError> {
-    let pools: Vec<(InstallId, u32, bool)> = state
-        .runner
-        .rig
-        .iter()
-        .filter(|card| card.counters > 0)
-        .filter_map(|card| registry.get(&card.card).map(|def| (card, def)))
-        .filter(|(_, def)| usable(def))
-        .map(|(card, def)| (card.install_id, card.counters, def.trash_when_empty))
-        .collect();
-    let mut events = Vec::new();
-    let mut remaining = amount;
-    for (install, credits, trash_when_empty) in pools {
-        if remaining == 0 {
-            break;
-        }
-        let spend = credits.min(remaining);
-        let ctx = ResolutionContext::for_parked(Some(install), None);
-        events.extend(spend_hosted_credits(state, &ctx, spend)?);
-        remaining -= spend;
-        if trash_when_empty && spend == credits {
-            let card_id = state.runner.rig.iter().find(|c| c.install_id == install).map(|c| c.card.clone());
-            if let Some(card_id) = card_id {
-                let ctx = ResolutionContext::for_parked(Some(install), Some(&card_id));
-                events.extend(trash_this_card(state, &ctx)?);
-            }
-        }
-    }
-    Ok((events, amount - remaining))
-}
-
-/// `drain_hosted_credit_pools` for the Corp's table — Mahkota Langit
-/// Grid's rez credits, drained by `engine::rez_ice`. `usable` sees the
-/// install as well as the definition, because a Corp pool's purpose is
-/// tied to *where* the card sits (its own server). Rezzed installs only:
-/// an unrezzed upgrade's text is not active. Table order, like the rig.
-pub(crate) fn drain_corp_hosted_credit_pools(
-    state: &mut GameState,
-    registry: &CardRegistry,
-    amount: u32,
-    usable: impl Fn(&InstalledCard, &crate::dsl::CardDefinition) -> bool,
-) -> Result<(Vec<GameEvent>, u32), RulesError> {
-    let pools: Vec<(InstallId, u32)> = state
-        .corp
-        .installed
-        .iter()
-        .filter(|card| card.rezzed && card.counters > 0)
-        .filter(|card| registry.get(&card.card).is_some_and(|def| usable(card, def)))
-        .map(|card| (card.install_id, card.counters))
-        .collect();
-    let mut events = Vec::new();
-    let mut remaining = amount;
-    for (install, credits) in pools {
-        if remaining == 0 {
-            break;
-        }
-        let spend = credits.min(remaining);
-        let card_id = state.corp.installed.iter().find(|c| c.install_id == install).map(|c| c.card.clone());
-        let ctx = ResolutionContext::for_parked(Some(install), card_id.as_ref());
-        events.extend(modify_counters(state, &ctx, -i64::from(spend))?);
-        remaining -= spend;
-    }
-    Ok((events, amount - remaining))
-}
-
 /// Whether `breaker` (its definition, if it has one — a click has none)
 /// may break `subroutine` under `SubroutineDef::only_breakable_by`.
 fn subroutine_breakable_by(subroutine: &crate::rules::run::EncounteredSubroutine, breaker: Option<&crate::dsl::CardDefinition>) -> bool {
@@ -2645,25 +2507,6 @@ fn subroutine_breakable_by(subroutine: &crate::rules::run::EncounteredSubroutine
         None => true,
         Some(subtype) => breaker.is_some_and(|def| def.subtypes.contains(&subtype)),
     }
-}
-
-/// Spends `amount` of the acting rig card's hosted credits (its generic
-/// counters) towards a cost the card's text lets them pay — the
-/// purpose-restricted pool drain `run::access::resolve_trash` uses for
-/// `HostedCreditUse::TrashCosts`. The counters go through the same path
-/// `Cost::RemoveCounters` uses, so the event stream reads the same.
-pub(crate) fn spend_hosted_credits(
-    state: &mut GameState,
-    ctx: &ResolutionContext<'_>,
-    amount: u32,
-) -> Result<Vec<GameEvent>, RulesError> {
-    if amount == 0 {
-        return Ok(Vec::new());
-    }
-    let position = acting_rig_position(state, ctx).ok_or(RulesError::MissingActingCardContext)?;
-    let card_id = state.runner.rig[position].card.clone();
-    let ctx = ResolutionContext::for_parked(Some(state.runner.rig[position].install_id), Some(&card_id));
-    modify_counters(state, &ctx, -i64::from(amount))
 }
 
 pub(crate) fn resolve_amount(amount: &Amount, ctx: &ResolutionContext<'_>, state: &GameState, registry: &CardRegistry) -> u32 {
@@ -3426,13 +3269,13 @@ mod tests {
     #[test]
     fn pay_credits_deducts_and_errors_when_insufficient() {
         let mut state = game_state();
-        let events = pay_cost(&mut state, Side::Corp, &Cost::Credits(3), None).unwrap();
+        let events = pay_cost(&mut state, &CardRegistry::new(), Side::Corp, &Cost::Credits(3), Purpose::Other, None).unwrap();
 
         assert_eq!(state.corp.resources.credits, Credits(2));
         assert_eq!(events, vec![GameEvent::CreditsSpent { side: Side::Corp, amount: 3 }]);
 
         assert_eq!(
-            pay_cost(&mut state, Side::Corp, &Cost::Credits(10), None),
+            pay_cost(&mut state, &CardRegistry::new(), Side::Corp, &Cost::Credits(10), Purpose::Other, None),
             Err(RulesError::NotEnoughCredits { side: Side::Corp, available: 2, requested: 10 })
         );
     }
@@ -3451,7 +3294,7 @@ mod tests {
         let mut state = game_state();
         state.active_run = Some(run_with_bad_publicity_credits(3));
 
-        let events = pay_cost(&mut state, Side::Runner, &Cost::Credits(5), None).unwrap();
+        let events = pay_cost(&mut state, &CardRegistry::new(), Side::Runner, &Cost::Credits(5), Purpose::Other, None).unwrap();
 
         assert_eq!(state.active_run.as_ref().unwrap().bad_publicity_credits, 0);
         assert_eq!(state.runner.resources.credits, Credits(3)); // 5 wallet - (5 - 3 from BP)
@@ -3469,7 +3312,7 @@ mod tests {
         // Regression guard: behavior/events must be byte-identical to the
         // pre-Bad-Publicity path when there's no run to draw from.
         let mut state = game_state();
-        let events = pay_cost(&mut state, Side::Runner, &Cost::Credits(2), None).unwrap();
+        let events = pay_cost(&mut state, &CardRegistry::new(), Side::Runner, &Cost::Credits(2), Purpose::Other, None).unwrap();
 
         assert_eq!(state.runner.resources.credits, Credits(3));
         assert_eq!(events, vec![GameEvent::CreditsSpent { side: Side::Runner, amount: 2 }]);
@@ -3480,7 +3323,7 @@ mod tests {
         let mut state = game_state();
         state.active_run = Some(run_with_bad_publicity_credits(0));
 
-        let events = pay_cost(&mut state, Side::Runner, &Cost::Credits(2), None).unwrap();
+        let events = pay_cost(&mut state, &CardRegistry::new(), Side::Runner, &Cost::Credits(2), Purpose::Other, None).unwrap();
 
         assert_eq!(state.runner.resources.credits, Credits(3));
         assert_eq!(events, vec![GameEvent::CreditsSpent { side: Side::Runner, amount: 2 }]);
@@ -3492,7 +3335,7 @@ mod tests {
         state.runner.resources.credits = Credits(1);
         state.active_run = Some(run_with_bad_publicity_credits(1));
 
-        let result = pay_cost(&mut state, Side::Runner, &Cost::Credits(5), None);
+        let result = pay_cost(&mut state, &CardRegistry::new(), Side::Runner, &Cost::Credits(5), Purpose::Other, None);
 
         assert_eq!(
             result,
@@ -3507,7 +3350,7 @@ mod tests {
         let mut state = game_state();
         state.active_run = Some(run_with_bad_publicity_credits(10));
 
-        let events = pay_cost(&mut state, Side::Corp, &Cost::Credits(3), None).unwrap();
+        let events = pay_cost(&mut state, &CardRegistry::new(), Side::Corp, &Cost::Credits(3), Purpose::Other, None).unwrap();
 
         assert_eq!(state.corp.resources.credits, Credits(2));
         assert_eq!(state.active_run.as_ref().unwrap().bad_publicity_credits, 10);
@@ -3517,7 +3360,7 @@ mod tests {
     #[test]
     fn pay_clicks_spends_the_requested_amount() {
         let mut state = game_state();
-        let events = pay_cost(&mut state, Side::Runner, &Cost::Clicks(2), None).unwrap();
+        let events = pay_cost(&mut state, &CardRegistry::new(), Side::Runner, &Cost::Clicks(2), Purpose::Other, None).unwrap();
 
         assert_eq!(state.runner.resources.clicks, Clicks(2));
         assert_eq!(events, vec![GameEvent::ClickSpent { side: Side::Runner }, GameEvent::ClickSpent { side: Side::Runner }]);
@@ -3528,7 +3371,7 @@ mod tests {
         let mut state = game_state();
         state.runner.tags = 3;
 
-        let events = pay_cost(&mut state, Side::Runner, &Cost::ClearTags, None).unwrap();
+        let events = pay_cost(&mut state, &CardRegistry::new(), Side::Runner, &Cost::ClearTags, Purpose::Other, None).unwrap();
 
         assert_eq!(state.runner.tags, 0);
         assert_eq!(events, vec![GameEvent::TagsCleared { side: Side::Runner }]);
@@ -3538,7 +3381,7 @@ mod tests {
     fn pay_trash_self_without_acting_card_is_rejected_not_panicked() {
         let mut state = game_state();
         assert_eq!(
-            pay_cost(&mut state, Side::Runner, &Cost::TrashSelf, None),
+            pay_cost(&mut state, &CardRegistry::new(), Side::Runner, &Cost::TrashSelf, Purpose::Other, None),
             Err(RulesError::MissingActingCardContext)
         );
     }
@@ -3549,7 +3392,7 @@ mod tests {
         state.runner.rig = vec![installed_runner_card("self_modifying_code", 0)];
         let acting = CardId("self_modifying_code".to_string());
 
-        let events = pay_cost(&mut state, Side::Runner, &Cost::TrashSelf, Some(&acting)).unwrap();
+        let events = pay_cost(&mut state, &CardRegistry::new(), Side::Runner, &Cost::TrashSelf, Purpose::Other, Some(&acting)).unwrap();
 
         assert!(state.runner.rig.is_empty());
         assert_eq!(state.runner.heap, vec![acting.clone()]);
@@ -4275,7 +4118,7 @@ mod tests {
     fn pay_cost_take_tags_gives_the_runner_tags() {
         let mut state = game_state();
 
-        let events = pay_cost(&mut state, Side::Runner, &Cost::TakeTags(1), None).unwrap();
+        let events = pay_cost(&mut state, &CardRegistry::new(), Side::Runner, &Cost::TakeTags(1), Purpose::Other, None).unwrap();
 
         assert_eq!(state.runner.tags, 1);
         assert_eq!(events, vec![GameEvent::TagsGiven { side: Side::Runner, amount: 1 }]);
@@ -4285,7 +4128,7 @@ mod tests {
     fn pay_cost_any_of_directly_errors_cost_requires_choice() {
         let mut state = game_state();
 
-        let result = pay_cost(&mut state, Side::Runner, &Cost::AnyOf(vec![Cost::Clicks(1)]), None);
+        let result = pay_cost(&mut state, &CardRegistry::new(), Side::Runner, &Cost::AnyOf(vec![Cost::Clicks(1)]), Purpose::Other, None);
 
         assert_eq!(result, Err(RulesError::CostRequiresChoice));
     }

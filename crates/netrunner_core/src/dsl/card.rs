@@ -349,21 +349,23 @@ pub struct CardDefinition {
 
 
     /// What this card's hosted credits (`counters`, with `counter_kind:
-    /// Credit`) may be spent on, beyond the card's own abilities — Azimat's
-    /// "You can spend hosted credits to pay trash costs." The restriction
-    /// vocabulary this engine deferred until a card needed it (ROADMAP
-    /// Phase 1 §4): real recurring credits are purpose-restricted, so the
-    /// pool cannot live in `ability::pay_cost`'s purpose-blind waterfall.
-    /// Instead the site that knows the purpose drains matching pools first
-    /// — `run::access::resolve_trash` for `TrashCosts`. One value today,
-    /// built against one card; extend when the next card names a purpose.
-    /// `None` for the common case (hosted credits spendable only by the
-    /// card's own text).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub hosted_credits_usable_for: Option<HostedCreditUse>,
+    /// Credit`) may be spent on, beyond the card's own abilities — the words
+    /// a card prints after "You can spend hosted credits to": Azimat's "pay
+    /// trash costs", Open Market's "install connection and job resources".
+    /// A list because a card may name two (Cyberfeeder). `rules::payment`
+    /// is the one scan that reads it: a payment states its `Purpose`, and
+    /// every active card whose words cover that purpose is a source for it
+    /// — counted by the affordability question and drained by the payment,
+    /// which therefore cannot disagree. It was `hosted_credits_usable_for`,
+    /// one `Option` drained by whichever handler knew the purpose, each
+    /// with its own affordability sum beside it; three of those sums forgot
+    /// a pool the payment then took. Empty for the common case (hosted
+    /// credits spendable only by the card's own text).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub pays_for: Vec<PaysFor>,
 
     /// Trash this card the moment its hosted credits reach zero *through a
-    /// pool drain* (`hosted_credits_usable_for`) — Open Market's "When it
+    /// payment* (`pays_for`, drained by `rules::payment`) — Open Market's "When it
     /// is empty, trash it." The card's own turn-start take handles the
     /// other way it empties with an `EffectIf`, as Telework Contract does;
     /// only the engine-side drain needs the flag, since no card text runs
@@ -570,28 +572,31 @@ pub enum CounterKind {
     Credit,
 }
 
-/// See `CardDefinition::hosted_credits_usable_for` — the purpose a card's
-/// hosted credits may be spent on. Deliberately a closed enum with one
-/// value: each purpose names the one engine site that drains the pool, and
-/// a value nothing drains would be a dead restriction.
+/// See `CardDefinition::pays_for` — what a card's hosted credits may be
+/// spent on, as the card prints it. **A word about the payment, never a
+/// site:** `rules::payment::covers` is the one place a word is matched
+/// against what is being paid for (`payment::Purpose`), so a new word is a
+/// variant here and an arm there, and no handler learns about it. Only what
+/// a card in the pool prints.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub enum HostedCreditUse {
+pub enum PaysFor {
     /// The trash cost of a card the Runner is accessing
     /// (`PlayerAction::TrashAccessedCard`) — Azimat.
     TrashCosts,
-    /// The install cost of a Resource carrying any of `subtypes` — Open
-    /// Market's "You can spend hosted credits to install connection and job
-    /// resources". Drained by `engine::install_resource`.
-    ResourceInstalls { subtypes: Vec<CardSubtype> },
+    /// The install cost of a card the filter admits — Open Market's "You
+    /// can spend hosted credits to install connection and job resources".
+    /// Definition-level filters only: the card being installed is not on
+    /// the table yet. It was `ResourceInstalls { subtypes }`, drained by
+    /// the click install alone, so a connection installed by a card's text
+    /// could not be paid for from the market.
+    Installing(crate::dsl::CardFilter),
     /// The rez cost of an asset in the root of, or a piece of ice
-    /// protecting, the server this upgrade is installed in — Mahkota Langit
+    /// protecting, the server this card is installed in — Mahkota Langit
     /// Grid's "You can spend hosted credits to rez assets in the root of
-    /// this server and ice protecting this server". The first Corp-side
-    /// purpose; drained by `engine::rez_ice` (the one rez path) from the
-    /// rezzed root upgrades of the rezzed card's own server. Upgrades in
-    /// the root are deliberately not covered — the printed text names
-    /// assets and ice.
-    RezInThisServer,
+    /// this server and ice protecting this server". Upgrades in the root
+    /// are deliberately not covered — the printed text names assets and
+    /// ice.
+    RezzingInThisServer,
 }
 
 /// Semantic checks `serde`'s structural `Deserialize` can't express on its
@@ -605,6 +610,10 @@ pub enum HostedCreditUse {
 pub enum CardValidationError {
     #[error("Agenda {0:?} must not have subroutines")]
     AgendaHasSubroutines(CardId),
+    #[error("card {0:?} says what its hosted credits pay for but hosts no credits (`counter_kind: Credit`), or is an event or operation, which hosts nothing")]
+    PaysForWithoutHostedCredits(CardId),
+    #[error("card {0:?} trashes itself when a payment empties it (`trash_when_empty`) but no payment can take its credits (`pays_for` is empty)")]
+    TrashWhenEmptyWithNothingToEmptyIt(CardId),
     #[error("Ice {0:?} must have a strength")]
     IceMissingStrength(CardId),
     #[error("card {0:?} of type {1:?} must not have a strength — only Ice and breaker-style Programs do")]
@@ -668,7 +677,7 @@ impl Default for CardDefinition {
             hosted_cards_playable_from_grip: false,
             dividends: None,
             playable_from_archives: false,
-            hosted_credits_usable_for: None,
+            pays_for: Vec::new(),
             trash_when_empty: false,
             may_install_agendas_faceup: false,
             rez_alternatives: Vec::new(),
@@ -727,6 +736,16 @@ impl CardDefinition {
         // advance this," which carries no scoring semantics of its own.
         if !is_agenda && self.agenda_points.is_some() {
             return Err(CardValidationError::UnexpectedAgendaPoints(self.id.clone(), self.card_type.clone()));
+        }
+        // `rules::payment` reads `pays_for` off active *installed* cards and
+        // spends their `counters` as credits: a word on a card that hosts
+        // none, or is never installed, is a pool nothing can reach.
+        let hosts_credits = self.counter_kind == Some(CounterKind::Credit) && !matches!(self.card_type, CardType::Event | CardType::Operation);
+        if !self.pays_for.is_empty() && !hosts_credits {
+            return Err(CardValidationError::PaysForWithoutHostedCredits(self.id.clone()));
+        }
+        if self.trash_when_empty && self.pays_for.is_empty() {
+            return Err(CardValidationError::TrashWhenEmptyWithNothingToEmptyIt(self.id.clone()));
         }
         // See `TriggeredEffect::subject`: no default, because either one is
         // wrong quietly. A Rust fixture that skips `validate` gets the
