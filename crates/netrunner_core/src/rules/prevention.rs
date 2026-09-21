@@ -10,7 +10,7 @@
 //! its own.** Prevention was two special cases — `Effect::PreventDamage`
 //! and `PreventTrash`, a two-variant enum with a field per kind, an error
 //! for mixing them up — and tags would have been a third; no card in the
-//! pool used either, so neither sweep had ever opened the window, and four
+//! pool used either, so neither sweep had ever opened the window, and five
 //! things about it were wrong in ways only an agent would have found:
 //!
 //! - **The window took the one window slot and never gave it back.** A
@@ -32,6 +32,10 @@
 //! - **Most trashes never reached it.** Every card in the pool that trashes
 //!   a Runner program does it through a selection (`PromptChooseCards` into
 //!   a discard pile), which moved the card itself.
+//! - **A card that listens for it could never have heard it in time.** The
+//!   announcement is dispatched with the thing already parked, and the
+//!   dispatcher queues a plan rather than fire it into a parked state — so
+//!   "when you would suffer damage" resolved after the damage. See `settle`.
 //!
 //! **A cost is not prevented.** `Cost::TakeTags`, a card trashed to pay for
 //! an ability, the Runner's paid trash of an accessed card and the
@@ -99,21 +103,40 @@ pub(crate) fn could_prevent(state: &GameState, registry: &CardRegistry, what: &W
     })
 }
 
-/// `what` is about to happen. Parks it and asks, when somebody could
-/// prevent some of it; otherwise it happens now, exactly as it did before
-/// there was anything to ask.
+/// `what` is about to happen. Parks it, tells the cards that listen for
+/// it, asks the players if somebody could prevent some of it, and makes
+/// what is left happen — within this resolution when there was nobody to
+/// wait for, exactly as it did before there was anything to ask.
 ///
-/// The caller decides *whether* to come here by asking `could_prevent`
-/// first only where the two paths differ in how they make the thing happen
-/// (a trash, which the direct path resolves from a `CardTarget`); damage
-/// and tags simply call this.
+/// **Damage is always announced; a tag or a trash only when the players
+/// will be asked.** "When you would suffer damage" is a moment a card can
+/// hear (`Trigger::OnDamageAboutToResolve`, Net Shield), and "the first
+/// time each turn" counts every occurrence of it, including the ones
+/// before the card was installed (the Turn History Rule) — so it goes
+/// through `dispatch_event` whether or not anybody is listening. A tag or
+/// a trash about to happen is an occurrence of nothing
+/// (`listeners::moments`), and is only worth a line in the record when
+/// something comes of it.
+///
+/// The caller asks `could_prevent` itself first only where the two paths
+/// differ in how they make the thing happen (a trash, which the direct
+/// path resolves from a `CardTarget`); damage and tags simply call this.
 pub(crate) fn would(
     state: &mut GameState,
     registry: &CardRegistry,
     what: WouldHappen,
     ctx: &mut ResolutionContext<'_>,
 ) -> Result<Vec<GameEvent>, RulesError> {
-    if state.pending_prevention.is_some() || !could_prevent(state, registry, &what) {
+    // None of it is nothing: Urtica Cipher with no counters on it deals 0
+    // net damage, and 0 damage is not damage — nothing for Net Shield to be
+    // asked about or for the turn to count as its first, and nothing for
+    // "whenever you do damage" to hear. It used to be a
+    // `DamageTaken { amount: 0 }`, dispatched like any other.
+    if what.amount() == 0 {
+        return Ok(Vec::new());
+    }
+    let heard = matches!(what, WouldHappen::Damage { .. });
+    if state.pending_prevention.is_some() || !(heard || could_prevent(state, registry, &what)) {
         return happen(state, registry, &what, what.amount(), Some(ctx));
     }
     state.pending_prevention = Some(PendingPrevention {
@@ -127,7 +150,7 @@ pub(crate) fn would(
     let about_to = GameEvent::AboutToResolve { what };
     let mut events = Vec::new();
     dispatcher::emit(state, registry, &mut events, about_to)?;
-    events.extend(settle(state, registry)?.unwrap_or_default());
+    events.extend(settle_within(state, registry, Some(ctx))?.unwrap_or_default());
     Ok(events)
 }
 
@@ -189,31 +212,62 @@ pub(crate) fn run_ending(
 }
 
 /// Moves a parked prevention along when nothing stands in front of it:
-/// opens the window if somebody could still prevent some of what is left,
-/// and otherwise makes it happen. `None` when there was nothing to do —
-/// nothing parked, the window already open, or a decision a "would"
-/// trigger parked still waiting for its answer.
+/// the cards that heard it resolve, then the window opens if somebody
+/// could still prevent some of what is left, and otherwise it happens.
+/// `None` when there was nothing to do — nothing parked, the window
+/// already open, or a decision one of those cards parked still waiting for
+/// its answer.
 ///
 /// Called by `would`, and once more at the end of every action
 /// (`engine::apply_action`): the answer to that decision arrives as an
 /// action of its own, and nothing else would come back for the parked
 /// thing behind it.
+///
+/// **The cards that heard it resolve here, one at a time, not in the
+/// dispatch that announced it.** Something is parked by then, and
+/// `dispatcher::fire_plan` queues a plan rather than fire it into a parked
+/// state — which is why a trigger on damage about to resolve could never
+/// have fired in play before this, only in a test that dispatched the
+/// event by hand. They resolve in the plan's order (the active player's
+/// first, then as installed); a player's choice among their own is not
+/// offered, since no card in the pool could make the order matter.
 pub(crate) fn settle(state: &mut GameState, registry: &CardRegistry) -> Result<Option<Vec<GameEvent>>, RulesError> {
-    let Some(pending) = state.pending_prevention.as_ref() else { return Ok(None) };
-    if state.is_over() || asking(state) || state.active_trace.is_some() || state.pending_paid_choice.is_some() || state.pending_decision.is_some()
-    {
+    settle_within(state, registry, None)
+}
+
+fn settle_within(
+    state: &mut GameState,
+    registry: &CardRegistry,
+    ctx: Option<&mut ResolutionContext<'_>>,
+) -> Result<Option<Vec<GameEvent>>, RulesError> {
+    let blocked = |state: &GameState| {
+        state.is_over() || state.active_trace.is_some() || state.pending_paid_choice.is_some() || state.pending_decision.is_some()
+    };
+    if state.pending_prevention.is_none() || asking(state) || blocked(state) {
         return Ok(None);
     }
-    let left = WouldHappen::clone(&pending.what);
+    let mut events = Vec::new();
+    while let Some(position) =
+        state.deferred_triggers.iter().position(|due| due.trigger == Trigger::OnDamageAboutToResolve && due.continuation.is_none())
+    {
+        let due = state.deferred_triggers.remove(position);
+        events.extend(dispatcher::fire_deferred(state, registry, &due)?);
+        if blocked(state) {
+            return Ok(Some(events));
+        }
+    }
+    let Some(pending) = state.pending_prevention.as_ref() else { return Ok(Some(events)) };
+    let left = pending.what.clone();
     if pending.prevented < left.amount() && could_prevent(state, registry, &left) {
-        let first = left.affects();
         let interrupted = state.paid_ability_window.take();
         if let Some(pending) = state.pending_prevention.as_mut() {
             pending.interrupted = interrupted;
         }
-        return Ok(Some(vec![paid_ability::open_window_for(state, first, WindowCheckpoint::Prevention)]));
+        events.push(paid_ability::open_window_for(state, left.affects(), WindowCheckpoint::Prevention));
+        return Ok(Some(events));
     }
-    finish(state, registry).map(Some)
+    events.extend(finish_within(state, registry, ctx)?);
+    Ok(Some(events))
 }
 
 /// Whether the prevention window is the one open.
@@ -250,6 +304,14 @@ pub(crate) fn after_interrupt(state: &mut GameState, registry: &CardRegistry) ->
 /// The asking is over: says what was prevented, makes the rest happen, and
 /// gives the window slot back to whatever was waiting for it.
 pub(crate) fn finish(state: &mut GameState, registry: &CardRegistry) -> Result<Vec<GameEvent>, RulesError> {
+    finish_within(state, registry, None)
+}
+
+fn finish_within(
+    state: &mut GameState,
+    registry: &CardRegistry,
+    ctx: Option<&mut ResolutionContext<'_>>,
+) -> Result<Vec<GameEvent>, RulesError> {
     let Some(pending) = state.pending_prevention.take() else { return Ok(Vec::new()) };
     let mut events = Vec::new();
     if asking(state) {
@@ -272,7 +334,7 @@ pub(crate) fn finish(state: &mut GameState, registry: &CardRegistry) -> Result<V
     }
     let left = pending.what.amount() - prevented;
     if left > 0 {
-        events.extend(happen(state, registry, &pending.what, left, None)?);
+        events.extend(happen(state, registry, &pending.what, left, ctx)?);
     }
     if state.paid_ability_window.as_ref().is_some_and(|w| w.checkpoint == WindowCheckpoint::Run) && state.active_run.is_none() {
         state.paid_ability_window = None;
@@ -617,5 +679,18 @@ mod tests {
         let (state, _) = act(&state, &registry, PlayerAction::PassPriority { side: Side::Corp });
         assert_eq!(state.runner.tags, 1);
         assert!(state.active_run.is_none(), "the second subroutine ended the run");
+    }
+
+    /// Urtica Cipher with no counters on it: 0 net damage is not damage.
+    #[test]
+    fn none_of_it_is_not_an_occurrence() {
+        let (mut state, registry) = table(Effect::GiveTags(1), decoy());
+        let source = id("source");
+        for nothing in [Effect::DealDamage(DamageType::Net, 0), Effect::GiveTags(0)] {
+            let events = ability::evaluate_effect(&mut state, &nothing, &mut ResolutionContext::for_card(Some(&source)), &registry).unwrap();
+            assert!(events.is_empty(), "{nothing:?}: {events:?}");
+        }
+        assert_eq!(state.this_turn.times(Trigger::OnDamageAboutToResolve), 0, "and the turn has not had its first net damage");
+        assert!(state.pending_prevention.is_none());
     }
 }

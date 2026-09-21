@@ -248,6 +248,9 @@ pub enum TriggerAbout {
     Nothing,
     Card,
     Server,
+    /// A kind of damage — "you would suffer **net** damage". Nothing a card
+    /// can be "this" of, so no `subject` goes with it.
+    Damage,
 }
 
 /// Which occurrences of its trigger a `TriggeredEffect` means, read off
@@ -301,6 +304,13 @@ pub enum EventFilter {
     /// first. Read off the moment (`listeners::About::Card::installed`),
     /// which the event states, so it cannot have changed since.
     InstalledCard(crate::dsl::CardFilter),
+    /// The damage the moment is about is of this kind — Net Shield's "the
+    /// first time each turn you would suffer **net** damage". The third
+    /// thing a moment can be about (`TriggerAbout::Damage`); composition
+    /// didn't work because neither of the other two is a kind of damage,
+    /// and as an intervening if a point of meat damage would have been the
+    /// turn's first (the Turn History Rule).
+    Damage(crate::dsl::DamageType),
 }
 
 impl Trigger {
@@ -382,8 +392,10 @@ impl Trigger {
             | Trigger::OnTagRemoved
             | Trigger::OnDamageDealt
             | Trigger::OnCardsTrashedFromHq
-            | Trigger::OnDamageAboutToResolve
             | Trigger::Paid => TriggerAbout::Nothing,
+            // `OnDamageDealt` would be the second, the day a card prints
+            // "whenever you do **meat** damage"; none does.
+            Trigger::OnDamageAboutToResolve => TriggerAbout::Damage,
         }
     }
 
@@ -392,7 +404,7 @@ impl Trigger {
     /// other trigger must not, because there is no "this one" for a turn
     /// beginning.
     pub fn names_a_subject(self) -> bool {
-        self.about() != TriggerAbout::Nothing
+        matches!(self.about(), TriggerAbout::Card | TriggerAbout::Server)
     }
 
     /// Whose moment this trigger hears. Read off how the pool's cards print

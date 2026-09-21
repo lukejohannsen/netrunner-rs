@@ -254,14 +254,28 @@ pub const OBS_SIZE: usize = PLANES_START + PLANE_COUNT * CARD_VOCAB;
 /// vocabulary* — System Gateway, then the backfilled Core Set, then
 /// *Elevation* — which is the only ordering under which a later set cannot
 /// disturb an earlier one's slots.
-fn set_rank(set_code: Option<&str>) -> u32 {
+///
+/// **A card that joins a set already in the vocabulary is a later wave of
+/// it, not a member of it.** The rank is about when a card *entered*, and
+/// a set's code does not say: Decoy, Net Shield and Sacrificial Construct
+/// are Core Set cards implemented after *Elevation* was complete (Rules
+/// Audit backlog item 4), and ranked as `core` their `01xxx` numbers would
+/// have put them in the middle of slots 77..=95 and moved every Elevation
+/// card three along — the same bug, from the other direction.
+/// `CORE_AFTER_ELEVATION` names them and they append; the next late
+/// arrival goes on a list of its own with the next rank.
+fn set_rank(set_code: Option<&str>, id: &str) -> u32 {
     match set_code {
         Some("sg") => 0,
+        Some("core") if CORE_AFTER_ELEVATION.contains(&id) => 3,
         Some("core") => 1,
         Some("elev") => 2,
-        _ => 3,
+        _ => 4,
     }
 }
+
+/// See `set_rank`.
+const CORE_AFTER_ELEVATION: [&str; 3] = ["decoy", "net_shield", "sacrificial_construct"];
 
 /// Maps a card id to its plane slot.
 ///
@@ -282,7 +296,7 @@ fn vocabulary() -> &'static HashMap<CardId, usize> {
             .iter()
             .map(|card| {
                 (
-                    set_rank(card.set_code.as_deref()),
+                    set_rank(card.set_code.as_deref(), &card.id.0),
                     card.numeric_id.map_or(u32::MAX, |numeric| numeric.0),
                     card.id.0.clone(),
                 )
@@ -964,19 +978,29 @@ mod tests {
         let mut lowest = std::collections::HashMap::new();
         for card in registry.iter() {
             let slot = slot_of(&card.id);
-            let set = card.set_code.clone().unwrap_or_else(|| "none".to_string());
+            let set = match card.set_code.as_deref() {
+                Some("core") if CORE_AFTER_ELEVATION.contains(&card.id.0.as_str()) => "core, second wave".to_string(),
+                set => set.unwrap_or("none").to_string(),
+            };
             highest.entry(set.clone()).and_modify(|top| *top = slot.max(*top)).or_insert(slot);
             lowest.entry(set).and_modify(|bottom| *bottom = slot.min(*bottom)).or_insert(slot);
         }
 
         // In vocabulary order: System Gateway, the backfilled Core Set,
         // then Elevation. A new set adds a pair here and nothing else.
-        for (earlier, later) in [("sg", "core"), ("core", "elev")] {
+        // A set's later wave (`CORE_AFTER_ELEVATION`) is set apart here as
+        // it is in `set_rank`: by when it entered, not by its code.
+        for (earlier, later) in [("sg", "core"), ("core", "elev"), ("elev", "core, second wave")] {
             let (Some(top), Some(bottom)) = (highest.get(earlier), lowest.get(later)) else {
                 panic!("both {earlier} and {later} should be in the playable pool");
             };
             assert!(top < bottom, "{later} must append after {earlier}: {earlier} ends at {top}, {later} starts at {bottom}");
         }
+        // Pinned by slot, as the Core Set's first wave is: *Elevation*'s 82
+        // cards end at 177, and the three interrupts take the next three.
+        assert_eq!(highest.get("elev"), Some(&177));
+        assert_eq!(slot_of(&CardId("decoy".to_string())), 178);
+        assert_eq!(slot_of(&CardId("sacrificial_construct".to_string())), 180);
     }
 
     /// Every playable card must have its own slot — two cards sharing one

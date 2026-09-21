@@ -73,6 +73,8 @@ pub enum Class {
     /// Public wherever the moment is: both players see where an access is.
     Card { kind: Kind, installed: bool },
     Server(ServerClass),
+    /// A kind of damage, which both players see dealt.
+    Damage(crate::dsl::DamageType),
     /// A moment about nothing a card could point at — a phase, a tag.
     Nothing,
 }
@@ -142,6 +144,7 @@ impl Class {
         match self {
             Class::Card { kind, installed } => kind as usize + if installed { Kind::COUNT } else { 0 },
             Class::Server(server) => server as usize,
+            Class::Damage(kind) => kind as usize,
             Class::Nothing => 0,
         }
     }
@@ -208,6 +211,7 @@ fn concealed(trigger: Trigger, of: Option<Side>) -> bool {
 fn class_of(registry: &CardRegistry, moment: &Moment) -> Class {
     match &moment.about {
         About::Nothing => Class::Nothing,
+        About::Damage(kind) => Class::Damage(*kind),
         About::Server(ServerId::Archives) => Class::Server(ServerClass::Archives),
         About::Server(ServerId::RnD) => Class::Server(ServerClass::RnD),
         About::Server(ServerId::Hq) => Class::Server(ServerClass::Hq),
@@ -262,6 +266,7 @@ impl Occurrences {
                     })
                     .fold(0, |mask, column| mask | column),
             ),
+            Some(EventFilter::Damage(kind)) => Some(bit(Class::Damage(*kind))),
             Some(EventFilter::Card(_) | EventFilter::InstalledCard(_)) if concealed(trigger, of) => {
                 return Err(format!("the card a {trigger:?} is about is hidden from a player, so the turn counts it without its type and \"the first\" cannot be narrowed by one"));
             }

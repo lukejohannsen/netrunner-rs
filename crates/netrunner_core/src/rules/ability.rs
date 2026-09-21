@@ -855,43 +855,7 @@ pub fn evaluate_effect(
             Ok(vec![GameEvent::AccessReplacementSet { server: *server }])
         }
 
-        Effect::Sequence(effects) => {
-            let mut events = Vec::new();
-            for (index, inner) in effects.iter().enumerate() {
-                events.extend(evaluate_effect(state, inner, ctx, registry)?);
-                // Stops at `GameOver`: Clearinghouse's `[DealDamage,
-                // TrashCard(ThisCard)]` used to run its trash against a
-                // finished game.
-                if state.is_over() {
-                    break;
-                }
-                // That effect parked something spanning future
-                // `PlayerAction`s: the rest of the sequence is queued as a
-                // continuation on the deferred-trigger queue, pinned to the
-                // acting card, and drains once the decision resolves — see
-                // `Effect::Sequence`'s doc comment. Only a resolution with an
-                // acting card can be pinned; a bare effect evaluation stops
-                // here as it always did.
-                if state.is_resolution_blocked() {
-                    let rest = &effects[index + 1..];
-                    if let (Some(card), false) = (ctx.acting_card, rest.is_empty()) {
-                        state.deferred_triggers.push(crate::rules::state::DeferredTrigger {
-                            card: card.clone(),
-                            trigger: Trigger::OnPlay,
-                            target: None,
-                            install: ctx.acting_install,
-                            target_install: None,
-                            event: ctx.triggering_event.cloned(),
-                            continuation: Some(Effect::Sequence(rest.to_vec())),
-                            heard: Default::default(),
-                            not_the_first_this_turn: false,
-                        });
-                    }
-                    break;
-                }
-            }
-            Ok(events)
-        }
+        Effect::Sequence(effects) => evaluate_sequence(state, effects, ctx, registry),
 
         Effect::GainCreditsAmount(side, amount) => {
             let amount = resolve_amount(amount, ctx, state, registry);
@@ -1540,18 +1504,66 @@ pub(crate) fn fire_card_triggers(
             Some(target) if triggered.acts_on_subject => ResolutionContext::for_install_trigger(due.target_install, Some(target), triggering_event),
             _ => ResolutionContext::for_install_trigger(due.install, Some(card_id), triggering_event),
         };
-        for effect in &triggered.effects {
-            events.extend(evaluate_effect(state, effect, &mut effect_ctx, registry)?);
-            // A trigger's effect list is a `Sequence` in all but name and
-            // stops for the same reasons: a parked decision (the next effect
-            // would resolve underneath it) or a finished game. It had no
-            // stop condition at all before.
-            if state.resolution_halted() {
-                break;
-            }
-        }
+        // A trigger's effect list is a `Sequence` in all but name.
+        events.extend(evaluate_sequence(state, &triggered.effects, &mut effect_ctx, registry)?);
         if let Some(requirement) = &triggered.requirement {
             consume_requirement(state, requirement, card_side, &owner_ctx);
+        }
+    }
+    Ok(events)
+}
+
+/// Resolves `effects` in order, as one printed sentence: stops at a
+/// finished game, and when one of them parks something that spans future
+/// `PlayerAction`s, queues the rest as a continuation pinned to the acting
+/// card (see `Effect::Sequence`).
+///
+/// A slice, so that the two lists that are a `Sequence` in all but name —
+/// a trigger's `effects` and an access interaction's — resolve through it
+/// too. They each had a loop of their own: the trigger's stopped at a
+/// parked decision and *dropped* the rest, and the access interaction's
+/// did not stop at all, so Snare!'s "give the Runner 1 tag and do 3 net
+/// damage" would have dealt the damage underneath the window its tag
+/// opened — unannounced, since one thing is parked at a time, so a Net
+/// Shield was never asked.
+pub(crate) fn evaluate_sequence(
+    state: &mut GameState,
+    effects: &[Effect],
+    ctx: &mut ResolutionContext<'_>,
+    registry: &CardRegistry,
+) -> Result<Vec<GameEvent>, RulesError> {
+    let mut events = Vec::new();
+    for (index, inner) in effects.iter().enumerate() {
+        events.extend(evaluate_effect(state, inner, ctx, registry)?);
+        // Stops at `GameOver`: Clearinghouse's `[DealDamage,
+        // TrashCard(ThisCard)]` used to run its trash against a
+        // finished game.
+        if state.is_over() {
+            break;
+        }
+        // That effect parked something spanning future
+        // `PlayerAction`s: the rest of the sequence is queued as a
+        // continuation on the deferred-trigger queue, pinned to the
+        // acting card, and drains once the decision resolves — see
+        // `Effect::Sequence`'s doc comment. Only a resolution with an
+        // acting card can be pinned; a bare effect evaluation stops
+        // here as it always did.
+        if state.is_resolution_blocked() {
+            let rest = &effects[index + 1..];
+            if let (Some(card), false) = (ctx.acting_card, rest.is_empty()) {
+                state.deferred_triggers.push(crate::rules::state::DeferredTrigger {
+                    card: card.clone(),
+                    trigger: Trigger::OnPlay,
+                    target: None,
+                    install: ctx.acting_install,
+                    target_install: None,
+                    event: ctx.triggering_event.cloned(),
+                    continuation: Some(Effect::Sequence(rest.to_vec())),
+                    heard: Default::default(),
+                    not_the_first_this_turn: false,
+                });
+            }
+            break;
         }
     }
     Ok(events)
@@ -2817,7 +2829,10 @@ mod tests {
 
         assert_eq!(state.runner.grip.len(), 1);
         assert_eq!(state.runner.heap.len(), 1);
-        assert!(matches!(events[0], GameEvent::DamageTaken { damage_type: DamageType::Net, amount: 1 }));
+        // Announced, then taken: damage about to be suffered is a moment a
+        // card can hear, so it is always in the record.
+        assert_eq!(events[0], GameEvent::AboutToResolve { what: WouldHappen::Damage { kind: DamageType::Net, amount: 1 } });
+        assert!(matches!(events[1], GameEvent::DamageTaken { damage_type: DamageType::Net, amount: 1 }));
     }
 
     #[test]

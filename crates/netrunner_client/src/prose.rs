@@ -326,6 +326,7 @@ pub fn engine_reading(card: &CardDefinition, registry: &CardRegistry) -> Vec<Str
             }
             Some(EventFilter::Card(filter)) => when = format!("{when}, of {}", humanize(format!("{filter:?}"))),
             Some(EventFilter::InstalledCard(filter)) => when = format!("{when}, of an installed card ({})", humanize(format!("{filter:?}"))),
+            Some(EventFilter::Damage(kind)) => when = format!("{when}, of {} damage", format!("{kind:?}").to_lowercase()),
             None => {}
         }
         if trigger.first_each_turn {

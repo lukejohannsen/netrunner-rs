@@ -76,6 +76,17 @@ pub enum DeckCategory {
     /// A starter deck plus its booster pack — a full-size deck played
     /// under Standard rules.
     Boosted,
+    /// A deck built in this project to reach rules no published list
+    /// prints — today, the prevention window, whose only cards are the Core
+    /// Set's interrupts, which no Startup deck may hold. **Played by both
+    /// agent-driven sweeps beside the samples
+    /// (`netrunner_session::sweep_decks_for_seed`) and by nothing else:**
+    /// `matchups()` does not yield it, so no network trains on it and no
+    /// measurement taken over "one pass of the pool" moves when one is
+    /// added. Legal in Eternal, not Startup (`format`); its identity is one
+    /// no sample deck uses, so `netrunner_bots::determinize`'s guess at a
+    /// sample deck's list never lands on it.
+    Sweep,
     /// A deck someone built themselves.
     ///
     /// The default, deliberately: a deck file that forgets to state its
@@ -94,7 +105,18 @@ impl DeckCategory {
     pub fn match_rules(self) -> MatchRules {
         match self {
             DeckCategory::Starter => MatchRules { winning_agenda_points: 6 },
-            DeckCategory::Sample | DeckCategory::Boosted | DeckCategory::Custom => MatchRules::default(),
+            DeckCategory::Sample | DeckCategory::Boosted | DeckCategory::Sweep | DeckCategory::Custom => MatchRules::default(),
+        }
+    }
+
+    /// The format an embedded deck of this category is legal in — what
+    /// `every_sample_deck_is_legal` holds each one to. Startup for
+    /// everything Null Signal Games published; Eternal for a sweep deck,
+    /// which exists to field cards Startup does not have.
+    pub fn format(self) -> NsgFormat {
+        match self {
+            DeckCategory::Sweep => NsgFormat::Eternal,
+            DeckCategory::Sample | DeckCategory::Starter | DeckCategory::Boosted | DeckCategory::Custom => NsgFormat::Startup,
         }
     }
 }
@@ -292,8 +314,11 @@ pub fn for_side(side: Side) -> Vec<DeckFile> {
 ///
 /// **Filtered to `DeckCategory::Sample`, and that filter is load-bearing.**
 /// Every consumer of this function feeds a training or verification harness
-/// — `netrunner_selfplay`, `netrunner_gym`, and both agent-driven sweeps —
-/// so anything yielded here is something the policy network learns from. A
+/// — `netrunner_selfplay`, `netrunner_gym`, `bench`, the headless
+/// `--all-matchups` report — so anything yielded here is something the
+/// policy network learns from or a recorded measurement was taken over.
+/// (The two agent-driven sweeps rotate a pool of their own,
+/// `netrunner_session::sweep_decks_for_seed`: these and the `Sweep` decks.) A
 /// tutorial or player-built deck reaching them would quietly train the
 /// network on decks it will never face, which is why `DeckCategory` defaults
 /// to `Custom` rather than `Sample`.
@@ -326,7 +351,7 @@ mod tests {
     fn every_sample_deck_is_legal() {
         let registry = registry();
         for deck in embedded_decks() {
-            deck.validate(&registry, NsgFormat::Startup)
+            deck.validate(&registry, deck.category.format())
                 .unwrap_or_else(|e| panic!("sample deck {:?} ({}) is not legal: {e}", deck.id, deck.name));
         }
     }
@@ -338,7 +363,7 @@ mod tests {
     fn a_tally_agrees_with_the_validator_and_survives_an_illegal_deck() {
         let registry = registry();
         for deck in embedded_decks() {
-            let report = deck.validate(&registry, NsgFormat::Startup).unwrap();
+            let report = deck.validate(&registry, deck.category.format()).unwrap();
             let tally = deck.tally(&registry).unwrap();
             assert_eq!(tally.size, report.deck_size, "{}", deck.id);
             assert_eq!(tally.influence_spent, report.influence_spent, "{}", deck.id);

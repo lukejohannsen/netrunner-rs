@@ -9,6 +9,7 @@
   "abilities": [
     {
       "trigger": "Paid",
+      "text": "1[credit]: +1 strength.",
       "cost": {
         "Credits": 1
       },
@@ -22,6 +23,7 @@
     },
     {
       "trigger": "Paid",
+      "text": "Interface → 1[credit]: Break 1 barrier subroutine.",
       "cost": {
         "Credits": 1
       },

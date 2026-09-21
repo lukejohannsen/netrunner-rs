@@ -916,14 +916,7 @@ fn resolve_access_trigger(
             .map(|interactive| interactive.effects.clone())
             .unwrap_or_default();
 
-        for effect in &effects {
-            events.extend(ability::evaluate_effect(
-                state,
-                effect,
-                &mut ability::ResolutionContext::for_card(Some(card_id)),
-                registry,
-            )?);
-        }
+        events.extend(ability::evaluate_sequence(state, &effects, &mut ability::ResolutionContext::for_card(Some(card_id)), registry)?);
         // Only the effect-resolving branch can flatline the Runner, so the
         // game-over check belongs here rather than around the whole body.
         if let Some(finish) = finish_if_game_over(state, pending.server) {
@@ -2287,8 +2280,9 @@ mod tests {
             events[1],
             GameEvent::TriggerFired { card: CardId("snare".to_string()), trigger: crate::dsl::Trigger::OnAccessed }
         );
-        assert_eq!(events[2], GameEvent::DamageTaken { damage_type: DamageType::Net, amount: 2 });
-        assert_eq!(events.len(), 5);
+        assert_eq!(events[2], GameEvent::AboutToResolve { what: crate::rules::WouldHappen::Damage { kind: DamageType::Net, amount: 2 } });
+        assert_eq!(events[3], GameEvent::DamageTaken { damage_type: DamageType::Net, amount: 2 });
+        assert_eq!(events.len(), 6);
     }
 
     #[test]
@@ -2323,10 +2317,11 @@ mod tests {
             events[2],
             GameEvent::TriggerFired { card: card_id.clone(), trigger: crate::dsl::Trigger::OnTrashedFromAccess }
         );
-        assert_eq!(events[3], GameEvent::DamageTaken { damage_type: DamageType::Net, amount: 1 });
-        assert!(matches!(events[4], GameEvent::CardDiscarded { side: Side::Runner, .. }));
-        assert_eq!(events[5], GameEvent::RunCompleted { server: ServerId::Remote(0) });
-        assert_eq!(events.len(), 6);
+        assert_eq!(events[3], GameEvent::AboutToResolve { what: crate::rules::WouldHappen::Damage { kind: DamageType::Net, amount: 1 } });
+        assert_eq!(events[4], GameEvent::DamageTaken { damage_type: DamageType::Net, amount: 1 });
+        assert!(matches!(events[5], GameEvent::CardDiscarded { side: Side::Runner, .. }));
+        assert_eq!(events[6], GameEvent::RunCompleted { server: ServerId::Remote(0) });
+        assert_eq!(events.len(), 7);
     }
 
     #[test]
@@ -2387,6 +2382,7 @@ mod tests {
             vec![
                 GameEvent::CardAccessed { card: CardId("snare".to_string()), server: ServerId::Archives, install: None },
                 GameEvent::TriggerFired { card: CardId("snare".to_string()), trigger: crate::dsl::Trigger::OnAccessed },
+                GameEvent::AboutToResolve { what: crate::rules::WouldHappen::Damage { kind: DamageType::Net, amount: 5 } },
                 GameEvent::RunnerFlatlined,
                 GameEvent::GameOver { winner: Side::Corp },
                 GameEvent::RunCompleted { server: ServerId::Archives },
@@ -2437,6 +2433,7 @@ mod tests {
                 GameEvent::AccessPassed { card: CardId("hedge_fund".to_string()) },
                 GameEvent::CardAccessed { card: CardId("snare".to_string()), server: ServerId::Archives, install: None },
                 GameEvent::TriggerFired { card: CardId("snare".to_string()), trigger: crate::dsl::Trigger::OnAccessed },
+                GameEvent::AboutToResolve { what: crate::rules::WouldHappen::Damage { kind: DamageType::Net, amount: 5 } },
                 GameEvent::RunnerFlatlined,
                 GameEvent::GameOver { winner: Side::Corp },
                 GameEvent::RunCompleted { server: ServerId::Archives },
@@ -2564,7 +2561,8 @@ mod tests {
                 steal_cost: None,
             }
         );
-        assert!(matches!(events[0], GameEvent::DamageTaken { damage_type: DamageType::Net, amount: 2 }));
+        assert_eq!(events[0], GameEvent::AboutToResolve { what: crate::rules::WouldHappen::Damage { kind: DamageType::Net, amount: 2 } });
+        assert!(matches!(events[1], GameEvent::DamageTaken { damage_type: DamageType::Net, amount: 2 }));
     }
 
     #[test]
@@ -2669,6 +2667,7 @@ mod tests {
         assert_eq!(
             events,
             vec![
+                GameEvent::AboutToResolve { what: crate::rules::WouldHappen::Damage { kind: DamageType::Net, amount: 5 } },
                 GameEvent::RunnerFlatlined,
                 GameEvent::GameOver { winner: Side::Corp },
                 GameEvent::RunCompleted { server: ServerId::Archives },

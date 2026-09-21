@@ -99,6 +99,23 @@ next set with a tag-avoidance card (there are several in the pool) will need
 this generalised rather than a third special case: a `PreventableEvent` kind
 parameter on the existing window.
 
+*Done, 21 September 2026 (Rules Audit backlog item 4, three stages):* and
+not as proposed. The window needed no kind; the parked thing and the word
+that matches it did — `rules::prevention` is one door for damage, a tag and
+the trash of an installed card, and what a card prevents is
+`dsl::Preventable`, the payload of one `Effect::Prevent`. Their "static
+reducers first" is `prevention::run_ending`: Shred's standing prevention is
+a lingering effect asked before anything a player chooses. **What this
+section missed is that ours had never run:** no card in the pool used either
+effect, so neither sweep had opened the window, and it took the one window
+slot without giving it back, admitted any action, opened for cards nobody
+could use, was bypassed by every trash of a Runner program in the pool, and
+could not have fired a "when you would suffer damage" trigger at all. Decoy,
+Net Shield and Sacrificial Construct are the first cards to use it, in two
+Eternal-legal decks the sweeps rotate. Jack-out, encounter, expose and bad
+publicity stay unbuilt until a card prints one; "the Runner cannot jack
+out" is a prohibition here (`continuous::cannot`), not a prevention.
+
 ### 2.3 Checkpoints and when triggers fire
 
 jinteki moved to the Comprehensive Rules' timing model: events are queued

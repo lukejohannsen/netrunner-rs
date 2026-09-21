@@ -419,6 +419,146 @@ fn snare_does_nothing_when_the_corp_declines_to_pay() {
     assert_eq!(state.runner.tags, 0, "no tag");
 }
 
+/// The Core Set's interrupts against the card that does both things they
+/// prevent. Net Shield is a *triggered* interrupt ("the first time each
+/// turn you would suffer net damage, you may pay 1[credit]"), so it is
+/// asked as the damage is announced; Decoy is one the Runner *uses*, in
+/// the window the tag opens. Before `rules::prevention` neither could have
+/// been written: a trigger on damage about to resolve was queued behind
+/// the very thing it was about, and a tag had no door.
+#[test]
+fn snare_against_a_net_shield_and_a_decoy() {
+    let (mut state, registry) = run_into_snare(5);
+    let rig = |card: &str, install: u32| crate::rules::InstalledRunnerCard {
+        card: CardId(card.to_string()),
+        install_id: InstallId(install),
+        ..Default::default()
+    };
+    state.runner.rig = vec![rig("net_shield", 2001), rig("decoy", 2002)];
+    state.runner.resources.credits = Credits(1);
+
+    // "Give the Runner 1 tag and do 3 net damage": the tag is first, and
+    // the Runner is asked about it in a window of its own.
+    let (state, _) = apply_action(&state, &registry, PlayerAction::PayAccessTrigger { card_id: CardId("snare".to_string()) }).expect("corp pays");
+    assert_eq!(state.pending_prevention.as_ref().map(|p| p.what.clone()), Some(crate::rules::WouldHappen::Tags { amount: 1 }));
+    assert_eq!((state.runner.tags, state.runner.grip.len()), (0, 5), "neither has happened yet");
+    assert_eq!(crate::rules::current_actor(&state), Some(Side::Runner));
+    let offered = crate::rules::legal_actions_for(&state, &registry, Side::Runner);
+    assert_eq!(offered.len(), 2, "Decoy and a pass, nothing else: {offered:?}");
+
+    let (tagged, _) = apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Runner }).expect("pass");
+    let (tagged, _) = apply_action(&tagged, &registry, PlayerAction::PassPriority { side: Side::Corp }).expect("pass");
+    assert_eq!(tagged.runner.tags, 1);
+    assert!(tagged.pending_paid_choice.is_some(), "and the damage follows either way");
+
+    let (state, events) =
+        apply_action(&state, &registry, PlayerAction::ActivateAbility { target: InstallId(2002), ability_index: 0 }).expect("Decoy");
+    assert_eq!(state.runner.tags, 0);
+    assert!(state.runner.heap.contains(&CardId("decoy".to_string())));
+    assert!(events.contains(&crate::rules::GameEvent::Prevented { what: crate::rules::WouldHappen::Tags { amount: 1 }, amount: 1 }));
+
+    // The damage was behind the tag in Snare!'s text and resolves now that
+    // the asking is over: announced, and Net Shield heard it.
+    let offer = state.pending_paid_choice.as_ref().expect("Net Shield asks");
+    assert_eq!((offer.side, offer.cost.clone()), (Side::Runner, crate::dsl::Cost::Credits(1)));
+    assert_eq!(state.runner.grip.len(), 5, "nothing suffered yet");
+
+    let (shielded, events) =
+        apply_action(&state, &registry, PlayerAction::AcceptPendingPaidChoice { cost_option_index: None }).expect("the Runner pays 1");
+    assert_eq!(shielded.runner.grip.len(), 3, "3 net damage, 1 prevented");
+    assert_eq!(shielded.runner.resources.credits, Credits(0));
+    assert!(events.contains(&crate::rules::GameEvent::Prevented {
+        what: crate::rules::WouldHappen::Damage { kind: crate::dsl::DamageType::Net, amount: 3 },
+        amount: 1,
+    }));
+    assert!(shielded.pending_prevention.is_none() && shielded.deferred_triggers.is_empty());
+
+    let (unshielded, _) = apply_action(&state, &registry, PlayerAction::DeclinePendingPaidChoice).expect("declined");
+    assert_eq!(unshielded.runner.grip.len(), 2);
+}
+
+/// "The first time each turn you would suffer net damage": a Net Shield
+/// that was not installed for the turn's first net damage has missed it,
+/// and one that was is not asked about the second.
+#[test]
+fn net_shield_is_about_the_turns_first_net_damage_whoever_was_there_for_it() {
+    let registry = registry();
+    let mut state = base_state();
+    state.phase = GamePhase::Action(Side::Runner);
+    state.runner.resources.credits = Credits(5);
+    state.runner.grip = (0..5).map(|i| CardId(format!("grip_card_{i}"))).collect();
+    let source = CardId("snare".to_string());
+    let damage = |state: &mut crate::rules::GameState, kind| {
+        crate::rules::evaluate_effect(
+            state,
+            &crate::dsl::Effect::DealDamage(kind, 1),
+            &mut crate::rules::ResolutionContext::for_card(Some(&source)),
+            &registry,
+        )
+        .expect("damage")
+    };
+    // Meat damage is not net damage: it neither asks nor counts.
+    let shield = crate::rules::InstalledRunnerCard { card: CardId("net_shield".to_string()), install_id: InstallId(2001), ..Default::default() };
+    let mut there = state.clone();
+    there.runner.rig = vec![shield.clone()];
+    damage(&mut there, crate::dsl::DamageType::Meat);
+    assert!(there.pending_paid_choice.is_none());
+    damage(&mut there, crate::dsl::DamageType::Net);
+    assert!(there.pending_paid_choice.is_some(), "the turn's first net damage");
+    let (mut there, _) = apply_action(&there, &registry, PlayerAction::DeclinePendingPaidChoice).expect("declined");
+    assert_eq!(there.runner.grip.len(), 3, "one meat, one net");
+    damage(&mut there, crate::dsl::DamageType::Net);
+    assert!(there.pending_paid_choice.is_none(), "declined the first time; there is no second");
+
+    // Installed after the turn's first net damage.
+    damage(&mut state, crate::dsl::DamageType::Net);
+    state.runner.rig = vec![shield];
+    damage(&mut state, crate::dsl::DamageType::Net);
+    assert!(state.pending_paid_choice.is_none() && state.runner.grip.len() == 3);
+}
+
+/// Ansel 1.0's "Trash 1 installed Runner card" is a selection, as every
+/// trash of a Runner program in the pool is, and a selection used to move
+/// the card itself. Sacrificial Construct saves a program or a piece of
+/// hardware — and is not asked about a resource.
+#[test]
+fn sacrificial_construct_saves_a_program_ansel_selects_and_is_not_asked_about_a_resource() {
+    let registry = registry();
+    let rig = |card: &str, install: u32| crate::rules::InstalledRunnerCard {
+        card: CardId(card.to_string()),
+        install_id: InstallId(install),
+        ..Default::default()
+    };
+    let trash_one = registry.get(&CardId("ansel_1_0".to_string())).expect("ansel").subroutines[0].effect.clone();
+    let ansel = CardId("ansel_1_0".to_string());
+    let select = |victim: &str| {
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.rig = vec![rig("corroder", 2001), rig("decoy", 2002), rig("sacrificial_construct", 2003)];
+        crate::rules::evaluate_effect(&mut state, &trash_one, &mut crate::rules::ResolutionContext::for_card(Some(&ansel)), &registry)
+            .expect("the corp is asked which");
+        let position = state.runner.rig.iter().position(|c| c.card.0 == victim).expect("in the rig");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ToggleCardSelection { position }).expect("select");
+        apply_action(&state, &registry, PlayerAction::ConfirmCardSelection).expect("confirm").0
+    };
+
+    let state = select("corroder");
+    assert!(state.runner.rig.iter().any(|c| c.card.0 == "corroder"), "parked, not trashed");
+    assert_eq!(crate::rules::current_actor(&state), Some(Side::Runner));
+    let (saved, _) =
+        apply_action(&state, &registry, PlayerAction::ActivateAbility { target: InstallId(2003), ability_index: 0 }).expect("the construct");
+    assert!(saved.runner.rig.iter().any(|c| c.card.0 == "corroder"));
+    assert_eq!(saved.runner.heap, vec![CardId("sacrificial_construct".to_string())]);
+    assert!(
+        apply_action(&state, &registry, PlayerAction::ActivateAbility { target: InstallId(2002), ability_index: 0 }).is_err(),
+        "Decoy prevents a tag, not this"
+    );
+
+    let state = select("decoy");
+    assert!(state.pending_prevention.is_none(), "a resource: nobody could prevent it, so nobody is asked");
+    assert_eq!(state.runner.heap, vec![CardId("decoy".to_string())]);
+}
+
 /// The affordability hint and the resolution guard must agree: a Corp that
 /// cannot pay is not offered the paying branch at all.
 #[test]

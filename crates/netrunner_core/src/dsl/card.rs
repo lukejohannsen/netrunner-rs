@@ -745,6 +745,7 @@ impl CardDefinition {
                 None => true,
                 Some(EventFilter::Card(_) | EventFilter::InstalledCard(_)) => about == TriggerAbout::Card,
                 Some(EventFilter::Server(_)) => about == TriggerAbout::Server,
+                Some(EventFilter::Damage(_)) => about == TriggerAbout::Damage,
             };
             if !filter_fits {
                 return Err(CardValidationError::TriggerFilterOfTheWrongKind(self.id.clone(), triggered.trigger));
@@ -964,7 +965,7 @@ mod tests {
             card.abilities,
             vec![
                 AbilityDef {
-                    text: None,
+                    text: Some("1[credit]: +1 strength.".to_string()),
                     trigger: Trigger::Paid,
                     cost: Some(Cost::Credits(1)),
                     // Every icebreaker ability carries this — real
@@ -973,7 +974,7 @@ mod tests {
                     effect: Effect::BoostStrength { amount: 1, duration: EffectDuration::Encounter },
                     cost_discount_if: None, used_by: None },
                 AbilityDef {
-                    text: None,
+                    text: Some("Interface → 1[credit]: Break 1 barrier subroutine.".to_string()),
                     trigger: Trigger::Paid,
                     cost: Some(Cost::Credits(1)),
                     // Every icebreaker ability carries this — real
@@ -1104,6 +1105,22 @@ mod tests {
         assert!(matches!(
             with(Trigger::OnSuccessfulRun, Some(Subject::Any), None, true).validate(),
             Err(CardValidationError::TriggerActsOnNoCard(_, Trigger::OnSuccessfulRun))
+        ));
+        // A kind of damage is the third thing a moment can be about (Net
+        // Shield), with nothing a card could be "this" of.
+        let net = || Some(EventFilter::Damage(crate::dsl::DamageType::Net));
+        assert_eq!(with(Trigger::OnDamageAboutToResolve, None, net(), false).validate(), Ok(()));
+        assert!(matches!(
+            with(Trigger::OnDamageAboutToResolve, Some(Subject::Any), net(), false).validate(),
+            Err(CardValidationError::TriggerSubjectWithNothingToName(_, Trigger::OnDamageAboutToResolve))
+        ));
+        assert!(matches!(
+            with(Trigger::OnSuccessfulRun, Some(Subject::Any), net(), false).validate(),
+            Err(CardValidationError::TriggerFilterOfTheWrongKind(_, Trigger::OnSuccessfulRun))
+        ));
+        assert!(matches!(
+            with(Trigger::OnDamageAboutToResolve, None, on_hq(), false).validate(),
+            Err(CardValidationError::TriggerFilterOfTheWrongKind(_, Trigger::OnDamageAboutToResolve))
         ));
     }
 

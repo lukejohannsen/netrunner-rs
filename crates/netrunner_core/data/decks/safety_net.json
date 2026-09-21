@@ -1,0 +1,83 @@
+{
+  "id": "safety_net",
+  "name": "Safety Net",
+  "side": "Runner",
+  "category": "Sweep",
+  "description": "Not a published list: built so the sweeps reach the prevention window. Kate with the Core Set's three interrupts — Decoy, Net Shield, Sacrificial Construct — in an otherwise ordinary Shaper rig. Eternal-legal only.",
+  "style": "builder",
+  "identity": "kate_mccaffrey",
+  "cards": [
+    {
+      "card": "net_shield",
+      "count": 3
+    },
+    {
+      "card": "sacrificial_construct",
+      "count": 3
+    },
+    {
+      "card": "decoy",
+      "count": 3
+    },
+    {
+      "card": "gordian_blade",
+      "count": 2
+    },
+    {
+      "card": "corroder",
+      "count": 2
+    },
+    {
+      "card": "echelon",
+      "count": 2
+    },
+    {
+      "card": "unity",
+      "count": 2
+    },
+    {
+      "card": "mayfly",
+      "count": 1
+    },
+    {
+      "card": "conduit",
+      "count": 2
+    },
+    {
+      "card": "sure_gamble",
+      "count": 3
+    },
+    {
+      "card": "diesel",
+      "count": 3
+    },
+    {
+      "card": "creative_commission",
+      "count": 3
+    },
+    {
+      "card": "telework_contract",
+      "count": 3
+    },
+    {
+      "card": "smartware_distributor",
+      "count": 3
+    },
+    {
+      "card": "overclock",
+      "count": 3
+    },
+    {
+      "card": "jailbreak",
+      "count": 3
+    },
+    {
+      "card": "dzmz_optimizer",
+      "count": 2
+    },
+    {
+      "card": "t400_memory_diamond",
+      "count": 2
+    }
+  ]
+}
