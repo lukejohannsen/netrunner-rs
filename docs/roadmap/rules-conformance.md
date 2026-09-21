@@ -129,13 +129,19 @@ fixes them. The letters are this file's addresses: "Rules Conformance B1".
   - An operation's reactions resolve after its play abilities rather than before (8.6.7).
   - The operation is filed in Archives before it resolves.
 
-**G. Deck legality (1.4)**
-- **G1 ✔ The agenda-point range is one point too wide.** `rules::deck::agenda_point_range` returns
-  `min + 2`, where 1.4.6 says "18 or 19". Its test asserts the wrong range.
-- **G2 Three more legality gaps:**
-  - An identity is accepted inside a deck (1.4.4).
-  - The Gateway identities pass the full formats (1.4.1a).
-  - The setup gate ignores `deck_limit` (1.4.7).
+**G. Deck legality (1.4) — fixed (`fix/deck-legality-matches-cr-1-4`)**
+- **G1 ✔ The agenda-point range was one point too wide.** `agenda_point_range` returned
+  `min + 2`, where 1.4.6 says "18 or 19". It is `min + 1` now.
+- **G2 ✔ Three legality gaps, all closed:**
+  - An identity inside a deck is refused by both validators (1.4.4).
+  - The Gateway identities are legal only with their published starter and boosted lists
+    (1.4.1a). This is checked against the lists themselves, because a brought deck names its
+    own category.
+  - The setup gate reads `deck_limit` (1.4.7).
+- Every embedded sample, starter, boosted and sweep deck stays legal. The tests that broke were
+  fixtures carrying 20 points in 40 cards. One of them was the index sweep's hand-built System
+  Gateway Corp deck, whose third Orbital Superiority became a second Palisade (18 points).
+  `NETRUNNER_SWEEP_SEEDS=256` on the index sweep afterwards: clean, coverage gate included.
 
 **Fix order, one PR each:**
 1. G, which does not touch play.
@@ -158,7 +164,7 @@ with the rule quoted.
 | 1.1 | General | unreviewed |  |
 | 1.2 | Golden Rules | unreviewed |  |
 | 1.3 | Symbols | n/a | Symbols. The house spellings (`[click]`, `[credit]`…) are how `rules_sync.py` renders them. |
-| 1.4 | Deck Construction | deviates | G1, G2. Minimum deck size, influence per copy and out-of-faction agendas match. |
+| 1.4 | Deck Construction | conforms | Read rule by rule (21 September 2026) and G1–G2 fixed: the agenda band is `min`–`min + 1` (1.4.6), an identity cannot be a deck card (1.4.4), a *Learn to Play* identity is legal only with its published lists (1.4.1a, `DeckFile::validate`), and both validators read a card's own copy limit (1.4.7). Every out-of-faction non-agenda card in the catalog prints an influence cost, so 1.4.4's last clause holds for the pool. 1.4.8 (tournament rules) is n/a. |
 | 1.5 | Extra Cards | unreviewed |  |
 | 1.6 | Starting the Game | read in part | Audit: 5 credits, 5 cards, Corp mulligans first, Corp goes first; matches. |
 | 1.7 | Ending the Game | deviates | E1, E2, E3. 7 points checked at checkpoints matches. |

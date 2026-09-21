@@ -58,6 +58,10 @@ pub enum DeckValidationError {
     #[error("runner decks may not include agendas (card {0:?})")]
     RunnerDeckContainsAgenda(CardId),
 
+    /// CR 1.4.4: "Decks cannot contain identity cards."
+    #[error("identity {0:?} cannot be one of a deck's cards")]
+    IdentityInDeck(CardId),
+
     /// A Corp deck may include only its own faction's agendas and neutral
     /// ones. A separate rule rather than an influence charge because
     /// agendas print no influence: priced through the influence check, an
@@ -233,6 +237,9 @@ pub fn validate_deck_with_rules(
         }
         if identity.side == Side::Runner && card.card_type == CardType::Agenda {
             return Err(DeckValidationError::RunnerDeckContainsAgenda(card_id));
+        }
+        if card.card_type == CardType::Identity {
+            return Err(DeckValidationError::IdentityInDeck(card_id));
         }
         if card.card_type == CardType::Agenda {
             let faction = card.faction.unwrap_or(Faction::NeutralCorp);
@@ -466,7 +473,7 @@ mod tests {
 
         assert_eq!(
             validate_deck(&deck, &registry, NsgFormat::Standard),
-            Err(DeckValidationError::InsufficientAgendaPoints { points: 10, min: 20, max: 22, size: 45 })
+            Err(DeckValidationError::InsufficientAgendaPoints { points: 10, min: 20, max: 21, size: 45 })
         );
     }
 
@@ -712,6 +719,19 @@ mod tests {
         assert_eq!(
             validate_deck(&deck, &registry, NsgFormat::Standard),
             Err(DeckValidationError::RunnerDeckContainsAgenda(CardId(800)))
+        );
+    }
+
+    /// CR 1.4.4: "Decks cannot contain identity cards."
+    #[test]
+    fn a_deck_holding_an_identity_is_rejected() {
+        let (mut registry, mut deck) = valid_runner_registry_and_deck();
+        registry.insert(identity(801, Side::Runner, Faction::Criminal, 45, "sg"));
+        deck.cards.insert(CardId(801), 1);
+
+        assert_eq!(
+            validate_deck(&deck, &registry, NsgFormat::Standard),
+            Err(DeckValidationError::IdentityInDeck(CardId(801)))
         );
     }
 }
