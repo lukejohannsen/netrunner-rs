@@ -264,8 +264,12 @@ pub(crate) fn has_usable_paid_ability(state: &GameState, registry: &CardRegistry
             // choosing (`rules::prevention` says when): counting it opened
             // a window after every action for a player whose only move in
             // it was to pass.
+            // Nor is an action (CR 9.2.7b): a [click] ability is used in its
+            // user's action window, and a window opened for one would offer
+            // them only a pass.
             ability.trigger == Trigger::Paid
                 && ability.effect.prevents().is_none()
+                && !ability.is_action()
                 && ability.requirement.as_ref().is_none_or(|req| ability::check_requirement(state, req, side, &ctx, registry).is_ok())
                 && ability.cost.as_ref().is_none_or(|cost| ability::cost_is_affordable(state, registry, side, cost, Purpose::Ability(card), &ctx))
         })
@@ -887,7 +891,7 @@ mod tests {
         assert_eq!(state.runner.grip.len(), 1);
         assert_eq!(state.runner.heap.len(), 2);
         assert!(events.contains(&GameEvent::Prevented { what: WouldHappen::Damage { kind: DamageType::Net, amount: 3 }, amount: 1 }));
-        assert!(events.contains(&GameEvent::DamageTaken { damage_type: DamageType::Net, amount: 2 }));
+        assert!(events.contains(&GameEvent::DamageTaken { damage_type: DamageType::Net, amount: 2, responsible: None }), "no source card, so nobody did it");
     }
 
     #[test]

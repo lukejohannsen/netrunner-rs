@@ -130,6 +130,19 @@ pub enum Cost {
 }
 
 impl Cost {
+    /// Whether this cost, as printed, begins with a [click] symbol — what
+    /// makes a paid ability an action (CR 9.5.2a). `AllOf` is printed in
+    /// order ("[click], [trash]:"), so its first part decides; `AnyOf` is
+    /// only ever an `OfferPaidChoice`'s price, never an ability's trigger
+    /// cost.
+    pub fn begins_with_click(&self) -> bool {
+        match self {
+            Cost::Clicks(n) => *n > 0,
+            Cost::AllOf(costs) => costs.first().is_some_and(Cost::begins_with_click),
+            _ => false,
+        }
+    }
+
     /// Whether paying this could ask the payer which cards — the structural
     /// half of `payment::could_ask`, which copies an action only where a
     /// question is possible.

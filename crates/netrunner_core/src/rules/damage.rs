@@ -34,10 +34,14 @@ use crate::rules::state::{GameState, Side};
 /// Returned explicitly rather than re-derived from the events: the
 /// flatline path empties the grip without emitting a `CardDiscarded` per
 /// card, so the event stream alone would under-report it.
+///
+/// `responsible` is who did the damage (CR 10.4.1), carried on the
+/// `DamageTaken` it records — see that event.
 pub fn apply_damage(
     state: &mut GameState,
     damage_type: DamageType,
     amount: usize,
+    responsible: Option<Side>,
 ) -> (Vec<GameEvent>, Vec<CardId>) {
     if amount > state.runner.grip.len() {
         let discarded: Vec<_> = std::mem::take(&mut state.runner.grip);
@@ -53,7 +57,7 @@ pub fn apply_damage(
         state.runner.brain_damage += amount;
     }
 
-    let mut events = vec![GameEvent::DamageTaken { damage_type, amount }];
+    let mut events = vec![GameEvent::DamageTaken { damage_type, amount, responsible }];
     let mut discarded = Vec::new();
     for _ in 0..amount {
         let roll = state.next_u64();
@@ -127,7 +131,7 @@ mod tests {
         let mut state = game_state(grip_of(5), 0, 42);
         let original_grip: HashSet<CardId> = state.runner.grip.iter().cloned().collect();
 
-        let (events, returned_discards) = apply_damage(&mut state, DamageType::Net, 2);
+        let (events, returned_discards) = apply_damage(&mut state, DamageType::Net, 2, Some(Side::Corp));
 
         assert_eq!(state.runner.grip.len(), 3);
         assert_eq!(state.runner.heap.len(), 2);
@@ -145,7 +149,7 @@ mod tests {
         assert_eq!(returned_discards.len(), 2);
         assert_eq!(returned_discards.iter().cloned().collect::<HashSet<_>>(), discarded);
 
-        assert_eq!(events[0], GameEvent::DamageTaken { damage_type: DamageType::Net, amount: 2 });
+        assert_eq!(events[0], GameEvent::DamageTaken { damage_type: DamageType::Net, amount: 2, responsible: Some(Side::Corp) });
         assert_eq!(events.len(), 3);
         for (event, card) in events[1..].iter().zip(state.runner.heap.iter()) {
             assert_eq!(event, &GameEvent::CardDiscarded { side: Side::Runner, card: card.clone() });
@@ -156,7 +160,7 @@ mod tests {
     fn brain_damage_permanently_reduces_runners_max_hand_size() {
         let mut state = game_state(grip_of(5), 0, 7);
 
-        apply_damage(&mut state, DamageType::Brain, 2);
+        apply_damage(&mut state, DamageType::Brain, 2, Some(Side::Corp));
         assert_eq!(state.runner.brain_damage, 2);
         assert_eq!(state.runner.grip.len(), 3);
 
@@ -179,7 +183,7 @@ mod tests {
         let mut state = game_state(grip_of(2), 0, 3);
         let original_grip = state.runner.grip.clone();
 
-        let (events, returned_discards) = apply_damage(&mut state, DamageType::Meat, 5);
+        let (events, returned_discards) = apply_damage(&mut state, DamageType::Meat, 5, Some(Side::Corp));
 
         assert!(state.runner.grip.is_empty());
         assert_eq!(state.runner.heap, original_grip);
@@ -205,7 +209,7 @@ mod tests {
     fn flatlining_from_brain_damage_does_not_increment_brain_damage_counter() {
         let mut state = game_state(grip_of(1), 0, 9);
 
-        apply_damage(&mut state, DamageType::Brain, 5);
+        apply_damage(&mut state, DamageType::Brain, 5, Some(Side::Corp));
 
         assert_eq!(state.runner.brain_damage, 0);
         assert_eq!(state.phase, GamePhase::GameOver(Side::Corp));

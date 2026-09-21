@@ -2348,7 +2348,7 @@ mod tests {
             GameEvent::TriggerFired { card: CardId("snare".to_string()), trigger: crate::dsl::Trigger::OnAccessed }
         );
         assert_eq!(events[2], GameEvent::AboutToResolve { what: crate::rules::WouldHappen::Damage { kind: DamageType::Net, amount: 2 } });
-        assert_eq!(events[3], GameEvent::DamageTaken { damage_type: DamageType::Net, amount: 2 });
+        assert_eq!(events[3], GameEvent::DamageTaken { damage_type: DamageType::Net, amount: 2, responsible: Some(Side::Corp) });
         assert_eq!(events.len(), 6);
     }
 
@@ -2385,7 +2385,7 @@ mod tests {
             GameEvent::TriggerFired { card: card_id.clone(), trigger: crate::dsl::Trigger::OnTrashedFromAccess }
         );
         assert_eq!(events[3], GameEvent::AboutToResolve { what: crate::rules::WouldHappen::Damage { kind: DamageType::Net, amount: 1 } });
-        assert_eq!(events[4], GameEvent::DamageTaken { damage_type: DamageType::Net, amount: 1 });
+        assert_eq!(events[4], GameEvent::DamageTaken { damage_type: DamageType::Net, amount: 1, responsible: Some(Side::Corp) });
         assert!(matches!(events[5], GameEvent::CardDiscarded { side: Side::Runner, .. }));
         assert_eq!(events[6], GameEvent::RunCompleted { server: ServerId::Remote(0) });
         assert_eq!(events.len(), 7);
@@ -2629,7 +2629,7 @@ mod tests {
             }
         );
         assert_eq!(events[0], GameEvent::AboutToResolve { what: crate::rules::WouldHappen::Damage { kind: DamageType::Net, amount: 2 } });
-        assert!(matches!(events[1], GameEvent::DamageTaken { damage_type: DamageType::Net, amount: 2 }));
+        assert!(matches!(events[1], GameEvent::DamageTaken { damage_type: DamageType::Net, amount: 2, responsible: Some(Side::Corp) }));
     }
 
     #[test]

@@ -428,7 +428,7 @@ fn snare_asks_the_corp_to_pay_and_deals_three_net_damage_and_a_tag_when_it_does(
     assert_eq!(state.runner.tags, 1);
     assert!(events.iter().any(|e| matches!(
         e,
-        crate::rules::GameEvent::DamageTaken { damage_type: crate::dsl::DamageType::Net, amount: 3 }
+        crate::rules::GameEvent::DamageTaken { damage_type: crate::dsl::DamageType::Net, amount: 3, responsible: Some(crate::rules::Side::Corp) }
     )));
     assert!(events.iter().any(|e| matches!(e, crate::rules::GameEvent::TagsGiven { side: Side::Runner, amount: 1 })));
 }
@@ -722,7 +722,7 @@ fn scorched_earth_requires_a_tagged_runner_and_deals_four_meat_damage() {
     assert_eq!(state.runner.grip.len(), 1, "4 of the 5 grip cards should have been discarded to meat damage");
     assert!(events.iter().any(|e| matches!(
         e,
-        crate::rules::GameEvent::DamageTaken { damage_type: crate::dsl::DamageType::Meat, amount: 4 }
+        crate::rules::GameEvent::DamageTaken { damage_type: crate::dsl::DamageType::Meat, amount: 4, responsible: Some(crate::rules::Side::Corp) }
     )));
 }
 
@@ -1459,7 +1459,7 @@ mod system_gateway {
         assert_eq!(state.corp.resources.credits, Credits(1));
         assert!(events.iter().any(|e| matches!(
             e,
-            crate::rules::GameEvent::DamageTaken { damage_type: crate::dsl::DamageType::Net, amount: 1 }
+            crate::rules::GameEvent::DamageTaken { damage_type: crate::dsl::DamageType::Net, amount: 1, responsible: Some(crate::rules::Side::Corp) }
         )));
         assert!(events.iter().any(|e| matches!(e, crate::rules::GameEvent::CreditsGained { side: Side::Corp, amount: 1 })));
     }
@@ -5449,7 +5449,7 @@ mod system_gateway {
         let (state, events) =
             apply_action(&state, &registry, PlayerAction::AcceptPendingPaidChoice { cost_option_index: None }).expect("trash for damage");
 
-        assert!(events.contains(&crate::rules::GameEvent::DamageTaken { damage_type: crate::dsl::DamageType::Meat, amount: 3 }), "{events:?}");
+        assert!(events.contains(&crate::rules::GameEvent::DamageTaken { damage_type: crate::dsl::DamageType::Meat, amount: 3, responsible: Some(crate::rules::Side::Corp) }), "{events:?}");
         assert_eq!(state.runner.grip.len(), 2);
         assert_eq!(state.corp.installed.len(), 1, "one Clearinghouse trashed itself");
         assert_eq!(state.corp.installed[0].install_id, InstallId(6001), "the *other* copy is the one still installed");
@@ -7912,7 +7912,7 @@ mod system_gateway {
         assert!(state.runner.rig.iter().any(|c| c.card.0 == "corroder"));
         assert_eq!(state.runner.resources.credits, Credits(3), "2 - 2: nothing spent");
         assert!(events.iter().any(|e| matches!(e, crate::rules::GameEvent::ProgramInstalled { credits_paid: 0, .. })));
-        assert!(events.iter().any(|e| matches!(e, crate::rules::GameEvent::DamageTaken { damage_type: crate::dsl::DamageType::Meat, amount: 1 })));
+        assert!(events.iter().any(|e| matches!(e, crate::rules::GameEvent::DamageTaken { damage_type: crate::dsl::DamageType::Meat, amount: 1, responsible: Some(crate::rules::Side::Runner) })), "the Runner suffers it (CR 10.4.1)");
         assert_eq!(state.runner.grip.len(), 1, "one of the other two cards was discarded to the damage");
         assert_eq!(state.runner.heap.len(), 1);
         assert!(
@@ -9300,7 +9300,8 @@ mod system_gateway {
         let (state, _) = apply_action(&state, &registry, PlayerAction::ConfirmCardSelection).expect("trash it");
         assert_eq!(state.corp.identity_counters, 1, "one per batch out of HQ");
 
-        // Damage is another, wherever it comes from.
+        // Damage the Runner chose to suffer is theirs, not the Corp's (CR
+        // 10.4.1): Semak-samun's price places nothing.
         let mut damaged = runner_turn(5, 4);
         damaged.corp.identity = Some(CardId("au_co_the_gold_standard_in_clones".to_string()));
         damaged.runner.grip = vec![CardId("sure_gamble".to_string()); 4];
@@ -9309,7 +9310,18 @@ mod system_gateway {
         let (damaged, _) = apply_action(&damaged, &registry, PlayerAction::ContinueRun).expect("approach");
         let damaged = advance_until_choice(damaged, &registry);
         let (damaged, _) = apply_action(&damaged, &registry, PlayerAction::AcceptPendingPaidChoice { cost_option_index: None }).expect("take 3 net");
-        assert_eq!(damaged.corp.identity_counters, 1, "one for the damage");
+        assert_eq!(damaged.corp.identity_counters, 0, "the Runner suffered it; the Corp did nothing");
+
+        // Damage a Corp card does is another.
+        let mut burned = base_state();
+        burned.corp.identity = Some(CardId("au_co_the_gold_standard_in_clones".to_string()));
+        burned.corp.resources.credits = Credits(10);
+        burned.corp.hq = vec![CardId("scorched_earth".to_string())];
+        burned.runner.tags = 1;
+        burned.runner.grip = vec![CardId("sure_gamble".to_string()); 5];
+        let (burned, _) = apply_action(&burned, &registry, PlayerAction::PlayOperation { card_id: CardId("scorched_earth".to_string()) }).expect("do 4 meat");
+        assert_eq!(burned.runner.grip.len(), 1);
+        assert_eq!(burned.corp.identity_counters, 1, "one for the damage the Corp did");
 
         // Two counters buy a look at the top 3 of R&D at the turn's start.
         let mut state = base_state();

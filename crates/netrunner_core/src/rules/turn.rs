@@ -610,6 +610,9 @@ mod tests {
     /// deliberately bypassing phase — so leftover clicks were spendable on
     /// the *opponent's* turn. Reachable with Regolith Mining License's
     /// `[click]: take 3[c]` at any window, including the post-action one.
+    /// A [click] ability is an action and no window admits one (CR 9.2.7b),
+    /// which is the refusal both cases meet first now; the clicks are gone
+    /// as well.
     #[test]
     fn clicks_left_over_from_a_turn_cannot_pay_for_an_off_turn_paid_ability() {
         use crate::dsl::{AbilityDef, CardDefinition, CardType, Cost, Effect, Trigger};
@@ -650,9 +653,10 @@ mod tests {
         };
 
         // Still inside the Corp's own EndOfTurn window: already too late.
+        assert_eq!(state.corp.resources.clicks, Clicks(0));
         assert_eq!(
             apply_action(&state, &registry, activate.clone()),
-            Err(RulesError::NotEnoughClicks { side: Side::Corp, available: 0, requested: 1 })
+            Err(RulesError::BlockedByPaidAbilityWindow { priority: Side::Corp })
         );
 
         // And still refused mid-Runner-turn, in an open window — the
@@ -670,7 +674,7 @@ mod tests {
 
         assert_eq!(
             apply_action(&state, &registry, activate),
-            Err(RulesError::NotEnoughClicks { side: Side::Corp, available: 0, requested: 1 }),
+            Err(RulesError::BlockedByPaidAbilityWindow { priority: Side::Corp }),
             "clicks from a finished turn must never fund an off-turn ability"
         );
     }
