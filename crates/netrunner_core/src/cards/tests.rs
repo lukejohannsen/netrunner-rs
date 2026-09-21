@@ -987,6 +987,44 @@ mod system_gateway {
         assert_eq!(state.runner.rig[0].hosted_on_ice, Some(install_of(&state, "palisade")));
     }
 
+    /// Noise's "the Corp trashes the top card of R&D" against an empty R&D
+    /// trashes nothing. It was an error, and the error refused the whole
+    /// resolution: Botulus's own install trigger and Noise's parked a
+    /// trigger order, both choices replayed into `EmptyZone`, and the
+    /// Runner had no legal action at all — seed 181 of Hostile Bid against
+    /// Pay As You Go, the first deck on Noise, 684 steps into a game the
+    /// Corp was about to lose by drawing.
+    #[test]
+    fn noise_installing_a_virus_against_an_empty_r_and_d_leaves_the_runner_a_move() {
+        let registry = sg_registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.identity = Some(CardId("noise".to_string()));
+        state.runner.resources.clicks = Clicks(4);
+        state.runner.resources.credits = Credits(10);
+        state.runner.grip = vec![CardId("botulus".to_string())];
+        state.corp.installed = vec![corp_ice("palisade", ServerId::Hq)];
+        state.corp.r_and_d.clear();
+
+        let (mut state, _) = apply_action(
+            &state,
+            &registry,
+            PlayerAction::InstallProgramOnIce { card_id: CardId("botulus".to_string()), host: install_of(&state, "palisade") },
+        )
+        .expect("the install itself is legal");
+
+        let mut steps = 0;
+        while state.pending_decision.is_some() {
+            let legal = crate::rules::legal_actions_for(&state, &registry, Side::Runner);
+            let choice = legal.first().unwrap_or_else(|| panic!("the Runner has no legal action with {:?} parked", state.pending_decision)).clone();
+            state = apply_action(&state, &registry, choice).expect("an offered action applies").0;
+            steps += 1;
+            assert!(steps < 8, "the trigger order never settles");
+        }
+        assert_eq!(state.runner.rig[0].counters, 1, "Botulus still got its counter");
+        assert!(state.corp.archives.is_empty(), "there was nothing to trash");
+    }
+
     /// A selection-trash of a piece of ICE takes the trojans hosted on it,
     /// as `Effect::TrashCard` always has — this was the one removal path
     /// that left them in the rig pointing at ICE that no longer existed.
@@ -6718,6 +6756,169 @@ mod system_gateway {
         assert!(events.iter().any(|e| matches!(e, crate::rules::GameEvent::CardTrashed { side: Side::Runner, card } if card.0 == "open_market")));
         assert!(!state.runner.rig.iter().any(|c| c.card.0 == "open_market"), "when it is empty, trash it");
         assert_eq!(state.runner.resources.credits, Credits(2), "nothing from the wallet");
+    }
+
+    // Cyberfeeder, The Toolbox and Crash Space: the Core cards whose pools
+    // compete (Rules Audit backlog item 5).
+
+    fn rig(id: &str, counters: u32) -> crate::rules::InstalledRunnerCard {
+        let strength = registry().get(&CardId(id.to_string())).and_then(|card| card.strength).unwrap_or(0);
+        crate::rules::InstalledRunnerCard { base_strength: strength, ..rig_card_with_counters(id, counters) }
+    }
+
+    /// `state`'s Runner, encountering a rezzed Palisade on HQ: an icebreaker's
+    /// abilities are used during an encounter. Raw steps, because `act`
+    /// passes every window it opens and would walk out of this one.
+    fn encountering_a_palisade(mut state: GameState, registry: &CardRegistry) -> GameState {
+        state.corp.installed = vec![corp_ice("palisade", ServerId::Hq)];
+        for action in [
+            PlayerAction::InitiateRun { server: ServerId::Hq },
+            PlayerAction::ContinueRun,
+            PlayerAction::PassPriority { side: Side::Runner },
+            PlayerAction::PassPriority { side: Side::Corp },
+        ] {
+            state = apply_action(&state, registry, action.clone()).unwrap_or_else(|e| panic!("{action:?}: {e:?}")).0;
+        }
+        assert_eq!(state.active_run.as_ref().map(|run| run.phase), Some(crate::rules::RunPhase::EncounterIce));
+        state
+    }
+
+    #[test]
+    fn cyberfeeder_pays_for_using_an_icebreaker_and_for_installing_a_virus_program_and_nothing_else() {
+        let registry = sg_registry();
+        let mut state = runner_turn(0, 4);
+        state.runner.rig = vec![rig("cyberfeeder", 1), rig("corroder", 0)];
+        let corroder = state.runner.rig[1].install_id;
+
+        // "pay for using icebreakers": Corroder's 1[c] pump, with an empty wallet.
+        let encounter = encountering_a_palisade(state.clone(), &registry);
+        let (pumped, _) = apply_action(&encounter, &registry, PlayerAction::ActivateAbility { target: corroder, ability_index: 0 }).expect("the pump");
+        assert_eq!(pumped.runner.rig[0].counters, 0, "the hosted credit paid for it");
+
+        // "or for installing virus programs": Hantu is 3[c], 2 in the wallet.
+        let mut installing = state.clone();
+        installing.runner.resources.credits = Credits(2);
+        installing.runner.grip = vec![CardId("hantu".to_string()), CardId("cleaver".to_string())];
+        let installed = act(installing.clone(), &registry, PlayerAction::InstallProgram { card_id: CardId("hantu".to_string()) });
+        assert_eq!((installed.runner.rig[0].counters, installed.runner.resources.credits), (0, Credits(0)));
+
+        // Cleaver is 3[c] too and no virus: the wallet's 2 is all there is.
+        assert!(apply_action(&installing, &registry, PlayerAction::InstallProgram { card_id: CardId("cleaver".to_string()) }).is_err());
+    }
+
+    #[test]
+    fn the_toolbox_gives_two_link_two_memory_and_two_credits_spent_before_cyberfeeders_without_asking() {
+        let registry = sg_registry();
+        let mut state = runner_turn(0, 4);
+        state.runner.rig = vec![rig("cyberfeeder", 1), rig("the_toolbox", 2), rig("corroder", 0)];
+        let corroder = state.runner.rig[2].install_id;
+        assert_eq!(crate::rules::continuous::link(&state, &registry), 2, "+2[link], with an identity that prints none");
+        assert_eq!(crate::rules::memory::available_memory(&state, &registry), 4 + 2 - 1, "+2[mu], less Corroder's 1");
+
+        // Both pools pay for using icebreakers and both refill next turn, but
+        // The Toolbox's pay for nothing else: never worth more, so first.
+        let encounter = encountering_a_palisade(state, &registry);
+        let (pumped, _) = apply_action(&encounter, &registry, PlayerAction::ActivateAbility { target: corroder, ability_index: 0 }).expect("the pump");
+        assert!(pumped.pending_payment.is_none(), "nobody is asked");
+        assert_eq!((pumped.runner.rig[0].counters, pumped.runner.rig[1].counters), (1, 1), "Cyberfeeder's is kept for a virus");
+    }
+
+    /// The pools that compete, which is what the item is about: on an
+    /// Overclock run, The Toolbox's credits pay only for icebreakers and come
+    /// back next turn, while the run's pay for anything and are gone with it.
+    #[test]
+    fn a_pump_on_an_overclock_run_asks_whether_the_toolbox_or_the_run_pays_first() {
+        let registry = sg_registry();
+        let mut state = runner_turn(1, 4);
+        state.runner.grip = vec![CardId("overclock".to_string())];
+        state.runner.rig = vec![rig("the_toolbox", 2), rig("corroder", 0)];
+        let (toolbox, corroder) = (state.runner.rig[0].install_id, state.runner.rig[1].install_id);
+        state.corp.installed = vec![corp_ice("palisade", ServerId::Hq)];
+        corp_rd_filler(&mut state);
+        for action in [
+            PlayerAction::PlayEvent { card_id: CardId("overclock".to_string()) },
+            PlayerAction::ChooseServerForPendingDecision { server: ServerId::Hq },
+            PlayerAction::ContinueRun,
+            PlayerAction::PassPriority { side: Side::Runner },
+            PlayerAction::PassPriority { side: Side::Corp },
+        ] {
+            state = apply_action(&state, &registry, action.clone()).unwrap_or_else(|e| panic!("{action:?}: {e:?}")).0;
+        }
+        assert_eq!(state.active_run.as_ref().map(|run| (run.phase, run.bonus_run_credits)), Some((crate::rules::RunPhase::EncounterIce, 5)));
+
+        let pump = PlayerAction::ActivateAbility { target: corroder, ability_index: 0 };
+        let (parked, _) = apply_action(&state, &registry, pump).expect("the pump parks a question");
+        let payment = parked.pending_payment.as_ref().expect("1[c], and 2 + 5 that could pay it");
+        assert_eq!(payment.options, vec![crate::rules::Pool::Hosted(toolbox), crate::rules::Pool::Run]);
+
+        let (run_first, _) = apply_action(&parked, &registry, PlayerAction::ResolvePendingChoice { option_index: 1 }).expect("the run's first");
+        assert_eq!(run_first.runner.rig[0].counters, 2, "The Toolbox keeps both for the next run");
+        assert_eq!(run_first.active_run.as_ref().map(|run| run.bonus_run_credits), Some(4));
+    }
+
+    /// Found by the 256-seed view sweep at seed 173 (Hostile Bid against Pay
+    /// As You Go): a handler pays and *then* does the thing, so a payment's
+    /// question comes before an error in the thing. Gordian Blade cannot
+    /// break a barrier; with Cyberfeeder and bad publicity both able to pay
+    /// its 1[c], the break parked instead of failing, was offered as legal,
+    /// and every answer then replayed into the error — a Runner with no
+    /// legal action at all. **An action parks only if it can succeed.**
+    #[test]
+    fn an_action_that_would_fail_after_its_payment_is_illegal_and_never_parks() {
+        let registry = sg_registry();
+        let mut state = runner_turn(5, 4);
+        state.corp.bad_publicity = 1;
+        state.runner.rig = vec![rig("cyberfeeder", 1), rig("gordian_blade", 0), rig("corroder", 0)];
+        let (decoder, fracter) = (state.runner.rig[1].install_id, state.runner.rig[2].install_id);
+        let state = encountering_a_palisade(state, &registry);
+        let break_with = |target| PlayerAction::ActivateAbility { target, ability_index: 1 };
+
+        // A fracter against the barrier: two pools, a real question.
+        let (parked, _) = apply_action(&state, &registry, break_with(fracter)).expect("Corroder's break parks a question");
+        assert!(parked.pending_payment.is_some());
+        assert!(!crate::rules::legal_actions(&parked, &registry).is_empty(), "and whoever is asked can always answer");
+
+        // A decoder against it: the same two pools, and no question, because
+        // there is nothing to pay for.
+        let refused = apply_action(&state, &registry, break_with(decoder));
+        assert!(matches!(refused, Err(crate::rules::RulesError::InvalidBreakerSubtype { .. })), "{refused:?}");
+        assert!(!crate::rules::legal_actions(&state, &registry).contains(&break_with(decoder)));
+    }
+
+    #[test]
+    fn crash_space_pays_to_remove_a_tag_and_is_trashed_to_prevent_meat_damage() {
+        let registry = sg_registry();
+        let mut state = runner_turn(0, 4);
+        state.runner.rig = vec![rig("crash_space", 2)];
+        state.runner.tags = 1;
+        let cleared = act(state.clone(), &registry, PlayerAction::RemoveTag);
+        assert_eq!((cleared.runner.tags, cleared.runner.rig[0].counters, cleared.runner.resources.credits), (0, 0, Credits(0)), "2[c], both hosted");
+
+        // Hosted credits pay for the basic action and not for a card's cost.
+        state.runner.grip = vec![CardId("sure_gamble".to_string())];
+        assert!(apply_action(&state, &registry, PlayerAction::PlayEvent { card_id: CardId("sure_gamble".to_string()) }).is_err());
+
+        // "[interrupt] -> [trash]: Prevent up to 3 meat damage."
+        let crash_space = state.runner.rig[0].install_id;
+        let damage = |kind, amount| {
+            let mut state = state.clone();
+            state.runner.grip = (0..4).map(|i| CardId(format!("card_{i}"))).collect();
+            let source = CardId("a_corp_card".to_string());
+            crate::rules::evaluate_effect(&mut state, &crate::dsl::Effect::DealDamage(kind, amount), &mut crate::rules::ResolutionContext::for_card(Some(&source)), &registry)
+                .expect("damage");
+            state
+        };
+        let parked = damage(crate::dsl::DamageType::Meat, 4);
+        assert_eq!(parked.runner.grip.len(), 4, "about to happen, not yet happened: the Runner is asked first");
+        let (after, _) = apply_action(&parked, &registry, PlayerAction::ActivateAbility { target: crash_space, ability_index: 0 }).expect("trash Crash Space");
+        let after = close_all_windows(after, &registry).0;
+        assert_eq!(after.runner.grip.len(), 3, "3 of the 4 prevented");
+        assert_eq!(after.runner.heap.iter().filter(|card| card.0 == "crash_space").count(), 1, "trashed as the cost");
+
+        // Net damage is not meat damage: nobody is asked, and it lands.
+        let net = damage(crate::dsl::DamageType::Net, 2);
+        assert!(net.pending_prevention.is_none());
+        assert_eq!(net.runner.grip.len(), 2);
     }
 
     // The payer chooses the pool (`rules::payment::plan`, `PendingPayment`).

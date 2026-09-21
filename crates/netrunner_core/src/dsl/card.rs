@@ -619,6 +619,16 @@ pub enum PaysFor {
     /// while a trace was active, which was exact only because nothing else
     /// can be paid for then.
     TraceAttempts,
+    /// The cost of a paid ability on an icebreaker — Cyberfeeder's and The
+    /// Toolbox's "Use these credits to pay for using icebreakers". Pumps as
+    /// well as breaks: "using" an icebreaker is using any of its abilities.
+    /// An icebreaker is what `CardFilter::Icebreaker` says one is.
+    UsingIcebreakers,
+    /// The credit cost of the basic action that removes a tag — Crash
+    /// Space's "You can spend hosted credits to take the basic action to
+    /// remove 1 tag". Not a card's text removing tags, which costs nothing
+    /// a pool could pay.
+    RemovingTags,
 }
 
 /// Semantic checks `serde`'s structural `Deserialize` can't express on its
@@ -896,6 +906,8 @@ impl CardDefinition {
                 (ContinuousKind::Strength(_), _) => return misfit("Strength", "strength belongs to this card, its host, or ice"),
                 (ContinuousKind::Memory(_), Scope::Controller) if self.side == Side::Runner => {}
                 (ContinuousKind::Memory(_), _) => return misfit("Memory", "memory is the Runner's, so it applies to a Runner card's `Controller`"),
+                (ContinuousKind::Link(_), Scope::Controller) if self.side == Side::Runner => {}
+                (ContinuousKind::Link(_), _) => return misfit("Link", "link is the Runner's, so it applies to a Runner card's `Controller`"),
                 (ContinuousKind::HandSize(_), Scope::Controller) => {}
                 (ContinuousKind::HandSize(_), _) => return misfit("HandSize", "a maximum hand size is a player's, so it applies to the card's `Controller`"),
                 (ContinuousKind::InstallCost(_), Scope::This | Scope::Installing(_)) => {}

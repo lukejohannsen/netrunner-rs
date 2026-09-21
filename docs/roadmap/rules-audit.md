@@ -1321,7 +1321,7 @@ one.
    unused variants now one that three cards use (26 of 71 single-use over
    181 card files, 3 unused), `Trigger` 29 → 28, `EventFilter` 3 → 4, one
    field of the run and four events gone, one error where there were two.
-5. **Where a payment comes from — IN PROGRESS (21 September 2026)**
+5. **Where a payment comes from — DONE (21 September 2026)**
    (§6.4; new). As the second pass wrote it: pools that compete and a
    player who chooses between them — stealth is the family that forces it;
    today every pool is spent automatically in a fixed order.
@@ -1588,6 +1588,97 @@ one.
    build refuses (forced to "no", the parking test fails on that
    assertion). With it: **+1.0%** (17.29–17.40 s against 17.15–17.22 s),
    still not overlapping — the scan itself, left there.
+   **Stage 4 — the Core Set pays from pools, which closes the item**
+   (`feat/the-core-set-pays-from-pools`). Cyberfeeder ("1[recurring-credit]
+   … to use icebreakers or install virus programs"), The Toolbox (+2[mu],
+   +2[link], 2[recurring-credit] for icebreakers) and Crash Space
+   (2[recurring-credit] for removing tags, and a [trash] interrupt on meat
+   damage — the card item 4 deferred here by name) are card files. They
+   cost two words, `PaysFor::UsingIcebreakers` and `RemovingTags`, two
+   purposes, `Purpose::Ability(def)` and `Purpose::RemoveTag`, and one
+   `ContinuousKind::Link`. **A purpose is stated at every site that pays
+   for a thing or asks ahead of time whether anybody could:**
+   `Purpose::Ability` at `engine::activate_ability`,
+   `paid_ability::has_usable_paid_ability` and
+   `prevention::could_prevent`, because one of the three left at `Other` is
+   an ability a console's credits could pay for and no window ever opens
+   for. **Link is asked, never kept:** `continuous::link` is the identity's
+   printed link plus what the rig declares; `RunnerState::link_strength`,
+   written once at setup, is gone, the view derives its number, and
+   `determinize` dropped its copy. (An earlier note in this work that The
+   Toolbox's link would be "printed-only" was a guess, and wrong.) The
+   three cards append to the observation vocabulary as a third wave (slots
+   181..=183, pinned) rather than reindex every Elevation card; **seven
+   free slots of 191 remain, so the next set forces a reshape.**
+   *Two sweep decks make the pools compete:* Pay As You Go (Noise, three
+   of each pool card) and Hostile Bid (Weyland: Building a Better World —
+   Hostile Takeover is the pool's only source of bad publicity, Measured
+   Response its meat damage), `DeckCategory::Sweep`, Eternal-legal,
+   yielded by `matchups()` never.
+   **What the deep sweep found, and the default bar and CI did not.** The
+   256-seed view sweep failed at seed 173 with no legal action for the
+   Runner — **a deadlock in stage 3, merged.** A handler pays and *then*
+   does the thing, so a payment's question arrives before an error in the
+   thing: Gordian Blade was asked which credits pay to break a barrier it
+   cannot break; parked, the break was offered as legal, and every answer
+   replayed into the error. 6 of 192 random games of the two decks
+   stalled, and the headless CLI exited 0 on each — read `end_reasons`,
+   never the exit code. **An action parks only if some sequence of answers
+   completes it** (`engine::settle_payment`), else it fails with its real
+   error, and an answer is legal on the same terms. Believed unreachable
+   on `main`, where no ability payment can ask — argued, not proven. The
+   re-measurement then found a seventh stall that was **not a payment at
+   all** (seed 181): Noise's "the Corp trashes the top card of R&D"
+   returned `EmptyZone` against an empty R&D, Botulus's own install trigger
+   and Noise's parked a trigger order, and both choices replayed into the
+   error. `MillRnDAmount` had always treated an empty R&D as nothing to
+   trash; `TrashCard(TopOfStack)` does now. Noise had never been in a deck,
+   so no agent had ever resolved its trigger — which is what a sweep deck
+   on an unused identity is for. After it: **192 random games, 0 stalled**,
+   and every game's line but seed 181's unchanged (a stall at 684 steps
+   became a Runner deck-out win at 694).
+   **`board::breaks` lost its routes wherever pools compete.** It plays
+   routes on the engine, got the parked state back, had its next step
+   refused and offered no route at all. Its purse counts a hosted credit
+   as a credit, its search answers a question with the first option, and
+   its driver waits for the person's answer. *Anything that applies an
+   action and goes on must expect a parked state back.*
+   *Measured against what was written down first* (`8967d5c`, pinned
+   binaries, 192 games a report). **Random identical to `main`, by view
+   and by index** (`c41129d8…`), as predicted: no sample deck holds one of
+   the three cards and a random seat never consults the registry.
+   Heuristic reports differ broadly (steps 80,023 → 82,579; Runner wins
+   156 → 152 of 192, −0.021 and inside the band), predicted too, and
+   **attributed rather than assumed:** a throwaway build of the same commit
+   with the three card files and two decks moved out is **identical to
+   `main`, four reports of four** (`8ae3c774…`, `45edb505…`) — the
+   movement is the registry growing under `determinize`'s registry-wide
+   pool, as it was for item 4's cards, and none of it is the engine: not
+   the parking rule, not the derived link, not the new purposes.
+   Over 192 random games of the two decks: Cyberfeeder installed 98 times,
+   Crash Space 95 (activated 4 times), The Toolbox 23;
+   `BadPublicityCreditsSpent` 127 — a pool no agent had reached before —
+   and `BonusRunCreditsSpent` 8; Hostile Takeover scored 31, Measured
+   Response played 19, Noise's trigger fired 289 times;
+   **`PaymentChoiceOffered` 41**, against 1 in 192 games of the sample
+   pool. The prediction that the fix would lower that count from 16 was
+   wrong — a game that stalled had stopped asking. **But in the sweeps'
+   own rotation the question is about 1 in 768 games**, so it is on
+   `EVENTS_RARE_WITH_SWEEP_DECKS` at 4,096 games and The Toolbox (a 9[c]
+   console only a random seat installs) on `CARDS_RARE_WITH_SWEEP_DECKS`
+   at 2,048: reach, still not coverage, and recorded as that. Both
+   256-seed sweeps pass; `cargo test --workspace` green, clippy silent.
+   **Owed elsewhere.** The heuristic Runner installs none of the three
+   cards, nor Azimat, and never plays Overclock in these decks (0 of 192):
+   the evaluator has no term for a pool card (Phase 5). **No card in the
+   pool starts a trace**, so NBN: Making News's credits and The Toolbox's
+   link are reached by scripted tests and by no agent; a Making News sweep
+   deck would reach nothing and was not built. Splitting one payment
+   credit by credit is item 6. Across the item: `Effect` 71 → 70 (26 of
+   70 single-use, 3 unused, 184 card files), `PaysFor` six words of which
+   four are single-use, one `ContinuousKind` (single-use), two `CorpState`
+   fields, one `RunnerState` field, one event and five affordability sums
+   gone.
 6. **A numeric decision** (§6.4; new). `PendingDecision` has no "choose a
    number", so X costs and "pay up to N" have nowhere to park. One variant,
    and an `ActionSpace` segment appended at the end (the append-never-shift

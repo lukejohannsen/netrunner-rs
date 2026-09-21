@@ -731,7 +731,6 @@ pub fn determinize(view: &ClientView, registry: &CardRegistry, rng: &mut impl Rn
         stack: pools.draw_n(Slot::RunnerAny, view.runner.stack_count),
         rig,
         heap: view.runner.heap.clone(),
-        link_strength: view.runner.link_strength,
         once_per_turn_used: view.runner.once_per_turn_used.iter().cloned().collect(),
         servers_run_this_turn: view.runner.servers_run_this_turn.clone(),
         discarded_this_discard_phase: view.runner.discarded_this_discard_phase.clone(),
@@ -987,7 +986,6 @@ mod tests {
                     ..Default::default()
                 }],
                 heap: Vec::new(),
-                link_strength: 0,
                 once_per_turn_used: Default::default(), servers_run_this_turn: Vec::new(), discarded_this_discard_phase: Vec::new(), identity_flipped: false,
             },
             phase: GamePhase::Action(Side::Runner),

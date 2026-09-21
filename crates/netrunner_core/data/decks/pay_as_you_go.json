@@ -1,0 +1,83 @@
+{
+  "id": "pay_as_you_go",
+  "name": "Pay As You Go",
+  "side": "Runner",
+  "category": "Sweep",
+  "description": "Not a published list: built so the sweeps reach a payment two pools could make. Noise with the Core Set's three pool cards — Cyberfeeder, The Toolbox, Crash Space — beside Overclock, whose credits compete with theirs on every pump and break; viruses for Cyberfeeder to install. Eternal-legal only.",
+  "style": "builder",
+  "identity": "noise",
+  "cards": [
+    {
+      "card": "cyberfeeder",
+      "count": 3
+    },
+    {
+      "card": "the_toolbox",
+      "count": 3
+    },
+    {
+      "card": "crash_space",
+      "count": 3
+    },
+    {
+      "card": "corroder",
+      "count": 3
+    },
+    {
+      "card": "buzzsaw",
+      "count": 2
+    },
+    {
+      "card": "gordian_blade",
+      "count": 1
+    },
+    {
+      "card": "mayfly",
+      "count": 2
+    },
+    {
+      "card": "hantu",
+      "count": 2
+    },
+    {
+      "card": "fermenter",
+      "count": 3
+    },
+    {
+      "card": "leech",
+      "count": 3
+    },
+    {
+      "card": "botulus",
+      "count": 2
+    },
+    {
+      "card": "overclock",
+      "count": 3
+    },
+    {
+      "card": "jailbreak",
+      "count": 3
+    },
+    {
+      "card": "sure_gamble",
+      "count": 3
+    },
+    {
+      "card": "wildcat_strike",
+      "count": 3
+    },
+    {
+      "card": "smartware_distributor",
+      "count": 3
+    },
+    {
+      "card": "scrounge",
+      "count": 1
+    },
+    {
+      "card": "t400_memory_diamond",
+      "count": 2
+    }
+  ]
+}

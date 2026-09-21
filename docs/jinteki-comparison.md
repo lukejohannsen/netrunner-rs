@@ -434,6 +434,24 @@ servers rather than a count.
   `hosted_credits_usable_for`, recurring before the wallet, bad-publicity and
   bonus run credits on `RunState` — which is right while no two pools
   compete. Stealth is the card family that makes them compete.
+
+  **Done, 21 September 2026** (`docs/roadmap/rules-audit.md`, backlog item 5,
+  four PRs). Not the port this bullet sketched. There is no stealth card in
+  the catalog, and "spent automatically in a fixed order" turned out to be
+  the smaller problem: the pools were spent by different pieces of code,
+  each with its own affordability sum, and every sum forgot a pool the
+  payment then took. So the first thing built was one scan that both
+  questions read (`rules::payment`), with what a pool pays for as a word the
+  card prints (`dsl::PaysFor`). Where jinteki's pickers (above) put the
+  choice of provider to the player, ours asks **only when the answer changes
+  what the payer is left with** — a pool never worth more than another is
+  spent first unasked — and answers with the existing choice action rather
+  than a credit-by-credit prompt, which waits on a numeric decision. (How
+  often jinteki's prompt appears was not measured or read for this item.) It parks by *replaying* the action, which jinteki's continuation
+  style has no need of and a pure `apply_action` makes nearly free.
+  Recurring credits became a declaration refilled as a step of the turn
+  (Comprehensive Rules 1.10.5) where they had been a trigger their owner
+  was asked to order.
 - **No numeric decision.** `PendingDecision` is `ChooseEffect`,
   `ChooseCards`, `ChooseServer`, `ChooseTriggerOrder`; the only number a
   player ever types is a trace bid. X costs and "pay up to N" have nowhere

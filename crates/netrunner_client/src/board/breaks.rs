@@ -180,7 +180,7 @@ fn route_for(state: &GameState, registry: &CardRegistry, target: InstallId, ice:
     if breaks.is_empty() {
         return None;
     }
-    let mut search = Search { registry, target, ice, pumps, breaks, start: purse(state), best: None };
+    let mut search = Search { registry, target, ice, pumps, breaks, start: purse(state, registry), best: None };
     search.walk(state, &mut Vec::new());
     let (steps, credits, counters) = search.best?;
     Some(Route { target, card, ice, steps, credits, counters })
@@ -220,14 +220,34 @@ fn card_at(state: &GameState, target: InstallId) -> Option<CardId> {
         .or_else(|| state.corp.installed.iter().find(|card| card.install_id == target).map(|card| card.card.clone()))
 }
 
-/// What a route can spend: credits from every pool a run's costs draw on,
-/// and the counters on the Runner's cards.
-fn purse(state: &GameState) -> (u32, u32) {
+/// What a route can spend: credits, wherever they are, and the counters on
+/// the Runner's cards.
+///
+/// **A credit hosted on a card is a credit** (`CardDefinition::pays_for`:
+/// The Toolbox, Cyberfeeder), not a counter like Botulus's. Counted as
+/// counters — which is what they are in the state — a break The Toolbox paid
+/// for read "1 counter", and what a route cost changed with *which pool*
+/// paid: the person's own answer to a payment question (`PendingPayment`)
+/// would have tripped the driver's "costs more than it did". Summed as
+/// credits, a route costs the same whoever pays.
+///
+/// This measures what was *spent*, by difference. What can be afforded is
+/// never worked out here: a route is played on the engine, which knows.
+fn purse(state: &GameState, registry: &CardRegistry) -> (u32, u32) {
     let run = state.active_run.as_ref();
-    let credits = state.runner.resources.credits.0
-        + run.map_or(0, |run| run.bad_publicity_credits + run.bonus_run_credits);
-    let counters = state.runner.rig.iter().map(|card| card.counters).sum();
-    (credits, counters)
+    let pooled = state.runner.resources.credits.0 + run.map_or(0, |run| run.bad_publicity_credits + run.bonus_run_credits);
+    split_counters(pooled, state.runner.rig.iter().map(|card| (&card.card, card.counters)), registry)
+}
+
+/// `(credits, counters)`: each rig card's counters go to whichever they are.
+fn split_counters<'a>(pooled: u32, rig: impl Iterator<Item = (&'a CardId, u32)>, registry: &CardRegistry) -> (u32, u32) {
+    rig.fold((pooled, 0), |(credits, counters), (card, held)| {
+        if registry.get(card).is_some_and(|definition| !definition.pays_for.is_empty()) {
+            (credits + held, counters)
+        } else {
+            (credits, counters + held)
+        }
+    })
 }
 
 /// Whether `state` is still in the encounter with `ice`, and if so
@@ -255,7 +275,7 @@ impl Search<'_> {
     /// Spent so far on `state`: credits, and counters net of any a step
     /// added (Mayfly adds one to itself), never below zero.
     fn spent(&self, state: &GameState) -> (u32, u32) {
-        let now = purse(state);
+        let now = purse(state, self.registry);
         (self.start.0.saturating_sub(now.0), self.start.1.saturating_sub(now.1))
     }
 
@@ -312,8 +332,21 @@ impl Search<'_> {
     /// The state after the Runner uses the ability and — if the encounter
     /// is still going — the Corp passes back, which is what the driver
     /// waits for between steps. `None` if the engine refuses either.
+    ///
+    /// **A step whose payment asks is answered, to see the route through.**
+    /// Where two pools could pay and neither is the other's lesser, the
+    /// engine parks the ability and asks its payer (`PendingPayment`); left
+    /// there, the next step is refused — only an answer is legal — and the
+    /// card has no route at all, on exactly the board where The Toolbox sits
+    /// beside a run's credits. The first option is taken: which pool pays
+    /// changes neither whether the route works nor what it costs (`purse`),
+    /// and the question is put to the person for real when they carry the
+    /// route out, where `AutoBreak::next` waits for their answer.
     fn step(&self, state: &GameState, ability_index: usize) -> Option<GameState> {
-        let (next, _) = apply_action(state, self.registry, self.action(ability_index)).ok()?;
+        let (mut next, _) = apply_action(state, self.registry, self.action(ability_index)).ok()?;
+        while next.pending_payment.is_some() {
+            next = apply_action(&next, self.registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).ok()?.0;
+        }
         if pending_on(&next, self.ice) != Some(true) {
             return Some(next);
         }
@@ -331,7 +364,9 @@ impl Search<'_> {
 pub enum Next {
     /// Submit this action; it is in the view's `legal_actions`.
     Submit(PlayerAction),
-    /// Not the Runner's priority on this view; ask again on the next one.
+    /// Nothing for the driver to do on this view — it is not the Runner's
+    /// priority, or the person is answering where a payment comes from —
+    /// so ask again on the next one.
     Wait,
     /// Every subroutine is broken. The person moves on.
     Done,
@@ -353,13 +388,13 @@ pub struct AutoBreak {
 }
 
 impl AutoBreak {
-    pub fn new(route: &Route, view: &ClientView) -> Self {
+    pub fn new(route: &Route, view: &ClientView, registry: &CardRegistry) -> Self {
         Self {
             target: route.target,
             card: route.card.clone(),
             ice: route.ice,
             budget: (route.credits, route.counters),
-            start: view_purse(view),
+            start: view_purse(view, registry),
         }
     }
 
@@ -372,6 +407,15 @@ impl AutoBreak {
         if !has_pending(view) {
             return Next::Done;
         }
+        // A step whose payment could come from two pools is parked on the
+        // person's answer (`PendingPayment`), and that answer is theirs: the
+        // prompt is on their screen, and the route goes on from the view
+        // that follows it. Planning from here instead would find no route —
+        // only the answer is legal — and tell them the card "can no longer
+        // break this ICE" while it was halfway through doing so.
+        if view.pending_payment.is_some() {
+            return Next::Wait;
+        }
         let runner_priority = view
             .paid_ability_window
             .as_ref()
@@ -383,7 +427,7 @@ impl AutoBreak {
         let Some(route) = route_for(&sample(view, registry), registry, self.target, self.ice) else {
             return Next::Stopped(format!("{name} can no longer break this ICE."));
         };
-        let now = view_purse(view);
+        let now = view_purse(view, registry);
         let spent = (self.start.0.saturating_sub(now.0), self.start.1.saturating_sub(now.1));
         if spent.0 + route.credits > self.budget.0 || spent.1 + route.counters > self.budget.1 {
             return Next::Stopped(format!("Breaking with {name} now costs more than it did."));
@@ -396,11 +440,10 @@ impl AutoBreak {
 }
 
 /// `purse` read off the view — the same pools, all public.
-fn view_purse(view: &ClientView) -> (u32, u32) {
+fn view_purse(view: &ClientView, registry: &CardRegistry) -> (u32, u32) {
     let run = view.active_run.as_ref();
-    let credits = view.runner.credits + run.map_or(0, |run| run.bad_publicity_credits + run.bonus_run_credits);
-    let counters = view.runner.rig.iter().map(|card| card.counters).sum();
-    (credits, counters)
+    let pooled = view.runner.credits + run.map_or(0, |run| run.bad_publicity_credits + run.bonus_run_credits);
+    split_counters(pooled, view.runner.rig.iter().map(|card| (&card.card, card.counters)), registry)
 }
 
 #[cfg(test)]
@@ -551,7 +594,7 @@ mod tests {
         let mut state = encounter(&registry, "wall_of_static", &["corroder"], 10);
         let first = view(&state, &registry);
         let route = routes(&first, &registry).remove(0);
-        let driver = AutoBreak::new(&route, &first);
+        let driver = AutoBreak::new(&route, &first, &registry);
         let mut submitted = 0;
         loop {
             let now = view(&state, &registry);
@@ -578,12 +621,75 @@ mod tests {
         assert_eq!(state.active_run.as_ref().unwrap().phase, RunPhase::EncounterIce, "the person moves on, not the driver");
     }
 
+    /// The whole pool, not the sample decks': The Toolbox is a Core card no
+    /// sample deck plays.
+    fn whole_pool() -> CardRegistry {
+        let mut registry = CardRegistry::new();
+        netrunner_core::cards::register_playable_cards(&mut registry);
+        registry
+    }
+
+    /// Corroder against Wall of Static with an empty wallet, 2 credits on The
+    /// Toolbox and 5 on the run: every step's payment could come from either,
+    /// so every step asks its payer first (`PendingPayment`).
+    fn an_encounter_where_every_payment_asks(registry: &CardRegistry) -> GameState {
+        let mut state = encounter(registry, "wall_of_static", &["corroder", "the_toolbox"], 0);
+        state.runner.rig[1].counters = 2;
+        state.active_run.as_mut().unwrap().bonus_run_credits = 5;
+        state
+    }
+
+    #[test]
+    fn a_route_is_still_found_and_priced_in_credits_when_its_payments_would_ask() {
+        let registry = whole_pool();
+        let state = an_encounter_where_every_payment_asks(&registry);
+        let view = view(&state, &registry);
+        let found = routes(&view, &registry);
+        assert_eq!(priced(&found), [("corroder".to_string(), 2, 0)], "a pump and a break: 2 credits, whichever pool they come from, and no counters");
+        assert_eq!(found[0].label(&view, &registry), "Break Wall of Static with Corroder · 2 credits");
+    }
+
+    /// Carried out, the same route meets the question for real. The driver
+    /// waits while it stands, the person answers — here, against the search's
+    /// own guess every time — and the route still ends where it was priced.
+    #[test]
+    fn the_driver_waits_for_the_persons_answer_and_the_route_costs_what_it_said_whichever_they_give() {
+        let registry = whole_pool();
+        let mut state = an_encounter_where_every_payment_asks(&registry);
+        let first = view(&state, &registry);
+        let route = routes(&first, &registry).remove(0);
+        let driver = AutoBreak::new(&route, &first, &registry);
+        let (mut submitted, mut asked) = (0, 0);
+        loop {
+            let now = view(&state, &registry);
+            match driver.next(&now, &registry) {
+                Next::Submit(action) => {
+                    state = apply_action(&state, &registry, action).expect("the step is legal").0;
+                    submitted += 1;
+                }
+                Next::Wait if state.pending_payment.is_some() => {
+                    // The search answered with option 0; the person says 1.
+                    assert_eq!(now.legal_actions.len(), 2, "the two pools, and nothing else");
+                    state = apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 1 }).expect("the run's first").0;
+                    asked += 1;
+                }
+                Next::Wait => state = apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Corp }).expect("the Corp passes back").0,
+                Next::Done => break,
+                Next::Stopped(why) => panic!("the driver gave up: {why}"),
+            }
+            assert!(submitted + asked <= 2 * route.steps.len(), "the driver is not making progress");
+        }
+        assert_eq!((submitted, asked), (route.steps.len(), 2), "a pump and a break, each asked about once");
+        assert_eq!(state.runner.rig[1].counters, 2, "The Toolbox was never touched: the person said the run's credits, twice");
+        assert_eq!(state.active_run.as_ref().unwrap().bonus_run_credits, 5 - route.credits, "and it cost what the route said");
+    }
+
     #[test]
     fn the_driver_stops_when_the_price_rises() {
         let registry = sample_deck_registry();
         let mut state = encounter(&registry, "wall_of_static", &["corroder"], 10);
         let first = view(&state, &registry);
-        let driver = AutoBreak::new(&routes(&first, &registry)[0], &first);
+        let driver = AutoBreak::new(&routes(&first, &registry)[0], &first, &registry);
         // The ICE grows between views: the route now needs a second pump.
         let wall = state.active_run.as_ref().unwrap().ice[0].install_id;
         state.lingering.push(LingeringEffect {

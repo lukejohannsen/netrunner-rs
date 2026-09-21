@@ -83,6 +83,16 @@ pub(crate) enum Purpose<'a> {
     TrashCost,
     /// A trace attempt: either player's bid.
     Trace,
+    /// The cost of a paid ability printed on this card. **Three sites state
+    /// it and must all state it:** `engine::activate_ability`, which pays,
+    /// and the two that ask ahead of time whether anybody could —
+    /// `paid_ability::has_usable_paid_ability` (whether a window opens) and
+    /// `prevention::could_prevent`. One of them left at `Other` is the
+    /// disagreement stage 1 of this item was about: an ability only a
+    /// console's credits could pay for, payable and never offered.
+    Ability(&'a CardDefinition),
+    /// The basic action that removes a tag.
+    RemoveTag,
 }
 
 /// A place credits can be taken from. Serialisable because a parked payment
@@ -263,6 +273,8 @@ fn covers(word: &PaysFor, purpose: Purpose<'_>, host: Option<InstallId>, state: 
     match (word, purpose) {
         (PaysFor::TrashCosts, Purpose::TrashCost) => true,
         (PaysFor::TraceAttempts, Purpose::Trace) => true,
+        (PaysFor::UsingIcebreakers, Purpose::Ability(card)) => card_matches_filter(card, &crate::dsl::CardFilter::Icebreaker),
+        (PaysFor::RemovingTags, Purpose::RemoveTag) => true,
         (PaysFor::Installing(filter), Purpose::Install(card)) => card_matches_filter(card, filter),
         (PaysFor::RezzingInThisServer, Purpose::Rez(rezzing)) => {
             let installed = |id: InstallId| state.corp.installed.iter().find(|c| c.install_id == id);
@@ -272,7 +284,15 @@ fn covers(word: &PaysFor, purpose: Purpose<'_>, host: Option<InstallId>, state: 
             let named = registry.get(&rezzing.card).is_some_and(|def| matches!(def.card_type, CardType::Ice(_) | CardType::Asset));
             named && host.slot == InstallSlot::Root && host.server == rezzing.server
         }
-        (PaysFor::TrashCosts | PaysFor::Installing(_) | PaysFor::RezzingInThisServer | PaysFor::TraceAttempts, _) => false,
+        (
+            PaysFor::TrashCosts
+            | PaysFor::Installing(_)
+            | PaysFor::RezzingInThisServer
+            | PaysFor::TraceAttempts
+            | PaysFor::UsingIcebreakers
+            | PaysFor::RemovingTags,
+            _,
+        ) => false,
     }
 }
 
@@ -719,5 +739,41 @@ mod tests {
         assert!(!could_ask(&state), "the run's two pools are one class, and an empty host is no pool");
         state.corp.identity_counters = 2;
         assert!(!could_ask(&state), "one place on each side is not two on either");
+    }
+
+    fn rig_card(id: &str, counters: u32) -> InstalledRunnerCard {
+        InstalledRunnerCard { install_id: fixture_install_id(id), card: CardId(id.to_string()), counters, ..Default::default() }
+    }
+
+    #[test]
+    fn credits_for_using_icebreakers_pay_for_an_icebreakers_ability_and_no_other_cards() {
+        let registry = registry();
+        let mut state = runner_turn(0);
+        state.runner.rig = vec![rig_card("cyberfeeder", 1)];
+        let feeder = Pool::Hosted(fixture_install_id("cyberfeeder"));
+        let of = |id: &str| registry.get(&CardId(id.to_string())).expect("in the pool");
+        let pools = |purpose| sources(&state, &registry, Side::Runner, purpose).into_iter().map(|source| source.pool).collect::<Vec<_>>();
+        assert_eq!(pools(Purpose::Ability(of("corroder"))), vec![feeder, Pool::Wallet], "a fracter's pump or break");
+        assert_eq!(pools(Purpose::Ability(of("madani"))), vec![Pool::Wallet], "a console's ability is not an icebreaker's");
+        assert_eq!(pools(Purpose::Install(of("hantu"))), vec![feeder, Pool::Wallet], "a virus program");
+        assert_eq!(pools(Purpose::Install(of("corroder"))), vec![Pool::Wallet], "a program that is no virus");
+        assert_eq!(pools(Purpose::RemoveTag), vec![Pool::Wallet]);
+    }
+
+    /// `Purpose::Ability` is stated where an ability is paid for and at the
+    /// two places that ask ahead of time whether anybody could pay. Here is
+    /// one of those two: with an empty wallet, whether a window opens for
+    /// Corroder turns on whether Cyberfeeder's credit counts.
+    #[test]
+    fn a_window_opens_for_an_icebreaker_ability_only_a_pool_could_pay_for() {
+        let registry = registry();
+        let mut state = runner_turn(0);
+        state.runner.rig = vec![rig_card("corroder", 0)];
+        state.active_run = Some(RunState { phase: crate::rules::run::RunPhase::EncounterIce, ..Default::default() });
+        let usable = |state: &GameState| crate::rules::paid_ability::has_usable_paid_ability(state, &registry, Side::Runner);
+        let broke = usable(&state);
+        state.runner.rig.push(rig_card("cyberfeeder", 1));
+        assert!(usable(&state), "Cyberfeeder's credit pays for the pump");
+        assert!(!broke, "and without it nothing could: that the first assertion means something");
     }
 }

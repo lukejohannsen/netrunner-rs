@@ -1100,7 +1100,9 @@ fn mask_runner_state(state: &GameState, registry: &CardRegistry, owner_view: boo
         rig: runner.rig.iter().map(|card| mask_installed_runner_card(state, registry, card)).collect(),
         heap: runner.heap.clone(),
         scored_agendas: runner.scored_agendas.clone(),
-        link_strength: runner.link_strength,
+        // Asked, like a strength: the identity's printed link and what the
+        // rig adds. It was a stored field that only the identity ever wrote.
+        link_strength: crate::rules::continuous::link(state, registry),
         servers_run_this_turn: runner.servers_run_this_turn.clone(),
         discarded_this_discard_phase: runner.discarded_this_discard_phase.clone(),
         identity_flipped: runner.identity_flipped,

@@ -399,6 +399,8 @@ pub fn describe_pays_for(word: &PaysFor) -> String {
         PaysFor::Installing(filter) => format!("to install a card matching {}", humanize(format!("{filter:?}"))),
         PaysFor::RezzingInThisServer => "to rez assets in the root of this server and ice protecting it".to_string(),
         PaysFor::TraceAttempts => "during trace attempts".to_string(),
+        PaysFor::UsingIcebreakers => "to pay for using icebreakers".to_string(),
+        PaysFor::RemovingTags => "to take the basic action to remove a tag".to_string(),
     }
 }
 
@@ -427,6 +429,7 @@ pub fn describe_continuous(effect: &ContinuousEffect) -> String {
         ContinuousKind::Strength(number) => format!("gets {} strength", signed(number)),
         ContinuousKind::Memory(number) => format!("gets {} memory", signed(number)),
         ContinuousKind::HandSize(number) => format!("gets {} maximum hand size", signed(number)),
+        ContinuousKind::Link(number) => format!("gets {} link", signed(number)),
         ContinuousKind::InstallCost(number) => format!("costs {} to install", signed(number)),
         ContinuousKind::RezCost(number) => format!("costs {} to rez", signed(number)),
         ContinuousKind::TrashCost(number) => format!("costs {} to trash", signed(number)),

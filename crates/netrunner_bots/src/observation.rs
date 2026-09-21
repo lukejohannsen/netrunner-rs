@@ -268,14 +268,23 @@ fn set_rank(set_code: Option<&str>, id: &str) -> u32 {
     match set_code {
         Some("sg") => 0,
         Some("core") if CORE_AFTER_ELEVATION.contains(&id) => 3,
+        Some("core") if CORE_THIRD_WAVE.contains(&id) => 4,
         Some("core") => 1,
         Some("elev") => 2,
-        _ => 4,
+        _ => 5,
     }
 }
 
 /// See `set_rank`.
 const CORE_AFTER_ELEVATION: [&str; 3] = ["decoy", "net_shield", "sacrificial_construct"];
+
+/// The Core cards whose credit pools compete (Rules Audit backlog item 5).
+/// A list of its own with the next rank, as `set_rank` says the next late
+/// arrival must be: their `01xxx` numbers are *lower* than the second
+/// wave's, so on that list they would have sorted ahead of it and moved the
+/// three slots a test pins. Slots 181..=183 — which leaves the vocabulary
+/// seven free slots of its 191 before a reshape.
+const CORE_THIRD_WAVE: [&str; 3] = ["cyberfeeder", "crash_space", "the_toolbox"];
 
 /// Maps a card id to its plane slot.
 ///
@@ -980,6 +989,7 @@ mod tests {
             let slot = slot_of(&card.id);
             let set = match card.set_code.as_deref() {
                 Some("core") if CORE_AFTER_ELEVATION.contains(&card.id.0.as_str()) => "core, second wave".to_string(),
+                Some("core") if CORE_THIRD_WAVE.contains(&card.id.0.as_str()) => "core, third wave".to_string(),
                 set => set.unwrap_or("none").to_string(),
             };
             highest.entry(set.clone()).and_modify(|top| *top = slot.max(*top)).or_insert(slot);
@@ -990,7 +1000,7 @@ mod tests {
         // then Elevation. A new set adds a pair here and nothing else.
         // A set's later wave (`CORE_AFTER_ELEVATION`) is set apart here as
         // it is in `set_rank`: by when it entered, not by its code.
-        for (earlier, later) in [("sg", "core"), ("core", "elev"), ("elev", "core, second wave")] {
+        for (earlier, later) in [("sg", "core"), ("core", "elev"), ("elev", "core, second wave"), ("core, second wave", "core, third wave")] {
             let (Some(top), Some(bottom)) = (highest.get(earlier), lowest.get(later)) else {
                 panic!("both {earlier} and {later} should be in the playable pool");
             };
@@ -1001,6 +1011,10 @@ mod tests {
         assert_eq!(highest.get("elev"), Some(&177));
         assert_eq!(slot_of(&CardId("decoy".to_string())), 178);
         assert_eq!(slot_of(&CardId("sacrificial_construct".to_string())), 180);
+        // And the third wave after that, by card number within it.
+        assert_eq!(slot_of(&CardId("cyberfeeder".to_string())), 181);
+        assert_eq!(slot_of(&CardId("crash_space".to_string())), 182);
+        assert_eq!(slot_of(&CardId("the_toolbox".to_string())), 183);
     }
 
     /// Every playable card must have its own slot — two cards sharing one

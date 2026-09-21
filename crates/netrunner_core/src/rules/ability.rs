@@ -1847,12 +1847,13 @@ pub(crate) fn trash_card(
                 // occupies this mismatched combination's "top".
                 _ => return Err(RulesError::EmptyZone { side: *side, zone: *zone }),
             };
-            match popped {
-                Some(card) => {
-                    Ok(vec![GameEvent::CardTrashed { side: *side, card }])
-                }
-                None => Err(RulesError::EmptyZone { side: *side, zone: *zone }),
-            }
+            // An empty pile is nothing to trash, not a failure — what
+            // `MillRnDAmount` always said. As an error it refused the whole
+            // resolution: Noise installing a virus against an empty R&D
+            // parked a trigger order neither choice of which could be
+            // applied, and the Runner had no legal action (seed 181 of
+            // Hostile Bid against Pay As You Go, the first deck on Noise).
+            Ok(popped.map(|card| GameEvent::CardTrashed { side: *side, card }).into_iter().collect())
         }
     }
 }
@@ -3244,17 +3245,19 @@ mod tests {
     }
 
     #[test]
-    fn trash_card_top_of_stack_with_empty_deck_errors() {
+    fn trash_card_top_of_stack_with_empty_deck_trashes_nothing() {
         let mut state = game_state();
         // corp.r_and_d is empty by default in game_state() — a valid
-        // side/zone combo, unlike the mismatched-combo case above.
+        // side/zone combo, unlike the mismatched-combo case above, so
+        // there is nothing to trash rather than something wrong.
         assert_eq!(
             evaluate_effect(
                 &mut state,
                 &Effect::TrashCard(CardTarget::TopOfStack { side: Side::Corp, zone: StackZone::RAndD }), &mut ResolutionContext::for_card(None),
                 &CardRegistry::new()),
-            Err(RulesError::EmptyZone { side: Side::Corp, zone: StackZone::RAndD })
+            Ok(Vec::new())
         );
+        assert!(state.corp.archives.is_empty());
     }
 
     #[test]

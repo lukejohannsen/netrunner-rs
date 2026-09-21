@@ -1,0 +1,27 @@
+{
+  "id": "cyberfeeder",
+  "title": "Cyberfeeder",
+  "side": "Runner",
+  "card_type": "Hardware",
+  "cost": 2,
+  "counter_kind": "Credit",
+  "recurring_credits": 1,
+  "pays_for": [
+    "UsingIcebreakers",
+    {
+      "Installing": {
+        "All": [
+          {
+            "CardType": "Program"
+          },
+          {
+            "HasSubtype": "Virus"
+          }
+        ]
+      }
+    }
+  ],
+  "triggers": [],
+  "numeric_id": 1005,
+  "is_playable": true
+}

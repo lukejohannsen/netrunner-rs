@@ -750,7 +750,7 @@ impl Game {
             return Outcome::Nothing;
         }
         let (Some(route), Some(view)) = (self.breaks.get(index), self.view.as_ref()) else { return Outcome::Nothing };
-        let driver = AutoBreak::new(route, view);
+        let driver = AutoBreak::new(route, view, &self.registry);
         match driver.next(view, &self.registry) {
             Next::Submit(step) => {
                 self.menu = None;

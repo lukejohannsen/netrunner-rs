@@ -47,6 +47,19 @@ impl GameState {
 /// question parked on it, and `ResolvePendingChoice` answers by applying
 /// the parked action again with every answer so far recorded. Nothing else
 /// is legal in between, the same as any other parked decision.
+///
+/// **An action parks only if it can succeed.** A handler pays and *then*
+/// does the thing, so a payment's question arrives before an error in the
+/// thing — Gordian Blade asked which credits should pay for breaking a
+/// barrier it cannot break. Parked on the question alone, that action was
+/// offered as legal (the probe saw `Ok`), and once taken every answer
+/// replayed into the error: a player with no legal action at all, found by
+/// the 256-seed view sweep at seed 173, two stages after the mechanism went
+/// in. So before a question is parked, some sequence of answers is shown to
+/// see the action through (`completes`); if none does, the action fails
+/// with the error it would have failed with had nothing asked. The same
+/// rule makes an *answer* legal only if the action can still be completed
+/// after it, so whoever is asked can always answer.
 pub fn apply_action(
     state: &GameState,
     registry: &CardRegistry,
@@ -66,10 +79,7 @@ pub fn apply_action(
             );
             return applied;
         }
-        return match apply_action_once(state, registry, action.clone()) {
-            Err(RulesError::PaymentChoiceNeeded { side, amount, options }) => Ok(park_payment(state, action, side, Vec::new(), amount, options)),
-            other => other,
-        };
+        return settle_payment(state, registry, &action, Vec::new());
     };
     let PlayerAction::ResolvePendingChoice { option_index } = action else {
         return Err(RulesError::ActionBlockedByPendingPayment { side: pending.side });
@@ -77,11 +87,22 @@ pub fn apply_action(
     let answer = *pending.options.get(option_index).ok_or(RulesError::InvalidChoiceIndex(option_index))?;
     let mut answers = pending.answers.clone();
     answers.push(answer);
+    let mut base = state.clone();
+    base.pending_payment = None;
+    settle_payment(&base, registry, &pending.action.clone(), answers)
+}
 
-    let mut replayed = state.clone();
-    replayed.pending_payment = None;
-    replayed.payment_answers = answers.clone();
-    match apply_action_once(&replayed, registry, pending.action.clone()) {
+/// Applies `action` to `base` — a state with nothing parked — with the
+/// payer's `answers` so far. It happens, or fails, or asks again: and it is
+/// parked on a further question only if that question has an answer that
+/// sees the action through.
+fn settle_payment(
+    base: &GameState,
+    registry: &CardRegistry,
+    action: &PlayerAction,
+    answers: Vec<crate::rules::payment::Pool>,
+) -> Result<(GameState, Vec<GameEvent>), RulesError> {
+    match replay_with(base, registry, action, &answers) {
         Ok((next, events)) => {
             // Every answer was given to a question this action asked, in
             // this state; one left over means the replay did not retrace
@@ -89,14 +110,62 @@ pub fn apply_action(
             debug_assert!(next.payment_answers.is_empty(), "a replayed payment left answers unused: {:?}", next.payment_answers);
             Ok((next, events))
         }
-        // A second question — another payment, or a third class of pool.
-        // Parked on the same untouched state, with the answers so far.
         Err(RulesError::PaymentChoiceNeeded { side, amount, options }) => {
-            replayed.payment_answers.clear();
-            Ok(park_payment(&replayed, pending.action.clone(), side, answers, amount, options))
+            let mut failure = None;
+            let answerable = options.iter().any(|option| {
+                let mut further = answers.clone();
+                further.push(*option);
+                completes(base, registry, action, further, &mut failure)
+            });
+            match (answerable, failure) {
+                (true, _) => Ok(park_payment(base, action.clone(), side, answers, amount, options)),
+                (false, Some(error)) => Err(error),
+                // No option at all: `payment::plan` never asks with none.
+                (false, None) => Err(RulesError::PaymentChoiceNeeded { side, amount, options }),
+            }
         }
         Err(other) => Err(other),
     }
+}
+
+/// Whether `action` goes through once `answers` are given, answering any
+/// further question every way until one way does. `failure` keeps the first
+/// error met, which is what the action is refused with if no way does. The
+/// search is over a handful of pools and a question or two; it runs only
+/// when a payment has actually asked.
+fn completes(
+    base: &GameState,
+    registry: &CardRegistry,
+    action: &PlayerAction,
+    answers: Vec<crate::rules::payment::Pool>,
+    failure: &mut Option<RulesError>,
+) -> bool {
+    match replay_with(base, registry, action, &answers) {
+        Ok(_) => true,
+        Err(RulesError::PaymentChoiceNeeded { options, .. }) => options.iter().any(|option| {
+            let mut further = answers.clone();
+            further.push(*option);
+            completes(base, registry, action, further, failure)
+        }),
+        Err(error) => {
+            failure.get_or_insert(error);
+            false
+        }
+    }
+}
+
+fn replay_with(
+    base: &GameState,
+    registry: &CardRegistry,
+    action: &PlayerAction,
+    answers: &[crate::rules::payment::Pool],
+) -> Result<(GameState, Vec<GameEvent>), RulesError> {
+    if answers.is_empty() {
+        return apply_action_once(base, registry, action.clone());
+    }
+    let mut replayed = base.clone();
+    replayed.payment_answers = answers.to_vec();
+    apply_action_once(&replayed, registry, action.clone())
 }
 
 fn park_payment(
@@ -1935,7 +2004,7 @@ fn activate_ability(
             }
             _ => cost.clone(),
         };
-        events.extend(ability::pay_cost_ctx(&mut next, registry, side, &discounted, Purpose::Other, &ability_ctx(is_identity, target, &card_id))?);
+        events.extend(ability::pay_cost_ctx(&mut next, registry, side, &discounted, Purpose::Ability(card_def), &ability_ctx(is_identity, target, &card_id))?);
     }
     events.push(GameEvent::AbilityActivated { side, card_id: card_id.clone(), ability_index });
     events.extend(ability::evaluate_effect(&mut next, &ability.effect, &mut ability_ctx(is_identity, target, &card_id), registry)?);
@@ -2093,7 +2162,7 @@ fn remove_tag(state: &GameState, registry: &CardRegistry) -> Result<(GameState, 
     spend_click(&mut next, side)?;
 
     let mut events = vec![GameEvent::ClickSpent { side }];
-    events.extend(ability::pay_cost(&mut next, registry, side, &Cost::Credits(2), Purpose::Other, None)?);
+    events.extend(ability::pay_cost(&mut next, registry, side, &Cost::Credits(2), Purpose::RemoveTag, None)?);
 
     next.runner.tags -= 1;
     let removed = GameEvent::TagRemoved { side };
