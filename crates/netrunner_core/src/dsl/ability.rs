@@ -72,16 +72,18 @@ pub enum EffectRequirement {
     /// run on HQ succeeds (`RunnerState::first_hq_run_used_this_turn` not
     /// yet consumed this turn) — e.g. Gabriel Santiago.
     FirstSuccessfulHqRunThisTurn,
-    /// Soft-gate only: true exactly once per turn per `tag`, backed by the
-    /// acting side's `once_per_turn_used` set (`CorpState`/`RunnerState`) —
-    /// the generalized replacement for `FirstInstallThisTurn`/
-    /// `FirstSuccessfulHqRunThisTurn`'s one-bool-per-effect pattern, used for
-    /// every *new* once-per-turn gate so a fresh bespoke bool field isn't
-    /// needed each time. Which side's set is consulted is determined by
-    /// context (the card's own `side`, resolved via `acting_card` — see
-    /// `rules::ability::check_requirement`), not carried on this variant
-    /// itself. The two existing bespoke variants are left as-is.
-    OncePerTurn(String),
+    /// A printed "Once per turn →": true until this card has used the
+    /// ability this turn, then false until the next turn begins, either
+    /// side's. **A use limit on the card, not a fact about the turn** —
+    /// what was used is `once_per_turn_used` on the card's side, keyed by
+    /// the card and which copy of it (`OncePerTurnKey`), so three Telework
+    /// Contracts have three uses. It carried a free-form tag until the
+    /// view began carrying the set; every card file spelled the tag as its
+    /// own id, and a shared string was a shared use. Checked read-only by
+    /// `check_requirement` and spent by `consume_requirement` where the
+    /// ability is actually used: a trigger that fired, a paid ability that
+    /// resolved, an install that took a discount.
+    OncePerTurn,
     /// The Runner's credit total is at most `0` — e.g. Whitespace's second
     /// subroutine ("if the Runner has 6 credits or less, end the run").
     RunnerCreditsAtMost(u32),

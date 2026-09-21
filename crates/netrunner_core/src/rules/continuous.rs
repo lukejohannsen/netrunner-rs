@@ -429,7 +429,7 @@ mod tests {
     fn two_copies_of_a_first_time_each_turn_discount_stack_and_are_each_spent() {
         let mut optimizer =
             prints("optimizer", Side::Runner, CardType::Hardware, ContinuousKind::InstallCost(flat(-1)), Scope::Installing(CardFilter::CardType(CardType::Program)));
-        optimizer.continuous[0].condition = Some(EffectRequirement::OncePerTurn("first_program".to_string()));
+        optimizer.continuous[0].condition = Some(EffectRequirement::OncePerTurn);
         let program = blank("program", Side::Runner, CardType::Program, 3);
         let hardware = blank("hardware", Side::Runner, CardType::Hardware, 3);
         let registry = CardRegistry::from_cards(vec![optimizer, program.clone(), hardware.clone()]);

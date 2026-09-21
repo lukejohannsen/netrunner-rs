@@ -20,9 +20,7 @@
           ]
         }
       },
-      "while": {
-        "OncePerTurn": "first_install_discount"
-      },
+      "while": "OncePerTurn",
       "text": "Lower the install cost of the first program or piece of hardware you install each turn by 1."
     }
   ],

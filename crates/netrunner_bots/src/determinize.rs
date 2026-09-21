@@ -646,7 +646,10 @@ pub fn determinize(view: &ClientView, registry: &CardRegistry, rng: &mut impl Rn
         // trace-bid range in the sample.
         recurring_credits: view.corp.recurring_credits,
         recurring_credits_max: view.corp.recurring_credits_max,
-        once_per_turn_used: std::collections::HashSet::new(),
+        // Public, and carried: which once-per-turn abilities are spent. A
+        // Runner's view leaves out a use by a facedown Corp install, which
+        // the sample then believes unspent — the one approximation left.
+        once_per_turn_used: view.corp.once_per_turn_used.iter().cloned().collect(),
         // Not carried by `ClientView`, and a rollout re-derives it from its
         // own play-out — the same approximation as `installed_this_turn`.
         extra_clicks_next_turn: 0,
@@ -733,7 +736,7 @@ pub fn determinize(view: &ClientView, registry: &CardRegistry, rng: &mut impl Rn
         heap: view.runner.heap.clone(),
         link_strength: view.runner.link_strength,
         first_hq_run_used_this_turn: false,
-        once_per_turn_used: std::collections::HashSet::new(),
+        once_per_turn_used: view.runner.once_per_turn_used.iter().cloned().collect(),
         servers_run_this_turn: view.runner.servers_run_this_turn.clone(),
         discarded_this_discard_phase: view.runner.discarded_this_discard_phase.clone(),
         identity_flipped: view.runner.identity_flipped,
@@ -762,14 +765,14 @@ pub fn determinize(view: &ClientView, registry: &CardRegistry, rng: &mut impl Rn
         // real one about the turn number would mis-evaluate any "on turn N"
         // effect the search looks ahead through.
         turn: view.turn,
-        // The two facts about the turn a view states — public, and read by
-        // the engine (Carmen's discount, Petty Cash) and the evaluator's run
-        // term alike, so a sample that forgot this turn's success priced
-        // the next one as the first.
-        this_turn: netrunner_core::rules::turn_log::TurnLog::from_what_a_view_shows(view.actions_taken_this_turn, view.runner.made_successful_run_this_turn),
-        // Not carried by `ClientView`: a sample's last turn is empty, so
-        // Public Trail is unplayable inside one.
-        last_turn: netrunner_core::rules::turn_log::LastTurn::default(),
+        // Public and carried whole (`rules::turn_log`): the sample agrees
+        // with the real state about what has happened this turn and last.
+        // It was rebuilt from two facts — the actions finished and whether
+        // a run had succeeded — so inside a sample no operation had been
+        // played, no agenda scored (Neurospike dealt 0) and the last turn
+        // was empty (Public Trail and Measured Response unplayable).
+        this_turn: view.this_turn,
+        last_turn: view.last_turn,
         active_run,
         paid_ability_window: view.paid_ability_window.clone(),
         active_trace: view.active_trace.clone(),
@@ -952,7 +955,7 @@ mod tests {
                 bad_publicity: 0,
                 first_install_used_this_turn: false,
                 recurring_credits: 0,
-                recurring_credits_max: 0, removed_from_game: Vec::new(), once_per_turn_used: std::collections::HashSet::new(),
+                recurring_credits_max: 0, removed_from_game: Vec::new(), once_per_turn_used: Default::default(),
                 scored_agendas: Vec::new(),
                 playable_from_archives: Vec::new(),
                 resources: PR { credits: Cr(5), clicks: C(3), agenda_points: AP(0) },
@@ -982,7 +985,7 @@ mod tests {
                 heap: Vec::new(),
                 link_strength: 0,
                 first_hq_run_used_this_turn: false,
-                once_per_turn_used: std::collections::HashSet::new(), servers_run_this_turn: Vec::new(), discarded_this_discard_phase: Vec::new(), identity_flipped: false,
+                once_per_turn_used: Default::default(), servers_run_this_turn: Vec::new(), discarded_this_discard_phase: Vec::new(), identity_flipped: false,
             },
             phase: GamePhase::Action(Side::Runner),
             seed: 1,
@@ -1454,6 +1457,46 @@ mod tests {
             assert_eq!(sampled.corp.recurring_credits_max, 3, "{side:?}");
             // Rezzed, so its counters are visible to both sides.
             assert_eq!(sampled.corp.installed[0].counters, 4, "{side:?}");
+        }
+    }
+
+    /// What has happened this turn is public and a sample keeps it. It was
+    /// rebuilt from two facts, so inside a sample the last turn was empty
+    /// (Public Trail unplayable), no agenda had been scored (Neurospike
+    /// dealt 0) and every once-per-turn ability was unspent.
+    #[test]
+    fn the_turn_survives_determinization_and_a_facedown_use_is_not_shown_to_the_runner() {
+        use netrunner_core::dsl::Trigger;
+        use netrunner_core::rules::{GameEvent, InstallId, OncePerTurnKey, ServerId};
+        let registry = registry();
+        let mut state = CoreGameState::new(0);
+        state.phase = GamePhase::Action(Side::Corp);
+        state.last_turn = vec![(Trigger::OnSuccessfulRun, 2)].into();
+        let scored = GameEvent::AgendaScored { card: CardId("corp_agenda_0".to_string()), agenda_points: 2, server: ServerId::Remote(0) };
+        netrunner_core::rules::dispatch_event(&mut state, &registry, &scored).expect("scored");
+        let install = |id: u32, rezzed| InstalledCard {
+            card: CardId("corp_ice_0".to_string()),
+            install_id: InstallId(id),
+            server: ServerId::Remote(0),
+            slot: CoreInstallSlot::Ice,
+            rezzed,
+            ..Default::default()
+        };
+        state.corp.installed = vec![install(1, true), install(2, false)];
+        let used = |id: u32| OncePerTurnKey { card: Some(CardId("corp_ice_0".to_string())), install: Some(InstallId(id)) };
+        state.corp.once_per_turn_used = [used(1), used(2)].into_iter().collect();
+        let telework = OncePerTurnKey { card: Some(CardId("telework_contract".to_string())), install: Some(InstallId(9)) };
+        state.runner.once_per_turn_used = [telework.clone()].into_iter().collect();
+
+        for side in [Side::Corp, Side::Runner] {
+            let view = build_client_view(&state, &registry, side);
+            let sampled = determinize(&view, &registry, &mut StdRng::seed_from_u64(7));
+            assert_eq!(sampled.this_turn, state.this_turn, "{side:?}");
+            assert_eq!(sampled.this_turn.agenda_points_scored(), 2, "{side:?}");
+            assert_eq!(sampled.last_turn.times(Trigger::OnSuccessfulRun), 2, "{side:?}");
+            assert!(sampled.runner.once_per_turn_used.contains(&telework), "{side:?}: the rig is faceup");
+            assert!(sampled.corp.once_per_turn_used.contains(&used(1)), "{side:?}: a rezzed card's use is public");
+            assert_eq!(sampled.corp.once_per_turn_used.contains(&used(2)), side == Side::Corp, "{side:?}: a facedown card's use would name it");
         }
     }
 

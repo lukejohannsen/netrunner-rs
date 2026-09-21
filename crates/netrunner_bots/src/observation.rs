@@ -501,7 +501,7 @@ fn encode_scalars(view: &ClientView, features: &mut Vec<f32>) {
 
     features.push(flag(view.active_player == side));
     features.push(norm(view.turn as f32, MAX_TURNS));
-    features.push(norm(view.actions_taken_this_turn as f32, MAX_ACTIONS_PER_TURN));
+    features.push(norm(view.this_turn.actions_finished() as f32, MAX_ACTIONS_PER_TURN));
     features.push(norm(view.corp.recurring_credits as f32, MAX_RECURRING_CREDITS));
     features.push(norm(view.corp.recurring_credits_max as f32, MAX_RECURRING_CREDITS));
     features.push(norm(view.corp.identity_counters as f32, MAX_IDENTITY_COUNTERS));

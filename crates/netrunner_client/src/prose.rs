@@ -460,7 +460,7 @@ mod tests {
     fn humanize_splits_camel_case_and_drops_brackets() {
         assert_eq!(humanize("FirstInstallThisTurn".to_string()), "first install this turn");
         assert_eq!(humanize("RunnerCreditsAtMost(3)".to_string()), "runner credits at most 3");
-        assert_eq!(humanize("OncePerTurn(\"x\")".to_string()), "once per turn x");
+        assert_eq!(humanize("InHeapWithSubtype(\"x\")".to_string()), "in heap with subtype x");
     }
 
     /// "On HQ" left the trigger's name for the card's own filter, and the

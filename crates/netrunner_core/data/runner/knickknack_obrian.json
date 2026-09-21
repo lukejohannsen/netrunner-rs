@@ -12,9 +12,7 @@
     {
       "trigger": "OnRunStart",
       "subject": "Any",
-      "requirement": {
-        "OncePerTurn": "knickknack_obrian"
-      },
+      "requirement": "OncePerTurn",
       "effects": [
         {
           "PresentChoice": {

@@ -12,9 +12,7 @@
       "cost": {
         "Clicks": 1
       },
-      "requirement": {
-        "OncePerTurn": "topan"
-      },
+      "requirement": "OncePerTurn",
       "effect": {
         "PromptChooseCards": {
           "side": "Runner",

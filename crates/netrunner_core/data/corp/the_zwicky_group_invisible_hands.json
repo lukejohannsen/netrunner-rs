@@ -17,9 +17,7 @@
           ]
         }
       },
-      "requirement": {
-        "OncePerTurn": "the_zwicky_group_invisible_hands"
-      },
+      "requirement": "OncePerTurn",
       "effects": [
         {
           "DrawCards": [

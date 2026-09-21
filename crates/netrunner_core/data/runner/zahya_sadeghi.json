@@ -15,9 +15,7 @@
           {
             "And": [
               "AccessedAnyCardDuringLastRun",
-              {
-                "OncePerTurn": "zahya_sadeghi"
-              }
+              "OncePerTurn"
             ]
           }
         ]

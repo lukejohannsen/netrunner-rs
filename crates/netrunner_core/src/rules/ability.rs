@@ -2402,12 +2402,12 @@ pub fn check_requirement(
             }
             Ok(())
         }
-        EffectRequirement::OncePerTurn(tag) => {
+        EffectRequirement::OncePerTurn => {
             let used = match side {
                 Side::Corp => &state.corp.once_per_turn_used,
                 Side::Runner => &state.runner.once_per_turn_used,
             };
-            if used.contains(&OncePerTurnKey { tag: tag.clone(), install: ctx.acting_install }) {
+            if used.contains(&OncePerTurnKey { card: ctx.acting_card.cloned(), install: ctx.acting_install }) {
                 return Err(RulesError::RequirementNotMet);
             }
             Ok(())
@@ -2826,12 +2826,12 @@ pub(crate) fn consume_requirement(
         EffectRequirement::IsTagged => {}
         EffectRequirement::FirstInstallThisTurn => state.corp.first_install_used_this_turn = true,
         EffectRequirement::FirstSuccessfulHqRunThisTurn => state.runner.first_hq_run_used_this_turn = true,
-        EffectRequirement::OncePerTurn(tag) => {
+        EffectRequirement::OncePerTurn => {
             let used = match side {
                 Side::Corp => &mut state.corp.once_per_turn_used,
                 Side::Runner => &mut state.runner.once_per_turn_used,
             };
-            used.insert(OncePerTurnKey { tag: tag.clone(), install: ctx.acting_install });
+            used.insert(OncePerTurnKey { card: ctx.acting_card.cloned(), install: ctx.acting_install });
         }
         EffectRequirement::And(a, b) => {
             consume_requirement(state, a, side, ctx);
@@ -3294,7 +3294,7 @@ mod tests {
     #[test]
     fn once_per_turn_requirement_fires_once_then_is_silently_skipped_on_a_second_attempt() {
         let mut state = game_state();
-        let requirement = EffectRequirement::OncePerTurn("test_tag".to_string());
+        let requirement = EffectRequirement::OncePerTurn;
 
         assert_eq!(check_requirement(&state, &requirement, Side::Runner, &ResolutionContext::for_card(None), &CardRegistry::new()), Ok(()));
         consume_requirement(&mut state, &requirement, Side::Runner, &ResolutionContext::default());
@@ -3311,8 +3311,8 @@ mod tests {
     fn once_per_turn_requirement_resets_at_the_next_turn_start() {
         let mut state = game_state();
         state.phase = GamePhase::Action(Side::Runner);
-        let requirement = EffectRequirement::OncePerTurn("docklands_pass".to_string());
-        state.runner.once_per_turn_used.insert(OncePerTurnKey { tag: "docklands_pass".to_string(), install: None });
+        let requirement = EffectRequirement::OncePerTurn;
+        state.runner.once_per_turn_used.insert(OncePerTurnKey { card: None, install: None });
         assert_eq!(check_requirement(&state, &requirement, Side::Runner, &ResolutionContext::for_card(None), &CardRegistry::new()), Err(RulesError::RequirementNotMet));
 
         crate::rules::turn::enter_start_of_turn(&mut state, &mut Vec::new(), Side::Runner, &CardRegistry::new()).unwrap();

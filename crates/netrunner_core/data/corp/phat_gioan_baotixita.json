@@ -19,9 +19,7 @@
     {
       "trigger": "OnAgendaScored",
       "subject": "Any",
-      "requirement": {
-        "OncePerTurn": "phat_gioan_baotixita"
-      },
+      "requirement": "OncePerTurn",
       "effects": [
         {
           "OfferPaidChoice": {
@@ -64,9 +62,7 @@
     {
       "trigger": "OnAgendaStolen",
       "subject": "Any",
-      "requirement": {
-        "OncePerTurn": "phat_gioan_baotixita"
-      },
+      "requirement": "OncePerTurn",
       "effects": [
         {
           "OfferPaidChoice": {

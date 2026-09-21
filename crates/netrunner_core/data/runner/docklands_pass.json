@@ -13,9 +13,7 @@
           "Hq"
         ]
       },
-      "requirement": {
-        "OncePerTurn": "docklands_pass"
-      },
+      "requirement": "OncePerTurn",
       "effects": [
         {
           "AddAdditionalAccess": {

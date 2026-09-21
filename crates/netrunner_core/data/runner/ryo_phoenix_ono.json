@@ -11,9 +11,7 @@
       "subject": "Any",
       "requirement": {
         "And": [
-          {
-            "OncePerTurn": "ryo_phoenix_ono"
-          },
+          "OncePerTurn",
           "SubroutineResolvedThisRun"
         ]
       },
