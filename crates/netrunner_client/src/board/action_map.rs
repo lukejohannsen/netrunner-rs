@@ -1002,10 +1002,12 @@ mod tests {
         let PlayerAction::InstallCard { card_id, zone, .. } = &map.entries[install].action else { unreachable!() };
         assert!(map.for_hand_card(card_id).contains(&install));
         assert!(map.for_server(*zone).contains(&install));
-        assert!(map.globals().iter().any(|i| matches!(map.entries[*i].action, PlayerAction::EndTurn)), "End turn is on no target");
-        assert_eq!(map.for_control(Control::EndTurn).map(|i| &map.entries[i].action), Some(&PlayerAction::EndTurn), "and on the bar");
-        assert!(map.for_control(Control::Draw).is_some_and(|i| map.for_server(ServerId::RnD).contains(&i)), "a draw is on the bar and on R&D");
-        assert!(!map.decisions().iter().any(|i| matches!(map.entries[*i].action, PlayerAction::EndTurn)), "a bar action is not a decision");
+        // The Corp has clicks, so End turn is not legal (CR 5.6.2b) and
+        // its button is greyed; the bar's other buttons are on the map.
+        assert_eq!(map.for_control(Control::EndTurn), None, "no End turn with clicks left");
+        let draw = map.for_control(Control::Draw).expect("a draw is on the bar");
+        assert!(map.for_server(ServerId::RnD).contains(&draw), "and on R&D");
+        assert!(!map.decisions().contains(&draw), "a bar action is not a decision");
         assert_eq!(map.for_control(Control::JackOut), None, "no run, no jack out");
         assert!(map.explain(install, &registry, &view).unwrap().contains("install"));
         assert_eq!(Prompt::of(&view, &registry), None, "an ordinary action phase has no heading");

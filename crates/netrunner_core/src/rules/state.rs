@@ -530,7 +530,7 @@ pub struct RunnerState {
     /// `DiscardCard` is its own action, and the identity's "you may
     /// install" parks a decision that resolves one action later still.
     /// Written by `turn::discard_card`, cleared when the Runner's next
-    /// discard phase begins (`turn::finish_end_turn`), so between the two
+    /// discard phase begins (`turn::begin_discard_step`), so between the two
     /// it is exactly the last phase's discards and nothing else.
     #[serde(default)]
     pub discarded_this_discard_phase: Vec<CardId>,
@@ -625,13 +625,17 @@ pub enum GamePhase {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum WindowCheckpoint {
     Run,
-    /// Opened once `side`'s mandatory start-of-turn steps (click refill,
-    /// mandatory draw, `Trigger::OnTurnStart` reactions) have already
-    /// resolved. Closing sets `state.phase = GamePhase::Action(side)`.
+    /// The turn's first window, after `side` gains its clicks and before
+    /// recurring credits refill and the turn formally begins (CR 5.6.1b,
+    /// 5.7.1b). Closing resumes the turn: `turn::begin_turn`.
+    TurnBeginning { side: Side },
+    /// Opened once the turn has formally begun and, for the Corp, the
+    /// mandatory draw is made — the window ahead of the first action (CR
+    /// 5.6.2a, 5.7.1e). Closing sets `state.phase = GamePhase::Action(side)`.
     StartOfTurn { side: Side },
-    /// Opened once `side`'s end-of-turn cleanup (turn-duration strength-buff
-    /// reset) has resolved, before the mandatory hand-size check. Closing
-    /// resumes exactly where `turn::end_turn` paused: `turn::finish_end_turn`.
+    /// The discard phase's window, after `side` has discarded to its
+    /// maximum hand size (CR 5.6.3b, 5.7.2b). Closing loses the unspent
+    /// clicks and ends the turn: `turn::finish_turn`.
     EndOfTurn { side: Side },
     /// The players are being asked about something parked in
     /// `GameState::pending_prevention` — opened by `rules::prevention`, and

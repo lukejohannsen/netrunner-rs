@@ -197,6 +197,7 @@ fn note(view: &ClientView) -> Option<String> {
     };
     let what = match window.checkpoint {
         WindowCheckpoint::Run => "during the run",
+        WindowCheckpoint::TurnBeginning { .. } => "as the turn begins",
         WindowCheckpoint::StartOfTurn { .. } => "at the start of the turn",
         WindowCheckpoint::EndOfTurn { .. } => "at the end of the turn",
         WindowCheckpoint::Prevention => "to prevent what is happening",

@@ -40,10 +40,9 @@ impl ScriptedAgent {
     /// The fallback, in order of preference. `KeepHand` and `PassPriority`
     /// first because they are the "nothing happens" answers to the
     /// decisions the engine forces on every seat; `GainCreditClick` before
-    /// `EndTurn` so the opponent spends its clicks (an opponent that ends
-    /// with three clicks unspent is a stranger board than one that clicked
-    /// for credits, and a Corp that never draws would deck out no sooner
-    /// either way); `DiscardCard` for the discard phase; and the first
+    /// `EndTurn`, which the engine offers only once the clicks are spent
+    /// (a Corp that never draws would deck out no sooner either way);
+    /// `DiscardCard` for the discard phase; and the first
     /// `ContinueRun`/`CompleteRun` so a *scripted* run — the only kind this
     /// agent makes — carries through to its access rather than jacking
     /// out; and the first legal action for anything else — a pending choice

@@ -214,11 +214,12 @@ fn close_window(
     }
     match checkpoint {
         WindowCheckpoint::Run => close_run_window(state, registry),
+        WindowCheckpoint::TurnBeginning { side } => turn::begin_turn(state, side, registry),
         WindowCheckpoint::StartOfTurn { side } => {
             state.phase = GamePhase::Action(side);
             Ok(Vec::new())
         }
-        WindowCheckpoint::EndOfTurn { side } => turn::finish_end_turn(state, side, registry),
+        WindowCheckpoint::EndOfTurn { side } => turn::finish_turn(state, side, registry),
         WindowCheckpoint::Prevention => prevention::finish(state, registry),
         WindowCheckpoint::PostAction { side } => {
             // Nothing to resume — the window never changed the phase, and

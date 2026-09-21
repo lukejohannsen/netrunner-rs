@@ -313,7 +313,7 @@ fn apply_action_once(
         }
         PlayerAction::EndTurn => turn::end_turn(state, registry),
         PlayerAction::DiscardCard { card_id } => turn::discard_card(state, card_id, registry),
-        PlayerAction::KeepHand => setup::keep_hand(state, registry),
+        PlayerAction::KeepHand => setup::keep_hand(state),
         PlayerAction::TakeMulligan => setup::take_mulligan(state, registry),
         PlayerAction::ActivateAbility { target, ability_index } => {
             activate_ability(state, registry, target, ability_index)

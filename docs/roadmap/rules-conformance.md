@@ -84,11 +84,16 @@ fixes them. The letters are this file's addresses: "Rules Conformance B1".
   - 5.6.1b–e: a (P)(R)(S) window, then the refill, then the turn begins, then the draw.
   - Au Co.'s look at the top 3 of R&D sees the wrong three.
   - Neither side has its draw-phase window (5.6.1b, 5.7.1b).
+  - **Fixed** (`fix/turn-structure-cr-5-6-5-7`): clicks, a new `WindowCheckpoint::TurnBeginning`
+    window, the refill, `TurnStarted`, the Corp's draw, then the window ahead of the first action.
+    A Corp with an empty R&D now loses at the draw, after its turn has begun.
 - **C2 End-of-turn order.** The rules go discard, then the window, then the clicks are lost
-  (5.6.3, 5.7.2). The engine zeroes the clicks first. Cosmetic.
+  (5.6.3, 5.7.2). The engine zeroes the clicks first. Cosmetic. **Fixed**: the action phase
+  ends, the discard, the window, the clicks are lost, then `TurnEnded` and `DiscardPhaseEnded`.
 - **C3 The turn can be ended with clicks left** (5.6.2b, 9.2.6b: a player must take an action while
   clicks remain). Decided 21 September 2026: enforce the rule. `EndTurn` stops being legal while
-  clicks remain, and the clients' "ask twice" path goes.
+  clicks remain, and the clients' "ask twice" path goes. **Fixed**: `RulesError::ClicksRemain`;
+  the desktop's Enter no longer arms, and AGENTS.md says so.
 
 **D. Runs and access (6.9, 7.1, 7.2)**
 - **D1 ✔ The Runner can pay to trash a card in Archives** (7.1.5b forbids it). Neither
@@ -160,6 +165,20 @@ four reports differ, as any change to play re-rolls them. Two deltas are the fix
 
 The rest is trajectory drift (steps 76,818 → 77,338 random). Both 256-seed sweeps are clean,
 coverage gate included.
+
+**Measured, C1–C3** (`scripts/coverage_identical.py main`, 192 games a report, seeds 1–3):
+- **The random Corp scores about twice as often:** `AgendaScored` 13 → 29, 16 → 31 and
+  15 → 25. That is C3. A random Corp used to pick `EndTurn` among its options and gave up
+  about a quarter of its clicks (2.22 click actions a turn, 2.71 now), so it advanced less
+  (`AdvanceCard` 523 → 708 on seed 1). The random Runner decks out less for the same reason
+  (26 → 21, 22 → 13).
+- **The heuristic seatings show nothing:** `AgendaScored` 183 → 145, 158 → 154 and 150 → 172,
+  and Corp point wins 32 → 22, 24 → 31 and 24 → 28, with opposite signs across seeds. The
+  heuristic Corp already spent its clicks (2.95 of 3 a turn before and after).
+- **Steps rise about 9% heuristic, 15% random:** the new window adds two passes at each
+  turn's start (`PaidAbilityWindowOpened` 23,295 → 27,502 heuristic, seed 2).
+
+Both 256-seed sweeps are clean, coverage gate included.
 
 **Fix order, one PR each:**
 1. G, which does not touch play.
@@ -262,8 +281,8 @@ with the rule quoted.
 | 5.3 | Draw Phase | unreviewed |  |
 | 5.4 | Action Phase | unreviewed |  |
 | 5.5 | Discard Phase | conforms | E2 fixed: a hand size below 0 flatlines at the discard step. HQ discards go facedown; matches. |
-| 5.6 | Steps of the Corp's Turn | deviates | C1, C2, C3. |
-| 5.7 | Steps of the Runner's Turn | deviates | C1 (no draw-phase window), C2, C3, D3 (5.7.1e). |
+| 5.6 | Steps of the Corp's Turn | deviates | D3 only: what each window permits. C1, C2 and C3 fixed; the steps run in the listed order. |
+| 5.7 | Steps of the Runner's Turn | deviates | D3 only (5.7.1e). C1, C2 and C3 fixed; the steps run in the listed order. |
 
 ### 6. Runs
 

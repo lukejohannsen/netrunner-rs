@@ -37,7 +37,7 @@ fn close_all_windows(mut state: GameState, registry: &CardRegistry) -> (GameStat
 /// was with a window open, so a test that read the phase straight off it
 /// (T400 Memory Diamond's did) passed whatever the hand limit was.
 fn discards_owed_at_end_of_turn(state: &GameState, registry: &CardRegistry) -> usize {
-    let (state, mut events) = apply_action(state, registry, PlayerAction::EndTurn).expect("end turn");
+    let (state, mut events) = apply_action(&crate::rules::test_support::clicks_spent(state), registry, PlayerAction::EndTurn).expect("end turn");
     let (_, closing) = close_all_windows(state, registry);
     events.extend(closing);
     events
@@ -364,9 +364,9 @@ fn pad_campaign_gains_one_credit_at_the_start_of_the_corps_next_turn() {
 
     // Corp's own turn ending doesn't refire their own start-of-turn — only
     // the Runner's turn ending (advancing back to the Corp) does.
-    let (state, _) = apply_action(&state, &registry, PlayerAction::EndTurn).expect("corp ends turn");
+    let (state, _) = apply_action(&crate::rules::test_support::clicks_spent(&state), &registry, PlayerAction::EndTurn).expect("corp ends turn");
     let (state, _) = close_all_windows(state, &registry);
-    let (state, mut events) = apply_action(&state, &registry, PlayerAction::EndTurn).expect("runner ends turn");
+    let (state, mut events) = apply_action(&crate::rules::test_support::clicks_spent(&state), &registry, PlayerAction::EndTurn).expect("runner ends turn");
     let (state, close_events) = close_all_windows(state, &registry);
     events.extend(close_events);
 
@@ -3500,9 +3500,9 @@ mod system_gateway {
         assert_eq!(state.corp.installed[0].counters, 9);
         assert!(events.iter().any(|e| matches!(e, crate::rules::GameEvent::CountersAdded { amount: 9, .. })));
 
-        let (state, _) = apply_action(&state, &registry, PlayerAction::EndTurn).expect("corp ends turn");
+        let (state, _) = apply_action(&crate::rules::test_support::clicks_spent(&state), &registry, PlayerAction::EndTurn).expect("corp ends turn");
         let (state, _) = close_all_windows(state, &registry);
-        let (state, mut events) = apply_action(&state, &registry, PlayerAction::EndTurn).expect("runner ends turn");
+        let (state, mut events) = apply_action(&crate::rules::test_support::clicks_spent(&state), &registry, PlayerAction::EndTurn).expect("runner ends turn");
         let (state, close_events) = close_all_windows(state, &registry);
         events.extend(close_events);
 
@@ -3522,9 +3522,9 @@ mod system_gateway {
         state.corp.r_and_d = vec![CardId("filler_card".to_string()), CardId("filler_card".to_string())];
         state.corp.installed = vec![installed_with_counters("nico_campaign", ServerId::Remote(0), 3)];
 
-        let (state, _) = apply_action(&state, &registry, PlayerAction::EndTurn).expect("corp ends turn");
+        let (state, _) = apply_action(&crate::rules::test_support::clicks_spent(&state), &registry, PlayerAction::EndTurn).expect("corp ends turn");
         let (state, _) = close_all_windows(state, &registry);
-        let (state, mut events) = apply_action(&state, &registry, PlayerAction::EndTurn).expect("runner ends turn");
+        let (state, mut events) = apply_action(&crate::rules::test_support::clicks_spent(&state), &registry, PlayerAction::EndTurn).expect("runner ends turn");
         let (state, close_events) = close_all_windows(state, &registry);
         events.extend(close_events);
 
@@ -3568,9 +3568,9 @@ mod system_gateway {
         .expect("load 3 credits onto it");
         assert_eq!(state.runner.rig[0].counters, 3);
 
-        let (state, _) = apply_action(&state, &registry, PlayerAction::EndTurn).expect("runner ends turn");
+        let (state, _) = apply_action(&crate::rules::test_support::clicks_spent(&state), &registry, PlayerAction::EndTurn).expect("runner ends turn");
         let (state, _) = close_all_windows(state, &registry);
-        let (state, mut events) = apply_action(&state, &registry, PlayerAction::EndTurn).expect("corp ends turn");
+        let (state, mut events) = apply_action(&crate::rules::test_support::clicks_spent(&state), &registry, PlayerAction::EndTurn).expect("corp ends turn");
         let (state, close_events) = close_all_windows(state, &registry);
         events.extend(close_events);
 
@@ -3593,9 +3593,9 @@ mod system_gateway {
         state.runner.rig = vec![rig_card_with_counters("smartware_distributor", 1)];
         state.corp.r_and_d = vec![CardId("filler_card".to_string())];
 
-        let (state, _) = apply_action(&state, &registry, PlayerAction::EndTurn).expect("runner ends turn");
+        let (state, _) = apply_action(&crate::rules::test_support::clicks_spent(&state), &registry, PlayerAction::EndTurn).expect("runner ends turn");
         let (state, _) = close_all_windows(state, &registry);
-        let (state, _) = apply_action(&state, &registry, PlayerAction::EndTurn).expect("corp ends turn");
+        let (state, _) = apply_action(&crate::rules::test_support::clicks_spent(&state), &registry, PlayerAction::EndTurn).expect("corp ends turn");
         let (state, _) = close_all_windows(state, &registry);
 
         assert_eq!(state.runner.rig[0].counters, 0);
@@ -4300,7 +4300,7 @@ mod system_gateway {
     /// the common "advance one full turn boundary" shape every step below
     /// reuses.
     fn end_turn_and_settle(state: GameState, registry: &CardRegistry) -> (GameState, Vec<crate::rules::GameEvent>) {
-        let (state, events) = apply_action(&state, registry, PlayerAction::EndTurn).expect("end turn");
+        let (state, events) = apply_action(&crate::rules::test_support::clicks_spent(&state), registry, PlayerAction::EndTurn).expect("end turn");
         let (state, more_events) = close_all_windows(state, registry);
         let mut all = events;
         all.extend(more_events);
@@ -5196,13 +5196,17 @@ mod system_gateway {
         // Two cards against three meat damage: a flatline.
         state.runner.grip = vec![CardId("grip_card_0".to_string()), CardId("grip_card_1".to_string())];
 
-        let (state, _) = apply_action(&state, &registry, PlayerAction::EndTurn).expect("corp ends turn");
+        let (state, _) = apply_action(&crate::rules::test_support::clicks_spent(&state), &registry, PlayerAction::EndTurn).expect("corp ends turn");
         let (state, _) = close_all_windows(state, &registry);
-        let (state, _) = apply_action(&state, &registry, PlayerAction::EndTurn).expect("runner ends turn");
+        let (state, _) = apply_action(&crate::rules::test_support::clicks_spent(&state), &registry, PlayerAction::EndTurn).expect("runner ends turn");
         let (state, _) =
             apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner passes end-of-turn");
         let (state, _) =
-            apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Corp }).expect("corp passes, entering their start of turn");
+            apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Corp }).expect("corp passes, entering their turn");
+        let (state, _) =
+            apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Corp }).expect("corp passes the window before the turn begins");
+        let (state, _) =
+            apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner passes, the turn begins");
         assert!(state.paid_ability_window.is_some(), "the start-of-turn window is open over the parked choice");
 
         let (state, events) = apply_action(&state, &registry, PlayerAction::AcceptPendingPaidChoice { cost_option_index: None })
@@ -5316,10 +5320,14 @@ mod system_gateway {
 
         // Corp ends its turn; the Runner's turn start fires both Fermenters,
         // and two same-side reactors hand the Runner the order.
-        let (state, _) = apply_action(&state, &registry, PlayerAction::EndTurn).expect("corp ends turn");
+        let (state, _) = apply_action(&crate::rules::test_support::clicks_spent(&state), &registry, PlayerAction::EndTurn).expect("corp ends turn");
         let (state, _) = apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Corp }).expect("pass");
         let (state, _) =
             apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Runner }).expect("pass, runner turn starts");
+        let (state, _) =
+            apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner passes the window before the turn begins");
+        let (state, _) =
+            apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Corp }).expect("corp passes, the turn begins");
         assert!(
             matches!(state.pending_decision, Some(crate::rules::PendingDecision::ChooseTriggerOrder { .. })),
             "{:?}",
@@ -5423,11 +5431,16 @@ mod system_gateway {
         state.corp.installed = vec![clearinghouse(6001, ServerId::Remote(0), 0), clearinghouse(6002, ServerId::Remote(1), 3)];
         state.runner.grip = (0..5).map(|i| CardId(format!("grip_{i}"))).collect();
 
-        let (state, _) = apply_action(&state, &registry, PlayerAction::EndTurn).expect("corp ends turn");
+        let (state, _) = apply_action(&crate::rules::test_support::clicks_spent(&state), &registry, PlayerAction::EndTurn).expect("corp ends turn");
         let (state, _) = close_all_windows(state, &registry);
-        let (state, _) = apply_action(&state, &registry, PlayerAction::EndTurn).expect("runner ends turn");
+        let (state, _) = apply_action(&crate::rules::test_support::clicks_spent(&state), &registry, PlayerAction::EndTurn).expect("runner ends turn");
         let (state, _) = apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Runner }).expect("pass");
-        let (state, _) = apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Corp }).expect("pass, corp turn starts");
+        let (state, _) =
+            apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Corp }).expect("corp passes, entering their turn");
+        let (state, _) =
+            apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Corp }).expect("corp passes the window before the turn begins");
+        let (state, _) =
+            apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner passes, the turn begins");
         assert!(matches!(state.pending_decision, Some(crate::rules::PendingDecision::ChooseTriggerOrder { .. })));
 
         // Resolve the *second* copy's trigger first, then take its damage option.
@@ -5452,23 +5465,27 @@ mod system_gateway {
         state.corp.installed[0].advancement_tokens = 3;
         state.runner.grip = (0..5).map(|i| CardId(format!("grip_card_{i}"))).collect();
 
-        let (state, _) = apply_action(&state, &registry, PlayerAction::EndTurn).expect("corp ends turn");
+        let (state, _) = apply_action(&crate::rules::test_support::clicks_spent(&state), &registry, PlayerAction::EndTurn).expect("corp ends turn");
         let (state, _) = close_all_windows(state, &registry);
-        // Ending the Runner's turn opens an `EndOfTurn(Runner)` window
-        // first; `Trigger::OnTurnStart`'s `PresentChoice` (parking a
-        // `pending_decision`) doesn't fire until that window closes and
-        // `enter_start_of_turn(Corp)` actually runs — matching Nico
+        // Ending the Runner's turn opens an `EndOfTurn(Runner)` window,
+        // and the Corp's turn a `TurnBeginning` one; `Trigger::OnTurnStart`'s
+        // `PresentChoice` (parking a `pending_decision`) doesn't fire until
+        // both have closed and the turn formally begins — matching Nico
         // Campaign's test, which finds its own `OnTurnStart` payout only
         // after closing windows past the second `EndTurn`, not in that
         // call's own return. Stepping priority manually here (rather than
         // the blind `close_all_windows` loop) since a `pending_decision`
         // parked mid-close would otherwise block the loop's own
         // `PassPriority` calls.
-        let (state, _) = apply_action(&state, &registry, PlayerAction::EndTurn).expect("runner ends turn");
+        let (state, _) = apply_action(&crate::rules::test_support::clicks_spent(&state), &registry, PlayerAction::EndTurn).expect("runner ends turn");
         let (state, _) =
             apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner passes end-of-turn");
+        let (state, _) =
+            apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Corp }).expect("corp passes, entering their turn");
+        let (state, _) =
+            apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Corp }).expect("corp passes the window before the turn begins");
         let (state, mut events) =
-            apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Corp }).expect("corp passes, entering their start of turn");
+            apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner passes, the turn begins");
         assert!(events
             .iter()
             .any(|e| matches!(e, crate::rules::GameEvent::PendingPaidChoiceOffered { side: Side::Corp })));
@@ -5742,7 +5759,7 @@ mod system_gateway {
         // R&D needs a card: passing control to the Runner is fine, but the
         // *next* Corp turn's mandatory draw would deck them out otherwise.
         state.corp.r_and_d = vec![CardId("hedge_fund".to_string())];
-        act(state, registry, PlayerAction::EndTurn)
+        act(crate::rules::test_support::clicks_spent(&state), registry, PlayerAction::EndTurn)
     }
 
     #[test]
@@ -5796,7 +5813,7 @@ mod system_gateway {
         state.corp.r_and_d = vec![CardId("hedge_fund".to_string())];
         state.corp.hq = (0..6).map(|i| CardId(format!("hedge_fund_{i}"))).collect();
 
-        let state = act(state, &registry, PlayerAction::EndTurn);
+        let state = act(crate::rules::test_support::clicks_spent(&state), &registry, PlayerAction::EndTurn);
         assert!(matches!(state.phase, GamePhase::Discard { side: Side::Corp, .. }), "should owe a discard");
         assert_eq!(state.corp.resources.credits, Credits(5), "nothing gained until the phase actually ends");
 
@@ -5964,7 +5981,7 @@ mod system_gateway {
         state.corp.r_and_d = vec![CardId("hedge_fund".to_string())];
         assert!(cannot(&state, &registry, Prohibition::ScoreAgendas));
 
-        let (state, _) = apply_action(&state, &registry, PlayerAction::EndTurn).expect("corp ends turn");
+        let (state, _) = apply_action(&crate::rules::test_support::clicks_spent(&state), &registry, PlayerAction::EndTurn).expect("corp ends turn");
         let (state, _) = close_all_windows(state, &registry);
         assert!(!cannot(&state, &registry, Prohibition::ScoreAgendas), "the lockout is turn-scoped");
         assert!(state.lingering.is_empty(), "and a checkpoint swept the entry, though nothing depended on it");
@@ -6770,11 +6787,15 @@ mod system_gateway {
         ];
         corp_rd_filler(&mut state);
 
-        let state = act(state, &registry, PlayerAction::EndTurn);
+        let state = act(crate::rules::test_support::clicks_spent(&state), &registry, PlayerAction::EndTurn);
         assert_eq!(state.phase, GamePhase::Discard { side: Side::Runner, required: 1 });
         let (state, _) =
             apply_action(&state, &registry, PlayerAction::DiscardCard { card_id: CardId("corroder".to_string()) }).expect("discard");
         assert_eq!(state.runner.discarded_this_discard_phase, vec![CardId("corroder".to_string())]);
+        // The discard phase's window comes after the discard (CR 5.7.2b),
+        // and the phase ends — Magdalene's moment — when it closes.
+        let (state, _) = apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner passes");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Corp }).expect("corp passes, the phase ends");
         assert!(
             matches!(state.pending_decision, Some(crate::rules::PendingDecision::ChooseEffect { chooser: Side::Runner, .. })),
             "you may install 1 program or piece of hardware from among those cards"
@@ -7791,7 +7812,7 @@ mod system_gateway {
         state.runner.rig = vec![rig_card_with_counters("cacophony", 2)];
         state.corp.hq = vec![CardId("hedge_fund".to_string()), CardId("nico_campaign".to_string()), CardId("ice_wall".to_string())];
         state.corp.r_and_d = vec![CardId("r0".to_string()), CardId("r1".to_string())];
-        let (state, _) = apply_action(&state, &registry, PlayerAction::EndTurn).expect("end turn: action phase ends");
+        let (state, _) = apply_action(&crate::rules::test_support::clicks_spent(&state), &registry, PlayerAction::EndTurn).expect("end turn: action phase ends");
         assert_eq!(state.pending_paid_choice.as_ref().map(|p| p.side), Some(Side::Runner), "you may remove 2 counters");
         let (state, _) = apply_action(&state, &registry, PlayerAction::AcceptPendingPaidChoice { cost_option_index: None }).expect("sabotage 3");
         assert_eq!(state.runner.rig[0].counters, 0);
@@ -7939,7 +7960,7 @@ mod system_gateway {
         corp_rd_filler(&mut state);
         state.runner.rig = vec![rig_card_with_counters("bling", 0)];
         state.runner.rig[0].hosted_cards = vec![CardId("diesel".to_string()), CardId("sure_gamble".to_string())];
-        let (state, _) = apply_action(&state, &registry, PlayerAction::EndTurn).expect("end turn: the end-of-turn window first");
+        let (state, _) = apply_action(&crate::rules::test_support::clicks_spent(&state), &registry, PlayerAction::EndTurn).expect("end turn: the end-of-turn window first");
         let (state, events) = close_all_windows(state, &registry);
         assert!(state.runner.rig[0].hosted_cards.is_empty());
         assert_eq!(state.runner.heap, vec![CardId("diesel".to_string()), CardId("sure_gamble".to_string())]);
@@ -7996,7 +8017,7 @@ mod system_gateway {
         };
         // A run event on top: offered, revealed, and it comes off the top.
         let state = corp_turn_end("jailbreak");
-        let (state, _) = apply_action(&state, &registry, PlayerAction::EndTurn).expect("corp ends turn: its end-of-turn window first");
+        let (state, _) = apply_action(&crate::rules::test_support::clicks_spent(&state), &registry, PlayerAction::EndTurn).expect("corp ends turn: its end-of-turn window first");
         let state = advance_until_choice(state, &registry);
         assert!(matches!(state.pending_decision, Some(crate::rules::PendingDecision::ChooseCards { side: Side::Runner, .. })), "look at the top card");
         let (state, _) = apply_action(&state, &registry, PlayerAction::ToggleCardSelection { position: 0 }).expect("take it");
@@ -8007,7 +8028,7 @@ mod system_gateway {
 
         // Neither an icebreaker nor a run event: nothing to decide.
         let state = corp_turn_end("sure_gamble");
-        let (state, _) = apply_action(&state, &registry, PlayerAction::EndTurn).expect("corp ends turn");
+        let (state, _) = apply_action(&crate::rules::test_support::clicks_spent(&state), &registry, PlayerAction::EndTurn).expect("corp ends turn");
         let state = advance_until_choice(state, &registry);
         assert_eq!(state.phase, GamePhase::Action(Side::Runner), "the runner's turn began");
         assert!(state.pending_decision.is_none());
@@ -8187,11 +8208,13 @@ mod system_gateway {
 
         // Same drive as Clearinghouse: two `EndTurn`s and the priority passes
         // that reach the Corp's next start of turn.
-        let (state, _) = apply_action(&state, &registry, PlayerAction::EndTurn).expect("corp ends turn");
+        let (state, _) = apply_action(&crate::rules::test_support::clicks_spent(&state), &registry, PlayerAction::EndTurn).expect("corp ends turn");
         let (state, _) = close_all_windows(state, &registry);
-        let (state, _) = apply_action(&state, &registry, PlayerAction::EndTurn).expect("runner ends turn");
+        let (state, _) = apply_action(&crate::rules::test_support::clicks_spent(&state), &registry, PlayerAction::EndTurn).expect("runner ends turn");
         let (state, _) = apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner passes");
         let (state, _) = apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Corp }).expect("corp passes into their turn");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Corp }).expect("corp passes the window before the turn begins");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner passes, the turn begins");
         assert!(matches!(state.pending_decision, Some(crate::rules::PendingDecision::ChooseEffect { chooser: Side::Corp, .. })));
         let corp_before = state.corp.resources.credits.0;
         let (state, _) = apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("cash it in");
@@ -8220,7 +8243,7 @@ mod system_gateway {
 
         // The discard phase ends (after the end-of-turn window closes): the
         // scored agenda offers to spend a counter.
-        let (state, _) = apply_action(&state, &registry, PlayerAction::EndTurn).expect("end turn");
+        let (state, _) = apply_action(&crate::rules::test_support::clicks_spent(&state), &registry, PlayerAction::EndTurn).expect("end turn");
         let state = advance_until_choice(state, &registry);
         let paid = state.pending_paid_choice.as_ref().expect("the offer from the score area");
         assert_eq!((paid.side, &paid.cost), (Side::Corp, &crate::dsl::Cost::RemoveCounters(1)));
@@ -8515,7 +8538,7 @@ mod system_gateway {
         let (state, _) = apply_action(&state, &registry, PlayerAction::ScoreAgenda { target: install_of(&state, "project_ingatan") }).expect("score");
         assert_eq!(state.corp.scored_agendas[0].agenda_counters, 1, "Dividends 1: one excess advancement");
         let (state, _) = close_all_windows(state, &registry);
-        let (state, _) = apply_action(&state, &registry, PlayerAction::EndTurn).expect("end turn");
+        let (state, _) = apply_action(&crate::rules::test_support::clicks_spent(&state), &registry, PlayerAction::EndTurn).expect("end turn");
         let state = advance_until_choice(state, &registry);
         assert!(state.pending_paid_choice.is_some(), "the discard-phase offer");
         let (state, _) = apply_action(&state, &registry, PlayerAction::AcceptPendingPaidChoice { cost_option_index: None }).expect("spend the counter");
@@ -8584,11 +8607,13 @@ mod system_gateway {
         let mut state = base_state();
         state.corp.r_and_d = vec![CardId("filler_card".to_string())];
         state.corp.installed = vec![installed_with_counters("otto_campaign", ServerId::Remote(0), 2)];
-        let (state, _) = apply_action(&state, &registry, PlayerAction::EndTurn).expect("corp ends turn");
+        let (state, _) = apply_action(&crate::rules::test_support::clicks_spent(&state), &registry, PlayerAction::EndTurn).expect("corp ends turn");
         let (state, _) = close_all_windows(state, &registry);
-        let (state, _) = apply_action(&state, &registry, PlayerAction::EndTurn).expect("runner ends turn");
+        let (state, _) = apply_action(&crate::rules::test_support::clicks_spent(&state), &registry, PlayerAction::EndTurn).expect("runner ends turn");
         let (state, _) = apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner passes");
         let (state, _) = apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Corp }).expect("corp passes into their turn");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Corp }).expect("corp passes the window before the turn begins");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner passes, the turn begins");
         assert_eq!(state.corp.resources.credits, Credits(12), "the last two credits");
         assert!(state.corp.installed.is_empty(), "empty, so trashed");
         assert_eq!(state.corp.resources.clicks, Clicks(5), "three for the turn plus two");
@@ -8636,7 +8661,7 @@ mod system_gateway {
         state.corp.resources.credits = Credits(1);
         state.corp.hq = vec![CardId("ice_wall".to_string()), CardId("pad_campaign".to_string())];
         state.corp.installed = vec![corp_root("mercia_b4ll4rd", ServerId::Remote(0)), ice_installed("enigma", ServerId::Hq, false)];
-        let (state, _) = apply_action(&state, &registry, PlayerAction::EndTurn).expect("end the action phase");
+        let (state, _) = apply_action(&crate::rules::test_support::clicks_spent(&state), &registry, PlayerAction::EndTurn).expect("end the action phase");
         assert!(matches!(state.pending_decision, Some(crate::rules::PendingDecision::ChooseCards { side: Side::Corp, .. })), "Mercia's offer");
         assert!(apply_action(&state, &registry, PlayerAction::ToggleCardSelection { position: position_of(&state, "pad_campaign") }).is_err(), "ice only");
         let (state, _) = apply_action(&state, &registry, PlayerAction::ToggleCardSelection { position: position_of(&state, "ice_wall") }).expect("pick the ice");
@@ -8652,7 +8677,7 @@ mod system_gateway {
         let mut state = base_state();
         state.corp.hq = vec![CardId("ice_wall".to_string())];
         state.corp.installed = vec![corp_root("mercia_b4ll4rd", ServerId::Remote(0))];
-        let (state, _) = apply_action(&state, &registry, PlayerAction::EndTurn).expect("end the action phase");
+        let (state, _) = apply_action(&crate::rules::test_support::clicks_spent(&state), &registry, PlayerAction::EndTurn).expect("end the action phase");
         let (state, _) = apply_action(&state, &registry, PlayerAction::ConfirmCardSelection).expect("decline");
         assert_eq!(state.corp.installed[0].server, ServerId::Remote(0));
         assert_eq!(state.corp.hq.len(), 1);
@@ -8928,7 +8953,7 @@ mod system_gateway {
         let (declined, _) = apply_action(&state, &registry, PlayerAction::DeclinePendingPaidChoice).expect("refuse");
         assert_eq!(declined.corp.extra_clicks_next_turn, 1);
         let (declined, _) = pass_until_settled(declined, &registry);
-        let (declined, _) = apply_action(&declined, &registry, PlayerAction::EndTurn).expect("end the Runner turn");
+        let (declined, _) = apply_action(&crate::rules::test_support::clicks_spent(&declined), &registry, PlayerAction::EndTurn).expect("end the Runner turn");
         let (declined, _) = pass_until_settled(declined, &registry);
         assert_eq!(declined.corp.resources.clicks, Clicks(4), "three plus the banked one");
         assert_eq!(declined.corp.extra_clicks_next_turn, 0, "spent, not kept");
@@ -9148,9 +9173,9 @@ mod system_gateway {
 
         let next_corp_turn = |state: &GameState, registry: &CardRegistry| {
             let (state, _) = pass_until_settled(state.clone(), registry);
-            let (state, _) = apply_action(&state, registry, PlayerAction::EndTurn).expect("corp ends");
+            let (state, _) = apply_action(&crate::rules::test_support::clicks_spent(&state), registry, PlayerAction::EndTurn).expect("corp ends");
             let (state, _) = pass_until_settled(state, registry);
-            let (state, _) = apply_action(&state, registry, PlayerAction::EndTurn).expect("runner ends");
+            let (state, _) = apply_action(&crate::rules::test_support::clicks_spent(&state), registry, PlayerAction::EndTurn).expect("runner ends");
             pass_until_settled(state, registry).0
         };
 
@@ -9296,9 +9321,9 @@ mod system_gateway {
             CardId("enigma".to_string()),
             CardId("ice_wall".to_string()),
         ];
-        let (state, _) = apply_action(&state, &registry, PlayerAction::EndTurn).expect("end the corp turn");
+        let (state, _) = apply_action(&crate::rules::test_support::clicks_spent(&state), &registry, PlayerAction::EndTurn).expect("end the corp turn");
         let (state, _) = pass_until_settled(state, &registry);
-        let (state, _) = apply_action(&state, &registry, PlayerAction::EndTurn).expect("runner ends");
+        let (state, _) = apply_action(&crate::rules::test_support::clicks_spent(&state), &registry, PlayerAction::EndTurn).expect("runner ends");
         let state = advance_until_choice(state, &registry);
         assert!(state.pending_paid_choice.is_some(), "AU Co. offers the dig");
         let (state, _) = apply_action(&state, &registry, PlayerAction::AcceptPendingPaidChoice { cost_option_index: None }).expect("spend two");
@@ -9332,7 +9357,7 @@ mod system_gateway {
         let (state, _) = apply_action(&state, &registry, PlayerAction::ScoreAgenda { target: install_of(&state, "sericulture_expansion") }).expect("score");
         assert_eq!(state.corp.scored_agendas[0].agenda_counters, 1, "Dividends 1");
         let (state, _) = close_all_windows(state, &registry);
-        let (state, _) = apply_action(&state, &registry, PlayerAction::EndTurn).expect("end turn");
+        let (state, _) = apply_action(&crate::rules::test_support::clicks_spent(&state), &registry, PlayerAction::EndTurn).expect("end turn");
         let state = advance_until_choice(state, &registry);
         assert!(state.pending_paid_choice.is_some(), "the discard-phase offer");
         let (state, _) = apply_action(&state, &registry, PlayerAction::AcceptPendingPaidChoice { cost_option_index: None }).expect("spend the counter");
@@ -9369,7 +9394,7 @@ mod system_gateway {
         let (state, _) = apply_action(&state, &registry, PlayerAction::ScoreAgenda { target: install_of(&state, "sericulture_expansion") })
             .expect("score");
         let (state, _) = close_all_windows(state, &registry);
-        let (state, _) = apply_action(&state, &registry, PlayerAction::EndTurn).expect("end turn");
+        let (state, _) = apply_action(&crate::rules::test_support::clicks_spent(&state), &registry, PlayerAction::EndTurn).expect("end turn");
         let state = advance_until_choice(state, &registry);
         let (state, _) =
             apply_action(&state, &registry, PlayerAction::AcceptPendingPaidChoice { cost_option_index: None }).expect("spend the counter");
@@ -9405,7 +9430,7 @@ mod system_gateway {
 
         // The discard phase loads one.
         let (state, _) = close_all_windows(state, &registry);
-        let (state, _) = apply_action(&state, &registry, PlayerAction::EndTurn).expect("end turn");
+        let (state, _) = apply_action(&crate::rules::test_support::clicks_spent(&state), &registry, PlayerAction::EndTurn).expect("end turn");
         let (state, _) = pass_until_settled(state, &registry);
         assert_eq!(state.corp.installed[0].counters, 1, "a counter when the discard phase ends");
     }
@@ -9551,9 +9576,9 @@ mod system_gateway {
             ArchivedCard::faceup(CardId("hedge_fund".to_string())),
             ArchivedCard::faceup(CardId("seamless_launch".to_string())),
         ];
-        let (state, _) = apply_action(&state, &registry, PlayerAction::EndTurn).expect("end turn");
+        let (state, _) = apply_action(&crate::rules::test_support::clicks_spent(&state), &registry, PlayerAction::EndTurn).expect("end turn");
         let (state, _) = pass_until_settled(state, &registry);
-        let (state, _) = apply_action(&state, &registry, PlayerAction::EndTurn).expect("runner ends");
+        let (state, _) = apply_action(&crate::rules::test_support::clicks_spent(&state), &registry, PlayerAction::EndTurn).expect("runner ends");
         let state = advance_until_choice(state, &registry);
         assert!(matches!(state.pending_decision, Some(crate::rules::PendingDecision::ChooseCards { side: Side::Corp, .. })), "offered a transaction");
         assert!(apply_action(&state, &registry, PlayerAction::ToggleCardSelection { position: position_of(&state, "seamless_launch") }).is_err(), "not a transaction");
@@ -9854,14 +9879,14 @@ mod system_gateway {
         // Four cards in HQ closes the offer.
         let mut full = base();
         full.corp.hq = vec![CardId("hedge_fund".to_string()); 4];
-        let (full, _) = apply_action(&full, &registry, PlayerAction::EndTurn).expect("end the corp turn");
+        let (full, _) = apply_action(&crate::rules::test_support::clicks_spent(&full), &registry, PlayerAction::EndTurn).expect("end the corp turn");
         let full = advance_until_choice(full, &registry);
         assert!(full.pending_paid_choice.is_none(), "four in HQ is too many");
 
         // Three opens it.
         let mut state = base();
         state.corp.hq = vec![CardId("hedge_fund".to_string()); 3];
-        let (state, _) = apply_action(&state, &registry, PlayerAction::EndTurn).expect("end the corp turn");
+        let (state, _) = apply_action(&crate::rules::test_support::clicks_spent(&state), &registry, PlayerAction::EndTurn).expect("end the corp turn");
         let state = advance_until_choice(state, &registry);
         assert!(state.pending_paid_choice.is_some(), "three or fewer opens it");
         let (state, _) = apply_action(&state, &registry, PlayerAction::AcceptPendingPaidChoice { cost_option_index: None }).expect("pay 1");
@@ -10069,18 +10094,18 @@ mod system_gateway {
         state.corp.hq = vec![CardId("hedge_fund".to_string()), CardId("hedge_fund".to_string())];
 
         // A turn with no operation played leaves it face up.
-        let quiet = apply_action(&state, &registry, PlayerAction::EndTurn).expect("end turn").0;
+        let quiet = apply_action(&crate::rules::test_support::clicks_spent(&state), &registry, PlayerAction::EndTurn).expect("end turn").0;
         assert!(!quiet.corp.identity_flipped, "no operation, no flip");
 
         // Playing one flips it at the end of the action phase, for a credit.
         let (state, _) = apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: CardId("hedge_fund".to_string()) }).expect("play");
-        let (state, _) = apply_action(&state, &registry, PlayerAction::EndTurn).expect("end turn");
+        let (state, _) = apply_action(&crate::rules::test_support::clicks_spent(&state), &registry, PlayerAction::EndTurn).expect("end turn");
         assert!(state.corp.identity_flipped);
         assert_eq!(state.corp.resources.credits, Credits(15), "10 - 5 + 9 + 1");
 
         // Flipped, the first operation each turn refunds a click.
         let (state, _) = pass_until_settled(state, &registry);
-        let (state, _) = apply_action(&state, &registry, PlayerAction::EndTurn).expect("runner ends");
+        let (state, _) = apply_action(&crate::rules::test_support::clicks_spent(&state), &registry, PlayerAction::EndTurn).expect("runner ends");
         let (state, _) = pass_until_settled(state, &registry);
         assert_eq!(state.corp.resources.clicks, Clicks(3));
         let (state, _) = apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: CardId("hedge_fund".to_string()) }).expect("play again");
@@ -10140,7 +10165,7 @@ mod system_gateway {
         let (state, _) = apply_action(&state, &registry, PlayerAction::ScoreAgenda { target: install_of(&state, "embedded_reporting") }).expect("score");
         assert_eq!(state.corp.scored_agendas[0].agenda_counters, 4, "Dividends 2, two excess");
         let (state, _) = close_all_windows(state, &registry);
-        let (state, _) = apply_action(&state, &registry, PlayerAction::EndTurn).expect("end turn");
+        let (state, _) = apply_action(&crate::rules::test_support::clicks_spent(&state), &registry, PlayerAction::EndTurn).expect("end turn");
         let state = advance_until_choice(state, &registry);
         let (state, _) = apply_action(&state, &registry, PlayerAction::AcceptPendingPaidChoice { cost_option_index: None }).expect("spend one");
         assert_eq!(state.corp.scored_agendas[0].agenda_counters, 3);
@@ -10212,9 +10237,9 @@ mod system_gateway {
         let mut state = base_state();
         state.corp.r_and_d = vec![CardId("hedge_fund".to_string()); 3];
         state.corp.installed = vec![corp_root("public_access_plaza", ServerId::Remote(0))];
-        let (state, _) = apply_action(&state, &registry, PlayerAction::EndTurn).expect("corp ends");
+        let (state, _) = apply_action(&crate::rules::test_support::clicks_spent(&state), &registry, PlayerAction::EndTurn).expect("corp ends");
         let (state, _) = pass_until_settled(state, &registry);
-        let (state, _) = apply_action(&state, &registry, PlayerAction::EndTurn).expect("runner ends");
+        let (state, _) = apply_action(&crate::rules::test_support::clicks_spent(&state), &registry, PlayerAction::EndTurn).expect("runner ends");
         let (state, _) = pass_until_settled(state, &registry);
         assert_eq!(state.corp.resources.credits, Credits(11));
     }

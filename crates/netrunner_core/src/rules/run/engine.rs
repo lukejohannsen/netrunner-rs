@@ -72,7 +72,7 @@ fn build_run_ice(installed: &InstalledCard, registry: &CardRegistry) -> Result<O
 /// misses: `WindowCheckpoint::EndOfTurn` deliberately keeps the phase it
 /// interrupted, so `Action(Runner)` stays true throughout it. Without the
 /// clause, a run-initiating paid ability (*Red Team*'s) could start a run
-/// during the Runner's end-of-turn window; `finish_end_turn` then handed
+/// during the Runner's end-of-turn window; `turn::finish_turn` then handed
 /// the turn over with `active_run` still set, leaving the Corp with no
 /// legal action at all — `EndTurn` rejected by
 /// `CannotEndTurnWhileRunActive`, and the run not theirs to advance.

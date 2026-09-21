@@ -358,6 +358,12 @@ pub enum RulesError {
     #[error("{card:?} can only be installed in a remote server")]
     NotInstallableInCentralServer { card: CardId },
 
+    /// `EndTurn` while the active side has clicks left: "If the Corp has
+    /// any unspent [click], the Corp takes an action" (CR 5.6.2b), and an
+    /// action window "does not give the option to pass" (CR 9.2.6b).
+    #[error("{side:?} has {clicks} unspent click(s) and must take an action")]
+    ClicksRemain { side: Side, clicks: u32 },
+
     #[error("the runner cannot steal or trash cards for the remainder of this run")]
     StealAndTrashPreventedThisRun,
 
