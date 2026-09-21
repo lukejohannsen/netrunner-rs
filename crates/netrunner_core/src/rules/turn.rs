@@ -32,15 +32,21 @@ fn clicks_for(side: Side) -> u32 {
 /// heals. It was a stored bonus folded in at install, at a score and at
 /// setup and never taken out, so a trashed T400 Memory Diamond kept its +1
 /// for the rest of the game.
-fn max_hand_size(state: &GameState, side: Side, registry: &CardRegistry) -> usize {
+///
+/// Signed, because a Runner whose maximum hand size is below 0 when their
+/// discard step begins is flatlined (CR 1.7.2b), and a floor at 0 is what
+/// hid that: Bumi 1.0's core damage took the Runner to a hand of 0 and no
+/// further. [`cards_over_hand_limit`] reads it floored, which is the same
+/// count for any hand.
+fn max_hand_size(state: &GameState, side: Side, registry: &CardRegistry) -> i32 {
     let base = match side {
         Side::Corp => CORP_MAX_HAND_SIZE,
         Side::Runner => RUNNER_MAX_HAND_SIZE,
     };
-    let granted = (base as i32 + continuous::hand_size(state, registry, side)).max(0) as usize;
+    let granted = base as i32 + continuous::hand_size(state, registry, side);
     match side {
         Side::Corp => granted,
-        Side::Runner => granted.saturating_sub(state.runner.brain_damage),
+        Side::Runner => granted - state.runner.brain_damage as i32,
     }
 }
 
@@ -67,7 +73,7 @@ fn hand_size(state: &GameState, side: Side) -> usize {
 /// arm, so nothing fires between discards at all), so this is insurance
 /// for the first card that can, not a fix for a reachable bug.
 fn cards_over_hand_limit(state: &GameState, side: Side, registry: &CardRegistry) -> usize {
-    hand_size(state, side).saturating_sub(max_hand_size(state, side, registry))
+    hand_size(state, side).saturating_sub(max_hand_size(state, side, registry).max(0) as usize)
 }
 
 /// Extracts `side` from `state.phase` if it's currently `Action(side)`, for
@@ -221,6 +227,16 @@ pub(crate) fn finish_end_turn(
     // `RunnerState::discarded_this_discard_phase`.
     if side == Side::Runner {
         state.runner.discarded_this_discard_phase.clear();
+    }
+    // "The Runner is also flatlined if, at the beginning of their discard
+    // step, their maximum hand size is less than 0" (CR 1.7.2b). A
+    // failed state rather than a standing condition — a hand size may dip
+    // below 0 mid-turn and recover — so it is asked here, at the one
+    // moment the rule names, and not in `checkpoint`.
+    if side == Side::Runner && max_hand_size(state, side, registry) < 0 {
+        events.push(GameEvent::RunnerFlatlined);
+        events.extend(win::end_game(state, Side::Corp));
+        return Ok(events);
     }
     let over_by = cards_over_hand_limit(state, side, registry);
     if over_by > 0 {
@@ -791,6 +807,29 @@ mod tests {
         assert_eq!(next.runner.resources.clicks, Clicks(0));
         assert!(events.contains(&GameEvent::TurnEnded { side: Side::Corp }));
         assert!(events.contains(&GameEvent::DiscardPending { side: Side::Corp, required: 1 }));
+    }
+
+    /// CR 1.7.2b: "The Runner is also flatlined if, at the beginning of
+    /// their discard step, their maximum hand size is less than 0." The
+    /// hand size was floored at 0, so six core damage only ever cost the
+    /// Runner their grip; at exactly 0 they play on.
+    #[test]
+    fn a_runner_whose_maximum_hand_size_is_below_zero_is_flatlined_at_the_discard_step() {
+        let registry = CardRegistry::new();
+        for (core_damage, flatlined) in [(5, false), (6, true)] {
+            let mut state = game_state(Side::Runner, 0, 5, 0, 2);
+            state.corp.r_and_d = vec![CardId("filler".to_string())];
+            state.runner.brain_damage = core_damage;
+            let (next, _) = end_turn(&state, &registry).expect("the Runner ends their turn");
+            let (next, events) = close_all_windows(next, &registry);
+
+            if flatlined {
+                assert_eq!(next.phase, GamePhase::GameOver(Side::Corp), "{events:?}");
+                assert!(events.contains(&GameEvent::RunnerFlatlined));
+            } else {
+                assert_eq!(next.phase, GamePhase::Action(Side::Corp), "a hand size of 0 is not below 0");
+            }
+        }
     }
 
     #[test]

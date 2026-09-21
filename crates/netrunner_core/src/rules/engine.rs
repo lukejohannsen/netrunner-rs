@@ -2313,7 +2313,7 @@ fn trash_resource(
     let removed = next.runner.rig.remove(position);
     next.runner.heap.push(removed.card.clone());
     events.push(GameEvent::CardTrashed { side: Side::Runner, card: card_id });
-    events.extend(ability::cascade_trash_hosted_on_rig_card(&mut next, &removed));
+    events.extend(ability::cascade_trash_hosted_on_rig_card(&mut next, registry, &removed));
 
     Ok((next, events))
 }

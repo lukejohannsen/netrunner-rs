@@ -113,6 +113,22 @@ fn resolve_install(state: &GameState, server: ServerId, card_id: &CardId) -> Opt
         .map(|c| c.install_id)
 }
 
+/// Whether the card being accessed is in the Corp's discard pile — out of
+/// Archives itself, not an upgrade in its root, which is installed and so
+/// has a `pending_install`. Such a card cannot be trashed, by
+/// the basic trash ability or any other (CR 7.1.5b: "The Runner cannot
+/// trash or pay the trash cost of a card in the Corp's discard pile,
+/// either with the basic trash ability or with other mid-access
+/// abilities"). One predicate, so the offer and the effect cannot
+/// disagree.
+pub(crate) fn accessing_in_the_discard_pile(state: &GameState) -> bool {
+    state
+        .active_run
+        .as_ref()
+        .and_then(|run| run.access_state.as_ref())
+        .is_some_and(|access| access.server == ServerId::Archives && access.pending_install.is_none())
+}
+
 fn compute_pending_choice(state: &GameState, card_id: &CardId, registry: &CardRegistry) -> AccessPhase {
     let card_def = registry.get(card_id);
     let is_agenda = card_def.is_some_and(|c| c.agenda_points.is_some());
@@ -125,7 +141,12 @@ fn compute_pending_choice(state: &GameState, card_id: &CardId, registry: &CardRe
     // whenever the grid was in that central's root.
     let install = state.active_run.as_ref().and_then(|run| run.access_state.as_ref()).and_then(|access| access.pending_install);
     let table = install.map_or(0, |install| continuous::trash_cost_delta(state, registry, install));
-    let trash_cost = card_def.and_then(|c| c.trash_cost).map(|printed| (printed as i32 + table).max(0) as u32);
+    // A card in the discard pile has no trash cost to pay, so the basic
+    // trash ability is never offered on it (`accessing_in_the_discard_pile`).
+    let trash_cost = card_def
+        .and_then(|c| c.trash_cost)
+        .filter(|_| !accessing_in_the_discard_pile(state))
+        .map(|printed| (printed as i32 + table).max(0) as u32);
 
     AccessPhase::PendingChoice { card_id: card_id.clone(), trash_cost, mandatory_steal, steal_cost }
 }
@@ -776,6 +797,9 @@ pub fn trash_currently_accessed_card_without_cost(
     let card_id = card_id.clone();
     let server = access.server;
     let install = access.pending_install;
+    if accessing_in_the_discard_pile(state) {
+        return Err(RulesError::CannotTrashFromArchives { card: card_id });
+    }
 
     move_to_archives(state, registry, &card_id, server, install);
     let trashed_event = GameEvent::CardTrashedFromAccess { card: card_id.clone(), cost_paid: 0, install };
@@ -1726,6 +1750,56 @@ mod tests {
             panic!("two accessed cards should present a selection, got {:?}", access.phase);
         };
         assert_eq!(selectable_cards, &vec![archived, upgrade]);
+    }
+
+    /// CR 7.1.5b: "The Runner cannot trash or pay the trash cost of a card
+    /// in the Corp's discard pile, either with the basic trash ability or
+    /// with other mid-access abilities." The trash was offered, and paid
+    /// for, with nothing moving; Carnivore's free trash took it too.
+    #[test]
+    fn a_card_in_the_discard_pile_cannot_be_trashed_on_access() {
+        let registry = CardRegistry::from_cards(vec![trashable_card("pad_campaign", 2)]);
+        let archived = CardId("pad_campaign".to_string());
+        let mut state = game_state(Vec::new(), Vec::new(), vec![archived.clone()], Vec::new(), 0);
+        state.runner.resources.credits = Credits(5);
+        state.active_run = Some(run_in_success(ServerId::Archives));
+        access_server(&mut state, ServerId::Archives, &registry).unwrap();
+
+        let access = state.active_run.as_ref().unwrap().access_state.as_ref().unwrap();
+        assert!(
+            matches!(&access.phase, AccessPhase::PendingChoice { trash_cost: None, .. }),
+            "no trash cost is offered on a card in Archives, got {:?}",
+            access.phase
+        );
+        assert_eq!(resolve_trash(&mut state, &archived, &registry), Err(RulesError::NotInAccessPhase));
+        assert_eq!(
+            trash_currently_accessed_card_without_cost(&mut state, &registry),
+            Err(RulesError::CannotTrashFromArchives { card: archived })
+        );
+        assert_eq!(state.runner.resources.credits, Credits(5));
+    }
+
+    /// The rule is about the discard pile, not the server: an upgrade in
+    /// Archives' root is installed, and trashed like any other.
+    #[test]
+    fn an_upgrade_in_archives_root_can_still_be_trashed() {
+        let registry = CardRegistry::from_cards(vec![trashable_card("manegarm_skunkworks", 2)]);
+        let upgrade = CardId("manegarm_skunkworks".to_string());
+        let installed = vec![InstalledCard {
+            card: upgrade.clone(),
+            server: ServerId::Archives,
+            slot: InstallSlot::Root,
+            rezzed: true,
+            ..Default::default()
+        }];
+        let mut state = game_state(Vec::new(), Vec::new(), Vec::new(), installed, 0);
+        state.runner.resources.credits = Credits(5);
+        state.active_run = Some(run_in_success(ServerId::Archives));
+        access_server(&mut state, ServerId::Archives, &registry).unwrap();
+
+        resolve_trash(&mut state, &upgrade, &registry).expect("an installed upgrade is trashable");
+        assert!(state.corp.installed.is_empty());
+        assert_eq!(state.runner.resources.credits, Credits(3));
     }
 
     #[test]

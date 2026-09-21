@@ -361,6 +361,12 @@ pub enum RulesError {
     #[error("the runner cannot steal or trash cards for the remainder of this run")]
     StealAndTrashPreventedThisRun,
 
+    /// A card in Archives itself, rather than in its root, is never
+    /// trashed on access (CR 7.1.5b), by the basic trash ability or by a
+    /// card's "trash the card you are accessing".
+    #[error("{card:?} is in the Corp's discard pile and cannot be trashed")]
+    CannotTrashFromArchives { card: CardId },
+
     /// Any action after `GamePhase::GameOver`. Checked first in
     /// `apply_action`, so `legal_actions` is empty once the game has ended
     /// whatever else the state still holds. Before this guard the handlers

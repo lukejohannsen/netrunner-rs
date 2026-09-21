@@ -93,6 +93,8 @@ fixes them. The letters are this file's addresses: "Rules Conformance B1".
 **D. Runs and access (6.9, 7.1, 7.2)**
 - **D1 ✔ The Runner can pay to trash a card in Archives** (7.1.5b forbids it). Neither
   `legal_actions` nor `resolve_trash` checks, nor does the Gourmand/Carnivore path.
+  **Fixed** (`fix/small-rules-deviations`): `access::accessing_in_the_discard_pile` withholds
+  the trash cost and refuses the free trash; an upgrade in Archives' root is still trashable.
 - **D2 The Corp can rez during access and after success.**
   - A normal (P)(R) window opens at each accessed card and after "successful".
   - Access has only the Runner's mid-access window (7.2, 9.2.10, 11.6).
@@ -106,9 +108,11 @@ fixes them. The letters are this file's addresses: "Rules Conformance B1".
 **E. Winning and losing (1.7)**
 - **E1 A card that makes the Corp draw from an empty R&D does not end the game** (1.7.2c).
   `Effect::DrawCards` stops silently. Reached with Sprint, Spin Doctor and Anthill Excavation
-  Contract.
+  Contract. **Fixed** (`fix/small-rules-deviations`): the Runner wins; the Runner's own draw
+  still stops silently.
 - **E2 A maximum hand size below 0 does not flatline** (1.7.2b). It is clamped at 0. Reached with
-  Bumi 1.0's core damage.
+  Bumi 1.0's core damage. **Fixed** (`fix/small-rules-deviations`): the hand size is signed,
+  and asked when the Runner's discard step begins.
 - **E3 A simultaneous 7-point win is not a draw** (1.7.1a). No card reaches it; recorded only.
 
 **F. Abilities and effects (9, 10)**
@@ -119,11 +123,13 @@ fixes them. The letters are this file's addresses: "Rules Conformance B1".
   it that way, so Au Co.'s "whenever you do damage" counts Topan's and Semak-samun's self-inflicted
   damage.
 - **F3 A forfeit does not lower `agenda_points`.** The view, the HUD and bot observations show a
-  stale score. The win check recounts, so the result is right.
+  stale score. The win check recounts, so the result is right. **Fixed**
+  (`fix/small-rules-deviations`).
 - **F4 Corp cards hosted on Detente go to the heap when it is trashed** (1.19.1: a card goes to
-  its owner's discard pile).
+  its owner's discard pile). **Fixed** (`fix/small-rules-deviations`): one
+  `ability::trash_hosted_card` for Bling's "trash all hosted cards" and for the host leaving.
 - **F5 A "for each" that comes to 0 still gains credits** (9.12.2b, new in v26.03), which triggers
-  Zwicky. Edge case.
+  Zwicky. Edge case. **Fixed** (`fix/small-rules-deviations`): a gain of 0 emits nothing.
 - **F6 Recorded only; no outcome changes today:**
   - Zwicky's "may" is forced.
   - An operation's reactions resolve after its play abilities rather than before (8.6.7).
@@ -142,6 +148,18 @@ fixes them. The letters are this file's addresses: "Rules Conformance B1".
   fixtures carrying 20 points in 40 cards. One of them was the index sweep's hand-built System
   Gateway Corp deck, whose third Orbital Superiority became a second Palisade (18 points).
   `NETRUNNER_SWEEP_SEEDS=256` on the index sweep afterwards: clean, coverage gate included.
+
+**Measured, D1–F5** (`scripts/coverage_identical.py main`, 192 games a report, seed 1): all
+four reports differ, as any change to play re-rolls them. Two deltas are the fixes themselves:
+- **The heuristic Corp stopped forfeiting:** `AgendaForfeited` 14 → 0 by view and 13 → 0 by
+  index, with Greenmail's `OnForfeit` 7 → 0 and 6 → 0. This is F3 reaching the bots. The
+  evaluator scores `agenda_points` (`eval.rs`), so a forfeit to rez Biawak or Plutus was free
+  while the score kept the agenda, and it now costs the agenda's points. The random seatings
+  forfeit as before, so the event is still reached.
+- **The Zwicky Group draws less** (F5): 31 → 28 random, 40 → 30 and 38 → 30 heuristic.
+
+The rest is trajectory drift (steps 76,818 → 77,338 random). Both 256-seed sweeps are clean,
+coverage gate included.
 
 **Fix order, one PR each:**
 1. G, which does not touch play.
@@ -167,7 +185,7 @@ with the rule quoted.
 | 1.4 | Deck Construction | conforms | Read rule by rule (21 September 2026) and G1–G2 fixed: the agenda band is `min`–`min + 1` (1.4.6), an identity cannot be a deck card (1.4.4), a *Learn to Play* identity is legal only with its published lists (1.4.1a, `DeckFile::validate`), and both validators read a card's own copy limit (1.4.7). Every out-of-faction non-agenda card in the catalog prints an influence cost, so 1.4.4's last clause holds for the pool. 1.4.8 (tournament rules) is n/a. |
 | 1.5 | Extra Cards | unreviewed |  |
 | 1.6 | Starting the Game | read in part | Audit: 5 credits, 5 cards, Corp mulligans first, Corp goes first; matches. |
-| 1.7 | Ending the Game | deviates | E1, E2, E3. 7 points checked at checkpoints matches. |
+| 1.7 | Ending the Game | deviates | E3 only, which no card reaches. E1 and E2 fixed. 7 points checked at checkpoints matches. |
 | 1.8 | Cards | unreviewed |  |
 | 1.9 | Counters and Tokens | unreviewed |  |
 | 1.10 | Credits | read in part | 1.10.5 recurring credits: `CardDefinition::recurring_credits`, `payment::place_recurring` / `refill` (Payment Rule). Cited: 1.10.5, 1.10.5a, 1.10.5b. |
@@ -177,9 +195,9 @@ with the rule quoted.
 | 1.14 | Ownership and Control | unreviewed |  |
 | 1.15 | Targets | unreviewed |  |
 | 1.16 | Costs | read in part | Costs are `Cost`, never effects (Rules Audit item 8): 1.16.1a not prevented, 1.16.3 checkpoint after a cost, 1.16.11 nested costs. Cited: 1.16, 1.16.1, 1.16.11, 1.16.1a, 1.16.3. |
-| 1.17 | Score, Scoring and Stealing | deviates | F3 (the score shown after a forfeit). Scoring conditions match. |
+| 1.17 | Score, Scoring and Stealing | conforms | F3 fixed: a forfeit lowers the shown score (1.17.1). Scoring conditions match. |
 | 1.18 | Advancing Cards | read in part | 1.18.1–1.18.2: placing an advancement counter is not advancing (`PlaceAdvancementCounters`, `listeners`). Cited: 1.18.1, 1.18.2. |
-| 1.19 | Trashing | deviates | F4. |
+| 1.19 | Trashing | conforms | F4 fixed: a hosted card goes to its owner's discard pile (1.19.1). |
 | 1.20 | Memory | unreviewed |  |
 | 1.21 | Card Visibility | unreviewed |  |
 
@@ -243,7 +261,7 @@ with the rule quoted.
 | 5.2 | Actions | unreviewed |  |
 | 5.3 | Draw Phase | unreviewed |  |
 | 5.4 | Action Phase | unreviewed |  |
-| 5.5 | Discard Phase | deviates | E2 (hand size below 0). HQ discards go facedown; matches. |
+| 5.5 | Discard Phase | conforms | E2 fixed: a hand size below 0 flatlines at the discard step. HQ discards go facedown; matches. |
 | 5.6 | Steps of the Corp's Turn | deviates | C1, C2, C3. |
 | 5.7 | Steps of the Runner's Turn | deviates | C1 (no draw-phase window), C2, C3, D3 (5.7.1e). |
 
@@ -265,7 +283,7 @@ with the rule quoted.
 
 | § | Section | Status | Notes |
 |---|---|---|---|
-| 7.1 | Accessing Cards | deviates | D1. Steals mandatory, steal costs declinable (7.1.6a); matches. |
+| 7.1 | Accessing Cards | conforms | D1 fixed: nothing in Archives is trashed (7.1.5b). Steals mandatory, steal costs declinable (7.1.6a); matches. |
 | 7.2 | Steps of Accessing a Card | deviates | D2. |
 | 7.3 | Breaching Servers | deviates | A1 (7.3.4a). Archives turned faceup at breach (7.3.2); matches. |
 | 7.4 | Determining Candidates | deviates | A1 (7.4.7). |
@@ -299,7 +317,7 @@ with the rule quoted.
 | 9.9 | Interrupts and Replacement Effects | read in part | Interrupts and prevention: `rules::prevention` (the Prevention Rule, Rules Audit item 4). Expose is deferred. |
 | 9.10 | Lingering Effects | read in part | Lingering effects: `rules::lingering` (the Continuous Effect Rule). |
 | 9.11 | Identifying Instructions | unreviewed |  |
-| 9.12 | Other Rules and Terminology | deviates | F5. |
+| 9.12 | Other Rules and Terminology | conforms | F5 fixed: a gain of 0 does not take place (9.12.2b). |
 
 ### 10. Additional Rules
 

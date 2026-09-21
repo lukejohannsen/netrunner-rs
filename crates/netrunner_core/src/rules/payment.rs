@@ -671,7 +671,7 @@ fn spend_hosted(
     let ctx = ResolutionContext::for_parked(Some(install), Some(&card));
     let mut events = ability::modify_counters(state, &ctx, -i64::from(spend))?;
     if emptied && registry.get(&card).is_some_and(|definition| definition.trash_when_empty) {
-        events.extend(ability::trash_this_card(state, &ctx)?);
+        events.extend(ability::trash_this_card(state, registry, &ctx)?);
     }
     Ok(events)
 }

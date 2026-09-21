@@ -105,7 +105,7 @@ fn enforce_unique(state: &mut GameState, registry: &CardRegistry, event: Option<
         let trashed = state.runner.rig.remove(position);
         state.runner.heap.push(trashed.card.clone());
         events.push(GameEvent::CardTrashed { side: Side::Runner, card: trashed.card.clone() });
-        events.extend(ability::cascade_trash_hosted_on_rig_card(state, &trashed));
+        events.extend(ability::cascade_trash_hosted_on_rig_card(state, registry, &trashed));
     }
     events
 }
