@@ -14,7 +14,7 @@
           "Hq"
         ]
       },
-      "requirement": "FirstSuccessfulHqRunThisTurn",
+      "first_each_turn": true,
       "effects": [
         {
           "GainCredits": [

@@ -912,8 +912,8 @@ one.
    uses, so `determinize` stops zeroing them, and `OncePerTurn` loses its
    free-form tag; (3) "the first time each turn" becomes a word in the
    trigger *condition* beside `when`, judged in the scan on a count that
-   already includes the occurrence, as a refactor for the cards where the
-   two spellings agree; (4) the correction — a card that arrives after
+   already includes the occurrence, as a refactor for the cards whose
+   source is active all turn; (4) the correction — a card that arrives after
    the turn's first occurrence missed it (DZMZ Optimizer, Docklands Pass,
    Détente, Verbal Plasticity, Cacophony, Phật Gioan Baotixita, Aggressive
    Trendsetting), which closes the item. Ryō "Phoenix" Ōno's "after a
@@ -1000,6 +1000,60 @@ one.
    value a tag; that is the bot's, and nothing here claims otherwise.
    *Wire:* `ClientView` loses two fields and gains four, so a client and
    a server must be built from the same side of this commit.
+
+   **Stage 3 — DONE (20 September 2026),
+   `feat/the-first-time-is-part-of-the-trigger`.** "The first time each
+   turn" is one word beside a trigger and its `when`
+   (`TriggeredEffect::first_each_turn`), and what it counts is what the
+   entry listens for — its trigger, the classes its `when` admits, its
+   controller's moments where the trigger is phrased about its controller
+   (`turn_log::Occurrences`) — so a card file never names the fact a second
+   time. It is judged in the listener scan, like `when`: `turn_log::record`
+   hands back the log as it stood with the event just counted (`AsOf`),
+   `listeners::plan_for` cannot be called without one, and the verdict
+   rides on the queued trigger (`DeferredTrigger::not_the_first_this_turn`)
+   the way `heard` does, because by the time a queued entry fires the turn
+   has counted more. So a trigger is never judged before its own
+   occurrence is in the count nor after a nested event has added a second,
+   and the two questions are on two types: a trigger asks `AsOf::is_first`
+   (exactly one, itself) and a price asks `TurnLog::none_yet`, since an
+   install is priced before it happens
+   (`ContinuousEffect::first_each_turn`, legal only on `Installing`). No
+   card file writes a 0 or a 1. A card's first-time entries share one
+   count — one printed ability in as many entries as it has triggers.
+   *Rejected:* `requirement: Not(AmountAtLeast(TimesThisTurn(..), 2))`,
+   the Scatter Field idiom — asked at resolution rather than in the scan,
+   and `validate` now refuses it on an entry's own trigger. **The log's
+   key gained whose moment it was**, because a card's type stops saying
+   whose card it is once the type is `Unseen`, and "the first time **you**
+   install" is the Corp's installs on either player's turn.
+
+   Eight cards are respelled, the ones whose source is active all turn —
+   Engineering the Future, Gabriel Santiago, Reality Plus, Synapse Global,
+   the Zwicky Group, René "Loup" Arcemont, Nebula Talent Management's flip
+   side (keeps `IdentityFlipped`) and Kate (loses her `while`) — and
+   `FirstInstallThisTurn`, `FirstSuccessfulHqRunThisTurn`, their two
+   fields and two reset sites are gone. `validate` refuses a `when` finer
+   than a class (a subtype, an ice type) or any filter where the card was
+   concealed, `first_each_turn` with `OncePerTurn` or `Subject::This`, two
+   first-time triggers one event is an occurrence of, and the word on a
+   continuous effect outside `Installing`.
+
+   *Measured.* Both spellings on the card and the old one deciding, both
+   256-seed sweeps in a debug build (1,536 games), every firing of a
+   first-time entry and every install *payment* compared: **the eight
+   cards never disagreed.** A ninth did, and left the stage for it:
+   **"Knickknack" O'Brian fired on a run that was not the turn's first,
+   155 firings over six game-turns** — a resource, so it can arrive after
+   the turn's first run, which is stage 4's correction and not this
+   refactor. Engineering the Future's Runner-turn install (the flag was
+   reset only when the Corp's turn began, so a Brân 1.0 install paid
+   nothing) is real and unreached: no sample deck plays the identity; a
+   test pins it. With the old spelling deleted,
+   `scripts/coverage_identical.py main --head-worktree`, 192 games a
+   report, seed 1: **identical, four reports of four.** *Wire and stored
+   states:* the log's sparse cells gain a field, `DeferredTrigger` gains
+   one that defaults; the pool fingerprint moves (eight card files).
 
 4. **Generic prevention** (§2.2; was item 2). Give the existing
    `WindowCheckpoint::Prevention` window a kind parameter, so tags,

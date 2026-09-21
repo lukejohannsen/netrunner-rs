@@ -1959,7 +1959,7 @@ mod tests {
         growing.card_type = CardType::Asset;
         growing.advancement_requirement = Some(0);
         growing.triggers = vec![TriggeredEffect {
-            subject: None, when: None, acts_on_subject: false,
+            subject: None, when: None, acts_on_subject: false, first_each_turn: false,
             text: None,
             trigger: Trigger::OnAccessed,
             effects: vec![Effect::DealDamageAmount(DamageType::Net, Amount::HostedAdvancementTokens)],
@@ -1993,7 +1993,7 @@ mod tests {
         ambush.card_type = CardType::Asset;
         ambush.advancement_requirement = Some(0);
         ambush.triggers = vec![TriggeredEffect {
-            subject: None, when: None, acts_on_subject: false,
+            subject: None, when: None, acts_on_subject: false, first_each_turn: false,
             text: None,
             trigger: Trigger::OnTurnStart,
             effects: vec![Effect::DealDamageAmount(DamageType::Meat, Amount::HostedAdvancementTokens)],
@@ -2022,7 +2022,7 @@ mod tests {
         let mut ambush = ice("snare", 0);
         ambush.card_type = CardType::Asset;
         ambush.triggers = vec![TriggeredEffect {
-            subject: None, when: None, acts_on_subject: false,
+            subject: None, when: None, acts_on_subject: false, first_each_turn: false,
             text: None,
             trigger: Trigger::OnAccessed,
             effects: vec![Effect::DealDamage(DamageType::Net, 3)],
@@ -2986,7 +2986,7 @@ mod tests {
     fn ambush(id: &str) -> CardDefinition {
         let mut def = asset(id, 0);
         def.triggers = vec![TriggeredEffect {
-            subject: None, when: None, acts_on_subject: false,
+            subject: None, when: None, acts_on_subject: false, first_each_turn: false,
             text: None,
             trigger: Trigger::OnAccessed,
             effects: vec![Effect::DealDamage(DamageType::Net, 2)],

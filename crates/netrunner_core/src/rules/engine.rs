@@ -582,9 +582,10 @@ pub(crate) fn place_corp_card(
         server: zone,
     };
 
-    // Haas-Bioroid: Engineering the Future-style identity reaction — gated
-    // by `EffectRequirement::FirstInstallThisTurn` on the identity's own
-    // `TriggeredEffect`, so this dispatch is unconditional here.
+    // Haas-Bioroid: Engineering the Future-style identity reaction — "the
+    // first time each turn" is `first_each_turn` on the identity's own
+    // `TriggeredEffect`, judged in the listener scan, so this dispatch is
+    // unconditional here.
     dispatcher::emit(next, registry, &mut events, installed_event)?;
 
     Ok(events)
@@ -916,11 +917,10 @@ fn continue_run(state: &GameState, registry: &CardRegistry) -> Result<(GameState
     require_phase(state, GamePhase::Action(side))?;
     paid_ability::require_no_window(state)?;
     let mut next = state.clone();
-    // Gabriel Santiago-style identity reaction (a run on HQ just succeeded,
-    // gated by `EffectRequirement::FirstSuccessfulHqRunThisTurn` on the
-    // identity's own `TriggeredEffect` — the dispatch itself is
-    // unconditional, the soft-gate inside `process_card_triggers` is what
-    // limits it to once per turn) and any `OnEncounter`/`OnSuccessfulRun`
+    // Gabriel Santiago-style identity reaction (a run on HQ just succeeded;
+    // "the first time each turn" is `first_each_turn` on the identity's
+    // own `TriggeredEffect`, judged in the listener scan — the dispatch
+    // itself is unconditional) and any `OnEncounter`/`OnSuccessfulRun`
     // reactions are dispatched inside `run::advance_run` itself now, so
     // every caller (this handler, and `paid_ability::close_window`'s
     // window-mediated auto-continue) gets them uniformly.
@@ -3132,7 +3132,7 @@ mod tests {
             title: "Anoetic Void".to_string(),
             side: Side::Corp,
             card_type: CardType::Upgrade,
-            triggers: vec![TriggeredEffect { subject: None, when: None, acts_on_subject: false, text: None, trigger: Trigger::OnApproachServer, effects: vec![Effect::EndTheRun], requirement: None }],
+            triggers: vec![TriggeredEffect { subject: None, when: None, acts_on_subject: false, first_each_turn: false, text: None, trigger: Trigger::OnApproachServer, effects: vec![Effect::EndTheRun], requirement: None }],
             is_playable: true,
             ..Default::default()
         };
@@ -3142,7 +3142,7 @@ mod tests {
             side: Side::Runner,
             card_type: CardType::Resource,
             triggers: vec![TriggeredEffect {
-                subject: None, when: None, acts_on_subject: false,
+                subject: None, when: None, acts_on_subject: false, first_each_turn: false,
                 text: None,
                 trigger: Trigger::OnSuccessfulRun,
                 effects: vec![Effect::GainCredits(Side::Runner, 1)],
@@ -3864,7 +3864,7 @@ mod tests {
         let mut registry = CardRegistry::new();
         let mut card = test_card("sure_gamble", Side::Runner, CardType::Event, 5, None);
         card.triggers = vec![TriggeredEffect {
-            subject: None, when: None, acts_on_subject: false,
+            subject: None, when: None, acts_on_subject: false, first_each_turn: false,
             text: None,
             trigger: Trigger::OnPlay,
             effects: vec![Effect::GainCredits(Side::Runner, 9)],
@@ -3961,7 +3961,7 @@ mod tests {
         let mut registry = CardRegistry::new();
         let mut card = test_card("hedge_fund", Side::Corp, CardType::Operation, 5, None);
         card.triggers = vec![TriggeredEffect {
-            subject: None, when: None, acts_on_subject: false,
+            subject: None, when: None, acts_on_subject: false, first_each_turn: false,
             text: None,
             trigger: Trigger::OnPlay,
             effects: vec![Effect::GainCredits(Side::Corp, 9)],
@@ -4106,7 +4106,7 @@ mod tests {
         let mut registry = CardRegistry::new();
         let mut card = test_card("sea_source", Side::Corp, CardType::Operation, 0, None);
         card.triggers = vec![TriggeredEffect {
-            subject: None, when: None, acts_on_subject: false,
+            subject: None, when: None, acts_on_subject: false, first_each_turn: false,
             text: None,
             trigger: Trigger::OnPlay,
             effects: vec![Effect::Trace { base: 2, on_success: Box::new(Effect::GiveTags(1)) }],
@@ -5526,7 +5526,7 @@ mod tests {
         let mut registry = CardRegistry::new();
         registry.insert(CardDefinition {
             triggers: vec![TriggeredEffect {
-                subject: None, when: None, acts_on_subject: false,
+                subject: None, when: None, acts_on_subject: false, first_each_turn: false,
                 text: None,
                 trigger: Trigger::OnTurnStart,
                 effects: vec![Effect::PresentChoice {
@@ -5540,7 +5540,7 @@ mod tests {
         });
         registry.insert(CardDefinition {
             triggers: vec![TriggeredEffect {
-                subject: None, when: None, acts_on_subject: false,
+                subject: None, when: None, acts_on_subject: false, first_each_turn: false,
                 text: None,
                 trigger: Trigger::OnTurnStart,
                 effects: vec![Effect::GainCredits(Side::Corp, 1)],
@@ -5563,6 +5563,7 @@ mod tests {
             target: None, event: None,
             continuation: None,
             heard: Default::default(),
+            not_the_first_this_turn: false,
         }];
         state.pending_decision = Some(crate::rules::state::PendingDecision::ChooseEffect {
             option_texts: Vec::new(),
@@ -5598,7 +5599,7 @@ mod tests {
         let mut registry = CardRegistry::new();
         let reactor = |id: &str, amount: u32| CardDefinition {
             triggers: vec![TriggeredEffect {
-                subject: None, when: None, acts_on_subject: false,
+                subject: None, when: None, acts_on_subject: false, first_each_turn: false,
                 text: None,
                 trigger: Trigger::OnTurnStart,
                 effects: vec![Effect::GainCredits(Side::Corp, amount)],
@@ -5626,6 +5627,7 @@ mod tests {
                     target: None, event: None,
                     continuation: None,
                     heard: Default::default(),
+                    not_the_first_this_turn: false,
                 },
                 crate::rules::state::DeferredTrigger { install: None, target_install: None,
                     card: CardId("nico_campaign".to_string()),
@@ -5633,6 +5635,7 @@ mod tests {
                     target: None, event: None,
                     continuation: None,
                     heard: Default::default(),
+                    not_the_first_this_turn: false,
                 },
             ],
             resume: crate::rules::state::PendingChoiceResume::None,
@@ -5681,7 +5684,7 @@ mod tests {
         let mut registry = CardRegistry::new();
         let reactor = |id: &str, amount: u32| CardDefinition {
             triggers: vec![TriggeredEffect {
-                subject: None, when: None, acts_on_subject: false,
+                subject: None, when: None, acts_on_subject: false, first_each_turn: false,
                 text: None,
                 trigger: Trigger::OnTurnStart,
                 effects: vec![Effect::GainCredits(Side::Corp, amount)],
@@ -5710,6 +5713,7 @@ mod tests {
             event: Some(GameEvent::TurnStarted { side: Side::Corp, clicks }),
             continuation: None,
             heard: Default::default(),
+            not_the_first_this_turn: false,
         };
         state.pending_decision = Some(crate::rules::state::PendingDecision::ChooseTriggerOrder {
             chooser: Side::Corp,
@@ -5761,14 +5765,14 @@ mod tests {
         registry.insert(CardDefinition {
             triggers: vec![
                 TriggeredEffect {
-                    subject: None, when: None, acts_on_subject: false,
+                    subject: None, when: None, acts_on_subject: false, first_each_turn: false,
                     text: None,
                     trigger: Trigger::OnInstall,
                     effects: vec![Effect::GainCredits(Side::Runner, 1)],
                     requirement: None,
                 },
                 TriggeredEffect {
-                    subject: None, when: None, acts_on_subject: false,
+                    subject: None, when: None, acts_on_subject: false, first_each_turn: false,
                     text: None,
                     trigger: Trigger::OnCardInstalled,
                     effects: vec![Effect::GainCredits(Side::Runner, 3)],
@@ -5791,6 +5795,7 @@ mod tests {
             event: None,
             continuation: None,
             heard: Default::default(),
+            not_the_first_this_turn: false,
         };
         state.pending_decision = Some(crate::rules::state::PendingDecision::ChooseTriggerOrder {
             chooser: Side::Runner,

@@ -9,7 +9,7 @@
     {
       "trigger": "OnTrashedFromAccess",
       "subject": "Any",
-      "requirement": "OncePerTurn",
+      "first_each_turn": true,
       "effects": [
         {
           "GainCredits": [

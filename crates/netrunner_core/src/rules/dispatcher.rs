@@ -58,7 +58,7 @@ pub fn dispatch_event(
     audit::dispatched(event);
     // Counted before anything reacts: a card that asks about the turn while
     // it reacts to this occurrence finds the occurrence already in it.
-    turn_log::record(state, registry, event);
+    let as_of = turn_log::record(state, registry, event);
     // The checkpoint comes before the reactions (CR 10.3): a steal that
     // reaches the threshold has won before anything reacts to the steal.
     let mut events = checkpoint::state_based(state, registry, Some(event));
@@ -68,7 +68,7 @@ pub fn dispatch_event(
     events.extend(resolve_run_riders(state, registry, event)?);
     // Planned after the riders: an access bonus or a trash they resolve is
     // part of the state the triggers happen in.
-    let plan = listeners::plan_for(state, registry, event);
+    let plan = listeners::plan_for(state, registry, event, &as_of);
     // One side at a time, the active player's first (the plan's order). A
     // side orders its own simultaneous triggers; the order *between* the
     // sides is the rules', never a choice.
@@ -499,7 +499,7 @@ mod tests {
             title: id.to_string(),
             side,
             card_type: CardType::Program,
-            triggers: vec![TriggeredEffect { subject: None, when: None, acts_on_subject: false, text: None, trigger, effects: vec![effect], requirement: None }],
+            triggers: vec![TriggeredEffect { subject: None, when: None, acts_on_subject: false, first_each_turn: false, text: None, trigger, effects: vec![effect], requirement: None }],
             is_playable: true,
             ..Default::default()
         }
@@ -819,6 +819,7 @@ mod tests {
                 continuation: None,
                 // …and what it heard the event as, decided when it happened.
                 heard: crate::rules::state::Heard::AsBystander,
+                not_the_first_this_turn: false,
             }],
             "the untouched remainder is queued, not dropped"
         );
@@ -922,6 +923,7 @@ mod tests {
             target: None, event: None,
             continuation: None,
             heard: Default::default(),
+            not_the_first_this_turn: false,
         }];
         let credits_before = state.corp.resources.credits;
 
@@ -951,6 +953,7 @@ mod tests {
             event: Some(GameEvent::ServerApproached { server: ServerId::Remote(0) }),
             continuation: None,
             heard: Default::default(),
+            not_the_first_this_turn: false,
         };
 
         let mut ended = empty_state();
@@ -985,6 +988,7 @@ mod tests {
             event: Some(GameEvent::RunEndedByEffect { server: ServerId::Hq }),
             continuation: None,
             heard: Default::default(),
+            not_the_first_this_turn: false,
         }];
         let before = state.runner.resources.credits;
         drain_deferred_triggers(&mut state, &registry).unwrap();
@@ -1024,6 +1028,7 @@ mod tests {
             }),
             continuation: None,
             heard: Default::default(),
+            not_the_first_this_turn: false,
         };
 
         // First advancement: the requirement is met even though the trigger
@@ -1051,6 +1056,7 @@ mod tests {
             event: None,
             continuation: None,
             heard: Default::default(),
+            not_the_first_this_turn: false,
         }];
         let before = state.corp.resources.credits;
         drain_deferred_triggers(&mut state, &registry).unwrap();
@@ -1094,6 +1100,7 @@ mod tests {
             target: None, event: None,
             continuation: None,
             heard: Default::default(),
+            not_the_first_this_turn: false,
         };
         state.deferred_triggers = vec![queued("parks_a_choice"), queued("pad_campaign")];
 

@@ -272,14 +272,6 @@ pub struct CorpState {
     /// temporary per-run credit pool (`run::RunState::bad_publicity_credits`)
     /// at `engine::initiate_run`.
     pub bad_publicity: u32,
-    /// Whether the Corp's "first install this turn" bonus
-    /// (`Trigger::OnInstall` gated by `EffectRequirement::
-    /// FirstInstallThisTurn`, e.g. Haas-Bioroid: Engineering the Future) has
-    /// already fired this turn. Reset to `false` at the start of every Corp
-    /// turn (`turn::enter_start_of_turn`); consumed (flipped to `true`) by
-    /// `ability::process_card_triggers` the moment a gated `TriggeredEffect`
-    /// actually fires.
-    pub first_install_used_this_turn: bool,
     /// Corp's current recurring-credit pool, spendable on trace bids before
     /// the Corp's own wallet (`ability::pay_cost`'s `Cost::Credits` arm,
     /// mirroring the Runner's `RunState::bad_publicity_credits`-before-wallet
@@ -548,12 +540,6 @@ pub struct RunnerState {
     /// derives the budget rather than adding a second writer. Public
     /// information, same treatment as `tags`.
     pub link_strength: u32,
-    /// Whether the Runner's "first successful HQ run this turn" bonus
-    /// (`Trigger::OnSuccessfulRun` on HQ, gated by `EffectRequirement::
-    /// FirstSuccessfulHqRunThisTurn`, e.g. Gabriel Santiago) has already
-    /// fired this turn. Reset to `false` at the start of every Runner turn;
-    /// consumed the same way as `CorpState::first_install_used_this_turn`.
-    pub first_hq_run_used_this_turn: bool,
     /// The Runner's once-per-turn abilities used this turn — see
     /// `CorpState::once_per_turn_used`.
     #[serde(default)]
@@ -1144,6 +1130,14 @@ pub struct DeferredTrigger {
     /// position.
     #[serde(default)]
     pub heard: Heard,
+    /// The event was not the turn's first occurrence of what `card` counts,
+    /// so its `TriggeredEffect::first_each_turn` entries stay silent.
+    /// Judged once by `listeners::plan_for`, against the count taken as
+    /// the event was recorded (`turn_log::AsOf`), and carried for the same
+    /// reason as `heard`: by the time a queued entry fires, the turn has
+    /// counted more. `false` for an entry built by hand.
+    #[serde(default)]
+    pub not_the_first_this_turn: bool,
 }
 
 /// What a planned trigger's card was to the event it heard.

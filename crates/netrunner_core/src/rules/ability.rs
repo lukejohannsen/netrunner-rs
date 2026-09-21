@@ -957,6 +957,7 @@ pub fn evaluate_effect(
                             event: ctx.triggering_event.cloned(),
                             continuation: Some(Effect::Sequence(rest.to_vec())),
                             heard: Default::default(),
+                            not_the_first_this_turn: false,
                         });
                     }
                     break;
@@ -1554,6 +1555,7 @@ pub fn process_card_triggers(
         event: triggering_event.cloned(),
         continuation: None,
         heard: Default::default(),
+        not_the_first_this_turn: false,
     };
     fire_card_triggers(state, registry, &due, false)
 }
@@ -1591,8 +1593,16 @@ pub(crate) fn fire_card_triggers(
     let card_side = card.side;
     // Read before the loop: what the event was about does not change, and
     // the loop needs `state` mutably.
-    let meant: Vec<bool> =
-        card.triggers.iter().map(|t| t.trigger == trigger && due.heard.admits(t.subject) && listeners::when_admits(state, registry, t, triggering_event)).collect();
+    let meant: Vec<bool> = card
+        .triggers
+        .iter()
+        .map(|t| {
+            t.trigger == trigger
+                && due.heard.admits(t.subject)
+                && !(t.first_each_turn && due.not_the_first_this_turn)
+                && listeners::when_admits(state, registry, t, triggering_event)
+        })
+        .collect();
     for (triggered, _) in card.triggers.iter().zip(meant).filter(|(_, meant)| *meant) {
         // The requirement is checked as the *reacting* card, the effects
         // resolve as the target (the card itself, unless `target` says
@@ -1646,7 +1656,12 @@ pub(crate) fn would_fire(state: &GameState, registry: &CardRegistry, due: &Defer
     }
     let Some(card) = registry.get(&due.card) else { return false };
     let ctx = ResolutionContext::for_install_trigger(due.install, Some(&due.card), due.event.as_ref());
-    let meant = |t: &&TriggeredEffect| t.trigger == due.trigger && due.heard.admits(t.subject) && listeners::when_admits(state, registry, t, due.event.as_ref());
+    let meant = |t: &&TriggeredEffect| {
+        t.trigger == due.trigger
+            && due.heard.admits(t.subject)
+            && !(t.first_each_turn && due.not_the_first_this_turn)
+            && listeners::when_admits(state, registry, t, due.event.as_ref())
+    };
     card.triggers.iter().filter(meant).any(|triggered| {
         triggered.requirement.as_ref().is_none_or(|requirement| check_requirement(state, requirement, card.side, &ctx, registry).is_ok())
     })
@@ -2390,18 +2405,6 @@ pub fn check_requirement(
         EffectRequirement::MemoryFull => {
             if crate::rules::memory::available_memory(state, registry) == 0 { Ok(()) } else { Err(RulesError::RequirementNotMet) }
         }
-        EffectRequirement::FirstInstallThisTurn => {
-            if state.corp.first_install_used_this_turn {
-                return Err(RulesError::RequirementNotMet);
-            }
-            Ok(())
-        }
-        EffectRequirement::FirstSuccessfulHqRunThisTurn => {
-            if state.runner.first_hq_run_used_this_turn {
-                return Err(RulesError::RequirementNotMet);
-            }
-            Ok(())
-        }
         EffectRequirement::OncePerTurn => {
             let used = match side {
                 Side::Corp => &state.corp.once_per_turn_used,
@@ -2809,13 +2812,13 @@ pub(crate) fn resolve_amount(amount: &Amount, ctx: &ResolutionContext<'_>, state
     }
 }
 
-/// Flips the per-turn tracking flag `requirement` gates, once a
-/// `TriggeredEffect` it gated has actually fired — see `dsl::card::
-/// TriggeredEffect::requirement`'s doc comment. A no-op for `IsTagged`
-/// (nothing to consume; tag count isn't a once-per-turn resource). Kept
-/// separate from `check_requirement` (which stays read-only) so
-/// `activate_ability`'s existing `AbilityDef::requirement` call site is
-/// unaffected — only `process_card_triggers`'s soft-gate path calls this.
+/// Spends what `requirement` gates — a `OncePerTurn`, anywhere under an
+/// `And` — once the thing it gated has actually been used: a trigger whose
+/// effects resolved, a paid ability that resolved (`engine::
+/// activate_ability`), an install that took a discount
+/// (`continuous::pay_install_cost_of`). Kept apart from `check_requirement`,
+/// which only reads, because the same requirement is also asked where
+/// nothing is used: a legal-action probe, a price shown, `would_fire`.
 pub(crate) fn consume_requirement(
     state: &mut GameState,
     requirement: &EffectRequirement,
@@ -2824,8 +2827,6 @@ pub(crate) fn consume_requirement(
 ) {
     match requirement {
         EffectRequirement::IsTagged => {}
-        EffectRequirement::FirstInstallThisTurn => state.corp.first_install_used_this_turn = true,
-        EffectRequirement::FirstSuccessfulHqRunThisTurn => state.runner.first_hq_run_used_this_turn = true,
         EffectRequirement::OncePerTurn => {
             let used = match side {
                 Side::Corp => &mut state.corp.once_per_turn_used,
@@ -3838,7 +3839,7 @@ mod tests {
         let registry = CardRegistry::from_cards(vec![card_with_triggers(
             "snare",
             vec![TriggeredEffect {
-                subject: None, when: None, acts_on_subject: false,
+                subject: None, when: None, acts_on_subject: false, first_each_turn: false,
                 text: None,
                 trigger: Trigger::OnAccessed,
                 effects: vec![Effect::GiveTags(1), Effect::GainCredits(Side::Corp, 2)],
@@ -3876,7 +3877,7 @@ mod tests {
         let on = |server: ServerId, credits: u32| TriggeredEffect {
             subject: Some(crate::dsl::Subject::Any),
             when: Some(crate::dsl::EventFilter::Server(vec![server])),
-            acts_on_subject: false,
+            acts_on_subject: false, first_each_turn: false,
             text: None,
             trigger: Trigger::OnSuccessfulRun,
             effects: vec![Effect::GainCredits(Side::Runner, credits)],
@@ -3902,7 +3903,7 @@ mod tests {
         let registry = CardRegistry::from_cards(vec![card_with_triggers(
             "hedge_fund",
             vec![TriggeredEffect {
-                subject: None, when: None, acts_on_subject: false,
+                subject: None, when: None, acts_on_subject: false, first_each_turn: false,
                 text: None,
                 trigger: Trigger::OnPlay,
                 effects: vec![Effect::GainCredits(Side::Corp, 9)],

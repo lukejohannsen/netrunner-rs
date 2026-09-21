@@ -29,12 +29,8 @@
     {
       "trigger": "OnOperationPlayed",
       "subject": "Any",
-      "requirement": {
-        "And": [
-          "IdentityFlipped",
-          "OncePerTurn"
-        ]
-      },
+      "first_each_turn": true,
+      "requirement": "IdentityFlipped",
       "effects": [
         {
           "GainClicks": [

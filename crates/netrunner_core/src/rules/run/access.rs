@@ -1014,7 +1014,7 @@ mod tests {
     /// `OnAccessed` trigger firing `effects` — Snare!/Fetal AI-style traps.
     fn card_with_on_accessed(id: &str, effects: Vec<Effect>) -> CardDefinition {
         CardDefinition {
-            triggers: vec![TriggeredEffect { subject: Some(crate::dsl::Subject::This), when: None, acts_on_subject: false, text: None, trigger: Trigger::OnAccessed, effects, requirement: None }],
+            triggers: vec![TriggeredEffect { subject: Some(crate::dsl::Subject::This), when: None, acts_on_subject: false, first_each_turn: false, text: None, trigger: Trigger::OnAccessed, effects, requirement: None }],
             trash_cost: None,
             ..trashable_card(id, 0)
         }
@@ -1024,7 +1024,7 @@ mod tests {
     /// `OnTrashedFromAccess` trigger firing `effects` — Shock!-style.
     fn trashable_card_with_on_trashed_from_access(id: &str, trash_cost: u32, effects: Vec<Effect>) -> CardDefinition {
         CardDefinition {
-            triggers: vec![TriggeredEffect { subject: Some(crate::dsl::Subject::This), when: None, acts_on_subject: false, text: None, trigger: Trigger::OnTrashedFromAccess, effects, requirement: None }],
+            triggers: vec![TriggeredEffect { subject: Some(crate::dsl::Subject::This), when: None, acts_on_subject: false, first_each_turn: false, text: None, trigger: Trigger::OnTrashedFromAccess, effects, requirement: None }],
             ..trashable_card(id, trash_cost)
         }
     }
@@ -1059,7 +1059,7 @@ mod tests {
         seed: u64,
     ) -> GameState {
         GameState {
-            corp: crate::rules::state::CorpState { identity: None, extra_clicks_next_turn: 0, identity_counters: 0, identity_flipped: false, bad_publicity: 0, first_install_used_this_turn: false, recurring_credits: 0, recurring_credits_max: 0, removed_from_game: Vec::new(), once_per_turn_used: Default::default(),
+            corp: crate::rules::state::CorpState { identity: None, extra_clicks_next_turn: 0, identity_counters: 0, identity_flipped: false, bad_publicity: 0, recurring_credits: 0, recurring_credits_max: 0, removed_from_game: Vec::new(), once_per_turn_used: Default::default(),
                 scored_agendas: Vec::new(),
                 playable_from_archives: Vec::new(),
                 resources: PlayerResources {
@@ -1691,7 +1691,7 @@ mod tests {
             side: Side::Corp,
             card_type: CardType::Identity,
             triggers: vec![crate::dsl::TriggeredEffect {
-                subject: None, when: None, acts_on_subject: false,
+                subject: None, when: None, acts_on_subject: false, first_each_turn: false,
                 text: None,
                 trigger: crate::dsl::Trigger::OnAgendaStolen,
                 effects: vec![Effect::DealDamage(crate::dsl::DamageType::Net, 1)],
@@ -2796,7 +2796,7 @@ mod tests {
     ) -> CardDefinition {
         CardDefinition {
             interactive_on_access: Some(InteractiveOnAccess { cost, effects: avoided_effects, interaction: AccessInteraction::default(), requirement: None }),
-            triggers: vec![TriggeredEffect { subject: Some(crate::dsl::Subject::This), when: None, acts_on_subject: false, text: None, trigger: Trigger::OnAccessed, effects: on_accessed_effects, requirement: None }],
+            triggers: vec![TriggeredEffect { subject: Some(crate::dsl::Subject::This), when: None, acts_on_subject: false, first_each_turn: false, text: None, trigger: Trigger::OnAccessed, effects: on_accessed_effects, requirement: None }],
             trash_cost: None,
             ..trashable_card(id, 0)
         }

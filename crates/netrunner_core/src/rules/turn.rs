@@ -338,7 +338,6 @@ pub(crate) fn enter_start_of_turn(
             events.push(GameEvent::CardDrawn { side: Side::Corp });
         }
 
-        next.corp.first_install_used_this_turn = false;
         next.corp.recurring_credits = next.corp.recurring_credits_max;
         // Both sides, at every turn start — "once per turn" means once per
         // *turn*, and a Corp ability used on the Corp's own turn must be
@@ -355,7 +354,6 @@ pub(crate) fn enter_start_of_turn(
             installed.installed_this_turn = false;
         }
     } else {
-        next.runner.first_hq_run_used_this_turn = false;
         // Both sides — see the Corp branch above.
         next.runner.once_per_turn_used.clear();
         next.corp.once_per_turn_used.clear();
@@ -459,7 +457,7 @@ mod tests {
             side: Side::Corp,
             card_type: crate::dsl::CardType::Identity,
             triggers: vec![crate::dsl::TriggeredEffect {
-                subject: None, when: None, acts_on_subject: false,
+                subject: None, when: None, acts_on_subject: false, first_each_turn: false,
                 text: None,
                 trigger: crate::dsl::Trigger::OnDiscardPhaseEnd,
                 effects: vec![crate::dsl::Effect::DealDamage(crate::dsl::DamageType::Net, 1)],

@@ -8,7 +8,7 @@
   "triggers": [
     {
       "trigger": "OnTagRemoved",
-      "requirement": "OncePerTurn",
+      "first_each_turn": true,
       "effects": [
         {
           "PromptChooseCards": {
