@@ -11,30 +11,19 @@
       "trigger": "OnTurnStart",
       "effects": [
         {
-          "PresentChoice": {
-            "chooser": "Corp",
-            "options": [
-              {
-                "Sequence": [
-                  {
-                    "DealDamageAmount": [
-                      "Meat",
-                      "HostedAdvancementTokens"
-                    ]
-                  },
-                  {
-                    "TrashCard": "ThisCard"
-                  }
-                ]
-              },
-              {
-                "Sequence": []
-              }
-            ],
-            "texts": [
-              "trash this asset to do 1 meat damage for each hosted advancement counter",
-              ""
-            ]
+          "OfferPaidChoice": {
+            "side": "Corp",
+            "cost": "TrashSelf",
+            "if_paid": {
+              "DealDamageAmount": [
+                "Meat",
+                "HostedAdvancementTokens"
+              ]
+            },
+            "if_declined": {
+              "Sequence": []
+            },
+            "text": "trash this asset to do 1 meat damage for each hosted advancement counter"
           }
         }
       ]

@@ -5189,7 +5189,7 @@ mod system_gateway {
             apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Corp }).expect("corp passes, entering their start of turn");
         assert!(state.paid_ability_window.is_some(), "the start-of-turn window is open over the parked choice");
 
-        let (state, events) = apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 })
+        let (state, events) = apply_action(&state, &registry, PlayerAction::AcceptPendingPaidChoice { cost_option_index: None })
             .expect("corp chooses to trash clearinghouse for damage");
 
         assert_eq!(state.phase, GamePhase::GameOver(Side::Corp), "{events:?}");
@@ -5414,8 +5414,9 @@ mod system_gateway {
 
         // Resolve the *second* copy's trigger first, then take its damage option.
         let (state, _) = apply_action(&state, &registry, PlayerAction::ChooseTriggerToResolve { index: 1 }).expect("second copy first");
-        assert!(matches!(state.pending_decision, Some(crate::rules::PendingDecision::ChooseEffect { source_install: Some(InstallId(6002)), .. })));
-        let (state, events) = apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("trash for damage");
+        assert_eq!(state.pending_paid_choice.as_ref().and_then(|choice| choice.source_install), Some(InstallId(6002)));
+        let (state, events) =
+            apply_action(&state, &registry, PlayerAction::AcceptPendingPaidChoice { cost_option_index: None }).expect("trash for damage");
 
         assert!(events.contains(&crate::rules::GameEvent::DamageTaken { damage_type: crate::dsl::DamageType::Meat, amount: 3 }), "{events:?}");
         assert_eq!(state.runner.grip.len(), 2);
@@ -5452,9 +5453,9 @@ mod system_gateway {
             apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Corp }).expect("corp passes, entering their start of turn");
         assert!(events
             .iter()
-            .any(|e| matches!(e, crate::rules::GameEvent::PendingChoicePresented { chooser: Side::Corp, .. })));
+            .any(|e| matches!(e, crate::rules::GameEvent::PendingPaidChoiceOffered { side: Side::Corp })));
 
-        let (state, resolve_events) = apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 })
+        let (state, resolve_events) = apply_action(&state, &registry, PlayerAction::AcceptPendingPaidChoice { cost_option_index: None })
             .expect("corp chooses to trash clearinghouse for damage");
         events.extend(resolve_events);
 

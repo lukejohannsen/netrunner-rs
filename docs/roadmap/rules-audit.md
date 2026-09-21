@@ -1958,6 +1958,25 @@ one.
    the trash that left the effect. Sacrificial Construct is in a Sweep deck
    only, which no matchup pairs with Fermenter, so no game could show the
    bug.
+
+   **Stage 2: Clearinghouse's trash is a cost**
+   (`fix/clearinghouse-trash-is-a-cost`). "You may trash this asset **to**
+   do 1 meat damage for each hosted advancement counter" is a cost before
+   "to" (CR 1.16.11), and it was a `PresentChoice` whose first option
+   dealt the damage and *then* trashed. It is now an `OfferPaidChoice` with
+   `cost: TrashSelf`, as Maglectric Rapid's "you may trash this hardware to
+   derez" already was, and the damage counts the tokens on the trashed
+   asset through the same `last_known`, taken in
+   `pending_choice::resolve_accept`. **"If you do" is not a cost**, so
+   Idiosyncresis, Mitra Aman and Knickknack stay effects: they read their
+   numbers before their trash, and no pool card prevents a Corp card
+   trashing itself. **Measured** against stage 1: heuristic, both shapes,
+   the same games — 79 Clearinghouse decisions moved from
+   `ResolvePendingChoice` to Accept/Decline, and Clearinghouse trashed 13 →
+   16, which is the three flatlines where the trash now lands before the
+   damage that ends the game rather than never. Random differs throughout,
+   by trajectory: the random Corp picks among different actions (39 of its
+   decisions moved), and Clearinghouse's own numbers are within that drift.
 9. **A scenario builder for card tests** (§4; was item 6). A deck-and-hand
    spec that reaches a real state through `setup` and actions, plus helpers
    that address cards by name. It is test code only.
