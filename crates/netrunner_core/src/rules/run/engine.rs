@@ -189,7 +189,7 @@ pub fn start_run(state: &mut GameState, registry: &CardRegistry, server: ServerI
         // is passed (or the server approach step is reached with none
         // installed).
         jack_out_permitted: false,
-        cards_accessed_count: 0, ice_rez_cost_modifier: 0, bonus_run_credits: 0, runner_cannot_steal_or_trash: false,
+        cards_accessed_count: 0, bonus_run_credits: 0,
     });
     Ok(())
 }
@@ -829,11 +829,11 @@ pub(crate) fn end_run(state: &mut GameState) -> Option<RunState> {
 mod tests {
     use super::*;
     use crate::dsl::{CardId, Effect, IceType, SubroutineDef};
-    use crate::rules::lingering::{self, Lingering, LingeringEffect, Until};
+    use crate::rules::lingering::{self, Lingering, LingeringEffect, On, Until};
     use crate::rules::state::InstallId;
 
     fn pump(on: InstallId, amount: i32, until: Until) -> LingeringEffect {
-        LingeringEffect { what: Lingering::Strength(amount), on, until, source: CardId("corroder".to_string()) }
+        LingeringEffect { what: Lingering::Strength(amount), on: On::Install(on), until, source: CardId("corroder".to_string()) }
     }
     use crate::rules::run::state::{EncounteredSubroutine, RunState, ServerId};
     use crate::rules::state::{

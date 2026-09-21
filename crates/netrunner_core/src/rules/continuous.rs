@@ -2,7 +2,7 @@
 //!
 //! Every question a standing effect can change — how strong is this
 //! icebreaker, what does this install cost, how much memory is there — is put
-//! here, about a [`Target`], and answered by walking the active cards
+//! here, about a `Target`, and answered by walking the active cards
 //! (`rules::active`) and asking each effect three things: is it the kind
 //! being asked about, is the target one it applies to, is it on.
 //!
@@ -20,7 +20,7 @@
 //! state a search clones.
 
 use crate::cards::CardRegistry;
-use crate::dsl::{card_matches_filter, CardDefinition, CardId, CardType, ContinuousEffect, ContinuousKind, IceType, Number, Scope};
+use crate::dsl::{card_matches_filter, CardDefinition, CardId, CardType, ContinuousEffect, ContinuousKind, IceType, Number, Prohibition, Scope};
 use crate::rules::ability::{self, ResolutionContext};
 use crate::rules::active::{self, ActiveCard};
 use crate::rules::lingering;
@@ -278,13 +278,37 @@ pub(crate) fn pay_install_cost_of(state: &mut GameState, registry: &CardRegistry
     cost
 }
 
-/// What the table adds to the cost of rezzing the Corp install `install`.
+/// What is added to the printed cost of rezzing the Corp install
+/// `install`: what the table adds while it stands (Fransofia Ward's
+/// "+1[c] to rez each piece of ice") and what is lingering (Tread Lightly's
+/// "+3[c] during that run") — the same two halves as [`ice_strength`].
+///
+/// The lingering half is about **ice**, as the card says. It was a number
+/// on the run, added by `engine::rez_price` to anything rezzed in the
+/// attacked server — so an asset rezzed in that server's root during a
+/// Tread Lightly run cost 3 more than it prints.
 pub(crate) fn rez_cost_delta(state: &GameState, registry: &CardRegistry, install: InstallId) -> i32 {
     let Some(target) = Target::corp_install(state, registry, install) else { return 0 };
-    sum(state, registry, target, |kind| match kind {
+    let is_ice = matches!(target, Target::Corp { card, .. } if matches!(card.card_type, CardType::Ice(_)));
+    let table = sum(state, registry, target, |kind| match kind {
         ContinuousKind::RezCost(number) => Some(number),
         _ => None,
-    })
+    });
+    table + if is_ice { lingering::ice_rez_cost(state) } else { 0 }
+}
+
+/// Whether something a player would do is prohibited right now — the one
+/// predicate the guard in `apply_action` and the action list both ask, so
+/// the two cannot disagree.
+///
+/// Every prohibition in the pool is *lingering* — made by something that
+/// resolved, for a duration (`Effect::Prohibit`) — so this reads
+/// `rules::lingering` and the registry goes unused. A card that prints a
+/// standing one ("while this is rezzed, the Runner cannot…") is a
+/// `ContinuousKind` no card needs yet (named on that enum), and this is
+/// where its scan joins: the callers already ask here.
+pub fn cannot(state: &GameState, _registry: &CardRegistry, what: Prohibition) -> bool {
+    lingering::prohibits(state, what)
 }
 
 /// What the table adds to the cost of trashing the Corp install `install`.

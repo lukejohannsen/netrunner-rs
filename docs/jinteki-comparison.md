@@ -147,6 +147,12 @@ others). Ours are effects that each set their own flag:
 continuous effect whose value is a boolean, and the guard in `apply_action`
 asks the layer.
 
+*Done, 20 September 2026 (Rules Audit backlog item 2, last stage):* the two
+flag-setting effects are one `Effect::Prohibit { what, until }`, the flags are
+entries on `GameState::lingering`, and `continuous::cannot` is the predicate.
+Every prohibition in the pool has a duration, so none is a declared
+`ContinuousKind` yet; `ArmRunEndPrevention` is prevention, backlog item 4.
+
 ### 2.6 The run has no movement phase
 
 jinteki's run (`core/runs.clj`) is a multimethod over `:initiation`,

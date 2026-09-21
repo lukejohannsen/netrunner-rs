@@ -11,6 +11,7 @@ use crate::rules::ability;
 use crate::rules::dispatcher;
 use crate::rules::error::RulesError;
 use crate::rules::event::GameEvent;
+use crate::rules::lingering::{Lingering, LingeringEffect, On, Until};
 use crate::rules::paid_ability;
 use crate::rules::run;
 use crate::rules::state::{ArchivedCard, GameState, InstallId, InstallSlot, PendingChoiceResume, PendingDecision, PendingPaidChoiceResume, Side};
@@ -997,8 +998,16 @@ pub(crate) fn resolve_choose_server(
     }
 
     run::start_run(state, registry, server)?;
+    // "During that run, the rez cost of each piece of ice is increased by
+    // 3[credit]" (Tread Lightly): an effect with a duration, so an entry on
+    // `GameState::lingering` that holds while the run does. It was a number
+    // on the run, which no view carried and `rez_price` added to anything
+    // rezzed in this server.
+    if rez_cost_delta != 0 && state.active_run.is_some() {
+        let source = source_card.clone().or_else(|| prompting_card.clone()).ok_or(RulesError::UnresolvedCardTarget)?;
+        state.lingering.push(LingeringEffect { what: Lingering::RezCost(rez_cost_delta), on: On::EachIce, until: Until::EndOfRun, source });
+    }
     if let Some(run) = state.active_run.as_mut() {
-        run.ice_rez_cost_modifier = rez_cost_delta;
         run.bonus_run_credits = bonus_run_credits;
         run.on_success_effect = on_success.map(|effect| Box::new(substitute_chosen_server(*effect, server)));
         // The rider resolves as the card that offered the choice (Red Team

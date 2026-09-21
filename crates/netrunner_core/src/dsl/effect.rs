@@ -115,7 +115,7 @@ pub enum Effect {
     /// `evaluate_effect`'s `acting_card` parameter). The boost is a
     /// `rules::lingering::LingeringEffect` on the card, which holds for as
     /// long as the state says its duration is still running.
-    BoostStrength { amount: u32, duration: BoostDuration },
+    BoostStrength { amount: u32, duration: EffectDuration },
     /// Breaks pending subroutines on the ICE currently being encountered,
     /// gated on the acting rig card's `continuous::breaker_strength` meeting the
     /// ICE's strength (`RulesError::BreakerStrengthTooLow`
@@ -729,19 +729,20 @@ pub enum Effect {
     /// eligibility is the prompt's `CardFilter::Icebreaker`. Re-hosting an
     /// already-hosted card simply moves it.
     HostRigCardOnInstall { card: crate::rules::InstallId, host: crate::rules::InstallId },
-    /// Sets `RunState::runner_cannot_steal_or_trash`, blocking `PlayerAction::
-    /// StealAgenda`/`TrashAccessedCard` for the remainder of the current
-    /// run — e.g. Ansel 1.0's third subroutine. `RulesError::NoActiveRun`
-    /// if there's no run to apply it to. Cleared automatically when the run
-    /// ends (`RunState` isn't carried between runs), never persists past it.
-    PreventStealAndTrashForRemainderOfRun,
-    /// Sets `CorpState::cannot_score_agendas_this_turn`, blocking any
-    /// further `PlayerAction::ScoreAgenda` for the remainder of the Corp's
-    /// turn — e.g. Luminal Transubstantiation's "You cannot score agendas
-    /// for the remainder of the turn". Unlike
-    /// `PreventStealAndTrashForRemainderOfRun` this needs no active-run
-    /// guard: it's turn-scoped, cleared by `turn::enter_start_of_turn`.
-    PreventScoringForRemainderOfTurn,
+    /// "The Runner cannot steal or trash Corp cards for the remainder of
+    /// this run" (Ansel 1.0), "You cannot score agendas for the remainder
+    /// of the turn" (Luminal Transubstantiation): a `rules::lingering`
+    /// entry about the player the prohibition names, holding for as long
+    /// as the state says `until` is running, and asked through
+    /// `continuous::cannot` by the guard and the action list alike.
+    /// `RulesError::NoActiveRun` for a `Run` with no run to last.
+    ///
+    /// Replaced `PreventStealAndTrashForRemainderOfRun` and
+    /// `PreventScoringForRemainderOfTurn`, which each set a flag of their
+    /// own with a reset of its own — and the score lock's was on a field
+    /// no view carried, so no bot sample ever saw it. `validate` refuses
+    /// `Encounter`: nothing prints a prohibition that short.
+    Prohibit { what: Prohibition, until: EffectDuration },
     /// Places `0` advancement counters on `acting_card` — e.g. Seamless
     /// Launch's "place 2 advancement counters on 1 installed card". Distinct
     /// from `AddCounters`, which targets the generic `counters` field;
@@ -779,7 +780,7 @@ pub enum Effect {
     AddAdditionalAccessAmount { server: ServerId, amount: Amount },
     /// `Effect::BoostStrength` with `amount` resolved dynamically via
     /// `Amount` — e.g. Unity's "+X strength, X = installed icebreakers."
-    BoostStrengthAmount { amount: Amount, duration: BoostDuration },
+    BoostStrengthAmount { amount: Amount, duration: EffectDuration },
     /// Moves the acting install — a root-slot Corp card — into the root of
     /// `ServerId`, Mercia B4LL4RD's "move this upgrade to the root of the
     /// server that piece of ice is protecting". The authored server is a
@@ -986,17 +987,39 @@ pub enum EndRunPrevention {
     UnlessCorpTrashesRootCountFromHq,
 }
 
-/// How long an `Effect::BoostStrength` buff lasts.
+/// How long an effect that outlives its resolution lasts — a
+/// `BoostStrength` pump, a `Prohibit`. Was `BoostDuration` while a boost
+/// was the only thing with one.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum BoostDuration {
+pub enum EffectDuration {
     /// Cleared when the current ICE encounter ends.
     Encounter,
     /// Cleared when the run ends — Gordian Blade's "+1 strength for the
     /// remainder of this run": one pump carries across every encounter of
     /// the run it was bought in, and no further.
     Run,
-    /// Cleared at the end of the Runner's turn.
+    /// Until the end of the turn it was made in, whoever's that is.
     Turn,
+}
+
+/// What a player cannot do while an `Effect::Prohibit` holds. Only what a
+/// card in the pool prints; each is asked through `continuous::cannot`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Prohibition {
+    /// The Corp cannot score agendas.
+    ScoreAgendas,
+    /// The Runner cannot steal or trash the cards they access.
+    StealOrTrash,
+}
+
+impl Prohibition {
+    /// The player it binds.
+    pub fn binds(self) -> Side {
+        match self {
+            Prohibition::ScoreAgendas => Side::Corp,
+            Prohibition::StealOrTrash => Side::Runner,
+        }
+    }
 }
 
 /// How many pending subroutines an `Effect::BreakSubroutines` breaks.
@@ -1101,8 +1124,7 @@ impl Effect {
             | Effect::HostRigCardOnInstall { .. }
             | Effect::RefillCountersTo(..)
             | Effect::DrawCardsAmount(..)
-            | Effect::PreventStealAndTrashForRemainderOfRun
-            | Effect::PreventScoringForRemainderOfTurn
+            | Effect::Prohibit { .. }
             | Effect::PlaceAdvancementCounters(..)
             | Effect::DealDamageAmount(..)
             | Effect::AddAdditionalAccessAmount { .. }
@@ -1159,12 +1181,12 @@ mod tests {
 
     #[test]
     fn boost_strength_and_break_subroutines_round_trip_through_json() {
-        let boost = Effect::BoostStrength { amount: 1, duration: BoostDuration::Encounter };
+        let boost = Effect::BoostStrength { amount: 1, duration: EffectDuration::Encounter };
         let boost_json = serde_json::to_string(&boost).unwrap();
         assert_eq!(boost_json, r#"{"BoostStrength":{"amount":1,"duration":"Encounter"}}"#);
         assert_eq!(serde_json::from_str::<Effect>(&boost_json).unwrap(), boost);
 
-        let turn_boost = Effect::BoostStrength { amount: 2, duration: BoostDuration::Turn };
+        let turn_boost = Effect::BoostStrength { amount: 2, duration: EffectDuration::Turn };
         let turn_boost_json = serde_json::to_string(&turn_boost).unwrap();
         assert_eq!(turn_boost_json, r#"{"BoostStrength":{"amount":2,"duration":"Turn"}}"#);
         assert_eq!(serde_json::from_str::<Effect>(&turn_boost_json).unwrap(), turn_boost);

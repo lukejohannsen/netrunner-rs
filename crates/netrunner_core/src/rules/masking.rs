@@ -315,10 +315,6 @@ pub struct PublicRunState {
     /// Run-scoped credits granted by a card for this run only. Public for
     /// the same reason as `bad_publicity_credits`.
     pub bonus_run_credits: u32,
-    /// Whether a card has barred stealing/trashing accessed cards for the
-    /// rest of this run. A run-scoped restriction announced when it
-    /// applies, so both players know it is in force.
-    pub runner_cannot_steal_or_trash: bool,
     /// `RunState::redirect_on_approach` — a Maintenance Access run's
     /// announced destination. Public: the event was played face-up.
     #[serde(default)]
@@ -903,7 +899,6 @@ fn mask_run_state(state: &GameState, registry: &CardRegistry, run: &RunState, vi
         jack_out_permitted: run.jack_out_permitted,
         bad_publicity_credits: run.bad_publicity_credits,
         bonus_run_credits: run.bonus_run_credits,
-        runner_cannot_steal_or_trash: run.runner_cannot_steal_or_trash,
         redirect_on_approach: run.redirect_on_approach,
     }
 }
@@ -1169,7 +1164,7 @@ mod tests {
             .iter()
             .map(|card| lingering::LingeringEffect {
                 what: lingering::Lingering::Strength(1),
-                on: card.install_id,
+                on: lingering::On::Install(card.install_id),
                 until: lingering::Until::EndOfTurn(0),
                 source: card.card.clone(),
             })
@@ -1334,15 +1329,23 @@ mod tests {
         state.active_run = Some(RunState {
             bad_publicity_credits: 2,
             bonus_run_credits: 3,
-            runner_cannot_steal_or_trash: true,
             ..Default::default()
         });
+        // A prohibition is a lingering effect, as public as the run.
+        let barred = lingering::LingeringEffect {
+            what: lingering::Lingering::Cannot(crate::dsl::Prohibition::StealOrTrash),
+            on: lingering::On::Player(Side::Runner),
+            until: lingering::Until::EndOfRun,
+            source: CardId("ansel_1_0".to_string()),
+        };
+        state.lingering = vec![barred.clone()];
 
         for side in [Side::Corp, Side::Runner] {
-            let run = mask_state_for_player(&state, side).active_run.expect("the run is public");
+            let masked = mask_state_for_player(&state, side);
+            assert_eq!(masked.lingering, vec![barred.clone()], "{side:?}");
+            let run = masked.active_run.expect("the run is public");
             assert_eq!(run.bad_publicity_credits, 2, "{side:?}");
             assert_eq!(run.bonus_run_credits, 3, "{side:?}");
-            assert!(run.runner_cannot_steal_or_trash, "{side:?}");
         }
     }
 

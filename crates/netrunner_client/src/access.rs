@@ -34,7 +34,7 @@
 //! read), not this.
 
 use netrunner_core::cards::CardRegistry;
-use netrunner_core::dsl::{CardId, Cost};
+use netrunner_core::dsl::{CardId, Cost, Prohibition};
 use netrunner_core::rules::{MaskedZone, PlayerAction, PublicAccessPhase, ServerId, Side};
 use netrunner_core::view::ClientView;
 
@@ -64,8 +64,7 @@ pub struct Access {
     pub trash_cost: Option<u32>,
     pub steal_cost: Option<Cost>,
     pub mandatory_steal: bool,
-    /// `PublicRunState::runner_cannot_steal_or_trash` — Ansel 1.0 and
-    /// friends. Carried because it is the only thing that explains why a
+    /// `ClientView::cannot(StealOrTrash)` — Ansel 1.0 and friends. Carried because it is the only thing that explains why a
     /// card with a printed trash cost is offering nothing but "pass",
     /// which is otherwise unreadable.
     pub steal_and_trash_blocked: bool,
@@ -109,7 +108,7 @@ impl Access {
             trash_cost,
             steal_cost,
             mandatory_steal,
-            steal_and_trash_blocked: run.runner_cannot_steal_or_trash,
+            steal_and_trash_blocked: view.cannot(Prohibition::StealOrTrash),
             remaining: zone_len(&access.unaccessed_cards),
         })
     }
@@ -201,6 +200,7 @@ fn side_word(side: Side) -> &'static str {
 mod tests {
     use super::*;
     use netrunner_core::rules::{GamePhase, GameState, PublicAccessState, PublicRunState, RunPhase, Viewer};
+    use netrunner_core::rules::lingering::{Lingering, LingeringEffect, On, Until};
     use netrunner_core::view::build_client_view;
 
     fn registry() -> CardRegistry {
@@ -233,7 +233,6 @@ mod tests {
             jack_out_permitted: false,
             bad_publicity_credits: 0,
             bonus_run_credits: 0,
-            runner_cannot_steal_or_trash: false,
             redirect_on_approach: None,
         });
         view
@@ -299,8 +298,14 @@ mod tests {
     fn the_facts_say_what_is_left_and_why_nothing_may_be_taken() {
         let registry = registry();
         let mut view = accessing("nico_campaign", ServerId::Hq, Viewer::Player(Side::Runner), &registry);
+        // As the view carries it: a lingering effect, already known to hold.
+        view.lingering.push(LingeringEffect {
+            what: Lingering::Cannot(Prohibition::StealOrTrash),
+            on: On::Player(Side::Runner),
+            until: Until::EndOfRun,
+            source: CardId("ansel_1_0".to_string()),
+        });
         let run = view.active_run.as_mut().unwrap();
-        run.runner_cannot_steal_or_trash = true;
         run.access_state.as_mut().unwrap().unaccessed_cards = MaskedZone::Hidden { count: 1 };
         let access = Access::of(&view, &registry).expect("still the Runner's decision");
         assert_eq!(access.remaining, 1);

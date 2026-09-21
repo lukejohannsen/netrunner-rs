@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use crate::dsl::ability::{AbilityDef, EffectRequirement, InteractiveOnAccess, SubroutineDef};
 use crate::dsl::continuous::{ContinuousEffect, ContinuousKind, Scope};
 use crate::dsl::cost::Cost;
-use crate::dsl::effect::Effect;
+use crate::dsl::effect::{Effect, EffectDuration};
 use crate::dsl::trigger::{EventFilter, Subject, Trigger, TriggerAbout};
 use crate::rules::Side;
 
@@ -602,6 +602,8 @@ pub enum CardValidationError {
     TriggerActsOnNoCard(CardId, Trigger),
     #[error("card {0:?}: a continuous {1} effect does not fit — {2}")]
     ContinuousEffectDoesNotFit(CardId, &'static str, &'static str),
+    #[error("card {0:?}: a prohibition lasts a run or a turn — nothing prints one for an encounter, and the guards that ask are not asked during one")]
+    ProhibitionForAnEncounter(CardId),
 }
 
 /// Every field at its neutral value, matching what serde fills in for an
@@ -721,6 +723,25 @@ impl CardDefinition {
             if triggered.acts_on_subject && about != TriggerAbout::Card {
                 return Err(CardValidationError::TriggerActsOnNoCard(self.id.clone(), triggered.trigger));
             }
+        }
+        // `Prohibit { until: Encounter }` parses and would hold for a window
+        // in which nobody scores, steals or trashes: a card that reads as
+        // working and forbids nothing.
+        let mut prohibits_for_an_encounter = false;
+        let roots = self
+            .abilities
+            .iter()
+            .map(|ability| &ability.effect)
+            .chain(self.triggers.iter().flat_map(|triggered| &triggered.effects))
+            .chain(self.subroutines.iter().map(|subroutine| &subroutine.effect))
+            .chain(self.interactive_on_access.iter().flat_map(|interactive| &interactive.effects));
+        for root in roots {
+            root.for_each_effect(&mut |effect| {
+                prohibits_for_an_encounter |= matches!(effect, Effect::Prohibit { until: EffectDuration::Encounter, .. });
+            });
+        }
+        if prohibits_for_an_encounter {
+            return Err(CardValidationError::ProhibitionForAnEncounter(self.id.clone()));
         }
         // A continuous effect that does not fit parses and then applies to
         // nothing, which reads as a card that works: the scan finds no
@@ -850,7 +871,7 @@ mod tests {
     #[test]
     fn parses_corroder_from_json() {
         use crate::dsl::cost::Cost;
-        use crate::dsl::effect::{BoostDuration, SubroutineBreakCount};
+        use crate::dsl::effect::{EffectDuration, SubroutineBreakCount};
 
         let card: CardDefinition = serde_json::from_str(CORRODER_JSON).expect("valid card JSON");
 
@@ -871,7 +892,7 @@ mod tests {
                     // Every icebreaker ability carries this — real
                     // Netrunner only permits them while encountering ICE.
                     requirement: Some(EffectRequirement::DuringEncounter),
-                    effect: Effect::BoostStrength { amount: 1, duration: BoostDuration::Encounter },
+                    effect: Effect::BoostStrength { amount: 1, duration: EffectDuration::Encounter },
                     cost_discount_if: None, used_by: None },
                 AbilityDef {
                     text: None,
@@ -1056,5 +1077,29 @@ mod tests {
         };
         assert_eq!(while_protecting(CardType::Ice(IceType::Barrier)).validate(), Ok(()));
         assert!(refused(while_protecting(CardType::Upgrade)));
+    }
+
+    /// A prohibition is for a run or a turn. One for an encounter parses,
+    /// and then holds only while nobody could do the thing it forbids —
+    /// found wherever the effect is nested, since Ansel's is a subroutine
+    /// and Luminal's the second step of a trigger.
+    #[test]
+    fn validate_refuses_a_prohibition_that_lasts_an_encounter() {
+        use crate::dsl::effect::Prohibition;
+        let ice = |until| CardDefinition {
+            id: CardId("bar".to_string()),
+            side: Side::Corp,
+            card_type: CardType::Ice(IceType::CodeGate),
+            strength: Some(1),
+            subroutines: vec![SubroutineDef {
+                text: "The Runner cannot steal or trash Corp cards.".to_string(),
+                effect: Effect::Sequence(vec![Effect::Prohibit { what: Prohibition::StealOrTrash, until }]),
+                only_breakable_by: None,
+            }],
+            ..CardDefinition::default()
+        };
+        assert_eq!(ice(EffectDuration::Run).validate(), Ok(()));
+        assert_eq!(ice(EffectDuration::Turn).validate(), Ok(()));
+        assert_eq!(ice(EffectDuration::Encounter).validate(), Err(CardValidationError::ProhibitionForAnEncounter(CardId("bar".to_string()))));
     }
 }

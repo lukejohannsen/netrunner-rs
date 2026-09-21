@@ -1,5 +1,5 @@
 use crate::cards::CardRegistry;
-use crate::dsl::{CardId, Cost, HostedCreditUse};
+use crate::dsl::{CardId, Cost, HostedCreditUse, Prohibition};
 use crate::rules::ability;
 use crate::rules::continuous;
 use crate::rules::dispatcher;
@@ -559,7 +559,7 @@ pub fn resolve_steal(
     card_id: &CardId,
     registry: &CardRegistry,
 ) -> Result<Vec<GameEvent>, RulesError> {
-    if state.active_run.as_ref().is_some_and(|r| r.runner_cannot_steal_or_trash) {
+    if continuous::cannot(state, registry, Prohibition::StealOrTrash) {
         return Err(RulesError::StealAndTrashPreventedThisRun);
     }
     let pending = require_pending(state, card_id)?;
@@ -787,7 +787,7 @@ pub fn resolve_trash(
     card_id: &CardId,
     registry: &CardRegistry,
 ) -> Result<Vec<GameEvent>, RulesError> {
-    if state.active_run.as_ref().is_some_and(|r| r.runner_cannot_steal_or_trash) {
+    if continuous::cannot(state, registry, Prohibition::StealOrTrash) {
         return Err(RulesError::StealAndTrashPreventedThisRun);
     }
     let pending = require_pending(state, card_id)?;
@@ -832,7 +832,7 @@ pub fn resolve_pass(
     registry: &CardRegistry,
 ) -> Result<Vec<GameEvent>, RulesError> {
     let pending = require_pending(state, card_id)?;
-    let steal_blocked = state.active_run.as_ref().is_some_and(|r| r.runner_cannot_steal_or_trash);
+    let steal_blocked = continuous::cannot(state, registry, Prohibition::StealOrTrash);
     if pending.mandatory_steal && !steal_blocked {
         return Err(RulesError::MandatoryStealViolation { card: card_id.clone() });
     }
@@ -1059,7 +1059,7 @@ mod tests {
         seed: u64,
     ) -> GameState {
         GameState {
-            corp: crate::rules::state::CorpState { identity: None, extra_clicks_next_turn: 0, identity_counters: 0, played_operation_this_turn: false, identity_flipped: false, bad_publicity: 0, first_install_used_this_turn: false, recurring_credits: 0, recurring_credits_max: 0, agenda_points_scored_this_turn: 0, cannot_score_agendas_this_turn: false, removed_from_game: Vec::new(), once_per_turn_used: std::collections::HashSet::new(),
+            corp: crate::rules::state::CorpState { identity: None, extra_clicks_next_turn: 0, identity_counters: 0, played_operation_this_turn: false, identity_flipped: false, bad_publicity: 0, first_install_used_this_turn: false, recurring_credits: 0, recurring_credits_max: 0, agenda_points_scored_this_turn: 0, removed_from_game: Vec::new(), once_per_turn_used: std::collections::HashSet::new(),
                 scored_agendas: Vec::new(),
                 playable_from_archives: Vec::new(),
                 resources: PlayerResources {

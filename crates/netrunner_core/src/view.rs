@@ -145,9 +145,10 @@ pub struct ClientView {
     pub pending_prevention: Option<PendingPrevention>,
     pub pending_paid_choice: Option<crate::rules::PendingPaidChoice>,
     pub pending_decision: Option<crate::rules::PendingDecision>,
-    /// `PublicGameState::lingering` verbatim — the boosts and Leech's -1
-    /// that hold right now, which the strengths in this view already
-    /// include. A client may say where a number came from; a search
+    /// `PublicGameState::lingering` verbatim — the boosts, Leech's -1, a
+    /// rez cost raised for a run and the prohibitions ([`ClientView::cannot`])
+    /// that hold right now. The strengths in this view already include
+    /// theirs. A client may say where a number came from; a search
     /// rebuilding a state has to, or a pump it carried as printed strength
     /// would outlast its run.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -263,6 +264,17 @@ fn active_player(phase: GamePhase) -> Side {
         | GamePhase::Action(side)
         | GamePhase::Discard { side, .. }
         | GamePhase::GameOver(side) => side,
+    }
+}
+
+impl ClientView {
+    /// Whether a prohibition is in force — "the Runner cannot steal or
+    /// trash", "the Corp cannot score agendas". The engine's own answer
+    /// (`continuous::cannot`), read off the list this view carries, which
+    /// masking already filtered to what holds. It explains a legal-action
+    /// list to a person; it never decides one.
+    pub fn cannot(&self, what: crate::dsl::Prohibition) -> bool {
+        crate::rules::lingering::listed(&self.lingering, what)
     }
 }
 

@@ -1172,7 +1172,8 @@ fn visible_install_value(installed: &InstalledCard, registry: &CardRegistry, w: 
 /// authoritative state.
 ///
 /// Rez affordability is the printed cost against the Corp's credits,
-/// ignoring `ice_rez_cost_modifier` and any discount: over-estimating
+/// ignoring what is added to it (`continuous::rez_cost_delta` — Tread
+/// Lightly's +3, Fransofia Ward's +1) and any discount: over-estimating
 /// what the Corp can pay only makes the Runner one ICE more cautious,
 /// the same direction `breaker_savings_shortfall` already errs in.
 fn unbreakable_unrezzed_ice(state: &GameState, run: &RunState, registry: &CardRegistry) -> usize {
@@ -2400,7 +2401,7 @@ mod tests {
         (break_cost, break_count): (u32, u32),
         (pump_cost, pump_amount): (u32, u32),
     ) -> CardDefinition {
-        use netrunner_core::dsl::BoostDuration;
+        use netrunner_core::dsl::EffectDuration;
         let mut def = breaker(id, restrict_to);
         def.abilities[0].cost = Some(Cost::Credits(break_cost));
         def.abilities[0].effect = Effect::BreakSubroutines { count: SubroutineBreakCount::Fixed(break_count), restrict_to };
@@ -2409,7 +2410,7 @@ mod tests {
             trigger: Trigger::Paid,
             cost: Some(Cost::Credits(pump_cost)),
             requirement: None,
-            effect: Effect::BoostStrength { amount: pump_amount, duration: BoostDuration::Encounter },
+            effect: Effect::BoostStrength { amount: pump_amount, duration: EffectDuration::Encounter },
             cost_discount_if: None, used_by: None });
         def
     }

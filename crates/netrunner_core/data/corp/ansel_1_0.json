@@ -98,7 +98,12 @@
     },
     {
       "text": "The Runner cannot steal or trash Corp cards for the remainder of this run.",
-      "effect": "PreventStealAndTrashForRemainderOfRun"
+      "effect": {
+        "Prohibit": {
+          "what": "StealOrTrash",
+          "until": "Run"
+        }
+      }
     }
   ],
   "numeric_id": 30038,
