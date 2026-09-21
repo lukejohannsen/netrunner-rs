@@ -98,26 +98,27 @@ pub fn kate_vs_hb_registry() -> CardRegistry {
 const SG_CORP_IDENTITY: &str = "nbn_reality_plus";
 const SG_RUNNER_IDENTITY: &str = "zahya_sadeghi";
 
-/// `(card id, copies)`. Corp: 40 cards, 20 agenda points — the top of the
-/// `[18, 20]` range `agenda_point_range` requires below 45 cards. The four
-/// "Limit 1 per deck" agendas take a single copy each, matching their
-/// printed limit even though this gate only enforces the flat
-/// `MAX_COPIES_PER_CARD`.
+/// `(card id, copies)`. Corp: 40 cards, 18 agenda points — CR 1.4.6a's
+/// "18 or 19" for 40 to 44 cards. It carried 20 until the band was read
+/// against the rules, which is one point past it: the third Orbital
+/// Superiority became a second Palisade, so every agenda is still in the
+/// deck. The four "Limit 1 per deck" agendas take a single copy each,
+/// which both validators now enforce.
 const SG_CORP_DECK: [(&str, u32); 34] = [
-    // Agendas — 10 cards, 20 points.
+    // Agendas — 9 cards, 18 points.
     ("offworld_office", 3),
-    ("orbital_superiority", 3),
+    ("orbital_superiority", 2),
     ("luminal_transubstantiation", 1),
     ("tomorrows_headline", 1),
     ("above_the_law", 1),
     ("longevity_serum", 1),
-    // Ice — 12.
+    // Ice — 13.
     ("ansel_1_0", 2),
     ("bran_1_0", 1),
     ("ballista", 1),
     ("diviner", 1),
     ("funhouse", 2),
-    ("palisade", 1),
+    ("palisade", 2),
     ("pharos", 1),
     ("ping", 1),
     ("tithe", 1),

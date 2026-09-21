@@ -319,9 +319,9 @@ mod tests {
     }
 
     /// A registry plus a legal 40-card Corp deck (identity `min_deck_size:
-    /// 40`, landing it in the flat 18-20 agenda-point band; 4 distinct
-    /// 5-point Agendas = 20 points, at the top of that range) and a legal
-    /// 45-card Runner deck.
+    /// 40`, landing it in CR 1.4.6a's 18-19 agenda-point band; 4 distinct
+    /// Agendas worth 4 + 5 + 5 + 5 = 19 points, the top of that band) and a
+    /// legal 45-card Runner deck.
     fn setup_fixtures() -> (CardRegistry, Deck, Deck) {
         let mut registry = CardRegistry::new();
         registry.insert(identity("corp_id", Side::Corp, 40));
@@ -332,7 +332,7 @@ mod tests {
                 let id = format!("corp_agenda_{i}");
                 let mut agenda = filler(&id, Side::Corp);
                 agenda.card_type = CardType::Agenda;
-                agenda.agenda_points = Some(5);
+                agenda.agenda_points = Some(if i == 0 { 4 } else { 5 });
                 registry.insert(agenda);
                 (CardId(id), 1)
             })

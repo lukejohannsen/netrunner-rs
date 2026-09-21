@@ -241,9 +241,44 @@ impl DeckFile {
     /// The two validators are deliberately not merged — see `crate::deck`'s
     /// module doc. This is the seam that runs them together, so a caller
     /// gets one answer instead of having to know which to invoke.
+    ///
+    /// **A *Learn to Play* identity is legal only with its own lists.** CR
+    /// 1.4.1a: The Catalyst and The Syndicate "are intended for use only with
+    /// the decks included in that pack. They are not legal for play under
+    /// the full deck construction rules." Those identities print no
+    /// influence budget (`CardDefinition::unlimited_influence`), so the
+    /// deckbuilding validator could not refuse anything under them and a
+    /// Catalyst deck of every faction validated in Standard. The check is
+    /// against the lists themselves — the embedded starter and boosted decks
+    /// — rather than the file's `category`, because a deck brought to a
+    /// server names its own category.
     pub fn validate(&self, registry: &CardRegistry, format: NsgFormat) -> Result<ValidationReport, DeckError> {
         crate::rules::deck::validate_deck(&self.to_deck(), self.side, registry)?;
+        let starter_identity = registry.get(&self.identity).is_some_and(|identity| identity.unlimited_influence);
+        if starter_identity && !self.is_a_learn_to_play_list() {
+            return Err(DeckError::StarterIdentity(self.identity.clone()));
+        }
         Ok(crate::deck::validate_deck(&self.to_decklist(registry)?, registry, format)?)
+    }
+
+    /// Whether this deck is card for card one of the published *Learn to
+    /// Play* lists (a starter deck or its boosted version).
+    fn is_a_learn_to_play_list(&self) -> bool {
+        fn contents(deck: &DeckFile) -> Vec<(CardId, u32)> {
+            let mut counts: HashMap<CardId, u32> = HashMap::new();
+            for entry in &deck.cards {
+                *counts.entry(entry.card.clone()).or_insert(0) += entry.count;
+            }
+            let mut contents: Vec<_> = counts.into_iter().collect();
+            contents.sort();
+            contents
+        }
+        let mine = contents(self);
+        embedded_decks().iter().any(|published| {
+            matches!(published.category, DeckCategory::Starter | DeckCategory::Boosted)
+                && published.identity == self.identity
+                && contents(published) == mine
+        })
     }
 
     /// Running totals against the identity's limits, for a deck still being
@@ -268,6 +303,10 @@ pub enum DeckError {
          and its deckbuilding legality cannot be checked"
     )]
     NoPrintedMetadata(CardId),
+
+    /// CR 1.4.1a — see [`DeckFile::validate`].
+    #[error("{0:?} is a Learn to Play identity, legal only with its own starter or boosted list")]
+    StarterIdentity(CardId),
 
     #[error("{0}")]
     Unplayable(#[from] RulesError),
@@ -354,6 +393,41 @@ mod tests {
             deck.validate(&registry, deck.category.format())
                 .unwrap_or_else(|e| panic!("sample deck {:?} ({}) is not legal: {e}", deck.id, deck.name));
         }
+    }
+
+    /// CR 1.4.1a: a *Learn to Play* identity is legal with its published
+    /// lists and nothing else. Swapping one card out of the starter Runner
+    /// deck is a deck of the same identity that no pack contains, and with
+    /// no influence budget to break it validated in every format before.
+    #[test]
+    fn a_learn_to_play_identity_is_legal_only_with_its_own_lists() {
+        let registry = registry();
+        for id in ["the_catalyst_starter", "the_catalyst_boosted", "the_syndicate_starter", "the_syndicate_boosted"] {
+            let deck = by_id(id).expect("embedded");
+            deck.validate(&registry, NsgFormat::Startup).unwrap_or_else(|e| panic!("{id} is a published list: {e}"));
+        }
+
+        let mut altered = by_id("the_catalyst_starter").expect("embedded");
+        // Swap the first entry for a card from a Runner sample deck that the
+        // starter list lacks, keeping the count so the size stays at the
+        // identity's minimum and only the list itself is wrong.
+        let replacement = embedded_decks()
+            .into_iter()
+            .filter(|deck| deck.side == Side::Runner && deck.category == DeckCategory::Sample)
+            .flat_map(|deck| deck.cards)
+            .map(|entry| entry.card)
+            .find(|card| {
+                altered.cards.iter().all(|entry| entry.card != *card)
+                    && registry.get(card).is_some_and(|definition| definition.deck_limit.unwrap_or(3) >= altered.cards[0].count)
+            })
+            .expect("a card the starter lacks");
+        altered.cards[0].card = replacement;
+        altered.category = DeckCategory::Starter;
+        assert_eq!(
+            altered.validate(&registry, NsgFormat::Standard).err(),
+            Some(DeckError::StarterIdentity(altered.identity.clone())),
+            "a starter identity under a list no pack contains, whatever its file says it is"
+        );
     }
 
     /// The builder's running totals are the gate's numbers: on every legal

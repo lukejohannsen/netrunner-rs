@@ -5,11 +5,11 @@ use crate::dsl::{CardId, CardType};
 use crate::rules::error::RulesError;
 use crate::rules::state::Side;
 
-/// Flat copy-limit applied to every non-identity card in a deck. Real
-/// Netrunner allows some identities/cards to override this — no field
-/// exists anywhere on `dsl::CardDefinition` to source such an override from, and
-/// inventing one would be a speculative schema guess with zero precedent
-/// in this data-driven card model, so only the flat limit is enforced.
+/// The copy limit of a card that prints none (CR 1.4.7). A card that
+/// prints its own — "Limit 1 per deck" — carries it as
+/// `CardDefinition::deck_limit`, which both validators read first; the
+/// comment here used to say no such field existed, and this gate applied
+/// the flat 3 to Above the Law as a result.
 pub const MAX_COPIES_PER_CARD: u32 = 3;
 
 /// A deckbuilding-time deck list: an identity plus a card pool, each entry
@@ -24,8 +24,8 @@ pub struct Deck {
 /// Validates `deck` against `registry` for `side`, checking in order:
 /// the identity exists in the registry, is a `CardType::Identity`, and
 /// matches `side`; the total non-identity card count meets the identity's
-/// `min_deck_size`; every card exists in the registry, respects
-/// `MAX_COPIES_PER_CARD`, matches `side`, and (Runner decks only) isn't
+/// `min_deck_size`; every card exists in the registry, is not an identity,
+/// respects its copy limit, matches `side`, and (Runner decks only) isn't
 /// an Agenda; and (Corp decks only) the deck's total agenda points fall
 /// within the size-derived legal range (see `agenda_point_range`).
 pub fn validate_deck(deck: &Deck, side: Side, registry: &CardRegistry) -> Result<(), RulesError> {
@@ -64,8 +64,12 @@ pub fn validate_deck(deck: &Deck, side: Side, registry: &CardRegistry) -> Result
         if !card.is_playable {
             return Err(RulesError::UnplayableCard(card_id.clone()));
         }
-        if *count > MAX_COPIES_PER_CARD {
-            return Err(RulesError::TooManyCopies { card: card_id.clone(), count: *count, max: MAX_COPIES_PER_CARD });
+        if card.card_type == CardType::Identity {
+            return Err(RulesError::DeckContainsIdentity { card: card_id.clone() });
+        }
+        let max_copies = card.deck_limit.unwrap_or(MAX_COPIES_PER_CARD);
+        if *count > max_copies {
+            return Err(RulesError::TooManyCopies { card: card_id.clone(), count: *count, max: max_copies });
         }
         if card.side != side {
             return Err(RulesError::DeckCardWrongSide {
@@ -97,19 +101,21 @@ pub fn validate_deck(deck: &Deck, side: Side, registry: &CardRegistry) -> Result
 }
 
 /// Returns `(min, max)` legal agenda points for a Corp deck of `size`
-/// non-identity cards: `min = 2 + 2 * floor(size / 5)`, the rule Null
-/// Signal Games publishes (40–44 cards → 18, 45–49 → 20, 50–54 → 22). The
-/// `+2` ceiling matches historical competition-legality rules. This used
-/// to be written as `20 + 2 * floor((size - 45) / 5)` above 45 with a flat
-/// 18 below, which is the same function on every legal Standard size but
-/// wrong under it: the *Learn to Play* starter Corp deck is 34 cards
-/// carrying 14 agenda points, exactly what the unflattened rule gives.
-/// ROADMAP Phase 1.75 §1 anticipated needing the win threshold as a second
-/// parameter; it does not — size alone determines the range, and the
-/// 6-point starter game changes only `MatchRules::winning_agenda_points`.
+/// non-identity cards: `min = 2 + 2 * floor(size / 5)` and `max = min + 1`,
+/// CR 1.4.6's "40 to 44 cards must contain 18 or 19 agenda points", and so
+/// on up. The maximum was `min + 2` until the rules were read against it —
+/// "matching historical competition-legality rules", which no version of
+/// the rules says — so a 40-card deck with 20 points was accepted. The
+/// minimum used to be written as `20 + 2 * floor((size - 45) / 5)` above 45
+/// with a flat 18 below, which is the same function on every legal
+/// Standard size but wrong under it: the *Learn to Play* starter Corp deck
+/// is 34 cards carrying 14 agenda points, exactly what the unflattened rule
+/// gives. ROADMAP Phase 1.75 §1 anticipated needing the win threshold as a
+/// second parameter; it does not — size alone determines the range, and
+/// the 6-point starter game changes only `MatchRules::winning_agenda_points`.
 pub(crate) fn agenda_point_range(size: u32) -> (u32, u32) {
     let min = 2 + 2 * (size / 5);
-    (min, min + 2)
+    (min, min + 1)
 }
 
 #[cfg(test)]
@@ -178,7 +184,7 @@ mod tests {
     }
 
     /// A minimal, legal 45-card Corp deck: 4 distinct 5-point Agendas (20
-    /// agenda points total, within the 45-card range of 20-22) plus 41
+    /// agenda points total, within the 45-card range of 20-21) plus 41
     /// filler cards, all respecting the 3-copy limit.
     fn valid_corp_registry_and_deck() -> (CardRegistry, Deck) {
         let mut registry = CardRegistry::new();
@@ -343,13 +349,13 @@ mod tests {
     fn validate_deck_fails_when_corp_agenda_points_below_range() {
         let mut registry = CardRegistry::new();
         registry.insert(identity("corp_id", Side::Corp, 45));
-        let mut cards = agenda_stack(&mut registry, "corp_agenda", 5, 3); // 15 points, below [20,22]
+        let mut cards = agenda_stack(&mut registry, "corp_agenda", 5, 3); // 15 points, below [20,21]
         cards.extend(filler_stack(&mut registry, Side::Corp, "corp_filler", 42));
         let deck = Deck { identity: CardId("corp_id".to_string()), cards };
 
         assert_eq!(
             validate_deck(&deck, Side::Corp, &registry),
-            Err(RulesError::AgendaPointsOutOfRange { points: 15, min: 20, max: 22 })
+            Err(RulesError::AgendaPointsOutOfRange { points: 15, min: 20, max: 21 })
         );
     }
 
@@ -357,24 +363,74 @@ mod tests {
     fn validate_deck_fails_when_corp_agenda_points_above_range() {
         let mut registry = CardRegistry::new();
         registry.insert(identity("corp_id", Side::Corp, 45));
-        let mut cards = agenda_stack(&mut registry, "corp_agenda", 5, 5); // 25 points, above [20,22]
+        let mut cards = agenda_stack(&mut registry, "corp_agenda", 5, 5); // 25 points, above [20,21]
         cards.extend(filler_stack(&mut registry, Side::Corp, "corp_filler", 40));
         let deck = Deck { identity: CardId("corp_id".to_string()), cards };
 
         assert_eq!(
             validate_deck(&deck, Side::Corp, &registry),
-            Err(RulesError::AgendaPointsOutOfRange { points: 25, min: 20, max: 22 })
+            Err(RulesError::AgendaPointsOutOfRange { points: 25, min: 20, max: 21 })
+        );
+    }
+
+    /// CR 1.4.6b: "A deck with 45 to 49 cards must contain 20 or 21 agenda
+    /// points" — 22 is one past it, and was accepted while the range ran to
+    /// `min + 2`.
+    #[test]
+    fn validate_deck_fails_one_point_past_the_band() {
+        let mut registry = CardRegistry::new();
+        registry.insert(identity("corp_id", Side::Corp, 45));
+        let mut cards = agenda_stack(&mut registry, "corp_agenda", 2, 11); // 22 points
+        cards.extend(filler_stack(&mut registry, Side::Corp, "corp_filler", 34));
+        let deck = Deck { identity: CardId("corp_id".to_string()), cards };
+
+        assert_eq!(
+            validate_deck(&deck, Side::Corp, &registry),
+            Err(RulesError::AgendaPointsOutOfRange { points: 22, min: 20, max: 21 })
+        );
+    }
+
+    /// CR 1.4.4: "Decks cannot contain identity cards." One copy passed
+    /// every other check.
+    #[test]
+    fn validate_deck_fails_when_a_deck_holds_an_identity() {
+        let (mut registry, mut deck) = valid_runner_registry_and_deck();
+        registry.insert(identity("another_runner_id", Side::Runner, 45));
+        deck.cards.push((CardId("another_runner_id".to_string()), 1));
+
+        assert_eq!(
+            validate_deck(&deck, Side::Runner, &registry),
+            Err(RulesError::DeckContainsIdentity { card: CardId("another_runner_id".to_string()) })
+        );
+    }
+
+    /// CR 1.4.7: "Some cards stipulate alternative copy limits in their
+    /// card text." A card's own limit is its `deck_limit`, here as in the
+    /// deckbuilding validator.
+    #[test]
+    fn validate_deck_reads_a_cards_own_copy_limit() {
+        let (mut registry, mut deck) = valid_runner_registry_and_deck();
+        let mut limited = card("limit_one", Side::Runner, CardType::Resource);
+        limited.deck_limit = Some(1);
+        registry.insert(limited);
+        deck.cards.push((CardId("limit_one".to_string()), 2));
+
+        assert_eq!(
+            validate_deck(&deck, Side::Runner, &registry),
+            Err(RulesError::TooManyCopies { card: CardId("limit_one".to_string()), count: 2, max: 1 })
         );
     }
 
     #[test]
     fn agenda_point_range_matches_size_derived_examples() {
-        assert_eq!(agenda_point_range(40), (18, 20));
-        assert_eq!(agenda_point_range(44), (18, 20));
-        assert_eq!(agenda_point_range(45), (20, 22));
-        assert_eq!(agenda_point_range(50), (22, 24));
+        // CR 1.4.6a–d, one band each.
+        assert_eq!(agenda_point_range(40), (18, 19));
+        assert_eq!(agenda_point_range(44), (18, 19));
+        assert_eq!(agenda_point_range(45), (20, 21));
+        assert_eq!(agenda_point_range(50), (22, 23));
+        assert_eq!(agenda_point_range(55), (24, 25));
         // The starter Corp deck: 34 cards, 14 points (ROADMAP Phase 1.75).
-        assert_eq!(agenda_point_range(34), (14, 16));
-        assert_eq!(agenda_point_range(30), (14, 16));
+        assert_eq!(agenda_point_range(34), (14, 15));
+        assert_eq!(agenda_point_range(30), (14, 15));
     }
 }

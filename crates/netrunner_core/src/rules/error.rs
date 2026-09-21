@@ -250,6 +250,11 @@ pub enum RulesError {
     #[error("Runner decks cannot contain Agenda {card:?}")]
     RunnerDeckContainsAgenda { card: CardId },
 
+    /// CR 1.4.4: "Decks cannot contain identity cards." An identity prints
+    /// influence 0 and a copy limit of 1, so no other check refused one.
+    #[error("identity {card:?} cannot be one of a deck's cards")]
+    DeckContainsIdentity { card: CardId },
+
     #[error("deck has {points} agenda point(s), outside the required range {min}-{max}")]
     AgendaPointsOutOfRange { points: u32, min: u32, max: u32 },
 
