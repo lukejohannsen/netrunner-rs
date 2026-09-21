@@ -32,27 +32,32 @@
             "Archives"
           ],
           "on_success": {
-            "Sequence": [
-              {
-                "RemoveCounters": 3
-              },
-              {
-                "GainCredits": [
-                  "Runner",
-                  3
-                ]
-              },
-              {
-                "EffectIf": {
-                  "condition": {
-                    "ThisCardCountersAtMost": 0
+            "EffectIf": {
+              "condition": "ThisCardIsInstalled",
+              "effect": {
+                "Sequence": [
+                  {
+                    "RemoveCounters": 3
                   },
-                  "effect": {
-                    "TrashCard": "ThisCard"
+                  {
+                    "GainCredits": [
+                      "Runner",
+                      3
+                    ]
+                  },
+                  {
+                    "EffectIf": {
+                      "condition": {
+                        "ThisCardCountersAtMost": 0
+                      },
+                      "effect": {
+                        "TrashCard": "ThisCard"
+                      }
+                    }
                   }
-                }
+                ]
               }
-            ]
+            }
           },
           "exclude_servers_run_this_turn": true
         }

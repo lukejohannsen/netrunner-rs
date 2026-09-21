@@ -3073,6 +3073,39 @@ mod system_gateway {
     /// run. This used to be a `Trigger::OnSuccessfulRun`, so a plain basic
     /// action run paid out too — and on remotes, which the click cannot
     /// even target.
+    /// Red Team trashed mid-run: its rider's "take 3[credit] from this
+    /// resource" could not be done, and the error made `CompleteRun`
+    /// illegal — the Runner's only way on was to jack out of a run that
+    /// should have succeeded. Found by the 256-seed view sweep (seed 86)
+    /// on the movement-phase branch, where no jack-out is left at the
+    /// server and the same position had no legal action at all.
+    #[test]
+    fn red_team_gone_before_the_run_succeeds_takes_nothing_and_the_run_completes() {
+        let registry = sg_registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state.runner.resources.credits = Credits(5);
+        state.runner.grip = vec![CardId("red_team".to_string())];
+        let (state, _) =
+            apply_action(&state, &registry, PlayerAction::InstallResource { card_id: CardId("red_team".to_string()) }).expect("install");
+        let (state, _) = apply_action(
+            &state,
+            &registry,
+            PlayerAction::ActivateAbility { target: install_of(&state, "red_team"), ability_index: 0 },
+        )
+        .expect("activate red team");
+        let (mut state, _) =
+            apply_action(&state, &registry, PlayerAction::ChooseServerForPendingDecision { server: ServerId::Hq }).expect("choose hq");
+        let red_team = state.runner.rig.remove(0);
+        state.runner.heap.push(red_team.card);
+
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ContinueRun).expect("to the server");
+        let (state, events) = apply_action(&state, &registry, PlayerAction::CompleteRun).expect("the run can still succeed");
+        assert!(events.iter().any(|e| matches!(e, crate::rules::GameEvent::RunSucceeded { .. })));
+        assert_eq!(state.runner.resources.credits, Credits(0), "nothing taken from a card that is not there");
+    }
+
     #[test]
     fn red_team_does_not_pay_out_on_a_run_it_did_not_start() {
         let registry = sg_registry();
