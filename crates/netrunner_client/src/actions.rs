@@ -296,7 +296,7 @@ pub fn narrate_event(
         }
 
         // ---- harm ----
-        GameEvent::DamageTaken { damage_type, amount } => {
+        GameEvent::DamageTaken { damage_type, amount, .. } => {
             format!("the Runner took {amount} {} damage", format!("{damage_type:?}").to_lowercase())
         }
         // A prevention used to leave no line at all: the log showed damage

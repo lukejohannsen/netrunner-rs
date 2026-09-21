@@ -150,7 +150,7 @@ pub fn transitions(before: &ClientView, after: &ClientView, entry: &PublicHistor
                 out.push(Transition::Advancement { install: *install, from, to: *advancement_tokens });
             }
             GameEvent::RunInitiated { server } => out.push(Transition::RunStarted { server: *server }),
-            GameEvent::DamageTaken { damage_type, amount } => out.push(Transition::Damage { kind: *damage_type, amount: *amount }),
+            GameEvent::DamageTaken { damage_type, amount, .. } => out.push(Transition::Damage { kind: *damage_type, amount: *amount }),
             GameEvent::TurnStarted { side, .. } => out.push(Transition::TurnStarted { side: *side, turn: after.turn }),
             GameEvent::GameOver { winner } => out.push(Transition::GameOver { winner: *winner }),
             _ => {}

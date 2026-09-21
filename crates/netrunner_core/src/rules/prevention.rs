@@ -48,7 +48,7 @@
 //! tell the difference.
 
 use crate::cards::CardRegistry;
-use crate::dsl::{Cost, Effect, EndRunPrevention, Preventable, Trigger};
+use crate::dsl::{CardId, Cost, Effect, EndRunPrevention, Preventable, Trigger};
 use crate::rules::ability::{self, ResolutionContext};
 use crate::rules::damage;
 use crate::rules::dispatcher;
@@ -138,7 +138,8 @@ pub(crate) fn would(
     }
     let heard = matches!(what, WouldHappen::Damage { .. });
     if state.pending_prevention.is_some() || !(heard || could_prevent(state, registry, &what)) {
-        return happen(state, registry, &what, what.amount(), Some(ctx));
+        let responsible = responsible_for(registry, ctx.acting_card);
+        return happen(state, registry, &what, what.amount(), responsible, Some(ctx));
     }
     state.pending_prevention = Some(PendingPrevention {
         what: what.clone(),
@@ -335,7 +336,8 @@ fn finish_within(
     }
     let left = pending.what.amount() - prevented;
     if left > 0 {
-        events.extend(happen(state, registry, &pending.what, left, ctx)?);
+        let responsible = responsible_for(registry, pending.source_card.as_ref());
+        events.extend(happen(state, registry, &pending.what, left, responsible, ctx)?);
     }
     if state.paid_ability_window.as_ref().is_some_and(|w| w.checkpoint == WindowCheckpoint::Run) && state.active_run.is_none() {
         state.paid_ability_window = None;
@@ -344,6 +346,13 @@ fn finish_within(
         events.extend(paid_ability::resolve_encounter_ice(state, registry)?);
     }
     Ok(events)
+}
+
+/// Who is responsible for what a card's text does (CR 10.4.1): that card's
+/// side. Read off the card rather than stored on `WouldHappen`, because a
+/// parked prevention already remembers its card (`source_card`).
+fn responsible_for(registry: &CardRegistry, card: Option<&CardId>) -> Option<Side> {
+    card.and_then(|card| registry.get(card)).map(|def| def.side)
 }
 
 /// Makes `amount` of `what` happen. `ctx` is the resolution it is part of
@@ -355,11 +364,12 @@ fn happen(
     registry: &CardRegistry,
     what: &WouldHappen,
     amount: u32,
+    responsible: Option<Side>,
     ctx: Option<&mut ResolutionContext<'_>>,
 ) -> Result<Vec<GameEvent>, RulesError> {
     match what {
         WouldHappen::Damage { kind, .. } => {
-            let (mut events, discarded) = damage::apply_damage(state, *kind, amount as usize);
+            let (mut events, discarded) = damage::apply_damage(state, *kind, amount as usize, responsible);
             // Overwrite rather than append: the requirement reading this
             // (`LastDamageTrashedOddCostCard`) asks about the *most
             // recent* damage, so a second `DealDamage` in the same

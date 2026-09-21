@@ -179,7 +179,7 @@ impl RunTrail {
             }
             GameEvent::AgendaStolen { card, agenda_points } => self.consequences.push(format!("stole {} ({agenda_points})", title(card))),
             GameEvent::CardTrashedFromAccess { card, .. } => self.consequences.push(format!("trashed {}", title(card))),
-            GameEvent::DamageTaken { damage_type, amount } => self.consequences.push(format!("{amount} {} damage", format!("{damage_type:?}").to_lowercase())),
+            GameEvent::DamageTaken { damage_type, amount, .. } => self.consequences.push(format!("{amount} {} damage", format!("{damage_type:?}").to_lowercase())),
             GameEvent::TagsGiven { side, amount } => self.consequences.push(format!("{side:?} took {amount} tag{}", plural(*amount))),
             GameEvent::CreditsLost { side, amount } => self.consequences.push(format!("{side:?} lost {amount} credit{}", plural(*amount))),
             GameEvent::RunJackedOut { .. } => self.outcome = Some(Outcome::JackedOut),

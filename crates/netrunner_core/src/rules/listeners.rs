@@ -170,9 +170,12 @@ pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
             vec![moment(Trigger::OnRunEnded, &About::Server(*server), Some(Side::Runner))]
         }
 
-        // Only the Corp deals damage in this pool, and "whenever you do
-        // damage" is the dealer's.
-        GameEvent::DamageTaken { .. } => vec![moment(Trigger::OnDamageDealt, &About::Nothing, Some(Side::Corp))],
+        // "Whenever you do damage" is the responsible player's (CR 10.4.1),
+        // and damage nobody is responsible for is nobody's to hear.
+        GameEvent::DamageTaken { responsible, .. } => match responsible {
+            Some(side) => vec![moment(Trigger::OnDamageDealt, &About::Nothing, Some(*side))],
+            None => Vec::new(),
+        },
         // One occurrence per batch, not per card: "trash 1 **or more**".
         GameEvent::CardsTrashedFromHq { .. } => vec![moment(Trigger::OnCardsTrashedFromHq, &About::Nothing, Some(Side::Corp))],
         // Only the Runner's tags are anyone's trigger, and removing none is

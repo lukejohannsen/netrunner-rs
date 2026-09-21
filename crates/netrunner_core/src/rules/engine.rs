@@ -1,5 +1,5 @@
 use crate::cards::CardRegistry;
-use crate::dsl::{CardId, CardSubtype, CardType, Cost, CounterKind, Prohibition, Trigger};
+use crate::dsl::{AbilityDef, CardId, CardSubtype, CardType, Cost, CounterKind, Prohibition, Trigger};
 use crate::rules::ability;
 use crate::rules::action::{PlayerAction, ServerTarget, TargetZone};
 use crate::rules::dispatcher;
@@ -268,8 +268,8 @@ fn apply_action_once(
     }
     // Classified before the match consumes `action` — read by the run guard
     // immediately below as well as by `open_post_action_window` at the end.
-    let action_kind = classify_action(&action);
-    let finishes_action = counts_as_turn_action(&action);
+    let action_kind = classify_action(state, registry, &action);
+    let finishes_action = counts_as_turn_action(state, registry, &action);
     // A run is itself an action in progress: no basic action may begin until
     // it resolves. Neither of the per-handler guards catches this — `phase`
     // stays `Action(Runner)` for the whole run, so `require_phase` never
@@ -282,11 +282,13 @@ fn apply_action_once(
     // more specific "nothing but this resolves" cases and own their own
     // rejections, and a trace can be active mid-run.
     //
-    // Only *basic actions* are suspended. Run sub-actions, `RezIce`,
-    // `ActivateAbility` and priority passes stay legal — a run is what paid
-    // ability windows exist for, and clicks may still be spent during your
-    // own action phase (`BreakSubroutineWithClick` is the precedent).
-    if state.active_run.is_some() && matches!(action_kind, ActionKind::BasicClickAction) {
+    // Only *actions* are suspended — the basic ones and a card's [click]
+    // ability (CR 5.2.2a: an action is completed before another begins).
+    // Run sub-actions, `RezIce`, every other paid ability and priority
+    // passes stay legal — a run is what paid ability windows exist for.
+    // `BreakSubroutineWithClick` spends a click without being an action:
+    // "Lose [click]" is not a trigger cost beginning with one (CR 5.2.1a).
+    if state.active_run.is_some() && matches!(action_kind, ActionKind::Action) {
         return Err(RulesError::ActionBlockedByActiveRun);
     }
     let resolved = match action {
@@ -424,8 +426,8 @@ fn apply_action_once(
     Ok((next, events))
 }
 
-/// Opens a `WindowCheckpoint::PostAction` if the action just resolved was a
-/// basic click action and the opponent actually has a paid ability to use.
+/// Opens a `WindowCheckpoint::PostAction` if the action just resolved was an
+/// action and the opponent actually has a paid ability to use.
 ///
 /// Real Netrunner gives both players a paid-ability window after each
 /// action. Only the **opponent's** half is missing here: the acting player
@@ -434,15 +436,16 @@ fn apply_action_once(
 /// could use would be pure overhead.
 ///
 /// Every guard below is load-bearing:
-/// - **basic click action** — run sub-actions, priority passes and decision
+/// - **an action** — a basic one or a card's [click] ability; run
+///   sub-actions, priority passes, other paid abilities and decision
 ///   resolutions are not actions and open nothing. This is also what stops
 ///   a cascade: closing a window is a `PassPriority`, which is not an
 ///   action, so it cannot open another.
 /// - **no run, no window, nothing parked, not over** — those flows own
 ///   their own checkpoints; layering one on top would strand them. The
 ///   `active_run` half is belt-and-braces since `apply_action`'s central
-///   guard now rejects every basic click action mid-run, so no
-///   `BasicClickAction` can reach here with a run active; it stays because
+///   guard now rejects every action mid-run, so no
+///   `ActionKind::Action` can reach here with a run active; it stays because
 ///   the three cases read as one invariant and only this half is redundant.
 /// - **the opponent has something usable** — the cost guard; see
 ///   `paid_ability::has_usable_paid_ability`.
@@ -451,7 +454,7 @@ fn open_post_action_window(
     registry: &CardRegistry,
     kind: &ActionKind,
 ) -> Vec<GameEvent> {
-    if !matches!(kind, ActionKind::BasicClickAction) {
+    if !matches!(kind, ActionKind::Action) {
         return Vec::new();
     }
     let GamePhase::Action(side) = state.phase else { return Vec::new() };
@@ -465,35 +468,58 @@ fn open_post_action_window(
     vec![paid_ability::open_window_for(state, side, WindowCheckpoint::PostAction { side })]
 }
 
-/// Whether a `PlayerAction` is a basic click action — the thing a
-/// post-action paid-ability window follows, and the thing an active run
-/// suspends (`apply_action`'s `ActionBlockedByActiveRun` guard).
+/// Whether a `PlayerAction` is an *action* in the rules' sense (CR 5.2.1)
+/// — the thing a post-action paid-ability window follows, and the thing an
+/// active run suspends (`apply_action`'s `ActionBlockedByActiveRun` guard).
 ///
 /// Deliberately an exhaustive `match` rather than a check for a
 /// `ClickSpent` event: exhaustive so that adding a `PlayerAction` fails to
-/// compile here and forces a decision, and explicit so that a paid ability
-/// which happens to cost a click (Regolith Mining License) doesn't get
-/// mistaken for an action. That distinction is load-bearing for the run
-/// guard too: a click-cost paid ability stays usable mid-run, because a run
-/// suspends *actions*, not click-spending.
+/// compile here and forces a decision, and explicit because spending a
+/// click is not what makes an action. `ActivateAbility` is read off the
+/// ability: one whose trigger cost begins with [click] is an action (CR
+/// 9.5.2a — Telework Contract, Regolith Mining License, Topan), every
+/// other paid ability is not. The click-cost abilities used to be `Other`,
+/// on the ground that a run suspends actions and not click-spending, which
+/// let a Runner use Pennyshaver mid-run and either player use Telework
+/// Contract inside the other's window.
 enum ActionKind {
-    BasicClickAction,
+    Action,
     Other,
 }
 
 /// Whether `action` is an *action* in the rules' sense — one of the things
 /// a player spends their turn on — for `TurnLog::actions_finished`.
-/// Every basic click action, and a run; not scoring, which `classify_action`
-/// groups with the click actions only for its window and run guards.
-fn counts_as_turn_action(action: &PlayerAction) -> bool {
+/// Every action `classify_action` names, and a run; not scoring, which
+/// `classify_action` groups with the actions only for its window and run
+/// guards.
+fn counts_as_turn_action(state: &GameState, registry: &CardRegistry, action: &PlayerAction) -> bool {
     match action {
         PlayerAction::ScoreAgenda { .. } => false,
         PlayerAction::InitiateRun { .. } => true,
-        other => matches!(classify_action(other), ActionKind::BasicClickAction),
+        other => matches!(classify_action(state, registry, other), ActionKind::Action),
     }
 }
 
-fn classify_action(action: &PlayerAction) -> ActionKind {
+/// Whether the paid ability `ActivateAbility { target, ability_index }`
+/// names is an action (`AbilityDef::is_action`). `false` for a target or
+/// index that names nothing, which `activate_ability` then refuses on its
+/// own terms.
+fn ability_is_action(state: &GameState, registry: &CardRegistry, target: InstallId, ability_index: usize) -> bool {
+    let card = match target {
+        InstallId::CORP_IDENTITY => state.corp.identity.as_ref(),
+        InstallId::RUNNER_IDENTITY => state.runner.identity.as_ref(),
+        _ => state
+            .find_corp_install(target)
+            .map(|c| &c.card)
+            .or_else(|| state.corp.find_scored(target).map(|s| &s.card))
+            .or_else(|| state.find_rig_install(target).map(|c| &c.card)),
+    };
+    card.and_then(|card| registry.get(card))
+        .and_then(|def| def.abilities.get(ability_index))
+        .is_some_and(AbilityDef::is_action)
+}
+
+fn classify_action(state: &GameState, registry: &CardRegistry, action: &PlayerAction) -> ActionKind {
     match action {
         PlayerAction::GainCreditClick { .. }
         | PlayerAction::DrawCardClick { .. }
@@ -507,7 +533,15 @@ fn classify_action(action: &PlayerAction) -> ActionKind {
         | PlayerAction::AdvanceCard { .. }
         | PlayerAction::RemoveTag
         | PlayerAction::TrashResource { .. }
-        | PlayerAction::PurgeVirusCounters => ActionKind::BasicClickAction,
+        | PlayerAction::PurgeVirusCounters => ActionKind::Action,
+
+        PlayerAction::ActivateAbility { target, ability_index } => {
+            if ability_is_action(state, registry, *target, *ability_index) {
+                ActionKind::Action
+            } else {
+                ActionKind::Other
+            }
+        }
 
         // Scoring costs no click and is not an action in the rules' sense,
         // but it shares both consequences of the classification: it
@@ -515,7 +549,7 @@ fn classify_action(action: &PlayerAction) -> ActionKind {
         // window to respond after it — which is where "when the Corp
         // scores an agenda" reactions live. Grouped here for those two
         // guards, not for the click.
-        PlayerAction::ScoreAgenda { .. } => ActionKind::BasicClickAction,
+        PlayerAction::ScoreAgenda { .. } => ActionKind::Action,
 
         // `InitiateRun` is a click action, but the run it starts owns the
         // checkpoints from here on. Classifying it `Other` also keeps the
@@ -534,10 +568,8 @@ fn classify_action(action: &PlayerAction) -> ActionKind {
         | PlayerAction::PassAccessedCard { .. }
         | PlayerAction::PayAccessTrigger { .. }
         | PlayerAction::DeclineAccessTrigger { .. }
-        // Rez is not an action; paid abilities are used *in* windows, not
-        // followed by new ones.
+        // Rez is not an action.
         | PlayerAction::RezIce { .. }
-        | PlayerAction::ActivateAbility { .. }
         // Turn structure and priority — each owns its own checkpoint.
         | PlayerAction::EndTurn
         | PlayerAction::DiscardCard { .. }
@@ -2017,6 +2049,15 @@ fn activate_ability(
     // and phase checks below, so they are applied to the side that will
     // actually be spending.
     let side = ability.used_by.unwrap_or(side);
+    // A [click] ability is an action (CR 9.5.2a), taken in the action
+    // window of its user's turn: never in a paid ability window, which
+    // admits no actions (CR 9.2.7b). Mid-run it is refused already, by
+    // `apply_action`'s run guard; with a window open the side resolved
+    // above is whoever holds priority, so this is also what keeps the
+    // Runner off Pennyshaver in the Corp's post-action window.
+    if ability.is_action() {
+        paid_ability::require_no_window(state)?;
+    }
     // An interrupt window admits interrupts only. Whether this one is about
     // what is parked is `Effect::Prevent`'s own refusal, below.
     let interrupting = state.pending_prevention.is_some();
@@ -6158,6 +6199,103 @@ mod tests {
         assert_eq!(window.checkpoint, WindowCheckpoint::PostAction { side: Side::Corp });
         assert_eq!(window.active_priority, Side::Corp, "active player holds priority first");
         assert_eq!(next.phase, GamePhase::Action(Side::Corp), "the window does not change the phase");
+    }
+
+/// The Runner's turn, with a [click] ability of theirs installed
+    /// ("[click]: gain 1[credit]", Pennyshaver's shape) and a Corp asset
+    /// whose credit ability gives the Corp something to do in a window.
+    fn runner_turn_with_a_click_ability() -> (GameState, CardRegistry) {
+        let mut registry = CardRegistry::new();
+        registry.insert(CardDefinition {
+            abilities: vec![AbilityDef {
+                text: None,
+                trigger: Trigger::Paid,
+                cost: Some(Cost::Clicks(1)),
+                requirement: None,
+                effect: Effect::GainCredits(Side::Runner, 1),
+                cost_discount_if: None, used_by: None }],
+            ..test_card("pennyshaver", Side::Runner, CardType::Hardware, 0, None)
+        });
+        registry.insert(CardDefinition {
+            abilities: vec![AbilityDef {
+                text: None,
+                trigger: Trigger::Paid,
+                cost: Some(Cost::Credits(1)),
+                requirement: None,
+                effect: Effect::GainCredits(Side::Corp, 1),
+                cost_discount_if: None, used_by: None }],
+            ..test_card("corp_bank", Side::Corp, CardType::Asset, 0, None)
+        });
+        let mut state = runner_state(3, 5, 0);
+        state.runner.resources.credits = Credits(5);
+        state.corp.resources.credits = Credits(5);
+        state.runner.rig = vec![installed_runner_card("pennyshaver", 0)];
+        let bank = state.allocate_install_id();
+        state.corp.installed = vec![InstalledCard {
+            install_id: bank,
+            card: CardId("corp_bank".to_string()),
+            rezzed: true,
+            ..Default::default()
+        }];
+        (state, registry)
+    }
+
+    /// CR 9.5.2a: a paid ability whose trigger cost begins with [click] is an
+    /// action — so it is followed by the post-action window any action is,
+    /// and it counts as an action the turn has finished.
+    #[test]
+    fn a_click_ability_is_an_action_and_opens_the_post_action_window() {
+        let (state, registry) = runner_turn_with_a_click_ability();
+        let use_it = PlayerAction::ActivateAbility { target: install_of(&state, "pennyshaver"), ability_index: 0 };
+        assert!(crate::rules::legal_actions(&state, &registry).contains(&use_it), "offered in the action window");
+
+        let (next, _) = apply_action(&state, &registry, use_it).expect("the action window admits it");
+
+        assert_eq!(next.runner.resources.clicks, Clicks(2));
+        assert_eq!(next.this_turn.actions_finished(), 1, "an action, finished");
+        let window = next.paid_ability_window.as_ref().expect("the Corp may respond to an action");
+        assert_eq!(window.checkpoint, WindowCheckpoint::PostAction { side: Side::Runner });
+    }
+
+    /// CR 9.2.7b: "Players cannot trigger actions ... in a paid ability
+    /// window." The Runner has clicks and holds priority, and still may not.
+    #[test]
+    fn a_click_ability_is_refused_inside_a_paid_ability_window() {
+        let (state, registry) = runner_turn_with_a_click_ability();
+        let use_it = PlayerAction::ActivateAbility { target: install_of(&state, "pennyshaver"), ability_index: 0 };
+        let (state, _) = apply_action(&state, &registry, use_it.clone()).expect("first use");
+        assert_eq!(state.paid_ability_window.as_ref().map(|w| w.active_priority), Some(Side::Runner));
+
+        assert_eq!(
+            apply_action(&state, &registry, use_it.clone()),
+            Err(RulesError::BlockedByPaidAbilityWindow { priority: Side::Runner })
+        );
+        assert!(!crate::rules::legal_actions(&state, &registry).contains(&use_it));
+    }
+
+    /// CR 5.2.2a: a run is an action still resolving, and no other action
+    /// begins inside it — a [click] ability no more than a basic action.
+    #[test]
+    fn a_click_ability_is_refused_during_a_run() {
+        let (mut state, registry) = runner_turn_with_a_click_ability();
+        state.active_run = Some(RunState { phase: RunPhase::Initiation, ..Default::default() });
+        let use_it = PlayerAction::ActivateAbility { target: install_of(&state, "pennyshaver"), ability_index: 0 };
+
+        assert_eq!(apply_action(&state, &registry, use_it.clone()), Err(RulesError::ActionBlockedByActiveRun));
+        assert!(!crate::rules::legal_actions(&state, &registry).contains(&use_it));
+    }
+
+    /// A window opened for a player whose only paid ability is an action
+    /// would offer them nothing but a pass, so none opens.
+    #[test]
+    fn a_click_ability_does_not_earn_its_holder_a_post_action_window() {
+        let (mut state, registry) = runner_turn_with_a_click_ability();
+        state.phase = GamePhase::Action(Side::Corp);
+        state.corp.resources.clicks = Clicks(3);
+        state.runner.resources.clicks = Clicks(0);
+
+        let (next, _) = apply_action(&state, &registry, PlayerAction::GainCreditClick { side: Side::Corp }).expect("gain");
+        assert!(next.paid_ability_window.is_none(), "the Runner's only ability is an action");
     }
 
     /// The cost guard, and the most important test here: with nothing for

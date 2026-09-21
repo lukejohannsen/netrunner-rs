@@ -182,7 +182,20 @@ pub enum GameEvent {
     /// (`Effect::RedirectRunOnApproach`).
     RunRedirected { from: ServerId, to: ServerId },
     AgendaStolen { card: CardId, agenda_points: u32 },
-    DamageTaken { damage_type: DamageType, amount: usize },
+    /// The Runner suffered `amount` damage, and `responsible` is who did it
+    /// (CR 10.4.1): the side of the card whose text dealt it — a Corp card
+    /// "does" damage and a Runner card makes the Runner "suffer" it, so
+    /// in this pool the card's side is the verb's — and the Runner for
+    /// damage suffered to pay a cost (Semak-samun). `None` for damage no
+    /// card dealt, which nobody did. "Whenever you do damage" (AU Co.)
+    /// hears only its own side's; it heard every `DamageTaken`, and so
+    /// counted Topan's and Semak-samun's damage as the Corp's.
+    DamageTaken {
+        damage_type: DamageType,
+        amount: usize,
+        #[serde(default)]
+        responsible: Option<Side>,
+    },
     RunnerFlatlined,
     CreditsSpent { side: Side, amount: u32 },
     TagsGiven { side: Side, amount: u32 },

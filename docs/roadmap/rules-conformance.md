@@ -123,10 +123,19 @@ fixes them. The letters are this file's addresses: "Rules Conformance B1".
 **F. Abilities and effects (9, 10)**
 - **F1 ✔ [click] abilities can be used inside paid ability windows** (9.5.2a, 9.2.7b: such an
   ability is an action, and windows allow none). `engine::ActionKind`'s notes call this
-  deliberate. Reached with Telework Contract and Pennyshaver mid-run.
+  deliberate. Reached with Telework Contract and Pennyshaver mid-run. **Fixed**
+  (`fix/click-abilities-and-damage-responsibility`): `AbilityDef::is_action` (a trigger cost
+  that begins with [click]) classifies `ActivateAbility` as `ActionKind::Action`. So the run
+  guard refuses it mid-run (5.2.2a), `activate_ability` refuses it in any window, it counts as
+  a finished action, and the opponent's post-action window follows it. A window no longer
+  opens for a player whose only usable ability is an action.
 - **F2 ✔ Every `DamageTaken` counts as damage the Corp did** (10.4.1). `listeners::moments` treats
   it that way, so Au Co.'s "whenever you do damage" counts Topan's and Semak-samun's self-inflicted
-  damage.
+  damage. **Fixed** (same branch): `DamageTaken::responsible` is the side of the card whose text
+  dealt the damage, or the Runner for damage paid as a cost. In the pool a Corp card "does"
+  damage and a Runner card makes the Runner "suffer" it, so the card's side is the verb's. A
+  parked prevention reads it off `source_card`. "Whenever you do damage" hears only its own
+  side's.
 - **F3 A forfeit does not lower `agenda_points`.** The view, the HUD and bot observations show a
   stale score. The win check recounts, so the result is right. **Fixed**
   (`fix/small-rules-deviations`).
@@ -177,6 +186,29 @@ coverage gate included.
   heuristic Corp already spent its clicks (2.95 of 3 a turn before and after).
 - **Steps rise about 9% heuristic, 15% random:** the new window adds two passes at each
   turn's start (`PaidAbilityWindowOpened` 23,295 → 27,502 heuristic, seed 2).
+
+Both 256-seed sweeps are clean, coverage gate included.
+
+**Measured, F1–F2** (`scripts/coverage_identical.py main`, 192 games a report, seeds 1–3):
+- **Card abilities are used about a third as often by the random seatings:** `ActivateAbility`
+  3902 → 1335, 4024 → 1298 and 3725 → 1267. That is F1. Smartware Distributor (1258 → 97),
+  Madani (824 → 200), Pennyshaver (312 → 29) and Regolith Mining License (281 → 70) were
+  mostly used in windows and mid-run, where a random seat met them at every priority pass.
+- **The random Runner runs instead, and games are shorter.** On seed 3, `InitiateRun` went
+  3530 → 4082. Across the three seeds, turns fell 4639 → 3911, 4575 → 3998 and 4308 → 3718.
+  Runner point wins rose 85 → 104, 79 → 100 and 89 → 101, and Runner deck-outs fell 30 → 9,
+  21 → 6 and 13 → 3. So the random Corp has fewer turns and scores less: `AgendaScored`
+  29 → 10, 31 → 14 and 25 → 11. The C3 measurement above had doubled it. This one undoes a
+  distortion of the same kind, clicks spent at the wrong time.
+- **The heuristic Runner never uses Smartware Distributor now** (672 → 0, seed 3). It only
+  ever used it inside windows, where the alternative was a pass. In its own action window the
+  one-ply evaluator ranks the click below every other action, because it does not value
+  credits held on a card. That is a bot blindness, owed to Phase 5, not an engine deviation.
+  Heuristic Corp point wins fell on all three seeds (22 → 19, 31 → 21, 28 → 22), with the
+  Runner's clicks going to runs (`InitiateRun` 3650 → 3760, seed 3).
+- **AU Co. counts less where it counted the Runner's damage (F2):** `OnDamageDealt` 35 → 28,
+  28 → 15 and 45 → 34 random. Heuristic moved 24 → 27, 24 → 27 and 31 → 23, trajectory drift
+  in both directions.
 
 Both 256-seed sweeps are clean, coverage gate included.
 
@@ -326,10 +358,10 @@ with the rule quoted.
 | § | Section | Status | Notes |
 |---|---|---|---|
 | 9.1 | General | read in part | 9.1: a card's abilities work while it is active (`rules::active`). Cited: 9.1. |
-| 9.2 | Timing and Priority | deviates | F1 (9.2.7b). Active player first and own-order simultaneous triggers match. |
+| 9.2 | Timing and Priority | read in part | F1 fixed: no action in a paid ability window (9.2.7b). Active player first and own-order simultaneous triggers match. |
 | 9.3 | Interpreting Card Text | unreviewed |  |
 | 9.4 | Static Abilities | unreviewed |  |
-| 9.5 | Paid Abilities | deviates | F1 (9.5.2a). |
+| 9.5 | Paid Abilities | read in part | F1 fixed: a [click] ability is an action (9.5.2a), taken only in its user's action window. Cited: 9.5.2a. |
 | 9.6 | Conditional Abilities | read in part | Audit: a trigger whose source left is dropped, a resolving ability finishes; matches. |
 | 9.7 | Play Abilities | unreviewed |  |
 | 9.8 | Subroutines | read in part | Audit: unbroken subroutines in printed order, stopping at an ended run; matches. 9.8.2–9.8.3 (new in v26.03): no pool card adds subroutines. |
@@ -345,7 +377,7 @@ with the rule quoted.
 | 10.1 | General | unreviewed |  |
 | 10.2 | Information | unreviewed |  |
 | 10.3 | Checkpoints | deviates | B2 (10.3.1d, console), E3. The step order (durations, win, unique, triggers) matches. |
-| 10.4 | Damage | deviates | F2 (10.4.1). Flatline, core-damage hand size, random trash match. |
+| 10.4 | Damage | read in part | F2 fixed: the responsible player is recorded (10.4.1). Flatline, core-damage hand size, random trash match. |
 | 10.5 | Tags | read in part | Audit: both tag basic actions check tags and cost [click] + 2[credit]; matches. |
 | 10.6 | Bad Publicity | read in part | Audit: bad publicity credits are a separate run pool fixed at run creation (10.6.3c); matches v26.03. |
 | 10.7 | Link | read in part | Audit: link is identity plus installed; matches. |

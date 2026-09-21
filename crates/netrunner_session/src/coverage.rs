@@ -1029,7 +1029,7 @@ mod tests {
         let registry = registry();
         let mut a = Coverage::default();
         let mut b = Coverage::default();
-        let event = |side| entry(side, PlayerAction::EndTurn, vec![GameEvent::DamageTaken { damage_type: DamageType::Net, amount: 1 }]);
+        let event = |side| entry(side, PlayerAction::EndTurn, vec![GameEvent::DamageTaken { damage_type: DamageType::Net, amount: 1, responsible: Some(Side::Corp) }]);
         a.absorb_entry(&event(Side::Corp), &registry);
         b.absorb_entry(&event(Side::Runner), &registry);
         b.absorb_entry(&event(Side::Runner), &registry);

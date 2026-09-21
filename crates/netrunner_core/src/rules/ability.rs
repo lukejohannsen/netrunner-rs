@@ -2225,7 +2225,8 @@ pub(crate) fn pay_cost_ctx(
             // Straight to the damage, never through `prevention::would`: a
             // cost is not prevented (1.16.1a). Its `DamageTaken` is
             // dispatched by the payer (`dispatch_cost_events`).
-            Ok(crate::rules::damage::apply_damage(state, *damage_type, *amount as usize).0)
+            // The Runner chose to suffer it, so it is theirs (CR 10.4.1).
+            Ok(crate::rules::damage::apply_damage(state, *damage_type, *amount as usize, Some(Side::Runner)).0)
         }
 
         Cost::Forfeit(count) => {
@@ -2835,7 +2836,7 @@ mod tests {
         // Announced, then taken: damage about to be suffered is a moment a
         // card can hear, so it is always in the record.
         assert_eq!(events[0], GameEvent::AboutToResolve { what: WouldHappen::Damage { kind: DamageType::Net, amount: 1 } });
-        assert!(matches!(events[1], GameEvent::DamageTaken { damage_type: DamageType::Net, amount: 1 }));
+        assert!(matches!(events[1], GameEvent::DamageTaken { damage_type: DamageType::Net, amount: 1, responsible: None }), "no card dealt it, so nobody did");
     }
 
     #[test]

@@ -55,6 +55,20 @@ pub struct AbilityDef {
     pub used_by: Option<crate::rules::Side>,
 }
 
+impl AbilityDef {
+    /// Whether using this ability is an *action*: a paid ability whose
+    /// trigger cost begins with [click] (CR 9.5.2a, 5.2.1). It is then
+    /// taken in the action window of its user's turn and nowhere else —
+    /// not in a paid ability window (CR 9.2.7b: "players cannot trigger
+    /// actions ... in a paid ability window") and not during a run, which
+    /// is an action still resolving (CR 5.2.2a) — and it is followed by
+    /// what follows any action. A click further in ("Lose [click]") does
+    /// not make one (CR 5.2.1a); no pool card prints that on an ability.
+    pub fn is_action(&self) -> bool {
+        self.trigger == Trigger::Paid && self.cost.as_ref().is_some_and(Cost::begins_with_click)
+    }
+}
+
 /// A precondition gating an `AbilityDef`'s activation, a `CardDefinition::
 /// play_requirement`'s play legality, or (as a soft/silent gate — see
 /// `dsl::card::TriggeredEffect::requirement`) a `TriggeredEffect`'s firing.
