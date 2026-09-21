@@ -37,7 +37,73 @@ impl GameState {
     }
 }
 
+/// The engine's one transition. Everything about the rules is in
+/// `apply_action_once`; this is the part that asks the payer where a
+/// payment comes from (`rules::payment`, `PendingPayment`).
+///
+/// A payment that has to ask unwinds the whole action with
+/// `RulesError::PaymentChoiceNeeded`. That never leaves here: `state` —
+/// untouched, this being a function of its inputs — is returned with the
+/// question parked on it, and `ResolvePendingChoice` answers by applying
+/// the parked action again with every answer so far recorded. Nothing else
+/// is legal in between, the same as any other parked decision.
 pub fn apply_action(
+    state: &GameState,
+    registry: &CardRegistry,
+    action: PlayerAction,
+) -> Result<(GameState, Vec<GameEvent>), RulesError> {
+    let Some(pending) = &state.pending_payment else {
+        // The common path, and the reason the action is cloned on it: what
+        // asks is known only once the action has been moved into a handler.
+        // A `PlayerAction` is an enum over ids; the `GameState` every
+        // handler clones is what an action costs.
+        return match apply_action_once(state, registry, action.clone()) {
+            Err(RulesError::PaymentChoiceNeeded { side, amount, options }) => Ok(park_payment(state, action, side, Vec::new(), amount, options)),
+            other => other,
+        };
+    };
+    let PlayerAction::ResolvePendingChoice { option_index } = action else {
+        return Err(RulesError::ActionBlockedByPendingPayment { side: pending.side });
+    };
+    let answer = *pending.options.get(option_index).ok_or(RulesError::InvalidChoiceIndex(option_index))?;
+    let mut answers = pending.answers.clone();
+    answers.push(answer);
+
+    let mut replayed = state.clone();
+    replayed.pending_payment = None;
+    replayed.payment_answers = answers.clone();
+    match apply_action_once(&replayed, registry, pending.action.clone()) {
+        Ok((next, events)) => {
+            // Every answer was given to a question this action asked, in
+            // this state; one left over means the replay did not retrace
+            // the application that asked, which purity forbids.
+            debug_assert!(next.payment_answers.is_empty(), "a replayed payment left answers unused: {:?}", next.payment_answers);
+            Ok((next, events))
+        }
+        // A second question — another payment, or a third class of pool.
+        // Parked on the same untouched state, with the answers so far.
+        Err(RulesError::PaymentChoiceNeeded { side, amount, options }) => {
+            replayed.payment_answers.clear();
+            Ok(park_payment(&replayed, pending.action.clone(), side, answers, amount, options))
+        }
+        Err(other) => Err(other),
+    }
+}
+
+fn park_payment(
+    state: &GameState,
+    action: PlayerAction,
+    side: Side,
+    answers: Vec<crate::rules::payment::Pool>,
+    amount: u32,
+    options: Vec<crate::rules::payment::Pool>,
+) -> (GameState, Vec<GameEvent>) {
+    let mut parked = state.clone();
+    parked.pending_payment = Some(crate::rules::state::PendingPayment { side, action, answers, amount, options });
+    (parked, vec![GameEvent::PaymentChoiceOffered { side }])
+}
+
+fn apply_action_once(
     state: &GameState,
     registry: &CardRegistry,
     action: PlayerAction,

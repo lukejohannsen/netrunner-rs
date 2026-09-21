@@ -233,6 +233,7 @@ pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
         | GameEvent::TriggerFired { .. }
         | GameEvent::VirusCountersPurged { .. }
         | GameEvent::BadPublicityCreditsSpent { .. }
+        | GameEvent::PaymentChoiceOffered { .. }
         | GameEvent::BonusRunCreditsSpent { .. }
         | GameEvent::CardsSelected { .. }
         | GameEvent::PendingCardSelectionOffered { .. }

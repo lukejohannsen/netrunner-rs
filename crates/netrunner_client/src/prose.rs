@@ -32,7 +32,7 @@ use netrunner_core::dsl::{
     Amount, EffectDuration, CardDefinition, CardId, CardTarget, CardZoneRef, ContinuousEffect, ContinuousKind, Cost, DamageType, Effect, EventFilter, Number, PaysFor, Preventable, Prohibition,
     Scope, SubroutineBreakCount,
 };
-use netrunner_core::rules::{PendingDecision, ServerId, Side};
+use netrunner_core::rules::{PendingDecision, Pool, ServerId, Side};
 use netrunner_core::view::ClientView;
 
 fn title(id: &CardId, registry: &CardRegistry) -> String {
@@ -371,6 +371,25 @@ pub fn engine_reading(card: &CardDefinition, registry: &CardRegistry) -> Vec<Str
     lines
 }
 
+/// A place a payment can be taken from, as a person would name it: the card
+/// whose credits they are, or the run's. Read off the view, so an install
+/// the viewer cannot identify is named as that — though a pool is always on
+/// an active card, which both players can see.
+pub fn pool_name(pool: Pool, view: &ClientView, registry: &CardRegistry) -> String {
+    let hosted = |install| {
+        let runner = view.runner.rig.iter().find(|card| card.install_id == install).map(|card| &card.card);
+        let corp = view.corp.servers.iter().flat_map(|server| server.root.iter().chain(&server.ice)).find(|card| card.install_id == install).and_then(|card| card.card.as_ref());
+        runner.or(corp).map(|card| title(card, registry))
+    };
+    match pool {
+        Pool::Hosted(install) => hosted(install).unwrap_or_else(|| "an installed card".to_string()),
+        Pool::Identity => view.corp.identity.as_ref().map(|card| title(card, registry)).unwrap_or_else(|| "the identity".to_string()),
+        Pool::BadPublicity => "bad publicity".to_string(),
+        Pool::Run => "the run".to_string(),
+        Pool::Wallet => "the credit pool".to_string(),
+    }
+}
+
 /// What a card's hosted credits may be spent on (`dsl::PaysFor`), as the
 /// end of the sentence "may be spent …". Exhaustive, so a new word does not
 /// compile until it has one here.
@@ -438,6 +457,11 @@ pub fn decision_card(view: &ClientView) -> Option<&CardId> {
 /// Picture asks — choose one`. `None` for an ordinary turn, where the
 /// pane keeps its usual title.
 pub fn decision_prompt(view: &ClientView, registry: &CardRegistry) -> Option<String> {
+    // A parked payment is asked ahead of anything parked beneath it, as the
+    // engine answers it. Only the payer's view has one to word.
+    if let Some(payment) = view.pending_payment.as_ref().and_then(|payment| payment.own.as_ref()) {
+        return Some(format!("Pay {} — whose credits first?", plural(payment.amount, "credit", "credits")));
+    }
     let name = decision_card(view).map(|id| title(id, registry));
     let asks = |what: String| Some(match &name { Some(card) => format!("{card} asks — {what}"), None => what });
     if let Some(paid) = &view.pending_paid_choice {

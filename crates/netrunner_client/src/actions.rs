@@ -373,7 +373,7 @@ pub fn narrate_event(
         GameEvent::CountersAdded { .. } | GameEvent::CountersRemoved { .. } | GameEvent::BasicDrawActionTaken { .. } |
         GameEvent::PendingChoicePresented { .. } | GameEvent::PendingChoiceResolved { .. } |
         GameEvent::PendingPaidChoiceOffered { .. } | GameEvent::PendingPaidChoiceAccepted { .. } |
-        GameEvent::PendingPaidChoiceDeclined { .. } => return None,
+        GameEvent::PendingPaidChoiceDeclined { .. } | GameEvent::PaymentChoiceOffered { .. } => return None,
     };
     Some(line)
 }
@@ -505,6 +505,12 @@ pub fn describe_action(action: &PlayerAction, registry: &CardRegistry, view: Opt
         // of the effect. "Option 0 | Option 1" was a menu with no words on
         // it.
         PlayerAction::ResolvePendingChoice { option_index } => {
+            // A parked payment's options are pools, and it is answered
+            // ahead of any decision parked beneath it.
+            let pool = view.and_then(|v| Some((v, *v.pending_payment.as_ref()?.own.as_ref()?.options.get(*option_index)?)));
+            if let Some((view, pool)) = pool {
+                return format!("Spend credits from {} first", crate::prose::pool_name(pool, view, registry));
+            }
             let parked = view.and_then(|v| match &v.pending_decision {
                 Some(PendingDecision::ChooseEffect { options, option_texts, .. }) => {
                     Some((options.get(*option_index), option_texts.get(*option_index)))
@@ -602,6 +608,9 @@ pub fn describe_public_action(action: &PublicAction, registry: &CardRegistry, vi
         PublicAction::Concealed(ConcealedAction::PassAccessedCard) => "Pass on the accessed card".to_string(),
         PublicAction::Concealed(ConcealedAction::PayAccessTrigger) => "Pay to avoid the accessed card's trigger".to_string(),
         PublicAction::Concealed(ConcealedAction::DeclineAccessTrigger) => "Decline the accessed card's trigger".to_string(),
+        // The action behind it has not happened yet; the next line in the
+        // log is what it turned out to be.
+        PublicAction::Concealed(ConcealedAction::ChoosingPayment) => "Choose which credits to spend".to_string(),
     }
 }
 

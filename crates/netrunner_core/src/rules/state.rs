@@ -897,6 +897,37 @@ pub struct PendingInstallFromZone {
     pub then: Option<Box<Effect>>,
 }
 
+/// A payment that could come from more than one place, waiting on the payer
+/// to say which first (`rules::payment::plan`).
+///
+/// **Parked by replay, not by continuation.** A payment happens deep inside
+/// whatever handler owes it — a rez three triggers down, a trash at the end
+/// of a breach — and thirty-odd handlers pay. Splitting each into
+/// pay-then-continue was rejected for that, and a payment field on every
+/// `PlayerAction` for what it would do to the `ActionSpace`. Instead the
+/// action unwinds (`RulesError::PaymentChoiceNeeded`), **the state it was
+/// applied to is kept unchanged but for this**, and the answer applies
+/// `action` again with the answer recorded (`GameState::payment_answers`).
+/// `apply_action` is a pure function of its two inputs, so the second
+/// application reaches the same payment in the same state and goes on.
+///
+/// `answers` is every answer given so far: one action can ask twice (two
+/// payments, or three classes of pool), and each replay starts from the top.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PendingPayment {
+    pub side: Side,
+    /// The action to apply again. The payer's own, and not yet applied —
+    /// which is why the other player's view carries none of this but `side`
+    /// (`masking::PublicPendingPayment`): an unplayed event is still hidden.
+    pub action: crate::rules::action::PlayerAction,
+    pub answers: Vec<crate::rules::payment::Pool>,
+    /// How many credits the payment is for, for the prompt.
+    pub amount: u32,
+    /// One pool per class on offer; `ResolvePendingChoice::option_index`
+    /// indexes it.
+    pub options: Vec<crate::rules::payment::Pool>,
+}
+
 /// A decision parked by an `Effect`, awaiting a resolving `PlayerAction`.
 /// Lives as a sibling field on `GameState`, same rationale as
 /// `PendingPaidChoice`. Currently exactly one shape is needed; more
@@ -1217,6 +1248,20 @@ pub struct GameState {
     /// `PendingDecision`'s doc comment.
     #[serde(default)]
     pub pending_decision: Option<PendingDecision>,
+    /// A payment that found pools the payer has to choose between — see
+    /// `PendingPayment`. Answered by `PlayerAction::ResolvePendingChoice`.
+    #[serde(default)]
+    pub pending_payment: Option<PendingPayment>,
+    /// The payer's answers, while the action that asked for them is being
+    /// applied again: `rules::payment::pay` takes them from the front, one
+    /// per question, in the order the questions arise. Empty in every state
+    /// an action returns — `engine::apply_action` fills it for the length of
+    /// a replay and refuses to return a state that has not used them all.
+    /// On `GameState` because it has to outlive a parked decision (the State
+    /// Hygiene Rule's test); not a `ResolutionContext` field because the
+    /// payment that reads it may be many resolutions deep.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub payment_answers: Vec<crate::rules::payment::Pool>,
     /// A snapshot of the most recently concluded run (its normal
     /// `RunCompleted`/`RunJackedOut`/`RunEndedByEffect` conclusions only —
     /// see `dispatcher::dispatch_event`'s `Trigger::OnRunEnded` arm doc
@@ -1343,6 +1388,8 @@ impl Default for GameState {
             pending_prevention: None,
             pending_paid_choice: None,
             pending_decision: None,
+            pending_payment: None,
+            payment_answers: Vec::new(),
             last_completed_run: None,
             lingering: Vec::new(),
             this_turn: TurnLog::default(),

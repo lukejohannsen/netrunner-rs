@@ -775,6 +775,16 @@ pub fn determinize(view: &ClientView, registry: &CardRegistry, rng: &mut impl Rn
         pending_prevention: view.pending_prevention.clone(),
         pending_paid_choice: view.pending_paid_choice.clone(),
         pending_decision: view.pending_decision.clone(),
+        // A parked payment is the payer's own unplayed action, so only the
+        // payer's view holds it (`masking::PublicPendingPayment::own`) — and
+        // the payer is the only seat asked to act while one is parked, so
+        // theirs is the only view a decision is ever sampled from then. A
+        // sample taken from the other chair has no action to park and gets
+        // none: it disagrees with the table about whose move it is, for as
+        // long as the question stands, and nothing is decided from it.
+        pending_payment: view.pending_payment.as_ref().and_then(|payment| payment.own.clone()),
+        // Filled only for the length of a replay inside `apply_action`.
+        payment_answers: Vec::new(),
         // No masked representation to reconstruct these from (see their doc
         // comments on `GameState`), so a determinized hypothetical starts
         // them blank, same as a fresh `GameState::new`. Two former siblings

@@ -35,12 +35,29 @@
 //! makes it matter: a play cost, an advance and a steal cost are `Other`
 //! until a card prints "use these credits to play…".
 //!
-//! **The order is fixed, for now:** hosted credits in table order, bad
-//! publicity, the run's credits, the identity's, then the credit pool —
-//! the order the old sites added up to, kept so this module moves no game
-//! by itself. Which pool a payment is taken from *first* is the payer's to
-//! say when it matters, and is the next stage of Rules Audit backlog item 5
-//! (`docs/roadmap/rules-audit.md`).
+//! **Which pool goes first is the payer's to say, when it matters** (`plan`).
+//! Every pool has a class — what its credits may be spent on, and how long
+//! they last (`Breadth`, `Life`) — and a pool whose credits are never worth
+//! more than another's is spent before it without a question: The Toolbox
+//! before Cyberfeeder on a break, every pool before the credit pool. What is
+//! left to ask is two pools neither of which is the other's lesser, and a
+//! payment too small to take both: Azimat's credits pay only trash costs
+//! and last the turn, a run's pay anything and are gone when it ends. The
+//! order used to be fixed — hosted credits, bad publicity, the run's, the
+//! identity's, the credit pool — which drained Azimat on a run whose own
+//! credits were about to vanish.
+//!
+//! **The question is parked by replay** (`state::PendingPayment`, `engine::
+//! apply_action`): the payment unwinds the action with
+//! `RulesError::PaymentChoiceNeeded`, the untouched state is returned with
+//! the question on it, and the answer applies the action again with the
+//! answer recorded in `GameState::payment_answers`. A payment is owed from
+//! deep inside some thirty handlers; none of them had to learn to stop
+//! halfway. Only the payer sees what the payment is for — the action has not
+//! happened — in their view (`masking::PublicPendingPayment`) and in the log
+//! (`masking::mask_logged_action_for_player`) alike.
+//!
+//! Rules Audit backlog item 5 (`docs/roadmap/rules-audit.md`).
 
 use crate::cards::CardRegistry;
 use crate::dsl::{card_matches_filter, CardDefinition, CardType, PaysFor};
@@ -68,9 +85,11 @@ pub(crate) enum Purpose<'a> {
     Trace,
 }
 
-/// A place credits can be taken from.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Pool {
+/// A place credits can be taken from. Serialisable because a parked payment
+/// names the pools it is asking about (`PendingPayment::options`), and
+/// public because a client labels each option by it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum Pool {
     /// Credits hosted on an active installed card whose `pays_for` covers
     /// the purpose.
     Hosted(InstallId),
@@ -96,6 +115,144 @@ pub(crate) enum Pool {
 pub(crate) struct Source {
     pub pool: Pool,
     pub credits: u32,
+}
+
+/// How long a pool's unspent credits last — the half of a pool's class that
+/// says how soon "use it or lose it" bites. Ordered soonest first.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) enum Life {
+    /// Gone when the run ends: bad publicity's credits and a run event's.
+    Run,
+    /// Recurring credits: whatever is unspent is simply topped back up when
+    /// its owner's next turn begins, so an unspent one was worth nothing.
+    Turn,
+    /// Kept until spent: Open Market's load, and the credit pool itself.
+    Kept,
+}
+
+/// What a pool may be spent on — the other half of its class.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum Breadth {
+    /// The words its card prints (`CardDefinition::pays_for`).
+    Words(Vec<PaysFor>),
+    /// Anything: the run's pools and the credit pool.
+    Anything,
+}
+
+impl Breadth {
+    /// Whether everything `self` may be spent on, `other` may be too.
+    fn within(&self, other: &Breadth) -> bool {
+        match (self, other) {
+            (_, Breadth::Anything) => true,
+            (Breadth::Anything, Breadth::Words(_)) => false,
+            (Breadth::Words(mine), Breadth::Words(theirs)) => mine.iter().all(|word| theirs.contains(word)),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct Class {
+    pub breadth: Breadth,
+    pub life: Life,
+}
+
+impl Class {
+    /// Whether a credit of `self` is never worth more than one of `other`:
+    /// it can be spent on no more, and is lost no later. Spending `self`
+    /// first then costs the payer nothing, so nobody is asked. Two pools
+    /// that each say this of the other are one class.
+    fn no_better_than(&self, other: &Class) -> bool {
+        self.breadth.within(&other.breadth) && self.life <= other.life
+    }
+}
+
+/// What `plan` settled on: how much from which pool, the credit pool last
+/// and always present, and how many of the payer's answers it took to get
+/// there — one action can ask more than once, and the next payment's
+/// answers begin where this one's ended.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct Planned {
+    pub spend: Vec<(Pool, u32)>,
+    pub answers_used: usize,
+}
+
+/// Which pools a payment of `amount` is taken from, and how much from each —
+/// or, as the `Err`, the pools the payer has to choose between first.
+///
+/// **The payer is asked only when the answer changes what they are left
+/// with.** A pool whose credits are never worth more than another's is
+/// spent before it without a question (The Toolbox before Cyberfeeder on a
+/// break; every pool before the credit pool), two pools of one class are
+/// spent in table order, and when the payment is large enough to empty
+/// every pool that could go first, the order between them is nothing. What
+/// is left is two pools neither of which is the other's lesser — Azimat's
+/// credits pay only trash costs but last the turn, the run's pay anything
+/// and are gone when it ends — and a payment too small to take both.
+///
+/// `chosen` is what the payer has already answered for this payment, in
+/// order; an answer names any pool of the class meant. **The chosen class
+/// is emptied as far as the payment goes**: splitting one payment credit
+/// by credit between two pools needs a number for an answer, which is
+/// Rules Audit backlog item 6, and is named here rather than quietly
+/// unsupported. At most `MAX_PENDING_CHOICE_OPTIONS` classes are offered —
+/// the answer is a `ResolvePendingChoice` — and no pool prints enough
+/// incomparable words to reach it.
+///
+/// Pure: `entries` in, a plan out. `sources` and `class_of` read the state.
+pub(crate) fn plan(entries: &[(Source, Class)], amount: u32, chosen: &[Pool]) -> Result<Planned, Vec<Pool>> {
+    let mut left: Vec<(Source, &Class)> = entries.iter().filter(|(source, _)| source.pool != Pool::Wallet).map(|(s, c)| (*s, c)).collect();
+    let mut spent: Vec<(Pool, u32)> = Vec::new();
+    let mut remaining = amount;
+    let mut answers = chosen.iter();
+    while remaining > 0 && !left.is_empty() {
+        // The pools that could go first: nothing else is strictly their lesser.
+        let strictly_less = |a: &Class, b: &Class| a.no_better_than(b) && !b.no_better_than(a);
+        let first: Vec<usize> =
+            (0..left.len()).filter(|&i| !left.iter().any(|(_, other)| strictly_less(other, left[i].1))).collect();
+        // One class among them, or enough to empty them all: no question.
+        let held: u32 = first.iter().map(|&i| left[i].0.credits).sum();
+        let one_class = first.iter().all(|&i| left[i].1.no_better_than(left[first[0]].1) && left[first[0]].1.no_better_than(left[i].1));
+        let take: Vec<usize> = if one_class || remaining >= held {
+            first
+        } else {
+            let mut classes: Vec<usize> = Vec::new();
+            for &i in &first {
+                if !classes.iter().any(|&seen| left[seen].1 == left[i].1) {
+                    classes.push(i);
+                }
+            }
+            match answers.next() {
+                // An answer has to be one of the classes on offer. One that
+                // names a pool which is there but could not go first would
+                // take nothing and leave nothing changed — this loop would
+                // not end — so it is asked again instead.
+                Some(answer) => {
+                    let offered = first.iter().find(|&&i| left[i].0.pool == *answer).map(|&i| left[i].1.clone());
+                    let class = offered.ok_or_else(|| classes.iter().map(|&i| left[i].0.pool).collect::<Vec<_>>())?;
+                    first.into_iter().filter(|&i| *left[i].1 == class).collect()
+                }
+                None => {
+                    classes.truncate(crate::rules::action_mask::MAX_PENDING_CHOICE_OPTIONS);
+                    return Err(classes.into_iter().map(|i| left[i].0.pool).collect());
+                }
+            }
+        };
+        for &i in &take {
+            let spend = left[i].0.credits.min(remaining);
+            remaining -= spend;
+            if spend > 0 {
+                spent.push((left[i].0.pool, spend));
+            }
+        }
+        let mut index = 0;
+        left.retain(|_| {
+            let keep = !take.contains(&index);
+            index += 1;
+            keep
+        });
+    }
+    spent.push((Pool::Wallet, remaining));
+    Ok(Planned { spend: spent, answers_used: chosen.len() - answers.len() })
 }
 
 /// Whether credits a card says may be spent on `word` may be spent on
@@ -167,15 +324,42 @@ pub(crate) fn sources(state: &GameState, registry: &CardRegistry, side: Side, pu
     sources
 }
 
+/// A pool's class, read off the state: what its credits may be spent on and
+/// how long they last. A hosted pool's breadth is the words its card prints,
+/// and it lasts the turn if the card prints recurring credits
+/// (`CardDefinition::recurring_credits` — what is unspent is only topped
+/// back up) and until spent otherwise (Open Market's load).
+fn class_of(state: &GameState, registry: &CardRegistry, side: Side, pool: Pool) -> Class {
+    let of_card = |card: Option<&crate::dsl::CardId>| {
+        let definition = card.and_then(|card| registry.get(card));
+        Class {
+            breadth: Breadth::Words(definition.map(|d| d.pays_for.clone()).unwrap_or_default()),
+            life: if definition.is_some_and(|d| d.recurring_credits.is_some()) { Life::Turn } else { Life::Kept },
+        }
+    };
+    match pool {
+        Pool::Hosted(install) => of_card(match side {
+            Side::Corp => state.corp.installed.iter().find(|c| c.install_id == install).map(|c| &c.card),
+            Side::Runner => state.runner.rig.iter().find(|c| c.install_id == install).map(|c| &c.card),
+        }),
+        Pool::Identity => of_card(state.corp.identity.as_ref()),
+        Pool::BadPublicity | Pool::Run => Class { breadth: Breadth::Anything, life: Life::Run },
+        Pool::Wallet => Class { breadth: Breadth::Anything, life: Life::Kept },
+    }
+}
+
 /// How many credits `side` could put towards `purpose` — the one
 /// affordability question, asked of the same scan `pay` spends from.
 pub(crate) fn available(state: &GameState, registry: &CardRegistry, side: Side, purpose: Purpose<'_>) -> u32 {
     sources(state, registry, side, purpose).iter().fold(0u32, |total, source| total.saturating_add(source.credits))
 }
 
-/// Pays `amount` credits for `purpose`, from `sources` in order.
-/// `RulesError::NotEnoughCredits` — before anything is spent — if they do
-/// not hold it.
+/// Pays `amount` credits for `purpose`. `RulesError::NotEnoughCredits` —
+/// before anything is spent — if `sources` do not hold it, and
+/// `RulesError::PaymentChoiceNeeded`, also before anything is spent, if the
+/// payer has to say which pool goes first and has not (`plan`); `engine::
+/// apply_action` turns that into a parked `PendingPayment`. The payer's
+/// answers are taken from the front of `GameState::payment_answers`.
 pub(crate) fn pay(
     state: &mut GameState,
     registry: &CardRegistry,
@@ -188,25 +372,27 @@ pub(crate) fn pay(
     if total < amount {
         return Err(RulesError::NotEnoughCredits { side, available: total, requested: amount });
     }
+    let entries: Vec<(Source, Class)> = sources.iter().map(|source| (*source, class_of(state, registry, side, source.pool))).collect();
+    let planned = plan(&entries, amount, &state.payment_answers).map_err(|options| RulesError::PaymentChoiceNeeded { side, amount, options })?;
+    state.payment_answers.drain(..planned.answers_used);
+
     let mut events = Vec::new();
-    let mut remaining = amount;
     let mut from_hosted = 0;
-    for source in sources {
-        let spend = source.credits.min(remaining);
-        remaining -= spend;
-        match source.pool {
+    for (pool, spend) in planned.spend {
+        match pool {
             // Reported even at 0: `CreditsSpent` is how the record says a
             // cost was paid at all. Its amount is what did not come off a
-            // card — the run's and the identity's credits are reported
-            // beside it, a hosted credit by the counter that left its host.
+            // card — the run's credits are reported beside it, a hosted
+            // credit by the counter that left its host.
             Pool::Wallet => {
-                state.resources_mut(side).credits = Credits(source.credits - spend);
+                let held = state.resources(side).credits.0;
+                state.resources_mut(side).credits = Credits(held - spend);
                 events.push(GameEvent::CreditsSpent { side, amount: amount - from_hosted });
             }
-            _ if spend == 0 => {}
             Pool::Hosted(install) => {
                 from_hosted += spend;
-                events.extend(spend_hosted(state, registry, side, install, spend, spend == source.credits)?);
+                let emptied = hosted_credits(state, side, install) == spend;
+                events.extend(spend_hosted(state, registry, side, install, spend, emptied)?);
             }
             Pool::BadPublicity => {
                 state.active_run.as_mut().expect("a bad publicity source implies an active run").bad_publicity_credits -= spend;
@@ -404,5 +590,94 @@ mod tests {
             "Azimat's credits pay trash costs and nothing else"
         );
         assert_eq!(sources(&state, &registry, Side::Corp, Purpose::Other), vec![Source { pool: Pool::Wallet, credits: 0 }]);
+    }
+
+    // `plan` is pure, so its rules are pinned here without an engine.
+
+    fn spend(planned: Result<Planned, Vec<Pool>>) -> Result<Vec<(Pool, u32)>, Vec<Pool>> {
+        planned.map(|planned| planned.spend)
+    }
+    fn words(list: &[PaysFor]) -> Breadth {
+        Breadth::Words(list.to_vec())
+    }
+    fn entry(pool: Pool, credits: u32, breadth: Breadth, life: Life) -> (Source, Class) {
+        (Source { pool, credits }, Class { breadth, life })
+    }
+    fn wallet(credits: u32) -> (Source, Class) {
+        entry(Pool::Wallet, credits, Breadth::Anything, Life::Kept)
+    }
+    const AZIMAT: Pool = Pool::Hosted(InstallId(1));
+    const TOOLBOX: Pool = Pool::Hosted(InstallId(2));
+    const FEEDER: Pool = Pool::Hosted(InstallId(3));
+    fn azimat(credits: u32) -> (Source, Class) {
+        entry(AZIMAT, credits, words(&[PaysFor::TrashCosts]), Life::Turn)
+    }
+    fn bad_publicity(credits: u32) -> (Source, Class) {
+        entry(Pool::BadPublicity, credits, Breadth::Anything, Life::Run)
+    }
+    fn run_credits(credits: u32) -> (Source, Class) {
+        entry(Pool::Run, credits, Breadth::Anything, Life::Run)
+    }
+
+    #[test]
+    fn a_payment_with_only_the_credit_pool_is_never_a_question() {
+        assert_eq!(spend(plan(&[wallet(5)], 3, &[])), Ok(vec![(Pool::Wallet, 3)]));
+        assert_eq!(spend(plan(&[wallet(5)], 0, &[])), Ok(vec![(Pool::Wallet, 0)]));
+    }
+
+    #[test]
+    fn a_pool_that_is_never_worth_more_is_spent_first_without_asking() {
+        // Narrower and no longer-lived: before the broader pool, then the wallet.
+        let narrow = entry(TOOLBOX, 2, words(&[PaysFor::TrashCosts]), Life::Turn);
+        let broad = entry(FEEDER, 1, words(&[PaysFor::TrashCosts, PaysFor::TraceAttempts]), Life::Turn);
+        assert_eq!(spend(plan(&[broad.clone(), narrow.clone(), wallet(9)], 1, &[])), Ok(vec![(TOOLBOX, 1), (Pool::Wallet, 0)]));
+        assert_eq!(spend(plan(&[broad, narrow, wallet(9)], 4, &[])), Ok(vec![(TOOLBOX, 2), (FEEDER, 1), (Pool::Wallet, 1)]));
+    }
+
+    #[test]
+    fn two_pools_of_one_class_are_spent_in_table_order() {
+        assert_eq!(spend(plan(&[bad_publicity(2), run_credits(5), wallet(1)], 3, &[])), Ok(vec![(Pool::BadPublicity, 2), (Pool::Run, 1), (Pool::Wallet, 0)]));
+    }
+
+    #[test]
+    fn two_pools_neither_the_others_lesser_are_a_question_when_the_payment_cannot_take_both() {
+        // Azimat pays less but lasts longer; the run's credits pay anything and are gone sooner.
+        let table = [azimat(2), run_credits(5), wallet(3)];
+        assert_eq!(plan(&table, 2, &[]), Err(vec![AZIMAT, Pool::Run]));
+        assert_eq!(spend(plan(&table, 2, &[AZIMAT])), Ok(vec![(AZIMAT, 2), (Pool::Wallet, 0)]));
+        assert_eq!(spend(plan(&table, 2, &[Pool::Run])), Ok(vec![(Pool::Run, 2), (Pool::Wallet, 0)]));
+        assert_eq!(spend(plan(&table, 4, &[AZIMAT])), Ok(vec![(AZIMAT, 2), (Pool::Run, 2), (Pool::Wallet, 0)]), "the chosen pool first, as far as it goes");
+    }
+
+    #[test]
+    fn nobody_is_asked_when_the_payment_empties_every_pool_that_could_go_first() {
+        let table = [azimat(2), run_credits(5), wallet(3)];
+        assert_eq!(spend(plan(&table, 7, &[])), Ok(vec![(AZIMAT, 2), (Pool::Run, 5), (Pool::Wallet, 0)]));
+        assert_eq!(spend(plan(&table, 9, &[])), Ok(vec![(AZIMAT, 2), (Pool::Run, 5), (Pool::Wallet, 2)]));
+    }
+
+    #[test]
+    fn an_answer_names_a_class_and_bad_publicity_and_the_runs_credits_are_one() {
+        let table = [azimat(2), bad_publicity(1), run_credits(5), wallet(0)];
+        assert_eq!(plan(&table, 3, &[]), Err(vec![AZIMAT, Pool::BadPublicity]), "one option for the class, named by its first pool");
+        assert_eq!(spend(plan(&table, 3, &[Pool::Run])), Ok(vec![(Pool::BadPublicity, 1), (Pool::Run, 2), (Pool::Wallet, 0)]));
+    }
+
+    #[test]
+    fn an_answer_that_was_not_on_offer_is_asked_again_and_the_plan_still_ends() {
+        let narrow = entry(TOOLBOX, 2, words(&[PaysFor::TrashCosts]), Life::Turn);
+        let broad = entry(FEEDER, 2, words(&[PaysFor::TrashCosts, PaysFor::TraceAttempts]), Life::Turn);
+        // `FEEDER` is there, but `TOOLBOX` is strictly its lesser: it cannot go first.
+        let table = [narrow, broad, run_credits(5), wallet(0)];
+        assert_eq!(plan(&table, 1, &[]), Err(vec![TOOLBOX, Pool::Run]));
+        assert_eq!(plan(&table, 1, &[FEEDER]), Err(vec![TOOLBOX, Pool::Run]), "there, but not one of the pools that could go first");
+        assert_eq!(plan(&table, 1, &[Pool::Identity]), Err(vec![TOOLBOX, Pool::Run]), "not there at all");
+    }
+
+    #[test]
+    fn a_plan_says_how_many_answers_it_took_so_the_next_payment_starts_after_them() {
+        let table = [azimat(2), run_credits(5), wallet(3)];
+        assert_eq!(plan(&table, 2, &[AZIMAT, Pool::Run]).map(|p| p.answers_used), Ok(1), "one question, one answer taken; the second is the next payment's");
+        assert_eq!(plan(&table, 7, &[AZIMAT]).map(|p| p.answers_used), Ok(0), "no question, so the answer is left for whoever asks");
     }
 }

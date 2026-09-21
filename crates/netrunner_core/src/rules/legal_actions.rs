@@ -146,6 +146,13 @@ pub fn apply_sampled_legal_action(
 /// can resolve the parked choice. Found by
 /// `no_panics_or_deadlocks_across_many_seeds_system_gateway`.
 pub fn current_actor(state: &GameState) -> Option<Side> {
+    // Outermost of the parked states: `engine::apply_action` answers a
+    // parked payment before it looks at anything else, and the payment may
+    // be parked over any of the others — the action waiting on it can be
+    // the answer to a card's choice, or a bid in a trace.
+    if let Some(payment) = &state.pending_payment {
+        return Some(payment.side);
+    }
     if let Some(trace) = &state.active_trace {
         return Some(if trace.corp_bid.is_none() { Side::Corp } else { Side::Runner });
     }
@@ -307,8 +314,14 @@ fn action_owner(state: &GameState, registry: &CardRegistry, action: &PlayerActio
         | PlayerAction::ConfirmCardSelection
         | PlayerAction::ChooseServerForPendingDecision { .. }
         | PlayerAction::ChooseTriggerToResolve { .. } => {
-            crate::rules::pending_choice::pending_decision_chooser(state)
-                .unwrap_or_else(|| unreachable!("{action:?} passed legal_actions but no PendingDecision is parked"))
+            // A parked payment is answered by `ResolvePendingChoice` too, and
+            // comes first for the reason `current_actor` gives.
+            state
+                .pending_payment
+                .as_ref()
+                .map(|payment| payment.side)
+                .or_else(|| crate::rules::pending_choice::pending_decision_chooser(state))
+                .unwrap_or_else(|| unreachable!("{action:?} passed legal_actions but nothing is parked"))
         }
     }
 }
@@ -329,6 +342,14 @@ fn candidate_actions(state: &GameState, registry: &CardRegistry) -> Vec<PlayerAc
     candidates.extend(trace_bid_candidates(state, registry));
     candidates.extend(pending_paid_choice_candidates(state));
     candidates.extend(pending_decision_candidates(state, registry));
+    // Which pool a parked payment is taken from first — one option per class
+    // on offer (`PendingPayment::options`). The probe sends these through
+    // `apply_action`, which answers the payment ahead of any decision parked
+    // beneath it, so an index the decision would also accept means the
+    // payment here.
+    if let Some(payment) = &state.pending_payment {
+        candidates.extend((0..payment.options.len()).map(|option_index| PlayerAction::ResolvePendingChoice { option_index }));
+    }
     candidates
 }
 
