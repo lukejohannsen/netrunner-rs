@@ -24,6 +24,7 @@ use crate::dsl::{card_matches_filter, CardDefinition, CardId, CardType, Continuo
 use crate::rules::ability::{self, ResolutionContext};
 use crate::rules::active::{self, ActiveCard};
 use crate::rules::lingering;
+use crate::rules::turn_log;
 use crate::rules::run::{RunIce, ServerId};
 use crate::rules::state::{GameState, InstallId, InstallSlot, InstalledRunnerCard, Side};
 
@@ -111,6 +112,9 @@ fn for_each_applying<'a>(
             if !applies(state, &source, &effect.applies_to, &target) {
                 continue;
             }
+            if effect.first_each_turn && !first_install_this_turn(state, &source, effect) {
+                continue;
+            }
             if let Some(condition) = &effect.condition
                 && ability::check_requirement(state, condition, source.side, &ctx, registry).is_err()
             {
@@ -137,6 +141,15 @@ fn for_each_applying<'a>(
             ask(Source { side: Side::Corp, card, install: None, server: Some(run.server), own_text_only: false, server_text_only: true });
         }
     }
+}
+
+/// Whether the install being priced would be the turn's first that
+/// `effect`'s `Scope::Installing` filter matches
+/// (`ContinuousEffect::first_each_turn`). Asked of the turn, not of the
+/// card: none counted yet, because a price is asked before the install.
+fn first_install_this_turn(state: &GameState, source: &Source<'_>, effect: &ContinuousEffect) -> bool {
+    let Scope::Installing(filter) = &effect.applies_to else { return true };
+    turn_log::Occurrences::installs(filter, source.side).is_ok_and(|installs| state.this_turn.none_yet(&installs))
 }
 
 /// Whether `scope`, read from `source`, reaches `target`. `Scope::This` is
@@ -337,7 +350,7 @@ mod tests {
             title: id.to_string(),
             side,
             card_type,
-            continuous: vec![ContinuousEffect { kind, applies_to, condition: None, text: None }],
+            continuous: vec![ContinuousEffect { kind, applies_to, condition: None, first_each_turn: false, text: None }],
             ..Default::default()
         }
     }

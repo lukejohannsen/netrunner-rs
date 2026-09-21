@@ -1229,6 +1229,7 @@ mod tests {
             event: None,
             continuation: None,
             heard: Default::default(),
+            not_the_first_this_turn: false,
         };
         state.pending_decision = Some(PendingDecision::ChooseTriggerOrder {
             chooser: Side::Runner,

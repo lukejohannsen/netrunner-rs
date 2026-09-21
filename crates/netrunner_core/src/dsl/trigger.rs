@@ -59,9 +59,8 @@ pub enum Trigger {
     /// - `PlayerAction::InstallCard` (Corp only): fires against the
     ///   *installing side's identity card* only, not the installed card
     ///   itself — e.g. Haas-Bioroid: Engineering the Future's "first
-    ///   install each turn" bonus. Combine with
-    ///   `EffectRequirement::FirstInstallThisTurn` to limit it to once per
-    ///   turn.
+    ///   install each turn" bonus, which is `first_each_turn` on the
+    ///   identity's entry.
     /// - `PlayerAction::InstallResource` (Runner only): fires against the
     ///   just-installed Resource card itself *and* the Runner's identity —
     ///   e.g. Red Team/Telework Contract's own "when you install this

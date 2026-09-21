@@ -37,9 +37,18 @@ pub struct ContinuousEffect {
     /// Whether the effect is on, asked as the printing card each time the
     /// layer is asked — Carmen's "if you made a successful run this turn".
     /// A `OncePerTurn` here is spent by the one caller that *uses* the
-    /// number rather than reads it (`continuous::consume`, at an install).
+    /// number rather than reads it (`continuous::pay_install_cost_of`).
     #[serde(default, rename = "while", skip_serializing_if = "Option::is_none")]
     pub condition: Option<EffectRequirement>,
+    /// "The **first** program you install each turn": the effect reaches
+    /// only the turn's first install its `Scope::Installing` filter
+    /// matches. Read off `rules::turn_log` — none yet this turn, since an
+    /// install is priced before it happens — so nothing is spent and a
+    /// card that arrives after the turn's first program has missed it.
+    /// `validate` refuses it on any other scope. See
+    /// `TriggeredEffect::first_each_turn`.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub first_each_turn: bool,
     /// The printed sentence this implements, quoted from the card — see
     /// `AbilityDef::text`. Optional like `TriggeredEffect::text`: nobody is
     /// asked to choose a continuous effect, so no prompt depends on it.

@@ -63,15 +63,6 @@ pub struct AbilityDef {
 pub enum EffectRequirement {
     /// The Runner must have at least one tag (`RunnerState::is_tagged()`).
     IsTagged,
-    /// Soft-gate only (`dsl::card::TriggeredEffect::requirement`): true
-    /// exactly once per Corp turn, the first time the Corp installs a card
-    /// (`CorpState::first_install_used_this_turn` not yet consumed this
-    /// turn) — e.g. Haas-Bioroid: Engineering the Future.
-    FirstInstallThisTurn,
-    /// Soft-gate only: true exactly once per Runner turn, the first time a
-    /// run on HQ succeeds (`RunnerState::first_hq_run_used_this_turn` not
-    /// yet consumed this turn) — e.g. Gabriel Santiago.
-    FirstSuccessfulHqRunThisTurn,
     /// A printed "Once per turn →": true until this card has used the
     /// ability this turn, then false until the next turn begins, either
     /// side's. **A use limit on the card, not a fact about the turn** —
@@ -321,6 +312,29 @@ pub enum EffectRequirement {
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
         rezzed_only: bool,
     },
+}
+
+impl EffectRequirement {
+    /// Whether this is, or contains under `And`/`Not`, a `OncePerTurn`.
+    pub fn mentions_once_per_turn(&self) -> bool {
+        match self {
+            EffectRequirement::OncePerTurn => true,
+            EffectRequirement::And(one, other) => one.mentions_once_per_turn() || other.mentions_once_per_turn(),
+            EffectRequirement::Not(inner) => inner.mentions_once_per_turn(),
+            _ => false,
+        }
+    }
+
+    /// Whether this compares `Amount::TimesThisTurn(trigger)` with a
+    /// number, anywhere under `And`/`Not` — see `CardDefinition::validate`.
+    pub fn counts_this_turn(&self, trigger: Trigger) -> bool {
+        match self {
+            EffectRequirement::AmountAtLeast(crate::dsl::Amount::TimesThisTurn(counted), _) => *counted == trigger,
+            EffectRequirement::And(one, other) => one.counts_this_turn(trigger) || other.counts_this_turn(trigger),
+            EffectRequirement::Not(inner) => inner.counts_this_turn(trigger),
+            _ => false,
+        }
+    }
 }
 
 /// Who decides an `InteractiveOnAccess`, and what paying its cost does.

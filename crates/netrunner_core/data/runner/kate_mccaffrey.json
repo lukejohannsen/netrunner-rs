@@ -20,7 +20,7 @@
           ]
         }
       },
-      "while": "OncePerTurn",
+      "first_each_turn": true,
       "text": "Lower the install cost of the first program or piece of hardware you install each turn by 1."
     }
   ],

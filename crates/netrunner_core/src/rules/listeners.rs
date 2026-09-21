@@ -33,6 +33,7 @@
 use crate::cards::CardRegistry;
 use crate::dsl::{CardId, EventFilter, Hears, Subject, Trigger, TriggeredEffect};
 use crate::rules::active;
+use crate::rules::turn_log::{self, AsOf};
 use crate::rules::event::GameEvent;
 use crate::rules::run::ServerId;
 use crate::rules::state::{DeferredTrigger, GamePhase, GameState, Heard, InstallId, InstallSlot, Side};
@@ -255,7 +256,7 @@ pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
 /// An entry is planned only where a `TriggeredEffect` on the card hears the
 /// moment, so the plan is what reacts, not who was asked — which is also
 /// what `ChooseTriggerOrder` should be counting.
-pub(crate) fn plan_for(state: &GameState, registry: &CardRegistry, event: &GameEvent) -> Vec<(Side, DeferredTrigger)> {
+pub(crate) fn plan_for(state: &GameState, registry: &CardRegistry, event: &GameEvent, as_of: &AsOf) -> Vec<(Side, DeferredTrigger)> {
     let moments = moments(state, event);
     if moments.is_empty() {
         return Vec::new();
@@ -263,8 +264,12 @@ pub(crate) fn plan_for(state: &GameState, registry: &CardRegistry, event: &GameE
     let mut plan = Vec::new();
     for listener in listeners(state, registry, &moments) {
         let Some(definition) = registry.get(&listener.card) else { continue };
+        // "The first time each turn": one verdict a card, because its
+        // first-time entries share a count, judged against the log as the
+        // event was recorded rather than as it stands now.
+        let later = definition.triggers.iter().any(|triggered| triggered.first_each_turn) && !as_of.is_first(&turn_log::first_time_of(definition));
         for moment in &moments {
-            let mut hearing = definition.triggers.iter().filter(|triggered| hears(registry, triggered, &listener, moment)).peekable();
+            let mut hearing = definition.triggers.iter().filter(|triggered| hears(registry, triggered, &listener, moment, later)).peekable();
             if hearing.peek().is_none() {
                 continue;
             }
@@ -293,6 +298,7 @@ pub(crate) fn plan_for(state: &GameState, registry: &CardRegistry, event: &GameE
                     event: Some(event.clone()),
                     continuation: None,
                     heard,
+                    not_the_first_this_turn: later,
                 },
             ));
         }
@@ -339,8 +345,13 @@ pub(crate) fn when_admits(state: &GameState, registry: &CardRegistry, triggered:
 }
 
 /// Whether one `TriggeredEffect` on `listener` hears `moment`.
-fn hears(registry: &CardRegistry, triggered: &TriggeredEffect, listener: &Listener, moment: &Moment) -> bool {
+fn hears(registry: &CardRegistry, triggered: &TriggeredEffect, listener: &Listener, moment: &Moment, later: bool) -> bool {
     if triggered.trigger != moment.trigger {
+        return false;
+    }
+    // A second occurrence was never a listener — `first_each_turn` is part
+    // of the condition, like `when` below.
+    if triggered.first_each_turn && later {
         return false;
     }
     if triggered.when.as_ref().is_some_and(|filter| !passes(registry, filter, &moment.about)) {
@@ -453,6 +464,12 @@ fn encountered_install(state: &GameState) -> Option<InstallId> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The scan, for an event these tests never recorded: nothing here
+    /// prints "the first time each turn", so the count is not read.
+    fn plan_for(state: &GameState, registry: &CardRegistry, event: &GameEvent) -> Vec<(Side, DeferredTrigger)> {
+        super::plan_for(state, registry, event, &AsOf::unrecorded(state))
+    }
     use crate::dsl::{CardDefinition, CardType, Effect};
     use crate::rules::state::{InstalledCard, InstalledRunnerCard, ScoredAgenda};
 
@@ -462,7 +479,7 @@ mod tests {
             title: id.to_string(),
             side,
             card_type,
-            triggers: vec![TriggeredEffect { subject, when: None, acts_on_subject: false, text: None, trigger, effects: vec![Effect::GainCredits(side, 1)], requirement: None }],
+            triggers: vec![TriggeredEffect { subject, when: None, acts_on_subject: false, first_each_turn: false, text: None, trigger, effects: vec![Effect::GainCredits(side, 1)], requirement: None }],
             ..Default::default()
         }
     }
@@ -653,5 +670,53 @@ mod tests {
         assert_eq!(who(&plan_for(&state, &registry, &advanced)), vec![("built_to_last", Heard::AsBystander)]);
         let placed = GameEvent::AdvancementCountersPlaced { install: InstallId(1), card, advancement_tokens: 1 };
         assert!(plan_for(&state, &registry, &placed).is_empty());
+    }
+
+    /// "The first time each turn" is part of what a card listens for: the
+    /// turn's second occurrence is not planned at all, and what decides is
+    /// the count as each event was recorded.
+    #[test]
+    fn the_second_occurrence_in_a_turn_is_never_a_listener() {
+        let mut reality_plus = listens("nbn_reality_plus", Side::Corp, CardType::Identity, Trigger::OnTagsGiven, None);
+        reality_plus.triggers[0].first_each_turn = true;
+        let registry = registry(vec![reality_plus]);
+        let mut state = GameState::default();
+        state.corp.identity = Some(CardId("nbn_reality_plus".to_string()));
+        let tagged = GameEvent::TagsGiven { side: Side::Runner, amount: 1 };
+
+        let first = turn_log::record(&mut state, &registry, &tagged);
+        assert_eq!(who(&super::plan_for(&state, &registry, &tagged, &first)), vec![("nbn_reality_plus", Heard::AsBystander)]);
+        let second = turn_log::record(&mut state, &registry, &tagged);
+        assert!(super::plan_for(&state, &registry, &tagged, &second).is_empty());
+        // Judged as of its own recording: the first is still the first
+        // after the turn has counted a second.
+        assert_eq!(super::plan_for(&state, &registry, &tagged, &first).len(), 1);
+
+        turn_log::rotate(&mut state);
+        let next_turn = turn_log::record(&mut state, &registry, &tagged);
+        assert_eq!(super::plan_for(&state, &registry, &tagged, &next_turn).len(), 1);
+    }
+
+    /// Whose occurrence it was is part of the count where the trigger is
+    /// phrased about its controller: the Runner's install is not the
+    /// Corp's first. And the flag was reset only when the *Corp's* turn
+    /// began, so an install by a card's text on the Runner's turn (Brân
+    /// 1.0) paid Engineering the Future nothing.
+    #[test]
+    fn the_first_time_you_install_counts_your_installs_in_either_players_turn() {
+        let mut the_future = listens("haas_bioroid_engineering_the_future", Side::Corp, CardType::Identity, Trigger::OnInstall, Some(Subject::Any));
+        the_future.triggers[0].first_each_turn = true;
+        let registry = registry(vec![the_future]);
+        let mut state = GameState::default();
+        state.corp.identity = Some(CardId("haas_bioroid_engineering_the_future".to_string()));
+        let runners = GameEvent::ProgramInstalled { side: Side::Runner, card: CardId("leech".to_string()), memory_cost: 1, credits_paid: 0 };
+        let corps = GameEvent::CardInstalled { side: Side::Corp, install: InstallId(1), card: Some(CardId("pad_campaign".to_string())), server: ServerId::Remote(0) };
+
+        let as_of = turn_log::record(&mut state, &registry, &runners);
+        assert!(super::plan_for(&state, &registry, &runners, &as_of).is_empty(), "\"you\" is the Corp");
+        let as_of = turn_log::record(&mut state, &registry, &corps);
+        assert_eq!(who(&super::plan_for(&state, &registry, &corps, &as_of)), vec![("haas_bioroid_engineering_the_future", Heard::AsBystander)], "the Corp's first, after the Runner's");
+        let as_of = turn_log::record(&mut state, &registry, &corps);
+        assert!(super::plan_for(&state, &registry, &corps, &as_of).is_empty());
     }
 }

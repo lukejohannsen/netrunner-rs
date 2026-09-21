@@ -121,21 +121,42 @@ pub struct TriggeredEffect {
     /// in Rust under a trigger's name.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub acts_on_subject: bool,
+    /// "The **first time each turn** …": this hears only the turn's first
+    /// occurrence of what it listens for — its `trigger`, narrowed by its
+    /// `when`, its controller's where the trigger is phrased about its
+    /// controller (`rules::turn_log::Occurrences`). Part of the trigger
+    /// *condition*, like `when`, and judged in the listener scan against a
+    /// count that already includes the occurrence, so a second one was
+    /// never a listener.
+    ///
+    /// **A fact about the turn, not a use of the card.** It was spelled
+    /// `requirement: OncePerTurn`, which is a use limit: a card installed
+    /// after the turn's first occurrence found its use unspent and fired
+    /// on the second, and so did one whose first trigger stood down. It is
+    /// not an `Amount::TimesThisTurn` compared with 1 either — that is
+    /// asked at resolution, after a nested event may have counted a
+    /// second, and a card file that writes a 1 can write a 0.
+    ///
+    /// A card's `first_each_turn` entries are one printed ability in as
+    /// many entries as it has triggers ("an agenda is scored **or**
+    /// stolen"), and share one count.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub first_each_turn: bool,
     /// The printed sentence this trigger implements, quoted from the
     /// card, when a card author has linked it; optional and ungated —
     /// see `AbilityDef::text` for the linked-clause idea.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub text: Option<String>,
     pub effects: Vec<Effect>,
-    /// A *soft* precondition: if unmet, `ability::process_card_triggers`
-    /// silently skips this entry (no error, no `RulesError` surfaced) and
-    /// leaves any per-turn tracking flag untouched. Used exclusively by
-    /// passive identity-reactive triggers (`Trigger::OnInstall`/
-    /// `OnSuccessfulRun` gated by `EffectRequirement::
-    /// FirstInstallThisTurn`/`FirstSuccessfulHqRunThisTurn`) so a
-    /// bonus-already-used-this-turn case never blocks the install/run that
-    /// triggered it. Distinct from `CardDefinition::play_requirement`, which is a hard
-    /// gate checked before a card can even be played at all. `None` for the
+    /// The intervening *if*: asked when the trigger resolves, against the
+    /// state at that moment ("if the Runner is tagged"). Unmet, the entry
+    /// is skipped silently — no error, and nothing spent — so a bonus that
+    /// does not apply never blocks the install or run that offered it.
+    /// A `OncePerTurn` here is spent once the effects have resolved
+    /// (`ability::consume_requirement`). **Not where "the first time each
+    /// turn" goes** — that is `first_each_turn`, part of the condition.
+    /// Distinct from `CardDefinition::play_requirement`, which is a hard
+    /// gate checked before a card can be played at all. `None` for the
     /// common case of an unconditional trigger.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub requirement: Option<EffectRequirement>,
@@ -600,6 +621,8 @@ pub enum CardValidationError {
     TriggerFilterOfTheWrongKind(CardId, Trigger),
     #[error("card {0:?}: a {1:?} trigger is not about a card, so its effects cannot act on one (`acts_on_subject`)")]
     TriggerActsOnNoCard(CardId, Trigger),
+    #[error("card {0:?}: \"the first time each turn\" (`first_each_turn`) does not fit — {1}")]
+    FirstTimeDoesNotFit(CardId, String),
     #[error("card {0:?}: a continuous {1} effect does not fit — {2}")]
     ContinuousEffectDoesNotFit(CardId, &'static str, &'static str),
     #[error("card {0:?}: a prohibition lasts a run or a turn — nothing prints one for an encounter, and the guards that ask are not asked during one")]
@@ -675,6 +698,10 @@ impl CardDefinition {
     /// well-formedness (right field types, valid enum tags) is already
     /// guaranteed by having deserialized successfully — this only catches
     /// combinations that parse fine but don't make sense as a real card.
+    fn first_time_misfit(&self, why: String) -> CardValidationError {
+        CardValidationError::FirstTimeDoesNotFit(self.id.clone(), why)
+    }
+
     pub fn validate(&self) -> Result<(), CardValidationError> {
         let is_ice = matches!(self.card_type, CardType::Ice(_));
         let is_breaker_style_program = matches!(self.card_type, CardType::Program);
@@ -722,6 +749,46 @@ impl CardDefinition {
             }
             if triggered.acts_on_subject && about != TriggerAbout::Card {
                 return Err(CardValidationError::TriggerActsOnNoCard(self.id.clone(), triggered.trigger));
+            }
+            // `requirement: AmountAtLeast(TimesThisTurn(own trigger), …)` is
+            // "the first time" spelled as an intervening if: asked when the
+            // trigger resolves, after a nested event may have counted a
+            // second, and with a number a card file can get wrong.
+            if triggered.requirement.as_ref().is_some_and(|requirement| requirement.counts_this_turn(triggered.trigger)) {
+                return Err(self.first_time_misfit(format!("a {:?} trigger's requirement counts {:?} this turn; say `first_each_turn`", triggered.trigger, triggered.trigger)));
+            }
+        }
+        // "The first time each turn" is read off the turn's count of what
+        // the entry listens for, so each refusal here is a card that would
+        // load and then count the wrong thing, or nothing.
+        let first_time: Vec<&TriggeredEffect> = self.triggers.iter().filter(|triggered| triggered.first_each_turn).collect();
+        for triggered in &first_time {
+            if let Err(why) = crate::rules::turn_log::Occurrences::meant_by(triggered.trigger, triggered.when.as_ref(), self.side) {
+                return Err(self.first_time_misfit(why));
+            }
+            if triggered.subject == Some(Subject::This) {
+                return Err(self.first_time_misfit("\"this\" happens to a card once; the first time each turn is about `Any`".to_string()));
+            }
+            if triggered.requirement.as_ref().is_some_and(EffectRequirement::mentions_once_per_turn) {
+                return Err(self.first_time_misfit("`OncePerTurn` is a use limit on the card, and the first time each turn is a fact about the turn; a card prints one or the other".to_string()));
+            }
+        }
+        // A card's first-time entries share one count, so two triggers one
+        // event is an occurrence of would count that event twice.
+        for (one, other) in [(Trigger::OnPlay, Trigger::OnOperationPlayed), (Trigger::OnInstall, Trigger::OnCardInstalled)] {
+            if first_time.iter().any(|triggered| triggered.trigger == one) && first_time.iter().any(|triggered| triggered.trigger == other) {
+                return Err(self.first_time_misfit(format!("one event is both a {one:?} and a {other:?}, and the card's first-time entries share a count")));
+            }
+        }
+        for effect in self.continuous.iter().filter(|effect| effect.first_each_turn) {
+            let Scope::Installing(filter) = &effect.applies_to else {
+                return Err(self.first_time_misfit("a continuous effect is about the first of something only where it is about an install (`Installing`)".to_string()));
+            };
+            if let Err(why) = crate::rules::turn_log::Occurrences::installs(filter, self.side) {
+                return Err(self.first_time_misfit(why));
+            }
+            if effect.condition.as_ref().is_some_and(EffectRequirement::mentions_once_per_turn) {
+                return Err(self.first_time_misfit("`OncePerTurn` is a use limit on the card, and the first install each turn is a fact about the turn".to_string()));
             }
         }
         // `Prohibit { until: Encounter }` parses and would hold for a window
@@ -819,7 +886,7 @@ mod tests {
         assert_eq!(
             card.triggers,
             vec![TriggeredEffect {
-                subject: Some(Subject::This), when: None, acts_on_subject: false,
+                subject: Some(Subject::This), when: None, acts_on_subject: false, first_each_turn: false,
                 text: None,
                 trigger: Trigger::OnPlay,
                 effects: vec![Effect::GainCredits(Side::Corp, 9)],
@@ -841,7 +908,7 @@ mod tests {
         assert_eq!(
             card.triggers,
             vec![TriggeredEffect {
-                subject: Some(Subject::This), when: None, acts_on_subject: false,
+                subject: Some(Subject::This), when: None, acts_on_subject: false, first_each_turn: false,
                 text: None,
                 trigger: Trigger::OnPlay,
                 effects: vec![Effect::GainCredits(Side::Runner, 9)],
@@ -1007,7 +1074,7 @@ mod tests {
             id: CardId("homebrew".to_string()),
             side: Side::Runner,
             card_type: CardType::Resource,
-            triggers: vec![TriggeredEffect { trigger, subject, when, acts_on_subject, text: None, effects: vec![], requirement: None }],
+            triggers: vec![TriggeredEffect { trigger, subject, when, acts_on_subject, first_each_turn: false, text: None, effects: vec![], requirement: None }],
             ..Default::default()
         };
         let on_hq = || Some(EventFilter::Server(vec![crate::rules::ServerId::Hq]));
@@ -1029,6 +1096,61 @@ mod tests {
         ));
     }
 
+    /// "The first time each turn" is read off the turn's count of what the
+    /// entry listens for; each of these would load and then count the wrong
+    /// thing, or nothing.
+    #[test]
+    fn validate_refuses_a_first_time_the_turn_cannot_count() {
+        use crate::dsl::continuous::Number;
+        use crate::dsl::{Amount, CardFilter};
+        use crate::rules::ServerId;
+        let first = |trigger: Trigger, subject: Option<Subject>, when: Option<EventFilter>, requirement: Option<EffectRequirement>| TriggeredEffect {
+            trigger,
+            subject,
+            when,
+            acts_on_subject: false,
+            first_each_turn: true,
+            text: None,
+            effects: vec![],
+            requirement,
+        };
+        let card = |side: Side, triggers: Vec<TriggeredEffect>| CardDefinition { id: CardId("first".to_string()), side, card_type: CardType::Identity, triggers, ..Default::default() };
+        let refused = |card: CardDefinition| matches!(card.validate(), Err(CardValidationError::FirstTimeDoesNotFit(..)));
+        let any = Some(Subject::Any);
+        let programs = || Some(EventFilter::Card(CardFilter::CardType(CardType::Program)));
+
+        // What the pool prints loads.
+        assert_eq!(card(Side::Runner, vec![first(Trigger::OnSuccessfulRun, any, Some(EventFilter::Server(vec![ServerId::Hq])), None)]).validate(), Ok(()));
+        assert_eq!(card(Side::Runner, vec![first(Trigger::OnCardInstalled, any, programs(), None)]).validate(), Ok(()));
+        assert_eq!(card(Side::Corp, vec![first(Trigger::OnAgendaScored, any, None, None), first(Trigger::OnAgendaStolen, any, None, None)]).validate(), Ok(()));
+
+        // Finer than a class, or a filter on a card a player did not see.
+        assert!(refused(card(Side::Runner, vec![first(Trigger::OnCardInstalled, any, Some(EventFilter::Card(CardFilter::HasSubtype(crate::dsl::CardSubtype::Virus))), None)])));
+        assert!(refused(card(Side::Corp, vec![first(Trigger::OnInstall, any, Some(EventFilter::Card(CardFilter::CardType(CardType::Agenda))), None)])));
+        assert!(refused(card(Side::Corp, vec![first(Trigger::OnRez, any, Some(EventFilter::Card(CardFilter::CardType(CardType::Ice(IceType::Barrier)))), None)])));
+        // A use limit and a fact about the turn are two things.
+        assert!(refused(card(Side::Corp, vec![first(Trigger::OnTagsGiven, None, None, Some(EffectRequirement::OncePerTurn))])));
+        assert!(refused(card(Side::Corp, vec![first(Trigger::OnAgendaScored, Some(Subject::This), None, None)])));
+        // One install is an `OnInstall` and an `OnCardInstalled`.
+        assert!(refused(card(Side::Runner, vec![first(Trigger::OnInstall, any, None, None), first(Trigger::OnCardInstalled, any, None, None)])));
+        // "The first time" spelled as an intervening if.
+        let mut counted = first(Trigger::OnTagsGiven, None, None, Some(EffectRequirement::Not(Box::new(EffectRequirement::AmountAtLeast(Amount::TimesThisTurn(Trigger::OnTagsGiven), 2)))));
+        counted.first_each_turn = false;
+        assert!(refused(card(Side::Corp, vec![counted])));
+
+        let discount = |applies_to: Scope, condition: Option<EffectRequirement>| CardDefinition {
+            id: CardId("first".to_string()),
+            side: Side::Runner,
+            card_type: CardType::Hardware,
+            continuous: vec![ContinuousEffect { kind: ContinuousKind::InstallCost(Number { per: -1, of: Amount::Fixed(1) }), applies_to, condition, first_each_turn: true, text: None }],
+            ..Default::default()
+        };
+        assert_eq!(discount(Scope::Installing(CardFilter::CardType(CardType::Program)), None).validate(), Ok(()));
+        assert!(refused(discount(Scope::Installing(CardFilter::Icebreaker), None)));
+        assert!(refused(discount(Scope::Installing(CardFilter::CardType(CardType::Program)), Some(EffectRequirement::OncePerTurn))));
+        assert!(refused(discount(Scope::Controller, None)));
+    }
+
     /// A continuous effect that does not fit parses and then reaches
     /// nothing, which looks like a card that works — so a card file is
     /// refused rather than quietly printing a number nobody adds.
@@ -1041,7 +1163,7 @@ mod tests {
             side,
             card_type,
             strength,
-            continuous: vec![ContinuousEffect { kind, applies_to, condition: None, text: None }],
+            continuous: vec![ContinuousEffect { kind, applies_to, condition: None, first_each_turn: false, text: None }],
             ..Default::default()
         };
         let refused = |card: CardDefinition| matches!(card.validate(), Err(CardValidationError::ContinuousEffectDoesNotFit(..)));

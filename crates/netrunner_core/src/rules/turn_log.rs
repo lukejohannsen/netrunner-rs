@@ -28,8 +28,19 @@
 //! SuccessfulRunOnHq` would be `Trigger::OnSuccessfulRunOnHq` coming back
 //! one enum over — the variant `TriggeredEffect::when` deleted — and every
 //! new kind of occurrence would be a Rust edit for a card with no new
-//! mechanic in it. A row is a `Trigger`; a column is a `Class`, the coarse
-//! thing the moment was about.
+//! mechanic in it. A cell is a `Trigger`, whose moment it was, and a
+//! `Class`, the coarse thing the moment was about.
+//!
+//! **"The first time each turn" is asked here, and only by the scan.** A
+//! card says it with one word beside its trigger and its `when`
+//! (`TriggeredEffect::first_each_turn`), and what it counts is what it
+//! listens for (`Occurrences`). `record` hands back the log as it stood
+//! with the event just counted (`AsOf`), and `listeners::plan_for` cannot
+//! be called without one, so a trigger is never judged before its own
+//! occurrence is counted nor after a nested event has counted a second.
+//! It was `requirement: OncePerTurn`, a use limit on the card, which a
+//! card arriving mid-turn — or one whose first trigger stood down — found
+//! unspent.
 //!
 //! **A class holds only what both players saw.** The Corp installs
 //! facedown and the Runner is not told what an advanced card is, so a
@@ -42,7 +53,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::cards::CardRegistry;
-use crate::dsl::{CardType, Trigger};
+use crate::dsl::{CardDefinition, CardFilter, CardType, EventFilter, Hears, Trigger};
 use crate::rules::event::GameEvent;
 use crate::rules::listeners::{self, About, Moment};
 use crate::rules::run::ServerId;
@@ -58,8 +69,8 @@ const CLASSES: usize = Kind::COUNT;
 pub enum Class {
     Card(Kind),
     Server(ServerClass),
-    /// A moment about nothing: whose it was.
-    Of(Option<Side>),
+    /// A moment about nothing a card could point at — a phase, a tag.
+    Nothing,
 }
 
 /// A card's type, or `Unseen` where a player was not shown the card.
@@ -114,10 +125,23 @@ impl Class {
         match self {
             Class::Card(kind) => kind as usize,
             Class::Server(server) => server as usize,
-            Class::Of(None) => 0,
-            Class::Of(Some(Side::Corp)) => 1,
-            Class::Of(Some(Side::Runner)) => 2,
+            Class::Nothing => 0,
         }
+    }
+}
+
+/// Whose moment it was (`listeners::Moment::of`): the third part of a
+/// cell's key, because a card counts *its controller's* occurrences — "the
+/// first time each turn **you** install" — and a card's type does not say
+/// whose it was once the type is `Unseen`. Public like the rest: who
+/// installed, who drew, whose turn began.
+const WHOSE: usize = 3;
+
+fn whose(of: Option<Side>) -> usize {
+    match of {
+        None => 0,
+        Some(Side::Corp) => 1,
+        Some(Side::Runner) => 2,
     }
 }
 
@@ -167,7 +191,7 @@ fn concealed(trigger: Trigger, of: Option<Side>) -> bool {
 
 fn class_of(registry: &CardRegistry, moment: &Moment) -> Class {
     match &moment.about {
-        About::Nothing => Class::Of(moment.of),
+        About::Nothing => Class::Nothing,
         About::Server(ServerId::Archives) => Class::Server(ServerClass::Archives),
         About::Server(ServerId::RnD) => Class::Server(ServerClass::RnD),
         About::Server(ServerId::Hq) => Class::Server(ServerClass::Hq),
@@ -177,11 +201,113 @@ fn class_of(registry: &CardRegistry, moment: &Moment) -> Class {
     }
 }
 
+/// The occurrences a card means when it prints "the first time each turn":
+/// a trigger's row, its controller's moments where the trigger is phrased
+/// about its controller, and the columns its `when` admits.
+///
+/// Built from the card's own trigger and filter rather than named a second
+/// time in the card file, so "the first time each turn you make a
+/// successful run on HQ" is `OnSuccessfulRun`, `when: Server[Hq]` and one
+/// word. The price is that a `when` has to be no finer than a `Class`:
+/// `meant_by` refuses a subtype, an ice type, or any filter at all on a
+/// moment whose card was concealed, and `CardDefinition::validate` turns
+/// that refusal into a card file that does not load.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct Occurrences {
+    trigger: Trigger,
+    /// `None`: anyone's.
+    of: Option<Side>,
+    /// A bit per column; `None`: every column.
+    columns: Option<u16>,
+}
+
+impl Occurrences {
+    /// The installs a `Scope::Installing(filter)` effect is about: its
+    /// controller's `OnInstall` moments of the filter's types.
+    pub(crate) fn installs(filter: &CardFilter, controller: Side) -> Result<Occurrences, String> {
+        Occurrences::meant_by(Trigger::OnInstall, Some(&EventFilter::Card(filter.clone())), controller)
+    }
+
+    pub(crate) fn meant_by(trigger: Trigger, when: Option<&EventFilter>, controller: Side) -> Result<Occurrences, String> {
+        let of = (trigger.hears() == Hears::OwnSide).then_some(controller);
+        let bit = |class: Class| 1u16 << class.column();
+        let columns = match when {
+            None => None,
+            Some(EventFilter::Server(servers)) => Some(
+                servers
+                    .iter()
+                    .map(|server| match server {
+                        ServerId::Archives => bit(Class::Server(ServerClass::Archives)),
+                        ServerId::RnD => bit(Class::Server(ServerClass::RnD)),
+                        ServerId::Hq => bit(Class::Server(ServerClass::Hq)),
+                        ServerId::Remote(_) => bit(Class::Server(ServerClass::Remote)),
+                    })
+                    .fold(0, |mask, column| mask | column),
+            ),
+            Some(EventFilter::Card(_)) if concealed(trigger, of) => {
+                return Err(format!("the card a {trigger:?} is about is hidden from a player, so the turn counts it without its type and \"the first\" cannot be narrowed by one"));
+            }
+            Some(EventFilter::Card(filter)) => {
+                let kinds = match filter {
+                    CardFilter::CardType(card_type) => std::slice::from_ref(card_type),
+                    CardFilter::CardTypeOneOf(card_types) => card_types.as_slice(),
+                    _ => return Err(format!("the turn counts a card by its type and nothing finer, so \"the first\" cannot be narrowed by {filter:?}")),
+                };
+                if kinds.iter().any(|card_type| matches!(card_type, CardType::Ice(_))) {
+                    return Err("the turn counts ice as ice, whatever its type".to_string());
+                }
+                Some(kinds.iter().map(|card_type| bit(Class::Card(Kind::of(card_type)))).fold(0, |mask, column| mask | column))
+            }
+        };
+        Ok(Occurrences { trigger, of, columns })
+    }
+}
+
+/// What `definition`'s "first time each turn" entries count, together: one
+/// printed ability in as many entries as it has triggers. An entry
+/// `Occurrences::meant_by` refuses counts nothing — `validate` has already
+/// refused the card file.
+pub(crate) fn first_time_of(definition: &CardDefinition) -> Vec<Occurrences> {
+    definition
+        .triggers
+        .iter()
+        .filter(|triggered| triggered.first_each_turn)
+        .filter_map(|triggered| Occurrences::meant_by(triggered.trigger, triggered.when.as_ref(), definition.side).ok())
+        .collect()
+}
+
+/// The log as it stood when one event had just been counted — what a
+/// trigger's "the first time each turn" is judged against.
+///
+/// Only `record` makes one, and `listeners::plan_for` cannot be called
+/// without one: a trigger cannot be judged before its own occurrence is in
+/// the count, nor after a nested event (a rider's, the checkpoint's) has
+/// added a second. It also keeps the two questions on two types. A trigger
+/// asks `is_first` — exactly one, itself — and a price asks
+/// `TurnLog::none_yet`, because an install is priced before it happens.
+/// No card file writes a 0 or a 1, so none can write the wrong one.
+pub(crate) struct AsOf(TurnLog);
+
+impl AsOf {
+    /// Whether the occurrence just counted is the turn's first of `meant`
+    /// — several where one printed ability is two entries ("an agenda is
+    /// scored **or** stolen").
+    pub(crate) fn is_first(&self, meant: &[Occurrences]) -> bool {
+        meant.iter().map(|occurrences| self.0.count(occurrences)).sum::<u32>() == 1
+    }
+
+    /// For a test that plans an event it never recorded.
+    #[cfg(test)]
+    pub(crate) fn unrecorded(state: &GameState) -> AsOf {
+        AsOf(state.this_turn)
+    }
+}
+
 /// One turn's counts. See the module doc.
 #[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(from = "Sparse", into = "Sparse")]
 pub struct TurnLog {
-    counts: [[u8; CLASSES]; TRIGGERS],
+    counts: [[[u8; CLASSES]; WHOSE]; TRIGGERS],
     /// Actions the active side has *finished* this turn — every basic click
     /// action and run, not scoring (which is not an action) and not a click
     /// spent as a paid-ability cost. Petty Cash's "play only if you have
@@ -198,7 +324,7 @@ pub struct TurnLog {
 
 impl Default for TurnLog {
     fn default() -> Self {
-        TurnLog { counts: [[0; CLASSES]; TRIGGERS], actions_finished: 0, agenda_points_scored: 0 }
+        TurnLog { counts: [[[0; CLASSES]; WHOSE]; TRIGGERS], actions_finished: 0, agenda_points_scored: 0 }
     }
 }
 
@@ -214,12 +340,12 @@ impl TurnLog {
     /// How many times `trigger`'s moment has happened, whatever it was
     /// about.
     pub fn times(&self, trigger: Trigger) -> u32 {
-        self.counts[trigger.index()].iter().map(|count| u32::from(*count)).sum()
+        self.counts[trigger.index()].iter().flatten().map(|count| u32::from(*count)).sum()
     }
 
     /// How many of those were about `class`.
     pub fn times_about(&self, trigger: Trigger, class: Class) -> u32 {
-        u32::from(self.counts[trigger.index()][class.column()])
+        self.counts[trigger.index()].iter().map(|row| u32::from(row[class.column()])).sum()
     }
 
     pub fn actions_finished(&self) -> u32 {
@@ -230,8 +356,32 @@ impl TurnLog {
         u32::from(self.agenda_points_scored)
     }
 
-    fn bump(&mut self, trigger: Trigger, class: Class) {
-        let cell = &mut self.counts[trigger.index()][class.column()];
+    fn count(&self, occurrences: &Occurrences) -> u32 {
+        let rows = &self.counts[occurrences.trigger.index()];
+        let mut total = 0;
+        for (side, row) in rows.iter().enumerate() {
+            // A moment that is nobody's counts for anyone who asks.
+            if occurrences.of.is_some_and(|of| side != whose(None) && side != whose(Some(of))) {
+                continue;
+            }
+            for (column, count) in row.iter().enumerate() {
+                if occurrences.columns.is_none_or(|mask| mask & (1 << column) != 0) {
+                    total += u32::from(*count);
+                }
+            }
+        }
+        total
+    }
+
+    /// Whether none of `occurrences` has happened yet this turn — the
+    /// question a price asks ("the **first** program you install costs 1
+    /// less"), before the install it is pricing is counted.
+    pub(crate) fn none_yet(&self, occurrences: &Occurrences) -> bool {
+        self.count(occurrences) == 0
+    }
+
+    fn bump(&mut self, trigger: Trigger, of: Option<Side>, class: Class) {
+        let cell = &mut self.counts[trigger.index()][whose(of)][class.column()];
         *cell = cell.saturating_add(1);
     }
 }
@@ -279,9 +429,9 @@ impl From<LastTurn> for Vec<(Trigger, u8)> {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Sparse {
-    /// `(trigger, column, count)`.
+    /// `(trigger, whose, column, count)`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    cells: Vec<(Trigger, u8, u8)>,
+    cells: Vec<(Trigger, u8, u8, u8)>,
     #[serde(default, skip_serializing_if = "is_zero")]
     actions_finished: u8,
     #[serde(default, skip_serializing_if = "is_zero")]
@@ -296,9 +446,11 @@ impl From<TurnLog> for Sparse {
     fn from(log: TurnLog) -> Self {
         let mut cells = Vec::new();
         for trigger in Trigger::ALL {
-            for (column, count) in log.counts[trigger.index()].iter().enumerate() {
-                if *count > 0 {
-                    cells.push((trigger, column as u8, *count));
+            for (whose, row) in log.counts[trigger.index()].iter().enumerate() {
+                for (column, count) in row.iter().enumerate() {
+                    if *count > 0 {
+                        cells.push((trigger, whose as u8, column as u8, *count));
+                    }
                 }
             }
         }
@@ -309,10 +461,10 @@ impl From<TurnLog> for Sparse {
 impl From<Sparse> for TurnLog {
     fn from(sparse: Sparse) -> Self {
         let mut log = TurnLog { actions_finished: sparse.actions_finished, agenda_points_scored: sparse.agenda_points_scored, ..TurnLog::default() };
-        for (trigger, column, count) in sparse.cells {
-            // A column off the end is a log written by some other build;
-            // dropping the cell beats a panic in a deserializer.
-            if let Some(cell) = log.counts[trigger.index()].get_mut(usize::from(column)) {
+        for (trigger, whose, column, count) in sparse.cells {
+            // A cell off the end is a log written by some other build;
+            // dropping it beats a panic in a deserializer.
+            if let Some(cell) = log.counts[trigger.index()].get_mut(usize::from(whose)).and_then(|row| row.get_mut(usize::from(column))) {
                 *cell = count;
             }
         }
@@ -323,10 +475,10 @@ impl From<Sparse> for TurnLog {
 /// Counts `event`'s moments. Called by `dispatcher::dispatch_event` before
 /// anything reacts, so a card asking about the turn while it reacts to an
 /// occurrence finds that occurrence already counted.
-pub(crate) fn record(state: &mut GameState, registry: &CardRegistry, event: &GameEvent) {
+pub(crate) fn record(state: &mut GameState, registry: &CardRegistry, event: &GameEvent) -> AsOf {
     for moment in listeners::moments(state, event) {
         let class = class_of(registry, &moment);
-        state.this_turn.bump(moment.trigger, class);
+        state.this_turn.bump(moment.trigger, moment.of, class);
     }
     // The one sum. The points are on the event, so this is still the one
     // door: an agenda scored by a card's text is counted like any other.
@@ -334,6 +486,7 @@ pub(crate) fn record(state: &mut GameState, registry: &CardRegistry, event: &Gam
         let points = u8::try_from(*agenda_points).unwrap_or(u8::MAX);
         state.this_turn.agenda_points_scored = state.this_turn.agenda_points_scored.saturating_add(points);
     }
+    AsOf(state.this_turn)
 }
 
 /// An action was finished — see `TurnLog::actions_finished`.

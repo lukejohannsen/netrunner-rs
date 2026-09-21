@@ -108,7 +108,7 @@ fn gabriel_santiago_gains_two_credits_on_first_successful_hq_run_but_not_the_sec
 
     let (state, _) = run_to_completion(state, &registry, ServerId::Hq);
     assert_eq!(state.runner.resources.credits, Credits(2), "first successful HQ run this turn should gain 2 credits");
-    assert!(state.runner.first_hq_run_used_this_turn);
+    assert_eq!(state.this_turn.times(crate::dsl::Trigger::OnSuccessfulRun), 1);
 
     let (state, _) = run_to_completion(state, &registry, ServerId::Hq);
     assert_eq!(
@@ -138,7 +138,7 @@ fn haas_bioroid_engineering_the_future_gains_one_credit_on_first_install_but_not
     .expect("first install should succeed");
     // Started at 10, installing an asset is free, gained 1 from the identity bonus.
     assert_eq!(state.corp.resources.credits, Credits(11));
-    assert!(state.corp.first_install_used_this_turn);
+    assert_eq!(state.this_turn.times(crate::dsl::Trigger::OnInstall), 1);
     assert!(events.iter().any(|e| matches!(e, crate::rules::GameEvent::CreditsGained { side: Side::Corp, amount: 1 })));
 
     let (state, _) = apply_action(
@@ -1388,7 +1388,7 @@ mod system_gateway {
         assert!(events.iter().any(|e| matches!(e, crate::rules::GameEvent::CreditsGained { side: Side::Runner, amount: 1 })));
         assert!(events.iter().any(|e| matches!(e, crate::rules::GameEvent::CardDrawn { side: Side::Runner })));
         assert!(state.runner.stack.is_empty(), "the drawn card should have left the stack");
-        assert!(state.runner.once_per_turn_used.iter().any(|k| k.card == Some(CardId("rene_loup_arcemont".to_string()))));
+        assert_eq!(state.this_turn.times(crate::dsl::Trigger::OnTrashedFromAccess), 1, "the turn's first, and counted");
     }
 
     #[test]
@@ -3607,8 +3607,10 @@ mod system_gateway {
             apply_action(&state, &registry, PlayerAction::InstallProgram { card_id: CardId("corroder".to_string()) }).expect("install corroder");
         assert_eq!(after.runner.resources.credits, Credits(7), "8 - 2 (cost) + 1 (DZMZ); Kate's is spent");
 
-        // A new turn: both apply to the one install.
+        // A new turn: both apply to the one install. DZMZ's is a use that
+        // is cleared; Kate's is read off the turn, which starts empty.
         state.runner.once_per_turn_used.clear();
+        crate::rules::turn_log::rotate(&mut state);
         let (state, _) =
             apply_action(&state, &registry, PlayerAction::InstallProgram { card_id: CardId("corroder".to_string()) }).expect("install corroder");
         assert_eq!(state.runner.resources.credits, Credits(8), "8 - 2 (cost) + 1 (Kate) + 1 (DZMZ)");

@@ -268,8 +268,8 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
     }
 }
 
-/// A `Debug` rendering made readable: `FirstInstallThisTurn` → `first
-/// install this turn`, `RunnerCreditsAtMost(3)` → `runner credits at most
+/// A `Debug` rendering made readable: `NoActionTakenThisTurn` → `no action
+/// taken this turn`, `RunnerCreditsAtMost(3)` → `runner credits at most
 /// 3`. The fallback for the parts of the DSL with no sentence of their
 /// own — requirements mostly, which name themselves well.
 pub fn humanize(debug: String) -> String {
@@ -323,6 +323,9 @@ pub fn engine_reading(card: &CardDefinition, registry: &CardRegistry) -> Vec<Str
             Some(EventFilter::Card(filter)) => when = format!("{when}, of {}", humanize(format!("{filter:?}"))),
             None => {}
         }
+        if trigger.first_each_turn {
+            when = format!("the first time each turn: {when}");
+        }
         match &trigger.text {
             Some(text) => lines.push(format!("• [{when}] \"{}\" → {reading}", text.trim_end_matches('.'))),
             None => lines.push(format!("• [{when}] → {reading}")),
@@ -358,6 +361,7 @@ pub fn describe_continuous(effect: &ContinuousEffect) -> String {
         Scope::This => "this card".to_string(),
         Scope::Host => "the card this is hosted on".to_string(),
         Scope::Controller => "its controller".to_string(),
+        Scope::Installing(filter) if effect.first_each_turn => format!("the first card its controller installs each turn ({})", lower(format!("{filter:?}"))),
         Scope::Installing(filter) => format!("a card its controller installs ({})", lower(format!("{filter:?}"))),
         Scope::Ice => "each piece of ice".to_string(),
         Scope::RootOfThisServer(filter) => format!("each card in the root of this server ({})", lower(format!("{filter:?}"))),
@@ -458,7 +462,7 @@ mod tests {
 
     #[test]
     fn humanize_splits_camel_case_and_drops_brackets() {
-        assert_eq!(humanize("FirstInstallThisTurn".to_string()), "first install this turn");
+        assert_eq!(humanize("NoActionTakenThisTurn".to_string()), "no action taken this turn");
         assert_eq!(humanize("RunnerCreditsAtMost(3)".to_string()), "runner credits at most 3");
         assert_eq!(humanize("InHeapWithSubtype(\"x\")".to_string()), "in heap with subtype x");
     }
@@ -470,6 +474,7 @@ mod tests {
         let registry = crate::decks::sample_deck_registry();
         let reading = |id: &str| engine_reading(registry.get(&CardId(id.to_string())).expect(id), &registry).join("\n");
         assert!(reading("leech").contains("[on successful run, on HQ or R&D or Archives]"), "{}", reading("leech"));
+        assert!(reading("nbn_reality_plus").contains("[the first time each turn: on tags given]"), "{}", reading("nbn_reality_plus"));
         assert!(reading("cookbook").contains("[on card installed, of has subtype virus]"), "{}", reading("cookbook"));
     }
 

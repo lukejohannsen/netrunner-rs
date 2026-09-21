@@ -9,7 +9,7 @@
     {
       "trigger": "OnInstall",
       "subject": "Any",
-      "requirement": "FirstInstallThisTurn",
+      "first_each_turn": true,
       "effects": [
         {
           "GainCredits": [

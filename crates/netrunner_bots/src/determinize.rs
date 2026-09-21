@@ -640,7 +640,6 @@ pub fn determinize(view: &ClientView, registry: &CardRegistry, rng: &mut impl Rn
         // but_are_not_carried_into_the_sample` keeps it a deliberate one.
         identity: None,
         bad_publicity: view.corp.bad_publicity,
-        first_install_used_this_turn: false,
         // Public (visible tokens on the granting card) and carried by the
         // view; zeroing them narrowed the Corp's affordable actions and
         // trace-bid range in the sample.
@@ -735,7 +734,6 @@ pub fn determinize(view: &ClientView, registry: &CardRegistry, rng: &mut impl Rn
         rig,
         heap: view.runner.heap.clone(),
         link_strength: view.runner.link_strength,
-        first_hq_run_used_this_turn: false,
         once_per_turn_used: view.runner.once_per_turn_used.iter().cloned().collect(),
         servers_run_this_turn: view.runner.servers_run_this_turn.clone(),
         discarded_this_discard_phase: view.runner.discarded_this_discard_phase.clone(),
@@ -953,7 +951,6 @@ mod tests {
                 identity_counters: 0,
                 identity_flipped: false,
                 bad_publicity: 0,
-                first_install_used_this_turn: false,
                 recurring_credits: 0,
                 recurring_credits_max: 0, removed_from_game: Vec::new(), once_per_turn_used: Default::default(),
                 scored_agendas: Vec::new(),
@@ -984,7 +981,6 @@ mod tests {
                 }],
                 heap: Vec::new(),
                 link_strength: 0,
-                first_hq_run_used_this_turn: false,
                 once_per_turn_used: Default::default(), servers_run_this_turn: Vec::new(), discarded_this_discard_phase: Vec::new(), identity_flipped: false,
             },
             phase: GamePhase::Action(Side::Runner),
