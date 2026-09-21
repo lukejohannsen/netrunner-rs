@@ -109,6 +109,7 @@ pub fn describe_cost(cost: &Cost) -> String {
         Cost::ClearTags => "remove all tags".to_string(),
         Cost::RemoveTags(n) => format!("remove {}", plural(*n, "tag", "tags")),
         Cost::SufferDamage(kind, n) => format!("suffer {n} {} damage", damage_word(kind)),
+        Cost::Trash { from, count, .. } => format!("trash {} from {}", plural(*count, "card", "cards"), describe_zone(from)),
         Cost::TakeTags(n) => format!("take {}", plural(*n, "tag", "tags")),
         Cost::RemoveCounters(n) => format!("remove {}", plural(*n, "counter", "counters")),
         Cost::RemoveSelfFromGame => "remove this card from the game".to_string(),
@@ -475,11 +476,18 @@ pub fn decision_prompt(view: &ClientView, registry: &CardRegistry) -> Option<Str
     // A parked payment is asked ahead of anything parked beneath it, as the
     // engine answers it. Only the payer's view has one to word.
     if let Some(payment) = view.pending_payment.as_ref().and_then(|payment| payment.own.as_ref()) {
-        return Some(format!(
-            "Pay {} — how many from {}?",
-            plural(payment.amount, "credit", "credits"),
-            pool_name(payment.question.pool, view, registry)
-        ));
+        return Some(match &payment.question {
+            netrunner_core::rules::PaymentAsk::Pools(question) => format!(
+                "Pay {} — how many from {}?",
+                plural(payment.amount, "credit", "credits"),
+                pool_name(question.pool, view, registry)
+            ),
+            netrunner_core::rules::PaymentAsk::Card(question) => format!(
+                "Pay the cost — trash which card from {}? ({} to go)",
+                describe_zone(&question.zone),
+                question.remaining
+            ),
+        });
     }
     let name = decision_card(view).map(|id| title(id, registry));
     let asks = |what: String| Some(match &name { Some(card) => format!("{card} asks — {what}"), None => what });

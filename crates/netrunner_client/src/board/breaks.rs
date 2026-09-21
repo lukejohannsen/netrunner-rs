@@ -345,12 +345,16 @@ impl Search<'_> {
     /// route out, where `AutoBreak::next` waits for their answer.
     fn step(&self, state: &GameState, ability_index: usize) -> Option<GameState> {
         let (mut next, _) = apply_action(state, self.registry, self.action(ability_index)).ok()?;
-        while let Some(question) = next.pending_payment.as_ref().map(|payment| payment.question) {
+        while let Some(question) = next.pending_payment.as_ref().map(|payment| payment.question.clone()) {
             // An answer is legal only if the step can be completed after
             // it, so the first that applies is one the person could give.
-            next = (question.min..=question.max)
-                .find_map(|amount| apply_action(&next, self.registry, PlayerAction::ChooseNumber { amount }).ok())?
-                .0;
+            // No breaker in the pool pays with cards, but an answer is an
+            // answer: a card question takes its first card the same way.
+            let answer = |value: u32| match question {
+                netrunner_core::rules::PaymentAsk::Pools(_) => PlayerAction::ChooseNumber { amount: value },
+                netrunner_core::rules::PaymentAsk::Card(_) => PlayerAction::ToggleCardSelection { position: value as usize },
+            };
+            next = question.answers().into_iter().find_map(|value| apply_action(&next, self.registry, answer(value)).ok())?.0;
         }
         if pending_on(&next, self.ice) != Some(true) {
             return Some(next);

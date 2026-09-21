@@ -71,7 +71,7 @@ pub fn apply_action(
         // every application was the whole measured cost of this mechanism
         // (the legal-action probe applies every candidate). It is made only
         // where a question is possible at all (`payment::could_ask`).
-        if !crate::rules::payment::could_ask(state) {
+        if !crate::rules::payment::could_ask(state, registry, &action) {
             let applied = apply_action_once(state, registry, action);
             debug_assert!(
                 !matches!(applied, Err(RulesError::PaymentChoiceNeeded { .. })),
@@ -81,15 +81,26 @@ pub fn apply_action(
         }
         return settle_payment(state, registry, &action, Vec::new());
     };
-    let PlayerAction::ChooseNumber { amount } = action else {
-        return Err(RulesError::ActionBlockedByPendingPayment { side: pending.side });
+    // A number for a question about pools, a card's position for a
+    // question about cards; one answer a turn either way.
+    let answer = match (&pending.question, action) {
+        (crate::rules::payment::Ask::Pools(question), PlayerAction::ChooseNumber { amount }) => {
+            if amount < question.min || amount > question.max {
+                return Err(RulesError::ChosenNumberOutOfRange { amount, min: question.min, max: question.max });
+            }
+            amount
+        }
+        (crate::rules::payment::Ask::Card(question), PlayerAction::ToggleCardSelection { position }) => {
+            let position = u32::try_from(position).map_err(|_| RulesError::CardNotEligibleForSelection(position))?;
+            if !question.eligible.contains(&position) {
+                return Err(RulesError::CardNotEligibleForSelection(position as usize));
+            }
+            position
+        }
+        _ => return Err(RulesError::ActionBlockedByPendingPayment { side: pending.side }),
     };
-    let crate::rules::payment::Question { min, max, .. } = pending.question;
-    if amount < min || amount > max {
-        return Err(RulesError::ChosenNumberOutOfRange { amount, min, max });
-    }
     let mut answers = pending.answers.clone();
-    answers.push(amount);
+    answers.push(answer);
     let mut base = state.clone();
     base.pending_payment = None;
     settle_payment(&base, registry, &pending.action.clone(), answers)
@@ -115,7 +126,7 @@ fn settle_payment(
         }
         Err(RulesError::PaymentChoiceNeeded { side, amount, question }) => {
             let mut failure = None;
-            let answerable = (question.min..=question.max).any(|number| {
+            let answerable = question.answers().into_iter().any(|number| {
                 let mut further = answers.clone();
                 further.push(number);
                 completes(base, registry, action, further, &mut failure)
@@ -123,7 +134,8 @@ fn settle_payment(
             match (answerable, failure) {
                 (true, _) => Ok(park_payment(base, action.clone(), side, answers, amount, question)),
                 (false, Some(error)) => Err(error),
-                // An empty range: `payment::plan` never asks with one.
+                // Nothing to answer with: `payment::plan` never asks with
+                // an empty range, nor a card cost with no card to take.
                 (false, None) => Err(RulesError::PaymentChoiceNeeded { side, amount, question }),
             }
         }
@@ -134,8 +146,9 @@ fn settle_payment(
 /// Whether `action` goes through once `answers` are given, answering any
 /// further question every way until one way does. `failure` keeps the first
 /// error met, which is what the action is refused with if no way does. The
-/// search is over a handful of numbers and a question or two; it runs only
-/// when a payment has actually asked.
+/// search is over a handful of numbers and a question or two, or a card or
+/// two out of a grip, and the first way tried nearly always does; it runs
+/// only when a payment has actually asked.
 fn completes(
     base: &GameState,
     registry: &CardRegistry,
@@ -145,7 +158,7 @@ fn completes(
 ) -> bool {
     match replay_with(base, registry, action, &answers) {
         Ok(_) => true,
-        Err(RulesError::PaymentChoiceNeeded { question, .. }) => (question.min..=question.max).any(|number| {
+        Err(RulesError::PaymentChoiceNeeded { question, .. }) => question.answers().into_iter().any(|number| {
             let mut further = answers.clone();
             further.push(number);
             completes(base, registry, action, further, failure)
@@ -177,7 +190,7 @@ fn park_payment(
     side: Side,
     answers: Vec<u32>,
     amount: u32,
-    question: crate::rules::payment::Question,
+    question: crate::rules::payment::Ask,
 ) -> (GameState, Vec<GameEvent>) {
     let mut parked = state.clone();
     parked.pending_payment = Some(crate::rules::state::PendingPayment { side, action, answers, amount, question });

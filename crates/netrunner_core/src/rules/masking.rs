@@ -1444,7 +1444,7 @@ mod tests {
             action: PlayerAction::PlayEvent { card_id: secret.clone() },
             answers: vec![1],
             amount: 3,
-            question: crate::rules::payment::Question { pool: crate::rules::payment::Pool::BadPublicity, min: 0, max: 2 },
+            question: crate::rules::payment::Ask::Pools(crate::rules::payment::Question { pool: crate::rules::payment::Pool::BadPublicity, min: 0, max: 2 }),
         });
 
         let own = mask_state_for_player(&state, Side::Runner).pending_payment.expect("the payer sees it");

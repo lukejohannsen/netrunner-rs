@@ -459,14 +459,24 @@ impl Prompt {
         // who is deciding, which is public, and why the table has paused.
         if let Some(payment) = &view.pending_payment {
             return Some(match &payment.own {
-                Some(own) => Prompt {
-                    title: format!("Pay {} credit{}", own.amount, if own.amount == 1 { "" } else { "s" }),
+                Some(netrunner_core::rules::PendingPayment { question: netrunner_core::rules::PaymentAsk::Pools(question), amount, .. }) => Prompt {
+                    title: format!("Pay {} credit{}", amount, if *amount == 1 { "" } else { "s" }),
                     detail: format!(
                         "More than one place could pay. How many come from {}? The rest comes from the others.",
-                        prose::pool_name(own.question.pool, view, registry)
+                        prose::pool_name(question.pool, view, registry)
                     ),
                 },
-                None => Prompt { title: format!("The {:?} is choosing which credits to spend", payment.side), detail: String::new() },
+                // A cost that takes cards asks for one at a time, so the
+                // buttons under this are the cards it could take.
+                Some(netrunner_core::rules::PendingPayment { question: netrunner_core::rules::PaymentAsk::Card(question), .. }) => Prompt {
+                    title: format!("Trash a card from {} to pay", prose::describe_zone(&question.zone)),
+                    detail: if question.remaining == 1 {
+                        "The last card the cost takes.".to_string()
+                    } else {
+                        format!("The cost takes {} more.", question.remaining)
+                    },
+                },
+                None => Prompt { title: format!("The {:?} is choosing how to pay", payment.side), detail: String::new() },
             });
         }
         if let Some(decision) = &view.pending_decision {
@@ -743,7 +753,7 @@ mod tests {
         // The other chair: nothing to press, and told why the table paused.
         let view = netrunner_core::view::build_client_view(&state, &registry, Side::Corp);
         assert!(ActionMap::build(&view, &registry).is_empty());
-        assert_eq!(Prompt::of(&view, &registry).expect("told who is deciding").title, "The Runner is choosing which credits to spend");
+        assert_eq!(Prompt::of(&view, &registry).expect("told who is deciding").title, "The Runner is choosing how to pay", "the other chair cannot see whether it is credits or cards");
     }
 
     /// A text choice shows the card whose text is asking, and only to the

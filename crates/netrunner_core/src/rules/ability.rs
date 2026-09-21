@@ -2122,6 +2122,10 @@ pub(crate) fn cost_is_affordable(
         Cost::AllOf(parts) => parts.iter().all(|part| cost_is_affordable(state, registry, side, part, purpose, ctx)),
         Cost::RemoveTags(amount) => state.runner.tags >= *amount,
         Cost::SufferDamage(_, amount) => state.runner.grip.len() >= *amount as usize,
+        // The same scan the payment picks from.
+        Cost::Trash { from, filter, count, .. } => {
+            crate::rules::pending_choice::eligible_positions(state, registry, side, from, filter, ctx.acting_install).len() >= *count as usize
+        }
         Cost::TrashSelf | Cost::RemoveSelfFromGame | Cost::TakeTags(_) | Cost::ClearTags => true,
         Cost::TrashRandomFromHq(count) => state.corp.hq.len() as u32 >= *count,
     }
@@ -2227,6 +2231,15 @@ pub(crate) fn pay_cost_ctx(
             // cost is not prevented (1.16.1a). Its `DamageTaken` is
             // dispatched by the payer (`dispatch_cost_events`).
             Ok(crate::rules::damage::apply_damage(state, *damage_type, *amount as usize).0)
+        }
+
+        Cost::Trash { from, filter, count, reveal } => {
+            let eligible = crate::rules::pending_choice::eligible_positions(state, registry, side, from, filter, ctx.acting_install);
+            if eligible.len() < *count as usize {
+                return Err(RulesError::NotEnoughCardsToTrash { required: *count, available: eligible.len() as u32 });
+            }
+            let picked = crate::rules::pending_choice::pick_for_cost(state, side, from, &eligible, *count, ctx.acting_install)?;
+            crate::rules::pending_choice::trash_as_cost(state, side, from, &picked, *reveal, ctx.acting_install)
         }
 
         Cost::TakeTags(amount) => {

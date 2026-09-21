@@ -912,11 +912,13 @@ pub struct PendingPayment {
     /// (`masking::PublicPendingPayment`): an unplayed event is still hidden.
     pub action: crate::rules::action::PlayerAction,
     pub answers: Vec<u32>,
-    /// How many credits the payment is for, for the prompt.
+    /// How many credits the payment is for, or how many cards, for the
+    /// prompt.
     pub amount: u32,
-    /// How many of them come from which pool, and the range the payment
-    /// allows; `PlayerAction::ChooseNumber` answers it.
-    pub question: crate::rules::payment::Question,
+    /// How many of the credits come from which pool, and the range the
+    /// payment allows (`PlayerAction::ChooseNumber` answers it); or which
+    /// card a cost takes next (`PlayerAction::ToggleCardSelection`).
+    pub question: crate::rules::payment::Ask,
 }
 
 /// A decision parked by an `Effect`, awaiting a resolving `PlayerAction`.

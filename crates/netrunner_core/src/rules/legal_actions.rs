@@ -315,8 +315,9 @@ fn action_owner(state: &GameState, registry: &CardRegistry, action: &PlayerActio
         | PlayerAction::ChooseServerForPendingDecision { .. }
         | PlayerAction::ChooseTriggerToResolve { .. }
         | PlayerAction::ChooseNumber { .. } => {
-            // A parked payment is answered by `ChooseNumber` too, and
-            // comes first for the reason `current_actor` gives.
+            // A parked payment is answered by `ChooseNumber` or a card's
+            // `ToggleCardSelection` too, and comes first for the reason
+            // `current_actor` gives.
             state
                 .pending_payment
                 .as_ref()
@@ -328,14 +329,22 @@ fn action_owner(state: &GameState, registry: &CardRegistry, action: &PlayerActio
 }
 
 fn candidate_actions(state: &GameState, registry: &CardRegistry) -> Vec<PlayerAction> {
-    // How many credits a parked payment takes from the pool it asks about
-    // (`PendingPayment::question`) — and nothing else: `apply_action`
+    // How many credits a parked payment takes from the pool it asks about,
+    // or which card a cost takes next (`PendingPayment::question`) — and
+    // nothing else: `apply_action`
     // answers the payment ahead of whatever is parked beneath it, which
     // may itself be a number decision, whose candidates would read as the
     // payment's and appear twice. The probe still has the last word, since
     // an answer is legal only if the action can be completed after it.
     if let Some(payment) = &state.pending_payment {
-        return (payment.question.min..=payment.question.max).map(|amount| PlayerAction::ChooseNumber { amount }).collect();
+        return match &payment.question {
+            crate::rules::payment::Ask::Pools(question) => {
+                (question.min..=question.max).map(|amount| PlayerAction::ChooseNumber { amount }).collect()
+            }
+            crate::rules::payment::Ask::Card(question) => {
+                question.eligible.iter().map(|&position| PlayerAction::ToggleCardSelection { position: position as usize }).collect()
+            }
+        };
     }
     let mut candidates = static_candidates();
     candidates.extend(install_card_candidates(state, registry));

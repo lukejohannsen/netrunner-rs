@@ -2031,6 +2031,57 @@ one.
    ice on `Remote(10)` — past the servers `ActionSpace` can name — so the
    two shapes have different legal sets from there. It is the cap, reached
    by a new trajectory, not this change.
+
+   **Stage 5: a cost that takes cards asks by replay**
+   (`feat/cost-trash-from-zone`). `Cost::Trash { from, filter, count,
+   reveal }` — Carnivore's "Trash 2 cards from your grip:", LEO
+   Construction's "Trash 1 rezzed bioroid card in the root of or protecting
+   the attacked server:", Anoetic Void's "pay 2[credit] and trash 2 cards
+   from HQ" — each of which was a `PromptChooseCards` in the effect with a
+   `ZoneHasAtLeast` requirement for its affordability, and LEO's "End the
+   run." resolved *as the bioroid it had just trashed* (a selection's
+   `then` runs as the selected card). **The decision: the payer is asked
+   inside `pay_cost_ctx`, by the replay a payment split already uses**
+   (`RulesError::PaymentChoiceNeeded`, `engine::apply_action`), with the
+   question an enum (`payment::Ask`: `Pools` as before, or `Card`). Parking
+   a prompt with the effect as its continuation was rejected: every site
+   that pays would have split into pay-then-continue, which the
+   `PendingPayment` doc had already refused, and affordability would have
+   stayed a second answer beside the payment. `eligible_positions` is the
+   one scan both read. **One card at a time, answered by
+   `ToggleCardSelection` with no confirm and no deselect:** each pick is
+   recorded and replayed the moment it is given, as a number is, so
+   `completes` searches picks the way it searches numbers, `ActionSpace`
+   is unmoved, and a bot has nothing to wander between; toggle-then-confirm
+   is the shape of a *selection* (`ChooseCards`), which is an editable
+   state a replay does not hold. A person takes a pick back by taking the
+   move back. **Asked only when it changes what the payer is left with**
+   (the Payment Rule's test): never when every card left is taken, and in
+   a hand copies of one card are one answer. The question rides in the
+   payer's view as the selection both clients already draw
+   (`pending_choice::selection_positions`); the other seat sees only who is
+   paying. `payment::could_ask` now takes the action, and admits the two
+   that can pay such a cost (an ability, an accepted paid choice) by
+   `Cost::may_ask`, so the copy stays off every other application. Also
+   fixed on the way: an access interaction's affordability answered `true`
+   for every cost that is not credits; it asks `cost_is_affordable` now.
+
+   *The bots.* A parked payment is the untouched state with a question on
+   it, so an action that parks one scored, one ply ahead, as though it had
+   done nothing — and the heuristic Corp's one accept of Anoetic Void in a
+   192-game pass became a decline. `eval::through_parked_payment` scores
+   a parked payment as the payment made, with the payer's best answer; it
+   is exact, where `pending_decision_upside` is a bound, because the
+   answers are finite legal actions.
+
+   **Measured** against stage 4: random, 26 card questions asked and
+   answered, none stalled; LEO activations 10 → 17 and Carnivore 13 → 16
+   (an activation is now one action where it was a prompt, and the
+   trajectories move); Anoetic Void's old prompt counts go to 0, its
+   choices now payments. Heuristic, both shapes: 6 questions (Anoetic Void,
+   accepted more often now that the accept is priced exactly), Corp
+   flatline wins 11 → 12 and Runner agenda wins 147 → 146 — one game, inside
+   the seed-spread band, so **no strength effect is claimed**.
 9. **A scenario builder for card tests** (§4; was item 6). A deck-and-hand
    spec that reaches a real state through `setup` and actions, plus helpers
    that address cards by name. It is test code only.

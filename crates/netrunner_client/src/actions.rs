@@ -479,12 +479,12 @@ pub fn describe_action(action: &PlayerAction, registry: &CardRegistry, view: Opt
             // it, and its number is credits off a card the button names.
             let payment = view.and_then(|v| Some((v, v.pending_payment.as_ref()?.own.as_ref()?)));
             match payment {
-                Some((view, payment)) => format!(
+                Some((view, netrunner_core::rules::PendingPayment { question: netrunner_core::rules::PaymentAsk::Pools(question), amount: owed, .. })) => format!(
                     "{amount} from {}, {} from the rest",
-                    crate::prose::pool_name(payment.question.pool, view, registry),
-                    payment.amount.saturating_sub(*amount)
+                    crate::prose::pool_name(question.pool, view, registry),
+                    owed.saturating_sub(*amount)
                 ),
-                None => format!("Choose {amount}"),
+                _ => format!("Choose {amount}"),
             }
         }
         // A paid choice is a cost and a consequence. The card's own clause

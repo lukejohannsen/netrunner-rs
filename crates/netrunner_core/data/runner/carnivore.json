@@ -8,35 +8,20 @@
   "abilities": [
     {
       "trigger": "Paid",
+      "cost": {
+        "Trash": {
+          "from": "OwnGrip",
+          "filter": "Any",
+          "count": 2
+        }
+      },
       "requirement": {
         "And": [
           "OncePerTurn",
-          {
-            "And": [
-              "CurrentlyAccessingACard",
-              {
-                "ZoneHasAtLeast": {
-                  "zone": "OwnGrip",
-                  "count": 2
-                }
-              }
-            ]
-          }
+          "CurrentlyAccessingACard"
         ]
       },
-      "effect": {
-        "PromptChooseCards": {
-          "side": "Runner",
-          "source": "OwnGrip",
-          "filter": "Any",
-          "min": 2,
-          "max": 2,
-          "reveal": false,
-          "shuffle_after": false,
-          "destination": "OwnHeap",
-          "then": "TrashCurrentlyAccessedCard"
-        }
-      },
+      "effect": "TrashCurrentlyAccessedCard",
       "text": "Access, once per turn → Trash 2 cards from your grip: Trash the card you are accessing."
     }
   ],

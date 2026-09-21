@@ -10,6 +10,8 @@ pub enum RulesError {
     NotEnoughCardsInHq { required: u32, available: u32 },
     #[error("the Runner must suffer {required} damage as a cost but holds only {available} card(s) in the grip")]
     NotEnoughCardsInGrip { required: u32, available: u32 },
+    #[error("a cost trashes {required} card(s) and only {available} qualify")]
+    NotEnoughCardsToTrash { required: u32, available: u32 },
     #[error("{side:?} attempted to spend {requested} click(s) but only has {available}")]
     NotEnoughClicks {
         side: Side,
@@ -296,7 +298,7 @@ pub enum RulesError {
     /// RezInstalled` swallows `NotEnoughCredits`, and a question that read
     /// as one would be quietly dropped there.
     #[error("{side:?} must say how many credits come from which pool")]
-    PaymentChoiceNeeded { side: Side, amount: u32, question: crate::rules::payment::Question },
+    PaymentChoiceNeeded { side: Side, amount: u32, question: crate::rules::payment::Ask },
 
     #[error("{side:?} is choosing which credits to spend; nothing else may happen until they have")]
     ActionBlockedByPendingPayment { side: Side },

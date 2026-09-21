@@ -153,6 +153,25 @@ pub(crate) fn selection_positions(
     state: &GameState,
     registry: &CardRegistry,
 ) -> Option<SelectionPositions> {
+    // A parked payment is answered first (`legal_actions::current_actor`),
+    // so a card it asks for is the selection on the table, over anything
+    // parked beneath it.
+    if let Some(payment) = &state.pending_payment {
+        let crate::rules::payment::Ask::Card(question) = &payment.question else { return None };
+        let cards = zone_card_ids(state, payment.side, &question.zone, None);
+        let installs = zone_install_ids(state, payment.side, &question.zone);
+        let candidates = question
+            .eligible
+            .iter()
+            .filter_map(|&position| {
+                let position = position as usize;
+                let card = cards.get(position)?.clone();
+                let install = installs.as_ref().and_then(|ids| ids.get(position).copied());
+                Some((position, card, install))
+            })
+            .collect();
+        return Some(SelectionPositions { chooser: payment.side, corp_archives: false, candidates });
+    }
     let Some(PendingDecision::ChooseCards { side, source, filter, selected, source_install, .. }) = state.pending_decision.as_ref() else {
         return None;
     };
@@ -437,6 +456,123 @@ pub(crate) fn remove_installed_card(
             Some((removed.card, true, cascade))
         }
     }
+}
+
+/// The positions in `zone` a `Cost::Trash` takes, asking the payer only
+/// where the answer changes what they are left with — the Payment Rule's
+/// test, applied to cards. Nothing is asked when every card left is taken,
+/// and in a hand (HQ, the grip) copies of one card are one answer: the
+/// question offers the first position of each card, so "which of two Sure
+/// Gambles" is never asked and a card left with only copies of itself is
+/// taken unasked. An install is never a copy of another: its counters and
+/// its server are its own.
+///
+/// Answers are taken from the front of `GameState::payment_answers`, a
+/// position each, in the order the picks are made; the question when they
+/// run out is `RulesError::PaymentChoiceNeeded`, which `engine::
+/// apply_action` parks (`payment::Ask::Card`).
+pub(crate) fn pick_for_cost(
+    state: &mut GameState,
+    side: Side,
+    zone: &CardZoneRef,
+    eligible: &[usize],
+    count: u32,
+    source: Option<InstallId>,
+) -> Result<Vec<usize>, RulesError> {
+    let cards = zone_card_ids(state, side, zone, source);
+    let installs = zone_install_ids(state, side, zone).is_some();
+    let mut picked: Vec<usize> = Vec::new();
+    while picked.len() < count as usize {
+        let needed = count as usize - picked.len();
+        let left: Vec<usize> = eligible.iter().copied().filter(|position| !picked.contains(position)).collect();
+        // One answer per card in a hand, the first copy standing for all.
+        let answers: Vec<usize> = if installs {
+            left.clone()
+        } else {
+            left.iter().copied().filter(|&p| left.iter().find(|&&q| cards.get(q) == cards.get(p)) == Some(&p)).collect()
+        };
+        if left.len() <= needed || answers.len() == 1 {
+            picked.extend(left.into_iter().take(needed));
+            break;
+        }
+        if state.payment_answers.is_empty() {
+            let question = crate::rules::payment::CardQuestion {
+                zone: zone.clone(),
+                eligible: answers.iter().map(|&p| p as u32).collect(),
+                remaining: needed as u32,
+            };
+            return Err(RulesError::PaymentChoiceNeeded { side, amount: count, question: crate::rules::payment::Ask::Card(question) });
+        }
+        let answer = state.payment_answers.remove(0) as usize;
+        if !answers.contains(&answer) {
+            return Err(RulesError::CardNotEligibleForSelection(answer));
+        }
+        picked.push(answer);
+    }
+    Ok(picked)
+}
+
+/// Trashes the cards at `positions` in `side`'s `zone` as the payment of a
+/// cost (`Cost::Trash`): straight to their owner's discard pile, never
+/// through `rules::prevention` — a player choosing among their own cards is
+/// paying for something, and a cost is not prevented (CR 1.16.1a). A card
+/// from HQ lands facedown unless `reveal`; a trashed install lands as the
+/// table showed it. The events are returned, not dispatched: the payer
+/// dispatches its cost's events (`ability::dispatch_cost_events`),
+/// `CardsTrashedFromHq` among them (AU Co.).
+pub(crate) fn trash_as_cost(
+    state: &mut GameState,
+    side: Side,
+    zone: &CardZoneRef,
+    positions: &[usize],
+    reveal: bool,
+    source: Option<InstallId>,
+) -> Result<Vec<GameEvent>, RulesError> {
+    // Resolved to cards and installs before anything moves, which would
+    // shift the positions still to be read.
+    let cards = zone_card_ids(state, side, zone, source);
+    let installs = zone_install_ids(state, side, zone);
+    let selected: Vec<CardId> =
+        positions.iter().map(|p| cards.get(*p).cloned().ok_or(RulesError::CardNotEligibleForSelection(*p))).collect::<Result<_, _>>()?;
+    let discard = match owning_side(side, zone) {
+        Side::Corp => CardZoneRef::OwnArchives,
+        Side::Runner => CardZoneRef::OwnHeap,
+    };
+    let mut events = vec![GameEvent::CardsSelected { side, cards: selected.clone(), revealed: reveal }];
+    let mut trashed_from_hq = 0u32;
+    for (index, card_id) in selected.iter().enumerate() {
+        let mut cascade = Vec::new();
+        let was_public = match (&installs, zone) {
+            (Some(ids), _) => {
+                let install = ids.get(positions[index]).copied().ok_or(RulesError::CardNotEligibleForSelection(positions[index]))?;
+                let (_, was_public, hosted) =
+                    remove_installed_card(state, side, zone, install).ok_or(RulesError::CardNotEligibleForSelection(positions[index]))?;
+                cascade = hosted;
+                was_public
+            }
+            (None, _) => {
+                let hand = plain_zone_mut(state, side, zone, source).ok_or(RulesError::CardNotEligibleForSelection(positions[index]))?;
+                let position = hand.iter().position(|c| c == card_id).ok_or(RulesError::CardNotEligibleForSelection(positions[index]))?;
+                hand.remove(position);
+                false
+            }
+        };
+        if owning_side(side, zone) == Side::Corp {
+            let seen = was_public || reveal;
+            state.corp.archives.push(if seen { ArchivedCard::faceup(card_id.clone()) } else { ArchivedCard::facedown(card_id.clone()) });
+        } else {
+            state.runner.heap.push(card_id.clone());
+        }
+        events.push(GameEvent::CardTrashed { side: owning_side(side, &discard), card: card_id.clone() });
+        if matches!(zone, CardZoneRef::OwnHq) && side == Side::Corp {
+            trashed_from_hq += 1;
+        }
+        events.extend(cascade);
+    }
+    if trashed_from_hq > 0 {
+        events.push(GameEvent::CardsTrashedFromHq { count: trashed_from_hq });
+    }
+    Ok(events)
 }
 
 /// Whether moving a card into `zone` trashes it — the three discard piles
