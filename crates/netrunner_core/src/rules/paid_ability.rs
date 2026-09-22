@@ -47,11 +47,12 @@ pub(crate) fn open_window(state: &mut GameState) -> GameEvent {
 
 /// Opens a fresh window if the run just landed on one of the run's paid
 /// ability windows (CR 6.9): the initiation's (6.9.1e), an approach's
-/// (6.9.2b), an encounter's (6.9.3b), or the movement phase's after the
-/// Runner has chosen not to jack out (CR 6.9.4e, where the Corp may rez
-/// what is not ice). The first moment of `Movement` is not one: the
-/// jack-out decision is the Runner's, and the window the rules put before
-/// it (6.9.4b, paid abilities only) is not opened (Rules Conformance D4).
+/// (6.9.2b), an encounter's (6.9.3b), and the movement phase's two — the
+/// one before the jack-out decision (6.9.4b, paid abilities only), opened
+/// only for a Corp with one to use, and the one after the Runner has
+/// chosen to go on (6.9.4e, where the Corp may rez what is not ice).
+/// Closing the first leaves the decision with the Runner, so nothing
+/// reopens it: every caller asks only when the run has just arrived.
 /// Called after a Runner-driven `ContinueRun`, from `close_window`'s own
 /// auto-advance (arriving at the *next* ICE), and by `engine::resume_run` for an
 /// initiation, which is reached by an action — or a card's text — that
@@ -82,30 +83,41 @@ pub(crate) fn open_window(state: &mut GameState) -> GameEvent {
 /// the one place all of them funnel through, and "the game is over, so
 /// there is no checkpoint left to react at" is a property of the
 /// checkpoint question itself, not of any one caller.
-pub(crate) fn open_window_if_at_checkpoint(state: &mut GameState) -> Option<GameEvent> {
+pub(crate) fn open_window_if_at_checkpoint(state: &mut GameState, registry: &CardRegistry) -> Option<GameEvent> {
     if !matches!(state.phase, GamePhase::Action(_)) {
         return None;
     }
     let is_checkpoint = match state.active_run.as_ref().map(|r| &r.phase) {
         Some(RunPhase::Initiation) | Some(RunPhase::ApproachIce) | Some(RunPhase::EncounterIce) => true,
-        Some(RunPhase::Movement) => state.active_run.as_ref().is_some_and(|r| !r.jack_out_permitted),
+        // The movement phase's two windows: after the Runner has chosen to go
+        // on (6.9.4e, (P)(R)), always; and before they choose (6.9.4b, (P)
+        // only) when the Corp has a paid ability to use. The Runner needs no
+        // window there, as the active player outside one (`engine::
+        // activate_ability`), and opening one for nobody would cost two
+        // passes for every piece of ice passed.
+        Some(RunPhase::Movement) => {
+            state.active_run.as_ref().is_some_and(|r| !r.jack_out_permitted) || has_usable_paid_ability(state, registry, Side::Corp)
+        }
         Some(RunPhase::Success) | Some(RunPhase::AccessingCard) | Some(RunPhase::Ended) | None => false,
     };
     is_checkpoint.then(|| open_window(state))
 }
 
 /// Whether the open window lets the Corp rez a card that is not ice — the
-/// (R) of CR 9.2.7c. Every window the engine opens has it but two: the
-/// encounter's, in which "players may only use paid abilities" (CR
-/// 6.9.3b), and the players being asked about a prevention, which is an
-/// interrupt window (9.2.9d) and admits nothing else anyway. With no
+/// (R) of CR 9.2.7c. Every window the engine opens has it but three: the
+/// encounter's and the one before the jack-out decision, in which "players
+/// may only use paid abilities" (CR 6.9.3b, 6.9.4b), and the players being
+/// asked about a prevention, which is an interrupt window (9.2.9d) and
+/// admits nothing else anyway. With no
 /// window open the Corp rezzes in its own action phase (5.6.2a), which
 /// `engine::rez_ice` asks separately.
 pub(crate) fn window_permits_rez(state: &GameState) -> bool {
     match state.paid_ability_window.as_ref().map(|w| w.checkpoint) {
-        Some(WindowCheckpoint::Run) => {
-            !matches!(state.active_run.as_ref().map(|r| r.phase), Some(RunPhase::EncounterIce))
-        }
+        // The encounter's (6.9.3b) and the one before the jack-out decision
+        // (6.9.4b) are "players may only use paid abilities".
+        Some(WindowCheckpoint::Run) => !state.active_run.as_ref().is_some_and(|r| {
+            r.phase == RunPhase::EncounterIce || (r.phase == RunPhase::Movement && r.jack_out_permitted)
+        }),
         Some(WindowCheckpoint::Prevention) => false,
         Some(
             WindowCheckpoint::TurnBeginning { .. }
@@ -333,16 +345,19 @@ fn close_run_window(state: &mut GameState, registry: &CardRegistry) -> Result<Ve
             // existing ApproachIce arm: auto-pass if unrezzed, else commit
             // to EncounterIce.
             let mut events = run::advance_run(state, RunAction::Continue, registry)?;
-            events.extend(open_window_if_at_checkpoint(state));
+            events.extend(open_window_if_at_checkpoint(state, registry));
             Ok(events)
         }
         RunPhase::EncounterIce => resolve_encounter_ice(state, registry),
+        // The window before the jack-out decision (6.9.4b) is over, and the
+        // decision is the Runner's: nothing moves until they take it.
+        RunPhase::Movement if state.active_run.as_ref().is_some_and(|r| r.jack_out_permitted) => Ok(Vec::new()),
         RunPhase::Movement => {
             // Movement's window is over: the Runner approaches the next ice
             // (whose rez window opens) or the server (which opens none —
             // `CompleteRun` is the Runner's to take).
             let mut events = run::advance_run(state, RunAction::Continue, registry)?;
-            events.extend(open_window_if_at_checkpoint(state));
+            events.extend(open_window_if_at_checkpoint(state, registry));
             Ok(events)
         }
         RunPhase::Initiation => {
@@ -351,7 +366,7 @@ fn close_run_window(state: &mut GameState, registry: &CardRegistry) -> Result<Ve
             // none enters the movement phase, whose first step is theirs
             // (6.9.1f).
             let mut events = run::advance_run(state, RunAction::Continue, registry)?;
-            events.extend(open_window_if_at_checkpoint(state));
+            events.extend(open_window_if_at_checkpoint(state, registry));
             Ok(events)
         }
         // No window opens at either (CR 6.9.5, 7.2): the server's approach
@@ -381,7 +396,7 @@ pub(crate) fn resolve_encounter_ice(
     // remaining subroutines do not fire, and the run already stands at its
     // next checkpoint — open that window rather than `Continue` past it.
     if let Some(mut events) = run::reconcile_ice(state, registry)? {
-        events.extend(open_window_if_at_checkpoint(state));
+        events.extend(open_window_if_at_checkpoint(state, registry));
         return Ok(events);
     }
     let mut events = ability::resolve_unbroken_subroutines(state, registry)?;
@@ -411,7 +426,7 @@ pub(crate) fn resolve_encounter_ice(
     // `decks::matchups()[0]`), and deterministic, therefore permanent.
     if !state.resolution_halted() && state.active_run.is_some() {
         events.extend(run::advance_run(state, RunAction::Continue, registry)?);
-        events.extend(open_window_if_at_checkpoint(state));
+        events.extend(open_window_if_at_checkpoint(state, registry));
     }
     Ok(events)
 }
@@ -518,7 +533,7 @@ mod tests {
             ..Default::default()
         });
 
-        assert_eq!(open_window_if_at_checkpoint(&mut state), None);
+        assert_eq!(open_window_if_at_checkpoint(&mut state, &registry()), None);
         assert!(state.paid_ability_window.is_none(), "a finished game has no checkpoint left to react at");
     }
 

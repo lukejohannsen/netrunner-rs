@@ -413,7 +413,7 @@ fn apply_action_once(
     // needs its window, exactly as a `ContinueRun` would give it.
     if let Some(moved) = run::reconcile_ice(&mut next, registry)? {
         events.extend(moved);
-        events.extend(paid_ability::open_window_if_at_checkpoint(&mut next));
+        events.extend(paid_ability::open_window_if_at_checkpoint(&mut next, registry));
     }
 
     // Refresh the Runner's memory report from what is now installed. Placed
@@ -1151,7 +1151,7 @@ fn continue_run(state: &GameState, registry: &CardRegistry) -> Result<(GameState
     // every caller (this handler, and `paid_ability::close_window`'s
     // window-mediated auto-continue) gets them uniformly.
     let mut events = run::advance_run(&mut next, RunAction::Continue, registry)?;
-    events.extend(paid_ability::open_window_if_at_checkpoint(&mut next));
+    events.extend(paid_ability::open_window_if_at_checkpoint(&mut next, registry));
 
     Ok((next, events))
 }
@@ -1159,16 +1159,18 @@ fn continue_run(state: &GameState, registry: &CardRegistry) -> Result<(GameState
 fn jack_out(state: &GameState, registry: &CardRegistry) -> Result<(GameState, Vec<GameEvent>), RulesError> {
     let side = Side::Runner;
     require_phase(state, GamePhase::Action(side))?;
+    // The window before the decision (CR 6.9.4b) comes first: the Runner
+    // decides once the Corp has had its chance, never inside it. Asked
+    // only where the decision is open, so a jack-out anywhere else keeps
+    // its own refusal (`IllegalJackOutWindow`). With the window closed
+    // there is none to leave behind, which a window the Runner could
+    // once jack out of (the approach's, having seen the rez) did.
+    if state.active_run.as_ref().is_some_and(|run| run.jack_out_permitted) {
+        paid_ability::require_no_window(state)?;
+    }
     let mut next = state.clone();
     let mut events = run::advance_run(&mut next, RunAction::JackOut, registry)?;
     run::end_run(&mut next);
-    // No run window is open when jacking out is legal — the movement
-    // phase's decision comes before its window — but one used to be (the
-    // approach window after a pass, where the Runner could see the rez and
-    // leave), and a window left over would survive with no active_run to
-    // close it against, blocking every ordinary action afterward. Cleared
-    // so that can never be the failure again.
-    next.paid_ability_window = None;
 
     let jacked_out_event = events
         .iter()
@@ -1242,7 +1244,7 @@ fn resume_run(state: &mut GameState, registry: &CardRegistry) -> Result<Vec<Game
     }
     let Some(run) = state.active_run.as_ref() else { return Ok(Vec::new()) };
     match run.phase {
-        RunPhase::Initiation => Ok(paid_ability::open_window_if_at_checkpoint(state).into_iter().collect()),
+        RunPhase::Initiation => Ok(paid_ability::open_window_if_at_checkpoint(state, registry).into_iter().collect()),
         RunPhase::Success if run.declared_successful => run::breach(state, registry),
         _ => Ok(Vec::new()),
     }
@@ -2380,8 +2382,7 @@ fn select_card_to_access(
     // for consistency with every other access-resolution action below.
     paid_ability::require_no_window(state)?;
     let mut next = state.clone();
-    let mut events = run::resolve_select_card(&mut next, &candidate, registry)?;
-    events.extend(paid_ability::open_window_if_at_checkpoint(&mut next));
+    let events = run::resolve_select_card(&mut next, &candidate, registry)?;
     Ok((next, events))
 }
 
@@ -2395,8 +2396,7 @@ fn steal_agenda(
     require_phase(state, GamePhase::Action(Side::Runner))?;
     paid_ability::require_no_window(state)?;
     let mut next = state.clone();
-    let mut events = run::resolve_steal(&mut next, &card_id, registry)?;
-    events.extend(paid_ability::open_window_if_at_checkpoint(&mut next));
+    let events = run::resolve_steal(&mut next, &card_id, registry)?;
     Ok((next, events))
 }
 
@@ -2409,8 +2409,7 @@ fn trash_accessed_card(
     require_phase(state, GamePhase::Action(Side::Runner))?;
     paid_ability::require_no_window(state)?;
     let mut next = state.clone();
-    let mut events = run::resolve_trash(&mut next, &card_id, registry)?;
-    events.extend(paid_ability::open_window_if_at_checkpoint(&mut next));
+    let events = run::resolve_trash(&mut next, &card_id, registry)?;
     Ok((next, events))
 }
 
@@ -2423,8 +2422,7 @@ fn pass_accessed_card(
     require_phase(state, GamePhase::Action(Side::Runner))?;
     paid_ability::require_no_window(state)?;
     let mut next = state.clone();
-    let mut events = run::resolve_pass(&mut next, &card_id, registry)?;
-    events.extend(paid_ability::open_window_if_at_checkpoint(&mut next));
+    let events = run::resolve_pass(&mut next, &card_id, registry)?;
     Ok((next, events))
 }
 
@@ -2437,8 +2435,7 @@ fn pay_access_trigger(
     require_phase(state, GamePhase::Action(Side::Runner))?;
     paid_ability::require_no_window(state)?;
     let mut next = state.clone();
-    let mut events = run::resolve_pay_access_trigger(&mut next, &card_id, registry)?;
-    events.extend(paid_ability::open_window_if_at_checkpoint(&mut next));
+    let events = run::resolve_pay_access_trigger(&mut next, &card_id, registry)?;
     Ok((next, events))
 }
 
@@ -2451,8 +2448,7 @@ fn decline_access_trigger(
     require_phase(state, GamePhase::Action(Side::Runner))?;
     paid_ability::require_no_window(state)?;
     let mut next = state.clone();
-    let mut events = run::resolve_decline_access_trigger(&mut next, &card_id, registry)?;
-    events.extend(paid_ability::open_window_if_at_checkpoint(&mut next));
+    let events = run::resolve_decline_access_trigger(&mut next, &card_id, registry)?;
     Ok((next, events))
 }
 
@@ -5334,33 +5330,6 @@ mod tests {
     }
 
     #[test]
-    fn jack_out_during_an_open_window_clears_the_window() {
-        let mut state = runner_state(3, 0, 0);
-        state.active_run = Some(RunState {
-            phase: RunPhase::ApproachIce,
-            ice: vec![test_ice("ice_wall", 0, true), test_ice("enigma", 0, true)],
-            position: 1,
-            jack_out_permitted: true,
-            ..Default::default()
-        });
-        state.paid_ability_window = Some(PaidAbilityWindow {
-            active_priority: Side::Runner,
-            consecutive_passes: 0,
-            return_phase: Box::new(GamePhase::Action(Side::Runner)),
-            checkpoint: WindowCheckpoint::Run,
-        });
-
-        let (next, _events) =
-            apply_action(&state, &registry(), PlayerAction::JackOut).expect("action should succeed");
-
-        assert_eq!(next.active_run, None);
-        assert_eq!(
-            next.paid_ability_window, None,
-            "a stale window must not survive the run it belonged to"
-        );
-    }
-
-    #[test]
     fn corp_activate_ability_on_unrezzed_asset_returns_card_not_active() {
         let card_id = CardId("pad_campaign".to_string());
         let installed = vec![InstalledCard {
@@ -6965,5 +6934,52 @@ mod tests {
         let (state, events) = apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("answer");
         assert!(events.iter().any(|e| matches!(e, GameEvent::CardAccessed { .. })), "{events:?}");
         assert!(state.paid_ability_window.is_none());
+    }
+
+    /// CR 6.9.4b: after the pass, a window in which "players may only use
+    /// paid abilities", ahead of the jack-out decision. Opened only for a
+    /// Corp with a paid ability to use; the Runner uses theirs there
+    /// without one (Rules Conformance D4).
+    #[test]
+    fn the_corp_has_a_paid_ability_window_before_the_jack_out_decision() {
+        let mut state = runner_state(3, 5, 0);
+        let (mut registry, upgrade) = an_unrezzed_upgrade_in_hq(&mut state);
+        registry.insert(test_card("an_unrezzed_wall", Side::Corp, CardType::Ice(IceType::Barrier), 9, None));
+        registry.insert(CardDefinition { card_type: CardType::Asset, side: Side::Corp, ..test_card_with_ability("a_bank", Side::Corp, Trigger::Paid, None, Effect::GainCredits(Side::Corp, 1)) });
+        state.corp.installed.push(InstalledCard {
+            install_id: InstallId(1902),
+            card: CardId("an_unrezzed_wall".to_string()),
+            server: ServerId::Hq,
+            slot: InstallSlot::Ice,
+            ..Default::default()
+        });
+        let quiet = state.clone();
+        state.corp.installed.push(InstalledCard { install_id: InstallId(1903), card: CardId("a_bank".to_string()), server: ServerId::Remote(0), rezzed: true, ..Default::default() });
+
+        // The Corp does not rez the wall, so the Runner passes it into movement.
+        let pass_the_wall = |state: &GameState| {
+            let (state, _) = apply_action(state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run");
+            let (state, _) = crate::rules::test_support::continue_run(&state, &registry).expect("approach");
+            let (state, _) = apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner passes");
+            apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Corp }).expect("corp passes").0
+        };
+
+        let state = pass_the_wall(&state);
+        let run = state.active_run.as_ref().unwrap();
+        assert_eq!((run.phase, run.jack_out_permitted), (RunPhase::Movement, true));
+        assert!(state.paid_ability_window.is_some(), "the Corp has a paid ability to use");
+        assert!(matches!(apply_action(&state, &registry, PlayerAction::JackOut), Err(RulesError::BlockedByPaidAbilityWindow { .. })), "the decision comes after");
+        assert_eq!(apply_action(&state, &registry, PlayerAction::RezIce { ice: upgrade }), Err(RulesError::NotPermittedInThisWindow), "(P) only");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner passes");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ActivateAbility { target: InstallId(1903), ability_index: 0 }).expect("the Corp uses it");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner passes");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Corp }).expect("corp passes");
+        assert!(state.paid_ability_window.is_none(), "closing it leaves the decision with the Runner");
+        assert!(state.active_run.as_ref().unwrap().jack_out_permitted);
+        assert!(apply_action(&state, &registry, PlayerAction::JackOut).is_ok());
+
+        let state = pass_the_wall(&quiet);
+        assert_eq!(state.active_run.as_ref().map(|r| r.phase), Some(RunPhase::Movement));
+        assert!(state.paid_ability_window.is_none(), "nothing for the Corp to do: no window");
     }
 }

@@ -33,10 +33,11 @@ pub enum RunPhase {
     ///
     /// It has two moments and `RunState::jack_out_permitted` says which,
     /// so nothing new is stored: while it is `true` the Runner owes the
-    /// decision to jack out or go on (6.9.4b); `ContinueRun` shuts it and
-    /// opens the paid-ability window in which the Corp may rez what is not
-    /// ice (6.9.4d); and when that window closes the Runner approaches the
-    /// next ice or the server (6.9.4e). Without this phase the pass *was*
+    /// decision to jack out or go on (6.9.4c), after a paid-abilities-only
+    /// window if the Corp has a paid ability to use (6.9.4b); `ContinueRun`
+    /// shuts it and opens the paid-ability window in which the Corp may rez
+    /// what is not ice (6.9.4e); and when that window closes the Runner
+    /// approaches the next ice or the server (6.9.4f–g). Without this phase the pass *was*
     /// the next approach, which put the jack-out decision after the rez it
     /// exists to precede, and a server with no ice was approached in the
     /// action that began the run — before its upgrades could be rezzed.
