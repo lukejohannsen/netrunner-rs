@@ -1881,6 +1881,15 @@ guard fires. The notice ends the autoplay short of its count, so the
 screenshot is never taken and the window looks hung. A person's clicks
 cannot reach it. It is its own fix.
 
+**Corrected 22 September 2026 (Phase 7 §4ag).** The person reported this
+livelock message while watching the hook, and was first told it had not
+really happened. It had: seed 6 of the default decks reproduces it
+exactly. The loop is fixed in §4ag. The window did not only *look* hung:
+the hook waited for a count a stopped match can never reach, so it
+never took the shot and never exited. A stopped match now ends the
+autoplay (`the_autoplay_is_done_when_the_match_stops`). "A person's clicks
+cannot reach it" was never checked and should not have been written.
+
 Reports are under `target/coverage/fort/`.
 
 ## 20. Traps: hidden until sprung, played like an agenda, and not run into twice — DONE (22 September 2026)
