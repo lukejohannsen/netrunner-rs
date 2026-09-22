@@ -1022,6 +1022,86 @@ fn the_wash_over_a_form_blocks_the_press_without_acting_on_it() {
     press_entity(&mut app, scrim);
     assert!(app.world().resource::<Model>().0.confirm_quit, "and it stands");
 }
+/// "Save a bug report" in the options writes the match so far into the
+/// client's reports directory, as a record that replays to the board on
+/// the screen, and says where it went on the panel itself — the client's
+/// notices are the main menu's, not the game's.
+#[test]
+fn the_options_save_a_bug_report_that_replays_to_the_board() {
+    let (mut app, dir) = headless_client();
+    start_a_game(&mut app);
+    to_the_runners_turn(&mut app);
+    let gear = entity_with(&mut app, &Click::Options).expect("the gear is on the board");
+    press_entity(&mut app, gear);
+    let save = entity_with(&mut app, &Click::SaveReport).expect("the options offer a bug report");
+    press_entity(&mut app, save);
+
+    let reports: Vec<_> = std::fs::read_dir(dir.join("reports")).expect("the reports directory was made").map(|e| e.unwrap().path()).collect();
+    assert_eq!(reports.len(), 1, "{reports:?}");
+    let line = app.world().resource::<Model>().0.saved_report.clone().expect("the model holds where it went");
+    assert!(line.contains(&reports[0].display().to_string()) && line.contains("netrunner_cli replay"), "{line}");
+    assert!(texts(&mut app).contains(&line), "the options panel shows it");
+
+    let file = std::io::BufReader::new(std::fs::File::open(&reports[0]).unwrap());
+    let (header, history) = netrunner_client::bug_report::MatchHistory::read_jsonl(file).expect("the report reads back");
+    assert!(header.bot.is_some(), "the report names the bot");
+    let registry = app.world().resource::<ClientCore>().registry.clone();
+    let (mut state, _) = header.setup(&registry).expect("the header sets up");
+    for entry in history.entries() {
+        state = netrunner_core::rules::apply_action(&state, &registry, entry.action.clone()).expect("replays").0;
+    }
+    let model = &app.world().resource::<Model>().0;
+    let side = model.side;
+    assert_eq!(Some(netrunner_core::view::build_client_view(&state, &registry, side)), model.view, "the report replays to the board");
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+/// The dev hook's autoplay finishes a card selection rather than toggling
+/// one card on and off until the stall guard ends the game (Phase 5 §19
+/// found it on Mutual Favor, in this deck). Seed 6 is the deal that
+/// reproduced it: with the wandering index the Runner "spent 256 actions
+/// inside mutual_favor's prompt" and the match livelocked (seeds 2 and 7
+/// spent 243 and 190 in one before the count ran out). Now a selection is
+/// a pick and a confirm.
+#[test]
+fn the_autoplay_finishes_a_card_selection_and_never_stalls_on_one() {
+    let (mut app, dir) = headless_client();
+    let mut dev = netrunner_desktop::dev::Dev::default();
+    dev.autoplay = 300;
+    app.insert_resource(dev);
+    let choice = StartChoice { human: Side::Runner, level: Level::Novice, style: None, corp_deck: DEFAULT_CORP_DECK.to_string(), runner_deck: DEFAULT_RUNNER_DECK.to_string() };
+    let active = new_game::start_seeded(app.world().resource::<ClientCore>(), &choice, 6).expect("the default decks start a game");
+    app.world_mut().insert_resource(active);
+    app.world_mut().write_message(Navigate(AppScreen::Game));
+    let deadline = Instant::now() + Duration::from_secs(60);
+    let (mut selections, mut longest, mut in_this, mut last_count) = (0, 0u32, 0u32, 0u32);
+    loop {
+        app.update();
+        let Some(model) = app.world().get_resource::<Model>() else { continue };
+        let model = &model.0;
+        assert_eq!(model.stalled, None, "the autoplay stalled the game");
+        let dev = app.world().resource::<netrunner_desktop::dev::Dev>();
+        let selecting = model.view.as_ref().is_some_and(|v| matches!(v.pending_decision, Some(netrunner_core::rules::PendingDecision::ChooseCards { side: Side::Runner, .. })));
+        if selecting {
+            if in_this == 0 {
+                selections += 1;
+            }
+            in_this += dev.autoplayed - last_count;
+            longest = longest.max(in_this);
+        } else {
+            in_this = 0;
+        }
+        last_count = dev.autoplayed;
+        if dev.autoplayed >= dev.autoplay || model.over.is_some() {
+            break;
+        }
+        assert!(Instant::now() < deadline, "the autoplay made {} of {} decisions in a minute", dev.autoplayed, dev.autoplay);
+    }
+    assert!(selections > 0, "this deal asks the Runner to choose cards");
+    assert!(longest <= 3, "a selection took {longest} of the autoplay's decisions");
+    let _ = std::fs::remove_dir_all(dir);
+}
+
 /// The gear opens the options; the play helper toggle is saved and puts
 /// the flat panel on the rail, the play history toggle shows the log,
 /// and Escape closes the options before it asks to quit.

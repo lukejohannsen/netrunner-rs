@@ -43,9 +43,12 @@ use std::thread::{self, JoinHandle};
 use netrunner_bots::{Level, Personality};
 use netrunner_core::cards::CardRegistry;
 use netrunner_core::decks::DeckFile;
-use netrunner_core::rules::{GameState, PlayerAction, Side};
+use netrunner_core::rules::{GameState, MatchRules, PlayerAction, Side};
 use netrunner_core::view::ClientView;
-use netrunner_session::{PublicHistoryEntry, Seat, Session, SessionStep, StallReason, SubmitError, UNDO_DEPTH};
+use netrunner_session::{
+    HistoryEntry, MatchHistory, MatchRecordHeader, PublicHistoryEntry, RecordedBot, Seat, Session, SessionStep, StallReason, SubmitError,
+    UNDO_DEPTH,
+};
 
 pub use netrunner_session::Rewind;
 
@@ -139,6 +142,13 @@ pub struct MatchHandle {
     registry: Arc<CardRegistry>,
     finished: bool,
     thread: Option<JoinHandle<()>>,
+    header: MatchRecordHeader,
+    /// The match thread's history, mirrored after every applied action and
+    /// every take-back, so `record` can be read on a frame without asking
+    /// the thread anything. **A mirror, not a request**: the thread may be
+    /// inside a search for seconds, and a bug report pressed while the bot
+    /// thinks must not freeze the window until it answers.
+    history: Arc<Mutex<Vec<HistoryEntry>>>,
 }
 
 impl MatchHandle {
@@ -153,6 +163,15 @@ impl MatchHandle {
         let bot_deck = if bot_side == Side::Corp { &corp } else { &runner };
         let personality = personality_for(style, bot_deck)?;
         let (state, _events) = GameState::setup(&corp.to_deck(), &runner.to_deck(), &registry, seed).map_err(|e| e.to_string())?;
+        // `GameState::setup` is Standard rules on a shuffled deck, which is
+        // exactly what the header's `setup` rebuilds from these fields.
+        let header = MatchRecordHeader {
+            seed,
+            corp_deck: corp.to_deck(),
+            runner_deck: runner.to_deck(),
+            rules: MatchRules::default(),
+            bot: Some(RecordedBot { side: bot_side, level, personality }),
+        };
         // A rung is always a `Seat::Agent`: the ladder is built from the
         // view-based searches and deliberately excludes the one kind that
         // needs the index path (see `netrunner_cli::tui::build_bot_seat`).
@@ -180,11 +199,22 @@ impl MatchHandle {
         let session = Session::new(state, (*registry).clone(), corp_seat, runner_seat).with_undo(UNDO_DEPTH);
         let (command_tx, command_rx) = mpsc::channel();
         let (message_tx, message_rx) = mpsc::channel();
+        let history = Arc::new(Mutex::new(Vec::new()));
+        let mirror = Arc::clone(&history);
         let thread = thread::Builder::new()
             .name("netrunner-match".to_string())
-            .spawn(move || drive(session, human, record, command_rx, message_tx))
+            .spawn(move || drive(session, human, record, &mirror, command_rx, message_tx))
             .map_err(|e| format!("could not start the match thread: {e}"))?;
-        Ok(Self { commands: command_tx, messages: Mutex::new(message_rx), human, registry, finished: false, thread: Some(thread) })
+        Ok(Self {
+            commands: command_tx,
+            messages: Mutex::new(message_rx),
+            human,
+            registry,
+            finished: false,
+            thread: Some(thread),
+            header,
+            history,
+        })
     }
 
     /// The chair the person sits in.
@@ -254,6 +284,18 @@ impl MatchHandle {
     /// casual (the module doc).
     pub fn rewind(&self) -> Result<(), String> {
         self.commands.send(Command::Rewind).map_err(|_| "the match has ended".to_string())
+    }
+
+    /// The match so far as a record that replays: the header it was set
+    /// up from and every action applied since, take-backs already taken
+    /// out. What a bug report saves (`crate::bug_report`), and what
+    /// `netrunner_cli replay` opens. Never blocks on the match thread.
+    ///
+    /// It may trail the board by the action whose `Applied` is in flight,
+    /// never lead it, and it is always a prefix that replays.
+    pub fn record(&self) -> (MatchRecordHeader, MatchHistory) {
+        let entries = self.history.lock().map(|entries| entries.clone()).unwrap_or_default();
+        (self.header.clone(), MatchHistory::from_entries(entries))
     }
 
     /// `Ended` or `Stalled` has been received; nothing more will come.
@@ -331,7 +373,14 @@ pub fn stall_message(reason: StallReason) -> String {
 /// The match thread. Returns when the game ends, stalls, or the client
 /// quits or goes away; the game is recorded on every one of those paths
 /// that the terminal records it on.
-fn drive(mut session: Session, human: Side, mut seat: Option<SeatRecord>, commands: Receiver<Command>, messages: Sender<MatchMessage>) {
+fn drive(
+    mut session: Session,
+    human: Side,
+    mut seat: Option<SeatRecord>,
+    history: &Mutex<Vec<HistoryEntry>>,
+    commands: Receiver<Command>,
+    messages: Sender<MatchMessage>,
+) {
     // A send to a client that has dropped its handle is a quit.
     let forfeit = |session: &Session, seat: &mut Option<SeatRecord>| {
         if let Some(seat) = seat.take()
@@ -345,6 +394,7 @@ fn drive(mut session: Session, human: Side, mut seat: Option<SeatRecord>, comman
         let step = loop {
             match session.step() {
                 SessionStep::Applied { .. } => {
+                    mirror(&session, history);
                     if send_applied(&session, human, &messages).is_err() {
                         return forfeit(&session, &mut seat);
                     }
@@ -368,6 +418,7 @@ fn drive(mut session: Session, human: Side, mut seat: Option<SeatRecord>, comman
                     match commands.recv() {
                         Ok(Command::Submit(action)) => match session.submit(action) {
                             Ok(()) => {
+                                mirror(&session, history);
                                 if send_applied(&session, human, &messages).is_err() {
                                     return forfeit(&session, &mut seat);
                                 }
@@ -387,6 +438,7 @@ fn drive(mut session: Session, human: Side, mut seat: Option<SeatRecord>, comman
                         },
                         Ok(Command::Rewind) => match session.rewind() {
                             Some(rewound) => {
+                                mirror(&session, history);
                                 let view = Box::new(session.view_for(human));
                                 if messages.send(MatchMessage::Rewound { view, removed: rewound.removed, kind: rewound.kind }).is_err() {
                                     return forfeit(&session, &mut seat);
@@ -426,6 +478,18 @@ fn drive(mut session: Session, human: Side, mut seat: Option<SeatRecord>, comman
             SessionStep::Applied { .. } => unreachable!("the inner loop only breaks once it can no longer apply"),
         }
     }
+}
+
+/// Brings the client's copy of the history level with the session's: cut
+/// back to it after a take-back, then the entries since added. Called
+/// after every change, so a take-back never leaves an entry behind that a
+/// later action of the same length would hide.
+fn mirror(session: &Session, history: &Mutex<Vec<HistoryEntry>>) {
+    let Ok(mut copy) = history.lock() else { return };
+    let entries = session.history().entries();
+    copy.truncate(entries.len());
+    let known = copy.len();
+    copy.extend_from_slice(&entries[known..]);
 }
 
 /// The action just applied, as the human may see it, with the board it
@@ -541,6 +605,44 @@ mod tests {
         let (won, drawn, lost) = LocalRecord::load(&path).unwrap().record_against("tester", Side::Runner, &Level::Novice.record_id());
         assert_eq!(won + drawn + lost, 1, "an undone game is in the record");
         let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// What a bug report saves replays to the board the person is looking
+    /// at, take-backs and all: the header rebuilds the opening, the
+    /// entries are both seats' actions, and the one a take-back removed is
+    /// gone from the copy as it is from the session. Checked at every
+    /// decision, so a mirror that fell behind or kept a taken-back entry
+    /// fails at the first one.
+    #[test]
+    fn the_record_replays_to_the_board_the_person_sees() {
+        let mut handle = MatchHandle::start_local(spec(Side::Runner, 11, None)).unwrap();
+        let registry = handle.registry().clone();
+        let (mut offered, mut taken_back, mut decisions) = (None, 0, 0);
+        while decisions < 80 {
+            match handle.wait().expect("the thread is alive") {
+                MatchMessage::Back { rewind } => offered = rewind,
+                MatchMessage::Awaiting { view } => {
+                    decisions += 1;
+                    let (header, history) = handle.record();
+                    assert_eq!(header.bot, Some(RecordedBot { side: Side::Corp, level: Level::Novice, personality: header.bot.unwrap().personality }));
+                    let (mut state, _) = header.setup(&registry).expect("the header sets up");
+                    for entry in history.entries() {
+                        state = netrunner_core::rules::apply_action(&state, &registry, entry.action.clone()).expect("replays").0;
+                    }
+                    assert_eq!(netrunner_core::view::build_client_view(&state, &registry, Side::Runner), *view, "decision {decisions}");
+                    if offered.is_some() && decisions % 7 == 0 {
+                        taken_back += 1;
+                        handle.rewind().unwrap();
+                    } else {
+                        handle.submit(view.legal_actions[0].clone()).unwrap();
+                    }
+                }
+                MatchMessage::Applied { .. } | MatchMessage::Rewound { .. } => {}
+                MatchMessage::Rejected { reason } => panic!("{reason}"),
+                MatchMessage::Ended { .. } | MatchMessage::Stalled { .. } => break,
+            }
+        }
+        assert!(taken_back >= 2, "the test took {taken_back} moves back; it is about take-backs");
     }
 
     /// The rejection path: an action the engine refuses comes back as

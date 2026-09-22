@@ -3396,6 +3396,69 @@ seed 1, on pinned release binaries of `main` and this branch — reports
 256-seed sweeps green. Not screenshotted: no dev hook reaches a parked
 prompt with a move to take back; the model test drives both buttons.
 
+### 4ag. A bug report is the game, as a file that replays — DONE (22 September 2026)
+
+`feat/bug-report-replays`, §8 item 15. Glacier's spread ICE (Phase 5 §19)
+and the traps (§20) were both reports from play, and each time the
+matchup, the rung and the moment were described in words and rebuilt by
+hand. Now the gear's options offer **Save a bug report**, which writes the
+match so far to `<data dir>/netrunner/reports/<UTC time>-seed<seed>.jsonl`
+(`NETRUNNER_REPORTS_DIR` overrides it). `netrunner_cli replay <file>` opens
+it at the moment it was saved, from the person's chair.
+
+**Nearly all of it already existed.** `MatchHistory::write_jsonl` and
+`MatchRecordHeader::setup` are the record `--headless --record` writes and
+`replay` reads, and `apply_action` being pure is what makes it replay bit
+for bit. What was missing was a way for a client to reach the record.
+`MatchHandle` moved its `Session` into the match thread and kept neither
+the seed nor the decks.
+
+**Actions, not bots.** The report holds both seats' actions, and a replay
+never asks a bot anything. Re-running the bot from its seed would be
+smaller and wrong: `Session::rewind` restores the state but not the bot's
+own random stream, so after a take-back the bot plays a different game.
+The header's new `bot` field (`RecordedBot`: chair, rung and style, with
+`Level` serialized by its name) is for the person reading the report. It
+is `serde(default)` and skipped when empty, so every headless record on
+disk reads and writes as it did.
+
+**A mirror, not a request.** `MatchHandle::record` reads a copy of the
+history that the match thread brings level after every applied action and
+every take-back (`play::mirror`: cut back to the session's length, then
+extend). Asking the thread instead would have frozen the window for as
+long as a `puct@512` bot thinks. `the_record_replays_to_the_board_the_person_sees`
+replays the record at each of 80 decisions, with take-backs, and compares
+it with the view the person was sent.
+
+**A stall saves one by itself.** A stall is the report that matters most,
+and a person may not think to press anything, so the screen saves the
+moment `Stalled` arrives. The client's notices are drawn on the main
+menu, not over a game, so where the report went is `Game::saved_report`,
+shown on the options panel and the stall panel. It is also pushed to the
+notices, so the menu repeats it after the game.
+
+**`replay` opens a report at its end.** `--at start|end|<n>` and a
+`--side` that is now optional: a record that names the bot a person
+played opens at the end from the person's chair (`replay::opening`). A
+record between two bots opens as it always did, from the Corp's chair at
+the setup.
+
+**The dev hook that stalled (§19's note) is fixed here too.** At a card
+selection, `NETRUNNER_AUTOPLAY` confirms once confirming is listed and
+otherwise adds a card not yet picked. Its wandering `applied % len` had
+toggled one card on and off until the stall guard fired. Measured headless
+on the default decks, seeds 1–8 at 300 decisions each: with the old choice,
+seed 6 livelocked ("Runner spent 256 actions inside mutual_favor's prompt")
+and seeds 2 and 7 spent 243 and 190 decisions in one prompt before the
+count ran out. With the new one, every selection is a pick and a confirm.
+`the_autoplay_finishes_a_card_selection_and_never_stalls_on_one` plays seed
+6, and it failed on the old choice before it passed on the new one.
+
+No key: the gear is one click away, and a letter would be a new row in a
+crowded list for something pressed once a game at most. The terminal
+client can call the same `netrunner_client::bug_report::save`, but it is
+not wired up here.
+
 ## 8. Borrowed from jinteki — OPEN (19 September 2026)
 
 From [`docs/jinteki-comparison.md`](../jinteki-comparison.md) §5, in the
@@ -3451,9 +3514,9 @@ eleven so the addresses above do not move:
 13. **The encounter panel always on during an encounter** — name, subtypes,
     live strength, every subroutine; §4ac's marks are the first half.
 14. **Per-card always / never / ask for an optional trigger.**
-15. **A report-a-bug bundle**: the seed and the action record, which replay
+15. ~~**A report-a-bug bundle**: the seed and the action record, which replay
     exactly. The answer to the need behind jinteki's state-editing
-    commands.
+    commands.~~ Done in §4ag.
 16. **An end-of-game table and a start-of-game box.**
 17. **Card names in the log open the card.**
 18. **Check the affordance and transition colours against a

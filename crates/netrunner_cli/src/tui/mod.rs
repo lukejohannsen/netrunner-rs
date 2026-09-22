@@ -1976,7 +1976,7 @@ mod tests {
 
         let registry = decks::sample_deck_registry();
         let (corp, runner) = netrunner_core::decks::matchups().into_iter().next().expect("a sample matchup");
-        let header = MatchRecordHeader { seed: 5, corp_deck: corp.to_deck(), runner_deck: runner.to_deck(), rules: MatchRules::default() };
+        let header = MatchRecordHeader { seed: 5, corp_deck: corp.to_deck(), runner_deck: runner.to_deck(), rules: MatchRules::default(), bot: None };
         let (state, _events) = header.setup(&registry).unwrap();
         let mut session = Session::new(
             state,

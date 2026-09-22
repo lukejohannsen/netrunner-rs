@@ -179,6 +179,8 @@ pub enum Click {
     Expand(usize),
     /// The gear.
     Options,
+    /// Save the match so far as a file that replays (`save_report`).
+    SaveReport,
     CloseOverlay,
     ConfirmQuit,
     CancelQuit,
@@ -693,6 +695,21 @@ fn table_nonce() -> u64 {
     std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|since| since.as_nanos() as u64).unwrap_or(0)
 }
 
+/// Saves the match so far where the client keeps its reports, and says
+/// where in words a person can act on: the file, and the command that
+/// opens it at the moment it was saved. A failure is a sentence too,
+/// never a panic — a report that cannot be written must not end the game.
+fn save_report(core: &ClientCore, handle: &netrunner_client::play::MatchHandle) -> String {
+    let Some(dir) = &core.reports_dir else {
+        return format!("No bug report saved: there is no data directory; set {}", netrunner_client::bug_report::REPORTS_DIR_ENV);
+    };
+    let (header, history) = handle.record();
+    match netrunner_client::bug_report::save(dir, &header, &history) {
+        Ok(path) => format!("Bug report saved to {} — open it with `netrunner_cli replay {}`", path.display(), path.display()),
+        Err(error) => format!("No bug report saved: {error}"),
+    }
+}
+
 /// Leaving the screen ends the match: dropping the handle quits it, and
 /// the form gets the choice to reopen on.
 fn leave(world: &mut World) {
@@ -708,9 +725,29 @@ fn leave(world: &mut World) {
 /// Drains the match's messages into the pacer, and the beats due now
 /// into the model: a run's events move the trail and the lane, a
 /// message moves the board.
-fn poll(active: Option<ResMut<ActiveMatch>>, model: Option<ResMut<Model>>, pace: Option<ResMut<Pace>>, time: Res<Time>, mut dirty: ResMut<Dirty>, dev: Option<ResMut<crate::dev::Dev>>) {
+///
+/// **A stall saves a bug report by itself**, the moment it arrives: it is
+/// the report that matters most, the person may not think to press
+/// anything, and the match thread has already stopped, so the record is
+/// the whole game.
+#[allow(clippy::too_many_arguments)]
+fn poll(
+    active: Option<ResMut<ActiveMatch>>,
+    model: Option<ResMut<Model>>,
+    pace: Option<ResMut<Pace>>,
+    time: Res<Time>,
+    mut dirty: ResMut<Dirty>,
+    dev: Option<ResMut<crate::dev::Dev>>,
+    core: Res<ClientCore>,
+    mut notices: ResMut<Notices>,
+) {
     let (Some(mut active), Some(mut model), Some(mut pace)) = (active, model, pace) else { return };
     while let Some(message) = active.handle.poll() {
+        if matches!(message, netrunner_client::play::MatchMessage::Stalled { .. }) {
+            let line = save_report(&core, &active.handle);
+            notices.push(line.clone());
+            model.0.saved_report = Some(line);
+        }
         pace.0.push(message);
     }
     for beat in pace.0.tick(time.elapsed()) {
@@ -853,7 +890,25 @@ fn autoplay(
         return;
     }
     dev.autoplayed += 1;
-    let index = model.0.applied % model.0.actions.entries.len();
+    let entries = &model.0.actions.entries;
+    // At a card selection the wandering index toggled one card on and off
+    // until the session's stall guard ended the game (Phase 5 §19 found
+    // it, on Mutual Favor): a toggle leaves the same list behind, so
+    // `applied` walked the same two entries forever. So a selection is
+    // finished — confirmed once it can be, otherwise a card not yet picked
+    // is added — and is still one of the listed entries.
+    let selecting = model.0.view.as_ref().and_then(|view| match &view.pending_decision {
+        Some(PendingDecision::ChooseCards { selected, .. }) => Some(selected.clone()),
+        _ => None,
+    });
+    let index = selecting
+        .and_then(|selected| {
+            let confirm = entries.iter().position(|entry| entry.action == PlayerAction::ConfirmCardSelection);
+            confirm.or_else(|| {
+                entries.iter().position(|entry| matches!(&entry.action, PlayerAction::ToggleCardSelection { position } if !selected.contains(position)))
+            })
+        })
+        .unwrap_or(model.0.applied % entries.len());
     pending.0.push(Intent::Choose(index));
 }
 
@@ -1094,7 +1149,7 @@ fn controls(
     marks: Query<&Click>,
     settings_marks: Query<&SettingsControl>,
     mut core: ResMut<ClientCore>,
-    model: Option<ResMut<Model>>,
+    mut model: Option<ResMut<Model>>,
     active: Option<Res<ActiveMatch>>,
     mut dirty: ResMut<Dirty>,
     mut notices: ResMut<Notices>,
@@ -1159,6 +1214,14 @@ fn controls(
             Ok(Click::Inspect(card)) => intents.push(Intent::InspectCard(Some(card.clone()))),
             Ok(Click::Expand(row)) => intents.push(Intent::Expand(*row)),
             Ok(Click::Options) => intents.push(Intent::ToggleOptions),
+            Ok(Click::SaveReport) => {
+                if let (Some(active), Some(model)) = (active.as_ref(), model.as_mut()) {
+                    let line = save_report(&core, &active.handle);
+                    notices.push(line.clone());
+                    model.0.saved_report = Some(line);
+                    dirty.overlay = true;
+                }
+            }
             Ok(Click::CloseOverlay) => intents.push(Intent::Back),
             Ok(Click::ConfirmQuit) => intents.push(Intent::ConfirmQuit),
             Ok(Click::CancelQuit) => intents.push(Intent::CancelQuit),
@@ -3174,6 +3237,9 @@ fn spawn_overlay(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &Client
                 if let Some(reason) = &game.stalled {
                     panel.spawn(widgets::heading(theme, "The match stopped"));
                     panel.spawn((widgets::dim(theme, reason.clone()), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
+                    if let Some(line) = &game.saved_report {
+                        panel.spawn((widgets::dim(theme, line.clone()), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
+                    }
                     panel.spawn(widgets::button(theme, "Menu", Val::Auto, Click::Menu));
                 } else if let Some(over) = &game.over {
                     let won = over.winner == game.side;
@@ -3207,7 +3273,13 @@ fn spawn_overlay(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &Client
                 } else if game.options_open {
                     panel.spawn(widgets::heading(theme, "Game options"));
                     settings_screen::spawn_rows(panel, theme, core, &Row::GAME);
-                    panel.spawn(widgets::button(theme, "Close", Val::Auto, Click::CloseOverlay));
+                    if let Some(line) = &game.saved_report {
+                        panel.spawn((widgets::dim(theme, line.clone()), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
+                    }
+                    panel.spawn(widgets::row(12.0)).with_children(|row| {
+                        row.spawn(widgets::button(theme, "Save a bug report", Val::Auto, Click::SaveReport));
+                        row.spawn(widgets::button(theme, "Close", Val::Auto, Click::CloseOverlay));
+                    });
                 } else if game.help_open {
                     help_sheet(panel, theme);
                 } else if let Some(id) = &game.inspecting {
