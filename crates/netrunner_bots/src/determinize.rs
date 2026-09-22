@@ -387,6 +387,7 @@ fn determinize_installed(
         // `ClientView` doesn't carry install timing; a rollout re-derives it
         // from its own play-out, same approximation as `counters` above.
         installed_this_turn: false,
+        seen_by_runner: card.seen_by_runner,
     })).collect();
     let root = server_view.root.iter().map(|card| (card.position, InstalledCard {
         card: card.card.clone().unwrap_or_else(|| pools.draw(Slot::CorpRoot)),
@@ -405,6 +406,7 @@ fn determinize_installed(
         // `ClientView` doesn't carry install timing; a rollout re-derives it
         // from its own play-out, same approximation as `counters` above.
         installed_this_turn: false,
+        seen_by_runner: card.seen_by_runner,
     }));
     ice.into_iter().chain(root).collect()
 }

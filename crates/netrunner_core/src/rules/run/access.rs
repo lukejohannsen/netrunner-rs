@@ -372,6 +372,12 @@ fn present_card_for_access(
     // Pin the instance first: every later step of this card's resolution
     // (its `OnAccessed` trigger, a trash, a steal) reads it from here.
     let rezzed = install.and_then(|install| state.find_corp_install(install)).is_some_and(|c| c.rezzed);
+    // The Runner has now seen this card's face, and keeps it: CR 7.3.1a
+    // for the rest of the breach, and `InstalledCard::seen_by_runner` for
+    // what they remember after it.
+    if let Some(card) = install.and_then(|install| state.corp.installed.iter_mut().find(|c| c.install_id == install)) {
+        card.seen_by_runner = true;
+    }
     // "An ability that counts in this way only includes accesses that are
     // actually performed" (CR 7.3.6): counted here, as each card is
     // accessed, rather than as the candidates the breach began with, some
@@ -1565,6 +1571,26 @@ mod tests {
         // Choosing the hand accesses the random card, and only then is it named.
         let events = resolve_select_card(&mut state, &AccessCandidate::Zone, &registry()).unwrap();
         assert_eq!(events, vec![GameEvent::CardAccessed { card: CardId("secret_agenda".to_string()), server: ServerId::Hq, install: None }]);
+    }
+
+    /// Accessing an installed card marks it seen, whether it is left
+    /// installed or not: the Runner keeps what they saw
+    /// (`InstalledCard::seen_by_runner`). A card left unaccessed does not.
+    #[test]
+    fn an_accessed_install_is_seen_by_the_runner_and_one_not_reached_is_not() {
+        let installed = vec![
+            InstalledCard { card: CardId("first".to_string()), install_id: InstallId(1), server: ServerId::Remote(0), ..Default::default() },
+            InstalledCard { card: CardId("second".to_string()), install_id: InstallId(2), server: ServerId::Remote(0), ..Default::default() },
+        ];
+        let mut state = game_state(Vec::new(), Vec::new(), Vec::new(), installed, 0);
+        state.active_run = Some(run_in_success(ServerId::Remote(0)));
+        access_server(&mut state, ServerId::Remote(0), &registry()).unwrap();
+        resolve_select_card(&mut state, &AccessCandidate::Root(InstallId(1)), &registry()).unwrap();
+        let seen = |state: &GameState, id| state.find_corp_install(InstallId(id)).unwrap().seen_by_runner;
+        assert!(seen(&state, 1));
+        assert!(!seen(&state, 2));
+        resolve_pass(&mut state, &CardId("first".to_string()), &registry()).unwrap();
+        assert!(seen(&state, 1), "and still seen once the access is over");
     }
 
     /// CR 7.4.5: "If a candidate leaves the breached server, it ceases to
