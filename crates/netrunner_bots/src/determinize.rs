@@ -51,7 +51,7 @@ use netrunner_core::rules::{
     ArchivedCard,
     AccessPhase, AccessState, AgendaPoints, Clicks, CorpState, Credits, EncounteredSubroutine, GameState, InstallSlot,
     InstalledCard, InstalledRunnerCard, MaskedZone, MemoryUnits, PlayerResources, PublicAccessPhase,
-    RunIce, RunState, RunnerState, Side, SubroutineStatus,
+    RunIce, RunState, RunnerState, ServerId, Side, SubroutineStatus,
 };
 use netrunner_core::view::ClientView;
 
@@ -203,16 +203,10 @@ fn visible_cards(view: &ClientView) -> Vec<CardId> {
         && view.corp.hq_cards.is_none()
         && !matches!(access.server, netrunner_core::rules::ServerId::Archives)
     {
-        if let MaskedZone::Visible(cards) = &access.unaccessed_cards {
-            ids.extend(cards.iter().cloned());
-        }
         if let MaskedZone::Visible(cards) = &access.resolved_cards {
             ids.extend(cards.iter().cloned());
         }
         match &access.phase {
-            PublicAccessPhase::SelectNextCard { selectable_cards: MaskedZone::Visible(cards) } => {
-                ids.extend(cards.iter().cloned());
-            }
             PublicAccessPhase::PendingInteractiveTrigger { card: Some(id), .. }
             | PublicAccessPhase::PendingChoice { card: Some(id), .. } => {
                 ids.push(id.clone());
@@ -429,11 +423,26 @@ fn determinize_access_cards(zone: &MaskedZone, pools: &mut Pools<'_>) -> Vec<Car
     }
 }
 
+/// The cards of HQ or R&D the sample's breach will still access
+/// (`AccessState::from_zone`), drawn from the sample's own zone the way the
+/// engine draws them: at random from HQ, from the top of R&D. Neither
+/// player knows them — a Corp that sees its hand still does not know which
+/// card of it the Runner will reach — so no view carries more than their
+/// number, which `from_zone`'s length already holds.
+fn draw_from_zone(run: &mut RunState, corp: &CorpState, rng: &mut impl Rng) {
+    use rand::seq::IndexedRandom;
+    let Some(access) = run.access_state.as_mut() else { return };
+    let count = access.from_zone.len();
+    access.from_zone = match access.server {
+        ServerId::Hq => corp.hq.choose_multiple(rng, count).cloned().collect(),
+        ServerId::RnD => corp.r_and_d.iter().rev().take(count).cloned().collect(),
+        ServerId::Archives | ServerId::Remote(_) => Vec::new(),
+    };
+}
+
 fn determinize_access_phase(phase: &PublicAccessPhase, pools: &mut Pools<'_>) -> AccessPhase {
     match phase {
-        PublicAccessPhase::SelectNextCard { selectable_cards } => {
-            AccessPhase::SelectNextCard { selectable_cards: determinize_access_cards(selectable_cards, pools) }
-        }
+        PublicAccessPhase::SelectNextCard { selectable_cards } => AccessPhase::SelectNextCard { selectable_cards: selectable_cards.clone() },
         // `decider` copies straight through rather than being re-derived
         // from the sampled card: it is public information, and a search tree
         // that disagreed with reality about whose decision is pending would
@@ -545,10 +554,12 @@ fn determinize_run(
             .pending_install
             .and_then(|install| installed.iter().find(|c| c.install_id == install))
             .is_some_and(|card| card.rezzed),
-        // Not in the view; a rollout that re-picks an already-resolved copy
-        // takes the other one, which is harmless.
-        resolved_installs: Vec::new(),
-        unaccessed_cards: determinize_access_cards(&access.unaccessed_cards, pools),
+        candidates: access.candidates.clone(),
+        // Only the number is in the view, and it is the number the sample
+        // needs: which cards they are is drawn from the sample's own HQ or
+        // R&D once those exist (`draw_from_zone`), since the cards the
+        // breach will reach are cards of that zone.
+        from_zone: vec![CardId(String::new()); access.from_zone as usize],
         resolved_cards: determinize_access_cards(&access.resolved_cards, pools),
         phase: determinize_access_phase(&access.phase, pools),
     });
@@ -739,7 +750,10 @@ pub fn determinize(view: &ClientView, registry: &CardRegistry, rng: &mut impl Rn
         identity_flipped: view.runner.identity_flipped,
     };
 
-    let active_run = view.active_run.as_ref().map(|run| determinize_run(run, registry, &mut pools, &corp.installed));
+    let mut active_run = view.active_run.as_ref().map(|run| determinize_run(run, registry, &mut pools, &corp.installed));
+    if let Some(run) = active_run.as_mut() {
+        draw_from_zone(run, &corp, rng);
+    }
 
     // A rollout installs cards of its own, and those ids must not collide
     // with one the view already carries. The real counter isn't in the
@@ -892,6 +906,10 @@ pub fn resample_hidden(state: &mut GameState, view: &ClientView, registry: &Card
     state.runner.stack = pools.draw_n(Slot::RunnerAny, state.runner.stack.len());
     if view.runner.grip_cards.is_none() {
         state.runner.grip = pools.draw_n(Slot::RunnerAny, state.runner.grip.len());
+    }
+    // A breach already under way reaches cards of the zones just re-drawn.
+    if let Some(run) = state.active_run.as_mut() {
+        draw_from_zone(run, &state.corp, rng);
     }
 }
 

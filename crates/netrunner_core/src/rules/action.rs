@@ -318,15 +318,17 @@ pub enum PlayerAction {
     /// An `InstallId` so the Corp trashes one specific copy of a Resource
     /// the Runner installed twice, rather than always the first.
     TrashResource { target: InstallId },
-    /// Choose which of the currently offered cards to resolve next, when
-    /// more than one card was accessed from a single server. Runner-only.
-    /// Legal only while a run is in `RunPhase::AccessingCard` and its
-    /// `AccessPhase` is `SelectNextCard` (`RulesError::NotInAccessPhase`
-    /// otherwise — including if it's already at `PendingChoice` for a
-    /// single remaining/bypassed card); `card_id` must be among
-    /// `selectable_cards` or this errors with
-    /// `RulesError::InvalidAccessSelection`. Moves the card out of
-    /// `AccessState::unaccessed_cards` and presents it via
+    /// Choose which candidate to access next, when a breach has more than
+    /// one (CR 7.3.4). Runner-only. The candidate is named as the Runner can
+    /// point at it — a root install, "the next card of HQ or R&D", a card
+    /// in Archives — never by what a card in a hidden zone is
+    /// (`AccessCandidate`). Legal only while a run is in
+    /// `RunPhase::AccessingCard` and its `AccessPhase` is `SelectNextCard`
+    /// (`RulesError::NotInAccessPhase` otherwise — including if it's
+    /// already at `PendingChoice` for a single remaining card); `candidate`
+    /// must be among `selectable_cards` or this errors with
+    /// `RulesError::InvalidAccessSelection`. Takes the candidate out of
+    /// the breach's candidates and presents its card via
     /// `AccessPhase::PendingChoice`, ready for `StealAgenda`/
     /// `TrashAccessedCard`/`PassAccessedCard` — see
     /// `run::access::resolve_select_card`. Blocked while a Paid Ability
@@ -335,7 +337,7 @@ pub enum PlayerAction {
     /// action may itself open a fresh window if it presents a card's
     /// `PendingChoice`/`PendingInteractiveTrigger` — see
     /// `rules::paid_ability::open_window_if_at_checkpoint`.
-    SelectCardToAccess { card_id: CardId },
+    SelectCardToAccess { candidate: crate::rules::run::AccessCandidate },
     /// Steal the currently pending accessed card. Runner-only. Legal only
     /// while a run is in `RunPhase::AccessingCard` and `card_id` matches
     /// the `AccessPhase::PendingChoice` card, and that card is actually a
@@ -619,7 +621,7 @@ mod tests {
             PlayerAction::PurgeVirusCounters,
             PlayerAction::ChooseTriggerToResolve { index: 0 },
             PlayerAction::TrashResource { target: install },
-            PlayerAction::SelectCardToAccess { card_id: card() },
+            PlayerAction::SelectCardToAccess { candidate: crate::rules::run::AccessCandidate::Zone },
             PlayerAction::StealAgenda { card_id: card() },
             PlayerAction::TrashAccessedCard { card_id: card() },
             PlayerAction::PassAccessedCard { card_id: card() },

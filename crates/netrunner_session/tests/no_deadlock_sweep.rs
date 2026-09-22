@@ -21,7 +21,7 @@
 use netrunner_bots::{BotAgent, HeuristicAgent, RandomAgent};
 use netrunner_core::cards::{register_playable_cards, CardRegistry};
 use netrunner_core::decks::{self, DeckFile};
-use netrunner_core::rules::{Deck, GameEvent, GameState, MaskedZone, PublicAccessPhase, Side, Viewer};
+use netrunner_core::rules::{AccessCandidate, Deck, GameEvent, GameState, MaskedZone, PublicAccessPhase, Side, Viewer};
 use netrunner_session::coverage::played_pool_card_ids;
 use netrunner_session::{Coverage, PublicHistoryEntry, Seat, Session, SessionStep};
 
@@ -632,15 +632,17 @@ fn visible_card_ids(view: &netrunner_core::view::ClientView) -> std::collections
         // `PublicAccessState`'s doc comment — and the invariant is about
         // actions naming what the view hides, not about the table alone.
         if let Some(access) = &run.access_state {
-            for zone in [&access.unaccessed_cards, &access.resolved_cards] {
-                if let MaskedZone::Visible(cards) = zone {
-                    visible.extend(cards.iter().map(|c| c.0.as_str()));
+            if let MaskedZone::Visible(cards) = &access.resolved_cards {
+                visible.extend(cards.iter().map(|c| c.0.as_str()));
+            }
+            // A candidate names a card only in Archives, faceup since the
+            // breach began; the rest are installs and "the next card".
+            for candidate in &access.candidates {
+                if let AccessCandidate::Archived(card) = candidate {
+                    visible.insert(card.0.as_str());
                 }
             }
             match &access.phase {
-                PublicAccessPhase::SelectNextCard { selectable_cards: MaskedZone::Visible(cards) } => {
-                    visible.extend(cards.iter().map(|c| c.0.as_str()));
-                }
                 PublicAccessPhase::PendingInteractiveTrigger { card: Some(id), .. }
                 | PublicAccessPhase::PendingChoice { card: Some(id), .. } => {
                     visible.insert(id.0.as_str());

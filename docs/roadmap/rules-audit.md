@@ -2151,7 +2151,10 @@ one.
     installed. **And one question to put to the Comprehensive Rules:**
     whether the Runner is entitled to the arrival order of facedown cards
     in Archives, which `PublicArchivedCard` positions plus an in-place flip
-    at breach give them, and which jinteki shuffles away.
+    at breach give them, and which jinteki shuffles away. **Answered (21
+    September 2026): they are not** — "Discard piles are not ordered" (CR
+    4.4.2) — and fixed as Rules Conformance A2: anyone but the Corp sees
+    the pile faceup cards first, by name.
 
 ## Advancing a card and placing a counter on it were one event — DONE (20 September 2026)
 

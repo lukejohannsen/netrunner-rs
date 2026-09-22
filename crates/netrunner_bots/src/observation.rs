@@ -702,9 +702,10 @@ fn encode_access(run: &PublicRunState, features: &mut Vec<f32>) {
         features.extend(std::iter::repeat_n(0.0, 1 + 1 + 1 + 3 + 1 + 1 + 1 + 1 + 1));
         return;
     };
-    let PublicAccessState { unaccessed_cards, resolved_cards, phase, .. } = access;
+    let PublicAccessState { candidates, from_zone, resolved_cards, phase, .. } = access;
     features.push(1.0);
-    features.push(norm(zone_len(unaccessed_cards) as f32, MAX_ACCESSED_CARDS));
+    // Candidates not yet chosen, the same number the feature always held.
+    features.push(norm((candidates.len() + *from_zone as usize) as f32, MAX_ACCESSED_CARDS));
     features.push(norm(zone_len(resolved_cards) as f32, MAX_ACCESSED_CARDS));
     match phase {
         PublicAccessPhase::SelectNextCard { .. } => {

@@ -6,111 +6,189 @@ use crate::rules::dispatcher;
 use crate::rules::error::RulesError;
 use crate::rules::payment::{self, Purpose};
 use crate::rules::event::GameEvent;
-use crate::rules::run::state::{AccessPhase, AccessState, RunPhase, ServerId};
+use crate::rules::run::state::{AccessCandidate, AccessPhase, AccessState, RunPhase, ServerId};
 use crate::rules::state::{ArchivedCard, GameState, InstallId, InstallSlot, Side};
 
 /// Root (non-ICE) installs on `server` — ICE is excluded via
 /// `InstalledCard::slot`, which the installing action declares explicitly
 /// (see `InstallSlot`'s doc comment for why this doesn't need a full
-/// `CardRegistry`). A successful run accesses these alongside whatever else
-/// that server's arm below yields, since Upgrades can be installed on
-/// central servers (Hq/RnD) as well as Remote ones.
-fn root_installs_on(state: &GameState, server: ServerId) -> Vec<CardId> {
+/// `CardRegistry`). Every breach's candidates include these (CR 7.4.1a),
+/// since Upgrades can be installed on central servers as well as remote
+/// ones.
+fn root_installs_on(state: &GameState, server: ServerId) -> Vec<AccessCandidate> {
     state
         .corp
         .installed
         .iter()
         .filter(|installed| installed.server == server && installed.slot == InstallSlot::Root)
-        .map(|installed| installed.card.clone())
+        .map(|installed| AccessCandidate::Root(installed.install_id))
         .collect()
 }
 
-/// Determine which `CardId`s become accessible when a run against `server`
-/// concludes successfully.
-fn compute_accessed_cards(state: &mut GameState, server: ServerId) -> Vec<CardId> {
+/// The candidates a breach of `server` begins with (CR 7.4.1), and the
+/// cards of HQ or R&D it will access, in order (`AccessState::from_zone`).
+fn begin_breach(state: &mut GameState, server: ServerId) -> (Vec<AccessCandidate>, Vec<CardId>) {
     match server {
-        // Real rules access one *randomly* chosen HQ card, plus one more
-        // per `RunState::additional_hq_access` (`Effect::AddAdditionalAccess`).
-        // `next_u64` is `GameState`'s deterministic pseudo-random source (no
-        // external RNG, per AGENTS.md's purity requirement) — each roll is
-        // reduced modulo the shrinking pool's length to pick a distinct
-        // index, mirroring `damage::apply_damage`'s "pick N distinct random
-        // elements" idiom.
+        // The random access limit is 1 plus one per
+        // `RunState::additional_hq_access` (CR 7.3.5a–b), and each access
+        // takes "a random candidate from among the ones in the Corp's hand"
+        // (CR 7.3.4a) that has not already been chosen (CR 7.4.3). Drawn
+        // here, in the order they will be accessed, with `GameState::next_u64`
+        // — the deterministic source inside the state, per AGENTS.md — each
+        // roll reduced modulo the shrinking pool, `damage::apply_damage`'s
+        // idiom for N distinct random cards.
         ServerId::Hq => {
             let additional = state.active_run.as_ref().map_or(0, |run| run.additional_hq_access);
             let take = (1 + additional as usize).min(state.corp.hq.len());
             let mut pool = state.corp.hq.clone();
-            let mut accessed = Vec::with_capacity(take);
+            let mut from_zone = Vec::with_capacity(take);
             for _ in 0..take {
                 let roll = state.next_u64();
                 let index = (roll as usize) % pool.len();
-                accessed.push(pool.remove(index));
+                from_zone.push(pool.remove(index));
             }
-            accessed.extend(root_installs_on(state, server));
-            accessed
+            (root_installs_on(state, server), from_zone)
         }
-        // Real rules access one card too, but R&D isn't randomized — it's
-        // drawn from a fixed deck order, plus one more per
-        // `RunState::additional_rd_access`. `.rev()` walks from the end (top
-        // of deck, per `RunnerState::stack`'s "top of deck is the end of the
-        // Vec" convention — see `engine.rs::draw_card_click`'s `stack.pop()`)
-        // backward, so `.take(n)` yields the top `n` cards in top-to-bottom
-        // order.
+        // "1 candidate from the Corp's deck at a time in turn, working down
+        // from the top of the deck" (CR 7.4.7). The top of the deck is the
+        // end of the `Vec` (`engine.rs::draw_card_click`'s `pop()`), so
+        // `.rev().take(n)` is the top `n` cards in the order they come.
         ServerId::RnD => {
             let additional = state.active_run.as_ref().map_or(0, |run| run.additional_rd_access);
             let take = (1 + additional as usize).min(state.corp.r_and_d.len());
-            let mut accessed: Vec<CardId> = state.corp.r_and_d.iter().rev().take(take).cloned().collect();
-            accessed.extend(root_installs_on(state, server));
-            accessed
+            let from_zone = state.corp.r_and_d.iter().rev().take(take).cloned().collect();
+            (root_installs_on(state, server), from_zone)
         }
-        // A successful run accesses everything in Archives, facedown
-        // cards included — accessing them is exactly how the Runner sees
-        // them — plus, as on every other server, any upgrade in its root.
-        // The root was missing here alone, while `install_card_candidates`
-        // offered upgrades onto Archives: an upgrade installed there could
-        // never be accessed or trashed (ROADMAP Rules Audit T12).
+        // "When the Runner breaches Archives, all the facedown cards in the
+        // Corp's discard pile are turned faceup before the Runner accesses
+        // any cards" (CR 7.3.2), and they stay faceup: the Runner has seen
+        // them. Nothing flipped them before, so a card the Runner had just
+        // been shown was masked from them again the moment the run ended
+        // (ROADMAP Rules Audit, Tier 2). Every card in the pile is a
+        // candidate (CR 7.4.1d), offered by name in name order (see
+        // `AccessState::candidates`), and so is the root, which was missing
+        // here alone while upgrades could be installed onto Archives (Rules
+        // Audit T12).
         ServerId::Archives => {
-            // Breaching Archives turns every facedown card there faceup —
-            // the Runner has now seen them, and they stay public afterwards
-            // (Null Signal Games rules: cards in Archives are faceup once
-            // accessed). Nothing flipped them before, so a card the Runner
-            // had just been shown was masked from them again the moment the
-            // run ended, and *Jinteki: Restoring Humanity* kept paying for
-            // "facedown" cards the Runner had read (ROADMAP Rules Audit,
-            // Tier 2). Done here, at breach, rather than per card: the
-            // whole zone is accessed at once.
             for archived in state.corp.archives.iter_mut() {
                 archived.facedown = false;
             }
-            let mut accessed: Vec<CardId> = state.corp.archives.iter().map(|a| a.card.clone()).collect();
-            accessed.extend(root_installs_on(state, server));
-            accessed
+            let mut pile: Vec<CardId> = state.corp.archives.iter().map(|a| a.card.clone()).collect();
+            pile.sort();
+            let mut candidates: Vec<AccessCandidate> = pile.into_iter().map(AccessCandidate::Archived).collect();
+            candidates.extend(root_installs_on(state, server));
+            (candidates, Vec::new())
         }
-        ServerId::Remote(_) => root_installs_on(state, server),
+        ServerId::Remote(_) => (root_installs_on(state, server), Vec::new()),
     }
 }
 
-/// Builds the `AccessPhase::PendingChoice` for `card_id`, from its
-/// `CardRegistry` definition (or the "unrecognized card" defaults if it
-/// isn't registered — nothing stealable or trashable, so the only legal
-/// resolution is `PlayerAction::PassAccessedCard`).
-/// The installed instance `card_id` resolves to on `server`, if it is a
-/// root install there: the first copy not already resolved this breach.
-/// `None` for a card accessed out of a hidden zone. See
-/// `AccessState::pending_install`.
-fn resolve_install(state: &GameState, server: ServerId, card_id: &CardId) -> Option<InstallId> {
-    let resolved = state
-        .active_run
-        .as_ref()
-        .and_then(|run| run.access_state.as_ref())
-        .map(|access| access.resolved_installs.clone())
-        .unwrap_or_default();
-    state
+/// The card of HQ or R&D (`AccessState::from_zone` names which) that the
+/// zone still holds, counting copies: one that has left since the breach
+/// began is no longer a candidate (CR 7.4.5).
+fn zone_holds(state: &GameState, server: ServerId, card: &CardId, earlier_copies: usize) -> bool {
+    let zone = match server {
+        ServerId::Hq => &state.corp.hq,
+        ServerId::RnD => &state.corp.r_and_d,
+        ServerId::Archives | ServerId::Remote(_) => return false,
+    };
+    zone.iter().filter(|c| *c == card).count() > earlier_copies
+}
+
+/// Drops every candidate that has left the breached server since the breach
+/// began (CR 7.4.5): an install no longer in its root, a card no longer in
+/// Archives, a card of HQ or R&D no longer there.
+fn prune_candidates(state: &mut GameState, server: ServerId) {
+    let still_in_root: Vec<InstallId> = state
         .corp
         .installed
         .iter()
-        .find(|c| &c.card == card_id && c.server == server && c.slot == InstallSlot::Root && !resolved.contains(&c.install_id))
+        .filter(|c| c.server == server && c.slot == InstallSlot::Root)
         .map(|c| c.install_id)
+        .collect();
+    let pile: Vec<CardId> = state.corp.archives.iter().map(|a| a.card.clone()).collect();
+    let Some(access) = state.active_run.as_ref().and_then(|run| run.access_state.as_ref()) else { return };
+    let mut from_zone = Vec::with_capacity(access.from_zone.len());
+    for card in &access.from_zone {
+        let earlier = from_zone.iter().filter(|c| *c == card).count();
+        if zone_holds(state, server, card, earlier) {
+            from_zone.push(card.clone());
+        }
+    }
+    let access = state.active_run.as_mut().and_then(|run| run.access_state.as_mut()).expect("checked above");
+    access.from_zone = from_zone;
+    access.candidates.retain(|candidate| match candidate {
+        AccessCandidate::Root(install) => still_in_root.contains(install),
+        AccessCandidate::Archived(card) => pile.contains(card),
+        AccessCandidate::Zone => false,
+    });
+}
+
+/// What the Runner may choose among now: the zone, while it has a card
+/// left to give, then the specific candidates.
+fn selectable(access: &AccessState) -> Vec<AccessCandidate> {
+    let zone = (!access.from_zone.is_empty()).then_some(AccessCandidate::Zone);
+    zone.into_iter().chain(access.candidates.iter().cloned()).collect()
+}
+
+/// Takes `candidate` out of the breach's candidates (CR 7.4.3: "Once the
+/// Runner chooses a candidate for access, it ceases to be a candidate"),
+/// and returns the card it is and, for a card in the root, which install.
+fn take_candidate(state: &mut GameState, candidate: &AccessCandidate) -> Option<(CardId, Option<InstallId>)> {
+    let card = match candidate {
+        AccessCandidate::Root(install) => state.find_corp_install(*install).map(|c| c.card.clone()),
+        AccessCandidate::Archived(card) => Some(card.clone()),
+        AccessCandidate::Zone => None,
+    };
+    let access = state.active_run.as_mut()?.access_state.as_mut()?;
+    match candidate {
+        AccessCandidate::Zone => {
+            if access.from_zone.is_empty() {
+                return None;
+            }
+            Some((access.from_zone.remove(0), None))
+        }
+        AccessCandidate::Root(install) => {
+            let position = access.candidates.iter().position(|c| c == candidate)?;
+            access.candidates.remove(position);
+            Some((card?, Some(*install)))
+        }
+        AccessCandidate::Archived(_) => {
+            let position = access.candidates.iter().position(|c| c == candidate)?;
+            access.candidates.remove(position);
+            Some((card?, None))
+        }
+    }
+}
+
+/// Presents the next candidate, or asks which: with none left the breach
+/// is over (`RunCompleted`), with one there is nothing to choose and it is
+/// accessed, and with more the Runner picks (`AccessPhase::SelectNextCard`).
+fn offer_next(state: &mut GameState, registry: &CardRegistry, server: ServerId) -> Result<Vec<GameEvent>, RulesError> {
+    prune_candidates(state, server);
+    let access = state
+        .active_run
+        .as_mut()
+        .and_then(|run| run.access_state.as_mut())
+        .expect("offer_next called mid-access");
+    let options = selectable(access);
+    match options.len() {
+        0 => {
+            super::engine::end_run(state);
+            let completed_event = GameEvent::RunCompleted { server };
+            let mut events = vec![completed_event.clone()];
+            events.extend(crate::rules::dispatcher::dispatch_event(state, registry, &completed_event)?);
+            Ok(events)
+        }
+        1 => {
+            let (card_id, install) = take_candidate(state, &options[0]).expect("a pruned candidate is still there");
+            present_card_for_access(state, registry, server, &card_id, install)
+        }
+        _ => {
+            access.phase = AccessPhase::SelectNextCard { selectable_cards: options };
+            Ok(Vec::new())
+        }
+    }
 }
 
 /// Whether the card being accessed is in the Corp's discard pile — out of
@@ -237,18 +315,25 @@ fn enter_pending_choice_unless_self_trashed(
 /// either parks at `AccessPhase::PendingInteractiveTrigger` (if the card's
 /// registry def has an `InteractiveOnAccess` trigger — e.g. Fetal AI) or
 /// goes straight to `enter_pending_choice`. The single entry point every
-/// "a card is now being accessed" call site (`access_server`,
-/// `resolve_select_card`, `advance_or_finish`) should use.
+/// "a card is now being accessed" call site (`offer_next`,
+/// `resolve_select_card`) should use.
 fn present_card_for_access(
     state: &mut GameState,
     registry: &CardRegistry,
     server: ServerId,
     card_id: &CardId,
+    install: Option<InstallId>,
 ) -> Result<Vec<GameEvent>, RulesError> {
     // Pin the instance first: every later step of this card's resolution
     // (its `OnAccessed` trigger, a trash, a steal) reads it from here.
-    let install = resolve_install(state, server, card_id);
     let rezzed = install.and_then(|install| state.find_corp_install(install)).is_some_and(|c| c.rezzed);
+    // "An ability that counts in this way only includes accesses that are
+    // actually performed" (CR 7.3.6): counted here, as each card is
+    // accessed, rather than as the candidates the breach began with, some
+    // of which may leave before they are reached (CR 7.4.5).
+    if let Some(run) = state.active_run.as_mut() {
+        run.cards_accessed_count += 1;
+    }
     if let Some(access) = state.active_run.as_mut().and_then(|run| run.access_state.as_mut()) {
         access.pending_install = install;
         access.pending_install_rezzed = rezzed;
@@ -391,8 +476,8 @@ pub fn access_server(
         return Ok(events);
     }
 
-    let accessed = compute_accessed_cards(state, server);
-    if accessed.is_empty() {
+    let (candidates, from_zone) = begin_breach(state, server);
+    if candidates.is_empty() && from_zone.is_empty() {
         super::engine::end_run(state);
         return Ok(Vec::new());
     }
@@ -402,31 +487,19 @@ pub fn access_server(
         .as_mut()
         .expect("engine::complete_run confirmed active_run is Some before calling access_server");
     run.phase = RunPhase::AccessingCard;
-    run.cards_accessed_count = accessed.len() as u32;
-
-    if accessed.len() == 1 {
-        let card_id = accessed.into_iter().next().unwrap();
-        // Placeholder phase — `present_card_for_access` below overwrites it
-        // immediately (with either `PendingInteractiveTrigger` or, via
-        // `enter_pending_choice`, the real `PendingChoice`). `AccessState`
-        // must exist first since both paths borrow `run.access_state.as_mut()`.
-        run.access_state = Some(AccessState { currently_accessing: None, pending_install: None, pending_install_rezzed: false, resolved_installs: Vec::new(),
-            server,
-            unaccessed_cards: Vec::new(),
-            resolved_cards: Vec::new(),
-            phase: AccessPhase::SelectNextCard { selectable_cards: Vec::new() },
-        });
-
-        present_card_for_access(state, registry, server, &card_id)
-    } else {
-        run.access_state = Some(AccessState { currently_accessing: None, pending_install: None, pending_install_rezzed: false, resolved_installs: Vec::new(),
-            server,
-            unaccessed_cards: accessed.clone(),
-            resolved_cards: Vec::new(),
-            phase: AccessPhase::SelectNextCard { selectable_cards: accessed },
-        });
-        Ok(Vec::new())
-    }
+    // Placeholder phase: `offer_next` overwrites it at once, with the
+    // Runner's choice or the one card there is to present.
+    run.access_state = Some(AccessState {
+        server,
+        candidates,
+        from_zone,
+        resolved_cards: Vec::new(),
+        currently_accessing: None,
+        pending_install: None,
+        pending_install_rezzed: false,
+        phase: AccessPhase::SelectNextCard { selectable_cards: Vec::new() },
+    });
+    offer_next(state, registry, server)
 }
 
 /// The `AccessState` fields `resolve_steal`/`resolve_trash`/`resolve_pass`
@@ -476,7 +549,7 @@ fn require_pending(state: &GameState, card_id: &CardId) -> Result<PendingAccess,
 /// for the same borrow-scoping reason as `PendingAccess`.
 struct PendingSelection {
     server: ServerId,
-    selectable_cards: Vec<CardId>,
+    selectable_cards: Vec<AccessCandidate>,
 }
 
 /// Confirms a run is parked in `RunPhase::AccessingCard` awaiting a
@@ -500,21 +573,16 @@ fn require_selectable(state: &GameState) -> Result<PendingSelection, RulesError>
 /// error conditions.
 pub fn resolve_select_card(
     state: &mut GameState,
-    card_id: &CardId,
+    candidate: &AccessCandidate,
     registry: &CardRegistry,
 ) -> Result<Vec<GameEvent>, RulesError> {
     let pending = require_selectable(state)?;
-    if !pending.selectable_cards.contains(card_id) {
-        return Err(RulesError::InvalidAccessSelection { card: card_id.clone() });
+    if !pending.selectable_cards.contains(candidate) {
+        return Err(RulesError::InvalidAccessSelection { candidate: candidate.clone() });
     }
-
-    let run = state.active_run.as_mut().expect("resolve_select_card called mid-access");
-    let access = run.access_state.as_mut().expect("resolve_select_card called mid-access");
-    if let Some(pos) = access.unaccessed_cards.iter().position(|c| c == card_id) {
-        access.unaccessed_cards.remove(pos);
-    }
-
-    present_card_for_access(state, registry, pending.server, card_id)
+    let (card_id, install) =
+        take_candidate(state, candidate).ok_or_else(|| RulesError::InvalidAccessSelection { candidate: candidate.clone() })?;
+    present_card_for_access(state, registry, pending.server, &card_id, install)
 }
 
 /// If `state.phase` became `GameOver` (e.g. a flatline mid-trigger, or an
@@ -539,9 +607,8 @@ fn finish_if_game_over(state: &mut GameState, server: ServerId) -> Option<Vec<Ga
 
 /// Shared tail of `resolve_steal`/`resolve_trash`/`resolve_pass`: if a steal
 /// just won the game, finalize immediately without presenting further
-/// accessed cards; otherwise record `resolved_card` as resolved and either
-/// auto-present the last remaining card's `PendingChoice`, offer a choice
-/// among 2+ remaining cards, or finalize if none remain.
+/// accessed cards; otherwise record `resolved_card` as resolved and offer
+/// the next candidate (`offer_next`).
 fn advance_or_finish(
     state: &mut GameState,
     registry: &CardRegistry,
@@ -555,27 +622,8 @@ fn advance_or_finish(
     let run = state.active_run.as_mut().expect("advance_or_finish called mid-access");
     let access = run.access_state.as_mut().expect("advance_or_finish called mid-access");
     access.resolved_cards.push(resolved_card);
-    if let Some(install) = access.pending_install.take() {
-        access.resolved_installs.push(install);
-    }
-
-    match access.unaccessed_cards.len() {
-        0 => {
-            super::engine::end_run(state);
-            let completed_event = GameEvent::RunCompleted { server };
-            let mut events = vec![completed_event.clone()];
-            events.extend(crate::rules::dispatcher::dispatch_event(state, registry, &completed_event)?);
-            Ok(events)
-        }
-        1 => {
-            let next_card = access.unaccessed_cards.remove(0);
-            present_card_for_access(state, registry, server, &next_card)
-        }
-        _ => {
-            access.phase = AccessPhase::SelectNextCard { selectable_cards: access.unaccessed_cards.clone() };
-            Ok(Vec::new())
-        }
-    }
+    access.pending_install = None;
+    offer_next(state, registry, server)
 }
 
 /// Resolves `PlayerAction::StealAgenda`. See its doc comment for the error
@@ -658,7 +706,7 @@ enum RemovedFrom {
 /// interchangeable everywhere except the table: for an install the copy in
 /// `server`'s root is the accessed one, so that is removed first, before
 /// falling back to any root install of that card. R&D is searched from the
-/// top (the end of the `Vec` — see `compute_accessed_cards`), since the
+/// top (the end of the `Vec` — see `begin_breach`), since the
 /// accessed copy is the top one and a duplicate may sit deeper. Archives
 /// is included because an agenda *stolen* out of Archives leaves it, even
 /// though a card *trashed* while being accessed there stays put.
@@ -1052,6 +1100,21 @@ mod tests {
 
     /// A run against `server` already in `RunPhase::Success`, ready for
     /// `access_server` to park in `AccessingCard`.
+    /// The cards of HQ or R&D the breach has reached or will reach, in
+    /// order: the one being accessed, then `AccessState::from_zone`.
+    fn reached_from_zone(state: &GameState) -> Vec<CardId> {
+        let access = state.active_run.as_ref().unwrap().access_state.as_ref().unwrap();
+        let current = match &access.phase {
+            AccessPhase::PendingChoice { card_id, .. } | AccessPhase::PendingInteractiveTrigger { card_id, .. } => Some(card_id.clone()),
+            AccessPhase::SelectNextCard { .. } => None,
+        };
+        current.into_iter().chain(access.from_zone.iter().cloned()).collect()
+    }
+
+    fn archived(id: &str) -> AccessCandidate {
+        AccessCandidate::Archived(CardId(id.to_string()))
+    }
+
     fn run_in_success(server: ServerId) -> RunState {
         RunState {
             server,
@@ -1191,7 +1254,7 @@ mod tests {
     }
 
     #[test]
-    fn accessing_rnd_with_additional_access_yields_top_two_cards_in_order() {
+    fn accessing_rnd_with_additional_access_presents_the_top_two_cards_one_at_a_time() {
         let mut state = game_state(
             Vec::new(),
             vec![CardId("bottom".to_string()), CardId("middle".to_string()), CardId("top".to_string())],
@@ -1201,14 +1264,21 @@ mod tests {
         );
         state.active_run = Some(RunState { additional_rd_access: 1, ..run_in_success(ServerId::RnD) });
 
-        access_server(&mut state, ServerId::RnD, &registry()).unwrap();
+        // "1 candidate from the Corp's deck at a time in turn, working down
+        // from the top" (CR 7.4.7): the top card is accessed with nothing to
+        // choose, and the next one waits unseen until it is passed.
+        let events = access_server(&mut state, ServerId::RnD, &registry()).unwrap();
+        assert_eq!(events, vec![GameEvent::CardAccessed { card: CardId("top".to_string()), server: ServerId::RnD, install: None }]);
+        let access_state = state.active_run.as_ref().unwrap().access_state.as_ref().unwrap();
+        assert_eq!(access_state.from_zone, vec![CardId("middle".to_string())]);
 
-        let access_state = state.active_run.unwrap().access_state.unwrap();
+        let events = resolve_pass(&mut state, &CardId("top".to_string()), &registry()).unwrap();
         assert_eq!(
-            access_state.phase,
-            AccessPhase::SelectNextCard {
-                selectable_cards: vec![CardId("top".to_string()), CardId("middle".to_string())]
-            }
+            events,
+            vec![
+                GameEvent::AccessPassed { card: CardId("top".to_string()) },
+                GameEvent::CardAccessed { card: CardId("middle".to_string()), server: ServerId::RnD, install: None },
+            ]
         );
     }
 
@@ -1226,13 +1296,9 @@ mod tests {
 
         access_server(&mut state, ServerId::Hq, &registry()).unwrap();
 
-        let access_state = state.active_run.unwrap().access_state.unwrap();
-        let selectable = match access_state.phase {
-            AccessPhase::SelectNextCard { selectable_cards } => selectable_cards,
-            other => panic!("expected SelectNextCard, got {other:?}"),
-        };
-        assert_eq!(selectable.len(), 2);
-        assert_eq!(selectable.iter().collect::<HashSet<_>>().len(), 2, "cards must be distinct");
+        let reached = reached_from_zone(&state);
+        assert_eq!(reached.len(), 2);
+        assert_eq!(reached.iter().collect::<HashSet<_>>().len(), 2, "cards must be distinct");
     }
 
     #[test]
@@ -1249,13 +1315,9 @@ mod tests {
 
         access_server(&mut state, ServerId::Hq, &registry()).unwrap();
 
-        let access_state = state.active_run.unwrap().access_state.unwrap();
-        let selectable = match access_state.phase {
-            AccessPhase::SelectNextCard { selectable_cards } => selectable_cards,
-            other => panic!("expected SelectNextCard, got {other:?}"),
-        };
-        assert_eq!(selectable.len(), 3);
-        assert_eq!(selectable.iter().collect::<HashSet<_>>().len(), 3, "cards must be distinct");
+        let reached = reached_from_zone(&state);
+        assert_eq!(reached.len(), 3);
+        assert_eq!(reached.iter().collect::<HashSet<_>>().len(), 3, "cards must be distinct");
     }
 
     #[test]
@@ -1266,13 +1328,9 @@ mod tests {
 
         access_server(&mut state, ServerId::Hq, &registry()).unwrap();
 
-        let access_state = state.active_run.unwrap().access_state.unwrap();
-        let selectable = match access_state.phase {
-            AccessPhase::SelectNextCard { selectable_cards } => selectable_cards,
-            other => panic!("expected SelectNextCard, got {other:?}"),
-        };
-        assert_eq!(selectable.len(), 2);
-        assert_eq!(selectable.iter().collect::<HashSet<_>>().len(), 2, "cards must be distinct");
+        let reached = reached_from_zone(&state);
+        assert_eq!(reached.len(), 2);
+        assert_eq!(reached.iter().collect::<HashSet<_>>().len(), 2, "cards must be distinct");
     }
 
     #[test]
@@ -1288,13 +1346,7 @@ mod tests {
 
         access_server(&mut state, ServerId::RnD, &registry()).unwrap();
 
-        let access_state = state.active_run.unwrap().access_state.unwrap();
-        assert_eq!(
-            access_state.phase,
-            AccessPhase::SelectNextCard {
-                selectable_cards: vec![CardId("top".to_string()), CardId("bottom".to_string())]
-            }
-        );
+        assert_eq!(reached_from_zone(&state), vec![CardId("top".to_string()), CardId("bottom".to_string())]);
     }
 
     #[test]
@@ -1377,19 +1429,16 @@ mod tests {
         // resolve first (see
         // `multi_card_sequence_advances_through_each_card_in_order`).
         assert_eq!(access_server(&mut state, ServerId::Hq, &registry()).unwrap(), Vec::new());
+        // The upgrade is offered as the install it is, and HQ as "a random
+        // card from HQ" (CR 7.3.4a): neither choice names a card the Runner
+        // has not accessed.
+        let ash = state.corp.installed[1].install_id;
         let access_state = state.active_run.unwrap().access_state.unwrap();
-        assert_eq!(
-            access_state.unaccessed_cards,
-            vec![CardId("hedge_fund".to_string()), CardId("ash_2_0".to_string())]
-        );
+        assert_eq!(access_state.candidates, vec![AccessCandidate::Root(ash)]);
+        assert_eq!(access_state.from_zone, vec![CardId("hedge_fund".to_string())]);
         assert_eq!(
             access_state.phase,
-            AccessPhase::SelectNextCard {
-                selectable_cards: vec![
-                    CardId("hedge_fund".to_string()),
-                    CardId("ash_2_0".to_string())
-                ]
-            }
+            AccessPhase::SelectNextCard { selectable_cards: vec![AccessCandidate::Zone, AccessCandidate::Root(ash)] }
         );
     }
 
@@ -1418,10 +1467,10 @@ mod tests {
         );
         state.active_run = Some(run_in_success(ServerId::RnD));
         assert_eq!(access_server(&mut state, ServerId::RnD, &registry()).unwrap(), Vec::new());
-        assert_eq!(
-            state.active_run.unwrap().access_state.unwrap().unaccessed_cards,
-            vec![CardId("hedge_fund".to_string()), CardId("crisium_grid".to_string())]
-        );
+        let grid = state.corp.installed[1].install_id;
+        let access_state = state.active_run.unwrap().access_state.unwrap();
+        assert_eq!(access_state.from_zone, vec![CardId("hedge_fund".to_string())]);
+        assert_eq!(access_state.candidates, vec![AccessCandidate::Root(grid)]);
     }
 
     #[test]
@@ -1435,9 +1484,86 @@ mod tests {
         );
         state.active_run = Some(run_in_success(ServerId::Archives));
         assert_eq!(access_server(&mut state, ServerId::Archives, &registry()).unwrap(), Vec::new());
+        assert_eq!(state.active_run.unwrap().access_state.unwrap().candidates, vec![archived("hedge_fund"), archived("ice_wall")]);
+    }
+
+    /// Rules Conformance A1. The breach used to pick every HQ card and name
+    /// it in the Runner's choice, and name every unrezzed card in the root
+    /// too: "Access Priority Requisition, or the upgrade (Ash 2X3ZB9CY)?"
+    /// A candidate is now what the Runner can point at — "a random card
+    /// from HQ" (CR 7.3.4a) and an install — and neither the choice, the
+    /// access state nor the Runner's view of it names a card not yet
+    /// accessed.
+    #[test]
+    fn an_hq_breach_offers_the_hand_and_the_root_without_naming_either() {
+        let installed = vec![InstalledCard {
+            card: CardId("secret_upgrade".to_string()),
+            install_id: InstallId(7),
+            server: ServerId::Hq,
+            slot: InstallSlot::Root,
+            rezzed: false,
+            ..Default::default()
+        }];
+        let mut state = game_state(vec![CardId("secret_agenda".to_string())], Vec::new(), Vec::new(), installed, 0);
+        state.active_run = Some(run_in_success(ServerId::Hq));
+        assert_eq!(access_server(&mut state, ServerId::Hq, &registry()).unwrap(), Vec::new(), "nothing is accessed before the Runner chooses");
+
+        let access = state.active_run.as_ref().unwrap().access_state.as_ref().unwrap();
         assert_eq!(
-            state.active_run.unwrap().access_state.unwrap().unaccessed_cards,
-            vec![CardId("hedge_fund".to_string()), CardId("ice_wall".to_string())]
+            access.phase,
+            AccessPhase::SelectNextCard { selectable_cards: vec![AccessCandidate::Zone, AccessCandidate::Root(InstallId(7))] }
+        );
+        let runner_view = crate::rules::mask_state_for_player(&state, &registry(), Side::Runner);
+        let seen = serde_json::to_string(&runner_view.active_run).unwrap();
+        assert!(!seen.contains("secret_agenda") && !seen.contains("secret_upgrade"), "{seen}");
+
+        // Choosing the hand accesses the random card, and only then is it named.
+        let events = resolve_select_card(&mut state, &AccessCandidate::Zone, &registry()).unwrap();
+        assert_eq!(events, vec![GameEvent::CardAccessed { card: CardId("secret_agenda".to_string()), server: ServerId::Hq, install: None }]);
+    }
+
+    /// CR 7.4.5: "If a candidate leaves the breached server, it ceases to
+    /// be a candidate." A root install trashed while another card was
+    /// being accessed is not offered afterwards — it used to be accessed
+    /// anyway, as whatever the zone fallback found under its name.
+    #[test]
+    fn a_root_card_that_leaves_mid_breach_is_no_longer_a_candidate() {
+        let installed = vec![
+            InstalledCard { card: CardId("first".to_string()), install_id: InstallId(1), server: ServerId::Remote(0), rezzed: true, ..Default::default() },
+            InstalledCard { card: CardId("second".to_string()), install_id: InstallId(2), server: ServerId::Remote(0), rezzed: true, ..Default::default() },
+        ];
+        let mut state = game_state(Vec::new(), Vec::new(), Vec::new(), installed, 0);
+        state.active_run = Some(run_in_success(ServerId::Remote(0)));
+        access_server(&mut state, ServerId::Remote(0), &registry()).unwrap();
+        resolve_select_card(&mut state, &AccessCandidate::Root(InstallId(1)), &registry()).unwrap();
+
+        state.corp.installed.retain(|c| c.install_id != InstallId(2));
+        let events = resolve_pass(&mut state, &CardId("first".to_string()), &registry()).unwrap();
+        assert_eq!(
+            events,
+            vec![GameEvent::AccessPassed { card: CardId("first".to_string()) }, GameEvent::RunCompleted { server: ServerId::Remote(0) }]
+        );
+        assert_eq!(state.active_run, None);
+    }
+
+    /// Rules Conformance A2: "Discard piles are not ordered" (CR 4.4.2).
+    /// The breach offers Archives' cards by name in name order, never in
+    /// the order they arrived, which matched each card the breach turned
+    /// faceup to the moment it went in facedown.
+    #[test]
+    fn archives_candidates_come_in_name_order_not_arrival_order() {
+        let mut state = game_state(
+            Vec::new(),
+            Vec::new(),
+            vec![CardId("zeta".to_string()), CardId("alpha".to_string()), CardId("mu".to_string())],
+            Vec::new(),
+            0,
+        );
+        state.active_run = Some(run_in_success(ServerId::Archives));
+        access_server(&mut state, ServerId::Archives, &registry()).unwrap();
+        assert_eq!(
+            state.active_run.unwrap().access_state.unwrap().phase,
+            AccessPhase::SelectNextCard { selectable_cards: vec![archived("alpha"), archived("mu"), archived("zeta")] }
         );
     }
 
@@ -1749,7 +1875,9 @@ mod tests {
         let AccessPhase::SelectNextCard { selectable_cards } = &access.phase else {
             panic!("two accessed cards should present a selection, got {:?}", access.phase);
         };
-        assert_eq!(selectable_cards, &vec![archived, upgrade]);
+        let root = state.corp.installed[0].install_id;
+        assert_eq!(selectable_cards, &vec![AccessCandidate::Archived(archived), AccessCandidate::Root(root)]);
+        let _ = upgrade;
     }
 
     /// CR 7.1.5b: "The Runner cannot trash or pay the trash cost of a card
@@ -1861,7 +1989,7 @@ mod tests {
         access_server(&mut state, ServerId::Archives, &registry).unwrap();
 
         let card_id = CardId("priority_requisition".to_string());
-        resolve_select_card(&mut state, &card_id, &registry).expect("selecting should succeed");
+        resolve_select_card(&mut state, &AccessCandidate::Archived(card_id.clone()), &registry).expect("selecting should succeed");
         let events = resolve_steal(&mut state, &card_id, &registry).expect("steal should succeed");
 
         // Capped at the winning threshold, not 8 — the second agenda
@@ -2034,16 +2162,13 @@ mod tests {
         assert_eq!(
             state.active_run.as_ref().unwrap().access_state.as_ref().unwrap().phase,
             AccessPhase::SelectNextCard {
-                selectable_cards: vec![
-                    CardId("hedge_fund".to_string()),
-                    CardId("ice_wall".to_string())
-                ]
+                selectable_cards: vec![archived("hedge_fund"), archived("ice_wall")]
             }
         );
 
         // Pick the second card first — order is the Runner's choice, not
         // the fixed access-determination order.
-        let selected = resolve_select_card(&mut state, &CardId("ice_wall".to_string()), &registry())
+        let selected = resolve_select_card(&mut state, &archived("ice_wall"), &registry())
             .expect("selecting the second card should succeed");
         assert_eq!(
             selected,
@@ -2095,7 +2220,7 @@ mod tests {
         state.active_run = Some(run_in_success(ServerId::Archives));
         access_server(&mut state, ServerId::Archives, &registry()).unwrap();
 
-        let events = resolve_select_card(&mut state, &CardId("ice_wall".to_string()), &registry())
+        let events = resolve_select_card(&mut state, &archived("ice_wall"), &registry())
             .expect("selecting the second card should succeed");
         assert_eq!(
             events,
@@ -2106,7 +2231,7 @@ mod tests {
             }]
         );
         let access_state = state.active_run.as_ref().unwrap().access_state.as_ref().unwrap();
-        assert_eq!(access_state.unaccessed_cards, vec![CardId("hedge_fund".to_string())]);
+        assert_eq!(access_state.candidates, vec![archived("hedge_fund")]);
         assert_eq!(
             access_state.phase,
             AccessPhase::PendingChoice {
@@ -2148,7 +2273,7 @@ mod tests {
         state.active_run = Some(run_in_success(ServerId::Archives));
         access_server(&mut state, ServerId::Archives, &registry()).unwrap();
 
-        resolve_select_card(&mut state, &CardId("card_3".to_string()), &registry())
+        resolve_select_card(&mut state, &archived("card_3"), &registry())
             .expect("selecting card_3 should succeed");
         resolve_pass(&mut state, &CardId("card_3".to_string()), &registry())
             .expect("passing card_3 should succeed");
@@ -2159,12 +2284,12 @@ mod tests {
         assert_eq!(
             access_state.phase,
             AccessPhase::SelectNextCard {
-                selectable_cards: vec![CardId("card_1".to_string()), CardId("card_2".to_string())]
+                selectable_cards: vec![archived("card_1"), archived("card_2")]
             }
         );
         assert_eq!(access_state.resolved_cards, vec![CardId("card_3".to_string())]);
 
-        resolve_select_card(&mut state, &CardId("card_1".to_string()), &registry())
+        resolve_select_card(&mut state, &archived("card_1"), &registry())
             .expect("selecting card_1 should succeed");
         let resolved = resolve_pass(&mut state, &CardId("card_1".to_string()), &registry())
             .expect("passing card_1 should succeed");
@@ -2194,7 +2319,7 @@ mod tests {
         );
         state.active_run = Some(run_in_success(ServerId::Archives));
         access_server(&mut state, ServerId::Archives, &registry()).unwrap();
-        resolve_select_card(&mut state, &CardId("hedge_fund".to_string()), &registry())
+        resolve_select_card(&mut state, &archived("hedge_fund"), &registry())
             .expect("selecting should succeed");
 
         let events = resolve_pass(&mut state, &CardId("hedge_fund".to_string()), &registry())
@@ -2231,10 +2356,10 @@ mod tests {
         state.active_run = Some(run_in_success(ServerId::Archives));
         access_server(&mut state, ServerId::Archives, &registry()).unwrap();
 
-        let wrong_id = CardId("wrong_card".to_string());
+        let wrong = archived("wrong_card");
         assert_eq!(
-            resolve_select_card(&mut state, &wrong_id, &registry()),
-            Err(RulesError::InvalidAccessSelection { card: wrong_id })
+            resolve_select_card(&mut state, &wrong, &registry()),
+            Err(RulesError::InvalidAccessSelection { candidate: wrong })
         );
     }
 
@@ -2252,7 +2377,7 @@ mod tests {
 
         let card_id = CardId("hedge_fund".to_string());
         assert_eq!(
-            resolve_select_card(&mut state, &card_id, &registry()),
+            resolve_select_card(&mut state, &AccessCandidate::Archived(card_id.clone()), &registry()),
             Err(RulesError::NotInAccessPhase)
         );
     }
@@ -2262,7 +2387,7 @@ mod tests {
         let mut state = game_state(Vec::new(), Vec::new(), Vec::new(), Vec::new(), 0);
         let card_id = CardId("hedge_fund".to_string());
         assert_eq!(
-            resolve_select_card(&mut state, &card_id, &registry()),
+            resolve_select_card(&mut state, &AccessCandidate::Archived(card_id.clone()), &registry()),
             Err(RulesError::NotInAccessPhase)
         );
     }
@@ -2439,7 +2564,7 @@ mod tests {
         state.active_run = Some(run_in_success(ServerId::Archives));
         access_server(&mut state, ServerId::Archives, &registry).unwrap();
 
-        let events = resolve_select_card(&mut state, &CardId("snare".to_string()), &registry)
+        let events = resolve_select_card(&mut state, &archived("snare"), &registry)
             .expect("selecting should succeed");
 
         assert_eq!(state.active_run, None);
@@ -2486,7 +2611,7 @@ mod tests {
         state.runner.grip = vec![CardId("card_a".to_string()), CardId("card_b".to_string())];
         state.active_run = Some(run_in_success(ServerId::Archives));
         access_server(&mut state, ServerId::Archives, &registry).unwrap();
-        resolve_select_card(&mut state, &CardId("hedge_fund".to_string()), &registry)
+        resolve_select_card(&mut state, &archived("hedge_fund"), &registry)
             .expect("selecting the first card should succeed");
 
         let events = resolve_pass(&mut state, &CardId("hedge_fund".to_string()), &registry)
@@ -2995,7 +3120,7 @@ mod tests {
 
         // Pick the plain card first, then pass it — auto-advancing to the
         // second (and last) card, which carries the interactive trigger.
-        resolve_select_card(&mut state, &CardId("hedge_fund".to_string()), &registry)
+        resolve_select_card(&mut state, &archived("hedge_fund"), &registry)
             .expect("selecting should succeed");
         let events = resolve_pass(&mut state, &CardId("hedge_fund".to_string()), &registry)
             .expect("passing should succeed");
@@ -3071,8 +3196,8 @@ mod tests {
         state.active_run = Some(run_in_success(ServerId::Remote(0)));
         access_server(&mut state, ServerId::Remote(0), &registry).unwrap();
 
-        // Both offered; picking "skunkworks" pins the first unresolved instance.
-        resolve_select_card(&mut state, &upgrade, &registry).unwrap();
+        // Both offered, each as its own install.
+        resolve_select_card(&mut state, &AccessCandidate::Root(InstallId(1)), &registry).unwrap();
         let access = state.active_run.as_ref().unwrap().access_state.as_ref().unwrap();
         assert_eq!(access.pending_install, Some(InstallId(1)));
 
@@ -3080,7 +3205,6 @@ mod tests {
         assert_eq!(state.corp.installed.len(), 1, "one copy left");
         assert_eq!(state.corp.installed[0].install_id, InstallId(2), "the pinned instance is the one that left");
         let access = state.active_run.as_ref().unwrap().access_state.as_ref().unwrap();
-        assert_eq!(access.resolved_installs, vec![InstallId(1)]);
         assert_eq!(access.pending_install, Some(InstallId(2)), "the last card was auto-presented as the other instance");
 
         resolve_trash(&mut state, &upgrade, &registry).unwrap();
@@ -3103,7 +3227,7 @@ mod tests {
         state.active_run = Some(run_in_success(ServerId::Remote(0)));
         access_server(&mut state, ServerId::Remote(0), &registry).unwrap();
 
-        let events = resolve_select_card(&mut state, &trap, &registry).unwrap();
+        let events = resolve_select_card(&mut state, &AccessCandidate::Root(InstallId(1)), &registry).unwrap();
         assert!(
             events.iter().any(|e| matches!(e, GameEvent::CardAccessed { install: Some(InstallId(1)), .. })),
             "{events:?}"

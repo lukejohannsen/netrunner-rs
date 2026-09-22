@@ -207,7 +207,10 @@ fn the_makers_eye_accesses_three_total_cards_from_rd() {
         apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Corp }).expect("corp pass");
 
     let access = state.active_run.as_ref().expect("run still parked awaiting access resolution").access_state.as_ref().expect("access state present");
-    assert_eq!(access.unaccessed_cards.len(), 3, "1 base access + 2 additional from The Maker's Eye");
+    // R&D's cards come one at a time from the top (CR 7.4.7): the first is
+    // being accessed, and two more wait unseen.
+    assert!(matches!(access.phase, crate::rules::AccessPhase::PendingChoice { .. } | crate::rules::AccessPhase::PendingInteractiveTrigger { .. }), "{:?}", access.phase);
+    assert_eq!(access.from_zone.len(), 2, "1 base access + 2 additional from The Maker's Eye");
 }
 
 /// Passes priority while a window is open and nothing else is parked —
@@ -5396,7 +5399,7 @@ mod system_gateway {
         state.active_run = Some(crate::rules::RunState {
             server: ServerId::Hq,
             phase: crate::rules::RunPhase::AccessingCard,
-            access_state: Some(crate::rules::AccessState { pending_install: None, resolved_installs: Vec::new(),
+            access_state: Some(crate::rules::AccessState { pending_install: None,
                 server: ServerId::Hq,
                 phase: crate::rules::AccessPhase::PendingChoice {
                     card_id: CardId("hedge_fund".to_string()),
@@ -5775,7 +5778,8 @@ mod system_gateway {
         let registry = sg_registry();
         let state = amaze_run_to_access(&registry);
 
-        let state = act(state, &registry, PlayerAction::SelectCardToAccess { card_id: CardId("offworld_office".to_string()) });
+        let candidate = crate::rules::AccessCandidate::Root(install_of(&state, "offworld_office"));
+        let state = act(state, &registry, PlayerAction::SelectCardToAccess { candidate });
         let state = act(state, &registry, PlayerAction::StealAgenda { card_id: CardId("offworld_office".to_string()) });
         let state = act(state, &registry, PlayerAction::PassAccessedCard { card_id: CardId("amaze_amusements".to_string()) });
 
@@ -5790,7 +5794,8 @@ mod system_gateway {
 
         // Trash AMAZE *first* — its "Persistent" clause means the ability
         // must still apply for the remainder of this run.
-        let state = act(state, &registry, PlayerAction::SelectCardToAccess { card_id: CardId("amaze_amusements".to_string()) });
+        let candidate = crate::rules::AccessCandidate::Root(install_of(&state, "amaze_amusements"));
+        let state = act(state, &registry, PlayerAction::SelectCardToAccess { candidate });
         let state = act(state, &registry, PlayerAction::TrashAccessedCard { card_id: CardId("amaze_amusements".to_string()) });
         assert!(
             !state.corp.installed.iter().any(|c| c.card == CardId("amaze_amusements".to_string())),
@@ -8975,14 +8980,14 @@ mod system_gateway {
         state.corp.installed = vec![installed_with_counters("mahkota_langit_grid", ServerId::Remote(0), 2), corp_root("pad_campaign", ServerId::Remote(0))];
         let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Remote(0) }).expect("run");
         let state = advance_until_choice(state, &registry);
-        let (state, _) = apply_action(&state, &registry, PlayerAction::SelectCardToAccess { card_id: CardId("mahkota_langit_grid".to_string()) }).expect("the grid first");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::SelectCardToAccess { candidate: crate::rules::AccessCandidate::Root(install_of(&state, "mahkota_langit_grid")) }).expect("the grid first");
         let (state, _) = pass_until_settled(state, &registry);
         let (state, _) = apply_action(&state, &registry, PlayerAction::TrashAccessedCard { card_id: CardId("mahkota_langit_grid".to_string()) }).expect("trash it for 2");
         assert_eq!(state.runner.resources.credits, Credits(2));
         // The last card in the root is accessed next, with or without a
         // selection step.
         let (state, _) = pass_until_settled(state, &registry);
-        let select = PlayerAction::SelectCardToAccess { card_id: CardId("pad_campaign".to_string()) };
+        let select = PlayerAction::SelectCardToAccess { candidate: crate::rules::AccessCandidate::Root(install_of(&state, "pad_campaign")) };
         let state = if crate::rules::legal_actions(&state, &registry).contains(&select) {
             pass_until_settled(apply_action(&state, &registry, select).expect("then the asset").0, &registry).0
         } else {
@@ -9002,11 +9007,11 @@ mod system_gateway {
         state.corp.installed = vec![installed_with_counters("mahkota_langit_grid", ServerId::Hq, 2)];
         let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run on HQ");
         let mut state = advance_until_choice(state, &registry);
-        let pad = PlayerAction::SelectCardToAccess { card_id: CardId("pad_campaign".to_string()) };
+        let pad = PlayerAction::SelectCardToAccess { candidate: crate::rules::AccessCandidate::Zone };
         if crate::rules::legal_actions(&state, &registry).contains(&pad) {
             state = apply_action(&state, &registry, pad).expect("the card from HQ").0;
         } else {
-            let grid = PlayerAction::SelectCardToAccess { card_id: CardId("mahkota_langit_grid".to_string()) };
+            let grid = PlayerAction::SelectCardToAccess { candidate: crate::rules::AccessCandidate::Root(install_of(&state, "mahkota_langit_grid")) };
             state = apply_action(&state, &registry, grid).expect("the grid").0;
             state = apply_action(&state, &registry, PlayerAction::PassAccessedCard { card_id: CardId("mahkota_langit_grid".to_string()) }).expect("leave it").0;
             state = advance_until_choice(state, &registry);

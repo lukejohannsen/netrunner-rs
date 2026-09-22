@@ -511,7 +511,7 @@ mod tests {
         state.phase = GamePhase::Action(Side::Runner);
         state.active_run = Some(RunState {
             phase: RunPhase::AccessingCard,
-            access_state: Some(AccessState { pending_install: None, resolved_installs: Vec::new(),
+            access_state: Some(AccessState { pending_install: None,
                 phase: AccessPhase::PendingChoice {
                     card_id: CardId("hedge_fund".to_string()),
                     trash_cost: None,
