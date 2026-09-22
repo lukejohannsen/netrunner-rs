@@ -3454,6 +3454,13 @@ count ran out. With the new one, every selection is a pick and a confirm.
 `the_autoplay_finishes_a_card_selection_and_never_stalls_on_one` plays seed
 6, and it failed on the old choice before it passed on the new one.
 
+**A stopped match ends the autoplay** (`fix/autoplay-ends-with-the-match`,
+the follow-up). The loop was one bug and the hang another. The hook's
+screenshot and exit waited for `autoplayed` to reach its count, so any
+game that stalled or simply ended short of it left the window open for
+good. A stopped match now marks the autoplay done and logs why, so the
+shot is of how the match stopped and the client exits.
+
 No key: the gear is one click away, and a letter would be a new row in a
 crowded list for something pressed once a game at most. The terminal
 client can call the same `netrunner_client::bug_report::save`, but it is

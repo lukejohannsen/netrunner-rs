@@ -1102,6 +1102,41 @@ fn the_autoplay_finishes_a_card_selection_and_never_stalls_on_one() {
     let _ = std::fs::remove_dir_all(dir);
 }
 
+/// A match that stops ends the autoplay, so the dev client takes its
+/// screenshot and exits instead of waiting for a count a finished game
+/// cannot reach. A stall left the window open and hung for good — the
+/// person watching the Mutual Favor livelock saw exactly that (§4ag).
+/// Both ways a match stops: a game played to its end, and a stall.
+#[test]
+fn the_autoplay_is_done_when_the_match_stops() {
+    let autoplaying = |app: &mut App, count: u32| {
+        let mut dev = netrunner_desktop::dev::Dev::default();
+        dev.autoplay = count;
+        app.insert_resource(dev);
+    };
+    let done = |app: &App| {
+        let dev = app.world().resource::<netrunner_desktop::dev::Dev>();
+        dev.autoplayed >= dev.autoplay
+    };
+
+    let (mut app, dir) = headless_client();
+    autoplaying(&mut app, 100_000);
+    start_a_game(&mut app);
+    wait_for(&mut app, "the game to end", |app| app.world().resource::<Model>().0.over.is_some() || app.world().resource::<Model>().0.stalled.is_some());
+    app.update();
+    assert!(done(&app), "a game that ended has no decisions left to autoplay");
+    let _ = std::fs::remove_dir_all(dir);
+
+    let (mut app, dir) = headless_client();
+    autoplaying(&mut app, 100_000);
+    start_a_game(&mut app);
+    assert!(!done(&app));
+    app.world_mut().resource_mut::<Model>().0.stalled = Some("match livelocked".to_string());
+    app.update();
+    assert!(done(&app), "a stalled match has no decisions left to autoplay");
+    let _ = std::fs::remove_dir_all(dir);
+}
+
 /// The gear opens the options; the play helper toggle is saved and puts
 /// the flat panel on the rail, the play history toggle shows the log,
 /// and Escape closes the options before it asks to quit.

@@ -788,6 +788,19 @@ fn autoplay(
     client: Res<ClientCore>,
 ) {
     let (Some(mut dev), Some(model)) = (dev, model) else { return };
+    // A match that has stopped has no decisions left to take, so the
+    // autoplay is done: the screenshot is taken of how it stopped and the
+    // client exits. It used to wait for a count a finished game could
+    // never reach, and a stall left the window open and hung for good —
+    // what the person watching a Mutual Favor livelock saw (§4ag).
+    if dev.autoplayed < dev.autoplay && (model.0.stalled.is_some() || model.0.over.is_some()) {
+        match &model.0.stalled {
+            Some(reason) => warn!("dev: the match stopped after {} of {} autoplayed decisions: {reason}", dev.autoplayed, dev.autoplay),
+            None => info!("dev: the match ended after {} of {} autoplayed decisions", dev.autoplayed, dev.autoplay),
+        }
+        dev.autoplayed = dev.autoplay;
+        return;
+    }
     if dev.options && model.0.awaiting && dev.autoplayed >= dev.autoplay {
         // The gear, pressed once the board has settled.
         dev.options = false;
