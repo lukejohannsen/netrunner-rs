@@ -639,6 +639,50 @@ pub enum DiagAction {
         #[arg(long)]
         report: Option<PathBuf>,
     },
+    /// How does the Corp play a trap, and does the Runner run back into one
+    /// it has already sprung? Per trap install — face up before any
+    /// access, ICE in front, tokens, accesses, damage — split by kind (a
+    /// lure trap that grows with its tokens, a hand trap that cannot take
+    /// one), hand traps met in HQ and R&D, and the Runner's runs on empty
+    /// remotes and on remotes of known traps. A report from play: traps
+    /// rezzed on sight, Snare! installed in remotes, and an Urtica Cipher
+    /// run into turn after turn.
+    Trap {
+        /// Games to play; game n plays `matchups[n % len]` on `seed + n`,
+        /// over the matchups whose Corp deck carries a trap.
+        #[arg(long, default_value_t = 108)]
+        games: u32,
+        /// Base seed.
+        #[arg(long, default_value_t = 1)]
+        seed: u64,
+        /// Which bot takes the Corp chair.
+        #[arg(long, default_value = "heuristic")]
+        corp: BotSpec,
+        /// Which bot takes the Runner chair.
+        #[arg(long, default_value = "heuristic")]
+        runner: BotSpec,
+        /// Search iterations for a searching bot in either chair.
+        #[arg(long, default_value_t = 128)]
+        simulations: usize,
+        /// Hidden-state samples per decision for a searching bot.
+        #[arg(long)]
+        determinizations: Option<usize>,
+        /// Play only this sample matchup, `CORP_DECK/RUNNER_DECK` by deck
+        /// id (e.g. `discretion_advised/stolen_goods`).
+        #[arg(long)]
+        matchup: Option<String>,
+        /// Worker threads. All cores if omitted.
+        #[arg(long)]
+        threads: Option<usize>,
+        /// Seat each chair in its deck's own style, as play does, rather
+        /// than the style the bot spec names (a bare `heuristic` is
+        /// Balanced).
+        #[arg(long)]
+        deck_styles: bool,
+        /// Write the summary and every game's record as JSON here.
+        #[arg(long)]
+        report: Option<PathBuf>,
+    },
     /// *When* in a game does a bot do each thing? One record per side per
     /// turn — that turn's clicks split by what they bought, on a snapshot
     /// of the board they were spent on — reported as a per-turn profile.
