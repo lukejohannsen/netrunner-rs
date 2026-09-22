@@ -14,6 +14,7 @@ pub mod game;
 pub mod main_menu;
 pub mod new_game;
 pub mod profile;
+pub mod replay;
 pub mod settings;
 pub mod splash;
 pub mod stubs;

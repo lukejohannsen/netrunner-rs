@@ -3466,6 +3466,77 @@ crowded list for something pressed once a game at most. The terminal
 client can call the same `netrunner_client::bug_report::save`, but it is
 not wired up here.
 
+### 4ah. A saved game steps on the board, from either chair — DONE (22 September 2026)
+
+`feat/desktop-replay-viewer`, §8 item 5. §4ag made a report a file that
+replays, and the only way to open one was the terminal. The desktop's
+`Replay` screen was still a stub, and no menu entry led to it.
+
+**The replay moved into the client core, and the terminal kept its side
+panel.** `netrunner_client::replay` owns what `netrunner_cli/src/replay.rs`
+had: every position cached up front, each chair's copy masked by
+`HistoryEntry::for_viewer` against the state that entry produced, and
+`opening` (a bug report opens at its end from the person's chair). The
+terminal wraps it with its `Coaching` panel and `RenderableView`. **The
+log is now the live log's** (`actions::push_log_line` against the view
+the action produced). It used to be a one-line wording of its own, so the
+terminal's replay log now carries the narrated lines under each action.
+`the_log_at_each_position_is_the_live_log_to_that_point` holds the two to
+the same lines and the same view at every position of a game.
+
+**The board is the game screen's, not a second board.** Picking a record
+puts an `ActiveReplay` where an `ActiveMatch` would be, and
+`AppScreen::Game` draws it with the systems it draws a match with. The
+plan was a board that ran under two states, `Game` and `Replay`. It was
+dropped once it was clear that nearly every system — the escape, the
+secondary click, the sheets — would need to run in both anyway, and that
+switching from the list to the board inside one state has no clean
+`DespawnOnExit`. What a replay changes is the source and one flag:
+
+- `Game::replay` is set, so nothing awaits and no entry, glow or decision
+  is ever offered.
+- A primary click reads a card, as a secondary click does: a menu of
+  nothing would be a click that did nothing twice.
+- Leaving asks nothing and goes back to the list.
+- The control bar's row holds the replay bar instead: start, back, next,
+  end, the other chair. The keys are the arrows, Page Up/Down for ten,
+  Home/End and S, none of which the board's own keys use.
+
+**One step on is played as the match played it.** The step's masked entry
+and view go through the pacer as `MatchMessage::Applied`, so a run walks a
+beat at a time and the board lights what moved. Every other move — back,
+either end, a second step while the first is still paced, the other chair
+— puts the board at the new position at once (`Intent::Show`). Nothing
+moved *to* there, and twenty beats queued behind a held key would be the
+replay setting the pace instead of the person.
+
+**Where a replay comes from.**
+
+- **Replays** on the main menu lists `bug_report::list`, newest first
+  (name order, then modification time within a second, because
+  `…seed42-2` sorts below `…seed42`).
+- **Watch it** sits beside a report the board just saved, in the options
+  and on the stall panel.
+- `NETRUNNER_REPLAY=<file>` opens a record at boot, with
+  `NETRUNNER_REPLAY_AT=<start|end|n>`, for screenshots.
+
+A record the engine no longer replays says so above the list, naming the
+entry where it diverges.
+
+**Not built: notes** — item 5's second half. They need a file beside the
+record and an editor, and nothing else here needed either. They stay
+owed.
+
+Checked:
+
+- `tests/replay.rs` saves a report from a real game and opens it with
+  Watch it. The board equals the view it was saved over. Back and Next
+  follow the record's view and log. S turns the board to the Corp's
+  chair, whose hand is face up. A click on a pile opens a sheet and never
+  a menu. Escape closes the sheet, then goes to the list, then the menu.
+- Screenshots from a heuristic record at step 112 (mid-encounter) and at
+  its end: the board does not scroll.
+
 ## 8. Borrowed from jinteki — OPEN (19 September 2026)
 
 From [`docs/jinteki-comparison.md`](../jinteki-comparison.md) §5, in the
@@ -3505,7 +3576,8 @@ exist, never a new action.
    bot is casual, §4af's correction and Phase 3 §2).
    Local games now; the rule sits in the session so the server can take
    (b) later.
-5. **A replay viewer over `MatchHistory`**, with notes.
+5. ~~**A replay viewer over `MatchHistory`**~~ — done in §4ah; **notes
+   are still owed**.
 6. **The Corp's run auto-pass toggle.**
 7. **Space as the one "continue" key.**
 8. **Ghost Trojans in the program row.**

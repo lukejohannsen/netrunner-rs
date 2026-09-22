@@ -52,6 +52,10 @@ fn boot(world: &mut World) {
             Err(error) => world.resource_mut::<Notices>().push(format!("dev game not started: {error}")),
         }
     }
+    // A dev replay, likewise: the replays screen opens it on entry.
+    if let Some((path, at)) = world.get_resource::<crate::dev::Dev>().and_then(|dev| dev.replay.clone()) {
+        world.insert_resource(crate::screens::replay::OpenReplay(path, at));
+    }
     // The splash is for a person: a dev hook that named a screen goes
     // straight there, and a client with no window — the headless tests —
     // goes straight to the menu, so neither waits on a title card.

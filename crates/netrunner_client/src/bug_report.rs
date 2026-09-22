@@ -26,7 +26,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 /// Re-exported so a client can read a report back — a test, a viewer —
 /// without naming the session crate for the two types a report is.
-pub use netrunner_session::{MatchHistory, MatchRecordHeader};
+pub use netrunner_session::{MatchHistory, MatchRecordHeader, RecordedBot};
 
 /// Overrides where reports are written.
 pub const REPORTS_DIR_ENV: &str = "NETRUNNER_REPORTS_DIR";
@@ -72,6 +72,31 @@ fn save_at(dir: &Path, header: &MatchRecordHeader, history: &MatchHistory, now: 
         }
     }
     unreachable!("an unbounded range always yields another attempt")
+}
+
+/// Every record in `dir`, newest first, and never opened to find out.
+///
+/// A report's name begins with its UTC stamp, so the name orders by the
+/// second; within one second the file's modification time does, because
+/// the names alone put `…seed42-2.jsonl` before `…seed42.jsonl` (a dash
+/// sorts below a dot). A missing directory is an empty list: nothing has
+/// been saved yet. Any `.jsonl` is listed, so a `--record` file copied in
+/// opens too.
+pub fn list(dir: &Path) -> Vec<PathBuf> {
+    let Ok(read) = std::fs::read_dir(dir) else { return Vec::new() };
+    let mut reports: Vec<(String, Option<SystemTime>, PathBuf)> = read
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .filter(|path| path.is_file() && path.extension().is_some_and(|ext| ext == "jsonl"))
+        .map(|path| {
+            let name = path.file_name().map(|name| name.to_string_lossy().into_owned()).unwrap_or_default();
+            let stamp = name.chars().take("YYYY-MM-DDTHH-MM-SS".len()).collect();
+            let modified = std::fs::metadata(&path).and_then(|meta| meta.modified()).ok();
+            (stamp, modified, path)
+        })
+        .collect();
+    reports.sort();
+    reports.into_iter().rev().map(|(_, _, path)| path).collect()
 }
 
 /// `YYYY-MM-DDTHH-MM-SS` in UTC, with dashes where ISO 8601 has colons,
@@ -133,6 +158,20 @@ mod tests {
         let file = std::io::BufReader::new(std::fs::File::open(&first).unwrap());
         let (read_header, read_history) = MatchHistory::read_jsonl(file).expect("reads back");
         assert_eq!((read_header, read_history), (header, history));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn the_list_is_newest_first_and_only_records() {
+        let dir = temp_dir("list");
+        assert!(list(&dir).is_empty(), "no directory yet");
+        let history = MatchHistory::new();
+        let older = save_at(&dir, &header(1), &history, UNIX_EPOCH + Duration::from_secs(1_790_108_000)).unwrap();
+        let newer = save_at(&dir, &header(2), &history, UNIX_EPOCH + Duration::from_secs(1_790_108_103)).unwrap();
+        std::thread::sleep(Duration::from_millis(20));
+        let same_second = save_at(&dir, &header(2), &history, UNIX_EPOCH + Duration::from_secs(1_790_108_103)).unwrap();
+        std::fs::write(dir.join("notes.txt"), "not a record").unwrap();
+        assert_eq!(list(&dir), vec![same_second, newer, older]);
         let _ = std::fs::remove_dir_all(&dir);
     }
 
