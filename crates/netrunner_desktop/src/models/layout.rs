@@ -134,7 +134,7 @@ impl Counts {
 }
 
 /// The right column beside the board: the status line, Quit and the gear,
-/// the phase panel, the run's Runner, the prompt and the log.
+/// the run's Runner, the prompt, the log and the phase panel.
 pub const RAIL_WIDTH: f32 = 380.0;
 /// The screen root's padding on its left and right, and the right
 /// column's at its top and bottom. **The board has none above or below:**
@@ -245,8 +245,9 @@ const ENCOUNTER_CHROME: f32 = 2.0 * 10.0 + 2.0 * 2.0 + 3.0 * 8.0 + 8.0;
 /// the panel's small text lines, each as its characters — and the rail's
 /// prompt under it take their room, and the art takes what is left. At
 /// 2560×1600 that is all of it; at 1366×768 with the phase panel on it is
-/// a thumbnail or nothing. `above` is what the column already holds over
-/// the panel (the header and the phase panel, measured), and `window` the
+/// a thumbnail or nothing. `above` is what the column's fixed panels
+/// already hold (the header over the panel and the phase panel at the
+/// column's foot, measured), and `window` the
 /// window's logical height. Scaled whole, never squeezed: `ImageNode`
 /// stretches, so a shorter box at the same width would distort the art.
 pub fn encounter_art<'a>(natural: (f32, f32), window: f32, above: f32, lines: impl IntoIterator<Item = &'a str>) -> Option<(f32, f32)> {
