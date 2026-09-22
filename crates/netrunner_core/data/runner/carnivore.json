@@ -8,6 +8,7 @@
   "abilities": [
     {
       "trigger": "Paid",
+      "access": true,
       "cost": {
         "Trash": {
           "from": "OwnGrip",
@@ -15,12 +16,7 @@
           "count": 2
         }
       },
-      "requirement": {
-        "And": [
-          "OncePerTurn",
-          "CurrentlyAccessingACard"
-        ]
-      },
+      "requirement": "OncePerTurn",
       "effect": "TrashCurrentlyAccessedCard",
       "text": "Access, once per turn → Trash 2 cards from your grip: Trash the card you are accessing."
     }

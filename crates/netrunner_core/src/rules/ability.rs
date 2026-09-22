@@ -2367,14 +2367,14 @@ pub fn check_requirement(
             Ok(())
         }
         EffectRequirement::CurrentlyAccessingNonAgenda => {
-            check_requirement(state, &EffectRequirement::CurrentlyAccessingACard, side, ctx, registry)?;
             let accessing = state.active_run.as_ref().and_then(|run| run.access_state.as_ref()).and_then(|access| {
                 match &access.phase {
                     run::AccessPhase::PendingChoice { card_id, .. } => Some(card_id.clone()),
                     _ => None,
                 }
             });
-            let is_agenda = accessing.and_then(|card| registry.get(&card)).is_some_and(|def| def.card_type == crate::dsl::CardType::Agenda);
+            let Some(accessing) = accessing else { return Err(RulesError::RequirementNotMet) };
+            let is_agenda = registry.get(&accessing).is_some_and(|def| def.card_type == crate::dsl::CardType::Agenda);
             if is_agenda { Err(RulesError::RequirementNotMet) } else { Ok(()) }
         }
         EffectRequirement::SubroutineResolvedThisRun => {
@@ -2479,14 +2479,6 @@ pub fn check_requirement(
                 return Err(RulesError::RequirementNotMet);
             }
             Ok(())
-        }
-        EffectRequirement::CurrentlyAccessingACard => {
-            let accessing = state
-                .active_run
-                .as_ref()
-                .and_then(|run| run.access_state.as_ref())
-                .is_some_and(|access| matches!(access.phase, run::AccessPhase::PendingChoice { .. }));
-            if accessing { Ok(()) } else { Err(RulesError::RequirementNotMet) }
         }
         EffectRequirement::ThisCardCountersAtLeast(amount) => {
             let current = counters_of(state, ctx).unwrap_or(0);
@@ -2754,7 +2746,6 @@ pub(crate) fn consume_requirement(
         | EffectRequirement::AccessedAnyCardDuringLastRun
         | EffectRequirement::ThisCardIsInstalled
         | EffectRequirement::ThisCardCountersAtMost(_)
-        | EffectRequirement::CurrentlyAccessingACard
         | EffectRequirement::ThisCardCountersAtLeast(_)
         | EffectRequirement::EncounteringHostIce
         | EffectRequirement::DuringEncounter

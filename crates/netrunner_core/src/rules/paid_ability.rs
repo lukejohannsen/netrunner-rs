@@ -1,6 +1,6 @@
 //! Paid Ability Windows (PAWs): the priority-passing sub-loop that pauses
-//! the run flow at each checkpoint (ICE approach, ICE encounter, movement,
-//! pre-access)
+//! the run flow at each checkpoint (initiation, ICE approach, ICE
+//! encounter, movement), or the turn at one of its steps,
 //! so both sides get a chance to fire paid abilities before the engine
 //! auto-advances. See `state::PaidAbilityWindow`'s doc comment for the data
 //! model and `PlayerAction::PassPriority`'s for the player-facing contract.
@@ -11,7 +11,7 @@ use crate::rules::ability;
 use crate::rules::error::RulesError;
 use crate::rules::payment::Purpose;
 use crate::rules::event::GameEvent;
-use crate::rules::run::{self, AccessPhase, RunAction, RunPhase};
+use crate::rules::run::{self, RunAction, RunPhase};
 use crate::rules::prevention;
 use crate::rules::state::{GamePhase, GameState, InstallId, PaidAbilityWindow, Side, WindowCheckpoint};
 use crate::rules::turn;
@@ -45,23 +45,25 @@ pub(crate) fn open_window(state: &mut GameState) -> GameEvent {
     open_window_for(state, active_priority, WindowCheckpoint::Run)
 }
 
-/// Opens a fresh window if the run just landed on `ApproachIce`/
-/// `EncounterIce`, on the second moment of `Movement` (the Runner has
-/// chosen not to jack out: CR 6.9.4d, where the Corp may rez what is not
-/// ice), or on `AccessingCard` with the access sub-state at
-/// `PendingChoice`/`PendingInteractiveTrigger`. The first moment of
-/// `Movement` is not one: the jack-out decision is the Runner's alone and
-/// comes before anyone's window. Called both after a
-/// Runner-driven `ContinueRun`/access-resolution action and from
-/// `close_window`'s own auto-advance (arriving at the *next* ICE or the
-/// *next* accessed card). The `Success` checkpoint's window is opened
-/// explicitly by `CompleteRun` instead, not automatically here — the Runner
-/// should still get to choose `CompleteRun` vs `JackOut` before a window
-/// commits them to accessing. `AccessPhase::SelectNextCard` is deliberately
-/// *not* a checkpoint either — unlike `PendingChoice`/`PendingInteractiveTrigger`,
-/// which each gate a costed decision (steal/trash/avoidance cost) worth
-/// reacting to, picking resolution order among already-accessed cards risks
-/// nothing.
+/// Opens a fresh window if the run just landed on one of the run's paid
+/// ability windows (CR 6.9): the initiation's (6.9.1e), an approach's
+/// (6.9.2b), an encounter's (6.9.3b), or the movement phase's after the
+/// Runner has chosen not to jack out (CR 6.9.4e, where the Corp may rez
+/// what is not ice). The first moment of `Movement` is not one: the
+/// jack-out decision is the Runner's, and the window the rules put before
+/// it (6.9.4b, paid abilities only) is not opened (Rules Conformance D4).
+/// Called after a Runner-driven `ContinueRun`, from `close_window`'s own
+/// auto-advance (arriving at the *next* ICE), and by `engine::resume_run` for an
+/// initiation, which is reached by an action — or a card's text — that
+/// may still have something to resolve.
+///
+/// **Nothing after the server's approach is one.** The success (6.9.5)
+/// and the breach (7.5) have no paid ability window, and an access has
+/// only the Runner's mid-access window (7.2.2, 9.2.10), which is the
+/// decision about the card itself (`run::at_mid_access_window`) rather
+/// than a `PaidAbilityWindow`. Both used to open one — `CompleteRun`'s,
+/// and one at each accessed card — and the Corp rezzed upgrades in them
+/// after the run had succeeded (Rules Conformance D2).
 ///
 /// **The `Action(_)` guard is load-bearing, not defensive.** A run can
 /// outlive the turn it belongs to: `resolve_unbroken_subroutines` can
@@ -85,15 +87,34 @@ pub(crate) fn open_window_if_at_checkpoint(state: &mut GameState) -> Option<Game
         return None;
     }
     let is_checkpoint = match state.active_run.as_ref().map(|r| &r.phase) {
-        Some(RunPhase::ApproachIce) | Some(RunPhase::EncounterIce) => true,
+        Some(RunPhase::Initiation) | Some(RunPhase::ApproachIce) | Some(RunPhase::EncounterIce) => true,
         Some(RunPhase::Movement) => state.active_run.as_ref().is_some_and(|r| !r.jack_out_permitted),
-        Some(RunPhase::AccessingCard) => matches!(
-            state.active_run.as_ref().and_then(|r| r.access_state.as_ref()).map(|a| &a.phase),
-            Some(AccessPhase::PendingChoice { .. }) | Some(AccessPhase::PendingInteractiveTrigger { .. })
-        ),
-        _ => false,
+        Some(RunPhase::Success) | Some(RunPhase::AccessingCard) | Some(RunPhase::Ended) | None => false,
     };
     is_checkpoint.then(|| open_window(state))
+}
+
+/// Whether the open window lets the Corp rez a card that is not ice — the
+/// (R) of CR 9.2.7c. Every window the engine opens has it but two: the
+/// encounter's, in which "players may only use paid abilities" (CR
+/// 6.9.3b), and the players being asked about a prevention, which is an
+/// interrupt window (9.2.9d) and admits nothing else anyway. With no
+/// window open the Corp rezzes in its own action phase (5.6.2a), which
+/// `engine::rez_ice` asks separately.
+pub(crate) fn window_permits_rez(state: &GameState) -> bool {
+    match state.paid_ability_window.as_ref().map(|w| w.checkpoint) {
+        Some(WindowCheckpoint::Run) => {
+            !matches!(state.active_run.as_ref().map(|r| r.phase), Some(RunPhase::EncounterIce))
+        }
+        Some(WindowCheckpoint::Prevention) => false,
+        Some(
+            WindowCheckpoint::TurnBeginning { .. }
+            | WindowCheckpoint::StartOfTurn { .. }
+            | WindowCheckpoint::EndOfTurn { .. }
+            | WindowCheckpoint::PostAction { .. },
+        ) => true,
+        None => false,
+    }
 }
 
 /// Guard for handlers that must be blocked while a window is open. Called
@@ -267,9 +288,12 @@ pub(crate) fn has_usable_paid_ability(state: &GameState, registry: &CardRegistry
             // Nor is an action (CR 9.2.7b): a [click] ability is used in its
             // user's action window, and a window opened for one would offer
             // them only a pass.
+            // Nor a mid-access ability, which has a window of its own
+            // (CR 9.2.7b, 9.2.10).
             ability.trigger == Trigger::Paid
                 && ability.effect.prevents().is_none()
                 && !ability.is_action()
+                && !ability.access
                 && ability.requirement.as_ref().is_none_or(|req| ability::check_requirement(state, req, side, &ctx, registry).is_ok())
                 && ability.cost.as_ref().is_none_or(|cost| ability::cost_is_affordable(state, registry, side, cost, Purpose::Ability(card), &ctx))
         })
@@ -321,34 +345,21 @@ fn close_run_window(state: &mut GameState, registry: &CardRegistry) -> Result<Ve
             events.extend(open_window_if_at_checkpoint(state));
             Ok(events)
         }
-        RunPhase::Success => {
-            // This window was opened by `complete_run`. Now actually
-            // access — the logic `complete_run` used to run inline.
-            let server = state.active_run.as_ref().expect("checked Some above").server;
-            let mut events = run::access_server(state, server, registry)?;
-            if state.active_run.is_none() {
-                // Nothing was presented — an empty server, or a replaced
-                // access — so the run is over here rather than in
-                // `access::advance_or_finish`. `RunCompleted` is
-                // *dispatched*, not merely pushed: a run on an empty
-                // Archives is the most ordinary run there is, and Mayfly's
-                // "when this run ends, trash this program" never fired on
-                // one because this arm only recorded the event. Skipped
-                // when access already concluded with its own
-                // `RunCompleted` (a flatline mid-access).
-                if !events.iter().any(|e| matches!(e, GameEvent::RunCompleted { .. })) {
-                    let completed = GameEvent::RunCompleted { server };
-                    crate::rules::dispatcher::emit(state, registry, &mut events, completed)?;
-                }
-            } else {
-                // A card was just presented (or `SelectNextCard` was
-                // reached, in which case this is a no-op) — open a fresh
-                // window for whichever `AccessPhase` it landed on.
-                events.extend(open_window_if_at_checkpoint(state));
-            }
+        RunPhase::Initiation => {
+            // The initiation's window is over (CR 6.9.1e): the Runner
+            // approaches the outermost ice, whose rez window opens, or with
+            // none enters the movement phase, whose first step is theirs
+            // (6.9.1f).
+            let mut events = run::advance_run(state, RunAction::Continue, registry)?;
+            events.extend(open_window_if_at_checkpoint(state));
             Ok(events)
         }
-        RunPhase::Initiation | RunPhase::AccessingCard | RunPhase::Ended => Ok(Vec::new()),
+        // No window opens at either (CR 6.9.5, 7.2): the server's approach
+        // is followed by the success and the breach, and a breach admits
+        // only the Runner's mid-access abilities. A window here used to be
+        // opened by `CompleteRun` and at every accessed card, and the Corp
+        // rezzed in both.
+        RunPhase::Success | RunPhase::AccessingCard | RunPhase::Ended => Ok(Vec::new()),
     }
 }
 
@@ -410,7 +421,7 @@ mod tests {
     use super::*;
     use crate::dsl::{CardId, DamageType, Effect, IceType, SubroutineDef};
     use crate::rules::run::{EncounteredSubroutine, RunIce, RunState, ServerId, SubroutineStatus};
-    use crate::rules::state::{ArchivedCard, AgendaPoints, Clicks, Credits, CorpState, MemoryUnits, PendingPrevention, PreventionResume, WouldHappen, PlayerResources, RunnerState,
+    use crate::rules::state::{AgendaPoints, Clicks, Credits, CorpState, MemoryUnits, PendingPrevention, PreventionResume, WouldHappen, PlayerResources, RunnerState,
     };
 
     fn registry() -> CardRegistry {
@@ -449,7 +460,7 @@ mod tests {
                 cost: None,
                 requirement: None,
                 effect: Effect::GainCredits(Side::Corp, 1),
-                cost_discount_if: None, used_by: None }],
+                cost_discount_if: None, used_by: None, access: false }],
             ..Default::default()
         });
         let mut state = base_state();
@@ -728,43 +739,13 @@ mod tests {
         );
     }
 
-    #[test]
-    fn success_window_close_presenting_a_single_card_opens_a_fresh_access_window() {
-        let mut state = base_state();
-        state.corp.hq = vec![CardId("hedge_fund".to_string())];
-        state.active_run = Some(RunState {
-            phase: RunPhase::Success,
-            jack_out_permitted: true,
-            ..Default::default()
-        });
-        open_window(&mut state);
-
-        pass_priority(&mut state, &registry(), Side::Runner).expect("first pass should succeed");
-        let events = pass_priority(&mut state, &registry(), Side::Corp).expect("second pass should succeed");
-
-        // Landing on `PendingChoice` (a single accessed card) opens a fresh
-        // window for the Runner's steal/trash/pass decision.
-        let window = state.paid_ability_window.expect("a fresh window should open for the presented card");
-        assert_eq!(window.active_priority, Side::Runner);
-        assert_eq!(window.consecutive_passes, 0);
-        assert_eq!(
-            events,
-            vec![
-                GameEvent::PriorityPassed { side: Side::Corp },
-                GameEvent::PaidAbilityWindowClosed,
-                GameEvent::CardAccessed { card: CardId("hedge_fund".to_string()), server: ServerId::Hq, install: None },
-                GameEvent::PaidAbilityWindowOpened { side: Side::Runner },
-            ]
-        );
-    }
-
     /// A run on an empty server still *ends*, and `Trigger::OnRunEnded`
-    /// must hear about it. This arm used to push `RunCompleted` into the
+    /// must hear about it. The breach used to push `RunCompleted` into the
     /// event list without dispatching it, so Mayfly's "when this run ends,
     /// trash this program" never fired on the most ordinary run there is —
     /// a run at an empty Archives.
     #[test]
-    fn closing_the_success_window_on_an_empty_server_dispatches_run_ended() {
+    fn a_breach_of_an_empty_server_dispatches_run_ended() {
         let mayfly = CardId("mayfly".to_string());
         let registry = CardRegistry::from_cards(vec![crate::dsl::CardDefinition {
             id: mayfly.clone(),
@@ -789,42 +770,15 @@ mod tests {
             jack_out_permitted: true,
             ..Default::default()
         });
-        open_window(&mut state);
         let credits_before = state.runner.resources.credits;
 
-        pass_priority(&mut state, &registry, Side::Runner).expect("first pass should succeed");
-        let events = pass_priority(&mut state, &registry, Side::Corp).expect("second pass should succeed");
+        let (state, events) =
+            crate::rules::apply_action(&state, &registry, crate::rules::PlayerAction::CompleteRun).expect("the success and the breach");
 
         assert!(state.active_run.is_none());
         assert!(events.contains(&GameEvent::RunCompleted { server: ServerId::Archives }));
         assert_eq!(state.runner.resources.credits, credits_before.gain(1), "OnRunEnded fired");
         assert_eq!(state.last_completed_run.as_ref().map(|r| r.server), Some(ServerId::Archives));
-    }
-
-    #[test]
-    fn success_window_close_presenting_select_next_card_does_not_open_a_window() {
-        let mut state = base_state();
-        // Archives access every card in it, so two cards there yields a
-        // `SelectNextCard` choice rather than a single `PendingChoice` —
-        // deliberately not a checkpoint (no cost is at stake in ordering).
-        state.corp.archives =
-            vec![ArchivedCard::facedown(CardId("card_1".to_string())), ArchivedCard::facedown(CardId("card_2".to_string()))];
-        state.active_run = Some(RunState {
-            server: ServerId::Archives,
-            phase: RunPhase::Success,
-            jack_out_permitted: true,
-            ..Default::default()
-        });
-        open_window(&mut state);
-
-        pass_priority(&mut state, &registry(), Side::Runner).expect("first pass should succeed");
-        let events = pass_priority(&mut state, &registry(), Side::Corp).expect("second pass should succeed");
-
-        assert!(state.paid_ability_window.is_none(), "SelectNextCard is not a checkpoint");
-        assert_eq!(
-            events,
-            vec![GameEvent::PriorityPassed { side: Side::Corp }, GameEvent::PaidAbilityWindowClosed]
-        );
     }
 
     #[test]

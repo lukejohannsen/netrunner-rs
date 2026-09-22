@@ -725,9 +725,9 @@ mod tests {
         for action in [
             PlayerAction::PlayEvent { card_id: id("overclock") },
             PlayerAction::ChooseServerForPendingDecision { server: ServerId::Remote(0) },
-            // No ice: into the movement phase, then on past it; the window
-            // it opens is passed below, and the server approached.
-            PlayerAction::ContinueRun,
+            // No ice: the initiation's window (passed below) leads into
+            // the movement phase, then on past it; the window that opens
+            // is passed too, and the server approached.
             PlayerAction::ContinueRun,
             PlayerAction::CompleteRun,
             PlayerAction::TrashAccessedCard { card_id: id("pad_campaign") },

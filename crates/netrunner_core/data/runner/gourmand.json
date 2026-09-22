@@ -9,6 +9,7 @@
   "abilities": [
     {
       "trigger": "Paid",
+      "access": true,
       "cost": "TrashSelf",
       "requirement": "CurrentlyAccessingNonAgenda",
       "effect": {

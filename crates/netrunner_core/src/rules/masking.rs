@@ -326,6 +326,11 @@ pub struct PublicRunState {
     pub position: usize,
     pub access_state: Option<PublicAccessState>,
     pub jack_out_permitted: bool,
+    /// `RunState::declared_successful`: public, since the run's success
+    /// is announced on the table, and carried so a sample built from the
+    /// view breaches where the real game will.
+    #[serde(default)]
+    pub declared_successful: bool,
     /// Credits this run may still draw from Bad Publicity. Never masked:
     /// `PublicCorpState::bad_publicity` is already public, and how much of
     /// it this run has spent is something both players track openly —
@@ -994,6 +999,7 @@ fn mask_run_state(state: &GameState, registry: &CardRegistry, run: &RunState, vi
         position: run.position,
         access_state: run.access_state.as_ref().map(|access| mask_access_state(access, card_visible, viewer)),
         jack_out_permitted: run.jack_out_permitted,
+        declared_successful: run.declared_successful,
         bad_publicity_credits: run.bad_publicity_credits,
         bonus_run_credits: run.bonus_run_credits,
         redirect_on_approach: run.redirect_on_approach,

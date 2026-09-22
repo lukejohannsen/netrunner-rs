@@ -218,6 +218,33 @@ pub(crate) fn through_movement(
     Ok((state, events))
 }
 
+/// A `ContinueRun`, or, from a run standing in its initiation's paid
+/// ability window (CR 6.9.1e), both players' passes, which take the run to
+/// the same place: the outermost ice's approach, standing in its rez
+/// window, or the movement phase of a server with no ice. The Runner took
+/// that step with `ContinueRun` before the initiation had its window, and
+/// the scripted runs that did keep this shape.
+pub(crate) fn continue_run(
+    state: &GameState,
+    registry: &crate::cards::CardRegistry,
+) -> Result<(GameState, Vec<crate::rules::GameEvent>), crate::rules::RulesError> {
+    use crate::rules::{apply_action, run::RunPhase, PlayerAction};
+    let at_initiation = state.active_run.as_ref().is_some_and(|run| run.phase == RunPhase::Initiation);
+    if !at_initiation || state.paid_ability_window.is_none() {
+        return apply_action(state, registry, PlayerAction::ContinueRun);
+    }
+    let mut state = state.clone();
+    let mut events = Vec::new();
+    while let Some(window) = state.paid_ability_window.as_ref()
+        && state.active_run.as_ref().is_some_and(|run| run.phase == RunPhase::Initiation)
+    {
+        let (next, more) = apply_action(&state, registry, PlayerAction::PassPriority { side: window.active_priority })?;
+        state = next;
+        events.extend(more);
+    }
+    Ok((state, events))
+}
+
 /// `state` with the active side's clicks spent, ready for `EndTurn`.
 ///
 /// `EndTurn` is refused while clicks remain (CR 5.6.2b; `RulesError::

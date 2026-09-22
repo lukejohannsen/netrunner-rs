@@ -100,8 +100,10 @@ pub enum PlayerAction {
     JackOut,
     /// Commit past the approach-server step: the run becomes **successful**
     /// here (`GameEvent::RunSucceeded` and every "when your run is
-    /// successful" trigger fire) and the pre-access paid-ability window opens; access follows once both sides
-    /// pass. Runner-only, no click cost — like `JackOut`/`ContinueRun`, this
+    /// successful" trigger fire), and the breach follows with no window
+    /// between (CR 6.9.5) — at the end of this action, or of the one that
+    /// answers a decision a "when successful" ability parked (`RunState::
+    /// declared_successful`). Runner-only, no click cost — like `JackOut`/`ContinueRun`, this
     /// is a run-flow sub-action, not a basic click action. Requires
     /// `active_run` to be `Some` (`RulesError::NoActiveRun` otherwise) with
     /// `phase == RunPhase::Success` (`RulesError::RunNotConcluded` otherwise)
@@ -331,12 +333,8 @@ pub enum PlayerAction {
     /// the breach's candidates and presents its card via
     /// `AccessPhase::PendingChoice`, ready for `StealAgenda`/
     /// `TrashAccessedCard`/`PassAccessedCard` — see
-    /// `run::access::resolve_select_card`. Blocked while a Paid Ability
-    /// Window is open (`RulesError::BlockedByPaidAbilityWindow`) — both
-    /// sides must pass priority first via `PassPriority`. Resolving this
-    /// action may itself open a fresh window if it presents a card's
-    /// `PendingChoice`/`PendingInteractiveTrigger` — see
-    /// `rules::paid_ability::open_window_if_at_checkpoint`.
+    /// `run::access::resolve_select_card`. No paid ability window
+    /// opens during a breach (CR 7.2), so none stands in its way.
     SelectCardToAccess { candidate: crate::rules::run::AccessCandidate },
     /// Steal the currently pending accessed card. Runner-only. Legal only
     /// while a run is in `RunPhase::AccessingCard` and `card_id` matches
@@ -348,12 +346,8 @@ pub enum PlayerAction {
     /// in — HQ, the top of R&D, the run's remote, or Archives — and into
     /// `RunnerState::scored_agendas`, checks win conditions, and advances
     /// to the next accessed card (or finalizes the run) — see
-    /// `run::access::resolve_steal`. Blocked while
-    /// a Paid Ability Window is open (`RulesError::BlockedByPaidAbilityWindow`)
-    /// — both sides must pass priority first via `PassPriority`. Resolving
-    /// this action may itself open a fresh window if it presents another
-    /// card's `PendingChoice`/`PendingInteractiveTrigger` — see
-    /// `rules::paid_ability::open_window_if_at_checkpoint`.
+    /// `run::access::resolve_steal`. No paid ability window
+    /// opens during a breach (CR 7.2), so none stands in its way.
     StealAgenda { card_id: CardId },
     /// Pay to trash the currently pending accessed card off the table into
     /// `CorpState::archives`. Runner-only. Legal only while a run is in
@@ -361,12 +355,8 @@ pub enum PlayerAction {
     /// that card has a `trash_cost` (`RulesError::NotInAccessPhase`
     /// otherwise); `RulesError::CannotAffordTrashCost` if the cost can't be
     /// paid. Advances to the next accessed card (or finalizes the run) —
-    /// see `run::access::resolve_trash`. Blocked while a Paid Ability
-    /// Window is open (`RulesError::BlockedByPaidAbilityWindow`) — both
-    /// sides must pass priority first via `PassPriority`. Resolving this
-    /// action may itself open a fresh window if it presents another card's
-    /// `PendingChoice`/`PendingInteractiveTrigger` — see
-    /// `rules::paid_ability::open_window_if_at_checkpoint`.
+    /// see `run::access::resolve_trash`. No paid ability window
+    /// opens during a breach (CR 7.2), so none stands in its way.
     TrashAccessedCard { card_id: CardId },
     /// Decline to steal/trash the currently pending accessed card and move
     /// on. Runner-only. Legal only while a run is in `RunPhase::
@@ -374,12 +364,8 @@ pub enum PlayerAction {
     /// (`RulesError::NotInAccessPhase` otherwise); illegal
     /// (`RulesError::MandatoryStealViolation`) if that card is a
     /// mandatory-steal Agenda. Advances to the next accessed card (or
-    /// finalizes the run) — see `run::access::resolve_pass`. Blocked while
-    /// a Paid Ability Window is open (`RulesError::BlockedByPaidAbilityWindow`)
-    /// — both sides must pass priority first via `PassPriority`. Resolving
-    /// this action may itself open a fresh window if it presents another
-    /// card's `PendingChoice`/`PendingInteractiveTrigger` — see
-    /// `rules::paid_ability::open_window_if_at_checkpoint`.
+    /// finalizes the run) — see `run::access::resolve_pass`. No paid ability window
+    /// opens during a breach (CR 7.2), so none stands in its way.
     PassAccessedCard { card_id: CardId },
     /// Pay the pending `AccessPhase::PendingInteractiveTrigger`'s `cost` to
     /// prevent its `effects`. Runner-only. Legal only while a run is in
@@ -388,11 +374,8 @@ pub enum PlayerAction {
     /// `RulesError::CannotAffordAccessTriggerCost` if the cost can't be paid.
     /// Transitions straight to that card's normal `AccessPhase::
     /// PendingChoice` afterward — see `run::access::resolve_pay_access_trigger`.
-    /// Blocked while a Paid Ability Window is open
-    /// (`RulesError::BlockedByPaidAbilityWindow`) — both sides must pass
-    /// priority first via `PassPriority`. Resolving this action may itself
-    /// open a fresh window for the card's `PendingChoice` — see
-    /// `rules::paid_ability::open_window_if_at_checkpoint`.
+    /// No paid ability window
+    /// opens during a breach (CR 7.2), so none stands in its way.
     PayAccessTrigger { card_id: CardId },
     /// Decline to pay the pending `AccessPhase::PendingInteractiveTrigger`'s
     /// `cost`, letting its `effects` resolve instead. Runner-only. Legal
@@ -401,10 +384,9 @@ pub enum PlayerAction {
     /// NotInAccessPhase` otherwise). Transitions to that card's normal
     /// `AccessPhase::PendingChoice` afterward, unless the effects ended the
     /// game — see `run::access::resolve_decline_access_trigger`. Blocked while a
-    /// Paid Ability Window is open (`RulesError::BlockedByPaidAbilityWindow`)
-    /// — both sides must pass priority first via `PassPriority`. Resolving
-    /// this action may itself open a fresh window for the card's
-    /// `PendingChoice` — see `rules::paid_ability::open_window_if_at_checkpoint`.
+    /// Paid Ability Window is open (`RulesError::BlockedByPaidAbilityWindow`),
+    /// though a breach opens none (CR 7.2), at the card's `PendingChoice`
+    /// that follows or anywhere else.
     DeclineAccessTrigger { card_id: CardId },
     /// Pass priority in the currently open Paid Ability Window. Carries an
     /// explicit `side` — unlike `EndTurn`/`DiscardCard`/`ActivateAbility`,
@@ -413,11 +395,8 @@ pub enum PlayerAction {
     /// priority it is. Errors with `RulesError::NotInPaidAbilityWindow` if no
     /// window is open, or `RulesError::NotYourPriority` if it isn't `side`'s
     /// priority. Once both sides pass consecutively, the window closes and
-    /// the engine auto-advances whatever run step was paused — a window can
-    /// also open at an access-time checkpoint (`AccessPhase::PendingChoice`/
-    /// `PendingInteractiveTrigger`, not `SelectNextCard`) as well as the run
-    /// checkpoints described above — see
-    /// `rules::paid_ability`.
+    /// the engine auto-advances whatever run step was paused. None opens
+    /// during a breach (CR 7.2, 7.5) — see `rules::paid_ability`.
     PassPriority { side: Side },
     /// Corp commits `amount` credits on top of the base trace strength that
     /// an `Effect::Trace` parked in `GameState::active_trace`. Corp-only, no

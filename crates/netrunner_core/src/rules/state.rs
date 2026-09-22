@@ -662,8 +662,8 @@ pub enum WindowCheckpoint {
 /// A Paid Ability Window (PAW) — a priority-passing sub-loop that pauses the
 /// run flow so both sides get a chance to fire paid abilities (rez ICE,
 /// activate a `Trigger::Paid` ability, break a subroutine) before the engine
-/// auto-advances past a checkpoint (ICE approach, ICE encounter, pre-access,
-/// a pending per-card access decision, or a turn boundary). Lives as a
+/// auto-advances past a checkpoint (the run's initiation, an ICE approach
+/// or encounter, the movement phase, or a step of the turn). Lives as a
 /// sibling field on `GameState`, not folded into `GamePhase` — mirrors
 /// `RunPhase`'s existing precedent of never changing `state.phase` mid-run
 /// (see this file's `GamePhase` doc comment); the `StartOfTurn`/`EndOfTurn`

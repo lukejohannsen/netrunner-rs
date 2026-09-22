@@ -1851,6 +1851,7 @@ mod tests {
             effect: Effect::GainCredits(Side::Runner, 5),
             cost_discount_if: None,
             used_by: None,
+            access: false,
         }];
         let registry = CardRegistry::from_cards(vec![trasher, card("an_event", CardType::Event), card("a_program", CardType::Program)]);
         let mut state = GameState::new(0);
@@ -1935,7 +1936,7 @@ mod tests {
                 cost: None,
                 requirement: None,
                 effect: Effect::BreakSubroutines { count: SubroutineBreakCount::All, restrict_to },
-                cost_discount_if: None, used_by: None }],
+                cost_discount_if: None, used_by: None, access: false }],
             is_playable: true,
             ..Default::default()
         }
@@ -2494,7 +2495,7 @@ mod tests {
             cost: Some(Cost::Credits(pump_cost)),
             requirement: None,
             effect: Effect::BoostStrength { amount: pump_amount, duration: EffectDuration::Encounter },
-            cost_discount_if: None, used_by: None });
+            cost_discount_if: None, used_by: None, access: false });
         def
     }
 
