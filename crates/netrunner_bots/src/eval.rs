@@ -121,6 +121,21 @@ const AMBUSH_ADVANCEMENT_CAP: u32 = 3;
 /// Runner's grip being thin without any way to recognise the cards that
 /// would thin it.
 const AMBUSH_WEIGHT: f64 = 0.0;
+/// A trap turned face up, subtracted, on top of the rez undoing
+/// everything a rezzed card is otherwise worth. **A trap is never rezzed:**
+/// Urtica Cipher, Snare! and Byte! fire on access face down (the subject
+/// of an event always hears it), so a rez does nothing but show the
+/// Runner what to avoid. `REZZED_ASSET_WEIGHT` made every rez worth +1.0
+/// at a rez cost of 0, and outside `Trap` (whose `ambush_weight` happened
+/// to outweigh it) every trap was rezzed at the Corp's first window: 116
+/// of 116 Urticas in the glacier deck, accessed 7 times, and 147 of 147
+/// Byte!s (Phase 5 §20). Priced in the Corp's own board rather than in
+/// `corp_install_value`, which is also the Runner's reading of a rezzed
+/// Corp card: what the Runner gains from trashing a face-up trap is not
+/// the Corp's preference to keep it hidden. Any positive value decides
+/// the rez; 1.0 makes it lose to `EndTurn` by a clear margin rather than
+/// by jitter.
+const REVEALED_TRAP_WEIGHT: f64 = 1.0;
 /// Each piece of ICE, up to two, protecting the server an installed
 /// agenda sits in. Every install was worth the same flat
 /// `UNREZZED_INSTALL_WEIGHT` wherever it went, so the one-ply Corp put an
@@ -673,6 +688,9 @@ pub struct Weights {
     /// Runner only: each known ambush the run would access, subtracted.
     /// See `KNOWN_AMBUSH_WEIGHT`.
     pub known_ambush_weight: f64,
+    /// Corp only: each of its own traps face up, subtracted, beyond the
+    /// rez gaining nothing. See `REVEALED_TRAP_WEIGHT`.
+    pub revealed_trap_weight: f64,
     /// Runner only: the Corp's board, as the Runner sees it, subtracted at
     /// this fraction. See `OPPONENT_BOARD_WEIGHT`.
     pub opponent_board_weight: f64,
@@ -759,6 +777,7 @@ impl Default for Weights {
             active_run_weight: ACTIVE_RUN_WEIGHT,
             advanced_card_prospect_weight: ADVANCED_CARD_PROSPECT_WEIGHT,
             known_ambush_weight: KNOWN_AMBUSH_WEIGHT,
+            revealed_trap_weight: REVEALED_TRAP_WEIGHT,
             opponent_board_weight: OPPONENT_BOARD_WEIGHT,
             successful_run_weight: SUCCESSFUL_RUN_WEIGHT,
             pending_subroutine_weight: PENDING_SUBROUTINE_WEIGHT,
@@ -912,6 +931,7 @@ fn lerp(a: &Weights, b: &Weights, t: f64) -> Weights {
         active_run_weight: f(a.active_run_weight, b.active_run_weight),
         advanced_card_prospect_weight: f(a.advanced_card_prospect_weight, b.advanced_card_prospect_weight),
         known_ambush_weight: f(a.known_ambush_weight, b.known_ambush_weight),
+        revealed_trap_weight: f(a.revealed_trap_weight, b.revealed_trap_weight),
         opponent_board_weight: f(a.opponent_board_weight, b.opponent_board_weight),
         successful_run_weight: f(a.successful_run_weight, b.successful_run_weight),
         pending_subroutine_weight: f(a.pending_subroutine_weight, b.pending_subroutine_weight),
@@ -1011,6 +1031,7 @@ pub fn evaluate_state_with(state: &GameState, side: Side, registry: &CardRegistr
             let rig = rig_coverage(state, registry);
             for installed in &state.corp.installed {
                 score += corp_install_value(installed, registry, w, rig);
+                score -= revealed_trap_cost(installed, registry, w, rig);
             }
             score += f64::from(scored_agenda_counters(state)) * w.agenda_counter_weight;
             score += protected_agenda_ice(state, registry, w.agenda_protection_cap) as f64 * w.agenda_protection_weight;
@@ -1439,6 +1460,19 @@ pub fn punishes_access_with_damage(def: &CardDefinition) -> bool {
         effect.for_each_effect(&mut |e| found |= deals_damage(e));
     }
     found
+}
+
+/// What the Corp loses by having turned its own trap face up: whatever
+/// the rez added to the card's value, taken back, and
+/// `revealed_trap_weight` more. Zero for anything that is not a face-up
+/// trap. See `REVEALED_TRAP_WEIGHT`.
+fn revealed_trap_cost(installed: &InstalledCard, registry: &CardRegistry, w: &Weights, rig: [bool; 3]) -> f64 {
+    if !installed.rezzed || !registry.get(&installed.card).is_some_and(punishes_access_with_damage) {
+        return 0.0;
+    }
+    let face_down = InstalledCard { rezzed: false, ..installed.clone() };
+    corp_install_value(installed, registry, w, rig) - corp_install_value(&face_down, registry, w, rig)
+        + w.revealed_trap_weight
 }
 
 fn corp_install_value(installed: &InstalledCard, registry: &CardRegistry, w: &Weights, rig: [bool; 3]) -> f64 {
@@ -2233,6 +2267,62 @@ mod tests {
         assert!(value(false, &trap) > value(false, &base) + base.unrezzed_install_weight - trap.unrezzed_install_weight);
         let rezzed_trap = value(true, &trap);
         assert!(rezzed_trap < value(false, &trap), "face up it is a known quantity, not a threat");
+    }
+
+    /// A trap is never worth rezzing, to any Corp: face down it fires on
+    /// access, and face up it only tells the Runner where not to run. On
+    /// `main` every profile but `Trap` rezzed every one (Phase 5 §20),
+    /// because the rez was +1.0 at a rez cost of 0. Both kinds of trap,
+    /// and a Clearinghouse, which needs its rez, still gets one.
+    #[test]
+    fn no_corp_profile_would_rather_its_trap_were_face_up() {
+        let on_access = |effect| TriggeredEffect {
+            subject: Some(netrunner_core::dsl::Subject::This), when: None, acts_on_subject: false, first_each_turn: false,
+            text: None,
+            trigger: Trigger::OnAccessed,
+            effects: vec![effect],
+            requirement: None,
+        };
+        let mut urtica = ice("urtica", 0);
+        urtica.card_type = CardType::Asset;
+        urtica.advancement_requirement = Some(0);
+        urtica.triggers = vec![on_access(Effect::DealDamageAmount(DamageType::Net, Amount::HostedAdvancementTokens))];
+        let mut snare = ice("snare", 0);
+        snare.card_type = CardType::Asset;
+        snare.triggers = vec![on_access(Effect::DealDamage(DamageType::Net, 3))];
+        let mut clearinghouse = ice("clearinghouse", 0);
+        clearinghouse.card_type = CardType::Asset;
+        clearinghouse.advancement_requirement = Some(0);
+        clearinghouse.triggers = vec![TriggeredEffect {
+            trigger: Trigger::OnTurnStart,
+            subject: None,
+            effects: vec![Effect::DealDamageAmount(DamageType::Meat, Amount::HostedAdvancementTokens)],
+            ..on_access(Effect::DealDamage(DamageType::Net, 0))
+        }];
+        let registry = CardRegistry::from_cards(vec![urtica, snare, clearinghouse]);
+        let value = |id: &str, rezzed, tokens, w: &Weights| {
+            let mut state = GameState::new(0);
+            state.corp.installed = vec![InstalledCard {
+                card: CardId(id.to_string()),
+                install_id: InstallId(1),
+                server: netrunner_core::rules::ServerId::Remote(0),
+                rezzed,
+                advancement_tokens: tokens,
+                ..Default::default()
+            }];
+            evaluate_state_with(&state, Side::Corp, &registry, w)
+        };
+        for personality in Personality::ALL.into_iter().filter(|p| p.side() != Some(Side::Runner)) {
+            let w = personality.weights();
+            for (trap, tokens) in [("urtica", 0), ("urtica", 2), ("snare", 0)] {
+                let gain = value(trap, true, tokens, &w) - value(trap, false, tokens, &w);
+                assert!(gain <= -w.revealed_trap_weight + 1e-9, "{personality:?} would rez {trap} at {tokens} tokens: {gain}");
+            }
+            assert!(
+                value("clearinghouse", true, 0, &w) > value("clearinghouse", false, 0, &w),
+                "{personality:?}: a card that needs its rez still wants one"
+            );
+        }
     }
 
     /// The half that makes the first half survive being cashed in: a
