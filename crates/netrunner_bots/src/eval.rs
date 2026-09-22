@@ -1407,7 +1407,7 @@ fn for_each_declared_effect(def: &CardDefinition, f: &mut impl FnMut(&Effect)) {
 }
 
 /// An ambush that grows: its damage *is* its advancement-token count.
-fn damage_grows_with_advancement(def: &CardDefinition) -> bool {
+pub fn damage_grows_with_advancement(def: &CardDefinition) -> bool {
     let mut found = false;
     for_each_declared_effect(def, &mut |effect| {
         if matches!(effect, Effect::DealDamageAmount(_, Amount::HostedAdvancementTokens)) {
@@ -1420,7 +1420,7 @@ fn damage_grows_with_advancement(def: &CardDefinition) -> bool {
 /// An ambush at all: a non-agenda that answers being accessed with
 /// damage, whether through an `OnAccessed` trigger (*Urtica Cipher*) or
 /// a paid access interaction (*Snare!*).
-fn punishes_access_with_damage(def: &CardDefinition) -> bool {
+pub fn punishes_access_with_damage(def: &CardDefinition) -> bool {
     // An agenda that hurts on access is not an ambush — the Runner takes
     // the points anyway — and an identity is never an install, so neither
     // is a card this term should price.

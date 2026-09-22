@@ -72,6 +72,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             diag::fort::run(&args, &config)
         }
         Some(Command::Diag {
+            action: DiagAction::Trap { games, seed, corp, runner, simulations, determinizations, matchup, threads, deck_styles, report },
+        }) => {
+            let args =
+                diag::trap::TrapArgs { corp, runner, games, seed, simulations, determinizations, threads, matchup, deck_styles, report };
+            diag::trap::run(&args, &config)
+        }
+        Some(Command::Diag {
             action: DiagAction::Tempo { games, seed, corp, runner, simulations, determinizations, turns, stage_gain, threads, report },
         }) => {
             let args =

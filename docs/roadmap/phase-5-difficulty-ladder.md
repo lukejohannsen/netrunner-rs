@@ -1880,3 +1880,83 @@ screenshot is never taken and the window looks hung. A person's clicks
 cannot reach it. It is its own fix.
 
 Reports are under `target/coverage/fort/`.
+
+## 20. Traps: the instrument, and on `main` a trap is either given away or never sprung — IN PROGRESS (22 September 2026)
+
+From a report from play. The Corp should play a trap like an agenda: ICE
+in front of it, advance it, and never rez it, because a trap turned face
+up is a known quantity the Runner simply avoids. The Runner should not
+run back into a trap it has already sprung. And a trap that cannot be
+advanced (Snare!, Byte!) belongs in HQ and R&D, not in a remote. The
+engine already fires Urtica Cipher, Snare! and Byte! face down on access
+(the Listener Rule's "the subject always hears it"). So springing a trap
+is the access itself, and a rez only ever gives it away.
+
+**The instrument: `netrunner_cli diag trap`** (`diag/trap.rs`). It tracks
+each trap install from the step it arrives, and splits traps into two
+kinds, read off the card:
+
+- a *lure* trap grows with its tokens (`eval::damage_grows_with_advancement`,
+  Urtica Cipher);
+- a *hand* trap cannot take a token (Snare!, Byte!).
+
+Per install it records whether the trap was rezzed before any access, the
+ICE in front at install and at the first access, its peak tokens, its
+accesses and repeat accesses, whether the Runner trashed it, and the
+damage it dealt. That damage is the Corp's damage between the trap's
+access and the next card accessed, so Snare!'s paid damage on a later
+action still counts. For hand traps met in HQ, R&D and Archives it
+records the access and whether the Corp could pay. It also counts the
+Runner's runs on empty remotes, and on remotes whose root is only traps
+it has already seen: the engine forgets an access, so the diagnostic
+remembers it by `InstallId`.
+
+By default it plays the matchups whose Corp deck carries a trap: 6 decks
+× 12 = 72. `--deck-styles` seats each chair in its deck's own style, as
+play does. Without it a bare `heuristic` is `Balanced`, and every trap in
+the pool is rezzed.
+
+**Baseline on `main`**, heuristic against heuristic in deck styles, 216
+games on each of seeds 1 and 2:
+
+| | `advanced_yomi`, `peculiarity` (trap) | `discretion_advised` (glacier) | Byte! in `fine_print`, `glyph_of_warding`, `pork_chops` |
+|---|---|---|---|
+| installs, seeds 1 + 2 | 121 | 116 | 147 |
+| rezzed before any access | 1 | **116** | **147** |
+| ICE in front at install | 20 | 15 | 14 |
+| ever accessed | 115 | 7 | 1 |
+| damage dealt | 422 | 22 | 0 |
+
+- **A trap Corp keeps its Urtica face down, and it works.** The trap
+  decks' Urticas are accessed 95% of the time and deal about 3.5 net
+  damage each. That is most of the pool's 0.17 flatline share, of which
+  0.10 of all games end while a trap resolves.
+- **Every other profile gives its trap away.** A rezzed non-ICE card is
+  worth `board_presence_weight` + `rezzed_asset_weight` (2.0). A
+  face-down one is worth `unrezzed_install_weight` (1.0, glacier 0.8)
+  plus `ambush_weight`, which only `trap` sets. The rez costs 0, so
+  Balanced, Glacier and Rush rez every trap at their first window. The
+  glacier deck's 116 Urticas were accessed 7 times.
+- **Traps sit naked.** Only 13% of trap installs have ICE in front.
+  `fort_value` counts a remote only if its root is all agendas, so a
+  glacier trap goes to a bare remote.
+- **A hand trap never springs, wherever it is.** Every installed Byte!
+  is rezzed first. Met in HQ or R&D (0.15 a game), the Corp could pay in
+  0.11 a game and paid **0** times. `CorpPaysToApply` compares 4 credits
+  against 3 net damage and a tag, and a Corp evaluator outside `trap`
+  has no `opponent_grip_weight`, so the damage is worth nothing to it.
+  Every played deck with a hand trap is in one of those profiles. Snare!
+  is only in the `a_thousand_cuts` sweep deck, which `matchups()` never
+  yields.
+- **The Runner walks back into a known trap** 0.10–0.11 times a game.
+  Its run valuation forgets an access, so on the next turn a sprung
+  Urtica is a hidden card again, worth 1.0 more per token.
+
+Reports are under `target/coverage/trap/`. The fixes follow as their
+own PRs:
+
+1. no profile rezzes a trap;
+2. the Runner sees the card it accessed (masking);
+3. the Runner reads the end of the server, and prices the ICE on the way;
+4. the Corp plays a lure trap as an agenda, keeps a hand trap in HQ, and
+   springs it.
