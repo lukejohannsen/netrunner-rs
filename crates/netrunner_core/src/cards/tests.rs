@@ -9606,11 +9606,20 @@ mod system_gateway {
         state.corp.hq = vec![CardId("hedge_fund".to_string()), CardId("hedge_fund".to_string())];
         state.corp.r_and_d = vec![CardId("ice_wall".to_string()); 4];
 
-        let (state, _) = apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: CardId("hedge_fund".to_string()) }).expect("play");
+        let (played, _) = apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: CardId("hedge_fund".to_string()) }).expect("play");
+        // "You may draw 1 card": asked, not forced.
+        assert!(matches!(played.pending_decision, Some(crate::rules::PendingDecision::ChooseEffect { chooser: Side::Corp, .. })), "the Corp is asked");
+        let (declined, _) = apply_action(&played, &registry, PlayerAction::ResolvePendingChoice { option_index: 1 }).expect("decline");
+        assert_eq!(declined.corp.hq.len(), 1, "declined: only the other Hedge Fund");
+        let (state, _) = apply_action(&played, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("draw");
         assert_eq!(state.corp.hq.len(), 2, "one Hedge Fund left, plus the card it drew");
-        // Once per turn: the second operation pays out but draws nothing.
+        // Once per turn: the second operation pays out but asks nothing.
         let (state, _) = apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: CardId("hedge_fund".to_string()) }).expect("play again");
+        assert!(state.pending_decision.is_none());
         assert_eq!(state.corp.hq.len(), 1, "no second draw");
+        // Declining was the first time too: the turn's second payout asks nothing.
+        let (declined, _) = apply_action(&declined, &registry, PlayerAction::PlayOperation { card_id: CardId("hedge_fund".to_string()) }).expect("play again");
+        assert!(declined.pending_decision.is_none(), "the first time each turn was the declined one");
 
         // An asset's credits are not an agenda's or an operation's.
         let mut state = base_state();

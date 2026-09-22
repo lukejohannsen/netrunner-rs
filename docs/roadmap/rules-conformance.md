@@ -257,7 +257,11 @@ fixes them. The letters are this file's addresses: "Rules Conformance B1".
 - **F5 A "for each" that comes to 0 still gains credits** (9.12.2b, new in v26.03), which triggers
   Zwicky. Edge case. **Fixed** (`fix/small-rules-deviations`): a gain of 0 emits nothing.
 - **F6 Recorded only; no outcome changes today:**
-  - Zwicky's "may" is forced.
+  - Zwicky's "may" is forced. **Fixed** (`fix/zwicky-may`): the draw is a `PresentChoice`
+    with the declined option empty, as Superconducting Hub's is, and a declined draw is still
+    the turn's first time. It is also the one F6 item that changed an outcome, since a forced
+    draw can deck the Corp out. Measured: Zwicky's trigger 21 → 20 random, 17 → 21 heuristic,
+    192 games per shape; nothing outside Zwicky games moved.
   - An operation's reactions resolve after its play abilities rather than before (8.6.7).
   - The operation is filed in Archives before it resolves.
 
