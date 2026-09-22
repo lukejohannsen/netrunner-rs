@@ -208,6 +208,17 @@ fixes them. The letters are this file's addresses: "Rules Conformance B1".
   every jack-out decision would cost two passes per piece of ice passed. Opening it needs the
   movement phase to tell a third moment apart from the two `jack_out_permitted` already
   distinguishes.
+  **Fixed** (`fix/jack-out-window`), with no third moment stored. The window opens when the run
+  arrives in the movement phase and the Corp has a paid ability it could use
+  (`paid_ability::has_usable_paid_ability`); the Runner needs none, as the active player outside
+  a window. Closing it leaves the decision with the Runner, and nothing reopens it, because every
+  caller asks only when the run has just arrived. `JackOut` waits for it to close, and it admits
+  no rez (`window_permits_rez`). The six access handlers' calls to `open_window_if_at_checkpoint`,
+  dead since D2, are gone.
+  Measured (`coverage_identical`, 192 games per shape, seed 1): windows opened 20,860 → 21,069
+  random and 29,423 → 31,089 heuristic, where the Corp rezzes more assets with paid abilities.
+  Jack-outs 1,790 → 1,783 random. The heuristic's outcomes move by 3 games of 192 and are not
+  claimed. Both 256-seed sweeps are clean at release, coverage gate included.
 - **Measured, D2 and D3** (`scripts/coverage_identical.py main`, 192 games per shape, seed 1):
   - The view and index paths stay identical to each other, and `ActionSpace` is unmoved.
   - **Windows about balance:** random `PaidAbilityWindowOpened` 20,997 → 20,744. The initiation's
@@ -357,7 +368,10 @@ foresaw every question an install asked, text installs included.
 4. F1 and F2.
 5. B: installing as 8.5 lists it, which also closes A3.
 6. A1 and A2: access one card at a time, and an Archives with no order.
-7. D2 and D3: the run and access windows as 6.9 and 7.2 list them. **Done**; D4 recorded.
+7. D2 and D3: the run and access windows as 6.9 and 7.2 list them. **Done**, then D4 and F6's
+   first item (Zwicky's "may"). B4, E3 and F6's other two items are recorded, not built: none
+   changes an outcome a pool card reaches, and each is a model change (`trash_first` on a text
+   install, a drawn game, a play-area zone).
 
 Each follows the Testing Rule's bar for engine work. Each also moves its rows below to *conforms*,
 with the rule quoted.
@@ -466,7 +480,7 @@ with the rule quoted.
 | 6.6 | Movement | unreviewed |  |
 | 6.7 | Success | unreviewed |  |
 | 6.8 | Run Ends Phase | unreviewed |  |
-| 6.9 | Steps of a Run | deviates | D4 only (6.9.4b). D2 and D3 fixed: the initiation's window (6.9.1e), no rez in the encounter's, "A paid ability window occurs, in which players may only use paid abilities" (6.9.3b), and no window between the success and the breach (6.9.5). The movement phase (6.9.4c–g), an iceless server and unrezzed ice passed match. |
+| 6.9 | Steps of a Run | conforms | D4 fixed: "A paid ability window occurs, in which players may only use paid abilities" before the jack-out decision (6.9.4b), opened for a Corp with one to use. D2 and D3 fixed: the initiation's window (6.9.1e), no rez in the encounter's, "A paid ability window occurs, in which players may only use paid abilities" (6.9.3b), and no window between the success and the breach (6.9.5). The movement phase (6.9.4c–g), an iceless server and unrezzed ice passed match. |
 
 ### 7. Accessing Cards and Breaching Servers
 
