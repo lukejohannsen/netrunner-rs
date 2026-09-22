@@ -441,7 +441,7 @@ gain is +0.026. Deciding what balanced should be — and whether Trap stays
 a distinct archetype afterwards — is the open work.
 
 
-## 4. Owed: re-space the Corp chair, reconsider how its top rungs are built, and teach the bots to play in phases — OPEN (16 September 2026)
+## 4. Owed: re-space the Corp chair, reconsider how its top rungs are built, and teach the bots to play in phases — OPEN (16 September 2026); (c) CLOSED on both chairs (22 September 2026, §19)
 
 Three jobs, opened by §3 and none attempted there. They are recorded
 together because (b) may make (a) unnecessary, and (c) is the largest of
@@ -548,6 +548,14 @@ prediction on the Corp chair, finds the Runner chair's stance *inverted*
 (most aggressive when its rig is emptiest), and corrects §3's
 "credit-starved" reading to its early-game form — all three of which bear
 on which stage signal is worth reading.
+
+**(c) closed, 22 September 2026, on both chairs, with no gain on
+either.** §6–§8 measured the Runner and §19 the Corp. Staged from
+`glacier` under a fort-reading scalar, every leg toward pressure loses
+to standing on `glacier` (−0.016 to −0.086, six seeds × 384), and the
+inverted leg ties it. The staged Corp pushes *earlier*, not later. On
+both chairs a leg scores as the profile it spends the game on.
+`STAGE_GAIN` stays 0.0. (b) is next.
 
 **Sequencing:** (c), then (b), then (a). Each one moves the numbers the
 next one would be measured against, and re-spacing rungs around a top rung
@@ -1718,3 +1726,95 @@ decks whose top rungs do not play it (`balanced`, `trap`, and `rush` since
 not a tuning.
 
 Reports under `target/coverage/fort-ambush-{c,x,e}-*.json`.
+
+
+## 19. The Corp plays in phases no better than the Runner did: every leg that travels loses to standing on `glacier` — DONE, dial at gain 0.0 (22 September 2026)
+
+`feat/corp-plays-in-phases`. §4(c) on the Corp chair, which §6–§8 left
+unstaged on purpose so that one chair's effect stayed attributable. The
+mechanism is §6's with the Corp's own scalar, and it ships at
+`STAGE_GAIN` 0.0 for §7's reason: nothing that moves beats standing
+still.
+
+**The prediction, written down before the first leg ran:** the Runner
+chair's result repeats — what a leg scores follows the profile it
+spends the game on, so standing on `glacier` beats every travel. It
+did.
+
+**Chair isolation moved to the flags first.** `bots::AgentSetup` had one
+`stage_gain` for both chairs, and that was the isolation only because
+the Corp arm was never staged. Staging it would have turned the one
+field into §3's trap, a single number moving both chairs. So there are
+now two fields and two flags, and each reaches only a seat on its own
+side: `--stage-gain` (the Runner, unchanged) and `--corp-stage-gain`,
+on `bench` and `diag tempo`. `bench`'s report records both.
+
+**The scalar, `corp_stage`,** is `runner_stage` mirrored. **Readiness**
+is the fort: ICE in front of the Corp's best-defended remote, over
+`glacier`'s own `agenda_protection_cap` (3). Central ICE doesn't count.
+Rezzed and unrezzed pieces both count. There doesn't have to be an
+agenda behind the ICE, because a fort is built *before* the agenda goes
+in. **Urgency** is the Runner's clock, which overrides readiness. Every
+input is public.
+
+**The endpoints were the measurement.** A throwaway environment override
+on the endpoints (built into `target/pinned/corp-stage-scaffold`, sha256
+`d9fa7157…`, never committed) ran every leg on one binary. Each leg is
+`heuristic:glacier` as Corp against the fixed one-ply balanced Runner,
+`bench --pairing heuristic:glacier/heuristic --corp-stage-gain G`, six
+seeds × 384 games, paired game for game against the same binary at gain
+0.0:
+
+| Corp leg | Corp win share | per seed (1–6) | against `glacier` | z | discordant |
+|---|---|---|---|---|---|
+| `glacier` all game (gain 0.0) | **0.238** | .234 .206 .229 .260 .253 .245 | | | |
+| `glacier` → `balanced`, gain 0.5 | 0.221 | .195 .203 .253 .203 .229 .245 | −0.016 | 1.8 | 458 |
+| `glacier` → `balanced`, gain 1.0 | 0.165 | .154 .151 .169 .174 .174 .169 | **−0.072** | 7.1 | 549 |
+| `glacier` → `rush`, gain 1.0 | 0.152 | .164 .154 .167 .143 .143 .141 | **−0.086** | 8.4 | 554 |
+| `glacier` → `trap`, gain 1.0 | 0.208 | .214 .185 .227 .214 .206 .203 | −0.030 | 2.8 | 609 |
+| `balanced` → `glacier` (inverted), gain 1.0 | 0.241 | .193 .221 .250 .258 .271 .255 | +0.003 | 0.3 | 594 |
+
+Every leg toward pressure loses, monotonically with the gain on the one
+destination measured at two gains. The inverted leg, which plays
+`balanced` until the fort is up and then `glacier`, ties. `trap` loses
+least and is the only destination that raises the flatline count
+(51 → 170 Corp wins not on agendas): it buys ambush wins and gives up
+agenda wins (497 → 309). **So the §8 clock fallback and the `elite`
+check did not run.** This plan gated both on a one-ply win, and there
+was none to test against a clock or under search.
+
+**`diag tempo` explains the loss, and it is the same shape as §6's.**
+Seed 1, 384 games, Corp table:
+
+| Corp | advances, turn 2 | advances, turn 3 | scoring remote, turn 3 | credit clicks / game | advances / game | scores / game |
+|---|---|---|---|---|---|---|
+| `glacier` static | 0.58 | 0.46 | 0.39 | 15.8 | 6.8 | 1.2 |
+| `glacier` → `balanced` | **0.76** | 0.40 | 0.33 | 13.1 | 6.4 | **0.9** |
+| `balanced` → `glacier` | 0.83 | 0.61 | 0.48 | 15.0 | 7.4 | 1.4 |
+| `balanced` static | 0.84 | 0.44 | 0.40 | 9.0 | 5.2 | 0.6 |
+
+One piece of ICE on a remote is already a third of the travel. So the
+staged Corp starts pushing on turn 2, which is *earlier* than static
+`glacier`, and banks less for the rest of the game. That is the
+opposite of "build, then score". A fort three deep on one remote is
+rare, so the scalar spends most of the game between a third and two
+thirds, and the leg plays as a fixed blend of the two profiles. It
+scores what that blend scores. §7's sentence holds on this chair too:
+"What a leg scores follows where it spends the game, not when it
+moves."
+
+**§4(c) is closed on both chairs.** The idea was that the archetypes
+name two halves of one game and a person plays them in sequence. The
+bots don't gain from sequencing them, on either chair, with either a
+board scalar or a clock (§8, Runner). `STAGE_GAIN` stays 0.0. The
+Corp's pressure end is named `Balanced` in code as the static midpoint,
+not as a finding. This releases §4(b) and then (a):
+
+- **(b)** Which style a non-`glacier` deck's top rungs play (§18's
+  handover). `glacier` at `elite` is still the one top-rung lever that
+  survived search.
+- **(a)** Re-spacing around whatever (b) builds.
+
+Workspace tests green and clippy silent. At both gains 0.0 the change is
+byte-identical to `main` in all four `coverage_identical` shapes.
+Reports are under `target/coverage/corp-stage/`.

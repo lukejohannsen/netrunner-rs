@@ -79,16 +79,19 @@ pub struct AgentSetup {
     /// has no evaluator, and a network-backed `PuctOnnx` has its own
     /// value head).
     pub personality: Personality,
-    /// How far the position's stage may move the evaluator's weights, from
+    /// How far the position's stage may move a Runner seat's weights, from
     /// the build archetype toward the pressure one —
     /// `eval::Weights::stage_gain`, and zero is the static evaluator.
     ///
-    /// **One field for both chairs, and that is the chair isolation rather
-    /// than a shortcut.** `eval::stage_weights` stages the Runner arm only,
-    /// so a Corp seat handed the same gain is byte-identical to one handed
-    /// zero. A measurement therefore needs no per-chair flag, and cannot
-    /// spring Phase 5 §3's trap of moving both chairs with one constant.
-    pub stage_gain: f64,
+    /// **One field per chair, and each reaches only a seat on its own
+    /// side.** This was one field for both while only the Runner arm was
+    /// staged, which made a Corp seat handed the gain byte-identical to
+    /// one handed zero. Staging the Corp (Phase 5 §19) ended that, and a
+    /// shared field would then spring Phase 5 §3's trap — one number
+    /// moving both chairs — through the flag meant to isolate one.
+    pub runner_stage_gain: f64,
+    /// The same, for a Corp seat. See `runner_stage_gain`.
+    pub corp_stage_gain: f64,
 }
 
 impl AgentSetup {
@@ -102,7 +105,8 @@ impl AgentSetup {
             shared_sample: false,
             mcts_depth: None,
             personality: Personality::Balanced,
-            stage_gain: 0.0,
+            runner_stage_gain: 0.0,
+            corp_stage_gain: 0.0,
         }
     }
 
@@ -142,7 +146,11 @@ pub fn make_seat_agent(
 }
 
 pub fn make_agent(kind: BotKind, side: Side, seed: u64, setup: AgentSetup) -> Option<Box<dyn BotAgent>> {
-    let AgentSetup { simulations, determinizations, shared_sample, mcts_depth, personality, stage_gain } = setup;
+    let AgentSetup { simulations, determinizations, shared_sample, mcts_depth, personality, runner_stage_gain, corp_stage_gain } = setup;
+    let stage_gain = match side {
+        Side::Runner => runner_stage_gain,
+        Side::Corp => corp_stage_gain,
+    };
     match kind {
         BotKind::Human | BotKind::Onnx | BotKind::PuctOnnx => None,
         BotKind::Random => Some(Box::new(RandomAgent::new(seed))),

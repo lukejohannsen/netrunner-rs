@@ -264,7 +264,8 @@ fn play(
         personality: spec.personality,
         // Not staged: this diagnostic's numbers were taken on the static
         // evaluator and a stage would make them a different measurement.
-        stage_gain: 0.0,
+        runner_stage_gain: 0.0,
+        corp_stage_gain: 0.0,
     };
     let corp = bots::make_agent_with_model(args.corp.kind, Side::Corp, seed, setup(args.corp), &config.model)?
         .ok_or("the Corp seat must be a bot that can take one")?;

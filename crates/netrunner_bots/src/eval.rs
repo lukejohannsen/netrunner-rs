@@ -621,6 +621,18 @@ const RD_DRAW_RESERVE: usize = 5;
 /// never beats `runner_stage` beyond noise on either destination (best
 /// −0.014, z 1.29), loses to it outright when the clock is short (turn 4:
 /// +0.040, z 3.56), and never beats standing on `Builder` (best +0.003).
+///
+/// **And the Corp chair answers the same way** (§19). Staged from
+/// `Glacier` under `corp_stage`, against the fixed one-ply balanced
+/// Runner, six seeds × 384, paired game for game against `Glacier` all
+/// game (0.238): travelling to `Balanced` is −0.072 (z 7.1) at full gain
+/// and −0.016 at half, to `Rush` −0.086 (z 8.4), to `Trap` −0.030
+/// (z 2.8), and the inverted leg — `Balanced` until the fort is up, then
+/// `Glacier` — ties it (+0.003, z 0.3). One piece of ICE on a remote is a
+/// third of the travel, so the staged Corp pushes *earlier* rather than
+/// later (advancements on turn 2, 0.58 → 0.76) and scores less (1.2 →
+/// 0.9 agendas a game). Neither chair plays better for knowing when it
+/// is; each plays as well as the profile it spends the game on.
 const STAGE_GAIN: f64 = 0.0;
 
 /// Every tunable term of `evaluate_state`, as one value. `Default` is the
@@ -815,21 +827,37 @@ pub fn evaluate_state(state: &GameState, side: Side, registry: &CardRegistry) ->
 /// make two leaves of the same tree incomparable in a way no other term
 /// is. Every input below moves by one card or one credit at a time.
 ///
-/// The Corp arm is deliberately not staged yet: Phase 5 §5's baseline
-/// relocated its signal (it is rich and under-rezzing *late*, not
-/// credit-starved throughout as §3 read it), and one chair at a time is
-/// what keeps a pool-wide effect attributable.
+/// **The Corp arm is staged the same way (Phase 5 §19), a chair at a time
+/// and on its own flag** (`bots::AgentSetup::corp_stage_gain`), from
+/// `Glacier` — "build the fort, *then* score behind it", the best Corp
+/// profile since §9 — toward the scoring stance, under `corp_stage`. It
+/// was left unstaged until the Runner chair's answer was in, because one
+/// chair at a time is what keeps a pool-wide effect attributable.
 fn stage_weights(state: &GameState, side: Side, registry: &CardRegistry, w: &Weights) -> Weights {
-    if w.stage_gain == 0.0 || side == Side::Corp {
+    if w.stage_gain == 0.0 {
         return *w;
     }
-    let stance = lerp(
-        &Personality::Builder.weights(),
-        &Personality::Aggressive.weights(),
-        runner_stage(state, registry),
-    );
+    let stance = match side {
+        Side::Runner => lerp(
+            &Personality::Builder.weights(),
+            &Personality::Aggressive.weights(),
+            runner_stage(state, registry),
+        ),
+        Side::Corp => lerp(&CORP_BUILD.weights(), &CORP_PRESSURE.weights(), corp_stage(state)),
+    };
     lerp(w, &stance, w.stage_gain)
 }
+
+/// The Corp stance's two ends. See `stage_weights` and `STAGE_GAIN`.
+///
+/// `Glacier` is the build end because it is the profile whose doc says
+/// "then" and the best Corp in the pool (§9). The pressure end is
+/// `Balanced` because no destination earned the place: `Rush`, `Trap` and
+/// `Balanced` were all measured (§19) and every one loses to not
+/// travelling, so the choice here is the static evaluator's own midpoint
+/// rather than a claim that it is the right one.
+const CORP_BUILD: Personality = Personality::Glacier;
+const CORP_PRESSURE: Personality = Personality::Balanced;
 
 /// How far through its own game plan the Runner is, in `0.0..=1.0`: 0 is
 /// "nothing to run with", 1 is "run now".
@@ -854,6 +882,46 @@ fn runner_stage(state: &GameState, registry: &CardRegistry) -> f64 {
     let readiness = breaker_coverage(state, registry) as f64 / 3.0;
     let target = state.rules.winning_agenda_points.max(1);
     let urgency = f64::from(state.corp.resources.agenda_points.0) / f64::from(target);
+    readiness.max(urgency).clamp(0.0, 1.0)
+}
+
+/// How far through its own game plan the Corp is, in `0.0..=1.0`: 0 is
+/// "nothing to score behind", 1 is "score now". The mirror of
+/// `runner_stage`, with the same two readings and the larger winning.
+///
+/// **Readiness** is the fort: the ICE in front of the Corp's
+/// best-defended remote, over the build endpoint's own
+/// `agenda_protection_cap` rather than a second number for "enough" — the
+/// cap is where `Glacier` stops paying for another piece. Every piece
+/// counts, rezzed or not: a face-down wall stops a Runner who does not
+/// know what it is, and the Corp always knows. It does not ask for an
+/// agenda behind the ICE, which is what `protected_agenda_ice` asks:
+/// a fort is built *before* the agenda goes in, and a scalar that waited
+/// for the agenda would read "build" at the moment the Corp should score.
+///
+/// **Urgency** is the Runner's clock, the same override the Runner's
+/// scalar takes from the Corp's: at five of seven points stolen the fort
+/// no longer matters and the Corp has to score what it can.
+///
+/// Positions of installed ICE are public and agenda points are public, so
+/// nothing here reads a sampled card, and every input moves by one card
+/// or one point at a time, as `stage_weights` needs.
+fn corp_stage(state: &GameState) -> f64 {
+    use netrunner_core::rules::{InstallSlot, ServerId};
+    let cap = CORP_BUILD.weights().agenda_protection_cap.max(1);
+    let mut ice_per_remote: Vec<(u32, usize)> = Vec::new();
+    for ice in state.corp.installed.iter().filter(|card| card.slot == InstallSlot::Ice) {
+        if let ServerId::Remote(n) = ice.server {
+            match ice_per_remote.iter_mut().find(|(remote, _)| *remote == n) {
+                Some((_, count)) => *count += 1,
+                None => ice_per_remote.push((n, 1)),
+            }
+        }
+    }
+    let fort = ice_per_remote.iter().map(|(_, count)| *count).max().unwrap_or(0).min(cap);
+    let readiness = fort as f64 / cap as f64;
+    let target = state.rules.winning_agenda_points.max(1);
+    let urgency = f64::from(state.runner.resources.agenda_points.0) / f64::from(target);
     readiness.max(urgency).clamp(0.0, 1.0)
 }
 
@@ -3363,24 +3431,119 @@ mod tests {
         }
     }
 
-    /// The Corp arm is not staged yet, so a Corp seat handed a gain plays
-    /// byte-identically to one handed none. That is what lets one
-    /// `--stage-gain` flag isolate the Runner chair (`bots::AgentSetup`).
+    /// Both arms are staged. The chair isolation is no longer here but
+    /// one layer up, where each seat is built with its own `Weights` and
+    /// `bots::AgentSetup` gives each chair its own gain. The board is one
+    /// where both scalars are off zero, so a stance wired to nothing on
+    /// either side would show as an equality.
     #[test]
-    fn the_corp_is_not_staged_so_one_flag_isolates_the_runner_chair() {
-        let registry = CardRegistry::from_cards(vec![costed_breaker("cleaver", Some(IceType::Barrier), 3)]);
+    fn both_chairs_are_staged() {
+        use netrunner_core::rules::{InstallSlot, ServerId};
+        let registry = CardRegistry::from_cards(vec![costed_breaker("cleaver", Some(IceType::Barrier), 3), ice("wall", 2)]);
         let mut state = GameState::new(0);
-        state.corp.resources.agenda_points = AgendaPoints(5);
+        state.corp.resources.agenda_points = AgendaPoints(3);
+        state.runner.resources.agenda_points = AgendaPoints(3);
         state.runner.rig = vec![rig_card("cleaver")];
+        state.corp.installed = vec![InstalledCard {
+            card: CardId("wall".to_string()),
+            install_id: InstallId(1),
+            slot: InstallSlot::Ice,
+            server: ServerId::Remote(0),
+            ..Default::default()
+        }];
         let full = Weights { stage_gain: 1.0, ..Weights::default() };
-        assert_eq!(
-            evaluate_state_with(&state, Side::Corp, &registry, &full),
-            evaluate_state_with(&state, Side::Corp, &registry, &Weights::default()),
-        );
-        assert_ne!(
-            evaluate_state_with(&state, Side::Runner, &registry, &full),
-            evaluate_state_with(&state, Side::Runner, &registry, &Weights::default()),
-            "the Runner chair does move, or the dial is wired to nothing"
+        for side in [Side::Corp, Side::Runner] {
+            assert_ne!(
+                evaluate_state_with(&state, side, &registry, &full),
+                evaluate_state_with(&state, side, &registry, &Weights::default()),
+                "{side:?}: the dial is wired to something"
+            );
+        }
+    }
+
+    /// The Corp's scalar is the fort on its best-defended remote,
+    /// overridden by the Runner's clock. ICE on a central is not a fort
+    /// to score behind, and a second remote's ICE does not add to the
+    /// first's.
+    #[test]
+    fn the_corp_stage_reads_the_fort_and_is_overridden_by_the_runners_clock() {
+        use netrunner_core::rules::{InstallSlot, ServerId};
+        let piece = |n: u32, server: ServerId| InstalledCard {
+            card: CardId("wall".to_string()),
+            install_id: InstallId(n),
+            slot: InstallSlot::Ice,
+            server,
+            ..Default::default()
+        };
+        let cap = f64::from(CORP_BUILD.weights().agenda_protection_cap as u32);
+        let mut state = GameState::new(0);
+        assert_eq!(corp_stage(&state), 0.0, "no fort, no clock: all build");
+
+        state.corp.installed = vec![piece(1, ServerId::Hq), piece(2, ServerId::Hq)];
+        assert_eq!(corp_stage(&state), 0.0, "a central's ICE is not a fort to score behind");
+
+        state.corp.installed.push(piece(3, ServerId::Remote(0)));
+        state.corp.installed.push(piece(4, ServerId::Remote(1)));
+        assert!((corp_stage(&state) - 1.0 / cap).abs() < 1e-9, "two remotes of one piece are one piece deep");
+
+        for n in 5..12 {
+            state.corp.installed.push(piece(n, ServerId::Remote(0)));
+        }
+        assert_eq!(corp_stage(&state), 1.0, "a fort past the cap is all pressure");
+
+        let mut losing = GameState::new(0);
+        losing.runner.resources.agenda_points = AgendaPoints(5);
+        let target = f64::from(losing.rules.winning_agenda_points);
+        assert!((corp_stage(&losing) - 5.0 / target).abs() < 1e-9);
+        assert!(corp_stage(&losing) > 0.5, "five points stolen is not a building position");
+    }
+
+    /// The decision the Corp's dial exists to move. A `Glacier` Corp at
+    /// full gain is still `Glacier` with nothing built — the build end of
+    /// its own stance — and behind a finished fort it prices an
+    /// advancement token as the scoring end does, above what the static
+    /// fort-builder would.
+    #[test]
+    fn a_staged_corp_is_its_fort_builder_on_an_empty_board_and_presses_behind_a_fort() {
+        use netrunner_core::rules::{InstallSlot, ServerId};
+        let mut agenda = ice("agenda", 0);
+        agenda.card_type = CardType::Agenda;
+        agenda.advancement_requirement = Some(5);
+        let registry = CardRegistry::from_cards(vec![agenda, ice("wall", 2)]);
+        let glacier = Personality::Glacier.weights();
+        let staged = Weights { stage_gain: 1.0, ..glacier };
+        let board = |walls: u32, tokens: u32| {
+            let mut state = GameState::new(0);
+            state.corp.installed = (0..walls)
+                .map(|n| InstalledCard {
+                    card: CardId("wall".to_string()),
+                    install_id: InstallId(n + 10),
+                    slot: InstallSlot::Ice,
+                    server: ServerId::Remote(0),
+                    ..Default::default()
+                })
+                .collect();
+            state.corp.installed.push(InstalledCard {
+                card: CardId("agenda".to_string()),
+                install_id: InstallId(1),
+                slot: InstallSlot::Root,
+                server: ServerId::Remote(0),
+                advancement_tokens: tokens,
+                ..Default::default()
+            });
+            state
+        };
+        let token = |walls: u32, w: &Weights| {
+            evaluate_state_with(&board(walls, 1), Side::Corp, &registry, w)
+                - evaluate_state_with(&board(walls, 0), Side::Corp, &registry, w)
+        };
+        assert_eq!(token(0, &staged), token(0, &glacier), "no fort: the staged Corp is the fort-builder");
+        let cap = CORP_BUILD.weights().agenda_protection_cap as u32;
+        assert!(
+            token(cap, &staged) > token(cap, &glacier),
+            "behind a fort a token is worth more staged ({}) than static ({})",
+            token(cap, &staged),
+            token(cap, &glacier)
         );
     }
 

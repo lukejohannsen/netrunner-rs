@@ -64,8 +64,10 @@ pub struct BenchArgs {
     /// How far a position's stage may move the evaluator's weights, from
     /// the build archetype toward the pressure one. Zero is the static
     /// evaluator. Recorded in the report, and like `mcts_depth` not part
-    /// of `participant_id` — `--label` separates two settings.
+    /// of `participant_id` — `--label` separates two settings. The Runner
+    /// seats'; `corp_stage_gain` is the Corp seats'.
     pub stage_gain: f64,
+    pub corp_stage_gain: f64,
     /// Ordered pairings to play, empty for the whole square. A filtered
     /// run keeps every game's index — and so its seed and matchup — from
     /// the unfiltered one; see the flag's doc comment.
@@ -118,6 +120,9 @@ pub struct BenchReport {
     pub shared_sample: bool,
     pub mcts_depth: Option<usize>,
     pub stage_gain: f64,
+    /// Zero in every report written before the Corp arm was staged, by
+    /// construction — such a report simply lacks the field.
+    pub corp_stage_gain: f64,
     pub games: Vec<GameRecord>,
     pub pairings: Vec<PairingSummary>,
     pub ladder: Vec<LadderRow>,
@@ -270,6 +275,7 @@ pub fn run(args: &BenchArgs, config: &Config) -> Result<(), Box<dyn std::error::
             shared_sample: args.shared_sample,
             mcts_depth: args.mcts_depth,
             stage_gain: args.stage_gain,
+            corp_stage_gain: args.corp_stage_gain,
             games,
             pairings,
             ladder,
@@ -296,7 +302,8 @@ fn play(
         shared_sample: args.shared_sample,
         mcts_depth: args.mcts_depth,
         personality,
-        stage_gain: args.stage_gain,
+        runner_stage_gain: args.stage_gain,
+        corp_stage_gain: args.corp_stage_gain,
     };
     let corp =
         bots::make_seat_agent(job.corp.level, job.corp.kind, Side::Corp, job.seed, setup(job.corp.personality), &config.model)?
@@ -407,12 +414,12 @@ mod tests {
         let mut argv = vec!["netrunner_cli", "bench"];
         argv.extend_from_slice(extra);
         let mut config = Config::parse_from(argv);
-        let Some(Command::Bench { bots, games, seed, simulations, determinizations, shared_sample, mcts_depth, stage_gain, pairings, threads, report, ratings, label }) =
+        let Some(Command::Bench { bots, games, seed, simulations, determinizations, shared_sample, mcts_depth, stage_gain, corp_stage_gain, pairings, threads, report, ratings, label }) =
             config.command.take()
         else {
             panic!("parsed a bench command");
         };
-        (BenchArgs { bots, games, seed, simulations, determinizations, shared_sample, mcts_depth, stage_gain, pairings, threads, report, ratings, label }, config)
+        (BenchArgs { bots, games, seed, simulations, determinizations, shared_sample, mcts_depth, stage_gain, corp_stage_gain, pairings, threads, report, ratings, label }, config)
     }
 
     /// Two kinds, one game a pairing, two threads: four games, every seat
