@@ -335,8 +335,8 @@ fn apply_action_once(
         PlayerAction::RemoveTag => remove_tag(state, registry),
         PlayerAction::PurgeVirusCounters => purge_virus_counters(state, registry),
         PlayerAction::TrashResource { target } => trash_resource(state, registry, target),
-        PlayerAction::SelectCardToAccess { card_id } => {
-            select_card_to_access(state, registry, card_id)
+        PlayerAction::SelectCardToAccess { candidate } => {
+            select_card_to_access(state, registry, candidate)
         }
         PlayerAction::StealAgenda { card_id } => steal_agenda(state, registry, card_id),
         PlayerAction::TrashAccessedCard { card_id } => {
@@ -2303,7 +2303,7 @@ fn trash_resource(
 fn select_card_to_access(
     state: &GameState,
     registry: &CardRegistry,
-    card_id: CardId,
+    candidate: run::AccessCandidate,
 ) -> Result<(GameState, Vec<GameEvent>), RulesError> {
     require_phase(state, GamePhase::Action(Side::Runner))?;
     // Never actually open when this is legal in practice — a window only
@@ -2312,7 +2312,7 @@ fn select_card_to_access(
     // for consistency with every other access-resolution action below.
     paid_ability::require_no_window(state)?;
     let mut next = state.clone();
-    let mut events = run::resolve_select_card(&mut next, &card_id, registry)?;
+    let mut events = run::resolve_select_card(&mut next, &candidate, registry)?;
     events.extend(paid_ability::open_window_if_at_checkpoint(&mut next));
     Ok((next, events))
 }
@@ -3857,12 +3857,12 @@ mod tests {
             next.active_run,
             Some(RunState {
                 cards_accessed_count: 1,
-                access_state: Some(run::AccessState { pending_install: None, pending_install_rezzed: false, resolved_installs: Vec::new(),
+                access_state: Some(run::AccessState { pending_install: None, pending_install_rezzed: false,
                     // Set when the card was presented, and left in place
                     // for the rest of its `PendingChoice`.
                     currently_accessing: Some(CardId("hedge_fund".to_string())),
                     server: ServerId::Hq,
-                    unaccessed_cards: Vec::new(),
+                    candidates: Vec::new(), from_zone: Vec::new(),
                     resolved_cards: Vec::new(),
                     phase: run::AccessPhase::PendingChoice {
                         card_id: CardId("hedge_fund".to_string()),
@@ -6557,7 +6557,7 @@ mod tests {
         RunState {
             server,
             phase: RunPhase::AccessingCard,
-            access_state: Some(run::AccessState { pending_install: None, pending_install_rezzed: false, resolved_installs: Vec::new(),
+            access_state: Some(run::AccessState { pending_install: None, pending_install_rezzed: false,
                 server,
                 phase,
                 ..Default::default()
@@ -6854,7 +6854,7 @@ mod tests {
         assert!(state.paid_ability_window.is_none());
 
         let (state, events) =
-            apply_action(&state, &registry, PlayerAction::SelectCardToAccess { card_id: card_a.clone() })
+            apply_action(&state, &registry, PlayerAction::SelectCardToAccess { candidate: run::AccessCandidate::Archived(card_a.clone()) })
                 .expect("selecting the first card should succeed");
         assert_eq!(
             events,

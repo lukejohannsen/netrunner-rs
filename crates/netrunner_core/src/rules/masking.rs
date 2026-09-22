@@ -6,7 +6,7 @@ use crate::rules::action::{PlayerAction, TargetZone};
 use crate::rules::event::GameEvent;
 use crate::rules::{continuous, lingering};
 use crate::rules::turn_log::{LastTurn, TurnLog};
-use crate::rules::run::{AccessPhase, AccessState, EncounteredSubroutine, RunIce, RunPhase, RunState, ServerId};
+use crate::rules::run::{AccessCandidate, AccessPhase, AccessState, EncounteredSubroutine, RunIce, RunPhase, RunState, ServerId};
 use crate::rules::state::{ArchivedCard, CorpState, OncePerTurnKey, GamePhase, GameState, InstallId, InstallSlot, InstalledCard, InstalledRunnerCard, MemoryUnits, PaidAbilityWindow, PendingDecision, ScoredAgenda,
     PendingPrevention, PlayerResources, Side, TraceState,
 };
@@ -256,14 +256,16 @@ pub struct PublicRunIceIdentity {
 }
 
 /// A pending per-card access decision as seen by a particular viewer —
-/// masking mirrors `PublicAccessState::unaccessed_cards`/`resolved_cards`:
+/// masking mirrors `PublicAccessState::resolved_cards`:
 /// the card being decided on is identity-visible to the Runner always, and
 /// to the Corp only when accessing (fully public) Archives — plus, for
 /// `PendingInteractiveTrigger` only, to whichever side is being asked to
 /// pay. See that variant for why.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum PublicAccessPhase {
-    SelectNextCard { selectable_cards: MaskedZone },
+    /// Never masked: a candidate names no card a viewer may not see
+    /// (`AccessCandidate`).
+    SelectNextCard { selectable_cards: Vec<AccessCandidate> },
     /// `decider` is public: which side is being asked to pay is not hidden
     /// information — both players watch the game wait on someone — and a
     /// client cannot render whose decision it is without it.
@@ -295,7 +297,13 @@ pub enum PublicAccessPhase {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PublicAccessState {
     pub server: ServerId,
-    pub unaccessed_cards: MaskedZone,
+    /// The candidates in the root and in Archives not yet chosen. Never
+    /// masked, for the reason `SelectNextCard`'s are not.
+    pub candidates: Vec<AccessCandidate>,
+    /// How many more cards the breach will access out of HQ or R&D. What
+    /// they are is known to neither player (`AccessState::from_zone`), so
+    /// no viewer is shown more than the number.
+    pub from_zone: u32,
     pub resolved_cards: MaskedZone,
     /// Never masked — an install id is public, same as
     /// `PublicInstalledCard::install_id`; it says *which* root card is
@@ -479,7 +487,7 @@ pub fn mask_state_for_player(state: &GameState, registry: &CardRegistry, viewer:
 /// and several of those name a card the viewer's `ClientView` conceals:
 /// the Corp's `InstallCard { card_id }` is the facedown card it just put
 /// on the table, its `DiscardCard` is a card going facedown to Archives,
-/// and the Runner's `SelectCardToAccess`/`PassAccessedCard`/`Pay…`/
+/// and the Runner's `PassAccessedCard`/`Pay…`/
 /// `Decline…` tell the Corp which HQ or R&D card was looked at. A viewer
 /// always sees their own actions whole — they chose them.
 ///
@@ -506,13 +514,14 @@ pub enum ConcealedAction {
     InstallCard { zone: TargetZone, slot: InstallSlot },
     /// A Corp discard, which goes facedown to Archives.
     DiscardCard,
-    /// The Runner's access of a card in HQ or R&D, from the Corp's chair:
+    /// The Runner's pass on a card in HQ or R&D, from the Corp's chair:
     /// the Corp does not learn which of its cards was looked at unless the
     /// access reveals it (a steal or trash lands the card in a public zone,
     /// and those actions stay `Visible`). Archives is under-disclosed by
     /// the same rule — everything there is faceup to both sides after an
-    /// access — which is the accepted direction of error.
-    SelectCardToAccess,
+    /// access — which is the accepted direction of error. The choice of
+    /// which candidate to access is not here: it names no hidden card
+    /// (`AccessCandidate`), so it is shown whole.
     PassAccessedCard,
     PayAccessTrigger,
     DeclineAccessTrigger,
@@ -570,15 +579,17 @@ pub fn mask_action_for_player(action: &PlayerAction, actor: Side, viewer: impl I
         PlayerAction::DiscardCard { .. } if actor == Side::Corp => PublicAction::Concealed(ConcealedAction::DiscardCard),
         // A Runner discard goes to the heap, which is never masked.
         PlayerAction::DiscardCard { .. } => PublicAction::Visible(action.clone()),
-        PlayerAction::SelectCardToAccess { .. } => PublicAction::Concealed(ConcealedAction::SelectCardToAccess),
         PlayerAction::PassAccessedCard { .. } => PublicAction::Concealed(ConcealedAction::PassAccessedCard),
         PlayerAction::PayAccessTrigger { .. } => PublicAction::Concealed(ConcealedAction::PayAccessTrigger),
         PlayerAction::DeclineAccessTrigger { .. } => PublicAction::Concealed(ConcealedAction::DeclineAccessTrigger),
         // Faceup plays and Runner installs; steals and access-trashes,
         // which land the card in a public zone; a click-break, which only
-        // a rezzed piece of ICE can be the target of; and everything that
+        // a rezzed piece of ICE can be the target of; a choice of access
+        // candidate, which names a card only once the breach has turned it
+        // faceup in Archives (`AccessCandidate`); and everything that
         // names an `InstallId` or a position rather than a card.
-        PlayerAction::GainCreditClick { .. }
+        PlayerAction::SelectCardToAccess { .. }
+        | PlayerAction::GainCreditClick { .. }
         | PlayerAction::DrawCardClick { .. }
         | PlayerAction::RezIce { .. }
         | PlayerAction::InitiateRun { .. }
@@ -927,7 +938,7 @@ fn mask_run_ice(state: &GameState, registry: &CardRegistry, ice: &RunIce, owner_
 fn mask_access_phase(phase: &AccessPhase, card_visible: bool, viewer: Viewer) -> PublicAccessPhase {
     match phase {
         AccessPhase::SelectNextCard { selectable_cards } => {
-            PublicAccessPhase::SelectNextCard { selectable_cards: mask_zone(selectable_cards, card_visible) }
+            PublicAccessPhase::SelectNextCard { selectable_cards: selectable_cards.clone() }
         }
         AccessPhase::PendingInteractiveTrigger { card_id, cost, decider, can_pay } => PublicAccessPhase::PendingInteractiveTrigger {
             // **The decider always learns the card, whatever zone it came
@@ -963,7 +974,8 @@ fn mask_access_phase(phase: &AccessPhase, card_visible: bool, viewer: Viewer) ->
 fn mask_access_state(access: &AccessState, card_visible: bool, viewer: Viewer) -> PublicAccessState {
     PublicAccessState {
         server: access.server,
-        unaccessed_cards: mask_zone(&access.unaccessed_cards, card_visible),
+        candidates: access.candidates.clone(),
+        from_zone: access.from_zone.len() as u32,
         resolved_cards: mask_zone(&access.resolved_cards, card_visible),
         pending_install: access.pending_install,
         phase: mask_access_phase(&access.phase, card_visible, viewer),
@@ -1036,6 +1048,27 @@ fn mask_archived_card(archived: &ArchivedCard, owner_view: bool) -> PublicArchiv
     }
 }
 
+/// Archives as `owner_view` may see it. **The Corp sees its pile as it is
+/// kept; anyone else sees it in no order of its own**: the faceup cards by
+/// name, then the facedown ones. "Discard piles are not ordered" (CR
+/// 4.4.2), and a pile in the order its cards arrived let the Runner match
+/// each card a breach turned faceup (CR 7.3.2) to the moment it went into
+/// Archives facedown — a card discarded at the end of the turn it was
+/// drawn, an install the Corp trashed to make room (Rules Conformance A2).
+///
+/// Only the view is reordered, never `CorpState::archives`: the Corp's
+/// choices among its own Archives cards are positions into the pile
+/// (`ToggleCardSelection`), and the Corp's view keeps those positions. No
+/// action of the Runner's is a position in Archives — an access names the
+/// card (`AccessCandidate::Archived`).
+fn mask_archives(archives: &[ArchivedCard], owner_view: bool) -> Vec<PublicArchivedCard> {
+    let mut masked: Vec<PublicArchivedCard> = archives.iter().map(|a| mask_archived_card(a, owner_view)).collect();
+    if !owner_view {
+        masked.sort_by(|a, b| a.facedown.cmp(&b.facedown).then_with(|| a.card.cmp(&b.card)));
+    }
+    masked
+}
+
 fn mask_corp_state(corp: &CorpState, registry: &CardRegistry, owner_view: bool) -> PublicCorpState {
     let identity_recurring = corp.identity.as_ref().and_then(|identity| registry.get(identity)).and_then(|definition| definition.recurring_credits);
     PublicCorpState {
@@ -1043,7 +1076,7 @@ fn mask_corp_state(corp: &CorpState, registry: &CardRegistry, owner_view: bool) 
         resources: corp.resources.clone(),
         hq: mask_zone(&corp.hq, owner_view),
         r_and_d: mask_zone(&corp.r_and_d, owner_view),
-        archives: corp.archives.iter().map(|a| mask_archived_card(a, owner_view)).collect(),
+        archives: mask_archives(&corp.archives, owner_view),
         installed: corp
             .installed
             .iter()
@@ -1313,6 +1346,33 @@ mod tests {
         // The Runner sees the pile's shape — one card, facedown — but never
         // learns which card it is.
         assert_eq!(masked_for_runner.corp.archives, vec![PublicArchivedCard { card: None, facedown: true }]);
+    }
+
+    /// Rules Conformance A2: "Discard piles are not ordered" (CR 4.4.2).
+    /// Anyone but the Corp sees Archives faceup cards first, by name, then
+    /// the facedown ones — so a breach that turns the facedown cards faceup
+    /// (CR 7.3.2) does not say which of them arrived when. The Corp's own
+    /// view keeps the pile as it is kept, because its choices among its
+    /// Archives cards are positions into it.
+    #[test]
+    fn archives_is_shown_to_the_runner_in_no_order_of_its_own() {
+        let mut corp = corp_state_with_cards();
+        corp.archives = vec![
+            ArchivedCard::faceup(CardId("zeta".to_string())),
+            ArchivedCard::facedown(CardId("hidden".to_string())),
+            ArchivedCard::faceup(CardId("alpha".to_string())),
+        ];
+        let state = game_state(corp);
+
+        let face = |card: &str, facedown| PublicArchivedCard { card: Some(CardId(card.to_string())), facedown };
+        assert_eq!(
+            mask_state_for_player(&state, Side::Runner).corp.archives,
+            vec![face("alpha", false), face("zeta", false), PublicArchivedCard { card: None, facedown: true }]
+        );
+        assert_eq!(
+            mask_state_for_player(&state, Side::Corp).corp.archives,
+            vec![face("zeta", false), face("hidden", true), face("alpha", false)]
+        );
     }
 
     #[test]
@@ -1690,8 +1750,8 @@ mod tests {
 
     #[test]
     fn accessed_hq_card_identity_is_hidden_from_corp_but_visible_to_runner() {
-        let access = AccessState { pending_install: None, resolved_installs: Vec::new(),
-            unaccessed_cards: vec![CardId("agenda".to_string())],
+        let access = AccessState { pending_install: None,
+            from_zone: vec![CardId("agenda".to_string())],
             phase: AccessPhase::PendingChoice {
                 card_id: CardId("hedge_fund".to_string()),
                 trash_cost: None,
@@ -1705,12 +1765,16 @@ mod tests {
 
         let for_corp = mask_state_for_player(&state, Side::Corp);
         let corp_access = for_corp.active_run.as_ref().unwrap().access_state.as_ref().unwrap();
-        assert_eq!(corp_access.unaccessed_cards, MaskedZone::Hidden { count: 1 });
+        assert_eq!(corp_access.from_zone, 1);
         assert!(matches!(&corp_access.phase, PublicAccessPhase::PendingChoice { card: None, .. }));
 
         let for_runner = mask_state_for_player(&state, Side::Runner);
         let runner_access = for_runner.active_run.as_ref().unwrap().access_state.as_ref().unwrap();
-        assert_eq!(runner_access.unaccessed_cards, MaskedZone::Visible(vec![CardId("agenda".to_string())]));
+        // The card being accessed, and no other: the next card out of HQ is
+        // not yet accessed, and the Runner learns only that there is one
+        // (CR 7.3.4a; Rules Conformance A1).
+        assert_eq!(runner_access.from_zone, 1);
+        assert!(!serde_json::to_string(runner_access).unwrap().contains("agenda"), "{runner_access:?}");
         assert!(matches!(
             &runner_access.phase,
             PublicAccessPhase::PendingChoice { card: Some(id), .. } if *id == CardId("hedge_fund".to_string())
@@ -1719,7 +1783,7 @@ mod tests {
 
     #[test]
     fn accessed_archives_card_identity_is_visible_to_both_sides() {
-        let access = AccessState { pending_install: None, resolved_installs: Vec::new(),
+        let access = AccessState { pending_install: None,
             server: ServerId::Archives,
             phase: AccessPhase::PendingChoice {
                 card_id: CardId("cyberdex_trial".to_string()),
@@ -1752,7 +1816,6 @@ mod tests {
     fn an_interactive_trigger_names_the_card_to_whoever_must_pay() {
         let trigger = |decider: Side| AccessState {
             pending_install: None,
-            resolved_installs: Vec::new(),
             phase: AccessPhase::PendingInteractiveTrigger {
                 card_id: CardId("snare".to_string()),
                 cost: Cost::Credits(4),
@@ -1787,7 +1850,6 @@ mod tests {
         // decision still hides an HQ card from the Corp.
         let choice = AccessState {
             pending_install: None,
-            resolved_installs: Vec::new(),
             phase: AccessPhase::PendingChoice { card_id: CardId("snare".to_string()), trash_cost: Some(0), mandatory_steal: false, steal_cost: None },
             ..Default::default()
         };
@@ -1824,7 +1886,6 @@ mod tests {
     #[test]
     fn the_runners_access_actions_are_concealed_from_the_corp_unless_the_card_leaves_the_zone() {
         let concealed = [
-            (PlayerAction::SelectCardToAccess { card_id: id("hedge_fund") }, ConcealedAction::SelectCardToAccess),
             (PlayerAction::PassAccessedCard { card_id: id("hedge_fund") }, ConcealedAction::PassAccessedCard),
             (PlayerAction::PayAccessTrigger { card_id: id("hedge_fund") }, ConcealedAction::PayAccessTrigger),
             (PlayerAction::DeclineAccessTrigger { card_id: id("hedge_fund") }, ConcealedAction::DeclineAccessTrigger),
@@ -1836,6 +1897,9 @@ mod tests {
         for action in [
             PlayerAction::StealAgenda { card_id: id("hostile_takeover") },
             PlayerAction::TrashAccessedCard { card_id: id("nico_campaign") },
+            // A candidate names no card the Corp may not see.
+            PlayerAction::SelectCardToAccess { candidate: AccessCandidate::Zone },
+            PlayerAction::SelectCardToAccess { candidate: AccessCandidate::Root(InstallId(3)) },
         ] {
             assert_eq!(mask_action_for_player(&action, Side::Runner, Side::Corp), PublicAction::Visible(action.clone()));
         }
@@ -2163,7 +2227,7 @@ mod tests {
     #[test]
     fn a_spectator_sees_unrezzed_run_ice_as_the_runner_does_and_accessed_cards_as_the_corp_does() {
         let access = AccessState {
-            unaccessed_cards: vec![CardId("agenda".to_string())],
+            from_zone: vec![CardId("agenda".to_string())],
             phase: AccessPhase::PendingChoice {
                 card_id: CardId("hedge_fund".to_string()),
                 trash_cost: None,
@@ -2190,7 +2254,7 @@ mod tests {
             mask_action_for_player(&corp_install, Side::Corp, Viewer::Spectator),
             mask_action_for_player(&corp_install, Side::Corp, Side::Runner)
         );
-        let runner_access = PlayerAction::SelectCardToAccess { card_id: id("hedge_fund") };
+        let runner_access = PlayerAction::PassAccessedCard { card_id: id("hedge_fund") };
         assert_eq!(
             mask_action_for_player(&runner_access, Side::Runner, Viewer::Spectator),
             mask_action_for_player(&runner_access, Side::Runner, Side::Corp)

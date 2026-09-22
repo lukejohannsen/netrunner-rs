@@ -153,8 +153,8 @@ pub enum RulesError {
     #[error("every server this ability may target has already been run this turn")]
     NoServerLeftToRun,
 
-    #[error("{card:?} is not one of the cards currently offered for access selection")]
-    InvalidAccessSelection { card: CardId },
+    #[error("{candidate:?} is not one of the candidates currently offered for access")]
+    InvalidAccessSelection { candidate: crate::rules::run::AccessCandidate },
 
     #[error("Agenda {card:?} must be stolen and cannot be passed")]
     MandatoryStealViolation { card: CardId },

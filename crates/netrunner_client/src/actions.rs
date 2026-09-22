@@ -15,7 +15,7 @@
 use netrunner_core::cards::CardRegistry;
 use netrunner_core::dsl::CardId;
 use netrunner_core::rules::{
-    ConcealedAction, GameEvent, InstallId, InstallSlot, PendingDecision, PlayerAction, PublicAction, ServerId, Side, WouldHappen,
+    AccessCandidate, ConcealedAction, GameEvent, InstallId, InstallSlot, PendingDecision, PlayerAction, PublicAction, ServerId, Side, WouldHappen,
 };
 use netrunner_core::view::ClientView;
 use netrunner_session::PublicHistoryEntry;
@@ -172,6 +172,22 @@ pub fn install_label(id: &InstallId, registry: &CardRegistry, view: Option<&Clie
     match view.runner.rig.iter().find(|c| c.install_id == *id) {
         Some(rig_card) => card_title(&rig_card.card, registry),
         None => format!("install #{}", id.0),
+    }
+}
+
+/// What an access candidate is, in words: the card in a root by the name
+/// the viewer may see (`install_label`), a card in Archives by its name,
+/// and the next card of HQ or R&D by where it comes from, since nobody
+/// knows what it is until it is accessed (CR 7.3.4a, 7.4.7).
+pub fn candidate_label(candidate: &AccessCandidate, registry: &CardRegistry, view: Option<&ClientView>) -> String {
+    match candidate {
+        AccessCandidate::Root(install) => install_label(install, registry, view),
+        AccessCandidate::Archived(card_id) => card_title(card_id, registry),
+        AccessCandidate::Zone => match view.and_then(|view| view.active_run.as_ref()).map(|run| run.server) {
+            Some(ServerId::Hq) => "a random card from HQ".to_string(),
+            Some(ServerId::RnD) => "the top card of R&D".to_string(),
+            _ => "the next card of HQ or R&D".to_string(),
+        },
     }
 }
 
@@ -469,7 +485,7 @@ pub fn describe_action(action: &PlayerAction, registry: &CardRegistry, view: Opt
         // not obvious from the name alone at the point of choosing it.
         PlayerAction::PurgeVirusCounters => "Purge virus counters (3 clicks)".to_string(),
         PlayerAction::TrashResource { target } => format!("Trash {}", install_label(target)),
-        PlayerAction::SelectCardToAccess { card_id } => format!("Access {}", title(card_id)),
+        PlayerAction::SelectCardToAccess { candidate } => format!("Access {}", candidate_label(candidate, registry, view)),
         PlayerAction::StealAgenda { card_id } => format!("Steal {}", title(card_id)),
         PlayerAction::TrashAccessedCard { card_id } => format!("Trash {}", title(card_id)),
         PlayerAction::PassAccessedCard { card_id } => format!("Pass on {}", title(card_id)),
@@ -630,7 +646,6 @@ pub fn describe_public_action(action: &PublicAction, registry: &CardRegistry, vi
             format!("Install a card into {zone:?} ({slot:?})")
         }
         PublicAction::Concealed(ConcealedAction::DiscardCard) => "Discard a card".to_string(),
-        PublicAction::Concealed(ConcealedAction::SelectCardToAccess) => "Access a card".to_string(),
         PublicAction::Concealed(ConcealedAction::PassAccessedCard) => "Pass on the accessed card".to_string(),
         PublicAction::Concealed(ConcealedAction::PayAccessTrigger) => "Pay to avoid the accessed card's trigger".to_string(),
         PublicAction::Concealed(ConcealedAction::DeclineAccessTrigger) => "Decline the accessed card's trigger".to_string(),
@@ -653,7 +668,6 @@ pub fn explain_action(action: &PlayerAction, registry: &CardRegistry, view: Opti
     let title = |card_id: &CardId| -> String {
         registry.get(card_id).map(|c| c.title.clone()).unwrap_or_else(|| card_id.0.clone())
     };
-    let _ = view;
     match action {
         PlayerAction::GainCreditClick { .. } => "Spend 1 click to take 1 credit from the bank. Always available; the slowest way to make money.".to_string(),
         PlayerAction::DrawCardClick { side } => match side {
@@ -713,7 +727,16 @@ pub fn explain_action(action: &PlayerAction, registry: &CardRegistry, view: Opti
         PlayerAction::PurgeVirusCounters => "Spend all 3 clicks to remove every virus counter in play.".to_string(),
         PlayerAction::ChooseTriggerToResolve { .. } => "Several of your cards want to trigger at once; choose which resolves first.".to_string(),
         PlayerAction::TrashResource { .. } => "Spend 1 click and 2 credits to trash one of the tagged Runner's resources.".to_string(),
-        PlayerAction::SelectCardToAccess { card_id } => format!("Look at {} — accessing a card means seeing it, and stealing it if it is an agenda.", title(card_id)),
+        PlayerAction::SelectCardToAccess { candidate } => match candidate {
+            AccessCandidate::Zone => format!(
+                "Access {} — you see it only as you access it, and steal it if it is an agenda.",
+                candidate_label(candidate, registry, view)
+            ),
+            _ => format!(
+                "Look at {} — accessing a card means seeing it, and stealing it if it is an agenda.",
+                candidate_label(candidate, registry, view)
+            ),
+        },
         PlayerAction::StealAgenda { card_id } => format!("Steal {}: an accessed agenda goes to your score area and its points count for you.", title(card_id)),
         PlayerAction::TrashAccessedCard { card_id } => format!("Pay the trash cost to send {} to Archives instead of leaving it where it is.", title(card_id)),
         PlayerAction::PassAccessedCard { card_id } => format!("Leave {} where it is and move on.", title(card_id)),
@@ -749,7 +772,6 @@ mod tests {
         let concealed = [
             ConcealedAction::InstallCard { zone: ServerId::Remote(0), slot: InstallSlot::Root },
             ConcealedAction::DiscardCard,
-            ConcealedAction::SelectCardToAccess,
             ConcealedAction::PassAccessedCard,
             ConcealedAction::PayAccessTrigger,
             ConcealedAction::DeclineAccessTrigger,
@@ -1236,7 +1258,7 @@ mod tests {
             PlayerAction::PurgeVirusCounters,
             PlayerAction::ChooseTriggerToResolve { index: 0 },
             PlayerAction::TrashResource { target: install },
-            PlayerAction::SelectCardToAccess { card_id: card() },
+            PlayerAction::SelectCardToAccess { candidate: AccessCandidate::Zone },
             PlayerAction::StealAgenda { card_id: card() },
             PlayerAction::TrashAccessedCard { card_id: card() },
             PlayerAction::PassAccessedCard { card_id: card() },

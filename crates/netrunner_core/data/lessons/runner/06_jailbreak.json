@@ -141,7 +141,7 @@
       "hint": "Choose Complete run."
     },
     {
-      "prose": "Two accesses, and with more than one card to access you choose the order. Select Offworld Office and steal it, then look at Hedge Fund and pass.",
+      "prose": "Two accesses. R&D gives them up one card at a time from the top, so Offworld Office comes first: steal it, then look at Hedge Fund and pass.",
       "allow": {
         "AnyOf": [
           {
@@ -175,18 +175,8 @@
       },
       "solution": [
         {
-          "SelectCardToAccess": {
-            "card_id": "offworld_office"
-          }
-        },
-        {
           "StealAgenda": {
             "card_id": "offworld_office"
-          }
-        },
-        {
-          "SelectCardToAccess": {
-            "card_id": "hedge_fund"
           }
         },
         {
@@ -239,18 +229,8 @@
       },
       "solution": [
         {
-          "SelectCardToAccess": {
-            "card_id": "hedge_fund"
-          }
-        },
-        {
           "PassAccessedCard": {
             "card_id": "hedge_fund"
-          }
-        },
-        {
-          "SelectCardToAccess": {
-            "card_id": "offworld_office"
           }
         },
         {

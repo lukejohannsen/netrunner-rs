@@ -60,6 +60,41 @@ fixes them. The letters are this file's addresses: "Rules Conformance B1".
   - This answers the question Rules Audit backlog item 10 asked: the Runner is not entitled to
     that order. The heap has the same order but is all public, so there it breaks only the
     wording of the rule.
+- **A1 and A2 fixed** (`fix/access-one-at-a-time`).
+  - **A candidate is named the way the Runner can point at it** (`run::AccessCandidate`):
+    `Root(InstallId)` for a card in the root, `Zone` for "a random card from HQ" (7.3.4a) or
+    "the top card of R&D" (7.4.7), and `Archived(CardId)` for a card in Archives, faceup since
+    the breach began (7.3.2). `SelectCardToAccess` carries one, so the action names no hidden
+    card and is shown whole in the other seat's log; `ConcealedAction::SelectCardToAccess` is
+    gone.
+  - **The HQ and R&D cards the breach will reach are in `AccessState::from_zone`, known to
+    neither player.** A view carries only their number. They are drawn when the breach begins,
+    when the random access limit is set (7.3.5): HQ's at random, R&D's from the top. Choosing
+    `Zone` takes the next. With one candidate left there is nothing to choose, and it is
+    accessed unasked, so a breach of R&D with an empty root presents its cards one at a time,
+    top down, as 7.4.7 says. The Runner used to choose among the top three by name.
+  - **The unrezzed cards in the root were named too.** A1 was filed about HQ and R&D, but
+    `card_visible` showed the Runner every root card in the `SelectNextCard` list, rezzed or not.
+    `Root(InstallId)` fixes it with the rest.
+  - **A candidate that has left the server is no longer offered** (7.4.5). A root install
+    trashed mid-breach used to be accessed anyway, as whatever the zone fallback found under its
+    name. And only accesses performed are counted (7.3.6), for Zahya Sadeghi's credits: the count
+    was the candidates the breach began with.
+  - **A2: anyone but the Corp sees Archives in name order** (`masking::mask_archives`): the
+    faceup cards by name, then the facedown ones. The breach offers Archives' cards in the same
+    order. `CorpState::archives` itself is untouched, because the Corp's choices among its own
+    Archives cards are positions into it, and no action of the Runner's is.
+  - **The bots' samples draw `from_zone` from the sample's own HQ or R&D**
+    (`determinize::draw_from_zone`). The Runner's sample used to see exactly which cards were
+    coming.
+  - **Measured** (`scripts/coverage_identical.py main`, 192 games a report, seed 1).
+    `SelectCardToAccess` falls where a breach no longer asks: random-vs-random 1140 → 1096 (by
+    view and by index alike), heuristic by view 701 → 656, because R&D with an empty root has
+    nothing to choose. Accesses barely move (random 2462 → 2477, heuristic by view 4148 →
+    4108), and neither do steals (random 480 → 476, heuristic 593 → 602). Everything else moves
+    by trajectory drift: the Runner's choices differ, so every game after the first breach
+    rolls differently. Both 256-seed sweeps are clean at release, coverage gate included, and
+    the view sweep is clean at 64 seeds in a debug build, where `dispatcher::audit` runs.
 - **A3 Installing over a remote's root shows the old card's type** (4.6.6f).
   - The only install-time trash is the forced one of an agenda or asset (see B3).
   - So a card going to Archives means both cards were agendas or assets, and no trash means at
@@ -361,7 +396,7 @@ with the rule quoted.
 | 4.1 | General | unreviewed |  |
 | 4.2 | Deck | read in part | Audit: the view carries only R&D and stack counts; matches. |
 | 4.3 | Hand | read in part | Audit: HQ and grip contents go to their owner only; matches. |
-| 4.4 | Discard Pile | deviates | A2 (4.4.2). 4.4.6b: HQ discards and unrezzed installs go facedown, rezzed or revealed ones faceup; matches. |
+| 4.4 | Discard Pile | conforms | Read rule by rule (21 September 2026). A2 fixed: "Discard piles are not ordered" (4.4.2), so anyone but the Corp sees Archives faceup cards first, by name, then the facedown ones (`masking::mask_archives`); the Corp's view keeps the pile as kept, since its choices among its Archives cards are positions. The count is public (4.4.3). 4.4.6b: HQ discards and unrezzed installs go facedown, rezzed or revealed ones faceup; matches. 4.4.6c: facedown cards are the Corp's alone; matches. The heap is public (4.4.7b); matches. |
 | 4.5 | Score Area | unreviewed |  |
 | 4.6 | Play Area | read in part | A3 closed by B (4.6.6f). The view and desktop mask a root card by identity only, so a slot shows no type. Remotes exist while occupied, and new ice goes outermost; these match. The other board-layout rules (4.6.5c, 4.6.7b–d, 4.6.8c, 4.6.9a) have not been read against the board yet. |
 | 4.7 | Bank | unreviewed |  |
@@ -400,8 +435,8 @@ with the rule quoted.
 |---|---|---|---|
 | 7.1 | Accessing Cards | conforms | D1 fixed: nothing in Archives is trashed (7.1.5b). Steals mandatory, steal costs declinable (7.1.6a); matches. |
 | 7.2 | Steps of Accessing a Card | deviates | D2. |
-| 7.3 | Breaching Servers | deviates | A1 (7.3.4a). Archives turned faceup at breach (7.3.2); matches. |
-| 7.4 | Determining Candidates | deviates | A1 (7.4.7). |
+| 7.3 | Breaching Servers | read in part | A1 fixed: the Runner chooses among candidates as they can point at them — a root install, "a random card from HQ" (7.3.4a), a faceup Archives card (`AccessCandidate`) — and no choice names a card not yet accessed. The random access limit is set at the breach and each choice counts toward it (7.3.5, 7.3.5c). Accessed cards stay visible to the Runner for the breach (7.3.1a). Only accesses performed are counted (7.3.6). Archives turned faceup at breach (7.3.2); matches. **Not modelled:** a card added to Archives facedown during the breach (7.3.2a), Dedicated Neural Net (7.3.4b; not in the pool), and a consecutive breach (7.3.8). |
+| 7.4 | Determining Candidates | read in part | A1 fixed: R&D's cards are presented one at a time from the top (7.4.7), a chosen candidate is never offered again (7.4.3), and a candidate that has left the server since the breach began is dropped (7.4.5). **Not modelled:** cards entering a server mid-breach becoming candidates (7.4.6a–d) and R&D re-evaluated when it is reordered (7.4.7a); the HQ and R&D cards a breach will reach are drawn when it begins (`AccessState::from_zone`), which is the same draw while those zones hold still. Showing Off (7.4.7b) is not in the pool. |
 | 7.5 | Steps of Breaching a Server | unreviewed |  |
 
 ### 8. Card Manipulation

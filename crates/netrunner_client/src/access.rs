@@ -35,7 +35,7 @@
 
 use netrunner_core::cards::CardRegistry;
 use netrunner_core::dsl::{CardId, Cost, Prohibition};
-use netrunner_core::rules::{MaskedZone, PlayerAction, PublicAccessPhase, ServerId, Side};
+use netrunner_core::rules::{PlayerAction, PublicAccessPhase, ServerId, Side};
 use netrunner_core::view::ClientView;
 
 use crate::card_face::Face;
@@ -109,7 +109,7 @@ impl Access {
             steal_cost,
             mandatory_steal,
             steal_and_trash_blocked: view.cannot(Prohibition::StealOrTrash),
-            remaining: zone_len(&access.unaccessed_cards),
+            remaining: access.candidates.len() + access.from_zone as usize,
         })
     }
 
@@ -182,13 +182,6 @@ fn rank(action: &PlayerAction) -> Option<u8> {
     }
 }
 
-fn zone_len(zone: &MaskedZone) -> usize {
-    match zone {
-        MaskedZone::Visible(cards) => cards.len(),
-        MaskedZone::Hidden { count } => *count as usize,
-    }
-}
-
 fn side_word(side: Side) -> &'static str {
     match side {
         Side::Corp => "Corp",
@@ -220,8 +213,9 @@ mod tests {
             position: 0,
             access_state: Some(PublicAccessState {
                 server,
-                unaccessed_cards: MaskedZone::Hidden { count: 0 },
-                resolved_cards: MaskedZone::Hidden { count: 0 },
+                candidates: Vec::new(),
+                from_zone: 0,
+                resolved_cards: netrunner_core::rules::MaskedZone::Hidden { count: 0 },
                 pending_install: None,
                 phase: PublicAccessPhase::PendingChoice {
                     card: Some(CardId(card.to_string())),
@@ -285,7 +279,9 @@ mod tests {
         assert!(Access::of(&view, &registry).is_none(), "no card named, nothing to draw");
 
         let access = view.active_run.as_mut().unwrap().access_state.as_mut().unwrap();
-        access.phase = PublicAccessPhase::SelectNextCard { selectable_cards: MaskedZone::Hidden { count: 2 } };
+        access.phase = PublicAccessPhase::SelectNextCard {
+            selectable_cards: vec![netrunner_core::rules::AccessCandidate::Zone, netrunner_core::rules::AccessCandidate::Root(netrunner_core::rules::InstallId(1))],
+        };
         assert!(Access::of(&view, &registry).is_none(), "choosing between cards is not accessing one");
 
         view.active_run = None;
@@ -306,7 +302,7 @@ mod tests {
             source: CardId("ansel_1_0".to_string()),
         });
         let run = view.active_run.as_mut().unwrap();
-        run.access_state.as_mut().unwrap().unaccessed_cards = MaskedZone::Hidden { count: 1 };
+        run.access_state.as_mut().unwrap().from_zone = 1;
         let access = Access::of(&view, &registry).expect("still the Runner's decision");
         assert_eq!(access.remaining, 1);
         let facts = access.facts();

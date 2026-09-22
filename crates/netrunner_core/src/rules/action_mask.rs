@@ -358,9 +358,9 @@ impl ActionSpace {
                 Some(TRASH_RESOURCE_START + bounded_position_rig(&state.runner.rig, *target, MAX_INSTALLED_PER_SIDE)?)
             }
 
-            PlayerAction::SelectCardToAccess { card_id } => {
+            PlayerAction::SelectCardToAccess { candidate } => {
                 let AccessPhase::SelectNextCard { selectable_cards } = access_phase(state)? else { return None };
-                Some(SELECT_CARD_TO_ACCESS_START + bounded_position(selectable_cards, card_id, MAX_ACCESS_SELECTION)?)
+                Some(SELECT_CARD_TO_ACCESS_START + bounded_position(selectable_cards, candidate, MAX_ACCESS_SELECTION)?)
             }
 
             // Single-slot segments: the pending card is entirely
@@ -522,8 +522,8 @@ impl ActionSpace {
         }
         if let Some(local) = in_segment(index, SELECT_CARD_TO_ACCESS_START, SELECT_CARD_TO_ACCESS_LEN) {
             let AccessPhase::SelectNextCard { selectable_cards } = access_phase(state)? else { return None };
-            let card_id = selectable_cards.get(local)?.clone();
-            return Some(PlayerAction::SelectCardToAccess { card_id });
+            let candidate = selectable_cards.get(local)?.clone();
+            return Some(PlayerAction::SelectCardToAccess { candidate });
         }
         if index == STEAL_AGENDA_START {
             return Some(PlayerAction::StealAgenda { card_id: pending_choice_card(state)? });
@@ -707,8 +707,8 @@ fn decode_install_slot(index: usize) -> Option<InstallSlot> {
     }
 }
 
-fn bounded_position(zone: &[CardId], card_id: &CardId, cap: usize) -> Option<usize> {
-    let position = zone.iter().position(|id| id == card_id)?;
+fn bounded_position<T: PartialEq>(zone: &[T], item: &T, cap: usize) -> Option<usize> {
+    let position = zone.iter().position(|id| id == item)?;
     (position < cap).then_some(position)
 }
 
@@ -1160,7 +1160,7 @@ mod tests {
             server: ServerId::Remote(0),
             phase: RunPhase::AccessingCard,
             jack_out_permitted: true,
-            access_state: Some(AccessState { pending_install: None, resolved_installs: Vec::new(),
+            access_state: Some(AccessState { pending_install: None,
                 server: ServerId::Remote(0),
                 phase: AccessPhase::PendingChoice {
                     card_id: CardId("agenda_x".to_string()),

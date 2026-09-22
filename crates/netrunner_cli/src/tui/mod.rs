@@ -1856,7 +1856,8 @@ mod tests {
             position: 0,
             access_state: Some(PublicAccessState {
                 server: ServerId::Hq,
-                unaccessed_cards: MaskedZone::Hidden { count: 0 },
+                candidates: Vec::new(),
+                from_zone: 0,
                 resolved_cards: MaskedZone::Hidden { count: 0 },
                 pending_install: None,
                 phase: PublicAccessPhase::PendingChoice { card: Some(card.clone()), trash_cost: None, mandatory_steal: true, steal_cost: None },

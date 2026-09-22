@@ -14,7 +14,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::dsl::CardId;
-use crate::rules::{GameEvent, InstallId, PlayerAction, ServerId, Side};
+use crate::rules::{AccessCandidate, GameEvent, InstallId, PlayerAction, ServerId, Side};
 use crate::view::ClientView;
 
 /// Which of the learner's legal actions a step lets through.
@@ -100,13 +100,19 @@ pub fn action_card(action: &PlayerAction, view: &ClientView) -> Option<CardId> {
         | PlayerAction::InstallResource { card_id }
         | PlayerAction::InstallProgramOnIce { card_id, .. }
         | PlayerAction::DiscardCard { card_id }
-        | PlayerAction::SelectCardToAccess { card_id }
         | PlayerAction::StealAgenda { card_id }
         | PlayerAction::TrashAccessedCard { card_id }
         | PlayerAction::PassAccessedCard { card_id }
         | PlayerAction::PayAccessTrigger { card_id }
         | PlayerAction::DeclineAccessTrigger { card_id } => Some(card_id.clone()),
         PlayerAction::BreakSubroutineWithClick { ice_id, .. } => Some(ice_id.clone()),
+        // The next card out of HQ or R&D is nobody's to name until it is
+        // accessed.
+        PlayerAction::SelectCardToAccess { candidate } => match candidate {
+            AccessCandidate::Root(install) => resolve_install(view, *install),
+            AccessCandidate::Archived(card_id) => Some(card_id.clone()),
+            AccessCandidate::Zone => None,
+        },
         PlayerAction::RezIce { ice } => resolve_install(view, *ice),
         PlayerAction::ActivateAbility { target, .. }
         | PlayerAction::AdvanceCard { target }

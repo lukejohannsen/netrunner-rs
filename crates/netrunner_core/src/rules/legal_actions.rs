@@ -767,7 +767,7 @@ fn access_flow_candidates(state: &GameState, registry: &CardRegistry) -> Vec<Pla
     match &access.phase {
         AccessPhase::SelectNextCard { selectable_cards } => selectable_cards
             .iter()
-            .map(|card_id| PlayerAction::SelectCardToAccess { card_id: card_id.clone() })
+            .map(|candidate| PlayerAction::SelectCardToAccess { candidate: candidate.clone() })
             .collect(),
         AccessPhase::PendingInteractiveTrigger { card_id, .. } => vec![
             PlayerAction::PayAccessTrigger { card_id: card_id.clone() },
@@ -833,6 +833,7 @@ fn trace_bid_candidates(state: &GameState, registry: &CardRegistry) -> Vec<Playe
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::rules::run::AccessCandidate;
     use crate::rules::test_support::install_of;
     use crate::cards::CardRegistry;
     use crate::dsl::{AbilityDef, CardDefinition, Cost, Effect, IceType, SubroutineDef};
@@ -1205,11 +1206,11 @@ mod tests {
         state.active_run = Some(RunState {
             server: ServerId::Archives,
             phase: RunPhase::AccessingCard,
-            access_state: Some(AccessState { pending_install: None, resolved_installs: Vec::new(),
+            access_state: Some(AccessState { pending_install: None,
                 server: ServerId::Archives,
-                unaccessed_cards: vec![CardId("a".to_string()), CardId("b".to_string())],
+                candidates: vec![AccessCandidate::Archived(CardId("a".to_string())), AccessCandidate::Archived(CardId("b".to_string()))],
                 phase: AccessPhase::SelectNextCard {
-                    selectable_cards: vec![CardId("a".to_string()), CardId("b".to_string())],
+                    selectable_cards: vec![AccessCandidate::Archived(CardId("a".to_string())), AccessCandidate::Archived(CardId("b".to_string()))],
                 },
                 ..Default::default()
             }),
@@ -1226,8 +1227,8 @@ mod tests {
         assert_same_actions(
             &legal,
             &[
-                PlayerAction::SelectCardToAccess { card_id: CardId("a".to_string()) },
-                PlayerAction::SelectCardToAccess { card_id: CardId("b".to_string()) },
+                PlayerAction::SelectCardToAccess { candidate: AccessCandidate::Archived(CardId("a".to_string())) },
+                PlayerAction::SelectCardToAccess { candidate: AccessCandidate::Archived(CardId("b".to_string())) },
             ],
         );
     }
@@ -1237,7 +1238,7 @@ mod tests {
         let mut state = runner_state(3, 5);
         state.active_run = Some(RunState {
             phase: RunPhase::AccessingCard,
-            access_state: Some(AccessState { pending_install: None, resolved_installs: Vec::new(),
+            access_state: Some(AccessState { pending_install: None,
                 phase: AccessPhase::PendingChoice {
                     card_id: CardId("agenda".to_string()),
                     trash_cost: None,
@@ -1266,7 +1267,7 @@ mod tests {
         let mut state = runner_state(3, 5);
         state.active_run = Some(RunState {
             phase: RunPhase::AccessingCard,
-            access_state: Some(AccessState { pending_install: None, resolved_installs: Vec::new(),
+            access_state: Some(AccessState { pending_install: None,
                 phase: AccessPhase::PendingChoice {
                     card_id: CardId("asset".to_string()),
                     trash_cost: Some(2),
@@ -1294,7 +1295,7 @@ mod tests {
         let mut state = runner_state(3, 5);
         state.active_run = Some(RunState {
             phase: RunPhase::AccessingCard,
-            access_state: Some(AccessState { pending_install: None, resolved_installs: Vec::new(),
+            access_state: Some(AccessState { pending_install: None,
                 phase: AccessPhase::PendingChoice {
                     card_id: CardId("asset".to_string()),
                     trash_cost: Some(2),

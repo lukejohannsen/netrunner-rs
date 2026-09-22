@@ -114,15 +114,43 @@ pub struct RunIce {
     pub rezzed: bool,
 }
 
+/// What the Runner chooses to access next during a breach: one of the
+/// *candidates* (CR 7.3.4, "the Runner is presented with the current
+/// candidates. They choose 1 of those cards and access it").
+///
+/// **A candidate is named the way the Runner can point at it, never by
+/// what it is.** Choices used to be `CardId`s, and the breach picked every
+/// random HQ card and the top N of R&D up front, so the Runner was offered
+/// "Hedge Fund or Project Atlas?" about cards not yet accessed, and the name
+/// of every unrezzed card in the root (Rules Conformance A1). A card in a
+/// root is the install it is; a card in HQ or R&D is the zone, because the
+/// rules offer "a random candidate from among the ones in the Corp's hand"
+/// (CR 7.3.4a) and "1 candidate from the Corp's deck at a time in turn,
+/// working down from the top of the deck" (CR 7.4.7); a card in Archives is
+/// its name, since the breach has turned it faceup (CR 7.3.2).
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum AccessCandidate {
+    /// A card in the root of the breached server.
+    Root(InstallId),
+    /// The next card out of HQ or R&D, which neither player knows until it
+    /// is accessed: a random card from HQ, the top card of R&D not yet
+    /// accessed. One entry however many the breach may still access
+    /// (`AccessState::from_zone`), because they are one choice.
+    Zone,
+    /// A card in Archives, faceup since the breach began.
+    Archived(CardId),
+}
+
 /// One card the Runner is currently being asked to make a choice about,
-/// mid-access, or a choice of which accessed card to resolve next when more
-/// than one remains unresolved.
+/// mid-access, or a choice of which candidate to access next.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum AccessPhase {
-    /// Offered when 2+ cards from this access remain unresolved. The Runner
-    /// picks one via `PlayerAction::SelectCardToAccess`, which moves it into
-    /// `PendingChoice`.
-    SelectNextCard { selectable_cards: Vec<CardId> },
+    /// Offered when 2+ candidates remain. The Runner picks one via
+    /// `PlayerAction::SelectCardToAccess`, which moves it into
+    /// `PendingChoice`. With one candidate left there is nothing to choose,
+    /// and it is presented unasked — which is how R&D's cards come one at a
+    /// time, top down, with nothing else in the server.
+    SelectNextCard { selectable_cards: Vec<AccessCandidate> },
     /// Offered instead of `PendingChoice` when the just-accessed card's
     /// registry definition has an `InteractiveOnAccess` trigger (Fetal AI's
     /// "pay 2c to avoid 2 net damage", Snare!'s "you may pay 4c" to inflict
@@ -169,10 +197,24 @@ pub enum AccessPhase {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AccessState {
     pub server: ServerId,
-    /// Cards from this access not yet chosen for resolution (order is
-    /// access-determination order, not resolution order — the Runner picks
-    /// freely among these via `SelectCardToAccess`).
-    pub unaccessed_cards: Vec<CardId>,
+    /// The candidates in the root, and in Archives, not yet chosen. Built
+    /// at the breach and pruned of any install that has since left the
+    /// server (CR 7.4.5). Archives cards are listed by name in name order,
+    /// not the order they arrived in: "Discard piles are not ordered" (CR
+    /// 4.4.2), and a list in arrival order let the Runner match each
+    /// card the breach turned faceup to the moment it went facedown
+    /// (Rules Conformance A2).
+    pub candidates: Vec<AccessCandidate>,
+    /// The cards of HQ or R&D this breach will still access, in the order
+    /// it reaches them, **known to neither player** and never in a view.
+    /// Drawn at the breach, when the random access limit is set (CR 7.3.5):
+    /// HQ's in a random order, R&D's from the top down. Choosing
+    /// `AccessCandidate::Zone` takes the first that is still there. Drawing
+    /// them at the breach rather than at each choice is the same
+    /// distribution while HQ and R&D hold still between accesses; a card
+    /// that entered them mid-breach would be CR 7.4.6b and 7.4.7a, which the
+    /// engine does not model, as it did not before.
+    pub from_zone: Vec<CardId>,
     /// Cards already fully resolved (stolen/trashed/passed) this access.
     pub resolved_cards: Vec<CardId>,
     /// The card currently being presented to the Runner, set *before* its
@@ -187,15 +229,12 @@ pub struct AccessState {
     /// Which *installed instance* the card in `phase` is, when it is a
     /// root install (an upgrade in a central's root, or anything in a
     /// remote's root); `None` for a card accessed out of HQ, R&D or
-    /// Archives. `phase` and the lists above stay `CardId`-keyed on
-    /// purpose: two copies of one upgrade are the same printed card, both
-    /// get accessed in the same breach, and `SelectCardToAccess`'s action
-    /// slot is a position, so the Runner's *choice* between them is
-    /// immaterial. What must be exact is which instance leaves play and
-    /// whose counters an `OnAccessed` trigger reads — that is this field.
-    /// Kept here rather than on the phase variants because there is only
-    /// ever one pending card and the variants are built in dozens of
-    /// fixtures. Set by `access::present_card_for_access`.
+    /// Archives. It is which instance leaves play and whose counters an
+    /// `OnAccessed` trigger reads. Kept here rather than on the phase
+    /// variants because there is only ever one pending card and the
+    /// variants are built in dozens of fixtures. Set by
+    /// `access::present_card_for_access` from the `AccessCandidate::Root`
+    /// the Runner chose.
     #[serde(default)]
     pub pending_install: Option<InstallId>,
     /// Whether that install was **rezzed** when it was presented — read by
@@ -207,11 +246,6 @@ pub struct AccessState {
     /// already left the table.
     #[serde(default)]
     pub pending_install_rezzed: bool,
-    /// Instances already resolved this breach, so the next pick of the same
-    /// `CardId` resolves to the *other* copy — two Manegarm Skunkworks in
-    /// one root used to both resolve to the first one installed.
-    #[serde(default)]
-    pub resolved_installs: Vec<InstallId>,
     pub phase: AccessPhase,
 }
 
@@ -225,12 +259,12 @@ impl Default for AccessState {
     fn default() -> Self {
         Self {
             server: ServerId::Hq,
-            unaccessed_cards: Vec::new(),
+            candidates: Vec::new(),
+            from_zone: Vec::new(),
             resolved_cards: Vec::new(),
             currently_accessing: None,
             pending_install: None,
             pending_install_rezzed: false,
-            resolved_installs: Vec::new(),
             phase: AccessPhase::SelectNextCard { selectable_cards: Vec::new() },
         }
     }
@@ -302,9 +336,10 @@ pub struct RunState {
     /// the siphon. `None` in a state recorded before the field existed.
     #[serde(default)]
     pub access_replacement_card: Option<CardId>,
-    /// How many cards this run's access presented in total, set once by
-    /// `run::access::access_server` when it computes the accessed set (`0`
-    /// if the run hasn't reached access yet, or accessed an empty zone).
+    /// How many cards this run's breach has accessed, counted by
+    /// `run::access::present_card_for_access` as each is accessed (CR
+    /// 7.3.6: only accesses actually performed; `0` if the run hasn't
+    /// reached access yet, or accessed an empty zone).
     /// Read (not decremented) when the run concludes — see `GameState::
     /// last_completed_run`/`Effect::GainCreditsPerCardAccessedThisRun` —
     /// same "naturally discarded when this `RunState` is dropped/replaced"

@@ -49,7 +49,7 @@ pub use masking::{
 };
 pub use run::{
     access_server, advance_run, resolve_pass, resolve_select_card, resolve_steal, resolve_trash,
-    AccessPhase, AccessState, EncounteredSubroutine, RunAction, RunIce, RunPhase, RunState,
+    AccessCandidate, AccessPhase, AccessState, EncounteredSubroutine, RunAction, RunIce, RunPhase, RunState,
     ServerId, SubroutineStatus,
 };
 pub use setup::DeckOrder;
