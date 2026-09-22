@@ -117,7 +117,7 @@ fn a_saved_game(app: &mut App) -> netrunner_core::view::ClientView {
         // the buttons a person would press.
         let press = match button_labelled(app, "Keep hand") {
             Some(keep) => Some(keep),
-            None => entity_with(app, &Click::Control(Control::PassPriority)).filter(|pass| !app.world().entity(*pass).contains::<Disabled>()),
+            None => entity_with(app, &Click::Control(Control::Continue)).filter(|pass| !app.world().entity(*pass).contains::<Disabled>()),
         };
         if let Some(button) = press {
             press_entity(app, button);

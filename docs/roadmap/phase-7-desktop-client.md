@@ -3537,6 +3537,86 @@ Checked:
 - Screenshots from a heuristic record at step 112 (mid-encounter) and at
   its end: the board does not scroll.
 
+### 4ai. One Continue, and it says to what — DONE (22 September 2026)
+
+`feat/one-continue-names-the-next-step`, §8 items 7 and 12 together. The
+Runner's bar had three buttons that each moved the game on — Pass
+priority, Continue run, Complete run — and the Corp's one, and none of
+them said where. Would the ice be encountered next, would its
+subroutines fire, would the server be breached? A person pressed to find
+out. Space was already the key a person leaned on (§4h), but it pressed
+Pass priority or else Continue run, never Complete run, so breaching
+needed a key of its own (A).
+
+**At most one of the three is ever legal for a seat, so one button stands
+for all three.** `PassPriority` needs an open paid-ability window, and the
+other two need none. `CompleteRun` is legal only at `RunPhase::Success`,
+where `ContinueRun` never is. `JackOut` is the only action that ever sits
+beside one of them (beside `ContinueRun`, in the movement phase), and it
+keeps its own button because it gives something up. So `Control` lost
+`PassPriority`, `ContinueRun` and `CompleteRun` and gained `Continue`,
+which matches any of them. Both bars end in it: the Corp's `[credit,
+draw, purge, end turn, Continue]` and the Runner's `[credit, draw, remove
+tag, end turn, Continue, Jack out]`. Space is Continue, and A is gone:
+breaching gives nothing up.
+
+**The button names the step that follows if nobody does anything else**
+(`netrunner_client::board::onward`). The step is read off the masked view,
+like the phase bar: the window's checkpoint, the run's phase, its
+position, `jack_out_permitted`, and the encountered ice's pending
+subroutines. Examples: "Continue to Approach ice 2 of 3", "Continue to
+Encounter Ice Wall", "Let 2 subroutines fire", "Continue to Movement",
+"Continue to the Runner's jack-out decision", "Breach HQ", "Begin your
+turn", "Continue to your actions", "End your turn", "Don't prevent it". A
+pass in a window the other player has not yet passed in hands them
+priority first, and they may rez or break instead. The button still names
+where the game goes if they let it, because that is what the person
+pressing it agrees to.
+
+- **The words ride on the entry, not in `describe_action`.**
+  `onward::offered_label` words a legal action for a list of what can be
+  done now: the button, the play helper, the terminal client's list (local
+  and online). The log keeps `describe_action`, because a log line is worded
+  against the view the action *produced*, and there "Continue to Encounter"
+  names a step already taken.
+- **The button's width is fixed** (`layout::CONTINUE_WIDTH`, 360 px, room
+  for "Continue to Encounter Wall of Static", the longest in the pool).
+  Otherwise the centred bar would shift under the pointer between two
+  presses.
+
+**Checked against the engine, not only against a table.**
+`the_label_names_what_the_engine_does_next` plays twelve sweep seeds with
+random and heuristic seats. Wherever a seat is offered one of the three
+actions, it asserts three things:
+- exactly one is offered;
+- the view names a step;
+- taking it on a copy of the game, and letting every window it leaves
+  open close, lands on the named step.
+
+At 64 seeds that was about 15,800 presses over all eleven kinds of step,
+none wrong and 2 interrupted by a card's text.
+
+**Found on the way, not fixed here:** a paid choice declined into "end
+the run" (`DeclinePendingPaidChoice`, `RunEndedByEffect`; seed 7) leaves
+the run's paid-ability window open with no run. `note_window_action`'s own
+comment says that state must not happen. It costs both players a pass,
+and closing it resumes nothing, so it never deadlocks. The button names it
+honestly ("Continue to the Runner's actions"). It is an engine fix, with
+the sweeps, in a branch of its own.
+
+**Moved down: item 6, the Corp's run auto-pass.** Asked for 22 September
+2026, because the person did not see what it buys. It matters only when
+the Corp holds unrezzed ICE and the credits to rez it, so every window of
+a bot's run stops and asks; §4e already takes a pass that is the only
+action offered. It stays on the list, after the others.
+
+Checked:
+
+- `cargo test --workspace` green, `cargo clippy --workspace --all-targets`
+  silent. The desktop's run tests reach a breach pressing Continue alone,
+  and assert the button reads its step, never the bare word.
+- No engine change, so no sweep and no coverage report is owed.
+
 ## 8. Borrowed from jinteki — OPEN (19 September 2026)
 
 From [`docs/jinteki-comparison.md`](../jinteki-comparison.md) §5, in the
@@ -3578,8 +3658,11 @@ exist, never a new action.
    (b) later.
 5. ~~**A replay viewer over `MatchHistory`**~~ — done in §4ah; **notes
    are still owed**.
-6. **The Corp's run auto-pass toggle.**
-7. **Space as the one "continue" key.**
+6. **The Corp's run auto-pass toggle.** *Moved down (22 September 2026)*:
+   the person did not see what it buys, and it matters only when the Corp
+   holds unrezzed ICE and the credits to rez it (§4ai). Taken after the
+   rest of this list.
+7. ~~**Space as the one "continue" key.**~~ Done in §4ai.
 8. **Ghost Trojans in the program row.**
 9. **Identical rig cards stacked** with a count.
 10. **Run and turn timing diagrams.**
@@ -3588,8 +3671,8 @@ exist, never a new action.
 Added by the second pass (20 September 2026, doc §6.6), numbered on from
 eleven so the addresses above do not move:
 
-12. **One Continue button that names what is next** ("Continue to Approach
-    ice", "Breach server").
+12. ~~**One Continue button that names what is next** ("Continue to Approach
+    ice", "Breach server").~~ Done in §4ai.
 13. **The encounter panel always on during an encounter** — name, subtypes,
     live strength, every subroutine; §4ac's marks are the first half.
 14. **Per-card always / never / ask for an optional trigger.**

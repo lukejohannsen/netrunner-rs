@@ -2414,10 +2414,18 @@ fn spawn_control_bar(parent: &mut ChildSpawnerCommands, theme: &Theme, game: &Ga
     }
     for control in Control::for_side(game.side) {
         let offered = game.awaiting && game.actions.for_control(*control).is_some();
+        // Continue names the step it takes the game to, so its words change
+        // with every step; its width does not, or the centred bar would
+        // shift under the pointer between two presses of it.
+        let (label, width) = match control {
+            Control::Continue if offered => (game.actions.continue_label().to_string(), px(layout::CONTINUE_WIDTH)),
+            Control::Continue => (control.label().to_string(), px(layout::CONTINUE_WIDTH)),
+            _ => (control.label().to_string(), Val::Auto),
+        };
         if offered {
-            parent.spawn(widgets::button(theme, control.label(), Val::Auto, Click::Control(*control)));
+            parent.spawn(widgets::button(theme, label, width, Click::Control(*control)));
         } else {
-            parent.spawn(widgets::disabled_button(theme, control.label(), Val::Auto, Click::Control(*control)));
+            parent.spawn(widgets::disabled_button(theme, label, width, Click::Control(*control)));
         }
     }
 }

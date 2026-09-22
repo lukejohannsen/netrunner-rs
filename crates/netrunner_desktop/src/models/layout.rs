@@ -152,6 +152,10 @@ pub const BODY_GAP: f32 = 10.0;
 /// — so it is counted in [`fixed_height`].
 pub const TOP_BAR: f32 = 44.0;
 pub const CONTROL_BAR: f32 = 44.0;
+/// The Continue button's width, whatever step it names: room for the
+/// longest ("Continue to Encounter Wall of Static") on one line at the
+/// body size, so the bar never reflows between two presses of it.
+pub const CONTINUE_WIDTH: f32 = 360.0;
 /// Between the root's rows, and between the board's rows.
 pub const ROW_GAP: f32 = 8.0;
 /// A section label ("Servers", "Your hand · 5") and a chip line under
