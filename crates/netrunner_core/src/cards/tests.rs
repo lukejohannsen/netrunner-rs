@@ -6147,6 +6147,7 @@ mod system_gateway {
             server: ServerId::Remote(0),
             // Installed on an earlier turn — the eligible case.
             installed_this_turn: false,
+            seen_by_runner: false,
             ..Default::default()
         }];
 
@@ -6201,6 +6202,7 @@ mod system_gateway {
             card: CardId("offworld_office".to_string()),
             server: ServerId::Remote(0),
             installed_this_turn: false,
+            seen_by_runner: false,
             ..Default::default()
         }];
 
@@ -6251,6 +6253,7 @@ mod system_gateway {
             server: ServerId::Remote(0),
             slot: InstallSlot::Ice,
             installed_this_turn: false,
+            seen_by_runner: false,
             ..Default::default()
         }];
         assert!(
@@ -6296,6 +6299,7 @@ mod system_gateway {
                 server: ServerId::Remote(0),
                 slot: InstallSlot::Ice,
                 installed_this_turn: false,
+                seen_by_runner: false,
                 ..Default::default()
             },
             crate::rules::InstalledCard {
@@ -6304,6 +6308,7 @@ mod system_gateway {
                 server: ServerId::Remote(1),
                 slot: InstallSlot::Ice,
                 installed_this_turn: false,
+                seen_by_runner: false,
                 ..Default::default()
             },
         ];
@@ -6337,6 +6342,7 @@ mod system_gateway {
             card: CardId("offworld_office".to_string()),
             server,
             installed_this_turn: false,
+            seen_by_runner: false,
             ..Default::default()
         };
         state.corp.installed = vec![office(1042, ServerId::Remote(0)), office(1043, ServerId::Remote(1))];
@@ -6414,6 +6420,7 @@ mod system_gateway {
             card: CardId("offworld_office".to_string()),
             server: ServerId::Remote(0),
             installed_this_turn: true,
+            seen_by_runner: false,
             ..Default::default()
         }];
 

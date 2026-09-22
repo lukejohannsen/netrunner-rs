@@ -805,6 +805,7 @@ pub(crate) fn place_corp_card(
         advancement_tokens: 0,
         counters: 0,
         installed_this_turn: true,
+        seen_by_runner: false,
     };
     // New ICE is installed in the **outermost** position (Null Signal
     // Games' install rule): `corp.installed`'s vec order per server is
@@ -1088,7 +1089,10 @@ pub(crate) fn rez_install(
     if available < rez_cost {
         return Err(RulesError::NotEnoughCredits { side, available, requested: rez_cost });
     }
-    next.corp.installed.iter_mut().find(|c| c.install_id == ice).expect("resolved above").rezzed = true;
+    let rezzed = next.corp.installed.iter_mut().find(|c| c.install_id == ice).expect("resolved above");
+    rezzed.rezzed = true;
+    // Face up is seen: a card derezzed later stays one the Runner knows.
+    rezzed.seen_by_runner = true;
     let mut events = ability::pay_cost(next, registry, side, &Cost::Credits(rez_cost), Purpose::Rez(ice), Some(&ice_id))?;
     // Comprehensive Rules 1.10.5b: recurring credits are first placed "as
     // soon as the card is turned faceup" — after its own cost is paid, so a
@@ -2875,6 +2879,7 @@ mod tests {
                 // Seamless Launch's eligibility marker — set by every
                 // install, cleared at the Corp's next turn start.
                 installed_this_turn: true,
+                seen_by_runner: false,
                 ..Default::default()
             }]
         );

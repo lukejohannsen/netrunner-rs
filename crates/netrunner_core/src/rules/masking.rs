@@ -72,6 +72,12 @@ pub struct PublicInstalledCard {
     /// a `CardRegistry` to resolve titles, so duplicating it into the view
     /// would be two sources of truth for one fact.
     pub counters: Option<u32>,
+    /// Never masked: whether the Runner has seen this card's face
+    /// (`InstalledCard::seen_by_runner`). The Corp watched the access, so
+    /// it is no secret from them, and it is what lets a client draw a card
+    /// the Runner can name as still face down.
+    #[serde(default)]
+    pub seen_by_runner: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -467,7 +473,7 @@ impl Viewer {
 pub fn mask_state_for_player(state: &GameState, registry: &CardRegistry, viewer: impl Into<Viewer>) -> PublicGameState {
     let viewer = viewer.into();
     PublicGameState {
-        corp: mask_corp_state(&state.corp, registry, viewer.is(Side::Corp)),
+        corp: mask_corp_state(&state.corp, registry, viewer.is(Side::Corp), viewer.is(Side::Runner)),
         runner: mask_runner_state(state, registry, viewer.is(Side::Runner)),
         phase: state.phase,
         active_run: state.active_run.as_ref().map(|run| mask_run_state(state, registry, run, viewer)),
@@ -645,15 +651,16 @@ pub fn mask_action_for_player(action: &PlayerAction, actor: Side, viewer: impl I
 ///
 /// **Concealment is decided from `state`, the position the event's action
 /// produced, and conservatively.** The one predicate,
-/// `corp_card_concealed_from_runner`: a Corp card is off-limits to the
-/// Runner while any installed copy is unrezzed or any Archives copy is
-/// facedown. That reads the same facts `mask_installed_card` and
-/// `mask_archived_card` read, so the log cannot disagree with the view;
-/// and it errs toward hiding — a rezzed Nico Campaign's counters are
-/// concealed while a second Nico sits unrezzed elsewhere — because the
-/// engine does not record whether *this* copy was seen, and reconstructing
-/// it from Archives order would be exactly the first-match-by-`CardId`
-/// shape the Rules Audit spent six branches removing. Callers therefore
+/// `corp_card_concealed_from`: a Corp card is off-limits to the Runner
+/// while any installed copy is unrezzed and unseen
+/// (`InstalledCard::seen_by_runner`) or any Archives copy is facedown, and
+/// to a spectator while any installed copy is unrezzed. That reads the
+/// same facts `mask_installed_card` and `mask_archived_card` read, so the
+/// log cannot disagree with the view; and it errs toward hiding — a rezzed
+/// Nico Campaign's counters are concealed while a second Nico sits
+/// unrezzed and unseen elsewhere — because an event names a card, not a
+/// copy, and matching it to one by `CardId` would be exactly the
+/// first-match shape the Rules Audit spent six branches removing. Callers therefore
 /// mask each entry against its own post-action state
 /// (`netrunner_session::Session::last_entry_for`), never a batch against
 /// a later one.
@@ -662,7 +669,7 @@ pub fn mask_action_for_player(action: &PlayerAction, actor: Side, viewer: impl I
 /// as `mask_action_for_player`.
 pub fn mask_event_for_player(event: &GameEvent, state: &GameState, viewer: impl Into<Viewer>) -> Option<GameEvent> {
     let viewer = viewer.into();
-    let concealed = |card: &CardId| !viewer.is(Side::Corp) && corp_card_concealed_from_runner(state, card);
+    let concealed = |card: &CardId| corp_card_concealed_from(state, card, viewer);
     let visible = || Some(event.clone());
 
     match event {
@@ -734,11 +741,11 @@ pub fn mask_event_for_player(event: &GameEvent, state: &GameState, viewer: impl 
             Some(GameEvent::CardMoved { install: *install, card: None, from: *from, to: *to })
         }
         GameEvent::CardMoved { .. } => visible(),
-        // The Runner *saw* the card while it was rezzed, but the view has
-        // no notion of "seen before" and renders the derezzed install as
-        // `card: None`; the log's rule is to follow the view rather than a
-        // memory it cannot model. The handle is what lets it still say
-        // which install flipped.
+        // A rezzed card is seen (`InstalledCard::seen_by_runner`), so the
+        // Runner's view goes on naming it derezzed and `concealed` is false
+        // for them; a spectator's view does not, and for them the identity
+        // is struck. The handle is what lets it still say which install
+        // flipped.
         GameEvent::CardDerezzed { install, card: Some(card) } if concealed(card) => {
             Some(GameEvent::CardDerezzed { install: *install, card: None })
         }
@@ -769,6 +776,18 @@ pub fn mask_event_for_player(event: &GameEvent, state: &GameState, viewer: impl 
             (viewer.is(Side::Runner) || *server == ServerId::Archives).then(visible).flatten()
         }
         GameEvent::AccessPassed { .. } => viewer.is(Side::Runner).then(visible).flatten(),
+        // A face-down Corp card hears its own events (the Listener Rule),
+        // so a trap fires unrezzed and its trigger names a card the table
+        // cannot see. The Runner may know it only when they are the one
+        // who just accessed it — `CardAccessed` above already named it to
+        // them — and a spectator or a Runner hearing any other trigger of
+        // a concealed card (an unrezzed card's "when you install this")
+        // gets nothing. Dropped whole rather than struck out: the card is
+        // the whole of the event. It went unseen while every trap outside
+        // `Trap` was rezzed on sight (Phase 5 §20).
+        GameEvent::TriggerFired { card, trigger } if concealed(card) => {
+            (viewer.is(Side::Runner) && *trigger == crate::dsl::Trigger::OnAccessed).then(visible).flatten()
+        }
         // The one card-bearing field that can be struck out in place.
         GameEvent::TraceInitiated { base, initiating_card: Some(card) } if concealed(card) => {
             Some(GameEvent::TraceInitiated { base: *base, initiating_card: None })
@@ -904,7 +923,7 @@ pub fn mask_event_for_player(event: &GameEvent, state: &GameState, viewer: impl 
 /// masking invariant at *Elevation* Stage 5, seed 20.
 fn mask_pending_decision(decision: &PendingDecision, state: &GameState, viewer: Viewer) -> PendingDecision {
     let conceal = |card: &Option<CardId>| match card {
-        Some(id) if !viewer.is(Side::Corp) && corp_card_concealed_from_runner(state, id) => None,
+        Some(id) if corp_card_concealed_from(state, id, viewer) => None,
         other => other.clone(),
     };
     let mut masked = decision.clone();
@@ -921,8 +940,18 @@ fn mask_pending_decision(decision: &PendingDecision, state: &GameState, viewer: 
     masked
 }
 
-fn corp_card_concealed_from_runner(state: &GameState, card: &CardId) -> bool {
-    state.corp.installed.iter().any(|installed| installed.card == *card && !installed.rezzed)
+/// Whether `viewer` may not be told `card` was involved in something —
+/// the reading `mask_installed_card` and `mask_archived_card` make of the
+/// same facts, so the log cannot disagree with the view. Never for the
+/// Corp. For the Runner, an installed copy they have seen
+/// (`InstalledCard::seen_by_runner`) conceals nothing; for a spectator,
+/// every face-down copy does.
+fn corp_card_concealed_from(state: &GameState, card: &CardId, viewer: Viewer) -> bool {
+    if viewer.is(Side::Corp) {
+        return false;
+    }
+    let remembered = |installed: &InstalledCard| viewer.is(Side::Runner) && installed.seen_by_runner;
+    state.corp.installed.iter().any(|installed| installed.card == *card && !installed.rezzed && !remembered(installed))
         || state.corp.archives.iter().any(|archived| archived.card == *card && archived.facedown)
 }
 
@@ -1016,8 +1045,10 @@ fn mask_zone(cards: &[CardId], owner_view: bool) -> MaskedZone {
     }
 }
 
-fn mask_installed_card(installed: &InstalledCard, position: usize, owner_view: bool) -> PublicInstalledCard {
-    let identity_visible = owner_view || installed.rezzed;
+fn mask_installed_card(installed: &InstalledCard, position: usize, owner_view: bool, runner_view: bool) -> PublicInstalledCard {
+    // What the Runner has seen they remember (`InstalledCard::
+    // seen_by_runner`); a spectator saw nothing but the table.
+    let identity_visible = owner_view || installed.rezzed || (runner_view && installed.seen_by_runner);
     PublicInstalledCard {
         // Outside the `identity_visible` gate on purpose: these are the
         // handles that let a viewer act on a card they cannot identify.
@@ -1032,6 +1063,7 @@ fn mask_installed_card(installed: &InstalledCard, position: usize, owner_view: b
         // than restating the condition: counters and identity are hidden
         // together or not at all, and two copies of the rule could drift.
         counters: identity_visible.then_some(installed.counters),
+        seen_by_runner: installed.seen_by_runner,
     }
 }
 
@@ -1075,7 +1107,7 @@ fn mask_archives(archives: &[ArchivedCard], owner_view: bool) -> Vec<PublicArchi
     masked
 }
 
-fn mask_corp_state(corp: &CorpState, registry: &CardRegistry, owner_view: bool) -> PublicCorpState {
+fn mask_corp_state(corp: &CorpState, registry: &CardRegistry, owner_view: bool, runner_view: bool) -> PublicCorpState {
     let identity_recurring = corp.identity.as_ref().and_then(|identity| registry.get(identity)).and_then(|definition| definition.recurring_credits);
     PublicCorpState {
         identity: corp.identity.clone(),
@@ -1087,7 +1119,7 @@ fn mask_corp_state(corp: &CorpState, registry: &CardRegistry, owner_view: bool) 
             .installed
             .iter()
             .enumerate()
-            .map(|(position, card)| mask_installed_card(card, position, owner_view))
+            .map(|(position, card)| mask_installed_card(card, position, owner_view, runner_view))
             .collect(),
         scored_agendas: corp.scored_agendas.clone(),
         bad_publicity: corp.bad_publicity,
@@ -1262,6 +1294,33 @@ mod tests {
         let rezzed = &masked.corp.installed[1];
         assert!(rezzed.rezzed);
         assert_eq!(rezzed.card, Some(CardId("enigma".to_string())));
+    }
+
+    /// A card the Runner has seen (accessed, or watched rezzed) stays
+    /// named to them face down: it is what they remember, and a sprung
+    /// trap they could not see is one a bot ran back into (Phase 5 §20).
+    /// A spectator saw only the table, and the fact of it is public.
+    #[test]
+    fn a_card_the_runner_has_seen_stays_named_to_the_runner_and_no_one_else() {
+        let mut corp = corp_state_with_cards();
+        corp.installed[0].seen_by_runner = true;
+        corp.installed[0].counters = 3;
+        let state = game_state(corp);
+
+        let runner = &mask_state_for_player(&state, Side::Runner).corp.installed[0];
+        assert!(!runner.rezzed, "still face down");
+        assert_eq!(runner.card, Some(CardId("ice_wall".to_string())));
+        assert_eq!(runner.counters, Some(3), "counters follow the identity, as they always have");
+        assert!(runner.seen_by_runner);
+
+        let spectator = &mask_state_for_player(&state, Viewer::Spectator).corp.installed[0];
+        assert_eq!(spectator.card, None);
+        assert_eq!(spectator.counters, None);
+        assert!(spectator.seen_by_runner, "that the Runner saw it is public");
+
+        let accessed = GameEvent::TriggerFired { card: CardId("ice_wall".to_string()), trigger: crate::dsl::Trigger::OnAccessed };
+        assert_eq!(mask_event_for_player(&accessed, &state, Side::Runner), Some(accessed.clone()));
+        assert_eq!(mask_event_for_player(&accessed, &state, Viewer::Spectator), None, "a spectator never learns what fired face down");
     }
 
     #[test]

@@ -1952,6 +1952,44 @@ games on each of seeds 1 and 2:
   Its run valuation forgets an access, so on the next turn a sprung
   Urtica is a hidden card again, worth 1.0 more per token.
 
+**The Runner sees the card it accessed** (`feat/runner-sees-what-it-accessed`).
+`InstalledCard::seen_by_runner` is set when an installed card is
+accessed, and when it is rezzed. From then on the Runner's view names it
+even face down, and a spectator's does not. The flag itself is public,
+because the Corp watched the access.
+
+CR 7.3.1a keeps an accessed card visible "for the remainder of the
+breach", and CR 4.6.3 makes a facedown card secret afterwards. This is
+what the Runner remembers, not a card they may examine; jinteki.net
+shows the same. The log's concealment predicate reads the same flag
+(`corp_card_concealed_from`), so the view and the log agree.
+
+The order of the fixes changed here, and the reason is a finding. With
+traps no longer rezzed, the concealment sweep failed twice:
+
+- A face-down Urtica firing put `TriggerFired { card: urtica_cipher }`
+  in a *spectator's* log. That was a leak on `main` too, unreached only
+  because every trap outside `Trap` was rezzed first. A concealed card's
+  trigger is now dropped, except to the Runner for `OnAccessed`.
+- A Runner flatlined by that Urtica had its access end in the same
+  action. Their log then named a card their view had already hidden
+  again. That is exactly the memory this flag is. So the flag lands
+  before the never-rez fix, and the never-rez fix is stacked on it.
+
+Both 256-seed sweeps are green. The one-ply heuristic plays 163 and 164
+of 216 games identically on seeds 1 and 2 (win share 0.343 → 0.333 and
+0.319 → 0.315): it does not read a face-down card's identity yet, which
+is the Runner PR. The observation encoding sees more named cards.
+
+**Never rez a trap, measured on pinned binaries before the reorder**
+(main against the fix, six seeds × 216 games, deck styles). Traps
+rezzed before any access fall from 0.44–0.51 to 0.01–0.04. The Corp in
+trap matchups goes **0.311 → 0.362, +0.051 on every seed** (sd 0.014,
+t 8.9). Flatlines go from 0.15 to 0.22. Repeat accesses of a trap
+already sprung rise, because a trap that stays hidden is worth running
+into; the Runner PR is what stops that. It is re-taken after rebasing
+on the flag.
+
 Reports are under `target/coverage/trap/`. The fixes follow as their
 own PRs:
 

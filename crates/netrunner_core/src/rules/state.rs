@@ -161,6 +161,26 @@ pub struct InstalledCard {
     /// unrezzed card, same as `advancement_tokens`.
     #[serde(default)]
     pub installed_this_turn: bool,
+    /// The Runner has seen this card's face: accessed it while it was
+    /// installed, or watched it rezzed. From then on the Runner's view
+    /// names it even face down (`masking::mask_installed_card`), so a
+    /// trap the Runner has sprung is one they can see and a bot does not
+    /// resample it as an agenda.
+    ///
+    /// CR 7.3.1a keeps an accessed card visible to the Runner only "for
+    /// the remainder of the breach", and CR 4.6.3 makes a facedown card
+    /// secret afterwards: the Runner may not *examine* it again. This is
+    /// what they *remember*, which is theirs to keep, and jinteki.net
+    /// shows the Runner the same. Without it the engine re-hid an Urtica
+    /// Cipher the moment the access ended, and the heuristic Runner
+    /// priced it the next turn as a hidden card worth 1.0 more per token
+    /// (Phase 5 §20).
+    ///
+    /// Public to both sides: the Corp watched the access. It lives and
+    /// dies with the install: a card that leaves and comes back is a new
+    /// `InstalledCard`, and a move keeps it.
+    #[serde(default)]
+    pub seen_by_runner: bool,
 }
 
 /// Every field at its neutral value, so test fixtures can spell out only the
@@ -185,6 +205,7 @@ impl Default for InstalledCard {
             advancement_tokens: 0,
             counters: 0,
             installed_this_turn: false,
+            seen_by_runner: false,
         }
     }
 }
