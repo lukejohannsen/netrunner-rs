@@ -47,6 +47,9 @@ pub struct ClientCore {
     pub settings_path: Option<PathBuf>,
     pub decks_dir: Option<PathBuf>,
     pub record_path: Option<PathBuf>,
+    /// Where a bug report is saved (`netrunner_client::bug_report`);
+    /// `None` when the OS has no data directory and none is set.
+    pub reports_dir: Option<PathBuf>,
     pub images: Arc<CardImageStore>,
 }
 
@@ -88,6 +91,7 @@ impl ClientCore {
             settings_path,
             decks_dir,
             record_path,
+            reports_dir: netrunner_client::bug_report::resolve_reports_dir(),
             images: Arc::new(images),
         };
         (core, notices)
@@ -104,6 +108,7 @@ impl ClientCore {
             settings_path: Some(dir.join("settings.json")),
             decks_dir: Some(dir.join("decks")),
             record_path: Some(dir.join("record.json")),
+            reports_dir: Some(dir.join("reports")),
             images: Arc::new(CardImageStore::with_dir(dir.join("images"))),
         }
     }

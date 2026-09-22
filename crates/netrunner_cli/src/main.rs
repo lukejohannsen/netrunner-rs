@@ -90,8 +90,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Some(Command::Cards { action }) => cards::run(action).await,
         Some(Command::Deck { action }) => deck::run(action, &config),
         Some(Command::Learn { action }) => learn::run(action, &config),
-        Some(Command::Replay { file, side }) => {
-            let replay = replay::Replay::open(&file, decks::sample_deck_registry(), side.into())?;
+        Some(Command::Replay { file, side, at }) => {
+            let replay = replay::Replay::open(&file, decks::sample_deck_registry(), side.map(Into::into), at)?;
             tui::run_replay(replay)
         }
         None => {

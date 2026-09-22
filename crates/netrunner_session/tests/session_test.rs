@@ -132,7 +132,7 @@ fn a_recorded_history_round_trips_through_jsonl_and_replays_to_the_same_state() 
     let (final_state, history) = session.into_parts();
 
     let (corp, runner) = decks::matchups().into_iter().next().expect("at least one sample matchup");
-    let header = MatchRecordHeader { seed, corp_deck: corp.to_deck(), runner_deck: runner.to_deck(), rules: MatchRules::default() };
+    let header = MatchRecordHeader { seed, corp_deck: corp.to_deck(), runner_deck: runner.to_deck(), rules: MatchRules::default(), bot: None };
     let mut bytes = Vec::new();
     history.write_jsonl(&header, &mut bytes).expect("writing to a Vec cannot fail");
     let text = String::from_utf8(bytes).expect("JSON is UTF-8");
@@ -154,6 +154,30 @@ fn a_recorded_history_round_trips_through_jsonl_and_replays_to_the_same_state() 
 
     assert!(matches!(MatchHistory::read_jsonl("".as_bytes()), Err(HistoryReadError::MissingHeader)));
     assert!(matches!(MatchHistory::read_jsonl("not json\n".as_bytes()), Err(HistoryReadError::Json { line: 1, .. })));
+}
+
+/// The bot a person played is named in the header by the words they
+/// chose it with, and a header written before the field existed — every
+/// headless record on disk — still reads, as a record with no bot.
+#[test]
+fn a_header_names_the_bot_and_one_without_it_still_reads() {
+    use netrunner_bots::difficulty::Level;
+    use netrunner_bots::personality::Personality;
+    use netrunner_session::RecordedBot;
+
+    let (corp, runner) = decks::matchups().into_iter().next().expect("at least one sample matchup");
+    let plain = MatchRecordHeader { seed: 3, corp_deck: corp.to_deck(), runner_deck: runner.to_deck(), rules: MatchRules::default(), bot: None };
+    let old = serde_json::to_string(&plain).expect("a header serializes");
+    assert!(!old.contains("\"bot\""), "a record with no bot writes what it always wrote: {old}");
+    let (read, _) = MatchHistory::read_jsonl(format!("{old}\n").as_bytes()).expect("an old header reads");
+    assert_eq!(read, plain);
+
+    let bot = RecordedBot { side: Side::Corp, level: Level::Veteran, personality: Personality::Glacier };
+    let named = MatchRecordHeader { bot: Some(bot), ..plain };
+    let text = serde_json::to_string(&named).expect("a header serializes");
+    assert!(text.contains("\"level\":\"veteran\"") && text.contains("\"personality\":\"Glacier\""), "{text}");
+    let (read, _) = MatchHistory::read_jsonl(format!("{text}\n").as_bytes()).expect("a named header reads");
+    assert_eq!(read, named);
 }
 
 #[test]

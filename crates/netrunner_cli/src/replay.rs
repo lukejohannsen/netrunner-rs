@@ -36,6 +36,42 @@ pub enum ReplayError {
     Diverged { index: usize, action: PlayerAction, error: RulesError },
 }
 
+/// Where a replay opens.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Start {
+    Beginning,
+    End,
+    /// After this many actions; past the end is the end.
+    At(usize),
+}
+
+impl std::str::FromStr for Start {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.trim().to_ascii_lowercase().as_str() {
+            "start" | "beginning" => Ok(Start::Beginning),
+            "end" => Ok(Start::End),
+            number => number.parse().map(Start::At).map_err(|_| format!("expected start, end or a number of actions, not {s:?}")),
+        }
+    }
+}
+
+/// The chair and the position a record opens at, when the flags leave
+/// either out.
+///
+/// **A bug report opens where it was saved, from the person's chair**: it
+/// is read from the moment something looked wrong, backwards, and a
+/// record that names the bot a person played says which chair was
+/// theirs. A record between two bots names no one, so it opens as it
+/// always did — the Corp's chair, at the setup.
+pub fn opening(header: &MatchRecordHeader, side: Option<Side>, at: Option<Start>) -> (Side, Start) {
+    let person = header.bot.map(|bot| bot.side.other());
+    let side = side.or(person).unwrap_or(Side::Corp);
+    let at = at.unwrap_or(if person.is_some() { Start::End } else { Start::Beginning });
+    (side, at)
+}
+
 /// Every position of one recorded match, from the chair of `side`.
 pub struct Replay {
     registry: CardRegistry,
@@ -88,12 +124,23 @@ impl Replay {
         Ok(replay)
     }
 
-    /// Reads a `--record` file and replays it.
-    pub fn open(path: &Path, registry: CardRegistry, side: Side) -> Result<Self, Box<dyn std::error::Error>> {
+    /// Reads a record — a `--record` file or a client's bug report — and
+    /// replays it, opening where `opening` says for the flags given.
+    pub fn open(path: &Path, registry: CardRegistry, side: Option<Side>, at: Option<Start>) -> Result<Self, Box<dyn std::error::Error>> {
         let file = std::io::BufReader::new(std::fs::File::open(path).map_err(|e| format!("{}: {e}", path.display()))?);
         let (header, history) = MatchHistory::read_jsonl(file)?;
-        let title = path.file_name().map(|name| name.to_string_lossy().into_owned()).unwrap_or_else(|| path.display().to_string());
-        Ok(Self::load(&header, history, registry, side, &title)?)
+        let mut title = path.file_name().map(|name| name.to_string_lossy().into_owned()).unwrap_or_else(|| path.display().to_string());
+        if let Some(bot) = header.bot {
+            title = format!("{title} — against the {} {:?} {:?}", bot.level, bot.personality, bot.side);
+        }
+        let (side, start) = opening(&header, side, at);
+        let mut replay = Self::load(&header, history, registry, side, &title)?;
+        replay.seek(match start {
+            Start::Beginning => 0,
+            Start::End => usize::MAX,
+            Start::At(index) => index,
+        });
+        Ok(replay)
     }
 
     pub fn side(&self) -> Side {
@@ -249,7 +296,7 @@ mod tests {
     fn recorded_game(seed: u64) -> (MatchRecordHeader, MatchHistory, CardRegistry) {
         let registry = netrunner_client::decks::sample_deck_registry();
         let (corp, runner) = decks::matchups().into_iter().next().expect("a sample matchup");
-        let header = MatchRecordHeader { seed, corp_deck: corp.to_deck(), runner_deck: runner.to_deck(), rules: MatchRules::default() };
+        let header = MatchRecordHeader { seed, corp_deck: corp.to_deck(), runner_deck: runner.to_deck(), rules: MatchRules::default(), bot: None };
         let (state, _events) = header.setup(&registry).unwrap();
         let mut session = Session::new(
             state,
@@ -318,5 +365,24 @@ mod tests {
         entries[0].action = PlayerAction::EndTurn;
         let error = Replay::load(&header, MatchHistory::from_entries(entries), registry, Side::Corp, "test").err().expect("EndTurn during the mulligan is illegal");
         assert!(matches!(error, ReplayError::Diverged { index: 0, action: PlayerAction::EndTurn, .. }), "{error}");
+    }
+
+    /// A bug report opens at its end from the person's chair; a record
+    /// between two bots opens where it always did; a flag wins either way.
+    #[test]
+    fn a_bug_report_opens_at_its_end_from_the_persons_chair() {
+        use netrunner_bots::{Level, Personality};
+        let (plain, _, _) = recorded_game(4);
+        assert_eq!(opening(&plain, None, None), (Side::Corp, Start::Beginning));
+        let report = MatchRecordHeader {
+            bot: Some(netrunner_session::RecordedBot { side: Side::Corp, level: Level::Elite, personality: Personality::Glacier }),
+            ..plain
+        };
+        assert_eq!(opening(&report, None, None), (Side::Runner, Start::End));
+        assert_eq!(opening(&report, Some(Side::Corp), Some(Start::At(7))), (Side::Corp, Start::At(7)));
+        assert_eq!("end".parse::<Start>(), Ok(Start::End));
+        assert_eq!(" Start ".parse::<Start>(), Ok(Start::Beginning));
+        assert_eq!("12".parse::<Start>(), Ok(Start::At(12)));
+        assert!("later".parse::<Start>().is_err());
     }
 }

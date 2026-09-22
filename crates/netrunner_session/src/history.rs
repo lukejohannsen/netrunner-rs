@@ -14,6 +14,9 @@ use std::io::{self, BufRead, Write};
 
 use serde::{Deserialize, Serialize};
 
+use netrunner_bots::difficulty::Level;
+use netrunner_bots::personality::Personality;
+
 use netrunner_core::cards::CardRegistry;
 use netrunner_core::rules::{
     mask_logged_action_for_player, mask_event_for_player, Deck, DeckOrder, GameEvent, GameState, MatchRules, PlayerAction,
@@ -103,6 +106,24 @@ pub struct MatchRecordHeader {
     /// header written without the field is a Standard match.
     #[serde(default)]
     pub rules: MatchRules,
+    /// Who played the match against a person, when one did: the bot's
+    /// chair, rung and style. **For the reader of a bug report, never for
+    /// the replay** — replay applies the recorded actions and never asks
+    /// a bot anything, which is also why a game with a take-back in it
+    /// replays: `Session::rewind` restores the state but not the bot's
+    /// own random stream, so re-running the bot would play a different
+    /// game. `None` in a record between two bots, and in every record
+    /// written before the field existed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bot: Option<RecordedBot>,
+}
+
+/// The opponent a person played, as a match record names it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RecordedBot {
+    pub side: Side,
+    pub level: Level,
+    pub personality: Personality,
 }
 
 impl MatchRecordHeader {

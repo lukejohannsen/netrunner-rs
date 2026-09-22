@@ -97,6 +97,7 @@
 //! (item 41), and every spec here states its tree count outright.
 
 use netrunner_core::rules::Side;
+use serde::{Deserialize, Serialize};
 
 use crate::agent::BotAgent;
 use crate::handicap::HandicapAgent;
@@ -116,7 +117,10 @@ use crate::puct::{PuctAgent, PuctConfig};
 /// the Runner chair and **0.254** on the Corp's. Ten rungs would put
 /// neighbours inside the noise of a single evening's play — and the Corp
 /// chair already spaces its five 0.064 apart, which is about the limit.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+/// Serialized by its name (`"veteran"`), the word a player asks for, so a
+/// match record names the rung the way `--corp-level` does.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum Level {
     /// Legal moves, chosen at random. Loses to a first-time player who
     /// has understood the rules, which is exactly what a first rung is

@@ -140,7 +140,7 @@ pub fn run(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
         if let Some(dir) = &config.record {
             // `GameState::setup` above is Standard rules and a shuffled
             // order, so the header says so.
-            let header = MatchRecordHeader { seed, corp_deck: corp_deck.to_deck(), runner_deck: runner_deck.to_deck(), rules: MatchRules::default() };
+            let header = MatchRecordHeader { seed, corp_deck: corp_deck.to_deck(), runner_deck: runner_deck.to_deck(), rules: MatchRules::default(), bot: None };
             record_match(dir, game_index, &header, &history)?;
         }
         coverage.absorb_match(&history, &registry, &outcome);

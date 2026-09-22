@@ -309,6 +309,11 @@ pub struct Game {
     pub break_stopped: Option<String>,
     pub over: Option<Over>,
     pub stalled: Option<String>,
+    /// Where the last bug report was saved, or why it was not — the
+    /// screen's to write (`netrunner_client::bug_report` is file I/O) and
+    /// the options' and the stall panel's to show, since the client's
+    /// notices are drawn on the main menu, not over a game.
+    pub saved_report: Option<String>,
     pub confirm_quit: bool,
     /// How many actions have been applied, for a screen to know the
     /// board moved without comparing views.
@@ -344,6 +349,7 @@ impl Game {
             break_stopped: None,
             over: None,
             stalled: None,
+            saved_report: None,
             confirm_quit: false,
             applied: 0,
             trail: None,

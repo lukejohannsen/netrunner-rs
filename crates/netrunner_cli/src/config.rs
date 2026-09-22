@@ -511,15 +511,21 @@ pub enum Command {
         action: LearnAction,
     },
 
-    /// Step through a match recorded with `--headless --record`, from one
-    /// side's chair: every position is that seat's masked view, and the
-    /// log is that seat's masked copy. `s` swaps chairs while viewing.
+    /// Step through a recorded match, from one side's chair: every
+    /// position is that seat's masked view, and the log is that seat's
+    /// masked copy. `s` swaps chairs while viewing.
     Replay {
-        /// A `game_NNNNN.jsonl` written by `--record`.
+        /// A `game_NNNNN.jsonl` written by `--record`, or a bug report the
+        /// desktop client saved.
         file: PathBuf,
-        /// Whose chair to watch from.
-        #[arg(long, value_enum, default_value_t = SideArg::Corp)]
-        side: SideArg,
+        /// Whose chair to watch from. Default: the person's, for a bug
+        /// report; the Corp's otherwise.
+        #[arg(long, value_enum)]
+        side: Option<SideArg>,
+        /// Where to open: `start`, `end`, or a number of actions. Default:
+        /// the end, for a bug report; the start otherwise.
+        #[arg(long)]
+        at: Option<crate::replay::Start>,
     },
 }
 
