@@ -175,8 +175,8 @@ fn until_the_runners_turn(app: &mut App) {
         if own_turn {
             return true;
         }
-        let (pass, disabled) = control_button(app, Control::PassPriority);
-        assert!(!disabled, "asked during the Corp's turn, the Runner can pass priority");
+        let (pass, disabled) = control_button(app, Control::Continue);
+        assert!(!disabled, "asked during the Corp's turn, the Runner can continue");
         press_entity(app, pass);
         false
     });
@@ -876,28 +876,23 @@ fn a_run_fills_the_lane_and_the_lane_keeps_the_trail() {
     // The run plays out (the Runner's bot is not seated; the person is
     // asked to continue), and the trail stays with its outcome.
     for _ in 0..24 {
-        // Continue, complete, answer a decision, or pass priority in a
-        // window — whichever the engine lists, as a person would.
+        // Continue — whichever of pass, go on or breach the engine lists —
+        // or answer a decision, as a person would. The button says the
+        // step it takes the game to, never just "Continue".
         let mut pressed = false;
-        for control in [Control::ContinueRun, Control::CompleteRun] {
-            let (entity, disabled) = control_button(&mut app, control);
-            if !disabled && !pressed {
-                press_entity(&mut app, entity);
-                pressed = true;
-            }
+        let (entity, disabled) = control_button(&mut app, Control::Continue);
+        if !disabled {
+            let label = app.world().resource::<Model>().0.actions.continue_label().to_string();
+            assert_ne!(label, Control::Continue.label(), "a live Continue names its step");
+            assert_eq!(button_labelled(&mut app, &label), Some(entity), "the button says {label:?}");
+            press_entity(&mut app, entity);
+            pressed = true;
         }
         if !pressed {
             let decision = app.world().resource::<Model>().0.actions.decisions().first().copied();
             if let Some(index) = decision {
                 let button = entity_with(&mut app, &Click::Entry(index)).expect("the decision's button");
                 press_entity(&mut app, button);
-                pressed = true;
-            }
-        }
-        if !pressed {
-            let (entity, disabled) = control_button(&mut app, Control::PassPriority);
-            if !disabled {
-                press_entity(&mut app, entity);
             }
         }
         wait_for(&mut app, "the next decision", |app| {
@@ -1603,10 +1598,7 @@ fn an_access_puts_the_card_in_the_decision_popup_above_its_actions() {
             app.update();
             continue;
         }
-        let live = [Control::ContinueRun, Control::CompleteRun]
-            .into_iter()
-            .map(|control| control_button(&mut app, control))
-            .find(|(_, greyed)| !greyed);
+        let live = Some(control_button(&mut app, Control::Continue)).filter(|(_, greyed)| !greyed);
         match live {
             Some((button, _)) => press_entity(&mut app, button),
             None => {

@@ -19,6 +19,7 @@ pub mod breaks;
 pub mod diff;
 pub mod facts;
 pub mod hud;
+pub mod onward;
 pub mod phase;
 pub mod preview;
 pub mod rig;
@@ -28,6 +29,7 @@ pub use action_map::{table_servers, ActionEntry, ActionMap, Control, Pile, Promp
 pub use affordance::Affordance;
 pub use breaks::{routes, AutoBreak, Next, Route};
 pub use diff::{transitions, Transition, Zone};
+pub use onward::{offered_label, onward, Onward};
 pub use facts::{encounter_subroutines, install_facts, subroutine_word, tile_label, tile_title, tile_tokens, Encounter, Subroutine, Token, TokenKind};
 pub use preview::Asks;
 pub use rig::RigRow;

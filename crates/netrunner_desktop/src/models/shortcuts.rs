@@ -13,6 +13,13 @@
 //! declined by the person: the bar's buttons ask nothing either, and a
 //! key that asks is slower than the pointer it replaces.
 //!
+//! **Space is Continue, the button that names its step** — pass priority,
+//! go on with the run, or breach, whichever the engine offers (never more
+//! than one). It never jacks out and never ends the turn, which have keys
+//! of their own: the key a person leans on must not be the one that gives
+//! something up. Breaching gives nothing up, so it lost its own key (A)
+//! when the three buttons became one.
+//!
 //! **Enter is End turn, and asks nothing.** It used to ask for a second
 //! press while clicks were left, because the engine listed `EndTurn` then
 //! and one stray key gave the clicks up. The engine no longer does: a
@@ -44,11 +51,6 @@ pub enum Key {
 /// What a key means on the board.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Shortcut {
-    /// Space: pass priority, or continue the run when that is what is
-    /// offered. Never jacks out and never ends the turn, which have keys of
-    /// their own — the key a person leans on must not be the one that
-    /// gives something up.
-    Go,
     /// A control on the bar.
     Control(Control),
     /// The `n`th button, from zero, of the open menu, else of the decision
@@ -76,7 +78,7 @@ pub enum Shortcut {
 /// held or not. `None` for every key that is not one.
 pub fn shortcut(key: Key, shift: bool, side: Side) -> Option<Shortcut> {
     Some(match key {
-        Key::Space => Shortcut::Go,
+        Key::Space => Shortcut::Control(Control::Continue),
         Key::Enter => Shortcut::Control(Control::EndTurn),
         Key::Tab if shift => Shortcut::ScoreArea(match side {
             Side::Corp => Side::Runner,
@@ -89,7 +91,6 @@ pub fn shortcut(key: Key, shift: bool, side: Side) -> Option<Shortcut> {
         Key::Char('r') => Shortcut::Control(Control::RemoveTag),
         Key::Char('p') => Shortcut::Control(Control::PurgeViruses),
         Key::Char('j') => Shortcut::Control(Control::JackOut),
-        Key::Char('a') => Shortcut::Control(Control::CompleteRun),
         Key::Char('i') => Shortcut::ReadHovered,
         Key::Char('m') => Shortcut::MenuHovered,
         Key::Char('h') => Shortcut::PlayHelper,
@@ -103,14 +104,13 @@ pub fn shortcut(key: Key, shift: bool, side: Side) -> Option<Shortcut> {
 /// The list the help overlay shows, in the order a person reaches for
 /// them: the keys that act, then the keys that read, then the rest.
 pub const LIST: &[(&str, &str)] = &[
-    ("Space", "Pass priority, or continue the run"),
+    ("Space", "Continue — the button says to what"),
     ("Enter", "End turn (once your clicks are spent)"),
     ("C", "Take 1 credit"),
     ("D", "Draw a card"),
     ("R", "Remove a tag (Runner)"),
     ("P", "Purge viruses (Corp)"),
     ("J", "Jack out"),
-    ("A", "Complete the run"),
     ("U", "Take the last move back"),
     ("1 – 9", "The open menu's buttons, else the pop-up's, else a way through the ICE"),
     ("M", "Actions of the card under the pointer"),
@@ -136,7 +136,7 @@ mod tests {
 
     #[test]
     fn space_never_gives_anything_up_and_the_digits_count_from_one() {
-        assert_eq!(shortcut(Key::Space, false, Side::Runner), Some(Shortcut::Go));
+        assert_eq!(shortcut(Key::Space, false, Side::Runner), Some(Shortcut::Control(Control::Continue)));
         assert_eq!(shortcut(Key::Enter, false, Side::Corp), Some(Shortcut::Control(Control::EndTurn)));
         assert_eq!(shortcut(Key::Char('1'), false, Side::Corp), Some(Shortcut::Decision(0)));
         assert_eq!(shortcut(Key::Char('9'), false, Side::Corp), Some(Shortcut::Decision(8)));

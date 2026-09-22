@@ -871,10 +871,6 @@ impl Game {
             return Outcome::Nothing;
         }
         match shortcut {
-            Shortcut::Go => match self.actions.for_control(Control::PassPriority) {
-                Some(_) => self.apply(Intent::Control(Control::PassPriority)),
-                None => self.apply(Intent::Control(Control::ContinueRun)),
-            },
             Shortcut::Control(control) => self.apply(Intent::Control(control)),
             Shortcut::Decision(n) => {
                 if !self.awaiting {
@@ -1243,7 +1239,7 @@ mod tests {
     fn a_key_presses_the_button_it_stands_for_and_nothing_through_an_overlay() {
         let (mut game, mut handle) = game(Side::Corp);
         until_awaiting(&mut game, &mut handle);
-        assert_eq!(game.apply(Intent::Shortcut(Shortcut::Go)), Outcome::Nothing, "nothing to pass at the mulligan");
+        assert_eq!(game.apply(Intent::Shortcut(Shortcut::Control(Control::Continue))), Outcome::Nothing, "nothing to pass at the mulligan");
         assert_eq!(game.apply(Intent::Shortcut(Shortcut::Control(Control::GainCredit))), Outcome::Nothing);
         assert_eq!(game.apply(Intent::Shortcut(Shortcut::Decision(7))), Outcome::Nothing, "no eighth button");
         let first = game.actions.decisions()[0];
@@ -1488,7 +1484,7 @@ mod tests {
         assert_eq!(pass, PlayerAction::PassPriority { side: Side::Runner });
         assert!(!game.awaiting, "nothing is offered while the pass is in flight");
         game.apply(Intent::Message(MatchMessageRef(MatchMessage::Rejected { reason: "no".to_string() })));
-        assert!(game.awaiting && game.actions.for_control(Control::PassPriority).is_some(), "a rejected pass is back on the bar");
+        assert!(game.awaiting && game.actions.for_control(Control::Continue).is_some(), "a rejected pass is back on the bar");
         handle.join();
     }
 

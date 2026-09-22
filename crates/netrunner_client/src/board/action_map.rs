@@ -39,8 +39,9 @@ use netrunner_core::rules::{
 };
 use netrunner_core::view::{ClientView, ServerView};
 
-use crate::actions::{card_title, describe_action, explain_action};
+use crate::actions::{card_title, explain_action};
 use crate::board::affordance::{self, Affordance};
+use crate::board::onward;
 use crate::prose;
 use crate::placement::Placement;
 use crate::selection::Selection;
@@ -93,9 +94,15 @@ impl Pile {
 ///
 /// Which side has which, and in what order, is decided here rather than
 /// in a screen so both clients draw the same bar and a test can check
-/// that every control resolves to at most one entry. The run trio is on
-/// the Runner's bar outside a run too — greyed, so the bar never
+/// that every control resolves to at most one entry. Continue and Jack
+/// out are on the bar outside a run too — greyed, so the bar never
 /// reflows when a run starts.
+///
+/// **Continue is three actions, and the button says which step it takes
+/// the game to.** Pass priority, Continue run and Complete run were three
+/// buttons that each moved the game on and none said where; at most one
+/// of them is ever legal for a seat (`onward` says why), so one button
+/// stands for all three, worded by [`ActionMap::continue_label`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Control {
     GainCredit,
@@ -103,16 +110,14 @@ pub enum Control {
     EndTurn,
     PurgeViruses,
     RemoveTag,
-    PassPriority,
-    ContinueRun,
+    /// `PassPriority`, `ContinueRun` or `CompleteRun`, whichever is legal.
+    Continue,
     JackOut,
-    CompleteRun,
 }
 
 impl Control {
-    const CORP: [Control; 5] = [Control::GainCredit, Control::Draw, Control::PurgeViruses, Control::EndTurn, Control::PassPriority];
-    const RUNNER: [Control; 8] =
-        [Control::GainCredit, Control::Draw, Control::RemoveTag, Control::EndTurn, Control::PassPriority, Control::ContinueRun, Control::JackOut, Control::CompleteRun];
+    const CORP: [Control; 5] = [Control::GainCredit, Control::Draw, Control::PurgeViruses, Control::EndTurn, Control::Continue];
+    const RUNNER: [Control; 6] = [Control::GainCredit, Control::Draw, Control::RemoveTag, Control::EndTurn, Control::Continue, Control::JackOut];
 
     /// The bar for `side`, in order.
     pub fn for_side(side: Side) -> &'static [Control] {
@@ -124,7 +129,8 @@ impl Control {
 
     /// The button's word. Shorter than `describe_action`'s label, which
     /// names the side and the click cost; the bar has no room and the
-    /// side is the viewer's own.
+    /// side is the viewer's own. Continue's is the word it says when
+    /// greyed: live, it names its step ([`ActionMap::continue_label`]).
     pub fn label(self) -> &'static str {
         match self {
             Control::GainCredit => "Take 1 credit",
@@ -132,10 +138,8 @@ impl Control {
             Control::EndTurn => "End turn",
             Control::PurgeViruses => "Purge viruses",
             Control::RemoveTag => "Remove a tag",
-            Control::PassPriority => "Pass priority",
-            Control::ContinueRun => "Continue run",
+            Control::Continue => "Continue",
             Control::JackOut => "Jack out",
-            Control::CompleteRun => "Complete run",
         }
     }
 
@@ -150,10 +154,8 @@ impl Control {
                 | (Control::EndTurn, PlayerAction::EndTurn)
                 | (Control::PurgeViruses, PlayerAction::PurgeVirusCounters)
                 | (Control::RemoveTag, PlayerAction::RemoveTag)
-                | (Control::PassPriority, PlayerAction::PassPriority { .. })
-                | (Control::ContinueRun, PlayerAction::ContinueRun)
+                | (Control::Continue, PlayerAction::PassPriority { .. } | PlayerAction::ContinueRun | PlayerAction::CompleteRun)
                 | (Control::JackOut, PlayerAction::JackOut)
-                | (Control::CompleteRun, PlayerAction::CompleteRun)
         )
     }
 
@@ -190,18 +192,29 @@ pub struct ActionMap {
     /// rather than asked of the view per card, so every target of one
     /// view is judged against the same moment.
     passing: bool,
+    /// What the Continue button says: the step it takes the game to, or
+    /// its greyed word when the engine offers none of its actions.
+    continue_label: String,
 }
 
 impl ActionMap {
     pub fn build(view: &ClientView, registry: &CardRegistry) -> Self {
-        let entries = view
+        // Continue's entry says the step it takes the game to
+        // (`onward::offered_label`), so the play helper, the terminal's list
+        // and the button all say the same thing.
+        let entries: Vec<ActionEntry> = view
             .legal_actions
             .iter()
-            .map(|action| ActionEntry { action: action.clone(), label: describe_action(action, registry, Some(view)), targets: targets_of(action, view) })
+            .map(|action| ActionEntry { action: action.clone(), label: onward::offered_label(action, registry, Some(view)), targets: targets_of(action, view) })
             .collect();
+        debug_assert!(entries.iter().filter(|e| Control::Continue.matches(&e.action)).count() <= 1, "Continue stands for one action at a time");
+        let continue_label = match entries.iter().find(|e| Control::Continue.matches(&e.action)) {
+            Some(entry) => entry.label.clone(),
+            None => Control::Continue.label().to_string(),
+        };
         let selection = Selection::of(view, registry);
         let collapsed = selection.as_ref().map(|selection| selection.hidden()).unwrap_or_default();
-        Self { entries, selection, collapsed, passing: affordance::in_a_passing_moment(view) }
+        Self { entries, selection, collapsed, passing: affordance::in_a_passing_moment(view), continue_label }
     }
 
     /// Adds to each entry's label what its action goes on to ask
@@ -331,8 +344,17 @@ impl ActionMap {
         self.entries.iter().enumerate().filter(|(_, entry)| entry.targets.is_empty()).map(|(i, _)| i).collect()
     }
 
+    /// The words on the Continue button: the step its action takes the
+    /// game to ("Continue to Encounter Ice Wall", "Breach HQ"), or
+    /// "Continue" while it is greyed.
+    pub fn continue_label(&self) -> &str {
+        // A default map (before the first view) has no words of its own.
+        if self.continue_label.is_empty() { Control::Continue.label() } else { &self.continue_label }
+    }
+
     /// The entry `control` would submit, if the engine lists it. At most
-    /// one: a side has one `EndTurn` and one `PassPriority` at a time.
+    /// one: a side has one `EndTurn` at a time, and Continue's three
+    /// actions are never legal together (`onward`).
     pub fn for_control(&self, control: Control) -> Option<usize> {
         self.entries.iter().position(|entry| control.matches(&entry.action))
     }
@@ -947,6 +969,11 @@ mod tests {
                         seen.sort_unstable();
                         seen.dedup();
                         assert_eq!(seen, (0..map.entries.len()).collect::<Vec<_>>(), "seed {seed}, {side:?}: {:?}", map.entries.iter().map(|e| &e.action).collect::<Vec<_>>());
+                        // The button and its entry say the same step.
+                        if let Some(index) = map.for_control(Control::Continue) {
+                            assert_eq!(map.entries[index].label, map.continue_label(), "seed {seed}");
+                            assert_ne!(map.continue_label(), Control::Continue.label(), "seed {seed}: a live Continue names its step");
+                        }
                         for control in Control::for_side(side.other()) {
                             if !Control::for_side(side).contains(control) {
                                 assert_eq!(map.for_control(*control), None, "seed {seed}: {control:?} is the other side's");

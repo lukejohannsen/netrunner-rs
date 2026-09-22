@@ -25,13 +25,13 @@ use netrunner_core::tutorial::Lesson;
 use netrunner_core::view::{ClientView, ServerView};
 use netrunner_session::{GameEndReason, LessonSession, LessonStep, Seat, Session, SessionStep, SubmitError, UNDO_DEPTH};
 
-use netrunner_client::board::{routes, ActionMap, Affordance, Asks, AutoBreak, Next, Route, Target};
+use netrunner_client::board::{offered_label, routes, ActionMap, Affordance, Asks, AutoBreak, Next, Route, Target};
 use netrunner_client::access::Access;
 use netrunner_client::card_face::Face;
 use netrunner_client::placement::Placement;
 use netrunner_client::selection::Selection;
 
-use crate::app::{card_modal, describe_action, explain_action, push_log_line, App, CardPicker, Coaching, Modal, RenderableView};
+use crate::app::{card_modal, explain_action, push_log_line, App, CardPicker, Coaching, Modal, RenderableView};
 use crate::bots;
 use crate::config::{BotKind, Config, Mode};
 use netrunner_client::actions::pop_log_entries;
@@ -880,7 +880,7 @@ impl RenderableView for LocalUiState {
 
     fn legal_action_labels(&self) -> Vec<String> {
         let mut labels: Vec<String> =
-            self.offered_actions().iter().map(|action| self.asks.label(action, describe_action(action, &self.registry, self.view.as_ref()))).collect();
+            self.offered_actions().iter().map(|action| self.asks.label(action, offered_label(action, &self.registry, self.view.as_ref()))).collect();
         if let Some(view) = &self.view {
             labels.extend(self.breaks.iter().map(|route| route.label(view, &self.registry)));
         }
@@ -1552,6 +1552,7 @@ fn counter_label(card: Option<&CardId>, counters: u32, registry: &CardRegistry) 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use netrunner_client::actions::describe_action;
     use netrunner_core::tutorial;
     use ratatui::backend::TestBackend;
     use ratatui::Terminal;

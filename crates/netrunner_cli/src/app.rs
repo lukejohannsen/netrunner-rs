@@ -14,7 +14,7 @@ use std::time::{Duration, Instant};
 use ratatui::crossterm::event::{KeyCode, KeyEvent};
 use tokio::sync::mpsc;
 
-use netrunner_client::board::{routes, ActionMap, Asks, AutoBreak, Next, Route};
+use netrunner_client::board::{offered_label, routes, ActionMap, Asks, AutoBreak, Next, Route};
 use netrunner_core::cards::CardRegistry;
 use netrunner_core::dsl::CardId;
 use netrunner_core::rules::{PlayerAction, Side, Viewer};
@@ -24,7 +24,7 @@ use netrunner_server::{ClientMessage, ServerMessage};
 
 // Lifted into the shared client core for the desktop (Phase 7 §3); the
 // names stay reachable here so nothing in this crate had to move.
-pub use netrunner_client::actions::{describe_action, explain_action, push_log_line, visible_zones, CardZone};
+pub use netrunner_client::actions::{explain_action, push_log_line, visible_zones, CardZone};
 
 pub struct App {
     pub registry: CardRegistry,
@@ -552,7 +552,7 @@ impl RenderableView for App {
 
     fn legal_action_labels(&self) -> Vec<String> {
         let mut labels: Vec<String> =
-            self.offered_actions().iter().map(|action| self.asks.label(action, describe_action(action, &self.registry, self.view.as_ref()))).collect();
+            self.offered_actions().iter().map(|action| self.asks.label(action, offered_label(action, &self.registry, self.view.as_ref()))).collect();
         if let Some(view) = &self.view {
             labels.extend(self.breaks.iter().map(|route| route.label(view, &self.registry)));
         }
