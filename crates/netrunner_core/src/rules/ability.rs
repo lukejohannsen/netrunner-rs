@@ -506,6 +506,7 @@ pub fn evaluate_effect(
                 advancement_tokens: 0,
                 counters: 0,
                 installed_this_turn: true,
+                seen_by_runner: false,
             };
             match insert_after {
                 Some(host) => {
