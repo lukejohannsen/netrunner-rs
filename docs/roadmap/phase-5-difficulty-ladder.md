@@ -1997,6 +1997,43 @@ game: that is the next PR's to stop. `REVEALED_TRAP_WEIGHT` is priced in
 the Corp's own board, not in `corp_install_value`, which is also the
 Runner's reading of a face-up Corp card.
 
+**The Runner reads the end of the server**
+(`feat/runner-reads-the-end-of-the-server`). In `access_prospect` a root
+card is *known* when it is rezzed **or** seen, and is then read for what
+it is rather than counted as one hidden access:
+
+- a known trap costs `known_ambush_weight` plus
+  `KNOWN_TRAP_DAMAGE_WEIGHT` (0.5) per point of damage it would do — an
+  Urtica with three tokens is five net damage, not the same 1.5 as a
+  bare one — and `LETHAL_TRAP_WEIGHT` (50.0) instead when that damage
+  would flatline (CR 1.7.2b). Its tokens stop counting as a prospect;
+- a known asset is worth its trash and nothing else, and only when
+  affordable;
+- an unseen card is a hidden access, as before, so the Corp's bluff
+  still works on a card the Runner has not met.
+
+Six seeds × 216 against the never-rez base: repeat accesses of a sprung
+trap **0.42 → 0.000**, runs on a remote of known traps **0.20 → 0.00**,
+flatlines **0.22 → 0.13**, and the Corp **0.350 → 0.283** (−0.068,
+t 9.7). The Corp's trap gain from not rezzing is given back once the
+Runner stops donating, which is the point: both chairs now play the
+card correctly.
+
+**The ICE on the way in, measured in halves.** `run_is_breakable`
+becomes `remaining_break_cost`, so one number gates the run and pays for
+it:
+
+- **Kept:** what the Runner can afford to trash at the end is what it
+  has left *after* breaking in. It could break in and arrive unable to
+  trash the asset it came for. On the pool this is byte-identical in
+  three seeds × 192 — a correctness fix with no measured effect.
+- **Rejected:** charging the run `remaining_break_cost ×
+  own_credit_weight` as well. The Runner stopped running — 17.2 runs a
+  game → 14.6, Corp 0.239 → 0.259 over the pool and +0.029 on the trap
+  decks (t 4.4). A breach is worth more than the credits it costs,
+  because the credits come back and the agenda does not. The number is
+  recorded on `remaining_break_cost` rather than left as folklore.
+
 Reports are under `target/coverage/trap/`. The fixes follow as their
 own PRs:
 

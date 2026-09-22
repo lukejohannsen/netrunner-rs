@@ -282,9 +282,30 @@ const ADVANCED_CARD_PROSPECT_WEIGHT: f64 = 1.0;
 /// beside a face-up Urtica Cipher is not worth the run — the exact
 /// position the person watched the bot lose from — while a run on a
 /// server with two hidden cards and one known ambush is still marginally
-/// worth it. Unrezzed ambushes are not read: in a determinized sample
-/// their identity is a guess, and the Runner is meant not to know.
+/// worth it.
+///
+/// **Known is what the Runner has seen**: rezzed, or face down and
+/// accessed before (`InstalledCard::seen_by_runner`), whose identity the
+/// view carries and a determinized sample therefore keeps. A face-down
+/// card never seen is still not read: in a sample its identity is a
+/// guess. Before the flag a sprung Urtica Cipher went back to being a
+/// hidden card worth 1.0 more per token, and the heuristic Runner ran
+/// into one it had already hit 0.43 times per install once the Corp
+/// stopped rezzing traps (Phase 5 §20). On top of this flat term the run
+/// pays `KNOWN_TRAP_DAMAGE_WEIGHT` per point of damage.
 const KNOWN_AMBUSH_WEIGHT: f64 = 1.5;
+/// Each point of damage a known trap in the breach would do, subtracted
+/// on top of `KNOWN_AMBUSH_WEIGHT`: an Urtica Cipher with three tokens is
+/// five net damage, not the same 1.5 as a bare one. A trap that would
+/// take more cards than the grip holds is a flatline, priced at
+/// `LETHAL_TRAP_WEIGHT` instead. 0.5 a point: a card from the grip is
+/// worth about a click, and two of them outweigh a hidden access.
+const KNOWN_TRAP_DAMAGE_WEIGHT: f64 = 0.5;
+/// A known trap whose damage would flatline the Runner: not a trade, the
+/// game. Well short of `WIN_SCORE`, because this is a leaf's reading of a
+/// run not yet over — a prevention in the grip or a card drawn first can
+/// still change it — but far past anything the breach could pay.
+const LETHAL_TRAP_WEIGHT: f64 = 50.0;
 /// The Runner's view of the Corp's board: each Corp install, valued by
 /// what the Runner can see of it (`visible_install_value`), subtracted at
 /// this fraction. **The Runner branch had no term over the Corp's board
@@ -688,6 +709,12 @@ pub struct Weights {
     /// Runner only: each known ambush the run would access, subtracted.
     /// See `KNOWN_AMBUSH_WEIGHT`.
     pub known_ambush_weight: f64,
+    /// Runner only: each point of damage those known traps would do. See
+    /// `KNOWN_TRAP_DAMAGE_WEIGHT`.
+    pub known_trap_damage_weight: f64,
+    /// Runner only: a known trap in the breach that would flatline. See
+    /// `LETHAL_TRAP_WEIGHT`.
+    pub lethal_trap_weight: f64,
     /// Corp only: each of its own traps face up, subtracted, beyond the
     /// rez gaining nothing. See `REVEALED_TRAP_WEIGHT`.
     pub revealed_trap_weight: f64,
@@ -777,6 +804,8 @@ impl Default for Weights {
             active_run_weight: ACTIVE_RUN_WEIGHT,
             advanced_card_prospect_weight: ADVANCED_CARD_PROSPECT_WEIGHT,
             known_ambush_weight: KNOWN_AMBUSH_WEIGHT,
+            known_trap_damage_weight: KNOWN_TRAP_DAMAGE_WEIGHT,
+            lethal_trap_weight: LETHAL_TRAP_WEIGHT,
             revealed_trap_weight: REVEALED_TRAP_WEIGHT,
             opponent_board_weight: OPPONENT_BOARD_WEIGHT,
             successful_run_weight: SUCCESSFUL_RUN_WEIGHT,
@@ -931,6 +960,8 @@ fn lerp(a: &Weights, b: &Weights, t: f64) -> Weights {
         active_run_weight: f(a.active_run_weight, b.active_run_weight),
         advanced_card_prospect_weight: f(a.advanced_card_prospect_weight, b.advanced_card_prospect_weight),
         known_ambush_weight: f(a.known_ambush_weight, b.known_ambush_weight),
+        known_trap_damage_weight: f(a.known_trap_damage_weight, b.known_trap_damage_weight),
+        lethal_trap_weight: f(a.lethal_trap_weight, b.lethal_trap_weight),
         revealed_trap_weight: f(a.revealed_trap_weight, b.revealed_trap_weight),
         opponent_board_weight: f(a.opponent_board_weight, b.opponent_board_weight),
         successful_run_weight: f(a.successful_run_weight, b.successful_run_weight),
@@ -1067,8 +1098,9 @@ pub fn evaluate_state_with(state: &GameState, side: Side, registry: &CardRegistr
                 score += w.successful_run_weight;
             }
             if let Some(run) = &state.active_run {
-                if run_is_breakable(state, run, registry) {
-                    score += access_prospect(state, run, registry, w);
+                let pool = state.runner.resources.credits.0 + run.bad_publicity_credits;
+                if let Some(due) = remaining_break_cost(state, run, registry).filter(|due| *due <= pool) {
+                    score += access_prospect(state, run, registry, w, pool - due);
                 }
                 score -= pending_subroutines(run) as f64 * w.pending_subroutine_weight;
                 score -= strength_shortfall(state, run, registry) as f64 * w.strength_shortfall_weight;
@@ -1089,12 +1121,32 @@ pub fn evaluate_state_with(state: &GameState, side: Side, registry: &CardRegistr
 /// a run that stops at the third ICE is worth no more than one that stops
 /// at the first.
 fn run_is_breakable(state: &GameState, run: &RunState, registry: &CardRegistry) -> bool {
+    remaining_break_cost(state, run, registry)
+        .is_some_and(|total| total <= state.runner.resources.credits.0 + run.bad_publicity_credits)
+}
+
+/// The credits still to be spent breaking this run's rezzed ICE, or
+/// `None` when one of them no rig card can break. Split out of
+/// `run_is_breakable` so the same number both gates the run and pays for
+/// it: what the Runner can afford to trash at the end is what it has
+/// left **after** breaking in, not the credits it starts the run with.
+/// Before this the Runner could break in and arrive unable to trash the
+/// asset it came for.
+///
+/// **Charging the run for those credits as well was measured and
+/// rejected** (Phase 5 §20). Subtracting `remaining_break_cost ×
+/// own_credit_weight` from the run's value makes one hidden access lose
+/// to 3[c] of ICE, and the Runner stopped running: 17.2 runs a game →
+/// 14.6, and the Corp won 0.239 → 0.259 over the whole pool (three seeds
+/// × 192) and +0.029 on the trap decks (six seeds × 216, t 4.4). A
+/// breach is worth more than the credits it costs, because the credits
+/// come back and the agenda does not.
+fn remaining_break_cost(state: &GameState, run: &RunState, registry: &CardRegistry) -> Option<u32> {
     let mut total = 0;
     for ice in run.ice.iter().skip(run.position).filter(|ice| ice.rezzed) {
-        let Some(cost) = cheapest_break_cost(state, ice, registry) else { return false };
-        total += cost;
+        total += cheapest_break_cost(state, ice, registry)?;
     }
-    total <= state.runner.resources.credits.0 + run.bad_publicity_credits
+    Some(total)
 }
 
 /// What the breach of `run.server` is worth to the Runner, read only off
@@ -1126,21 +1178,22 @@ fn run_is_breakable(state: &GameState, run: &RunState, registry: &CardRegistry) 
 /// card-started path (`Effect::InitiateRun` through `run/engine.rs`'s
 /// deduplicating push) records a repeat run once, and that run is priced
 /// as if it were the first — the cheaper direction.
-fn access_prospect(state: &GameState, run: &RunState, registry: &CardRegistry, w: &Weights) -> f64 {
+fn access_prospect(state: &GameState, run: &RunState, registry: &CardRegistry, w: &Weights, credits: u32) -> f64 {
     use netrunner_core::rules::{InstallSlot, ServerId};
     let server = run.server;
     let earlier = runs_earlier_this_turn(state, server);
     let seen = earlier > 0;
-    let credits = state.runner.resources.credits.0;
     let mut hidden = 0.0_f64;
     let mut tokens = 0u32;
     let mut ambushes = 0usize;
+    let mut damage = 0usize;
     let mut trash_gain = 0.0;
     for installed in state.corp.installed.iter().filter(|card| card.server == server && card.slot == InstallSlot::Root) {
-        if installed.rezzed {
+        if installed.rezzed || installed.seen_by_runner {
             let Some(def) = registry.get(&installed.card) else { continue };
             if punishes_access_with_damage(def) {
                 ambushes += 1;
+                damage += trap_damage(state, installed, def);
             }
             if let Some(cost) = def.trash_cost
                 && cost <= credits
@@ -1183,9 +1236,48 @@ fn access_prospect(state: &GameState, run: &RunState, registry: &CardRegistry, w
             }
         }
     }
+    // "The Runner is flatlined immediately if they suffer more damage than
+    // they have cards in their grip" (CR 1.7.2b).
+    let trap = if damage > state.runner.grip.len() {
+        w.lethal_trap_weight
+    } else {
+        damage as f64 * w.known_trap_damage_weight
+    };
     hidden * w.active_run_weight + f64::from(tokens) * w.advanced_card_prospect_weight
         - ambushes as f64 * w.known_ambush_weight
+        - trap
         + trash_gain
+}
+
+/// The damage a known trap would do if accessed now: its fixed damage,
+/// plus a point per hosted token for the kind that grows (Urtica
+/// Cipher), and a paid trap's (Snare!, Byte!) only when the Corp holds
+/// its price. Read off the same effects `punishes_access_with_damage`
+/// recognises, so a trap the recogniser admits has a number here.
+fn trap_damage(state: &GameState, installed: &InstalledCard, def: &CardDefinition) -> usize {
+    let mut damage = 0usize;
+    let mut count = |effect: &Effect| match effect {
+        Effect::DealDamage(_, n) => damage += *n,
+        Effect::DealDamageAmount(_, Amount::HostedAdvancementTokens) => damage += installed.advancement_tokens as usize,
+        _ => {}
+    };
+    for trigger in def.triggers.iter().filter(|trigger| trigger.trigger == Trigger::OnAccessed) {
+        for effect in &trigger.effects {
+            effect.for_each_effect(&mut count);
+        }
+    }
+    if let Some(access) = &def.interactive_on_access {
+        let affordable = match access.cost {
+            netrunner_core::dsl::Cost::Credits(price) => state.corp.resources.credits.0 >= price,
+            _ => true,
+        };
+        if affordable {
+            for effect in &access.effects {
+                effect.for_each_effect(&mut count);
+            }
+        }
+    }
+    damage
 }
 
 /// How many times the Runner ran `server` this turn before the run in
@@ -2746,12 +2838,19 @@ mod tests {
         let mut running = idle.clone();
         running.active_run = Some(RunState { server: ServerId::Hq, ice, position, ..Default::default() });
         let term = evaluate_state(&running, Side::Runner, registry) - evaluate_state(&idle, Side::Runner, registry);
-        (term * 1000.0).round() / 1000.0 // the other terms cancel, up to float noise
+        round3(term) // the other terms cancel, up to float noise
+    }
+
+    fn round3(x: f64) -> f64 {
+        (x * 1000.0).round() / 1000.0
     }
 
     /// The whole point of the conditional run term: with no breaker for a
     /// rezzed ICE, a run is worth nothing (so a credit click wins); with a
-    /// breaker and the credits to use it, the run is worth taking.
+    /// breaker and the credits to use it, the run is worth taking. What
+    /// breaking costs is not subtracted from the run — `remaining_break_cost`
+    /// records the measurement that says so — but it is gone before the
+    /// Runner can trash anything at the end of it.
     #[test]
     fn a_run_into_rezzed_ice_with_no_matching_breaker_is_not_worth_a_click() {
         let registry = CardRegistry::from_cards(vec![priced_breaker("cleaver", Some(IceType::Barrier), (1, 2), (2, 1))]);
@@ -2766,7 +2865,8 @@ mod tests {
 
     /// Owning the breaker is not enough: the run is credited only when the
     /// pump and break credits are actually in hand (bad-publicity credits
-    /// count — they are spendable on exactly this).
+    /// count — they are spendable on exactly this), and what it is
+    /// credited is the breach, whole.
     #[test]
     fn a_run_is_credited_only_when_the_breaks_are_affordable() {
         use netrunner_core::rules::ServerId;
@@ -2790,7 +2890,7 @@ mod tests {
         running.active_run =
             Some(RunState { server: ServerId::Hq, ice: ice(), bad_publicity_credits: 1, ..Default::default() });
         let term = evaluate_state(&running, Side::Runner, &registry) - evaluate_state(&idle, Side::Runner, &registry);
-        assert_eq!((term * 1000.0).round() / 1000.0, ACTIVE_RUN_WEIGHT, "a bad-publicity credit closes the gap");
+        assert_eq!(round3(term), ACTIVE_RUN_WEIGHT, "a bad-publicity credit closes the gap");
     }
 
     /// The evaluator's one window onto hidden information. Everything
@@ -3391,6 +3491,47 @@ mod tests {
         // cannot tell the two apart.
         let trap = CardRegistry::from_cards(vec![ambush("offworld_office")]);
         assert_eq!(prospect(&state, ServerId::Remote(0), &trap), remote);
+    }
+
+    /// What the Runner can afford at the end of a run is what it has left
+    /// after breaking in. Before this it read the credits it started the
+    /// run with, so it could break in and arrive unable to trash the
+    /// asset it came for. The credits themselves are not charged to the
+    /// run — see `remaining_break_cost`.
+    #[test]
+    fn a_trash_is_priced_from_what_is_left_after_breaking_in() {
+        use netrunner_core::rules::{RunIce, ServerId};
+        let mut nico = asset("nico_campaign", 2);
+        nico.trash_cost = Some(2);
+        let registry = CardRegistry::from_cards(vec![nico, priced_breaker("cleaver", Some(IceType::Barrier), (1, 2), (2, 1))]);
+        let ice = |strength| vec![RunIce { rezzed: true, ..run_ice(strength, IceType::Barrier, 1, true) }];
+        let at = |credits: u32, strength: i32| {
+            let mut state = GameState::new(0);
+            state.runner.resources.credits = Credits(credits);
+            state.runner.rig = vec![InstalledRunnerCard { base_strength: 3, ..rig_card("cleaver") }];
+            state.corp.installed = vec![InstalledCard {
+                card: CardId("nico_campaign".to_string()),
+                install_id: InstallId(1),
+                server: ServerId::Remote(0),
+                rezzed: true,
+                ..Default::default()
+            }];
+            let registry = with_printed_ice(&registry, &ice(strength));
+            let mut running = state.clone();
+            running.active_run = Some(RunState { server: ServerId::Remote(0), ice: ice(strength), ..Default::default() });
+            let term = evaluate_state(&running, Side::Runner, &registry) - evaluate_state(&state, Side::Runner, &registry);
+            (term * 1000.0).round() / 1000.0
+        };
+        let removed = (BOARD_PRESENCE_WEIGHT + REZZED_ASSET_WEIGHT) * OPPONENT_BOARD_WEIGHT;
+        let worth_trashing = round3((removed - 2.0 * OWN_CREDIT_WEIGHT).max(0.0));
+        // Strength 5 against Cleaver's 3: two 2[c] pumps and a 1[c] break,
+        // so 5 of the Runner's credits are gone before the breach.
+        assert_eq!(at(6, 5), 0.0, "6 credits, 5 to break in: 1 left does not pay a 2[c] trash");
+        assert_eq!(at(7, 5), worth_trashing, "7 leaves exactly the 2 the trash costs");
+        // The same breach with a strength-3 Barrier costs 1[c] to break,
+        // so 3 credits are enough for both.
+        assert_eq!(at(3, 3), worth_trashing, "a cheap toll leaves the trash affordable");
+        assert_eq!(at(2, 3), 0.0, "and 2 credits do not cover both");
     }
 
     /// The trash lever, both halves: a rezzed asset the Runner can afford

@@ -530,6 +530,38 @@ mod tests {
         assert!(runs_archives, "two unseen cards in Archives outrank one in HQ");
     }
 
+    /// A trap the Runner has sprung is one it can see (`InstalledCard::
+    /// seen_by_runner`): the same advanced face-down Urtica that draws the
+    /// run while unseen — two tokens are an agenda about to score, as far
+    /// as the Runner knows — is left alone once it has been accessed.
+    #[test]
+    fn does_not_run_back_into_a_trap_it_has_sprung() {
+        use netrunner_core::dsl::{Amount, DamageType, Effect};
+        let mut registry = CardRegistry::new();
+        let mut urtica = ambush("urtica_cipher");
+        urtica.advancement_requirement = Some(0);
+        urtica.triggers[0].effects.push(Effect::DealDamageAmount(DamageType::Net, Amount::HostedAdvancementTokens));
+        registry.insert(urtica);
+        let mut state = open_board(&mut registry);
+        state.corp.installed.push(InstalledCard {
+            card: CardId("urtica_cipher".to_string()),
+            install_id: InstallId(1),
+            server: ServerId::Remote(0),
+            advancement_tokens: 2,
+            ..Default::default()
+        });
+        let runs_it = |state: &GameState| {
+            let view = build_client_view(state, &registry, Side::Runner);
+            (1..=4).filter(|seed| {
+                HeuristicAgent::new(Side::Runner, *seed).select_action(&view, &registry)
+                    == PlayerAction::InitiateRun { server: ServerId::Remote(0) }
+            }).count()
+        };
+        assert_eq!(runs_it(&state), 4, "unseen, two tokens are worth the run");
+        state.corp.installed[0].seen_by_runner = true;
+        assert_eq!(runs_it(&state), 0, "seen, it is four net damage into a grip of three");
+    }
+
     /// Where the Corp is scoring is where the Runner goes: a face-down
     /// card with two tokens beats every central.
     #[test]
