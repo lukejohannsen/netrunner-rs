@@ -603,6 +603,42 @@ pub enum DiagAction {
         report: Option<PathBuf>,
     },
 
+    /// *Where* does the Corp put its ICE, and what stands in front of an
+    /// agenda when it goes down? ICE installed per central and per
+    /// remote, remotes opened, and the ICE on an agenda's server at the
+    /// moment it was installed. Phase 5 §19: a report from play that the
+    /// `glacier` Corp spread its ICE over every server and never built the
+    /// fort its name promises.
+    Fort {
+        /// Games to play; game n plays `matchups[n % len]` on `seed + n`.
+        #[arg(long, default_value_t = 96)]
+        games: u32,
+        /// Base seed.
+        #[arg(long, default_value_t = 1)]
+        seed: u64,
+        /// Which bot takes the Corp chair (e.g. `level:operator:glacier`).
+        #[arg(long, default_value = "heuristic")]
+        corp: BotSpec,
+        /// Which bot takes the Runner chair.
+        #[arg(long, default_value = "heuristic")]
+        runner: BotSpec,
+        /// Search iterations for a searching bot in either chair.
+        #[arg(long, default_value_t = 128)]
+        simulations: usize,
+        /// Hidden-state samples per decision for a searching bot.
+        #[arg(long)]
+        determinizations: Option<usize>,
+        /// Play only this sample matchup, `CORP_DECK/RUNNER_DECK` by deck
+        /// id (e.g. `discretion_advised/stolen_goods`).
+        #[arg(long)]
+        matchup: Option<String>,
+        /// Worker threads. All cores if omitted.
+        #[arg(long)]
+        threads: Option<usize>,
+        /// Write the summary and every game's record as JSON here.
+        #[arg(long)]
+        report: Option<PathBuf>,
+    },
     /// *When* in a game does a bot do each thing? One record per side per
     /// turn — that turn's clicks split by what they bought, on a snapshot
     /// of the board they were spent on — reported as a per-turn profile.

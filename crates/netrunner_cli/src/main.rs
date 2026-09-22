@@ -65,6 +65,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             diag::rez_rate::run(&args, &config)
         }
         Some(Command::Diag {
+            action: DiagAction::Fort { games, seed, corp, runner, simulations, determinizations, matchup, threads, report },
+        }) => {
+            let args =
+                diag::fort::FortArgs { corp, runner, games, seed, simulations, determinizations, threads, matchup, report };
+            diag::fort::run(&args, &config)
+        }
+        Some(Command::Diag {
             action: DiagAction::Tempo { games, seed, corp, runner, simulations, determinizations, turns, stage_gain, threads, report },
         }) => {
             let args =

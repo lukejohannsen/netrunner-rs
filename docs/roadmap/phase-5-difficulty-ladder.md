@@ -441,7 +441,7 @@ gain is +0.026. Deciding what balanced should be — and whether Trap stays
 a distinct archetype afterwards — is the open work.
 
 
-## 4. Owed: re-space the Corp chair, reconsider how its top rungs are built, and teach the bots to play in phases — OPEN (16 September 2026)
+## 4. Owed: re-space the Corp chair, reconsider how its top rungs are built, and teach the bots to play in phases — OPEN (16 September 2026); (c) CLOSED on both chairs (22 September 2026, §19)
 
 Three jobs, opened by §3 and none attempted there. They are recorded
 together because (b) may make (a) unnecessary, and (c) is the largest of
@@ -548,6 +548,11 @@ prediction on the Corp chair, finds the Runner chair's stance *inverted*
 (most aggressive when its rig is emptiest), and corrects §3's
 "credit-starved" reading to its early-game form — all three of which bear
 on which stage signal is worth reading.
+
+**(c) closed, 22 September 2026.** Staging the Corp from `glacier`
+toward pressure lost on every leg (§19, #134 closed unmerged), as
+staging the Runner did in §6–§8. What the Corp was missing was a
+*where*, not a *when*: §19's fort terms answer that one.
 
 **Sequencing:** (c), then (b), then (a). Each one moves the numbers the
 next one would be measured against, and re-spacing rungs around a top rung
@@ -1718,3 +1723,160 @@ decks whose top rungs do not play it (`balanced`, `trap`, and `rush` since
 not a tuning.
 
 Reports under `target/coverage/fort-ambush-{c,x,e}-*.json`.
+
+
+## 19. `glacier` builds the fort it is named for: centrals first, one scoring remote, then the agenda — DONE (22 September 2026)
+
+`feat/glacier-builds-its-fort`, from a report from play. The person was
+the Runner against `discretion_advised`, a `glacier` deck, at `operator`
+(one ply, no handicap). They reported that the Corp "makes ICE for days
+horizontally across as many servers as it can without ever once putting
+down an agenda". What they wanted is the fort the profile is named for:
+HQ and R&D one to two deep, Archives at least one, then one remote one to
+two deep, and *then* an agenda in it, played to win.
+
+**First, the phase dial (#134, closed unmerged).** §4(c) on the Corp
+chair was measured before this report arrived: `stage_weights` staged
+from `glacier` under a fort-reading scalar. Every leg that travelled lost
+to standing on `glacier`, six seeds × 384 paired:
+
+- to `balanced`: −0.072 (z 7.1), and −0.016 at half gain
+- to `rush`: −0.086 (z 8.4)
+- to `trap`: −0.030 (z 2.8)
+- the inverted leg (`balanced` until the fort is up, then `glacier`):
+  +0.003, a tie
+
+One piece of remote ICE was a third of the travel, so the staged Corp
+pushed earlier rather than later. The person's rule is "if it doesn't
+move it, don't merge it", so the dial was closed and §4(c) is closed on
+both chairs. The report explains why a dial could not help: the static
+profile it travelled from had no notion of *where* a fort goes, so there
+was nothing for the dial to sequence.
+
+**The instrument: `netrunner_cli diag fort`.** It reads the Corp's
+installs off the state after every step, by `InstallId`, so an install
+from any source counts. It reports:
+
+- the ICE on an agenda's server at the moment the agenda arrived
+- the ICE on each central at the first agenda
+- the remotes opened, and the remotes that ever got ICE
+- the ICE per central and per remote
+- agendas installed and scored
+- the Corp win share
+
+`--matchup CORP/RUNNER` pins the reported games.
+
+**The report was true, and the cause was a missing vocabulary.** On
+`main`, `heuristic:glacier` (which is `operator`) against the balanced
+Runner, six seeds × 384:
+
+- 23% of agendas were installed behind no ICE, and only 30% behind two.
+- At the first agenda, all three centrals were iced in 14% of games and
+  none in 37%.
+- About 0.7 pieces of ICE went on each central, and ICE landed on 3.2
+  remotes a game.
+
+The agendas were installed (2.9 a game), but naked or one deep in a new
+remote. No Corp term knew which server a piece of ICE was on:
+
+- `corp_install_value` prices ICE the same way everywhere.
+- `protected_agenda_ice` counts only the ICE in front of an agenda that
+  is already installed.
+- So placement fell to tie-breaking, and a naked agenda install (+0.8)
+  outbid the profile's own credit click (+0.5).
+
+**Three terms, all `glacier`'s** (`eval::fort_value`). They are 0.0 in
+every other profile, which is held by
+`only_glacier_prices_where_its_ice_stands`.
+
+- `central_ice_weight` 2.0 a piece: up to `central_ice_cap` 2 on HQ and
+  R&D, and one on Archives.
+- `fort_weight` 1.5 a piece: up to `fort_cap` 2 on the deepest remote
+  whose root is empty or holds an agenda. It is priced before the agenda
+  exists, and it stays priced after the agenda is scored.
+- `exposed_agenda_weight` 5.0: subtracted per missing piece, per
+  installed agenda.
+
+At one ply, the order is:
+
+- a first piece on HQ: 2.8
+- the fort's first piece: 2.3
+- a piece in front of an asset: 0.8
+- an agenda behind the finished fort: 6.8
+- the credit click: 0.5
+- a naked agenda: −9.2
+
+The grid ran on a pinned binary with an uncommitted override, heuristic
+Corp against the balanced Runner, two seeds × 384 paired against `main`:
+
+| central / fort / exposed | Corp | Δ | behind ≥2 | all centrals at first agenda |
+|---|---|---|---|---|
+| `main` | 0.219 | | 0.28 | 0.16 |
+| 2 / 1.5 / 0 | 0.180 | −0.039 | 0.27 | 0.55 |
+| 0 / 1.5 / 1.5 | 0.298 | +0.079 | 0.59 | 0.06 |
+| 2 / 0 / 1.5 | 0.318 | +0.099 | 0.33 | 1.00 |
+| 2 / 1.5 / 1.5 | 0.370 | +0.151 | 0.43 | 1.00 |
+| 1 / 1.5 / 1.5 | 0.421 | +0.202 | 0.64 | 0.15 |
+| 2 / 1.5 / 3 | 0.410 | +0.191 | 0.55 | 1.00 |
+| **2 / 1.5 / 5** | **0.499** | **+0.280** | **1.00** | **1.00** |
+| 2.5 / 2 / 4 | 0.497 | +0.279 | 1.00 | 1.00 |
+| 2 / 1.5 (fort cap 3) / 3 | 0.492 | +0.273 | 1.00 | 1.00 |
+
+**The exposure term carries it.** Without it the other two cost 0.039,
+because a fort nobody waits for is only ICE. Below about 4.0, an agenda
+still goes down one deep in half its installs. A weaker central term
+(1.0) wins as much but starts agendas before the centrals are iced,
+which is not the order the person asked for, so it was not taken. The
+neighbours of the shipped point play the same games, so it sits on a
+plateau.
+
+**Shipped, six seeds × 384 against the balanced Runner, paired:**
+
+| | `main` | `glacier` with the fort |
+|---|---|---|
+| Corp win share | 0.247 | **0.462** (+0.215, z 16.6) |
+| agendas behind ≥1 / ≥2 ICE | 0.77 / 0.30 | **1.00 / 1.00** |
+| all three centrals iced at the first agenda | 0.14 | **1.00** |
+| ICE installed on HQ / R&D / Archives a game | 0.70 / 0.70 / 0.72 | 1.79 / 1.80 / 0.98 |
+| remotes given ICE a game | 3.16 | **2.18** |
+| agendas installed / scored a game | 2.93 / 1.25 | 2.28 / **1.68** |
+
+Against every other Runner profile, two seeds × 384 each: `aggressive`
++0.227, `cautious` +0.223, `builder` +0.233, `wary` +0.237 (z ≥ 10.0).
+
+**Search keeps it, and the `glacier` ladder is inverted at the top.** The
+search rungs play `glacier` through `puct@512` (`bench --bots
+level:veteran:glacier,level:elite:glacier,heuristic --threads 10`),
+against the balanced one-ply Runner, seed 1 × 384, paired:
+
+| `glacier` rung | `main` | with the fort | Δ | z | discordant |
+|---|---|---|---|---|---|
+| `operator` (one ply; `diag fort`'s schedule) | 0.216 | **0.495** | +0.279 | | |
+| `veteran` (`puct@512`, ε 0.02) | 0.190 | 0.349 | +0.159 | 5.5 | 121 |
+| `elite` (`puct@512`) | 0.214 | 0.354 | +0.141 | 4.9 | 122 |
+
+Unlike §18's ambush terms, search keeps most of this gain. The fort pays
+off over turns, beyond a 512-simulation horizon, like §9's install
+switch did. But the rungs no longer climb. **They already did not on
+`main`**: §11 set `glacier`'s ladder at `operator` 0.257, `veteran`
+0.309, `elite` 0.363. Re-taken today, on the engine the rules work has
+changed since, it is 0.216 / 0.190 / 0.214. The first figure comes from
+`diag fort` and the other two from `bench`: both are 384 games over the
+same pool on seed 1, but in a different order. So before this entry `glacier`'s
+`operator` was already no weaker than its search rungs, and the fort
+opens that into a gap. The person chose to ship the fort and rebuild the ladder
+separately. That is §4(b) with a measured answer: `glacier`'s top rungs
+should be the one-ply fort Corp at small handicaps, as the Runner ladder
+already is (one ply at five handicaps), with `operator` handicapped to
+sit below them. Seed 2 of this table is being taken, and it goes in
+that PR.
+
+**A dev hook that stalls, found while screenshotting** (not fixed here).
+`NETRUNNER_AUTOPLAY` presses entry `applied % len` of the legal-action
+list. At a card-selection prompt (Mutual Favor) that cycles select and
+deselect without confirming, until the session's 256-decision stall
+guard fires. The notice ends the autoplay short of its count, so the
+screenshot is never taken and the window looks hung. A person's clicks
+cannot reach it. It is its own fix.
+
+Reports are under `target/coverage/fort/`.

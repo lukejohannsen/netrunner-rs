@@ -204,12 +204,49 @@ impl Personality {
                 // 0.322, cautious 0.180 → 0.287, builder 0.134 → 0.231,
                 // wary 0.173 → 0.286). It survives search: under
                 // `puct@512` as Corp, 0.284 → 0.357 on one seed (z 2.5).
+                //
+                // **Then it was taught where the fort goes (Phase 5 §19),
+                // from a report from play**: it "makes ICE for days
+                // horizontally across as many servers as it can without
+                // ever once putting down an agenda". Nothing in the
+                // evaluator knew which server a piece of ICE was on, so
+                // `diag fort` found ICE spread one piece deep over three
+                // remotes a game, under one piece on each central, and a
+                // quarter of its agendas installed behind nothing. Three
+                // terms say the order a person plays a fort in — HQ and
+                // R&D two deep and Archives one (`central_ice_weight`), one
+                // remote two deep before the agenda exists (`fort_weight`),
+                // and an agenda short of that fort priced below a credit
+                // click (`exposed_agenda_weight`). See `eval::fort_value`.
+                // At one ply: a first piece on HQ is 0.8 + 2.0, the
+                // fort's first piece 0.8 + 1.5, and an agenda in a new
+                // remote 0.8 − 2 × 5.0, where the credit click is 0.5.
+                //
+                // Against the balanced Runner, six seeds × 384, paired:
+                // **0.247 → 0.462** (z 16.6), with every agenda installed
+                // behind two pieces (30% before), all three centrals iced
+                // at the first agenda in every game (14%), remotes given
+                // ICE 3.16 → 2.18 a game and agendas scored 1.25 → 1.68.
+                // Against each other Runner profile, two seeds × 384:
+                // +0.223 to +0.237, z ≥ 10.0 each. A plateau, not a
+                // peak: 2.5 / 2.0 / 4.0 plays the same games. The
+                // exposure term is the one that carries it. At 0.0 the
+                // other two cost 0.039, because a fort nobody waits for
+                // is only ICE. At 1.5 and 3.0 (0.370, 0.410 on two seeds
+                // against 0.499 here) an agenda still goes down behind
+                // one piece in about half its installs. From about 4.0 it
+                // waits for the second piece every time.
                 agenda_protection_weight: 3.0,
                 agenda_protection_cap: 3,
                 rezzed_ice_weight: 1.8,
                 unrezzed_install_weight: 0.8,
                 advancement_weight: 1.2,
                 own_credit_weight: 0.5,
+                central_ice_weight: 2.0,
+                central_ice_cap: 2,
+                fort_weight: 1.5,
+                fort_cap: 2,
+                exposed_agenda_weight: 5.0,
                 ..base
             },
             Personality::Trap => Weights {

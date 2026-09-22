@@ -711,6 +711,21 @@ pub struct Weights {
     /// the one-ply Corp already advances every agenda it has installed
     /// and the profile had no way to say "install it".
     pub installed_agenda_weight: f64,
+    /// Corp only: each piece of ICE on a central server, up to
+    /// `central_ice_cap` on HQ and R&D and one on Archives. Zero by
+    /// default, and set by `Personality::Glacier`. See `fort_value`.
+    pub central_ice_weight: f64,
+    pub central_ice_cap: usize,
+    /// Corp only: each piece of ICE, up to `fort_cap`, on the Corp's
+    /// deepest remote whose root is empty or holds an agenda — the
+    /// scoring remote, priced before there is an agenda to put in it.
+    /// Zero by default. See `fort_value`.
+    pub fort_weight: f64,
+    pub fort_cap: usize,
+    /// Corp only: subtracted, per installed agenda, for each piece of ICE
+    /// short of `fort_cap` in front of it. Zero by default. See
+    /// `fort_value`.
+    pub exposed_agenda_weight: f64,
     /// How far the position's stage may move every weight above, from the
     /// build archetype toward the pressure one. Zero is the static
     /// evaluator this repo has always had. See `STAGE_GAIN` and
@@ -760,6 +775,11 @@ impl Default for Weights {
             rd_draw_reserve: RD_DRAW_RESERVE,
             active_run_against_weight: ACTIVE_RUN_AGAINST_WEIGHT,
             installed_agenda_weight: 0.0,
+            central_ice_weight: 0.0,
+            central_ice_cap: 2,
+            fort_weight: 0.0,
+            fort_cap: 2,
+            exposed_agenda_weight: 0.0,
             stage_gain: STAGE_GAIN,
         }
     }
@@ -908,6 +928,11 @@ fn lerp(a: &Weights, b: &Weights, t: f64) -> Weights {
         rd_draw_reserve: c(a.rd_draw_reserve, b.rd_draw_reserve),
         active_run_against_weight: f(a.active_run_against_weight, b.active_run_against_weight),
         installed_agenda_weight: f(a.installed_agenda_weight, b.installed_agenda_weight),
+        central_ice_weight: f(a.central_ice_weight, b.central_ice_weight),
+        central_ice_cap: c(a.central_ice_cap, b.central_ice_cap),
+        fort_weight: f(a.fort_weight, b.fort_weight),
+        fort_cap: c(a.fort_cap, b.fort_cap),
+        exposed_agenda_weight: f(a.exposed_agenda_weight, b.exposed_agenda_weight),
         stage_gain: a.stage_gain,
     }
 }
@@ -991,6 +1016,9 @@ pub fn evaluate_state_with(state: &GameState, side: Side, registry: &CardRegistr
             score += protected_agenda_ice(state, registry, w.agenda_protection_cap) as f64 * w.agenda_protection_weight;
             if w.installed_agenda_weight != 0.0 {
                 score += installed_agendas(state, registry) as f64 * w.installed_agenda_weight;
+            }
+            if w.central_ice_weight != 0.0 || w.fort_weight != 0.0 || w.exposed_agenda_weight != 0.0 {
+                score += fort_value(state, registry, w);
             }
             if state.corp.r_and_d.len() >= w.rd_draw_reserve {
                 score -= w.hq_floor.saturating_sub(state.corp.hq.len()) as f64 * w.hq_shortfall_weight;
@@ -1689,6 +1717,82 @@ fn installed_agendas(state: &GameState, registry: &CardRegistry) -> usize {
 
 /// ICE in front of each installed, unscored agenda, each server's count
 /// capped at `cap` (`Weights::agenda_protection_cap`), summed over agendas.
+/// Where the Corp's ICE stands, priced — the three terms that make a
+/// `Glacier` build the fort it is named for (ROADMAP Phase 5 §19).
+///
+/// **Why they exist.** A report from play: the `glacier` Corp "makes ICE
+/// for days horizontally across as many servers as it can without ever
+/// once putting down an agenda". `diag fort` confirmed the shape —
+/// 4.3 remotes opened a game with about one piece each, under one piece
+/// on each central, a quarter of its agendas installed behind no ICE at
+/// all and only 16% of games with all three centrals iced when the first
+/// agenda went down — and the reason is that no term in this evaluator
+/// knew *which* server a piece of ICE was on. `corp_install_value` prices
+/// a piece the same everywhere, and `protected_agenda_ice` counts ICE only
+/// in front of an agenda that is already installed, so where ICE went was
+/// whichever tie broke first, and a naked agenda install (+
+/// `unrezzed_install_weight`) outbid the profile's own credit click.
+///
+/// - **Centrals**, `central_ice_weight` a piece up to `central_ice_cap` on
+///   HQ and R&D, and one on Archives: the servers every Runner can run
+///   from the first turn, and the ones a fort-builder covers first.
+///   Archives is worth one piece — what is in it is mostly faceup and
+///   already the Runner's to see.
+/// - **The scoring remote**, `fort_weight` a piece up to `fort_cap` on the
+///   deepest remote whose root is empty or holds an agenda. It is priced
+///   before the agenda exists, which is what `protected_agenda_ice`
+///   cannot do, and it stays priced once the agenda goes in and after it
+///   is scored, so the same remote is used again. ICE in front of an
+///   asset earns neither term: the spreading stops for a reason.
+/// - **An exposed agenda**, `exposed_agenda_weight` subtracted for each
+///   piece short of `fort_cap` in front of an installed agenda, so a
+///   naked install loses to a credit click and the agenda waits in HQ for
+///   the fort rather than going down in a new remote on turn 1.
+///
+/// Only ICE positions and the Corp's own installed cards are read, which
+/// the Corp always knows, so nothing here reads a sampled card.
+fn fort_value(state: &GameState, registry: &CardRegistry, w: &Weights) -> f64 {
+    use netrunner_core::rules::{InstallSlot, ServerId};
+    let ice_on = |server: ServerId| {
+        state.corp.installed.iter().filter(|card| card.server == server && card.slot == InstallSlot::Ice).count()
+    };
+    let is_agenda = |card: &InstalledCard| registry.get(&card.card).is_some_and(|def| def.card_type == CardType::Agenda);
+
+    let centrals = ice_on(ServerId::Hq).min(w.central_ice_cap)
+        + ice_on(ServerId::RnD).min(w.central_ice_cap)
+        + ice_on(ServerId::Archives).min(1);
+
+    let mut remotes: Vec<ServerId> = Vec::new();
+    for card in &state.corp.installed {
+        if matches!(card.server, ServerId::Remote(_)) && !remotes.contains(&card.server) {
+            remotes.push(card.server);
+        }
+    }
+    let fort = remotes
+        .iter()
+        .filter(|server| {
+            state
+                .corp
+                .installed
+                .iter()
+                .filter(|card| card.server == **server && card.slot == InstallSlot::Root)
+                .all(is_agenda)
+        })
+        .map(|server| ice_on(*server).min(w.fort_cap))
+        .max()
+        .unwrap_or(0);
+
+    let exposure: usize = state
+        .corp
+        .installed
+        .iter()
+        .filter(|card| card.slot == InstallSlot::Root && is_agenda(card))
+        .map(|agenda| w.fort_cap.saturating_sub(ice_on(agenda.server)))
+        .sum();
+
+    centrals as f64 * w.central_ice_weight + fort as f64 * w.fort_weight - exposure as f64 * w.exposed_agenda_weight
+}
+
 fn protected_agenda_ice(state: &GameState, registry: &CardRegistry, cap: usize) -> usize {
     use netrunner_core::rules::InstallSlot;
     state
@@ -3476,6 +3580,89 @@ mod tests {
             full_rig > empty_rig,
             "a run is worth more once the rig is built: {empty_rig} with nothing, {full_rig} with everything"
         );
+    }
+
+    /// A board for `fort_value`: ICE on the servers named, one piece per
+    /// entry, and an agenda and an asset in the roots named.
+    fn fort_board(ice: &[netrunner_core::rules::ServerId], roots: &[(&str, netrunner_core::rules::ServerId)]) -> GameState {
+        use netrunner_core::rules::InstallSlot;
+        let mut state = GameState::new(0);
+        let mut n = 0;
+        let mut next = || {
+            n += 1;
+            InstallId(n)
+        };
+        for server in ice {
+            state.corp.installed.push(InstalledCard {
+                card: CardId("wall".to_string()),
+                install_id: next(),
+                slot: InstallSlot::Ice,
+                server: *server,
+                ..Default::default()
+            });
+        }
+        for (card, server) in roots {
+            state.corp.installed.push(InstalledCard {
+                card: CardId(card.to_string()),
+                install_id: next(),
+                slot: InstallSlot::Root,
+                server: *server,
+                ..Default::default()
+            });
+        }
+        state
+    }
+
+    fn fort_registry() -> CardRegistry {
+        let mut agenda = ice("plan", 0);
+        agenda.card_type = CardType::Agenda;
+        agenda.advancement_requirement = Some(3);
+        let mut asset = ice("campaign", 0);
+        asset.card_type = CardType::Asset;
+        CardRegistry::from_cards(vec![ice("wall", 0), agenda, asset])
+    }
+
+    /// The fort terms are `Glacier`'s and nobody else's: every other
+    /// profile scores a board exactly as it did before they existed.
+    #[test]
+    fn only_glacier_prices_where_its_ice_stands() {
+        for personality in Personality::ALL {
+            let w = personality.weights();
+            let priced = w.central_ice_weight != 0.0 || w.fort_weight != 0.0 || w.exposed_agenda_weight != 0.0;
+            assert_eq!(priced, personality == Personality::Glacier, "{personality:?}");
+        }
+    }
+
+    /// The order a person builds a fort in, at one ply. A first piece on
+    /// HQ beats a second piece in front of an asset; a piece on an empty
+    /// remote beats one in front of an asset; the agenda goes into the
+    /// two-deep remote rather than a new one; and a naked agenda is worth
+    /// less than the credit its click could have taken instead.
+    #[test]
+    fn glacier_ices_the_centrals_builds_one_remote_and_waits_for_it() {
+        use netrunner_core::rules::ServerId::{self, Hq, Remote};
+        let registry = fort_registry();
+        let w = Personality::Glacier.weights();
+        let score = |state: &GameState| evaluate_state_with(state, Side::Corp, &registry, &w);
+        let asset = [("campaign", Remote(0))];
+
+        let on_hq = fort_board(&[Remote(0), Hq], &asset);
+        let on_asset = fort_board(&[Remote(0), Remote(0)], &asset);
+        assert!(score(&on_hq) > score(&on_asset), "HQ's first piece before an asset's second");
+
+        let fort = fort_board(&[Remote(0), Remote(1)], &asset);
+        assert!(score(&fort) > score(&on_asset), "an empty remote's piece before an asset's second");
+
+        let walled = [Hq, ServerId::RnD, ServerId::Archives, Remote(1), Remote(1)];
+        let behind = fort_board(&walled, &[("plan", Remote(1))]);
+        let naked = fort_board(&walled, &[("plan", Remote(2))]);
+        assert!(score(&behind) > score(&naked), "the agenda goes behind the fort");
+
+        let held = fort_board(&walled, &[]);
+        let mut banked = held.clone();
+        banked.corp.resources.credits = Credits(held.corp.resources.credits.0 + 1);
+        assert!(score(&naked) < score(&banked), "a naked agenda loses to a credit click");
+        assert!(score(&behind) > score(&banked), "and the agenda behind the fort beats it");
     }
 
     #[test]

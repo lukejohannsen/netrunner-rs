@@ -8,6 +8,7 @@
 //! authoritative `GameState` in ways a client never may, because it is
 //! not a client.
 
+pub mod fort;
 pub mod leaf_sensitivity;
 pub mod rez_rate;
 pub mod tempo;
