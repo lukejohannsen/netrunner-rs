@@ -1584,6 +1584,47 @@ mod tests {
         assert!(crate::rules::apply_action(&state, &registry, PlayerAction::DrawCardClick { side: Side::Runner }).is_ok());
     }
 
+    /// A run's window ends with the run. Declining a paid choice into "end
+    /// the run" used to leave the `Run` window open with no run under it —
+    /// the state `paid_ability::note_window_action` says must not exist —
+    /// because the decline is a resolution, not an action taken in the
+    /// window, so nothing asked whether the window's step was gone. Found
+    /// by `netrunner_client`'s Continue test on sweep seed 7: both players
+    /// had to pass a window that resumed nothing.
+    #[test]
+    fn declining_into_the_end_of_the_run_closes_the_runs_window() {
+        use crate::rules::run::{RunPhase, RunState, ServerId};
+        use crate::rules::state::{GamePhase, PaidAbilityWindow, WindowCheckpoint};
+
+        let mut state = game_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.active_run = Some(RunState { server: ServerId::RnD, phase: RunPhase::ApproachIce, ..RunState::default() });
+        state.paid_ability_window = Some(PaidAbilityWindow {
+            active_priority: Side::Runner,
+            consecutive_passes: 0,
+            checkpoint: WindowCheckpoint::Run,
+            return_phase: Box::new(state.phase),
+        });
+        state.pending_paid_choice = Some(crate::rules::state::PendingPaidChoice {
+            text: None,
+            side: Side::Runner,
+            cost: Cost::Credits(1),
+            if_paid: Effect::Sequence(Vec::new()),
+            if_declined: Effect::EndTheRun,
+            source_card: None,
+            prompting_card: None,
+            source_install: None,
+            resume: PendingPaidChoiceResume::None,
+        });
+
+        let (next, events) = crate::rules::apply_action(&state, &CardRegistry::new(), PlayerAction::DeclinePendingPaidChoice).unwrap();
+
+        assert!(events.iter().any(|e| matches!(e, GameEvent::RunEndedByEffect { .. })), "{events:?}");
+        assert!(next.active_run.is_none());
+        assert_eq!(next.paid_ability_window, None, "the run's window went with the run");
+        assert_eq!(next.phase, GamePhase::Action(Side::Runner));
+    }
+
     /// A `ChooseCards` selection must never grow past its `max`. It used to:
     /// `ToggleCardSelection` only checked eligibility, so the mask kept
     /// offering every candidate no matter how many were already picked,

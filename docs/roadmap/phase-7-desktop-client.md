@@ -3596,13 +3596,29 @@ actions, it asserts three things:
 At 64 seeds that was about 15,800 presses over all eleven kinds of step,
 none wrong and 2 interrupted by a card's text.
 
-**Found on the way, not fixed here:** a paid choice declined into "end
-the run" (`DeclinePendingPaidChoice`, `RunEndedByEffect`; seed 7) leaves
-the run's paid-ability window open with no run. `note_window_action`'s own
-comment says that state must not happen. It costs both players a pass,
-and closing it resumes nothing, so it never deadlocks. The button names it
-honestly ("Continue to the Runner's actions"). It is an engine fix, with
-the sweeps, in a branch of its own.
+**Found on the way:** a paid choice declined into "end the run"
+(`DeclinePendingPaidChoice`, `RunEndedByEffect`; seed 7) left the run's
+paid-ability window open with no run. `note_window_action`'s own comment
+says that state must not happen. It cost both players a pass and never
+deadlocked, since closing it resumes nothing. §4ai's button named that
+pass "Continue to the Runner's actions".
+
+**Fixed** on `fix/declined-paid-choice-closes-the-run-window`: a run's
+window now ends with the run, in `run::end_run`, which every way a run
+ends comes through. `note_window_action` had cleared a stale window only
+for an action taken *in* the window, and a resolution of something
+parked is not one. `declining_into_the_end_of_the_run_closes_the_runs_window`
+pins it. The client's special case for the state is gone, so
+`the_label_names_what_the_engine_does_next` now fails on any path that
+leaves such a window: none at 128 seeds (~38,000 presses).
+
+Measured on pinned binaries (`scripts/coverage_identical.py`, 192 games a
+report, seed 1). Random-vs-random, by view and by index: `PassPriority`
+43,007 → 42,865 and steps 74,778 → 74,577. Heuristic: `PassPriority`
+58,449 → 58,541, steps 93,962 → 94,134, which is trajectory drift (every
+game re-rolls after the first removed pass). End reasons are identical in
+every shape: random 76 flatlines, 113 Runner agenda wins, 3 deck-outs;
+heuristic 43 / 16 / 133. Both 256-seed sweeps are clean.
 
 **Moved down: item 6, the Corp's run auto-pass.** Asked for 22 September
 2026, because the person did not see what it buys. It matters only when
