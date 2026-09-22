@@ -69,7 +69,7 @@ fn base_state() -> GameState {
 }
 
 /// Runs `InitiateRun { server }` through to full completion (`Success` ->
-/// `CompleteRun` -> both sides pass priority -> access resolves), assuming
+/// `CompleteRun` -> access resolves), assuming
 /// no ICE is installed on `server` — the common shape every test below that
 /// needs a whole run (not just its setup) reuses. Returns every event
 /// emitted along the way, in order.
@@ -84,12 +84,6 @@ fn run_to_completion(
     let (state, e) = crate::rules::test_support::through_movement(&state, registry).expect("continue run");
     events.extend(e);
     let (state, e) = apply_action(&state, registry, PlayerAction::CompleteRun).expect("complete run");
-    events.extend(e);
-    let (state, e) =
-        apply_action(&state, registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner pass");
-    events.extend(e);
-    let (state, e) =
-        apply_action(&state, registry, PlayerAction::PassPriority { side: Side::Corp }).expect("corp pass");
     events.extend(e);
     (state, events)
 }
@@ -201,10 +195,6 @@ fn the_makers_eye_accesses_three_total_cards_from_rd() {
         .expect("playing The Maker's Eye should initiate a run on R&D");
     let (state, _) = crate::rules::test_support::through_movement(&state, &registry).expect("continue to success");
     let (state, _) = apply_action(&state, &registry, PlayerAction::CompleteRun).expect("open access window");
-    let (state, _) =
-        apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner pass");
-    let (state, _) =
-        apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Corp }).expect("corp pass");
 
     let access = state.active_run.as_ref().expect("run still parked awaiting access resolution").access_state.as_ref().expect("access state present");
     // R&D's cards come one at a time from the top (CR 7.4.7): the first is
@@ -320,10 +310,10 @@ fn account_siphon_takes_the_number_of_credits_the_runner_names() {
 #[test]
 fn account_siphon_may_be_declined_in_favor_of_a_normal_breach() {
     let (state, registry) = siphon_to_choice(0);
-    let (state, _) =
+    // The breach follows the answer in the same action (CR 6.9.5b): the
+    // decision was all that stood between the success and the breach.
+    let (state, events) =
         apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 1 }).expect("decline the siphon");
-    assert!(state.active_run.is_some(), "the run stands; the breach is still owed");
-    let (state, events) = apply_action(&state, &registry, PlayerAction::CompleteRun).expect("breach normally");
     let mut all = events;
     let (state, more) = pass_until_settled(state, &registry);
     all.extend(more);
@@ -398,10 +388,6 @@ fn run_into_snare(corp_credits: u32) -> (crate::rules::GameState, CardRegistry) 
         apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Remote(0) }).expect("initiate run");
     let (state, _) = crate::rules::test_support::through_movement(&state, &registry).expect("continue to success");
     let (state, _) = apply_action(&state, &registry, PlayerAction::CompleteRun).expect("open access window");
-    let (state, _) =
-        apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner passes access window");
-    let (state, _) =
-        apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Corp }).expect("corp passes access window, resolving access");
     // A further window opens at the `PendingInteractiveTrigger` checkpoint
     // itself; close it so the parked decision is what's actually pending.
     let (state, _) = close_all_windows(state, &registry);
@@ -678,7 +664,7 @@ fn cleaver_pumps_strength_and_breaks_up_to_two_barrier_subroutines() {
     // `ApproachIce` opens a paid-ability window (Runner has priority first,
     // since it's their turn) — both sides must pass before the run commits
     // to `EncounterIce`, per `paid_ability`'s priority-passing rules.
-    let (state, _) = apply_action(&state, &registry, PlayerAction::ContinueRun).expect("approach wall of static");
+    let (state, _) = crate::rules::test_support::continue_run(&state, &registry).expect("approach wall of static");
     let (state, _) =
         apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner passes approach window");
     let (state, _) =
@@ -787,7 +773,7 @@ fn ice_wall_is_advanceable_and_gains_one_strength_per_advancement() {
     state.phase = GamePhase::Action(Side::Runner);
     state.runner.resources.clicks = Clicks(4);
     let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run HQ");
-    let (state, _) = apply_action(&state, &registry, PlayerAction::ContinueRun).expect("approach ice wall");
+    let (state, _) = crate::rules::test_support::continue_run(&state, &registry).expect("approach ice wall");
     assert_eq!(crate::rules::test_support::ice_strength_in_run(&state, &registry, 0), 4, "1 printed + 3 advancement counters");
 }
 
@@ -819,7 +805,7 @@ fn gordian_blades_pump_lasts_the_whole_run_and_no_longer() {
 
     let gordian = crate::rules::test_support::install_of(&state, "gordian_blade");
     let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run HQ");
-    let (state, _) = apply_action(&state, &registry, PlayerAction::ContinueRun).expect("approach the first enigma");
+    let (state, _) = crate::rules::test_support::continue_run(&state, &registry).expect("approach the first enigma");
     let (state, _) = apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner passes approach");
     let (state, _) = apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Corp }).expect("corp passes, encounter 1");
 
@@ -1602,7 +1588,7 @@ mod system_gateway {
         }];
 
         let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("initiate run");
-        let (state, _) = apply_action(&state, &registry, PlayerAction::ContinueRun).expect("approach tithe");
+        let (state, _) = crate::rules::test_support::continue_run(&state, &registry).expect("approach tithe");
         let (state, _) =
             apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner passes approach window");
         let (state, _) =
@@ -1687,7 +1673,7 @@ mod system_gateway {
         assert_eq!(state.runner.resources.credits, Credits(6), "10 - 4 (Buzzsaw's install cost)");
 
         let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("initiate run");
-        let (state, _) = apply_action(&state, &registry, PlayerAction::ContinueRun).expect("approach enigma");
+        let (state, _) = crate::rules::test_support::continue_run(&state, &registry).expect("approach enigma");
         let (state, _) =
             apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner passes approach window");
         let (state, _) =
@@ -1731,17 +1717,6 @@ mod system_gateway {
             apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Remote(0) }).expect("initiate run");
         let (state, _) = crate::rules::test_support::through_movement(&state, &registry).expect("continue to the approach step");
         let (state, _) = apply_action(&state, &registry, PlayerAction::CompleteRun).expect("commit: the run is now successful");
-        let (state, _) =
-            apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner passes access window");
-        let (state, _) =
-            apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Corp }).expect("corp passes success window, presenting the pending choice");
-        // Landing on `PendingChoice` opens a fresh paid-ability window of
-        // its own (see `paid_ability::open_window_if_at_checkpoint`) — both
-        // sides must pass it too before `TrashAccessedCard` is legal.
-        let (state, _) =
-            apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner passes pending-choice window");
-        let (state, _) =
-            apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Corp }).expect("corp passes pending-choice window");
         let (state, events) = apply_action(
             &state,
             &registry,
@@ -1795,7 +1770,7 @@ mod system_gateway {
         state.corp.installed = vec![ice_installed("funhouse", ServerId::Hq, true)];
 
         let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("initiate run");
-        let (state, _) = apply_action(&state, &registry, PlayerAction::ContinueRun).expect("approach funhouse");
+        let (state, _) = crate::rules::test_support::continue_run(&state, &registry).expect("approach funhouse");
         let (state, _) =
             apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner passes approach window");
         let (state, _) = apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Corp })
@@ -1822,7 +1797,7 @@ mod system_gateway {
         state.corp.installed = vec![ice_installed("ping", ServerId::Hq, false)];
 
         let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("initiate run");
-        let (state, _) = apply_action(&state, &registry, PlayerAction::ContinueRun).expect("approach ping");
+        let (state, _) = crate::rules::test_support::continue_run(&state, &registry).expect("approach ping");
         let (state, events) =
             apply_action(&state, &registry, PlayerAction::RezIce { ice: install_of(&state, "ping") }).expect("rez ping mid-approach");
 
@@ -1850,7 +1825,7 @@ mod system_gateway {
             },
         ];
         let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run");
-        let (state, _) = apply_action(&state, &registry, PlayerAction::ContinueRun).expect("approach Ice Wall");
+        let (state, _) = crate::rules::test_support::continue_run(&state, &registry).expect("approach Ice Wall");
         let (state, events) = close_all_windows(state, &registry);
         assert!(events.contains(&crate::rules::GameEvent::IcePassed { server: ServerId::Hq, position: 0 }), "unrezzed, passed");
         assert!(state.pending_paid_choice.is_none(), "the server is not approached by the pass");
@@ -2048,7 +2023,7 @@ mod system_gateway {
         state.corp.installed = vec![ice_installed("ping", ServerId::Hq, false)];
 
         let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("initiate run");
-        let (state, _) = apply_action(&state, &registry, PlayerAction::ContinueRun).expect("approach ping");
+        let (state, _) = crate::rules::test_support::continue_run(&state, &registry).expect("approach ping");
         let (state, _) =
             apply_action(&state, &registry, PlayerAction::RezIce { ice: install_of(&state, "ping") }).expect("rez ping, giving a tag");
 
@@ -2202,7 +2177,7 @@ mod system_gateway {
         state.corp.installed = vec![ice_installed("diviner", ServerId::Hq, true)];
 
         let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("initiate run");
-        let (state, _) = apply_action(&state, &registry, PlayerAction::ContinueRun).expect("approach diviner");
+        let (state, _) = crate::rules::test_support::continue_run(&state, &registry).expect("approach diviner");
         let (state, _) =
             apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner passes approach window");
         let (state, _) = apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Corp })
@@ -2227,7 +2202,7 @@ mod system_gateway {
         state.corp.installed = vec![ice_installed("whitespace", ServerId::Hq, true)];
 
         let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("initiate run");
-        let (state, _) = apply_action(&state, &registry, PlayerAction::ContinueRun).expect("approach whitespace");
+        let (state, _) = crate::rules::test_support::continue_run(&state, &registry).expect("approach whitespace");
         let (state, _) =
             apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner passes approach window");
         let (state, _) = apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Corp })
@@ -2707,7 +2682,7 @@ mod system_gateway {
         }];
 
         let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("initiate run");
-        let (state, _) = apply_action(&state, &registry, PlayerAction::ContinueRun).expect("approach ballista");
+        let (state, _) = crate::rules::test_support::continue_run(&state, &registry).expect("approach ballista");
         let (state, _) =
             apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner passes approach");
         let (state, _) = apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Corp })
@@ -2986,7 +2961,7 @@ mod system_gateway {
         assert!(events.iter().any(|e| matches!(e, crate::rules::GameEvent::RunInitiated { server: ServerId::Hq })));
 
         let ice_wall_cost = registry.get(&CardId("ice_wall".to_string())).unwrap().cost;
-        let (state, _) = apply_action(&state, &registry, PlayerAction::ContinueRun).expect("approach ice_wall");
+        let (state, _) = crate::rules::test_support::continue_run(&state, &registry).expect("approach ice_wall");
         let (state, _) = apply_action(&state, &registry, PlayerAction::RezIce { ice: install_of(&state, "ice_wall") })
             .expect("rez ice_wall at the increased cost");
 
@@ -3030,7 +3005,7 @@ mod system_gateway {
         let (state, _) =
             apply_action(&state, &registry, PlayerAction::ChooseServerForPendingDecision { server: ServerId::Remote(0) })
                 .expect("run the remote");
-        let (state, _) = apply_action(&state, &registry, PlayerAction::ContinueRun).expect("approach ice_wall");
+        let (state, _) = crate::rules::test_support::continue_run(&state, &registry).expect("approach ice_wall");
         assert_eq!(crate::rules::continuous::rez_cost_delta(&state, &registry, InstallId(1031)), 3);
         assert_eq!(crate::rules::continuous::rez_cost_delta(&state, &registry, InstallId(1032)), 0, "an asset is not ice");
 
@@ -3048,7 +3023,7 @@ mod system_gateway {
             }
             state = close_all_windows(state, &registry).0;
             state = apply_action(&state, &registry, PlayerAction::JackOut)
-                .or_else(|_| apply_action(&state, &registry, PlayerAction::ContinueRun))
+                .or_else(|_| crate::rules::test_support::continue_run(&state, &registry))
                 .expect("the run moves on")
                 .0;
         }
@@ -3116,7 +3091,7 @@ mod system_gateway {
             crate::rules::test_support::through_movement(&state, &registry).expect("approach the server").0
         };
 
-        // Declined: nothing is paid, the run continues to its pre-access window.
+        // Declined: nothing is paid, the run goes on to its success.
         let state = base(5, vec!["hedge_fund", "government_subsidy"]);
         assert!(state.pending_paid_choice.is_some());
         let (state, _) = apply_action(&state, &registry, PlayerAction::DeclinePendingPaidChoice).expect("decline");
@@ -3236,10 +3211,8 @@ mod system_gateway {
         assert!(state.runner.rig.iter().any(|c| c.card == CardId("red_team".to_string())), "still in play");
         assert!(events.iter().any(|e| matches!(e, crate::rules::GameEvent::CreditsGained { side: Side::Runner, amount: 3 })));
 
-        // Close out the run so a fresh one can be initiated.
-        let (state, _) = apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner pass");
-        let (mut state, _) =
-            apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Corp }).expect("corp pass");
+        // `CompleteRun` breached an empty HQ, which ended the run.
+        let mut state = state;
 
         // Three more successful runs (9 -> 6 -> 3 -> 0) should trash it on
         // the last one. This test compresses four turns into one (see the
@@ -3260,8 +3233,6 @@ mod system_gateway {
                     .expect("choose hq");
             let (next, _) = crate::rules::test_support::through_movement(&next, &registry).expect("resolves immediately");
             let (next, _) = apply_action(&next, &registry, PlayerAction::CompleteRun).expect("complete run");
-            let (next, _) = apply_action(&next, &registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner pass");
-            let (next, _) = apply_action(&next, &registry, PlayerAction::PassPriority { side: Side::Corp }).expect("corp pass");
             state = next;
         }
 
@@ -3368,8 +3339,6 @@ mod system_gateway {
     fn finish_run(state: GameState, registry: &CardRegistry) -> GameState {
         let (state, _) = crate::rules::test_support::through_movement(&state, registry).expect("no ice: straight to the server");
         let (state, _) = apply_action(&state, registry, PlayerAction::CompleteRun).expect("complete run");
-        let (state, _) = apply_action(&state, registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner pass");
-        let (state, _) = apply_action(&state, registry, PlayerAction::PassPriority { side: Side::Corp }).expect("corp pass");
         state
     }
 
@@ -3786,9 +3755,6 @@ mod system_gateway {
         assert_eq!(state.runner.rig[0].counters, 1, "gained 1 counter from the successful run");
         assert!(events.iter().any(|e| matches!(e, crate::rules::GameEvent::CountersAdded { amount: 1, .. })));
 
-        let (state, _) = apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner pass");
-        let (state, _) = apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Corp }).expect("corp pass");
-
         let (state, events) = apply_action(
             &state,
             &registry,
@@ -3852,14 +3818,14 @@ mod system_gateway {
         state.runner.rig = vec![rig_card_with_counters("carnivore", 0)];
         state.runner.grip = vec![CardId("grip_card_a".to_string()), CardId("grip_card_b".to_string())];
 
-        // No active run at all: the ability's `CurrentlyAccessingACard`
-        // requirement must reject activation outright.
+        // No active run at all: an "Access →" ability is used in the
+        // mid-access window and nowhere else (CR 9.3.6b).
         let result = apply_action(
             &state,
             &registry,
             PlayerAction::ActivateAbility { target: install_of(&state, "carnivore"), ability_index: 0 },
         );
-        assert_eq!(result, Err(crate::rules::RulesError::RequirementNotMet));
+        assert_eq!(result, Err(crate::rules::RulesError::NotInMidAccessWindow));
         let legal = crate::rules::legal_actions(&state, &registry);
         assert!(!legal.contains(&PlayerAction::ActivateAbility { target: install_of(&state, "carnivore"), ability_index: 0 }));
     }
@@ -3898,14 +3864,6 @@ mod system_gateway {
             apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Remote(0) }).expect("initiate run");
         let (state, _) = crate::rules::test_support::through_movement(&state, &registry).expect("continue to the approach step");
         let (state, _) = apply_action(&state, &registry, PlayerAction::CompleteRun).expect("commit: the run is now successful");
-        let (state, _) =
-            apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner passes access window");
-        let (state, _) = apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Corp })
-            .expect("corp passes success window, presenting the pending choice");
-        let (state, _) = apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Runner })
-            .expect("runner passes pending-choice window");
-        let (state, _) = apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Corp })
-            .expect("corp passes pending-choice window");
 
         // Three cards for a cost of two: the Runner is asked which, one card
         // at a time, and the action waits on the answers (`payment::Ask::Card`).
@@ -4190,7 +4148,7 @@ mod system_gateway {
         }];
 
         let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("initiate run");
-        let (state, _) = apply_action(&state, &registry, PlayerAction::ContinueRun).expect("approach wall of static");
+        let (state, _) = crate::rules::test_support::continue_run(&state, &registry).expect("approach wall of static");
         let (state, _) =
             apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner passes approach window");
         let (state, _) = apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Corp })
@@ -4429,7 +4387,7 @@ mod system_gateway {
 
         // Actually encounter wall_of_static.
         let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("initiate run");
-        let (state, _) = apply_action(&state, &registry, PlayerAction::ContinueRun).expect("approach wall_of_static");
+        let (state, _) = crate::rules::test_support::continue_run(&state, &registry).expect("approach wall_of_static");
         let (state, _) =
             apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner passes");
         let (state, _) = apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Corp })
@@ -4534,7 +4492,7 @@ mod system_gateway {
         state.corp.installed = vec![corp_ice("wall_of_static", ServerId::Remote(1))];
         let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Remote(1) })
             .expect("initiate run");
-        let (state, _) = apply_action(&state, &registry, PlayerAction::ContinueRun).expect("approach wall_of_static");
+        let (state, _) = crate::rules::test_support::continue_run(&state, &registry).expect("approach wall_of_static");
         let (state, _) =
             apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner passes");
         let (state, _) = apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Corp })
@@ -4683,7 +4641,7 @@ mod system_gateway {
         server: ServerId,
     ) -> GameState {
         let (state, _) = apply_action(&state, registry, PlayerAction::InitiateRun { server }).expect("initiate run");
-        let (state, _) = apply_action(&state, registry, PlayerAction::ContinueRun).expect("approach ice");
+        let (state, _) = crate::rules::test_support::continue_run(&state, registry).expect("approach ice");
         let (state, _) =
             apply_action(&state, registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner passes approach");
         let (state, _) = apply_action(&state, registry, PlayerAction::PassPriority { side: Side::Corp })
@@ -4833,7 +4791,7 @@ mod system_gateway {
         state.phase = GamePhase::Action(Side::Runner);
         state.runner.resources.clicks = Clicks(4);
         let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run HQ");
-        let (state, _) = apply_action(&state, &registry, PlayerAction::ContinueRun).expect("approach the outermost ICE");
+        let (state, _) = crate::rules::test_support::continue_run(&state, &registry).expect("approach the outermost ICE");
         assert_eq!(state.active_run.as_ref().unwrap().ice[0].card_id, CardId("palisade".to_string()), "newest first");
     }
 
@@ -5130,7 +5088,7 @@ mod system_gateway {
         crate::rules::evaluate_effect(&mut state, &swap, &mut crate::rules::ResolutionContext::default(), &registry)
             .expect("swapping mid-run is legal");
 
-        let (state, events) = apply_action(&state, &registry, PlayerAction::ContinueRun).expect("approach");
+        let (state, events) = crate::rules::test_support::continue_run(&state, &registry).expect("approach");
         let run = state.active_run.as_ref().unwrap();
         assert_eq!(run.ice.len(), 1);
         assert_eq!(run.ice[0].install_id, install_of(&state, "ice_wall"), "ice_wall now protects HQ, so it is approached");
@@ -5150,7 +5108,7 @@ mod system_gateway {
 
         let (state, _) =
             apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("initiate run");
-        let (mut state, _) = apply_action(&state, &registry, PlayerAction::ContinueRun).expect("approach palisade");
+        let (mut state, _) = crate::rules::test_support::continue_run(&state, &registry).expect("approach palisade");
         assert!(state.active_run.as_ref().unwrap().ice[0].rezzed, "rezzed when the run began");
         assert!(state.paid_ability_window.is_some(), "the approach window is open");
 
@@ -5248,7 +5206,7 @@ mod system_gateway {
 
         // `Trigger::OnSuccessfulRunOnRnD` fires (and parks the "place a
         // counter?" choice) the moment `RunSucceeded` fires, on
-        // `CompleteRun`, ahead of the pre-access window — resolve it before
+        // `CompleteRun`, ahead of the breach — resolve it before
         // continuing, rather than using `run_to_completion`'s all-in-one
         // helper, which would otherwise hit `ActionBlockedByPendingDecision`.
         let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::RnD }).expect("initiate run");
@@ -5305,7 +5263,7 @@ mod system_gateway {
         state.corp.installed = vec![corp_ice("wall_of_static", ServerId::Hq)];
 
         let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("initiate run");
-        let (state, _) = apply_action(&state, &registry, PlayerAction::ContinueRun).expect("approach wall of static");
+        let (state, _) = crate::rules::test_support::continue_run(&state, &registry).expect("approach wall of static");
         let (state, _) =
             apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner passes approach");
         let (state, _) =
@@ -5685,7 +5643,7 @@ mod system_gateway {
         state.corp.installed = vec![corp_ice("palisade", ServerId::Remote(0))];
 
         let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Remote(0) }).expect("run remote");
-        let (state, _) = apply_action(&state, &registry, PlayerAction::ContinueRun).expect("approach palisade");
+        let (state, _) = crate::rules::test_support::continue_run(&state, &registry).expect("approach palisade");
         assert_eq!(
             crate::rules::test_support::ice_strength_in_run(&state, &registry, 0),
             4,
@@ -5697,7 +5655,7 @@ mod system_gateway {
         state.runner.resources.clicks = Clicks(4);
         state.corp.installed = vec![corp_ice("palisade", ServerId::Hq)];
         let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run hq");
-        let (state, _) = apply_action(&state, &registry, PlayerAction::ContinueRun).expect("approach palisade on hq");
+        let (state, _) = crate::rules::test_support::continue_run(&state, &registry).expect("approach palisade on hq");
         assert_eq!(
             crate::rules::test_support::ice_strength_in_run(&state, &registry, 0),
             2,
@@ -5715,7 +5673,7 @@ mod system_gateway {
         state.corp.installed[0].advancement_tokens = 2;
 
         let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run hq");
-        let (state, _) = apply_action(&state, &registry, PlayerAction::ContinueRun).expect("approach pharos below threshold");
+        let (state, _) = crate::rules::test_support::continue_run(&state, &registry).expect("approach pharos below threshold");
         assert_eq!(crate::rules::test_support::ice_strength_in_run(&state, &registry, 0), 5, "below the 3-token threshold: no bonus");
 
         let mut state = base_state();
@@ -5724,7 +5682,7 @@ mod system_gateway {
         state.corp.installed = vec![corp_ice("pharos", ServerId::Hq)];
         state.corp.installed[0].advancement_tokens = 3;
         let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run hq");
-        let (state, _) = apply_action(&state, &registry, PlayerAction::ContinueRun).expect("approach pharos at threshold");
+        let (state, _) = crate::rules::test_support::continue_run(&state, &registry).expect("approach pharos at threshold");
         assert_eq!(crate::rules::test_support::ice_strength_in_run(&state, &registry, 0), 10, "5 printed + 5 at 3+ advancement tokens");
     }
 
@@ -5769,7 +5727,6 @@ mod system_gateway {
             vec![corp_root("amaze_amusements", ServerId::Remote(0)), corp_root("offworld_office", ServerId::Remote(0))];
 
         let state = act(state, registry, PlayerAction::InitiateRun { server: ServerId::Remote(0) });
-        let state = act(state, registry, PlayerAction::ContinueRun);
         act(state, registry, PlayerAction::CompleteRun)
     }
 
@@ -5818,7 +5775,6 @@ mod system_gateway {
         state.corp.installed = vec![corp_root("amaze_amusements", ServerId::Remote(0))];
 
         let state = act(state, registry, PlayerAction::InitiateRun { server: ServerId::Remote(0) });
-        let state = act(state, registry, PlayerAction::ContinueRun);
         act(state, registry, PlayerAction::CompleteRun)
     }
 
@@ -5852,7 +5808,6 @@ mod system_gateway {
         state.runner.resources.clicks = Clicks(4);
 
         let state = act(state, &registry, PlayerAction::InitiateRun { server: ServerId::Remote(0) });
-        let state = act(state, &registry, PlayerAction::ContinueRun);
         let state = act(state, &registry, PlayerAction::CompleteRun);
         let state = act(state, &registry, PlayerAction::StealAgenda { card_id: CardId("offworld_office".to_string()) });
 
@@ -5887,7 +5842,6 @@ mod system_gateway {
         state.runner.resources.credits = Credits(10);
         state.corp.installed = vec![corp_root("regolith_mining_license", ServerId::Remote(0))];
         let state = act(state, &registry, PlayerAction::InitiateRun { server: ServerId::Remote(0) });
-        let state = act(state, &registry, PlayerAction::ContinueRun);
         let state = act(state, &registry, PlayerAction::CompleteRun);
         let state = act(
             state,
@@ -6842,7 +6796,6 @@ mod system_gateway {
         state.runner.resources.credits = Credits(3);
         state.corp.installed = vec![corp_root("pad_campaign", ServerId::Remote(0))];
         let state = act(state, &registry, PlayerAction::InitiateRun { server: ServerId::Remote(0) });
-        let state = act(state, &registry, PlayerAction::ContinueRun);
         let state = act(state, &registry, PlayerAction::CompleteRun);
         assert!(
             crate::rules::legal_actions(&state, &registry)
@@ -6987,7 +6940,6 @@ mod system_gateway {
         state.corp.installed = vec![vault];
 
         let state = act(state, &registry, PlayerAction::InitiateRun { server: ServerId::Archives });
-        let state = act(state, &registry, PlayerAction::ContinueRun);
         let state = act(state, &registry, PlayerAction::CompleteRun);
         let trash = PlayerAction::TrashAccessedCard { card_id: CardId("malapert_data_vault".to_string()) };
         assert!(crate::rules::legal_actions(&state, &registry).contains(&trash), "the root upgrade is accessed with the pile");
@@ -7081,8 +7033,8 @@ mod system_gateway {
 
         let (state, events) = apply_action(&state, &registry, PlayerAction::CompleteRun).expect("success on hq");
         assert!(events.iter().any(|e| matches!(e, crate::rules::GameEvent::RunSucceeded { server: ServerId::Hq })));
-        // The pre-access window, then the breach — of HQ, not Archives.
-        let (_, events) = close_all_windows(state, &registry);
+        // The breach follows at once (CR 6.9.5b) — of HQ, not Archives.
+        let _ = state;
         assert!(events.iter().any(|e| matches!(e, crate::rules::GameEvent::CardAccessed { card, server: ServerId::Hq, .. } if card.0 == "hedge_fund")), "{events:?}");
     }
 
@@ -7144,7 +7096,9 @@ mod system_gateway {
         state.corp.installed = vec![corp_ice("palisade", ServerId::Hq)];
         for action in [
             PlayerAction::InitiateRun { server: ServerId::Hq },
-            PlayerAction::ContinueRun,
+            // The initiation's window (CR 6.9.1e), then the approach's.
+            PlayerAction::PassPriority { side: Side::Runner },
+            PlayerAction::PassPriority { side: Side::Corp },
             PlayerAction::PassPriority { side: Side::Runner },
             PlayerAction::PassPriority { side: Side::Corp },
         ] {
@@ -7209,7 +7163,9 @@ mod system_gateway {
         for action in [
             PlayerAction::PlayEvent { card_id: CardId("overclock".to_string()) },
             PlayerAction::ChooseServerForPendingDecision { server: ServerId::Hq },
-            PlayerAction::ContinueRun,
+            // The initiation's window (CR 6.9.1e), then the approach's.
+            PlayerAction::PassPriority { side: Side::Runner },
+            PlayerAction::PassPriority { side: Side::Corp },
             PlayerAction::PassPriority { side: Side::Runner },
             PlayerAction::PassPriority { side: Side::Corp },
         ] {
@@ -7305,7 +7261,6 @@ mod system_gateway {
         corp_rd_filler(&mut state);
         let state = act(state, registry, PlayerAction::PlayEvent { card_id: CardId("overclock".to_string()) });
         let state = act(state, registry, PlayerAction::ChooseServerForPendingDecision { server: ServerId::Remote(0) });
-        let state = act(state, registry, PlayerAction::ContinueRun);
         act(state, registry, PlayerAction::CompleteRun)
     }
 
@@ -7502,7 +7457,6 @@ mod system_gateway {
         let state = act(state, registry, PlayerAction::PlayEvent { card_id: CardId("overclock".to_string()) });
         let state = act(state, registry, PlayerAction::ChooseServerForPendingDecision { server: ServerId::Remote(0) });
         assert_eq!(state.runner.resources.credits, Credits(0));
-        let state = act(state, registry, PlayerAction::ContinueRun);
         act(state, registry, PlayerAction::CompleteRun)
     }
 
@@ -7527,7 +7481,6 @@ mod system_gateway {
         state.corp.bad_publicity = 3;
         state.corp.installed = vec![corp_root("pad_campaign", ServerId::Remote(0))];
         let state = act(state, &registry, PlayerAction::InitiateRun { server: ServerId::Remote(0) });
-        let state = act(state, &registry, PlayerAction::ContinueRun);
         let state = act(state, &registry, PlayerAction::CompleteRun);
         let state = act(state, &registry, PlayerAction::TrashAccessedCard { card_id: CardId("pad_campaign".to_string()) });
         assert_eq!(state.runner.resources.credits, Credits(0), "3 from bad publicity, 1 from the wallet");
@@ -7592,6 +7545,7 @@ mod system_gateway {
         let (state, _) = apply_action(&state, &registry, PlayerAction::JackOut).unwrap_or_else(|_| (state.clone(), Vec::new()));
         let mut state = state;
         state.active_run = None;
+        state.paid_ability_window = None;
         let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("second run");
         assert!(state.pending_decision.is_none(), "the first time each turn only");
     }
@@ -7793,7 +7747,6 @@ mod system_gateway {
         state.corp.installed = vec![asset];
 
         let state = act(state, &registry, PlayerAction::InitiateRun { server: ServerId::Remote(0) });
-        let state = act(state, &registry, PlayerAction::ContinueRun);
         let state = act(state, &registry, PlayerAction::CompleteRun);
         let gourmand = install_of(&state, "gourmand");
         let (state, _) = apply_action(&state, &registry, PlayerAction::ActivateAbility { target: gourmand, ability_index: 0 })
@@ -7807,7 +7760,6 @@ mod system_gateway {
         state.runner.rig = vec![rig_card_with_counters("gourmand", 0)];
         state.corp.installed = vec![corp_root("offworld_office", ServerId::Remote(0))];
         let state = act(state, &registry, PlayerAction::InitiateRun { server: ServerId::Remote(0) });
-        let state = act(state, &registry, PlayerAction::ContinueRun);
         let state = act(state, &registry, PlayerAction::CompleteRun);
         let gourmand = install_of(&state, "gourmand");
         assert!(apply_action(&state, &registry, PlayerAction::ActivateAbility { target: gourmand, ability_index: 0 }).is_err());
@@ -7953,12 +7905,10 @@ mod system_gateway {
         state.runner.rig = vec![rig_card_with_counters("cacophony", 0)];
         state.corp.installed = vec![corp_root("pad_campaign", ServerId::Remote(0)), corp_root("pad_campaign", ServerId::Remote(1))];
         let state = act(state, &registry, PlayerAction::InitiateRun { server: ServerId::Remote(0) });
-        let state = act(state, &registry, PlayerAction::ContinueRun);
         let state = act(state, &registry, PlayerAction::CompleteRun);
         let state = act(state, &registry, PlayerAction::TrashAccessedCard { card_id: CardId("pad_campaign".to_string()) });
         assert_eq!(state.runner.rig[0].counters, 1);
         let state = act(state, &registry, PlayerAction::InitiateRun { server: ServerId::Remote(1) });
-        let state = act(state, &registry, PlayerAction::ContinueRun);
         let state = act(state, &registry, PlayerAction::CompleteRun);
         let state = act(state, &registry, PlayerAction::TrashAccessedCard { card_id: CardId("pad_campaign".to_string()) });
         assert_eq!(state.runner.rig[0].counters, 1, "the first time each turn");
@@ -8133,7 +8083,7 @@ mod system_gateway {
         state.corp.installed = vec![ice_installed("ice_wall", ServerId::Hq, false)];
 
         let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run");
-        let (state, _) = apply_action(&state, &registry, PlayerAction::ContinueRun).expect("approach");
+        let (state, _) = crate::rules::test_support::continue_run(&state, &registry).expect("approach");
         let (state, _) = apply_action(&state, &registry, PlayerAction::RezIce { ice: install_of(&state, "ice_wall") }).expect("rez");
         assert!(matches!(state.pending_decision, Some(crate::rules::PendingDecision::ChooseEffect { chooser: Side::Runner, .. })), "you may install");
         let (state, _) = apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("install one");
@@ -8258,7 +8208,7 @@ mod system_gateway {
                 let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run");
                 state
             };
-            let (state, _) = apply_action(&state, &registry, PlayerAction::ContinueRun).expect("approach whitespace");
+            let (state, _) = crate::rules::test_support::continue_run(&state, &registry).expect("approach whitespace");
             let (state, _) = apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner passes");
             let (state, _) = apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Corp }).expect("corp passes: encounter");
             assert_eq!(state.active_run.as_ref().unwrap().phase, crate::rules::RunPhase::EncounterIce);
@@ -8285,7 +8235,7 @@ mod system_gateway {
             state.corp.resources.credits = Credits(corp_credits);
             state.corp.installed = vec![ice_installed("ice_wall", ServerId::Hq, false)];
             let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run");
-            let (state, _) = apply_action(&state, &registry, PlayerAction::ContinueRun).expect("approach");
+            let (state, _) = crate::rules::test_support::continue_run(&state, &registry).expect("approach");
             let (state, _) = apply_action(&state, &registry, PlayerAction::RezIce { ice: install_of(&state, "ice_wall") }).expect("rez");
             assert_eq!(state.corp.resources.credits, Credits(corp_credits - 2), "1 printed + 1 for the ward");
             advance_until_choice(state, &registry)
@@ -8322,7 +8272,7 @@ mod system_gateway {
         state.corp.installed = vec![ice_installed("bumi_1_0", ServerId::Hq, false)];
 
         let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run");
-        let (state, _) = apply_action(&state, &registry, PlayerAction::ContinueRun).expect("approach");
+        let (state, _) = crate::rules::test_support::continue_run(&state, &registry).expect("approach");
         let (state, _) = apply_action(&state, &registry, PlayerAction::RezIce { ice: install_of(&state, "bumi_1_0") }).expect("rez during the run");
         assert!(matches!(state.pending_decision, Some(crate::rules::PendingDecision::ChooseCards { .. })), "the trojan offer");
         let (state, _) = apply_action(&state, &registry, PlayerAction::ToggleCardSelection { position: position_of(&state, "botulus") }).expect("pick the trojan");
@@ -8345,7 +8295,7 @@ mod system_gateway {
         state.runner.rig = vec![rig_card_with_counters("cleaver", 0)];
         state.corp.installed = vec![ice_installed("bumi_1_0", ServerId::Hq, false)];
         let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run");
-        let (state, _) = apply_action(&state, &registry, PlayerAction::ContinueRun).expect("approach");
+        let (state, _) = crate::rules::test_support::continue_run(&state, &registry).expect("approach");
         let (state, _) = apply_action(&state, &registry, PlayerAction::RezIce { ice: install_of(&state, "bumi_1_0") }).expect("rez");
         assert!(state.pending_decision.is_none());
         assert_eq!(state.runner.rig.len(), 1);
@@ -8422,7 +8372,7 @@ mod system_gateway {
         let mut state = runner_turn(5, 4);
         state.corp.installed = vec![ice_installed("kessleroid", ServerId::Hq, true)];
         let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run");
-        let (state, _) = apply_action(&state, &registry, PlayerAction::ContinueRun).expect("approach");
+        let (state, _) = crate::rules::test_support::continue_run(&state, &registry).expect("approach");
         let state = advance_until_choice(state, &registry);
         assert!(state.active_run.is_none(), "End the run fired");
         assert_eq!(registry.get(&CardId("kessleroid".to_string())).unwrap().subroutines.len(), 2);
@@ -8438,7 +8388,7 @@ mod system_gateway {
         state.corp.installed[1].rezzed = false;
 
         let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run");
-        let (state, _) = apply_action(&state, &registry, PlayerAction::ContinueRun).expect("approach");
+        let (state, _) = crate::rules::test_support::continue_run(&state, &registry).expect("approach");
         let state = advance_until_choice(state, &registry);
         assert!(matches!(state.pending_decision, Some(crate::rules::PendingDecision::ChooseCards { .. })), "the encounter offer");
         let (state, _) = apply_action(&state, &registry, PlayerAction::ToggleCardSelection { position: position_of(&state, "off_the_books") }).expect("pick the agenda");
@@ -8460,7 +8410,7 @@ mod system_gateway {
         state.corp.installed = vec![ice_installed("syailendra", ServerId::Hq, true)];
         state.corp.installed[0].advancement_tokens = 2;
         let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run");
-        let (state, _) = apply_action(&state, &registry, PlayerAction::ContinueRun).expect("approach");
+        let (state, _) = crate::rules::test_support::continue_run(&state, &registry).expect("approach");
         let (state, _) = apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner passes");
         let (state, _) = apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Corp }).expect("corp passes: encounter");
         assert!(state.pending_decision.is_none());
@@ -8597,7 +8547,7 @@ mod system_gateway {
         state.runner.rig = vec![rig_card_with_counters("botulus", 3)];
         state.corp.installed = vec![ice_installed("flyswatter", ServerId::Hq, false)];
         let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run");
-        let (state, _) = apply_action(&state, &registry, PlayerAction::ContinueRun).expect("approach");
+        let (state, _) = crate::rules::test_support::continue_run(&state, &registry).expect("approach");
         let (state, events) = apply_action(&state, &registry, PlayerAction::RezIce { ice: install_of(&state, "flyswatter") }).expect("rez");
         assert!(events.iter().any(|e| matches!(e, crate::rules::GameEvent::VirusCountersPurged { cards } if cards.len() == 1)));
         assert_eq!(state.runner.rig[0].counters, 0);
@@ -8652,7 +8602,7 @@ mod system_gateway {
         let identity_ability = PlayerAction::ActivateAbility { target: InstallId::CORP_IDENTITY, ability_index: 0 };
 
         let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run HQ");
-        let (state, _) = apply_action(&state, &registry, PlayerAction::ContinueRun).expect("approach Brân");
+        let (state, _) = crate::rules::test_support::continue_run(&state, &registry).expect("approach Brân");
         let (state, _) = apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner passes");
         assert!(crate::rules::legal_actions(&state, &registry).contains(&identity_ability), "a rezzed bioroid protects the attacked server");
         // Ansel protects R&D, not the attacked server: Brân is the only card
@@ -8668,7 +8618,7 @@ mod system_gateway {
         // Once per turn: the second run this turn gets no offer.
         let (state, _) = close_all_windows(state, &registry);
         let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::RnD }).expect("run R&D");
-        let (state, _) = apply_action(&state, &registry, PlayerAction::ContinueRun).expect("approach Ansel");
+        let (state, _) = crate::rules::test_support::continue_run(&state, &registry).expect("approach Ansel");
         let (state, _) = apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner passes");
         assert!(!crate::rules::legal_actions(&state, &registry).contains(&identity_ability), "already used this turn");
 
@@ -8782,7 +8732,7 @@ mod system_gateway {
         state.corp.hq = vec![CardId("pad_campaign".to_string())];
         state.corp.installed = vec![ice_installed("scatter_field", ServerId::Hq, true)];
         let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run");
-        let (state, _) = apply_action(&state, &registry, PlayerAction::ContinueRun).expect("approach");
+        let (state, _) = crate::rules::test_support::continue_run(&state, &registry).expect("approach");
         assert_eq!(crate::rules::test_support::ice_strength_in_run(&state, &registry, 0), 4, "alone on HQ");
         let state = advance_until_choice(state, &registry);
         assert!(matches!(state.pending_decision, Some(crate::rules::PendingDecision::ChooseCards { side: Side::Corp, .. })), "the first subroutine's offer");
@@ -8796,7 +8746,7 @@ mod system_gateway {
         let mut state = runner_turn(5, 4);
         state.corp.installed = vec![ice_installed("scatter_field", ServerId::Hq, true), ice_installed("ice_wall", ServerId::Hq, true)];
         let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run");
-        let (state, _) = apply_action(&state, &registry, PlayerAction::ContinueRun).expect("approach");
+        let (state, _) = crate::rules::test_support::continue_run(&state, &registry).expect("approach");
         assert_eq!(crate::rules::test_support::ice_strength_in_run(&state, &registry, 0), 0, "not the only ice");
     }
 
@@ -8857,7 +8807,7 @@ mod system_gateway {
         }];
         state.corp.installed = vec![ice_installed("semak_samun", ServerId::Hq, true)];
         let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run");
-        let (state, _) = apply_action(&state, &registry, PlayerAction::ContinueRun).expect("approach");
+        let (state, _) = crate::rules::test_support::continue_run(&state, &registry).expect("approach");
         let state = advance_until_choice(state, &registry);
         let (state, events) =
             apply_action(&state, &registry, PlayerAction::AcceptPendingPaidChoice { cost_option_index: None }).expect("pay 3 net");
@@ -8878,7 +8828,7 @@ mod system_gateway {
         state.runner.rig[0].base_strength = 3;
         state.corp.installed = vec![ice_installed("semak_samun", ServerId::Hq, true)];
         let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run");
-        let (state, _) = apply_action(&state, &registry, PlayerAction::ContinueRun).expect("approach");
+        let (state, _) = crate::rules::test_support::continue_run(&state, &registry).expect("approach");
         let (state, _) = apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner passes");
         let (state, _) = apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Corp }).expect("encounter");
         // Mayfly matches the strength but an AI is no fracter.
@@ -8896,7 +8846,7 @@ mod system_gateway {
         state.runner.grip = vec![CardId("sure_gamble".to_string()); 4];
         state.corp.installed = vec![ice_installed("semak_samun", ServerId::Hq, true)];
         let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run");
-        let (state, _) = apply_action(&state, &registry, PlayerAction::ContinueRun).expect("approach");
+        let (state, _) = crate::rules::test_support::continue_run(&state, &registry).expect("approach");
         let state = advance_until_choice(state, &registry);
         let (state, _) = apply_action(&state, &registry, PlayerAction::AcceptPendingPaidChoice { cost_option_index: None }).expect("take the damage");
         assert_eq!(state.runner.grip.len(), 1, "three net damage");
@@ -8908,7 +8858,7 @@ mod system_gateway {
         state.runner.grip = vec![CardId("sure_gamble".to_string()); 2];
         state.corp.installed = vec![ice_installed("semak_samun", ServerId::Hq, true)];
         let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run");
-        let (state, _) = apply_action(&state, &registry, PlayerAction::ContinueRun).expect("approach");
+        let (state, _) = crate::rules::test_support::continue_run(&state, &registry).expect("approach");
         let state = advance_until_choice(state, &registry);
         assert!(state.pending_paid_choice.is_some());
         let legal = crate::rules::legal_actions_for(&state, &registry, Side::Runner);
@@ -8922,7 +8872,7 @@ mod system_gateway {
         state.runner.rig[0].base_strength = 3;
         state.corp.installed = vec![ice_installed("semak_samun", ServerId::Hq, true)];
         let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run");
-        let (state, _) = apply_action(&state, &registry, PlayerAction::ContinueRun).expect("approach");
+        let (state, _) = crate::rules::test_support::continue_run(&state, &registry).expect("approach");
         let (state, _) = apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner passes");
         let (state, _) = apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Corp }).expect("encounter");
         let (_, events) = apply_action(&state, &registry, PlayerAction::ActivateAbility { target: install_of(&state, "cleaver"), ability_index: 0 }).expect("break");
@@ -8970,7 +8920,7 @@ mod system_gateway {
         state.corp.resources.credits = Credits(0);
         state.corp.installed = vec![installed_with_counters("mahkota_langit_grid", ServerId::Remote(0), 2), ice_installed("ice_wall", ServerId::Remote(0), false)];
         let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Remote(0) }).expect("run");
-        let (state, _) = apply_action(&state, &registry, PlayerAction::ContinueRun).expect("approach");
+        let (state, _) = crate::rules::test_support::continue_run(&state, &registry).expect("approach");
         let (state, _) = apply_action(&state, &registry, PlayerAction::RezIce { ice: install_of(&state, "ice_wall") }).expect("the grid pays for its ice");
         assert_eq!(state.corp.installed[0].counters, 1);
 
@@ -9206,7 +9156,7 @@ mod system_gateway {
             ice_installed("bumi_1_0", ServerId::Archives, true),
         ];
         let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run");
-        let (state, _) = apply_action(&state, &registry, PlayerAction::ContinueRun).expect("approach");
+        let (state, _) = crate::rules::test_support::continue_run(&state, &registry).expect("approach");
 
         // Subroutine 1: install a piece of ice from Archives for free.
         let state = advance_until_choice(state, &registry);
@@ -9361,7 +9311,7 @@ mod system_gateway {
                 agendas.iter().map(|id| crate::rules::ScoredAgenda::plain(CardId((*id).to_string()))).collect();
             state.corp.installed = vec![ice_installed("biawak", ServerId::Hq, false)];
             let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run");
-            apply_action(&state, &registry, PlayerAction::ContinueRun).expect("approach").0
+            crate::rules::test_support::continue_run(&state, &registry).expect("approach").0
         };
         let rez = |state: &GameState| PlayerAction::RezIce { ice: install_of(state, "biawak") };
 
@@ -9468,7 +9418,7 @@ mod system_gateway {
         damaged.runner.grip = vec![CardId("sure_gamble".to_string()); 4];
         damaged.corp.installed = vec![ice_installed("semak_samun", ServerId::Hq, true)];
         let (damaged, _) = apply_action(&damaged, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run");
-        let (damaged, _) = apply_action(&damaged, &registry, PlayerAction::ContinueRun).expect("approach");
+        let (damaged, _) = crate::rules::test_support::continue_run(&damaged, &registry).expect("approach");
         let damaged = advance_until_choice(damaged, &registry);
         let (damaged, _) = apply_action(&damaged, &registry, PlayerAction::AcceptPendingPaidChoice { cost_option_index: None }).expect("take 3 net");
         assert_eq!(damaged.corp.identity_counters, 0, "the Runner suffered it; the Corp did nothing");
@@ -9618,7 +9568,7 @@ mod system_gateway {
         state.corp.installed = vec![ice_installed("empiricist", ServerId::Hq, true)];
 
         let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run");
-        let (state, _) = apply_action(&state, &registry, PlayerAction::ContinueRun).expect("approach");
+        let (state, _) = crate::rules::test_support::continue_run(&state, &registry).expect("approach");
         let state = advance_until_choice(state, &registry);
         assert_eq!(state.corp.hq.len(), 2, "drew Ice Wall");
         let (state, _) = apply_action(&state, &registry, PlayerAction::ToggleCardSelection { position: position_of(&state, "hedge_fund") }).expect("pick one");
@@ -9692,7 +9642,7 @@ mod system_gateway {
         state.corp.resources.agenda_points = crate::rules::AgendaPoints(greenmail_points);
         state.corp.installed = vec![ice_installed("biawak", ServerId::Hq, false)];
         let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run");
-        let (state, _) = apply_action(&state, &registry, PlayerAction::ContinueRun).expect("approach");
+        let (state, _) = crate::rules::test_support::continue_run(&state, &registry).expect("approach");
         let (state, events) = apply_action(&state, &registry, PlayerAction::RezIce { ice: install_of(&state, "biawak") }).expect("forfeit and rez");
         assert!(state.corp.installed[0].rezzed);
         assert!(state.corp.scored_agendas.is_empty());
@@ -10002,7 +9952,7 @@ mod system_gateway {
         state.corp.installed[1].rezzed = false;
 
         let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Remote(0) }).expect("run");
-        let (state, _) = apply_action(&state, &registry, PlayerAction::ContinueRun).expect("approach");
+        let (state, _) = crate::rules::test_support::continue_run(&state, &registry).expect("approach");
         let state = advance_until_choice(state, &registry);
         assert!(matches!(state.pending_paid_choice.as_ref().map(|p| p.side), Some(Side::Runner)), "pay 3 or take the tag");
 
@@ -10098,7 +10048,7 @@ mod system_gateway {
             ice_installed("enigma", ServerId::Archives, false),
         ];
         let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run HQ");
-        let (state, _) = apply_action(&state, &registry, PlayerAction::ContinueRun).expect("approach Ice Wall");
+        let (state, _) = crate::rules::test_support::continue_run(&state, &registry).expect("approach Ice Wall");
         let (state, _) = apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner passes first");
         let (state, events) = apply_action(&state, &registry, ability).expect("spend the counter");
         assert!(events.iter().any(|e| matches!(e, crate::rules::GameEvent::RunRedirected { to: ServerId::Archives, .. })));
@@ -10125,13 +10075,13 @@ mod system_gateway {
         let void = install_of(&state, "anoetic_void");
 
         let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Remote(0) }).expect("run");
-        let (state, events) = apply_action(&state, &registry, PlayerAction::ContinueRun).expect("into movement");
+        let (state, events) = crate::rules::test_support::continue_run(&state, &registry).expect("into movement");
         assert!(!events.iter().any(|e| matches!(e, crate::rules::GameEvent::ServerApproached { .. })), "{events:?}");
         assert_eq!(state.active_run.as_ref().unwrap().phase, crate::rules::RunPhase::Movement);
         assert!(state.paid_ability_window.is_none(), "the jack-out decision is the Runner's alone");
         assert!(crate::rules::legal_actions(&state, &registry).contains(&PlayerAction::JackOut));
 
-        let (state, _) = apply_action(&state, &registry, PlayerAction::ContinueRun).expect("go on");
+        let (state, _) = crate::rules::test_support::continue_run(&state, &registry).expect("go on");
         assert!(state.paid_ability_window.is_some(), "movement's window");
         assert!(!crate::rules::legal_actions(&state, &registry).contains(&PlayerAction::JackOut), "the door is shut");
         let (state, _) = apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner passes");
@@ -10156,7 +10106,7 @@ mod system_gateway {
         let enigma = install_of(&state, "enigma");
 
         let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run");
-        let (state, _) = apply_action(&state, &registry, PlayerAction::ContinueRun).expect("approach Ice Wall");
+        let (state, _) = crate::rules::test_support::continue_run(&state, &registry).expect("approach Ice Wall");
         let (state, _) = close_all_windows(state, &registry);
         let run = state.active_run.as_ref().unwrap();
         assert_eq!((run.phase, run.position), (crate::rules::RunPhase::Movement, 1), "Ice Wall passed unrezzed");
@@ -10193,7 +10143,7 @@ mod system_gateway {
         state.runner.resources.clicks = Clicks(4);
         state.corp.installed = vec![ice_installed("ice_wall", ServerId::Hq, true)];
         let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run HQ");
-        let (state, _) = apply_action(&state, &registry, PlayerAction::ContinueRun).expect("approach Ice Wall");
+        let (state, _) = crate::rules::test_support::continue_run(&state, &registry).expect("approach Ice Wall");
         let (state, _) = apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner passes first");
         let (state, events) = apply_action(&state, &registry, ability).expect("spend the counter");
         assert!(!events.iter().any(|e| matches!(e, crate::rules::GameEvent::ServerApproached { .. })), "{events:?}");
@@ -10214,7 +10164,7 @@ mod system_gateway {
         ];
 
         let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Remote(0) }).expect("run");
-        let (state, _) = apply_action(&state, &registry, PlayerAction::ContinueRun).expect("approach the ice");
+        let (state, _) = crate::rules::test_support::continue_run(&state, &registry).expect("approach the ice");
         assert!(matches!(state.pending_decision, Some(crate::rules::PendingDecision::ChooseEffect { chooser: Side::Corp, .. })), "Mitra asks");
         let (state, _) = apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("trash it");
         assert_eq!(state.corp.resources.credits, Credits(3));
@@ -10240,7 +10190,7 @@ mod system_gateway {
             state.runner.grip = vec![CardId("sure_gamble".to_string()); 6];
             state.corp.installed = vec![ice_installed("doomscroll", ServerId::Hq, true)];
             let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run");
-            let (state, _) = apply_action(&state, &registry, PlayerAction::ContinueRun).expect("approach");
+            let (state, _) = crate::rules::test_support::continue_run(&state, &registry).expect("approach");
             pass_until_settled(state, &registry).0
         };
 
@@ -10425,7 +10375,7 @@ mod system_gateway {
             state.runner.scored_agendas = vec![CardId("offworld_office".to_string()); runner_points];
             state.corp.installed = vec![ice_installed("n_pot", ServerId::Hq, true)];
             let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run");
-            let (state, _) = apply_action(&state, &registry, PlayerAction::ContinueRun).expect("approach");
+            let (state, _) = crate::rules::test_support::continue_run(&state, &registry).expect("approach");
             let (state, _) = apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner passes");
             apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Corp }).expect("encounter").0
         };

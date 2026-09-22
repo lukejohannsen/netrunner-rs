@@ -190,6 +190,7 @@ pub fn start_run(state: &mut GameState, registry: &CardRegistry, server: ServerI
         // is passed (or the server approach step is reached with none
         // installed).
         jack_out_permitted: false,
+        declared_successful: false,
         cards_accessed_count: 0, bonus_run_credits: 0,
     });
     Ok(())

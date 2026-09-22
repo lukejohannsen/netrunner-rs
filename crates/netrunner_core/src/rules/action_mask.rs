@@ -852,7 +852,7 @@ mod tests {
                     cost: Some(Cost::Credits(1)),
                     requirement: None,
                     effect: Effect::BoostStrength { amount: 1, duration: crate::dsl::EffectDuration::Encounter },
-                    cost_discount_if: None, used_by: None },
+                    cost_discount_if: None, used_by: None, access: false },
                 AbilityDef {
                     text: None,
                     trigger: Trigger::Paid,
@@ -862,7 +862,7 @@ mod tests {
                         count: crate::dsl::SubroutineBreakCount::Fixed(1),
                         restrict_to: Some(IceType::Barrier),
                     },
-                    cost_discount_if: None, used_by: None },
+                    cost_discount_if: None, used_by: None, access: false },
             ],
             strength: Some(2),
             is_playable: true,

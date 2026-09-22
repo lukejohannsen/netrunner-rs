@@ -53,6 +53,20 @@ pub struct AbilityDef {
     /// action it is.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub used_by: Option<crate::rules::Side>,
+    /// The printed "Access →" flag (CR 9.3.6b): a *mid-access ability*
+    /// (CR 9.5.2c), used only in the mid-access window at step 7.2.2 of
+    /// accessing a card, and there only by the Runner, once per access
+    /// (CR 9.2.10). Never in a paid ability window, which admits no
+    /// mid-access ability (CR 9.2.7b).
+    ///
+    /// A flag on the ability rather than a requirement: Gourmand and
+    /// Carnivore used to say it as `CurrentlyAccessingACard` and were
+    /// used in the paid ability window the engine opened at each accessed
+    /// card — a window the rules do not have, in which the Corp could
+    /// also rez. And a flag rather than a `Trigger`: it is still a paid
+    /// ability, with a trigger cost paid the same way (CR 9.5.1).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub access: bool,
 }
 
 impl AbilityDef {
@@ -175,14 +189,6 @@ pub enum EffectRequirement {
     /// treated the same as "0 counters," since a card that's already gone
     /// trivially has no counters left to be above the threshold.
     ThisCardCountersAtMost(u32),
-    /// A run is currently active and the Runner is mid-resolution of a
-    /// specific accessed card (`run::AccessPhase::PendingChoice`) — e.g.
-    /// Carnivore's "Access, once per turn → trash 2 cards from your grip:
-    /// trash the card you are accessing," gating an `AbilityDef` so it's
-    /// only activatable at that exact decision point. Hard-gates (errors,
-    /// doesn't silently skip) via `AbilityDef::requirement`'s usual
-    /// treatment.
-    CurrentlyAccessingACard,
     /// `acting_card`'s current generic counter total is at least `amount`
     /// — the inverse comparison to `ThisCardCountersAtMost` — e.g.
     /// Tranquilizer's "if there are 3 or more hosted virus counters, derez
@@ -194,9 +200,13 @@ pub enum EffectRequirement {
     /// identity_flipped`) — the gate on a flip identity's back-side
     /// trigger (Dewi Subrotoputri). Its front-side twin is `Not(IdentityFlipped)`.
     IdentityFlipped,
-    /// `CurrentlyAccessingACard` and the card is not an agenda — Gourmand's
-    /// "trash the non-agenda card you are accessing". Read from the
-    /// registry; an unregistered card counts as non-agenda.
+    /// The Runner is at the decision about a specific accessed card
+    /// (`run::AccessPhase::PendingChoice`) and it is not an agenda —
+    /// Gourmand's "trash the non-agenda card you are accessing". Read from
+    /// the registry; an unregistered card counts as non-agenda. *That* a
+    /// card is being accessed is `AbilityDef::access` on an ability, which
+    /// is why `CurrentlyAccessingACard`, the requirement Carnivore said it
+    /// with, is gone; this one stays because BANGUN's trigger reads it.
     CurrentlyAccessingNonAgenda,
     /// A subroutine has resolved during the active run
     /// (`RunState::subroutine_resolved`) — Ryō "Phoenix" Ōno's "a run becomes
@@ -212,8 +222,8 @@ pub enum EffectRequirement {
     /// now (`RunPhase::EncounterIce`, `RunState::ice[position]` matches
     /// the host) — e.g. Botulus's hosted-counter break ability, which only
     /// makes sense to activate while its host is actually being
-    /// encountered. Hard-gates via `AbilityDef::requirement`, same
-    /// treatment as `CurrentlyAccessingACard`.
+    /// encountered. Hard-gates (errors, does not silently skip) via
+    /// `AbilityDef::requirement`'s usual treatment.
     EncounteringHostIce,
     /// The active run is encountering a piece of ICE right now
     /// (`RunPhase::EncounterIce`) — any ICE, unlike
@@ -506,7 +516,7 @@ mod tests {
                 cost: Some(Cost::Credits(3)),
                 requirement: None,
                 effect: Effect::DealDamage(DamageType::Net, 1),
-                cost_discount_if: None, used_by: None }
+                cost_discount_if: None, used_by: None, access: false }
         );
         assert_eq!(
             bundle.abilities[1],
@@ -516,7 +526,7 @@ mod tests {
                 cost: Some(Cost::TrashSelf),
                 requirement: None,
                 effect: Effect::GiveTags(1),
-                cost_discount_if: None, used_by: None }
+                cost_discount_if: None, used_by: None, access: false }
         );
         assert_eq!(
             bundle.subroutines[0],

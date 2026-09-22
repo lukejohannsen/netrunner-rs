@@ -207,6 +207,51 @@ pub(crate) fn accessing_in_the_discard_pile(state: &GameState) -> bool {
         .is_some_and(|access| access.server == ServerId::Archives && access.pending_install.is_none())
 }
 
+/// The breach of a run declared successful (CR 6.9.5b), which ends the
+/// run when it presents nothing — an empty server, or a replaced access.
+/// `RunCompleted` is then *dispatched*, not merely pushed: a run on an
+/// empty Archives is the most ordinary run there is, and Mayfly's "when
+/// this run ends, trash this program" never fired on one while this only
+/// recorded the event. Skipped when access already concluded with its own
+/// `RunCompleted` (a flatline mid-access). Otherwise the run stands in
+/// `RunPhase::AccessingCard`, and the Runner's decisions finish it.
+pub(crate) fn breach(state: &mut GameState, registry: &CardRegistry) -> Result<Vec<GameEvent>, RulesError> {
+    let server = state.active_run.as_ref().ok_or(RulesError::NoActiveRun)?.server;
+    let mut events = access_server(state, server, registry)?;
+    if state.active_run.is_none() && !events.iter().any(|e| matches!(e, GameEvent::RunCompleted { .. })) {
+        dispatcher::emit(state, registry, &mut events, GameEvent::RunCompleted { server })?;
+    }
+    Ok(events)
+}
+
+/// Whether a breach is in progress (CR 7.3): from the first candidate to
+/// the last access, the run stands in `RunPhase::AccessingCard`. No paid
+/// ability window opens in it (CR 7.2, 7.5), so neither player uses a paid
+/// ability there, and the Corp rezzes nothing — only an interrupt, when
+/// the players are asked about a prevention, and the Runner's mid-access
+/// ability at each access (`at_mid_access_window`).
+pub(crate) fn breaching(state: &GameState) -> bool {
+    state.active_run.as_ref().is_some_and(|run| run.phase == RunPhase::AccessingCard)
+}
+
+/// Whether the Runner stands at step 7.2.2 of an access: the mid-access
+/// window (CR 9.2.10), where they "may use a single mid-access ability,
+/// such as the basic trash ability". It *is* the decision about the card,
+/// `AccessPhase::PendingChoice`, whose other answers are the basic trash
+/// ability (`TrashAccessedCard`) and moving on (`StealAgenda`,
+/// `PassAccessedCard`): each of them, and every mid-access ability in the
+/// pool, finishes the access, so one ability per access (CR 9.2.10c) needs
+/// no count of its own. A decision parked by something else is not the
+/// window: it has priority over it until it is answered.
+pub(crate) fn at_mid_access_window(state: &GameState) -> bool {
+    !state.is_resolution_blocked()
+        && state
+            .active_run
+            .as_ref()
+            .and_then(|run| run.access_state.as_ref())
+            .is_some_and(|access| matches!(access.phase, AccessPhase::PendingChoice { .. }))
+}
+
 fn compute_pending_choice(state: &GameState, card_id: &CardId, registry: &CardRegistry) -> AccessPhase {
     let card_def = registry.get(card_id);
     let is_agenda = card_def.is_some_and(|c| c.agenda_points.is_some());

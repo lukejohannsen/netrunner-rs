@@ -571,6 +571,7 @@ fn determinize_run(
         position: run.position,
         access_state,
         jack_out_permitted: run.jack_out_permitted,
+        declared_successful: run.declared_successful,
         // Public and carried by the view — see `PublicRunState`. Zeroing
         // these made the sample poorer than the information the searcher
         // actually has: an action the Runner can really pay for out of

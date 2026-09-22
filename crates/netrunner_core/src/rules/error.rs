@@ -287,6 +287,18 @@ pub enum RulesError {
     #[error("only an ability that prevents it, or a pass, while the players are asked about a prevention")]
     ActionBlockedByPrevention,
 
+    /// A mid-access ability ("Access →") used anywhere but the mid-access
+    /// window at step 7.2.2 of accessing a card (CR 9.3.6b, 9.2.10d).
+    #[error("an \"Access →\" ability is used only while the Runner is deciding about the card they are accessing")]
+    NotInMidAccessWindow,
+
+    /// A paid ability, or a non-ice rez, in a window whose rule does not
+    /// admit it — a breach has no paid ability window at all (CR 7.2,
+    /// 9.2.10a), and the encounter's admits paid abilities only (CR
+    /// 6.9.3b).
+    #[error("that is not permitted in this window")]
+    NotPermittedInThisWindow,
+
 
     #[error("card {0:?} is not an active installed/rigged card and cannot hold counters")]
     CardNotEligibleForCounters(CardId),

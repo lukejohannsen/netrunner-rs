@@ -182,10 +182,45 @@ fixes them. The letters are this file's addresses: "Rules Conformance B1".
   - Access has only the Runner's mid-access window (7.2, 9.2.10, 11.6).
   - Gourmand and Carnivore depend on the present window, so a real mid-access window must
     replace it.
+  - **Fixed** (`fix/run-and-access-windows`): `CompleteRun` declares the run successful and the
+    breach follows at the end of the action, or of the action that answers a decision a "when
+    successful" ability parked (`RunState::declared_successful`, carried in the view so a bot's
+    sample breaches too). No window opens at an accessed card. A breach refuses every paid ability
+    but an interrupt (`RulesError::NotPermittedInThisWindow`), where the Runner's standing
+    permission in their own action phase used to reach. The mid-access window is the decision
+    about the card: "Access →" is a flag on the ability (`AbilityDef::access`, CR 9.3.6b), usable
+    only by the Runner at `PendingChoice` (`RulesError::NotInMidAccessWindow`), and
+    `CurrentlyAccessingACard` is gone (`EffectRequirement` 35 → 34). Every mid-access ability in
+    the pool finishes the access, so "a single" one (9.2.10c) needs no count.
 - **D3 Window permissions.**
   - A non-ice rez is allowed in the encounter window, which is (P) only (6.9.3b).
   - The initiation window is missing (6.9.1e).
   - The Corp gets no rez window after most Runner actions (5.7.1e).
+  - **Fixed** (`fix/run-and-access-windows`): `paid_ability::window_permits_rez` refuses a non-ice
+    rez in the encounter's window. The initiation's window opens once the run has begun and
+    nothing is parked (`engine::resume_run`, which covers a run a card's text starts), and closing
+    it takes the step `ContinueRun` from `Initiation` used to. The post-action window opens for a
+    Corp that could rez a non-ice card it can pay for, not only for a Corp with a paid ability,
+    and after a run ends, since the run was the action (CR 5.2.2a).
+- **D4 The movement phase has no window before the jack-out decision** (6.9.4b, paid abilities
+  only). Found while fixing D2 and D3; recorded, not owed. The Runner already uses paid abilities
+  there, as the active player outside a window. Only the Corp's are missing, and a window before
+  every jack-out decision would cost two passes per piece of ice passed. Opening it needs the
+  movement phase to tell a third moment apart from the two `jack_out_permitted` already
+  distinguishes.
+- **Measured, D2 and D3** (`scripts/coverage_identical.py main`, 192 games per shape, seed 1):
+  - The view and index paths stay identical to each other, and `ActionSpace` is unmoved.
+  - **Windows about balance:** random `PaidAbilityWindowOpened` 20,997 → 20,744. The initiation's
+    windows and the new post-run and rez windows roughly replace the success window and the
+    per-card access windows. `ContinueRun` 5,954 → 1,744, since the initiation's step is now two
+    passes. Random steps 79,067 → 74,000.
+  - **The mid-access window is reached:** random Gourmand activations 6 → 2 and Carnivore's
+    9 → 8. `TrashAccessedCard` 132 → 131.
+  - **Heuristic, not claimed.** Corp point wins were 26 → 36 on seed 1, just past the
+    0.026–0.047 band, but 30 → 30 on seed 2 and 30 → 35 on seed 3: +0.026 on average, inside the
+    band.
+  - Both 256-seed sweeps are clean at release, coverage gate included. The view sweep is also
+    clean at 128 seeds in a debug build, where the dispatch audit and the payment assertions run.
 
 **E. Winning and losing (1.7)**
 - **E1 A card that makes the Corp draw from an empty R&D does not end the game** (1.7.2c).
@@ -318,7 +353,7 @@ foresaw every question an install asked, text installs included.
 4. F1 and F2.
 5. B: installing as 8.5 lists it, which also closes A3.
 6. A1 and A2: access one card at a time, and an Archives with no order.
-7. D2 and D3: the run and access windows as 6.9 and 7.2 list them.
+7. D2 and D3: the run and access windows as 6.9 and 7.2 list them. **Done**; D4 recorded.
 
 Each follows the Testing Rule's bar for engine work. Each also moves its rows below to *conforms*,
 with the rule quoted.
@@ -412,8 +447,8 @@ with the rule quoted.
 | 5.3 | Draw Phase | unreviewed |  |
 | 5.4 | Action Phase | unreviewed |  |
 | 5.5 | Discard Phase | conforms | E2 fixed: a hand size below 0 flatlines at the discard step. HQ discards go facedown; matches. |
-| 5.6 | Steps of the Corp's Turn | deviates | D3 only: what each window permits. C1, C2 and C3 fixed; the steps run in the listed order. |
-| 5.7 | Steps of the Runner's Turn | deviates | D3 only (5.7.1e). C1, C2 and C3 fixed; the steps run in the listed order. |
+| 5.6 | Steps of the Corp's Turn | conforms | C1, C2 and C3 fixed; the steps run in the listed order. Each window is (P)(R), and the Corp scores (S) in its own action phase between actions (5.6.2a). The Runner's half of 5.6.2a opens only when they have a paid ability to use (`open_post_action_window`). |
+| 5.7 | Steps of the Runner's Turn | conforms | C1, C2 and C3 fixed; the steps run in the listed order. D3 fixed: "A paid ability window occurs, in which players may use paid abilities and the Corp may rez non-ice cards" (5.7.1e) after every action and every run, opened when the Corp has a paid ability or a card it could rez. |
 
 ### 6. Runs
 
@@ -427,14 +462,14 @@ with the rule quoted.
 | 6.6 | Movement | unreviewed |  |
 | 6.7 | Success | unreviewed |  |
 | 6.8 | Run Ends Phase | unreviewed |  |
-| 6.9 | Steps of a Run | deviates | D2, D3. The movement phase (6.9.4c–g), an iceless server and unrezzed ice passed match. |
+| 6.9 | Steps of a Run | deviates | D4 only (6.9.4b). D2 and D3 fixed: the initiation's window (6.9.1e), no rez in the encounter's, "A paid ability window occurs, in which players may only use paid abilities" (6.9.3b), and no window between the success and the breach (6.9.5). The movement phase (6.9.4c–g), an iceless server and unrezzed ice passed match. |
 
 ### 7. Accessing Cards and Breaching Servers
 
 | § | Section | Status | Notes |
 |---|---|---|---|
 | 7.1 | Accessing Cards | conforms | D1 fixed: nothing in Archives is trashed (7.1.5b). Steals mandatory, steal costs declinable (7.1.6a); matches. |
-| 7.2 | Steps of Accessing a Card | deviates | D2. |
+| 7.2 | Steps of Accessing a Card | conforms | D2 fixed: "The Runner may use a single mid-access ability, such as the basic trash ability" (7.2.2) at the decision about the card, and no paid ability window at any step. |
 | 7.3 | Breaching Servers | read in part | A1 fixed: the Runner chooses among candidates as they can point at them — a root install, "a random card from HQ" (7.3.4a), a faceup Archives card (`AccessCandidate`) — and no choice names a card not yet accessed. The random access limit is set at the breach and each choice counts toward it (7.3.5, 7.3.5c). Accessed cards stay visible to the Runner for the breach (7.3.1a). Only accesses performed are counted (7.3.6). Archives turned faceup at breach (7.3.2); matches. **Not modelled:** a card added to Archives facedown during the breach (7.3.2a), Dedicated Neural Net (7.3.4b; not in the pool), and a consecutive breach (7.3.8). |
 | 7.4 | Determining Candidates | read in part | A1 fixed: R&D's cards are presented one at a time from the top (7.4.7), a chosen candidate is never offered again (7.4.3), and a candidate that has left the server since the breach began is dropped (7.4.5). **Not modelled:** cards entering a server mid-breach becoming candidates (7.4.6a–d) and R&D re-evaluated when it is reordered (7.4.7a); the HQ and R&D cards a breach will reach are drawn when it begins (`AccessState::from_zone`), which is the same draw while those zones hold still. Showing Off (7.4.7b) is not in the pool. |
 | 7.5 | Steps of Breaching a Server | unreviewed |  |

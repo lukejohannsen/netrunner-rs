@@ -643,6 +643,8 @@ pub enum PaysFor {
 pub enum CardValidationError {
     #[error("Agenda {0:?} must not have subroutines")]
     AgendaHasSubroutines(CardId),
+    #[error("card {0:?}: only a Runner card's paid ability can be a mid-access ability (`access`, CR 9.3.6b)")]
+    AccessFlagOnWhatCannotBeOne(CardId),
     #[error("card {0:?} says what its hosted credits pay for but hosts no credits (`counter_kind: Credit`), or is an event or operation, which hosts nothing")]
     PaysForWithoutHostedCredits(CardId),
     #[error("card {0:?} prints recurring credits but hosts no credits (`counter_kind: Credit`) or says nothing they may be spent on (`pays_for`)")]
@@ -790,6 +792,12 @@ impl CardDefinition {
         // to put them: refused, rather than a pool that silently never fills.
         if self.recurring_credits.is_some() && self.card_type == CardType::Identity && self.side == Side::Runner {
             return Err(CardValidationError::RunnerIdentityHostsNothing(self.id.clone()));
+        }
+        // "Access →" is a flag on a Runner's paid ability (CR 9.3.6b), used
+        // only by the Runner in the mid-access window: on anything else it
+        // is an ability that could never be used.
+        if self.abilities.iter().any(|ability| ability.access && (ability.trigger != Trigger::Paid || self.side != Side::Runner)) {
+            return Err(CardValidationError::AccessFlagOnWhatCannotBeOne(self.id.clone()));
         }
         if self.trash_when_empty && self.pays_for.is_empty() {
             return Err(CardValidationError::TrashWhenEmptyWithNothingToEmptyIt(self.id.clone()));
@@ -1049,7 +1057,7 @@ mod tests {
                     // Netrunner only permits them while encountering ICE.
                     requirement: Some(EffectRequirement::DuringEncounter),
                     effect: Effect::BoostStrength { amount: 1, duration: EffectDuration::Encounter },
-                    cost_discount_if: None, used_by: None },
+                    cost_discount_if: None, used_by: None, access: false },
                 AbilityDef {
                     text: Some("Interface → 1[credit]: Break 1 barrier subroutine.".to_string()),
                     trigger: Trigger::Paid,
@@ -1061,7 +1069,7 @@ mod tests {
                         count: SubroutineBreakCount::Fixed(1),
                         restrict_to: Some(IceType::Barrier),
                     },
-                    cost_discount_if: None, used_by: None },
+                    cost_discount_if: None, used_by: None, access: false },
             ]
         );
     }
@@ -1339,6 +1347,30 @@ mod tests {
     /// `Amount::ChosenNumber` means something only inside the `then` of the
     /// `ChooseNumber` that asked for it. Outside one it parses and is 0 —
     /// a card that reads as working and removes no tags.
+    #[test]
+    fn validate_refuses_an_access_flag_that_nothing_could_use() {
+        let card = |side, trigger| CardDefinition {
+            id: CardId("baz".to_string()),
+            side,
+            card_type: CardType::Resource,
+            abilities: vec![AbilityDef {
+                text: None,
+                trigger,
+                cost: None,
+                requirement: None,
+                effect: Effect::TrashCurrentlyAccessedCard,
+                cost_discount_if: None,
+                used_by: None,
+                access: true,
+            }],
+            ..CardDefinition::default()
+        };
+        assert_eq!(card(Side::Runner, Trigger::Paid).validate(), Ok(()));
+        let refused = Err(CardValidationError::AccessFlagOnWhatCannotBeOne(CardId("baz".to_string())));
+        assert_eq!(card(Side::Corp, Trigger::Paid).validate(), refused);
+        assert_eq!(card(Side::Runner, Trigger::OnRunStart).validate(), refused);
+    }
+
     #[test]
     fn validate_refuses_a_chosen_number_nobody_chose() {
         use crate::dsl::effect::Amount;

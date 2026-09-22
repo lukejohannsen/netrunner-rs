@@ -297,6 +297,16 @@ pub struct RunState {
     /// — the jack-out decision comes *before* the Corp's chance to rez
     /// what lies ahead, never after it.
     pub jack_out_permitted: bool,
+    /// The run has been declared successful (CR 6.9.5a) and the breach
+    /// (6.9.5b) is next. Set by `CompleteRun`, which breaches at the end
+    /// of its action unless a "when successful" ability parked a decision; then the
+    /// breach waits for it, and `engine::resume_run` takes it when nothing is
+    /// parked. There is no paid ability window between the two steps to
+    /// wait in: the one the engine used to open there let the Corp rez an
+    /// upgrade after the run had succeeded. Also what refuses a second
+    /// `CompleteRun`.
+    #[serde(default)]
+    pub declared_successful: bool,
     /// Temporary Runner credit pool for this run only, seeded from
     /// `state::CorpState::bad_publicity` at `engine::initiate_run`.
     /// Spendable via `ability::pay_cost`'s `Cost::Credits` arm — draws from
@@ -449,6 +459,7 @@ impl Default for RunState {
             position: 0,
             access_state: None,
             jack_out_permitted: false,
+            declared_successful: false,
             bad_publicity_credits: 0,
             additional_rd_access: 0,
             additional_hq_access: 0,
