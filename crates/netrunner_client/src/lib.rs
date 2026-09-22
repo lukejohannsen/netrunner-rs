@@ -42,6 +42,7 @@ pub mod play;
 pub mod decks;
 pub mod prose;
 pub mod record;
+pub mod replay;
 pub mod selection;
 pub mod settings;
 pub mod skin;

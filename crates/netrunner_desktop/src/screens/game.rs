@@ -126,6 +126,7 @@ use crate::models::settings::{self as settings_model, Row};
 use crate::models::shortcuts::{self, Shortcut};
 use crate::nav::{screen_root, Captures, InputCaptured, Navigate};
 use crate::screens::new_game::{ActiveMatch, LastGame};
+use crate::screens::replay::{ActiveReplay, OpenReplay, ReplayClick};
 use crate::screens::settings::{self as settings_screen, Control as SettingsControl};
 use crate::screens::AppScreen;
 use crate::skin::{self, Drawn, Slot};
@@ -181,6 +182,8 @@ pub enum Click {
     Options,
     /// Save the match so far as a file that replays (`save_report`).
     SaveReport,
+    /// Open the report just saved on the replay board.
+    WatchReport,
     CloseOverlay,
     ConfirmQuit,
     CancelQuit,
@@ -335,7 +338,7 @@ pub struct StatusLine;
 pub struct Model(pub Game);
 
 #[derive(Resource, Default)]
-struct Dirty {
+pub(crate) struct Dirty {
     board: bool,
     rail: bool,
     log: bool,
@@ -348,7 +351,7 @@ struct Dirty {
 }
 
 impl Dirty {
-    fn all(&mut self) {
+    pub(crate) fn all(&mut self) {
         self.board = true;
         self.rail = true;
         self.log = true;
@@ -361,7 +364,7 @@ impl Dirty {
 /// Intents raised by a key, applied by `controls` with the pressed ones
 /// so every outcome is handled in one place.
 #[derive(Resource, Default)]
-struct Pending(Vec<Intent>);
+pub(crate) struct Pending(Vec<Intent>);
 
 /// The card width the board is drawn at, and the window it was computed
 /// for. `fit` keeps it current; a change redraws the board.
@@ -445,7 +448,7 @@ fn board_pictures(
 /// Recomputes the face width from the window and the view, and marks the
 /// board for a redraw when it moved. Runs every frame and is cheap: a
 /// handful of comparisons.
-fn fit(windows: Query<&Window, With<PrimaryWindow>>, model: Option<Res<Model>>, fit: Option<ResMut<BoardFit>>, mut dirty: ResMut<Dirty>) {
+pub(crate) fn fit(windows: Query<&Window, With<PrimaryWindow>>, model: Option<Res<Model>>, fit: Option<ResMut<BoardFit>>, mut dirty: ResMut<Dirty>) {
     let (Some(model), Some(mut fit)) = (model, fit) else { return };
     let window = windows.single().map_or(fit.window, |w| Vec2::new(w.width(), w.height()));
     let counts = counts(&model.0);
@@ -466,9 +469,26 @@ fn fit(windows: Query<&Window, With<PrimaryWindow>>, model: Option<Res<Model>>, 
     }
 }
 
-fn spawn(mut commands: Commands, theme: Res<Theme>, core: Res<ClientCore>, active: Option<Res<ActiveMatch>>, mut images: Option<ResMut<Assets<Image>>>, dev: Option<Res<crate::dev::Dev>>, mut last_table: ResMut<table::LastTable>) {
+#[allow(clippy::too_many_arguments)]
+fn spawn(
+    mut commands: Commands,
+    theme: Res<Theme>,
+    core: Res<ClientCore>,
+    active: Option<Res<ActiveMatch>>,
+    replay: Option<Res<ActiveReplay>>,
+    mut images: Option<ResMut<Assets<Image>>>,
+    dev: Option<Res<crate::dev::Dev>>,
+    mut last_table: ResMut<table::LastTable>,
+) {
     commands.init_resource::<Dirty>();
-    let Some(active) = active else {
+    // A match being played, or a recorded one being stepped through
+    // (`screens::replay`): the same board either way.
+    let source = match (&active, &replay) {
+        (Some(active), _) => Some((Game::new(core.registry.clone(), active.handle.side()), active.handle.side())),
+        (None, Some(replay)) => Some((crate::screens::replay::board_for(&core, &replay.0), replay.0.side())),
+        (None, None) => None,
+    };
+    let Some((game, side)) = source else {
         commands.spawn((screen_root(AppScreen::Game, theme.background), children![
             widgets::heading(&theme, AppScreen::Game.title()),
             widgets::dim(&theme, "No game in progress. Start one from Play vs Computer."),
@@ -476,8 +496,8 @@ fn spawn(mut commands: Commands, theme: Res<Theme>, core: Res<ClientCore>, activ
         ]));
         return;
     };
-    let game = Game::new(core.registry.clone(), active.handle.side());
-    let mut pacer = Pacer::new(active.handle.side(), core.settings.desktop.animation_speed);
+    let replaying = game.replay.is_some();
+    let mut pacer = Pacer::new(side, core.settings.desktop.animation_speed);
     pacer.hold_at_encounter = dev.is_some_and(|dev| dev.hold_run);
     commands.insert_resource(Pace(pacer));
 
@@ -526,7 +546,9 @@ fn spawn(mut commands: Commands, theme: Res<Theme>, core: Res<ClientCore>, activ
         .spawn((Node { width: percent(100), min_height: px(layout::TOP_BAR), flex_shrink: 0.0, flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(8), ..default() },))
         .with_children(|parent| {
             parent.spawn((StatusLine, widgets::dim(&theme, "Setting up…"), TextLayout::new(Justify::Left, LineBreak::WordBoundary), Node { flex_grow: 1.0, flex_shrink: 1.0, min_width: px(0), ..default() }));
-            parent.spawn(widgets::button(&theme, "Quit", Val::Auto, Click::Quit));
+            // A replay has nothing to lose, so its way out says where it
+            // goes rather than asking.
+            parent.spawn(widgets::button(&theme, if replaying { "Close" } else { "Quit" }, Val::Auto, Click::Quit));
             // The gear in the corner, where a person looks for options.
             parent.spawn(widgets::gear_button(&theme, images.as_deref_mut(), Click::Options));
         })
@@ -699,15 +721,22 @@ fn table_nonce() -> u64 {
 /// where in words a person can act on: the file, and the command that
 /// opens it at the moment it was saved. A failure is a sentence too,
 /// never a panic — a report that cannot be written must not end the game.
-fn save_report(core: &ClientCore, handle: &netrunner_client::play::MatchHandle) -> String {
+fn save_report(core: &ClientCore, handle: &netrunner_client::play::MatchHandle) -> (String, Option<std::path::PathBuf>) {
     let Some(dir) = &core.reports_dir else {
-        return format!("No bug report saved: there is no data directory; set {}", netrunner_client::bug_report::REPORTS_DIR_ENV);
+        return (format!("No bug report saved: there is no data directory; set {}", netrunner_client::bug_report::REPORTS_DIR_ENV), None);
     };
     let (header, history) = handle.record();
     match netrunner_client::bug_report::save(dir, &header, &history) {
-        Ok(path) => format!("Bug report saved to {} — open it with `netrunner_cli replay {}`", path.display(), path.display()),
-        Err(error) => format!("No bug report saved: {error}"),
+        Ok(path) => (format!("Bug report saved to {} — it is under Replays, or open it with `netrunner_cli replay {}`", path.display(), path.display()), Some(path)),
+        Err(error) => (format!("No bug report saved: {error}"), None),
     }
+}
+
+/// Remembers a report just saved on the board, for its "Watch it".
+fn saved(model: &mut Game, notices: &mut Notices, (line, path): (String, Option<std::path::PathBuf>)) {
+    notices.push(line.clone());
+    model.saved_report = Some(line);
+    model.saved_report_path = path;
 }
 
 /// Leaving the screen ends the match: dropping the handle quits it, and
@@ -715,6 +744,7 @@ fn save_report(core: &ClientCore, handle: &netrunner_client::play::MatchHandle) 
 fn leave(world: &mut World) {
     world.remove_resource::<Model>();
     world.remove_resource::<Pace>();
+    world.remove_resource::<ActiveReplay>();
     if let Some(active) = world.remove_resource::<ActiveMatch>()
         && let Some(choice) = active.choice
     {
@@ -741,12 +771,15 @@ fn poll(
     core: Res<ClientCore>,
     mut notices: ResMut<Notices>,
 ) {
-    let (Some(mut active), Some(mut model), Some(mut pace)) = (active, model, pace) else { return };
-    while let Some(message) = active.handle.poll() {
-        if matches!(message, netrunner_client::play::MatchMessage::Stalled { .. }) {
-            let line = save_report(&core, &active.handle);
-            notices.push(line.clone());
-            model.0.saved_report = Some(line);
+    // A replay has no match: its steps are pushed into the pacer by
+    // `screens::replay`, and the beats are released here the same way.
+    let (Some(mut model), Some(mut pace)) = (model, pace) else { return };
+    let mut active = active;
+    while let Some(message) = active.as_mut().and_then(|active| active.handle.poll()) {
+        if let Some(active) = &active
+            && matches!(message, netrunner_client::play::MatchMessage::Stalled { .. })
+        {
+            saved(&mut model.0, &mut notices, save_report(&core, &active.handle));
         }
         pace.0.push(message);
     }
@@ -761,7 +794,9 @@ fn poll(
                 // The one message outcome that acts: a lone pass taken
                 // for the person. `submit` fails only once the match has
                 // ended, and its `Ended` is already on the way.
-                if let Outcome::Submit(action) = model.0.apply(Intent::Message(MatchMessageRef(message))) {
+                if let Outcome::Submit(action) = model.0.apply(Intent::Message(MatchMessageRef(message)))
+                    && let Some(active) = &active
+                {
                     let _ = active.handle.submit(action);
                 }
                 dirty.all();
@@ -1152,7 +1187,9 @@ fn shortcuts(
     }
 }
 
-fn controls(
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn controls(
+    mut commands: Commands,
     mut pressed: MessageReader<Pressed>,
     keys: Res<ButtonInput<KeyCode>>,
     faces: Query<(Entity, &Interaction, &Click), (Changed<Interaction>, Without<widgets::Themed>)>,
@@ -1229,10 +1266,14 @@ fn controls(
             Ok(Click::Options) => intents.push(Intent::ToggleOptions),
             Ok(Click::SaveReport) => {
                 if let (Some(active), Some(model)) = (active.as_ref(), model.as_mut()) {
-                    let line = save_report(&core, &active.handle);
-                    notices.push(line.clone());
-                    model.0.saved_report = Some(line);
+                    saved(&mut model.0, &mut notices, save_report(&core, &active.handle));
                     dirty.overlay = true;
+                }
+            }
+            Ok(Click::WatchReport) => {
+                if let Some(path) = model.as_ref().and_then(|model| model.0.saved_report_path.clone()) {
+                    commands.insert_resource(OpenReplay(path, None));
+                    leave_to = Some(AppScreen::Replay);
                 }
             }
             Ok(Click::CloseOverlay) => intents.push(Intent::Back),
@@ -1248,7 +1289,7 @@ fn controls(
         navigate.write(Navigate(screen));
         return;
     }
-    let (Some(mut model), Some(active)) = (model, active) else { return };
+    let Some(mut model) = model else { return };
     for intent in intents {
         match model.0.apply(intent) {
             Outcome::Nothing => {}
@@ -1256,22 +1297,25 @@ fn controls(
                 dirty.rail = true;
                 dirty.overlay = true;
             }
+            // Never from a replay, which awaits nothing; and a match that
+            // has gone has nobody to hand it to.
             Outcome::Submit(action) => {
-                if let Err(error) = active.handle.submit(action) {
+                if let Some(Err(error)) = active.as_ref().map(|active| active.handle.submit(action)) {
                     notices.push(error);
                 }
                 dirty.rail = true;
                 dirty.overlay = true;
             }
             Outcome::Rewind => {
-                if let Err(error) = active.handle.rewind() {
+                if let Some(Err(error)) = active.as_ref().map(|active| active.handle.rewind()) {
                     notices.push(error);
                 }
                 dirty.rail = true;
                 dirty.overlay = true;
             }
+            // A replay goes back to the list it was picked from.
             Outcome::Quit => {
-                navigate.write(Navigate(AppScreen::MainMenu));
+                navigate.write(Navigate(if model.0.replay.is_some() { AppScreen::Replay } else { AppScreen::MainMenu }));
                 return;
             }
         }
@@ -1373,7 +1417,10 @@ fn status_line(game: &Game) -> String {
         GamePhase::Discard { side, .. } => format!("{side:?} discards"),
         GamePhase::GameOver(side) => format!("{side:?} wins"),
     };
-    format!("Turn {} · {phase} · you are the {:?}", view.turn, game.side)
+    match game.replay {
+        Some(_) => format!("Turn {} · {phase} · from the {:?}'s chair", view.turn, game.side),
+        None => format!("Turn {} · {phase} · you are the {:?}", view.turn, game.side),
+    }
 }
 
 fn overlay_needed(game: &Game) -> bool {
@@ -2353,6 +2400,18 @@ fn lift_hovered(
 /// may act, greyed otherwise. Greyed rather than absent so "End turn"
 /// is always in the same place.
 fn spawn_control_bar(parent: &mut ChildSpawnerCommands, theme: &Theme, game: &Game) {
+    // A replay's bar moves through the record instead: the same row, so
+    // the board keeps its layout, and nothing on it is an action.
+    if let Some(at) = &game.replay {
+        for step in crate::models::replay::Step::BAR {
+            if step.moves(at.cursor, at.len) {
+                parent.spawn(widgets::button(theme, step.label(), Val::Auto, ReplayClick(step)));
+            } else {
+                parent.spawn(widgets::disabled_button(theme, step.label(), Val::Auto, ReplayClick(step)));
+            }
+        }
+        return;
+    }
     for control in Control::for_side(game.side) {
         let offered = game.awaiting && game.actions.for_control(*control).is_some();
         if offered {
@@ -2366,6 +2425,10 @@ fn spawn_control_bar(parent: &mut ChildSpawnerCommands, theme: &Theme, game: &Ga
 /// The prompt, the decisions it is asking, and — with the play helper on
 /// — every legal action in the engine's order.
 fn spawn_rail(parent: &mut ChildSpawnerCommands, theme: &Theme, game: &Game, helper: bool) {
+    if let Some(at) = &game.replay {
+        parent.spawn((widgets::label(theme, format!("Replay · step {} of {}", at.cursor, at.len)), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
+        parent.spawn((widgets::dim(theme, at.title.clone()), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
+    }
     if let Some(prompt) = &game.prompt {
         parent.spawn((widgets::label(theme, prompt.title.clone()), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
         if !prompt.detail.is_empty() {
@@ -2423,6 +2486,13 @@ fn spawn_rail(parent: &mut ChildSpawnerCommands, theme: &Theme, game: &Game, hel
                 TextLayout::new(Justify::Left, LineBreak::WordBoundary),
             ));
         }
+    }
+    if game.replay.is_some() {
+        parent.spawn((
+            widgets::dim(theme, "Left and Right step, Page Up and Down ten at a time, Home and End go to either end, S is the other chair. A click reads a card."),
+            TextLayout::new(Justify::Left, LineBreak::WordBoundary),
+        ));
+        return;
     }
     if !game.awaiting {
         parent.spawn(widgets::dim(theme, if game.view.is_some() { "Opponent is thinking…" } else { "Setting up…" }));
@@ -3253,7 +3323,12 @@ fn spawn_overlay(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &Client
                     if let Some(line) = &game.saved_report {
                         panel.spawn((widgets::dim(theme, line.clone()), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
                     }
-                    panel.spawn(widgets::button(theme, "Menu", Val::Auto, Click::Menu));
+                    panel.spawn(widgets::row(12.0)).with_children(|row| {
+                        if game.saved_report_path.is_some() {
+                            row.spawn(widgets::button(theme, "Watch it", Val::Auto, Click::WatchReport));
+                        }
+                        row.spawn(widgets::button(theme, "Menu", Val::Auto, Click::Menu));
+                    });
                 } else if let Some(over) = &game.over {
                     let won = over.winner == game.side;
                     panel.spawn((Text::new(if won { "You win" } else { "You lose" }), theme.font(size::HEADING), TextColor(if won { theme.accent } else { theme.danger })));
@@ -3290,7 +3365,13 @@ fn spawn_overlay(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &Client
                         panel.spawn((widgets::dim(theme, line.clone()), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
                     }
                     panel.spawn(widgets::row(12.0)).with_children(|row| {
-                        row.spawn(widgets::button(theme, "Save a bug report", Val::Auto, Click::SaveReport));
+                        // A replay is already a saved game.
+                        if game.replay.is_none() {
+                            row.spawn(widgets::button(theme, "Save a bug report", Val::Auto, Click::SaveReport));
+                        }
+                        if game.saved_report_path.is_some() {
+                            row.spawn(widgets::button(theme, "Watch it", Val::Auto, Click::WatchReport));
+                        }
                         row.spawn(widgets::button(theme, "Close", Val::Auto, Click::CloseOverlay));
                     });
                 } else if game.help_open {

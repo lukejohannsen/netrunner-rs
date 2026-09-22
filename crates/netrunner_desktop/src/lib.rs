@@ -152,6 +152,7 @@ impl PluginGroup for NetrunnerDesktopPlugins {
             .add(screens::card_browser::CardBrowserPlugin)
             .add(screens::new_game::NewGamePlugin)
             .add(screens::game::GamePlugin)
+            .add(screens::replay::ReplayPlugin)
             .add(screens::stubs::StubScreensPlugin)
     }
 }

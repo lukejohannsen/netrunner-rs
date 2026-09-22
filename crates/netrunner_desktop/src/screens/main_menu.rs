@@ -28,6 +28,7 @@ pub enum Entry {
     Learn,
     Decks,
     Cards,
+    Replays,
     Profile,
     Settings,
     About,
@@ -35,8 +36,18 @@ pub enum Entry {
 }
 
 impl Entry {
-    pub const ALL: [Entry; 9] =
-        [Entry::PlayComputer, Entry::Online, Entry::Learn, Entry::Decks, Entry::Cards, Entry::Profile, Entry::Settings, Entry::About, Entry::Quit];
+    pub const ALL: [Entry; 10] = [
+        Entry::PlayComputer,
+        Entry::Online,
+        Entry::Learn,
+        Entry::Decks,
+        Entry::Cards,
+        Entry::Replays,
+        Entry::Profile,
+        Entry::Settings,
+        Entry::About,
+        Entry::Quit,
+    ];
 
     pub fn label(self) -> &'static str {
         match self {
@@ -45,6 +56,7 @@ impl Entry {
             Entry::Learn => "Learn to Play",
             Entry::Decks => "Decks",
             Entry::Cards => "Cards",
+            Entry::Replays => "Replays",
             Entry::Profile => "Profile",
             Entry::Settings => "Settings",
             Entry::About => "About",
@@ -59,6 +71,7 @@ impl Entry {
             Entry::Learn => "Both lesson tracks and the starter games",
             Entry::Decks => "Build, copy and edit decks; the same files the terminal client plays",
             Entry::Cards => "Every card, with the printed text and how the engine reads it",
+            Entry::Replays => "Step through a saved game on the board, from either chair",
             Entry::Profile => "Your name, your record against the ladder, and where your files live",
             Entry::Settings => "Name, format, animation, sound, card images",
             Entry::About => "Credits and licences: whose fonts, symbols, cards and art are in the client",
@@ -74,6 +87,7 @@ impl Entry {
             Entry::Learn => Some(AppScreen::Learn),
             Entry::Decks => Some(AppScreen::Decks),
             Entry::Cards => Some(AppScreen::CardBrowser),
+            Entry::Replays => Some(AppScreen::Replay),
             Entry::Profile => Some(AppScreen::Profile),
             Entry::Settings => Some(AppScreen::Settings),
             Entry::About => Some(AppScreen::About),

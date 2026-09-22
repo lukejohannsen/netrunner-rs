@@ -13,6 +13,10 @@
 //!   how the board is looked at without a hand on the form.
 //!   `NETRUNNER_CORP_DECK=<id>` and `NETRUNNER_RUNNER_DECK=<id>` replace
 //!   either default deck, so a card the default decks lack can be reached.
+//! - `NETRUNNER_REPLAY=<record.jsonl>` — boot opens that record on the
+//!   replay board, where a bug report opens (its end, from the person's
+//!   chair), or at `NETRUNNER_REPLAY_AT=<start|end|n>` actions in — how a
+//!   saved game is looked at without a hand on the list.
 //! - `NETRUNNER_AUTOPLAY=<n>` — on the board, the person's seat takes a
 //!   legal action by itself, `n` times, cycling through the list so the
 //!   game develops (installs, runs, rezzes) — how a board forty actions
@@ -199,6 +203,8 @@ pub struct Dev {
     /// Open this side's score area with its first row expanded, once.
     pub agendas: Option<netrunner_core::rules::Side>,
     pub screenshot: Option<PathBuf>,
+    /// A record to open on the replay board, and where in it.
+    pub replay: Option<(PathBuf, Option<netrunner_client::replay::Start>)>,
     /// `(x, y, lines)`.
     pub scroll: Option<(f32, f32, f32)>,
     /// Draw the board's rows over the table, so a field can be painted
@@ -246,6 +252,9 @@ impl Dev {
                 _ => None,
             }),
             screenshot: std::env::var_os("NETRUNNER_SCREENSHOT").map(PathBuf::from),
+            replay: std::env::var_os("NETRUNNER_REPLAY").filter(|path| !path.is_empty()).map(|path| {
+                (PathBuf::from(path), std::env::var("NETRUNNER_REPLAY_AT").ok().and_then(|at| at.parse().ok()))
+            }),
             scroll,
             table_guide: std::env::var_os("NETRUNNER_TABLE_GUIDE").is_some_and(|v| !v.is_empty()),
             frames: 0,
@@ -257,13 +266,20 @@ impl Dev {
     /// Where boot goes: the requested screen, else the board when a dev
     /// game was asked for, else the menu.
     pub fn first_screen(&self) -> AppScreen {
-        self.named_screen().unwrap_or(AppScreen::MainMenu)
+        // A replay is looked at on the board, which the replays screen
+        // hands it to as soon as it has opened the record.
+        match self.named_screen() {
+            Some(AppScreen::Replay) if self.screen.is_none() => AppScreen::Game,
+            named => named.unwrap_or(AppScreen::MainMenu),
+        }
     }
 
-    /// The screen a hook asked for, if any — `NETRUNNER_SCREEN`, or the
-    /// board for `NETRUNNER_GAME` — which boot goes to without a splash.
+    /// The screen a hook asked for, if any — `NETRUNNER_SCREEN`, the
+    /// board for `NETRUNNER_GAME`, or the replays (which open the record
+    /// on the board) for `NETRUNNER_REPLAY` — which boot goes to without
+    /// a splash.
     pub fn named_screen(&self) -> Option<AppScreen> {
-        self.screen.or(self.game.is_some().then_some(AppScreen::Game))
+        self.screen.or(self.game.is_some().then_some(AppScreen::Game)).or(self.replay.is_some().then_some(AppScreen::Replay))
     }
 }
 

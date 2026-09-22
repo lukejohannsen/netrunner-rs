@@ -13,5 +13,6 @@ pub mod drag;
 pub mod game;
 pub mod layout;
 pub mod pace;
+pub mod replay;
 pub mod settings;
 pub mod shortcuts;

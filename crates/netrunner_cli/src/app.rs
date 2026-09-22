@@ -24,7 +24,7 @@ use netrunner_server::{ClientMessage, ServerMessage};
 
 // Lifted into the shared client core for the desktop (Phase 7 §3); the
 // names stay reachable here so nothing in this crate had to move.
-pub use netrunner_client::actions::{describe_action, describe_public_action, explain_action, push_log_line, visible_zones, CardZone, MAX_LOG_LINES};
+pub use netrunner_client::actions::{describe_action, explain_action, push_log_line, visible_zones, CardZone};
 
 pub struct App {
     pub registry: CardRegistry,

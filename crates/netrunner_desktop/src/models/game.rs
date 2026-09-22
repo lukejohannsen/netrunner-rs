@@ -138,6 +138,21 @@ pub enum Intent {
     RequestQuit,
     ConfirmQuit,
     CancelQuit,
+    /// A replay moved somewhere other than one step on: the board is put
+    /// at `view` with the log as it read there, and nothing moved *to*
+    /// here, so there is no transition to light (`Game::replay`).
+    Show { view: Box<ClientView>, log: Vec<String> },
+}
+
+/// Where a replay stands, for its bar and its rail (`Game::replay`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReplayAt {
+    /// How many actions have been applied at the position shown.
+    pub cursor: usize,
+    /// How many the record holds.
+    pub len: usize,
+    /// What names the record: its file, and the bot it was against.
+    pub title: String,
 }
 
 /// `MatchMessage` is not `Clone` (a view is large), so an intent carries
@@ -314,6 +329,9 @@ pub struct Game {
     /// the options' and the stall panel's to show, since the client's
     /// notices are drawn on the main menu, not over a game.
     pub saved_report: Option<String>,
+    /// The file that report went to, when it was written: the board's
+    /// "Watch it" opens it under Replays.
+    pub saved_report_path: Option<std::path::PathBuf>,
     pub confirm_quit: bool,
     /// How many actions have been applied, for a screen to know the
     /// board moved without comparing views.
@@ -321,6 +339,11 @@ pub struct Game {
     /// The run on, or the last one, as a trail of steps; `None` before
     /// the first run and after the turn that followed the last.
     pub trail: Option<RunTrail>,
+    /// A recorded match being stepped through rather than one being
+    /// played (`screens::replay`). Nothing is ever awaiting, so no entry,
+    /// glow or decision is offered; a primary click reads, as a secondary
+    /// one does, and leaving asks nothing, because nothing is lost.
+    pub replay: Option<ReplayAt>,
 }
 
 impl Game {
@@ -350,10 +373,17 @@ impl Game {
             over: None,
             stalled: None,
             saved_report: None,
+            saved_report_path: None,
             confirm_quit: false,
             applied: 0,
             trail: None,
+            replay: None,
         }
+    }
+
+    /// A board for a recorded match, at `at`, seen from `side`.
+    pub fn replay(registry: Arc<CardRegistry>, side: Side, at: ReplayAt) -> Self {
+        Game { replay: Some(at), ..Game::new(registry, side) }
     }
 
     /// The ice being encountered and the state of its subroutines
@@ -603,7 +633,7 @@ impl Game {
                 }
             }
             Intent::RequestQuit => {
-                if self.finished() {
+                if self.finished() || self.replay.is_some() {
                     Outcome::Quit
                 } else {
                     self.confirm_quit = true;
@@ -613,6 +643,16 @@ impl Game {
             Intent::ConfirmQuit => Outcome::Quit,
             Intent::CancelQuit => {
                 self.confirm_quit = false;
+                Outcome::Redraw
+            }
+            Intent::Show { view, log } => {
+                self.log = log;
+                self.transitions.clear();
+                self.trail = None;
+                self.follow_run(&view);
+                self.view = Some(*view);
+                self.follow_hand();
+                self.menu = None;
                 Outcome::Redraw
             }
         }
@@ -871,6 +911,14 @@ impl Game {
     fn click(&mut self, target: Target, over: Anchor) -> Outcome {
         if self.covered() {
             return Outcome::Nothing;
+        }
+        // A replay has nothing to offer on a card, so the click reads it:
+        // a menu of nothing would be a click that did nothing twice.
+        if self.replay.is_some() {
+            return match target {
+                Target::Position(_) => Outcome::Nothing,
+                target => self.apply(Intent::Inspect(target)),
+            };
         }
         let entries = self.entries_for(&target);
         match target {
