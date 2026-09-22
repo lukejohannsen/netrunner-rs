@@ -1881,7 +1881,7 @@ cannot reach it. It is its own fix.
 
 Reports are under `target/coverage/fort/`.
 
-## 20. Traps: the instrument, and on `main` a trap is either given away or never sprung — IN PROGRESS (22 September 2026)
+## 20. Traps: hidden until sprung, played like an agenda, and not run into twice — DONE (22 September 2026)
 
 From a report from play. The Corp should play a trap like an agenda: ICE
 in front of it, advance it, and never rez it, because a trap turned face
@@ -2034,11 +2034,52 @@ it:
   because the credits come back and the agenda does not. The number is
   recorded on `remaining_break_cost` rather than left as folklore.
 
+**The Corp plays a lure trap as an agenda, and keeps a hand trap in HQ**
+(`feat/corp-plays-traps-as-agendas`). Two kinds, read off the card, never
+a card list (`eval::is_lure_trap` / `is_hand_trap`):
+
+- `ambush_weight` now pays only for an unseen **lure** trap. It used to
+  pay for any face-down trap, which is what installed 147 Byte!s.
+- `HELD_TRAP_WEIGHT` (1.5) per **hand** trap in HQ, so the install loses
+  to keeping it where the Runner meets it while hunting agendas.
+- `LURE_ICE_WEIGHT` (1.0) per piece of ICE, capped at one, on a remote
+  holding an unseen lure trap — for a Corp with no fort term; for
+  `glacier`, `fort_value`'s root test now admits an unseen lure trap, so
+  the trap goes *in* the fort instead of costing it. One piece, not two:
+  a trap has to be reachable to be worth anything.
+- **A sprung trap is sunk:** once `seen_by_runner` is set, neither
+  `ambush_weight` nor the advancement term pays, so the Corp stops
+  spending clicks on a remote the Runner will not enter.
+- `OPPONENT_GRIP_SHORTFALL_WEIGHT` (1.0, floor 5) — the Corp's reading of
+  a thin grip. **This is the term the "no Corp damage term" note in
+  `eval` says to add once a lever exists, and the lever now exists**: a
+  hand trap is a paid interaction, so springing one is a Corp action that
+  makes the grip smaller. The note's measurement stands for every other
+  case, which is why the term is a shortfall below a floor rather than a
+  linear count.
+
+Six seeds × 216 against the Runner PR: hand traps installed **0.35 →
+0.00** a game, hand traps met in HQ/R&D **0.21 → 0.44**, and the damage
+they deal **0.00 → 0.62** a game — the Corp had declined every single
+paid trap before. Lure traps with ICE in front at install **0.15 →
+0.31**, peak tokens 1.86 → 1.44 (the sunk rule).
+
+**The win rate does not move**: trap decks 0.297 → 0.289 (t −0.85), the
+whole pool 0.240 → 0.247 over three seeds × 192. The person was asked
+and chose to merge it: the number is flat because both chairs improved
+at once, and what they reported was the *play*, not the rate. Traps are
+about half a card a game in this pool.
+
 Reports are under `target/coverage/trap/`. The fixes follow as their
 own PRs:
 
-1. no profile rezzes a trap;
-2. the Runner sees the card it accessed (masking);
-3. the Runner reads the end of the server, and prices the ICE on the way;
+1. the Runner sees the card it accessed (masking, #137);
+2. no profile rezzes a trap (#138);
+3. the Runner reads the end of the server (#139);
 4. the Corp plays a lure trap as an agenda, keeps a hand trap in HQ, and
-   springs it.
+   springs it (#140).
+
+**Owed:** the Corp's `lure_ice_weight` and `held_trap_weight` are the
+first trap terms every profile carries, so the Corp ladder's trap rungs
+(§13, §14) were calibrated on the old behaviour and should be re-taken
+before they are trusted.

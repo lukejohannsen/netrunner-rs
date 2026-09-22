@@ -121,6 +121,50 @@ const AMBUSH_ADVANCEMENT_CAP: u32 = 3;
 /// Runner's grip being thin without any way to recognise the cards that
 /// would thin it.
 const AMBUSH_WEIGHT: f64 = 0.0;
+/// Each piece of ICE, up to `LURE_ICE_CAP`, on a remote whose root holds
+/// a *lure* trap the Runner has not seen — a trap that grows with its
+/// tokens (`is_lure_trap`, Urtica Cipher). **A trap is played like an
+/// agenda**: a card in a bare remote with no ICE is one the Runner reads
+/// as a trap, and the bluff is the whole card. `fort_value` counted a
+/// remote only if its root was all agendas, so for `glacier` putting a
+/// trap in the iced remote *cost* it the fort and the trap went
+/// somewhere naked; on `main` only 13% of trap installs had any ICE in
+/// front (Phase 5 §20).
+///
+/// One piece, not two: the trap has to be *reachable* to be worth
+/// anything, and a second piece is a run the Runner does not make. Below
+/// `CENTRAL_ICE_WEIGHT` (2.0) so the centrals are still iced first.
+const LURE_ICE_WEIGHT: f64 = 1.0;
+const LURE_ICE_CAP: usize = 1;
+/// Each hand trap (Snare!, Byte! — `is_hand_trap`) held in HQ. **A trap
+/// that cannot be advanced lures nothing from a remote**: it sits there
+/// with no tokens and no reason for the Runner to come, while in HQ and
+/// R&D the Runner meets it while looking for agendas, which is what those
+/// cards are for. On `main` every one of them was installed and then
+/// rezzed (147 of 147, Phase 5 §20), because `ambush_weight` paid for any
+/// face-down trap.
+///
+/// Small: it has to beat the bare `unrezzed_install_weight` an install
+/// would pay (1.0, `glacier` 0.8) minus the card leaving HQ, and lose to
+/// anything the Corp would rather do with the card.
+const HELD_TRAP_WEIGHT: f64 = 1.5;
+/// Each card the Runner's grip is short of `OPPONENT_GRIP_FLOOR`, to the
+/// Corp. **This is the term the "no Corp damage term" note above says to
+/// add once a lever exists, and the lever now exists**: a hand trap is a
+/// paid interaction (`CorpPaysToApply`), so springing one *is* a Corp
+/// action that makes the grip smaller. Without it the Corp weighed 4
+/// credits against nothing and declined every time: over 216 games it
+/// could afford to spring 0.11 a game and sprang **0** (Phase 5 §20).
+///
+/// A shortfall below a floor rather than a linear count, for the reason
+/// that note gives: the value of non-lethal damage is at the bottom of
+/// the grip, and a lethal hit needs no term because the state it makes is
+/// `GameOver`. At 1.0 with a floor of 5, Byte!'s three net damage into a
+/// grip of five is worth 3.0 against the 1.6 the 4 credits cost, and into
+/// a grip of eight it is worth nothing — which is the right answer: that
+/// Runner discards the difference anyway.
+const OPPONENT_GRIP_SHORTFALL_WEIGHT: f64 = 1.0;
+const OPPONENT_GRIP_FLOOR: usize = 5;
 /// A trap turned face up, subtracted, on top of the rez undoing
 /// everything a rezzed card is otherwise worth. **A trap is never rezzed:**
 /// Urtica Cipher, Snare! and Byte! fire on access face down (the subject
@@ -709,6 +753,16 @@ pub struct Weights {
     /// Runner only: each known ambush the run would access, subtracted.
     /// See `KNOWN_AMBUSH_WEIGHT`.
     pub known_ambush_weight: f64,
+    /// Corp only: each piece of ICE, capped, on a remote holding an
+    /// unseen lure trap. See `LURE_ICE_WEIGHT`.
+    pub lure_ice_weight: f64,
+    pub lure_ice_cap: usize,
+    /// Corp only: each hand trap held in HQ. See `HELD_TRAP_WEIGHT`.
+    pub held_trap_weight: f64,
+    /// Corp only: each card the Runner's grip is short of
+    /// `opponent_grip_floor`. See `OPPONENT_GRIP_SHORTFALL_WEIGHT`.
+    pub opponent_grip_shortfall_weight: f64,
+    pub opponent_grip_floor: usize,
     /// Runner only: each point of damage those known traps would do. See
     /// `KNOWN_TRAP_DAMAGE_WEIGHT`.
     pub known_trap_damage_weight: f64,
@@ -804,6 +858,11 @@ impl Default for Weights {
             active_run_weight: ACTIVE_RUN_WEIGHT,
             advanced_card_prospect_weight: ADVANCED_CARD_PROSPECT_WEIGHT,
             known_ambush_weight: KNOWN_AMBUSH_WEIGHT,
+            lure_ice_weight: LURE_ICE_WEIGHT,
+            lure_ice_cap: LURE_ICE_CAP,
+            held_trap_weight: HELD_TRAP_WEIGHT,
+            opponent_grip_shortfall_weight: OPPONENT_GRIP_SHORTFALL_WEIGHT,
+            opponent_grip_floor: OPPONENT_GRIP_FLOOR,
             known_trap_damage_weight: KNOWN_TRAP_DAMAGE_WEIGHT,
             lethal_trap_weight: LETHAL_TRAP_WEIGHT,
             revealed_trap_weight: REVEALED_TRAP_WEIGHT,
@@ -960,6 +1019,11 @@ fn lerp(a: &Weights, b: &Weights, t: f64) -> Weights {
         active_run_weight: f(a.active_run_weight, b.active_run_weight),
         advanced_card_prospect_weight: f(a.advanced_card_prospect_weight, b.advanced_card_prospect_weight),
         known_ambush_weight: f(a.known_ambush_weight, b.known_ambush_weight),
+        lure_ice_weight: f(a.lure_ice_weight, b.lure_ice_weight),
+        lure_ice_cap: c(a.lure_ice_cap, b.lure_ice_cap),
+        held_trap_weight: f(a.held_trap_weight, b.held_trap_weight),
+        opponent_grip_shortfall_weight: f(a.opponent_grip_shortfall_weight, b.opponent_grip_shortfall_weight),
+        opponent_grip_floor: c(a.opponent_grip_floor, b.opponent_grip_floor),
         known_trap_damage_weight: f(a.known_trap_damage_weight, b.known_trap_damage_weight),
         lethal_trap_weight: f(a.lethal_trap_weight, b.lethal_trap_weight),
         revealed_trap_weight: f(a.revealed_trap_weight, b.revealed_trap_weight),
@@ -1072,6 +1136,13 @@ pub fn evaluate_state_with(state: &GameState, side: Side, registry: &CardRegistr
             if w.central_ice_weight != 0.0 || w.fort_weight != 0.0 || w.exposed_agenda_weight != 0.0 {
                 score += fort_value(state, registry, w);
             }
+            if w.lure_ice_weight != 0.0 && w.fort_weight == 0.0 {
+                score += lure_value(state, registry, w);
+            }
+            if w.held_trap_weight != 0.0 {
+                score += held_traps(state, registry) as f64 * w.held_trap_weight;
+            }
+            score += w.opponent_grip_floor.saturating_sub(state.runner.grip.len()) as f64 * w.opponent_grip_shortfall_weight;
             if state.corp.r_and_d.len() >= w.rd_draw_reserve {
                 score -= w.hq_floor.saturating_sub(state.corp.hq.len()) as f64 * w.hq_shortfall_weight;
             }
@@ -1567,6 +1638,19 @@ fn revealed_trap_cost(installed: &InstalledCard, registry: &CardRegistry, w: &We
         + w.revealed_trap_weight
 }
 
+/// A trap the Corp plays like an agenda: it can be advanced and its
+/// damage is its token count (Urtica Cipher). See `LURE_ICE_WEIGHT`.
+pub fn is_lure_trap(def: &CardDefinition) -> bool {
+    punishes_access_with_damage(def) && def.advancement_requirement.is_some() && damage_grows_with_advancement(def)
+}
+
+/// A trap that belongs in HQ and R&D: it punishes access but cannot take
+/// a token, so a remote gives it nothing (Snare!, Byte!). See
+/// `HELD_TRAP_WEIGHT`.
+pub fn is_hand_trap(def: &CardDefinition) -> bool {
+    punishes_access_with_damage(def) && !is_lure_trap(def)
+}
+
 fn corp_install_value(installed: &InstalledCard, registry: &CardRegistry, w: &Weights, rig: [bool; 3]) -> f64 {
     let def = registry.get(&installed.card);
     let is_ice = def.is_some_and(|d| matches!(d.card_type, CardType::Ice(_)));
@@ -1610,14 +1694,20 @@ fn corp_install_value(installed: &InstalledCard, registry: &CardRegistry, w: &We
         // above counted every one of its tokens as nothing — see
         // `AMBUSH_ADVANCEMENT_WEIGHT`. Capped rather than open-ended
         // because nothing else stops the Corp advancing it.
-        if damage_grows_with_advancement(def) {
+        // **A sprung trap is sunk.** Once the Runner has seen it
+        // (`InstalledCard::seen_by_runner`) they will not run it again, so
+        // another token buys nothing and the click is better spent.
+        if damage_grows_with_advancement(def) && !installed.seen_by_runner {
             let counted = installed.advancement_tokens.min(w.ambush_advancement_cap);
             value += f64::from(counted) * w.ambush_advancement_weight;
         }
         // Face-down and dangerous. Only while unrezzed: once it is turned
         // up it is a known quantity and the Runner simply stops running
         // at it.
-        if w.ambush_weight != 0.0 && !installed.rezzed && punishes_access_with_damage(def) {
+        // Only a *lure* trap, and only while it is still a secret: a hand
+        // trap installed in a remote is a Snare! nobody will run, and this
+        // term paying for one is what put 147 of them on the table.
+        if w.ambush_weight != 0.0 && !installed.rezzed && !installed.seen_by_runner && is_lure_trap(def) {
             value += w.ambush_weight;
         }
     }
@@ -1883,6 +1973,12 @@ fn fort_value(state: &GameState, registry: &CardRegistry, w: &Weights) -> f64 {
         state.corp.installed.iter().filter(|card| card.server == server && card.slot == InstallSlot::Ice).count()
     };
     let is_agenda = |card: &InstalledCard| registry.get(&card.card).is_some_and(|def| def.card_type == CardType::Agenda);
+    // A trap the Runner has not seen is an agenda as far as the fort is
+    // concerned — that is the bluff, and the Corp is the one player who
+    // knows the difference. A trap already sprung is not: the remote is
+    // spent, and going on icing it protects nothing.
+    let is_fort_root =
+        |card: &InstalledCard| is_agenda(card) || (!card.seen_by_runner && registry.get(&card.card).is_some_and(is_lure_trap));
 
     let centrals = ice_on(ServerId::Hq).min(w.central_ice_cap)
         + ice_on(ServerId::RnD).min(w.central_ice_cap)
@@ -1902,7 +1998,7 @@ fn fort_value(state: &GameState, registry: &CardRegistry, w: &Weights) -> f64 {
                 .installed
                 .iter()
                 .filter(|card| card.server == **server && card.slot == InstallSlot::Root)
-                .all(is_agenda)
+                .all(is_fort_root)
         })
         .map(|server| ice_on(*server).min(w.fort_cap))
         .max()
@@ -1917,6 +2013,36 @@ fn fort_value(state: &GameState, registry: &CardRegistry, w: &Weights) -> f64 {
         .sum();
 
     centrals as f64 * w.central_ice_weight + fort as f64 * w.fort_weight - exposure as f64 * w.exposed_agenda_weight
+}
+
+/// ICE in front of an unseen lure trap, capped, for a Corp with no fort
+/// term of its own — `fort_value` already counts such a remote as a fort
+/// for the Corp that has one, and counting it twice would make a trap
+/// worth more to `glacier` than the agenda it is pretending to be. See
+/// `LURE_ICE_WEIGHT`.
+fn lure_value(state: &GameState, registry: &CardRegistry, w: &Weights) -> f64 {
+    use netrunner_core::rules::{InstallSlot, ServerId};
+    let mut servers: Vec<ServerId> = Vec::new();
+    for card in &state.corp.installed {
+        if matches!(card.server, ServerId::Remote(_))
+            && card.slot == InstallSlot::Root
+            && !card.seen_by_runner
+            && registry.get(&card.card).is_some_and(is_lure_trap)
+            && !servers.contains(&card.server)
+        {
+            servers.push(card.server);
+        }
+    }
+    let ice_on = |server: ServerId| {
+        state.corp.installed.iter().filter(|card| card.server == server && card.slot == InstallSlot::Ice).count()
+    };
+    servers.iter().map(|server| ice_on(*server).min(w.lure_ice_cap)).sum::<usize>() as f64 * w.lure_ice_weight
+}
+
+/// Hand traps waiting in HQ, where they do their work. See
+/// `HELD_TRAP_WEIGHT`.
+fn held_traps(state: &GameState, registry: &CardRegistry) -> usize {
+    state.corp.hq.iter().filter(|card| registry.get(card).is_some_and(is_hand_trap)).count()
 }
 
 fn protected_agenda_ice(state: &GameState, registry: &CardRegistry, cap: usize) -> usize {
@@ -2333,32 +2459,145 @@ mod tests {
     /// it applies only while the card is face down.
     #[test]
     fn a_face_down_ambush_is_worth_more_only_to_a_corp_that_plays_for_damage() {
-        let mut ambush = ice("snare", 0);
-        ambush.card_type = CardType::Asset;
-        ambush.triggers = vec![TriggeredEffect {
+        let on_access = TriggeredEffect {
             subject: None, when: None, acts_on_subject: false, first_each_turn: false,
             text: None,
             trigger: Trigger::OnAccessed,
-            effects: vec![Effect::DealDamage(DamageType::Net, 3)],
+            effects: vec![Effect::DealDamageAmount(DamageType::Net, Amount::HostedAdvancementTokens)],
             requirement: None,
-        }];
-        let registry = CardRegistry::from_cards(vec![ambush]);
-        let value = |rezzed, w: &Weights| {
+        };
+        let mut urtica = ice("urtica", 0);
+        urtica.card_type = CardType::Asset;
+        urtica.advancement_requirement = Some(0);
+        urtica.triggers = vec![on_access.clone()];
+        let mut snare = ice("snare", 0);
+        snare.card_type = CardType::Asset;
+        snare.triggers = vec![TriggeredEffect { effects: vec![Effect::DealDamage(DamageType::Net, 3)], ..on_access }];
+        let registry = CardRegistry::from_cards(vec![urtica, snare]);
+        let value = |id: &str, rezzed, seen, w: &Weights| {
             let mut state = GameState::new(0);
             state.corp.installed = vec![InstalledCard {
-                card: CardId("snare".to_string()),
+                card: CardId(id.to_string()),
                 install_id: InstallId(1),
+                server: netrunner_core::rules::ServerId::Remote(0),
                 rezzed,
+                seen_by_runner: seen,
                 ..Default::default()
             }];
             evaluate_state_with(&state, Side::Corp, &registry, w)
         };
         let base = Weights::default();
-        assert_eq!(value(false, &base), value(false, &base), "balanced is indifferent — the term is zero");
         let trap = crate::Personality::Trap.weights();
-        assert!(value(false, &trap) > value(false, &base) + base.unrezzed_install_weight - trap.unrezzed_install_weight);
-        let rezzed_trap = value(true, &trap);
-        assert!(rezzed_trap < value(false, &trap), "face up it is a known quantity, not a threat");
+        let hidden = |w: &Weights| value("urtica", false, false, w);
+        assert_eq!(hidden(&base), hidden(&base), "balanced is indifferent — the term is zero");
+        assert!(hidden(&trap) > hidden(&base) + base.unrezzed_install_weight - trap.unrezzed_install_weight);
+        assert!(value("urtica", true, false, &trap) < hidden(&trap), "face up it is a known quantity, not a threat");
+        // A trap the Runner has already sprung is sunk: the bonus for
+        // hiding it is gone, and so is the reason to advance it.
+        assert!(value("urtica", false, true, &trap) < hidden(&trap), "seen, it is one more face-down install");
+        // And a trap that cannot be advanced was never worth a remote:
+        // it belongs in HQ, where `held_trap_weight` pays for it.
+        assert_eq!(
+            value("snare", false, false, &trap),
+            value("snare", false, false, &Weights { ambush_weight: 0.0, ..trap }),
+            "a hand trap installed is not what `ambush_weight` buys"
+        );
+    }
+
+    /// The Corp plays a lure trap like an agenda and keeps a hand trap in
+    /// HQ: ICE in front of the one, and no install at all for the other.
+    /// And once the Runner has seen the trap, both stop paying — the
+    /// remote is spent.
+    #[test]
+    fn a_lure_trap_is_worth_icing_and_a_hand_trap_is_worth_holding() {
+        use netrunner_core::rules::{InstallSlot, ServerId};
+        let on_access = TriggeredEffect {
+            subject: None, when: None, acts_on_subject: false, first_each_turn: false,
+            text: None,
+            trigger: Trigger::OnAccessed,
+            effects: vec![Effect::DealDamageAmount(DamageType::Net, Amount::HostedAdvancementTokens)],
+            requirement: None,
+        };
+        let mut urtica = ice("urtica", 0);
+        urtica.card_type = CardType::Asset;
+        urtica.advancement_requirement = Some(0);
+        urtica.triggers = vec![on_access.clone()];
+        let mut snare = ice("snare", 0);
+        snare.card_type = CardType::Asset;
+        snare.triggers = vec![TriggeredEffect { effects: vec![Effect::DealDamage(DamageType::Net, 3)], ..on_access }];
+        assert!(is_lure_trap(&urtica) && !is_hand_trap(&urtica));
+        assert!(is_hand_trap(&snare) && !is_lure_trap(&snare));
+        let registry = CardRegistry::from_cards(vec![urtica, snare, ice("wall", 1)]);
+
+        let with_ice = |pieces: usize, seen: bool, w: &Weights| {
+            let mut state = GameState::new(0);
+            state.corp.installed = vec![InstalledCard {
+                card: CardId("urtica".to_string()),
+                install_id: InstallId(1),
+                server: ServerId::Remote(0),
+                seen_by_runner: seen,
+                ..Default::default()
+            }];
+            for n in 0..pieces {
+                state.corp.installed.push(InstalledCard {
+                    card: CardId("wall".to_string()),
+                    install_id: InstallId(10 + n as u32),
+                    server: ServerId::Remote(0),
+                    slot: InstallSlot::Ice,
+                    rezzed: true,
+                    ..Default::default()
+                });
+            }
+            evaluate_state_with(&state, Side::Corp, &registry, w)
+        };
+        // Measured against the same board without the term, so the ICE's
+        // own worth (presence, rez, what the rig cannot break) cancels.
+        let w = Weights::default();
+        let bare = Weights { lure_ice_weight: 0.0, ..w };
+        let lure = |pieces: usize, seen: bool| with_ice(pieces, seen, &w) - with_ice(pieces, seen, &bare);
+        assert!((lure(1, false) - w.lure_ice_weight).abs() < 1e-9, "one piece in front of the trap: {}", lure(1, false));
+        assert!((lure(2, false) - w.lure_ice_weight).abs() < 1e-9, "the cap is one piece: {}", lure(2, false));
+        assert_eq!(lure(0, false), 0.0, "and there is nothing to pay for a trap in the open");
+        assert_eq!(lure(1, true), 0.0, "a sprung trap is not worth icing");
+
+        // A hand trap is worth more in HQ than in a remote, in every
+        // profile, so the install never wins.
+        for personality in crate::Personality::ALL.into_iter().filter(|p| p.side() != Some(Side::Runner)) {
+            let w = personality.weights();
+            let mut held = GameState::new(0);
+            held.corp.hq = vec![CardId("snare".to_string())];
+            let mut installed = GameState::new(0);
+            installed.corp.installed = vec![InstalledCard {
+                card: CardId("snare".to_string()),
+                install_id: InstallId(1),
+                server: ServerId::Remote(0),
+                ..Default::default()
+            }];
+            assert!(
+                evaluate_state_with(&held, Side::Corp, &registry, &w) > evaluate_state_with(&installed, Side::Corp, &registry, &w),
+                "{personality:?} would install a Snare!"
+            );
+        }
+    }
+
+    /// The lever the "no Corp damage term" note above asks for: a hand
+    /// trap is a paid interaction, so springing one is a Corp action that
+    /// makes the grip smaller. Three net damage into a grip of five beats
+    /// the four credits it costs; into a full grip it does not.
+    #[test]
+    fn springing_a_paid_trap_beats_its_price_only_where_the_grip_is_thin() {
+        let registry = CardRegistry::from_cards(vec![]);
+        let w = Weights::default();
+        let at = |grip: usize, credits: u32| {
+            let mut state = GameState::new(0);
+            state.runner.grip = vec![CardId("filler".to_string()); grip];
+            state.corp.resources.credits = Credits(credits);
+            evaluate_state_with(&state, Side::Corp, &registry, &w)
+        };
+        let price = 4;
+        let sprung = |grip: usize| at(grip.saturating_sub(3), 10 - price) - at(grip, 10);
+        assert!(sprung(5) > 0.0, "a grip of five is worth 4[c] to cut to two: {}", sprung(5));
+        assert!(sprung(8) < 0.0, "a grip of eight is not: {}", sprung(8));
     }
 
     /// A trap is never worth rezzing, to any Corp: face down it fires on
