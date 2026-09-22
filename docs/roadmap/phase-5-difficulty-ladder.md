@@ -467,7 +467,9 @@ its margin over random (0.182 → 0.078), so the interpolation needs its own
 measured points rather than the Runner's shape.
 
 **(b) Reconsider how the top two rungs are built**, which is the deeper
-item and is the reason (a) is worth doing *after* it rather than before.
+item and is the reason (a) is worth doing *after* it rather than before. *`glacier`'s answer is §21: its whole ladder is one ply at five
+handicaps, because one ply beat its search rungs once it built the fort.
+`Balanced` and `trap` are next, on numbers re-taken after §20.*
 `veteran` and `elite` are `puct@512` at `epsilon` 0.10 and 0.0 — **more
 search over the same leaf** — and §3 showed that a better leaf buys them
 nothing at all (+0.000 for `veteran`). That is Phase 2 §5 item 34's
@@ -2083,3 +2085,72 @@ own PRs:
 first trap terms every profile carries, so the Corp ladder's trap rungs
 (§13, §14) were calibrated on the old behaviour and should be re-taken
 before they are trusted.
+
+## 21. `glacier`'s Corp ladder is one ply at five handicaps, and it climbs at every step — DONE (22 September 2026)
+
+`feat/glacier-corp-ladder-is-one-ply`, the follow-up §19 owed and the
+first of §4(b)'s answers. §19 left `glacier`'s ladder inverted at the
+top: one ply at `operator` beat both search rungs, `puct@512` at
+`veteran` (ε 0.02) and `elite`, on both seeds (768 games a cell against
+the one-ply balanced Runner):
+
+| `glacier` rung on `main` | seed 1 | seed 2 | pooled |
+|---|---|---|---|
+| `novice` (random) | 0.010 | 0.018 | 0.014 |
+| `apprentice` (one ply, ε 0.35) | 0.042 | 0.052 | 0.047 |
+| `operator` (one ply) | 0.461 | 0.385 | **0.423** |
+| `veteran` (`puct@512`, ε 0.02) | 0.349 | 0.336 | 0.343 |
+| `elite` (`puct@512`) | 0.354 | 0.391 | 0.372 |
+
+The three one-ply rows are today's `main`. The two search rows are §19's
+run (`target/coverage/fort/ladder/`), taken before the trap PRs
+(#141–#144): they were not re-taken because they no longer ship, and
+nothing in §20 made a search Corp stronger than one ply.
+
+The fort pays off over turns, past a 512-simulation horizon, so search
+cannot keep what one ply does (§19). More handicap on `puct` could only
+push those rungs further down, and nothing on it lifts `elite` above one
+ply. **So the style's ladder takes the Runner chair's shape: one base,
+five handicaps.** `LevelSpec::with_personality` gives a `glacier` Corp
+`LevelKind::Heuristic` at every rung. It now reads the base and the
+handicap back off `Level::spec` too, so restyling a `glacier` rung to
+`Balanced` gives `puct@512` back; the first draft kept the one-ply base,
+and the new test caught it.
+
+**The curve**, one ply `glacier` against the one-ply balanced Runner, two
+seeds × 384 on one pinned binary with an uncommitted override:
+
+| ε | 0 | .03 | .04 | .05 | .10 | .12 | .15 | .20 | .22 | .25 | .30 | .40 | .50 | .60 | .75 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| Corp | 0.443 | 0.365 | 0.329 | 0.311 | 0.251 | 0.208 | 0.189 | 0.135 | 0.121 | 0.096 | 0.079 | 0.049 | 0.030 | 0.031 | 0.016 |
+
+It is steep near 0 and nowhere near linear, so the handicaps were read off
+it for four even steps from random to ε 0, not fitted: **1.0 / 0.22 /
+0.11 / 0.05 / 0.0.**
+
+**Confirmed on the shipped table** (`bench`, `ladder_report.py --style
+glacier --reference heuristic`):
+
+| `glacier` rung | seed 1 | seed 2 | pooled | step |
+|---|---|---|---|---|
+| `novice` | 0.013 | 0.010 | 0.012 | |
+| `apprentice` (ε 0.22) | 0.154 | 0.130 | 0.142 | +0.130 |
+| `operator` (ε 0.11) | 0.219 | 0.227 | 0.223 | +0.081 |
+| `veteran` (ε 0.05) | 0.349 | 0.310 | 0.329 | +0.107 |
+| `elite` (one ply) | 0.422 | 0.438 | 0.430 | +0.101 |
+
+Every step is a `rise` on each seed alone. **`veteran` was first set at
+0.04**, which read 0.372 in this run against the sweep's 0.329. The top
+step was then +0.058, only 1.7 sd on each seed, so it moved to 0.05. The
+ladder's top is now 0.430 against `main`'s best rung of 0.423, which was
+`operator`. Its middle is the part that moved: the old `apprentice` at ε
+0.35 sat at 0.047, a step of +0.376 below `operator`.
+
+A person will also notice the speed: no `glacier` Corp rung searches, so
+`elite` answers as fast as `operator` did. `describe()` reads the base
+off the spec, so the start screen and the record's "next" line say "looks
+one move ahead" with no change of their own.
+
+**Still owed:** §20's re-take of `Balanced`'s and `trap`'s rungs, which
+the trap terms moved. That is overnight work, because those rungs search.
+Reports are under `target/coverage/glacier-ladder/`.
