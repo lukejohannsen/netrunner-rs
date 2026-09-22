@@ -1423,7 +1423,7 @@ fn the_phase_bar_marks_the_step_in_play_and_l_turns_it_off() {
 /// then: the text tier here, since the headless client has no scans.
 #[test]
 fn a_run_puts_the_runner_in_the_right_column() {
-    use netrunner_desktop::screens::game::{RunIdentity, RunIdentityName};
+    use netrunner_desktop::screens::game::{EncounterName, RunIdentity, RunIdentityName};
     let (mut app, _dir) = headless_client();
     start_a_game(&mut app);
     to_the_runners_turn(&mut app);
@@ -1450,6 +1450,9 @@ fn a_run_puts_the_runner_in_the_right_column() {
     };
     assert_eq!(names(&mut app), [identity]);
     assert!(texts(&mut app).iter().any(|t| t == "Hacking into R&D"), "{:?}", texts(&mut app));
+    // The ICE takes the panel only while one is encountered, and the
+    // Runner is shown here, so no ICE is.
+    assert_eq!(app.world_mut().query::<&EncounterName>().iter(app.world()).count(), 0, "one card in the panel at a time");
 }
 
 /// The board has no margin above the opponent's hand or below the

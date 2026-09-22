@@ -3633,6 +3633,98 @@ Checked:
   and assert the button reads its step, never the bare word.
 - No engine change, so no sweep and no coverage report is owed.
 
+### 4aj. The ICE being encountered takes the run panel: its art, its type line, its strength and every subroutine — DONE (22 September 2026)
+
+`feat/encounter-panel`, §8 item 13. §4ac put the state of an encounter
+in the rail: the ICE's name and strength, and a marked line per
+subroutine. It left out the ICE's subtypes, left the reader to guess
+whether the strength had moved, and mixed the lines in with the prompt,
+so every notice or prompt title pushed them down. jinteki.net keeps the
+whole ICE in view for as long as it is encountered.
+
+**The ICE takes the Runner's place in the run panel, and the Runner comes
+back when the ICE is passed.** Top to bottom, the panel shows
+"Encountering · <server>", the art from the ICE's scan, its name, its
+printed type line ("Ice: Sentry - Bioroid - Destroyer"), its strength,
+and every subroutine marked `[x]`/`[!]`/`[ ]` in §4ac's colours. The
+rail's copy of those lines is gone, so the routes and Take it back sit
+directly under the panel. It has its own skin slot, `panel.encounter`,
+framed in the Corp's colour, with a row in the skins guide.
+- **Stacking it under the Runner was rejected.** The column is 380 px
+  wide and already holds the header, the phase panel, the prompt, the
+  routes and the log. During an encounter the Runner's picture says
+  nothing the lane does not.
+- **Asked for:** placement and the strength wording were settled with
+  the person before building.
+
+**The strength uses the sheet's words.** `board::facts::strength_words`
+is now the only wording, used by the ICE sheet, the breaker sheet and
+the panel alike:
+- "Strength 4" when unmoved;
+- "Strength 7 now, 4 printed" when the table or a lingering effect has
+  moved it, because that is why a break costs more than the card
+  suggests.
+
+`Encounter` now carries the run's server and `strength_line`. The
+terminal client prints the same words, type line and strength, under the
+encountered ICE.
+
+**The picture is the art, cropped, not the top of the card.** An ICE
+prints its text box above its art, so the band a Runner identity
+gives (§4z's `IDENTITY_ART`) would be rules text here.
+`layout::ICE_ART` is `[0.12, 0.54, 0.88, 0.94]` of the scan.
+- It was measured off seven Null Signal Games frames (Brân 1.0, Bumi
+  1.0, Biawak, Palisade, Mycoweb, Funhouse, Pharos). On those the art
+  runs from about 0.51 of the height to the bottom border, between the
+  type strip and the subroutine track.
+- It also falls inside the older frame's art (Ice Wall's text box ends
+  by 0.37).
+- It is drawn unrotated, since a rotated `UiTransform` lays out as its
+  unrotated box.
+
+**The art gives first on a short window** (`layout::encounter_art`), the
+same rule as the pop-up's cards. The panel's words and the rail's prompt
+with one button take their room first, and the art is scaled whole into
+what is left.
+- Below 72 px the art is dropped, and the name is drawn large in the
+  Corp's colour, as the Runner's is when no scan is cached.
+- **What was seen at 1366×768 before this rule:** the full-width art
+  pushed the rail's prompt and Take it back off the window. An ICE with
+  more subroutines would have lost its own last lines too.
+- **How room is worked out:** the header and phase panel are measured
+  as laid out, and the panel's words are estimated at 40 characters a
+  line. The estimate errs short.
+- **Redraw:** when the header or phase panel changes height mid-encounter
+  (a note line appearing), the panel is redrawn. Neither height depends
+  on the panel, so it cannot oscillate.
+
+**Verified.** `cargo test --workspace` green and clippy silent. New tests:
+- `board::facts`: an unadvanced Ice Wall reads "Strength 1", advanced
+  twice it reads "Strength 3 now, 1 printed", from both chairs, with the
+  run's server.
+- `layout`: the art is whole on a tall window, a whole-scaled thumbnail
+  at 768 px, and dropped when the phase panel leaves no room.
+- The desktop model test reads the strength line and the server off the
+  Wall of Static encounter. The run-panel test asserts no ICE is drawn
+  while the Runner is.
+- The terminal render test finds "Ice: Barrier · Strength 3" under the
+  wall.
+
+As in §4ac, the drawing is verified by screenshot, because a live
+encounter cannot be reached headlessly (`NETRUNNER_HOLD_ICE`, under a
+scratch `XDG_DATA_HOME` with the phase panel on).
+- **2560×1600, Runner:** Ansel 1.0's art, "Ice: Sentry - Bioroid -
+  Destroyer", "Strength 4", three `[ ]`.
+- **2560×1600, Corp:** the same ICE with `[x]`, `[!]` in red and `[x]`,
+  the install choice its fired subroutine opened in the pop-up. This is
+  the first desktop shot of `[x]`, which §4ac could not take.
+- **1366×768:** a centred thumbnail from the Corp's chair. From the
+  Runner's chair, three long subroutines leave no room, so the name is
+  drawn large, with the prompt and Take it back under it.
+
+In every shot the only `scroll area` logged is the hidden log's. No
+engine file changed, so no sweep.
+
 ## 8. Borrowed from jinteki — OPEN (19 September 2026)
 
 From [`docs/jinteki-comparison.md`](../jinteki-comparison.md) §5, in the
@@ -3689,8 +3781,9 @@ eleven so the addresses above do not move:
 
 12. ~~**One Continue button that names what is next** ("Continue to Approach
     ice", "Breach server").~~ Done in §4ai.
-13. **The encounter panel always on during an encounter** — name, subtypes,
-    live strength, every subroutine; §4ac's marks are the first half.
+13. ~~**The encounter panel always on during an encounter** — name, subtypes,
+    live strength, every subroutine; §4ac's marks are the first half.~~
+    Done in §4aj.
 14. **Per-card always / never / ask for an optional trigger.**
 15. ~~**A report-a-bug bundle**: the seed and the action record, which replay
     exactly. The answer to the need behind jinteki's state-editing

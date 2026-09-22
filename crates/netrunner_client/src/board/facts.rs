@@ -91,10 +91,24 @@ pub fn subroutine_word(status: SubroutineStatus) -> &'static str {
     }
 }
 
+/// A strength as a person reads it: the number now, and the printed one
+/// beside it only when the table or a lingering effect has moved it,
+/// because that is the reason a break costs what it costs. The one
+/// wording: the sheets of an ice and a breaker and the encounter panel
+/// all say it.
+pub fn strength_words(now: i32, printed: Option<i32>) -> String {
+    match printed {
+        Some(printed) if printed != now => format!("Strength {now} now, {printed} printed"),
+        _ => format!("Strength {now}"),
+    }
+}
+
 /// The ice a run is encountering and the state of its subroutines.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Encounter {
     pub install: InstallId,
+    /// The server the run is on, for a client's heading.
+    pub server: ServerId,
     /// The ice, when the viewer may name it. A client with no name says
     /// "Ice"; it never reaches around this for one.
     pub card: Option<CardId>,
@@ -102,6 +116,16 @@ pub struct Encounter {
     pub strength: i32,
     /// In the order the subroutines resolve.
     pub subroutines: Vec<Subroutine>,
+}
+
+impl Encounter {
+    /// The strength line ([`strength_words`]) against the printed number
+    /// the registry holds for the ice, so "Strength 7 now, 4 printed"
+    /// says why a break costs more than the card suggests.
+    pub fn strength_line(&self, registry: &CardRegistry) -> String {
+        let printed = self.card.as_ref().and_then(|id| registry.get(id)).and_then(|def| def.strength);
+        strength_words(self.strength, printed)
+    }
 }
 
 /// The ice the run is encountering, with each subroutine marked broken,
@@ -125,6 +149,7 @@ pub fn encounter_subroutines(view: &ClientView) -> Option<Encounter> {
     let identity = ice.identity.as_ref()?;
     Some(Encounter {
         install: ice.install_id,
+        server: run.server,
         card: Some(identity.card.clone()),
         strength: identity.current_strength,
         subroutines: identity
@@ -292,9 +317,8 @@ pub fn install_facts(view: &ClientView, id: InstallId, registry: &CardRegistry) 
                 }
                 if card.slot == InstallSlot::Ice {
                     match (encounter(view, id), def.strength) {
-                        (Some((now, _, _)), Some(printed)) if now != printed => lines.push(format!("Strength {now} now, {printed} printed")),
-                        (Some((now, _, _)), _) => lines.push(format!("Strength {now}")),
-                        (None, Some(printed)) => lines.push(format!("Strength {printed}")),
+                        (Some((now, _, _)), printed) => lines.push(strength_words(now, printed)),
+                        (None, Some(printed)) => lines.push(strength_words(printed, Some(printed))),
                         (None, None) => {}
                     }
                     let statuses = encounter(view, id).map(|(_, subs, at)| (subs, at));
@@ -323,11 +347,7 @@ pub fn install_facts(view: &ClientView, id: InstallId, registry: &CardRegistry) 
             if let Some(def) = def
                 && let Some(printed) = def.strength
             {
-                if rig.current_strength != printed {
-                    lines.push(format!("Strength {} now, {printed} printed", rig.current_strength));
-                } else {
-                    lines.push(format!("Strength {printed}"));
-                }
+                lines.push(strength_words(rig.current_strength, Some(printed)));
             }
             if rig.counters > 0 {
                 lines.push(counter_word(def.and_then(|d| d.counter_kind), rig.counters));
@@ -509,6 +529,30 @@ mod tests {
             assert_eq!(met.card, Some(CardId("bran_1_0".into())), "a rezzed ice is named to both chairs");
             assert_eq!(met.subroutines.iter().map(|sub| sub.text.clone()).collect::<Vec<_>>(), printed.iter().map(|sub| sub.text.clone()).collect::<Vec<_>>());
             assert_eq!(met.subroutines.iter().map(Subroutine::word).collect::<Vec<_>>(), ["broken", "fired", "pending"], "{side:?}");
+        }
+    }
+
+    /// The strength line is the number now, with the printed one beside
+    /// it only once something has moved it: Ice Wall advanced twice is
+    /// "Strength 3 now, 1 printed", and unadvanced is "Strength 1". The
+    /// heading's server is the run's.
+    #[test]
+    fn the_encounter_says_its_strength_and_the_printed_one_when_they_differ() {
+        use netrunner_core::view::build_client_view;
+
+        let registry: CardRegistry = crate::decks::sample_deck_registry();
+        let mut state = encountering(&registry, "ice_wall", &[]);
+        let printed = registry.get(&CardId("ice_wall".into())).unwrap().strength.expect("Ice Wall prints a strength");
+        for side in [Side::Corp, Side::Runner] {
+            let met = encounter_subroutines(&build_client_view(&state, &registry, side)).expect("encountering");
+            assert_eq!(met.server, ServerId::Hq);
+            assert_eq!(met.strength_line(&registry), format!("Strength {printed}"), "{side:?}");
+        }
+        state.corp.installed[0].advancement_tokens = 2;
+        for side in [Side::Corp, Side::Runner] {
+            let met = encounter_subroutines(&build_client_view(&state, &registry, side)).expect("encountering");
+            assert_eq!(met.strength, printed + 2, "Ice Wall gains 1 strength per advancement token");
+            assert_eq!(met.strength_line(&registry), format!("Strength {} now, {printed} printed", printed + 2), "{side:?}");
         }
     }
 

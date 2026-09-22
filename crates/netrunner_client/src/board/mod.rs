@@ -30,7 +30,7 @@ pub use affordance::Affordance;
 pub use breaks::{routes, AutoBreak, Next, Route};
 pub use diff::{transitions, Transition, Zone};
 pub use onward::{offered_label, onward, Onward};
-pub use facts::{encounter_subroutines, install_facts, subroutine_word, tile_label, tile_title, tile_tokens, Encounter, Subroutine, Token, TokenKind};
+pub use facts::{encounter_subroutines, install_facts, strength_words, subroutine_word, tile_label, tile_title, tile_tokens, Encounter, Subroutine, Token, TokenKind};
 pub use preview::Asks;
 pub use rig::RigRow;
 pub use trail::{IceState, IceStep, Outcome, RunTrail, Stage};

@@ -160,6 +160,10 @@ pub enum Slot {
     /// The panel the Runner's identity appears in, in the right column,
     /// while a run is on: the picture of who is breaking in.
     PanelRun,
+    /// The same place while the run encounters a piece of ICE: the ICE
+    /// takes the Runner's panel, so a skin can frame the thing being
+    /// broken apart from the one breaking it.
+    PanelEncounter,
     /// The wash over the board behind a sheet. Not a panel's state — it
     /// is the thing *behind* the panel, so it falls back to nothing and
     /// a skin that paints panels leaves it alone unless it means to.
@@ -168,7 +172,7 @@ pub enum Slot {
 
 impl Slot {
     /// Every slot, in the order the gallery lists them.
-    pub const ALL: [Slot; 40] = [
+    pub const ALL: [Slot; 41] = [
         Slot::ServerColumn,
         Slot::ServerColumnWelcomes,
         Slot::ServerColumnUnderRun,
@@ -208,6 +212,7 @@ impl Slot {
         Slot::PanelMenu,
         Slot::PanelPhase,
         Slot::PanelRun,
+        Slot::PanelEncounter,
         Slot::OverlayScrim,
     ];
 
@@ -253,6 +258,7 @@ impl Slot {
             Slot::PanelMenu => "panel.menu",
             Slot::PanelPhase => "panel.phase",
             Slot::PanelRun => "panel.run",
+            Slot::PanelEncounter => "panel.encounter",
             Slot::OverlayScrim => "overlay.scrim",
         }
     }
@@ -299,7 +305,7 @@ impl Slot {
             Slot::PhaseChipPast | Slot::PhaseChipNow | Slot::PhaseChipAhead => Slot::PhaseChip,
             Slot::HudCellAlarm | Slot::HudCellOpens => Slot::HudCell,
             Slot::SubDotPending | Slot::SubDotBroken | Slot::SubDotResolved => Slot::SubDot,
-            Slot::PanelSheet | Slot::PanelDecision | Slot::PanelMenu | Slot::PanelPhase | Slot::PanelRun => Slot::Panel,
+            Slot::PanelSheet | Slot::PanelDecision | Slot::PanelMenu | Slot::PanelPhase | Slot::PanelRun | Slot::PanelEncounter => Slot::Panel,
             _ => return None,
         })
     }

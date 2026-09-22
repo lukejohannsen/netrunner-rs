@@ -1379,8 +1379,9 @@ fn run_phase_strip(phase: RunPhase) -> Line<'static> {
 
 /// The run as lines: the server and how far in, then each piece of ice
 /// with the one being met marked — and, while it is being encountered,
-/// its subroutines under it, each struck through when broken, red when
-/// it has fired, plain while it is still pending
+/// its type line and strength, then its subroutines under it, each
+/// struck through when broken, red when it has fired, plain while it is
+/// still pending
 /// (`board::facts::encounter_subroutines`). The marks are here rather
 /// than a keypress away in the card sheet because an encounter is
 /// decided in, not read about afterwards.
@@ -1395,6 +1396,10 @@ fn format_run(view: &ClientView, run: &netrunner_core::rules::PublicRunState, re
             None => lines.push(Line::from(format!("{marker} ??? [{rez}]"))),
         }
         let Some(met) = met.as_ref().filter(|met| met.install == ice.install_id) else { continue };
+        // The type line and the strength against the printed one, the
+        // desktop's encounter panel's words (`Encounter::strength_line`).
+        let type_line = met.card.as_ref().and_then(|id| registry.get(id)).and_then(|def| def.type_line.clone());
+        lines.push(Line::from(format!("    {}", [type_line, Some(met.strength_line(registry))].into_iter().flatten().collect::<Vec<_>>().join(" · "))));
         for sub in &met.subroutines {
             let (style, mark) = match sub.status {
                 SubroutineStatus::Broken => (Style::default().fg(Color::DarkGray).add_modifier(Modifier::CROSSED_OUT), "x"),
@@ -2085,6 +2090,7 @@ mod tests {
         let mut ui = LocalUiState::new(registry.clone(), Side::Runner);
         ui.begin_decision(build_client_view(&state, &registry, Side::Runner));
         assert!(board(&ui).contains("[ ] End the run"), "the pending subroutine is on the board:\n{}", board(&ui));
+        assert!(board(&ui).contains("Ice: Barrier · Strength 3"), "the type line and the strength are under the ice:\n{}", board(&ui));
         let labels = ui.legal_action_labels();
         assert_eq!(labels.last().map(String::as_str), Some("Break Wall of Static with Corroder · 2 credits"));
         ui.selected = labels.len() - 1;

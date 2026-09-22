@@ -157,6 +157,7 @@ well and the sheet parts company with the main menu.
 | `panel.menu` | **280** × grows per row | 9-slice | The menu a card's click opens. About 100 tall for two entries, 40 per entry after |
 | `panel.phase` | **380** × ~150 | 9-slice | The phase panel at the top of the right column: the turn's steps in one column and a run's in the next |
 | `panel.run` | **380** × ~300 | 9-slice | Where the Runner's identity appears while a run is on — its picture cropped to the name and the art, or its name alone. Frame it like a monitor someone is breaking into |
+| `panel.encounter` | **380** × ~480 | 9-slice | The same place while a run encounters a piece of ICE, which takes the Runner's panel: the ICE's art, its name, type line and strength, and every subroutine marked broken, fired or pending. Frame it like the thing being broken into |
 | `overlay.scrim` | the whole window | stretch | The wash over the board behind a sheet. **Not** a state of `panel` — it is what sits *behind* one, so it borrows nothing and stays a flat wash until you draw it. Keep it mostly transparent or the board vanishes |
 
 The decision pop-up and the menu are drawn with the accent as their
