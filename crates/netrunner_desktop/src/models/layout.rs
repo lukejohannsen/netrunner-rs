@@ -206,6 +206,56 @@ pub const IDENTITY_SCALE: f32 = 0.4;
 /// `rect`, because the scan is drawn from whichever resampled copy fits
 /// (Phase 7 §4w) and their pixel sizes differ.
 pub const IDENTITY_ART: f32 = 0.63;
+/// How much of an ICE's scan the encounter panel shows: the art alone,
+/// as `[left, top, right, bottom]` fractions of the card. An ICE is
+/// printed upright with its text box on top and its art underneath, so
+/// the name banner and the picture are not one band as on an identity,
+/// and the panel prints the name in words instead. Measured off Null
+/// Signal Games' ice frame — the art runs from about 0.51 of the height
+/// to the bottom edge's 0.95, between the type strip on the left (0.12
+/// of the width) and the subroutine track on the right (0.9) — on Brân
+/// 1.0, Bumi 1.0, Biawak, Palisade, Mycoweb, Funhouse and Pharos, and it
+/// falls inside the art of the older frame too (Ice Wall's text box ends
+/// by 0.37). Drawn unrotated: a rotated `UiTransform` is laid out as
+/// its unrotated box.
+pub const ICE_ART: [f32; 4] = [0.12, 0.54, 0.88, 0.94];
+/// The shortest the encounter panel's art is drawn; below it the panel
+/// shows the words alone, because a picture that small is a smudge and
+/// the words are what the encounter is decided on.
+pub const ENCOUNTER_ART_MIN: f32 = 72.0;
+/// The height a line of the encounter panel's small text takes, and how
+/// many characters fit on one at the panel's width — an estimate, used
+/// only to decide how tall the art may be, so it errs short.
+const ENCOUNTER_LINE: f32 = 21.0;
+const ENCOUNTER_CHARS_PER_LINE: usize = 40;
+/// What the right column keeps under the encounter panel for the rail:
+/// the prompt's title and one button (Take it back), so the art never
+/// pushes the one thing the person may press off the window.
+const RAIL_RESERVE: f32 = 120.0;
+/// The panel's padding, border and gaps, the column's gaps around it,
+/// and the name's taller line.
+const ENCOUNTER_CHROME: f32 = 2.0 * 10.0 + 2.0 * 2.0 + 3.0 * 8.0 + 8.0;
+
+/// The encounter panel's art, `(width, height)`, scaled whole from its
+/// `natural` size to what the right column has left, or `None` when that
+/// is under [`ENCOUNTER_ART_MIN`].
+///
+/// **The picture gives first**, as the pop-up's cards do: the column
+/// never scrolls and never runs off the window, so its words — `lines`,
+/// the panel's small text lines, each as its characters — and the rail's
+/// prompt under it take their room, and the art takes what is left. At
+/// 2560×1600 that is all of it; at 1366×768 with the phase panel on it is
+/// a thumbnail or nothing. `above` is what the column already holds over
+/// the panel (the header and the phase panel, measured), and `window` the
+/// window's logical height. Scaled whole, never squeezed: `ImageNode`
+/// stretches, so a shorter box at the same width would distort the art.
+pub fn encounter_art<'a>(natural: (f32, f32), window: f32, above: f32, lines: impl IntoIterator<Item = &'a str>) -> Option<(f32, f32)> {
+    let words: f32 = lines.into_iter().map(|line| line.chars().count().div_ceil(ENCOUNTER_CHARS_PER_LINE).max(1) as f32 * ENCOUNTER_LINE + 6.0).sum();
+    let room = window - 2.0 * PADDING - above - ENCOUNTER_CHROME - words - RAIL_RESERVE;
+    let (width, height) = natural;
+    let drawn = height.min(room.floor());
+    (drawn >= ENCOUNTER_ART_MIN).then(|| ((width * drawn / height).round(), drawn))
+}
 /// The gap between cards in a row.
 pub const CARD_GAP: f32 = 6.0;
 /// A server column's padding and border beyond its card, each side.
@@ -948,5 +998,21 @@ mod tests {
         // The count is at least what a generous 0.5 em advance would give.
         let widest = (long.chars().count() as f32 * 18.0 * 0.5 / 120.0).floor() as usize;
         assert!(narrow >= widest, "{narrow} lines for {widest} lines of glyphs");
+    }
+
+    /// The encounter panel's art takes what the words leave: all of it on
+    /// a tall window, a whole-scaled thumbnail on a short one, nothing at
+    /// all once that would be a smudge — and never more than its own size.
+    #[test]
+    fn the_encounter_art_gives_first_and_keeps_its_shape() {
+        let natural = (356.0, 262.0);
+        let lines = ["Encountering · HQ", "Brân 1.0", "Ice: Barrier - Bioroid", "Strength 6", "[ ] You may install 1 piece of ice from HQ or Archives directly inward from this ice, ignoring all costs.", "[ ] End the run.", "[ ] End the run."];
+        assert_eq!(encounter_art(natural, 1600.0, 280.0, lines), Some(natural), "a tall window draws it whole");
+        let (width, height) = encounter_art(natural, 768.0, 170.0, lines).expect("room for a thumbnail");
+        assert!(height < natural.1 && height >= ENCOUNTER_ART_MIN, "{height}");
+        assert!((width / height - natural.0 / natural.1).abs() < 0.02, "scaled whole, not squeezed: {width}×{height}");
+        assert_eq!(encounter_art(natural, 768.0, 280.0, lines), None, "the phase panel on a laptop leaves no room worth drawing in");
+        let more = lines.into_iter().chain(["[ ] End the run."; 4]);
+        assert!(encounter_art(natural, 1600.0, 280.0, more).is_some_and(|(_, h)| h <= natural.1));
     }
 }

@@ -30,7 +30,8 @@
 //! person's strip and the top of their hand on the window's bottom edge.
 //! The right column is the status line with Quit and the gear, the phase
 //! panel (`board::phase`, hidden with L), the Runner's identity while a
-//! run is on, the rail and the log. The opponent's side is
+//! run is on (or the ICE, while the run encounters one), the rail and
+//! the log. The opponent's side is
 //! drawn at `layout::OPPONENT_SCALE` of the person's own. The Corp's
 //! servers are the area that grows: each a column with its plate on the
 //! Corp's edge of the table and its ICE as tiles out toward the Runner —
@@ -110,7 +111,7 @@ use bevy::window::PrimaryWindow;
 
 use netrunner_client::access::Access;
 use netrunner_client::board::action_map::server_name;
-use netrunner_client::board::{facts, hud, Affordance, Control, IceState, Outcome as RunOutcome, Pile, Prompt, Stage, Target, Token, TokenKind, Transition, Zone};
+use netrunner_client::board::{facts, hud, Affordance, Control, Encounter, IceState, Outcome as RunOutcome, Pile, Prompt, Stage, Target, Token, TokenKind, Transition, Zone};
 use netrunner_client::card_face::Face;
 use netrunner_core::dsl::{CardId, CardType};
 use netrunner_core::rules::{GamePhase, InstallId, InstallSlot, PendingDecision, PlayerAction, RunPhase, ServerId, Side, SubroutineStatus};
@@ -245,7 +246,8 @@ pub struct HandSlot(pub usize);
 pub struct PhaseBarRow;
 
 /// The right column's panel that shows the Runner's identity while a run
-/// is on; empty, and taking no room, when none is.
+/// is on, or the ICE while the run encounters one; empty, and taking no
+/// room, when no run is on.
 #[derive(Component)]
 pub struct RunIdentity;
 
@@ -258,6 +260,20 @@ pub struct RunIdentityName;
 /// width has decoded, and the panel is redrawn when it has.
 #[derive(Component)]
 pub struct RunIdentityArt(Handle<Image>);
+
+/// The right column's head (the status line, Quit and the gear), whose
+/// laid-out height the encounter panel's art is sized against.
+#[derive(Component)]
+pub struct RailHeader;
+
+/// The encountered ICE's name in the run panel, for a test to read.
+#[derive(Component)]
+pub struct EncounterName;
+
+/// One of the encounter panel's lines under the name — the type line,
+/// the strength, a marked subroutine — for a test to read.
+#[derive(Component)]
+pub struct EncounterLine;
 
 #[derive(Component)]
 pub struct PhaseStep(pub netrunner_client::board::phase::State);
@@ -543,7 +559,7 @@ fn spawn(
     // It was a bar across the top of the window, which cost every card
     // on the board its height to say what the column beside it says.
     let header = commands
-        .spawn((Node { width: percent(100), min_height: px(layout::TOP_BAR), flex_shrink: 0.0, flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(8), ..default() },))
+        .spawn((RailHeader, Node { width: percent(100), min_height: px(layout::TOP_BAR), flex_shrink: 0.0, flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(8), ..default() },))
         .with_children(|parent| {
             parent.spawn((StatusLine, widgets::dim(&theme, "Setting up…"), TextLayout::new(Justify::Left, LineBreak::WordBoundary), Node { flex_grow: 1.0, flex_shrink: 1.0, min_width: px(0), ..default() }));
             // A replay has nothing to lose, so its way out says where it
@@ -2457,44 +2473,8 @@ fn spawn_rail(parent: &mut ChildSpawnerCommands, theme: &Theme, game: &Game, hel
         parent.spawn(widgets::dim(theme, "The match is over."));
         return;
     }
-    // The state of the encounter, above the routes that change it: the
-    // ice being met and every subroutine marked broken, fired or still
-    // pending (`Game::encounter`). It is here and not only in the ice's
-    // own sheet because an encounter is a thing a person decides *in*,
-    // and a sheet is a click away and a click back.
-    //
-    // **Above the `awaiting` return, so the marks stay up while the Corp
-    // thinks.** They are something to read, not something to press.
-    //
-    // **The marks are the terminal client's, character for character** —
-    // `[x]`, `[!]`, `[ ]` — rather than a tick glyph: the bundled Noto
-    // fallback is not guaranteed to carry one, and a person moving
-    // between the two clients should not have to learn the marks twice.
-    // The colour is what this client adds.
-    //
-    // **The tiles are deliberately left alone.** A pip per subroutine on
-    // the encountered tile was the other candidate and was rejected: the
-    // run lane already draws exactly that, a dot per subroutine in these
-    // three colours, so a tile pip would be the same fact a third time
-    // and still not say *which* subroutine. The words are what was
-    // missing, and they need a column's width.
-    if let Some(met) = game.encounter() {
-        let name = met.card.as_ref().and_then(|id| game.registry().get(id)).map_or_else(|| "Ice".to_string(), |def| def.title.clone());
-        parent.spawn((widgets::label(theme, format!("{name} · strength {}", met.strength)), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
-        for sub in &met.subroutines {
-            let (mark, colour) = match sub.status {
-                SubroutineStatus::Broken => ("[x]", theme.text_dim),
-                SubroutineStatus::Resolved => ("[!]", theme.danger),
-                SubroutineStatus::Pending => ("[ ]", theme.text),
-            };
-            parent.spawn((
-                Text::new(format!("{mark} {}", sub.text)),
-                theme.font(size::SMALL),
-                TextColor(colour),
-                TextLayout::new(Justify::Left, LineBreak::WordBoundary),
-            ));
-        }
-    }
+    // The state of the encounter is the run panel's (`fill_encounter`),
+    // directly above: the routes under the prompt are what change it.
     if game.replay.is_some() {
         parent.spawn((
             widgets::dim(theme, "Left and Right step, Page Up and Down ten at a time, Home and End go to either end, S is the other chair. A click reads a card."),
@@ -2987,7 +2967,15 @@ fn fill_phase_bar(parent: &mut ChildSpawnerCommands, theme: &Theme, game: &Game)
 /// It follows the paced trail, not the view, so it appears on the run's
 /// first beat and goes when the trail ends, never ahead of the lane. It
 /// is paint: no button, no action, nothing the engine offered.
-fn fill_run_identity(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore, images: &CardImages, assets: Option<&Assets<Image>>, game: &Game) {
+///
+/// **While the run encounters a piece of ICE, the ICE takes the panel**
+/// ([`fill_encounter`]) and the Runner comes back when it is passed.
+#[allow(clippy::too_many_arguments)]
+fn fill_run_panel(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore, images: &CardImages, assets: Option<&Assets<Image>>, game: &Game, window: f32, above: f32) {
+    if let Some(met) = game.encounter() {
+        fill_encounter(parent, theme, core, images, assets, &met, window, above);
+        return;
+    }
     let (Some(trail), Some(view)) = (&game.trail, &game.view) else { return };
     if trail.ended() {
         return;
@@ -3040,6 +3028,110 @@ fn fill_run_identity(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &Cl
         });
 }
 
+/// The ICE a run is encountering, in the run panel in place of the
+/// Runner: "Encountering <server>", the art of its scan, its name, its
+/// printed type line, its strength — the printed number beside it when
+/// something has moved it (`Encounter::strength_line`, the sheet's words)
+/// — and every subroutine marked broken, fired or still pending
+/// (`Game::encounter`). An encounter is a thing a person decides *in*,
+/// and a sheet is a click away and a click back, so the ICE's whole face
+/// is here, directly above the routes in the rail that change it.
+///
+/// **It replaces the Runner rather than stacking under them**, because
+/// the column is 380 pixels of header, phase, prompt, routes and log,
+/// and the Runner's picture says nothing during an encounter that the
+/// lane does not.
+///
+/// **Not gated on `awaiting`, so it stays up while the Corp thinks**
+/// (Brân 1.0's first subroutine fires, the Corp is asked where to
+/// install, and both sides want to see `[!]` against that clause while
+/// the question is open). It is paint: no button and no action.
+///
+/// **The picture is the art, not the top of the card**: an ICE prints
+/// its text box above its art (`layout::ICE_ART`), so the panel crops
+/// the art alone and writes the name out. With no scan cached the name
+/// is drawn large in the Corp's colour, as the Runner's is.
+///
+/// **The marks are the terminal client's, character for character** —
+/// `[x]`, `[!]`, `[ ]` — rather than a tick glyph: the bundled Noto
+/// fallback is not guaranteed to carry one, and a person moving between
+/// the two clients should not have to learn the marks twice. The colour
+/// is what this client adds. **The tiles are deliberately left alone:**
+/// a pip per subroutine on the encountered tile was rejected in §4ac —
+/// the run lane already draws a dot per subroutine in these colours, and
+/// a pip still would not say *which* subroutine.
+///
+/// **The art is what gives when the window is short** (`layout::encounter_art`):
+/// the words and the rail's prompt under the panel take their room first,
+/// and the picture is scaled whole into what is left, or left out.
+#[allow(clippy::too_many_arguments)]
+fn fill_encounter(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore, images: &CardImages, assets: Option<&Assets<Image>>, met: &Encounter, window: f32, above: f32) {
+    let card = met.card.as_ref().and_then(|id| core.registry.get(id));
+    let name = card.map_or_else(|| "Ice".to_string(), |card| card.title.clone());
+    let heading = format!("Encountering · {}", server_name(met.server));
+    let type_line = card.and_then(|card| card.type_line.clone());
+    let strength = met.strength_line(&core.registry);
+    let marked: Vec<(String, Color)> = met
+        .subroutines
+        .iter()
+        .map(|sub| {
+            let (mark, colour) = match sub.status {
+                SubroutineStatus::Broken => ("[x]", theme.text_dim),
+                SubroutineStatus::Resolved => ("[!]", theme.danger),
+                SubroutineStatus::Pending => ("[ ]", theme.text),
+            };
+            (format!("{mark} {}", sub.text), colour)
+        })
+        .collect();
+    let words = [heading.as_str(), name.as_str(), strength.as_str()].into_iter().chain(type_line.as_deref()).chain(marked.iter().map(|(text, _)| text.as_str()));
+    let colour = theme.side(Side::Corp);
+    let panel = Node {
+        width: percent(100),
+        flex_direction: FlexDirection::Column,
+        padding: UiRect::all(px(10)),
+        row_gap: px(6),
+        border: UiRect::all(px(2)),
+        border_radius: BorderRadius::all(px(8)),
+        ..default()
+    };
+    parent
+        .spawn((panel, BackgroundColor(theme.panel), BorderColor::all(colour), widgets::Dressed::still(Slot::PanelEncounter, Drawn::new(theme.panel, colour))))
+        .with_children(|panel| {
+            // Each line states its width, as the Runner's panel's do.
+            let line = || Node { width: px(RUN_ART_WIDTH), ..default() };
+            let wrap = || TextLayout::new(Justify::Left, LineBreak::WordBoundary);
+            panel.spawn((Text::new(heading.clone()), theme.font(size::SMALL), TextColor(colour), line()));
+            let scan = card.and_then(|card| card.numeric_id).and_then(|code| images.face(code, FaceSize::Board(RUN_ART_WIDTH as u16)).or_else(|| images.nearest_face(code)));
+            let size = scan.as_ref().and_then(|scan| assets?.get(scan)).map(|image| image.size_f32());
+            let [left, top, right, bottom] = layout::ICE_ART;
+            let art = scan.zip(size).and_then(|(scan, size)| {
+                let rect = Rect::new(size.x * left, size.y * top, size.x * right, size.y * bottom);
+                let natural = (RUN_ART_WIDTH, (RUN_ART_WIDTH * rect.height() / rect.width()).round());
+                layout::encounter_art(natural, window, above, words).map(|drawn| (scan, rect, drawn))
+            });
+            match art {
+                Some((scan, rect, (width, height))) => {
+                    panel.spawn((
+                        RunIdentityArt(scan.clone()),
+                        ImageNode { image_mode: NodeImageMode::Stretch, rect: Some(rect), ..ImageNode::new(scan) },
+                        Node { width: px(width), height: px(height), flex_shrink: 0.0, align_self: AlignSelf::Center, border_radius: BorderRadius::all(px(6)), ..default() },
+                    ));
+                    panel.spawn((EncounterName, Text::new(name.clone()), theme.font(size::BODY), TextColor(theme.text), wrap(), line()));
+                }
+                None => {
+                    panel.spawn((EncounterName, Text::new(name.clone()), theme.font(size::HEADING), TextColor(colour), wrap(), line()));
+                }
+            }
+            if let Some(type_line) = type_line.clone() {
+                panel.spawn((EncounterLine, Text::new(type_line), theme.font(size::SMALL), TextColor(theme.text_dim), wrap(), line()));
+            }
+            panel.spawn((EncounterLine, Text::new(strength.clone()), theme.font(size::SMALL), TextColor(theme.text), wrap(), line()));
+            for (text, colour) in marked.iter().cloned() {
+                panel.spawn((EncounterLine, Text::new(text), theme.font(size::SMALL), TextColor(colour), wrap(), line()));
+            }
+        });
+}
+
 /// The run panel's picture width: the right column less the panel's
 /// padding and border.
 const RUN_ART_WIDTH: f32 = layout::RAIL_WIDTH - 2.0 * 12.0;
@@ -3062,15 +3154,38 @@ fn side_panels(
     mut images: ResMut<CardImages>,
     assets: Option<Res<Assets<Image>>>,
     drawn: Query<&RunIdentityArt>,
+    above_the_panel: Query<&ComputedNode, Or<(With<RailHeader>, With<PhaseBarRow>)>>,
+    fit: Option<Res<BoardFit>>,
+    mut measured: Local<f32>,
 ) {
-    // While a run is on, the panel wants the Runner's scan at its own
-    // width: ask for it once, and redraw when it lands, since the strip's
-    // identity copy that stands in for it is a fifth as wide.
+    // What the column holds over the run panel, as laid out: the encounter
+    // panel's art is sized against it (`layout::encounter_art`). It is read
+    // a frame late, so when it moves during an encounter — the phase panel
+    // gaining its note line, the status wrapping — the panel is redrawn to
+    // fit, and it cannot oscillate, since neither height depends on it.
+    let above: f32 = above_the_panel.iter().map(|node| node.size().y * node.inverse_scale_factor()).sum();
+    if (above - *measured).abs() > 1.0 {
+        *measured = above;
+        if model.as_ref().is_some_and(|model| model.0.encounter().is_some()) {
+            dirty.side = true;
+        }
+    }
+    let window = fit.as_ref().map_or(f32::MAX, |fit| fit.window.y);
+    // While a run is on, the panel wants the scan of whichever card it
+    // shows — the ICE being encountered, else the Runner — at its own
+    // width: ask for it once, and redraw when it lands, since the copy
+    // that stands in for it (the strip's identity, a tile's) is far
+    // narrower.
     let running = model.as_ref().and_then(|model| {
         let game = &model.0;
-        game.trail.as_ref().filter(|trail| !trail.ended())?;
-        let id = game.view.as_ref()?.runner.identity.as_ref()?;
-        core.registry.get(id)?.numeric_id
+        let id = match game.encounter() {
+            Some(met) => met.card?,
+            None => {
+                game.trail.as_ref().filter(|trail| !trail.ended())?;
+                game.view.as_ref()?.runner.identity.clone()?
+            }
+        };
+        core.registry.get(&id)?.numeric_id
     });
     if let Some(code) = running {
         let size = FaceSize::Board(RUN_ART_WIDTH as u16);
@@ -3106,7 +3221,7 @@ fn side_panels(
         }
     }
     for entity in &run {
-        commands.entity(entity).despawn_children().with_children(|parent| fill_run_identity(parent, &theme, &core, &images, assets.as_deref(), game));
+        commands.entity(entity).despawn_children().with_children(|parent| fill_run_panel(parent, &theme, &core, &images, assets.as_deref(), game, window, above));
     }
 }
 

@@ -1662,6 +1662,8 @@ mod tests {
         let met = game.encounter().expect("the run is encountering the wall");
         assert_eq!(met.card.as_ref().map(|id| id.0.as_str()), Some("wall_of_static"));
         assert_eq!(met.strength, 3);
+        assert_eq!(met.strength_line(&registry), "Strength 3", "unmoved, so no printed number beside it");
+        assert_eq!(met.server, ServerId::Hq, "the panel's heading");
         assert_eq!(met.subroutines.iter().map(|sub| (sub.text.as_str(), sub.word())).collect::<Vec<_>>(), [("End the run.", "pending")]);
         assert_eq!(game.breaks.len(), 1);
         let view = game.view.clone().unwrap();
