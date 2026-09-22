@@ -827,6 +827,18 @@ pub(crate) fn end_run(state: &mut GameState) -> Option<RunState> {
     if let Some(run) = &run {
         state.last_completed_run = Some(CompletedRun::snapshot(run));
     }
+    // A run's window ends with the run: it was opened at one of the run's
+    // steps, and closing it resumes nothing once the run is gone
+    // (`paid_ability::close_run_window`). `note_window_action` already
+    // cleared it for an action taken *in* the window, but a run ended by
+    // resolving something parked — a paid choice declined into "end the
+    // run" — was taken in no window, so the window outlived its run and
+    // both players had to pass it for nothing. Here, because every way a
+    // run ends comes through this function. A window waiting beneath a
+    // prevention is `prevention::finish`'s to drop, where it comes back.
+    if matches!(state.paid_ability_window.as_ref().map(|w| w.checkpoint), Some(WindowCheckpoint::Run)) {
+        state.paid_ability_window = None;
+    }
     // Whether a lingering effect holds is derived, and the one thing a
     // derived answer cannot tell apart is this run from the next.
     checkpoint::expire_durations(state);

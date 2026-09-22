@@ -77,10 +77,6 @@ pub fn onward(view: &ClientView) -> Option<Onward> {
             WindowCheckpoint::StartOfTurn { side } | WindowCheckpoint::PostAction { side } => Some(Onward::Actions(side)),
             WindowCheckpoint::EndOfTurn { side } => Some(Onward::TurnEnds(side)),
             WindowCheckpoint::Prevention => Some(Onward::NotPrevented),
-            // A run window can outlast its run — a paid choice declined
-            // into "end the run" leaves it open — and closing it resumes
-            // nothing (`close_run_window`): the turn carries on.
-            WindowCheckpoint::Run if view.active_run.is_none() => Some(Onward::Actions(view.active_player)),
             WindowCheckpoint::Run => run_step(view, true),
         };
     }
