@@ -20,10 +20,24 @@
       "first_each_turn": true,
       "effects": [
         {
-          "DrawCards": [
-            "Corp",
-            1
-          ]
+          "PresentChoice": {
+            "chooser": "Corp",
+            "options": [
+              {
+                "DrawCards": [
+                  "Corp",
+                  1
+                ]
+              },
+              {
+                "Sequence": []
+              }
+            ],
+            "texts": [
+              "draw 1 card",
+              ""
+            ]
+          }
         }
       ]
     }
