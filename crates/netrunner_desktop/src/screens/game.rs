@@ -575,9 +575,13 @@ fn spawn(
     let run_panel = commands
         .spawn((RunIdentity, Node { width: percent(100), flex_shrink: 0.0, flex_direction: FlexDirection::Column, ..default() }))
         .id();
-    // The one column on the right: the header, the phase, the Runner on a
-    // run, the prompt and the log. It carries the vertical padding the
+    // The one column on the right: the header, the Runner on a run, the
+    // prompt, the log and the phase. It carries the vertical padding the
     // root no longer does, so its buttons keep off the window's edges.
+    // The phase panel is last because its height moves with the phase —
+    // a label wraps, the window's line comes and goes — and under the
+    // header it moved the Runner's art and the encountered ICE with it;
+    // at the foot of the column the prompt's room is what gives.
     let rail_column = commands
         .spawn((Node {
             width: px(layout::RAIL_WIDTH),
@@ -589,10 +593,10 @@ fn spawn(
             ..default()
         },))
         .add_child(header)
-        .add_child(phase_panel)
         .add_child(run_panel)
         .add_child(rail)
         .add_child(log_row)
+        .add_child(phase_panel)
         .id();
     let body = commands
         .spawn((Node { width: percent(100), flex_grow: 1.0, min_height: px(0), flex_direction: FlexDirection::Row, column_gap: px(layout::BODY_GAP), ..default() },))
@@ -2889,7 +2893,7 @@ fn spawn_choice_card(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &Cl
 // ---- the phase bar ----
 
 /// The turn's steps, and a run's, from `board::phase`, as a panel at the
-/// head of the right column: a column per segment — its title, then its
+/// foot of the right column, under the log: a column per segment — its title, then its
 /// steps top to bottom — the one in play in the accent colour, the ones
 /// behind it dim, and the window's line under the lot.
 ///
@@ -2897,7 +2901,9 @@ fn spawn_choice_card(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &Cl
 /// under the person's hand, which kept the hand off the window's bottom
 /// edge and cost every card its height; the column beside the board had
 /// room it was not using. Turned off, it is hidden rather than despawned,
-/// and the cards do not move either way.
+/// and the cards do not move either way. **It sits at the foot, not the
+/// head:** its height changes with the phase, and at the head it moved
+/// the run panel under it — the Runner's art bounced on every step.
 fn fill_phase_bar(parent: &mut ChildSpawnerCommands, theme: &Theme, game: &Game) {
     use netrunner_client::board::phase::{self, State};
     let panel = Node {
@@ -3158,7 +3164,8 @@ fn side_panels(
     fit: Option<Res<BoardFit>>,
     mut measured: Local<f32>,
 ) {
-    // What the column holds over the run panel, as laid out: the encounter
+    // What the column's fixed panels hold beside the run panel, as laid
+    // out — the header over it, the phase panel at the foot: the encounter
     // panel's art is sized against it (`layout::encounter_art`). It is read
     // a frame late, so when it moves during an encounter — the phase panel
     // gaining its note line, the status wrapping — the panel is redrawn to

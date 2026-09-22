@@ -3725,6 +3725,32 @@ scratch `XDG_DATA_HOME` with the phase panel on).
 In every shot the only `scroll area` logged is the hidden log's. No
 engine file changed, so no sweep.
 
+### 4ak. The phase panel sits at the foot of the right column, so the run panel above it holds still — DONE (22 September 2026)
+
+**The person asked for it:** the phase panel (L) sat under the header,
+over the run panel. Its height moves with the phase — a step label wraps
+differently, the window's line comes and goes — so the Runner's art, and
+since §4aj the encountered ICE, bounced up and down on every step of a
+run. The column is now the header, the run panel, the prompt, the log
+and the phase panel. The run panel's top is the header's bottom, which
+nothing changes during a run. The prompt's room is what gives.
+
+The encounter art is still sized against the header and the phase panel
+together (`layout::encounter_art`'s `above`), because both are still
+height the column spends outside the run panel. On a window short enough
+for that sum to bind, the art's *size* can still change with the phase
+panel's note line. Its *position* no longer does.
+
+**Verified.** `cargo test --workspace` green and clippy silent. The
+existing test that turns the panel off and on still holds. The run was
+checked in two screenshots from the Runner's chair at 2560×1600
+(`NETRUNNER_AUTOPLAY=200` with `NETRUNNER_HOLD_RUN` and then
+`NETRUNNER_HOLD_ICE`). One is Zahya hacking into R&D and the other is
+Whitespace being encountered. In both, the run panel's top edge is at
+the same place, right under the header, and the phase panel is at the
+bottom right. The only `scroll area` logged is the hidden log's. No
+engine file changed, so no sweep.
+
 ## 8. Borrowed from jinteki — OPEN (19 September 2026)
 
 From [`docs/jinteki-comparison.md`](../jinteki-comparison.md) §5, in the
