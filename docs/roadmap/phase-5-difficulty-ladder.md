@@ -1987,8 +1987,15 @@ rezzed before any access fall from 0.44–0.51 to 0.01–0.04. The Corp in
 trap matchups goes **0.311 → 0.362, +0.051 on every seed** (sd 0.014,
 t 8.9). Flatlines go from 0.15 to 0.22. Repeat accesses of a trap
 already sprung rise, because a trap that stays hidden is worth running
-into; the Runner PR is what stops that. It is re-taken after rebasing
-on the flag.
+into; the Runner PR is what stops that. Re-taken on the flag
+(`fix/corp-never-reveals-a-trap`, pinned, six seeds × 216): lure traps
+rezzed before access 0.44–0.50 → 0.02–0.04, hand traps 1.00 → 0.00–0.03.
+Corp **0.307 → 0.350, +0.043** (sd 0.016, t 6.6), higher on every seed.
+Flatlines 0.15 → 0.22. Repeat accesses of a sprung Urtica go 0.13 →
+0.43 per install, and runs on a remote of known traps 0.07 → 0.20 a
+game: that is the next PR's to stop. `REVEALED_TRAP_WEIGHT` is priced in
+the Corp's own board, not in `corp_install_value`, which is also the
+Runner's reading of a face-up Corp card.
 
 Reports are under `target/coverage/trap/`. The fixes follow as their
 own PRs:
