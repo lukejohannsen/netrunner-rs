@@ -2163,3 +2163,87 @@ one move ahead" with no change of their own.
 **Still owed:** §20's re-take of `Balanced`'s and `trap`'s rungs, which
 the trap terms moved. That is overnight work, because those rungs search.
 Reports are under `target/coverage/glacier-ladder/`.
+
+## 22. The ladders re-taken after the trap terms: the Corp's `apprentice` moves to 0.25, and no handicap can space `Balanced`'s or `trap`'s top — DONE (23 September 2026)
+
+`feat/corp-ladder-retaken-after-traps`, the re-take §20 and §21 owed. Every
+cell is 384 games on each of two seeds (four for the Runner chair) against
+the fixed un-handicapped one-ply opponent on the other chair, on pinned
+builds of `main` at `6769002`, with an uncommitted `NETRUNNER_EPS` /
+`NETRUNNER_SIMS` override for the sweeps. Reports are under
+`target/coverage/{corp-ladder-retake,ladder-retune,style-matrix}/`. No stalls.
+
+**The Corp ladders on `main`** (Corp win share):
+
+| rung | `Balanced` | §14 | `trap` | §13/§14 |
+|---|---|---|---|---|
+| `novice` | 0.012 | 0.012 | 0.012 | 0.012 |
+| `apprentice` (ε 0.35) | 0.048 | 0.062 | 0.052 | 0.085 |
+| `operator` | 0.155 | 0.125 | 0.165 | 0.189 |
+| `veteran` (ε 0.20 / 0.15) | **0.156** | 0.180 | **0.160** | 0.232 |
+| `elite` | 0.223 | 0.258 | 0.212 | 0.297 |
+
+`veteran` had become `operator` in both styles, on each seed alone.
+
+**`apprentice` → 0.25.** The curve is flat and noisy between 0.35 and
+0.15 (`Balanced` 0.064 / 0.062 / 0.082 / 0.077 / 0.091, `trap` within
+0.006 at each), and 0.25 is the first value at the midpoint (0.083). On
+the shipped table: `Balanced` 0.012 / **0.081** / 0.155, `trap` 0.012 /
+**0.086** / 0.165, `rush` 0.012 / **0.051** / 0.082 — every step below
+`operator` a rise at z ≥ 2.5 and on each seed alone.
+
+**`veteran` is left where it was, because no setting spaces it.**
+`operator → elite` is only 0.068 (`Balanced`) and 0.047 (`trap`):
+
+| `veteran` | 0.12 | 0.10 | 0.08 | 0.05 | 0.03 | 0.02 | `puct@128` | `puct@256` |
+|---|---|---|---|---|---|---|---|---|
+| `Balanced` | 0.160 | 0.168 | 0.181 | 0.167 | 0.194 | 0.197 | 0.161 | 0.169 |
+| `trap` | 0.163 | 0.169 | 0.173 | 0.184 | 0.199 | 0.203 | 0.173 | 0.185 |
+
+Any handicap costs `puct@512` most of its edge, and a smaller budget at
+none is worse. The best candidate, 0.03 shared by both styles (the person's
+choice for `trap`), was confirmed on the shipped table and **failed**: it
+read 0.208 / 0.211 there against the sweep's 0.194 / 0.199, putting the top
+step at +0.014 (z 0.7) and +0.001. At this span two reads of one setting
+land it on `operator` or on `elite` by chance. The person chose to ship
+`apprentice` alone and leave `veteran` at 0.20 / 0.15. **A fifth Corp rung
+needs a stronger `elite`, not a handicap** (§4(b)).
+
+**`glacier` still holds** (§21's table, re-taken): 0.012 / 0.134 / 0.227 /
+0.333 / 0.431, within 0.008 of §21 at every rung, every step a rise on
+each seed.
+
+**The Runner ladder needs nothing.** All five styles still climb at every
+step, and each step rises on each of four seeds alone (`balanced` 0.225 /
+0.399 / 0.562 / 0.736 / 0.863; the other styles within 0.035 at every
+rung). `novice` rose from §17's 0.126 to 0.225. A 768–1,536-game scan over
+`main`'s history put the rise on two merges: #127, the turn order (+0.017),
+and **#128, a [click] ability is an action (+0.057, about 5 sd)**. Before
+#128 the random Runner could spend clicks on Smartware Distributor and
+Pennyshaver in every paid ability window, and did (1,066 and 259
+activations over 192 games, against 139 and 30 after). With that option
+gone it ran 16% more (3,695 → 4,303 runs) and stole 20% more. The heuristic
+Corp's own actions moved by under 7%. So a correct rule made the random
+baseline stronger, and no bot changed. The trap PRs (#141–#144) sit in the
+flat stretch of that scan.
+
+**The style matrix, which is where the top rung is** (one ply, both
+chairs, 1,536 games a cell). Corp win share, Corp style against Runner style:
+
+| Corp \ Runner | balanced | aggressive | cautious | builder | wary |
+|---|---|---|---|---|---|
+| `glacier` | 0.466 | 0.454 | 0.464 | 0.475 | 0.469 |
+| `trap` | 0.136 | 0.170 | 0.150 | 0.139 | 0.155 |
+| `Balanced` | 0.137 | 0.156 | 0.119 | 0.128 | 0.152 |
+| `rush` | 0.090 | 0.125 | 0.077 | 0.098 | 0.109 |
+
+Grouped by the Corp *deck's* own style, played as `glacier` against as its
+own style: `Balanced` decks 0.344 against 0.106, `trap` 0.481 against 0.164,
+`rush` 0.463 against 0.092. No deck's own style is its best one. The Runner
+styles sit within 0.07 of each other on every deck group. §19's fort terms
+look like general Corp strength rather than a style, so 11 of 16 Corp decks
+are played by a much weaker bot than they could be. **Owed next, one of:**
+the fort terms in every Corp profile, or `glacier` seated as every deck's
+top rung. Either changes these ladders again. Not yet ruled out: every
+opponent here is the one-ply Runner, and `glacier` may be exploiting its
+play against ICE rather than playing better.
