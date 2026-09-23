@@ -441,7 +441,7 @@ gain is +0.026. Deciding what balanced should be — and whether Trap stays
 a distinct archetype afterwards — is the open work.
 
 
-## 4. Owed: re-space the Corp chair, reconsider how its top rungs are built, and teach the bots to play in phases — OPEN (16 September 2026); (c) CLOSED on both chairs (22 September 2026, §19)
+## 4. Owed: re-space the Corp chair, reconsider how its top rungs are built, and teach the bots to play in phases — OPEN (16 September 2026); (c) CLOSED on both chairs (22 September 2026, §19); (b) and (a) CLOSED on the Corp chair (23 September 2026, §24)
 
 Three jobs, opened by §3 and none attempted there. They are recorded
 together because (b) may make (a) unnecessary, and (c) is the largest of
@@ -469,7 +469,8 @@ measured points rather than the Runner's shape.
 **(b) Reconsider how the top two rungs are built**, which is the deeper
 item and is the reason (a) is worth doing *after* it rather than before. *`glacier`'s answer is §21: its whole ladder is one ply at five
 handicaps, because one ply beat its search rungs once it built the fort.
-`Balanced` and `trap` are next, on numbers re-taken after §20.*
+`Balanced` and `trap` are next, on numbers re-taken after §20.* *§24 closes it: once every Corp profile built the fort (§23), one ply beat
+`puct@512` in every style, and every Corp ladder is `glacier`'s one ply at five handicaps.*
 `veteran` and `elite` are `puct@512` at `epsilon` 0.10 and 0.0 — **more
 search over the same leaf** — and §3 showed that a better leaf buys them
 nothing at all (+0.000 for `veteran`). That is Phase 2 §5 item 34's
@@ -2316,3 +2317,71 @@ the deck's style, so a non-`glacier` deck's `operator` rose from about
 and `trap` (`puct@512`) were calibrated around a leaf that did not build
 a fort. Whether those styles now want §21's shape — one ply at five
 handicaps — is the first question for that PR.
+
+## 24. Every Corp ladder is one ply at five handicaps, `glacier`'s, and no Corp style carries an exception — DONE (23 September 2026)
+
+`feat/every-corp-ladder-is-one-ply`, the re-take §23 owed. Every cell is
+384 games on each of two seeds against the fixed un-handicapped one-ply
+balanced Runner. The before binary is a pinned build of §23 (`8dace25`);
+the sweep binary has an uncommitted `NETRUNNER_EPS` override. Reports and
+readers are under `target/coverage/{ladder-s23,ladder-s24}/`. No stalls.
+
+**Once every profile built the fort, one ply beat both search rungs in
+every style**, as it had beaten `glacier`'s in §19. The shipped table on
+§23 (Corp win share):
+
+| rung | `Balanced` | `trap` | `rush` |
+|---|---|---|---|
+| `novice` | 0.012 | 0.012 | 0.010 |
+| `apprentice` (ε 0.25) | 0.132 | 0.118 | 0.133 |
+| `operator` (one ply) | **0.426** | **0.410** | **0.422** |
+| `veteran` (`puct@512`, ε 0.20 / 0.15) | 0.151 | 0.178 | `Balanced`'s |
+| `elite` (`puct@512`) | 0.324 | 0.326 | `Balanced`'s |
+
+`rush`'s cells are one seed, and its top two rungs were `Balanced`'s by
+§15. The `operator → veteran` step is −0.275 and −0.232, at z > 10.
+
+**The one-ply `epsilon` curve is `glacier`'s in every style**, so the
+handicaps §21 read off it serve all four:
+
+| ε | 0.30 | 0.22 | 0.15 | 0.11 | 0.08 | 0.05 | 0.03 |
+|---|---|---|---|---|---|---|---|
+| `Balanced` | 0.086 | 0.128 | 0.172 | 0.225 | 0.268 | 0.331 | 0.368 |
+| `trap` | 0.079 | 0.109 | 0.193 | 0.221 | 0.272 | 0.320 | 0.359 |
+| `rush` | 0.090 | 0.139 | 0.212 | 0.246 | 0.319 | 0.358 | 0.402 |
+| `glacier` (§21) | 0.079 | 0.121 | 0.189 | — | — | 0.311 | 0.365 |
+
+**So the Corp's `Level::spec` is `glacier`'s table: one ply at 1.0 / 0.22
+/ 0.11 / 0.05 / 0.0.** `LevelSpec::with_personality` now changes the style
+and nothing else. Its three Corp exceptions had nothing left to except:
+`trap`'s own `veteran` ε (§14), `rush`'s top two rungs played as `Balanced`
+(§15, so the top of a rush deck's ladder is a rush again), and `glacier`'s
+own base and handicaps (§21). **Confirmed on the shipped table:**
+
+| rung | `Balanced` | `trap` | `rush` | `glacier` |
+|---|---|---|---|---|
+| `novice` | 0.012 | 0.012 | 0.012 | 0.012 |
+| `apprentice` (ε 0.22) | 0.139 | 0.122 | 0.139 | 0.134 |
+| `operator` (ε 0.11) | 0.214 | 0.221 | 0.258 | 0.227 |
+| `veteran` (ε 0.05) | 0.324 | 0.322 | 0.327 | 0.333 |
+| `elite` (one ply) | 0.431 | 0.431 | 0.409 | 0.431 |
+
+Every step in every style is a rise on each seed alone, and pooled at z ≥
+3.0. The thinnest is `rush`'s `operator → veteran` (+0.069; +0.047 on seed
+1). The `glacier` column is §22's to the third decimal and matches the old
+build win for win, which is what says the new build pairs with the old.
+`Balanced`'s and `trap`'s `elite` read the same 0.414 / 0.448 on each seed.
+That is a coincidence of totals: the two styles disagree on 14 and 24 games'
+winners, and those disagreements cancel exactly.
+
+**The top of the Corp ladder moved from 0.258–0.297 (§14/§13) to 0.41–0.43,
+and it is now the cheap rung.** No Corp rung searches, so `elite` answers as
+fast as `operator`. `LevelKind::{Mcts, Puct}` stay: the day a search beats
+one ply again on either chair, its top rungs go back to it.
+`describe()` reads the base off the spec, so the start screen says "looks
+one move ahead" with no change of its own.
+
+**§4(b) is closed.** "Rebuild the top rungs" turned out to mean "give every
+Corp profile the fort", then let one ply be the top. What remains of §4 is
+(a), which this table already answers for the Corp: it is spaced by
+measurement, like the Runner's.

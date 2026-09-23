@@ -129,10 +129,11 @@ pub struct BenchReport {
 /// (`heuristic:rush`), and `--label` if given.
 pub fn participant_id(bot: BotSpec, simulations: usize, label: Option<&str>) -> String {
     // A rung rates under its own name, not the bot it happens to be
-    // built from: `elite` is `puct@512` on one chair and one ply on
-    // the other, and one id for both is exactly what the per-role rating
-    // book is for. Adding the budget here would give the two chairs two
-    // participants and hide that the ladder is one thing.
+    // built from: a rung's base has changed under its name before (the
+    // Corp's `elite` was `puct@512` until Phase 5 §24 made it one ply),
+    // and one id for both chairs is exactly what the per-role rating book
+    // is for. Adding the budget here would give a rung a new participant
+    // every time its base moved and hide that the ladder is one thing.
     if let Some(level) = bot.level {
         let mut id = format!("level:{}", level.name());
         // A styled rung is a different opponent from the calibrated
