@@ -3751,6 +3751,48 @@ the same place, right under the header, and the phase panel is at the
 bottom right. The only `scroll area` logged is the hidden log's. No
 engine file changed, so no sweep.
 
+### 4al. Identical rig cards are one card with a count, and split the moment they differ — DONE (22 September 2026)
+
+Item 9 of §8. Three Smartware Distributors used to take three card widths
+in the resources row, and a busy row overlapped (`layout::step`) sooner
+than it needed to. Now copies nothing tells apart are one face with
+"×3" at the start of its chip line, in both clients. The terminal's rig
+line reads `Cyberfeeder ×2`.
+
+**What "identical" means is the whole decision**
+(`netrunner_client::board::rig::stacked`). It is the same card, the same
+strength and counters, and the same once-per-turn state. Nothing is
+hosted on either copy, and neither is hosted on anything. When the
+client has an `ActionMap`, the entries on each copy must also match by
+kind and by the words the menu shows, with the same mood. The action
+labels name a card by title and never by copy (`install_label`), so the
+comparison does not split copies that really are the same. **Rejected:
+stacking by card alone.** A Cyberfeeder with its credit spent would sit
+under one with the credit unspent, and a click would mean whichever copy
+the stack happened to show. The offer check is the backstop for any
+per-copy difference the named fields miss, so a stack can never hide an
+action. This is the same rule `selection` uses to fold a second copy's
+button into the first.
+
+The first copy stands for the stack. A click opens its menu and a
+secondary click reads its sheet. The stack is outlined if any copy is
+lit. **The count is on the chip line, not on the face:** a scan that
+lands replaces a text face's children (`card_images`'s
+`despawn_children`), and a badge drawn there would have gone with them.
+Rig cards are not drop places, so dragging is untouched.
+
+**Verified.** `cargo test --workspace` green and clippy silent. The rule
+has its own tests in `rig.rs`: two fresh copies stack in first-copy
+order, and a counter, a spent once-per-turn, a hosted card, a copy hosted
+elsewhere or an action offered on one copy splits them. The existing
+three-rows test still holds. Screenshots were taken from both chairs
+against `dashing_mad` at 1920×1080. The board laid out as before, and
+the only `scroll area` logged is a hidden one of size 0. **Neither game
+happened to install two copies of anything** (the Runner was flatlined
+at turn 8; the bot Runner won at turn 16 with one Smartware Distributor,
+one Detente and one Fermenter). So the "×N" line has been seen only in
+the tests, not on a screen. No engine file changed, so no sweep.
+
 ## 8. Borrowed from jinteki — OPEN (19 September 2026)
 
 From [`docs/jinteki-comparison.md`](../jinteki-comparison.md) §5, in the
@@ -3798,7 +3840,7 @@ exist, never a new action.
    rest of this list.
 7. ~~**Space as the one "continue" key.**~~ Done in §4ai.
 8. **Ghost Trojans in the program row.**
-9. **Identical rig cards stacked** with a count.
+9. ~~**Identical rig cards stacked** with a count.~~ Done in §4al.
 10. **Run and turn timing diagrams.**
 11. **A spectator seat.**
 
