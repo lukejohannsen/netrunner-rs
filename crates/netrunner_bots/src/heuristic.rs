@@ -140,9 +140,12 @@ mod tests {
         state
     }
 
-    /// The archetypes, on the same position: a naked installed agenda, an
-    /// ICE in HQ and the clicks to do either. Rush advances it; Glacier
-    /// puts the ICE in front of it first.
+    /// The archetypes, on the same position: an agenda in a finished fort
+    /// (two pieces, the centrals iced), an ICE in HQ and the clicks to do
+    /// either. Rush advances it; Glacier puts a third piece in front of it
+    /// first. Before every Corp profile carried the fort terms (Phase 5
+    /// §23) the agenda here was naked and rush advanced it anyway, which
+    /// is the play those terms were measured to cost.
     #[test]
     fn a_rush_corp_advances_where_a_glacier_corp_installs_ice() {
         let mut registry = CardRegistry::new();
@@ -158,12 +161,25 @@ mod tests {
         state.corp = CorpState {
             resources: PlayerResources { credits: Credits(5), clicks: Clicks(3), agenda_points: AgendaPoints(0) },
             hq: vec![CardId("wall".to_string())],
-            installed: vec![InstalledCard {
+            installed: std::iter::once(InstalledCard {
                 card: CardId("agenda".to_string()),
                 install_id: InstallId(1),
                 server: ServerId::Remote(0),
                 ..Default::default()
-            }],
+            })
+            .chain(
+                [ServerId::Remote(0), ServerId::Remote(0), ServerId::Hq, ServerId::Hq, ServerId::RnD, ServerId::RnD, ServerId::Archives]
+                    .into_iter()
+                    .enumerate()
+                    .map(|(n, server)| InstalledCard {
+                        card: CardId("wall".to_string()),
+                        install_id: InstallId(10 + n as u32),
+                        server,
+                        slot: netrunner_core::rules::InstallSlot::Ice,
+                        ..Default::default()
+                    }),
+            )
+            .collect(),
             ..Default::default()
         };
         let view = build_client_view(&state, &registry, Side::Corp);
@@ -428,7 +444,10 @@ mod tests {
     }
 
     /// With an ICE-protected remote and a naked one both open, an agenda
-    /// goes behind the ICE (ROADMAP Phase 2 §5's placement item).
+    /// goes behind the ICE (ROADMAP Phase 2 §5's placement item). Two
+    /// pieces, because one is still an exposed agenda to every Corp
+    /// profile (`EXPOSED_AGENDA_WEIGHT`, Phase 5 §23), and a credit click
+    /// beats it.
     #[test]
     fn installs_an_agenda_behind_ice_rather_than_into_a_naked_remote() {
         use netrunner_core::dsl::IceType;
@@ -450,13 +469,15 @@ mod tests {
         // Remote 0 has ICE and an empty root; remote 1 is a naked empty root
         // (an ICE-less remote is represented by nothing at all, so the
         // "naked" option is the fresh remote the engine always offers).
-        state.corp.installed.push(InstalledCard {
-            card: CardId("wall".to_string()),
-            install_id: InstallId(1),
-            server: ServerId::Remote(0),
-            slot: InstallSlot::Ice,
-            ..Default::default()
-        });
+        for n in 1..=2 {
+            state.corp.installed.push(InstalledCard {
+                card: CardId("wall".to_string()),
+                install_id: InstallId(n),
+                server: ServerId::Remote(0),
+                slot: InstallSlot::Ice,
+                ..Default::default()
+            });
+        }
         let view = build_client_view(&state, &registry, Side::Corp);
         let agenda_installs: Vec<_> = view
             .legal_actions

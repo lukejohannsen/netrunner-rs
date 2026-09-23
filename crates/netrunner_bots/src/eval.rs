@@ -121,21 +121,37 @@ const AMBUSH_ADVANCEMENT_CAP: u32 = 3;
 /// Runner's grip being thin without any way to recognise the cards that
 /// would thin it.
 const AMBUSH_WEIGHT: f64 = 0.0;
-/// Each piece of ICE, up to `LURE_ICE_CAP`, on a remote whose root holds
-/// a *lure* trap the Runner has not seen — a trap that grows with its
-/// tokens (`is_lure_trap`, Urtica Cipher). **A trap is played like an
-/// agenda**: a card in a bare remote with no ICE is one the Runner reads
-/// as a trap, and the bluff is the whole card. `fort_value` counted a
-/// remote only if its root was all agendas, so for `glacier` putting a
-/// trap in the iced remote *cost* it the fort and the trap went
-/// somewhere naked; on `main` only 13% of trap installs had any ICE in
-/// front (Phase 5 §20).
+/// Each piece of ICE on a central server, up to `CENTRAL_ICE_CAP` on HQ
+/// and R&D and one on Archives. See `fort_value`, which says why the three
+/// fort terms exist; these are `glacier`'s values from Phase 5 §19, where
+/// they took that profile 0.247 → 0.462.
 ///
-/// One piece, not two: the trap has to be *reachable* to be worth
-/// anything, and a second piece is a run the Runner does not make. Below
-/// `CENTRAL_ICE_WEIGHT` (2.0) so the centrals are still iced first.
-const LURE_ICE_WEIGHT: f64 = 1.0;
-const LURE_ICE_CAP: usize = 1;
+/// **Every Corp profile carries them** (Phase 5 §23). They were
+/// `glacier`'s alone, and the one-ply style matrix put `glacier` at 0.466
+/// against 0.100–0.150 for every other Corp style, on every deck group and
+/// against every Runner style — the random Runner (0.954 against
+/// 0.76–0.85) and `puct@128` (0.596 against 0.15–0.23) too, so it was not
+/// an exploit of the one-ply Runner. Added unchanged and alone to
+/// `Balanced`, `trap` and `rush`, over the same 1,536 games a cell: 0.138
+/// → 0.421, 0.150 → 0.427, 0.100 → 0.439. Where a fort goes is how a
+/// Corp plays, not a style.
+///
+/// They replaced `LURE_ICE_WEIGHT`, one piece in front of an unseen lure
+/// trap for a Corp with no fort term (§20): `fort_value` counts such a
+/// remote as the fort, so with a fort term in every profile the lure
+/// term could not fire.
+const CENTRAL_ICE_WEIGHT: f64 = 2.0;
+const CENTRAL_ICE_CAP: usize = 2;
+/// Each piece of ICE, up to `FORT_CAP`, on the scoring remote. See
+/// `CENTRAL_ICE_WEIGHT` and `fort_value`.
+const FORT_WEIGHT: f64 = 1.5;
+const FORT_CAP: usize = 2;
+/// Subtracted, per installed agenda, for each piece short of `FORT_CAP`
+/// in front of it: an agenda in a new remote is 0.8 − 2 × 5.0 at one ply,
+/// where the credit click is 0.5, so it waits in HQ for the fort. The term
+/// that carries the other two (§19: at 0.0 they are worth −0.039). See
+/// `CENTRAL_ICE_WEIGHT`.
+const EXPOSED_AGENDA_WEIGHT: f64 = 5.0;
 /// Each hand trap (Snare!, Byte! — `is_hand_trap`) held in HQ. **A trap
 /// that cannot be advanced lures nothing from a remote**: it sits there
 /// with no tokens and no reason for the Runner to come, while in HQ and
@@ -753,10 +769,6 @@ pub struct Weights {
     /// Runner only: each known ambush the run would access, subtracted.
     /// See `KNOWN_AMBUSH_WEIGHT`.
     pub known_ambush_weight: f64,
-    /// Corp only: each piece of ICE, capped, on a remote holding an
-    /// unseen lure trap. See `LURE_ICE_WEIGHT`.
-    pub lure_ice_weight: f64,
-    pub lure_ice_cap: usize,
     /// Corp only: each hand trap held in HQ. See `HELD_TRAP_WEIGHT`.
     pub held_trap_weight: f64,
     /// Corp only: each card the Runner's grip is short of
@@ -811,19 +823,18 @@ pub struct Weights {
     /// and the profile had no way to say "install it".
     pub installed_agenda_weight: f64,
     /// Corp only: each piece of ICE on a central server, up to
-    /// `central_ice_cap` on HQ and R&D and one on Archives. Zero by
-    /// default, and set by `Personality::Glacier`. See `fort_value`.
+    /// `central_ice_cap` on HQ and R&D and one on Archives. See
+    /// `CENTRAL_ICE_WEIGHT`.
     pub central_ice_weight: f64,
     pub central_ice_cap: usize,
     /// Corp only: each piece of ICE, up to `fort_cap`, on the Corp's
     /// deepest remote whose root is empty or holds an agenda — the
     /// scoring remote, priced before there is an agenda to put in it.
-    /// Zero by default. See `fort_value`.
+    /// See `FORT_WEIGHT`.
     pub fort_weight: f64,
     pub fort_cap: usize,
     /// Corp only: subtracted, per installed agenda, for each piece of ICE
-    /// short of `fort_cap` in front of it. Zero by default. See
-    /// `fort_value`.
+    /// short of `fort_cap` in front of it. See `EXPOSED_AGENDA_WEIGHT`.
     pub exposed_agenda_weight: f64,
     /// How far the position's stage may move every weight above, from the
     /// build archetype toward the pressure one. Zero is the static
@@ -858,8 +869,6 @@ impl Default for Weights {
             active_run_weight: ACTIVE_RUN_WEIGHT,
             advanced_card_prospect_weight: ADVANCED_CARD_PROSPECT_WEIGHT,
             known_ambush_weight: KNOWN_AMBUSH_WEIGHT,
-            lure_ice_weight: LURE_ICE_WEIGHT,
-            lure_ice_cap: LURE_ICE_CAP,
             held_trap_weight: HELD_TRAP_WEIGHT,
             opponent_grip_shortfall_weight: OPPONENT_GRIP_SHORTFALL_WEIGHT,
             opponent_grip_floor: OPPONENT_GRIP_FLOOR,
@@ -882,11 +891,11 @@ impl Default for Weights {
             rd_draw_reserve: RD_DRAW_RESERVE,
             active_run_against_weight: ACTIVE_RUN_AGAINST_WEIGHT,
             installed_agenda_weight: 0.0,
-            central_ice_weight: 0.0,
-            central_ice_cap: 2,
-            fort_weight: 0.0,
-            fort_cap: 2,
-            exposed_agenda_weight: 0.0,
+            central_ice_weight: CENTRAL_ICE_WEIGHT,
+            central_ice_cap: CENTRAL_ICE_CAP,
+            fort_weight: FORT_WEIGHT,
+            fort_cap: FORT_CAP,
+            exposed_agenda_weight: EXPOSED_AGENDA_WEIGHT,
             stage_gain: STAGE_GAIN,
         }
     }
@@ -1019,8 +1028,6 @@ fn lerp(a: &Weights, b: &Weights, t: f64) -> Weights {
         active_run_weight: f(a.active_run_weight, b.active_run_weight),
         advanced_card_prospect_weight: f(a.advanced_card_prospect_weight, b.advanced_card_prospect_weight),
         known_ambush_weight: f(a.known_ambush_weight, b.known_ambush_weight),
-        lure_ice_weight: f(a.lure_ice_weight, b.lure_ice_weight),
-        lure_ice_cap: c(a.lure_ice_cap, b.lure_ice_cap),
         held_trap_weight: f(a.held_trap_weight, b.held_trap_weight),
         opponent_grip_shortfall_weight: f(a.opponent_grip_shortfall_weight, b.opponent_grip_shortfall_weight),
         opponent_grip_floor: c(a.opponent_grip_floor, b.opponent_grip_floor),
@@ -1135,9 +1142,6 @@ pub fn evaluate_state_with(state: &GameState, side: Side, registry: &CardRegistr
             }
             if w.central_ice_weight != 0.0 || w.fort_weight != 0.0 || w.exposed_agenda_weight != 0.0 {
                 score += fort_value(state, registry, w);
-            }
-            if w.lure_ice_weight != 0.0 && w.fort_weight == 0.0 {
-                score += lure_value(state, registry, w);
             }
             if w.held_trap_weight != 0.0 {
                 score += held_traps(state, registry) as f64 * w.held_trap_weight;
@@ -1639,7 +1643,8 @@ fn revealed_trap_cost(installed: &InstalledCard, registry: &CardRegistry, w: &We
 }
 
 /// A trap the Corp plays like an agenda: it can be advanced and its
-/// damage is its token count (Urtica Cipher). See `LURE_ICE_WEIGHT`.
+/// damage is its token count (Urtica Cipher). `fort_value` counts a remote
+/// holding an unseen one as the fort.
 pub fn is_lure_trap(def: &CardDefinition) -> bool {
     punishes_access_with_damage(def) && def.advancement_requirement.is_some() && damage_grows_with_advancement(def)
 }
@@ -1933,8 +1938,9 @@ fn installed_agendas(state: &GameState, registry: &CardRegistry) -> usize {
 
 /// ICE in front of each installed, unscored agenda, each server's count
 /// capped at `cap` (`Weights::agenda_protection_cap`), summed over agendas.
-/// Where the Corp's ICE stands, priced — the three terms that make a
-/// `Glacier` build the fort it is named for (ROADMAP Phase 5 §19).
+/// Where the Corp's ICE stands, priced — the three terms that made
+/// `Glacier` build the fort it is named for (ROADMAP Phase 5 §19), and
+/// every Corp profile since §23 (`CENTRAL_ICE_WEIGHT`).
 ///
 /// **Why they exist.** A report from play: the `glacier` Corp "makes ICE
 /// for days horizontally across as many servers as it can without ever
@@ -2013,30 +2019,6 @@ fn fort_value(state: &GameState, registry: &CardRegistry, w: &Weights) -> f64 {
         .sum();
 
     centrals as f64 * w.central_ice_weight + fort as f64 * w.fort_weight - exposure as f64 * w.exposed_agenda_weight
-}
-
-/// ICE in front of an unseen lure trap, capped, for a Corp with no fort
-/// term of its own — `fort_value` already counts such a remote as a fort
-/// for the Corp that has one, and counting it twice would make a trap
-/// worth more to `glacier` than the agenda it is pretending to be. See
-/// `LURE_ICE_WEIGHT`.
-fn lure_value(state: &GameState, registry: &CardRegistry, w: &Weights) -> f64 {
-    use netrunner_core::rules::{InstallSlot, ServerId};
-    let mut servers: Vec<ServerId> = Vec::new();
-    for card in &state.corp.installed {
-        if matches!(card.server, ServerId::Remote(_))
-            && card.slot == InstallSlot::Root
-            && !card.seen_by_runner
-            && registry.get(&card.card).is_some_and(is_lure_trap)
-            && !servers.contains(&card.server)
-        {
-            servers.push(card.server);
-        }
-    }
-    let ice_on = |server: ServerId| {
-        state.corp.installed.iter().filter(|card| card.server == server && card.slot == InstallSlot::Ice).count()
-    };
-    servers.iter().map(|server| ice_on(*server).min(w.lure_ice_cap)).sum::<usize>() as f64 * w.lure_ice_weight
 }
 
 /// Hand traps waiting in HQ, where they do their work. See
@@ -2553,10 +2535,11 @@ mod tests {
         // Measured against the same board without the term, so the ICE's
         // own worth (presence, rez, what the rig cannot break) cancels.
         let w = Weights::default();
-        let bare = Weights { lure_ice_weight: 0.0, ..w };
+        // The trap's remote is the fort, so it is iced like one.
+        let bare = Weights { fort_weight: 0.0, ..w };
         let lure = |pieces: usize, seen: bool| with_ice(pieces, seen, &w) - with_ice(pieces, seen, &bare);
-        assert!((lure(1, false) - w.lure_ice_weight).abs() < 1e-9, "one piece in front of the trap: {}", lure(1, false));
-        assert!((lure(2, false) - w.lure_ice_weight).abs() < 1e-9, "the cap is one piece: {}", lure(2, false));
+        assert!((lure(1, false) - w.fort_weight).abs() < 1e-9, "one piece in front of the trap: {}", lure(1, false));
+        assert!((lure(2, false) - 2.0 * w.fort_weight).abs() < 1e-9, "two, as for an agenda: {}", lure(2, false));
         assert_eq!(lure(0, false), 0.0, "and there is nothing to pay for a trap in the open");
         assert_eq!(lure(1, true), 0.0, "a sprung trap is not worth icing");
 
@@ -3588,7 +3571,7 @@ mod tests {
                     ..Default::default()
                 });
             }
-            evaluate_state(&state, Side::Corp, &registry)
+            evaluate_state_with(&state, Side::Corp, &registry, &without_fort(Weights::default()))
         };
         let per_ice = |root: &str, n| board(root, n) - board(root, n - 1) - UNREZZED_INSTALL_WEIGHT;
         assert!((per_ice("offworld_office", 1) - AGENDA_PROTECTION_WEIGHT).abs() < 1e-9);
@@ -4052,6 +4035,12 @@ mod tests {
         );
     }
 
+    /// `w` with the fort terms off, for a test of a term they would
+    /// otherwise add to — every Corp profile carries them (Phase 5 §23).
+    fn without_fort(w: Weights) -> Weights {
+        Weights { central_ice_weight: 0.0, fort_weight: 0.0, exposed_agenda_weight: 0.0, ..w }
+    }
+
     /// A board for `fort_value`: ICE on the servers named, one piece per
     /// entry, and an agenda and an asset in the roots named.
     fn fort_board(ice: &[netrunner_core::rules::ServerId], roots: &[(&str, netrunner_core::rules::ServerId)]) -> GameState {
@@ -4092,14 +4081,21 @@ mod tests {
         CardRegistry::from_cards(vec![ice("wall", 0), agenda, asset])
     }
 
-    /// The fort terms are `Glacier`'s and nobody else's: every other
-    /// profile scores a board exactly as it did before they existed.
+    /// Where a fort goes is how a Corp plays, not a style (Phase 5 §23):
+    /// every Corp profile carries the fort terms, at one set of values. A
+    /// profile that wants its own should have to beat these in the style
+    /// matrix first.
     #[test]
-    fn only_glacier_prices_where_its_ice_stands() {
-        for personality in Personality::ALL {
+    fn every_corp_profile_prices_where_its_ice_stands() {
+        let base = Weights::default();
+        for personality in Personality::ALL.into_iter().filter(|p| p.side() != Some(Side::Runner)) {
             let w = personality.weights();
-            let priced = w.central_ice_weight != 0.0 || w.fort_weight != 0.0 || w.exposed_agenda_weight != 0.0;
-            assert_eq!(priced, personality == Personality::Glacier, "{personality:?}");
+            assert_eq!(
+                (w.central_ice_weight, w.central_ice_cap, w.fort_weight, w.fort_cap, w.exposed_agenda_weight),
+                (base.central_ice_weight, base.central_ice_cap, base.fort_weight, base.fort_cap, base.exposed_agenda_weight),
+                "{personality:?}"
+            );
+            assert!(w.fort_weight > 0.0 && w.central_ice_weight > 0.0 && w.exposed_agenda_weight > 0.0);
         }
     }
 
@@ -4107,32 +4103,35 @@ mod tests {
     /// HQ beats a second piece in front of an asset; a piece on an empty
     /// remote beats one in front of an asset; the agenda goes into the
     /// two-deep remote rather than a new one; and a naked agenda is worth
-    /// less than the credit its click could have taken instead.
+    /// less than the credit its click could have taken instead. In every
+    /// Corp profile, `rush` included.
     #[test]
-    fn glacier_ices_the_centrals_builds_one_remote_and_waits_for_it() {
+    fn every_corp_ices_the_centrals_builds_one_remote_and_waits_for_it() {
         use netrunner_core::rules::ServerId::{self, Hq, Remote};
         let registry = fort_registry();
-        let w = Personality::Glacier.weights();
+        for personality in Personality::ALL.into_iter().filter(|p| p.side() != Some(Side::Runner)) {
+        let w = personality.weights();
         let score = |state: &GameState| evaluate_state_with(state, Side::Corp, &registry, &w);
         let asset = [("campaign", Remote(0))];
 
         let on_hq = fort_board(&[Remote(0), Hq], &asset);
         let on_asset = fort_board(&[Remote(0), Remote(0)], &asset);
-        assert!(score(&on_hq) > score(&on_asset), "HQ's first piece before an asset's second");
+        assert!(score(&on_hq) > score(&on_asset), "{personality:?}: HQ's first piece before an asset's second");
 
         let fort = fort_board(&[Remote(0), Remote(1)], &asset);
-        assert!(score(&fort) > score(&on_asset), "an empty remote's piece before an asset's second");
+        assert!(score(&fort) > score(&on_asset), "{personality:?}: an empty remote's piece before an asset's second");
 
         let walled = [Hq, ServerId::RnD, ServerId::Archives, Remote(1), Remote(1)];
         let behind = fort_board(&walled, &[("plan", Remote(1))]);
         let naked = fort_board(&walled, &[("plan", Remote(2))]);
-        assert!(score(&behind) > score(&naked), "the agenda goes behind the fort");
+        assert!(score(&behind) > score(&naked), "{personality:?}: the agenda goes behind the fort");
 
         let held = fort_board(&walled, &[]);
         let mut banked = held.clone();
         banked.corp.resources.credits = Credits(held.corp.resources.credits.0 + 1);
-        assert!(score(&naked) < score(&banked), "a naked agenda loses to a credit click");
-        assert!(score(&behind) > score(&banked), "and the agenda behind the fort beats it");
+        assert!(score(&naked) < score(&banked), "{personality:?}: a naked agenda loses to a credit click");
+        assert!(score(&behind) > score(&banked), "{personality:?}: and the agenda behind the fort beats it");
+        }
     }
 
     #[test]
@@ -4154,7 +4153,9 @@ mod tests {
         };
         let with_agenda = install("agenda", netrunner_core::rules::InstallSlot::Root);
         let with_ice = install("wall", netrunner_core::rules::InstallSlot::Ice);
-        let balanced = Weights::default();
+        // Without the fort terms, which price an agenda by the ICE in front
+        // of it and an ICE by the server it is on.
+        let balanced = without_fort(Weights::default());
         assert_eq!(
             evaluate_state_with(&with_agenda, Side::Corp, &registry, &balanced),
             evaluate_state_with(&with_ice, Side::Corp, &registry, &balanced),

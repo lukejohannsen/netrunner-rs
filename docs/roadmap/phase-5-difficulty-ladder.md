@@ -2247,3 +2247,72 @@ the fort terms in every Corp profile, or `glacier` seated as every deck's
 top rung. Either changes these ladders again. Not yet ruled out: every
 opponent here is the one-ply Runner, and `glacier` may be exploiting its
 play against ICE rather than playing better.
+
+## 23. Where the fort goes is how a Corp plays, not a style: every Corp profile builds one — DONE (23 September 2026)
+
+`feat/fort-in-every-corp-profile`, the top-rung work §22 left owed
+(§4(b)). §19's three fort terms (`central_ice_weight` 2.0 to two pieces
+on HQ and R&D and one on Archives, `fort_weight` 1.5 to two pieces on the
+scoring remote, `exposed_agenda_weight` 5.0 a piece short of it) were
+`glacier`'s alone, and §22's style matrix put `glacier` at 0.466 against
+0.100–0.150 for every other Corp style.
+
+**First, the confound §22 named: it is not an exploit of the one-ply
+Runner.** The same Corps against two Runners that play ICE differently,
+768 games a cell (seeds 1–2, `puct@128`), pinned §22 binary:
+
+| Corp | random Runner | `puct@128` Runner |
+|---|---|---|
+| `glacier` | **0.954** | **0.596** |
+| `rush` | 0.853 | 0.154 |
+| `trap` | 0.814 | 0.229 |
+| `Balanced` | 0.759 | 0.220 |
+
+**Then the terms, unchanged and alone, in `Balanced`, `trap` and
+`rush`** — the §22 matrix re-played game for game (one ply, both chairs,
+seeds 1–4 × 384, 1,536 games a cell, sd about 0.011). Corp win share,
+mean over the five Runner styles:
+
+| Corp style | §22 | with the fort terms |
+|---|---|---|
+| `Balanced` | 0.138 | **0.421** |
+| `trap` | 0.150 | **0.427** |
+| `rush` | 0.100 | **0.439** |
+| `glacier` (untouched — the control) | 0.466 | 0.466 |
+
+Every one of the fifteen changed cells rose, against every Runner style;
+the `glacier` row matches §22 to the third decimal, which is what says
+the games pair. By the Corp deck's own style, played in that style:
+`Balanced` decks 0.106 → 0.349, `trap` decks 0.164 → 0.439, `rush` decks
+0.092 → 0.409. `glacier` still leads on the `trap` (0.481) and `rush`
+(0.463) decks, by 0.04–0.05 rather than 0.3.
+
+**Rush takes all three**, the person's choice. The exposure term says an
+agenda waits in HQ for a two-deep remote, which is the opposite of "the
+agenda goes on the table first" — and the style that did put it there
+first was the weakest Corp in the workspace. What still makes it `rush`
+is what it does once the fort stands: it advances where `glacier` adds a
+third piece (`a_rush_corp_advances_where_a_glacier_corp_installs_ice`,
+moved from a naked agenda to a finished fort).
+
+**How it is written.** The terms are the balanced constants
+(`eval::CENTRAL_ICE_WEIGHT`, `FORT_WEIGHT`, `EXPOSED_AGENDA_WEIGHT`), so
+`Balanced` is still `Weights::default()` and every profile inherits them;
+`every_corp_profile_prices_where_its_ice_stands` holds every Corp profile
+to the one set of values. That reaches two callers the matrix did not
+measure: the gym's shaped reward for a Corp agent and `diag
+leaf-sensitivity`, both on the default weights. **§20's lure term is
+removed**: it priced ICE in front of an unseen lure trap "for a Corp with
+no fort term", `fort_value` already counts such a remote as the fort, and
+with a fort term everywhere it could not fire (it was already off in all
+four measured profiles).
+
+Reports and readers are under `target/coverage/style-confound/` and
+`target/coverage/fort-all/`, pinned binary `target/pinned/fort-all-A`.
+
+**Owed next: every Corp ladder is re-taken.** `operator` is one ply in
+the deck's style, so a non-`glacier` deck's `operator` rose from about
+0.1 to about 0.4 here, and §22's `veteran`/`elite` rungs for `Balanced`
+and `trap` (`puct@512`) were calibrated around a leaf that did not build
+a fort. Whether those styles now want §21's shape — one ply at five
+handicaps — is the first question for that PR.

@@ -236,17 +236,19 @@ impl Personality {
                 // against 0.499 here) an agenda still goes down behind
                 // one piece in about half its installs. From about 4.0 it
                 // waits for the second piece every time.
+                //
+                // **The fort terms are no longer this profile's** (Phase 5
+                // §23): the style matrix found them general Corp strength
+                // rather than a style, and they moved to the balanced
+                // constants every Corp profile inherits
+                // (`eval::CENTRAL_ICE_WEIGHT`). What stays here is how
+                // hard this profile protects an agenda once it is in.
                 agenda_protection_weight: 3.0,
                 agenda_protection_cap: 3,
                 rezzed_ice_weight: 1.8,
                 unrezzed_install_weight: 0.8,
                 advancement_weight: 1.2,
                 own_credit_weight: 0.5,
-                central_ice_weight: 2.0,
-                central_ice_cap: 2,
-                fort_weight: 1.5,
-                fort_cap: 2,
-                exposed_agenda_weight: 5.0,
                 ..base
             },
             Personality::Trap => Weights {
