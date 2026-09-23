@@ -453,8 +453,8 @@ fn drive_local(
         match step {
             // Nothing to ask: the pass is taken for the person, and the
             // log line is what they see of it.
-            SessionStep::Awaiting { side, view } if side == human_side && lone_pass(&view).is_some() => {
-                let pass = lone_pass(&view).expect("matched above");
+            SessionStep::Awaiting { side, view } if side == human_side && lone_pass(&view, session.registry()).is_some() => {
+                let pass = lone_pass(&view, session.registry()).expect("matched above");
                 session.submit(pass).map_err(|error| format!("the lone pass was rejected: {error}"))?;
                 log_last(session, ui, human_side);
             }

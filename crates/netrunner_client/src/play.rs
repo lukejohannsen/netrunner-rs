@@ -339,8 +339,9 @@ pub fn personality_for(flag: Option<Personality>, deck: &DeckFile) -> Result<Per
 }
 
 /// The pass a client takes for the person, when passing priority is the
-/// only thing `view` lists: `Some` exactly when `legal_actions` is one
-/// `PassPriority`.
+/// only thing `view` lists worth stopping for: `Some` exactly when
+/// `legal_actions` is one `PassPriority` and, beside it, nothing but
+/// rezzes of traps (`board::rez::is_idle_rez`).
 ///
 /// **A client policy, not a rule.** Passing over and over is the whole of
 /// a run from the other chair, and a click that has no alternative asks
@@ -349,12 +350,16 @@ pub fn personality_for(flag: Option<Personality>, deck: &DeckFile) -> Result<Per
 /// asking. Nothing wider than the lone pass is taken — a lone `EndTurn`
 /// or a lone access decision is a moment the person may want to look at,
 /// and a pass beside anything else (a rez, an ability) is a real choice.
+/// **A trap's rez is the one exception:** Urtica Cipher does its work
+/// face down and rezzing it only shows the Runner what it is, so it is no
+/// choice at all — and an installed trap used to stop the Corp in every
+/// window of the Runner's turn to offer it. It stays on the card's menu.
 /// A lesson does not use it: a step that teaches passing must be pressed.
-pub fn lone_pass(view: &ClientView) -> Option<PlayerAction> {
-    match view.legal_actions.as_slice() {
-        [pass @ PlayerAction::PassPriority { .. }] => Some(pass.clone()),
-        _ => None,
-    }
+pub fn lone_pass(view: &ClientView, registry: &CardRegistry) -> Option<PlayerAction> {
+    let mut passes = view.legal_actions.iter().filter(|action| matches!(action, PlayerAction::PassPriority { .. }));
+    let pass = passes.next()?;
+    let rest_idle = view.legal_actions.iter().filter(|action| !matches!(action, PlayerAction::PassPriority { .. })).all(|action| crate::board::rez::is_idle_rez(action, view, registry));
+    (passes.next().is_none() && rest_idle).then(|| pass.clone())
 }
 
 /// A stall, in the words the terminal reports it with.
@@ -694,11 +699,12 @@ mod tests {
     #[test]
     fn a_lone_pass_is_taken_only_when_it_is_the_only_action() {
         let mut handle = MatchHandle::start_local(spec(Side::Runner, 3, None)).unwrap();
+        let registry = crate::decks::sample_deck_registry();
         let mut lone = 0;
         loop {
             match handle.wait().expect("the thread is alive until it says Ended") {
                 MatchMessage::Awaiting { view } => {
-                    match lone_pass(&view) {
+                    match lone_pass(&view, &registry) {
                         Some(pass) => {
                             assert_eq!(view.legal_actions, vec![pass.clone()]);
                             lone += 1;

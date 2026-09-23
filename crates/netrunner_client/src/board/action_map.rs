@@ -195,6 +195,9 @@ pub struct ActionMap {
     /// What the Continue button says: the step it takes the game to, or
     /// its greyed word when the engine offers none of its actions.
     continue_label: String,
+    /// The entries that rez a card which gains nothing by it — a trap
+    /// (`super::rez`). Still entries, on the card's menu; never a glow.
+    idle: BTreeSet<usize>,
 }
 
 impl ActionMap {
@@ -202,11 +205,16 @@ impl ActionMap {
         // Continue's entry says the step it takes the game to
         // (`onward::offered_label`), so the play helper, the terminal's list
         // and the button all say the same thing.
-        let entries: Vec<ActionEntry> = view
+        let mut entries: Vec<ActionEntry> = view
             .legal_actions
             .iter()
             .map(|action| ActionEntry { action: action.clone(), label: onward::offered_label(action, registry, Some(view)), targets: targets_of(action, view) })
             .collect();
+        // A trap's rez stays on its menu, saying why nobody takes it.
+        let idle: BTreeSet<usize> = entries.iter().enumerate().filter(|(_, e)| super::rez::is_idle_rez(&e.action, view, registry)).map(|(i, _)| i).collect();
+        for &i in &idle {
+            entries[i].label.push_str(" (it works face down; rezzing only reveals it)");
+        }
         debug_assert!(entries.iter().filter(|e| Control::Continue.matches(&e.action)).count() <= 1, "Continue stands for one action at a time");
         let continue_label = match entries.iter().find(|e| Control::Continue.matches(&e.action)) {
             Some(entry) => entry.label.clone(),
@@ -214,7 +222,7 @@ impl ActionMap {
         };
         let selection = Selection::of(view, registry);
         let collapsed = selection.as_ref().map(|selection| selection.hidden()).unwrap_or_default();
-        Self { entries, selection, collapsed, passing: affordance::in_a_passing_moment(view), continue_label }
+        Self { entries, selection, collapsed, passing: affordance::in_a_passing_moment(view), continue_label, idle }
     }
 
     /// Adds to each entry's label what its action goes on to ask
@@ -294,6 +302,7 @@ impl ActionMap {
     pub fn affordance(&self, target: &Target) -> Option<Affordance> {
         self.for_target(target)
             .into_iter()
+            .filter(|index| !self.idle.contains(index))
             .map(|index| affordance::affordance_of(&self.entries[index].action, self.passing))
             .reduce(Affordance::stronger)
     }
@@ -302,6 +311,9 @@ impl ActionMap {
     /// rather than targets — the decision buttons under a prompt, the
     /// control bar, the play helper's rows.
     pub fn affordance_of_entry(&self, index: usize) -> Option<Affordance> {
+        if self.idle.contains(&index) {
+            return None;
+        }
         self.entries.get(index).map(|entry| affordance::affordance_of(&entry.action, self.passing))
     }
 

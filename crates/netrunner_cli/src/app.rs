@@ -140,7 +140,7 @@ impl App {
                     // goes straight back (`netrunner_client::play::
                     // lone_pass`). A spectator's view lists nothing.
                     if !self.connection_lost
-                        && let Some(pass) = netrunner_client::play::lone_pass(&view)
+                        && let Some(pass) = netrunner_client::play::lone_pass(&view, &self.registry)
                     {
                         let _ = self.tx.send(ClientMessage::SubmitAction(pass));
                     }

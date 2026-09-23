@@ -132,7 +132,8 @@ fn describe_target(target: &CardTarget, registry: &CardRegistry) -> String {
     }
 }
 
-fn damage_word(kind: &DamageType) -> &'static str {
+/// The rules' word for a kind of damage: core, not the engine's `Brain`.
+pub(crate) fn damage_word(kind: &DamageType) -> &'static str {
     match kind {
         DamageType::Net => "net",
         DamageType::Meat => "meat",

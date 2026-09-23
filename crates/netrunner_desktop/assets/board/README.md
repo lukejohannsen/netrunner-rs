@@ -164,7 +164,7 @@ alone.
 | `hud.agendas` | the Agendas readout | same | same | NSG's agenda |
 | `hud.bad-publicity` | the Bad pub. readout | same | same | NSG's bad publicity |
 | `hud.tags` | the Tags readout | same | same | NSG's tag |
-| `hud.damage` | the Damage readout | same | same | NSG's core damage |
+| `hud.damage` | the Core damage readout | same | same | NSG's core damage |
 
 A glyph keeps its own shape (it is fitted, not cropped). Draw it square
 on a transparent background.

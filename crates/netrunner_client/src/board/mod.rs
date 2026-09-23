@@ -22,6 +22,7 @@ pub mod hud;
 pub mod onward;
 pub mod phase;
 pub mod preview;
+pub mod rez;
 pub mod rig;
 pub mod trail;
 
