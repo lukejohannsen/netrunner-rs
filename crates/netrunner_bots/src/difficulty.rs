@@ -246,7 +246,7 @@ impl Level {
             // and the two are identical in play: `HandicapAgent` never
             // consults the inner agent at 1.0, so no heuristic ever runs.
             // Writing it this way makes the bottom three rungs one base
-            // family with strictly falling handicap — 1.0, 0.35, 0.0 as
+            // family with strictly falling handicap — 1.0, 0.25, 0.0 as
             // the Corp, 1.0, 0.75, 0.50 as the Runner — which is what
             // `each_rung_is_the_one_below_it_with_less_handicap_or_a_
             // better_base` can actually check.
@@ -254,7 +254,18 @@ impl Level {
             // One ply is the cheap base, and the bottom of the ladder has
             // to stay cheap: handicapping `puct@512` here would think for
             // as long as the top rung while playing badly.
-            (Level::Apprentice, Side::Corp) => (LevelKind::Heuristic, 0, 1, 0.35),
+            //
+            // **The Corp's `apprentice` is 0.25 since Phase 5 §22** (23
+            // September 2026): re-taken after the trap terms (§20) and #128,
+            // 0.35 scored 0.064 against `operator`'s 0.155, below the
+            // midpoint (0.083). The curve is flat and noisy here — 0.064 /
+            // 0.062 / 0.082 / 0.077 / 0.091 at 0.35 / 0.30 / 0.25 / 0.20 /
+            // 0.15, `trap` within 0.006 of it at each — so 0.25 is the
+            // first value that reaches the midpoint, not a fitted one.
+            // Confirmed on the shipped table: `Balanced` 0.081, `trap`
+            // 0.086, `rush` 0.051, every step below `operator` a rise on
+            // each seed alone.
+            (Level::Apprentice, Side::Corp) => (LevelKind::Heuristic, 0, 1, 0.25),
             (Level::Operator, Side::Corp) => (LevelKind::Heuristic, 0, 1, 0.0),
             // The Runner's whole ladder is this one base, so its five
             // handicaps carry the whole span and are spaced evenly; see
@@ -282,6 +293,16 @@ impl Level {
             // is the round number on the midpoint (0.192): steps of +0.055
             // and +0.078, each a rise on both seeds alone. By 0.25 the
             // lower step is flat and at 0.30 it inverts.
+            //
+            // **§22 left it at 0.20 on purpose, and it no longer spaces
+            // anything.** Re-taken after the trap terms, 0.20 scores 0.156
+            // against `operator` 0.155 and `elite` 0.223. No handicap
+            // splits that 0.068: the curve is 0.160 / 0.168 / 0.181 /
+            // 0.167 / 0.194 / 0.197 at 0.12 / 0.10 / 0.08 / 0.05 / 0.03 /
+            // 0.02, a smaller budget is worse (`puct@128` 0.161, `@256`
+            // 0.169), and 0.03 on the shipped table read 0.208 — level
+            // with `elite`. A fifth rung needs a stronger `elite`, not a
+            // handicap (§22 records the style matrix that points at one).
             (Level::Veteran, Side::Corp) => (LevelKind::Puct, 512, 1, 0.20),
             (Level::Elite, Side::Corp) => (LevelKind::Puct, 512, 1, 0.0),
             // **The Runner ladder is five handicaps of one ply** since
@@ -315,7 +336,7 @@ impl Level {
         // chair (w ≈ 0.833 − 0.70ε fits all five points to 0.034), so
         // interpolating the measured curve for four even steps of 0.177
         // gives 0.73 / 0.46 / 0.23 — these round numbers, within 0.03.
-        // The Corp's 1.0 / 0.35 / 0.0 are left alone: that chair changes
+        // The Corp's 1.0 / 0.35 / 0.0 (0.25 since §22) were left alone: that chair changes
         // *base* between rungs 3 and 4, and measured at 0.012 / 0.078 /
         // 0.167 / 0.221 / 0.266 it is already even to within 0.025 of its
         // own step.
