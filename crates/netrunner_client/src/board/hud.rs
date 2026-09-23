@@ -83,7 +83,7 @@ pub fn readouts(view: &ClientView, side: Side) -> Vec<Readout> {
                 points(Side::Runner, runner.agenda_points),
                 quiet("Grip", runner.grip_count.to_string()),
                 threat("Tags", runner.tags),
-                threat("Damage", u32::try_from(runner.brain_damage).unwrap_or(u32::MAX)),
+                threat("Core damage", u32::try_from(runner.brain_damage).unwrap_or(u32::MAX)),
             ]
         }
     }
@@ -182,7 +182,7 @@ mod tests {
         let runner: Vec<_> = readouts(&view, Side::Runner).iter().map(|r| r.label).collect();
         assert_eq!(corp[..3], runner[..3]);
         assert_eq!(corp, ["Credits", "Clicks", "Agendas", "Bad pub."]);
-        assert_eq!(runner, ["Credits", "Clicks", "Agendas", "Grip", "Tags", "Damage"]);
+        assert_eq!(runner, ["Credits", "Clicks", "Agendas", "Grip", "Tags", "Core damage"]);
         assert_eq!(readouts(&view, Side::Corp)[2].opens, Some(Pile::Agendas(Side::Corp)));
         assert_eq!(readouts(&view, Side::Runner)[2].opens, Some(Pile::Agendas(Side::Runner)));
         assert!(readouts(&view, Side::Runner).iter().filter(|r| r.opens.is_some()).count() == 1, "only the Agendas readout opens anything");

@@ -685,8 +685,8 @@ impl Game {
             // message a beat inside a run, so the board is seen to move.
             // The map is still built, so a pass the engine rejects comes
             // back as `Rejected` onto a live bar and cannot loop.
-            MatchMessage::Awaiting { view } if lone_pass(&view).is_some() => {
-                let pass = lone_pass(&view).expect("matched above");
+            MatchMessage::Awaiting { view } if lone_pass(&view, &self.registry).is_some() => {
+                let pass = lone_pass(&view, &self.registry).expect("matched above");
                 self.actions = ActionMap::build(&view, &self.registry);
                 self.prompt = Prompt::of(&view, &self.registry);
                 self.view = Some(*view);

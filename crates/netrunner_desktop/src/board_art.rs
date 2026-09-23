@@ -303,7 +303,7 @@ pub fn hud_key(label: &str) -> Option<&'static str> {
         "Agendas" => "hud.agendas",
         "Bad pub." => "hud.bad-publicity",
         "Tags" => "hud.tags",
-        "Damage" => "hud.damage",
+        "Core damage" => "hud.damage",
         _ => return None,
     })
 }

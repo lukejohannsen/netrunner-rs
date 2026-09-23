@@ -194,7 +194,7 @@ mod tests {
     }
 
     /// Real games, both viewers: a target glows exactly when the engine
-    /// offers something on it, the side without priority never glows at
+    /// offers something on it other than a trap's rez, the side without priority never glows at
     /// all, and both moods are reached in ordinary play.
     ///
     /// The counts at the end are the point of the seeds. A glow that
@@ -225,9 +225,12 @@ mod tests {
                             for target in targets_on(&seen) {
                                 let entries = map.for_target(&target);
                                 let mood = map.affordance(&target);
+                                // A trap's rez is an entry and no glow
+                                // (`board::rez`).
+                                let moves = entries.iter().filter(|i| !super::super::rez::is_idle_rez(&map.entries[**i].action, &seen, &registry)).count();
                                 assert_eq!(
                                     mood.is_some(),
-                                    !entries.is_empty(),
+                                    moves > 0,
                                     "seed {seed} {viewer:?}: {target:?} has {} entries and mood {mood:?}",
                                     entries.len()
                                 );

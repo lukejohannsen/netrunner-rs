@@ -40,10 +40,8 @@ pub fn push_log_line(log: &mut Vec<String>, entry: &PublicHistoryEntry, registry
     // What the action line cannot say — an install or a swap a card's own
     // text performed, an advance's resulting token count — comes off the
     // entry's masked events. Indented under the action they resolved from.
-    for event in &entry.events {
-        if let Some(line) = narrate_event(event, &entry.action, registry, view) {
-            log.push(format!("           {line}"));
-        }
+    for line in narrate_events(&entry.events, &entry.action, registry, view) {
+        log.push(format!("           {line}"));
     }
     if log.len() > MAX_LOG_LINES {
         let excess = log.len() - MAX_LOG_LINES;
@@ -251,6 +249,54 @@ fn action_implies(event: &GameEvent, action: &PublicAction) -> bool {
 /// Exhaustive with no catch-all, matching `mask_event_for_player`'s own
 /// discipline: a new event has to be classified as narrated or not rather
 /// than silently going unmentioned.
+/// [`narrate_event`] over an entry's events, with the one fold a line
+/// needs its neighbours for: damage names the cards it discarded.
+///
+/// `rules::damage::apply_damage` records a `DamageTaken` followed by one
+/// `CardDiscarded` per point, and on its own the damage line said only
+/// "the Runner took 2 net damage" — a Corp reading the log after an
+/// Urtica Cipher went off saw no damage at all, since net damage leaves
+/// no count anywhere and the discards narrated nothing (the report of 22
+/// September 2026). The discards are public: they go face up to the
+/// heap, and the Corp's copy of the log carries them unmasked. Any other
+/// `CardDiscarded` — the discard phase, a Corp discard — stays silent as
+/// before, because its action line already says it or the viewer may
+/// not know the card.
+pub fn narrate_events(events: &[GameEvent], action: &PublicAction, registry: &CardRegistry, view: Option<&ClientView>) -> Vec<String> {
+    let mut lines = Vec::new();
+    let mut rest = events.iter().peekable();
+    while let Some(event) = rest.next() {
+        if let GameEvent::DamageTaken { damage_type, amount, .. } = event {
+            let mut discarded = Vec::new();
+            while discarded.len() < *amount {
+                match rest.peek() {
+                    Some(GameEvent::CardDiscarded { side: Side::Runner, card }) => {
+                        discarded.push(card_title(card, registry));
+                        rest.next();
+                    }
+                    _ => break,
+                }
+            }
+            let took = format!("the Runner took {amount} {} damage", crate::prose::damage_word(damage_type));
+            lines.push(if discarded.is_empty() { took } else { format!("{took}: {} discarded", and_list(&discarded)) });
+            continue;
+        }
+        if let Some(line) = narrate_event(event, action, registry, view) {
+            lines.push(line);
+        }
+    }
+    lines
+}
+
+/// "A", "A and B", "A, B and C".
+fn and_list(items: &[String]) -> String {
+    match items {
+        [] => String::new(),
+        [only] => only.clone(),
+        [init @ .., last] => format!("{} and {last}", init.join(", ")),
+    }
+}
+
 pub fn narrate_event(
     event: &GameEvent,
     action: &PublicAction,
@@ -313,7 +359,7 @@ pub fn narrate_event(
 
         // ---- harm ----
         GameEvent::DamageTaken { damage_type, amount, .. } => {
-            format!("the Runner took {amount} {} damage", format!("{damage_type:?}").to_lowercase())
+            format!("the Runner took {amount} {} damage", crate::prose::damage_word(damage_type))
         }
         // A prevention used to leave no line at all: the log showed damage
         // dealt short of what the card says, and nothing about why.
@@ -819,6 +865,31 @@ mod tests {
         ];
         let view = netrunner_core::view::build_client_view(&state, &registry, Side::Runner);
         (registry, view)
+    }
+
+    /// Damage names what it discarded, in one line, and core damage says
+    /// "core": a Corp reading the log after an Urtica Cipher went off saw
+    /// "the Runner took 2 net damage" and nothing else, and took it for no
+    /// damage at all (the report of 22 September 2026). A discard with no
+    /// damage before it — the discard phase — is still not narrated.
+    #[test]
+    fn damage_names_the_cards_it_discarded() {
+        use netrunner_core::dsl::DamageType;
+        let registry = crate::decks::sample_deck_registry();
+        let card = |id: &str| CardId(id.to_string());
+        let action = PublicAction::Visible(PlayerAction::EndTurn);
+        let events = [
+            GameEvent::DamageTaken { damage_type: DamageType::Net, amount: 2, responsible: Some(Side::Corp) },
+            GameEvent::CardDiscarded { side: Side::Runner, card: card("docklands_pass") },
+            GameEvent::CardDiscarded { side: Side::Runner, card: card("carmen") },
+        ];
+        assert_eq!(narrate_events(&events, &action, &registry, None), ["the Runner took 2 net damage: Docklands Pass and Carmen discarded"]);
+
+        let core = [GameEvent::DamageTaken { damage_type: DamageType::Brain, amount: 1, responsible: Some(Side::Corp) }, GameEvent::CardDiscarded { side: Side::Runner, card: card("sure_gamble") }];
+        assert_eq!(narrate_events(&core, &action, &registry, None), ["the Runner took 1 core damage: Sure Gamble discarded"]);
+
+        let discard_phase = [GameEvent::CardDiscarded { side: Side::Runner, card: card("sure_gamble") }];
+        assert!(narrate_events(&discard_phase, &action, &registry, None).is_empty());
     }
 
     /// The line the whole change exists to produce: the Runner is told

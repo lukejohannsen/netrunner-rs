@@ -3793,6 +3793,47 @@ at turn 8; the bot Runner won at turn 16 with one Smartware Distributor,
 one Detente and one Fermenter). So the "×N" line has been seen only in
 the tests, not on a screen. No engine file changed, so no sweep.
 
+### 4am. Damage names what it discarded, the HUD says "Core damage", and a trap's rez is not a move — DONE (22 September 2026)
+
+**A report from play** (the person was the Corp, against the apprentice
+Aggressive Runner). The Runner accessed a face-down Urtica Cipher and,
+as far as the person could tell, took no damage, and the game kept
+asking whether to rez the Urtica Cipher. The engine had done everything
+right: the record holds `DamageTaken { Net, 2 }` and the discards of
+Docklands Pass and Carmen. All three faults were in how the client said
+it.
+
+- **The log names the cards** (`actions::narrate_events`). The damage
+  line folds in the `CardDiscarded` events `rules::damage::apply_damage`
+  records after it, which is always one per point: "the Runner took 2
+  net damage: Docklands Pass and Carmen discarded". Before, it said only
+  "the Runner took 2 net damage", and a discard narrated nothing. Net
+  damage leaves no count anywhere, so the names are the only record of
+  it. Every other `CardDiscarded` stays silent as before. Brain damage
+  now reads "core" in the log, as the card text already did
+  (`prose::damage_word`).
+- **The HUD's readout is "Core damage"** (CR 1.9.5e). Labelled
+  "Damage", it read 0 after net damage and looked like a count of all
+  damage. The glyph key stays `hud.damage`.
+- **A trap's rez stays legal and stops being presented as a move**
+  (`board::rez`). The person decided the engine keeps it legal, since
+  CR 5.7.1b lets the Corp rez non-ice cards in every paid ability window,
+  and that the client never nudges them toward it: a trap works face down
+  and rezzing it only shows the Runner what it is. `gains_nothing` reads
+  that off the card, as a non-ice card with no ability, standing effect,
+  subroutine or credits and no trigger but its own access. In the pool
+  that is exactly Byte!, Snare! and Urtica Cipher, and a test holds it
+  there. Such a rez earns no glow, carries "(it works face down; rezzing
+  only reveals it)" on its menu entry, and is no reason for
+  `play::lone_pass` to stop. Before, an installed trap held the Corp in
+  every window of the Runner's turn: the glow invariant test's seed 0
+  already had one. **Rejected**, both raised in the discussion: refusing
+  the rez in the engine (the person chose to keep it legal), and a rezzed
+  card that stays masked (a rezzed card is public in every reader of the
+  view, and a state they all had to learn would leak through the first
+  one that did not). Nothing in the pool rewards the Corp for rezzing any
+  card; the module doc lists what was checked.
+
 ## 8. Borrowed from jinteki — OPEN (19 September 2026)
 
 From [`docs/jinteki-comparison.md`](../jinteki-comparison.md) §5, in the
