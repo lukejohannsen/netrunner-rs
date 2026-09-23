@@ -236,6 +236,10 @@ pub struct Pointer(pub (f32, f32));
 #[derive(Component, Debug, Clone, PartialEq)]
 pub struct DropPlace(pub Target);
 
+/// The count under a stack of identical rig cards, for a test to read.
+#[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RigCopies(pub usize);
+
 /// A card's place in the person's own hand, for a drag to read.
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
 pub struct HandSlot(pub usize);
@@ -2211,13 +2215,21 @@ fn spawn_server_root(column: &mut ChildSpawnerCommands, theme: &Theme, core: &Cl
 /// row reserved at `layout::rig_row_height` whether or not anything is in
 /// it, so the first install moves nothing. A row's label sits at its left
 /// rather than over it: the rig has width to spare and no height.
+///
+/// **A row is a row of stacks** (`netrunner_client::board::rig::stacked`):
+/// copies nothing tells apart are one face, its first copy's, with the
+/// count first on its chip line, so three Docklands Passes take one card's
+/// width and the row overlaps later. The count is on the chip line and not
+/// on the face because a scan replaces a text face's children when it
+/// lands (`card_images`), and a badge drawn there went with them.
 #[allow(clippy::too_many_arguments)]
 fn spawn_rig(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore, images: &CardImages, art: Option<&BoardArt>, game: &Game, view: &ClientView, lit: &Lit, fit: &BoardFit, depth: Depth) {
     let size = fit.size_of(Side::Runner);
     let row_height = layout::rig_row_height(fit.area_face(Side::Runner));
     let available = fit.board_width() - layout::RIG_LABEL_WIDTH;
     parent.spawn((Node { flex_direction: FlexDirection::Column, flex_shrink: 0.0, row_gap: px(layout::RIG_ROW_GAP), height: px(layout::rig_height(fit.area_face(Side::Runner))), overflow: Overflow::clip(), ..default() },)).with_children(|area| {
-        for (wanted, cards) in netrunner_client::board::rig::rows(view, &core.registry, fit.chair) {
+        for (wanted, stacks) in netrunner_client::board::rig::stacked(view, &core.registry, fit.chair, Some(&game.actions)) {
+            let cards: Vec<_> = stacks.iter().map(|stack| stack.first()).collect();
             let step = layout::step(cards.len(), size.width(), layout::CARD_GAP, available);
             let pull = (step - (size.width() + layout::CARD_GAP)).min(0.0);
             area.spawn((Node { flex_direction: FlexDirection::Row, flex_shrink: 0.0, height: px(row_height), ..default() },)).with_children(|row| {
@@ -2234,7 +2246,7 @@ fn spawn_rig(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore
                                 }
                                 cards_row.commands().entity(entity).insert(Contact(depth));
                                 glow(&mut cards_row.commands(), entity, theme, game.affordance_for(&Target::Install(card.install_id)));
-                                if lit.installs.contains(&card.install_id) {
+                                if stacks[i].install_ids().any(|id| lit.installs.contains(&id)) {
                                     cards_row.commands().entity(entity).insert(outline(theme));
                                 }
                             }
@@ -2253,6 +2265,7 @@ fn spawn_rig(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore
                                 slot.entry::<Node>().and_modify(move |mut node| node.margin.left = px(pull));
                             }
                             let mut chips = Vec::new();
+                            let copies = stacks[i].count();
                             if def.card_type == CardType::Program && def.strength.is_some() {
                                 chips.push(format!("str {}", card.current_strength));
                             }
@@ -2260,6 +2273,9 @@ fn spawn_rig(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore
                                 chips.push(format!("{} hosted", card.hosted_cards.len()));
                             }
                             slot.with_children(|slot| {
+                                if copies > 1 {
+                                    slot.spawn((RigCopies(copies), Text::new(format!("×{copies}")), theme.font(size::SMALL), TextColor(theme.text)));
+                                }
                                 if !chips.is_empty() {
                                     slot.spawn(widgets::dim(theme, chips.join(" · ")));
                                 }

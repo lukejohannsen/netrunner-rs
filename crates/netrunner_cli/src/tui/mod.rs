@@ -1239,9 +1239,11 @@ fn draw_board(frame: &mut Frame, area: Rect, app: &impl RenderableView) {
     // The rig in its three rows, programs the line nearest the Corp's
     // block from either chair (`board::rig::rows_top_down`) — the same
     // rows the desktop draws. Every row is listed, so the first install
-    // of a kind moves no line.
+    // of a kind moves no line. Copies nothing tells apart are one entry
+    // with a count, as on the desktop (`board::rig::stacked`).
     let chair = if matches!(viewer, Viewer::Player(Side::Corp)) { Side::Corp } else { Side::Runner };
-    for (row, cards) in netrunner_client::board::rig::rows(view, app.registry(), chair) {
+    for (row, stacks) in netrunner_client::board::rig::stacked(view, app.registry(), chair, actions.as_ref()) {
+        let cards: Vec<_> = stacks.iter().map(|stack| stack.first()).collect();
         let mut spans = vec![Span::raw(format!("{:<10} ", format!("{}:", row.label())))];
         if cards.is_empty() {
             spans.push(Span::raw("—"));
@@ -1253,7 +1255,11 @@ fn draw_board(frame: &mut Frame, area: Rect, app: &impl RenderableView) {
             let counters = counter_label(Some(&card.card), card.counters, app.registry());
             let strength = app.registry().get(&card.card).and_then(|def| def.strength).map(|_| format!("str {}", card.current_strength));
             let facts = [strength.unwrap_or_default(), counters.trim_start_matches(", ").to_string()].into_iter().filter(|f| !f.is_empty()).collect::<Vec<_>>().join(", ");
-            let label = if facts.is_empty() { card_title(&card.card, app.registry()) } else { format!("{} ({facts})", card_title(&card.card, app.registry())) };
+            let title = match stacks[i].count() {
+                1 => card_title(&card.card, app.registry()),
+                n => format!("{} ×{n}", card_title(&card.card, app.registry())),
+            };
+            let label = if facts.is_empty() { title } else { format!("{title} ({facts})") };
             let mood = actions.as_ref().and_then(|map| map.affordance(&Target::Install(card.install_id)));
             spans.push(Span::styled(label, mood_style(mood)));
         }
