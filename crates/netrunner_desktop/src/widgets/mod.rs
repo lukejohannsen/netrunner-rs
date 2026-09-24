@@ -10,6 +10,7 @@
 
 pub mod card_face;
 pub mod dropdown;
+pub mod preview;
 pub mod text_field;
 
 use bevy::prelude::*;
@@ -33,7 +34,8 @@ impl Plugin for WidgetsPlugin {
             // every screen's `controls`, and a dozen board tests stopped
             // seeing their presses. Dressing has no ordering requirement
             // of its own — it paints what interaction never touched.
-            .add_systems(Update, dress);
+            .add_systems(Update, dress)
+            .add_plugins(preview::plugin);
     }
 }
 

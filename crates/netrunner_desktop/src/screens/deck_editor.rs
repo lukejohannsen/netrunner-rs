@@ -40,7 +40,9 @@ use crate::nav::{screen_root, Captures, InputCaptured, Navigate};
 use crate::screens::decks::{spawn_standing, write_clipboard};
 use crate::screens::AppScreen;
 use crate::theme::{size, Theme};
+use crate::models::layout::{self, DECK_FACE};
 use crate::widgets::card_face::{spawn_face, FaceSize};
+use crate::widgets::preview::Previews;
 use crate::widgets::dropdown::{spawn_dropdown, Choice, DropdownChanged};
 use crate::widgets::text_field::{TextField, TextFieldEvent};
 use crate::widgets::{self, ButtonKind, Pressed};
@@ -51,7 +53,7 @@ impl Plugin for DeckEditorPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(OnEnter(AppScreen::DeckEditor), spawn)
             .add_systems(Update, escape_closes_the_popup.in_set(Captures).run_if(in_state(AppScreen::DeckEditor)))
-            .add_systems(Update, (controls, reading, text_fields, rebuild, refresh).chain().run_if(in_state(AppScreen::DeckEditor)));
+            .add_systems(Update, (controls, reading, text_fields, rebuild, fit_pool, refresh).chain().run_if(in_state(AppScreen::DeckEditor)));
     }
 }
 
@@ -178,9 +180,14 @@ fn save(core: &ClientCore, editor: &mut Editor) {
     }
 }
 
-fn spawn(mut commands: Commands, theme: Res<Theme>, core: Res<ClientCore>, images: Res<CardImages>, wanted: Option<Res<EditDeck>>) {
+fn spawn(mut commands: Commands, theme: Res<Theme>, core: Res<ClientCore>, images: Res<CardImages>, wanted: Option<Res<EditDeck>>, dev: Option<Res<crate::dev::Dev>>) {
     let id = wanted.map(|wanted| wanted.0.clone()).or_else(|| std::env::var("NETRUNNER_DECK").ok().filter(|id| !id.trim().is_empty())).unwrap_or_else(|| netrunner_client::start::DEFAULT_RUNNER_DECK.to_string());
-    build(&mut commands, &theme, &core, &images, &id);
+    let read_only = build(&mut commands, &theme, &core, &images, &id);
+    // `NETRUNNER_IDENTITIES`: the picker Change identity opens.
+    if dev.is_some_and(|dev| dev.identities) && !read_only {
+        commands.insert_resource(Popup::Identity);
+        commands.insert_resource(Dirty { popup: true, ..default() });
+    }
 }
 
 /// Set when the screen must be built again on another deck — a
@@ -200,7 +207,8 @@ fn rebuild(mut commands: Commands, mut wanted: ResMut<Rebuild>, roots: Query<(En
     build(&mut commands, &theme, &core, &images, &id);
 }
 
-fn build(commands: &mut Commands, theme: &Theme, core: &ClientCore, images: &CardImages, id: &str) {
+/// Builds the screen on deck `id`; true if the deck opened read-only.
+fn build(commands: &mut Commands, theme: &Theme, core: &ClientCore, images: &CardImages, id: &str) -> bool {
     let book = book(core);
     let (mut editor, notice) = match deck_store::load(&decks_dir(core), id) {
         Ok(stored) => {
@@ -223,6 +231,7 @@ fn build(commands: &mut Commands, theme: &Theme, core: &ClientCore, images: &Car
     commands.insert_resource(Dirty::default());
     commands.insert_resource(SearchRequested::default());
     commands.init_resource::<Rebuild>();
+    commands.insert_resource(PoolFace::default());
 
     let header = commands.spawn((Header, Node { width: percent(100), flex_direction: FlexDirection::Row, column_gap: px(18), align_items: AlignItems::FlexStart, ..default() })).id();
     commands.entity(header).with_children(|parent| spawn_header(parent, theme, core, &editor, images));
@@ -232,8 +241,8 @@ fn build(commands: &mut Commands, theme: &Theme, core: &ClientCore, images: &Car
         // The notes, then the deck itself as its cards, each with its
         // count: a published list is read as a spread of cards.
         commands.entity(left).with_children(|parent| spawn_notes(parent, theme, &editor));
-        let grid = commands.spawn((PoolGrid, Node { width: percent(100), flex_direction: FlexDirection::Row, flex_wrap: FlexWrap::Wrap, column_gap: px(8), row_gap: px(8), padding: UiRect::all(px(4)), ..default() })).id();
-        commands.entity(grid).with_children(|parent| spawn_pool(parent, theme, core, &editor, images));
+        let grid = commands.spawn((PoolGrid, Node { width: percent(100), flex_direction: FlexDirection::Row, flex_wrap: FlexWrap::Wrap, column_gap: px(layout::DECK_GAP), row_gap: px(layout::DECK_GAP), padding: UiRect::all(px(GRID_PADDING)), ..default() })).id();
+        commands.entity(grid).with_children(|parent| spawn_pool(parent, theme, core, &editor, images, PoolFace::default()));
         let scroll = scroll_column(commands, grid);
         let spread = commands
             .spawn(Node { width: percent(100), flex_grow: 1.0, min_height: px(0), flex_direction: FlexDirection::Row, column_gap: px(6), ..default() })
@@ -255,8 +264,8 @@ fn build(commands: &mut Commands, theme: &Theme, core: &ClientCore, images: &Car
             .add_child(filters)
             .add_child(search)
             .id();
-        let grid = commands.spawn((PoolGrid, Node { width: percent(100), flex_direction: FlexDirection::Row, flex_wrap: FlexWrap::Wrap, column_gap: px(8), row_gap: px(8), padding: UiRect::all(px(4)), ..default() })).id();
-        commands.entity(grid).with_children(|parent| spawn_pool(parent, theme, core, &editor, images));
+        let grid = commands.spawn((PoolGrid, Node { width: percent(100), flex_direction: FlexDirection::Row, flex_wrap: FlexWrap::Wrap, column_gap: px(layout::DECK_GAP), row_gap: px(layout::DECK_GAP), padding: UiRect::all(px(GRID_PADDING)), ..default() })).id();
+        commands.entity(grid).with_children(|parent| spawn_pool(parent, theme, core, &editor, images, PoolFace::default()));
         let scroll = scroll_column(commands, grid);
         let pool = commands
             .spawn(Node { width: percent(100), flex_grow: 1.0, min_height: px(0), flex_direction: FlexDirection::Row, column_gap: px(6), ..default() })
@@ -297,7 +306,7 @@ fn build(commands: &mut Commands, theme: &Theme, core: &ClientCore, images: &Car
     let body = commands.spawn(Node { width: percent(100), flex_grow: 1.0, min_height: px(0), flex_direction: FlexDirection::Row, column_gap: px(14), ..default() }).add_child(left).add_child(right).id();
 
     let column = commands
-        .spawn(Node { width: percent(100), max_width: px(1700), flex_grow: 1.0, min_height: px(0), flex_direction: FlexDirection::Column, row_gap: px(10), ..default() })
+        .spawn(Node { width: percent(100), max_width: px(2400), flex_grow: 1.0, min_height: px(0), flex_direction: FlexDirection::Column, row_gap: px(10), ..default() })
         .add_child(header)
         .with_children(|parent| {
             parent.spawn(widgets::notice(theme, editor.note.clone().unwrap_or_default(), NoticeLine));
@@ -306,7 +315,9 @@ fn build(commands: &mut Commands, theme: &Theme, core: &ClientCore, images: &Car
         .id();
     let popup = commands.spawn((PopupLayer, Node { position_type: PositionType::Absolute, width: percent(100), height: percent(100), display: Display::None, ..default() })).id();
     commands.spawn(screen_root(AppScreen::DeckEditor, theme)).add_child(column).add_child(popup);
+    let read_only = editor.read_only;
     commands.insert_resource(Model(editor));
+    read_only
 }
 
 /// A column that scrolls `content`.
@@ -326,7 +337,7 @@ fn spawn_header(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientC
     match identity {
         Some(card) => {
             let image = card.numeric_id.and_then(|code| images.face(code, FaceSize::Board(HEADER_FACE)));
-            spawn_face(parent, theme, &Face::of(card), FaceSize::Board(HEADER_FACE), image, (Button, DeckRowButton::Read(card.id.clone())));
+            spawn_face(parent, theme, &Face::of(card), FaceSize::Board(HEADER_FACE), image, (Button, DeckRowButton::Read(card.id.clone()), Previews(card.id.clone())));
         }
         None => {
             parent.spawn((Node { width: px(HEADER_FACE as f32), height: px(HEADER_FACE as f32 * 1.4), flex_shrink: 0.0, ..default() }, BackgroundColor(theme.panel)));
@@ -478,7 +489,42 @@ fn toggle(parent: &mut ChildSpawnerCommands, theme: &Theme, label: String, on: b
     }
 }
 
-fn spawn_pool(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore, editor: &Editor, images: &CardImages) {
+/// A card in the identity picker (`layout::DECK_FACE`); its text is
+/// read in the hover preview. The panel is sized to it, so it does not
+/// grow to fill a row as the pool's cards do.
+const IDENTITY_FACE: FaceSize = FaceSize::Board(DECK_FACE as u16);
+
+/// The width of a card in the pool or a spread: `layout::deck_face` of
+/// the grid's laid-out width, set by `fit_pool`, which respawns the grid
+/// when it changes. The screen is built at `DECK_FACE` and filled on the
+/// frame after, when the grid has a width to read.
+#[derive(Resource, Debug, Clone, Copy, PartialEq)]
+struct PoolFace(f32);
+
+impl Default for PoolFace {
+    fn default() -> Self {
+        PoolFace(DECK_FACE)
+    }
+}
+
+fn fit_pool(grid: Query<&ComputedNode, With<PoolGrid>>, mut face: ResMut<PoolFace>, mut dirty: ResMut<Dirty>) {
+    let Ok(node) = grid.single() else { return };
+    let width = node.size().x * node.inverse_scale_factor() - 2.0 * GRID_PADDING;
+    if width <= 0.0 {
+        return;
+    }
+    let fitted = layout::deck_face(width);
+    if fitted != face.0 {
+        face.0 = fitted;
+        dirty.pool = true;
+    }
+}
+
+/// The pool grid's padding, on every side.
+const GRID_PADDING: f32 = 4.0;
+
+fn spawn_pool(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore, editor: &Editor, images: &CardImages, face: PoolFace) {
+    let size = FaceSize::Board(face.0 as u16);
     let book = book(core);
     // A read-only deck's spread is its own cards; an editable one's is
     // the pool it is built from.
@@ -493,8 +539,8 @@ fn spawn_pool(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCor
     }
     for card in cards {
         parent.spawn(Node { flex_direction: FlexDirection::Column, ..default() }).with_children(|cell| {
-            let image = card.numeric_id.and_then(|code| images.face(code, FaceSize::Thumb));
-            spawn_face(cell, theme, &Face::of(card), FaceSize::Thumb, image, (Button, PoolCard(card.id.clone())));
+            let image = card.numeric_id.and_then(|code| images.face(code, size));
+            spawn_face(cell, theme, &Face::of(card), size, image, (Button, PoolCard(card.id.clone()), Previews(card.id.clone())));
             let copies = editor.draft.copies(&card.id);
             cell.spawn((
                 PoolBadge(card.id.clone()),
@@ -546,6 +592,7 @@ fn spawn_deck_list(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &Clie
                 row.spawn((
                     Button,
                     DeckRowButton::Read(id.clone()),
+                    Previews(id.clone()),
                     Node { flex_grow: 1.0, flex_basis: px(0), min_width: px(0), padding: UiRect::axes(px(4), px(4)), ..default() },
                     children![(Text::new(format!("{count}× {}{influence}{note}", book.title(&id))), theme.font(size::SMALL), TextColor(colour))],
                 ));
@@ -858,9 +905,10 @@ fn refresh(
     core: Res<ClientCore>,
     images: Res<CardImages>,
     editor: Res<Model>,
-    popup: Res<Popup>,
+    (popup, windows, face): (Res<Popup>, Query<&Window, With<bevy::window::PrimaryWindow>>, Res<PoolFace>),
 ) {
     let Dirty { deck, pool, popup: repopup, notice: renotice } = std::mem::take(&mut *dirty);
+    let window = windows.single().map_or((1920.0, 1080.0), |window| (window.width(), window.height()));
     let editor = &editor.0;
     if deck {
         if let Ok(header) = header.single() {
@@ -890,7 +938,7 @@ fn refresh(
             commands.entity(filters).despawn_children().with_children(|parent| spawn_filters(parent, &theme, &core, editor));
         }
         if let Ok(grid) = grid.single() {
-            commands.entity(grid).despawn_children().with_children(|parent| spawn_pool(parent, &theme, &core, editor, &images));
+            commands.entity(grid).despawn_children().with_children(|parent| spawn_pool(parent, &theme, &core, editor, &images, *face));
         }
     }
     if deck || pool || renotice || repopup {
@@ -903,12 +951,16 @@ fn refresh(
         node.display = if *popup == Popup::None { Display::None } else { Display::Flex };
         commands.entity(layer).despawn_children();
         if *popup != Popup::None {
-            commands.entity(layer).with_children(|parent| spawn_popup(parent, &theme, &core, editor, &popup, &images));
+            commands.entity(layer).with_children(|parent| spawn_popup(parent, &theme, &core, editor, &popup, &images, window));
         }
     }
 }
 
-fn spawn_popup(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore, editor: &Editor, popup: &Popup, images: &CardImages) {
+/// The identity picker's panel: six [`IDENTITY_FACE`] cards across on a
+/// window that has the room, fewer where the panel's `max_width` gives.
+pub(crate) const IDENTITY_PANEL: f32 = 6.0 * DECK_FACE + 5.0 * 10.0 + 2.0 * 28.0 + 2.0 + 16.0;
+
+fn spawn_popup(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore, editor: &Editor, popup: &Popup, images: &CardImages, window: (f32, f32)) {
     let book = book(core);
     // A card opened to read sits at the right, as on the board (§4as);
     // a question sits in the middle.
@@ -935,9 +987,13 @@ fn spawn_popup(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCo
             Popup::None => {}
             Popup::Read(id) => {
                 if let Some(card) = book.get(id) {
-                    let image = card.numeric_id.and_then(|code| images.face(code, FaceSize::Large));
+                    // As large as the hover preview, so a card opened to
+                    // keep is no smaller than the one glanced at.
+                    let (_, _, width) = layout::preview_box(window, layout::Anchor::default());
+                    let size = FaceSize::Board(width.round() as u16);
+                    let image = card.numeric_id.and_then(|code| images.face(code, size));
                     wash.spawn((Interaction::None, FocusPolicy::Block, Node { flex_direction: FlexDirection::Column, row_gap: px(8), ..default() })).with_children(|column| {
-                        spawn_face(column, theme, &Face::of(card), FaceSize::Large, image, ());
+                        spawn_face(column, theme, &Face::of(card), size, image, ());
                         if !card.is_playable {
                             column.spawn((Text::new("The engine does not play this card yet."), theme.font(size::SMALL), TextColor(theme.danger)));
                         }
@@ -960,7 +1016,7 @@ fn spawn_popup(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCo
                 });
             }
             Popup::Identity => {
-                let mut panel = wash.spawn((Interaction::None, FocusPolicy::Block, widgets::roomy_panel(theme, px(1180))));
+                let mut panel = wash.spawn((Interaction::None, FocusPolicy::Block, widgets::roomy_panel(theme, px(IDENTITY_PANEL))));
                 panel.entry::<Node>().and_modify(|mut node| node.max_height = percent(90));
                 panel.with_children(|panel| {
                     panel.spawn(widgets::heading(theme, "Change the identity"));
@@ -970,8 +1026,8 @@ fn spawn_popup(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCo
                         .with_children(|scroll| {
                             scroll.spawn(Node { flex_direction: FlexDirection::Row, flex_wrap: FlexWrap::Wrap, column_gap: px(10), row_gap: px(10), padding: UiRect::all(px(4)), ..default() }).with_children(|grid| {
                                 for identity in deck_builder::identities(&core.registry, editor.deck().side, editor.format) {
-                                    let image = identity.numeric_id.and_then(|code| images.face(code, FaceSize::Thumb));
-                                    let face = spawn_face(grid, theme, &Face::of(identity), FaceSize::Thumb, image, (Button, PopupButton::Identity(identity.id.clone())));
+                                    let image = identity.numeric_id.and_then(|code| images.face(code, IDENTITY_FACE));
+                                    let face = spawn_face(grid, theme, &Face::of(identity), IDENTITY_FACE, image, (Button, PopupButton::Identity(identity.id.clone()), Previews(identity.id.clone())));
                                     if identity.id == editor.deck().identity {
                                         grid.commands().entity(face).insert(Outline { width: px(3), offset: px(1), color: theme.accent });
                                     }

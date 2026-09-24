@@ -56,6 +56,13 @@
 //! - `NETRUNNER_LIFT=1` — on the board, once the autoplay is done, the
 //!   first card in the person's hand is lifted out whole as a hover lifts
 //!   it, so the lifted card over the board can be looked at.
+//! - `NETRUNNER_PREVIEW=<n>` — the `n`th card (1-based, in spawn order)
+//!   that shows a large preview on a hover (`widgets::preview`) is held
+//!   previewed, as if the pointer rested on it, so the preview can be
+//!   looked at on the deck editor or an identity picker.
+//! - `NETRUNNER_IDENTITIES=1` — with `NETRUNNER_SCREEN=deckeditor` on an
+//!   editable deck, Change identity is opened once, so the identity
+//!   picker can be looked at.
 //! - `NETRUNNER_SHEET=1` — on the board, once the person's decision has
 //!   arrived (after any autoplay), the sheet a secondary click opens on
 //!   the first installed Corp card on the board is opened, so an install's state can be looked at.
@@ -222,6 +229,10 @@ pub struct Dev {
     pub menu: Option<MenuPick>,
     /// Lift the first hand card out of the hand as a hover would.
     pub lift: bool,
+    /// Hold the `n`th previewable card previewed (1-based).
+    pub preview: Option<usize>,
+    /// Open the deck editor's identity picker, once.
+    pub identities: bool,
     /// Hold a run at its first encounter for the screenshot.
     pub hold_run: bool,
     /// Stop the autoplay at the first encounter the person is asked
@@ -291,6 +302,8 @@ impl Dev {
             drag: std::env::var_os("NETRUNNER_DRAG").is_some_and(|v| !v.is_empty()),
             menu: std::env::var("NETRUNNER_MENU").ok().and_then(|pick| MenuPick::from_name(&pick)),
             lift: std::env::var_os("NETRUNNER_LIFT").is_some_and(|v| !v.is_empty()),
+            preview: std::env::var("NETRUNNER_PREVIEW").ok().and_then(|n| n.trim().parse().ok()).filter(|n| *n > 0),
+            identities: std::env::var_os("NETRUNNER_IDENTITIES").is_some_and(|v| !v.is_empty()),
             hold_run: std::env::var_os("NETRUNNER_HOLD_RUN").is_some_and(|v| !v.is_empty()),
             hold_ice: std::env::var_os("NETRUNNER_HOLD_ICE").is_some_and(|v| !v.is_empty()),
             hold_selection: std::env::var_os("NETRUNNER_HOLD_SELECTION").is_some_and(|v| !v.is_empty()),
