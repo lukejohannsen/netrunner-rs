@@ -130,6 +130,43 @@ pub struct DesktopPrefs {
     /// the fallback that always works and not the look the client ships.
     /// Card scans keep their own switch, [`DesktopPrefs::download_images`].
     pub basic_graphics: bool,
+    /// Which printing's backs the cards wear.
+    pub card_backs: CardBacks,
+}
+
+/// The two printings' card backs, both shipped with the desktop client
+/// (`assets/cards/backs/<folder>/`), as jinteki.net offers them.
+///
+/// A fixed pair rather than a folder list like [`Table`]: these are the
+/// game's own backs, not a theme a player installs, and a player's own
+/// back is still a drop-in `cards/back-<side>.png` that beats either.
+/// Null Signal Games' is the default because it is the game in print.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum CardBacks {
+    #[default]
+    Nsg,
+    Ffg,
+}
+
+impl CardBacks {
+    pub const ALL: [CardBacks; 2] = [CardBacks::Nsg, CardBacks::Ffg];
+
+    /// The folder under `cards/backs/`.
+    pub fn folder(self) -> &'static str {
+        match self {
+            CardBacks::Nsg => "nsg",
+            CardBacks::Ffg => "ffg",
+        }
+    }
+
+    /// Whose printing, as a setting shows it.
+    pub fn label(self) -> &'static str {
+        match self {
+            CardBacks::Nsg => "Null Signal Games",
+            CardBacks::Ffg => "Fantasy Flight Games",
+        }
+    }
 }
 
 /// Which art dresses the board's tiles, headers, buttons and chips.
@@ -241,7 +278,7 @@ impl Table {
 
 impl Default for DesktopPrefs {
     fn default() -> Self {
-        Self { animation_speed: 1.0, sfx_volume: 0.8, music_volume: 0.5, download_images: false, window_size: None, play_helper: false, play_history: false, phase_bar: true, table: Table::Random, skin: Skin::Auto, basic_graphics: false }
+        Self { animation_speed: 1.0, sfx_volume: 0.8, music_volume: 0.5, download_images: false, window_size: None, play_helper: false, play_history: false, phase_bar: true, table: Table::Random, skin: Skin::Auto, basic_graphics: false, card_backs: CardBacks::Nsg }
     }
 }
 

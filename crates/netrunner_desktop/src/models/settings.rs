@@ -1,7 +1,7 @@
 //! The settings screen, as state: which row is which, what each control
 //! does to the shared `Settings`, and what a commit of the name means.
 
-use netrunner_client::settings::{format_name, Settings, Skin, Table, FORMATS};
+use netrunner_client::settings::{format_name, CardBacks, Settings, Skin, Table, FORMATS};
 
 /// The rows, in the order the screen shows them.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -17,17 +17,17 @@ pub enum Row {
     PhaseBar,
     Table,
     Skin,
+    CardBacks,
     BasicGraphics,
 }
 
 impl Row {
-    pub const ALL: [Row; 12] = [Row::Player, Row::Format, Row::Table, Row::Skin, Row::BasicGraphics, Row::AnimationSpeed, Row::SfxVolume, Row::MusicVolume, Row::DownloadImages, Row::PlayHelper, Row::PlayHistory, Row::PhaseBar];
+    pub const ALL: [Row; 13] = [Row::Player, Row::Format, Row::Table, Row::Skin, Row::CardBacks, Row::BasicGraphics, Row::AnimationSpeed, Row::SfxVolume, Row::MusicVolume, Row::DownloadImages, Row::PlayHelper, Row::PlayHistory, Row::PhaseBar];
 
     /// The rows the board's gear menu shows: what changes how a game is
     /// played and looks, and nothing that would want a text field. A
-    /// future board property (a layout, a card-back choice) goes here
-    /// as well as in `ALL`.
-    pub const GAME: [Row; 8] = [Row::Table, Row::Skin, Row::PhaseBar, Row::PlayHelper, Row::PlayHistory, Row::AnimationSpeed, Row::SfxVolume, Row::MusicVolume];
+    /// future board property (a layout) goes here as well as in `ALL`.
+    pub const GAME: [Row; 9] = [Row::Table, Row::Skin, Row::CardBacks, Row::PhaseBar, Row::PlayHelper, Row::PlayHistory, Row::AnimationSpeed, Row::SfxVolume, Row::MusicVolume];
 
     pub fn label(self) -> &'static str {
         match self {
@@ -42,6 +42,7 @@ impl Row {
             Row::PhaseBar => "Phase bar",
             Row::Table => "Table",
             Row::Skin => "Board art",
+            Row::CardBacks => "Card backs",
             Row::BasicGraphics => "Basic graphics (slow machines)",
         }
     }
@@ -49,7 +50,7 @@ impl Row {
     /// Whether the row is adjusted with a pair of `<` `>` buttons (as
     /// opposed to edited or toggled).
     pub fn is_stepped(self) -> bool {
-        matches!(self, Row::Format | Row::AnimationSpeed | Row::SfxVolume | Row::MusicVolume | Row::Table | Row::Skin)
+        matches!(self, Row::Format | Row::AnimationSpeed | Row::SfxVolume | Row::MusicVolume | Row::Table | Row::Skin | Row::CardBacks)
     }
 }
 
@@ -145,6 +146,14 @@ pub fn apply(settings: &mut Settings, intent: Intent, tables: &[String], skins: 
             settings.desktop.skin = next;
             changed
         }
+        Intent::Step(Row::CardBacks, delta) => {
+            let all = CardBacks::ALL;
+            let index = all.iter().position(|backs| *backs == settings.desktop.card_backs).unwrap_or(0) as i32;
+            let next = all[(index + delta).rem_euclid(all.len() as i32) as usize];
+            let changed = next != settings.desktop.card_backs;
+            settings.desktop.card_backs = next;
+            changed
+        }
         Intent::Step(Row::SfxVolume, delta) => step_volume(&mut settings.desktop.sfx_volume, delta),
         Intent::Step(Row::MusicVolume, delta) => step_volume(&mut settings.desktop.music_volume, delta),
         Intent::Toggle(Row::DownloadImages) => {
@@ -220,6 +229,7 @@ pub fn value(settings: &Settings, row: Row, login_name: &str) -> String {
         Row::PlayHistory => on_off(prefs.play_history),
         Row::PhaseBar => on_off(prefs.phase_bar),
         Row::BasicGraphics => on_off(prefs.basic_graphics),
+        Row::CardBacks => prefs.card_backs.label().to_string(),
         // The folder's own name. A table carrying a `table.json` with a
         // prettier one is relabelled by the screen that draws the row,
         // which is the only layer that may read the disk.
@@ -370,6 +380,20 @@ mod tests {
         let mut alone = Settings::default();
         assert!(apply(&mut alone, Intent::Step(Row::Skin, 1), &[], &none));
         assert_eq!(alone.desktop.skin, Skin::Drawn);
+    }
+
+    /// Null Signal Games' backs until the player steps to Fantasy
+    /// Flight's, and a step either way from one is the other.
+    #[test]
+    fn the_card_backs_are_the_two_printings() {
+        let mut settings = Settings::default();
+        assert_eq!(value(&settings, Row::CardBacks, "luke"), "Null Signal Games");
+        assert!(apply(&mut settings, Intent::Step(Row::CardBacks, 1), &[], &[]));
+        assert_eq!(settings.desktop.card_backs, CardBacks::Ffg);
+        assert_eq!(value(&settings, Row::CardBacks, "luke"), "Fantasy Flight Games");
+        assert!(apply(&mut settings, Intent::Step(Row::CardBacks, 1), &[], &[]));
+        assert_eq!(settings.desktop.card_backs, CardBacks::Nsg, "wraps");
+        assert!(Row::GAME.contains(&Row::CardBacks), "a board property, so the gear menu has it too");
     }
 
     /// The board's two aids are off until turned on, and the gear menu's

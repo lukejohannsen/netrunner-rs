@@ -5,7 +5,8 @@
 //! them. The pattern is a rim, an inner line, a grid of circuit traces
 //! with pads at the crossings, and a diamond in the middle — enough to
 //! read as a card back at thumbnail size and not to pretend to be the
-//! official art. A PNG under `assets/cards/` replaces it
+//! official art. The shipped printings under `assets/cards/backs/`, and a
+//! player's drop-in, replace it
 //! (`assets/cards/README.md`).
 
 use bevy::asset::RenderAssetUsages;
