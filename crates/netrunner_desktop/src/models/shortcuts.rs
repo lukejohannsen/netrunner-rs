@@ -72,6 +72,10 @@ pub enum Shortcut {
     TakeBack,
     /// Open or close the list of keys.
     Help,
+    /// Open or close the timing of the turn and the run
+    /// (`netrunner_client::board::timing`), as a press on the phase panel
+    /// does.
+    Timing,
 }
 
 /// The shortcut `key` means for a person in `side`'s chair, with Shift
@@ -95,6 +99,7 @@ pub fn shortcut(key: Key, shift: bool, side: Side) -> Option<Shortcut> {
         Key::Char('m') => Shortcut::MenuHovered,
         Key::Char('h') => Shortcut::PlayHelper,
         Key::Char('l') => Shortcut::PhaseBar,
+        Key::Char('t') => Shortcut::Timing,
         Key::Char('u') => Shortcut::TakeBack,
         Key::Char(digit @ '1'..='9') => Shortcut::Decision(digit as usize - '1' as usize),
         Key::Char(_) => return None,
@@ -117,6 +122,7 @@ pub const LIST: &[(&str, &str)] = &[
     ("I", "Read the card under the pointer"),
     ("Tab", "Your score area (Shift: your opponent's)"),
     ("L", "Phase bar on or off"),
+    ("T", "Timing of the turn and the run (or click the phase bar)"),
     ("H", "Play helper on or off"),
     ("? or F1", "This list"),
     ("Esc", "Close what is open, else leave the game"),

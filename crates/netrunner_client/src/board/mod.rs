@@ -24,6 +24,7 @@ pub mod phase;
 pub mod preview;
 pub mod rez;
 pub mod rig;
+pub mod timing;
 pub mod trail;
 
 pub use action_map::{table_servers, ActionEntry, ActionMap, Control, Pile, Prompt, Target};

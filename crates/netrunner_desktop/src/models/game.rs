@@ -131,6 +131,8 @@ pub enum Intent {
     Shortcut(Shortcut),
     /// The gear: open or close the game options.
     ToggleOptions,
+    /// The phase panel, or T: open or close the timing chart.
+    ToggleTiming,
     /// Escape: closes the options, the list of keys, the menu, the
     /// inspector, the sheet or the quit prompt, in that order, else asks
     /// to quit.
@@ -305,6 +307,9 @@ pub struct Game {
     pub options_open: bool,
     /// The list of keys (`shortcuts::LIST`) is up.
     pub help_open: bool,
+    /// The timing of the turn and the run is up
+    /// (`netrunner_client::board::timing`).
+    pub timing_open: bool,
     /// Whether there is a move to take back, as the match thread last
     /// said (`MatchMessage::Back`). The kind it names is not kept: a game
     /// against a bot is casual, so every take-back costs the same nothing
@@ -365,6 +370,7 @@ impl Game {
             dragging: None,
             options_open: false,
             help_open: false,
+            timing_open: false,
             back: false,
             rejection: None,
             breaks: Vec::new(),
@@ -414,13 +420,13 @@ impl Game {
     /// match — so a click that reaches a card through it opens nothing,
     /// and a key does nothing.
     pub fn covered(&self) -> bool {
-        self.finished() || self.confirm_quit || self.options_open || self.help_open || self.sheet.is_some() || self.inspecting.is_some()
+        self.finished() || self.confirm_quit || self.options_open || self.help_open || self.timing_open || self.sheet.is_some() || self.inspecting.is_some()
     }
 
     /// Whether a click that misses the panel closes what is open.
     ///
     /// Only a *reading* surface: the card, the install, the zone, the
-    /// score area. Those lost their Close button because the name was
+    /// score area, the timing chart. Those lost their Close button because the name was
     /// already on the card and the button was a third door to a rule
     /// Escape already had, so missing the panel is the second door.
     ///
@@ -434,7 +440,7 @@ impl Game {
     /// closed them would be the only way out and would mean something
     /// different from every other panel's.
     pub fn dismissed_by_a_click_away(&self) -> bool {
-        !self.finished() && !self.confirm_quit && !self.options_open && !self.help_open && (self.sheet.is_some() || self.inspecting.is_some())
+        !self.finished() && !self.confirm_quit && !self.options_open && !self.help_open && (self.sheet.is_some() || self.inspecting.is_some() || self.timing_open)
     }
 
     pub fn take_transitions(&mut self) -> Vec<Transition> {
@@ -616,12 +622,28 @@ impl Game {
                 self.menu = None;
                 Outcome::Redraw
             }
+            Intent::ToggleTiming => {
+                if self.timing_open {
+                    self.timing_open = false;
+                    return Outcome::Redraw;
+                }
+                // Not over another panel: the chart is read over the board.
+                if self.covered() {
+                    return Outcome::Nothing;
+                }
+                self.menu = None;
+                self.timing_open = true;
+                Outcome::Redraw
+            }
             Intent::Back => {
                 if self.options_open {
                     self.options_open = false;
                     Outcome::Redraw
                 } else if self.help_open {
                     self.help_open = false;
+                    Outcome::Redraw
+                } else if self.timing_open {
+                    self.timing_open = false;
                     Outcome::Redraw
                 } else if self.menu.take().is_some() || self.inspecting.take().is_some() || self.sheet.take().is_some() {
                     Outcome::Redraw
@@ -758,6 +780,7 @@ impl Game {
                 self.menu = None;
                 self.options_open = false;
                 self.help_open = false;
+                self.timing_open = false;
                 self.confirm_quit = false;
                 self.breaks.clear();
                 self.breaking = None;
@@ -867,6 +890,9 @@ impl Game {
             self.help_open = true;
             return Outcome::Redraw;
         }
+        if shortcut == Shortcut::Timing {
+            return self.apply(Intent::ToggleTiming);
+        }
         if self.covered() {
             return Outcome::Nothing;
         }
@@ -890,7 +916,7 @@ impl Game {
             }
             Shortcut::ScoreArea(side) => self.apply(Intent::Inspect(Target::Pile(Pile::Agendas(side)))),
             Shortcut::TakeBack => self.apply(Intent::TakeBack),
-            Shortcut::ReadHovered | Shortcut::MenuHovered | Shortcut::PlayHelper | Shortcut::PhaseBar | Shortcut::Help => Outcome::Nothing,
+            Shortcut::ReadHovered | Shortcut::MenuHovered | Shortcut::PlayHelper | Shortcut::PhaseBar | Shortcut::Help | Shortcut::Timing => Outcome::Nothing,
         }
     }
 
@@ -1226,6 +1252,27 @@ mod tests {
         assert!(!game.dismissed_by_a_click_away(), "a stall has nowhere to dismiss to");
         game.stalled = None;
         assert!(game.dismissed_by_a_click_away(), "and the sheet under them still closes");
+    }
+
+    /// The timing chart is a reading surface: T or the phase panel opens
+    /// it, it covers the board, a click away or Escape closes it, and it
+    /// does not open over another panel.
+    #[test]
+    fn the_timing_chart_opens_on_t_and_closes_like_a_sheet() {
+        let (mut game, mut handle) = game(Side::Corp);
+        until_awaiting(&mut game, &mut handle);
+        assert_eq!(game.apply(Intent::Shortcut(Shortcut::Timing)), Outcome::Redraw);
+        assert!(game.timing_open && game.covered());
+        assert!(game.dismissed_by_a_click_away(), "a reading surface closes on a click away");
+        assert_eq!(game.apply(Intent::Shortcut(Shortcut::Decision(0))), Outcome::Nothing, "no key reaches through it");
+        assert_eq!(game.apply(Intent::Shortcut(Shortcut::Timing)), Outcome::Redraw);
+        assert!(!game.timing_open);
+        game.apply(Intent::ToggleTiming);
+        assert_eq!(game.apply(Intent::Back), Outcome::Redraw);
+        assert!(!game.timing_open && !game.confirm_quit, "Escape closes it and asks nothing");
+        game.help_open = true;
+        assert_eq!(game.apply(Intent::ToggleTiming), Outcome::Nothing, "not over the list of keys");
+        assert!(!game.timing_open);
     }
 
     /// A key is the button it stands for: at the mulligan Space and C do

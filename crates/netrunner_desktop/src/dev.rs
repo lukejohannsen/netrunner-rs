@@ -31,6 +31,10 @@
 //! - `NETRUNNER_KEYS=1` — on the board, the list of keys is opened once
 //!   the person's decision has arrived (after any autoplay), so it can be
 //!   looked at over a real board.
+//! - `NETRUNNER_TIMING=1` — the same for the timing chart
+//!   (`board::timing`, T or a press on the phase panel); with
+//!   `NETRUNNER_HOLD_ICE=1` it is opened mid-run, where the turn's step
+//!   and the run's are lit together.
 //! - `NETRUNNER_MENU=1|most|top` — on the board, once the person's
 //!   decision has arrived (after any autoplay), the actions menu a click
 //!   on a card would open is opened, so the menu can be looked at. `1`
@@ -186,6 +190,8 @@ pub struct Dev {
     pub options: bool,
     /// Open the list of keys on the board, once.
     pub keys: bool,
+    /// Open the timing chart once, as `keys` opens the list of keys.
+    pub timing: bool,
     /// Pick up the first hand card that has somewhere to go, once.
     pub drag: bool,
     /// Open the actions menu over a card, once.
@@ -246,6 +252,7 @@ impl Dev {
             autoplayed: 0,
             options: std::env::var_os("NETRUNNER_OPTIONS").is_some_and(|v| !v.is_empty()),
             keys: std::env::var_os("NETRUNNER_KEYS").is_some_and(|v| !v.is_empty()),
+            timing: std::env::var_os("NETRUNNER_TIMING").is_some_and(|v| !v.is_empty()),
             drag: std::env::var_os("NETRUNNER_DRAG").is_some_and(|v| !v.is_empty()),
             menu: std::env::var("NETRUNNER_MENU").ok().and_then(|pick| MenuPick::from_name(&pick)),
             lift: std::env::var_os("NETRUNNER_LIFT").is_some_and(|v| !v.is_empty()),

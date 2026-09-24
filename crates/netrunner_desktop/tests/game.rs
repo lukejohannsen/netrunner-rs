@@ -26,7 +26,7 @@ use netrunner_client::start::{Level, StartChoice, DEFAULT_CORP_DECK, DEFAULT_RUN
 use netrunner_core::rules::{GamePhase, PlayerAction, ServerId, Side};
 use netrunner_desktop::core::ClientCore;
 use netrunner_desktop::nav::Navigate;
-use netrunner_desktop::screens::game::{ActionsMenu, ChoiceCard, Click, Contact, DecisionPopup, Glowing, HelpRow, HudPanel, PhaseBarRow, PhaseStep, HudReadout, InstallFact, ScoreDetails, ScoreRow, LogRow, Model, Overlay, RunLane, ServerColumn, BoardFit, ControlBar, HandSlot, LiftedCard, ServerPlate, HostedChip, Ghost};
+use netrunner_desktop::screens::game::{ActionsMenu, ChoiceCard, Click, Contact, DecisionPopup, Glowing, HelpRow, HudPanel, PhaseBarRow, PhaseStep, HudReadout, InstallFact, ScoreDetails, ScoreRow, LogRow, Model, Overlay, RunLane, ServerColumn, BoardFit, ControlBar, HandSlot, LiftedCard, ServerPlate, HostedChip, Ghost, TimingStep};
 use netrunner_core::rules::InstallId;
 use netrunner_desktop::widgets::card_face::BodyText;
 use netrunner_desktop::screens::new_game::{self, ActiveMatch, LastGame};
@@ -1431,6 +1431,38 @@ fn the_card_width_holds_while_the_board_fills_and_the_bar_sits_on_the_board() {
     assert_eq!(app.world_mut().query::<&ControlBar>().iter(app.world()).count(), 1);
     let (_, disabled) = control_button(&mut app, Control::GainCredit);
     assert!(!disabled, "the bar offers what the engine does");
+}
+
+/// T, or a press on the phase panel, opens the rules' timing chart over
+/// the board with the step in play lit — on the Runner's own turn, the
+/// action step (CR 5.7.1f) — and Escape or a click away closes it
+/// without sending anything.
+#[test]
+fn t_or_a_press_on_the_phase_panel_opens_the_timing_with_the_step_in_play_lit() {
+    let (mut app, _dir) = headless_client();
+    start_a_game(&mut app);
+    to_the_runners_turn(&mut app);
+    let lit = |app: &mut App| -> Vec<&'static str> {
+        let world = app.world_mut();
+        world.query::<&TimingStep>().iter(world).filter(|s| s.lit).map(|s| s.cr).collect()
+    };
+    let applied = app.world().resource::<Model>().0.applied;
+    letter(&mut app, KeyCode::KeyT, "t");
+    assert_eq!(overlays(&mut app), 1, "T opens the chart");
+    assert_eq!(lit(&mut app), ["CR 5.7.1f"], "the Runner is taking an action");
+    let steps = app.world_mut().query::<&TimingStep>().iter(app.world()).count();
+    assert!(steps > 40, "every step of the turn, the run, the breach and the access: {steps}");
+    escape(&mut app);
+    assert_eq!(overlays(&mut app), 0, "Escape closes it");
+    assert!(!app.world().resource::<Model>().0.confirm_quit);
+
+    let panel = entity_with(&mut app, &Click::Timing).expect("the phase panel is a button");
+    press_entity(&mut app, panel);
+    assert_eq!(overlays(&mut app), 1, "a press on the phase panel opens it");
+    let wash = entity_with(&mut app, &Click::CloseOverlay).expect("a reading surface's wash closes it");
+    press_entity(&mut app, wash);
+    assert_eq!(overlays(&mut app), 0, "a click away closes it");
+    assert_eq!(app.world().resource::<Model>().0.applied, applied, "nothing was sent");
 }
 
 /// The phase bar is a row of the board: the turn's steps with the one in

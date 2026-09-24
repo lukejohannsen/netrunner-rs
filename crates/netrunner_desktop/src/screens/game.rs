@@ -29,7 +29,8 @@
 //! always in the same place) directly above the person's hand, then the
 //! person's strip and the top of their hand on the window's bottom edge.
 //! The right column is the status line with Quit and the gear, the phase
-//! panel (`board::phase`, hidden with L), the Runner's identity while a
+//! panel (`board::phase`, hidden with L; a press on it or T opens the
+//! timing chart, `board::timing`), the Runner's identity while a
 //! run is on (or the ICE, while the run encounters one), the rail and
 //! the log. The opponent's side is
 //! drawn at `layout::OPPONENT_SCALE` of the person's own. The Corp's
@@ -186,6 +187,8 @@ pub enum Click {
     /// Open the report just saved on the replay board.
     WatchReport,
     CloseOverlay,
+    /// The phase panel: open the timing chart (`board::timing`).
+    Timing,
     ConfirmQuit,
     CancelQuit,
     /// Escape's button: the quit prompt.
@@ -307,6 +310,14 @@ pub struct PhaseStep(pub netrunner_client::board::phase::State);
 /// A row of the list of keys, for a test to count.
 #[derive(Component)]
 pub struct HelpRow;
+
+/// A step of the timing chart, lit when the game is at it, with the rule
+/// it stands for — for a test to read.
+#[derive(Component, Debug, Clone, PartialEq, Eq)]
+pub struct TimingStep {
+    pub cr: &'static str,
+    pub lit: bool,
+}
 
 /// One line of an install's state on its sheet, for a test to read.
 #[derive(Component)]
@@ -913,6 +924,13 @@ fn autoplay(
         dev.keys = false;
         pending.0.push(Intent::Shortcut(Shortcut::Help));
     }
+    // Not waiting for the person's decision, as the list of keys does:
+    // the chart is worth reading while the other side thinks, and a run
+    // held for the shot is often at a window the bot holds.
+    if dev.timing && model.0.view.is_some() && dev.autoplayed >= dev.autoplay {
+        dev.timing = false;
+        pending.0.push(Intent::ToggleTiming);
+    }
     if let Some(pick) = dev.menu.filter(|_| model.0.awaiting && dev.autoplayed >= dev.autoplay) {
         dev.menu = None;
         // Every box the board laid out, with what a click on it would
@@ -1282,6 +1300,9 @@ pub(crate) fn controls(
             Click::Target(target) => intents.push(click_on(entity, target)),
             // A card in the decision pop-up is its own button.
             Click::Entry(index) => intents.push(Intent::Choose(*index)),
+            // The phase panel is unthemed like a face: a door to the
+            // timing chart.
+            Click::Timing => intents.push(Intent::ToggleTiming),
             _ => {}
         }
     }
@@ -1314,6 +1335,7 @@ pub(crate) fn controls(
             Ok(Click::Inspect(card)) => intents.push(Intent::InspectCard(Some(card.clone()))),
             Ok(Click::Expand(row)) => intents.push(Intent::Expand(*row)),
             Ok(Click::Options) => intents.push(Intent::ToggleOptions),
+            Ok(Click::Timing) => intents.push(Intent::ToggleTiming),
             Ok(Click::SaveReport) => {
                 if let (Some(active), Some(model)) = (active.as_ref(), model.as_mut()) {
                     saved(&mut model.0, &mut notices, save_report(&core, &active.handle));
@@ -3039,8 +3061,18 @@ fn fill_phase_bar(parent: &mut ChildSpawnerCommands, theme: &Theme, game: &Game)
         border_radius: BorderRadius::all(px(8)),
         ..default()
     };
+    // The panel is a button: a press opens the whole timing chart
+    // (`board::timing`), the rules' steps with the one in play lit, which
+    // is what the bar's handful of steps stands for.
     parent
-        .spawn((panel, BackgroundColor(theme.panel), BorderColor::all(theme.panel_border), widgets::Dressed::still(Slot::PanelPhase, Drawn::new(theme.panel, theme.panel_border))))
+        .spawn((
+            panel,
+            Button,
+            Click::Timing,
+            BackgroundColor(theme.panel),
+            BorderColor::all(theme.panel_border),
+            widgets::Dressed::still(Slot::PanelPhase, Drawn::new(theme.panel, theme.panel_border)),
+        ))
         .with_children(|panel| {
             let Some(view) = &game.view else {
                 panel.spawn(widgets::dim(theme, "Setting up…"));
@@ -3498,6 +3530,11 @@ fn spawn_overlay(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &Client
     let card_alone = game.inspecting.is_some() || game.sheet.as_ref().is_some_and(|s| !matches!(s.target, Target::Install(_)) && game.card_of(&s.target).is_some());
     let width = if game.finished() || game.confirm_quit || game.options_open || game.help_open {
         px(560)
+    } else if game.timing_open {
+        // Two columns on the Runner's turn (its turn beside the run); the
+        // Corp's turn is one chart, and a wide panel strands its numbers.
+        let charts = game.view.as_ref().map_or(1, |view| netrunner_client::board::timing::timing(view).charts.len());
+        px(if charts > 1 { 1000 } else { 560 })
     } else if card_alone {
         px(FaceSize::Large.width() + 2.0 * 17.0)
     } else if game.sheet.as_ref().is_some_and(|s| matches!(s.target, Target::Install(_))) {
@@ -3630,6 +3667,10 @@ fn spawn_overlay(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &Client
                     });
                 } else if game.help_open {
                     help_sheet(panel, theme);
+                } else if game.timing_open {
+                    if let Some(view) = &game.view {
+                        timing_sheet(panel, theme, &netrunner_client::board::timing::timing(view));
+                    }
                 } else if let Some(id) = &game.inspecting {
                     // A card read out of a pile: the face and its text,
                     // nothing to do with it from here.
@@ -3660,6 +3701,65 @@ fn help_sheet(panel: &mut ChildSpawnerCommands, theme: &Theme) {
     }
     panel.spawn(widgets::dim(theme, "A key does what its button does, only when the button would."));
     panel.spawn(widgets::button(theme, "Close", Val::Auto, Click::CloseOverlay));
+}
+
+/// The rules' timing charts with the steps the game is at lit
+/// (`board::timing`): the turn on the left, the run, the breach and the
+/// access on the right, so the chart fits a window without a scroll.
+/// Each step is its letter, this project's words, its window's P, R, S
+/// and the rule it stands for — never the rules' own text, which is Null
+/// Signal Games' (`rules/NOTICE.md`). A reading surface: no heading over
+/// the charts beyond their own titles, and no Close; Escape and a click
+/// away close it.
+fn timing_sheet(panel: &mut ChildSpawnerCommands, theme: &Theme, timing: &netrunner_client::board::timing::Timing) {
+    use netrunner_client::board::timing::Chart;
+    let chart = |column: &mut ChildSpawnerCommands, chart: &Chart| {
+        let lit = chart.lit();
+        column.spawn((Text::new(format!("{} · {}", chart.title, chart.cr)), theme.font(size::BODY), TextColor(if lit { theme.text } else { theme.text_dim })));
+        for phase in &chart.phases {
+            if !phase.title.is_empty() {
+                column.spawn((Text::new(phase.title.clone()), theme.font(size::SMALL), TextColor(theme.text_dim), Node { margin: UiRect::top(px(2)), ..default() }));
+            }
+            for step in &phase.steps {
+                let colour = if step.lit { theme.accent } else if lit { theme.text } else { theme.text_dim };
+                column.spawn((TimingStep { cr: step.cr, lit: step.lit }, Node { flex_direction: FlexDirection::Row, column_gap: px(6), align_items: AlignItems::Center, ..default() })).with_children(|row| {
+                    let marker = if step.lit { "▶" } else { "" };
+                    row.spawn((Text::new(marker), theme.symbol_font(size::SMALL), TextColor(theme.accent), Node { width: px(14), flex_shrink: 0.0, ..default() }));
+                    row.spawn((Text::new(step.label), theme.font(size::SMALL), TextColor(colour), Node { width: px(14), flex_shrink: 0.0, ..default() }));
+                    row.spawn((Text::new(step.words), theme.font(size::SMALL), TextColor(colour), TextLayout::new(Justify::Left, LineBreak::WordBoundary), Node { flex_grow: 1.0, min_width: px(0), ..default() }));
+                    if let Some(windows) = step.windows {
+                        for (on, tag) in [(windows.paid, "P"), (windows.rez, "R"), (windows.score, "S")] {
+                            if on {
+                                row.spawn((
+                                    Node { padding: UiRect::axes(px(4), px(0)), border: UiRect::all(px(1)), border_radius: BorderRadius::all(px(3)), flex_shrink: 0.0, ..default() },
+                                    BorderColor::all(colour),
+                                    children![(Text::new(tag), theme.font(size::SMALL - 3.0), TextColor(colour))],
+                                ));
+                            }
+                        }
+                    }
+                    row.spawn((Text::new(step.cr), theme.font(size::SMALL - 3.0), TextColor(theme.text_dim), TextLayout::new(Justify::Right, LineBreak::NoWrap), Node { width: px(62), flex_shrink: 0.0, ..default() }));
+                });
+            }
+        }
+    };
+    let (turn, rest) = timing.charts.split_first().expect("a turn is always charted");
+    panel.spawn(Node { flex_direction: FlexDirection::Row, column_gap: px(24), align_items: AlignItems::FlexStart, ..default() }).with_children(|columns| {
+        let column = || Node { flex_direction: FlexDirection::Column, row_gap: px(2), flex_grow: 1.0, flex_basis: px(0), min_width: px(0), ..default() };
+        // The breach and the access go under the turn, and the run has the
+        // right column to itself: it is the longest chart.
+        columns.spawn(column()).with_children(|left| {
+            chart(left, turn);
+            for extra in rest.iter().filter(|c| c.title != "Run") {
+                left.spawn(Node { height: px(10), ..default() });
+                chart(left, extra);
+            }
+        });
+        if let Some(run) = rest.iter().find(|c| c.title == "Run") {
+            columns.spawn(column()).with_children(|right| chart(right, run));
+        }
+    });
+    panel.spawn(widgets::dim(theme, timing.note));
 }
 
 /// The card large, and nothing else at all: the picture, or the text
