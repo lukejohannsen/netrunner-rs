@@ -26,7 +26,7 @@ use netrunner_client::start::{Level, StartChoice, DEFAULT_CORP_DECK, DEFAULT_RUN
 use netrunner_core::rules::{GamePhase, PlayerAction, ServerId, Side};
 use netrunner_desktop::core::ClientCore;
 use netrunner_desktop::nav::Navigate;
-use netrunner_desktop::screens::game::{ActionsMenu, LogName, ChoiceCard, Click, Contact, DecisionPopup, Glowing, HelpRow, HudPanel, PhaseBarRow, PhaseStep, HudReadout, InstallFact, ScoreDetails, ScoreRow, LogRow, Model, Overlay, RunLane, ServerColumn, BoardFit, ControlBar, HandSlot, LiftedCard, ServerPlate, HostedChip, Ghost, TimingStep};
+use netrunner_desktop::screens::game::{ActionsMenu, LogName, ChoiceCard, Click, Contact, DecisionPopup, Glowing, HelpRow, HudPanel, PhaseBarRow, PhaseStep, HudReadout, InstallFact, ScoreDetails, ScoreRow, LogRow, Model, Overlay, EndTable, OpeningIdentities, RunLane, ServerColumn, BoardFit, ControlBar, HandSlot, LiftedCard, ServerPlate, HostedChip, Ghost, TimingStep};
 use netrunner_core::rules::InstallId;
 use netrunner_desktop::widgets::card_face::BodyText;
 use netrunner_desktop::screens::new_game::{self, ActiveMatch, LastGame};
@@ -260,6 +260,56 @@ fn the_form_starts_a_game_the_board_offers_its_actions_and_a_press_submits_one()
     assert!(hand_faces >= 5, "{hand_faces} hand cards drawn");
     // And the next decision comes round.
     wait_for(&mut app, "the Runner's turn", |app| app.world().resource::<Model>().0.awaiting);
+}
+
+/// The mulligan is the start-of-game box (Phase 7 §8 item 16): both
+/// identities and the opening hand, whole, over the keep and the
+/// mulligan, and the Runner is told what the Corp did with its hand.
+#[test]
+fn the_mulligan_shows_both_identities_and_the_whole_hand() {
+    let (mut app, _dir) = headless_client();
+    start_a_game(&mut app);
+    wait_for(&mut app, "the first decision", |app| click_entry_count(app) > 0);
+    let world = app.world_mut();
+    let identities = world.query_filtered::<&Children, With<OpeningIdentities>>().single(world).expect("the identities' row is up").len();
+    assert_eq!(identities, 2, "the person's identity and the Corp's");
+    let hand = app.world().resource::<Model>().0.view.as_ref().and_then(|view| view.runner.grip_cards.clone()).expect("the Runner sees its grip");
+    let cards: Vec<ChoiceCard> = app.world_mut().query::<&ChoiceCard>().iter(app.world()).cloned().collect();
+    assert_eq!(cards.len(), 2 + hand.len(), "both identities and every card in hand: {cards:?}");
+    for card in &hand {
+        assert!(cards.contains(&ChoiceCard(card.clone())), "{card:?} is drawn whole");
+    }
+    let words = texts(&mut app);
+    assert!(words.iter().any(|t| t.contains("The Corp kept their hand.") || t.contains("The Corp took a mulligan.")), "{words:?}");
+    assert!(words.iter().any(|t| t == "You · Runner"), "{words:?}");
+    let keep = button_labelled(&mut app, "Keep hand").expect("Keep hand is under the cards");
+    app.world_mut().entity_mut(keep).insert(Interaction::Pressed);
+    app.update();
+    wait_for(&mut app, "the Runner's turn", |app| app.world().resource::<Model>().0.awaiting);
+    assert_eq!(app.world_mut().query::<&OpeningIdentities>().iter(app.world()).count(), 0, "the box is the mulligan's alone");
+}
+
+/// The end of the match has its table under the result: what each side
+/// did, counted off the person's own log, with their side's column lit.
+#[test]
+fn the_end_of_the_match_has_its_table() {
+    let (mut app, dir) = headless_client();
+    let mut dev = netrunner_desktop::dev::Dev::default();
+    dev.autoplay = 100_000;
+    app.insert_resource(dev);
+    start_a_game(&mut app);
+    wait_for_within(&mut app, Duration::from_secs(120), "the game to end", |app| app.world().resource::<Model>().0.over.is_some());
+    app.update();
+    app.update();
+    assert_eq!(app.world_mut().query::<&EndTable>().iter(app.world()).count(), 1, "the table is under the result");
+    let words = texts(&mut app);
+    for label in ["Runner (you)", "Corp", "Clicks spent", "Credits gained", "Successful runs"] {
+        assert!(words.iter().any(|t| t == label), "{label} is on the table: {words:?}");
+    }
+    let tally = app.world().resource::<Model>().0.tally;
+    assert!(tally.corp.turns > 0 && tally.runner.turns > 0, "{tally:?}");
+    assert!(words.iter().any(|t| *t == tally.runner.clicks_spent.to_string()), "the Runner's clicks are drawn");
+    let _ = std::fs::remove_dir_all(dir);
 }
 
 /// A press and release of the primary button on a hand card: its press is

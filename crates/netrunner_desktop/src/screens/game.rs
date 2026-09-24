@@ -113,6 +113,7 @@ use bevy::window::PrimaryWindow;
 use netrunner_client::access::Access;
 use netrunner_client::board::action_map::server_name;
 use netrunner_client::board::{facts, hud, Affordance, Control, Encounter, IceState, Outcome as RunOutcome, Pile, Prompt, Stage, Target, Token, TokenKind, Transition, Zone};
+use netrunner_client::board::opening::Opening;
 use netrunner_client::card_face::Face;
 use netrunner_client::standing::Answer;
 use netrunner_core::dsl::{CardId, CardType};
@@ -374,6 +375,12 @@ pub struct LogName(pub CardId);
 /// The full-window overlay, when one is up.
 #[derive(Component)]
 pub struct Overlay;
+/// The end-of-match table, under the result.
+#[derive(Component)]
+pub struct EndTable;
+/// The start-of-game box's row of identities, over the opening hand.
+#[derive(Component)]
+pub struct OpeningIdentities;
 /// The decision the game is waiting on — the mulligan, an access, a
 /// trace bid, a choice a card asks — as a pop-up in the middle of the
 /// screen, where the eyes are, rather than buttons on the rail. It sits
@@ -2945,8 +2952,13 @@ fn spawn_decision_popup(parent: &mut ChildSpawnerCommands, theme: &Theme, core: 
     // names the card, and its facts are the live costs (a grid may have
     // raised the printed trash cost) rather than `Prompt`'s single line.
     let access = view.and_then(|view| Access::of(view, &core.registry));
+    // At the mulligan, the start-of-game box: both identities and the
+    // opening hand turned up, over the keep and the mulligan
+    // (`netrunner_client::board::opening`, Phase 7 §8 item 16).
+    let opening = view.and_then(|view| Opening::of(view, &game.tally));
     let (title, detail) = match (&access, &game.prompt) {
         (Some(access), _) => (access.title(), access.facts().join("\n")),
+        (None, Some(prompt)) if opening.is_some() => (prompt.title.clone(), opening.as_ref().map(|o| o.detail.clone()).unwrap_or_default()),
         (None, Some(prompt)) => (prompt.title.clone(), prompt.detail.clone()),
         (None, None) => ("Your decision".to_string(), String::new()),
     };
@@ -2966,7 +2978,7 @@ fn spawn_decision_popup(parent: &mut ChildSpawnerCommands, theme: &Theme, core: 
     // card going in, or the card whose text is asking.
     let single: Option<CardId> = match &access {
         Some(access) => Some(access.card.clone()),
-        None if choices.is_empty() => view.and_then(|view| Prompt::card(view, &core.registry)),
+        None if choices.is_empty() && opening.is_none() => view.and_then(|view| Prompt::card(view, &core.registry)),
         None => None,
     };
     // What the words and the list of buttons take, guessed before the
@@ -2996,12 +3008,18 @@ fn spawn_decision_popup(parent: &mut ChildSpawnerCommands, theme: &Theme, core: 
         + label_rows
         + game.back_label().map_or(0.0, |_| 22.0 + 14.0 + layout::ROW_GAP)
         + remember.as_ref().map_or(0.0, |_| lines(REMEMBER_CAPTION, size::SMALL) * 22.0 + 22.0 + 14.0 + 2.0 * layout::ROW_GAP)
-        + if choices.is_empty() { layout::CHOICE_CAPTION } else { 0.0 };
+        + if choices.is_empty() && opening.is_none() { layout::CHOICE_CAPTION } else { 0.0 };
     let available = (window.x - 2.0 * layout::PADDING - 2.0 * POPUP_PADDING, window.y - 2.0 * layout::PADDING - chrome);
     let count = if choices.is_empty() { usize::from(single.is_some()) } else { choices.len() };
-    let (face, per_row) = layout::choice_faces(available, count);
+    let (face, per_row) = match &opening {
+        Some(opening) => layout::opening_faces(available, opening.hand.len()),
+        None => layout::choice_faces(available, count),
+    };
     let size = if face >= FaceSize::Large.width() { FaceSize::Large } else { FaceSize::Board(face as u16) };
-    let width = if choices.is_empty() { POPUP_MIN_WIDTH.max(size.width() + 2.0 * POPUP_PADDING) } else {
+    let width = if let Some(opening) = &opening {
+        let across = per_row.min(opening.hand.len()).max(2) as f32;
+        POPUP_MIN_WIDTH.max(across * size.width() + (across - 1.0) * layout::CHOICE_GAP + 2.0 * POPUP_PADDING)
+    } else if choices.is_empty() { POPUP_MIN_WIDTH.max(size.width() + 2.0 * POPUP_PADDING) } else {
         let row = per_row as f32 * size.width() + (per_row as f32 - 1.0) * layout::CHOICE_GAP;
         POPUP_MIN_WIDTH.max(row + 2.0 * POPUP_PADDING)
     };
@@ -3050,6 +3068,45 @@ fn spawn_decision_popup(parent: &mut ChildSpawnerCommands, theme: &Theme, core: 
                 if let Some(card) = &single {
                     panel.spawn(Node { justify_content: JustifyContent::Center, ..gives.clone() }).with_children(|row| {
                         spawn_choice_card(row, theme, core, images, Some(card), game.side.other(), size, ());
+                    });
+                }
+                if let Some(opening) = &opening {
+                    let cards = || Node {
+                        flex_direction: FlexDirection::Row,
+                        flex_wrap: FlexWrap::Wrap,
+                        justify_content: JustifyContent::Center,
+                        column_gap: px(layout::CHOICE_GAP),
+                        row_gap: px(layout::CHOICE_GAP),
+                        width: percent(100),
+                        ..default()
+                    };
+                    // One row of the panel gives, as for any pop-up: the
+                    // identities and the hand are one block of cards, so a
+                    // short window takes height off the block, never off
+                    // one of the two by a split flexbox would choose.
+                    panel.spawn(Node { flex_direction: FlexDirection::Column, row_gap: px(layout::CHOICE_GAP), ..gives.clone() }).with_children(|panel| {
+                        // Whose each identity is, under it; the person's own
+                        // first, as their side of the table is nearer.
+                        panel.spawn((OpeningIdentities, cards())).with_children(|row| {
+                            for (card, side, words) in [
+                                (&opening.identity, opening.side, format!("You · {:?}", opening.side)),
+                                (&opening.opponent_identity, opening.side.other(), format!("{:?}", opening.side.other())),
+                            ] {
+                                row.spawn(Node { width: px(size.width()), flex_direction: FlexDirection::Column, align_items: AlignItems::Center, row_gap: px(2), ..default() }).with_children(|cell| {
+                                    spawn_choice_card(cell, theme, core, images, card.as_ref(), side, size, ());
+                                    cell.spawn(widgets::dim(theme, words));
+                                });
+                            }
+                        });
+                        // The hand, whole: the one moment in the game every
+                        // card in it matters, drawn nowhere else but as the
+                        // board's peek. Read, never pressed — a secondary
+                        // click opens a card, as on the board.
+                        panel.spawn(cards()).with_children(|row| {
+                            for card in &opening.hand {
+                                spawn_choice_card(row, theme, core, images, Some(card), opening.side, size, ());
+                            }
+                        });
                     });
                 }
                 panel.spawn((widgets::heading(theme, title), TextLayout::new(Justify::Left, LineBreak::WordBoundary), rigid.clone()));
@@ -3763,6 +3820,7 @@ fn spawn_overlay(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &Client
                     if let Some(notice) = &over.notice {
                         panel.spawn(widgets::notice(theme, notice.clone(), ()));
                     }
+                    end_table(panel, theme, &game.tally, game.side);
                     panel.spawn(widgets::row(12.0)).with_children(|row| {
                         row.spawn(widgets::button(theme, "Play again", Val::Auto, Click::PlayAgain));
                         row.spawn(widgets::button(theme, "Menu", Val::Auto, Click::Menu));
@@ -3815,6 +3873,40 @@ fn spawn_overlay(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &Client
                 }
             });
         });
+}
+
+/// What each side did over the match, as a table under the result
+/// (`netrunner_client::tally`, Phase 7 §8 item 16): a row per count, the
+/// Corp's number and the Runner's in fixed columns, the person's own
+/// side's heading lit. A row that is not about a side leaves its cell
+/// empty rather than showing a zero that reads as a result.
+fn end_table(panel: &mut ChildSpawnerCommands, theme: &Theme, tally: &netrunner_client::tally::Tally, you: Side) {
+    const NUMBER: f32 = 96.0;
+    panel.spawn((EndTable, Node { flex_direction: FlexDirection::Column, row_gap: px(2), width: percent(100), margin: UiRect::vertical(px(6)), ..default() })).with_children(|table| {
+        let line = |table: &mut ChildSpawnerCommands, label: &str, cells: [(String, Color); 2], colour: Color| {
+            table.spawn(Node { flex_direction: FlexDirection::Row, column_gap: px(8), ..default() }).with_children(|row| {
+                row.spawn((Text::new(label), theme.font(size::SMALL), TextColor(colour), Node { flex_grow: 1.0, min_width: px(0), ..default() }));
+                // Right-aligned by the cell, not the text: a text node is
+                // as wide as its words, so a `Justify::Right` on one
+                // with a fixed width still drew the number at the left.
+                for (text, colour) in cells {
+                    row.spawn(Node { width: px(NUMBER), flex_shrink: 0.0, justify_content: JustifyContent::FlexEnd, ..default() })
+                        .with_children(|cell| {
+                            cell.spawn((Text::new(text), theme.font(size::SMALL), TextColor(colour), TextLayout::new(Justify::Right, LineBreak::NoWrap)));
+                        });
+                }
+            });
+        };
+        let heading = |side: Side| {
+            let words = if side == you { format!("{side:?} (you)") } else { format!("{side:?}") };
+            (words, if side == you { theme.accent } else { theme.text_dim })
+        };
+        line(table, "", [heading(Side::Corp), heading(Side::Runner)], theme.text_dim);
+        let cell = |n: Option<u32>| (n.map_or_else(String::new, |n| n.to_string()), theme.text);
+        for row in tally.rows() {
+            line(table, row.label, [cell(row.corp), cell(row.runner)], theme.text_dim);
+        }
+    });
 }
 
 /// The list of keys, a row each: the key in a fixed column, what it does

@@ -49,6 +49,7 @@ pub mod settings;
 pub mod skin;
 pub mod standing;
 pub mod table;
+pub mod tally;
 pub mod start;
 
 /// The OS data directory every client file lives under — the base

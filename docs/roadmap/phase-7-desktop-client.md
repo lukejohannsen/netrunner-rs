@@ -4249,6 +4249,64 @@ look for on the board and no way to read the card.
   log's span for it is its title in the accent, and a press on it opens
   that card).
 
+### 4au. The mulligan is a start-of-game box, and the end of the match has a table — DONE (24 September 2026)
+
+Phase 7 §8 item 16, from jinteki's start-of-game panel and end-of-game
+stats. The mulligan asked CR 1.6.6a's question with a title and two
+buttons over a hand drawn as the board's peek, and the end of the match
+said who won and why and nothing about how.
+
+- **The start-of-game box** (`netrunner_client::board::opening`): at
+  the mulligan, the decision pop-up draws both identities, captioned
+  "You · <side>" and the other side, over the opening hand turned up
+  whole, over the same Keep hand and Mulligan buttons. Every card is
+  one size (`layout::opening_faces`, `choice_faces`'s search with a row
+  of identities above the hand), read with a secondary click and never
+  pressed. The line under the heading says what a mulligan does and,
+  for the Runner, what the Corp did with its hand ("The Corp took a
+  mulligan."), read off the Runner's own log. Nothing the viewer could
+  not already see: the hand is its own `hq_cards` / `grip_cards`, the
+  identities are public, and the Corp's choice is in the log.
+- **The end table** (`netrunner_client::tally`): under "You win" /
+  "You lose", a row per count with the Corp's and the Runner's numbers
+  in fixed columns, the person's own side lit: mulligans, turns, clicks
+  spent, credits gained and spent, cards drawn and installed, agenda
+  points, then the Corp's rezzes and the Runner's runs, successful runs,
+  damage suffered and tags taken. A row that is not about a side leaves
+  its cell empty. **Counted from events in the chair's masked log, never
+  from `GameState`**, so every number is one both players saw happen,
+  and a card's credits count as the basic action's do. The desktop
+  keeps its log's entries so a take-back recounts from what is left
+  (`Tally::of`); a count cannot be un-added from a total.
+- **No "Cards accessed" row, on a measurement.** The mask drops an
+  access out of HQ, R&D or a remote from the Corp's log whole, because
+  the card is the whole of the event, so in the same match (seed 0) the
+  Corp's chair counted 16 accesses and the Runner's 26. A number that
+  depended on the chair would be the one number on the table nobody
+  could trust. Counting accesses for the Corp is a masking rule to write
+  first. **"Credits spent" is `CreditsSpent`**: what a payment took
+  that did not come off a card, a run's bad-publicity and event credits
+  included, hosted credits not. That definition is pinned against each
+  side's final pool: 5 + gained − (spent − run credits) − lost equals
+  the credits on the board, in six heuristic matches.
+- **Rejected:** a separate screen after the match (the result, the
+  record's lines and Play again are already one panel, and the table
+  fits under them at 1280×800), and counting actions rather than events
+  (that missed every credit a card's text gave).
+- **Seen:** the Corp's box at 2560×1600 and the Runner's at 1280×800
+  (the Runner's box names the Corp's mulligan); the end table from both
+  chairs after an autoplayed match, numbers right-aligned in their
+  columns.
+- **Tests:** `the_table_is_the_same_from_either_chair`,
+  `the_credits_add_up_to_the_pool_on_the_board` and
+  `a_match_fills_the_rows_that_matter` (tally, heuristic Corp against a
+  heuristic or random Runner);
+  `each_side_sees_its_own_hand_and_the_runner_hears_what_the_corp_did`
+  (opening); `the_opening_box_fits_its_cards_and_both_identities`
+  (layout); `a_take_back_takes_its_counts_off_the_tally` (model); and
+  the desktop's `the_mulligan_shows_both_identities_and_the_whole_hand`
+  and `the_end_of_the_match_has_its_table`.
+
 ## 8. Borrowed from jinteki — OPEN (19 September 2026)
 
 From [`docs/jinteki-comparison.md`](../jinteki-comparison.md) §5, in the
@@ -4312,7 +4370,7 @@ eleven so the addresses above do not move:
 15. ~~**A report-a-bug bundle**: the seed and the action record, which replay
     exactly. The answer to the need behind jinteki's state-editing
     commands.~~ Done in §4ag.
-16. **An end-of-game table and a start-of-game box.**
+16. ~~**An end-of-game table and a start-of-game box.**~~ Done in §4au.
 17. ~~**Card names in the log open the card.**~~ Done in §4at.
 18. **Check the affordance and transition colours against a
     colour-blind-safe palette.**
