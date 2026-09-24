@@ -61,11 +61,26 @@ pub struct Theme {
     /// already spoken for on a card are the sides' own — Corp blue and
     /// Runner red — and their mixture belongs to neither side, so it
     /// reads the same on both chairs.
+    ///
+    /// **A light lavender, not a saturated violet, so that it can still
+    /// be seen by a colour-blind player** (Phase 7 §8 item 18). A glow
+    /// sits against the card's own border, which is its faction's
+    /// colour, and between them the seven factions use up the whole hue
+    /// wheel. So what keeps the halo from reading as a thicker border
+    /// is lightness. The saturated violet this replaced was 0.02 OKLab
+    /// from a Criminal border under protanopia, and 0.10 from Haas-Bioroid
+    /// even with normal vision. `tests::the_glows_survive_colour_blindness`
+    /// holds the bound.
     pub glow_usable: Color,
     /// The ring on a card whose moment will pass
     /// (`board::Affordance::Conditional`). Yellow as a warning, and kept
     /// clear of `danger`: danger is a number that has gone wrong, this is
     /// an opportunity about to be lost.
+    ///
+    /// **A pale yellow, for the same reason as `glow_usable`:** the
+    /// saturated amber it replaced was 0.03 OKLab from NBN's yellow
+    /// border for every viewer, so a playable NBN card had no visible
+    /// glow at all.
     pub glow_conditional: Color,
 }
 
@@ -87,8 +102,8 @@ impl Default for Theme {
             corp: Color::srgb(0.16, 0.42, 0.85),
             runner: Color::srgb(0.80, 0.16, 0.20),
             danger: Color::srgb(0.90, 0.35, 0.30),
-            glow_usable: Color::srgb(0.62, 0.40, 0.95),
-            glow_conditional: Color::srgb(0.98, 0.80, 0.25),
+            glow_usable: Color::srgb(0.76, 0.55, 1.0),
+            glow_conditional: Color::srgb(1.0, 0.99, 0.70),
         }
     }
 }
@@ -190,5 +205,103 @@ impl Theme {
             return None;
         }
         card_text::set_icon(set_code).map(|icon| (icon.to_string(), self.icon_font(size)))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Machado, Oliveira and Fernandes (2009), full severity, applied
+    /// in linear RGB. These three are the standard simulations, so a
+    /// palette checked against them is checked against the published
+    /// model and not against a matrix made up here.
+    const DICHROMACIES: [(&str, [[f32; 3]; 3]); 4] = [
+        ("normal vision", [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]),
+        ("protanopia", [[0.152286, 1.052583, -0.204868], [0.114503, 0.786281, 0.099216], [-0.003882, -0.048116, 1.051998]]),
+        ("deuteranopia", [[0.367322, 0.860646, -0.227968], [0.280085, 0.672501, 0.047413], [-0.011820, 0.042940, 0.968881]]),
+        ("tritanopia", [[1.255528, -0.076749, -0.178779], [-0.078411, 0.930809, 0.147602], [0.004733, 0.691367, 0.303900]]),
+    ];
+
+    /// The least OKLab distance two colours that must be told apart may
+    /// have under any of the simulations. OKLab is perceptually even,
+    /// so one bound serves every pair. At 0.10 a person sees two
+    /// different colours without having to look for the difference.
+    /// The glows' worst case is 0.12, and the colours they replaced
+    /// were at 0.02.
+    const APART: f32 = 0.10;
+
+    /// A colour as a viewer with `matrix` sees it, in OKLab.
+    fn seen(colour: Color, matrix: &[[f32; 3]; 3]) -> [f32; 3] {
+        let linear = colour.to_linear();
+        let rgb = [linear.red, linear.green, linear.blue];
+        let simulated = LinearRgba::rgb(
+            (0..3).map(|j| matrix[0][j] * rgb[j]).sum::<f32>().clamp(0.0, 1.0),
+            (0..3).map(|j| matrix[1][j] * rgb[j]).sum::<f32>().clamp(0.0, 1.0),
+            (0..3).map(|j| matrix[2][j] * rgb[j]).sum::<f32>().clamp(0.0, 1.0),
+        );
+        let lab = Oklaba::from(simulated);
+        [lab.lightness, lab.a, lab.b]
+    }
+
+    /// The pair's distance for the viewer it is hardest for, and who that is.
+    fn closest(a: Color, b: Color) -> (f32, &'static str) {
+        DICHROMACIES
+            .iter()
+            .map(|(who, matrix)| {
+                let (x, y) = (seen(a, matrix), seen(b, matrix));
+                ((0..3).map(|i| (x[i] - y[i]).powi(2)).sum::<f32>().sqrt(), *who)
+            })
+            .min_by(|p, q| p.0.total_cmp(&q.0))
+            .expect("four viewers")
+    }
+
+    /// **Each mood's glow must be visible against every border it can
+    /// sit beside, and against the other mood, for every viewer.** A
+    /// glow is drawn right against a card's border: a faction's colour
+    /// on a face-up card, the side's colour on a face-down one. A glow
+    /// that matches the border just looks like a thicker border, which
+    /// tells the person nothing. `danger` is on the list because a
+    /// warning and a mistake must not look alike.
+    #[test]
+    fn the_glows_survive_colour_blindness() {
+        let theme = Theme::default();
+        let factions = [
+            Faction::Anarch,
+            Faction::Criminal,
+            Faction::Shaper,
+            Faction::HaasBioroid,
+            Faction::Jinteki,
+            Faction::Nbn,
+            Faction::WeylandConsortium,
+        ];
+        let mut beside: Vec<(String, Color)> = factions.iter().map(|faction| (format!("{faction:?}"), theme.faction(Some(*faction)))).collect();
+        beside.extend([("the Corp".to_string(), theme.corp), ("the Runner".to_string(), theme.runner), ("danger".to_string(), theme.danger)]);
+        let mut failures = Vec::new();
+        for (mood, glow) in [("usable", theme.glow_usable), ("conditional", theme.glow_conditional)] {
+            for (name, colour) in &beside {
+                let (distance, who) = closest(glow, *colour);
+                if distance < APART {
+                    failures.push(format!("the {mood} glow beside {name}: {distance:.3} under {who}"));
+                }
+            }
+        }
+        let (distance, who) = closest(theme.glow_usable, theme.glow_conditional);
+        if distance < APART {
+            failures.push(format!("the two moods: {distance:.3} under {who}"));
+        }
+        assert!(failures.is_empty(), "closer than {APART} OKLab:\n{}", failures.join("\n"));
+    }
+
+    /// A subroutine's dot on the run lane is filled in `accent` when it
+    /// was broken and in `danger` when it fired. The dots are the same
+    /// shape, so colour is the only thing that tells them apart. (A
+    /// pending dot is hollow, so it differs in shape, and the encounter
+    /// panel writes `[x]` and `[!]`.)
+    #[test]
+    fn a_broken_subroutine_and_a_fired_one_are_told_apart() {
+        let theme = Theme::default();
+        let (distance, who) = closest(theme.accent, theme.danger);
+        assert!(distance >= APART, "broken and fired dots are {distance:.3} OKLab apart under {who}");
     }
 }
