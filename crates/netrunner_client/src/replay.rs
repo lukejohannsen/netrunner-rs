@@ -29,7 +29,7 @@ use netrunner_core::rules::{apply_action, GameEvent, GameState, PlayerAction, Ru
 use netrunner_core::view::{build_client_view, ClientView};
 use netrunner_session::{HistoryEntry, MatchHistory, MatchRecordHeader, PublicHistoryEntry};
 
-use crate::actions::{push_log_line, MAX_LOG_LINES};
+use crate::actions::{push_linked_log_line, LogLine, MAX_LOG_LINES};
 
 /// Why a record could not be replayed.
 #[derive(Debug)]
@@ -136,8 +136,11 @@ pub struct Replay {
     public: Vec<PublicHistoryEntry>,
     /// Every entry's log lines, one after another, and where each entry's
     /// lines end: the log at position `i` is the lines before `log_ends[i]`
-    /// (`log_ends[0]` is 0, the setup).
-    log_lines: Vec<String>,
+    /// (`log_ends[0]` is 0, the setup). The desktop reads the lines with
+    /// the cards their names are; the terminal, which has nothing to
+    /// click, reads `log_text`, the same words.
+    log_lines: Vec<LogLine>,
+    log_text: Vec<String>,
     log_ends: Vec<usize>,
 }
 
@@ -166,6 +169,7 @@ impl Replay {
             view,
             public: Vec::new(),
             log_lines: Vec::new(),
+            log_text: Vec::new(),
             log_ends: Vec::new(),
         };
         replay.set_side(side);
@@ -225,9 +229,15 @@ impl Replay {
 
     /// The log as the chair read it at the current position, capped as the
     /// live log is.
-    pub fn log(&self) -> &[String] {
+    pub fn log(&self) -> &[LogLine] {
         let end = self.log_ends[self.cursor];
         &self.log_lines[end.saturating_sub(MAX_LOG_LINES)..end]
+    }
+
+    /// [`Replay::log`]'s words alone, for a client with nothing to click.
+    pub fn log_text(&self) -> &[String] {
+        let end = self.log_ends[self.cursor];
+        &self.log_text[end.saturating_sub(MAX_LOG_LINES)..end]
     }
 
     /// The log lines the entry that produced position `position` wrote —
@@ -235,7 +245,7 @@ impl Replay {
     pub fn lines_of(&self, position: usize) -> &[String] {
         match position {
             0 => &[],
-            n if n < self.log_ends.len() => &self.log_lines[self.log_ends[n - 1]..self.log_ends[n]],
+            n if n < self.log_ends.len() => &self.log_text[self.log_ends[n - 1]..self.log_ends[n]],
             _ => &[],
         }
     }
@@ -246,14 +256,16 @@ impl Replay {
         self.side = side;
         self.public = self.entries.iter().zip(&self.states[1..]).map(|(entry, state)| entry.for_viewer(state, side)).collect();
         self.log_lines.clear();
+        self.log_text.clear();
         self.log_ends = vec![0];
         for (entry, state) in self.public.iter().zip(&self.states[1..]) {
             let after = build_client_view(state, &self.registry, side);
             // Written one entry at a time into a log of its own, because
-            // `push_log_line` caps what it is given, and a cap mid-record
-            // would cut the lines this replay indexes by.
+            // `push_linked_log_line` caps what it is given, and a cap
+            // mid-record would cut the lines this replay indexes by.
             let mut lines = Vec::new();
-            push_log_line(&mut lines, entry, &self.registry, Some(&after));
+            push_linked_log_line(&mut lines, entry, &self.registry, Some(&after));
+            self.log_text.extend(lines.iter().map(|line| line.text.clone()));
             self.log_lines.extend(lines);
             self.log_ends.push(self.log_lines.len());
         }
@@ -345,7 +357,7 @@ mod tests {
     }
 
     /// The log at every position is the live log as the chair was sent it:
-    /// each masked entry through `push_log_line` against the view it
+    /// each masked entry through `push_linked_log_line` against the view it
     /// produced, capped the same way.
     #[test]
     fn the_log_at_each_position_is_the_live_log_to_that_point() {
@@ -357,10 +369,34 @@ mod tests {
         for (index, entry) in history.entries().iter().enumerate() {
             state = apply_action(&state, &registry, entry.action.clone()).unwrap().0;
             let view = build_client_view(&state, &registry, Side::Corp);
-            push_log_line(&mut live, &entry.for_viewer(&state, Side::Corp), &registry, Some(&view));
+            push_linked_log_line(&mut live, &entry.for_viewer(&state, Side::Corp), &registry, Some(&view));
             replay.seek(index + 1);
             assert_eq!(replay.log(), live.as_slice(), "position {}", index + 1);
             assert_eq!(replay.view(), &view);
+        }
+    }
+
+    /// Every name the log links, from either chair over a whole game, is
+    /// its card's printed title, and a line's spans are its words
+    /// unchanged. A link can only mark words the masked line already
+    /// prints, which is why it needs no leak check of its own.
+    #[test]
+    fn every_linked_name_is_its_cards_title() {
+        let (header, history, registry) = recorded_game(5);
+        let mut replay = Replay::load(&header, history, registry.clone(), Side::Corp, "test").unwrap();
+        for side in [Side::Corp, Side::Runner] {
+            replay.set_side(side);
+            let mut links = 0;
+            for line in &replay.log_lines {
+                assert_eq!(line.spans().into_iter().map(|(words, _)| words).collect::<String>(), line.text);
+                for (words, card) in line.spans() {
+                    if let Some(card) = card {
+                        assert_eq!(words, registry.get(card).expect("a linked card is registered").title, "{side:?}: {}", line.text);
+                        links += 1;
+                    }
+                }
+            }
+            assert!(links > 0, "a whole game names some card to the {side:?}");
         }
     }
 
@@ -377,7 +413,7 @@ mod tests {
         assert!(corp_installs > 0, "a random Corp installs something in a whole game");
 
         let mut replay = Replay::load(&header, history, registry, Side::Runner, "test").unwrap();
-        let everything = |replay: &Replay| replay.log_lines.join("\n");
+        let everything = |replay: &Replay| replay.log_text.join("\n");
         replay.seek(usize::MAX);
         let runner_log = everything(&replay);
         assert!(runner_log.contains("Install a card into"), "{runner_log}");

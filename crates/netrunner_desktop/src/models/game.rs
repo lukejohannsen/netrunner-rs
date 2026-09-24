@@ -67,7 +67,7 @@
 
 use std::sync::Arc;
 
-use netrunner_client::actions::{pop_log_entries, push_log_line};
+use netrunner_client::actions::{pop_log_entries, push_linked_log_line, LogLine};
 use netrunner_client::board::{encounter_subroutines, routes, transitions, ActionMap, Affordance, Asks, AutoBreak, Control, Encounter, Next, Pile, Prompt, Route, RunTrail, Target, Transition};
 use netrunner_client::play::{lone_pass, GameEndReason, MatchMessage};
 use netrunner_client::run_pass::RunPass;
@@ -153,7 +153,7 @@ pub enum Intent {
     /// A replay moved somewhere other than one step on: the board is put
     /// at `view` with the log as it read there, and nothing moved *to*
     /// here, so there is no transition to light (`Game::replay`).
-    Show { view: Box<ClientView>, log: Vec<String> },
+    Show { view: Box<ClientView>, log: Vec<LogLine> },
 }
 
 /// Where a replay stands, for its bar and its rail (`Game::replay`).
@@ -291,7 +291,7 @@ pub struct Game {
     pub view: Option<ClientView>,
     pub actions: ActionMap,
     pub prompt: Option<Prompt>,
-    pub log: Vec<String>,
+    pub log: Vec<LogLine>,
     /// What the last applied action changed, for the screen to
     /// highlight on its next redraw; cleared by `take_transitions`.
     pub transitions: Vec<Transition>,
@@ -761,7 +761,7 @@ impl Game {
                 if let Some(before) = &self.view {
                     self.transitions.extend(transitions(before, &view, &entry));
                 }
-                push_log_line(&mut self.log, &entry, &self.registry, Some(&view));
+                push_linked_log_line(&mut self.log, &entry, &self.registry, Some(&view));
                 self.follow_run(&view);
                 self.view = Some(*view);
                 self.follow_hand();
@@ -1181,7 +1181,7 @@ mod tests {
         assert!(matches!(applied, MatchMessage::Applied { .. }));
         game.apply(Intent::Message(MatchMessageRef(applied)));
         assert_eq!(game.log.len(), 1);
-        assert!(game.log[0].contains("Keep hand"), "{}", game.log[0]);
+        assert!(game.log[0].text.contains("Keep hand"), "{}", game.log[0].text);
         until_awaiting(&mut game, &mut handle);
         assert!(game.applied >= 2, "the Runner's mulligan decision was applied too");
         handle.join();
@@ -1970,11 +1970,11 @@ mod tests {
         assert_eq!(game.apply(Intent::TakeBack), Outcome::Rewind);
         assert!(!game.awaiting, "the controls come back with the next Awaiting");
 
-        game.log = vec!["[turn 2] Runner: one".to_string(), "[turn 2] Runner: two".to_string(), "           and what it did".to_string()];
+        game.log = ["[turn 2] Runner: one", "[turn 2] Runner: two", "           and what it did"].map(|line| LogLine::from(line.to_string())).to_vec();
         say(&mut game, MatchMessage::Rewound { view: view(), removed: 1, kind: Rewind::Free });
         assert_eq!(game.log.len(), 2, "{:?}", game.log);
-        assert_eq!(game.log[0], "[turn 2] Runner: one");
-        assert!(game.log[1].contains("took that back"));
+        assert_eq!(game.log[0].text, "[turn 2] Runner: one");
+        assert!(game.log[1].text.contains("took that back"));
         assert!(!game.back);
 
         say(&mut game, MatchMessage::Back { rewind: Some(Rewind::Undo) });
@@ -1982,7 +1982,7 @@ mod tests {
         assert_eq!(game.back_label(), Some("Take it back"), "one wording, whatever the move had shown");
         assert_eq!(game.apply(Intent::Shortcut(Shortcut::TakeBack)), Outcome::Rewind, "the first press goes");
         say(&mut game, MatchMessage::Rewound { view: view(), removed: 0, kind: Rewind::Undo });
-        assert!(game.log.last().is_some_and(|line| line.contains("took that back")));
+        assert!(game.log.last().is_some_and(|line| line.text.contains("took that back")));
     }
     /// A card's "you may" answered Always is answered so from then on,
     /// without a click; a take-back puts the question back in front of

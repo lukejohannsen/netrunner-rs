@@ -31,22 +31,146 @@ pub const MAX_LOG_LINES: usize = 200;
 /// read the raw history and printed the bot Corp's facedown installs by
 /// title to a human Runner.
 pub fn push_log_line(log: &mut Vec<String>, entry: &PublicHistoryEntry, registry: &CardRegistry, view: Option<&ClientView>) {
-    log.push(format!(
-        "[turn {}] {:?}: {}",
-        entry.turn_number,
-        entry.side,
-        describe_logged_action(&entry.action, registry, view)
-    ));
+    log.extend(entry_lines(entry, registry, view));
+    cap(log);
+}
+
+/// [`push_log_line`] for a client that lets a name in the log open its
+/// card: the same words, each line with the cards its names are
+/// ([`LogLine`]). The terminal has nothing to click and keeps the strings.
+pub fn push_linked_log_line(log: &mut Vec<LogLine>, entry: &PublicHistoryEntry, registry: &CardRegistry, view: Option<&ClientView>) {
+    let nameable = nameable_cards(entry, registry, view);
+    log.extend(entry_lines(entry, registry, view).into_iter().map(|text| LogLine::linked(text, &nameable)));
+    cap(log);
+}
+
+/// The lines one entry writes: its action, then what the cards did back.
+fn entry_lines(entry: &PublicHistoryEntry, registry: &CardRegistry, view: Option<&ClientView>) -> Vec<String> {
+    let mut lines = vec![format!("[turn {}] {:?}: {}", entry.turn_number, entry.side, describe_logged_action(&entry.action, registry, view))];
     // What the action line cannot say — an install or a swap a card's own
     // text performed, an advance's resulting token count — comes off the
     // entry's masked events. Indented under the action they resolved from.
     for line in narrate_events(&entry.events, &entry.action, registry, view) {
-        log.push(format!("           {line}"));
+        lines.push(format!("           {line}"));
     }
+    lines
+}
+
+fn cap<T>(log: &mut Vec<T>) {
     if log.len() > MAX_LOG_LINES {
         let excess = log.len() - MAX_LOG_LINES;
         log.drain(0..excess);
     }
+}
+
+/// A line of the match log, and which card each name in it is — so a
+/// client can open the card a name names (Phase 7 §8 item 17).
+///
+/// **The names are found in the words, but only among the cards the
+/// viewer was shown** ([`nameable_cards`]): every card id in the masked
+/// entry the line was written from and in the viewer's own view after
+/// it. Both are masked for this viewer, so a link can open nothing the
+/// line had not already named, and a title that happens to read as a
+/// word ("Ping", "Unity") links only when that card is in front of the
+/// viewer. The alternative was to thread the id alongside every title
+/// through `describe_action` and `narrate_event` and every helper they
+/// call (`selection`, `placement`, `prose`) — a second return value on
+/// seventy call sites, which a new line would have to remember to fill
+/// in; this rule needs nothing from a new line.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LogLine {
+    pub text: String,
+    /// Byte ranges of `text` that name a card, in order and never
+    /// overlapping.
+    pub names: Vec<(std::ops::Range<usize>, CardId)>,
+}
+
+impl LogLine {
+    /// Links each whole-word occurrence of a nameable card's title, longer
+    /// titles first so "Hedge Fund" is never read inside a longer title
+    /// that contains it.
+    pub fn linked(text: String, nameable: &[(String, CardId)]) -> Self {
+        let mut names: Vec<(std::ops::Range<usize>, CardId)> = Vec::new();
+        let mut by_length: Vec<&(String, CardId)> = nameable.iter().filter(|(title, _)| !title.is_empty()).collect();
+        by_length.sort_by_key(|(title, _)| std::cmp::Reverse(title.len()));
+        let word = |c: Option<char>| c.is_some_and(char::is_alphanumeric);
+        for (title, card) in by_length {
+            for (start, _) in text.match_indices(title.as_str()) {
+                let end = start + title.len();
+                let whole = !word(text[..start].chars().next_back()) && !word(text[end..].chars().next());
+                if whole && !names.iter().any(|(range, _)| range.start < end && start < range.end) {
+                    names.push((start..end, card.clone()));
+                }
+            }
+        }
+        names.sort_by_key(|(range, _)| range.start);
+        LogLine { text, names }
+    }
+
+    /// The line in pieces, each with the card it names or `None`.
+    pub fn spans(&self) -> Vec<(&str, Option<&CardId>)> {
+        let mut spans = Vec::new();
+        let mut at = 0;
+        for (range, card) in &self.names {
+            if range.start > at {
+                spans.push((&self.text[at..range.start], None));
+            }
+            spans.push((&self.text[range.clone()], Some(card)));
+            at = range.end;
+        }
+        if at < self.text.len() {
+            spans.push((&self.text[at..], None));
+        }
+        spans
+    }
+}
+
+impl From<String> for LogLine {
+    fn from(text: String) -> Self {
+        LogLine { text, names: Vec::new() }
+    }
+}
+
+impl AsRef<str> for LogLine {
+    fn as_ref(&self) -> &str {
+        &self.text
+    }
+}
+
+/// Every card the viewer was shown with this entry, by title: each card
+/// id in the masked entry and in the viewer's own view after it.
+///
+/// Read off the serialized form rather than field by field, because the
+/// ids sit in dozens of `PlayerAction`, `GameEvent` and `ClientView`
+/// fields and a new one would otherwise have to be added here too; a
+/// string is taken as a card only when the registry knows it by that id.
+/// Both inputs are masked for this viewer, which is the whole of the leak
+/// analysis: a facedown install carries no id to find.
+pub fn nameable_cards(entry: &PublicHistoryEntry, registry: &CardRegistry, view: Option<&ClientView>) -> Vec<(String, CardId)> {
+    fn walk(value: &serde_json::Value, found: &mut Vec<String>) {
+        match value {
+            serde_json::Value::String(s) => found.push(s.clone()),
+            serde_json::Value::Array(items) => items.iter().for_each(|item| walk(item, found)),
+            // Values only: no map in either is keyed by a card id, and a
+            // field name is never one.
+            serde_json::Value::Object(fields) => fields.values().for_each(|item| walk(item, found)),
+            _ => {}
+        }
+    }
+    let mut found = Vec::new();
+    for value in [serde_json::to_value(entry).ok(), view.and_then(|view| serde_json::to_value(view).ok())].into_iter().flatten() {
+        walk(&value, &mut found);
+    }
+    let mut nameable: Vec<(String, CardId)> = Vec::new();
+    for id in found {
+        let id = CardId(id);
+        if let Some(card) = registry.get(&id)
+            && !nameable.iter().any(|(title, _)| *title == card.title)
+        {
+            nameable.push((card.title.clone(), id));
+        }
+    }
+    nameable
 }
 
 /// Drops the last `entries` actions `push_log_line` wrote, each with the
@@ -55,15 +179,15 @@ pub fn push_log_line(log: &mut Vec<String>, entry: &PublicHistoryEntry, registry
 /// not go on saying it did. jinteki.net leaves the undone lines in and
 /// adds a warning; here the record itself loses the entries, and the log
 /// follows the record.
-pub fn pop_log_entries(log: &mut Vec<String>, entries: usize, note: &str) {
+pub fn pop_log_entries<L: AsRef<str> + From<String>>(log: &mut Vec<L>, entries: usize, note: &str) {
     for _ in 0..entries {
         while let Some(line) = log.pop() {
-            if line.starts_with('[') {
+            if line.as_ref().starts_with('[') {
                 break;
             }
         }
     }
-    log.push(format!("           ↩ {note}"));
+    log.push(L::from(format!("           ↩ {note}")));
 }
 
 /// One place on the table and the cards the viewer may see in it.
@@ -809,6 +933,25 @@ mod tests {
     use netrunner_bots::RandomAgent;
     use netrunner_core::dsl::CardId;
     use netrunner_core::rules::ServerId;
+
+    fn nameable(titles: &[&str]) -> Vec<(String, CardId)> {
+        titles.iter().map(|title| (title.to_string(), CardId(title.to_lowercase().replace(' ', "_")))).collect()
+    }
+
+    /// A name is a whole word, the longer of two titles wins where they
+    /// overlap, and the spans put the line back together unchanged.
+    #[test]
+    fn a_line_links_whole_names_the_longest_first() {
+        let cards = nameable(&["Hedge Fund", "Fund", "Ping"]);
+        let line = LogLine::linked("[turn 3] Corp: Play Hedge Fund, then Fund, not Funding or Pinged; Ping".to_string(), &cards);
+        let named: Vec<(&str, &CardId)> = line.spans().into_iter().filter_map(|(words, card)| card.map(|card| (words, card))).collect();
+        assert_eq!(named, vec![("Hedge Fund", &cards[0].1), ("Fund", &cards[1].1), ("Ping", &cards[2].1)]);
+        assert_eq!(line.spans().into_iter().map(|(words, _)| words).collect::<String>(), line.text, "nothing is lost or repeated");
+        // A title nobody was shown is words, whatever it spells.
+        let unshown = LogLine::linked("[turn 3] Corp: Play Hedge Fund".to_string(), &nameable(&["Ping"]));
+        assert!(unshown.names.is_empty());
+        assert_eq!(unshown.spans(), vec![("[turn 3] Corp: Play Hedge Fund", None)]);
+    }
 
     /// A concealed action's label is built from its public shape alone —
     /// there is no card to name, and the registry is not consulted.

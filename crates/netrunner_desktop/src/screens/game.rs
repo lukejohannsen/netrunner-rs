@@ -149,6 +149,7 @@ impl Plugin for GamePlugin {
             .init_resource::<Pending>()
             .init_resource::<table::LastTable>()
             .init_resource::<Pointer>()
+            .add_observer(open_a_logged_name)
             .add_systems(OnEnter(AppScreen::Game), spawn)
             .add_systems(OnExit(AppScreen::Game), leave)
             .add_systems(Update, (poll, autoplay, escape.in_set(Captures), board_click, drag_hand, shortcuts, controls, fit, board_pictures, side_panels, relane, redraw, fade_ghosts, lift_hovered, table_guide).chain().run_if(in_state(AppScreen::Game)))
@@ -366,6 +367,10 @@ struct LogScroll;
 /// preference, never despawned.
 #[derive(Component)]
 pub struct LogRow;
+/// A card's name in the match log: a span of the line's text that opens
+/// the card (Phase 7 §8 item 17), read off `actions::LogLine`.
+#[derive(Component, Debug, Clone, PartialEq)]
+pub struct LogName(pub CardId);
 /// The full-window overlay, when one is up.
 #[derive(Component)]
 pub struct Overlay;
@@ -1084,6 +1089,51 @@ fn secondary_modifier(keys: &ButtonInput<KeyCode>) -> bool {
     keys.any_pressed([KeyCode::ControlLeft, KeyCode::ControlRight, KeyCode::SuperLeft, KeyCode::SuperRight])
 }
 
+/// One line of the match log: its words in the log's dim text, and each
+/// name in it a span of its own, in the accent, that opens the card.
+///
+/// A span, not a button beside the words: a line is one `Text`, so it
+/// wraps at word boundaries as it always did, and `bevy_ui`'s picking
+/// hits a single span of it (`pick_ui_text_section`). A row of nodes, one
+/// per word so the line could still wrap, was the alternative — about ten
+/// nodes a line over eighty lines, rebuilt on every action. The indent a
+/// narrated line carries in the terminal is dropped here, as it was.
+fn spawn_log_line(parent: &mut ChildSpawnerCommands, theme: &Theme, line: &netrunner_client::actions::LogLine) {
+    let spans = line.spans();
+    let last = spans.len().saturating_sub(1);
+    parent.spawn((widgets::dim(theme, ""), TextLayout::new(Justify::Left, LineBreak::WordBoundary))).with_children(|text| {
+        for (index, (words, card)) in spans.into_iter().enumerate() {
+            let words = if index == 0 { words.trim_start() } else { words };
+            let words = if index == last { words.trim_end() } else { words };
+            match card {
+                Some(card) => {
+                    text.spawn((TextSpan::new(words), theme.font(size::SMALL), TextColor(theme.accent), LogName(card.clone())));
+                }
+                None => {
+                    text.spawn((TextSpan::new(words), theme.font(size::SMALL), TextColor(theme.text_dim)));
+                }
+            }
+        }
+    });
+}
+
+/// A press on a name in the log opens that card to read, with either
+/// button: a name has nothing to do but be read, so there is no menu for
+/// the primary click to open (the §5 rule that a sheet carries no
+/// actions). `Interaction` is set for nodes only and a span is not one,
+/// so the press comes from picking, as an observer — which a headless
+/// test without the picking plugins never triggers rather than failing
+/// on a message nobody registered. Acted on at the span itself, not again
+/// at each ancestor the press bubbles through.
+fn open_a_logged_name(press: On<bevy::picking::events::Pointer<bevy::picking::events::Press>>, names: Query<&LogName>, mut pending: ResMut<Pending>) {
+    if press.entity != press.original_event_target() {
+        return;
+    }
+    if let Ok(LogName(card)) = names.get(press.entity) {
+        pending.0.push(Intent::InspectCard(Some(card.clone())));
+    }
+}
+
 /// The secondary click — the right button, or the primary with Ctrl or
 /// Cmd held — on a hovered card or zone opens its sheet, to read. The
 /// focus system sets `Interaction` for the primary button only and
@@ -1502,7 +1552,7 @@ fn redraw(
         if prefs.play_history && let Ok(log) = log.single() {
             commands.entity(log).despawn_children().with_children(|parent| {
                 for line in game.log.iter().rev().take(80).rev() {
-                    parent.spawn((widgets::dim(&theme, line.trim().to_string()), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
+                    spawn_log_line(parent, &theme, line);
                 }
             });
             // The newest line is the one to read; the layout clamps this to
