@@ -3887,6 +3887,74 @@ needed and no new action exists.
   secondary click on the chip opening the Trojan's sheet); the terminal's
   `a_trojan_is_listed_on_its_ice_and_its_row_entry_names_the_host`.
 
+### 4ao. The timing of the turn and the run, as the rules chart it, with the step in play lit — DONE (23 September 2026)
+
+Phase 7 §8 item 10. The phase panel (§4j) is coarse on purpose: three
+steps a turn and five a run. So it cannot answer the question a person
+learning the game asks: why may the Corp rez now and not a moment later?
+The answer is a window, which is exactly what the panel leaves out. The
+rules already chart all of it in CR 11.1.1's appendix: the Corp's turn,
+the Runner's, a run, a breach and an access, with each window tagged P, R
+or S.
+
+- **`netrunner_client::board::timing`** holds the charts and says which
+  steps are lit. It reads only the masked view (`phase`, `active_run`,
+  `paid_ability_window`), as the phase bar does. More than one step can be
+  lit, because a run happens inside the turn's "take an action" and a
+  breach inside the run's success. How the view maps to a step:
+  - **The discard window runs under `GamePhase::Action`** (`turn.rs`), so
+    the window's checkpoint is what places it.
+  - An action phase with no clicks left and nothing under way lights the
+    phase's end (CR 5.7.1h), where the game waits for End turn. The first
+    screenshot lit "take an action, while clicks remain" with none left.
+  - An encounter lights its window while one is open, and otherwise the
+    subroutines resolving.
+  - Movement lights the window before the jack-out decision, the decision
+    itself, or the rez window after it, read off `jack_out_permitted`.
+  - A breach's `access_state` lights the breach step and the access step
+    beside it.
+- **The words are ours; the numbers are the rules'.** `rules/NOTICE.md`
+  says the committed rules text is Null Signal Games', kept for
+  implementing the rules and nothing more. So the client never shows a
+  sentence of it. Each step is a few words of this project's with its
+  `CR` number, and every number is a citation the `rules_citations` gate
+  checks.
+- **One line says why a lit step can jump a window.** The engine asks
+  nobody about a window nobody could act in (Rules Conformance D3, D4).
+- **Opened by T or a press on the phase panel**, which is now a button
+  (`Click::Timing`). It is a reading surface: no Close button, and
+  Escape or a click away closes it.
+  - **Runner's turn:** two columns in a 1000-px panel, the turn with the
+    breach and the access on the left and the run on the right. On
+    this 2560×1600 screen it measured about 870 pixels tall, so it fits
+    a 1080-pixel window.
+  - **Corp's turn:** its one chart in a 560-px panel.
+  - The chart redraws with every view, so it follows the game while it
+    is open.
+- **Rejected:**
+  - expanding the phase panel in place, where the right column is too
+    narrow for the run's 30 steps;
+  - a key alone, since the panel is where a person looks when they wonder.
+- **Only the desktop draws it for now.** The model is in `netrunner_client`
+  so the terminal client can draw it too, but the terminal client has no
+  help overlay to hang it on.
+- **Dev hook:** `NETRUNNER_TIMING=1` opens the chart once the autoplay is
+  done. It does not wait for the person's decision: the first shot was
+  taken while the bot held the window, and the chart never opened.
+- **Screenshots checked:**
+  - the Runner's turn after a jack-out (the action phase's end lit, after
+    the fix above);
+  - a run held at an encounter with `NETRUNNER_HOLD_ICE=1` (the turn's
+    action step and the encounter window lit together);
+  - the Corp's turn.
+- **Tests:**
+  - five in `board::timing`: each turn window, each run phase with the
+    turn's step, the breach and the access, no run chart on the Corp's
+    turn, and (S) only on the Corp's draw and action windows;
+  - the model's `the_timing_chart_opens_on_t_and_closes_like_a_sheet`;
+  - the desktop's
+    `t_or_a_press_on_the_phase_panel_opens_the_timing_with_the_step_in_play_lit`.
+
 ## 8. Borrowed from jinteki — OPEN (19 September 2026)
 
 From [`docs/jinteki-comparison.md`](../jinteki-comparison.md) §5, in the
@@ -3935,7 +4003,7 @@ exist, never a new action.
 7. ~~**Space as the one "continue" key.**~~ Done in §4ai.
 8. ~~**Ghost Trojans in the program row.**~~ Done in §4an.
 9. ~~**Identical rig cards stacked** with a count.~~ Done in §4al.
-10. **Run and turn timing diagrams.**
+10. ~~**Run and turn timing diagrams.**~~ Done in §4ao.
 11. **A spectator seat.**
 
 Added by the second pass (20 September 2026, doc §6.6), numbered on from
