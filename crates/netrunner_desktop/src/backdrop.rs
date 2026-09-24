@@ -32,7 +32,7 @@ use std::collections::HashMap;
 
 use bevy::prelude::*;
 
-use netrunner_client::backdrop::{candidates, Manifest, DIR, MANIFEST_FILE};
+use netrunner_client::backdrop::{candidates, own_files, CreditGroup, Manifest, DIR, MANIFEST_FILE, SHARED_KEY};
 
 use crate::core::ClientCore;
 use crate::screens::AppScreen;
@@ -87,6 +87,30 @@ impl Backdrops {
             .get_or_insert_with(|| crate::assets::read(&format!("{DIR}/{MANIFEST_FILE}")).and_then(|bytes| String::from_utf8(bytes).ok()).map_or_else(Manifest::default, |text| Manifest::parse(&text)))
             .dim(key)
     }
+}
+
+/// Who made the pictures in the player's own folder, from that folder's
+/// `backdrops.json` — never the bundled one, whose pictures are credited
+/// in `assets/CREDITS.md` — and only for a key whose own picture is in
+/// that folder, so a credit left behind by a deleted picture is not
+/// shown.
+pub fn own_credits() -> Vec<CreditGroup> {
+    let Some(dir) = crate::assets::override_dir() else { return Vec::new() };
+    let Some(manifest) = std::fs::read_to_string(dir.join(DIR).join(MANIFEST_FILE)).ok().map(|text| Manifest::parse(&text)) else { return Vec::new() };
+    manifest.credits(|key| own_files(key).iter().any(|file| dir.join(file).is_file()))
+}
+
+/// The words for where a key's picture is seen: the screen's title, or
+/// a phrase for the three whose title does not name them (the splash has
+/// none, and the main menu's is the game's).
+pub fn place(key: &str) -> String {
+    match key {
+        SHARED_KEY => return "every menu".to_string(),
+        "splash" => return "the splash".to_string(),
+        "main-menu" => return "the main menu".to_string(),
+        _ => {}
+    }
+    AppScreen::ALL.into_iter().find(|screen| screen.asset_key() == Some(key)).map_or_else(|| key.to_string(), |screen| screen.title().to_lowercase())
 }
 
 /// The first of `key`'s candidate files that exists and decodes. A file
@@ -164,6 +188,15 @@ mod tests {
         unique.dedup();
         assert_eq!(unique.len(), keys.len(), "two screens share a slot: {keys:?}");
         assert!(!keys.contains(&netrunner_client::backdrop::SHARED_KEY), "the shared key is not a screen's");
+    }
+
+    #[test]
+    fn a_picture_is_placed_by_the_screen_it_is_behind() {
+        assert_eq!(place("splash"), "the splash");
+        assert_eq!(place("main-menu"), "the main menu");
+        assert_eq!(place("menu"), "every menu");
+        assert_eq!(place("cards"), "cards");
+        assert_eq!(place("deck-editor"), "deck editor");
     }
 
     /// Basic graphics is the flat ground, and switching it back loads

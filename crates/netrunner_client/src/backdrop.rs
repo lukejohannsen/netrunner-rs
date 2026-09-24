@@ -59,7 +59,8 @@ pub fn candidates(key: &str) -> Vec<String> {
 /// picture.
 ///
 /// ```json
-/// { "dim": { "menu": 0.5, "cards": 0.7, "splash": 0.0 } }
+/// { "dim": { "menu": 0.5, "cards": 0.7, "splash": 0.0 },
+///   "credit": { "splash": { "artist": "…", "website": "https://…", "title": "…" } } }
 /// ```
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
@@ -67,6 +68,29 @@ pub struct Manifest {
     /// Per key, 0 (the picture as drawn) to 1 (the flat ground). A key
     /// with no entry takes [`SHARED_KEY`]'s, then [`DEFAULT_DIM`].
     pub dim: BTreeMap<String, f32>,
+    /// Per key, who made that key's own picture.
+    ///
+    /// **For a picture in the player's own folder, never a committed
+    /// one.** A committed picture is credited in `assets/CREDITS.md`,
+    /// where a test holds it to a licence; a picture a player drops into
+    /// `<data dir>` is theirs to have, and may be one nobody could commit
+    /// (the art that asked for this was "all rights reserved"). The
+    /// About screen still names its artist, because a person looking at
+    /// the art should be able to find out whose it is. Only the key's
+    /// own picture is credited, never the shared one it falls back to —
+    /// `menu`'s credit sits under `menu`.
+    pub credit: BTreeMap<String, Credit>,
+}
+
+/// Who made a picture and where to find them, as the player wrote it.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Credit {
+    pub artist: String,
+    /// The artist's site, or the picture's page on it.
+    pub website: String,
+    /// The work's name, if the player gave one.
+    pub title: String,
 }
 
 impl Manifest {
@@ -79,6 +103,46 @@ impl Manifest {
     pub fn dim(&self, key: &str) -> f32 {
         self.dim.get(key).or_else(|| self.dim.get(SHARED_KEY)).copied().unwrap_or(DEFAULT_DIM).clamp(0.0, 1.0)
     }
+
+    /// The credits for the keys `has_picture` says have a picture of
+    /// their own, grouped by artist and website in key order, each with
+    /// the keys and titles it covers. An entry naming no artist is
+    /// dropped: a credit is a name, and a blank one credits nobody.
+    pub fn credits(&self, has_picture: impl Fn(&str) -> bool) -> Vec<CreditGroup> {
+        let mut groups: Vec<CreditGroup> = Vec::new();
+        for (key, credit) in &self.credit {
+            if credit.artist.trim().is_empty() || !has_picture(key) {
+                continue;
+            }
+            let group = match groups.iter_mut().position(|g| g.artist == credit.artist && g.website == credit.website) {
+                Some(index) => &mut groups[index],
+                None => {
+                    groups.push(CreditGroup { artist: credit.artist.clone(), website: credit.website.clone(), keys: Vec::new(), titles: Vec::new() });
+                    groups.last_mut().expect("just pushed")
+                }
+            };
+            group.keys.push(key.clone());
+            if !credit.title.is_empty() && !group.titles.contains(&credit.title) {
+                group.titles.push(credit.title.clone());
+            }
+        }
+        groups
+    }
+}
+
+/// One artist's pictures on the player's screens.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CreditGroup {
+    pub artist: String,
+    pub website: String,
+    /// The backdrop keys their pictures fill.
+    pub keys: Vec<String>,
+    pub titles: Vec<String>,
+}
+
+/// The files a key's *own* picture may be, without the shared fallback.
+pub fn own_files(key: &str) -> Vec<String> {
+    EXTENSIONS.iter().map(|extension| format!("{DIR}/{key}.{extension}")).collect()
 }
 
 #[cfg(test)]
@@ -99,5 +163,23 @@ mod tests {
         assert_eq!(manifest.dim("splash"), 1.0, "clamped");
         assert_eq!(Manifest::parse("{ not json").dim("cards"), DEFAULT_DIM);
         assert_eq!(Manifest::default().dim("cards"), DEFAULT_DIM);
+    }
+
+    #[test]
+    fn a_credit_is_shown_only_for_a_picture_that_is_there_and_one_artist_is_one_credit() {
+        let manifest = Manifest::parse(
+            r#"{ "credit": {
+                "splash": { "artist": "A. Painter", "website": "https://a.example", "title": "City (smog)" },
+                "main-menu": { "artist": "A. Painter", "website": "https://a.example", "title": "City (neon)" },
+                "cards": { "artist": "B. Drawer", "website": "https://b.example" },
+                "about": { "artist": " ", "website": "https://blank.example" } } }"#,
+        );
+        let credits = manifest.credits(|key| key != "cards");
+        assert_eq!(credits.len(), 1, "no file for cards, and a blank artist credits nobody: {credits:?}");
+        assert_eq!(credits[0].artist, "A. Painter");
+        assert_eq!(credits[0].keys, vec!["main-menu", "splash"]);
+        assert_eq!(credits[0].titles, vec!["City (neon)", "City (smog)"]);
+        assert!(Manifest::parse(r#"{ "dim": { "menu": 0.2 } }"#).credits(|_| true).is_empty(), "a manifest from before credits still parses");
+        assert_eq!(own_files("splash"), vec!["backdrops/splash.jpg", "backdrops/splash.png"]);
     }
 }

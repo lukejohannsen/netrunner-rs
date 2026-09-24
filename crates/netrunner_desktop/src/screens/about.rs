@@ -139,6 +139,22 @@ fn spawn(mut commands: Commands, theme: Res<Theme>) {
                     });
                 }
 
+                let own = crate::backdrop::own_credits();
+                if !own.is_empty() {
+                    section(panel, &theme, "Your own pictures", "Pictures you put in your own assets folder. They are yours to have, not the client's to ship, and are credited as you wrote them in backdrops.json.");
+                    for group in &own {
+                        panel.spawn(Node { flex_direction: FlexDirection::Column, row_gap: px(2), margin: UiRect::top(px(6)), ..default() }).with_children(|entry| {
+                            line(entry, &theme, group.artist.clone(), false);
+                            if !group.website.is_empty() {
+                                line(entry, &theme, group.website.clone(), true);
+                            }
+                            let places: Vec<String> = group.keys.iter().map(|key| crate::backdrop::place(key)).collect();
+                            let titles = if group.titles.is_empty() { String::new() } else { format!("{} · ", group.titles.join(" · ")) };
+                            line(entry, &theme, format!("{titles}behind {}", places.join(", ")), true);
+                        });
+                    }
+                }
+
                 section(panel, &theme, "Fetched on your say-so, never shipped", "Downloaded into your own cache for your own screen when you turn card images on in Settings.");
                 for credit in credits::fetched() {
                     spawn_credit(panel, &theme, &credit);

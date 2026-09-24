@@ -94,6 +94,26 @@ picture as drawn) to `1` (the flat ground). A key it does not name takes
 
 A file with a typo in it costs the dimming and never the picture.
 
+**Crediting a picture of your own.** A picture in your `<data dir>`
+folder is not committed, so it has no row in `CREDITS.md`, but the
+About screen still names whoever made it if the manifest there says so,
+under `credit`, keyed as `dim` is:
+
+```json
+{
+  "dim": { "splash": 0.3, "main-menu": 0.35 },
+  "credit": {
+    "splash": { "artist": "Their Name", "website": "https://…", "title": "The work" }
+  }
+}
+```
+
+Only a key whose own picture is in that folder is credited, so a credit
+outlived by its picture is not shown, and one artist's pictures are one
+entry. This is for the player's folder only: a bundled picture is
+credited in `CREDITS.md`, and the bundled manifest's `credit` is never
+read.
+
 ## The splash
 
 The splash is the `splash` slot plus an optional mark drawn over it:
@@ -132,4 +152,6 @@ their licence, with the licence text beside it as `LICENSE-<name>.txt`.
 with their website.** Find out who made it before committing it.
 
 Your own backdrops in `<data dir>` are yours and are not covered by any
-of this.
+of this — which is also where a picture goes that may be shown but not
+shipped, such as an "all rights reserved" illustration: credit it
+with `credit` in that folder's `backdrops.json` (above).
