@@ -18,6 +18,7 @@ use clap::parser::ValueSource;
 use clap::ArgMatches;
 
 pub use netrunner_client::settings::{resolve_settings_file, Settings};
+use netrunner_client::standing::{Answer, Answers, PromptKey};
 
 use crate::config::{Command, Config};
 
@@ -35,6 +36,22 @@ pub fn apply(settings: &Settings, config: &mut Config, flagged: impl Fn(&str) ->
     {
         config.format = format.into();
     }
+}
+
+/// The answers a person gave a card's "you may" for good
+/// (`netrunner_client::standing`); none when the file cannot be read, as
+/// the rest of the settings are ignored then.
+pub fn answers() -> Answers {
+    resolve_settings_file().and_then(|path| Settings::load(&path)).map(|settings| settings.answers).unwrap_or_default()
+}
+
+/// Keeps `answer` for `key` in the file: read, changed and written back
+/// whole, so a field only the desktop client reads is not lost.
+pub fn remember(key: PromptKey, answer: Answer) -> Result<(), String> {
+    let path = resolve_settings_file()?;
+    let mut settings = Settings::load(&path)?;
+    settings.answers.set(key, Some(answer));
+    settings.save(&path)
 }
 
 /// Whether the invocation is one a person plays, rather than one that

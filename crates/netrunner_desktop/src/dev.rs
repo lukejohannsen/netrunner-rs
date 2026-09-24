@@ -94,6 +94,11 @@
 //!   `NETRUNNER_RUNNER_DECK=dashing_mad` — and give the autoplay room
 //!   (`NETRUNNER_AUTOPLAY=300`): the wandering pick alone hosts one in
 //!   some games and not others.
+//! - `NETRUNNER_HOLD_MAY=1` — the autoplay stops at the first card's
+//!   "you may" the pop-up offers to answer for good, so the screenshot
+//!   catches the Always and Never row under the prompt. Dewi
+//!   Subrotoputri asks on every successful run:
+//!   `NETRUNNER_GAME=runner NETRUNNER_RUNNER_DECK=enthusiasm`.
 //! - `NETRUNNER_SCROLL=<x>,<y>,<lines>` — before the screenshot, the
 //!   pointer is put at window position (x, y) and the wheel turned by
 //!   that many lines, through the same window events winit would send;
@@ -214,6 +219,9 @@ pub struct Dev {
     pub hold_break: bool,
     /// Host a Trojan whenever one can be, and stop once one is hosted.
     pub hold_trojan: bool,
+    /// Stop the autoplay at the first card's "you may" the pop-up offers
+    /// to answer for good (`netrunner_client::standing`).
+    pub hold_may: bool,
     /// Open the sheet of the first installed Corp card, once.
     pub sheet: bool,
     /// Open this side's score area with its first row expanded, once.
@@ -263,6 +271,7 @@ impl Dev {
             hold_access: std::env::var_os("NETRUNNER_HOLD_ACCESS").is_some_and(|v| !v.is_empty()),
             hold_break: std::env::var_os("NETRUNNER_HOLD_BREAK").is_some_and(|v| !v.is_empty()),
             hold_trojan: std::env::var_os("NETRUNNER_HOLD_TROJAN").is_some_and(|v| !v.is_empty()),
+            hold_may: std::env::var_os("NETRUNNER_HOLD_MAY").is_some_and(|v| !v.is_empty()),
             sheet: std::env::var_os("NETRUNNER_SHEET").is_some_and(|v| !v.is_empty()),
             agendas: std::env::var("NETRUNNER_AGENDAS").ok().and_then(|side| match side.trim().to_ascii_lowercase().as_str() {
                 "corp" => Some(netrunner_core::rules::Side::Corp),

@@ -61,6 +61,12 @@ pub enum Intent {
     Toggle(Row),
     /// The name field committed (`Some`) or was cancelled (`None`).
     NameEdited(Option<String>),
+    /// A remembered answer to an optional trigger, by its place in
+    /// `Settings::answers`: forget it, so the card asks again
+    /// (`netrunner_client::standing`).
+    Forget(usize),
+    /// Forget every remembered answer.
+    ForgetAll,
 }
 
 /// The name a player may set: at most this many characters, trimmed,
@@ -166,6 +172,16 @@ pub fn apply(settings: &mut Settings, intent: Intent, tables: &[String], skins: 
             let next = (!name.is_empty()).then_some(name);
             let changed = next != settings.player;
             settings.player = next;
+            changed
+        }
+        Intent::Forget(index) => {
+            let Some(key) = settings.answers.iter().nth(index).map(|entry| entry.key.clone()) else { return false };
+            settings.answers.set(key, None);
+            true
+        }
+        Intent::ForgetAll => {
+            let changed = !settings.answers.is_empty();
+            settings.answers = Default::default();
             changed
         }
         Intent::NameEdited(None) | Intent::Step(..) | Intent::Toggle(..) => false,
@@ -371,5 +387,20 @@ mod tests {
             assert!(Row::ALL.contains(&row), "{row:?} is on the settings screen too");
             assert_ne!(row, Row::Player, "a text field has no place in an overlay");
         }
+    }
+    #[test]
+    fn a_remembered_answer_is_forgotten_one_at_a_time_or_all_at_once() {
+        use netrunner_client::standing::{Answer, PromptKey};
+        use netrunner_core::dsl::CardId;
+        let key = |card: &str| PromptKey { card: CardId(card.to_string()), clauses: vec!["draw 1 card".to_string()] };
+        let mut settings = Settings::default();
+        settings.answers.set(key("a"), Some(Answer::Always));
+        settings.answers.set(key("b"), Some(Answer::Never));
+        assert!(apply(&mut settings, Intent::Forget(0), &[], &[]));
+        assert_eq!((settings.answers.get(&key("a")), settings.answers.get(&key("b"))), (None, Some(Answer::Never)));
+        assert!(!apply(&mut settings, Intent::Forget(5), &[], &[]), "a row that is gone forgets nothing");
+        assert!(apply(&mut settings, Intent::ForgetAll, &[], &[]));
+        assert!(settings.answers.is_empty());
+        assert!(!apply(&mut settings, Intent::ForgetAll, &[], &[]), "nothing left to forget is no change to save");
     }
 }

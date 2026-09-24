@@ -9,6 +9,7 @@
 //! represent "both sides, simultaneously, from each one's own point of
 //! view," so this app doesn't try to.
 
+use netrunner_client::standing::{optional_trigger, standing_answer, Answer, Answers};
 use std::time::{Duration, Instant};
 
 use ratatui::crossterm::event::{KeyCode, KeyEvent};
@@ -67,6 +68,10 @@ pub struct App {
     /// The route under way: each `StateUpdate` asks it for the next step,
     /// which goes back without a keypress.
     breaking: Option<AutoBreak>,
+    /// The person's answers to optional triggers
+    /// (`netrunner_client::standing`), from the settings file. Empty
+    /// until the caller fills it, so a test reads no file.
+    pub answers: Answers,
 }
 
 impl App {
@@ -95,6 +100,7 @@ impl App {
             breaks: Vec::new(),
             asks: Asks::default(),
             breaking: None,
+            answers: Answers::default(),
         };
         app.drain_messages();
         app
@@ -143,6 +149,13 @@ impl App {
                         && let Some(pass) = netrunner_client::play::lone_pass(&view, &self.registry)
                     {
                         let _ = self.tx.send(ClientMessage::SubmitAction(pass));
+                    } else if !self.connection_lost
+                        && let Some((action, _)) = standing_answer(&view, &self.registry, &self.answers)
+                    {
+                        // A card's "you may" answered for good goes back
+                        // the same way. Online has no take-back to ask
+                        // again after.
+                        let _ = self.tx.send(ClientMessage::SubmitAction(action));
                     }
                     self.last_rejection = None;
                     self.breaks.clear();
@@ -210,6 +223,22 @@ impl App {
 
     fn offered_actions_in(&self, view: &ClientView) -> Vec<PlayerAction> {
         netrunner_client::selection::shown(&view.legal_actions, Some(view), &self.registry)
+    }
+
+    /// `y` / `n`: the prompt's optional trigger answered `answer` now and
+    /// from now on (`netrunner_client::standing`), kept in the settings
+    /// file.
+    fn remember(&mut self, answer: Answer) {
+        if self.connection_lost {
+            return;
+        }
+        let Some(prompt) = self.view.as_ref().and_then(|view| optional_trigger(view, &self.registry)) else { return };
+        let Some(action) = prompt.action(answer) else { return };
+        self.answers.set(prompt.key.clone(), Some(answer));
+        if let Err(error) = crate::settings::remember(prompt.key, answer) {
+            self.last_rejection = Some(format!("the answer is kept for this game only: {error}"));
+        }
+        let _ = self.tx.send(ClientMessage::SubmitAction(action));
     }
 
     fn submit_selected_action(&mut self) {
@@ -283,6 +312,8 @@ impl App {
             KeyCode::Up | KeyCode::Char('k') => self.move_selection(-1),
             KeyCode::Down | KeyCode::Char('j') => self.move_selection(1),
             KeyCode::Enter | KeyCode::Char(' ') => self.submit_selected_action(),
+            KeyCode::Char('y') => self.remember(Answer::Always),
+            KeyCode::Char('n') => self.remember(Answer::Never),
             KeyCode::Char('c') => {
                 if let Some(view) = &self.view {
                     self.card_picker = Some(CardPicker::open(view, &self.registry));
@@ -587,6 +618,25 @@ impl RenderableView for App {
     fn actions_title(&self) -> Option<String> {
         self.view.as_ref().and_then(|view| crate::prose::decision_prompt(view, &self.registry))
     }
+    fn notice(&self) -> Option<String> {
+        self.view.as_ref().and_then(|view| remember_hint(view, &self.registry))
+    }
+}
+
+/// The keys that answer a card's "you may" for good, when the prompt is
+/// one: "y: always, n: never" (`netrunner_client::standing`). Both
+/// terminal paths show it.
+pub(crate) fn remember_hint(view: &ClientView, registry: &CardRegistry) -> Option<String> {
+    let prompt = optional_trigger(view, registry)?;
+    let keys: Vec<&str> = prompt
+        .offered()
+        .into_iter()
+        .map(|answer| match answer {
+            Answer::Always => "y: always",
+            Answer::Never => "n: never",
+        })
+        .collect();
+    Some(keys.join(", "))
 }
 
 #[cfg(test)]
@@ -706,6 +756,55 @@ mod connection_tests {
         server_tx.send(ServerMessage::StateUpdate(Box::new(view))).unwrap();
         app.drain_messages();
         assert!(matches!(client_rx.try_recv(), Ok(ClientMessage::SubmitAction(sent)) if sent == pass));
+        assert!(client_rx.try_recv().is_err(), "sent once");
+    }
+
+    /// A card's "you may" answered for good is answered as it arrives,
+    /// and one never answered waits for a key, which the notice names.
+    #[test]
+    fn a_remembered_answer_is_sent_without_a_key() {
+        use netrunner_client::standing::{optional_trigger, PromptKey};
+        use netrunner_core::dsl::{CardId, Effect};
+        use netrunner_core::rules::{PendingChoiceResume, PendingDecision};
+
+        let (mut app, server_tx, mut client_rx) = app_with_channels();
+        app.registry = CardRegistry::new();
+        netrunner_core::cards::register_playable_cards(&mut app.registry);
+        let mitra = CardId("mitra_aman".to_string());
+        let mut texts = Vec::new();
+        for trigger in &app.registry.get(&mitra).unwrap().triggers {
+            for effect in &trigger.effects {
+                effect.for_each_effect(&mut |effect| {
+                    if let Effect::PresentChoice { texts: printed, .. } = effect
+                        && printed.len() == 2
+                    {
+                        texts.clone_from(printed);
+                    }
+                });
+            }
+        }
+        let mut view = a_view(&app.registry);
+        view.pending_decision = Some(PendingDecision::ChooseEffect {
+            chooser: Side::Corp,
+            options: vec![Effect::Sequence(Vec::new()), Effect::Sequence(Vec::new())],
+            option_texts: texts.clone(),
+            source_card: Some(mitra.clone()),
+            prompting_card: None,
+            source_install: None,
+            resume: PendingChoiceResume::None,
+        });
+        view.legal_actions = (0..2).map(|option_index| PlayerAction::ResolvePendingChoice { option_index }).collect();
+        assert!(optional_trigger(&view, &app.registry).is_some());
+
+        server_tx.send(ServerMessage::StateUpdate(Box::new(view.clone()))).unwrap();
+        app.drain_messages();
+        assert!(client_rx.try_recv().is_err(), "never answered: the person's");
+        assert_eq!(RenderableView::notice(&app).as_deref(), Some("y: always, n: never"));
+
+        app.answers.set(PromptKey { card: mitra, clauses: vec![texts[0].clone()] }, Some(Answer::Never));
+        server_tx.send(ServerMessage::StateUpdate(Box::new(view))).unwrap();
+        app.drain_messages();
+        assert!(matches!(client_rx.try_recv(), Ok(ClientMessage::SubmitAction(PlayerAction::ResolvePendingChoice { option_index: 1 }))));
         assert!(client_rx.try_recv().is_err(), "sent once");
     }
 

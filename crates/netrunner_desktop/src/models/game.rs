@@ -70,6 +70,7 @@ use std::sync::Arc;
 use netrunner_client::actions::{pop_log_entries, push_log_line};
 use netrunner_client::board::{encounter_subroutines, routes, transitions, ActionMap, Affordance, Asks, AutoBreak, Control, Encounter, Next, Pile, Prompt, Route, RunTrail, Target, Transition};
 use netrunner_client::play::{lone_pass, GameEndReason, MatchMessage};
+use netrunner_client::standing::{optional_trigger, standing_answer, Answer, Answers, OptionalPrompt};
 use netrunner_client::record::RecordReport;
 use netrunner_core::cards::CardRegistry;
 use netrunner_core::dsl::CardId;
@@ -126,6 +127,10 @@ pub enum Intent {
     Break(usize),
     /// Take the last move back (`Game::back`).
     TakeBack,
+    /// Answer the optional trigger on the prompt, and every one like it
+    /// from now on (`netrunner_client::standing`). The screen saves
+    /// `Game::answers` after it.
+    Remember(Answer),
     /// A key the board reads (`shortcuts`). The ones about the pointer
     /// or the settings file are the screen's; the model answers the rest.
     Shortcut(Shortcut),
@@ -349,6 +354,14 @@ pub struct Game {
     /// glow or decision is offered; a primary click reads, as a secondary
     /// one does, and leaving asks nothing, because nothing is lost.
     pub replay: Option<ReplayAt>,
+    /// The person's answers to optional triggers, from the settings file
+    /// (`netrunner_client::standing`). A prompt one covers is answered
+    /// without asking, the way `lone_pass` passes.
+    pub answers: Answers,
+    /// A move was just taken back: the prompt it restores is asked, not
+    /// answered from `answers`, or taking back an answer given without
+    /// asking would give it again at once.
+    asking_again: bool,
 }
 
 impl Game {
@@ -384,6 +397,8 @@ impl Game {
             applied: 0,
             trail: None,
             replay: None,
+            answers: Answers::default(),
+            asking_again: false,
         }
     }
 
@@ -408,6 +423,16 @@ impl Game {
 
     pub fn registry(&self) -> &CardRegistry {
         &self.registry
+    }
+
+    /// The optional trigger the person is being asked, which the pop-up
+    /// offers to answer for good (`Intent::Remember`); `None` in a
+    /// replay and while nothing is awaited.
+    pub fn optional_prompt(&self) -> Option<OptionalPrompt> {
+        if !self.awaiting || self.replay.is_some() {
+            return None;
+        }
+        optional_trigger(self.view.as_ref()?, &self.registry)
     }
 
     /// Whether the match is over or gone, so the panel offers nothing.
@@ -548,6 +573,14 @@ impl Game {
                     }
                     _ => Outcome::Nothing,
                 }
+            }
+            Intent::Remember(answer) => {
+                let Some(prompt) = self.optional_prompt() else { return Outcome::Nothing };
+                let Some(index) = prompt.action(answer).and_then(|action| self.actions.entries.iter().position(|entry| entry.action == action)) else {
+                    return Outcome::Nothing;
+                };
+                self.answers.set(prompt.key, Some(answer));
+                self.apply(Intent::Choose(index))
             }
             Intent::Control(control) => match self.actions.for_control(control) {
                 Some(index) if self.awaiting => self.apply(Intent::Choose(index)),
@@ -716,7 +749,19 @@ impl Game {
                 self.awaiting = false;
                 Outcome::Submit(pass)
             }
+            // An optional trigger the person has answered for good: the
+            // same, for the same reasons, with the answer they gave.
+            MatchMessage::Awaiting { view } if !self.asking_again && standing_answer(&view, &self.registry, &self.answers).is_some() => {
+                let (action, _) = standing_answer(&view, &self.registry, &self.answers).expect("matched above");
+                self.actions = ActionMap::build(&view, &self.registry);
+                self.prompt = Prompt::of(&view, &self.registry);
+                self.view = Some(*view);
+                self.follow_hand();
+                self.awaiting = false;
+                Outcome::Submit(action)
+            }
             MatchMessage::Awaiting { view } => {
+                self.asking_again = false;
                 self.actions = ActionMap::build(&view, &self.registry);
                 // What each card will ask, on its button before it is
                 // played: once per view, like the routes below.
@@ -746,6 +791,7 @@ impl Game {
             // follows hands the controls back.
             MatchMessage::Rewound { view, removed, .. } => {
                 pop_log_entries(&mut self.log, removed, "You took that back.");
+                self.asking_again = true;
                 self.applied = self.applied.saturating_sub(removed);
                 self.transitions.clear();
                 self.trail = None;
@@ -1801,5 +1847,52 @@ mod tests {
         assert_eq!(game.apply(Intent::Shortcut(Shortcut::TakeBack)), Outcome::Rewind, "the first press goes");
         say(&mut game, MatchMessage::Rewound { view: view(), removed: 0, kind: Rewind::Undo });
         assert!(game.log.last().is_some_and(|line| line.contains("took that back")));
+    }
+    /// A card's "you may" answered Always is answered so from then on,
+    /// without a click; a take-back puts the question back in front of
+    /// the person rather than answering it again at once.
+    #[test]
+    fn an_optional_trigger_answered_always_is_answered_without_a_click() {
+        use netrunner_client::play::Rewind;
+        use netrunner_core::dsl::Effect;
+        use netrunner_core::rules::{GameState, PendingChoiceResume, PendingDecision};
+        use netrunner_core::view::build_client_view;
+
+        let mut registry = CardRegistry::new();
+        netrunner_core::cards::register_playable_cards(&mut registry);
+        let registry = Arc::new(registry);
+        let cookbook = CardId("cookbook".to_string());
+        let view = || {
+            let mut view = build_client_view(&GameState::new(1), &registry, Side::Runner);
+            view.pending_decision = Some(PendingDecision::ChooseEffect {
+                chooser: Side::Runner,
+                options: vec![Effect::AddCounters(1), Effect::Sequence(Vec::new())],
+                option_texts: vec!["place 1 virus counter on it".to_string(), String::new()],
+                source_card: Some(cookbook.clone()),
+                prompting_card: None,
+                source_install: None,
+                resume: PendingChoiceResume::None,
+            });
+            view.legal_actions = (0..2).map(|option_index| PlayerAction::ResolvePendingChoice { option_index }).collect();
+            Box::new(view)
+        };
+        let say = |game: &mut Game, message: MatchMessage| game.apply(Intent::Message(MatchMessageRef(message)));
+        let yes = PlayerAction::ResolvePendingChoice { option_index: 0 };
+
+        let mut game = Game::new(registry.clone(), Side::Runner);
+        assert_eq!(say(&mut game, MatchMessage::Awaiting { view: view() }), Outcome::Redraw, "asked the first time");
+        let prompt = game.optional_prompt().expect("the pop-up offers to remember it");
+        assert_eq!(prompt.offered(), vec![Answer::Always, Answer::Never]);
+        assert_eq!(game.apply(Intent::Remember(Answer::Always)), Outcome::Submit(yes.clone()));
+        assert_eq!(game.answers.get(&prompt.key), Some(Answer::Always));
+
+        assert_eq!(say(&mut game, MatchMessage::Awaiting { view: view() }), Outcome::Submit(yes.clone()), "and not again");
+        assert!(!game.awaiting);
+
+        say(&mut game, MatchMessage::Rewound { view: view(), removed: 1, kind: Rewind::Free });
+        assert_eq!(say(&mut game, MatchMessage::Awaiting { view: view() }), Outcome::Redraw, "a take-back asks");
+        assert_eq!(game.apply(Intent::Remember(Answer::Never)), Outcome::Submit(PlayerAction::ResolvePendingChoice { option_index: 1 }));
+        assert_eq!(game.answers.get(&prompt.key), Some(Answer::Never), "the new answer replaces the old");
+        assert_eq!(say(&mut game, MatchMessage::Awaiting { view: view() }), Outcome::Submit(PlayerAction::ResolvePendingChoice { option_index: 1 }));
     }
 }
