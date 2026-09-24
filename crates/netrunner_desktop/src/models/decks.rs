@@ -16,7 +16,10 @@
 
 use std::path::PathBuf;
 
+use netrunner_client::cards::faction_order;
 use netrunner_client::deck_builder::{self, CardBook, DeckStatus};
+use netrunner_client::settings::FORMATS;
+use netrunner_core::card::Faction;
 use netrunner_client::deck_store::{self, Origin};
 use netrunner_core::decks::{DeckCategory, DeckFile};
 use netrunner_core::format::NsgFormat;
@@ -28,7 +31,50 @@ pub struct ShelfRow {
     pub deck: DeckFile,
     pub saved: bool,
     pub identity: String,
+    /// The identity's faction, which is the deck's.
+    pub faction: Option<Faction>,
     pub status: DeckStatus,
+}
+
+/// The order a section's decks are listed in. Each ends on the name, so
+/// the order is total.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ShelfSort {
+    #[default]
+    Name,
+    /// Corp, then Runner.
+    Side,
+    /// The identity's faction, each side's paired with the other's.
+    Faction,
+    /// By the first format the deck is legal in, in the order Settings
+    /// lists them — Startup decks first — and decks legal nowhere last.
+    Format,
+}
+
+impl ShelfSort {
+    pub const ALL: [ShelfSort; 4] = [ShelfSort::Name, ShelfSort::Side, ShelfSort::Faction, ShelfSort::Format];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            ShelfSort::Name => "Name",
+            ShelfSort::Side => "Side",
+            ShelfSort::Faction => "Faction",
+            ShelfSort::Format => "Format",
+        }
+    }
+}
+
+/// How the shelf is looked at: which decks, in which order. Kept apart
+/// from the rows so the screen can hold it across a visit to the editor
+/// — the shelf is re-read on every entry, and a sort that reset each
+/// time a deck was opened would be one the person set again and again.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct ShelfView {
+    pub side: Option<Side>,
+    pub faction: Option<Faction>,
+    /// Only decks legal in this format.
+    pub legal: Option<NsgFormat>,
+    pub sort: ShelfSort,
 }
 
 /// A group of rows under one heading: the person's decks, then each
@@ -46,6 +92,11 @@ pub struct Section {
 pub enum Intent {
     /// Show one side's decks, or both.
     Side(Option<Side>),
+    /// Show one faction's decks, or every faction's.
+    Faction(Option<Faction>),
+    /// Show only the decks legal in a format, or every deck.
+    Legal(Option<NsgFormat>),
+    Sort(ShelfSort),
     /// Copy row `n` into a new saved deck.
     Copy(usize),
     /// Ask before deleting row `n`.
@@ -70,7 +121,7 @@ pub struct Shelf {
     dir: Option<PathBuf>,
     format: NsgFormat,
     pub rows: Vec<ShelfRow>,
-    pub side: Option<Side>,
+    pub view: ShelfView,
     /// The row a delete is waiting on an answer for.
     pub confirming: Option<usize>,
     /// One line for the person: a file that would not read, a save that
@@ -83,7 +134,7 @@ impl Shelf {
     /// directory: the built-in decks are still listed, and anything that
     /// would write says why it cannot.
     pub fn open(dir: Option<PathBuf>, book: CardBook, format: NsgFormat) -> Self {
-        let mut shelf = Shelf { dir, format, rows: Vec::new(), side: None, confirming: None, notice: None };
+        let mut shelf = Shelf { dir, format, rows: Vec::new(), view: ShelfView::default(), confirming: None, notice: None };
         shelf.reload(book);
         shelf
     }
@@ -107,26 +158,36 @@ impl Shelf {
             .into_iter()
             .map(|stored| {
                 let status = deck_builder::status(&stored.deck, book, self.format);
-                ShelfRow { identity: book.title(&stored.deck.identity), saved: !matches!(stored.origin, Origin::Embedded), deck: stored.deck, status }
+                let faction = book.get(&stored.deck.identity).and_then(|identity| identity.faction);
+                ShelfRow { identity: book.title(&stored.deck.identity), faction, saved: !matches!(stored.origin, Origin::Embedded), deck: stored.deck, status }
             })
             .collect();
         rows.sort_by_key(|row| (!row.saved, category_order(row.deck.category), row.deck.side == Side::Runner, row.deck.name.to_lowercase()));
         self.rows = rows;
     }
 
-    /// The sections, each holding the rows the side filter leaves. The
-    /// person's section is there even when empty — it is where their
-    /// first deck will go — and a built-in category with nothing to show
-    /// is not.
+    /// The sections, each holding the rows the view's filters leave, in
+    /// its sort. The person's section is there even when empty — it is
+    /// where their first deck will go — and a built-in category with
+    /// nothing to show is not.
     pub fn sections(&self) -> Vec<Section> {
-        let visible = |row: &ShelfRow| self.side.is_none_or(|side| row.deck.side == side);
+        let view = &self.view;
+        let visible = |row: &ShelfRow| {
+            view.side.is_none_or(|side| row.deck.side == side)
+                && view.faction.is_none_or(|faction| row.faction == Some(faction))
+                && view.legal.is_none_or(|format| row.status.legal_in.contains(&format))
+        };
+        let sorted = |mut rows: Vec<usize>| {
+            rows.sort_by_key(|&i| self.sort_key(&self.rows[i]));
+            rows
+        };
         let mut sections = vec![Section {
             title: "Your decks",
             blurb: "Saved in your data directory; the terminal client plays them too.",
-            rows: self.rows.iter().enumerate().filter(|(_, row)| row.saved && visible(row)).map(|(i, _)| i).collect(),
+            rows: sorted(self.rows.iter().enumerate().filter(|(_, row)| row.saved && visible(row)).map(|(i, _)| i).collect()),
         }];
         for category in [DeckCategory::Sample, DeckCategory::Starter, DeckCategory::Boosted, DeckCategory::Sweep, DeckCategory::Custom] {
-            let rows: Vec<usize> = self.rows.iter().enumerate().filter(|(_, row)| !row.saved && row.deck.category == category && visible(row)).map(|(i, _)| i).collect();
+            let rows: Vec<usize> = sorted(self.rows.iter().enumerate().filter(|(_, row)| !row.saved && row.deck.category == category && visible(row)).map(|(i, _)| i).collect());
             if rows.is_empty() {
                 continue;
             }
@@ -134,6 +195,28 @@ impl Shelf {
             sections.push(Section { title, blurb, rows });
         }
         sections
+    }
+
+    /// The factions the shelf's decks are built on, in `faction_order`,
+    /// so the filter offers only what it can find.
+    pub fn factions(&self) -> Vec<Faction> {
+        let mut factions: Vec<Faction> = self.rows.iter().filter_map(|row| row.faction).collect();
+        factions.sort_by_key(|faction| (faction_order(Some(*faction)), *faction as u8));
+        factions.dedup();
+        factions
+    }
+
+    fn sort_key(&self, row: &ShelfRow) -> (u8, u8, String) {
+        let name = row.deck.name.to_lowercase();
+        match self.view.sort {
+            ShelfSort::Name => (0, 0, name),
+            ShelfSort::Side => (row.deck.side as u8, 0, name),
+            ShelfSort::Faction => (faction_order(row.faction), row.deck.side as u8, name),
+            ShelfSort::Format => {
+                let first = FORMATS.iter().position(|format| row.status.legal_in.contains(format)).map_or(u8::MAX, |i| i as u8);
+                (first, 0, name)
+            }
+        }
     }
 
     /// Every id in use, so a new deck's is free.
@@ -148,13 +231,10 @@ impl Shelf {
     pub fn apply(&mut self, intent: Intent, book: CardBook) -> Outcome {
         self.notice = None;
         match intent {
-            Intent::Side(side) => {
-                if self.side == side {
-                    return Outcome::Nothing;
-                }
-                self.side = side;
-                Outcome::Changed
-            }
+            Intent::Side(side) => self.look(|view| view.side = side),
+            Intent::Faction(faction) => self.look(|view| view.faction = faction),
+            Intent::Legal(format) => self.look(|view| view.legal = format),
+            Intent::Sort(sort) => self.look(|view| view.sort = sort),
             Intent::Copy(index) => {
                 let Some(row) = self.rows.get(index) else { return Outcome::Nothing };
                 let name = deck_builder::copy_name(&row.deck.name, &self.names());
@@ -199,6 +279,12 @@ impl Shelf {
                 }
             },
         }
+    }
+
+    fn look(&mut self, change: impl FnOnce(&mut ShelfView)) -> Outcome {
+        let before = self.view.clone();
+        change(&mut self.view);
+        if self.view == before { Outcome::Nothing } else { Outcome::Changed }
     }
 
     /// Saves a new deck — a new one from the identity picker, a copy or
@@ -278,6 +364,41 @@ mod tests {
 
     fn index_of(shelf: &Shelf, id: &str) -> usize {
         shelf.rows.iter().position(|row| row.deck.id == id).unwrap()
+    }
+
+    /// Each sort orders every section by its key, a filter narrows every
+    /// section, and nothing is lost between the sorts.
+    #[test]
+    fn the_shelf_sorts_by_side_faction_and_format_and_filters_by_faction_and_format() {
+        let (registry, catalog) = cards();
+        let book = CardBook::new(&registry, &catalog);
+        let dir = Scratch::new("sort");
+        let mut shelf = Shelf::open(Some(dir.0.clone()), book, NsgFormat::Startup);
+        let count = |shelf: &Shelf| shelf.sections().iter().map(|section| section.rows.len()).sum::<usize>();
+        let all = count(&shelf);
+        for sort in ShelfSort::ALL {
+            shelf.apply(Intent::Sort(sort), book);
+            assert_eq!(count(&shelf), all, "{sort:?} keeps every deck");
+            for section in shelf.sections() {
+                let keys: Vec<_> = section.rows.iter().map(|&i| shelf.sort_key(&shelf.rows[i])).collect();
+                assert!(keys.windows(2).all(|pair| pair[0] <= pair[1]), "{sort:?} in {}", section.title);
+            }
+        }
+        shelf.apply(Intent::Sort(ShelfSort::Side), book);
+        let sample = shelf.sections().into_iter().find(|section| section.title == "Sample decks").unwrap();
+        let sides: Vec<Side> = sample.rows.iter().map(|&i| shelf.rows[i].deck.side).collect();
+        assert_eq!(sides.first(), Some(&Side::Corp));
+        assert_eq!(sides.last(), Some(&Side::Runner));
+
+        let faction = shelf.factions()[0];
+        assert_eq!(shelf.apply(Intent::Faction(Some(faction)), book), Outcome::Changed);
+        assert!(shelf.sections().iter().flat_map(|section| section.rows.clone()).all(|i| shelf.rows[i].faction == Some(faction)));
+        assert_eq!(shelf.apply(Intent::Faction(Some(faction)), book), Outcome::Nothing);
+        shelf.apply(Intent::Faction(None), book);
+        shelf.apply(Intent::Legal(Some(NsgFormat::Startup)), book);
+        let legal = count(&shelf);
+        assert!(legal > 0 && legal < all, "the test decks are Eternal-only: {legal} of {all}");
+        assert!(shelf.sections().iter().all(|section| section.title != "Test decks"));
     }
 
     #[test]

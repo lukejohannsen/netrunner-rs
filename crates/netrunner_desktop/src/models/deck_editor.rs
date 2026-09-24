@@ -12,7 +12,7 @@
 //! editor shows it — the cards, the verdict, how to play it — with Copy
 //! to edit, and refuses every intent that would change it.
 
-use netrunner_client::deck_builder::{self, CardBook, DeckStatus, Draft, PoolFilter};
+use netrunner_client::deck_builder::{self, CardBook, DeckStatus, Draft, Playability, PoolFilter, PoolSort};
 use netrunner_client::start::Personality;
 use netrunner_core::card::Faction;
 use netrunner_core::decks::DeckFile;
@@ -32,10 +32,15 @@ pub enum Intent {
     /// A `cards::type_group` name.
     Kind(Option<&'static str>),
     Query(String),
-    /// Only the format's pool, or every printing.
-    FormatOnly(bool),
-    /// Show the printings the engine does not play yet.
-    Unplayable(bool),
+    /// Only a format's pool, or every format.
+    Format(Option<NsgFormat>),
+    /// Only one set's printings (a `set_code`), or every set.
+    Set(Option<String>),
+    Playability(Playability),
+    Sort(PoolSort),
+    /// Every filter back to where the editor opened it; the sort stays,
+    /// because it is how the person reads the pool, not what they asked
+    /// it for.
     ClearFilters,
 }
 
@@ -121,13 +126,12 @@ impl Editor {
             Intent::Faction(faction) => return self.view(|filter| filter.faction = faction),
             Intent::Kind(kind) => return self.view(|filter| filter.kind = kind),
             Intent::Query(query) => return self.view(|filter| filter.query = query),
-            Intent::FormatOnly(only) => {
-                let format = self.format;
-                return self.view(|filter| filter.format = only.then_some(format));
-            }
-            Intent::Unplayable(show) => return self.view(|filter| filter.unplayable = show),
+            Intent::Format(format) => return self.view(|filter| filter.format = format),
+            Intent::Set(set) => return self.view(|filter| filter.set = set),
+            Intent::Playability(playability) => return self.view(|filter| filter.playability = playability),
+            Intent::Sort(sort) => return self.view(|filter| filter.sort = sort),
             Intent::ClearFilters => {
-                let fresh = PoolFilter { format: self.filter.format, unplayable: self.filter.unplayable, ..PoolFilter::new(self.draft.deck.side, self.format) };
+                let fresh = PoolFilter { sort: self.filter.sort, ..PoolFilter::new(self.draft.deck.side, self.format) };
                 return self.view(|filter| *filter = fresh);
             }
         };
@@ -176,6 +180,22 @@ mod tests {
         assert!(editor.pool(book).iter().all(|card| card.card_type == CardType::Event && card.side == Side::Runner));
         assert_eq!(editor.apply(Intent::Kind(Some("Event")), book), Outcome::Nothing);
         assert_eq!(editor.apply(Intent::Add(first.clone()), book), Outcome::Save);
+    }
+
+    /// The set, format, playability and sort each redraw; Clear puts the
+    /// filters back and keeps the sort.
+    #[test]
+    fn the_pool_narrows_by_set_and_format_and_clear_keeps_the_sort() {
+        let (registry, catalog) = cards();
+        let book = CardBook::new(&registry, &catalog);
+        let (mut editor, _) = Editor::open(decks::by_id("stolen_goods").unwrap(), false, book, NsgFormat::Startup);
+        assert_eq!(editor.apply(Intent::Format(None), book), Outcome::View);
+        assert_eq!(editor.apply(Intent::Set(Some("core".into())), book), Outcome::View);
+        assert!(!editor.pool(book).is_empty());
+        assert_eq!(editor.apply(Intent::Playability(Playability::All), book), Outcome::View);
+        assert_eq!(editor.apply(Intent::Sort(PoolSort::Cost), book), Outcome::View);
+        assert_eq!(editor.apply(Intent::ClearFilters, book), Outcome::View);
+        assert_eq!(editor.filter, PoolFilter { sort: PoolSort::Cost, ..PoolFilter::new(Side::Runner, NsgFormat::Startup) });
     }
 
     #[test]

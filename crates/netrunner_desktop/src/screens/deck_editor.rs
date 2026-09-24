@@ -24,10 +24,10 @@ use bevy::prelude::*;
 use bevy::ui::FocusPolicy;
 
 use netrunner_client::card_face::Face;
-use netrunner_client::cards::faction_label;
-use netrunner_client::deck_builder::{self, CardBook};
+use netrunner_client::cards::{faction_label, set_name};
+use netrunner_client::deck_builder::{self, CardBook, Playability, PoolSort};
 use netrunner_client::deck_store::{self, Origin};
-use netrunner_client::settings::format_label;
+use netrunner_client::settings::{format_label, FORMATS};
 use netrunner_core::card::Faction;
 use netrunner_core::dsl::{CardDefinition, CardId};
 use netrunner_core::format::NsgFormat;
@@ -72,8 +72,6 @@ pub enum Control {
     Rename,
     ChangeIdentity,
     Style(Option<String>),
-    FormatOnly(bool),
-    Unplayable(bool),
     Search,
     Clear,
 }
@@ -106,6 +104,10 @@ enum PopupButton {
 enum Filter {
     Faction,
     Kind,
+    Set,
+    Format,
+    Playability,
+    Sort,
 }
 
 #[derive(Resource, Debug, Clone, Default, PartialEq, Eq)]
@@ -179,9 +181,12 @@ fn save(core: &ClientCore, editor: &mut Editor) {
     }
 }
 
-fn spawn(mut commands: Commands, theme: Res<Theme>, core: Res<ClientCore>, images: Res<CardImages>, wanted: Option<Res<EditDeck>>, dev: Option<Res<crate::dev::Dev>>) {
+fn spawn(mut commands: Commands, theme: Res<Theme>, core: Res<ClientCore>, images: Res<CardImages>, wanted: Option<Res<EditDeck>>, dev: Option<Res<crate::dev::Dev>>, kept: Option<Res<Model>>) {
     let id = wanted.map(|wanted| wanted.0.clone()).or_else(|| std::env::var("NETRUNNER_DECK").ok().filter(|id| !id.trim().is_empty())).unwrap_or_else(|| netrunner_client::start::DEFAULT_RUNNER_DECK.to_string());
-    let read_only = build(&mut commands, &theme, &core, &images, &id);
+    // The pool's order is how the person reads it, so it follows them
+    // from one deck to the next; the filters are about this deck.
+    let sort = kept.map_or(PoolSort::Type, |kept| kept.0.filter.sort);
+    let read_only = build(&mut commands, &theme, &core, &images, &id, sort);
     // `NETRUNNER_IDENTITIES`: the picker Change identity opens.
     if dev.is_some_and(|dev| dev.identities) && !read_only {
         commands.insert_resource(Popup::Identity);
@@ -195,7 +200,7 @@ fn spawn(mut commands: Commands, theme: Res<Theme>, core: Res<ClientCore>, image
 #[derive(Resource, Default)]
 struct Rebuild(Option<String>);
 
-fn rebuild(mut commands: Commands, mut wanted: ResMut<Rebuild>, roots: Query<(Entity, &DespawnOnExit<AppScreen>)>, theme: Res<Theme>, core: Res<ClientCore>, images: Res<CardImages>) {
+fn rebuild(mut commands: Commands, mut wanted: ResMut<Rebuild>, roots: Query<(Entity, &DespawnOnExit<AppScreen>)>, theme: Res<Theme>, core: Res<ClientCore>, images: Res<CardImages>, kept: Option<Res<Model>>) {
     let Some(id) = wanted.0.take() else { return };
     for (root, screen) in &roots {
         if screen.0 == AppScreen::DeckEditor {
@@ -203,11 +208,11 @@ fn rebuild(mut commands: Commands, mut wanted: ResMut<Rebuild>, roots: Query<(En
         }
     }
     commands.insert_resource(EditDeck(id.clone()));
-    build(&mut commands, &theme, &core, &images, &id);
+    build(&mut commands, &theme, &core, &images, &id, kept.map_or(PoolSort::Type, |kept| kept.0.filter.sort));
 }
 
 /// Builds the screen on deck `id`; true if the deck opened read-only.
-fn build(commands: &mut Commands, theme: &Theme, core: &ClientCore, images: &CardImages, id: &str) -> bool {
+fn build(commands: &mut Commands, theme: &Theme, core: &ClientCore, images: &CardImages, id: &str, sort: PoolSort) -> bool {
     let book = book(core);
     let (mut editor, notice) = match deck_store::load(&decks_dir(core), id) {
         Ok(stored) => {
@@ -226,6 +231,7 @@ fn build(commands: &mut Commands, theme: &Theme, core: &ClientCore, images: &Car
     if let Some(notice) = notice {
         editor.note = Some(notice);
     }
+    editor.filter.sort = sort;
     commands.insert_resource(Popup::None);
     commands.insert_resource(Dirty::default());
     commands.insert_resource(SearchRequested::default());
@@ -437,56 +443,70 @@ fn spawn_notes(parent: &mut ChildSpawnerCommands, theme: &Theme, editor: &Editor
         });
 }
 
+/// A filter's drop-down: its choices, the intent each one applies, and
+/// which is chosen now. The first four narrow the pool and start at
+/// "All"; playability and the sort are always one of their values.
 fn filter_entries(core: &ClientCore, editor: &Editor, filter: Filter) -> (Vec<Choice>, Vec<Intent>, usize) {
-    let mut choices = vec![Choice::plain("All")];
-    let mut intents = match filter {
-        Filter::Faction => vec![Intent::Faction(None)],
-        Filter::Kind => vec![Intent::Kind(None)],
-    };
-    let mut current = 0;
+    let side = editor.deck().side;
+    let mut entries: Vec<(String, Intent, bool)> = Vec::new();
     match filter {
         Filter::Faction => {
-            for faction in deck_builder::factions(book(core), editor.deck().side) {
-                if editor.filter.faction == Some(faction) {
-                    current = intents.len();
-                }
-                choices.push(Choice::plain(faction_label(faction)));
-                intents.push(Intent::Faction(Some(faction)));
+            entries.push(("All".into(), Intent::Faction(None), editor.filter.faction.is_none()));
+            for faction in deck_builder::factions(book(core), side) {
+                entries.push((faction_label(faction).into(), Intent::Faction(Some(faction)), editor.filter.faction == Some(faction)));
             }
         }
         Filter::Kind => {
-            for kind in deck_builder::kinds(editor.deck().side) {
-                if editor.filter.kind == Some(*kind) {
-                    current = intents.len();
-                }
-                choices.push(Choice::plain(*kind));
-                intents.push(Intent::Kind(Some(kind)));
+            entries.push(("All".into(), Intent::Kind(None), editor.filter.kind.is_none()));
+            for kind in deck_builder::kinds(side) {
+                entries.push(((*kind).into(), Intent::Kind(Some(kind)), editor.filter.kind == Some(*kind)));
+            }
+        }
+        Filter::Set => {
+            entries.push(("All sets".into(), Intent::Set(None), editor.filter.set.is_none()));
+            for set in deck_builder::sets(book(core), side) {
+                let chosen = editor.filter.set.as_deref() == Some(set.as_str());
+                entries.push((set_name(&set).to_string(), Intent::Set(Some(set)), chosen));
+            }
+        }
+        Filter::Format => {
+            entries.push(("Any format".into(), Intent::Format(None), editor.filter.format.is_none()));
+            for format in FORMATS {
+                entries.push((format_label(format).to_string(), Intent::Format(Some(format)), editor.filter.format == Some(format)));
+            }
+        }
+        Filter::Playability => {
+            for playability in Playability::ALL {
+                entries.push((playability.label().into(), Intent::Playability(playability), editor.filter.playability == playability));
+            }
+        }
+        Filter::Sort => {
+            for sort in PoolSort::ALL {
+                entries.push((sort.label().into(), Intent::Sort(sort), editor.filter.sort == sort));
             }
         }
     }
+    let current = entries.iter().position(|(_, _, chosen)| *chosen).unwrap_or(0);
+    let (choices, intents) = entries.into_iter().map(|(text, intent, _)| (Choice::plain(text), intent)).unzip();
     (choices, intents, current)
 }
 
 fn spawn_filters(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore, editor: &Editor) {
-    for (filter, label) in [(Filter::Faction, "Faction"), (Filter::Kind, "Type")] {
+    let filters = [
+        (Filter::Faction, "Faction"),
+        (Filter::Kind, "Type"),
+        (Filter::Set, "Set"),
+        (Filter::Format, "Legal in"),
+        (Filter::Playability, "Show"),
+        (Filter::Sort, "Sort by"),
+    ];
+    for (filter, label) in filters {
         let (choices, _, current) = filter_entries(core, editor, filter);
         spawn_dropdown(parent, theme, label, choices, current, filter);
     }
-    let only = editor.filter.format.is_some();
-    let format = format_label(editor.format);
-    toggle(parent, theme, format!("Only {format}"), only, Control::FormatOnly(!only));
-    toggle(parent, theme, "Not playable yet".to_string(), editor.filter.unplayable, Control::Unplayable(!editor.filter.unplayable));
     parent.spawn(widgets::styled_button(theme, ButtonKind::Quiet, "Clear", Val::Auto, Control::Clear));
 }
 
-/// A switch drawn as a pill: filled and ringed in the accent when on,
-/// bare when off — the look the side filter uses on the Decks screen.
-fn toggle(parent: &mut ChildSpawnerCommands, theme: &Theme, label: String, on: bool, control: Control) {
-    let mut button = parent.spawn(widgets::styled_button(theme, if on { ButtonKind::Secondary } else { ButtonKind::Quiet }, label, Val::Auto, control));
-    if on {
-        button.insert(BorderColor::all(theme.accent));
-    }
-}
 
 /// A card in the identity picker (`layout::DECK_FACE`); its text is
 /// read in the hover preview. The panel is sized to it, so it does not
@@ -732,8 +752,6 @@ fn controls(
                 dirty.popup = true;
             }
             Control::Style(style) => intents.push(Intent::Style(style.clone())),
-            Control::FormatOnly(only) => intents.push(Intent::FormatOnly(*only)),
-            Control::Unplayable(show) => intents.push(Intent::Unplayable(*show)),
             Control::Clear => intents.push(Intent::ClearFilters),
             Control::Search => search.0 = true,
         }

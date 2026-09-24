@@ -362,48 +362,138 @@ pub fn identities(registry: &CardRegistry, side: Side, format: NsgFormat) -> Vec
     identities
 }
 
-/// What the pool offers: one side's non-identity cards, optionally
-/// narrowed to a format's pool, and with or without the printings the
-/// engine does not play yet.
+/// Which printings the pool offers by whether a match can deal them.
+///
+/// It was a switch, "Not playable yet", off by default — a pool that
+/// would show a set whose cards are mostly not in the engine yet as a
+/// handful of cards, with no way to ask for just the rest. Three answers
+/// make both questions one choice: what can be played now, what is
+/// waiting, or everything printed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Playability {
+    Playable,
+    NotYet,
+    All,
+}
+
+impl Playability {
+    pub const ALL: [Playability; 3] = [Playability::Playable, Playability::NotYet, Playability::All];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Playability::Playable => "Playable",
+            Playability::NotYet => "Not playable yet",
+            Playability::All => "Every printing",
+        }
+    }
+
+    fn admits(self, playable: bool) -> bool {
+        match self {
+            Playability::Playable => playable,
+            Playability::NotYet => !playable,
+            Playability::All => true,
+        }
+    }
+}
+
+/// The order the pool is listed in. Each key ends on the title, so the
+/// order is total whatever the catalog's.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PoolSort {
+    /// Type, then faction — the order a decklist is read in.
+    Type,
+    Title,
+    /// Faction, then type.
+    Faction,
+    /// The printed number in the top corner, lowest first: the play or
+    /// install cost, and an agenda's advancement requirement.
+    Cost,
+    /// Influence, lowest first.
+    Influence,
+    /// Release order, then the printing's number in its set.
+    Set,
+}
+
+impl PoolSort {
+    pub const ALL: [PoolSort; 6] = [PoolSort::Type, PoolSort::Title, PoolSort::Faction, PoolSort::Cost, PoolSort::Influence, PoolSort::Set];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            PoolSort::Type => "Type",
+            PoolSort::Title => "Title",
+            PoolSort::Faction => "Faction",
+            PoolSort::Cost => "Cost",
+            PoolSort::Influence => "Influence",
+            PoolSort::Set => "Set",
+        }
+    }
+}
+
+/// What the pool offers: one side's non-identity cards, narrowed by any
+/// of a format's pool, a set, a faction, a type group, a search and
+/// whether the engine plays them, in the order `sort` names.
+///
+/// **A format and a set are two filters, not one switch.** The pool was
+/// "Only <the Settings format>" or everything, which was enough while
+/// every card came from the two packs Startup allows; with the Core Set
+/// in the catalog and more sets to come, a person asks "what is legal in
+/// Standard" and "what is in Elevation" as separate questions.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PoolFilter {
     pub side: Side,
+    /// Only cards this format's tables allow; `None` is every format.
     pub format: Option<NsgFormat>,
+    /// Only printings from this set (a `set_code`); `None` is every set.
+    pub set: Option<String>,
     pub faction: Option<Faction>,
     /// A `cards::type_group` name.
     pub kind: Option<&'static str>,
     pub query: String,
-    /// Include catalog printings no match can deal yet.
-    pub unplayable: bool,
+    pub playability: Playability,
+    pub sort: PoolSort,
 }
 
 impl PoolFilter {
     pub fn new(side: Side, format: NsgFormat) -> Self {
-        Self { side, format: Some(format), faction: None, kind: None, query: String::new(), unplayable: false }
+        Self { side, format: Some(format), set: None, faction: None, kind: None, query: String::new(), playability: Playability::Playable, sort: PoolSort::Type }
     }
 }
 
 /// The cards `filter` leaves, one entry per card — the playable card
 /// once, however many printings it stands in for, and a catalog-only
-/// printing only where no playable card has its title — by type, then
-/// faction, then title.
+/// printing only where no playable card has its title — in the order
+/// `filter.sort` names.
+///
+/// Every filter is asked of the printing before the card is kept, so a
+/// reprint is found by the set it was printed in: a Core Set Hedge Fund
+/// is in the Core Set's pool even when the System Gateway printing is
+/// the one listed first.
 pub fn pool<'a>(book: CardBook<'a>, filter: &PoolFilter) -> Vec<&'a CardDefinition> {
     let rules = filter.format.map(|format| format.rules());
     let query = filter.query.trim().to_lowercase();
     let mut cards: Vec<&CardDefinition> = Vec::new();
-    for card in book.catalog {
-        if card.side != filter.side || card.card_type == CardType::Identity {
+    for printing in book.catalog {
+        if printing.side != filter.side || printing.card_type == CardType::Identity {
             continue;
         }
-        // A printing no match can deal is offered only when asked for,
-        // and never where a playable card has its title (a reprint).
-        if !card.is_playable && (!filter.unplayable || book.registry.iter().any(|playable| playable.is_playable && playable.side == card.side && playable.title == card.title)) {
+        // The set and the format are asked of the printing; everything
+        // else of the card it is. A reprint the engine plays under
+        // another printing's id (the Core Set's Hedge Fund is a
+        // catalog-only entry beside System Gateway's playable one) is
+        // that playable card, so a set's pool finds it and a format's
+        // pool admits it through whichever printing the format allows.
+        if rules.as_ref().is_some_and(|rules| !legal_in(printing, rules)) {
             continue;
         }
-        if cards.iter().any(|kept| kept.id == card.id) {
+        if filter.set.as_deref().is_some_and(|set| printing.set_code.as_deref() != Some(set)) {
             continue;
         }
-        if rules.as_ref().is_some_and(|rules| !legal_in(card, rules)) {
+        let card = if printing.is_playable {
+            printing
+        } else {
+            book.registry.iter().find(|playable| playable.is_playable && playable.side == printing.side && playable.title == printing.title).unwrap_or(printing)
+        };
+        if !filter.playability.admits(card.is_playable) {
             continue;
         }
         if filter.faction.is_some_and(|faction| card.faction != Some(faction)) {
@@ -419,10 +509,57 @@ pub fn pool<'a>(book: CardBook<'a>, filter: &PoolFilter) -> Vec<&'a CardDefiniti
         {
             continue;
         }
+        if cards.iter().any(|kept| kept.id == card.id) {
+            continue;
+        }
         cards.push(card);
     }
-    cards.sort_by_key(|card| (type_order(&card.card_type), faction_order(card.faction), card.title.clone()));
+    let order = set_order(book);
+    let set_rank = |card: &CardDefinition| card.set_code.as_deref().and_then(|code| order.iter().position(|set| set == code)).unwrap_or(usize::MAX);
+    let title = |card: &CardDefinition| card.title.to_lowercase();
+    match filter.sort {
+        PoolSort::Type => cards.sort_by_key(|card| (type_order(&card.card_type), faction_order(card.faction), title(card))),
+        PoolSort::Title => cards.sort_by_key(|card| title(card)),
+        PoolSort::Faction => cards.sort_by_key(|card| (faction_order(card.faction), type_order(&card.card_type), title(card))),
+        PoolSort::Cost => cards.sort_by_key(|card| (printed_cost(card), title(card))),
+        PoolSort::Influence => cards.sort_by_key(|card| (card.influence_cost.unwrap_or(0), title(card))),
+        PoolSort::Set => cards.sort_by_key(|card| (set_rank(card), card.numeric_id, title(card))),
+    }
     cards
+}
+
+/// The number in a card's top corner: an agenda's advancement
+/// requirement, everything else's cost.
+fn printed_cost(card: &CardDefinition) -> u32 {
+    match card.card_type {
+        CardType::Agenda => card.advancement_requirement.unwrap_or(card.cost),
+        _ => card.cost,
+    }
+}
+
+/// Every set the catalog holds, in release order.
+///
+/// **Read off the cards, not a table:** a NetrunnerDB code is the set's
+/// place in release order followed by the card's number in it (the Core
+/// Set's are 01xxx, System Gateway's 30xxx), so a set's lowest code
+/// dates it. A table of set codes would be one more list to extend each
+/// time a set is added, and this is the list a filter offers.
+pub fn set_order(book: CardBook) -> Vec<String> {
+    let mut first: Vec<(u32, String)> = Vec::new();
+    for card in book.catalog {
+        let (Some(code), Some(set)) = (card.numeric_id, card.set_code.as_ref()) else { continue };
+        match first.iter_mut().find(|(_, known)| known == set) {
+            Some(entry) => entry.0 = entry.0.min(code.0),
+            None => first.push((code.0, set.clone())),
+        }
+    }
+    first.sort();
+    first.into_iter().map(|(_, set)| set).collect()
+}
+
+/// The sets that hold cards of `side`, in release order.
+pub fn sets(book: CardBook, side: Side) -> Vec<String> {
+    set_order(book).into_iter().filter(|set| book.catalog.iter().any(|card| card.side == side && card.set_code.as_deref() == Some(set.as_str()))).collect()
 }
 
 /// The factions a side's pool has cards of, in `faction_order`.
@@ -786,6 +923,50 @@ mod tests {
         assert!(eternal.iter().any(|card| card.id.0 == "ice_wall"));
         let ice = pool(book, &PoolFilter { kind: Some("ICE"), query: "wall".into(), format: None, ..PoolFilter::new(Side::Corp, NsgFormat::Startup) });
         assert!(!ice.is_empty() && ice.iter().all(|card| matches!(card.card_type, CardType::Ice(_))));
+    }
+
+    /// Sets come in release order, read off the codes; a set narrows the
+    /// pool to its printings, reprints included; the three playability
+    /// answers split the catalog with nothing lost; every sort keeps
+    /// the same cards.
+    #[test]
+    fn the_pool_filters_by_set_and_playability_and_sorts_every_way() {
+        let registry = registry();
+        let catalog = catalog(&registry);
+        let book = CardBook::new(&registry, &catalog);
+        let order = set_order(book);
+        assert_eq!(order.first().map(String::as_str), Some("core"), "the Core Set is the oldest: {order:?}");
+        assert!(order.iter().position(|set| set == "sg") < order.iter().position(|set| set == "elev"), "{order:?}");
+        assert!(sets(book, Side::Corp).iter().all(|set| order.contains(set)));
+
+        let every = PoolFilter { format: None, playability: Playability::All, ..PoolFilter::new(Side::Corp, NsgFormat::Startup) };
+        let core = pool(book, &PoolFilter { set: Some("core".into()), ..every.clone() });
+        assert!(!core.is_empty() && core.iter().any(|card| card.id.0 == "ice_wall"));
+        assert!(core.iter().any(|card| card.title == "Hedge Fund"), "a reprint is found by the set it was printed in");
+        assert!(!pool(book, &PoolFilter { set: Some("elev".into()), ..every.clone() }).iter().any(|card| card.id.0 == "ice_wall"));
+
+        let all = pool(book, &every);
+        let playable = pool(book, &PoolFilter { playability: Playability::Playable, ..every.clone() });
+        let waiting = pool(book, &PoolFilter { playability: Playability::NotYet, ..every.clone() });
+        assert!(playable.iter().all(|card| card.is_playable) && waiting.iter().all(|card| !card.is_playable));
+        assert_eq!(playable.len() + waiting.len(), all.len(), "the two halves are the whole");
+
+        let ids = |cards: &[&CardDefinition]| {
+            let mut ids: Vec<String> = cards.iter().map(|card| card.id.0.clone()).collect();
+            ids.sort();
+            ids
+        };
+        for sort in PoolSort::ALL {
+            let sorted = pool(book, &PoolFilter { sort, ..every.clone() });
+            assert_eq!(ids(&sorted), ids(&all), "{sort:?} keeps the same cards");
+        }
+        let by_cost = pool(book, &PoolFilter { sort: PoolSort::Cost, ..every.clone() });
+        assert!(by_cost.windows(2).all(|pair| printed_cost(pair[0]) <= printed_cost(pair[1])));
+        let by_title = pool(book, &PoolFilter { sort: PoolSort::Title, ..every.clone() });
+        assert!(by_title.windows(2).all(|pair| pair[0].title.to_lowercase() <= pair[1].title.to_lowercase()));
+        let by_set = pool(book, &PoolFilter { sort: PoolSort::Set, ..every });
+        let rank = |card: &CardDefinition| order.iter().position(|set| Some(set.as_str()) == card.set_code.as_deref()).unwrap_or(usize::MAX);
+        assert!(by_set.windows(2).all(|pair| rank(pair[0]) <= rank(pair[1])));
     }
 
     #[test]
