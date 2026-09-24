@@ -17,7 +17,7 @@
 //!   under `run_if(in_state(..))`.
 //! - **A panel is glass and a button is a pill.** Every menu, form,
 //!   pop-up and sheet is `widgets::panel` (or `roomy_panel` on a menu
-//!   screen): a translucent blue the backdrop or the board shows
+//!   screen): a translucent violet the backdrop or the board shows
 //!   through. Every button is `widgets::button` or `styled_button` in
 //!   one of three kinds — one `Primary` in view for the move the screen
 //!   expects, `Secondary` for the rest, `Quiet` for the way out. A

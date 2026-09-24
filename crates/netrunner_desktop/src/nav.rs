@@ -76,24 +76,25 @@ pub fn screen_root(screen: AppScreen, theme: &Theme) -> impl Bundle + use<> {
     )
 }
 
-/// The drawn tier of every menu screen's backdrop: a deep blue falling to
-/// near black, with two soft blooms of light, one high on the left and
-/// one low on the right, for the glass to catch. A picture installed in
+/// The drawn tier of every menu screen's backdrop: a steel-teal sky
+/// falling to a violet night, with two soft blooms of light, a blue one
+/// high on the left and a violet one low on the right, for the glass to
+/// catch. A picture installed in
 /// the screen's slot draws over it (`backdrop::dress`); this is what a
 /// screen with none shows, and costs one quad, so Basic graphics keeps
 /// it too.
 pub fn drawn_backdrop(theme: &Theme) -> BackgroundGradient {
-    let bloom = |position: UiPosition| {
+    let bloom = |position: UiPosition, colour: Color| {
         Gradient::Radial(RadialGradient::new(
             position,
             RadialGradientShape::FarthestSide,
-            vec![ColorStop::percent(theme.backdrop_bloom, 0.0), ColorStop::percent(theme.backdrop_bloom.with_alpha(0.0), 100.0)],
+            vec![ColorStop::percent(colour, 0.0), ColorStop::percent(colour.with_alpha(0.0), 100.0)],
         ))
     };
     BackgroundGradient(vec![
         Gradient::Linear(LinearGradient::to_bottom(vec![ColorStop::auto(theme.backdrop_top), ColorStop::auto(theme.backdrop_bottom)])),
-        bloom(UiPosition::anchor(Vec2::new(-0.3, -0.4))),
-        bloom(UiPosition::anchor(Vec2::new(0.35, 0.45))),
+        bloom(UiPosition::anchor(Vec2::new(-0.3, -0.4)), theme.backdrop_bloom),
+        bloom(UiPosition::anchor(Vec2::new(0.35, 0.45)), theme.backdrop_bloom_violet),
     ])
 }
 
