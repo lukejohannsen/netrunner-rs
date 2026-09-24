@@ -498,7 +498,7 @@ fn spawn_popup(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCo
         ))
         .with_children(|wash| {
             let wide = matches!(popup, Popup::Identity(_));
-            let mut panel = wash.spawn((Interaction::None, FocusPolicy::Block, widgets::roomy_panel(theme, if wide { px(1180) } else { px(620) })));
+            let mut panel = wash.spawn((Interaction::None, FocusPolicy::Block, widgets::roomy_panel(theme, if wide { px(crate::screens::deck_editor::IDENTITY_PANEL) } else { px(620) })));
             panel.entry::<Node>().and_modify(|mut node| node.max_height = percent(90));
             panel.with_children(|panel| {
                 if let Some(index) = shelf.confirming {
@@ -533,8 +533,11 @@ fn spawn_popup(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCo
                             .with_children(|scroll| {
                                 scroll.spawn(Node { flex_direction: FlexDirection::Row, flex_wrap: FlexWrap::Wrap, column_gap: px(10), row_gap: px(10), padding: UiRect::all(px(4)), ..default() }).with_children(|grid| {
                                     for identity in deck_builder::identities(&core.registry, *side, format) {
-                                        let image = identity.numeric_id.and_then(|code| images.face(code, FaceSize::Thumb));
-                                        spawn_face(grid, theme, &Face::of(identity), FaceSize::Thumb, image, (Button, PopupButton::Identity(identity.id.clone())));
+                                        // The editor's picker's size, and its preview: an
+                                        // identity is chosen by what its text says.
+                                        let size = FaceSize::Board(crate::models::layout::DECK_FACE as u16);
+                                        let image = identity.numeric_id.and_then(|code| images.face(code, size));
+                                        spawn_face(grid, theme, &Face::of(identity), size, image, (Button, PopupButton::Identity(identity.id.clone()), crate::widgets::preview::Previews(identity.id.clone())));
                                     }
                                 });
                             });

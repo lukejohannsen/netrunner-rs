@@ -4538,6 +4538,55 @@ illegal saved deck and the read-only viewer at 2560×1600; the shelf and
 the editor are menu screens and scroll, the board is untouched.
 `NETRUNNER_DECK=<id>` opens the editor on a deck for a screenshot.
 
+### 5a. A card in the deck builder can be read — DONE (24 September 2026)
+
+`feat/deck-builder-readable-cards`. Asked for after the first use of §5:
+the pool's cards and both identity pickers were too small to read, so
+the person could not tell what they were adding or which identity they
+were choosing.
+
+**What was built.**
+
+- **The grids' cards are three times the area.** The editor's pool and a
+  built-in deck's spread were `FaceSize::Thumb` (140); they are now as
+  wide as fills the grid's row with whole cards no narrower than
+  `layout::DECK_FACE` (260), up to `DECK_FACE_MAX` (340) —
+  `layout::deck_face`, read off the grid's laid-out width by
+  `fit_pool`, which respawns the grid when it changes. At a 2560×1600
+  window with a 1.28 scale that is five across at 306 logical px, where a
+  fixed width had left 380 px of the row empty. The page's cap went from
+  1700 to 2400 so a wide window gives the pool its width. The identity
+  pickers (the editor's Change identity and the Decks screen's New deck)
+  draw their identities at `DECK_FACE`, six across in a panel sized to
+  them (`IDENTITY_PANEL`).
+- **A hover shows the card large** (`widgets::preview`, `Previews`): any
+  pool card, spread card, deck row, the header's identity or an identity
+  in a picker shows its card in the half of the window the pointer is
+  not in, two thirds of the window's height tall, never wider than a
+  scan (750) nor than that half (`layout::preview_box`). It is a picture
+  only — `Pickable::IGNORE`, no actions — so the press still adds a copy
+  and the pool can be swept, reading, without a click.
+- **The secondary click's card is the preview's size**, not
+  `FaceSize::Large` (380): a card opened to keep is no smaller than the
+  one glanced at.
+
+**Decision taken.** A preview on hover rather than grid cards large
+enough to read in place: a card's text is legible at about 600 logical
+px, which is two cards to a row and a pool of hundreds as a long scroll.
+The grid is for finding a card and the preview for reading it — the
+split NetrunnerDB's deck builder makes. The board's sheets keep
+`Large`; nothing on the board changed.
+
+**Verified.** `layout` tests for `deck_face` (a row filled by whole cards
+at five window widths) and `preview_box` (opposite the pointer, on the
+window, at four window shapes); the desktop crate's tests and clippy.
+Screenshots at 2560×1600 of the pool with a card previewed and of the
+identity picker with an identity previewed, through two new hooks:
+`NETRUNNER_PREVIEW=<n>` holds the nth previewable card previewed, and
+`NETRUNNER_IDENTITIES=1` opens the editor's identity picker. A scan at a
+new width is resampled once (§4w), so the first open of the pool at a
+new size shows the text face for a moment until the copies are cached.
+
 ## 8. Borrowed from jinteki — OPEN (19 September 2026)
 
 From [`docs/jinteki-comparison.md`](../jinteki-comparison.md) §5, in the
