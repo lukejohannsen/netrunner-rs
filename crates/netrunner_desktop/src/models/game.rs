@@ -70,6 +70,7 @@ use std::sync::Arc;
 use netrunner_client::actions::{pop_log_entries, push_log_line};
 use netrunner_client::board::{encounter_subroutines, routes, transitions, ActionMap, Affordance, Asks, AutoBreak, Control, Encounter, Next, Pile, Prompt, Route, RunTrail, Target, Transition};
 use netrunner_client::play::{lone_pass, GameEndReason, MatchMessage};
+use netrunner_client::run_pass::RunPass;
 use netrunner_client::standing::{optional_trigger, standing_answer, Answer, Answers, OptionalPrompt};
 use netrunner_client::record::RecordReport;
 use netrunner_core::cards::CardRegistry;
@@ -127,6 +128,10 @@ pub enum Intent {
     Break(usize),
     /// Take the last move back (`Game::back`).
     TakeBack,
+    /// The Corp's "no more this run": pass this window and every one
+    /// after it until the run ends (`netrunner_client::run_pass`), or,
+    /// while that is on, stop and be asked again.
+    PassTheRun,
     /// Answer the optional trigger on the prompt, and every one like it
     /// from now on (`netrunner_client::standing`). The screen saves
     /// `Game::answers` after it.
@@ -362,6 +367,9 @@ pub struct Game {
     /// answered from `answers`, or taking back an answer given without
     /// asking would give it again at once.
     asking_again: bool,
+    /// The Corp said "no more this run" (`Intent::PassTheRun`). Seen by
+    /// every view, so it ends with the run.
+    pub run_pass: RunPass,
 }
 
 impl Game {
@@ -399,6 +407,7 @@ impl Game {
             replay: None,
             answers: Answers::default(),
             asking_again: false,
+            run_pass: RunPass::default(),
         }
     }
 
@@ -509,6 +518,21 @@ impl Game {
         (self.awaiting && self.back).then_some("Take it back")
     }
 
+    /// The words on the rail's run-pass button (`Intent::PassTheRun`):
+    /// the offer while the Corp is in a run's window, the way to stop
+    /// while it is on, and `None` otherwise — in a replay, the other
+    /// chair, and between runs.
+    pub fn run_pass_label(&self) -> Option<&'static str> {
+        if self.replay.is_some() || self.finished() {
+            return None;
+        }
+        if self.run_pass.is_on() {
+            return Some("Stop passing: ask me again this run");
+        }
+        let view = self.view.as_ref()?;
+        (self.awaiting && self.run_pass.offered(view)).then_some("Pass for the rest of this run")
+    }
+
     /// The Back button, the rail's and U. It goes at once: nothing rides
     /// on a game against a bot, so there is nothing to ask about. Not a
     /// board click and not an action: the state it returns to is one the
@@ -587,6 +611,23 @@ impl Game {
                 _ => Outcome::Nothing,
             },
             Intent::Break(index) => self.start_break(index),
+            Intent::PassTheRun if self.run_pass.is_on() => {
+                self.run_pass.stop();
+                Outcome::Redraw
+            }
+            Intent::PassTheRun => {
+                if self.covered() || self.replay.is_some() || !self.awaiting {
+                    return Outcome::Nothing;
+                }
+                let Some(pass) = self.view.as_ref().and_then(|view| self.run_pass.start(view)) else { return Outcome::Nothing };
+                match self.actions.entries.iter().position(|entry| entry.action == pass) {
+                    Some(index) => self.apply(Intent::Choose(index)),
+                    None => {
+                        self.run_pass.stop();
+                        Outcome::Nothing
+                    }
+                }
+            }
             // Routed by `apply`.
             Intent::TakeBack => Outcome::Nothing,
             Intent::InspectCard(card) => {
@@ -716,6 +757,7 @@ impl Game {
     fn message(&mut self, message: MatchMessage) -> Outcome {
         match message {
             MatchMessage::Applied { entry, view } => {
+                self.run_pass.see(&view);
                 if let Some(before) = &self.view {
                     self.transitions.extend(transitions(before, &view, &entry));
                 }
@@ -749,6 +791,17 @@ impl Game {
                 self.awaiting = false;
                 Outcome::Submit(pass)
             }
+            // The rest of the run is being passed: the same, for a pass
+            // that sits beside a choice the person has already declined.
+            MatchMessage::Awaiting { view } if self.run_pass.pass(&view).is_some() => {
+                let pass = self.run_pass.pass(&view).expect("matched above");
+                self.actions = ActionMap::build(&view, &self.registry);
+                self.prompt = Prompt::of(&view, &self.registry);
+                self.view = Some(*view);
+                self.follow_hand();
+                self.awaiting = false;
+                Outcome::Submit(pass)
+            }
             // An optional trigger the person has answered for good: the
             // same, for the same reasons, with the answer they gave.
             MatchMessage::Awaiting { view } if !self.asking_again && standing_answer(&view, &self.registry, &self.answers).is_some() => {
@@ -762,6 +815,7 @@ impl Game {
             }
             MatchMessage::Awaiting { view } => {
                 self.asking_again = false;
+                self.run_pass.see(&view);
                 self.actions = ActionMap::build(&view, &self.registry);
                 // What each card will ask, on its button before it is
                 // played: once per view, like the routes below.
@@ -792,6 +846,9 @@ impl Game {
             MatchMessage::Rewound { view, removed, .. } => {
                 pop_log_entries(&mut self.log, removed, "You took that back.");
                 self.asking_again = true;
+                // A pass taken for the person is taken back like any
+                // other, and would be taken again at once.
+                self.run_pass.stop();
                 self.applied = self.applied.saturating_sub(removed);
                 self.transitions.clear();
                 self.trail = None;
@@ -962,6 +1019,7 @@ impl Game {
             }
             Shortcut::ScoreArea(side) => self.apply(Intent::Inspect(Target::Pile(Pile::Agendas(side)))),
             Shortcut::TakeBack => self.apply(Intent::TakeBack),
+            Shortcut::PassTheRun => self.apply(Intent::PassTheRun),
             Shortcut::ReadHovered | Shortcut::MenuHovered | Shortcut::PlayHelper | Shortcut::PhaseBar | Shortcut::Help | Shortcut::Timing => Outcome::Nothing,
         }
     }
@@ -1578,6 +1636,84 @@ mod tests {
         assert!(!game.awaiting, "nothing is offered while the pass is in flight");
         game.apply(Intent::Message(MatchMessageRef(MatchMessage::Rejected { reason: "no".to_string() })));
         assert!(game.awaiting && game.actions.for_control(Control::Continue).is_some(), "a rejected pass is back on the bar");
+        handle.join();
+    }
+
+    /// The Corp's own move, from the entries on offer: an install before
+    /// anything else and never a rez, so it holds unrezzed ICE when the
+    /// Runner runs and a window's pass sits beside a choice; a selection
+    /// confirmed as soon as it can be.
+    fn corp_move(game: &Game) -> usize {
+        let entries = &game.actions.entries;
+        let find = |wanted: &dyn Fn(&PlayerAction) -> bool| entries.iter().position(|entry| wanted(&entry.action));
+        let parked = game.view.as_ref().is_some_and(|view| view.pending_decision.is_some());
+        if parked {
+            return find(&|action| matches!(action, PlayerAction::ConfirmCardSelection)).unwrap_or(0);
+        }
+        find(&|action| matches!(action, PlayerAction::InstallCard { .. })).or_else(|| find(&|action| !matches!(action, PlayerAction::RezIce { .. }))).unwrap_or(0)
+    }
+
+    /// Plays the Corp until the rail offers to pass the rest of a run.
+    fn until_a_run_pass_is_offered(game: &mut Game, handle: &mut MatchHandle) {
+        loop {
+            until_awaiting(game, handle);
+            if game.run_pass_label() == Some("Pass for the rest of this run") {
+                return;
+            }
+            let Outcome::Submit(action) = game.apply(Intent::Choose(corp_move(game))) else { panic!("an entry submits") };
+            handle.submit(action).unwrap();
+        }
+    }
+
+    /// One press passes this window and every later one of the run with
+    /// no click, the button turns into the way to stop, and the run's end
+    /// turns it off — so the next run offers it again.
+    #[test]
+    fn the_corp_passes_the_rest_of_a_run_with_one_press() {
+        let (mut game, mut handle) = game(Side::Corp);
+        let mut taken = 0;
+        // Run after run, until one has a window after the pressed one.
+        while taken == 0 {
+            until_a_run_pass_is_offered(&mut game, &mut handle);
+            let Outcome::Submit(pass) = game.apply(Intent::PassTheRun) else { panic!("the press passes this window") };
+            assert_eq!(pass, PlayerAction::PassPriority { side: Side::Corp });
+            assert_eq!(game.run_pass_label(), Some("Stop passing: ask me again this run"));
+            handle.submit(pass).unwrap();
+            while game.view.as_ref().is_some_and(|view| view.active_run.is_some()) {
+                let message = handle.wait().expect("the match is alive");
+                match game.apply(Intent::Message(MatchMessageRef(message))) {
+                    Outcome::Submit(action) => {
+                        if matches!(action, PlayerAction::PassPriority { .. }) {
+                            taken += 1;
+                        }
+                        handle.submit(action).unwrap();
+                    }
+                    // A question the pass does not answer is still asked.
+                    _ if game.awaiting => {
+                        let view = game.view.as_ref().unwrap();
+                        assert!(view.active_run.is_none() || view.pending_decision.is_some() || view.pending_paid_choice.is_some(), "a window was left to the person");
+                        let Outcome::Submit(action) = game.apply(Intent::Choose(corp_move(&game))) else { panic!() };
+                        handle.submit(action).unwrap();
+                    }
+                    _ => {}
+                }
+            }
+            assert!(!game.run_pass.is_on(), "it ends with the run");
+        }
+        // And the next run is asked about afresh.
+        until_a_run_pass_is_offered(&mut game, &mut handle);
+        handle.join();
+    }
+
+    /// Pressed again while it is on, it stops, and the next window asks.
+    #[test]
+    fn a_run_pass_stops_on_a_second_press() {
+        let (mut game, mut handle) = game(Side::Corp);
+        until_a_run_pass_is_offered(&mut game, &mut handle);
+        let Outcome::Submit(pass) = game.apply(Intent::PassTheRun) else { panic!() };
+        assert_eq!(game.apply(Intent::PassTheRun), Outcome::Redraw);
+        assert!(!game.run_pass.is_on());
+        handle.submit(pass).unwrap();
         handle.join();
     }
 

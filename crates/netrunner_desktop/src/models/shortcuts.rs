@@ -70,6 +70,9 @@ pub enum Shortcut {
     /// Take the last move back (`Game::back`): the pop-up's and the rail's
     /// button, which is there only when there is a move to take.
     TakeBack,
+    /// The Corp's "pass for the rest of this run", or stop: the rail's
+    /// button, there only during a run (`Game::run_pass_label`).
+    PassTheRun,
     /// Open or close the list of keys.
     Help,
     /// Open or close the timing of the turn and the run
@@ -101,6 +104,7 @@ pub fn shortcut(key: Key, shift: bool, side: Side) -> Option<Shortcut> {
         Key::Char('l') => Shortcut::PhaseBar,
         Key::Char('t') => Shortcut::Timing,
         Key::Char('u') => Shortcut::TakeBack,
+        Key::Char('w') => Shortcut::PassTheRun,
         Key::Char(digit @ '1'..='9') => Shortcut::Decision(digit as usize - '1' as usize),
         Key::Char(_) => return None,
     })
@@ -117,6 +121,7 @@ pub const LIST: &[(&str, &str)] = &[
     ("P", "Purge viruses (Corp)"),
     ("J", "Jack out"),
     ("U", "Take the last move back"),
+    ("W", "Pass for the rest of the run, or stop (Corp)"),
     ("1 – 9", "The open menu's buttons, else the pop-up's, else a way through the ICE"),
     ("M", "Actions of the card under the pointer"),
     ("I", "Read the card under the pointer"),

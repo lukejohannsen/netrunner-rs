@@ -4036,6 +4036,73 @@ run, Conduit and Superconducting Hub.
   - the settings model's forgetting;
   - the remote app's `a_remembered_answer_is_sent_without_a_key`.
 
+### 4aq. The Corp can pass the rest of a run with one press — DONE (24 September 2026)
+
+Phase 7 §8 item 6, from jinteki's `toggle-auto-no-action`. It was moved
+to the end of the list on 22 September because the person did not see
+what it buys, and they asked for it next once the rest of the list was
+down to the larger items. What it buys: `play::lone_pass` already takes a
+pass that is the only action on offer. A Corp holding unrezzed ICE and
+the credits to rez it is offered a rez beside the pass in every window
+of the Runner's run, so each of those windows stops and asks. Over six
+Corp games against the bottom rung (seeds 0–5, the Corp installing
+before anything else and never rezzing), one press per run passed **139
+windows, 116 of which would have stopped the person**.
+
+- **`netrunner_client::run_pass`** is a client policy with
+  `lone_pass`'s shape. `RunPass` is a flag the client keeps. While it is
+  on, the client submits the Corp's `PassPriority` from `legal_actions`
+  and does not ask. `Session`, the bots, the sweeps and `ActionSpace` see
+  nothing new, and nothing under `netrunner_core` changed.
+- **Only a window is passed, never a question.** A pass is taken only in
+  a run's paid-ability window with nothing parked. A prompt, a trace, a
+  payment split or a prevention window still asks. "No more actions" is
+  not an answer to a card's text, and the Corp is asked in a prevention
+  window only when it could prevent something.
+- **It lasts one run.** The first view with no run turns it off, so the
+  next run asks again. A flag held across runs would wave through a run
+  on a server the person meant to defend. jinteki keeps its flag on the
+  run for the same reason. A take-back turns it off too, or the pass it
+  took would be taken again at once.
+- **Not taken: jinteki's "pass on rez"**, a setting that passes as soon
+  as the Corp rezzes a piece of ICE. It gives up the rest of a window the
+  person just used (a second rez, an upgrade) without asking them, and
+  nobody asked for it.
+- **Desktop:**
+  - The rail offers "Pass for the rest of this run" under the run's
+    prompt. It sits on the rail rather than the bar, for Take it back's
+    reason: the bar holds the basic actions, and this is not one.
+  - While the flag is on, the rail shows "Stop passing: ask me again
+    this run" above "Opponent is thinking…", which is where the person
+    is while the run goes by.
+  - W is the key for both (`models::shortcuts`); P was taken by Purge.
+- **Terminal:**
+  - `w` does the same on both paths, and the notice line names it.
+  - The local game's bot run does not wait for a key, so there the flag
+    ends at the run's end or at the next question the run asks. Remote
+    play reads keys between updates, so `w` also stops it mid-run.
+  - A lesson never offers it.
+- **Dev hook:** `NETRUNNER_HOLD_RUN_PASS=1` stops the autoplay at the
+  offer, and `=on` presses it there. The reliable seat is
+  `NETRUNNER_GAME=corp NETRUNNER_CORP_DECK=pork_chops`.
+- **Screenshots checked:**
+  - the offer at Tithe's approach on HQ, turn 8;
+  - the flag on during a run on Remote 1, with Semak-samun passed
+    unrezzed and the Stop button on the rail.
+
+  In both, the dev log's only `scroll area` line is zero-sized, not the
+  board's.
+- **Tests:**
+  - `netrunner_client`'s
+    `the_rest_of_a_run_is_passed_and_the_next_run_asks_again`: six whole
+    games; every pass taken is legal and in a run, none answers a prompt,
+    and the flag never outlives its run;
+  - the desktop model's
+    `the_corp_passes_the_rest_of_a_run_with_one_press` (a window left
+    to the person fails it; the next run offers the button again) and
+    `a_run_pass_stops_on_a_second_press`;
+  - the remote app's `w_passes_the_rest_of_a_run`.
+
 ## 8. Borrowed from jinteki — OPEN (19 September 2026)
 
 From [`docs/jinteki-comparison.md`](../jinteki-comparison.md) §5, in the
@@ -4077,10 +4144,7 @@ exist, never a new action.
    (b) later.
 5. ~~**A replay viewer over `MatchHistory`**~~ — done in §4ah; **notes
    are still owed**.
-6. **The Corp's run auto-pass toggle.** *Moved down (22 September 2026)*:
-   the person did not see what it buys, and it matters only when the Corp
-   holds unrezzed ICE and the credits to rez it (§4ai). Taken after the
-   rest of this list.
+6. ~~**The Corp's run auto-pass toggle.**~~ Done in §4aq.
 7. ~~**Space as the one "continue" key.**~~ Done in §4ai.
 8. ~~**Ghost Trojans in the program row.**~~ Done in §4an.
 9. ~~**Identical rig cards stacked** with a count.~~ Done in §4al.
