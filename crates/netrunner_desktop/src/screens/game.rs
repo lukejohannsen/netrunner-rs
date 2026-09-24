@@ -3594,8 +3594,8 @@ fn relane(mut commands: Commands, mut dirty: ResMut<Dirty>, model: Option<Res<Mo
 // ---- the overlays ----
 
 fn spawn_overlay(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore, images: &CardImages, game: &Game, window: Vec2) {
-    // A card alone is its face and the panel's padding; an install's
-    // state sits beside the face; a zone's contents are the widest.
+    // The widths are `layout`'s: a card alone, an install beside its
+    // state, a zone's contents.
     let card_alone = game.inspecting.is_some() || game.sheet.as_ref().is_some_and(|s| !matches!(s.target, Target::Install(_)) && game.card_of(&s.target).is_some());
     let width = if game.finished() || game.confirm_quit || game.options_open || game.help_open {
         px(560)
@@ -3605,12 +3605,19 @@ fn spawn_overlay(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &Client
         let charts = game.view.as_ref().map_or(1, |view| netrunner_client::board::timing::timing(view).charts.len());
         px(if charts > 1 { 1000 } else { 560 })
     } else if card_alone {
-        px(FaceSize::Large.width() + 2.0 * 17.0)
+        px(layout::SHEET_CARD)
     } else if game.sheet.as_ref().is_some_and(|s| matches!(s.target, Target::Install(_))) {
-        px(800)
+        px(layout::SHEET_INSTALL)
     } else {
-        px(960)
+        px(layout::SHEET_ZONE)
     };
+    // A surface opened only to read sits at the right, over the right
+    // column, under a light wash; a form or a question stays in the
+    // middle under the full one (`layout::Placement`, Phase 7 §8 item
+    // 21). Placed by flex rather than by `Placement::left` against
+    // `window`, so a resize moves the panel without a respawn; the two
+    // put the panel's right edge at the same place.
+    let placement = layout::Placement::of(game.dismissed_by_a_click_away());
     // A reading surface closes on a click that misses it, so the wash is
     // a button carrying the same `Click::CloseOverlay` the Close button
     // used to — no new system and no new intent, and because it resolves
@@ -3641,7 +3648,11 @@ fn spawn_overlay(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &Client
     // that system — so an undressed scrim would turn button-grey after
     // the first hover. `Dressed::still` hands back the same `Drawn` for
     // all three interactions, so the wash never moves under the pointer.
-    let wash = theme.background.with_alpha(0.75);
+    let wash = theme.background.with_alpha(placement.wash_alpha());
+    let (justify_content, padding) = match placement {
+        layout::Placement::Centre => (JustifyContent::Center, UiRect::ZERO),
+        layout::Placement::Side => (JustifyContent::FlexEnd, UiRect::right(px(layout::PADDING))),
+    };
     let mut overlay = parent.spawn((
         Overlay,
         FocusPolicy::Block,
@@ -3652,8 +3663,9 @@ fn spawn_overlay(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &Client
             top: px(0),
             width: percent(100),
             height: percent(100),
-            justify_content: JustifyContent::Center,
+            justify_content,
             align_items: AlignItems::Center,
+            padding,
             ..default()
         },
         BackgroundColor(wash),

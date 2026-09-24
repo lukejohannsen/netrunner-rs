@@ -466,6 +466,68 @@ pub fn pile_height(window_height: f32) -> f32 {
     if rows >= 1.0 { rows * row - PILE_GAP } else { available }
 }
 
+/// The overlays' panel widths. A card alone is its large face and the
+/// panel's padding; an install's state sits beside the face; a zone's
+/// contents are the widest, four [`PILE_FACE`] cards across.
+pub const SHEET_CARD: f32 = CHOICE_FACE_MAX + 2.0 * 17.0;
+pub const SHEET_INSTALL: f32 = 800.0;
+pub const SHEET_ZONE: f32 = 960.0;
+
+/// Where an overlay's panel sits (Phase 7 §8 item 21).
+///
+/// **A surface opened only to read goes to the right; a question stays
+/// in the middle.** Asked for with play between two people in mind: one
+/// chair reads a card while the other may still be playing, and a panel
+/// over the middle of the board, under a wash that dims the rest, hid
+/// the field the reader was watching. The right column is where the
+/// reader's eye already goes: the status, the prompt and the run panel
+/// are there. The decision pop-up is not an overlay and is not moved: a
+/// choice pauses the game on both sides for the moment it takes, so the
+/// middle is the point. Nor are the forms and the three panels that ask
+/// a question (the end of the match, a stall, the quit prompt). The
+/// split is `Game::dismissed_by_a_click_away`, the one that already
+/// said which surfaces a click that misses closes, so there is still one
+/// list of reading surfaces.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Placement {
+    /// In the middle of the window, under the full wash.
+    Centre,
+    /// Against the window's right edge, level with the right column's
+    /// edge, under a light wash so the board stays readable behind it.
+    Side,
+}
+
+impl Placement {
+    /// A reading surface goes to the side; everything else is centred.
+    pub fn of(reading: bool) -> Self {
+        if reading { Placement::Side } else { Placement::Centre }
+    }
+
+    /// The panel's left edge in a window `window_width` wide, for a
+    /// panel `panel_width` wide. A panel wider than the window keeps its
+    /// left edge on the window's; the panel's own width caps at the
+    /// window, so this only decides where the room goes.
+    pub fn left(self, window_width: f32, panel_width: f32) -> f32 {
+        match self {
+            Placement::Centre => ((window_width - panel_width) / 2.0).max(0.0),
+            Placement::Side => (window_width - PADDING - panel_width).max(0.0),
+        }
+    }
+
+    /// How opaque the wash behind the panel is. The centred panels keep
+    /// the 0.75 they always had: a form or a question is the whole of the
+    /// moment. A reading surface's wash is light, because the board
+    /// behind it is what the reader is watching; it is still there, and
+    /// still a press that closes the sheet, so the board under it takes
+    /// no click while the card is open.
+    pub fn wash_alpha(self) -> f32 {
+        match self {
+            Placement::Centre => 0.75,
+            Placement::Side => 0.3,
+        }
+    }
+}
+
 /// The widest a card in the decision pop-up is drawn: the card sheet's.
 pub const CHOICE_FACE_MAX: f32 = 380.0;
 /// What a card in the pop-up keeps under it: its button, room for a
@@ -783,6 +845,34 @@ mod tests {
         assert!(rows * (face * 1.4 + CHOICE_CAPTION) + (rows - 1.0) * CHOICE_GAP <= 900.0);
         let (small, _) = choice_faces((700.0, 500.0), 9);
         assert!(small < face && small >= 1.0, "a small window shrinks the cards, never the count");
+    }
+
+    /// Item 21's check, at the smallest window the board supports: the
+    /// card sheet at the side covers the right column and only a sliver
+    /// of the board's right edge, where centred it sat over the middle
+    /// of the field. The wider sheets reach further in, but every one of
+    /// them leaves the board's left side clear, and none leaves the
+    /// window.
+    #[test]
+    fn a_reading_surface_sits_over_the_right_column_not_the_field() {
+        for width in [1280.0, 1366.0, 1920.0] {
+            let board_right = PADDING + board_width(width);
+            let rail_left = width - PADDING - RAIL_WIDTH;
+            let card = Placement::Side.left(width, SHEET_CARD);
+            assert!(card <= rail_left, "the card sheet covers the whole right column at {width}");
+            assert!(board_right - card <= 40.0, "and at most a sliver of the board at {width}: {}", board_right - card);
+            assert_eq!(card + SHEET_CARD, rail_left + RAIL_WIDTH, "its right edge is the column's");
+            let centred = Placement::Centre.left(width, SHEET_CARD);
+            assert!(centred + SHEET_CARD < board_right, "centred, the same card sat over the field at {width}");
+            for sheet in [SHEET_CARD, SHEET_INSTALL, SHEET_ZONE] {
+                let left = Placement::Side.left(width, sheet);
+                assert!(left > PADDING, "the board's left edge stays clear at {width} for a {sheet} sheet");
+                assert!(left + sheet <= width, "and the sheet stays in the window");
+            }
+        }
+        assert!(Placement::Side.wash_alpha() < Placement::Centre.wash_alpha());
+        assert_eq!(Placement::of(true), Placement::Side);
+        assert_eq!(Placement::of(false), Placement::Centre);
     }
 
     /// The depth ramp is the one that *may* vary across rows, because it

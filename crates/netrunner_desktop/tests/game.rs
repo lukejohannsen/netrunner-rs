@@ -575,6 +575,12 @@ fn a_secondary_click_opens_the_card_to_read_and_offers_nothing() {
     // that missed the panel would also press whatever tile or control
     // sat under the pointer.
     assert_eq!(app.world().get::<FocusPolicy>(scrim), Some(&FocusPolicy::Block), "the wash holds the press");
+    // A card opened to read sits at the right, over the right column,
+    // under a light wash, so the field stays in view (item 21).
+    let node = app.world().get::<Node>(scrim).expect("the wash is a node");
+    assert_eq!(node.justify_content, JustifyContent::FlexEnd, "a reading surface sits at the right");
+    let wash = app.world().get::<BackgroundColor>(scrim).expect("the wash is drawn").0.alpha();
+    assert!((wash - netrunner_desktop::models::layout::Placement::Side.wash_alpha()).abs() < 1e-6, "under the light wash: {wash}");
     press_entity(&mut app, scrim);
     assert_eq!(overlays(&mut app), 0, "a click that misses the panel closes the sheet");
     assert!(!app.world().resource::<Model>().0.confirm_quit, "and does not ask to quit");
@@ -1105,6 +1111,7 @@ fn the_wash_over_a_form_blocks_the_press_without_acting_on_it() {
     let scrim = app.world_mut().query_filtered::<Entity, With<Overlay>>().single(app.world()).expect("a wash");
     assert_eq!(app.world().get::<FocusPolicy>(scrim), Some(&FocusPolicy::Block), "a form's wash still holds the press");
     assert_eq!(app.world().get::<Click>(scrim), None, "but carries nothing to act on");
+    assert_eq!(app.world().get::<Node>(scrim).expect("a node").justify_content, JustifyContent::Center, "a form stays in the middle");
     assert!(button_labelled(&mut app, "Close").is_some(), "a form keeps its Close");
     press_entity(&mut app, scrim);
     assert_eq!(overlays(&mut app), 1, "a click that misses a form leaves it open");
