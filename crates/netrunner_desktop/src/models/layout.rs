@@ -431,6 +431,41 @@ pub fn step(n: usize, width: f32, gap: f32, available: f32) -> f32 {
     ((available - width) / (n as f32 - 1.0)).max(width * 0.2).min(natural)
 }
 
+/// The width of a card in a zone's sheet — Archives, the Heap, the
+/// Corp's own HQ, a remote's contents. It was the browser grid's `Thumb`
+/// (140), and a card in Archives could not be read at that size (Phase 7
+/// §8 item 20). 220 is the widest that still puts four to a row in the
+/// zone sheet's 960-wide panel (four faces and three gaps are 898 of the
+/// 912 the panel's padding and scroll bar leave), and its body text is
+/// 12.8 px against the board's reference 10.5.
+pub const PILE_FACE: f32 = 220.0;
+/// What a zone's sheet keeps above its cards and around its panel: the
+/// window's margin, the panel's padding and border, the heading, the
+/// caption and their gaps.
+pub const PILE_CHROME: f32 = 130.0;
+/// The gap between a zone sheet's cards, both ways (`wrap_row`).
+pub const PILE_GAP: f32 = 6.0;
+/// The most rows a zone sheet shows before its box scrolls: four across
+/// by three down, asked for by the person so a large pile on a tall
+/// window is a sheet with a scroll bar rather than the whole screen.
+pub const PILE_ROWS: f32 = 3.0;
+
+/// The tallest a zone sheet's scrolling box may be in a window
+/// `window_height` tall: as many whole rows of [`PILE_FACE`] cards as fit
+/// under the sheet's chrome, up to [`PILE_ROWS`], so a row is never cut
+/// at the box's edge while there is room for it and a pile of forty is
+/// never the whole screen. A window too short for one row gets what
+/// is left, and the wheel reaches the rest. The sheet is an overlay, so
+/// this box scrolling is not the board scrolling; before item 20 the cap
+/// was a fixed 460, which held three rows of `Thumb` faces and would
+/// have held one and a half of these.
+pub fn pile_height(window_height: f32) -> f32 {
+    let available = (window_height - PILE_CHROME).max(0.0);
+    let row = PILE_FACE * 1.4 + PILE_GAP;
+    let rows = ((available + PILE_GAP) / row).floor().min(PILE_ROWS);
+    if rows >= 1.0 { rows * row - PILE_GAP } else { available }
+}
+
 /// The widest a card in the decision pop-up is drawn: the card sheet's.
 pub const CHOICE_FACE_MAX: f32 = 380.0;
 /// What a card in the pop-up keeps under it: its button, room for a
@@ -721,6 +756,22 @@ mod tests {
     /// Two cards drawn by Top-Down Solutions, and a hand of nine, each fit
     /// the window they are offered in: widest at one row while that is
     /// the wider, wrapping only when the cards would otherwise shrink.
+    #[test]
+    fn a_pile_sheet_holds_whole_rows_and_fits_the_window() {
+        let row = PILE_FACE * 1.4;
+        for height in [520.0, 768.0, 800.0, 1080.0, 1600.0, 2400.0] {
+            let box_height = pile_height(height);
+            assert!(box_height + PILE_CHROME <= height, "{height}: the sheet fits the window");
+            let rows = (box_height + PILE_GAP) / (row + PILE_GAP);
+            assert!((rows - rows.round()).abs() < 1e-3, "{height}: whole rows, not {rows}");
+            assert!(rows <= PILE_ROWS, "{height}: never more than {PILE_ROWS} rows before the scroll bar");
+            assert!(rows == PILE_ROWS || box_height + PILE_GAP + row + PILE_GAP + PILE_CHROME > height, "{height}: no room left for another row");
+        }
+        assert_eq!(pile_height(2400.0), PILE_ROWS * row + (PILE_ROWS - 1.0) * PILE_GAP, "a tall window stops at three rows");
+        assert_eq!(pile_height(800.0), 2.0 * row + PILE_GAP, "a laptop shows two rows");
+        assert_eq!(pile_height(300.0), 170.0, "too short for a row: what is left, and it scrolls");
+    }
+
     #[test]
     fn choice_faces_fit_the_pop_up_and_wrap_only_to_grow() {
         let (face, per_row) = choice_faces((1900.0, 900.0), 2);

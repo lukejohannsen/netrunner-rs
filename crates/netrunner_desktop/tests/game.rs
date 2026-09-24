@@ -1028,6 +1028,39 @@ fn a_zone_click_opens_its_menu_and_never_acts_and_its_sheet_shows_the_contents()
     assert_eq!(app.world().resource::<Model>().0.applied, before);
 }
 
+/// A card in a zone's sheet opens large at a press, over the sheet, and
+/// Escape goes back to the sheet. The press was dropped until Phase 7 §8
+/// item 20: a face is an unthemed `Button`, so its press never became a
+/// `Pressed` message, and the loop that reads unthemed faces knew board
+/// cards and pop-up cards but not this one. The faces are also drawn a
+/// size up from the browser's grid, which is what the item asked for.
+#[test]
+fn a_card_in_a_zone_sheet_opens_large_at_a_press() {
+    let (mut app, _dir) = headless_client();
+    start_a_game_as(&mut app, Side::Corp);
+    wait_for(&mut app, "the first decision", |app| click_entry_count(app) > 0);
+    let hq = entity_with(&mut app, &Click::Target(Target::Server(ServerId::Hq))).expect("HQ's header");
+    right_click(&mut app, hq);
+    assert_eq!(overlays(&mut app), 1, "HQ's sheet is up");
+    let (face, card) = {
+        let mut q = app.world_mut().query::<(Entity, &Click, &Node)>();
+        let (entity, click, node) = q.iter(app.world()).find(|(_, c, _)| matches!(c, Click::Inspect(_))).expect("the Corp sees its own hand as faces");
+        assert_eq!(node.width, Val::Px(netrunner_desktop::models::layout::PILE_FACE), "a pile's cards are drawn at the pile size");
+        let Click::Inspect(card) = click else { unreachable!() };
+        (entity, card.clone())
+    };
+    let before = app.world().resource::<Model>().0.applied;
+    press_entity(&mut app, face);
+    let model = &app.world().resource::<Model>().0;
+    assert_eq!(model.inspecting.as_ref(), Some(&card), "the press opens the card");
+    assert_eq!(model.applied, before, "and sends nothing");
+    let title = app.world().resource::<ClientCore>().registry.get(&card).unwrap().title.clone();
+    assert!(overlay_text(&mut app).1.contains(&title), "the card is drawn");
+    escape(&mut app);
+    let model = &app.world().resource::<Model>().0;
+    assert!(model.inspecting.is_none() && model.sheet.is_some(), "Escape goes back to the sheet");
+}
+
 /// The rig's rows are labelled in the order the chair sees the table:
 /// programs next to the ICE — the top of the Runner's rig, the bottom of
 /// the Corp's view of it — and every row is there before anything is

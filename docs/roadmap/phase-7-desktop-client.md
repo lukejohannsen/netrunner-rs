@@ -4103,6 +4103,54 @@ windows, 116 of which would have stopped the person**.
     `a_run_pass_stops_on_a_second_press`;
   - the remote app's `w_passes_the_rest_of_a_run`.
 
+### 4ar. Archives and the Heap show cards large enough to read — DONE (24 September 2026)
+
+Phase 7 §8 item 20, asked for by the person because the cards in both
+piles' sheets were too small to see.
+
+- **The press first, because it was a bug.** Each face in a zone's
+  sheet carried `Click::Inspect`, and nothing read it: a face is an
+  unthemed `Button`, so its press never becomes a `Pressed` message,
+  and the loop in `controls` that reads unthemed faces knew board cards,
+  pop-up cards and the phase panel but not this. The item asked to
+  check before resizing; the test written to check
+  (`a_card_in_a_zone_sheet_opens_large_at_a_press`) failed on `main`
+  with `inspecting` still `None`. The arm is added, and Escape still
+  goes back from the card to the sheet under it.
+- **The size.** `layout::PILE_FACE` is 220 px, up from `Thumb`'s 140:
+  the widest that keeps four to a row in the zone sheet's 960-wide
+  panel (four faces and three gaps are 898 of the 912 the padding and
+  scroll bar leave — the dev log measured the box at exactly 912), with
+  body text at 12.8 px on the text tier. It is drawn as
+  `FaceSize::Board(220)`, so the text face scales and the scan is
+  resampled for that width like any board card; no new `FaceSize`.
+- **The cap.** The fixed 460 px box became `layout::pile_height`:
+  as many whole rows as fit under the sheet's chrome in the window,
+  **never more than three** (`layout::PILE_ROWS` — four by three before
+  the scroll bar, asked for by the person so a large pile on a tall
+  window is not the whole screen), so a row is never cut while there is
+  room for it. Two rows at 1280×800 (622 px), three at 2560×1600
+  fullscreen (936 px) and on anything taller; a window too short for
+  one row gets what is left, and the wheel reaches the rest. The sheet
+  is an overlay, so the board still never scrolls.
+- **The scroll, measured.** The Corp's opening HQ (always five cards)
+  at 1280×560, where the box holds one row: the dev log reads the box
+  at 912×308 over content 622 tall, and six lines of the wheel move it
+  to 313.6, the end, with the fifth card in view.
+- **Dev hook:** `NETRUNNER_PILE=archives|heap|hq` opens that zone's
+  sheet once the person's decision has arrived; `heap+card` (and the
+  others) also opens its first card over it.
+- **Screenshots checked:** the Heap from the Runner's chair after 80
+  autoplayed decisions at 1280×800 (five cards, two rows) and
+  fullscreen (twelve cards, three rows), and a card opened over it.
+  The dev log's scroll areas are the sheet's box and a zero-sized one,
+  never the board.
+- **Tests:** the desktop's
+  `a_card_in_a_zone_sheet_opens_large_at_a_press` (the Corp reads its
+  own HQ: the faces are `PILE_FACE` wide, a press opens the card and
+  sends nothing, Escape returns to the sheet) and the layout's
+  `a_pile_sheet_holds_whole_rows_and_fits_the_window`.
+
 ## 8. Borrowed from jinteki — OPEN (19 September 2026)
 
 From [`docs/jinteki-comparison.md`](../jinteki-comparison.md) §5, in the
@@ -4177,7 +4225,8 @@ Added by the person (24 September 2026), numbered on so the addresses
 above do not move. Neither is borrowed from jinteki, but both belong to
 the same kind of work, so they go on this list:
 
-20. **Archives and the Heap show cards large enough to read.** Asked
+20. ~~**Archives and the Heap show cards large enough to read.**~~
+    Done in §4ar. Asked
     for because the cards in both piles' sheets are too small to see.
     Today (`zone_sheet` in `screens/game.rs`) a pile's sheet draws each
     card at `FaceSize::Thumb` in a wrapping row inside a scroll area
