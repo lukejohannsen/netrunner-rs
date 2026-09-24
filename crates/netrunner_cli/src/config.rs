@@ -525,7 +525,7 @@ pub enum Command {
         /// Where to open: `start`, `end`, or a number of actions. Default:
         /// the end, for a bug report; the start otherwise.
         #[arg(long)]
-        at: Option<crate::replay::Start>,
+        at: Option<netrunner_client::replay::Start>,
     },
 }
 
