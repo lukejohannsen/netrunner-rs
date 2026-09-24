@@ -4205,6 +4205,50 @@ reader was watching.
   wash's placement and alpha (a reading surface at the right under the
   light wash, the options in the middle).
 
+### 4at. A card's name in the match log opens the card — DONE (24 September 2026)
+
+Phase 7 §8 item 17, from the jinteki comparison. The log was a list of
+strings, so "Smartware Distributor triggered" gave the person a name to
+look for on the board and no way to read the card.
+
+- **A log line knows which cards its names are.** `actions::LogLine` is
+  the line's text with the byte ranges that name a card, written by
+  `push_linked_log_line` beside the terminal's `push_log_line` (the same
+  words, so both clients' logs still read alike; the terminal has
+  nothing to click and keeps its strings). The replay stores both.
+- **Names are found in the words, but only among the cards the viewer
+  was shown** (`actions::nameable_cards`): every card id in the masked
+  entry the line was written from and in the viewer's own view after
+  it, read off their serialized form. A link can only mark words the
+  masked line already prints, so it opens nothing the viewer could not
+  already read, and a title that reads as a word ("Ping", "Unity")
+  links only when that card is in front of them. Longer titles win
+  where two overlap, and a match must be a whole word. **Rejected:**
+  threading the id out beside every title through `describe_action`,
+  `narrate_event` and the helpers they call — a second return value on
+  about seventy call sites, which a new log line would have to
+  remember to fill in. This rule needs nothing from a new line.
+- **On the board a name is a span of its line**, drawn in the accent,
+  and a press with either button opens the card to read (the sheet at
+  the right, §4as). A line is still one `Text`, so it wraps at word
+  boundaries as before; `bevy_ui`'s picking hits a single span, so no
+  row of per-word nodes was needed. The press arrives through picking
+  as an observer (`Interaction` is set for nodes only), so the headless
+  tests, which run without picking, never fire it rather than failing
+  on a message nobody registered.
+- **Screenshot checked** from the Runner's chair forty decisions in,
+  with the play history on: "Smartware Distributor triggered
+  (OnTurnStart)" shows the name in the accent. The one scroll area in
+  the dev log is the log's own, never the board.
+- **Tests:** `a_line_links_whole_names_the_longest_first` (whole words,
+  longest first, spans put the line back together, a title nobody was
+  shown stays words), `every_linked_name_is_its_cards_title` (a whole
+  recorded game from both chairs: every link is its card's printed
+  title, and some exist), and the desktop's
+  `a_name_in_the_log_opens_its_card` (the Runner plays a card, the
+  log's span for it is its title in the accent, and a press on it opens
+  that card).
+
 ## 8. Borrowed from jinteki — OPEN (19 September 2026)
 
 From [`docs/jinteki-comparison.md`](../jinteki-comparison.md) §5, in the
@@ -4269,7 +4313,7 @@ eleven so the addresses above do not move:
     exactly. The answer to the need behind jinteki's state-editing
     commands.~~ Done in §4ag.
 16. **An end-of-game table and a start-of-game box.**
-17. **Card names in the log open the card.**
+17. ~~**Card names in the log open the card.**~~ Done in §4at.
 18. **Check the affordance and transition colours against a
     colour-blind-safe palette.**
 19. **Open decklists as a game option; an offered hand sort** beside the

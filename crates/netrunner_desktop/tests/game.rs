@@ -26,7 +26,7 @@ use netrunner_client::start::{Level, StartChoice, DEFAULT_CORP_DECK, DEFAULT_RUN
 use netrunner_core::rules::{GamePhase, PlayerAction, ServerId, Side};
 use netrunner_desktop::core::ClientCore;
 use netrunner_desktop::nav::Navigate;
-use netrunner_desktop::screens::game::{ActionsMenu, ChoiceCard, Click, Contact, DecisionPopup, Glowing, HelpRow, HudPanel, PhaseBarRow, PhaseStep, HudReadout, InstallFact, ScoreDetails, ScoreRow, LogRow, Model, Overlay, RunLane, ServerColumn, BoardFit, ControlBar, HandSlot, LiftedCard, ServerPlate, HostedChip, Ghost, TimingStep};
+use netrunner_desktop::screens::game::{ActionsMenu, LogName, ChoiceCard, Click, Contact, DecisionPopup, Glowing, HelpRow, HudPanel, PhaseBarRow, PhaseStep, HudReadout, InstallFact, ScoreDetails, ScoreRow, LogRow, Model, Overlay, RunLane, ServerColumn, BoardFit, ControlBar, HandSlot, LiftedCard, ServerPlate, HostedChip, Ghost, TimingStep};
 use netrunner_core::rules::InstallId;
 use netrunner_desktop::widgets::card_face::BodyText;
 use netrunner_desktop::screens::new_game::{self, ActiveMatch, LastGame};
@@ -147,8 +147,13 @@ fn sheet_panel(app: &mut App) -> Entity {
     world.get::<Children>(root).expect("the overlay holds a panel").iter().next().expect("the overlay holds a panel")
 }
 
+/// Every text on the screen, a line of the log among them: its words are
+/// spans of its `Text` (a name in it is one), so a span is read as a text
+/// of its own.
 fn texts(app: &mut App) -> Vec<String> {
-    app.world_mut().query::<&Text>().iter(app.world()).map(|t| t.0.clone()).collect()
+    let mut texts: Vec<String> = app.world_mut().query::<&Text>().iter(app.world()).map(|t| t.0.clone()).collect();
+    texts.extend(app.world_mut().query::<&TextSpan>().iter(app.world()).map(|t| t.0.clone()));
+    texts
 }
 
 fn entity_with(app: &mut App, wanted: &Click) -> Option<Entity> {
@@ -249,7 +254,7 @@ fn the_form_starts_a_game_the_board_offers_its_actions_and_a_press_submits_one()
     assert!(!app.world().resource::<Model>().0.awaiting, "the press closed the panel");
     wait_for(&mut app, "the kept hand to be applied", |app| app.world().resource::<Model>().0.applied > before);
     let log = &app.world().resource::<Model>().0.log;
-    assert!(log.iter().any(|line| line.contains("Keep hand")), "{log:?}");
+    assert!(log.iter().any(|line| line.text.contains("Keep hand")), "{log:?}");
     // The board drew a hand of the Runner's own cards.
     let hand_faces = app.world_mut().query::<&Click>().iter(app.world()).filter(|c| matches!(c, Click::Target(netrunner_client::board::Target::HandCard(_)))).count();
     assert!(hand_faces >= 5, "{hand_faces} hand cards drawn");
@@ -719,7 +724,7 @@ fn the_control_bar_greys_what_is_not_legal_and_submits_what_is() {
     // end-of-turn paid-ability window opens before it moves — so the
     // log, not the phase, says the turn ended.
     let log = &app.world().resource::<Model>().0.log;
-    assert!(log.iter().any(|line| line.contains("Runner: End turn")), "{log:?}");
+    assert!(log.iter().any(|line| line.text.contains("Runner: End turn")), "{log:?}");
 }
 
 /// Every `Click` on the screen in tree order — parents before children,
@@ -1982,4 +1987,55 @@ fn a_card_selection_shows_the_cards_and_a_card_is_its_own_button() {
     app.update();
     let outlined = app.world_mut().query_filtered::<&ChoiceCard, With<Outline>>().iter(app.world()).count();
     assert_eq!(outlined, 1, "the chosen card is drawn, outlined");
+}
+
+/// A card's name in the match log is a span of its own, in the accent,
+/// and a press on it opens that card to read (Phase 7 §8 item 17). The
+/// press is built by hand, because the headless client runs without the
+/// picking plugins that would hit the span; the observer it reaches is
+/// the one a real press does.
+#[test]
+fn a_name_in_the_log_opens_its_card() {
+    let (mut app, _dir) = headless_client();
+    app.world_mut().resource_mut::<ClientCore>().settings.desktop.play_history = true;
+    start_a_game(&mut app);
+    to_the_runners_turn(&mut app);
+    // The Corp's first turn at this seed names nothing (its installs are
+    // face down), so the Runner plays a card of its own, which its line
+    // names.
+    let (card, entries) = {
+        let model = &app.world().resource::<Model>().0;
+        let hand = model.view.as_ref().unwrap().runner.grip_cards.clone().unwrap();
+        hand.iter().map(|c| (c.clone(), model.actions.for_hand_card(c))).find(|(_, e)| !e.is_empty()).expect("an opening Runner hand has something playable")
+    };
+    let face = entity_with(&mut app, &Click::Target(Target::HandCard(card.clone()))).expect("the card is on the board");
+    let before = app.world().resource::<Model>().0.applied;
+    press_card(&mut app, face);
+    let button = entity_with(&mut app, &Click::Entry(entries[0])).expect("the menu lists the card's action");
+    press_entity(&mut app, button);
+    wait_for(&mut app, "the play to be applied", |app| app.world().resource::<Model>().0.applied > before);
+    app.update();
+    let name = {
+        let mut names = app.world_mut().query::<(Entity, &LogName)>();
+        names.iter(app.world()).filter(|(_, name)| name.0 == card).map(|(entity, _)| entity).last()
+    };
+    let name = name.unwrap_or_else(|| panic!("the log does not name {card:?}: {:?}", app.world().resource::<Model>().0.log));
+    let title = app.world().resource::<Model>().0.registry().get(&card).expect("a logged card is a registered one").title.clone();
+    let span = app.world().get::<TextSpan>(name).expect("a name is a span of its line");
+    assert_eq!(span.0, title, "the span is the card's printed name, and only that");
+    assert_eq!(app.world().get::<TextColor>(name).map(|c| c.0), Some(app.world().resource::<Theme>().accent), "a name reads as one");
+    assert!(app.world().resource::<Model>().0.inspecting.is_none());
+
+    use bevy::camera::NormalizedRenderTarget;
+    use bevy::picking::backend::HitData;
+    use bevy::picking::events::{Pointer, Press};
+    use bevy::picking::pointer::{Location, PointerButton, PointerId};
+    let location = Location { target: NormalizedRenderTarget::None { width: 1, height: 1 }, position: Vec2::ZERO };
+    let press = Press { button: PointerButton::Primary, hit: HitData::new(Entity::PLACEHOLDER, 0.0, None, None), count: 1 };
+    // The widgets' own press observers (the slider's, the scrollbar's)
+    // read the UI scale, which the UI plugin a real window runs provides.
+    app.world_mut().init_resource::<UiScale>();
+    app.world_mut().trigger(Pointer::new(PointerId::Mouse, location, press, name));
+    app.update();
+    assert_eq!(app.world().resource::<Model>().0.inspecting, Some(card), "the press opened the card it names");
 }

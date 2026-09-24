@@ -136,7 +136,7 @@ impl RenderableView for Replay {
     }
 
     fn action_log(&self) -> &[String] {
-        self.inner.log()
+        self.inner.log_text()
     }
 
     fn coaching(&self) -> Option<&Coaching> {
