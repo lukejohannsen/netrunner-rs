@@ -102,8 +102,21 @@ pub fn software() -> Vec<Credit> {
 }
 
 /// The register's closing disclaimer: its last paragraph.
+///
+/// Read by lines rather than split at `"\n\n"`, because the file is
+/// compiled in as it was checked out: a Windows checkout with CRLF endings
+/// has no `"\n\n"` in it, and the About screen showed the whole register
+/// as its disclaimer there (the weekly Windows job, 23 September 2026).
+/// `str::lines` drops the `\r`, which is how `table` has always read it.
 pub fn disclaimer() -> String {
-    REGISTER.trim_end().rsplit("\n\n").next().unwrap_or_default().split_whitespace().collect::<Vec<_>>().join(" ")
+    last_paragraph(REGISTER)
+}
+
+fn last_paragraph(text: &str) -> String {
+    let mut lines: Vec<&str> =
+        text.lines().rev().skip_while(|line| line.trim().is_empty()).take_while(|line| !line.trim().is_empty()).collect();
+    lines.reverse();
+    lines.join(" ").split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
 #[cfg(test)]
@@ -119,5 +132,14 @@ mod tests {
         assert!(fetched.iter().any(|c| c.from.contains("netrunnerdb")), "{fetched:?}");
         assert!(software().iter().any(|c| c.what.starts_with("Bevy")));
         assert!(disclaimer().starts_with("This client is a free, open-source fan implementation"), "{}", disclaimer());
+    }
+
+    /// The same paragraph whatever the checkout's line endings.
+    #[test]
+    fn the_disclaimer_is_the_last_paragraph_under_either_line_ending() {
+        let crlf = REGISTER.replace("\r\n", "\n").replace('\n', "\r\n");
+        assert_eq!(last_paragraph(&crlf), disclaimer());
+        assert_eq!(last_paragraph("# Title\r\n\r\nFirst.\r\n\r\nLast one,\r\nwrapped.\r\n"), "Last one, wrapped.");
+        assert_eq!(last_paragraph("# Title\n\nFirst.\n\nLast one,\nwrapped.\n\n"), "Last one, wrapped.");
     }
 }
