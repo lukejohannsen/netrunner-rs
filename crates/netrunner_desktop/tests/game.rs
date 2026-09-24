@@ -78,10 +78,19 @@ fn screen(app: &App) -> AppScreen {
 }
 
 /// Pumps frames until `done`, or fails after five seconds.
-fn wait_for(app: &mut App, what: &str, mut done: impl FnMut(&mut App) -> bool) {
+fn wait_for(app: &mut App, what: &str, done: impl FnMut(&mut App) -> bool) {
+    wait_for_within(app, Duration::from_secs(5), what, done);
+}
+
+/// `wait_for` with a budget of its own, for a wait that is a whole game
+/// rather than a move. Autoplaying one to its end takes about 3 s in a
+/// debug build on a fast desktop, and the weekly macOS runner went past
+/// five seconds (23 September 2026); a budget sized to the fast machine
+/// fails on the slow one without a bug on either.
+fn wait_for_within(app: &mut App, budget: Duration, what: &str, mut done: impl FnMut(&mut App) -> bool) {
     let start = Instant::now();
     while !done(app) {
-        assert!(start.elapsed() < Duration::from_secs(5), "waited five seconds for {what}");
+        assert!(start.elapsed() < budget, "waited {budget:?} for {what}");
         std::thread::sleep(Duration::from_millis(5));
         app.update();
     }
@@ -1117,7 +1126,9 @@ fn the_autoplay_is_done_when_the_match_stops() {
     let (mut app, dir) = headless_client();
     autoplaying(&mut app, 100_000);
     start_a_game(&mut app);
-    wait_for(&mut app, "the game to end", |app| app.world().resource::<Model>().0.over.is_some() || app.world().resource::<Model>().0.stalled.is_some());
+    wait_for_within(&mut app, Duration::from_secs(120), "the game to end", |app| {
+        app.world().resource::<Model>().0.over.is_some() || app.world().resource::<Model>().0.stalled.is_some()
+    });
     app.update();
     assert!(done(&app), "a game that ended has no decisions left to autoplay");
     let _ = std::fs::remove_dir_all(dir);
