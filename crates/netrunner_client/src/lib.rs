@@ -43,6 +43,7 @@ pub mod decks;
 pub mod prose;
 pub mod record;
 pub mod replay;
+pub mod run_pass;
 pub mod selection;
 pub mod settings;
 pub mod skin;

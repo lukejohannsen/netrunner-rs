@@ -725,6 +725,69 @@ mod tests {
         assert!(lone > 0, "the Runner is asked to pass alone during the Corp's turn");
     }
 
+    /// Over a whole game from the Corp's chair, "no more this run" pressed
+    /// at the first window of every run: each pass it takes is legal and
+    /// in a run, it never answers a prompt, and it is off again once the
+    /// run is — so the next run is pressed for afresh.
+    #[test]
+    fn the_rest_of_a_run_is_passed_and_the_next_run_asks_again() {
+        let registry = crate::decks::sample_deck_registry();
+        let (mut pressed, mut passed, mut beside_a_choice) = (0, 0, 0);
+        for seed in 0..6 {
+        let mut handle = MatchHandle::start_local(spec(Side::Corp, seed, None)).unwrap();
+        let mut run_pass = crate::run_pass::RunPass::default();
+        loop {
+            match handle.wait().expect("the thread is alive until it says Ended") {
+                MatchMessage::Awaiting { view } => {
+                    run_pass.see(&view);
+                    if let Some(pass) = run_pass.pass(&view) {
+                        assert!(view.active_run.is_some() && view.pending_decision.is_none());
+                        assert!(view.legal_actions.contains(&pass));
+                        passed += 1;
+                        if lone_pass(&view, &registry).is_none() {
+                            beside_a_choice += 1;
+                        }
+                        handle.submit(pass).unwrap();
+                        continue;
+                    }
+                    if view.active_run.is_none() {
+                        assert!(!run_pass.is_on(), "a run pass outlived its run");
+                    }
+                    if let Some(pass) = run_pass.start(&view) {
+                        pressed += 1;
+                        handle.submit(pass).unwrap();
+                        continue;
+                    }
+                    // An install before anything else and never a rez, so
+                    // the Corp holds unrezzed ICE when the Runner runs and
+                    // the pass sits beside a choice. A selection is
+                    // confirmed as soon as it can be, or it toggles one
+                    // card on and off for ever.
+                    let first = &view.legal_actions[0];
+                    let action = if view.pending_decision.is_some() {
+                        view.legal_actions.iter().find(|action| matches!(action, PlayerAction::ConfirmCardSelection)).unwrap_or(first)
+                    } else {
+                        let mut actions = view.legal_actions.iter();
+                        actions
+                            .clone()
+                            .find(|action| matches!(action, PlayerAction::InstallCard { .. }))
+                            .or_else(|| actions.find(|action| !matches!(action, PlayerAction::RezIce { .. })))
+                            .unwrap_or(first)
+                    };
+                    handle.submit(action.clone()).unwrap();
+                }
+                MatchMessage::Applied { view, .. } => run_pass.see(&view),
+                MatchMessage::Back { .. } | MatchMessage::Rewound { .. } => {}
+                MatchMessage::Rejected { reason } => panic!("a run pass was rejected: {reason}"),
+                MatchMessage::Ended { .. } => break,
+                MatchMessage::Stalled { reason } => panic!("{reason}"),
+            }
+        }
+        }
+        assert!(pressed > 1, "pressed in more than one run: {pressed}");
+        assert!(passed > 0 && beside_a_choice > 0, "passed {passed}, {beside_a_choice} of them beside a choice");
+    }
+
     /// The deck's own style is the default and a flag overrides it.
     #[test]
     fn the_style_is_the_flag_else_the_decks_own() {

@@ -36,6 +36,7 @@ use crate::bots;
 use crate::config::{BotKind, Config, Mode};
 use netrunner_client::actions::pop_log_entries;
 use netrunner_client::play::{lone_pass, stall_message};
+use netrunner_client::run_pass::RunPass;
 use netrunner_client::standing::{self, optional_trigger, standing_answer, Answer, Answers, PromptKey};
 use netrunner_client::decks;
 use crate::record::{self, SeatRecord};
@@ -462,6 +463,13 @@ fn drive_local(
                 session.submit(pass).map_err(|error| format!("the lone pass was rejected: {error}"))?;
                 log_last(session, ui, human_side);
             }
+            // The Corp said "no more this run" (`w`): the window's pass is
+            // taken the same way, until the run ends.
+            SessionStep::Awaiting { side, view } if side == human_side && ui.run_pass.pass(&view).is_some() => {
+                let pass = ui.run_pass.pass(&view).expect("matched above");
+                session.submit(pass).map_err(|error| format!("the run's pass was rejected: {error}"))?;
+                log_last(session, ui, human_side);
+            }
             // A card's "you may" the person answered for good: answered
             // so, and logged under the action it took. Not straight after
             // a take-back, which would give the answer back at once.
@@ -509,6 +517,7 @@ fn drive_local(
                         if let Some(rewound) = session.rewind() {
                             pop_log_entries(&mut ui.action_log, rewound.removed, "You took that back.");
                             ui.asking_again = true;
+                            ui.run_pass.stop();
                         }
                     }
                 }
@@ -545,9 +554,13 @@ fn drive_local(
 /// desktop's logs are: `ui.view` is still the one the human chose from, on
 /// which a card just installed is not yet anywhere and a card just
 /// selected is not yet selected.
+///
+/// Every applied action comes through here, the bot's included, so it is
+/// also where a run pass sees the run end.
 fn log_last(session: &Session, ui: &mut LocalUiState, human_side: Side) {
+    let after = session.view_for(human_side);
+    ui.run_pass.see(&after);
     if let Some(entry) = session.last_entry_for(human_side) {
-        let after = session.view_for(human_side);
         push_log_line(&mut ui.action_log, &entry, &ui.registry, Some(&after));
     }
 }
@@ -610,6 +623,21 @@ fn prompt_human(
                 KeyCode::Up | KeyCode::Char('k') => ui.move_selection(-1),
                 KeyCode::Down | KeyCode::Char('j') => ui.move_selection(1),
                 KeyCode::Char('a') => ui.toggle_show_all(),
+                // `w`: the rest of this run passed for the Corp, from this
+                // window on; pressed again, asked again.
+                KeyCode::Char('w') if ui.run_pass.is_on() => ui.run_pass.stop(),
+                KeyCode::Char('w') => {
+                    if let Some(pass) = ui.start_run_pass() {
+                        match submit(pass) {
+                            Ok(()) => return Ok(Prompted::Submitted),
+                            Err(SubmitError::Rules(error)) => {
+                                ui.run_pass.stop();
+                                ui.last_rejection = Some(error.to_string());
+                            }
+                            Err(error) => return Err(error.into()),
+                        }
+                    }
+                }
                 // `y` / `n`: this card's "you may", answered the same way
                 // from now on (`netrunner_client::standing`) — the
                 // option's own action, submitted as Enter would.
@@ -721,6 +749,11 @@ struct LocalUiState {
     /// A move was just taken back: the prompt it restores is asked, not
     /// answered from `answers`.
     asking_again: bool,
+    /// The Corp's "no more this run" (`w`,
+    /// `netrunner_client::run_pass`). The bot's run does not wait for a
+    /// key, so it is stopped at the next question the run asks, or by
+    /// the run ending.
+    run_pass: RunPass,
 }
 
 impl LocalUiState {
@@ -743,7 +776,18 @@ impl LocalUiState {
             breaking: None,
             answers: Answers::default(),
             asking_again: false,
+            run_pass: RunPass::default(),
         }
+    }
+
+    /// `w`: the run pass turned on, and this window's pass returned to
+    /// submit. `None` under a lesson, which passes nothing for the
+    /// person, and outside a run's window.
+    fn start_run_pass(&mut self) -> Option<PlayerAction> {
+        if self.coaching.is_some() {
+            return None;
+        }
+        self.run_pass.start(self.view.as_ref()?)
     }
 
     /// The optional trigger on the prompt, answered `answer` for good:
@@ -971,7 +1015,8 @@ impl RenderableView for LocalUiState {
     }
     fn notice(&self) -> Option<String> {
         let remember = self.coaching.is_none().then(|| self.view.as_ref().and_then(|view| crate::app::remember_hint(view, &self.registry))).flatten();
-        let notices: Vec<String> = [self.back.then(|| "u to take it back".to_string()), remember].into_iter().flatten().collect();
+        let run_pass = self.coaching.is_none().then(|| self.view.as_ref().and_then(|view| crate::app::run_pass_hint(self.run_pass, view))).flatten();
+        let notices: Vec<String> = [self.back.then(|| "u to take it back".to_string()), remember, run_pass].into_iter().flatten().collect();
         (!notices.is_empty()).then(|| notices.join(" · "))
     }
 }

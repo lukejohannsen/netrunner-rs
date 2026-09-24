@@ -175,6 +175,8 @@ pub enum Click {
     Break(usize),
     /// Take the last move back (`Game::back_label`).
     TakeBack,
+    /// Pass the rest of the run, or stop (`Game::run_pass_label`).
+    PassTheRun,
     /// Answer the optional trigger on the prompt this way every time
     /// (`Game::optional_prompt`).
     Remember(Answer),
@@ -1004,7 +1006,12 @@ fn autoplay(
     }) || (dev.hold_break && !model.0.breaks.is_empty())
         || (dev.hold_ice && model.0.encounter().is_some())
         || (dev.hold_trojan && model.0.view.as_ref().is_some_and(|view| view.runner.rig.iter().any(netrunner_client::board::rig::is_ghost)))
-        || (dev.hold_may && model.0.optional_prompt().is_some());
+        || (dev.hold_may && model.0.optional_prompt().is_some())
+        || (dev.hold_run_pass.is_some() && model.0.run_pass_label().is_some());
+    if held && dev.hold_run_pass == Some(true) {
+        dev.hold_run_pass = None;
+        pending.0.push(Intent::PassTheRun);
+    }
     if held {
         dev.autoplayed = dev.autoplay;
         return;
@@ -1338,6 +1345,7 @@ pub(crate) fn controls(
             Ok(Click::Entry(index)) => intents.push(Intent::Choose(*index)),
             Ok(Click::Break(index)) => intents.push(Intent::Break(*index)),
             Ok(Click::TakeBack) => intents.push(Intent::TakeBack),
+            Ok(Click::PassTheRun) => intents.push(Intent::PassTheRun),
             Ok(Click::Remember(answer)) => intents.push(Intent::Remember(*answer)),
             Ok(Click::Control(control)) => intents.push(Intent::Control(*control)),
             Ok(Click::Inspect(card)) => intents.push(Intent::InspectCard(Some(card.clone()))),
@@ -2649,6 +2657,13 @@ fn spawn_rail(parent: &mut ChildSpawnerCommands, theme: &Theme, game: &Game, hel
             TextLayout::new(Justify::Left, LineBreak::WordBoundary),
         ));
         return;
+    }
+    // The Corp's "no more this run", and the way back out of it. On the
+    // rail, not the bar, for Take it back's reason below; and above the
+    // "thinking" line, because while it is on the person is mostly not
+    // being asked anything, and that is when they may want to stop it.
+    if let Some(label) = game.run_pass_label() {
+        parent.spawn(widgets::button(theme, label, percent(100), Click::PassTheRun));
     }
     if !game.awaiting {
         parent.spawn(widgets::dim(theme, if game.view.is_some() { "Opponent is thinking…" } else { "Setting up…" }));

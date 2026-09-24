@@ -9,6 +9,7 @@
 //! represent "both sides, simultaneously, from each one's own point of
 //! view," so this app doesn't try to.
 
+use netrunner_client::run_pass::RunPass;
 use netrunner_client::standing::{optional_trigger, standing_answer, Answer, Answers};
 use std::time::{Duration, Instant};
 
@@ -72,6 +73,8 @@ pub struct App {
     /// (`netrunner_client::standing`), from the settings file. Empty
     /// until the caller fills it, so a test reads no file.
     pub answers: Answers,
+    /// The Corp's "no more this run" (`w`, `netrunner_client::run_pass`).
+    run_pass: RunPass,
 }
 
 impl App {
@@ -101,6 +104,7 @@ impl App {
             asks: Asks::default(),
             breaking: None,
             answers: Answers::default(),
+            run_pass: RunPass::default(),
         };
         app.drain_messages();
         app
@@ -145,9 +149,16 @@ impl App {
                     // A seat asked only to pass is not asked: the pass
                     // goes straight back (`netrunner_client::play::
                     // lone_pass`). A spectator's view lists nothing.
+                    self.run_pass.see(&view);
                     if !self.connection_lost
                         && let Some(pass) = netrunner_client::play::lone_pass(&view, &self.registry)
                     {
+                        let _ = self.tx.send(ClientMessage::SubmitAction(pass));
+                    } else if !self.connection_lost
+                        && let Some(pass) = self.run_pass.pass(&view)
+                    {
+                        // The Corp said "no more this run": the same, until
+                        // the run ends.
                         let _ = self.tx.send(ClientMessage::SubmitAction(pass));
                     } else if !self.connection_lost
                         && let Some((action, _)) = standing_answer(&view, &self.registry, &self.answers)
@@ -241,6 +252,21 @@ impl App {
         let _ = self.tx.send(ClientMessage::SubmitAction(action));
     }
 
+    /// `w`: the rest of this run passed for the Corp from this window
+    /// on, or, while that is on, asked again (`netrunner_client::run_pass`).
+    fn toggle_run_pass(&mut self) {
+        if self.run_pass.is_on() {
+            self.run_pass.stop();
+            return;
+        }
+        if self.connection_lost {
+            return;
+        }
+        if let Some(pass) = self.view.as_ref().and_then(|view| self.run_pass.start(view)) {
+            let _ = self.tx.send(ClientMessage::SubmitAction(pass));
+        }
+    }
+
     fn submit_selected_action(&mut self) {
         // The action would vanish into a closed channel, and the view it
         // was chosen from may be stale by the time the seat is back.
@@ -314,6 +340,7 @@ impl App {
             KeyCode::Enter | KeyCode::Char(' ') => self.submit_selected_action(),
             KeyCode::Char('y') => self.remember(Answer::Always),
             KeyCode::Char('n') => self.remember(Answer::Never),
+            KeyCode::Char('w') => self.toggle_run_pass(),
             KeyCode::Char('c') => {
                 if let Some(view) = &self.view {
                     self.card_picker = Some(CardPicker::open(view, &self.registry));
@@ -619,7 +646,9 @@ impl RenderableView for App {
         self.view.as_ref().and_then(|view| crate::prose::decision_prompt(view, &self.registry))
     }
     fn notice(&self) -> Option<String> {
-        self.view.as_ref().and_then(|view| remember_hint(view, &self.registry))
+        let view = self.view.as_ref()?;
+        let notices: Vec<String> = [remember_hint(view, &self.registry), run_pass_hint(self.run_pass, view)].into_iter().flatten().collect();
+        (!notices.is_empty()).then(|| notices.join(" · "))
     }
 }
 
@@ -637,6 +666,16 @@ pub(crate) fn remember_hint(view: &ClientView, registry: &CardRegistry) -> Optio
         })
         .collect();
     Some(keys.join(", "))
+}
+
+/// The key for the Corp's "no more this run", when it is on or on offer
+/// (`netrunner_client::run_pass`). Both terminal paths show it.
+pub(crate) fn run_pass_hint(run_pass: RunPass, view: &ClientView) -> Option<String> {
+    if run_pass.is_on() {
+        Some("passing the rest of this run — w to stop".to_string())
+    } else {
+        run_pass.offered(view).then(|| "w: pass the rest of this run".to_string())
+    }
 }
 
 #[cfg(test)]
@@ -757,6 +796,55 @@ mod connection_tests {
         app.drain_messages();
         assert!(matches!(client_rx.try_recv(), Ok(ClientMessage::SubmitAction(sent)) if sent == pass));
         assert!(client_rx.try_recv().is_err(), "sent once");
+    }
+
+    /// The Corp's first window of a real run, from a local game played
+    /// by its first legal action.
+    fn a_run_window() -> ClientView {
+        use netrunner_client::play::{LocalMatchSpec, MatchHandle, MatchMessage};
+        let registry = std::sync::Arc::new(netrunner_client::decks::sample_deck_registry());
+        let corp = netrunner_core::decks::by_id("discretion_advised").unwrap();
+        let runner = netrunner_core::decks::by_id("stolen_goods").unwrap();
+        let spec = LocalMatchSpec { registry, corp, runner, human: Side::Corp, level: netrunner_bots::Level::Novice, style: None, seed: 3, record: None };
+        let mut handle = MatchHandle::start_local(spec).unwrap();
+        loop {
+            match handle.wait().expect("a run comes before the end") {
+                MatchMessage::Awaiting { view } if RunPass::default().offered(&view) => return *view,
+                MatchMessage::Awaiting { view } => handle.submit(view.legal_actions[0].clone()).unwrap(),
+                MatchMessage::Ended { .. } | MatchMessage::Stalled { .. } => panic!("no run"),
+                _ => {}
+            }
+        }
+    }
+
+    /// `w` in a run's window sends its pass, the next window of the run
+    /// is passed without a key, and the run's end turns it off; the
+    /// notice names the key either way.
+    #[test]
+    fn w_passes_the_rest_of_a_run() {
+        let (mut app, server_tx, mut client_rx) = app_with_channels();
+        let mut window = a_run_window();
+        let pass = PlayerAction::PassPriority { side: Side::Corp };
+        // Company for the pass, so the lone pass does not take it.
+        window.legal_actions.push(PlayerAction::EndTurn);
+        server_tx.send(ServerMessage::StateUpdate(Box::new(window.clone()))).unwrap();
+        app.drain_messages();
+        assert!(client_rx.try_recv().is_err(), "a window beside a choice waits");
+        assert_eq!(RenderableView::notice(&app).as_deref(), Some("w: pass the rest of this run"));
+
+        app.handle_key(KeyEvent::new(KeyCode::Char('w'), KeyModifiers::NONE));
+        assert!(matches!(client_rx.try_recv(), Ok(ClientMessage::SubmitAction(sent)) if sent == pass));
+        server_tx.send(ServerMessage::StateUpdate(Box::new(window.clone()))).unwrap();
+        app.drain_messages();
+        assert!(matches!(client_rx.try_recv(), Ok(ClientMessage::SubmitAction(sent)) if sent == pass), "the next window goes by itself");
+        assert_eq!(RenderableView::notice(&app).as_deref(), Some("passing the rest of this run — w to stop"));
+
+        let mut after = window.clone();
+        after.active_run = None;
+        server_tx.send(ServerMessage::StateUpdate(Box::new(after))).unwrap();
+        server_tx.send(ServerMessage::StateUpdate(Box::new(window))).unwrap();
+        app.drain_messages();
+        assert!(client_rx.try_recv().is_err(), "the next run asks again");
     }
 
     /// A card's "you may" answered for good is answered as it arrives,
