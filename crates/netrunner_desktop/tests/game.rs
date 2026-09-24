@@ -26,7 +26,7 @@ use netrunner_client::start::{Level, StartChoice, DEFAULT_CORP_DECK, DEFAULT_RUN
 use netrunner_core::rules::{GamePhase, PlayerAction, ServerId, Side};
 use netrunner_desktop::core::ClientCore;
 use netrunner_desktop::nav::Navigate;
-use netrunner_desktop::screens::game::{ActionsMenu, ChoiceCard, Click, Contact, DecisionPopup, Glowing, HelpRow, HudPanel, PhaseBarRow, PhaseStep, HudReadout, InstallFact, ScoreDetails, ScoreRow, LogRow, Model, Overlay, RunLane, ServerColumn, BoardFit, ControlBar, HandSlot, LiftedCard, ServerPlate};
+use netrunner_desktop::screens::game::{ActionsMenu, ChoiceCard, Click, Contact, DecisionPopup, Glowing, HelpRow, HudPanel, PhaseBarRow, PhaseStep, HudReadout, InstallFact, ScoreDetails, ScoreRow, LogRow, Model, Overlay, RunLane, ServerColumn, BoardFit, ControlBar, HandSlot, LiftedCard, ServerPlate, HostedChip, Ghost};
 use netrunner_core::rules::InstallId;
 use netrunner_desktop::widgets::card_face::BodyText;
 use netrunner_desktop::screens::new_game::{self, ActiveMatch, LastGame};
@@ -789,6 +789,67 @@ fn each_side_has_a_hud_with_every_readout_in_its_place() {
         let expected: Vec<(&str, String)> = netrunner_client::board::hud::readouts(&view, side).into_iter().map(|r| (r.label, r.value)).collect();
         assert_eq!(drawn, expected, "{side:?}'s HUD");
     }
+}
+
+/// A Trojan sits on its ice: a button of its own inside the ice's tile,
+/// with the Trojan's click and the Trojan's sheet, while its copy in the
+/// program row is a ghost that is still the same button (Phase 7 §8
+/// item 8). No short game hosts one, so the view is given one: a Botulus
+/// on an Ice Wall protecting HQ.
+#[test]
+fn a_trojan_is_a_chip_on_its_ice_and_a_ghost_in_the_row() {
+    use netrunner_core::dsl::CardId;
+    use netrunner_core::rules::{InstallSlot, PublicInstalledCard, PublicInstalledRunnerCard};
+    let (mut app, _dir) = headless_client();
+    start_a_game(&mut app);
+    wait_for(&mut app, "the first decision", |app| click_entry_count(app) > 0);
+    let (ice, trojan) = (InstallId(9100), InstallId(9101));
+    {
+        let mut model = app.world_mut().resource_mut::<Model>();
+        let view = model.0.view.as_mut().unwrap();
+        if !view.corp.servers.iter().any(|s| s.server == ServerId::Hq) {
+            view.corp.servers.push(netrunner_core::view::ServerView { server: ServerId::Hq, ice: Vec::new(), root: Vec::new() });
+        }
+        let hq = view.corp.servers.iter_mut().find(|s| s.server == ServerId::Hq).unwrap();
+        hq.ice.push(PublicInstalledCard { install_id: ice, position: 0, server: ServerId::Hq, slot: InstallSlot::Ice, rezzed: true, card: Some(CardId("ice_wall".into())), advancement_tokens: 0, counters: Some(0), seen_by_runner: true });
+        view.runner.rig.push(PublicInstalledRunnerCard { card: CardId("botulus".into()), install_id: trojan, current_strength: 0, hosted_on_ice: Some(ice), hosted_on_program: None, hosted_cards: Vec::new(), hosted_cards_playable: false, counters: 1 });
+    }
+    // The board redraws when its fit moves; the view changed under it.
+    app.world_mut().resource_mut::<BoardFit>().face = 0.0;
+    app.update();
+    app.update();
+
+    let chips: Vec<(Entity, InstallId)> = app.world_mut().query::<(Entity, &HostedChip)>().iter(app.world()).map(|(e, c)| (e, c.0)).collect();
+    assert_eq!(chips.len(), 1, "one chip, on its host");
+    let (chip, id) = chips[0];
+    assert_eq!(id, trojan);
+    assert_eq!(app.world().entity(chip).get::<Click>(), Some(&Click::Target(Target::Install(trojan))), "the chip is the Trojan's click");
+    assert!(app.world().entity(chip).contains::<Button>());
+    // Its tile is an ancestor: the chip is drawn on the ice.
+    let tile = entity_with(&mut app, &Click::Target(Target::Install(ice))).expect("the ice has a tile");
+    let mut up = chip;
+    while let Some(parent) = app.world().entity(up).get::<ChildOf>().map(|c| c.parent()) {
+        up = parent;
+        if up == tile {
+            break;
+        }
+    }
+    assert_eq!(up, tile, "the chip is inside the ice's tile");
+
+    let ghosts: Vec<Entity> = app.world_mut().query_filtered::<Entity, With<Ghost>>().iter(app.world()).collect();
+    assert_eq!(ghosts.len(), 1, "the Trojan's row copy is a ghost");
+    let ghost = app.world().entity(ghosts[0]);
+    assert!(ghost.contains::<Button>(), "a ghost is still a button, never a picture");
+    assert_eq!(ghost.get::<Click>(), Some(&Click::Target(Target::Install(trojan))), "and the same click as the chip");
+    assert!(texts(&mut app).iter().any(|t| t.contains("on Ice Wall")), "the ghost's chip line names its host");
+
+    // A secondary click on the chip reads the Trojan, not the ice.
+    right_click(&mut app, chip);
+    let facts: Vec<String> = {
+        let world = app.world_mut();
+        world.query_filtered::<&Text, With<InstallFact>>().iter(world).map(|t| t.0.clone()).collect()
+    };
+    assert!(facts.iter().any(|l| l == "Hosted on Ice Wall"), "the Trojan's sheet: {facts:?}");
 }
 
 /// The Agendas readout is a button that opens the side's score area as

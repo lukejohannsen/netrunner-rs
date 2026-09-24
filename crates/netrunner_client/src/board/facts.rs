@@ -336,7 +336,7 @@ pub fn install_facts(view: &ClientView, id: InstallId, registry: &CardRegistry) 
             if let Some(n) = card.counters.filter(|n| *n > 0) {
                 lines.push(counter_word(def.and_then(|d| d.counter_kind), n));
             }
-            let hosted: Vec<String> = view.runner.rig.iter().filter(|r| r.hosted_on_ice == Some(id)).map(|r| card_title(&r.card, registry)).collect();
+            let hosted: Vec<String> = super::rig::hosted_on(view, id).into_iter().map(|r| card_title(&r.card, registry)).collect();
             if !hosted.is_empty() {
                 lines.push(format!("Hosts {}", hosted.join(", ")));
             }
