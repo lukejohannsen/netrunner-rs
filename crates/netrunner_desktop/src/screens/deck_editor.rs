@@ -42,7 +42,7 @@ use crate::screens::AppScreen;
 use crate::theme::{size, Theme};
 use crate::models::layout::{self, DECK_FACE};
 use crate::widgets::card_face::{spawn_face, FaceSize};
-use crate::widgets::preview::Previews;
+use crate::widgets::reader::{secondary_click, Readable, Reading};
 use crate::widgets::dropdown::{spawn_dropdown, Choice, DropdownChanged};
 use crate::widgets::text_field::{TextField, TextFieldEvent};
 use crate::widgets::{self, ButtonKind, Pressed};
@@ -53,7 +53,7 @@ impl Plugin for DeckEditorPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(OnEnter(AppScreen::DeckEditor), spawn)
             .add_systems(Update, escape_closes_the_popup.in_set(Captures).run_if(in_state(AppScreen::DeckEditor)))
-            .add_systems(Update, (controls, reading, text_fields, rebuild, fit_pool, refresh).chain().run_if(in_state(AppScreen::DeckEditor)));
+            .add_systems(Update, (controls, text_fields, rebuild, fit_pool, refresh).chain().run_if(in_state(AppScreen::DeckEditor)));
     }
 }
 
@@ -114,7 +114,6 @@ enum Popup {
     None,
     Rename,
     Identity,
-    Read(CardId),
 }
 
 #[derive(Component)]
@@ -337,7 +336,7 @@ fn spawn_header(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientC
     match identity {
         Some(card) => {
             let image = card.numeric_id.and_then(|code| images.face(code, FaceSize::Board(HEADER_FACE)));
-            spawn_face(parent, theme, &Face::of(card), FaceSize::Board(HEADER_FACE), image, (Button, DeckRowButton::Read(card.id.clone()), Previews(card.id.clone())));
+            spawn_face(parent, theme, &Face::of(card), FaceSize::Board(HEADER_FACE), image, (Button, DeckRowButton::Read(card.id.clone()), Readable(card.id.clone())));
         }
         None => {
             parent.spawn((Node { width: px(HEADER_FACE as f32), height: px(HEADER_FACE as f32 * 1.4), flex_shrink: 0.0, ..default() }, BackgroundColor(theme.panel)));
@@ -540,7 +539,7 @@ fn spawn_pool(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCor
     for card in cards {
         parent.spawn(Node { flex_direction: FlexDirection::Column, ..default() }).with_children(|cell| {
             let image = card.numeric_id.and_then(|code| images.face(code, size));
-            spawn_face(cell, theme, &Face::of(card), size, image, (Button, PoolCard(card.id.clone()), Previews(card.id.clone())));
+            spawn_face(cell, theme, &Face::of(card), size, image, (Button, PoolCard(card.id.clone()), Readable(card.id.clone())));
             let copies = editor.draft.copies(&card.id);
             cell.spawn((
                 PoolBadge(card.id.clone()),
@@ -592,7 +591,7 @@ fn spawn_deck_list(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &Clie
                 row.spawn((
                     Button,
                     DeckRowButton::Read(id.clone()),
-                    Previews(id.clone()),
+                    Readable(id.clone()),
                     Node { flex_grow: 1.0, flex_basis: px(0), min_width: px(0), padding: UiRect::axes(px(4), px(4)), ..default() },
                     children![(Text::new(format!("{count}× {}{influence}{note}", book.title(&id))), theme.font(size::SMALL), TextColor(colour))],
                 ));
@@ -628,7 +627,7 @@ fn controls(
         Query<(&Interaction, &PopupButton), (Changed<Interaction>, Without<widgets::Themed>)>,
         Query<&Interaction, (Changed<Interaction>, With<Wash>)>,
     ),
-    (keys, mouse): (Res<ButtonInput<KeyCode>>, Res<ButtonInput<MouseButton>>),
+    (keys, mouse, mut reading): (Res<ButtonInput<KeyCode>>, Res<ButtonInput<MouseButton>>, ResMut<Reading>),
     mut editor: ResMut<Model>,
     (mut popup, mut dirty, mut search, mut rebuild): (ResMut<Popup>, ResMut<Dirty>, ResMut<SearchRequested>, ResMut<Rebuild>),
     core: Res<ClientCore>,
@@ -641,30 +640,32 @@ fn controls(
         *popup = Popup::None;
         dirty.popup = true;
     }
-    let modifier = keys.any_pressed([KeyCode::ControlLeft, KeyCode::ControlRight, KeyCode::SuperLeft, KeyCode::SuperRight]);
-    let secondary = mouse.just_pressed(MouseButton::Right) || (modifier && mouse.just_pressed(MouseButton::Left));
-    // A pool card: a press adds it, a secondary click reads it.
+    // A secondary click is the reader's (`widgets::reader`): a Ctrl-click
+    // that reads a card must not also add it or pick it.
+    let secondary = secondary_click(&keys, &mouse);
+    // A pool card: a press adds it — or, in a published deck's spread,
+    // which adds nothing, reads it.
     for (interaction, PoolCard(id)) in &pool {
-        if *interaction != Interaction::Pressed {
+        if *interaction != Interaction::Pressed || secondary {
             continue;
         }
-        if secondary || editor.0.read_only {
-            *popup = Popup::Read(id.clone());
-            dirty.popup = true;
+        if editor.0.read_only {
+            reading.0 = Some(id.clone());
         } else {
             intents.push(Intent::Add(id.clone()));
         }
     }
     for (interaction, button) in &reads {
         if *interaction == Interaction::Pressed
+            && !secondary
             && let DeckRowButton::Read(id) = button
         {
-            *popup = Popup::Read(id.clone());
-            dirty.popup = true;
+            reading.0 = Some(id.clone());
         }
     }
     for (interaction, button) in &picks {
         if *interaction == Interaction::Pressed
+            && !secondary
             && let PopupButton::Identity(id) = button
         {
             intents.push(Intent::Identity(id.clone()));
@@ -750,35 +751,6 @@ fn controls(
                 dirty.notice = true;
             }
         }
-    }
-}
-
-/// Reads the card a secondary click lands on. Kept apart from `controls`
-/// because it asks for every card's hover state, not only the ones that
-/// changed this frame.
-fn reading(
-    mouse: Res<ButtonInput<MouseButton>>,
-    pool: Query<(&Interaction, &PoolCard)>,
-    rows: Query<(&Interaction, &DeckRowButton)>,
-    mut popup: ResMut<Popup>,
-    mut dirty: ResMut<Dirty>,
-) {
-    if !mouse.just_pressed(MouseButton::Right) {
-        return;
-    }
-    let hovered = pool
-        .iter()
-        .find(|(interaction, _)| matches!(interaction, Interaction::Hovered | Interaction::Pressed))
-        .map(|(_, PoolCard(id))| id.clone())
-        .or_else(|| {
-            rows.iter().find_map(|(interaction, button)| match button {
-                DeckRowButton::Read(id) if matches!(interaction, Interaction::Hovered | Interaction::Pressed) => Some(id.clone()),
-                _ => None,
-            })
-        });
-    if let Some(id) = hovered {
-        *popup = Popup::Read(id);
-        dirty.popup = true;
     }
 }
 
@@ -878,8 +850,9 @@ fn close_search(commands: &mut Commands, field: Entity, slot: &Query<Entity, Wit
 /// Escape closes a pop-up before it leaves the screen. The rename field
 /// takes its own Escape (`widgets::text_field`), so this stands down
 /// while it is open.
-fn escape_closes_the_popup(keys: Res<ButtonInput<KeyCode>>, mut captured: ResMut<InputCaptured>, mut popup: ResMut<Popup>, mut dirty: ResMut<Dirty>) {
-    if matches!(*popup, Popup::None | Popup::Rename) || captured.0 {
+fn escape_closes_the_popup(keys: Res<ButtonInput<KeyCode>>, mut captured: ResMut<InputCaptured>, mut popup: ResMut<Popup>, mut dirty: ResMut<Dirty>, reading: Res<Reading>) {
+    // A card read over the picker takes the Escape first.
+    if matches!(*popup, Popup::None | Popup::Rename) || captured.0 || reading.is_open() {
         return;
     }
     captured.0 = true;
@@ -905,10 +878,9 @@ fn refresh(
     core: Res<ClientCore>,
     images: Res<CardImages>,
     editor: Res<Model>,
-    (popup, windows, face): (Res<Popup>, Query<&Window, With<bevy::window::PrimaryWindow>>, Res<PoolFace>),
+    (popup, face): (Res<Popup>, Res<PoolFace>),
 ) {
     let Dirty { deck, pool, popup: repopup, notice: renotice } = std::mem::take(&mut *dirty);
-    let window = windows.single().map_or((1920.0, 1080.0), |window| (window.width(), window.height()));
     let editor = &editor.0;
     if deck {
         if let Ok(header) = header.single() {
@@ -951,7 +923,7 @@ fn refresh(
         node.display = if *popup == Popup::None { Display::None } else { Display::Flex };
         commands.entity(layer).despawn_children();
         if *popup != Popup::None {
-            commands.entity(layer).with_children(|parent| spawn_popup(parent, &theme, &core, editor, &popup, &images, window));
+            commands.entity(layer).with_children(|parent| spawn_popup(parent, &theme, &core, editor, &popup, &images));
         }
     }
 }
@@ -960,11 +932,7 @@ fn refresh(
 /// window that has the room, fewer where the panel's `max_width` gives.
 pub(crate) const IDENTITY_PANEL: f32 = 6.0 * DECK_FACE + 5.0 * 10.0 + 2.0 * 28.0 + 2.0 + 16.0;
 
-fn spawn_popup(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore, editor: &Editor, popup: &Popup, images: &CardImages, window: (f32, f32)) {
-    let book = book(core);
-    // A card opened to read sits at the right, as on the board (§4as);
-    // a question sits in the middle.
-    let reading = matches!(popup, Popup::Read(_));
+fn spawn_popup(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore, editor: &Editor, popup: &Popup, images: &CardImages) {
     parent
         .spawn((
             Wash,
@@ -976,30 +944,15 @@ fn spawn_popup(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCo
                 top: px(0),
                 width: percent(100),
                 height: percent(100),
-                justify_content: if reading { JustifyContent::FlexEnd } else { JustifyContent::Center },
+                justify_content: JustifyContent::Center,
                 align_items: AlignItems::Center,
                 padding: UiRect::all(px(24)),
                 ..default()
             },
-            BackgroundColor(theme.wash.with_alpha(if reading { 0.35 } else { 0.72 })),
+            BackgroundColor(theme.wash.with_alpha(0.72)),
         ))
         .with_children(|wash| match popup {
             Popup::None => {}
-            Popup::Read(id) => {
-                if let Some(card) = book.get(id) {
-                    // As large as the hover preview, so a card opened to
-                    // keep is no smaller than the one glanced at.
-                    let (_, _, width) = layout::preview_box(window, layout::Anchor::default());
-                    let size = FaceSize::Board(width.round() as u16);
-                    let image = card.numeric_id.and_then(|code| images.face(code, size));
-                    wash.spawn((Interaction::None, FocusPolicy::Block, Node { flex_direction: FlexDirection::Column, row_gap: px(8), ..default() })).with_children(|column| {
-                        spawn_face(column, theme, &Face::of(card), size, image, ());
-                        if !card.is_playable {
-                            column.spawn((Text::new("The engine does not play this card yet."), theme.font(size::SMALL), TextColor(theme.danger)));
-                        }
-                    });
-                }
-            }
             Popup::Rename => {
                 wash.spawn((Interaction::None, FocusPolicy::Block, widgets::roomy_panel(theme, px(620)))).with_children(|panel| {
                     panel.spawn(widgets::heading(theme, "Rename the deck"));
@@ -1027,7 +980,7 @@ fn spawn_popup(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCo
                             scroll.spawn(Node { flex_direction: FlexDirection::Row, flex_wrap: FlexWrap::Wrap, column_gap: px(10), row_gap: px(10), padding: UiRect::all(px(4)), ..default() }).with_children(|grid| {
                                 for identity in deck_builder::identities(&core.registry, editor.deck().side, editor.format) {
                                     let image = identity.numeric_id.and_then(|code| images.face(code, IDENTITY_FACE));
-                                    let face = spawn_face(grid, theme, &Face::of(identity), IDENTITY_FACE, image, (Button, PopupButton::Identity(identity.id.clone()), Previews(identity.id.clone())));
+                                    let face = spawn_face(grid, theme, &Face::of(identity), IDENTITY_FACE, image, (Button, PopupButton::Identity(identity.id.clone()), Readable(identity.id.clone())));
                                     if identity.id == editor.deck().identity {
                                         grid.commands().entity(face).insert(Outline { width: px(3), offset: px(1), color: theme.accent });
                                     }

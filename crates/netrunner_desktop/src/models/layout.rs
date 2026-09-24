@@ -478,7 +478,8 @@ pub const SHEET_ZONE: f32 = 960.0;
 /// `FaceSize::Thumb` (140), and at that width neither a card's text nor an
 /// identity's ability could be read on a 2560-wide window: the person
 /// could not tell what they were adding. 260 puts a title and a type
-/// line in reach at a glance and leaves the text to [`preview_box`]; it
+/// line in reach at a glance and leaves the text to the secondary click's
+/// reader (`widgets::reader`); it
 /// is a fixed width rather than one fitted to the window because these
 /// are menu screens, whose grids scroll, and a wrapping row of fixed
 /// cells is what the card browser already is.
@@ -496,35 +497,6 @@ pub const DECK_GAP: f32 = 8.0;
 pub fn deck_face(width: f32) -> f32 {
     let across = ((width + DECK_GAP) / (DECK_FACE + DECK_GAP)).floor().max(1.0);
     ((width + DECK_GAP) / across - DECK_GAP).floor().clamp(120.0, DECK_FACE_MAX)
-}
-
-/// The share of the window's height a hover preview's card takes.
-pub const PREVIEW_SHARE: f32 = 0.66;
-/// The widest a preview draws: the width NetrunnerDB's scans are
-/// served at (§4w), past which a picture only blurs.
-pub const PREVIEW_MAX: f32 = 750.0;
-/// The window's margin around a preview.
-pub const PREVIEW_MARGIN: f32 = 24.0;
-
-/// Where the card under the pointer is shown large, and how wide: `(left,
-/// top, width)` in a window of `window` pixels, for a card whose box is
-/// `over`.
-///
-/// **The preview goes to the half of the window the pointer is not in**,
-/// so it never covers the card it is showing or its neighbours, and a
-/// person can sweep the pool reading as they go without a click — the
-/// secondary click still opens the same card to keep. It is as tall as
-/// [`PREVIEW_SHARE`] of the window, never wider than the scan
-/// ([`PREVIEW_MAX`]) nor than the half it sits in, and centred on the
-/// window's height.
-pub fn preview_box(window: (f32, f32), over: Anchor) -> (f32, f32, f32) {
-    let (width, height) = window;
-    let half = (width / 2.0 - 2.0 * PREVIEW_MARGIN).max(0.0);
-    let tall = (height - 2.0 * PREVIEW_MARGIN).max(0.0);
-    let face = (height * PREVIEW_SHARE / 1.4).min(PREVIEW_MAX).min(half).min(tall / 1.4);
-    let left = if over.x < width / 2.0 { width - PREVIEW_MARGIN - face } else { PREVIEW_MARGIN };
-    let top = ((height - face * 1.4) / 2.0).max(0.0);
-    (left, top, face)
 }
 
 /// Where an overlay's panel sits (Phase 7 §8 item 21).
@@ -951,43 +923,6 @@ mod tests {
         assert!(deck_face(200.0) >= 120.0);
     }
 
-    /// A preview sits in the half the pointer is not in, on the window,
-    /// readable at a laptop's size and never past the scan's width.
-    #[test]
-    fn a_preview_sits_opposite_the_pointer_and_on_the_window() {
-        let window = (2560.0, 1600.0);
-        let left_card = Anchor { x: 300.0, y: 800.0, width: DECK_FACE, height: DECK_FACE * 1.4 };
-        let right_card = Anchor { x: 2300.0, ..left_card };
-        let (left, top, face) = preview_box(window, left_card);
-        assert!(left >= window.0 / 2.0, "a card on the left is previewed on the right: {left}");
-        assert!(left + face <= window.0 && top >= 0.0 && top + face * 1.4 <= window.1);
-        assert!(face > 2.0 * DECK_FACE && face <= PREVIEW_MAX, "{face}");
-        let (left, _, face) = preview_box(window, right_card);
-        assert!(left + face <= window.0 / 2.0, "a card on the right is previewed on the left");
-        for window in [(1280.0, 800.0), (1920.0, 1080.0), (900.0, 1400.0)] {
-            let (left, top, face) = preview_box(window, left_card);
-            assert!(left >= window.0 / 2.0 && left + face <= window.0, "{window:?}");
-            assert!(top >= 0.0 && top + face * 1.4 <= window.1, "{window:?}");
-            assert!(face >= 300.0 || window.0 < 1000.0, "{window:?}: {face}");
-        }
-    }
-
-    /// Five cards and the two identities fit the pop-up's box at the
-    /// laptop window, drawn wide enough to read, and never taller than the
-    /// box; a box too short takes a second row of the hand rather than
-    /// run off the window.
-    #[test]
-    fn the_opening_box_fits_its_cards_and_both_identities() {
-        let (face, per_row) = opening_faces((1200.0, 560.0), 5);
-        assert_eq!(per_row, 5, "one row of five at a wide window");
-        let rows = 5usize.div_ceil(per_row) as f32;
-        assert!(face >= 150.0, "{face}");
-        assert!(1.4 * face * (rows + 1.0) + OPENING_CAPTION + rows * CHOICE_GAP <= 560.0);
-        assert!(5.0 * face + 4.0 * CHOICE_GAP <= 1200.0);
-        let (narrow, per_row) = opening_faces((500.0, 900.0), 5);
-        assert!(per_row < 5, "a narrow box wraps the hand");
-        assert!(per_row as f32 * narrow + (per_row as f32 - 1.0) * CHOICE_GAP <= 500.0);
-    }
     use super::*;
 
     /// Two cards drawn by Top-Down Solutions, and a hand of nine, each fit

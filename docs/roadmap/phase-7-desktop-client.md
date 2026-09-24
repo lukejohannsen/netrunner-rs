@@ -4587,6 +4587,49 @@ identity picker with an identity previewed, through two new hooks:
 new width is resampled once (§4w), so the first open of the pool at a
 new size shows the text face for a moment until the copies are cached.
 
+### 5b. A card is read by a right-click, centred; the hover preview is gone — DONE (24 September 2026)
+
+`fix/deck-builder-read-centred`. **This corrects §5a**, whose hover
+preview the person found annoying and far too large on first use: "Right
+click is sufficient and center it — clicking off the card makes the
+larger version go away like on the play area." §5a's larger grid cards
+stay; its preview and its reading size do not.
+
+- **`widgets::preview` is removed**, and `layout::preview_box` with it.
+  Nothing appears on a hover.
+- **`widgets::reader` reads a card on a secondary click** (the right
+  button, or Ctrl/Cmd with the primary) over anything marked
+  `Readable`: the pool, a spread, the deck rows, the header's identity
+  and both identity pickers. The card is `FaceSize::Large`, the board
+  sheet's size, **centred** over a wash at the editor's pop-up
+  strength (0.72); a click off the card or Escape closes it and nothing
+  else. It is one layer above every screen's pop-up (`GlobalZIndex(30)`),
+  so an identity read from inside a picker closes back to the picker —
+  the reason it is a shared widget rather than a variant of each
+  screen's one-slot `Popup`, which is where the editor's `Popup::Read`
+  used to live. A Ctrl-click reads and neither adds nor picks.
+- **Centred, not at the right.** §4as put the board's reading surfaces
+  at the right so a second chair can keep playing in view; a deck is
+  built by one person, and the person asked for the middle. The board
+  is untouched. `AGENTS.md` §5 records the exception.
+- `NETRUNNER_PREVIEW` became `NETRUNNER_READ=<n>` (opens the nth readable
+  card).
+
+**One false lead, recorded so it is not chased twice.** The first
+screenshots showed no dimming at all, and a debug pass logged the wash
+at full size, visible and at its alpha. A solid red wash drew; so did a
+translucent one. Sampling pixels settled it: a card's colour fell from
+(245,211,190) to (163,140,127) under the 0.6 wash, which the eye does not
+see at a glance on a navy background. The wash was working; it is 0.72
+now to read as a pop-up.
+
+**Verified.** `a_right_click_reads_a_pool_card_and_a_click_away_closes_it`
+drives the real plugins: a right-click on a hovered pool card reads it
+and does not add it, a press on the wash closes it, and Escape closes
+it without leaving the editor. The desktop crate's tests and clippy.
+Screenshots at 2560×1600 of the reader over the pool and over the
+identity picker.
+
 ## 8. Borrowed from jinteki — OPEN (19 September 2026)
 
 From [`docs/jinteki-comparison.md`](../jinteki-comparison.md) §5, in the
