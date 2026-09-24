@@ -12,6 +12,10 @@
 /// The register as committed.
 pub const REGISTER: &str = include_str!("../assets/CREDITS.md");
 
+/// The licence of a work shipped under none: credited, and removed when
+/// its owner asks (the register's "Art under no licence").
+pub const ALL_RIGHTS_RESERVED: &str = "All rights reserved";
+
 /// A committed asset: a row of the register's own table.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Asset {

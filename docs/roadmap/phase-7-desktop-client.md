@@ -4455,6 +4455,32 @@ first few was below the window's edge.
   sizes), the card browser with a filter open, and both chairs forty
   decisions in. None of the `scroll area` lines is the board.
 
+### 4ay. The client ships its art: an unlicensed work is committed with credit and removed on request — DONE (24 September 2026)
+
+**The person's decision, 24 September 2026:** the client ships the art that
+makes it look like the game, the way jinteki.net ships the art on its table
+— credited, and removed if an owner asks. Until now the register admitted a
+third-party file only under a licence the repository could carry, which left
+every backdrop slot empty.
+
+- `assets/CREDITS.md` gains **"Art under no licence"**: such a row has the
+  licence `All rights reserved` (`credits::ALL_RIGHTS_RESERVED`) and the
+  licence text `—`, and still names the owner, the artist and where they
+  publish. `tests/credits.rs` holds it to that; everything else keeps its
+  licence text beside the file. The manifests (`*.json`) are now furniture
+  like the guides, not a credited work.
+- The first two: Kirsten Zirngibl's *New Angeles in Neon/Smog*
+  (https://www.kirstenzirngibl.com/projects/RgWqA), the smog version as
+  `backdrops/splash.jpg` and the neon one as `backdrops/main-menu.jpg`,
+  dimmed 0.3 and 0.35 (`backdrops.json`) — 0.1 lost the splash's white
+  wordmark in the white sky, and the default 0.45 greyed the art.
+- The About screen credits her with the rest of the bundled assets, and
+  says a work marked all rights reserved is shipped with credit and removed
+  if its owner asks.
+- **Rejected: a credit list for the player's own folder** (#179, closed
+  unmerged). The person wants one complete package; `<data dir>` stays the
+  player's own business and is credited nowhere.
+
 ## 5. The deck builder — DONE (24 September 2026)
 
 `feat/desktop-deck-builder`. Asked for in one list: save and import

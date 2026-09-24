@@ -126,12 +126,13 @@ fn spawn(mut commands: Commands, theme: Res<Theme>) {
                 line(panel, &theme, "The source code is licensed under the GNU General Public License, version 3 or later.".to_string(), true);
                 line(panel, &theme, credits::disclaimer(), true);
 
-                section(panel, &theme, "Bundled with the client", "Each is a separately licensed work, owned by its maker. The licence texts ship beside the files, in the client's assets folder.");
+                section(panel, &theme, "Bundled with the client", "Each is a separate work, owned by its maker. A licence's text ships beside the files, in the client's assets folder. A work marked all rights reserved is shipped with credit, and removed if its owner asks.");
                 for group in &bundled {
                     panel.spawn(Node { flex_direction: FlexDirection::Column, row_gap: px(2), margin: UiRect::top(px(6)), ..default() }).with_children(|entry| {
                         let whose = if group.origin == "project" { format!("{} (made for this project)", group.owner) } else { group.owner.clone() };
                         line(entry, &theme, whose, false);
-                        line(entry, &theme, format!("{} · {} · licence text: {}", group.website, group.licence, group.licence_text), true);
+                        let terms = if group.licence_text == "—" { group.licence.clone() } else { format!("{} · licence text: {}", group.licence, group.licence_text) };
+                        line(entry, &theme, format!("{} · {terms}", group.website), true);
                         line(entry, &theme, group.items.join(" · "), true);
                         if !group.changes.is_empty() {
                             line(entry, &theme, format!("Changed: {}", group.changes.join("; ")), true);

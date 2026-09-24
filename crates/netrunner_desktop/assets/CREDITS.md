@@ -22,6 +22,22 @@ assets come and go.
   `LICENSE-<name>.txt`. Any change made to it (a format conversion, a
   recolour) is listed in the row, because most licences require that.
 
+## Art under no licence: shipped with credit, removed on request
+
+**Some art is shipped with no licence at all.** An illustration marked
+"all rights reserved" or the official card backs grant the project
+nothing. They are committed anyway, the way jinteki.net ships the art on
+its own table, because a client without them does not look like the game
+(decided 24 September 2026). Such a row:
+
+- has the licence **`All rights reserved`** and the licence text **`—`**,
+  because there is no licence to put beside the file;
+- still **names the owner and their website**, and for an illustration
+  names the artist, so a person looking at it can find whose it is;
+- is **removed when the owner asks**: delete the file and its row, and
+  nothing else changes, because every asset has a drawn tier behind it.
+  An owner can ask through the repository's issues.
+
 ## Adding an asset
 
 1. **Find out who made it before it goes in.** Ask the person supplying
@@ -53,6 +69,8 @@ a drawn or synthesized tier that works without it (AGENTS.md §5).
 |---|---|---|---|---|---|---|---|
 | `fonts/NotoSans-Regular.ttf` | Noto Sans, the body font | The Noto Project Authors | https://notofonts.github.io | OFL-1.1 | `fonts/LICENSE-OFL.txt` | third-party | none |
 | `fonts/NotoSansSymbols2-Regular.ttf` | Noto Sans Symbols 2, the printed-icon fallback | The Noto Project Authors | https://notofonts.github.io | OFL-1.1 | `fonts/LICENSE-OFL.txt` | third-party | none |
+| `backdrops/main-menu.jpg` | New Angeles in Neon/Smog, neon version: the main menu's backdrop | Kirsten Zirngibl | https://www.kirstenzirngibl.com/projects/RgWqA | All rights reserved | — | third-party | none |
+| `backdrops/splash.jpg` | New Angeles in Neon/Smog, smog version: the splash | Kirsten Zirngibl | https://www.kirstenzirngibl.com/projects/RgWqA | All rights reserved | — | third-party | none |
 | `board/counter.advancement.png` | advancement counter | Null Signal Games | https://nullsignal.games/about/nsg-visual-assets/ | CC BY-ND 4.0 | `board/LICENSE-NSG.txt` | third-party | `NSG_ADVANCEMENT_COUNTER.svg` converted to a 128 × 128 PNG, recoloured `#eef1f8` |
 | `board/counter.credit.png` | credit counter | Null Signal Games | https://nullsignal.games/about/nsg-visual-assets/ | CC BY-ND 4.0 | `board/LICENSE-NSG.txt` | third-party | `NSG_CREDIT.svg` converted to a 128 × 128 PNG, recoloured `#eef1f8` |
 | `board/counter.power.png` | power counter (NSG's generic counter) | Null Signal Games | https://nullsignal.games/about/nsg-visual-assets/ | CC BY-ND 4.0 | `board/LICENSE-NSG.txt` | third-party | `NSG_GENERIC_COUNTER_BLUE.svg` converted to a 128 × 128 PNG |

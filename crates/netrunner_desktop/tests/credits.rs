@@ -10,7 +10,7 @@
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
-use netrunner_desktop::credits::Asset;
+use netrunner_desktop::credits::{Asset, ALL_RIGHTS_RESERVED};
 
 fn assets() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("assets")
@@ -22,8 +22,10 @@ fn rows() -> Vec<Asset> {
 }
 
 /// Every file under `assets/` that is an asset rather than about one: the
-/// guides (`*.md`) and the licence texts (`LICENSE-*`) are the register's
-/// own furniture.
+/// guides (`*.md`), the licence texts (`LICENSE-*`) and the manifests
+/// (`*.json`, a backdrop's dimming or a table's settings) are the
+/// register's own furniture — settings, not a work anybody is credited
+/// for.
 fn committed(dir: &Path, root: &Path, out: &mut BTreeSet<String>) {
     for entry in std::fs::read_dir(dir).expect("readable") {
         let path = entry.expect("an entry").path();
@@ -32,7 +34,7 @@ fn committed(dir: &Path, root: &Path, out: &mut BTreeSet<String>) {
             continue;
         }
         let name = path.file_name().and_then(|n| n.to_str()).unwrap_or_default();
-        if name.ends_with(".md") || name.starts_with("LICENSE-") || name.starts_with('.') {
+        if name.ends_with(".md") || name.ends_with(".json") || name.starts_with("LICENSE-") || name.starts_with('.') {
             continue;
         }
         out.insert(path.strip_prefix(root).expect("under assets").to_string_lossy().replace('\\', "/"));
@@ -71,10 +73,17 @@ fn every_row_names_its_owner_its_licence_and_what_was_changed() {
                 assert_eq!(row.owner, "netrunner-rs contributors", "{file}: a project-made asset is the contributors'");
             }
             // Someone else's: it keeps their licence, and the text of it
-            // ships beside the file.
+            // ships beside the file — unless there is no licence, when it
+            // is shipped on credit alone and removed if the owner asks
+            // (the register's "Art under no licence").
             "third-party" => {
                 assert!(row.owner != "netrunner-rs contributors", "{file}: a third-party asset names its real owner");
-                assert!(row.licence_text != "—" && assets().join(&row.licence_text).is_file(), "{file}: the owner's licence text {} is committed", row.licence_text);
+                if row.licence == ALL_RIGHTS_RESERVED {
+                    assert_eq!(row.licence_text, "—", "{file}: there is no licence text for a work under no licence");
+                    assert!(row.website != "—", "{file}: a work shipped on credit alone names where its owner publishes");
+                } else {
+                    assert!(row.licence_text != "—" && assets().join(&row.licence_text).is_file(), "{file}: the owner's licence text {} is committed", row.licence_text);
+                }
             }
             other => panic!("{file}: origin is `project` or `third-party`, not {other:?}"),
         }
