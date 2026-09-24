@@ -142,9 +142,9 @@ fn discard_to_pile(state: &mut GameState, side: Side, card_id: CardId) {
 ///
 /// What follows is the rules' own order (CR 5.6.2d–5.6.3e, 5.7.1h–5.7.2e):
 /// the action phase ends ([`GameEvent::ActionPhaseEnded`], Cacophony), the
-/// side discards to its maximum hand size ([`begin_discard_step`]), a
+/// side discards to its maximum hand size (`begin_discard_step`), a
 /// paid ability window opens (`WindowCheckpoint::EndOfTurn`), unspent
-/// clicks are lost, and the turn formally ends ([`finish_turn`]). The
+/// clicks are lost, and the turn formally ends (`finish_turn`). The
 /// engine used to zero the clicks and open the window first and discard
 /// last.
 ///

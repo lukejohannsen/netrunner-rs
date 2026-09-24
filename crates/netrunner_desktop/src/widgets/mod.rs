@@ -50,7 +50,7 @@ pub struct Themed;
 /// Marks a node as a part of the board a skin may dress, and records what
 /// it would look like undressed.
 ///
-/// The picture is not applied here but by [`dress`], on a later frame,
+/// The picture is not applied here but by `dress`, on a later frame,
 /// which is what lets every `widgets::` bundle stay a plain function of
 /// the theme: a bundle has no way to reach the [`Skin`] resource, and
 /// threading one into `button`, `compact_button` and the rest would have
@@ -128,7 +128,7 @@ pub fn dim<T: Into<String>>(theme: &Theme, text: T) -> impl Bundle + use<T> {
 /// A caller that draws its border differently — the decision pop-up and
 /// the actions menu both use the accent — replaces this `Dressed` with
 /// one naming its own slot, which is the "the caller says what it would
-/// have drawn" rule. It does *not* drag panels into [`button_feedback`]:
+/// have drawn" rule. It does *not* drag panels into `button_feedback`:
 /// that query is `With<Themed>`, and a panel is not themed.
 pub fn panel(theme: &Theme, width: Val) -> impl Bundle + use<> {
     (
