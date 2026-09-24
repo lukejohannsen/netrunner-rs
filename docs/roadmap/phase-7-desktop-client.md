@@ -4455,6 +4455,89 @@ first few was below the window's edge.
   sizes), the card browser with a filter open, and both chairs forty
   decisions in. None of the `scroll area` lines is the board.
 
+## 5. The deck builder — DONE (24 September 2026)
+
+`feat/desktop-deck-builder`. Asked for in one list: save and import
+decks, a good view of the person's own decks with editing, every
+built-in deck shown to copy and build from, each deck's legality, no
+refusal to save a deck that is illegal or cannot be played, and the
+person's decks offered in a game for either chair — the person's or the
+bot's.
+
+**What was built.**
+
+- **The Decks screen** (`screens::decks`, `models::decks::Shelf`): every
+  deck as a tile — the identity's card, the name, the side, the size, the
+  style a bot plays it in, and where it stands in the format Settings
+  names — the person's own under "Your decks", then the built-in ones by
+  category (sample, Learn to Play, boosted, test). A saved tile carries
+  Edit, Copy, Export and Delete (with a question first); a built-in one
+  carries View, Copy to edit and Export. New deck asks the side, then the
+  identity as its card, and opens the empty deck. A side filter narrows
+  every section.
+- **The editor** (`screens::deck_editor`, `models::deck_editor::Editor`):
+  the identity, the name (Rename), the running totals against the
+  identity's limits, the verdict and every other format the deck is legal
+  in, and the bot's style as a row of pills, along the top; the pool as
+  faces on the left (a press adds a copy, a count sits on each card the
+  deck holds, faction/type/search filters, "Only <format>" and "Not
+  playable yet" switches); the deck on the right, grouped by type, with
+  − and + on each row and its influence in words. A secondary click on
+  any card reads it at the right. **Every edit is saved as it is made**,
+  the terminal builder's rule. A built-in deck opens read-only — its
+  notes and its cards as a spread, with Copy to edit, which rebuilds the
+  screen on the copy.
+- **Import and export go through the clipboard, and a dropped file.**
+  `deck_builder::import` reads this project's deck file or a text list in
+  the shapes NetrunnerDB, jinteki.net and a hand-typed list use ("3x
+  Title", "3 Title", "Title x3", sets in brackets, influence dots, section
+  headings, accents and apostrophes folded); `export_text` writes the
+  NetrunnerDB shape, and every sample deck round-trips through the two. A
+  `.txt` or `.json` dropped on the Decks screen imports the same way, in
+  place of a native file dialog. Bevy's `system_clipboard` feature
+  (arboard) is the one dependency added, and it brought the Boost licence
+  into `deny.toml` for arboard's Windows backend.
+- **The shared rules are in `netrunner_client::deck_builder`**, so the
+  terminal builder and this one cannot drift: `status` (the two
+  validators sorted into *legal*, *illegal in the format* and *cannot be
+  played*, with card ids replaced by titles in the validators' words),
+  `Draft` (add with the copy limit, remove, identity, rename, style),
+  `pool`, `identities`, `unique_id` (moved out of the TUI), `copy_of`,
+  `import`, `export_text`. The terminal builder now takes `unique_id`
+  from it.
+
+**Decisions taken, with the alternative rejected.**
+
+- **A deck is saved whatever its standing; starting a game still refuses
+  an illegal one.** Asked, and the person chose to keep the refusal: a
+  saved deck that cannot start a game in the format is *listed* in the
+  new-game form, marked "not playable", with the validator's reason
+  under it, and Start refuses it by name (`StartMenu::choice_problem`,
+  and `DeckRow::problem`). Playing any engine-runnable deck casually
+  against a bot was the alternative offered.
+- **A catalog-only card can be in a deck.** An import from a list built
+  elsewhere keeps a card the engine does not play yet under its
+  `nrdb_<code>` id, and the deck reads "Can't be played" until the card
+  is implemented, when `Draft::resolve` swaps the id on the next open.
+  Dropping the card on import would have lost the person's list.
+- **The deck lists read leniently** (`deck_store::list_lenient`): one
+  malformed file in the deck directory used to empty the whole new-game
+  form; it is now named and the rest listed, on both screens and in the
+  terminal's form.
+- **The influence is words, not dots:** the client's font has no `●`,
+  `−` or `✓`, and the first screenshot drew three boxes. The deck rows
+  read "· 2 inf" and the switches are ringed rather than ticked.
+
+**Verified.** `deck_builder` 12 tests, `models::decks` 6, `models::
+deck_editor` 5, and four navigation tests that drive the real plugins:
+Copy to edit → editor → a pool press is on disk at once → Escape back to
+the shelf; View opens read-only with the deck's cards and no pool; New
+deck → side → identity → an empty saved deck; Copy to edit inside the
+viewer rebuilds on the copy. Screenshots of the shelf, the editor on an
+illegal saved deck and the read-only viewer at 2560×1600; the shelf and
+the editor are menu screens and scroll, the board is untouched.
+`NETRUNNER_DECK=<id>` opens the editor on a deck for a screenshot.
+
 ## 8. Borrowed from jinteki — OPEN (19 September 2026)
 
 From [`docs/jinteki-comparison.md`](../jinteki-comparison.md) §5, in the

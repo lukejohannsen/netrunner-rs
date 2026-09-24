@@ -49,6 +49,7 @@ use netrunner_core::rules::Side;
 
 use crate::app::{card_modal, Modal};
 use netrunner_client::cards::{faction_label, faction_order, legal_in, type_group, type_order};
+use netrunner_client::deck_builder::unique_id;
 use netrunner_client::deck_store::{self, Origin, StoredDeck};
 
 /// What one key did, for the menu.
@@ -879,30 +880,6 @@ fn format_label(format: NsgFormat) -> String {
     format!("{format:?}").to_lowercase()
 }
 
-/// A file-safe id from a display name — lowercase, words joined by `_` —
-/// made unique against `taken` with a numeric suffix. The id is the
-/// filename and what `--corp-deck` takes, so it has to be typeable; the
-/// name is free text.
-fn unique_id(name: &str, taken: &[String]) -> String {
-    let mut slug = String::new();
-    for c in name.chars().flat_map(char::to_lowercase) {
-        if c.is_ascii_alphanumeric() {
-            slug.push(c);
-        } else if !slug.is_empty() && !slug.ends_with('_') {
-            slug.push('_');
-        }
-    }
-    let slug = slug.trim_end_matches('_');
-    let base = if slug.is_empty() { "deck".to_string() } else { slug.to_string() };
-    let mut id = base.clone();
-    let mut n = 2;
-    while taken.contains(&id) {
-        id = format!("{base}_{n}");
-        n += 1;
-    }
-    id
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -948,14 +925,6 @@ mod tests {
 
     fn on_disk(dir: &Scratch, id: &str) -> DeckFile {
         deck_store::read_file(&dir.0.join(format!("{id}.json"))).unwrap()
-    }
-
-    #[test]
-    fn ids_are_typeable_and_unique() {
-        assert_eq!(unique_id("Brick Stack 2!", &[]), "brick_stack_2");
-        assert_eq!(unique_id("  Rush — HB  ", &[]), "rush_hb");
-        assert_eq!(unique_id("!!!", &[]), "deck");
-        assert_eq!(unique_id("Brick Stack", &["brick_stack".to_string(), "brick_stack_2".to_string()]), "brick_stack_3");
     }
 
     #[test]

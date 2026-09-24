@@ -143,6 +143,43 @@ pub fn list(dir: &Path) -> Result<Vec<StoredDeck>, String> {
     Ok(all)
 }
 
+/// Every deck that can be read, embedded first, and a line for each file
+/// that could not be — for a screen that lists decks, where one bad file
+/// must not hide every other deck the way [`list`]'s error does. A file
+/// that fails to parse and a file reusing a built-in id are each left out
+/// and named; everything else is listed.
+pub fn list_lenient(dir: &Path) -> (Vec<StoredDeck>, Vec<String>) {
+    let mut all: Vec<StoredDeck> =
+        decks::embedded_decks().into_iter().map(|deck| StoredDeck { deck, origin: Origin::Embedded }).collect();
+    let mut problems = Vec::new();
+    let entries = match std::fs::read_dir(dir) {
+        Ok(entries) => entries,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return (all, problems),
+        Err(e) => {
+            problems.push(format!("cannot read deck directory {}: {e}", dir.display()));
+            return (all, problems);
+        }
+    };
+    let mut paths: Vec<PathBuf> = entries
+        .filter_map(|entry| entry.ok().map(|entry| entry.path()))
+        .filter(|path| path.extension().and_then(|ext| ext.to_str()) == Some("json"))
+        .collect();
+    paths.sort();
+    for path in paths {
+        match read_file(&path) {
+            Ok(deck) => {
+                let stored = StoredDeck { deck, origin: Origin::Disk(path) };
+                match all.iter().find(|existing| existing.deck.id == stored.deck.id) {
+                    Some(clash) => problems.push(collision_message(&stored, clash)),
+                    None => all.push(stored),
+                }
+            }
+            Err(error) => problems.push(error),
+        }
+    }
+    (all, problems)
+}
+
 fn collision_message(stored: &StoredDeck, clash: &StoredDeck) -> String {
     let where_from = match &stored.origin {
         Origin::Disk(path) => path.display().to_string(),
@@ -432,6 +469,19 @@ mod tests {
 
         let err = read_dir(dir.path()).expect_err("a malformed deck file is a real problem");
         assert!(err.contains("broken.json"), "the error should name the file: {err}");
+    }
+
+    /// One broken file is named and the rest are still listed.
+    #[test]
+    fn a_lenient_list_names_a_broken_file_and_keeps_the_rest() {
+        let dir = TempDir::new();
+        save(dir.path(), &custom_deck("mine")).unwrap();
+        std::fs::write(dir.path().join("broken.json"), "{ not json").unwrap();
+        let (decks, problems) = list_lenient(dir.path());
+        assert!(decks.iter().any(|stored| stored.deck.id == "mine"));
+        assert_eq!(decks.len(), netrunner_core::decks::embedded_decks().len() + 1);
+        assert_eq!(problems.len(), 1);
+        assert!(problems[0].contains("broken.json"), "{problems:?}");
     }
 
     #[test]

@@ -34,7 +34,7 @@ use netrunner_client::deck_store;
 pub fn open(config: &Config, registry: &CardRegistry) -> Result<StartMenu, String> {
     let dir = deck_store::resolve_decks_dir(config.decks_dir.as_deref())?;
     let record_path = record::resolve_record_file(config.record_file.as_deref()).ok();
-    StartMenu::open(&dir, record_path.as_deref(), &record::player_name(config), registry, [config.corp_deck.clone(), config.runner_deck.clone()])
+    StartMenu::open(&dir, record_path.as_deref(), &record::player_name(config), registry, config.format.into(), [config.corp_deck.clone(), config.runner_deck.clone()])
 }
 
 /// Folds the choice into `config` so `run_local` sees the flag form: the
@@ -134,6 +134,7 @@ mod tests {
             style: Some(if side == Side::Corp { "rush" } else { "aggressive" }.to_string()),
             identity: "Someone".to_string(),
             saved: false,
+            problem: None,
         }
     }
 

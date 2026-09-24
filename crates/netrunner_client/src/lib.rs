@@ -35,6 +35,7 @@ pub mod board;
 pub mod card_face;
 pub mod card_text;
 pub mod cards;
+pub mod deck_builder;
 pub mod deck_store;
 pub mod placement;
 pub mod bug_report;

@@ -162,6 +162,8 @@ impl PluginGroup for NetrunnerDesktopPlugins {
             .add(screens::about::AboutPlugin)
             .add(screens::settings::SettingsPlugin)
             .add(screens::card_browser::CardBrowserPlugin)
+            .add(screens::decks::DecksPlugin)
+            .add(screens::deck_editor::DeckEditorPlugin)
             .add(screens::new_game::NewGamePlugin)
             .add(screens::game::GamePlugin)
             .add(screens::replay::ReplayPlugin)

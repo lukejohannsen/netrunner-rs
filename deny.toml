@@ -74,6 +74,10 @@ allow = [
     "BSD-2-Clause",
     "MIT-0",
     "CC0-1.0",
+    # The desktop's system clipboard (the deck builder's import and
+    # export): arboard's Windows backend, clipboard-win, and its
+    # error-code are Boost-only. Permissive and GPL-compatible.
+    "BSL-1.0",
     # This workspace's own ten crates.
     "GPL-3.0-or-later",
 ]
