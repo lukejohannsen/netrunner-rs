@@ -491,6 +491,56 @@ fn a_built_in_deck_copies_into_an_editor_that_saves_every_add() {
     assert!(app.world().resource::<Model>().0.rows.iter().any(|row| row.saved && row.deck.id == id));
 }
 
+/// A right-click on a pool card reads it and adds nothing; a click off
+/// the card closes it, and so does Escape without leaving the editor.
+#[test]
+fn a_right_click_reads_a_pool_card_and_a_click_away_closes_it() {
+    use bevy::input::mouse::MouseButtonInput;
+    use netrunner_desktop::screens::decks::{Model, TileAction, TileButton};
+    use netrunner_desktop::screens::deck_editor::{Model as EditorModel, PoolCard};
+    use netrunner_desktop::widgets::reader::{ReaderWash, Reading};
+    let (mut app, _dir) = headless_client();
+    open_decks(&mut app);
+    let row = app.world().resource::<Model>().0.rows.iter().position(|row| row.deck.id == "stolen_goods").unwrap();
+    let copy = find::<TileButton>(&mut app, |button| button.row == row && button.action == TileAction::Copy).unwrap();
+    tap(&mut app, copy);
+    assert_eq!(screen(&app), AppScreen::DeckEditor);
+    let before = app.world().resource::<EditorModel>().0.deck().size();
+    let (face, card) = app.world_mut().query::<(Entity, &PoolCard)>().iter(app.world()).map(|(e, c)| (e, c.0.clone())).next().unwrap();
+
+    let right_click = |app: &mut App| {
+        for state in [ButtonState::Pressed, ButtonState::Released] {
+            app.world_mut().write_message(MouseButtonInput { button: MouseButton::Right, state, window: Entity::PLACEHOLDER });
+        }
+    };
+    app.world_mut().entity_mut(face).insert(Interaction::Hovered);
+    right_click(&mut app);
+    app.update();
+    app.update();
+    assert_eq!(app.world().resource::<Reading>().0.as_ref(), Some(&card), "the hovered card is read");
+    assert_eq!(app.world().resource::<EditorModel>().0.deck().size(), before, "and not added");
+    app.world_mut().entity_mut(face).insert(Interaction::None);
+
+    let wash = find::<ReaderWash>(&mut app, |_| true).expect("the reader is drawn");
+    app.world_mut().entity_mut(wash).insert(Interaction::Pressed);
+    app.update();
+    app.update();
+    assert_eq!(app.world().resource::<Reading>().0, None, "a click off the card closes it");
+    assert!(find::<ReaderWash>(&mut app, |_| true).is_none());
+
+    app.world_mut().entity_mut(face).insert(Interaction::Hovered);
+    right_click(&mut app);
+    app.update();
+    app.world_mut().entity_mut(face).insert(Interaction::None);
+    app.update();
+    assert!(app.world().resource::<Reading>().is_open());
+    press(&mut app, KeyCode::Escape, Key::Escape);
+    app.update();
+    app.update();
+    assert_eq!(app.world().resource::<Reading>().0, None, "Escape closes the card");
+    assert_eq!(screen(&app), AppScreen::DeckEditor, "and only the card");
+}
+
 /// A built-in deck's View opens it read-only: no pool to add from.
 #[test]
 fn a_built_in_deck_opens_read_only() {

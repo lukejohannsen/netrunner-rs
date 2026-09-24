@@ -296,6 +296,7 @@ fn controls(
     popup_buttons: Query<&PopupButton>,
     picks: Query<(&Interaction, &PopupButton), (Changed<Interaction>, Without<widgets::Themed>)>,
     wash: Query<&Interaction, (Changed<Interaction>, With<Wash>)>,
+    (keys, mouse): (Res<ButtonInput<KeyCode>>, Res<ButtonInput<MouseButton>>),
     mut shelf: ResMut<Model>,
     mut popup: ResMut<Popup>,
     mut dirty: ResMut<Dirty>,
@@ -311,7 +312,9 @@ fn controls(
     }
     // An identity's card is a button with no theme (a picture has no
     // pill to recolour), so it reports through its own `Interaction`.
-    let picked: Vec<PopupButton> = picks.iter().filter(|(interaction, _)| **interaction == Interaction::Pressed).map(|(_, button)| button.clone()).collect();
+    // A Ctrl-click reads the identity (`widgets::reader`) and picks nothing.
+    let secondary = crate::widgets::reader::secondary_click(&keys, &mouse);
+    let picked: Vec<PopupButton> = picks.iter().filter(|(interaction, _)| **interaction == Interaction::Pressed && !secondary).map(|(_, button)| button.clone()).collect();
     let presses: Vec<Entity> = pressed.read().map(|Pressed(entity)| *entity).collect();
     for button in picked.iter().chain(presses.iter().filter_map(|entity| popup_buttons.get(*entity).ok())) {
         dirty.popup = true;
@@ -437,9 +440,10 @@ fn dropped_files(mut drops: MessageReader<FileDragAndDrop>, mut shelf: ResMut<Mo
 }
 
 /// Escape closes the pop-up before it leaves the screen.
-fn escape_closes_the_picker(keys: Res<ButtonInput<KeyCode>>, mut captured: ResMut<InputCaptured>, mut popup: ResMut<Popup>, mut shelf: ResMut<Model>, mut dirty: ResMut<Dirty>, core: Res<ClientCore>) {
+fn escape_closes_the_picker(keys: Res<ButtonInput<KeyCode>>, mut captured: ResMut<InputCaptured>, mut popup: ResMut<Popup>, mut shelf: ResMut<Model>, mut dirty: ResMut<Dirty>, core: Res<ClientCore>, reading: Res<crate::widgets::reader::Reading>) {
     let open = *popup != Popup::None || shelf.0.confirming.is_some();
-    if !open || captured.0 {
+    // A card read over the picker takes the Escape first.
+    if !open || captured.0 || reading.is_open() {
         return;
     }
     captured.0 = true;
@@ -533,11 +537,12 @@ fn spawn_popup(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCo
                             .with_children(|scroll| {
                                 scroll.spawn(Node { flex_direction: FlexDirection::Row, flex_wrap: FlexWrap::Wrap, column_gap: px(10), row_gap: px(10), padding: UiRect::all(px(4)), ..default() }).with_children(|grid| {
                                     for identity in deck_builder::identities(&core.registry, *side, format) {
-                                        // The editor's picker's size, and its preview: an
-                                        // identity is chosen by what its text says.
+                                        // The editor's picker's size, and read by a
+                                        // secondary click: an identity is chosen by
+                                        // what its text says.
                                         let size = FaceSize::Board(crate::models::layout::DECK_FACE as u16);
                                         let image = identity.numeric_id.and_then(|code| images.face(code, size));
-                                        spawn_face(grid, theme, &Face::of(identity), size, image, (Button, PopupButton::Identity(identity.id.clone()), crate::widgets::preview::Previews(identity.id.clone())));
+                                        spawn_face(grid, theme, &Face::of(identity), size, image, (Button, PopupButton::Identity(identity.id.clone()), crate::widgets::reader::Readable(identity.id.clone())));
                                     }
                                 });
                             });
