@@ -107,7 +107,7 @@ fn spawn(mut commands: Commands, theme: Res<Theme>, core: Res<ClientCore>, waiti
             Node { flex_grow: 1.0, min_width: px(0), height: percent(100), flex_direction: FlexDirection::Column, align_items: AlignItems::Center, overflow: Overflow::scroll_y(), ..default() },
         ))
         .with_children(|page| {
-            page.spawn(widgets::panel(&theme, px(900))).with_children(|panel| {
+            page.spawn(widgets::roomy_panel(&theme, px(900))).with_children(|panel| {
                 if reports.is_empty() {
                     let where_ = core.reports_dir.as_ref().map_or_else(|| "nowhere: this system has no data directory".to_string(), |dir| dir.display().to_string());
                     panel.spawn((
@@ -130,7 +130,7 @@ fn spawn(mut commands: Commands, theme: Res<Theme>, core: Res<ClientCore>, waiti
             body.spawn(widgets::scrollbar(&theme, scroll));
         })
         .id();
-    let mut root = commands.spawn(screen_root(AppScreen::Replay, theme.background));
+    let mut root = commands.spawn(screen_root(AppScreen::Replay, &theme));
     root.with_children(|root| {
         root.spawn(widgets::heading(&theme, "Replays"));
         let text = error.unwrap_or_default();

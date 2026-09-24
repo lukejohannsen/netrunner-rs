@@ -11,8 +11,11 @@ screen is added, its row appears here in the same change, and there is
 somewhere to put its picture before the picture exists.
 
 Nothing is committed here yet. With no files, every screen is the
-theme's flat ground. That ground is the fallback and the basic-graphics
-mode, not the look: **this folder is where the shipped backdrops go.**
+drawn backdrop (`nav::drawn_backdrop`): a deep blue falling to near
+black, with two soft blooms of light for the menus' glass to catch. That
+is the fallback and the basic-graphics mode, not the look: **this folder
+is where the shipped backdrops go.** A picture here draws over the
+gradient, under the same glass, so a menu shows it through.
 
 ## Where they go
 
@@ -22,7 +25,7 @@ First found wins:
 |---|---|
 | Yours | `<data dir>/netrunner/assets/backdrops/<file>` |
 | Bundled | `crates/netrunner_desktop/assets/backdrops/<file>` |
-| Drawn | the flat ground (always works) |
+| Drawn | the blue gradient (always works) |
 
 On Linux `<data dir>` is `~/.local/share`, so your own backdrops go in
 `~/.local/share/netrunner/assets/backdrops/`. **Use that directory while

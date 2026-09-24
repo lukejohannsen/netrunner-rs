@@ -121,7 +121,7 @@ fn spawn(mut commands: Commands, theme: Res<Theme>) {
             Node { flex_grow: 1.0, min_width: px(0), height: percent(100), flex_direction: FlexDirection::Column, align_items: AlignItems::Center, overflow: Overflow::scroll_y(), ..default() },
         ))
         .with_children(|page| {
-            page.spawn((widgets::panel(&theme, px(900)),)).with_children(|panel| {
+            page.spawn((widgets::roomy_panel(&theme, px(900)),)).with_children(|panel| {
                 line(panel, &theme, format!("Netrunner desktop client {}", env!("CARGO_PKG_VERSION")), false);
                 line(panel, &theme, "The source code is licensed under the GNU General Public License, version 3 or later.".to_string(), true);
                 line(panel, &theme, credits::disclaimer(), true);
@@ -158,7 +158,7 @@ fn spawn(mut commands: Commands, theme: Res<Theme>) {
             body.spawn(widgets::scrollbar(&theme, scroll));
         })
         .id();
-    let mut root = commands.spawn(screen_root(AppScreen::About, theme.background));
+    let mut root = commands.spawn(screen_root(AppScreen::About, &theme));
     root.with_children(|root| {
         root.spawn(widgets::heading(&theme, AppScreen::About.title()));
     });

@@ -1,7 +1,14 @@
-//! The new-game form: chair, rung, style and the two decks, each a
-//! drop-down over `netrunner_client::start::StartMenu` — the state
-//! machine the terminal's form runs, so the two clients offer the same
-//! lists, suggest the same rung and default to the same decks.
+//! The new-game form: chair, rung, style and the two decks, over
+//! `netrunner_client::start::StartMenu` — the state machine the
+//! terminal's form runs, so the two clients offer the same lists, suggest
+//! the same rung and default to the same decks.
+//!
+//! Each choice is drawn the way it is best chosen, rather than five
+//! drop-downs in a row (the first cut, which read as a settings file):
+//! the side is two large cards in the sides' own colours, the rung and
+//! the style are rows of pills with the chosen one filled, and the decks —
+//! lists too long for pills — are drop-downs, each with the deck's
+//! identity and style under it.
 //!
 //! Start puts the match together (`MatchHandle::start_local`, which
 //! fails here rather than on the board: a deck that will not validate or
@@ -17,16 +24,17 @@ use bevy::prelude::*;
 
 use netrunner_client::decks::decks_for_match;
 use netrunner_client::play::{LocalMatchSpec, MatchHandle, RecordFile};
-use netrunner_client::start::{Level, Pane, StartChoice, StartMenu, DEFAULT_CORP_DECK, DEFAULT_RUNNER_DECK};
+use netrunner_client::start::{DeckRow, Level, Pane, StartChoice, StartMenu, DEFAULT_CORP_DECK, DEFAULT_RUNNER_DECK};
 use netrunner_core::format::NsgFormat;
 use netrunner_core::rules::Side;
 
 use crate::core::ClientCore;
 use crate::nav::{screen_root, Navigate};
 use crate::screens::AppScreen;
-use crate::theme::Theme;
+use crate::skin::{Drawn, Slot};
+use crate::theme::{size, Theme};
 use crate::widgets::dropdown::{spawn_dropdown, Choice, DropdownChanged};
-use crate::widgets::{self, Pressed};
+use crate::widgets::{self, ButtonKind, Pressed};
 
 pub struct NewGamePlugin;
 
@@ -55,12 +63,20 @@ enum Control {
     Back,
 }
 
-/// Which pane a drop-down is; on its root.
+/// Which pane a drop-down is; on its root. The two deck lists.
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PaneDropdown(pub Pane);
 
-/// The drop-downs, respawned when the chair changes (every other list
-/// depends on it).
+/// One choice drawn as a button of its own — a side card, a rung or a
+/// style pill: its pane and its row.
+#[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PaneChoice {
+    pub pane: Pane,
+    pub index: usize,
+}
+
+/// The form's sections, respawned on every change: a choice restyles
+/// its row and the chair changes every other list.
 #[derive(Component)]
 struct Form;
 #[derive(Component)]
@@ -84,25 +100,29 @@ fn spawn(mut commands: Commands, theme: Res<Theme>, core: Res<ClientCore>, last:
     if let Some(last) = last {
         menu.resume_from(&last.0);
     }
-    let form = commands.spawn((Form, Node { flex_direction: FlexDirection::Column, row_gap: px(10), ..default() })).id();
+    let form = commands.spawn((Form, Node { flex_direction: FlexDirection::Column, row_gap: px(22), ..default() })).id();
     commands.entity(form).with_children(|parent| spawn_form(parent, &theme, &menu));
     let buttons = commands
-        .spawn(widgets::row(12.0))
+        .spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, justify_content: JustifyContent::FlexEnd, column_gap: px(12), margin: UiRect::top(px(8)), ..default() })
         .with_children(|parent| {
-            parent.spawn(widgets::button(&theme, "Start", px(160), Control::Start));
-            parent.spawn(widgets::button(&theme, "Back", Val::Auto, Control::Back));
+            parent.spawn(widgets::styled_button(&theme, ButtonKind::Quiet, "Back", Val::Auto, Control::Back));
+            parent.spawn(widgets::styled_button(&theme, ButtonKind::Primary, "Start", px(200), Control::Start));
         })
         .id();
-    let panel = commands.spawn(widgets::panel(&theme, px(720))).add_child(form).add_child(buttons).id();
-    commands
-        .spawn((screen_root(AppScreen::NewGame, theme.background), children![
-            widgets::heading(&theme, AppScreen::NewGame.title()),
-            widgets::dim(&theme, "A casual game against a rung of the ladder, in the style your deck chooses. A move can always be taken back."),
-        ]))
+    let mut panel = commands.spawn(widgets::roomy_panel(&theme, px(1000)));
+    let panel = panel.add_child(form).add_child(buttons).id();
+    let column = commands
+        .spawn(Node { flex_direction: FlexDirection::Column, align_items: AlignItems::Center, row_gap: px(16), margin: UiRect::vertical(Val::Auto), max_width: percent(100), ..default() })
+        .with_children(|parent| {
+            parent.spawn(widgets::title(&theme, AppScreen::NewGame.title()));
+            parent.spawn(widgets::dim(&theme, "A casual game against a rung of the ladder, in the style your deck chooses. A move can always be taken back."));
+        })
         .add_child(panel)
         .with_children(|parent| {
             parent.spawn(widgets::notice(&theme, notice, NoticeLine));
-        });
+        })
+        .id();
+    commands.spawn(screen_root(AppScreen::NewGame, &theme)).add_child(column);
     commands.insert_resource(Model(menu));
 }
 
@@ -119,13 +139,134 @@ fn open_menu(core: &ClientCore) -> Result<StartMenu, String> {
     StartMenu::open(&decks_dir, core.record_path.as_deref(), &core.player_name(), &core.registry, defaults())
 }
 
-fn spawn_form(parent: &mut ChildSpawnerCommands, theme: &Theme, menu: &StartMenu) {
-    for (pane, title, rows, cursor) in menu.panes() {
-        // The terminal marks the suggestion with `◆`, which the text face
-        // has no glyph for.
-        let choices = rows.into_iter().map(|row| Choice::plain(row.replace("  ◆ suggested", " (suggested)"))).collect();
-        spawn_dropdown(parent, theme, title, choices, cursor, PaneDropdown(pane));
+/// What each side does, in a line, on its card.
+fn side_blurb(side: Side) -> &'static str {
+    match side {
+        Side::Corp => "Build servers, protect your agendas and score seven points.",
+        Side::Runner => "Break in, steal agendas and trash what the Corp builds.",
     }
+}
+
+fn capitalised(word: &str) -> String {
+    let mut chars = word.chars();
+    chars.next().map_or(String::new(), |first| first.to_uppercase().chain(chars).collect())
+}
+
+/// A labelled section of the form: an overline over its content.
+fn section(parent: &mut ChildSpawnerCommands, theme: &Theme, name: impl Into<String>, content: impl FnOnce(&mut ChildSpawnerCommands)) {
+    parent.spawn(Node { flex_direction: FlexDirection::Column, row_gap: px(10), ..default() }).with_children(|section| {
+        section.spawn(widgets::overline(theme, name));
+        content(section);
+    });
+}
+
+/// A row of pills, one per choice, the chosen one filled; it wraps
+/// rather than overflowing.
+fn pills(parent: &mut ChildSpawnerCommands, theme: &Theme, pane: Pane, labels: Vec<String>, cursor: usize) {
+    parent.spawn(Node { flex_direction: FlexDirection::Row, flex_wrap: FlexWrap::Wrap, column_gap: px(10), row_gap: px(10), ..default() }).with_children(|row| {
+        for (index, label) in labels.into_iter().enumerate() {
+            let kind = if index == cursor { ButtonKind::Primary } else { ButtonKind::Secondary };
+            row.spawn(widgets::styled_button(theme, kind, label, Val::Auto, PaneChoice { pane, index }));
+        }
+    });
+}
+
+/// The side's card: its name in its own colour over what it does,
+/// ringed in the accent when chosen and dimmed when not.
+fn side_card(parent: &mut ChildSpawnerCommands, theme: &Theme, side: Side, index: usize, chosen: bool) {
+    let colour = theme.side(side);
+    let (fill, rim, hover) = if chosen {
+        (colour.with_alpha(0.28), theme.accent, colour.with_alpha(0.34))
+    } else {
+        (theme.secondary.with_alpha(0.06), theme.glass_border, colour.with_alpha(0.16))
+    };
+    let drawn = Drawn::new(fill, rim);
+    parent
+        .spawn((
+            Button,
+            widgets::Themed,
+            PaneChoice { pane: Pane::Chair, index },
+            Node {
+                flex_grow: 1.0,
+                flex_basis: px(0),
+                min_height: px(118),
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Stretch,
+                column_gap: px(18),
+                padding: UiRect::new(px(0), px(24), px(0), px(0)),
+                border: UiRect::all(px(2)),
+                border_radius: BorderRadius::all(px(16)),
+                overflow: Overflow::clip(),
+                ..default()
+            },
+            BackgroundColor(fill),
+            BorderColor::all(rim),
+            widgets::Dressed { slot: Slot::Button, drawn, hover: Some(Drawn::new(hover, theme.border_hover)), pressed: Some(Drawn::new(colour.with_alpha(0.40), theme.accent)) },
+        ))
+        .with_children(|card| {
+            // The side's own colour down the card's edge.
+            card.spawn((Node { width: px(8), ..default() }, BackgroundColor(if chosen { colour } else { colour.with_alpha(0.55) })));
+            card.spawn(Node { flex_direction: FlexDirection::Column, justify_content: JustifyContent::Center, row_gap: px(6), padding: UiRect::vertical(px(16)), ..default() })
+                .with_children(|words| {
+                    let name_colour = if chosen { theme.text } else { theme.text_dim };
+                    words.spawn((Text::new(format!("{side:?}")), theme.font(size::HEADING), TextColor(name_colour)));
+                    words.spawn((Text::new(side_blurb(side)), theme.font(size::SMALL), TextColor(theme.text_dim)));
+                });
+        });
+}
+
+/// A deck list: a drop-down of its names, and the chosen deck's
+/// identity and style under it.
+fn deck_picker(parent: &mut ChildSpawnerCommands, theme: &Theme, pane: Pane, title: String, decks: &[DeckRow], cursor: usize) {
+    parent.spawn(Node { flex_direction: FlexDirection::Column, flex_grow: 1.0, flex_basis: px(0), row_gap: px(10), ..default() }).with_children(|column| {
+        column.spawn(widgets::overline(theme, title));
+        let choices = decks.iter().map(|deck| Choice::plain(if deck.saved { format!("{} (saved)", deck.name) } else { deck.name.clone() })).collect();
+        spawn_dropdown(column, theme, "", choices, cursor, PaneDropdown(pane));
+        if let Some(deck) = decks.get(cursor) {
+            let style = deck.style.as_deref().unwrap_or("balanced");
+            column.spawn((widgets::dim(theme, format!("{} · plays {style}", deck.identity)), Node { margin: UiRect::left(px(20)), ..default() }));
+        }
+    });
+}
+
+fn spawn_form(parent: &mut ChildSpawnerCommands, theme: &Theme, menu: &StartMenu) {
+    let human = menu.human();
+    let bot = menu.bot();
+    section(parent, theme, "Your side", |section| {
+        section.spawn(Node { flex_direction: FlexDirection::Row, column_gap: px(16), ..default() }).with_children(|row| {
+            for (index, side) in [Side::Corp, Side::Runner].into_iter().enumerate() {
+                side_card(row, theme, side, index, side == human);
+            }
+        });
+    });
+    let suggested = menu.suggested();
+    let level = menu.level();
+    section(parent, theme, format!("Opponent level · the {bot:?}"), |section| {
+        let labels = Level::ALL
+            .iter()
+            .map(|l| {
+                let mark = if *l == suggested { "  ·  suggested" } else { "" };
+                format!("{}  {}{mark}", l.rung(), capitalised(l.name()))
+            })
+            .collect();
+        pills(section, theme, Pane::Level, labels, menu.cursor(Pane::Level));
+        section.spawn(widgets::dim(theme, format!("{}: {}.", capitalised(level.name()), level.spec(bot).describe())));
+    });
+    section(parent, theme, "Opponent style", |section| {
+        let labels = menu
+            .styles()
+            .into_iter()
+            .map(|style| match style {
+                None => "Deck's own".to_string(),
+                Some(personality) => capitalised(personality.name()),
+            })
+            .collect();
+        pills(section, theme, Pane::Style, labels, menu.cursor(Pane::Style));
+    });
+    parent.spawn(Node { flex_direction: FlexDirection::Row, column_gap: px(24), ..default() }).with_children(|row| {
+        deck_picker(row, theme, Pane::OwnDeck, format!("Your deck · {human:?}"), menu.own_decks(), menu.cursor(Pane::OwnDeck));
+        deck_picker(row, theme, Pane::OpponentDeck, format!("Opponent's deck · {bot:?}"), menu.opponent_decks(), menu.cursor(Pane::OpponentDeck));
+    });
 }
 
 /// A seed off the clock: the terminal uses `rand::random`, and the
@@ -197,6 +338,7 @@ fn controls(
     mut chosen: MessageReader<DropdownChanged>,
     marks: Query<&Control>,
     panes: Query<&PaneDropdown>,
+    choices: Query<&PaneChoice>,
     mut menu: ResMut<Model>,
     mut dirty: ResMut<Dirty>,
     core: Res<ClientCore>,
@@ -205,11 +347,16 @@ fn controls(
     for DropdownChanged { dropdown, index } in chosen.read() {
         let Ok(PaneDropdown(pane)) = panes.get(*dropdown) else { continue };
         menu.0.set_cursor(*pane, *index);
-        if *pane == Pane::Chair {
-            dirty.form = true;
-        }
+        dirty.form = true;
     }
     for Pressed(entity) in pressed.read() {
+        if let Ok(PaneChoice { pane, index }) = choices.get(*entity) {
+            if menu.0.cursor(*pane) != *index {
+                menu.0.set_cursor(*pane, *index);
+                dirty.form = true;
+            }
+            continue;
+        }
         match marks.get(*entity) {
             Ok(Control::Back) => {
                 navigate.write(Navigate(AppScreen::MainMenu));

@@ -17,7 +17,7 @@ use bevy::ui_widgets::{ControlOrientation, Scrollbar, ScrollbarThumb};
 
 use crate::nav::Captures;
 use crate::skin::{Drawn, Skin, Slot};
-use crate::theme::{size, Theme};
+use crate::theme::{shape, size, Theme};
 
 pub struct WidgetsPlugin;
 
@@ -46,6 +46,12 @@ pub struct Pressed(pub Entity);
 /// themed buttons.
 #[derive(Component)]
 pub struct Themed;
+
+/// What an undressed [`Themed`] node goes back to when the pointer
+/// leaves it, when that is not the theme's button colour: a drop-down's
+/// chosen row, which used to lose its highlight after the first hover.
+#[derive(Component, Clone, Copy)]
+pub struct Resting(pub Color);
 
 /// Marks a node as a part of the board a skin may dress, and records what
 /// it would look like undressed.
@@ -116,7 +122,15 @@ pub fn dim<T: Into<String>>(theme: &Theme, text: T) -> impl Bundle + use<T> {
     (Text::new(text), theme.font(size::SMALL), TextColor(theme.text_dim))
 }
 
-/// A bordered panel that stacks its children vertically.
+/// A glass panel that stacks its children vertically.
+///
+/// **A panel is glass and a button is a pill** — the one look every menu,
+/// form, pop-up and sheet shares, so the next screen looks like the last.
+/// The glass is translucent (`Theme::glass`) so a menu reads as a layer
+/// over the place it opens on — the drawn backdrop, a picture, the board —
+/// rather than a hole cut in it, and a soft shadow lifts it off that
+/// place. The board's own chrome (plates, tiles, the log) keeps the
+/// opaque `Theme::panel`: it *is* the place.
 ///
 /// [`Dressed`] with [`Slot::Panel`], which reaches every panel in the
 /// client and not only the board's — the sheet, the decision pop-up, the
@@ -130,21 +144,49 @@ pub fn dim<T: Into<String>>(theme: &Theme, text: T) -> impl Bundle + use<T> {
 /// one naming its own slot, which is the "the caller says what it would
 /// have drawn" rule. It does *not* drag panels into `button_feedback`:
 /// that query is `With<Themed>`, and a panel is not themed.
+///
+/// Its padding stays 16 and its gap 8: the board's pop-up, menu and
+/// sheets are sized by arithmetic that counts them (`POPUP_PADDING`,
+/// `layout::SHEET_*`). A menu screen, which has the room, uses
+/// [`roomy_panel`].
 pub fn panel(theme: &Theme, width: Val) -> impl Bundle + use<> {
+    glass_panel(theme, width, 16.0, 8.0)
+}
+
+/// [`panel`] with a menu screen's breathing room: the main menu, the
+/// new-game form, settings, profile, replays, About.
+pub fn roomy_panel(theme: &Theme, width: Val) -> impl Bundle + use<> {
+    glass_panel(theme, width, 28.0, 12.0)
+}
+
+fn glass_panel(theme: &Theme, width: Val, padding: f32, gap: f32) -> impl Bundle + use<> {
     (
         Node {
             width,
+            max_width: percent(100),
             flex_direction: FlexDirection::Column,
-            padding: UiRect::all(px(16)),
-            row_gap: px(8),
+            padding: UiRect::all(px(padding)),
+            row_gap: px(gap),
             border: UiRect::all(px(1)),
-            border_radius: BorderRadius::all(px(8)),
+            border_radius: BorderRadius::all(px(shape::PANEL_RADIUS)),
             ..default()
         },
-        BackgroundColor(theme.panel),
-        BorderColor::all(theme.panel_border),
-        Dressed::still(Slot::Panel, Drawn::new(theme.panel, theme.panel_border)),
+        BackgroundColor(theme.glass),
+        BorderColor::all(theme.glass_border),
+        lift(),
+        Dressed::still(Slot::Panel, Drawn::new(theme.glass, theme.glass_border)),
     )
+}
+
+/// The soft shadow under a glass panel or an open list.
+pub fn lift() -> BoxShadow {
+    BoxShadow::new(Color::srgba(0.0, 0.0, 0.0, 0.40), px(0), px(10), px(0), px(28))
+}
+
+/// The name of a group inside a panel ("YOUR SIDE"): small capitals in
+/// the accent — it labels what follows rather than being read.
+pub fn overline<T: Into<String>>(theme: &Theme, text: T) -> impl Bundle + use<T> {
+    (Text::new(text.into().to_uppercase()), theme.font(size::OVERLINE), TextColor(theme.accent.with_alpha(0.85)))
 }
 
 /// A row that lays its children out left to right.
@@ -152,58 +194,131 @@ pub fn row(gap: f32) -> impl Bundle + use<> {
     Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(gap), ..default() }
 }
 
+/// Which of the three buttons this is. A screen has at most one
+/// `Primary` in view — the move it most expects (Start game, Continue) —
+/// so the eye lands on it; `Secondary` is every other choice; `Quiet` is
+/// a way out (Back, Quit) that should not compete with the choices.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ButtonKind {
+    Primary,
+    Secondary,
+    Quiet,
+}
+
+impl ButtonKind {
+    /// Resting, hovered and pressed: fill, rim, and the label's colour.
+    fn looks(self, theme: &Theme) -> ([Drawn; 3], Color) {
+        match self {
+            ButtonKind::Primary => (
+                [Drawn::new(theme.primary, theme.primary), Drawn::new(theme.primary_hover, theme.primary_hover), Drawn::new(theme.primary_press, theme.primary_press)],
+                theme.on_primary,
+            ),
+            ButtonKind::Secondary => (
+                [Drawn::new(theme.secondary, theme.glass_border), Drawn::new(theme.secondary_hover, theme.border_hover), Drawn::new(theme.secondary_press, theme.border_hover)],
+                theme.text,
+            ),
+            ButtonKind::Quiet => (
+                [Drawn::new(Color::NONE, Color::NONE), Drawn::new(theme.secondary, theme.glass_border), Drawn::new(theme.secondary_hover, theme.border_hover)],
+                theme.text_dim,
+            ),
+        }
+    }
+}
+
+/// A pill: the shape of every button in a menu. `width` `Val::Auto` fits
+/// the label.
+fn pill(width: Val) -> Node {
+    Node {
+        width,
+        min_height: px(shape::BUTTON_HEIGHT),
+        // A node shrinks by default when its row overflows, by an amount
+        // that depends on its neighbours — which put every main-menu
+        // button at a different width, each squeezed by the length of
+        // its own blurb. A button's width is a decision, never a
+        // neighbour's to take.
+        flex_shrink: 0.0,
+        padding: UiRect::axes(px(24), px(10)),
+        justify_content: JustifyContent::Center,
+        align_items: AlignItems::Center,
+        border: UiRect::all(px(1)),
+        border_radius: BorderRadius::MAX,
+        ..default()
+    }
+}
+
 /// A themed button with `text` on it and `marker` for the screen to find
-/// it by. `width` `Val::Auto` fits the text.
+/// it by. `width` `Val::Auto` fits the text. A [`ButtonKind::Secondary`]
+/// pill; [`styled_button`] names another kind.
 pub fn button<T: Into<String>, M: Bundle>(theme: &Theme, text: T, width: Val, marker: M) -> impl Bundle + use<T, M> {
+    styled_button(theme, ButtonKind::Secondary, text, width, marker)
+}
+
+/// A button of a given [`ButtonKind`]. The label is the button's one
+/// direct `Text` child, which is how the tests find a button by what it
+/// says.
+pub fn styled_button<T: Into<String>, M: Bundle>(theme: &Theme, kind: ButtonKind, text: T, width: Val, marker: M) -> impl Bundle + use<T, M> {
+    let ([rest, hover, press], ink) = kind.looks(theme);
     (
         Button,
         Themed,
         marker,
-        Node {
-            width,
-            // A node shrinks by default when its row overflows, by an amount
-            // that depends on its neighbours — which put every main-menu
-            // button at a different width, each squeezed by the length of
-            // its own blurb. A button's width is a decision, never a
-            // neighbour's to take.
-            flex_shrink: 0.0,
-            padding: UiRect::axes(px(18), px(10)),
-            justify_content: JustifyContent::Center,
-            align_items: AlignItems::Center,
-            border: UiRect::all(px(1)),
-            border_radius: BorderRadius::all(px(6)),
-            ..default()
-        },
-        BackgroundColor(theme.button),
-        BorderColor::all(theme.panel_border),
-        Dressed::button(theme, Slot::Button, Drawn::new(theme.button, theme.panel_border)),
-        children![(Text::new(text), theme.font(size::BODY), TextColor(theme.text))],
+        pill(width),
+        BackgroundColor(rest.bg),
+        BorderColor::all(rest.border),
+        Dressed { slot: Slot::Button, drawn: rest, hover: Some(hover), pressed: Some(press) },
+        children![(Text::new(text), theme.font(size::BODY), TextColor(ink))],
     )
 }
 
-/// [`button`], greyed: the same node, so the bar does not reflow when a
+/// A round button for one glyph — a stepper's `<` and `>`: a
+/// [`button`] with no padding, as wide as it is tall.
+pub fn round_button<T: Into<String>, M: Bundle>(theme: &Theme, text: T, marker: M) -> impl Bundle + use<T, M> {
+    let ([rest, hover, press], ink) = ButtonKind::Secondary.looks(theme);
+    let mut node = pill(px(shape::BUTTON_HEIGHT));
+    node.height = px(shape::BUTTON_HEIGHT);
+    node.padding = UiRect::ZERO;
+    (
+        Button,
+        Themed,
+        marker,
+        node,
+        BackgroundColor(rest.bg),
+        BorderColor::all(rest.border),
+        Dressed { slot: Slot::Button, drawn: rest, hover: Some(hover), pressed: Some(press) },
+        children![(Text::new(text), theme.font(size::BODY), TextColor(ink))],
+    )
+}
+
+/// A text field's box: a pill of glass ringed in the accent, which is how
+/// a field says it is taking the keys.
+pub fn field_node(width: Val) -> Node {
+    Node {
+        width,
+        min_height: px(shape::BUTTON_HEIGHT),
+        padding: UiRect::axes(px(18), px(8)),
+        align_items: AlignItems::Center,
+        border: UiRect::all(px(1)),
+        border_radius: BorderRadius::MAX,
+        ..default()
+    }
+}
+
+/// [`button`], greyed: the same pill, so the bar does not reflow when a
 /// control becomes legal, with dim text and the `Disabled` marker the
 /// feedback system skips.
 pub fn disabled_button<T: Into<String>, M: Bundle>(theme: &Theme, text: T, width: Val, marker: M) -> impl Bundle + use<T, M> {
+    let fill = theme.secondary.with_alpha(0.05);
+    let rim = theme.glass_border.with_alpha(0.12);
     (
         Button,
         Themed,
         Disabled,
         marker,
-        Node {
-            width,
-            flex_shrink: 0.0,
-            padding: UiRect::axes(px(18), px(10)),
-            justify_content: JustifyContent::Center,
-            align_items: AlignItems::Center,
-            border: UiRect::all(px(1)),
-            border_radius: BorderRadius::all(px(6)),
-            ..default()
-        },
-        BackgroundColor(theme.panel),
-        BorderColor::all(theme.panel_border.with_alpha(0.5)),
-        Dressed::still(Slot::ButtonDisabled, Drawn::new(theme.panel, theme.panel_border.with_alpha(0.5))),
-        children![(Text::new(text), theme.font(size::BODY), TextColor(theme.text_dim.with_alpha(0.6)))],
+        pill(width),
+        BackgroundColor(fill),
+        BorderColor::all(rim),
+        Dressed::still(Slot::ButtonDisabled, Drawn::new(fill, rim)),
+        children![(Text::new(text), theme.font(size::BODY), TextColor(theme.text_dim.with_alpha(0.5)))],
     )
 }
 
@@ -245,13 +360,13 @@ pub fn gear_image() -> Image {
 pub fn gear_button<M: Bundle>(theme: &Theme, images: Option<&mut Assets<Image>>, marker: M) -> impl Bundle + use<M> {
     let icon = images.map(|images| images.add(gear_image()));
     let mut node = Node {
-        width: px(44),
-        height: px(44),
+        width: px(shape::BUTTON_HEIGHT),
+        height: px(shape::BUTTON_HEIGHT),
         flex_shrink: 0.0,
         justify_content: JustifyContent::Center,
         align_items: AlignItems::Center,
         border: UiRect::all(px(1)),
-        border_radius: BorderRadius::all(px(6)),
+        border_radius: BorderRadius::MAX,
         ..default()
     };
     if icon.is_none() {
@@ -268,7 +383,9 @@ pub fn gear_button<M: Bundle>(theme: &Theme, images: Option<&mut Assets<Image>>,
             parent.spawn((Text::new("Options"), font, TextColor(text)));
         }
     });
-    (Button, Themed, marker, node, BackgroundColor(theme.button), BorderColor::all(theme.panel_border), Children::spawn(label))
+    let ([rest, hover, press], _) = ButtonKind::Secondary.looks(theme);
+    let dressed = Dressed { slot: Slot::Button, drawn: rest, hover: Some(hover), pressed: Some(press) };
+    (Button, Themed, marker, node, BackgroundColor(rest.bg), BorderColor::all(rest.border), dressed, Children::spawn(label))
 }
 
 /// A vertical scrollbar for `target`, a node with `Overflow::scroll_y`:
@@ -277,9 +394,9 @@ pub fn gear_button<M: Bundle>(theme: &Theme, images: Option<&mut Assets<Image>>,
 pub fn scrollbar(theme: &Theme, target: Entity) -> impl Bundle + use<> {
     (
         Scrollbar::new(target, ControlOrientation::Vertical, 24.0),
-        Node { width: px(10), height: percent(100), flex_shrink: 0.0, border_radius: BorderRadius::all(px(5)), ..default() },
-        BackgroundColor(theme.panel),
-        children![(ScrollbarThumb { border_radius: BorderRadius::all(px(5)), border: UiRect::ZERO }, BackgroundColor(theme.panel_border))],
+        Node { width: px(8), height: percent(100), flex_shrink: 0.0, border_radius: BorderRadius::MAX, ..default() },
+        BackgroundColor(theme.secondary.with_alpha(0.06)),
+        children![(ScrollbarThumb { border_radius: BorderRadius::MAX, border: UiRect::ZERO }, BackgroundColor(theme.border_hover))],
     )
 }
 
@@ -319,10 +436,10 @@ fn button_feedback(
     mut commands: Commands,
     skin: Res<Skin>,
     theme: Res<Theme>,
-    mut buttons: Query<(Entity, &Interaction, &mut BackgroundColor, Option<&Dressed>), (Changed<Interaction>, With<Themed>, Without<Disabled>)>,
+    mut buttons: Query<(Entity, &Interaction, &mut BackgroundColor, Option<&Dressed>, Option<&Resting>), (Changed<Interaction>, With<Themed>, Without<Disabled>)>,
     mut pressed: MessageWriter<Pressed>,
 ) {
-    for (entity, interaction, mut background, dressed) in &mut buttons {
+    for (entity, interaction, mut background, dressed, resting) in &mut buttons {
         if *interaction == Interaction::Pressed {
             pressed.write(Pressed(entity));
         }
@@ -331,13 +448,17 @@ fn button_feedback(
                 let (slot, drawn) = dressed.at(*interaction);
                 skin.dress(slot, drawn).apply(&mut commands.entity(entity));
             }
-            // Undressed, and the resting colour is the theme's button —
-            // *not* whatever this node was spawned with. That is a real
-            // limitation rather than an oversight: a `Themed` node whose
-            // resting background is something else loses it after the
-            // first hover, which is why the drop-down's selected item now
-            // carries a `Dressed` of its own rather than relying on the
-            // colour it was spawned with.
+            // A menu's own undressed node — a drop-down's head or row —
+            // names its resting colour and takes the glass's hover.
+            None if resting.is_some() => {
+                *background = BackgroundColor(match interaction {
+                    Interaction::Pressed => theme.secondary_press,
+                    Interaction::Hovered => theme.secondary_hover,
+                    Interaction::None => resting.map_or(theme.secondary, |r| r.0),
+                });
+            }
+            // Undressed, and the resting colour is the theme's button:
+            // the board's own few undressed buttons (the score rows).
             None => {
                 *background = BackgroundColor(match interaction {
                     Interaction::Pressed => theme.button_press,

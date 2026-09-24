@@ -65,13 +65,13 @@ fn spawn(mut commands: Commands, theme: Res<Theme>, core: Res<ClientCore>) {
         || "Not saved: the OS has no data directory, so these apply to this session only".to_string(),
         |path| format!("Saved to {}", path.display()),
     );
-    let rows = commands.spawn((Rows, widgets::panel(&theme, px(720)))).id();
-    let answers = commands.spawn((Answers, widgets::panel(&theme, px(420)))).id();
+    let rows = commands.spawn((Rows, widgets::roomy_panel(&theme, px(720)))).id();
+    let answers = commands.spawn((Answers, widgets::roomy_panel(&theme, px(420)))).id();
     // The answers beside the rows rather than under them: twelve rows
     // already take most of a window's height, and the list grows with
     // every card answered.
     let columns = commands.spawn(Node { flex_direction: FlexDirection::Row, flex_wrap: FlexWrap::Wrap, justify_content: JustifyContent::Center, align_items: AlignItems::FlexStart, column_gap: px(16), row_gap: px(16), ..default() }).add_children(&[rows, answers]).id();
-    commands.spawn((screen_root(AppScreen::Settings, theme.background), children![
+    commands.spawn((screen_root(AppScreen::Settings, &theme), children![
         widgets::heading(&theme, AppScreen::Settings.title()),
         widgets::dim(&theme, saved_where),
         widgets::button(&theme, "Back", Val::Auto, Control::Back),
@@ -131,8 +131,8 @@ pub fn spawn_rows(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &Clien
         node.entry::<Node>().and_modify(|mut node| node.width = percent(100));
         node.with_children(|controls| {
             if row.is_stepped() {
-                controls.spawn(widgets::button(theme, "<", px(44), Control::Intent(Intent::Step(row, -1))));
-                controls.spawn(widgets::button(theme, ">", px(44), Control::Intent(Intent::Step(row, 1))));
+                controls.spawn(widgets::round_button(theme, "<", Control::Intent(Intent::Step(row, -1))));
+                controls.spawn(widgets::round_button(theme, ">", Control::Intent(Intent::Step(row, 1))));
             } else if row == Row::Player {
                 controls.spawn(widgets::button(theme, "Edit", Val::Auto, Control::EditName));
             } else {
@@ -191,7 +191,8 @@ fn open_name_field(
     commands.entity(rows).with_children(|parent| {
         parent.spawn((
             TextField { text: current.clone(), max_len: MAX_NAME_LEN },
-            Node { padding: UiRect::all(px(8)), border: UiRect::all(px(1)), ..default() },
+            widgets::field_node(Val::Auto),
+            BackgroundColor(theme.glass_strong),
             BorderColor::all(theme.accent),
             children![widgets::label(&theme, format!("{current}|")), widgets::dim(&theme, "  Enter saves, Escape cancels")],
         ));
