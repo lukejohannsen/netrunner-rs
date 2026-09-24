@@ -64,6 +64,43 @@ pub fn rows<'a>(view: &'a ClientView, registry: &CardRegistry, chair: Side) -> [
     rows_top_down(chair).map(|row| (row, view.runner.rig.iter().filter(|card| registry.get(&card.card).is_some_and(|def| RigRow::of(&def.card_type) == row)).collect()))
 }
 
+/// The Trojans hosted on the piece of ice `ice`, in the rig's order.
+///
+/// **A Trojan is drawn where it is: on its ice**, as a button of its own
+/// on the ice's tile, and its copy in the program row is a *ghost*
+/// ([`is_ghost`]) — drawn faintly, and still the same click, so the rig
+/// still reads as the rig and a Trojan has two ways in to one menu
+/// (jinteki.net's ghost Trojans; Phase 7 §8 item 8). Both are doors to the
+/// actions the engine already lists on the Trojan's install, never an
+/// action of their own. Two alternatives were rejected: an **inert** ghost,
+/// jinteki's, which would make one card in the row a picture where every
+/// other card is a click; and a mark on the ice with the real card left in
+/// the row, which says where a Trojan is without putting it there.
+///
+/// The host is an `InstallId`, never masked (`hosted_on_ice`), so an
+/// unrezzed host lists its Trojans to both chairs as the table would.
+pub fn hosted_on(view: &ClientView, ice: InstallId) -> Vec<&PublicInstalledRunnerCard> {
+    view.runner.rig.iter().filter(|card| card.hosted_on_ice == Some(ice)).collect()
+}
+
+/// The ice a Trojan is on, in the words its ghost's line says after
+/// "on": its title when the viewer may name it, and otherwise the server
+/// it protects ("unrezzed ice on HQ") — never a card the view withholds.
+pub fn host_label(view: &ClientView, registry: &CardRegistry, ice: InstallId) -> String {
+    let found = view.corp.servers.iter().find_map(|server| server.ice.iter().find(|card| card.install_id == ice).map(|card| (server.server, card)));
+    match found {
+        Some((_, card)) if card.card.is_some() => crate::actions::install_label(&ice, registry, Some(view)),
+        Some((server, _)) => format!("unrezzed ice on {}", super::action_map::server_name(server)),
+        None => crate::actions::install_label(&ice, registry, Some(view)),
+    }
+}
+
+/// Whether `card`'s place in the program row is a ghost: its home is on
+/// the ice that hosts it (see [`hosted_on`]).
+pub fn is_ghost(card: &PublicInstalledRunnerCard) -> bool {
+    card.hosted_on_ice.is_some()
+}
+
 /// Copies of one card that nothing tells apart, drawn as one card with
 /// a count (jinteki.net's stacked rig). `cards` is never empty, and its
 /// first card stands for the stack: a click on the stack is a click on
@@ -237,5 +274,48 @@ mod tests {
         view.legal_actions = vec![PlayerAction::ActivateAbility { target: InstallId(2), ability_index: 0 }];
         let offered = ActionMap::build(&view, &registry);
         assert_eq!(hardware(&view, &registry, Some(&offered)).len(), 2);
+    }
+
+    /// A Trojan is listed under its own host and no other, even beside a
+    /// second copy of the same ice.
+    #[test]
+    fn a_trojan_is_listed_under_the_ice_that_hosts_it_and_no_other() {
+        let (mut view, _) = view();
+        let mut first = install("botulus", 1);
+        first.hosted_on_ice = Some(InstallId(20));
+        let mut second = install("botulus", 2);
+        second.hosted_on_ice = Some(InstallId(21));
+        view.runner.rig = vec![first, install("cyberfeeder", 3), second];
+        let ids = |ice| hosted_on(&view, InstallId(ice)).iter().map(|card| card.install_id).collect::<Vec<_>>();
+        assert_eq!(ids(20), [InstallId(1)]);
+        assert_eq!(ids(21), [InstallId(2)]);
+        assert!(ids(22).is_empty());
+    }
+
+    /// The host is named by its title when the viewer may name it, and
+    /// by the server it protects when it may not.
+    #[test]
+    fn a_trojans_host_is_named_as_the_viewer_may_name_it() {
+        use netrunner_core::dsl::CardId;
+        use netrunner_core::rules::{InstallSlot, PublicInstalledCard, ServerId};
+        use netrunner_core::view::ServerView;
+        let (mut view, registry) = view();
+        let ice = |id: u32, card: Option<&str>| PublicInstalledCard { install_id: InstallId(id), position: 0, server: ServerId::Hq, slot: InstallSlot::Ice, rezzed: card.is_some(), card: card.map(|c| CardId(c.into())), advancement_tokens: 0, counters: None, seen_by_runner: card.is_some() };
+        view.corp.servers.retain(|s| s.server != ServerId::Hq);
+        view.corp.servers.push(ServerView { server: ServerId::Hq, ice: vec![ice(20, None), ice(21, Some("ice_wall"))], root: Vec::new() });
+        assert_eq!(host_label(&view, &registry, InstallId(20)), "unrezzed ice on HQ");
+        assert_eq!(host_label(&view, &registry, InstallId(21)), "Ice Wall");
+    }
+
+    /// The row still lists a hosted Trojan, as a ghost, and alone.
+    #[test]
+    fn a_hosted_trojan_is_a_ghost_in_the_program_row() {
+        let (mut view, registry) = view();
+        let mut hosted = install("botulus", 1);
+        hosted.hosted_on_ice = Some(InstallId(20));
+        view.runner.rig = vec![hosted, install("botulus", 2)];
+        let [(row, stacks), _, _] = stacked(&view, &registry, Side::Runner, None);
+        assert_eq!(row, RigRow::Programs);
+        assert_eq!(stacks.iter().map(|stack| (stack.first().install_id, is_ghost(stack.first()), stack.count())).collect::<Vec<_>>(), [(InstallId(1), true, 1), (InstallId(2), false, 1)]);
     }
 }

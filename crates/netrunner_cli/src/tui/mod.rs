@@ -1254,14 +1254,20 @@ fn draw_board(frame: &mut Frame, area: Rect, app: &impl RenderableView) {
             }
             let counters = counter_label(Some(&card.card), card.counters, app.registry());
             let strength = app.registry().get(&card.card).and_then(|def| def.strength).map(|_| format!("str {}", card.current_strength));
-            let facts = [strength.unwrap_or_default(), counters.trim_start_matches(", ").to_string()].into_iter().filter(|f| !f.is_empty()).collect::<Vec<_>>().join(", ");
+            let host = card.hosted_on_ice.map(|ice| format!("on {}", netrunner_client::board::rig::host_label(view, app.registry(), ice)));
+            let facts = [strength.unwrap_or_default(), counters.trim_start_matches(", ").to_string(), host.unwrap_or_default()].into_iter().filter(|f| !f.is_empty()).collect::<Vec<_>>().join(", ");
             let title = match stacks[i].count() {
                 1 => card_title(&card.card, app.registry()),
                 n => format!("{} ×{n}", card_title(&card.card, app.registry())),
             };
             let label = if facts.is_empty() { title } else { format!("{title} ({facts})") };
             let mood = actions.as_ref().and_then(|map| map.affordance(&Target::Install(card.install_id)));
-            spans.push(Span::styled(label, mood_style(mood)));
+            // A Trojan's row entry is its ghost: dim unless it can act.
+            let style = match mood {
+                None if netrunner_client::board::rig::is_ghost(card) => Style::default().add_modifier(Modifier::DIM),
+                _ => mood_style(mood),
+            };
+            spans.push(Span::styled(label, style));
         }
         runner_lines.push(Line::from(spans));
     }
@@ -1325,10 +1331,14 @@ fn format_server(server: &ServerView, view: &ClientView, registry: &CardRegistry
         // `None` means this viewer may not see the count at all (unrezzed,
         // and not theirs), which renders the same as "none placed".
         let counters = counter_label(card.card.as_ref(), card.counters.unwrap_or(0), registry);
+        // A Trojan is on its ice here too, as on the desktop's tile
+        // (`board::rig::hosted_on`); the rig's line calls it a ghost.
+        let hosted: Vec<String> = netrunner_client::board::rig::hosted_on(view, card.install_id).into_iter().map(|trojan| card_title(&trojan.card, registry)).collect();
+        let hosts = if hosted.is_empty() { String::new() } else { format!(" [hosts {}]", hosted.join(", ")) };
         if card.advancement_tokens > 0 {
-            format!("{label} ({rez}, {} adv{counters})", card.advancement_tokens)
+            format!("{label} ({rez}, {} adv{counters}){hosts}", card.advancement_tokens)
         } else {
-            format!("{label} ({rez}{counters})")
+            format!("{label} ({rez}{counters}){hosts}")
         }
     };
     let cards: Vec<String> = server.ice.iter().chain(server.root.iter()).map(describe).collect();
@@ -1606,6 +1616,38 @@ mod tests {
         let rendered = format!("{:?}", terminal.backend().buffer());
         assert!(rendered.contains("rejected: NotYourTurn"), "the rejection line is drawn");
         assert!(rendered.contains("Showing every legal action"), "the escape hatch is announced");
+    }
+
+    /// A Trojan is on its ice here too: the ice's entry says what it
+    /// hosts, and the program row's entry is the ghost, naming the host.
+    #[test]
+    fn a_trojan_is_listed_on_its_ice_and_its_row_entry_names_the_host() {
+        use netrunner_core::dsl::CardId;
+        use netrunner_core::rules::{InstallId, InstallSlot, PublicInstalledCard, PublicInstalledRunnerCard, ServerId};
+        use netrunner_core::view::{build_client_view, ServerView};
+
+        let registry = decks::sample_deck_registry();
+        let corp_deck = netrunner_core::decks::by_id("discretion_advised").unwrap().to_deck();
+        let runner_deck = netrunner_core::decks::by_id("stolen_goods").unwrap().to_deck();
+        let (state, _events) = GameState::setup(&corp_deck, &runner_deck, &registry, 3).unwrap();
+        let mut view = build_client_view(&state, &registry, Side::Runner);
+        let ice = InstallId(9100);
+        if !view.corp.servers.iter().any(|s| s.server == ServerId::Hq) {
+            view.corp.servers.push(ServerView { server: ServerId::Hq, ice: Vec::new(), root: Vec::new() });
+        }
+        let hq = view.corp.servers.iter_mut().find(|s| s.server == ServerId::Hq).unwrap();
+        hq.ice.push(PublicInstalledCard { install_id: ice, position: 0, server: ServerId::Hq, slot: InstallSlot::Ice, rezzed: true, card: Some(CardId("ice_wall".into())), advancement_tokens: 0, counters: Some(0), seen_by_runner: true });
+        view.runner.rig.push(PublicInstalledRunnerCard { card: CardId("botulus".into()), install_id: InstallId(9101), current_strength: 0, hosted_on_ice: Some(ice), hosted_on_program: None, hosted_cards: Vec::new(), hosted_cards_playable: false, counters: 1 });
+
+        let mut ui = LocalUiState::new(registry, Side::Runner);
+        ui.begin_decision(view);
+        let mut terminal = Terminal::new(TestBackend::new(200, 50)).unwrap();
+        terminal.draw(|frame| draw_frame(frame, &ui, None)).unwrap();
+        let buffer = terminal.backend().buffer();
+        let rows: Vec<String> = (0..buffer.area.height).map(|y| (0..buffer.area.width).map(|x| buffer[(x, y)].symbol().to_string()).collect()).collect();
+        assert!(rows.iter().any(|row| row.contains("Ice Wall (rezzed) [hosts Botulus]")), "the ice lists its Trojan:\n{}", rows.join("\n"));
+        let programs = rows.iter().find(|row| row.contains("Programs:")).unwrap();
+        assert!(programs.contains("Botulus (") && programs.contains("on Ice Wall"), "the ghost names its host: {programs}");
     }
 
     /// The player's own hand is drawn, and only theirs: the same position

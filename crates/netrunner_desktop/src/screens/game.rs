@@ -149,7 +149,7 @@ impl Plugin for GamePlugin {
             .init_resource::<Pointer>()
             .add_systems(OnEnter(AppScreen::Game), spawn)
             .add_systems(OnExit(AppScreen::Game), leave)
-            .add_systems(Update, (poll, autoplay, escape.in_set(Captures), board_click, drag_hand, shortcuts, controls, fit, board_pictures, side_panels, relane, redraw, lift_hovered, table_guide).chain().run_if(in_state(AppScreen::Game)))
+            .add_systems(Update, (poll, autoplay, escape.in_set(Captures), board_click, drag_hand, shortcuts, controls, fit, board_pictures, side_panels, relane, redraw, fade_ghosts, lift_hovered, table_guide).chain().run_if(in_state(AppScreen::Game)))
             // Its own registration rather than a link in that chain: it
             // has no ordering requirement against any of them, and adding
             // a system to an existing `.chain()` reorders everything after
@@ -239,6 +239,28 @@ pub struct DropPlace(pub Target);
 /// The count under a stack of identical rig cards, for a test to read.
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
 pub struct RigCopies(pub usize);
+
+/// A Trojan on the tile of the ice that hosts it: a button of its own,
+/// the Trojan's click and the Trojan's sheet
+/// (`netrunner_client::board::rig::hosted_on`).
+#[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
+pub struct HostedChip(pub InstallId);
+
+/// A Trojan's copy in the program row, drawn faintly because its home is
+/// on its ice (`netrunner_client::board::rig::is_ghost`). It is still the
+/// Trojan's button: a ghost is a second door to one menu, never a picture.
+#[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Ghost(pub InstallId);
+
+/// The wash over a ghost's text face. A scan replaces the face's
+/// children when it lands (`card_images`), taking the wash with it, and
+/// is faded by `fade_ghosts` instead.
+#[derive(Component)]
+struct GhostWash;
+
+/// How much of a ghost shows through: the scan's alpha, and one less the
+/// wash's over a text face.
+const GHOST_ALPHA: f32 = 0.4;
 
 /// A card's place in the person's own hand, for a drag to read.
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
@@ -956,7 +978,8 @@ fn autoplay(
         Some(PendingDecision::ChooseServer { install: Some(_), .. }) => dev.hold_install,
         _ => dev.hold_access && Access::of(view, &client.registry).is_some(),
     }) || (dev.hold_break && !model.0.breaks.is_empty())
-        || (dev.hold_ice && model.0.encounter().is_some());
+        || (dev.hold_ice && model.0.encounter().is_some())
+        || (dev.hold_trojan && model.0.view.as_ref().is_some_and(|view| view.runner.rig.iter().any(netrunner_client::board::rig::is_ghost)));
     if held {
         dev.autoplayed = dev.autoplay;
         return;
@@ -980,6 +1003,9 @@ fn autoplay(
                 entries.iter().position(|entry| matches!(&entry.action, PlayerAction::ToggleCardSelection { position } if !selected.contains(position)))
             })
         })
+        // A Trojan hosted the moment one can be: still a listed entry,
+        // taken ahead of the wandering pick.
+        .or_else(|| dev.hold_trojan.then(|| entries.iter().position(|entry| matches!(entry.action, PlayerAction::InstallProgramOnIce { .. }))).flatten())
         .unwrap_or(model.0.applied % entries.len());
     pending.0.push(Intent::Choose(index));
 }
@@ -2092,6 +2118,19 @@ struct TileLook {
     key: &'static str,
     colour: Color,
     text_colour: Color,
+    /// The Trojans hosted on an ice, each its own button on the band;
+    /// none on a root card.
+    hosted: Vec<Hosted>,
+}
+
+/// A Trojan as its host's tile shows it: its title, its counters, and
+/// the Trojan's own mood and lit state.
+struct Hosted {
+    install: InstallId,
+    title: String,
+    counters: Option<Token>,
+    mood: Option<Affordance>,
+    lit: bool,
 }
 
 /// A tile in a server column — an ice or a root card: a picture of what
@@ -2113,6 +2152,8 @@ fn spawn_tile(column: &mut ChildSpawnerCommands, theme: &Theme, art: Option<&Boa
             width: px(width),
             height: px(height),
             flex_shrink: 0.0,
+            flex_direction: if look.hosted.is_empty() { FlexDirection::Row } else { FlexDirection::Column },
+            row_gap: px(2),
             align_items: AlignItems::Center,
             justify_content: JustifyContent::Center,
             overflow: Overflow::clip(),
@@ -2144,6 +2185,38 @@ fn spawn_tile(column: &mut ChildSpawnerCommands, theme: &Theme, art: Option<&Boa
                 spawn_badge(band, theme, art, token, (height - 8.0).clamp(12.0, 18.0), text_size, look.text_colour);
             }
         });
+        // A Trojan sits on its ice: a button inside the tile's, whose
+        // `FocusPolicy::Block` (a `Button`'s) keeps the press and the
+        // hover from the tile, so a click on it is the Trojan's menu and
+        // a secondary click its sheet. On a line of its own under the
+        // band, so the ice's title keeps the band's width, and inside the
+        // tile, which is still the height `layout::tile_stack` gave it.
+        if look.hosted.is_empty() {
+            return;
+        }
+        tile.spawn(Node { flex_direction: FlexDirection::Row, column_gap: px(3), ..default() }).with_children(|line| {
+            for hosted in &look.hosted {
+                let mut chip = line.spawn((
+                    Button,
+                    HostedChip(hosted.install),
+                    Click::Target(Target::Install(hosted.install)),
+                    Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(3), flex_shrink: 0.0, padding: UiRect::axes(px(4), px(0)), border: UiRect::all(px(1)), border_radius: BorderRadius::all(px(3)), ..default() },
+                    BackgroundColor(theme.button),
+                    BorderColor::all(theme.runner),
+                ));
+                chip.with_children(|chip| {
+                    chip.spawn((Text::new(hosted.title.clone()), theme.font(text_size), TextColor(theme.text), Pickable::IGNORE));
+                    if let Some(token) = &hosted.counters {
+                        spawn_badge(chip, theme, art, token, (height - 8.0).clamp(12.0, 16.0), text_size, theme.text);
+                    }
+                });
+                if hosted.lit {
+                    chip.insert(outline(theme));
+                }
+                let entity = chip.id();
+                glow(&mut line.commands(), entity, theme, hosted.mood);
+            }
+        });
     });
     if lit {
         tile.insert(outline(theme));
@@ -2173,6 +2246,19 @@ fn spawn_server_ice(column: &mut ChildSpawnerCommands, theme: &Theme, core: &Cli
             key: board_art::ice_key(ice.rezzed, kind),
             colour: if ice.rezzed { theme.faction(def.and_then(|c| c.faction)) } else { theme.corp.with_alpha(0.5) },
             text_colour: if ice.rezzed { theme.text } else { theme.text_dim },
+            hosted: netrunner_client::board::rig::hosted_on(view, ice.install_id)
+                .into_iter()
+                .map(|trojan| {
+                    let def = core.registry.get(&trojan.card);
+                    Hosted {
+                        install: trojan.install_id,
+                        title: def.map_or_else(|| trojan.card.0.clone(), |def| def.title.clone()),
+                        counters: (trojan.counters > 0).then(|| Token { kind: TokenKind::Counter(def.and_then(|d| d.counter_kind)), amount: trojan.counters.to_string() }),
+                        mood: game.affordance_for(&Target::Install(trojan.install_id)),
+                        lit: lit.installs.contains(&trojan.install_id),
+                    }
+                })
+                .collect(),
         };
         let is_lit = encountered == Some(ice.install_id) || lit.installs.contains(&ice.install_id);
         let slot = if ice.rezzed { Slot::TileRezzed } else { Slot::TileUnrezzed };
@@ -2199,6 +2285,7 @@ fn spawn_server_root(column: &mut ChildSpawnerCommands, theme: &Theme, core: &Cl
             key: board_art::root_key(face_up, def.map(|d| &d.card_type)),
             colour: if face_up { theme.faction(def.and_then(|c| c.faction)) } else { theme.corp.with_alpha(0.5) },
             text_colour: if face_up { theme.text } else { theme.text_dim },
+            hosted: Vec::new(),
         };
         let slot = if face_up { Slot::TileRezzed } else { Slot::TileUnrezzed };
         tiles.push(spawn_tile(column, theme, art, look, card.install_id, lit.installs.contains(&card.install_id), size, height, slot, game.affordance_for(&Target::Install(card.install_id)), depth));
@@ -2245,6 +2332,11 @@ fn spawn_rig(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore
                                     cards_row.commands().entity(entity).entry::<Node>().and_modify(move |mut node| node.margin.left = px(pull));
                                 }
                                 cards_row.commands().entity(entity).insert(Contact(depth));
+                                if netrunner_client::board::rig::is_ghost(card) {
+                                    cards_row.commands().entity(entity).insert(Ghost(card.install_id)).with_children(|face| {
+                                        face.spawn((GhostWash, Pickable::IGNORE, Node { position_type: PositionType::Absolute, left: px(0), top: px(0), right: px(0), bottom: px(0), ..default() }, BackgroundColor(theme.background.with_alpha(1.0 - GHOST_ALPHA))));
+                                    });
+                                }
                                 glow(&mut cards_row.commands(), entity, theme, game.affordance_for(&Target::Install(card.install_id)));
                                 if stacks[i].install_ids().any(|id| lit.installs.contains(&id)) {
                                     cards_row.commands().entity(entity).insert(outline(theme));
@@ -2272,6 +2364,9 @@ fn spawn_rig(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore
                             if !card.hosted_cards.is_empty() {
                                 chips.push(format!("{} hosted", card.hosted_cards.len()));
                             }
+                            if let Some(host) = card.hosted_on_ice {
+                                chips.push(format!("on {}", netrunner_client::board::rig::host_label(view, &core.registry, host)));
+                            }
                             slot.with_children(|slot| {
                                 if copies > 1 {
                                     slot.spawn((RigCopies(copies), Text::new(format!("×{copies}")), theme.font(size::SMALL), TextColor(theme.text)));
@@ -2290,6 +2385,19 @@ fn spawn_rig(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore
             });
         }
     });
+}
+
+/// A ghost's scan drawn at `GHOST_ALPHA`, whether it was the face from
+/// the start or landed in place of the text face and its wash. Every
+/// frame rather than on `Changed<ImageNode>`: there are one or two
+/// ghosts on a table, and the write is skipped when it would change
+/// nothing, so no swap of a scan can slip past it.
+fn fade_ghosts(mut ghosts: Query<&mut ImageNode, With<Ghost>>) {
+    for mut image in &mut ghosts {
+        if image.color.alpha() != GHOST_ALPHA {
+            image.color.set_alpha(GHOST_ALPHA);
+        }
+    }
 }
 
 /// The person's hand beside their strip, the top `layout::PEEK` of each

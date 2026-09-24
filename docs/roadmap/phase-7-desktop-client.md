@@ -3834,6 +3834,59 @@ it.
   one that did not). Nothing in the pool rewards the Corp for rezzing any
   card; the module doc lists what was checked.
 
+### 4an. A Trojan sits on its ice, and its place in the program row is a ghost — DONE (23 September 2026)
+
+Phase 7 §8 item 8. Before this, a Trojan (Botulus, Tranquilizer,
+Chromatophores; in nine sample decks and one sweep deck) was an ordinary
+program face in the program row. Its ice showed nothing, and where it
+was hosted was said only in two sheets' text ("Hosts …", "Hosted on …").
+The view already carried the link: `PublicInstalledRunnerCard::
+hosted_on_ice` is an `InstallId`, never masked, so no engine change was
+needed and no new action exists.
+
+- **The Trojan is on its ice** (`board::rig::hosted_on`). It is a chip
+  on a line of its own under the ice tile's band, showing the Trojan's
+  title and counters. It is a button inside the tile's button, with the
+  Trojan's click, sheet and glow, and a `Button`'s `FocusPolicy::Block`
+  keeps the press and the hover from the tile. It is inside the tile, so
+  the tile keeps the height `layout::tile_stack` gave it. It is on its
+  own line so the ice's title keeps the band's width. A first cut put it
+  in the band, and the band squeezed Whitespace's title to "rezzed · str".
+- **Its place in the program row is a ghost** (`board::rig::is_ghost`).
+  The face is drawn at `GHOST_ALPHA` (a wash over a text face,
+  `ImageNode` alpha on a scan, re-applied every frame by `fade_ghosts` so
+  a scan landing later is faded too). It is **still the Trojan's
+  button**, so the Trojan has two ways in to one menu. Its chip line says
+  where it is, "on Tithe" or "on unrezzed ice on HQ"
+  (`board::rig::host_label`, which names the ice only when the viewer
+  may).
+- **The terminal client says the same.** A server line adds
+  "[hosts Botulus]" after the ice, and the program row's entry says
+  "on <host>", dimmed unless it can act.
+- **Rejected:** an *inert* ghost, jinteki's. It would make one card in
+  the row a picture where every other card is a click (§4g). Also
+  rejected: a mark on the ice with the real card left in the row, which
+  says where a Trojan is without putting it there. The person chose the
+  clickable ghost.
+- **Dev hook: `NETRUNNER_HOLD_TROJAN=1`.** The autoplay hosts a Trojan
+  whenever the engine offers one and stops once one is hosted. Plain
+  autoplay hosted one in some games and not in others, so a screenshot
+  could not be taken on demand. Seated as the Runner on `dashing_mad`,
+  it hosted Botulus in each of three runs: on an unrezzed HQ ice once,
+  and on a rezzed Tithe once. The ghost reads visibly dimmer than its
+  row neighbours, and the dev log's only `scroll area` line is the
+  zero-size one every board shot has. **The Corp's chair was not shot.**
+  The bot Runner decides whether a Trojan gets hosted, and no hook drives
+  it. The Corp's chair draws the same `spawn_tile` and `spawn_rig` at
+  `layout::OPPONENT_SCALE`.
+- Tests: `board::rig`'s `a_trojan_is_listed_under_the_ice_that_hosts_it_and_no_other`,
+  `a_hosted_trojan_is_a_ghost_in_the_program_row` and
+  `a_trojans_host_is_named_as_the_viewer_may_name_it`; the desktop's
+  `a_trojan_is_a_chip_on_its_ice_and_a_ghost_in_the_row` (chip inside
+  the ice's tile, the ghost still a button with the same click, the
+  secondary click on the chip opening the Trojan's sheet); the terminal's
+  `a_trojan_is_listed_on_its_ice_and_its_row_entry_names_the_host`.
+
 ## 8. Borrowed from jinteki — OPEN (19 September 2026)
 
 From [`docs/jinteki-comparison.md`](../jinteki-comparison.md) §5, in the
@@ -3880,7 +3933,7 @@ exist, never a new action.
    holds unrezzed ICE and the credits to rez it (§4ai). Taken after the
    rest of this list.
 7. ~~**Space as the one "continue" key.**~~ Done in §4ai.
-8. **Ghost Trojans in the program row.**
+8. ~~**Ghost Trojans in the program row.**~~ Done in §4an.
 9. ~~**Identical rig cards stacked** with a count.~~ Done in §4al.
 10. **Run and turn timing diagrams.**
 11. **A spectator seat.**
