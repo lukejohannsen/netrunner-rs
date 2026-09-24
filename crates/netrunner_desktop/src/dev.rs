@@ -109,6 +109,12 @@
 //!   this run", so the screenshot catches the button; `on` presses it
 //!   there, so the screenshot catches the run going by with the way to
 //!   stop on the rail. Seat the Corp: `NETRUNNER_GAME=corp`.
+//! - `NETRUNNER_DROPDOWN=<n>` — before the screenshot, the `n`th
+//!   drop-down on the screen (1 is the first, counted top to bottom and
+//!   left to right) is opened, so an open list can be looked at: where it
+//!   opens, whether it fits the window, and its bar.
+//!   `NETRUNNER_SCREEN=new-game NETRUNNER_DROPDOWN=1` is the person's own
+//!   deck list at the foot of the form.
 //! - `NETRUNNER_SCROLL=<x>,<y>,<lines>` — before the screenshot, the
 //!   pointer is put at window position (x, y) and the wheel turned by
 //!   that many lines, through the same window events winit would send;
@@ -246,6 +252,8 @@ pub struct Dev {
     pub replay: Option<(PathBuf, Option<netrunner_client::replay::Start>)>,
     /// `(x, y, lines)`.
     pub scroll: Option<(f32, f32, f32)>,
+    /// Open this drop-down (1-based, in reading order) before the shot.
+    pub dropdown: Option<usize>,
     /// Draw the board's rows over the table, so a field can be painted
     /// to where the cards actually fall rather than guessed at.
     pub table_guide: bool,
@@ -273,6 +281,7 @@ impl Dev {
             runner_deck: std::env::var("NETRUNNER_RUNNER_DECK").ok().filter(|id| !id.trim().is_empty()),
             autoplay: std::env::var("NETRUNNER_AUTOPLAY").ok().and_then(|n| n.trim().parse().ok()).unwrap_or(0),
             autoplayed: 0,
+            dropdown: std::env::var("NETRUNNER_DROPDOWN").ok().and_then(|n| n.trim().parse().ok()).filter(|n| *n > 0),
             options: std::env::var_os("NETRUNNER_OPTIONS").is_some_and(|v| !v.is_empty()),
             keys: std::env::var_os("NETRUNNER_KEYS").is_some_and(|v| !v.is_empty()),
             timing: std::env::var_os("NETRUNNER_TIMING").is_some_and(|v| !v.is_empty()),
@@ -365,6 +374,9 @@ const EXIT_FRAME: u32 = 60;
 /// The pointer is placed, then the wheel turned two frames later, so
 /// picking has a location before the scroll arrives.
 const POINTER_FRAME: u32 = 15;
+/// The drop-down is opened once the screen is laid out, since its list
+/// is measured against where its head was drawn.
+const DROPDOWN_FRAME: u32 = 10;
 const WHEEL_FRAME: u32 = 17;
 
 fn screenshot_then_exit(
@@ -374,6 +386,8 @@ fn screenshot_then_exit(
     windows: Query<Entity, With<PrimaryWindow>>,
     mut window_events: MessageWriter<WindowEvent>,
     scroll_areas: Query<(Entity, &ComputedNode, &ScrollPosition), With<bevy::ui_widgets::ScrollArea>>,
+    heads: Query<(Entity, &UiGlobalTransform), With<crate::widgets::dropdown::Head>>,
+    mut pressed: MessageWriter<crate::widgets::Pressed>,
     mut exit: MessageWriter<AppExit>,
 ) {
     // A card held for the shot (`NETRUNNER_DRAG`) waits for the person's
@@ -386,6 +400,21 @@ fn screenshot_then_exit(
         return;
     }
     dev.frames += 1;
+    if dev.frames == DROPDOWN_FRAME
+        && let Some(n) = dev.dropdown
+    {
+        let mut order: Vec<(Entity, Vec2)> = heads.iter().map(|(entity, at)| (entity, at.translation)).collect();
+        order.sort_by(|a, b| a.1.y.total_cmp(&b.1.y).then(a.1.x.total_cmp(&b.1.x)));
+        match order.get(n - 1) {
+            Some((head, _)) => {
+                info!("dev: opening drop-down {n} of {}", order.len());
+                // The widget's own message, not an `Interaction`: the
+                // focus system would set that back before it was read.
+                pressed.write(crate::widgets::Pressed(*head));
+            }
+            None => warn!("dev: NETRUNNER_DROPDOWN={n}, but the screen has {} drop-downs", order.len()),
+        }
+    }
     if let (Some((x, y, lines)), Ok(window)) = (dev.scroll, windows.single()) {
         if dev.frames == POINTER_FRAME {
             window_events.write(WindowEvent::CursorMoved(CursorMoved { window, position: Vec2::new(x, y), delta: None }));

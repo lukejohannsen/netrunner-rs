@@ -4404,6 +4404,57 @@ and one look across every button and menu.
   the board. The board's layout is unchanged, and no `scroll area`
   line is the board.
 
+### 4ax. The client wears the Android cover's colours, and a drop-down's list stays on the window — DONE (24 September 2026)
+
+Asked for by the person, with two reports. First, the colours: more
+purple, in a cyberpunk feel, and specifically the blues, purples and
+whites behind FFG's *Android: Shadow of the Beanstalk* cover, which
+they held up. Second, a bug: the deck drop-down "goes below the
+screen and there is zero way to scroll or anything like that". The
+deck lists sit at the foot of the new-game form, and a list always
+opened downward (`top: 100%`, capped at 55vh), so every deck past the
+first few was below the window's edge.
+
+- **The palette** is only `Theme::default`'s tokens, plus
+  `backdrop_bloom_violet`. The backdrop is a steel-teal sky falling to a
+  violet night, with a blue bloom high on the left and a violet one low
+  on the right. The glass is indigo-violet. The primary pill is neon
+  violet with white text, the secondary tints are lavender, the accent
+  is the title chrome's icy white-blue, and the board's chrome is dark
+  indigo. The sides' blue and red, the faction colours, danger and both
+  glows are untouched, because they mean something on a card. A new
+  test, `the_accent_is_not_the_usable_glow`, joins the colour tests,
+  since both colours ring a card. Every colour test passes at the
+  unchanged 0.10 OKLab bound.
+- **A list is measured against the window as it opens**
+  (`layout::list_box`, pure, with five tests). It opens below when the
+  whole list fits there, otherwise toward the side with more room, and
+  never taller than that side. At 2560×1600 the Corp's list of 19 decks
+  opens upward in full; at 1280×720 the Runner's opens upward, capped,
+  with a scroll bar. It is also never wider than the room to its right.
+  `anchor_of` moved from the board to `widgets`, so both share it.
+- **A long list is browsed, not only scrolled.** It has a bar beside it
+  (`widgets::scrollbar`), shown only when the list will scroll. The keys
+  move a highlight: ↑ ↓, Page Up and Page Down (8 rows), Home and End.
+  Enter chooses the highlighted row. `keep_highlight_in_view` scrolls
+  the list from the laid-out boxes, so a list opens at the chosen deck
+  and the keys never leave the highlight out of sight. A click on the
+  bar, or anywhere in the list's box, no longer counts as a click away
+  that closes the list.
+- **The list is opaque** (`glass_strong` at full alpha). At 0.92, the
+  side card and the pills it opened over read through its rows.
+- **Nothing else acts on the same keys while a list is open.** The
+  search field ignores Enter as it already ignored Escape, and the card
+  browser's grid ignores the arrows.
+- **Tests and hooks.** `navigation::a_deck_list_is_browsed_and_chosen_with_the_keys`
+  checks the keys headlessly. `NETRUNNER_DROPDOWN=<n>` opens the nth
+  drop-down for a screenshot. It sends the widget's `Pressed` message,
+  because an inserted `Interaction` is reset by the focus system before
+  the widget reads it.
+- **Screenshots:** the new-game form (open both ways, at two window
+  sizes), the card browser with a filter open, and both chairs forty
+  decisions in. None of the `scroll area` lines is the board.
+
 ## 8. Borrowed from jinteki — OPEN (19 September 2026)
 
 From [`docs/jinteki-comparison.md`](../jinteki-comparison.md) §5, in the

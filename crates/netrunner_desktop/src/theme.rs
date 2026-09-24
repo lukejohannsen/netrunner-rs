@@ -2,8 +2,14 @@
 //!
 //! The palette is Netrunner's: the Corp is blue and the Runner red, as
 //! Null Signal Games prints their card backs, and each faction keeps the
-//! colour its cards carry. Everything else is a dark ground those colours
-//! read against.
+//! colour its cards carry. Everything else — the glass, the buttons,
+//! the backdrop, the board's own chrome — is the palette of the *Android*
+//! setting's art (Fantasy Flight's *Shadow of the Beanstalk* cover, which
+//! the person held up as the look): a steel-teal sky falling into a
+//! violet night, neon purple, and an icy white-blue for the lines that
+//! catch the eye. It is a dark ground the sides' and factions' colours
+//! read against, tinted rather than grey (the plain blue of §4aw was the
+//! first cut).
 
 use bevy::prelude::*;
 
@@ -82,8 +88,8 @@ pub struct Theme {
     /// border for every viewer, so a playable NBN card had no visible
     /// glow at all.
     pub glow_conditional: Color,
-    /// What a menu, a form, a pop-up or a sheet is drawn on: a deep blue
-    /// glass the screen behind shows through. Translucent on purpose —
+    /// What a menu, a form, a pop-up or a sheet is drawn on: an
+    /// indigo-violet glass the screen behind shows through. Translucent on purpose —
     /// a menu over a backdrop, or a pop-up over the board, should read as
     /// a layer on the place, not a hole cut in it. `panel` above stays
     /// opaque grey for the board's own chrome (the log, the plates),
@@ -95,7 +101,8 @@ pub struct Theme {
     /// A glass panel's edge: a faint light rim rather than a dark line.
     pub glass_border: Color,
     /// The one button a screen most expects to be pressed (Start game,
-    /// Continue): filled in the accent, with dark text on it.
+    /// Continue): filled in neon violet, with white text on it. Not the
+    /// accent, which is a line colour and too light to carry white text.
     pub primary: Color,
     pub primary_hover: Color,
     pub primary_press: Color,
@@ -110,11 +117,14 @@ pub struct Theme {
     /// edge answers the pointer as well as the fill.
     pub border_hover: Color,
     /// The drawn backdrop behind every menu screen, top to bottom, and the
-    /// colour of the two soft blooms over it (`nav::screen_root`).
+    /// colours of the two soft blooms over it (`nav::screen_root`): a
+    /// blue haze high on the left, a violet one low on the right, so the
+    /// screen shades from the sky into the street's neon.
     pub backdrop_top: Color,
     pub backdrop_bottom: Color,
     pub backdrop_bloom: Color,
-    /// The wash under a pop-up or a sheet: the backdrop's deep blue, so
+    pub backdrop_bloom_violet: Color,
+    /// The wash under a pop-up or a sheet: the backdrop's deep violet, so
     /// what it dims is tinted into the glass rather than greyed out.
     pub wash: Color,
 }
@@ -125,35 +135,36 @@ impl Default for Theme {
             font: None,
             symbol_font: None,
             icon_font: None,
-            background: Color::srgb(0.06, 0.07, 0.09),
-            panel: Color::srgb(0.10, 0.11, 0.14),
-            panel_border: Color::srgb(0.22, 0.24, 0.30),
-            text: Color::srgb(0.90, 0.91, 0.93),
-            text_dim: Color::srgb(0.58, 0.60, 0.66),
-            accent: Color::srgb(0.42, 0.76, 1.0),
-            button: Color::srgb(0.15, 0.17, 0.22),
-            button_hover: Color::srgb(0.22, 0.25, 0.32),
-            button_press: Color::srgb(0.12, 0.40, 0.36),
+            background: Color::srgb(0.05, 0.05, 0.10),
+            panel: Color::srgb(0.09, 0.08, 0.16),
+            panel_border: Color::srgb(0.25, 0.23, 0.38),
+            text: Color::srgb(0.94, 0.95, 0.99),
+            text_dim: Color::srgb(0.63, 0.63, 0.76),
+            accent: Color::srgb(0.60, 0.88, 1.0),
+            button: Color::srgb(0.14, 0.12, 0.24),
+            button_hover: Color::srgb(0.21, 0.18, 0.34),
+            button_press: Color::srgb(0.30, 0.22, 0.52),
             corp: Color::srgb(0.16, 0.42, 0.85),
             runner: Color::srgb(0.80, 0.16, 0.20),
             danger: Color::srgb(0.90, 0.35, 0.30),
             glow_usable: Color::srgb(0.76, 0.55, 1.0),
             glow_conditional: Color::srgb(1.0, 0.99, 0.70),
-            glass: Color::srgba(0.08, 0.15, 0.30, 0.70),
-            glass_strong: Color::srgba(0.06, 0.12, 0.25, 0.92),
-            glass_border: Color::srgba(0.62, 0.78, 1.0, 0.24),
-            primary: Color::srgb(0.36, 0.66, 1.0),
-            primary_hover: Color::srgb(0.50, 0.76, 1.0),
-            primary_press: Color::srgb(0.26, 0.52, 0.90),
-            on_primary: Color::srgb(0.03, 0.07, 0.16),
-            secondary: Color::srgba(0.55, 0.72, 1.0, 0.12),
-            secondary_hover: Color::srgba(0.55, 0.72, 1.0, 0.24),
-            secondary_press: Color::srgba(0.55, 0.72, 1.0, 0.36),
-            border_hover: Color::srgba(0.70, 0.84, 1.0, 0.60),
-            backdrop_top: Color::srgb(0.05, 0.12, 0.28),
-            backdrop_bottom: Color::srgb(0.02, 0.04, 0.10),
-            backdrop_bloom: Color::srgba(0.28, 0.55, 1.0, 0.16),
-            wash: Color::srgb(0.02, 0.05, 0.12),
+            glass: Color::srgba(0.12, 0.10, 0.30, 0.70),
+            glass_strong: Color::srgba(0.09, 0.07, 0.22, 0.92),
+            glass_border: Color::srgba(0.82, 0.80, 1.0, 0.26),
+            primary: Color::srgb(0.56, 0.42, 1.0),
+            primary_hover: Color::srgb(0.66, 0.54, 1.0),
+            primary_press: Color::srgb(0.45, 0.32, 0.88),
+            on_primary: Color::srgb(0.98, 0.98, 1.0),
+            secondary: Color::srgba(0.72, 0.68, 1.0, 0.12),
+            secondary_hover: Color::srgba(0.72, 0.68, 1.0, 0.24),
+            secondary_press: Color::srgba(0.72, 0.68, 1.0, 0.36),
+            border_hover: Color::srgba(0.80, 0.84, 1.0, 0.60),
+            backdrop_top: Color::srgb(0.06, 0.15, 0.22),
+            backdrop_bottom: Color::srgb(0.06, 0.03, 0.14),
+            backdrop_bloom: Color::srgba(0.35, 0.60, 1.0, 0.16),
+            backdrop_bloom_violet: Color::srgba(0.62, 0.35, 1.0, 0.18),
+            wash: Color::srgb(0.04, 0.03, 0.11),
         }
     }
 }
@@ -372,6 +383,16 @@ mod tests {
         let theme = Theme::default();
         let (distance, who) = closest(theme.accent, theme.corp);
         assert!(distance >= APART, "the accent and the Corp's blue are {distance:.3} OKLab apart under {who}");
+    }
+
+    /// The accent rings the encountered ice and a card that just changed;
+    /// the usable glow rings a card that can act. Both sit on a card's
+    /// edge, so a ring must never be mistaken for an offer.
+    #[test]
+    fn the_accent_is_not_the_usable_glow() {
+        let theme = Theme::default();
+        let (distance, who) = closest(theme.accent, theme.glow_usable);
+        assert!(distance >= APART, "the accent and the usable glow are {distance:.3} OKLab apart under {who}");
     }
 
     #[test]

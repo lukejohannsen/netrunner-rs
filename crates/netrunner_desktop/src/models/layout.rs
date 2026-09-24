@@ -813,6 +813,47 @@ pub fn menu_box(window: (f32, f32), over: Anchor, rows: usize) -> MenuBox {
     MenuBox { left, right, top, bottom, max_width, max_height: max_height.min(height - 2.0 * inset).max(1.0) }
 }
 
+/// Where a drop-down's open list goes, against the head it hangs from:
+/// which side, and how large it may be. The list is sized to its
+/// choices up to these bounds and scrolls past them.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ListBox {
+    /// The list grows upward from the head's top edge rather than down
+    /// from its bottom edge.
+    pub opens_up: bool,
+    pub max_height: f32,
+    pub max_width: f32,
+}
+
+/// The height one row of a drop-down's list is estimated at, the list's
+/// own padding included once — used only to choose a side, as
+/// [`menu_box`] uses its estimate.
+pub const LIST_ROW: f32 = 40.0;
+
+/// Where the list of a drop-down with `rows` choices, hanging from
+/// `head`, goes on a `window`.
+///
+/// **Below is preferred**, as a drop-down's name says, but only when the
+/// whole list fits there. Otherwise it goes above if it fits there, and
+/// otherwise to whichever side has more room, where it scrolls. The
+/// height is always that side's room and never an estimate. So a
+/// list can never run off the window: the deck lists sit at the foot of
+/// the new-game form, and a list that always opened downward put every
+/// deck past the first few below the window's edge, where nothing could
+/// reach them.
+pub fn list_box(window: (f32, f32), head: Anchor, rows: usize) -> ListBox {
+    let (width, height) = (window.0.max(1.0), window.1.max(1.0));
+    let inset = PADDING.min(width / 4.0).min(height / 4.0);
+    let wanted = rows.max(1) as f32 * LIST_ROW;
+    let below = (height - head.bottom() - MENU_GAP - inset).max(0.0);
+    let above = (head.top() - MENU_GAP - inset).max(0.0);
+    let opens_up = !(wanted <= below || (wanted > above && below >= above));
+    let room = if opens_up { above } else { below };
+    let left = head.x - head.width / 2.0;
+    // `min` before `max`, never `clamp`: on a tiny window the bounds cross.
+    ListBox { opens_up, max_height: room.min(height - 2.0 * inset).max(1.0), max_width: (width - left - inset).max(head.width).max(1.0) }
+}
+
 /// The advance one character is counted at, as a fraction of the font
 /// size, when guessing how many lines a string will take.
 ///
@@ -1202,4 +1243,43 @@ mod tests {
         let more = lines.into_iter().chain(["[ ] End the run."; 4]);
         assert!(encounter_art(natural, 1600.0, 280.0, more).is_some_and(|(_, h)| h <= natural.1));
     }
+    #[test]
+    fn a_list_at_the_foot_of_the_window_opens_upward_and_stays_on_it() {
+        let window = (1280.0, 800.0);
+        let head = Anchor { x: 400.0, y: 700.0, width: 400.0, height: 44.0 };
+        let list = list_box(window, head, 20);
+        assert!(list.opens_up);
+        assert!(head.top() - MENU_GAP - list.max_height >= 0.0, "{list:?} runs off the top");
+    }
+
+    #[test]
+    fn a_list_near_the_top_opens_downward_and_stays_on_it() {
+        let window = (1280.0, 800.0);
+        let head = Anchor { x: 400.0, y: 60.0, width: 400.0, height: 44.0 };
+        let list = list_box(window, head, 40);
+        assert!(!list.opens_up);
+        assert!(head.bottom() + MENU_GAP + list.max_height <= window.1, "{list:?} runs off the bottom");
+    }
+
+    #[test]
+    fn a_short_list_opens_downward_whenever_it_fits() {
+        let head = Anchor { x: 400.0, y: 600.0, width: 400.0, height: 44.0 };
+        assert!(!list_box((1280.0, 800.0), head, 3).opens_up);
+    }
+
+    #[test]
+    fn a_list_is_never_wider_than_the_room_to_the_right() {
+        let head = Anchor { x: 1100.0, y: 300.0, width: 300.0, height: 44.0 };
+        let list = list_box((1280.0, 800.0), head, 5);
+        assert!(head.x - head.width / 2.0 + list.max_width <= 1280.0);
+    }
+
+    #[test]
+    fn a_tiny_window_places_a_list_without_panicking() {
+        for window in [(0.0, 0.0), (10.0, 10.0), (200.0, 60.0)] {
+            let list = list_box(window, Anchor { x: 5.0, y: 5.0, width: 100.0, height: 44.0 }, 50);
+            assert!(list.max_height >= 1.0 && list.max_width >= 1.0);
+        }
+    }
+
 }
