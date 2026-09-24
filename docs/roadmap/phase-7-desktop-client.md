@@ -4171,5 +4171,43 @@ eleven so the addresses above do not move:
 19. **Open decklists as a game option; an offered hand sort** beside the
     person's own order.
 
+Added by the person (24 September 2026), numbered on so the addresses
+above do not move. Neither is borrowed from jinteki, but both belong to
+the same kind of work, so they go on this list:
+
+20. **Archives and the Heap show cards large enough to read.** Asked
+    for because the cards in both piles' sheets are too small to see.
+    Today (`zone_sheet` in `screens/game.rs`) a pile's sheet draws each
+    card at `FaceSize::Thumb` in a wrapping row inside a scroll area
+    capped at 460 px. Each face is already a `Click::Inspect` that
+    opens the card over the sheet. What is wanted:
+    - the faces a size up from `Thumb`;
+    - the box scrolls, so a large pile still fits the window at the
+      new size (the cap is set to fit the larger faces, and the sheet
+      is an overlay, so the board still never scrolls);
+    - a click on a face opens that card large, as a click on any other
+      card does.
+
+    Check first whether that last click reaches the card in play today.
+    If it does, the fix is only the size and the cap; if it does not,
+    that is a bug to fix first.
+21. **A card opened only to read sits at the right-hand side of the
+    window, not over the middle of the board.** Asked for with play
+    between two people in mind: while one chair reads a card, the
+    other may still be playing, and a panel over the middle hides the
+    field the reader is watching. This covers every *reading* surface:
+    the sheet a secondary click opens (the card, an install beside its
+    state, a zone's contents), the card opened over a zone sheet, and
+    the card browser's inspector if it overlaps the same way.
+    **The decision pop-up stays centred.** A choice pauses the game on
+    both sides for the moment it takes, so putting it in the middle is
+    the point. The same split is already drawn in the code:
+    `Game::dismissed_by_a_click_away` names the reading surfaces a
+    click that misses closes, and the pop-up is not one of them. So
+    this is a placement change for that one group, in
+    `models::layout`. The right column (the status, the prompt and the
+    run panel) is where the reader's eye already goes, so check what it
+    covers there at the smallest window the board supports.
+
 Not borrowed, with the reasons in the doc: slash commands that edit state,
 and diffs on the wire.
