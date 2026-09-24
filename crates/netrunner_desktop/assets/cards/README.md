@@ -1,28 +1,26 @@
 # Card backs
 
-The two card backs are the client's three-tier assets in full (see
-`AGENTS.md`, "Desktop client conventions"): both are drawn in-app
-(`src/card_back.rs` — the side's colour, an inner rim, a circuit-trace
-pattern) so the client never lacks one; the official Null Signal Games
-backs are fetched into the cache directory (`images/back-corp.png`,
-`images/back-runner.png`, beside the scans) on the same opt-in as the
-scans and the icon font (Settings → card images) and put in place of the
-drawn ones, mid-game if that is when they land; a PNG here replaces
-both; and a file of the same name under `<data dir>/netrunner/assets/cards/`
-replaces that.
+Both printings' backs ship here, and Settings → **Card backs** picks
+one (Null Signal Games' by default, Fantasy Flight Games' the other),
+as jinteki.net offers them:
 
-    back-corp.png
-    back-runner.png
+    backs/nsg/back-corp.png     backs/nsg/back-runner.png
+    backs/ffg/back-corp.png     backs/ffg/back-runner.png
 
-Null Signal Games does not publish its backs, and they are not this
-project's to redistribute, so nothing is committed here: the fetch reads
-the copies jinteki.net serves for its own table
-(`netrunner_card_sync::CARD_BACK_CORP_URL`, `CARD_BACK_RUNNER_URL`), for
-the player's own screen, exactly as the scans are read from NetrunnerDB.
-A drop-in is still the way to use a different back. Any size works — the
-face is drawn at 5:7 and the image is stretched to it, so a 5:7 source
-keeps its shape; a sixteen-bit PNG (the official ones are) is narrowed
-to eight-bit sRGB on load so it is not drawn washed out.
+They are the copies jinteki.net ships in its own repository, unchanged,
+and are all rights reserved: shipped with credit to their owners and
+removed if an owner asks (`../CREDITS.md`, "Art under no licence").
+Changing the setting mid-game swaps every back on screen at once, under
+the same image handles (`src/card_images.rs`).
+
+A player's own back beats either: `back-corp.png` / `back-runner.png`
+under `<data dir>/netrunner/assets/cards/`. With no file at all, the
+back is drawn in code (`src/card_back.rs`: the side's colour, an inner
+rim, a circuit-trace pattern), so the client never lacks one.
+
+Any size works — the face is drawn at 5:7 and the image is stretched to
+it, so a 5:7 source keeps its shape; a sixteen-bit PNG (NSG's are) is
+narrowed to eight-bit sRGB on load so it is not drawn washed out.
 
 Card *fronts* have no file tier: they are downloaded from NetrunnerDB
 into the cache directory on request and never committed. NetrunnerDB's
