@@ -69,7 +69,8 @@ use std::sync::Arc;
 
 use netrunner_client::actions::{pop_log_entries, push_linked_log_line, LogLine};
 use netrunner_client::board::{encounter_subroutines, routes, transitions, ActionMap, Affordance, Asks, AutoBreak, Control, Encounter, Next, Pile, Prompt, Route, RunTrail, Target, Transition};
-use netrunner_client::play::{lone_pass, GameEndReason, MatchMessage};
+use netrunner_client::play::{lone_pass, GameEndReason, MatchMessage, PublicHistoryEntry};
+use netrunner_client::tally::Tally;
 use netrunner_client::run_pass::RunPass;
 use netrunner_client::standing::{optional_trigger, standing_answer, Answer, Answers, OptionalPrompt};
 use netrunner_client::record::RecordReport;
@@ -370,6 +371,14 @@ pub struct Game {
     /// The Corp said "no more this run" (`Intent::PassTheRun`). Seen by
     /// every view, so it ends with the run.
     pub run_pass: RunPass,
+    /// The chair's own log as it arrived, for [`Game::tally`] to be
+    /// recounted from when a take-back drops the end of it.
+    entries: Vec<PublicHistoryEntry>,
+    /// What each side has done so far (`netrunner_client::tally`): the
+    /// start-of-game box reads what the Corp did with its hand, and the
+    /// end of the match is its table. The live match's only — a replay
+    /// is put at a position by `Intent::Show`, and has no end panel.
+    pub tally: Tally,
 }
 
 impl Game {
@@ -408,6 +417,8 @@ impl Game {
             answers: Answers::default(),
             asking_again: false,
             run_pass: RunPass::default(),
+            entries: Vec::new(),
+            tally: Tally::default(),
         }
     }
 
@@ -762,6 +773,8 @@ impl Game {
                     self.transitions.extend(transitions(before, &view, &entry));
                 }
                 push_linked_log_line(&mut self.log, &entry, &self.registry, Some(&view));
+                self.tally.add(&entry);
+                self.entries.push(entry);
                 self.follow_run(&view);
                 self.view = Some(*view);
                 self.follow_hand();
@@ -845,6 +858,8 @@ impl Game {
             // follows hands the controls back.
             MatchMessage::Rewound { view, removed, .. } => {
                 pop_log_entries(&mut self.log, removed, "You took that back.");
+                self.entries.truncate(self.entries.len().saturating_sub(removed));
+                self.tally = Tally::of(&self.entries);
                 self.asking_again = true;
                 // A pass taken for the person is taken back like any
                 // other, and would be taken again at once.
@@ -1984,6 +1999,34 @@ mod tests {
         say(&mut game, MatchMessage::Rewound { view: view(), removed: 0, kind: Rewind::Undo });
         assert!(game.log.last().is_some_and(|line| line.text.contains("took that back")));
     }
+    /// The end-of-match table counts what still happened: a take-back
+    /// drops the moves it undid from the tally as it does from the log.
+    #[test]
+    fn a_take_back_takes_its_counts_off_the_tally() {
+        use netrunner_client::play::Rewind;
+        use netrunner_core::rules::GameState;
+        use netrunner_core::view::build_client_view;
+
+        let registry = Arc::new(netrunner_client::decks::sample_deck_registry());
+        let mut state = GameState::new(1);
+        state.phase = GamePhase::Action(Side::Runner);
+        let view = || Box::new(build_client_view(&state, &registry, Side::Runner));
+        let say = |game: &mut Game, message: MatchMessage| game.apply(Intent::Message(MatchMessageRef(message)));
+        let click_for_a_credit = || PublicHistoryEntry {
+            turn_number: 1,
+            side: Side::Runner,
+            action: netrunner_core::rules::PublicAction::Visible(PlayerAction::GainCreditClick { side: Side::Runner }),
+            events: vec![GameEvent::ClickSpent { side: Side::Runner }, GameEvent::CreditsGained { side: Side::Runner, amount: 1 }],
+        };
+
+        let mut game = Game::new(registry.clone(), Side::Runner);
+        say(&mut game, MatchMessage::Applied { entry: click_for_a_credit(), view: view() });
+        say(&mut game, MatchMessage::Applied { entry: click_for_a_credit(), view: view() });
+        assert_eq!((game.tally.runner.clicks_spent, game.tally.runner.credits_gained), (2, 2));
+        say(&mut game, MatchMessage::Rewound { view: view(), removed: 1, kind: Rewind::Free });
+        assert_eq!((game.tally.runner.clicks_spent, game.tally.runner.credits_gained), (1, 1), "the second click no longer happened");
+    }
+
     /// A card's "you may" answered Always is answered so from then on,
     /// without a click; a take-back puts the question back in front of
     /// the person rather than answering it again at once.

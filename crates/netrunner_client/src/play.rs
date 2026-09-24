@@ -46,7 +46,7 @@ use netrunner_core::decks::DeckFile;
 use netrunner_core::rules::{GameState, MatchRules, PlayerAction, Side};
 use netrunner_core::view::ClientView;
 use netrunner_session::{
-    HistoryEntry, MatchHistory, MatchRecordHeader, PublicHistoryEntry, RecordedBot, Seat, Session, SessionStep, StallReason, SubmitError,
+    HistoryEntry, MatchHistory, MatchRecordHeader, RecordedBot, Seat, Session, SessionStep, StallReason, SubmitError,
     UNDO_DEPTH,
 };
 
@@ -55,6 +55,10 @@ pub use netrunner_session::Rewind;
 /// Re-exported so a client that only ever holds a `MatchHandle` need not
 /// name the session crate for the one type its `Ended` carries.
 pub use netrunner_session::GameEndReason;
+
+/// Re-exported for the same reason: `Applied` carries one, and a client
+/// that keeps its log (to recount `tally::Tally` after a take-back) names it.
+pub use netrunner_session::PublicHistoryEntry;
 
 use crate::record::{self, BotKind, RecordReport, SeatRecord, SeatRecordSpec};
 

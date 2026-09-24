@@ -565,6 +565,34 @@ pub fn choice_faces(available: (f32, f32), n: usize) -> (f32, usize) {
     (best.0.max(1.0), best.1)
 }
 
+/// What the start-of-game box keeps under its row of identities: one
+/// line saying whose each is.
+pub const OPENING_CAPTION: f32 = 24.0;
+
+/// The width to draw the start-of-game box's cards at, and how many of the
+/// `hand` to a row: [`choice_faces`]'s search, with a row of two
+/// identities over the hand at the same width. The hand's cards carry no
+/// button — the keep and the mulligan are under them — so only the
+/// identities' row has a caption. Every hand card and both identities are
+/// one size, because the box is a look at the table, not a choice between
+/// its cards.
+pub fn opening_faces(available: (f32, f32), hand: usize) -> (f32, usize) {
+    let (width, height) = available;
+    let n = hand.max(1);
+    let mut best = (0.0_f32, n);
+    for rows in 1..=n {
+        let per_row = n.div_ceil(rows);
+        let across = per_row.max(2) as f32;
+        let by_width = (width - (across - 1.0) * CHOICE_GAP) / across;
+        let by_height = (height - OPENING_CAPTION - rows as f32 * CHOICE_GAP) / (1.4 * (rows as f32 + 1.0));
+        let face = by_width.min(by_height).min(CHOICE_FACE_MAX).floor();
+        if face > best.0 {
+            best = (face, per_row);
+        }
+    }
+    (best.0.max(1.0), best.1)
+}
+
 /// How far from the person's chair a row of the board sits.
 ///
 /// **The depth the board has is two things: a scale and a shadow.** The
@@ -813,6 +841,23 @@ pub fn wrapped_lines(text: &str, width: f32, size: f32) -> usize {
 
 #[cfg(test)]
 mod tests {
+
+    /// Five cards and the two identities fit the pop-up's box at the
+    /// laptop window, drawn wide enough to read, and never taller than the
+    /// box; a box too short takes a second row of the hand rather than
+    /// run off the window.
+    #[test]
+    fn the_opening_box_fits_its_cards_and_both_identities() {
+        let (face, per_row) = opening_faces((1200.0, 560.0), 5);
+        assert_eq!(per_row, 5, "one row of five at a wide window");
+        let rows = 5usize.div_ceil(per_row) as f32;
+        assert!(face >= 150.0, "{face}");
+        assert!(1.4 * face * (rows + 1.0) + OPENING_CAPTION + rows * CHOICE_GAP <= 560.0);
+        assert!(5.0 * face + 4.0 * CHOICE_GAP <= 1200.0);
+        let (narrow, per_row) = opening_faces((500.0, 900.0), 5);
+        assert!(per_row < 5, "a narrow box wraps the hand");
+        assert!(per_row as f32 * narrow + (per_row as f32 - 1.0) * CHOICE_GAP <= 500.0);
+    }
     use super::*;
 
     /// Two cards drawn by Top-Down Solutions, and a hand of nine, each fit

@@ -20,6 +20,7 @@ pub mod diff;
 pub mod facts;
 pub mod hud;
 pub mod onward;
+pub mod opening;
 pub mod phase;
 pub mod preview;
 pub mod rez;
