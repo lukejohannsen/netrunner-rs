@@ -4307,6 +4307,53 @@ said who won and why and nothing about how.
   the desktop's `the_mulligan_shows_both_identities_and_the_whole_hand`
   and `the_end_of_the_match_has_its_table`.
 
+### 4av. The glows can be seen by a colour-blind player — DONE (24 September 2026)
+
+Phase 7 §8 item 18, from jinteki's Okabe–Ito palette. **The two moods
+could always be told apart. The problem was each mood against the border
+it sits beside.** A glow is a halo right against a card's border, and
+that border is the card's faction colour, or the side's colour when the
+card is face down. A glow the same colour as its border just looks like
+a thicker border. The colours were measured with each pair's OKLab
+distance under Machado et al.'s (2009) full-severity simulations of
+protanopia, deuteranopia and tritanopia, and under normal vision:
+
+- **The yellow glow on an NBN card: 0.03 for every viewer.** A playable
+  NBN card showed no glow at all, whether or not the viewer was colour
+  blind.
+- **The purple glow on a Criminal card: 0.02 under protanopia**; against
+  the Corp's back 0.05; against Haas-Bioroid 0.09–0.10 for everyone.
+- Purple against yellow: 0.24 at worst (tritanopia), so the moods
+  themselves were fine.
+
+**Okabe–Ito itself does not fix this:** its reddish purple, yellow, sky
+blue and orange each come within 0.04–0.07 of a faction colour under at
+least one simulation. That palette keeps its eight colours apart from one
+another, and here the other colours are the seven factions', which
+between them take the whole hue wheel. **Lightness is what is left.** A
+search over the purple and yellow families found a light lavender
+(`0.76, 0.55, 1.0`) and a pale yellow (`1.0, 0.99, 0.70`). Each is at
+least 0.12 from every faction, side and `danger` colour under all four
+views, and 0.24 from the other mood. The moods keep their meaning and
+their hue families, so AGENTS.md §5's "purple … yellow" still describes
+them.
+
+- `theme::tests::the_glows_survive_colour_blindness` holds the bound at
+  0.10 and names the pair and the viewer that break it. On the old
+  colours it names five pairs.
+  `a_broken_subroutine_and_a_fired_one_are_told_apart` holds the run
+  lane's filled dots, which differ only in colour (`accent` against
+  `danger`, 0.14 at worst under deuteranopia).
+- **Not changed, with the reason:** the transition outline (`accent`) is
+  0.07 from Shaper's green under tritanopia. The outline is a sharp line
+  drawn one pixel off the border, not a halo on it, so its shape already
+  sets it apart. Moving the whole client's accent colour to fix it is a
+  separate decision. The terminal client's `Magenta` and `Yellow` are
+  the terminal's own palette and are not the client's to measure.
+- Screenshots on both chairs (Fine Print for the NBN board): the
+  lavender reads on server plates and the Stack, and the pale yellow on a
+  run's plates and pop-up buttons. No `scroll area` line is the board.
+
 ## 8. Borrowed from jinteki — OPEN (19 September 2026)
 
 From [`docs/jinteki-comparison.md`](../jinteki-comparison.md) §5, in the
@@ -4372,8 +4419,8 @@ eleven so the addresses above do not move:
     commands.~~ Done in §4ag.
 16. ~~**An end-of-game table and a start-of-game box.**~~ Done in §4au.
 17. ~~**Card names in the log open the card.**~~ Done in §4at.
-18. **Check the affordance and transition colours against a
-    colour-blind-safe palette.**
+18. ~~**Check the affordance and transition colours against a
+    colour-blind-safe palette.**~~ Done in §4av.
 19. **Open decklists as a game option; an offered hand sort** beside the
     person's own order.
 
