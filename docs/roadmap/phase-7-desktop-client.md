@@ -4149,7 +4149,9 @@ exist, never a new action.
 8. ~~**Ghost Trojans in the program row.**~~ Done in §4an.
 9. ~~**Identical rig cards stacked** with a count.~~ Done in §4al.
 10. ~~**Run and turn timing diagrams.**~~ Done in §4ao.
-11. **A spectator seat.**
+11. ~~**A spectator seat.**~~ Dropped (24 September 2026, at the
+    person's request): no longer on the list. Phase 4's server-side
+    spectators are unaffected.
 
 Added by the second pass (20 September 2026, doc §6.6), numbered on from
 eleven so the addresses above do not move:
