@@ -4151,6 +4151,60 @@ piles' sheets were too small to see.
   sends nothing, Escape returns to the sheet) and the layout's
   `a_pile_sheet_holds_whole_rows_and_fits_the_window`.
 
+### 4as. A card opened to read sits at the right, and the field stays in view — DONE (24 September 2026)
+
+Phase 7 §8 item 21, asked for by the person with play between two
+people in mind: one chair reads a card while the other may still be
+playing, and a panel over the middle of the board hid the field the
+reader was watching.
+
+- **The split was already drawn.** `Game::dismissed_by_a_click_away`
+  names the reading surfaces a click that misses closes: the sheet a
+  secondary click opens (a card, an install beside its state, a zone's
+  contents), a card opened over a zone sheet, and the timing charts.
+  That predicate now also decides placement
+  (`layout::Placement::of`), so there is still one list of reading
+  surfaces. The decision pop-up is not an overlay and is not moved;
+  the forms (options, keys) and the three panels that ask a question
+  (the end of the match, a stall, the quit prompt) stay centred.
+- **Where it sits:** against the window's right edge, its right edge
+  level with the right column's (`PADDING` in), vertically centred.
+  Placed by flex rather than by an absolute left computed from the
+  window, so a resize moves the panel without a respawn;
+  `Placement::left` states the same geometry for the layout test.
+- **The wash is light behind a reading surface** — 0.3 against the
+  0.75 a form or a question keeps — because a panel at the side under
+  a 75% wash would still have hidden the field. It is still there and
+  still the press that closes the sheet, so the board under it takes
+  no click while the card is open; reading does not become a way to
+  play through the sheet.
+- **What it covers at the smallest window (1280×800):** a card alone
+  (`SHEET_CARD`, 414 px) covers the right column and 24 px of the
+  board's right edge — the status, the prompt and the log, which is
+  where the reader's eye already is. An install's sheet (800) covers
+  410 of the board's 866 px, about half, and a zone's (960, four
+  `PILE_FACE` cards across, item 20's width, kept) 570, about two
+  thirds; both leave the board's left side and the whole field
+  under the light wash visible. Narrowing the zone sheet would have
+  undone item 20's four across, so the widths are unchanged and only
+  their place moves.
+- **The card browser's inspector already sits at the right**, as a
+  column beside the grid, and overlaps nothing; no change there.
+- **Screenshots checked** at 1280×800 from the Runner's chair: an
+  install's sheet (`NETRUNNER_SHEET=1`), the Heap
+  (`NETRUNNER_PILE=heap`), a card opened over it (`heap+card`), and an
+  end of match that stayed centred under the full wash. The dev log's
+  scroll areas are the pile sheet's box and a zero-sized one, never
+  the board.
+- **Tests:** the layout's
+  `a_reading_surface_sits_over_the_right_column_not_the_field`
+  (1280, 1366 and 1920 wide: the card sheet covers the whole right
+  column and at most 40 px of the board, centred it sat over the
+  field, and no sheet leaves the window or reaches the board's left
+  edge), and the desktop's sheet and form tests, which now assert the
+  wash's placement and alpha (a reading surface at the right under the
+  light wash, the options in the middle).
+
 ## 8. Borrowed from jinteki — OPEN (19 September 2026)
 
 From [`docs/jinteki-comparison.md`](../jinteki-comparison.md) §5, in the
@@ -4242,8 +4296,8 @@ the same kind of work, so they go on this list:
     Check first whether that last click reaches the card in play today.
     If it does, the fix is only the size and the cap; if it does not,
     that is a bug to fix first.
-21. **A card opened only to read sits at the right-hand side of the
-    window, not over the middle of the board.** Asked for with play
+21. ~~**A card opened only to read sits at the right-hand side of the
+    window, not over the middle of the board.**~~ Done in §4as. Asked for with play
     between two people in mind: while one chair reads a card, the
     other may still be playing, and a panel over the middle hides the
     field the reader is watching. This covers every *reading* surface:
