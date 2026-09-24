@@ -9,6 +9,8 @@
 //! that need no window.
 
 pub mod browser;
+pub mod deck_editor;
+pub mod decks;
 pub mod drag;
 pub mod game;
 pub mod layout;

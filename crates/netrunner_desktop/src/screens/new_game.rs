@@ -136,7 +136,8 @@ fn open_menu(core: &ClientCore) -> Result<StartMenu, String> {
     // No data directory means no saved decks; the built-in ones are still
     // listed, so any path that does not exist will do.
     let decks_dir = core.decks_dir.clone().unwrap_or_else(|| std::env::temp_dir().join("netrunner-no-decks"));
-    StartMenu::open(&decks_dir, core.record_path.as_deref(), &core.player_name(), &core.registry, defaults())
+    let format = core.settings.format.unwrap_or(NsgFormat::Startup);
+    StartMenu::open(&decks_dir, core.record_path.as_deref(), &core.player_name(), &core.registry, format, defaults())
 }
 
 /// What each side does, in a line, on its card.
@@ -220,11 +221,29 @@ fn side_card(parent: &mut ChildSpawnerCommands, theme: &Theme, side: Side, index
 fn deck_picker(parent: &mut ChildSpawnerCommands, theme: &Theme, pane: Pane, title: String, decks: &[DeckRow], cursor: usize) {
     parent.spawn(Node { flex_direction: FlexDirection::Column, flex_grow: 1.0, flex_basis: px(0), row_gap: px(10), ..default() }).with_children(|column| {
         column.spawn(widgets::overline(theme, title));
-        let choices = decks.iter().map(|deck| Choice::plain(if deck.saved { format!("{} (saved)", deck.name) } else { deck.name.clone() })).collect();
+        // A saved deck that cannot start a game is listed anyway, marked,
+        // so a person finds the deck they built and reads why; Start
+        // refuses it with that reason.
+        let choices = decks
+            .iter()
+            .map(|deck| {
+                let saved = if deck.saved { " (saved)" } else { "" };
+                let problem = if deck.problem.is_some() { " — not playable" } else { "" };
+                Choice::plain(format!("{}{saved}{problem}", deck.name))
+            })
+            .collect();
         spawn_dropdown(column, theme, "", choices, cursor, PaneDropdown(pane));
         if let Some(deck) = decks.get(cursor) {
             let style = deck.style.as_deref().unwrap_or("balanced");
             column.spawn((widgets::dim(theme, format!("{} · plays {style}", deck.identity)), Node { margin: UiRect::left(px(20)), ..default() }));
+            if let Some(problem) = &deck.problem {
+                column.spawn((
+                    Text::new(format!("Can't start a game: {problem}")),
+                    theme.font(size::SMALL),
+                    TextColor(theme.danger),
+                    Node { margin: UiRect::left(px(20)), ..default() },
+                ));
+            }
         }
     });
 }
@@ -366,6 +385,10 @@ fn controls(
                     dirty.notice = Some("No deck to play: the list is empty".to_string());
                     continue;
                 };
+                if let Some(problem) = menu.0.choice_problem() {
+                    dirty.notice = Some(problem);
+                    continue;
+                }
                 match start(&core, &choice) {
                     Ok(active) => {
                         commands.insert_resource(active);

@@ -270,6 +270,33 @@ pub fn styled_button<T: Into<String>, M: Bundle>(theme: &Theme, kind: ButtonKind
     )
 }
 
+/// [`styled_button`] at the size of a row inside a panel — a deck tile's
+/// Edit and Copy, the editor's − and +: the same pill and the same three
+/// kinds, shorter and in the small type, because a row of full pills per
+/// tile was most of the tile.
+pub fn small_button<T: Into<String>, M: Bundle>(theme: &Theme, kind: ButtonKind, text: T, marker: M) -> impl Bundle + use<T, M> {
+    let ([rest, hover, press], ink) = kind.looks(theme);
+    (
+        Button,
+        Themed,
+        marker,
+        Node {
+            min_height: px(30),
+            flex_shrink: 0.0,
+            padding: UiRect::axes(px(14), px(5)),
+            justify_content: JustifyContent::Center,
+            align_items: AlignItems::Center,
+            border: UiRect::all(px(1)),
+            border_radius: BorderRadius::MAX,
+            ..default()
+        },
+        BackgroundColor(rest.bg),
+        BorderColor::all(rest.border),
+        Dressed { slot: Slot::Button, drawn: rest, hover: Some(hover), pressed: Some(press) },
+        children![(Text::new(text), theme.font(size::SMALL), TextColor(ink))],
+    )
+}
+
 /// A round button for one glyph — a stepper's `<` and `>`: a
 /// [`button`] with no padding, as wide as it is tall.
 pub fn round_button<T: Into<String>, M: Bundle>(theme: &Theme, text: T, marker: M) -> impl Bundle + use<T, M> {

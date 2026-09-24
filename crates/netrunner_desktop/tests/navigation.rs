@@ -431,3 +431,122 @@ fn the_splash_moves_on_by_itself_or_on_a_key() {
     }
     assert_eq!(screen(&app), AppScreen::MainMenu, "and then goes on without a key");
 }
+
+/// Presses an entity the way a pointer would, and lets the press land.
+fn tap(app: &mut App, entity: Entity) {
+    app.world_mut().entity_mut(entity).insert(Interaction::Pressed);
+    app.update();
+    // The press may have left the screen, taking the button with it.
+    if let Ok(mut button) = app.world_mut().get_entity_mut(entity) {
+        button.insert(Interaction::None);
+    }
+    app.update();
+    app.update();
+}
+
+fn find<C: Component + Clone>(app: &mut App, wanted: impl Fn(&C) -> bool) -> Option<Entity> {
+    app.world_mut().query::<(Entity, &C)>().iter(app.world()).find(|(_, c)| wanted(c)).map(|(e, _)| e)
+}
+
+fn open_decks(app: &mut App) {
+    app.update();
+    app.update();
+    app.world_mut().write_message(Navigate(AppScreen::Decks));
+    app.update();
+    app.update();
+    assert_eq!(screen(app), AppScreen::Decks);
+}
+
+/// The whole of building from a published list: Copy to edit on a
+/// built-in tile saves a copy and opens it, a press on a pool card adds
+/// a copy, and the file on disk has it at once — no Save to forget.
+#[test]
+fn a_built_in_deck_copies_into_an_editor_that_saves_every_add() {
+    use netrunner_desktop::screens::decks::{Model, TileAction, TileButton};
+    use netrunner_desktop::screens::deck_editor::{Model as EditorModel, PoolCard};
+    let (mut app, dir) = headless_client();
+    open_decks(&mut app);
+    let row = app.world().resource::<Model>().0.rows.iter().position(|row| row.deck.id == "stolen_goods").unwrap();
+    let copy = find::<TileButton>(&mut app, |button| button.row == row && button.action == TileAction::Copy).expect("a Copy to edit button");
+    tap(&mut app, copy);
+    assert_eq!(screen(&app), AppScreen::DeckEditor);
+    let (id, before, read_only) = {
+        let editor = &app.world().resource::<EditorModel>().0;
+        (editor.deck().id.clone(), editor.deck().size(), editor.read_only)
+    };
+    assert!(!read_only, "the copy is the person's own");
+    assert!(dir.join("decks").join(format!("{id}.json")).exists(), "the copy was saved before it opened");
+
+    let limit = |app: &App, card: &netrunner_core::dsl::CardId| app.world().resource::<EditorModel>().0.draft.copies(card);
+    let card = app.world_mut().query::<&PoolCard>().iter(app.world()).map(|c| c.0.clone()).find(|c| limit(&app, c) == 0).expect("a pool card the deck lacks");
+    let face = find::<PoolCard>(&mut app, |c| c.0 == card).unwrap();
+    tap(&mut app, face);
+    let saved = netrunner_client::deck_store::read_file(&dir.join("decks").join(format!("{id}.json"))).unwrap();
+    assert_eq!(saved.size(), before + 1, "the add was written as it was made");
+
+    press(&mut app, KeyCode::Escape, Key::Escape);
+    app.update();
+    app.update();
+    assert_eq!(screen(&app), AppScreen::Decks, "Escape leads back to the shelf");
+    assert!(app.world().resource::<Model>().0.rows.iter().any(|row| row.saved && row.deck.id == id));
+}
+
+/// A built-in deck's View opens it read-only: no pool to add from.
+#[test]
+fn a_built_in_deck_opens_read_only() {
+    use netrunner_desktop::screens::decks::{Model, TileAction, TileButton};
+    use netrunner_desktop::screens::deck_editor::{Model as EditorModel, PoolCard};
+    let (mut app, _dir) = headless_client();
+    open_decks(&mut app);
+    let row = app.world().resource::<Model>().0.rows.iter().position(|row| row.deck.id == "stolen_goods").unwrap();
+    let view = find::<TileButton>(&mut app, |button| button.row == row && button.action == TileAction::Open).unwrap();
+    tap(&mut app, view);
+    assert_eq!(screen(&app), AppScreen::DeckEditor);
+    assert!(app.world().resource::<EditorModel>().0.read_only);
+    let editor = &app.world().resource::<EditorModel>().0;
+    let rows = netrunner_client::deck_builder::entries(editor.deck(), netrunner_client::deck_builder::CardBook::new(&netrunner_client::decks::sample_deck_registry(), &[])).len();
+    let spread = app.world_mut().query::<&PoolCard>().iter(app.world()).count();
+    assert_eq!(spread, rows, "the deck's own cards, no pool to add from");
+}
+
+/// New deck asks the side, then the identity, and opens the empty deck.
+#[test]
+fn a_new_deck_is_a_side_then_an_identity_and_opens_empty() {
+    use netrunner_desktop::screens::decks::{Control, PopupButton};
+    use netrunner_desktop::screens::deck_editor::Model as EditorModel;
+    let (mut app, dir) = headless_client();
+    open_decks(&mut app);
+    let new = find::<Control>(&mut app, |c| *c == Control::New).unwrap();
+    tap(&mut app, new);
+    let runner = find::<PopupButton>(&mut app, |b| *b == PopupButton::Side(netrunner_core::rules::Side::Runner)).expect("the side question");
+    tap(&mut app, runner);
+    let identity = find::<PopupButton>(&mut app, |b| matches!(b, PopupButton::Identity(_))).expect("the identities");
+    tap(&mut app, identity);
+    assert_eq!(screen(&app), AppScreen::DeckEditor);
+    let editor = &app.world().resource::<EditorModel>().0;
+    assert!(editor.deck().cards.is_empty());
+    assert_eq!(editor.deck().side, netrunner_core::rules::Side::Runner);
+    assert!(!editor.status.standing.is_legal(), "an empty deck is saved all the same");
+    assert!(dir.join("decks").join(format!("{}.json", editor.deck().id)).exists());
+}
+
+/// Copy to edit inside a read-only deck rebuilds the editor on the copy,
+/// with a pool where the notes were.
+#[test]
+fn copy_to_edit_in_the_viewer_opens_the_copy_with_a_pool() {
+    use netrunner_desktop::screens::decks::{Model, TileAction, TileButton};
+    use netrunner_desktop::screens::deck_editor::{Control, Model as EditorModel, PoolCard};
+    let (mut app, _dir) = headless_client();
+    open_decks(&mut app);
+    let row = app.world().resource::<Model>().0.rows.iter().position(|row| row.deck.id == "stolen_goods").unwrap();
+    let view = find::<TileButton>(&mut app, |button| button.row == row && button.action == TileAction::Open).unwrap();
+    tap(&mut app, view);
+    let copy = find::<Control>(&mut app, |c| *c == Control::Copy).expect("Copy to edit");
+    tap(&mut app, copy);
+    assert_eq!(screen(&app), AppScreen::DeckEditor);
+    let editor = &app.world().resource::<EditorModel>().0;
+    assert!(!editor.read_only);
+    assert_ne!(editor.deck().id, "stolen_goods");
+    assert_eq!(roots(&mut app, AppScreen::DeckEditor), 1, "the old screen was taken down");
+    assert!(app.world_mut().query::<&PoolCard>().iter(app.world()).count() > 20, "the pool is there");
+}

@@ -62,6 +62,13 @@ pub struct Theme {
     pub corp: Color,
     pub runner: Color,
     pub danger: Color,
+    /// A deck that can start a game: the deck builder's "legal" badge.
+    /// A mint that is neither side's colour nor a glow's, and always
+    /// beside the word, so no reader depends on the hue.
+    pub legal: Color,
+    /// A deck the engine runs but the format refuses: amber, between
+    /// `legal` and `danger`, and likewise always beside its words.
+    pub caution: Color,
     /// The ring on a card the engine will accept an ordinary move on
     /// (`board::Affordance::Usable`). Purple because the two colours
     /// already spoken for on a card are the sides' own — Corp blue and
@@ -147,6 +154,8 @@ impl Default for Theme {
             corp: Color::srgb(0.16, 0.42, 0.85),
             runner: Color::srgb(0.80, 0.16, 0.20),
             danger: Color::srgb(0.90, 0.35, 0.30),
+            legal: Color::srgb(0.45, 0.88, 0.66),
+            caution: Color::srgb(0.98, 0.76, 0.36),
             glow_usable: Color::srgb(0.76, 0.55, 1.0),
             glow_conditional: Color::srgb(1.0, 0.99, 0.70),
             glass: Color::srgba(0.12, 0.10, 0.30, 0.70),

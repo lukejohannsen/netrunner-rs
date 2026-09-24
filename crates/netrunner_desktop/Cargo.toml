@@ -15,8 +15,12 @@ netrunner_card_sync = { path = "../netrunner_card_sync" }
 # the card images (NetrunnerDB's 750-pixel scans are WebP only). Nothing
 # 3D — no PBR, glTF or lighting — so the build carries only what a 2D
 # card game draws. `default_font` rides in with `ui`; the themed
-# font under `assets/fonts` sits on top of it.
-bevy = { version = "0.19", default-features = false, features = ["ui", "audio", "png", "jpeg", "webp"] }
+# font under `assets/fonts` sits on top of it. `system_clipboard` is the
+# deck builder's: `ui` brings a `Clipboard` resource that only ever
+# holds an in-process buffer, and a decklist pasted from NetrunnerDB or
+# copied out to a friend has to cross the process boundary (arboard,
+# which Bevy already chose for its text editing).
+bevy = { version = "0.19", default-features = false, features = ["ui", "audio", "png", "jpeg", "webp", "system_clipboard"] }
 # A card scan is resampled to the width it is drawn at with `image`: the
 # crate Bevy already decodes with, so nothing new is built.
 image = { version = "0.25", default-features = false }

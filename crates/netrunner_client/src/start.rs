@@ -18,6 +18,7 @@ use std::path::Path;
 /// that holds the form should not have to name the bots crate for them.
 pub use netrunner_bots::{Level, Personality};
 use netrunner_core::cards::CardRegistry;
+use netrunner_core::format::NsgFormat;
 use netrunner_core::rules::Side;
 
 use crate::deck_store::{self, Origin};
@@ -38,13 +39,21 @@ pub struct DeckRow {
     pub style: Option<String>,
     pub identity: String,
     pub saved: bool,
+    /// Why the deck cannot start a game in the format the form was
+    /// opened for — the validators' first complaint — or `None` for a
+    /// legal deck. A saved deck may be illegal (a builder saves whatever
+    /// is built), and the form lists it anyway, marked, rather than
+    /// leaving a person wondering where their deck went; Start then
+    /// refuses it with this reason (`StartMenu::choice_problem`).
+    pub problem: Option<String>,
 }
 
 impl DeckRow {
     pub fn label(&self) -> String {
         let style = self.style.as_deref().unwrap_or("balanced");
         let saved = if self.saved { " (saved)" } else { "" };
-        format!("{} · {style} · {}{saved}", self.name, self.identity)
+        let problem = if self.problem.is_some() { " — not playable here" } else { "" };
+        format!("{} · {style} · {}{saved}{problem}", self.name, self.identity)
     }
 }
 
@@ -130,15 +139,21 @@ impl StartMenu {
     /// the screen; the game itself will refuse it later. `defaults` are
     /// the deck ids a flag-less run would play (Corp, then Runner), so the
     /// deck cursors start there.
+    ///
+    /// A deck file that cannot be read is left out rather than emptying
+    /// the form (`deck_store::list_lenient`); each deck is checked in
+    /// `format`, the one a game will be started in.
     pub fn open(
         decks_dir: &Path,
         record_path: Option<&Path>,
         player: &str,
         registry: &CardRegistry,
+        format: NsgFormat,
         defaults: [String; 2],
     ) -> Result<Self, String> {
         let mut decks: [Vec<DeckRow>; 2] = [Vec::new(), Vec::new()];
-        for stored in deck_store::list(decks_dir)? {
+        let (stored_decks, _unreadable) = deck_store::list_lenient(decks_dir);
+        for stored in stored_decks {
             // A `Sweep` deck is a test deck, legal only in Eternal: listed
             // here it would be a choice the game then refuses under the
             // default format. The deck builder still shows it, with its
@@ -154,6 +169,7 @@ impl StartMenu {
                 style: stored.deck.style.clone(),
                 identity,
                 saved: !matches!(stored.origin, Origin::Embedded),
+                problem: stored.deck.validate(registry, format).err().map(|error| error.to_string()),
             });
         }
         let suggested = match record_path.map(LocalRecord::load) {
@@ -268,6 +284,17 @@ impl StartMenu {
         Some(StartChoice { human: self.human(), level: self.level(), style: self.style(), corp_deck, runner_deck })
     }
 
+    /// Why the chosen decks cannot start a game, naming the deck — or
+    /// `None` when both can. The desktop's Start and the terminal's Enter
+    /// ask this first, so an illegal saved deck is refused with its
+    /// reason at the form rather than by the resolver after it.
+    pub fn choice_problem(&self) -> Option<String> {
+        [self.own_decks().get(self.own_deck), self.opponent_decks().get(self.opponent_deck)]
+            .into_iter()
+            .flatten()
+            .find_map(|deck| deck.problem.as_ref().map(|problem| format!("{} cannot be played in this format: {problem}", deck.name)))
+    }
+
     /// One change to the form. The keys that mean these are each
     /// client's: the terminal binds Tab and the arrows in `tui::start`,
     /// the desktop's drop-downs call `set_cursor` directly.
@@ -354,6 +381,7 @@ mod tests {
             style: Some(if side == Side::Corp { "rush" } else { "aggressive" }.to_string()),
             identity: "Someone".to_string(),
             saved: false,
+            problem: None,
         }
     }
 
@@ -456,6 +484,24 @@ mod tests {
         let marked: Vec<&String> = panes[1].2.iter().filter(|row| row.contains("suggested")).collect();
         assert_eq!(marked.len(), 1);
         assert!(marked[0].starts_with("2. apprentice"), "{}", marked[0]);
+    }
+
+    /// An illegal deck is listed, marked, and named when chosen.
+    #[test]
+    fn a_deck_with_a_problem_is_listed_and_refused_by_name() {
+        let mut illegal = row("my_deck", Side::Runner);
+        illegal.problem = Some("deck has 3 cards".to_string());
+        let mut menu = StartMenu::with_decks(
+            [vec![row("discretion_advised", Side::Corp)], vec![row("stolen_goods", Side::Runner), illegal]],
+            [Level::Operator; 2],
+            ["discretion_advised".to_string(), "stolen_goods".to_string()],
+        );
+        assert_eq!(menu.choice_problem(), None);
+        assert!(menu.panes()[4].2.is_empty() || menu.own_decks().len() == 1, "the Corp chair's own list");
+        menu.set_cursor(Pane::OpponentDeck, 1);
+        let problem = menu.choice_problem().expect("the illegal deck is chosen");
+        assert!(problem.contains("my deck") && problem.contains("3 cards"), "{problem}");
+        assert!(menu.opponent_decks()[1].label().contains("not playable"));
     }
 
     #[test]
