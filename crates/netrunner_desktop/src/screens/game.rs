@@ -137,7 +137,7 @@ use crate::skin::{self, Drawn, Slot};
 use crate::table;
 use crate::theme::{size, Theme};
 use crate::widgets::card_face::{spawn_back, spawn_face, FaceSize};
-use crate::widgets::{self, Pressed};
+use crate::widgets::{self, anchor_of, Pressed};
 
 pub struct GamePlugin;
 
@@ -1077,16 +1077,6 @@ fn escape(keys: Res<ButtonInput<KeyCode>>, mut captured: ResMut<InputCaptured>, 
     }
     captured.0 = true;
     pending.0.push(Intent::Back);
-}
-
-/// The box a node was laid out in, in logical window pixels: the
-/// global transform's translation is its centre and the computed size
-/// its extent, both physical until scaled back.
-fn anchor_of(node: &ComputedNode, transform: &UiGlobalTransform) -> Anchor {
-    let scale = node.inverse_scale_factor();
-    let centre = transform.translation * scale;
-    let size = node.size() * scale;
-    Anchor { x: centre.x, y: centre.y, width: size.x, height: size.y }
 }
 
 /// Whether the key that turns the primary button into the secondary is

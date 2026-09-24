@@ -57,7 +57,7 @@ use crate::nav::{screen_root, Navigate};
 use crate::screens::AppScreen;
 use crate::theme::{size, Theme};
 use crate::widgets::card_face::{spawn_face, FaceSize};
-use crate::widgets::dropdown::{spawn_dropdown, Choice, DropdownChanged};
+use crate::widgets::dropdown::{spawn_dropdown, Choice, Dropdown, DropdownChanged};
 use crate::widgets::text_field::{TextField, TextFieldEvent};
 use crate::widgets::{self, Pressed};
 
@@ -551,8 +551,13 @@ fn columns(grid: &ComputedNode) -> usize {
 
 /// The arrows and their friends move the selection. Read as key
 /// presses rather than `just_pressed`, so a held key repeats the way
-/// the window manager repeats it.
-fn keyboard(mut keys: MessageReader<KeyboardInput>, grid: Query<&ComputedNode, With<Grid>>, mut browser: ResMut<Model>, mut dirty: ResMut<Dirty>) {
+/// the window manager repeats it. While a filter's list is open the
+/// same keys move its highlight, so the grid leaves them alone.
+fn keyboard(mut keys: MessageReader<KeyboardInput>, grid: Query<&ComputedNode, With<Grid>>, lists: Query<&Dropdown>, mut browser: ResMut<Model>, mut dirty: ResMut<Dirty>) {
+    if lists.iter().any(|list| list.open) {
+        keys.clear();
+        return;
+    }
     let columns = grid.single().map(columns).unwrap_or(1) as isize;
     for key in keys.read().filter(|key| key.state == ButtonState::Pressed) {
         let step = match key.key_code {

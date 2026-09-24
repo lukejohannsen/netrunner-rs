@@ -321,6 +321,54 @@ fn the_card_browser_filters_through_drop_downs_that_escape_closes_first() {
     assert_eq!(app.world_mut().query::<&Dropdown>().get(app.world(), side).unwrap().selected, 2, "the respawned drop-down shows Runner");
 }
 
+/// A deck list is browsed with the keys as well as the pointer: the
+/// arrows move a highlight from the chosen deck, Enter chooses it and
+/// closes the list, and the form's own deck changes with it. The deck
+/// lists sit at the foot of the form, where a list that ran off the
+/// window left the pointer nothing to reach; the keys reach every deck
+/// whatever the window.
+#[test]
+fn a_deck_list_is_browsed_and_chosen_with_the_keys() {
+    use netrunner_client::start::Pane;
+    use netrunner_desktop::screens::new_game::PaneDropdown;
+    use netrunner_desktop::widgets::dropdown::{Dropdown, Head, Item};
+    let (mut app, _dir) = headless_client();
+    app.update();
+    app.update();
+    app.world_mut().write_message(Navigate(AppScreen::NewGame));
+    app.update();
+    app.update();
+    let own = |app: &mut App| app.world_mut().query::<(Entity, &PaneDropdown)>().iter(app.world()).find(|(_, p)| p.0 == Pane::OwnDeck).map(|(e, _)| e).unwrap();
+    let root = own(&mut app);
+    let (before, decks) = {
+        let dropdown = app.world_mut().query::<&Dropdown>().get(app.world(), root).unwrap();
+        (dropdown.selected, dropdown.choices.len())
+    };
+    assert!(decks > 3, "{decks} decks");
+    let head = app.world_mut().query::<(Entity, &Head)>().iter(app.world()).find(|(_, h)| h.0 == root).map(|(e, _)| e).unwrap();
+    app.world_mut().entity_mut(head).insert(Interaction::Pressed);
+    app.update();
+    app.update();
+    assert_eq!(app.world_mut().query::<&Item>().iter(app.world()).count(), decks, "every deck is in the list");
+
+    // Home, then down twice: the third deck, whatever was chosen before.
+    press(&mut app, KeyCode::Home, Key::Home);
+    app.update();
+    press(&mut app, KeyCode::ArrowDown, Key::ArrowDown);
+    press(&mut app, KeyCode::ArrowDown, Key::ArrowDown);
+    app.update();
+    assert_eq!(app.world_mut().query::<&Dropdown>().get(app.world(), root).unwrap().highlight, 2);
+    press(&mut app, KeyCode::Enter, Key::Enter);
+    app.update();
+    app.update();
+    assert_eq!(app.world_mut().query::<&Item>().iter(app.world()).count(), 0, "Enter closed the list");
+    assert_eq!(screen(&app), AppScreen::NewGame, "and started nothing");
+    // The form respawns on a change, so the drop-down is found again.
+    let root = own(&mut app);
+    let after = app.world_mut().query::<&Dropdown>().get(app.world(), root).unwrap().selected;
+    assert_eq!(after, 2, "the third deck is chosen (it was {before})");
+}
+
 /// About credits every third party the register names, bundled or
 /// fetched, and Escape leads back to the menu like any other screen.
 #[test]

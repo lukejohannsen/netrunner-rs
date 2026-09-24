@@ -27,7 +27,7 @@ impl Plugin for WidgetsPlugin {
         // and an open list closing is the one that wins.
         app.add_message::<Pressed>()
             .add_message::<dropdown::DropdownChanged>()
-            .add_systems(Update, (button_feedback, (dropdown::dropdowns, text_field::edit_text_fields).chain().in_set(Captures)).chain())
+            .add_systems(Update, (button_feedback, (dropdown::dropdowns, text_field::edit_text_fields).chain().in_set(Captures), dropdown::keep_highlight_in_view).chain())
             // Registered on its own rather than at the head of that
             // chain: putting it there moved `button_feedback` relative to
             // every screen's `controls`, and a dozen board tests stopped
@@ -398,6 +398,16 @@ pub fn scrollbar(theme: &Theme, target: Entity) -> impl Bundle + use<> {
         BackgroundColor(theme.secondary.with_alpha(0.06)),
         children![(ScrollbarThumb { border_radius: BorderRadius::MAX, border: UiRect::ZERO }, BackgroundColor(theme.border_hover))],
     )
+}
+
+/// The box a node was laid out in, in logical window pixels: the
+/// global transform's translation is its centre and the computed size
+/// its extent, both physical until scaled back.
+pub fn anchor_of(node: &ComputedNode, transform: &UiGlobalTransform) -> crate::models::layout::Anchor {
+    let scale = node.inverse_scale_factor();
+    let centre = transform.translation * scale;
+    let size = node.size() * scale;
+    crate::models::layout::Anchor { x: centre.x, y: centre.y, width: size.x, height: size.y }
 }
 
 /// A short line at the bottom of a screen for what just happened.

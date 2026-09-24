@@ -36,7 +36,8 @@ pub enum TextFieldEvent {
 /// so Escape cancels the edit rather than leaving the screen. An Escape
 /// a widget earlier in `nav::Captures` has already taken — an open
 /// drop-down closing — is not also a cancel, or one key would do two
-/// things.
+/// things; nor is an Enter, which an open drop-down's list takes to
+/// choose its highlighted row.
 pub fn edit_text_fields(
     mut commands: Commands,
     mut keys: MessageReader<KeyboardInput>,
@@ -52,6 +53,7 @@ pub fn edit_text_fields(
     for (entity, mut field, children) in &mut fields {
         for key in &presses {
             match key {
+                Key::Enter if escape_taken => {}
                 Key::Enter => {
                     commands.entity(entity).insert(TextFieldEvent::Committed(field.text.trim().to_string()));
                 }
