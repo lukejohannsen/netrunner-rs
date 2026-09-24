@@ -4630,6 +4630,61 @@ it without leaving the editor. The desktop crate's tests and clippy.
 Screenshots at 2560×1600 of the reader over the pool and over the
 identity picker.
 
+### 5c. Decks are sorted and filtered, and the pool is narrowed by set, format and playability — DONE (24 September 2026)
+
+`feat/deck-sort-and-filter`. Asked for: sort the person's decks by
+side, faction and format, and a card pool that filters by set and by
+format legality, because "Only Startup / Not playable yet" would not
+survive older sets or new ones.
+
+**The Decks shelf** (`models::decks::ShelfView`): beside the side pills,
+a Faction filter (the factions the shelf's decks are built on), a
+"Legal in" filter (Any format, or each format, read off each deck's
+`DeckStatus::legal_in`), and "Sort by" Name, Side, Faction (the
+identity's) or Format (the first format in Settings' order the deck is
+legal in, decks legal nowhere last). Each section is sorted on its own,
+so the person's decks stay first. The view is kept across a visit to
+the editor: the shelf is re-read on every entry, and a sort that reset
+each time a deck was opened would be set again and again.
+
+**The pool** (`netrunner_client::deck_builder::PoolFilter`): the two
+switches became four drop-downs beside Faction and Type — **Set** (All
+sets, or each set in release order), **Legal in** (Any format, or each
+format; the Settings format by default), **Show** (Playable, Not
+playable yet, Every printing — `Playability`) and **Sort by** (Type,
+Title, Faction, Cost, Influence, Set — `PoolSort`). Clear resets the
+filters and keeps the sort, and the sort follows the person from one
+deck to the next.
+
+**Decisions taken.**
+
+- **The set order is read off the cards** (`deck_builder::set_order`):
+  a NetrunnerDB code is the set's place in release order and then the
+  card's number, so a set's lowest code dates it (Core 01xxx before
+  System Gateway 30xxx). A table of set codes would be one more list to
+  extend with each new set; this one extends itself.
+- **Set and format are asked of the printing, everything else of the
+  card it is.** The Core Set's Hedge Fund is a catalog-only entry
+  (`nrdb_1110`) beside System Gateway's playable one; judged on the
+  shown card, the Core filter missed it. Now the Core printing stands
+  for the playable card, so a set's pool finds its reprints and a
+  format admits a card through whichever printing it allows.
+- **"Cost" is the top corner's number**: an agenda's advancement
+  requirement, every other card's cost.
+- **Playability is three answers, not a switch**, so "what is waiting to
+  be implemented in this set" is one choice, not a filter the pool
+  cannot express.
+
+**Verified.** `the_pool_filters_by_set_and_playability_and_sorts_every_way`
+(release order, a set's reprints, the two playability halves make the
+whole, every sort keeps the same cards and orders by its key),
+`the_pool_narrows_by_set_and_format_and_clear_keeps_the_sort`, and
+`the_shelf_sorts_by_side_faction_and_format_and_filters_by_faction_and_format`
+(every section ordered by its key, a faction filter, Startup leaving the
+Eternal-only test decks out). Workspace tests for the two crates,
+workspace clippy silent. Screenshots at 2560×1600 of the shelf with
+"Sort by" open and the editor with "Set" open.
+
 ## 8. Borrowed from jinteki — OPEN (19 September 2026)
 
 From [`docs/jinteki-comparison.md`](../jinteki-comparison.md) §5, in the

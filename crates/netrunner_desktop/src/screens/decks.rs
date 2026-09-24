@@ -31,19 +31,21 @@ use bevy::window::FileDragAndDrop;
 
 use netrunner_client::card_face::Face;
 use netrunner_client::deck_builder::{self, CardBook, Standing};
-use netrunner_client::settings::format_label;
+use netrunner_client::cards::faction_label;
+use netrunner_client::settings::{format_label, FORMATS};
 use netrunner_core::dsl::{CardDefinition, CardId};
 use netrunner_core::format::NsgFormat;
 use netrunner_core::rules::Side;
 
 use crate::card_images::CardImages;
 use crate::core::ClientCore;
-use crate::models::decks::{Intent, Outcome, Shelf, ShelfRow};
+use crate::models::decks::{Intent, Outcome, Shelf, ShelfRow, ShelfSort};
 use crate::nav::{screen_root, Captures, InputCaptured, Navigate};
 use crate::screens::deck_editor::EditDeck;
 use crate::screens::AppScreen;
 use crate::theme::{size, Theme};
 use crate::widgets::card_face::{spawn_face, FaceSize};
+use crate::widgets::dropdown::{spawn_dropdown, Choice, DropdownChanged};
 use crate::widgets::{self, ButtonKind, Pressed};
 
 pub struct DecksPlugin;
@@ -57,6 +59,42 @@ impl Plugin for DecksPlugin {
             .add_systems(Update, escape_closes_the_picker.in_set(Captures).run_if(in_state(AppScreen::Decks)))
             .add_systems(Update, (controls, dropped_files, refresh).chain().run_if(in_state(AppScreen::Decks)));
     }
+}
+
+/// The toolbar's drop-downs.
+#[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
+enum ShelfFilter {
+    Faction,
+    Legal,
+    Sort,
+}
+
+/// A drop-down's choices, the intent each applies, and which is chosen.
+fn shelf_entries(shelf: &Shelf, filter: ShelfFilter) -> (Vec<Choice>, Vec<Intent>, usize) {
+    let view = &shelf.view;
+    let mut entries: Vec<(String, Intent, bool)> = Vec::new();
+    match filter {
+        ShelfFilter::Faction => {
+            entries.push(("All".into(), Intent::Faction(None), view.faction.is_none()));
+            for faction in shelf.factions() {
+                entries.push((faction_label(faction).into(), Intent::Faction(Some(faction)), view.faction == Some(faction)));
+            }
+        }
+        ShelfFilter::Legal => {
+            entries.push(("Any format".into(), Intent::Legal(None), view.legal.is_none()));
+            for format in FORMATS {
+                entries.push((format_label(format).to_string(), Intent::Legal(Some(format)), view.legal == Some(format)));
+            }
+        }
+        ShelfFilter::Sort => {
+            for sort in ShelfSort::ALL {
+                entries.push((sort.label().into(), Intent::Sort(sort), view.sort == sort));
+            }
+        }
+    }
+    let current = entries.iter().position(|(_, _, chosen)| *chosen).unwrap_or(0);
+    let (choices, intents) = entries.into_iter().map(|(text, intent, _)| (Choice::plain(text), intent)).unzip();
+    (choices, intents, current)
 }
 
 /// The toolbar's buttons.
@@ -136,8 +174,12 @@ fn format_of(core: &ClientCore) -> NsgFormat {
 fn spawn(mut commands: Commands, theme: Res<Theme>, core: Res<ClientCore>, images: Res<CardImages>, kept: Option<Res<Model>>) {
     // The notice an editor's Copy or an import left survives the trip
     // back; the rows are re-read, since the editor wrote to them.
-    let notice = kept.and_then(|kept| kept.0.notice.clone());
+    // So does how the shelf was being looked at: its side, filters and
+    // sort are the person's until they change them.
+    let notice = kept.as_ref().and_then(|kept| kept.0.notice.clone());
+    let view = kept.map(|kept| kept.0.view.clone()).unwrap_or_default();
     let mut shelf = Shelf::open(core.decks_dir.clone(), book(&core), format_of(&core));
+    shelf.view = view;
     if notice.is_some() {
         shelf.notice = notice;
     }
@@ -188,11 +230,15 @@ fn spawn_toolbar(parent: &mut ChildSpawnerCommands, theme: &Theme, shelf: &Shelf
     parent.spawn(widgets::button(theme, "Import from clipboard", Val::Auto, Control::Import));
     parent.spawn((Node { width: px(18), ..default() },));
     for (label, side) in [("All", None), ("Corp", Some(Side::Corp)), ("Runner", Some(Side::Runner))] {
-        let kind = if shelf.side == side { ButtonKind::Secondary } else { ButtonKind::Quiet };
+        let kind = if shelf.view.side == side { ButtonKind::Secondary } else { ButtonKind::Quiet };
         let mut button = parent.spawn(widgets::styled_button(theme, kind, label, Val::Auto, Control::Side(side)));
-        if shelf.side == side {
+        if shelf.view.side == side {
             button.insert(BorderColor::all(theme.accent));
         }
+    }
+    for (filter, label) in [(ShelfFilter::Faction, "Faction"), (ShelfFilter::Legal, "Legal in"), (ShelfFilter::Sort, "Sort by")] {
+        let (choices, _, current) = shelf_entries(shelf, filter);
+        spawn_dropdown(parent, theme, label, choices, current, filter);
     }
     let mut back = parent.spawn(widgets::styled_button(theme, ButtonKind::Quiet, "Back", Val::Auto, Control::Back));
     back.entry::<Node>().and_modify(|mut node| node.margin = UiRect::left(Val::Auto));
@@ -291,6 +337,7 @@ pub fn spawn_standing(parent: &mut ChildSpawnerCommands, theme: &Theme, standing
 fn controls(
     mut commands: Commands,
     mut pressed: MessageReader<Pressed>,
+    (mut chosen, filters): (MessageReader<DropdownChanged>, Query<&ShelfFilter>),
     marks: Query<&Control>,
     tiles: Query<&TileButton>,
     popup_buttons: Query<&PopupButton>,
@@ -309,6 +356,13 @@ fn controls(
     if wash.iter().any(|interaction| *interaction == Interaction::Pressed) {
         close_popup(&mut shelf.0, &mut popup, book);
         dirty.popup = true;
+    }
+    for DropdownChanged { dropdown, index } in chosen.read() {
+        let Ok(filter) = filters.get(*dropdown) else { continue };
+        let (_, intents, _) = shelf_entries(&shelf.0, *filter);
+        if let Some(intent) = intents.get(*index) {
+            outcome = shelf.0.apply(intent.clone(), book);
+        }
     }
     // An identity's card is a button with no theme (a picture has no
     // pill to recolour), so it reports through its own `Interaction`.
