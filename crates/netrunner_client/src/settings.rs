@@ -1,6 +1,6 @@
 //! What a player sets once and expects to stay set: the name they are
-//! recorded under, the format their decks are checked against, and the
-//! desktop client's preferences.
+//! recorded under, the format their decks are checked against, the
+//! desktop client's preferences, and the prompts they answered for good.
 //!
 //! **One file, one struct, every client.** The file has no
 //! `deny_unknown_fields` — a hand-edited file with a stray key should be
@@ -26,6 +26,8 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 
 use netrunner_core::format::NsgFormat;
+
+use crate::standing::Answers;
 
 /// Environment variable naming the settings file, for tests and for a
 /// player keeping two setups apart.
@@ -73,6 +75,10 @@ pub struct Settings {
     /// terminal-only player's file stays two fields long.
     #[serde(default, skip_serializing_if = "DesktopPrefs::is_default")]
     pub desktop: DesktopPrefs,
+    /// A card's "you may" answered for good (`standing`). Here rather
+    /// than in `desktop` because both clients honour it.
+    #[serde(default, skip_serializing_if = "Answers::is_empty")]
+    pub answers: Answers,
 }
 
 /// Preferences only the graphical client reads. `#[serde(default)]` on
@@ -382,7 +388,7 @@ mod tests {
     fn settings_desktop_block_survives_a_save_by_a_client_that_ignores_it() {
         let (dir, path) = temp_path("desktop_block");
         let desktop = DesktopPrefs { animation_speed: 2.0, download_images: true, ..Default::default() };
-        Settings { player: Some("case".to_string()), format: None, desktop: desktop.clone() }.save(&path).unwrap();
+        Settings { player: Some("case".to_string()), format: None, desktop: desktop.clone(), ..Settings::default() }.save(&path).unwrap();
         let mut reloaded = Settings::load(&path).unwrap();
         reloaded.player = Some("molly".to_string());
         reloaded.save(&path).unwrap();

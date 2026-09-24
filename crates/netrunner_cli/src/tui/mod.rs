@@ -36,6 +36,7 @@ use crate::bots;
 use crate::config::{BotKind, Config, Mode};
 use netrunner_client::actions::pop_log_entries;
 use netrunner_client::play::{lone_pass, stall_message};
+use netrunner_client::standing::{self, optional_trigger, standing_answer, Answer, Answers, PromptKey};
 use netrunner_client::decks;
 use crate::record::{self, SeatRecord};
 use crate::remote;
@@ -118,6 +119,7 @@ pub fn play_remote(
         Viewer::Spectator => None,
     };
     let mut app = App::new(registry, joined.viewer, joined.tx, joined.rx);
+    app.answers = crate::settings::answers();
     if let (Some(brought), Some(dealt)) = (brought, dealt)
         && brought != dealt
     {
@@ -187,6 +189,7 @@ pub fn play_local(terminal: &mut ratatui::DefaultTerminal, config: &Config) -> R
     let mut session = Session::new(state, registry.clone(), corp_seat, runner_seat).with_undo(UNDO_DEPTH);
 
     let mut ui = LocalUiState::new(registry, human_side);
+    ui.answers = crate::settings::answers();
     drive_local(terminal, &mut session, &mut ui, indexed_bot.as_mut(), human_side, seat)
 }
 
@@ -298,6 +301,7 @@ pub fn play_starter_game(
     };
     let mut session = Session::new(state, registry.clone(), corp_seat, runner_seat);
     let mut ui = LocalUiState::new(registry, human_side);
+    ui.answers = crate::settings::answers();
     drive_local(terminal, &mut session, &mut ui, None, human_side, seat)
 }
 
@@ -458,7 +462,18 @@ fn drive_local(
                 session.submit(pass).map_err(|error| format!("the lone pass was rejected: {error}"))?;
                 log_last(session, ui, human_side);
             }
+            // A card's "you may" the person answered for good: answered
+            // so, and logged under the action it took. Not straight after
+            // a take-back, which would give the answer back at once.
+            SessionStep::Awaiting { side, view } if side == human_side && !ui.asking_again && standing_answer(&view, session.registry(), &ui.answers).is_some() => {
+                let (action, answer) = standing_answer(&view, session.registry(), &ui.answers).expect("matched above");
+                let key = optional_trigger(&view, session.registry()).expect("an answer is to an optional trigger").key;
+                session.submit(action).map_err(|error| format!("a remembered answer was rejected: {error}"))?;
+                log_last(session, ui, human_side);
+                ui.action_log.push(format!("           ({})", standing::log_line(&key, answer, &ui.registry)));
+            }
             SessionStep::Awaiting { side, view } if side == human_side => {
+                ui.asking_again = false;
                 // A route through the ICE takes its next step before the
                 // person is asked; a step the engine refuses ends the
                 // route and the person is asked on the same view.
@@ -493,6 +508,7 @@ fn drive_local(
                     Prompted::TookBack => {
                         if let Some(rewound) = session.rewind() {
                             pop_log_entries(&mut ui.action_log, rewound.removed, "You took that back.");
+                            ui.asking_again = true;
                         }
                     }
                 }
@@ -594,6 +610,24 @@ fn prompt_human(
                 KeyCode::Up | KeyCode::Char('k') => ui.move_selection(-1),
                 KeyCode::Down | KeyCode::Char('j') => ui.move_selection(1),
                 KeyCode::Char('a') => ui.toggle_show_all(),
+                // `y` / `n`: this card's "you may", answered the same way
+                // from now on (`netrunner_client::standing`) — the
+                // option's own action, submitted as Enter would.
+                KeyCode::Char(letter @ ('y' | 'n')) => {
+                    let answer = if letter == 'y' { Answer::Always } else { Answer::Never };
+                    if let Some((key, action)) = ui.remember(answer) {
+                        match submit(action) {
+                            Ok(()) => {
+                                if let Err(error) = crate::settings::remember(key, answer) {
+                                    ui.last_rejection = Some(format!("the answer is kept for this game only: {error}"));
+                                }
+                                return Ok(Prompted::Submitted);
+                            }
+                            Err(SubmitError::Rules(error)) => ui.last_rejection = Some(error.to_string()),
+                            Err(error) => return Err(error.into()),
+                        }
+                    }
+                }
                 KeyCode::Enter | KeyCode::Char(' ') => {
                     if let Some(action) = ui.selected_action().or_else(|| ui.start_break()) {
                         match submit(action) {
@@ -681,6 +715,12 @@ struct LocalUiState {
     /// The route under way; `drive_local` asks it for the next step
     /// before the person is asked anything.
     breaking: Option<AutoBreak>,
+    /// The person's answers to optional triggers
+    /// (`netrunner_client::standing`), from the settings file.
+    answers: Answers,
+    /// A move was just taken back: the prompt it restores is asked, not
+    /// answered from `answers`.
+    asking_again: bool,
 }
 
 impl LocalUiState {
@@ -701,7 +741,24 @@ impl LocalUiState {
             breaks: Vec::new(),
             asks: Asks::default(),
             breaking: None,
+            answers: Answers::default(),
+            asking_again: false,
         }
+    }
+
+    /// The optional trigger on the prompt, answered `answer` for good:
+    /// the answer is kept in `answers` and the action that gives it is
+    /// returned to submit. `None` under a lesson, which answers nothing
+    /// for the person, and when the prompt is not one or has no option
+    /// the answer means.
+    fn remember(&mut self, answer: Answer) -> Option<(PromptKey, PlayerAction)> {
+        if self.coaching.is_some() {
+            return None;
+        }
+        let prompt = optional_trigger(self.view.as_ref()?, &self.registry)?;
+        let action = prompt.action(answer)?;
+        self.answers.set(prompt.key.clone(), Some(answer));
+        Some((prompt.key, action))
     }
 
     /// One inspector keypress, shared by the live prompt and the tests:
@@ -913,7 +970,9 @@ impl RenderableView for LocalUiState {
         self.view.as_ref().and_then(|view| crate::prose::decision_prompt(view, &self.registry))
     }
     fn notice(&self) -> Option<String> {
-        self.back.then(|| "u to take it back".to_string())
+        let remember = self.coaching.is_none().then(|| self.view.as_ref().and_then(|view| crate::app::remember_hint(view, &self.registry))).flatten();
+        let notices: Vec<String> = [self.back.then(|| "u to take it back".to_string()), remember].into_iter().flatten().collect();
+        (!notices.is_empty()).then(|| notices.join(" · "))
     }
 }
 

@@ -189,9 +189,13 @@ impl LearnMenu {
 enum SettingsRow {
     Player,
     Format,
+    /// The cards whose "you may" was answered for good
+    /// (`netrunner_client::standing`): Enter forgets them all. The
+    /// desktop client's settings screen forgets one at a time.
+    Answers,
 }
 
-const SETTINGS_ROWS: [SettingsRow; 2] = [SettingsRow::Player, SettingsRow::Format];
+const SETTINGS_ROWS: [SettingsRow; 3] = [SettingsRow::Player, SettingsRow::Format, SettingsRow::Answers];
 
 /// Longest player name the form accepts. An id, not an essay.
 const MAX_NAME: usize = 32;
@@ -268,6 +272,11 @@ impl SettingsForm {
                     self.cycle_format(1);
                     SettingsKey::Changed
                 }
+                SettingsRow::Answers if !self.settings.answers.is_empty() => {
+                    self.settings.answers = Default::default();
+                    SettingsKey::Changed
+                }
+                SettingsRow::Answers => SettingsKey::Continue,
             },
             KeyCode::Left | KeyCode::Char('h') | KeyCode::Right | KeyCode::Char('l') if SETTINGS_ROWS[self.cursor] == SettingsRow::Format => {
                 self.cycle_format(if matches!(key, KeyCode::Left | KeyCode::Char('h')) { -1 } else { 1 });
@@ -371,6 +380,13 @@ impl Menu {
                 self.screen = Screen::Record { lines, scroll: 0 };
             }
             Entry::Settings => {
+                // A game answers a card's "you may" for good straight into
+                // the file (`crate::settings::remember`), so the copy the
+                // menu started with is read again: saving it as it was
+                // would forget those answers.
+                if let Some(saved) = self.settings_path.as_ref().and_then(|path| Settings::load(path).ok()) {
+                    self.settings = saved;
+                }
                 self.screen = Screen::Settings(SettingsForm::new(self.settings.clone(), record::player_name(&self.base)));
             }
             Entry::Quit => return MenuStep::Quit,
@@ -575,12 +591,17 @@ impl Menu {
             (None, Some(name)) => name.clone(),
             (None, None) => format!("{}  (not set — Enter to choose one)", form.current_name),
         };
-        let rows = [format!("Player name   {player}"), format!("Format        {}  (Left/Right to change)", format_name(form.format()))];
+        let answers = match form.settings.answers.iter().count() {
+            0 => "none — a card's \"you may\" can be answered with y (always) or n (never)".to_string(),
+            1 => "1 card  (Enter forgets it)".to_string(),
+            count => format!("{count} cards  (Enter forgets them all)"),
+        };
+        let rows = [format!("Player name   {player}"), format!("Format        {}  (Left/Right to change)", format_name(form.format())), format!("Answers       {answers}")];
         let items: Vec<ListItem> = rows.into_iter().map(ListItem::new).collect();
         let mut state = ListState::default();
         state.select(Some(form.cursor));
         let [list, about] =
-            Layout::default().direction(Direction::Vertical).constraints([Constraint::Length(4), Constraint::Min(0)]).areas(area);
+            Layout::default().direction(Direction::Vertical).constraints([Constraint::Length(5), Constraint::Min(0)]).areas(area);
         frame.render_stateful_widget(
             List::new(items)
                 .block(Block::default().borders(Borders::ALL).title("Settings — Up/Down choose, Enter edits, Esc goes back"))

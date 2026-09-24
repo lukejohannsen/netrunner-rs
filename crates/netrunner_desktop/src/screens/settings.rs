@@ -10,6 +10,7 @@
 use bevy::prelude::*;
 
 use netrunner_client::record::player_name;
+use netrunner_client::standing::describe;
 
 use crate::core::{ClientCore, Notices};
 use crate::models::settings::{self as model, Intent, Row, MAX_NAME_LEN};
@@ -44,6 +45,10 @@ pub enum Control {
 #[derive(Component)]
 struct Rows;
 
+/// The panel the remembered answers live in; respawned with the rows.
+#[derive(Component)]
+struct Answers;
+
 /// Set by a change; `refresh` rebuilds the rows and clears it.
 #[derive(Resource, Default)]
 struct Dirty(bool);
@@ -61,12 +66,41 @@ fn spawn(mut commands: Commands, theme: Res<Theme>, core: Res<ClientCore>) {
         |path| format!("Saved to {}", path.display()),
     );
     let rows = commands.spawn((Rows, widgets::panel(&theme, px(720)))).id();
+    let answers = commands.spawn((Answers, widgets::panel(&theme, px(420)))).id();
+    // The answers beside the rows rather than under them: twelve rows
+    // already take most of a window's height, and the list grows with
+    // every card answered.
+    let columns = commands.spawn(Node { flex_direction: FlexDirection::Row, flex_wrap: FlexWrap::Wrap, justify_content: JustifyContent::Center, align_items: AlignItems::FlexStart, column_gap: px(16), row_gap: px(16), ..default() }).add_children(&[rows, answers]).id();
     commands.spawn((screen_root(AppScreen::Settings, theme.background), children![
         widgets::heading(&theme, AppScreen::Settings.title()),
         widgets::dim(&theme, saved_where),
         widgets::button(&theme, "Back", Val::Auto, Control::Back),
-    ])).add_child(rows);
+    ])).add_child(columns);
     commands.entity(rows).with_children(|parent| spawn_rows(parent, &theme, &core, &Row::ALL));
+    commands.entity(answers).with_children(|parent| spawn_answers(parent, &theme, &core));
+}
+
+/// The cards whose "you may" the person answered for good, each with the
+/// button that makes it ask again (`netrunner_client::standing`). The
+/// one place an answer is undone, so it names the card and the words it
+/// offers, as the pop-up did when the answer was given.
+fn spawn_answers(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore) {
+    parent.spawn(widgets::label(theme, "Remembered answers"));
+    if core.settings.answers.is_empty() {
+        parent.spawn((widgets::dim(theme, "None yet. A card that asks \"you may\" can be answered Always or Never from its prompt."), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
+        return;
+    }
+    for (index, entry) in core.settings.answers.iter().enumerate() {
+        let words = format!("{}: {}", entry.answer.label(), describe(&entry.key, &core.registry));
+        let mut node = parent.spawn((widgets::row(12.0), children![
+            (widgets::dim(theme, words), Node { flex_grow: 1.0, flex_shrink: 1.0, min_width: px(0), ..default() }, TextLayout::new(Justify::Left, LineBreak::WordBoundary)),
+        ]));
+        node.entry::<Node>().and_modify(|mut node| node.width = percent(100));
+        node.with_children(|controls| {
+            controls.spawn(widgets::button(theme, "Ask", Val::Auto, Control::Intent(Intent::Forget(index))));
+        });
+    }
+    parent.spawn(widgets::button(theme, "Forget all", Val::Auto, Control::Intent(Intent::ForgetAll)));
 }
 
 /// One row per entry of `rows`: the label, the value, and its control
@@ -184,14 +218,19 @@ fn name_edits(
     }
 }
 
-fn refresh(mut commands: Commands, mut dirty: ResMut<Dirty>, rows: Query<Entity, With<Rows>>, theme: Res<Theme>, core: Res<ClientCore>) {
+fn refresh(mut commands: Commands, mut dirty: ResMut<Dirty>, rows: Query<Entity, With<Rows>>, answers: Query<Entity, With<Answers>>, theme: Res<Theme>, core: Res<ClientCore>) {
     if !dirty.0 {
         return;
     }
     dirty.0 = false;
-    let Ok(rows) = rows.single() else { return };
-    commands.entity(rows).despawn_children();
-    commands.entity(rows).with_children(|parent| spawn_rows(parent, &theme, &core, &Row::ALL));
+    if let Ok(rows) = rows.single() {
+        commands.entity(rows).despawn_children();
+        commands.entity(rows).with_children(|parent| spawn_rows(parent, &theme, &core, &Row::ALL));
+    }
+    if let Ok(answers) = answers.single() {
+        commands.entity(answers).despawn_children();
+        commands.entity(answers).with_children(|parent| spawn_answers(parent, &theme, &core));
+    }
 }
 
 fn persist(core: &ClientCore, notices: &mut Notices) {

@@ -46,6 +46,7 @@ pub mod replay;
 pub mod selection;
 pub mod settings;
 pub mod skin;
+pub mod standing;
 pub mod table;
 pub mod start;
 

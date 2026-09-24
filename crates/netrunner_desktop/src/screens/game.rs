@@ -114,6 +114,7 @@ use netrunner_client::access::Access;
 use netrunner_client::board::action_map::server_name;
 use netrunner_client::board::{facts, hud, Affordance, Control, Encounter, IceState, Outcome as RunOutcome, Pile, Prompt, Stage, Target, Token, TokenKind, Transition, Zone};
 use netrunner_client::card_face::Face;
+use netrunner_client::standing::Answer;
 use netrunner_core::dsl::{CardId, CardType};
 use netrunner_core::rules::{GamePhase, InstallId, InstallSlot, PendingDecision, PlayerAction, RunPhase, ServerId, Side, SubroutineStatus};
 use netrunner_core::view::{ClientView, ServerView};
@@ -174,6 +175,9 @@ pub enum Click {
     Break(usize),
     /// Take the last move back (`Game::back_label`).
     TakeBack,
+    /// Answer the optional trigger on the prompt this way every time
+    /// (`Game::optional_prompt`).
+    Remember(Answer),
     /// A control-bar button.
     Control(Control),
     /// A face in a zone sheet: read the card over the sheet.
@@ -675,6 +679,8 @@ fn spawn(
     }
     root.add_child(body);
     commands.insert_resource(BoardFit::default());
+    let mut game = game;
+    game.answers = core.settings.answers.clone();
     commands.insert_resource(Model(game));
     let mut dirty = Dirty::default();
     dirty.all();
@@ -997,7 +1003,8 @@ fn autoplay(
         _ => dev.hold_access && Access::of(view, &client.registry).is_some(),
     }) || (dev.hold_break && !model.0.breaks.is_empty())
         || (dev.hold_ice && model.0.encounter().is_some())
-        || (dev.hold_trojan && model.0.view.as_ref().is_some_and(|view| view.runner.rig.iter().any(netrunner_client::board::rig::is_ghost)));
+        || (dev.hold_trojan && model.0.view.as_ref().is_some_and(|view| view.runner.rig.iter().any(netrunner_client::board::rig::is_ghost)))
+        || (dev.hold_may && model.0.optional_prompt().is_some());
     if held {
         dev.autoplayed = dev.autoplay;
         return;
@@ -1331,6 +1338,7 @@ pub(crate) fn controls(
             Ok(Click::Entry(index)) => intents.push(Intent::Choose(*index)),
             Ok(Click::Break(index)) => intents.push(Intent::Break(*index)),
             Ok(Click::TakeBack) => intents.push(Intent::TakeBack),
+            Ok(Click::Remember(answer)) => intents.push(Intent::Remember(*answer)),
             Ok(Click::Control(control)) => intents.push(Intent::Control(*control)),
             Ok(Click::Inspect(card)) => intents.push(Intent::InspectCard(Some(card.clone()))),
             Ok(Click::Expand(row)) => intents.push(Intent::Expand(*row)),
@@ -1363,7 +1371,17 @@ pub(crate) fn controls(
     }
     let Some(mut model) = model else { return };
     for intent in intents {
-        match model.0.apply(intent) {
+        let remembers = matches!(intent, Intent::Remember(_));
+        let outcome = model.0.apply(intent);
+        // An answer given for good is the settings file's, so the next
+        // game, and the terminal, know it too.
+        if remembers && matches!(outcome, Outcome::Submit(_)) && core.settings.answers != model.0.answers {
+            core.settings.answers = model.0.answers.clone();
+            if let Err(error) = core.save_settings() {
+                notices.push(format!("Settings not saved: {error}"));
+            }
+        }
+        match outcome {
             Outcome::Nothing => {}
             Outcome::Redraw => {
                 dirty.rail = true;
@@ -2883,6 +2901,7 @@ fn spawn_decision_popup(parent: &mut ChildSpawnerCommands, theme: &Theme, core: 
     // can have it. The width assumed is the narrowest the panel can be,
     // so a panel that comes out wider has fewer lines than this, never
     // more.
+    let remember = game.optional_prompt();
     let inner = POPUP_MIN_WIDTH - 2.0 * POPUP_PADDING;
     let lines = |text: &str, size: f32| layout::wrapped_lines(text, inner, size) as f32;
     let label_rows: f32 = buttons.iter().filter_map(|index| game.actions.entries.get(*index)).map(|entry| lines(&entry.label, size::BODY) * 22.0 + 14.0 + layout::ROW_GAP).sum();
@@ -2893,6 +2912,7 @@ fn spawn_decision_popup(parent: &mut ChildSpawnerCommands, theme: &Theme, core: 
         + game.rejection.as_ref().map_or(0.0, |_| 30.0)
         + label_rows
         + game.back_label().map_or(0.0, |_| 22.0 + 14.0 + layout::ROW_GAP)
+        + remember.as_ref().map_or(0.0, |_| lines(REMEMBER_CAPTION, size::SMALL) * 22.0 + 22.0 + 14.0 + 2.0 * layout::ROW_GAP)
         + if choices.is_empty() { layout::CHOICE_CAPTION } else { 0.0 };
     let available = (window.x - 2.0 * layout::PADDING - 2.0 * POPUP_PADDING, window.y - 2.0 * layout::PADDING - chrome);
     let count = if choices.is_empty() { usize::from(single.is_some()) } else { choices.len() };
@@ -3000,6 +3020,19 @@ fn spawn_decision_popup(parent: &mut ChildSpawnerCommands, theme: &Theme, core: 
                         glow(&mut panel.commands(), entity, theme, game.actions.affordance_of_entry(*index));
                     }
                 }
+                // A card's "you may" can be answered for good: under the
+                // answers themselves, as a second, smaller question about
+                // them, and never numbered — each is one of the buttons
+                // above, pressed and remembered
+                // (`netrunner_client::standing`).
+                if let Some(prompt) = &remember {
+                    panel.spawn((widgets::dim(theme, REMEMBER_CAPTION), TextLayout::new(Justify::Left, LineBreak::WordBoundary), rigid.clone()));
+                    panel.spawn(Node { flex_direction: FlexDirection::Row, column_gap: px(layout::ROW_GAP), width: percent(100), ..rigid.clone() }).with_children(|row| {
+                        for answer in prompt.offered() {
+                            row.spawn(widgets::button(theme, answer.label(), Val::Auto, Click::Remember(answer))).entry::<Node>().and_modify(|mut node| node.flex_grow = 1.0);
+                        }
+                    });
+                }
                 // The pop-up's wash blocks the rail, so the way back out
                 // of a prompt has to be in the prompt. Last, unlit, and
                 // never one of the numbered decisions: it answers nothing.
@@ -3009,6 +3042,9 @@ fn spawn_decision_popup(parent: &mut ChildSpawnerCommands, theme: &Theme, core: 
             });
         });
 }
+
+/// The words over the pop-up's Always and Never.
+const REMEMBER_CAPTION: &str = "Answer this card's question the same way every time:";
 
 /// A card the pop-up shows: its face at `size`, marked as a
 /// [`ChoiceCard`] so a secondary click reads it in the card sheet, or the

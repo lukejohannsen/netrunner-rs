@@ -3955,6 +3955,87 @@ or S.
   - the desktop's
     `t_or_a_press_on_the_phase_panel_opens_the_timing_with_the_step_in_play_lit`.
 
+### 4ap. A card's "you may" can be answered Always or Never, and the answer is kept — DONE (23 September 2026)
+
+Phase 7 §8 item 14, from jinteki's `core/optional.clj` autoresolve. The
+jinteki FAQ's quietest complaint is answering the same prompt the same
+way forty times a game. Here the repeat offenders are The Zwicky Group's
+"draw 1 card", Cookbook's counter, Dewi Subrotoputri on every successful
+run, Conduit and Superconducting Hub.
+
+- **`netrunner_client::standing`** is a client policy with
+  `play::lone_pass`'s shape:
+  - When the person has answered a prompt for good, the client submits
+    the `ResolvePendingChoice` that answer names, taken from
+    `legal_actions`, and does not ask.
+  - The engine still parks every prompt and hears every answer.
+  - `Session`, the bots, the sweeps and `ActionSpace` see nothing new,
+    and nothing under `netrunner_core` changed.
+- **What counts is read off the card.** The engine has no `optional`
+  flag: a printed "may" is a `PresentChoice` whose declined option is an
+  empty `Sequence` with the text `""`. A prompt counts when all of these
+  hold:
+  - it is the viewer's own and names its card;
+  - exactly one of its texts is `""`;
+  - the card has a non-`OnPlay` trigger holding a `PresentChoice` with
+    exactly those texts.
+
+  That leaves out an event's own "may" (the person just chose to play
+  it), an ability's, and the choices the engine builds by hand.
+- **The key is the card and its printed clauses**, never a trigger
+  index. So Dewi's two triggers are two answers, and Pantograph's scored
+  and stolen triggers print one sentence and share one answer.
+- **Always needs exactly one yes.** Mitra Aman's swap offers two, so the
+  pop-up offers it Never only.
+- **Paid choices always ask** (decided with the person). Net Shield's
+  "pay 1[credit]" and the agenda-counter upgrades would spend something
+  every time the cost happened to be affordable. That excludes about 17
+  cards' `OfferPaidChoice`s. The free "may"s are about 20 cards.
+- **Kept across games**, in `Settings::answers`. That is a top-level
+  field, not a `DesktopPrefs` one, so the terminal honours it too. The
+  alternative was a match-only answer, as jinteki keeps; it would put the
+  same forty questions back at the start of every game.
+- **Desktop:**
+  - The decision pop-up grows a second, smaller question under its
+    buttons ("Answer this card's question the same way every time:"
+    Always / Never).
+  - It is rigid under the pop-up's cap like every button. The cards give
+    first.
+  - Pressing one answers now and saves.
+  - The settings screen lists every answer beside the rows, each with an
+    Ask button, plus a Forget all button.
+- **Terminal:**
+  - The notice line reads "y: always, n: never" (`a` was taken).
+  - An answer taken without asking is logged under the action it took.
+  - Settings has an Answers row, where Enter forgets them all.
+  - The menu now re-reads the file before opening Settings. Its copy
+    from launch would otherwise have saved over answers a game had
+    written.
+  - Remote play sends a remembered answer as it sends a lone pass. It
+    does not do so while the connection is down.
+- **A take-back asks again.** Taking back an answer given without asking
+  would otherwise restore the prompt and answer it again at once. So the
+  prompt a rewind restores is always put to the person, in both clients.
+- **Dev hook:** `NETRUNNER_HOLD_MAY=1` stops the autoplay at the first
+  such prompt. Dewi's "you may" needs a full rig, which autoplay seldom
+  builds. The reliable seat is the Corp on `brutal_efficiency`
+  (`NETRUNNER_GAME=corp NETRUNNER_CORP_DECK=brutal_efficiency`):
+  Send a Message stolen on turn 4 asks the Corp.
+- **Screenshots checked:**
+  - that prompt, with Always / Never under "Rez 1 installed piece of
+    ice" and "Do not", inside the capped pop-up; the dev log's only
+    `scroll area` line is zero-sized, not the board's;
+  - the settings screen with two answers beside the rows.
+- **Tests:**
+  - seven in `standing`: a triggered may either way; two yeses are Never
+    only; an event's and an opponent's prompt, a masked card and a paid
+    choice all ask; only a legal action is taken; the file's shape;
+  - the model's
+    `an_optional_trigger_answered_always_is_answered_without_a_click`,
+    including the take-back;
+  - the settings model's forgetting;
+  - the remote app's `a_remembered_answer_is_sent_without_a_key`.
+
 ## 8. Borrowed from jinteki — OPEN (19 September 2026)
 
 From [`docs/jinteki-comparison.md`](../jinteki-comparison.md) §5, in the
@@ -4014,7 +4095,8 @@ eleven so the addresses above do not move:
 13. ~~**The encounter panel always on during an encounter** — name, subtypes,
     live strength, every subroutine; §4ac's marks are the first half.~~
     Done in §4aj.
-14. **Per-card always / never / ask for an optional trigger.**
+14. ~~**Per-card always / never / ask for an optional trigger.**~~ Done in
+    §4ap.
 15. ~~**A report-a-bug bundle**: the seed and the action record, which replay
     exactly. The answer to the need behind jinteki's state-editing
     commands.~~ Done in §4ag.
