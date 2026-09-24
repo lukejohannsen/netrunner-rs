@@ -10,7 +10,12 @@ and a test fails if a screen's key is missing from this page. So when a
 screen is added, its row appears here in the same change, and there is
 somewhere to put its picture before the picture exists.
 
-Nothing is committed here yet. With no files, every screen is the
+Two pictures are committed here: Kirsten Zirngibl's *New Angeles in
+Neon/Smog*, the smog version behind the splash (`splash.jpg`) and the
+neon one behind the main menu (`main-menu.jpg`), with `backdrops.json`
+setting how much each is dimmed. Both are all rights reserved, shipped
+with credit and removed if she asks (`../CREDITS.md`). A screen with no
+picture of its own and no `menu.jpg` is the
 drawn backdrop (`nav::drawn_backdrop`): a deep blue falling to near
 black, with two soft blooms of light for the menus' glass to catch. That
 is the fallback and the basic-graphics mode, not the look: **this folder
@@ -127,9 +132,11 @@ A file committed here is a separately licensed work and needs a row in
 [`../CREDITS.md`](../CREDITS.md): its owner, their website, its licence
 and anything changed. If the project made it, including with AI
 assistance, it is GPL-3.0-or-later. If someone else made it, it keeps
-their licence, with the licence text beside it as `LICENSE-<name>.txt`.
-**Art behind the start or menu screens is credited to its artist by name,
-with their website.** Find out who made it before committing it.
+their licence, with the licence text beside it as `LICENSE-<name>.txt`,
+or, when it is under no licence, is shipped on credit alone and removed
+if its owner asks. **Art behind the start or menu screens is credited to
+its artist by name, with their website.** Find out who made it before
+committing it.
 
 Your own backdrops in `<data dir>` are yours and are not covered by any
 of this.
