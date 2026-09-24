@@ -29,7 +29,7 @@ impl Plugin for StubScreensPlugin {
 struct BackButton;
 
 fn spawn(mut commands: Commands, theme: Res<Theme>, screen: AppScreen) {
-    commands.spawn((screen_root(screen, theme.background), children![
+    commands.spawn((screen_root(screen, &theme), children![
         widgets::heading(&theme, screen.title()),
         widgets::dim(&theme, "Not built yet — this screen arrives in a later phase (see docs/roadmap/phase-7-desktop-client.md)."),
         widgets::button(&theme, "Back", Val::Auto, BackButton),

@@ -82,6 +82,41 @@ pub struct Theme {
     /// border for every viewer, so a playable NBN card had no visible
     /// glow at all.
     pub glow_conditional: Color,
+    /// What a menu, a form, a pop-up or a sheet is drawn on: a deep blue
+    /// glass the screen behind shows through. Translucent on purpose —
+    /// a menu over a backdrop, or a pop-up over the board, should read as
+    /// a layer on the place, not a hole cut in it. `panel` above stays
+    /// opaque grey for the board's own chrome (the log, the plates),
+    /// which has nothing behind it to show.
+    pub glass: Color,
+    /// The same glass, thicker: a decision pop-up or a card's menu sits
+    /// over cards, whose own text would otherwise read through.
+    pub glass_strong: Color,
+    /// A glass panel's edge: a faint light rim rather than a dark line.
+    pub glass_border: Color,
+    /// The one button a screen most expects to be pressed (Start game,
+    /// Continue): filled in the accent, with dark text on it.
+    pub primary: Color,
+    pub primary_hover: Color,
+    pub primary_press: Color,
+    /// The text on a primary button.
+    pub on_primary: Color,
+    /// Every other button: a light tint over the glass it sits on, so it
+    /// takes that glass's colour rather than painting over it.
+    pub secondary: Color,
+    pub secondary_hover: Color,
+    pub secondary_press: Color,
+    /// A button's rim when hovered: brighter than `glass_border`, so the
+    /// edge answers the pointer as well as the fill.
+    pub border_hover: Color,
+    /// The drawn backdrop behind every menu screen, top to bottom, and the
+    /// colour of the two soft blooms over it (`nav::screen_root`).
+    pub backdrop_top: Color,
+    pub backdrop_bottom: Color,
+    pub backdrop_bloom: Color,
+    /// The wash under a pop-up or a sheet: the backdrop's deep blue, so
+    /// what it dims is tinted into the glass rather than greyed out.
+    pub wash: Color,
 }
 
 impl Default for Theme {
@@ -95,7 +130,7 @@ impl Default for Theme {
             panel_border: Color::srgb(0.22, 0.24, 0.30),
             text: Color::srgb(0.90, 0.91, 0.93),
             text_dim: Color::srgb(0.58, 0.60, 0.66),
-            accent: Color::srgb(0.20, 0.80, 0.70),
+            accent: Color::srgb(0.42, 0.76, 1.0),
             button: Color::srgb(0.15, 0.17, 0.22),
             button_hover: Color::srgb(0.22, 0.25, 0.32),
             button_press: Color::srgb(0.12, 0.40, 0.36),
@@ -104,6 +139,21 @@ impl Default for Theme {
             danger: Color::srgb(0.90, 0.35, 0.30),
             glow_usable: Color::srgb(0.76, 0.55, 1.0),
             glow_conditional: Color::srgb(1.0, 0.99, 0.70),
+            glass: Color::srgba(0.08, 0.15, 0.30, 0.70),
+            glass_strong: Color::srgba(0.06, 0.12, 0.25, 0.92),
+            glass_border: Color::srgba(0.62, 0.78, 1.0, 0.24),
+            primary: Color::srgb(0.36, 0.66, 1.0),
+            primary_hover: Color::srgb(0.50, 0.76, 1.0),
+            primary_press: Color::srgb(0.26, 0.52, 0.90),
+            on_primary: Color::srgb(0.03, 0.07, 0.16),
+            secondary: Color::srgba(0.55, 0.72, 1.0, 0.12),
+            secondary_hover: Color::srgba(0.55, 0.72, 1.0, 0.24),
+            secondary_press: Color::srgba(0.55, 0.72, 1.0, 0.36),
+            border_hover: Color::srgba(0.70, 0.84, 1.0, 0.60),
+            backdrop_top: Color::srgb(0.05, 0.12, 0.28),
+            backdrop_bottom: Color::srgb(0.02, 0.04, 0.10),
+            backdrop_bloom: Color::srgba(0.28, 0.55, 1.0, 0.16),
+            wash: Color::srgb(0.02, 0.05, 0.12),
         }
     }
 }
@@ -115,6 +165,21 @@ pub mod size {
     pub const HEADING: f32 = 26.0;
     pub const BODY: f32 = 18.0;
     pub const SMALL: f32 = 14.0;
+    /// A section's name inside a panel: small capitals-in-spirit, spaced
+    /// out, dim — a label for a group, not a heading to read.
+    pub const OVERLINE: f32 = 13.0;
+}
+
+/// The shape of a menu, in logical pixels, so a panel on the settings
+/// screen is the panel on the new-game screen.
+pub mod shape {
+    /// A glass panel's corner.
+    pub const PANEL_RADIUS: f32 = 18.0;
+    /// A drop-down's open list and a row inside it.
+    pub const LIST_RADIUS: f32 = 14.0;
+    pub const ROW_RADIUS: f32 = 10.0;
+    /// The least height of a button: a comfortable target for a pointer.
+    pub const BUTTON_HEIGHT: f32 = 44.0;
 }
 
 impl Theme {
@@ -298,6 +363,17 @@ mod tests {
     /// shape, so colour is the only thing that tells them apart. (A
     /// pending dot is hollow, so it differs in shape, and the encounter
     /// panel writes `[x]` and `[!]`.)
+    /// The accent rings the encountered ice and a card that just changed,
+    /// and a Corp card's own border is `corp`: both blue, so the accent
+    /// is kept much lighter than the Corp's blue or a ring on a Corp card
+    /// would be no ring at all.
+    #[test]
+    fn the_accent_is_not_the_corps_blue() {
+        let theme = Theme::default();
+        let (distance, who) = closest(theme.accent, theme.corp);
+        assert!(distance >= APART, "the accent and the Corp's blue are {distance:.3} OKLab apart under {who}");
+    }
+
     #[test]
     fn a_broken_subroutine_and_a_fired_one_are_told_apart() {
         let theme = Theme::default();

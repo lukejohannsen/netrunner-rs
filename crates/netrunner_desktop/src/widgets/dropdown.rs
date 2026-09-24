@@ -20,8 +20,8 @@
 use bevy::prelude::*;
 
 use crate::nav::InputCaptured;
-use crate::theme::{size, Theme};
-use crate::widgets::{Pressed, Themed};
+use crate::theme::{shape, size, Theme};
+use crate::widgets::{Pressed, Resting, Themed};
 
 /// One entry: its words and, optionally, an icon drawn before them in
 /// the icon font, in a colour of the screen's choosing.
@@ -100,21 +100,27 @@ fn spawn_head(parent: &mut ChildSpawnerCommands, theme: &Theme, root: Entity, dr
             Head(root),
             Node {
                 flex_shrink: 0.0,
-                padding: UiRect::axes(px(12), px(6)),
+                min_height: px(shape::BUTTON_HEIGHT),
+                padding: UiRect::axes(px(20), px(10)),
                 align_items: AlignItems::Center,
                 border: UiRect::all(px(1)),
-                border_radius: BorderRadius::all(px(6)),
+                border_radius: BorderRadius::MAX,
                 ..default()
             },
-            BackgroundColor(theme.button),
-            BorderColor::all(theme.panel_border),
+            BackgroundColor(theme.secondary),
+            BorderColor::all(theme.glass_border),
+            Resting(theme.secondary),
         ))
         .with_children(|button| {
-            button.spawn((Text::new(""), theme.font(size::SMALL), TextColor(theme.text))).with_children(|spans| {
-                spans.spawn((TextSpan::new(format!("{}: ", dropdown.label)), theme.font(size::SMALL), TextColor(theme.text_dim)));
-                spans.spawn((HeadIcon, TextSpan::new(icon_with_space(&icon)), theme.icon_font(size::SMALL), TextColor(colour)));
-                spans.spawn((HeadText, TextSpan::new(text), theme.font(size::SMALL), TextColor(theme.text)));
-                spans.spawn((TextSpan::new(format!("  {arrow}")), theme.symbol_font(size::SMALL), TextColor(theme.text_dim)));
+            button.spawn((Text::new(""), theme.font(size::BODY), TextColor(theme.text))).with_children(|spans| {
+                // An empty label is a drop-down whose name the screen
+                // prints above it, as the new-game form's sections do.
+                if !dropdown.label.is_empty() {
+                    spans.spawn((TextSpan::new(format!("{}: ", dropdown.label)), theme.font(size::BODY), TextColor(theme.text_dim)));
+                }
+                spans.spawn((HeadIcon, TextSpan::new(icon_with_space(&icon)), theme.icon_font(size::BODY), TextColor(colour)));
+                spans.spawn((HeadText, TextSpan::new(text), theme.font(size::BODY), TextColor(theme.text)));
+                spans.spawn((TextSpan::new(format!("   {arrow}")), theme.symbol_font(size::BODY), TextColor(theme.accent)));
             });
         });
 }
@@ -128,43 +134,55 @@ fn spawn_list(parent: &mut ChildSpawnerCommands, theme: &Theme, root: Entity, dr
         .spawn((
             List(root),
             GlobalZIndex(10),
+            // A long list (every deck in the format) scrolls inside
+            // itself rather than running off the window.
+            bevy::ui_widgets::ScrollArea,
             Node {
                 position_type: PositionType::Absolute,
-                top: percent(100),
+                top: Val::Percent(100.0),
                 left: px(0),
+                margin: UiRect::top(px(6)),
                 min_width: percent(100),
+                max_height: Val::Vh(55.0),
+                overflow: Overflow::scroll_y(),
                 flex_direction: FlexDirection::Column,
                 row_gap: px(2),
-                padding: UiRect::all(px(4)),
+                padding: UiRect::all(px(6)),
                 border: UiRect::all(px(1)),
-                border_radius: BorderRadius::all(px(6)),
+                border_radius: BorderRadius::all(px(shape::LIST_RADIUS)),
                 ..default()
             },
-            BackgroundColor(theme.panel),
-            BorderColor::all(theme.panel_border),
+            BackgroundColor(theme.glass_strong),
+            BorderColor::all(theme.glass_border),
+            super::lift(),
         ))
         .with_children(|list| {
             for (index, choice) in dropdown.choices.iter().enumerate() {
                 let current = index == dropdown.selected;
+                let resting = if current { theme.secondary_press } else { Color::NONE };
                 list.spawn((
                     Button,
                     Themed,
                     Item(root, index),
                     Node {
                         flex_shrink: 0.0,
-                        padding: UiRect::axes(px(10), px(5)),
+                        padding: UiRect::axes(px(14), px(8)),
                         align_items: AlignItems::Center,
-                        border_radius: BorderRadius::all(px(4)),
+                        border_radius: BorderRadius::all(px(shape::ROW_RADIUS)),
                         ..default()
                     },
-                    BackgroundColor(if current { theme.button_press } else { theme.button }),
+                    BackgroundColor(resting),
+                    // The chosen row keeps its highlight after the pointer
+                    // has passed over it.
+                    Resting(resting),
                 ))
                 .with_children(|button| {
-                    button.spawn((Text::new(""), theme.font(size::SMALL), TextColor(theme.text))).with_children(|spans| {
+                    let ink = if current { theme.accent } else { theme.text };
+                    button.spawn((Text::new(""), theme.font(size::BODY), TextColor(ink))).with_children(|spans| {
                         if let Some((glyph, colour)) = &choice.icon {
-                            spans.spawn((TextSpan::new(format!("{glyph} ")), theme.icon_font(size::SMALL), TextColor(*colour)));
+                            spans.spawn((TextSpan::new(format!("{glyph} ")), theme.icon_font(size::BODY), TextColor(*colour)));
                         }
-                        spans.spawn((TextSpan::new(choice.text.clone()), theme.font(size::SMALL), TextColor(theme.text)));
+                        spans.spawn((TextSpan::new(choice.text.clone()), theme.font(size::BODY), TextColor(ink)));
                     });
                 });
             }

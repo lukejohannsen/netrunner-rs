@@ -59,7 +59,7 @@ fn spawn(mut commands: Commands, theme: Res<Theme>, core: Res<ClientCore>, image
         let size = image.size().as_vec2();
         Some((images.add(image), size))
     });
-    let mut root = commands.spawn(screen_root(AppScreen::Splash, theme.background));
+    let mut root = commands.spawn(screen_root(AppScreen::Splash, &theme));
     root.entry::<Node>().and_modify(|mut node| node.justify_content = JustifyContent::Center);
     root.with_children(|parent| match logo {
         Some((image, size)) => {

@@ -237,8 +237,8 @@ fn spawn(mut commands: Commands, theme: Res<Theme>, core: Res<ClientCore>, image
         .spawn((
             Inspector,
             bevy::ui_widgets::ScrollArea,
-            BackgroundColor(theme.panel),
-            BorderColor::all(theme.panel_border),
+            BackgroundColor(theme.glass),
+            BorderColor::all(theme.glass_border),
             Node {
                 width: px(FaceSize::Large.width() + 2.0 * 12.0 + 2.0),
                 height: percent(100),
@@ -247,7 +247,7 @@ fn spawn(mut commands: Commands, theme: Res<Theme>, core: Res<ClientCore>, image
                 row_gap: px(8),
                 padding: UiRect::all(px(12)),
                 border: UiRect::all(px(1)),
-                border_radius: BorderRadius::all(px(8)),
+                border_radius: BorderRadius::all(px(crate::theme::shape::PANEL_RADIUS)),
                 overflow: Overflow::scroll_y(),
                 ..default()
             },
@@ -282,7 +282,7 @@ fn spawn(mut commands: Commands, theme: Res<Theme>, core: Res<ClientCore>, image
         .id();
 
     commands
-        .spawn((screen_root(AppScreen::CardBrowser, theme.background), children![widgets::heading(&theme, AppScreen::CardBrowser.title())]))
+        .spawn((screen_root(AppScreen::CardBrowser, &theme), children![widgets::heading(&theme, AppScreen::CardBrowser.title())]))
         .add_child(toolbar)
         .add_child(columns)
         .add_child(status);
@@ -473,7 +473,8 @@ fn legality_line(card: &netrunner_core::dsl::CardDefinition) -> String {
 fn spawn_search_field(parent: &mut ChildSpawnerCommands, theme: &Theme, current: &str) {
     parent.spawn((
         TextField { text: current.to_string(), max_len: MAX_QUERY_LEN },
-        Node { width: px(220), padding: UiRect::axes(px(10), px(6)), border: UiRect::all(px(1)), border_radius: BorderRadius::all(px(6)), ..default() },
+        widgets::field_node(px(240)),
+        BackgroundColor(theme.glass_strong),
         BorderColor::all(theme.accent),
         children![(Text::new(format!("{current}|")), theme.font(size::SMALL), TextColor(theme.text))],
     ));

@@ -10,7 +10,7 @@ use crate::core::{ClientCore, Notices};
 use crate::nav::{screen_root, Navigate};
 use crate::screens::AppScreen;
 use crate::theme::Theme;
-use crate::widgets::{self, Pressed};
+use crate::widgets::{self, ButtonKind, Pressed};
 
 pub struct MainMenuPlugin;
 
@@ -79,6 +79,16 @@ impl Entry {
         }
     }
 
+    /// The game is what the menu is for, so it is the one filled button;
+    /// the way out is the one that stays quiet.
+    fn kind(self) -> ButtonKind {
+        match self {
+            Entry::PlayComputer => ButtonKind::Primary,
+            Entry::Quit => ButtonKind::Quiet,
+            _ => ButtonKind::Secondary,
+        }
+    }
+
     /// Where the entry leads; `None` quits.
     pub fn screen(self) -> Option<AppScreen> {
         match self {
@@ -98,21 +108,25 @@ impl Entry {
 
 fn spawn(mut commands: Commands, theme: Res<Theme>, core: Res<ClientCore>, notices: Res<Notices>) {
     let format = netrunner_client::settings::format_name(core.settings.format.unwrap_or(netrunner_core::format::NsgFormat::Startup));
-    commands.spawn((screen_root(AppScreen::MainMenu, theme.background), children![
-        widgets::title(&theme, "NETRUNNER"),
-        widgets::dim(&theme, format!("Playing as {} · {format} format", core.player_name())),
-        (widgets::panel(&theme, px(760)), Children::spawn(SpawnIter(Entry::ALL.into_iter().map({
-            let theme = theme.clone();
-            move |entry| {
-                (widgets::row(12.0), children![
-                    widgets::button(&theme, entry.label(), px(220), entry),
-                    // The blurb takes whatever the row has left and wraps
-                    // there, rather than pushing on the button.
-                    (widgets::dim(&theme, entry.blurb()), Node { flex_grow: 1.0, flex_shrink: 1.0, min_width: px(0), ..default() }),
-                ])
-            }
-        })))),
-        widgets::notice(&theme, notices.latest().unwrap_or(""), ()),
+    commands.spawn((screen_root(AppScreen::MainMenu, &theme), children![
+        (Node { flex_direction: FlexDirection::Column, align_items: AlignItems::Center, row_gap: px(16), margin: UiRect::vertical(Val::Auto), ..default() }, children![
+            (Node { flex_direction: FlexDirection::Column, align_items: AlignItems::Center, row_gap: px(6), margin: UiRect::bottom(px(8)), ..default() }, children![
+                widgets::title(&theme, "NETRUNNER"),
+                widgets::dim(&theme, format!("Playing as {} · {format} format", core.player_name())),
+            ]),
+            (widgets::roomy_panel(&theme, px(780)), Children::spawn(SpawnIter(Entry::ALL.into_iter().map({
+                let theme = theme.clone();
+                move |entry| {
+                    (widgets::row(20.0), children![
+                        widgets::styled_button(&theme, entry.kind(), entry.label(), px(230), entry),
+                        // The blurb takes whatever the row has left and wraps
+                        // there, rather than pushing on the button.
+                        (widgets::dim(&theme, entry.blurb()), Node { flex_grow: 1.0, flex_shrink: 1.0, min_width: px(0), ..default() }),
+                    ])
+                }
+            })))),
+            widgets::notice(&theme, notices.latest().unwrap_or(""), ()),
+        ]),
     ]));
 }
 

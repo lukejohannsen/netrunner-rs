@@ -45,17 +45,17 @@ fn spawn(mut commands: Commands, theme: Res<Theme>, core: Res<ClientCore>) {
         format!("Record     {}", path(&core.record_path)),
         format!("Images     {}", core.images.dir().display()),
     ];
-    commands.spawn((screen_root(AppScreen::Profile, theme.background), children![
+    commands.spawn((screen_root(AppScreen::Profile, &theme), children![
         widgets::heading(&theme, AppScreen::Profile.title()),
-        (widgets::panel(&theme, px(720)), children![
+        (widgets::roomy_panel(&theme, px(720)), children![
             widgets::label(&theme, player),
             widgets::dim(&theme, format!("{cached} of {} card images cached", codes.len())),
         ]),
-        (widgets::panel(&theme, px(720)), Children::spawn(SpawnIter(standing.into_iter().map({
+        (widgets::roomy_panel(&theme, px(720)), Children::spawn(SpawnIter(standing.into_iter().map({
             let theme = theme.clone();
             move |line| widgets::label(&theme, line)
         })))),
-        (widgets::panel(&theme, px(720)), Children::spawn(SpawnIter(paths.into_iter().map({
+        (widgets::roomy_panel(&theme, px(720)), Children::spawn(SpawnIter(paths.into_iter().map({
             let theme = theme.clone();
             move |line| widgets::dim(&theme, line)
         })))),

@@ -15,6 +15,15 @@
 //!   screen. `OnEnter` spawns the screen under [`nav::screen_root`], whose
 //!   `DespawnOnExit` takes the whole tree down again; `Update` systems run
 //!   under `run_if(in_state(..))`.
+//! - **A panel is glass and a button is a pill.** Every menu, form,
+//!   pop-up and sheet is `widgets::panel` (or `roomy_panel` on a menu
+//!   screen): a translucent blue the backdrop or the board shows
+//!   through. Every button is `widgets::button` or `styled_button` in
+//!   one of three kinds — one `Primary` in view for the move the screen
+//!   expects, `Secondary` for the rest, `Quiet` for the way out. A
+//!   screen takes its colours from those, never inline; the board's own
+//!   chrome (plates, tiles, the log) is the exception, because it is the
+//!   place the glass sits on.
 //! - Screen *state* that can be tested without a window lives in
 //!   [`models`], as a plain struct driven by an `Intent` enum — the
 //!   terminal client's state-struct-plus-`key()` pattern, minus the key

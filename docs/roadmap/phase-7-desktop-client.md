@@ -4354,6 +4354,56 @@ them.
   lavender reads on server plates and the Stack, and the pale yellow on a
   run's plates and pop-up buttons. No `scroll area` line is the board.
 
+### 4aw. Menus are glass and buttons are pills, and the new-game form is laid out as choices — DONE (24 September 2026)
+
+Asked for by the person: the menus looked "like a 90s game" — opaque
+grey panels, small rectangular buttons, a teal accent — and the
+new-game form was five 14 px drop-downs in a row at the top of the
+screen. The ask was semi-transparent blue, oval buttons, roomier menus,
+and one look across every button and menu.
+
+- **One look, set in two files.** `theme.rs` gains the glass tokens
+  (`glass`, `glass_strong`, `glass_border`), three button kinds' colours
+  and the backdrop's; the accent moves from teal to a light sky blue.
+  `widgets::panel` is translucent glass with an 18 px corner and a soft
+  shadow; `widgets::button` is a pill (`BorderRadius::MAX`, 44 px least
+  height), and `styled_button` names a `ButtonKind` — `Primary`
+  (filled), `Secondary` (a tint over the glass), `Quiet` (no fill until
+  hovered). Every screen built from the widgets took the look with no
+  edit of its own.
+- **Something behind the glass.** No backdrop picture is committed, so
+  translucent panels would have sat on the flat ground. Every screen root
+  but the board's now carries a `BackgroundGradient` — a deep blue to
+  near black with two soft blooms (`nav::drawn_backdrop`) — as the drawn
+  tier under the existing backdrop slot; a picture installed there draws
+  over it.
+- **The new-game form is laid out as choices.** The side is two cards in
+  the sides' own colours; the rung and the style are rows of pills with
+  the chosen one filled, the suggested rung marked and the chosen rung's
+  description under the row; the two decks — lists too long for pills —
+  stay drop-downs, each with its identity and style under it. Start is
+  the one filled pill, Back is quiet. The model is unchanged
+  (`StartMenu`, now exposing `suggested`, `own_decks` and
+  `opponent_decks`).
+- **In the game:** the decision pop-up, the actions menu and the sheets
+  are `glass_strong` (readable over cards); the wash is the backdrop's
+  blue rather than grey, at the same alphas; Continue is the control
+  bar's one filled pill; `compact_button` is a small pill. The board's
+  own chrome is not touched. `widgets::panel` keeps 16 px padding
+  because `POPUP_PADDING` and the sheet widths count it; menu screens
+  use `roomy_panel` (28 px).
+- **A bug found on the way:** a drop-down's chosen row lost its
+  highlight after the pointer passed over it — the comment in
+  `button_feedback` said it carried its own colour, and it did not. An
+  undressed themed node may now name its resting colour (`Resting`).
+- `theme::tests::the_accent_is_not_the_corps_blue` holds the new accent
+  at least 0.10 OKLab from the Corp's blue under all four views, because
+  the accent rings the encountered ice and a changed card, whose border
+  may be the Corp's. The glow and broken/fired-dot tests still pass.
+- Screenshots: main menu, new game, settings, and the end of a match on
+  the board. The board's layout is unchanged, and no `scroll area`
+  line is the board.
+
 ## 8. Borrowed from jinteki — OPEN (19 September 2026)
 
 From [`docs/jinteki-comparison.md`](../jinteki-comparison.md) §5, in the

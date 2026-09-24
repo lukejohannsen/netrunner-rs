@@ -207,11 +207,16 @@ impl StartMenu {
         self.styles()[self.style]
     }
 
-    fn opponent_decks(&self) -> &[DeckRow] {
+    /// The rung the record suggests for the chair now chosen.
+    pub fn suggested(&self) -> Level {
+        self.suggested[self.chair]
+    }
+
+    pub fn opponent_decks(&self) -> &[DeckRow] {
         &self.decks[side_index(self.bot())]
     }
 
-    fn own_decks(&self) -> &[DeckRow] {
+    pub fn own_decks(&self) -> &[DeckRow] {
         &self.decks[side_index(self.human())]
     }
 

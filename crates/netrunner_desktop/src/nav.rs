@@ -9,6 +9,8 @@
 
 use bevy::prelude::*;
 
+use crate::theme::Theme;
+
 use crate::screens::AppScreen;
 
 pub struct NavPlugin;
@@ -48,7 +50,11 @@ fn reset_captured(mut captured: ResMut<InputCaptured>) {
 /// vertically, and is despawned with its whole subtree when the screen
 /// is left. A screen that spawned anything outside this root would leak
 /// it into the next screen, which is why the helper exists.
-pub fn screen_root(screen: AppScreen, background: Color) -> impl Bundle + use<> {
+///
+/// Every screen but the board is drawn on [`drawn_backdrop`]: the menus
+/// are glass, and glass over a flat colour is just a flat colour.
+pub fn screen_root(screen: AppScreen, theme: &Theme) -> impl Bundle + use<> {
+    let gradient = if screen == AppScreen::Game { BackgroundGradient::default() } else { drawn_backdrop(theme) };
     (
         Name::new(format!("{screen:?}")),
         DespawnOnExit(screen),
@@ -65,8 +71,30 @@ pub fn screen_root(screen: AppScreen, background: Color) -> impl Bundle + use<> 
             row_gap: px(16),
             ..default()
         },
-        BackgroundColor(background),
+        BackgroundColor(theme.background),
+        gradient,
     )
+}
+
+/// The drawn tier of every menu screen's backdrop: a deep blue falling to
+/// near black, with two soft blooms of light, one high on the left and
+/// one low on the right, for the glass to catch. A picture installed in
+/// the screen's slot draws over it (`backdrop::dress`); this is what a
+/// screen with none shows, and costs one quad, so Basic graphics keeps
+/// it too.
+pub fn drawn_backdrop(theme: &Theme) -> BackgroundGradient {
+    let bloom = |position: UiPosition| {
+        Gradient::Radial(RadialGradient::new(
+            position,
+            RadialGradientShape::FarthestSide,
+            vec![ColorStop::percent(theme.backdrop_bloom, 0.0), ColorStop::percent(theme.backdrop_bloom.with_alpha(0.0), 100.0)],
+        ))
+    };
+    BackgroundGradient(vec![
+        Gradient::Linear(LinearGradient::to_bottom(vec![ColorStop::auto(theme.backdrop_top), ColorStop::auto(theme.backdrop_bottom)])),
+        bloom(UiPosition::anchor(Vec2::new(-0.3, -0.4))),
+        bloom(UiPosition::anchor(Vec2::new(0.35, 0.45))),
+    ])
 }
 
 /// Where Escape leads from each screen. The main menu is where it stops:

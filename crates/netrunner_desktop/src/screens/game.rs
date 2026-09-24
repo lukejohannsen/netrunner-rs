@@ -560,7 +560,7 @@ fn spawn(
         (None, None) => None,
     };
     let Some((game, side)) = source else {
-        commands.spawn((screen_root(AppScreen::Game, theme.background), children![
+        commands.spawn((screen_root(AppScreen::Game, &theme), children![
             widgets::heading(&theme, AppScreen::Game.title()),
             widgets::dim(&theme, "No game in progress. Start one from Play vs Computer."),
             widgets::button(&theme, "Back", Val::Auto, Click::Back),
@@ -680,7 +680,7 @@ fn spawn(
         }
         None => Vec::new(),
     };
-    let mut root = commands.spawn(screen_root(AppScreen::Game, theme.background));
+    let mut root = commands.spawn(screen_root(AppScreen::Game, &theme));
     root.entry::<Node>().and_modify(|mut node| {
         node.align_items = AlignItems::Stretch;
         // Sides only: the hands sit on the window's top and bottom edges.
@@ -1899,16 +1899,21 @@ fn compact_button(parent: &mut ChildSpawnerCommands, theme: &Theme, text: String
             click,
             Node {
                 flex_shrink: 0.0,
-                padding: UiRect::axes(px(10), px(6)),
+                padding: UiRect::axes(px(12), px(6)),
                 justify_content: JustifyContent::Center,
                 align_items: AlignItems::Center,
                 border: UiRect::all(px(1)),
-                border_radius: BorderRadius::all(px(6)),
+                border_radius: BorderRadius::MAX,
                 ..default()
             },
-            BackgroundColor(theme.button),
-            BorderColor::all(theme.panel_border),
-            widgets::Dressed::button(theme, Slot::CompactButton, Drawn::new(theme.button, theme.panel_border)),
+            BackgroundColor(theme.secondary),
+            BorderColor::all(theme.glass_border),
+            widgets::Dressed {
+                slot: Slot::CompactButton,
+                drawn: Drawn::new(theme.secondary, theme.glass_border),
+                hover: Some(Drawn::new(theme.secondary_hover, theme.border_hover)),
+                pressed: Some(Drawn::new(theme.secondary_press, theme.border_hover)),
+            },
             children![(Text::new(text), theme.font(size::SMALL), TextColor(theme.text))],
         ))
         .id()
@@ -2690,7 +2695,10 @@ fn spawn_control_bar(parent: &mut ChildSpawnerCommands, theme: &Theme, game: &Ga
             _ => (control.label().to_string(), Val::Auto),
         };
         if offered {
-            parent.spawn(widgets::button(theme, label, width, Click::Control(*control)));
+            // Continue is the bar's one filled pill: the move the game
+            // most expects, at the place the hand always finds it.
+            let kind = if *control == Control::Continue { widgets::ButtonKind::Primary } else { widgets::ButtonKind::Secondary };
+            parent.spawn(widgets::styled_button(theme, kind, label, width, Click::Control(*control)));
         } else {
             parent.spawn(widgets::disabled_button(theme, label, width, Click::Control(*control)));
         }
@@ -2852,7 +2860,7 @@ fn spawn_actions_menu(parent: &mut ChildSpawnerCommands, theme: &Theme, game: &G
     // below stays: `dress` only runs on `Added<Dressed>`, a frame after
     // the commands flush, so leaving the accent to it would show the
     // panel's own border colour for that frame.
-    panel.insert(widgets::Dressed::still(Slot::PanelMenu, Drawn::new(theme.panel, accent)));
+    panel.insert((widgets::Dressed::still(Slot::PanelMenu, Drawn::new(theme.glass_strong, accent)), BackgroundColor(theme.glass_strong)));
     panel.entry::<Node>().and_modify(move |mut node| {
         node.position_type = PositionType::Absolute;
         // Wrapping is always on and only ever bites when the room runs
@@ -3045,7 +3053,7 @@ fn spawn_decision_popup(parent: &mut ChildSpawnerCommands, theme: &Theme, core: 
             // As the actions menu does: its own slot over the one the
             // panel supplied, and the immediate recolour kept, because
             // `dress` lands a frame later.
-            panel.insert(widgets::Dressed::still(Slot::PanelDecision, Drawn::new(theme.panel, accent)));
+            panel.insert((widgets::Dressed::still(Slot::PanelDecision, Drawn::new(theme.glass_strong, accent)), BackgroundColor(theme.glass_strong)));
             panel.entry::<BorderColor>().and_modify(move |mut border| *border = BorderColor::all(accent));
             // **Capped at the window, and the cards are what give.** The
             // panel is centred, so a cap is all it takes for it to be on
@@ -3755,7 +3763,7 @@ fn spawn_overlay(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &Client
     // that system — so an undressed scrim would turn button-grey after
     // the first hover. `Dressed::still` hands back the same `Drawn` for
     // all three interactions, so the wash never moves under the pointer.
-    let wash = theme.background.with_alpha(placement.wash_alpha());
+    let wash = theme.wash.with_alpha(placement.wash_alpha());
     let (justify_content, padding) = match placement {
         layout::Placement::Centre => (JustifyContent::Center, UiRect::ZERO),
         layout::Placement::Side => (JustifyContent::FlexEnd, UiRect::right(px(layout::PADDING))),
@@ -3794,7 +3802,7 @@ fn spawn_overlay(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &Client
             // the main menu and the settings, which `Slot::Panel` reaches
             // too. Inserted rather than bundled: two `Dressed` in one
             // bundle is a duplicate-component panic.
-            sheet.insert(widgets::Dressed::still(Slot::PanelSheet, Drawn::new(theme.panel, theme.panel_border)));
+            sheet.insert((widgets::Dressed::still(Slot::PanelSheet, Drawn::new(theme.glass_strong, theme.glass_border)), BackgroundColor(theme.glass_strong)));
             sheet.with_children(|panel| {
                 if let Some(reason) = &game.stalled {
                     panel.spawn(widgets::heading(theme, "The match stopped"));
