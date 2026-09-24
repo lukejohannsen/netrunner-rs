@@ -4421,8 +4421,9 @@ eleven so the addresses above do not move:
 17. ~~**Card names in the log open the card.**~~ Done in §4at.
 18. ~~**Check the affordance and transition colours against a
     colour-blind-safe palette.**~~ Done in §4av.
-19. **Open decklists as a game option; an offered hand sort** beside the
-    person's own order.
+19. ~~**Open decklists as a game option; an offered hand sort** beside the
+    person's own order.~~ Dropped (24 September 2026, at the person's
+    request): not a feature they want.
 
 Added by the person (24 September 2026), numbered on so the addresses
 above do not move. Neither is borrowed from jinteki, but both belong to
