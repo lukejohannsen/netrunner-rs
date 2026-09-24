@@ -56,6 +56,11 @@
 //! - `NETRUNNER_SHEET=1` — on the board, once the person's decision has
 //!   arrived (after any autoplay), the sheet a secondary click opens on
 //!   the first installed Corp card on the board is opened, so an install's state can be looked at.
+//! - `NETRUNNER_PILE=archives|heap|hq` — on the board, once the
+//!   person's decision has arrived (after any autoplay), that zone's
+//!   sheet is opened, so a pile's cards can be looked at at their size;
+//!   `archives+card` (or `heap+card`, `hq+card`) also opens the first
+//!   card in it large over the sheet, as a press on it does.
 //! - `NETRUNNER_AGENDAS=corp|runner` — on the board, once the person's
 //!   decision has arrived (after any autoplay), that side's score area
 //!   is opened from its HUD readout with the first row expanded, so the
@@ -232,6 +237,8 @@ pub struct Dev {
     pub hold_run_pass: Option<bool>,
     /// Open the sheet of the first installed Corp card, once.
     pub sheet: bool,
+    /// Open this zone's sheet once, and with `true` its first card.
+    pub pile: Option<(netrunner_client::board::Target, bool)>,
     /// Open this side's score area with its first row expanded, once.
     pub agendas: Option<netrunner_core::rules::Side>,
     pub screenshot: Option<PathBuf>,
@@ -282,6 +289,22 @@ impl Dev {
             hold_may: std::env::var_os("NETRUNNER_HOLD_MAY").is_some_and(|v| !v.is_empty()),
             hold_run_pass: std::env::var("NETRUNNER_HOLD_RUN_PASS").ok().filter(|v| !v.is_empty()).map(|v| v.trim() == "on"),
             sheet: std::env::var_os("NETRUNNER_SHEET").is_some_and(|v| !v.is_empty()),
+            pile: std::env::var("NETRUNNER_PILE").ok().and_then(|spec| {
+                use netrunner_client::board::{Pile, Target};
+                use netrunner_core::rules::ServerId;
+                let spec = spec.trim().to_ascii_lowercase();
+                let (zone, card) = match spec.strip_suffix("+card") {
+                    Some(zone) => (zone.to_string(), true),
+                    None => (spec, false),
+                };
+                let target = match zone.as_str() {
+                    "archives" => Target::Server(ServerId::Archives),
+                    "heap" => Target::Pile(Pile::Heap),
+                    "hq" => Target::Server(ServerId::Hq),
+                    _ => return None,
+                };
+                Some((target, card))
+            }),
             agendas: std::env::var("NETRUNNER_AGENDAS").ok().and_then(|side| match side.trim().to_ascii_lowercase().as_str() {
                 "corp" => Some(netrunner_core::rules::Side::Corp),
                 "runner" => Some(netrunner_core::rules::Side::Runner),

@@ -987,6 +987,21 @@ fn autoplay(
     }
     if model.0.awaiting
         && dev.autoplayed >= dev.autoplay
+        && let Some((target, card)) = dev.pile.take()
+    {
+        let first = model.0.view.as_ref().and_then(|view| match &target {
+            Target::Server(ServerId::Archives) => view.corp.archives.iter().find_map(|c| c.card.clone()),
+            Target::Server(ServerId::Hq) => view.corp.hq_cards.as_ref().and_then(|hand| hand.first().cloned()),
+            Target::Pile(Pile::Heap) => view.runner.heap.first().cloned(),
+            _ => None,
+        });
+        pending.0.push(Intent::Inspect(target));
+        if card && first.is_some() {
+            pending.0.push(Intent::InspectCard(first));
+        }
+    }
+    if model.0.awaiting
+        && dev.autoplayed >= dev.autoplay
         && let Some(side) = dev.agendas.take()
     {
         pending.0.push(Intent::Inspect(Target::Pile(Pile::Agendas(side))));
@@ -1317,6 +1332,9 @@ pub(crate) fn controls(
             // The phase panel is unthemed like a face: a door to the
             // timing chart.
             Click::Timing => intents.push(Intent::ToggleTiming),
+            // A card in a zone's sheet reads it large. This arm was
+            // missing until Phase 7 §8 item 20, so the press did nothing.
+            Click::Inspect(card) => intents.push(Intent::InspectCard(Some(card.clone()))),
             _ => {}
         }
     }
@@ -1501,7 +1519,7 @@ fn redraw(
         if let Some(root) = roots.iter().next()
             && overlay_needed(game)
         {
-            commands.entity(root).with_children(|parent| spawn_overlay(parent, &theme, &core, &images, game));
+            commands.entity(root).with_children(|parent| spawn_overlay(parent, &theme, &core, &images, game, fit.window));
         }
     }
 }
@@ -3575,7 +3593,7 @@ fn relane(mut commands: Commands, mut dirty: ResMut<Dirty>, model: Option<Res<Mo
 
 // ---- the overlays ----
 
-fn spawn_overlay(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore, images: &CardImages, game: &Game) {
+fn spawn_overlay(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore, images: &CardImages, game: &Game, window: Vec2) {
     // A card alone is its face and the panel's padding; an install's
     // state sits beside the face; a zone's contents are the widest.
     let card_alone = game.inspecting.is_some() || game.sheet.as_ref().is_some_and(|s| !matches!(s.target, Target::Install(_)) && game.card_of(&s.target).is_some());
@@ -3730,7 +3748,7 @@ fn spawn_overlay(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &Client
                     match (&sheet.target, game.card_of(&sheet.target)) {
                         (Target::Install(id), card) => install_sheet(panel, theme, core, images, game, *id, card.as_ref()),
                         (_, Some(id)) => card_sheet(panel, theme, core, images, &id),
-                        (_, None) => zone_sheet(panel, theme, core, images, game, &sheet.target),
+                        (_, None) => zone_sheet(panel, theme, core, images, game, &sheet.target, window),
                     }
                 }
             });
@@ -3881,7 +3899,7 @@ fn install_sheet(panel: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientC
 /// sheet.
 /// The score area is the exception, a list rather than a spread of
 /// faces (`score_area_sheet`).
-fn zone_sheet(panel: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore, images: &CardImages, game: &Game, target: &Target) {
+fn zone_sheet(panel: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore, images: &CardImages, game: &Game, target: &Target, window: Vec2) {
     let Some(view) = &game.view else { return };
     panel.spawn(widgets::heading(theme, target_title(game, target)));
     if let Target::Pile(Pile::Agendas(side)) = target {
@@ -3928,11 +3946,17 @@ fn zone_sheet(panel: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore
     panel.spawn(widgets::dim(theme, caption));
     if !shown.is_empty() {
         // A wrapping row inside a column that scrolls: a pile of forty
-        // is five rows of faces, and the wheel reaches them all.
+        // is ten rows of faces, and the wheel reaches them all. The faces
+        // are `layout::PILE_FACE`, a size up from the browser's grid,
+        // because at `Thumb` a card in Archives could not be read; the
+        // box is as many whole rows as the window has room for
+        // (`layout::pile_height`), so the sheet — an overlay, never the
+        // board — still fits the window at the larger size.
+        let size = FaceSize::Board(layout::PILE_FACE as u16);
         let scroll = panel
             .spawn((
                 bevy::ui_widgets::ScrollArea,
-                Node { width: percent(100), max_height: px(460), flex_direction: FlexDirection::Column, overflow: Overflow::scroll_y(), ..default() },
+                Node { width: percent(100), max_height: px(layout::pile_height(window.y)), flex_direction: FlexDirection::Column, overflow: Overflow::scroll_y(), ..default() },
             ))
             .with_children(|column| {
                 column.spawn(wrap_row()).with_children(|row| {
@@ -3940,12 +3964,12 @@ fn zone_sheet(panel: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore
                         match item {
                             Shown::Card(id) => {
                                 if let Some(def) = core.registry.get(&id) {
-                                    let image = def.numeric_id.and_then(|code| images.face(code, FaceSize::Thumb));
-                                    spawn_face(row, theme, &Face::of(def), FaceSize::Thumb, image, (Button, Click::Inspect(id.clone())));
+                                    let image = def.numeric_id.and_then(|code| images.face(code, size));
+                                    spawn_face(row, theme, &Face::of(def), size, image, (Button, Click::Inspect(id.clone())));
                                 }
                             }
                             Shown::Back(side) => {
-                                spawn_back(row, theme, images.back(side), side, FaceSize::Thumb, ());
+                                spawn_back(row, theme, images.back(side), side, size, ());
                             }
                         }
                     }
