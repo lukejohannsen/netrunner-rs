@@ -163,7 +163,7 @@ impl Plugin for GamePlugin {
             .add_observer(open_a_logged_name)
             .add_systems(OnEnter(AppScreen::Game), spawn)
             .add_systems(OnExit(AppScreen::Game), leave)
-            .add_systems(Update, (poll, autoplay, escape.in_set(Captures), board_click, drag_hand, shortcuts, controls, fit, board_pictures, side_panels, redraw, fade_ghosts, lift_hovered, table_guide).chain().run_if(in_state(AppScreen::Game)))
+            .add_systems(Update, (poll, autoplay, escape.in_set(Captures), board_click, drag_hand, shortcuts, controls, fit, board_pictures, side_panels, redraw, fade_ghosts, raise_hand, table_guide).chain().run_if(in_state(AppScreen::Game)))
             // Its own registration rather than a link in that chain: it
             // has no ordering requirement against any of them, and adding
             // a system to an existing `.chain()` reorders everything after
@@ -488,7 +488,7 @@ impl BoardFit {
     }
 
     /// A side's cards, at the size their side of the table is drawn.
-    fn size_of(&self, side: Side) -> FaceSize {
+    pub fn size_of(&self, side: Side) -> FaceSize {
         FaceSize::Board(self.area_face(side).round() as u16)
     }
 
@@ -984,7 +984,9 @@ fn autoplay(
             Some(slot) => {
                 dev.drag = false;
                 pending.0.push(Intent::DragPress { slot, at: (0.0, 0.0) });
-                pending.0.push(Intent::DragMove { at: (400.0, 400.0) });
+                // Up the board from the press, so the shot shows the card
+                // carried over the table rather than off its edge.
+                pending.0.push(Intent::DragMove { at: (160.0, -520.0) });
             }
             // Nothing in hand has anywhere to go at this decision (a hand
             // of operations, or a prompt mid-turn): take one more action
@@ -1532,7 +1534,25 @@ pub(crate) fn controls(
     let Some(mut model) = model else { return };
     for intent in intents {
         let remembers = matches!(intent, Intent::Remember(_));
+        // What a drag changes is on the board, not the rail: the hand's
+        // order, the card picked up and the places lit for it. A redraw of
+        // the rail alone left all three unchanged on the screen — the
+        // model reordered the hand and the row showed the old order until
+        // the next action happened to redraw it, and no place ever lit —
+        // which is what "picking up and moving cards isn't working at all"
+        // was (25 September 2026).
+        // A release that never travelled is a click, which opens a menu
+        // over the card and redraws only the rail, as any click does.
+        let dragged = model.0.dragging.as_ref().is_some_and(|drag| drag.dragging);
+        let moves_the_hand = match intent {
+            Intent::DragMove { .. } | Intent::ReorderHand { .. } => true,
+            Intent::DragDrop { .. } | Intent::DragRelease { .. } => dragged,
+            _ => false,
+        };
         let outcome = model.0.apply(intent);
+        if moves_the_hand && outcome == Outcome::Redraw {
+            dirty.board = true;
+        }
         // An answer given for good is the settings file's, so the next
         // game, and the terminal, know it too.
         if remembers && matches!(outcome, Outcome::Submit(_)) && core.settings.answers != model.0.answers {
@@ -2663,7 +2683,7 @@ fn fade_ghosts(mut ghosts: Query<&mut ImageNode, With<Ghost>>) {
 
 /// The person's hand beside their strip, the top `layout::PEEK` of each
 /// card showing and the rest below the table's edge, overlapped when it
-/// is wide. A hovered card lifts out whole (`lift_hovered`).
+/// is wide. A hovered card rises out of the row whole (`raise_hand`).
 #[allow(clippy::too_many_arguments)]
 fn spawn_hand(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore, images: &CardImages, game: &Game, view: &ClientView, side: Side, lit: &Lit, fit: &BoardFit, drag: Option<usize>) {
     // The person's own order for their own hand, the view's for the
@@ -2717,85 +2737,97 @@ fn spawn_hand(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCor
     });
 }
 
-/// The full card a hovered hand card lifts out as, pointing back at the
-/// face it lifted from.
+/// The hand card that is out of the row: raised whole by a hover, or
+/// following the pointer in a drag (`raise_hand`). On the face itself —
+/// there is no copy.
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
-pub struct LiftedCard(pub Entity);
+pub struct LiftedCard;
 
-/// How far above the table's edge a lifted card's bottom sits.
-const LIFT: f32 = 12.0;
-
-/// A hand shows a third of each card (`layout::PEEK`); the card the
-/// pointer rests on lifts out whole, drawn over the board above its
-/// slot, so a hand can be read without a click.
+/// A hand shows the top of each card (`layout::PEEK`); the card the
+/// pointer rests on **rises out of the row** until it is whole, and a card
+/// picked up **follows the pointer** until it is put down.
 ///
-/// **Paint, not play.** The lifted card is a second, non-interactive
-/// copy in a floating layer: the face in the row never moves, so a
-/// drag, a click and the hand's own order measure the same box they
-/// always did, and nothing about it enters a `PlayerAction`, the log or
-/// a `ClientView` — considering a card is not a game event (the third
-/// list's item 3). It carries no `Button`, so the focus system passes
-/// through it to the face beneath and the hover holds. Nothing lifts
-/// while a card is being dragged, a menu is open or the board is
-/// covered: each of those is already showing the person something.
+/// **The card itself moves, not a copy of it.** The first cut drew a
+/// second, inert copy above the row, so the face in the row never moved
+/// and a drag measured the same box it always had; to the person it was a
+/// picture laid over the strip, which looked wrong, and a drag that moved
+/// nothing on the screen read as a drag that did not work (reported 25
+/// September 2026: "picking up and moving cards isn't working at all").
+/// So the face is moved by a `UiTransform` — which moves what is drawn
+/// and what is hit together, without laying the row out again, so its
+/// neighbours hold still — freed from the strip's clip by `OverrideClip`,
+/// and drawn over the board by a `GlobalZIndex`.
+///
+/// **A hover raises it by exactly the part the strip hides**, so its
+/// bottom sits on the window's edge and it still covers the whole of its
+/// place in the strip: a pointer anywhere on the strip is still on the
+/// card, and it does not drop and rise again at its lower edge. **A drag
+/// carries it from where the press found it**, raised, by the distance the
+/// pointer has travelled, so the point that was grabbed stays under the
+/// pointer. A card whose menu is open stays raised, so the menu sits over
+/// the card it belongs to.
+///
+/// It is paint and position, never play: nothing here enters a
+/// `PlayerAction`, the log or a `ClientView`, and the order a drag leaves
+/// is the model's (`Intent::DragRelease`).
 #[allow(clippy::too_many_arguments)]
-fn lift_hovered(
+fn raise_hand(
     mut commands: Commands,
-    theme: Res<Theme>,
-    core: Res<ClientCore>,
-    images: Res<CardImages>,
     model: Option<Res<Model>>,
     fit: Option<Res<BoardFit>>,
-    slots: Query<(Entity, &HandSlot, &Interaction, &ComputedNode, &UiGlobalTransform)>,
-    mut lifted: Query<(Entity, &LiftedCard, &mut Node)>,
-    roots: Query<Entity, (With<DespawnOnExit<AppScreen>>, With<Node>)>,
+    mut faces: Query<(Entity, &HandSlot, &Interaction, Option<&mut UiTransform>, Has<LiftedCard>)>,
     dev: Option<Res<crate::dev::Dev>>,
 ) {
     let (Some(model), Some(fit)) = (model, fit) else { return };
     let game = &model.0;
-    let quiet = game.dragging.is_none() && game.menu.is_none() && !game.covered();
-    // `NETRUNNER_LIFT`: the first card is held lifted for a screenshot,
+    let rise = (1.0 - layout::PEEK) * fit.size_of(game.side).height();
+    // `NETRUNNER_LIFT`: the first card is held raised for a screenshot,
     // as if the pointer rested on it.
     let forced = dev.is_some_and(|dev| dev.lift && dev.autoplayed >= dev.autoplay);
-    let hovered = if quiet { slots.iter().find(|(_, slot, interaction, _, _)| **interaction == Interaction::Hovered || (forced && slot.0 == 0)) } else { None };
-    let size = fit.size_of(game.side);
-    // The face's box is the whole card, laid out below the peek window;
-    // the lifted copy is raised until its bottom clears that window.
-    // Placed every frame rather than once: the face under a freshly drawn
-    // board has no laid-out box until the frame after it is spawned.
-    let place = |node: &ComputedNode, transform: &UiGlobalTransform| {
-        let anchor = anchor_of(node, transform);
-        let top = anchor.y - anchor.height / 2.0 - (1.0 - layout::PEEK) * size.height() - LIFT;
-        let left = (anchor.x - size.width() / 2.0).clamp(layout::PADDING, (fit.window.x - size.width() - layout::PADDING).max(layout::PADDING));
-        (left, top.max(0.0))
-    };
-    if let Some((entity, _, _, node, transform)) = hovered
-        && let Some((_, _, mut lifted_node)) = lifted.iter_mut().find(|(_, over, _)| over.0 == entity)
-    {
-        let (left, top) = place(node, transform);
-        if lifted_node.left != px(left) || lifted_node.top != px(top) {
-            lifted_node.left = px(left);
-            lifted_node.top = px(top);
-        }
-        return;
-    }
-    for (entity, _, _) in &lifted {
-        commands.entity(entity).despawn();
-    }
-    let Some((entity, slot, _, node, transform)) = hovered else { return };
-    let Some(def) = game.hand.cards().get(slot.0).and_then(|id| core.registry.get(id)) else { return };
-    let Some(root) = roots.iter().next() else { return };
-    let (left, top) = place(node, transform);
-    let image = def.numeric_id.and_then(|code| images.face(code, size));
-    commands.entity(root).with_children(|parent| {
-        let face = spawn_face(parent, &theme, &Face::of(def), size, image, (LiftedCard(entity), Pickable::IGNORE, GlobalZIndex(12)));
-        parent.commands().entity(face).entry::<Node>().and_modify(move |mut node| {
-            node.position_type = PositionType::Absolute;
-            node.left = px(left);
-            node.top = px(top);
-        });
-        parent.commands().entity(face).insert(Contact(Depth::Near));
+    let menu_card = game.menu.as_ref().and_then(|menu| match &menu.target {
+        Target::HandCard(card) => Some(card.clone()),
+        _ => None,
     });
+    let raised: Option<(usize, Vec2)> = if let Some(drag) = game.dragging.as_ref().filter(|drag| drag.dragging) {
+        Some((drag.what, Vec2::new(drag.now.0 - drag.from.0, drag.now.1 - drag.from.1 - rise)))
+    } else if let Some(card) = menu_card {
+        game.hand.cards().iter().position(|each| *each == card).map(|slot| (slot, Vec2::new(0.0, -rise)))
+    } else if game.menu.is_none() && !game.covered() {
+        // A press not yet a drag keeps the card up: it was raised when
+        // the press found it, and dropping it then would move it out from
+        // under the pointer that is about to pull it.
+        let held = game.dragging.as_ref().map(|drag| drag.what);
+        faces
+            .iter()
+            .find(|(_, slot, interaction, _, _)| Some(slot.0) == held || matches!(interaction, Interaction::Hovered | Interaction::Pressed) || (forced && slot.0 == 0))
+            .map(|(_, slot, _, _, _)| (slot.0, Vec2::new(0.0, -rise)))
+    } else {
+        None
+    };
+    for (entity, slot, _, transform, lifted) in &mut faces {
+        match raised {
+            Some((at, offset)) if at == slot.0 => {
+                let translation = Val2::px(offset.x, offset.y);
+                match transform {
+                    Some(mut transform) if transform.translation != translation => transform.translation = translation,
+                    Some(_) => {}
+                    None => {
+                        commands.entity(entity).insert(UiTransform { translation, ..UiTransform::IDENTITY });
+                    }
+                }
+                if !lifted {
+                    commands.entity(entity).insert((LiftedCard, OverrideClip, GlobalZIndex(12)));
+                }
+            }
+            _ if lifted => {
+                commands.entity(entity).remove::<(LiftedCard, OverrideClip, GlobalZIndex)>();
+                if let Some(mut transform) = transform {
+                    *transform = UiTransform::IDENTITY;
+                }
+            }
+            _ => {}
+        }
+    }
 }
 
 // ---- the control bar and the rail ----

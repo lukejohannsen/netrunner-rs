@@ -182,7 +182,7 @@ pub const ICE_FIELD_MIN: f32 = 96.0;
 /// (see [`Depth`]).
 pub const OPPONENT_SCALE: f32 = 0.75;
 /// How much of a card in a hand or a rig row shows: its top third for
-/// the person's own hand (a hovered one lifts out whole) and for every
+/// the person's own hand (a hovered one rises out of the row whole) and for every
 /// rig card, the bottom third of a back for the opponent's hand. A hand
 /// is a fan held at the table's edge, and the two hands were a full card
 /// each — the largest thing on the board and the least looked at. The
