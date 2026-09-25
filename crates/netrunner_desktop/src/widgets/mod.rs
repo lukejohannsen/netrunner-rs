@@ -185,6 +185,15 @@ pub fn lift() -> BoxShadow {
     BoxShadow::new(Color::srgba(0.0, 0.0, 0.0, 0.40), px(0), px(10), px(0), px(28))
 }
 
+/// The shadow under a title that stands on a picture rather than on
+/// glass — the main menu's NETRUNNER over the neon city, where the
+/// accent's icy blue met the picture's lights and went thin. Bevy's
+/// `TextShadow` is an offset copy with no blur, so it is dark and close
+/// rather than soft and wide.
+pub fn title_shadow() -> TextShadow {
+    TextShadow { offset: Vec2::new(3.0, 4.0), color: Color::srgba(0.0, 0.0, 0.0, 0.85) }
+}
+
 /// The name of a group inside a panel ("YOUR SIDE"): small capitals in
 /// the accent — it labels what follows rather than being read.
 pub fn overline<T: Into<String>>(theme: &Theme, text: T) -> impl Bundle + use<T> {

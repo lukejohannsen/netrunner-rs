@@ -10,11 +10,16 @@ and a test fails if a screen's key is missing from this page. So when a
 screen is added, its row appears here in the same change, and there is
 somewhere to put its picture before the picture exists.
 
-Two pictures are committed here: Kirsten Zirngibl's *New Angeles in
+Five pictures are committed here: Kirsten Zirngibl's *New Angeles in
 Neon/Smog*, the smog version behind the splash (`splash.jpg`) and the
-neon one behind the main menu (`main-menu.jpg`), with `backdrops.json`
-setting how much each is dimmed. Both are all rights reserved, shipped
-with credit and removed if she asks (`../CREDITS.md`). A screen with no
+neon one behind the main menu (`main-menu.jpg`), which About and
+Settings show too; Aurore Folny's *The Personal Touch* behind the deck
+list and the deck editor (`decks.jpg`); Adam Schumpert's *Maya* behind
+Play vs Computer (`new-game.jpg`); and JB Casacop's *Dyson Mem Chip*
+behind the card browser (`cards.jpg`). `backdrops.json` sets how much
+each is dimmed and which screens borrow another's picture. All are
+all rights reserved, shipped with credit and removed if their owners ask
+(`../CREDITS.md`). A screen with no
 picture of its own and no `menu.jpg` is the
 drawn backdrop (`nav::drawn_backdrop`): a deep blue falling to near
 black, with two soft blooms of light for the menus' glass to catch. That
@@ -98,6 +103,18 @@ picture as drawn) to `1` (the flat ground). A key it does not name takes
 ```
 
 A file with a typo in it costs the dimming and never the picture.
+
+**A screen can show another screen's picture** without a copy of the
+file: `same_as` names, per key, the key whose files it is looked up
+under. Its dim is still its own.
+
+```json
+{ "same_as": { "about": "main-menu", "deck-editor": "decks" } }
+```
+
+That is different from `menu.jpg`, which dresses *every* screen with no
+picture of its own. It is one step only: the key named is looked up as
+itself.
 
 ## The splash
 

@@ -111,7 +111,7 @@ fn spawn(mut commands: Commands, theme: Res<Theme>, core: Res<ClientCore>, notic
     commands.spawn((screen_root(AppScreen::MainMenu, &theme), children![
         (Node { flex_direction: FlexDirection::Column, align_items: AlignItems::Center, row_gap: px(16), margin: UiRect::vertical(Val::Auto), ..default() }, children![
             (Node { flex_direction: FlexDirection::Column, align_items: AlignItems::Center, row_gap: px(6), margin: UiRect::bottom(px(8)), ..default() }, children![
-                widgets::title(&theme, "NETRUNNER"),
+                (widgets::title(&theme, "NETRUNNER"), widgets::title_shadow()),
                 widgets::dim(&theme, format!("Playing as {} · {format} format", core.player_name())),
             ]),
             (widgets::roomy_panel(&theme, px(780)), Children::spawn(SpawnIter(Entry::ALL.into_iter().map({

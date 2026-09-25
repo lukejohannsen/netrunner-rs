@@ -4501,6 +4501,37 @@ ships in its own repository (`mtgred/netrunner`,
   constants and their two errors) had no caller and was removed, and the
   "Fetched" credit row for the backs became four register rows.
 
+### 4ba. The deck builder, Play vs Computer and the card browser have backdrops, and the menu's title a shadow — DONE (24 September 2026)
+
+The person picked the pictures. All three are committed under the "Art
+under no licence" rule of §4ay, each credited to its artist with their
+website (`assets/CREDITS.md`), unchanged:
+
+- **Decks and the deck editor**: Aurore Folny's *The Personal Touch*
+  (Revised Core Set), `backdrops/decks.jpg`.
+- **Play vs Computer**: Adam Schumpert's *Maya* (Kala Ghoda), as
+  Fantasy Flight Games' 2016 *Treasures from the Net* wallpaper,
+  `backdrops/new-game.jpg`. The wallpaper carries no artist credit; the
+  artist was read off the card, whose art it is.
+- **Cards**: JB Casacop's *Dyson Mem Chip* (Core Set), the copy
+  jinteki.net ships at `resources/public/img/bg/DysonMemChip.jpg`,
+  `backdrops/cards.jpg`, dimmed 0.6 under the grid of faces.
+- **About and Settings** show the main menu's picture.
+
+**A screen borrows another's picture by name, not by a copy.**
+`backdrops.json` gained `same_as` (`netrunner_client::backdrop::Manifest`,
+one step, the dim still the screen's own): About and Settings name
+`main-menu`, the deck editor names `decks`. Renaming `main-menu.jpg` to
+the shared `menu.jpg` was the other way, and was not taken because it
+would also have dressed Online, Learn to Play, Profile and Replay, which
+nobody asked for. A decoded picture is cached under the key its files
+came from, so two screens showing one decode it once.
+
+**The main menu's NETRUNNER has a drop shadow** (`widgets::title_shadow`):
+the neon *New Angeles* has a near-white sky, and the accent's icy blue
+went thin on it. Bevy's `TextShadow` has no blur, so it is dark and close
+(3, 4 px, 85% black).
+
 ## 5. The deck builder — DONE (24 September 2026)
 
 `feat/desktop-deck-builder`. Asked for in one list: save and import

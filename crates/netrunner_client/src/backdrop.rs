@@ -59,7 +59,8 @@ pub fn candidates(key: &str) -> Vec<String> {
 /// picture.
 ///
 /// ```json
-/// { "dim": { "menu": 0.5, "cards": 0.7, "splash": 0.0 } }
+/// { "dim": { "menu": 0.5, "cards": 0.7, "splash": 0.0 },
+///   "same_as": { "about": "main-menu" } }
 /// ```
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
@@ -67,12 +68,27 @@ pub struct Manifest {
     /// Per key, 0 (the picture as drawn) to 1 (the flat ground). A key
     /// with no entry takes [`SHARED_KEY`]'s, then [`DEFAULT_DIM`].
     pub dim: BTreeMap<String, f32>,
+    /// Per key, another key whose picture this screen shows. **A screen
+    /// that wants a particular screen's picture says so here rather than
+    /// holding a copy of the file**, and rather than the picture becoming
+    /// [`SHARED_KEY`]'s, which would dress every screen nobody drew for:
+    /// About and Settings stand on the main menu's picture while Online
+    /// and Replay keep the drawn ground. One step only — the key named
+    /// here is looked up as itself, its own entry unread — so no chain
+    /// can loop. The dim stays the screen's own.
+    pub same_as: BTreeMap<String, String>,
 }
 
 impl Manifest {
     /// Parsed, or the empty manifest on any error.
     pub fn parse(json: &str) -> Self {
         serde_json::from_str(json).unwrap_or_default()
+    }
+
+    /// The key whose files `key`'s picture is looked for under: its
+    /// [`Manifest::same_as`] entry, or itself.
+    pub fn picture_key<'a>(&'a self, key: &'a str) -> &'a str {
+        self.same_as.get(key).map_or(key, String::as_str)
     }
 
     /// How much `key`'s picture is dimmed, clamped to 0..=1.
@@ -99,5 +115,13 @@ mod tests {
         assert_eq!(manifest.dim("splash"), 1.0, "clamped");
         assert_eq!(Manifest::parse("{ not json").dim("cards"), DEFAULT_DIM);
         assert_eq!(Manifest::default().dim("cards"), DEFAULT_DIM);
+    }
+
+    #[test]
+    fn a_screen_may_show_another_screens_picture_one_step_only() {
+        let manifest = Manifest::parse(r#"{ "same_as": { "about": "main-menu", "main-menu": "splash" }, "dim": { "main-menu": 0.3 } }"#);
+        assert_eq!(manifest.picture_key("about"), "main-menu", "not followed on to splash");
+        assert_eq!(manifest.picture_key("cards"), "cards");
+        assert_eq!(manifest.dim("about"), DEFAULT_DIM, "the dim is the screen's own, not the picture's");
     }
 }
