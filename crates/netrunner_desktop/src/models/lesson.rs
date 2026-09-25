@@ -20,7 +20,13 @@
 
 use std::borrow::Cow;
 
+use netrunner_client::actions::card_title;
+use netrunner_client::board::action_map::server_name;
+use netrunner_client::board::{ActionMap, Control, Target};
 use netrunner_client::play::Coaching;
+use netrunner_core::cards::CardRegistry;
+use netrunner_core::dsl::CardId;
+use netrunner_core::rules::{PlayerAction, ServerId, Side};
 use netrunner_core::view::ClientView;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -62,6 +68,129 @@ impl LessonBoard {
         narrowed.legal_actions.retain(|action| coaching.allowed.contains(action));
         Cow::Owned(narrowed)
     }
+}
+
+/// The most ways the coach names. A step that offers more than this
+/// many ("spend your clicks however you like") is not asking for one
+/// move, so the coach names none rather than a list.
+pub const MOST_WAYS: usize = 3;
+
+/// One way the board offers a step's move: the gesture that makes it.
+/// Structured rather than a sentence so a test can *make* the gesture
+/// through the board's own intents and check it submits the move.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Way {
+    /// A control-bar button.
+    Control(Control),
+    /// A button under the prompt or in the pop-up: entry `0`.
+    Decision(usize),
+    /// A hand card carried to one of the places lit for it.
+    Drag { card: CardId, places: Vec<Target> },
+    /// A card or a zone clicked, and entry `entry` chosen on its menu.
+    Menu { target: Target, entry: usize },
+}
+
+/// The ways the step's moves are made, off `map` — **the lesson's
+/// narrowed map, the one the board is built from**, so a way can only
+/// point at something the board is offering. One per control, decision,
+/// menu entry, and one per hand card however many places it has. Empty
+/// when there are more than [`MOST_WAYS`].
+///
+/// Here rather than in the lesson files because it is the board's to
+/// say: the terminal reaches the same move from a list, and the lesson's
+/// words are shared by both clients (§6c).
+pub fn ways(map: &ActionMap, side: Side) -> Vec<Way> {
+    let decisions = map.decisions();
+    let mut ways: Vec<Way> = Vec::new();
+    for (index, entry) in map.entries.iter().enumerate() {
+        let way = if let Some(control) = Control::for_side(side).iter().find(|control| control.matches(&entry.action)) {
+            Way::Control(*control)
+        } else if decisions.contains(&index) {
+            Way::Decision(index)
+        } else {
+            let card = entry.targets.iter().find_map(|target| match target {
+                Target::HandCard(card) => Some(card.clone()),
+                _ => None,
+            });
+            let places: Vec<Target> = entry.targets.iter().filter(|target| !matches!(target, Target::HandCard(_))).cloned().collect();
+            match (card, entry.targets.first()) {
+                (Some(card), _) if !places.is_empty() => {
+                    if let Some(Way::Drag { places: known, .. }) = ways.iter_mut().find(|way| matches!(way, Way::Drag { card: held, .. } if *held == card)) {
+                        known.extend(places.into_iter().filter(|place| !known.contains(place)).collect::<Vec<_>>());
+                        continue;
+                    }
+                    Way::Drag { card, places }
+                }
+                (Some(card), _) => Way::Menu { target: Target::HandCard(card), entry: index },
+                (None, Some(target)) => Way::Menu { target: target.clone(), entry: index },
+                // Nothing to click and no control: under the prompt.
+                (None, None) => Way::Decision(index),
+            }
+        };
+        if !ways.contains(&way) {
+            ways.push(way);
+        }
+    }
+    if ways.len() > MOST_WAYS { Vec::new() } else { ways }
+}
+
+impl Way {
+    /// Whether this way submits `action`.
+    pub fn reaches(&self, map: &ActionMap, action: &PlayerAction) -> bool {
+        match self {
+            Way::Control(control) => control.matches(action),
+            Way::Decision(index) | Way::Menu { entry: index, .. } => map.entries.get(*index).is_some_and(|entry| entry.action == *action),
+            Way::Drag { card, places } => places.iter().any(|place| map.for_hand_card_at(card, place).iter().any(|index| map.entries[*index].action == *action)),
+        }
+    }
+
+    /// The coach's sentence for it, quoting the button's own words
+    /// (`ActionEntry::label`, `ActionMap::continue_label`).
+    pub fn words(&self, map: &ActionMap, view: &ClientView, registry: &CardRegistry) -> String {
+        let quoted = |label: &str| format!("\u{201c}{label}\u{201d}");
+        let label = |index: &usize| map.entries.get(*index).map_or_else(String::new, |entry| quoted(&entry.label));
+        let installed = |id: &netrunner_core::rules::InstallId| netrunner_client::actions::installed_card_id(view, id).map(|card| card_title(&card, registry));
+        match self {
+            Way::Control(Control::Continue) => format!("Press {} above your hand.", quoted(map.continue_label())),
+            Way::Control(control) => format!("Press {} above your hand.", quoted(control.label())),
+            Way::Decision(index) => format!("Press {} in the middle of the window.", label(index)),
+            Way::Drag { card, places } => {
+                let place = |target: &Target| match target {
+                    Target::Server(server) if is_new_remote(*server, view) => "the new column that opens beside your servers as you lift it".to_string(),
+                    Target::Server(server) => server_name(*server),
+                    Target::Rig => "your rig".to_string(),
+                    Target::Table => "the table".to_string(),
+                    Target::Install(id) => installed(id).unwrap_or_else(|| "the ice it goes on".to_string()),
+                    _ => "the place that lights up".to_string(),
+                };
+                // Past two, the places are named by what the board does
+                // with them: every one lights up while the card is held.
+                let onto = match places.as_slice() {
+                    [one] => place(one),
+                    [one, other] => format!("{} or {}", place(one), place(other)),
+                    _ => "any place that lights up as you lift it".to_string(),
+                };
+                format!("Drag {} from your hand onto {onto}.", card_title(card, registry))
+            }
+            Way::Menu { target, entry } => {
+                let what = match target {
+                    Target::HandCard(card) => format!("{} in your hand", card_title(card, registry)),
+                    Target::Install(id) => installed(id).unwrap_or_else(|| "the card".to_string()),
+                    Target::Server(server) => server_name(*server),
+                    Target::Identity(_) => "your identity".to_string(),
+                    Target::Pile(pile) => format!("your {}", pile.name().to_lowercase()),
+                    Target::Position(_) | Target::Rig | Target::Table => "it".to_string(),
+                };
+                format!("Click {what} and choose {}.", label(entry))
+            }
+        }
+    }
+}
+
+/// A remote the engine offers that the table does not have yet: the
+/// board draws its column only while a card that could go there is held.
+fn is_new_remote(server: ServerId, view: &ClientView) -> bool {
+    matches!(server, ServerId::Remote(_)) && !view.corp.servers.iter().any(|existing| existing.server == server)
 }
 
 #[cfg(test)]
@@ -134,6 +263,85 @@ mod tests {
         game.apply(Intent::BeginLesson);
         assert_eq!(game.apply(Intent::Back), Outcome::Redraw);
         assert!(game.confirm_quit);
+    }
+
+    /// Makes `way`'s gesture on the board, for `action`: the intents a
+    /// person's hands would send, ending in what the board submits.
+    fn make(game: &mut Game, way: &Way, action: &PlayerAction) -> Outcome {
+        match way {
+            Way::Control(control) => game.apply(Intent::Control(*control)),
+            Way::Decision(index) => game.apply(Intent::Choose(*index)),
+            Way::Menu { target, entry } => {
+                assert_eq!(game.apply(Intent::Click { target: target.clone(), over: Anchor::default() }), Outcome::Redraw, "the click opens a menu");
+                assert!(game.menu.as_ref().is_some_and(|menu| menu.entries.contains(entry)), "the menu holds the entry the coach quotes");
+                game.apply(Intent::Choose(*entry))
+            }
+            Way::Drag { card, places } => {
+                let slot = game.hand.cards().iter().position(|held| held == card).expect("the card to drag is in the hand");
+                let place = places.iter().find(|place| game.actions.for_hand_card_at(card, place).iter().any(|i| game.actions.entries[*i].action == *action)).expect("a place takes it").clone();
+                game.apply(Intent::DragPress { slot, at: (100.0, 900.0) });
+                game.apply(Intent::DragMove { at: (400.0, 400.0) });
+                assert!(game.drop_places().contains(&place), "the board lights the place the coach names");
+                match game.apply(Intent::DragDrop { target: place, over: Anchor::default() }) {
+                    Outcome::Redraw => {
+                        let entry = game.menu.as_ref().and_then(|menu| menu.entries.iter().copied().find(|i| game.actions.entries[*i].action == *action)).expect("the drop's menu offers it");
+                        game.apply(Intent::Choose(entry))
+                    }
+                    outcome => outcome,
+                }
+            }
+        }
+    }
+
+    /// Every step of every lesson is played on the board the way the
+    /// coach says: the gesture a way names is made through the board's
+    /// intents and submits the step's move. A step the coach names no way
+    /// for is one offering more than `MOST_WAYS`, and there are few.
+    #[test]
+    fn every_lesson_is_played_the_way_the_coach_says() {
+        let registry = Arc::new(netrunner_client::decks::sample_deck_registry());
+        let (mut named, mut unnamed) = (0, 0);
+        for lesson in tutorial::embedded_lessons() {
+            let (id, steps) = (lesson.id.clone(), lesson.steps.clone());
+            let mut game = Game::lesson(Arc::clone(&registry), lesson.side, LessonBoard::new(lesson.title.clone(), lesson.intro.clone()));
+            game.apply(Intent::BeginLesson);
+            let mut handle = MatchHandle::start_lesson(Arc::clone(&registry), lesson, 0).unwrap();
+            loop {
+                let message = handle.wait().unwrap_or_else(|| panic!("{id}: the thread went silent"));
+                let complete = matches!(message, MatchMessage::LessonComplete { .. });
+                game.apply(Intent::Message(MatchMessageRef(message)));
+                if complete {
+                    break;
+                }
+                if !game.awaiting {
+                    continue;
+                }
+                let board = game.lesson.clone().unwrap();
+                let coaching = board.coaching.clone().unwrap();
+                let action = steps[coaching.step - 1].solution.iter().find(|a| coaching.allowed.contains(a)).cloned().unwrap_or_else(|| panic!("{id} step {}: no solution allowed", coaching.step));
+                let found = if board.gated() { ways(&game.actions, game.side) } else { Vec::new() };
+                let view = game.view.clone().unwrap();
+                for way in &found {
+                    eprintln!("{id} step {}: {}", coaching.step, way.words(&game.actions, &view, game.registry()));
+                }
+                let outcome = match found.iter().find(|way| way.reaches(&game.actions, &action)) {
+                    Some(way) => {
+                        named += 1;
+                        make(&mut game, way, &action)
+                    }
+                    None => {
+                        assert!(found.is_empty(), "{id} step {}: the coach names ways, none of them the step's move", coaching.step);
+                        unnamed += 1;
+                        let index = game.actions.entries.iter().position(|entry| entry.action == action).unwrap();
+                        game.apply(Intent::Choose(index))
+                    }
+                };
+                assert_eq!(outcome, Outcome::Submit(action.clone()), "{id} step {}", coaching.step);
+                handle.submit(action).unwrap();
+            }
+        }
+        eprintln!("{named} decisions named a way, {unnamed} did not");
+        assert!(named > 4 * unnamed, "the coach names a way for most decisions: {named} against {unnamed}");
     }
 
     /// The lone pass the board takes for a person in a game is the
