@@ -4739,7 +4739,7 @@ the person's own words: the identity "sitting off to the side" with
 "boring numbers" beside it becomes a disc of the identity's art in the
 middle of a bar, the side's numbers either side of it, the bar lit for
 the side whose turn it is and grey for the other. The bar sits over the
-person's hand and under the opponent's backs, and **it and the avatar do
+person's hand and is the opponent's whole edge, and **it and the avatar do
 not move** — the person named that as the thing not to repeat.
 
 - **The strip is gone.** A side's edge of the table is now one board
@@ -4751,7 +4751,7 @@ not move** — the person named that as the thing not to repeat.
   · N" is gone: the Runner's Grip readout and the Corp's HQ header carry
   the count.
 - **Fixed pixels.** `layout::AVATAR` (72) and `layout::BAR` (48), the far
-  side at `OPPONENT_SCALE`; `strip_height` is the avatar row plus the
+  side at `OPPONENT_BAR_SCALE`; `strip_height` is the avatar row plus the
   hand's peek, so `fixed_height` stays monotone in the face. Measured
   with a replica of `face_width`: no change at 1920 × 1080 or the
   person's 2000 × 1250 (the face is at its 220 cap there), and 167 → 150
@@ -4786,6 +4786,17 @@ not move** — the person named that as the thing not to repeat.
   number, the gaps close from 14 to 8, and the Runner's name is left out
   rather than clipped to its first letter. The name is the title before
   its colon ("Zahya Sadeghi", "Haas-Bioroid").
+
+- **The opponent's hand is not drawn**, asked for after the person saw
+  the bar: the row of backs said only how many cards they hold, which
+  the Runner's Grip readout and the Corp's HQ header already say. The
+  opponent's edge is their bar alone, on the window's top edge
+  (`layout::strip_height`). With that height back, **the opponent's bar
+  is drawn at `layout::OPPONENT_BAR_SCALE` (0.9)** rather than the far
+  side's 0.75, also at the person's request: at 0.75 its words were
+  11 px. Card width against `main`, by the same replica: 2000 × 1250
+  unchanged (220), 1366 × 768 167 → 170 (Corp) and 157 → 154 (Runner) —
+  the bar-over-hand cost above, less the hand that is gone.
 
 Seen on screen at 2000 × 1250 and 1366 × 768 from both chairs, forty
 decisions in, and with a hand card lifted (`NETRUNNER_LIFT`); no scroll

@@ -1732,7 +1732,7 @@ fn a_run_puts_the_runner_in_the_right_column() {
     assert_eq!(app.world_mut().query::<&EncounterName>().iter(app.world()).count(), 0, "one card in the panel at a time");
 }
 
-/// The board has no margin above the opponent's hand or below the
+/// The board has no margin above the opponent's bar or below the
 /// person's: the root pads its sides only, and the person's edge — their
 /// avatar bar over their hand — is the board's last row.
 #[test]
@@ -1746,7 +1746,12 @@ fn the_hands_sit_on_the_windows_edges() {
     let root = world.get::<ChildOf>(board).and_then(|body| world.get::<ChildOf>(body.parent())).expect("the board is in the body, in the root").parent();
     let padding = world.get::<Node>(root).expect("the root is a node").padding;
     assert_eq!((padding.top, padding.bottom), (Val::Px(0.0), Val::Px(0.0)), "nothing above or below the board");
-    let last = *world.get::<Children>(board).expect("the board has rows").last().expect("a last row");
+    let rows: Vec<Entity> = world.get::<Children>(board).expect("the board has rows").iter().collect();
+    // The opponent's edge is their bar alone: their hand is not drawn.
+    let far: Vec<Entity> = world.get::<Children>(rows[0]).expect("the first row has children").iter().collect();
+    assert_eq!(far.len(), 1, "the opponent's edge is one thing");
+    assert!(world.get::<AvatarBar>(far[0]).is_some_and(|bar| bar.side == Side::Corp), "their bar, on the top edge");
+    let last = *rows.last().expect("a last row");
     // The person's edge: their avatar bar, then their hand under it, so
     // the hand is the last thing on the board and the bar never moves
     // when it changes.

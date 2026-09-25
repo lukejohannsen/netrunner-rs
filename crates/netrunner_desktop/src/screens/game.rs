@@ -22,12 +22,13 @@
 //! one of those changes, and a row that is still too wide overlaps its
 //! cards like a held hand (`layout::step`) rather than wrapping or
 //! scrolling. The board runs the window's full height beside one right
-//! column: nothing above the opponent's hand and nothing under the
-//! person's. Top to bottom on the board: the opponent's strip and the
-//! bottom of their hand as backs, hung from the window's top edge; their
-//! area and the person's, meeting at the ICE; the control bar (`board::Control::for_side`, one button each,
-//! always in the same place) directly above the person's hand, then the
-//! person's strip and the top of their hand on the window's bottom edge.
+//! column: nothing above the opponent's avatar bar and nothing under the
+//! person's hand. Top to bottom on the board: the opponent's avatar bar
+//! on the window's top edge (their hand is not drawn: its count is on
+//! the bar or the HQ header); their area and the person's, meeting at
+//! the ICE; the control bar (`board::Control::for_side`, one button
+//! each, always in the same place), then the person's avatar bar and the
+//! top of their hand on the window's bottom edge.
 //! The right column is the status line with Quit and the gear, the phase
 //! panel (`board::phase`, hidden with L; a press on it or T opens the
 //! timing chart, `board::timing`), the Runner's identity while a
@@ -1886,24 +1887,24 @@ fn spawn_board(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCo
     let human = game.side;
     let opponent = human.other();
     let lit = Lit::of(transitions);
-    // Top to bottom from either chair: the opponent's hand as backs
-    // over their avatar bar, the far area, the near area, the control
-    // bar, the person's avatar bar over their hand. The Corp's servers
+    // Top to bottom from either chair: the opponent's avatar bar, the
+    // far area, the near area, the control bar, the person's avatar bar
+    // over their hand. The opponent's hand is not drawn: a row of backs
+    // said only how many they hold, which the Runner's Grip readout and
+    // the Corp's HQ header say, and its height is the cards'. The Corp's servers
     // are always the area that grows (`layout::field_height`), with their
     // plates on the Corp's edge; the rig's row is reserved at its size
     // whether or not anything is in it, so nothing installed moves the
-    // middle. Each edge is one row of the board — a column of its bar and
-    // its hand, no gap between them — so the board's gaps are as they were.
-    parent.spawn(strip_row()).with_children(|edge| {
-        edge.spawn(centred_row()).with_children(|row| spawn_opponent_hand(row, theme, images, view, opponent, fit));
-        spawn_avatar_bar(edge, theme, core, crops, art, game, view, opponent, fit);
-    });
+    // middle. Each edge is one row of the board — the person's a column
+    // of their bar and their hand, no gap between them — so the board's
+    // gaps are as they were.
+    parent.spawn(strip_row()).with_children(|edge| spawn_avatar_bar(edge, theme, core, crops, art, game, view, opponent, fit));
     spawn_area(parent, theme, core, images, art, game, view, opponent, &lit, fit);
     spawn_area(parent, theme, core, images, art, game, view, human, &lit, fit);
     control_bar(parent, game);
     // The person's edge is the board's last row and sits on the window's
-    // bottom edge: the hand's peek touches it, as the opponent's backs
-    // touch the top, and whatever height the rows leave goes to the ICE
+    // bottom edge: the hand's peek touches it, as the opponent's bar
+    // touches the top, and whatever height the rows leave goes to the ICE
     // field between them rather than under the hand. The hand comes
     // after the bar, so a card lifted out of it is drawn over the bar.
     parent.spawn(strip_row()).with_children(|edge| {
@@ -2403,29 +2404,6 @@ fn spawn_readouts(parent: &mut ChildSpawnerCommands, theme: &Theme, art: Option<
 fn peek_window(size: FaceSize, n: usize, available: f32) -> Node {
     let width = if n == 0 { 0.0 } else { layout::step(n, size.width(), layout::CARD_GAP, available) * (n - 1) as f32 + size.width() };
     Node { width: px(width), height: px((layout::PEEK * size.height()).round()), flex_shrink: 0.0, flex_direction: FlexDirection::Column, overflow: Overflow::clip(), ..default() }
-}
-
-/// The opponent's hand as backs at their side's size, the bottom
-/// `layout::PEEK` of each hanging into the table from its far edge, and
-/// overlapped when there are many — a count is in the strip, and a row
-/// of backs is what a table shows.
-fn spawn_opponent_hand(parent: &mut ChildSpawnerCommands, theme: &Theme, images: &CardImages, view: &ClientView, side: Side, fit: &BoardFit) {
-    let count = match side {
-        Side::Corp => view.corp.hq_count,
-        Side::Runner => view.runner.grip_count,
-    };
-    let size = fit.size_of(side);
-    let available = fit.board_width();
-    // Hung from the top: the row is pulled up by the part that does not
-    // show, so the window sees the backs' lower edge.
-    let mut row_node = card_row();
-    row_node.margin.top = px(-((1.0 - layout::PEEK) * size.height()).round());
-    parent.spawn(peek_window(size, count, available)).with_children(|window| {
-        window.spawn(row_node).with_children(|row| {
-            let backs: Vec<Entity> = (0..count).map(|_| spawn_back(row, theme, images.back(side), side, size, Contact(Depth::Far))).collect();
-            overlap(row, &backs, size.width(), available);
-        });
-    });
 }
 
 /// A side's board: the Corp's servers, or the Runner's rig.
@@ -2942,13 +2920,13 @@ fn fade_ghosts(mut ghosts: Query<&mut ImageNode, With<Ghost>>) {
     }
 }
 
-/// The person's hand beside their strip, the top `layout::PEEK` of each
+/// The person's hand under their avatar bar, the top `layout::PEEK` of each
 /// card showing and the rest below the table's edge, overlapped when it
 /// is wide. A hovered card rises out of the row whole (`raise_hand`).
 #[allow(clippy::too_many_arguments)]
 fn spawn_hand(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore, images: &CardImages, game: &Game, view: &ClientView, side: Side, lit: &Lit, fit: &BoardFit, drag: Option<usize>) {
-    // The person's own order for their own hand, the view's for the
-    // opponent's (which is drawn as backs anyway).
+    // The person's own order for their own hand; the view's for any
+    // other, though only the person's is drawn.
     let own = side == game.side;
     let from_view = match side {
         Side::Corp => view.corp.hq_cards.as_deref(),
