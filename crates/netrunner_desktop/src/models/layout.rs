@@ -45,7 +45,7 @@
 //! opens the card's sheet when read, so nothing is lost but the picture.
 //!
 //! **The middle of the table is the ICE field, and it is the only thing
-//! that grows.** Between the plates and the run lane the columns get
+//! that grows.** Between the plates and the rig the columns get
 //! whatever height the fixed rows leave ([`field_height`]); a tile is as
 //! tall as its share of it allows and overlaps past a floor
 //! ([`tile_stack`]), so the Corp's ICE and the Runner's installs never
@@ -59,12 +59,10 @@
 //! Corp the reverse — and both hands show a [`PEEK`] of each card, the
 //! person's own lifting out whole when hovered.
 //!
-//! **The run lane is a row of its own, always there.** Between the Corp's
-//! servers and the Runner's rig — adjacent to the outermost ice from
-//! either chair — [`RUN_LANE`] is reserved whether or not a run is on,
-//! so the cards keep their size when one begins; a lane that appeared
-//! with the run would have re-sized every card at the moment the person
-//! most wants to watch the board.
+//! **There is no run lane.** A row of chips between the servers and the
+//! rig was reserved for a run until 24 September 2026, and removed at
+//! the person's request: the phase panel and the encounter panel say
+//! what it said, and its height went to the ICE field and the faces.
 
 use netrunner_core::rules::Side;
 
@@ -110,7 +108,7 @@ pub fn ice_top_down<T>(ice: &[T], chair: Side) -> Vec<&T> {
 /// board and redrew it — the middle of the table moved whenever the
 /// opponent did anything. Now the rig's rows are reserved whether or not
 /// anything is in them, and the ICE grows into the flexible field between
-/// the server plates and the run lane ([`tile_stack`]), so the face
+/// the server plates and the rig ([`tile_stack`]), so the face
 /// width is a function of the window, the chair and the servers alone.
 /// A new remote can still narrow the cards, because server columns cannot
 /// overlap. (The phase bar was a count too, while it was a row of the
@@ -176,9 +174,6 @@ pub const TILE_GAP: f32 = 4.0;
 /// floor before any overlap. It is what the face width gives up to the
 /// field; everything above it is the field's anyway.
 pub const ICE_FIELD_MIN: f32 = 96.0;
-/// The run lane between the two areas: a row of chips and a line of
-/// words beneath, with the gaps around it.
-pub const RUN_LANE: f32 = 64.0;
 /// The opponent's side of the table — their area, their strip and their
 /// hand — is drawn at this fraction of the person's own card width, so
 /// the table has a near side and a far side. **A constant factor keeps
@@ -351,7 +346,7 @@ pub fn rig_height(rig_face: f32) -> f32 {
 }
 
 /// Everything on the board but the ICE field, at face width `face`: the
-/// two strip rows, the servers' label and plates, the run lane, the rig,
+/// two strip rows, the servers' label and plates, the rig,
 /// the control bar and the gaps between them. Each term
 /// is a non-decreasing function of `face`, so the sum is monotone, which
 /// is what lets [`face_width`] search it.
@@ -362,9 +357,9 @@ pub fn fixed_height(face: f32, counts: Counts) -> f32 {
     let rig_face = area_face(Side::Runner, chair, face);
     let strips = strip_height(opponent, area_face(opponent, chair, face)) + strip_height(chair, face);
     let servers = LABEL + plate_height(server_face) + SERVER_CHROME_V;
-    // Six rows — two strips, the servers, the lane, the rig, the control
-    // bar — and five gaps between them.
-    strips + servers + RUN_LANE + rig_height(rig_face) + CONTROL_BAR + 5.0 * ROW_GAP
+    // Five rows — two strips, the servers, the rig, the control bar —
+    // and four gaps between them.
+    strips + servers + rig_height(rig_face) + CONTROL_BAR + 4.0 * ROW_GAP
 }
 
 /// The height the ICE field has at face width `face`: what the fixed
@@ -652,7 +647,7 @@ pub enum Depth {
     Far,
     /// The opponent's area — their servers, or their rig.
     Upper,
-    /// The person's own area, this side of the run lane.
+    /// The person's own area, this side of the ICE.
     Lower,
     /// The person's own strip and their hand: the near edge, where the
     /// table meets the chair.
@@ -806,8 +801,8 @@ impl MenuBox {
 ///
 /// The order is: above if the estimate fits there, else below if it fits
 /// there, else whichever side has more room — and if neither side has
-/// [`MENU_MIN_ROOM`] (a target as tall as the window: a server column,
-/// the run lane) the menu covers the target rather than leaving the
+/// [`MENU_MIN_ROOM`] (a target as tall as the window: a server column)
+/// the menu covers the target rather than leaving the
 /// window, because a menu over the card is readable and a menu off the
 /// screen is not.
 pub fn menu_box(window: (f32, f32), over: Anchor, rows: usize) -> MenuBox {
@@ -1206,7 +1201,7 @@ mod tests {
         assert!(menu.left.is_some_and(|left| left >= PADDING));
     }
 
-    /// A target as tall as the window — a server column, the run lane —
+    /// A target as tall as the window — a server column —
     /// has room on neither side. The menu covers it rather than leaving
     /// the window: a menu over the card is readable, one off the screen
     /// is not.

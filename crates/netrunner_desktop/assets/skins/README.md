@@ -130,8 +130,6 @@ window the *scaling* boxes shrink and the fixed ones do not.
 | `button.hover` / `.pressed` / `.disabled` | same | 9-slice | |
 | `compact.button` | ~85 × **31** | 9-slice | Stack, Heap, and the base a server header builds on |
 | `compact.button.hover` / `.pressed` | same | 9-slice | |
-| `run.chip` | 47–91 × **28** | 9-slice | A pill in the run lane |
-| `run.chip.origin` / `.upcoming` / `.current` / `.done` / `.success` / `.ended` | same | 9-slice | The server, the ice ahead, where the run is, what it did |
 | `phase.chip` | 86–149 × **25** | 9-slice | A step of the turn. The widest is "Actions · 3 clicks left" |
 | `phase.chip.past` / `.now` / `.ahead` | same | 9-slice | |
 | `hud.cell` | ~89 × **48** | 9-slice | The plate behind Credits, Clicks, Agendas… |

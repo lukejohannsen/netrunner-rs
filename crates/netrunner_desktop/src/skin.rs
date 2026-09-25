@@ -121,13 +121,6 @@ pub enum Slot {
     CompactButton,
     CompactButtonHover,
     CompactButtonPressed,
-    RunChip,
-    RunChipOrigin,
-    RunChipUpcoming,
-    RunChipCurrent,
-    RunChipDone,
-    RunChipSuccess,
-    RunChipEnded,
     PhaseChip,
     PhaseChipPast,
     PhaseChipNow,
@@ -172,7 +165,7 @@ pub enum Slot {
 
 impl Slot {
     /// Every slot, in the order the gallery lists them.
-    pub const ALL: [Slot; 41] = [
+    pub const ALL: [Slot; 34] = [
         Slot::ServerColumn,
         Slot::ServerColumnWelcomes,
         Slot::ServerColumnUnderRun,
@@ -188,13 +181,6 @@ impl Slot {
         Slot::CompactButton,
         Slot::CompactButtonHover,
         Slot::CompactButtonPressed,
-        Slot::RunChip,
-        Slot::RunChipOrigin,
-        Slot::RunChipUpcoming,
-        Slot::RunChipCurrent,
-        Slot::RunChipDone,
-        Slot::RunChipSuccess,
-        Slot::RunChipEnded,
         Slot::PhaseChip,
         Slot::PhaseChipPast,
         Slot::PhaseChipNow,
@@ -234,13 +220,6 @@ impl Slot {
             Slot::CompactButton => "compact.button",
             Slot::CompactButtonHover => "compact.button.hover",
             Slot::CompactButtonPressed => "compact.button.pressed",
-            Slot::RunChip => "run.chip",
-            Slot::RunChipOrigin => "run.chip.origin",
-            Slot::RunChipUpcoming => "run.chip.upcoming",
-            Slot::RunChipCurrent => "run.chip.current",
-            Slot::RunChipDone => "run.chip.done",
-            Slot::RunChipSuccess => "run.chip.success",
-            Slot::RunChipEnded => "run.chip.ended",
             Slot::PhaseChip => "phase.chip",
             Slot::PhaseChipPast => "phase.chip.past",
             Slot::PhaseChipNow => "phase.chip.now",
@@ -296,12 +275,6 @@ impl Slot {
             Slot::TileRezzed | Slot::TileUnrezzed => Slot::Tile,
             Slot::ButtonHover | Slot::ButtonPressed | Slot::ButtonDisabled => Slot::Button,
             Slot::CompactButtonHover | Slot::CompactButtonPressed => Slot::CompactButton,
-            Slot::RunChipOrigin
-            | Slot::RunChipUpcoming
-            | Slot::RunChipCurrent
-            | Slot::RunChipDone
-            | Slot::RunChipSuccess
-            | Slot::RunChipEnded => Slot::RunChip,
             Slot::PhaseChipPast | Slot::PhaseChipNow | Slot::PhaseChipAhead => Slot::PhaseChip,
             Slot::HudCellAlarm | Slot::HudCellOpens => Slot::HudCell,
             Slot::SubDotPending | Slot::SubDotBroken | Slot::SubDotResolved => Slot::SubDot,
