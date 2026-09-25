@@ -63,6 +63,21 @@ pub enum Target {
     /// The Runner's stack or heap, or a side's score area — a zone a
     /// click opens, as the Corp's centrals are opened through `Server`.
     Pile(Pile),
+    /// The Runner's rig, as a place: where a program, a piece of hardware
+    /// or a resource dragged out of the grip is dropped to install it.
+    /// Nothing is clicked by it — an installed card is `Install` — so it is
+    /// only ever a drop place.
+    Rig,
+    /// The open table, as a place: where an event or an operation dragged
+    /// out of the hand is dropped to play it. Only ever a drop place, like
+    /// `Rig`.
+    ///
+    /// **A place, not "no place".** An install into the rig and a play had
+    /// no target but the card, so a drag could only put them back in the
+    /// hand, as though it had not happened. The rules give a rig card no position and an event none at
+    /// all, but the table gives each somewhere to be put down, and a drag
+    /// needs somewhere.
+    Table,
 }
 
 /// The piles that are not servers: the Runner's two, and each side's
@@ -320,10 +335,10 @@ impl ActionMap {
     /// Where a card in hand may be taken: every place on the board an
     /// entry of that card also names — a server to install into (a remote
     /// the Corp has not made yet included, which the engine lists and the
-    /// board has no column for until a drag asks for one), or the ice a
-    /// trojan hosts on. A card with no destination — an operation, an
-    /// event, a Runner's own install — has none, and is played rather
-    /// than placed.
+    /// board has no column for until a drag asks for one), the ice a
+    /// trojan hosts on, the rig for any other Runner install, or the table
+    /// for an event or an operation. A discard at the end of the turn has
+    /// none: the card is thrown away, not put anywhere.
     pub fn destinations_for_hand_card(&self, card: &CardId) -> Vec<Target> {
         let mut places: Vec<Target> = Vec::new();
         for index in self.for_hand_card(card) {
@@ -423,12 +438,11 @@ fn targets_of(action: &PlayerAction, view: &ClientView) -> Vec<Target> {
         PlayerAction::DrawCardClick { side: Side::Runner } => vec![Target::Pile(Pile::Stack)],
         PlayerAction::InstallCard { card_id, zone, .. } => vec![Target::HandCard(card_id.clone()), Target::Server(*zone)],
         PlayerAction::InstallProgramOnIce { card_id, host, .. } => vec![Target::HandCard(card_id.clone()), Target::Install(*host)],
-        PlayerAction::PlayEvent { card_id }
-        | PlayerAction::PlayOperation { card_id }
-        | PlayerAction::InstallHardware { card_id }
-        | PlayerAction::InstallProgram { card_id, .. }
-        | PlayerAction::InstallResource { card_id }
-        | PlayerAction::DiscardCard { card_id } => vec![Target::HandCard(card_id.clone())],
+        PlayerAction::PlayEvent { card_id } | PlayerAction::PlayOperation { card_id } => vec![Target::HandCard(card_id.clone()), Target::Table],
+        PlayerAction::InstallHardware { card_id } | PlayerAction::InstallProgram { card_id, .. } | PlayerAction::InstallResource { card_id } => {
+            vec![Target::HandCard(card_id.clone()), Target::Rig]
+        }
+        PlayerAction::DiscardCard { card_id } => vec![Target::HandCard(card_id.clone())],
         PlayerAction::ActivateAbility { target, .. } if *target == InstallId::CORP_IDENTITY => vec![Target::Identity(Side::Corp)],
         PlayerAction::ActivateAbility { target, .. } if *target == InstallId::RUNNER_IDENTITY => vec![Target::Identity(Side::Runner)],
         PlayerAction::RezIce { ice: target }
@@ -853,13 +867,13 @@ mod tests {
                             assert!(map.entries[*index].targets.contains(&Target::Server(zone)));
                             assert!(map.entries[*index].targets.contains(&Target::HandCard(card.clone())));
                         }
-                        // A card the engine offers nowhere is played, not placed.
+                        // An operation from HQ is played on the table.
                         let operation = view.legal_actions.iter().find_map(|action| match action {
                             PlayerAction::PlayOperation { card_id, .. } => Some(card_id.clone()),
                             _ => None,
                         });
                         if let Some(card) = operation {
-                            assert!(map.destinations_for_hand_card(&card).is_empty(), "an operation has no place on the board");
+                            assert_eq!(map.destinations_for_hand_card(&card), vec![Target::Table], "an operation is put on the table");
                         }
                         return;
                     }
@@ -943,6 +957,14 @@ mod tests {
                                         "seed {seed}: {action:?} names a position with nothing asking for one"
                                     ),
                                     Target::Pile(_) => assert_eq!(side, Side::Runner, "seed {seed}: {action:?} targets a pile the Corp does not have"),
+                                    Target::Rig => assert!(
+                                        side == Side::Runner && matches!(action, PlayerAction::InstallHardware { .. } | PlayerAction::InstallProgram { .. } | PlayerAction::InstallResource { .. }),
+                                        "seed {seed}: {action:?} is not an install into the rig"
+                                    ),
+                                    Target::Table => assert!(
+                                        matches!(action, PlayerAction::PlayEvent { .. } | PlayerAction::PlayOperation { .. }),
+                                        "seed {seed}: {action:?} is not a play"
+                                    ),
                                     Target::Identity(owner) => {
                                         let shown = match owner {
                                             Side::Corp => view.corp.identity.is_some(),

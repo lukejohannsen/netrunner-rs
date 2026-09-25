@@ -266,8 +266,25 @@ pub struct Pointer(pub (f32, f32));
 /// A place a dragged card may be dropped: the node's own box is the
 /// target, so the drop is hit-tested against what is laid out rather than
 /// against whatever the focus system last marked hovered.
+///
+/// **Most places are one target; an area can be two.** The rig is where a
+/// Runner install goes and is also part of the table an event is played
+/// on, so its box is both, in that order; the first the held card is lit
+/// for is what the drop means. Two nested nodes would have said the same
+/// and cost the rig a layer it has no height for.
 #[derive(Component, Debug, Clone, PartialEq)]
-pub struct DropPlace(pub Target);
+pub struct DropPlace(pub Vec<Target>);
+
+impl DropPlace {
+    pub fn one(target: Target) -> Self {
+        DropPlace(vec![target])
+    }
+
+    /// The target of this place the held card is lit for, if any.
+    pub fn lit_for(&self, lit: &[Target]) -> Option<&Target> {
+        self.0.iter().find(|target| lit.contains(target))
+    }
+}
 
 /// The count under a stack of identical rig cards, for a test to read.
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
@@ -1295,16 +1312,10 @@ fn drag_hand(
         let lit = model.0.drop_places();
         let dropped_on = places
             .iter()
-            .filter(|(place, _, _)| lit.contains(&place.0))
-            .filter(|(_, node, transform)| within(anchor_of(node, transform), pointer.0))
-            .min_by(|a, b| {
-                let area = |node: &ComputedNode, transform: &UiGlobalTransform| {
-                    let anchor = anchor_of(node, transform);
-                    anchor.width * anchor.height
-                };
-                area(a.1, a.2).total_cmp(&area(b.1, b.2))
-            })
-            .map(|(place, node, transform)| (place.0.clone(), anchor_of(node, transform)));
+            .filter_map(|(place, node, transform)| Some((place.lit_for(&lit)?, anchor_of(node, transform))))
+            .filter(|(_, anchor)| within(*anchor, pointer.0))
+            .min_by(|a, b| (a.1.width * a.1.height).total_cmp(&(b.1.width * b.1.height)))
+            .map(|(target, anchor)| (target.clone(), anchor));
         match dropped_on {
             Some((target, anchor)) => pending.0.push(Intent::DragDrop { target, over: anchor }),
             None => pending.0.push(Intent::DragRelease { over, slots: row.iter().map(|(_, x, _)| *x).collect() }),
@@ -1835,6 +1846,18 @@ impl Lit {
     }
 }
 
+/// Lights an area a held card may be dropped on — the rig, the table —
+/// as a server column is lit for an install: the accent round its edge
+/// and a faint wash of it inside. An `Outline`, inset so a clipping
+/// parent cannot cut it off, because an area is never a card and never
+/// outlined for anything else; the wash is under the cards, which draw
+/// over it.
+fn welcome(area: &mut EntityCommands, theme: &Theme, welcomes: bool) {
+    if welcomes {
+        area.insert((Outline { width: px(2), offset: px(-2), color: theme.accent }, BackgroundColor(theme.accent.with_alpha(0.08))));
+    }
+}
+
 fn outline(theme: &Theme) -> Outline {
     Outline { width: px(3), offset: px(1), color: theme.accent }
 }
@@ -2215,8 +2238,13 @@ fn spawn_servers(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &Client
     let pieces = servers.iter().map(|s| s.ice.len() + s.root.len()).max().unwrap_or(0);
     let stack = layout::tile_stack(fit.field, pieces, size.width());
     // The area is the one row that grows: its columns span the ICE field
-    // and end in their plates on the Corp's edge of the table.
-    parent.spawn((Node { flex_direction: FlexDirection::Column, flex_grow: 1.0, min_height: px(0), ..default() },)).with_children(|area| {
+    // and end in their plates on the Corp's edge of the table. It is also
+    // the table an event or an operation is dropped on, around and
+    // between the columns, which take the drop only for what installs
+    // into them.
+    let mut area_node = parent.spawn((Node { flex_direction: FlexDirection::Column, flex_grow: 1.0, min_height: px(0), ..default() }, DropPlace::one(Target::Table)));
+    welcome(&mut area_node, theme, places.contains(&Target::Table));
+    area_node.with_children(|area| {
         section_label(area, theme, "Servers");
         let mut row_node = card_row();
         row_node.flex_grow = 1.0;
@@ -2235,7 +2263,7 @@ fn spawn_servers(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &Client
                 };
                 row.spawn((
                     ServerColumn(server.server),
-                    DropPlace(Target::Server(server.server)),
+                    DropPlace::one(Target::Server(server.server)),
                     Node {
                         flex_direction: FlexDirection::Column,
                         flex_shrink: 0.0,
@@ -2428,7 +2456,7 @@ fn spawn_tile(column: &mut ChildSpawnerCommands, theme: &Theme, art: Option<&Boa
         Button,
         widgets::Themed,
         Click::Target(Target::Install(install)),
-        DropPlace(Target::Install(install)),
+        DropPlace::one(Target::Install(install)),
         Node {
             width: px(width),
             height: px(height),
@@ -2595,7 +2623,15 @@ fn spawn_rig(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore
     let size = fit.size_of(Side::Runner);
     let row_height = layout::rig_row_height(fit.area_face(Side::Runner));
     let available = fit.board_width() - layout::RIG_LABEL_WIDTH;
-    parent.spawn((Node { flex_direction: FlexDirection::Column, flex_shrink: 0.0, row_gap: px(layout::RIG_ROW_GAP), height: px(layout::rig_height(fit.area_face(Side::Runner))), overflow: Overflow::clip(), ..default() },)).with_children(|area| {
+    // The rig is where a Runner install is dropped, and part of the table
+    // an event is dropped on.
+    let places = game.drop_places();
+    let mut rig = parent.spawn((
+        Node { flex_direction: FlexDirection::Column, flex_shrink: 0.0, row_gap: px(layout::RIG_ROW_GAP), height: px(layout::rig_height(fit.area_face(Side::Runner))), overflow: Overflow::clip(), ..default() },
+        DropPlace(vec![Target::Rig, Target::Table]),
+    ));
+    welcome(&mut rig, theme, places.contains(&Target::Rig) || places.contains(&Target::Table));
+    rig.with_children(|area| {
         for (wanted, stacks) in netrunner_client::board::rig::stacked(view, &core.registry, fit.chair, Some(&game.actions)) {
             let cards: Vec<_> = stacks.iter().map(|stack| stack.first()).collect();
             let step = layout::step(cards.len(), size.width(), layout::CARD_GAP, available);
@@ -4213,7 +4249,7 @@ fn zone_sheet(panel: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore
         Target::Pile(Pile::Stack) => (format!("{} cards, in an order nobody is shown", view.runner.stack_count), (0..view.runner.stack_count.min(5)).map(|_| Shown::Back(Side::Runner)).collect()),
         Target::Pile(Pile::Heap) => (format!("{} cards, all face up", view.runner.heap.len()), view.runner.heap.iter().cloned().map(Shown::Card).collect()),
         Target::Pile(Pile::Agendas(_)) => unreachable!("the score area returned above"),
-        Target::HandCard(_) | Target::Install(_) | Target::Identity(_) | Target::Position(_) => (String::new(), Vec::new()),
+        Target::HandCard(_) | Target::Install(_) | Target::Identity(_) | Target::Position(_) | Target::Rig | Target::Table => (String::new(), Vec::new()),
     };
     panel.spawn(widgets::dim(theme, caption));
     if !shown.is_empty() {
@@ -4355,6 +4391,8 @@ fn target_title(game: &Game, target: &Target) -> String {
             .and_then(|selection| selection.candidate(*position).map(|candidate| selection.display(candidate)))
             .unwrap_or_else(|| "A card".to_string()),
         Target::Pile(pile) => pile.name().to_string(),
+        Target::Rig => "Rig".to_string(),
+        Target::Table => "Table".to_string(),
     }
 }
 

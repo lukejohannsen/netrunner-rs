@@ -4592,6 +4592,41 @@ install, an event and an operation have no drop place, so for them a
 drop is a reorder. The rig and the table as drop targets are the next
 item.
 
+### 4be. A Runner install is dropped on the rig, and an event or an operation on the table — DONE (25 September 2026)
+
+`feat/drop-on-rig-and-table`. The item §4bd left owed.
+
+- **Two places, not "no place"** (`netrunner_client::board::Target::Rig`,
+  `Target::Table`). A program, hardware or resource entry now names the
+  rig beside the card, and an event or an operation from the hand names
+  the table, so `ActionMap::destinations_for_hand_card` gives them a
+  place and `for_hand_card_at` the entry that lands there. They are
+  only ever drop places: nothing is clicked by them, and no glow asks
+  about them. A discard at the end of the turn still has no place. An
+  operation replayed out of Archives (Plutus) keeps its Archives target.
+- **The rig's box is the rig and the table; the servers area is the
+  table.** `DropPlace` holds a list, and the drop means the first target
+  the held card is lit for, so an event let go over the rig is played,
+  and a program let go over the servers is put back. The innermost lit
+  box still wins, so a column still takes the Corp's install and an ice
+  tile a Trojan. The hand's own row is neither, so a drop there is still
+  a reorder.
+- **A lit area** has an inset accent outline and a faint accent wash
+  (`welcome`), the same colour as a lit server column. An `Outline`,
+  because an area is never outlined for anything else, and inset,
+  because the rig clips.
+- A program that may trash first has two entries at the rig, and the
+  drop opens a menu of both, the same way an agenda with two entries at
+  a server does.
+
+Tested in the model from both chairs: each Runner install and event in
+the opening hand lights only its own place and submits its entry, and a
+Corp operation lights only the table, is put back from a server and is
+played from the table. The Runner chair screenshotted with
+`NETRUNNER_DRAG` holding Pennyshaver: the rig lit, no column lit for it,
+and the dev log's one scroll area zero-sized. Not driven with a real
+mouse from this session.
+
 **Verified.** `a_hovered_hand_card_rises_out_of_the_row_and_nothing_is_sent`
 (the face itself raised by the hidden part, unclipped, no second face,
 back to identity on leaving) and
