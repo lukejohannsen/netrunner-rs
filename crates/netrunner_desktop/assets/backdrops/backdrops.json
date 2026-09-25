@@ -1,1 +1,4 @@
-{ "dim": { "splash": 0.3, "main-menu": 0.35 } }
+{
+  "dim": { "splash": 0.3, "main-menu": 0.35, "new-game": 0.4, "deck-editor": 0.6, "menu": 0.3, "online": 0.45, "cards": 0.45, "learn": 0.45 },
+  "same_as": { "deck-editor": "decks", "cards": "online", "learn": "online" }
+}

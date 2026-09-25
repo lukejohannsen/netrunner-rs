@@ -4501,6 +4501,55 @@ ships in its own repository (`mtgred/netrunner`,
   constants and their two errors) had no caller and was removed, and the
   "Fetched" credit row for the backs became four register rows.
 
+### 4ba. The deck builder, Play vs Computer and Play Online have backdrops, the rest a steel-and-circuit picture, and the menu's title a shadow — DONE (24 September 2026)
+
+The person picked the pictures. The three new ones are committed under the
+"Art under no licence" rule of §4ay, each credited to its artist with
+their website (`assets/CREDITS.md`), unchanged:
+
+- **Decks and the deck editor**: Aurore Folny's *The Personal Touch*
+  (Revised Core Set), `backdrops/decks.jpg`.
+- **Play vs Computer**: Adam Schumpert's *Maya* (Kala Ghoda),
+  `backdrops/new-game.jpg`, 1629 × 1200 from his own ArtStation. The
+  first copy was Fantasy Flight Games' 2016 *Treasures from the Net*
+  wallpaper, 1920 × 1080 but with the *Android Universe* mark in its
+  corner; the person asked for one without it, and the artist's copy is
+  the bare painting.
+- **Play Online stands on Alex Kim's *The Root*** (Upstalk), `online.jpg`,
+  which Cards and Learn to Play borrow by `same_as`; 1200 × 1059, the copy jinteki.net ships at
+  `resources/public/img/bg/TheRoot.jpg` (no larger copy was found), so
+  the main menu keeps *New Angeles*. The history of this, for
+  whoever reads the credits: JB Casacop's *Dyson Mem Chip* was committed
+  behind Cards first and removed at the person's request; the neon *New
+  Angeles* then became the shared picture, whose near-white sky made the
+  light text on Cards and Online hard to read, and *The Root*, dark and
+  quiet, replaced it there. Alex Kim's website is his ArtStation, the
+  account that posts *Traffic Accident*, which NetrunnerDB also credits
+  to him.
+- **Profile, Settings, Replay and About stand on purple circuitry
+  between brushed-steel plates**, the shared `menu.jpg`, which the person
+  generated with Google Gemini and chose after seeing it behind those
+  screens: the project's own (GPL-3.0-or-later), 1312 × 816, so it is
+  enlarged about twice and a 2560 × 1600 version would be sharper. Three
+  others were turned down on the way. A circuit board painted by a
+  script after Fantasy Flight Games' card back was committed and
+  removed with its script. Two wide Gemini images (1584 × 672) were
+  previewed through the override folder and never committed: the crop
+  to 16:10 lost their sides and enlarged them 2.4 times, and the silver
+  one hid the menus' light text. **The size to ask for is the guide's
+  2560 × 1600, 16:10, mid-tone or darker.**
+
+**A screen borrows another's picture by name, not by a copy.**
+`backdrops.json` gained `same_as` (`netrunner_client::backdrop::Manifest`,
+one step, the dim still the screen's own), which the deck editor uses to
+show `decks`. A decoded picture is cached under the key its files came
+from, so two screens showing one decode it once.
+
+**The main menu's NETRUNNER has a drop shadow** (`widgets::title_shadow`):
+the neon *New Angeles* has a near-white sky, and the accent's icy blue
+went thin on it. Bevy's `TextShadow` has no blur, so it is dark and close
+(3, 4 px, 85% black).
+
 ## 5. The deck builder — DONE (24 September 2026)
 
 `feat/desktop-deck-builder`. Asked for in one list: save and import

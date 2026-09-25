@@ -59,15 +59,16 @@ pub struct BackdropPicture(pub Vec2);
 /// basic graphics is switched, which changes every answer.
 #[derive(Resource, Default)]
 pub struct Backdrops {
-    pictures: HashMap<&'static str, Option<(Handle<Image>, Vec2)>>,
+    pictures: HashMap<String, Option<(Handle<Image>, Vec2)>>,
     manifest: Option<Manifest>,
     basic: bool,
 }
 
 impl Backdrops {
     /// `key`'s picture, loading it on first ask; `None` is the flat
-    /// ground.
-    pub fn picture(&mut self, key: &'static str, basic: bool, images: &mut Assets<Image>) -> Option<(Handle<Image>, Vec2)> {
+    /// ground. Cached under the key whose files it came from, so two
+    /// screens showing one picture (`Manifest::same_as`) decode it once.
+    pub fn picture(&mut self, key: &str, basic: bool, images: &mut Assets<Image>) -> Option<(Handle<Image>, Vec2)> {
         if basic != self.basic {
             self.pictures.clear();
             self.basic = basic;
@@ -75,7 +76,8 @@ impl Backdrops {
         if basic {
             return None;
         }
-        self.pictures.entry(key).or_insert_with(|| load(key).map(|image| {
+        let key = self.manifest().picture_key(key).to_string();
+        self.pictures.entry(key).or_insert_with_key(|key| load(key).map(|image| {
             let size = image.size().as_vec2();
             (images.add(image), size)
         })).clone()
@@ -83,9 +85,12 @@ impl Backdrops {
 
     /// How much `key`'s picture is dimmed, from the manifest read once.
     pub fn dim(&mut self, key: &str) -> f32 {
-        self.manifest
-            .get_or_insert_with(|| crate::assets::read(&format!("{DIR}/{MANIFEST_FILE}")).and_then(|bytes| String::from_utf8(bytes).ok()).map_or_else(Manifest::default, |text| Manifest::parse(&text)))
-            .dim(key)
+        self.manifest().dim(key)
+    }
+
+    /// The manifest, read on first ask.
+    fn manifest(&mut self) -> &Manifest {
+        self.manifest.get_or_insert_with(|| crate::assets::read(&format!("{DIR}/{MANIFEST_FILE}")).and_then(|bytes| String::from_utf8(bytes).ok()).map_or_else(Manifest::default, |text| Manifest::parse(&text)))
     }
 }
 
@@ -176,5 +181,17 @@ mod tests {
         assert!(backdrops.basic);
         let _ = backdrops.picture("main-menu", false, &mut images);
         assert!(!backdrops.basic && backdrops.pictures.contains_key("main-menu"));
+    }
+
+    /// The deck editor shows the deck list's picture, and every picture a
+    /// screen borrows — the shared one included — is committed.
+    #[test]
+    fn a_borrowed_picture_is_a_committed_one() {
+        let manifest = Manifest::parse(include_str!("../assets/backdrops/backdrops.json"));
+        assert!(crate::assets::read(&format!("{DIR}/{}.jpg", netrunner_client::backdrop::SHARED_KEY)).is_some(), "the shared picture is committed");
+        assert_eq!(manifest.picture_key("deck-editor"), "decks");
+        for picture in manifest.same_as.values() {
+            assert!(crate::assets::read(&format!("{DIR}/{picture}.jpg")).is_some(), "{picture}.jpg is committed");
+        }
     }
 }
