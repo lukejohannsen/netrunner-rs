@@ -71,6 +71,10 @@ a drawn or synthesized tier that works without it (AGENTS.md §5).
 | `fonts/NotoSansSymbols2-Regular.ttf` | Noto Sans Symbols 2, the printed-icon fallback | The Noto Project Authors | https://notofonts.github.io | OFL-1.1 | `fonts/LICENSE-OFL.txt` | third-party | none |
 | `backdrops/main-menu.jpg` | New Angeles in Neon/Smog, neon version: the main menu's backdrop | Kirsten Zirngibl | https://www.kirstenzirngibl.com/projects/RgWqA | All rights reserved | — | third-party | none |
 | `backdrops/splash.jpg` | New Angeles in Neon/Smog, smog version: the splash | Kirsten Zirngibl | https://www.kirstenzirngibl.com/projects/RgWqA | All rights reserved | — | third-party | none |
+| `cards/backs/ffg/back-corp.png` | the Corp card back, Fantasy Flight Games' printing, the copy jinteki.net ships at mtgred/netrunner `resources/public/img/card-backs/corp/ffg.png` | Fantasy Flight Games | https://www.fantasyflightgames.com | All rights reserved | — | third-party | none |
+| `cards/backs/ffg/back-runner.png` | the Runner card back, Fantasy Flight Games' printing, the copy jinteki.net ships at mtgred/netrunner `resources/public/img/card-backs/runner/ffg.png` | Fantasy Flight Games | https://www.fantasyflightgames.com | All rights reserved | — | third-party | none |
+| `cards/backs/nsg/back-corp.png` | the Corp card back, Null Signal Games' printing, the copy jinteki.net ships at mtgred/netrunner `resources/public/img/card-backs/corp/nsg.png` | Null Signal Games | https://nullsignal.games | All rights reserved | — | third-party | none |
+| `cards/backs/nsg/back-runner.png` | the Runner card back, Null Signal Games' printing, the copy jinteki.net ships at mtgred/netrunner `resources/public/img/card-backs/runner/nsg.png` | Null Signal Games | https://nullsignal.games | All rights reserved | — | third-party | none |
 | `board/counter.advancement.png` | advancement counter | Null Signal Games | https://nullsignal.games/about/nsg-visual-assets/ | CC BY-ND 4.0 | `board/LICENSE-NSG.txt` | third-party | `NSG_ADVANCEMENT_COUNTER.svg` converted to a 128 × 128 PNG, recoloured `#eef1f8` |
 | `board/counter.credit.png` | credit counter | Null Signal Games | https://nullsignal.games/about/nsg-visual-assets/ | CC BY-ND 4.0 | `board/LICENSE-NSG.txt` | third-party | `NSG_CREDIT.svg` converted to a 128 × 128 PNG, recoloured `#eef1f8` |
 | `board/counter.power.png` | power counter (NSG's generic counter) | Null Signal Games | https://nullsignal.games/about/nsg-visual-assets/ | CC BY-ND 4.0 | `board/LICENSE-NSG.txt` | third-party | `NSG_GENERIC_COUNTER_BLUE.svg` converted to a 128 × 128 PNG |
@@ -93,7 +97,6 @@ credits everything a player sees, not only what is in the repository.
 | Card data: titles, rules and flavour text, illustrator credits | Null Signal Games and the card's illustrators, compiled by NetrunnerDB | https://netrunnerdb.com | theirs, not licensed by this project | NetrunnerDB's public API v2 |
 | Card scans, the printed cards | Null Signal Games and each card's illustrator, named on the card | https://nullsignal.games | theirs, not licensed by this project | card-images.netrunnerdb.com (750 × 1050 where it has one, else 300 × 420) |
 | The icon font: faction, set and printed symbols | Null Signal Games' marks, in NetrunnerDB's font | https://netrunnerdb.com | the font's repository is MIT; the marks are NSG's | netrunnerdb.com |
-| The official card backs | Null Signal Games | https://nullsignal.games | theirs, served by jinteki.net by NSG's arrangement | jinteki.net |
 
 ## Software
 

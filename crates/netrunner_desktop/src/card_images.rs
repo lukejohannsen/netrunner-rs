@@ -1,18 +1,16 @@
 //! Card pictures as GPU images: the cached fronts, decoded off the main
-//! thread, and the two backs — a file if there is one, the official
-//! back fetched into the cache on the images opt-in, else painted.
+//! thread, and the two backs — a player's drop-in if there is one, else
+//! the printing chosen in Settings (both ship, `assets/cards/backs/`),
+//! else painted.
 //!
 //! **A back is one handle for the run, and the picture behind it may
-//! improve.** The board asks `CardImages::back` for a side and draws
-//! whatever the handle holds; when the official back lands — a file
-//! read at start, or a fetch finishing mid-game — the image is put in
-//! place of the painted one under the same handle (`Assets::insert`),
-//! so every back already on screen changes without a redraw and no
-//! screen needs to know the tier moved. The fetch follows the icon
-//! font's rules (`icon_font.rs`): a cached file is loaded whatever the
-//! opt-in says, a missing one is fetched only when `download_images` is
-//! on, the disk is looked at once a second while it is missing, and a
-//! failed fetch is a notice not retried this run.
+//! change.** The board asks `CardImages::back` for a side and draws
+//! whatever the handle holds; when the player picks the other printing,
+//! the new image is put in place of the old under the same handle
+//! (`Assets::insert`), so every back already on screen changes without a
+//! redraw and no screen needs to know. The backs were once fetched from
+//! jinteki.net on the images opt-in; they ship now (Phase 7 §4az), so a
+//! first game without the network wears the real backs.
 //!
 //! **Bytes, not asset paths.** The cache directory is outside Bevy's
 //! asset root, and the asset server refuses an absolute path by default
@@ -38,15 +36,15 @@ use bevy::prelude::*;
 use bevy::tasks::futures::check_ready;
 use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 use bevy::tasks::{AsyncComputeTaskPool, Task};
-use tokio::sync::oneshot;
 
 use netrunner_card_sync::ImageStatus;
+use netrunner_client::settings::CardBacks;
 use netrunner_core::card::CardId;
 use netrunner_core::rules::Side;
 
 use crate::assets;
 use crate::card_back;
-use crate::core::{ClientCore, Notices, TokioRuntime};
+use crate::core::ClientCore;
 use crate::theme::Theme;
 use crate::widgets::card_face::FaceSize;
 
@@ -88,16 +86,8 @@ pub struct CardImages {
     /// be turned into the pixels its picture will cover.
     scale: f32,
     backs: Option<[Handle<Image>; 2]>,
-    /// Which backs still hold the painted tier and would take the
-    /// official one: false once a file — dropped in, bundled or
-    /// fetched — has been put under the handle.
-    drawn: [bool; 2],
-    /// The fetch of the official backs still drawn, if one is under way.
-    fetch: Option<oneshot::Receiver<Vec<(Side, Result<Image, String>)>>>,
-    /// A fetch failed, or could not be started, this run.
-    gave_up: bool,
-    /// When the cache is next looked at for a back that was not there.
-    next_look: f64,
+    /// The printing the handles were last filled from.
+    backs_from: Option<CardBacks>,
     /// Set by the downloader when a file may have appeared, so faces
     /// whose picture was missing ask the store again; cleared once they
     /// have.
@@ -113,10 +103,7 @@ impl Default for CardImages {
             queued: HashSet::new(),
             scale: 1.0,
             backs: None,
-            drawn: [false; 2],
-            fetch: None,
-            gave_up: false,
-            next_look: 0.0,
+            backs_from: None,
             recheck: false,
         }
     }
@@ -144,18 +131,6 @@ impl CardImages {
 
     pub fn back(&self, side: Side) -> Option<Handle<Image>> {
         self.backs.as_ref().map(|backs| backs[side as usize].clone())
-    }
-
-    /// Puts `image` under the side's existing back handle, so every
-    /// back on screen shows it from the next frame.
-    fn set_back(&mut self, side: Side, image: Image, assets: &mut Assets<Image>) {
-        // A strong handle held here cannot have been dropped, so the
-        // insert cannot miss; a miss would only leave the painted back.
-        if let Some(backs) = &self.backs
-            && assets.insert(&backs[side as usize], image).is_ok()
-        {
-            self.drawn[side as usize] = false;
-        }
     }
 
     /// Queues the file at `path` for a face of `size`, unless that width
@@ -364,120 +339,49 @@ fn track_scale(mut images: ResMut<CardImages>, windows: Query<&Window, With<bevy
     }
 }
 
-/// How often the cache is checked for a back that was not there.
-const LOOK_EVERY_SECS: f64 = 1.0;
-
-/// The back's file under the override and bundled tiers, and its name
-/// in the cache: one name, wherever it sits.
-fn back_file(side: Side) -> String {
-    format!("cards/back-{}.png", match side { Side::Corp => "corp", Side::Runner => "runner" })
+/// A player's own back for `side`, which beats either printing: the
+/// override tier's `cards/back-<side>.png` (`assets/cards/README.md`).
+fn drop_in_file(side: Side) -> String {
+    format!("cards/back-{}.png", side_file(side))
 }
 
-/// Both backs, once, from the best tier on disk — a drop-in or bundled
-/// PNG, else the official back in the cache, else painted — and then
-/// the official back put under the handle of any still painted, read
-/// from the cache when it appears or fetched when the player has
-/// opted in.
-fn load_backs(
-    theme: Res<Theme>,
-    core: Res<ClientCore>,
-    runtime: Option<Res<TokioRuntime>>,
-    mut images: ResMut<CardImages>,
-    mut assets: ResMut<Assets<Image>>,
-    time: Res<Time>,
-    mut notices: ResMut<Notices>,
-) {
-    if images.backs.is_none() {
-        let mut drawn = [false; 2];
-        let back = |side: Side, drawn: &mut bool| {
-            let from_file = assets::read(&back_file(side)).and_then(|bytes| decode(&bytes, "png"));
-            let from_cache = || core.images.card_back(side).and_then(|path| std::fs::read(path).ok()).and_then(|bytes| decode(&bytes, "png"));
-            from_file.or_else(from_cache).unwrap_or_else(|| {
-                *drawn = true;
-                card_back::paint(side, &theme)
-            })
-        };
-        let corp = back(Side::Corp, &mut drawn[0]);
-        let runner = back(Side::Runner, &mut drawn[1]);
-        images.backs = Some([assets.add(corp), assets.add(runner)]);
-        images.drawn = drawn;
-    }
-    if !images.drawn.contains(&true) {
-        return;
-    }
-    if let Some(receiver) = &mut images.fetch {
-        match receiver.try_recv() {
-            Ok(results) => {
-                images.fetch = None;
-                for (side, result) in results {
-                    match result {
-                        Ok(image) => {
-                            info!("official {} card back fetched", side_name(side));
-                            images.set_back(side, image, &mut assets);
-                        }
-                        Err(error) => {
-                            images.gave_up = true;
-                            notices.push(format!("{} card back not fetched: {error}", side_name(side)));
-                        }
-                    }
-                }
-                return;
-            }
-            Err(oneshot::error::TryRecvError::Empty) => return,
-            Err(oneshot::error::TryRecvError::Closed) => {
-                images.fetch = None;
-                images.gave_up = true;
-                return;
-            }
-        }
-    }
-    let now = time.elapsed_secs_f64();
-    if now < images.next_look {
-        return;
-    }
-    images.next_look = now + LOOK_EVERY_SECS;
-    for side in [Side::Corp, Side::Runner] {
-        if !images.drawn[side as usize] {
-            continue;
-        }
-        if let Some(image) = core.images.card_back(side).and_then(|path| std::fs::read(path).ok()).and_then(|bytes| decode(&bytes, "png")) {
-            info!("official {} card back read from the cache", side_name(side));
-            images.set_back(side, image, &mut assets);
-        }
-    }
-    let wanted: Vec<Side> = [Side::Corp, Side::Runner].into_iter().filter(|side| images.drawn[*side as usize]).collect();
-    if wanted.is_empty() || images.gave_up || !core.settings.desktop.download_images {
-        return;
-    }
-    let Some(runtime) = runtime else {
-        images.gave_up = true;
-        return;
-    };
-    let (sender, receiver) = oneshot::channel();
-    let store = core.images.clone();
-    runtime.0.spawn(async move {
-        let mut results = Vec::with_capacity(wanted.len());
-        for side in wanted {
-            // Decoded here, off the main thread, so the frame the fetch
-            // lands on pays for a handle swap and not a PNG decode.
-            let result = match store.download_card_back(side).await {
-                Ok(path) => std::fs::read(&path)
-                    .map_err(|error| error.to_string())
-                    .and_then(|bytes| decode(&bytes, "png").ok_or_else(|| format!("{} is not an image", path.display()))),
-                Err(error) => Err(error.to_string()),
-            };
-            results.push((side, result));
-        }
-        let _ = sender.send(results);
-    });
-    images.fetch = Some(receiver);
+/// The shipped back of `backs`'s printing for `side`.
+pub fn shipped_file(backs: CardBacks, side: Side) -> String {
+    format!("cards/backs/{}/back-{}.png", backs.folder(), side_file(side))
 }
 
-fn side_name(side: Side) -> &'static str {
+fn side_file(side: Side) -> &'static str {
     match side {
-        Side::Corp => "Corp",
-        Side::Runner => "Runner",
+        Side::Corp => "corp",
+        Side::Runner => "runner",
     }
+}
+
+/// Fills both back handles from the best tier on disk — a drop-in, else
+/// the chosen printing, else painted — the first frame, and again under
+/// the same handles whenever the choice changes.
+fn load_backs(theme: Res<Theme>, core: Res<ClientCore>, mut images: ResMut<CardImages>, mut assets: ResMut<Assets<Image>>) {
+    let chosen = core.settings.desktop.card_backs;
+    if images.backs_from == Some(chosen) {
+        return;
+    }
+    let back = |side: Side| {
+        [drop_in_file(side), shipped_file(chosen, side)]
+            .iter()
+            .find_map(|file| assets::read(file).and_then(|bytes| decode(&bytes, "png")))
+            .unwrap_or_else(|| card_back::paint(side, &theme))
+    };
+    let (corp, runner) = (back(Side::Corp), back(Side::Runner));
+    match &images.backs {
+        // A strong handle held here cannot have been dropped, so the
+        // insert cannot miss; a miss would only keep the old back.
+        Some([corp_handle, runner_handle]) => {
+            let _ = assets.insert(corp_handle, corp);
+            let _ = assets.insert(runner_handle, runner);
+        }
+        None => images.backs = Some([assets.add(corp), assets.add(runner)]),
+    }
+    images.backs_from = Some(chosen);
 }
 
 /// Asks the store for the picture of every face that just appeared —

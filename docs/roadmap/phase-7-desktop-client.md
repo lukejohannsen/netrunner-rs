@@ -4481,6 +4481,26 @@ every backdrop slot empty.
   unmerged). The person wants one complete package; `<data dir>` stays the
   player's own business and is credited nowhere.
 
+### 4az. Both printings' card backs ship, and Settings picks one — DONE (24 September 2026)
+
+The person asked for jinteki.net's choice of backs. Both are now committed
+under the "Art under no licence" rule of §4ay, as the copies jinteki.net
+ships in its own repository (`mtgred/netrunner`,
+`resources/public/img/card-backs/<side>/{nsg,ffg}.png`), unchanged:
+`assets/cards/backs/{nsg,ffg}/back-{corp,runner}.png`.
+
+- `netrunner_client::settings::CardBacks` (`Nsg`, the default, or `Ffg`)
+  is the Settings row **Card backs** and is on the gear menu's list too,
+  since it is a board property. Changing it mid-game refills the two back
+  handles in place, so every back on screen turns at once.
+- A player's drop-in `cards/back-<side>.png` still beats either, and the
+  drawn back is still the fallback.
+- **The fetch is gone.** The backs had been downloaded from jinteki.net
+  into the cache on the images opt-in (§4a); with both shipped, that path
+  (`CardImageStore::download_card_back`, `card_back`, the two URL
+  constants and their two errors) had no caller and was removed, and the
+  "Fetched" credit row for the backs became four register rows.
+
 ## 5. The deck builder — DONE (24 September 2026)
 
 `feat/desktop-deck-builder`. Asked for in one list: save and import

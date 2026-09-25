@@ -184,9 +184,13 @@ mod tests {
     #[test]
     fn an_owners_assets_are_one_credit_and_each_owner_is_named() {
         let groups = groups(&credits::bundled());
-        let nsg: Vec<_> = groups.iter().filter(|g| g.owner == "Null Signal Games").collect();
+        // One credit per owner *and licence*: NSG's symbols are licensed
+        // and its card backs are not, so those are two.
+        let nsg: Vec<_> = groups.iter().filter(|g| g.owner == "Null Signal Games" && g.licence == "CC BY-ND 4.0").collect();
         assert_eq!(nsg.len(), 1, "NSG's symbols are one credit");
-        assert!(nsg[0].items.len() > 1 && nsg[0].licence == "CC BY-ND 4.0");
+        assert!(nsg[0].items.len() > 1);
+        let backs: Vec<_> = groups.iter().filter(|g| g.owner == "Null Signal Games" && g.licence == credits::ALL_RIGHTS_RESERVED).collect();
+        assert_eq!(backs.len(), 1, "both of NSG's backs are one credit");
         assert_eq!(groups.iter().filter(|g| g.owner.contains("Noto")).count(), 1, "both Noto fonts are one credit");
         // Each change once, and without the file it came from.
         assert!(nsg[0].changes.iter().all(|c| !c.contains(".svg")), "{:?}", nsg[0].changes);
