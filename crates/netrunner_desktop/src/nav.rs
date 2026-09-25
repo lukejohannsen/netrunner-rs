@@ -104,6 +104,7 @@ pub fn back_from(screen: AppScreen) -> Option<AppScreen> {
     match screen {
         AppScreen::Boot | AppScreen::Splash | AppScreen::MainMenu => None,
         AppScreen::DeckEditor => Some(AppScreen::Decks),
+        AppScreen::Guide => Some(AppScreen::Learn),
         AppScreen::Game | AppScreen::Replay => Some(AppScreen::MainMenu),
         _ => Some(AppScreen::MainMenu),
     }

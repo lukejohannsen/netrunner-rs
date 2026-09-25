@@ -24,6 +24,9 @@
 //! the ladder, and a wall for someone whose first real game this is. It
 //! is recorded like any game against a bot.
 //!
+//! **The strategy guide is a button under the tracks** (`screens::guide`):
+//! the rules are the lessons', and what to do with them is the guide's.
+//!
 //! **A finished lesson is ticked** (`Settings::lessons_done`, which the
 //! terminal writes too), and the first unfinished lesson is the one
 //! primary button, Corp track first.
@@ -64,6 +67,10 @@ pub struct StarterButton(pub Starter);
 
 #[derive(Component)]
 struct BackButton;
+
+/// Opens the strategy guide (`screens::guide`).
+#[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
+pub struct GuideButton;
 
 /// Why the last lesson pressed would not start; empty until one fails.
 #[derive(Component)]
@@ -123,6 +130,10 @@ fn spawn(mut commands: Commands, theme: Res<Theme>, core: Res<ClientCore>) {
                     track_panel(row, &theme, side, done, suggested.as_deref());
                 }
             });
+        // The reading beside the lessons: what to do with the rules once
+        // they are learned. A secondary pill, because a lesson is the
+        // move this screen expects.
+        root.spawn(widgets::styled_button(&theme, ButtonKind::Secondary, "Strategy guide", Val::Auto, GuideButton));
         root.spawn((StartError, widgets::notice(&theme, "", ())));
         root.spawn(widgets::styled_button(&theme, ButtonKind::Quiet, "Back", Val::Auto, BackButton));
     });
@@ -174,6 +185,7 @@ fn pick(
     lessons: Query<&LessonButton>,
     starters: Query<&StarterButton>,
     back: Query<(), With<BackButton>>,
+    guide: Query<(), With<GuideButton>>,
     mut error: Query<&mut Text, With<StartError>>,
     core: Res<ClientCore>,
     mut navigate: MessageWriter<Navigate>,
@@ -181,6 +193,10 @@ fn pick(
     for Pressed(entity) in pressed.read() {
         if back.contains(*entity) {
             navigate.write(Navigate(AppScreen::MainMenu));
+            return;
+        }
+        if guide.contains(*entity) {
+            navigate.write(Navigate(AppScreen::Guide));
             return;
         }
         let started = if let Ok(StarterButton(starter)) = starters.get(*entity) {

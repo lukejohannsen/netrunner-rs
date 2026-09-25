@@ -1,4 +1,5 @@
 pub mod builder;
+pub mod guide;
 pub mod layout;
 pub mod menu;
 pub mod online;
