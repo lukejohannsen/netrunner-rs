@@ -4501,7 +4501,7 @@ ships in its own repository (`mtgred/netrunner`,
   constants and their two errors) had no caller and was removed, and the
   "Fetched" credit row for the backs became four register rows.
 
-### 4ba. The deck builder and Play vs Computer have backdrops, every other menu screen *The Root*, and the menu's title a shadow — DONE (24 September 2026)
+### 4ba. The deck builder, Play vs Computer and Play Online have backdrops, the rest a painted circuit board, and the menu's title a shadow — DONE (24 September 2026)
 
 The person picked the pictures. The three new ones are committed under the
 "Art under no licence" rule of §4ay, each credited to its artist with
@@ -4515,11 +4515,10 @@ their website (`assets/CREDITS.md`), unchanged:
   wallpaper, 1920 × 1080 but with the *Android Universe* mark in its
   corner; the person asked for one without it, and the artist's copy is
   the bare painting.
-- **Every other screen stands on Alex Kim's *The Root*** (Upstalk), the
-  shared `menu.jpg`, 1200 × 1059, the copy jinteki.net ships at
+- **Play Online stands on Alex Kim's *The Root*** (Upstalk), `online.jpg`,
+  which Cards and Learn to Play borrow by `same_as`; 1200 × 1059, the copy jinteki.net ships at
   `resources/public/img/bg/TheRoot.jpg` (no larger copy was found), so
-  Cards, About, Settings, Online, Learn to Play, Profile and Replay all
-  show it; the main menu keeps *New Angeles*. The history of this, for
+  the main menu keeps *New Angeles*. The history of this, for
   whoever reads the credits: JB Casacop's *Dyson Mem Chip* was committed
   behind Cards first and removed at the person's request; the neon *New
   Angeles* then became the shared picture, whose near-white sky made the
@@ -4527,6 +4526,17 @@ their website (`assets/CREDITS.md`), unchanged:
   quiet, replaced it there. Alex Kim's website is his ArtStation, the
   account that posts *Traffic Accident*, which NetrunnerDB also credits
   to him.
+- **Profile, Settings, Replay and About stand on a painted circuit
+  board**, the shared `menu.jpg` (2560 × 1600), which the person asked
+  for in the spirit of Fantasy Flight Games' card back: blue, red and
+  green traces with a thin metallic rail, raised plates, depth. It is
+  the project's own (GPL-3.0-or-later), painted by
+  `scripts/paint_circuit_backdrop.py` from one seed — parallel buses
+  routed on a grid with 45-degree bends, never crossing, a groove shadow
+  under each rail, bevelled plates lit from above, and two lens rings
+  off the middle, the Corp's blue at the left and the Runner's red at
+  the right. It is darker than the silver back it echoes, because light
+  menu text sits over it, and it is not a copy of the back.
 
 **A screen borrows another's picture by name, not by a copy.**
 `backdrops.json` gained `same_as` (`netrunner_client::backdrop::Manifest`,

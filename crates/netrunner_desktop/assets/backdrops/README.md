@@ -10,13 +10,17 @@ and a test fails if a screen's key is missing from this page. So when a
 screen is added, its row appears here in the same change, and there is
 somewhere to put its picture before the picture exists.
 
-Five pictures are committed here: Kirsten Zirngibl's *New Angeles in
+Six pictures are committed here: Kirsten Zirngibl's *New Angeles in
 Neon/Smog*, the smog version behind the splash (`splash.jpg`) and the
 neon one behind the main menu (`main-menu.jpg`); Alex Kim's *The Root*
-as the shared picture (`menu.jpg`), behind every screen without a
-picture of its own; Aurore Folny's *The Personal
-Touch* behind the deck list and the deck editor (`decks.jpg`); and Adam
-Schumpert's *Maya* behind Play vs Computer (`new-game.jpg`).
+behind Play Online (`online.jpg`), which Cards and Learn to Play show
+too; Aurore Folny's *The Personal Touch* behind the deck list and the
+deck editor (`decks.jpg`); Adam Schumpert's *Maya* behind Play vs
+Computer (`new-game.jpg`); and the project's own circuitry on gunmetal
+as the shared picture (`menu.jpg`), behind every screen without one of
+its own — Profile, Settings, Replay and About today. That one is painted
+by `scripts/paint_circuit_backdrop.py`, after the look of Fantasy Flight
+Games' card back, and is repainted by running it again.
 `backdrops.json` sets how much each is dimmed and which screens borrow
 another's picture. All are
 all rights reserved, shipped with credit and removed if their owners ask
