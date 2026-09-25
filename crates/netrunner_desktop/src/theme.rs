@@ -257,6 +257,27 @@ impl Theme {
         }
     }
 
+    /// The colour a server strip's frame is lit in, by its `board_art`
+    /// key — the same kinds the steel frames are painted for, so the
+    /// drawn tier and a painted one agree. Chosen by the person (25
+    /// September 2026): a barrier is a wall, gold; a code gate blue; a
+    /// sentry red; a card face down is grey, because a Corp-blue frame
+    /// said "Corp" about a column that is nothing but the Corp's. The
+    /// root's kinds keep clear of the ICE's and of both glows:
+    /// `tests::the_strips_are_told_apart_from_the_glows` holds them.
+    pub fn tile(&self, key: &str) -> Color {
+        match key {
+            "ice.rezzed.barrier" => Color::srgb(0.92, 0.66, 0.12),
+            "ice.rezzed.code-gate" => Color::srgb(0.10, 0.36, 0.92),
+            "ice.rezzed.sentry" => Color::srgb(0.88, 0.14, 0.16),
+            "ice.rezzed" | "root.rezzed" => Color::srgb(0.50, 0.53, 0.56),
+            "root.rezzed.asset" => Color::srgb(0.70, 0.42, 0.22),
+            "root.rezzed.upgrade" => Color::srgb(0.20, 0.72, 0.62),
+            "root.agenda" => Color::srgb(0.42, 0.72, 0.20),
+            _ => Color::srgb(0.55, 0.55, 0.55),
+        }
+    }
+
     /// A `TextFont` in the theme's face at `size`.
     pub fn font(&self, size: f32) -> TextFont {
         let mut font = TextFont { font_size: FontSize::Px(size), ..default() };
@@ -444,6 +465,37 @@ mod tests {
         let theme = Theme::default();
         let (distance, who) = closest(theme.accent, theme.glow_usable);
         assert!(distance >= APART, "the accent and the usable glow are {distance:.3} OKLab apart under {who}");
+    }
+
+    /// A strip's frame is lit in its kind's colour (`Theme::tile`), and a
+    /// glow or the accent's ring sits right against it: each must still be
+    /// seen beside every kind, for every viewer. The ICE's three kinds and
+    /// the face-down grey must be told apart from each other too — the
+    /// frames' etchings differ as well, but a strip at 26 px is mostly its
+    /// colour.
+    #[test]
+    fn the_strips_are_told_apart_from_the_glows() {
+        let theme = Theme::default();
+        let kinds = ["ice.unrezzed", "ice.rezzed", "ice.rezzed.barrier", "ice.rezzed.code-gate", "ice.rezzed.sentry", "root.rezzed.asset", "root.rezzed.upgrade", "root.agenda"];
+        let mut failures = Vec::new();
+        for (ring, colour) in [("usable glow", theme.glow_usable), ("conditional glow", theme.glow_conditional), ("accent", theme.accent)] {
+            for kind in kinds {
+                let (distance, who) = closest(colour, theme.tile(kind));
+                if distance < APART {
+                    failures.push(format!("the {ring} beside {kind}: {distance:.3} under {who}"));
+                }
+            }
+        }
+        let ice = ["ice.unrezzed", "ice.rezzed.barrier", "ice.rezzed.code-gate", "ice.rezzed.sentry"];
+        for (i, a) in ice.iter().enumerate() {
+            for b in &ice[i + 1..] {
+                let (distance, who) = closest(theme.tile(a), theme.tile(b));
+                if distance < APART {
+                    failures.push(format!("{a} and {b}: {distance:.3} under {who}"));
+                }
+            }
+        }
+        assert!(failures.is_empty(), "closer than {APART} OKLab:\n{}", failures.join("\n"));
     }
 
     #[test]

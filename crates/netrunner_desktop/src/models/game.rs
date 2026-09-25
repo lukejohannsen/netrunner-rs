@@ -95,6 +95,9 @@ pub enum Intent {
     Click { target: Target, over: Anchor },
     /// A secondary click on a card or a zone: opens its sheet, to read.
     Inspect(Target),
+    /// A server's whole stack, in run order: its ICE outermost first,
+    /// then its root (`Sheet::stack`).
+    InspectStack(ServerId),
     /// A click that landed on nothing of the menu's: closes it.
     CloseMenu,
     /// An entry of the action map, by index — from a sheet, the rail or
@@ -214,6 +217,22 @@ pub enum Outcome {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Sheet {
     pub target: Target,
+    /// A server read as its stack — every ICE and root card in the order
+    /// a run meets them — rather than as its zone (HQ's hand, R&D's
+    /// count, Archives' cards). A remote has no zone of its own, so its
+    /// sheet is always its stack.
+    pub stack: bool,
+}
+
+impl Sheet {
+    pub fn of(target: Target) -> Self {
+        let stack = matches!(target, Target::Server(ServerId::Remote(_)));
+        Self { target, stack }
+    }
+
+    pub fn stack(server: ServerId) -> Self {
+        Self { target: Target::Server(server), stack: true }
+    }
 }
 
 /// The box on the window a menu sits against. It lives with the fitting
@@ -634,7 +653,16 @@ impl Game {
                 }
                 self.menu = None;
                 self.expanded = None;
-                self.sheet = Some(Sheet { target });
+                self.sheet = Some(Sheet::of(target));
+                Outcome::Redraw
+            }
+            Intent::InspectStack(server) => {
+                if self.covered() {
+                    return Outcome::Nothing;
+                }
+                self.menu = None;
+                self.expanded = None;
+                self.sheet = Some(Sheet::stack(server));
                 Outcome::Redraw
             }
             Intent::CloseMenu => {
@@ -1362,7 +1390,7 @@ mod tests {
         assert_eq!(game.menu.as_ref().map(|m| m.entries.clone()), Some(game.actions.for_server(ServerId::Archives)));
         game.apply(Intent::Click { target: Target::Identity(Side::Runner), over });
         assert!(game.menu.is_none(), "the opponent's identity has nothing to do");
-        assert_eq!(game.sheet, Some(Sheet { target: Target::Identity(Side::Runner) }), "so its click reads it");
+        assert_eq!(game.sheet, Some(Sheet::of(Target::Identity(Side::Runner))), "so its click reads it");
         game.apply(Intent::Back);
         // The bar: a credit is listed and submits; End turn is not while
         // the Corp has clicks (CR 5.6.2b); Jack out is the Runner's and
@@ -1402,14 +1430,14 @@ mod tests {
         let before = game.applied;
         game.apply(Intent::Click { target: target.clone(), over: Anchor::default() });
         assert_eq!(game.apply(Intent::Inspect(target.clone())), Outcome::Redraw);
-        assert_eq!(game.sheet, Some(Sheet { target: target.clone() }));
+        assert_eq!(game.sheet, Some(Sheet::of(target.clone())));
         assert_eq!(game.card_of(&target).as_ref(), Some(&card));
         assert!(game.menu.is_none(), "reading closes the menu");
         assert!(game.awaiting && game.applied == before, "nothing was sent");
         // Through the sheet, neither click opens anything.
         assert_eq!(game.apply(Intent::Click { target: target.clone(), over: Anchor::default() }), Outcome::Nothing);
         assert_eq!(game.apply(Intent::Inspect(Target::Server(ServerId::RnD))), Outcome::Nothing);
-        assert!(game.menu.is_none() && game.sheet == Some(Sheet { target: target.clone() }));
+        assert!(game.menu.is_none() && game.sheet == Some(Sheet::of(target.clone())));
         // A face in a pile reads over the sheet; Escape closes the
         // reading first, then the sheet.
         game.apply(Intent::InspectCard(Some(hand[0].clone())));
@@ -1448,7 +1476,7 @@ mod tests {
         let mut game = Game::new(Arc::new(netrunner_client::decks::sample_deck_registry()), Side::Runner);
         assert!(!game.dismissed_by_a_click_away(), "nothing is open");
 
-        game.sheet = Some(Sheet { target: Target::Server(ServerId::RnD) });
+        game.sheet = Some(Sheet::of(Target::Server(ServerId::RnD)));
         assert!(game.dismissed_by_a_click_away(), "a sheet closes");
         game.inspecting = Some(CardId("01001".into()));
         assert!(game.dismissed_by_a_click_away(), "a card read over it closes");
@@ -1466,7 +1494,7 @@ mod tests {
 
         // And the questions stand: note each of these is true even with a
         // sheet underneath, because the panel on top is the one asking.
-        game.sheet = Some(Sheet { target: Target::Server(ServerId::RnD) });
+        game.sheet = Some(Sheet::of(Target::Server(ServerId::RnD)));
         game.confirm_quit = true;
         assert!(!game.dismissed_by_a_click_away(), "the quit prompt is asking");
         game.confirm_quit = false;
