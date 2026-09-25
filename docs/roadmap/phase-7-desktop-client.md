@@ -4935,3 +4935,34 @@ panel's width, or a saved game's name ran to three lines. Screenshotted
 after: the menu, Settings, Decks, Play vs Computer, Replays, the
 mulligan, an access and the rail; `every_pill_centres_its_words_and_is_capped`
 holds the rule.
+
+### 4bc. The run lane is gone, and the actions menu opens over the box that was clicked — DONE (24 September 2026)
+
+A report from play: the Corp clicked an installed ICE during a run to
+rez it, and the menu opened along the run lane in the middle of the
+board, moving above the ICE only once the pointer went toward the lane.
+
+**The cause was two boxes for one click.** Each ICE chip on the run lane
+carried `Click::Target(Target::Install(..))`, the same target as the
+ICE's tile, and `place_menu` — which re-anchors an open menu every frame
+to the box its target was laid out in — took the *first* matching node
+the query yielded. During a run that was often the lane's chip.
+
+- **`place_menu` takes the matching box nearest the one clicked**
+  (`Menu::over`, the clicked node's own box), never the first. A target
+  can still have two boxes — a Trojan's chip on its ice and its ghost in
+  the program row — so the lane's removal alone would have left the
+  rule wrong.
+- **The run lane is removed, at the person's request**: the phase panel
+  (L) already says where the run is and the encounter panel which ICE
+  and which subroutines, so the lane was the same facts a third time.
+  Its row (`layout::RUN_LANE`, 64 px and a gap) goes to the ICE field,
+  and with it the seven `run.chip*` skin slots. `Dirty::lane` became
+  `Dirty::trail`, taken by `side_panels`, which already redrew the run
+  panel on a beat of the trail.
+- The desktop test that read the lane's chips now holds that each ICE
+  on a run is exactly one box on the board.
+
+Both chairs screenshotted forty and sixty decisions in, and during a
+held run (`NETRUNNER_HOLD_RUN`): the servers meet the rig with no row
+between, and the dev log's one scroll area is zero-sized, not the board.

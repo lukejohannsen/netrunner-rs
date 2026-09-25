@@ -25,7 +25,7 @@
 //! column: nothing above the opponent's hand and nothing under the
 //! person's. Top to bottom on the board: the opponent's strip and the
 //! bottom of their hand as backs, hung from the window's top edge; their
-//! area and the person's with the run lane between; the control bar (`board::Control::for_side`, one button each,
+//! area and the person's, meeting at the ICE; the control bar (`board::Control::for_side`, one button each,
 //! always in the same place) directly above the person's hand, then the
 //! person's strip and the top of their hand on the window's bottom edge.
 //! The right column is the status line with Quit and the gear, the phase
@@ -98,11 +98,20 @@
 //! **A run is shown a beat at a time.** The match's messages go through
 //! `models::pace::Pacer` rather than straight into the model: in a run
 //! each event that moves the run is released on its own beat, the
-//! model's `RunTrail` observes it and the run lane between the two
-//! areas redraws (`relane`, without the board), and the message itself
+//! model's `RunTrail` observes it and the right column's run panel
+//! redraws (`side_panels`, without the board), and the message itself
 //! — the board — lands last. The column under run keeps its border in
-//! the Runner's colour; a line from the lane to it was drawn and
-//! dropped the same day, on the person's word that it was ugly.
+//! the Runner's colour; a line to it was drawn and dropped the same day,
+//! on the person's word that it was ugly.
+//!
+//! **There is no run lane.** A row of chips between the two areas —
+//! the server, each ice, the access, the outcome — was the board's for
+//! a run until 24 September 2026, when the person asked for it gone:
+//! the phase panel (L) says where the run is and the encounter panel
+//! which ICE and which subroutines, so the lane was the same facts a
+//! third time, and its ICE chips were a second box for the ICE's own
+//! click, which the actions menu re-anchored to (`place_menu`) — the
+//! Corp's rez menu opened over the lane, not the ICE.
 
 use bevy::input::keyboard::{Key as BevyKey, KeyboardInput};
 use bevy::input::ButtonState;
@@ -112,7 +121,7 @@ use bevy::window::PrimaryWindow;
 
 use netrunner_client::access::Access;
 use netrunner_client::board::action_map::server_name;
-use netrunner_client::board::{facts, hud, Affordance, Control, Encounter, IceState, Outcome as RunOutcome, Pile, Prompt, Stage, Target, Token, TokenKind, Transition, Zone};
+use netrunner_client::board::{facts, hud, Affordance, Control, Encounter, Pile, Prompt, Target, Token, TokenKind, Transition, Zone};
 use netrunner_client::board::opening::Opening;
 use netrunner_client::card_face::Face;
 use netrunner_client::standing::Answer;
@@ -153,7 +162,7 @@ impl Plugin for GamePlugin {
             .add_observer(open_a_logged_name)
             .add_systems(OnEnter(AppScreen::Game), spawn)
             .add_systems(OnExit(AppScreen::Game), leave)
-            .add_systems(Update, (poll, autoplay, escape.in_set(Captures), board_click, drag_hand, shortcuts, controls, fit, board_pictures, side_panels, relane, redraw, fade_ghosts, lift_hovered, table_guide).chain().run_if(in_state(AppScreen::Game)))
+            .add_systems(Update, (poll, autoplay, escape.in_set(Captures), board_click, drag_hand, shortcuts, controls, fit, board_pictures, side_panels, redraw, fade_ghosts, lift_hovered, table_guide).chain().run_if(in_state(AppScreen::Game)))
             // Its own registration rather than a link in that chain: it
             // has no ordering requirement against any of them, and adding
             // a system to an existing `.chain()` reorders everything after
@@ -210,10 +219,6 @@ pub enum Click {
 #[derive(Component)]
 pub struct Board;
 
-/// The run lane between the two areas, refilled on a beat without the
-/// board.
-#[derive(Component)]
-pub struct RunLane;
 /// A server's column, for a test that reads what a column holds.
 #[derive(Component)]
 pub struct ServerColumn(pub ServerId);
@@ -414,10 +419,11 @@ pub(crate) struct Dirty {
     rail: bool,
     log: bool,
     overlay: bool,
-    /// The run lane alone: a beat of the trail, with the board still.
-    lane: bool,
+    /// A beat of the trail, with the board still: the run panel follows
+    /// it.
+    trail: bool,
     /// The right column's status line, phase panel and run panel, which
-    /// follow the board and the lane and also a setting.
+    /// follow the board and the trail and also a setting.
     side: bool,
 }
 
@@ -427,7 +433,7 @@ impl Dirty {
         self.rail = true;
         self.log = true;
         self.overlay = true;
-        self.lane = true;
+        self.trail = true;
         self.side = true;
     }
 }
@@ -830,7 +836,7 @@ fn leave(world: &mut World) {
 }
 
 /// Drains the match's messages into the pacer, and the beats due now
-/// into the model: a run's events move the trail and the lane, a
+/// into the model: a run's events move the trail and the run panel, a
 /// message moves the board.
 ///
 /// **A stall saves a bug report by itself**, the moment it arrives: it is
@@ -864,7 +870,7 @@ fn poll(
         match beat {
             Beat::Steps(events) => {
                 if model.0.apply(Intent::RunStep(events)) == Outcome::Redraw {
-                    dirty.lane = true;
+                    dirty.trail = true;
                 }
             }
             Beat::Apply(message) => {
@@ -1510,7 +1516,7 @@ fn redraw(
     if !(dirty.board || dirty.rail || dirty.log || dirty.overlay) {
         return;
     }
-    let Dirty { board: reboard, rail: rerail, log: relog, overlay: reoverlay, lane: _, side: _ } = std::mem::take(&mut *dirty);
+    let Dirty { board: reboard, rail: rerail, log: relog, overlay: reoverlay, trail: _, side: _ } = std::mem::take(&mut *dirty);
     let game = &mut model.0;
     if reboard {
         let transitions = game.take_transitions();
@@ -1625,8 +1631,7 @@ fn spawn_board(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCo
     let opponent = human.other();
     let lit = Lit::of(transitions);
     // Top to bottom from either chair: the opponent's strip with their
-    // hand as backs, the far area, the near area with the run lane on
-    // whichever side of the ICE field faces the Runner, the control bar,
+    // hand as backs, the far area, the near area, the control bar,
     // the person's strip with their hand. The Corp's servers are always
     // the area that grows (`layout::field_height`), with their plates on
     // the Corp's edge; the rig's row is reserved at its size whether or
@@ -1637,13 +1642,7 @@ fn spawn_board(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCo
         spawn_strip(row, theme, core, images, art, game, view, opponent, fit);
         spawn_opponent_hand(row, theme, images, view, opponent, fit);
     });
-    let lane = |parent: &mut ChildSpawnerCommands| {
-        // The run lane, between the servers and the rig from either
-        // chair, reserved whether or not a run is on (`layout::RUN_LANE`).
-        parent.spawn((RunLane, run_lane_node())).with_children(|lane| fill_run_lane(lane, theme, core, game));
-    };
     spawn_area(parent, theme, core, images, art, game, view, opponent, &lit, fit);
-    lane(parent);
     spawn_area(parent, theme, core, images, art, game, view, human, &lit, fit);
     control_bar(parent, game);
     // The person's strip is the board's last row and sits on the window's
@@ -2914,14 +2913,24 @@ fn place_node(node: &mut Node, place: layout::MenuBox) {
 /// laid out yet — the frame after a redraw, and every frame in the
 /// headless tests, which run without a `UiPlugin` — and its zero-size
 /// box would drag the menu into the window's corner.
+///
+/// **A target can have more than one box** — a Trojan is a chip on its
+/// ice and a ghost in the program row, and until 24 September 2026 an
+/// ICE was also a chip on the run lane — so the box re-anchored to is
+/// the one nearest the box the click came from, never the first the
+/// query happens to yield: that was the Corp's rez menu opening over the
+/// lane, and hopping onto the ICE only once the pointer moved.
 fn place_menu(fit: Option<Res<BoardFit>>, model: Option<Res<Model>>, targets: Query<(&Click, &ComputedNode, &UiGlobalTransform)>, mut panel: Query<&mut Node, With<ActionsMenu>>) {
     let (Some(fit), Some(model)) = (fit, model) else { return };
     let Ok(mut node) = panel.single_mut() else { return };
     let Some(menu) = &model.0.menu else { return };
+    let clicked = Vec2::new(menu.over.x, menu.over.y);
     let over = targets
         .iter()
-        .find(|(click, computed, _)| matches!(click, Click::Target(target) if *target == menu.target) && !computed.is_empty())
-        .map_or(menu.over, |(_, computed, transform)| anchor_of(computed, transform));
+        .filter(|(click, computed, _)| matches!(click, Click::Target(target) if *target == menu.target) && !computed.is_empty())
+        .map(|(_, computed, transform)| anchor_of(computed, transform))
+        .min_by(|a, b| Vec2::new(a.x, a.y).distance_squared(clicked).total_cmp(&Vec2::new(b.x, b.y).distance_squared(clicked)))
+        .unwrap_or(menu.over);
     let place = layout::menu_box((fit.window.x, fit.window.y), over, menu.entries.len());
     let mut fresh = node.clone();
     place_node(&mut fresh, place);
@@ -3324,8 +3333,7 @@ fn fill_phase_bar(parent: &mut ChildSpawnerCommands, theme: &Theme, game: &Game)
 
 /// The Runner's identity while a run is on, in the right column: the
 /// person asked for the Runner to appear there "hacking into" the server,
-/// so a run reads at a glance from across the room, not only from the
-/// lane's chips.
+/// so a run reads at a glance from across the room.
 ///
 /// **Its picture is the top of the scan** — the name banner and the art,
 /// cut where the text box begins (`layout::IDENTITY_ART`) — as an
@@ -3334,7 +3342,7 @@ fn fill_phase_bar(parent: &mut ChildSpawnerCommands, theme: &Theme, game: &Game)
 /// With no scan
 /// cached it is the identity's name alone, large, in the Runner's colour.
 /// It follows the paced trail, not the view, so it appears on the run's
-/// first beat and goes when the trail ends, never ahead of the lane. It
+/// first beat and goes when the trail ends, never ahead of the trail. It
 /// is paint: no button, no action, nothing the engine offered.
 ///
 /// **While the run encounters a piece of ICE, the ICE takes the panel**
@@ -3409,7 +3417,7 @@ fn fill_run_panel(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &Clien
 /// **It replaces the Runner rather than stacking under them**, because
 /// the column is 380 pixels of header, phase, prompt, routes and log,
 /// and the Runner's picture says nothing during an encounter that the
-/// lane does not.
+/// phase panel does not.
 ///
 /// **Not gated on `awaiting`, so it stays up while the Corp thinks**
 /// (Brân 1.0's first subroutine fires, the Corp is asked where to
@@ -3427,8 +3435,7 @@ fn fill_run_panel(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &Clien
 /// the two clients should not have to learn the marks twice. The colour
 /// is what this client adds. **The tiles are deliberately left alone:**
 /// a pip per subroutine on the encountered tile was rejected in §4ac —
-/// the run lane already draws a dot per subroutine in these colours, and
-/// a pip still would not say *which* subroutine.
+/// a pip would not say *which* subroutine, and these lines do.
 ///
 /// **The art is what gives when the window is short** (`layout::encounter_art`):
 /// the words and the rail's prompt under the panel take their room first,
@@ -3507,9 +3514,9 @@ const RUN_ART_WIDTH: f32 = layout::RAIL_WIDTH - 2.0 * 12.0;
 
 /// Refills the right column's three parts that follow the match rather
 /// than the prompt: the status line, the phase panel and the run panel.
-/// Runs before `relane` and `redraw`, and reads their flags rather than
-/// taking them, so a new view and a beat of the trail both reach it;
-/// `side` is its own, for a setting.
+/// Runs before `redraw`, and reads the board's flag rather than taking
+/// it, so a new view and a beat of the trail both reach it; `trail` and
+/// `side` are its own.
 #[allow(clippy::too_many_arguments)]
 fn side_panels(
     mut commands: Commands,
@@ -3572,10 +3579,11 @@ fn side_panels(
             }
         }
     }
-    if !(dirty.board || dirty.lane || dirty.side) {
+    if !(dirty.board || dirty.trail || dirty.side) {
         return;
     }
     dirty.side = false;
+    dirty.trail = false;
     let Some(model) = model else { return };
     let game = &model.0;
     for mut text in &mut status {
@@ -3592,140 +3600,6 @@ fn side_panels(
     }
     for entity in &run {
         commands.entity(entity).despawn_children().with_children(|parent| fill_run_panel(parent, &theme, &core, &images, assets.as_deref(), game, window, above));
-    }
-}
-
-// ---- the run lane ----
-
-fn run_lane_node() -> Node {
-    Node { width: percent(100), height: px(layout::RUN_LANE - layout::ROW_GAP), flex_shrink: 0.0, flex_direction: FlexDirection::Column, justify_content: JustifyContent::Center, row_gap: px(4), overflow: Overflow::clip(), ..default() }
-}
-
-/// The trail as a row of chips, left to right in the order the Runner
-/// meets them — the server, each ice, the server's approach, the access,
-/// the outcome — and one line beneath of what the run did. Empty with no
-/// trail; the lane keeps its height either way.
-fn fill_run_lane(lane: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore, game: &Game) {
-    let Some(trail) = &game.trail else { return };
-    let title = |card: &Option<CardId>| card.as_ref().and_then(|id| core.registry.get(id)).map(|def| def.title.clone());
-    lane.spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(6), flex_shrink: 0.0, ..default() }).with_children(|row| {
-        let lit = |on: bool| if on { ChipStyle::Current } else { ChipStyle::Done };
-        chip(row, theme, trail.heading(), ChipStyle::Origin, Pickable::IGNORE);
-        for step in &trail.ice {
-            arrow(row, theme);
-            let name = title(&step.card).unwrap_or_else(|| "ICE".to_string());
-            let (label, style) = match step.state {
-                IceState::Upcoming => (name, ChipStyle::Upcoming),
-                IceState::Approaching => (format!("{name} · approach"), ChipStyle::Current),
-                IceState::Encountering => (format!("{name} · encounter"), ChipStyle::Current),
-                IceState::Passed => (format!("{name} · passed"), ChipStyle::Done),
-                IceState::Bypassed => (format!("{name} · bypassed"), ChipStyle::Done),
-            };
-            let entity = chip(row, theme, label, style, (Button, Click::Target(Target::Install(step.install))));
-            if !step.subs.is_empty() {
-                row.commands().entity(entity).with_children(|chip| {
-                    chip.spawn(Node { flex_direction: FlexDirection::Row, column_gap: px(3), margin: UiRect::left(px(6)), ..default() }).with_children(|dots| {
-                        for status in &step.subs {
-                            let (fill, edge) = match status {
-                                SubroutineStatus::Pending => (Color::NONE, theme.text_dim),
-                                SubroutineStatus::Broken => (theme.accent, theme.accent),
-                                SubroutineStatus::Resolved => (theme.danger, theme.danger),
-                            };
-                            dots.spawn((Node { width: px(8), height: px(8), border: UiRect::all(px(1)), border_radius: BorderRadius::MAX, ..default() }, BackgroundColor(fill), BorderColor::all(edge)));
-                        }
-                    });
-                });
-            }
-        }
-        arrow(row, theme);
-        let at_server = matches!(trail.stage, Stage::AtServer | Stage::Accessing { .. });
-        chip(row, theme, server_name(trail.server), if at_server { lit(!trail.ended()) } else { ChipStyle::Upcoming }, Pickable::IGNORE);
-        if let Stage::Accessing { count, card } = &trail.stage {
-            arrow(row, theme);
-            // The count is what the mask allows: none for the Corp
-            // watching a breach of HQ or R&D.
-            let label = match (title(card), count) {
-                (Some(name), _) => format!("Accessing {name}"),
-                (None, 0) => "Accessing".to_string(),
-                (None, n) => format!("Accessing · {n}"),
-            };
-            chip(row, theme, label, lit(!trail.ended()), Pickable::IGNORE);
-        }
-        if let Some(outcome) = trail.outcome {
-            arrow(row, theme);
-            let (label, style) = match outcome {
-                RunOutcome::Successful => ("Successful", ChipStyle::Success),
-                RunOutcome::JackedOut => ("Jacked out", ChipStyle::Done),
-                RunOutcome::Ended => ("Run ends", ChipStyle::Ended),
-            };
-            chip(row, theme, label.to_string(), style, Pickable::IGNORE);
-        }
-    });
-    if !trail.consequences.is_empty() {
-        // The last few, newest last: one line, clipped by the lane.
-        let recent: Vec<&str> = trail.consequences.iter().rev().take(4).rev().map(String::as_str).collect();
-        lane.spawn((widgets::dim(theme, recent.join("  ·  ")), Node { flex_shrink: 0.0, overflow: Overflow::clip(), ..default() }));
-    }
-}
-
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum ChipStyle {
-    /// The server chip: the Runner's colour, the colour of the column
-    /// under run.
-    Origin,
-    Upcoming,
-    /// Where the run is now.
-    Current,
-    /// Behind the run.
-    Done,
-    Success,
-    Ended,
-}
-
-fn chip(row: &mut ChildSpawnerCommands, theme: &Theme, label: String, style: ChipStyle, marker: impl Bundle) -> Entity {
-    let (border, background, text, slot) = match style {
-        ChipStyle::Origin => (theme.runner, theme.runner.with_alpha(0.2), theme.text, Slot::RunChipOrigin),
-        ChipStyle::Upcoming => (theme.panel_border, theme.panel, theme.text_dim, Slot::RunChipUpcoming),
-        ChipStyle::Current => (theme.accent, theme.accent.with_alpha(0.25), theme.text, Slot::RunChipCurrent),
-        ChipStyle::Done => (theme.panel_border, theme.button, theme.text_dim, Slot::RunChipDone),
-        ChipStyle::Success => (theme.runner, theme.runner.with_alpha(0.25), theme.text, Slot::RunChipSuccess),
-        ChipStyle::Ended => (theme.corp, theme.corp.with_alpha(0.25), theme.text, Slot::RunChipEnded),
-    };
-    row.spawn((
-        marker,
-        Node {
-            flex_shrink: 0.0,
-            height: px(28),
-            padding: UiRect::axes(px(10), px(0)),
-            align_items: AlignItems::Center,
-            justify_content: JustifyContent::Center,
-            border: UiRect::all(px(1)),
-            border_radius: BorderRadius::all(px(14)),
-            ..default()
-        },
-        BackgroundColor(background),
-        BorderColor::all(border),
-        widgets::Dressed::still(slot, Drawn::new(background, border)),
-        children![(Text::new(label), theme.font(size::SMALL - 2.0), TextColor(text))],
-    ))
-    .id()
-}
-
-fn arrow(row: &mut ChildSpawnerCommands, theme: &Theme) {
-    row.spawn((Text::new("\u{203a}"), theme.font(size::SMALL), TextColor(theme.text_dim)));
-}
-
-/// A beat of the trail with the board still: refills the lane alone.
-/// Runs before `redraw`, which covers the lane whenever it respawns
-/// the board.
-fn relane(mut commands: Commands, mut dirty: ResMut<Dirty>, model: Option<Res<Model>>, lane: Query<Entity, With<RunLane>>, theme: Res<Theme>, core: Res<ClientCore>) {
-    if !dirty.lane || dirty.board {
-        return;
-    }
-    dirty.lane = false;
-    let Some(model) = model else { return };
-    if let Ok(lane) = lane.single() {
-        commands.entity(lane).despawn_children().with_children(|parent| fill_run_lane(parent, &theme, &core, &model.0));
     }
 }
 

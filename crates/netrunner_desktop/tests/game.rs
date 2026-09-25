@@ -26,7 +26,7 @@ use netrunner_client::start::{Level, StartChoice, DEFAULT_CORP_DECK, DEFAULT_RUN
 use netrunner_core::rules::{GamePhase, PlayerAction, ServerId, Side};
 use netrunner_desktop::core::ClientCore;
 use netrunner_desktop::nav::Navigate;
-use netrunner_desktop::screens::game::{ActionsMenu, LogName, ChoiceCard, Click, Contact, DecisionPopup, Glowing, HelpRow, HudPanel, PhaseBarRow, PhaseStep, HudReadout, InstallFact, ScoreDetails, ScoreRow, LogRow, Model, Overlay, EndTable, OpeningIdentities, RunLane, ServerColumn, BoardFit, ControlBar, HandSlot, LiftedCard, ServerPlate, HostedChip, Ghost, TimingStep};
+use netrunner_desktop::screens::game::{ActionsMenu, LogName, ChoiceCard, Click, Contact, DecisionPopup, Glowing, HelpRow, HudPanel, PhaseBarRow, PhaseStep, HudReadout, InstallFact, ScoreDetails, ScoreRow, LogRow, Model, Overlay, EndTable, OpeningIdentities, ServerColumn, BoardFit, ControlBar, HandSlot, LiftedCard, ServerPlate, HostedChip, Ghost, TimingStep};
 use netrunner_core::rules::InstallId;
 use netrunner_desktop::widgets::card_face::BodyText;
 use netrunner_desktop::screens::new_game::{self, ActiveMatch, LastGame};
@@ -954,12 +954,12 @@ fn the_agendas_readout_opens_the_score_area_and_a_row_expands() {
     assert!(open(&mut app).is_empty(), "the open row's second press closes it");
 }
 
-/// A run is a trail in the lane between the two areas: the Runner runs
-/// R&D from its sheet, and the lane shows one chip per ice in the run's
-/// order, each a click on its install; the run ends and the lane keeps
-/// the trail with its outcome; a root card is a tile, never a face.
+/// A run is a trail the model keeps: the Runner runs R&D from its
+/// sheet, each ice on the run is one box on the board (no second place
+/// for its menu to open over), the run ends and the trail keeps its
+/// outcome; a root card is a tile, never a face.
 #[test]
-fn a_run_fills_the_lane_and_the_lane_keeps_the_trail() {
+fn a_run_keeps_its_trail_and_each_ice_is_one_box() {
     let (mut app, _dir) = headless_client();
     start_a_game(&mut app);
     to_the_runners_turn(&mut app);
@@ -973,27 +973,20 @@ fn a_run_fills_the_lane_and_the_lane_keeps_the_trail() {
     let button = entity_with(&mut app, &Click::Entry(run)).expect("the run's button");
     press_entity(&mut app, button);
     wait_for(&mut app, "the run to be on the board", |app| app.world().resource::<Model>().0.trail.is_some());
-    // The lane after the redraw: the server chip, and the ice chips in
-    // the trail's order, each a click on its install.
+    // After the redraw each ice in the run is one box on the board: the
+    // actions menu is placed over the box its target was laid out in,
+    // and a second box for the same ice — the run lane's chip, before it
+    // was removed — was where the Corp's rez menu opened.
     app.update();
     app.update();
     let world = app.world_mut();
-    assert_eq!(world.query::<&RunLane>().iter(world).count(), 1);
     let trail = world.resource::<Model>().0.trail.clone().unwrap();
     assert_eq!(trail.server, ServerId::RnD);
-    let lane = world.query_filtered::<Entity, With<RunLane>>().single(world).unwrap();
-    let mut chips: Vec<Click> = Vec::new();
-    let mut stack = vec![lane];
-    while let Some(entity) = stack.pop() {
-        if let Some(click) = world.get::<Click>(entity) {
-            chips.push(click.clone());
-        }
-        if let Some(children) = world.get::<Children>(entity) {
-            stack.extend(children.iter().rev());
-        }
+    let clicks: Vec<Click> = world.query::<&Click>().iter(world).cloned().collect();
+    for step in &trail.ice {
+        let boxes = clicks.iter().filter(|click| **click == Click::Target(Target::Install(step.install))).count();
+        assert_eq!(boxes, 1, "one box per ice on the run");
     }
-    let expected: Vec<Click> = trail.ice.iter().map(|step| Click::Target(Target::Install(step.install))).collect();
-    assert_eq!(chips, expected, "one chip per ice, in the order the Runner meets them");
     // No root card is a face: a server column holds tiles only.
     let columns: Vec<Entity> = world.query_filtered::<Entity, With<ServerColumn>>().iter(world).collect();
     assert!(columns.len() >= 3, "the three centrals, and any remote the Corp made");

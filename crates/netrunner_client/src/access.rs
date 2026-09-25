@@ -22,7 +22,7 @@
 //! **Only the side being asked sees it.** The mask also names an Archives
 //! card to the Corp, so a Corp-side modal was possible; it was rejected
 //! because the modal exists to help someone *decide*, and the Corp has no
-//! decision to make at a `PendingChoice`. They watch the run lane and the
+//! decision to make at a `PendingChoice`. They watch the run panel and the
 //! log, as they do for every other Runner decision. The one access the
 //! Corp can be asked — a `PendingInteractiveTrigger` whose `decider` is
 //! the Corp — does show them the card.

@@ -77,8 +77,8 @@
 //! - `NETRUNNER_HOLD_RUN=1` — on the board, the pace of a run stops at
 //!   its first encounter (or the server's approach, with no ice to
 //!   meet) and the autoplay counts as done, so the
-//!   screenshot catches a run in flight: the lane, its chips, the line
-//!   to the server.
+//!   screenshot catches a run in flight: the column under run and the
+//!   run panel.
 //! - `NETRUNNER_HOLD_ICE=1` — stop the autoplay at the first encounter
 //!   the person is asked anything in, so the screenshot catches the
 //!   marks on the ice's subroutines. **Not `HOLD_RUN` narrowed**: that
