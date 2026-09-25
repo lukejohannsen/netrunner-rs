@@ -4501,9 +4501,9 @@ ships in its own repository (`mtgred/netrunner`,
   constants and their two errors) had no caller and was removed, and the
   "Fetched" credit row for the backs became four register rows.
 
-### 4ba. The deck builder and Play vs Computer have backdrops, every other menu screen the main menu's, and the menu's title a shadow — DONE (24 September 2026)
+### 4ba. The deck builder and Play vs Computer have backdrops, every other menu screen *The Root*, and the menu's title a shadow — DONE (24 September 2026)
 
-The person picked the pictures. Both new ones are committed under the
+The person picked the pictures. The three new ones are committed under the
 "Art under no licence" rule of §4ay, each credited to its artist with
 their website (`assets/CREDITS.md`), unchanged:
 
@@ -4515,12 +4515,18 @@ their website (`assets/CREDITS.md`), unchanged:
   wallpaper, 1920 × 1080 but with the *Android Universe* mark in its
   corner; the person asked for one without it, and the artist's copy is
   the bare painting.
-- **Every other screen stands on the main menu's picture**: the neon
-  *New Angeles* is now the shared `menu.jpg` rather than `main-menu.jpg`,
-  so Cards, About, Settings, Online, Learn to Play, Profile and Replay
-  all show it, and the main menu keeps its own lighter dim (0.35) by its
-  key. JB Casacop's *Dyson Mem Chip* was committed behind Cards on the
-  first pass and removed at the person's request, with its row.
+- **Every other screen stands on Alex Kim's *The Root*** (Upstalk), the
+  shared `menu.jpg`, 1200 × 1059, the copy jinteki.net ships at
+  `resources/public/img/bg/TheRoot.jpg` (no larger copy was found), so
+  Cards, About, Settings, Online, Learn to Play, Profile and Replay all
+  show it; the main menu keeps *New Angeles*. The history of this, for
+  whoever reads the credits: JB Casacop's *Dyson Mem Chip* was committed
+  behind Cards first and removed at the person's request; the neon *New
+  Angeles* then became the shared picture, whose near-white sky made the
+  light text on Cards and Online hard to read, and *The Root*, dark and
+  quiet, replaced it there. Alex Kim's website is his ArtStation, the
+  account that posts *Traffic Accident*, which NetrunnerDB also credits
+  to him.
 
 **A screen borrows another's picture by name, not by a copy.**
 `backdrops.json` gained `same_as` (`netrunner_client::backdrop::Manifest`,

@@ -10,10 +10,11 @@ and a test fails if a screen's key is missing from this page. So when a
 screen is added, its row appears here in the same change, and there is
 somewhere to put its picture before the picture exists.
 
-Four pictures are committed here: Kirsten Zirngibl's *New Angeles in
+Five pictures are committed here: Kirsten Zirngibl's *New Angeles in
 Neon/Smog*, the smog version behind the splash (`splash.jpg`) and the
-neon one as the shared picture (`menu.jpg`), behind the main menu and
-every screen without a picture of its own; Aurore Folny's *The Personal
+neon one behind the main menu (`main-menu.jpg`); Alex Kim's *The Root*
+as the shared picture (`menu.jpg`), behind every screen without a
+picture of its own; Aurore Folny's *The Personal
 Touch* behind the deck list and the deck editor (`decks.jpg`); and Adam
 Schumpert's *Maya* behind Play vs Computer (`new-game.jpg`).
 `backdrops.json` sets how much each is dimmed and which screens borrow
