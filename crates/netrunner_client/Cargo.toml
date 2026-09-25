@@ -24,6 +24,17 @@ dirs = "5"
 # Seeds `netrunner_bots::determinize` for `board::breaks`, which plays a
 # break route on a sample of the view. The same version the bots use.
 rand = "0.9"
+# `hosting`: a host asks the router to forward its port (UPnP-IGD,
+# NAT-PMP and PCP, renewed while held). Chosen over `igd-next` with
+# `crab_nat` because it is one client for all three protocols and does
+# the renewal; it is n0's, which a peer-to-peer transport (Phase 4 §6,
+# item 3) would bring in anyway. `metrics` off: nothing reads them.
+portmapper = { version = "0.19", default-features = false }
+# `hosting`: the runtime `portmapper` needs, and its channels.
+tokio = { workspace = true }
+# `hosting`: a dual-stack listener needs `IPV6_V6ONLY` set, which neither
+# `std` nor tokio can say. The version tokio already links.
+socket2 = "0.6"
 
 [features]
 # Forwarded so a client built with a policy network gets the bots' ONNX

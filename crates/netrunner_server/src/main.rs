@@ -37,7 +37,9 @@ struct Config {
     #[arg(long)]
     seed: Option<u64>,
 
-    /// (serve mode) Host to bind.
+    /// (serve mode) Host to bind: an address or a name. `::` is every
+    /// IPv6 address, and IPv4 too wherever the OS maps it (Linux and macOS
+    /// by default, not Windows); `0.0.0.0` is every IPv4 address.
     #[arg(long, default_value = "127.0.0.1")]
     host: String,
 
@@ -214,7 +216,32 @@ async fn run_serve(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
         format: config.format.into(),
         ratings_file: config.ratings_file.clone(),
     };
-    let server = Server::bind(&format!("{}:{}", config.host, config.port), options).await?;
+    let server = Server::bind(&bind_address(&config.host, config.port), options).await?;
     server.run().await?;
     Ok(())
+}
+
+/// `host:port` as `TcpListener::bind` reads it. An IP address goes through
+/// `SocketAddr`, which brackets an IPv6 one — `format!("{host}:{port}")`
+/// made `--host ::` into `::::8080`, which does not parse. Anything else is
+/// a name and is left to the resolver.
+fn bind_address(host: &str, port: u16) -> String {
+    let host = host.trim_start_matches('[').trim_end_matches(']');
+    match host.parse::<std::net::IpAddr>() {
+        Ok(ip) => std::net::SocketAddr::new(ip, port).to_string(),
+        Err(_) => format!("{host}:{port}"),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::bind_address;
+
+    #[test]
+    fn an_ipv6_host_is_bracketed_and_a_name_is_left_alone() {
+        assert_eq!(bind_address("::", 8080), "[::]:8080");
+        assert_eq!(bind_address("[::1]", 8080), "[::1]:8080");
+        assert_eq!(bind_address("127.0.0.1", 8080), "127.0.0.1:8080");
+        assert_eq!(bind_address("localhost", 8080), "localhost:8080");
+    }
 }

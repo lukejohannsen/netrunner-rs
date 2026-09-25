@@ -75,7 +75,8 @@ cargo run -p netrunner_cli -- --corp-deck my_hb --runner-deck stolen_goods   # t
 # Run bot-vs-bot games with no UI
 cargo run -p netrunner_cli -- --headless --games 20
 
-# Network play: Play Online in the menu hosts a game or joins one by address.
+# Network play: Play Online in the menu hosts a game or joins one by address
+# (across the internet: docs/playing-online.md).
 # Or with flags: start a daemon (it seats a bot), then connect, bringing a deck
 cargo run -p netrunner_server -- --serve
 cargo run -p netrunner_cli -- --mode remote --deck brick_stack
