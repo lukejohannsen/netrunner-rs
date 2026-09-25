@@ -1,12 +1,19 @@
 #!/usr/bin/env python3
-"""Paints the server strips' frames for the desktop client's board art.
+"""Paints the server strips' and the nameplates' frames for the desktop
+client's board art.
 
     scripts/venv/bin/python scripts/paint_tiles.py
 
 Writes ten PNGs into crates/netrunner_desktop/assets/board/, one per tile
 key board_art already names (ice.unrezzed, ice.rezzed, ice.rezzed.barrier,
 ice.rezzed.code-gate, ice.rezzed.sentry, root.unrezzed, root.rezzed,
-root.rezzed.asset, root.rezzed.upgrade, root.agenda).
+root.rezzed.asset, root.rezzed.upgrade, root.agenda), and eleven
+nameplates (PLATES): a server's name on the Corp's edge of its column, the
+same frame lit in the Corp's blue — the Runner's red while a run is on it —
+and each rig row's name, lit in the Runner's red. A nameplate replaced the
+16:9 picture of a building a server used to stand on (25 September 2026,
+at the person's request): the building cost every column about a card's
+height, and the board wanted it for the installs.
 
 A strip is one line of text on a server column, 26 to 40 logical pixels
 tall and a card wide, so each frame is TILE_W x TILE_H with a CAP-wide end
@@ -48,6 +55,27 @@ KINDS = {
     "root.rezzed.asset": ((0.70, 0.42, 0.22), "coins"),
     "root.rezzed.upgrade": ((0.20, 0.72, 0.62), "chevrons"),
     "root.agenda": ((0.42, 0.72, 0.20), "rail"),
+}
+
+# Theme::corp and Theme::runner, in sRGB.
+CORP = (0.16, 0.42, 0.85)
+RUNNER = (0.80, 0.16, 0.20)
+
+# The nameplates: one per server kind, each with a faint etch of what the
+# server is, and the same under a run in the Runner's colour; then the
+# rig's three rows.
+PLATES = {
+    "plate.archives": (CORP, "shelves"),
+    "plate.rnd": (CORP, "ticks"),
+    "plate.hq": (CORP, "windows"),
+    "plate.remote": (CORP, "slots"),
+    "plate.archives.run": (RUNNER, "shelves"),
+    "plate.rnd.run": (RUNNER, "ticks"),
+    "plate.hq.run": (RUNNER, "windows"),
+    "plate.remote.run": (RUNNER, "slots"),
+    "plate.programs": (RUNNER, "none"),
+    "plate.hardware": (RUNNER, "none"),
+    "plate.resources": (RUNNER, "none"),
 }
 
 
@@ -102,6 +130,24 @@ def etching(kind, xs, ys, ch):
         for px in np.arange(x0 + 16.0, x1, 32.0):
             for py in (y0 + 5.0, y1 - 5.0):
                 mark = np.maximum(mark, np.clip(2.4 - np.hypot(cx - px, cy - py), 0.0, 1.0))
+    elif kind == "shelves":
+        # Archives: shelving in two bands.
+        mark = (np.abs(((cy - y0) % (h / 3.0)) - h / 6.0) > h / 6.0 - 1.0).astype(float)
+    elif kind == "ticks":
+        # R&D: a stream of data lines of uneven length.
+        col = np.floor((cx - x0) / 9.0)
+        length = (np.sin(col * 12.9898) * 43758.5453) % 1.0
+        mark = ((np.abs(((cx - x0) % 9.0) - 4.5) < 1.0) & (np.abs(cy - (y0 + h / 2.0)) < h * (0.12 + 0.3 * length))).astype(float)
+    elif kind == "windows":
+        # HQ: a grid of office windows.
+        wx = np.abs(((cx - x0) % 16.0) - 8.0) < 4.0
+        wy = np.abs(((cy - y0) % (h / 3.0)) - h / 6.0) < h / 12.0
+        mark = (wx & wy).astype(float) * 0.8
+    elif kind == "slots":
+        # A remote: rack slots, each with a light at its end.
+        slot = np.abs(((cy - y0) % (h / 4.0)) - h / 8.0) < 1.1
+        light = (np.abs(((cx - x0) % 60.0) - 54.0) < 2.0) & (np.abs(((cy - y0) % (h / 4.0)) - h / 8.0) < 2.5)
+        mark = np.maximum(slot.astype(float) * 0.7, light.astype(float))
     elif kind in ("hatch", "backhatch"):
         sign = 1.0 if kind == "hatch" else -1.0
         mark = (np.abs(((cx + sign * cy) % 14.0) - 7.0) < 1.1).astype(float)
@@ -110,8 +156,7 @@ def etching(kind, xs, ys, ch):
     return mark * inside
 
 
-def tile(key, seed):
-    colour, pattern = KINDS[key]
+def tile(colour, pattern, seed):
     lit = colour is not None
     colour = np.array(colour if lit else (0.55, 0.55, 0.55))
     core = colour * 0.75 + 0.25
@@ -196,8 +241,10 @@ def tile(key, seed):
 
 def main():
     OUT.mkdir(parents=True, exist_ok=True)
-    for seed, key in enumerate(KINDS):
-        write_png(OUT / f"{key}.png", tile(key, 21 + seed))
+    for seed, (key, (colour, pattern)) in enumerate(KINDS.items()):
+        write_png(OUT / f"{key}.png", tile(colour, pattern, 21 + seed))
+    for seed, (key, (colour, pattern)) in enumerate(PLATES.items()):
+        write_png(OUT / f"{key}.png", tile(colour, pattern, 61 + seed))
 
 
 if __name__ == "__main__":

@@ -94,12 +94,11 @@ pub const TINT_STATE: &str = "state";
 
 /// A part of the board that can be dressed.
 ///
-/// **A server's own picture is not a slot** — an Archives vault, an R&D
-/// tower. The box it needs is reserved now (the header became a plate,
-/// 16:9 for every server, `layout::plate_height`), so a picture cannot
-/// change the layout; the picture itself is board art
-/// (`crate::board_art`) rather than a nine-sliced frame, which is the
-/// wrong shape for a building.
+/// **A server's nameplate frame is not a slot** — its Archives, R&D, HQ
+/// or remote frame is board art (`crate::board_art`'s `plate.*`), so a
+/// Corp's style can dress it by faction and a run can light it; the
+/// slot dresses the button it sits in, a strip tall
+/// (`layout::plate_height`), so neither can change the layout.
 ///
 /// Flat rather than a slot-and-state pair: every variant is a thing that
 /// can be drawn, and each knows which slot it falls back to. The manifest

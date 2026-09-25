@@ -4900,6 +4900,41 @@ A ten-card server is held by `tests/game.rs` from both chairs.
 
 **Verified.** Workspace tests green and workspace clippy silent.
 
+### 4bk. Every name on the table is a nameplate, and the buildings are gone — DONE (25 September 2026)
+
+`feat/server-nameplates`. Asked for after §4bj: "get rid of the assets
+for Archives, R&D, HQ, and Remote Servers and just make some asset
+borders for the names of everything", to give the table's height to
+the servers' and the rig's installs.
+
+- **A server's plate is a strip tall** (`layout::plate_height` is
+  `tile_height`), not 9/16 of its column's width: 126 → 37 px at the
+  widest card from the Corp's chair, 95 → 28 across the table from the
+  Runner's. The drawn buildings (`board_art::Building`, `surface`, the
+  dusk painter) and the `server.*` keys are gone.
+- **Every name wears a frame**: `plate.archives`, `plate.rnd`,
+  `plate.hq`, `plate.remote` (Corp blue, each with a faint etch of what
+  the server is — shelving, data lines, office windows, rack slots),
+  their `.run` states in the Runner's red, and `plate.programs`,
+  `plate.hardware`, `plate.resources` for the rig's row names. They are
+  strip frames — 512 × 96, 48 px caps, nine-sliced by `board_art::strip`
+  — painted by `scripts/paint_tiles.py` beside the tiles (which it
+  regenerates byte-identical). The drawn tier is a grey frame edged in
+  the Corp faction's colour, or the Runner's for a rig row; headless,
+  a rig row is its words as before.
+- **Where the height went**, measured by `face_width` and
+  `rig_row_height` with five servers: at 1366 × 768 the face is 144 →
+  161 (Corp chair) and 144 → 166 (Runner chair), the rig row 81 → 96
+  and 88 → 97; at 1920 × 1080 the face stays 220 and the rig row grows
+  134 → 164 (Corp) and 156 → 179 (Runner); at 2000 × 1250 the rig was
+  already at `RIG_PEEK_MAX`, so nothing moves.
+- A Corp style's shipped look is now the Corp's blue for every faction
+  until a `board/corp/<faction>/` folder draws its own plates; only the
+  drawn tier is lit by faction.
+
+Seen on screen at 2000 × 1250 from both chairs forty decisions in; the
+only scroll area in the dev log is the match log's.
+
 ## 5. The deck builder — DONE (24 September 2026)
 
 `feat/desktop-deck-builder`. Asked for in one list: save and import
