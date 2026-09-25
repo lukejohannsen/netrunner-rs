@@ -473,10 +473,31 @@ impl Server {
     /// Binds `addr` (`host:port`; port 0 for an ephemeral one — see
     /// `local_addr`). Accepting starts in `run`.
     pub async fn bind(addr: &str, options: ServeOptions) -> std::io::Result<Self> {
+        Self::check_options(&options)?;
+        let listener = TcpListener::bind(addr).await?;
+        Self::with_listener(listener, options)
+    }
+
+    /// Serves on a listener somebody else bound. It exists for a host that
+    /// needs a socket option `bind` cannot say: `netrunner_client::hosting`
+    /// binds `[::]` with `IPV6_V6ONLY` off, so one listener takes IPv4 and
+    /// IPv6 on every platform (Windows defaults the option on). The option
+    /// is set by the caller rather than here so this crate takes no socket
+    /// dependency of its own. Must be called inside a tokio runtime.
+    pub fn from_listener(listener: std::net::TcpListener, options: ServeOptions) -> std::io::Result<Self> {
+        Self::check_options(&options)?;
+        listener.set_nonblocking(true)?;
+        Self::with_listener(TcpListener::from_std(listener)?, options)
+    }
+
+    fn check_options(options: &ServeOptions) -> std::io::Result<()> {
         if options.bot_level.is_some() && options.bot_runner == ServeBotKind::None {
             return Err(std::io::Error::other("--bot-level seats a bot, but --bot-runner none pairs humans; drop one of them"));
         }
-        let listener = TcpListener::bind(addr).await?;
+        Ok(())
+    }
+
+    fn with_listener(listener: TcpListener, options: ServeOptions) -> std::io::Result<Self> {
         let base_seed = options.seed.unwrap_or_else(rand::random);
         let ratings = match &options.ratings_file {
             Some(path) => load_ratings(path)?,

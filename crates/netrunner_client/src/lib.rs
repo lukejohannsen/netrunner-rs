@@ -27,6 +27,8 @@
 //! `board::ActionMap` says what a click on the board means, and
 //! `board::diff` says what changed between two views, so a client can
 //! animate without inferring anything from its own last frame.
+//! `hosting` is a game served from the player's own machine: the socket,
+//! the addresses to give out and the router asked to open the port.
 
 pub mod access;
 pub mod backdrop;
@@ -42,6 +44,7 @@ pub mod bug_report;
 pub mod play;
 pub mod decks;
 pub mod guide;
+pub mod hosting;
 pub mod learn;
 pub mod prose;
 pub mod record;

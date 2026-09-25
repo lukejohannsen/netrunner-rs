@@ -26,7 +26,6 @@
 //! player the other's hidden cards.
 
 use std::future::Future;
-use std::net::IpAddr;
 use std::time::Duration;
 
 use ratatui::crossterm::event::KeyCode;
@@ -44,11 +43,10 @@ use netrunner_server::serve::{ServeBotKind, ServeOptions, Server};
 use netrunner_server::{ClientMessage, MatchSummary};
 
 use netrunner_client::deck_store;
+use netrunner_client::hosting::{self, normalize_address, Mapping, PortMapper, Reach, Share};
 use crate::remote::{self, ConnectEvent, Connecting, Joined};
 
-/// The port a host offers by default, and the one a joined address gets
-/// when it names none — `netrunner_server --serve`'s default.
-pub const DEFAULT_PORT: u16 = 8080;
+pub use netrunner_client::hosting::DEFAULT_PORT;
 
 /// How long a blocking call here may hold the screen.
 const BLOCKING_TIMEOUT: Duration = Duration::from_secs(3);
@@ -127,9 +125,9 @@ struct Form {
     address: String,
     room: String,
     port: String,
-    /// Hosting for the whole local network (`0.0.0.0`) rather than this
-    /// machine only (`127.0.0.1`).
-    lan: bool,
+    /// Who the hosted game is for: this machine, the network, or the
+    /// internet by way of the router (`hosting::Reach`).
+    reach: Reach,
     deck: usize,
     /// The text field being typed into.
     editing: Option<Field>,
@@ -151,11 +149,25 @@ impl Form {
 }
 
 /// The in-process server while this player hosts. Dropping it stops the
-/// server — the match, if one is running, ends with it.
+/// server — the match, if one is running, ends with it — and releases the
+/// router's mapping, if one was asked for.
 struct Hosting {
     task: tokio::task::JoinHandle<std::io::Result<()>>,
-    /// The address(es) to give the opponent.
-    share: Vec<String>,
+    port: u16,
+    /// The addresses to give the opponent, nearest first.
+    shares: Vec<Share>,
+    /// The request to the router, for `Reach::Internet`; `mapped` is its
+    /// last answer, polled on the menu's tick.
+    mapping: Option<Box<dyn PortMapper>>,
+    mapped: Mapping,
+}
+
+impl Hosting {
+    fn poll(&mut self) {
+        if let Some(mapping) = &mut self.mapping {
+            self.mapped = mapping.poll();
+        }
+    }
 }
 
 impl Drop for Hosting {
@@ -218,7 +230,7 @@ impl OnlineScreen {
             address: self.default_address.clone(),
             room: String::new(),
             port: DEFAULT_PORT.to_string(),
-            lan: true,
+            reach: Reach::Network,
             deck: 0,
             editing: None,
         }
@@ -234,6 +246,12 @@ impl OnlineScreen {
     /// Polls a connection in progress. Called every frame, key or no key.
     pub fn tick(&mut self) -> OnlineStep {
         let Mode::Waiting { connecting, status, .. } = &mut self.mode else { return OnlineStep::Continue };
+        // The router answers seconds after the server is up, so the host's
+        // line follows it rather than being written once.
+        if let Some(hosting) = &mut self.hosting {
+            hosting.poll();
+            *status = hosting_status(hosting);
+        }
         let mut outcome = None;
         while let Ok(event) = connecting.events.try_recv() {
             match event {
@@ -383,10 +401,11 @@ impl OnlineScreen {
             }
             KeyCode::Up | KeyCode::Char('k') | KeyCode::BackTab => form.cursor = (form.cursor + len - 1) % len,
             KeyCode::Down | KeyCode::Char('j') | KeyCode::Tab => form.cursor = (form.cursor + 1) % len,
-            KeyCode::Left | KeyCode::Right | KeyCode::Char(' ') if form.field() == Field::Reach => form.lan = !form.lan,
+            KeyCode::Left if form.field() == Field::Reach => form.reach = form.reach.step(true),
+            KeyCode::Right | KeyCode::Char(' ') if form.field() == Field::Reach => form.reach = form.reach.step(false),
             KeyCode::Enter => match form.field() {
                 Field::Address | Field::Room | Field::Port => form.editing = Some(form.field()),
-                Field::Reach => form.lan = !form.lan,
+                Field::Reach => form.reach = form.reach.step(false),
                 Field::Deck => {
                     let cursor = form.deck;
                     self.mode = Mode::PickDeck { form, cursor };
@@ -415,7 +434,7 @@ impl OnlineScreen {
                     self.mode = Mode::Form(form);
                     return OnlineStep::Continue;
                 };
-                match start_hosting(port, form.lan, self.format) {
+                match start_hosting(port, form.reach, self.format) {
                     Ok((hosting, local_url)) => {
                         let status = hosting_status(&hosting);
                         self.hosting = Some(hosting);
@@ -492,7 +511,8 @@ impl OnlineScreen {
                 "Up/Down choose · Enter picks · Esc keeps the old choice"
             }
             Mode::Waiting { status, .. } => {
-                let text = vec![Line::from(status.clone()), Line::from(""), Line::from("Esc stops waiting.")];
+                let mut text: Vec<Line> = status.lines().map(|line| Line::from(line.to_string())).collect();
+                text.extend([Line::from(""), Line::from("Esc stops waiting.")]);
                 frame.render_widget(
                     Paragraph::new(text).wrap(Wrap { trim: false }).block(Block::default().borders(Borders::ALL).title("Play Online")),
                     body,
@@ -535,10 +555,7 @@ impl OnlineScreen {
                     if form.room.is_empty() && form.editing != Some(Field::Room) { "(none — the public queue)".to_string() } else { text(Field::Room, &form.room) }
                 ),
                 Field::Port => format!("Port             {}", text(Field::Port, &form.port)),
-                Field::Reach => format!(
-                    "Who can join     {}",
-                    if form.lan { "anyone who can reach this machine (your network)" } else { "this machine only (for trying it out)" }
-                ),
+                Field::Reach => format!("Who can join     ‹ {} ›", form.reach.label()),
                 Field::Deck => format!("Your deck        {}", self.decks[form.deck].label()),
                 Field::Go => match form.kind {
                     FormKind::Join => "[ Connect ]".to_string(),
@@ -567,8 +584,20 @@ fn draw_list(frame: &mut Frame, area: Rect, title: &str, items: Vec<ListItem>, c
     );
 }
 
+/// The host's waiting line: every address to give out, each with who can
+/// use it, and — hosting for the internet — where the router's answer
+/// stands. One address per line, because the line is what they read out.
 fn hosting_status(hosting: &Hosting) -> String {
-    format!("Hosting. Give your opponent {} — waiting for them to join…", hosting.share.join(" or "))
+    let mut lines = vec!["Hosting. Give your opponent an address — waiting for them to join…".to_string()];
+    if hosting.mapping.is_some() {
+        lines.push(match &hosting.mapped {
+            Mapping::Asking => format!("  asking your router to open port {}…", hosting.port),
+            Mapping::Open(addr) => format!("  {} — from anywhere (your router opened the port)", hosting::ws_url((*addr).into())),
+            Mapping::Failed(failure) => format!("  {}", failure.advice(hosting.port, hosting::lan_ipv4())),
+        });
+    }
+    lines.extend(hosting.shares.iter().map(|share| format!("  {} — {}", share.url, share.who)));
+    lines.join("\n")
 }
 
 /// Runs a future to completion from the menu's synchronous loop, giving up
@@ -583,48 +612,26 @@ fn block_on_bounded<F: Future>(future: F) -> Option<F::Output> {
 
 /// Binds a human-vs-human server on `port` and starts it; returns it and
 /// the loopback URL the host joins by. Port 0 takes any free port (tests).
+/// `Reach::Internet` also starts asking the router to forward the port,
+/// which the tick polls.
 ///
 /// Unrated, by design: a rating is a claim by a server somebody else
 /// runs, and this process holds the seed and the unmasked state of the
 /// game its own host is playing in (`docs/identity-and-rating.md`).
-fn start_hosting(port: u16, lan: bool, format: NsgFormat) -> Result<(Hosting, String), String> {
-    let host = if lan { "0.0.0.0" } else { "127.0.0.1" };
+fn start_hosting(port: u16, reach: Reach, format: NsgFormat) -> Result<(Hosting, String), String> {
     let options = ServeOptions { bot_runner: ServeBotKind::None, format, ..ServeOptions::default() };
-    let server = block_on_bounded(Server::bind(&format!("{host}:{port}"), options))
-        .ok_or_else(|| "timed out".to_string())?
-        .map_err(|error| error.to_string())?;
+    let listener = hosting::bind_listener(reach, port).map_err(|error| error.to_string())?;
+    let server = Server::from_listener(listener, options).map_err(|error| error.to_string())?;
     let port = server.local_addr().map_err(|error| error.to_string())?.port();
     let task = tokio::spawn(server.run());
-    let share = match (lan, lan_address()) {
-        (true, Some(ip)) => vec![format!("ws://{ip}:{port}")],
-        (true, None) => vec![format!("ws://<this machine's address>:{port}")],
-        (false, _) => vec![format!("ws://127.0.0.1:{port}")],
+    let hosting = Hosting {
+        task,
+        port,
+        shares: hosting::share_addresses(reach, port),
+        mapping: hosting::map_port(reach, port),
+        mapped: Mapping::Asking,
     };
-    Ok((Hosting { task, share }, format!("ws://127.0.0.1:{port}")))
-}
-
-/// This machine's address on its network, as an opponent would dial it:
-/// the source address the OS would use to reach a (documentation-range)
-/// outside address. Connecting a UDP socket sends nothing — it only asks
-/// the routing table. `None` with no route, where the host has to find
-/// the address themselves.
-fn lan_address() -> Option<IpAddr> {
-    let socket = std::net::UdpSocket::bind("0.0.0.0:0").ok()?;
-    socket.connect("192.0.2.1:9").ok()?;
-    socket.local_addr().ok().map(|addr| addr.ip()).filter(|ip| !ip.is_unspecified() && !ip.is_loopback())
-}
-
-/// What a person types, as the URL the client dials: `ws://` when no
-/// scheme is given, and the default port when none is.
-fn normalize_address(input: &str) -> String {
-    let input = input.trim();
-    let (scheme, rest) = match input.split_once("://") {
-        Some((scheme, rest)) => (scheme, rest),
-        None => ("ws", input),
-    };
-    let rest = rest.trim_end_matches('/');
-    let has_port = rest.rsplit_once(':').is_some_and(|(_, port)| !port.is_empty() && port.chars().all(|c| c.is_ascii_digit()));
-    if has_port { format!("{scheme}://{rest}") } else { format!("{scheme}://{rest}:{DEFAULT_PORT}") }
+    Ok((hosting, format!("ws://127.0.0.1:{port}")))
 }
 
 #[cfg(test)]
@@ -666,14 +673,6 @@ mod tests {
             assert!(Instant::now() < deadline, "no seat within 10s; notice: {:?}", screen.notice);
             tokio::time::sleep(Duration::from_millis(20)).await;
         }
-    }
-
-    #[test]
-    fn addresses_get_a_scheme_and_a_port() {
-        assert_eq!(normalize_address("192.168.1.5"), "ws://192.168.1.5:8080");
-        assert_eq!(normalize_address("192.168.1.5:9000"), "ws://192.168.1.5:9000");
-        assert_eq!(normalize_address(" ws://host.example:8080/ "), "ws://host.example:8080");
-        assert_eq!(normalize_address("wss://host.example"), "wss://host.example:8080");
     }
 
     #[test]
@@ -720,12 +719,12 @@ mod tests {
         let (mut host, _) = screen("host");
         // Host → port field: clear it to 0 (any free port), this machine only.
         press(&mut host, &[KeyCode::Enter, KeyCode::Enter, KeyCode::Backspace, KeyCode::Backspace, KeyCode::Backspace, KeyCode::Backspace]);
-        press(&mut host, &[KeyCode::Char('0'), KeyCode::Enter, KeyCode::Down, KeyCode::Enter, KeyCode::Down, KeyCode::Enter]);
+        press(&mut host, &[KeyCode::Char('0'), KeyCode::Enter, KeyCode::Down, KeyCode::Left, KeyCode::Down, KeyCode::Enter]);
         pick_deck(&mut host, "stolen_goods");
         press(&mut host, &[KeyCode::Down, KeyCode::Enter]);
         let Mode::Waiting { url, .. } = &host.mode else { panic!("hosting: {:?}", host.notice) };
         let address = url.clone();
-        assert!(host.hosting.as_ref().unwrap().share[0].starts_with("ws://127.0.0.1:"), "this machine only");
+        assert!(host.hosting.as_ref().unwrap().shares[0].url.starts_with("ws://127.0.0.1:"), "this machine only");
 
         let (mut joiner, _) = screen("joiner");
         press(&mut joiner, &[KeyCode::Down, KeyCode::Enter, KeyCode::Enter]);
@@ -767,13 +766,67 @@ mod tests {
         assert!(host.hosting.is_none(), "the hosted server stops with the game");
     }
 
+    /// A router request whose answer the test sets, and which says when it
+    /// has been let go.
+    struct FakeRouter {
+        answer: std::sync::Arc<std::sync::Mutex<Mapping>>,
+        released: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    }
+
+    impl PortMapper for FakeRouter {
+        fn poll(&mut self) -> Mapping {
+            self.answer.lock().unwrap().clone()
+        }
+    }
+
+    impl Drop for FakeRouter {
+        fn drop(&mut self) {
+            self.released.store(true, std::sync::atomic::Ordering::SeqCst);
+        }
+    }
+
+    /// Hosting for the internet, the host's line follows the router: asking,
+    /// then the public address to give out — or, behind the provider's NAT,
+    /// why no address will do and what to do instead. Leaving lets the
+    /// mapping go.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn the_hosts_line_follows_the_routers_answer() {
+        use hosting::MappingFailure;
+        use std::net::{Ipv4Addr, SocketAddrV4};
+
+        let (mut host, _) = screen("router");
+        press(&mut host, &[KeyCode::Enter, KeyCode::Enter, KeyCode::Backspace, KeyCode::Backspace, KeyCode::Backspace, KeyCode::Backspace]);
+        press(&mut host, &[KeyCode::Char('0'), KeyCode::Enter, KeyCode::Down, KeyCode::Left, KeyCode::Down, KeyCode::Down, KeyCode::Enter]);
+        assert!(matches!(host.mode, Mode::Waiting { .. }), "{:?}", host.notice);
+        let answer = std::sync::Arc::new(std::sync::Mutex::new(Mapping::Asking));
+        let released = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        host.hosting.as_mut().unwrap().mapping = Some(Box::new(FakeRouter { answer: answer.clone(), released: released.clone() }));
+        let status = |host: &mut OnlineScreen| {
+            host.tick();
+            let Mode::Waiting { status, .. } = &host.mode else { panic!("{:?}", host.notice) };
+            status.clone()
+        };
+
+        assert!(status(&mut host).contains("asking your router to open port"));
+        *answer.lock().unwrap() = Mapping::Open(SocketAddrV4::new(Ipv4Addr::new(203, 0, 113, 7), 40123));
+        assert!(status(&mut host).contains("ws://203.0.113.7:40123 — from anywhere"), "the router's port, which may not be ours");
+        *answer.lock().unwrap() = Mapping::Failed(MappingFailure::SharedAddress(Ipv4Addr::new(100, 70, 1, 1)));
+        let shared = status(&mut host);
+        assert!(shared.contains("100.70.1.1") && shared.contains("Tailscale"), "{shared}");
+        assert!(shared.contains("ws://127.0.0.1:"), "the addresses that do work are still listed: {shared}");
+
+        host.key(KeyCode::Esc);
+        host.returned();
+        assert!(released.load(std::sync::atomic::Ordering::SeqCst), "leaving releases the mapping");
+    }
+
     /// A player who stops waiting leaves the lobby: the next to arrive
     /// waits too, instead of being paired with someone who has gone.
     #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
     async fn abandoning_the_wait_leaves_the_lobby() {
         let (mut host, _) = screen("abandon");
         press(&mut host, &[KeyCode::Enter, KeyCode::Enter, KeyCode::Backspace, KeyCode::Backspace, KeyCode::Backspace, KeyCode::Backspace]);
-        press(&mut host, &[KeyCode::Char('0'), KeyCode::Enter, KeyCode::Down, KeyCode::Enter, KeyCode::Down, KeyCode::Down, KeyCode::Enter]);
+        press(&mut host, &[KeyCode::Char('0'), KeyCode::Enter, KeyCode::Down, KeyCode::Left, KeyCode::Down, KeyCode::Down, KeyCode::Enter]);
         let Mode::Waiting { url, .. } = &host.mode else { panic!("{:?}", host.notice) };
         let url = url.clone();
         // Keep the server alive past the host's own departure, to see the
