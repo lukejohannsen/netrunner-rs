@@ -177,6 +177,37 @@ changes made: conversion to PNG, and recolouring the black ones light.
 They must not be edited into new symbols. A file of the same name in
 your own directory replaces any of them.
 
+## The avatar bar
+
+Each side has a bar across the board at its edge of the table, above the
+person's own hand and under the opponent's. The identity's art sits in
+a disc in the middle of the bar, and the side's numbers run along the
+plate on either side of it. The bar of the side whose turn it is is lit
+(`.active`); the other side's is grey.
+
+**The plate is one wing, drawn once.** It is nine-sliced: the outer end
+(left) and the inner end (right, which runs in under the disc) are each
+kept whole at a third of the picture's width, and the middle third is
+stretched to whatever the board's width leaves. The right-hand wing is
+the same picture mirrored, which works only because the two ends are
+the same width, **so keep both ends 160 px wide** and put nothing in the
+middle third that would show being stretched sideways: straight brushing
+and straight traces stretch, while a jog or a via is a smear. The text
+runs across the top two thirds; keep the lowest third for the channel,
+and the outer 132 px clear of anything the name would sit on.
+
+| Key | Shows | Logical box | Draw at | Bundled |
+|---|---|---|---|---|
+| `avatar.bar` | a wing of the bar, on the other side's turn | 48 tall (36 on the far side), the board's width shared by two | **480 × 96**, ends 160 each | brushed steel, dark traces |
+| `avatar.bar.active` | a wing of the bar, on this side's turn | same | same | brushed steel, lit purple traces |
+| `avatar.frame` | the ring round the avatar, on the other side's turn | 72 square (54 on the far side) | **256 × 256**, transparent inside from 0.83 of the radius | a steel ring |
+| `avatar.frame.active` | the ring, on this side's turn | same | same | a steel ring with a lit trace |
+
+The bundled four are painted by `scripts/paint_avatar_bar.py` after the
+shared menu backdrop's brushed steel and purple circuits. The drawn
+defaults are a plain grey plate and ring, washed in the side's colour on
+its turn.
+
 ## Seeing it
 
     NETRUNNER_GAME=corp NETRUNNER_AUTOPLAY=40 \

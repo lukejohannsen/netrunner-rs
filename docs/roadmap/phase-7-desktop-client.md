@@ -1793,6 +1793,7 @@ delivers.
    faction mark in the icon font, then to a faction-coloured disc, which
    is the three-tier rule again. The numbers are already
    `board::hud::readouts`, so this adds no data, only a shape.
+   *Done in §4bi.*
 3. **The grip arcs, and a hovered card lifts out of it.** Rotation only,
    no resizing. *The person's own constraint, worth keeping as a rule:*
    the lift is local to whoever is looking — it never enters a
@@ -4728,6 +4729,67 @@ committed under the 24 September policy that shipped the official backs
 
 Seen on screen: the card browser's inspector draws Jinteki's mark and
 Elevation's set mark from the committed file.
+
+**Verified.** Workspace tests green and workspace clippy silent.
+
+### 4bi. Each side has an avatar on a bar of its numbers, lit on its turn — DONE (25 September 2026)
+
+`feat/desktop-avatar-bar`. The third list's item 2, asked for again in
+the person's own words: the identity "sitting off to the side" with
+"boring numbers" beside it becomes a disc of the identity's art in the
+middle of a bar, the side's numbers either side of it, the bar lit for
+the side whose turn it is and grey for the other. The bar sits over the
+person's hand and under the opponent's backs, and **it and the avatar do
+not move** — the person named that as the thing not to repeat.
+
+- **The strip is gone.** A side's edge of the table is now one board
+  row, a column of its bar and its hand (`spawn_avatar_bar`,
+  `strip_row`), where it was the identity card and a HUD grid beside the
+  hand. The hand is centred under its avatar with the board's whole
+  width, and draws over the bar when a card rises (it is the later
+  sibling; a lifted card already had its own `GlobalZIndex`). "Your hand
+  · N" is gone: the Runner's Grip readout and the Corp's HQ header carry
+  the count.
+- **Fixed pixels.** `layout::AVATAR` (72) and `layout::BAR` (48), the far
+  side at `OPPONENT_SCALE`; `strip_height` is the avatar row plus the
+  hand's peek, so `fixed_height` stays monotone in the face. Measured
+  with a replica of `face_width`: no change at 1920 × 1080 or the
+  person's 2000 × 1250 (the face is at its 220 cap there), and 167 → 150
+  (Corp) and 157 → 138 (Runner) at 1366 × 768, because the bar now sits
+  over the hand rather than beside it.
+- **The avatar is the identity's scan cropped to a square**
+  (`layout::AVATAR_ART`, `avatar_crop`: centred at 0.36 of the height,
+  0.62 of the width across, above the text box at 0.63), drawn in a disc
+  by the node's border radius — `bevy_ui` rounds an `ImageNode`'s corners
+  — inside a ring. The crop needs the decoded picture's size, which the
+  redraw does not have, so `crop_avatars` keeps it in `AvatarCrops` and
+  the board draws from that: no redraw shows a stand-in first. With no
+  scan cached, the disc is the faction's mark on the faction's colour.
+- **A click on the disc** is the identity's: the menu of its actions when
+  the engine offers any, otherwise the card to read (`Game::click` — an
+  empty menu had been the answer before).
+- **The pictures are board art**: `avatar.bar[.active]` and
+  `avatar.frame[.active]`, 480 × 96 and 256 × 256, painted by
+  `scripts/paint_avatar_bar.py` after the shared menu backdrop (brushed
+  gunmetal, chamfered ends, a recessed channel of purple traces, lit on
+  the active side) and credited as `project`. A wing is nine-sliced; the
+  right wing is the left mirrored, which `bevy_ui`'s slice shader gets
+  right only when both end caps are the same width, so both are 160. A
+  sliced image is drawn in its node's *content* box, so the picture is a
+  child filling the wing — as the wing's own image, the padding shrank
+  the plate to the text. The drawn tier is a grey plate and ring washed
+  in the side's colour.
+- **A short wing drops words, never numbers** (`layout::BAR_WORDS_MIN`,
+  640): at 1366 × 768 a wing is 454 wide, and the Runner's left wing —
+  the piles, credits, clicks and agendas — overflowed under the disc
+  with its words. There a readout with a glyph is the glyph and the
+  number, the gaps close from 14 to 8, and the Runner's name is left out
+  rather than clipped to its first letter. The name is the title before
+  its colon ("Zahya Sadeghi", "Haas-Bioroid").
+
+Seen on screen at 2000 × 1250 and 1366 × 768 from both chairs, forty
+decisions in, and with a hand card lifted (`NETRUNNER_LIFT`); no scroll
+area is the board.
 
 **Verified.** Workspace tests green and workspace clippy silent.
 
