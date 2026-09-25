@@ -49,7 +49,8 @@
 //! **A card dragged onto the board is played there.** While a hand card
 //! is held, the places its own entries name are lit (`ActionMap::
 //! destinations_for_hand_card`), a remote the Corp has not made yet
-//! included; dropping on one submits the entry that lands there, or opens
+//! included, the rig for a Runner install and the table for an event or
+//! an operation; dropping on one submits the entry that lands there, or opens
 //! a menu of just those entries when a place offers more than one. A drop
 //! anywhere else puts the card back. This is the one gesture on the board
 //! that acts — a *click* still never does, because a click is what a
@@ -1188,7 +1189,7 @@ impl Game {
                 Side::Corp => view.corp.identity.clone(),
                 Side::Runner => view.runner.identity.clone(),
             }),
-            Target::Server(_) | Target::Position(_) | Target::Pile(_) => None,
+            Target::Server(_) | Target::Position(_) | Target::Pile(_) | Target::Rig | Target::Table => None,
         }
     }
 
@@ -1204,8 +1205,8 @@ impl Game {
     }
 
     /// Where the card being dragged may be dropped: lit while it is held,
-    /// and empty when nothing is held or the card is played rather than
-    /// placed (an operation, an event, a Runner's own install).
+    /// and empty when nothing is held or the engine offers the card
+    /// nowhere.
     pub fn drop_places(&self) -> Vec<Target> {
         match self.dragged_card() {
             Some(card) if self.awaiting => self.actions.destinations_for_hand_card(&card),
@@ -1258,7 +1259,13 @@ mod tests {
     /// Keeps the first decision (the mulligan), and lets the Runner keep,
     /// until the Corp's first action phase.
     fn until_the_corps_action_phase(game: &mut Game, handle: &mut MatchHandle) {
-        while !matches!(game.view.as_ref().unwrap().phase, GamePhase::Action(Side::Corp)) {
+        until_the_action_phase(game, handle, Side::Corp);
+    }
+
+    /// Takes the first decision each time it is asked until `side`'s
+    /// first action phase.
+    fn until_the_action_phase(game: &mut Game, handle: &mut MatchHandle, side: Side) {
+        while !matches!(game.view.as_ref().unwrap().phase, GamePhase::Action(s) if s == side) {
             let Outcome::Submit(action) = game.apply(Intent::Choose(0)) else { panic!() };
             handle.submit(action).unwrap();
             game.awaiting = false;
@@ -1611,12 +1618,12 @@ mod tests {
 
     /// A card dragged onto a place the board lit for it is played there:
     /// one entry submits, a place that offers two asks with a menu, and a
-    /// card with nowhere to go lights nothing.
+    /// drop on a place the card does not name puts it back.
     #[test]
     fn a_card_dropped_on_a_lit_place_is_played_there() {
         let (mut game, mut handle) = game(Side::Corp);
         until_awaiting(&mut game, &mut handle);
-        until_the_corps_action_phase(&mut game, &mut handle);
+        until_the_action_phase(&mut game, &mut handle, Side::Corp);
         // A card the engine offers an install for, and where it may go.
         let hand = game.hand.cards().to_vec();
         let (slot, card, places) = hand
@@ -1624,7 +1631,7 @@ mod tests {
             .enumerate()
             .find_map(|(slot, card)| {
                 let places = game.actions.destinations_for_hand_card(card);
-                (!places.is_empty()).then(|| (slot, card.clone(), places))
+                places.iter().any(|place| matches!(place, Target::Server(_))).then(|| (slot, card.clone(), places))
             })
             .expect("an opening Corp hand has something to install");
         let place = places[0].clone();
@@ -1634,6 +1641,7 @@ mod tests {
         assert!(game.drop_places().is_empty(), "a press alone lights nothing");
         game.apply(Intent::DragMove { at: (400.0, 400.0) });
         assert_eq!(game.drop_places(), places, "the card's own places are lit");
+        assert!(!places.contains(&Target::Table), "an install is not played on the table");
         let expected = game.actions.for_hand_card_at(&card, &place);
         let outcome = game.apply(Intent::DragDrop { target: place.clone(), over: Anchor::default() });
         match expected.as_slice() {
@@ -1646,16 +1654,62 @@ mod tests {
         }
         assert!(game.dragging.is_none(), "the card was let go");
         assert!(game.drop_places().is_empty());
-        // A card that is played rather than placed lights nothing, and a
-        // drop on a place it does not name does nothing.
+        // An operation lights the table, and nothing else: a drop on a
+        // server puts it back, and a drop on the table plays it.
         game.awaiting = true;
-        if let Some((slot, card)) = hand.iter().enumerate().find(|(_, card)| game.actions.destinations_for_hand_card(card).is_empty() && !game.actions.for_hand_card(card).is_empty()) {
+        game.menu = None;
+        let operation = hand.iter().enumerate().find(|(_, card)| game.actions.for_hand_card(card).iter().any(|&i| matches!(game.actions.entries[i].action, PlayerAction::PlayOperation { .. })));
+        let (slot, card) = operation.expect("the opening Corp hand has an operation it can play");
+        game.apply(Intent::DragPress { slot, at: (100.0, 900.0) });
+        game.apply(Intent::DragMove { at: (400.0, 400.0) });
+        assert_eq!(game.drop_places(), vec![Target::Table], "{} is played on the table", card.0);
+        assert_eq!(game.apply(Intent::DragDrop { target: Target::Server(ServerId::Archives), over: Anchor::default() }), Outcome::Redraw);
+        assert!(game.dragging.is_none() && game.menu.is_none(), "a drop it does not name puts it back");
+        game.apply(Intent::DragPress { slot, at: (100.0, 900.0) });
+        game.apply(Intent::DragMove { at: (400.0, 400.0) });
+        assert_eq!(game.apply(Intent::DragDrop { target: Target::Table, over: Anchor::default() }), Outcome::Submit(PlayerAction::PlayOperation { card_id: card.clone() }));
+        handle.join();
+    }
+
+    /// The Runner's installs are dropped on the rig and their events on
+    /// the table, and neither is lit for the other's place.
+    #[test]
+    fn a_runner_drops_an_install_on_the_rig_and_an_event_on_the_table() {
+        let (mut game, mut handle) = game(Side::Runner);
+        until_awaiting(&mut game, &mut handle);
+        until_the_action_phase(&mut game, &mut handle, Side::Runner);
+        let hand = game.hand.cards().to_vec();
+        let kind = |game: &Game, card: &CardId| {
+            game.actions.for_hand_card(card).into_iter().map(|i| game.actions.entries[i].action.clone()).find(|action| {
+                matches!(
+                    action,
+                    PlayerAction::PlayEvent { .. } | PlayerAction::InstallProgram { trash_first: false, .. } | PlayerAction::InstallHardware { .. } | PlayerAction::InstallResource { .. }
+                )
+            })
+        };
+        let mut seen = (false, false);
+        for (slot, card) in hand.iter().enumerate() {
+            let Some(action) = kind(&game, card) else { continue };
+            let (place, other) = match action {
+                PlayerAction::PlayEvent { .. } => (Target::Table, Target::Rig),
+                _ => (Target::Rig, Target::Table),
+            };
+            game.awaiting = true;
             game.apply(Intent::DragPress { slot, at: (100.0, 900.0) });
             game.apply(Intent::DragMove { at: (400.0, 400.0) });
-            assert!(game.drop_places().is_empty(), "{} is played, not placed", card.0);
-            assert_eq!(game.apply(Intent::DragDrop { target: Target::Server(ServerId::Archives), over: Anchor::default() }), Outcome::Redraw);
-            assert!(game.dragging.is_none() && game.menu.is_none(), "a drop it does not name puts it back");
+            let lit = game.drop_places();
+            assert!(lit.contains(&place) && !lit.contains(&other), "{}: {lit:?}", card.0);
+            // The one entry that lands there, or a menu of them (a program
+            // that may trash first).
+            match game.apply(Intent::DragDrop { target: place.clone(), over: Anchor::default() }) {
+                Outcome::Submit(submitted) => assert_eq!(submitted, action),
+                Outcome::Redraw => assert!(game.menu.as_ref().is_some_and(|menu| menu.target == place && menu.entries.len() > 1)),
+                other => panic!("{other:?}"),
+            }
+            game.menu = None;
+            if place == Target::Table { seen.0 = true } else { seen.1 = true }
         }
+        assert!(seen.0 && seen.1, "the opening Runner hand has something to play and something to install: {seen:?}");
         handle.join();
     }
 
