@@ -94,7 +94,7 @@ impl Entry {
 pub enum Launch {
     Local { config: Box<Config> },
     Learn { pick: LearnPick, config: Box<Config> },
-    Remote { joined: Box<crate::remote::Joined>, url: String, brought: Option<String> },
+    Remote { joined: Box<crate::remote::Joined>, brought: Option<String> },
 }
 
 /// Which kind of launch just came back, for `Menu::returned` — the
@@ -523,7 +523,7 @@ impl Menu {
                 self.screen = Screen::Main;
                 MenuStep::Continue
             }
-            OnlineStep::Play { joined, url, brought } => MenuStep::Launch(Launch::Remote { joined, url, brought }),
+            OnlineStep::Play { joined, brought, .. } => MenuStep::Launch(Launch::Remote { joined, brought }),
         }
     }
 
@@ -726,7 +726,7 @@ fn drive(terminal: &mut ratatui::DefaultTerminal, menu: &mut Menu) -> Result<(),
                 let result = match launch {
                     Launch::Local { config } => super::play_local(terminal, &config),
                     Launch::Learn { pick, config } => learn::play(terminal, &pick, &config),
-                    Launch::Remote { joined, url, brought } => super::play_remote(terminal, *joined, &url, brought.as_deref()),
+                    Launch::Remote { joined, brought } => super::play_remote(terminal, *joined, brought.as_deref()),
                 };
                 menu.returned(played, result.err().map(|error| error.to_string()));
             }

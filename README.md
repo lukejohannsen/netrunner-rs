@@ -107,6 +107,7 @@ left out.
 | `netrunner_bots` | Automated players over a masked `ClientView`: `BotAgent`, random/heuristic/MCTS/PUCT agents, `determinize`, RL observation encoding, optional ONNX policy. |
 | `netrunner_session` | The one match decision loop. `Session`, `Seat`, the single step budget, `MatchHistory`, and end-of-match classification. Every driver pumps this. |
 | `netrunner_single_player` | Thin index-based adapter over `netrunner_session` for the RL / fixed-action-space path. |
+| `netrunner_protocol` | The wire messages between a server and a client, which both ends depend on and neither owns. |
 | `netrunner_server` | Authoritative async host: `MatchSession`, the `ClientMessage`/`ServerMessage` protocol, WebSocket transport. |
 | `netrunner_cli` | Reference client: ratatui TUI, headless runner, local and remote modes, card/deck subcommands. |
 | `netrunner_gym` | PyO3 reinforcement-learning environment over the fixed action space. |

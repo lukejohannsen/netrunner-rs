@@ -15,6 +15,10 @@ netrunner_bots = { path = "../netrunner_bots" }
 # The one match loop (`Session`), which `play::MatchHandle` runs on its own
 # thread, and the masked log entry every client renders.
 netrunner_session = { path = "../netrunner_session" }
+# The wire messages `connection` and `remote` speak, without the server.
+netrunner_protocol = { path = "../netrunner_protocol" }
+# `connection`: a seat's token is one.
+uuid = "1"
 serde = { workspace = true }
 serde_json = { workspace = true }
 # The OS data directory saved decks, the record and settings live under. The
@@ -35,8 +39,17 @@ tokio = { workspace = true }
 # `hosting`: a dual-stack listener needs `IPV6_V6ONLY` set, which neither
 # `std` nor tokio can say. The version tokio already links.
 socket2 = "0.6"
+# `remote`: the WebSocket a match is played over. The versions the server
+# and the terminal client already use.
+tokio-tungstenite = "0.24"
+futures-util = "0.3"
 
 [features]
 # Forwarded so a client built with a policy network gets the bots' ONNX
 # support through this crate rather than naming `netrunner_bots` itself.
 onnx = ["netrunner_bots/onnx", "netrunner_session/onnx"]
+
+[dev-dependencies]
+# `remote`'s tests drive the driver against a real server on an ephemeral
+# port. A dev-dependency only: the client never names the server.
+netrunner_server = { path = "../netrunner_server" }

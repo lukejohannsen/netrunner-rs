@@ -79,16 +79,14 @@ async fn run_remote(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
         None => None,
     };
     let brought_id = brought.as_ref().map(|deck| deck.id.clone());
-    let joined = match config.spectate {
-        Some(match_id) => remote::spectate_remote(&config.server, match_id).await?,
-        None => {
-            let hello =
-                remote::connect_message(&record::player_name(config), config.side.map(Into::into), config.room.clone(), brought);
-            remote::connect_remote(&config.server, hello).await?
-        }
+    let goal = match config.spectate {
+        Some(match_id) => remote::Goal::Watch { match_id },
+        None => remote::Goal::Play(remote::connect_message(&record::player_name(config), config.side.map(Into::into), config.room.clone(), brought)),
     };
+    // Before the terminal is taken, so the lobby wait goes to stderr.
+    let joined = remote::connect(&config.server, goal, |position| eprintln!("Waiting in the lobby for another player ({position} waiting)...")).await?;
     let mut terminal = ratatui::init();
-    let result = play_remote(&mut terminal, joined, &config.server, brought_id.as_deref());
+    let result = play_remote(&mut terminal, joined, brought_id.as_deref());
     ratatui::restore();
     result
 }
@@ -110,24 +108,23 @@ async fn run_remote(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
 pub fn play_remote(
     terminal: &mut ratatui::DefaultTerminal,
     joined: remote::Joined,
-    server_url: &str,
     brought: Option<&str>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let registry = decks::sample_deck_registry();
-    let session_token = joined.session_token;
     let dealt = match joined.viewer {
         Viewer::Player(Side::Corp) => Some(joined.decks.0.clone()),
         Viewer::Player(Side::Runner) => Some(joined.decks.1.clone()),
         Viewer::Spectator => None,
     };
     let mut app = App::new(registry, joined.viewer, joined.tx, joined.rx);
+    app.follow_link(joined.link);
     app.answers = crate::settings::answers();
     if let (Some(brought), Some(dealt)) = (brought, dealt)
         && brought != dealt
     {
         app.connection_notice = Some(format!("This server dealt you {dealt:?} instead of your deck — it predates bringing your own"));
     }
-    run_event_loop(terminal, &mut app, server_url, session_token)
+    run_event_loop(terminal, &mut app)
 }
 
 /// Local, offline human-vs-bot play, pumping a `netrunner_session::Session`
@@ -1026,37 +1023,14 @@ impl RenderableView for LocalUiState {
     }
 }
 
-/// The remote render loop. A lost connection is handled *here*, between
-/// frames, rather than inside `App` or `remote`: the board keeps drawing
-/// with the last view and the reconnect notice, and `q` still quits, while
-/// `Reconnector` makes one bounded attempt per tick. A game that has
-/// already ended is not resumed — the `GameEnded` is on screen and the
-/// server has dropped the seat's ticket anyway. A spectator has no token
-/// and is not resumed either: it can spectate again from the command line.
-fn run_event_loop(
-    terminal: &mut ratatui::DefaultTerminal,
-    app: &mut App,
-    server_url: &str,
-    session_token: Option<uuid::Uuid>,
-) -> Result<(), Box<dyn std::error::Error>> {
-    let mut reconnector: Option<remote::Reconnector> = None;
+/// The remote render loop. A lost connection is not handled here: the
+/// driver behind `app`'s channels reconnects on its own
+/// (`netrunner_client::remote`), and `App` shows the link's state and
+/// holds submissions until it is back — so the board keeps drawing with
+/// the last view and `q` still quits, and nothing here blocks.
+fn run_event_loop(terminal: &mut ratatui::DefaultTerminal, app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
     while !app.should_quit {
         app.drain_messages();
-        if app.connection_lost && !app.is_game_over() {
-            match session_token {
-                Some(session_token) => {
-                    let attempt = reconnector.get_or_insert_with(|| remote::Reconnector::new(server_url.to_string(), session_token));
-                    match attempt.try_resume()? {
-                        Some(joined) => {
-                            app.reconnected(joined.tx, joined.rx);
-                            reconnector = None;
-                        }
-                        None => app.connection_notice = Some(attempt.status_line()),
-                    }
-                }
-                None => app.connection_notice = Some("Connection lost — spectate again to rejoin. Press q to quit.".to_string()),
-            }
-        }
         terminal.draw(|frame| draw_frame(frame, app, app.game_ended.map(|(winner, reason)| (winner, reason, None))))?;
         if event::poll(Duration::from_millis(100))?
             && let Event::Key(key) = event::read()?
