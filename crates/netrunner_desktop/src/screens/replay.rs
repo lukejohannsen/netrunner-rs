@@ -117,8 +117,11 @@ fn spawn(mut commands: Commands, theme: Res<Theme>, core: Res<ClientCore>, waiti
                 }
                 for path in &reports {
                     let label = model::label(path, netrunner_client::replay::header(path).as_ref());
+                    // A row of a list, not a button among buttons: it
+                    // keeps the panel's width, past the pill's cap, so a
+                    // saved game's long name is one line, not three.
                     let mut row = panel.spawn(widgets::button(&theme, label, percent(100), ReportRow(path.clone())));
-                    row.entry::<Node>().and_modify(|mut node| node.justify_content = JustifyContent::FlexStart);
+                    row.entry::<Node>().and_modify(|mut node| node.max_width = Val::Auto);
                 }
             });
         })

@@ -4918,3 +4918,20 @@ with `NETRUNNER_GAME=corp NETRUNNER_SCREENSHOT` before either was touched.
   a write from the `shadows` system raced `widgets::dress`'s queued old
   fill and lost (it was tried first, and the screenshot showed it
   unchanged).
+
+**Then the person asked for every pill's words centred and no pill the
+width of the window**, and it is one rule in `widgets` now: a pill's
+label is centred line by line (`centred_label`, so a wrapped label is
+centred lines, not a left-aligned block), and no pill is wider than
+`shape::BUTTON_MAX_WIDTH` (420) or sits against a column's left edge
+(`align_self: Center`) — `small_button` included, which builds its own
+node. Three call sites had pushed their labels left and no longer do:
+the decision pop-up's and actions menu's `entry_button`, the rail's ways
+through the ICE, and the Replays list. The pop-up's decisions are one
+centred, wrapping row of content-sized pills (at least 200 px), so Keep
+and Mulligan sit side by side, and its Take it back fits its words. The
+Replays rows are the one exception to the cap: a row of a list keeps the
+panel's width, or a saved game's name ran to three lines. Screenshotted
+after: the menu, Settings, Decks, Play vs Computer, Replays, the
+mulligan, an access and the rail; `every_pill_centres_its_words_and_is_capped`
+holds the rule.

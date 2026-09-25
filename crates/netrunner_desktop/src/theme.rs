@@ -207,6 +207,11 @@ pub mod shape {
     pub const ROW_RADIUS: f32 = 10.0;
     /// The least height of a button: a comfortable target for a pointer.
     pub const BUTTON_HEIGHT: f32 = 44.0;
+    /// The widest a pill is drawn, whatever it was asked for. A button
+    /// the width of the box it sits in was a bar across the window in a
+    /// wide pop-up (the mulligan's Keep and Mulligan, 24 September 2026);
+    /// a pill is a thing to press, sized to its words and a little more.
+    pub const BUTTON_MAX_WIDTH: f32 = 420.0;
 }
 
 impl Theme {

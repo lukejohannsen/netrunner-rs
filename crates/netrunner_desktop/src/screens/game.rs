@@ -2766,10 +2766,7 @@ fn spawn_rail(parent: &mut ChildSpawnerCommands, theme: &Theme, game: &Game, hel
     for (index, route) in game.breaks.iter().enumerate() {
         let label = view.map_or_else(|| route.price(), |view| route.label(view, game.registry()));
         let mut button = parent.spawn(widgets::button(theme, label, percent(100), Click::Break(index)));
-        button.entry::<Node>().and_modify(|mut node| {
-            node.justify_content = JustifyContent::FlexStart;
-            node.padding = UiRect::axes(px(10), px(6));
-        });
+        button.entry::<Node>().and_modify(|mut node| node.padding = UiRect::axes(px(10), px(6)));
     }
     // Beside the routes and not on the control bar: the bar is the basic
     // actions, greyed when the engine does not list them, and this is
@@ -2801,7 +2798,8 @@ fn spawn_rail(parent: &mut ChildSpawnerCommands, theme: &Theme, game: &Game, hel
     });
 }
 
-/// A button for entry `index`, its label left-aligned, at `width`.
+/// A button for entry `index`, its label centred like every pill's, at
+/// `width`.
 ///
 /// **The width is the caller's** because two of the three callers are
 /// inside a wrapping container, where a percentage has nothing to
@@ -2812,10 +2810,7 @@ fn spawn_rail(parent: &mut ChildSpawnerCommands, theme: &Theme, game: &Game, hel
 fn entry_button(parent: &mut ChildSpawnerCommands, theme: &Theme, game: &Game, index: usize, width: Val) -> Option<Entity> {
     let entry = game.actions.entries.get(index)?;
     let mut button = parent.spawn(widgets::button(theme, entry.label.clone(), width, Click::Entry(index)));
-    button.entry::<Node>().and_modify(|mut node| {
-        node.justify_content = JustifyContent::FlexStart;
-        node.padding = UiRect::axes(px(10), px(6));
-    });
+    button.entry::<Node>().and_modify(|mut node| node.padding = UiRect::axes(px(10), px(6)));
     Some(button.id())
 }
 
@@ -2938,6 +2933,10 @@ fn place_menu(fit: Option<Res<BoardFit>>, model: Option<Res<Model>>, targets: Qu
 /// The narrowest the decision pop-up's panel is drawn, and what its own
 /// padding and border take off that on each side.
 const POPUP_MIN_WIDTH: f32 = 520.0;
+
+/// The least width of a decision pop-up's pill, so a row of short answers
+/// ("Keep hand", "Mulligan") is a row of like buttons, not two words.
+const POPUP_BUTTON_MIN: f32 = 200.0;
 const POPUP_PADDING: f32 = 17.0;
 
 /// The decision pop-up: the prompt's words as its heading and one
@@ -3164,14 +3163,34 @@ fn spawn_decision_popup(parent: &mut ChildSpawnerCommands, theme: &Theme, core: 
                             }
                         });
                 }
-                for index in &buttons {
-                    // The pop-up's own buttons glow like the cards do, and
-                    // for the same reason: a decision parked on the person
-                    // is the clearest case of a moment that will pass.
-                    if let Some(entity) = entry_button(panel, theme, game, *index, percent(100)) {
-                        glow(&mut panel.commands(), entity, theme, game.actions.affordance_of_entry(*index));
-                    }
-                }
+                // The decisions are one centred row of pills, each as wide
+                // as its words (at least `POPUP_BUTTON_MIN`, at most the
+                // pill's cap), wrapping when the row is full: stacked at
+                // the panel's width, a wide pop-up's Keep and Mulligan were
+                // two bars across the window. `Val::Auto`, never a
+                // percentage, for `entry_button`'s reason.
+                panel
+                    .spawn(Node {
+                        flex_direction: FlexDirection::Row,
+                        flex_wrap: FlexWrap::Wrap,
+                        justify_content: JustifyContent::Center,
+                        column_gap: px(layout::ROW_GAP),
+                        row_gap: px(layout::ROW_GAP),
+                        width: percent(100),
+                        ..rigid.clone()
+                    })
+                    .with_children(|row| {
+                        for index in &buttons {
+                            // The pop-up's own buttons glow like the cards do,
+                            // and for the same reason: a decision parked on
+                            // the person is the clearest case of a moment
+                            // that will pass.
+                            if let Some(entity) = entry_button(row, theme, game, *index, Val::Auto) {
+                                row.commands().entity(entity).entry::<Node>().and_modify(|mut node| node.min_width = px(POPUP_BUTTON_MIN));
+                                glow(&mut row.commands(), entity, theme, game.actions.affordance_of_entry(*index));
+                            }
+                        }
+                    });
                 // A card's "you may" can be answered for good: under the
                 // answers themselves, as a second, smaller question about
                 // them, and never numbered — each is one of the buttons
@@ -3189,7 +3208,7 @@ fn spawn_decision_popup(parent: &mut ChildSpawnerCommands, theme: &Theme, core: 
                 // of a prompt has to be in the prompt. Last, unlit, and
                 // never one of the numbered decisions: it answers nothing.
                 if let Some(label) = game.back_label() {
-                    panel.spawn(widgets::button(theme, label, percent(100), Click::TakeBack));
+                    panel.spawn(widgets::button(theme, label, Val::Auto, Click::TakeBack));
                 }
             });
         });
