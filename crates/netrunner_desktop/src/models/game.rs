@@ -80,6 +80,7 @@ use netrunner_core::rules::{GameEvent, InstallId, PlayerAction, ServerId, Side};
 use netrunner_core::view::ClientView;
 
 use crate::models::drag::{insert_at, Drag, Release};
+use crate::models::lesson::LessonBoard;
 use crate::models::shortcuts::Shortcut;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -129,6 +130,11 @@ pub enum Intent {
     Break(usize),
     /// Take the last move back (`Game::back`).
     TakeBack,
+    /// The lesson's opening words are read: the board is the person's.
+    BeginLesson,
+    /// Open or close a lesson's escape hatch: every legal action offered,
+    /// or only the step's (`LessonBoard::every_action`).
+    EveryAction,
     /// The Corp's "no more this run": pass this window and every one
     /// after it until the run ends (`netrunner_client::run_pass`), or,
     /// while that is on, stop and be asked again.
@@ -379,6 +385,13 @@ pub struct Game {
     /// end of the match is its table. The live match's only — a replay
     /// is put at a position by `Intent::Show`, and has no end panel.
     pub tally: Tally,
+    /// A lesson being played rather than a game (`models::lesson`): its
+    /// words, and the step that narrows what the board offers. Every
+    /// policy that answers for the person — the lone pass, the run pass,
+    /// a remembered answer, a break route — is off under a lesson, which
+    /// passes for the learner itself where it means to and teaches the
+    /// pump and the break by hand.
+    pub lesson: Option<LessonBoard>,
 }
 
 impl Game {
@@ -419,7 +432,13 @@ impl Game {
             run_pass: RunPass::default(),
             entries: Vec::new(),
             tally: Tally::default(),
+            lesson: None,
         }
+    }
+
+    /// A board for a lesson, its opening words up.
+    pub fn lesson(registry: Arc<CardRegistry>, side: Side, lesson: LessonBoard) -> Self {
+        Game { lesson: Some(lesson), ..Game::new(registry, side) }
     }
 
     /// A board for a recorded match, at `at`, seen from `side`.
@@ -449,15 +468,21 @@ impl Game {
     /// offers to answer for good (`Intent::Remember`); `None` in a
     /// replay and while nothing is awaited.
     pub fn optional_prompt(&self) -> Option<OptionalPrompt> {
-        if !self.awaiting || self.replay.is_some() {
+        if !self.awaiting || self.replay.is_some() || self.lesson.is_some() {
             return None;
         }
         optional_trigger(self.view.as_ref()?, &self.registry)
     }
 
-    /// Whether the match is over or gone, so the panel offers nothing.
+    /// Whether the match is over or gone, so the panel offers nothing. A
+    /// lesson is over when its last step advances, whoever is ahead.
     pub fn finished(&self) -> bool {
-        self.over.is_some() || self.stalled.is_some()
+        self.over.is_some() || self.stalled.is_some() || self.lesson.as_ref().is_some_and(|lesson| lesson.outro.is_some())
+    }
+
+    /// A lesson's opening words are up and nothing has been played.
+    pub fn intro_open(&self) -> bool {
+        self.lesson.as_ref().is_some_and(|lesson| lesson.intro.is_some())
     }
 
     /// Whether something covers the board — a sheet, a card being read,
@@ -465,7 +490,7 @@ impl Game {
     /// match — so a click that reaches a card through it opens nothing,
     /// and a key does nothing.
     pub fn covered(&self) -> bool {
-        self.finished() || self.confirm_quit || self.options_open || self.help_open || self.timing_open || self.sheet.is_some() || self.inspecting.is_some()
+        self.finished() || self.intro_open() || self.confirm_quit || self.options_open || self.help_open || self.timing_open || self.sheet.is_some() || self.inspecting.is_some()
     }
 
     /// Whether a click that misses the panel closes what is open.
@@ -485,7 +510,7 @@ impl Game {
     /// closed them would be the only way out and would mean something
     /// different from every other panel's.
     pub fn dismissed_by_a_click_away(&self) -> bool {
-        !self.finished() && !self.confirm_quit && !self.options_open && !self.help_open && (self.sheet.is_some() || self.inspecting.is_some() || self.timing_open)
+        !self.finished() && !self.intro_open() && !self.confirm_quit && !self.options_open && !self.help_open && (self.sheet.is_some() || self.inspecting.is_some() || self.timing_open)
     }
 
     pub fn take_transitions(&mut self) -> Vec<Transition> {
@@ -534,7 +559,7 @@ impl Game {
     /// while it is on, and `None` otherwise — in a replay, the other
     /// chair, and between runs.
     pub fn run_pass_label(&self) -> Option<&'static str> {
-        if self.replay.is_some() || self.finished() {
+        if self.replay.is_some() || self.finished() || self.lesson.is_some() {
             return None;
         }
         if self.run_pass.is_on() {
@@ -561,6 +586,30 @@ impl Game {
     fn apply_intent(&mut self, intent: Intent) -> Outcome {
         match intent {
             Intent::Message(MatchMessageRef(message)) => self.message(message),
+            Intent::BeginLesson => match &mut self.lesson {
+                Some(lesson) if lesson.intro.is_some() => {
+                    lesson.intro = None;
+                    Outcome::Redraw
+                }
+                _ => Outcome::Nothing,
+            },
+            Intent::EveryAction => {
+                let finished = self.finished();
+                let Some(lesson) = &mut self.lesson else { return Outcome::Nothing };
+                if !lesson.gated() || finished {
+                    return Outcome::Nothing;
+                }
+                lesson.every_action = !lesson.every_action;
+                // The list the board was built from changes under it; the
+                // view and the prompt do not.
+                if self.awaiting
+                    && let Some(view) = &self.view
+                {
+                    self.menu = None;
+                    self.actions = self.action_map(view);
+                }
+                Outcome::Redraw
+            }
             Intent::RunStep(events) => {
                 // A run beginning replaces the last run's trail; its ice
                 // is filled in by the message that follows.
@@ -740,7 +789,9 @@ impl Game {
                 }
             }
             Intent::RequestQuit => {
-                if self.finished() || self.replay.is_some() {
+                // Nothing is lost before a lesson begins, as nothing is
+                // after a match ends: Escape on the intro is its Leave.
+                if self.finished() || self.replay.is_some() || self.intro_open() {
                     Outcome::Quit
                 } else {
                     self.confirm_quit = true;
@@ -795,7 +846,7 @@ impl Game {
             // message a beat inside a run, so the board is seen to move.
             // The map is still built, so a pass the engine rejects comes
             // back as `Rejected` onto a live bar and cannot loop.
-            MatchMessage::Awaiting { view } if lone_pass(&view, &self.registry).is_some() => {
+            MatchMessage::Awaiting { view } if self.lesson.is_none() && lone_pass(&view, &self.registry).is_some() => {
                 let pass = lone_pass(&view, &self.registry).expect("matched above");
                 self.actions = ActionMap::build(&view, &self.registry);
                 self.prompt = Prompt::of(&view, &self.registry);
@@ -806,7 +857,7 @@ impl Game {
             }
             // The rest of the run is being passed: the same, for a pass
             // that sits beside a choice the person has already declined.
-            MatchMessage::Awaiting { view } if self.run_pass.pass(&view).is_some() => {
+            MatchMessage::Awaiting { view } if self.lesson.is_none() && self.run_pass.pass(&view).is_some() => {
                 let pass = self.run_pass.pass(&view).expect("matched above");
                 self.actions = ActionMap::build(&view, &self.registry);
                 self.prompt = Prompt::of(&view, &self.registry);
@@ -817,7 +868,7 @@ impl Game {
             }
             // An optional trigger the person has answered for good: the
             // same, for the same reasons, with the answer they gave.
-            MatchMessage::Awaiting { view } if !self.asking_again && standing_answer(&view, &self.registry, &self.answers).is_some() => {
+            MatchMessage::Awaiting { view } if self.lesson.is_none() && !self.asking_again && standing_answer(&view, &self.registry, &self.answers).is_some() => {
                 let (action, _) = standing_answer(&view, &self.registry, &self.answers).expect("matched above");
                 self.actions = ActionMap::build(&view, &self.registry);
                 self.prompt = Prompt::of(&view, &self.registry);
@@ -829,10 +880,7 @@ impl Game {
             MatchMessage::Awaiting { view } => {
                 self.asking_again = false;
                 self.run_pass.see(&view);
-                self.actions = ActionMap::build(&view, &self.registry);
-                // What each card will ask, on its button before it is
-                // played: once per view, like the routes below.
-                self.actions.annotate(&Asks::of(&view, &self.registry));
+                self.actions = self.action_map(&view);
                 self.prompt = Prompt::of(&view, &self.registry);
                 // A route under way takes its next step before the person
                 // is asked anything; the board still shows the view.
@@ -842,10 +890,30 @@ impl Game {
                     self.awaiting = false;
                     return Outcome::Submit(step);
                 }
-                self.breaks = routes(&view, &self.registry);
+                // A lesson teaches the pump and the break; a route would
+                // skip them.
+                self.breaks = if self.lesson.is_some() { Vec::new() } else { routes(&view, &self.registry) };
                 self.view = Some(*view);
                 self.follow_hand();
                 self.awaiting = true;
+                Outcome::Redraw
+            }
+            // Held until the `Awaiting` it belongs to, which follows at
+            // once; a board that is not a lesson has nothing to coach.
+            MatchMessage::Coach(coaching) => {
+                if let Some(lesson) = &mut self.lesson {
+                    lesson.coaching = Some(coaching);
+                }
+                Outcome::Nothing
+            }
+            MatchMessage::LessonComplete { view, outro } => {
+                self.view = Some(*view);
+                self.follow_hand();
+                self.close_for_the_end();
+                if let Some(lesson) = &mut self.lesson {
+                    lesson.coaching = None;
+                    lesson.outro = Some(outro);
+                }
                 Outcome::Redraw
             }
             MatchMessage::Back { rewind } => {
@@ -890,18 +958,7 @@ impl Game {
             MatchMessage::Ended { winner, reason, view, report, notice } => {
                 self.view = Some(*view);
                 self.follow_hand();
-                self.awaiting = false;
-                self.actions = ActionMap::default();
-                self.prompt = None;
-                self.sheet = None;
-                self.inspecting = None;
-                self.menu = None;
-                self.options_open = false;
-                self.help_open = false;
-                self.timing_open = false;
-                self.confirm_quit = false;
-                self.breaks.clear();
-                self.breaking = None;
+                self.close_for_the_end();
                 self.over = Some(Over { winner, reason, report, notice });
                 Outcome::Redraw
             }
@@ -915,6 +972,39 @@ impl Game {
                 Outcome::Redraw
             }
         }
+    }
+
+    /// The action map for a view the person is asked on: its entries, what
+    /// each card will ask before it is played, and — in a lesson — only
+    /// the step's actions (`LessonBoard::offered`).
+    fn action_map(&self, view: &ClientView) -> ActionMap {
+        let offered = match &self.lesson {
+            Some(lesson) => lesson.offered(view),
+            None => std::borrow::Cow::Borrowed(view),
+        };
+        let mut actions = ActionMap::build(&offered, &self.registry);
+        // What each card will ask, on its button before it is played:
+        // once per view, like the routes.
+        actions.annotate(&Asks::of(&offered, &self.registry));
+        actions
+    }
+
+    /// Everything that offers or covers put away for the end of a match
+    /// or a lesson: nothing is awaited, and the end's panel is the one
+    /// thing up.
+    fn close_for_the_end(&mut self) {
+        self.awaiting = false;
+        self.actions = ActionMap::default();
+        self.prompt = None;
+        self.sheet = None;
+        self.inspecting = None;
+        self.menu = None;
+        self.options_open = false;
+        self.help_open = false;
+        self.timing_open = false;
+        self.confirm_quit = false;
+        self.breaks.clear();
+        self.breaking = None;
     }
 
     /// Starts route `index`: its first step is submitted now, the rest on

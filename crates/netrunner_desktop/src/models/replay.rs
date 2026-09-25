@@ -91,7 +91,7 @@ mod tests {
     fn header(bot: Option<netrunner_client::bug_report::RecordedBot>) -> MatchRecordHeader {
         let corp = netrunner_core::decks::by_id("discretion_advised").expect("built-in deck");
         let runner = netrunner_core::decks::by_id("stolen_goods").expect("built-in deck");
-        MatchRecordHeader { seed: 42, corp_deck: corp.to_deck(), runner_deck: runner.to_deck(), rules: MatchRules::default(), bot }
+        MatchRecordHeader { seed: 42, corp_deck: corp.to_deck(), runner_deck: runner.to_deck(), rules: MatchRules::default(), bot, order: Default::default() }
     }
 
     #[test]

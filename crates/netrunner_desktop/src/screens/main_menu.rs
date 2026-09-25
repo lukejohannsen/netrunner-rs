@@ -68,7 +68,7 @@ impl Entry {
         match self {
             Entry::PlayComputer => "A casual game against a rung of the ladder, in the style your deck chooses",
             Entry::Online => "Host a game, join one by address, or watch",
-            Entry::Learn => "Both lesson tracks and the starter games",
+            Entry::Learn => "Both lesson tracks, played on the board with a coach",
             Entry::Decks => "Build, copy and edit decks; the same files the terminal client plays",
             Entry::Cards => "Every card, with the printed text and how the engine reads it",
             Entry::Replays => "Step through a saved game on the board, from either chair",

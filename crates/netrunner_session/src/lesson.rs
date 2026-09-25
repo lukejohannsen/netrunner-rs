@@ -66,11 +66,14 @@ pub struct LessonSession {
     opening_index: usize,
     /// The learner's copy of every action resolved since `drain_log`,
     /// each masked against its own post-action state at the moment it
-    /// resolved. Kept here rather than diffed by the TUI afterwards because
-    /// `step` pumps the opening and the scripted opponent through several
-    /// actions before it returns, and `Session::last_entry_for` is only
-    /// right for the entry just applied.
-    log: Vec<PublicHistoryEntry>,
+    /// resolved, with the learner's view of that state. Kept here rather
+    /// than diffed by the client afterwards because `step` pumps the
+    /// opening and the scripted opponent through several actions before
+    /// it returns, and `Session::last_entry_for` is only right for the
+    /// entry just applied. The view rides along for the desktop, whose
+    /// board animates one action at a time from the view each one left
+    /// (`netrunner_client::board::diff`); the terminal drops it.
+    log: Vec<(PublicHistoryEntry, ClientView)>,
     /// Set when the learner is first handed a decision. Nothing before that
     /// — the opening's own events, the opponent's turns leading up to it —
     /// counts toward a step: an opening that advances an agenda must not
@@ -185,7 +188,7 @@ impl LessonSession {
 
     fn log_last(&mut self) {
         if let Some(entry) = self.session.last_entry_for(self.learner) {
-            self.log.push(entry);
+            self.log.push((entry, self.session.view_for(self.learner)));
         }
     }
 
@@ -193,6 +196,13 @@ impl LessonSession {
     /// it. The TUI drains this after each `step` and `submit` for its
     /// match log.
     pub fn drain_log(&mut self) -> Vec<PublicHistoryEntry> {
+        self.drain_applied().into_iter().map(|(entry, _)| entry).collect()
+    }
+
+    /// `drain_log`, each entry with the learner's view of the board it
+    /// left — what `netrunner_client::play::MatchMessage::Applied`
+    /// carries.
+    pub fn drain_applied(&mut self) -> Vec<(PublicHistoryEntry, ClientView)> {
         std::mem::take(&mut self.log)
     }
 

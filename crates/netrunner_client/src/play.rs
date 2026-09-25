@@ -28,6 +28,17 @@
 //! same way, quitting the same way, so a game played here and a game
 //! played in the terminal land in the same record by the same rule.
 //!
+//! **A lesson is the same handle over a different driver**
+//! (`start_lesson`, Phase 7 §6): `netrunner_session::lesson::LessonSession`
+//! pumps the session, and the thread sends the same messages plus two of
+//! a lesson's own — [`MatchMessage::Coach`] ahead of each `Awaiting`, and
+//! [`MatchMessage::LessonComplete`] in place of an `Ended` when the last
+//! step advances. The coaching's `allowed` is the step's filter over that
+//! `Awaiting`'s `legal_actions`; the lesson narrows what a client offers
+//! and never what it may submit, so `submit` is as unfiltered here as
+//! anywhere (Phase 1.75 §6). A lesson keeps no record and takes nothing
+//! back: it is a scripted board, and a take-back would unteach the step.
+//!
 //! **A local game is casual, so a take-back costs nothing.** The session
 //! still says which kind each one is (`Rewind::Free`, `Rewind::Undo`) and
 //! the messages still carry it, because that line is the one a rated game
@@ -45,6 +56,8 @@ use netrunner_core::cards::CardRegistry;
 use netrunner_core::decks::DeckFile;
 use netrunner_core::rules::{GameState, MatchRules, PlayerAction, Side};
 use netrunner_core::view::ClientView;
+use netrunner_core::tutorial::Lesson;
+use netrunner_session::lesson::{LessonSession, LessonStep};
 use netrunner_session::{
     HistoryEntry, MatchHistory, MatchRecordHeader, RecordedBot, Seat, Session, SessionStep, StallReason, SubmitError,
     UNDO_DEPTH,
@@ -124,6 +137,36 @@ pub enum MatchMessage {
     /// The session stopped without a `GameOver`: a stall, or a bot seat
     /// the session could not resolve. Nothing more will arrive.
     Stalled { reason: String },
+    /// A lesson's words for the decision the next `Awaiting` asks: sent
+    /// only by a lesson (`MatchHandle::start_lesson`), always immediately
+    /// before that `Awaiting`, so a client holds the coaching that belongs
+    /// to the view it is showing and never one step behind.
+    Coach(Coaching),
+    /// Every step of the lesson has advanced. `view` is the board it
+    /// ended on and `outro` the lesson's closing words; nothing more will
+    /// arrive, and the opponent's next three clicks never happen — the
+    /// outro follows the deed.
+    LessonComplete { view: Box<ClientView>, outro: String },
+}
+
+/// What a lesson says beside one decision (Phase 1.75 §6): the step the
+/// learner is on and what it asks of them.
+///
+/// `allowed` is the step's filter over the `Awaiting` view's
+/// `legal_actions`, and **only ever narrows it**: a client shows these and
+/// keeps every legal action behind an escape hatch. It may be empty — a
+/// step whose filter matches nothing the engine offers at this moment —
+/// and then the client shows every legal action and says so, because the
+/// gate can narrow the list, never empty it.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Coaching {
+    pub title: String,
+    /// One-based, for display.
+    pub step: usize,
+    pub total: usize,
+    pub prose: String,
+    pub hint: Option<String>,
+    pub allowed: Vec<PlayerAction>,
 }
 
 enum Command {
@@ -175,6 +218,7 @@ impl MatchHandle {
             runner_deck: runner.to_deck(),
             rules: MatchRules::default(),
             bot: Some(RecordedBot { side: bot_side, level, personality }),
+            order: Default::default(),
         };
         // A rung is always a `Seat::Agent`: the ladder is built from the
         // view-based searches and deliberately excludes the one kind that
@@ -221,6 +265,52 @@ impl MatchHandle {
         })
     }
 
+    /// Starts `lesson` on its own thread: the learner in the lesson's
+    /// chair, the opponent scripted, the decks stacked as the lesson
+    /// stacks them. `seed` reaches only the engine's own randomness (a
+    /// random access), so a lesson plays the same way twice.
+    ///
+    /// Everything that can fail fails here, as in `start_local`: a lesson
+    /// that will not set up, or whose canned opening the engine refuses,
+    /// is a notice on the screen that offered it, not a board that dies on
+    /// its first frame. So the opening is played before the thread starts.
+    pub fn start_lesson(registry: Arc<CardRegistry>, lesson: Lesson, seed: u64) -> Result<Self, String> {
+        let human = lesson.side;
+        let (corp, runner) = lesson.decks().map_err(|e| e.to_string())?;
+        let header = MatchRecordHeader {
+            seed,
+            corp_deck: corp.to_deck(),
+            runner_deck: runner.to_deck(),
+            rules: lesson.match_rules().map_err(|e| e.to_string())?,
+            // The opponent is a script, not a rung: no bot to name.
+            bot: None,
+            order: lesson.deck_order(&corp, &runner).map_err(|e| e.to_string())?,
+        };
+        let steps = lesson.steps.clone();
+        let title = lesson.title.clone();
+        let mut session = LessonSession::start(lesson, (*registry).clone(), seed).map_err(|e| e.to_string())?;
+        let first = session.step().map_err(|e| e.to_string())?;
+        let (command_tx, command_rx) = mpsc::channel();
+        let (message_tx, message_rx) = mpsc::channel();
+        let history = Arc::new(Mutex::new(Vec::new()));
+        let mirror = Arc::clone(&history);
+        let words = LessonWords { title, steps };
+        let thread = thread::Builder::new()
+            .name("netrunner-lesson".to_string())
+            .spawn(move || drive_lesson(session, first, &words, &mirror, command_rx, message_tx))
+            .map_err(|e| format!("could not start the lesson thread: {e}"))?;
+        Ok(Self {
+            commands: command_tx,
+            messages: Mutex::new(message_rx),
+            human,
+            registry,
+            finished: false,
+            thread: Some(thread),
+            header,
+            history,
+        })
+    }
+
     /// The chair the person sits in.
     pub fn side(&self) -> Side {
         self.human
@@ -236,7 +326,7 @@ impl MatchHandle {
         let received = self.messages.lock().map_or(Err(TryRecvError::Disconnected), |rx| rx.try_recv());
         match received {
             Ok(message) => {
-                if matches!(message, MatchMessage::Ended { .. } | MatchMessage::Stalled { .. }) {
+                if matches!(message, MatchMessage::Ended { .. } | MatchMessage::Stalled { .. } | MatchMessage::LessonComplete { .. }) {
                     self.finished = true;
                 }
                 Some(message)
@@ -261,7 +351,7 @@ impl MatchHandle {
         let received = self.messages.lock().map_err(|_| ()).and_then(|rx| rx.recv().map_err(|_| ()));
         match received {
             Ok(message) => {
-                if matches!(message, MatchMessage::Ended { .. } | MatchMessage::Stalled { .. }) {
+                if matches!(message, MatchMessage::Ended { .. } | MatchMessage::Stalled { .. } | MatchMessage::LessonComplete { .. }) {
                     self.finished = true;
                 }
                 Some(message)
@@ -489,6 +579,103 @@ fn drive(
     }
 }
 
+/// What the lesson thread needs of the lesson to coach: its title and
+/// each step's words. The rest of the lesson is inside `LessonSession`.
+struct LessonWords {
+    title: String,
+    steps: Vec<netrunner_core::tutorial::Step>,
+}
+
+/// The lesson thread: `drive`'s loop over `LessonSession::step`, which
+/// already plays the opening, the scripted opponent and the passes a
+/// lesson takes for the learner, and returns only when the learner has a
+/// decision. `first` is the step `start_lesson` took to prove the opening
+/// sound. Nothing is recorded and nothing is forfeited: a lesson is not a
+/// game in anyone's record.
+fn drive_lesson(
+    mut lesson: LessonSession,
+    first: LessonStep,
+    words: &LessonWords,
+    history: &Mutex<Vec<HistoryEntry>>,
+    commands: Receiver<Command>,
+    messages: Sender<MatchMessage>,
+) {
+    // Every action the step pumped, each with the board it left, so the
+    // board animates the opponent's turn one action at a time.
+    let flush = |lesson: &mut LessonSession| -> Result<(), ()> {
+        mirror(lesson.session(), history);
+        for (entry, view) in lesson.drain_applied() {
+            messages.send(MatchMessage::Applied { entry, view: Box::new(view) }).map_err(|_| ())?;
+        }
+        Ok(())
+    };
+    let mut next = Some(first);
+    loop {
+        let step = match next.take().map_or_else(|| lesson.step(), Ok) {
+            Ok(step) => step,
+            Err(error) => {
+                let _ = messages.send(MatchMessage::Stalled { reason: error.to_string() });
+                return;
+            }
+        };
+        if flush(&mut lesson).is_err() {
+            return;
+        }
+        match step {
+            LessonStep::Prompt { view, allowed, step, total } => {
+                let live = &words.steps[step];
+                let coaching = Coaching { title: words.title.clone(), step: step + 1, total, prose: live.prose.clone(), hint: live.hint.clone(), allowed };
+                if messages.send(MatchMessage::Coach(coaching)).is_err() || messages.send(MatchMessage::Awaiting { view }).is_err() {
+                    return;
+                }
+                loop {
+                    match commands.recv() {
+                        Ok(Command::Submit(action)) => match lesson.submit(action) {
+                            Ok(()) => {
+                                if flush(&mut lesson).is_err() {
+                                    return;
+                                }
+                                break;
+                            }
+                            Err(SubmitError::Rules(error)) => {
+                                if messages.send(MatchMessage::Rejected { reason: error.to_string() }).is_err() {
+                                    return;
+                                }
+                            }
+                            Err(error) => {
+                                let _ = messages.send(MatchMessage::Stalled { reason: error.to_string() });
+                                return;
+                            }
+                        },
+                        // `Back` is never sent, so a client offers no
+                        // take-back; this answers one asked for anyway.
+                        Ok(Command::Rewind) => {
+                            if messages.send(MatchMessage::Rejected { reason: "a lesson cannot take a move back".to_string() }).is_err() {
+                                return;
+                            }
+                        }
+                        Ok(Command::Quit) | Err(_) => return,
+                    }
+                }
+            }
+            LessonStep::Complete { view } => {
+                let outro = lesson.progress().lesson().outro.clone();
+                let _ = messages.send(MatchMessage::LessonComplete { view, outro });
+                return;
+            }
+            LessonStep::Ended { winner, reason } => {
+                let view = Box::new(lesson.session().view_for(lesson.learner()));
+                let _ = messages.send(MatchMessage::Ended { winner, reason, view, report: None, notice: None });
+                return;
+            }
+            LessonStep::Stalled(reason) => {
+                let _ = messages.send(MatchMessage::Stalled { reason: stall_message(reason) });
+                return;
+            }
+        }
+    }
+}
+
 /// Brings the client's copy of the history level with the session's: cut
 /// back to it after a take-back, then the entries since added. Called
 /// after every change, so a take-back never leaves an entry behind that a
@@ -545,6 +732,7 @@ mod tests {
                 MatchMessage::Rewound { .. } => panic!("nothing asked for a move back"),
                 MatchMessage::Rejected { reason } => panic!("a legal action was rejected: {reason}"),
                 message @ (MatchMessage::Ended { .. } | MatchMessage::Stalled { .. }) => return (message, applied),
+                MatchMessage::Coach(_) | MatchMessage::LessonComplete { .. } => unreachable!("a local match is not a lesson"),
             }
         }
     }
@@ -605,6 +793,7 @@ mod tests {
                 MatchMessage::Applied { .. } | MatchMessage::Rewound { .. } => {}
                 MatchMessage::Rejected { reason } => panic!("{reason}"),
                 message @ (MatchMessage::Ended { .. } | MatchMessage::Stalled { .. }) => break message,
+                MatchMessage::Coach(_) | MatchMessage::LessonComplete { .. } => unreachable!("a local match is not a lesson"),
             }
         };
         assert!(undone, "the first legal action is a click sooner or later");
@@ -649,6 +838,7 @@ mod tests {
                 MatchMessage::Applied { .. } | MatchMessage::Rewound { .. } => {}
                 MatchMessage::Rejected { reason } => panic!("{reason}"),
                 MatchMessage::Ended { .. } | MatchMessage::Stalled { .. } => break,
+                MatchMessage::Coach(_) | MatchMessage::LessonComplete { .. } => unreachable!("a local match is not a lesson"),
             }
         }
         assert!(taken_back >= 2, "the test took {taken_back} moves back; it is about take-backs");
@@ -724,6 +914,7 @@ mod tests {
                 MatchMessage::Rejected { reason } => panic!("the lone pass was rejected: {reason}"),
                 MatchMessage::Ended { .. } => break,
                 MatchMessage::Stalled { reason } => panic!("{reason}"),
+                MatchMessage::Coach(_) | MatchMessage::LessonComplete { .. } => unreachable!("a local match is not a lesson"),
             }
         }
         assert!(lone > 0, "the Runner is asked to pass alone during the Corp's turn");
@@ -785,6 +976,7 @@ mod tests {
                 MatchMessage::Rejected { reason } => panic!("a run pass was rejected: {reason}"),
                 MatchMessage::Ended { .. } => break,
                 MatchMessage::Stalled { reason } => panic!("{reason}"),
+                MatchMessage::Coach(_) | MatchMessage::LessonComplete { .. } => unreachable!("a local match is not a lesson"),
             }
         }
         }
@@ -799,5 +991,83 @@ mod tests {
         let own = personality_for(None, &deck).unwrap();
         assert_eq!(Some(own), deck.style.as_deref().and_then(|s| s.parse().ok()).or(Some(Personality::Balanced)));
         assert_eq!(personality_for(Some(Personality::Glacier), &deck).unwrap(), Personality::Glacier);
+    }
+}
+
+#[cfg(test)]
+mod lesson_tests {
+    use super::*;
+    use netrunner_core::cards::register_playable_cards;
+    use netrunner_core::tutorial::embedded_lessons;
+
+    /// Every lesson plays to its outro through the handle, choosing each
+    /// step's solution from the coaching's `allowed` — the session crate's
+    /// completability gate, driven through the channels a board uses. The
+    /// coaching always arrives just ahead of the view it belongs to and
+    /// only ever narrows it, and the record replays onto the stacked decks
+    /// the lesson was played on: a record that set up shuffled would not
+    /// reach the learner's board.
+    #[test]
+    fn every_lesson_plays_to_its_outro_through_the_handle_and_its_record_replays() {
+        let mut registry = CardRegistry::new();
+        register_playable_cards(&mut registry);
+        let registry = Arc::new(registry);
+        for lesson in embedded_lessons() {
+            let id = lesson.id.clone();
+            let steps = lesson.steps.clone();
+            let side = lesson.side;
+            let mut handle = MatchHandle::start_lesson(Arc::clone(&registry), lesson, 0).unwrap_or_else(|e| panic!("{id}: {e}"));
+            let mut coaching: Option<Coaching> = None;
+            let mut decisions = 0;
+            let last = loop {
+                match handle.wait().unwrap_or_else(|| panic!("{id}: the thread went silent")) {
+                    MatchMessage::Coach(words) => {
+                        assert!(coaching.is_none(), "{id}: two coachings without a decision between them");
+                        coaching = Some(words);
+                    }
+                    MatchMessage::Awaiting { view } => {
+                        decisions += 1;
+                        assert!(decisions < 500, "{id}: no end in sight");
+                        let words = coaching.take().unwrap_or_else(|| panic!("{id}: a decision with no coaching ahead of it"));
+                        assert!(words.allowed.iter().all(|action| view.legal_actions.contains(action)), "{id}: the coaching widened the list");
+                        let solution = &steps[words.step - 1].solution;
+                        let action = solution.iter().find(|action| words.allowed.contains(action)).cloned().unwrap_or_else(|| panic!("{id} step {}: no solution allowed", words.step));
+                        handle.submit(action).unwrap();
+                    }
+                    MatchMessage::Applied { .. } => {}
+                    message @ (MatchMessage::LessonComplete { .. } | MatchMessage::Ended { .. } | MatchMessage::Stalled { .. }) => break message,
+                    other => panic!("{id}: a lesson sent {other:?}"),
+                }
+            };
+            let MatchMessage::LessonComplete { view, outro } = last else { panic!("{id}: ended with {last:?}") };
+            assert!(!outro.is_empty(), "{id}: no outro");
+            assert!(handle.is_finished());
+            let (header, history) = handle.record();
+            assert!(matches!(header.order, netrunner_core::rules::DeckOrder::Fixed { .. }), "{id}: the record forgot the stacked decks");
+            let (mut state, _) = header.setup(&registry).unwrap();
+            for entry in history.entries() {
+                state = netrunner_core::rules::apply_action(&state, &registry, entry.action.clone()).unwrap_or_else(|e| panic!("{id}: the record does not replay: {e}")).0;
+            }
+            assert_eq!(netrunner_core::view::build_client_view(&state, &registry, side), *view, "{id}: the record replays to another board");
+        }
+    }
+
+    /// A lesson takes nothing back: it never offers one, and a take-back
+    /// asked for anyway is refused with the learner still on the step.
+    #[test]
+    fn a_lesson_refuses_a_take_back() {
+        let mut registry = CardRegistry::new();
+        register_playable_cards(&mut registry);
+        let lesson = embedded_lessons().into_iter().next().unwrap();
+        let mut handle = MatchHandle::start_lesson(Arc::new(registry), lesson, 0).unwrap();
+        loop {
+            match handle.wait().unwrap() {
+                MatchMessage::Awaiting { .. } => break,
+                MatchMessage::Back { .. } => panic!("a lesson offered a take-back"),
+                _ => {}
+            }
+        }
+        handle.rewind().unwrap();
+        assert!(matches!(handle.wait(), Some(MatchMessage::Rejected { .. })));
     }
 }

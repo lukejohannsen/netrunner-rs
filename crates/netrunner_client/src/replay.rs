@@ -319,7 +319,7 @@ mod tests {
     fn recorded_game(seed: u64) -> (MatchRecordHeader, MatchHistory, CardRegistry) {
         let registry = crate::decks::sample_deck_registry();
         let (corp, runner) = decks::matchups().into_iter().next().expect("a sample matchup");
-        let header = MatchRecordHeader { seed, corp_deck: corp.to_deck(), runner_deck: runner.to_deck(), rules: MatchRules::default(), bot: None };
+        let header = MatchRecordHeader { seed, corp_deck: corp.to_deck(), runner_deck: runner.to_deck(), rules: MatchRules::default(), bot: None, order: Default::default() };
         let (state, _events) = header.setup(&registry).unwrap();
         let mut session = Session::new(
             state,

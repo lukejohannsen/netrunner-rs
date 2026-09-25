@@ -128,7 +128,7 @@ mod tests {
     fn header(seed: u64) -> MatchRecordHeader {
         let corp = netrunner_core::decks::by_id("discretion_advised").expect("built-in deck");
         let runner = netrunner_core::decks::by_id("stolen_goods").expect("built-in deck");
-        MatchRecordHeader { seed, corp_deck: corp.to_deck(), runner_deck: runner.to_deck(), rules: MatchRules::default(), bot: None }
+        MatchRecordHeader { seed, corp_deck: corp.to_deck(), runner_deck: runner.to_deck(), rules: MatchRules::default(), bot: None, order: Default::default() }
     }
 
     fn temp_dir(name: &str) -> PathBuf {

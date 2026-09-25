@@ -116,6 +116,16 @@ pub struct MatchRecordHeader {
     /// written before the field existed.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub bot: Option<RecordedBot>,
+    /// How the decks were ordered: `Shuffled` by the seed for every game
+    /// but a lesson, whose decks are stacked (`tutorial::Lesson::setup`).
+    /// Left out of a shuffled game's record, so every record written
+    /// before the field existed reads as what it was.
+    #[serde(default, skip_serializing_if = "is_shuffled")]
+    pub order: DeckOrder,
+}
+
+fn is_shuffled(order: &DeckOrder) -> bool {
+    *order == DeckOrder::Shuffled
 }
 
 /// The opponent a person played, as a match record names it.
@@ -129,7 +139,7 @@ pub struct RecordedBot {
 impl MatchRecordHeader {
     /// The opening position this record was played from.
     pub fn setup(&self, registry: &CardRegistry) -> Result<(GameState, Vec<GameEvent>), RulesError> {
-        GameState::setup_with(&self.corp_deck, &self.runner_deck, registry, self.seed, self.rules, DeckOrder::Shuffled)
+        GameState::setup_with(&self.corp_deck, &self.runner_deck, registry, self.seed, self.rules, self.order.clone())
     }
 }
 

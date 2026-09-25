@@ -24,6 +24,7 @@ use bevy::prelude::*;
 
 use netrunner_client::decks::decks_for_match;
 use netrunner_client::play::{LocalMatchSpec, MatchHandle, RecordFile};
+use netrunner_core::tutorial::Lesson;
 use netrunner_client::start::{DeckRow, Level, Pane, StartChoice, StartMenu, DEFAULT_CORP_DECK, DEFAULT_RUNNER_DECK};
 use netrunner_core::format::NsgFormat;
 use netrunner_core::rules::Side;
@@ -45,11 +46,15 @@ impl Plugin for NewGamePlugin {
 }
 
 /// The match a Start put together, for the game screen: the handle, and
-/// the choice the form reopens on afterwards (`None` for a dev game).
+/// the choice the form reopens on afterwards (`None` for a dev game and a
+/// lesson).
 #[derive(Resource)]
 pub struct ActiveMatch {
     pub handle: MatchHandle,
     pub choice: Option<StartChoice>,
+    /// The lesson being played, when this is one (`screens::learn`): the
+    /// board reads its words, and leaving goes back to Learn to Play.
+    pub lesson: Option<Lesson>,
 }
 
 /// The last game played, left by the game screen; the form resumes from
@@ -328,7 +333,7 @@ fn start_with(core: &ClientCore, choice: &StartChoice, seed: u64, record: Option
         record,
     };
     let handle = MatchHandle::start_local(spec)?;
-    Ok(ActiveMatch { handle, choice: Some(choice.clone()) })
+    Ok(ActiveMatch { handle, choice: Some(choice.clone()), lesson: None })
 }
 
 /// An unrecorded game on the default decks against the middle rung, the

@@ -13,6 +13,7 @@ pub mod card_browser;
 pub mod deck_editor;
 pub mod decks;
 pub mod game;
+pub mod learn;
 pub mod main_menu;
 pub mod new_game;
 pub mod profile;

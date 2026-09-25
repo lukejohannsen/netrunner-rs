@@ -14,6 +14,7 @@ pub mod decks;
 pub mod drag;
 pub mod game;
 pub mod layout;
+pub mod lesson;
 pub mod pace;
 pub mod replay;
 pub mod settings;
