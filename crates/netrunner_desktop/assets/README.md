@@ -11,10 +11,10 @@ comes in the three tiers AGENTS.md §5 sets out:
    (`~/.local/share/netrunner/assets/` on Linux). It wins over both and
    is never version-controlled, so it is where to work.
 
-Card fronts, the official card backs and NetrunnerDB's icon font are the
-exceptions. They are not the project's to redistribute, so they are
-fetched into the cache directory on the player's opt-in and never
-committed.
+Card fronts are the exception. They are fetched into the cache directory
+on the player's opt-in and never committed. The official card backs and
+NetrunnerDB's icon font used to be fetched the same way; both are now
+committed and credited in `CREDITS.md`.
 
 **Sizes are logical pixels. Author at 2× them.** The game lays out in
 logical pixels and draws in physical ones. The ratio is the display
@@ -25,7 +25,8 @@ scale: 1.25 on the machine these were measured on, 2 on many laptops.
 | What | Path | Box (logical) | Draw at | Fit | Default that always works | Guide |
 |---|---|---|---|---|---|---|
 | Body font | `fonts/NotoSans-Regular.ttf` | — | — | — | committed (OFL) | `fonts/LICENSE-OFL.txt` |
-| Symbol font | `fonts/NotoSansSymbols2-Regular.ttf` | — | — | — | committed (OFL); NetrunnerDB's icon font is fetched over it on opt-in | `fonts/LICENSE-OFL.txt` |
+| Symbol font | `fonts/NotoSansSymbols2-Regular.ttf` | — | — | — | committed (OFL); the icon font draws over it | `fonts/LICENSE-OFL.txt` |
+| Icon font: the printed symbols, the factions' and sets' marks | `fonts/NetrunnerDB-Icons.ttf` | — | — | — | committed (MIT; the marks are Null Signal Games'); without it the symbol font's glyphs, and factions named in words | `fonts/LICENSE-NetrunnerDB.txt` |
 | Card backs | `cards/back-corp.png`, `cards/back-runner.png` | a card: 72–220 wide on the board, 380 in a sheet, always 5:7 | **500 × 700** | stretch | drawn circuit backs (`src/card_back.rs`, 250 × 350); the official backs are fetched on opt-in | [cards/](cards/README.md) |
 | Card fronts | — (cache only) | as a card back | NetrunnerDB's 750 × 1050, resampled to each face's width | stretch | the text face, drawn from the card's data | [cards/](cards/README.md) |
 | Splash | `backdrops/splash.jpg`, optional `backdrops/splash-logo.png` | the whole window; the logo up to 720 × 360 | **2560 × 1600**; logo **1440 × 720** | cover; logo fit | the flat ground and the drawn wordmark (`src/screens/splash.rs`) | [backdrops/](backdrops/README.md) |

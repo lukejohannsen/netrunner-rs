@@ -4699,6 +4699,38 @@ screenshotted while the Corp holds priority, so its menu is not open.
 
 **Verified.** Workspace tests green and workspace clippy silent.
 
+### 4bh. NetrunnerDB's icon font is shipped, not fetched — DONE (25 September 2026)
+
+`feat/ship-icon-font`, at the person's request after §4bg. The icon font
+draws the printed symbols, the factions' and the sets' marks. It was
+fetched into the cache on the same opt-in as the scans, so a player who
+never opted in saw Noto stand-ins and factions named in words. It is now
+committed under the 24 September policy that shipped the official backs
+(§4az).
+
+- `assets/fonts/NetrunnerDB-Icons.ttf` is `web/fonts/netrunner.ttf` from
+  Null-Signal-Games/netrunnerdb at `ee095c6`: 38 KB, U+E900–U+E935,
+  byte-identical to the copy the client had cached. The repository is
+  MIT (© 2012–2016 Cédric Bertolini; the font file's recent commits are
+  Jason Gessner's), and that licence is committed beside it as
+  `LICENSE-NetrunnerDB.txt`. The marks in it are Null Signal Games' and
+  Fantasy Flight Games', and the register's row says so.
+- Boot loads it through the asset server beside the two Noto faces
+  (`theme::ICON_FONT_PATH`). `icon_font.rs`, `IconFontReady` and the card
+  browser's redraw on it are gone, and so are
+  `CardImageStore::{icon_font, icon_font_path, download_icon_font}`,
+  `ICON_FONT_URL` and the two `SyncError` variants.
+- The "fetched on opt-in" table in `CREDITS.md` loses its icon font row,
+  so the About screen lists the font among the committed assets.
+  AGENTS.md §5, `lib.rs`, `assets/README.md` and `card_text`'s module doc
+  no longer say it is fetched. AGENTS.md and `lib.rs` also no longer say
+  the backs are fetched, which had been stale since §4az.
+
+Seen on screen: the card browser's inspector draws Jinteki's mark and
+Elevation's set mark from the committed file.
+
+**Verified.** Workspace tests green and workspace clippy silent.
+
 ## 5. The deck builder — DONE (24 September 2026)
 
 `feat/desktop-deck-builder`. Asked for in one list: save and import

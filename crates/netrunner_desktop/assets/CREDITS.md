@@ -69,6 +69,7 @@ a drawn or synthesized tier that works without it (AGENTS.md §5).
 |---|---|---|---|---|---|---|---|
 | `fonts/NotoSans-Regular.ttf` | Noto Sans, the body font | The Noto Project Authors | https://notofonts.github.io | OFL-1.1 | `fonts/LICENSE-OFL.txt` | third-party | none |
 | `fonts/NotoSansSymbols2-Regular.ttf` | Noto Sans Symbols 2, the printed-icon fallback | The Noto Project Authors | https://notofonts.github.io | OFL-1.1 | `fonts/LICENSE-OFL.txt` | third-party | none |
+| `fonts/NetrunnerDB-Icons.ttf` | NetrunnerDB's icon font (`netrunner.ttf`, Null-Signal-Games/netrunnerdb `web/fonts/` at `ee095c6`): the printed symbols, the factions' and the sets' marks, which are Null Signal Games' and Fantasy Flight Games' | NetrunnerDB contributors (Cédric Bertolini, Jason Gessner) | https://netrunnerdb.com | MIT | `fonts/LICENSE-NetrunnerDB.txt` | third-party | renamed from `netrunner.ttf` |
 | `backdrops/main-menu.jpg` | New Angeles in Neon/Smog, neon version: the main menu's backdrop | Kirsten Zirngibl | https://www.kirstenzirngibl.com/projects/RgWqA | All rights reserved | — | third-party | none |
 | `backdrops/menu.jpg` | Purple circuitry between brushed-steel plates, generated with AI assistance (Google Gemini) for this project: the shared backdrop, behind every menu screen without a picture of its own | netrunner-rs contributors | https://github.com/lukejohannsen/netrunner-rs | GPL-3.0-or-later | the repository's `LICENSE` | project | none |
 | `backdrops/online.jpg` | *The Root*, card art (Upstalk), © Fantasy Flight Games, the copy jinteki.net ships at mtgred/netrunner `resources/public/img/bg/TheRoot.jpg`: behind Play Online, Cards and Learn to Play | Alex Kim | https://www.artstation.com/alexkim | All rights reserved | — | third-party | none |
@@ -100,7 +101,6 @@ credits everything a player sees, not only what is in the repository.
 |---|---|---|---|---|
 | Card data: titles, rules and flavour text, illustrator credits | Null Signal Games and the card's illustrators, compiled by NetrunnerDB | https://netrunnerdb.com | theirs, not licensed by this project | NetrunnerDB's public API v2 |
 | Card scans, the printed cards | Null Signal Games and each card's illustrator, named on the card | https://nullsignal.games | theirs, not licensed by this project | card-images.netrunnerdb.com (750 × 1050 where it has one, else 300 × 420) |
-| The icon font: faction, set and printed symbols | Null Signal Games' marks, in NetrunnerDB's font | https://netrunnerdb.com | the font's repository is MIT; the marks are NSG's | netrunnerdb.com |
 
 ## Software
 

@@ -18,9 +18,8 @@
 //! word where none does. Both are strings rather than `char`s because a
 //! recurring credit is two glyphs.
 //!
-//! **The real icons, when the player has fetched them.** NetrunnerDB's
-//! own icon font (`netrunner_card_sync::ICON_FONT_URL`, cached by the
-//! image store on the same opt-in as the scans) draws every printed
+//! **The real icons.** NetrunnerDB's own icon font (committed with the
+//! desktop client as `assets/fonts/NetrunnerDB-Icons.ttf`) draws every printed
 //! symbol as the card prints it, plus each faction's mark and each set's.
 //! [`Symbol::icon`], [`faction_icon`] and [`set_icon`] are its code
 //! points, read off the site's `netrunnerfont.css` (private-use block

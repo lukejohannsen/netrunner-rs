@@ -70,11 +70,10 @@
 //!   `models::layout`'s, never a screen's own.
 //! - Assets come in three tiers: a procedural one that always works, an
 //!   optional file under `assets/` that is prettier, and a user override
-//!   under `<data dir>/netrunner/assets/`. Nothing that is not the
-//!   project's to license is committed: the scans, the icon font and
-//!   the official card backs are fetched into the cache on the player's
-//!   opt-in, and a back already on screen takes the fetched one under
-//!   the same handle.
+//!   under `<data dir>/netrunner/assets/`. The card scans are fetched
+//!   into the cache on the player's opt-in and never committed; the
+//!   icon font and the official card backs are committed with credit
+//!   (`assets/CREDITS.md`).
 //! - The board's depth is **painted**, in the table under it
 //!   ([`table`]): every card is drawn at one size, so the perspective
 //!   lives in the field's art rather than in a per-row scale. A table is
@@ -105,7 +104,6 @@ pub mod core;
 pub mod credits;
 pub mod dev;
 pub mod downloads;
-pub mod icon_font;
 pub mod models;
 pub mod nav;
 pub mod screens;
@@ -154,7 +152,6 @@ impl PluginGroup for NetrunnerDesktopPlugins {
             .add(ScrollPlugins)
             .add(card_images::CardImagesPlugin)
             .add(downloads::DownloadsPlugin)
-            .add(icon_font::IconFontPlugin)
             .add(screens::boot::BootPlugin)
             .add(screens::splash::SplashPlugin)
             .add(screens::main_menu::MainMenuPlugin)

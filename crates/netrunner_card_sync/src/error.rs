@@ -37,10 +37,5 @@ pub enum SyncError {
     #[error("failed to write card image {path:?}: {source}")]
     ImageWrite { path: PathBuf, source: std::io::Error },
 
-    #[error("NetrunnerDB answered {status} for the icon font")]
-    IconFontDownload { status: u16 },
-
-    #[error("what NetrunnerDB served for the icon font is not a TrueType file")]
-    IconFontInvalid,
 
 }

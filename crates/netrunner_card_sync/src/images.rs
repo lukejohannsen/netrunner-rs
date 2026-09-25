@@ -41,14 +41,11 @@
 //! They are worth building a cutter for only if a Null Signal Games
 //! card turns up on the low-resolution list, and none does.
 //!
-//! **The icon font is cached the same way.** NetrunnerDB draws the
-//! factions, the sets and the printed symbols (`[credit]`, `[click]`,
-//! `[subroutine]`…) with one small TrueType font its site serves at
-//! [`ICON_FONT_URL`]. Its repository is MIT-licensed, but the marks in
-//! it are Null Signal Games' and its predecessor's, so the file is
-//! treated as the card scans are: fetched into the cache on the
-//! player's say-so, never shipped. A client without it draws the
-//! symbols from its own fonts and names the factions in words.
+//! **The icon font is not fetched.** NetrunnerDB's icon font used to be
+//! downloaded here on the same opt-in as the scans; it is committed with
+//! the desktop client now (`assets/fonts/NetrunnerDB-Icons.ttf`, credited
+//! in its `CREDITS.md`), the way the official card backs are, because a
+//! client that draws `[credit]` as a word does not look like the game.
 
 
 use std::collections::{BTreeSet, HashMap};
@@ -76,15 +73,6 @@ pub const DEFAULT_IMAGE_URL_TEMPLATE: &str = "https://card-images.netrunnerdb.co
 pub const HIRES_IMAGE_URL_TEMPLATE: &str = "https://card-images.netrunnerdb.com/v2/xlarge/{code}.webp";
 
 const MANIFEST_FILE: &str = "manifest.json";
-
-/// Where NetrunnerDB serves the icon font its pages use (the `netrunner`
-/// face in its `netrunnerfont.css`). Code points e900–e935: the eight
-/// printed symbols, the factions and the sets — see
-/// `netrunner_client::card_text` for which is which.
-pub const ICON_FONT_URL: &str = "https://netrunnerdb.com/fonts/netrunner.ttf";
-
-/// The icon font's name in the cache, beside the images.
-const ICON_FONT_FILE: &str = "netrunnerdb-icons.ttf";
 
 /// Whether a card's image is on disk.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -252,38 +240,6 @@ impl CardImageStore {
         codes.iter().filter(|code| self.path_for(**code).is_file()).count()
     }
 
-    /// `<dir>/netrunnerdb-icons.ttf`, whether or not it exists.
-    pub fn icon_font_path(&self) -> PathBuf {
-        self.dir.join(ICON_FONT_FILE)
-    }
-
-    /// The icon font, if it has been fetched.
-    pub fn icon_font(&self) -> Option<PathBuf> {
-        let path = self.icon_font_path();
-        path.is_file().then_some(path)
-    }
-
-    /// Fetches the icon font unless it is already on disk. Forty
-    /// kilobytes, once; a CDN error page in its place would be loaded
-    /// as a font and fail silently, which is why the bytes are checked
-    /// for a TrueType header before they are kept.
-    pub async fn download_icon_font(&self) -> Result<PathBuf, SyncError> {
-        let path = self.icon_font_path();
-        if path.is_file() {
-            return Ok(path);
-        }
-        let response = self.http.get(ICON_FONT_URL).send().await?;
-        if !response.status().is_success() {
-            return Err(SyncError::IconFontDownload { status: response.status().as_u16() });
-        }
-        let bytes = response.bytes().await?;
-        if !is_truetype(&bytes) {
-            return Err(SyncError::IconFontInvalid);
-        }
-        write_atomically(&path, &bytes).await?;
-        Ok(path)
-    }
-
     /// Asks NetrunnerDB for its current image URL template and keeps it.
     /// One cards request, the same one a catalog sync makes; the card data
     /// in the response is not used here.
@@ -436,12 +392,6 @@ fn padded(code: CardId) -> String {
     format!("{:05}", code.0)
 }
 
-/// Whether `bytes` start as a TrueType or OpenType file does: the
-/// version tag `00 01 00 00`, `true`, or `OTTO` for CFF outlines.
-fn is_truetype(bytes: &[u8]) -> bool {
-    matches!(bytes.get(..4), Some([0, 1, 0, 0] | b"true" | b"OTTO"))
-}
-
 /// A RIFF container of type `WEBP`.
 fn is_webp(bytes: &[u8]) -> bool {
     bytes.len() >= 12 && bytes.starts_with(b"RIFF") && &bytes[8..12] == b"WEBP"
@@ -479,20 +429,6 @@ mod tests {
         assert_eq!(CardImageStore::with_dir(dir.clone()).url_for(CardId(7)), "https://example.test/00007.png");
         std::fs::write(dir.join(MANIFEST_FILE), r#"{"image_url_template":"no placeholder"}"#).unwrap();
         assert_eq!(CardImageStore::with_dir(dir.clone()).template(), DEFAULT_IMAGE_URL_TEMPLATE);
-        let _ = std::fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn the_icon_font_lives_beside_the_images_and_is_absent_until_fetched() {
-        let dir = temp_dir("font");
-        let store = CardImageStore::with_dir(dir.clone());
-        assert_eq!(store.icon_font_path(), dir.join("netrunnerdb-icons.ttf"));
-        assert_eq!(store.icon_font(), None);
-        std::fs::create_dir_all(&dir).unwrap();
-        std::fs::write(store.icon_font_path(), [0, 1, 0, 0, 0, 11]).unwrap();
-        assert_eq!(store.icon_font(), Some(dir.join("netrunnerdb-icons.ttf")));
-        assert!(is_truetype(&[0, 1, 0, 0, 0, 11]) && is_truetype(b"OTTO....") && is_truetype(b"true...."));
-        assert!(!is_truetype(b"<!DOCTYPE html>") && !is_truetype(b"\0\x01"));
         let _ = std::fs::remove_dir_all(&dir);
     }
 
