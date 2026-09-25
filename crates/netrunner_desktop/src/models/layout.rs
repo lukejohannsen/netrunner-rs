@@ -35,9 +35,10 @@
 //! (`netrunner_client::board::rig::rows_top_down`),
 //! which is how a real table and jinteki.net both lay a rig out.
 //!
-//! **A server column is a plate and a stack of tiles.** The plate — the
-//! server's name and count, and the box its picture goes in — sits on
-//! the Corp's edge of the table, and every card in the root and every
+//! **A server column is a nameplate and a stack of tiles.** The plate —
+//! the server's name and count in a frame one strip tall
+//! ([`plate_height`]) — sits on the Corp's edge of the table, and every
+//! card in the root and every
 //! piece of ice is the same small block — a title and a number — in the
 //! column out toward the Runner, never a card face: a root drawn as a
 //! face was the one thing on the board at card size that was not in a
@@ -303,11 +304,6 @@ pub const SERVER_CHROME: f32 = 12.0;
 /// A server column's vertical padding, borders and the gap under its
 /// plate.
 pub const SERVER_CHROME_V: f32 = 14.0;
-/// A server's plate — where its picture goes — is this fraction of its
-/// width tall: 16:9, so art has a fixed shape to be drawn to whatever
-/// the card width is. The box is reserved for every server whether or
-/// not anybody has drawn one, so art never changes the layout.
-pub const PLATE_ASPECT: f32 = 9.0 / 16.0;
 /// The widest and narrowest a board face is drawn. Below the floor the
 /// text is unreadable and a picture is a smudge; above the cap a board
 /// with little on it need not fill a large monitor with card.
@@ -352,9 +348,14 @@ pub fn area_face(side: Side, chair: Side, face: f32) -> f32 {
     }
 }
 
-/// A server plate's height at its server's face width.
+/// A server's nameplate's height at its server's face width: a strip's
+/// ([`tile_height`]), so the plate reads as the head of its column's
+/// stack. It was 9/16 of the column's width until 25 September 2026 —
+/// a box for a picture of a building, 126 px at the widest card — and
+/// the person asked for that height back for the installs: every pixel
+/// it gave up is [`spare_height`], which the rig's rows grow into.
 pub fn plate_height(server_face: f32) -> f32 {
-    ((server_face + 4.0) * PLATE_ASPECT).round()
+    tile_height(server_face)
 }
 
 /// The square of an identity's scan the avatar shows, `[x0, y0, x1,

@@ -264,14 +264,15 @@ pub struct StackRow(pub InstallId);
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
 pub struct MoreStrip(pub ServerId);
 
-/// A server's plate, on the Corp's edge of its column: the box its name
-/// and its picture sit in.
+/// A server's nameplate, on the Corp's edge of its column: its name and
+/// count in a frame one strip tall.
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ServerPlate(pub ServerId);
 
-/// The picture on a server's plate.
+/// The frame on a nameplate — a server's or a rig row's — and the key it
+/// was drawn from.
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
-pub struct PlatePicture(pub ServerId);
+pub struct PlateFrame(pub &'static str);
 
 /// The picture behind a tile's words, and the key it was drawn from.
 #[derive(Component, Debug, Clone, PartialEq, Eq)]
@@ -2620,13 +2621,15 @@ fn spawn_servers(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &Client
     });
 }
 
-/// A server's plate: its picture (`board_art`, a drawn building until
-/// somebody draws one) with its name and count along the lower edge, on
-/// the Corp's edge of the table, in a box `layout::plate_height` tall
-/// that is reserved for every server — so a picture never changes the
-/// layout. Under a run it shows the server's `.run` picture, which is
-/// its plain one until one is drawn. A click is the server's, as the
+/// A server's nameplate: its name and count in a frame (`board_art`'s
+/// `plate.*`, nine-sliced as a strip is) on the Corp's edge of the
+/// table, `layout::plate_height` tall — a strip's height, so the plate
+/// heads its column's stack. Under a run it shows the server's `.run`
+/// frame, lit in the Runner's colour. A click is the server's, as the
 /// header's was.
+///
+/// It was a 16:9 picture of a building until 25 September 2026, when the
+/// person asked for the height back for the installs.
 #[allow(clippy::too_many_arguments)]
 fn spawn_server_plate(column: &mut ChildSpawnerCommands, theme: &Theme, art: Option<&BoardArt>, view: &ClientView, server: ServerId, size: FaceSize, welcomes: bool, under_run: bool, mood: Option<Affordance>) {
     let on_board = view.corp.servers.iter().any(|s| s.server == server) || !matches!(server, ServerId::Remote(_));
@@ -2653,10 +2656,10 @@ fn spawn_server_plate(column: &mut ChildSpawnerCommands, theme: &Theme, art: Opt
             height: px(height),
             flex_shrink: 0.0,
             flex_direction: FlexDirection::Column,
-            justify_content: JustifyContent::FlexEnd,
-            align_items: AlignItems::Stretch,
+            justify_content: JustifyContent::Center,
+            align_items: AlignItems::Center,
             border: UiRect::all(px(1)),
-            border_radius: BorderRadius::all(px(6)),
+            border_radius: BorderRadius::all(px(4)),
             overflow: Overflow::clip(),
             ..default()
         },
@@ -2665,18 +2668,13 @@ fn spawn_server_plate(column: &mut ChildSpawnerCommands, theme: &Theme, art: Opt
         widgets::Dressed::button(theme, slot, Drawn::new(theme.button, theme.panel_border)),
     ));
     plate.with_children(|plate| {
-        // The picture first, so the label draws over it; inside the
-        // border, which is what the crop covers.
-        if let Some(picture) = art.and_then(|art| art.get(board_art::server_key(server, under_run))) {
-            // The drawn plates are painted in the Corp's colour already.
-            plate.spawn((PlatePicture(server), board_art::backdrop(picture, Vec2::new(width - 2.0, height - 2.0), Color::WHITE)));
+        // The frame first, so the name draws over it; inside the border.
+        // A drawn frame is painted in the Corp's colour already.
+        let key = board_art::server_key(server, under_run);
+        if let Some(picture) = art.and_then(|art| art.get(key)) {
+            plate.spawn((PlateFrame(key), board_art::strip(picture, Vec2::new(width - 2.0, height - 2.0), Color::WHITE)));
         }
-        // The name on a band of the panel, so it reads over any picture.
-        plate.spawn((
-            Node { justify_content: JustifyContent::Center, padding: UiRect::axes(px(6), px(3)), ..default() },
-            BackgroundColor(theme.panel.with_alpha(0.72)),
-            children![(Text::new(label), theme.font(size::SMALL), TextColor(theme.text))],
-        ));
+        spawn_plate_name(plate, theme, label, (size::SMALL - 1.0).min(height * 0.5));
     });
     if welcomes {
         plate.insert(outline(theme));
@@ -2685,6 +2683,43 @@ fn spawn_server_plate(column: &mut ChildSpawnerCommands, theme: &Theme, art: Opt
     // A server glows for the run or the install the engine offers on it,
     // which is the only affordance on the board with no card to carry it.
     glow(&mut column.commands(), entity, theme, mood);
+}
+
+/// A nameplate's name, one line on a band of the panel inside the
+/// frame's channel, so it reads over any frame and a long name is cut
+/// at the plate's edge rather than wrapped out of it.
+fn spawn_plate_name(plate: &mut ChildSpawnerCommands, theme: &Theme, name: String, text_size: f32) {
+    plate
+        .spawn((
+            Node { justify_content: JustifyContent::Center, padding: UiRect::axes(px(6), px(1)), border_radius: BorderRadius::all(px(3)), max_width: percent(100), min_width: px(0), overflow: Overflow::clip(), ..default() },
+            BackgroundColor(theme.panel.with_alpha(0.6)),
+            Pickable::IGNORE,
+        ))
+        .with_children(|band| {
+            band.spawn((Text::new(name), theme.font(text_size), TextColor(theme.text), TextLayout::no_wrap(), Pickable::IGNORE));
+        });
+}
+
+/// A rig row's nameplate at the row's left — "Programs", "Hardware",
+/// "Resources" — in the same frame a server's name sits in, a strip
+/// tall at the top of the row, so every name on the table is dressed
+/// alike. It is a label, never a button: nothing is done to a row.
+fn spawn_rig_plate(row: &mut ChildSpawnerCommands, theme: &Theme, art: Option<&BoardArt>, wanted: netrunner_client::board::rig::RigRow, height: f32) {
+    row.spawn(Node { width: px(layout::RIG_LABEL_WIDTH), flex_shrink: 0.0, padding: UiRect::right(px(6)), ..default() }).with_children(|slot| {
+        slot.spawn(Node { width: percent(100), height: px(height), justify_content: JustifyContent::Center, align_items: AlignItems::Center, overflow: Overflow::clip(), ..default() }).with_children(|plate| {
+            let key = board_art::rig_key(wanted);
+            match art.and_then(|art| art.get(key)) {
+                Some(picture) => {
+                    plate.spawn((PlateFrame(key), board_art::strip(picture, Vec2::new(layout::RIG_LABEL_WIDTH - 6.0, height), Color::WHITE)));
+                    spawn_plate_name(plate, theme, wanted.label().to_string(), (size::SMALL - 3.0).min(height * 0.45));
+                }
+                // Headless, with no pictures: the words, as they were.
+                None => {
+                    plate.spawn(widgets::dim(theme, wanted.label()));
+                }
+            }
+        });
+    });
 }
 
 /// A token beside a number: the kind's glyph when the board has one
@@ -2983,7 +3018,7 @@ fn spawn_rig(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore
             let step = layout::step(cards.len(), size.width(), layout::CARD_GAP, available);
             let pull = (step - (size.width() + layout::CARD_GAP)).min(0.0);
             area.spawn((Node { flex_direction: FlexDirection::Row, flex_shrink: 0.0, height: px(row_height), ..default() },)).with_children(|row| {
-                row.spawn((widgets::dim(theme, wanted.label()), Node { width: px(layout::RIG_LABEL_WIDTH), flex_shrink: 0.0, ..default() }));
+                spawn_rig_plate(row, theme, art, wanted, layout::tile_height(fit.area_face(Side::Runner)));
                 row.spawn((Node { flex_direction: FlexDirection::Column, flex_shrink: 0.0, ..default() },)).with_children(|column| {
                     column.spawn(peek_window(size, cards.len(), available, peek)).with_children(|window| {
                         window.spawn(card_row()).with_children(|cards_row| {

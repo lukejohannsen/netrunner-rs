@@ -33,8 +33,8 @@ scale: 1.25 on the machine these were measured on, 2 on many laptops.
 | Screen backdrops | `backdrops/<screen>.jpg`, shared `backdrops/menu.jpg`, optional `backdrops.json` | the whole window, behind each non-board screen (the deck builder included) | **2560 × 1600** | cover (cropped, never stretched), dimmed under the text | the theme's flat ground (`src/backdrop.rs`) | [backdrops/](backdrops/README.md) |
 | Table | `tables/<name>/base.jpg`, optional `overlay.png` and `table.json` | the whole window | the monitor's full physical resolution (2560 × 1600 here) | stretch, not cropped | a painted perspective grid (`src/table.rs`, 640 × 360): the fallback only, never in the random rotation | [tables/](tables/README.md) |
 | Skin | `skins/<name>/skin.json` and its PNGs | per slot: 33 slots, from an 8 × 8 dot to a 960-wide panel | per slot, usually a small nine-slice | nine-slice, stretch or fit | the outlines: flat colours and one-pixel borders | [skins/](skins/README.md) |
-| Server plates | `board/server.<archives\|rnd\|hq\|remote>[.run].png` | 224 × 126 at the largest card, 16:9 | **512 × 288** | cover (cropped, never stretched) | drawn buildings (`src/board_art.rs`) | [board/](board/README.md) |
-| Corp styles | `board/corp/<faction>/<key>.png`, any board key below | as the generic key | as the generic key | as the generic key | the generic key; drawn plates lit in the faction's colour | [board/](board/README.md#corp-styles) |
+| Nameplates | `board/plate.<archives\|rnd\|hq\|remote>[.run].png`, `board/plate.<programs\|hardware\|resources>.png` | a server's: card width + 4 × 26 to 40; a rig row's: 78 × 26 to 40 | **512 × 96**, 48 px end caps | nine-slice | a drawn grey frame edged in the Corp's faction colour (a server) or the Runner's (a rig row); the shipped frames are steel, painted by `scripts/paint_tiles.py` | [board/](board/README.md#the-nameplates) |
+| Corp styles | `board/corp/<faction>/<key>.png`, any board key below | as the generic key | as the generic key | as the generic key | the generic key; drawn server nameplates edged in the faction's colour | [board/](board/README.md#corp-styles) |
 | ICE and root strips | `board/ice.*.png`, `board/root.*.png` | card width + 4 × 26 to 40 | **512 × 96**, 48 px end caps | nine-slice | drawn grey patterns, washed in the kind's colour; the shipped frames are steel, painted by `scripts/paint_tiles.py` | [board/](board/README.md) |
 | Counter badges | `board/counter[.advancement\|.virus\|.power\|.credit].png` | 12 to 18 square | **64 × 64** | fit | bundled NSG symbols over a drawn ring | [board/](board/README.md) |
 | HUD glyphs | `board/hud.<credits\|clicks\|agendas\|bad-publicity\|tags\|damage>.png` | 18 square | **64 × 64** or larger | fit | bundled NSG symbols (optional) | [board/](board/README.md) |
@@ -43,13 +43,13 @@ scale: 1.25 on the machine these were measured on, 2 on many laptops.
 | Sound | `sfx/<effect>.ogg` | — | — | — | synthesized; planned, nothing loads yet | [sfx/](sfx/README.md) |
 
 A skin may carry its own `board/` folder, which wins over the board art
-tiers above, so a skin can bring its buildings with it. The Corp's style
+tiers above, so a skin can bring its nameplates and strips with it. The Corp's style
 comes next, chosen by the faction of the Corp's identity, then the
 generic board art.
 
 **The drawn tier is the fallback, not the look.** The client is meant to
 ship with pictures in every slot: several tables, drawn at random per
-match, a backdrop for every screen, and buildings for every Corp. The
+match, a backdrop for every screen, and a frame for every name on the table. The
 drawn pictures appear only where nothing is installed, or everywhere
 when the player turns on Settings → **Basic graphics (slow machines)**,
 which loads no pictures at all. They are never one of Random's picks.
@@ -66,7 +66,7 @@ key in [board/](board/README.md) the same way.
   to a box it does not get to argue with.
 - **Anything undrawn falls back.** An undrawn state borrows its base
   picture, and an undrawn base is drawn. A folder holding one file is a
-  real skin, table or set of plates.
+  real skin, table or set of nameplates.
 - **SVG is not supported.** Bevy has no SVG rasteriser. Author in SVG if
   you like, and export PNG (or JPEG for a table).
 - **Every file committed here has a row in [CREDITS.md](CREDITS.md)**:

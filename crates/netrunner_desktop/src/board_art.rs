@@ -1,33 +1,38 @@
-//! The board's pictures: what a server's plate shows, the slab behind an
-//! ICE's or a root card's name, the badge beside a counter and a HUD
-//! readout's glyph — in the three tiers every asset in the
-//! client has (AGENTS.md §5).
+//! The board's pictures: the nameplate a server's or a rig row's name
+//! sits in, the slab behind an ICE's or a root card's name, the badge
+//! beside a counter and a HUD readout's glyph — in the three tiers every
+//! asset in the client has (AGENTS.md §5).
 //!
-//! **A picture, not a frame.** A skin slot is a nine-sliced frame that a
-//! box is dressed in, and it stretches its middle to whatever the box
-//! is — the right shape for a border and the wrong one for a building,
-//! which has to keep its proportions. So board art is its own tier of
-//! files, drawn *inside* the box a slot frames: the plate's picture sits
-//! under the plate's label and inside whatever skin dresses the plate.
+//! **A nameplate, not a building.** A server stood on a 16:9 picture of
+//! a building — an Archives vault, an R&D tower — until 25 September
+//! 2026, when the person asked for the room back: the picture was about
+//! a card's height on every column, and the board wanted it for the
+//! installs. A server's name is now a frame the height of a strip
+//! ([`crate::models::layout::plate_height`]), nine-sliced like the strips
+//! ([`strip`]), and a rig row's name is one too.
+//!
+//! Board art is its own tier of files, drawn *inside* the box a skin
+//! slot frames: a plate's frame sits under its name and inside whatever
+//! skin dresses the plate.
 //!
 //! **Where a picture comes from**, first found wins:
 //!
 //! 1. the active skin's `skins/<folder>/board/<key>.png`, so a skin can
-//!    carry its own buildings;
+//!    carry its own nameplates;
 //! 2. the Corp's style, `board/corp/<faction>/<key>.png`, chosen by the
-//!    faction of the Corp's identity — so a Jinteki board can stand on
-//!    Jinteki buildings and a Weyland one on Weyland's. Any key may be
-//!    styled, not only the plates: a faction folder holding one picture
-//!    is a real style, and every key it leaves out is the generic one;
+//!    faction of the Corp's identity — so a Jinteki board can wear
+//!    Jinteki nameplates and a Weyland one Weyland's. Any key may be
+//!    styled: a faction folder holding one picture is a real style, and
+//!    every key it leaves out is the generic one;
 //! 3. `board/<key>.png`;
 //! 4. the drawn default here — so every plate, tile and counter has a
-//!    picture with no file anywhere. The drawn plates are lit in the
-//!    Corp's faction colour, so the style shows before anybody draws it.
+//!    picture with no file anywhere. The drawn server plates are lit in
+//!    the Corp's faction colour.
 //!
 //! Each of 1–3 is looked up under the override directory, then the
 //! bundled one (`assets::read`). A state with no file falls back to its
-//! base, one level deep, as a skin slot does — `server.hq.run` to
-//! `server.hq`, `counter.virus` to `counter` — **inside a layer before
+//! base, one level deep, as a skin slot does — `plate.hq.run` to
+//! `plate.hq`, `counter.virus` to `counter` — **inside a layer before
 //! the next layer is tried**: a faction's HQ beats the generic HQ under a
 //! run, or a Jinteki board would turn generic every time it was attacked.
 //!
@@ -36,8 +41,8 @@
 //! default is otherwise only the fallback, never the look the client
 //! ships. A HUD glyph has
 //! neither — they are optional, and a board without them is the words
-//! it always had. The drawn defaults are deliberately plain — a
-//! silhouette in the Corp's colour, a pattern in grey washed in the
+//! it always had. The drawn defaults are deliberately plain — a grey
+//! frame edged in the Corp's colour, a pattern in grey washed in the
 //! card's own colour — so they read at board size and never pretend to
 //! be anybody's art.
 //!
@@ -53,10 +58,11 @@
 //! dimmed for one face down — the same colour the tile's border carries.
 //! A file is drawn as its author painted it.
 //!
-//! **Every picture is cropped to cover its box** ([`cover_rect`]): a plate
-//! is 16:9 at any card width, but a file need not be, and a stretched
-//! building is worse than a cropped one. `assets/board/README.md` lists
-//! every key and the size to draw it at.
+//! **A frame is nine-sliced and a picture is cropped to cover its box**
+//! ([`strip`], [`cover_rect`]): a painted plate or strip keeps its end
+//! caps whole at any length, and a drawn one or a counter is never
+//! stretched out of shape. `assets/board/README.md` lists every key and
+//! the size to draw it at.
 
 use std::collections::HashMap;
 
@@ -94,9 +100,6 @@ pub fn faction_slug(faction: Faction) -> Option<&'static str> {
     }
 }
 
-/// The drawn plates' size: 16:9, twice the plate at the widest card.
-pub const PLATE_WIDTH: u32 = 512;
-pub const PLATE_HEIGHT: u32 = 288;
 /// The drawn tiles' size: 4:1, twice the tallest tile at the widest card.
 pub const TILE_WIDTH: u32 = 512;
 pub const TILE_HEIGHT: u32 = 128;
@@ -125,14 +128,17 @@ struct Key {
 }
 
 const KEYS: &[Key] = &[
-    Key { key: "server.archives", base: None, paint: Some(|theme, faction| paint_plate(theme, faction, Building::Archives)) },
-    Key { key: "server.rnd", base: None, paint: Some(|theme, faction| paint_plate(theme, faction, Building::RnD)) },
-    Key { key: "server.hq", base: None, paint: Some(|theme, faction| paint_plate(theme, faction, Building::Hq)) },
-    Key { key: "server.remote", base: None, paint: Some(|theme, faction| paint_plate(theme, faction, Building::Remote)) },
-    Key { key: "server.archives.run", base: Some("server.archives"), paint: None },
-    Key { key: "server.rnd.run", base: Some("server.rnd"), paint: None },
-    Key { key: "server.hq.run", base: Some("server.hq"), paint: None },
-    Key { key: "server.remote.run", base: Some("server.remote"), paint: None },
+    Key { key: "plate.archives", base: None, paint: Some(|theme, faction| paint_plate(corp_colour(theme, faction))) },
+    Key { key: "plate.rnd", base: None, paint: Some(|theme, faction| paint_plate(corp_colour(theme, faction))) },
+    Key { key: "plate.hq", base: None, paint: Some(|theme, faction| paint_plate(corp_colour(theme, faction))) },
+    Key { key: "plate.remote", base: None, paint: Some(|theme, faction| paint_plate(corp_colour(theme, faction))) },
+    Key { key: "plate.archives.run", base: Some("plate.archives"), paint: None },
+    Key { key: "plate.rnd.run", base: Some("plate.rnd"), paint: None },
+    Key { key: "plate.hq.run", base: Some("plate.hq"), paint: None },
+    Key { key: "plate.remote.run", base: Some("plate.remote"), paint: None },
+    Key { key: "plate.programs", base: None, paint: Some(|theme, _| paint_plate(theme.runner)) },
+    Key { key: "plate.hardware", base: None, paint: Some(|theme, _| paint_plate(theme.runner)) },
+    Key { key: "plate.resources", base: None, paint: Some(|theme, _| paint_plate(theme.runner)) },
     Key { key: "ice.unrezzed", base: None, paint: Some(|_, _| paint_tile(Pattern::Hatch)) },
     Key { key: "ice.rezzed", base: None, paint: Some(|_, _| paint_tile(Pattern::Scanlines)) },
     Key { key: "ice.rezzed.barrier", base: Some("ice.rezzed"), paint: Some(|_, _| paint_tile(Pattern::Bricks)) },
@@ -186,7 +192,7 @@ impl Picture {
 
 /// The pictures the board draws from, built once per match and again when
 /// the skin changes. Absent in the headless tests, which have no
-/// `Assets<Image>`: a plate there is its label alone.
+/// `Assets<Image>`: a plate there is its name alone.
 #[derive(Resource, Debug, Default, Clone)]
 pub struct BoardArt {
     pictures: HashMap<&'static str, Picture>,
@@ -250,7 +256,7 @@ fn entry_files(entry: &Key) -> impl Iterator<Item = &'static str> {
     std::iter::once(entry.key).chain(entry.base)
 }
 
-/// The colour a Corp's drawn buildings are lit in: its faction's, or the
+/// The colour a Corp's drawn plates are edged in: its faction's, or the
 /// Corp's own for a neutral identity or none — a neutral's grey would
 /// read as a board with the lights off.
 fn corp_colour(theme: &Theme, faction: Option<Faction>) -> Color {
@@ -260,17 +266,27 @@ fn corp_colour(theme: &Theme, faction: Option<Faction>) -> Color {
     }
 }
 
-/// A server's plate key, and its state's when a run is on it.
+/// A server's nameplate key, and its state's when a run is on it.
 pub fn server_key(server: ServerId, under_run: bool) -> &'static str {
     match (server, under_run) {
-        (ServerId::Archives, false) => "server.archives",
-        (ServerId::Archives, true) => "server.archives.run",
-        (ServerId::RnD, false) => "server.rnd",
-        (ServerId::RnD, true) => "server.rnd.run",
-        (ServerId::Hq, false) => "server.hq",
-        (ServerId::Hq, true) => "server.hq.run",
-        (ServerId::Remote(_), false) => "server.remote",
-        (ServerId::Remote(_), true) => "server.remote.run",
+        (ServerId::Archives, false) => "plate.archives",
+        (ServerId::Archives, true) => "plate.archives.run",
+        (ServerId::RnD, false) => "plate.rnd",
+        (ServerId::RnD, true) => "plate.rnd.run",
+        (ServerId::Hq, false) => "plate.hq",
+        (ServerId::Hq, true) => "plate.hq.run",
+        (ServerId::Remote(_), false) => "plate.remote",
+        (ServerId::Remote(_), true) => "plate.remote.run",
+    }
+}
+
+/// A rig row's nameplate key.
+pub fn rig_key(row: netrunner_client::board::rig::RigRow) -> &'static str {
+    use netrunner_client::board::rig::RigRow;
+    match row {
+        RigRow::Programs => "plate.programs",
+        RigRow::Hardware => "plate.hardware",
+        RigRow::Resources => "plate.resources",
     }
 }
 
@@ -348,7 +364,7 @@ pub fn cover_rect(image: Vec2, target: Vec2) -> Rect {
 }
 
 /// The picture as a node filling its parent's box, cropped to cover it,
-/// drawn under its siblings: a plate's label is spawned after it. `tint`
+/// drawn under its siblings: whatever sits on it is spawned after it. `tint`
 /// is the state's colour, which only a drawn picture takes.
 pub fn backdrop(picture: &Picture, box_size: Vec2, tint: Color) -> impl Bundle {
     (
@@ -358,7 +374,7 @@ pub fn backdrop(picture: &Picture, box_size: Vec2, tint: Color) -> impl Bundle {
     )
 }
 
-/// A server strip's picture filling the strip: a painted frame
+/// A strip's or a nameplate's picture filling its box: a painted frame
 /// nine-sliced, so its steel end caps ([`TILE_CAP`] of [`TILE_WIDTH`])
 /// keep their shape at any strip width and height and only the channel
 /// between them stretches; a drawn one covers the box as [`backdrop`]
@@ -383,188 +399,33 @@ pub fn strip(picture: &Picture, box_size: Vec2, tint: Color) -> impl Bundle {
 
 // ---- the drawn defaults ----
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Building {
-    Archives,
-    RnD,
-    Hq,
-    Remote,
-}
-
-/// Where the ground meets the sky, as a fraction of the height.
-const HORIZON: f32 = 0.8;
-
-/// What a pixel of a building is.
-#[derive(Debug, Clone, Copy, PartialEq)]
-enum Surface {
-    Sky,
-    Ground,
-    /// The body of a building.
-    Wall,
-    /// A lit window, a data line, a light: the accent.
-    Lit,
-    /// A door or a recess: darker than the wall.
-    Recess,
-}
-
-/// A rectangle in unit coordinates, `v` down.
-#[derive(Debug, Clone, Copy)]
-struct Block {
-    u: (f32, f32),
-    v: (f32, f32),
-}
-
-impl Block {
-    const fn new(u0: f32, u1: f32, v0: f32, v1: f32) -> Self {
-        Block { u: (u0, u1), v: (v0, v1) }
-    }
-
-    fn contains(&self, u: f32, v: f32) -> bool {
-        u >= self.u.0 && u < self.u.1 && v >= self.v.0 && v < self.v.1
-    }
-
-    /// `(0..1, 0..1)` inside the block.
-    fn local(&self, u: f32, v: f32) -> (f32, f32) {
-        ((u - self.u.0) / (self.u.1 - self.u.0), (v - self.v.0) / (self.v.1 - self.v.0))
-    }
-}
-
-/// A window grid: lit where `(column, row)` falls on a window and the
-/// deterministic scatter says the light is on.
-fn windows(x: f32, y: f32, columns: f32, rows: f32, salt: u32) -> bool {
-    let (cx, cy) = (x * columns, y * rows);
-    let (fx, fy) = (cx.fract(), cy.fract());
-    if !(0.25..0.75).contains(&fx) || !(0.3..0.7).contains(&fy) {
-        return false;
-    }
-    let cell = (cx as u32).wrapping_mul(73_856_093) ^ (cy as u32).wrapping_mul(19_349_663) ^ salt;
-    !cell.is_multiple_of(5)
-}
-
-/// What `building` puts at `(u, v)`.
-fn surface(building: Building, u: f32, v: f32) -> Surface {
-    let ground = if v >= HORIZON { Surface::Ground } else { Surface::Sky };
-    match building {
-        // A low, wide vault under a pediment: shelving in bands, one door.
-        Building::Archives => {
-            let body = Block::new(0.16, 0.84, 0.5, HORIZON);
-            let door = Block::new(0.45, 0.55, 0.62, HORIZON);
-            let pediment = (0.36..0.5).contains(&v) && (u - 0.5).abs() < 0.36 * (v - 0.36) / 0.14;
-            if door.contains(u, v) {
-                return Surface::Recess;
-            }
-            if body.contains(u, v) {
-                let (_, y) = body.local(u, v);
-                return if ((y * 6.0).fract() < 0.12) && !(0.42..0.58).contains(&u) { Surface::Lit } else { Surface::Wall };
-            }
-            if pediment {
-                return Surface::Wall;
-            }
-            ground
-        }
-        // A tower of data lines between two shorter ones, an antenna on top.
-        Building::RnD => {
-            let tower = Block::new(0.42, 0.58, 0.16, HORIZON);
-            let antenna = Block::new(0.495, 0.505, 0.04, 0.16);
-            let left = Block::new(0.26, 0.37, 0.42, HORIZON);
-            let right = Block::new(0.63, 0.74, 0.36, HORIZON);
-            if antenna.contains(u, v) {
-                return if v < 0.06 { Surface::Lit } else { Surface::Wall };
-            }
-            if tower.contains(u, v) {
-                let (x, _) = tower.local(u, v);
-                return if (x * 5.0).fract() < 0.18 && x > 0.1 { Surface::Lit } else { Surface::Wall };
-            }
-            for (block, salt) in [(left, 11), (right, 29)] {
-                if block.contains(u, v) {
-                    let (x, y) = block.local(u, v);
-                    return if windows(x, y, 3.0, 8.0, salt) { Surface::Lit } else { Surface::Wall };
-                }
-            }
-            ground
-        }
-        // An office block with a setback and a spire: many lit windows.
-        Building::Hq => {
-            let block = Block::new(0.3, 0.7, 0.24, HORIZON);
-            let setback = Block::new(0.38, 0.62, 0.13, 0.24);
-            let spire = Block::new(0.495, 0.505, 0.03, 0.13);
-            let lobby = Block::new(0.44, 0.56, 0.72, HORIZON);
-            if lobby.contains(u, v) {
-                return Surface::Lit;
-            }
-            if spire.contains(u, v) {
-                return Surface::Wall;
-            }
-            for (part, columns, rows, salt) in [(block, 8.0, 11.0, 3), (setback, 5.0, 2.0, 17)] {
-                if part.contains(u, v) {
-                    let (x, y) = part.local(u, v);
-                    return if windows(x, y, columns, rows, salt) { Surface::Lit } else { Surface::Wall };
-                }
-            }
-            ground
-        }
-        // A server rack in the open: slots with a light each, a mast.
-        Building::Remote => {
-            let rack = Block::new(0.37, 0.63, 0.36, HORIZON);
-            let mast = Block::new(0.6, 0.61, 0.2, 0.36);
-            let tip = Block::new(0.595, 0.615, 0.18, 0.2);
-            if tip.contains(u, v) {
-                return Surface::Lit;
-            }
-            if mast.contains(u, v) {
-                return Surface::Wall;
-            }
-            if rack.contains(u, v) {
-                let (x, y) = rack.local(u, v);
-                let slot = (y * 8.0).fract();
-                if slot < 0.14 {
-                    return Surface::Recess;
-                }
-                return if (0.82..0.9).contains(&x) && (0.4..0.7).contains(&slot) { Surface::Lit } else { Surface::Wall };
-            }
-            ground
-        }
-    }
-}
-
-/// A plate's drawn default: `building` against a dusk in the Corp's
-/// faction colour, the lights in the accent.
-fn paint_plate(theme: &Theme, faction: Option<Faction>, building: Building) -> Image {
-    let sky = theme.background.to_srgba();
-    let corp = corp_colour(theme, faction).to_srgba();
-    let accent = theme.accent.to_srgba();
-    let mix = |a: Srgba, b: Srgba, t: f32| [a.red + (b.red - a.red) * t, a.green + (b.green - a.green) * t, a.blue + (b.blue - a.blue) * t];
-    let scale = |c: Srgba, k: f32| [c.red * k, c.green * k, c.blue * k];
-    let mut data = Vec::with_capacity((PLATE_WIDTH * PLATE_HEIGHT * 4) as usize);
-    for y in 0..PLATE_HEIGHT {
-        for x in 0..PLATE_WIDTH {
-            let u = (x as f32 + 0.5) / PLATE_WIDTH as f32;
-            let v = (y as f32 + 0.5) / PLATE_HEIGHT as f32;
-            let rgb = match surface(building, u, v) {
-                // A dusk: the background at the top, the Corp's colour
-                // glowing along the horizon.
-                Surface::Sky => mix(sky, corp, 0.45 * (v / HORIZON).powi(3)),
-                // The ground falls away darker, with a faint grid.
-                Surface::Ground => {
-                    let depth = (v - HORIZON) / (1.0 - HORIZON);
-                    let line = ((u - 0.5) / (0.15 + depth)).fract().abs() < 0.03 || (depth * 6.0).fract() < 0.06;
-                    if line { mix(sky, accent, 0.18) } else { scale(sky, 0.8) }
-                }
-                Surface::Wall => scale(corp, 0.34),
-                Surface::Recess => scale(corp, 0.16),
-                Surface::Lit => mix(corp, accent, 0.7),
+/// A nameplate's drawn default: a grey frame round a dark channel,
+/// edged in `colour` — the Corp faction's for a server, the Runner's for
+/// a rig row — at a painted frame's size, so it is nine-sliced like one.
+/// Plain on purpose: the look is the committed frame, and this is what a
+/// slow machine gets.
+fn paint_plate(colour: Color) -> Image {
+    let edge = colour.to_srgba();
+    let edge = [edge.red, edge.green, edge.blue].map(|c| (c.clamp(0.0, 1.0) * 255.0).round() as u8);
+    let (w, h, cap) = (TILE_WIDTH, TILE_FRAME_HEIGHT, TILE_CAP);
+    let mut data = Vec::with_capacity((w * h * 4) as usize);
+    for y in 0..h {
+        for x in 0..w {
+            // The channel runs cap to cap, a line of the colour round it.
+            let (inset_x, inset_y) = (cap - 18, 16);
+            let within = |margin: u32| x + margin >= inset_x && x < w - inset_x + margin && y + margin >= inset_y && y < h - inset_y + margin;
+            let pixel = if within(0) {
+                [18, 18, 26, 255]
+            } else if within(3) {
+                [edge[0], edge[1], edge[2], 255]
+            } else {
+                let shade = 120 - (y as i32 - 4).clamp(0, 40) as u8;
+                [shade, shade, shade.saturating_add(8), 255]
             };
-            data.extend(rgb.map(|c| (c.clamp(0.0, 1.0) * 255.0).round() as u8));
-            data.push(255);
+            data.extend_from_slice(&pixel);
         }
     }
-    Image::new(
-        Extent3d { width: PLATE_WIDTH, height: PLATE_HEIGHT, depth_or_array_layers: 1 },
-        TextureDimension::D2,
-        data,
-        TextureFormat::Rgba8UnormSrgb,
-        RenderAssetUsages::default(),
-    )
+    Image::new(Extent3d { width: w, height: h, depth_or_array_layers: 1 }, TextureDimension::D2, data, TextureFormat::Rgba8UnormSrgb, RenderAssetUsages::default())
 }
 
 /// A drawn tile's pattern: one per key, in grey, so the tile's state
@@ -747,20 +608,12 @@ mod tests {
         assert_eq!(cover_rect(Vec2::new(10.0, 10.0), Vec2::ZERO).max, Vec2::new(10.0, 10.0));
     }
 
-    /// The drawn tier: every base key has a painter, at the plate's size,
-    /// and no two buildings are the same picture.
+    /// The drawn tier: every base key has a painter, and a drawn
+    /// nameplate is a painted frame's shape, so it is sliced like one.
     #[test]
-    fn every_server_has_a_drawn_plate_and_they_differ() {
+    fn every_key_reaches_a_drawn_picture() {
         let theme = Theme::default();
-        let plates: Vec<Image> = [Building::Archives, Building::RnD, Building::Hq, Building::Remote].into_iter().map(|b| paint_plate(&theme, None, b)).collect();
-        for plate in &plates {
-            assert_eq!(plate.size(), UVec2::new(PLATE_WIDTH, PLATE_HEIGHT));
-        }
-        for (i, a) in plates.iter().enumerate() {
-            for b in plates.iter().skip(i + 1) {
-                assert_ne!(a.data, b.data, "two servers drew the same building");
-            }
-        }
+        assert_eq!(paint_plate(theme.corp).size(), UVec2::new(TILE_WIDTH, TILE_FRAME_HEIGHT));
         for key in KEYS {
             // Every base names a key in the table; HUD glyphs are the
             // only keys allowed to have nothing at all.
@@ -796,18 +649,17 @@ mod tests {
         }
     }
 
-    /// The drawn plates are lit in the Corp's faction colour, so a style
-    /// is visible before anybody has drawn one — and a neutral Corp keeps
-    /// the Corp's own colour rather than a grey.
+    /// The drawn server plates are edged in the Corp's faction colour —
+    /// and a neutral Corp keeps the Corp's own colour rather than a grey.
     #[test]
-    fn a_drawn_plate_is_lit_in_the_corps_faction_colour() {
+    fn a_drawn_plate_is_edged_in_the_corps_faction_colour() {
         let theme = Theme::default();
-        let jinteki = paint_plate(&theme, Some(Faction::Jinteki), Building::Hq);
-        let nbn = paint_plate(&theme, Some(Faction::Nbn), Building::Hq);
-        let plain = paint_plate(&theme, None, Building::Hq);
+        let jinteki = paint_plate(corp_colour(&theme, Some(Faction::Jinteki)));
+        let nbn = paint_plate(corp_colour(&theme, Some(Faction::Nbn)));
+        let plain = paint_plate(corp_colour(&theme, None));
         assert_ne!(jinteki.data, nbn.data);
         assert_ne!(jinteki.data, plain.data);
-        assert_eq!(paint_plate(&theme, Some(Faction::NeutralCorp), Building::Hq).data, plain.data);
+        assert_eq!(paint_plate(corp_colour(&theme, Some(Faction::NeutralCorp))).data, plain.data);
     }
 
     /// Basic graphics reads no file: every picture is a drawn one, even
@@ -858,16 +710,19 @@ mod tests {
     fn a_state_with_no_picture_falls_back_to_its_base() {
         let mut images = Assets::<Image>::default();
         let art = BoardArt::default();
-        assert!(art.get("server.hq.run").is_none());
+        assert!(art.get("plate.hq.run").is_none());
         let loaded = BoardArt::load(Style { skin: Some("no-such-skin".to_string()), ..Style::default() }, &Theme::default(), &mut images);
-        let base = loaded.get("server.hq").expect("drawn").image.clone();
-        assert_eq!(loaded.get("server.hq.run").expect("falls back").image, base);
-        assert_eq!(loaded.get(server_key(ServerId::Remote(3), true)).unwrap().image, loaded.get("server.remote").unwrap().image);
-        assert_eq!(loaded.get("server.remote").unwrap().size, Vec2::new(PLATE_WIDTH as f32, PLATE_HEIGHT as f32));
+        let basic = BoardArt::load(Style { skin: Some("no-such-skin".to_string()), basic: true, ..Style::default() }, &Theme::default(), &mut images);
+        let base = basic.get("plate.hq").expect("drawn").image.clone();
+        assert_eq!(basic.get("plate.hq.run").expect("falls back").image, base);
+        assert_eq!(basic.get(server_key(ServerId::Remote(3), true)).unwrap().image, basic.get("plate.remote").unwrap().image);
+        // Every nameplate, drawn or painted, is a strip frame's shape.
+        for key in keys().filter(|key| key.starts_with("plate.")) {
+            assert_eq!(loaded.get(key).unwrap().size, Vec2::new(TILE_WIDTH as f32, TILE_FRAME_HEIGHT as f32), "{key}");
+        }
         // A drawn picture is washed in its state's colour; a file is not.
         // The strips ship painted frames, so the drawn one is Basic
         // graphics'.
-        let basic = BoardArt::load(Style { skin: Some("no-such-skin".to_string()), basic: true, ..Style::default() }, &Theme::default(), &mut images);
         let drawn = basic.get("ice.unrezzed").unwrap();
         assert!(drawn.drawn);
         assert_eq!(drawn.tint(Color::BLACK), Color::BLACK);

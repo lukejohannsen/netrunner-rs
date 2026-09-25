@@ -1,17 +1,17 @@
 # Board art — the pictures on the table
 
 A skin dresses the board's boxes in frames. **Board art is the picture
-inside a box**: the building on a server's plate, the slab behind an
-ICE's name, the badge beside a counter and a HUD readout's glyph. A frame is nine-sliced and
-stretched to fit; a building keeps its proportions, so board art has its
-own folder and its own rule.
+inside a box**: the nameplate a server's or a rig row's name sits in,
+the slab behind an ICE's name, the badge beside a counter and a HUD
+readout's glyph. It has its own folder so a Corp's faction and a run
+can change it.
 
 **Every plate, tile and counter has a picture with no file anywhere.**
-The client draws a default (`src/board_art.rs`): for a plate, a
-silhouette in the Corp's colour against a dusk with lit windows in the
-accent; for a tile, a grey pattern; for a counter, a ring. HUD glyphs
+The client draws a default (`src/board_art.rs`): for a nameplate, a
+grey frame edged in the Corp's colour (or the Runner's, for a rig row);
+for a tile, a grey pattern; for a counter, a ring. HUD glyphs
 are optional and have no drawn default. They are
-deliberately plain, so they read as places at plate size and never
+deliberately plain, so they read at board size and never
 pretend to be anybody's art. Draw a file and it replaces the drawn one.
 
 ## Where they go
@@ -28,15 +28,15 @@ First found wins:
 Each file tier is looked for under `<data dir>/netrunner/assets/` first
 and then under `crates/netrunner_desktop/assets/`. On Linux `<data dir>`
 is `~/.local/share`. A skin that carries a `board/` folder brings its
-buildings with it, so a table, its chrome and its skyline can travel
+nameplates with it, so a table, its chrome and its frames can travel
 together.
 
-A state with no file (`server.hq.run`) uses its base (`server.hq`) **from
+A state with no file (`plate.hq.run`) uses its base (`plate.hq`) **from
 the same tier before the next tier is tried**, so a faction's HQ stays
 that faction's HQ when it is run on, even if a generic run picture
 exists.
 
-**Under Settings → Basic graphics no file is read at all**: every plate,
+**Under Settings → Basic graphics no file is read at all**: every nameplate,
 tile and counter is drawn, and the HUD has no glyphs. That is the
 no-frills mode for a slow machine; the drawn pictures are otherwise only
 the fallback for a key nobody has drawn.
@@ -44,7 +44,7 @@ the fallback for a key nobody has drawn.
 ## Corp styles
 
 The Corp's board can be styled by the **faction of the Corp's identity**,
-so a Jinteki board stands on Jinteki buildings and a Weyland board on
+so a Jinteki board wears Jinteki nameplates and a Weyland board
 Weyland's. The identity is public, so both chairs see the same style.
 
 | Folder | Chosen when the Corp's identity is |
@@ -55,55 +55,62 @@ Weyland's. The identity is public, so both chairs see the same style.
 | `corp/weyland-consortium/` | Weyland Consortium |
 | `corp/neutral-corp/` | a neutral Corp identity |
 
-**Any key below can go in a faction's folder**, not only the plates: the
-ICE and root tiles, the counters and the HUD's glyphs as well. A folder
-holding a single picture is a real style, and every key it leaves out is
-the generic one, so a style can be built one building at a time. The
+**Any key below can go in a faction's folder**: the nameplates, the ICE
+and root tiles, the counters and the HUD's glyphs. A folder holding a
+single picture is a real style, and every key it leaves out is the
+generic one, so a style can be built one frame at a time. The
 sizes are the same as the generic keys'.
 
-With no files at all the style still shows: the drawn buildings are lit
-in the Corp faction's colour (a neutral Corp keeps the Corp's blue).
+The drawn server nameplates are edged in the Corp faction's colour (a
+neutral Corp keeps the Corp's blue); the shipped frames are the Corp's
+blue for every faction until a style draws its own.
 
 ## A picture is cropped to cover its box, never stretched
 
 Every box below has a fixed shape at any card size, and your picture is
 scaled until it covers the box and then cropped to the middle. **Draw to
 the shape given** and nothing is lost. Draw another shape and the edges
-go: a square picture on a 16:9 plate loses its top and bottom. Keep what
-matters in the centre.
+go: a square picture in a wide box loses its top and bottom. Keep what
+matters in the centre. (A nameplate or a strip frame is nine-sliced
+instead — see below.)
 
 PNG, eight-bit sRGB, with or without alpha. Sizes are *logical* pixels,
 measured at the largest card the board draws (`MAX_FACE`, 220). **Author
 at 2× the logical size.** A larger picture is scaled down and looks fine;
 a smaller one is scaled up and looks soft.
 
-## The server plates
+## The nameplates
 
-Each server's plate sits on the Corp's edge of its column: at the bottom
-of the screen from the Corp's chair, at the top from the Runner's. The
-server's name and count run along a band at its lower edge, so keep the
-bottom sixth quiet.
+Every name on the table sits in a frame: each server's, on the Corp's
+edge of its column (at the bottom from the Corp's chair, at the top from
+the Runner's), and each rig row's, at the row's left. A nameplate is a
+strip's frame (below) with the name over its channel, and is drawn the
+same way: **512 × 96, nine-sliced, a 48-pixel end cap at each side kept
+whole** and a middle stretched along its length, so keep the middle
+plain along x, put the detail in the caps, and keep the channel dark —
+the name sits there.
 
-| Key | Shows | Logical box | Draw at | Drawn default |
-|---|---|---|---|---|
-| `server.archives` | Archives | 224 × 126 (Corp chair), 169 × 95 (Runner chair) | **512 × 288** (16:9) | a low vault under a pediment, shelving in bands |
-| `server.rnd` | R&D | same | same | a tower of data lines between two shorter ones |
-| `server.hq` | HQ | same | same | an office block with a setback, a spire and a lit lobby |
-| `server.remote` | every remote server | same | same | a server rack in the open, a mast |
-| `server.archives.run` | Archives while a run is on it | same | same | none: `server.archives` |
-| `server.rnd.run` | R&D under a run | same | same | none: `server.rnd` |
-| `server.hq.run` | HQ under a run | same | same | none: `server.hq` |
-| `server.remote.run` | a remote under a run | same | same | none: `server.remote` |
+A server stood on a 16:9 picture of a building until 25 September 2026.
+It was replaced by a nameplate a strip tall at the person's request, so
+the height the pictures took goes to the installs.
+
+| Key | Shows | Logical box | Draw at | Shipped frame | Drawn default |
+|---|---|---|---|---|---|
+| `plate.archives` | Archives' name | card width + 4 × 26 to 40 | **512 × 96**, 48 px caps | steel, Corp-blue traces, shelving etched in the channel | a grey frame edged in the Corp's faction colour |
+| `plate.rnd` | R&D's name | same | same | the same, a stream of data lines | same |
+| `plate.hq` | HQ's name | same | same | the same, office windows | same |
+| `plate.remote` | every remote's name | same | same | the same, rack slots | same |
+| `plate.archives.run` | Archives while a run is on it | same | same | the Archives frame in the Runner's red | none: `plate.archives` |
+| `plate.rnd.run` | R&D under a run | same | same | the R&D frame in red | none: `plate.rnd` |
+| `plate.hq.run` | HQ under a run | same | same | the HQ frame in red | none: `plate.hq` |
+| `plate.remote.run` | a remote under a run | same | same | the remote frame in red | none: `plate.remote` |
+| `plate.programs` | the rig's Programs row | 78 × 26 to 40 | same | steel, the Runner's red | a grey frame edged in the Runner's colour |
+| `plate.hardware` | the rig's Hardware row | same | same | same | same |
+| `plate.resources` | the rig's Resources row | same | same | same | same |
 
 **A state borrows its base picture until you draw it**, one level deep,
-as a skin slot does. Draw `server.hq.run.png` and HQ under attack looks
-different; don't, and it looks like HQ.
-
-The plate is `card width + 4` wide and 9/16 of that tall. The card width
-is computed from the window, so on a smaller screen the box is smaller
-and the same picture is scaled down. The opponent's side of the table is
-drawn at three quarters of the person's own, which is why the Runner's
-chair sees the smaller plate.
+as a skin slot does. The shipped frames draw every `.run` state; a style
+that draws only `plate.hq` has HQ under attack look like its HQ.
 
 ## The tiles
 
