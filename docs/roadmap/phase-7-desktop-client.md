@@ -4501,31 +4501,32 @@ ships in its own repository (`mtgred/netrunner`,
   constants and their two errors) had no caller and was removed, and the
   "Fetched" credit row for the backs became four register rows.
 
-### 4ba. The deck builder, Play vs Computer and the card browser have backdrops, and the menu's title a shadow — DONE (24 September 2026)
+### 4ba. The deck builder and Play vs Computer have backdrops, every other menu screen the main menu's, and the menu's title a shadow — DONE (24 September 2026)
 
-The person picked the pictures. All three are committed under the "Art
-under no licence" rule of §4ay, each credited to its artist with their
-website (`assets/CREDITS.md`), unchanged:
+The person picked the pictures. Both new ones are committed under the
+"Art under no licence" rule of §4ay, each credited to its artist with
+their website (`assets/CREDITS.md`), unchanged:
 
 - **Decks and the deck editor**: Aurore Folny's *The Personal Touch*
   (Revised Core Set), `backdrops/decks.jpg`.
-- **Play vs Computer**: Adam Schumpert's *Maya* (Kala Ghoda), as
-  Fantasy Flight Games' 2016 *Treasures from the Net* wallpaper,
-  `backdrops/new-game.jpg`. The wallpaper carries no artist credit; the
-  artist was read off the card, whose art it is.
-- **Cards**: JB Casacop's *Dyson Mem Chip* (Core Set), the copy
-  jinteki.net ships at `resources/public/img/bg/DysonMemChip.jpg`,
-  `backdrops/cards.jpg`, dimmed 0.6 under the grid of faces.
-- **About and Settings** show the main menu's picture.
+- **Play vs Computer**: Adam Schumpert's *Maya* (Kala Ghoda),
+  `backdrops/new-game.jpg`, 1629 × 1200 from his own ArtStation. The
+  first copy was Fantasy Flight Games' 2016 *Treasures from the Net*
+  wallpaper, 1920 × 1080 but with the *Android Universe* mark in its
+  corner; the person asked for one without it, and the artist's copy is
+  the bare painting.
+- **Every other screen stands on the main menu's picture**: the neon
+  *New Angeles* is now the shared `menu.jpg` rather than `main-menu.jpg`,
+  so Cards, About, Settings, Online, Learn to Play, Profile and Replay
+  all show it, and the main menu keeps its own lighter dim (0.35) by its
+  key. JB Casacop's *Dyson Mem Chip* was committed behind Cards on the
+  first pass and removed at the person's request, with its row.
 
 **A screen borrows another's picture by name, not by a copy.**
 `backdrops.json` gained `same_as` (`netrunner_client::backdrop::Manifest`,
-one step, the dim still the screen's own): About and Settings name
-`main-menu`, the deck editor names `decks`. Renaming `main-menu.jpg` to
-the shared `menu.jpg` was the other way, and was not taken because it
-would also have dressed Online, Learn to Play, Profile and Replay, which
-nobody asked for. A decoded picture is cached under the key its files
-came from, so two screens showing one decode it once.
+one step, the dim still the screen's own), which the deck editor uses to
+show `decks`. A decoded picture is cached under the key its files came
+from, so two screens showing one decode it once.
 
 **The main menu's NETRUNNER has a drop shadow** (`widgets::title_shadow`):
 the neon *New Angeles* has a near-white sky, and the accent's icy blue

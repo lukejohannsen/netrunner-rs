@@ -1,4 +1,4 @@
 {
-  "dim": { "splash": 0.3, "main-menu": 0.35, "new-game": 0.4, "deck-editor": 0.6, "cards": 0.6 },
-  "same_as": { "about": "main-menu", "settings": "main-menu", "deck-editor": "decks" }
+  "dim": { "splash": 0.3, "main-menu": 0.35, "new-game": 0.4, "deck-editor": 0.6 },
+  "same_as": { "deck-editor": "decks" }
 }

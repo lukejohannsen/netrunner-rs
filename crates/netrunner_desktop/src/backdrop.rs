@@ -183,13 +183,14 @@ mod tests {
         assert!(!backdrops.basic && backdrops.pictures.contains_key("main-menu"));
     }
 
-    /// About, Settings and the deck editor show another screen's picture,
-    /// and that picture's file is committed.
+    /// The deck editor shows the deck list's picture, and every picture a
+    /// screen borrows — the shared one included — is committed.
     #[test]
     fn a_borrowed_picture_is_a_committed_one() {
         let manifest = Manifest::parse(include_str!("../assets/backdrops/backdrops.json"));
-        for (screen, picture) in [("about", "main-menu"), ("settings", "main-menu"), ("deck-editor", "decks")] {
-            assert_eq!(manifest.picture_key(screen), picture);
+        assert!(crate::assets::read(&format!("{DIR}/{}.jpg", netrunner_client::backdrop::SHARED_KEY)).is_some(), "the shared picture is committed");
+        assert_eq!(manifest.picture_key("deck-editor"), "decks");
+        for picture in manifest.same_as.values() {
             assert!(crate::assets::read(&format!("{DIR}/{picture}.jpg")).is_some(), "{picture}.jpg is committed");
         }
     }

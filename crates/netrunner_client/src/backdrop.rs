@@ -60,7 +60,7 @@ pub fn candidates(key: &str) -> Vec<String> {
 ///
 /// ```json
 /// { "dim": { "menu": 0.5, "cards": 0.7, "splash": 0.0 },
-///   "same_as": { "about": "main-menu" } }
+///   "same_as": { "deck-editor": "decks" } }
 /// ```
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
@@ -71,9 +71,9 @@ pub struct Manifest {
     /// Per key, another key whose picture this screen shows. **A screen
     /// that wants a particular screen's picture says so here rather than
     /// holding a copy of the file**, and rather than the picture becoming
-    /// [`SHARED_KEY`]'s, which would dress every screen nobody drew for:
-    /// About and Settings stand on the main menu's picture while Online
-    /// and Replay keep the drawn ground. One step only — the key named
+    /// [`SHARED_KEY`]'s, which dresses every screen nobody drew for: the
+    /// deck editor stands on the deck list's picture while the other
+    /// screens keep the shared one. One step only — the key named
     /// here is looked up as itself, its own entry unread — so no chain
     /// can loop. The dim stays the screen's own.
     pub same_as: BTreeMap<String, String>,
