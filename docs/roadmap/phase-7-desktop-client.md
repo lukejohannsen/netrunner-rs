@@ -4892,3 +4892,29 @@ the same kind of work, so they go on this list:
 
 Not borrowed, with the reasons in the doc: slash commands that edit state,
 and diffs on the wire.
+
+### 4bb. The mulligan box draws its cards at a reading size, and a glowing button's label shows — DONE (24 September 2026)
+
+A report from play: at the start of a game the mulligan box was huge and
+its Keep and Mulligan could not be read. Two faults, both reproduced
+with `NETRUNNER_GAME=corp NETRUNNER_SCREENSHOT` before either was touched.
+
+- **The box grew its cards to the window.** `layout::opening_faces` was
+  capped at `CHOICE_FACE_MAX` (380), so the identities and a five-card
+  hand filled a 2000 × 1250 window edge to edge and the two buttons under
+  them were pills the width of the screen. It is now capped at
+  `OPENING_FACE_MAX`, the 220 px a pile's sheet reads a card at: the box
+  is about 1150 px wide with the hand on one row, and a short window
+  still takes height off the cards.
+- **A glow flooded a translucent pill.** Bevy paints a `BoxShadow` under
+  the whole node, not only outside it; round an opaque card that is a
+  ring, but a `Secondary` pill has been 12% opaque since §4aw, so the
+  pale-yellow glow of §4av showed through it and the white label sat on
+  pale yellow. Every glowing button is now solid in each of its states
+  (`Theme::solid`: the fill over the pop-up's glass over the wash), which
+  hides the middle of its shadow — the control bar's glowing buttons
+  were the same fault and take the same fix. It is done in `glow` as a
+  command queued on the entity, in the same buffer as the spawn, because
+  a write from the `shadows` system raced `widgets::dress`'s queued old
+  fill and lost (it was tried first, and the screenshot showed it
+  unchanged).

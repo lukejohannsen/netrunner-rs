@@ -19,6 +19,13 @@ use netrunner_core::rules::Side;
 
 pub struct ThemePlugin;
 
+/// `top` painted over an opaque `ground`: an opaque colour.
+pub fn over(top: Color, ground: Color) -> Color {
+    let (t, g) = (top.to_srgba(), ground.to_srgba());
+    let a = t.alpha;
+    Color::srgb(t.red * a + g.red * (1.0 - a), t.green * a + g.green * (1.0 - a), t.blue * a + g.blue * (1.0 - a))
+}
+
 impl Plugin for ThemePlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<Theme>();
@@ -203,6 +210,19 @@ pub mod shape {
 }
 
 impl Theme {
+    /// `fill` as it looks on the glass of a pop-up over the wash, with
+    /// nothing behind it showing through.
+    ///
+    /// **For a glowing button.** A `BoxShadow` is painted under the whole
+    /// node, not only outside it, so under a translucent pill (a
+    /// `secondary` fill is 12% opaque) the glow floods the button and its
+    /// white label sits on pale yellow — the Keep and the Mulligan were
+    /// unreadable that way. Made solid, the pill hides the middle of its
+    /// shadow and the glow is a ring again, as it is round a card.
+    pub fn solid(&self, fill: Color) -> Color {
+        over(fill, over(self.glass_strong, self.wash))
+    }
+
     pub fn side(&self, side: Side) -> Color {
         match side {
             Side::Corp => self.corp,
@@ -339,6 +359,15 @@ mod tests {
             })
             .min_by(|p, q| p.0.total_cmp(&q.0))
             .expect("four viewers")
+    }
+
+    #[test]
+    fn a_glowing_pill_is_solid() {
+        let theme = Theme::default();
+        for fill in [theme.secondary, theme.secondary_hover, theme.secondary_press, Color::NONE, theme.primary] {
+            assert_eq!(theme.solid(fill).alpha(), 1.0);
+        }
+        assert_eq!(theme.solid(theme.primary), theme.primary);
     }
 
     /// **Each mood's glow must be visible against every border it can

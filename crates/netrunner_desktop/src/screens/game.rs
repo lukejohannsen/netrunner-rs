@@ -1707,9 +1707,23 @@ fn outline(theme: &Theme) -> Outline {
 /// is owed next (ROADMAP Phase 7, the third list's item 1) can be a
 /// second entry in the same component rather than a second component
 /// contending for the same slot.
-fn glow(commands: &mut Commands, entity: Entity, _theme: &Theme, mood: Option<Affordance>) {
+fn glow(commands: &mut Commands, entity: Entity, theme: &Theme, mood: Option<Affordance>) {
     let Some(mood) = mood else { return };
-    commands.entity(entity).insert(Glowing(mood));
+    // A glowing button is made solid, in every state it can be drawn in,
+    // or its own glow shows through it (`Theme::solid`). Queued on the
+    // entity rather than done by `shadows`, so it lands in the same
+    // buffer as the spawn: `widgets::dress` then only ever sees the solid
+    // fill, where a later system's write raced it and lost.
+    let ground = theme.solid(Color::NONE);
+    let fills = move |drawn: Drawn| Drawn::new(crate::theme::over(drawn.bg, ground), drawn.border);
+    commands.entity(entity).insert(Glowing(mood)).queue(move |mut entity: EntityWorldMut| {
+        let Some(mut dressed) = entity.get_mut::<widgets::Dressed>() else { return };
+        dressed.drawn = fills(dressed.drawn);
+        dressed.hover = dressed.hover.map(fills);
+        dressed.pressed = dressed.pressed.map(fills);
+        let bg = dressed.drawn.bg;
+        entity.insert(BackgroundColor(bg));
+    });
 }
 
 /// Marks a glowing entity with its mood, so a test can ask the board
