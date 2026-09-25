@@ -4638,6 +4638,35 @@ this session:** Wayland refuses a program-set cursor position, and the
 probe that tried it stopped the window's frames. The person is asked to
 check it by hand.
 
+### 4bf. A server is named as a person names it, on every button and in every log line — DONE (25 September 2026)
+
+`fix/server-names`. Found while building the lesson coach's "where" line
+(§6c's open item), which quotes the button it points at. `actions.rs`
+still formatted servers with `Debug` in both clients' labels and log
+lines: "Run RnD", "Install Palisade into Remote(0) (Ice)", "the run on
+Hq succeeded", "the unrezzed ice at Remote(0)". The server plates and the
+prompts already said R&D, HQ and Remote 0 (`server_name`), so one server
+had two names on one screen.
+
+- Every label and narration in `netrunner_client::actions` names a
+  server with `server_name`.
+- An install says where the card goes in the words `placement` already
+  uses for an install from a card's text (`install_place`): "in Remote
+  0", "in the root of HQ", "protecting R&D", and "in a new remote
+  server" or "protecting a new remote server" when the view shows no
+  such remote yet. The opponent's concealed install reads "Install a
+  card protecting Remote 0".
+- `replay::tests::no_label_or_log_line_spells_a_server_the_engines_way`
+  plays four random games and checks every action label and every log
+  line from both chairs for `Remote(`, `RnD`, `Hq`, `(Root)` and
+  `(Ice)`. With "Run {server:?}" put back, it fails on "Run Remote(0)".
+
+Other `Debug` spellings are still in the log and are left alone here: a
+side ("Pass priority (Corp)") and a trigger's name in "triggered
+(OnRunStart)".
+
+**Verified.** Workspace tests green and workspace clippy silent.
+
 ## 5. The deck builder — DONE (24 September 2026)
 
 `feat/desktop-deck-builder`. Asked for in one list: save and import

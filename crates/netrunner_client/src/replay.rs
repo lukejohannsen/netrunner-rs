@@ -400,6 +400,35 @@ mod tests {
         }
     }
 
+    /// A server is named as a person names it — R&D, HQ, Remote 0 — on
+    /// every button and in every log line, from either chair. Until
+    /// September 2026 the labels printed the engine's `Debug` spelling
+    /// ("Run RnD", "Install Palisade into Remote(0) (Ice)", "the run on Hq
+    /// succeeded"), and both clients' menus and logs showed it.
+    #[test]
+    fn no_label_or_log_line_spells_a_server_the_engines_way() {
+        const ENGINE: [&str; 5] = ["Remote(", "RnD", "Hq", "(Root)", "(Ice)"];
+        let offending = |text: &str| ENGINE.iter().find(|spelling| text.contains(**spelling)).copied();
+        let mut labels = 0;
+        for seed in 1..=4 {
+            let (header, history, registry) = recorded_game(seed);
+            for side in [Side::Corp, Side::Runner] {
+                let mut replay = Replay::load(&header, history.clone(), registry.clone(), side, "test").unwrap();
+                for position in 0..=replay.len() {
+                    replay.seek(position);
+                    for entry in crate::board::ActionMap::build(replay.view(), &registry).entries {
+                        assert_eq!(offending(&entry.label), None, "seed {seed}, {side:?}: {}", entry.label);
+                        labels += 1;
+                    }
+                }
+                for line in replay.log_text() {
+                    assert_eq!(offending(line), None, "seed {seed}, {side:?}: {line}");
+                }
+            }
+        }
+        assert!(labels > 0, "the replays offered some action");
+    }
+
     /// The Runner's chair never reads the Corp's facedown installs by
     /// title: the log lines are the masked entries, not the raw record.
     #[test]
@@ -416,10 +445,10 @@ mod tests {
         let everything = |replay: &Replay| replay.log_text.join("\n");
         replay.seek(usize::MAX);
         let runner_log = everything(&replay);
-        assert!(runner_log.contains("Install a card into"), "{runner_log}");
+        assert!(runner_log.contains("Install a card "), "{runner_log}");
         replay.set_side(Side::Corp);
         let corp_log = everything(&replay);
-        assert!(!corp_log.contains("Install a card into"), "the Corp sees its own installs by name: {corp_log}");
+        assert!(!corp_log.contains("Install a card "), "the Corp sees its own installs by name: {corp_log}");
     }
 
     /// A record from a different engine names the entry that no longer
