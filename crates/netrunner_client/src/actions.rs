@@ -18,6 +18,7 @@ use netrunner_core::rules::{
     AccessCandidate, ConcealedAction, GameEvent, InstallId, InstallSlot, PendingDecision, PlayerAction, PublicAction, ServerId, Side, WouldHappen,
 };
 use netrunner_core::view::ClientView;
+use crate::board::action_map::server_name;
 use netrunner_session::PublicHistoryEntry;
 
 /// Cap on retained log lines, shared by both TUI paths.
@@ -286,7 +287,7 @@ pub fn install_label(id: &InstallId, registry: &CardRegistry, view: Option<&Clie
                 Some(card_id) => card_title(card_id, registry),
                 None => {
                     let kind = if card.slot == InstallSlot::Ice { "ice" } else { "card" };
-                    format!("the unrezzed {kind} at {:?}", server.server)
+                    format!("the unrezzed {kind} at {}", server_name(server.server))
                 }
             };
         }
@@ -432,7 +433,7 @@ pub fn narrate_event(
     }
     let at = |id: &InstallId| install_label(id, registry, view);
     // For a line that states the rez change itself, so it does not read
-    // "derezzed the unrezzed ice at Remote(0)".
+    // "derezzed the unrezzed ice at Remote 0".
     let place = |id: &InstallId| install_place_label(id, registry, view);
     let title = |card: &CardId| card_title(card, registry);
     // A struck identity is the normal case for a masked entry; the handle
@@ -445,7 +446,7 @@ pub fn narrate_event(
     let line = match event {
         // ---- the board ----
         GameEvent::CardInstalled { install, server, .. } => {
-            format!("installed {} into {server:?}", at(install))
+            format!("installed {} in {}", at(install), server_name(*server))
         }
         GameEvent::CardAdvanced { install, advancement_tokens, .. } => format!(
             "advanced {}, now at {advancement_tokens} advancement token{}",
@@ -463,11 +464,11 @@ pub fn narrate_event(
         GameEvent::IceSwapped { a, b, .. } if a == b => format!("swapped the ice at {} for another", at(a)),
         GameEvent::IceSwapped { a, b, .. } => format!("swapped {} with {}", at(a), at(b)),
         GameEvent::CardMoved { install, from, to, .. } => {
-            format!("moved {} from {from:?} to {to:?}", at(install))
+            format!("moved {} from {} to {}", at(install), server_name(*from), server_name(*to))
         }
         GameEvent::CardDerezzed { install, .. } => format!("derezzed {}", place(install)),
         GameEvent::IceRezzed { install, card, server } => {
-            format!("rezzed {} protecting {server:?}", named(&Some(card.clone()), install))
+            format!("rezzed {} protecting {}", named(&Some(card.clone()), install), server_name(*server))
         }
         GameEvent::CardTrashed { side, card } => format!("{side:?} trashed {}", title(card)),
         GameEvent::CardsTrashedFromHq { count } => format!("trashed {count} card(s) from HQ"),
@@ -509,10 +510,10 @@ pub fn narrate_event(
         GameEvent::AgendaForfeited { card } => format!("forfeited {}", title(card)),
 
         // ---- runs and traces ----
-        GameEvent::RunSucceeded { server } => format!("the run on {server:?} succeeded"),
-        GameEvent::RunJackedOut { server } => format!("the Runner jacked out of {server:?}"),
-        GameEvent::RunEndedByEffect { server } => format!("the run on {server:?} was ended"),
-        GameEvent::RunEndPrevented { server } => format!("the end of the run on {server:?} was prevented"),
+        GameEvent::RunSucceeded { server } => format!("the run on {} succeeded", server_name(*server)),
+        GameEvent::RunJackedOut { server } => format!("the Runner jacked out of {}", server_name(*server)),
+        GameEvent::RunEndedByEffect { server } => format!("the run on {} was ended", server_name(*server)),
+        GameEvent::RunEndPrevented { server } => format!("the end of the run on {} was prevented", server_name(*server)),
         GameEvent::TraceInitiated { base, initiating_card } => match initiating_card {
             Some(card) => format!("{} started a trace with base strength {base}", title(card)),
             None => format!("a trace started with base strength {base}"),
@@ -569,10 +570,10 @@ pub fn narrate_event(
 }
 
 /// `install_label` without the "unrezzed" qualifier: "the ice at
-/// Remote(0)" rather than "the unrezzed ice at Remote(0)".
+/// Remote 0" rather than "the unrezzed ice at Remote 0".
 ///
 /// For a line that states the rez change itself — a derez reads
-/// "derezzed the unrezzed ice at Remote(0)" through the other one, which
+/// "derezzed the unrezzed ice at Remote 0" through the other one, which
 /// is accurate and badly written. Identical in every other respect, and it
 /// conceals exactly as much: a masked install is still named by position
 /// and never by title.
@@ -581,6 +582,22 @@ pub fn install_place_label(id: &InstallId, registry: &CardRegistry, view: Option
     match full.strip_prefix("the unrezzed ") {
         Some(rest) => format!("the {rest}"),
         None => full,
+    }
+}
+
+/// Where an install puts a card, as a person names the place: "in Remote
+/// 0", "in the root of HQ", "protecting R&D", or "in a new remote server"
+/// when the view shows no such remote yet. The engine's spellings
+/// (`Remote(0) (Root)`, `RnD`, `Hq`) were the menus' and the log's words
+/// until September 2026, and a lesson's hints quoted them.
+fn install_place(zone: ServerId, slot: InstallSlot, view: Option<&ClientView>) -> String {
+    let new = matches!(zone, ServerId::Remote(_)) && view.is_some_and(|view| !view.corp.servers.iter().any(|server| server.server == zone));
+    match (slot, zone, new) {
+        (InstallSlot::Ice, _, true) => "protecting a new remote server".to_string(),
+        (InstallSlot::Ice, zone, false) => format!("protecting {}", server_name(zone)),
+        (InstallSlot::Root, _, true) => "in a new remote server".to_string(),
+        (InstallSlot::Root, ServerId::Remote(_), false) => format!("in {}", server_name(zone)),
+        (InstallSlot::Root, central, false) => format!("in the root of {}", server_name(central)),
     }
 }
 
@@ -597,10 +614,10 @@ pub fn describe_action(action: &PlayerAction, registry: &CardRegistry, view: Opt
                 (true, InstallSlot::Ice) => ", trashing ice there first",
                 (true, InstallSlot::Root) => ", trashing cards in its root first",
             };
-            format!("Install {} into {:?} ({:?}){first}", title(card_id), zone, slot)
+            format!("Install {} {}{first}", title(card_id), install_place(*zone, *slot, view))
         }
         PlayerAction::RezIce { ice } => format!("Rez {}", install_label(ice)),
-        PlayerAction::InitiateRun { server } => format!("Run {server:?}"),
+        PlayerAction::InitiateRun { server } => format!("Run {}", server_name(*server)),
         PlayerAction::ContinueRun => "Continue run".to_string(),
         PlayerAction::JackOut => "Jack out".to_string(),
         PlayerAction::CompleteRun => "Complete run".to_string(),
@@ -813,7 +830,7 @@ pub fn describe_public_action(action: &PublicAction, registry: &CardRegistry, vi
     match action {
         PublicAction::Visible(action) => describe_action(action, registry, view),
         PublicAction::Concealed(ConcealedAction::InstallCard { zone, slot }) => {
-            format!("Install a card into {zone:?} ({slot:?})")
+            format!("Install a card {}", install_place(*zone, *slot, view))
         }
         PublicAction::Concealed(ConcealedAction::DiscardCard) => "Discard a card".to_string(),
         PublicAction::Concealed(ConcealedAction::PassAccessedCard) => "Pass on the accessed card".to_string(),
@@ -855,13 +872,15 @@ pub fn explain_action(action: &PlayerAction, registry: &CardRegistry, view: Opti
                 (true, InstallSlot::Root) => " First trash any of the cards already in its root, one at a time.",
             };
             format!(
-                "Spend 1 click to install {} {what} {zone:?}. Installing a new remote server creates it. Ice costs 1 credit per piece already protecting that server; the card stays unrezzed (and hidden) until you pay to rez it.{first}",
-                title(card_id)
+                "Spend 1 click to install {} {what} {}. Installing a new remote server creates it. Ice costs 1 credit per piece already protecting that server; the card stays unrezzed (and hidden) until you pay to rez it.{first}",
+                title(card_id),
+                server_name(*zone)
             )
         }
         PlayerAction::RezIce { .. } => "Pay the card's rez cost to turn it face up. Ice only stops the Runner once it is rezzed, and you usually rez it as they approach it.".to_string(),
         PlayerAction::InitiateRun { server } => format!(
-            "Spend 1 click to run {server:?}: approach each piece of ice protecting it in turn, and if you get past them all, breach the server and access its cards."
+            "Spend 1 click to run {}: approach each piece of ice protecting it in turn, and if you get past them all, breach the server and access its cards.",
+            server_name(*server)
         ),
         PlayerAction::ContinueRun => "Move to the next step of the run. Between pieces of ice, going on rather than jacking out gives both players a last window, then you approach the next piece of ice, or the server if there is none left.".to_string(),
         PlayerAction::JackOut => "End the run voluntarily, keeping your credits. You can jack out after passing a piece of ice, or before approaching a server with no ice — always before the Corp can rez what is ahead, never while encountering ice or once the server is approached.".to_string(),
@@ -920,7 +939,7 @@ pub fn explain_action(action: &PlayerAction, registry: &CardRegistry, view: Opti
         PlayerAction::ResolvePendingChoice { .. } => "Pick this option for the card that is asking you to choose.".to_string(),
         PlayerAction::ToggleCardSelection { .. } => "Add this card to the cards a card effect is asking you to choose, or take it back out to choose a different one.".to_string(),
         PlayerAction::ConfirmCardSelection => "Confirm the cards you selected: the card effect goes ahead with them.".to_string(),
-        PlayerAction::ChooseServerForPendingDecision { server } => format!("Choose {server:?} as the server this card effect applies to: where the card it installs goes, or the server it runs."),
+        PlayerAction::ChooseServerForPendingDecision { server } => format!("Choose {} as the server this card effect applies to: where the card it installs goes, or the server it runs.", server_name(*server)),
         PlayerAction::ChooseNumber { amount } => format!("Answer the card that is asking for a number with {amount}: how many tags, credits or counters its effect is about."),
     }
 }
@@ -971,7 +990,7 @@ mod tests {
         }
         assert_eq!(
             describe_public_action(&PublicAction::Concealed(ConcealedAction::InstallCard { zone: ServerId::Remote(0), slot: InstallSlot::Ice }), &registry, None),
-            "Install a card into Remote(0) (Ice)"
+            "Install a card protecting Remote 0"
         );
     }
 
@@ -1046,7 +1065,7 @@ mod tests {
         let struck = GameEvent::CardAdvanced { install: InstallId(7), card: None, advancement_tokens: 2 };
         let line = narrate_event(&struck, &PublicAction::Visible(PlayerAction::EndTurn), &registry, Some(&view))
             .expect("an advance always earns a line");
-        assert!(line.contains("the unrezzed ice at Remote(0)"), "{line}");
+        assert!(line.contains("the unrezzed ice at Remote 0"), "{line}");
         assert!(line.contains("2 advancement tokens"), "{line}");
         assert!(!line.contains("Ice Wall"), "the masked card must not be named: {line}");
 
@@ -1079,7 +1098,7 @@ mod tests {
 
         let by_a_card = PublicAction::Visible(PlayerAction::PlayOperation { card_id: CardId("ansel".to_string()) });
         let line = narrate_event(&event, &by_a_card, &registry, Some(&view)).expect("an effect-driven install is news");
-        assert!(line.contains("the unrezzed ice at Remote(0)"), "{line}");
+        assert!(line.contains("the unrezzed ice at Remote 0"), "{line}");
         assert!(!line.contains("Ice Wall"), "{line}");
     }
 
@@ -1097,7 +1116,7 @@ mod tests {
         };
         let line = narrate_event(&event, &PublicAction::Visible(PlayerAction::EndTurn), &registry, Some(&view))
             .expect("a swap always earns a line");
-        assert!(line.contains("the unrezzed ice at Remote(0)"), "{line}");
+        assert!(line.contains("the unrezzed ice at Remote 0"), "{line}");
         assert!(line.contains("Ice Wall"), "the rezzed half is nameable: {line}");
     }
 
