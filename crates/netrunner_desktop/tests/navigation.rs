@@ -600,3 +600,48 @@ fn copy_to_edit_in_the_viewer_opens_the_copy_with_a_pool() {
     assert_eq!(roots(&mut app, AppScreen::DeckEditor), 1, "the old screen was taken down");
     assert!(app.world_mut().query::<&PoolCard>().iter(app.world()).count() > 20, "the pool is there");
 }
+
+/// The strategy guide is reached from Learn to Play and leads back
+/// there: its first chapter opens with the guide's introduction, a
+/// chapter's pill turns the page, a card the chapter names opens to
+/// read, and Escape closes the card before it leaves the guide.
+#[test]
+fn the_strategy_guide_turns_its_pages_reads_its_cards_and_leads_back_to_learn() {
+    use netrunner_desktop::screens::guide::{ChapterButton, GuideCard, GuideLine};
+    use netrunner_desktop::screens::learn::GuideButton;
+    use netrunner_desktop::widgets::reader::Reading;
+    let (mut app, _dir) = headless_client();
+    app.update();
+    app.update();
+    app.world_mut().write_message(Navigate(AppScreen::Learn));
+    app.update();
+    app.update();
+    let open = find::<GuideButton>(&mut app, |_| true).expect("Learn to Play offers the guide");
+    tap(&mut app, open);
+    assert_eq!(screen(&app), AppScreen::Guide);
+    let lines = |app: &mut App| app.world_mut().query::<&GuideLine>().iter(app.world()).map(|l| l.0.clone()).collect::<Vec<_>>();
+    let guide = netrunner_client::guide::guide();
+    let shown = lines(&mut app);
+    assert!(shown.contains(&guide.chapters[0].title), "{shown:?}");
+    assert!(shown.iter().any(|l| l.starts_with("Learn to Play teaches the rules")), "the introduction opens the first chapter: {shown:?}");
+
+    let corp = guide.chapters.iter().position(|c| c.title == "Playing the Corp").unwrap();
+    let pill = find::<ChapterButton>(&mut app, |b| b.0 == corp).unwrap();
+    tap(&mut app, pill);
+    let shown = lines(&mut app);
+    assert!(shown.contains(&"Playing the Corp".to_string()), "{shown:?}");
+    assert!(!shown.contains(&guide.chapters[0].title), "one chapter at a time: {shown:?}");
+
+    let (card, id) = app.world_mut().query::<(Entity, &GuideCard)>().iter(app.world()).map(|(e, c)| (e, c.0.clone())).next().expect("the chapter's cards are buttons");
+    tap(&mut app, card);
+    assert_eq!(app.world().resource::<Reading>().0.as_ref(), Some(&id), "a press reads the card");
+    press(&mut app, KeyCode::Escape, Key::Escape);
+    app.update();
+    app.update();
+    assert_eq!(app.world().resource::<Reading>().0, None, "Escape closes the card first");
+    assert_eq!(screen(&app), AppScreen::Guide);
+    press(&mut app, KeyCode::Escape, Key::Escape);
+    app.update();
+    app.update();
+    assert_eq!(screen(&app), AppScreen::Learn, "and then leads back to Learn to Play");
+}

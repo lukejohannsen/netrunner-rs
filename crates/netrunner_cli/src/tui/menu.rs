@@ -39,6 +39,7 @@ use netrunner_core::rules::Side;
 use netrunner_core::tutorial;
 
 use super::builder::{DeckKey, DeckScreen};
+use super::guide::{GuideKey, GuideReader};
 use super::online::{OnlineScreen, OnlineStep};
 use super::start::{self, StartChoice, StartKey, StartMenu};
 use crate::config::{Config, FormatArg};
@@ -122,11 +123,20 @@ pub enum MenuStep {
     Quit,
 }
 
-/// One row of the Learn to Play screen: a heading, or something to play.
+/// One row of the Learn to Play screen: a heading, or something to
+/// choose.
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct LearnRow {
     label: String,
-    pick: Option<LearnPick>,
+    pick: Option<LearnChoice>,
+}
+
+/// What a Learn to Play row does: play something, or open the strategy
+/// guide (`tui::guide`), which is read rather than launched.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum LearnChoice {
+    Play(LearnPick),
+    Guide,
 }
 
 /// The Learn to Play screen — every `learn` subcommand as a list.
@@ -145,22 +155,24 @@ impl LearnMenu {
             rows.push(heading(&format!("{side:?} track")));
             rows.push(LearnRow {
                 label: format!("  Every {side:?} lesson in order, then the starter game"),
-                pick: Some(LearnPick::Track(side)),
+                pick: Some(LearnChoice::Play(LearnPick::Track(side))),
             });
             for (index, lesson) in lessons.iter().enumerate() {
-                rows.push(LearnRow { label: format!("  {}. {}", index + 1, lesson.title), pick: Some(LearnPick::Lesson(lesson.id.clone())) });
+                rows.push(LearnRow { label: format!("  {}. {}", index + 1, lesson.title), pick: Some(LearnChoice::Play(LearnPick::Lesson(lesson.id.clone()))) });
             }
         }
         rows.push(heading("Starter game — Null Signal Games' preset decks, first to 6 points"));
         for side in [Side::Corp, Side::Runner] {
-            rows.push(LearnRow { label: format!("  As the {side:?}"), pick: Some(LearnPick::Game { side, boosted: false }) });
+            rows.push(LearnRow { label: format!("  As the {side:?}"), pick: Some(LearnChoice::Play(LearnPick::Game { side, boosted: false })) });
         }
         for side in [Side::Corp, Side::Runner] {
             rows.push(LearnRow {
                 label: format!("  As the {side:?}, with the booster pack (to 7 points)"),
-                pick: Some(LearnPick::Game { side, boosted: true }),
+                pick: Some(LearnChoice::Play(LearnPick::Game { side, boosted: true })),
             });
         }
+        rows.push(heading("Strategy — what to do once you know the rules"));
+        rows.push(LearnRow { label: "  Strategy guide".to_string(), pick: Some(LearnChoice::Guide) });
         let cursor = rows.iter().position(|row| row.pick.is_some()).expect("the track has something to play");
         LearnMenu { rows, cursor }
     }
@@ -179,7 +191,7 @@ impl LearnMenu {
         }
     }
 
-    fn selected(&self) -> Option<&LearnPick> {
+    fn selected(&self) -> Option<&LearnChoice> {
         self.rows[self.cursor].pick.as_ref()
     }
 }
@@ -291,6 +303,9 @@ enum Screen {
     Main,
     NewGame(Box<StartMenu>),
     Learn(LearnMenu),
+    /// The strategy guide, with the Learn screen it was opened from, to
+    /// go back to where it was.
+    Guide { learn: LearnMenu, reader: Box<GuideReader> },
     Decks(Box<DeckScreen>),
     Online(Box<OnlineScreen>),
     Record { lines: Vec<String>, scroll: u16 },
@@ -447,7 +462,12 @@ impl Menu {
                     MenuStep::Continue
                 }
                 KeyCode::Enter | KeyCode::Char(' ') => match learn.selected() {
-                    Some(pick) => MenuStep::Launch(Launch::Learn { pick: pick.clone(), config: Box::new(self.base.clone()) }),
+                    Some(LearnChoice::Play(pick)) => MenuStep::Launch(Launch::Learn { pick: pick.clone(), config: Box::new(self.base.clone()) }),
+                    Some(LearnChoice::Guide) => {
+                        let learn = learn.clone();
+                        self.screen = Screen::Guide { learn, reader: Box::new(GuideReader::new()) };
+                        MenuStep::Continue
+                    }
                     None => MenuStep::Continue,
                 },
                 KeyCode::Esc | KeyCode::Char('q') => {
@@ -456,6 +476,12 @@ impl Menu {
                 }
                 _ => MenuStep::Continue,
             },
+            Screen::Guide { learn, reader } => {
+                if reader.key(key) == GuideKey::Back {
+                    self.screen = Screen::Learn(learn.clone());
+                }
+                MenuStep::Continue
+            }
             Screen::Decks(decks) => {
                 if decks.key(key) == DeckKey::Back {
                     self.screen = Screen::Main;
@@ -542,6 +568,7 @@ impl Menu {
             Screen::Main => self.draw_main(frame, body),
             Screen::NewGame(form) => start::draw(frame, body, form),
             Screen::Learn(learn) => draw_learn(frame, body, learn),
+            Screen::Guide { reader, .. } => reader.draw(frame, body),
             Screen::Decks(decks) => decks.draw(frame, body),
             Screen::Online(online) => online.draw(frame, body),
             Screen::Record { lines, scroll } => draw_record(frame, body, lines, *scroll),
@@ -815,8 +842,8 @@ mod tests {
         let learn = LearnMenu::new();
         let lessons = tutorial::track(Side::Corp).len() + tutorial::track(Side::Runner).len();
         let playable = learn.rows.iter().filter(|row| row.pick.is_some()).count();
-        assert_eq!(playable, lessons + 2 + 4, "every lesson, both tracks, four starter games");
-        assert_eq!(learn.selected(), Some(&LearnPick::Track(Side::Corp)));
+        assert_eq!(playable, lessons + 2 + 4 + 1, "every lesson, both tracks, four starter games and the guide");
+        assert_eq!(learn.selected(), Some(&LearnChoice::Play(LearnPick::Track(Side::Corp))));
         let mut walked = learn.clone();
         for _ in 0..learn.rows.len() * 2 {
             walked.move_cursor(1);
@@ -826,13 +853,27 @@ mod tests {
         assert!(walked.selected().is_some());
         let mut up = learn.clone();
         up.move_cursor(-1);
-        assert_eq!(up.selected(), Some(&LearnPick::Game { side: Side::Runner, boosted: true }), "Up from the top wraps past the heading");
+        assert_eq!(up.selected(), Some(&LearnChoice::Guide), "Up from the top wraps past the heading");
+    }
+
+    #[test]
+    fn the_strategy_guide_opens_from_learn_and_esc_returns_to_its_row() {
+        let (mut menu, dir) = menu("guide");
+        go_to(&mut menu, Entry::Learn);
+        let step = press(&mut menu, &[KeyCode::Up, KeyCode::Enter]);
+        assert!(matches!(step, MenuStep::Continue), "the guide is read, not launched");
+        let Screen::Guide { reader, .. } = &menu.screen else { panic!("Enter on the guide's row opens it") };
+        assert_eq!(reader.chapter_title(), "The fundamentals");
+        press(&mut menu, &[KeyCode::Right, KeyCode::Esc]);
+        let Screen::Learn(learn) = &menu.screen else { panic!("Esc goes back to Learn to Play") };
+        assert_eq!(learn.selected(), Some(&LearnChoice::Guide), "on the row it was opened from");
+        let _ = std::fs::remove_dir_all(dir);
     }
 
     #[test]
     fn every_learn_pick_names_a_real_lesson() {
         for row in LearnMenu::new().rows {
-            if let Some(LearnPick::Lesson(id)) = row.pick {
+            if let Some(LearnChoice::Play(LearnPick::Lesson(id))) = row.pick {
                 assert!(tutorial::by_id(&id).is_some(), "{id}");
             }
         }

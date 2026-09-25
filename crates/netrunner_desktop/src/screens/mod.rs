@@ -13,6 +13,7 @@ pub mod card_browser;
 pub mod deck_editor;
 pub mod decks;
 pub mod game;
+pub mod guide;
 pub mod learn;
 pub mod main_menu;
 pub mod new_game;
@@ -41,6 +42,8 @@ pub enum AppScreen {
     CardBrowser,
     NewGame,
     Learn,
+    /// The strategy guide, read beside the lessons.
+    Guide,
     Online,
     Game,
     Replay,
@@ -49,7 +52,7 @@ pub enum AppScreen {
 }
 
 impl AppScreen {
-    pub const ALL: [AppScreen; 14] = [
+    pub const ALL: [AppScreen; 15] = [
         AppScreen::Boot,
         AppScreen::Splash,
         AppScreen::MainMenu,
@@ -60,6 +63,7 @@ impl AppScreen {
         AppScreen::CardBrowser,
         AppScreen::NewGame,
         AppScreen::Learn,
+        AppScreen::Guide,
         AppScreen::Online,
         AppScreen::Game,
         AppScreen::Replay,
@@ -94,6 +98,7 @@ impl AppScreen {
             AppScreen::CardBrowser => Some("cards"),
             AppScreen::NewGame => Some("new-game"),
             AppScreen::Learn => Some("learn"),
+            AppScreen::Guide => Some("guide"),
             AppScreen::Online => Some("online"),
             AppScreen::Replay => Some("replay"),
             AppScreen::About => Some("about"),
@@ -112,6 +117,7 @@ impl AppScreen {
             AppScreen::CardBrowser => "Cards",
             AppScreen::NewGame => "Play vs Computer",
             AppScreen::Learn => "Learn to Play",
+            AppScreen::Guide => "Strategy Guide",
             AppScreen::Online => "Play Online",
             AppScreen::Game => "Game",
             AppScreen::Replay => "Replay",

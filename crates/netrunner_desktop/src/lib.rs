@@ -158,6 +158,7 @@ impl PluginGroup for NetrunnerDesktopPlugins {
             .add(screens::profile::ProfilePlugin)
             .add(screens::about::AboutPlugin)
             .add(screens::learn::LearnPlugin)
+            .add(screens::guide::GuidePlugin)
             .add(screens::settings::SettingsPlugin)
             .add(screens::card_browser::CardBrowserPlugin)
             .add(screens::decks::DecksPlugin)

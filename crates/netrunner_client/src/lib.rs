@@ -41,6 +41,7 @@ pub mod placement;
 pub mod bug_report;
 pub mod play;
 pub mod decks;
+pub mod guide;
 pub mod learn;
 pub mod prose;
 pub mod record;

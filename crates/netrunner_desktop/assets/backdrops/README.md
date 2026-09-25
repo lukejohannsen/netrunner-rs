@@ -13,8 +13,8 @@ somewhere to put its picture before the picture exists.
 Six pictures are committed here: Kirsten Zirngibl's *New Angeles in
 Neon/Smog*, the smog version behind the splash (`splash.jpg`) and the
 neon one behind the main menu (`main-menu.jpg`); Alex Kim's *The Root*
-behind Play Online (`online.jpg`), which Cards and Learn to Play show
-too; Aurore Folny's *The Personal Touch* behind the deck list and the
+behind Play Online (`online.jpg`), which Cards, Learn to Play and the
+strategy guide show too; Aurore Folny's *The Personal Touch* behind the deck list and the
 deck editor (`decks.jpg`); Adam Schumpert's *Maya* behind Play vs
 Computer (`new-game.jpg`); and the project's own purple circuitry
 between brushed-steel plates as the shared picture (`menu.jpg`), behind
@@ -66,6 +66,7 @@ own picture improves on it rather than being needed before it.
 | `new-game` | Play vs Computer: the new-game form | |
 | `online` | Play Online | |
 | `learn` | Learn to Play | |
+| `guide` | the strategy guide, off Learn to Play | long text over it, so it is dimmed more than Learn |
 | `decks` | Decks: the deck list | deck building |
 | `deck-editor` | the deck editor | deck building; a busy screen, so keep this quiet or dim it |
 | `cards` | Cards: the card browser | a grid of card faces sits over it, so a strong dim is wise |
