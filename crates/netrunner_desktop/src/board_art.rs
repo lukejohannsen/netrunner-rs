@@ -100,6 +100,10 @@ pub const PLATE_HEIGHT: u32 = 288;
 /// The drawn tiles' size: 4:1, twice the tallest tile at the widest card.
 pub const TILE_WIDTH: u32 = 512;
 pub const TILE_HEIGHT: u32 = 128;
+/// A painted strip's frame: [`TILE_WIDTH`] wide and this tall, with a
+/// [`TILE_CAP`] end cap at each side that a nine-slice keeps whole.
+pub const TILE_FRAME_HEIGHT: u32 = 96;
+pub const TILE_CAP: u32 = 48;
 /// The drawn counter badge's size: twice the badge.
 pub const BADGE: u32 = 64;
 /// The avatar bar's wing, at twice its logical size: [`BAR_CAP`] at
@@ -352,6 +356,29 @@ pub fn backdrop(picture: &Picture, box_size: Vec2, tint: Color) -> impl Bundle {
         Node { position_type: PositionType::Absolute, left: px(0), top: px(0), width: percent(100), height: percent(100), ..default() },
         bevy::picking::Pickable::IGNORE,
     )
+}
+
+/// A server strip's picture filling the strip: a painted frame
+/// nine-sliced, so its steel end caps ([`TILE_CAP`] of [`TILE_WIDTH`])
+/// keep their shape at any strip width and height and only the channel
+/// between them stretches; a drawn one covers the box as [`backdrop`]
+/// does and is washed in `tint`, the strip's kind.
+pub fn strip(picture: &Picture, box_size: Vec2, tint: Color) -> impl Bundle {
+    let image = if picture.drawn {
+        ImageNode { rect: Some(cover_rect(picture.size, box_size)), image_mode: NodeImageMode::Stretch, color: picture.tint(tint), ..ImageNode::new(picture.image.clone()) }
+    } else {
+        let cap = picture.size.x * TILE_CAP as f32 / TILE_WIDTH as f32;
+        ImageNode {
+            image_mode: NodeImageMode::Sliced(TextureSlicer {
+                border: BorderRect { min_inset: Vec2::new(cap, 0.0), max_inset: Vec2::new(cap, 0.0) },
+                center_scale_mode: SliceScaleMode::Stretch,
+                sides_scale_mode: SliceScaleMode::Stretch,
+                max_corner_scale: 1.0,
+            }),
+            ..ImageNode::new(picture.image.clone())
+        }
+    };
+    (image, Node { position_type: PositionType::Absolute, left: px(0), top: px(0), width: percent(100), height: percent(100), ..default() }, bevy::picking::Pickable::IGNORE)
 }
 
 // ---- the drawn defaults ----
@@ -838,9 +865,16 @@ mod tests {
         assert_eq!(loaded.get(server_key(ServerId::Remote(3), true)).unwrap().image, loaded.get("server.remote").unwrap().image);
         assert_eq!(loaded.get("server.remote").unwrap().size, Vec2::new(PLATE_WIDTH as f32, PLATE_HEIGHT as f32));
         // A drawn picture is washed in its state's colour; a file is not.
-        let drawn = loaded.get("ice.unrezzed").unwrap();
+        // The strips ship painted frames, so the drawn one is Basic
+        // graphics'.
+        let basic = BoardArt::load(Style { skin: Some("no-such-skin".to_string()), basic: true, ..Style::default() }, &Theme::default(), &mut images);
+        let drawn = basic.get("ice.unrezzed").unwrap();
         assert!(drawn.drawn);
         assert_eq!(drawn.tint(Color::BLACK), Color::BLACK);
+        if crate::assets::resolve("board/ice.unrezzed.png").is_some() {
+            let painted = loaded.get("ice.unrezzed").unwrap();
+            assert!(!painted.drawn && painted.size == Vec2::new(TILE_WIDTH as f32, TILE_FRAME_HEIGHT as f32), "the shipped frame, at its size");
+        }
         // The bundled glyphs load as files, and every counter reaches a
         // picture whether or not they are there.
         for kind in ["counter.virus", "counter.advancement", "counter.power", "counter.credit", "counter"] {

@@ -107,30 +107,39 @@ chair sees the smaller plate.
 
 ## The tiles
 
-An ICE or a card in a server's root is a tile in its column. The tile
-shows a picture of what kind of card it is, with its name and tokens on
-a band across the middle. The picture is **cropped to cover**, like a
-plate, but the tile's height changes with the ICE field: tall with one
-ICE, down to 24 as the column fills. So draw wide, and keep the detail
-in a band through the middle.
+An ICE or a card in a server's root is a strip in its column: one line
+of words — its name, rezzed or not, its strength and tokens — on a band
+across the middle of a frame that says what kind of card it is. A column
+is a fixed number of strips (three on a 768-tall window, four at 1080,
+five above), and a server holding more folds to its root, a "+N" strip
+and its outermost ICE; the whole server is its stack sheet. A strip is
+the card's width + 4 wide and 26 to 40 tall, whatever the column holds.
 
-**A drawn tile is grey, washed in the tile's state colour.** That is the
-faction's colour for a rezzed card and the Corp's colour dimmed for a
-face-down one, the same colour as the tile's border. A file is drawn as
-you painted it, not washed.
+**A file is drawn nine-sliced:** 512 × 96, with a 48-pixel end cap at
+each side that is kept whole and a middle that is stretched along its
+length, so keep the middle plain along x and put the detail in the caps.
+The words sit over the middle, so keep it dark. The shipped frames are
+brushed steel with the kind's colour in their traces and a faint etch in
+the channel, painted by `scripts/paint_tiles.py`. **The colours are the
+person's** (25 September 2026): a barrier is gold, a code gate blue, a
+sentry red, and a card face down grey — `Theme::tile` holds the same
+colours for the drawn tier and the frame's border, and its test keeps
+them clear of the glows under colour blindness. A drawn tile is grey and
+covers the box, washed in the kind's colour; a file is drawn as you
+painted it, not washed.
 
-| Key | Shows | Logical box | Draw at | Drawn default |
-|---|---|---|---|---|
-| `ice.unrezzed` | any face-down ICE (its type is hidden) | card width + 4 × 24 to 66 | **512 × 128** (4:1) | diagonal hatching |
-| `ice.rezzed` | a rezzed ICE of no type below | same | same | scanlines |
-| `ice.rezzed.barrier` | a rezzed barrier | same | same | a wall of bricks |
-| `ice.rezzed.code-gate` | a rezzed code gate | same | same | bars with a lock in the middle |
-| `ice.rezzed.sentry` | a rezzed sentry | same | same | rings around a sight |
-| `root.unrezzed` | a face-down asset or upgrade | same | same | hatching the other way |
-| `root.rezzed` | a rezzed root card of no type below | same | same | a riveted panel |
-| `root.rezzed.asset` | a rezzed asset | same | same | a row of coins |
-| `root.rezzed.upgrade` | a rezzed upgrade | same | same | chevrons |
-| `root.agenda` | an agenda, face up or not | same | same | diamonds |
+| Key | Shows | Logical box | Draw at | Shipped frame | Drawn default |
+|---|---|---|---|---|---|
+| `ice.unrezzed` | any face-down ICE (its type is hidden) | card width + 4 × 26 to 40 | **512 × 96**, 48 px caps | grey steel, unlit, hatched | diagonal hatching |
+| `ice.rezzed` | a rezzed ICE of no type below | same | same | gunmetal, white traces | scanlines |
+| `ice.rezzed.barrier` | a rezzed barrier | same | same | gold traces, a course of bricks | a wall of bricks |
+| `ice.rezzed.code-gate` | a rezzed code gate | same | same | blue traces, lock bars | bars with a lock in the middle |
+| `ice.rezzed.sentry` | a rezzed sentry | same | same | red traces, sight rings | rings around a sight |
+| `root.unrezzed` | a face-down asset or upgrade | same | same | grey steel, hatched the other way | hatching the other way |
+| `root.rezzed` | a rezzed root card of no type below | same | same | gunmetal, white traces, rivets | a riveted panel |
+| `root.rezzed.asset` | a rezzed asset | same | same | bronze traces, coins | a row of coins |
+| `root.rezzed.upgrade` | a rezzed upgrade | same | same | teal traces, chevrons | chevrons |
+| `root.agenda` | an agenda, face up or not | same | same | green traces, an advancement rail | diamonds |
 
 A type you haven't drawn borrows its base: `ice.rezzed.sentry` borrows
 `ice.rezzed`, and `root.rezzed.asset` borrows `root.rezzed`. But every

@@ -70,11 +70,13 @@
 //! - `NETRUNNER_SHEET=1` — on the board, once the person's decision has
 //!   arrived (after any autoplay), the sheet a secondary click opens on
 //!   the first installed Corp card on the board is opened, so an install's state can be looked at.
-//! - `NETRUNNER_PILE=archives|heap|hq` — on the board, once the
+//! - `NETRUNNER_PILE=archives|heap|hq|remote<n>` — on the board, once the
 //!   person's decision has arrived (after any autoplay), that zone's
 //!   sheet is opened, so a pile's cards can be looked at at their size;
 //!   `archives+card` (or `heap+card`, `hq+card`) also opens the first
-//!   card in it large over the sheet, as a press on it does.
+//!   card in it large over the sheet, as a press on it does. `remote<n>`
+//!   opens that remote's stack sheet (with `NETRUNNER_HOLD_STACK`, the
+//!   deep one).
 //! - `NETRUNNER_AGENDAS=corp|runner` — on the board, once the person's
 //!   decision has arrived (after any autoplay), that side's score area
 //!   is opened from its HUD readout with the first row expanded, so the
@@ -105,6 +107,12 @@
 //! - `NETRUNNER_HOLD_BREAK=1` — the same at the first encounter the
 //!   person's rig can break the whole of, so the screenshot catches the
 //!   routes under the prompt, each with its price.
+//! - `NETRUNNER_HOLD_STACK=<n>` — the Corp's autoplay installs into its
+//!   deepest remote whenever the engine offers it (or makes one, before
+//!   there is any), and stops once a server holds `n` cards, so the
+//!   screenshot catches a column folded to its strips and its "+N".
+//!   Seat the Corp: `NETRUNNER_GAME=corp`, and give it room
+//!   (`NETRUNNER_AUTOPLAY=200`).
 //! - `NETRUNNER_HOLD_TROJAN=1` — the autoplay hosts a Trojan on ice
 //!   whenever the engine offers it (Botulus, Tranquilizer,
 //!   Chromatophores), and stops once one is hosted, so the screenshot
@@ -256,6 +264,8 @@ pub struct Dev {
     pub hold_break: bool,
     /// Host a Trojan whenever one can be, and stop once one is hosted.
     pub hold_trojan: bool,
+    /// `NETRUNNER_HOLD_STACK`: the cards a server must hold to stop.
+    pub hold_stack: Option<usize>,
     /// Stop the autoplay at the first card's "you may" the pop-up offers
     /// to answer for good (`netrunner_client::standing`).
     pub hold_may: bool,
@@ -320,6 +330,7 @@ impl Dev {
             hold_access: std::env::var_os("NETRUNNER_HOLD_ACCESS").is_some_and(|v| !v.is_empty()),
             hold_break: std::env::var_os("NETRUNNER_HOLD_BREAK").is_some_and(|v| !v.is_empty()),
             hold_trojan: std::env::var_os("NETRUNNER_HOLD_TROJAN").is_some_and(|v| !v.is_empty()),
+            hold_stack: std::env::var("NETRUNNER_HOLD_STACK").ok().and_then(|v| v.trim().parse().ok()),
             hold_may: std::env::var_os("NETRUNNER_HOLD_MAY").is_some_and(|v| !v.is_empty()),
             hold_run_pass: std::env::var("NETRUNNER_HOLD_RUN_PASS").ok().filter(|v| !v.is_empty()).map(|v| v.trim() == "on"),
             sheet: std::env::var_os("NETRUNNER_SHEET").is_some_and(|v| !v.is_empty()),
@@ -335,7 +346,7 @@ impl Dev {
                     "archives" => Target::Server(ServerId::Archives),
                     "heap" => Target::Pile(Pile::Heap),
                     "hq" => Target::Server(ServerId::Hq),
-                    _ => return None,
+                    remote => Target::Server(ServerId::Remote(remote.strip_prefix("remote")?.parse().ok()?)),
                 };
                 Some((target, card))
             }),

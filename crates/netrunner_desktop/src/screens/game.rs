@@ -34,15 +34,16 @@
 //! timing chart, `board::timing`), the Runner's identity while a
 //! run is on (or the ICE, while the run encounters one), the rail and
 //! the log. The opponent's side is
-//! drawn at `layout::OPPONENT_SCALE` of the person's own. The Corp's
-//! servers are the area that grows: each a column with its plate on the
-//! Corp's edge of the table and its ICE as tiles out toward the Runner —
-//! bars rather than rotated cards, since a rotated `UiTransform` is laid
-//! out as its unrotated box and would overlap its neighbours — sharing
-//! the ICE field's height (`layout::tile_stack`). The Runner's rig is one
-//! row of three groups in a row reserved whether or not anything is in
-//! it, with the stack and the heap as buttons in the
-//! Runner's strip. The rail is the prompt (`board::Prompt`, the card's
+//! drawn at `layout::OPPONENT_SCALE` of the person's own. Each of the
+//! Corp's servers is a column with its plate on the Corp's edge of the
+//! table and its ICE as strips out toward the Runner — bars rather than
+//! rotated cards, since a rotated `UiTransform` is laid out as its
+//! unrotated box and would overlap its neighbours — a fixed number of
+//! them, with a "+N" strip for what does not fit and the whole server in
+//! its stack sheet (`layout::ServerWindow`). The Runner's rig is three
+//! rows reserved whether or not anything is in them, taking the height
+//! the window has spare, with the stack and the heap on the Runner's
+//! avatar bar. The rail is the prompt (`board::Prompt`, the card's
 //! own words), the decisions the prompt is asking
 //! (`ActionMap::decisions`), the flat panel if the play helper is on,
 //! and the log if the play history is. Everything under the board root
@@ -175,6 +176,9 @@ impl Plugin for GamePlugin {
             // The avatars' crops, on their own line for the same reason:
             // what they fill is read by the next redraw, whenever it is.
             .add_systems(Update, crop_avatars.run_if(in_state(AppScreen::Game)))
+            // A stack sheet's keys: nothing else on the board reads an
+            // arrow, so it needs no place in the chain.
+            .add_systems(Update, scroll_stack.run_if(in_state(AppScreen::Game)))
             // Likewise its own line: it reads what the chain wrote and
             // orders against none of it, and a menu placed a frame late
             // is a menu that was on the window the whole time.
@@ -201,6 +205,8 @@ pub enum Click {
     Control(Control),
     /// A face in a zone sheet: read the card over the sheet.
     Inspect(CardId),
+    /// A column's "+N" strip: the server's stack sheet.
+    Stack(ServerId),
     /// A row of a list sheet (the score area): open or close its details.
     Expand(usize),
     /// The gear.
@@ -244,6 +250,19 @@ pub struct Board;
 /// A server's column, for a test that reads what a column holds.
 #[derive(Component)]
 pub struct ServerColumn(pub ServerId);
+
+/// A stack sheet's scrolling list, for the keys that scroll it.
+#[derive(Component)]
+pub struct StackScroll;
+
+/// A row of a stack sheet: the card it is about, for a test that reads
+/// the order.
+#[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
+pub struct StackRow(pub InstallId);
+
+/// A column's "+N" strip: the cards of the server it has no strip for.
+#[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
+pub struct MoreStrip(pub ServerId);
 
 /// A server's plate, on the Corp's edge of its column: the box its name
 /// and its picture sit in.
@@ -516,14 +535,17 @@ pub struct BoardFit {
     pub window: Vec2,
     /// The chair the width was computed for.
     pub chair: Side,
-    /// The ICE field's height at this width: what the fixed rows leave.
-    pub field: f32,
+    /// What the window has over the fixed rows at this width
+    /// (`layout::spare_height`): the rig's rows grow into it.
+    pub spare: f32,
+    /// How many strips a server column shows (`layout::server_slots`).
+    pub slots: usize,
 }
 
 impl Default for BoardFit {
     fn default() -> Self {
         // The headless tests' window: no `Window` exists there.
-        Self { face: 0.0, window: Vec2::new(1280.0, 800.0), chair: Side::Runner, field: 0.0 }
+        Self { face: 0.0, window: Vec2::new(1280.0, 800.0), chair: Side::Runner, spare: 0.0, slots: layout::server_slots(800.0) }
     }
 }
 
@@ -635,7 +657,8 @@ pub(crate) fn fit(windows: Query<&Window, With<PrimaryWindow>>, model: Option<Re
         fit.face = face;
         fit.window = window;
         fit.chair = model.0.side;
-        fit.field = layout::field_height(window.y, face, counts);
+        fit.spare = layout::spare_height(window.y, face, counts);
+        fit.slots = layout::server_slots(window.y);
         dirty.board = true;
         // The pop-up is sized from the window too — capped at it, with
         // the cards drawn in what its words leave — so a resize has to
@@ -1174,6 +1197,7 @@ fn autoplay(
     }) || (dev.hold_break && !model.0.breaks.is_empty())
         || (dev.hold_ice && model.0.encounter().is_some())
         || (dev.hold_trojan && model.0.view.as_ref().is_some_and(|view| view.runner.rig.iter().any(netrunner_client::board::rig::is_ghost)))
+        || dev.hold_stack.is_some_and(|n| model.0.view.as_ref().is_some_and(|view| view.corp.servers.iter().any(|s| s.ice.len() + s.root.len() >= n)))
         || (dev.hold_may && model.0.optional_prompt().is_some())
         || (dev.hold_run_pass.is_some() && model.0.run_pass_label().is_some());
     if held && dev.hold_run_pass == Some(true) {
@@ -1206,6 +1230,15 @@ fn autoplay(
         // A Trojan hosted the moment one can be: still a listed entry,
         // taken ahead of the wandering pick.
         .or_else(|| dev.hold_trojan.then(|| entries.iter().position(|entry| matches!(entry.action, PlayerAction::InstallProgramOnIce { .. }))).flatten())
+        // A deep remote: an install into the deepest one the Corp has,
+        // else into any remote (a new one, before there is any).
+        .or_else(|| {
+            dev.hold_stack?;
+            let view = model.0.view.as_ref()?;
+            let deepest = view.corp.servers.iter().filter(|s| matches!(s.server, ServerId::Remote(_))).max_by_key(|s| s.ice.len() + s.root.len()).map(|s| s.server);
+            let into = |wanted: Option<ServerId>| entries.iter().position(|entry| matches!(entry.action, PlayerAction::InstallCard { zone, .. } if matches!(zone, ServerId::Remote(_)) && wanted.is_none_or(|w| w == zone)));
+            into(deepest).or_else(|| deepest.is_none().then(|| into(None)).flatten())
+        })
         .unwrap_or(model.0.applied % entries.len());
     pending.0.push(Intent::Choose(index));
 }
@@ -1315,6 +1348,26 @@ fn board_click(
         _ => None,
     });
     let menu_open = model.0.menu.is_some();
+    // A face in a sheet reads large on either button: a secondary click
+    // is how a card is read everywhere else, and a sheet's face has no
+    // menu for the primary one to open.
+    let sheet_face = targets.iter().find_map(|(interaction, click)| match (interaction, click) {
+        (Interaction::Hovered | Interaction::Pressed, Click::Inspect(card)) => Some(card.clone()),
+        _ => None,
+    });
+    if secondary && let Some(card) = sheet_face {
+        pending.0.push(Intent::InspectCard(Some(card)));
+        return;
+    }
+    // A column's "+N" strip is the server's stack on either button.
+    let stack = targets.iter().find_map(|(interaction, click)| match (interaction, click) {
+        (Interaction::Hovered | Interaction::Pressed, Click::Stack(server)) => Some(*server),
+        _ => None,
+    });
+    if secondary && let Some(server) = stack {
+        pending.0.push(Intent::InspectStack(server));
+        return;
+    }
     if secondary {
         match hovered {
             Some(target) => pending.0.push(Intent::Inspect(target)),
@@ -1566,6 +1619,8 @@ pub(crate) fn controls(
             Ok(Click::Remember(answer)) => intents.push(Intent::Remember(*answer)),
             Ok(Click::Control(control)) => intents.push(Intent::Control(*control)),
             Ok(Click::Inspect(card)) => intents.push(Intent::InspectCard(Some(card.clone()))),
+            Ok(Click::Stack(_)) if modifier => {}
+            Ok(Click::Stack(server)) => intents.push(Intent::InspectStack(*server)),
             Ok(Click::Expand(row)) => intents.push(Intent::Expand(*row)),
             Ok(Click::Options) => intents.push(Intent::ToggleOptions),
             Ok(Click::Timing) => intents.push(Intent::ToggleTiming),
@@ -1891,11 +1946,11 @@ fn spawn_board(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCo
     // far area, the near area, the control bar, the person's avatar bar
     // over their hand. The opponent's hand is not drawn: a row of backs
     // said only how many they hold, which the Runner's Grip readout and
-    // the Corp's HQ header say, and its height is the cards'. The Corp's servers
-    // are always the area that grows (`layout::field_height`), with their
-    // plates on the Corp's edge; the rig's row is reserved at its size
-    // whether or not anything is in it, so nothing installed moves the
-    // middle. Each edge is one row of the board — the person's a column
+    // the Corp's HQ header say, and its height is the cards'. A server
+    // column is a fixed number of strips (`layout::ServerWindow`), with
+    // its plate on the Corp's edge; the rig's rows are reserved at their
+    // size whether or not anything is in them and take the height the
+    // window has spare, so nothing installed moves the middle. Each edge is one row of the board — the person's a column
     // of their bar and their hand, no gap between them — so the board's
     // gaps are as they were.
     parent.spawn(strip_row()).with_children(|edge| spawn_avatar_bar(edge, theme, core, crops, art, game, view, opponent, fit));
@@ -1904,8 +1959,8 @@ fn spawn_board(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCo
     control_bar(parent, game);
     // The person's edge is the board's last row and sits on the window's
     // bottom edge: the hand's peek touches it, as the opponent's bar
-    // touches the top, and whatever height the rows leave goes to the ICE
-    // field between them rather than under the hand. The hand comes
+    // touches the top, and whatever height the rows leave is the middle
+    // of the table's rather than under the hand. The hand comes
     // after the bar, so a card lifted out of it is drawn over the bar.
     parent.spawn(strip_row()).with_children(|edge| {
         spawn_avatar_bar(edge, theme, core, crops, art, game, view, human, fit);
@@ -2414,9 +2469,9 @@ fn spawn_readouts(parent: &mut ChildSpawnerCommands, theme: &Theme, art: Option<
 /// Its width is the row's, overlap included, and it has to be said: a
 /// clipping node contributes nothing to its parent's size, so left to
 /// the layout the window was as wide as the "Your hand" label over it.
-fn peek_window(size: FaceSize, n: usize, available: f32) -> Node {
+fn peek_window(size: FaceSize, n: usize, available: f32, depth: f32) -> Node {
     let width = if n == 0 { 0.0 } else { layout::step(n, size.width(), layout::CARD_GAP, available) * (n - 1) as f32 + size.width() };
-    Node { width: px(width), height: px((layout::PEEK * size.height()).round()), flex_shrink: 0.0, flex_direction: FlexDirection::Column, overflow: Overflow::clip(), ..default() }
+    Node { width: px(width), height: px(depth), flex_shrink: 0.0, flex_direction: FlexDirection::Column, overflow: Overflow::clip(), ..default() }
 }
 
 /// A side's board: the Corp's servers, or the Runner's rig.
@@ -2449,22 +2504,24 @@ fn spawn_servers(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &Client
     let run = view.active_run.as_ref();
     let encountered = run.filter(|r| matches!(r.phase, RunPhase::ApproachIce | RunPhase::EncounterIce)).and_then(|r| r.ice.get(r.position)).map(|i| i.install_id);
     let size = fit.size_of(Side::Corp);
-    // Every column's tiles share one height, sized by the tallest: a
-    // row of columns whose tiles differed by column read as a bar chart.
-    let pieces = servers.iter().map(|s| s.ice.len() + s.root.len()).max().unwrap_or(0);
-    let stack = layout::tile_stack(fit.field, pieces, size.width());
-    // The area is the one row that grows: its columns span the ICE field
-    // and end in their plates on the Corp's edge of the table. It is also
-    // the table an event or an operation is dropped on, around and
-    // between the columns, which take the drop only for what installs
-    // into them.
-    let mut area_node = parent.spawn((Node { flex_direction: FlexDirection::Column, flex_grow: 1.0, min_height: px(0), ..default() }, DropPlace::one(Target::Table)));
+    // Every column is the same fixed number of strips, each the same
+    // height (`layout::ServerWindow`): a row of columns whose strips
+    // differed by column read as a bar chart, and a column that grew with
+    // its ICE moved the rig.
+    let height = layout::tile_height(size.width());
+    let stack_height = layout::stack_height(size.width(), fit.slots);
+    // The area takes what the rows leave over — the middle of the table,
+    // once the rig's rows have grown to their cap — and its columns sit
+    // on the Corp's edge of it, plates nearest the Corp. It is also the
+    // table an event or an operation is dropped on, around and between
+    // the columns, which take the drop only for what installs into them.
+    let near_the_corp = if game.side == Side::Corp { JustifyContent::FlexEnd } else { JustifyContent::FlexStart };
+    let mut area_node = parent.spawn((Node { flex_direction: FlexDirection::Column, flex_grow: 1.0, min_height: px(0), justify_content: near_the_corp, ..default() }, DropPlace::one(Target::Table)));
     welcome(&mut area_node, theme, places.contains(&Target::Table));
     area_node.with_children(|area| {
         section_label(area, theme, "Servers");
         let mut row_node = card_row();
-        row_node.flex_grow = 1.0;
-        row_node.min_height = px(0);
+        row_node.flex_shrink = 0.0;
         row_node.align_items = AlignItems::Stretch;
         area.spawn(row_node).with_children(|row| {
             for server in &servers {
@@ -2491,8 +2548,8 @@ fn spawn_servers(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &Client
                         min_width: px(size.width() + 2.0 * layout::SERVER_CHROME - 2.0),
                         ..default()
                     },
-                    // Mostly translucent: the column spans the whole ICE
-                    // field now, and an opaque one walled the table off.
+                    // Mostly translucent, so the table shows through
+                    // between the strips.
                     BackgroundColor(theme.panel.with_alpha(0.45)),
                     BorderColor::all(border),
                     widgets::Dressed::still(slot, Drawn::new(theme.panel.with_alpha(0.45), border)),
@@ -2504,33 +2561,49 @@ fn spawn_servers(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &Client
                     // Plate, root and ice in the chair's order
                     // (`layout::column_top_down`): the plate nearest the
                     // Corp, the ice out toward the Runner, outermost
-                    // nearest. The root and the ice share the stack, which
-                    // takes the field's height and is pinned to the plate.
-                    let mut tiles = Vec::new();
+                    // nearest. The root and the ice share the stack, a
+                    // fixed `slots` strips tall; what does not fit is the
+                    // "+N" strip, between the root and the ICE shown —
+                    // where the hidden inner ICE would be — and the whole
+                    // server is its stack sheet.
+                    let approached = encountered.and_then(|id| server.ice.iter().position(|ice| ice.install_id == id));
+                    let shown = layout::ServerWindow::of(server.ice.len(), server.root.len(), root_lead(core, server), fit.slots, approached);
                     let pieces = layout::column_top_down(game.side);
                     let stack_node = Node {
                         flex_direction: FlexDirection::Column,
-                        flex_grow: 1.0,
-                        min_height: px(0),
+                        flex_shrink: 0.0,
+                        height: px(stack_height),
+                        row_gap: px(layout::TILE_GAP),
                         align_items: AlignItems::Center,
                         justify_content: if game.side == Side::Corp { JustifyContent::FlexEnd } else { JustifyContent::FlexStart },
                         overflow: Overflow::clip(),
                         ..default()
                     };
-                    let mut spawn_stack = |column: &mut ChildSpawnerCommands| {
+                    let spawn_stack = |column: &mut ChildSpawnerCommands| {
                         column.spawn(stack_node.clone()).with_children(|stack_parent| {
+                            let more = |stack_parent: &mut ChildSpawnerCommands| {
+                                if shown.hidden > 0 {
+                                    spawn_more_strip(stack_parent, theme, server.server, shown.hidden, size, height);
+                                }
+                            };
                             for piece in pieces {
                                 match piece {
                                     layout::Piece::Header => {}
-                                    layout::Piece::Ice => tiles.extend(spawn_server_ice(stack_parent, theme, core, art, game, view, server, game.side, encountered, lit, size, stack.0, depth)),
-                                    layout::Piece::Root => tiles.extend(spawn_server_root(stack_parent, theme, core, art, game, view, server, lit, size, stack.0, depth)),
+                                    layout::Piece::Ice => {
+                                        // The "+N" strip is on the root's
+                                        // side of the ICE shown: under it
+                                        // from the Corp's chair, over it
+                                        // from the Runner's.
+                                        if game.side == Side::Runner {
+                                            more(stack_parent);
+                                        }
+                                        spawn_server_ice(stack_parent, theme, core, art, game, view, server, &shown.ice, game.side, encountered, lit, size, height, depth);
+                                        if game.side == Side::Corp {
+                                            more(stack_parent);
+                                        }
+                                    }
+                                    layout::Piece::Root => spawn_server_root(stack_parent, theme, core, art, game, view, server, &shown.root, lit, size, height, depth),
                                 }
-                            }
-                            // Pulled together by the stack's advance: its
-                            // natural gap while they fit, overlapping past it.
-                            let gap = stack.1 - stack.0;
-                            for tile in tiles.iter().skip(1) {
-                                stack_parent.commands().entity(*tile).entry::<Node>().and_modify(move |mut node| node.margin.top = px(gap));
                             }
                         });
                     };
@@ -2661,10 +2734,11 @@ struct Hosted {
 /// A tile in a server column — an ice or a root card: a picture of what
 /// kind of card it is (`board_art`: a face-down card, a barrier, an
 /// asset…) behind the title when it may be named, its tokens as badges,
-/// and a border in the card's faction colour when it is rezzed. A click
-/// opens the card's menu and a secondary click its sheet; the card's own
-/// picture is read there, not here, so a column is tiles `height` tall
-/// (`layout::tile_stack`) and never a face.
+/// and a frame lit in its kind's colour (`Theme::tile`: gold for a
+/// barrier, blue for a code gate, red for a sentry, grey face down). A
+/// click opens the card's menu and a secondary click its sheet; the
+/// card's own picture is read there, not here, so a column is strips
+/// `layout::tile_height` tall and never a face.
 #[allow(clippy::too_many_arguments)]
 fn spawn_tile(column: &mut ChildSpawnerCommands, theme: &Theme, art: Option<&BoardArt>, look: TileLook, install: InstallId, lit: bool, size: FaceSize, height: f32, slot: Slot, mood: Option<Affordance>, depth: Depth) -> Entity {
     let width = size.width() + 4.0;
@@ -2677,8 +2751,8 @@ fn spawn_tile(column: &mut ChildSpawnerCommands, theme: &Theme, art: Option<&Boa
             width: px(width),
             height: px(height),
             flex_shrink: 0.0,
-            flex_direction: if look.hosted.is_empty() { FlexDirection::Row } else { FlexDirection::Column },
-            row_gap: px(2),
+            flex_direction: FlexDirection::Row,
+            column_gap: px(4),
             align_items: AlignItems::Center,
             justify_content: JustifyContent::Center,
             overflow: Overflow::clip(),
@@ -2695,17 +2769,30 @@ fn spawn_tile(column: &mut ChildSpawnerCommands, theme: &Theme, art: Option<&Boa
     ));
     tile.with_children(|tile| {
         if let Some(picture) = art.and_then(|art| art.get(look.key)) {
-            tile.spawn((TileArt(look.key), board_art::backdrop(picture, Vec2::new(width - 2.0, height - 2.0), look.colour)));
+            tile.spawn((TileArt(look.key), board_art::strip(picture, Vec2::new(width - 2.0, height - 2.0), look.colour)));
         }
         // The words on a band, so they read over any picture; the badges
         // beside them at the tile's text size.
         let text_size = size::SMALL - 3.0;
+        // Never wider than the strip, and clipped at its right: a band
+        // wider than a narrow column was centred, and lost the start of
+        // the name as well as the end of the state.
         tile.spawn((
-            Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(6), padding: UiRect::axes(px(6), px(1)), border_radius: BorderRadius::all(px(3)), ..default() },
+            Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(6), padding: UiRect::axes(px(6), px(1)), border_radius: BorderRadius::all(px(3)), max_width: percent(100), min_width: px(0), flex_shrink: 1.0, overflow: Overflow::clip(), ..default() },
             BackgroundColor(theme.panel.with_alpha(0.7)),
         ))
         .with_children(|band| {
-            band.spawn((Text::new(look.title), theme.font(text_size), TextColor(look.text_colour)));
+            // One line, never wrapped: a strip is `layout::tile_height`
+            // tall, and a narrow column (a server is ~105 px from the
+            // Runner's chair at 1366 × 768) wrapped "Manegarm Skunkworks
+            // · rezzed" into three lines the strip clipped. Unwrapped, the
+            // name reads first and what the column cuts off is the state,
+            // which the frame's colour says too.
+            // In a box of its own that clips: a text node does not clip its
+            // own glyphs, and the words ran under the badges beside them.
+            band.spawn(Node { flex_shrink: 1.0, min_width: px(0), overflow: Overflow::clip(), ..default() }).with_children(|words| {
+                words.spawn((Text::new(look.title), theme.font(text_size), TextColor(look.text_colour), TextLayout::no_wrap()));
+            });
             for token in &look.tokens {
                 spawn_badge(band, theme, art, token, (height - 8.0).clamp(12.0, 18.0), text_size, look.text_colour);
             }
@@ -2713,9 +2800,9 @@ fn spawn_tile(column: &mut ChildSpawnerCommands, theme: &Theme, art: Option<&Boa
         // A Trojan sits on its ice: a button inside the tile's, whose
         // `FocusPolicy::Block` (a `Button`'s) keeps the press and the
         // hover from the tile, so a click on it is the Trojan's menu and
-        // a secondary click its sheet. On a line of its own under the
-        // band, so the ice's title keeps the band's width, and inside the
-        // tile, which is still the height `layout::tile_stack` gave it.
+        // a secondary click its sheet. Beside the band on the strip's one
+        // line: a strip is `layout::tile_height` tall, which has no room
+        // for a second.
         if look.hosted.is_empty() {
             return;
         }
@@ -2757,19 +2844,19 @@ fn spawn_tile(column: &mut ChildSpawnerCommands, theme: &Theme, art: Option<&Boa
 /// with its tokens as badges (`facts::tile_tokens`) and the run's
 /// marker on the piece being approached.
 #[allow(clippy::too_many_arguments)]
-fn spawn_server_ice(column: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore, art: Option<&BoardArt>, game: &Game, view: &ClientView, server: &ServerView, chair: Side, encountered: Option<InstallId>, lit: &Lit, size: FaceSize, height: f32, depth: Depth) -> Vec<Entity> {
-    let mut tiles = Vec::new();
-    for ice in layout::ice_top_down(&server.ice, chair) {
+fn spawn_server_ice(column: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore, art: Option<&BoardArt>, game: &Game, view: &ClientView, server: &ServerView, shown: &std::ops::Range<usize>, chair: Side, encountered: Option<InstallId>, lit: &Lit, size: FaceSize, height: f32, depth: Depth) {
+    for ice in layout::ice_top_down(&server.ice[shown.clone()], chair) {
         let def = ice.card.as_ref().and_then(|id| core.registry.get(id));
         let kind = def.and_then(|d| match &d.card_type {
             CardType::Ice(kind) => Some(*kind),
             _ => None,
         });
+        let key = board_art::ice_key(ice.rezzed, kind);
         let look = TileLook {
             title: facts::tile_title(view, ice.install_id, &core.registry),
             tokens: facts::tile_tokens(view, ice.install_id, &core.registry),
-            key: board_art::ice_key(ice.rezzed, kind),
-            colour: if ice.rezzed { theme.faction(def.and_then(|c| c.faction)) } else { theme.corp.with_alpha(0.5) },
+            key,
+            colour: theme.tile(key),
             text_colour: if ice.rezzed { theme.text } else { theme.text_dim },
             hosted: netrunner_client::board::rig::hosted_on(view, ice.install_id)
                 .into_iter()
@@ -2787,45 +2874,85 @@ fn spawn_server_ice(column: &mut ChildSpawnerCommands, theme: &Theme, core: &Cli
         };
         let is_lit = encountered == Some(ice.install_id) || lit.installs.contains(&ice.install_id);
         let slot = if ice.rezzed { Slot::TileRezzed } else { Slot::TileUnrezzed };
-        tiles.push(spawn_tile(column, theme, art, look, ice.install_id, is_lit, size, height, slot, game.affordance_for(&Target::Install(ice.install_id)), depth));
+        spawn_tile(column, theme, art, look, ice.install_id, is_lit, size, height, slot, game.affordance_for(&Target::Install(ice.install_id)), depth);
     }
-    tiles
 }
 
 /// The cards in a server's root as tiles, titled by
 /// `board::facts::tile_title`: rezzed or unrezzed for an asset or an
 /// upgrade, the title alone for an agenda the viewer knows, `face down`
 /// for a card the viewer cannot name — with its advancement (public) and
-/// counters as badges. An agenda's border is its faction's: it has no rez
-/// to wait for.
+/// counters as badges. An agenda is lit face up: it has no rez to wait
+/// for.
 #[allow(clippy::too_many_arguments)]
-fn spawn_server_root(column: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore, art: Option<&BoardArt>, game: &Game, view: &ClientView, server: &ServerView, lit: &Lit, size: FaceSize, height: f32, depth: Depth) -> Vec<Entity> {
-    let mut tiles = Vec::new();
-    for card in &server.root {
+fn spawn_server_root(column: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore, art: Option<&BoardArt>, game: &Game, view: &ClientView, server: &ServerView, shown: &[usize], lit: &Lit, size: FaceSize, height: f32, depth: Depth) {
+    for card in shown.iter().filter_map(|&i| server.root.get(i)) {
         let def = card.card.as_ref().and_then(|id| core.registry.get(id));
         let face_up = card.rezzed || def.is_some_and(|d| d.card_type == CardType::Agenda);
+        let key = board_art::root_key(face_up, def.map(|d| &d.card_type));
         let look = TileLook {
             title: facts::tile_title(view, card.install_id, &core.registry),
             tokens: facts::tile_tokens(view, card.install_id, &core.registry),
-            key: board_art::root_key(face_up, def.map(|d| &d.card_type)),
-            colour: if face_up { theme.faction(def.and_then(|c| c.faction)) } else { theme.corp.with_alpha(0.5) },
+            key,
+            colour: theme.tile(key),
             text_colour: if face_up { theme.text } else { theme.text_dim },
             hosted: Vec::new(),
         };
         let slot = if face_up { Slot::TileRezzed } else { Slot::TileUnrezzed };
-        tiles.push(spawn_tile(column, theme, art, look, card.install_id, lit.installs.contains(&card.install_id), size, height, slot, game.affordance_for(&Target::Install(card.install_id)), depth));
+        spawn_tile(column, theme, art, look, card.install_id, lit.installs.contains(&card.install_id), size, height, slot, game.affordance_for(&Target::Install(card.install_id)), depth);
     }
-    tiles
+}
+
+/// The root card a column folded to one strip shows: its asset or
+/// agenda, the card the server is there to protect, else its first card
+/// — an upgrade, or a card the viewer cannot name.
+fn root_lead(core: &ClientCore, server: &ServerView) -> usize {
+    server
+        .root
+        .iter()
+        .position(|card| card.card.as_ref().and_then(|id| core.registry.get(id)).is_some_and(|def| matches!(def.card_type, CardType::Asset | CardType::Agenda)))
+        .unwrap_or(0)
+}
+
+/// The "+N" strip: the cards of a server its column has no strip for,
+/// counted, and the door to the whole server in run order (the stack
+/// sheet) on either button. A strip's size and a quiet look, so a column
+/// reads as the same stack of strips with one of them a count.
+fn spawn_more_strip(column: &mut ChildSpawnerCommands, theme: &Theme, server: ServerId, hidden: usize, size: FaceSize, height: f32) {
+    column
+        .spawn((
+            Button,
+            widgets::Themed,
+            MoreStrip(server),
+            Click::Stack(server),
+            Node {
+                width: px(size.width() + 4.0),
+                height: px(height),
+                flex_shrink: 0.0,
+                align_items: AlignItems::Center,
+                justify_content: JustifyContent::Center,
+                border: UiRect::all(px(1)),
+                border_radius: BorderRadius::all(px(4)),
+                ..default()
+            },
+            BackgroundColor(theme.button),
+            BorderColor::all(theme.panel_border),
+            widgets::Dressed::button(theme, Slot::TileUnrezzed, Drawn::new(theme.button, theme.panel_border)),
+        ))
+        .with_children(|strip| {
+            strip.spawn((Text::new(format!("+{hidden} more")), theme.font(size::SMALL - 1.0), TextColor(theme.text), Pickable::IGNORE));
+        });
 }
 
 /// The rig as three rows — programs, hardware, resources — in the order
 /// the chair sees the table (`netrunner_client::board::rig::rows_top_down`: programs the row
-/// nearest the ICE), each the top `layout::PEEK` of its cards over their
-/// chip line, overlapped by `layout::step` when a row would not fit
-/// across. Drawn at the Runner's side of the table's size — full from the
-/// Runner's chair, `layout::OPPONENT_SCALE` from the Corp's — with every
-/// row reserved at `layout::rig_row_height` whether or not anything is in
-/// it, so the first install moves nothing. A row's label sits at its left
+/// nearest the ICE), each the top of its cards — `layout::PEEK` of a
+/// card, deeper when the window has height to spare — over their chip
+/// line, overlapped by `layout::step` when a row would not fit across.
+/// Drawn at the Runner's side of the table's size — full from the
+/// Runner's chair, `layout::OPPONENT_RIG_SCALE` from the Corp's — with
+/// every row reserved at `layout::rig_row_height` whether or not anything
+/// is in it, so the first install moves nothing. A row's label sits at its left
 /// rather than over it: the rig has width to spare and no height.
 ///
 /// **A row is a row of stacks** (`netrunner_client::board::rig::stacked`):
@@ -2837,13 +2964,16 @@ fn spawn_server_root(column: &mut ChildSpawnerCommands, theme: &Theme, core: &Cl
 #[allow(clippy::too_many_arguments)]
 fn spawn_rig(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore, images: &CardImages, art: Option<&BoardArt>, game: &Game, view: &ClientView, lit: &Lit, fit: &BoardFit, depth: Depth) {
     let size = fit.size_of(Side::Runner);
-    let row_height = layout::rig_row_height(fit.area_face(Side::Runner));
+    let row_height = layout::rig_row_height(fit.area_face(Side::Runner), fit.spare);
+    // The peek is the row less its chip line: a third of a card at least,
+    // more when the window has the height.
+    let peek = row_height - layout::CHIPS;
     let available = fit.board_width() - layout::RIG_LABEL_WIDTH;
     // The rig is where a Runner install is dropped, and part of the table
     // an event is dropped on.
     let places = game.drop_places();
     let mut rig = parent.spawn((
-        Node { flex_direction: FlexDirection::Column, flex_shrink: 0.0, row_gap: px(layout::RIG_ROW_GAP), height: px(layout::rig_height(fit.area_face(Side::Runner))), overflow: Overflow::clip(), ..default() },
+        Node { flex_direction: FlexDirection::Column, flex_shrink: 0.0, row_gap: px(layout::RIG_ROW_GAP), height: px(layout::rig_height(fit.area_face(Side::Runner), fit.spare)), overflow: Overflow::clip(), ..default() },
         DropPlace(vec![Target::Rig, Target::Table]),
     ));
     welcome(&mut rig, theme, places.contains(&Target::Rig) || places.contains(&Target::Table));
@@ -2855,7 +2985,7 @@ fn spawn_rig(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore
             area.spawn((Node { flex_direction: FlexDirection::Row, flex_shrink: 0.0, height: px(row_height), ..default() },)).with_children(|row| {
                 row.spawn((widgets::dim(theme, wanted.label()), Node { width: px(layout::RIG_LABEL_WIDTH), flex_shrink: 0.0, ..default() }));
                 row.spawn((Node { flex_direction: FlexDirection::Column, flex_shrink: 0.0, ..default() },)).with_children(|column| {
-                    column.spawn(peek_window(size, cards.len(), available)).with_children(|window| {
+                    column.spawn(peek_window(size, cards.len(), available, peek)).with_children(|window| {
                         window.spawn(card_row()).with_children(|cards_row| {
                             for (i, card) in cards.iter().enumerate() {
                                 let Some(def) = core.registry.get(&card.card) else { continue };
@@ -2953,7 +3083,7 @@ fn spawn_hand(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCor
         // No "Your hand · N" over it: the Runner's Grip readout is on the
         // bar and the Corp's HQ header carries the count, and the label's
         // line was height the hand's own row did not need.
-        column.spawn(peek_window(size, hand.len(), available)).with_children(|window| {
+        column.spawn(peek_window(size, hand.len(), available, (layout::PEEK * size.height()).round())).with_children(|window| {
             window.spawn(card_row()).with_children(|row| {
                 // A hand is a multiset; the first copy of a lit card is the
                 // one outlined, which is as much as a highlight can say.
@@ -4240,6 +4370,7 @@ fn spawn_overlay(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &Client
                     match (&sheet.target, game.card_of(&sheet.target)) {
                         (Target::Install(id), card) => install_sheet(panel, theme, core, images, game, *id, card.as_ref()),
                         (_, Some(id)) => card_sheet(panel, theme, core, images, &id),
+                        (Target::Server(server), None) if sheet.stack => stack_sheet(panel, theme, core, images, game, *server, window),
                         (_, None) => zone_sheet(panel, theme, core, images, game, &sheet.target, window),
                     }
                 }
@@ -4418,6 +4549,104 @@ fn install_sheet(panel: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientC
             }
         });
     });
+}
+
+/// A server's stack: every card in it, in the order a run meets them —
+/// its ICE outermost first, then its root — whatever its column had room
+/// to show (`layout::ServerWindow`). A row is the card (its back, for one
+/// the viewer cannot name) beside its tile's title and its state
+/// (`board::facts::install_facts`: where it sits in the order, rezzed or
+/// not, strength, tokens, what it hosts), because the order and the state
+/// are what a column of strips cannot say and a card's face cannot
+/// either. It scrolls — a high-glacier remote is ten cards — by the wheel,
+/// its bar and the keys (`scroll_stack`); a card reads large over it, and
+/// Escape or a click away comes back. The same top-down order from both
+/// chairs: it is a list to read down, not the table seen from a seat.
+fn stack_sheet(panel: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore, images: &CardImages, game: &Game, server: ServerId, window: Vec2) {
+    let Some(view) = &game.view else { return };
+    panel.spawn(widgets::heading(theme, server_name(server)));
+    let Some(contents) = view.corp.servers.iter().find(|s| s.server == server).filter(|s| !s.ice.is_empty() || !s.root.is_empty()) else {
+        panel.spawn(widgets::dim(theme, "Nothing installed"));
+        return;
+    };
+    let count = contents.ice.len() + contents.root.len();
+    panel.spawn(widgets::dim(theme, format!("{count} card{} · outermost ICE first, down to the root", if count == 1 { "" } else { "s" })));
+    let size = FaceSize::Board(layout::PILE_FACE as u16);
+    let row = |column: &mut ChildSpawnerCommands, install: &netrunner_core::rules::PublicInstalledCard| {
+        column.spawn((StackRow(install.install_id), Node { flex_direction: FlexDirection::Row, column_gap: px(16), align_items: AlignItems::FlexStart, flex_shrink: 0.0, ..default() })).with_children(|row| {
+            match install.card.as_ref().and_then(|id| core.registry.get(id).map(|def| (id, def))) {
+                Some((id, def)) => {
+                    let image = def.numeric_id.and_then(|code| images.face(code, size));
+                    spawn_face(row, theme, &Face::of(def), size, image, (Button, Click::Inspect(id.clone())));
+                }
+                None => {
+                    spawn_back(row, theme, images.back(Side::Corp), Side::Corp, size, ());
+                }
+            }
+            row.spawn(Node { flex_grow: 1.0, min_width: px(0), flex_direction: FlexDirection::Column, row_gap: px(6), ..default() }).with_children(|facts_column| {
+                let title = match &install.card {
+                    Some(_) => facts::tile_title(view, install.install_id, &core.registry),
+                    None => facts::hidden_title(view, install.install_id),
+                };
+                facts_column.spawn((Text::new(title), theme.font(size::BODY), TextColor(theme.text)));
+                for line in facts::install_facts(view, install.install_id, &core.registry).unwrap_or_default() {
+                    facts_column.spawn((Text::new(line), theme.font(size::SMALL), TextColor(theme.text_dim), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
+                }
+            });
+        });
+    };
+    let scroll = panel
+        .spawn((
+            bevy::ui_widgets::ScrollArea,
+            StackScroll,
+            Node { width: percent(100), max_height: px(layout::pile_height(window.y)), flex_direction: FlexDirection::Column, row_gap: px(10), overflow: Overflow::scroll_y(), ..default() },
+        ))
+        .with_children(|column| {
+            // The engine's order is outermost first — the order a run
+            // meets them — which is the order this reads down.
+            for ice in &contents.ice {
+                row(column, ice);
+            }
+            if !contents.root.is_empty() {
+                column.spawn((widgets::label(theme, "Root"), Node { flex_shrink: 0.0, ..default() }));
+                for card in &contents.root {
+                    row(column, card);
+                }
+            }
+        })
+        .id();
+    panel.spawn((Node { width: percent(100), flex_direction: FlexDirection::Row, column_gap: px(4), ..default() },)).add_child(scroll).with_children(|row| {
+        row.spawn(widgets::scrollbar(theme, scroll));
+    });
+}
+
+/// The keys a stack sheet scrolls by — ↑ and ↓ a line, Page Up and Page
+/// Down a box, Home and End the ends — as the drop-down's list does. No
+/// key on the board means an arrow, so these ask nothing of the
+/// shortcuts, and they are read only while a stack sheet is up.
+fn scroll_stack(keys: Res<ButtonInput<KeyCode>>, mut scrolls: Query<(&mut ScrollPosition, &ComputedNode), With<StackScroll>>) {
+    const LINE: f32 = 60.0;
+    for (mut position, node) in &mut scrolls {
+        let page = node.size().y * node.inverse_scale_factor();
+        let most = ((node.content_size().y - node.size().y) * node.inverse_scale_factor()).max(0.0);
+        let y = position.y;
+        let to = if keys.just_pressed(KeyCode::ArrowDown) {
+            y + LINE
+        } else if keys.just_pressed(KeyCode::ArrowUp) {
+            y - LINE
+        } else if keys.just_pressed(KeyCode::PageDown) {
+            y + page
+        } else if keys.just_pressed(KeyCode::PageUp) {
+            y - page
+        } else if keys.just_pressed(KeyCode::Home) {
+            0.0
+        } else if keys.just_pressed(KeyCode::End) {
+            most
+        } else {
+            continue;
+        };
+        position.y = to.clamp(0.0, most);
+    }
 }
 
 /// A zone: what is in it as far as the viewer may see — its actions are

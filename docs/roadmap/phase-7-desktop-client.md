@@ -4822,6 +4822,84 @@ area is the board.
 
 **Verified.** Workspace tests green and workspace clippy silent.
 
+### 4bj. A server is a few strips and a stack sheet, its strips framed by kind, and the rig takes the height — DONE (25 September 2026)
+
+`feat/server-stacks-and-tile-frames`. Asked for after §4bi: the
+servers took more height than they needed and the rig was hard to read
+at a glance; a server can realistically hold ten cards (a high-glacier
+remote: an agenda, five ICE, four upgrades), and the person wanted a
+compact column that says there is more, an inspector that runs from
+the first ICE a Runner meets down to the root, scrolls, and reads a
+card large at a right-click — and real frames for the strips: "Corp
+blue for hidden and one for each ICE type", then, in their words,
+"Barrier (Wall): Yellow/Gold, Code Gate: Blue, Sentry: Red. Maybe the
+hidden frame is … gray?"
+
+- **The ICE field is gone.** A column is its plate and a fixed number
+  of strips: `layout::server_slots` — three below 900 px of height,
+  four below 1200, five above — each `layout::tile_height` tall (0.17
+  of the server's face, 26 to 40). The number depends on the window
+  alone, so it is a constant inside `face_width`'s search and
+  `fixed_height` stays monotone; `tile_stack`, `field_height` and
+  `ICE_FIELD_MIN` went with the overlap arithmetic.
+- **A server that does not fit folds** (`layout::ServerWindow`): one
+  strip for its root — the asset or agenda, else its first card — a
+  "+N more" strip counting the rest, and the outermost ICE, the ones a
+  run meets first. The "+N" strip sits where the hidden inner ICE would,
+  between the root and the ICE shown, from both chairs. During a run the
+  window slides inward to keep the approached ICE shown — the one time a
+  strip moves, in step with the run.
+- **The stack sheet** (`stack_sheet`, `Sheet::stack`) opens from the
+  "+N" strip on either button, and is what a secondary click on a remote
+  now opens: every card, the engine's order (outermost ICE first), a
+  "Root" divider, each card at the pile size beside its strip's title and
+  `install_facts` (where it is met, rez cost, strength, subroutines,
+  tokens). It scrolls by the wheel, its bar and ↑ ↓ Page Up/Down Home End
+  (`scroll_stack`); a secondary click (or a press) on a face reads it
+  large and Escape comes back. A central's plate still opens its pile.
+- **The rig takes the height.** `fixed_height` charges the rig at
+  `PEEK` as before, so the face is never narrower for it; what the
+  window has over the fixed rows (`layout::spare_height`) grows each rig
+  row by a third of it, up to `RIG_PEEK_MAX` (0.55) of a card, so a rig
+  card shows its art, not only its title bar. Measured against `main`
+  (5 servers): the face at 1366 × 768 is 140 → 144 in both chairs
+  (the three strips cost less than the old 96 px field floor); 220 at
+  1920 × 1080 and 2000 × 1250 as before. A rig row at 1920 × 1080 is
+  112 → 134 (Corp) and 123 → 156 (Runner); at 2000 × 1250, 112 → 172
+  and 123 → 189, both at the cap; at 1366 × 768 there is 3–4 px spare,
+  so the rig is as it was.
+- **The strips' frames** are ten painted files under the tile keys
+  `board_art` already named, 512 × 96 with 48 px end caps drawn
+  nine-sliced (`board_art::strip`), by `scripts/paint_tiles.py` in the
+  avatar bar's brushed steel: a dark channel for the words, the kind's
+  colour in the traces and the channel's edge, and a faint etch (bricks,
+  lock bars, sight rings; coins, chevrons, an advancement rail;
+  hatching face down). `Theme::tile` gives the same colours to the
+  drawn tier and the border: the person's gold, blue and red, grey face
+  down, bronze assets, teal upgrades, green agendas.
+  `theme::tests::the_strips_are_told_apart_from_the_glows` holds every
+  kind 0.10 OKLab from both glows and the accent, and the ICE kinds
+  from each other, under the three dichromacies — the first choices
+  failed it (a white "other ICE" beside the lavender glow under
+  tritanopia, a lighter blue beside it under protanopia, a green agenda
+  beside the accent), and were moved until it passed.
+- **A Trojan's chip** moves onto the strip's one line beside the ICE's
+  title: a strip has no room for a second. **A strip's words never
+  wrap**: a server is about 105 px wide from the Runner's chair at
+  1366 × 768, and "Manegarm Skunkworks · rezzed" wrapped into three lines
+  a 26 px strip clipped; now the name reads from its start and the
+  state is what is cut off (the frame's colour says it too).
+- **Dev hooks**: `NETRUNNER_HOLD_STACK=<n>` steers the Corp's autoplay
+  into its deepest remote and stops at `n` cards; `NETRUNNER_PILE` takes
+  `remote<n>` to open a remote's stack sheet.
+
+Seen on screen at 2000 × 1250 from both chairs forty decisions in, a
+four-card remote folded at 1366 × 768 (`NETRUNNER_HOLD_STACK=4`), and its
+stack sheet open; the only scroll area besides the log is the sheet.
+A ten-card server is held by `tests/game.rs` from both chairs.
+
+**Verified.** Workspace tests green and workspace clippy silent.
+
 ## 5. The deck builder — DONE (24 September 2026)
 
 `feat/desktop-deck-builder`. Asked for in one list: save and import

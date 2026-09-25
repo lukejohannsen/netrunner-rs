@@ -44,14 +44,18 @@
 //! hand or a rig, and it cost the whole board its card width. A tile
 //! opens the card's sheet when read, so nothing is lost but the picture.
 //!
-//! **The middle of the table is the ICE field, and it is the only thing
-//! that grows.** Between the plates and the rig the columns get
-//! whatever height the fixed rows leave ([`field_height`]); a tile is as
-//! tall as its share of it allows and overlaps past a floor
-//! ([`tile_stack`]), so the Corp's ICE and the Runner's installs never
-//! move a card: the rig's rows are reserved empty or not. From the Corp's
-//! chair the plates are at the bottom, next to the Corp, and the ICE
-//! climbs; from the Runner's they are at the top and it comes down.
+//! **A server column is a fixed number of strips** ([`server_slots`],
+//! each [`tile_height`] tall): every piece while they fit, and past that
+//! the root, a "+N" strip for what is hidden and the outermost ICE
+//! ([`ServerWindow`]) — the whole of the server is its stack sheet, in run
+//! order. The columns used to span an ICE field that took every spare
+//! pixel, and from the Corp's chair that was 550 px of mostly empty
+//! column over a rig shown a third of a card deep; now the spare height
+//! is the rig's ([`rig_row_height`]), so the Corp's ICE and the Runner's
+//! installs still never move a card: the strips and the rig's rows are
+//! reserved empty or not. From the Corp's chair the plates are at the
+//! bottom, next to the Corp, and the ICE climbs; from the Runner's they
+//! are at the top and it comes down.
 //!
 //! **The far side is smaller.** The opponent's area is drawn at
 //! [`OPPONENT_SCALE`] of the person's own width — the Runner sees the
@@ -64,7 +68,7 @@
 //! **There is no run lane.** A row of chips between the servers and the
 //! rig was reserved for a run until 24 September 2026, and removed at
 //! the person's request: the phase panel and the encounter panel say
-//! what it said, and its height went to the ICE field and the faces.
+//! what it said, and its height went to the faces.
 
 use netrunner_core::rules::Side;
 
@@ -109,9 +113,9 @@ pub fn ice_top_down<T>(ice: &[T], chair: Side) -> Vec<&T> {
 /// third ICE or the Runner's first install shrank every card on the
 /// board and redrew it — the middle of the table moved whenever the
 /// opponent did anything. Now the rig's rows are reserved whether or not
-/// anything is in them, and the ICE grows into the flexible field between
-/// the server plates and the rig ([`tile_stack`]), so the face
-/// width is a function of the window, the chair and the servers alone.
+/// anything is in them, and a server column is a fixed number of strips
+/// ([`ServerWindow`]), so the face width is a function of the window, the
+/// chair and the servers alone.
 /// A new remote can still narrow the cards, because server columns cannot
 /// overlap. (The phase bar was a count too, while it was a row of the
 /// board; it is a panel in the right column now and costs the cards
@@ -161,20 +165,16 @@ pub const ROW_GAP: f32 = 8.0;
 /// a card ("2 adv"), at the small text size with its leading.
 pub const LABEL: f32 = 22.0;
 pub const CHIPS: f32 = 20.0;
-/// The shortest a tile — an ice, or a card in a root — is drawn while it
-/// still has the ICE field to itself: one line of small text in a
-/// border. Past this the tiles overlap rather than shrink ([`tile_stack`]).
-pub const TILE_MIN: f32 = 24.0;
-/// The tallest a tile grows, as a fraction of its server's face width:
-/// a server with one ICE draws it as a slab, not a card, so a column
-/// never reads as a face.
-pub const TILE_MAX_SCALE: f32 = 0.3;
+/// A tile — an ice, or a card in a root — is a strip [`TILE_SCALE`] of
+/// its server's face width tall, within [`TILE_MIN`]..[`TILE_MAX`]: one
+/// line of small text over its steel frame, never a card face, so a
+/// column never reads as one. The floor is the height the frame's end
+/// caps still read at; the cap keeps a large monitor's strip a strip.
+pub const TILE_SCALE: f32 = 0.17;
+pub const TILE_MIN: f32 = 26.0;
+pub const TILE_MAX: f32 = 40.0;
 /// The gap between two tiles in a column.
 pub const TILE_GAP: f32 = 4.0;
-/// The least height the ICE field is ever given: a few tiles at their
-/// floor before any overlap. It is what the face width gives up to the
-/// field; everything above it is the field's anyway.
-pub const ICE_FIELD_MIN: f32 = 96.0;
 /// The opponent's side of the table — their area, their strip and their
 /// hand — is drawn at this fraction of the person's own card width, so
 /// the table has a near side and a far side. **A constant factor keeps
@@ -313,9 +313,14 @@ pub const PLATE_ASPECT: f32 = 9.0 / 16.0;
 /// with little on it need not fill a large monitor with card.
 pub const MIN_FACE: f32 = 72.0;
 pub const MAX_FACE: f32 = 220.0;
-/// The rig's three rows, each the top [`PEEK`] of its cards over their
+/// The rig's three rows, each at least the top [`PEEK`] of its cards —
+/// up to [`RIG_PEEK_MAX`] when the window has the height — over their
 /// chip line, with [`RIG_ROW_GAP`] between them.
 pub const RIG_ROWS: usize = 3;
+/// The most of a rig card a row shows: a little over half, the name, the
+/// cost and the art's top — the card's text is the sheet's, and a whole
+/// card was the height three rows did not have.
+pub const RIG_PEEK_MAX: f32 = 0.55;
 
 pub const RIG_ROW_GAP: f32 = 4.0;
 /// The column of row labels at the rig's left ("Programs", "Hardware",
@@ -390,64 +395,95 @@ pub fn strip_height(side: Side, chair: Side, side_face: f32) -> f32 {
     AVATAR + hand
 }
 
-/// One rig row: the top [`PEEK`] of a card at its side's face width, and
-/// the chip line under it. Measured before choosing (5 servers, the
+/// One rig row: the top of a card at its side's face width, and the chip
+/// line under it — [`PEEK`] of the card at least, and a third of `spare`
+/// more, up to [`RIG_PEEK_MAX`] of it. `spare` is what the window has
+/// over [`fixed_height`], which charges the rig at [`PEEK`]: the face
+/// width is chosen as if the rig were a third of a card deep, so a taller
+/// peek never narrows a card, and the height the ICE field used to take
+/// is the rig's. Measured before choosing the peek (5 servers, the
 /// Runner's chair): three rows of whole cards at half the width took the
 /// face at 1366×768 from 119 px to 85 and left a rig card 42 px wide;
-/// three peeked rows at the full width cost the face nothing — 220 at
-/// 1920×1080 and 119 at 1366×768, as the one row did — because a peek
-/// of three is the height of one card. The title and cost are the top
-/// of a card; the strength and the counters are the chip line; the rest
-/// is the sheet's.
-pub fn rig_row_height(rig_face: f32) -> f32 {
-    (PEEK * 1.4 * rig_face).round() + CHIPS
+/// three peeked rows at the full width cost the face nothing, because a
+/// peek of three is the height of one card. The strength and the
+/// counters are the chip line; the rest is the sheet's.
+pub fn rig_row_height(rig_face: f32, spare: f32) -> f32 {
+    let card = 1.4 * rig_face;
+    let least = (PEEK * card).round();
+    let most = (RIG_PEEK_MAX * card).round();
+    (least + (spare.max(0.0) / RIG_ROWS as f32).floor()).min(most) + CHIPS
 }
 
 /// The rig: its three rows and the gaps between them — every row
 /// reserved whether or not anything is installed in it, so the first
 /// program, the first piece of hardware or the first resource moves no
 /// card.
-pub fn rig_height(rig_face: f32) -> f32 {
-    RIG_ROWS as f32 * rig_row_height(rig_face) + (RIG_ROWS - 1) as f32 * RIG_ROW_GAP
+pub fn rig_height(rig_face: f32, spare: f32) -> f32 {
+    RIG_ROWS as f32 * rig_row_height(rig_face, spare) + (RIG_ROWS - 1) as f32 * RIG_ROW_GAP
 }
 
-/// Everything on the board but the ICE field, at face width `face`: the
-/// two strip rows, the servers' label and plates, the rig,
-/// the control bar and the gaps between them. Each term
+/// How many strips a server column shows, by the window's height alone
+/// — never by what is installed, so a column is the same height all
+/// match, and a constant inside [`face_width`]'s search, which keeps
+/// [`fixed_height`] monotone in the face. Three on a laptop's 768, four
+/// at 1080, five on a taller screen: the most that leave the rig its
+/// room at each. A server holding more shows a "+N" strip in their place
+/// ([`ServerWindow`]); a high-glacier remote is about ten.
+pub fn server_slots(window_height: f32) -> usize {
+    match board_height(window_height) {
+        h if h < 900.0 => 3,
+        h if h < 1200.0 => 4,
+        _ => 5,
+    }
+}
+
+/// A strip's height at its server's face width ([`TILE_SCALE`]).
+pub fn tile_height(server_face: f32) -> f32 {
+    (server_face * TILE_SCALE).round().clamp(TILE_MIN, TILE_MAX)
+}
+
+/// A server column's strips: `slots` of them and the gaps between.
+pub fn stack_height(server_face: f32, slots: usize) -> f32 {
+    slots as f32 * (tile_height(server_face) + TILE_GAP) - TILE_GAP
+}
+
+/// Everything on the board at face width `face` with `slots` strips to a
+/// server: the two strip rows, the servers' label, strips and plates, the
+/// rig at [`PEEK`], the control bar and the gaps between them. Each term
 /// is a non-decreasing function of `face`, so the sum is monotone, which
 /// is what lets [`face_width`] search it.
-pub fn fixed_height(face: f32, counts: Counts) -> f32 {
+pub fn fixed_height(face: f32, counts: Counts, slots: usize) -> f32 {
     let chair = counts.chair();
     let opponent = chair.other();
     let server_face = area_face(Side::Corp, chair, face);
     let rig_face = area_face(Side::Runner, chair, face);
     let strips = strip_height(opponent, chair, area_face(opponent, chair, face)) + strip_height(chair, chair, face);
-    let servers = LABEL + plate_height(server_face) + SERVER_CHROME_V;
+    let servers = LABEL + stack_height(server_face, slots) + plate_height(server_face) + SERVER_CHROME_V;
     // Five rows — two strips, the servers, the rig, the control bar —
     // and four gaps between them.
-    strips + servers + rig_height(rig_face) + CONTROL_BAR + 4.0 * ROW_GAP
+    strips + servers + rig_height(rig_face, 0.0) + CONTROL_BAR + 4.0 * ROW_GAP
 }
 
-/// The height the ICE field has at face width `face`: what the fixed
-/// rows leave of the board. Never less than [`ICE_FIELD_MIN`] unless the
-/// face is already at its floor.
-pub fn field_height(window_height: f32, face: f32, counts: Counts) -> f32 {
-    (board_height(window_height) - fixed_height(face, counts)).max(0.0)
+/// What the window has over [`fixed_height`] at face width `face`: the
+/// rig's to grow into ([`rig_row_height`]).
+pub fn spare_height(window_height: f32, face: f32, counts: Counts) -> f32 {
+    (board_height(window_height) - fixed_height(face, counts, server_slots(window_height))).max(0.0)
 }
 
 /// The face width the board has room for, in pixels: the largest for
-/// which [`fixed_height`] and [`ICE_FIELD_MIN`] fit [`board_height`],
-/// capped by the servers, which are columns that cannot overlap, within
+/// which [`fixed_height`] fits [`board_height`], capped by the servers,
+/// which are columns that cannot overlap, within
 /// [`MIN_FACE`]..[`MAX_FACE`].
 pub fn face_width(window: (f32, f32), counts: Counts) -> f32 {
     let (width, height) = window;
-    let room = board_height(height) - ICE_FIELD_MIN;
+    let room = board_height(height);
+    let slots = server_slots(height);
     // Binary search over whole pixels: the rows grow with the face and
     // the answer is the last width that still fits.
     let (mut low, mut high) = (MIN_FACE as u32, MAX_FACE as u32);
     while low < high {
         let mid = (low + high).div_ceil(2);
-        if fixed_height(mid as f32, counts) <= room {
+        if fixed_height(mid as f32, counts, slots) <= room {
             low = mid;
         } else {
             high = mid - 1;
@@ -462,23 +498,51 @@ pub fn face_width(window: (f32, f32), counts: Counts) -> f32 {
     by_height.min(by_width).clamp(MIN_FACE, MAX_FACE).floor()
 }
 
-/// A server column's tiles in its share of the ICE field: `(height,
-/// advance)`, where `advance` is the distance from one tile's top to
-/// the next's. `pieces` tiles — the ICE and the root cards — share
-/// `field` pixels: each as tall as its share allows between [`TILE_MIN`]
-/// and [`TILE_MAX_SCALE`] of the server's face, and past the floor they
-/// overlap by [`step`]'s rule turned on its side, so the ICE grows into
-/// the middle of the table rather than shrinking every card on it.
-pub fn tile_stack(field: f32, pieces: usize, server_face: f32) -> (f32, f32) {
-    let max = (server_face * TILE_MAX_SCALE).max(TILE_MIN);
-    if pieces == 0 {
-        return (max, max + TILE_GAP);
-    }
-    let share = field / pieces as f32 - TILE_GAP;
-    let height = share.clamp(TILE_MIN, max).floor();
-    (height, step(pieces, height, TILE_GAP, field))
+/// Which of a server's cards its column shows in `slots` strips, and how
+/// many the "+N" strip stands for. **Everything, while it fits.** Past
+/// that: one strip for the root — its asset or agenda, else its first
+/// upgrade, with the rest of the root counted on it — one for "+N", and
+/// the outermost `slots − 2` ICE, the ones a run meets first. The strips
+/// shown are the ones a person reads before a run and the Runner meets
+/// on it; the rest are the stack sheet's, in the same order.
+///
+/// **During a run the window follows the approach:** `approached` (an
+/// index into the ICE, outermost first) is always shown, the window
+/// sliding inward to keep it the innermost strip shown — the one time a
+/// strip moves, in step with the run it is part of.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ServerWindow {
+    /// The ICE shown, as a range of the engine's order (outermost first).
+    pub ice: std::ops::Range<usize>,
+    /// The root cards shown, by index into the root; every one while
+    /// they fit, otherwise the one [`ServerWindow::of`] picks.
+    pub root: Vec<usize>,
+    /// The cards the "+N" strip stands for — ICE and root together; 0
+    /// when there is no such strip.
+    pub hidden: usize,
 }
 
+impl ServerWindow {
+    /// `lead` is the root card to show when the root is folded to one
+    /// strip (the asset or agenda, else the first upgrade — the caller
+    /// knows the card types; this never reads a card).
+    pub fn of(ice: usize, root: usize, lead: usize, slots: usize, approached: Option<usize>) -> Self {
+        if ice + root <= slots {
+            return Self { ice: 0..ice, root: (0..root).collect(), hidden: 0 };
+        }
+        // The root folds to one strip when it has any card, and the "+N"
+        // strip takes one more; the ICE has what is left, never less
+        // than one.
+        let root_strips = usize::from(root > 0);
+        let room = slots.saturating_sub(root_strips + 1).max(1).min(ice);
+        let start = match approached {
+            Some(at) if at >= room => (at + 1 - room).min(ice - room),
+            _ => 0,
+        };
+        let shown_root = if root > 0 { vec![lead.min(root - 1)] } else { Vec::new() };
+        Self { ice: start..start + room, hidden: ice - room + root - shown_root.len(), root: shown_root }
+    }
+}
 /// The horizontal advance from one card to the next in a row of `n`
 /// cards `width` wide that must fit in `available`: the natural
 /// `width + gap` when the row fits, and less — the cards overlapping,
@@ -1141,16 +1205,70 @@ mod tests {
     fn three_peeked_rig_rows_are_about_one_card_tall() {
         for face in [MIN_FACE, 119.0, 165.0, MAX_FACE] {
             let one_row_of_whole_cards = 1.4 * face + CHIPS;
-            let rig = rig_height(face);
+            let rig = rig_height(face, 0.0);
             assert!(rig >= 1.4 * face, "{face}: {rig}");
             assert!(rig <= one_row_of_whole_cards + 2.0 * CHIPS + 2.0 * RIG_ROW_GAP + 2.0, "{face}: {rig}");
         }
         // And it never falls as the face grows, which `face_width`'s
         // search needs.
         for face in MIN_FACE as u32..MAX_FACE as u32 {
-            assert!(rig_height(face as f32) <= rig_height(face as f32 + 1.0), "{face}");
+            assert!(rig_height(face as f32, 0.0) <= rig_height(face as f32 + 1.0, 0.0), "{face}");
         }
-        assert!(rig_height(MIN_FACE) < rig_height(MAX_FACE));
+        assert!(rig_height(MIN_FACE, 0.0) < rig_height(MAX_FACE, 0.0));
+    }
+
+    /// The spare height grows each rig row from a third of a card toward
+    /// [`RIG_PEEK_MAX`] of it, a third of the spare to a row, and no
+    /// further: past the cap the height is left to the gaps.
+    #[test]
+    fn the_rig_takes_the_spare_height_up_to_its_cap() {
+        let face = 200.0;
+        let least = rig_row_height(face, 0.0);
+        assert_eq!(least, (PEEK * 1.4 * face).round() + CHIPS);
+        assert_eq!(rig_row_height(face, 60.0), least + 20.0, "a third of the spare to each row");
+        assert_eq!(rig_row_height(face, 10_000.0), (RIG_PEEK_MAX * 1.4 * face).round() + CHIPS, "never past the cap");
+        assert_eq!(rig_row_height(face, -50.0), least, "no spare is no growth");
+    }
+
+    /// A column is a fixed number of strips by the window's height, never
+    /// by what is installed, and the strips are the same height for every
+    /// server of a width.
+    #[test]
+    fn a_server_column_is_a_fixed_number_of_strips() {
+        assert_eq!(server_slots(768.0), 3);
+        assert_eq!(server_slots(1080.0), 4);
+        assert_eq!(server_slots(1250.0), 5);
+        assert_eq!(tile_height(40.0), TILE_MIN);
+        assert_eq!(tile_height(220.0), 37.0);
+        assert_eq!(tile_height(1000.0), TILE_MAX);
+        assert_eq!(stack_height(220.0, 4), 4.0 * 37.0 + 3.0 * TILE_GAP);
+    }
+
+    /// Everything shows while it fits; past that, the root folds to one
+    /// strip, a "+N" strip counts the rest, and the ICE shown are the
+    /// outermost — until a run approaches one further in.
+    #[test]
+    fn a_server_that_does_not_fit_shows_its_root_its_outermost_ice_and_a_count() {
+        assert_eq!(ServerWindow::of(2, 1, 0, 4, None), ServerWindow { ice: 0..2, root: vec![0], hidden: 0 });
+        assert_eq!(ServerWindow::of(4, 0, 0, 4, None), ServerWindow { ice: 0..4, root: vec![], hidden: 0 });
+        // A high-glacier remote: five ICE, an agenda and three upgrades
+        // with the agenda last, in four strips.
+        let deep = ServerWindow::of(5, 4, 3, 4, None);
+        assert_eq!(deep, ServerWindow { ice: 0..2, root: vec![3], hidden: 3 + 3 });
+        // No root: the "+N" strip and three ICE.
+        assert_eq!(ServerWindow::of(6, 0, 0, 4, None), ServerWindow { ice: 0..3, root: vec![], hidden: 3 });
+        // Three strips never leave the ICE with none.
+        assert_eq!(ServerWindow::of(5, 2, 0, 3, None).ice, 0..1);
+        // A run on its fourth ICE slides the window in to show it, the
+        // innermost shown; an approach already in view moves nothing.
+        assert_eq!(ServerWindow::of(5, 4, 3, 4, Some(3)).ice, 2..4);
+        assert_eq!(ServerWindow::of(5, 4, 3, 4, Some(4)).ice, 3..5);
+        assert_eq!(ServerWindow::of(5, 4, 3, 4, Some(1)).ice, 0..2);
+        // Whatever the slide, every card is shown or counted.
+        for at in 0..5 {
+            let w = ServerWindow::of(5, 4, 3, 4, Some(at));
+            assert_eq!(w.ice.len() + w.root.len() + w.hidden, 9);
+        }
     }
 
     #[test]
@@ -1187,41 +1305,25 @@ mod tests {
         // smaller than the Runner sees it. (The Runner's chair used to cost
         // more of the height; since the rig is drawn larger for the Corp,
         // the two chairs' fixed rows are within a pixel of each other.)
-        assert!(rig_height(area_face(Side::Runner, Side::Runner, 200.0)) > rig_height(area_face(Side::Runner, Side::Corp, 200.0)));
+        assert!(rig_height(area_face(Side::Runner, Side::Runner, 200.0), 0.0) > rig_height(area_face(Side::Runner, Side::Corp, 200.0), 0.0));
     }
 
-    /// The rows at the computed width leave the ICE field its minimum, and
-    /// one pixel more would not: the invariant the module exists for.
+    /// The rows at the computed width fit the window, and one pixel more
+    /// would not: the invariant the module exists for.
     #[test]
     fn the_rows_at_the_computed_width_fit_the_window_and_no_wider_would() {
         for (window, runner) in [((1280.0, 800.0), true), ((1280.0, 800.0), false), ((1920.0, 1080.0), true), ((1366.0, 768.0), true), ((2560.0, 1440.0), false), ((2000.0, 1250.0), true)] {
             let counts = Counts { servers: 5, human_is_runner: runner };
             let w = face_width(window, counts);
-            assert!(field_height(window.1, w, counts) >= ICE_FIELD_MIN || w == MIN_FACE, "{window:?}: field {}", field_height(window.1, w, counts));
+            let slots = server_slots(window.1);
+            assert!(fixed_height(w, counts, slots) <= board_height(window.1) || w == MIN_FACE, "{window:?}: {w}");
             if w < MAX_FACE && w > MIN_FACE {
                 let wider = (w + 1.0).min(MAX_FACE);
                 let server_face = (board_width(window.0) - 4.0 * CARD_GAP) / 5.0 - 2.0 * SERVER_CHROME;
                 let cap = if runner { server_face / OPPONENT_SCALE } else { server_face };
-                assert!(field_height(window.1, wider, counts) < ICE_FIELD_MIN || wider > cap, "{window:?}: {w} could have been {wider}");
+                assert!(fixed_height(wider, counts, slots) > board_height(window.1) || wider > cap, "{window:?}: {w} could have been {wider}");
             }
         }
-    }
-
-    /// A tile is as tall as its share of the field allows, within its
-    /// bounds, and past the floor the tiles overlap rather than leave the
-    /// field.
-    #[test]
-    fn tiles_share_the_field_and_overlap_past_the_floor() {
-        let face = 160.0;
-        let max = face * TILE_MAX_SCALE;
-        assert_eq!(tile_stack(400.0, 1, face).0, max.floor(), "one ICE is a slab at most");
-        assert_eq!(tile_stack(400.0, 0, face).0, max);
-        let (height, advance) = tile_stack(200.0, 5, face);
-        assert!((TILE_MIN..=max).contains(&height), "{height}");
-        assert_eq!(advance, height + TILE_GAP, "five fit without overlapping");
-        let (height, advance) = tile_stack(120.0, 10, face);
-        assert_eq!(height, TILE_MIN);
-        assert!(advance < height + TILE_GAP && 9.0 * advance + height <= 120.0 + 1e-3, "ten overlap to fit: {advance}");
     }
 
     #[test]

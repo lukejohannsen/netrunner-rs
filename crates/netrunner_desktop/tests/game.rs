@@ -26,7 +26,7 @@ use netrunner_client::start::{Level, StartChoice, DEFAULT_CORP_DECK, DEFAULT_RUN
 use netrunner_core::rules::{GamePhase, PlayerAction, ServerId, Side};
 use netrunner_desktop::core::ClientCore;
 use netrunner_desktop::nav::Navigate;
-use netrunner_desktop::screens::game::{ActionsMenu, Avatar, AvatarBar, LogName, ChoiceCard, Click, Contact, DecisionPopup, Glowing, HelpRow, HudPanel, PhaseBarRow, PhaseStep, HudReadout, InstallFact, ScoreDetails, ScoreRow, LogRow, Model, Overlay, EndTable, OpeningIdentities, ServerColumn, BoardFit, ControlBar, HandSlot, LiftedCard, ServerPlate, HostedChip, Ghost, TimingStep};
+use netrunner_desktop::screens::game::{ActionsMenu, Avatar, AvatarBar, LogName, ChoiceCard, Click, Contact, DecisionPopup, Glowing, HelpRow, HudPanel, PhaseBarRow, PhaseStep, HudReadout, InstallFact, ScoreDetails, ScoreRow, LogRow, Model, Overlay, EndTable, OpeningIdentities, ServerColumn, MoreStrip, StackRow, BoardFit, ControlBar, HandSlot, LiftedCard, ServerPlate, HostedChip, Ghost, TimingStep};
 use netrunner_core::rules::InstallId;
 use netrunner_desktop::widgets::card_face::BodyText;
 use netrunner_desktop::screens::new_game::{self, ActiveMatch, LastGame};
@@ -942,6 +942,88 @@ fn a_trojan_is_a_chip_on_its_ice_and_a_ghost_in_the_row() {
         world.query_filtered::<&Text, With<InstallFact>>().iter(world).map(|t| t.0.clone()).collect()
     };
     assert!(facts.iter().any(|l| l == "Hosted on Ice Wall"), "the Trojan's sheet: {facts:?}");
+}
+
+/// A high-glacier remote — five ICE, an agenda and three upgrades — is
+/// a column of `slots` strips from either chair: its agenda, a "+N"
+/// strip counting the rest, and the outermost ICE. The "+N" strip opens
+/// the whole server as its stack sheet, outermost ICE first down to the
+/// root; a card there reads large at a secondary click, and Escape comes
+/// back to the list.
+#[test]
+fn a_deep_server_is_a_few_strips_and_a_count_and_its_stack_sheet_is_the_whole_of_it() {
+    use netrunner_core::dsl::CardId;
+    use netrunner_core::rules::{InstallSlot, PublicInstalledCard};
+    for chair in [Side::Corp, Side::Runner] {
+        let (mut app, _dir) = headless_client();
+        start_a_game_as(&mut app, chair);
+        wait_for(&mut app, "the first decision", |app| click_entry_count(app) > 0);
+        let remote = ServerId::Remote(9);
+        let ice: Vec<InstallId> = (0..5).map(|i| InstallId(9200 + i)).collect();
+        let root: Vec<InstallId> = (0..4).map(|i| InstallId(9300 + i)).collect();
+        {
+            let mut model = app.world_mut().resource_mut::<Model>();
+            let view = model.0.view.as_mut().unwrap();
+            let card = |id: InstallId, position: usize, slot: InstallSlot, name: &str| PublicInstalledCard { install_id: id, position, server: remote, slot, rezzed: true, card: Some(CardId(name.into())), advancement_tokens: 0, counters: Some(0), seen_by_runner: true };
+            view.corp.servers.push(netrunner_core::view::ServerView {
+                server: remote,
+                ice: ice.iter().enumerate().map(|(i, id)| card(*id, i, InstallSlot::Ice, ["ice_wall", "enigma", "palisade", "tithe", "ice_wall"][i])).collect(),
+                // The agenda last, as a Corp installs it after the upgrades.
+                root: root.iter().enumerate().map(|(i, id)| card(*id, i, InstallSlot::Root, ["manegarm_skunkworks", "manegarm_skunkworks", "manegarm_skunkworks", "hostile_takeover"][i])).collect(),
+            });
+        }
+        app.world_mut().resource_mut::<BoardFit>().face = 0.0;
+        app.update();
+        app.update();
+
+        let slots = app.world().resource::<BoardFit>().slots;
+        assert_eq!(slots, netrunner_desktop::models::layout::server_slots(800.0), "{chair:?}: the headless window's strips");
+        let column = {
+            let world = app.world_mut();
+            world.query::<(Entity, &ServerColumn)>().iter(world).find(|(_, c)| c.0 == remote).map(|(e, _)| e).expect("the remote has a column")
+        };
+        let inside = |app: &mut App, entity: Entity| {
+            let mut up = entity;
+            while let Some(parent) = app.world().entity(up).get::<ChildOf>().map(|c| c.parent()) {
+                if parent == column {
+                    return true;
+                }
+                up = parent;
+            }
+            false
+        };
+        let strips: Vec<InstallId> = [&ice[..], &root[..]].concat().into_iter().filter(|id| entity_with(&mut app, &Click::Target(Target::Install(*id))).is_some_and(|e| inside(&mut app, e))).collect();
+        let more: Vec<Entity> = {
+            let world = app.world_mut();
+            world.query::<(Entity, &MoreStrip)>().iter(world).filter(|(_, m)| m.0 == remote).map(|(e, _)| e).collect()
+        };
+        assert_eq!(more.len(), 1, "{chair:?}: one count strip");
+        assert_eq!(strips.len() + more.len(), slots, "{chair:?}: the column is its strips and no more: {strips:?}");
+        assert!(strips.contains(&root[3]), "{chair:?}: the agenda is the root's strip");
+        assert!(strips.contains(&ice[0]), "{chair:?}: the outermost ICE is shown");
+        assert!(!strips.contains(&ice[4]), "{chair:?}: the innermost is counted, not shown");
+        let hidden = 9 - strips.len();
+        assert!(texts(&mut app).iter().any(|t| *t == format!("+{hidden} more")), "{chair:?}: the strip counts what it stands for");
+
+        press_entity(&mut app, more[0]);
+        let sheet = app.world().resource::<Model>().0.sheet.clone().expect("the count opens a sheet");
+        assert!(sheet.stack && sheet.target == Target::Server(remote), "{chair:?}: the server's stack");
+        let rows: Vec<InstallId> = {
+            let world = app.world_mut();
+            world.query::<&StackRow>().iter(world).map(|r| r.0).collect()
+        };
+        assert_eq!(rows, [&ice[..], &root[..]].concat(), "{chair:?}: every card, outermost ICE first, down to the root");
+
+        let face = entity_with(&mut app, &Click::Inspect(CardId("enigma".into()))).expect("a known card is its face");
+        // `right_click` less its reset: the card read over the sheet
+        // redraws the overlay, and the face it was on is gone.
+        app.world_mut().entity_mut(face).insert(Interaction::Hovered);
+        click(&mut app, MouseButton::Right);
+        assert_eq!(app.world().resource::<Model>().0.inspecting, Some(CardId("enigma".into())), "{chair:?}: a secondary click reads it large");
+        escape(&mut app);
+        let model = &app.world().resource::<Model>().0;
+        assert!(model.inspecting.is_none() && model.sheet.as_ref().is_some_and(|s| s.stack), "{chair:?}: Escape comes back to the stack");
+    }
 }
 
 /// The Agendas readout is a button that opens the side's score area as
