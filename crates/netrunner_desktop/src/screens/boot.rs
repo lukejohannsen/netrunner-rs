@@ -52,6 +52,15 @@ fn boot(world: &mut World) {
             Err(error) => world.resource_mut::<Notices>().push(format!("dev game not started: {error}")),
         }
     }
+    // A dev lesson, likewise, as the tracks screen leaves one.
+    if let Some(id) = world.get_resource::<crate::dev::Dev>().and_then(|dev| dev.lesson.clone()) {
+        let core = world.resource::<ClientCore>();
+        let started = netrunner_core::tutorial::by_id(&id).ok_or_else(|| format!("no lesson {id:?}")).and_then(|lesson| crate::screens::learn::start(core, lesson));
+        match started {
+            Ok(active) => world.insert_resource(active),
+            Err(error) => world.resource_mut::<Notices>().push(format!("dev lesson not started: {error}")),
+        }
+    }
     // A dev replay, likewise: the replays screen opens it on entry.
     if let Some((path, at)) = world.get_resource::<crate::dev::Dev>().and_then(|dev| dev.replay.clone()) {
         world.insert_resource(crate::screens::replay::OpenReplay(path, at));

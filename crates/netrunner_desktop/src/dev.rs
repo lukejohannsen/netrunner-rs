@@ -16,6 +16,11 @@
 //!   how the board is looked at without a hand on the form.
 //!   `NETRUNNER_CORP_DECK=<id>` and `NETRUNNER_RUNNER_DECK=<id>` replace
 //!   either default deck, so a card the default decks lack can be reached.
+//! - `NETRUNNER_LESSON=<id>` — boot starts that lesson (`learn list` in
+//!   the terminal names them) and goes to the board, which opens on the
+//!   lesson's words; `NETRUNNER_BEGIN=1` puts them away so the coach is
+//!   shot at the first decision. `NETRUNNER_AUTOPLAY` then wanders
+//!   through the step's own actions, as it does through a game's.
 //! - `NETRUNNER_REPLAY=<record.jsonl>` — boot opens that record on the
 //!   replay board, where a bug report opens (its end, from the person's
 //!   chair), or at `NETRUNNER_REPLAY_AT=<start|end|n>` actions in — how a
@@ -210,6 +215,9 @@ pub struct Dev {
     pub screen: Option<AppScreen>,
     /// The chair a dev game seats the person in.
     pub game: Option<netrunner_core::rules::Side>,
+    /// A lesson to boot into, by id, and whether its words are put away.
+    pub lesson: Option<String>,
+    pub begin: bool,
     /// The dev game's decks, by id, when not the defaults.
     pub corp_deck: Option<String>,
     pub runner_deck: Option<String>,
@@ -290,6 +298,8 @@ impl Dev {
         Dev {
             screen: std::env::var("NETRUNNER_SCREEN").ok().and_then(|name| AppScreen::from_name(&name)),
             game,
+            lesson: std::env::var("NETRUNNER_LESSON").ok().filter(|id| !id.trim().is_empty()),
+            begin: std::env::var_os("NETRUNNER_BEGIN").is_some_and(|v| !v.is_empty()),
             corp_deck: std::env::var("NETRUNNER_CORP_DECK").ok().filter(|id| !id.trim().is_empty()),
             runner_deck: std::env::var("NETRUNNER_RUNNER_DECK").ok().filter(|id| !id.trim().is_empty()),
             autoplay: std::env::var("NETRUNNER_AUTOPLAY").ok().and_then(|n| n.trim().parse().ok()).unwrap_or(0),
@@ -362,7 +372,7 @@ impl Dev {
     /// on the board) for `NETRUNNER_REPLAY` — which boot goes to without
     /// a splash.
     pub fn named_screen(&self) -> Option<AppScreen> {
-        self.screen.or(self.game.is_some().then_some(AppScreen::Game)).or(self.replay.is_some().then_some(AppScreen::Replay))
+        self.screen.or((self.game.is_some() || self.lesson.is_some()).then_some(AppScreen::Game)).or(self.replay.is_some().then_some(AppScreen::Replay))
     }
 }
 

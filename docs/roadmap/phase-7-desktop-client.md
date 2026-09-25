@@ -4780,6 +4780,76 @@ Eternal-only test decks out). Workspace tests for the two crates,
 workspace clippy silent. Screenshots at 2560×1600 of the shelf with
 "Sort by" open and the editor with "Set" open.
 
+## 6. Lessons — OPEN (24 September 2026)
+
+Replay, the other half of this section's name, was done as §4ah. What is
+left is Phase 1.75's lessons and starter games, which until now only the
+terminal could play; the desktop's Learn to Play was a stub.
+
+### 6a. A lesson is played on the board, with a coach in the right column — DONE (24 September 2026)
+
+`feat/desktop-lessons`. Learn to Play lists both tracks (seven lessons
+a side, in the terminal's order). A press plays the lesson **on the game
+screen**, not on a screen of its own, so every §5 client rule holds for
+a lesson with no second copy of it. The replay board (§4ah) set that
+precedent.
+
+- **`MatchHandle::start_lesson`** (`netrunner_client::play`) runs
+  `LessonSession` on the match thread and sends the same messages a game
+  does, plus two new ones. `Coach` goes out just ahead of each
+  `Awaiting`, and `LessonComplete` replaces `Ended` once the last step
+  advances. The opening is played before the thread starts, so a lesson
+  that will not set up shows a notice on the tracks screen and never
+  reaches the board. A lesson keeps no record, sends no `Back`, and
+  refuses a take-back.
+- **The lesson narrows the list the board is built from, and nothing
+  else** (`models::lesson::LessonBoard::offered`). The action map is
+  built from a copy of the view holding only the step's `allowed`. The
+  control bar, the menus, the glows, the drags and the keys therefore
+  all narrow together, and no board surface knows a lesson is on. The
+  board still draws the whole view. The rejected design was a check at
+  every surface, where one forgotten check would offer an action on one
+  door that another door hides. **"Show every action"** is the
+  terminal's `a`. A step that matches nothing on the current view
+  narrows nothing and says so (Phase 1.75 §6).
+- **Every policy that answers for the person is off in a lesson**: the
+  lone pass, the run pass, a remembered "you may" and the break routes.
+  The lesson passes for the learner itself where it means to, and it
+  teaches the pump and the break by hand.
+- **The words**: the intro is a question in the middle (Begin / Leave;
+  Escape leaves, since nothing has been played). The coach heads the
+  rail with the step, the prose, the hint and the escape hatch. The
+  outro offers **Next lesson** within the track. A match that ends
+  before the lesson does offers **Try again**. Every way out leads back
+  to the tracks. "Next lesson" goes from the board to the board through
+  `game::NextMatch`, because `leave` drops `ActiveMatch` on the
+  same-state transition.
+- **A lesson's bug report replays.** `MatchRecordHeader` gained
+  `order: DeckOrder` (`serde(default)`, left out of the file when
+  shuffled, so every earlier record reads unchanged). Without it, a
+  record of a stacked deck set up shuffled and replayed a different
+  game. `LessonSession` now keeps the learner's view beside each logged
+  entry (`drain_applied`), so the board animates the opponent's turn
+  one action at a time as it does in a game.
+- Dev hooks: `NETRUNNER_LESSON=<id>` boots into a lesson, and
+  `NETRUNNER_BEGIN=1` puts its words away.
+
+**Verified.** In `netrunner_client`,
+`every_lesson_plays_to_its_outro_through_the_handle_and_its_record_replays`
+(all fourteen lessons, each record replayed to the learner's final board)
+and `a_lesson_refuses_a_take_back`. Model tests for the narrowing and the
+escape hatch, for the intro covering the board, for Escape on the intro,
+and for no pass taken for the learner. `tests/learn.rs` plays the first
+Corp lesson through the real plugins to its outro, presses Next lesson
+and leaves with Escape. Workspace tests green and workspace clippy
+silent. Screenshots at 2560×1600: the tracks, the intro of "Breaking
+ice", and its first step with only R&D lit and the bar greyed.
+
+**Owed (§6b):** the starter games (6 points, and boosted) from Learn to
+Play. `LocalMatchSpec` needs the match rules for them, since a saved
+deck carries no category. Also owed: which lessons a person has
+finished, kept in the settings file.
+
 ## 8. Borrowed from jinteki — OPEN (19 September 2026)
 
 From [`docs/jinteki-comparison.md`](../jinteki-comparison.md) §5, in the

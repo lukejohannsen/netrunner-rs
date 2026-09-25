@@ -138,6 +138,7 @@ use crate::models::pace::{Beat, Pacer};
 use crate::models::settings::{self as settings_model, Row};
 use crate::models::shortcuts::{self, Shortcut};
 use crate::nav::{screen_root, Captures, InputCaptured, Navigate};
+use crate::models::lesson::LessonBoard;
 use crate::screens::new_game::{ActiveMatch, LastGame};
 use crate::screens::replay::{ActiveReplay, OpenReplay, ReplayClick};
 use crate::screens::settings::{self as settings_screen, Control as SettingsControl};
@@ -146,7 +147,7 @@ use crate::skin::{self, Drawn, Slot};
 use crate::table;
 use crate::theme::{size, Theme};
 use crate::widgets::card_face::{spawn_back, spawn_face, FaceSize};
-use crate::widgets::{self, anchor_of, Pressed};
+use crate::widgets::{self, anchor_of, ButtonKind, Pressed};
 
 pub struct GamePlugin;
 
@@ -213,7 +214,21 @@ pub enum Click {
     PlayAgain,
     Menu,
     Back,
+    /// A lesson's opening words are read (`Intent::BeginLesson`).
+    BeginLesson,
+    /// A lesson's escape hatch (`Intent::EveryAction`).
+    EveryAction,
+    /// The lesson after this one in its track, on a fresh board.
+    NextLesson,
+    /// This lesson again from the start, after its match ended first.
+    RetryLesson,
 }
+
+/// The match to put on the board once this one is gone: "Next lesson" and
+/// "Try again" go from the board to the board, and leaving the screen
+/// drops `ActiveMatch`, so the next one waits here until `leave` has.
+#[derive(Resource)]
+pub struct NextMatch(pub ActiveMatch);
 
 /// The board, respawned when the view moves.
 #[derive(Component)]
@@ -561,7 +576,16 @@ fn spawn(
     // A match being played, or a recorded one being stepped through
     // (`screens::replay`): the same board either way.
     let source = match (&active, &replay) {
-        (Some(active), _) => Some((Game::new(core.registry.clone(), active.handle.side()), active.handle.side())),
+        (Some(active), _) => {
+            let game = match &active.lesson {
+                Some(lesson) => {
+                    let board = LessonBoard { has_next: crate::screens::learn::next_after(&lesson.id).is_some(), ..LessonBoard::new(lesson.title.clone(), lesson.intro.clone()) };
+                    Game::lesson(core.registry.clone(), active.handle.side(), board)
+                }
+                None => Game::new(core.registry.clone(), active.handle.side()),
+            };
+            Some((game, active.handle.side()))
+        }
         (None, Some(replay)) => Some((crate::screens::replay::board_for(&core, &replay.0), replay.0.side())),
         (None, None) => None,
     };
@@ -833,6 +857,9 @@ fn leave(world: &mut World) {
     {
         world.insert_resource(LastGame(choice));
     }
+    if let Some(NextMatch(next)) = world.remove_resource::<NextMatch>() {
+        world.insert_resource(next);
+    }
 }
 
 /// Drains the match's messages into the pacer, and the beats due now
@@ -917,6 +944,16 @@ fn autoplay(
             None => info!("dev: the match ended after {} of {} autoplayed decisions", dev.autoplayed, dev.autoplay),
         }
         dev.autoplayed = dev.autoplay;
+        return;
+    }
+    // A lesson's words, put away before anything is played.
+    if dev.begin && model.0.intro_open() {
+        dev.begin = false;
+        pending.0.push(Intent::BeginLesson);
+        return;
+    }
+    // Nothing is played under the words, by a hand or by this.
+    if model.0.intro_open() {
         return;
     }
     if dev.options && model.0.awaiting && dev.autoplayed >= dev.autoplay {
@@ -1358,6 +1395,9 @@ pub(crate) fn controls(
 ) {
     let mut intents: Vec<Intent> = std::mem::take(&mut pending.0);
     let mut leave_to: Option<AppScreen> = None;
+    // Where the board's Menu and Quit lead: back to the tracks from a
+    // lesson, which is where the next one is picked.
+    let way_out = if active.as_ref().is_some_and(|active| active.lesson.is_some()) { AppScreen::Learn } else { AppScreen::MainMenu };
     // With Ctrl or Cmd held the primary button is the secondary click
     // (`board_click` opened the sheet), so the press it also registers
     // on the card opens no menu.
@@ -1440,7 +1480,21 @@ pub(crate) fn controls(
             Ok(Click::CancelQuit) => intents.push(Intent::CancelQuit),
             Ok(Click::Quit) => intents.push(Intent::RequestQuit),
             Ok(Click::PlayAgain) => leave_to = Some(AppScreen::NewGame),
-            Ok(Click::Menu | Click::Back) => leave_to = Some(AppScreen::MainMenu),
+            Ok(Click::Menu | Click::Back) => leave_to = Some(way_out),
+            Ok(Click::BeginLesson) => intents.push(Intent::BeginLesson),
+            Ok(Click::EveryAction) => intents.push(Intent::EveryAction),
+            Ok(Click::NextLesson | Click::RetryLesson) => {
+                let Some(current) = active.as_ref().and_then(|active| active.lesson.as_ref()) else { continue };
+                let lesson = if matches!(marks.get(*entity), Ok(Click::NextLesson)) { crate::screens::learn::next_after(&current.id) } else { Some(current.clone()) };
+                match lesson.map(|lesson| crate::screens::learn::start(&core, lesson)) {
+                    Some(Ok(next)) => {
+                        commands.insert_resource(NextMatch(next));
+                        leave_to = Some(AppScreen::Game);
+                    }
+                    Some(Err(error)) => notices.push(format!("The lesson could not start: {error}")),
+                    None => leave_to = Some(AppScreen::Learn),
+                }
+            }
             Err(_) => {}
         }
     }
@@ -1482,9 +1536,10 @@ pub(crate) fn controls(
                 dirty.rail = true;
                 dirty.overlay = true;
             }
-            // A replay goes back to the list it was picked from.
+            // A replay goes back to the list it was picked from, and a
+            // lesson to the tracks.
             Outcome::Quit => {
-                navigate.write(Navigate(if model.0.replay.is_some() { AppScreen::Replay } else { AppScreen::MainMenu }));
+                navigate.write(Navigate(if model.0.replay.is_some() { AppScreen::Replay } else { way_out }));
                 return;
             }
         }
@@ -1595,6 +1650,54 @@ fn status_line(game: &Game) -> String {
 fn overlay_needed(game: &Game) -> bool {
     game.covered()
 }
+
+/// A lesson's coach, at the head of the rail: which step, what it asks,
+/// the hint, and the escape hatch. Above the prompt because it is what the
+/// person reads first, and in the rail rather than a pop-up because it
+/// stays up while they play — the terminal's coaching panel, beside the
+/// board as it is there.
+///
+/// Drawn from the last coaching until the next arrives, so the words stay
+/// while the opponent plays; the hatch is offered only while the person
+/// is being asked, since it changes nothing else.
+fn spawn_coaching(parent: &mut ChildSpawnerCommands, theme: &Theme, lesson: &LessonBoard, awaiting: bool) {
+    let wrap = || TextLayout::new(Justify::Left, LineBreak::WordBoundary);
+    parent
+        .spawn((
+            LessonCoach,
+            Node { width: percent(100), flex_shrink: 0.0, flex_direction: FlexDirection::Column, row_gap: px(6), padding: UiRect::all(px(10)), border: UiRect::left(px(3)), ..default() },
+            BackgroundColor(theme.glass),
+            BorderColor::all(theme.accent),
+        ))
+        .with_children(|coach| {
+            let Some(coaching) = &lesson.coaching else {
+                coach.spawn((widgets::overline(theme, lesson.title.clone()), wrap()));
+                return;
+            };
+            coach.spawn((widgets::overline(theme, format!("{} · step {} of {}", lesson.title, coaching.step, coaching.total)), wrap()));
+            for paragraph in coaching.prose.split('\n').filter(|paragraph| !paragraph.is_empty()) {
+                coach.spawn((widgets::label(theme, paragraph), wrap()));
+            }
+            if let Some(hint) = &coaching.hint {
+                coach.spawn((Text::new(format!("Hint: {hint}")), theme.font(size::SMALL), TextColor(theme.accent), wrap()));
+            }
+            if !awaiting {
+                return;
+            }
+            if !lesson.gated() {
+                coach.spawn((widgets::dim(theme, "Nothing this step asks for can be done right now, so every legal action is offered."), wrap()));
+            } else if lesson.every_action {
+                coach.spawn((widgets::dim(theme, "Every legal action is offered."), wrap()));
+                coach.spawn(widgets::small_button(theme, ButtonKind::Secondary, "Only this step's actions", Click::EveryAction));
+            } else {
+                coach.spawn(widgets::small_button(theme, ButtonKind::Quiet, "Show every action", Click::EveryAction));
+            }
+        });
+}
+
+/// The coach's box, for a test to find.
+#[derive(Component)]
+pub struct LessonCoach;
 
 // ---- the board ----
 
@@ -2715,6 +2818,11 @@ fn spawn_rail(parent: &mut ChildSpawnerCommands, theme: &Theme, game: &Game, hel
         parent.spawn((widgets::label(theme, format!("Replay · step {} of {}", at.cursor, at.len)), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
         parent.spawn((widgets::dim(theme, at.title.clone()), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
     }
+    if let Some(lesson) = &game.lesson
+        && !game.finished()
+    {
+        spawn_coaching(parent, theme, lesson, game.awaiting);
+    }
     if let Some(prompt) = &game.prompt {
         parent.spawn((widgets::label(theme, prompt.title.clone()), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
         if !prompt.detail.is_empty() {
@@ -3605,11 +3713,22 @@ fn side_panels(
 
 // ---- the overlays ----
 
+/// A lesson's opening or closing words: its title and its paragraphs.
+fn spawn_lesson_words(panel: &mut ChildSpawnerCommands, theme: &Theme, title: &str, words: &str) {
+    panel.spawn((widgets::heading(theme, title), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
+    for paragraph in words.split('\n').filter(|paragraph| !paragraph.is_empty()) {
+        panel.spawn((widgets::label(theme, paragraph), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
+    }
+}
+
 fn spawn_overlay(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore, images: &CardImages, game: &Game, window: Vec2) {
     // The widths are `layout`'s: a card alone, an install beside its
     // state, a zone's contents.
     let card_alone = game.inspecting.is_some() || game.sheet.as_ref().is_some_and(|s| !matches!(s.target, Target::Install(_)) && game.card_of(&s.target).is_some());
-    let width = if game.finished() || game.confirm_quit || game.options_open || game.help_open {
+    let width = if game.lesson.is_some() && (game.intro_open() || game.finished()) {
+        // A lesson's opening and closing words are a paragraph or two.
+        px(680)
+    } else if game.finished() || game.confirm_quit || game.options_open || game.help_open {
         px(560)
     } else if game.timing_open {
         // Two columns on the Runner's turn (its turn beside the run); the
@@ -3713,6 +3832,24 @@ fn spawn_overlay(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &Client
                         }
                         row.spawn(widgets::button(theme, "Menu", Val::Auto, Click::Menu));
                     });
+                } else if let Some(lesson) = game.lesson.as_ref().filter(|lesson| lesson.outro.is_some()) {
+                    spawn_lesson_words(panel, theme, &format!("{} — complete", lesson.title), lesson.outro.as_deref().unwrap_or_default());
+                    panel.spawn(widgets::row(12.0)).with_children(|row| {
+                        row.spawn(widgets::styled_button(theme, ButtonKind::Quiet, "Learn to Play", Val::Auto, Click::Menu));
+                        if lesson.has_next {
+                            row.spawn(widgets::styled_button(theme, ButtonKind::Primary, "Next lesson", Val::Auto, Click::NextLesson));
+                        }
+                    });
+                } else if let (Some(over), Some(_)) = (&game.over, &game.lesson) {
+                    // The match ended before the lesson did: the step was
+                    // not reached, so it is the lesson again, not a result.
+                    let won = over.winner == game.side;
+                    panel.spawn(widgets::heading(theme, if won { "You won before the lesson finished" } else { "The lesson ended early" }));
+                    panel.spawn((widgets::dim(theme, format!("{:?} wins: {}. The lesson's last steps were never reached.", over.winner, end_reason(over.reason))), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
+                    panel.spawn(widgets::row(12.0)).with_children(|row| {
+                        row.spawn(widgets::styled_button(theme, ButtonKind::Quiet, "Learn to Play", Val::Auto, Click::Menu));
+                        row.spawn(widgets::styled_button(theme, ButtonKind::Primary, "Try again", Val::Auto, Click::RetryLesson));
+                    });
                 } else if let Some(over) = &game.over {
                     let won = over.winner == game.side;
                     panel.spawn((Text::new(if won { "You win" } else { "You lose" }), theme.font(size::HEADING), TextColor(if won { theme.accent } else { theme.danger })));
@@ -3729,6 +3866,19 @@ fn spawn_overlay(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &Client
                     panel.spawn(widgets::row(12.0)).with_children(|row| {
                         row.spawn(widgets::button(theme, "Play again", Val::Auto, Click::PlayAgain));
                         row.spawn(widgets::button(theme, "Menu", Val::Auto, Click::Menu));
+                    });
+                } else if game.confirm_quit && game.lesson.is_some() {
+                    panel.spawn(widgets::heading(theme, "Leave the lesson?"));
+                    panel.spawn((widgets::dim(theme, "Nothing is recorded. It starts again from the beginning under Learn to Play."), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
+                    panel.spawn(widgets::row(12.0)).with_children(|row| {
+                        row.spawn(widgets::button(theme, "Leave", Val::Auto, Click::ConfirmQuit));
+                        row.spawn(widgets::button(theme, "Keep going", Val::Auto, Click::CancelQuit));
+                    });
+                } else if let Some(intro) = game.lesson.as_ref().and_then(|lesson| lesson.intro.as_deref().map(|intro| (lesson.title.as_str(), intro))) {
+                    spawn_lesson_words(panel, theme, intro.0, intro.1);
+                    panel.spawn(widgets::row(12.0)).with_children(|row| {
+                        row.spawn(widgets::styled_button(theme, ButtonKind::Quiet, "Leave", Val::Auto, Click::Menu));
+                        row.spawn(widgets::styled_button(theme, ButtonKind::Primary, "Begin", Val::Auto, Click::BeginLesson));
                     });
                 } else if game.confirm_quit {
                     panel.spawn(widgets::heading(theme, "Leave the game?"));

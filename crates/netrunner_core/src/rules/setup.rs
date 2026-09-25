@@ -116,9 +116,15 @@ impl GameState {
 }
 
 /// How `GameState::setup_with` orders the draw decks.
-#[derive(Debug, Clone, PartialEq, Eq)]
+///
+/// Serialized because a match record carries it
+/// (`netrunner_session::MatchRecordHeader::order`): a lesson is played on
+/// a stacked deck, and a record that rebuilt it shuffled would replay a
+/// different game.
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum DeckOrder {
     /// A seeded Fisher-Yates shuffle — what every ordinary game uses.
+    #[default]
     Shuffled,
     /// Both decks in an authored order, **top card first**: `corp[0]` is
     /// the first card the Corp draws. That is the order a lesson author

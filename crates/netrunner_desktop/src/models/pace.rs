@@ -89,7 +89,9 @@ impl Pacer {
         let (run_after, events, own) = match &message {
             MatchMessage::Applied { entry, view } => (view.active_run.is_some(), entry.events.clone(), entry.side == self.human),
             MatchMessage::Awaiting { view } => (view.active_run.is_some(), Vec::new(), false),
-            MatchMessage::Rejected { .. } | MatchMessage::Back { .. } => {
+            // A lesson's coaching waits in line behind the beats ahead of
+            // it, so the panel changes with the decision it is about.
+            MatchMessage::Rejected { .. } | MatchMessage::Back { .. } | MatchMessage::Coach(_) => {
                 self.queue.push_back(Queued { beat: Beat::Apply(message), wait: Duration::ZERO });
                 return;
             }
@@ -100,7 +102,7 @@ impl Pacer {
                 self.queue.push_back(Queued { beat: Beat::Apply(message), wait: Duration::ZERO });
                 return;
             }
-            MatchMessage::Ended { .. } | MatchMessage::Stalled { .. } => (false, Vec::new(), false),
+            MatchMessage::Ended { .. } | MatchMessage::Stalled { .. } | MatchMessage::LessonComplete { .. } => (false, Vec::new(), false),
         };
         let paced = self.in_run || run_after || events.iter().any(trail::concerns_run);
         self.in_run = run_after;
@@ -226,6 +228,7 @@ mod tests {
                     }
                     Beat::Apply(MatchMessage::Rejected { reason }) => panic!("{reason}"),
                     Beat::Apply(MatchMessage::Back { .. } | MatchMessage::Rewound { .. }) => {}
+                    Beat::Apply(MatchMessage::Coach(_) | MatchMessage::LessonComplete { .. }) => unreachable!("a local match is not a lesson"),
                     Beat::Apply(MatchMessage::Ended { .. } | MatchMessage::Stalled { .. }) => break 'game,
                 }
             }
