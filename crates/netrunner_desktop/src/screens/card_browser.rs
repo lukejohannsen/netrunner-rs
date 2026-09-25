@@ -51,7 +51,6 @@ use netrunner_core::rules::Side;
 use crate::card_images::CardImages;
 use crate::core::{ClientCore, Notices, TokioRuntime};
 use crate::downloads::Downloads;
-use crate::icon_font::IconFontReady;
 use crate::models::browser::{Browser, Intent};
 use crate::nav::{screen_root, Navigate};
 use crate::screens::AppScreen;
@@ -483,7 +482,6 @@ fn spawn_search_field(parent: &mut ChildSpawnerCommands, theme: &Theme, current:
 fn controls(
     mut pressed: MessageReader<Pressed>,
     mut chosen: MessageReader<DropdownChanged>,
-    mut font_ready: MessageReader<IconFontReady>,
     marks: Query<&Control>,
     filters: Query<&Filter>,
     faces: Query<(&Interaction, &FaceButton), Changed<Interaction>>,
@@ -497,9 +495,6 @@ fn controls(
     mut notices: ResMut<Notices>,
     mut navigate: MessageWriter<Navigate>,
 ) {
-    if font_ready.read().next().is_some() {
-        dirty.filter_changed();
-    }
     for Pressed(entity) in pressed.read() {
         match marks.get(*entity) {
             Ok(Control::Back) => {

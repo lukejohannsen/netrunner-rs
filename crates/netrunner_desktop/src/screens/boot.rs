@@ -10,7 +10,7 @@ use bevy::prelude::*;
 use crate::core::{ClientCore, Notices, TokioRuntime};
 use crate::nav::Navigate;
 use crate::screens::AppScreen;
-use crate::theme::{Theme, FONT_PATH, SYMBOL_FONT_PATH};
+use crate::theme::{Theme, FONT_PATH, ICON_FONT_PATH, SYMBOL_FONT_PATH};
 
 pub struct BootPlugin;
 
@@ -38,9 +38,11 @@ fn boot(world: &mut World) {
     if world.contains_resource::<Assets<Font>>() {
         let font = world.resource::<AssetServer>().load(FONT_PATH);
         let symbols = world.resource::<AssetServer>().load(SYMBOL_FONT_PATH);
+        let icons = world.resource::<AssetServer>().load(ICON_FONT_PATH);
         let mut theme = world.resource_mut::<Theme>();
         theme.font = Some(font);
         theme.symbol_font = Some(symbols);
+        theme.icon_font = Some(icons);
     }
     world.spawn((Name::new("Camera"), Camera2d));
     // A dev game, if asked for: started here so the board finds it on

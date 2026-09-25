@@ -1896,7 +1896,7 @@ fn an_access_puts_the_card_in_the_decision_popup_above_its_actions() {
     }
     let body = body.expect("the accessed card's face is in the pop-up");
     // The words, not the symbols: which glyph a `[subroutine]` is drawn
-    // with is the theme's choice (the icon font when it is cached, a
+    // with is the theme's choice (the icon font when it is loaded, a
     // stand-in when it is not), so asserting the whole rendered string
     // would make this test depend on what fonts the machine has.
     for run in &access.face.body {

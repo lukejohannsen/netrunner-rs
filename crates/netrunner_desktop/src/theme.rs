@@ -45,6 +45,14 @@ pub const FONT_PATH: &str = "fonts/NotoSans-Regular.ttf";
 /// map.
 pub const SYMBOL_FONT_PATH: &str = "fonts/NotoSansSymbols2-Regular.ttf";
 
+/// NetrunnerDB's icon font: the printed symbols as the card prints them,
+/// the factions' marks and the sets'. Committed rather than fetched
+/// (decided 25 September 2026, as the official backs were): the font is
+/// MIT and the marks in it Null Signal Games', credited in
+/// `assets/CREDITS.md`. The two faces above are what a face draws in
+/// without it — a headless test, or a build whose file was removed.
+pub const ICON_FONT_PATH: &str = "fonts/NetrunnerDB-Icons.ttf";
+
 #[derive(Resource, Clone)]
 pub struct Theme {
     /// `None` until boot loads it, and in a headless test.
@@ -52,10 +60,10 @@ pub struct Theme {
     /// `None` until boot loads it, and in a headless test; a face then
     /// draws `Symbol::fallback` instead of `Symbol::glyph`.
     pub symbol_font: Option<Handle<Font>>,
-    /// NetrunnerDB's icon font, once `icon_font` has fetched and loaded
-    /// it: the printed symbols as the card prints them, the factions'
-    /// marks and the sets'. `None` until then, and for a player who has
-    /// not opted into downloads — the two fonts above then do.
+    /// NetrunnerDB's icon font ([`ICON_FONT_PATH`]): the printed symbols
+    /// as the card prints them, the factions' marks and the sets'. `None`
+    /// until boot loads it, and in a headless test — the two fonts above
+    /// then do.
     pub icon_font: Option<Handle<Font>>,
     pub background: Color,
     pub panel: Color,
