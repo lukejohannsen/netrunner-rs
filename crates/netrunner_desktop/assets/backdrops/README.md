@@ -16,11 +16,11 @@ neon one behind the main menu (`main-menu.jpg`); Alex Kim's *The Root*
 behind Play Online (`online.jpg`), which Cards and Learn to Play show
 too; Aurore Folny's *The Personal Touch* behind the deck list and the
 deck editor (`decks.jpg`); Adam Schumpert's *Maya* behind Play vs
-Computer (`new-game.jpg`); and the project's own circuitry on gunmetal
-as the shared picture (`menu.jpg`), behind every screen without one of
-its own — Profile, Settings, Replay and About today. That one is painted
-by `scripts/paint_circuit_backdrop.py`, after the look of Fantasy Flight
-Games' card back, and is repainted by running it again.
+Computer (`new-game.jpg`); and the project's own purple circuitry
+between brushed-steel plates as the shared picture (`menu.jpg`), behind
+every screen without one of its own — Profile, Settings, Replay and
+About today. That one was generated with AI assistance for the project,
+at 1312 × 816; a 2560 × 1600 version of it would be sharper.
 `backdrops.json` sets how much each is dimmed and which screens borrow
 another's picture. All are
 all rights reserved, shipped with credit and removed if their owners ask

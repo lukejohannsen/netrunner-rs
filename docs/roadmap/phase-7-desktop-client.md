@@ -4501,7 +4501,7 @@ ships in its own repository (`mtgred/netrunner`,
   constants and their two errors) had no caller and was removed, and the
   "Fetched" credit row for the backs became four register rows.
 
-### 4ba. The deck builder, Play vs Computer and Play Online have backdrops, the rest a painted circuit board, and the menu's title a shadow — DONE (24 September 2026)
+### 4ba. The deck builder, Play vs Computer and Play Online have backdrops, the rest a steel-and-circuit picture, and the menu's title a shadow — DONE (24 September 2026)
 
 The person picked the pictures. The three new ones are committed under the
 "Art under no licence" rule of §4ay, each credited to its artist with
@@ -4526,17 +4526,18 @@ their website (`assets/CREDITS.md`), unchanged:
   quiet, replaced it there. Alex Kim's website is his ArtStation, the
   account that posts *Traffic Accident*, which NetrunnerDB also credits
   to him.
-- **Profile, Settings, Replay and About stand on a painted circuit
-  board**, the shared `menu.jpg` (2560 × 1600), which the person asked
-  for in the spirit of Fantasy Flight Games' card back: blue, red and
-  green traces with a thin metallic rail, raised plates, depth. It is
-  the project's own (GPL-3.0-or-later), painted by
-  `scripts/paint_circuit_backdrop.py` from one seed — parallel buses
-  routed on a grid with 45-degree bends, never crossing, a groove shadow
-  under each rail, bevelled plates lit from above, and two lens rings
-  off the middle, the Corp's blue at the left and the Runner's red at
-  the right. It is darker than the silver back it echoes, because light
-  menu text sits over it, and it is not a copy of the back.
+- **Profile, Settings, Replay and About stand on purple circuitry
+  between brushed-steel plates**, the shared `menu.jpg`, which the person
+  generated with Google Gemini and chose after seeing it behind those
+  screens: the project's own (GPL-3.0-or-later), 1312 × 816, so it is
+  enlarged about twice and a 2560 × 1600 version would be sharper. Three
+  others were turned down on the way. A circuit board painted by a
+  script after Fantasy Flight Games' card back was committed and
+  removed with its script. Two wide Gemini images (1584 × 672) were
+  previewed through the override folder and never committed: the crop
+  to 16:10 lost their sides and enlarged them 2.4 times, and the silver
+  one hid the menus' light text. **The size to ask for is the guide's
+  2560 × 1600, 16:10, mid-tone or darker.**
 
 **A screen borrows another's picture by name, not by a copy.**
 `backdrops.json` gained `same_as` (`netrunner_client::backdrop::Manifest`,
