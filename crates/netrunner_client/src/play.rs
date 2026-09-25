@@ -54,7 +54,7 @@ use std::thread::{self, JoinHandle};
 use netrunner_bots::{Level, Personality};
 use netrunner_core::cards::CardRegistry;
 use netrunner_core::decks::DeckFile;
-use netrunner_core::rules::{GameState, MatchRules, PlayerAction, Side};
+use netrunner_core::rules::{DeckOrder, GameState, MatchRules, PlayerAction, Side};
 use netrunner_core::view::ClientView;
 use netrunner_core::tutorial::Lesson;
 use netrunner_session::lesson::{LessonSession, LessonStep};
@@ -89,6 +89,13 @@ pub struct LocalMatchSpec {
     /// unset `--corp-personality`.
     pub style: Option<Personality>,
     pub seed: u64,
+    /// Standard for a game from the form. A starter game's are its decks'
+    /// category's (`DeckCategory::match_rules`, 6 points for the starter
+    /// lists), passed by whoever chose the decks rather than read off
+    /// them here, because a saved deck carries no category and a rule
+    /// guessed from a deck's name is the kind of client-side rule the
+    /// crate map forbids (`netrunner_cli::tui::play_starter_game`).
+    pub rules: MatchRules,
     /// `None` records nothing: a session with no data directory to keep
     /// a record in. Never a choice on a form — a game against a bot is
     /// always casual, so there is no unrecorded kind to ask for.
@@ -205,18 +212,19 @@ impl MatchHandle {
     /// dying on its first frame (Phase 6's rule: a game that fails to
     /// start is a notice, not a drop to the shell).
     pub fn start_local(spec: LocalMatchSpec) -> Result<Self, String> {
-        let LocalMatchSpec { registry, corp, runner, human, level, style, seed, record } = spec;
+        let LocalMatchSpec { registry, corp, runner, human, level, style, seed, rules, record } = spec;
         let bot_side = human.other();
         let bot_deck = if bot_side == Side::Corp { &corp } else { &runner };
         let personality = personality_for(style, bot_deck)?;
-        let (state, _events) = GameState::setup(&corp.to_deck(), &runner.to_deck(), &registry, seed).map_err(|e| e.to_string())?;
-        // `GameState::setup` is Standard rules on a shuffled deck, which is
-        // exactly what the header's `setup` rebuilds from these fields.
+        let (state, _events) =
+            GameState::setup_with(&corp.to_deck(), &runner.to_deck(), &registry, seed, rules, DeckOrder::Shuffled).map_err(|e| e.to_string())?;
+        // A shuffled deck under `rules`, which is exactly what the
+        // header's `setup` rebuilds from these fields.
         let header = MatchRecordHeader {
             seed,
             corp_deck: corp.to_deck(),
             runner_deck: runner.to_deck(),
-            rules: MatchRules::default(),
+            rules,
             bot: Some(RecordedBot { side: bot_side, level, personality }),
             order: Default::default(),
         };
@@ -715,7 +723,7 @@ mod tests {
         let registry = Arc::new(crate::decks::sample_deck_registry());
         let corp = netrunner_core::decks::by_id("discretion_advised").expect("built-in deck").clone();
         let runner = netrunner_core::decks::by_id("stolen_goods").expect("built-in deck").clone();
-        LocalMatchSpec { registry, corp, runner, human, level: Level::Novice, style: None, seed, record }
+        LocalMatchSpec { registry, corp, runner, human, level: Level::Novice, style: None, seed, rules: MatchRules::default(), record }
     }
 
     /// The pump a client is: wait for `Awaiting`, submit the first legal

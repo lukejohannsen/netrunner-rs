@@ -1240,7 +1240,7 @@ mod tests {
         let registry = Arc::new(netrunner_client::decks::sample_deck_registry());
         let corp = netrunner_core::decks::by_id("discretion_advised").unwrap();
         let runner = netrunner_core::decks::by_id("stolen_goods").unwrap();
-        let spec = LocalMatchSpec { registry: registry.clone(), corp, runner, human: side, level: Level::Novice, style: None, seed: 11, record: None };
+        let spec = LocalMatchSpec { registry: registry.clone(), corp, runner, human: side, level: Level::Novice, style: None, seed: 11, rules: Default::default(), record: None };
         let handle = MatchHandle::start_local(spec).unwrap();
         (Game::new(registry, side), handle)
     }

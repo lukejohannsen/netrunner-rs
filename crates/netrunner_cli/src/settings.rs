@@ -54,6 +54,17 @@ pub fn remember(key: PromptKey, answer: Answer) -> Result<(), String> {
     settings.save(&path)
 }
 
+/// Marks lesson `id` finished in the file, read and written back whole
+/// like `remember`. Both clients show the tracks from this list.
+pub fn finish_lesson(id: &str) -> Result<(), String> {
+    let path = resolve_settings_file()?;
+    let mut settings = Settings::load(&path)?;
+    if settings.lessons_done.insert(id.to_string()) {
+        settings.save(&path)?;
+    }
+    Ok(())
+}
+
 /// Whether the invocation is one a person plays, rather than one that
 /// measures something. See the module comment.
 pub fn applies_to(config: &Config) -> bool {

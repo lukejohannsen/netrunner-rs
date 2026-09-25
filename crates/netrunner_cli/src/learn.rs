@@ -6,7 +6,7 @@
 //! in order and, if the player completes them all, graduates straight into
 //! that side's starter game — the hand-off §8 describes.
 
-use netrunner_core::decks::{self, DeckFile};
+use netrunner_core::decks::DeckFile;
 use netrunner_core::rules::Side;
 use netrunner_core::tutorial;
 
@@ -79,10 +79,7 @@ fn seed(config: &Config) -> u64 {
 }
 
 fn starter_decks(boosted: bool) -> Result<(DeckFile, DeckFile), String> {
-    let (corp, runner) =
-        if boosted { ("the_syndicate_boosted", "the_catalyst_boosted") } else { ("the_syndicate_starter", "the_catalyst_starter") };
-    let load = |id: &str| decks::by_id(id).ok_or_else(|| format!("embedded deck {id:?} is missing"));
-    Ok((load(corp)?, load(runner)?))
+    netrunner_client::learn::starter_decks(boosted)
 }
 
 fn list() {
