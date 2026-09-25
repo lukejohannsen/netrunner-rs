@@ -2114,8 +2114,8 @@ fn overlap(parent: &mut ChildSpawnerCommands, entities: &[Entity], width: f32, a
 /// the person found off to the side and dull.
 ///
 /// **Nothing in it moves.** The row is the disc's height and the plate
-/// the bar's, both constants of the chair (`layout::avatar_size`,
-/// `layout::bar_height`), so a new remote narrowing the cards, a tag or
+/// the bar's, both constants of the chair (`layout::AVATAR`,
+/// `layout::BAR`), so a new remote narrowing the cards, a tag or
 /// a hand of ten leaves the bar and the avatar exactly where they were.
 /// The wings share the board's width evenly whatever is on them.
 ///
@@ -2130,10 +2130,7 @@ fn overlap(parent: &mut ChildSpawnerCommands, entities: &[Entity], width: f32, a
 /// The right wing is the left one mirrored.
 #[allow(clippy::too_many_arguments)]
 fn spawn_avatar_bar(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore, crops: &AvatarCrops, art: Option<&BoardArt>, game: &Game, view: &ClientView, side: Side, fit: &BoardFit) {
-    let chair = game.side;
-    let disc = layout::avatar_size(side, chair);
-    let bar = layout::bar_height(side, chair);
-    let scale = bar / layout::BAR;
+    let (disc, bar) = (layout::AVATAR, layout::BAR);
     let lit = view.active_player == side;
     let identity = match side {
         Side::Corp => view.corp.identity.clone(),
@@ -2164,14 +2161,14 @@ fn spawn_avatar_bar(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &Cli
             // A short wing packs its things closer, as it drops their
             // words: at 1366 × 768 the Runner's left wing is full to within
             // the gaps between them.
-            column_gap: px(if words { 14.0 } else { 8.0 } * scale),
+            column_gap: px(if words { 14.0 } else { 8.0 }),
             padding: UiRect { top: px(2), bottom: px(over_the_channel), ..default() },
             ..default()
         };
         // The outer end clears the plate's chamfer and the traces that
         // climb out of the channel there; the inner runs under the disc
         // and clears its ring.
-        let (outer, inner) = (px(layout::BAR_OUTER * scale), px(layout::BAR_TUCK + 12.0 * scale));
+        let (outer, inner) = (px(layout::BAR_OUTER), px(layout::BAR_TUCK + 12.0));
         if mirrored {
             node.margin.left = px(-layout::BAR_TUCK);
             node.padding.left = inner;
@@ -2224,32 +2221,44 @@ fn spawn_avatar_bar(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &Cli
         ))
         .with_children(|row| {
             // The left wing: who it is at the outer end, the first half
-            // of the numbers against the disc.
             // The left wing: who it is at the outer end — the name before
-            // its subtitle, "Zahya Sadeghi" and "Haas-Bioroid", which the
-            // wing gives up first when it is short of room — then the
-            // Runner's two piles, which are zones a click opens as the
-            // Corp's centrals are through their plates, and the first half
-            // of the numbers against the disc.
+            // its subtitle, "Zahya Sadeghi" and "Haas-Bioroid" — and the
+            // first half of the numbers against the disc.
+            //
+            // The Runner's two piles, zones a click opens as the Corp's
+            // centrals are through their plates, go where there is room:
+            // on a wide bar in the right wing beside the memory line, which
+            // has the most to spare; on a short one in the left, in place
+            // of the name, which a short wing cannot hold beside them — a
+            // name clipped to "Zahya Sadegl" reads as a mistake, and the
+            // avatar says who it is.
+            let piles = |wing: &mut ChildSpawnerCommands| {
+                if side != Side::Runner {
+                    return;
+                }
+                for (pile, word, count) in [(Pile::Stack, "Stack", view.runner.stack_count.to_string()), (Pile::Heap, "Heap", view.runner.heap.len().to_string())] {
+                    // A short wing drops the dot and the button's padding.
+                    let label = if words { format!("{word} · {count}") } else { format!("{word} {count}") };
+                    let entity = compact_button(wing, theme, label, Click::Target(Target::Pile(pile)));
+                    if !words {
+                        wing.commands().entity(entity).entry::<Node>().and_modify(|mut node| node.padding = UiRect::axes(px(8), px(4)));
+                    }
+                    glow(&mut wing.commands(), entity, theme, game.affordance_for(&Target::Pile(pile)));
+                }
+            };
             row.spawn(wing(false)).with_children(|wing| {
                 dress(wing, false);
-                // The Runner's short wing has no room for the name beside
-                // the piles, and a name clipped to its first letter reads
-                // as a mistake; the avatar says who it is.
                 if words || side == Side::Corp {
                     let name = card.map_or_else(|| format!("{side:?}"), |card| card.title.split(':').next().unwrap_or(&card.title).trim().to_string());
                     wing.spawn(Node { flex_shrink: 1.0, min_width: px(0), overflow: Overflow::clip(), ..default() }).with_children(|clip| {
-                        clip.spawn((Text::new(name), theme.font((size::SMALL * scale).max(11.0)), TextColor(ink), TextLayout::new(Justify::Left, LineBreak::NoWrap)));
+                        clip.spawn((Text::new(name), theme.font(layout::BAR_WORD), TextColor(ink), TextLayout::new(Justify::Left, LineBreak::NoWrap)));
                     });
                 }
-                if side == Side::Runner {
-                    for (pile, label) in [(Pile::Stack, format!("Stack · {}", view.runner.stack_count)), (Pile::Heap, format!("Heap · {}", view.runner.heap.len()))] {
-                        let entity = compact_button(wing, theme, label, Click::Target(Target::Pile(pile)));
-                        glow(&mut wing.commands(), entity, theme, game.affordance_for(&Target::Pile(pile)));
-                    }
+                if !words {
+                    piles(wing);
                 }
                 wing.spawn(Node { flex_grow: 1.0, ..default() });
-                spawn_readouts(wing, theme, art, near_left, ink, scale, words);
+                spawn_readouts(wing, theme, art, near_left, ink, words);
             });
 
             // The disc, over both wings' inner ends.
@@ -2305,13 +2314,17 @@ fn spawn_avatar_bar(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &Cli
             glow(&mut row.commands(), entity, theme, game.affordance_for(&Target::Identity(side)));
 
             // The right wing: the rest of the numbers against the disc,
-            // then the Runner's memory and link.
+            // then — on a wide bar — the Runner's piles, and their memory
+            // and link.
             row.spawn(wing(true)).with_children(|wing| {
                 dress(wing, true);
-                spawn_readouts(wing, theme, art, near_right, ink, scale, words);
+                spawn_readouts(wing, theme, art, near_right, ink, words);
                 wing.spawn(Node { flex_grow: 1.0, ..default() });
+                if words {
+                    piles(wing);
+                }
                 if let Some(details) = hud::details(view, side) {
-                    wing.spawn((Text::new(details), theme.font((size::SMALL * scale).max(11.0)), TextColor(theme.text_dim), TextLayout::new(Justify::Left, LineBreak::NoWrap)));
+                    wing.spawn((Text::new(details), theme.font(layout::BAR_WORD), TextColor(theme.text_dim), TextLayout::new(Justify::Left, LineBreak::NoWrap)));
                 }
             });
         });
@@ -2355,11 +2368,11 @@ fn compact_button(parent: &mut ChildSpawnerCommands, theme: &Theme, text: String
 /// threat is drawn in the danger colour rather than added, which is
 /// `hud`'s rule. A readout that opens a zone — Agendas, the score area —
 /// is a button, drawn with the buttons' fill so it reads as one.
-fn spawn_readouts(parent: &mut ChildSpawnerCommands, theme: &Theme, art: Option<&BoardArt>, readouts: &[hud::Readout], ink: Color, scale: f32, words: bool) {
+fn spawn_readouts(parent: &mut ChildSpawnerCommands, theme: &Theme, art: Option<&BoardArt>, readouts: &[hud::Readout], ink: Color, words: bool) {
     for readout in readouts {
         let colour = if readout.alarm { theme.danger } else { ink };
         let marker = HudReadout { label: readout.label, value: readout.value.clone() };
-        let node = Node { flex_direction: FlexDirection::Row, flex_shrink: 0.0, align_items: AlignItems::Center, column_gap: px(4.0 * scale), ..default() };
+        let node = Node { flex_direction: FlexDirection::Row, flex_shrink: 0.0, align_items: AlignItems::Center, column_gap: px(4), ..default() };
         // A readout that opens something is a button; the rest are bare
         // numbers. Both are slots, so a skin can put a plate behind every
         // readout and a brighter one behind the door.
@@ -2369,7 +2382,7 @@ fn spawn_readouts(parent: &mut ChildSpawnerCommands, theme: &Theme, art: Option<
                 Button,
                 widgets::Themed,
                 Click::Target(Target::Pile(pile)),
-                Node { padding: UiRect::axes(px(8.0 * scale), px(1)), border_radius: BorderRadius::all(px(6)), ..node },
+                Node { padding: UiRect::axes(px(8), px(1)), border_radius: BorderRadius::all(px(6)), ..node },
                 BackgroundColor(theme.button),
                 widgets::Dressed::button(theme, Slot::HudCellOpens, Drawn::new(theme.button, Color::NONE)),
             )),
@@ -2380,15 +2393,15 @@ fn spawn_readouts(parent: &mut ChildSpawnerCommands, theme: &Theme, art: Option<
             // counts when the board has one, and its word after it.
             let glyph = board_art::hud_key(readout.label).and_then(|key| art?.get(key));
             if let Some(picture) = glyph {
-                cell.spawn(board_art::glyph(picture, 18.0 * scale));
+                cell.spawn(board_art::glyph(picture, if words { layout::BAR_GLYPH } else { layout::BAR_GLYPH_SHORT }));
             }
-            cell.spawn((Text::new(readout.value.clone()), theme.font(22.0 * scale), TextColor(colour)));
+            cell.spawn((Text::new(readout.value.clone()), theme.font(if words { layout::BAR_NUMBER } else { layout::BAR_NUMBER_SHORT }), TextColor(colour)));
             // On a short wing the glyph stands for the word; a readout
             // with no glyph keeps its word, or it would be a bare number.
             if !words && glyph.is_some() {
                 return;
             }
-            cell.spawn((Text::new(readout.label), theme.font((size::SMALL * scale).max(11.0)), TextColor(if readout.alarm { theme.danger } else { theme.text_dim }), TextLayout::new(Justify::Left, LineBreak::NoWrap)));
+            cell.spawn((Text::new(readout.label), theme.font(layout::BAR_WORD), TextColor(if readout.alarm { theme.danger } else { theme.text_dim }), TextLayout::new(Justify::Left, LineBreak::NoWrap)));
         });
     }
 }

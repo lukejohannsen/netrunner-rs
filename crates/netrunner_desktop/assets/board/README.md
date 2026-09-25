@@ -194,13 +194,13 @@ the same width, **so keep both ends 160 px wide** and put nothing in the
 middle third that would show being stretched sideways: straight brushing
 and straight traces stretch, while a jog or a via is a smear. The text
 runs across the top two thirds; keep the lowest third for the channel,
-and the outer 132 px clear of anything the name would sit on.
+and the outer 144 px clear of anything the name would sit on.
 
 | Key | Shows | Logical box | Draw at | Bundled |
 |---|---|---|---|---|
-| `avatar.bar` | a wing of the bar, on the other side's turn | 48 tall (43 on the far side), the board's width shared by two | **480 × 96**, ends 160 each | brushed steel, dark traces |
+| `avatar.bar` | a wing of the bar, on the other side's turn | 56 tall on both sides, the board's width shared by two | **480 × 96**, ends 160 each | brushed steel, dark traces |
 | `avatar.bar.active` | a wing of the bar, on this side's turn | same | same | brushed steel, lit purple traces |
-| `avatar.frame` | the ring round the avatar, on the other side's turn | 72 square (65 on the far side) | **256 × 256**, transparent inside from 0.83 of the radius | a steel ring |
+| `avatar.frame` | the ring round the avatar, on the other side's turn | 84 square on both sides | **256 × 256**, transparent inside from 0.83 of the radius | a steel ring |
 | `avatar.frame.active` | the ring, on this side's turn | same | same | a steel ring with a lit trace |
 
 The bundled four are painted by `scripts/paint_avatar_bar.py` after the

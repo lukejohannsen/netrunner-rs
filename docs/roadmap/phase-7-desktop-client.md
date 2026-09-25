@@ -4750,8 +4750,8 @@ not move** — the person named that as the thing not to repeat.
   sibling; a lifted card already had its own `GlobalZIndex`). "Your hand
   · N" is gone: the Runner's Grip readout and the Corp's HQ header carry
   the count.
-- **Fixed pixels.** `layout::AVATAR` (72) and `layout::BAR` (48), the far
-  side at `OPPONENT_BAR_SCALE`; `strip_height` is the avatar row plus the
+- **Fixed pixels.** `layout::AVATAR` and `layout::BAR` (72 and 48 as
+  first built, 84 and 56 below), the far side's at first smaller; `strip_height` is the avatar row plus the
   hand's peek, so `fixed_height` stays monotone in the face. Measured
   with a replica of `face_width`: no change at 1920 × 1080 or the
   person's 2000 × 1250 (the face is at its 220 cap there), and 167 → 150
@@ -4791,12 +4791,30 @@ not move** — the person named that as the thing not to repeat.
   the bar: the row of backs said only how many cards they hold, which
   the Runner's Grip readout and the Corp's HQ header already say. The
   opponent's edge is their bar alone, on the window's top edge
-  (`layout::strip_height`). With that height back, **the opponent's bar
-  is drawn at `layout::OPPONENT_BAR_SCALE` (0.9)** rather than the far
-  side's 0.75, also at the person's request: at 0.75 its words were
-  11 px. Card width against `main`, by the same replica: 2000 × 1250
-  unchanged (220), 1366 × 768 167 → 170 (Corp) and 157 → 154 (Runner) —
-  the bar-over-hand cost above, less the hand that is gone.
+  (`layout::strip_height`). With that height back the opponent's bar was
+  first drawn at 0.9 of the person's rather than the far side's 0.75, at
+  which its words were 11 px; the next item made it the same size.
+
+- **Then both bars the same size, and larger** (the person again: "at
+  least the same size", "enlarged just a bit more"): `OPPONENT_BAR_SCALE`
+  is gone, `AVATAR` 72 → 84, `BAR` 48 → 56, a readout's number 22 → 26
+  (`BAR_NUMBER`), its word 14 → 16, its glyph 18 → 22. A short wing
+  steps the number and glyph back down (`BAR_NUMBER_SHORT`,
+  `BAR_GLYPH_SHORT`). **The Runner's piles go where there is room**: on
+  a wide bar in the right wing beside MU and link, so the name is never
+  clipped ("Zahya Sadegl" was what the left wing showed at 2000 wide);
+  on a short one in the left, in place of the name, as "Stack 34" with
+  less padding. `BAR_OUTER` 66 → 84 keeps the text off the end caps'
+  traces at the new height.
+- **And from the Corp's chair the rig is drawn at
+  `OPPONENT_RIG_SCALE` (0.9)** rather than 0.75: the person found the
+  servers taller than they needed while the rig was the smallest thing
+  on the board. The server field is the only row that grows, so it pays:
+  at 2000 × 1250, 468 → 397 (Corp) and 442 → 395 (Runner) against
+  `main`; at 1920 × 1080, 298 → 227 and 272 → 225. **The cost is the
+  small window**: the face at 1366 × 768 is 167 → 140 (Corp) and 157 →
+  140 (Runner) against `main`, the price of two 84 px discs; at 1920 ×
+  1080 and above the face stays at its 220 cap.
 
 Seen on screen at 2000 × 1250 and 1366 × 768 from both chairs, forty
 decisions in, and with a hand card lifted (`NETRUNNER_LIFT`); no scroll

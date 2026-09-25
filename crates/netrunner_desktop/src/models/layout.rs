@@ -53,11 +53,13 @@
 //! chair the plates are at the bottom, next to the Corp, and the ICE
 //! climbs; from the Runner's they are at the top and it comes down.
 //!
-//! **The far side is smaller.** The opponent's avatar bar, hand and area are
-//! drawn at [`OPPONENT_SCALE`] of the person's own width — the Runner
-//! sees the Corp's servers smaller and their own rig at full size, the
-//! Corp the reverse — and both hands show a [`PEEK`] of each card, the
-//! person's own lifting out whole when hovered.
+//! **The far side is smaller.** The opponent's area is drawn at
+//! [`OPPONENT_SCALE`] of the person's own width — the Runner sees the
+//! Corp's servers smaller and their own rig at full size — and the Corp
+//! sees the rig at [`OPPONENT_RIG_SCALE`], a little larger, because its
+//! server field had height to spare. The two avatar bars are the same
+//! size ([`AVATAR`]), the opponent's hand is not drawn, and the person's
+//! shows a [`PEEK`] of each card, lifting out whole when hovered.
 //!
 //! **There is no run lane.** A row of chips between the servers and the
 //! rig was reserved for a run until 24 September 2026, and removed at
@@ -180,6 +182,14 @@ pub const ICE_FIELD_MIN: f32 = 96.0;
 /// [`face_width`]'s binary search; the per-row ramp §4m rejected was not
 /// (see [`Depth`]).
 pub const OPPONENT_SCALE: f32 = 0.75;
+/// The Runner's rig from the Corp's chair is drawn larger than the rest
+/// of the far side: the Corp's servers were the field that took every
+/// spare pixel, taller than their tiles ever needed, while the rig —
+/// what the Corp reads to judge a run — was the smallest thing on the
+/// board. The person asked for some of that height back (25 September
+/// 2026). A constant, like [`OPPONENT_SCALE`], so [`fixed_height`] stays
+/// monotone in the face.
+pub const OPPONENT_RIG_SCALE: f32 = 0.9;
 /// How much of a card in a hand or a rig row shows: its top third for
 /// the person's own hand (a hovered one rises out of the row whole) and
 /// for every rig card. A hand is a fan held at the table's edge, and the
@@ -189,29 +199,35 @@ pub const OPPONENT_SCALE: f32 = 0.75;
 /// rig's three rows are three peeks for the same reason: three whole
 /// rows did not fit a laptop's board ([`rig_row_height`]).
 pub const PEEK: f32 = 1.0 / 3.0;
-/// A side's avatar — its identity's art cropped to a disc — in the
-/// person's own row, and the bar of numbers either side of it: the plate
-/// is [`BAR`] tall and the row as tall as the disc, the plate centred on
-/// it. **Fixed pixels, never a fraction of the face width**, which moves
-/// when a remote is made: the person asked for the bar and the avatar to
-/// stay where they are for the whole match (Phase 7 §4bi). The far side's
-/// is [`OPPONENT_BAR_SCALE`] of it, a constant too.
-pub const AVATAR: f32 = 72.0;
-/// The opponent's bar is drawn at this fraction of the person's — not
-/// at [`OPPONENT_SCALE`], which is the far side's cards: at 0.75 its words
-/// were 11 px, and the person asked for the opponent's numbers to be
-/// easier to read (25 September 2026). Still under 1, so the table keeps
-/// a far side; the height came from the opponent's hand, which is no
-/// longer drawn.
-pub const OPPONENT_BAR_SCALE: f32 = 0.9;
-pub const BAR: f32 = 48.0;
+/// A side's avatar — its identity's art cropped to a disc — and the bar
+/// of numbers either side of it: the plate is [`BAR`] tall and the row
+/// as tall as the disc, the plate centred on it. **Fixed pixels, never a
+/// fraction of the face width**, which moves when a remote is made: the
+/// person asked for the bar and the avatar to stay where they are for the
+/// whole match (Phase 7 §4bi). **Both sides' are the same size** — the
+/// far side's cards are smaller, its numbers are not, because the person
+/// reads the opponent's credits and clicks as often as their own; at the
+/// cards' 0.75 its words were 11 px.
+pub const AVATAR: f32 = 84.0;
+pub const BAR: f32 = 56.0;
+/// The bar's type: a readout's number, its word and its glyph, and the
+/// name and the Runner's memory line in the word's size.
+pub const BAR_NUMBER: f32 = 26.0;
+pub const BAR_WORD: f32 = 16.0;
+pub const BAR_GLYPH: f32 = 22.0;
+/// The number and glyph on a wing too short for words
+/// ([`BAR_WORDS_MIN`]): a size down, so the Runner's piles and three
+/// readouts fit the 448 a wing has at 1366 × 768.
+pub const BAR_NUMBER_SHORT: f32 = 22.0;
+pub const BAR_GLYPH_SHORT: f32 = 18.0;
 /// How far each wing of the bar runs in under the disc, so the ring sits
 /// on the plate rather than beside it.
 pub const BAR_TUCK: f32 = 14.0;
 /// What a wing's outer end keeps clear before its text: the plate's
 /// chamfer and the traces that climb out of the channel to their vias,
-/// the last of which sits at 58 of the picture's 240 logical pixels.
-pub const BAR_OUTER: f32 = 66.0;
+/// the last of which sits at 108 of the picture's 96-pixel-tall 480, so
+/// at 63 once the picture is drawn [`BAR`] tall, with a margin past it.
+pub const BAR_OUTER: f32 = 84.0;
 /// Where the art sits on an identity's scan, for the avatar's crop:
 /// `[centre x, centre y, side]`, the side a fraction of the card's width.
 /// Measured off Null Signal Games' identity frame (Zahya Sadeghi, The
@@ -321,22 +337,19 @@ pub fn board_height(window_height: f32) -> f32 {
 }
 
 /// The face width a side's cards are drawn at from `chair`: the
-/// person's own at `face`, the opponent's at [`OPPONENT_SCALE`] of it.
+/// person's own at `face`, the opponent's at [`OPPONENT_SCALE`] of it —
+/// or [`OPPONENT_RIG_SCALE`], for the Runner's rig seen by the Corp.
 pub fn area_face(side: Side, chair: Side, face: f32) -> f32 {
-    if side == chair { face } else { (face * OPPONENT_SCALE).floor() }
+    match (side == chair, side) {
+        (true, _) => face,
+        (false, Side::Runner) => (face * OPPONENT_RIG_SCALE).floor(),
+        (false, Side::Corp) => (face * OPPONENT_SCALE).floor(),
+    }
 }
 
 /// A server plate's height at its server's face width.
 pub fn plate_height(server_face: f32) -> f32 {
     ((server_face + 4.0) * PLATE_ASPECT).round()
-}
-
-/// A side's avatar disc and the height of its bar's row, from `chair`:
-/// [`AVATAR`] for the person's own and [`OPPONENT_BAR_SCALE`] of it for
-/// the far side's. Constants of the chair, so nothing in the game moves
-/// them.
-pub fn avatar_size(side: Side, chair: Side) -> f32 {
-    if side == chair { AVATAR } else { (AVATAR * OPPONENT_BAR_SCALE).round() }
 }
 
 /// The square of an identity's scan the avatar shows, `[x0, y0, x1,
@@ -361,15 +374,10 @@ pub fn bar_wing(board: f32, disc: f32) -> f32 {
 /// The narrowest wing that keeps each readout's word beside its number.
 /// Narrower, a readout with a glyph is the glyph and the number alone —
 /// the glyph says what it counts — and one without keeps its word. At
-/// 1366 × 768 a wing is 454 wide, and the Runner's credits, clicks,
+/// 1366 × 768 a wing is 448 wide, and the Runner's credits, clicks,
 /// agendas and piles did not fit it with their words; at 1920 × 1080 it
-/// is 731.
+/// is 725, where the piles move to the right wing and every word fits.
 pub const BAR_WORDS_MIN: f32 = 640.0;
-
-/// A side's bar plate's height from `chair`, scaled as its disc is.
-pub fn bar_height(side: Side, chair: Side) -> f32 {
-    if side == chair { BAR } else { (BAR * OPPONENT_BAR_SCALE).round() }
-}
 
 /// A side's edge of the table: its avatar row, and — the person's only —
 /// the [`PEEK`] of their hand under it. **The opponent's hand is not
@@ -379,7 +387,7 @@ pub fn bar_height(side: Side, chair: Side) -> f32 {
 /// the cards.
 pub fn strip_height(side: Side, chair: Side, side_face: f32) -> f32 {
     let hand = if side == chair { (PEEK * 1.4 * side_face).round() } else { 0.0 };
-    avatar_size(side, chair) + hand
+    AVATAR + hand
 }
 
 /// One rig row: the top [`PEEK`] of a card at its side's face width, and
@@ -971,27 +979,22 @@ pub fn wrapped_lines(text: &str, width: f32, size: f32) -> usize {
 #[cfg(test)]
 mod tests {
 
-    /// The avatar bar never moves with the game: its disc and its plate
-    /// are the same at every face width and every number of servers, and
-    /// the far side's is the near side's at the opponent's scale.
+    /// The avatar bar never moves with the game: the same on both sides,
+    /// at every face width and every number of servers.
     #[test]
-    fn the_avatar_bar_is_a_constant_of_the_chair() {
+    fn the_avatar_bar_is_a_constant() {
         use netrunner_core::rules::Side;
+        const { assert!(BAR < AVATAR, "the disc stands proud of the plate") };
         for chair in [Side::Corp, Side::Runner] {
-            let mine = (avatar_size(chair, chair), bar_height(chair, chair));
-            let theirs = (avatar_size(chair.other(), chair), bar_height(chair.other(), chair));
-            assert_eq!(mine, (AVATAR, BAR));
-            assert!(theirs.0 < mine.0 && theirs.1 < mine.1, "the far side's is smaller");
-            assert!(mine.1 < mine.0, "the disc stands proud of the plate");
             // The far edge is the bar alone: the opponent's hand is not
             // drawn, so it is the same at every face width.
-            assert_eq!(strip_height(chair.other(), chair, MIN_FACE), theirs.0);
-            assert_eq!(strip_height(chair.other(), chair, MAX_FACE), theirs.0);
-            // The edge's height moves with the hand's peek, never the bar.
-            let narrow = strip_height(chair, chair, MIN_FACE);
-            let wide = strip_height(chair, chair, MAX_FACE);
-            assert_eq!(wide - narrow, (PEEK * 1.4 * MAX_FACE).round() - (PEEK * 1.4 * MIN_FACE).round());
+            assert_eq!(strip_height(chair.other(), chair, MIN_FACE), AVATAR);
+            assert_eq!(strip_height(chair.other(), chair, MAX_FACE), AVATAR);
+            // The near edge moves with the hand's peek, never the bar.
+            assert_eq!(strip_height(chair, chair, MAX_FACE) - AVATAR, (PEEK * 1.4 * MAX_FACE).round());
         }
+        // The Corp sees the rig larger than the rest of the far side.
+        assert!(area_face(Side::Runner, Side::Corp, 200.0) > area_face(Side::Corp, Side::Runner, 200.0));
     }
 
     /// An avatar's crop is a square inside the scan, whatever its size.
@@ -1171,18 +1174,20 @@ mod tests {
     /// width is a function of the window, the chair and the servers
     /// alone — `Counts` has nowhere to put an ICE count.
     #[test]
-    fn the_far_side_is_smaller_by_one_constant() {
+    fn the_far_side_is_smaller_by_a_constant() {
         for chair in [Side::Corp, Side::Runner] {
             assert_eq!(area_face(chair, chair, 200.0), 200.0);
-            assert_eq!(area_face(chair.other(), chair, 200.0), 150.0);
         }
+        // The Corp's servers from the Runner's chair at the far side's
+        // scale; the rig from the Corp's at its own, larger one.
+        assert_eq!(area_face(Side::Corp, Side::Runner, 200.0), 150.0);
+        assert_eq!(area_face(Side::Runner, Side::Corp, 200.0), 180.0);
         // From the Runner's chair the rig is the near row and the plates
-        // the far one; from the Corp's the reverse. Either way the near
-        // side costs more of the height.
-        let runner = Counts { servers: 4, human_is_runner: true };
-        let corp = Counts { human_is_runner: false, ..runner };
+        // the far one; from the Corp's the reverse, with the rig still
+        // smaller than the Runner sees it. (The Runner's chair used to cost
+        // more of the height; since the rig is drawn larger for the Corp,
+        // the two chairs' fixed rows are within a pixel of each other.)
         assert!(rig_height(area_face(Side::Runner, Side::Runner, 200.0)) > rig_height(area_face(Side::Runner, Side::Corp, 200.0)));
-        assert!(fixed_height(200.0, runner) > fixed_height(200.0, corp), "a full-size rig is taller than full-size plates");
     }
 
     /// The rows at the computed width leave the ICE field its minimum, and
