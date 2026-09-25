@@ -209,9 +209,9 @@ fn side_card(parent: &mut ChildSpawnerCommands, theme: &Theme, side: Side, index
                 flex_basis: px(0),
                 min_height: px(118),
                 flex_direction: FlexDirection::Row,
-                align_items: AlignItems::Stretch,
+                align_items: AlignItems::Center,
                 column_gap: px(18),
-                padding: UiRect::new(px(0), px(24), px(0), px(0)),
+                padding: UiRect::horizontal(px(24)),
                 border: UiRect::all(px(2)),
                 border_radius: BorderRadius::all(px(16)),
                 overflow: Overflow::clip(),
@@ -222,8 +222,14 @@ fn side_card(parent: &mut ChildSpawnerCommands, theme: &Theme, side: Side, index
             widgets::Dressed { slot: Slot::Button, drawn, hover: Some(Drawn::new(hover, theme.border_hover)), pressed: Some(Drawn::new(colour.with_alpha(0.40), theme.accent)) },
         ))
         .with_children(|card| {
-            // The side's own colour down the card's edge.
-            card.spawn((Node { width: px(8), ..default() }, BackgroundColor(if chosen { colour } else { colour.with_alpha(0.55) })));
+            // The side's own colour as a short bar beside its name, inset
+            // from the edge: a strip down the edge itself ran over the
+            // rounded corners, because `Overflow::clip` clips to the
+            // rectangle and not to the radius.
+            card.spawn((
+                Node { width: px(6), height: px(64), flex_shrink: 0.0, border_radius: BorderRadius::all(px(3)), ..default() },
+                BackgroundColor(if chosen { colour } else { colour.with_alpha(0.55) }),
+            ));
             card.spawn(Node { flex_direction: FlexDirection::Column, justify_content: JustifyContent::Center, row_gap: px(6), padding: UiRect::vertical(px(16)), ..default() })
                 .with_children(|words| {
                     let name_colour = if chosen { theme.text } else { theme.text_dim };
