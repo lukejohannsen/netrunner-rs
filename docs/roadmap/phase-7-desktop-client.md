@@ -4935,6 +4935,51 @@ the servers' and the rig's installs.
 Seen on screen at 2000 × 1250 from both chairs forty decisions in; the
 only scroll area in the dev log is the match log's.
 
+### 4bl. A server shows up to ten strips before its stack sheet, and the servers take the spare height before the rig — DONE (25 September 2026)
+
+`feat/server-slots-take-spare`. Asked for right after §4bk: "Can the
+server size be large enough to get ~10 cards stacked in before it goes
+to the inspect — whatever we can get before losing Runner Rig room. I
+still like the information about the runner card to be displayed like
+strength."
+
+- **`layout::server_slots` reads the height the face leaves**, no longer
+  the window's height bands (3 / 4 / 5). `face_width` is chosen with
+  `MIN_SLOTS` (3) strips, so a deeper column never narrows a card; every
+  strip's height the window has over `fixed_height` at that face is one
+  more strip, up to `MAX_SLOTS` (10); and `spare_height` — what grows the
+  rig's rows — is what is left after the strips. The rig's floor is
+  unchanged: `PEEK` of each card over its chip line, which carries a
+  program's strength and a card's counters.
+- Still never by what is installed — the window, the chair and the
+  server count alone — so a column holds its height all match and a
+  server past `MAX_SLOTS` folds to the "+N" strip and the stack sheet
+  as before.
+- **Measured** (`face_width` / `server_slots` / `rig_row_height`, five
+  servers; before → after):
+
+  | window | chair | strips | rig row |
+  |---|---|---|---|
+  | 2000 × 1250 | Corp | 5 → 10 | 172 → 138 |
+  | 2000 × 1250 | Runner | 5 → 10 | 189 → 171 |
+  | 1920 × 1080 | Corp | 4 → 7 | 164 → 123 |
+  | 1920 × 1080 | Runner | 4 → 9 | 179 → 125 |
+  | 1366 × 768 | both | 3 → 3 | unchanged |
+
+  The face width is the same at every size measured. The rig row's
+  floor at 220 px is 112 (Corp chair) and 123 (Runner chair), so every
+  row keeps its chip line and more than a third of the card.
+- `layout::tests::the_servers_take_the_spare_height_before_the_rig`
+  holds the order: the strips fit with the rig at its floor, a taller
+  window never shows fewer, and the rig has less than a strip's height
+  spare until the servers are full.
+
+Seen on screen at 2000 × 1250 from the Corp's chair: ten strips of
+column, the rig's programs still showing their strength. No autoplay
+game grew a remote past four cards before the Runner won, so the fold
+of a nine-card server is held by `tests/game.rs` rather than a
+screenshot.
+
 ## 5. The deck builder — DONE (24 September 2026)
 
 `feat/desktop-deck-builder`. Asked for in one list: save and import
