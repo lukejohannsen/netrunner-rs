@@ -222,6 +222,8 @@ pub enum Click {
     NextLesson,
     /// This lesson again from the start, after its match ended first.
     RetryLesson,
+    /// A track's last lesson done: that side's starter game.
+    StarterGame,
 }
 
 /// The match to put on the board once this one is gone: "Next lesson" and
@@ -878,7 +880,7 @@ fn poll(
     time: Res<Time>,
     mut dirty: ResMut<Dirty>,
     dev: Option<ResMut<crate::dev::Dev>>,
-    core: Res<ClientCore>,
+    mut core: ResMut<ClientCore>,
     mut notices: ResMut<Notices>,
 ) {
     // A replay has no match: its steps are pushed into the pacer by
@@ -890,6 +892,16 @@ fn poll(
             && matches!(message, netrunner_client::play::MatchMessage::Stalled { .. })
         {
             saved(&mut model.0, &mut notices, save_report(&core, &active.handle));
+        }
+        // A lesson is done the moment its last step is, whatever the
+        // person does with the closing words: ticked in the settings
+        // file both clients read.
+        if let Some(lesson) = active.as_ref().and_then(|active| active.lesson.as_ref())
+            && matches!(message, netrunner_client::play::MatchMessage::LessonComplete { .. })
+            && core.settings.lessons_done.insert(lesson.id.clone())
+            && let Err(error) = core.save_settings()
+        {
+            notices.push(format!("Settings not saved: {error}"));
         }
         pace.0.push(message);
     }
@@ -1397,7 +1409,11 @@ pub(crate) fn controls(
     let mut leave_to: Option<AppScreen> = None;
     // Where the board's Menu and Quit lead: back to the tracks from a
     // lesson, which is where the next one is picked.
-    let way_out = if active.as_ref().is_some_and(|active| active.lesson.is_some()) { AppScreen::Learn } else { AppScreen::MainMenu };
+    let from_learn = active.as_ref().is_some_and(|active| active.lesson.is_some() || active.starter.is_some());
+    let way_out = if from_learn { AppScreen::Learn } else { AppScreen::MainMenu };
+    // A starter game is dealt again from here; a game from the form goes
+    // back to the form, which reopens on its choice.
+    let starter = active.as_ref().and_then(|active| active.starter);
     // With Ctrl or Cmd held the primary button is the secondary click
     // (`board_click` opened the sheet), so the press it also registers
     // on the card opens no menu.
@@ -1479,7 +1495,18 @@ pub(crate) fn controls(
             Ok(Click::ConfirmQuit) => intents.push(Intent::ConfirmQuit),
             Ok(Click::CancelQuit) => intents.push(Intent::CancelQuit),
             Ok(Click::Quit) => intents.push(Intent::RequestQuit),
-            Ok(Click::PlayAgain) => leave_to = Some(AppScreen::NewGame),
+            Ok(Click::PlayAgain) if starter.is_none() => leave_to = Some(AppScreen::NewGame),
+            Ok(Click::PlayAgain | Click::StarterGame) => {
+                let side = model.as_ref().map_or(Side::Runner, |model| model.0.side);
+                let again = starter.unwrap_or(crate::screens::new_game::Starter { side, boosted: false });
+                match crate::screens::learn::start_starter(&core, again) {
+                    Ok(next) => {
+                        commands.insert_resource(NextMatch(next));
+                        leave_to = Some(AppScreen::Game);
+                    }
+                    Err(error) => notices.push(format!("The starter game could not start: {error}")),
+                }
+            }
             Ok(Click::Menu | Click::Back) => leave_to = Some(way_out),
             Ok(Click::BeginLesson) => intents.push(Intent::BeginLesson),
             Ok(Click::EveryAction) => intents.push(Intent::EveryAction),
@@ -3836,8 +3863,12 @@ fn spawn_overlay(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &Client
                     spawn_lesson_words(panel, theme, &format!("{} — complete", lesson.title), lesson.outro.as_deref().unwrap_or_default());
                     panel.spawn(widgets::row(12.0)).with_children(|row| {
                         row.spawn(widgets::styled_button(theme, ButtonKind::Quiet, "Learn to Play", Val::Auto, Click::Menu));
+                        // The end of a track goes on to its starter game, as
+                        // the terminal's `learn track` does.
                         if lesson.has_next {
                             row.spawn(widgets::styled_button(theme, ButtonKind::Primary, "Next lesson", Val::Auto, Click::NextLesson));
+                        } else {
+                            row.spawn(widgets::styled_button(theme, ButtonKind::Primary, "Play the starter game", Val::Auto, Click::StarterGame));
                         }
                     });
                 } else if let (Some(over), Some(_)) = (&game.over, &game.lesson) {

@@ -805,7 +805,7 @@ mod connection_tests {
         let registry = std::sync::Arc::new(netrunner_client::decks::sample_deck_registry());
         let corp = netrunner_core::decks::by_id("discretion_advised").unwrap();
         let runner = netrunner_core::decks::by_id("stolen_goods").unwrap();
-        let spec = LocalMatchSpec { registry, corp, runner, human: Side::Corp, level: netrunner_bots::Level::Novice, style: None, seed: 3, record: None };
+        let spec = LocalMatchSpec { registry, corp, runner, human: Side::Corp, level: netrunner_bots::Level::Novice, style: None, seed: 3, rules: Default::default(), record: None };
         let mut handle = MatchHandle::start_local(spec).unwrap();
         loop {
             match handle.wait().expect("a run comes before the end") {

@@ -79,6 +79,13 @@ pub struct Settings {
     /// than in `desktop` because both clients honour it.
     #[serde(default, skip_serializing_if = "Answers::is_empty")]
     pub answers: Answers,
+    /// The Learn to Play lessons this person has finished, by id: every
+    /// step advanced and the closing words reached. Shared, like
+    /// `answers`, because either client can play a lesson and both show
+    /// the tracks. A set of ids rather than a count per track, so a
+    /// lesson added or reordered later is neither falsely done nor lost.
+    #[serde(default, skip_serializing_if = "std::collections::BTreeSet::is_empty")]
+    pub lessons_done: std::collections::BTreeSet<String>,
 }
 
 /// Preferences only the graphical client reads. `#[serde(default)]` on

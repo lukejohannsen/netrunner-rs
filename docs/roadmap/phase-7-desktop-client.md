@@ -4780,7 +4780,7 @@ Eternal-only test decks out). Workspace tests for the two crates,
 workspace clippy silent. Screenshots at 2560×1600 of the shelf with
 "Sort by" open and the editor with "Set" open.
 
-## 6. Lessons — OPEN (24 September 2026)
+## 6. Lessons — DONE (24 September 2026)
 
 Replay, the other half of this section's name, was done as §4ah. What is
 left is Phase 1.75's lessons and starter games, which until now only the
@@ -4849,6 +4849,51 @@ ice", and its first step with only R&D lit and the bar greyed.
 Play. `LocalMatchSpec` needs the match rules for them, since a saved
 deck carries no category. Also owed: which lessons a person has
 finished, kept in the settings file.
+
+### 6b. Each track ends in its starter games, and a finished lesson is ticked — DONE (24 September 2026)
+
+`feat/desktop-starter-games`.
+
+- **The starter games.** Each track's panel ends in two buttons: The
+  Syndicate against The Catalyst on the starter lists at 6 points, and
+  the boosted pair at the standard 7. `LocalMatchSpec` gained `rules`.
+  The caller that chose the decks passes their category's
+  (`DeckCategory::match_rules`), because a saved deck carries no
+  category. The form passes Standard, so no game from the form changed.
+  `netrunner_client::learn::starter_decks` is the one list, and the
+  terminal's `learn game` now uses it too.
+- **The opponent is the rung the person's record suggests**, as Play vs
+  Computer seats it, and the game is recorded like any game against a
+  bot. The terminal's `learn game` seats the un-handicapped one ply.
+  That is the top of the ladder, and a wall for someone whose first
+  real game this is. This is a deliberate difference between the
+  clients, recorded rather than reconciled.
+- **Graduation.** A track's last lesson's closing words offer "Play the
+  starter game", as the terminal's `learn track` goes straight into it.
+  In a starter game, Play again deals it again and every way out leads
+  back to the tracks.
+- **A finished lesson is ticked.** `Settings::lessons_done` is a set of
+  ids, so a lesson added or reordered later is neither falsely done nor
+  lost. Both clients write it: the desktop when `LessonComplete`
+  arrives, the terminal when a lesson reaches `Complete`, and either
+  way before the closing words are dismissed. The tracks screen shows
+  "· done" rather than a tick, because the shipped Latin fonts have no
+  check mark. It counts each track ("3 of 7 done"), and the first
+  unfinished lesson, Corp track first, is the one primary button
+  (`learn::first_unfinished`).
+- The first screenshot put the two starter buttons side by side, and
+  they ran past the panel's edge. They are rows of the list like the
+  lessons.
+
+**Verified.** `tests/learn.rs` plays the Corp track's last lesson on
+the board. The lesson lands in the settings file, the closing words
+offer the starter game, the game is played at 6 points and unguided,
+and leaving goes back to the tracks with the lesson marked done and the
+first lesson still primary. Every starter button is offered, and the
+boosted Runner game plays to 7. Unit tests cover the starter decks'
+rules, a track's order, and the first unfinished lesson being the
+earliest gap. Workspace tests green and workspace clippy silent.
+Screenshot of the tracks at 2560×1600.
 
 ## 8. Borrowed from jinteki — OPEN (19 September 2026)
 

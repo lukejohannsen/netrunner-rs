@@ -55,6 +55,18 @@ pub struct ActiveMatch {
     /// The lesson being played, when this is one (`screens::learn`): the
     /// board reads its words, and leaving goes back to Learn to Play.
     pub lesson: Option<Lesson>,
+    /// The starter game being played, when this is one: Play again deals
+    /// it again, and leaving goes back to Learn to Play.
+    pub starter: Option<Starter>,
+}
+
+/// A starter game, as Learn to Play names it: the person's chair, and
+/// whether it is the booster-staged pair at 7 points rather than the
+/// starter lists at 6.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Starter {
+    pub side: Side,
+    pub boosted: bool,
 }
 
 /// The last game played, left by the game screen; the form resumes from
@@ -295,7 +307,7 @@ fn spawn_form(parent: &mut ChildSpawnerCommands, theme: &Theme, menu: &StartMenu
 
 /// A seed off the clock: the terminal uses `rand::random`, and the
 /// desktop has no reason to carry a random crate for one number a game.
-fn seed_from_clock() -> u64 {
+pub fn seed_from_clock() -> u64 {
     SystemTime::now().duration_since(UNIX_EPOCH).map_or(1, |d| d.as_nanos() as u64 | 1)
 }
 
@@ -330,10 +342,11 @@ fn start_with(core: &ClientCore, choice: &StartChoice, seed: u64, record: Option
         level: choice.level,
         style: choice.style,
         seed,
+        rules: Default::default(),
         record,
     };
     let handle = MatchHandle::start_local(spec)?;
-    Ok(ActiveMatch { handle, choice: Some(choice.clone()), lesson: None })
+    Ok(ActiveMatch { handle, choice: Some(choice.clone()), lesson: None, starter: None })
 }
 
 /// An unrecorded game on the default decks against the middle rung, the

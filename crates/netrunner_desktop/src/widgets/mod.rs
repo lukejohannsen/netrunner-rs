@@ -218,7 +218,7 @@ pub enum ButtonKind {
 
 impl ButtonKind {
     /// Resting, hovered and pressed: fill, rim, and the label's colour.
-    fn looks(self, theme: &Theme) -> ([Drawn; 3], Color) {
+    pub fn looks(self, theme: &Theme) -> ([Drawn; 3], Color) {
         match self {
             ButtonKind::Primary => (
                 [Drawn::new(theme.primary, theme.primary), Drawn::new(theme.primary_hover, theme.primary_hover), Drawn::new(theme.primary_press, theme.primary_press)],

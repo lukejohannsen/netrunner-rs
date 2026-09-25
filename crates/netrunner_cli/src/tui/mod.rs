@@ -356,6 +356,10 @@ fn run_lesson(
                 }
             }
             LessonStep::Complete { view } => {
+                // Kept whether or not the closing words are dismissed: the
+                // lesson is done once its last step is. A file that will
+                // not save costs the tick, never the lesson.
+                let _ = crate::settings::finish_lesson(&lesson.id);
                 ui.finish(*view);
                 ui.coaching = None;
                 ui.modal = Some(Modal::new(&format!("{} — complete", lesson.title), &lesson.outro, "Enter to continue, q to quit"));

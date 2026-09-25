@@ -22,8 +22,10 @@ use netrunner_desktop::core::ClientCore;
 use netrunner_desktop::models::game::{Intent, Outcome};
 use netrunner_desktop::nav::Navigate;
 use netrunner_desktop::screens::game::{Click, LessonCoach, Model, Overlay};
-use netrunner_desktop::screens::learn::LessonButton;
-use netrunner_desktop::screens::new_game::ActiveMatch;
+use netrunner_desktop::screens::learn::{LessonButton, StarterButton};
+use netrunner_desktop::screens::new_game::{ActiveMatch, Starter};
+use netrunner_desktop::theme::Theme;
+use netrunner_desktop::widgets::{ButtonKind, Dressed};
 use netrunner_desktop::{AppScreen, NetrunnerDesktopPlugins};
 
 fn headless_client() -> App {
@@ -171,4 +173,74 @@ fn a_lesson_is_played_on_the_board_to_its_end_and_goes_on_to_the_next() {
     escape(&mut app);
     wait_for(&mut app, "the tracks", |app| screen(app) == AppScreen::Learn);
     assert!(app.world().get_resource::<ActiveMatch>().is_none(), "the lesson's match is gone");
+}
+
+fn open_the_tracks(app: &mut App) {
+    app.world_mut().write_message(Navigate(AppScreen::Learn));
+    wait_for(app, "the tracks", |app| screen(app) == AppScreen::Learn && app.world_mut().query::<&LessonButton>().iter(app.world()).count() > 0);
+}
+
+/// The label on a lesson's button, and whether it is the primary one.
+fn lesson_row(app: &mut App, id: &str) -> (String, bool) {
+    let primary = ButtonKind::Primary.looks(app.world().resource::<Theme>()).0[0].bg;
+    let mut rows = app.world_mut().query::<(&LessonButton, &Children, &Dressed)>();
+    let mut texts = app.world_mut().query::<&Text>();
+    let (_, children, dressed) = rows.iter(app.world()).find(|(button, _, _)| button.0 == id).expect("the lesson is listed");
+    let label = children.iter().find_map(|child| texts.get(app.world(), child).ok().map(|text| text.0.clone())).expect("a button has words");
+    (label, dressed.drawn.bg == primary)
+}
+
+/// A track's last lesson, played to its end, is ticked on the tracks,
+/// moves the primary button on, and offers that side's starter game —
+/// which is played at the starter lists' 6 points, and whose way out is
+/// the tracks.
+#[test]
+fn the_end_of_a_track_is_ticked_and_goes_on_to_its_starter_game() {
+    let mut app = headless_client();
+    open_the_tracks(&mut app);
+    let track = tutorial::track(netrunner_core::rules::Side::Corp);
+    assert!(lesson_row(&mut app, &track[0].id).1, "the first lesson is the one to play");
+    let last = track.last().unwrap().clone();
+    assert!(!lesson_row(&mut app, &last.id).0.ends_with("done"));
+
+    let button = app.world_mut().query::<(Entity, &LessonButton)>().iter(app.world()).find(|(_, button)| button.0 == last.id).unwrap().0;
+    press(&mut app, button);
+    wait_for(&mut app, "the board", |app| screen(app) == AppScreen::Game && app.world().get_resource::<Model>().is_some());
+    let begin = clicked(&mut app, &Click::BeginLesson).expect("the intro has Begin");
+    press(&mut app, begin);
+    play_to_the_outro(&mut app);
+    app.update();
+    assert!(app.world().resource::<ClientCore>().settings.lessons_done.contains(&last.id), "the finished lesson is in the settings file");
+    assert!(clicked(&mut app, &Click::NextLesson).is_none(), "a track's last lesson has no next");
+    let starter = clicked(&mut app, &Click::StarterGame).expect("the end of a track offers its starter game");
+    press(&mut app, starter);
+    wait_for(&mut app, "the starter game", |app| {
+        app.world().get_resource::<ActiveMatch>().is_some_and(|active| active.starter.is_some()) && app.world().get_resource::<Model>().is_some_and(|model| model.0.view.is_some())
+    });
+    assert_eq!(app.world().resource::<ActiveMatch>().starter, Some(Starter { side: last.side, boosted: false }));
+    assert_eq!(app.world().resource::<Model>().0.view.as_ref().unwrap().rules.winning_agenda_points, 6);
+    assert!(app.world().resource::<Model>().0.lesson.is_none(), "a starter game is unguided");
+
+    // Leaving asks, and goes back to the tracks, where the lesson is done.
+    escape(&mut app);
+    let leave = clicked(&mut app, &Click::ConfirmQuit).expect("leaving a game asks");
+    press(&mut app, leave);
+    wait_for(&mut app, "the tracks", |app| screen(app) == AppScreen::Learn && app.world_mut().query::<&LessonButton>().iter(app.world()).count() > 0);
+    assert!(lesson_row(&mut app, &last.id).0.ends_with("· done"));
+    assert!(lesson_row(&mut app, &track[0].id).1, "the first unfinished lesson is still the one to play");
+}
+
+/// Both starter games of both sides are on the tracks, and the boosted
+/// pair is played to the standard 7.
+#[test]
+fn every_starter_game_is_offered_and_the_boosted_one_plays_to_seven() {
+    let mut app = headless_client();
+    open_the_tracks(&mut app);
+    let starters: Vec<Starter> = app.world_mut().query::<&StarterButton>().iter(app.world()).map(|button| button.0).collect();
+    assert_eq!(starters.len(), 4);
+    let boosted = app.world_mut().query::<(Entity, &StarterButton)>().iter(app.world()).find(|(_, button)| button.0.boosted && button.0.side == netrunner_core::rules::Side::Runner).unwrap().0;
+    press(&mut app, boosted);
+    wait_for(&mut app, "the boosted game", |app| app.world().get_resource::<Model>().is_some_and(|model| model.0.view.is_some()));
+    assert_eq!(app.world().resource::<Model>().0.view.as_ref().unwrap().rules.winning_agenda_points, 7);
+    assert_eq!(app.world().resource::<Model>().0.side, netrunner_core::rules::Side::Runner);
 }
