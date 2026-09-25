@@ -4550,6 +4550,59 @@ the neon *New Angeles* has a near-white sky, and the accent's icy blue
 went thin on it. Bevy's `TextShadow` has no blur, so it is dark and close
 (3, 4 px, 85% black).
 
+### 4bd. A hand card rises out of the row and follows the pointer, and a drag redraws the board — DONE (25 September 2026)
+
+`fix/hand-lift-and-drag`. Reported from play: "picking up and moving
+cards isn't working at all", and the hover lift "looks like you're
+overlaying the card onto the 1/3 view".
+
+- **The drag worked in the model and never reached the screen.** Every
+  drag intent's `Outcome::Redraw` marked the rail and the overlays and
+  never the board, where the hand is. The model reordered the hand and
+  the row went on showing the old order until the next applied action
+  happened to redraw it. The outline meant to mark the dragged card
+  never drew. No place lit for a held card, and a new remote's column
+  never appeared, so a card could not be dropped into one. Now a drag
+  that travelled and a reorder mark the board; a still press is a
+  click and still redraws only the rail. The tests of #58 and #59
+  checked the model, and the headless board lays out at zero size, so
+  nothing had ever looked at the row after a drop. The new test does:
+  the first face after the drop is the card that was moved.
+- **The lift is the card itself** (`raise_hand`, replacing
+  `lift_hovered`). The copy drawn above the strip is gone. The hovered
+  face is moved up by a `UiTransform` by exactly the part the strip
+  hides, freed from the strip's clip by `OverrideClip`, and drawn over
+  the board by a `GlobalZIndex`. Its bottom sits on the window's edge
+  and it still covers its whole place in the strip, so the hover does
+  not flicker at its lower edge. A `UiTransform` moves what is hit
+  with what is drawn and does not lay the row out again, so the
+  neighbours hold still. A card whose menu is open stays raised under
+  its menu.
+- **A card picked up follows the pointer**, raised as the hover left it
+  and carried by the distance travelled, so the point grabbed stays
+  under the pointer. The row did not move during a drag by design
+  (#58: a re-flowing row moves the gap being aimed at). The row
+  still holds still; the card no longer does.
+- The cut-off hand (`layout::PEEK`) stays, at the person's word.
+  Reading a card is the right-click, as it is everywhere.
+
+**Still owed, and why a drag seemed to do nothing even when it worked.**
+A drag can play only a Corp card that goes into a server. A Runner
+install, an event and an operation have no drop place, so for them a
+drop is a reorder. The rig and the table as drop targets are the next
+item.
+
+**Verified.** `a_hovered_hand_card_rises_out_of_the_row_and_nothing_is_sent`
+(the face itself raised by the hidden part, unclipped, no second face,
+back to identity on leaving) and
+`a_hand_card_picked_up_follows_the_pointer_until_it_is_put_down`
+(carried by the pointer's travel, and the row redrawn in the new order).
+Screenshots at 2560×1600 of a raised Pennyshaver and of Offworld Office
+carried over a lit new remote. **Not verified with a real mouse from
+this session:** Wayland refuses a program-set cursor position, and the
+probe that tried it stopped the window's frames. The person is asked to
+check it by hand.
+
 ## 5. The deck builder — DONE (24 September 2026)
 
 `feat/desktop-deck-builder`. Asked for in one list: save and import

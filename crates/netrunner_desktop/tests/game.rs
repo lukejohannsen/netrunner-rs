@@ -1457,36 +1457,81 @@ fn a_hand_card_dragged_along_the_hand_reorders_it_and_plays_nothing() {
 }
 
 /// A hand shows a third of each card, and the one the pointer rests on
-/// lifts out whole as a second, inert copy: the face in the row stays
-/// where it was, nothing is submitted, and the copy goes when the pointer
-/// does.
+/// **rises out of the row itself** — no copy is drawn — by the part the
+/// strip hides, out of the strip's clip and over the board; nothing is
+/// submitted, and it drops back when the pointer leaves.
 #[test]
-fn a_hovered_hand_card_lifts_out_whole_and_nothing_is_sent() {
+fn a_hovered_hand_card_rises_out_of_the_row_and_nothing_is_sent() {
     let (mut app, _dir) = headless_client();
     start_a_game(&mut app);
     to_the_runners_turn(&mut app);
     let before = app.world().resource::<Model>().0.applied;
-    let lifted = |app: &mut App| app.world_mut().query::<&LiftedCard>().iter(app.world()).map(|l| l.0).collect::<Vec<_>>();
+    let faces = |app: &mut App| app.world_mut().query_filtered::<Entity, With<HandSlot>>().iter(app.world()).count();
+    let lifted = |app: &mut App| app.world_mut().query_filtered::<Entity, With<LiftedCard>>().iter(app.world()).collect::<Vec<_>>();
     let slot = {
         let world = app.world_mut();
         world.query_filtered::<Entity, With<HandSlot>>().iter(world).next().expect("a hand card")
     };
-    assert!(lifted(&mut app).is_empty(), "nothing is lifted until something is hovered");
+    let hand = faces(&mut app);
+    assert!(lifted(&mut app).is_empty(), "nothing is raised until something is hovered");
     app.world_mut().entity_mut(slot).insert(Interaction::Hovered);
     app.update();
-    assert_eq!(lifted(&mut app), [slot], "the hovered card lifts out");
-    let copy = {
-        let world = app.world_mut();
-        world.query_filtered::<Entity, With<LiftedCard>>().single(world).unwrap()
-    };
-    assert!(!app.world().entity(copy).contains::<Button>(), "the lifted copy is not a button, so the hover holds on the face under it");
+    assert_eq!(lifted(&mut app), [slot], "the hovered card is the one raised");
+    assert_eq!(faces(&mut app), hand, "and it is the card itself: nothing was drawn beside it");
+    let side = app.world().resource::<Model>().0.side;
+    let rise = (1.0 - netrunner_desktop::models::layout::PEEK) * app.world().resource::<BoardFit>().size_of(side).height();
+    let raised = app.world().entity(slot);
+    assert_eq!(raised.get::<UiTransform>().map(|t| t.translation), Some(Val2::px(0.0, -rise)), "raised by the part the strip hides");
+    assert!(raised.contains::<OverrideClip>(), "out of the strip's clip");
     app.update();
     assert_eq!(lifted(&mut app), [slot], "and stays while the pointer does");
     app.world_mut().entity_mut(slot).insert(Interaction::None);
     app.update();
-    assert!(lifted(&mut app).is_empty(), "and goes when it leaves");
+    assert!(lifted(&mut app).is_empty(), "and drops back when it leaves");
+    assert_eq!(app.world().entity(slot).get::<UiTransform>().map(|t| t.translation), Some(Val2::ZERO));
     let model = &app.world().resource::<Model>().0;
     assert!(model.applied == before && model.menu.is_none(), "considering a card is not a game event");
+}
+
+/// A hand card picked up follows the pointer: while the button is held
+/// and the pointer has travelled, the card itself is carried by the
+/// distance travelled (raised, as the hover left it), and on release it
+/// goes back into the row at its new place.
+#[test]
+fn a_hand_card_picked_up_follows_the_pointer_until_it_is_put_down() {
+    let (mut app, _dir) = headless_client();
+    start_a_game(&mut app);
+    to_the_runners_turn(&mut app);
+    let order = app.world().resource::<Model>().0.hand.cards().to_vec();
+    let last = order.len() - 1;
+    let face = entity_with(&mut app, &Click::Target(Target::HandCard(order[last].clone()))).expect("the card is on the board");
+    app.world_mut().entity_mut(face).insert(Interaction::Pressed);
+    app.world_mut().write_message(MouseButtonInput { button: MouseButton::Left, state: ButtonState::Pressed, window: Entity::PLACEHOLDER });
+    app.update();
+    app.world_mut().write_message(CursorMoved { window: Entity::PLACEHOLDER, position: Vec2::new(-120.0, -80.0), delta: None });
+    app.update();
+    app.update();
+    let side = app.world().resource::<Model>().0.side;
+    let rise = (1.0 - netrunner_desktop::models::layout::PEEK) * app.world().resource::<BoardFit>().size_of(side).height();
+    let carried = {
+        let world = app.world_mut();
+        world.query_filtered::<(&HandSlot, &UiTransform), With<LiftedCard>>().iter(world).map(|(slot, t)| (slot.0, t.translation)).collect::<Vec<_>>()
+    };
+    assert_eq!(carried, [(last, Val2::px(-120.0, -80.0 - rise))], "the card picked up is carried with the pointer");
+    app.world_mut().write_message(MouseButtonInput { button: MouseButton::Left, state: ButtonState::Released, window: Entity::PLACEHOLDER });
+    app.update();
+    app.update();
+    let model = &app.world().resource::<Model>().0;
+    assert!(model.dragging.is_none(), "put down");
+    assert_eq!(model.hand.cards()[0], order[last], "at the place it was dropped");
+    assert!(app.world_mut().query::<&LiftedCard>().iter(app.world()).next().is_none(), "and back in the row");
+    // The row on the screen is the new order, not only the model's: the
+    // board was redrawn by the drop, so the first face is the card moved.
+    let first = {
+        let world = app.world_mut();
+        world.query::<(&HandSlot, &Click)>().iter(world).find(|(slot, _)| slot.0 == 0).map(|(_, click)| click.clone())
+    };
+    assert_eq!(first, Some(Click::Target(Target::HandCard(order[last].clone()))), "the row shows the new order");
 }
 
 /// The middle of the table does not move: the card width is a function
