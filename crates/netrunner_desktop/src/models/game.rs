@@ -1163,6 +1163,10 @@ impl Game {
             }
             Target::Pile(Pile::Agendas(_)) => self.apply(Intent::Inspect(target)),
             Target::Pile(Pile::Heap) if entries.is_empty() => self.apply(Intent::Inspect(target)),
+            // The avatar is where an identity is read: with nothing the
+            // engine offers on it, its click opens the card rather than an
+            // empty menu (Phase 7 §4bi).
+            Target::Identity(_) if entries.is_empty() => self.apply(Intent::Inspect(target)),
             _ if self.menu.as_ref().is_some_and(|menu| menu.target == target) => {
                 self.menu = None;
                 Outcome::Redraw
@@ -1352,12 +1356,14 @@ mod tests {
         assert!(game.card_of(&menu.target).is_none(), "a zone is not a card");
         assert!(game.awaiting && game.applied == before);
         // Archives offers the installs into it and nothing else; a zone
-        // with nothing to do still opens (the identity, say).
+        // with nothing to do still opens. An identity with nothing to do
+        // is read instead.
         game.apply(Intent::Click { target: Target::Server(ServerId::Archives), over });
         assert_eq!(game.menu.as_ref().map(|m| m.entries.clone()), Some(game.actions.for_server(ServerId::Archives)));
         game.apply(Intent::Click { target: Target::Identity(Side::Runner), over });
-        assert_eq!(game.menu.as_ref().map(|m| m.entries.len()), Some(0), "the opponent's identity has nothing to do");
-        game.apply(Intent::CloseMenu);
+        assert!(game.menu.is_none(), "the opponent's identity has nothing to do");
+        assert_eq!(game.sheet, Some(Sheet { target: Target::Identity(Side::Runner) }), "so its click reads it");
+        game.apply(Intent::Back);
         // The bar: a credit is listed and submits; End turn is not while
         // the Corp has clicks (CR 5.6.2b); Jack out is the Runner's and
         // never on the Corp's map.

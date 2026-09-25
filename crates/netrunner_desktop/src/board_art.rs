@@ -102,6 +102,15 @@ pub const TILE_WIDTH: u32 = 512;
 pub const TILE_HEIGHT: u32 = 128;
 /// The drawn counter badge's size: twice the badge.
 pub const BADGE: u32 = 64;
+/// The avatar bar's wing, at twice its logical size: [`BAR_CAP`] at
+/// each end and a plain middle that stretches. Both caps are the same
+/// width because the right-hand wing is the same picture mirrored, and a
+/// nine-slice is mirrored exactly only when its two ends match.
+pub const BAR_WIDTH: u32 = 480;
+pub const BAR_HEIGHT: u32 = 96;
+pub const BAR_CAP: u32 = 160;
+/// The ring round the avatar, square.
+pub const FRAME: u32 = 256;
 
 /// Every key the board asks for, with the base a state falls back to and
 /// the painter a base is drawn by when no file exists.
@@ -141,6 +150,10 @@ const KEYS: &[Key] = &[
     Key { key: "hud.bad-publicity", base: None, paint: None },
     Key { key: "hud.tags", base: None, paint: None },
     Key { key: "hud.damage", base: None, paint: None },
+    Key { key: "avatar.bar", base: None, paint: Some(|_, _| paint_bar()) },
+    Key { key: "avatar.bar.active", base: Some("avatar.bar"), paint: None },
+    Key { key: "avatar.frame", base: None, paint: Some(|_, _| paint_frame()) },
+    Key { key: "avatar.frame.active", base: Some("avatar.frame"), paint: None },
 ];
 
 /// Every key the board can ask for, for the README's test and for a
@@ -639,6 +652,51 @@ fn paint_badge() -> Image {
         }
     }
     Image::new(Extent3d { width: BADGE, height: BADGE, depth_or_array_layers: 1 }, TextureDimension::D2, data, TextureFormat::Rgba8UnormSrgb, RenderAssetUsages::default())
+}
+
+/// The drawn wing: a flat grey plate with a lit top edge and a dark
+/// channel along its foot, washed in the state's colour — the side's
+/// while it is that side's turn, grey otherwise. Plain on purpose: the
+/// look is the committed picture, and this is what a slow machine gets.
+fn paint_bar() -> Image {
+    let mut data = Vec::with_capacity((BAR_WIDTH * BAR_HEIGHT * 4) as usize);
+    for y in 0..BAR_HEIGHT {
+        for x in 0..BAR_WIDTH {
+            let pixel = if !(4..92).contains(&y) || x < 10 {
+                [0, 0, 0, 0]
+            } else if y < 7 {
+                [236, 238, 244, 255]
+            } else if (68..86).contains(&y) && x >= 44 {
+                if y == 77 { [236, 238, 244, 255] } else { [36, 38, 46, 255] }
+            } else {
+                let shade = 150 - (y as i32 - 7).clamp(0, 60) as u8;
+                [shade, shade, shade.saturating_add(8), 255]
+            };
+            data.extend_from_slice(&pixel);
+        }
+    }
+    Image::new(Extent3d { width: BAR_WIDTH, height: BAR_HEIGHT, depth_or_array_layers: 1 }, TextureDimension::D2, data, TextureFormat::Rgba8UnormSrgb, RenderAssetUsages::default())
+}
+
+/// The drawn ring round the avatar: light grey, transparent inside and
+/// out, washed in the state's colour like the bar.
+fn paint_frame() -> Image {
+    let mut data = Vec::with_capacity((FRAME * FRAME * 4) as usize);
+    let centre = FRAME as f32 / 2.0;
+    for y in 0..FRAME {
+        for x in 0..FRAME {
+            let d = ((x as f32 + 0.5 - centre).powi(2) + (y as f32 + 0.5 - centre).powi(2)).sqrt();
+            let pixel = if d > centre - 2.0 || d < centre - 22.0 {
+                [0, 0, 0, 0]
+            } else if d < centre - 18.0 {
+                [236, 238, 244, 255]
+            } else {
+                [150, 152, 162, 255]
+            };
+            data.extend_from_slice(&pixel);
+        }
+    }
+    Image::new(Extent3d { width: FRAME, height: FRAME, depth_or_array_layers: 1 }, TextureDimension::D2, data, TextureFormat::Rgba8UnormSrgb, RenderAssetUsages::default())
 }
 
 #[cfg(test)]

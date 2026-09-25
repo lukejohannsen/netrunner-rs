@@ -22,12 +22,13 @@
 //! one of those changes, and a row that is still too wide overlaps its
 //! cards like a held hand (`layout::step`) rather than wrapping or
 //! scrolling. The board runs the window's full height beside one right
-//! column: nothing above the opponent's hand and nothing under the
-//! person's. Top to bottom on the board: the opponent's strip and the
-//! bottom of their hand as backs, hung from the window's top edge; their
-//! area and the person's, meeting at the ICE; the control bar (`board::Control::for_side`, one button each,
-//! always in the same place) directly above the person's hand, then the
-//! person's strip and the top of their hand on the window's bottom edge.
+//! column: nothing above the opponent's avatar bar and nothing under the
+//! person's hand. Top to bottom on the board: the opponent's avatar bar
+//! on the window's top edge (their hand is not drawn: its count is on
+//! the bar or the HQ header); their area and the person's, meeting at
+//! the ICE; the control bar (`board::Control::for_side`, one button
+//! each, always in the same place), then the person's avatar bar and the
+//! top of their hand on the window's bottom edge.
 //! The right column is the status line with Quit and the gear, the phase
 //! panel (`board::phase`, hidden with L; a press on it or T opens the
 //! timing chart, `board::timing`), the Runner's identity while a
@@ -160,6 +161,7 @@ impl Plugin for GamePlugin {
             .init_resource::<Pending>()
             .init_resource::<table::LastTable>()
             .init_resource::<Pointer>()
+            .init_resource::<AvatarCrops>()
             .add_observer(open_a_logged_name)
             .add_systems(OnEnter(AppScreen::Game), spawn)
             .add_systems(OnExit(AppScreen::Game), leave)
@@ -170,6 +172,9 @@ impl Plugin for GamePlugin {
             // it (§4n moved `button_feedback` that way and broke twelve
             // board tests).
             .add_systems(Update, shadows.run_if(in_state(AppScreen::Game)))
+            // The avatars' crops, on their own line for the same reason:
+            // what they fill is read by the next redraw, whenever it is.
+            .add_systems(Update, crop_avatars.run_if(in_state(AppScreen::Game)))
             // Likewise its own line: it reads what the chain wrote and
             // orders against none of it, and a menu placed a frame late
             // is a menu that was on the window the whole time.
@@ -369,9 +374,33 @@ pub struct TimingStep {
 /// One line of an install's state on its sheet, for a test to read.
 #[derive(Component)]
 pub struct InstallFact;
-/// A side's HUD, for a test that reads where its numbers are.
+/// A side's HUD — its avatar bar, the numbers either side of the
+/// avatar — for a test that reads where its numbers are.
 #[derive(Component)]
 pub struct HudPanel(pub Side);
+/// A side's avatar: its identity's art in a disc on the bar, and the
+/// identity's click. For a test to press, and to read which it is.
+#[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Avatar(pub Side);
+/// A side's avatar bar, and whether it is lit for that side's turn.
+#[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
+pub struct AvatarBar {
+    pub side: Side,
+    pub lit: bool,
+}
+
+/// The identities' art, cropped for the avatars: the scan and the square
+/// of it the disc shows, by identity. Kept across redraws, because the
+/// crop needs the decoded picture's size and the board is redrawn
+/// without the image assets in hand; the board draws from it the frame
+/// it is filled, so a redraw never shows the stand-in for a frame first.
+#[derive(Resource, Default)]
+pub struct AvatarCrops(std::collections::HashMap<CardId, (Handle<Image>, Rect)>);
+
+/// The width the avatar's scan is decoded at: its crop is
+/// `layout::AVATAR_ART`'s side of it, enough for the largest disc at a
+/// display scale of 1.5.
+const AVATAR_SCAN: FaceSize = FaceSize::Board(180);
 /// One number on a HUD, as `hud::readouts` gave it, for a test to read.
 #[derive(Component, Debug, Clone)]
 pub struct HudReadout {
@@ -509,11 +538,6 @@ impl BoardFit {
         FaceSize::Board(self.area_face(side).round() as u16)
     }
 
-    /// A side's identity in its strip.
-    fn identity_size(&self, side: Side) -> FaceSize {
-        FaceSize::Board((self.area_face(side) * layout::IDENTITY_SCALE).round() as u16)
-    }
-
     fn board_width(&self) -> f32 {
         layout::board_width(self.window.x)
     }
@@ -554,6 +578,49 @@ fn board_pictures(
     }
     commands.insert_resource(BoardArt::load(style, &theme, &mut images));
     dirty.board = true;
+}
+
+/// Fills [`AvatarCrops`] for the two identities in play: asks for each
+/// scan at [`AVATAR_SCAN`] once it is cached, and when it has decoded,
+/// crops the square the disc shows (`layout::avatar_crop`) and redraws
+/// the board. Once per identity per visit — a crop is kept — and nothing
+/// without `Assets<Image>`, which is the headless tests: the disc there
+/// is its faction's mark.
+fn crop_avatars(
+    model: Option<Res<Model>>,
+    core: Res<ClientCore>,
+    mut images: ResMut<CardImages>,
+    assets: Option<Res<Assets<Image>>>,
+    mut crops: ResMut<AvatarCrops>,
+    mut dirty: ResMut<Dirty>,
+) {
+    let (Some(model), Some(assets)) = (model, assets) else { return };
+    let Some(view) = &model.0.view else { return };
+    for id in [&view.corp.identity, &view.runner.identity].into_iter().flatten() {
+        if crops.0.contains_key(id) {
+            continue;
+        }
+        let Some(code) = core.registry.get(id).and_then(|card| card.numeric_id) else { continue };
+        match images.face(code, AVATAR_SCAN) {
+            Some(scan) => {
+                if let Some(image) = assets.get(&scan) {
+                    let size = image.size_f32();
+                    let [x0, y0, x1, y1] = layout::avatar_crop((size.x, size.y));
+                    crops.0.insert(id.clone(), (scan, Rect::new(x0, y0, x1, y1)));
+                    dirty.board = true;
+                }
+            }
+            // Asked for only when the view moves, not every frame: the
+            // store's status reads the disk, and a scan the person has not
+            // downloaded is not going to appear between two frames.
+            None if model.is_changed() => {
+                if let netrunner_card_sync::ImageStatus::Cached(path) = core.images.status(code) {
+                    images.request(code, AVATAR_SCAN, path);
+                }
+            }
+            None => {}
+        }
+    }
 }
 
 /// Recomputes the face width from the window and the view, and marks the
@@ -1632,7 +1699,7 @@ fn redraw(
     core: Res<ClientCore>,
     // The card pictures and the board's own, as one parameter: the system
     // is at Bevy's sixteen.
-    (images, art): (Res<CardImages>, Option<Res<BoardArt>>),
+    (images, art, crops): (Res<CardImages>, Option<Res<BoardArt>>, Res<AvatarCrops>),
     fit: Option<Res<BoardFit>>,
 ) {
     let (Some(mut model), Some(fit)) = (model, fit) else { return };
@@ -1645,7 +1712,7 @@ fn redraw(
         let transitions = game.take_transitions();
         if let Ok(board) = board.single() {
             let art = art.as_deref();
-            commands.entity(board).despawn_children().with_children(|parent| spawn_board(parent, &theme, &core, &images, art, game, &transitions, &fit));
+            commands.entity(board).despawn_children().with_children(|parent| spawn_board(parent, &theme, &core, &images, art, &crops, game, &transitions, &fit));
         }
     }
     let prefs = &core.settings.desktop;
@@ -1788,12 +1855,13 @@ pub struct LessonWay;
 // ---- the board ----
 
 #[allow(clippy::too_many_arguments)]
-fn spawn_board(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore, images: &CardImages, art: Option<&BoardArt>, game: &Game, transitions: &[Transition], fit: &BoardFit) {
+fn spawn_board(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore, images: &CardImages, art: Option<&BoardArt>, crops: &AvatarCrops, game: &Game, transitions: &[Transition], fit: &BoardFit) {
     let drag = game.dragged_slot();
-    // The control bar, directly above the person's hand: what they may do
-    // sits between what they hold and the table, and acting never means
-    // crossing the opponent's side. A row of the board, so it is redrawn
-    // with it; a rail-only redraw refills it in place.
+    // The control bar, directly above the person's avatar bar and hand:
+    // what they may do sits between what they hold and the table, and
+    // acting never means crossing the opponent's side. A row of the
+    // board, so it is redrawn with it; a rail-only redraw refills it in
+    // place.
     let control_bar = |parent: &mut ChildSpawnerCommands, game: &Game| {
         parent
             .spawn((
@@ -1819,30 +1887,29 @@ fn spawn_board(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCo
     let human = game.side;
     let opponent = human.other();
     let lit = Lit::of(transitions);
-    // Top to bottom from either chair: the opponent's strip with their
-    // hand as backs, the far area, the near area, the control bar,
-    // the person's strip with their hand. The Corp's servers are always
-    // the area that grows (`layout::field_height`), with their plates on
-    // the Corp's edge; the rig's row is reserved at its size whether or
-    // not anything is in it, so nothing installed moves the middle.
-    let mut opponent_row = strip_row();
-    opponent_row.align_items = AlignItems::FlexStart;
-    parent.spawn(opponent_row).with_children(|row| {
-        spawn_strip(row, theme, core, images, art, game, view, opponent, fit);
-        spawn_opponent_hand(row, theme, images, view, opponent, fit);
-    });
+    // Top to bottom from either chair: the opponent's avatar bar, the
+    // far area, the near area, the control bar, the person's avatar bar
+    // over their hand. The opponent's hand is not drawn: a row of backs
+    // said only how many they hold, which the Runner's Grip readout and
+    // the Corp's HQ header say, and its height is the cards'. The Corp's servers
+    // are always the area that grows (`layout::field_height`), with their
+    // plates on the Corp's edge; the rig's row is reserved at its size
+    // whether or not anything is in it, so nothing installed moves the
+    // middle. Each edge is one row of the board — the person's a column
+    // of their bar and their hand, no gap between them — so the board's
+    // gaps are as they were.
+    parent.spawn(strip_row()).with_children(|edge| spawn_avatar_bar(edge, theme, core, crops, art, game, view, opponent, fit));
     spawn_area(parent, theme, core, images, art, game, view, opponent, &lit, fit);
     spawn_area(parent, theme, core, images, art, game, view, human, &lit, fit);
     control_bar(parent, game);
-    // The person's strip is the board's last row and sits on the window's
-    // bottom edge: the hand's peek touches it, as the opponent's backs
-    // touch the top, and whatever height the rows leave goes to the ICE
-    // field between them rather than under the hand.
-    let mut own_row = strip_row();
-    own_row.align_items = AlignItems::FlexEnd;
-    parent.spawn(own_row).with_children(|row| {
-        spawn_strip(row, theme, core, images, art, game, view, human, fit);
-        spawn_hand(row, theme, core, images, game, view, human, &lit, fit, drag);
+    // The person's edge is the board's last row and sits on the window's
+    // bottom edge: the hand's peek touches it, as the opponent's bar
+    // touches the top, and whatever height the rows leave goes to the ICE
+    // field between them rather than under the hand. The hand comes
+    // after the bar, so a card lifted out of it is drawn over the bar.
+    parent.spawn(strip_row()).with_children(|edge| {
+        spawn_avatar_bar(edge, theme, core, crops, art, game, view, human, fit);
+        edge.spawn(centred_row()).with_children(|row| spawn_hand(row, theme, core, images, game, view, human, &lit, fit, drag));
     });
 }
 
@@ -2012,9 +2079,16 @@ fn card_row() -> Node {
     Node { flex_direction: FlexDirection::Row, flex_shrink: 0.0, align_items: AlignItems::FlexStart, column_gap: px(layout::CARD_GAP), ..default() }
 }
 
-/// A strip beside a hand: the identity, the numbers, then the cards.
+/// A side's edge of the table: its avatar bar and its hand, stacked with
+/// no gap, as one row of the board.
 fn strip_row() -> Node {
-    Node { width: percent(100), flex_shrink: 0.0, flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(12), min_height: px(0), ..default() }
+    Node { width: percent(100), flex_shrink: 0.0, flex_direction: FlexDirection::Column, align_items: AlignItems::Stretch, ..default() }
+}
+
+/// A hand's row: the hand centred under (or over) its side's avatar, with
+/// the width of the board to spread into.
+fn centred_row() -> Node {
+    Node { width: percent(100), flex_shrink: 0.0, flex_direction: FlexDirection::Row, justify_content: JustifyContent::Center, ..default() }
 }
 
 /// Pulls the cards of a row together so `n` of them fit `available`:
@@ -2032,62 +2106,225 @@ fn overlap(parent: &mut ChildSpawnerCommands, entities: &[Entity], width: f32, a
     }
 }
 
-/// A side's identity and numbers, at the strip's smaller size.
+/// A side's avatar bar: the identity's art cropped to a disc in the
+/// middle, the side's readouts either side of it on a plate of brushed
+/// steel, lit for the side whose turn it is and grey for the other
+/// (Phase 7 §4bi, the third list's item 2). It replaced the strip — a
+/// small identity card at the left with its numbers beside it — which
+/// the person found off to the side and dull.
+///
+/// **Nothing in it moves.** The row is the disc's height and the plate
+/// the bar's, both constants of the chair (`layout::AVATAR`,
+/// `layout::BAR`), so a new remote narrowing the cards, a tag or
+/// a hand of ten leaves the bar and the avatar exactly where they were.
+/// The wings share the board's width evenly whatever is on them.
+///
+/// **The disc is the identity's click.** Its actions, when the engine
+/// offers any, are the menu a click opens; with none, the click reads the
+/// identity whole, as the secondary click always does
+/// (`Game::click`) — so the avatar is where the identity is read.
+///
+/// The pictures are board art (`avatar.bar`, `avatar.frame` and their
+/// `.active` states, `board_art`), drawn in the three tiers: the bundled
+/// steel, a person's own, or a plain plate washed in the side's colour.
+/// The right wing is the left one mirrored.
 #[allow(clippy::too_many_arguments)]
-fn spawn_strip(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore, images: &CardImages, art: Option<&BoardArt>, game: &Game, view: &ClientView, side: Side, fit: &BoardFit) {
+fn spawn_avatar_bar(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore, crops: &AvatarCrops, art: Option<&BoardArt>, game: &Game, view: &ClientView, side: Side, fit: &BoardFit) {
+    let (disc, bar) = (layout::AVATAR, layout::BAR);
+    let lit = view.active_player == side;
     let identity = match side {
         Side::Corp => view.corp.identity.clone(),
         Side::Runner => view.runner.identity.clone(),
     };
-    let who = if side == game.side { "You" } else { "Opponent" };
+    let card = identity.as_ref().and_then(|id| core.registry.get(id));
     let colour = theme.side(side);
+    let ink = if lit { theme.text } else { theme.text_dim };
+    let state = if lit { colour } else { theme.text_dim };
+    let key = |base: &str| if lit { format!("{base}.active") } else { base.to_string() };
+    let wing_picture = art.and_then(|art| art.get(&key("avatar.bar")));
+    let frame_picture = art.and_then(|art| art.get(&key("avatar.frame")));
+
+    let readouts = hud::readouts(view, side);
+    let (near_left, near_right) = readouts.split_at(readouts.len().div_ceil(2));
+    let words = layout::bar_wing(fit.board_width(), disc) >= layout::BAR_WORDS_MIN;
+    // The plate's text sits above the channel along its foot: the
+    // picture's traces run in its lowest third.
+    let over_the_channel = (bar * 0.3).round();
+    let wing = |mirrored: bool| {
+        let mut node = Node {
+            flex_grow: 1.0,
+            flex_basis: px(0),
+            min_width: px(0),
+            height: px(bar),
+            flex_direction: FlexDirection::Row,
+            align_items: AlignItems::Center,
+            // A short wing packs its things closer, as it drops their
+            // words: at 1366 × 768 the Runner's left wing is full to within
+            // the gaps between them.
+            column_gap: px(if words { 14.0 } else { 8.0 }),
+            padding: UiRect { top: px(2), bottom: px(over_the_channel), ..default() },
+            ..default()
+        };
+        // The outer end clears the plate's chamfer and the traces that
+        // climb out of the channel there; the inner runs under the disc
+        // and clears its ring.
+        let (outer, inner) = (px(layout::BAR_OUTER), px(layout::BAR_TUCK + 12.0));
+        if mirrored {
+            node.margin.left = px(-layout::BAR_TUCK);
+            node.padding.left = inner;
+            node.padding.right = outer;
+        } else {
+            node.margin.right = px(-layout::BAR_TUCK);
+            node.padding.left = outer;
+            node.padding.right = inner;
+        }
+        node
+    };
+    // The plate's picture is a child filling the wing rather than the
+    // wing's own image: a sliced image is drawn in its node's content box,
+    // and the wing's padding — the chamfer, the channel, the disc — would
+    // have shrunk the plate to the text's box.
+    let dress = |wing: &mut ChildSpawnerCommands, mirrored: bool| {
+        let fill = Node { position_type: PositionType::Absolute, left: px(0), top: px(0), width: percent(100), height: percent(100), ..default() };
+        match wing_picture {
+            Some(picture) => {
+                let cap = picture.size.x * board_art::BAR_CAP as f32 / board_art::BAR_WIDTH as f32;
+                wing.spawn((
+                    ImageNode {
+                        image_mode: NodeImageMode::Sliced(TextureSlicer {
+                            border: BorderRect { min_inset: Vec2::new(cap, 0.0), max_inset: Vec2::new(cap, 0.0) },
+                            center_scale_mode: SliceScaleMode::Stretch,
+                            sides_scale_mode: SliceScaleMode::Stretch,
+                            max_corner_scale: 1.0,
+                        }),
+                        flip_x: mirrored,
+                        color: picture.tint(state),
+                        ..ImageNode::new(picture.image.clone())
+                    },
+                    fill,
+                    bevy::picking::Pickable::IGNORE,
+                ));
+            }
+            // Headless, with no pictures: the plate as a fill, so a test
+            // sees the same boxes.
+            None => {
+                wing.spawn((BackgroundColor(if lit { colour.with_alpha(0.25) } else { theme.panel }), fill, bevy::picking::Pickable::IGNORE));
+            }
+        }
+    };
+
     parent
         .spawn((
-            Node {
-                flex_direction: FlexDirection::Row,
-                flex_shrink: 0.0,
-                width: px(fit.identity_size(side).width() + layout::STRIP_TEXT),
-                align_items: AlignItems::Center,
-                column_gap: px(10),
-                padding: UiRect::axes(px(6), px(2)),
-                border: UiRect::left(px(4)),
-                ..default()
-            },
-            BorderColor::all(colour),
+            HudPanel(side),
+            AvatarBar { side, lit },
+            Node { width: percent(100), height: px(disc), flex_shrink: 0.0, flex_direction: FlexDirection::Row, align_items: AlignItems::Center, ..default() },
         ))
         .with_children(|row| {
-            if let Some(id) = &identity
-                && let Some(card) = core.registry.get(id)
-            {
-                let image = card.numeric_id.and_then(|code| images.face(code, fit.identity_size(side)));
-                let entity = spawn_face(row, theme, &Face::of(card), fit.identity_size(side), image, (Button, Click::Target(Target::Identity(side))));
-                row.commands().entity(entity).insert(Contact(Depth::strip(side, game.side)));
-                // An identity's own ability has nowhere else to live: it
-                // is not an install and not in hand.
-                glow(&mut row.commands(), entity, theme, game.affordance_for(&Target::Identity(side)));
-            }
-            row.spawn((Node { flex_direction: FlexDirection::Column, flex_shrink: 1.0, min_width: px(0), row_gap: px(2), ..default() },)).with_children(|column| {
-                let title = identity.as_ref().and_then(|id| core.registry.get(id)).map_or_else(|| format!("{side:?}"), |c| c.title.clone());
-                column.spawn((Text::new(format!("{who} · {title}")), theme.font(size::SMALL), TextColor(colour), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
-                spawn_hud(column, theme, art, view, side);
-                // The details line and the Runner's piles share one row, so
-                // the strip is no taller than a hand's peek. The piles are
-                // zones a click opens — the stack for its draw, the heap
-                // for what is in it — as the Corp's centrals are through
-                // their server plates.
-                let details = hud::details(view, side);
-                if details.is_some() || side == Side::Runner {
-                    column.spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(6), ..default() }).with_children(|piles| {
-                        if let Some(details) = details {
-                            piles.spawn(widgets::dim(theme, details));
-                        }
-                        if side == Side::Runner {
-                            for (pile, label) in [(Pile::Stack, format!("Stack · {}", view.runner.stack_count)), (Pile::Heap, format!("Heap · {}", view.runner.heap.len()))] {
-                                let entity = compact_button(piles, theme, label, Click::Target(Target::Pile(pile)));
-                                glow(&mut piles.commands(), entity, theme, game.affordance_for(&Target::Pile(pile)));
-                            }
-                        }
+            // The left wing: who it is at the outer end, the first half
+            // The left wing: who it is at the outer end — the name before
+            // its subtitle, "Zahya Sadeghi" and "Haas-Bioroid" — and the
+            // first half of the numbers against the disc.
+            //
+            // The Runner's two piles, zones a click opens as the Corp's
+            // centrals are through their plates, go where there is room:
+            // on a wide bar in the right wing beside the memory line, which
+            // has the most to spare; on a short one in the left, in place
+            // of the name, which a short wing cannot hold beside them — a
+            // name clipped to "Zahya Sadegl" reads as a mistake, and the
+            // avatar says who it is.
+            let piles = |wing: &mut ChildSpawnerCommands| {
+                if side != Side::Runner {
+                    return;
+                }
+                for (pile, word, count) in [(Pile::Stack, "Stack", view.runner.stack_count.to_string()), (Pile::Heap, "Heap", view.runner.heap.len().to_string())] {
+                    // A short wing drops the dot and the button's padding.
+                    let label = if words { format!("{word} · {count}") } else { format!("{word} {count}") };
+                    let entity = compact_button(wing, theme, label, Click::Target(Target::Pile(pile)));
+                    if !words {
+                        wing.commands().entity(entity).entry::<Node>().and_modify(|mut node| node.padding = UiRect::axes(px(8), px(4)));
+                    }
+                    glow(&mut wing.commands(), entity, theme, game.affordance_for(&Target::Pile(pile)));
+                }
+            };
+            row.spawn(wing(false)).with_children(|wing| {
+                dress(wing, false);
+                if words || side == Side::Corp {
+                    let name = card.map_or_else(|| format!("{side:?}"), |card| card.title.split(':').next().unwrap_or(&card.title).trim().to_string());
+                    wing.spawn(Node { flex_shrink: 1.0, min_width: px(0), overflow: Overflow::clip(), ..default() }).with_children(|clip| {
+                        clip.spawn((Text::new(name), theme.font(layout::BAR_WORD), TextColor(ink), TextLayout::new(Justify::Left, LineBreak::NoWrap)));
                     });
+                }
+                if !words {
+                    piles(wing);
+                }
+                wing.spawn(Node { flex_grow: 1.0, ..default() });
+                spawn_readouts(wing, theme, art, near_left, ink, words);
+            });
+
+            // The disc, over both wings' inner ends.
+            let mut avatar = row.spawn((
+                Avatar(side),
+                Button,
+                Click::Target(Target::Identity(side)),
+                Node {
+                    width: px(disc),
+                    height: px(disc),
+                    flex_shrink: 0.0,
+                    justify_content: JustifyContent::Center,
+                    align_items: AlignItems::Center,
+                    border_radius: BorderRadius::MAX,
+                    ..default()
+                },
+                ZIndex(1),
+                BackgroundColor(theme.faction(card.and_then(|card| card.faction)).darker(0.25)),
+            ));
+            let entity = avatar.id();
+            avatar.with_children(|disc_node| {
+                // The art sits inside the ring's inner edge.
+                let inner = (disc * 0.86).round();
+                match identity.as_ref().and_then(|id| crops.0.get(id)) {
+                    Some((scan, rect)) => {
+                        disc_node.spawn((
+                            ImageNode { image_mode: NodeImageMode::Stretch, rect: Some(*rect), ..ImageNode::new(scan.clone()) },
+                            Node { width: px(inner), height: px(inner), border_radius: BorderRadius::MAX, ..default() },
+                            bevy::picking::Pickable::IGNORE,
+                        ));
+                    }
+                    // No scan: the faction's mark in the icon font, else
+                    // the identity's initial, on the faction's colour.
+                    None => {
+                        let mark = card.and_then(|card| card.faction).and_then(|faction| theme.faction_icon(faction, inner * 0.5));
+                        let (text, font) = mark.unwrap_or_else(|| {
+                            let initial = card.and_then(|card| card.title.chars().next()).unwrap_or('?');
+                            (initial.to_string(), theme.font(inner * 0.45))
+                        });
+                        disc_node.spawn((Text::new(text), font, TextColor(theme.text), bevy::picking::Pickable::IGNORE));
+                    }
+                }
+                if let Some(frame) = frame_picture {
+                    disc_node.spawn((
+                        ImageNode { image_mode: NodeImageMode::Stretch, color: frame.tint(state), ..ImageNode::new(frame.image.clone()) },
+                        Node { position_type: PositionType::Absolute, left: px(0), top: px(0), width: percent(100), height: percent(100), ..default() },
+                        bevy::picking::Pickable::IGNORE,
+                    ));
+                }
+            });
+            // An identity's own ability has nowhere else to live: it is
+            // not an install and not in hand.
+            glow(&mut row.commands(), entity, theme, game.affordance_for(&Target::Identity(side)));
+
+            // The right wing: the rest of the numbers against the disc,
+            // then — on a wide bar — the Runner's piles, and their memory
+            // and link.
+            row.spawn(wing(true)).with_children(|wing| {
+                dress(wing, true);
+                spawn_readouts(wing, theme, art, near_right, ink, words);
+                wing.spawn(Node { flex_grow: 1.0, ..default() });
+                if words {
+                    piles(wing);
+                }
+                if let Some(details) = hud::details(view, side) {
+                    wing.spawn((Text::new(details), theme.font(layout::BAR_WORD), TextColor(theme.text_dim), TextLayout::new(Justify::Left, LineBreak::NoWrap)));
                 }
             });
         });
@@ -2123,76 +2360,50 @@ fn compact_button(parent: &mut ChildSpawnerCommands, theme: &Theme, text: String
         .id()
 }
 
-/// The HUD: a side's readouts as large numbers over short words, in a
-/// grid of `hud::PER_ROW` columns so every number keeps its place from
-/// one view to the next and from one side to the other. The numbers were
-/// sentences in the strip before (Phase 7 §4 item 6) — dim and small
-/// first, nobody saw them; body size next, they were a line to read. A
-/// live threat is drawn in the danger colour rather than added, which is
+/// Readouts on the avatar bar, each a glyph, a number and its word on
+/// one line: a side's numbers in `hud::readouts`' fixed order, so every
+/// number keeps its place from one view to the next. The numbers were
+/// sentences in the strip once (Phase 7 §4 item 6) — dim and small first,
+/// nobody saw them; body size next, they were a line to read. A live
+/// threat is drawn in the danger colour rather than added, which is
 /// `hud`'s rule. A readout that opens a zone — Agendas, the score area —
 /// is a button, drawn with the buttons' fill so it reads as one.
-fn spawn_hud(parent: &mut ChildSpawnerCommands, theme: &Theme, art: Option<&BoardArt>, view: &ClientView, side: Side) {
-    let readouts = hud::readouts(view, side);
-    parent
-        .spawn((
-            HudPanel(side),
-            Node {
-                display: Display::Grid,
-                grid_template_columns: RepeatedGridTrack::flex(hud::PER_ROW as u16, 1.0),
-                column_gap: px(6),
-                row_gap: px(2),
-                width: percent(100),
-                ..default()
-            },
-        ))
-        .with_children(|grid| {
-            for readout in readouts {
-                let colour = if readout.alarm { theme.danger } else { theme.text };
-                let marker = HudReadout { label: readout.label, value: readout.value.clone() };
-                let node = Node { flex_direction: FlexDirection::Column, align_items: AlignItems::FlexStart, ..default() };
-                // A readout that opens something is a button; the rest are
-                // bare numbers. Both are slots, so a skin can put a plate
-                // behind every readout and a brighter one behind the door.
-                let mut cell = match readout.opens {
-                    Some(pile) => grid.spawn((
-                        marker,
-                        Button,
-                        widgets::Themed,
-                        Click::Target(Target::Pile(pile)),
-                        Node { padding: UiRect::axes(px(6), px(0)), margin: UiRect::left(px(-6)), border_radius: BorderRadius::all(px(6)), ..node },
-                        BackgroundColor(theme.button),
-                        widgets::Dressed::button(theme, Slot::HudCellOpens, Drawn::new(theme.button, Color::NONE)),
-                    )),
-                    None => grid.spawn((
-                        marker,
-                        node,
-                        widgets::Dressed::still(
-                            if readout.alarm { Slot::HudCellAlarm } else { Slot::HudCell },
-                            Drawn::new(Color::NONE, Color::NONE),
-                        ),
-                    )),
-                };
-                cell.with_children(|cell| {
-                        // The number, after Null Signal Games' own glyph for
-                        // what it counts when the board has one; the word
-                        // stays under it either way.
-                        cell.spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(4), ..default() }).with_children(|line| {
-                            if let Some(picture) = board_art::hud_key(readout.label).and_then(|key| art?.get(key)) {
-                                line.spawn(board_art::glyph(picture, 18.0));
-                            }
-                            line.spawn((Text::new(readout.value), theme.font(size::HEADING), TextColor(colour)));
-                        });
-                        // One line: the HUD is a single row, and a word that
-                        // wrapped ("Bad / pub.") made the strip a line taller.
-                        cell.spawn((Text::new(readout.label), theme.font(size::SMALL), TextColor(if readout.alarm { theme.danger } else { theme.text_dim }), TextLayout::new(Justify::Left, LineBreak::NoWrap)));
-                    });
+fn spawn_readouts(parent: &mut ChildSpawnerCommands, theme: &Theme, art: Option<&BoardArt>, readouts: &[hud::Readout], ink: Color, words: bool) {
+    for readout in readouts {
+        let colour = if readout.alarm { theme.danger } else { ink };
+        let marker = HudReadout { label: readout.label, value: readout.value.clone() };
+        let node = Node { flex_direction: FlexDirection::Row, flex_shrink: 0.0, align_items: AlignItems::Center, column_gap: px(4), ..default() };
+        // A readout that opens something is a button; the rest are bare
+        // numbers. Both are slots, so a skin can put a plate behind every
+        // readout and a brighter one behind the door.
+        let mut cell = match readout.opens {
+            Some(pile) => parent.spawn((
+                marker,
+                Button,
+                widgets::Themed,
+                Click::Target(Target::Pile(pile)),
+                Node { padding: UiRect::axes(px(8), px(1)), border_radius: BorderRadius::all(px(6)), ..node },
+                BackgroundColor(theme.button),
+                widgets::Dressed::button(theme, Slot::HudCellOpens, Drawn::new(theme.button, Color::NONE)),
+            )),
+            None => parent.spawn((marker, node, widgets::Dressed::still(if readout.alarm { Slot::HudCellAlarm } else { Slot::HudCell }, Drawn::new(Color::NONE, Color::NONE)))),
+        };
+        cell.with_children(|cell| {
+            // The number, after Null Signal Games' own glyph for what it
+            // counts when the board has one, and its word after it.
+            let glyph = board_art::hud_key(readout.label).and_then(|key| art?.get(key));
+            if let Some(picture) = glyph {
+                cell.spawn(board_art::glyph(picture, if words { layout::BAR_GLYPH } else { layout::BAR_GLYPH_SHORT }));
             }
+            cell.spawn((Text::new(readout.value.clone()), theme.font(if words { layout::BAR_NUMBER } else { layout::BAR_NUMBER_SHORT }), TextColor(colour)));
+            // On a short wing the glyph stands for the word; a readout
+            // with no glyph keeps its word, or it would be a bare number.
+            if !words && glyph.is_some() {
+                return;
+            }
+            cell.spawn((Text::new(readout.label), theme.font(layout::BAR_WORD), TextColor(if readout.alarm { theme.danger } else { theme.text_dim }), TextLayout::new(Justify::Left, LineBreak::NoWrap)));
         });
-}
-
-/// The space a side's strip row leaves for its cards.
-fn beside_strip(fit: &BoardFit, side: Side) -> f32 {
-    fit.board_width() - (fit.identity_size(side).width() + layout::STRIP_TEXT) - 12.0
+    }
 }
 
 /// The window a hand of `n` cards is seen through: `layout::PEEK` of a
@@ -2206,29 +2417,6 @@ fn beside_strip(fit: &BoardFit, side: Side) -> f32 {
 fn peek_window(size: FaceSize, n: usize, available: f32) -> Node {
     let width = if n == 0 { 0.0 } else { layout::step(n, size.width(), layout::CARD_GAP, available) * (n - 1) as f32 + size.width() };
     Node { width: px(width), height: px((layout::PEEK * size.height()).round()), flex_shrink: 0.0, flex_direction: FlexDirection::Column, overflow: Overflow::clip(), ..default() }
-}
-
-/// The opponent's hand as backs at their side's size, the bottom
-/// `layout::PEEK` of each hanging into the table from its far edge, and
-/// overlapped when there are many — a count is in the strip, and a row
-/// of backs is what a table shows.
-fn spawn_opponent_hand(parent: &mut ChildSpawnerCommands, theme: &Theme, images: &CardImages, view: &ClientView, side: Side, fit: &BoardFit) {
-    let count = match side {
-        Side::Corp => view.corp.hq_count,
-        Side::Runner => view.runner.grip_count,
-    };
-    let size = fit.size_of(side);
-    let available = beside_strip(fit, side);
-    // Hung from the top: the row is pulled up by the part that does not
-    // show, so the window sees the backs' lower edge.
-    let mut row_node = card_row();
-    row_node.margin.top = px(-((1.0 - layout::PEEK) * size.height()).round());
-    parent.spawn(peek_window(size, count, available)).with_children(|window| {
-        window.spawn(row_node).with_children(|row| {
-            let backs: Vec<Entity> = (0..count).map(|_| spawn_back(row, theme, images.back(side), side, size, Contact(Depth::Far))).collect();
-            overlap(row, &backs, size.width(), available);
-        });
-    });
 }
 
 /// A side's board: the Corp's servers, or the Runner's rig.
@@ -2745,13 +2933,13 @@ fn fade_ghosts(mut ghosts: Query<&mut ImageNode, With<Ghost>>) {
     }
 }
 
-/// The person's hand beside their strip, the top `layout::PEEK` of each
+/// The person's hand under their avatar bar, the top `layout::PEEK` of each
 /// card showing and the rest below the table's edge, overlapped when it
 /// is wide. A hovered card rises out of the row whole (`raise_hand`).
 #[allow(clippy::too_many_arguments)]
 fn spawn_hand(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore, images: &CardImages, game: &Game, view: &ClientView, side: Side, lit: &Lit, fit: &BoardFit, drag: Option<usize>) {
-    // The person's own order for their own hand, the view's for the
-    // opponent's (which is drawn as backs anyway).
+    // The person's own order for their own hand; the view's for any
+    // other, though only the person's is drawn.
     let own = side == game.side;
     let from_view = match side {
         Side::Corp => view.corp.hq_cards.as_deref(),
@@ -2760,9 +2948,11 @@ fn spawn_hand(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCor
     .unwrap_or(&[]);
     let hand = if own { game.hand.cards() } else { from_view };
     let size = fit.size_of(side);
-    let available = beside_strip(fit, side);
+    let available = fit.board_width();
     parent.spawn((Node { flex_direction: FlexDirection::Column, flex_shrink: 0.0, ..default() },)).with_children(|column| {
-        section_label(column, theme, format!("Your hand · {}", hand.len()));
+        // No "Your hand · N" over it: the Runner's Grip readout is on the
+        // bar and the Corp's HQ header carries the count, and the label's
+        // line was height the hand's own row did not need.
         column.spawn(peek_window(size, hand.len(), available)).with_children(|window| {
             window.spawn(card_row()).with_children(|row| {
                 // A hand is a multiset; the first copy of a lit card is the

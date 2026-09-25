@@ -1793,6 +1793,7 @@ delivers.
    faction mark in the icon font, then to a faction-coloured disc, which
    is the three-tier rule again. The numbers are already
    `board::hud::readouts`, so this adds no data, only a shape.
+   *Done in §4bi.*
 3. **The grip arcs, and a hovered card lifts out of it.** Rotation only,
    no resizing. *The person's own constraint, worth keeping as a rule:*
    the lift is local to whoever is looking — it never enters a
@@ -4728,6 +4729,96 @@ committed under the 24 September policy that shipped the official backs
 
 Seen on screen: the card browser's inspector draws Jinteki's mark and
 Elevation's set mark from the committed file.
+
+**Verified.** Workspace tests green and workspace clippy silent.
+
+### 4bi. Each side has an avatar on a bar of its numbers, lit on its turn — DONE (25 September 2026)
+
+`feat/desktop-avatar-bar`. The third list's item 2, asked for again in
+the person's own words: the identity "sitting off to the side" with
+"boring numbers" beside it becomes a disc of the identity's art in the
+middle of a bar, the side's numbers either side of it, the bar lit for
+the side whose turn it is and grey for the other. The bar sits over the
+person's hand and is the opponent's whole edge, and **it and the avatar do
+not move** — the person named that as the thing not to repeat.
+
+- **The strip is gone.** A side's edge of the table is now one board
+  row, a column of its bar and its hand (`spawn_avatar_bar`,
+  `strip_row`), where it was the identity card and a HUD grid beside the
+  hand. The hand is centred under its avatar with the board's whole
+  width, and draws over the bar when a card rises (it is the later
+  sibling; a lifted card already had its own `GlobalZIndex`). "Your hand
+  · N" is gone: the Runner's Grip readout and the Corp's HQ header carry
+  the count.
+- **Fixed pixels.** `layout::AVATAR` and `layout::BAR` (72 and 48 as
+  first built, 84 and 56 below), the far side's at first smaller; `strip_height` is the avatar row plus the
+  hand's peek, so `fixed_height` stays monotone in the face. Measured
+  with a replica of `face_width`: no change at 1920 × 1080 or the
+  person's 2000 × 1250 (the face is at its 220 cap there), and 167 → 150
+  (Corp) and 157 → 138 (Runner) at 1366 × 768, because the bar now sits
+  over the hand rather than beside it.
+- **The avatar is the identity's scan cropped to a square**
+  (`layout::AVATAR_ART`, `avatar_crop`: centred at 0.36 of the height,
+  0.62 of the width across, above the text box at 0.63), drawn in a disc
+  by the node's border radius — `bevy_ui` rounds an `ImageNode`'s corners
+  — inside a ring. The crop needs the decoded picture's size, which the
+  redraw does not have, so `crop_avatars` keeps it in `AvatarCrops` and
+  the board draws from that: no redraw shows a stand-in first. With no
+  scan cached, the disc is the faction's mark on the faction's colour.
+- **A click on the disc** is the identity's: the menu of its actions when
+  the engine offers any, otherwise the card to read (`Game::click` — an
+  empty menu had been the answer before).
+- **The pictures are board art**: `avatar.bar[.active]` and
+  `avatar.frame[.active]`, 480 × 96 and 256 × 256, painted by
+  `scripts/paint_avatar_bar.py` after the shared menu backdrop (brushed
+  gunmetal, chamfered ends, a recessed channel of purple traces, lit on
+  the active side) and credited as `project`. A wing is nine-sliced; the
+  right wing is the left mirrored, which `bevy_ui`'s slice shader gets
+  right only when both end caps are the same width, so both are 160. A
+  sliced image is drawn in its node's *content* box, so the picture is a
+  child filling the wing — as the wing's own image, the padding shrank
+  the plate to the text. The drawn tier is a grey plate and ring washed
+  in the side's colour.
+- **A short wing drops words, never numbers** (`layout::BAR_WORDS_MIN`,
+  640): at 1366 × 768 a wing is 454 wide, and the Runner's left wing —
+  the piles, credits, clicks and agendas — overflowed under the disc
+  with its words. There a readout with a glyph is the glyph and the
+  number, the gaps close from 14 to 8, and the Runner's name is left out
+  rather than clipped to its first letter. The name is the title before
+  its colon ("Zahya Sadeghi", "Haas-Bioroid").
+
+- **The opponent's hand is not drawn**, asked for after the person saw
+  the bar: the row of backs said only how many cards they hold, which
+  the Runner's Grip readout and the Corp's HQ header already say. The
+  opponent's edge is their bar alone, on the window's top edge
+  (`layout::strip_height`). With that height back the opponent's bar was
+  first drawn at 0.9 of the person's rather than the far side's 0.75, at
+  which its words were 11 px; the next item made it the same size.
+
+- **Then both bars the same size, and larger** (the person again: "at
+  least the same size", "enlarged just a bit more"): `OPPONENT_BAR_SCALE`
+  is gone, `AVATAR` 72 → 84, `BAR` 48 → 56, a readout's number 22 → 26
+  (`BAR_NUMBER`), its word 14 → 16, its glyph 18 → 22. A short wing
+  steps the number and glyph back down (`BAR_NUMBER_SHORT`,
+  `BAR_GLYPH_SHORT`). **The Runner's piles go where there is room**: on
+  a wide bar in the right wing beside MU and link, so the name is never
+  clipped ("Zahya Sadegl" was what the left wing showed at 2000 wide);
+  on a short one in the left, in place of the name, as "Stack 34" with
+  less padding. `BAR_OUTER` 66 → 84 keeps the text off the end caps'
+  traces at the new height.
+- **And from the Corp's chair the rig is drawn at
+  `OPPONENT_RIG_SCALE` (0.9)** rather than 0.75: the person found the
+  servers taller than they needed while the rig was the smallest thing
+  on the board. The server field is the only row that grows, so it pays:
+  at 2000 × 1250, 468 → 397 (Corp) and 442 → 395 (Runner) against
+  `main`; at 1920 × 1080, 298 → 227 and 272 → 225. **The cost is the
+  small window**: the face at 1366 × 768 is 167 → 140 (Corp) and 157 →
+  140 (Runner) against `main`, the price of two 84 px discs; at 1920 ×
+  1080 and above the face stays at its 220 cap.
+
+Seen on screen at 2000 × 1250 and 1366 × 768 from both chairs, forty
+decisions in, and with a hand card lifted (`NETRUNNER_LIFT`); no scroll
+area is the board.
 
 **Verified.** Workspace tests green and workspace clippy silent.
 

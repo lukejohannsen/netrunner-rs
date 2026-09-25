@@ -38,6 +38,8 @@ scale: 1.25 on the machine these were measured on, 2 on many laptops.
 | ICE and root tiles | `board/ice.*.png`, `board/root.*.png` | card width + 4 × 24 to 66, 4:1 at the tallest | **512 × 128** | cover | drawn grey patterns, washed in the tile's state colour | [board/](board/README.md) |
 | Counter badges | `board/counter[.advancement\|.virus\|.power\|.credit].png` | 12 to 18 square | **64 × 64** | fit | bundled NSG symbols over a drawn ring | [board/](board/README.md) |
 | HUD glyphs | `board/hud.<credits\|clicks\|agendas\|bad-publicity\|tags\|damage>.png` | 18 square | **64 × 64** or larger | fit | bundled NSG symbols (optional) | [board/](board/README.md) |
+| Avatar bar | `board/avatar.bar[.active].png` | 56 tall on both sides, half the board wide each wing | **480 × 96**, ends 160 each | nine-sliced, the right wing mirrored | bundled steel; drawn grey plate washed in the side's colour | [board/](board/README.md#the-avatar-bar) |
+| Avatar ring | `board/avatar.frame[.active].png` | 84 square on both sides | **256 × 256** | stretched to the disc | bundled steel ring; drawn grey ring | [board/](board/README.md#the-avatar-bar) |
 | Sound | `sfx/<effect>.ogg` | — | — | — | synthesized; planned, nothing loads yet | [sfx/](sfx/README.md) |
 
 A skin may carry its own `board/` folder, which wins over the board art

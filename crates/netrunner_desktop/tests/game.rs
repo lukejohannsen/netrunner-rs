@@ -26,7 +26,7 @@ use netrunner_client::start::{Level, StartChoice, DEFAULT_CORP_DECK, DEFAULT_RUN
 use netrunner_core::rules::{GamePhase, PlayerAction, ServerId, Side};
 use netrunner_desktop::core::ClientCore;
 use netrunner_desktop::nav::Navigate;
-use netrunner_desktop::screens::game::{ActionsMenu, LogName, ChoiceCard, Click, Contact, DecisionPopup, Glowing, HelpRow, HudPanel, PhaseBarRow, PhaseStep, HudReadout, InstallFact, ScoreDetails, ScoreRow, LogRow, Model, Overlay, EndTable, OpeningIdentities, ServerColumn, BoardFit, ControlBar, HandSlot, LiftedCard, ServerPlate, HostedChip, Ghost, TimingStep};
+use netrunner_desktop::screens::game::{ActionsMenu, Avatar, AvatarBar, LogName, ChoiceCard, Click, Contact, DecisionPopup, Glowing, HelpRow, HudPanel, PhaseBarRow, PhaseStep, HudReadout, InstallFact, ScoreDetails, ScoreRow, LogRow, Model, Overlay, EndTable, OpeningIdentities, ServerColumn, BoardFit, ControlBar, HandSlot, LiftedCard, ServerPlate, HostedChip, Ghost, TimingStep};
 use netrunner_core::rules::InstallId;
 use netrunner_desktop::widgets::card_face::BodyText;
 use netrunner_desktop::screens::new_game::{self, ActiveMatch, LastGame};
@@ -831,10 +831,10 @@ fn the_servers_keep_one_order_from_either_chair() {
     assert_eq!(servers(&mut app), [ServerId::Archives, ServerId::RnD, ServerId::Hq], "the Runner's chair, the same");
 }
 
-/// Both sides have a HUD on the board, each holding its side's readouts
-/// in `hud::readouts`' order with the view's numbers — the Runner's
-/// Tags and Damage there at zero, so nothing moves when the first tag
-/// lands.
+/// Both sides have a HUD on the board — the avatar bar — each holding
+/// its side's readouts in `hud::readouts`' order across it with the
+/// view's numbers — the Runner's Tags and Damage there at zero, so
+/// nothing moves when the first tag lands.
 #[test]
 fn each_side_has_a_hud_with_every_readout_in_its_place() {
     let (mut app, _dir) = headless_client();
@@ -845,11 +845,42 @@ fn each_side_has_a_hud_with_every_readout_in_its_place() {
     let panels: Vec<(Entity, Side)> = world.query::<(Entity, &HudPanel)>().iter(world).map(|(e, p)| (e, p.0)).collect();
     assert_eq!(panels.len(), 2, "one HUD a side");
     for (panel, side) in panels {
-        let children: Vec<Entity> = world.entity(panel).get::<Children>().expect("a HUD has readouts").iter().collect();
-        let drawn: Vec<(&str, String)> = children.iter().filter_map(|c| world.entity(*c).get::<HudReadout>()).map(|r| (r.label, r.value.clone())).collect();
+        // Depth first, so the left wing's readouts come before the
+        // right's, which is their order across the bar.
+        let mut stack = vec![panel];
+        let mut drawn: Vec<(&str, String)> = Vec::new();
+        while let Some(entity) = stack.pop() {
+            if let Some(r) = world.entity(entity).get::<HudReadout>() {
+                drawn.push((r.label, r.value.clone()));
+                continue;
+            }
+            if let Some(children) = world.entity(entity).get::<Children>() {
+                stack.extend(children.iter().rev());
+            }
+        }
         let expected: Vec<(&str, String)> = netrunner_client::board::hud::readouts(&view, side).into_iter().map(|r| (r.label, r.value)).collect();
         assert_eq!(drawn, expected, "{side:?}'s HUD");
     }
+}
+
+/// Each side has an avatar on its bar, and the bar is lit for the side
+/// whose turn it is. The avatar is the identity's click: the opponent's,
+/// with nothing to do, opens the identity to read.
+#[test]
+fn each_side_has_an_avatar_and_the_active_side_is_lit() {
+    let (mut app, _dir) = headless_client();
+    start_a_game(&mut app);
+    wait_for(&mut app, "the first decision", |app| click_entry_count(app) > 0);
+    let active = app.world().resource::<Model>().0.view.as_ref().unwrap().active_player;
+    let bars: Vec<AvatarBar> = app.world_mut().query::<&AvatarBar>().iter(app.world()).copied().collect();
+    assert_eq!(bars.len(), 2, "one bar a side");
+    for bar in bars {
+        assert_eq!(bar.lit, bar.side == active, "{:?}'s bar is lit only on its turn", bar.side);
+    }
+    let avatar = app.world_mut().query::<(Entity, &Avatar)>().iter(app.world()).find(|(_, a)| a.0 == Side::Corp).map(|(e, _)| e).expect("the Corp has an avatar");
+    assert_eq!(app.world().entity(avatar).get::<Click>(), Some(&Click::Target(Target::Identity(Side::Corp))));
+    press_entity(&mut app, avatar);
+    assert_eq!(overlays(&mut app), 1, "the opponent's identity opens to read");
 }
 
 /// A Trojan sits on its ice: a button of its own inside the ice's tile,
@@ -1701,9 +1732,9 @@ fn a_run_puts_the_runner_in_the_right_column() {
     assert_eq!(app.world_mut().query::<&EncounterName>().iter(app.world()).count(), 0, "one card in the panel at a time");
 }
 
-/// The board has no margin above the opponent's hand or below the
-/// person's: the root pads its sides only, and the person's strip is the
-/// board's last row, pinned to its bottom.
+/// The board has no margin above the opponent's bar or below the
+/// person's: the root pads its sides only, and the person's edge — their
+/// avatar bar over their hand — is the board's last row.
 #[test]
 fn the_hands_sit_on_the_windows_edges() {
     use netrunner_desktop::screens::game::Board;
@@ -1715,9 +1746,20 @@ fn the_hands_sit_on_the_windows_edges() {
     let root = world.get::<ChildOf>(board).and_then(|body| world.get::<ChildOf>(body.parent())).expect("the board is in the body, in the root").parent();
     let padding = world.get::<Node>(root).expect("the root is a node").padding;
     assert_eq!((padding.top, padding.bottom), (Val::Px(0.0), Val::Px(0.0)), "nothing above or below the board");
-    let last = *world.get::<Children>(board).expect("the board has rows").last().expect("a last row");
-    assert_eq!(world.get::<Node>(last).expect("a row").align_items, AlignItems::FlexEnd, "the hand is pinned to the bottom edge");
-    assert!(world.get::<Children>(last).is_some_and(|row| row.iter().count() == 2), "the last row is the person's strip and hand");
+    let rows: Vec<Entity> = world.get::<Children>(board).expect("the board has rows").iter().collect();
+    // The opponent's edge is their bar alone: their hand is not drawn.
+    let far: Vec<Entity> = world.get::<Children>(rows[0]).expect("the first row has children").iter().collect();
+    assert_eq!(far.len(), 1, "the opponent's edge is one thing");
+    assert!(world.get::<AvatarBar>(far[0]).is_some_and(|bar| bar.side == Side::Corp), "their bar, on the top edge");
+    let last = *rows.last().expect("a last row");
+    // The person's edge: their avatar bar, then their hand under it, so
+    // the hand is the last thing on the board and the bar never moves
+    // when it changes.
+    let edge: Vec<Entity> = world.get::<Children>(last).expect("the last row has children").iter().collect();
+    assert_eq!(edge.len(), 2, "the last row is the person's bar and hand");
+    assert_eq!(world.get::<Node>(last).expect("a row").flex_direction, FlexDirection::Column, "stacked, bar over hand");
+    assert!(world.get::<AvatarBar>(edge[0]).is_some_and(|bar| bar.side == Side::Runner), "the person's bar first");
+    assert_eq!(world.get::<Node>(edge[1]).expect("the hand's row").justify_content, JustifyContent::Center, "then the hand, centred under the avatar");
 }
 
 /// A tile says whether its card is rezzed — or face down, from the
