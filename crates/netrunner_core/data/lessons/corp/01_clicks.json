@@ -40,7 +40,7 @@
       "solution": [
         "KeepHand"
       ],
-      "hint": "Choose Keep hand."
+      "hint": "Keep your hand."
     },
     {
       "prose": "Your turn began with the mandatory draw, so HQ now holds 6 cards. You have 3 clicks. The simplest action: click for 1 credit.",
@@ -60,7 +60,7 @@
           }
         }
       ],
-      "hint": "Choose Gain 1 credit."
+      "hint": "Spend a click to take 1 credit."
     },
     {
       "prose": "You can also spend a click to draw a card from R&D. Do that now.",
@@ -79,8 +79,7 @@
             "side": "Corp"
           }
         }
-      ],
-      "hint": "Choose Draw a card."
+      ]
     },
     {
       "prose": "One click left. Take another credit, then end your turn. Your maximum hand size is 5, so with 7 cards in HQ you will discard 2 to Archives first — discard Tithe and Urtica Cipher.",
@@ -121,7 +120,7 @@
           }
         }
       ],
-      "hint": "Gain 1 credit, End turn, then discard down to 5."
+      "hint": "Take a credit, end your turn, then discard Tithe and Urtica Cipher."
     }
   ]
 }

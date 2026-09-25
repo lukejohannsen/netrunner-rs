@@ -82,7 +82,7 @@
           }
         }
       ],
-      "hint": "Choose Install Palisade into Remote(0) (Ice)."
+      "hint": "Install Palisade as ice in front of Remote 0."
     },
     {
       "prose": "Leave Palisade unrezzed — you want the Runner to commit first. That was your last click, so end your turn.",
@@ -133,7 +133,7 @@
           }
         }
       ],
-      "hint": "Choose Rez Palisade."
+      "hint": "Rez Palisade (3 credits)."
     },
     {
       "prose": "The Runner has no way to break a barrier. Pass priority and watch Palisade's subroutine end the run.",
@@ -170,7 +170,7 @@
           }
         }
       ],
-      "hint": "Choose Pass priority."
+      "hint": "Pass, and let Palisade's subroutine fire."
     }
   ]
 }

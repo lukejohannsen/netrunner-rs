@@ -73,7 +73,7 @@
           }
         }
       ],
-      "hint": "Choose Advance Offworld Office."
+      "hint": "Advance Offworld Office."
     },
     {
       "prose": "Again.",
@@ -140,7 +140,7 @@
           }
         }
       ],
-      "hint": "Choose Score Offworld Office."
+      "hint": "Score Offworld Office."
     }
   ]
 }
