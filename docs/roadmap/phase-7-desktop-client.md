@@ -4667,6 +4667,38 @@ side ("Pass priority (Corp)") and a trigger's name in "triggered
 
 **Verified.** Workspace tests green and workspace clippy silent.
 
+### 4bg. A printed symbol on a button is the symbol, not its token — DONE (25 September 2026)
+
+`fix/label-symbols`. Found in §6d's screenshots: an ability's label is
+the card's own clause (the Linked Clause Rule), so every ability button
+printed NetrunnerDB's tokens as text — Cleaver's "1[credit]", a
+"[click]" cost, a "[trash]" — and the coach quoted them the same way.
+The card face already split its text at the icons; nothing else did.
+
+- `widgets::symbols::draw` (PostUpdate, before the UI measures text)
+  splits any `Text` holding a symbol token into spans, each symbol in
+  the face `Theme::symbol` picks (NetrunnerDB's icon font, then Noto
+  Sans Symbols 2, then the Latin-1 fallback), at the label's own size
+  and colour. One system rather than a call at every place that spawns
+  a label, because the place that forgot was the bug. A label rewritten
+  later is split again, and the spans the last split made are removed.
+- The log's lines are already spans, so `spawn_log_line` splits its
+  words with the same `symbols::spans`.
+- The breaker's printed "Interface →" drew a box: neither bundled font
+  has the arrows block. It is drawn as `›`, which the card browser
+  already used for the engine reading's arrow, on labels and on the
+  text card face.
+- Tests: every symbol on a live label, a relabel with and without
+  symbols, the arrow; `faces.rs` expects the arrow's stand-in.
+
+Seen on the board (a held break, the icon font fetched): Carmen's menu
+drew "1" and "2" with the credit icon where it read "1[credit]", and
+showed the arrow's box, which is what the `›` answers. The `›` itself is
+held by the unit test, not a screenshot: the lesson's break step is
+screenshotted while the Corp holds priority, so its menu is not open.
+
+**Verified.** Workspace tests green and workspace clippy silent.
+
 ## 5. The deck builder — DONE (24 September 2026)
 
 `feat/desktop-deck-builder`. Asked for in one list: save and import

@@ -1181,7 +1181,17 @@ fn spawn_log_line(parent: &mut ChildSpawnerCommands, theme: &Theme, line: &netru
                     text.spawn((TextSpan::new(words), theme.font(size::SMALL), TextColor(theme.accent), LogName(card.clone())));
                 }
                 None => {
-                    text.spawn((TextSpan::new(words), theme.font(size::SMALL), TextColor(theme.text_dim)));
+                    let font = theme.font(size::SMALL);
+                    match widgets::symbols::spans(theme, words, &font) {
+                        Some(pieces) => {
+                            for (words, face) in pieces {
+                                text.spawn((TextSpan::new(words), face, TextColor(theme.text_dim)));
+                            }
+                        }
+                        None => {
+                            text.spawn((TextSpan::new(words), font, TextColor(theme.text_dim)));
+                        }
+                    }
                 }
             }
         }

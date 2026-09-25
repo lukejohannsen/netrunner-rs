@@ -160,7 +160,7 @@ pub fn spawn_face(parent: &mut ChildSpawnerCommands, theme: &Theme, face: &Face,
                     for segment in &face.body {
                         match segment {
                             Segment::Text(text) => {
-                                spans.spawn((TextSpan::new(text.clone()), theme.font(size.body()), TextColor(theme.text)));
+                                spans.spawn((TextSpan::new(super::symbols::arrowless(text)), theme.font(size.body()), TextColor(theme.text)));
                             }
                             Segment::Symbol(symbol) => {
                                 let (glyph, font) = theme.symbol(*symbol, size.body());
