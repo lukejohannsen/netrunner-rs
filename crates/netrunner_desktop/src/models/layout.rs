@@ -595,6 +595,10 @@ pub fn choice_faces(available: (f32, f32), n: usize) -> (f32, usize) {
 /// line saying whose each is.
 pub const OPENING_CAPTION: f32 = 24.0;
 
+/// The widest the start-of-game box draws a card: [`PILE_FACE`], the
+/// width a card is read at on a pile's sheet.
+pub const OPENING_FACE_MAX: f32 = PILE_FACE;
+
 /// The width to draw the start-of-game box's cards at, and how many of the
 /// `hand` to a row: [`choice_faces`]'s search, with a row of two
 /// identities over the hand at the same width. The hand's cards carry no
@@ -602,6 +606,11 @@ pub const OPENING_CAPTION: f32 = 24.0;
 /// identities' row has a caption. Every hand card and both identities are
 /// one size, because the box is a look at the table, not a choice between
 /// its cards.
+///
+/// **Capped at [`OPENING_FACE_MAX`], not [`CHOICE_FACE_MAX`].** Grown to
+/// the window, the identities and a five-card hand filled it edge to edge and the keep and the
+/// mulligan were pills two thousand pixels wide under them; the person
+/// called it huge. A pile's cards are read at the same width.
 pub fn opening_faces(available: (f32, f32), hand: usize) -> (f32, usize) {
     let (width, height) = available;
     let n = hand.max(1);
@@ -611,7 +620,7 @@ pub fn opening_faces(available: (f32, f32), hand: usize) -> (f32, usize) {
         let across = per_row.max(2) as f32;
         let by_width = (width - (across - 1.0) * CHOICE_GAP) / across;
         let by_height = (height - OPENING_CAPTION - rows as f32 * CHOICE_GAP) / (1.4 * (rows as f32 + 1.0));
-        let face = by_width.min(by_height).min(CHOICE_FACE_MAX).floor();
+        let face = by_width.min(by_height).min(OPENING_FACE_MAX).floor();
         if face > best.0 {
             best = (face, per_row);
         }
@@ -942,6 +951,15 @@ mod tests {
         assert_eq!(pile_height(2400.0), PILE_ROWS * row + (PILE_ROWS - 1.0) * PILE_GAP, "a tall window stops at three rows");
         assert_eq!(pile_height(800.0), 2.0 * row + PILE_GAP, "a laptop shows two rows");
         assert_eq!(pile_height(300.0), 170.0, "too short for a row: what is left, and it scrolls");
+    }
+
+    #[test]
+    fn the_opening_box_reads_its_cards_without_filling_the_window() {
+        // A 2000 × 1250 window, a five-card hand: the cap, and one row.
+        assert_eq!(opening_faces((1900.0, 900.0), 5), (OPENING_FACE_MAX, 5));
+        // A small window still takes height off the cards.
+        let (face, _) = opening_faces((900.0, 500.0), 5);
+        assert!(face < OPENING_FACE_MAX && 2.0 * face * 1.4 + OPENING_CAPTION < 500.0, "{face}");
     }
 
     #[test]

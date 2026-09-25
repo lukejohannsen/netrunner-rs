@@ -238,9 +238,18 @@ impl ButtonKind {
 
 /// A pill: the shape of every button in a menu. `width` `Val::Auto` fits
 /// the label.
+///
+/// **Its words are centred and its width is capped.** Every pill's label
+/// sits in its middle, wrapped lines too ([`centred_label`]), and none is
+/// wider than [`shape::BUTTON_MAX_WIDTH`] — a `percent(100)` asks for the
+/// box's width up to that and no further. `align_self: Center` puts a
+/// capped pill in the middle of a column rather than against its left
+/// edge; in a row it only centres the pill across the row's height.
 fn pill(width: Val) -> Node {
     Node {
         width,
+        max_width: px(shape::BUTTON_MAX_WIDTH),
+        align_self: AlignSelf::Center,
         min_height: px(shape::BUTTON_HEIGHT),
         // A node shrinks by default when its row overflows, by an amount
         // that depends on its neighbours — which put every main-menu
@@ -255,6 +264,12 @@ fn pill(width: Val) -> Node {
         border_radius: BorderRadius::MAX,
         ..default()
     }
+}
+
+/// A pill's label: centred line by line, so a label that wraps is two
+/// centred lines rather than a centred block of left-aligned ones.
+fn centred_label() -> TextLayout {
+    TextLayout::new(Justify::Center, LineBreak::WordBoundary)
 }
 
 /// A themed button with `text` on it and `marker` for the screen to find
@@ -277,7 +292,7 @@ pub fn styled_button<T: Into<String>, M: Bundle>(theme: &Theme, kind: ButtonKind
         BackgroundColor(rest.bg),
         BorderColor::all(rest.border),
         Dressed { slot: Slot::Button, drawn: rest, hover: Some(hover), pressed: Some(press) },
-        children![(Text::new(text), theme.font(size::BODY), TextColor(ink))],
+        children![(Text::new(text), theme.font(size::BODY), TextColor(ink), centred_label())],
     )
 }
 
@@ -293,6 +308,8 @@ pub fn small_button<T: Into<String>, M: Bundle>(theme: &Theme, kind: ButtonKind,
         marker,
         Node {
             min_height: px(30),
+            max_width: px(shape::BUTTON_MAX_WIDTH),
+            align_self: AlignSelf::Center,
             flex_shrink: 0.0,
             padding: UiRect::axes(px(14), px(5)),
             justify_content: JustifyContent::Center,
@@ -304,7 +321,7 @@ pub fn small_button<T: Into<String>, M: Bundle>(theme: &Theme, kind: ButtonKind,
         BackgroundColor(rest.bg),
         BorderColor::all(rest.border),
         Dressed { slot: Slot::Button, drawn: rest, hover: Some(hover), pressed: Some(press) },
-        children![(Text::new(text), theme.font(size::SMALL), TextColor(ink))],
+        children![(Text::new(text), theme.font(size::SMALL), TextColor(ink), centred_label())],
     )
 }
 
@@ -323,7 +340,7 @@ pub fn round_button<T: Into<String>, M: Bundle>(theme: &Theme, text: T, marker: 
         BackgroundColor(rest.bg),
         BorderColor::all(rest.border),
         Dressed { slot: Slot::Button, drawn: rest, hover: Some(hover), pressed: Some(press) },
-        children![(Text::new(text), theme.font(size::BODY), TextColor(ink))],
+        children![(Text::new(text), theme.font(size::BODY), TextColor(ink), centred_label())],
     )
 }
 
@@ -356,7 +373,7 @@ pub fn disabled_button<T: Into<String>, M: Bundle>(theme: &Theme, text: T, width
         BackgroundColor(fill),
         BorderColor::all(rim),
         Dressed::still(Slot::ButtonDisabled, Drawn::new(fill, rim)),
-        children![(Text::new(text), theme.font(size::BODY), TextColor(theme.text_dim.with_alpha(0.5)))],
+        children![(Text::new(text), theme.font(size::BODY), TextColor(theme.text_dim.with_alpha(0.5)), centred_label())],
     )
 }
 
@@ -521,6 +538,24 @@ fn button_feedback(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn every_pill_centres_its_words_and_is_capped() {
+        let theme = Theme::default();
+        let mut world = World::new();
+        let pills = [
+            world.spawn(styled_button(&theme, ButtonKind::Primary, "Keep hand", percent(100), ())).id(),
+            world.spawn(small_button(&theme, ButtonKind::Quiet, "Edit", ())).id(),
+            world.spawn(round_button(&theme, "<", ())).id(),
+        ];
+        for pill in pills {
+            let node = world.get::<Node>(pill).unwrap();
+            assert_eq!(node.max_width, px(shape::BUTTON_MAX_WIDTH));
+            assert_eq!(node.justify_content, JustifyContent::Center);
+            let label = world.get::<Children>(pill).unwrap()[0];
+            assert_eq!(world.get::<TextLayout>(label).unwrap().justify, Justify::Center);
+        }
+    }
 
     #[test]
     fn the_gear_is_a_ring_with_teeth_on_a_transparent_ground() {
