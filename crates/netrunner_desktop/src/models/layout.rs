@@ -423,19 +423,34 @@ pub fn rig_height(rig_face: f32, spare: f32) -> f32 {
     RIG_ROWS as f32 * rig_row_height(rig_face, spare) + (RIG_ROWS - 1) as f32 * RIG_ROW_GAP
 }
 
-/// How many strips a server column shows, by the window's height alone
-/// — never by what is installed, so a column is the same height all
-/// match, and a constant inside [`face_width`]'s search, which keeps
-/// [`fixed_height`] monotone in the face. Three on a laptop's 768, four
-/// at 1080, five on a taller screen: the most that leave the rig its
-/// room at each. A server holding more shows a "+N" strip in their place
-/// ([`ServerWindow`]); a high-glacier remote is about ten.
-pub fn server_slots(window_height: f32) -> usize {
-    match board_height(window_height) {
-        h if h < 900.0 => 3,
-        h if h < 1200.0 => 4,
-        _ => 5,
-    }
+/// The fewest strips a server column shows: a root, a "+N" and one ICE
+/// ([`ServerWindow`]). [`face_width`] is chosen with this many, so a
+/// deeper column never narrows a card.
+pub const MIN_SLOTS: usize = 3;
+/// The most: a high-glacier remote — an agenda, five ICE, four upgrades
+/// — is about ten cards, and the person asked for that much to show
+/// before the stack sheet is needed.
+pub const MAX_SLOTS: usize = 10;
+
+/// How many strips a server column shows: [`MIN_SLOTS`], and one more
+/// for every strip's height the window has over [`fixed_height`] at
+/// face width `face`, up to [`MAX_SLOTS`]. **The servers take the spare
+/// height before the rig does** (decided 25 September 2026 at the
+/// person's request: "~10 cards stacked before it goes to the inspect —
+/// whatever we can get before losing Runner rig room"), and the rig
+/// keeps its floor — [`PEEK`] of each card over its chip line, which is
+/// where a program's strength and a card's counters are — because
+/// [`fixed_height`] charges it there. Only what [`MAX_SLOTS`] leaves over
+/// grows the rig ([`spare_height`]).
+///
+/// Never by what is installed — the window, the chair and the servers
+/// alone, as the face is — so a column is the same height all match,
+/// and a server holding more shows a "+N" strip ([`ServerWindow`]).
+/// It was three, four or five by the window's height until then.
+pub fn server_slots(window_height: f32, face: f32, counts: Counts) -> usize {
+    let room = board_height(window_height) - fixed_height(face, counts, MIN_SLOTS);
+    let strip = tile_height(area_face(Side::Corp, counts.chair(), face)) + TILE_GAP;
+    (MIN_SLOTS + (room.max(0.0) / strip).floor() as usize).min(MAX_SLOTS)
 }
 
 /// A strip's height at its server's face width ([`TILE_SCALE`]).
@@ -465,10 +480,11 @@ pub fn fixed_height(face: f32, counts: Counts, slots: usize) -> f32 {
     strips + servers + rig_height(rig_face, 0.0) + CONTROL_BAR + 4.0 * ROW_GAP
 }
 
-/// What the window has over [`fixed_height`] at face width `face`: the
-/// rig's to grow into ([`rig_row_height`]).
+/// What the window has over [`fixed_height`] at face width `face`, once
+/// the servers have taken their strips ([`server_slots`]): the rig's to
+/// grow into ([`rig_row_height`]).
 pub fn spare_height(window_height: f32, face: f32, counts: Counts) -> f32 {
-    (board_height(window_height) - fixed_height(face, counts, server_slots(window_height))).max(0.0)
+    (board_height(window_height) - fixed_height(face, counts, server_slots(window_height, face, counts))).max(0.0)
 }
 
 /// The face width the board has room for, in pixels: the largest for
@@ -478,7 +494,7 @@ pub fn spare_height(window_height: f32, face: f32, counts: Counts) -> f32 {
 pub fn face_width(window: (f32, f32), counts: Counts) -> f32 {
     let (width, height) = window;
     let room = board_height(height);
-    let slots = server_slots(height);
+    let slots = MIN_SLOTS;
     // Binary search over whole pixels: the rows grow with the face and
     // the answer is the last width that still fits.
     let (mut low, mut high) = (MIN_FACE as u32, MAX_FACE as u32);
@@ -1231,14 +1247,31 @@ mod tests {
         assert_eq!(rig_row_height(face, -50.0), least, "no spare is no growth");
     }
 
-    /// A column is a fixed number of strips by the window's height, never
-    /// by what is installed, and the strips are the same height for every
-    /// server of a width.
+    /// A column's strips take the height the window has over the fixed
+    /// rows, never what is installed, from [`MIN_SLOTS`] up to
+    /// [`MAX_SLOTS`]; the rig keeps its floor and grows only past the cap.
+    /// The strips are the same height for every server of a width.
     #[test]
-    fn a_server_column_is_a_fixed_number_of_strips() {
-        assert_eq!(server_slots(768.0), 3);
-        assert_eq!(server_slots(1080.0), 4);
-        assert_eq!(server_slots(1250.0), 5);
+    fn the_servers_take_the_spare_height_before_the_rig() {
+        for runner in [false, true] {
+            let counts = Counts { servers: 5, human_is_runner: runner };
+            let mut last = 0;
+            for window in [(1366.0, 768.0), (1920.0, 1080.0), (2000.0, 1250.0), (2560.0, 1600.0), (3840.0, 2160.0)] {
+                let face = face_width(window, counts);
+                let slots = server_slots(window.1, face, counts);
+                assert!((MIN_SLOTS..=MAX_SLOTS).contains(&slots), "{window:?}: {slots}");
+                assert!(slots >= last, "a taller window never shows fewer strips");
+                last = slots;
+                // The strips fit, with the rig at its floor.
+                assert!(fixed_height(face, counts, slots) <= board_height(window.1) || face == MIN_FACE, "{window:?}");
+                // The rig grows only once the servers are full.
+                if slots < MAX_SLOTS {
+                    let strip = tile_height(area_face(Side::Corp, counts.chair(), face)) + TILE_GAP;
+                    assert!(spare_height(window.1, face, counts) < strip, "{window:?}: the rig took a strip's height");
+                }
+            }
+            assert_eq!(last, MAX_SLOTS, "a 4K window shows a whole high-glacier remote");
+        }
         assert_eq!(tile_height(40.0), TILE_MIN);
         assert_eq!(tile_height(220.0), 37.0);
         assert_eq!(tile_height(1000.0), TILE_MAX);
@@ -1316,7 +1349,7 @@ mod tests {
         for (window, runner) in [((1280.0, 800.0), true), ((1280.0, 800.0), false), ((1920.0, 1080.0), true), ((1366.0, 768.0), true), ((2560.0, 1440.0), false), ((2000.0, 1250.0), true)] {
             let counts = Counts { servers: 5, human_is_runner: runner };
             let w = face_width(window, counts);
-            let slots = server_slots(window.1);
+            let slots = MIN_SLOTS;
             assert!(fixed_height(w, counts, slots) <= board_height(window.1) || w == MIN_FACE, "{window:?}: {w}");
             if w < MAX_FACE && w > MIN_FACE {
                 let wider = (w + 1.0).min(MAX_FACE);

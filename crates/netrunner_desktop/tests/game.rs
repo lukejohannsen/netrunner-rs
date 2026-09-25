@@ -977,7 +977,8 @@ fn a_deep_server_is_a_few_strips_and_a_count_and_its_stack_sheet_is_the_whole_of
         app.update();
 
         let slots = app.world().resource::<BoardFit>().slots;
-        assert_eq!(slots, netrunner_desktop::models::layout::server_slots(800.0), "{chair:?}: the headless window's strips");
+        use netrunner_desktop::models::layout::{MAX_SLOTS, MIN_SLOTS};
+        assert!((MIN_SLOTS..9).contains(&slots) && slots <= MAX_SLOTS, "{chair:?}: the headless window is too short for all nine: {slots}");
         let column = {
             let world = app.world_mut();
             world.query::<(Entity, &ServerColumn)>().iter(world).find(|(_, c)| c.0 == remote).map(|(e, _)| e).expect("the remote has a column")

@@ -546,7 +546,7 @@ pub struct BoardFit {
 impl Default for BoardFit {
     fn default() -> Self {
         // The headless tests' window: no `Window` exists there.
-        Self { face: 0.0, window: Vec2::new(1280.0, 800.0), chair: Side::Runner, spare: 0.0, slots: layout::server_slots(800.0) }
+        Self { face: 0.0, window: Vec2::new(1280.0, 800.0), chair: Side::Runner, spare: 0.0, slots: layout::MIN_SLOTS }
     }
 }
 
@@ -659,7 +659,7 @@ pub(crate) fn fit(windows: Query<&Window, With<PrimaryWindow>>, model: Option<Re
         fit.window = window;
         fit.chair = model.0.side;
         fit.spare = layout::spare_height(window.y, face, counts);
-        fit.slots = layout::server_slots(window.y);
+        fit.slots = layout::server_slots(window.y, face, counts);
         dirty.board = true;
         // The pop-up is sized from the window too — capped at it, with
         // the cards drawn in what its words leave — so a resize has to
