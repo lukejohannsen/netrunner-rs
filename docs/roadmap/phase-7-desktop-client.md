@@ -5052,10 +5052,50 @@ echo), and `corp_03_servers` step 1 again after it, at 2560×1600. That
 hint still follows its prose's first sentence closely; it is the case
 the open item below is for. Workspace tests green and workspace clippy silent.
 
-**Still open:** the board could say *where* a step's move is made — the
+**Done in §6d:** the board could say *where* a step's move is made — the
 card to drag and where to drop it, the control, or the pop-up — off the
 narrowed action map, since that is the one thing the shared words cannot
 say for both clients.
+
+### 6d. The coach says where on the board each move is made — DONE (25 September 2026)
+
+`feat/lesson-where`, stacked on §4bf, whose server names it quotes.
+Under the hint, the coach names the gesture for each way the step
+offers: "Drag Nico Campaign from your hand onto the new column that
+opens beside your servers as you lift it", "Click R&D and choose “Run
+R&D”", "Press “Breach R&D” above your hand", "Press “Steal Offworld
+Office” in the middle of the window".
+
+- **Read off the narrowed action map the board is built from**
+  (`models::lesson::ways`), so a way can only point at something the
+  board is offering. Each way quotes the button's own words: the
+  entry's label, or the Continue button's. It is the board's to say,
+  not the lesson file's, because the terminal reaches the same move
+  from a list (§6c).
+- **A way is structured** (`Way::Control`, `Decision`, `Drag`, `Menu`),
+  and its sentence is written from it. A hand card's drops are one way,
+  whatever the number of places. Past two places it says "any place that
+  lights up as you lift it", because Palisade's step allows ice on every
+  server and the list of five was noise.
+- **More than three ways names none** (`MOST_WAYS`): a step that says
+  "spend your clicks however you like" is not asking for one move. It is
+  also off while "Show every action" is open, and while the step
+  narrows nothing.
+
+**Verified.** `every_lesson_is_played_the_way_the_coach_says` plays all
+fourteen lessons on the board model and makes every step's move by the
+gesture the coach names, through the board's own intents: the control,
+the pop-up button, a click and then the quoted menu entry, or a press, a
+move and a drop on a place the board lit. Each submits the step's
+solution. 69 decisions name a way. 2 do not, because their step offers
+more than three. Screenshots of `corp_03_servers` and
+`runner_04_breaking` step 1 at 2560×1600. Workspace tests green and
+workspace clippy silent.
+
+**Seen, not fixed here:** Cleaver's menu entries print the card-text
+symbols raw ("1[credit]"). That is how every menu button draws an
+ability's clause, so the coach quotes it the same way. A button that
+draws the symbol is its own change.
 
 ## 8. Borrowed from jinteki — OPEN (19 September 2026)
 

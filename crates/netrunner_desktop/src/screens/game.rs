@@ -1718,7 +1718,17 @@ fn overlay_needed(game: &Game) -> bool {
 /// Drawn from the last coaching until the next arrives, so the words stay
 /// while the opponent plays; the hatch is offered only while the person
 /// is being asked, since it changes nothing else.
-fn spawn_coaching(parent: &mut ChildSpawnerCommands, theme: &Theme, lesson: &LessonBoard, awaiting: bool) {
+fn spawn_coaching(parent: &mut ChildSpawnerCommands, theme: &Theme, lesson: &LessonBoard, game: &Game) {
+    let awaiting = game.awaiting;
+    // Where the step's moves are made, off the narrowed map the board is
+    // built from: only while the person is asked and the step narrows,
+    // since with every action offered it would point at everything.
+    let ways = match &game.view {
+        Some(view) if awaiting && lesson.gated() && !lesson.every_action => {
+            crate::models::lesson::ways(&game.actions, game.side).iter().map(|way| way.words(&game.actions, view, game.registry())).collect()
+        }
+        _ => Vec::new(),
+    };
     let wrap = || TextLayout::new(Justify::Left, LineBreak::WordBoundary);
     parent
         .spawn((
@@ -1739,6 +1749,9 @@ fn spawn_coaching(parent: &mut ChildSpawnerCommands, theme: &Theme, lesson: &Les
             if let Some(hint) = &coaching.hint {
                 coach.spawn((Text::new(format!("Hint: {hint}")), theme.font(size::SMALL), TextColor(theme.accent), wrap()));
             }
+            for way in &ways {
+                coach.spawn((LessonWay, Text::new(way.clone()), theme.font(size::SMALL), TextColor(theme.text), wrap()));
+            }
             if !awaiting {
                 return;
             }
@@ -1756,6 +1769,11 @@ fn spawn_coaching(parent: &mut ChildSpawnerCommands, theme: &Theme, lesson: &Les
 /// The coach's box, for a test to find.
 #[derive(Component)]
 pub struct LessonCoach;
+
+/// One of the coach's "where" lines (`models::lesson::where_to`), for a
+/// test to find.
+#[derive(Component)]
+pub struct LessonWay;
 
 // ---- the board ----
 
@@ -2916,7 +2934,7 @@ fn spawn_rail(parent: &mut ChildSpawnerCommands, theme: &Theme, game: &Game, hel
     if let Some(lesson) = &game.lesson
         && !game.finished()
     {
-        spawn_coaching(parent, theme, lesson, game.awaiting);
+        spawn_coaching(parent, theme, lesson, game);
     }
     if let Some(prompt) = &game.prompt {
         parent.spawn((widgets::label(theme, prompt.title.clone()), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
