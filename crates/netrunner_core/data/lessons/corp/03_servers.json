@@ -38,7 +38,7 @@
   "opponent": [],
   "steps": [
     {
-      "prose": "Install Nico Campaign. Installing into a new remote server creates that server — choose the install into Remote 0.",
+      "prose": "Install Nico Campaign from HQ into a new remote server. Installing a card there is what creates the server, and this one will be called Remote 0.",
       "allow": {
         "Card": {
           "kind": "InstallCard",
@@ -62,7 +62,7 @@
           }
         }
       ],
-      "hint": "Choose Install Nico Campaign into Remote(0) (Root)."
+      "hint": "Install Nico Campaign in a new remote server."
     },
     {
       "prose": "It is face down. Rez it now for 2 credits so it starts paying next turn — rezzing does not cost a click.",
@@ -85,7 +85,7 @@
           }
         }
       ],
-      "hint": "Choose Rez Nico Campaign."
+      "hint": "Rez Nico Campaign (2 credits)."
     },
     {
       "prose": "Spend any clicks you have left, then end your turn.",

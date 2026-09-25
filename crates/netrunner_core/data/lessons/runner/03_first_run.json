@@ -2,7 +2,7 @@
   "id": "runner_03_first_run",
   "side": "Runner",
   "title": "Your first run",
-  "intro": "A run is how you attack a server. It has six phases: initiation, approach ice, encounter ice, movement, success, and run ends. With no ice in the way you go straight from initiation to success and access the server's cards.\n\nArchives is the Corp's discard pile, and the Corp discarded a card last turn. This lesson: run Archives and walk through the phases — watch the strip in the coaching panel.",
+  "intro": "A run is how you attack a server. It has six phases: initiation, approach ice, encounter ice, movement, success, and run ends. With no ice in the way you go straight from initiation to success and access the server's cards.\n\nArchives is the Corp's discard pile, and the Corp discarded a card last turn. This lesson: run Archives and walk through the phases — watch the run move from phase to phase.",
   "outro": "A successful run on Archives lets you access every card in it. Nothing there scores, but Archives is a real target: agendas the Corp was forced to discard are stolen from there. Next: running through ice.",
   "corp_deck": "the_syndicate_starter",
   "runner_deck": "the_catalyst_starter",
@@ -62,8 +62,7 @@
             "server": "Archives"
           }
         }
-      ],
-      "hint": "Choose Run Archives."
+      ]
     },
     {
       "prose": "No ice protects Archives, so the approach-ice and encounter phases are skipped. Continue: you move straight to the server.",
@@ -91,7 +90,7 @@
           }
         }
       ],
-      "hint": "Choose Continue run."
+      "hint": "Continue the run."
     },
     {
       "prose": "You are at the server; your last chance to jack out was just before you approached it. Complete the run — it becomes successful and you breach the server.",
@@ -119,7 +118,7 @@
           }
         }
       ],
-      "hint": "Choose Complete run."
+      "hint": "Go on to breach Archives."
     },
     {
       "prose": "You access every card in Archives — the one the Corp discarded. Look at it; the run then ends.",
@@ -198,7 +197,7 @@
           }
         }
       ],
-      "hint": "Pass on each card."
+      "hint": "Pass on each card you access."
     },
     {
       "prose": "Spend any clicks you have left, then end your turn.",

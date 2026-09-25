@@ -81,8 +81,7 @@
             "server": "RnD"
           }
         }
-      ],
-      "hint": "Choose Run R&D."
+      ]
     },
     {
       "prose": "You are approaching the ice. Continue; the Corp will rez Palisade as you arrive.",
@@ -110,7 +109,7 @@
           }
         }
       ],
-      "hint": "Choose Continue run."
+      "hint": "Continue the run."
     },
     {
       "prose": "You are encountering Palisade. Use Cleaver's first ability to break its subroutine (1 credit).",
@@ -134,7 +133,7 @@
           }
         }
       ],
-      "hint": "Choose Activate ability 0 on Cleaver."
+      "hint": "Break the subroutine with Cleaver (1 credit)."
     },
     {
       "prose": "Broken: the subroutine will not fire. Continue past the ice to the server.",
@@ -162,7 +161,7 @@
           }
         }
       ],
-      "hint": "Choose Continue run."
+      "hint": "Continue past Palisade."
     },
     {
       "prose": "You are at the server; your last chance to jack out was just before you approached it. Complete the run — it becomes successful and you breach the server.",
@@ -190,7 +189,7 @@
           }
         }
       ],
-      "hint": "Choose Complete run."
+      "hint": "Go on to breach R&D."
     },
     {
       "prose": "Look at the top card of R&D — Hedge Fund. Pass on it; the run then ends.",
@@ -239,7 +238,7 @@
           }
         }
       ],
-      "hint": "Pass on the card."
+      "hint": "Pass on Hedge Fund."
     }
   ]
 }

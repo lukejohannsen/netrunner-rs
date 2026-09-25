@@ -57,8 +57,7 @@
             "server": "RnD"
           }
         }
-      ],
-      "hint": "Choose Run R&D."
+      ]
     },
     {
       "prose": "Nothing protects R&D. Continue to the server.",
@@ -86,7 +85,7 @@
           }
         }
       ],
-      "hint": "Choose Continue run."
+      "hint": "Continue the run."
     },
     {
       "prose": "You are at the server; your last chance to jack out was just before you approached it. Complete the run — it becomes successful and you breach the server.",
@@ -114,7 +113,7 @@
           }
         }
       ],
-      "hint": "Choose Complete run."
+      "hint": "Go on to breach R&D."
     },
     {
       "prose": "The top card is Offworld Office. Steal it.",
@@ -136,8 +135,7 @@
             "card_id": "offworld_office"
           }
         }
-      ],
-      "hint": "Choose Steal Offworld Office."
+      ]
     }
   ]
 }

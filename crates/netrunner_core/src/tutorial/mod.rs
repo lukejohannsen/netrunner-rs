@@ -82,7 +82,10 @@ pub struct ScriptedAction {
 pub struct Step {
     /// The coaching text shown while this step is live.
     pub prose: String,
-    /// A shorter nudge, shown alongside the prose.
+    /// A shorter nudge, shown alongside the prose: the move, in the
+    /// game's words, when the prose buries it. Never a client's label or
+    /// key, because two clients word the same move differently, and never
+    /// a copy of the prose, which the coach already shows above it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub hint: Option<String>,
     /// Which legal actions to present — a filter, never a source.
@@ -371,6 +374,48 @@ mod tests {
         for lesson in &lessons {
             lesson.validate(&registry).unwrap_or_else(|e| panic!("lesson {}: {e}", lesson.id));
             assert!(track(lesson.side).iter().any(|l| l.id == lesson.id), "lesson {} is filed under the wrong side", lesson.id);
+        }
+    }
+
+    /// A lesson's words are read in two clients, and neither draws the
+    /// same button for the same move: the terminal lists "Pass priority
+    /// (Corp)" where the board's Continue says "Let 1 subroutine fire",
+    /// and an install into a new remote is a list entry in one and a drag
+    /// onto a column that exists only while the card is held in the other.
+    /// So the words name the move in the game's terms, never a label. The
+    /// hints were first written as the engine's debug labels ("Choose
+    /// Activate ability 0 on Cleaver", "Remote(0) (Root)", "RnD") and
+    /// matched no button in either client once both named actions by the
+    /// card's own words; the closing words said "Press Enter", which is
+    /// the terminal's key.
+    #[test]
+    fn lesson_words_name_the_move_not_a_client_label() {
+        const LABELS: [(&str, &str); 9] = [
+            ("Remote(", "the engine's spelling of a server; a person reads Remote 0"),
+            ("RnD", "the engine's spelling of R&D"),
+            ("Hq", "the engine's spelling of HQ"),
+            ("ability 0", "an ability is named by what it does"),
+            ("Activate ability", "an ability is named by what it does"),
+            ("Press ", "a key is one client's"),
+            ("Enter", "a key is one client's"),
+            ("coaching panel", "the terminal's panel; the board has a coach in its right column"),
+            ("Choose Pass", "\"pass\" is the move; the button is worded differently in each client"),
+        ];
+        for lesson in embedded_lessons() {
+            let steps = lesson.steps.iter().flat_map(|step| [Some(step.prose.as_str()), step.hint.as_deref()]).flatten();
+            for words in [lesson.intro.as_str(), lesson.outro.as_str()].into_iter().chain(steps) {
+                for (label, why) in LABELS {
+                    assert!(!words.contains(label), "lesson {} says {label:?} ({why}): {words}", lesson.id);
+                }
+            }
+            // A hint the prose already says was shown twice, one under
+            // the other, once the labels were gone from the hints.
+            let plain = |text: &str| text.to_lowercase().chars().filter(|c| c.is_alphanumeric() || *c == ' ' || *c == '&').collect::<String>();
+            for (index, step) in lesson.steps.iter().enumerate() {
+                if let Some(hint) = &step.hint {
+                    assert!(!plain(&step.prose).contains(plain(hint).trim()), "lesson {} step {index}: the hint repeats the prose: {hint}", lesson.id);
+                }
+            }
         }
     }
 

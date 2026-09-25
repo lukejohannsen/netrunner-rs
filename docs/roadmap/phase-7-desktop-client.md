@@ -4983,6 +4983,51 @@ rules, a track's order, and the first unfinished lesson being the
 earliest gap. Workspace tests green and workspace clippy silent.
 Screenshot of the tracks at 2560×1600.
 
+### 6c. A lesson's words name the move, not a button — DONE (25 September 2026)
+
+`fix/lesson-words`. On the board, the coach's hints still spoke the
+engine's debug labels from before either client named actions by the
+card's own words: "Choose Install Nico Campaign into Remote(0) (Root)",
+"Choose Activate ability 0 on Cleaver", "Choose RnD", "Choose Hq". Those
+labels matched no button in the terminal or on the board. Two closing
+words said "Press Enter to graduate", which is the terminal's key; the
+terminal already prints its own "Enter to continue" under them. The
+Runner's first run said to watch "the strip in the coaching panel",
+which the board does not have.
+
+- **Every hint and closing line now names the move in the game's
+  words** ("Install Nico Campaign in a new remote server", "Break the
+  subroutine with Cleaver (1 credit)", "Pass, and let Palisade's
+  subroutine fire"). The two clients word the same move differently:
+  the terminal lists "Pass priority (Corp)", while the board's Continue
+  says "Let 1 subroutine fire". The two clients also reach an install in
+  a new remote differently: it is a list entry in the terminal and a drag
+  onto a column that exists only while the card is held on the board. So
+  the lesson files name the move and leave the button to each client.
+- **A hint that repeats its prose is gone.** Once the labels were out,
+  fifteen hints turned out to repeat the step's own prose. On the board
+  they showed as the same sentence twice ("Spend a click to run R&D."
+  over "Hint: Spend a click to run R&D."). Thirty-three hints remain. Each
+  names the card or the move more plainly than the prose around it
+  ("Score it" becomes "Score Offworld Office"). Corp step 3's
+  hint now names the two cards to discard, as its prose does.
+- **The gate:** `tutorial::tests::lesson_words_name_the_move_not_a_client_label`
+  refuses the engine's spellings (`Remote(`, `RnD`, `Hq`, `ability 0`),
+  a key, the terminal's panel, and a hint contained in its own prose.
+  Lesson words are authored text that nothing else checks, so without
+  the gate they would drift again the next time an action label moves.
+
+**Verified.** Screenshots of `corp_03_servers` step 1 (before) and
+`runner_04_breaking` step 1 (after the rewrite, which showed the
+echo), and `corp_03_servers` step 1 again after it, at 2560×1600. That
+hint still follows its prose's first sentence closely; it is the case
+the open item below is for. Workspace tests green and workspace clippy silent.
+
+**Still open:** the board could say *where* a step's move is made — the
+card to drag and where to drop it, the control, or the pop-up — off the
+narrowed action map, since that is the one thing the shared words cannot
+say for both clients.
+
 ## 8. Borrowed from jinteki — OPEN (19 September 2026)
 
 From [`docs/jinteki-comparison.md`](../jinteki-comparison.md) §5, in the

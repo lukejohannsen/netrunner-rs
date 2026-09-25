@@ -58,8 +58,7 @@
             "card_id": "jailbreak"
           }
         }
-      ],
-      "hint": "Choose Play Jailbreak."
+      ]
     },
     {
       "prose": "Jailbreak asks which central server to run. Choose R&D.",
@@ -81,8 +80,7 @@
             "server": "RnD"
           }
         }
-      ],
-      "hint": "Choose RnD."
+      ]
     },
     {
       "prose": "Nothing protects R&D. Continue to the server.",
@@ -110,7 +108,7 @@
           }
         }
       ],
-      "hint": "Choose Continue run."
+      "hint": "Continue the run."
     },
     {
       "prose": "Complete the run. It is successful, so Jailbreak draws you a card and grants a second access.",
@@ -138,7 +136,7 @@
           }
         }
       ],
-      "hint": "Choose Complete run."
+      "hint": "Go on to breach R&D."
     },
     {
       "prose": "Two accesses. R&D gives them up one card at a time from the top, so Offworld Office comes first: steal it, then look at Hedge Fund and pass.",

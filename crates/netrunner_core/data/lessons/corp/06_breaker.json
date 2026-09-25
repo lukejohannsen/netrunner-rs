@@ -202,8 +202,7 @@
             "ice": 1
           }
         }
-      ],
-      "hint": "Choose Rez Palisade."
+      ]
     },
     {
       "prose": "Watch: the Runner pays 2 to boost Cleaver to strength 4, then 1 to break the subroutine. Pass priority whenever you are asked.",
@@ -248,7 +247,7 @@
           }
         }
       ],
-      "hint": "Choose Pass priority."
+      "hint": "Pass each time you are asked."
     },
     {
       "prose": "Palisade is broken, so the Runner reaches the server and accesses the agenda. Pass priority.",
@@ -292,8 +291,7 @@
             "side": "Corp"
           }
         }
-      ],
-      "hint": "Choose Pass priority."
+      ]
     }
   ]
 }

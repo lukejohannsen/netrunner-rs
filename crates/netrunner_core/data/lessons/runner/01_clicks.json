@@ -40,7 +40,7 @@
       "solution": [
         "KeepHand"
       ],
-      "hint": "Choose Keep hand."
+      "hint": "Keep your hand."
     },
     {
       "prose": "The Corp has taken its first turn. You have 4 clicks and 5 credits. Sure Gamble costs 5 and gives you 9: play it.",
@@ -63,7 +63,7 @@
           }
         }
       ],
-      "hint": "Choose Play Sure Gamble."
+      "hint": "Play Sure Gamble from your grip."
     },
     {
       "prose": "Nine credits. The basic actions are always there too: click for 1 credit.",
@@ -83,7 +83,7 @@
           }
         }
       ],
-      "hint": "Choose Gain 1 credit."
+      "hint": "Spend a click to take 1 credit."
     },
     {
       "prose": "And click to draw a card from your stack.",
@@ -103,7 +103,7 @@
           }
         }
       ],
-      "hint": "Choose Draw a card."
+      "hint": "Spend a click to draw a card."
     },
     {
       "prose": "Last click: take a credit, then end your turn.",
@@ -136,8 +136,7 @@
           }
         },
         "EndTurn"
-      ],
-      "hint": "Gain 1 credit, then End turn."
+      ]
     }
   ]
 }
