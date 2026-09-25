@@ -11,6 +11,7 @@
 pub mod card_face;
 pub mod dropdown;
 pub mod reader;
+pub mod symbols;
 pub mod text_field;
 
 use bevy::prelude::*;
@@ -35,6 +36,9 @@ impl Plugin for WidgetsPlugin {
             // seeing their presses. Dressing has no ordering requirement
             // of its own — it paints what interaction never touched.
             .add_systems(Update, dress)
+            // After every screen has spawned its labels for the frame and
+            // before the UI measures them, so a token is never drawn.
+            .add_systems(PostUpdate, symbols::draw.before(bevy::ui::UiSystems::Prepare))
             .add_plugins(reader::plugin);
     }
 }

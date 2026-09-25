@@ -35,12 +35,12 @@ fn every_catalog_card_draws_as_a_text_face_that_says_its_text() {
     }
     app.update();
     // The body text under each face reads, span by span, as the face's
-    // fallback rendering.
+    // fallback rendering, its arrows drawn as the font can.
     let mut bodies = app.world_mut().query_filtered::<(&ChildOf, &Children), With<BodyText>>();
     let mut spans = app.world_mut().query::<&TextSpan>();
     let mut checked = 0;
     for (face, root) in &faces {
-        let expected = face.body_text(false);
+        let expected = netrunner_desktop::widgets::symbols::arrowless(&face.body_text(false));
         let found = bodies
             .iter(app.world())
             .find(|(parent, _)| ancestor_is(app.world(), parent.parent(), *root))
