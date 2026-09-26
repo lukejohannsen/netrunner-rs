@@ -6,9 +6,6 @@
     "Ice": "Barrier"
   },
   "cost": 6,
-  "subtypes": [
-    "Bioroid"
-  ],
   "strength": 6,
   "click_breakable": true,
   "triggers": [],

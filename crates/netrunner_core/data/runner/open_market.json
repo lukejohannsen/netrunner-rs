@@ -4,9 +4,6 @@
   "side": "Runner",
   "card_type": "Resource",
   "cost": 2,
-  "subtypes": [
-    "Job"
-  ],
   "counter_kind": "Credit",
   "pays_for": [
     {

@@ -52,8 +52,5 @@
     }
   ],
   "numeric_id": 35032,
-  "is_playable": true,
-  "subtypes": [
-    "Fracter"
-  ]
+  "is_playable": true
 }

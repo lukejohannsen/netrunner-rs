@@ -72,8 +72,5 @@
   ],
   "counter_kind": "Credit",
   "numeric_id": 35034,
-  "is_playable": true,
-  "subtypes": [
-    "Job"
-  ]
+  "is_playable": true
 }

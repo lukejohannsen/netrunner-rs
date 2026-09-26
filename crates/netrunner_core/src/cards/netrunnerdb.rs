@@ -9,7 +9,7 @@
 
 use crate::card::{CardConversionError, CardId, Faction, NetrunnerDbCardDto};
 use crate::cards::CardRegistry;
-use crate::dsl::{CardDefinition, CardType, IceType};
+use crate::dsl::{CardDefinition, CardSubtype, CardType, IceType};
 use crate::rules::Side;
 
 /// Every embedded pack's NetrunnerDB card data, one array per pack
@@ -186,7 +186,9 @@ fn convert_one(dto: NetrunnerDbCardDto) -> Result<CardDefinition, CardConversion
         strength: non_negative("strength", dto.strength)?.map(|v| v as i32),
         subroutines: Vec::new(),
         interactive_on_access: None,
-        subtypes: Vec::new(),
+        // Every keyword is a subtype the rules list
+        // (`every_catalog_keyword_is_a_subtype_the_rules_list`).
+        subtypes: keywords.iter().filter_map(|keyword| CardSubtype::from_printed(keyword)).collect(),
         unique: dto.uniqueness.unwrap_or(false),
         base_link: non_negative("base_link", dto.base_link)?,
         play_requirement: None,
@@ -346,6 +348,27 @@ mod tests {
             deck_limit: Some(3),
             influence_limit: None,
         }
+    }
+
+    /// A card's subtypes are its printed keywords, so every keyword in the
+    /// embedded catalog must be one of Comprehensive Rules 2.16.7's words.
+    /// One that is not is a printing newer than `rules/`, or a misspelling
+    /// in `CardSubtype`: either way the card would silently lose a
+    /// subtype a card reads.
+    #[test]
+    fn every_catalog_keyword_is_a_subtype_the_rules_list() {
+        let catalog = load_embedded_netrunnerdb_sets().expect("catalog parses");
+        let unknown: std::collections::BTreeSet<&str> = catalog
+            .iter()
+            .flat_map(|card| card.keywords.iter())
+            .filter(|keyword| CardSubtype::from_printed(keyword).is_none())
+            .map(String::as_str)
+            .collect();
+        assert!(unknown.is_empty(), "keywords CardSubtype does not list: {unknown:?}");
+        let vicsek_era = catalog.get_by_numeric_id(CardId(36052)).expect("Paywall");
+        assert_eq!(vicsek_era.subtypes, vec![CardSubtype::Barrier]);
+        assert_eq!(CardSubtype::CodeGate.printed(), "Code Gate");
+        assert_eq!(CardSubtype::from_printed("G-mod"), Some(CardSubtype::GMod));
     }
 
     #[test]

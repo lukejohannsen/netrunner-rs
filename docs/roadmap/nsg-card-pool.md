@@ -302,8 +302,11 @@ tranche re-reads them.
    once, checked against the catalog's `keywords`, costs nothing per card
    later.
 
-Both land as **Vantage Point Stage 1**, ahead of any card that needs them.
-They are not in Stage 0, because Stage 0 adds no rules surface.
+The subtypes land as **Vantage Point Stage 1a**, ahead of any card. **The
+events do not** (corrected when Stage 1 was taken, 26 September 2026): a
+`Trigger` no card uses is vocabulary the DSL Growth Rule refuses, so each
+event is heard in the stage that builds the first card listening for it —
+Vertigo, Sipa and Lethe in Stage 4 for passing and breaking ice.
 
 ### Mechanics shared across tranches
 
@@ -350,11 +353,11 @@ new identities: Vic, Hiram "0mission" Svensson, Méliès U and Editorial
 Division.
 
 **Stages** (card lists from the survey):
-1. **Groundwork: events heard and subtypes listed**, above, with the
-   no-new-word cards: Virtual Intelligence P.I., Sell Out, Borrowed Goods,
-   Rotary, Méliès City Luxury Line (the first `steal_cost`), Sleipnir,
-   Retirement Plan, Nihilo Agent, Grubber, Paywall, Scapegoat, Flywheel,
-   Vulture Fund.
+1. **1a — every subtype, read from the catalog** (below). **1b — the
+   no-new-word cards:** Virtual Intelligence P.I., Sell Out, Borrowed
+   Goods, Rotary, Méliès City Luxury Line (the first `steal_cost`),
+   Sleipnir, Retirement Plan, Nihilo Agent, Grubber, Paywall, Scapegoat,
+   Flywheel, Vulture Fund.
 2. **Bad publicity, tags and costs:** Editorial Division, Witch Hunt, Take
    a Dive, Kompromat, Vicsek, Reanimation Protocol, Unleash,
    Synchrocyclotron, realloc(), Flood the Market.
@@ -387,6 +390,30 @@ Division.
   "fully broken" means.
 
 **Banned:** Let Them Dream, on Startup's list only.
+
+#### Stage 1a — every printed subtype, read from the catalog (26 September 2026)
+
+`feat/vp-stage-1-subtypes`. No card yet.
+
+- **`CardSubtype` is Comprehensive Rules 2.16.7's whole list.** That is
+  106 words, each spelled as printed (`#[serde(rename)]` for Code Gate,
+  G-mod, AP, NEXT, Caïssa, Off-site, Consumer-grade). Before this it had
+  ten, each added when a card first read it.
+- **A card's subtypes are its catalog keywords.** The NetrunnerDB
+  conversion reads them into `subtypes`, and `fill_catalog_metadata` copies
+  them onto the card file, as it does faction and influence. The 49 card
+  files that authored `subtypes` no longer do, and
+  `a_card_file_leaves_its_subtypes_to_the_catalog` refuses one that does.
+  Every authored list was a subset of the printed keywords, so nothing was
+  lost. `every_catalog_keyword_is_a_subtype_the_rules_list` holds all 83
+  keywords the catalog prints to the rules' list.
+- **Two cards change: Account Siphon and The Maker's Eye are run events**,
+  and their files never said so. Sang Kancil's "run event" discount
+  (`RunEventActive`) and MuslihaT's "an icebreaker or a run event" did not
+  see them; now they do. It is a card-fidelity fix the subtype list found.
+  No other card gained a subtype a rule reads.
+- `CardSubtype::printed` is the word as the card prints it, so the prose
+  says "fracter", not a Rust name.
 
 ### 2. Rebellion Without Rehearsal — 65 cards (C 7 / V 43 / M 15)
 

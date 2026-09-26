@@ -77,7 +77,7 @@ pub fn describe_amount(amount: &Amount) -> String {
         Amount::ThreatLevel => "the threat level".to_string(),
         Amount::RunnerTags => "the Runner's tags".to_string(),
         Amount::ChosenNumber => "the number chosen".to_string(),
-        Amount::InHeapWithSubtype(subtype) => format!("the number of {} cards in the heap", humanize(format!("{subtype:?}")).to_lowercase()),
+        Amount::InHeapWithSubtype(subtype) => format!("the number of {} cards in the heap", subtype.printed().to_lowercase()),
         Amount::IceProtectingThisServer => "the number of pieces of ice protecting this server".to_string(),
     }
 }

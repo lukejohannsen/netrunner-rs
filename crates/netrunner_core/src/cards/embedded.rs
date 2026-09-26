@@ -50,6 +50,7 @@ fn fill_catalog_metadata(cards: &mut [CardDefinition]) {
         card.faction = entry.faction;
         card.type_line.clone_from(&entry.type_line);
         card.keywords.clone_from(&entry.keywords);
+        card.subtypes.clone_from(&entry.subtypes);
         card.set_code.clone_from(&entry.set_code);
         card.influence_cost = entry.influence_cost;
         card.deck_limit = entry.deck_limit;
@@ -343,6 +344,26 @@ mod catalog_join_tests {
             "{set_name}: the built count should be the printed set minus the documented exceptions \
              (an exception naming a code outside the set breaks this too)"
         );
+    }
+
+    /// A card's subtypes are the catalog's (`fill_catalog_metadata`), so a
+    /// card file with a catalog entry authors none: one it wrote would be
+    /// overwritten, which is a restatement that could only disagree.
+    /// Holds the 49 files that authored them before VP Stage 1 to it.
+    #[test]
+    fn a_card_file_leaves_its_subtypes_to_the_catalog() {
+        let catalog = crate::cards::load_embedded_netrunnerdb_sets().expect("catalog should parse");
+        let mut authored: Vec<String> = parse_side(CORP_CARDS_JSON, "Corp")
+            .into_iter()
+            .chain(parse_side(RUNNER_CARDS_JSON, "Runner"))
+            .filter(|card| !card.subtypes.is_empty())
+            .filter(|card| card.numeric_id.is_some_and(|id| catalog.get_by_numeric_id(id).is_some()))
+            .map(|card| card.id.0)
+            .collect();
+        authored.sort();
+        assert!(authored.is_empty(), "card files authoring subtypes the catalog owns: {authored:?}");
+        let cleaver = embedded_playable_cards().into_iter().find(|card| card.id.0 == "cleaver").expect("Cleaver");
+        assert_eq!(cleaver.subtypes, vec![crate::dsl::CardSubtype::Icebreaker, crate::dsl::CardSubtype::Fracter], "read off \"Icebreaker - Fracter\"");
     }
 
     #[test]

@@ -49,8 +49,5 @@
     }
   ],
   "numeric_id": 30027,
-  "is_playable": true,
-  "subtypes": [
-    "Job"
-  ]
+  "is_playable": true
 }

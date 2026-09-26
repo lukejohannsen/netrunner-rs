@@ -6,9 +6,6 @@
   "cost": 3,
   "strength": 2,
   "memory_cost": 1,
-  "subtypes": [
-    "Virus"
-  ],
   "counter_kind": "Virus",
   "triggers": [
     {

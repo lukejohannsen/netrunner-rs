@@ -46,8 +46,5 @@
     }
   ],
   "numeric_id": 30033,
-  "is_playable": true,
-  "subtypes": [
-    "Connection"
-  ]
+  "is_playable": true
 }
