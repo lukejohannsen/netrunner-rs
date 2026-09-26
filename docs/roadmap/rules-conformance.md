@@ -502,7 +502,7 @@ with the rule quoted.
 | 8.4 | Drawing Cards | unreviewed |  |
 | 8.5 | Installing and Uninstalling Cards | deviates | B4 only. B1–B3 fixed: like cards are trashed at 8.5.16c, before the install cost, with the forced ones unasked and the player's own behind `trash_first`. 1[c] per ice not counting trashed ice, trashed cards keep their status (8.5.7), and a server emptied by its own install's trash keeps its identity (8.5.9); these match. |
 | 8.6 | Playing Events and Operations | read in part | F6 (order only). |
-| 8.7 | Searching for Cards | unreviewed |  |
+| 8.7 | Searching for Cards | read in part | A search shuffles the deck searched, found or not, before the rest of its ability resolves (8.7.3): `pending_choice::shuffle_decks`, 26 September 2026. It had shuffled the destination, so Editorial Division, Malapert Data Vault and Off the Books shuffled HQ and Mutual Favor the grip, and a search that found nothing shuffled nothing. |
 | 8.8 | Swapping Cards | unreviewed |  |
 
 ### 9. Abilities

@@ -238,17 +238,31 @@ fn resolve_run_riders(
             ability::evaluate_effect(state, &effect, &mut ctx, registry)
         }
         // Read off the snapshot: `active_run` is already cleared by the time
-        // a run's end is dispatched.
+        // a run's end is dispatched. **It waits behind anything parked**,
+        // left on the snapshot for `drain_deferred_triggers`, as a trigger
+        // plan waits in the queue: a steal that parks Send a Message's "rez
+        // 1 piece of ice" ends the run, and Kompromat's "unless they derez"
+        // parked a paid choice beside the decision, so neither was offered
+        // and the Corp had no legal action (the 256-seed view sweep, seed
+        // 195, Discretion Advised against Borrowed Time).
         GameEvent::RunCompleted { .. } | GameEvent::RunJackedOut { .. } | GameEvent::RunEndedByEffect { .. } => {
-            let rider = state.last_completed_run.as_mut().and_then(|completed| {
-                completed.on_end_effect.take().map(|effect| (effect, completed.on_end_card.clone(), completed.on_end_install))
-            });
-            let Some((effect, card, install)) = rider else { return Ok(Vec::new()) };
-            let mut ctx = ability::ResolutionContext::for_parked(install, card.as_ref());
-            ability::evaluate_effect(state, &effect, &mut ctx, registry)
+            if state.is_resolution_blocked() {
+                return Ok(Vec::new());
+            }
+            resolve_run_end_rider(state, registry)
         }
         _ => Ok(Vec::new()),
     }
+}
+
+/// Resolves the ended run's `on_end_effect`, if it still has one.
+fn resolve_run_end_rider(state: &mut GameState, registry: &CardRegistry) -> Result<Vec<GameEvent>, RulesError> {
+    let rider = state.last_completed_run.as_mut().and_then(|completed| {
+        completed.on_end_effect.take().map(|effect| (effect, completed.on_end_card.clone(), completed.on_end_install))
+    });
+    let Some((effect, card, install)) = rider else { return Ok(Vec::new()) };
+    let mut ctx = ability::ResolutionContext::for_parked(install, card.as_ref());
+    ability::evaluate_effect(state, &effect, &mut ctx, registry)
 }
 
 /// Fires one side's ordered plan of triggers, stopping and queueing the
@@ -457,6 +471,11 @@ pub(crate) fn drain_deferred_triggers(
     registry: &CardRegistry,
 ) -> Result<Vec<GameEvent>, RulesError> {
     let mut events = Vec::new();
+    // A run-end rider that waited (`resolve_run_riders`) goes first, as it
+    // would have ahead of the cards' own triggers.
+    if !state.resolution_halted() {
+        events.extend(resolve_run_end_rider(state, registry)?);
+    }
     while !state.resolution_halted() && !state.deferred_triggers.is_empty() {
         let due = state.deferred_triggers.remove(0);
         events.extend(fire_one(state, registry, &due)?);

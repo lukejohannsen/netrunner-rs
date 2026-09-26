@@ -598,6 +598,25 @@ fn is_discard_pile(zone: &CardZoneRef) -> bool {
     matches!(zone, CardZoneRef::OwnHeap | CardZoneRef::OwnArchives | CardZoneRef::OpponentDiscard)
 }
 
+/// The shuffle a `PromptChooseCards` with `shuffle_after` asks for: every
+/// deck the selection moved cards out of or into. A search shuffles the
+/// deck searched, "whether or not any cards are found", before anything
+/// else of the ability resolves (CR 8.7.3), and "shuffle into R&D"
+/// shuffles the deck that received them.
+///
+/// It was the destination alone, which is right for the second and wrong
+/// for the first: Editorial Division, Malapert Data Vault, Off the Books
+/// and Mutual Favor each shuffled the hand they had just added the found
+/// card to and left the deck searched in the order the searcher saw it.
+/// The top of the stack is looked at, not searched, so it is never a
+/// deck to shuffle here.
+pub(crate) fn shuffle_decks(state: &mut GameState, chooser: Side, source: &CardZoneRef, destination: Option<&CardZoneRef>) {
+    let is_deck = |zone: &CardZoneRef| matches!(zone, CardZoneRef::OwnRAndD | CardZoneRef::OwnStack | CardZoneRef::OpponentDeck);
+    for zone in std::iter::once(source).chain(destination).filter(|zone| is_deck(zone)) {
+        shuffle_zone(state, chooser, zone);
+    }
+}
+
 /// Fisher-Yates shuffle of `zone` (relative to `chooser`) using `GameState`'s
 /// deterministic PRNG — the rolls are drawn first (immutable-length-only
 /// borrow), then applied, so this never needs to borrow `state` mutably
@@ -1013,9 +1032,9 @@ pub(crate) fn resolve_confirm_card_selection(
                 events.extend(cascade);
             }
         }
-        if shuffle_after {
-            shuffle_zone(state, side, dest);
-        }
+    }
+    if shuffle_after {
+        shuffle_decks(state, side, &source, destination.as_ref());
     }
     if trashed_from_hq > 0 {
         let batch = GameEvent::CardsTrashedFromHq { count: trashed_from_hq };

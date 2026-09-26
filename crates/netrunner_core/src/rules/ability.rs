@@ -1063,6 +1063,10 @@ pub fn evaluate_effect(
                 // `min: 0` offer (Bumi 1.0 with no trojan in the rig):
                 // parking a choice whose only resolution is an empty
                 // confirmation costs the player a decision for nothing.
+                // A search that finds nothing still shuffles (CR 8.7.3).
+                if *shuffle_after {
+                    crate::rules::pending_choice::shuffle_decks(state, *side, source, destination.as_ref());
+                }
                 return Ok(Vec::new());
             }
             state.pending_decision = Some(PendingDecision::ChooseCards {
