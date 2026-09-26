@@ -214,7 +214,12 @@ Each its own branch, in this order; each is useful without the next.
    (`feat/key-identity-client`, the same day) added the key file, the
    machine's handshake and pinning by address.
 3. **Seat commitments, receipts, `ServerMessage::Rated`, `results.jsonl`,
-   `--rebuild-ratings`.**
+   `--rebuild-ratings`.** *Built 26 September 2026* (`feat/signed-receipts`).
+   Three departures from §3 above: the receipt sits beside the record
+   (`<id>.receipt.json`) rather than in a footer line, so the record stays
+   what replay reads; the deck hash is salted with a salt only its seat
+   is told; and a withheld seat signature leaves the game rated, its
+   receipt without that commitment.
 4. **Client surfaces.** The game-over panel shows `Rated`; Profile shows "your
    standing at `<server>`" — fetched, and never stored as truth.
 5. **The free take-back online.**

@@ -175,6 +175,11 @@ impl Attached {
             }
             // Watching from an attached connection is a later stage; a
             // second hello is the client repeating itself.
+            ClientMessage::SeatSigned { signature } => {
+                if let Some(seat) = playing.as_ref().filter(|_| self.in_match) {
+                    self.shared.accept_commitment(seat.token, signature);
+                }
+            }
             // A key is proved before attaching, never after.
             ClientMessage::Attach { .. } | ClientMessage::Resume { .. } | ClientMessage::Spectate { .. } | ClientMessage::Identify { .. } | ClientMessage::Prove { .. } => {}
         }

@@ -17,7 +17,10 @@ use netrunner_core::decks::DeckFile;
 use netrunner_core::format::NsgFormat;
 use netrunner_core::rules::{PlayerAction, Side};
 use netrunner_core::view::ClientView;
-use netrunner_identity::{Nonce, PublicKey, Signature};
+use netrunner_identity::{Nonce, PublicKey, Signature, Signed};
+use netrunner_rating::Rating;
+
+pub mod statements;
 
 /// Re-exported, not defined here: both live in `netrunner_session` beside
 /// the driver that produces them. `GameEndReason` was never a transport
@@ -40,6 +43,10 @@ pub enum ClientMessage {
     /// `netrunner_identity::auth_statement(server_key, nonce)`. Answered
     /// with `Identified`, or `IdentifyRefused` and the socket closed.
     Prove { signature: Signature },
+    /// The seat's signature over the statement `SignSeat` sent, under
+    /// `statements::SEAT_TAG`, once the client has checked it names this
+    /// seat's key, side, match, server and deck.
+    SeatSigned { signature: Signature },
     /// Take a seat back after the socket that held it dropped. The token is
     /// the one `MatchJoined` issued for that seat, and it is the *only*
     /// credential: a seat is worth exactly what a WebSocket connection was
@@ -178,6 +185,15 @@ pub enum ServerMessage {
     /// The proof does not hold, or came without a challenge. The socket
     /// is closed after it.
     IdentifyRefused { reason: String },
+    /// Sign this: a `statements::SeatStatement` as its exact text, sent to
+    /// a proved seat once, after its first `MatchJoined`. `salt` is the
+    /// deck hash's, and only this seat is told it
+    /// (`statements::deck_hash`).
+    SignSeat { statement: String, salt: String },
+    /// A rated game has ended: the server's signed `statements::Receipt`,
+    /// and this seat's rating for the side it played, before and after.
+    /// Sent after `GameEnded`, only to proved seats of a rated game.
+    Rated { receipt: Box<Signed>, before: Rating, after: Rating },
     /// The seat is taken. `session_token` is what `ClientMessage::Resume`
     /// presents to take it back after a dropped connection; it is per
     /// *seat*, not per match, so one player's token never reseats the

@@ -888,7 +888,11 @@ impl Feed {
             | ServerMessage::ResumeRejected { .. }
             | ServerMessage::Challenge { .. }
             | ServerMessage::Identified { .. }
-            | ServerMessage::IdentifyRefused { .. } => {}
+            | ServerMessage::IdentifyRefused { .. }
+            | ServerMessage::SignSeat { .. } => {}
+            // The server's word on a rated game, after it ended; what the
+            // end-of-game table says about it is Phase 4 §5 stage d.
+            ServerMessage::Rated { .. } => {}
             // An attached connection's, which a game's feed never carries:
             // the connection answers them before and after the game.
             ServerMessage::Attached { .. }

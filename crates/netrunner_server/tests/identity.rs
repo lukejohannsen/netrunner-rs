@@ -13,8 +13,9 @@ use tokio_tungstenite::{MaybeTlsStream, WebSocketStream};
 
 use netrunner_core::decks;
 use netrunner_core::rules::Side;
-use netrunner_identity::{Identity, PublicKey};
+use netrunner_identity::{Identity, PublicKey, Signed};
 use netrunner_rating::{RatingBook, Track};
+use netrunner_server::protocol::statements::{Receipt, SeatStatement, SEAT_TAG};
 use netrunner_server::protocol::Chair;
 use netrunner_server::serve::{ServeBotKind, ServeOptions, Server};
 use netrunner_server::{ClientMessage, ServerMessage};
@@ -290,5 +291,128 @@ async fn a_game_between_one_key_and_itself_is_rated_by_nobody() {
     let me = player(1);
     play_one(&url, (Some(&me), "me"), (Some(&me), "also me")).await;
     assert_nothing_rated(&url, &dir).await;
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// The next message `wanted` picks out, skipping the game's traffic.
+async fn next_where<T>(socket: &mut Socket, wanted: impl Fn(ServerMessage) -> Option<T>) -> T {
+    loop {
+        if let Some(found) = wanted(next(socket).await) {
+            return found;
+        }
+    }
+}
+
+/// Answers the `SignSeat` that follows `MatchJoined` — or, when `sign` is
+/// false, reads it and says nothing. Returns the statement.
+async fn answer_sign_seat(socket: &mut Socket, identity: &Identity, sign: bool) -> SeatStatement {
+    let (statement, _salt) = next_where(socket, |message| match message {
+        ServerMessage::SignSeat { statement, salt } => Some((statement, salt)),
+        _ => None,
+    })
+    .await;
+    if sign {
+        let signature = identity.sign(SEAT_TAG, statement.clone()).signature;
+        send(socket, ClientMessage::SeatSigned { signature }).await;
+    }
+    serde_json::from_str(&statement).unwrap()
+}
+
+/// Two proved players, each seat asked to sign; the Runner concedes. Both
+/// seats' receipts come back in `Rated`. `runner_signs` false withholds
+/// the Runner's signature.
+async fn play_rated(url: &str, ann: &Identity, bo: &Identity, runner_signs: bool) -> [ServerMessage; 2] {
+    let mut corp_socket = seek(url, Some(ann), "ann", corp()).await;
+    assert!(matches!(next(&mut corp_socket).await, ServerMessage::Queued { .. }));
+    let mut runner_socket = seek(url, Some(bo), "bo", runner()).await;
+    assert!(matches!(next(&mut runner_socket).await, ServerMessage::MatchJoined { .. }));
+    let said = answer_sign_seat(&mut runner_socket, bo, runner_signs).await;
+    assert_eq!((said.side, said.key, said.opponent_key), (Side::Runner, bo.public_key(), Some(ann.public_key())));
+    assert!(matches!(next(&mut corp_socket).await, ServerMessage::MatchJoined { .. }));
+    answer_sign_seat(&mut corp_socket, ann, true).await;
+    // The signatures reach the server before the game can end: the next
+    // message on each socket is the first view, which the server sent
+    // after reading nothing — so wait for a view that follows an action.
+    send(&mut corp_socket, ClientMessage::SubmitAction(netrunner_core::rules::PlayerAction::KeepHand)).await;
+    next_where(&mut runner_socket, |message| matches!(message, ServerMessage::ActionLog(_)).then_some(())).await;
+    send(&mut runner_socket, ClientMessage::Surrender).await;
+    let rated = |message: ServerMessage| matches!(message, ServerMessage::Rated { .. }).then_some(message);
+    [next_where(&mut corp_socket, rated).await, next_where(&mut runner_socket, rated).await]
+}
+
+/// A rated game ends in a receipt the server signed: it names both keys,
+/// carries each seat's signed commitment, the record's hash, and the
+/// result, and each seat is told its rating before and after.
+#[tokio::test]
+async fn a_rated_game_ends_in_a_signed_receipt_both_players_get() {
+    let dir = scratch("receipt");
+    let (url, server_key) = start(Some(dir.clone())).await;
+    let (ann, bo) = (player(1), player(2));
+    let [corp_rated, runner_rated] = play_rated(&url, &ann, &bo, true).await;
+    let ServerMessage::Rated { receipt, before, after } = corp_rated else { unreachable!() };
+    assert!(after.rating > before.rating, "the Corp won: {before:?} -> {after:?}");
+    let ServerMessage::Rated { receipt: runner_receipt, before: runner_before, after: runner_after } = runner_rated else { unreachable!() };
+    assert!(runner_after.rating < runner_before.rating);
+    assert_eq!(receipt, runner_receipt, "one receipt, both players");
+
+    let read = Receipt::read(&receipt, &server_key).expect("signed by the server, under the receipt tag");
+    assert!(read.rated);
+    assert_eq!(read.winner, Some(Side::Corp));
+    assert_eq!((read.corp.key, read.runner.key), (Some(ann.public_key()), Some(bo.public_key())));
+    for (seat, key) in [(&read.corp, ann.public_key()), (&read.runner, bo.public_key())] {
+        let commitment = seat.commitment.as_ref().expect("each seat signed");
+        assert_eq!(commitment.key, key);
+        let statement: SeatStatement = serde_json::from_str(commitment.verify(SEAT_TAG).unwrap()).unwrap();
+        assert_eq!(statement.match_id, read.match_id);
+    }
+    assert!(Receipt::read(&receipt, &player(9).public_key()).is_err(), "a receipt is only another server's if that server signed it");
+
+    // The record it names is the one kept, byte for byte, with the
+    // receipt beside it; and the results log holds the receipt.
+    let months = std::fs::read_dir(dir.join("matches")).unwrap().flatten().map(|month| month.path()).collect::<Vec<_>>();
+    let record = months.iter().map(|month| month.join(format!("{}.jsonl", read.match_id))).find(|path| path.exists()).unwrap();
+    assert_eq!(netrunner_identity::sha256_hex(&std::fs::read(&record).unwrap()), read.record);
+    let beside: Signed = serde_json::from_str(&std::fs::read_to_string(record.with_extension("receipt.json")).unwrap()).unwrap();
+    assert_eq!(beside, *receipt);
+    let results = std::fs::read_to_string(dir.join("results.jsonl")).unwrap();
+    assert_eq!(results.lines().count(), 1);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// Withholding the signature does not make a lost game count for nothing:
+/// it is rated, and its receipt lacks that seat's commitment.
+#[tokio::test]
+async fn a_withheld_seat_signature_is_still_rated_and_the_receipt_says_so() {
+    let dir = scratch("withheld");
+    let (url, server_key) = start(Some(dir.clone())).await;
+    let [corp_rated, _] = play_rated(&url, &player(1), &player(2), false).await;
+    let ServerMessage::Rated { receipt, .. } = corp_rated else { unreachable!() };
+    let read = Receipt::read(&receipt, &server_key).unwrap();
+    assert!(read.rated);
+    assert!(read.corp.commitment.is_some());
+    assert!(read.runner.commitment.is_none(), "the Runner never signed");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// The book is a cache of the results log: removed, it is rebuilt exactly;
+/// and a line nobody signed stops the rebuild rather than count.
+#[tokio::test]
+async fn the_rating_book_is_rebuilt_exactly_from_the_results_log() {
+    let dir = scratch("rebuild");
+    let (url, _) = start(Some(dir.clone())).await;
+    play_rated(&url, &player(1), &player(2), true).await;
+    play_rated(&url, &player(1), &player(2), true).await;
+    let ratings = dir.join("ratings.json");
+    let book = std::fs::read_to_string(&ratings).unwrap();
+    std::fs::remove_file(&ratings).unwrap();
+    assert_eq!(netrunner_server::serve::rebuild_ratings(&dir).unwrap(), 2);
+    assert_eq!(std::fs::read_to_string(&ratings).unwrap(), book, "the same book, byte for byte");
+
+    let results = dir.join("results.jsonl");
+    let forged = std::fs::read_to_string(&results).unwrap().replacen("\"rated\\\":true", "\"rated\\\":false", 1);
+    assert_ne!(forged, std::fs::read_to_string(&results).unwrap(), "the test edited a line");
+    std::fs::write(&results, forged).unwrap();
+    let error = netrunner_server::serve::rebuild_ratings(&dir).unwrap_err().to_string();
+    assert!(error.contains("line 1"), "{error}");
     let _ = std::fs::remove_dir_all(&dir);
 }
