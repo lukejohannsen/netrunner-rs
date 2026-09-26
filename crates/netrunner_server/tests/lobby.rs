@@ -509,3 +509,55 @@ async fn an_unpinned_bot_plays_its_dealt_decks_style_and_its_seat_says_so() {
     assert_eq!(list_matches(&url).await.0[0].runner, format!("heuristic bot, {style}"));
 }
 
+
+/// A daemon with a data directory keeps every finished match as a record
+/// (Phase 4 §5 stage a): the header holds the seed and both decks whole,
+/// the history every action, and replaying the one from the other through
+/// the engine applies every action it holds — the same check
+/// `netrunner_cli replay` makes.
+#[tokio::test]
+async fn a_finished_match_is_kept_as_a_record_that_replays() {
+    let dir = std::env::temp_dir().join(format!("netrunner_records_{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let url = start_server(ServeOptions { bot_runner: ServeBotKind::None, seed: Some(1), data_dir: Some(dir.clone()), ..ServeOptions::default() }).await;
+    let mut ann = seek(&url, "ann", corp("ann_deck")).await;
+    queued(next(&mut ann).await);
+    let mut bo = seek(&url, "bo", runner("bo_deck")).await;
+    let (match_id, _, _) = joined(next(&mut bo).await);
+    joined(next(&mut ann).await);
+    state_update(next(&mut ann).await);
+    send(&mut ann, ClientMessage::SubmitAction(PlayerAction::KeepHand)).await;
+    // The Corp's keep reaches the Runner as a view and a log entry.
+    loop {
+        if let ServerMessage::ActionLog(_) = next(&mut bo).await {
+            break;
+        }
+    }
+    send(&mut bo, ClientMessage::Surrender).await;
+
+    let record = tokio::time::timeout(Duration::from_secs(10), async {
+        loop {
+            let found = std::fs::read_dir(dir.join("matches")).ok().and_then(|months| {
+                months.flatten().map(|month| month.path().join(format!("{match_id}.jsonl"))).find(|path| path.exists())
+            });
+            if let Some(path) = found {
+                return path;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    })
+    .await
+    .expect("the record is written when the match ends");
+    let file = std::io::BufReader::new(std::fs::File::open(&record).unwrap());
+    let (header, history) = netrunner_session::MatchHistory::read_jsonl(file).unwrap();
+    assert_eq!(header.seed, 1, "the first match of a daemon seeded at 1");
+    assert_eq!(header.corp_deck, brought("brick_stack", "ann_deck").to_deck(), "the deck the Corp brought, whole");
+    assert!(header.bot.is_none(), "two people");
+    assert!(!history.is_empty(), "the keep is recorded");
+    let registry = netrunner_server::fixtures::sample_registry();
+    let (mut state, _) = header.setup(&registry).unwrap();
+    for entry in history.entries() {
+        state = netrunner_core::rules::apply_action(&state, &registry, entry.action.clone()).expect("every recorded action applies again").0;
+    }
+    let _ = std::fs::remove_dir_all(&dir);
+}

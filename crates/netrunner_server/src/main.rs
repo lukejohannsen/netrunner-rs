@@ -114,7 +114,9 @@ struct Config {
 
     /// (serve mode) Where the daemon keeps what outlives it: its own key
     /// (`identity.key`, made on first start), the players it has seen
-    /// (`players.json`) and the Glicko-2 rating book (`ratings.json`).
+    /// (`players.json`), the Glicko-2 rating book (`ratings.json`) and a
+    /// record of every finished match (`matches/<yyyy-mm>/<id>.jsonl`,
+    /// which `netrunner_cli replay` opens).
     /// With it the daemon's key is the same every run, which clients
     /// remember, and every finished match between two identified people
     /// (`--bot-runner none`) is rated — surrenders, disconnects and

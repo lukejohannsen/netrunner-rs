@@ -204,6 +204,8 @@ Each its own branch, in this order; each is useful without the next.
 1. **The server keeps match records.** `run_with_outcome` returns the history
    it now drops; `serve` writes header + JSONL under `--data-dir`. No protocol
    change. Also gives Phase 7 §8 item 15 (the bug-report bundle) a server half.
+   *Built 26 September 2026* (`feat/server-keeps-match-records`), after
+   stage 2: written when the match ends, for every match.
 2. **`netrunner_identity`, the client's key file, the handshake.** Ratings
    keyed by `key:<b32>`; `players.json`; an unidentified seat plays unrated.
    *Server half built 26 September 2026* (`feat/key-identity-server`): the

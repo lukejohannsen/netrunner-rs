@@ -73,11 +73,12 @@ use netrunner_bots::{BotAgent, HeuristicAgent, Level, MctsAgent, Personality};
 use netrunner_core::cards::CardRegistry;
 use netrunner_core::decks::{self, DeckCategory, DeckFile};
 use netrunner_core::format::NsgFormat;
-use netrunner_core::rules::{Deck, GameState, Side};
+use netrunner_core::rules::{Deck, DeckOrder, GameState, MatchRules, Side};
 use netrunner_identity::{Identity, Nonce, PublicKey};
 use netrunner_rating::{Outcome, RatingBook, Track};
+use netrunner_session::{MatchHistory, MatchRecordHeader, RecordedBot};
 
-use crate::match_session::{MatchSession, PlayerSlot, ReattachHandle, TurnTimeout, DEFAULT_RECONNECT_GRACE};
+use crate::match_session::{Finished, MatchSession, PlayerSlot, ReattachHandle, TurnTimeout, DEFAULT_RECONNECT_GRACE};
 use crate::protocol::{format_lobby_id, Chair, ClientMessage, LobbyInfo, MatchSummary, ServerMessage};
 use crate::fixtures::DealtMatchup;
 use crate::{fixtures, net};
@@ -150,7 +151,8 @@ pub struct ServeOptions {
     pub formats: Vec<NsgFormat>,
     /// Where the daemon keeps what outlives it (Phase 4 §5): its own key
     /// (`identity.key`, made on first start, mode 0600), the players it
-    /// has seen (`players.json`) and the rating book (`ratings.json`).
+    /// has seen (`players.json`), the rating book (`ratings.json`) and
+    /// every match's record (`matches/<yyyy-mm>/<match id>.jsonl`).
     /// Each is written with a temp file and a rename, like the deck store
     /// and the card cache.
     ///
@@ -348,7 +350,7 @@ impl PendingHuman {
             }),
             None => self.deck,
         };
-        SeatedPlayer { rating_id: self.key.map(|key| key.rating_id()), name: self.player_name, token: self.token, slot: self.slot, deck, lobby: Some(self.lobby) }
+        SeatedPlayer { rating_id: self.key.map(|key| key.rating_id()), name: self.player_name, token: self.token, slot: self.slot, deck, lobby: Some(self.lobby), bot: None }
     }
 
     /// The side this player must play, if their deck fixes one.
@@ -393,6 +395,9 @@ struct SeatedPlayer {
     deck: Option<Box<DeckFile>>,
     /// The lobby a player returns to after the game; `None` for a bot.
     lobby: Option<String>,
+    /// A rung of the ladder in this seat, as the match record names it:
+    /// for the reader of a record, never for its replay.
+    bot: Option<RecordedBot>,
 }
 
 impl SeatedPlayer {
@@ -590,6 +595,34 @@ impl Shared {
         }
     }
 
+    /// Writes a finished match's record — its header and every action,
+    /// the JSON-Lines `netrunner_cli replay` reads — to
+    /// `matches/<yyyy-mm>/<match id>.jsonl` (Phase 4 §5 stage a). Every
+    /// match, a bot's and a stall included: a record is evidence for a
+    /// dispute or a bug report as much as for a rating.
+    ///
+    /// **Written when the match ends, not appended as it goes.** A crash
+    /// mid-match loses that match's record, and the players' seats with
+    /// it; appending would buy the prefix of a game nobody finished, at a
+    /// write per action on the hottest path the daemon has. A failed write
+    /// is logged, as a failed rating write is.
+    fn keep_record(&self, match_id: Uuid, header: &MatchRecordHeader, history: &MatchHistory) {
+        let Some(dir) = &self.options.data_dir else { return };
+        let path = record_path(dir, match_id, unix_now());
+        let written = (|| {
+            std::fs::create_dir_all(path.parent().expect("a record sits in a month's directory"))?;
+            let mut bytes = Vec::new();
+            history.write_jsonl(header, &mut bytes)?;
+            let tmp = path.with_extension("jsonl.tmp");
+            std::fs::write(&tmp, bytes)?;
+            std::fs::rename(tmp, &path)
+        })();
+        match written {
+            Ok(()) => tracing::info!(%match_id, path = %path.display(), actions = history.len(), "match record kept"),
+            Err(error) => tracing::warn!(%match_id, path = %path.display(), ?error, "could not keep the match record"),
+        }
+    }
+
     /// Notes that `key` has attached as `name`, and rewrites the players
     /// file. A failed write is logged, as a failed rating write is.
     fn saw_player(&self, key: PublicKey, name: &str) {
@@ -604,8 +637,31 @@ impl Shared {
 }
 
 const IDENTITY_FILE: &str = "identity.key";
+const MATCHES_DIR: &str = "matches";
 const PLAYERS_FILE: &str = "players.json";
 const RATINGS_FILE: &str = "ratings.json";
+
+/// Where a match's record lives: a directory per month, so a daemon that
+/// runs for years never holds one directory of every match it played.
+pub fn record_path(data_dir: &Path, match_id: Uuid, ended_at: u64) -> PathBuf {
+    let (year, month) = year_month(ended_at);
+    data_dir.join(MATCHES_DIR).join(format!("{year:04}-{month:02}")).join(format!("{match_id}.jsonl"))
+}
+
+/// The UTC year and month of a Unix time — Howard Hinnant's
+/// `civil_from_days`, because a month's directory name is the only date
+/// the daemon needs and a calendar crate for it is not worth a dependency.
+fn year_month(unix_secs: u64) -> (i64, u32) {
+    let days = (unix_secs / 86_400) as i64 + 719_468;
+    let era = days.div_euclid(146_097);
+    let day_of_era = days.rem_euclid(146_097);
+    let year_of_era = (day_of_era - day_of_era / 1_460 + day_of_era / 36_524 - day_of_era / 146_096) / 365;
+    let day_of_year = day_of_era - (365 * year_of_era + year_of_era / 4 - year_of_era / 100);
+    let shifted_month = (5 * day_of_year + 2) / 153;
+    let month = if shifted_month < 10 { shifted_month + 3 } else { shifted_month - 9 } as u32;
+    let year = year_of_era + era * 400 + i64::from(month <= 2);
+    (year, month)
+}
 
 fn unix_now() -> u64 {
     std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |since| since.as_secs())
@@ -1021,7 +1077,7 @@ fn seat_vs_bot(
 
     let human_side = deck.side;
     // Nothing against a bot is rated, so the person's id is never asked.
-    let human = SeatedPlayer { rating_id: None, name: player_name, token: Uuid::new_v4(), slot, deck: Some(deck), lobby: Some(lobby) };
+    let human = SeatedPlayer { rating_id: None, name: player_name, token: Uuid::new_v4(), slot, deck: Some(deck), lobby: Some(lobby), bot: None };
     // The same deal `start_match` will make — `decks_for` is a function of
     // the seed — so the bot's style can come off the deck it is about to
     // play. A pinned deck is an embedded id (`pin_deck`), so `by_id`
@@ -1044,6 +1100,7 @@ fn seat_vs_bot(
             slot: PlayerSlot::Bot(level.spec(bot_side).with_personality(personality).agent(bot_seed)),
             deck: None,
             lobby: None,
+            bot: Some(RecordedBot { side: bot_side, level, personality }),
         },
         None => SeatedPlayer {
             name: styled(kind.seat_name().to_string(), personality),
@@ -1052,6 +1109,7 @@ fn seat_vs_bot(
             slot: PlayerSlot::Bot(make_serve_agent(kind, bot_side, bot_seed, personality)),
             deck: None,
             lobby: None,
+            bot: None,
         },
     };
     let (corp, runner) = match human_side {
@@ -1109,6 +1167,16 @@ fn start_match(shared: &Shared, registry: &mut Registry, match_id: Uuid, seed: u
         dealt.runner = deck.to_deck();
     }
     let (corp_deck_id, runner_deck_id) = (dealt.corp_id, dealt.runner_id);
+    // The inputs `GameState::setup` is about to be given, whole: with the
+    // history the session hands back, a record that replays the match.
+    let header = MatchRecordHeader {
+        seed,
+        corp_deck: dealt.corp.clone(),
+        runner_deck: dealt.runner.clone(),
+        rules: MatchRules::default(),
+        bot: corp.bot.or(runner.bot),
+        order: DeckOrder::Shuffled,
+    };
     let state = match GameState::setup(&dealt.corp, &dealt.runner, &shared.cards, seed) {
         Ok((state, _events)) => state,
         Err(error) => {
@@ -1161,7 +1229,8 @@ fn start_match(shared: &Shared, registry: &mut Registry, match_id: Uuid, seed: u
 
     let shared = shared.clone();
     tokio::spawn(async move {
-        let (_state, outcome) = session.run_with_outcome().await;
+        let Finished { history, outcome, .. } = session.run_with_outcome().await;
+        shared.keep_record(match_id, &header, &history);
         {
             let mut registry = shared.lock();
             registry.matches.remove(&match_id);
@@ -1255,6 +1324,16 @@ mod tests {
     /// The real pool against the real registry, in every format the daemon
     /// can be asked to serve. This is what stops the gate from being a
     /// startup failure the day someone runs `--format standard`.
+    #[test]
+    fn a_record_is_filed_under_the_month_it_ended_in() {
+        let id = Uuid::nil();
+        // 2026-09-26T12:00:00Z, the last second of 2025, and the leap day.
+        assert!(record_path(Path::new("/d"), id, 1_790_424_000).ends_with(format!("matches/2026-09/{id}.jsonl")));
+        assert_eq!(year_month(1_767_225_599), (2025, 12));
+        assert_eq!(year_month(1_709_164_800), (2024, 2));
+        assert_eq!(year_month(0), (1970, 1));
+    }
+
     #[test]
     fn every_shipped_format_can_actually_serve_the_sample_pool() {
         let registry = fixtures::sample_registry();
