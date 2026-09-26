@@ -96,6 +96,8 @@ Asked for as: a server that simply exists on the internet, where people join a l
 - **A lobby per format, on one server.** It is not one daemon per format.
 - **No picking an opponent.** A lobby pairs whoever is waiting. Listing the waiting players and challenging one was proposed and declined. A named room remains the way two people who know each other meet.
 - **No dealt decks where the game is about the decks.** The player's surprise is the point, so the host dealing a deck to someone who brought none is not wanted there. Everyone has the built-in decks to bring.
+- **Connecting asks for no deck; looking for a game does** (later the same day). A client attaches to a server with nothing but a name. It browses lobbies, which are open or closed by id and an optional password, and joins one — all without a deck. A deck is asked for only when the player looks for a game. Choosing a chair brings that side's deck; choosing a random chair brings one deck of each side. A player picks afresh for every game from all the decks their client holds, without reconnecting, and the same holds on a peer connection.
+- **Lobbies are the server's and the players'.** The server has one open lobby per format it offers, and it never goes away. Any player may make a lobby, open or closed, in a format the server offers; a player's lobby goes when its last player leaves.
 
 **Stages, each its own branch:**
 
@@ -115,8 +117,22 @@ Asked for as: a server that simply exists on the internet, where people join a l
    - `a_server_deals_nobody_a_deck_by_default`: refused at the door, never queued, and a brought deck still queues.
    - The existing tests of dealing opt in with `deals: true`.
    - The desktop's and the terminal's host-and-join tests now bring a deck for each side.
-4. **A rating the server keeps**: §5's stages (a)–(c), then (d)'s client surfaces.
-5. **Tournaments, run as Null Signal Games runs them in person.** The design below is grounded in their Organized Play Policies (v1.6.2, October 2023; read 26 September 2026, section numbers theirs). None of it is built.
+4. **Attached connections and lobbies.** Four parts, each its own PR:
+   - **(a) Server and protocol** (`feat/server-sessions-and-lobbies`, built).
+     - `ClientMessage::Attach { player_name }` gives one task per socket (`serve::attached`), which carries the player between lobbies, into a game and back.
+     - `ListLobbies`, `CreateLobby { name, format, closed, password }`, `JoinLobby { lobby, password }` and `LeaveLobby` need no deck.
+     - `Seek { chair }` takes `Chair::Corp(deck)`, `Chair::Runner(deck)` or `Chair::Random { corp, runner }`. Each deck is checked against its side and the lobby's format. A random chair sits opposite a chosen one; two random chairs are seated by a coin off the match seed, so a `--seed` run seats the same way every time.
+     - `CancelSeek` withdraws a seek, and so does a dropped socket.
+     - **A match never holds an attached socket.** The seek's slot is the task's own channel pair, so when the match lets go of the seat the task sends `BackInLobby` and the player seeks again on the same socket.
+     - A seat taken back by `Resume` is attached again: the ticket remembers its lobby.
+     - The server's lobbies have their format's name as id; a player's has a six-character code with no look-alike characters. A closed lobby is never listed.
+     - `Connect` still works as it did: one message that joins a lobby and seeks, with a socket that closes with the game. Its format-and-room queues are keys in the same lobby table.
+     - Tests (`tests/attached.rs`): attach and join with no deck; a closed lobby's id and password, and the lobby disappearing when it empties; a chosen chair against a random one, then a second game with other decks on the same sockets; seek checks, cancel and withdrawal with the socket; a resumed seat returning to its lobby.
+   - **(b) Client core:** a connection that stays attached — lobbies, seeks, and each game handed to a `MatchHandle` — with a reconnect that re-attaches.
+   - **(c) Desktop:** a lobby browser, making a lobby, and a find-game panel with the chair and its deck or decks.
+   - **(d) Terminal:** the same.
+5. **A rating the server keeps**: §5's stages (a)–(c), then (d)'s client surfaces.
+6. **Tournaments, run as Null Signal Games runs them in person.** The design below is grounded in their Organized Play Policies (v1.6.2, October 2023; read 26 September 2026, section numbers theirs). None of it is built.
 
    **What their events do:**
    - **Structure.** Swiss rounds, then a cut (1.1.1–1.1.2). *Double-sided* Swiss plays both sides against the same opponent in a 65–70 minute round (1.1.5.1). *Single-sided* Swiss plays one game in 40 minutes, with the software choosing and balancing the sides (1.1.5.2); the World Championship runs eleven rounds of it. The cut takes the top 3–16 players (1.1.6), always single-sided (1.1.7), and double elimination except at casual events (1.1.9–1.1.10). The first cut round's higher seed picks sides; after that each player plays the side they have played less (1.1.11). Appendix II gives rounds and cut size by attendance.

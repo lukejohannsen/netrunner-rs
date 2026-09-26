@@ -89,6 +89,66 @@ pub enum ClientMessage {
     Spectate { match_id: Uuid },
     SubmitAction(PlayerAction),
     Surrender,
+    /// Attach to the server with nothing but a name, and stay attached:
+    /// the lobbies are browsed, joined and left, and a game is looked for
+    /// and played, all on this one connection, with no deck until a game
+    /// is looked for (Phase 4 §7, decided 26 September 2026). Answered
+    /// with `Attached`. `Connect` remains the one-shot way in for a client
+    /// that wants a single game: it attaches, joins a lobby and looks for
+    /// a game in one message, and the socket closes when the game does.
+    Attach { player_name: String },
+    /// The open lobbies, answered with `Lobbies`. A closed lobby is never
+    /// listed; it is joined by its id.
+    ListLobbies,
+    /// Make a lobby and join it: open (listed) or closed (joined by its
+    /// id, and by `password` when one is set). Answered with
+    /// `LobbyJoined`, whose id is the one to share, or `LobbyRefused`.
+    CreateLobby { name: String, format: NsgFormat, closed: bool, password: Option<String> },
+    /// Join a lobby by its id — a listed one, or a closed one given by its
+    /// maker — leaving the one this connection was in. A password is
+    /// asked of a lobby made with one. Answered with `LobbyJoined` or
+    /// `LobbyRefused`.
+    JoinLobby { lobby: String, password: Option<String> },
+    LeaveLobby,
+    /// Look for a game in the lobby joined, with the deck or decks the
+    /// chair needs. Answered with `Queued`, then `MatchJoined` when the
+    /// lobby pairs this player; or `SeekRefused`. A second seek while one
+    /// is open is refused: `CancelSeek` first, and the new one is a new
+    /// place in the queue. The decks go no further than the server, which
+    /// deals from them and tells nobody else what they are.
+    Seek { chair: Chair },
+    /// Stop looking. Answered with `SeekCancelled`.
+    CancelSeek,
+}
+
+/// Which chair a player looks for a game in, and the deck it needs: one
+/// deck for a chair chosen, one for each side for a random one, whose
+/// side the server picks at pairing.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum Chair {
+    Corp(Box<DeckFile>),
+    Runner(Box<DeckFile>),
+    Random { corp: Box<DeckFile>, runner: Box<DeckFile> },
+}
+
+/// A lobby as `Lobbies` and `LobbyJoined` report it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LobbyInfo {
+    /// What `JoinLobby` names it by: a format's name for the server's own
+    /// lobby, a short code for a player's.
+    pub id: String,
+    pub name: String,
+    pub format: NsgFormat,
+    /// The server's own lobby for its format, which never goes away.
+    pub permanent: bool,
+    /// Not listed; joined by its id.
+    pub closed: bool,
+    /// Joining asks for a password.
+    pub password: bool,
+    /// Attached connections in the lobby.
+    pub players: usize,
+    /// Of them, how many are looking for a game.
+    pub seeking: usize,
 }
 
 /// One running match as `ListMatches` reports it: the players' names and
@@ -222,4 +282,23 @@ pub enum ServerMessage {
     /// decision rather than ticks: the client can count down by itself.
     DecisionClock { side: Side, remaining: Duration },
     GameEnded { winner: Side, reason: GameEndReason },
+    /// The reply to `Attach`: attached, and the open lobbies.
+    Attached { lobbies: Vec<LobbyInfo> },
+    /// The reply to `ListLobbies`.
+    Lobbies { lobbies: Vec<LobbyInfo> },
+    /// In the lobby now.
+    LobbyJoined { lobby: LobbyInfo },
+    /// `CreateLobby` or `JoinLobby` refused: no such lobby, the wrong
+    /// password, a format the server does not offer.
+    LobbyRefused { reason: String },
+    /// Out of every lobby, after `LeaveLobby`.
+    LobbyLeft,
+    /// `Seek` refused: not in a lobby, a deck for the wrong side, a deck
+    /// the lobby's format does not allow, already seeking or playing.
+    SeekRefused { reason: String },
+    /// No longer looking, after `CancelSeek`.
+    SeekCancelled,
+    /// The game this attached connection was playing has ended and it is
+    /// back in its lobby, free to look for the next one.
+    BackInLobby { lobby: Option<LobbyInfo> },
 }
