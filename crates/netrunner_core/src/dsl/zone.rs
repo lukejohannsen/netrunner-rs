@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::dsl::card::{CardDefinition, CardType};
+use crate::rules::ServerId;
 
 /// Which zone a `PendingDecision::ChooseCards`/`Effect::PromptChooseCards`
 /// reads candidates from, or moves chosen cards into. "Own"/"Opponent" are
@@ -210,6 +211,18 @@ pub enum CardFilter {
     /// the last run would have made LEO Construction's ability legal after
     /// a run instead of during one. Instance-level.
     InLastRunServer,
+    /// An installed Corp card in the root of the server the acting card is
+    /// in — Hype Machine's "a card you can advance in the root of this
+    /// server". **A placeholder, written over when the effect resolves**
+    /// (`CardFilter::with_this_server`, the convention `Amount::
+    /// ChosenNumber` follows): Hype Machine's "[trash]:" is paid before the
+    /// selection is offered, so by the time a card is chosen nothing on the
+    /// table says which server "this" was — the payer's `last_known` does,
+    /// and it does not survive the park. Matches nothing unresolved.
+    InRootOfThisServer,
+    /// An installed Corp card in the root of `server`: what
+    /// `InRootOfThisServer` becomes when it resolves. Instance-level.
+    InRootOf(ServerId),
     /// An operation in the zone being selected from — HQ, or Archives for
     /// Plutus — that the Corp could play right now: its cost affordable
     /// and its `play_requirement` met. The offer half of
@@ -245,6 +258,20 @@ pub enum CardFilter {
 /// filter's own `CardType::Ice` value is a don't-care placeholder, not a
 /// subtype restriction (author it as e.g. `CardType::Ice(IceType::Barrier)`;
 /// any subtype works identically).
+impl CardFilter {
+    /// This filter with `InRootOfThisServer` written over as the server the
+    /// acting card is in, where one is known; a placeholder left unresolved
+    /// matches nothing.
+    pub fn with_this_server(self, server: Option<ServerId>) -> CardFilter {
+        match self {
+            CardFilter::InRootOfThisServer => server.map_or(CardFilter::InRootOfThisServer, CardFilter::InRootOf),
+            CardFilter::All(filters) => CardFilter::All(filters.into_iter().map(|filter| filter.with_this_server(server)).collect()),
+            CardFilter::AnyOf(filters) => CardFilter::AnyOf(filters.into_iter().map(|filter| filter.with_this_server(server)).collect()),
+            other => other,
+        }
+    }
+}
+
 pub fn card_matches_filter(card: &CardDefinition, filter: &CardFilter) -> bool {
     match filter {
         CardFilter::Any => true,
@@ -283,6 +310,7 @@ pub fn card_matches_filter(card: &CardDefinition, filter: &CardFilter) -> bool {
         // Instance-level: where the card sits is state.
         CardFilter::InAttackedServer => true,
         CardFilter::InLastRunServer => true,
+        CardFilter::InRootOfThisServer | CardFilter::InRootOf(_) => true,
         // The definition-level half; affordability and the play
         // requirement are instance-level.
         CardFilter::PlayableOperation => card.card_type == CardType::Operation,

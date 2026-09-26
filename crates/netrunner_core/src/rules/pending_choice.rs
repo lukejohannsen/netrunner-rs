@@ -333,6 +333,8 @@ fn instance_matches_filter(
         CardFilter::InLastRunServer => {
             corp_install.is_some_and(|c| state.last_completed_run.as_ref().is_some_and(|run| run.server == c.server))
         }
+        CardFilter::InRootOf(server) => corp_install.is_some_and(|c| c.server == *server && c.slot == InstallSlot::Root),
+        CardFilter::InRootOfThisServer => false,
         // Either zone an operation can be played from: HQ (Humanoid
         // Resources) or Archives (Plutus). The zone the selection reads
         // decides which, and `can_play_operation` is told, because playing

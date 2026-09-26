@@ -1337,13 +1337,17 @@ fn play_event(
     }
 
     let mut events = vec![GameEvent::ClickSpent { side }];
-    events.extend(ability::pay_cost(&mut next, registry, side, &Cost::Credits(card_def.cost), Purpose::Other, Some(&card_id))?);
+    // Priced as the table stands (`continuous::play_cost_of`): Tailgate's
+    // own discount is read here and by nothing else.
+    let price = continuous::play_cost_of(&next, registry, card_def);
+    let additional = continuous::additional_play_cost_of(&next, registry, card_def);
+    events.extend(ability::pay_cost(&mut next, registry, side, &Cost::Credits(price), Purpose::Other, Some(&card_id))?);
     // A Double's extra click (or any other printed additional cost) is
     // part of paying to play, so it lands here with the credits — before
     // `OnPlay` — and an unaffordable one fails the play before anything
     // resolves, which is what makes `legal_actions`' probe drop it.
     let mut cost_events = Vec::new();
-    if let Some(additional) = &card_def.additional_play_cost {
+    if let Some(additional) = &additional {
         cost_events = ability::pay_cost(&mut next, registry, side, additional, Purpose::Other, Some(&card_id))?;
         events.extend(cost_events.clone());
     }
@@ -1408,12 +1412,12 @@ pub(crate) fn can_play_operation(state: &GameState, registry: &CardRegistry, car
     let present = if from_archives { state.corp.archives_contains(card_id) } else { state.corp.hq.contains(card_id) };
     present
         && card_def.card_type == CardType::Operation
-        && payment::available(state, registry, Side::Corp, Purpose::Other) >= card_def.cost
+        && payment::available(state, registry, Side::Corp, Purpose::Other) >= continuous::play_cost_of(state, registry, card_def)
         // Touch-ups' additional click, which the Corp must still have
         // after the one this play costs — `Effect::PlayOperationFromHq`
         // spends no click, so what is checked is simply that the cost is
         // payable now.
-        && card_def.additional_play_cost.as_ref().is_none_or(|cost| {
+        && continuous::additional_play_cost_of(state, registry, card_def).as_ref().is_none_or(|cost| {
             ability::cost_is_affordable(state, registry, Side::Corp, cost, Purpose::Other, &ability::ResolutionContext::for_card(Some(card_id)))
         })
         && card_def.play_requirement.as_ref().is_none_or(|requirement| {
@@ -1446,14 +1450,18 @@ pub(crate) fn play_operation_card(
         ability::check_requirement(next, requirement, side, &ability::ResolutionContext::for_card(Some(&card_id)), registry)?;
     }
 
-    let mut events = ability::pay_cost(next, registry, side, &Cost::Credits(card_def.cost), Purpose::Other, Some(&card_id))?;
+    // Priced before the play is counted, so Synchrocyclotron's "the first
+    // double operation you play each turn" reads a turn with none yet.
+    let price = continuous::play_cost_of(next, registry, card_def);
+    let additional = continuous::additional_play_cost_of(next, registry, card_def);
+    let mut events = ability::pay_cost(next, registry, side, &Cost::Credits(price), Purpose::Other, Some(&card_id))?;
     // A Double's extra click (or any other printed additional cost) is
     // part of paying to play, so it lands with the credits and before
     // `OnPlay` — the same placement `play_event` gives it. Touch-ups is
     // the Corp's first Double; an unaffordable one fails the play, which
     // is what makes `legal_actions`' probe drop it.
     let mut cost_events = Vec::new();
-    if let Some(additional) = &card_def.additional_play_cost {
+    if let Some(additional) = &additional {
         cost_events = ability::pay_cost(next, registry, side, additional, Purpose::Other, Some(&card_id))?;
         events.extend(cost_events.clone());
     }
@@ -2254,7 +2262,7 @@ fn score_agenda(
             required,
         });
     }
-    let agenda_points = card_def.agenda_points.unwrap_or(0);
+    let agenda_points = continuous::agenda_points_in(state, registry, card_def, Side::Corp);
 
     // No click is spent. Scoring is not one of the Corp's actions in
     // Netrunner: an agenda with enough advancement may be scored any time

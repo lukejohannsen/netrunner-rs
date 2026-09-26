@@ -10695,6 +10695,17 @@ mod vantage_point {
         broke.phase = GamePhase::Action(Side::Runner);
         broke.runner.grip = vec![id("sell_out")];
         assert!(apply_action(&broke, &registry, PlayerAction::PlayEvent { card_id: id("sell_out") }).is_err(), "no resource, no cost");
+
+        // Two resources: the play asks which, and the second one pays.
+        let mut two = base_state();
+        two.phase = GamePhase::Action(Side::Runner);
+        let second = crate::rules::InstalledRunnerCard { install_id: InstallId(77), ..rig("smartware_distributor") };
+        two.runner.rig = vec![rig("telework_contract"), second];
+        two.runner.grip = vec![id("sell_out")];
+        let (asked, _) = apply_action(&two, &registry, PlayerAction::PlayEvent { card_id: id("sell_out") }).expect("asks which resource");
+        assert!(asked.pending_payment.is_some());
+        let (paid, _) = apply_action(&asked, &registry, PlayerAction::ToggleCardSelection { position: 1 }).expect("pay: the second");
+        assert_eq!(paid.runner.heap, vec![id("smartware_distributor"), id("sell_out")]);
     }
 
     #[test]
@@ -11209,5 +11220,168 @@ mod vantage_point {
         let state = use_ability(&state, "mayfly", 0).expect("Mayfly breaks a subroutine");
         let run = state.active_run.as_ref().expect("still encountering");
         assert_eq!(run.ice[run.position].subroutines.iter().filter(|sub| sub.status == crate::rules::SubroutineStatus::Broken).count(), 1);
+    }
+
+    // --- Stage 3a: standing kinds ---
+
+    fn ice_at(card: &str, server: ServerId, rezzed: bool, install: u32) -> crate::rules::InstalledCard {
+        crate::rules::InstalledCard { install_id: InstallId(install), card: id(card), server, slot: InstallSlot::Ice, rezzed, ..Default::default() }
+    }
+
+    /// Two pieces of ice on HQ take 2 off Tailgate's 3; the run then
+    /// accesses three cards of HQ.
+    #[test]
+    fn tailgate_costs_one_less_for_each_piece_of_ice_protecting_hq_and_accesses_two_more() {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.credits = Credits(1);
+        state.runner.grip = vec![id("tailgate")];
+        state.corp.installed = vec![ice_at("vicsek", ServerId::Hq, false, 1), ice_at("reverb", ServerId::Hq, false, 2)];
+        let (state, _) = apply_action(&state, &registry, PlayerAction::PlayEvent { card_id: id("tailgate") }).expect("1[c] with two ice");
+        assert_eq!(state.runner.resources.credits, Credits(0));
+        let run = state.active_run.as_ref().expect("a run on HQ");
+        assert_eq!(run.server, ServerId::Hq);
+    }
+
+    /// Reverb's 4 is lowered by each *other* unrezzed piece of ice,
+    /// wherever it is; rezzed ice and Reverb itself do not count.
+    #[test]
+    fn reverb_rezzes_one_cheaper_for_each_other_unrezzed_piece_of_ice() {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.corp.resources.credits = Credits(10);
+        state.corp.installed = vec![
+            ice_at("reverb", ServerId::Hq, false, 1),
+            ice_at("vicsek", ServerId::RnD, false, 2),
+            ice_at("vicsek", ServerId::Archives, false, 3),
+            ice_at("paywall", ServerId::Remote(0), true, 4),
+        ];
+        // Ice is rezzed as it is approached.
+        let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("initiate run");
+        let (state, _) = crate::rules::test_support::continue_run(&state, &registry).expect("approach reverb");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::RezIce { ice: InstallId(1) }).expect("rez");
+        assert_eq!(state.corp.resources.credits, Credits(8), "4 less the two other unrezzed ice");
+    }
+
+    /// The turn's first double operation spends one click, the action's,
+    /// and the second spends its additional click too.
+    #[test]
+    fn synchrocyclotron_takes_the_additional_click_off_the_first_double_operation_each_turn() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.resources.credits = Credits(20);
+        state.corp.installed = vec![crate::rules::InstalledCard { rezzed: true, ..root_at("synchrocyclotron", 0) }];
+        state.corp.hq = vec![id("touch_ups"), id("touch_ups")];
+        let (state, _) = apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: id("touch_ups") }).expect("first");
+        assert_eq!(state.corp.resources.clicks, Clicks(2), "one click, the action's");
+        let state = GameState { pending_decision: None, ..state };
+        let (state, _) = apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: id("touch_ups") }).expect("second");
+        assert_eq!(state.corp.resources.clicks, Clicks(0), "two clicks: it is not the first");
+    }
+
+    /// An agenda costs 3[c] more to steal, which the Runner may decline to
+    /// pay; and each agenda the Corp scores costs the Runner 3[c].
+    #[test]
+    fn magistrate_revontulet_charges_three_to_steal_and_three_whenever_the_corp_scores() {
+        let registry = registry();
+        for (credits, stolen) in [(5, true), (2, false)] {
+            let mut state = base_state();
+            state.phase = GamePhase::Action(Side::Runner);
+            state.runner.resources.credits = Credits(credits);
+            state.corp.installed = vec![
+                crate::rules::InstalledCard { rezzed: true, ..root_at("magistrate_revontulet", 1) },
+                root_at("witch_hunt", 0),
+            ];
+            let (state, _) = run_to_completion(state, &registry, ServerId::Remote(0));
+            let steal = apply_action(&state, &registry, PlayerAction::StealAgenda { card_id: id("witch_hunt") });
+            assert_eq!(steal.is_ok(), stolen, "with {credits} credits");
+            if let Ok((state, _)) = steal {
+                assert_eq!(state.runner.resources.credits, Credits(credits - 3));
+            } else {
+                let (state, _) = apply_action(&state, &registry, PlayerAction::PassAccessedCard { card_id: id("witch_hunt") }).expect("declines to pay");
+                assert!(state.runner.scored_agendas.is_empty());
+            }
+        }
+
+        let mut state = base_state();
+        state.runner.resources.credits = Credits(5);
+        state.corp.installed = vec![
+            crate::rules::InstalledCard { rezzed: true, ..root_at("magistrate_revontulet", 1) },
+            crate::rules::InstalledCard { advancement_tokens: 3, ..root_at("embedded_reporting", 0) },
+        ];
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ScoreAgenda { target: install_of(&state, "embedded_reporting") }).expect("score");
+        assert_eq!(state.runner.resources.credits, Credits(2));
+    }
+
+    /// Hype Machine rezzes for 0 once an agenda was scored this turn, and
+    /// its trash advances a card in its own root, which it names after its
+    /// own cost has taken it off the table.
+    #[test]
+    fn hype_machine_rezzes_free_after_a_score_and_trashes_to_advance_a_card_in_its_root() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.resources.credits = Credits(6);
+        let hype = crate::rules::InstalledCard { install_id: InstallId(60), ..root_at("hype_machine", 0) };
+        state.corp.installed = vec![
+            hype,
+            crate::rules::InstalledCard { advancement_tokens: 4, ..root_at("witch_hunt", 1) },
+            root_at("let_them_dream", 0),
+            crate::rules::InstalledCard { install_id: InstallId(61), ..root_at("let_them_dream", 2) },
+        ];
+        let price = |state: &GameState| {
+            let (rezzed, _) = apply_action(state, &registry, PlayerAction::RezIce { ice: InstallId(60) }).expect("rez");
+            state.corp.resources.credits.0 - rezzed.corp.resources.credits.0
+        };
+        assert_eq!(price(&state), 6, "no agenda scored yet");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ScoreAgenda { target: install_of(&state, "witch_hunt") }).expect("score");
+        assert_eq!(price(&state), 0, "an agenda was scored this turn");
+
+        let (state, _) = apply_action(&state, &registry, PlayerAction::RezIce { ice: InstallId(60) }).expect("rez");
+        let trash = PlayerAction::ActivateAbility { target: InstallId(60), ability_index: 0 };
+        let (state, _) = apply_action(&state, &registry, trash).expect("trash");
+        assert!(state.corp.installed.iter().all(|card| card.install_id != InstallId(60)), "trashed as the cost");
+        let offered = crate::rules::legal_actions_for(&state, &registry, Side::Corp)
+            .into_iter()
+            .filter(|action| matches!(action, PlayerAction::ToggleCardSelection { .. }))
+            .count();
+        assert_eq!(offered, 1, "the agenda in its own root, not the one in another server");
+        let (state, _) = pick(&state, &registry, crate::rules::test_support::position_of(&state, "let_them_dream"));
+        let advanced = state.corp.installed.iter().find(|card| card.server == ServerId::Remote(0)).expect("the agenda");
+        assert_eq!(advanced.advancement_tokens, 1);
+    }
+
+    /// Worth 2 to the Corp and 1 to the Runner, and the win check counts
+    /// the same 1.
+    #[test]
+    fn let_them_dream_is_worth_one_less_in_the_runners_score_area() {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.corp.installed = vec![root_at("let_them_dream", 0)];
+        let (state, _) = run_to_completion(state, &registry, ServerId::Remote(0));
+        let (state, _) = apply_action(&state, &registry, PlayerAction::StealAgenda { card_id: id("let_them_dream") }).expect("steal");
+        assert_eq!(state.runner.resources.agenda_points, AgendaPoints(1));
+        assert_eq!(crate::rules::agenda_value_in(&state, &registry, &id("let_them_dream"), Side::Runner), 1);
+        assert_eq!(crate::rules::agenda_value_in(&state, &registry, &id("let_them_dream"), Side::Corp), 2);
+    }
+
+    /// Scored, it searches R&D for an agenda, reveals it, shuffles R&D and
+    /// then puts the agenda on the bottom of R&D.
+    #[test]
+    fn let_them_dream_searches_rnd_for_an_agenda_and_puts_it_on_the_bottom() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.installed = vec![crate::rules::InstalledCard { advancement_tokens: 4, ..root_at("let_them_dream", 0) }];
+        state.corp.r_and_d = vec![id("hedge_fund"), id("hedge_fund"), id("witch_hunt"), id("hedge_fund")];
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ScoreAgenda { target: install_of(&state, "let_them_dream") }).expect("score");
+        assert_eq!(state.corp.resources.agenda_points, AgendaPoints(2));
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 1 }).expect("search R&D");
+        let (state, _) = pick(&state, &registry, crate::rules::test_support::position_of(&state, "witch_hunt"));
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 1 }).expect("the bottom of R&D");
+        assert_eq!(state.corp.r_and_d.first(), Some(&id("witch_hunt")), "on the bottom");
+        assert_eq!(state.corp.r_and_d.len(), 4);
+        assert!(!state.corp.hq.contains(&id("witch_hunt")));
     }
 }

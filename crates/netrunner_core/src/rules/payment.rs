@@ -518,6 +518,14 @@ fn pays_a_cost_that_may_ask(state: &GameState, registry: &CardRegistry, action: 
                 .is_some_and(crate::dsl::Cost::may_ask)
         }
         PlayerAction::AcceptPendingPaidChoice { .. } => state.pending_paid_choice.as_ref().is_some_and(|choice| choice.cost.may_ask()),
+        // An additional cost to play that takes cards asks which: Sell
+        // Out's "trash 1 installed resource" with two installed. Left off
+        // this list, the 256-seed view sweep's debug assertion found it
+        // once a deck held Sell Out beside two resources.
+        PlayerAction::PlayEvent { card_id } | PlayerAction::PlayOperation { card_id } => registry
+            .get(card_id)
+            .and_then(|def| def.additional_play_cost.as_ref())
+            .is_some_and(crate::dsl::Cost::may_ask),
         // A card that prints another way to pay for its rez asks which,
         // and what the way it names takes.
         PlayerAction::RezIce { ice } => state

@@ -1,0 +1,76 @@
+{
+  "id": "hype_machine",
+  "title": "Hype Machine",
+  "side": "Corp",
+  "card_type": "Upgrade",
+  "cost": 6,
+  "continuous": [
+    {
+      "kind": {
+        "RezCost": {
+          "per": -6
+        }
+      },
+      "applies_to": "This",
+      "while": {
+        "Not": {
+          "And": [
+            {
+              "Not": {
+                "AmountAtLeast": [
+                  {
+                    "TimesThisTurn": "OnAgendaScored"
+                  },
+                  1
+                ]
+              }
+            },
+            {
+              "Not": {
+                "AmountAtLeast": [
+                  {
+                    "TimesThisTurn": "OnAgendaStolen"
+                  },
+                  1
+                ]
+              }
+            }
+          ]
+        }
+      },
+      "text": "As long as an agenda was scored or stolen this turn, the rez cost of this upgrade is lowered by 6[credit]."
+    }
+  ],
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": "TrashSelf",
+      "effect": {
+        "PromptChooseCards": {
+          "side": "Corp",
+          "source": "OwnInstalled",
+          "filter": {
+            "All": [
+              "Advanceable",
+              "InRootOfThisServer"
+            ]
+          },
+          "min": 1,
+          "max": 1,
+          "reveal": false,
+          "shuffle_after": false,
+          "then": {
+            "PlaceAdvancementCounters": {
+              "Fixed": 1
+            }
+          }
+        }
+      },
+      "text": "[trash]: Place 1 advancement counter on a card you can advance in the root of this server."
+    }
+  ],
+  "trash_cost": 2,
+  "numeric_id": 36055,
+  "is_playable": true
+}

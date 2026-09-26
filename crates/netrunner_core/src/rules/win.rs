@@ -39,23 +39,20 @@ pub(crate) fn end_game(state: &mut GameState, winner: Side) -> Vec<GameEvent> {
     vec![GameEvent::GameOver { winner }]
 }
 
-/// Looks up `card_id`'s printed agenda point value from `registry`. Returns
-/// `None` if the card isn't in the registry, or is registered but isn't an
-/// Agenda (`dsl::CardDefinition::agenda_points` is `None`) — that `None` is the gate
-/// `run::access_server` uses to decide whether an accessed card is even an
-/// Agenda at all, not just a defaulted value, so it stays `Option<u32>`
-/// rather than collapsing to a bare `u32`.
-pub(crate) fn agenda_value(card_id: &CardId, registry: &CardRegistry) -> Option<u32> {
-    registry.get(card_id).and_then(|card| card.agenda_points)
+/// What `card_id` is worth in `side`'s score area: what it prints and what
+/// its own text changes there (`continuous::agenda_points_in`, Let Them
+/// Dream's "while this agenda is in the Runner's score area, it is worth 1
+/// less agenda point"). 0 for a card that is not a registered agenda. The
+/// one number for a scored or stolen agenda — the win check, the stored
+/// tally, a forfeit and a card that counts points all read it.
+pub fn agenda_value_in(state: &GameState, registry: &CardRegistry, card_id: &CardId, side: Side) -> u32 {
+    registry.get(card_id).map_or(0, |card| crate::rules::continuous::agenda_points_in(state, registry, card, side))
 }
 
-/// Sums the registry-defined agenda point value of every card in
-/// `scored_agendas`. A card that's landed in that list by construction
-/// should always resolve to `Some`, but `filter_map` treats a hypothetical
-/// unregistered/non-Agenda entry as a 0-point contribution rather than
-/// panicking.
-fn total_agenda_points<'a>(scored_agendas: impl IntoIterator<Item = &'a CardId>, registry: &CardRegistry) -> u32 {
-    scored_agendas.into_iter().filter_map(|id| agenda_value(id, registry)).sum()
+/// Sums the agenda point value of every card in `side`'s score area. An
+/// unregistered or non-Agenda entry counts 0 rather than panicking.
+fn total_agenda_points<'a>(state: &GameState, scored_agendas: impl IntoIterator<Item = &'a CardId>, registry: &CardRegistry, side: Side) -> u32 {
+    scored_agendas.into_iter().map(|id| agenda_value_in(state, registry, id, side)).sum()
 }
 
 /// Checks whether either side's score area has reached the winning
@@ -86,9 +83,9 @@ pub fn check_win_conditions(state: &mut GameState, registry: &CardRegistry) -> V
     // The threshold is a match rule (7 in Standard, 6 in the starter game),
     // read off the state rather than a const — see `MatchRules`.
     let winning = state.rules.winning_agenda_points;
-    if total_agenda_points(state.corp.scored_agendas.iter().map(|scored| &scored.card), registry) >= winning {
+    if total_agenda_points(state, state.corp.scored_agendas.iter().map(|scored| &scored.card), registry, Side::Corp) >= winning {
         end_game(state, Side::Corp)
-    } else if total_agenda_points(&state.runner.scored_agendas, registry) >= winning {
+    } else if total_agenda_points(state, &state.runner.scored_agendas, registry, Side::Runner) >= winning {
         end_game(state, Side::Runner)
     } else {
         Vec::new()
@@ -221,7 +218,7 @@ mod tests {
     }
 
     #[test]
-    fn agenda_value_looks_up_registered_agenda_points() {
+    fn agenda_value_in_looks_up_registered_agenda_points() {
         let registry = CardRegistry::from_cards(vec![
             agenda_card("priority_requisition", Side::Corp, 3),
             CardDefinition {
@@ -235,14 +232,13 @@ mod tests {
             },
         ]);
 
-        assert_eq!(
-            agenda_value(&CardId("priority_requisition".to_string()), &registry),
-            Some(3)
-        );
+        let state = GameState::default();
+        let value = |card: &str| agenda_value_in(&state, &registry, &CardId(card.to_string()), Side::Corp);
+        assert_eq!(value("priority_requisition"), 3);
         // Registered, but not an Agenda.
-        assert_eq!(agenda_value(&CardId("hedge_fund".to_string()), &registry), None);
+        assert_eq!(value("hedge_fund"), 0);
         // Not registered at all.
-        assert_eq!(agenda_value(&CardId("unregistered".to_string()), &registry), None);
+        assert_eq!(value("unregistered"), 0);
     }
 
     /// The threshold is a match rule: six points win a starter game and

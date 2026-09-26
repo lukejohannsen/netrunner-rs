@@ -20,7 +20,7 @@
 //! state a search clones.
 
 use crate::cards::CardRegistry;
-use crate::dsl::{card_matches_filter, CardDefinition, CardId, CardType, ContinuousEffect, ContinuousKind, IceType, Number, Prohibition, Scope};
+use crate::dsl::{card_matches_filter, CardDefinition, CardId, CardType, ContinuousEffect, ContinuousKind, Cost, IceType, Number, Prohibition, Scope};
 use crate::rules::ability::{self, ResolutionContext};
 use crate::rules::active::{self, ActiveCard};
 use crate::rules::lingering;
@@ -39,20 +39,22 @@ pub(crate) enum Target<'a> {
     Rig { card: &'a CardDefinition, install: InstallId },
     /// A Corp install, in the root of `server` or protecting it.
     Corp { card: &'a CardDefinition, install: InstallId, server: ServerId, root: bool },
+    /// An agenda in `side`'s score area.
+    Scored { card: &'a CardDefinition, side: Side },
 }
 
 impl<'a> Target<'a> {
     fn card(&self) -> Option<&'a CardDefinition> {
         match self {
             Target::Player(_) => None,
-            Target::Card(card) | Target::Rig { card, .. } | Target::Corp { card, .. } => Some(card),
+            Target::Card(card) | Target::Rig { card, .. } | Target::Corp { card, .. } | Target::Scored { card, .. } => Some(card),
         }
     }
 
     fn install(&self) -> Option<InstallId> {
         match self {
             Target::Rig { install, .. } | Target::Corp { install, .. } => Some(*install),
-            Target::Player(_) | Target::Card(_) => None,
+            Target::Player(_) | Target::Card(_) | Target::Scored { .. } => None,
         }
     }
 
@@ -102,7 +104,7 @@ fn for_each_applying<'a>(
             None => ResolutionContext::for_card(Some(source.card)),
         };
         for effect in &definition.continuous {
-            let is_own_text = effect.applies_to == Scope::This;
+            let is_own_text = effect.applies_to.is_own_text();
             if source.own_text_only != is_own_text {
                 continue;
             }
@@ -112,7 +114,7 @@ fn for_each_applying<'a>(
             if !applies(state, &source, &effect.applies_to, &target) {
                 continue;
             }
-            if effect.first_each_turn && !first_install_this_turn(state, &source, effect) {
+            if effect.first_each_turn && !first_this_turn(state, &source, effect) {
                 continue;
             }
             if let Some(condition) = &effect.condition
@@ -143,13 +145,18 @@ fn for_each_applying<'a>(
     }
 }
 
-/// Whether the install being priced would be the turn's first that
-/// `effect`'s `Scope::Installing` filter matches
+/// Whether the install or play being priced would be the turn's first that
+/// `effect`'s `Scope::Installing` or `Scope::Playing` filter matches
 /// (`ContinuousEffect::first_each_turn`). Asked of the turn, not of the
-/// card: none counted yet, because a price is asked before the install.
-fn first_install_this_turn(state: &GameState, source: &Source<'_>, effect: &ContinuousEffect) -> bool {
-    let Scope::Installing(filter) = &effect.applies_to else { return true };
-    turn_log::Occurrences::installs(filter, source.side).is_ok_and(|installs| state.this_turn.none_yet(&installs))
+/// card: none counted yet, because a price is asked before the install or
+/// the play.
+fn first_this_turn(state: &GameState, source: &Source<'_>, effect: &ContinuousEffect) -> bool {
+    let occurrences = match &effect.applies_to {
+        Scope::Installing(filter) => turn_log::Occurrences::installs(filter, source.side),
+        Scope::Playing(filter) => turn_log::Occurrences::plays(filter, source.side),
+        _ => return true,
+    };
+    occurrences.is_ok_and(|occurrences| state.this_turn.none_yet(&occurrences))
 }
 
 /// Whether `scope`, read from `source`, reaches `target`. `Scope::This` is
@@ -157,6 +164,8 @@ fn first_install_this_turn(state: &GameState, source: &Source<'_>, effect: &Cont
 fn applies(state: &GameState, source: &Source<'_>, scope: &Scope, target: &Target<'_>) -> bool {
     match (scope, target) {
         (Scope::This, _) => source.own_text_only,
+        (Scope::ScoreArea(side), Target::Scored { side: scored_in, .. }) => source.own_text_only && side == scored_in,
+        (Scope::ScoreArea(_), _) => false,
         (Scope::Host, target) => {
             let Some(host) = target.install() else { return false };
             let Some(install) = source.install else { return false };
@@ -169,6 +178,10 @@ fn applies(state: &GameState, source: &Source<'_>, scope: &Scope, target: &Targe
         }
         (Scope::Controller, Target::Player(side)) => source.side == *side,
         (Scope::Installing(filter), Target::Card(card)) => card.side == source.side && card_matches_filter(card, filter),
+        (Scope::Playing(filter), Target::Card(card)) => {
+            card.side == source.side && matches!(card.card_type, CardType::Event | CardType::Operation) && card_matches_filter(card, filter)
+        }
+        (Scope::Stealing(filter), Target::Card(card)) => card.card_type == CardType::Agenda && card_matches_filter(card, filter),
         (Scope::Ice, Target::Corp { card, root: false, .. }) => matches!(card.card_type, CardType::Ice(_)),
         (Scope::RootOfThisServer(filter), Target::Corp { card, server, root: true, .. }) => {
             source.server == Some(*server) && card_matches_filter(card, filter)
@@ -290,6 +303,57 @@ pub(crate) fn install_cost_of(state: &GameState, registry: &CardRegistry, card: 
     (card.cost as i32 + sum(state, registry, Target::Card(card), install_cost)).max(0) as u32
 }
 
+
+/// What playing the event or operation `card` costs in credits right now:
+/// its printed play cost and what the table adds (Tailgate's own "lowered
+/// by 1[credit] for each piece of ice protecting HQ"), never below 0. The
+/// one question, for the play and for the offer, as `install_cost_of` is
+/// for an install.
+pub(crate) fn play_cost_of(state: &GameState, registry: &CardRegistry, card: &CardDefinition) -> u32 {
+    (card.cost as i32 + sum(state, registry, Target::Card(card), |kind| match kind {
+        ContinuousKind::PlayCost(number) => Some(number),
+        _ => None,
+    }))
+    .max(0) as u32
+}
+
+/// The additional cost of playing `card` right now: its printed
+/// `additional_play_cost`, less the clicks the table takes off it
+/// (Synchrocyclotron). `None` when nothing is left to pay. A click
+/// discount lowers only the Double's additional click — the only click a
+/// card in the pool lowers — never the action's own.
+pub(crate) fn additional_play_cost_of(state: &GameState, registry: &CardRegistry, card: &CardDefinition) -> Option<Cost> {
+    let printed = card.additional_play_cost.clone()?;
+    let Cost::Clicks(clicks) = printed else { return Some(printed) };
+    let delta = sum(state, registry, Target::Card(card), |kind| match kind {
+        ContinuousKind::PlayClicks(number) => Some(number),
+        _ => None,
+    });
+    let clicks = (clicks as i32 + delta).max(0) as u32;
+    (clicks > 0).then_some(Cost::Clicks(clicks))
+}
+
+/// The credits the table adds to the cost of stealing the agenda `card`
+/// (Magistrate Revontulet), 0 when it adds none.
+pub(crate) fn steal_cost_added(state: &GameState, registry: &CardRegistry, card: &CardDefinition) -> u32 {
+    sum(state, registry, Target::Card(card), |kind| match kind {
+        ContinuousKind::StealCost(number) => Some(number),
+        _ => None,
+    })
+    .max(0) as u32
+}
+
+/// The agenda points the agenda `card` is worth in `side`'s score area:
+/// what it prints and what its own text changes there (Let Them Dream),
+/// never below 0.
+pub fn agenda_points_in(state: &GameState, registry: &CardRegistry, card: &CardDefinition, side: Side) -> u32 {
+    let printed = card.agenda_points.unwrap_or(0) as i32;
+    (printed + sum(state, registry, Target::Scored { card, side }, |kind| match kind {
+        ContinuousKind::AgendaPoints(number) => Some(number),
+        _ => None,
+    }))
+    .max(0) as u32
+}
 
 /// What is added to the printed cost of rezzing the Corp install
 /// `install`: what the table adds while it stands (Fransofia Ward's

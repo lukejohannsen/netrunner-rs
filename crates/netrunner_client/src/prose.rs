@@ -80,6 +80,8 @@ pub fn describe_amount(amount: &Amount) -> String {
         Amount::ChosenNumber => "the number chosen".to_string(),
         Amount::InHeapWithSubtype(subtype) => format!("the number of {} cards in the heap", subtype.printed().to_lowercase()),
         Amount::IceProtectingThisServer => "the number of pieces of ice protecting this server".to_string(),
+        Amount::IceProtecting(server) => format!("the number of pieces of ice protecting {}", describe_server(*server)),
+        Amount::OtherUnrezzedIce => "the number of other unrezzed pieces of ice".to_string(),
     }
 }
 
@@ -269,7 +271,7 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
         Effect::BypassEncounteredIce => "bypass this ice".to_string(),
         Effect::PurgeVirusCounters => "purge virus counters".to_string(),
         Effect::FlipIdentity => "flip the identity".to_string(),
-        Effect::AddToBottomOfStack => "put it on the bottom of the stack".to_string(),
+        Effect::AddToBottomOfDeck => "put it on the bottom of its owner's deck".to_string(),
         Effect::HostRigCardOnInstall { .. } => "host it on an installed card".to_string(),
         Effect::Prohibit { what, until } => {
             let what = match what {
@@ -435,6 +437,10 @@ pub fn describe_continuous(effect: &ContinuousEffect) -> String {
         Scope::Installing(filter) => format!("a card its controller installs ({})", lower(format!("{filter:?}"))),
         Scope::Ice => "each piece of ice".to_string(),
         Scope::RootOfThisServer(filter) => format!("each card in the root of this server ({})", lower(format!("{filter:?}"))),
+        Scope::Playing(filter) if effect.first_each_turn => format!("the first card its controller plays each turn ({})", lower(format!("{filter:?}"))),
+        Scope::Playing(filter) => format!("a card its controller plays ({})", lower(format!("{filter:?}"))),
+        Scope::Stealing(filter) => format!("an agenda the Runner steals ({})", lower(format!("{filter:?}"))),
+        Scope::ScoreArea(side) => format!("this agenda, in the {side:?}'s score area"),
     };
     let signed = |number: &Number| {
         let each = if number.per < 0 { format!("−{}", number.per.unsigned_abs()) } else { format!("+{}", number.per) };
@@ -451,6 +457,10 @@ pub fn describe_continuous(effect: &ContinuousEffect) -> String {
         ContinuousKind::InstallCost(number) => format!("costs {} to install", signed(number)),
         ContinuousKind::RezCost(number) => format!("costs {} to rez", signed(number)),
         ContinuousKind::TrashCost(number) => format!("costs {} to trash", signed(number)),
+        ContinuousKind::PlayCost(number) => format!("costs {} to play", signed(number)),
+        ContinuousKind::PlayClicks(number) => format!("costs {} [click] to play", signed(number)),
+        ContinuousKind::StealCost(number) => format!("costs {} to steal", signed(number)),
+        ContinuousKind::AgendaPoints(number) => format!("is worth {} agenda points", signed(number)),
         ContinuousKind::GainSubtype(subtype) => format!("gains {}", lower(format!("{subtype:?}"))),
         ContinuousKind::BoostsLastTheRun => "keeps its strength boosts for the rest of the run".to_string(),
     };

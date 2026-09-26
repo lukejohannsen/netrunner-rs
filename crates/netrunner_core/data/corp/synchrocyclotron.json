@@ -1,0 +1,34 @@
+{
+  "id": "synchrocyclotron",
+  "title": "Synchrocyclotron",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 3,
+  "continuous": [
+    {
+      "kind": {
+        "PlayClicks": {
+          "per": -1
+        }
+      },
+      "applies_to": {
+        "Playing": {
+          "All": [
+            {
+              "CardType": "Operation"
+            },
+            {
+              "HasSubtype": "Double"
+            }
+          ]
+        }
+      },
+      "first_each_turn": true,
+      "text": "The first double operation you play each turn costs [click] less to play."
+    }
+  ],
+  "triggers": [],
+  "trash_cost": 3,
+  "numeric_id": 36027,
+  "is_playable": true
+}

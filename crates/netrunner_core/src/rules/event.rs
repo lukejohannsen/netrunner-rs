@@ -165,8 +165,8 @@ pub enum GameEvent {
     /// `Trigger::OnDiscardPhaseEnd`.
     DiscardPhaseEnded { side: Side },
     CardDiscarded { side: Side, card: CardId },
-    /// `Effect::AddToBottomOfStack` moved `card` under the Runner's stack.
-    CardAddedToBottomOfStack { card: CardId },
+    /// `Effect::AddToBottomOfDeck` moved `card` under `side`'s deck.
+    CardAddedToBottomOfDeck { side: Side, card: CardId },
     /// `Effect::HostRigCardOnInstall` hosted the rig card `card` on the rig
     /// card `host` (GAMEDRAGON™ Pro on an icebreaker).
     CardHosted { card: CardId, host: CardId },
@@ -459,7 +459,7 @@ impl GameEvent {
             | GameEvent::EventPlayed { .. } | GameEvent::OperationPlayed { .. } | GameEvent::HardwareInstalled { .. }
             | GameEvent::ProgramInstalled { .. } | GameEvent::ResourceInstalled { .. }
             | GameEvent::DiscardPending { .. } | GameEvent::DiscardPhaseEnded { .. }
-            | GameEvent::CardDiscarded { .. } | GameEvent::CardAddedToBottomOfStack { .. }
+            | GameEvent::CardDiscarded { .. } | GameEvent::CardAddedToBottomOfDeck { .. }
             | GameEvent::CardHosted { .. } | GameEvent::IdentityFlipped { .. } | GameEvent::ActionPhaseEnded { .. }
             | GameEvent::RunEndPrevented { .. } | GameEvent::RunRedirected { .. } | GameEvent::CreditsSpent { .. }
             | GameEvent::TagsGiven { .. } | GameEvent::TagsCleared { .. } | GameEvent::CardTrashed { .. }

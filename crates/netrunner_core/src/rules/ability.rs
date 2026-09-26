@@ -122,6 +122,9 @@ pub struct ResolutionContext<'a> {
 pub struct LastKnown {
     pub counters: u32,
     pub advancement_tokens: u32,
+    /// The server a Corp install was in — Hype Machine's "the root of this
+    /// server", after its "[trash]:" has taken it off the table.
+    pub server: Option<ServerId>,
 }
 
 /// The acting install's numbers now, for a payer to put on the effect's
@@ -130,7 +133,17 @@ pub struct LastKnown {
 pub(crate) fn last_known(state: &GameState, ctx: &ResolutionContext<'_>) -> Option<LastKnown> {
     ctx.acting_install?;
     let counters = counters_of(state, ctx)?;
-    Some(LastKnown { counters, advancement_tokens: advancement_tokens_of(state, ctx).unwrap_or(0) })
+    Some(LastKnown {
+        counters,
+        advancement_tokens: advancement_tokens_of(state, ctx).unwrap_or(0),
+        server: acting_corp_install(state, ctx).map(|installed| installed.server),
+    })
+}
+
+/// The server `ctx`'s Corp install is in, or was in when its own cost took
+/// it off the table.
+fn acting_server(state: &GameState, ctx: &ResolutionContext<'_>) -> Option<ServerId> {
+    acting_corp_install(state, ctx).map(|installed| installed.server).or_else(|| remembered(state, ctx).and_then(|known| known.server))
 }
 
 /// Whether `ctx`'s install was named and is no longer on the table — the
@@ -678,16 +691,31 @@ pub fn evaluate_effect(
             Ok(vec![GameEvent::IdentityFlipped { side }])
         }
 
-        Effect::AddToBottomOfStack => {
+        Effect::AddToBottomOfDeck => {
             let card_id = acting_card.ok_or(RulesError::UnresolvedCardTarget)?.clone();
+            // Both decks draw from the end of the `Vec`, so index 0 is the
+            // bottom.
+            if registry.get(&card_id).is_some_and(|card| card.side == Side::Corp) {
+                let taken = if let Some(position) = state.corp.hq.iter().position(|c| c == &card_id) {
+                    Some(state.corp.hq.remove(position))
+                } else if let Some(position) = state.corp.archives.iter().position(|a| a.card == card_id) {
+                    Some(state.corp.archives.remove(position).card)
+                } else if let Some(position) = state.corp.r_and_d.iter().position(|c| c == &card_id) {
+                    Some(state.corp.r_and_d.remove(position))
+                } else {
+                    None
+                };
+                return Ok(taken.map_or_else(Vec::new, |card| {
+                    state.corp.r_and_d.insert(0, card.clone());
+                    vec![GameEvent::CardAddedToBottomOfDeck { side: Side::Corp, card }]
+                }));
+            }
             let zones = [&mut state.runner.heap, &mut state.runner.grip];
             for zone in zones {
                 if let Some(position) = zone.iter().position(|c| c == &card_id) {
                     zone.remove(position);
-                    // The stack draws from the end of the `Vec`, so index 0
-                    // is its bottom.
                     state.runner.stack.insert(0, card_id.clone());
-                    return Ok(vec![GameEvent::CardAddedToBottomOfStack { card: card_id }]);
+                    return Ok(vec![GameEvent::CardAddedToBottomOfDeck { side: Side::Runner, card: card_id }]);
                 }
             }
             Ok(Vec::new())
@@ -1054,6 +1082,7 @@ pub fn evaluate_effect(
         }
 
         Effect::PromptChooseCards { side, source, filter, min, max, reveal, shuffle_after, destination, then } => {
+            let filter = &filter.clone().with_this_server(acting_server(state, ctx));
             let available = crate::rules::pending_choice::eligible_positions(state, registry, *side, source, filter, ctx.acting_install);
             if available.is_empty() || available.len() < *min as usize {
                 // Nothing to do — same "silently no-op" leniency
@@ -1316,7 +1345,7 @@ pub fn evaluate_effect(
             let Some(position) = state.runner.scored_agendas.iter().position(|c| c == &card_id) else {
                 return Ok(Vec::new());
             };
-            let points = crate::rules::win::agenda_value(&card_id, registry).unwrap_or(0);
+            let points = crate::rules::win::agenda_value_in(state, registry, &card_id, Side::Runner);
             // The tags are the price, and the offer was filtered so they
             // are there — but check anyway: a parked selection resolves
             // later than it was built, and paying half a cost is worse
@@ -2299,7 +2328,7 @@ pub(crate) fn pay_cost_ctx(
                 // recounts the score area and was right; this is the
                 // number the view, the HUD and the bots read, which kept
                 // the forfeited points.
-                let points = crate::rules::win::agenda_value(&forfeited.card, registry).unwrap_or(0);
+                let points = crate::rules::win::agenda_value_in(state, registry, &forfeited.card, Side::Corp);
                 state.corp.resources.agenda_points =
                     crate::rules::state::AgendaPoints(state.corp.resources.agenda_points.0.saturating_sub(points));
                 // Out of the game rather than to Archives (it was never on
@@ -2794,12 +2823,21 @@ pub(crate) fn resolve_amount(amount: &Amount, ctx: &ResolutionContext<'_>, state
                 .filter(|server| state.corp.installed.iter().any(|c| c.server == *server && c.slot == InstallSlot::Ice))
                 .count() as u32
         }
+        Amount::IceProtecting(server) => {
+            state.corp.installed.iter().filter(|c| c.server == *server && c.slot == InstallSlot::Ice).count() as u32
+        }
+        Amount::OtherUnrezzedIce => state
+            .corp
+            .installed
+            .iter()
+            .filter(|c| c.slot == InstallSlot::Ice && !c.rezzed && Some(c.install_id) != ctx.acting_install)
+            .count() as u32,
         Amount::InHeapWithSubtype(subtype) => {
             state.runner.heap.iter().filter(|card| registry.get(card).is_some_and(|def| def.subtypes.contains(subtype))).count() as u32
         }
         Amount::ThreatLevel => {
-            let corp: u32 = state.corp.scored_agendas.iter().filter_map(|s| crate::rules::win::agenda_value(&s.card, registry)).sum();
-            let runner: u32 = state.runner.scored_agendas.iter().filter_map(|c| crate::rules::win::agenda_value(c, registry)).sum();
+            let corp: u32 = state.corp.scored_agendas.iter().map(|s| crate::rules::win::agenda_value_in(state, registry, &s.card, Side::Corp)).sum();
+            let runner: u32 = state.runner.scored_agendas.iter().map(|c| crate::rules::win::agenda_value_in(state, registry, c, Side::Runner)).sum();
             corp.max(runner)
         }
     }

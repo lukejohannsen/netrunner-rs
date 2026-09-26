@@ -3,12 +3,12 @@
   "name": "Borrowed Time",
   "side": "Runner",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach Vantage Point's Criminal cards — Vic, Sell Out, Borrowed Goods, Rotary, Kompromat — on Stolen Goods' frame. Legal in every format but Snapshot.",
+  "description": "Not a published list: built so the sweeps reach Vantage Point's Criminal cards — Vic, Sell Out, Borrowed Goods, Rotary, Kompromat — on Stolen Goods' frame. Legal in every format but Snapshot. Vantage Point Stage 3a: Tailgate for Jailbreak, a run on HQ priced by its ice.",
   "style": "aggressive",
   "identity": "virtual_intelligence_p_i_you_can_call_me_vic",
   "cards": [
     {
-      "card": "jailbreak",
+      "card": "tailgate",
       "count": 3
     },
     {

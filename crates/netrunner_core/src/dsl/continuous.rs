@@ -28,6 +28,7 @@ use crate::dsl::ability::EffectRequirement;
 use crate::dsl::card::IceType;
 use crate::dsl::effect::Amount;
 use crate::dsl::zone::CardFilter;
+use crate::rules::Side;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -81,9 +82,9 @@ fn is_one(amount: &Amount) -> bool {
 /// What changes. Closed, with a payload per kind, and **only the kinds a
 /// card in the pool prints** (the DSL Growth Rule): the ones the comparison
 /// with jinteki.net names and no card here needs yet are additional
-/// subroutines, "cannot be broken", agenda points and advancement
-/// requirements that change while installed, additional costs to steal,
-/// what a card can host, the number of cards accessed, and a standing
+/// subroutines, "cannot be broken", advancement requirements that change
+/// while installed, what a card can host, the number of cards accessed,
+/// and a standing
 /// prohibition (every "cannot" in the pool has a duration, so it is an
 /// `Effect::Prohibit` and `continuous::cannot` reads the lingering list).
 /// Each is a variant here when a card prints it — never a field on
@@ -117,6 +118,32 @@ pub enum ContinuousKind {
     RezCost(Number),
     /// Credits for the Runner to trash a card they access.
     TrashCost(Number),
+    /// Credits to play an event or operation; negative is a discount —
+    /// Tailgate's "lowered by 1[credit] for each piece of ice protecting
+    /// HQ". `continuous::play_cost_of` is the one question, asked by the
+    /// play and by the offer.
+    PlayCost(Number),
+    /// Clicks to play an event or operation — Synchrocyclotron's "the
+    /// first double operation you play each turn costs [click] less to
+    /// play". A kind of its own rather than a unit on `PlayCost`: every
+    /// other kind is one number in one unit, and a price in two would be
+    /// the first. Taken off the Double's additional click
+    /// (`CardDefinition::additional_play_cost`), which is the only click
+    /// a card in the pool lowers; the action's own click is never lowered.
+    PlayClicks(Number),
+    /// Credits the Runner pays, as an additional cost, to steal an agenda —
+    /// Magistrate Revontulet's "as an additional cost to steal an agenda,
+    /// the Runner must pay 3[c]". On top of the agenda's printed
+    /// `steal_cost` (Méliès City Luxury Line), with which it is one price
+    /// (CR 1.16.10: additional costs are paid together with it; the Runner
+    /// may decline to steal rather than pay, CR 1.17.3d).
+    StealCost(Number),
+    /// Agenda points an agenda is worth where it is — Let Them Dream's
+    /// "while this agenda is in the Runner's score area, it is worth 1 less
+    /// agenda point". Asked, never stored: the win check totals each score
+    /// area's cards (`win::agenda_value_in`), and the stored tally beside it
+    /// adds the same number when the card lands.
+    AgendaPoints(Number),
     /// The ice gains a subtype it does not print — Chromatophores.
     GainSubtype(IceType),
     /// A strength boost that would last the encounter lasts the run
@@ -150,4 +177,24 @@ pub enum Scope {
     /// Each card in the root of the server this one is installed in,
     /// matching the filter.
     RootOfThisServer(CardFilter),
+    /// An event or operation its controller is playing, matching the filter
+    /// — Synchrocyclotron's "double operation". The play's half of
+    /// `Installing`: both price a card from the hand, and `first_each_turn`
+    /// counts plays here as it counts installs there.
+    Playing(CardFilter),
+    /// An agenda the Runner is stealing, matching the filter — Magistrate
+    /// Revontulet's "an agenda".
+    Stealing(CardFilter),
+    /// This agenda, while it is in `side`'s score area — Let Them Dream.
+    /// The card's own text, like `This`, and read only there: a question
+    /// about a scored agenda says whose score area it is in.
+    ScoreArea(Side),
+}
+
+impl Scope {
+    /// Whether the effect is the card's own text about itself, read from
+    /// the card wherever it is rather than from the active cards.
+    pub fn is_own_text(&self) -> bool {
+        matches!(self, Scope::This | Scope::ScoreArea(_))
+    }
 }

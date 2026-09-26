@@ -1,0 +1,38 @@
+{
+  "id": "magistrate_revontulet",
+  "title": "Magistrate Revontulet",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 2,
+  "continuous": [
+    {
+      "kind": {
+        "StealCost": {
+          "per": 3
+        }
+      },
+      "applies_to": {
+        "Stealing": "Any"
+      },
+      "text": "As an additional cost to steal an agenda, the Runner must pay 3[credit]."
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnAgendaScored",
+      "subject": "Any",
+      "text": "Whenever you score an agenda, the Runner loses 3[credit].",
+      "effects": [
+        {
+          "LoseCredits": [
+            "Runner",
+            3
+          ]
+        }
+      ]
+    }
+  ],
+  "trash_cost": 3,
+  "numeric_id": 36048,
+  "is_playable": true
+}
