@@ -20,7 +20,7 @@ Narration widened from 3 events to 31 in the same pass, on a criterion stated on
 ## 4. Transport Efficiency — deferred
 - [ ] State deltas instead of full snapshots — only once profiling shows full `ClientView` broadcasts are a bottleneck. Do not trade simple-and-correct away speculatively.
 
-## 5. A rating is a server's to keep: identity is a key, a game leaves a signed receipt — OPEN, design only (20 September 2026)
+## 5. A rating is a server's to keep: identity is a key, a game leaves a signed receipt — OPEN, stage (b) server half built (26 September 2026)
 
 `docs/server-tracked-rating`. **No code; the reasoning is `docs/identity-and-rating.md` and this entry is its index.** It follows `fix/local-play-is-casual` (Phase 3 §2, same day), which took the rating *out* of the client: a rating is a claim to someone else, so it means something only between people and only when somebody other than the rated player keeps it. What is left to decide is how a server keeps one, and the hole in what it does today.
 
@@ -36,6 +36,14 @@ Narration widened from 3 events to 31 in the same pass, on a criterion stated on
 - **The trust boundary, stated:** a rating is a claim by one server's operator, who can see every seed. Keys are free, so a new key is provisional. Smurfing and win-trading are moderation, which the rebuildable log makes possible and cryptography does not solve.
 
 **Stages, each its own branch and each useful without the next:** (a) the server keeps match records — no protocol change, and the server half of Phase 7 §8 item 15; (b) `netrunner_identity`, the client's key file, the handshake, ratings keyed by key; (c) seat commitments, receipts, `Rated`, `results.jsonl`, `--rebuild-ratings`; (d) client surfaces — the game-over panel and "your standing at `<server>`" on Profile, fetched and never stored as truth; (e) the free take-back online.
+
+**Stage (b), the server half** (`feat/key-identity-server`, 26 September 2026). Built before stage (a), because §7's public server wants the key more than it wants the records, and neither needs the other.
+- **`netrunner_identity`**, a new pure crate: `Identity` (the secret, `Debug` printing only the public half), `PublicKey` (52 characters of lower-case base32, `key:<base32>` as a rating id, a 14-character fingerprint), `Nonce`, `Signature`, and the login statement `auth_statement` = `"netrunner-auth-v1" ‖ server key ‖ nonce`, checked with strict verification. No RNG of its own: a key is made from 32 bytes the caller drew, so the crate's dependencies are `ed25519-dalek` 3 (the version iroh already links), `data-encoding`, `serde` and `thiserror`, and `deny.toml` is unchanged.
+- **The messages:** `Identify { key }` → `Challenge { nonce, server_key, lasting }` → `Prove { signature }` → `Identified { key }` or `IdentifyRefused`, answered in the handshake loop before `Attach` or `Resume`. A refused proof closes the socket, because a client that meant to be rated should learn at once. `lasting` is new since the design: a daemon with no data directory makes a new key each run, and a client that pinned it would only ever cry wolf.
+- **`--data-dir` replaces `--ratings-file`**, holding `identity.key` (created 0600, never replaced when unreadable — that is a bind error), `players.json` and `ratings.json`. `players.json` is a map rewritten whole rather than the sketched `players.jsonl`, because last-seen changes on every visit.
+- **Rated:** two proved keys, and two different ones. One key in both chairs goes unrated, since it would farm one role's rating off the other's. An unidentified seat plays unrated, and a bot game's human seat now carries no rating id at all.
+- Tests (`tests/identity.rs`): an honest proof, and a challenge naming the server's key; a fresh nonce per connection; a wrong key's signature, a proof made for another server (the relay) and a proof with no challenge each refused and closed; the key kept across a restart at 0600 and an unreadable one refusing to bind; a rating that follows the key through a rename and a restart, with nothing filed under a name; an unidentified seat and a key playing itself, both unrated.
+- **Next, the client half:** the key file under the data directory, the connection machine's handshake, and pinning a lasting server key.
 
 **Settled by §6 item 2 (25 September 2026):** the messages live in `netrunner_protocol`, which `netrunner_client` depends on without the server. **Open:** Key rotation (a successor statement signed by the old key) is recorded and not designed.
 

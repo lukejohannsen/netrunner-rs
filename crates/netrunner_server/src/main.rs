@@ -112,13 +112,17 @@ struct Config {
     formats: Vec<ServeFormat>,
 
 
-    /// (serve mode) Rate every finished match between two people
-    /// (`--bot-runner none`) — surrenders, disconnects and timeouts count
-    /// as losses; stalls are unrated — into the Glicko-2 rating book at
-    /// this path, a rating per side. Nothing is rated without it, and a
-    /// game against a seated bot is never rated.
+    /// (serve mode) Where the daemon keeps what outlives it: its own key
+    /// (`identity.key`, made on first start), the players it has seen
+    /// (`players.json`) and the Glicko-2 rating book (`ratings.json`).
+    /// With it the daemon's key is the same every run, which clients
+    /// remember, and every finished match between two identified people
+    /// (`--bot-runner none`) is rated — surrenders, disconnects and
+    /// timeouts count as losses; stalls are unrated. Without it the key is
+    /// new each run and nothing is rated. A game against a seated bot, or
+    /// with a player who proved no key, is never rated.
     #[arg(long)]
-    ratings_file: Option<std::path::PathBuf>,
+    data_dir: Option<std::path::PathBuf>,
 }
 
 /// `NsgFormat` as a command-line value — a separate enum for the same
@@ -218,7 +222,7 @@ async fn run_serve(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
         corp_deck: config.corp_deck.clone(),
         runner_deck: config.runner_deck.clone(),
         formats: config.formats.iter().map(|&format| format.into()).collect(),
-        ratings_file: config.ratings_file.clone(),
+        data_dir: config.data_dir.clone(),
     };
     let server = Server::bind(&bind_address(&config.host, config.port), options).await?;
     server.run().await?;

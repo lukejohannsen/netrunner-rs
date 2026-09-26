@@ -1,8 +1,9 @@
 //! The lobby and the match registry over real WebSockets: pairing within
 //! a lobby, ghost sweeping, the match cap, the seed policy, the decks a
-//! bot is dealt, ratings, spectators and `ListMatches`. Every player comes
+//! bot is dealt, a bot game going unrated, spectators and `ListMatches`. Every player comes
 //! in attached and looks for a game with the deck its chair needs
-//! (`tests/attached.rs` covers the lobbies themselves); `tests/reconnect.rs`
+//! (`tests/attached.rs` covers the lobbies themselves, `tests/identity.rs`
+//! proving a key and the ratings filed under it); `tests/reconnect.rs`
 //! covers a seat's lifetime after `MatchJoined`.
 
 use std::time::Duration;
@@ -19,7 +20,6 @@ use netrunner_core::dsl::CardId;
 use netrunner_core::format::NsgFormat;
 use netrunner_core::rules::{PlayerAction, Side, Viewer};
 use netrunner_core::view::ClientView;
-use netrunner_rating::{RatingBook, Track};
 use netrunner_server::protocol::Chair;
 use netrunner_server::serve::{ServeBotKind, ServeOptions, Server};
 use netrunner_server::{ClientMessage, MatchSummary, ServerMessage};
@@ -456,26 +456,8 @@ async fn spectating_an_unknown_match_is_refused() {
     assert!(closed_by_server(&mut socket).await);
 }
 
-/// The daemon writes the book after the session task ends, which is a
-/// moment after the client saw `GameEnded`; poll for it.
-async fn wait_for_book(path: &std::path::Path, ready: impl Fn(&RatingBook) -> bool) -> RatingBook {
-    tokio::time::timeout(Duration::from_secs(10), async {
-        loop {
-            if let Ok(json) = std::fs::read_to_string(path)
-                && let Ok(book) = RatingBook::from_json(&json)
-                && ready(&book)
-            {
-                return book;
-            }
-            tokio::time::sleep(Duration::from_millis(20)).await;
-        }
-    })
-    .await
-    .expect("the rating book is written within 10s")
-}
-
 /// A game against a seated bot is practice wherever it is played: a bot
-/// daemon given a rating file never writes to it. The match leaving
+/// daemon given a data directory never writes a rating book into it. The match leaving
 /// `MatchList` is the session task's exit, which is where a human match
 /// is rated, so the file's absence after it is the claim.
 #[tokio::test]
@@ -486,7 +468,7 @@ async fn a_game_against_a_seated_bot_is_rated_by_nobody() {
     let url = start_server(ServeOptions {
         bot_level: Some(netrunner_bots::Level::Operator),
         bot_personality: Some(Personality::Balanced),
-        ratings_file: Some(path.clone()),
+        data_dir: Some(dir.clone()),
         ..bot_daemon()
     })
     .await;
@@ -527,35 +509,3 @@ async fn an_unpinned_bot_plays_its_dealt_decks_style_and_its_seat_says_so() {
     assert_eq!(list_matches(&url).await.0[0].runner, format!("heuristic bot, {style}"));
 }
 
-/// Two humans, one surrenders; then the daemon is restarted on the same
-/// file and a second match adds to the same standings.
-#[tokio::test]
-async fn human_matches_are_rated_on_their_own_track_and_the_book_survives_a_restart() {
-    let dir = std::env::temp_dir().join(format!("netrunner_ratings_human_{}", std::process::id()));
-    std::fs::create_dir_all(&dir).unwrap();
-    let path = dir.join("ratings.json");
-    let options = || ServeOptions { bot_runner: ServeBotKind::None, seed: Some(1), ratings_file: Some(path.clone()), ..ServeOptions::default() };
-
-    for round in 1..=2u32 {
-        let url = start_server(options()).await;
-        let mut ann = seek(&url, "ann", corp("ann")).await;
-        queued(next(&mut ann).await);
-        let mut bo = seek(&url, "bo", runner("bo")).await;
-        joined(next(&mut bo).await);
-        joined(next(&mut ann).await);
-        state_update(next(&mut ann).await);
-        state_update(next(&mut bo).await);
-        // The Corp's mulligan is awaited; the Runner concedes anyway — a
-        // player may surrender at any moment, not only when asked.
-        send(&mut bo, ClientMessage::Surrender).await;
-        assert!(matches!(next(&mut ann).await, ServerMessage::GameEnded { winner: Side::Corp, .. }));
-        let book = wait_for_book(&path, |book| {
-            book.standing(Track::HumanVsHuman, "ann").is_some_and(|standing| standing.corp.wins == round)
-        })
-        .await;
-        let bo_standing = book.standing(Track::HumanVsHuman, "bo").unwrap();
-        assert_eq!(bo_standing.runner.losses, round);
-        assert!(bo_standing.runner.rating.rating < 1500.0);
-    }
-    let _ = std::fs::remove_dir_all(&dir);
-}

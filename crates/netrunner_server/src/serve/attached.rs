@@ -40,6 +40,8 @@ pub(super) struct Playing {
 struct Attached {
     shared: Shared,
     player_name: String,
+    /// The key this socket proved before attaching, if it did.
+    key: Option<PublicKey>,
     tx: mpsc::UnboundedSender<ServerMessage>,
     /// The lobby this connection is in, by id.
     lobby: Option<String>,
@@ -67,11 +69,12 @@ async fn from_play(playing: &mut Option<Playing>) -> Option<ServerMessage> {
 pub(super) async fn run(
     shared: Shared,
     player_name: String,
+    key: Option<PublicKey>,
     tx: mpsc::UnboundedSender<ServerMessage>,
     mut rx: mpsc::UnboundedReceiver<ClientMessage>,
     resumed: Option<Playing>,
 ) {
-    let mut conn = Attached { shared, player_name, tx, lobby: None, in_match: resumed.is_some() };
+    let mut conn = Attached { shared, player_name, key, tx, lobby: None, in_match: resumed.is_some() };
     let mut playing = resumed;
     match &playing {
         Some(seat) => {
@@ -172,7 +175,8 @@ impl Attached {
             }
             // Watching from an attached connection is a later stage; a
             // second hello is the client repeating itself.
-            ClientMessage::Attach { .. } | ClientMessage::Resume { .. } | ClientMessage::Spectate { .. } => {}
+            // A key is proved before attaching, never after.
+            ClientMessage::Attach { .. } | ClientMessage::Resume { .. } | ClientMessage::Spectate { .. } | ClientMessage::Identify { .. } | ClientMessage::Prove { .. } => {}
         }
     }
 
@@ -247,7 +251,7 @@ impl Attached {
         let token = Uuid::new_v4();
         match self.shared.options.bot_runner {
             ServeBotKind::None => {
-                let newcomer = PendingHuman { token, player_name: self.player_name.clone(), lobby: lobby.clone(), format, deck, random, tx: out_tx, slot };
+                let newcomer = PendingHuman { token, player_name: self.player_name.clone(), key: self.key, lobby: lobby.clone(), format, deck, random, tx: out_tx, slot };
                 enqueue_or_pair(&self.shared, newcomer);
             }
             // A bot sits opposite whatever chair was chosen; a random one

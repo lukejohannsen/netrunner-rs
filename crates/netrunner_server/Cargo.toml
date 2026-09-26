@@ -11,6 +11,8 @@ netrunner_bots = { path = "../netrunner_bots" }
 netrunner_session = { path = "../netrunner_session" }
 netrunner_rating = { path = "../netrunner_rating" }
 netrunner_protocol = { path = "../netrunner_protocol" }
+# The daemon's own key, and the proofs a connection makes of its own.
+netrunner_identity = { path = "../netrunner_identity" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tokio = { workspace = true }

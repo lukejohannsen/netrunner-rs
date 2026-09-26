@@ -882,7 +882,13 @@ impl Feed {
             // A place taken back: the host's fresh view follows.
             ServerMessage::MatchJoined { .. } | ServerMessage::Spectating { .. } => self.fresh = true,
             // The handshake's, answered before the channel is handed out.
-            ServerMessage::Queued { .. } | ServerMessage::ConnectRejected { .. } | ServerMessage::MatchList { .. } | ServerMessage::ResumeRejected { .. } => {}
+            ServerMessage::Queued { .. }
+            | ServerMessage::ConnectRejected { .. }
+            | ServerMessage::MatchList { .. }
+            | ServerMessage::ResumeRejected { .. }
+            | ServerMessage::Challenge { .. }
+            | ServerMessage::Identified { .. }
+            | ServerMessage::IdentifyRefused { .. } => {}
             // An attached connection's, which a game's feed never carries:
             // the connection answers them before and after the game.
             ServerMessage::Attached { .. }
