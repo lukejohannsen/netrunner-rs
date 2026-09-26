@@ -3307,6 +3307,12 @@ fn raise_hand(
 /// may act, greyed otherwise. Greyed rather than absent so "End turn"
 /// is always in the same place.
 fn spawn_control_bar(parent: &mut ChildSpawnerCommands, theme: &Theme, game: &Game) {
+    // A spectator is never asked anything, so a bar of greyed actions is
+    // only noise: the row stays, empty, so the board is laid out as the
+    // players' are.
+    if game.watching() {
+        return;
+    }
     // A replay's bar moves through the record instead: the same row, so
     // the board keeps its layout, and nothing on it is an action.
     if let Some(at) = &game.replay {
@@ -3389,7 +3395,14 @@ fn spawn_rail(parent: &mut ChildSpawnerCommands, theme: &Theme, game: &Game, hel
         parent.spawn(widgets::button(theme, label, percent(100), Click::PassTheRun));
     }
     if !game.awaiting {
-        parent.spawn(widgets::dim(theme, if game.view.is_some() { "Opponent is thinking…" } else { "Setting up…" }));
+        // A spectator has no opponent, and the view does not say which
+        // player holds priority, so the line names nobody.
+        let line = match (&game.view, game.watching()) {
+            (None, _) => "Setting up…",
+            (Some(_), true) => "Watching — the players are deciding…",
+            (Some(_), false) => "Opponent is thinking…",
+        };
+        parent.spawn(widgets::dim(theme, line));
         return;
     }
     // The decisions are the pop-up's (`spawn_decision_popup`), not the
@@ -4385,7 +4398,7 @@ fn spawn_overlay(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &Client
                     });
                 } else if let Some(over) = &game.over {
                     let won = over.winner == game.side;
-                    let watching = game.online.as_ref().is_some_and(|online| online.watching);
+                    let watching = game.watching();
                     if watching {
                         panel.spawn((Text::new(format!("The {:?} wins", over.winner)), theme.font(size::HEADING), TextColor(theme.accent)));
                         panel.spawn(widgets::dim(theme, end_reason_watched(over.winner, over.reason)));

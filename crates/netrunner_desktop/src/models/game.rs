@@ -480,6 +480,11 @@ impl Game {
 
     /// A board for a game at a host. A host that dealt another deck than
     /// the one brought says so as the log's first line.
+    /// A spectator's board: a game online watched, not played.
+    pub fn watching(&self) -> bool {
+        self.online.as_ref().is_some_and(|online| online.watching)
+    }
+
     pub fn online(registry: Arc<CardRegistry>, side: Side, online: Online) -> Self {
         let log = online.notice.iter().map(|notice| LogLine::from(notice.clone())).collect();
         Game { online: Some(online), log, ..Game::new(registry, side) }
@@ -851,7 +856,7 @@ impl Game {
                 // after a match ends: Escape on the intro is its Leave.
                 // Nor is anything lost by a spectator, who concedes
                 // nothing by leaving.
-                if self.finished() || self.replay.is_some() || self.intro_open() || self.online.as_ref().is_some_and(|online| online.watching) {
+                if self.finished() || self.replay.is_some() || self.intro_open() || self.watching() {
                     Outcome::Quit
                 } else {
                     self.confirm_quit = true;

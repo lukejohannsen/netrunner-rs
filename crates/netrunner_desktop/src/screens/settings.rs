@@ -28,7 +28,7 @@ pub struct SettingsPlugin;
 impl Plugin for SettingsPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(OnEnter(AppScreen::Settings), spawn)
-            .add_systems(Update, (controls, open_name_field, name_edits, refresh).chain().run_if(in_state(AppScreen::Settings)));
+            .add_systems(Update, (controls, open_field, field_edits, refresh).chain().run_if(in_state(AppScreen::Settings)));
     }
 }
 
@@ -37,7 +37,8 @@ impl Plugin for SettingsPlugin {
 #[derive(Component, Debug, Clone, PartialEq)]
 pub enum Control {
     Intent(Intent),
-    EditName,
+    /// Edit a text row: the player's name or the relay.
+    Edit(Row),
     Back,
 }
 
@@ -53,10 +54,17 @@ struct Answers;
 #[derive(Resource, Default)]
 struct Dirty(bool);
 
-/// Set by the Edit button; `open_name_field` spawns the field and
+/// Set by an Edit button; `open_field` spawns that row's field and
 /// clears it.
 #[derive(Resource, Default)]
-struct EditRequested(bool);
+struct EditRequested(Option<Row>);
+
+/// Which row an open field edits.
+#[derive(Component, Clone, Copy)]
+struct Editing(Row);
+
+/// A relay's URL is long; a name is `MAX_NAME_LEN`.
+const MAX_RELAY_LEN: usize = 200;
 
 fn spawn(mut commands: Commands, theme: Res<Theme>, core: Res<ClientCore>) {
     commands.init_resource::<Dirty>();
@@ -133,8 +141,8 @@ pub fn spawn_rows(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &Clien
             if row.is_stepped() {
                 controls.spawn(widgets::round_button(theme, "<", Control::Intent(Intent::Step(row, -1))));
                 controls.spawn(widgets::round_button(theme, ">", Control::Intent(Intent::Step(row, 1))));
-            } else if row == Row::Player {
-                controls.spawn(widgets::button(theme, "Edit", Val::Auto, Control::EditName));
+            } else if matches!(row, Row::Player | Row::Relay) {
+                controls.spawn(widgets::button(theme, "Edit", Val::Auto, Control::Edit(row)));
             } else {
                 controls.spawn(widgets::button(theme, "Toggle", Val::Auto, Control::Intent(Intent::Toggle(row))));
             }
@@ -156,7 +164,7 @@ fn controls(
             Ok(Control::Back) => {
                 navigate.write(Navigate(AppScreen::MainMenu));
             }
-            Ok(Control::EditName) => edit.0 = true,
+            Ok(Control::Edit(row)) => edit.0 = Some(*row),
             Ok(Control::Intent(intent)) => {
                 let changed = model::apply(&mut core.settings, intent.clone(), &table::available(), &skin::available());
                 if changed {
@@ -169,9 +177,9 @@ fn controls(
     }
 }
 
-/// Spawns the name field under the rows when Edit was pressed and no
-/// field is open. Its own system so `controls` stays a dispatcher.
-fn open_name_field(
+/// Spawns the edited row's field under the rows when Edit was pressed
+/// and no field is open. Its own system so `controls` stays a dispatcher.
+fn open_field(
     mut commands: Commands,
     mut edit: ResMut<EditRequested>,
     fields: Query<Entity, With<TextField>>,
@@ -179,37 +187,46 @@ fn open_name_field(
     theme: Res<Theme>,
     core: Res<ClientCore>,
 ) {
-    if !edit.0 {
-        return;
-    }
-    edit.0 = false;
+    let Some(row) = edit.0.take() else { return };
     if !fields.is_empty() {
         return;
     }
     let Ok(rows) = rows.single() else { return };
-    let current = core.settings.player.clone().unwrap_or_default();
+    let (current, max_len, hint) = match row {
+        Row::Relay => (core.settings.relay.clone().unwrap_or_default(), MAX_RELAY_LEN, "  Empty for the public relays, off for none, or a relay's URL. Enter saves, Escape cancels"),
+        _ => (core.settings.player.clone().unwrap_or_default(), MAX_NAME_LEN, "  Enter saves, Escape cancels"),
+    };
     commands.entity(rows).with_children(|parent| {
         parent.spawn((
-            TextField { text: current.clone(), max_len: MAX_NAME_LEN },
+            TextField { text: current.clone(), max_len },
+            Editing(row),
             widgets::field_node(Val::Auto),
             BackgroundColor(theme.glass_strong),
             BorderColor::all(theme.accent),
-            children![widgets::label(&theme, format!("{current}|")), widgets::dim(&theme, "  Enter saves, Escape cancels")],
+            children![widgets::label(&theme, format!("{current}|")), (widgets::dim(&theme, hint), TextLayout::new(Justify::Left, LineBreak::WordBoundary))],
         ));
     });
 }
 
-fn name_edits(
+fn field_edits(
     mut commands: Commands,
-    fields: Query<(Entity, &TextFieldEvent)>,
+    fields: Query<(Entity, &TextFieldEvent, &Editing)>,
     mut core: ResMut<ClientCore>,
     mut dirty: ResMut<Dirty>,
     mut notices: ResMut<Notices>,
 ) {
-    for (entity, event) in &fields {
-        let intent = match event {
-            TextFieldEvent::Committed(name) => Intent::NameEdited(Some(name.clone())),
-            TextFieldEvent::Cancelled => Intent::NameEdited(None),
+    for (entity, event, Editing(row)) in &fields {
+        let intent = match (event, row) {
+            (TextFieldEvent::Committed(text), Row::Relay) => {
+                // Refused here with the reason, rather than dropped by
+                // the model in silence.
+                if let Err(reason) = model::relay_setting(text) {
+                    notices.push(format!("Relay not changed: {reason}"));
+                }
+                Intent::RelayEdited(text.clone())
+            }
+            (TextFieldEvent::Committed(name), _) => Intent::NameEdited(Some(name.clone())),
+            (TextFieldEvent::Cancelled, _) => Intent::NameEdited(None),
         };
         if model::apply(&mut core.settings, intent, &table::available(), &skin::available()) {
             persist(&core, &mut notices);
