@@ -243,6 +243,16 @@ impl App {
                 | ServerMessage::ConnectRejected { .. }
                 | ServerMessage::MatchList { .. }
                 | ServerMessage::ResumeRejected { .. } => {}
+                // An attached connection's lobby replies, which a game
+                // never carries.
+                ServerMessage::Attached { .. }
+                | ServerMessage::Lobbies { .. }
+                | ServerMessage::LobbyJoined { .. }
+                | ServerMessage::LobbyRefused { .. }
+                | ServerMessage::LobbyLeft
+                | ServerMessage::SeekRefused { .. }
+                | ServerMessage::SeekCancelled
+                | ServerMessage::BackInLobby { .. } => {}
             }
         }
     }

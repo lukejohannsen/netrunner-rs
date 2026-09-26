@@ -358,10 +358,19 @@ impl MatchSession {
                         // Handshake messages belong to the transport; one
                         // that reaches the session is a client repeating
                         // itself and is ignored.
+                        // So is a lobby message: an attached connection
+                        // keeps those for itself while it plays.
                         ClientMessage::Connect { .. }
                         | ClientMessage::Resume { .. }
                         | ClientMessage::ListMatches
-                        | ClientMessage::Spectate { .. } => continue,
+                        | ClientMessage::Spectate { .. }
+                        | ClientMessage::Attach { .. }
+                        | ClientMessage::ListLobbies
+                        | ClientMessage::CreateLobby { .. }
+                        | ClientMessage::JoinLobby { .. }
+                        | ClientMessage::LeaveLobby
+                        | ClientMessage::Seek { .. }
+                        | ClientMessage::CancelSeek => continue,
                     }
                 }
                 SessionStep::Ended { winner, reason } => {
