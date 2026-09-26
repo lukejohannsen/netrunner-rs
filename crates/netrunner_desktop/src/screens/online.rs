@@ -37,6 +37,7 @@ use netrunner_client::online::{self, DeckChoice};
 use netrunner_client::peer::Relay;
 use netrunner_client::play::MatchHandle;
 use netrunner_client::remote::{self, ConnectEvent, Connecting};
+use netrunner_client::settings::{format_name, FORMATS};
 use netrunner_core::format::NsgFormat;
 use netrunner_core::rules::{Side, Viewer};
 use netrunner_server::serve::{ServeBotKind, ServeOptions, Server};
@@ -161,6 +162,7 @@ pub enum Control {
     Edit(Field),
     Paste(Field),
     Reach(Reach),
+    Format(NsgFormat),
     WatchFrom(Side),
     Watch(usize),
     /// The `n`th thing the host gives out.
@@ -181,10 +183,15 @@ struct FormRoot;
 fn spawn(mut commands: Commands, theme: Res<Theme>, core: Res<ClientCore>, model: Option<ResMut<Model>>) {
     commands.init_resource::<Dirty>();
     commands.insert_resource(Net::default());
-    let decks = deck_choices(&core);
     match model {
-        Some(mut model) => model.0.reopen(decks),
-        None => commands.insert_resource(Model(OnlineForm::new(decks, hosting::normalize_address("127.0.0.1")))),
+        Some(mut model) => {
+            let decks = deck_choices(&core, model.0.format);
+            model.0.reopen(decks);
+        }
+        None => {
+            let format = core.settings.format.unwrap_or(NsgFormat::Startup);
+            commands.insert_resource(Model(OnlineForm::new(deck_choices(&core, format), hosting::normalize_address("127.0.0.1"), format)));
+        }
     }
     let form = commands.spawn((FormRoot, Node { flex_direction: FlexDirection::Column, row_gap: px(20), width: percent(100), ..default() })).id();
     let panel = commands.spawn(widgets::roomy_panel(&theme, px(940))).add_child(form).id();
@@ -200,12 +207,11 @@ fn spawn(mut commands: Commands, theme: Res<Theme>, core: Res<ClientCore>, model
     commands.insert_resource(Dirty(true));
 }
 
-/// The decks offered: the host's deal, then every saved deck legal in the
-/// format Settings names. A list that cannot be read still offers the
-/// deal.
-fn deck_choices(core: &ClientCore) -> Vec<DeckChoice> {
+/// The decks offered: the host's deal, then every saved deck legal in
+/// `format`, the lobby chosen. A list that cannot be read still offers
+/// the deal.
+fn deck_choices(core: &ClientCore, format: NsgFormat) -> Vec<DeckChoice> {
     let decks_dir = core.decks_dir.clone().unwrap_or_else(|| std::env::temp_dir().join("netrunner-no-decks"));
-    let format = core.settings.format.unwrap_or(NsgFormat::Startup);
     online::deck_choices(&decks_dir, &core.registry, format).unwrap_or_else(|_| vec![DeckChoice::Dealt(None), DeckChoice::Dealt(Some(Side::Corp)), DeckChoice::Dealt(Some(Side::Runner))])
 }
 
@@ -263,6 +269,7 @@ fn controls(
             Control::Go => Intent::Go,
             Control::List => Intent::List,
             Control::Reach(reach) => Intent::SetReach(reach),
+            Control::Format(format) => Intent::SetFormat(format),
             Control::WatchFrom(side) => Intent::SetWatchFrom(side),
             Control::Watch(index) => Intent::Watch(index),
             Control::Edit(field) => {
@@ -303,6 +310,7 @@ fn carry_out(outcome: Outcome, form: &mut OnlineForm, net: &mut Net, core: &Clie
                 navigate.write(Navigate(AppScreen::MainMenu));
             }
             Outcome::Stop => stop(net),
+            Outcome::Decks(format) => form.set_decks(deck_choices(core, format)),
             Outcome::Nothing | Outcome::Redraw => {}
             _ => {
                 form.apply(Intent::Failed("The network runtime did not start, so nothing can be hosted or joined".to_string()));
@@ -315,7 +323,7 @@ fn carry_out(outcome: Outcome, form: &mut OnlineForm, net: &mut Net, core: &Clie
     let _guard = runtime.0.enter();
     let player = core.player_name();
     match outcome {
-        Outcome::Host { port, reach, deck } => {
+        Outcome::Host { port, reach, format, deck } => {
             let relay = match reach {
                 Reach::Internet => match Relay::from_setting(core.settings.relay.as_deref()) {
                     Ok(relay) => Some(relay),
@@ -326,11 +334,11 @@ fn carry_out(outcome: Outcome, form: &mut OnlineForm, net: &mut Net, core: &Clie
                 },
                 _ => None,
             };
-            host(form, net, core, runtime, port, reach, deck, relay);
+            host(form, net, core, runtime, port, reach, format, deck, relay);
         }
-        Outcome::Join { url, room, deck } => {
+        Outcome::Join { url, room, format, deck } => {
             net.brought = deck.deck().map(|deck| deck.id.clone());
-            let hello = remote::connect_message(&player, deck.side(), room, deck.deck());
+            let hello = remote::connect_message(&player, deck.side(), room, deck.deck(), Some(format));
             net.connecting = Some(remote::spawn(url.clone(), Goal::Play(hello)));
             form.apply(Intent::Waiting(format!("Connecting to {}…", shortened(&url))));
         }
@@ -351,19 +359,18 @@ fn carry_out(outcome: Outcome, form: &mut OnlineForm, net: &mut Net, core: &Clie
             });
             net.listing = Some(Mutex::new(rx));
         }
-        Outcome::Leave | Outcome::Stop | Outcome::Nothing | Outcome::Redraw => unreachable!("needs no runtime"),
+        Outcome::Leave | Outcome::Stop | Outcome::Decks(_) | Outcome::Nothing | Outcome::Redraw => unreachable!("needs no runtime"),
     }
 }
 
 /// Starts hosting and joins the server as its first seat. Inside the
 /// runtime's context (`carry_out`'s guard).
 #[allow(clippy::too_many_arguments)]
-fn host(form: &mut OnlineForm, net: &mut Net, core: &ClientCore, runtime: &TokioRuntime, port: u16, reach: Reach, deck: DeckChoice, relay: Option<Relay>) {
-    let format = core.settings.format.unwrap_or(NsgFormat::Startup);
+fn host(form: &mut OnlineForm, net: &mut Net, core: &ClientCore, runtime: &TokioRuntime, port: u16, reach: Reach, format: NsgFormat, deck: DeckChoice, relay: Option<Relay>) {
     match start_hosting(port, reach, format, relay, runtime.handle()) {
         Ok((hosting, url)) => {
             net.brought = deck.deck().map(|deck| deck.id.clone());
-            let hello = remote::connect_message(&core.player_name(), deck.side(), None, deck.deck());
+            let hello = remote::connect_message(&core.player_name(), deck.side(), None, deck.deck(), Some(format));
             net.connecting = Some(remote::spawn(url, Goal::Play(hello)));
             net.hosting = Some(hosting);
             net.shown.clear();
@@ -427,7 +434,8 @@ fn dev_page(
             let _guard = runtime.0.enter();
             form.apply(Intent::Open(Page::Host));
             let relay = (page == "ticket").then_some(Relay::Off);
-            host(form, &mut net, &core, &runtime, 0, Reach::Network, DeckChoice::Dealt(None), relay);
+            let format = form.format;
+            host(form, &mut net, &core, &runtime, 0, Reach::Network, format, DeckChoice::Dealt(None), relay);
             Outcome::Nothing
         }
         "spectate" | "spectate-corp" => {
@@ -435,8 +443,7 @@ fn dev_page(
             let _guard = runtime.0.enter();
             form.apply(Intent::Open(Page::Watch));
             form.apply(Intent::SetWatchFrom(if page == "spectate" { Side::Runner } else { Side::Corp }));
-            let format = core.settings.format.unwrap_or(NsgFormat::Startup);
-            match start_hosting(0, Reach::ThisMachine, format, None, runtime.handle()) {
+            match start_hosting(0, Reach::ThisMachine, form.format, None, runtime.handle()) {
                 Ok((hosting, url)) => {
                     // The server rides with the spectator's match, as a
                     // host's does with their own.
@@ -467,7 +474,7 @@ async fn bots_play(url: String, decisions: u32) -> Result<(String, uuid::Uuid), 
     use netrunner_server::ServerMessage;
     use netrunner_server::protocol::ClientMessage;
 
-    let seat = |name: &str| remote::connect(&url, Goal::Play(remote::connect_message(name, None, None, None)), |_| {});
+    let seat = |name: &str| remote::connect(&url, Goal::Play(remote::connect_message(name, None, None, None, None)), |_| {});
     let (one, two) = tokio::join!(seat("Bot one"), seat("Bot two"));
     let (one, two) = (one.map_err(|error| error.to_string())?, two.map_err(|error| error.to_string())?);
     let made = Arc::new(AtomicU32::new(0));
@@ -518,7 +525,7 @@ fn shortened(address: &str) -> String {
 /// `start_hosting`, whose server is named here because `netrunner_client`
 /// may not name it. Port 0 takes any free port.
 fn start_hosting(port: u16, reach: Reach, format: NsgFormat, relay: Option<Relay>, runtime: tokio::runtime::Handle) -> Result<(HostedServer, String), String> {
-    let options = ServeOptions { bot_runner: ServeBotKind::None, format, ..ServeOptions::default() };
+    let options = ServeOptions { bot_runner: ServeBotKind::None, formats: vec![format], ..ServeOptions::default() };
     let listener = hosting::bind_listener(reach, port).map_err(|error| error.to_string())?;
     let server = Server::from_listener(listener, options).map_err(|error| error.to_string())?;
     let port = server.local_addr().map_err(|error| error.to_string())?.port();
@@ -697,6 +704,7 @@ fn spawn_host(parent: &mut ChildSpawnerCommands, theme: &Theme, form: &OnlineFor
         section.spawn(widgets::dim(theme, capitalised(form.reach.label())));
     });
     section(parent, theme, "Port", |section| field_box(section, theme, Field::Port, &form.port, "", false));
+    format_section(parent, theme, form, "The format this game is played in: your opponent joins with a deck legal in it.");
     deck_section(parent, theme, form);
     buttons(parent, |row| {
         row.spawn(widgets::styled_button(theme, ButtonKind::Quiet, "Back", Val::Auto, Control::Back));
@@ -708,6 +716,7 @@ fn spawn_join(parent: &mut ChildSpawnerCommands, theme: &Theme, form: &OnlineFor
     parent.spawn(widgets::heading(theme, "Join a game"));
     section(parent, theme, "Address or ticket", |section| field_box(section, theme, Field::Address, &form.address, "the host's address, or paste its ticket", true));
     section(parent, theme, "Room", |section| field_box(section, theme, Field::Room, &form.room, "none — the public queue", false));
+    format_section(parent, theme, form, "The lobby: you are paired with whoever is waiting in this format, or in your room.");
     deck_section(parent, theme, form);
     buttons(parent, |row| {
         row.spawn(widgets::styled_button(theme, ButtonKind::Quiet, "Back", Val::Auto, Control::Back));
@@ -737,7 +746,8 @@ fn spawn_watch(parent: &mut ChildSpawnerCommands, theme: &Theme, form: &OnlineFo
         section(parent, theme, "Matches", |section| {
             for (index, summary) in form.matches.iter().enumerate() {
                 let decks = if summary.corp_deck.is_empty() { String::new() } else { format!(" · {} vs {}", summary.corp_deck, summary.runner_deck) };
-                let line = format!("{} (Corp) vs {} (Runner){decks} · {} min in", summary.corp, summary.runner, summary.started_secs_ago / 60);
+                let lobby = summary.format.map(|format| format!(" · {}", format_name(format))).unwrap_or_default();
+                let line = format!("{} (Corp) vs {} (Runner){decks}{lobby} · {} min in", summary.corp, summary.runner, summary.started_secs_ago / 60);
                 section.spawn(widgets::styled_button(theme, ButtonKind::Secondary, line, percent(100), Control::Watch(index)));
             }
         });
@@ -782,6 +792,19 @@ fn spawn_waiting(parent: &mut ChildSpawnerCommands, theme: &Theme, form: &Online
     }
     buttons(parent, |row| {
         row.spawn(widgets::styled_button(theme, ButtonKind::Quiet, "Stop", Val::Auto, Control::Back));
+    });
+}
+
+/// The format, as pills: four choices are a row, not a drop-down.
+fn format_section(parent: &mut ChildSpawnerCommands, theme: &Theme, form: &OnlineForm, blurb: &str) {
+    section(parent, theme, "Format", |section| {
+        section.spawn(widgets::row(10.0)).with_children(|row| {
+            for format in FORMATS {
+                let kind = if format == form.format { ButtonKind::Primary } else { ButtonKind::Secondary };
+                row.spawn(widgets::styled_button(theme, kind, capitalised(format_name(format)), Val::Auto, Control::Format(format)));
+            }
+        });
+        section.spawn(widgets::dim(theme, blurb));
     });
 }
 

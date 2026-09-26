@@ -14,6 +14,7 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use netrunner_core::decks::DeckFile;
+use netrunner_core::format::NsgFormat;
 use netrunner_core::rules::{PlayerAction, Side};
 use netrunner_core::view::ClientView;
 
@@ -43,6 +44,11 @@ pub enum ClientMessage {
     /// client built before this still connects. A daemon built before it
     /// ignores the field and deals as it always did, which is why a client
     /// that brought a deck checks `MatchJoined`'s deck ids.
+    ///
+    /// **There is no picking an opponent** (decided 26 September 2026):
+    /// a lobby pairs whoever is waiting, and a room is how two people who
+    /// already know each other meet. Listing the waiters and challenging
+    /// one was proposed and declined.
     Connect {
         player_name: String,
         preferred_side: Option<Side>,
@@ -50,6 +56,14 @@ pub enum ClientMessage {
         room: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         deck: Option<Box<DeckFile>>,
+        /// The lobby: players are paired only with players in the same
+        /// format (and room), and a brought deck is checked against it.
+        /// `None` is the daemon's first format, which is also what a
+        /// client built before lobbies gets. A format the daemon does not
+        /// offer is refused with `ConnectRejected`, naming the ones it
+        /// does.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        format: Option<NsgFormat>,
     },
     /// Take a seat back after the socket that held it dropped. The token is
     /// the one `MatchJoined` issued for that seat, and it is the *only*
@@ -95,6 +109,19 @@ pub struct MatchSummary {
     #[serde(default)]
     pub runner_deck: String,
     pub started_secs_ago: u64,
+    /// The lobby the match was paired in; `None` from a daemon built
+    /// before lobbies.
+    #[serde(default)]
+    pub format: Option<NsgFormat>,
+}
+
+/// One of a daemon's lobbies as `MatchList` reports it: a format it
+/// pairs players in, and how many wait in its public queue (a named
+/// room's waiters are counted in `MatchList::waiting_in_lobby` only).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Lobby {
+    pub format: NsgFormat,
+    pub waiting: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -141,7 +168,17 @@ pub enum ServerMessage {
     /// The reply to `ListMatches`. `waiting_in_lobby` counts only waiters
     /// whose socket is still open, so a client (or a test) can poll it to
     /// see a dropped waiter go.
-    MatchList { matches: Vec<MatchSummary>, waiting_in_lobby: usize, max_matches: Option<usize> },
+    ///
+    /// `lobbies` is every format the daemon pairs players in, its first
+    /// the one a `Connect` naming none joins; empty from a daemon built
+    /// before lobbies.
+    MatchList {
+        matches: Vec<MatchSummary>,
+        waiting_in_lobby: usize,
+        max_matches: Option<usize>,
+        #[serde(default)]
+        lobbies: Vec<Lobby>,
+    },
     /// `ClientMessage::Resume` named a token the host does not hold: never
     /// issued, or its match already over — including a match that ended
     /// *because* this seat's grace period ran out. A client that missed

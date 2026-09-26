@@ -417,7 +417,7 @@ impl OnlineScreen {
             }
         };
         let room = (form.kind == FormKind::Join && !form.room.trim().is_empty()).then(|| form.room.trim().to_string());
-        let hello = remote::connect_message(&self.player, choice.side(), room, choice.deck());
+        let hello = remote::connect_message(&self.player, choice.side(), room, choice.deck(), Some(self.format));
         self.mode = Mode::Waiting {
             connecting: remote::spawn(url.clone(), remote::Goal::Play(hello)),
             status,
@@ -532,11 +532,14 @@ impl OnlineScreen {
             })
             .collect();
         let items = rows.into_iter().map(ListItem::new).collect();
+        // The format is the lobby, and Settings' format is the terminal's
+        // choice of it — the decks offered are the ones legal there.
+        let format = netrunner_client::settings::format_name(self.format);
         let title = match form.kind {
-            FormKind::Join => "Join a game",
-            FormKind::Host => "Host a game — a human-vs-human server on this machine, which you join too",
+            FormKind::Join => format!("Join a game — the {format} lobby (Settings sets the format)"),
+            FormKind::Host => format!("Host a {format} game — a human-vs-human server on this machine, which you join too"),
         };
-        draw_list(frame, area, title, items, Some(form.cursor));
+        draw_list(frame, area, &title, items, Some(form.cursor));
     }
 }
 
@@ -590,7 +593,7 @@ fn start_hosting(port: u16, reach: Reach, format: NsgFormat, relay: &Result<Rela
         Reach::Internet => Some(relay.clone().map_err(|error| format!("the relay setting: {error}"))?),
         _ => None,
     };
-    let options = ServeOptions { bot_runner: ServeBotKind::None, format, ..ServeOptions::default() };
+    let options = ServeOptions { bot_runner: ServeBotKind::None, formats: vec![format], ..ServeOptions::default() };
     let listener = hosting::bind_listener(reach, port).map_err(|error| error.to_string())?;
     let server = Server::from_listener(listener, options).map_err(|error| error.to_string())?;
     let port = server.local_addr().map_err(|error| error.to_string())?.port();

@@ -101,12 +101,15 @@ struct Config {
     #[arg(long)]
     runner_deck: Option<String>,
 
-    /// (serve mode) The competitive format every deck this daemon deals
-    /// must be legal in, pinned or rotating, checked once at bind so an
-    /// illegal pool is a startup error rather than a bad match. Mirrors
-    /// `netrunner_cli --format`, and defaults the same way.
-    #[arg(long, value_enum, default_value_t = ServeFormat::Startup)]
-    format: ServeFormat,
+    /// (serve mode) The lobbies: the formats this daemon pairs players
+    /// in, comma-separated or repeated, each a queue of its own. A client
+    /// that names no format joins the first. Every deck the daemon can
+    /// deal, pinned or rotating, is checked against each at bind, so an
+    /// illegal pool is a startup error rather than a bad match. Every
+    /// format by default, Startup first, as `netrunner_cli --format`
+    /// defaults to Startup.
+    #[arg(long = "format", value_enum, value_delimiter = ',', default_values_t = [ServeFormat::Startup, ServeFormat::Standard, ServeFormat::Eternal, ServeFormat::Snapshot])]
+    formats: Vec<ServeFormat>,
 
     /// (serve mode) Rate every finished match between two people
     /// (`--bot-runner none`) — surrenders, disconnects and timeouts count
@@ -121,7 +124,7 @@ struct Config {
 /// reason `netrunner_cli`'s `FormatArg` is one: deriving `ValueEnum` on the
 /// core type would put a `clap` dependency in `netrunner_core`, which the
 /// decoupled-engine rule forbids.
-#[derive(ValueEnum, Clone, Copy, Debug)]
+#[derive(ValueEnum, Clone, Copy, Debug, PartialEq)]
 enum ServeFormat {
     Startup,
     Standard,
@@ -213,7 +216,7 @@ async fn run_serve(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
         turn_timeout: config.turn_timeout_secs.map(Duration::from_secs),
         corp_deck: config.corp_deck.clone(),
         runner_deck: config.runner_deck.clone(),
-        format: config.format.into(),
+        formats: config.formats.iter().map(|&format| format.into()).collect(),
         ratings_file: config.ratings_file.clone(),
     };
     let server = Server::bind(&bind_address(&config.host, config.port), options).await?;
