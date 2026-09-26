@@ -1057,7 +1057,7 @@ impl RenderableView for LocalUiState {
 fn run_event_loop(terminal: &mut ratatui::DefaultTerminal, app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
     while !app.should_quit {
         app.drain_messages();
-        terminal.draw(|frame| draw_frame(frame, app, app.game_ended.map(|(winner, reason)| (winner, reason, None))))?;
+        terminal.draw(|frame| draw_frame(frame, app, app.game_ended.map(|(winner, reason)| (winner, reason, app.rated.as_deref()))))?;
         if event::poll(Duration::from_millis(100))?
             && let Event::Key(key) = event::read()?
         {

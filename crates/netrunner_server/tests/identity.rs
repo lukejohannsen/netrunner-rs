@@ -376,6 +376,17 @@ async fn a_rated_game_ends_in_a_signed_receipt_both_players_get() {
     assert_eq!(beside, *receipt);
     let results = std::fs::read_to_string(dir.join("results.jsonl")).unwrap();
     assert_eq!(results.lines().count(), 1);
+
+    // Asked afterwards, the server reports the proved key's standing, and
+    // nothing for a connection that proved none.
+    let (mut socket, _) = identify(&url, &ann).await;
+    send(&mut socket, ClientMessage::MyStanding).await;
+    let ServerMessage::Standing { key, standing } = next(&mut socket).await else { panic!("expected Standing") };
+    assert_eq!(key, Some(ann.public_key()));
+    assert_eq!(standing.expect("a rated game").corp.wins, 1);
+    let (mut socket, _) = tokio_tungstenite::connect_async(&url).await.unwrap();
+    send(&mut socket, ClientMessage::MyStanding).await;
+    assert!(matches!(next(&mut socket).await, ServerMessage::Standing { key: None, standing: None }));
     let _ = std::fs::remove_dir_all(&dir);
 }
 

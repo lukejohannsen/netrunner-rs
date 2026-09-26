@@ -805,7 +805,7 @@ mod tests {
     use netrunner_identity::{Identity, Nonce};
 
     fn signed_in() -> Seat {
-        let credentials = crate::identity::Credentials { identity: Identity::from_secret([1; 32]), known_servers: None };
+        let credentials = crate::identity::Credentials { identity: Identity::from_secret([1; 32]), dir: None };
         Seat { credentials: Some(Box::new(credentials)), ..hello() }
     }
 

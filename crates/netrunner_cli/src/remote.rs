@@ -13,6 +13,21 @@ pub use netrunner_client::connection::Goal;
 pub use netrunner_client::remote::{connect, list_matches, seat, spawn, ConnectEvent, Connecting, Joined};
 
 /// `netrunner_cli matches`: what the daemon is hosting, one line each.
+/// `netrunner_cli standing`: the key, then the standing the server at
+/// `url` reports for it. Makes the key if there is none, as joining would.
+pub async fn print_standing(url: &str) -> Result<(), Box<dyn std::error::Error>> {
+    let credentials = netrunner_client::identity::Credentials::load()?;
+    for line in netrunner_client::identity::key_lines(&credentials) {
+        println!("{line}");
+    }
+    let standing = netrunner_client::remote::standing(url, &credentials).await?;
+    println!("At {url}");
+    for line in netrunner_client::identity::standing_lines(standing.as_ref()) {
+        println!("  {line}");
+    }
+    Ok(())
+}
+
 pub async fn print_matches(url: &str) -> Result<(), Box<dyn std::error::Error>> {
     let (matches, waiting, cap) = list_matches(url).await?;
     match cap {

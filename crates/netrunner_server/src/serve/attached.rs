@@ -175,6 +175,10 @@ impl Attached {
             }
             // Watching from an attached connection is a later stage; a
             // second hello is the client repeating itself.
+            ClientMessage::MyStanding => {
+                let standing = self.shared.standing_of(self.key);
+                self.send(standing);
+            }
             ClientMessage::SeatSigned { signature } => {
                 if let Some(seat) = playing.as_ref().filter(|_| self.in_match) {
                     self.shared.accept_commitment(seat.token, signature);

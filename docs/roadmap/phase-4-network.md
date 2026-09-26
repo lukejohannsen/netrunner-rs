@@ -72,7 +72,20 @@ Narration widened from 3 events to 31 in the same pass, on a criterion stated on
   - a withheld signature: still rated, with the commitment missing;
   - the book rebuilt byte for byte after two games, and a forged line refused.
   - Machine tests: a statement true to the seat is signed; another deck, side or salt is not.
-- **Next:** stage (d), what the clients show. Stage (d) will show the player their key, with "losing this file loses you; copying it plays as you elsewhere" beside it.
+**Stage (d): what the clients show** (`feat/rated-client-surfaces`, 26 September 2026).
+- **The end of a rated game says what it did.** `play::MatchMessage::Rated { before, after }` follows `Ended`. The desktop's end panel and the terminal's end banner draw `identity::rated_line`: "Rated as the Corp at this server: 1500 → 1662 ± 290". The numbers are the server's; the client keeps none (Phase 3 §2).
+- **The player keeps their receipts.** The connection driver appends every `Rated` receipt to `receipts.jsonl` beside the key, so a player can show their history even if a server loses its own.
+- **Who the player is, and where they stand.**
+  - The desktop's Profile shows the key's fingerprint, where it is kept, and the two facts about the file: lose it and you start again everywhere; copy it to play as you elsewhere (`identity::key_lines`).
+  - Profile then shows the standing at every server remembered in `known_servers.json`. Those are the servers that keep their key, which are the ones that rate. Each standing is fetched on entering the screen, drawn as it arrives, and never stored.
+  - The fetch is `remote::standing`: its own socket, proving the key, held to the remembered server key like a game is, answered by the new `ClientMessage::MyStanding` / `ServerMessage::Standing`.
+- **The terminal:** `netrunner_cli record` and the Record screen add the key's lines. They read the key and never make one, because opening a screen writes nothing (`identity::key_lines_in`). `netrunner_cli standing` prints the key and the standing at `--server`.
+- Tests:
+  - the server reports a proved key's standing after a rated game, and none for a connection with no key;
+  - the client's standing fetch finds nothing for a new key, remembers the server, and refuses a changed key;
+  - the feed passes `Rated` on after the end;
+  - the rated and standing lines.
+- **Left for later:** stage (e), the free take-back online. Rotating a key (the old one signing the new) is still recorded and not designed. Stage (d) will show the player their key, with "losing this file loses you; copying it plays as you elsewhere" beside it.
 
 **Settled by §6 item 2 (25 September 2026):** the messages live in `netrunner_protocol`, which `netrunner_client` depends on without the server. **Open:** Key rotation (a successor statement signed by the old key) is recorded and not designed.
 

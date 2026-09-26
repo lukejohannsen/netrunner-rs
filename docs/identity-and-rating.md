@@ -222,6 +222,9 @@ Each its own branch, in this order; each is useful without the next.
    receipt without that commitment.
 4. **Client surfaces.** The game-over panel shows `Rated`; Profile shows "your
    standing at `<server>`" — fetched, and never stored as truth.
+   *Built 26 September 2026* (`feat/rated-client-surfaces`): the standing
+   is shown at every server in `known_servers.json`, and the client keeps
+   its receipts in `receipts.jsonl`.
 5. **The free take-back online.**
 
 **Settled (25 September 2026, Phase 4 §6 item 2):** `ClientMessage` and
