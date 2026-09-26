@@ -19,8 +19,10 @@
 //! that reports the lobby and ends in a [`Joined`]: the place at the match,
 //! the channel pair to play it through, and the [`Link`] to show. A resume
 //! after a drop happens *under* the channel pair — the same `rx` keeps
-//! delivering, the first message after it is the server's fresh view, and
-//! only `link` says anything happened. The terminal client's blocking
+//! delivering: the `MatchJoined` (or `Spectating`) the server answered the
+//! resume with, then its fresh view, which no action produced
+//! (`connection::Connection::seated` says why the first is passed on), and
+//! `link` says what happened in between. The terminal client's blocking
 //! `Reconnector`, and the channel pair it swapped in, are what this
 //! replaces.
 //!

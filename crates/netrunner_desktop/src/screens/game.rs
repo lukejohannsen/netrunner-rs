@@ -166,7 +166,7 @@ impl Plugin for GamePlugin {
             .add_observer(open_a_logged_name)
             .add_systems(OnEnter(AppScreen::Game), spawn)
             .add_systems(OnExit(AppScreen::Game), leave)
-            .add_systems(Update, (poll, autoplay, escape.in_set(Captures), board_click, drag_hand, shortcuts, controls, fit, board_pictures, side_panels, redraw, fade_ghosts, raise_hand, table_guide).chain().run_if(in_state(AppScreen::Game)))
+            .add_systems(Update, (poll, autoplay, escape.in_set(Captures), board_click, drag_hand, shortcuts, controls, fit, board_pictures, side_panels, online_status, redraw, fade_ghosts, raise_hand, table_guide).chain().run_if(in_state(AppScreen::Game)))
             // Its own registration rather than a link in that chain: it
             // has no ordering requirement against any of them, and adding
             // a system to an existing `.chain()` reorders everything after
@@ -692,7 +692,14 @@ fn spawn(
                     let board = LessonBoard { has_next: crate::screens::learn::next_after(&lesson.id).is_some(), ..LessonBoard::new(lesson.title.clone(), lesson.intro.clone()) };
                     Game::lesson(core.registry.clone(), active.handle.side(), board)
                 }
-                None => Game::new(core.registry.clone(), active.handle.side()),
+                None => match &active.online {
+                    Some(online) => Game::online(
+                        core.registry.clone(),
+                        active.handle.side(),
+                        crate::models::game::Online { watching: online.watching, notice: online.notice.clone() },
+                    ),
+                    None => Game::new(core.registry.clone(), active.handle.side()),
+                },
             };
             Some((game, active.handle.side()))
         }
@@ -942,7 +949,11 @@ fn save_report(core: &ClientCore, handle: &netrunner_client::play::MatchHandle) 
     let Some(dir) = &core.reports_dir else {
         return (format!("No bug report saved: there is no data directory; set {}", netrunner_client::bug_report::REPORTS_DIR_ENV), None);
     };
-    let (header, history) = handle.record();
+    // A game online is the host's: this end has only its masked view of
+    // it, which does not replay.
+    let Some((header, history)) = handle.record() else {
+        return ("No bug report saved: a game online is the host's to record, and this client holds only its view of it".to_string(), None);
+    };
     match netrunner_client::bug_report::save(dir, &header, &history) {
         Ok(path) => (format!("Bug report saved to {} — it is under Replays, or open it with `netrunner_cli replay {}`", path.display(), path.display()), Some(path)),
         Err(error) => (format!("No bug report saved: {error}"), None),
@@ -1554,7 +1565,15 @@ pub(crate) fn controls(
     // Where the board's Menu and Quit lead: back to the tracks from a
     // lesson, which is where the next one is picked.
     let from_learn = active.as_ref().is_some_and(|active| active.lesson.is_some() || active.starter.is_some());
-    let way_out = if from_learn { AppScreen::Learn } else { AppScreen::MainMenu };
+    // And back to Play Online from a game there, where the next is found.
+    let online = active.as_ref().is_some_and(|active| active.online.is_some());
+    let way_out = if from_learn {
+        AppScreen::Learn
+    } else if online {
+        AppScreen::Online
+    } else {
+        AppScreen::MainMenu
+    };
     // A starter game is dealt again from here; a game from the form goes
     // back to the form, which reopens on its choice.
     let starter = active.as_ref().and_then(|active| active.starter);
@@ -1823,7 +1842,23 @@ fn redraw(
     }
 }
 
-fn status_line(game: &Game) -> String {
+/// The status line: whose turn it is and where, and online the host's
+/// clock and a reconnect under way — which count seconds, so a game
+/// online redraws the line every frame (`online_status`). `link` is the
+/// connection's state; a link down for good is the stall panel's to say.
+fn status_line(game: &Game, link: Option<&netrunner_client::connection::Link>) -> String {
+    let now = std::time::Instant::now();
+    let mut line = board_status(game);
+    if let Some((side, deadline)) = game.clock {
+        line = format!("{line} · {side:?}'s clock: {}s", deadline.saturating_duration_since(now).as_secs());
+    }
+    match link {
+        Some(link @ netrunner_client::connection::Link::Reconnecting { .. }) => format!("{}\n{line}", link.status_line(now).unwrap_or_default()),
+        _ => line,
+    }
+}
+
+fn board_status(game: &Game) -> String {
     let Some(view) = &game.view else { return "Setting up…".to_string() };
     let phase = match view.phase {
         GamePhase::Mulligan(side) => format!("{side:?} decides on the opening hand"),
@@ -1832,9 +1867,25 @@ fn status_line(game: &Game) -> String {
         GamePhase::Discard { side, .. } => format!("{side:?} discards"),
         GamePhase::GameOver(side) => format!("{side:?} wins"),
     };
-    match game.replay {
-        Some(_) => format!("Turn {} · {phase} · from the {:?}'s chair", view.turn, game.side),
-        None => format!("Turn {} · {phase} · you are the {:?}", view.turn, game.side),
+    match (&game.replay, &game.online) {
+        (Some(_), _) => format!("Turn {} · {phase} · from the {:?}'s chair", view.turn, game.side),
+        (None, Some(online)) if online.watching => format!("Turn {} · {phase} · watching from the {:?}'s side", view.turn, game.side),
+        (None, _) => format!("Turn {} · {phase} · you are the {:?}", view.turn, game.side),
+    }
+}
+
+/// A game online's status line, every frame: the host's clock counts
+/// down and a reconnect counts up, and neither moves the board.
+fn online_status(active: Option<Res<ActiveMatch>>, model: Option<Res<Model>>, mut status: Query<&mut Text, With<StatusLine>>) {
+    let (Some(active), Some(model)) = (active, model) else { return };
+    if model.0.online.is_none() {
+        return;
+    }
+    let line = status_line(&model.0, active.handle.link().as_ref());
+    for mut text in &mut status {
+        if text.0 != line {
+            text.0 = line.clone();
+        }
     }
 }
 
@@ -4173,7 +4224,7 @@ fn side_panels(
     let Some(model) = model else { return };
     let game = &model.0;
     for mut text in &mut status {
-        text.0 = status_line(game);
+        text.0 = status_line(game, None);
     }
     let shown = core.settings.desktop.phase_bar;
     for (entity, mut node) in &mut phase {
@@ -4334,8 +4385,14 @@ fn spawn_overlay(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &Client
                     });
                 } else if let Some(over) = &game.over {
                     let won = over.winner == game.side;
-                    panel.spawn((Text::new(if won { "You win" } else { "You lose" }), theme.font(size::HEADING), TextColor(if won { theme.accent } else { theme.danger })));
-                    panel.spawn(widgets::dim(theme, format!("{:?} wins: {}", over.winner, end_reason(over.reason))));
+                    let watching = game.online.as_ref().is_some_and(|online| online.watching);
+                    if watching {
+                        panel.spawn((Text::new(format!("The {:?} wins", over.winner)), theme.font(size::HEADING), TextColor(theme.accent)));
+                        panel.spawn(widgets::dim(theme, end_reason_watched(over.winner, over.reason)));
+                    } else {
+                        panel.spawn((Text::new(if won { "You win" } else { "You lose" }), theme.font(size::HEADING), TextColor(if won { theme.accent } else { theme.danger })));
+                        panel.spawn(widgets::dim(theme, format!("{:?} wins: {}", over.winner, end_reason(over.reason))));
+                    }
                     if let Some(report) = &over.report {
                         for line in report.lines() {
                             panel.spawn((widgets::dim(theme, line), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
@@ -4346,8 +4403,14 @@ fn spawn_overlay(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &Client
                     }
                     end_table(panel, theme, &game.tally, game.side);
                     panel.spawn(widgets::row(12.0)).with_children(|row| {
-                        row.spawn(widgets::button(theme, "Play again", Val::Auto, Click::PlayAgain));
-                        row.spawn(widgets::button(theme, "Menu", Val::Auto, Click::Menu));
+                        // Online, the next game is found where this one
+                        // was: there is nobody here to deal it again.
+                        if game.online.is_some() {
+                            row.spawn(widgets::styled_button(theme, ButtonKind::Primary, "Play Online", Val::Auto, Click::Menu));
+                        } else {
+                            row.spawn(widgets::button(theme, "Play again", Val::Auto, Click::PlayAgain));
+                            row.spawn(widgets::button(theme, "Menu", Val::Auto, Click::Menu));
+                        }
                     });
                 } else if game.confirm_quit && game.lesson.is_some() {
                     panel.spawn(widgets::heading(theme, "Leave the lesson?"));
@@ -4361,6 +4424,13 @@ fn spawn_overlay(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &Client
                     panel.spawn(widgets::row(12.0)).with_children(|row| {
                         row.spawn(widgets::styled_button(theme, ButtonKind::Quiet, "Leave", Val::Auto, Click::Menu));
                         row.spawn(widgets::styled_button(theme, ButtonKind::Primary, "Begin", Val::Auto, Click::BeginLesson));
+                    });
+                } else if game.confirm_quit && game.online.is_some() {
+                    panel.spawn(widgets::heading(theme, "Concede the game?"));
+                    panel.spawn((widgets::dim(theme, "Leaving concedes: your opponent is told at once and wins. If you are the host, the game ends with you."), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
+                    panel.spawn(widgets::row(12.0)).with_children(|row| {
+                        row.spawn(widgets::button(theme, "Concede", Val::Auto, Click::ConfirmQuit));
+                        row.spawn(widgets::button(theme, "Keep playing", Val::Auto, Click::CancelQuit));
                     });
                 } else if game.confirm_quit {
                     panel.spawn(widgets::heading(theme, "Leave the game?"));
@@ -4875,6 +4945,19 @@ fn target_title(game: &Game, target: &Target) -> String {
         Target::Pile(pile) => pile.name().to_string(),
         Target::Rig => "Rig".to_string(),
         Target::Table => "Table".to_string(),
+    }
+}
+
+/// How a match a spectator watched ended, naming the side rather than
+/// "the other side", which is nobody's from the stands.
+fn end_reason_watched(winner: Side, reason: netrunner_client::play::GameEndReason) -> String {
+    use netrunner_client::play::GameEndReason;
+    let loser = winner.other();
+    match reason {
+        GameEndReason::Surrender => format!("the {loser:?} conceded"),
+        GameEndReason::Disconnected => format!("the {loser:?} disconnected"),
+        GameEndReason::TimedOut => format!("the {loser:?} ran out of time"),
+        other => end_reason(other).to_string(),
     }
 }
 

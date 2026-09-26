@@ -91,7 +91,9 @@ impl Pacer {
             MatchMessage::Awaiting { view } => (view.active_run.is_some(), Vec::new(), false),
             // A lesson's coaching waits in line behind the beats ahead of
             // it, so the panel changes with the decision it is about.
-            MatchMessage::Rejected { .. } | MatchMessage::Back { .. } | MatchMessage::Coach(_) => {
+            // A clock is for the decision it follows, so it waits in line
+            // with it.
+            MatchMessage::Rejected { .. } | MatchMessage::Back { .. } | MatchMessage::Coach(_) | MatchMessage::Clock { .. } => {
                 self.queue.push_back(Queued { beat: Beat::Apply(message), wait: Duration::ZERO });
                 return;
             }
@@ -99,6 +101,14 @@ impl Pacer {
             // take-back restores has none.
             MatchMessage::Rewound { .. } => {
                 self.in_run = false;
+                self.queue.push_back(Queued { beat: Beat::Apply(message), wait: Duration::ZERO });
+                return;
+            }
+            // A board shown as it stands — a remote seat's first, or its
+            // first after a reconnect — has no steps to pace: it lands at
+            // once, and what follows is paced from wherever it left the run.
+            MatchMessage::Snapshot { view } => {
+                self.in_run = view.active_run.is_some();
                 self.queue.push_back(Queued { beat: Beat::Apply(message), wait: Duration::ZERO });
                 return;
             }
@@ -229,6 +239,7 @@ mod tests {
                     Beat::Apply(MatchMessage::Rejected { reason }) => panic!("{reason}"),
                     Beat::Apply(MatchMessage::Back { .. } | MatchMessage::Rewound { .. }) => {}
                     Beat::Apply(MatchMessage::Coach(_) | MatchMessage::LessonComplete { .. }) => unreachable!("a local match is not a lesson"),
+                    Beat::Apply(MatchMessage::Snapshot { .. } | MatchMessage::Clock { .. }) => unreachable!("a local match sends neither"),
                     Beat::Apply(MatchMessage::Ended { .. } | MatchMessage::Stalled { .. }) => break 'game,
                 }
             }

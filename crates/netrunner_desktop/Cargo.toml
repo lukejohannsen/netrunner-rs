@@ -9,6 +9,8 @@ repository.workspace = true
 netrunner_core = { path = "../netrunner_core" }
 netrunner_client = { path = "../netrunner_client" }
 netrunner_card_sync = { path = "../netrunner_card_sync" }
+# Hosting runs a server in this process, as the terminal's Host a game does.
+netrunner_server = { path = "../netrunner_server" }
 # A feature subset, not the defaults: `ui` is the flexbox layer every
 # screen and the board are built from (it brings the windowing, rendering,
 # picking and text it needs), `audio` the sound bank, `png`/`jpeg`/`webp`
@@ -28,6 +30,8 @@ image = { version = "0.25", default-features = false }
 # task pools of its own, but the network code is tokio's, and a runtime
 # living in a resource on its own thread is the one place the two meet.
 tokio = { workspace = true }
+# The id of a match to watch, as the server lists it.
+uuid = "1"
 
 [features]
 # Enables the policy-network opponent, through the client crate.

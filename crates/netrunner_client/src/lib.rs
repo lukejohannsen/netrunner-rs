@@ -31,7 +31,11 @@
 //! with no I/O, and `remote` the one tokio driver that plays a match through
 //! it.
 //! `hosting` is a game served from the player's own machine: the socket,
-//! the addresses to give out and the router asked to open the port.
+//! the addresses to give out and the router asked to open the port — and
+//! the `Invitation` both clients' hosts draw from them. `online` is the
+//! deck a player brings to a game online, or the host's deal.
+//! `play::MatchHandle::start_remote` is the same handle over a seat at a
+//! host, so a board plays a game online as it plays one at home.
 
 pub mod access;
 pub mod backdrop;
@@ -49,6 +53,7 @@ pub mod play;
 pub mod decks;
 pub mod guide;
 pub mod hosting;
+pub mod online;
 pub mod peer;
 pub mod learn;
 pub mod prose;

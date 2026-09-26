@@ -166,6 +166,6 @@ impl PluginGroup for NetrunnerDesktopPlugins {
             .add(screens::new_game::NewGamePlugin)
             .add(screens::game::GamePlugin)
             .add(screens::replay::ReplayPlugin)
-            .add(screens::stubs::StubScreensPlugin)
+            .add(screens::online::OnlinePlugin)
     }
 }

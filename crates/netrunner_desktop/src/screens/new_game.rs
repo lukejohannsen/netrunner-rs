@@ -58,6 +58,10 @@ pub struct ActiveMatch {
     /// The starter game being played, when this is one: Play again deals
     /// it again, and leaving goes back to Learn to Play.
     pub starter: Option<Starter>,
+    /// A game at a host (`screens::online`): leaving goes back to Play
+    /// Online, and the server, when this person hosts, rides here for as
+    /// long as the match does.
+    pub online: Option<crate::screens::online::OnlineMatch>,
 }
 
 /// A starter game, as Learn to Play names it: the person's chair, and
@@ -352,7 +356,7 @@ fn start_with(core: &ClientCore, choice: &StartChoice, seed: u64, record: Option
         record,
     };
     let handle = MatchHandle::start_local(spec)?;
-    Ok(ActiveMatch { handle, choice: Some(choice.clone()), lesson: None, starter: None })
+    Ok(ActiveMatch { handle, choice: Some(choice.clone()), lesson: None, starter: None, online: None })
 }
 
 /// An unrecorded game on the default decks against the middle rung, the

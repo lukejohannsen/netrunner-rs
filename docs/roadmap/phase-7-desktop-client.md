@@ -5410,6 +5410,105 @@ symbols raw ("1[credit]"). That is how every menu button draws an
 ability's clause, so the coach quotes it the same way. A button that
 draws the symbol is its own change.
 
+## 7. Online — DONE (25 September 2026)
+
+Play Online was the last stub. It is now the terminal's screen of the
+same name drawn as the desktop's forms are: **host** a game on this
+machine and give the opponent an address or a ticket, **join** one by
+address or ticket, or **watch** one from a server's list. It stands on
+Phase 4 §6 — the sans-IO connection, its driver, `hosting` and `peer` —
+and adds nothing to the server or the wire.
+
+**The board plays a game online through the handle it already holds.**
+`MatchHandle::start_remote` is the same handle over a seat at a host:
+a thread reads the connection's channel and sends the messages a local
+match sends, so `models::game` and the pacer take a remote game with two
+new messages and no new path. That was `play`'s promise from §3 ("a later
+phase feeds the same messages off a socket, and the board cannot tell").
+The two messages:
+
+- `MatchMessage::Snapshot` — a board with no action behind it: the host's
+  opening view, and the first after a reconnect, whose missed actions the
+  host does not replay (Phase 4 §2). No transition, no log line but a
+  "Reconnected" note, and an `Awaiting` after it when the view lists an
+  action.
+- `MatchMessage::Clock` — a host's turn clock, counted down in the status
+  line.
+
+**An action is two messages on the wire and one on the board.** The host
+sends an action's view and then its log entry, and the board computes its
+transitions from the pair, so the feed (`play::Feed`, pure and tested
+alone) holds a view until its entry arrives. **Which views are snapshots
+is told, not guessed.** The first view after a place is one; so is the
+first after a resume, and to know that the connection now passes on the
+`MatchJoined` (or `Spectating`) a resume is answered with, after
+`Link::Up` (`connection::Connection::seated`). Rejected: reading the
+link's `watch` beside the channel — the link can go down and up again
+before the reader reaches a message sent before the drop — and waiting a
+beat for an entry that may not come, which makes a correctness question
+a timing one.
+
+**A remote seat is asked whenever its view lists an action**, as the
+terminal's remote client always did: the host accepts an action from the
+seat it is not waiting on (a rez in the Runner's window), so the thread
+does not decide who may act. **Nothing online is taken back or recorded**
+(`MatchHandle::rewind` refuses, `record` is `None`): the host holds the
+game, and this end has only its masked view of it, which does not replay.
+The gear's "Save a bug report" says so. **Leaving concedes**
+(`ClientMessage::Surrender`, then the connection closes), so the opponent
+is told at once rather than after the host's 30-second grace; a spectator
+just leaves. The end panel names the winner from the stands, and offers
+Play Online, not Play again.
+
+**Host runs the server in this process, as the terminal does**, and the
+server rides in `ActiveMatch` for as long as the match does. A host who
+leaves concedes first, and the server is let go three seconds later
+(`screens::online::HostedServer`), because a server stopped at once took
+the concession down with it and left the opponent waiting out a
+reconnect. A server given up before anyone joined stops at once, so its
+port is free to host on again. The desktop depends on `netrunner_server`
+for this, as the terminal does: `netrunner_client` may not name it.
+
+**Shared with the terminal, not copied:** the deck a player brings or
+the host's deal (`netrunner_client::online`, lifted out of the terminal's
+screen) and everything a host gives out, in reading order —
+ticket, router, addresses (`hosting::Invitation` and its `Way`s, lifted
+out of the terminal's `Hosting` and `hosting_status`, whose words are
+unchanged).
+
+**The screen** (`screens::online`, state in `models::online`): Home is
+the main menu's rows, three pills each with what it does; Host is who
+can join as pills (this machine, my network, the internet), the port and
+the deck; Join is the address or ticket, the room and the deck; Watch is
+the server, its matches as buttons and which side of the table to sit
+nearer. Hosting shows every way in with a Copy beside it, a ticket
+wrapping at any character. **A ticket is pasted, not typed:** every text
+field now takes Ctrl+V (Cmd+V), and the address field has a Paste
+button. Escape steps back a page, then off the screen.
+`NETRUNNER_ONLINE=host|join|watch|hosting|ticket` opens a page for a
+screenshot; `ticket` hosts with a ticket naming this machine's own
+addresses, so looking at it asks no relay and no router.
+
+**Verified.** `tests/online.rs` drives the real plugins: the desktop
+hosts on a free port, a second player joins through the driver, both are
+seated against each other, the board opens on the host's view, a second
+desktop lists the host's matches and watches from the Runner's side
+(asked nothing, leaving without a question), and the host's leaving
+reaches the guest as `GameEnded { Surrender }`.
+`a_seat_at_a_host_plays_through_the_same_messages` plays forty actions
+of a real host through the handle. The feed's rules are unit tests; the
+form's are model tests. The terminal's online tests pass on the lifted
+pieces unchanged in what they assert. Screenshots at 2560×1600 of Home,
+Host, Join, Watch and a hosting page with a ticket and a network
+address, each with its Copy. Workspace tests green and workspace clippy
+silent.
+
+**Not done:** the board as a spectator sees it — its own chair's hand
+empty, neither hand being theirs to see — is tested on the model and not
+yet looked at on the screen. The desktop's settings screen does not edit the relay; the
+file does, as for the terminal. A resume over a ticket is the driver's
+ordinary resume and is still tested only over TCP.
+
 ## 8. Borrowed from jinteki — OPEN (19 September 2026)
 
 From [`docs/jinteki-comparison.md`](../jinteki-comparison.md) §5, in the

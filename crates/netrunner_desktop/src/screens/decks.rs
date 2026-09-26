@@ -462,6 +462,15 @@ pub fn read_clipboard(clipboard: Option<&mut bevy::clipboard::Clipboard>) -> Res
     }
 }
 
+/// Puts text on the clipboard and says so — a host's ticket or address.
+pub fn write_clipboard_text(clipboard: Option<&mut bevy::clipboard::Clipboard>, text: String) -> String {
+    match clipboard.map(|clipboard| clipboard.set_text(text)) {
+        Some(Ok(())) => "Copied to the clipboard".to_string(),
+        Some(Err(error)) => format!("The clipboard could not be written: {error}"),
+        None => "There is no clipboard to write here".to_string(),
+    }
+}
+
 /// Puts a decklist on the clipboard and says so.
 pub fn write_clipboard(clipboard: Option<&mut bevy::clipboard::Clipboard>, text: String, name: &str) -> String {
     match clipboard.map(|clipboard| clipboard.set_text(text)) {

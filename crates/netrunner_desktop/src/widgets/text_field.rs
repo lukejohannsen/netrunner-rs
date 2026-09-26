@@ -7,6 +7,9 @@
 //! forty lines here against a widget whose focus and cursor plumbing the
 //! screen would still have to own. If a screen ever needs more than a
 //! line (deck notes), that is the point to adopt `EditableText`.
+//!
+//! **Ctrl+V (Cmd+V) pastes**, its line breaks dropped: a host's ticket is
+//! a few hundred characters that nobody types (Phase 7 §7).
 
 use bevy::input::keyboard::{Key, KeyboardInput};
 use bevy::input::ButtonState;
@@ -44,7 +47,10 @@ pub fn edit_text_fields(
     mut fields: Query<(Entity, &mut TextField, &Children)>,
     mut texts: Query<&mut Text>,
     mut captured: ResMut<InputCaptured>,
+    held: Option<Res<ButtonInput<KeyCode>>>,
+    mut clipboard: Option<ResMut<bevy::clipboard::Clipboard>>,
 ) {
+    let command = held.is_some_and(|held| held.any_pressed([KeyCode::ControlLeft, KeyCode::ControlRight, KeyCode::SuperLeft, KeyCode::SuperRight]));
     let escape_taken = captured.0;
     if !fields.is_empty() {
         captured.0 = true;
@@ -65,6 +71,15 @@ pub fn edit_text_fields(
                     field.text.pop();
                 }
                 Key::Space => push(&mut field, ' '),
+                Key::Character(chars) if command && chars.eq_ignore_ascii_case("v") => {
+                    if let Some(bevy::clipboard::ClipboardRead::Ready(Ok(text))) = clipboard.as_deref_mut().map(|clipboard| clipboard.fetch_text()) {
+                        for c in text.lines().map(str::trim).collect::<String>().chars().filter(|c| !c.is_control()) {
+                            push(&mut field, c);
+                        }
+                    }
+                }
+                // Another shortcut, not text.
+                Key::Character(_) if command => {}
                 Key::Character(chars) => {
                     for c in chars.chars().filter(|c| !c.is_control()) {
                         push(&mut field, c);

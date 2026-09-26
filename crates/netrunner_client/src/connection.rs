@@ -226,12 +226,14 @@ impl Connection {
                 self.back_up();
                 self.events.push_back(Event::Queued(position));
             }
-            (Phase::Greeting { .. } | Phase::Queued, ServerMessage::MatchJoined { assigned_side, session_token, corp_deck, runner_deck, .. }) => {
+            (Phase::Greeting { .. } | Phase::Queued, message @ ServerMessage::MatchJoined { .. }) => {
+                let ServerMessage::MatchJoined { assigned_side, session_token, ref corp_deck, ref runner_deck, .. } = message else { unreachable!("matched above") };
                 self.token = Some(session_token);
-                self.seated(Viewer::Player(assigned_side), Some(session_token), (corp_deck, runner_deck));
+                let decks = (corp_deck.clone(), runner_deck.clone());
+                self.seated(Viewer::Player(assigned_side), Some(session_token), decks, message);
             }
-            (Phase::Greeting { .. }, ServerMessage::Spectating { .. }) => {
-                self.seated(Viewer::Spectator, None, (String::new(), String::new()));
+            (Phase::Greeting { .. }, message @ ServerMessage::Spectating { .. }) => {
+                self.seated(Viewer::Spectator, None, (String::new(), String::new()), message);
             }
             (Phase::Greeting { .. } | Phase::Queued, ServerMessage::ConnectRejected { reason } | ServerMessage::ResumeRejected { reason }) => {
                 self.fail(ConnectionError::Rejected(reason));
@@ -356,10 +358,21 @@ impl Connection {
 
     // --- transitions ----------------------------------------------------
 
-    fn seated(&mut self, viewer: Viewer, session_token: Option<Uuid>, decks: (String, String)) {
+    /// A place, first or taken back. **A place taken back is passed on
+    /// as the message that gave it** (`MatchJoined`, `Spectating`), after
+    /// `Link::Up`, so whoever reads the match's messages knows, in order,
+    /// that the view which follows is a fresh one with no action behind
+    /// it (`play::MatchHandle::start_remote`): the server does not replay
+    /// what a seat missed (Phase 4 §2), and a view that arrives alone is
+    /// otherwise indistinguishable from one whose log entry is on its way.
+    /// The link's `watch` could not say it: it may have gone down and up
+    /// again before a reader gets to a message that was sent before the
+    /// drop.
+    fn seated(&mut self, viewer: Viewer, session_token: Option<Uuid>, decks: (String, String), message: ServerMessage) {
         self.phase = Phase::Joined;
         if self.joined {
             self.back_up();
+            self.events.push_back(Event::Message(message));
         } else {
             self.joined = true;
             self.retry = None;
@@ -475,7 +488,10 @@ mod tests {
         assert!(matches!(sent(&mut conn)[..], [ClientMessage::Resume { session_token }] if session_token == token));
         assert!(!conn.submit(ClientMessage::Surrender), "held until the seat is back");
         conn.on_message(joined(token), t0);
-        assert!(matches!(&events(&mut conn)[..], [Event::Link(Link::Up)]), "a resume is not a second Joined");
+        assert!(
+            matches!(&events(&mut conn)[..], [Event::Link(Link::Up), Event::Message(ServerMessage::MatchJoined { .. })]),
+            "a resume is not a second Joined, and the place is passed on to mark the fresh view"
+        );
         assert!(conn.submit(ClientMessage::Surrender));
     }
 
@@ -565,7 +581,7 @@ mod tests {
         conn.on_open(t0);
         assert!(matches!(sent(&mut conn)[..], [ClientMessage::Spectate { .. }]), "a spectator has no token: it asks again");
         conn.on_message(ServerMessage::Spectating { match_id }, t0);
-        assert!(matches!(events(&mut conn).last(), Some(Event::Link(Link::Up))));
+        assert!(matches!(&events(&mut conn)[..], [.., Event::Link(Link::Up), Event::Message(ServerMessage::Spectating { .. })]));
     }
 
     #[test]

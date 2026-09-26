@@ -39,6 +39,20 @@
 //! anywhere (Phase 1.75 §6). A lesson keeps no record and takes nothing
 //! back: it is a scripted board, and a take-back would unteach the step.
 //!
+//! **A remote seat is the same handle over a socket** (`start_remote`,
+//! Phase 7 §7): a thread reads the connection's channel
+//! (`remote::Joined`) and sends the messages a local match sends, so the
+//! board does not know where the game is. The wire says an action as two
+//! messages — its view, then its log entry — where a local match says one
+//! `Applied`, so the view is held until its entry arrives (`Feed`); a view
+//! with no action behind it — the first at a place, the first after a
+//! reconnect — is a [`MatchMessage::Snapshot`]. The host decides who may
+//! act, not the thread: a seat is asked whenever its view lists an action,
+//! as the terminal's remote client always did, because the server accepts
+//! an action from the seat it is not waiting on (a rez in the Runner's
+//! window). There is no take-back online and no record to keep: the host
+//! holds the game, and this end holds only its view of it.
+//!
 //! **A local game is casual, so a take-back costs nothing.** The session
 //! still says which kind each one is (`Rewind::Free`, `Rewind::Undo`) and
 //! the messages still carry it, because that line is the one a rated game
@@ -50,11 +64,13 @@ use std::path::PathBuf;
 use std::sync::mpsc::{self, Receiver, Sender, TryRecvError};
 use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
+use std::time::Duration;
 
 use netrunner_bots::{Level, Personality};
 use netrunner_core::cards::CardRegistry;
 use netrunner_core::decks::DeckFile;
-use netrunner_core::rules::{DeckOrder, GameState, MatchRules, PlayerAction, Side};
+use netrunner_core::rules::{DeckOrder, GameState, MatchRules, PlayerAction, Side, Viewer};
+use netrunner_protocol::{ClientMessage, ServerMessage};
 use netrunner_core::view::ClientView;
 use netrunner_core::tutorial::Lesson;
 use netrunner_session::lesson::{LessonSession, LessonStep};
@@ -73,7 +89,9 @@ pub use netrunner_session::GameEndReason;
 /// that keeps its log (to recount `tally::Tally` after a take-back) names it.
 pub use netrunner_session::PublicHistoryEntry;
 
+use crate::connection::Link;
 use crate::record::{self, BotKind, RecordReport, SeatRecord, SeatRecordSpec};
+use crate::remote::Joined;
 
 /// Everything a local game against a rung needs: the two decks, which
 /// chair is the person's, the rung and style of the other, the seed, and
@@ -129,6 +147,17 @@ pub enum MatchMessage {
     Back { rewind: Option<Rewind> },
     /// The human must choose from `view.legal_actions`.
     Awaiting { view: Box<ClientView> },
+    /// The board as it stands, with no action behind it: a remote seat's
+    /// first view, and its first after a reconnect, whose missed actions
+    /// the host does not replay (Phase 4 §2). Nothing moved *to* here, so
+    /// there is no transition and no log line; an `Awaiting` follows when
+    /// the view lists an action. A local match never sends it.
+    Snapshot { view: Box<ClientView> },
+    /// `side` has `remaining` to answer the decision it was just offered,
+    /// or forfeits: a host running a turn clock says so once per decision
+    /// (`ServerMessage::DecisionClock`), and the client counts down
+    /// itself. A local match has no clock.
+    Clock { side: Side, remaining: Duration },
     /// The person's last move was taken back: `view` is the board it was
     /// made from and `removed` is how many `Applied` entries no longer
     /// happened, newest first — the log drops them and the board snaps
@@ -182,6 +211,15 @@ enum Command {
     Quit,
 }
 
+/// Where the match is: a session on a thread of this process, or a seat
+/// at a host, reached through the connection's channel.
+enum Driver {
+    Local(Sender<Command>),
+    /// `tx` is `None` once the person has left: dropping the last sender
+    /// is how the connection knows to close (`remote`'s module doc).
+    Remote { tx: Option<tokio::sync::mpsc::UnboundedSender<ClientMessage>>, link: tokio::sync::watch::Receiver<Link> },
+}
+
 /// A running match, as the client holds it. Dropping it quits the game
 /// the way Escape does in the terminal — a loss from turn 3 on.
 ///
@@ -190,13 +228,17 @@ enum Command {
 /// is the whole cost, and it keeps `std::sync::mpsc` in place of a
 /// crate for one channel.
 pub struct MatchHandle {
-    commands: Sender<Command>,
+    driver: Driver,
     messages: Mutex<Receiver<MatchMessage>>,
     human: Side,
+    /// Who the views are for: the chair's side, or a spectator's.
+    viewer: Viewer,
     registry: Arc<CardRegistry>,
     finished: bool,
     thread: Option<JoinHandle<()>>,
-    header: MatchRecordHeader,
+    /// What the match was set up from; `None` for a remote one, whose
+    /// seed and decks are the host's.
+    header: Option<MatchRecordHeader>,
     /// The match thread's history, mirrored after every applied action and
     /// every take-back, so `record` can be read on a frame without asking
     /// the thread anything. **A mirror, not a request**: the thread may be
@@ -262,13 +304,14 @@ impl MatchHandle {
             .spawn(move || drive(session, human, record, &mirror, command_rx, message_tx))
             .map_err(|e| format!("could not start the match thread: {e}"))?;
         Ok(Self {
-            commands: command_tx,
+            driver: Driver::Local(command_tx),
             messages: Mutex::new(message_rx),
             human,
+            viewer: Viewer::Player(human),
             registry,
             finished: false,
             thread: Some(thread),
-            header,
+            header: Some(header),
             history,
         })
     }
@@ -308,20 +351,76 @@ impl MatchHandle {
             .spawn(move || drive_lesson(session, first, &words, &mirror, command_rx, message_tx))
             .map_err(|e| format!("could not start the lesson thread: {e}"))?;
         Ok(Self {
-            commands: command_tx,
+            driver: Driver::Local(command_tx),
             messages: Mutex::new(message_rx),
             human,
+            viewer: Viewer::Player(human),
             registry,
             finished: false,
             thread: Some(thread),
-            header,
+            header: Some(header),
             history,
+        })
+    }
+
+    /// A place at a host's match, played or watched through the channel
+    /// pair the connection handed out (`remote::spawn`, the online
+    /// screens). `chair` is where a spectator sits to watch; a player
+    /// sits in their own seat's. The thread it starts reads the channel
+    /// and ends when the connection does.
+    ///
+    /// **A spectator's view lists no action**, so nothing is ever asked of
+    /// one, and its board is the intersection of what the two players see
+    /// (`Viewer::Spectator`): the chair only decides which side of the
+    /// table is drawn nearer.
+    pub fn start_remote(registry: Arc<CardRegistry>, joined: Joined, chair: Side) -> Result<Self, String> {
+        let Joined { viewer, tx, rx, link, .. } = joined;
+        let human = match viewer {
+            Viewer::Player(side) => side,
+            Viewer::Spectator => chair,
+        };
+        let (message_tx, message_rx) = mpsc::channel();
+        let closed = link.clone();
+        let thread = thread::Builder::new()
+            .name("netrunner-remote".to_string())
+            .spawn(move || drive_remote(rx, &closed, message_tx))
+            .map_err(|e| format!("could not start the match thread: {e}"))?;
+        Ok(Self {
+            driver: Driver::Remote { tx: Some(tx), link },
+            messages: Mutex::new(message_rx),
+            human,
+            viewer,
+            registry,
+            finished: false,
+            thread: Some(thread),
+            header: None,
+            history: Arc::new(Mutex::new(Vec::new())),
         })
     }
 
     /// The chair the person sits in.
     pub fn side(&self) -> Side {
         self.human
+    }
+
+    /// Who the views are for: a player's seat, or a spectator.
+    pub fn viewer(&self) -> Viewer {
+        self.viewer
+    }
+
+    /// Whether the match is a host's, played over a connection.
+    pub fn is_remote(&self) -> bool {
+        matches!(self.driver, Driver::Remote { .. })
+    }
+
+    /// The connection's state, for a remote match; `None` for a local
+    /// one. Read, not sent: a reconnect's line counts the seconds, so a
+    /// screen asks every frame (`Link::status_line`).
+    pub fn link(&self) -> Option<Link> {
+        match &self.driver {
+            Driver::Local(_) => None,
+            Driver::Remote { link, .. } => Some(link.borrow().clone()),
+        }
     }
 
     pub fn registry(&self) -> &CardRegistry {
@@ -372,7 +471,11 @@ impl MatchHandle {
     /// is the next `Applied` or `Rejected`. `Err` only if the match is
     /// already over.
     pub fn submit(&self, action: PlayerAction) -> Result<(), String> {
-        self.commands.send(Command::Submit(action)).map_err(|_| "the match has ended".to_string())
+        match &self.driver {
+            Driver::Local(commands) => commands.send(Command::Submit(action)).map_err(|_| "the match has ended".to_string()),
+            Driver::Remote { tx: Some(tx), .. } => tx.send(ClientMessage::SubmitAction(action)).map_err(|_| "the connection has closed".to_string()),
+            Driver::Remote { tx: None, .. } => Err("you have left the match".to_string()),
+        }
     }
 
     /// Asks for the last move back. Answered by `Rewound`, or by
@@ -385,7 +488,11 @@ impl MatchHandle {
     /// filters. It costs nothing, whichever kind it is: a local game is
     /// casual (the module doc).
     pub fn rewind(&self) -> Result<(), String> {
-        self.commands.send(Command::Rewind).map_err(|_| "the match has ended".to_string())
+        match &self.driver {
+            Driver::Local(commands) => commands.send(Command::Rewind).map_err(|_| "the match has ended".to_string()),
+            // `Back` is never sent for one, so no client offers it.
+            Driver::Remote { .. } => Err("a game online cannot take a move back".to_string()),
+        }
     }
 
     /// The match so far as a record that replays: the header it was set
@@ -395,9 +502,14 @@ impl MatchHandle {
     ///
     /// It may trail the board by the action whose `Applied` is in flight,
     /// never lead it, and it is always a prefix that replays.
-    pub fn record(&self) -> (MatchRecordHeader, MatchHistory) {
+    ///
+    /// `None` for a remote match: the host has the seed, the decks and the
+    /// actions, and this end has only its masked view of them, which does
+    /// not replay.
+    pub fn record(&self) -> Option<(MatchRecordHeader, MatchHistory)> {
+        let header = self.header.clone()?;
         let entries = self.history.lock().map(|entries| entries.clone()).unwrap_or_default();
-        (self.header.clone(), MatchHistory::from_entries(entries))
+        Some((header, MatchHistory::from_entries(entries)))
     }
 
     /// `Ended` or `Stalled` has been received; nothing more will come.
@@ -408,8 +520,27 @@ impl MatchHandle {
     /// Leaves the game. A forfeit is recorded from turn 3 on, as the
     /// terminal's `q` does. The thread is not waited for: it may be inside
     /// a search, and it will see the quit when that search returns.
+    ///
+    /// Online, leaving a match still being played concedes it — the
+    /// opponent is told at once rather than after the host's grace for a
+    /// dropped seat — and then the connection is closed. A spectator, or
+    /// a match already over, just closes it.
     pub fn quit(&mut self) {
-        let _ = self.commands.send(Command::Quit);
+        let finished = self.finished;
+        let viewer = self.viewer;
+        match &mut self.driver {
+            Driver::Local(commands) => {
+                let _ = commands.send(Command::Quit);
+            }
+            Driver::Remote { tx, .. } => {
+                if let Some(tx) = tx.take()
+                    && !finished
+                    && matches!(viewer, Viewer::Player(_))
+                {
+                    let _ = tx.send(ClientMessage::Surrender);
+                }
+            }
+        }
     }
 
     /// `quit`, then wait for the thread — so a test can assert the record
@@ -684,6 +815,116 @@ fn drive_lesson(
     }
 }
 
+/// A remote seat's wire messages as the messages a local match sends, so
+/// the board cannot tell the two apart. Pure: the thread that reads the
+/// channel (`drive_remote`) hands it each message in order, and it is
+/// tested without one.
+///
+/// **An action is two messages on the wire and one here.** The host sends
+/// the view an action left and then the log entry that says what it was
+/// (`MatchSession::broadcast_applied`), because the terminal renders the
+/// entry against the view it arrives after; a local match sends them
+/// together as `Applied`, and the board computes its transitions from the
+/// pair. So a view is held until its entry comes.
+///
+/// **A view with no entry is a snapshot**, and the feed is told which ones
+/// those are rather than guessing by waiting: the first after a place is
+/// taken (the host's opening view), and the first after the connection
+/// passes on a place taken back (`connection::Connection::seated`). One a
+/// newer view overtakes is flushed as a snapshot too, and an entry with no
+/// view held is put on the last one — neither happens with this host, and
+/// both keep the board moving if a later one does.
+#[derive(Default)]
+struct Feed {
+    held: Option<Box<ClientView>>,
+    last: Option<Box<ClientView>>,
+    /// The next view is a snapshot: true at the start, and after a place
+    /// is passed on.
+    fresh: bool,
+    ended: bool,
+}
+
+impl Feed {
+    fn new() -> Feed {
+        Feed { fresh: true, ..Feed::default() }
+    }
+
+    fn message(&mut self, message: ServerMessage, out: &mut Vec<MatchMessage>) {
+        match message {
+            ServerMessage::StateUpdate(view) => {
+                if let Some(stale) = self.held.take() {
+                    out.push(MatchMessage::Snapshot { view: stale.clone() });
+                    self.last = Some(stale);
+                }
+                if std::mem::take(&mut self.fresh) {
+                    self.last = Some(view.clone());
+                    out.push(MatchMessage::Snapshot { view: view.clone() });
+                    Feed::ask(view, out);
+                } else {
+                    self.held = Some(view);
+                }
+            }
+            ServerMessage::ActionLog(entry) => {
+                let Some(view) = self.held.take().or_else(|| self.last.clone()) else { return };
+                self.last = Some(view.clone());
+                out.push(MatchMessage::Applied { entry: *entry, view: view.clone() });
+                Feed::ask(view, out);
+            }
+            ServerMessage::ActionRejected { reason } => out.push(MatchMessage::Rejected { reason }),
+            ServerMessage::DecisionClock { side, remaining } => out.push(MatchMessage::Clock { side, remaining }),
+            ServerMessage::GameEnded { winner, reason } => {
+                self.ended = true;
+                out.push(match self.held.take().or_else(|| self.last.take()) {
+                    Some(view) => MatchMessage::Ended { winner, reason, view, report: None, notice: None },
+                    None => MatchMessage::Stalled { reason: format!("the {winner:?} won before this client was shown the board") },
+                });
+            }
+            // A place taken back: the host's fresh view follows.
+            ServerMessage::MatchJoined { .. } | ServerMessage::Spectating { .. } => self.fresh = true,
+            // The handshake's, answered before the channel is handed out.
+            ServerMessage::Queued { .. } | ServerMessage::ConnectRejected { .. } | ServerMessage::MatchList { .. } | ServerMessage::ResumeRejected { .. } => {}
+        }
+    }
+
+    /// The seat is asked whenever its view lists an action: the host, not
+    /// this end, decides who may act (the module doc).
+    fn ask(view: Box<ClientView>, out: &mut Vec<MatchMessage>) {
+        if !view.legal_actions.is_empty() {
+            out.push(MatchMessage::Awaiting { view });
+        }
+    }
+
+    /// The connection is gone for good. Nothing more to say after the end
+    /// of the match; before it, the match has stopped, and `why` says why.
+    fn closed(&self, why: String) -> Option<MatchMessage> {
+        (!self.ended).then_some(MatchMessage::Stalled { reason: why })
+    }
+}
+
+/// The remote match's thread: the connection's messages through the
+/// feed, until the connection ends or the client drops its handle. A
+/// thread and not a task, so the handle needs no runtime of its own: the
+/// connection's receiver can be read blocking from outside one.
+fn drive_remote(mut rx: tokio::sync::mpsc::UnboundedReceiver<ServerMessage>, link: &tokio::sync::watch::Receiver<Link>, messages: Sender<MatchMessage>) {
+    let mut feed = Feed::new();
+    let mut out = Vec::new();
+    while let Some(message) = rx.blocking_recv() {
+        feed.message(message, &mut out);
+        for message in out.drain(..) {
+            if messages.send(message).is_err() {
+                return;
+            }
+        }
+    }
+    let why = match &*link.borrow() {
+        Link::Down(error) => format!("the connection was lost: {error}"),
+        _ => "the connection to the host closed".to_string(),
+    };
+    if let Some(message) = feed.closed(why) {
+        let _ = messages.send(message);
+    }
+}
+
 /// Brings the client's copy of the history level with the session's: cut
 /// back to it after a take-back, then the entries since added. Called
 /// after every change, so a take-back never leaves an entry behind that a
@@ -741,6 +982,7 @@ mod tests {
                 MatchMessage::Rejected { reason } => panic!("a legal action was rejected: {reason}"),
                 message @ (MatchMessage::Ended { .. } | MatchMessage::Stalled { .. }) => return (message, applied),
                 MatchMessage::Coach(_) | MatchMessage::LessonComplete { .. } => unreachable!("a local match is not a lesson"),
+                MatchMessage::Snapshot { .. } | MatchMessage::Clock { .. } => unreachable!("a local match sends neither"),
             }
         }
     }
@@ -802,6 +1044,7 @@ mod tests {
                 MatchMessage::Rejected { reason } => panic!("{reason}"),
                 message @ (MatchMessage::Ended { .. } | MatchMessage::Stalled { .. }) => break message,
                 MatchMessage::Coach(_) | MatchMessage::LessonComplete { .. } => unreachable!("a local match is not a lesson"),
+                MatchMessage::Snapshot { .. } | MatchMessage::Clock { .. } => unreachable!("a local match sends neither"),
             }
         };
         assert!(undone, "the first legal action is a click sooner or later");
@@ -829,7 +1072,7 @@ mod tests {
                 MatchMessage::Back { rewind } => offered = rewind,
                 MatchMessage::Awaiting { view } => {
                     decisions += 1;
-                    let (header, history) = handle.record();
+                    let (header, history) = handle.record().expect("a local match keeps its record");
                     assert_eq!(header.bot, Some(RecordedBot { side: Side::Corp, level: Level::Novice, personality: header.bot.unwrap().personality }));
                     let (mut state, _) = header.setup(&registry).expect("the header sets up");
                     for entry in history.entries() {
@@ -847,6 +1090,7 @@ mod tests {
                 MatchMessage::Rejected { reason } => panic!("{reason}"),
                 MatchMessage::Ended { .. } | MatchMessage::Stalled { .. } => break,
                 MatchMessage::Coach(_) | MatchMessage::LessonComplete { .. } => unreachable!("a local match is not a lesson"),
+                MatchMessage::Snapshot { .. } | MatchMessage::Clock { .. } => unreachable!("a local match sends neither"),
             }
         }
         assert!(taken_back >= 2, "the test took {taken_back} moves back; it is about take-backs");
@@ -923,6 +1167,7 @@ mod tests {
                 MatchMessage::Ended { .. } => break,
                 MatchMessage::Stalled { reason } => panic!("{reason}"),
                 MatchMessage::Coach(_) | MatchMessage::LessonComplete { .. } => unreachable!("a local match is not a lesson"),
+                MatchMessage::Snapshot { .. } | MatchMessage::Clock { .. } => unreachable!("a local match sends neither"),
             }
         }
         assert!(lone > 0, "the Runner is asked to pass alone during the Corp's turn");
@@ -985,6 +1230,7 @@ mod tests {
                 MatchMessage::Ended { .. } => break,
                 MatchMessage::Stalled { reason } => panic!("{reason}"),
                 MatchMessage::Coach(_) | MatchMessage::LessonComplete { .. } => unreachable!("a local match is not a lesson"),
+                MatchMessage::Snapshot { .. } | MatchMessage::Clock { .. } => unreachable!("a local match sends neither"),
             }
         }
         }
@@ -1050,7 +1296,7 @@ mod lesson_tests {
             let MatchMessage::LessonComplete { view, outro } = last else { panic!("{id}: ended with {last:?}") };
             assert!(!outro.is_empty(), "{id}: no outro");
             assert!(handle.is_finished());
-            let (header, history) = handle.record();
+            let (header, history) = handle.record().expect("a local match keeps its record");
             assert!(matches!(header.order, netrunner_core::rules::DeckOrder::Fixed { .. }), "{id}: the record forgot the stacked decks");
             let (mut state, _) = header.setup(&registry).unwrap();
             for entry in history.entries() {
@@ -1077,5 +1323,131 @@ mod lesson_tests {
         }
         handle.rewind().unwrap();
         assert!(matches!(handle.wait(), Some(MatchMessage::Rejected { .. })));
+    }
+
+    /// A view of a fresh game from `side`'s chair, for the feed.
+    fn view_for(side: Side) -> Box<ClientView> {
+        let registry = crate::decks::sample_deck_registry();
+        let corp = netrunner_core::decks::by_id("discretion_advised").unwrap().to_deck();
+        let runner = netrunner_core::decks::by_id("stolen_goods").unwrap().to_deck();
+        let (state, _) = GameState::setup(&corp, &runner, &registry, 1).unwrap();
+        Box::new(netrunner_core::view::build_client_view(&state, &registry, side))
+    }
+
+    fn entry() -> Box<PublicHistoryEntry> {
+        Box::new(PublicHistoryEntry {
+            turn_number: 1,
+            side: Side::Corp,
+            action: netrunner_core::rules::PublicAction::Visible(PlayerAction::KeepHand),
+            events: Vec::new(),
+        })
+    }
+
+    fn fed(feed: &mut Feed, message: ServerMessage) -> Vec<MatchMessage> {
+        let mut out = Vec::new();
+        feed.message(message, &mut out);
+        out
+    }
+
+    /// The host's opening view has no action behind it and is shown as it
+    /// stands; after it, a view waits for its log entry, and the two are
+    /// one `Applied` — then an `Awaiting`, when the view lists an action.
+    #[test]
+    fn a_view_waits_for_its_entry_and_the_first_is_a_snapshot() {
+        let mut feed = Feed::new();
+        let corp = view_for(Side::Corp);
+        assert!(!corp.legal_actions.is_empty(), "the Corp decides on its hand first");
+        let out = fed(&mut feed, ServerMessage::StateUpdate(corp.clone()));
+        assert!(matches!(&out[..], [MatchMessage::Snapshot { .. }, MatchMessage::Awaiting { .. }]), "{out:?}");
+
+        assert!(fed(&mut feed, ServerMessage::StateUpdate(corp.clone())).is_empty(), "held until its entry");
+        let out = fed(&mut feed, ServerMessage::ActionLog(entry()));
+        assert!(matches!(&out[..], [MatchMessage::Applied { .. }, MatchMessage::Awaiting { .. }]), "{out:?}");
+
+        // The Runner is asked nothing while the Corp decides.
+        let mut runner = Feed::new();
+        let out = fed(&mut runner, ServerMessage::StateUpdate(view_for(Side::Runner)));
+        assert!(matches!(&out[..], [MatchMessage::Snapshot { .. }]), "{out:?}");
+    }
+
+    /// A place taken back is passed on ahead of the host's fresh view, so
+    /// that view is shown at once rather than held for an entry that
+    /// never comes — the seat would otherwise wait on a board nobody was
+    /// asked about.
+    #[test]
+    fn the_view_after_a_reconnect_is_a_snapshot() {
+        let mut feed = Feed::new();
+        let view = view_for(Side::Corp);
+        fed(&mut feed, ServerMessage::StateUpdate(view.clone()));
+        let token = uuid::Uuid::new_v4();
+        let rejoined = ServerMessage::MatchJoined { match_id: token, assigned_side: Side::Corp, session_token: token, corp_deck: String::new(), runner_deck: String::new() };
+        assert!(fed(&mut feed, rejoined).is_empty());
+        let out = fed(&mut feed, ServerMessage::StateUpdate(view));
+        assert!(matches!(&out[..], [MatchMessage::Snapshot { .. }, MatchMessage::Awaiting { .. }]), "{out:?}");
+    }
+
+    /// The end names the last board, and a connection that closes after it
+    /// says nothing more; one that closes before it stops the match with
+    /// the reason.
+    #[test]
+    fn the_end_carries_the_last_view_and_a_close_before_it_is_a_stall() {
+        let mut feed = Feed::new();
+        assert!(matches!(feed.closed("gone".into()), Some(MatchMessage::Stalled { reason }) if reason == "gone"));
+        fed(&mut feed, ServerMessage::StateUpdate(view_for(Side::Corp)));
+        fed(&mut feed, ServerMessage::StateUpdate(view_for(Side::Corp)));
+        let out = fed(&mut feed, ServerMessage::GameEnded { winner: Side::Runner, reason: GameEndReason::Surrender });
+        assert!(matches!(&out[..], [MatchMessage::Ended { winner: Side::Runner, report: None, .. }]), "{out:?}");
+        assert!(feed.closed("gone".into()).is_none(), "the match is over; the socket closing is not news");
+        let out = fed(&mut Feed::new(), ServerMessage::DecisionClock { side: Side::Corp, remaining: Duration::from_secs(9) });
+        assert!(matches!(&out[..], [MatchMessage::Clock { side: Side::Corp, .. }]));
+    }
+
+    /// A seat at a real host, through the handle a board holds: the host's
+    /// opening view, then an `Applied` per action with an `Awaiting`
+    /// whenever the seat has something to do — the local match's messages
+    /// — with no record to keep and no move to take back. Leaving concedes,
+    /// and the host lets the match go.
+    #[test]
+    fn a_seat_at_a_host_plays_through_the_same_messages() {
+        use netrunner_server::serve::{ServeBotKind, ServeOptions, Server};
+        let runtime = tokio::runtime::Builder::new_multi_thread().enable_all().worker_threads(2).build().unwrap();
+        let url = runtime.block_on(async {
+            let options = ServeOptions { bot_runner: ServeBotKind::Heuristic, seed: Some(1), ..ServeOptions::default() };
+            let server = Server::bind("127.0.0.1:0", options).await.unwrap();
+            let url = format!("ws://{}", server.local_addr().unwrap());
+            tokio::spawn(server.run());
+            url
+        });
+        let hello = crate::remote::connect_message("tester", Some(Side::Corp), None, None);
+        let joined = runtime.block_on(crate::remote::connect(&url, crate::connection::Goal::Play(hello), |_| {})).unwrap();
+        let registry = Arc::new(crate::decks::sample_deck_registry());
+        let mut handle = MatchHandle::start_remote(registry, joined, Side::Runner).unwrap();
+        assert_eq!((handle.side(), handle.viewer(), handle.is_remote()), (Side::Corp, Viewer::Player(Side::Corp), true), "a player sits in their seat's chair");
+        assert!(handle.record().is_none(), "the host keeps the record");
+        assert_eq!(handle.link(), Some(Link::Up));
+        assert!(matches!(handle.wait(), Some(MatchMessage::Snapshot { .. })), "the host's opening view");
+
+        let mut applied = 0;
+        while applied < 40 {
+            match handle.wait().expect("the match runs on") {
+                MatchMessage::Awaiting { view } => handle.submit(view.legal_actions[0].clone()).unwrap(),
+                MatchMessage::Applied { entry, view } => {
+                    applied += 1;
+                    assert_eq!(view.viewer, Viewer::Player(Side::Corp));
+                    assert!(entry.turn_number <= view.turn.max(1), "an entry travels with the view it left");
+                }
+                // The first action is an idle seat's at times, and the
+                // host may have moved on before it arrived.
+                MatchMessage::Rejected { .. } | MatchMessage::Clock { .. } | MatchMessage::Snapshot { .. } => {}
+                other => panic!("not a message of a game in progress: {other:?}"),
+            }
+        }
+        assert!(handle.rewind().is_err(), "no take-back online");
+        drop(handle);
+        let deadline = std::time::Instant::now() + Duration::from_secs(10);
+        while !runtime.block_on(crate::remote::list_matches(&url)).unwrap().0.is_empty() {
+            assert!(std::time::Instant::now() < deadline, "the conceded match is still running");
+            std::thread::sleep(Duration::from_millis(20));
+        }
     }
 }
