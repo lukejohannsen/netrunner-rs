@@ -125,6 +125,14 @@ struct Config {
     /// with a player who proved no key, is never rated.
     #[arg(long)]
     data_dir: Option<std::path::PathBuf>,
+
+    /// (serve mode) Rebuild `ratings.json` from `results.jsonl` in the
+    /// data directory before serving. The results log is the truth and the
+    /// book a cache of it: a corrupt book, a change to the rating system,
+    /// or a game voided by deleting its line is put right by this, and
+    /// every receipt is checked against the daemon's key as it is folded.
+    #[arg(long, requires = "data_dir")]
+    rebuild_ratings: bool,
 }
 
 /// `NsgFormat` as a command-line value — a separate enum for the same
@@ -213,6 +221,10 @@ async fn run_headless(config: &Config) -> Result<(), Box<dyn std::error::Error>>
 
 async fn run_serve(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt::init();
+    if let (true, Some(dir)) = (config.rebuild_ratings, &config.data_dir) {
+        let folded = netrunner_server::serve::rebuild_ratings(dir)?;
+        tracing::info!(folded, "rating book rebuilt from the results log");
+    }
     let options = ServeOptions {
         bot_runner: config.bot_runner,
         bot_level: config.bot_level,

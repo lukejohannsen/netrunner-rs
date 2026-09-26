@@ -245,7 +245,9 @@ impl App {
                 | ServerMessage::ResumeRejected { .. }
                 | ServerMessage::Challenge { .. }
                 | ServerMessage::Identified { .. }
-                | ServerMessage::IdentifyRefused { .. } => {}
+                | ServerMessage::IdentifyRefused { .. }
+                | ServerMessage::SignSeat { .. }
+                | ServerMessage::Rated { .. } => {}
                 // An attached connection's lobby replies, which a game
                 // never carries.
                 ServerMessage::Attached { .. }

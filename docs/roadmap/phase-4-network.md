@@ -57,7 +57,22 @@ Narration widened from 3 events to 31 in the same pass, on a criterion stated on
 - A daemon with a `--data-dir` writes `matches/<yyyy-mm>/<match id>.jsonl` when the match ends. Every match is written, a bot's and a stall included, because a record is evidence for a dispute or a bug report as much as for a rating. The month comes from a `civil_from_days` of a dozen lines rather than a calendar crate.
 - **Written at the end, not appended as it goes:** a crash loses that match, and its seats with it. Appending would buy the prefix of an unfinished game at a write per action.
 - Tests: the record's header names the brought deck whole and the seed; every recorded action applies again from `header.setup`; the month directory is right at a year's last second and on a leap day.
-- **Next:** stage (c), seat commitments and receipts. Stage (d) will show the player their key, with "losing this file loses you; copying it plays as you elsewhere" beside it.
+**Stage (c): seat commitments, receipts, `Rated`, the results log** (`feat/signed-receipts`, 26 September 2026).
+- **Signed statements** (`netrunner_identity::Signed`): the key, the exact payload text and a signature over `tag ‖ '\n' ‖ payload`. A reader verifies the bytes before parsing them, so there is no canonical form to get wrong. `sha256_hex` names what a statement does not carry.
+- **Seat commitment** (`netrunner_protocol::statements::SeatStatement`, tag `netrunner-seat-v1`). After `MatchJoined`, each proved seat gets `SignSeat { statement, salt }` naming the match, server key, side, both keys, a deck hash and the start time. The client machine signs it unasked and unshown, but only when the statement names its own key, the server that challenged it, the match and side it was seated in, and the hash of the deck it brought for that side. It answers `SeatSigned`, which the server keeps if it verifies.
+  - **The deck hash is salted, and the salt is told to that seat alone.** A receipt carries both commitments to both players, and an unsalted hash of a well-known list would confirm a guess — leaking what §7 keeps private.
+  - **Withholding the signature is not a way out of a loss.** A game is rated on the proved keys; a missing commitment only leaves the receipt without it.
+- **Receipt** (`statements::Receipt`, tag `netrunner-receipt-v1`, signed by the server). It names both seats (name, key, commitment), the winner and reason, whether it is rated, the server's build, a card-pool hash (every definition's JSON in card order), the record file's SHA-256, the start and end times, and `action_chain: None`, reserved.
+  - **Kept beside the record** as `<match id>.receipt.json`, not as a footer line: the record stays exactly what replay reads, and the hash is of exactly that file.
+  - Signed for every match; only a rated one reaches the log and `Rated`.
+- **`ServerMessage::Rated { receipt, before, after }`** goes to each seat of a rated game after `GameEnded`, with that seat's side's rating before and after. It is sent to the seat's *current* connection: `SeatTicket::tx` is replaced on resume. Phase 3 §2's "not built: telling the remote client its new rating" closes here.
+- **`results.jsonl` is the truth, `ratings.json` a cache.** The receipt is appended under the same lock as the book is folded, so the log's order is the fold's. `--rebuild-ratings` (serve mode, needs `--data-dir`) refolds it before serving and checks every receipt against the daemon's key. A line nobody signed stops the rebuild and names its line.
+- Tests (`tests/identity.rs`):
+  - a rated game's receipt: signed by the server and no other key, both commitments verifying, the record's hash matching the kept file, the same receipt beside it and in the log, and ratings before and after for each side;
+  - a withheld signature: still rated, with the commitment missing;
+  - the book rebuilt byte for byte after two games, and a forged line refused.
+  - Machine tests: a statement true to the seat is signed; another deck, side or salt is not.
+- **Next:** stage (d), what the clients show. Stage (d) will show the player their key, with "losing this file loses you; copying it plays as you elsewhere" beside it.
 
 **Settled by §6 item 2 (25 September 2026):** the messages live in `netrunner_protocol`, which `netrunner_client` depends on without the server. **Open:** Key rotation (a successor statement signed by the old key) is recorded and not designed.
 

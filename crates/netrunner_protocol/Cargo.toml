@@ -18,5 +18,9 @@ netrunner_core = { path = "../netrunner_core" }
 netrunner_session = { path = "../netrunner_session" }
 # A connection proves its key with a signed challenge (Phase 4 §5).
 netrunner_identity = { path = "../netrunner_identity" }
+# `Rated` carries a rating before and after.
+netrunner_rating = { path = "../netrunner_rating" }
 serde = { workspace = true }
+# `statements` names a deck by a hash of its canonical text.
+serde_json = { workspace = true }
 uuid = { version = "1", features = ["v4", "serde"] }

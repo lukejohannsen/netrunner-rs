@@ -378,6 +378,7 @@ impl MatchSession {
                         | ClientMessage::Attach { .. }
                         | ClientMessage::Identify { .. }
                         | ClientMessage::Prove { .. }
+                        | ClientMessage::SeatSigned { .. }
                         | ClientMessage::ListLobbies
                         | ClientMessage::CreateLobby { .. }
                         | ClientMessage::JoinLobby { .. }

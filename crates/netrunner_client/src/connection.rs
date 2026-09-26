@@ -61,6 +61,7 @@ use std::time::{Duration, Instant};
 
 use netrunner_core::rules::Viewer;
 use netrunner_identity::PublicKey;
+use netrunner_protocol::statements::{deck_hash, SeatStatement, SEAT_TAG};
 use netrunner_protocol::{Chair, ClientMessage, ServerMessage};
 use uuid::Uuid;
 
@@ -228,6 +229,11 @@ pub struct Connection {
     /// The key the server at this address must prove, once one is
     /// remembered or met.
     pinned: Option<PublicKey>,
+    /// The key the server challenged this connection with, and the match
+    /// and side it seated this player in: what a seat statement must name
+    /// before it is signed.
+    server_key: Option<PublicKey>,
+    seated_at: Option<(Uuid, netrunner_core::rules::Side)>,
     /// `GameEnded` has arrived: a drop after it is not resumed.
     ended: bool,
     retry: Option<Retry>,
@@ -245,6 +251,8 @@ impl Connection {
             token: None,
             joined: false,
             pinned: None,
+            server_key: None,
+            seated_at: None,
             ended: false,
             retry: None,
             dial_due: true,
@@ -315,6 +323,7 @@ impl Connection {
                         }
                     }
                 }
+                self.server_key = Some(server_key);
                 self.outbox.push_back(ClientMessage::Prove { signature: identity.prove(&server_key, &nonce) });
             }
             (Phase::Greeting { .. }, ServerMessage::Identified { .. }) => {
@@ -339,8 +348,9 @@ impl Connection {
                 self.events.push_back(Event::Queued(position));
             }
             (Phase::Greeting { .. } | Phase::Queued, message @ ServerMessage::MatchJoined { .. }) => {
-                let ServerMessage::MatchJoined { assigned_side, session_token, ref corp_deck, ref runner_deck, .. } = message else { unreachable!("matched above") };
+                let ServerMessage::MatchJoined { match_id, assigned_side, session_token, ref corp_deck, ref runner_deck } = message else { unreachable!("matched above") };
                 self.token = Some(session_token);
+                self.seated_at = Some((match_id, assigned_side));
                 let decks = (corp_deck.clone(), runner_deck.clone());
                 self.seated(Viewer::Player(assigned_side), Some(session_token), decks, message);
             }
@@ -356,6 +366,12 @@ impl Connection {
                 | ServerMessage::IdentifyRefused { reason },
             ) => {
                 self.fail(ConnectionError::Rejected(reason));
+            }
+            // Signed here, never shown: the player has nothing to decide.
+            (Phase::Joined, ServerMessage::SignSeat { statement, salt }) => {
+                if let Some(signature) = self.sign_seat(&statement, &salt) {
+                    self.outbox.push_back(ClientMessage::SeatSigned { signature });
+                }
             }
             (Phase::Joined, message) => {
                 if matches!(message, ServerMessage::GameEnded { .. }) {
@@ -436,6 +452,31 @@ impl Connection {
     pub fn close(&mut self) {
         self.phase = Phase::Done;
         self.outbox.clear();
+    }
+
+    /// This seat's signature over `statement`, if the statement names what
+    /// this connection knows to be true: this player's key, the server
+    /// that challenged it, the match and side it was seated in, and the
+    /// deck it brought for that side, hashed with `salt`. A statement
+    /// that names anything else is not signed — the game goes on, and the
+    /// receipt simply lacks this seat's word.
+    fn sign_seat(&self, statement: &str, salt: &str) -> Option<netrunner_identity::Signature> {
+        let Goal::Play(seat) = &self.goal else { return None };
+        let credentials = seat.credentials.as_deref()?;
+        let said: SeatStatement = serde_json::from_str(statement).ok()?;
+        let (match_id, side) = self.seated_at?;
+        let deck = match (&seat.chair, side) {
+            (Chair::Corp(deck), netrunner_core::rules::Side::Corp) | (Chair::Runner(deck), netrunner_core::rules::Side::Runner) => deck,
+            (Chair::Random { corp, .. }, netrunner_core::rules::Side::Corp) => corp,
+            (Chair::Random { runner, .. }, netrunner_core::rules::Side::Runner) => runner,
+            _ => return None,
+        };
+        let true_to_this_seat = said.key == credentials.identity.public_key()
+            && Some(said.server_key) == self.server_key
+            && said.match_id == match_id
+            && said.side == side
+            && said.deck_hash == deck_hash(salt, &deck.to_deck());
+        true_to_this_seat.then(|| credentials.identity.sign(SEAT_TAG, statement.to_string()).signature)
     }
 
     // --- outputs --------------------------------------------------------
@@ -882,5 +923,60 @@ mod tests {
         conn.poll_dial();
         conn.on_open(t0);
         assert!(matches!(sent(&mut conn)[..], [ClientMessage::Spectate { .. }]));
+    }
+
+    /// Seated through the key handshake, as the Corp in match `nil`.
+    fn seated_signed_in(t0: Instant) -> Connection {
+        let me = Identity::from_secret([1; 32]).public_key();
+        let mut conn = Connection::new(Goal::Play(signed_in()), t0);
+        conn.poll_dial();
+        conn.on_open(t0);
+        conn.on_message(challenge(false), t0);
+        conn.on_message(ServerMessage::Identified { key: me }, t0);
+        conn.on_message(ServerMessage::Attached { lobbies: vec![lobby()] }, t0);
+        conn.on_message(ServerMessage::LobbyJoined { lobby: lobby() }, t0);
+        conn.on_message(joined(Uuid::new_v4()), t0);
+        sent(&mut conn);
+        events(&mut conn);
+        conn
+    }
+
+    fn statement(deck: &netrunner_core::rules::Deck, side: Side) -> String {
+        serde_json::to_string(&SeatStatement {
+            match_id: Uuid::nil(),
+            server_key: server().public_key(),
+            side,
+            key: Identity::from_secret([1; 32]).public_key(),
+            opponent_key: None,
+            deck_hash: deck_hash("salt", deck),
+            started_at: 0,
+        })
+        .unwrap()
+    }
+
+    /// A statement true to this seat is signed, unasked and unshown.
+    #[test]
+    fn a_seat_statement_true_to_this_seat_is_signed() {
+        let t0 = Instant::now();
+        let mut conn = seated_signed_in(t0);
+        let brick = netrunner_core::decks::by_id("brick_stack").unwrap().to_deck();
+        let said = statement(&brick, Side::Corp);
+        conn.on_message(ServerMessage::SignSeat { statement: said.clone(), salt: "salt".into() }, t0);
+        let [ClientMessage::SeatSigned { signature }] = sent(&mut conn)[..] else { panic!("expected SeatSigned") };
+        assert_eq!(Identity::from_secret([1; 32]).public_key().verify(SEAT_TAG, said.as_bytes(), &signature), Ok(()));
+        assert!(events(&mut conn).is_empty(), "nothing for the screen");
+    }
+
+    /// Another deck, another side or another salt is not signed.
+    #[test]
+    fn a_seat_statement_that_names_anything_else_is_not_signed() {
+        let t0 = Instant::now();
+        let mut conn = seated_signed_in(t0);
+        let brick = netrunner_core::decks::by_id("brick_stack").unwrap().to_deck();
+        let other = netrunner_core::decks::by_id("stolen_goods").unwrap().to_deck();
+        for (said, salt) in [(statement(&other, Side::Corp), "salt"), (statement(&brick, Side::Runner), "salt"), (statement(&brick, Side::Corp), "pepper")] {
+            conn.on_message(ServerMessage::SignSeat { statement: said, salt: salt.into() }, t0);
+            assert!(sent(&mut conn).is_empty());
+        }
     }
 }

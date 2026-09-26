@@ -74,11 +74,13 @@ use netrunner_core::cards::CardRegistry;
 use netrunner_core::decks::{self, DeckCategory, DeckFile};
 use netrunner_core::format::NsgFormat;
 use netrunner_core::rules::{Deck, DeckOrder, GameState, MatchRules, Side};
-use netrunner_identity::{Identity, Nonce, PublicKey};
+use netrunner_identity::{Identity, Nonce, PublicKey, Signature, Signed};
+use netrunner_rating::Rating;
 use netrunner_rating::{Outcome, RatingBook, Track};
-use netrunner_session::{MatchHistory, MatchRecordHeader, RecordedBot};
+use netrunner_session::{MatchRecordHeader, RecordedBot};
 
 use crate::match_session::{Finished, MatchSession, PlayerSlot, ReattachHandle, TurnTimeout, DEFAULT_RECONNECT_GRACE};
+use crate::protocol::statements::{self, Receipt, ReceiptSeat, SeatStatement, RECEIPT_TAG, SEAT_TAG};
 use crate::protocol::{format_lobby_id, Chair, ClientMessage, LobbyInfo, MatchSummary, ServerMessage};
 use crate::fixtures::DealtMatchup;
 use crate::{fixtures, net};
@@ -285,6 +287,9 @@ struct SeatTicket {
     /// The lobby the seat's connection returns to after the game, which
     /// a resumed connection returns to too.
     lobby: String,
+    /// The seat's current connection, replaced when it is resumed: where
+    /// `Rated` goes once the match has let go of the seat.
+    tx: mpsc::UnboundedSender<ServerMessage>,
 }
 
 impl SeatTicket {
@@ -315,6 +320,23 @@ struct MatchEntry {
     format: NsgFormat,
     started_at: Instant,
     handle: ReattachHandle,
+    /// What each proved seat was asked to sign, Corp then Runner, and its
+    /// signature once it arrives (`Shared::accept_commitment`).
+    commitments: [Option<Commitment>; 2],
+}
+
+/// A seat statement sent to be signed.
+struct Commitment {
+    key: PublicKey,
+    payload: String,
+    signed: Option<Signed>,
+}
+
+fn seat_index(side: Side) -> usize {
+    match side {
+        Side::Corp => 0,
+        Side::Runner => 1,
+    }
 }
 
 /// An attached connection looking for a game (`Seek`), waiting for
@@ -350,7 +372,7 @@ impl PendingHuman {
             }),
             None => self.deck,
         };
-        SeatedPlayer { rating_id: self.key.map(|key| key.rating_id()), name: self.player_name, token: self.token, slot: self.slot, deck, lobby: Some(self.lobby), bot: None }
+        SeatedPlayer { key: self.key, name: self.player_name, token: self.token, slot: self.slot, deck, lobby: Some(self.lobby), bot: None }
     }
 
     /// The side this player must play, if their deck fixes one.
@@ -377,17 +399,18 @@ struct PlayerLobby {
     password: Option<String>,
 }
 
-/// A player about to be seated: the name `MatchList` will show, the id
-/// the rating book knows them by (`key:<base32>` for a player who proved a
-/// key; `None` for one who did not and for a bot, which is what leaves
-/// their game unrated), the token `MatchJoined` will carry (already
+/// A player about to be seated: the name `MatchList` will show, the key
+/// they proved (`None` for one who did not and for a bot, which is what
+/// leaves their game unrated), the token `MatchJoined` will carry (already
 /// issued if they came through the lobby, so one token spans queue and
 /// match), and the slot the session plays them through. A bot seat
 /// carries a token too, unused — cheaper than a second type for the one
 /// case that never resumes.
 struct SeatedPlayer {
     name: String,
-    rating_id: Option<String>,
+    /// The key the player proved; `None` for one who did not, and for a
+    /// bot.
+    key: Option<PublicKey>,
     token: Uuid,
     slot: PlayerSlot,
     /// The deck the player brought, which replaces whatever the daemon
@@ -537,6 +560,10 @@ struct Shared {
     /// Whether that key was read from the data directory and will be the
     /// same next run, rather than made at bind.
     lasting: bool,
+    /// A hash of every card definition the daemon plays with, which a
+    /// receipt names: a record replays only against the pool it was
+    /// played with.
+    card_pool: Arc<str>,
 }
 
 impl Shared {
@@ -580,18 +607,54 @@ impl Shared {
     /// await, so that is fine. A failed write is logged, not fatal: the
     /// ratings are already applied in memory and the next match's write
     /// carries them.
-    fn rate(&self, corp: &str, runner: &str, outcome: Outcome) {
-        let Some(dir) = &self.options.data_dir else { return };
-        let path = &dir.join(RATINGS_FILE);
+    ///
+    /// **The receipt is appended to `results.jsonl` under the same lock**,
+    /// so the log's order is the order the book was folded in, and
+    /// `rebuild_ratings` reproduces it exactly. Returns each side's
+    /// rating before and after; `None` when the daemon keeps nothing.
+    fn rate(&self, corp: &str, runner: &str, outcome: Outcome, receipt: &Signed) -> Option<[(Rating, Rating); 2]> {
+        let dir = self.options.data_dir.as_ref()?;
         let mut registry = self.lock();
+        let corp_before = registry.ratings.standing(Track::HumanVsHuman, corp).unwrap_or_default().corp.rating;
+        let runner_before = registry.ratings.standing(Track::HumanVsHuman, runner).unwrap_or_default().runner.rating;
         let (corp_after, runner_after) = registry.ratings.record(Track::HumanVsHuman, corp, runner, outcome);
         tracing::info!(
             corp, runner, ?outcome,
             corp_rating = corp_after.corp.rating.rating, runner_rating = runner_after.runner.rating.rating,
             "match rated"
         );
-        if let Err(error) = save_ratings(path, &registry.ratings) {
+        let results = dir.join(RESULTS_FILE);
+        let line = serde_json::to_string(receipt).expect("a signed receipt serializes");
+        let appended = std::fs::OpenOptions::new().create(true).append(true).open(&results).and_then(|mut file| {
+            use std::io::Write;
+            writeln!(file, "{line}")
+        });
+        if let Err(error) = appended {
+            tracing::warn!(path = %results.display(), ?error, "could not append to the results log");
+        }
+        let path = dir.join(RATINGS_FILE);
+        if let Err(error) = save_ratings(&path, &registry.ratings) {
             tracing::warn!(path = %path.display(), ?error, "could not save the rating book");
+        }
+        Some([(corp_before, corp_after.corp.rating), (runner_before, runner_after.runner.rating)])
+    }
+
+    /// A seat's signature over the statement it was sent, kept if it is
+    /// that seat's key's over that statement. Anything else — a seat with
+    /// no statement, a second signature, a signature that does not hold —
+    /// is ignored: the game goes on, and its receipt lacks the
+    /// commitment.
+    fn accept_commitment(&self, token: Uuid, signature: Signature) {
+        let mut registry = self.lock();
+        let Some(ticket) = registry.seats.get(&token) else { return };
+        let (match_id, side) = (ticket.match_id, ticket.side);
+        let Some(commitment) = registry.matches.get_mut(&match_id).and_then(|entry| entry.commitments[seat_index(side)].as_mut()) else { return };
+        if commitment.signed.is_some() {
+            return;
+        }
+        match commitment.key.verify(SEAT_TAG, commitment.payload.as_bytes(), &signature) {
+            Ok(()) => commitment.signed = Some(Signed { key: commitment.key, payload: commitment.payload.clone(), signature }),
+            Err(_) => tracing::info!(%match_id, ?side, "a seat commitment did not verify"),
         }
     }
 
@@ -606,19 +669,24 @@ impl Shared {
     /// it; appending would buy the prefix of a game nobody finished, at a
     /// write per action on the hottest path the daemon has. A failed write
     /// is logged, as a failed rating write is.
-    fn keep_record(&self, match_id: Uuid, header: &MatchRecordHeader, history: &MatchHistory) {
+    ///
+    /// **The receipt sits beside it** (`<match id>.receipt.json`), not in
+    /// a footer line as the design first sketched: the record stays
+    /// exactly what `MatchHistory::read_jsonl` and replay read, and the
+    /// hash the receipt signs is of exactly that file.
+    fn keep_record(&self, match_id: Uuid, record: &[u8], receipt: &Signed, ended_at: u64) {
         let Some(dir) = &self.options.data_dir else { return };
-        let path = record_path(dir, match_id, unix_now());
+        let path = record_path(dir, match_id, ended_at);
         let written = (|| {
             std::fs::create_dir_all(path.parent().expect("a record sits in a month's directory"))?;
-            let mut bytes = Vec::new();
-            history.write_jsonl(header, &mut bytes)?;
             let tmp = path.with_extension("jsonl.tmp");
-            std::fs::write(&tmp, bytes)?;
-            std::fs::rename(tmp, &path)
+            std::fs::write(&tmp, record)?;
+            std::fs::rename(tmp, &path)?;
+            let receipt_json = serde_json::to_string_pretty(receipt).expect("a signed receipt serializes");
+            write_atomically(&path.with_extension("receipt.json"), &receipt_json)
         })();
         match written {
-            Ok(()) => tracing::info!(%match_id, path = %path.display(), actions = history.len(), "match record kept"),
+            Ok(()) => tracing::info!(%match_id, path = %path.display(), "match record kept"),
             Err(error) => tracing::warn!(%match_id, path = %path.display(), ?error, "could not keep the match record"),
         }
     }
@@ -638,6 +706,60 @@ impl Shared {
 
 const IDENTITY_FILE: &str = "identity.key";
 const MATCHES_DIR: &str = "matches";
+const RESULTS_FILE: &str = "results.jsonl";
+
+/// What a receipt names the server's build by.
+const ENGINE: &str = concat!(env!("CARGO_PKG_NAME"), " ", env!("CARGO_PKG_VERSION"));
+
+/// SHA-256 over every card definition's JSON, in card order: a registry
+/// is a `HashMap`, and its own serialization would hash differently from
+/// one run to the next.
+fn card_pool_hash(cards: &CardRegistry) -> String {
+    let mut definitions: Vec<_> = cards.iter().collect();
+    definitions.sort_by(|a, b| a.id.cmp(&b.id));
+    let mut text = String::new();
+    for definition in definitions {
+        text.push_str(&serde_json::to_string(definition).expect("a card definition serializes"));
+        text.push('\n');
+    }
+    netrunner_identity::sha256_hex(text.as_bytes())
+}
+
+/// Rebuilds `ratings.json` in `data_dir` from `results.jsonl`, folding
+/// every rated receipt through `RatingBook::record` in the order it was
+/// appended — the book is a cache of the log, and this is how a corrupt
+/// book, a change to the rating system's parameters, or a voided game
+/// (its line deleted) is put right. Every receipt must be this daemon's
+/// key's; one that is not, or that does not verify, stops the rebuild
+/// and names its line, rather than fold a result nobody signed. Returns
+/// how many games were folded.
+pub fn rebuild_ratings(data_dir: &Path) -> std::io::Result<usize> {
+    let invalid = |line: usize, error: String| std::io::Error::new(std::io::ErrorKind::InvalidData, format!("{RESULTS_FILE} line {line}: {error}"));
+    let identity_path = data_dir.join(IDENTITY_FILE);
+    let identity = Identity::from_file_text(&std::fs::read_to_string(&identity_path)?)
+        .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, format!("{}: {error}", identity_path.display())))?;
+    let server_key = identity.public_key();
+    let results = data_dir.join(RESULTS_FILE);
+    let text = if results.exists() { std::fs::read_to_string(&results)? } else { String::new() };
+    let mut book = RatingBook::default();
+    let mut folded = 0;
+    for (index, line) in text.lines().enumerate().filter(|(_, line)| !line.trim().is_empty()) {
+        let signed: Signed = serde_json::from_str(line).map_err(|error| invalid(index + 1, error.to_string()))?;
+        let receipt = Receipt::read(&signed, &server_key).map_err(|error| invalid(index + 1, error))?;
+        let (Some(corp), Some(runner), Some(winner)) = (receipt.corp.key, receipt.runner.key, receipt.winner) else { continue };
+        if !receipt.rated {
+            continue;
+        }
+        let outcome = match winner {
+            Side::Corp => Outcome::CorpWin,
+            Side::Runner => Outcome::RunnerWin,
+        };
+        book.record(Track::HumanVsHuman, &corp.rating_id(), &runner.rating_id(), outcome);
+        folded += 1;
+    }
+    save_ratings(&data_dir.join(RATINGS_FILE), &book)?;
+    Ok(folded)
+}
 const PLAYERS_FILE: &str = "players.json";
 const RATINGS_FILE: &str = "ratings.json";
 
@@ -826,12 +948,14 @@ impl Server {
         for &format in &options.formats {
             check_rotating_pool(&cards, format)?;
         }
+        let cards_for_hash = cards.clone();
         let shared = Shared {
             cards,
             registry: Arc::new(StdMutex::new(Registry { ratings, players, ..Registry::default() })),
             options,
             base_seed,
             pinned,
+            card_pool: card_pool_hash(&cards_for_hash).into(),
             identity: Arc::new(identity),
             lasting,
         };
@@ -988,6 +1112,9 @@ where
                 });
                 let (out_tx, out_rx) = mpsc::unbounded_channel::<ServerMessage>();
                 let (into_tx, into_rx) = mpsc::unbounded_channel::<ClientMessage>();
+                if let Some(held) = shared.lock().seats.get_mut(&session_token) {
+                    held.tx = out_tx.clone();
+                }
                 if ticket.handle.reattach(ticket.side, out_tx, into_rx).is_err() {
                     // Lost the race with the match ending between the
                     // liveness check and here. The bridge is already up,
@@ -1076,8 +1203,9 @@ fn seat_vs_bot(
     let (match_id, seed) = registry.allocate(shared.base_seed);
 
     let human_side = deck.side;
-    // Nothing against a bot is rated, so the person's id is never asked.
-    let human = SeatedPlayer { rating_id: None, name: player_name, token: Uuid::new_v4(), slot, deck: Some(deck), lobby: Some(lobby), bot: None };
+    // Nothing against a bot is rated, so the person's key is never asked
+    // for; the receipt names the seat by its name alone.
+    let human = SeatedPlayer { key: None, name: player_name, token: Uuid::new_v4(), slot, deck: Some(deck), lobby: Some(lobby), bot: None };
     // The same deal `start_match` will make — `decks_for` is a function of
     // the seed — so the bot's style can come off the deck it is about to
     // play. A pinned deck is an embedded id (`pin_deck`), so `by_id`
@@ -1095,7 +1223,7 @@ fn seat_vs_bot(
     let bot = match shared.options.bot_level {
         Some(level) => SeatedPlayer {
             name: styled(format!("{} bot", level.name()), personality),
-            rating_id: None,
+            key: None,
             token: Uuid::new_v4(),
             slot: PlayerSlot::Bot(level.spec(bot_side).with_personality(personality).agent(bot_seed)),
             deck: None,
@@ -1104,7 +1232,7 @@ fn seat_vs_bot(
         },
         None => SeatedPlayer {
             name: styled(kind.seat_name().to_string(), personality),
-            rating_id: None,
+            key: None,
             token: Uuid::new_v4(),
             slot: PlayerSlot::Bot(make_serve_agent(kind, bot_side, bot_seed, personality)),
             deck: None,
@@ -1195,7 +1323,30 @@ fn start_match(shared: &Shared, registry: &mut Registry, match_id: Uuid, seed: u
         .filter_map(|(player, side)| player.channel_tx().map(|tx| (side, player.token, tx.clone(), player.lobby.clone().unwrap_or_default())))
         .collect();
     let (corp_name, runner_name) = (corp.name, runner.name);
-    let (corp_rating_id, runner_rating_id) = (corp.rating_id, runner.rating_id);
+    let keys = [corp.key, runner.key];
+    let started_at = unix_now();
+    // What each proved seat is asked to sign, with a salt for its deck's
+    // hash that only it is told (`statements::deck_hash`).
+    let decks = [&dealt.corp, &dealt.runner];
+    let mut commitments: [Option<Commitment>; 2] = [None, None];
+    let mut sign_requests: Vec<(Side, ServerMessage)> = Vec::new();
+    for side in [Side::Corp, Side::Runner] {
+        let index = seat_index(side);
+        let Some(key) = keys[index] else { continue };
+        let salt = netrunner_identity::sha256_hex(&rand::random::<[u8; 16]>())[..32].to_string();
+        let statement = SeatStatement {
+            match_id,
+            server_key: shared.identity.public_key(),
+            side,
+            key,
+            opponent_key: keys[1 - index],
+            deck_hash: statements::deck_hash(&salt, decks[index]),
+            started_at,
+        };
+        let payload = serde_json::to_string(&statement).expect("a seat statement serializes");
+        sign_requests.push((side, ServerMessage::SignSeat { statement: payload.clone(), salt }));
+        commitments[index] = Some(Commitment { key, payload, signed: None });
+    }
 
     let session = MatchSession::new(state, shared.cards.clone(), corp.slot, runner.slot)
         .with_reconnect_grace(shared.options.reconnect_grace)
@@ -1209,6 +1360,7 @@ fn start_match(shared: &Shared, registry: &mut Registry, match_id: Uuid, seed: u
             format,
             started_at: Instant::now(),
             handle: handle.clone(),
+            commitments,
         },
     );
 
@@ -1221,8 +1373,13 @@ fn start_match(shared: &Shared, registry: &mut Registry, match_id: Uuid, seed: u
             runner_deck: runner_deck_id.clone(),
             handle: handle.clone(),
             lobby,
+            tx: tx.clone(),
         };
         let _ = tx.send(ticket.joined(session_token));
+        // After `MatchJoined`, before the session's first view.
+        for (_, request) in sign_requests.iter().filter(|(requested, _)| *requested == side) {
+            let _ = tx.send(request.clone());
+        }
         registry.seats.insert(session_token, ticket);
         tokens.push(session_token);
     }
@@ -1230,30 +1387,56 @@ fn start_match(shared: &Shared, registry: &mut Registry, match_id: Uuid, seed: u
     let shared = shared.clone();
     tokio::spawn(async move {
         let Finished { history, outcome, .. } = session.run_with_outcome().await;
-        shared.keep_record(match_id, &header, &history);
-        {
+        let (entry, tickets) = {
             let mut registry = shared.lock();
-            registry.matches.remove(&match_id);
-            for token in tokens {
-                registry.seats.remove(&token);
-            }
-        }
-        // Two identified people, or nothing: a seat with no rating id is a
-        // bot's or an unidentified player's. One key in both chairs is
-        // someone playing themselves, which would farm one role's rating
-        // off the other's.
-        let (Some(corp), Some(runner)) = (corp_rating_id, runner_rating_id) else { return };
-        if corp == runner {
+            let entry = registry.matches.remove(&match_id);
+            let tickets: Vec<SeatTicket> = tokens.iter().filter_map(|token| registry.seats.remove(token)).collect();
+            (entry, tickets)
+        };
+        let Some(entry) = entry else { return };
+        let mut record = Vec::new();
+        history.write_jsonl(&header, &mut record).expect("writing to memory cannot fail");
+        let ended_at = unix_now();
+
+        // Two proved people with different keys, a winner, and a daemon
+        // that keeps a book: one key in both chairs is someone playing
+        // themselves, which would farm one role's rating off the other's;
+        // a forfeit — surrender, disconnect, clock — is a loss like any
+        // other; a stall is nobody's.
+        let rated = matches!(keys, [Some(corp), Some(runner)] if corp != runner) && outcome.is_some() && shared.options.data_dir.is_some();
+        let [corp_commitment, runner_commitment] = entry.commitments.map(|commitment| commitment.and_then(|commitment| commitment.signed));
+        let receipt = Receipt {
+            match_id,
+            server_key: shared.identity.public_key(),
+            corp: ReceiptSeat { name: entry.corp, key: keys[0], commitment: corp_commitment },
+            runner: ReceiptSeat { name: entry.runner, key: keys[1], commitment: runner_commitment },
+            winner: outcome.map(|(winner, _)| winner),
+            reason: outcome.map(|(_, reason)| reason),
+            rated,
+            engine: ENGINE.to_string(),
+            card_pool: shared.card_pool.to_string(),
+            record: netrunner_identity::sha256_hex(&record),
+            started_at,
+            ended_at,
+            action_chain: None,
+        };
+        let signed = shared.identity.sign(RECEIPT_TAG, serde_json::to_string(&receipt).expect("a receipt serializes"));
+        shared.keep_record(match_id, &record, &signed, ended_at);
+        let ([Some(corp), Some(runner)], Some((winner, _))) = (keys, outcome) else { return };
+        if !rated {
             return;
         }
-        // A forfeit — surrender, disconnect, clock — is a loss like any
-        // other; a stall (`None`) is nobody's and goes unrated.
-        let outcome = match outcome {
-            Some((Side::Corp, _)) => Outcome::CorpWin,
-            Some((Side::Runner, _)) => Outcome::RunnerWin,
-            None => return,
+        let outcome = match winner {
+            Side::Corp => Outcome::CorpWin,
+            Side::Runner => Outcome::RunnerWin,
         };
-        shared.rate(&corp, &runner, outcome);
+        let Some(changes) = shared.rate(&corp.rating_id(), &runner.rating_id(), outcome, &signed) else { return };
+        // To each seat's current connection, which a resume may have
+        // replaced; the match has already let go of it.
+        for ticket in tickets {
+            let (before, after) = changes[seat_index(ticket.side)];
+            let _ = ticket.tx.send(ServerMessage::Rated { receipt: Box::new(signed.clone()), before, after });
+        }
     });
 }
 

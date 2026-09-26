@@ -35,6 +35,10 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 /// ever good for two of them.
 pub const AUTH_TAG: &[u8] = b"netrunner-auth-v1";
 
+/// Between a statement's tag and its payload, so no tag followed by a
+/// payload can ever read as another tag followed by another payload.
+const TAG_END: u8 = b'\n';
+
 /// What begins an identity file, so a file of some other kind is refused
 /// by name rather than read as 32 random bytes.
 const FILE_HEADER: &str = "netrunner-identity-v1";
@@ -74,6 +78,16 @@ impl Identity {
     /// `auth_statement(server_key, nonce)`.
     pub fn prove(&self, server_key: &PublicKey, nonce: &Nonce) -> Signature {
         Signature(self.0.sign(&auth_statement(server_key, nonce)).to_bytes())
+    }
+
+    /// `payload` signed under `tag`: a statement anyone holding this
+    /// key's public half can check (`Signed::verify`). The payload is
+    /// signed as the bytes it is, never re-serialized, so there is no
+    /// canonical form to get wrong — the envelope carries the very string
+    /// that was signed.
+    pub fn sign(&self, tag: &[u8], payload: String) -> Signed {
+        let signature = Signature(self.0.sign(&statement(tag, payload.as_bytes())).to_bytes());
+        Signed { key: self.public_key(), payload, signature }
     }
 
     /// The identity file's contents: a header line and the secret in
@@ -145,6 +159,14 @@ impl PublicKey {
     }
 }
 
+impl PublicKey {
+    /// Whether `signature` is this key's over `payload` under `tag`.
+    pub fn verify(&self, tag: &[u8], payload: &[u8], signature: &Signature) -> Result<(), IdentityError> {
+        let key = VerifyingKey::from_bytes(&self.0).map_err(|_| IdentityError::Unproved)?;
+        key.verify_strict(&statement(tag, payload), &ed25519_dalek::Signature::from_bytes(&signature.0)).map_err(|_| IdentityError::Unproved)
+    }
+}
+
 impl fmt::Display for PublicKey {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(&encode(&self.to_bytes()))
@@ -187,6 +209,36 @@ impl fmt::Debug for Signature {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "Signature({})", encode(&self.0))
     }
+}
+
+/// A statement and who signed it: a seat commitment, a receipt. The
+/// payload is kept as the exact text that was signed; a reader checks the
+/// signature over those bytes (`verify`) before it parses them.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Signed {
+    pub key: PublicKey,
+    pub payload: String,
+    pub signature: Signature,
+}
+
+impl Signed {
+    /// The payload, if `key` signed it under `tag`.
+    pub fn verify(&self, tag: &[u8]) -> Result<&str, IdentityError> {
+        self.key.verify(tag, self.payload.as_bytes(), &self.signature)?;
+        Ok(&self.payload)
+    }
+}
+
+/// What a statement signs: `tag ‖ '\n' ‖ payload`.
+fn statement(tag: &[u8], payload: &[u8]) -> Vec<u8> {
+    [tag, &[TAG_END], payload].concat()
+}
+
+/// SHA-256 of `bytes` in lower-case hex: how a statement names a file or
+/// a deck it does not carry.
+pub fn sha256_hex(bytes: &[u8]) -> String {
+    use sha2::Digest;
+    sha2::Sha256::digest(bytes).iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
 /// The bytes a login signs: `AUTH_TAG ‖ server key ‖ nonce`. Fixed-length
@@ -293,6 +345,18 @@ mod tests {
     fn a_key_that_is_not_a_point_or_not_32_bytes_is_refused_when_read() {
         assert!(matches!("abc".parse::<PublicKey>(), Err(IdentityError::BadKey(_))));
         assert!(serde_json::from_str::<PublicKey>("\"not base32!\"").is_err());
+    }
+
+    #[test]
+    fn a_statement_verifies_under_its_tag_and_its_bytes_only() {
+        let signed = key(1).sign(b"netrunner-test-v1", "{\"a\":1}".into());
+        assert_eq!(signed.verify(b"netrunner-test-v1"), Ok("{\"a\":1}"));
+        assert_eq!(signed.verify(b"netrunner-other-v1"), Err(IdentityError::Unproved), "another tag");
+        let tampered = Signed { payload: "{\"a\":2}".into(), ..signed.clone() };
+        assert_eq!(tampered.verify(b"netrunner-test-v1"), Err(IdentityError::Unproved), "another payload");
+        let back: Signed = serde_json::from_str(&serde_json::to_string(&signed).unwrap()).unwrap();
+        assert_eq!(back, signed);
+        assert_eq!(sha256_hex(b"abc"), "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
     }
 
     #[test]
