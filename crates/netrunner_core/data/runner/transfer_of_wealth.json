@@ -4,9 +4,6 @@
   "side": "Runner",
   "card_type": "Event",
   "cost": 0,
-  "subtypes": [
-    "Run"
-  ],
   "triggers": [
     {
       "trigger": "OnPlay",

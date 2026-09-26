@@ -5,9 +5,6 @@
   "card_type": "Hardware",
   "cost": 2,
   "unique": true,
-  "subtypes": [
-    "Console"
-  ],
   "triggers": [],
   "abilities": [
     {

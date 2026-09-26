@@ -4,9 +4,6 @@
   "side": "Runner",
   "card_type": "Hardware",
   "cost": 9,
-  "subtypes": [
-    "Console"
-  ],
   "counter_kind": "Credit",
   "recurring_credits": 2,
   "pays_for": [

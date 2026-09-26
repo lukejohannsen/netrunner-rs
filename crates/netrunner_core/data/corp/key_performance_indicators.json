@@ -4,9 +4,6 @@
   "side": "Corp",
   "card_type": "Operation",
   "cost": 1,
-  "subtypes": [
-    "Transaction"
-  ],
   "triggers": [
     {
       "trigger": "OnPlay",

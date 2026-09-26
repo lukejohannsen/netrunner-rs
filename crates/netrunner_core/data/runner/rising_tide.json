@@ -6,9 +6,6 @@
   "cost": 1,
   "strength": 1,
   "memory_cost": 1,
-  "subtypes": [
-    "Fracter"
-  ],
   "continuous": [
     {
       "kind": {

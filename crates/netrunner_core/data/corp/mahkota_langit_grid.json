@@ -4,9 +4,6 @@
   "side": "Corp",
   "card_type": "Upgrade",
   "cost": 2,
-  "subtypes": [
-    "Region"
-  ],
   "counter_kind": "Credit",
   "recurring_credits": 2,
   "pays_for": [

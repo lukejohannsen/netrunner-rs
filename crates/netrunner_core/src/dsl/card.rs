@@ -22,56 +22,190 @@ pub enum IceType {
     Sentry,
 }
 
-/// A printed subtype some card's text reads — first the two a reactive
-/// identity filters its trigger by (`EventFilter::Card(HasSubtype(..))`:
-/// Building a Better World's transactions, Noise's viruses) — distinct from
-/// `CardType`, which is a card's primary type, not a tag on top of it. Kept
-/// minimal, extend as new subtype-gated triggers are needed.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+/// A printed subtype: every word Comprehensive Rules 2.16.7 lists, spelled
+/// as the card prints it (`#[serde(rename)]` where Rust cannot), so a card's
+/// subtypes are its catalog keywords read into this type. Distinct from
+/// `CardType`, which is a card's primary type, not a tag on top of it.
+///
+/// **The whole list, once** (NSG card pool, Vantage Point Stage 1, 26
+/// September 2026). It was ten words, each added when a card first read
+/// it, and authored by hand on every card that carried it ("authored on
+/// every fracter, the way `Virus` is authored on every virus program"),
+/// which is a restatement of the catalog a card file could get wrong. Every
+/// NSG tranche prints subtypes a card reads — AP, Destroyer, Observer,
+/// Harmonic, Liability, Stealth, Virtual — so the list is the rules', and
+/// `cards::embedded`'s join fills `CardDefinition::subtypes` from the
+/// catalog the way it fills faction and influence. A homebrew card with no
+/// catalog entry still authors its own.
+///
+/// Barrier, Code Gate and Sentry are here because they are printed
+/// subtypes; `CardType::Ice(IceType)` is still what a breaker is matched
+/// against.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum CardSubtype {
-    Transaction,
-    Virus,
-    /// An icebreaker that breaks barriers — Rising Tide's "+1 strength for
-    /// each fracter in your heap" counts them. Authored on every fracter
-    /// (Cleaver, Corroder, Marjanah, Principia, Rising Tide), the way
-    /// `Virus` is authored on every virus program.
-    Fracter,
-    /// A Job resource — Open Market's hosted credits pay to install one.
-    Job,
-    /// A Connection resource — the other type Open Market's credits pay for.
-    Connection,
-    /// A Run event — the Runner's "run event" keyword. Read two ways:
-    /// `EffectRequirement::RunEventActive` (Sang Kancil's cheaper boost
-    /// while one is resolving) and `CardFilter::HasSubtype` (MuslihaT's
-    /// "an icebreaker or a run event"). Authored on every run event, the
-    /// way `Fracter` is on every fracter.
-    Run,
-    /// A Trojan program — one that installs hosted on a piece of ice
-    /// (`CardDefinition::installs_on_ice` is the mechanic; this is the
-    /// printed tag). Bumi 1.0's "trash 1 installed trojan program" reads it
-    /// through `CardFilter::HasSubtype`. Authored on every trojan (Botulus,
-    /// Chromatophores, Tranquilizer).
-    Trojan,
+    Academic,
+    Advertisement,
+    #[serde(rename = "AI")]
+    Ai,
+    Alliance,
+    Ambush,
+    #[serde(rename = "AP")]
+    Ap,
+    Assassination,
+    Barrier,
+    Beanstalk,
     /// A Bioroid — the printed subtype on Haas-Bioroid's click-breakable
     /// ice and its Academic upgrades. Read by LEO Construction: Labor
     /// Solutions' "trash 1 rezzed bioroid card in the root of or
     /// protecting the attacked server" through `CardFilter::HasSubtype`.
     /// Orthogonal to `CardDefinition::click_breakable`, which is the
     /// *mechanic* the bioroid ice share; Mercia B4LL4RD is a bioroid with
-    /// no subroutines to click through. Authored on every bioroid (Ansel
-    /// 1.0, Brân 1.0, Bumi 1.0, Mercia B4LL4RD).
+    /// no subroutines to click through.
     Bioroid,
+    #[serde(rename = "Black Ops")]
+    BlackOps,
+    Cast,
+    #[serde(rename = "Caïssa")]
+    Caissa,
+    Character,
+    Chip,
+    Clan,
+    Clone,
+    Cloud,
+    #[serde(rename = "Code Gate")]
+    CodeGate,
+    Companion,
+    Condition,
+    /// A Connection resource — the other type Open Market's credits pay for.
+    Connection,
+    /// "Limit 1 console per player" — e.g. Carnivore, Pennyshaver,
+    /// Pantograph. Installing a second trashes the first at the next
+    /// checkpoint (CR 3.8.5b, 10.3.1d; `checkpoint::enforce_consoles`). It
+    /// was a refusal until Rules Conformance B.
+    Console,
+    #[serde(rename = "Consumer-grade")]
+    ConsumerGrade,
+    Corp,
+    Corporation,
+    Current,
+    Cybernetic,
+    Cyborg,
+    Daemon,
+    Decoder,
+    #[serde(rename = "Deep Net")]
+    DeepNet,
+    Deflector,
+    Department,
+    Destroyer,
+    Deva,
+    Digital,
+    Directive,
+    Division,
+    Double,
+    Enforcer,
+    Executive,
+    Expansion,
+    Expendable,
+    Facility,
+    /// An icebreaker that breaks barriers — Rising Tide's "+1 strength for
+    /// each fracter in your heap" counts them.
+    Fracter,
+    #[serde(rename = "G-mod")]
+    GMod,
+    Gear,
+    Genetics,
+    Government,
+    Grail,
+    #[serde(rename = "Gray Ops")]
+    GrayOps,
+    Harmonic,
+    Hostile,
+    Icebreaker,
+    Industrial,
+    Initiative,
+    /// A Job resource — Open Market's hosted credits pay to install one.
+    Job,
+    Killer,
+    Liability,
+    Link,
+    Location,
+    Lockdown,
+    Mandate,
+    Megacorp,
+    Mod,
+    Morph,
+    Mythic,
+    Natural,
+    #[serde(rename = "NEXT")]
+    Next,
+    Observer,
+    #[serde(rename = "Off-site")]
+    OffSite,
+    Orgcrime,
+    #[serde(rename = "Police Department")]
+    PoliceDepartment,
+    Political,
+    Priority,
+    Psi,
+    Public,
     /// A Region upgrade — "Limit 1 region per server". Installing one into
     /// a root that already holds a region, rezzed or not, trashes the old
     /// one as part of the install (CR 3.6.5d, 8.5.6a;
     /// `rules::install_trash`). It was a refusal until Rules Conformance B.
     /// Mahkota Langit Grid is the pool's only region.
     Region,
-    /// "Limit 1 console per player" — e.g. Carnivore, Pennyshaver,
-    /// Pantograph. Installing a second trashes the first at the next
-    /// checkpoint (CR 3.8.5b, 10.3.1d; `checkpoint::enforce_consoles`). It
-    /// was a refusal until Rules Conformance B.
-    Console,
+    Remote,
+    Reprisal,
+    Research,
+    Ritzy,
+    /// A Run event — the Runner's "run event" keyword. Read two ways:
+    /// `EffectRequirement::RunEventActive` (Sang Kancil's cheaper boost
+    /// while one is resolving) and `CardFilter::HasSubtype` (MuslihaT's
+    /// "an icebreaker or a run event").
+    Run,
+    Sabotage,
+    Security,
+    #[serde(rename = "Security Protocol")]
+    SecurityProtocol,
+    Seedy,
+    Sensie,
+    Sentry,
+    Source,
+    Stealth,
+    Subsidiary,
+    Sysop,
+    Terminal,
+    Tracer,
+    Transaction,
+    Trap,
+    Triple,
+    /// A Trojan program — one that installs hosted on a piece of ice
+    /// (`CardDefinition::installs_on_ice` is the mechanic; this is the
+    /// printed tag). Bumi 1.0's "trash 1 installed trojan program" reads it
+    /// through `CardFilter::HasSubtype`.
+    Trojan,
+    Unorthodox,
+    Unsubstantiated,
+    Vehicle,
+    Virtual,
+    Virus,
+    Weapon,
+}
+
+impl CardSubtype {
+    /// The subtype as a card prints it, the word a keyword line carries.
+    pub fn printed(self) -> String {
+        match serde_json::to_value(self) {
+            Ok(serde_json::Value::String(word)) => word,
+            _ => format!("{self:?}"),
+        }
+    }
+
+    /// The subtype a printed keyword names, `None` for a word the rules do
+    /// not list.
+    pub fn from_printed(word: &str) -> Option<CardSubtype> {
+        serde_json::from_value(serde_json::Value::String(word.to_string())).ok()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

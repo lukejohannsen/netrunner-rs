@@ -4,9 +4,6 @@
   "side": "Corp",
   "card_type": "Operation",
   "cost": 3,
-  "subtypes": [
-    "Transaction"
-  ],
   "play_requirement": "NoActionTakenThisTurn",
   "playable_from_archives": true,
   "triggers": [

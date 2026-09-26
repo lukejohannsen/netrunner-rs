@@ -5,9 +5,6 @@
   "card_type": "Program",
   "cost": 4,
   "memory_cost": 1,
-  "subtypes": [
-    "Virus"
-  ],
   "triggers": [
     {
       "trigger": "OnSuccessfulRun",
