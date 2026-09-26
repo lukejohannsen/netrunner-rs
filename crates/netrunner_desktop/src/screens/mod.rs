@@ -3,9 +3,10 @@
 //! A screen is entered by writing `nav::Navigate(AppScreen::X)`. Its
 //! plugin spawns everything under `nav::screen_root` on `OnEnter`, which
 //! also takes it all down on exit, and runs its systems under
-//! `run_if(in_state(AppScreen::X))`. The set below is the whole client;
-//! a screen that is not built yet is a stub (`stubs`) with a heading and
-//! a way back, so every menu entry leads somewhere from the first PR.
+//! `run_if(in_state(AppScreen::X))`. The set below is the whole client.
+//! Until Phase 7 §7 a screen not yet built was a stub with a heading and
+//! a way back, so every menu entry led somewhere from the first PR; Play
+//! Online was the last of them.
 
 pub mod about;
 pub mod boot;
@@ -17,11 +18,11 @@ pub mod guide;
 pub mod learn;
 pub mod main_menu;
 pub mod new_game;
+pub mod online;
 pub mod profile;
 pub mod replay;
 pub mod settings;
 pub mod splash;
-pub mod stubs;
 
 use bevy::prelude::*;
 

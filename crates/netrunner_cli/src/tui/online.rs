@@ -36,15 +36,13 @@ use ratatui::widgets::{Block, Borders, List, ListItem, ListState, Paragraph, Wra
 use ratatui::Frame;
 
 use netrunner_core::cards::CardRegistry;
-use netrunner_core::decks::DeckFile;
 use netrunner_core::format::NsgFormat;
-use netrunner_core::rules::Side;
 use netrunner_server::serve::{ServeBotKind, ServeOptions, Server};
 use netrunner_server::MatchSummary;
 
-use netrunner_client::deck_store;
-use netrunner_client::hosting::{self, normalize_address, Mapping, PortMapper, Reach, Share};
-use netrunner_client::peer::{Offer, PeerHost, Relay};
+use netrunner_client::hosting::{self, normalize_address, Invitation, Reach, Way};
+use netrunner_client::online::{self, DeckChoice};
+use netrunner_client::peer::Relay;
 use crate::remote::{self, ConnectEvent, Connecting, Joined};
 
 pub use netrunner_client::hosting::DEFAULT_PORT;
@@ -59,38 +57,6 @@ pub enum OnlineStep {
     /// A seat or a spectator's place is ready: play it. `brought` is the
     /// id of the deck this player sent, for `play_remote`'s check.
     Play { joined: Box<Joined>, brought: Option<String> },
-}
-
-/// The deck field's choices: a deck of the player's, or the host's deal.
-#[derive(Debug, Clone, PartialEq)]
-enum DeckChoice {
-    /// Let the server deal, preferring this side (or neither).
-    Dealt(Option<Side>),
-    Brought(Box<DeckFile>),
-}
-
-impl DeckChoice {
-    fn label(&self) -> String {
-        match self {
-            DeckChoice::Dealt(None) => "Let the host deal me a deck — either side".to_string(),
-            DeckChoice::Dealt(Some(side)) => format!("Let the host deal me a deck — as the {side:?}"),
-            DeckChoice::Brought(deck) => format!("{:?} · {}", deck.side, deck.name),
-        }
-    }
-
-    fn side(&self) -> Option<Side> {
-        match self {
-            DeckChoice::Dealt(side) => *side,
-            DeckChoice::Brought(deck) => Some(deck.side),
-        }
-    }
-
-    fn deck(&self) -> Option<DeckFile> {
-        match self {
-            DeckChoice::Dealt(_) => None,
-            DeckChoice::Brought(deck) => Some((**deck).clone()),
-        }
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -149,28 +115,17 @@ impl Form {
     }
 }
 
-/// The in-process server while this player hosts. Dropping it stops the
-/// server — the match, if one is running, ends with it — and releases the
-/// router's mapping, if one was asked for.
+/// The in-process server while this player hosts, and what it gives out.
+/// Dropping it stops the server — the match, if one is running, ends with
+/// it — releases the router's mapping and closes the ticket's endpoint.
 struct Hosting {
     task: tokio::task::JoinHandle<std::io::Result<()>>,
-    port: u16,
-    /// The addresses to give the opponent, nearest first.
-    shares: Vec<Share>,
-    /// The request to the router, for `Reach::Internet`; `mapped` is its
-    /// last answer, polled on the menu's tick.
-    mapping: Option<Box<dyn PortMapper>>,
-    mapped: Mapping,
-    /// The host's ticket, for `Reach::Internet`: the way in that needs
-    /// nothing of the router. Dropping it closes the endpoint.
-    peer: Option<PeerHost>,
+    invitation: Invitation,
 }
 
 impl Hosting {
     fn poll(&mut self) {
-        if let Some(mapping) = &mut self.mapping {
-            self.mapped = mapping.poll();
-        }
+        self.invitation.poll();
     }
 }
 
@@ -222,14 +177,7 @@ impl OnlineScreen {
         default_address: String,
         relay: Result<Relay, String>,
     ) -> Result<Self, String> {
-        let mut decks = vec![DeckChoice::Dealt(None), DeckChoice::Dealt(Some(Side::Corp)), DeckChoice::Dealt(Some(Side::Runner))];
-        let mut owned: Vec<DeckFile> = deck_store::list(decks_dir)?
-            .into_iter()
-            .map(|stored| stored.deck)
-            .filter(|deck| deck.validate(registry, format).is_ok())
-            .collect();
-        owned.sort_by_key(|deck| (deck.side == Side::Runner, deck.name.to_lowercase()));
-        decks.extend(owned.into_iter().map(|deck| DeckChoice::Brought(Box::new(deck))));
+        let decks = online::deck_choices(decks_dir, registry, format)?;
         Ok(OnlineScreen { mode: Mode::Home { cursor: 0 }, decks, player, format, default_address, hosting: None, notice: None, relay })
     }
 
@@ -609,25 +557,12 @@ fn draw_list(frame: &mut Frame, area: Rect, title: &str, items: Vec<ListItem>, c
 /// stands. One address per line, because the line is what they read out.
 fn hosting_status(hosting: &Hosting) -> String {
     let mut lines = vec!["Hosting. Give your opponent an address — waiting for them to join…".to_string()];
-    // The ticket first: it is the one that works whatever the router says.
-    if let Some(peer) = &hosting.peer {
-        lines.push(match peer.poll() {
-            Offer::Starting => "  preparing a ticket…".to_string(),
-            Offer::Ready { ticket, relayed: true } => format!("  Ticket — from anywhere; your opponent pastes it into Join:\n{ticket}"),
-            Offer::Ready { ticket, relayed: false } => format!(
-                "  Ticket — no relay answered, so it works only where a direct connection can be made (your network, or IPv6):\n{ticket}"
-            ),
-            Offer::Failed(error) => format!("  No ticket: {error}"),
-        });
-    }
-    if hosting.mapping.is_some() {
-        lines.push(match &hosting.mapped {
-            Mapping::Asking => format!("  asking your router to open port {}…", hosting.port),
-            Mapping::Open(addr) => format!("  {} — from anywhere (your router opened the port)", hosting::ws_url((*addr).into())),
-            Mapping::Failed(failure) => format!("  {}", failure.advice(hosting.port, hosting::lan_ipv4())),
-        });
-    }
-    lines.extend(hosting.shares.iter().map(|share| format!("  {} — {}", share.url, share.who)));
+    lines.extend(hosting.invitation.ways().into_iter().map(|way| match way {
+        // The ticket on a line of its own, to copy whole.
+        Way::Give { what, who, ticket: true } => format!("  Ticket — {who}:\n{what}"),
+        Way::Give { what, who, ticket: false } => format!("  {what} — {who}"),
+        Way::Note(note) => format!("  {note}"),
+    }));
     lines.join("\n")
 }
 
@@ -659,23 +594,13 @@ fn start_hosting(port: u16, reach: Reach, format: NsgFormat, relay: &Result<Rela
     let listener = hosting::bind_listener(reach, port).map_err(|error| error.to_string())?;
     let server = Server::from_listener(listener, options).map_err(|error| error.to_string())?;
     let port = server.local_addr().map_err(|error| error.to_string())?.port();
-    let peer = relay.map(|relay| {
-        let acceptor = server.acceptor();
-        PeerHost::start(relay, move |stream, who| {
-            let acceptor = acceptor.clone();
-            tokio::spawn(async move { acceptor.serve(stream, &who).await });
-        })
+    let acceptor = server.acceptor();
+    let invitation = Invitation::start(reach, port, relay, move |stream, who| {
+        let acceptor = acceptor.clone();
+        tokio::spawn(async move { acceptor.serve(stream, &who).await });
     });
     let task = tokio::spawn(server.run());
-    let hosting = Hosting {
-        task,
-        port,
-        shares: hosting::share_addresses(reach, port),
-        mapping: hosting::map_port(reach, port),
-        mapped: Mapping::Asking,
-        peer,
-    };
-    Ok((hosting, format!("ws://127.0.0.1:{port}")))
+    Ok((Hosting { task, invitation }, format!("ws://127.0.0.1:{port}")))
 }
 
 #[cfg(test)]
@@ -683,7 +608,9 @@ mod tests {
     use super::*;
     use std::time::Instant;
 
-    use netrunner_core::rules::Viewer;
+    use netrunner_client::hosting::{Mapping, PortMapper};
+    use netrunner_client::peer::Offer;
+    use netrunner_core::rules::{Side, Viewer};
 
     fn screen(name: &str) -> (OnlineScreen, std::path::PathBuf) {
         let dir = std::env::temp_dir().join(format!("netrunner_online_{name}_{}", std::process::id()));
@@ -717,16 +644,6 @@ mod tests {
             assert!(Instant::now() < deadline, "no seat within 10s; notice: {:?}", screen.notice);
             tokio::time::sleep(Duration::from_millis(20)).await;
         }
-    }
-
-    #[test]
-    fn the_deck_choices_are_the_hosts_deal_then_every_legal_deck() {
-        let (screen, _) = screen("choices");
-        assert_eq!(screen.decks[0], DeckChoice::Dealt(None));
-        assert!(screen.decks.iter().any(|choice| matches!(choice, DeckChoice::Brought(deck) if deck.id == "brick_stack")));
-        assert_eq!(DeckChoice::Dealt(Some(Side::Runner)).side(), Some(Side::Runner));
-        let brick = screen.decks.iter().find(|choice| choice.deck().is_some_and(|deck| deck.id == "brick_stack")).unwrap();
-        assert_eq!(brick.side(), Some(Side::Corp), "a deck's side is the seat");
     }
 
     #[test]
@@ -768,7 +685,7 @@ mod tests {
         press(&mut host, &[KeyCode::Down, KeyCode::Enter]);
         let Mode::Waiting { url, .. } = &host.mode else { panic!("hosting: {:?}", host.notice) };
         let address = url.clone();
-        assert!(host.hosting.as_ref().unwrap().shares[0].url.starts_with("ws://127.0.0.1:"), "this machine only");
+        assert!(host.hosting.as_ref().unwrap().invitation.shares[0].url.starts_with("ws://127.0.0.1:"), "this machine only");
 
         let (mut joiner, _) = screen("joiner");
         press(&mut joiner, &[KeyCode::Down, KeyCode::Enter, KeyCode::Enter]);
@@ -820,8 +737,8 @@ mod tests {
         press(&mut host, &[KeyCode::Char('0'), KeyCode::Enter, KeyCode::Down, KeyCode::Right, KeyCode::Down, KeyCode::Down, KeyCode::Enter]);
         assert!(matches!(host.mode, Mode::Waiting { .. }), "{:?}", host.notice);
         // The router is not what this is about, and a test asks no router.
-        host.hosting.as_mut().unwrap().mapping = None;
-        let Offer::Ready { ticket, .. } = host.hosting.as_mut().unwrap().peer.as_mut().expect("the internet gets a ticket").ready().await else {
+        host.hosting.as_mut().unwrap().invitation.mapping = None;
+        let Offer::Ready { ticket, .. } = host.hosting.as_mut().unwrap().invitation.peer.as_mut().expect("the internet gets a ticket").ready().await else {
             panic!("no ticket")
         };
         let ticket = ticket.to_string();
@@ -875,7 +792,7 @@ mod tests {
         assert!(matches!(host.mode, Mode::Waiting { .. }), "{:?}", host.notice);
         let answer = std::sync::Arc::new(std::sync::Mutex::new(Mapping::Asking));
         let released = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
-        host.hosting.as_mut().unwrap().mapping = Some(Box::new(FakeRouter { answer: answer.clone(), released: released.clone() }));
+        host.hosting.as_mut().unwrap().invitation.mapping = Some(Box::new(FakeRouter { answer: answer.clone(), released: released.clone() }));
         let status = |host: &mut OnlineScreen| {
             host.tick();
             let Mode::Waiting { status, .. } = &host.mode else { panic!("{:?}", host.notice) };

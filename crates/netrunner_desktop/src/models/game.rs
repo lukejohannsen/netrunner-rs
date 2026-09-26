@@ -412,6 +412,26 @@ pub struct Game {
     /// passes for the learner itself where it means to and teaches the
     /// pump and the break by hand.
     pub lesson: Option<LessonBoard>,
+    /// A game at a host (`MatchHandle::start_remote`, Phase 7 §7): no
+    /// take-back and no record, leaving concedes, and the status line
+    /// carries the connection and the host's clock.
+    pub online: Option<Online>,
+    /// The host's clock on the decision just offered: whose it is and
+    /// when it runs out. Taken off the message when it arrives, since the
+    /// host sends it once per decision and the client counts down; gone
+    /// when the next action applies.
+    pub clock: Option<(Side, std::time::Instant)>,
+}
+
+/// What the board knows of a game online.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct Online {
+    /// Watching, not playing: nothing is ever asked, and the end says who
+    /// won rather than "you".
+    pub watching: bool,
+    /// Something to say for the whole game: a host that dealt a deck other
+    /// than the one brought, because it predates bringing one.
+    pub notice: Option<String>,
 }
 
 impl Game {
@@ -453,7 +473,16 @@ impl Game {
             entries: Vec::new(),
             tally: Tally::default(),
             lesson: None,
+            online: None,
+            clock: None,
         }
+    }
+
+    /// A board for a game at a host. A host that dealt another deck than
+    /// the one brought says so as the log's first line.
+    pub fn online(registry: Arc<CardRegistry>, side: Side, online: Online) -> Self {
+        let log = online.notice.iter().map(|notice| LogLine::from(notice.clone())).collect();
+        Game { online: Some(online), log, ..Game::new(registry, side) }
     }
 
     /// A board for a lesson, its opening words up.
@@ -820,7 +849,9 @@ impl Game {
             Intent::RequestQuit => {
                 // Nothing is lost before a lesson begins, as nothing is
                 // after a match ends: Escape on the intro is its Leave.
-                if self.finished() || self.replay.is_some() || self.intro_open() {
+                // Nor is anything lost by a spectator, who concedes
+                // nothing by leaving.
+                if self.finished() || self.replay.is_some() || self.intro_open() || self.online.as_ref().is_some_and(|online| online.watching) {
                     Outcome::Quit
                 } else {
                     self.confirm_quit = true;
@@ -859,6 +890,7 @@ impl Game {
                 self.view = Some(*view);
                 self.follow_hand();
                 self.applied += 1;
+                self.clock = None;
                 self.awaiting = false;
                 self.actions = ActionMap::default();
                 self.breaks.clear();
@@ -943,6 +975,32 @@ impl Game {
                     lesson.coaching = None;
                     lesson.outro = Some(outro);
                 }
+                Outcome::Redraw
+            }
+            // The board as it stands, with nothing moved to it: the first
+            // board at a host, and the first after a reconnect — whose
+            // missed actions the host does not replay, which the log says
+            // rather than leaving a gap nobody can see.
+            MatchMessage::Snapshot { view } => {
+                if self.view.is_some() {
+                    self.log.push(LogLine::from("           ↺ Reconnected — what happened while away is not listed".to_string()));
+                }
+                self.run_pass.see(&view);
+                self.transitions.clear();
+                self.trail = None;
+                self.follow_run(&view);
+                self.view = Some(*view);
+                self.follow_hand();
+                self.awaiting = false;
+                self.actions = ActionMap::default();
+                self.breaks.clear();
+                self.breaking = None;
+                self.prompt = None;
+                self.menu = None;
+                Outcome::Redraw
+            }
+            MatchMessage::Clock { side, remaining } => {
+                self.clock = Some((side, std::time::Instant::now() + remaining));
                 Outcome::Redraw
             }
             MatchMessage::Back { rewind } => {

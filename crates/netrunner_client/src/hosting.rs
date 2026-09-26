@@ -27,6 +27,8 @@ use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, TcpListener
 use std::num::NonZeroU16;
 use std::time::{Duration, Instant};
 
+use crate::peer::{Offer, PeerHost, Relay, Stream};
+
 /// The port a host offers by default, and the one a joined address gets
 /// when it names none — `netrunner_server --serve`'s default.
 pub const DEFAULT_PORT: u16 = 8080;
@@ -349,6 +351,98 @@ impl Drop for RouterMapping {
 /// Starts a router request when `reach` wants one.
 pub fn map_port(reach: Reach, port: u16) -> Option<Box<dyn PortMapper>> {
     reach.asks_the_router().then(|| Box::new(RouterMapping::start(port)) as Box<dyn PortMapper>)
+}
+
+/// What a host gives out, and where each part of it stands: the ticket
+/// (hosting for the internet), the router's answer, and the machine's own
+/// addresses, nearest first. Both clients' hosts draw it and poll it every
+/// frame or tick, because the router and the relay answer seconds after
+/// the server is up.
+///
+/// **It holds the router request and the ticket's endpoint**, so dropping
+/// it releases the port and closes the endpoint; the server it invites to
+/// is the client's, which names `netrunner_server` where this crate may
+/// not (`peer::PeerHost`, the same reason).
+pub struct Invitation {
+    pub port: u16,
+    pub shares: Vec<Share>,
+    /// The request to the router, for `Reach::Internet`; `mapped` is its
+    /// last answer.
+    pub mapping: Option<Box<dyn PortMapper>>,
+    pub mapped: Mapping,
+    /// The host's ticket, for `Reach::Internet`: the way in that needs
+    /// nothing of the router.
+    pub peer: Option<PeerHost>,
+}
+
+/// One line of an invitation.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Way {
+    /// Something to give the opponent — `what` is the text to hand over,
+    /// whole — and who it works for. A ticket is pasted where an address
+    /// is typed, and is long, so a screen puts it on a line of its own.
+    Give { what: String, who: String, ticket: bool },
+    /// Something to read rather than give: a request under way, or why
+    /// one did not work and what to do instead.
+    Note(String),
+}
+
+impl Invitation {
+    /// The invitation to a server listening on `port`. A ticket is given
+    /// out when `relay` is — its relay, or `Relay::Off` for one naming
+    /// this machine's own addresses — which a host asks for when hosting
+    /// for the internet; `serve` takes each stream a joiner opens by
+    /// ticket, and is the server's `Acceptor::serve`. Must be called
+    /// inside a tokio runtime when a ticket or a router is asked for.
+    pub fn start<F>(reach: Reach, port: u16, relay: Option<Relay>, serve: F) -> Invitation
+    where
+        F: Fn(Stream, String) + Send + Sync + 'static,
+    {
+        Invitation {
+            port,
+            shares: share_addresses(reach, port),
+            mapping: map_port(reach, port),
+            mapped: Mapping::Asking,
+            peer: relay.map(|relay| PeerHost::start(relay, serve)),
+        }
+    }
+
+    /// Takes the router's latest answer.
+    pub fn poll(&mut self) {
+        if let Some(mapping) = &mut self.mapping {
+            self.mapped = mapping.poll();
+        }
+    }
+
+    /// Every line, in the order to read them: the ticket first, since it
+    /// works whatever the router says; then the router; then the
+    /// machine's own addresses.
+    pub fn ways(&self) -> Vec<Way> {
+        let mut ways = Vec::new();
+        if let Some(peer) = &self.peer {
+            ways.push(match peer.poll() {
+                Offer::Starting => Way::Note("preparing a ticket…".to_string()),
+                Offer::Ready { ticket, relayed: true } => {
+                    Way::Give { what: ticket.to_string(), who: "from anywhere; your opponent pastes it into Join".to_string(), ticket: true }
+                }
+                Offer::Ready { ticket, relayed: false } => Way::Give {
+                    what: ticket.to_string(),
+                    who: "no relay answered, so it works only where a direct connection can be made (your network, or IPv6)".to_string(),
+                    ticket: true,
+                },
+                Offer::Failed(error) => Way::Note(format!("No ticket: {error}")),
+            });
+        }
+        if self.mapping.is_some() {
+            ways.push(match &self.mapped {
+                Mapping::Asking => Way::Note(format!("asking your router to open port {}…", self.port)),
+                Mapping::Open(addr) => Way::Give { what: ws_url((*addr).into()), who: "from anywhere (your router opened the port)".to_string(), ticket: false },
+                Mapping::Failed(failure) => Way::Note(failure.advice(self.port, lan_ipv4())),
+            });
+        }
+        ways.extend(self.shares.iter().map(|share| Way::Give { what: share.url.clone(), who: share.who.to_string(), ticket: false }));
+        ways
+    }
 }
 
 #[cfg(test)]

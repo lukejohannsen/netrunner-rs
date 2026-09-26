@@ -131,6 +131,11 @@
 //!   this run", so the screenshot catches the button; `on` presses it
 //!   there, so the screenshot catches the run going by with the way to
 //!   stop on the rail. Seat the Corp: `NETRUNNER_GAME=corp`.
+//! - `NETRUNNER_ONLINE=host|join|watch|hosting|ticket` — with
+//!   `NETRUNNER_SCREEN=online`, that page is opened once; `hosting` hosts
+//!   a game for the network on a free port and shows what to give out,
+//!   and `ticket` the same with a ticket naming this machine's own
+//!   addresses — no relay and no router asked.
 //! - `NETRUNNER_DROPDOWN=<n>` — before the screenshot, the `n`th
 //!   drop-down on the screen (1 is the first, counted top to bottom and
 //!   left to right) is opened, so an open list can be looked at: where it
@@ -248,6 +253,8 @@ pub struct Dev {
     pub read: Option<usize>,
     /// Open the deck editor's identity picker, once.
     pub identities: bool,
+    /// `NETRUNNER_ONLINE`: the Play Online page to open.
+    pub online: Option<String>,
     /// Hold a run at its first encounter for the screenshot.
     pub hold_run: bool,
     /// Stop the autoplay at the first encounter the person is asked
@@ -323,6 +330,7 @@ impl Dev {
             lift: std::env::var_os("NETRUNNER_LIFT").is_some_and(|v| !v.is_empty()),
             read: std::env::var("NETRUNNER_READ").ok().and_then(|n| n.trim().parse().ok()).filter(|n| *n > 0),
             identities: std::env::var_os("NETRUNNER_IDENTITIES").is_some_and(|v| !v.is_empty()),
+            online: std::env::var("NETRUNNER_ONLINE").ok().map(|page| page.trim().to_ascii_lowercase()).filter(|page| !page.is_empty()),
             hold_run: std::env::var_os("NETRUNNER_HOLD_RUN").is_some_and(|v| !v.is_empty()),
             hold_ice: std::env::var_os("NETRUNNER_HOLD_ICE").is_some_and(|v| !v.is_empty()),
             hold_selection: std::env::var_os("NETRUNNER_HOLD_SELECTION").is_some_and(|v| !v.is_empty()),

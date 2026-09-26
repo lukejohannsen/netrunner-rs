@@ -81,7 +81,7 @@ struct StartError;
 /// authoring bug the lesson gates exist to catch first.
 pub fn start(core: &ClientCore, lesson: Lesson) -> Result<ActiveMatch, String> {
     let handle = MatchHandle::start_lesson(Arc::clone(&core.registry), lesson.clone(), LESSON_SEED)?;
-    Ok(ActiveMatch { handle, choice: None, lesson: Some(lesson), starter: None })
+    Ok(ActiveMatch { handle, choice: None, lesson: Some(lesson), starter: None, online: None })
 }
 
 /// Starts a starter game on a clock seed: the rules its decks' category
@@ -105,7 +105,7 @@ pub fn start_starter(core: &ClientCore, starter: Starter) -> Result<ActiveMatch,
         record: core.record_path.clone().map(|path| RecordFile { path, player }),
     };
     let handle = MatchHandle::start_local(spec)?;
-    Ok(ActiveMatch { handle, choice: None, lesson: None, starter: Some(starter) })
+    Ok(ActiveMatch { handle, choice: None, lesson: None, starter: Some(starter), online: None })
 }
 
 /// The lesson after `id` in its side's track, if there is one.

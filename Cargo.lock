@@ -5187,7 +5187,9 @@ dependencies = [
  "netrunner_card_sync",
  "netrunner_client",
  "netrunner_core",
+ "netrunner_server",
  "tokio",
+ "uuid",
 ]
 
 [[package]]
