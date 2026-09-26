@@ -41,7 +41,9 @@
             "Sequence": []
           },
           "if_declined": {
-            "GiveTags": 1
+            "GiveTags": {
+              "Fixed": 1
+            }
           },
           "text": "Give the Runner 1 tag unless they pay 4[credit]"
         }

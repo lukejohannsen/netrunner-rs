@@ -497,7 +497,7 @@ mod tests {
     fn pending_subroutine() -> EncounteredSubroutine {
         EncounteredSubroutine {
             id: 0,
-            definition: SubroutineDef { text: "give a tag".to_string(), effect: Effect::GiveTags(1), only_breakable_by: None },
+            definition: SubroutineDef { text: "give a tag".to_string(), effect: Effect::GiveTags(crate::dsl::Amount::Fixed(1)), only_breakable_by: None },
             status: SubroutineStatus::Pending,
         }
     }
@@ -746,7 +746,7 @@ mod tests {
                 GameEvent::SubroutineFired {
                     card_id: CardId("ice_wall".to_string()),
                     index: 0,
-                    effect: Effect::GiveTags(1),
+                    effect: Effect::GiveTags(crate::dsl::Amount::Fixed(1)),
                 },
                 GameEvent::TagsGiven { side: Side::Runner, amount: 1 },
                 GameEvent::IcePassed { server: ServerId::Hq, position: 0 },

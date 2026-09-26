@@ -99,8 +99,12 @@ pub enum Effect {
     EndTheRun,
     /// Deliberately no `Side` param, unlike `GainCredits`/`DrawCards` —
     /// tags exist solely on `RunnerState` in this data model, so
-    /// `Side::Corp` would never be a legal target.
-    GiveTags(u32),
+    /// `Side::Corp` would never be a legal target. An `Amount` since
+    /// Vicsek's "give the Runner X tags. X is equal to the number of tags
+    /// the Runner has", taken in place rather than as a `GiveTagsAmount`
+    /// beside it, as `PlaceAdvancementCounters` was: a fixed number is
+    /// `Fixed(n)`.
+    GiveTags(Amount),
     /// Deliberately no `Side` param, same rationale as `GiveTags`. An
     /// `Amount` rather than a number since Bigger Picture's "remove any
     /// number of tags" became a number the Corp chooses
@@ -1162,6 +1166,7 @@ impl Effect {
             Effect::GainCreditsAmount(side, a) => Effect::GainCreditsAmount(side, amount(a)),
             Effect::LoseCreditsAmount(side, a) => Effect::LoseCreditsAmount(side, amount(a)),
             Effect::DrawCardsAmount(side, a) => Effect::DrawCardsAmount(side, amount(a)),
+            Effect::GiveTags(a) => Effect::GiveTags(amount(a)),
             Effect::RemoveTags(a) => Effect::RemoveTags(amount(a)),
             Effect::PlaceAdvancementCounters(a) => Effect::PlaceAdvancementCounters(amount(a)),
             Effect::MillRnDAmount(a) => Effect::MillRnDAmount(amount(a)),
@@ -1391,9 +1396,9 @@ mod tests {
 
     #[test]
     fn trace_round_trips_through_json() {
-        let trace = Effect::Trace { base: 3, on_success: Box::new(Effect::GiveTags(1)) };
+        let trace = Effect::Trace { base: 3, on_success: Box::new(Effect::GiveTags(Amount::Fixed(1))) };
         let trace_json = serde_json::to_string(&trace).unwrap();
-        assert_eq!(trace_json, r#"{"Trace":{"base":3,"on_success":{"GiveTags":1}}}"#);
+        assert_eq!(trace_json, r#"{"Trace":{"base":3,"on_success":{"GiveTags":{"Fixed":1}}}}"#);
         assert_eq!(serde_json::from_str::<Effect>(&trace_json).unwrap(), trace);
     }
 
@@ -1437,10 +1442,10 @@ mod tests {
             }
             .can_end_the_run()
         );
-        assert!(Effect::Sequence(vec![Effect::GiveTags(1), Effect::EndTheRun]).can_end_the_run());
-        assert!(!Effect::GiveTags(1).can_end_the_run());
+        assert!(Effect::Sequence(vec![Effect::GiveTags(Amount::Fixed(1)), Effect::EndTheRun]).can_end_the_run());
+        assert!(!Effect::GiveTags(Amount::Fixed(1)).can_end_the_run());
         assert!(
-            !Effect::Sequence(vec![Effect::GiveTags(1), Effect::DealDamage(DamageType::Net, 1)]).can_end_the_run(),
+            !Effect::Sequence(vec![Effect::GiveTags(Amount::Fixed(1)), Effect::DealDamage(DamageType::Net, 1)]).can_end_the_run(),
             "a tagging, damaging subroutine no breaker covers still lets the Runner through"
         );
     }
@@ -1461,7 +1466,7 @@ mod tests {
             Effect::PresentChoice {
                 chooser: Side::Corp,
                 options: vec![
-                    Effect::Trace { base: 2, on_success: Box::new(Effect::GiveTags(1)) },
+                    Effect::Trace { base: 2, on_success: Box::new(Effect::GiveTags(Amount::Fixed(1))) },
                     Effect::SetAccessReplacement { server: ServerId::Hq, effect: Box::new(Effect::DrawCards(Side::Runner, 1)), optional: false },
                 ],
                 texts: Vec::new(),

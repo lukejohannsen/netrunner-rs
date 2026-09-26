@@ -11,7 +11,9 @@
       "requirement": "StoleAgendaDuringLastRun",
       "effects": [
         {
-          "GiveTags": 2
+          "GiveTags": {
+            "Fixed": 2
+          }
         }
       ]
     }

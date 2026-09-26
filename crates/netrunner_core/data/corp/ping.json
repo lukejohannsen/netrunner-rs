@@ -14,7 +14,9 @@
       "requirement": "RezzedDuringRunAgainstThisServer",
       "effects": [
         {
-          "GiveTags": 1
+          "GiveTags": {
+            "Fixed": 1
+          }
         }
       ]
     }

@@ -1113,7 +1113,7 @@ mod tests {
     #[test]
     fn ice_rezzed_dispatches_on_rez_against_the_rezzed_card() {
         let mut registry = CardRegistry::new();
-        registry.insert(card_with_trigger("ping", Side::Corp, Trigger::OnRez, Effect::GiveTags(1)));
+        registry.insert(card_with_trigger("ping", Side::Corp, Trigger::OnRez, Effect::GiveTags(crate::dsl::Amount::Fixed(1))));
 
         let mut state = empty_state();
         // Pinned to a copy that is on the table: a reaction whose install

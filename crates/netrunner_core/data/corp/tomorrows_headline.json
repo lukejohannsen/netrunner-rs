@@ -12,7 +12,9 @@
       "subject": "This",
       "effects": [
         {
-          "GiveTags": 1
+          "GiveTags": {
+            "Fixed": 1
+          }
         }
       ]
     },
@@ -21,7 +23,9 @@
       "subject": "This",
       "effects": [
         {
-          "GiveTags": 1
+          "GiveTags": {
+            "Fixed": 1
+          }
         }
       ]
     }

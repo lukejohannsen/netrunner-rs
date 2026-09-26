@@ -439,7 +439,7 @@ with the rule quoted.
 | 3.6 | Upgrades | conforms | Read for B. A second region trashes the first as part of the install (3.6.5d, 8.5.6a). 3.6.5e (a swap or move putting two regions in one root) has no card in the pool. |
 | 3.7 | Events | unreviewed |  |
 | 3.8 | Hardware | conforms | Read for B. A second console trashes the older one at the checkpoint, unpreventably (3.8.5b). |
-| 3.9 | Programs | conforms | Read for B. An install over the limit trashes programs of the Runner's choice first (3.9.3b). A limit that drops later is the checkpoint's (3.9.3c, `memory::enforce_limit`). Memory cost is not a cost (3.9.3d). |
+| 3.9 | Programs | conforms | Read for B. An install over the limit trashes programs of the Runner's choice first (3.9.3b). A limit that drops later is the checkpoint's (3.9.3c, `memory::enforce_limit`). Memory cost is not a cost (3.9.3d). An interface ability that names no subtype breaks any ice, including ice that prints none of the three types (3.9.5h, `IceType::Other`, Vicsek). |
 | 3.10 | Resources | unreviewed |  |
 
 ### 4. Game Zones

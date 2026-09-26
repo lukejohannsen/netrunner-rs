@@ -33,7 +33,9 @@
       "trigger": "OnDiscardPhaseEnd",
       "effects": [
         {
-          "GiveTags": 1
+          "GiveTags": {
+            "Fixed": 1
+          }
         },
         {
           "GiveBadPublicity": 1

@@ -169,7 +169,8 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
         Effect::DrawCards(side, n) => format!("{} draws {}", who(*side), plural(*n, "card", "cards")),
         Effect::DrawCardsAmount(side, amount) => format!("{} draws cards equal to {}", who(*side), describe_amount(amount)),
         Effect::EndTheRun => "end the run".to_string(),
-        Effect::GiveTags(n) => format!("give the Runner {}", plural(*n, "tag", "tags")),
+        Effect::GiveTags(Amount::Fixed(n)) => format!("give the Runner {}", plural(*n, "tag", "tags")),
+        Effect::GiveTags(amount) => format!("give the Runner tags equal to {}", describe_amount(amount)),
         Effect::RemoveTags(Amount::Fixed(n)) => format!("remove {}", plural(*n, "tag", "tags")),
         Effect::RemoveTags(amount) => format!("remove tags equal to {}", describe_amount(amount)),
         Effect::GiveBadPublicity(n) => format!("the Corp takes {}", plural(*n, "bad publicity", "bad publicity")),
@@ -566,7 +567,7 @@ mod tests {
     fn effects_read_as_sentences() {
         let registry = crate::decks::sample_deck_registry();
         let d = |effect: &Effect| describe_effect(effect, &registry);
-        assert_eq!(d(&Effect::GiveTags(1)), "give the Runner 1 tag");
+        assert_eq!(d(&Effect::GiveTags(Amount::Fixed(1))), "give the Runner 1 tag");
         assert_eq!(d(&Effect::Sequence(vec![])), "do nothing");
         assert_eq!(d(&Effect::Sequence(vec![Effect::GainCredits(Side::Corp, 2), Effect::EndTheRun])), "the Corp gains 2 credits, then end the run");
         assert_eq!(d(&Effect::DealDamage(DamageType::Net, 1)), "do 1 net damage");
@@ -575,7 +576,7 @@ mod tests {
                 side: Side::Runner,
                 cost: Cost::Credits(8),
                 if_paid: Box::new(Effect::Sequence(vec![])),
-                if_declined: Box::new(Effect::GiveTags(1)),
+                if_declined: Box::new(Effect::GiveTags(Amount::Fixed(1))),
                 text: None,
             }),
             "the Runner may pay 8 credits to do nothing; otherwise give the Runner 1 tag"

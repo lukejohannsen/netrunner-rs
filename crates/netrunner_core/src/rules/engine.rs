@@ -4363,7 +4363,7 @@ mod tests {
             initiating_install: None,
             base_strength: 2,
             corp_bid: None,
-            effect_on_success: Effect::GiveTags(1),
+            effect_on_success: Effect::GiveTags(crate::dsl::Amount::Fixed(1)),
             resume: crate::rules::state::TraceResume::None,
         });
 
@@ -4382,7 +4382,7 @@ mod tests {
             subject: None, when: None, acts_on_subject: false, first_each_turn: false,
             text: None,
             trigger: Trigger::OnPlay,
-            effects: vec![Effect::Trace { base: 2, on_success: Box::new(Effect::GiveTags(1)) }],
+            effects: vec![Effect::Trace { base: 2, on_success: Box::new(Effect::GiveTags(crate::dsl::Amount::Fixed(1))) }],
             requirement: None,
         }];
         registry.insert(card);
@@ -6783,12 +6783,12 @@ mod tests {
                 subroutines: vec![
                     EncounteredSubroutine {
                         id: 0,
-                        definition: SubroutineDef { text: "sub 0".to_string(), effect: Effect::GiveTags(1), only_breakable_by: None },
+                        definition: SubroutineDef { text: "sub 0".to_string(), effect: Effect::GiveTags(crate::dsl::Amount::Fixed(1)), only_breakable_by: None },
                         status: SubroutineStatus::Pending,
                     },
                     EncounteredSubroutine {
                         id: 1,
-                        definition: SubroutineDef { text: "sub 1".to_string(), effect: Effect::GiveTags(2), only_breakable_by: None },
+                        definition: SubroutineDef { text: "sub 1".to_string(), effect: Effect::GiveTags(crate::dsl::Amount::Fixed(2)), only_breakable_by: None },
                         status: SubroutineStatus::Pending,
                     },
                 ],
@@ -6834,8 +6834,8 @@ mod tests {
         let (next, events) = apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Runner })
             .expect("pass should succeed");
 
-        // Only the unbroken subroutine (id 1, GiveTags(2)) auto-fires; the
-        // broken one (id 0, GiveTags(1)) never does.
+        // Only the unbroken subroutine (id 1, GiveTags(Amount::Fixed(2))) auto-fires; the
+        // broken one (id 0, GiveTags(Amount::Fixed(1))) never does.
         assert_eq!(next.runner.tags, 2);
         let ice = &next.active_run.as_ref().unwrap().ice[0];
         assert_eq!(ice.subroutines[0].status, SubroutineStatus::Broken);
@@ -6849,7 +6849,7 @@ mod tests {
             vec![&GameEvent::SubroutineFired {
                 card_id: CardId("ice_wall".to_string()),
                 index: 1,
-                effect: Effect::GiveTags(2),
+                effect: Effect::GiveTags(crate::dsl::Amount::Fixed(2)),
             }]
         );
     }

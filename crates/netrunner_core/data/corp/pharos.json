@@ -30,7 +30,9 @@
     {
       "text": "Give the Runner 1 tag.",
       "effect": {
-        "GiveTags": 1
+        "GiveTags": {
+          "Fixed": 1
+        }
       }
     },
     {

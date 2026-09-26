@@ -35,7 +35,9 @@
               "RemoveTags": "RunnerTags"
             },
             {
-              "GiveTags": 3
+              "GiveTags": {
+                "Fixed": 3
+              }
             }
           ]
         }

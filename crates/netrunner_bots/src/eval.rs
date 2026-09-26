@@ -1674,7 +1674,12 @@ fn corp_install_value(installed: &InstalledCard, registry: &CardRegistry, w: &We
         && let Some(def) = def
         && let CardType::Ice(subtype) = &def.card_type
     {
-        if !rig[subtype_slot(*subtype)] {
+        // Ice with none of the three types is broken only by a breaker
+        // with no restriction, which covers all three; a rig of three typed
+        // breakers reads as breaking it too, which it cannot. Close enough
+        // for one card in the pool, and exact for the AI it is meant for.
+        let broken = subtype_slot(*subtype).map_or(rig.iter().all(|covered| *covered), |slot| rig[slot]);
+        if !broken {
             value += w.unbreakable_ice_weight;
         }
         let etr = def.subroutines.iter().filter(|sub| sub.effect.can_end_the_run()).count();
@@ -2088,7 +2093,11 @@ pub(crate) fn covers(def: &CardDefinition) -> [bool; 3] {
         ability.effect.for_each_effect(&mut |effect| {
             if let Effect::BreakSubroutines { restrict_to, .. } = effect {
                 match restrict_to {
-                    Some(subtype) => covered[subtype_slot(*subtype)] = true,
+                    Some(subtype) => {
+                        if let Some(slot) = subtype_slot(*subtype) {
+                            covered[slot] = true;
+                        }
+                    }
                     None => covered = [true; 3],
                 }
             }
@@ -2100,12 +2109,15 @@ pub(crate) fn covers(def: &CardDefinition) -> [bool; 3] {
 /// A subtype's index into a `covers`/`rig_coverage` flag array. Shared so
 /// that the Corp's `UNBREAKABLE_ICE_WEIGHT` indexes the same array the
 /// Runner's `BREAKER_COVERAGE_WEIGHT` fills, rather than each end keeping
-/// its own copy of the order.
-fn subtype_slot(subtype: IceType) -> usize {
+/// its own copy of the order. `None` for ice that prints none of the three
+/// (`IceType::Other`), which has no flag of its own: the observation shares
+/// these arrays and a fourth flag would move `OBS_SIZE` for one card.
+fn subtype_slot(subtype: IceType) -> Option<usize> {
     match subtype {
-        IceType::Barrier => 0,
-        IceType::CodeGate => 1,
-        IceType::Sentry => 2,
+        IceType::Barrier => Some(0),
+        IceType::CodeGate => Some(1),
+        IceType::Sentry => Some(2),
+        IceType::Other => None,
     }
 }
 
@@ -3172,10 +3184,10 @@ mod tests {
         // wall — and counting it was half of what this term counted.
         state.runner.rig = Vec::new();
         let mut tagging = run(false, 0);
-        tagging.ice[0].subroutines[0].definition.effect = Effect::GiveTags(1);
+        tagging.ice[0].subroutines[0].definition.effect = Effect::GiveTags(Amount::Fixed(1));
         assert_eq!(unbreakable_unrezzed_ice(&state, &tagging, &registry), 0, "no subroutine ends the run");
         tagging.ice[0].subroutines[0].definition.effect =
-            Effect::Sequence(vec![Effect::GiveTags(1), Effect::EndTheRun]);
+            Effect::Sequence(vec![Effect::GiveTags(Amount::Fixed(1)), Effect::EndTheRun]);
         assert_eq!(unbreakable_unrezzed_ice(&state, &tagging, &registry), 1, "buried in a sequence still ends it");
 
         // The term is off by default, so none of this moves a score

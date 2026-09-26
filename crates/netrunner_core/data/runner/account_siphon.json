@@ -43,7 +43,9 @@
                       ]
                     },
                     {
-                      "GiveTags": 2
+                      "GiveTags": {
+                        "Fixed": 2
+                      }
                     }
                   ]
                 },
