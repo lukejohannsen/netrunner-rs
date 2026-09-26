@@ -805,7 +805,16 @@ pub enum Effect {
     /// own with a reset of its own — and the score lock's was on a field
     /// no view carried, so no bot sample ever saw it. `validate` refuses
     /// `Encounter`: nothing prints a prohibition that short.
-    Prohibit { what: Prohibition, until: EffectDuration },
+    Prohibit {
+        what: Prohibition,
+        until: EffectDuration,
+        /// Only about copies of `acting_card` — Perfect Recall's "copies of
+        /// that card", the card revealed out of HQ its `then` acts as. A
+        /// flag rather than a card named in the file, which could not name
+        /// the card revealed (`lingering::On::CopiesOf`).
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        copies_of_it: bool,
+    },
     /// Places `0` advancement counters on `acting_card` — e.g. Seamless
     /// Launch's "place 2 advancement counters on 1 installed card", Flood
     /// the Market's "1 advancement counter … for each remote server that
@@ -861,6 +870,17 @@ pub enum Effect {
     /// acting install is not a root-slot Corp card any more (it was
     /// trashed while the decision was parked), or is already there.
     MoveThisCardToRoot(ServerId),
+    /// The Corp chooses another server, and the acting install — a root
+    /// card — moves to its root: Lotus Haze's "move 1 rezzed upgrade to
+    /// the root of another server", as the `then` of the choice of upgrade.
+    /// Composition didn't work because every existing server choice either
+    /// starts a run (`PromptChooseServer`) or installs a card
+    /// (`PromptInstallCorpCard`); this one parks the same decision in a
+    /// third mode (`PendingDecision::ChooseServer::move_to_root`) and
+    /// resolves as `MoveThisCardToRoot`. The servers offered are the ones
+    /// that exist, its own excepted: a remote is created by an install,
+    /// not by a move.
+    PromptMoveThisCardToAnotherRoot,
     /// Plays the acting card as an operation out of `from`, spending no
     /// click — Humanoid Resources' "you may play 1 operation from HQ"
     /// (`OwnHq`) and Plutus's "you may play 1 transaction operation from
@@ -948,7 +968,7 @@ fn is_zero_u32(value: &u32) -> bool {
 /// `GainCreditsPerCardAccessedThisRun` predate this enum and aren't folded
 /// into it (no behavior change, no card needs the refactor yet) — see
 /// ROADMAP.md's tracking note for the planned future consolidation.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Amount {
     /// A plain literal — lets an amount-typed effect field be authored with
     /// an ordinary fixed number when no dynamic formula is needed.
@@ -966,10 +986,18 @@ pub enum Amount {
     /// existing `Amount` reads the turn; this one took over three
     /// requirements that each read a flag of their own
     /// (`MadeSuccessfulRunThisTurn`, `PlayedOperationThisTurn`, and
-    /// `RunnerMadeSuccessfulRunLastTurn` below). It names a `Trigger` and
-    /// no filter because `Amount` is `Copy`. **Not how a card says "the
+    /// `RunnerMadeSuccessfulRunLastTurn` below). **Not how a card says "the
     /// first time each turn"** — that is a word in the trigger condition.
     TimesThisTurn(crate::dsl::Trigger),
+    /// The same count narrowed the way a trigger's `when` narrows it — "if
+    /// you made a successful run on HQ, R&D, and Archives this turn" (Chain
+    /// Reaction, one per server) and "if a piece of ice was rezzed this
+    /// turn" (Underdome Irregulars). Read through `turn_log::Occurrences`,
+    /// so it is no finer than the log counts (a `Class`), and a filter the
+    /// log cannot answer counts 0. `TimesThisTurn` named no filter because
+    /// `Amount` was `Copy`; dropping `Copy` cost nothing anywhere in the
+    /// workspace (Vantage Point Stage 3b).
+    TimesThisTurnWhen { trigger: crate::dsl::Trigger, when: crate::dsl::EventFilter },
     /// The same count for the turn that ended most recently, either
     /// side's (`turn_log::LastTurn`) — "play only if the Runner made a
     /// successful run during their last turn" (Public Trail, Measured
@@ -1299,6 +1327,7 @@ impl Effect {
             | Effect::AddAdditionalAccessAmount { .. }
             | Effect::BoostStrengthAmount { .. }
             | Effect::MoveThisCardToRoot(..)
+            | Effect::PromptMoveThisCardToAnotherRoot
             | Effect::PlayOperation { .. }
             | Effect::ResolveSubroutineOfSelectedIce
             | Effect::MoveRunToOutermost(..)

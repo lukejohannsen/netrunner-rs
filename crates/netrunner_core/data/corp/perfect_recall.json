@@ -1,0 +1,72 @@
+{
+  "id": "perfect_recall",
+  "title": "Perfect Recall",
+  "side": "Corp",
+  "card_type": "Upgrade",
+  "cost": 1,
+  "triggers": [
+    {
+      "trigger": "OnRez",
+      "subject": "This",
+      "effects": [
+        {
+          "AddCounters": 1
+        }
+      ],
+      "text": "When you rez this upgrade"
+    },
+    {
+      "trigger": "OnAgendaScored",
+      "subject": "Any",
+      "requirement": "AgendaCameFromThisCardsServer",
+      "effects": [
+        {
+          "AddCounters": 1
+        }
+      ],
+      "text": "whenever an agenda is scored or stolen from this server or its root, place 1 power counter on this upgrade"
+    },
+    {
+      "trigger": "OnAgendaStolen",
+      "subject": "Any",
+      "requirement": "AgendaCameFromThisCardsServer",
+      "effects": [
+        {
+          "AddCounters": 1
+        }
+      ],
+      "text": "whenever an agenda is scored or stolen from this server or its root, place 1 power counter on this upgrade"
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "RemoveCounters": 1
+      },
+      "requirement": "DuringRun",
+      "effect": {
+        "PromptChooseCards": {
+          "side": "Corp",
+          "source": "OwnHq",
+          "filter": "Any",
+          "min": 1,
+          "max": 1,
+          "reveal": true,
+          "shuffle_after": false,
+          "then": {
+            "Prohibit": {
+              "what": "StealOrTrash",
+              "until": "Run",
+              "copies_of_it": true
+            }
+          }
+        }
+      },
+      "text": "Reveal 1 card in HQ. The Runner cannot steal or trash copies of that card for the remainder of this run. Use this ability only during a run."
+    }
+  ],
+  "trash_cost": 3,
+  "numeric_id": 36035,
+  "is_playable": true
+}

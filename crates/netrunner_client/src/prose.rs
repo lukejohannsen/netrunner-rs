@@ -65,6 +65,9 @@ pub fn describe_amount(amount: &Amount) -> String {
         Amount::Fixed(n) => n.to_string(),
         Amount::AgendaPointsScoredThisTurn => "the agenda points scored this turn".to_string(),
         Amount::TimesThisTurn(trigger) => format!("the times \"{}\" has happened this turn", humanize(format!("{trigger:?}"))),
+        Amount::TimesThisTurnWhen { trigger, when } => {
+            format!("the times \"{}\" has happened this turn ({})", humanize(format!("{trigger:?}")), humanize(format!("{when:?}")).to_lowercase())
+        }
         Amount::TimesLastTurn(trigger) => format!("the times \"{}\" happened last turn", humanize(format!("{trigger:?}"))),
         Amount::HostedCounters => "the counters on this card".to_string(),
         Amount::HostedAdvancementTokens => "the advancement tokens on this card".to_string(),
@@ -273,16 +276,19 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
         Effect::FlipIdentity => "flip the identity".to_string(),
         Effect::AddToBottomOfDeck => "put it on the bottom of its owner's deck".to_string(),
         Effect::HostRigCardOnInstall { .. } => "host it on an installed card".to_string(),
-        Effect::Prohibit { what, until } => {
-            let what = match what {
-                Prohibition::StealOrTrash => "the Runner cannot steal or trash cards",
-                Prohibition::ScoreAgendas => "the Corp cannot score agendas",
+        Effect::Prohibit { what, until, copies_of_it } => {
+            let what = match (what, copies_of_it) {
+                (Prohibition::StealOrTrash, false) => "the Runner cannot steal or trash cards",
+                (Prohibition::StealOrTrash, true) => "the Runner cannot steal or trash copies of that card",
+                (Prohibition::ScoreAgendas, false) => "the Corp cannot score agendas",
+                (Prohibition::ScoreAgendas, true) => "the Corp cannot score copies of that agenda",
             };
             format!("{what} {}", duration(until))
         }
         Effect::PlaceAdvancementCounters(Amount::Fixed(n)) => format!("place {}", plural(*n, "advancement token", "advancement tokens")),
         Effect::PlaceAdvancementCounters(amount) => format!("place advancement tokens equal to {}", describe_amount(amount)),
         Effect::MoveThisCardToRoot(server) => format!("move this card to {}", describe_server(*server)),
+        Effect::PromptMoveThisCardToAnotherRoot => "move it to the root of another server".to_string(),
         Effect::PlayOperation { .. } => "play an operation".to_string(),
         Effect::ResolveSubroutineOfSelectedIce => "resolve a subroutine of the chosen ice".to_string(),
         Effect::MoveRunToOutermost(server) => format!("move the run to the outermost ice of {}", describe_server(*server)),

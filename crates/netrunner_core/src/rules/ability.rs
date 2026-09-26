@@ -756,12 +756,19 @@ pub fn evaluate_effect(
             crate::rules::engine::install_runner_card_from_grip_paying_cost(state, registry, card_id)
         }
 
-        Effect::Prohibit { what, until } => {
+        Effect::Prohibit { what, until, copies_of_it } => {
             let until = lingering::until(state, *until)?;
             // The card whose text it is, for whoever shows it; a prohibition
-            // with no card behind it has nothing to be shown as.
-            let source = acting_card.cloned().ok_or(RulesError::UnresolvedCardTarget)?;
-            state.lingering.push(LingeringEffect { what: Lingering::Cannot(*what), on: On::Player(what.binds()), until, source });
+            // with no card behind it has nothing to be shown as. About
+            // copies, the acting card is the one revealed, and the text is
+            // the card that asked for it.
+            let acting = acting_card.cloned().ok_or(RulesError::UnresolvedCardTarget)?;
+            let (on, source) = if *copies_of_it {
+                (On::CopiesOf(acting.clone()), ctx.attributed_card().unwrap_or(acting))
+            } else {
+                (On::Player(what.binds()), acting)
+            };
+            state.lingering.push(LingeringEffect { what: Lingering::Cannot(*what), on, until, source });
             Ok(Vec::new())
         }
 
@@ -1192,12 +1199,45 @@ pub fn evaluate_effect(
                 on_success: on_success.clone(),
                 on_start: on_start.clone(),
                 install: None,
+                move_to_root: false,
                 source_card: acting_card.cloned(),
                 prompting_card: ctx.attributed_card(),
                 source_install: ctx.acting_install,
                 resume: PendingChoiceResume::None,
             });
             Ok(vec![GameEvent::PendingServerChoiceOffered { chooser: *chooser }])
+        }
+
+        Effect::PromptMoveThisCardToAnotherRoot => {
+            let Some(installed) = acting_corp_install(state, ctx) else { return Ok(Vec::new()) };
+            if installed.slot != crate::rules::state::InstallSlot::Root {
+                return Ok(Vec::new());
+            }
+            let own = installed.server;
+            // "Central server only" holds at all times: such an upgrade is
+            // not moved into a server it may not occupy (CR 8.5.12).
+            let only_in = registry.get(&installed.card).and_then(|card| card.install_only_in);
+            let mut servers = vec![ServerId::Hq, ServerId::RnD, ServerId::Archives];
+            servers.extend(crate::rules::legal_actions::existing_remote_ids(state).into_iter().map(ServerId::Remote));
+            servers.retain(|server| *server != own && only_in.is_none_or(|kind| kind.admits(*server)));
+            if servers.is_empty() {
+                return Ok(Vec::new());
+            }
+            state.pending_decision = Some(PendingDecision::ChooseServer {
+                chooser: Side::Corp,
+                rez_cost_delta: 0,
+                bonus_run_credits: 0,
+                allowed_servers: Some(servers),
+                on_success: None,
+                on_start: None,
+                install: None,
+                move_to_root: true,
+                source_card: acting_card.cloned(),
+                prompting_card: ctx.attributed_card(),
+                source_install: ctx.acting_install,
+                resume: PendingChoiceResume::None,
+            });
+            Ok(vec![GameEvent::PendingServerChoiceOffered { chooser: Side::Corp }])
         }
 
         Effect::PromptInstallCorpCard { origin_zone, ignore_costs, discount, then, remote_only, rez, if_rezzed } => {
@@ -1239,6 +1279,7 @@ pub fn evaluate_effect(
                 allowed_servers: Some(allowed),
                 on_success: None,
                 on_start: None,
+                move_to_root: false,
                 install: Some(crate::rules::state::PendingInstallFromZone {
                     origin: origin_zone.clone(),
                     position,
@@ -1264,7 +1305,8 @@ pub fn evaluate_effect(
         Effect::MoveThisCardToRoot(server) => {
             let Some(position) = acting_corp_position(state, ctx) else { return Ok(Vec::new()) };
             let installed = &state.corp.installed[position];
-            if installed.slot != crate::rules::state::InstallSlot::Root || installed.server == *server {
+            let may_occupy = registry.get(&installed.card).and_then(|card| card.install_only_in).is_none_or(|kind| kind.admits(*server));
+            if installed.slot != crate::rules::state::InstallSlot::Root || installed.server == *server || !may_occupy {
                 return Ok(Vec::new());
             }
             let (card, from, install) = (installed.card.clone(), installed.server, installed.install_id);
@@ -2537,6 +2579,11 @@ pub fn check_requirement(
             });
             if matches { Ok(()) } else { Err(RulesError::RequirementNotMet) }
         }
+        EffectRequirement::RunAgainstThisServer => {
+            let own_server = acting_corp_install(state, ctx).map(|c| c.server);
+            let matches = own_server.is_some_and(|own| state.active_run.as_ref().is_some_and(|run| run.server == own));
+            if matches { Ok(()) } else { Err(RulesError::RequirementNotMet) }
+        }
         EffectRequirement::LastDamageTrashedOddCostCard => {
             // Read from the resolution in flight, not from `GameState`:
             // *Diviner* asks about the `DealDamage` immediately preceding
@@ -2790,6 +2837,10 @@ pub(crate) fn resolve_amount(amount: &Amount, ctx: &ResolutionContext<'_>, state
         Amount::ChosenNumber => 0,
         Amount::AgendaPointsScoredThisTurn => state.this_turn.agenda_points_scored(),
         Amount::TimesThisTurn(trigger) => state.this_turn.times(*trigger),
+        Amount::TimesThisTurnWhen { trigger, when } => {
+            let controller = ctx.acting_card.and_then(|card| registry.get(card)).map_or(Side::Runner, |card| card.side);
+            state.this_turn.times_when(*trigger, when, controller)
+        }
         Amount::TimesLastTurn(trigger) => state.last_turn.times(*trigger),
         Amount::HostedCounters => counters_of(state, ctx).unwrap_or(0),
         Amount::HostedAdvancementTokens => advancement_tokens_of(state, ctx).unwrap_or(0),
@@ -2882,6 +2933,7 @@ pub(crate) fn consume_requirement(
         | EffectRequirement::ZoneHasAtLeast { .. }
         | EffectRequirement::Not(_)
         | EffectRequirement::RezzedDuringRunAgainstThisServer
+        | EffectRequirement::RunAgainstThisServer
         | EffectRequirement::LastDamageTrashedOddCostCard
         | EffectRequirement::LastRunWasOnHqOrRnD
         | EffectRequirement::StoleAgendaDuringLastRun

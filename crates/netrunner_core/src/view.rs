@@ -290,6 +290,11 @@ impl ClientView {
     pub fn cannot(&self, what: crate::dsl::Prohibition) -> bool {
         crate::rules::lingering::listed(&self.lingering, what)
     }
+
+    /// [`ClientView::cannot`] about one card, as an access asks it.
+    pub fn cannot_about(&self, what: crate::dsl::Prohibition, card: &crate::dsl::CardId) -> bool {
+        crate::rules::lingering::listed_about(&self.lingering, what, card)
+    }
 }
 
 pub fn build_client_view(state: &GameState, registry: &CardRegistry, viewer: impl Into<Viewer>) -> ClientView {

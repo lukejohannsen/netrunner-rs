@@ -11384,4 +11384,178 @@ mod vantage_point {
         assert_eq!(state.corp.r_and_d.len(), 4);
         assert!(!state.corp.hq.contains(&id("witch_hunt")));
     }
+
+    // --- Stage 3b: turn-log counts and hosted counters ---
+
+    /// Playable only after successful runs on HQ, R&D and Archives this
+    /// turn; the Runner trashes two installed Corp cards and the Corp one
+    /// installed Runner card.
+    #[test]
+    fn chain_reaction_needs_all_three_centrals_and_trashes_two_corp_cards_and_one_runner_card() {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.grip = vec![id("chain_reaction")];
+        state.runner.rig = vec![rig("smartware_distributor")];
+        state.corp.installed = vec![
+            ice_at("vicsek", ServerId::Remote(0), false, 1),
+            ice_at("reverb", ServerId::Remote(1), false, 2),
+            ice_at("paywall", ServerId::Remote(2), false, 3),
+        ];
+        let play = PlayerAction::PlayEvent { card_id: id("chain_reaction") };
+        let (state, _) = run_to_completion(state, &registry, ServerId::Hq);
+        let (state, _) = run_to_completion(state, &registry, ServerId::RnD);
+        assert!(apply_action(&state, &registry, play.clone()).is_err(), "no successful run on Archives yet");
+        let (state, _) = run_to_completion(state, &registry, ServerId::Archives);
+        let (state, _) = apply_action(&state, &registry, play).expect("all three centrals");
+        let (state, _) = pick(&state, &registry, 0);
+        let (state, _) = pick(&state, &registry, 0);
+        assert_eq!(state.corp.installed.len(), 1, "two Corp cards trashed");
+        let (state, _) = pick(&state, &registry, 0);
+        assert!(state.runner.rig.is_empty(), "the Corp trashed one Runner card");
+    }
+
+    /// At the end of the Runner's action phase: a choice if ice was rezzed
+    /// this turn, and the resource trashed if none was.
+    #[test]
+    fn underdome_irregulars_pays_out_if_ice_was_rezzed_this_turn_and_is_trashed_if_not() {
+        let registry = registry();
+        for rezzed in [true, false] {
+            let mut state = base_state();
+            state.phase = GamePhase::Action(Side::Runner);
+            state.runner.resources.clicks = Clicks(0);
+            state.runner.rig = vec![rig("underdome_irregulars")];
+            state.runner.stack = vec![id("sure_gamble"), id("sure_gamble")];
+            if rezzed {
+                let rez = crate::rules::GameEvent::IceRezzed { card: id("paywall"), server: ServerId::Hq, install: InstallId(5) };
+                crate::rules::turn_log::record(&mut state, &registry, &rez);
+            }
+            let (state, _) = apply_action(&state, &registry, PlayerAction::EndTurn).expect("end the turn");
+            if rezzed {
+                let (state, _) = apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("draw 2");
+                assert_eq!(state.runner.grip.len(), 2);
+                assert_eq!(state.runner.rig.len(), 1, "kept");
+            } else {
+                assert!(state.runner.rig.is_empty(), "no ice rezzed: trashed");
+            }
+        }
+    }
+
+    /// Central server only; one power counter the first time each turn an
+    /// agenda is scored or stolen; spent to end a run on another server.
+    #[test]
+    fn the_red_room_installs_only_in_a_central_counts_the_first_score_and_ends_runs_elsewhere() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.hq = vec![id("the_red_room")];
+        let remote = PlayerAction::InstallCard { card_id: id("the_red_room"), zone: ServerId::Remote(0), slot: InstallSlot::Root, trash_first: false };
+        assert!(apply_action(&state, &registry, remote.clone()).is_err(), "not a remote");
+        assert!(!crate::rules::legal_actions(&state, &registry).contains(&remote));
+
+        let red_room = crate::rules::InstalledCard { install_id: InstallId(70), card: id("the_red_room"), server: ServerId::Hq, slot: InstallSlot::Root, rezzed: true, ..Default::default() };
+        state.corp.hq.clear();
+        state.corp.installed = vec![
+            red_room,
+            crate::rules::InstalledCard { advancement_tokens: 3, ..root_at("embedded_reporting", 0) },
+            crate::rules::InstalledCard { install_id: InstallId(71), advancement_tokens: 3, ..root_at("embedded_reporting", 1) },
+        ];
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ScoreAgenda { target: install_of(&state, "embedded_reporting") }).expect("first");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ScoreAgenda { target: InstallId(71) }).expect("second");
+        let counters = |state: &GameState| state.corp.installed.iter().find(|c| c.install_id == InstallId(70)).map(|c| c.counters);
+        assert_eq!(counters(&state), Some(1), "the first time each turn only");
+
+        let mut state = state;
+        state.phase = GamePhase::Action(Side::Runner);
+        state.corp.installed.push(ice_at("paywall", ServerId::RnD, true, 72));
+        let end_the_run = PlayerAction::ActivateAbility { target: InstallId(70), ability_index: 0 };
+        let (on_hq, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run HQ");
+        assert!(apply_action(&on_hq, &registry, end_the_run.clone()).is_err(), "not its own server");
+        let (on_rnd, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::RnD }).expect("run R&D");
+        let (on_rnd, _) = crate::rules::test_support::continue_run(&on_rnd, &registry).expect("approach");
+        let (on_rnd, _) = apply_action(&on_rnd, &registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner passes");
+        let (ended, _) = apply_action(&on_rnd, &registry, end_the_run).expect("another server");
+        assert!(ended.active_run.is_none());
+        assert_eq!(counters(&ended), Some(0));
+    }
+
+    /// A counter when rezzed; spent during a run to reveal a card in HQ,
+    /// whose copies the Runner then cannot steal or trash that run.
+    #[test]
+    fn perfect_recall_reveals_a_card_in_hq_whose_copies_the_runner_cannot_steal_this_run() {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.corp.resources.credits = Credits(5);
+        state.corp.hq = vec![id("witch_hunt")];
+        state.corp.installed = vec![
+            crate::rules::InstalledCard { install_id: InstallId(80), card: id("perfect_recall"), server: ServerId::Remote(1), slot: InstallSlot::Root, ..Default::default() },
+            root_at("witch_hunt", 0),
+            ice_at("paywall", ServerId::Remote(0), false, 81),
+        ];
+        let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Remote(0) }).expect("run");
+        let (state, _) = crate::rules::test_support::continue_run(&state, &registry).expect("approach");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner passes");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::RezIce { ice: InstallId(80) }).expect("rez the upgrade");
+        assert_eq!(state.corp.installed.iter().find(|c| c.install_id == InstallId(80)).map(|c| c.counters), Some(1));
+        let (state, _) = apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner passes");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ActivateAbility { target: InstallId(80), ability_index: 0 }).expect("use it");
+        let (state, _) = pick(&state, &registry, 0);
+        // On to the access, passing every window.
+        let mut state = state;
+        while state.active_run.as_ref().is_some_and(|run| run.access_state.is_none()) {
+            let legal = crate::rules::legal_actions(&state, &registry);
+            let next = legal
+                .iter()
+                .find(|action| matches!(action, PlayerAction::PassPriority { .. }))
+                .or_else(|| legal.iter().find(|action| matches!(action, PlayerAction::ContinueRun | PlayerAction::CompleteRun)))
+                .cloned()
+                .expect("a way on");
+            state = apply_action(&state, &registry, next).expect("on").0;
+        }
+        let steal = PlayerAction::StealAgenda { card_id: id("witch_hunt") };
+        assert!(!crate::rules::legal_actions(&state, &registry).contains(&steal), "a copy of the revealed card");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::PassAccessedCard { card_id: id("witch_hunt") }).expect("passes it");
+        assert!(state.runner.scored_agendas.is_empty());
+    }
+
+    /// Three agenda counters when scored; each moves a rezzed upgrade to
+    /// the root of another server that exists.
+    #[test]
+    fn lotus_haze_hosts_three_counters_and_moves_a_rezzed_upgrade_to_another_root() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.installed = vec![
+            crate::rules::InstalledCard { advancement_tokens: 4, ..root_at("lotus_haze", 0) },
+            crate::rules::InstalledCard { install_id: InstallId(90), card: id("hype_machine"), server: ServerId::Hq, slot: InstallSlot::Root, rezzed: true, ..Default::default() },
+        ];
+        let lotus = install_of(&state, "lotus_haze");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ScoreAgenda { target: lotus }).expect("score");
+        assert_eq!(state.corp.scored_agendas[0].agenda_counters, 3);
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ActivateAbility { target: lotus, ability_index: 0 }).expect("spend one");
+        let (state, _) = pick(&state, &registry, crate::rules::test_support::position_of(&state, "hype_machine"));
+        let Some(crate::rules::PendingDecision::ChooseServer { allowed_servers, .. }) = &state.pending_decision else { panic!("a server is asked") };
+        assert_eq!(allowed_servers.as_deref(), Some(&[ServerId::RnD, ServerId::Archives][..]), "another server that exists");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ChooseServerForPendingDecision { server: ServerId::RnD }).expect("move");
+        let moved = state.corp.installed.iter().find(|c| c.install_id == InstallId(90)).expect("still installed");
+        assert_eq!((moved.server, moved.rezzed), (ServerId::RnD, true));
+        assert_eq!(state.corp.scored_agendas[0].agenda_counters, 2);
+    }
+
+    /// "Central server only" holds at all times (CR 8.5.12): Lotus Haze
+    /// does not offer The Red Room a remote, though one exists.
+    #[test]
+    fn lotus_haze_never_moves_a_central_only_upgrade_to_a_remote() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.scored_agendas =
+            vec![crate::rules::ScoredAgenda { card: id("lotus_haze"), install_id: InstallId(95), agenda_counters: 1, scored_on_turn: 0 }];
+        state.corp.installed = vec![
+            crate::rules::InstalledCard { install_id: InstallId(96), card: id("the_red_room"), server: ServerId::Hq, slot: InstallSlot::Root, rezzed: true, ..Default::default() },
+            root_at("vulture_fund", 0),
+        ];
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ActivateAbility { target: InstallId(95), ability_index: 0 }).expect("spend one");
+        let (state, _) = pick(&state, &registry, crate::rules::test_support::position_of(&state, "the_red_room"));
+        let Some(crate::rules::PendingDecision::ChooseServer { allowed_servers, .. }) = &state.pending_decision else { panic!("a server is asked") };
+        assert_eq!(allowed_servers.as_deref(), Some(&[ServerId::RnD, ServerId::Archives][..]));
+    }
 }

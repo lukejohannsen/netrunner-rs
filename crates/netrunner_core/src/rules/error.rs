@@ -14,6 +14,8 @@ pub enum RulesError {
     NotEnoughCardsToTrash { required: u32, available: u32 },
     #[error("a cost derezzes {required} card(s) and only {available} rezzed card(s) qualify")]
     NotEnoughCardsToDerez { required: u32, available: u32 },
+    #[error("{card:?} may not be installed in that server (its text restricts where)")]
+    InstallRestricted { card: CardId },
     #[error("a cost forfeits {required} agenda(s) and only {available} are scored")]
     NotEnoughAgendasToForfeit { required: u32, available: u32 },
     #[error("{side:?} attempted to spend {requested} click(s) but only has {available}")]

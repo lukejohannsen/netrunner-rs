@@ -1170,7 +1170,7 @@ pub(crate) fn resolve_choose_server(
     registry: &CardRegistry,
     server: crate::rules::run::ServerId,
 ) -> Result<Vec<GameEvent>, RulesError> {
-    let PendingDecision::ChooseServer { rez_cost_delta, bonus_run_credits, allowed_servers, on_success, on_start, install, source_card, prompting_card, source_install, resume, .. } =
+    let PendingDecision::ChooseServer { rez_cost_delta, bonus_run_credits, allowed_servers, on_success, on_start, install, move_to_root, source_card, prompting_card, source_install, resume, .. } =
         state.pending_decision.take().ok_or(RulesError::NoPendingDecision)?
     else {
         return Err(RulesError::NoPendingDecision);
@@ -1182,6 +1182,20 @@ pub(crate) fn resolve_choose_server(
         && !allowed.contains(&server)
     {
         return Err(RulesError::ServerNotAllowedForChoice { server });
+    }
+
+    // The move-shaped resolution (Lotus Haze): the parking install moves,
+    // resolved as `MoveThisCardToRoot` so the two cannot disagree.
+    if move_to_root {
+        let mut ctx = ability::ResolutionContext::for_parked(source_install, source_card.as_ref());
+        ctx.prompting_card = prompting_card.as_ref().or(source_card.as_ref());
+        let mut events = vec![GameEvent::PendingChoiceResolved { chooser: Side::Corp, option_index: 0 }];
+        events.extend(ability::evaluate_effect(state, &Effect::MoveThisCardToRoot(server), &mut ctx, registry)?);
+        if resume == PendingChoiceResume::ResumeSubroutines {
+            mark_parked_resume_subroutines(state);
+            events.extend(paid_ability::resolve_encounter_ice(state, registry)?);
+        }
+        return Ok(events);
     }
 
     // The install-shaped resolution (`Effect::PromptInstallCorpCard`,

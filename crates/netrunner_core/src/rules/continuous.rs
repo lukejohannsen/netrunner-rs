@@ -388,6 +388,12 @@ pub fn cannot(state: &GameState, _registry: &CardRegistry, what: Prohibition) ->
     lingering::prohibits(state, what)
 }
 
+/// [`cannot`] about one card: also what binds only copies of it (Perfect
+/// Recall). An access asks this, of the card accessed.
+pub fn cannot_about(state: &GameState, _registry: &CardRegistry, what: Prohibition, card: &CardId) -> bool {
+    lingering::prohibits_about(state, what, card)
+}
+
 /// What the table adds to the cost of trashing the Corp install `install`.
 pub(crate) fn trash_cost_delta(state: &GameState, registry: &CardRegistry, install: InstallId) -> i32 {
     let Some(target) = Target::corp_install(state, registry, install) else { return 0 };

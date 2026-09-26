@@ -1,0 +1,78 @@
+{
+  "id": "underdome_irregulars",
+  "title": "Underdome Irregulars",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 1,
+  "triggers": [
+    {
+      "trigger": "OnActionPhaseEnd",
+      "text": "When your action phase ends, if a piece of ice was rezzed this turn, draw 2 cards or remove 1 tag. If no ice was rezzed this turn, trash this resource.",
+      "effects": [
+        {
+          "EffectIf": {
+            "condition": {
+              "AmountAtLeast": [
+                {
+                  "TimesThisTurnWhen": {
+                    "trigger": "OnRez",
+                    "when": {
+                      "Card": "Ice"
+                    }
+                  }
+                },
+                1
+              ]
+            },
+            "effect": {
+              "PresentChoice": {
+                "chooser": "Runner",
+                "options": [
+                  {
+                    "DrawCards": [
+                      "Runner",
+                      2
+                    ]
+                  },
+                  {
+                    "RemoveTags": {
+                      "Fixed": 1
+                    }
+                  }
+                ],
+                "texts": [
+                  "draw 2 cards",
+                  "remove 1 tag"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "EffectIf": {
+            "condition": {
+              "Not": {
+                "AmountAtLeast": [
+                  {
+                    "TimesThisTurnWhen": {
+                      "trigger": "OnRez",
+                      "when": {
+                        "Card": "Ice"
+                      }
+                    }
+                  },
+                  1
+                ]
+              }
+            },
+            "effect": {
+              "TrashCard": "ThisCard"
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "numeric_id": 36016,
+  "is_playable": true
+}
