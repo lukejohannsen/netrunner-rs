@@ -364,6 +364,8 @@ impl MatchSession {
                         | ClientMessage::ListMatches
                         | ClientMessage::Spectate { .. }
                         | ClientMessage::Attach { .. }
+                        | ClientMessage::Identify { .. }
+                        | ClientMessage::Prove { .. }
                         | ClientMessage::ListLobbies
                         | ClientMessage::CreateLobby { .. }
                         | ClientMessage::JoinLobby { .. }

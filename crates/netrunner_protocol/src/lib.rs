@@ -17,6 +17,7 @@ use netrunner_core::decks::DeckFile;
 use netrunner_core::format::NsgFormat;
 use netrunner_core::rules::{PlayerAction, Side};
 use netrunner_core::view::ClientView;
+use netrunner_identity::{Nonce, PublicKey, Signature};
 
 /// Re-exported, not defined here: both live in `netrunner_session` beside
 /// the driver that produces them. `GameEndReason` was never a transport
@@ -30,6 +31,15 @@ pub use netrunner_session::{GameEndReason, HistoryEntry, PublicHistoryEntry};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ClientMessage {
+    /// "This is my key": the first step of proving who this connection is
+    /// (Phase 4 §5), before `Attach` or `Resume`. Answered with
+    /// `Challenge`. Optional: a connection that never identifies plays,
+    /// and plays unrated.
+    Identify { key: PublicKey },
+    /// The answer to `Challenge`: the key's signature over
+    /// `netrunner_identity::auth_statement(server_key, nonce)`. Answered
+    /// with `Identified`, or `IdentifyRefused` and the socket closed.
+    Prove { signature: Signature },
     /// Take a seat back after the socket that held it dropped. The token is
     /// the one `MatchJoined` issued for that seat, and it is the *only*
     /// credential: a seat is worth exactly what a WebSocket connection was
@@ -54,7 +64,9 @@ pub enum ClientMessage {
     Spectate { match_id: Uuid },
     SubmitAction(PlayerAction),
     Surrender,
-    /// Attach to the server with nothing but a name, and stay attached:
+    /// Attach to the server with nothing but a name — and a key, proved
+    /// just before by `Identify` and `Prove`, if the player is to be
+    /// rated — and stay attached:
     /// the lobbies are browsed, joined and left, and a game is looked for
     /// and played, all on this one connection, with no deck until a game
     /// is looked for (Phase 4 §7, decided 26 September 2026). Answered
@@ -151,6 +163,21 @@ pub struct MatchSummary {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ServerMessage {
+    /// The reply to `Identify`: sign this nonce, with this server's key
+    /// inside what is signed, so the proof is good on this connection to
+    /// this server and nowhere else.
+    ///
+    /// `lasting` says whether the server keeps its key from one run to the
+    /// next (a daemon with a data directory). A client remembers a lasting
+    /// key and says so loudly if it changes; a server with no data
+    /// directory makes a new key every time it starts, and remembering
+    /// that one would only ever cry wolf.
+    Challenge { nonce: Nonce, server_key: PublicKey, lasting: bool },
+    /// The proof holds: this connection is `key` until it closes.
+    Identified { key: PublicKey },
+    /// The proof does not hold, or came without a challenge. The socket
+    /// is closed after it.
+    IdentifyRefused { reason: String },
     /// The seat is taken. `session_token` is what `ClientMessage::Resume`
     /// presents to take it back after a dropped connection; it is per
     /// *seat*, not per match, so one player's token never reseats the

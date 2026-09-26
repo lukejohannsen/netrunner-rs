@@ -1,0 +1,27 @@
+[package]
+name = "netrunner_identity"
+version = "0.1.0"
+edition = "2024"
+license.workspace = true
+repository.workspace = true
+
+# Who a player is to a server: an Ed25519 key the player holds, and the
+# signed statements that prove it (Phase 4 §5). Pure — no I/O, no clock,
+# no randomness of its own — so both ends own their files and their RNG,
+# the split `netrunner_rating` keeps. Its own crate so `netrunner_core`
+# keeps its three dependencies and neither the client nor the protocol
+# has to name the server to check a signature.
+[dependencies]
+# The version iroh already links (`netrunner_client::peer`), so there is
+# one in the tree. BSD-3-Clause, already on `deny.toml`'s allow list.
+# Default features: `zeroize` wipes a dropped secret, `fast` is the
+# precomputed tables.
+ed25519-dalek = "3"
+# Keys, nonces and signatures cross the wire and sit in files as base32
+# text. The version the tree already links.
+data-encoding = "2"
+serde = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }

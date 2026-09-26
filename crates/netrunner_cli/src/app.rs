@@ -242,7 +242,10 @@ impl App {
                 | ServerMessage::Queued { .. }
                 | ServerMessage::ConnectRejected { .. }
                 | ServerMessage::MatchList { .. }
-                | ServerMessage::ResumeRejected { .. } => {}
+                | ServerMessage::ResumeRejected { .. }
+                | ServerMessage::Challenge { .. }
+                | ServerMessage::Identified { .. }
+                | ServerMessage::IdentifyRefused { .. } => {}
                 // An attached connection's lobby replies, which a game
                 // never carries.
                 ServerMessage::Attached { .. }

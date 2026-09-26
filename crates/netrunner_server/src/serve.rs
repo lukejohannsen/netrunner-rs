@@ -41,6 +41,15 @@
 //! waiters to pick an opponent from (declined, 26 September 2026), and a
 //! closed lobby is how two people who know each other meet.
 //!
+//! **A key is who a player is** (Phase 4 §5). Before attaching, a
+//! connection may prove a key: `Identify`, a `Challenge` naming a nonce
+//! fresh for this socket and the daemon's own key, and a `Prove` signing
+//! both, checked in the handshake loop before anything else is committed
+//! to. A proved connection is rated under `key:<base32>`, and its name is
+//! a label (`Players`); an unproved one plays, unrated. A daemon's key
+//! lives in its data directory (`ServeOptions::data_dir`), or is made
+//! fresh at bind when it has none.
+//!
 //! **The lobby is a queue, not a slot.** A `Seek` either pairs with the
 //! first compatible waiter in the same lobby or joins the queue and is
 //! told so (`ServerMessage::Queued`). The token issued there is the one
@@ -65,6 +74,7 @@ use netrunner_core::cards::CardRegistry;
 use netrunner_core::decks::{self, DeckCategory, DeckFile};
 use netrunner_core::format::NsgFormat;
 use netrunner_core::rules::{Deck, GameState, Side};
+use netrunner_identity::{Identity, Nonce, PublicKey};
 use netrunner_rating::{Outcome, RatingBook, Track};
 
 use crate::match_session::{MatchSession, PlayerSlot, ReattachHandle, TurnTimeout, DEFAULT_RECONNECT_GRACE};
@@ -138,15 +148,23 @@ pub struct ServeOptions {
     /// first, matching `netrunner_cli --format`'s default; a game hosted
     /// from a client's menu offers only the host's.
     pub formats: Vec<NsgFormat>,
-    /// Where the daemon keeps its `netrunner_rating::RatingBook`. Loaded
-    /// at bind, rewritten after every rated match (temp file plus
-    /// rename, like the deck store and the card cache), and the only
-    /// thing that makes a rating *persistent*. `None` rates nothing: a
-    /// daemon with no file is stateless, which is what every test wants.
-    /// **Only a match between two people is rated.** A game against a
-    /// seated bot is practice wherever it is played, so a bot daemon given
-    /// a file never writes to it (`netrunner_rating::Track`).
-    pub ratings_file: Option<PathBuf>,
+    /// Where the daemon keeps what outlives it (Phase 4 §5): its own key
+    /// (`identity.key`, made on first start, mode 0600), the players it
+    /// has seen (`players.json`) and the rating book (`ratings.json`).
+    /// Each is written with a temp file and a rename, like the deck store
+    /// and the card cache.
+    ///
+    /// `None` is a stateless daemon, which is what every test and every
+    /// game hosted from a client's menu wants: a key made fresh at bind,
+    /// which the `Challenge` calls not `lasting` so no client remembers
+    /// it, and nothing rated.
+    ///
+    /// **Only a match between two identified people is rated**, and
+    /// between two different keys. A game against a seated bot is
+    /// practice wherever it is played (`netrunner_rating::Track`), and an
+    /// unidentified seat plays unrated: a rating is filed under a key the
+    /// player proved, never under the name they typed.
+    pub data_dir: Option<PathBuf>,
 }
 
 impl Default for ServeOptions {
@@ -162,7 +180,7 @@ impl Default for ServeOptions {
             corp_deck: None,
             runner_deck: None,
             formats: ALL_FORMATS.to_vec(),
-            ratings_file: None,
+            data_dir: None,
         }
     }
 }
@@ -302,6 +320,9 @@ struct MatchEntry {
 struct PendingHuman {
     token: Uuid,
     player_name: String,
+    /// The key this connection proved, if it identified: what the rating
+    /// book files the player under.
+    key: Option<PublicKey>,
     /// The lobby's id: a waiter pairs only within its own, and returns to
     /// it after the game.
     lobby: String,
@@ -327,7 +348,7 @@ impl PendingHuman {
             }),
             None => self.deck,
         };
-        SeatedPlayer { rating_id: Some(self.player_name.clone()), name: self.player_name, token: self.token, slot: self.slot, deck, lobby: Some(self.lobby) }
+        SeatedPlayer { rating_id: self.key.map(|key| key.rating_id()), name: self.player_name, token: self.token, slot: self.slot, deck, lobby: Some(self.lobby) }
     }
 
     /// The side this player must play, if their deck fixes one.
@@ -355,8 +376,9 @@ struct PlayerLobby {
 }
 
 /// A player about to be seated: the name `MatchList` will show, the id
-/// the rating book knows them by (the name itself for a human, `None`
-/// for a bot, which is what leaves a game against one unrated), the token `MatchJoined` will carry (already
+/// the rating book knows them by (`key:<base32>` for a player who proved a
+/// key; `None` for one who did not and for a bot, which is what leaves
+/// their game unrated), the token `MatchJoined` will carry (already
 /// issued if they came through the lobby, so one token spans queue and
 /// match), and the slot the session plays them through. A bot seat
 /// carries a token too, unused — cheaper than a second type for the one
@@ -388,8 +410,10 @@ impl SeatedPlayer {
 struct Registry {
     matches: HashMap<Uuid, MatchEntry>,
     seats: HashMap<Uuid, SeatTicket>,
-    /// Every rating the daemon holds; see `ServeOptions::ratings_file`.
+    /// Every rating the daemon holds; see `ServeOptions::data_dir`.
     ratings: RatingBook,
+    /// Every key that has attached, with the name it last gave.
+    players: Players,
     /// Arrival order; pairing takes the first waiter in the newcomer's lobby.
     lobby: Vec<PendingHuman>,
     /// The lobbies players made, by id.
@@ -503,6 +527,11 @@ struct Shared {
     /// `bind` rather than per match: a misspelled id is a daemon that
     /// refuses to start, not one that refuses every client.
     pinned: PinnedDecks,
+    /// The daemon's own key, which every `Challenge` names.
+    identity: Arc<Identity>,
+    /// Whether that key was read from the data directory and will be the
+    /// same next run, rather than made at bind.
+    lasting: bool,
 }
 
 impl Shared {
@@ -547,7 +576,8 @@ impl Shared {
     /// ratings are already applied in memory and the next match's write
     /// carries them.
     fn rate(&self, corp: &str, runner: &str, outcome: Outcome) {
-        let Some(path) = &self.options.ratings_file else { return };
+        let Some(dir) = &self.options.data_dir else { return };
+        let path = &dir.join(RATINGS_FILE);
         let mut registry = self.lock();
         let (corp_after, runner_after) = registry.ratings.record(Track::HumanVsHuman, corp, runner, outcome);
         tracing::info!(
@@ -559,6 +589,109 @@ impl Shared {
             tracing::warn!(path = %path.display(), ?error, "could not save the rating book");
         }
     }
+
+    /// Notes that `key` has attached as `name`, and rewrites the players
+    /// file. A failed write is logged, as a failed rating write is.
+    fn saw_player(&self, key: PublicKey, name: &str) {
+        let Some(dir) = &self.options.data_dir else { return };
+        let mut registry = self.lock();
+        registry.players.saw(key, name, unix_now());
+        let path = dir.join(PLAYERS_FILE);
+        if let Err(error) = write_atomically(&path, &registry.players.to_json()) {
+            tracing::warn!(path = %path.display(), ?error, "could not save the players file");
+        }
+    }
+}
+
+const IDENTITY_FILE: &str = "identity.key";
+const PLAYERS_FILE: &str = "players.json";
+const RATINGS_FILE: &str = "ratings.json";
+
+fn unix_now() -> u64 {
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |since| since.as_secs())
+}
+
+/// Every key a daemon has seen, with the name it last gave and when.
+///
+/// **A JSON map rewritten whole, not an append-only `players.jsonl`** as
+/// `docs/identity-and-rating.md` first sketched: a player's last-seen
+/// time changes on every visit, so a log would grow a line per
+/// connection to say one fact per key. The results log is where the
+/// append-only truth belongs (stage c); this is a label table, rebuilt
+/// by the next visit of anyone it loses.
+#[derive(Default, serde::Serialize, serde::Deserialize)]
+struct Players(std::collections::BTreeMap<String, PlayerEntry>);
+
+#[derive(serde::Serialize, serde::Deserialize)]
+struct PlayerEntry {
+    /// The name the key last attached with. A label: two keys may share
+    /// one, and a key may change it without changing who it is.
+    name: String,
+    first_seen: u64,
+    last_seen: u64,
+}
+
+impl Players {
+    fn saw(&mut self, key: PublicKey, name: &str, now: u64) {
+        let entry = self.0.entry(key.rating_id()).or_insert_with(|| PlayerEntry { name: String::new(), first_seen: now, last_seen: now });
+        entry.name = name.to_string();
+        entry.last_seen = now;
+    }
+
+    fn to_json(&self) -> String {
+        serde_json::to_string_pretty(self).expect("a map of strings and numbers serializes")
+    }
+}
+
+/// What a daemon reads from its data directory at bind, making the
+/// directory and the key on first start.
+struct Kept {
+    identity: Identity,
+    lasting: bool,
+    ratings: RatingBook,
+    players: Players,
+}
+
+fn load_kept(data_dir: Option<&Path>) -> std::io::Result<Kept> {
+    let Some(dir) = data_dir else {
+        return Ok(Kept { identity: Identity::from_secret(rand::random()), lasting: false, ratings: RatingBook::default(), players: Players::default() });
+    };
+    std::fs::create_dir_all(dir)?;
+    let identity = load_or_make_identity(&dir.join(IDENTITY_FILE))?;
+    let ratings = load_ratings(&dir.join(RATINGS_FILE))?;
+    let players_path = dir.join(PLAYERS_FILE);
+    let players = if players_path.exists() {
+        serde_json::from_str(&std::fs::read_to_string(&players_path)?).map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error))?
+    } else {
+        Players::default()
+    };
+    Ok(Kept { identity, lasting: true, ratings, players })
+}
+
+/// The daemon's key: read, or made and written with only its owner able
+/// to read it. A file that is there and unreadable is an error, never a
+/// reason to make a new key — that would silently make every client that
+/// remembered the old one cry wolf.
+fn load_or_make_identity(path: &Path) -> std::io::Result<Identity> {
+    if path.exists() {
+        let text = std::fs::read_to_string(path)?;
+        return Identity::from_file_text(&text).map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, format!("{}: {error}", path.display())));
+    }
+    let identity = Identity::from_secret(rand::random());
+    write_secret(path, &identity.to_file_text())?;
+    tracing::info!(path = %path.display(), key = %identity.public_key(), "made the server's key");
+    Ok(identity)
+}
+
+/// Written readable by its owner alone, created that way rather than
+/// narrowed after, so the secret is never on disk with wider access.
+fn write_secret(path: &Path, text: &str) -> std::io::Result<()> {
+    use std::io::Write;
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
+    options.open(path)?.write_all(text.as_bytes())
 }
 
 fn load_ratings(path: &Path) -> std::io::Result<RatingBook> {
@@ -572,8 +705,12 @@ fn load_ratings(path: &Path) -> std::io::Result<RatingBook> {
 /// Temp file plus rename, so a crash mid-write leaves the previous book
 /// intact rather than half a JSON document.
 fn save_ratings(path: &Path, book: &RatingBook) -> std::io::Result<()> {
+    write_atomically(path, &book.to_json())
+}
+
+fn write_atomically(path: &Path, text: &str) -> std::io::Result<()> {
     let tmp = path.with_extension("json.tmp");
-    std::fs::write(&tmp, book.to_json())?;
+    std::fs::write(&tmp, text)?;
     std::fs::rename(tmp, path)
 }
 
@@ -615,10 +752,7 @@ impl Server {
 
     fn with_listener(listener: TcpListener, options: ServeOptions) -> std::io::Result<Self> {
         let base_seed = options.seed.unwrap_or_else(rand::random);
-        let ratings = match &options.ratings_file {
-            Some(path) => load_ratings(path)?,
-            None => RatingBook::default(),
-        };
+        let Kept { identity, lasting, ratings, players } = load_kept(options.data_dir.as_deref())?;
         let cards = fixtures::sample_registry();
         let mut pinned = PinnedDecks::default();
         for &format in &options.formats {
@@ -638,16 +772,24 @@ impl Server {
         }
         let shared = Shared {
             cards,
-            registry: Arc::new(StdMutex::new(Registry { ratings, ..Registry::default() })),
+            registry: Arc::new(StdMutex::new(Registry { ratings, players, ..Registry::default() })),
             options,
             base_seed,
             pinned,
+            identity: Arc::new(identity),
+            lasting,
         };
         Ok(Server { listener, shared })
     }
 
     pub fn local_addr(&self) -> std::io::Result<SocketAddr> {
         self.listener.local_addr()
+    }
+
+    /// The key this server proves itself by: the one every `Challenge`
+    /// names.
+    pub fn public_key(&self) -> PublicKey {
+        self.shared.identity.public_key()
     }
 
     /// A door into this server for connections it did not accept itself.
@@ -702,7 +844,9 @@ impl Acceptor {
 
 /// The first message that commits a socket to something. `ListMatches` is
 /// answered inline without leaving this loop, so a client can look before
-/// it joins; anything else is skipped until one of these arrives.
+/// it joins, and so is proving a key (`Identify`, `Prove`), which comes
+/// before the commitment; anything else is skipped until one of these
+/// arrives.
 enum Handshake {
     Resume { session_token: Uuid },
     Spectate { match_id: Uuid },
@@ -715,6 +859,10 @@ where
 {
     let mut ws_stream = tokio_tungstenite::accept_async(stream).await?;
 
+    // The key this connection claimed and the nonce it was asked to sign,
+    // between `Identify` and `Prove`; then the key it proved.
+    let mut claimed: Option<(PublicKey, Nonce)> = None;
+    let mut identified: Option<PublicKey> = None;
     let handshake = loop {
         match ws_stream.next().await {
             Some(Ok(WsMessage::Text(text))) => match serde_json::from_str::<ClientMessage>(&text) {
@@ -723,6 +871,38 @@ where
                 Ok(ClientMessage::Attach { player_name }) => break Handshake::Attach { player_name },
                 Ok(ClientMessage::ListMatches) => {
                     ws_stream.send(WsMessage::Text(serde_json::to_string(&shared.match_list())?)).await?;
+                }
+                // A nonce fresh for this connection: a proof is good on
+                // the socket it was made for and no other. A second
+                // `Identify` starts again with a new nonce.
+                Ok(ClientMessage::Identify { key }) => {
+                    let nonce = Nonce(rand::random());
+                    claimed = Some((key, nonce));
+                    let challenge = ServerMessage::Challenge { nonce, server_key: shared.identity.public_key(), lasting: shared.lasting };
+                    ws_stream.send(WsMessage::Text(serde_json::to_string(&challenge)?)).await?;
+                }
+                Ok(ClientMessage::Prove { signature }) => {
+                    let proved = claimed.take().ok_or("a proof with no challenge").and_then(|(key, nonce)| {
+                        key.verify_proof(&shared.identity.public_key(), &nonce, &signature).map(|()| key).map_err(|_| "that signature does not prove the key")
+                    });
+                    match proved {
+                        Ok(key) => {
+                            tracing::info!(key = %key.fingerprint(), "client proved its key");
+                            identified = Some(key);
+                            ws_stream.send(WsMessage::Text(serde_json::to_string(&ServerMessage::Identified { key })?)).await?;
+                        }
+                        // A connection that claims a key it cannot prove is
+                        // not let on as anyone, and not as nobody either: a
+                        // client that meant to be rated should learn now,
+                        // not after a game that counted for nothing.
+                        Err(reason) => {
+                            tracing::info!(reason, "identification refused");
+                            let refusal = ServerMessage::IdentifyRefused { reason: reason.to_string() };
+                            let _ = ws_stream.send(WsMessage::Text(serde_json::to_string(&refusal)?)).await;
+                            let _ = ws_stream.close(None).await;
+                            return Ok(());
+                        }
+                    }
                 }
                 _ => continue,
             },
@@ -760,7 +940,7 @@ where
                     return Ok(());
                 }
                 let playing = attached::Playing { token: session_token, out: out_rx, into: into_tx, lobby: ticket.lobby.clone() };
-                tokio::spawn(attached::run(shared, name.unwrap_or_default(), session_tx, session_rx, Some(playing)));
+                tokio::spawn(attached::run(shared, name.unwrap_or_default(), identified, session_tx, session_rx, Some(playing)));
                 return Ok(());
             }
 
@@ -772,11 +952,14 @@ where
             let _ = ws_stream.close(None).await;
         }
         Handshake::Attach { player_name } => {
-            tracing::info!(%player_name, "client attached");
+            tracing::info!(%player_name, key = identified.map(|key| key.fingerprint()), "client attached");
+            if let Some(key) = identified {
+                shared.saw_player(key, &player_name);
+            }
             let (session_tx, bridge_rx) = mpsc::unbounded_channel::<ServerMessage>();
             let (bridge_tx, session_rx) = mpsc::unbounded_channel::<ClientMessage>();
             tokio::spawn(net::bridge_websocket(ws_stream, bridge_tx, bridge_rx));
-            tokio::spawn(attached::run(shared, player_name, session_tx, session_rx, None));
+            tokio::spawn(attached::run(shared, player_name, identified, session_tx, session_rx, None));
         }
         Handshake::Spectate { match_id } => {
             let handle = shared.lock().matches.get(&match_id).map(|entry| entry.handle.clone());
@@ -837,7 +1020,8 @@ fn seat_vs_bot(
     let (match_id, seed) = registry.allocate(shared.base_seed);
 
     let human_side = deck.side;
-    let human = SeatedPlayer { rating_id: Some(player_name.clone()), name: player_name, token: Uuid::new_v4(), slot, deck: Some(deck), lobby: Some(lobby) };
+    // Nothing against a bot is rated, so the person's id is never asked.
+    let human = SeatedPlayer { rating_id: None, name: player_name, token: Uuid::new_v4(), slot, deck: Some(deck), lobby: Some(lobby) };
     // The same deal `start_match` will make — `decks_for` is a function of
     // the seed — so the bot's style can come off the deck it is about to
     // play. A pinned deck is an embedded id (`pin_deck`), so `by_id`
@@ -985,8 +1169,14 @@ fn start_match(shared: &Shared, registry: &mut Registry, match_id: Uuid, seed: u
                 registry.seats.remove(&token);
             }
         }
-        // Two people, or nothing: a seat with no rating id is a bot's.
+        // Two identified people, or nothing: a seat with no rating id is a
+        // bot's or an unidentified player's. One key in both chairs is
+        // someone playing themselves, which would farm one role's rating
+        // off the other's.
         let (Some(corp), Some(runner)) = (corp_rating_id, runner_rating_id) else { return };
+        if corp == runner {
+            return;
+        }
         // A forfeit — surrender, disconnect, clock — is a loss like any
         // other; a stall (`None`) is nobody's and goes unrated.
         let outcome = match outcome {

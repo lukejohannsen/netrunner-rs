@@ -74,14 +74,17 @@ may mark the second for display, and never confuses their ratings.
 
 ## 2. Proving it: a challenge, bound to the server
 
-The server has a keypair too (`--identity-file`). On a rating daemon the
-handshake gains a step before `Connect` or `Resume`:
+The server has a keypair too (`identity.key` in its `--data-dir`, made on
+first start; a daemon with no data directory makes one at bind). The
+handshake gains a step before `Attach` or `Resume`:
 
 ```
-client → ClientMessage::Identify  { public_key }
-server → ServerMessage::Challenge { nonce, server_key }
+client → ClientMessage::Identify  { key }
+server → ServerMessage::Challenge { nonce, server_key, lasting }
 client → ClientMessage::Prove     { signature }
            over  "netrunner-auth-v1" ‖ server_key ‖ nonce
+server → ServerMessage::Identified { key }
+      or ServerMessage::IdentifyRefused { reason }, and the socket closes
 ```
 
 - **The server's key is inside the signed bytes.** Without it, a hostile
@@ -91,8 +94,14 @@ client → ClientMessage::Prove     { signature }
 - **The domain tag** stops an auth signature ever being replayed as another
   kind of statement (§3 uses different tags).
 - **The client pins a server's key on first contact**, known-hosts style, and
-  says so loudly if it changes.
-- **An unidentified `Connect` is still welcome, and plays unrated.** A casual
+  says so loudly if it changes. **Only a `lasting` key** (built 26 September
+  2026): a daemon with no data directory — every test, every game hosted
+  from a client's menu — makes a new key each run, and pinning that would
+  only ever cry wolf, so the challenge says which kind it is.
+- **A refused proof closes the socket** rather than letting the connection
+  on unidentified: a client that meant to be rated learns it at once, not
+  after a game that counted for nothing.
+- **An unidentified `Attach` is still welcome, and plays unrated.** A casual
   seat costs nothing to offer. Two identified seats on a rating daemon is the
   only rated game.
 - **Transport.** The daemon speaks `ws://`. The handshake protects the *key*;
@@ -147,7 +156,7 @@ Under the daemon's `--data-dir`:
 | Path | What |
 |---|---|
 | `identity.key` | The server's keypair. |
-| `players.jsonl` | One line per key: label, first seen, last seen. |
+| `players.json` | One entry per key: label, first seen, last seen. A map rewritten whole, not the `players.jsonl` first sketched here: last seen changes on every visit, so a log would grow a line per connection to say one fact per key. |
 | `matches/<yyyy-mm>/<match_id>.jsonl` | Full records: header, history, footer. |
 | `results.jsonl` | Append-only receipts, one line per rated game, in order. |
 | `ratings.json` | The `RatingBook`, exactly as today. |
@@ -196,7 +205,11 @@ Each its own branch, in this order; each is useful without the next.
    it now drops; `serve` writes header + JSONL under `--data-dir`. No protocol
    change. Also gives Phase 7 §8 item 15 (the bug-report bundle) a server half.
 2. **`netrunner_identity`, the client's key file, the handshake.** Ratings
-   keyed by `key:<b32>`; `players.jsonl`; an unidentified seat plays unrated.
+   keyed by `key:<b32>`; `players.json`; an unidentified seat plays unrated.
+   *Server half built 26 September 2026* (`feat/key-identity-server`): the
+   crate, the messages, `--data-dir` (which replaced `--ratings-file`) and
+   one key in both chairs going unrated. The client half — its key file,
+   the machine's handshake, pinning — is the next branch.
 3. **Seat commitments, receipts, `ServerMessage::Rated`, `results.jsonl`,
    `--rebuild-ratings`.**
 4. **Client surfaces.** The game-over panel shows `Rated`; Profile shows "your

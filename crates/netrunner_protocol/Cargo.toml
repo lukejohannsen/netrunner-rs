@@ -16,5 +16,7 @@ netrunner_core = { path = "../netrunner_core" }
 # `GameEndReason` and the masked history entries live beside the driver
 # that produces them.
 netrunner_session = { path = "../netrunner_session" }
+# A connection proves its key with a signed challenge (Phase 4 §5).
+netrunner_identity = { path = "../netrunner_identity" }
 serde = { workspace = true }
 uuid = { version = "1", features = ["v4", "serde"] }
