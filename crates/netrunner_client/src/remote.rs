@@ -45,9 +45,9 @@ use uuid::Uuid;
 use netrunner_core::decks::DeckFile;
 use netrunner_core::format::NsgFormat;
 use netrunner_core::rules::{Side, Viewer};
-use netrunner_protocol::{ClientMessage, MatchSummary, ServerMessage};
+use netrunner_protocol::{Chair, ClientMessage, MatchSummary, ServerMessage};
 
-use crate::connection::{Closed, Connection, ConnectionError, Event, Goal, Link};
+use crate::connection::{Closed, Connection, ConnectionError, Event, Goal, Link, Seat};
 use crate::peer::{self, Dialer, Ticket};
 
 /// A place at a match: the perspective it was given, the seat's token
@@ -129,12 +129,18 @@ impl Connecting {
     }
 }
 
-/// The `Connect` a player sends: their name, a seat preference, a room,
-/// the deck they bring, whose side is then their seat, and the lobby —
-/// the format they play, which the deck must be legal in. `None` is the
-/// server's first lobby.
-pub fn connect_message(player_name: &str, preferred_side: Option<Side>, room: Option<String>, deck: Option<DeckFile>, format: Option<NsgFormat>) -> ClientMessage {
-    ClientMessage::Connect { player_name: player_name.to_string(), preferred_side, room, deck: deck.map(Box::new), format }
+/// A game looked for in `lobby` with one deck, whose side is the chair.
+pub fn seat(player_name: &str, lobby: String, password: Option<String>, deck: DeckFile) -> Seat {
+    let chair = match deck.side {
+        Side::Corp => Chair::Corp(Box::new(deck)),
+        Side::Runner => Chair::Runner(Box::new(deck)),
+    };
+    Seat { player_name: player_name.to_string(), lobby, password, chair }
+}
+
+/// A game looked for in the server's own lobby for `format`, with one deck.
+pub fn seat_in_format(player_name: &str, format: NsgFormat, deck: DeckFile) -> Seat {
+    seat(player_name, netrunner_protocol::format_lobby_id(format), None, deck)
 }
 
 /// Starts a connection to `url` — a server's address or a host's ticket —
@@ -372,7 +378,7 @@ mod tests {
     use netrunner_server::serve::{ServeBotKind, ServeOptions, Server};
 
     async fn start_server() -> std::net::SocketAddr {
-        let options = ServeOptions { bot_runner: ServeBotKind::Heuristic, seed: Some(1), deals: true, ..ServeOptions::default() };
+        let options = ServeOptions { bot_runner: ServeBotKind::Heuristic, seed: Some(1), ..ServeOptions::default() };
         let server = Server::bind("127.0.0.1:0", options).await.unwrap();
         let addr = server.local_addr().unwrap();
         tokio::spawn(server.run());
@@ -426,7 +432,7 @@ mod tests {
     }
 
     fn corp() -> Goal {
-        Goal::Play(connect_message("tester", Some(Side::Corp), None, None, None))
+        Goal::Play(seat_in_format("tester", NsgFormat::Startup, netrunner_core::decks::by_id("brick_stack").expect("a built-in deck")))
     }
 
     #[tokio::test]
@@ -468,7 +474,7 @@ mod tests {
     }
 
     async fn start_peer_host_with(relay: crate::peer::Relay) -> (crate::peer::PeerHost, String, bool) {
-        let options = ServeOptions { bot_runner: ServeBotKind::Heuristic, seed: Some(1), deals: true, ..ServeOptions::default() };
+        let options = ServeOptions { bot_runner: ServeBotKind::Heuristic, seed: Some(1), ..ServeOptions::default() };
         let acceptor = Server::bind("127.0.0.1:0", options).await.unwrap().acceptor();
         let mut host = crate::peer::PeerHost::start(relay, move |stream, who| {
             let acceptor = acceptor.clone();

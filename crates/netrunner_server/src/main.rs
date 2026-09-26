@@ -111,11 +111,6 @@ struct Config {
     #[arg(long = "format", value_enum, value_delimiter = ',', default_values_t = [ServeFormat::Startup, ServeFormat::Standard, ServeFormat::Eternal, ServeFormat::Snapshot])]
     formats: Vec<ServeFormat>,
 
-    /// (serve mode) Deal a deck — pinned or rotating — to a player who
-    /// brings none. Off by default: a player brings a deck of their own
-    /// or a built-in one, and a Connect with none is refused.
-    #[arg(long)]
-    deal: bool,
 
     /// (serve mode) Rate every finished match between two people
     /// (`--bot-runner none`) — surrenders, disconnects and timeouts count
@@ -223,7 +218,6 @@ async fn run_serve(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
         corp_deck: config.corp_deck.clone(),
         runner_deck: config.runner_deck.clone(),
         formats: config.formats.iter().map(|&format| format.into()).collect(),
-        deals: config.deal,
         ratings_file: config.ratings_file.clone(),
     };
     let server = Server::bind(&bind_address(&config.host, config.port), options).await?;

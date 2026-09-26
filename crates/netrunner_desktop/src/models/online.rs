@@ -13,7 +13,10 @@
 //! player in the same format, and the decks offered are those legal in
 //! it. There is no list of waiting players to pick an opponent from
 //! (declined, 26 September 2026): a lobby pairs whoever is waiting, and a
-//! room is how two people who know each other meet.
+//! closed lobby — joined by its id, and its password if it has one — is
+//! how two people who know each other meet. Browsing the lobbies is
+//! Phase 4 §7 stage 4c; until then Join names one by id, or none for the
+//! format's own.
 //!
 //! **No I/O here.** A press that needs the network — start hosting, dial,
 //! list a server's matches — is an [`Outcome`] the screen carries out, and
@@ -46,7 +49,10 @@ pub enum Page {
 pub enum Field {
     /// Join's and Watch's: a server's address or a host's ticket.
     Address,
-    Room,
+    /// A lobby's id: none for the format's own.
+    Lobby,
+    /// A closed lobby's password.
+    Password,
     Port,
 }
 
@@ -56,7 +62,8 @@ impl Field {
     pub fn max_len(self) -> usize {
         match self {
             Field::Address => 1024,
-            Field::Room => 64,
+            Field::Lobby => 16,
+            Field::Password => 64,
             Field::Port => 5,
         }
     }
@@ -99,8 +106,8 @@ pub enum Outcome {
     /// Off the screen, to the main menu.
     Leave,
     Host { port: u16, reach: Reach, format: NsgFormat, deck: Box<DeckFile> },
-    /// `room` is `None` for the host's public queue.
-    Join { url: String, room: Option<String>, format: NsgFormat, deck: Box<DeckFile> },
+    /// `lobby` is `None` for the format's own lobby.
+    Join { url: String, lobby: Option<String>, password: Option<String>, format: NsgFormat, deck: Box<DeckFile> },
     /// The format changed: the screen reads the decks legal in it and
     /// hands them to [`OnlineForm::set_decks`].
     Decks(NsgFormat),
@@ -117,7 +124,8 @@ pub struct OnlineForm {
     /// reopens.
     pub came_from: Page,
     pub address: String,
-    pub room: String,
+    pub lobby: String,
+    pub password: String,
     pub port: String,
     pub reach: Reach,
     pub format: NsgFormat,
@@ -145,7 +153,8 @@ impl OnlineForm {
             page: Page::Home,
             came_from: Page::Home,
             address,
-            room: String::new(),
+            lobby: String::new(),
+            password: String::new(),
             port: DEFAULT_PORT.to_string(),
             reach: Reach::Network,
             format,
@@ -209,7 +218,8 @@ impl OnlineForm {
                         }
                         self.address = text;
                     }
-                    Field::Room => self.room = text,
+                    Field::Lobby => self.lobby = text,
+                    Field::Password => self.password = text,
                     // Digits only: a letter in a port is a typo, not a
                     // port, and is dropped as the terminal's field drops it.
                     Field::Port => self.port = text.chars().filter(char::is_ascii_digit).collect(),
@@ -301,8 +311,8 @@ impl OnlineForm {
                 Outcome::Redraw
             }
             Page::Join => {
-                let room = Some(self.room.trim().to_string()).filter(|room| !room.is_empty());
-                Outcome::Join { url: normalize_address(&self.address), room, format: self.format, deck }
+                let named = |text: &str| Some(text.trim().to_string()).filter(|text| !text.is_empty());
+                Outcome::Join { url: normalize_address(&self.address), lobby: named(&self.lobby), password: named(&self.password), format: self.format, deck }
             }
             Page::Home | Page::Watch | Page::Waiting => Outcome::Nothing,
         }
@@ -359,17 +369,18 @@ mod tests {
 
     /// Join dials what was typed, an address given its scheme and port
     /// (a ticket is passed as it is: `hosting::normalize_address`, tested
-    /// there), and a room only when one was named.
+    /// there), and a lobby and its password only when they were named.
     #[test]
-    fn join_dials_the_address_and_names_a_room_only_if_given() {
+    fn join_dials_the_address_and_names_a_lobby_only_if_given() {
         let mut form = form();
         form.apply(Intent::Open(Page::Join));
         form.apply(Intent::Typed(Field::Address, " 192.168.1.5 ".to_string()));
-        assert_eq!(form.apply(Intent::Go), Outcome::Join { url: "ws://192.168.1.5:8080".to_string(), room: None, format: NsgFormat::Startup, deck: Box::new(deck("brick_stack")) });
-        form.apply(Intent::Typed(Field::Room, "friday".to_string()));
+        assert_eq!(form.apply(Intent::Go), Outcome::Join { url: "ws://192.168.1.5:8080".to_string(), lobby: None, password: None, format: NsgFormat::Startup, deck: Box::new(deck("brick_stack")) });
+        form.apply(Intent::Typed(Field::Lobby, "k7m2qx".to_string()));
+        form.apply(Intent::Typed(Field::Password, "swordfish".to_string()));
         form.apply(Intent::Typed(Field::Address, "host.example:9000".to_string()));
-        let Outcome::Join { url, room, .. } = form.apply(Intent::Go) else { panic!() };
-        assert_eq!((url.as_str(), room.as_deref()), ("ws://host.example:9000", Some("friday")));
+        let Outcome::Join { url, lobby, password, .. } = form.apply(Intent::Go) else { panic!() };
+        assert_eq!((url.as_str(), lobby.as_deref(), password.as_deref()), ("ws://host.example:9000", Some("k7m2qx"), Some("swordfish")));
         form.apply(Intent::Typed(Field::Address, String::new()));
         assert_eq!(form.apply(Intent::Go), Outcome::Redraw, "nothing to dial");
     }

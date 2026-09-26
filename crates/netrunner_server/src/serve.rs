@@ -27,26 +27,25 @@
 //! `ResumeRejected` rather than answered with a `MatchJoined` for a match
 //! that no longer exists.
 //!
-//! **A lobby per format.** A daemon offers one or more formats
-//! (`ServeOptions::formats`), and a player is paired only with a player
-//! in the same format, their deck checked against it — so one public
-//! server holds a Startup queue and a Standard queue side by side, rather
-//! than an operator running a daemon for each. Pairing within a lobby is
-//! whoever is waiting: there is no list of waiters to pick an opponent
-//! from (declined, 26 September 2026), and a named room is how two people
-//! who know each other meet.
+//! **Every connection is attached** (`attached`): a client attaches with
+//! a name, browses and joins lobbies, and brings a deck only to look for
+//! a game. The one-shot `Connect` that carried a deck and closed with the
+//! game was removed before anything was released (26 September 2026).
 //!
-//! **The lobby is a queue, not a slot, and a waiter's token is the same
-//! token.** Under `ServeBotKind::None` a `Connect` either pairs with the
-//! first waiter in the same format and room or joins the queue and is told so
-//! (`ServerMessage::Queued`). The token issued there is the one
-//! `MatchJoined` will carry later, so `Resume` while queued swaps the
-//! socket under the queue entry with nothing new for the client to hold.
-//! Waiters whose socket has since closed are swept at every pairing and
-//! every `ListMatches` — the bridge drops its channel halves together, so
-//! a dead waiter's `tx` reports closed — which is what stops the next
-//! human pairing with a ghost. A swept waiter simply connects again: a
-//! queue position is not a seat with a game in it, so it gets no grace.
+//! **A lobby per format, and the players' own.** A daemon offers one or
+//! more formats (`ServeOptions::formats`), each a permanent lobby, and
+//! any player may make a lobby, open or closed. A player is paired only
+//! within their lobby, their deck checked against its format — so one
+//! public server holds a Startup queue and a Standard queue side by side.
+//! Pairing within a lobby is whoever is waiting: there is no list of
+//! waiters to pick an opponent from (declined, 26 September 2026), and a
+//! closed lobby is how two people who know each other meet.
+//!
+//! **The lobby is a queue, not a slot.** A `Seek` either pairs with the
+//! first compatible waiter in the same lobby or joins the queue and is
+//! told so (`ServerMessage::Queued`). The token issued there is the one
+//! `MatchJoined` carries, and a seek is withdrawn with its socket: a
+//! queue place is not a seat with a game in it, so it gets no grace.
 
 use std::collections::HashMap;
 use std::net::SocketAddr;
@@ -69,7 +68,7 @@ use netrunner_core::rules::{Deck, GameState, Side};
 use netrunner_rating::{Outcome, RatingBook, Track};
 
 use crate::match_session::{MatchSession, PlayerSlot, ReattachHandle, TurnTimeout, DEFAULT_RECONNECT_GRACE};
-use crate::protocol::{Chair, ClientMessage, Lobby, LobbyInfo, MatchSummary, ServerMessage};
+use crate::protocol::{format_lobby_id, Chair, ClientMessage, LobbyInfo, MatchSummary, ServerMessage};
 use crate::fixtures::DealtMatchup;
 use crate::{fixtures, net};
 
@@ -77,8 +76,8 @@ use crate::{fixtures, net};
 pub enum ServeBotKind {
     Heuristic,
     Mcts,
-    /// Queue connecting clients and pair them into human-vs-human matches,
-    /// first come first served within a room.
+    /// Queue players looking for a game and pair them into
+    /// human-vs-human matches, first come first served within a lobby.
     None,
 }
 
@@ -139,14 +138,6 @@ pub struct ServeOptions {
     /// first, matching `netrunner_cli --format`'s default; a game hosted
     /// from a client's menu offers only the host's.
     pub formats: Vec<NsgFormat>,
-    /// Whether a player who brings no deck is dealt one, pinned or out of
-    /// the rotating sample pool. **Off by default** (Phase 4 §7 stage 3,
-    /// 26 September 2026): the game is about decks built to surprise, so
-    /// a `Connect` with no deck is refused, naming the built-in decks
-    /// every client offers. A bot seat is always dealt its deck; this is
-    /// about the people. On for a daemon that wants the old behaviour, and
-    /// for the tests of dealing itself.
-    pub deals: bool,
     /// Where the daemon keeps its `netrunner_rating::RatingBook`. Loaded
     /// at bind, rewritten after every rated match (temp file plus
     /// rename, like the deck store and the card cache), and the only
@@ -171,7 +162,6 @@ impl Default for ServeOptions {
             corp_deck: None,
             runner_deck: None,
             formats: ALL_FORMATS.to_vec(),
-            deals: false,
             ratings_file: None,
         }
     }
@@ -272,10 +262,9 @@ struct SeatTicket {
     corp_deck: String,
     runner_deck: String,
     handle: ReattachHandle,
-    /// See `PendingHuman::attached`: a resume of an attached seat is
-    /// attached again, so the connection goes back to its lobby after the
-    /// game.
-    attached: Option<String>,
+    /// The lobby the seat's connection returns to after the game, which
+    /// a resumed connection returns to too.
+    lobby: String,
 }
 
 impl SeatTicket {
@@ -308,29 +297,21 @@ struct MatchEntry {
     handle: ReattachHandle,
 }
 
-/// A connected-but-unmatched human, waiting for another human in the
-/// same lobby (`ServeBotKind::None` only) — come in by `Connect`, or
-/// looking for a game from an attached connection (`Seek`).
+/// An attached connection looking for a game (`Seek`), waiting for
+/// another in the same lobby (`ServeBotKind::None` only).
 struct PendingHuman {
     token: Uuid,
     player_name: String,
-    preferred_side: Option<Side>,
-    /// The lobby's key: a waiter pairs only within its own
-    /// (`lobby_key`). A lobby's key is its id; a `Connect` room is keyed
-    /// apart from every listed lobby, as it always paired only with
-    /// itself.
+    /// The lobby's id: a waiter pairs only within its own, and returns to
+    /// it after the game.
     lobby: String,
     /// The lobby's format, which every deck here was checked against.
     format: NsgFormat,
-    /// The deck this player brought, already checked. Its side is a
-    /// requirement where `preferred_side` is only a preference.
+    /// A chosen chair's deck, already checked; its side is the seat.
     deck: Option<Box<DeckFile>>,
     /// A random chair's two decks, Corp then Runner: the side is picked at
     /// pairing (`assign_sides`) and the deck for it is played.
     random: Option<(Box<DeckFile>, Box<DeckFile>)>,
-    /// The lobby an attached connection returns to after the game; `None`
-    /// for one that came in by `Connect`, whose socket closes with it.
-    attached: Option<String>,
     tx: mpsc::UnboundedSender<ServerMessage>,
     slot: PlayerSlot,
 }
@@ -346,7 +327,7 @@ impl PendingHuman {
             }),
             None => self.deck,
         };
-        SeatedPlayer { rating_id: Some(self.player_name.clone()), name: self.player_name, token: self.token, slot: self.slot, deck, attached: self.attached }
+        SeatedPlayer { rating_id: Some(self.player_name.clone()), name: self.player_name, token: self.token, slot: self.slot, deck, lobby: Some(self.lobby) }
     }
 
     /// The side this player must play, if their deck fixes one.
@@ -355,28 +336,12 @@ impl PendingHuman {
     }
 }
 
-/// Whether two waiters can be one match: not if both brought decks for the
-/// same side. Preferences alone never make a pair impossible — the first
-/// preference wins (`assign_sides`) — and a random chair sits anywhere,
-/// but a brought deck is the side.
+/// Whether two waiters can be one match: not if both chose the same
+/// chair. A random chair sits anywhere.
 fn compatible(a: &PendingHuman, b: &PendingHuman) -> bool {
     !matches!((a.deck_side(), b.deck_side()), (Some(x), Some(y)) if x == y)
 }
 
-/// The key a `Connect` pairs under: its format's lobby, or its room apart
-/// from every listed lobby. A room pairs only with the same room in the
-/// same format, as it always did.
-fn lobby_key(format: NsgFormat, room: Option<&str>) -> String {
-    match room {
-        None => format_lobby_id(format),
-        Some(room) => format!("{}#room:{room}", format_lobby_id(format)),
-    }
-}
-
-/// The id of the server's own lobby for `format`: its name in lower case.
-fn format_lobby_id(format: NsgFormat) -> String {
-    format!("{format:?}").to_lowercase()
-}
 
 /// A lobby a player made (`ClientMessage::CreateLobby`). The server's own
 /// lobbies, one per format, are not stored: they are `options.formats`.
@@ -401,11 +366,11 @@ struct SeatedPlayer {
     rating_id: Option<String>,
     token: Uuid,
     slot: PlayerSlot,
-    /// A deck the player brought, which replaces whatever the daemon would
-    /// have dealt their side. Always `None` for a bot.
+    /// The deck the player brought, which replaces whatever the daemon
+    /// would have dealt their side. `None` for a bot, which is dealt.
     deck: Option<Box<DeckFile>>,
-    /// See `PendingHuman::attached`.
-    attached: Option<String>,
+    /// The lobby a player returns to after the game; `None` for a bot.
+    lobby: Option<String>,
 }
 
 impl SeatedPlayer {
@@ -469,16 +434,11 @@ impl Registry {
                     corp: entry.corp.clone(),
                     runner: entry.runner.clone(),
                     started_secs_ago: now.saturating_duration_since(entry.started_at).as_secs(),
-                    format: Some(entry.format),
+                    format: entry.format,
                 })
                 .collect(),
             waiting_in_lobby: self.lobby.len(),
             max_matches: options.max_matches,
-            lobbies: options
-                .formats
-                .iter()
-                .map(|&format| Lobby { format, waiting: self.seeking(&format_lobby_id(format)) })
-                .collect(),
         }
     }
 
@@ -744,7 +704,6 @@ impl Acceptor {
 /// answered inline without leaving this loop, so a client can look before
 /// it joins; anything else is skipped until one of these arrives.
 enum Handshake {
-    Connect { player_name: String, preferred_side: Option<Side>, room: Option<String>, deck: Option<Box<DeckFile>>, format: Option<NsgFormat> },
     Resume { session_token: Uuid },
     Spectate { match_id: Uuid },
     Attach { player_name: String },
@@ -759,9 +718,6 @@ where
     let handshake = loop {
         match ws_stream.next().await {
             Some(Ok(WsMessage::Text(text))) => match serde_json::from_str::<ClientMessage>(&text) {
-                Ok(ClientMessage::Connect { player_name, preferred_side, room, deck, format }) => {
-                    break Handshake::Connect { player_name, preferred_side, room, deck, format };
-                }
                 Ok(ClientMessage::Resume { session_token }) => break Handshake::Resume { session_token },
                 Ok(ClientMessage::Spectate { match_id }) => break Handshake::Spectate { match_id },
                 Ok(ClientMessage::Attach { player_name }) => break Handshake::Attach { player_name },
@@ -776,49 +732,6 @@ where
     };
 
     match handshake {
-        Handshake::Connect { player_name, preferred_side, room, deck, format } => {
-            tracing::info!(%player_name, ?preferred_side, ?room, ?format, deck = deck.as_ref().map(|deck| deck.id.as_str()), "client connected");
-            let (session_tx, bridge_rx) = mpsc::unbounded_channel::<ServerMessage>();
-            let (bridge_tx, session_rx) = mpsc::unbounded_channel::<ClientMessage>();
-            tokio::spawn(net::bridge_websocket(ws_stream, bridge_tx, bridge_rx));
-            let format = match lobby_for(format, &shared.options) {
-                Ok(format) => format,
-                Err(reason) => {
-                    tracing::info!(%player_name, %reason, "no such lobby");
-                    refuse(&session_tx, &reason);
-                    return Ok(());
-                }
-            };
-            if deck.is_none() && !shared.options.deals {
-                tracing::info!(%player_name, "refused: brought no deck");
-                refuse(&session_tx, NO_DEAL);
-                return Ok(());
-            }
-            // Checked before the player reaches the lobby or a bot, so an
-            // illegal deck is a refusal at the door rather than a match that
-            // fails to set up in front of an opponent who waited for it.
-            let preferred_side = match &deck {
-                Some(deck) => match check_brought_deck(deck, preferred_side, format, &shared) {
-                    Ok(side) => Some(side),
-                    Err(reason) => {
-                        tracing::info!(%player_name, deck = %deck.id, %reason, "brought deck refused");
-                        refuse(&session_tx, &reason);
-                        return Ok(());
-                    }
-                },
-                None => preferred_side,
-            };
-            let slot = PlayerSlot::Channel { tx: session_tx.clone(), rx: session_rx };
-
-            match shared.options.bot_runner {
-                ServeBotKind::None => {
-                    let lobby = lobby_key(format, room.as_deref());
-                    let newcomer = PendingHuman { token: Uuid::new_v4(), player_name, preferred_side, lobby, format, deck, random: None, attached: None, tx: session_tx, slot };
-                    enqueue_or_pair(&shared, newcomer);
-                }
-                kind => seat_vs_bot(&shared, kind, player_name, preferred_side, format, deck, None, session_tx, slot),
-            }
-        }
         Handshake::Resume { session_token } => {
             let ticket = shared.lock().seats.get(&session_token).cloned();
             if let Some(ticket) = ticket.filter(|ticket| ticket.handle.is_live()) {
@@ -830,66 +743,33 @@ where
                 // `StateUpdate` the session answers with: the client is
                 // waiting for its seat back before it renders anything.
                 let _ = session_tx.send(ticket.joined(session_token));
-                // An attached seat is attached again: the match talks to a
+                // The seat is attached again: the match talks to a
                 // connection task, which takes the socket back to the
                 // lobby when the game is over.
-                if let Some(lobby) = ticket.attached.clone() {
-                    let name = shared.lock().matches.get(&ticket.match_id).map(|entry| match ticket.side {
-                        Side::Corp => entry.corp.clone(),
-                        Side::Runner => entry.runner.clone(),
-                    });
-                    let (out_tx, out_rx) = mpsc::unbounded_channel::<ServerMessage>();
-                    let (into_tx, into_rx) = mpsc::unbounded_channel::<ClientMessage>();
-                    if ticket.handle.reattach(ticket.side, out_tx, into_rx).is_err() {
-                        let _ = session_tx.send(ServerMessage::ResumeRejected { reason: "the match ended".into() });
-                        return Ok(());
-                    }
-                    let playing = attached::Playing { token: session_token, out: out_rx, into: into_tx, lobby };
-                    tokio::spawn(attached::run(shared, name.unwrap_or_default(), session_tx, session_rx, Some(playing)));
-                    return Ok(());
-                }
-                if ticket.handle.reattach(ticket.side, session_tx.clone(), session_rx).is_err() {
+                let name = shared.lock().matches.get(&ticket.match_id).map(|entry| match ticket.side {
+                    Side::Corp => entry.corp.clone(),
+                    Side::Runner => entry.runner.clone(),
+                });
+                let (out_tx, out_rx) = mpsc::unbounded_channel::<ServerMessage>();
+                let (into_tx, into_rx) = mpsc::unbounded_channel::<ClientMessage>();
+                if ticket.handle.reattach(ticket.side, out_tx, into_rx).is_err() {
                     // Lost the race with the match ending between the
                     // liveness check and here. The bridge is already up,
                     // so the refusal goes down the same channel.
                     let _ = session_tx.send(ServerMessage::ResumeRejected { reason: "the match ended".into() });
+                    return Ok(());
                 }
+                let playing = attached::Playing { token: session_token, out: out_rx, into: into_tx, lobby: ticket.lobby.clone() };
+                tokio::spawn(attached::run(shared, name.unwrap_or_default(), session_tx, session_rx, Some(playing)));
                 return Ok(());
             }
 
-            // Not a seat: perhaps a queue position. The new halves replace
-            // the waiter's under the lock; the old ones drop with it,
-            // which closes the old socket — newest connection wins, as it
-            // does for a seat.
-            let (session_tx, bridge_rx) = mpsc::unbounded_channel::<ServerMessage>();
-            let (bridge_tx, session_rx) = mpsc::unbounded_channel::<ClientMessage>();
-            let position = {
-                let mut registry = shared.lock();
-                // An attached connection's place is its own: it is taken
-                // off the queue when that connection goes.
-                match registry.lobby.iter().position(|waiter| waiter.token == session_token && waiter.attached.is_none()) {
-                    Some(index) => {
-                        let waiter = &mut registry.lobby[index];
-                        waiter.tx = session_tx.clone();
-                        waiter.slot = PlayerSlot::Channel { tx: session_tx.clone(), rx: session_rx };
-                        Some(index + 1)
-                    }
-                    None => None,
-                }
-            };
-            match position {
-                Some(position) => {
-                    tracing::info!(%session_token, position, "client resumed its place in the lobby");
-                    tokio::spawn(net::bridge_websocket(ws_stream, bridge_tx, bridge_rx));
-                    let _ = session_tx.send(ServerMessage::Queued { session_token, position });
-                }
-                None => {
-                    tracing::info!(%session_token, "resume refused: no such seat");
-                    let refusal = ServerMessage::ResumeRejected { reason: "no live match holds that session token".into() };
-                    let _ = ws_stream.send(WsMessage::Text(serde_json::to_string(&refusal)?)).await;
-                    let _ = ws_stream.close(None).await;
-                }
-            }
+            // A seek is withdrawn with its socket, so a token is only ever
+            // a seat's.
+            tracing::info!(%session_token, "resume refused: no such seat");
+            let refusal = ServerMessage::ResumeRejected { reason: "no live match holds that session token".into() };
+            let _ = ws_stream.send(WsMessage::Text(serde_json::to_string(&refusal)?)).await;
+            let _ = ws_stream.close(None).await;
         }
         Handshake::Attach { player_name } => {
             tracing::info!(%player_name, "client attached");
@@ -931,42 +811,9 @@ where
 
 const AT_CAP: &str = "the host is at its match limit";
 
-/// Why a `Connect` with no deck is refused where the daemon deals none.
-const NO_DEAL: &str = "this server deals no decks: bring one of your own, or one of the built-in decks";
-
-/// The lobby a `Connect` asked for: the daemon's first format when it
-/// named none, the one it named when the daemon offers it, or a refusal
-/// that names what is offered.
-fn lobby_for(asked: Option<NsgFormat>, options: &ServeOptions) -> Result<NsgFormat, String> {
-    match asked {
-        None => Ok(options.formats[0]),
-        Some(format) if options.formats.contains(&format) => Ok(format),
-        Some(format) => {
-            let offered: Vec<String> = options.formats.iter().map(|format| format!("{format:?}")).collect();
-            Err(format!("this server has no {format:?} lobby; it pairs players in {}", offered.join(", ")))
-        }
-    }
-}
-
-/// A brought deck's side, or why the daemon will not seat it: a side that
-/// contradicts `preferred_side`, or a deck either validator refuses in the
-/// lobby's format — the same `DeckFile::validate` a pinned deck and a
-/// local game go through, so "legal" means one thing on both ends.
-fn check_brought_deck(deck: &DeckFile, preferred_side: Option<Side>, format: NsgFormat, shared: &Shared) -> Result<Side, String> {
-    if let Some(preferred) = preferred_side
-        && preferred != deck.side
-    {
-        return Err(format!("you asked for the {preferred:?} seat but brought a {:?} deck", deck.side));
-    }
-    deck.validate(&shared.cards, format).map_err(|error| format!("your deck {:?} is not legal in {format:?}: {error}", deck.name))?;
-    Ok(deck.side)
-}
-
-/// A `Connect` the daemon will not honour. Dropping the caller's channel
-/// halves afterwards is what closes the socket: the bridge's send task
-/// ends when every sender is gone and closes the stream with a `Close`
-/// frame, so a refusal is one message and a clean disconnect, not a
-/// socket left waiting for a `MatchJoined` that will never come.
+/// A seat the daemon cannot give: at its match cap, or a match that failed
+/// to set up. The attached connection that asked turns it into
+/// `SeekRefused` (`attached::Attached::on_match`).
 fn refuse(tx: &mpsc::UnboundedSender<ServerMessage>, reason: &str) {
     let _ = tx.send(ServerMessage::ConnectRejected { reason: reason.to_string() });
 }
@@ -976,10 +823,9 @@ fn seat_vs_bot(
     shared: &Shared,
     kind: ServeBotKind,
     player_name: String,
-    preferred_side: Option<Side>,
     format: NsgFormat,
-    deck: Option<Box<DeckFile>>,
-    attached: Option<String>,
+    deck: Box<DeckFile>,
+    lobby: String,
     tx: mpsc::UnboundedSender<ServerMessage>,
     slot: PlayerSlot,
 ) {
@@ -990,8 +836,8 @@ fn seat_vs_bot(
     }
     let (match_id, seed) = registry.allocate(shared.base_seed);
 
-    let human_side = preferred_side.unwrap_or(Side::Corp);
-    let human = SeatedPlayer { rating_id: Some(player_name.clone()), name: player_name, token: Uuid::new_v4(), slot, deck, attached };
+    let human_side = deck.side;
+    let human = SeatedPlayer { rating_id: Some(player_name.clone()), name: player_name, token: Uuid::new_v4(), slot, deck: Some(deck), lobby: Some(lobby) };
     // The same deal `start_match` will make — `decks_for` is a function of
     // the seed — so the bot's style can come off the deck it is about to
     // play. A pinned deck is an embedded id (`pin_deck`), so `by_id`
@@ -1013,7 +859,7 @@ fn seat_vs_bot(
             token: Uuid::new_v4(),
             slot: PlayerSlot::Bot(level.spec(bot_side).with_personality(personality).agent(bot_seed)),
             deck: None,
-            attached: None,
+            lobby: None,
         },
         None => SeatedPlayer {
             name: styled(kind.seat_name().to_string(), personality),
@@ -1021,7 +867,7 @@ fn seat_vs_bot(
             token: Uuid::new_v4(),
             slot: PlayerSlot::Bot(make_serve_agent(kind, bot_side, bot_seed, personality)),
             deck: None,
-            attached: None,
+            lobby: None,
         },
     };
     let (corp, runner) = match human_side {
@@ -1031,12 +877,8 @@ fn seat_vs_bot(
     start_match(shared, &mut registry, match_id, seed, format, corp, runner);
 }
 
-/// `ServeBotKind::None`: pair with the first waiter in the same room, or
-/// join the queue. `room: None` is the public queue; a named room pairs
-/// only with itself, which is the whole of "play against my friend" — an
-/// explicit create/join protocol was rejected because a match only ever
-/// comes into being by pairing two waiters, so there is no open-match
-/// object for a second message to join.
+/// `ServeBotKind::None`: pair with the first compatible waiter in the same
+/// lobby, or join its queue.
 fn enqueue_or_pair(shared: &Shared, newcomer: PendingHuman) {
     let mut registry = shared.lock();
     registry.sweep_lobby();
@@ -1096,9 +938,9 @@ fn start_match(shared: &Shared, registry: &mut Registry, match_id: Uuid, seed: u
         }
     };
 
-    let seats: Vec<(Side, Uuid, mpsc::UnboundedSender<ServerMessage>, Option<String>)> = [(&corp, Side::Corp), (&runner, Side::Runner)]
+    let seats: Vec<(Side, Uuid, mpsc::UnboundedSender<ServerMessage>, String)> = [(&corp, Side::Corp), (&runner, Side::Runner)]
         .into_iter()
-        .filter_map(|(player, side)| player.channel_tx().map(|tx| (side, player.token, tx.clone(), player.attached.clone())))
+        .filter_map(|(player, side)| player.channel_tx().map(|tx| (side, player.token, tx.clone(), player.lobby.clone().unwrap_or_default())))
         .collect();
     let (corp_name, runner_name) = (corp.name, runner.name);
     let (corp_rating_id, runner_rating_id) = (corp.rating_id, runner.rating_id);
@@ -1119,14 +961,14 @@ fn start_match(shared: &Shared, registry: &mut Registry, match_id: Uuid, seed: u
     );
 
     let mut tokens = Vec::with_capacity(seats.len());
-    for (side, session_token, tx, attached) in seats {
+    for (side, session_token, tx, lobby) in seats {
         let ticket = SeatTicket {
             match_id,
             side,
             corp_deck: corp_deck_id.clone(),
             runner_deck: runner_deck_id.clone(),
             handle: handle.clone(),
-            attached,
+            lobby,
         };
         let _ = tx.send(ticket.joined(session_token));
         registry.seats.insert(session_token, ticket);
@@ -1166,28 +1008,16 @@ fn styled(name: String, personality: Personality) -> String {
     }
 }
 
-/// A brought deck's side first — `compatible` has already ruled out two
-/// for the same side, and a random chair sits opposite it — then, for
-/// two random chairs, a coin; then the first player's explicit side
-/// preference, then the second player's; otherwise the first connection
-/// is the Corp.
+/// A chosen chair first — `compatible` has already ruled out two of the
+/// same, and a random chair sits opposite it — and for two random chairs
+/// a coin, tossed off the match's seed so a `--seed` run seats the same
+/// way every time. Corp first.
 fn assign_sides(a: PendingHuman, b: PendingHuman, seed: u64) -> (PendingHuman, PendingHuman) {
     match (a.deck_side(), b.deck_side()) {
-        (Some(Side::Corp), _) | (_, Some(Side::Runner)) => return (a, b),
-        (Some(Side::Runner), _) | (_, Some(Side::Corp)) => return (b, a),
-        (None, None) => {}
-    }
-    // Two random chairs: the server tosses the coin, off the match's seed
-    // so a `--seed` run seats the same way every time.
-    if a.random.is_some() && b.random.is_some() {
-        return if seed & 1 == 0 { (a, b) } else { (b, a) };
-    }
-    match (a.preferred_side, b.preferred_side) {
-        (Some(Side::Corp), _) => (a, b),
-        (Some(Side::Runner), _) => (b, a),
-        (_, Some(Side::Corp)) => (b, a),
-        (_, Some(Side::Runner)) => (a, b),
-        _ => (a, b),
+        (Some(Side::Corp), _) | (_, Some(Side::Runner)) => (a, b),
+        (Some(Side::Runner), _) | (_, Some(Side::Corp)) => (b, a),
+        (None, None) if seed & 1 == 0 => (a, b),
+        (None, None) => (b, a),
     }
 }
 

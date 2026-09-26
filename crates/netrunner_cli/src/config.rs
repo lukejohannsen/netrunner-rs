@@ -175,10 +175,15 @@ pub struct Config {
     #[arg(long, value_enum)]
     pub side: Option<SideArg>,
 
-    /// (remote mode, human-vs-human daemon) Only pair with a player who
-    /// named the same room. Omitted: the public queue.
+    /// (remote mode) The lobby to look for a game in, by its id: a
+    /// player's lobby, given by whoever made it. Omitted: the server's own
+    /// lobby for `--format`.
     #[arg(long)]
-    pub room: Option<String>,
+    pub lobby: Option<String>,
+
+    /// (remote mode) The password of a closed lobby that has one.
+    #[arg(long)]
+    pub password: Option<String>,
 
     /// (remote mode) Bring this deck — a built-in id, a saved deck's name,
     /// or a path. Its side is your seat, so `--side` may be left off (and

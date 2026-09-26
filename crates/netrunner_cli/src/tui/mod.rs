@@ -93,7 +93,11 @@ async fn run_remote(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
     let brought_id = brought.as_ref().map(|deck| deck.id.clone());
     let goal = match config.spectate {
         Some(match_id) => remote::Goal::Watch { match_id },
-        None => remote::Goal::Play(remote::connect_message(&record::player_name(config), config.side.map(Into::into), config.room.clone(), brought, Some(config.format.into()))),
+        None => {
+            let deck = brought.expect("a player always brings a deck");
+            let lobby = config.lobby.clone().unwrap_or_else(|| netrunner_server::protocol::format_lobby_id(config.format.into()));
+            remote::Goal::Play(remote::seat(&record::player_name(config), lobby, config.password.clone(), deck))
+        }
     };
     // Before the terminal is taken, so the lobby wait goes to stderr.
     let joined = remote::connect(&config.server, goal, |position| eprintln!("Waiting in the lobby for another player ({position} waiting)...")).await?;

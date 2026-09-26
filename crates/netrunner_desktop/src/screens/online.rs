@@ -39,6 +39,7 @@ use netrunner_client::peer::Relay;
 use netrunner_client::play::MatchHandle;
 use netrunner_client::remote::{self, ConnectEvent, Connecting};
 use netrunner_client::settings::{format_name, FORMATS};
+use netrunner_server::protocol::format_lobby_id;
 use netrunner_core::format::NsgFormat;
 use netrunner_core::rules::{Side, Viewer};
 use netrunner_server::serve::{ServeBotKind, ServeOptions, Server};
@@ -336,9 +337,10 @@ fn carry_out(outcome: Outcome, form: &mut OnlineForm, net: &mut Net, core: &Clie
             };
             host(form, net, core, runtime, port, reach, format, *deck, relay);
         }
-        Outcome::Join { url, room, format, deck } => {
+        Outcome::Join { url, lobby, password, format, deck } => {
             net.brought = Some(deck.id.clone());
-            let hello = remote::connect_message(&player, Some(deck.side), room, Some(*deck), Some(format));
+            let lobby = lobby.unwrap_or_else(|| format_lobby_id(format));
+            let hello = remote::seat(&player, lobby, password, *deck);
             net.connecting = Some(remote::spawn(url.clone(), Goal::Play(hello)));
             form.apply(Intent::Waiting(format!("Connecting to {}…", shortened(&url))));
         }
@@ -370,7 +372,7 @@ fn host(form: &mut OnlineForm, net: &mut Net, core: &ClientCore, runtime: &Tokio
     match start_hosting(port, reach, format, relay, runtime.handle()) {
         Ok((hosting, url)) => {
             net.brought = Some(deck.id.clone());
-            let hello = remote::connect_message(&core.player_name(), Some(deck.side), None, Some(deck), Some(format));
+            let hello = remote::seat_in_format(&core.player_name(), format, deck);
             net.connecting = Some(remote::spawn(url, Goal::Play(hello)));
             net.hosting = Some(hosting);
             net.shown.clear();
@@ -450,9 +452,10 @@ fn dev_page(
                     // host's does with their own.
                     net.hosting = Some(hosting);
                     let decisions = dev.as_ref().map_or(0, |dev| dev.autoplay).max(1);
+                    let format = form.format;
                     let (tx, rx) = mpsc::channel();
                     runtime.0.spawn(async move {
-                        let _ = tx.send(bots_play(url, decisions).await);
+                        let _ = tx.send(bots_play(url, format, decisions).await);
                     });
                     *spectate = Some(Mutex::new(rx));
                     form.apply(Intent::Waiting(format!("Two bots are playing {decisions} decisions…")))
@@ -469,14 +472,15 @@ fn dev_page(
 /// match's address and id, for the spectator. The seats stay connected,
 /// asked and unanswering, so the board the spectator opens on stays put
 /// for the screenshot.
-async fn bots_play(url: String, decisions: u32) -> Result<(String, uuid::Uuid), String> {
+async fn bots_play(url: String, format: NsgFormat, decisions: u32) -> Result<(String, uuid::Uuid), String> {
     use std::sync::atomic::{AtomicU32, Ordering};
     use std::sync::Arc;
     use netrunner_server::ServerMessage;
     use netrunner_server::protocol::ClientMessage;
 
     // Each brings a built-in deck: a server deals nobody one.
-    let seat = |name: &str, deck: &str| remote::connect(&url, Goal::Play(remote::connect_message(name, None, None, netrunner_core::decks::by_id(deck), None)), |_| {});
+    let deck = |id: &str| netrunner_core::decks::by_id(id).expect("a built-in deck");
+    let seat = |name: &str, id: &str| remote::connect(&url, Goal::Play(remote::seat_in_format(name, format, deck(id))), |_| {});
     let (one, two) = tokio::join!(seat("Bot one", "brick_stack"), seat("Bot two", "stolen_goods"));
     let (one, two) = (one.map_err(|error| error.to_string())?, two.map_err(|error| error.to_string())?);
     let made = Arc::new(AtomicU32::new(0));
@@ -648,7 +652,8 @@ fn net(mut commands: Commands, mut net: ResMut<Net>, mut model: ResMut<Model>, m
 fn text_of(form: &OnlineForm, field: Field) -> &str {
     match field {
         Field::Address => &form.address,
-        Field::Room => &form.room,
+        Field::Lobby => &form.lobby,
+        Field::Password => &form.password,
         Field::Port => &form.port,
     }
 }
@@ -717,8 +722,11 @@ fn spawn_host(parent: &mut ChildSpawnerCommands, theme: &Theme, form: &OnlineFor
 fn spawn_join(parent: &mut ChildSpawnerCommands, theme: &Theme, form: &OnlineForm) {
     parent.spawn(widgets::heading(theme, "Join a game"));
     section(parent, theme, "Address or ticket", |section| field_box(section, theme, Field::Address, &form.address, "the host's address, or paste its ticket", true));
-    section(parent, theme, "Room", |section| field_box(section, theme, Field::Room, &form.room, "none — the public queue", false));
-    format_section(parent, theme, form, "The lobby: you are paired with whoever is waiting in this format, or in your room.");
+    format_section(parent, theme, form, "You are paired with whoever is waiting in this format's lobby, or in the lobby named below.");
+    section(parent, theme, "Lobby", |section| {
+        field_box(section, theme, Field::Lobby, &form.lobby, "none — the format's own lobby", false);
+        field_box(section, theme, Field::Password, &form.password, "no password", false);
+    });
     deck_section(parent, theme, form);
     buttons(parent, |row| {
         row.spawn(widgets::styled_button(theme, ButtonKind::Quiet, "Back", Val::Auto, Control::Back));
@@ -748,7 +756,7 @@ fn spawn_watch(parent: &mut ChildSpawnerCommands, theme: &Theme, form: &OnlineFo
         section(parent, theme, "Matches", |section| {
             for (index, summary) in form.matches.iter().enumerate() {
                 // No decks: a server names none (`MatchSummary`).
-                let lobby = summary.format.map(|format| format!(" · {}", format_name(format))).unwrap_or_default();
+                let lobby = format!(" · {}", format_name(summary.format));
                 let line = format!("{} (Corp) vs {} (Runner){lobby} · {} min in", summary.corp, summary.runner, summary.started_secs_ago / 60);
                 section.spawn(widgets::styled_button(theme, ButtonKind::Secondary, line, percent(100), Control::Watch(index)));
             }

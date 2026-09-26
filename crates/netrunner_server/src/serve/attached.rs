@@ -13,8 +13,6 @@
 //! task and the task to the socket. That is what lets the connection
 //! outlive the game: when the match lets go of the seat its channel
 //! closes, and the task — still holding the socket — sends `BackInLobby`.
-//! A `Connect` seat, by contrast, is the socket itself, and closes with
-//! the game, as it always did.
 //!
 //! **What a dropped socket costs.** A seek is withdrawn with the socket,
 //! and the lobby's count forgets it; a seat in a game is kept for the
@@ -141,6 +139,7 @@ impl Attached {
                 }
             }
             ClientMessage::JoinLobby { lobby, password } => {
+                let lobby = lobby_id_as_typed(&lobby);
                 if playing.is_some() {
                     return self.send(ServerMessage::LobbyRefused { reason: BUSY.into() });
                 }
@@ -173,7 +172,7 @@ impl Attached {
             }
             // Watching from an attached connection is a later stage; a
             // second hello is the client repeating itself.
-            ClientMessage::Attach { .. } | ClientMessage::Connect { .. } | ClientMessage::Resume { .. } | ClientMessage::Spectate { .. } => {}
+            ClientMessage::Attach { .. } | ClientMessage::Resume { .. } | ClientMessage::Spectate { .. } => {}
         }
     }
 
@@ -248,35 +247,24 @@ impl Attached {
         let token = Uuid::new_v4();
         match self.shared.options.bot_runner {
             ServeBotKind::None => {
-                let newcomer = PendingHuman {
-                    token,
-                    player_name: self.player_name.clone(),
-                    preferred_side: None,
-                    lobby: lobby.clone(),
-                    format,
-                    deck,
-                    random,
-                    attached: Some(lobby.clone()),
-                    tx: out_tx,
-                    slot,
-                };
+                let newcomer = PendingHuman { token, player_name: self.player_name.clone(), lobby: lobby.clone(), format, deck, random, tx: out_tx, slot };
                 enqueue_or_pair(&self.shared, newcomer);
             }
             // A bot sits opposite whatever chair was chosen; a random one
             // is a coin here, since there is no second player to pair.
             kind => {
-                let (side, deck) = match (deck, random) {
-                    (Some(deck), _) => (deck.side, deck),
+                let deck = match (deck, random) {
+                    (Some(deck), _) => deck,
                     (None, Some((corp, runner))) => {
                         if rand::random::<bool>() {
-                            (Side::Corp, corp)
+                            corp
                         } else {
-                            (Side::Runner, runner)
+                            runner
                         }
                     }
                     (None, None) => unreachable!("every chair brings a deck"),
                 };
-                seat_vs_bot(&self.shared, kind, self.player_name.clone(), Some(side), format, Some(deck), Some(lobby.clone()), out_tx, slot);
+                seat_vs_bot(&self.shared, kind, self.player_name.clone(), format, deck, lobby.clone(), out_tx, slot);
             }
         }
         Ok(Playing { token, out, into, lobby })
@@ -359,6 +347,15 @@ const BUSY: &str = "cancel the game you are looking for, or finish the one you a
 
 /// The longest name a player's lobby may have.
 const MAX_LOBBY_NAME: usize = 40;
+
+/// A lobby id as a person typed it: a format's lobby in any case
+/// (`Startup`, `startup`), a player's code in any case (`k7m2qx`), with
+/// the spaces around it gone.
+fn lobby_id_as_typed(typed: &str) -> String {
+    let typed = typed.trim();
+    let lower = typed.to_lowercase();
+    if ALL_FORMATS.iter().any(|&format| format_lobby_id(format) == lower) { lower } else { typed.to_uppercase() }
+}
 
 /// A player lobby's id: six characters from an alphabet with no look-alikes
 /// (no 0/O, 1/I/L), short enough to read out and never a format's name.

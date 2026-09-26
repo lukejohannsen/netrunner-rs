@@ -10,7 +10,7 @@
 //! machine and its driver replace both (Phase 4 §6 item 2).
 
 pub use netrunner_client::connection::Goal;
-pub use netrunner_client::remote::{connect, connect_message, list_matches, spawn, ConnectEvent, Connecting, Joined};
+pub use netrunner_client::remote::{connect, list_matches, seat, spawn, ConnectEvent, Connecting, Joined};
 
 /// `netrunner_cli matches`: what the daemon is hosting, one line each.
 pub async fn print_matches(url: &str) -> Result<(), Box<dyn std::error::Error>> {
@@ -22,7 +22,7 @@ pub async fn print_matches(url: &str) -> Result<(), Box<dyn std::error::Error>> 
     for summary in matches {
         // The lobby, and no decks: a deck is its player's secret, so a
         // server names none (`MatchSummary`).
-        let lobby = summary.format.map(|format| format!(" [{}]", netrunner_client::settings::format_name(format))).unwrap_or_default();
+        let lobby = format!(" [{}]", netrunner_client::settings::format_name(summary.format));
         println!(
             "{}  {} (Corp) vs {} (Runner){lobby}, started {}s ago",
             summary.match_id, summary.corp, summary.runner, summary.started_secs_ago
