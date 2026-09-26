@@ -28,7 +28,15 @@
 //! in a Standard lobby — and legal in Eternal, where it plays. A ban never
 //! reaches past its own list. A deck is legal in exactly the formats whose
 //! lists it satisfies (`DeckFile::legal_formats`), and `Casual`, every card
-//! with no list, is open to everything.
+//! with no list, is open to every card.
+//!
+//! **Casual lifts card legality and nothing else** (the person, the same
+//! day): the pool and the lists. The deckbuilding rules still hold there as
+//! everywhere — three copies of a card by name (its own `deck_limit` where
+//! it prints one), the identity's influence and minimum deck size, the
+//! agenda-point range — and the validator's construction tests run under
+//! Casual for that reason (`too_many_copies_is_rejected`,
+//! `influence_exceeded_is_rejected`).
 
 use std::collections::{HashMap, HashSet};
 use std::sync::OnceLock;
@@ -51,7 +59,9 @@ pub enum NsgFormat {
     Snapshot,
     /// Not Null Signal Games': every card the catalog knows and no list.
     /// What a deck is legal in when every list refuses it, which is why a
-    /// ban never refuses a deck outright.
+    /// ban never refuses a deck outright. Card legality only: the
+    /// deckbuilding rules (copies, influence, deck size, agenda points)
+    /// hold here as in every format.
     Casual,
 }
 
