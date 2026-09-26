@@ -13,6 +13,7 @@ use tokio_tungstenite::{MaybeTlsStream, WebSocketStream};
 use uuid::Uuid;
 
 use netrunner_bots::Personality;
+use netrunner_core::dsl::CardId;
 use netrunner_core::decks;
 use netrunner_core::rules::{PlayerAction, Side, Viewer};
 use netrunner_core::view::ClientView;
@@ -253,18 +254,23 @@ async fn each_match_is_dealt_a_published_matchup_and_the_pool_rotates() {
         ..ServeOptions::default()
     })
     .await;
-    let published: Vec<(String, String)> =
-        decks::matchups().into_iter().map(|(corp, runner)| (corp.id, runner.id)).collect();
+    // Read off the identities each view shows, because a seat is told
+    // only its own deck's id (`a_seat_is_told_its_own_deck_and_never_its_opponents`).
+    let published: Vec<(Option<CardId>, Option<CardId>)> =
+        decks::matchups().into_iter().map(|(corp, runner)| (Some(corp.identity), Some(runner.identity))).collect();
 
     let mut first = open(&url, connect("first", Some(Side::Corp))).await;
-    let (_, _, _, first_corp, first_runner) = joined_with_decks(next(&mut first).await);
+    joined(next(&mut first).await);
+    let first_view = state_update(next(&mut first).await);
     let mut second = open(&url, connect("second", Some(Side::Corp))).await;
-    let (_, _, _, second_corp, second_runner) = joined_with_decks(next(&mut second).await);
+    joined(next(&mut second).await);
+    let second_view = state_update(next(&mut second).await);
 
-    for pair in [(first_corp.clone(), first_runner.clone()), (second_corp.clone(), second_runner.clone())] {
-        assert!(published.contains(&pair), "{pair:?} is not one of the published sample matchups");
+    let pair = |view: &ClientView| (view.corp.identity.clone(), view.runner.identity.clone());
+    for view in [&first_view, &second_view] {
+        assert!(published.contains(&pair(view)), "{:?} is not one of the published sample matchups", pair(view));
     }
-    assert_ne!((first_corp, first_runner), (second_corp, second_runner), "consecutive matches rotate the pool");
+    assert_ne!(pair(&first_view), pair(&second_view), "consecutive matches rotate the pool");
 }
 
 /// Pinning a side stops the rotation for that side only, and a name that
@@ -279,11 +285,17 @@ async fn a_pinned_deck_is_dealt_to_every_match_and_a_bad_id_fails_to_bind() {
     })
     .await;
 
+    // Two Runners against the pinned Corp: each is told its own deck and
+    // sees the Corp's identity, never its list's id.
+    let pinned = Some(decks::by_id("discretion_advised").unwrap().identity);
     let mut first = open(&url, connect("first", Some(Side::Runner))).await;
     let (_, _, _, corp, first_runner) = joined_with_decks(next(&mut first).await);
+    let first_view = state_update(next(&mut first).await);
     let mut second = open(&url, connect("second", Some(Side::Runner))).await;
-    let (_, _, _, second_corp, second_runner) = joined_with_decks(next(&mut second).await);
-    assert_eq!((corp.as_str(), second_corp.as_str()), ("discretion_advised", "discretion_advised"));
+    let (_, _, _, _, second_runner) = joined_with_decks(next(&mut second).await);
+    let second_view = state_update(next(&mut second).await);
+    assert_eq!(corp, "", "the opponent's deck is not named");
+    assert_eq!((&first_view.corp.identity, &second_view.corp.identity), (&pinned, &pinned));
     assert_ne!(first_runner, second_runner, "the unpinned side still rotates");
 
     let refuses = |corp_deck: &str| {
@@ -510,8 +522,8 @@ async fn a_brought_deck_decides_the_seat_and_is_the_deck_played() {
     let mut first = open(&url, connect_with_deck("first", None, brought("stolen_goods", "my_runner"))).await;
     queued(next(&mut first).await);
     let mut second = open(&url, connect("second", Some(Side::Runner))).await;
-    let (_, second_side, _, corp_deck, runner_deck) = joined_with_decks(next(&mut second).await);
-    let (_, first_side, _) = joined(next(&mut first).await);
+    let (_, second_side, _, corp_deck, _) = joined_with_decks(next(&mut second).await);
+    let (_, first_side, _, _, runner_deck) = joined_with_decks(next(&mut first).await);
     assert_eq!((first_side, second_side), (Side::Runner, Side::Corp));
     assert_eq!(runner_deck, "my_runner", "the brought deck, not the rotation's");
     assert!(decks::by_id(&corp_deck).is_some(), "the seat nobody brought a deck to is dealt one: {corp_deck}");
@@ -547,8 +559,9 @@ async fn two_decks_for_the_same_side_never_pair() {
     assert_eq!(position, 2, "a second Corp deck waits rather than being seated as the Runner");
 
     let mut third = open(&url, connect_with_deck("third", None, brought("dashing_mad", "runner_c"))).await;
-    let (_, _, _, corp_deck, runner_deck) = joined_with_decks(next(&mut third).await);
-    assert_eq!((corp_deck.as_str(), runner_deck.as_str()), ("corp_a", "runner_c"), "the first compatible waiter");
+    let (third_match, _, _) = joined(next(&mut third).await);
+    let (first_match, _, _, corp_deck, _) = joined_with_decks(next(&mut first).await);
+    assert_eq!((first_match, corp_deck.as_str()), (third_match, "corp_a"), "the first compatible waiter");
     assert_eq!(list_matches(&url).await.1, 1, "the second Corp deck is still waiting");
 }
 
@@ -619,4 +632,28 @@ async fn a_format_the_daemon_does_not_offer_is_refused() {
     assert!(closed_by_server(&mut socket).await);
     assert_eq!(list_matches(&url).await.1, 0);
     assert!(Server::bind("127.0.0.1:0", ServeOptions { formats: Vec::new(), ..ServeOptions::default() }).await.is_err(), "a daemon with no lobby does not start");
+}
+
+/// A brought deck is its player's secret (Phase 4 §7 stage 2): each seat
+/// is told its own deck's id and never its opponent's — a saved deck's
+/// id is a slug of the name its builder gave it — on seating and on a
+/// resume alike, and the match list names no decks at all.
+#[tokio::test]
+async fn a_seat_is_told_its_own_deck_and_never_its_opponents() {
+    let url = human_daemon().await;
+    let mut corp = open(&url, connect_with_deck("corp", None, brought("brick_stack", "secret_plan"))).await;
+    queued(next(&mut corp).await);
+    let mut runner = open(&url, connect_with_deck("runner", None, brought("dashing_mad", "my_heist"))).await;
+    let (_, _, runner_token, runner_sees_corp, runner_sees_runner) = joined_with_decks(next(&mut runner).await);
+    let (_, _, _, corp_sees_corp, corp_sees_runner) = joined_with_decks(next(&mut corp).await);
+    assert_eq!((corp_sees_corp.as_str(), corp_sees_runner.as_str()), ("secret_plan", ""));
+    assert_eq!((runner_sees_corp.as_str(), runner_sees_runner.as_str()), ("", "my_heist"));
+
+    let listed = serde_json::to_string(&list_matches(&url).await.0).unwrap();
+    assert!(!listed.contains("secret_plan") && !listed.contains("my_heist"), "the list names no deck: {listed}");
+
+    // A resume is told the same, and no more.
+    let mut again = open(&url, ClientMessage::Resume { session_token: runner_token }).await;
+    let (_, _, _, corp_deck, runner_deck) = joined_with_decks(next(&mut again).await);
+    assert_eq!((corp_deck.as_str(), runner_deck.as_str()), ("", "my_heist"));
 }

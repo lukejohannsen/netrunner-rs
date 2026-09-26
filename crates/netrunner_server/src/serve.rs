@@ -251,7 +251,8 @@ fn make_serve_agent(kind: ServeBotKind, side: Side, seed: u64, personality: Pers
 /// One seat's reattach credentials, held for as long as its match runs.
 ///
 /// Carries the two decklist ids so a `Resume` can send the same
-/// `MatchJoined` the seat first received — a reconnecting client must not
+/// `MatchJoined` the seat first received (`SeatTicket::joined`, which
+/// tells the seat its own and never the other's) — a reconnecting client must not
 /// have to remember what it was dealt, and reading them back off
 /// `MatchEntry` would mean holding two lookups under one lock for two
 /// short strings.
@@ -264,16 +265,29 @@ struct SeatTicket {
     handle: ReattachHandle,
 }
 
+impl SeatTicket {
+    /// The `MatchJoined` this seat is told: its own deck's id, and the
+    /// other side's left empty. The one place the message is built, for
+    /// the first seating and every resume, so neither can tell a seat
+    /// its opponent's deck — a brought deck's id is a slug of the name
+    /// its builder gave it.
+    fn joined(&self, session_token: Uuid) -> ServerMessage {
+        let (corp_deck, runner_deck) = match self.side {
+            Side::Corp => (self.corp_deck.clone(), String::new()),
+            Side::Runner => (String::new(), self.runner_deck.clone()),
+        };
+        ServerMessage::MatchJoined { match_id: self.match_id, assigned_side: self.side, session_token, corp_deck, runner_deck }
+    }
+}
+
 /// A running match as `MatchList` reports it. Holds the session's
 /// `ReattachHandle` so a `Spectate { match_id }` can reach the pump; the
 /// seed is deliberately *not* here — it reproduces R&D's order, so it
-/// must never leave the host. The decklist ids may: they are printed on
-/// the published page, and both players can see the identities anyway.
+/// must never leave the host — and neither are the decks, which are
+/// nobody's but their players' (`MatchSummary`).
 struct MatchEntry {
     corp: String,
     runner: String,
-    corp_deck: String,
-    runner_deck: String,
     format: NsgFormat,
     started_at: Instant,
     handle: ReattachHandle,
@@ -386,8 +400,6 @@ impl Registry {
                     match_id: *match_id,
                     corp: entry.corp.clone(),
                     runner: entry.runner.clone(),
-                    corp_deck: entry.corp_deck.clone(),
-                    runner_deck: entry.runner_deck.clone(),
                     started_secs_ago: now.saturating_duration_since(entry.started_at).as_secs(),
                     format: Some(entry.format),
                 })
@@ -689,13 +701,7 @@ where
                 // `MatchJoined` before the reattach, so it precedes the
                 // `StateUpdate` the session answers with: the client is
                 // waiting for its seat back before it renders anything.
-                let _ = session_tx.send(ServerMessage::MatchJoined {
-                    match_id: ticket.match_id,
-                    assigned_side: ticket.side,
-                    session_token,
-                    corp_deck: ticket.corp_deck.clone(),
-                    runner_deck: ticket.runner_deck.clone(),
-                });
+                let _ = session_tx.send(ticket.joined(session_token));
                 if ticket.handle.reattach(ticket.side, session_tx.clone(), session_rx).is_err() {
                     // Lost the race with the match ending between the
                     // liveness check and here. The bridge is already up,
@@ -955,8 +961,6 @@ fn start_match(shared: &Shared, registry: &mut Registry, match_id: Uuid, seed: u
         MatchEntry {
             corp: corp_name,
             runner: runner_name,
-            corp_deck: corp_deck_id.clone(),
-            runner_deck: runner_deck_id.clone(),
             format,
             started_at: Instant::now(),
             handle: handle.clone(),
@@ -972,14 +976,8 @@ fn start_match(shared: &Shared, registry: &mut Registry, match_id: Uuid, seed: u
             runner_deck: runner_deck_id.clone(),
             handle: handle.clone(),
         };
+        let _ = tx.send(ticket.joined(session_token));
         registry.seats.insert(session_token, ticket);
-        let _ = tx.send(ServerMessage::MatchJoined {
-            match_id,
-            assigned_side: side,
-            session_token,
-            corp_deck: corp_deck_id.clone(),
-            runner_deck: runner_deck_id.clone(),
-        });
         tokens.push(session_token);
     }
 

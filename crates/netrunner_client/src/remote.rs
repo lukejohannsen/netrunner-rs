@@ -57,9 +57,11 @@ use crate::peer::{self, Dialer, Ticket};
 pub struct Joined {
     pub viewer: Viewer,
     pub session_token: Option<Uuid>,
-    /// Corp then Runner; empty for a spectator. A player who brought a
-    /// deck compares against these, because a daemon older than
-    /// `Connect::deck` ignores it and deals.
+    /// Corp then Runner, and only the seat's own is ever filled in: a
+    /// server tells nobody their opponent's deck (Phase 4 §7 stage 2).
+    /// Both empty for a spectator. A player who brought a deck compares
+    /// their own against it, because a daemon older than `Connect::deck`
+    /// ignores it and deals.
     pub decks: (String, String),
     /// Messages to the server. Sent while the link is down, they are
     /// dropped: an action chosen from a view before a drop may be stale by

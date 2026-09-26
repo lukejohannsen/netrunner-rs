@@ -745,9 +745,9 @@ fn spawn_watch(parent: &mut ChildSpawnerCommands, theme: &Theme, form: &OnlineFo
     if !form.matches.is_empty() {
         section(parent, theme, "Matches", |section| {
             for (index, summary) in form.matches.iter().enumerate() {
-                let decks = if summary.corp_deck.is_empty() { String::new() } else { format!(" · {} vs {}", summary.corp_deck, summary.runner_deck) };
+                // No decks: a server names none (`MatchSummary`).
                 let lobby = summary.format.map(|format| format!(" · {}", format_name(format))).unwrap_or_default();
-                let line = format!("{} (Corp) vs {} (Runner){decks}{lobby} · {} min in", summary.corp, summary.runner, summary.started_secs_ago / 60);
+                let line = format!("{} (Corp) vs {} (Runner){lobby} · {} min in", summary.corp, summary.runner, summary.started_secs_ago / 60);
                 section.spawn(widgets::styled_button(theme, ButtonKind::Secondary, line, percent(100), Control::Watch(index)));
             }
         });
