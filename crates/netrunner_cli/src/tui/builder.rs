@@ -165,7 +165,7 @@ impl DeckScreen {
         let mut identities: Vec<&CardDefinition> = self
             .registry
             .iter()
-            .filter(|card| card.card_type == CardType::Identity && card.side == side && legal_in(card, &rules))
+            .filter(|card| card.card_type == CardType::Identity && card.side == side && legal_in(card, rules))
             .collect();
         identities.sort_by_key(|card| (faction_order(card.faction), card.title.clone()));
         identities.into_iter().map(|card| card.id.clone()).collect()
@@ -485,7 +485,7 @@ impl Editor {
         let rules = format.rules();
         let mut pool: Vec<&CardDefinition> = registry
             .iter()
-            .filter(|card| card.side == deck.side && card.card_type != CardType::Identity && legal_in(card, &rules))
+            .filter(|card| card.side == deck.side && card.card_type != CardType::Identity && legal_in(card, rules))
             .collect();
         pool.sort_by_key(|card| (type_order(&card.card_type), card.title.clone()));
         let pool = pool.into_iter().map(|card| card.id.clone()).collect();

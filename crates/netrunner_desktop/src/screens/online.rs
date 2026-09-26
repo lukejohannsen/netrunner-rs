@@ -191,7 +191,7 @@ fn spawn(mut commands: Commands, theme: Res<Theme>, core: Res<ClientCore>, model
             model.0.reopen(decks);
         }
         None => {
-            let format = core.settings.format.unwrap_or(NsgFormat::Startup);
+            let format = core.settings.format.unwrap_or(netrunner_client::settings::DEFAULT_FORMAT);
             commands.insert_resource(Model(OnlineForm::new(deck_choices(&core, format), hosting::normalize_address("127.0.0.1"), format)));
         }
     }

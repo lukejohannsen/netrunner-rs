@@ -163,7 +163,7 @@ fn book(core: &ClientCore) -> CardBook<'_> {
 }
 
 fn format_of(core: &ClientCore) -> NsgFormat {
-    core.settings.format.unwrap_or(NsgFormat::Startup)
+    core.settings.format.unwrap_or(netrunner_client::settings::DEFAULT_FORMAT)
 }
 
 fn decks_dir(core: &ClientCore) -> std::path::PathBuf {

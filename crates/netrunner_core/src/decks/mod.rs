@@ -110,13 +110,19 @@ impl DeckCategory {
     }
 
     /// The format an embedded deck of this category is legal in — what
-    /// `every_sample_deck_is_legal` holds each one to. Startup for
-    /// everything Null Signal Games published; Eternal for a sweep deck,
-    /// which exists to field cards Startup does not have.
+    /// `every_sample_deck_is_legal` holds each one to. Casual for
+    /// everything Null Signal Games published (see below); Eternal for a
+    /// sweep deck, which exists to field cards Startup does not have.
     pub fn format(self) -> NsgFormat {
         match self {
             DeckCategory::Sweep => NsgFormat::Eternal,
-            DeckCategory::Sample | DeckCategory::Starter | DeckCategory::Boosted | DeckCategory::Custom => NsgFormat::Startup,
+            // The published lists were Startup lists when they were
+            // published; NetrunnerDB's lists have since banned cards some
+            // of them hold (Stage 0b). They are still decks to play, so the
+            // format they are held to as a category is Casual, and which
+            // formats each is legal in is pinned deck by deck
+            // (`every_shipped_deck_is_legal_in_the_formats_pinned_for_it`).
+            DeckCategory::Sample | DeckCategory::Starter | DeckCategory::Boosted | DeckCategory::Custom => NsgFormat::Casual,
         }
     }
 }
@@ -261,6 +267,16 @@ impl DeckFile {
         Ok(crate::deck::validate_deck(&self.to_decklist(registry)?, registry, format)?)
     }
 
+    /// Every format this deck is legal in, in `NsgFormat::ALL`'s order:
+    /// both validators, per format. A deck's legality is this set, never
+    /// one flag (the person's decision, 26 September 2026) — a ban makes a
+    /// deck illegal in the format that bans it and nowhere else, and
+    /// `Casual` holds every deck the engine can run. Computed, never stored:
+    /// a new list re-judges every deck on the next read.
+    pub fn legal_formats(&self, registry: &CardRegistry) -> Vec<NsgFormat> {
+        NsgFormat::ALL.into_iter().filter(|format| self.validate(registry, *format).is_ok()).collect()
+    }
+
     /// Whether this deck is card for card one of the published *Learn to
     /// Play* lists (a starter deck or its boosted version).
     fn is_a_learn_to_play_list(&self) -> bool {
@@ -386,6 +402,55 @@ mod tests {
     /// playable. The deckbuilding half (influence, format pool, per-card
     /// deck limits) had no caller at all before this, so this is the first
     /// thing that exercises it against real data.
+    /// **Which formats each shipped deck is legal in**, pinned (Stage 0b, 26
+    /// September 2026, against NetrunnerDB's lists of that day). Every deck
+    /// is legal in Eternal and Casual. The published lists predate the
+    /// current Startup balance update and Standard ban list, so a deck
+    /// holding Cleaver, Mercia B4LL4RD, NBN: Reality Plus or Seamless
+    /// Launch is not Startup-legal, and one holding Cleaver, Luminal
+    /// Transubstantiation, NBN: Reality Plus or Touch-ups is not
+    /// Standard-legal. None is Snapshot-legal: Snapshot is a pool of Fantasy
+    /// Flight Games cycles. A new list that moves a deck fails here, so the
+    /// change is read rather than shipped.
+    #[test]
+    fn every_shipped_deck_is_legal_in_the_formats_pinned_for_it() {
+        use NsgFormat::{Casual, Eternal, Standard, Startup};
+        let registry = registry();
+        let not_startup = [Standard, Eternal, Casual];
+        let neither = [Eternal, Casual];
+        let not_standard = [Startup, Eternal, Casual];
+        let expected: &[(&str, &[NsgFormat])] = &[
+            ("agency", &neither),
+            ("brutal_efficiency", &neither),
+            ("discretion_advised", &neither),
+            ("fashion_lab", &neither),
+            ("fine_print", &neither),
+            ("hyper_velocity", &neither),
+            ("party_hard", &neither),
+            ("planning_ahead", &neither),
+            ("the_catalyst_boosted", &neither),
+            ("the_catalyst_starter", &neither),
+            ("a_thousand_cuts", &neither),
+            ("hostile_bid", &neither),
+            ("pay_as_you_go", &neither),
+            ("safety_net", &neither),
+            ("quick_returns", &not_startup),
+            ("the_syndicate_boosted", &not_startup),
+            ("the_syndicate_starter", &not_startup),
+            ("gimbatul", &not_standard),
+            ("not_so_subtle", &not_standard),
+            ("pork_chops", &not_standard),
+        ];
+        for deck in embedded_decks() {
+            let legal = deck.legal_formats(&registry);
+            let want: Vec<NsgFormat> = expected
+                .iter()
+                .find(|(id, _)| *id == deck.id)
+                .map_or_else(|| vec![Startup, Standard, Eternal, Casual], |(_, formats)| formats.to_vec());
+            assert_eq!(legal, want, "{} ({})", deck.id, deck.name);
+        }
+    }
+
     #[test]
     fn every_sample_deck_is_legal() {
         let registry = registry();
@@ -404,7 +469,7 @@ mod tests {
         let registry = registry();
         for id in ["the_catalyst_starter", "the_catalyst_boosted", "the_syndicate_starter", "the_syndicate_boosted"] {
             let deck = by_id(id).expect("embedded");
-            deck.validate(&registry, NsgFormat::Startup).unwrap_or_else(|e| panic!("{id} is a published list: {e}"));
+            deck.validate(&registry, NsgFormat::Casual).unwrap_or_else(|e| panic!("{id} is a published list: {e}"));
         }
 
         let mut altered = by_id("the_catalyst_starter").expect("embedded");
@@ -510,7 +575,9 @@ mod tests {
         for (deck, (id, side, cards, influence, agenda_points)) in decks.iter().zip(PUBLISHED) {
             assert_eq!(deck.side, *side, "{id}");
             assert_eq!(deck.size(), *cards, "{id} card count");
-            let report = deck.validate(&registry, NsgFormat::Startup).expect("published decks are legal");
+            // Casual: what this pins is the list — its size, influence and
+            // points — and a later ban list does not change the list.
+            let report = deck.validate(&registry, NsgFormat::Casual).expect("published decks are legal");
             assert_eq!(report.influence_spent, *influence, "{id} influence spent");
             let points: u32 = deck
                 .cards

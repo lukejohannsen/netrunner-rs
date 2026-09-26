@@ -226,10 +226,11 @@ pub struct Config {
 
     /// Which format to check deck legality against.
     ///
-    /// Startup is the default because it is the pool this engine actually
-    /// ships: System Gateway plus Elevation. The Core Set cards are not
-    /// Startup-legal — correctly so — and need `--format eternal`.
-    #[arg(long, value_enum, default_value_t = FormatArg::Startup, global = true)]
+    /// Casual is the default (`netrunner_client::settings::DEFAULT_FORMAT`):
+    /// every deck the engine can run. It was Startup, until NetrunnerDB's
+    /// ban lists arrived and refused published decks this engine ships
+    /// (Phase 1 §9 Stage 0b). Naming a format holds a deck to its list.
+    #[arg(long, value_enum, default_value_t = FormatArg::Casual, global = true)]
     pub format: FormatArg,
 }
 
@@ -245,6 +246,7 @@ pub enum FormatArg {
     Standard,
     Eternal,
     Snapshot,
+    Casual,
 }
 
 impl From<FormatArg> for NsgFormat {
@@ -254,6 +256,7 @@ impl From<FormatArg> for NsgFormat {
             FormatArg::Standard => NsgFormat::Standard,
             FormatArg::Eternal => NsgFormat::Eternal,
             FormatArg::Snapshot => NsgFormat::Snapshot,
+            FormatArg::Casual => NsgFormat::Casual,
         }
     }
 }
@@ -268,6 +271,7 @@ impl From<NsgFormat> for FormatArg {
             NsgFormat::Standard => FormatArg::Standard,
             NsgFormat::Eternal => FormatArg::Eternal,
             NsgFormat::Snapshot => FormatArg::Snapshot,
+            NsgFormat::Casual => FormatArg::Casual,
         }
     }
 }

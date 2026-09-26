@@ -71,9 +71,10 @@ No cards. Split in two when it was taken (26 September 2026), because the
 formats half reaches into both clients and the rest does not:
 
 - **Stage 0a — the catalog, the gates, the vocabulary, the status script.**
-  In progress. Its record is below.
 - **Stage 0b — formats from NetrunnerDB, and a deck's legality per
-  format.** Next. Its specification is below.
+  format.**
+
+Both are recorded below. Tranche 1, Vantage Point, is next.
 
 ### Stage 0a — the catalog, the gates, the vocabulary (26 September 2026)
 
@@ -141,39 +142,73 @@ formats half reaches into both clients and the rest does not:
   until the Midnight Sun stage that builds a variable requirement gives
   `Slot` an X.
 
-### Stage 0b — formats, and a deck's legality per format (next)
+### Stage 0b — formats, and a deck's legality per format (26 September 2026)
 
-**The person's decision (26 September 2026):**
+`feat/nsg-pool-stage-0b`, stacked on 0a.
+
+**The person's decision:**
 - A card can be banned in one format and legal in others.
 - A deck is legal or illegal *per format*, and the builder keeps track of
   which formats each deck is legal in.
 - A deck holding a banned card is not refused. It is illegal in that
-  format and can still be played casually. If that needs a Casual format
-  (no pool, no list), add one.
+  format and can still be played casually. If that needs a Casual format,
+  add one.
 
-So the thirteen shipped decks that Startup's current list catches (Party
-Hard, Planning Ahead, both Catalyst decks, Agency, Brutal Efficiency,
-Fashion Lab, Quick Returns, Discretion Advised, Hyper Velocity, Fine Print,
-both Syndicate decks) are recorded as not Startup-legal, and stay playable.
+What landed:
 
-1. **Formats come from NetrunnerDB's v3 API** (`formats`, `card_pools`,
-   `restrictions`), by a script in the shape of `catalog_sync.py` that
-   writes a committed data file `build.rs` embeds. `FormatRules` in
-   `format.rs` is filled from it: Standard's cycles, Startup's packs, each
-   ban list, and rotation by cycle, which §5 dropped when the pool was two
-   packs. `no_shipped_format_restricts_anything_yet` is retired on purpose.
-2. **A Casual format**: every pack, no list. It is what a bot game or a
-   sample deck plays when the deck is legal nowhere else, and the reason a
-   ban never refuses a deck.
-3. **A deck's legality is the set of formats it is legal in.** It is
-   computed, never stored, from both validators. The builder already shows
-   `legal_in` (`deck_builder::status`); starting a game refuses only a deck
-   the engine cannot run, or one illegal in the format the table was set to
-   (Casual admits everything the engine can run). The server's lobbies are
-   per format (Phase 4 §7) and hold their format's rules.
-   `every_shipped_format_can_actually_serve_the_sample_pool` becomes
-   "every shipped deck is legal in Casual, and the formats it is legal in
-   are pinned".
+- **The formats come from NetrunnerDB.** `catalog_sync.py` writes
+  `data/formats.json` from the v3 API: the active card pool and restriction
+  list of Startup, Standard, Eternal and Snapshot. `format.rs` parses it
+  once and shares it (`NsgFormat::rules` returns `&'static`, because a
+  builder asks per card and a pool is thousands of codes). The state of
+  NetrunnerDB on 26 September 2026:
+  - **Startup**: SG, Elevation and VP, with 5 bans (Startup Balance Update
+    26.03).
+  - **Standard**: eleven NSG packs, with 29 cards banned (32 printings).
+  - **Eternal**: a 7-point budget.
+  - **Snapshot**: an FFG pool with 17 bans and a restricted list, which is
+    a budget of 1 at a point each.
+
+  `no_shipped_format_restricts_anything_yet` is retired, and tests of what
+  the lists hold replace it.
+- **A pool is printing codes, not packs.** A card file names one printing,
+  and a format admits a card by any of them. The file therefore lists every
+  printing of every card in a pool, and every printing of a banned card.
+  Corroder's file names its Core Set code, and Snapshot admits it through
+  a Revised Core printing that is not embedded, so a pack check would have
+  refused it. `FormatRules::allowed_packs` became `pool` and `in_pool`.
+  `packs` stays for display.
+- **`NsgFormat::Casual`**: every card, no list. It is the default table
+  format in both clients and the CLI (`settings::DEFAULT_FORMAT`), where
+  it was Startup. A deck any list refuses still plays against a bot, and
+  naming a format holds a deck to its list.
+- **A deck's legality is the set of formats it is legal in**
+  (`DeckFile::legal_formats`, both validators, computed, never stored).
+  The builder's `DeckStatus::legal_in` already showed it, and now lists
+  Casual too. `every_shipped_deck_is_legal_in_the_formats_pinned_for_it`
+  pins all 36 shipped decks:
+  - Every deck is legal in Eternal and Casual.
+  - None is legal in Snapshot.
+  - 13 of the 32 published decks are not Startup-legal: Agency, Brutal Efficiency, Discretion
+    Advised, Fashion Lab, Fine Print, Hyper Velocity, Party Hard, Planning
+    Ahead, Quick Returns, both Catalyst decks, and both Syndicate decks.
+  - 13 are not Standard-legal: every deck in the list above but Quick
+    Returns and the two Syndicate decks, plus Gimbatul, Not so subtle and
+    Pork Chops (Touch-ups).
+  - The four Sweep decks are Eternal and Casual only.
+
+  A category's own format (`DeckCategory::format`) is now Casual for
+  everything published, and Eternal for Sweep decks.
+- **The server deals a bot's deck from the part of the pool the lobby's
+  format allows** (`legal_matchups`, worked out per format at bind). It
+  used to refuse to start when any sample deck was illegal, which held
+  while the tables allowed every deck. A daemon with a bot refuses only a
+  format with no legal matchup, which is Snapshot. The default lobbies are
+  therefore Startup, Standard, Eternal and Casual; Snapshot is named to
+  host human-vs-human games.
+- Tests that checked deck construction (size, influence, points) under
+  Startup now check it under Casual. Tests that brought Fine Print or
+  pinned Discretion Advised to a Startup lobby bring Startup-legal decks.
 
 ## The recipe — every stage of every tranche
 

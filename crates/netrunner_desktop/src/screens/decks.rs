@@ -168,7 +168,7 @@ fn book(core: &ClientCore) -> CardBook<'_> {
 }
 
 fn format_of(core: &ClientCore) -> NsgFormat {
-    core.settings.format.unwrap_or(NsgFormat::Startup)
+    core.settings.format.unwrap_or(netrunner_client::settings::DEFAULT_FORMAT)
 }
 
 fn spawn(mut commands: Commands, theme: Res<Theme>, core: Res<ClientCore>, images: Res<CardImages>, kept: Option<Res<Model>>) {

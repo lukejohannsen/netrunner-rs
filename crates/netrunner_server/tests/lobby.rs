@@ -245,7 +245,7 @@ async fn two_decks_for_the_same_side_never_pair() {
     let url = human_daemon().await;
     let mut first = seek(&url, "first", corp("corp_a")).await;
     queued(next(&mut first).await);
-    let mut second = seek(&url, "second", Chair::Corp(brought("fine_print", "corp_b"))).await;
+    let mut second = seek(&url, "second", Chair::Corp(brought("glyph_of_warding", "corp_b"))).await;
     let (_, position) = queued(next(&mut second).await);
     assert_eq!(position, 2, "a second Corp waits rather than being seated as the Runner");
 
@@ -375,8 +375,8 @@ async fn a_bot_is_dealt_a_published_deck_and_the_pool_rotates() {
 /// a deck refuses to start rather than refusing every client.
 #[tokio::test]
 async fn a_pinned_bot_deck_is_dealt_to_every_match_and_a_bad_id_fails_to_bind() {
-    let url = start_server(ServeOptions { corp_deck: Some("discretion_advised".into()), ..bot_daemon() }).await;
-    let pinned = Some(decks::by_id("discretion_advised").unwrap().identity);
+    let url = start_server(ServeOptions { corp_deck: Some("brick_stack".into()), ..bot_daemon() }).await;
+    let pinned = Some(decks::by_id("brick_stack").unwrap().identity);
     let mut first = seek(&url, "first", runner("first")).await;
     let (_, _, _, corp_deck, _) = joined_with_decks(next(&mut first).await);
     let first_view = state_update(next(&mut first).await);
@@ -404,7 +404,7 @@ async fn a_pinned_bot_deck_is_dealt_to_every_match_and_a_bad_id_fails_to_bind() 
 #[tokio::test]
 async fn a_bot_daemon_plays_the_deck_the_human_brought() {
     let url = start_server(bot_daemon()).await;
-    let mut socket = seek(&url, "solo", Chair::Corp(brought("fine_print", "my_corp"))).await;
+    let mut socket = seek(&url, "solo", Chair::Corp(brought("glyph_of_warding", "my_corp"))).await;
     let (_, side, _, corp_deck, _) = joined_with_decks(next(&mut socket).await);
     assert_eq!((side, corp_deck.as_str()), (Side::Corp, "my_corp"));
 }

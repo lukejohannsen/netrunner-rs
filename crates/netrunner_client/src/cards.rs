@@ -18,19 +18,19 @@ use netrunner_core::format::{FormatRules, NsgFormat};
 
 use crate::settings::FORMATS;
 
-/// Whether the format's tables allow `card`: its pack, and not banned. The
-/// validator makes the same two checks and is still what decides.
+/// Whether the format's tables allow `card`: in its pool (by any printing),
+/// and not banned. The validator makes the same two checks and is still
+/// what decides.
 pub fn legal_in(card: &CardDefinition, rules: &FormatRules) -> bool {
     let Some(code) = card.numeric_id else { return false };
-    !rules.banned.contains(&code)
-        && rules.allowed_packs.as_ref().is_none_or(|packs| packs.contains(card.set_code.as_deref().unwrap_or("")))
+    !rules.banned.contains(&code) && rules.in_pool(code)
 }
 
 /// The formats whose tables allow `card`, in the order the settings
 /// screen lists them — what an inspector prints under "Legal in". A card
 /// with no NetrunnerDB code is legal nowhere, as `legal_in` says.
 pub fn legal_formats(card: &CardDefinition) -> Vec<NsgFormat> {
-    FORMATS.into_iter().filter(|format| legal_in(card, &format.rules())).collect()
+    FORMATS.into_iter().filter(|format| legal_in(card, format.rules())).collect()
 }
 
 /// The name a set is listed under, for the pack codes the embedded
@@ -62,7 +62,7 @@ pub fn set_name(set_code: &str) -> &str {
 /// no identities, a browser wants everything.
 pub fn format_pool(registry: &CardRegistry, format: NsgFormat) -> Vec<&CardDefinition> {
     let rules = format.rules();
-    registry.iter().filter(|card| legal_in(card, &rules)).collect()
+    registry.iter().filter(|card| legal_in(card, rules)).collect()
 }
 
 /// Every printing in the embedded catalog, with the playable card standing
@@ -173,16 +173,20 @@ mod tests {
         assert!(eternal.iter().any(|card| card.id.0 == "ice_wall"));
     }
 
-    /// A Core Set card is outside the two pack-scoped formats and inside
-    /// the two open ones; a System Gateway card is in all four.
+    /// A card's formats follow its pool, by any printing: Ice Wall is
+    /// outside Startup and Standard (Null Signal Games' pools) and inside
+    /// Snapshot, whose Revised Core Set reprints it; Tithe (System Gateway)
+    /// is in every format but Snapshot, a Fantasy Flight Games pool.
+    /// Casual holds both.
     #[test]
-    fn a_cards_legal_formats_follow_its_pack() {
+    fn a_cards_legal_formats_follow_its_pool() {
+        use NsgFormat::{Casual, Eternal, Snapshot, Standard, Startup};
         let registry = playable();
         let catalog = catalog(&registry);
         let ice_wall = catalog.iter().find(|card| card.title == "Ice Wall" && card.set_code.as_deref() == Some("core")).unwrap();
-        assert_eq!(legal_formats(ice_wall), vec![NsgFormat::Standard, NsgFormat::Eternal]);
+        assert_eq!(legal_formats(ice_wall), vec![Eternal, Snapshot, Casual]);
         let tithe = catalog.iter().find(|card| card.title == "Tithe").unwrap();
-        assert_eq!(legal_formats(tithe), FORMATS.to_vec());
+        assert_eq!(legal_formats(tithe), vec![Startup, Standard, Eternal, Casual]);
         assert_eq!(set_name("sg"), "System Gateway");
         assert_eq!(set_name("xyz"), "xyz");
     }

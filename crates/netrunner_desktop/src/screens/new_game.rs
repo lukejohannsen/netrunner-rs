@@ -26,7 +26,6 @@ use netrunner_client::decks::decks_for_match;
 use netrunner_client::play::{LocalMatchSpec, MatchHandle, RecordFile};
 use netrunner_core::tutorial::Lesson;
 use netrunner_client::start::{DeckRow, Level, Pane, StartChoice, StartMenu, DEFAULT_CORP_DECK, DEFAULT_RUNNER_DECK};
-use netrunner_core::format::NsgFormat;
 use netrunner_core::rules::Side;
 
 use crate::core::ClientCore;
@@ -157,7 +156,7 @@ fn open_menu(core: &ClientCore) -> Result<StartMenu, String> {
     // No data directory means no saved decks; the built-in ones are still
     // listed, so any path that does not exist will do.
     let decks_dir = core.decks_dir.clone().unwrap_or_else(|| std::env::temp_dir().join("netrunner-no-decks"));
-    let format = core.settings.format.unwrap_or(NsgFormat::Startup);
+    let format = core.settings.format.unwrap_or(netrunner_client::settings::DEFAULT_FORMAT);
     StartMenu::open(&decks_dir, core.record_path.as_deref(), &core.player_name(), &core.registry, format, defaults())
 }
 
@@ -341,7 +340,7 @@ pub fn start_seeded(core: &ClientCore, choice: &StartChoice, seed: u64) -> Resul
 /// autoplayed games are nobody's record.
 fn start_with(core: &ClientCore, choice: &StartChoice, seed: u64, record: Option<std::path::PathBuf>) -> Result<ActiveMatch, String> {
     let decks_dir = core.decks_dir.clone().unwrap_or_else(|| std::env::temp_dir().join("netrunner-no-decks"));
-    let format = core.settings.format.unwrap_or(NsgFormat::Startup);
+    let format = core.settings.format.unwrap_or(netrunner_client::settings::DEFAULT_FORMAT);
     let (corp, runner) = decks_for_match(&decks_dir, &choice.corp_deck, &choice.runner_deck, &core.registry, format)?;
     let record = record.map(|path| RecordFile { path, player: core.player_name() });
     let spec = LocalMatchSpec {

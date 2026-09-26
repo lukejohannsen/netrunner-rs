@@ -367,7 +367,7 @@ const MAX_LOBBY_NAME: usize = 40;
 fn lobby_id_as_typed(typed: &str) -> String {
     let typed = typed.trim();
     let lower = typed.to_lowercase();
-    if ALL_FORMATS.iter().any(|&format| format_lobby_id(format) == lower) { lower } else { typed.to_uppercase() }
+    if NsgFormat::ALL.iter().any(|&format| format_lobby_id(format) == lower) { lower } else { typed.to_uppercase() }
 }
 
 /// A player lobby's id: six characters from an alphabet with no look-alikes

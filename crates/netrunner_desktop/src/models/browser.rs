@@ -310,7 +310,11 @@ mod tests {
         assert!(b.apply(Intent::Format(Some(NsgFormat::Startup))));
         let startup = b.visible().len();
         assert!(startup < all, "the Core Set is outside Startup");
-        assert!(b.visible().iter().all(|card| matches!(card.set_code.as_deref(), Some("sg" | "elev"))));
+        // In the pool by any printing: the Core Set's Hedge Fund is a
+        // printing of a Startup card, and Ice Wall is not.
+        let rules = NsgFormat::Startup.rules();
+        assert!(b.visible().iter().all(|card| card.numeric_id.is_some_and(|code| rules.in_pool(code))));
+        assert!(!b.visible().iter().any(|card| card.title == "Ice Wall"));
         assert!(b.apply(Intent::Format(Some(NsgFormat::Eternal))));
         assert_eq!(b.visible().len(), all, "Eternal is every printing with a code");
     }
