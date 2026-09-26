@@ -495,8 +495,9 @@ impl OnlineScreen {
                 let items = matches
                     .iter()
                     .map(|m| {
-                        let decks = if m.corp_deck.is_empty() { String::new() } else { format!("  [{} vs {}]", m.corp_deck, m.runner_deck) };
-                        ListItem::new(format!("{} (Corp) vs {} (Runner){decks} — {}s", m.corp, m.runner, m.started_secs_ago))
+                        // No decks: a server names none (`MatchSummary`).
+                        let lobby = m.format.map(|format| format!("  [{}]", netrunner_client::settings::format_name(format))).unwrap_or_default();
+                        ListItem::new(format!("{} (Corp) vs {} (Runner){lobby} — {}s", m.corp, m.runner, m.started_secs_ago))
                     })
                     .collect();
                 draw_list(frame, list, "Matches", items, (!matches.is_empty()).then_some(*cursor));
@@ -707,9 +708,10 @@ mod tests {
         let (joined, brought) = until_play(&mut joiner).await;
         assert_eq!(joined.viewer, Viewer::Player(Side::Corp));
         assert_eq!(brought.as_deref(), Some("brick_stack"));
-        assert_eq!(joined.decks, ("brick_stack".to_string(), "stolen_goods".to_string()));
+        assert_eq!(joined.decks, ("brick_stack".to_string(), String::new()), "told its own deck, never the host's");
         let (hosted, _) = until_play(&mut host).await;
         assert_eq!(hosted.viewer, Viewer::Player(Side::Runner));
+        assert_eq!(hosted.decks, (String::new(), "stolen_goods".to_string()));
 
         let (mut watcher, _) = screen("watcher");
         press(&mut watcher, &[KeyCode::Down, KeyCode::Down, KeyCode::Enter]);
