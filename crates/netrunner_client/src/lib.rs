@@ -49,6 +49,7 @@ pub mod play;
 pub mod decks;
 pub mod guide;
 pub mod hosting;
+pub mod peer;
 pub mod learn;
 pub mod prose;
 pub mod record;

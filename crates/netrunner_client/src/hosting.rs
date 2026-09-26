@@ -20,7 +20,7 @@
 //!
 //! **What this does not do** is get through a NAT without the router's
 //! help. That needs a rendezvous and a relay and a UDP transport, and is
-//! its own item (Phase 4 §6, item 3): STUN alone only tells a machine its
+//! `peer` (Phase 4 §6, item 3): STUN alone only tells a machine its
 //! public address.
 
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, TcpListener};
@@ -39,7 +39,8 @@ pub enum Reach {
     ThisMachine,
     /// Every address this machine has, IPv4 and IPv6.
     Network,
-    /// As `Network`, and the router is asked to forward the port.
+    /// As `Network`, and the router is asked to forward the port — and
+    /// the host is given a ticket (`peer`), which needs no router at all.
     Internet,
 }
 
@@ -50,7 +51,7 @@ impl Reach {
         match self {
             Reach::ThisMachine => "this machine only (for trying it out)",
             Reach::Network => "anyone on your network",
-            Reach::Internet => "anyone on the internet (asks your router to open the port)",
+            Reach::Internet => "anyone on the internet (a ticket, and asks your router to open the port)",
         }
     }
 
@@ -105,9 +106,13 @@ pub fn ws_url(addr: SocketAddr) -> String {
 /// What a person types, as the URL the client dials: `ws://` when no
 /// scheme is given, and the default port when none is. An IPv6 address is
 /// bracketed if it was typed bare (`::1`), because a URL cannot say where
-/// the address ends and the port begins otherwise.
+/// the address ends and the port begins otherwise. A ticket is left alone.
 pub fn normalize_address(input: &str) -> String {
     let input = input.trim();
+    // A host's ticket is dialled as it is (`peer`, `remote`).
+    if crate::peer::Ticket::parse(input).is_some() {
+        return input.to_string();
+    }
     let (scheme, rest) = match input.split_once("://") {
         Some((scheme, rest)) => (scheme, rest),
         None => ("ws", input),

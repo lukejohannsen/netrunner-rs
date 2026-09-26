@@ -86,6 +86,13 @@ pub struct Settings {
     /// lesson added or reordered later is neither falsely done nor lost.
     #[serde(default, skip_serializing_if = "std::collections::BTreeSet::is_empty")]
     pub lessons_done: std::collections::BTreeSet<String>,
+    /// The relay a hosted game's ticket is reachable through
+    /// (`peer::Relay::from_setting`): unset for n0's public relays, `"off"`
+    /// for none, or the URL of one the host runs. Shared, because either
+    /// client can host; only the host's matters, since a joiner uses the
+    /// relay the ticket names.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub relay: Option<String>,
 }
 
 /// Preferences only the graphical client reads. `#[serde(default)]` on

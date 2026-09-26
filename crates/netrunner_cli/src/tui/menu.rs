@@ -372,7 +372,8 @@ impl Menu {
             Entry::PlayComputer => self.open_new_game(),
             Entry::Online => {
                 let opened = netrunner_client::deck_store::resolve_decks_dir(self.base.decks_dir.as_deref()).and_then(|dir| {
-                    OnlineScreen::open(&dir, &self.registry, self.base.format.into(), record::player_name(&self.base), self.base.server.clone())
+                    let relay = netrunner_client::peer::Relay::from_setting(self.settings.relay.as_deref());
+                    OnlineScreen::open(&dir, &self.registry, self.base.format.into(), record::player_name(&self.base), self.base.server.clone(), relay)
                 });
                 match opened {
                     Ok(screen) => self.screen = Screen::Online(Box::new(screen)),

@@ -47,7 +47,7 @@ use std::time::{Duration, Instant};
 
 use clap::ValueEnum;
 use futures_util::{SinkExt, StreamExt};
-use tokio::net::{TcpListener, TcpStream};
+use tokio::net::TcpListener;
 use tokio::sync::mpsc;
 use tokio_tungstenite::tungstenite::Message as WsMessage;
 use uuid::Uuid;
@@ -529,6 +529,12 @@ impl Server {
         self.listener.local_addr()
     }
 
+    /// A door into this server for connections it did not accept itself.
+    /// Take one before `run`, which consumes the server.
+    pub fn acceptor(&self) -> Acceptor {
+        Acceptor { shared: self.shared.clone() }
+    }
+
     /// The accept loop. Returns only if `accept` itself fails.
     pub async fn run(self) -> std::io::Result<()> {
         tracing::info!(addr = %self.local_addr()?, bot_runner = ?self.shared.options.bot_runner, "netrunner_server listening");
@@ -544,6 +550,35 @@ impl Server {
     }
 }
 
+/// Serves a byte stream that arrived some other way than this server's
+/// TCP listener, as if the listener had accepted it: the WebSocket
+/// handshake, the lobby, a seat, a resume — one registry, so a player who
+/// came in by TCP and one who came in another way are paired with each
+/// other (Phase 4 §6 item 3).
+///
+/// **A stream, not a transport.** `netrunner_client::peer` accepts a QUIC
+/// stream over iroh and hands it here; the WebSocket framing rides inside
+/// it unchanged. Taking a stream keeps this crate free of the peer-to-peer
+/// dependency, as `from_listener` keeps it free of `socket2`, and it means
+/// the handshake has one implementation whatever carried it.
+#[derive(Clone)]
+pub struct Acceptor {
+    shared: Shared,
+}
+
+impl Acceptor {
+    /// Serves `stream` to the end of its handshake; the match it joins
+    /// runs on in tasks of its own. `peer` names it in the log.
+    pub async fn serve<S>(&self, stream: S, peer: &str)
+    where
+        S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send + 'static,
+    {
+        if let Err(error) = handle_connection(stream, self.shared.clone()).await {
+            tracing::warn!(%peer, ?error, "connection ended with an error");
+        }
+    }
+}
+
 /// The first message that commits a socket to something. `ListMatches` is
 /// answered inline without leaving this loop, so a client can look before
 /// it joins; anything else is skipped until one of these arrives.
@@ -553,7 +588,10 @@ enum Handshake {
     Spectate { match_id: Uuid },
 }
 
-async fn handle_connection(stream: TcpStream, shared: Shared) -> Result<(), Box<dyn std::error::Error>> {
+async fn handle_connection<S>(stream: S, shared: Shared) -> Result<(), Box<dyn std::error::Error>>
+where
+    S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send + 'static,
+{
     let mut ws_stream = tokio_tungstenite::accept_async(stream).await?;
 
     let handshake = loop {

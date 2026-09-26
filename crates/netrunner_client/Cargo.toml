@@ -43,6 +43,15 @@ socket2 = "0.6"
 # and the terminal client already use.
 tokio-tungstenite = "0.24"
 futures-util = "0.3"
+# `peer`: a hosted game joined by ticket rather than by address — a
+# QUIC connection dialled by the host's public key, hole-punched where it
+# can be and relayed where it cannot (Phase 4 §6 item 3). `metrics` off,
+# as for `portmapper`; `portmapper` on, so the endpoint asks the router
+# for a UDP mapping too, which is what makes a direct path likelier.
+iroh = { version = "1.2", default-features = false, features = ["tls-ring", "portmapper"] }
+# `peer`: the ticket is iroh's own `EndpointTicket` string, so a ticket
+# this client prints is one iroh's tools read, and the other way round.
+iroh-tickets = "1"
 
 [features]
 # Forwarded so a client built with a policy network gets the bots' ONNX
