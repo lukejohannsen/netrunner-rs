@@ -12,16 +12,14 @@ use crate::cards::CardRegistry;
 use crate::dsl::{CardDefinition, CardType, IceType};
 use crate::rules::Side;
 
-const SYSTEM_GATEWAY_JSON: &str =
-    include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/data/cards/system_gateway.json"));
-const ELEVATION_JSON: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/data/cards/elevation.json"));
-/// The original 2012 Core Set. Embedded not because any of it is a current
-/// competitive pool — `format.rs` deliberately keeps `"core"` out of Startup
-/// and Snapshot — but because the baseline hand-authored cards this repo
+/// Every embedded pack's NetrunnerDB card data, one array per pack
+/// (`data/cards/<pack>.json`, concatenated by `build.rs`). The Core Set is
+/// among them not because it is a current competitive pool — `format.rs`
+/// keeps `"core"` out of Startup — but because the baseline cards this repo
 /// started from are Core Set printings, and without their catalog entries
 /// they carry no faction, influence cost, deck limit or set code, which is
 /// everything deckbuilding legality is computed from.
-const CORE_JSON: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/data/cards/core.json"));
+const CATALOG_JSON: &str = include_str!(concat!(env!("OUT_DIR"), "/catalog.json"));
 
 #[derive(Debug, thiserror::Error)]
 pub enum EmbeddedSetsError {
@@ -253,12 +251,10 @@ pub fn convert_dtos_lenient(dtos: Vec<NetrunnerDbCardDto>) -> (Vec<CardDefinitio
 /// (`is_playable: false`) entries. Stays I/O-free — `include_str!` is a
 /// compile-time embed, not a runtime filesystem read.
 pub fn load_embedded_netrunnerdb_sets() -> Result<CardRegistry, EmbeddedSetsError> {
+    let packs: Vec<Vec<NetrunnerDbCardDto>> = serde_json::from_str(CATALOG_JSON)?;
+    let modelable = packs.into_iter().flatten().filter(|dto| !is_unmodelable(&dto.code)).collect();
     let mut registry = CardRegistry::new();
-    for json in [SYSTEM_GATEWAY_JSON, ELEVATION_JSON, CORE_JSON] {
-        let dtos: Vec<NetrunnerDbCardDto> = serde_json::from_str(json)?;
-        let modelable = dtos.into_iter().filter(|dto| !is_unmodelable(&dto.code)).collect();
-        registry.merge(convert_dtos(modelable)?);
-    }
+    registry.merge(convert_dtos(modelable)?);
     Ok(registry)
 }
 
@@ -268,13 +264,37 @@ pub fn load_embedded_netrunnerdb_sets() -> Result<CardRegistry, EmbeddedSetsErro
 /// unexpected conversion failure still aborts loudly — the same
 /// explicit-exception-set discipline `SG_UNIMPLEMENTED` applies to card
 /// coverage, not a place to silence a real gap.
-const CATALOG_UNMODELABLE: &[(&str, &str)] = &[(
-    "01076",
-    "Data Mine — ICE whose keywords are \"Trap - AP\", with no Barrier/Code Gate/Sentry \
-     subtype at all. `CardType::Ice` carries a mandatory `IceType`; widening it to an \
-     `Option` would ripple through every `restrict_to` match and every ICE card file to \
-     accommodate a catalog-only card nothing implements.",
-)];
+///
+/// **Every entry but Data Mine is a card the NSG card-pool plan builds**
+/// (docs/roadmap/nsg-card-pool.md): six ice that print no Barrier, Code Gate
+/// or Sentry — a trap, and the Mythic ice that are none of the three. They
+/// are here, and in their set's `UNIMPLEMENTED` list, until the tranche that
+/// builds the first of them gives `CardType::Ice` a way to say it, which is
+/// that tranche's mechanic and not a catalog change. The set gates count
+/// them (`assert_set_accounted_for`), so a printed set still adds up.
+const CATALOG_UNMODELABLE: &[(&str, &str)] = &[
+    (
+        "01076",
+        "Data Mine — ICE whose keywords are \"Trap - AP\", with no Barrier/Code Gate/Sentry \
+         subtype at all. `CardType::Ice` carries a mandatory `IceType`; widening it to an \
+         `Option` would ripple through every `restrict_to` match and every ICE card file to \
+         accommodate a catalog-only card nothing implements.",
+    ),
+    ("26051", "Loot Box — ice whose only subtype is Trap"),
+    ("26065", "Rime — Mythic ice, no Barrier/Code Gate/Sentry"),
+    ("26109", "Konjin — Mythic - Psi ice, no Barrier/Code Gate/Sentry"),
+    ("29017", "Excalibur — Mythic - Grail ice, no Barrier/Code Gate/Sentry"),
+    ("34100", "Lycian Multi-Munition — Mythic - Destroyer ice; gains the subtypes it is given"),
+    ("36042", "Vicsek — Trap - AP - Observer ice, no Barrier/Code Gate/Sentry"),
+];
+
+/// Every code `CATALOG_UNMODELABLE` withholds: printed cards the catalog
+/// does not hold. The set gates count a printed set as its catalog entries
+/// plus these, and `netrunner_bots`' reserved vocabulary blocks are checked
+/// against the same sum.
+pub fn unmodelable_codes() -> impl Iterator<Item = u32> {
+    CATALOG_UNMODELABLE.iter().map(|(code, _)| code.parse().expect("an unmodelable entry is a numeric code"))
+}
 
 fn is_unmodelable(code: &str) -> bool {
     CATALOG_UNMODELABLE.iter().any(|(excluded, _)| *excluded == code)
@@ -455,8 +475,10 @@ mod tests {
     #[test]
     fn load_embedded_netrunnerdb_sets_is_non_empty_and_matches_known_counts() {
         let registry = load_embedded_netrunnerdb_sets().expect("embedded sets should parse");
-        assert!(!registry.is_empty());
-        assert!(registry.len() >= 159, "expected at least the 77 + 82 known System Gateway/Elevation cards");
+        // Fifteen packs, 846 printings, less the seven `CATALOG_UNMODELABLE`
+        // withholds. Exact rather than a floor: a pack that failed to embed
+        // would have passed a floor for as long as the others outnumbered it.
+        assert_eq!(registry.len(), 846 - unmodelable_codes().count());
     }
 
     #[test]

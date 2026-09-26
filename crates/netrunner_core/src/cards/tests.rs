@@ -3712,7 +3712,7 @@ mod system_gateway {
         // Unlike Red Team/Telework Contract/Regolith Mining
         // License/Nico Campaign, Smartware Distributor's real text has no
         // "when it is empty, trash it" clause — confirmed against
-        // `system_gateway.json`'s card 30033 before implementing.
+        // `data/cards/sg.json`'s card 30033 before implementing.
         let registry = sg_registry();
         let mut state = base_state();
         state.phase = GamePhase::Action(Side::Runner);

@@ -4,6 +4,8 @@ mod embedded;
 mod loader;
 pub mod netrunnerdb;
 mod registry;
+#[cfg(test)]
+mod unimplemented;
 
 #[cfg(test)]
 mod tests;
@@ -26,6 +28,42 @@ pub use registry::CardRegistry;
 /// cards a given match never uses is free.
 pub fn register_playable_cards(registry: &mut CardRegistry) {
     register_embedded_cards(registry);
+}
+
+/// A card's title as the key "the same card" is judged by across its
+/// printings: typographic apostrophes and quotes made plain, lowercased.
+///
+/// A reprint has a code of its own, so a card file — which carries one
+/// `numeric_id`, its first embedded printing's — cannot be found from a
+/// later printing's code, and the title is what joins them. NetrunnerDB
+/// spells a reprint's title as its editor typed it: *The Maker's Eye* is a
+/// straight apostrophe in the Core Set and a curly one in System Update 2021,
+/// so an exact match took the reprint for a card nothing implements. Every
+/// place that asks "is this printing a card we play" compares this key and
+/// the side, never the title.
+pub fn title_key(title: &str) -> String {
+    title
+        .chars()
+        .map(|ch| match ch {
+            '\u{2019}' | '\u{2018}' | '\u{02bc}' => '\'',
+            '\u{201c}' | '\u{201d}' => '"',
+            other => other,
+        })
+        .flat_map(char::to_lowercase)
+        .collect()
+}
+
+#[cfg(test)]
+mod title_key_tests {
+    use super::title_key;
+
+    #[test]
+    fn a_reprint_spelled_with_a_curly_apostrophe_is_the_same_card() {
+        assert_eq!(title_key("The Maker\u{2019}s Eye"), title_key("The Maker's Eye"));
+        assert_eq!(title_key("Pauleʼs Café"), title_key("Paule's Café"));
+        assert_eq!(title_key("\u{201c}Pretty\u{201d} Mary da Silva"), title_key("\"Pretty\" Mary da Silva"));
+        assert_ne!(title_key("Hedge Fund"), title_key("Hedge Funds"));
+    }
 }
 
 #[cfg(test)]

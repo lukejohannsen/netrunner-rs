@@ -362,6 +362,14 @@ mod tests {
             let face = Face::of(&card);
             match card.card_type {
                 CardType::Identity => assert_eq!(face.cost, None, "{}", card.title),
+                // Blood in the Water (Midnight Sun) prints its advancement
+                // requirement as X, which NetrunnerDB records as none. The
+                // face draws no circle for it until the Midnight Sun stage
+                // that builds a variable requirement gives `Slot` an X
+                // (docs/roadmap/nsg-card-pool.md).
+                CardType::Agenda if card.advancement_requirement.is_none() => {
+                    assert_eq!(card.numeric_id.map(|id| id.0), Some(33039), "{} is not the one agenda printed with an X", card.title)
+                }
                 CardType::Agenda => assert!(matches!(face.cost, Some(Slot::Advancement(_))), "{}", card.title),
                 _ => assert!(matches!(face.cost, Some(Slot::Cost(_))), "{}", card.title),
             }

@@ -67,57 +67,113 @@ set it goes last.
 
 ## Stage 0 — groundwork, once, before tranche 1
 
-One PR, `feat/nsg-pool-stage-0`, no cards.
+No cards. Split in two when it was taken (26 September 2026), because the
+formats half reaches into both clients and the rest does not:
 
-1. **The catalog comes from NetrunnerDB by script.** Add
-   `scripts/catalog_sync.py`, modelled on `scripts/rules_sync.py`. With no
-   flags it writes one `crates/netrunner_core/data/cards/<pack>.json` per
-   pack, in the v2 card-DTO shape `core.json`, `system_gateway.json` and
-   `elevation.json` already use. `--check` compares against the live API
-   without writing. The three existing files were committed by hand and have
-   no refresh path. `netrunnerdb.rs` holds one `include_str!` per pack
-   today. Instead, `build.rs` concatenates `data/cards/*.json` the way
-   `embed_dir` already concatenates `data/{corp,runner}`. `PackInfo` keeps
-   the `cycle_code` it drops today. `CATALOG_UNMODELABLE` takes any entry
-   the schema refuses, each with its reason.
-2. **Every NSG set gets its gate at once.** Add an `<SET>_UNIMPLEMENTED`
-   list for each pack above, seeded by the script with every unbuilt code,
-   and an `every_<set>_card_is_implemented_or_explicitly_excluded` test
-   over `assert_set_accounted_for` in `cards/embedded.rs`. A list only
-   shrinks, and a stale entry fails. Each entry names its tranche. Reprints
-   of built cards go through the existing reprint dedup
-   (`sg_reprint_dedup_tests`), which gets a case per pack that reprints one.
-3. **Formats come from NetrunnerDB's v3 API.** `formats`, `card_pools` and
-   `restrictions` fill `FormatRules` in `format.rs`. That covers Standard's
-   cycles, Startup's packs, each ban list, and rotation by cycle, which §5
-   dropped when the pool was two packs. `no_shipped_format_restricts_anything_yet`
-   is retired on purpose.
-   **Open decision, for the person, before this lands:** Startup's
-   current list (`startup_balance_update_26_03`) bans Cleaver, Mercia
-   B4LL4RD, NBN: Reality Plus, Seamless Launch and Let Them Dream. **Thirteen
-   shipped decks carry one of the first four**: Party Hard, Planning
-   Ahead, both Catalyst decks, Agency, Brutal Efficiency, Fashion Lab,
-   Quick Returns, Discretion Advised, Hyper Velocity, Fine Print and both
-   Syndicate decks. Standard's list also bans Cleaver, Luminal
-   Transubstantiation, NBN: Reality Plus and Touch-ups. Two options:
-   - Validate a published deck against the NetrunnerDB snapshot it was
-     published under.
-   - Keep the sample pool on a pinned `Startup (as published)` format.
-   Either way, `every_shipped_format_can_actually_serve_the_sample_pool`
-   is re-read.
-4. **The observation vocabulary grows once.** `CARD_VOCAB` 192 → 1024 in
-   `netrunner_bots/src/observation.rs`, and `set_rank` gets a fixed rank
-   per pack in this file's order, reserved before any card lands, so no
-   slot moves again until the FFG plan. Slots 0–183 stay where they are.
-   `a_later_set_takes_higher_slots_than_every_earlier_one` gets a pair per
-   rank. `OBS_SIZE` grows, and the ONNX model and `pool_fingerprint` are
-   invalidated once. The retrain is an overnight job.
-5. **`scripts/pool_status.py`** reports, per pack: printed, built,
-   reprint, and the length of its `UNIMPLEMENTED` list. It also reports the
-   DSL Growth Rule's ratio: `Effect` variants used by exactly one card file
-   and by none, over the card-file count. Until now the ratio has been
-   counted by hand in AGENTS.md. Every stage entry quotes this script's
-   output.
+- **Stage 0a — the catalog, the gates, the vocabulary, the status script.**
+  In progress. Its record is below.
+- **Stage 0b — formats from NetrunnerDB, and a deck's legality per
+  format.** Next. Its specification is below.
+
+### Stage 0a — the catalog, the gates, the vocabulary (26 September 2026)
+
+`feat/nsg-pool-stage-0a`.
+
+- **The catalog comes from NetrunnerDB by script** (`scripts/catalog_sync.py`,
+  modelled on `rules_sync.py`). It writes `crates/netrunner_core/data/cards/<pack>.json`
+  for fifteen packs, and `--check` compares them against the live API
+  without writing. The script reproduced the three hand-committed files
+  byte for byte: the v2 `data` array, sorted by code, keys sorted,
+  two-space indent, UTF-8 kept. That is the check that the format is the
+  one they used. The two files not already named by pack code were renamed
+  (`system_gateway.json` → `sg.json`, `elevation.json` → `elev.json`).
+  `build.rs` embeds the directory as one array per pack, so a pack joins
+  the catalog by gaining a file, not a Rust constant. NetrunnerDB refuses
+  urllib's default user agent with a 403, so the script sends its own, as
+  `rules_sync.py` does.
+- **846 printings, 839 in the catalog.** Six NSG ice print no Barrier, Code
+  Gate or Sentry: Loot Box, Rime, Konjin, Excalibur, Lycian Multi-Munition
+  and Vicsek. They join Data Mine in `CATALOG_UNMODELABLE` until the tranche
+  that builds the first of them gives `CardType::Ice` a way to say it. That
+  is a mechanic, not a catalog change. The count test is exact now; it was a
+  floor that a missing pack could have passed.
+- **Every NSG pack is gated** (`every_nsg_pack_card_is_implemented_or_explicitly_excluded`).
+  Each pack has a list in `cards/unimplemented.rs`, seeded by
+  `catalog_sync.py --unimplemented <pack>`: 562 entries across twelve
+  lists. A reprint is in every pack that prints it, and leaves them all
+  when it is built.
+  **`assert_set_accounted_for` now counts a printing as built when a
+  playable card carries its code or its title**, and counts the withheld
+  ice as printed. The reprint packs needed both: System Update 2021's
+  Corroder has a code of its own, and a card file carries one
+  `numeric_id`. A mutation check (one Vantage Point entry deleted) fails
+  the gate naming the card.
+- **"The same card" is `cards::title_key`**: typographic apostrophes and
+  quotes made plain, lowercased. NetrunnerDB spells a reprint's title as its
+  editor typed it. The Maker's Eye is straight in the Core Set and curly in
+  System Update 2021, so the planning count took it for unbuilt, and the
+  deck builder's `resolve` and pool, which compared exact titles, would
+  have listed it as a card nothing plays. Both now compare the key.
+- **`CARD_VOCAB` 192 → 1024, and `OBS_SIZE` 2,263 → 6,423.** A card's slot
+  is now three regions:
+  - The first 184 slots are the pool as it stood, in `set_rank` order,
+    closed and pinned (`LEGACY_SLOTS`).
+  - Each NSG pack has a fixed block by printed code (`RESERVED_BLOCKS`,
+    slots 184–757), so a slot is a function of the printing alone. **That
+    is stronger than the plan asked:** a rank per set keeps sets apart, but
+    within a set a card numbered below the ones already built inserted
+    ahead of them, which is how *Elevation*'s stages moved slots mid-set.
+    A reprint built under another code leaves its slot empty.
+  - Everything else goes after the blocks.
+  **The rule this sets for card files:** an NSG card's `numeric_id` is the
+  NSG printing's code, or it lands outside its block. No slot of the 184
+  moved: the pinned slots hold.
+- **`scripts/pool_status.py`** prints, per pack, the printed count, the
+  built count and the length of its list, plus the DSL ratio read off
+  `pub enum Effect` and the card files. **At 0a: 26 of 70 `Effect`
+  variants single-use, 3 unused (`MillRnDAmount`, `RemoveBadPublicity`,
+  `Trace`), over 184 card files.** That is the last hand count's 26 and 3
+  reproduced. The enum has 70 variants, where AGENTS.md's last hand count
+  said 71.
+- **Owed to a later stage:** Blood in the Water (Midnight Sun) prints its
+  advancement requirement as X, which NetrunnerDB records as none. The card
+  face draws no circle for it (`card_face`'s layout test names the card),
+  until the Midnight Sun stage that builds a variable requirement gives
+  `Slot` an X.
+
+### Stage 0b — formats, and a deck's legality per format (next)
+
+**The person's decision (26 September 2026):**
+- A card can be banned in one format and legal in others.
+- A deck is legal or illegal *per format*, and the builder keeps track of
+  which formats each deck is legal in.
+- A deck holding a banned card is not refused. It is illegal in that
+  format and can still be played casually. If that needs a Casual format
+  (no pool, no list), add one.
+
+So the thirteen shipped decks that Startup's current list catches (Party
+Hard, Planning Ahead, both Catalyst decks, Agency, Brutal Efficiency,
+Fashion Lab, Quick Returns, Discretion Advised, Hyper Velocity, Fine Print,
+both Syndicate decks) are recorded as not Startup-legal, and stay playable.
+
+1. **Formats come from NetrunnerDB's v3 API** (`formats`, `card_pools`,
+   `restrictions`), by a script in the shape of `catalog_sync.py` that
+   writes a committed data file `build.rs` embeds. `FormatRules` in
+   `format.rs` is filled from it: Standard's cycles, Startup's packs, each
+   ban list, and rotation by cycle, which §5 dropped when the pool was two
+   packs. `no_shipped_format_restricts_anything_yet` is retired on purpose.
+2. **A Casual format**: every pack, no list. It is what a bot game or a
+   sample deck plays when the deck is legal nowhere else, and the reason a
+   ban never refuses a deck.
+3. **A deck's legality is the set of formats it is legal in.** It is
+   computed, never stored, from both validators. The builder already shows
+   `legal_in` (`deck_builder::status`); starting a game refuses only a deck
+   the engine cannot run, or one illegal in the format the table was set to
+   (Casual admits everything the engine can run). The server's lobbies are
+   per format (Phase 4 §7) and hold their format's rules.
+   `every_shipped_format_can_actually_serve_the_sample_pool` becomes
+   "every shipped deck is legal in Casual, and the formats it is legal in
+   are pinned".
 
 ## The recipe — every stage of every tranche
 
@@ -144,7 +200,8 @@ One PR, `feat/nsg-pool-stage-0`, no cards.
    them. The card gate (`played_pool_card_ids`, eight seeds) then demands
    every card. Sweep decks never enter `matchups()`, so no training number
    moves while the tranches land.
-4. **Each card file** carries its `numeric_id`, and every choice and
+4. **Each card file** carries its `numeric_id` — the NSG printing's code,
+   which is what places it in its pack's vocabulary block (Stage 0a) — and every choice and
    ability carries its printed clause (the Linked Clause Rule's quote
    gate). Each card gets a per-card test. The stage shrinks the set's
    `UNIMPLEMENTED` list.
@@ -154,7 +211,7 @@ One PR, `feat/nsg-pool-stage-0`, no cards.
    - Both sweeps at `NETRUNNER_SWEEP_SEEDS=256`, `--release`.
    - A random-vs-random `--all-matchups` report sized to at least one full
      pass of the cross product.
-   - `pool_status.py`'s ratio.
+   - `pool_status.py`'s ratio, and its pack counts.
    If a stage's single-use `Effect` variants approach its card count, stop
    and build a composition primitive first (the DSL Growth Rule).
 6. **Record** a stage entry under its tranche below: the cards; each new

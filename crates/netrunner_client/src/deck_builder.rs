@@ -278,7 +278,7 @@ impl Draft {
                 .numeric_id
                 .and_then(|code| book.registry.get_by_numeric_id(code))
                 .filter(|card| card.is_playable)
-                .or_else(|| book.registry.iter().find(|card| card.is_playable && card.side == printing.side && card.title == printing.title));
+                .or_else(|| book.registry.iter().find(|card| card.is_playable && card.side == printing.side && same_title(card, printing)));
             if let Some(card) = playable {
                 *id = card.id.clone();
                 *changed = true;
@@ -491,7 +491,7 @@ pub fn pool<'a>(book: CardBook<'a>, filter: &PoolFilter) -> Vec<&'a CardDefiniti
         let card = if printing.is_playable {
             printing
         } else {
-            book.registry.iter().find(|playable| playable.is_playable && playable.side == printing.side && playable.title == printing.title).unwrap_or(printing)
+            book.registry.iter().find(|playable| playable.is_playable && playable.side == printing.side && same_title(playable, printing)).unwrap_or(printing)
         };
         if !filter.playability.admits(card.is_playable) {
             continue;
@@ -809,6 +809,14 @@ fn is_heading(line: &str) -> bool {
 /// same and nothing but letters and digits. NetrunnerDB spells
 /// *Tomorrowʼs Headline* with U+02BC and *Karunā* with a macron; a
 /// person types neither.
+/// Whether two printings are the same card by title: `cards::title_key`,
+/// which a reprint's curly apostrophe does not defeat (System Update 2021's
+/// The Maker’s Eye is the Core Set's The Maker's Eye). Not `fold`, which is
+/// for reading what a person typed and drops more than a title can differ by.
+fn same_title(a: &CardDefinition, b: &CardDefinition) -> bool {
+    netrunner_core::cards::title_key(&a.title) == netrunner_core::cards::title_key(&b.title)
+}
+
 fn fold(title: &str) -> String {
     title
         .chars()
@@ -861,6 +869,23 @@ mod tests {
         assert_eq!(status.standing, Standing::Legal);
         assert!(status.legal_in.contains(&NsgFormat::Startup) && status.legal_in.contains(&NsgFormat::Eternal), "{:?}", status.legal_in);
         assert_eq!(status.standing.badge(NsgFormat::Startup), "Startup-legal");
+    }
+
+    /// A reprint spelled with a curly apostrophe is the card the engine
+    /// plays under its first printing: System Update 2021's The Maker’s Eye
+    /// resolves to the Core Set's playable The Maker's Eye.
+    #[test]
+    fn a_reprint_with_a_curly_apostrophe_resolves_to_the_playable_card() {
+        let registry = registry();
+        let catalog = catalog(&registry);
+        let book = CardBook::new(&registry, &catalog);
+        let reprint = catalog.iter().find(|card| card.numeric_id.map(|id| id.0) == Some(31029)).expect("System Update 2021's The Maker’s Eye");
+        assert!(!reprint.is_playable);
+        let mut deck = decks::by_id("stolen_goods").unwrap();
+        deck.cards = vec![DeckEntry { card: reprint.id.clone(), count: 1 }];
+        let mut draft = Draft::new(deck);
+        assert!(draft.resolve(book));
+        assert_eq!(draft.deck.cards[0].card.0, "the_makers_eye");
     }
 
     /// A short deck cannot be dealt; a Core Set card in a Startup deck

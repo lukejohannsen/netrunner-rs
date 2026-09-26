@@ -194,14 +194,22 @@ pub const DECISION_BLOCK_LEN: usize = 8 + 2 + 3 + 1 + 1 + 3 + 2 + 1;
 
 /// Slots per card-identity plane.
 ///
-/// Deliberately fixed and larger than the current pool (94 playable cards)
-/// rather than sized to it: the ONNX model's input shape is baked in at
-/// export, so a vocabulary that grew with the card set would invalidate
-/// every previously trained model the moment a card was added. 192 leaves
-/// room for *Elevation*'s 82 cards without a reshape. The final slot is an
-/// overflow bucket for anything unmapped (homebrew, test fixtures, or a
-/// pool that outgrows the vocabulary).
-pub const CARD_VOCAB: usize = 192;
+/// Deliberately fixed and larger than the current pool rather than sized to
+/// it: the ONNX model's input shape is baked in at export, so a vocabulary
+/// that grew with the card set would invalidate every previously trained
+/// model the moment a card was added. The final slot is an overflow bucket
+/// for anything unmapped (homebrew, test fixtures, or a pool that outgrows
+/// the vocabulary).
+///
+/// **192 → 1024 once, for the whole NSG card pool (Phase 1 §9 Stage 0, 26
+/// September 2026)**, rather than once per set as the plan's alternative
+/// would have: 192 had room for *Elevation* and seven cards more, and each of
+/// the twelve packs the plan builds would otherwise have been a reshape and a
+/// retrain of its own. The first 184 slots are the pool as it stood
+/// (`LEGACY_SLOTS`), untouched; the packs take fixed blocks after them
+/// (`RESERVED_BLOCKS`, ending at slot 758); the rest is room for the Fantasy
+/// Flight Games cycles' plan to reserve its own.
+pub const CARD_VOCAB: usize = 1024;
 
 const OVERFLOW_SLOT: usize = CARD_VOCAB - 1;
 
@@ -282,43 +290,113 @@ const CORE_AFTER_ELEVATION: [&str; 3] = ["decoy", "net_shield", "sacrificial_con
 /// A list of its own with the next rank, as `set_rank` says the next late
 /// arrival must be: their `01xxx` numbers are *lower* than the second
 /// wave's, so on that list they would have sorted ahead of it and moved the
-/// three slots a test pins. Slots 181..=183 — which leaves the vocabulary
-/// seven free slots of its 191 before a reshape.
+/// three slots a test pins. Slots 181..=183, the last of `LEGACY_SLOTS`.
 const CORE_THIRD_WAVE: [&str; 3] = ["cyberfeeder", "crash_space", "the_toolbox"];
+
+/// The slots the pool held before the NSG packs, ordered by `set_rank` as
+/// they always were. **Closed:** a pinned test holds the count at exactly
+/// this, because a card that joined it — a fourth Core Set wave — would sort
+/// into the middle of it. A card from a set with no reserved block gets a
+/// block of its own instead, the way the NSG packs did.
+const LEGACY_SLOTS: usize = 184;
+
+/// A fixed block of slots per NSG pack, in the order the card-pool plan
+/// builds them (docs/roadmap/nsg-card-pool.md): the pack's first printed
+/// code and how many it prints. A card's slot is its block's start plus its
+/// code's offset in the pack — **a function of the printing alone**, so a
+/// slot is the same whichever order the cards land in, and no card landing
+/// ever moves another. Ranking by `set_rank` could only promise that between
+/// sets: within one set, a card numbered below the ones already built
+/// inserted ahead of them, which is how *Elevation*'s stages moved slots
+/// mid-set. A printing whose card is built under another code (a reprint)
+/// leaves its slot empty, which is the price of never moving one.
+///
+/// Reserved for all twelve packs before any of their cards existed, so the
+/// one reshape covers the whole plan. They end at slot 758.
+const RESERVED_BLOCKS: [(&str, u32, u32); 12] = [
+    ("vp", 36001, 66),
+    ("rwr", 34066, 65),
+    ("tai", 34001, 65),
+    ("ph", 33066, 63),
+    ("msbp", 32001, 7),
+    ("ms", 33001, 65),
+    ("urbp", 27001, 7),
+    ("ur", 26066, 65),
+    ("df", 26001, 65),
+    ("su21", 31001, 82),
+    ("sm", 29001, 18),
+    ("mor", 28001, 6),
+];
+
+/// The first slot after every reserved block: where a card with neither a
+/// legacy rank nor a block goes (homebrew, fixtures), in `(numeric_id, id)`
+/// order.
+const RESERVED_END: usize = LEGACY_SLOTS + {
+    let mut total = 0;
+    let mut i = 0;
+    while i < RESERVED_BLOCKS.len() {
+        total += RESERVED_BLOCKS[i].2 as usize;
+        i += 1;
+    }
+    total
+};
+
+/// The slot `RESERVED_BLOCKS` gives a printed code, if one does.
+fn reserved_slot(numeric_id: u32) -> Option<usize> {
+    let mut start = LEGACY_SLOTS;
+    for (_pack, first, len) in RESERVED_BLOCKS {
+        if (first..first + len).contains(&numeric_id) {
+            return Some(start + (numeric_id - first) as usize);
+        }
+        start += len as usize;
+    }
+    None
+}
+
+/// Whether a card is one of the pool `LEGACY_SLOTS` closed over: a set that
+/// was in the vocabulary before the NSG packs (`set_rank` below 5).
+fn is_legacy(set_code: Option<&str>, id: &str) -> bool {
+    set_rank(set_code, id) < 5
+}
 
 /// Maps a card id to its plane slot.
 ///
 /// Built once from `cards::register_playable_cards` — the canonical
 /// playable pool — rather than from whatever registry a caller passes, so
 /// the mapping is identical for every consumer and stable across processes.
-/// Ordered by `(set_rank, numeric_id, id)`: `set_rank` keeps whole sets
-/// from interleaving, and NetrunnerDB numbers a set contiguously, so within
-/// one set the printed order is stable. Cards with no `numeric_id`
-/// (homebrew, test fixtures) sort last, by id.
+/// Three regions: the legacy pool in `(set_rank, numeric_id, id)` order
+/// (`LEGACY_SLOTS`), each NSG pack's reserved block by printed code
+/// (`RESERVED_BLOCKS`), and everything else after them in `(numeric_id,
+/// id)` order. Cards with no `numeric_id` (homebrew, test fixtures) sort
+/// last.
 fn vocabulary() -> &'static HashMap<CardId, usize> {
     static VOCABULARY: OnceLock<HashMap<CardId, usize>> = OnceLock::new();
     VOCABULARY.get_or_init(|| {
         let mut registry = CardRegistry::new();
         netrunner_core::cards::register_playable_cards(&mut registry);
 
-        let mut cards: Vec<(u32, u32, String)> = registry
-            .iter()
-            .map(|card| {
-                (
-                    set_rank(card.set_code.as_deref(), &card.id.0),
-                    card.numeric_id.map_or(u32::MAX, |numeric| numeric.0),
-                    card.id.0.clone(),
-                )
-            })
-            .collect();
-        cards.sort();
-
-        cards
-            .into_iter()
-            .take(OVERFLOW_SLOT)
-            .enumerate()
-            .map(|(index, (_rank, _numeric_id, id))| (CardId(id), index))
-            .collect()
+        let mut slots = HashMap::new();
+        let mut legacy: Vec<(u32, u32, String)> = Vec::new();
+        let mut rest: Vec<(u32, String)> = Vec::new();
+        for card in registry.iter() {
+            let numeric_id = card.numeric_id.map_or(u32::MAX, |numeric| numeric.0);
+            if let Some(slot) = reserved_slot(numeric_id) {
+                slots.insert(card.id.clone(), slot);
+            } else if is_legacy(card.set_code.as_deref(), &card.id.0) {
+                legacy.push((set_rank(card.set_code.as_deref(), &card.id.0), numeric_id, card.id.0.clone()));
+            } else {
+                rest.push((numeric_id, card.id.0.clone()));
+            }
+        }
+        legacy.sort();
+        rest.sort();
+        for (index, (_rank, _numeric_id, id)) in legacy.into_iter().take(LEGACY_SLOTS).enumerate() {
+            slots.insert(CardId(id), index);
+        }
+        for (index, (_numeric_id, id)) in rest.into_iter().take(OVERFLOW_SLOT - RESERVED_END).enumerate() {
+            slots.insert(CardId(id), RESERVED_END + index);
+        }
+        slots
     })
 }
 
@@ -1026,6 +1104,62 @@ mod tests {
         assert_eq!(slot_of(&CardId("crash_space".to_string())), 182);
         assert_eq!(slot_of(&CardId("the_toolbox".to_string())), 183);
     }
+
+    /// `LEGACY_SLOTS` is closed: exactly the 184 cards that were in the
+    /// vocabulary before the NSG packs, so none of their slots can move. A
+    /// card that fails this is a card from a set with no reserved block —
+    /// give its set one in `RESERVED_BLOCKS` rather than growing this.
+    #[test]
+    fn the_legacy_region_holds_exactly_the_pool_it_closed_over() {
+        let mut registry = CardRegistry::new();
+        netrunner_core::cards::register_playable_cards(&mut registry);
+        let legacy = registry
+            .iter()
+            .filter(|card| card.numeric_id.and_then(|id| reserved_slot(id.0)).is_none())
+            .filter(|card| is_legacy(card.set_code.as_deref(), &card.id.0))
+            .count();
+        assert_eq!(legacy, LEGACY_SLOTS);
+    }
+
+    /// Each reserved block is exactly its pack's printed codes, read off the
+    /// embedded catalog, so a block cannot be a card short or reach into
+    /// the next pack's numbers.
+    #[test]
+    fn each_reserved_block_is_its_packs_printed_codes() {
+        let catalog = netrunner_core::cards::load_embedded_netrunnerdb_sets().expect("catalog should parse");
+        for (pack, first, len) in RESERVED_BLOCKS {
+            let mut codes: Vec<u32> = catalog
+                .iter()
+                .filter(|card| card.set_code.as_deref() == Some(pack))
+                .filter_map(|card| card.numeric_id.map(|id| id.0))
+                .collect();
+            codes.sort_unstable();
+            // The catalog withholds the ice it cannot type yet
+            // (`CATALOG_UNMODELABLE`); those are printed too.
+            let withheld = netrunner_core::cards::netrunnerdb::unmodelable_codes()
+                .filter(|code| (first..first + len).contains(code))
+                .count();
+            assert!(codes.iter().all(|code| (first..first + len).contains(code)), "{pack}: a code outside {first}..{}", first + len);
+            assert_eq!(codes.len() + withheld, len as usize, "{pack}: the block is not the pack's printings");
+        }
+    }
+
+    /// Pinned by slot: the blocks start where the legacy pool ends, follow
+    /// one another in the plan's order, and end at 758 — and a card is
+    /// placed by its code, whatever else is built.
+    #[test]
+    fn a_reserved_card_takes_its_codes_slot() {
+        assert_eq!(reserved_slot(36001), Some(184), "Vantage Point's first printing opens the blocks");
+        assert_eq!(reserved_slot(36066), Some(249));
+        assert_eq!(reserved_slot(34066), Some(250), "Rebellion Without Rehearsal follows");
+        assert_eq!(reserved_slot(28006), Some(757), "the Magnum Opus Reprint's last printing closes them");
+        assert_eq!(RESERVED_END, 758);
+        assert_eq!(reserved_slot(35001), None, "Elevation is legacy");
+    }
+
+    // Checked where it is decided, at compile time: the blocks leave room
+    // for a tail and the overflow slot.
+    const _: () = assert!(RESERVED_END < OVERFLOW_SLOT);
 
     /// Every playable card must have its own slot — two cards sharing one
     /// would make them indistinguishable to the network.
