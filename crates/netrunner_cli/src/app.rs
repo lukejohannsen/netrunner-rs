@@ -43,6 +43,9 @@ pub struct App {
     pub should_quit: bool,
     pub last_rejection: Option<String>,
     pub game_ended: Option<(Side, GameEndReason)>,
+    /// What the server said the game did to this seat's rating
+    /// (`ServerMessage::Rated`), shown under the result.
+    pub rated: Option<String>,
     /// Rendered log of every resolved action, from `ServerMessage::
     /// ActionLog`. Remote play had no log at all until the match driver
     /// grew a `MatchHistory` the server could forward.
@@ -102,6 +105,7 @@ impl App {
             should_quit: false,
             last_rejection: None,
             game_ended: None,
+            rated: None,
             action_log: Vec::new(),
             connection_lost: false,
             connection_notice: None,
@@ -247,7 +251,12 @@ impl App {
                 | ServerMessage::Identified { .. }
                 | ServerMessage::IdentifyRefused { .. }
                 | ServerMessage::SignSeat { .. }
-                | ServerMessage::Rated { .. } => {}
+                | ServerMessage::Standing { .. } => {}
+                ServerMessage::Rated { before, after, .. } => {
+                    if let Viewer::Player(side) = self.viewer {
+                        self.rated = Some(netrunner_client::identity::rated_line(side, &before, &after));
+                    }
+                }
                 // An attached connection's lobby replies, which a game
                 // never carries.
                 ServerMessage::Attached { .. }

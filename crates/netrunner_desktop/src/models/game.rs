@@ -310,6 +310,9 @@ pub struct Over {
     pub reason: GameEndReason,
     pub report: Option<RecordReport>,
     pub notice: Option<String>,
+    /// What the server said the game did to this seat's rating, once its
+    /// `Rated` arrives after the end (`identity::rated_line`).
+    pub rated: Option<String>,
 }
 
 pub struct Game {
@@ -1051,7 +1054,14 @@ impl Game {
                 self.view = Some(*view);
                 self.follow_hand();
                 self.close_for_the_end();
-                self.over = Some(Over { winner, reason, report, notice });
+                self.over = Some(Over { winner, reason, report, notice, rated: None });
+                Outcome::Redraw
+            }
+            MatchMessage::Rated { before, after } => {
+                let side = self.side;
+                if let Some(over) = &mut self.over {
+                    over.rated = Some(netrunner_client::identity::rated_line(side, &before, &after));
+                }
                 Outcome::Redraw
             }
             MatchMessage::Stalled { reason } => {

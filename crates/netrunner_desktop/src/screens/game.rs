@@ -4411,6 +4411,9 @@ fn spawn_overlay(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &Client
                             panel.spawn((widgets::dim(theme, line), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
                         }
                     }
+                    if let Some(rated) = &over.rated {
+                        panel.spawn((widgets::label(theme, rated.clone()), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
+                    }
                     if let Some(notice) = &over.notice {
                         panel.spawn(widgets::notice(theme, notice.clone(), ()));
                     }

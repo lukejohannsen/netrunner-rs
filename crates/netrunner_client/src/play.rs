@@ -166,6 +166,11 @@ pub enum MatchMessage {
     /// The engine refused the last `submit`; the human is still awaiting
     /// on the same view. `reason` is `RulesError`'s own message.
     Rejected { reason: String },
+    /// The server rated the game that just ended, after `Ended`: this
+    /// seat's rating for the side it played, before and after
+    /// (`netrunner_client::identity::rated_line` says it in words). Only
+    /// a match on a server that keeps ratings sends it.
+    Rated { before: netrunner_protocol::Rating, after: netrunner_protocol::Rating },
     /// The match ended. `report` is where the game leaves the player's
     /// record, `None` when none is kept; `notice` is a record file that
     /// would not save, which must not hide the result.
@@ -890,9 +895,9 @@ impl Feed {
             | ServerMessage::Identified { .. }
             | ServerMessage::IdentifyRefused { .. }
             | ServerMessage::SignSeat { .. } => {}
-            // The server's word on a rated game, after it ended; what the
-            // end-of-game table says about it is Phase 4 §5 stage d.
-            ServerMessage::Rated { .. } => {}
+            // The server's word on a rated game, after it ended.
+            ServerMessage::Rated { before, after, .. } => out.push(MatchMessage::Rated { before, after }),
+            ServerMessage::Standing { .. } => {}
             // An attached connection's, which a game's feed never carries:
             // the connection answers them before and after the game.
             ServerMessage::Attached { .. }
@@ -1002,7 +1007,7 @@ mod tests {
                 MatchMessage::Rejected { reason } => panic!("a legal action was rejected: {reason}"),
                 message @ (MatchMessage::Ended { .. } | MatchMessage::Stalled { .. }) => return (message, applied),
                 MatchMessage::Coach(_) | MatchMessage::LessonComplete { .. } => unreachable!("a local match is not a lesson"),
-                MatchMessage::Snapshot { .. } | MatchMessage::Clock { .. } => unreachable!("a local match sends neither"),
+                MatchMessage::Snapshot { .. } | MatchMessage::Clock { .. } | MatchMessage::Rated { .. } => unreachable!("a local match sends none of these"),
             }
         }
     }
@@ -1064,7 +1069,7 @@ mod tests {
                 MatchMessage::Rejected { reason } => panic!("{reason}"),
                 message @ (MatchMessage::Ended { .. } | MatchMessage::Stalled { .. }) => break message,
                 MatchMessage::Coach(_) | MatchMessage::LessonComplete { .. } => unreachable!("a local match is not a lesson"),
-                MatchMessage::Snapshot { .. } | MatchMessage::Clock { .. } => unreachable!("a local match sends neither"),
+                MatchMessage::Snapshot { .. } | MatchMessage::Clock { .. } | MatchMessage::Rated { .. } => unreachable!("a local match sends none of these"),
             }
         };
         assert!(undone, "the first legal action is a click sooner or later");
@@ -1110,7 +1115,7 @@ mod tests {
                 MatchMessage::Rejected { reason } => panic!("{reason}"),
                 MatchMessage::Ended { .. } | MatchMessage::Stalled { .. } => break,
                 MatchMessage::Coach(_) | MatchMessage::LessonComplete { .. } => unreachable!("a local match is not a lesson"),
-                MatchMessage::Snapshot { .. } | MatchMessage::Clock { .. } => unreachable!("a local match sends neither"),
+                MatchMessage::Snapshot { .. } | MatchMessage::Clock { .. } | MatchMessage::Rated { .. } => unreachable!("a local match sends none of these"),
             }
         }
         assert!(taken_back >= 2, "the test took {taken_back} moves back; it is about take-backs");
@@ -1187,7 +1192,7 @@ mod tests {
                 MatchMessage::Ended { .. } => break,
                 MatchMessage::Stalled { reason } => panic!("{reason}"),
                 MatchMessage::Coach(_) | MatchMessage::LessonComplete { .. } => unreachable!("a local match is not a lesson"),
-                MatchMessage::Snapshot { .. } | MatchMessage::Clock { .. } => unreachable!("a local match sends neither"),
+                MatchMessage::Snapshot { .. } | MatchMessage::Clock { .. } | MatchMessage::Rated { .. } => unreachable!("a local match sends none of these"),
             }
         }
         assert!(lone > 0, "the Runner is asked to pass alone during the Corp's turn");
@@ -1250,7 +1255,7 @@ mod tests {
                 MatchMessage::Ended { .. } => break,
                 MatchMessage::Stalled { reason } => panic!("{reason}"),
                 MatchMessage::Coach(_) | MatchMessage::LessonComplete { .. } => unreachable!("a local match is not a lesson"),
-                MatchMessage::Snapshot { .. } | MatchMessage::Clock { .. } => unreachable!("a local match sends neither"),
+                MatchMessage::Snapshot { .. } | MatchMessage::Clock { .. } | MatchMessage::Rated { .. } => unreachable!("a local match sends none of these"),
             }
         }
         }
@@ -1420,6 +1425,19 @@ mod lesson_tests {
         assert!(feed.closed("gone".into()).is_none(), "the match is over; the socket closing is not news");
         let out = fed(&mut Feed::new(), ServerMessage::DecisionClock { side: Side::Corp, remaining: Duration::from_secs(9) });
         assert!(matches!(&out[..], [MatchMessage::Clock { side: Side::Corp, .. }]));
+    }
+
+    /// The server's rating arrives after the end and is passed on after it,
+    /// for the end panel to add.
+    #[test]
+    fn a_rating_after_the_end_is_passed_on() {
+        let mut feed = Feed::new();
+        fed(&mut feed, ServerMessage::StateUpdate(view_for(Side::Corp)));
+        fed(&mut feed, ServerMessage::GameEnded { winner: Side::Corp, reason: GameEndReason::Surrender });
+        let rating = |rating| netrunner_protocol::Rating { rating, deviation: 300.0, volatility: 0.06 };
+        let receipt = netrunner_identity::Identity::from_secret([1; 32]).sign(b"t", String::new());
+        let out = fed(&mut feed, ServerMessage::Rated { receipt: Box::new(receipt), before: rating(1500.0), after: rating(1600.0) });
+        assert!(matches!(&out[..], [MatchMessage::Rated { after, .. }] if after.rating == 1600.0), "{out:?}");
     }
 
     /// A seat at a real host, through the handle a board holds: the host's

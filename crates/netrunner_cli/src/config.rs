@@ -494,6 +494,11 @@ pub enum Command {
     /// `--server` is hosting, with the ids `--spectate` takes.
     Matches,
 
+    /// Your key, and your standing at the server at `--server`: fetched
+    /// from its rating book, proving your key, and never stored — the
+    /// server's book is the truth (Phase 4 §5).
+    Standing,
+
     /// Your record against the bots: wins and losses against every rung
     /// on each chair, and the rung to try next.
     Record,

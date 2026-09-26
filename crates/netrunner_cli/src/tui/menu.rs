@@ -393,7 +393,10 @@ impl Menu {
                 }
             }
             Entry::Record => {
-                let lines = record::standing_lines(&self.base).unwrap_or_else(|error| vec![format!("Could not read the record: {error}")]);
+                let mut lines = record::standing_lines(&self.base).unwrap_or_else(|error| vec![format!("Could not read the record: {error}")]);
+                // Read, never made here: opening a screen writes no key.
+                lines.push(String::new());
+                lines.extend(netrunner_client::identity::key_lines_in(netrunner_client::identity::resolve_identity_dir().ok().as_deref()));
                 self.screen = Screen::Record { lines, scroll: 0 };
             }
             Entry::Settings => {

@@ -639,6 +639,12 @@ impl Shared {
         Some([(corp_before, corp_after.corp.rating), (runner_before, runner_after.runner.rating)])
     }
 
+    /// `key`'s standing on the book between people, as `Standing` says it.
+    fn standing_of(&self, key: Option<PublicKey>) -> ServerMessage {
+        let standing = key.filter(|_| self.options.data_dir.is_some()).and_then(|key| self.lock().ratings.standing(Track::HumanVsHuman, &key.rating_id()));
+        ServerMessage::Standing { key, standing }
+    }
+
     /// A seat's signature over the statement it was sent, kept if it is
     /// that seat's key's over that statement. Anything else — a seat with
     /// no statement, a second signature, a signature that does not hold —
@@ -1051,6 +1057,9 @@ where
                 Ok(ClientMessage::Attach { player_name }) => break Handshake::Attach { player_name },
                 Ok(ClientMessage::ListMatches) => {
                     ws_stream.send(WsMessage::Text(serde_json::to_string(&shared.match_list())?)).await?;
+                }
+                Ok(ClientMessage::MyStanding) => {
+                    ws_stream.send(WsMessage::Text(serde_json::to_string(&shared.standing_of(identified))?)).await?;
                 }
                 // A nonce fresh for this connection: a proof is good on
                 // the socket it was made for and no other. A second

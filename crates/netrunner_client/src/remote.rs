@@ -163,8 +163,12 @@ pub fn spawn(url: String, goal: Goal) -> Connecting {
     let target = Target::of(url);
     let known = target.known_servers(&goal);
     let pinned = known.as_ref().and_then(|(path, address)| KnownServers::load(path).ok()?.get(address));
+    let receipts = match &goal {
+        Goal::Play(seat) => seat.credentials.as_ref().and_then(|credentials| credentials.receipts()),
+        Goal::Watch { .. } => None,
+    };
     let connection = Connection::new(goal, Instant::now()).with_pinned(pinned);
-    tokio::spawn(drive(target, connection, known, commands, setup_tx, messages, link_tx));
+    tokio::spawn(drive(target, connection, Kept { known, receipts }, commands, setup_tx, messages, link_tx));
     Connecting { setup, parts: Some((tx, rx, link)) }
 }
 
@@ -204,7 +208,7 @@ impl Target {
     /// rated, so it remembers nothing.
     fn known_servers(&self, goal: &Goal) -> Option<(std::path::PathBuf, String)> {
         let Goal::Play(seat) = goal else { return None };
-        let path = seat.credentials.as_ref()?.known_servers.clone()?;
+        let path = seat.credentials.as_ref()?.known_servers()?;
         match self {
             Target::Url(url) => Some((path, url.clone())),
             Target::Peer(_) => None,
@@ -254,10 +258,17 @@ async fn dial_url(url: String) -> Result<Socket, String> {
     Ok(socket)
 }
 
+/// What the driver writes for the player: a server's key the first time
+/// it is met, and every receipt a rated game ends in.
+struct Kept {
+    known: Option<(std::path::PathBuf, String)>,
+    receipts: Option<std::path::PathBuf>,
+}
+
 async fn drive(
     target: Target,
     mut conn: Connection,
-    known: Option<(std::path::PathBuf, String)>,
+    kept: Kept,
     mut commands: mpsc::UnboundedReceiver<ClientMessage>,
     setup: mpsc::UnboundedSender<Setup>,
     messages: mpsc::UnboundedSender<ServerMessage>,
@@ -285,7 +296,7 @@ async fn drive(
             match event {
                 // A failed write costs a warning next time, not this game.
                 Event::ServerKey(key) => {
-                    if let Some((path, address)) = &known {
+                    if let Some((path, address)) = &kept.known {
                         let mut servers = KnownServers::load(path).unwrap_or_default();
                         servers.insert(address, key);
                         let _ = servers.save(path);
@@ -299,6 +310,9 @@ async fn drive(
                     let _ = setup.send(Setup::Joined { viewer, session_token, decks });
                 }
                 Event::Message(message) => {
+                    if let (ServerMessage::Rated { receipt, .. }, Some(path)) = (&message, &kept.receipts) {
+                        let _ = crate::identity::keep_receipt(path, receipt);
+                    }
                     let _ = messages.send(message);
                 }
                 Event::Link(state) => {
@@ -392,6 +406,64 @@ async fn list_over(target: Target, dialer: &Dialer) -> Result<(Vec<MatchSummary>
             Some(Ok(_)) => continue,
             Some(Err(error)) => return Err(transport(error)),
             None => return Err(ConnectionError::ClosedBeforeSeat),
+        }
+    };
+    let _ = socket.close(None).await;
+    Ok(reply)
+}
+
+/// This player's standing at the server at `address`: a socket of its own
+/// that proves `credentials`' key and asks (`ClientMessage::MyStanding`),
+/// closed afterwards. Fetched each time it is shown and never stored,
+/// because the server's book is the truth (`docs/identity-and-rating.md`
+/// stage 4).
+///
+/// **Held to the remembered key like a game is** (`KnownServers`): a
+/// server at this address that proves another key is refused before this
+/// player's key is proved to it, and one met for the first time is
+/// remembered.
+pub async fn standing(address: &str, credentials: &Credentials) -> Result<Option<netrunner_protocol::Standing>, ConnectionError> {
+    let dialer = Dialer::default();
+    let reply = standing_over(Target::of(address.to_string()), address, credentials, &dialer).await;
+    dialer.close().await;
+    reply
+}
+
+async fn standing_over(target: Target, address: &str, credentials: &Credentials, dialer: &Dialer) -> Result<Option<netrunner_protocol::Standing>, ConnectionError> {
+    let transport = |error: tokio_tungstenite::tungstenite::Error| ConnectionError::Transport(error.to_string());
+    let mut socket = target.dial(dialer).await.map_err(ConnectionError::Transport)?;
+    let send = |message: ClientMessage| WsMessage::Text(serde_json::to_string(&message).expect("a ClientMessage serializes"));
+    socket.send(send(ClientMessage::Identify { key: credentials.identity.public_key() })).await.map_err(transport)?;
+    let known_path = credentials.known_servers().filter(|_| matches!(target, Target::Url(_)));
+    let reply = loop {
+        let message = match socket.next().await {
+            Some(Ok(WsMessage::Text(text))) => match serde_json::from_str::<ServerMessage>(&text) {
+                Ok(message) => message,
+                Err(_) => continue,
+            },
+            Some(Ok(_)) => continue,
+            Some(Err(error)) => return Err(transport(error)),
+            None => return Err(ConnectionError::ClosedBeforeSeat),
+        };
+        match message {
+            ServerMessage::Challenge { nonce, server_key, lasting } => {
+                if let (true, Some(path)) = (lasting, &known_path) {
+                    let mut known = KnownServers::load(path).unwrap_or_default();
+                    match known.get(address) {
+                        Some(remembered) if remembered != server_key => return Err(ConnectionError::ServerKeyChanged { remembered, found: server_key }),
+                        Some(_) => {}
+                        None => {
+                            known.insert(address, server_key);
+                            let _ = known.save(path);
+                        }
+                    }
+                }
+                socket.send(send(ClientMessage::Prove { signature: credentials.identity.prove(&server_key, &nonce) })).await.map_err(transport)?;
+            }
+            ServerMessage::Identified { .. } => socket.send(send(ClientMessage::MyStanding)).await.map_err(transport)?,
+            ServerMessage::IdentifyRefused { reason } => return Err(ConnectionError::Rejected(reason)),
+            ServerMessage::Standing { standing, .. } => break standing,
+            _ => {}
         }
     };
     let _ = socket.close(None).await;
@@ -512,6 +584,30 @@ mod tests {
         known.save(&known_path).unwrap();
         let refused = connect(&url, signed_in(), |_| {}).await.err().expect("a server with another key is refused");
         assert!(matches!(refused, ConnectionError::ServerKeyChanged { remembered, found } if remembered == impostor && found == server_key), "{refused}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A standing is asked for with the key proved, and held to the
+    /// server's remembered key like a game is: a new key with no rated game
+    /// has none, and a server proving another key is refused.
+    #[tokio::test]
+    async fn a_standing_is_fetched_with_the_key_and_held_to_the_remembered_server() {
+        let dir = std::env::temp_dir().join(format!("netrunner_remote_standing_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let options = ServeOptions { bot_runner: ServeBotKind::None, seed: Some(1), data_dir: Some(dir.join("server")), ..ServeOptions::default() };
+        let server = Server::bind("127.0.0.1:0", options).await.unwrap();
+        let (addr, server_key) = (server.local_addr().unwrap(), server.public_key());
+        tokio::spawn(server.run());
+        let url = format!("ws://{addr}");
+        let credentials = Credentials::in_dir(&dir.join("client")).unwrap();
+        assert_eq!(standing(&url, &credentials).await.unwrap(), None, "no rated game yet");
+        let known_path = credentials.known_servers().unwrap();
+        assert_eq!(KnownServers::load(&known_path).unwrap().get(&url), Some(server_key), "remembered on first contact");
+
+        let mut known = KnownServers::default();
+        known.insert(&url, netrunner_identity::Identity::from_secret([7; 32]).public_key());
+        known.save(&known_path).unwrap();
+        assert!(matches!(standing(&url, &credentials).await, Err(ConnectionError::ServerKeyChanged { .. })));
         let _ = std::fs::remove_dir_all(&dir);
     }
 

@@ -18,7 +18,10 @@ use netrunner_core::format::NsgFormat;
 use netrunner_core::rules::{PlayerAction, Side};
 use netrunner_core::view::ClientView;
 use netrunner_identity::{Nonce, PublicKey, Signature, Signed};
-use netrunner_rating::Rating;
+/// Re-exported so a client can read what `Rated` and `Standing` carry
+/// without naming the rating crate: a rating is the server's, and the
+/// client only shows it (Phase 3 §2).
+pub use netrunner_rating::{Rating, Standing};
 
 pub mod statements;
 
@@ -47,6 +50,11 @@ pub enum ClientMessage {
     /// `statements::SEAT_TAG`, once the client has checked it names this
     /// seat's key, side, match, server and deck.
     SeatSigned { signature: Signature },
+    /// This connection's standing at the server: answered with
+    /// `Standing`, first thing on a socket (after proving a key) or from
+    /// an attached connection. Never cached by the client as the truth —
+    /// the server's book is.
+    MyStanding,
     /// Take a seat back after the socket that held it dropped. The token is
     /// the one `MatchJoined` issued for that seat, and it is the *only*
     /// credential: a seat is worth exactly what a WebSocket connection was
@@ -194,6 +202,11 @@ pub enum ServerMessage {
     /// and this seat's rating for the side it played, before and after.
     /// Sent after `GameEnded`, only to proved seats of a rated game.
     Rated { receipt: Box<Signed>, before: Rating, after: Rating },
+    /// The reply to `MyStanding`: the key this connection proved, if it
+    /// did, and its standing on the server's book between people. `None`
+    /// for a connection that proved no key, on a server that keeps no
+    /// book, or for a key with no rated game there yet.
+    Standing { key: Option<PublicKey>, standing: Option<Standing> },
     /// The seat is taken. `session_token` is what `ClientMessage::Resume`
     /// presents to take it back after a dropped connection; it is per
     /// *seat*, not per match, so one player's token never reseats the

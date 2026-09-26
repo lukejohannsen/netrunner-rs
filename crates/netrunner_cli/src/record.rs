@@ -50,6 +50,12 @@ pub fn print(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
     for line in standing_lines(config)? {
         println!("{line}");
     }
+    // Who the player is to a server, beside what they have done here: a
+    // rating is a server's, and `standing` fetches it.
+    println!();
+    for line in netrunner_client::identity::key_lines_in(netrunner_client::identity::resolve_identity_dir().ok().as_deref()) {
+        println!("{line}");
+    }
     Ok(())
 }
 
