@@ -1,9 +1,12 @@
 {
-  "id": "seamless_launch",
-  "title": "Seamless Launch",
+  "id": "flood_the_market",
+  "title": "Flood the Market",
   "side": "Corp",
   "card_type": "Operation",
-  "cost": 1,
+  "cost": 3,
+  "additional_play_cost": {
+    "Clicks": 1
+  },
   "triggers": [
     {
       "trigger": "OnPlay",
@@ -13,21 +16,19 @@
           "PromptChooseCards": {
             "side": "Corp",
             "source": "OwnInstalled",
-            "filter": "NotInstalledThisTurn",
+            "filter": "Advanceable",
             "min": 1,
             "max": 1,
             "reveal": false,
             "shuffle_after": false,
             "then": {
-              "PlaceAdvancementCounters": {
-                "Fixed": 2
-              }
+              "PlaceAdvancementCounters": "ProtectedRemotesWithRootCards"
             }
           }
         }
       ]
     }
   ],
-  "numeric_id": 30040,
+  "numeric_id": 36053,
   "is_playable": true
 }

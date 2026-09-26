@@ -395,9 +395,9 @@ with the rule quoted.
 | 1.11 | Clicks | read in part | Audit: 3 and 4 clicks match. |
 | 1.12 | Objects | read in part | 1.12.2a: an effect acts on the object a card became after it moved (Priority Construction). Cited: 1.12.2a. |
 | 1.13 | Host, Hosted, and Hosting | unreviewed |  |
-| 1.14 | Ownership and Control | unreviewed |  |
+| 1.14 | Ownership and Control | read in part | 1.14.2e: the Corp controls every bad publicity counter, so taking it and being given it are one event, the Corp's (`Trigger::OnBadPublicityTaken`, VP Stage 2). 1.14.3a: either player removes tags to pay a cost (Unleash's additional cost). |
 | 1.15 | Targets | unreviewed |  |
-| 1.16 | Costs | read in part | Costs are `Cost`, never effects (Rules Audit item 8): 1.16.1a not prevented, 1.16.3 checkpoint after a cost, 1.16.11 nested costs. Cited: 1.16, 1.16.1, 1.16.11, 1.16.1a, 1.16.3. |
+| 1.16 | Costs | read in part | Costs are `Cost`, never effects (Rules Audit item 8): 1.16.1a not prevented, 1.16.3 checkpoint after a cost, 1.16.11 nested costs. VP Stage 2: 1.16.11b "unless" is a nested cost (Kompromat's derez is `Cost::Derez`); 1.16.2f a "total" discount is divided by the Corp, taken install first, which is never more credits (Reanimation Protocol); 1.16.4b an install-and-rez the Corp cannot pay leaves the card unrezzed. Cited: 1.16, 1.16.1, 1.16.11, 1.16.11b, 1.16.1a, 1.16.2f, 1.16.3, 1.16.4b. |
 | 1.17 | Score, Scoring and Stealing | conforms | F3 fixed: a forfeit lowers the shown score (1.17.1). Scoring conditions match. |
 | 1.18 | Advancing Cards | read in part | 1.18.1–1.18.2: placing an advancement counter is not advancing (`PlaceAdvancementCounters`, `listeners`). Cited: 1.18.1, 1.18.2. |
 | 1.19 | Trashing | conforms | F4 fixed: a hosted card goes to its owner's discard pile (1.19.1). |
@@ -496,7 +496,7 @@ with the rule quoted.
 
 | § | Section | Status | Notes |
 |---|---|---|---|
-| 8.1 | Faceup and Facedown Status | not modelled | 8.1.4: facedown Runner installs (Rules Audit backlog item 10). |
+| 8.1 | Faceup and Facedown Status | read in part | 8.1.3 derez: only by card effects (8.1.3a), no inherent cost (8.1.3b), and only a rezzed card is derezzed — `Effect::DerezCard`, `Cost::Derez` (VP Stage 2). 8.1.4: facedown Runner installs are not modelled (Rules Audit backlog item 10). |
 | 8.2 | Card Movements | unreviewed |  |
 | 8.3 | Arranging and Rearranging Cards | unreviewed |  |
 | 8.4 | Drawing Cards | unreviewed |  |

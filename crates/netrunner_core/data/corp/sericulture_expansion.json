@@ -30,7 +30,9 @@
                 "reveal": false,
                 "shuffle_after": false,
                 "then": {
-                  "PlaceAdvancementCounters": 2
+                  "PlaceAdvancementCounters": {
+                    "Fixed": 2
+                  }
                 }
               }
             },

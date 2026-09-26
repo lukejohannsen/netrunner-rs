@@ -185,6 +185,10 @@ pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
             vec![moment(Trigger::OnTagRemoved, &About::Nothing, Some(Side::Runner))]
         }
         GameEvent::TagsGiven { side: Side::Runner, .. } => vec![moment(Trigger::OnTagsGiven, &About::Nothing, Some(Side::Runner))],
+        // Bad publicity is only ever the Corp's (CR 1.14.2e), and taking
+        // none is not taking some.
+        GameEvent::BadPublicityGiven { amount: 0 } => Vec::new(),
+        GameEvent::BadPublicityGiven { .. } => vec![moment(Trigger::OnBadPublicityTaken, &About::Nothing, Some(Side::Corp))],
         GameEvent::TagRemoved { side: Side::Corp }
         | GameEvent::TagsRemoved { side: Side::Corp, .. }
         | GameEvent::TagsCleared { side: Side::Corp }
@@ -242,7 +246,6 @@ pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
         | GameEvent::PendingCardSelectionOffered { .. }
         | GameEvent::MemoryLimitExceeded { .. }
         | GameEvent::PendingServerChoiceOffered { .. }
-        | GameEvent::BadPublicityGiven { .. }
         | GameEvent::BadPublicityRemoved { .. }
         | GameEvent::HandKept { .. }
         | GameEvent::MulliganTaken { .. }
@@ -774,7 +777,7 @@ mod tests {
         trendsetting.triggers[0].first_each_turn = true;
         let registry = registry(vec![trendsetting, listens("pad_campaign", Side::Corp, CardType::Asset, Trigger::OnTurnStart, None)]);
         let mut state = GameState { phase: GamePhase::Action(Side::Runner), ..Default::default() };
-        state.corp.scored_agendas = vec![crate::rules::state::ScoredAgenda { card: CardId("aggressive_trendsetting".to_string()), install_id: InstallId(7), agenda_counters: 0 }];
+        state.corp.scored_agendas = vec![crate::rules::state::ScoredAgenda { card: CardId("aggressive_trendsetting".to_string()), install_id: InstallId(7), agenda_counters: 0, scored_on_turn: 0 }];
 
         let trash = |install| GameEvent::CardTrashedFromAccess { card: CardId("pad_campaign".to_string()), cost_paid: 4, install };
         let as_of = turn_log::record(&mut state, &registry, &trash(None));

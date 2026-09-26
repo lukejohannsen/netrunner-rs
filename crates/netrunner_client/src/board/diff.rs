@@ -89,6 +89,12 @@ pub fn transitions(before: &ClientView, after: &ClientView, entry: &PublicHistor
                 let from = origin(before, Some(card), Side::Runner, viewer);
                 out.push(Transition::CardMoved { card: Some(card.clone()), install, from, to: Zone::Rig });
             }
+            // One that leaves the game when it resolves (Take a Dive) moves
+            // once, by its `CardRemovedFromGame`, for the reason an
+            // operation played out of Archives does below.
+            GameEvent::EventPlayed { card, .. }
+                if after.runner.removed_from_game.iter().filter(|c| *c == card).count()
+                    > before.runner.removed_from_game.iter().filter(|c| *c == card).count() => {}
             GameEvent::EventPlayed { card, .. } => {
                 out.push(Transition::CardMoved { card: Some(card.clone()), install: None, from: Zone::Hand(Side::Runner), to: Zone::Discard(Side::Runner) });
             }
@@ -310,6 +316,7 @@ mod tests {
             .chain(view.runner.rig.iter().map(|c| c.card.clone()))
             .chain(view.runner.rig.iter().flat_map(|c| c.hosted_cards.iter().cloned()))
             .chain(view.runner.heap.iter().cloned())
+            .chain(view.runner.removed_from_game.iter().cloned())
             .chain(view.runner.scored_agendas.iter().cloned())
             .chain(view.corp.identity.iter().cloned())
             .chain(view.runner.identity.iter().cloned())

@@ -372,7 +372,11 @@ pub fn evaluate_effect(
 
         Effect::GiveBadPublicity(amount) => {
             state.corp.bad_publicity = state.corp.bad_publicity.saturating_add(*amount);
-            Ok(vec![GameEvent::BadPublicityGiven { amount: *amount }])
+            // Dispatched here, as `RemoveTags` dispatches its removal:
+            // Editorial Division hears the Corp take it.
+            let mut events = Vec::new();
+            dispatcher::emit(state, registry, &mut events, GameEvent::BadPublicityGiven { amount: *amount })?;
+            Ok(events)
         }
 
         Effect::RemoveBadPublicity(amount) => {
@@ -732,9 +736,10 @@ pub fn evaluate_effect(
 
         Effect::PlaceAdvancementCounters(amount) => {
             let card_id = acting_card.ok_or(RulesError::UnresolvedCardTarget)?;
+            let placed = resolve_amount(amount, ctx, state, registry);
             let installed =
                 acting_corp_install_mut(state, ctx).ok_or_else(|| RulesError::CardNotInstalled { card: card_id.clone() })?;
-            installed.advancement_tokens = installed.advancement_tokens.saturating_add(*amount);
+            installed.advancement_tokens = installed.advancement_tokens.saturating_add(placed);
             let advancement_tokens = installed.advancement_tokens;
             let install = installed.install_id;
             // Not `CardAdvanced`: placing a counter is not advancing (CR
@@ -1084,6 +1089,7 @@ pub fn evaluate_effect(
             on_success,
             on_start,
             exclude_servers_run_this_turn,
+            only_protected_by_ice,
         } => {
             // A parked `ChooseServer` is only ever resolved by
             // `run::start_run`, which rejects a second concurrent run — so
@@ -1114,7 +1120,7 @@ pub fn evaluate_effect(
             // ability. The narrowed list is what the decision carries, so
             // resolution's re-check and the candidate filter need no
             // knowledge of why a server is missing.
-            let allowed_servers = if *exclude_servers_run_this_turn {
+            let allowed_servers = if *exclude_servers_run_this_turn || *only_protected_by_ice {
                 let already_run = &state.runner.servers_run_this_turn;
                 // `None` means every server — enumerated the way
                 // `legal_actions` offers them, fresh remote included.
@@ -1125,11 +1131,15 @@ pub fn evaluate_effect(
                     servers.push(ServerId::Remote(crate::rules::legal_actions::fresh_remote_id(&existing)));
                     servers
                 };
+                let protected = |server: &ServerId| {
+                    state.corp.installed.iter().any(|c| c.server == *server && c.slot == crate::rules::InstallSlot::Ice)
+                };
                 let offered: Vec<ServerId> = allowed_servers
                     .clone()
                     .unwrap_or_else(every_server)
                     .into_iter()
-                    .filter(|server| !already_run.contains(server))
+                    .filter(|server| !*exclude_servers_run_this_turn || !already_run.contains(server))
+                    .filter(|server| !*only_protected_by_ice || protected(server))
                     .collect();
                 if offered.is_empty() {
                     return Err(RulesError::NoServerLeftToRun);
@@ -1154,7 +1164,7 @@ pub fn evaluate_effect(
             Ok(vec![GameEvent::PendingServerChoiceOffered { chooser: *chooser }])
         }
 
-        Effect::PromptInstallCorpCard { origin_zone, ignore_costs, discount, then, remote_only } => {
+        Effect::PromptInstallCorpCard { origin_zone, ignore_costs, discount, then, remote_only, rez, if_rezzed } => {
             let card_id = acting_card.ok_or(RulesError::UnresolvedCardTarget)?.clone();
             // First match by position: two copies of one card in HQ are
             // indistinguishable and interchangeable, so "the copy the Corp
@@ -1179,7 +1189,7 @@ pub fn evaluate_effect(
             // that cannot be installed at all.
             let Some(position) = position else { return Ok(Vec::new()) };
             let Some(card_def) = registry.get(&card_id) else { return Ok(Vec::new()) };
-            let mut allowed = crate::rules::engine::corp_install_destinations(state, card_def, *ignore_costs);
+            let mut allowed = crate::rules::engine::corp_install_destinations(state, card_def, *ignore_costs, *discount);
             if *remote_only {
                 allowed.retain(|server| matches!(server, crate::rules::run::ServerId::Remote(_)));
             }
@@ -1200,6 +1210,8 @@ pub fn evaluate_effect(
                     discount: *discount,
                     remote_only: *remote_only,
                     then: then.clone(),
+                    rez: *rez,
+                    if_rezzed: if_rezzed.clone(),
                 }),
                 // Deliberately NOT the chosen card: `source_card` passes
                 // through the masked view, and the pick out of HQ is
@@ -1247,7 +1259,17 @@ pub fn evaluate_effect(
             // failing effect would leave the decision that parked them
             // unresolvable. `AlreadyRezzed`/`InstallNotFound` still error —
             // those mean the card was named wrongly, not priced wrongly.
-            match crate::rules::engine::rez_install(state, registry, *install, *pay_cost, *discount) {
+            // The placeholder is "the card this resolves as": a selection's
+            // `then` substitutes it when the rez is the whole `then` (Send a
+            // Message), and inside a `Sequence` it is read here instead —
+            // Unleash rezzes the chosen ice and then resolves one of its
+            // subroutines, as the same card.
+            let install = if *install == InstallId::PLACEHOLDER {
+                ctx.acting_install.ok_or(RulesError::UnresolvedCardTarget)?
+            } else {
+                *install
+            };
+            match crate::rules::engine::rez_install(state, registry, install, *pay_cost, *discount) {
                 Err(RulesError::NotEnoughCredits { .. }) => Ok(Vec::new()),
                 other => other,
             }
@@ -1789,7 +1811,10 @@ fn gain_credits_from_ability(
     }
     state.resources_mut(side).credits = state.resources(side).credits.gain(amount);
     let mut events = vec![GameEvent::CreditsGained { side, amount }];
-    if let Some(card) = ctx.acting_card {
+    // The card whose text it is: a selection's `then` resolves *as* the
+    // card chosen, and realloc()'s credits are an operation's, not the
+    // ice's it derezzes (The Zwicky Group hears "an agenda or operation").
+    if let Some(card) = ctx.prompting_card.or(ctx.acting_card) {
         let gained = GameEvent::AbilityGainedCredits { side, card: card.clone() };
         dispatcher::emit(state, registry, &mut events, gained)?;
     }
@@ -2123,9 +2148,23 @@ pub(crate) fn cost_is_affordable(
         Cost::Trash { from, filter, count, .. } => {
             crate::rules::pending_choice::eligible_positions(state, registry, side, from, filter, ctx.acting_install).len() >= *count as usize
         }
+        Cost::Derez { filter, count } => derez_eligible(state, registry, side, filter, ctx).len() >= *count as usize,
         Cost::TrashSelf | Cost::RemoveSelfFromGame | Cost::TakeTags(_) | Cost::ClearTags => true,
         Cost::TrashRandomFromHq(count) => state.corp.hq.len() as u32 >= *count,
     }
+}
+
+/// The positions in the Corp's installs a `Cost::Derez` may take: those
+/// `filter` admits that are rezzed. The Corp's own, so a Runner payer has
+/// none.
+fn derez_eligible(state: &GameState, registry: &CardRegistry, side: Side, filter: &crate::dsl::CardFilter, ctx: &ResolutionContext<'_>) -> Vec<usize> {
+    if side != Side::Corp {
+        return Vec::new();
+    }
+    crate::rules::pending_choice::eligible_positions(state, registry, side, &crate::dsl::CardZoneRef::OwnInstalled, filter, ctx.acting_install)
+        .into_iter()
+        .filter(|&position| state.corp.installed[position].rezzed)
+        .collect()
 }
 
 /// `pay_cost_ctx` for a payer with no install to name — an operation or
@@ -2274,6 +2313,26 @@ pub(crate) fn pay_cost_ctx(
             }
             let picked = crate::rules::pending_choice::pick_for_cost(state, side, from, &eligible, *count, ctx.acting_install)?;
             crate::rules::pending_choice::trash_as_cost(state, registry, side, from, &picked, *reveal, ctx.acting_install)
+        }
+
+        Cost::Derez { filter, count } => {
+            let eligible = derez_eligible(state, registry, side, filter, ctx);
+            if eligible.len() < *count as usize {
+                return Err(RulesError::NotEnoughCardsToDerez { required: *count, available: eligible.len() as u32 });
+            }
+            let zone = crate::dsl::CardZoneRef::OwnInstalled;
+            let picked = crate::rules::pending_choice::pick_for_cost(state, side, &zone, &eligible, *count, ctx.acting_install)?;
+            // Resolved to handles first, as `Forfeit` does: nothing leaves
+            // the list here, but a position is only good against the list
+            // it was read from.
+            let installs: Vec<InstallId> = picked.iter().map(|&p| state.corp.installed[p].install_id).collect();
+            let mut events = Vec::new();
+            for install in installs {
+                let installed = state.corp.installed.iter_mut().find(|c| c.install_id == install).expect("picked from this list");
+                installed.rezzed = false;
+                events.push(GameEvent::CardDerezzed { install, card: Some(installed.card.clone()) });
+            }
+            Ok(events)
         }
 
         Cost::TakeTags(amount) => {
@@ -2564,6 +2623,16 @@ pub fn check_requirement(
         EffectRequirement::NoActionTakenThisTurn => {
             if state.this_turn.actions_finished() == 0 { Ok(()) } else { Err(RulesError::RequirementNotMet) }
         }
+        EffectRequirement::ActingCardMatches(filter) => {
+            let matches = ctx.acting_card.and_then(|card| registry.get(card)).is_some_and(|card| card_matches_filter(card, filter));
+            if matches { Ok(()) } else { Err(RulesError::RequirementNotMet) }
+        }
+        EffectRequirement::ThisAgendaScoredThisTurn => {
+            let scored_now = ctx.acting_install.is_some_and(|install| {
+                state.corp.scored_agendas.iter().any(|scored| scored.install_id == install && scored.scored_on_turn == state.turn)
+            });
+            if scored_now { Ok(()) } else { Err(RulesError::RequirementNotMet) }
+        }
         EffectRequirement::ProtectingRemote => {
             let protecting = acting_corp_install(state, ctx)
                 .is_some_and(|installed| installed.slot == InstallSlot::Ice && matches!(installed.server, ServerId::Remote(_)));
@@ -2662,13 +2731,22 @@ fn subroutine_breakable_by(subroutine: &crate::rules::run::EncounteredSubroutine
     }
 }
 
+/// An `Amount` read off the table alone, with no card resolving it — what
+/// a bot's evaluator asks of a card text it has not played yet (Flood the
+/// Market's count of protected remotes). An amount that reads the
+/// resolving card (its counters, its printed cost) or the resolution (a
+/// chosen number, the credits just lost) is 0 here.
+pub fn amount_on_table(amount: &Amount, state: &GameState, registry: &CardRegistry) -> u32 {
+    resolve_amount(amount, &ResolutionContext::default(), state, registry)
+}
+
 pub(crate) fn resolve_amount(amount: &Amount, ctx: &ResolutionContext<'_>, state: &GameState, registry: &CardRegistry) -> u32 {
     match amount {
         Amount::ClicksRemaining => match state.phase {
             crate::rules::GamePhase::Action(side) => state.resources(side).clicks.0,
             _ => 0,
         },
-        Amount::PrintedInstallCost => ctx.acting_card.and_then(|card| registry.get(card)).map_or(0, |def| def.cost),
+        Amount::PrintedCost => ctx.acting_card.and_then(|card| registry.get(card)).map_or(0, |def| def.cost),
         Amount::RemainingAfterSelection(total) => total.saturating_sub(ctx.selected_count),
         Amount::Fixed(n) => *n,
         // A placeholder `Effect::with_chosen_number` writes over before a
@@ -2691,6 +2769,24 @@ pub(crate) fn resolve_amount(amount: &Amount, ctx: &ResolutionContext<'_>, state
         Amount::IceProtectingThisServer => acting_corp_install(state, ctx).map_or(0, |installed| {
             state.corp.installed.iter().filter(|other| other.server == installed.server && other.slot == InstallSlot::Ice).count() as u32
         }),
+        Amount::ProtectedRemotesWithRootCards => {
+            let mut remotes: Vec<ServerId> = state
+                .corp
+                .installed
+                .iter()
+                .filter(|c| matches!(c.server, ServerId::Remote(_)) && c.slot == InstallSlot::Root)
+                .map(|c| c.server)
+                .collect();
+            remotes.sort_by_key(|server| match server {
+                ServerId::Remote(n) => *n,
+                _ => 0,
+            });
+            remotes.dedup();
+            remotes
+                .into_iter()
+                .filter(|server| state.corp.installed.iter().any(|c| c.server == *server && c.slot == InstallSlot::Ice))
+                .count() as u32
+        }
         Amount::InHeapWithSubtype(subtype) => {
             state.runner.heap.iter().filter(|card| registry.get(card).is_some_and(|def| def.subtypes.contains(subtype))).count() as u32
         }
@@ -2733,6 +2829,8 @@ pub(crate) fn consume_requirement(
         | EffectRequirement::CurrentlyAccessingInstalledCard { .. }
         | EffectRequirement::AgendaCameFromThisCardsServer
         | EffectRequirement::ProtectingRemote
+        | EffectRequirement::ActingCardMatches(_)
+        | EffectRequirement::ThisAgendaScoredThisTurn
         | EffectRequirement::SubroutineResolvedThisRun
         | EffectRequirement::MemoryFull
         | EffectRequirement::RunnerClicksAtLeast(_)

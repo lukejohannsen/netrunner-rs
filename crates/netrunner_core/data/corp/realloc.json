@@ -1,0 +1,90 @@
+{
+  "id": "realloc",
+  "title": "realloc()",
+  "side": "Corp",
+  "card_type": "Operation",
+  "cost": 0,
+  "additional_play_cost": {
+    "Clicks": 1
+  },
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "Sequence": [
+            {
+              "PromptChooseCards": {
+                "side": "Corp",
+                "source": "OwnInstalled",
+                "filter": {
+                  "All": [
+                    {
+                      "CardType": {
+                        "Ice": "Barrier"
+                      }
+                    },
+                    "Rezzed"
+                  ]
+                },
+                "min": 1,
+                "max": 1,
+                "reveal": false,
+                "shuffle_after": false,
+                "then": {
+                  "Sequence": [
+                    {
+                      "GainCreditsAmount": [
+                        "Corp",
+                        "PrintedCost"
+                      ]
+                    },
+                    {
+                      "DerezCard": "ThisCard"
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "PromptChooseCards": {
+                "side": "Corp",
+                "source": "OwnInstalled",
+                "filter": {
+                  "All": [
+                    {
+                      "CardType": {
+                        "Ice": "Barrier"
+                      }
+                    },
+                    "Rezzed"
+                  ]
+                },
+                "min": 1,
+                "max": 1,
+                "reveal": false,
+                "shuffle_after": false,
+                "then": {
+                  "Sequence": [
+                    {
+                      "GainCreditsAmount": [
+                        "Corp",
+                        "PrintedCost"
+                      ]
+                    },
+                    {
+                      "DerezCard": "ThisCard"
+                    }
+                  ]
+                }
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "numeric_id": 36033,
+  "is_playable": true
+}

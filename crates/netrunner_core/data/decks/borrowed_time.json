@@ -3,7 +3,7 @@
   "name": "Borrowed Time",
   "side": "Runner",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach Vantage Point's first Criminal cards — Vic, Sell Out, Borrowed Goods, Rotary — on Stolen Goods' frame. Legal in every format but Snapshot.",
+  "description": "Not a published list: built so the sweeps reach Vantage Point's Criminal cards — Vic, Sell Out, Borrowed Goods, Rotary, Kompromat — on Stolen Goods' frame. Legal in every format but Snapshot.",
   "style": "aggressive",
   "identity": "virtual_intelligence_p_i_you_can_call_me_vic",
   "cards": [
@@ -24,7 +24,7 @@
       "count": 3
     },
     {
-      "card": "tread_lightly",
+      "card": "kompromat",
       "count": 3
     },
     {

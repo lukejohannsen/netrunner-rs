@@ -241,7 +241,7 @@ mod tests {
                 reveal: false,
                 shuffle_after: false,
                 destination: None,
-                then: Some(Box::new(Effect::PlaceAdvancementCounters(1))),
+                then: Some(Box::new(Effect::PlaceAdvancementCounters(netrunner_core::dsl::Amount::Fixed(1)))),
             },
             if_declined: Effect::Sequence(Vec::new()),
             source_card: None,

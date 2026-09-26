@@ -1,0 +1,55 @@
+{
+  "id": "kompromat",
+  "title": "Kompromat",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 2,
+  "removed_after_play": true,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "PromptChooseServer": {
+            "chooser": "Runner",
+            "rez_cost_delta": 0,
+            "bonus_run_credits": 0,
+            "only_protected_by_ice": true,
+            "on_success": {
+              "SetRunEndedEffect": {
+                "OfferPaidChoice": {
+                  "side": "Corp",
+                  "cost": {
+                    "Derez": {
+                      "filter": {
+                        "All": [
+                          {
+                            "CardType": {
+                              "Ice": "Barrier"
+                            }
+                          },
+                          "InLastRunServer"
+                        ]
+                      },
+                      "count": 1
+                    }
+                  },
+                  "if_paid": {
+                    "Sequence": []
+                  },
+                  "if_declined": {
+                    "GiveBadPublicity": 1
+                  },
+                  "text": "give the Corp 1 bad publicity unless they derez 1 piece of ice protecting the attacked server"
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "numeric_id": 36010,
+  "is_playable": true
+}

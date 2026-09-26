@@ -1,0 +1,47 @@
+{
+  "id": "witch_hunt",
+  "title": "Witch Hunt",
+  "side": "Corp",
+  "card_type": "Agenda",
+  "cost": 0,
+  "advancement_requirement": 4,
+  "agenda_points": 2,
+  "triggers": [
+    {
+      "trigger": "OnAgendaScored",
+      "subject": "This",
+      "effects": [
+        {
+          "GiveBadPublicity": 1
+        }
+      ]
+    },
+    {
+      "trigger": "OnAgendaStolen",
+      "subject": "This",
+      "effects": [
+        {
+          "GiveBadPublicity": 1
+        }
+      ]
+    },
+    {
+      "trigger": "OnActionPhaseEnd",
+      "requirement": "ThisAgendaScoredThisTurn",
+      "effects": [
+        {
+          "Sequence": [
+            {
+              "RemoveTags": "RunnerTags"
+            },
+            {
+              "GiveTags": 3
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "numeric_id": 36047,
+  "is_playable": true
+}

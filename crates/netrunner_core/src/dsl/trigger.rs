@@ -202,6 +202,15 @@ pub enum Trigger {
     /// `TagsRemoved`, `TagsCleared`). Synapse Global: Faster than Thought
     /// installs off it, including off its own remove-a-tag ability.
     OnTagRemoved,
+    /// "The first time each turn you take bad publicity" — fired against
+    /// the Corp's cards when the Corp takes bad publicity by any route
+    /// (`GameEvent::BadPublicityGiven`): Editorial Division: Ad Nihilum.
+    /// "Take" and "give" are one event, the Corp's (CR 1.14.2e: the Corp
+    /// controls every bad publicity counter), so Witch Hunt's "take 1 bad
+    /// publicity" and Take a Dive's "give the Corp 1 bad publicity" are
+    /// both heard. Composition didn't work: no existing trigger's moment
+    /// is a counter landing on the Corp, and `OnTagsGiven` is the Runner's.
+    OnBadPublicityTaken,
 }
 
 /// Which occurrences of its trigger a `TriggeredEffect` hears: the one that
@@ -320,7 +329,7 @@ impl Trigger {
     /// `every_trigger_is_listed_at_its_own_index` holds the two together,
     /// and its exhaustive `match` is what stops a new variant compiling
     /// until it is listed here.
-    pub const ALL: [Trigger; 28] = [
+    pub const ALL: [Trigger; 29] = [
         Trigger::OnPlay,
         Trigger::OnRunStart,
         Trigger::OnEncounter,
@@ -349,6 +358,7 @@ impl Trigger {
         Trigger::OnIceApproached,
         Trigger::OnOperationPlayed,
         Trigger::OnTagRemoved,
+        Trigger::OnBadPublicityTaken,
     ];
 
     /// This trigger's position in `ALL`.
@@ -392,6 +402,7 @@ impl Trigger {
             | Trigger::OnTagRemoved
             | Trigger::OnDamageDealt
             | Trigger::OnCardsTrashedFromHq
+            | Trigger::OnBadPublicityTaken
             | Trigger::Paid => TriggerAbout::Nothing,
             // `OnDamageDealt` would be the second, the day a card prints
             // "whenever you do **meat** damage"; none does.
@@ -421,7 +432,8 @@ impl Trigger {
             | Trigger::OnAdvance
             | Trigger::OnAbilityGainedCredits
             | Trigger::OnDamageDealt
-            | Trigger::OnCardsTrashedFromHq => Hears::OwnSide,
+            | Trigger::OnCardsTrashedFromHq
+            | Trigger::OnBadPublicityTaken => Hears::OwnSide,
             // `OnPlay` and `OnForfeit` are only ever printed about the card
             // itself, so `Subject::This` already says whose they are.
             Trigger::OnPlay
@@ -457,7 +469,7 @@ mod tests {
         // Exhaustive, so a new variant stops here until it is added to
         // `Trigger::ALL` — the turn log indexes a fixed array by it.
         let listed = |trigger: Trigger| match trigger {
-            Trigger::OnPlay | Trigger::OnRunStart | Trigger::OnEncounter | Trigger::OnTurnStart | Trigger::OnAccessed | Trigger::OnTrashedFromAccess | Trigger::OnSuccessfulRun | Trigger::Paid | Trigger::OnInstall | Trigger::OnAgendaScored | Trigger::OnAgendaStolen | Trigger::OnDamageAboutToResolve | Trigger::OnRez | Trigger::OnApproachServer | Trigger::OnRunEnded | Trigger::OnBasicDrawAction | Trigger::OnTagsGiven | Trigger::OnAdvance | Trigger::OnDiscardPhaseEnd | Trigger::OnActionPhaseEnd | Trigger::OnCardInstalled | Trigger::OnDamageDealt | Trigger::OnCardsTrashedFromHq | Trigger::OnAbilityGainedCredits | Trigger::OnForfeit | Trigger::OnIceApproached | Trigger::OnOperationPlayed | Trigger::OnTagRemoved => Trigger::ALL.contains(&trigger),
+            Trigger::OnPlay | Trigger::OnRunStart | Trigger::OnEncounter | Trigger::OnTurnStart | Trigger::OnAccessed | Trigger::OnTrashedFromAccess | Trigger::OnSuccessfulRun | Trigger::Paid | Trigger::OnInstall | Trigger::OnAgendaScored | Trigger::OnAgendaStolen | Trigger::OnDamageAboutToResolve | Trigger::OnRez | Trigger::OnApproachServer | Trigger::OnRunEnded | Trigger::OnBasicDrawAction | Trigger::OnTagsGiven | Trigger::OnAdvance | Trigger::OnDiscardPhaseEnd | Trigger::OnActionPhaseEnd | Trigger::OnCardInstalled | Trigger::OnDamageDealt | Trigger::OnCardsTrashedFromHq | Trigger::OnAbilityGainedCredits | Trigger::OnForfeit | Trigger::OnIceApproached | Trigger::OnOperationPlayed | Trigger::OnTagRemoved | Trigger::OnBadPublicityTaken => Trigger::ALL.contains(&trigger),
         };
         assert!(Trigger::ALL.iter().all(|trigger| listed(*trigger)));
     }

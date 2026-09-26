@@ -190,6 +190,7 @@ fn visible_cards(view: &ClientView) -> Vec<CardId> {
         ids.extend(cards.iter().cloned());
     }
     ids.extend(view.runner.heap.iter().cloned());
+    ids.extend(view.runner.removed_from_game.iter().cloned());
     ids.extend(view.runner.scored_agendas.iter().cloned());
     for rig_card in &view.runner.rig {
         ids.push(rig_card.card.clone());
@@ -246,6 +247,7 @@ fn cards_in_game(view: &ClientView, side: Side) -> usize {
             view.runner.grip_count
                 + view.runner.stack_count
                 + view.runner.heap.len()
+                + view.runner.removed_from_game.len()
                 + view.runner.rig.iter().map(|card| 1 + card.hosted_cards.len()).sum::<usize>()
         }
     }
@@ -747,6 +749,7 @@ pub fn determinize(view: &ClientView, registry: &CardRegistry, rng: &mut impl Rn
         stack: pools.draw_n(Slot::RunnerAny, view.runner.stack_count),
         rig,
         heap: view.runner.heap.clone(),
+        removed_from_game: view.runner.removed_from_game.clone(),
         once_per_turn_used: view.runner.once_per_turn_used.iter().cloned().collect(),
         servers_run_this_turn: view.runner.servers_run_this_turn.clone(),
         discarded_this_discard_phase: view.runner.discarded_this_discard_phase.clone(),
@@ -1008,6 +1011,7 @@ mod tests {
                     base_strength: 2,
                     ..Default::default()
                 }],
+                removed_from_game: Vec::new(),
                 heap: Vec::new(),
                 once_per_turn_used: Default::default(), servers_run_this_turn: Vec::new(), discarded_this_discard_phase: Vec::new(), identity_flipped: false,
             },

@@ -209,6 +209,9 @@ pub struct PublicRunnerState {
     /// Never masked — like Corp's `archives`, a Runner's discard pile is a
     /// fully public zone in the real game.
     pub heap: Vec<CardId>,
+    /// Never masked — see `RunnerState::removed_from_game`.
+    #[serde(default)]
+    pub removed_from_game: Vec<CardId>,
     /// Never masked — stolen Agendas sit in a fully public score area.
     pub scored_agendas: Vec<CardId>,
     /// Never masked — static link strength, like `tags`, is plain public
@@ -1175,6 +1178,7 @@ fn mask_runner_state(state: &GameState, registry: &CardRegistry, owner_view: boo
         stack: mask_zone(&runner.stack, owner_view),
         rig: runner.rig.iter().map(|card| mask_installed_runner_card(state, registry, card)).collect(),
         heap: runner.heap.clone(),
+        removed_from_game: runner.removed_from_game.clone(),
         scored_agendas: runner.scored_agendas.clone(),
         // Asked, like a strength: the identity's printed link and what the
         // rig adds. It was a stored field that only the identity ever wrote.

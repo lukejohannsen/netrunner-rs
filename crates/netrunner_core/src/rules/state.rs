@@ -362,13 +362,21 @@ pub struct ScoredAgenda {
     /// abilities. Public, like everything else in the score area.
     #[serde(default)]
     pub agenda_counters: u32,
+    /// The turn it was scored on (`GameState::turn`) — Witch Hunt's "if you
+    /// scored this agenda this turn" (`EffectRequirement::
+    /// ThisAgendaScoredThisTurn`). A fact about this copy, like
+    /// `InstalledCard::installed_this_turn`, which the Turn History Rule
+    /// keeps: the turn log counts occurrences, and "this agenda" is not a
+    /// class. A turn number rather than a flag, so nothing resets it.
+    #[serde(default)]
+    pub scored_on_turn: u32,
 }
 
 impl ScoredAgenda {
     /// A scored agenda with no counters and no install handle — the shape
     /// tests and fixtures want when only the card's identity matters.
     pub fn plain(card: CardId) -> Self {
-        ScoredAgenda { card, install_id: InstallId::PLACEHOLDER, agenda_counters: 0 }
+        ScoredAgenda { card, install_id: InstallId::PLACEHOLDER, agenda_counters: 0, scored_on_turn: 0 }
     }
 }
 
@@ -537,6 +545,15 @@ pub struct RunnerState {
     /// Runner's discard pile. Like Corp's `archives`, this is fully public —
     /// never masked in the masked view.
     pub heap: Vec<CardId>,
+    /// Runner cards removed from the game — an event that prints "Remove
+    /// this event from the game" (`CardDefinition::removed_after_play`:
+    /// Take a Dive, Kompromat). The Runner's twin of
+    /// `CorpState::removed_from_game`, for the same reason it is not the
+    /// heap: a removed card is never recurred (Scrounge, Harmony AR
+    /// Therapy) nor counted by anything reading the heap. Public, never
+    /// masked.
+    #[serde(default)]
+    pub removed_from_game: Vec<CardId>,
     /// Agendas the Runner has stolen, in steal order. Fully public — never
     /// masked. See `CorpState::scored_agendas`'s doc comment.
     pub scored_agendas: Vec<CardId>,
@@ -911,6 +928,12 @@ pub struct PendingInstallFromZone {
     /// lands, with the chosen server substituted in. See that field.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub then: Option<Box<Effect>>,
+    /// `Effect::PromptInstallCorpCard::rez` and `if_rezzed`, carried to
+    /// the resolution that knows which install landed.
+    #[serde(default)]
+    pub rez: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub if_rezzed: Option<Box<Effect>>,
 }
 
 /// A payment that could come from more than one place, waiting on the payer

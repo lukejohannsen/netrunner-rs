@@ -331,6 +331,25 @@ pub enum EffectRequirement {
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
         rezzed_only: bool,
     },
+    /// The card this resolves as matches the filter, read off its
+    /// definition — Reanimation Protocol's "if you rezzed a piece of
+    /// **non-liability** ice this way", asked as the ice just rezzed
+    /// (`PromptInstallCorpCard::if_rezzed`). Composition didn't work: every
+    /// other requirement that reads a card reads the triggering event's
+    /// (`EventFilter::Card` is a trigger condition, not an "if") or a zone
+    /// (`ZoneHasAtLeast`), and a card that has just been installed is in
+    /// neither. Definition-level only, like `EventFilter::Card`: an
+    /// instance filter (`Rezzed`) passes.
+    ActingCardMatches(crate::dsl::CardFilter),
+    /// The scored agenda this resolves as was scored this turn —
+    /// Witch Hunt's "When your action phase ends, if you scored this agenda
+    /// this turn". Read off the copy in the Corp's score area
+    /// (`ScoredAgenda::scored_on_turn`), by install, so a Witch Hunt scored
+    /// last turn does not answer for one scored now; a stolen agenda was
+    /// not scored and never answers. Not `AmountAtLeast(TimesThisTurn(
+    /// OnAgendaScored), 1)`: that is *an* agenda, and a second Witch Hunt,
+    /// or an earlier one, would have given the Runner 3 tags again.
+    ThisAgendaScoredThisTurn,
 }
 
 impl EffectRequirement {

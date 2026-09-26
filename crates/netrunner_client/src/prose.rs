@@ -72,7 +72,8 @@ pub fn describe_amount(amount: &Amount) -> String {
         Amount::FacedownCardsInArchives => "the number of facedown cards in Archives".to_string(),
         Amount::CreditsLostThisResolution => "the credits just lost".to_string(),
         Amount::ClicksRemaining => "the clicks remaining".to_string(),
-        Amount::PrintedInstallCost => "its printed install cost".to_string(),
+        Amount::PrintedCost => "its printed cost".to_string(),
+        Amount::ProtectedRemotesWithRootCards => "the number of remote servers with a card in the root and protected by ice".to_string(),
         Amount::RemainingAfterSelection(n) => format!("{n} less the cards chosen"),
         Amount::ThreatLevel => "the threat level".to_string(),
         Amount::RunnerTags => "the Runner's tags".to_string(),
@@ -111,6 +112,7 @@ pub fn describe_cost(cost: &Cost) -> String {
         Cost::RemoveTags(n) => format!("remove {}", plural(*n, "tag", "tags")),
         Cost::SufferDamage(kind, n) => format!("suffer {n} {} damage", damage_word(kind)),
         Cost::Forfeit(n) => format!("forfeit {}", plural(*n, "agenda", "agendas")),
+        Cost::Derez { count, .. } => format!("derez {}", plural(*count, "card", "cards")),
         Cost::Trash { from, count, .. } => format!("trash {} from {}", plural(*count, "card", "cards"), describe_zone(from)),
         Cost::TakeTags(n) => format!("take {}", plural(*n, "tag", "tags")),
         Cost::RemoveCounters(n) => format!("remove {}", plural(*n, "counter", "counters")),
@@ -275,7 +277,8 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
             };
             format!("{what} {}", duration(until))
         }
-        Effect::PlaceAdvancementCounters(n) => format!("place {}", plural(*n, "advancement token", "advancement tokens")),
+        Effect::PlaceAdvancementCounters(Amount::Fixed(n)) => format!("place {}", plural(*n, "advancement token", "advancement tokens")),
+        Effect::PlaceAdvancementCounters(amount) => format!("place advancement tokens equal to {}", describe_amount(amount)),
         Effect::MoveThisCardToRoot(server) => format!("move this card to {}", describe_server(*server)),
         Effect::PlayOperation { .. } => "play an operation".to_string(),
         Effect::ResolveSubroutineOfSelectedIce => "resolve a subroutine of the chosen ice".to_string(),
