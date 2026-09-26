@@ -1041,10 +1041,16 @@ impl CardDefinition {
             return Err(CardValidationError::OncePerTurnDoesNotFit(self.id.clone(), "two once-per-turn abilities on one card would share one use (`OncePerTurnKey` is the card and which copy)"));
         }
         for effect in self.continuous.iter().filter(|effect| effect.first_each_turn) {
-            let Scope::Installing(filter) = &effect.applies_to else {
-                return Err(self.first_time_misfit("a continuous effect is about the first of something only where it is about an install (`Installing`)".to_string()));
+            let occurrences = match &effect.applies_to {
+                Scope::Installing(filter) => crate::rules::turn_log::Occurrences::installs(filter, self.side),
+                Scope::Playing(filter) => crate::rules::turn_log::Occurrences::plays(filter, self.side),
+                _ => {
+                    return Err(self.first_time_misfit(
+                        "a continuous effect is about the first of something only where it is about an install or a play (`Installing`, `Playing`)".to_string(),
+                    ));
+                }
             };
-            if let Err(why) = crate::rules::turn_log::Occurrences::installs(filter, self.side) {
+            if let Err(why) = occurrences {
                 return Err(self.first_time_misfit(why));
             }
         }
@@ -1090,6 +1096,7 @@ impl CardDefinition {
         for effect in &self.continuous {
             let misfit = |kind, why| Err(CardValidationError::ContinuousEffectDoesNotFit(self.id.clone(), kind, why));
             let hosted = matches!(self.card_type, CardType::Program | CardType::Hardware | CardType::Resource);
+            let played = matches!(self.card_type, CardType::Event | CardType::Operation);
             if !matches!(self.card_type, CardType::Ice(_)) && effect.condition.as_ref().is_some_and(says_protecting_remote) {
                 return misfit("ProtectingRemote", "only a piece of ice protects a server");
             }
@@ -1120,6 +1127,19 @@ impl CardDefinition {
                 }
                 (ContinuousKind::GainSubtype(_), Scope::This | Scope::Host | Scope::Ice) => {}
                 (ContinuousKind::GainSubtype(_), _) => return misfit("GainSubtype", "an ice subtype is gained by ice: this card, its host, or each piece"),
+                (ContinuousKind::PlayCost(_) | ContinuousKind::PlayClicks(_), Scope::This) if !played => {
+                    return misfit("PlayCost", "only an event or an operation is played");
+                }
+                (ContinuousKind::PlayCost(_) | ContinuousKind::PlayClicks(_), Scope::This | Scope::Playing(_)) => {}
+                (ContinuousKind::PlayCost(_) | ContinuousKind::PlayClicks(_), _) => {
+                    return misfit("PlayCost", "a play cost is this card's own or that of a card being `Playing`");
+                }
+                (ContinuousKind::StealCost(_), Scope::Stealing(_)) => {}
+                (ContinuousKind::StealCost(_), _) => {
+                    return misfit("StealCost", "an additional cost to steal is about an agenda being `Stealing`; an agenda's own is its `steal_cost`");
+                }
+                (ContinuousKind::AgendaPoints(_), Scope::ScoreArea(_)) if self.card_type == CardType::Agenda => {}
+                (ContinuousKind::AgendaPoints(_), _) => return misfit("AgendaPoints", "an agenda's points change in a score area, said by the agenda (`ScoreArea`)"),
                 (ContinuousKind::BoostsLastTheRun, Scope::This | Scope::Host) => {}
                 (ContinuousKind::BoostsLastTheRun, _) => return misfit("BoostsLastTheRun", "a boost is an icebreaker's: this card or its host"),
             }

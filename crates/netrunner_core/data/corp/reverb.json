@@ -1,0 +1,35 @@
+{
+  "id": "reverb",
+  "title": "Reverb",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Barrier"
+  },
+  "cost": 4,
+  "strength": 2,
+  "continuous": [
+    {
+      "kind": {
+        "RezCost": {
+          "per": -1,
+          "of": "OtherUnrezzedIce"
+        }
+      },
+      "applies_to": "This",
+      "text": "The rez cost of this ice is lowered by 1[credit] for each other unrezzed piece of ice."
+    }
+  ],
+  "triggers": [],
+  "subroutines": [
+    {
+      "text": "End the run.",
+      "effect": "EndTheRun"
+    },
+    {
+      "text": "End the run.",
+      "effect": "EndTheRun"
+    }
+  ],
+  "numeric_id": 36029,
+  "is_playable": true
+}

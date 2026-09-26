@@ -255,7 +255,15 @@ pub(crate) fn at_mid_access_window(state: &GameState) -> bool {
 fn compute_pending_choice(state: &GameState, card_id: &CardId, registry: &CardRegistry) -> AccessPhase {
     let card_def = registry.get(card_id);
     let is_agenda = card_def.is_some_and(|c| c.agenda_points.is_some());
-    let steal_cost = card_def.and_then(|c| c.steal_cost.clone());
+    // The agenda's printed cost to steal and what the table adds
+    // (Magistrate Revontulet's 3[c]) are one price, paid together
+    // (CR 1.16.10b), and either one lets the Runner decline (1.17.3d).
+    let added = card_def.filter(|_| is_agenda).map_or(0, |card| continuous::steal_cost_added(state, registry, card));
+    let steal_cost = match (card_def.and_then(|c| c.steal_cost.clone()), added) {
+        (printed, 0) => printed,
+        (None, added) => Some(Cost::Credits(added)),
+        (Some(printed), added) => Some(Cost::AllOf(vec![printed, Cost::Credits(added)])),
+    };
     let mandatory_steal = is_agenda && steal_cost.is_none();
     // What the table adds (`ContinuousKind::TrashCost` — Mahkota Langit
     // Grid, rezzed or trashed earlier in this run), never below 0. Asked
@@ -722,7 +730,7 @@ pub fn resolve_steal(
     if let Some(run) = state.active_run.as_mut() {
         run.agendas_stolen_this_run = run.agendas_stolen_this_run.saturating_add(1);
     }
-    let agenda_points = registry.get(card_id).and_then(|c| c.agenda_points).unwrap_or(0);
+    let agenda_points = crate::rules::win::agenda_value_in(state, registry, card_id, Side::Runner);
     state.runner.resources.agenda_points = state.runner.resources.agenda_points.gain(agenda_points);
     let stolen_event = GameEvent::AgendaStolen { card: card_id.clone(), agenda_points };
     // Jinteki: Personal Evolution-style identity reaction to a steal —

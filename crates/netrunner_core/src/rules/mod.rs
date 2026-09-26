@@ -34,6 +34,7 @@ pub use ability::{amount_on_table, evaluate_effect, process_card_triggers, resol
 pub use action::{PlayerAction, ServerTarget, TargetZone};
 pub use action_mask::{get_action_mask, ActionSpace};
 pub use damage::apply_damage;
+pub use win::agenda_value_in;
 pub use deck::{validate_deck, Deck};
 pub use dispatcher::dispatch_event;
 pub use engine::apply_action;

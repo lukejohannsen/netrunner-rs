@@ -1,0 +1,40 @@
+{
+  "id": "tailgate",
+  "title": "Tailgate",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 3,
+  "continuous": [
+    {
+      "kind": {
+        "PlayCost": {
+          "per": -1,
+          "of": {
+            "IceProtecting": "Hq"
+          }
+        }
+      },
+      "applies_to": "This",
+      "text": "The play cost of this event is lowered by 1[credit] for each piece of ice protecting HQ."
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "InitiateRun": "Hq"
+        },
+        {
+          "AddAdditionalAccess": {
+            "server": "Hq",
+            "count": 2
+          }
+        }
+      ]
+    }
+  ],
+  "numeric_id": 36012,
+  "is_playable": true
+}

@@ -24,7 +24,6 @@ pub(crate) const VP_UNIMPLEMENTED: &[(u32, &str)] = &[
     (36006, "Hackerspace"),
     (36007, "Nurse Hạnh"),
     (36008, "Stick and Poke"),
-    (36012, "Tailgate"),
     (36015, "Baker"),
     (36016, "Underdome Irregulars"),
     (36017, "Hiram “0mission” Svensson: Shadow of the Past"),
@@ -36,9 +35,7 @@ pub(crate) const VP_UNIMPLEMENTED: &[(u32, &str)] = &[
     (36023, "Sipa"),
     (36024, "Stowaway"),
     (36025, "Word on the Street"),
-    (36027, "Synchrocyclotron"),
     (36028, "Ansel 2.0"),
-    (36029, "Reverb"),
     (36031, "Vertigo"),
     (36032, "Caveat Emptor"),
     (36035, "Perfect Recall"),
@@ -50,9 +47,7 @@ pub(crate) const VP_UNIMPLEMENTED: &[(u32, &str)] = &[
     (36041, "Lionsmane"),
     (36043, "Cultivate"),
     (36045, "The Red Room"),
-    (36048, "Magistrate Revontulet"),
     (36051, "Lethe"),
-    (36055, "Hype Machine"),
     (36056, "Sacrifice Zone Expansion"),
     (36057, "Luana Campos"),
     (36058, "Event Horizon"),
@@ -60,7 +55,6 @@ pub(crate) const VP_UNIMPLEMENTED: &[(u32, &str)] = &[
     (36061, "Myōshu"),
     (36064, "Flagship"),
     (36065, "Shackleton Grid"),
-    (36066, "Let Them Dream"),
 ];
 
 /// *Rebellion Without Rehearsal* (`rwr`): tranche 2 of the NSG plan.

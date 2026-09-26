@@ -541,7 +541,7 @@ pub fn narrate_event(
         GameEvent::ProgramInstalled { .. } | GameEvent::ResourceInstalled { .. } | GameEvent::CardAccessed {
         .. } | GameEvent::TurnEnded { .. } | GameEvent::TurnStarted { .. } | GameEvent::DiscardPending { ..
         } | GameEvent::DiscardPhaseEnded { .. } | GameEvent::CardDiscarded { .. } |
-        GameEvent::CardAddedToBottomOfStack { .. } | GameEvent::CardHosted { .. } |
+        GameEvent::CardAddedToBottomOfDeck { .. } | GameEvent::CardHosted { .. } |
         GameEvent::ActionPhaseEnded { .. } | GameEvent::RunRedirected { .. } | GameEvent::CreditsSpent { ..
         } | GameEvent::TagsCleared { .. } | GameEvent::CardRemovedFromGame { .. } |
         GameEvent::AbilityGainedCredits { .. } | GameEvent::AbilityActivated { .. } |

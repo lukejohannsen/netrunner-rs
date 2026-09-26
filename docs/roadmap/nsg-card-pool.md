@@ -365,7 +365,7 @@ Division.
    Sentry:** Vicsek, alone, with the change to `CardType::Ice` it needs,
    which the rest of the unmodelable ice (Loot Box, Rime, Konjin,
    Excalibur, Lycian Multi-Munition) then reuse (built, below).
-3. **Turn-log counts and standing kinds** (`PlayCost`, `AgendaPoints` and
+3. **Turn-log counts and standing kinds** (3a built, below; 3b next) (`PlayCost`, `AgendaPoints` and
    `StealCost` are the `ContinuousKind` words, each a new kind held to the
    DSL Growth Rule): Chain Reaction, Underdome Irregulars, Reverb, Hype
    Machine, Tailgate, Perfect Recall, The Red Room, Lotus Haze, Magistrate
@@ -632,6 +632,71 @@ Vantage Point 22 of 66; `VP_UNIMPLEMENTED` 45 → 44.
   without Vicsek's card file and deck swap is identical to `main` in all
   four shapes, so the movement is the one new playable card `determinize`
   samples into hidden Corp zones.
+
+#### Stage 3a — standing kinds: play, steal and score prices (26 September 2026)
+
+`feat/vp-stage-3a-standing-kinds`: Tailgate, Reverb, Synchrocyclotron,
+Magistrate Revontulet, Hype Machine, Let Them Dream. **No new `Effect`.**
+Vantage Point 28 of 66; `VP_UNIMPLEMENTED` 44 → 38. Stage 3 was split: the
+turn-log and hosted-counter cards (Chain Reaction, Underdome Irregulars,
+The Red Room, Perfect Recall, Lotus Haze) are Stage 3b. Built on #226,
+the search-shuffle fix Let Them Dream's R&D search needed.
+
+- **Four `ContinuousKind`s, each a price asked in one place:**
+  - `PlayCost` (Tailgate's "lowered by 1[credit] for each piece of ice
+    protecting HQ"), asked by `continuous::play_cost_of` at the play and in
+    the offer (`can_play_operation`), as `install_cost_of` is for installs.
+  - `PlayClicks` (Synchrocyclotron's "costs [click] less"), taken off the
+    Double's additional click (`additional_play_cost_of`), never the
+    action's own: the only click a card in the pool lowers.
+  - `StealCost` (Magistrate Revontulet's "as an additional cost to steal an
+    agenda … 3[credit]"), joined to the agenda's printed `steal_cost` as one
+    price (CR 1.16.10b), which the Runner may decline (1.17.3d).
+  - `AgendaPoints` (Let Them Dream's "worth 1 less" in the Runner's score
+    area). **Asked, never stored:** `win::agenda_value_in` is the one
+    number, and the win check, the stored tally at a score or a steal, a
+    forfeit and `Amount`s that count points all read it. The printed-only
+    `agenda_value` is gone.
+- **Three `Scope`s:** `Playing(filter)`, the play's half of `Installing`;
+  `Stealing(filter)`, an agenda being stolen; `ScoreArea(side)`, the card's
+  own text read only there (`Scope::is_own_text`).
+- **"The first double operation you play each turn"** is a turn-log count:
+  `Kind::DoubleOperation` and `DoubleEvent` are columns of their own, the
+  one subtype the log counts apart (a double is played in the open), and
+  `first_each_turn` on a `Playing` scope reads `Occurrences::plays`.
+- **Two `Amount`s** (`IceProtecting(server)`, `OtherUnrezzedIce`) and a
+  placeholder filter (`CardFilter::InRootOfThisServer`, written over as
+  `InRootOf(server)` when Hype Machine's ability resolves, from the
+  install or from `LastKnown::server` once its "[trash]:" has taken it).
+- **`AddToBottomOfStack` is `AddToBottomOfDeck`**, the Corp's too (Let Them
+  Dream's "the bottom of R&D"); a Corp card's move is hidden from the
+  Runner like a Corp discard.
+- **A sweep finding:** Sell Out's "trash 1 installed resource" asks which
+  when there are two, and `payment::could_ask` listed no play among the
+  actions that can ask; the debug assertion caught it once Borrowed Time
+  reached two resources. A play's additional cost that takes cards is on
+  the list now.
+- **The decks.** Tailgate for Jailbreak (Borrowed Time); Reverb for
+  Whitespace and two Synchrocyclotron for two NICO Campaign (Retirement
+  Package, whose Retirement Plan is the double); Hype Machine for AMAZE
+  Amusements and Magistrate Revontulet for Nihilo Agent (Paid Content); Let
+  Them Dream for Offworld Office (Hostile Bid). Every card replaced is in
+  another deck.
+- **Fidelity limits:** Let Them Dream's search is "HQ, R&D or Archives"
+  as a choice of zone first; a card that prints two types (Hafrún) is
+  still Parhelion's question.
+- **DSL ratio (`pool_status.py`): 22 of 70 `Effect` variants single-use,
+  2 unused**, over 212 card files. It was 23: `AddToBottomOfDeck` has two
+  cards now.
+- **Measured.** Both sweeps at 256 seeds are green, coverage gate
+  included. `coverage_identical.py` against the fix it is built on (192
+  games a shape, seed 1): **the random seatings differ only by the
+  rename** — `AddToBottomOfStack` 35 → `AddToBottomOfDeck` 35, the same
+  seven cards moved — so no game in the pool moved, which is the pricing
+  and scoring questions measured alone (every new card is in a Sweep deck,
+  which `--all-matchups` never plays). The heuristic seatings move (Corp
+  wins 75 → 78 of 192), the movement `determinize` makes of every new
+  playable card; not re-checked card by card this stage.
 
 ### 2. Rebellion Without Rehearsal — 65 cards (C 7 / V 43 / M 15)
 

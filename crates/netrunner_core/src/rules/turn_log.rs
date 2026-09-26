@@ -53,7 +53,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::cards::CardRegistry;
-use crate::dsl::{CardDefinition, CardFilter, CardType, EventFilter, Hears, Trigger};
+use crate::dsl::{CardDefinition, CardFilter, CardSubtype, CardType, EventFilter, Hears, Trigger};
 use crate::rules::event::GameEvent;
 use crate::rules::listeners::{self, About, Moment};
 use crate::rules::run::ServerId;
@@ -93,10 +93,17 @@ pub enum Kind {
     Event,
     Identity,
     Upgrade,
+    /// A **double** operation or event, apart from the others of its type:
+    /// Synchrocyclotron's "the first double operation you play each turn".
+    /// Double is a subtype, and the log counts nothing finer than a type,
+    /// so this is the one subtype given a column — both players see a card
+    /// played, so a double is as public as an operation.
+    DoubleOperation,
+    DoubleEvent,
 }
 
 impl Kind {
-    const COUNT: usize = 11;
+    const COUNT: usize = 13;
     const ALL: [Kind; Kind::COUNT] = [
         Kind::Unseen,
         Kind::Agenda,
@@ -109,7 +116,28 @@ impl Kind {
         Kind::Event,
         Kind::Identity,
         Kind::Upgrade,
+        Kind::DoubleOperation,
+        Kind::DoubleEvent,
     ];
+
+    /// The column a card is counted in: its type, or its type's double.
+    fn of_card(definition: &CardDefinition) -> Kind {
+        let double = definition.subtypes.contains(&CardSubtype::Double);
+        match Kind::of(&definition.card_type) {
+            Kind::Operation if double => Kind::DoubleOperation,
+            Kind::Event if double => Kind::DoubleEvent,
+            kind => kind,
+        }
+    }
+
+    /// Every column a card of `card_type` may be counted in.
+    fn all_of(card_type: &CardType) -> Vec<Kind> {
+        match Kind::of(card_type) {
+            Kind::Operation => vec![Kind::Operation, Kind::DoubleOperation],
+            Kind::Event => vec![Kind::Event, Kind::DoubleEvent],
+            kind => vec![kind],
+        }
+    }
 
     fn of(card_type: &CardType) -> Kind {
         match card_type {
@@ -219,7 +247,7 @@ fn class_of(registry: &CardRegistry, moment: &Moment) -> Class {
         About::Server(ServerId::Remote(_)) => Class::Server(ServerClass::Remote),
         About::Card { installed, .. } if concealed(moment.trigger, moment.of) => Class::Card { kind: Kind::Unseen, installed: *installed },
         About::Card { card, installed, .. } => {
-            Class::Card { kind: registry.get(card).map_or(Kind::Unseen, |definition| Kind::of(&definition.card_type)), installed: *installed }
+            Class::Card { kind: registry.get(card).map_or(Kind::Unseen, Kind::of_card), installed: *installed }
         }
     }
 }
@@ -249,6 +277,12 @@ impl Occurrences {
     /// controller's `OnInstall` moments of the filter's types.
     pub(crate) fn installs(filter: &CardFilter, controller: Side) -> Result<Occurrences, String> {
         Occurrences::meant_by(Trigger::OnInstall, Some(&EventFilter::Card(filter.clone())), controller)
+    }
+
+    /// The plays a `Scope::Playing(filter)` effect is about: its
+    /// controller's `OnPlay` moments of the filter's kinds.
+    pub(crate) fn plays(filter: &CardFilter, controller: Side) -> Result<Occurrences, String> {
+        Occurrences::meant_by(Trigger::OnPlay, Some(&EventFilter::Card(filter.clone())), controller)
     }
 
     pub(crate) fn meant_by(trigger: Trigger, when: Option<&EventFilter>, controller: Side) -> Result<Occurrences, String> {
@@ -293,6 +327,21 @@ pub(crate) fn first_time_of(definition: &CardDefinition) -> Vec<Occurrences> {
 
 /// The `Kind`s a card filter admits, where it is no finer than one.
 fn kinds(filter: &CardFilter) -> Result<Vec<Kind>, String> {
+    // "A double operation": the one subtype the log counts apart.
+    if let CardFilter::All(parts) = filter
+        && let [first, second] = parts.as_slice()
+    {
+        let double_of = match (first, second) {
+            (CardFilter::CardType(card_type), CardFilter::HasSubtype(CardSubtype::Double))
+            | (CardFilter::HasSubtype(CardSubtype::Double), CardFilter::CardType(card_type)) => Some(card_type),
+            _ => None,
+        };
+        match double_of {
+            Some(CardType::Operation) => return Ok(vec![Kind::DoubleOperation]),
+            Some(CardType::Event) => return Ok(vec![Kind::DoubleEvent]),
+            _ => {}
+        }
+    }
     let card_types = match filter {
         CardFilter::Any => return Ok(Kind::ALL.to_vec()),
         CardFilter::CardType(card_type) => std::slice::from_ref(card_type),
@@ -302,7 +351,7 @@ fn kinds(filter: &CardFilter) -> Result<Vec<Kind>, String> {
     if card_types.iter().any(|card_type| matches!(card_type, CardType::Ice(_))) {
         return Err("the turn counts ice as ice, whatever its type".to_string());
     }
-    Ok(card_types.iter().map(Kind::of).collect())
+    Ok(card_types.iter().flat_map(Kind::all_of).collect())
 }
 
 /// The log as it stood when one event had just been counted — what a

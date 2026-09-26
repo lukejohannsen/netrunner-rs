@@ -692,6 +692,9 @@ pub fn mask_event_for_player(event: &GameEvent, state: &GameState, viewer: impl 
         // so it is still dropped whole. `turn::discard_to_pile` sends an
         // HQ discard facedown because the Runner never saw it.
         GameEvent::CardDiscarded { side: Side::Corp, .. } => viewer.is(Side::Corp).then(visible).flatten(),
+        // A Corp card put under R&D came out of a hidden zone; a card that
+        // put it there and revealed it said so in its own event.
+        GameEvent::CardAddedToBottomOfDeck { side: Side::Corp, .. } => viewer.is(Side::Corp).then(visible).flatten(),
         GameEvent::CardDiscarded { .. } => visible(),
         // A Corp trash lands faceup only if the Runner had seen the card
         // (`ability::orient`); a facedown copy now in Archives means this
@@ -842,9 +845,9 @@ pub fn mask_event_for_player(event: &GameEvent, state: &GameState, viewer: impl 
         | GameEvent::TurnStarted { .. }
         | GameEvent::DiscardPending { .. }
         | GameEvent::DiscardPhaseEnded { .. }
-        // Both name Runner cards only: a rig card and a card that was in
-        // the heap or grip a moment ago — never a concealed Corp card.
-        | GameEvent::CardAddedToBottomOfStack { .. }
+        // A rig card, and a Runner card that was in the heap or grip a
+        // moment ago — never a concealed Corp card.
+        | GameEvent::CardAddedToBottomOfDeck { side: Side::Runner, .. }
         | GameEvent::CardHosted { .. }
         | GameEvent::IdentityFlipped { .. }
         | GameEvent::RunRedirected { .. }

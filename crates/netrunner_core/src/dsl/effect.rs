@@ -769,14 +769,17 @@ pub enum Effect {
     /// than swapping the identity card: one card, two sides, and every
     /// side's text gated by `EffectRequirement::IdentityFlipped`.
     FlipIdentity,
-    /// Moves `acting_card` — a card in the Runner's grip or heap — to the
-    /// **bottom** of the stack: Scrounge's "You may add 1 program from your
-    /// heap to the bottom of your stack." `PromptChooseCards::destination`
-    /// cannot express it: a destination zone receives cards at its *top*
-    /// (the end of the `Vec` a draw pops from), and no existing primitive
-    /// addresses the bottom of a deck. A no-op when the card is in neither
-    /// zone, per the `TrashCard` "already gone" precedent.
-    AddToBottomOfStack,
+    /// Moves `acting_card` to the **bottom** of its owner's deck — from the
+    /// Runner's grip or heap to the stack (Scrounge's "You may add 1 program
+    /// from your heap to the bottom of your stack"), or from HQ, Archives or
+    /// R&D to R&D (Let Them Dream's "add that agenda to HQ or the bottom of
+    /// R&D"). `PromptChooseCards::destination` cannot express it: a
+    /// destination zone receives cards at its *top* (the end of the `Vec` a
+    /// draw pops from), and no existing primitive addresses the bottom of a
+    /// deck. It was the Runner's alone, as `AddToBottomOfStack`, until the
+    /// Corp's first card needed it. A no-op when the card is in none of its
+    /// owner's zones, per the `TrashCard` "already gone" precedent.
+    AddToBottomOfDeck,
     /// Hosts the rig card `card` on the rig card `host` —
     /// `state::InstalledRunnerCard::hosted_on_program` — GAMEDRAGON™ Pro's
     /// "you may host this hardware on an installed non-AI icebreaker". A
@@ -1065,6 +1068,14 @@ pub enum Amount {
     /// Composition had nothing to compose: `IceProtectingThisServer` counts
     /// one server's ice, and no amount counts servers.
     ProtectedRemotesWithRootCards,
+    /// Pieces of ice protecting a server the card names — Tailgate's "for
+    /// each piece of ice protecting HQ", priced from the grip, where the
+    /// card is on no server for `IceProtectingThisServer` to read.
+    IceProtecting(ServerId),
+    /// Unrezzed pieces of ice other than `acting_card`'s install, wherever
+    /// they are — Reverb's "lowered by 1[credit] for each other unrezzed
+    /// piece of ice". No amount counted ice by rez state.
+    OtherUnrezzedIce,
 }
 
 /// What `Effect::EndTheRun` does the first time it would end a run with
@@ -1279,7 +1290,7 @@ impl Effect {
             | Effect::ResolveSomeOf { .. }
             | Effect::LoseCreditsAmount(..)
             | Effect::FlipIdentity
-            | Effect::AddToBottomOfStack
+            | Effect::AddToBottomOfDeck
             | Effect::HostRigCardOnInstall { .. }
             | Effect::DrawCardsAmount(..)
             | Effect::Prohibit { .. }
