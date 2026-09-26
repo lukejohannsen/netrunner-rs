@@ -22,11 +22,13 @@
 //! every printing of every card in the pool, and a ban every printing of
 //! the banned card.
 //!
-//! **A ban makes a deck illegal in that format, never unplayable** (the
-//! person's decision, 26 September 2026): a card can be banned in one format
-//! and legal in others, a deck is legal in the formats it is legal in, and
-//! `Casual` is every card with no list, so a deck any list refuses is still
-//! a deck to play against a bot.
+//! **A ban is the banning format's alone** (the person's decision, 26
+//! September 2026). A card banned in Standard and not in Eternal makes a
+//! deck that holds it illegal in Standard — refused at a Standard table and
+//! in a Standard lobby — and legal in Eternal, where it plays. A ban never
+//! reaches past its own list. A deck is legal in exactly the formats whose
+//! lists it satisfies (`DeckFile::legal_formats`), and `Casual`, every card
+//! with no list, is open to everything.
 
 use std::collections::{HashMap, HashSet};
 use std::sync::OnceLock;

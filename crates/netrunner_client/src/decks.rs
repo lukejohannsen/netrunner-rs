@@ -115,6 +115,24 @@ mod tests {
         assert!(decks_for_match(&no_saved_decks(), "discretion_advised", "stolen_goods", &registry, NsgFormat::Casual).is_ok());
     }
 
+    /// **A ban is the banning format's alone** (the person's words, 26
+    /// September 2026: "if a card is banned in Standard but not banned in
+    /// Eternal then a deck built with the banned card can be played in
+    /// Eternal but cannot be played in Standard"). Touch-ups is on
+    /// Standard's ban list and no other, and Pork Chops holds it: a
+    /// Standard table refuses the deck, and Startup, Eternal and Casual
+    /// tables deal it. Casual is open to everything.
+    #[test]
+    fn a_ban_refuses_a_deck_in_the_banning_format_and_no_other() {
+        let registry = sample_deck_registry();
+        let at = |format| decks_for_match(&no_saved_decks(), "pork_chops", "stolen_goods", &registry, format);
+        let error = at(NsgFormat::Standard).expect_err("Touch-ups is banned in Standard");
+        assert!(error.contains("banned in Standard"), "{error}");
+        for format in [NsgFormat::Startup, NsgFormat::Eternal, NsgFormat::Casual] {
+            assert!(at(format).is_ok(), "{format:?} does not ban Touch-ups: {:?}", at(format).err());
+        }
+    }
+
     #[test]
     fn an_unknown_deck_id_lists_the_real_ones() {
         let error = resolve("not_a_deck", "stolen_goods").expect_err("unknown id");
