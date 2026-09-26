@@ -181,7 +181,7 @@ pub fn validate_deck(
     registry: &CardRegistry,
     format: NsgFormat,
 ) -> Result<ValidationReport, DeckValidationError> {
-    validate_deck_with_rules(deck, registry, format, &format.rules())
+    validate_deck_with_rules(deck, registry, format, format.rules())
 }
 
 /// `validate_deck` against rules supplied by the caller rather than
@@ -321,15 +321,18 @@ fn check_format_legality(
     if rules.banned.contains(&card_id) {
         return Err(DeckValidationError::BannedCardIncluded { card: card_id, format });
     }
-    let set_code = card.set_code.as_deref().unwrap_or("");
-    if let Some(allowed) = &rules.allowed_packs
-        && !allowed.contains(set_code)
-    {
+    // By any printing: the pool lists every printing of every card in it
+    // (`FormatRules::pool`), so the one this card's file names is enough.
+    if !rules.in_pool(card_id) {
+        let set_code = card.set_code.as_deref().unwrap_or("");
         return Err(DeckValidationError::PackNotLegal { card: card_id, set_code: set_code.to_string(), format });
     }
     Ok(())
 }
 
+// The fixtures below number their cards 1, 100, 901… — codes no real
+// pool holds — so a test of deck construction judges them in Casual, and a
+// test of a pool supplies its own through `validate_deck_with_rules`.
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -426,24 +429,20 @@ mod tests {
     }
 
     #[test]
-    fn valid_corp_deck_passes_for_startup_and_standard() {
+    fn a_valid_corp_deck_passes() {
         let (registry, deck) = valid_corp_registry_and_deck();
-        for format in [NsgFormat::Startup, NsgFormat::Standard] {
-            let report = validate_deck(&deck, &registry, format).expect("well-formed deck should validate");
-            assert_eq!(report.deck_size, 45);
-            assert_eq!(report.agenda_points, Some(20));
-            assert_eq!(report.influence_spent, 0);
-        }
+        let report = validate_deck(&deck, &registry, NsgFormat::Casual).expect("well-formed deck should validate");
+        assert_eq!(report.deck_size, 45);
+        assert_eq!(report.agenda_points, Some(20));
+        assert_eq!(report.influence_spent, 0);
     }
 
     #[test]
-    fn valid_runner_deck_passes_for_startup_and_standard() {
+    fn a_valid_runner_deck_passes() {
         let (registry, deck) = valid_runner_registry_and_deck();
-        for format in [NsgFormat::Startup, NsgFormat::Standard] {
-            let report = validate_deck(&deck, &registry, format).expect("well-formed deck should validate");
-            assert_eq!(report.deck_size, 45);
-            assert_eq!(report.agenda_points, None);
-        }
+        let report = validate_deck(&deck, &registry, NsgFormat::Casual).expect("well-formed deck should validate");
+        assert_eq!(report.deck_size, 45);
+        assert_eq!(report.agenda_points, None);
     }
 
     #[test]
@@ -454,7 +453,7 @@ mod tests {
         let deck = Decklist { identity: CardId(1), cards };
 
         assert_eq!(
-            validate_deck(&deck, &registry, NsgFormat::Standard),
+            validate_deck(&deck, &registry, NsgFormat::Casual),
             Err(DeckValidationError::DeckSizeTooSmall { size: 10, minimum: 45 })
         );
     }
@@ -472,7 +471,7 @@ mod tests {
         let deck = Decklist { identity: CardId(1), cards };
 
         assert_eq!(
-            validate_deck(&deck, &registry, NsgFormat::Standard),
+            validate_deck(&deck, &registry, NsgFormat::Casual),
             Err(DeckValidationError::InsufficientAgendaPoints { points: 10, min: 20, max: 21, size: 45 })
         );
     }
@@ -494,7 +493,7 @@ mod tests {
         let deck = Decklist { identity: CardId(2), cards };
 
         assert_eq!(
-            validate_deck(&deck, &registry, NsgFormat::Standard),
+            validate_deck(&deck, &registry, NsgFormat::Casual),
             Err(DeckValidationError::InfluenceExceeded { spent: 20, limit: 15 })
         );
     }
@@ -522,29 +521,36 @@ mod tests {
         deck.cards.insert(CardId(600), 1);
 
         assert_eq!(
-            validate_deck(&deck, &registry, NsgFormat::Standard),
+            validate_deck(&deck, &registry, NsgFormat::Casual),
             Err(DeckValidationError::FactionMismatch { card: CardId(600), expected: Side::Corp, actual: Side::Runner })
         );
     }
 
+    /// A card outside a format's pool is refused in it and nowhere else.
+    /// The fixture's codes are in no real pool, so the pool is the test's
+    /// own, through the seam the budget tests use.
     #[test]
-    fn pack_not_legal_in_startup_but_legal_in_standard() {
+    fn a_card_outside_the_pool_is_refused_in_that_format_and_casual_admits_it() {
         let mut registry = CardRegistry::new();
         registry.insert(identity(2, Side::Runner, Faction::Criminal, 45, "sg"));
         let mut cards = runner_filler(&mut registry, Faction::Criminal, 300, 44, "sg");
         registry.insert(card(700, Side::Runner, Faction::Criminal, CardType::Program, None, "future-pack"));
         cards.insert(CardId(700), 1);
         let deck = Decklist { identity: CardId(2), cards };
+        let pool = FormatRules {
+            pool: Some(registry.iter().filter_map(|card| card.numeric_id).filter(|code| code.0 != 700).collect()),
+            ..FormatRules::default()
+        };
 
         assert_eq!(
-            validate_deck(&deck, &registry, NsgFormat::Startup),
+            validate_deck_with_rules(&deck, &registry, NsgFormat::Startup, &pool),
             Err(DeckValidationError::PackNotLegal {
                 card: CardId(700),
                 set_code: "future-pack".to_string(),
                 format: NsgFormat::Startup,
             })
         );
-        assert!(validate_deck(&deck, &registry, NsgFormat::Standard).is_ok());
+        assert!(validate_deck(&deck, &registry, NsgFormat::Casual).is_ok());
     }
 
     /// The restriction budget, which no shipped format uses yet because
@@ -616,19 +622,6 @@ mod tests {
         );
     }
 
-    /// Every shipped format is unrestricted today, so nothing a player
-    /// builds can hit the budget by accident. This pins that, so adding a
-    /// real list is a deliberate act with a failing test behind it.
-    #[test]
-    fn no_shipped_format_restricts_anything_yet() {
-        for format in [NsgFormat::Startup, NsgFormat::Standard, NsgFormat::Eternal, NsgFormat::Snapshot] {
-            let rules = format.rules();
-            assert!(rules.restriction_points.is_empty(), "{format:?} lists a restricted card");
-            assert!(rules.banned.is_empty(), "{format:?} bans a card");
-            assert_eq!(rules.restriction_budget, u32::MAX, "{format:?} caps a budget nothing spends");
-        }
-    }
-
     #[test]
     fn too_many_copies_is_rejected() {
         let (mut registry, mut deck) = valid_corp_registry_and_deck();
@@ -636,7 +629,7 @@ mod tests {
         deck.cards.insert(CardId(999), 4);
 
         assert_eq!(
-            validate_deck(&deck, &registry, NsgFormat::Standard),
+            validate_deck(&deck, &registry, NsgFormat::Casual),
             Err(DeckValidationError::TooManyCopies { card: CardId(999), count: 4, max: 3 })
         );
     }
@@ -650,7 +643,7 @@ mod tests {
         deck.cards.insert(CardId(998), 2);
 
         assert_eq!(
-            validate_deck(&deck, &registry, NsgFormat::Standard),
+            validate_deck(&deck, &registry, NsgFormat::Casual),
             Err(DeckValidationError::TooManyCopies { card: CardId(998), count: 2, max: 1 })
         );
     }
@@ -660,21 +653,21 @@ mod tests {
         let registry = CardRegistry::new();
         let deck = Decklist { identity: CardId(9999), cards: HashMap::new() };
         assert_eq!(
-            validate_deck(&deck, &registry, NsgFormat::Standard),
+            validate_deck(&deck, &registry, NsgFormat::Casual),
             Err(DeckValidationError::IdentityNotFound(CardId(9999)))
         );
 
         let mut registry = CardRegistry::new();
         registry.insert(card(1, Side::Corp, Faction::WeylandConsortium, CardType::Asset, None, "sg"));
         let deck = Decklist { identity: CardId(1), cards: HashMap::new() };
-        assert_eq!(validate_deck(&deck, &registry, NsgFormat::Standard), Err(DeckValidationError::NotAnIdentity(CardId(1))));
+        assert_eq!(validate_deck(&deck, &registry, NsgFormat::Casual), Err(DeckValidationError::NotAnIdentity(CardId(1))));
     }
 
     #[test]
     fn an_agenda_from_another_faction_is_rejected_and_a_neutral_one_is_not() {
         // The fixture's four agendas are neutral, and it validates.
         let (registry, deck) = valid_corp_registry_and_deck();
-        validate_deck(&deck, &registry, NsgFormat::Startup).expect("neutral agendas are legal in any Corp deck");
+        validate_deck(&deck, &registry, NsgFormat::Casual).expect("neutral agendas are legal in any Corp deck");
 
         // Swap one for a 5-point Jinteki agenda in the Weyland deck: same
         // points, same size, no influence printed — only the faction rule
@@ -686,7 +679,7 @@ mod tests {
         deck.cards.remove(&CardId(100));
         deck.cards.insert(CardId(900), 1);
         assert_eq!(
-            validate_deck(&deck, &registry, NsgFormat::Startup),
+            validate_deck(&deck, &registry, NsgFormat::Casual),
             Err(DeckValidationError::OutOfFactionAgenda {
                 card: CardId(900),
                 faction: Faction::Jinteki,
@@ -701,7 +694,7 @@ mod tests {
         registry.insert(own);
         deck.cards.remove(&CardId(100));
         deck.cards.insert(CardId(901), 1);
-        validate_deck(&deck, &registry, NsgFormat::Startup).expect("an in-faction agenda is legal");
+        validate_deck(&deck, &registry, NsgFormat::Casual).expect("an in-faction agenda is legal");
     }
 
     #[test]
@@ -717,7 +710,7 @@ mod tests {
         deck.cards.insert(CardId(800), 1);
 
         assert_eq!(
-            validate_deck(&deck, &registry, NsgFormat::Standard),
+            validate_deck(&deck, &registry, NsgFormat::Casual),
             Err(DeckValidationError::RunnerDeckContainsAgenda(CardId(800)))
         );
     }
@@ -730,7 +723,7 @@ mod tests {
         deck.cards.insert(CardId(801), 1);
 
         assert_eq!(
-            validate_deck(&deck, &registry, NsgFormat::Standard),
+            validate_deck(&deck, &registry, NsgFormat::Casual),
             Err(DeckValidationError::IdentityInDeck(CardId(801)))
         );
     }

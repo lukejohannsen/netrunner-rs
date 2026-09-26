@@ -125,7 +125,7 @@ pub fn table_cycle(installed: &[String]) -> Vec<Table> {
 pub fn apply(settings: &mut Settings, intent: Intent, tables: &[String], skins: &[String]) -> bool {
     match intent {
         Intent::Step(Row::Format, delta) => {
-            let current = settings.format.unwrap_or(FORMATS[0]);
+            let current = settings.format.unwrap_or(netrunner_client::settings::DEFAULT_FORMAT);
             let index = FORMATS.iter().position(|f| *f == current).unwrap_or(0) as i32;
             let next = FORMATS[(index + delta).rem_euclid(FORMATS.len() as i32) as usize];
             settings.format = Some(next);
@@ -289,8 +289,10 @@ mod tests {
     #[test]
     fn the_format_cycles_both_ways_and_wraps() {
         let mut settings = Settings::default();
+        // Unset is Casual (`DEFAULT_FORMAT`), the last of the five, so one
+        // step on wraps to Startup and two back from there is Snapshot.
         assert!(apply(&mut settings, Intent::Step(Row::Format, 1), &[], &[]));
-        assert_eq!(settings.format, Some(NsgFormat::Standard));
+        assert_eq!(settings.format, Some(NsgFormat::Startup), "wraps forwards from Casual");
         assert!(apply(&mut settings, Intent::Step(Row::Format, -2), &[], &[]));
         assert_eq!(settings.format, Some(NsgFormat::Snapshot), "wraps backwards");
         assert_eq!(value(&settings, Row::Format, "luke"), "snapshot");

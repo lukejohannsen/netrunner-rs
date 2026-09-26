@@ -358,7 +358,7 @@ pub fn identities(registry: &CardRegistry, side: Side, format: NsgFormat) -> Vec
     let rules = format.rules();
     let mut identities: Vec<&CardDefinition> =
         registry.iter().filter(|card| card.card_type == CardType::Identity && card.side == side && card.is_playable && card.numeric_id.is_some()).collect();
-    identities.sort_by_key(|card| (!legal_in(card, &rules), faction_order(card.faction), card.title.clone()));
+    identities.sort_by_key(|card| (!legal_in(card, rules), faction_order(card.faction), card.title.clone()));
     identities
 }
 
@@ -896,11 +896,13 @@ mod tests {
         let registry = registry();
         let catalog = catalog(&registry);
         let book = CardBook::new(&registry, &catalog);
-        let mut short = decks::by_id("discretion_advised").unwrap();
+        let mut short = decks::by_id("glyph_of_warding").unwrap();
         short.cards.truncate(3);
         assert!(matches!(standing(&short, book, NsgFormat::Startup), Standing::Unplayable(_)));
 
-        let mut core = decks::by_id("discretion_advised").unwrap();
+        // A Startup-legal list (Glyph of Warding), so the Ice Wall is the
+        // one thing Startup refuses.
+        let mut core = decks::by_id("glyph_of_warding").unwrap();
         let ice = core.cards.iter().position(|entry| matches!(registry.get(&entry.card).map(|card| &card.card_type), Some(CardType::Ice(_)))).unwrap();
         core.cards[ice] = DeckEntry { card: CardId("ice_wall".to_string()), count: core.cards[ice].count.min(3) };
         let Standing::Illegal(reason) = standing(&core, book, NsgFormat::Startup) else { panic!("a Core Set card is illegal in Startup") };

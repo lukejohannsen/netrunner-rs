@@ -34,7 +34,15 @@ use crate::standing::Answers;
 pub const SETTINGS_FILE_ENV: &str = "NETRUNNER_SETTINGS_FILE";
 
 /// Every format, in the order a settings screen cycles them.
-pub const FORMATS: [NsgFormat; 4] = [NsgFormat::Startup, NsgFormat::Standard, NsgFormat::Eternal, NsgFormat::Snapshot];
+pub const FORMATS: [NsgFormat; 5] = NsgFormat::ALL;
+
+/// The format a table is set to when the person has chosen none: Casual,
+/// every deck the engine can run (the person's decision, 26 September
+/// 2026). It was Startup, which was every shipped deck until NetrunnerDB's
+/// lists arrived (Phase 1 §9 Stage 0b) and banned cards thirteen of the
+/// published lists hold; against a bot, a deck a list refuses is still a
+/// deck to play. Choosing a format is choosing to be held to its list.
+pub const DEFAULT_FORMAT: NsgFormat = NsgFormat::Casual;
 
 /// The lowercase name a format is stored and shown under — the CLI's
 /// `--format` value.
@@ -44,6 +52,7 @@ pub fn format_name(format: NsgFormat) -> &'static str {
         NsgFormat::Standard => "standard",
         NsgFormat::Eternal => "eternal",
         NsgFormat::Snapshot => "snapshot",
+        NsgFormat::Casual => "casual",
     }
 }
 
@@ -55,6 +64,7 @@ pub fn format_label(format: NsgFormat) -> &'static str {
         NsgFormat::Standard => "Standard",
         NsgFormat::Eternal => "Eternal",
         NsgFormat::Snapshot => "Snapshot",
+        NsgFormat::Casual => "Casual",
     }
 }
 

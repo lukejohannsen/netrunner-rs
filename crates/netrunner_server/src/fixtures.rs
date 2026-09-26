@@ -54,8 +54,14 @@ pub struct DealtMatchup {
 /// its way around the whole 16 × 12 pool, so the games it rates are drawn
 /// from the same distribution every bot in the workspace is measured on.
 pub fn sample_decks_for_seed(seed: u64) -> DealtMatchup {
+    sample_decks_at((seed % decks::matchups().len() as u64) as usize)
+}
+
+/// The published matchup at `index` into `decks::matchups()` — what a
+/// daemon deals once it has narrowed the rotation to a format's legal part.
+pub fn sample_decks_at(index: usize) -> DealtMatchup {
     let matchups = decks::matchups();
-    let (corp, runner) = &matchups[(seed % matchups.len() as u64) as usize];
+    let (corp, runner) = &matchups[index];
     DealtMatchup {
         corp_id: corp.id.clone(),
         corp: corp.to_deck(),

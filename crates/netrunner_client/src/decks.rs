@@ -82,7 +82,7 @@ mod tests {
 
     fn resolve(corp: &str, runner: &str) -> Result<(Deck, Deck), String> {
         let registry = sample_deck_registry();
-        decks_for_match(&no_saved_decks(), corp, runner, &registry, NsgFormat::Startup).map(|(corp, runner)| (corp.to_deck(), runner.to_deck()))
+        decks_for_match(&no_saved_decks(), corp, runner, &registry, crate::settings::DEFAULT_FORMAT).map(|(corp, runner)| (corp.to_deck(), runner.to_deck()))
     }
 
     #[test]
@@ -100,6 +100,37 @@ mod tests {
         // Keeps `Config::corp_deck`/`runner_deck`'s defaults honest — a
         // renamed deck file would otherwise break the CLI's no-flag path.
         assert!(resolve("discretion_advised", "stolen_goods").is_ok());
+    }
+
+    /// A ban makes a deck illegal in the format that bans it and nowhere
+    /// else (the person's decision, 26 September 2026): Discretion Advised
+    /// holds Seamless Launch, which Startup's balance update bans, so a
+    /// Startup table refuses it and a Casual one — the default — deals it.
+    #[test]
+    fn a_deck_a_list_bans_is_refused_at_that_table_and_plays_at_a_casual_one() {
+        let registry = sample_deck_registry();
+        let startup = decks_for_match(&no_saved_decks(), "discretion_advised", "stolen_goods", &registry, NsgFormat::Startup);
+        let error = startup.expect_err("Seamless Launch is banned in Startup");
+        assert!(error.contains("banned in Startup"), "{error}");
+        assert!(decks_for_match(&no_saved_decks(), "discretion_advised", "stolen_goods", &registry, NsgFormat::Casual).is_ok());
+    }
+
+    /// **A ban is the banning format's alone** (the person's words, 26
+    /// September 2026: "if a card is banned in Standard but not banned in
+    /// Eternal then a deck built with the banned card can be played in
+    /// Eternal but cannot be played in Standard"). Touch-ups is on
+    /// Standard's ban list and no other, and Pork Chops holds it: a
+    /// Standard table refuses the deck, and Startup, Eternal and Casual
+    /// tables deal it. Casual is open to everything.
+    #[test]
+    fn a_ban_refuses_a_deck_in_the_banning_format_and_no_other() {
+        let registry = sample_deck_registry();
+        let at = |format| decks_for_match(&no_saved_decks(), "pork_chops", "stolen_goods", &registry, format);
+        let error = at(NsgFormat::Standard).expect_err("Touch-ups is banned in Standard");
+        assert!(error.contains("banned in Standard"), "{error}");
+        for format in [NsgFormat::Startup, NsgFormat::Eternal, NsgFormat::Casual] {
+            assert!(at(format).is_ok(), "{format:?} does not ban Touch-ups: {:?}", at(format).err());
+        }
     }
 
     #[test]
@@ -131,7 +162,7 @@ mod tests {
         std::fs::write(dir.join("my_corp_deck.json"), saved.to_json().expect("serializes")).expect("write");
 
         let registry = sample_deck_registry();
-        let resolved = decks_for_match(&dir, "my_corp_deck", "stolen_goods", &registry, NsgFormat::Startup);
+        let resolved = decks_for_match(&dir, "my_corp_deck", "stolen_goods", &registry, crate::settings::DEFAULT_FORMAT);
         let _ = std::fs::remove_dir_all(&dir);
 
         let (corp_deck, runner_deck) = resolved.expect("a saved deck resolves like a built-in one");

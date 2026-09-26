@@ -236,7 +236,7 @@ impl SettingsForm {
     }
 
     fn format(&self) -> FormatArg {
-        self.settings.format.map_or(FormatArg::Startup, FormatArg::from)
+        FormatArg::from(self.settings.format.unwrap_or(netrunner_client::settings::DEFAULT_FORMAT))
     }
 
     fn cycle_format(&mut self, delta: i32) {
@@ -419,7 +419,7 @@ impl Menu {
     /// more specific request of the two.
     fn settings_changed(&mut self, settings: Settings) {
         self.base.player = settings.player.clone();
-        self.base.format = settings.format.map_or(FormatArg::Startup, FormatArg::from);
+        self.base.format = FormatArg::from(settings.format.unwrap_or(netrunner_client::settings::DEFAULT_FORMAT));
         self.notice = match &self.settings_path {
             Some(path) => settings.save(path).err().map(|error| format!("Not saved: {error}")),
             None => Some("No data directory, so this lasts until you quit".to_string()),
@@ -904,8 +904,9 @@ mod tests {
     fn the_format_cycles_and_is_saved() {
         let (mut menu, dir) = menu("format");
         go_to(&mut menu, Entry::Settings);
+        // Unset is Casual, the last format, so Right wraps to Startup.
         press(&mut menu, &[KeyCode::Down, KeyCode::Right]);
-        assert_eq!(menu.base.format, FormatArg::Standard);
+        assert_eq!(menu.base.format, FormatArg::Startup, "wraps forwards from Casual");
         press(&mut menu, &[KeyCode::Left, KeyCode::Left]);
         assert_eq!(menu.base.format, FormatArg::Snapshot, "wraps backwards");
         assert_eq!(Settings::load(&dir.join("settings.json")).unwrap().format, Some(NsgFormat::Snapshot));

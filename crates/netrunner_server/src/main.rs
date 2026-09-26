@@ -105,10 +105,12 @@ struct Config {
     /// in, comma-separated or repeated, each a queue of its own. A client
     /// that names no format joins the first. Every deck the daemon can
     /// deal, pinned or rotating, is checked against each at bind, so an
-    /// illegal pool is a startup error rather than a bad match. Every
-    /// format by default, Startup first, as `netrunner_cli --format`
-    /// defaults to Startup.
-    #[arg(long = "format", value_enum, value_delimiter = ',', default_values_t = [ServeFormat::Startup, ServeFormat::Standard, ServeFormat::Eternal, ServeFormat::Snapshot])]
+    /// illegal pool is a startup error rather than a bad match. Startup,
+    /// Standard, Eternal and Casual by default (`serve::DEFAULT_FORMATS`):
+    /// Snapshot is a Fantasy Flight Games pool no shipped deck is legal in,
+    /// so a daemon with a bot cannot deal one there; name it to host
+    /// human-vs-human Snapshot games.
+    #[arg(long = "format", value_enum, value_delimiter = ',', default_values_t = [ServeFormat::Startup, ServeFormat::Standard, ServeFormat::Eternal, ServeFormat::Casual])]
     formats: Vec<ServeFormat>,
 
 
@@ -145,6 +147,7 @@ enum ServeFormat {
     Standard,
     Eternal,
     Snapshot,
+    Casual,
 }
 
 impl From<ServeFormat> for netrunner_core::format::NsgFormat {
@@ -155,6 +158,7 @@ impl From<ServeFormat> for netrunner_core::format::NsgFormat {
             ServeFormat::Standard => NsgFormat::Standard,
             ServeFormat::Eternal => NsgFormat::Eternal,
             ServeFormat::Snapshot => NsgFormat::Snapshot,
+            ServeFormat::Casual => NsgFormat::Casual,
         }
     }
 }

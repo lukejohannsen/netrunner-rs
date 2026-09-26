@@ -81,7 +81,7 @@ async fn a_client_attaches_and_joins_a_lobby_with_no_deck() {
     let url = human_daemon().await;
     let (mut socket, lobbies) = attach(&url, "browser").await;
     let ids: Vec<&str> = lobbies.iter().map(|lobby| lobby.id.as_str()).collect();
-    assert_eq!(ids, ["startup", "standard", "eternal", "snapshot"]);
+    assert_eq!(ids, ["startup", "standard", "eternal", "casual"], "`serve::DEFAULT_FORMATS`");
     assert!(lobbies.iter().all(|lobby| lobby.permanent && !lobby.closed && lobby.players == 0));
 
     let ServerMessage::LobbyJoined { lobby } = join(&mut socket, "standard", None).await else { panic!() };
@@ -132,7 +132,7 @@ async fn a_game_is_looked_for_with_decks_and_the_next_one_needs_no_reconnect() {
 
     send(&mut corp, ClientMessage::Seek { chair: Chair::Corp(deck("brick_stack")) }).await;
     assert!(matches!(next(&mut corp).await, ServerMessage::Queued { .. }));
-    send(&mut random, ClientMessage::Seek { chair: Chair::Random { corp: deck("fine_print"), runner: deck("stolen_goods") } }).await;
+    send(&mut random, ClientMessage::Seek { chair: Chair::Random { corp: deck("glyph_of_warding"), runner: deck("stolen_goods") } }).await;
     let (side, corp_deck, runner_deck, _) = joined(next(&mut random).await);
     assert_eq!((side, corp_deck.as_str(), runner_deck.as_str()), (Side::Runner, "", "stolen_goods"), "the random chair sits opposite, with its Runner deck");
     let (side, corp_deck, _, _) = joined(next_where(&mut corp, |message| matches!(message, ServerMessage::MatchJoined { .. }).then_some(message)).await);
@@ -152,9 +152,9 @@ async fn a_game_is_looked_for_with_decks_and_the_next_one_needs_no_reconnect() {
     // The next game, other chairs, other decks, the same sockets.
     send(&mut corp, ClientMessage::Seek { chair: Chair::Runner(deck("dashing_mad")) }).await;
     assert!(matches!(next(&mut corp).await, ServerMessage::Queued { .. }));
-    send(&mut random, ClientMessage::Seek { chair: Chair::Corp(deck("fine_print")) }).await;
+    send(&mut random, ClientMessage::Seek { chair: Chair::Corp(deck("glyph_of_warding")) }).await;
     let (side, corp_deck, _, _) = joined(next(&mut random).await);
-    assert_eq!((side, corp_deck.as_str()), (Side::Corp, "fine_print"));
+    assert_eq!((side, corp_deck.as_str()), (Side::Corp, "glyph_of_warding"));
 }
 
 /// A seek needs a lobby, a deck for the chair's side and one the lobby's
@@ -175,7 +175,7 @@ async fn a_seek_is_checked_cancelled_and_withdrawn_with_its_socket() {
 
     send(&mut socket, ClientMessage::Seek { chair: Chair::Corp(deck("brick_stack")) }).await;
     assert!(matches!(next(&mut socket).await, ServerMessage::Queued { .. }));
-    send(&mut socket, ClientMessage::Seek { chair: Chair::Corp(deck("fine_print")) }).await;
+    send(&mut socket, ClientMessage::Seek { chair: Chair::Corp(deck("glyph_of_warding")) }).await;
     assert!(matches!(next(&mut socket).await, ServerMessage::SeekRefused { .. }), "one seek at a time");
     send(&mut socket, ClientMessage::ListLobbies).await;
     let ServerMessage::Lobbies { lobbies } = next(&mut socket).await else { panic!() };
