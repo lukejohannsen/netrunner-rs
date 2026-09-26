@@ -135,7 +135,11 @@
 //!   `NETRUNNER_SCREEN=online`, that page is opened once; `hosting` hosts
 //!   a game for the network on a free port and shows what to give out,
 //!   and `ticket` the same with a ticket naming this machine's own
-//!   addresses — no relay and no router asked.
+//!   addresses — no relay and no router asked. `spectate` hosts a game
+//!   on this machine that two seats choosing at random play for
+//!   `NETRUNNER_AUTOPLAY` decisions between them, then watches it from the
+//!   Runner's side (`spectate-corp` from the Corp's), and the screenshot
+//!   is of the spectator's board.
 //! - `NETRUNNER_DROPDOWN=<n>` — before the screenshot, the `n`th
 //!   drop-down on the screen (1 is the first, counted top to bottom and
 //!   left to right) is opened, so an open list can be looked at: where it
@@ -382,6 +386,8 @@ impl Dev {
         // hands it to as soon as it has opened the record.
         match self.named_screen() {
             Some(AppScreen::Replay) if self.screen.is_none() => AppScreen::Game,
+            // A match watched is looked at on the board it opens.
+            Some(AppScreen::Online) if self.online.as_deref().is_some_and(|page| page.starts_with("spectate")) => AppScreen::Game,
             named => named.unwrap_or(AppScreen::MainMenu),
         }
     }

@@ -378,14 +378,45 @@ fn host(form: &mut OnlineForm, net: &mut Net, core: &ClientCore, runtime: &Tokio
 /// `NETRUNNER_ONLINE`: a page opened, or a game hosted, once, so the page
 /// can be looked at (`dev`). `ticket` hosts with a ticket that names this
 /// machine's own addresses — no relay and no router asked, so looking at
-/// the page never touches anything outside it.
+/// the page never touches anything outside it. `spectate[-corp]` hosts a
+/// game two bots play here and watches it once they have made their
+/// moves, so a spectator's board can be looked at at all: nothing else
+/// puts one on this machine's screen without a second and a third client.
 #[allow(clippy::too_many_arguments)]
-fn dev_page(dev: Option<Res<crate::dev::Dev>>, mut done: Local<bool>, mut model: ResMut<Model>, mut net: ResMut<Net>, mut dirty: ResMut<Dirty>, core: Res<ClientCore>, runtime: Option<Res<TokioRuntime>>) {
-    let Some(page) = dev.and_then(|dev| dev.online.clone()) else { return };
+fn dev_page(
+    mut dev: Option<ResMut<crate::dev::Dev>>,
+    mut done: Local<bool>,
+    mut spectate: Local<Option<Mutex<mpsc::Receiver<Result<(String, uuid::Uuid), String>>>>>,
+    mut model: ResMut<Model>,
+    mut net: ResMut<Net>,
+    mut dirty: ResMut<Dirty>,
+    core: Res<ClientCore>,
+    runtime: Option<Res<TokioRuntime>>,
+    mut navigate: MessageWriter<Navigate>,
+) {
+    let Some(page) = dev.as_ref().and_then(|dev| dev.online.clone()) else { return };
+    let form = &mut model.0;
+    // The bots have played: the match is watched as a person would.
+    let ready = spectate.as_ref().and_then(|rx| rx.lock().ok()?.try_recv().ok());
+    if let Some(ready) = ready {
+        *spectate = None;
+        dirty.0 = true;
+        // The bots made the decisions; a spectator is asked none, so the
+        // board's own autoplay has nothing to count.
+        if let Some(dev) = dev.as_mut() {
+            dev.autoplayed = dev.autoplay;
+        }
+        match ready {
+            Ok((url, match_id)) => carry_out(Outcome::Watch { url, match_id }, form, &mut net, &core, runtime.as_deref(), &mut navigate),
+            Err(reason) => {
+                form.apply(Intent::Failed(reason));
+            }
+        }
+        return;
+    }
     if std::mem::replace(&mut *done, true) {
         return;
     }
-    let form = &mut model.0;
     dirty.0 = true;
     match page.as_str() {
         "host" => form.apply(Intent::Open(Page::Host)),
@@ -399,8 +430,81 @@ fn dev_page(dev: Option<Res<crate::dev::Dev>>, mut done: Local<bool>, mut model:
             host(form, &mut net, &core, &runtime, 0, Reach::Network, DeckChoice::Dealt(None), relay);
             Outcome::Nothing
         }
+        "spectate" | "spectate-corp" => {
+            let Some(runtime) = runtime else { return };
+            let _guard = runtime.0.enter();
+            form.apply(Intent::Open(Page::Watch));
+            form.apply(Intent::SetWatchFrom(if page == "spectate" { Side::Runner } else { Side::Corp }));
+            let format = core.settings.format.unwrap_or(NsgFormat::Startup);
+            match start_hosting(0, Reach::ThisMachine, format, None, runtime.handle()) {
+                Ok((hosting, url)) => {
+                    // The server rides with the spectator's match, as a
+                    // host's does with their own.
+                    net.hosting = Some(hosting);
+                    let decisions = dev.as_ref().map_or(0, |dev| dev.autoplay).max(1);
+                    let (tx, rx) = mpsc::channel();
+                    runtime.0.spawn(async move {
+                        let _ = tx.send(bots_play(url, decisions).await);
+                    });
+                    *spectate = Some(Mutex::new(rx));
+                    form.apply(Intent::Waiting(format!("Two bots are playing {decisions} decisions…")))
+                }
+                Err(error) => form.apply(Intent::Failed(format!("Could not host: {error}"))),
+            }
+        }
         _ => Outcome::Nothing,
     };
+}
+
+/// Two seats at `url`, each submitting a random legal action whenever it
+/// is asked, until `decisions` have been made between them — then the
+/// match's address and id, for the spectator. The seats stay connected,
+/// asked and unanswering, so the board the spectator opens on stays put
+/// for the screenshot.
+async fn bots_play(url: String, decisions: u32) -> Result<(String, uuid::Uuid), String> {
+    use std::sync::atomic::{AtomicU32, Ordering};
+    use std::sync::Arc;
+    use netrunner_server::ServerMessage;
+    use netrunner_server::protocol::ClientMessage;
+
+    let seat = |name: &str| remote::connect(&url, Goal::Play(remote::connect_message(name, None, None, None)), |_| {});
+    let (one, two) = tokio::join!(seat("Bot one"), seat("Bot two"));
+    let (one, two) = (one.map_err(|error| error.to_string())?, two.map_err(|error| error.to_string())?);
+    let made = Arc::new(AtomicU32::new(0));
+    let (done_tx, mut done_rx) = tokio::sync::mpsc::unbounded_channel();
+    for (index, mut joined) in [one, two].into_iter().enumerate() {
+        let (made, done_tx) = (made.clone(), done_tx.clone());
+        tokio::spawn(async move {
+            // A xorshift, seeded per seat: random enough to reach a board,
+            // and no dependency on a bot crate for a dev hook.
+            let mut state = 0x9E37_79B9_7F4A_7C15_u64 ^ index as u64;
+            let mut last = None;
+            let _keep = joined.link;
+            while let Some(message) = joined.rx.recv().await {
+                match message {
+                    ServerMessage::StateUpdate(view) => last = Some(view),
+                    ServerMessage::ActionRejected { .. } => {}
+                    _ => continue,
+                }
+                let Some(view) = last.as_ref().filter(|view| !view.legal_actions.is_empty()) else { continue };
+                if made.load(Ordering::SeqCst) >= decisions {
+                    let _ = done_tx.send(());
+                    continue;
+                }
+                state ^= state << 13;
+                state ^= state >> 7;
+                state ^= state << 17;
+                let action = view.legal_actions[(state % view.legal_actions.len() as u64) as usize].clone();
+                made.fetch_add(1, Ordering::SeqCst);
+                let _ = joined.tx.send(ClientMessage::SubmitAction(action));
+            }
+        });
+    }
+    drop(done_tx);
+    done_rx.recv().await.ok_or("the bots' match ended before they had played")?;
+    let (matches, _, _) = remote::list_matches(&url).await.map_err(|error| error.to_string())?;
+    let summary = matches.first().ok_or("the host lists no match")?;
+    Ok((url, summary.match_id))
 }
 
 /// An address as it is, a ticket cut to its head: a ticket is a few

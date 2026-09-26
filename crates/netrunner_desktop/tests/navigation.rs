@@ -176,6 +176,37 @@ fn a_text_field_captures_escape_until_it_closes() {
     assert_eq!(screen(&app), AppScreen::MainMenu);
 }
 
+/// The relay is edited in its own field on the settings screen and
+/// saved; a value that is not a relay is refused and the setting kept.
+#[test]
+fn the_relay_is_edited_in_settings_and_a_bad_one_is_refused() {
+    use netrunner_desktop::models::settings::Row;
+    use netrunner_desktop::screens::settings::Control;
+    let (mut app, _dir) = headless_client();
+    app.update();
+    app.update();
+    app.world_mut().write_message(Navigate(AppScreen::Settings));
+    app.update();
+    app.update();
+    let type_in = |app: &mut App, text: &str| {
+        let edit = find::<Control>(app, |c| *c == Control::Edit(Row::Relay)).expect("the relay row has an Edit button");
+        tap(app, edit);
+        for c in text.chars() {
+            press(app, KeyCode::KeyA, Key::Character(c.to_string().into()));
+            app.update();
+        }
+        press(app, KeyCode::Enter, Key::Enter);
+        app.update();
+        app.update();
+    };
+    type_in(&mut app, "off");
+    assert_eq!(app.world().resource::<ClientCore>().settings.relay.as_deref(), Some("off"));
+    type_in(&mut app, "x");
+    assert_eq!(app.world().resource::<ClientCore>().settings.relay.as_deref(), Some("off"), "an edit starts from the saved value, and \"offx\" is no relay");
+    let saved = std::fs::read_to_string(app.world().resource::<ClientCore>().settings_path.clone().unwrap()).unwrap();
+    assert!(saved.contains("\"relay\": \"off\""), "saved to the file: {saved}");
+}
+
 /// The card browser: every printing is a face, a face opens in the
 /// inspector, the arrows move the open card, typing narrows the grid,
 /// and Escape clears, closes, then leaves — three presses, because the

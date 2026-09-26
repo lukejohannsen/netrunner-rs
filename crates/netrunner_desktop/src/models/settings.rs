@@ -1,6 +1,7 @@
 //! The settings screen, as state: which row is which, what each control
 //! does to the shared `Settings`, and what a commit of the name means.
 
+use netrunner_client::peer::Relay;
 use netrunner_client::settings::{format_name, CardBacks, Settings, Skin, Table, FORMATS};
 
 /// The rows, in the order the screen shows them.
@@ -19,10 +20,14 @@ pub enum Row {
     Skin,
     CardBacks,
     BasicGraphics,
+    /// The relay a hosted game's ticket goes through
+    /// (`Settings::relay`). Only the settings screen has it: it is a
+    /// text field, and it has nothing to do with the board.
+    Relay,
 }
 
 impl Row {
-    pub const ALL: [Row; 13] = [Row::Player, Row::Format, Row::Table, Row::Skin, Row::CardBacks, Row::BasicGraphics, Row::AnimationSpeed, Row::SfxVolume, Row::MusicVolume, Row::DownloadImages, Row::PlayHelper, Row::PlayHistory, Row::PhaseBar];
+    pub const ALL: [Row; 14] = [Row::Player, Row::Format, Row::Relay, Row::Table, Row::Skin, Row::CardBacks, Row::BasicGraphics, Row::AnimationSpeed, Row::SfxVolume, Row::MusicVolume, Row::DownloadImages, Row::PlayHelper, Row::PlayHistory, Row::PhaseBar];
 
     /// The rows the board's gear menu shows: what changes how a game is
     /// played and looks, and nothing that would want a text field. A
@@ -44,6 +49,7 @@ impl Row {
             Row::Skin => "Board art",
             Row::CardBacks => "Card backs",
             Row::BasicGraphics => "Basic graphics (slow machines)",
+            Row::Relay => "Relay for tickets",
         }
     }
 
@@ -62,6 +68,11 @@ pub enum Intent {
     Toggle(Row),
     /// The name field committed (`Some`) or was cancelled (`None`).
     NameEdited(Option<String>),
+    /// The relay field committed: empty for n0's public relays, `off`
+    /// for none, or a relay's URL. Checked before it is applied
+    /// ([`relay_setting`]), so a setting that would refuse every ticket
+    /// hosted is never saved.
+    RelayEdited(String),
     /// A remembered answer to an optional trigger, by its place in
     /// `Settings::answers`: forget it, so the card asks again
     /// (`netrunner_client::standing`).
@@ -183,6 +194,12 @@ pub fn apply(settings: &mut Settings, intent: Intent, tables: &[String], skins: 
             settings.player = next;
             changed
         }
+        Intent::RelayEdited(text) => {
+            let Ok(next) = relay_setting(&text) else { return false };
+            let changed = next != settings.relay;
+            settings.relay = next;
+            changed
+        }
         Intent::Forget(index) => {
             let Some(key) = settings.answers.iter().nth(index).map(|entry| entry.key.clone()) else { return false };
             settings.answers.set(key, None);
@@ -195,6 +212,20 @@ pub fn apply(settings: &mut Settings, intent: Intent, tables: &[String], skins: 
         }
         Intent::NameEdited(None) | Intent::Step(..) | Intent::Toggle(..) => false,
     }
+}
+
+/// What the relay field's `text` would save: `None` for the public
+/// relays, `off`, or a URL — or why it is not a relay. Read by
+/// `peer::Relay::from_setting`, the one place hosting reads it, so the
+/// field refuses exactly what hosting would.
+pub fn relay_setting(text: &str) -> Result<Option<String>, String> {
+    let text = text.trim();
+    Relay::from_setting(Some(text))?;
+    Ok(match text {
+        "" => None,
+        off if off.eq_ignore_ascii_case("off") => Some("off".to_string()),
+        url => Some(url.to_string()),
+    })
 }
 
 fn step_volume(volume: &mut f32, delta: i32) -> bool {
@@ -229,6 +260,11 @@ pub fn value(settings: &Settings, row: Row, login_name: &str) -> String {
         Row::PlayHistory => on_off(prefs.play_history),
         Row::PhaseBar => on_off(prefs.phase_bar),
         Row::BasicGraphics => on_off(prefs.basic_graphics),
+        Row::Relay => match settings.relay.as_deref().map(str::trim) {
+            None | Some("") => "n0's public relays".to_string(),
+            Some(off) if off.eq_ignore_ascii_case("off") => "off: addresses only".to_string(),
+            Some(url) => url.to_string(),
+        },
         Row::CardBacks => prefs.card_backs.label().to_string(),
         // The folder's own name. A table carrying a `table.json` with a
         // prettier one is relabelled by the screen that draws the row,
@@ -412,6 +448,25 @@ mod tests {
             assert_ne!(row, Row::Player, "a text field has no place in an overlay");
         }
     }
+    /// The relay is the public ones until set; `off` and a URL are kept,
+    /// anything else is refused and the setting left as it was.
+    #[test]
+    fn the_relay_takes_off_a_url_or_nothing_and_refuses_the_rest() {
+        let mut settings = Settings::default();
+        assert_eq!(value(&settings, Row::Relay, "luke"), "n0's public relays");
+        assert!(apply(&mut settings, Intent::RelayEdited(" OFF ".to_string()), &[], &[]));
+        assert_eq!(settings.relay.as_deref(), Some("off"));
+        assert_eq!(value(&settings, Row::Relay, "luke"), "off: addresses only");
+        assert!(apply(&mut settings, Intent::RelayEdited("https://relay.example.org".to_string()), &[], &[]));
+        assert_eq!(value(&settings, Row::Relay, "luke"), "https://relay.example.org");
+        assert!(relay_setting("not a url").is_err());
+        assert!(!apply(&mut settings, Intent::RelayEdited("not a url".to_string()), &[], &[]), "refused");
+        assert_eq!(settings.relay.as_deref(), Some("https://relay.example.org"), "and left as it was");
+        assert!(apply(&mut settings, Intent::RelayEdited("  ".to_string()), &[], &[]));
+        assert_eq!(settings.relay, None, "empty is the public relays again");
+        assert!(!Row::GAME.contains(&Row::Relay), "a text field has no place in the gear menu");
+    }
+
     #[test]
     fn a_remembered_answer_is_forgotten_one_at_a_time_or_all_at_once() {
         use netrunner_client::standing::{Answer, PromptKey};

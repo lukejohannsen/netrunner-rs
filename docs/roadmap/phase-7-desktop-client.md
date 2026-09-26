@@ -5503,11 +5503,39 @@ Host, Join, Watch and a hosting page with a ticket and a network
 address, each with its Copy. Workspace tests green and workspace clippy
 silent.
 
-**Not done:** the board as a spectator sees it — its own chair's hand
-empty, neither hand being theirs to see — is tested on the model and not
-yet looked at on the screen. The desktop's settings screen does not edit the relay; the
-file does, as for the terminal. A resume over a ticket is the driver's
-ordinary resume and is still tested only over TCP.
+**Not done:** a resume over a ticket is the driver's ordinary resume
+and is still tested only over TCP.
+
+### 7a. The spectator's board looked at, and the relay in Settings — DONE (26 September 2026)
+
+The two things §7 left. **The spectator's board was looked at**, which
+took a hook: nothing puts one on this machine's screen without a second
+and a third client, so `NETRUNNER_ONLINE=spectate` (`spectate-corp` for
+the Corp's side) hosts a game here that two seats choosing at random play
+for `NETRUNNER_AUTOPLAY` decisions, then watches it, and the screenshot is
+the spectator's board. From both sides it read right — the watched side
+nearest, no hand drawn, the run panel and the phase chart following the
+run, the status line naming whose side it is — with two things wrong,
+both fixed: **the control bar was drawn**, a row of greyed actions a
+spectator can never take (the row stays, empty, so the board is laid out
+as the players' is), and **the rail said "Opponent is thinking…"** to
+someone with no opponent; it says "Watching — the players are
+deciding…", naming nobody, because the view does not say which player
+holds priority.
+
+**The relay is a row of Settings** ("Relay for tickets"), edited in a
+field as the name is: empty for n0's public relays, `off` for none, or a
+relay's URL. The field refuses what hosting would refuse — the check is
+`peer::Relay::from_setting`, the function hosting reads the setting with
+— and says why, leaving the setting as it was, so a value that would
+fail every hosted ticket is never saved. Not in the gear menu: it is a
+text field and nothing to do with the board.
+
+**Verified.** A model test for the row's values and refusals, and a
+navigation test that edits the relay through the real field, saves it
+to the file and refuses a bad one. Screenshots at 2560×1600 of the
+spectator's board from each side and of the settings screen. Desktop
+tests green and clippy silent.
 
 ## 8. Borrowed from jinteki — OPEN (19 September 2026)
 
