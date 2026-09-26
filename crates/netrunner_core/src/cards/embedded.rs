@@ -279,6 +279,14 @@ mod catalog_join_tests {
     /// exception left behind after its card landed fails too. One helper
     /// for every set, because "the gate for calling any future set
     /// complete" (ROADMAP Phase 1 §7) has to be the same gate.
+    ///
+    /// **A printing is built when a playable card carries its code or its
+    /// title** (`cards::title_key`, with the side). A reprint has a code of
+    /// its own and a card file one `numeric_id`, so a pack that reprints a
+    /// built card — System Update 2021's Corroder — would otherwise read as
+    /// unbuilt. `codes` is the pack's printed range, which is how the gate
+    /// finds the printings `CATALOG_UNMODELABLE` withholds from the catalog:
+    /// they are printed, so they count, and they must be listed.
     fn assert_set_accounted_for(
         set_code: &str,
         set_name: &str,
@@ -287,11 +295,18 @@ mod catalog_join_tests {
         exceptions: &[(u32, &str)],
     ) {
         let catalog = crate::cards::load_embedded_netrunnerdb_sets().expect("catalog should parse");
-        let implemented: std::collections::HashSet<_> =
-            embedded_playable_cards().iter().filter_map(|card| card.numeric_id).collect();
+        let playable = embedded_playable_cards();
+        let implemented: std::collections::HashSet<u32> =
+            playable.iter().filter_map(|card| card.numeric_id).map(|id| id.0).collect();
+        // (is the Corp's, title key): `Side` is not `Hash`.
+        let titles: std::collections::HashSet<(bool, String)> = playable
+            .iter()
+            .map(|card| (card.side == crate::rules::Side::Corp, crate::cards::title_key(&card.title)))
+            .collect();
         let excluded: std::collections::HashSet<u32> = exceptions.iter().map(|(code, _)| *code).collect();
 
         let mut unaccounted: Vec<String> = Vec::new();
+        let mut built: std::collections::HashSet<u32> = std::collections::HashSet::new();
         let mut total = 0;
         for entry in catalog.iter() {
             if entry.set_code.as_deref() != Some(set_code) {
@@ -299,23 +314,34 @@ mod catalog_join_tests {
             }
             total += 1;
             let Some(numeric_id) = entry.numeric_id else { continue };
-            if !implemented.contains(&numeric_id) && !excluded.contains(&numeric_id.0) {
+            if implemented.contains(&numeric_id.0) || titles.contains(&(entry.side == crate::rules::Side::Corp, crate::cards::title_key(&entry.title))) {
+                built.insert(numeric_id.0);
+            } else if !excluded.contains(&numeric_id.0) {
                 unaccounted.push(format!("{} ({})", entry.title, numeric_id.0));
+            }
+        }
+        for code in crate::cards::netrunnerdb::unmodelable_codes().filter(|code| codes.contains(code)) {
+            total += 1;
+            if implemented.contains(&code) {
+                built.insert(code);
+            } else if !excluded.contains(&code) {
+                unaccounted.push(format!("the unmodelable printing {code}"));
             }
         }
 
         assert!(unaccounted.is_empty(), "{set_name} cards with neither an implementation nor an exception entry: {unaccounted:#?}");
         assert_eq!(total, printed, "{set_name} should have {printed} printed cards");
-        let stale: Vec<&str> = exceptions
+        let stale: Vec<String> = exceptions
             .iter()
-            .filter(|(code, _)| implemented.contains(&crate::card::CardId(*code)))
-            .map(|(_, reason)| *reason)
+            .filter(|(code, _)| built.contains(code))
+            .map(|(code, reason)| format!("{reason} ({code})"))
             .collect();
         assert!(stale.is_empty(), "{set_name} exception entries whose card is now implemented: {stale:#?}");
         assert_eq!(
             total - exceptions.len(),
-            implemented.iter().filter(|id| codes.contains(&id.0)).count(),
-            "{set_name}: implemented-card count should be the printed set minus the documented exceptions"
+            built.len(),
+            "{set_name}: the built count should be the printed set minus the documented exceptions \
+             (an exception naming a code outside the set breaks this too)"
         );
     }
 
@@ -329,6 +355,30 @@ mod catalog_join_tests {
     #[test]
     fn every_elevation_card_is_implemented_or_explicitly_excluded() {
         assert_set_accounted_for("elev", "Elevation", 82, 35001..=35082, ELEV_UNIMPLEMENTED);
+    }
+
+    /// The NSG card-pool plan's packs (docs/roadmap/nsg-card-pool.md), each
+    /// gated from the day it was embedded, its list in `cards::unimplemented`
+    /// shrinking stage by stage as §8's did for Elevation.
+    #[test]
+    fn every_nsg_pack_card_is_implemented_or_explicitly_excluded() {
+        use crate::cards::unimplemented::*;
+        for (set_code, set_name, printed, codes, exceptions) in [
+            ("vp", "Vantage Point", 66, 36001..=36066, VP_UNIMPLEMENTED),
+            ("rwr", "Rebellion Without Rehearsal", 65, 34066..=34130, RWR_UNIMPLEMENTED),
+            ("tai", "The Automata Initiative", 65, 34001..=34065, TAI_UNIMPLEMENTED),
+            ("ph", "Parhelion", 63, 33066..=33128, PH_UNIMPLEMENTED),
+            ("msbp", "Midnight Sun Booster Pack", 7, 32001..=32007, MSBP_UNIMPLEMENTED),
+            ("ms", "Midnight Sun", 65, 33001..=33065, MS_UNIMPLEMENTED),
+            ("urbp", "Uprising Booster Pack", 7, 27001..=27007, URBP_UNIMPLEMENTED),
+            ("ur", "Uprising", 65, 26066..=26130, UR_UNIMPLEMENTED),
+            ("df", "Downfall", 65, 26001..=26065, DF_UNIMPLEMENTED),
+            ("su21", "System Update 2021", 82, 31001..=31082, SU21_UNIMPLEMENTED),
+            ("sm", "Salvaged Memories", 18, 29001..=29018, SM_UNIMPLEMENTED),
+            ("mor", "Magnum Opus Reprint", 6, 28001..=28006, MOR_UNIMPLEMENTED),
+        ] {
+            assert_set_accounted_for(set_code, set_name, printed, codes, exceptions);
+        }
     }
 
     /// Card files no longer restate what the catalog owns; the join is what

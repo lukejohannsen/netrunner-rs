@@ -289,7 +289,14 @@ mod tests {
     #[test]
     fn the_sets_are_oldest_first_and_a_set_filter_keeps_only_its_printings() {
         let mut b = browser();
-        assert_eq!(b.sets(), vec!["core", "sg", "elev"]);
+        // NetrunnerDB numbers a pack by release, so the lowest code is the
+        // order: the Core Set, then Null Signal Games' packs from Downfall
+        // (26xxx) to Vantage Point (36xxx). Parhelion and Rebellion Without
+        // Rehearsal share a hundred with the set before them (33066, 34066).
+        assert_eq!(
+            b.sets(),
+            vec!["core", "df", "ur", "urbp", "mor", "sm", "sg", "su21", "msbp", "ms", "ph", "tai", "rwr", "elev", "vp"]
+        );
         assert!(b.apply(Intent::Set(Some("elev".to_string()))));
         assert!(!b.visible().is_empty());
         assert!(b.visible().iter().all(|card| card.set_code.as_deref() == Some("elev")));

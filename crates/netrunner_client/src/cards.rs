@@ -41,6 +41,18 @@ pub fn set_name(set_code: &str) -> &str {
         "core" => "Core Set",
         "sg" => "System Gateway",
         "elev" => "Elevation",
+        "df" => "Downfall",
+        "urbp" => "Uprising Booster Pack",
+        "ur" => "Uprising",
+        "mor" => "Magnum Opus Reprint",
+        "sm" => "Salvaged Memories",
+        "su21" => "System Update 2021",
+        "msbp" => "Midnight Sun Booster Pack",
+        "ms" => "Midnight Sun",
+        "ph" => "Parhelion",
+        "tai" => "The Automata Initiative",
+        "rwr" => "Rebellion Without Rehearsal",
+        "vp" => "Vantage Point",
         other => other,
     }
 }

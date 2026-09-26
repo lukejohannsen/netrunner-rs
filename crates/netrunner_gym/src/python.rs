@@ -203,9 +203,12 @@ mod tests {
     /// Corp at 0.469 against a 0.724 chair baseline because it could not
     /// see an advancement token, a rez, or a run's target. Grew 2,262 →
     /// 2,263 when the run gained its movement phase (Rules Audit item 7):
-    /// a seventh run-phase slot, appended to the one-hot.
+    /// a seventh run-phase slot, appended to the one-hot. Grew 2,263 →
+    /// 6,423 when `CARD_VOCAB` went 192 → 1024 for the NSG card pool
+    /// (Phase 1 §9 Stage 0): five card planes of 832 more slots each, grown
+    /// once for all twelve packs so the pool costs one retrain, not twelve.
     #[test]
     fn obs_size_constant_is_pinned() {
-        assert_eq!(OBS_SIZE, 2263);
+        assert_eq!(OBS_SIZE, 6423);
     }
 }

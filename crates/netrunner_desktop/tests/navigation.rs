@@ -233,7 +233,9 @@ fn the_card_browser_lists_faces_filters_as_typed_and_escapes_in_three() {
     let first = thumbs_in_order(&mut app)[0].1;
     let numbers = {
         let core = app.world().resource::<ClientCore>();
-        let card = core.registry.get_by_numeric_id(first).expect("the thumb's card is in the registry");
+        // The catalog, not the registry: the browser lists every printing,
+        // and the first can be one the engine does not play yet.
+        let card = core.catalog.iter().find(|card| card.numeric_id == Some(first)).expect("the thumb's card is in the catalog");
         netrunner_client::card_face::Face::of(card).numbers_line()
     };
     assert!(texts(&mut app).contains(&numbers), "the first card is open in the inspector from the start: {numbers}");
