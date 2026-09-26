@@ -168,6 +168,10 @@ pub struct OnlineScreen {
     /// internet needs to know, so it is kept rather than refused at the
     /// door.
     relay: Result<Relay, String>,
+    /// Where the player's key lives (`netrunner_client::identity`). A game
+    /// joined proves it; `None` plays unrated. A game hosted here never
+    /// does: it is never rated.
+    identity_dir: Option<std::path::PathBuf>,
 }
 
 impl OnlineScreen {
@@ -182,7 +186,12 @@ impl OnlineScreen {
         relay: Result<Relay, String>,
     ) -> Result<Self, String> {
         let decks = online::deck_choices(decks_dir, registry, format);
-        Ok(OnlineScreen { mode: Mode::Home { cursor: 0 }, decks, player, format, default_address, hosting: None, notice: None, relay })
+        Ok(OnlineScreen { mode: Mode::Home { cursor: 0 }, decks, player, format, default_address, hosting: None, notice: None, relay, identity_dir: None })
+    }
+
+    pub fn with_identity_dir(mut self, dir: Option<std::path::PathBuf>) -> Self {
+        self.identity_dir = dir;
+        self
     }
 
     fn form(&self, kind: FormKind) -> Form {
@@ -401,6 +410,19 @@ impl OnlineScreen {
             return OnlineStep::Continue;
         };
         let brought = Some(choice.id.clone());
+        // A key file that is there and unreadable is shown, rather than
+        // playing a game that quietly counts for nothing.
+        let credentials = match (form.kind, &self.identity_dir) {
+            (FormKind::Join, Some(dir)) => match netrunner_client::identity::Credentials::in_dir(dir) {
+                Ok(credentials) => Some(credentials),
+                Err(error) => {
+                    self.notice = Some(format!("Your key: {error}"));
+                    self.mode = Mode::Form(form);
+                    return OnlineStep::Continue;
+                }
+            },
+            _ => None,
+        };
         let (url, status) = match form.kind {
             FormKind::Join => {
                 let url = normalize_address(&form.address);
@@ -428,7 +450,7 @@ impl OnlineScreen {
         };
         let named = (form.kind == FormKind::Join && !form.lobby.trim().is_empty()).then(|| form.lobby.trim().to_string());
         let lobby = named.unwrap_or_else(|| netrunner_server::protocol::format_lobby_id(self.format));
-        let hello = remote::seat(&self.player, lobby, None, choice);
+        let hello = remote::seat(&self.player, lobby, None, choice).with_credentials(credentials);
         self.mode = Mode::Waiting {
             connecting: remote::spawn(url.clone(), remote::Goal::Play(hello)),
             status,
@@ -631,7 +653,8 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("netrunner_online_{name}_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         let screen = OnlineScreen::open(&dir, &netrunner_client::decks::sample_deck_registry(), NsgFormat::Startup, name.to_string(), "ws://127.0.0.1:8080".into(), Ok(Relay::Off))
-            .unwrap();
+            .unwrap()
+            .with_identity_dir(Some(dir.join("identity")));
         (screen, dir)
     }
 

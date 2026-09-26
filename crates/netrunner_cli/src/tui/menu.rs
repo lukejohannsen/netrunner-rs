@@ -374,6 +374,7 @@ impl Menu {
                 let opened = netrunner_client::deck_store::resolve_decks_dir(self.base.decks_dir.as_deref()).and_then(|dir| {
                     let relay = netrunner_client::peer::Relay::from_setting(self.settings.relay.as_deref());
                     OnlineScreen::open(&dir, &self.registry, self.base.format.into(), record::player_name(&self.base), self.base.server.clone(), relay)
+                        .map(|screen| screen.with_identity_dir(netrunner_client::identity::resolve_identity_dir().ok()))
                 });
                 match opened {
                     Ok(screen) => self.screen = Screen::Online(Box::new(screen)),

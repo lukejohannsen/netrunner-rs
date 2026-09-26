@@ -53,6 +53,7 @@ pub mod play;
 pub mod decks;
 pub mod guide;
 pub mod hosting;
+pub mod identity;
 pub mod online;
 pub mod peer;
 pub mod learn;

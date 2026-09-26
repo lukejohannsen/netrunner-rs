@@ -5156,6 +5156,7 @@ dependencies = [
  "iroh-tickets",
  "netrunner_bots",
  "netrunner_core",
+ "netrunner_identity",
  "netrunner_protocol",
  "netrunner_server",
  "netrunner_session",

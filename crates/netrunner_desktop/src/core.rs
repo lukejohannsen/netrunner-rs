@@ -50,6 +50,10 @@ pub struct ClientCore {
     /// Where a bug report is saved (`netrunner_client::bug_report`);
     /// `None` when the OS has no data directory and none is set.
     pub reports_dir: Option<PathBuf>,
+    /// Where the player's key and the servers' keys live
+    /// (`netrunner_client::identity`); `None` when the OS has no data
+    /// directory, and a game online is then unrated.
+    pub identity_dir: Option<PathBuf>,
     pub images: Arc<CardImageStore>,
 }
 
@@ -92,6 +96,7 @@ impl ClientCore {
             decks_dir,
             record_path,
             reports_dir: netrunner_client::bug_report::resolve_reports_dir(),
+            identity_dir: netrunner_client::identity::resolve_identity_dir().ok(),
             images: Arc::new(images),
         };
         (core, notices)
@@ -109,6 +114,7 @@ impl ClientCore {
             decks_dir: Some(dir.join("decks")),
             record_path: Some(dir.join("record.json")),
             reports_dir: Some(dir.join("reports")),
+            identity_dir: Some(dir.join("identity")),
             images: Arc::new(CardImageStore::with_dir(dir.join("images"))),
         }
     }
@@ -117,6 +123,14 @@ impl ClientCore {
     /// login name — the terminal client's rule, through the same function.
     pub fn player_name(&self) -> String {
         record::player_name(self.settings.player.as_deref())
+    }
+
+    /// The key a game online proves, made the first time it is asked
+    /// for. `Ok(None)` with no data directory, which plays unrated. A key
+    /// file that is there and unreadable is an error the player is shown,
+    /// rather than a game that quietly counts for nothing.
+    pub fn credentials(&self) -> Result<Option<netrunner_client::identity::Credentials>, String> {
+        self.identity_dir.as_deref().map(netrunner_client::identity::Credentials::in_dir).transpose()
     }
 
     /// Writes the settings, or says why it could not. Called after every
