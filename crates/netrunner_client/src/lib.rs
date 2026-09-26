@@ -33,7 +33,7 @@
 //! `hosting` is a game served from the player's own machine: the socket,
 //! the addresses to give out and the router asked to open the port — and
 //! the `Invitation` both clients' hosts draw from them. `online` is the
-//! deck a player brings to a game online, or the host's deal.
+//! deck a player brings to a game online (a server deals none).
 //! `play::MatchHandle::start_remote` is the same handle over a seat at a
 //! host, so a board plays a game online as it plays one at home.
 

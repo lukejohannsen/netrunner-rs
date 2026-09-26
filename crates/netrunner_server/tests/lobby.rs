@@ -31,7 +31,7 @@ async fn start_server(options: ServeOptions) -> String {
 }
 
 async fn human_daemon() -> String {
-    start_server(ServeOptions { bot_runner: ServeBotKind::None, seed: Some(1), ..ServeOptions::default() }).await
+    start_server(ServeOptions { deals: true, bot_runner: ServeBotKind::None, seed: Some(1), ..ServeOptions::default() }).await
 }
 
 async fn open(url: &str, hello: ClientMessage) -> Socket {
@@ -223,7 +223,7 @@ async fn a_queued_player_resumes_its_place_with_the_token() {
 
 #[tokio::test]
 async fn the_seed_policy_is_deterministic_and_per_match() {
-    let options = || ServeOptions { bot_runner: ServeBotKind::Heuristic, seed: Some(1), ..ServeOptions::default() };
+    let options = || ServeOptions { deals: true, bot_runner: ServeBotKind::Heuristic, seed: Some(1), ..ServeOptions::default() };
     let url_a = start_server(options()).await;
     let url_b = start_server(options()).await;
 
@@ -248,7 +248,7 @@ async fn the_seed_policy_is_deterministic_and_per_match() {
 /// one synthetic Kate-vs-HB pair whose filler cards had no text.
 #[tokio::test]
 async fn each_match_is_dealt_a_published_matchup_and_the_pool_rotates() {
-    let url = start_server(ServeOptions {
+    let url = start_server(ServeOptions { deals: true,
         bot_runner: ServeBotKind::Heuristic,
         seed: Some(1),
         ..ServeOptions::default()
@@ -277,7 +277,7 @@ async fn each_match_is_dealt_a_published_matchup_and_the_pool_rotates() {
 /// is not a deck refuses to start rather than refusing every client.
 #[tokio::test]
 async fn a_pinned_deck_is_dealt_to_every_match_and_a_bad_id_fails_to_bind() {
-    let url = start_server(ServeOptions {
+    let url = start_server(ServeOptions { deals: true,
         bot_runner: ServeBotKind::Heuristic,
         seed: Some(1),
         corp_deck: Some("discretion_advised".into()),
@@ -301,7 +301,7 @@ async fn a_pinned_deck_is_dealt_to_every_match_and_a_bad_id_fails_to_bind() {
     let refuses = |corp_deck: &str| {
         let corp_deck = corp_deck.to_string();
         async move {
-            match Server::bind("127.0.0.1:0", ServeOptions { corp_deck: Some(corp_deck), ..ServeOptions::default() })
+            match Server::bind("127.0.0.1:0", ServeOptions { deals: true, corp_deck: Some(corp_deck), ..ServeOptions::default() })
                 .await
             {
                 Ok(_) => panic!("binding should have been refused"),
@@ -317,7 +317,7 @@ async fn a_pinned_deck_is_dealt_to_every_match_and_a_bad_id_fails_to_bind() {
 
 #[tokio::test]
 async fn connect_is_refused_at_the_match_cap() {
-    let url = start_server(ServeOptions {
+    let url = start_server(ServeOptions { deals: true,
         bot_runner: ServeBotKind::Heuristic,
         seed: Some(1),
         max_matches: Some(1),
@@ -355,7 +355,7 @@ async fn rooms_only_pair_within_themselves() {
 
 #[tokio::test]
 async fn a_spectator_joins_a_running_match_by_id() {
-    let url = start_server(ServeOptions { bot_runner: ServeBotKind::Heuristic, seed: Some(1), ..ServeOptions::default() }).await;
+    let url = start_server(ServeOptions { deals: true, bot_runner: ServeBotKind::Heuristic, seed: Some(1), ..ServeOptions::default() }).await;
 
     let mut corp = open(&url, connect("corp", Some(Side::Corp))).await;
     let (match_id, _, _) = joined(next(&mut corp).await);
@@ -413,7 +413,7 @@ async fn a_game_against_a_seated_bot_is_rated_by_nobody() {
     let dir = std::env::temp_dir().join(format!("netrunner_ratings_bot_{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     let path = dir.join("ratings.json");
-    let url = start_server(ServeOptions {
+    let url = start_server(ServeOptions { deals: true,
         bot_runner: ServeBotKind::Heuristic,
         bot_level: Some(netrunner_bots::Level::Operator),
         bot_personality: Some(Personality::Balanced),
@@ -453,7 +453,7 @@ async fn an_unpinned_bot_plays_its_dealt_decks_style_and_its_seat_says_so() {
     let dealt = netrunner_server::fixtures::sample_decks_for_seed(1);
     let runner_deck = decks::by_id(&dealt.runner_id).expect("the dealt deck is embedded");
     let style = runner_deck.style.clone().expect("every sample deck names a style");
-    let url = start_server(ServeOptions { bot_runner: ServeBotKind::Heuristic, seed: Some(1), ..ServeOptions::default() }).await;
+    let url = start_server(ServeOptions { deals: true, bot_runner: ServeBotKind::Heuristic, seed: Some(1), ..ServeOptions::default() }).await;
 
     let mut human = open(&url, connect("human", Some(Side::Corp))).await;
     joined(next(&mut human).await);
@@ -467,7 +467,7 @@ async fn human_matches_are_rated_on_their_own_track_and_the_book_survives_a_rest
     let dir = std::env::temp_dir().join(format!("netrunner_ratings_human_{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     let path = dir.join("ratings.json");
-    let options = || ServeOptions { bot_runner: ServeBotKind::None, seed: Some(1), ratings_file: Some(path.clone()), ..ServeOptions::default() };
+    let options = || ServeOptions { deals: true, bot_runner: ServeBotKind::None, seed: Some(1), ratings_file: Some(path.clone()), ..ServeOptions::default() };
 
     for round in 1..=2u32 {
         let url = start_server(options()).await;
@@ -567,7 +567,7 @@ async fn two_decks_for_the_same_side_never_pair() {
 
 #[tokio::test]
 async fn a_bot_daemon_plays_the_deck_the_human_brought() {
-    let url = start_server(ServeOptions { seed: Some(1), ..ServeOptions::default() }).await;
+    let url = start_server(ServeOptions { deals: true, seed: Some(1), ..ServeOptions::default() }).await;
     let mut socket = open(&url, connect_with_deck("solo", None, brought("fine_print", "my_corp"))).await;
     let (_, side, _, corp_deck, _) = joined_with_decks(next(&mut socket).await);
     assert_eq!((side, corp_deck.as_str()), (Side::Corp, "my_corp"));
@@ -621,7 +621,7 @@ async fn players_are_paired_only_within_their_format() {
 #[tokio::test]
 async fn a_format_the_daemon_does_not_offer_is_refused() {
     use netrunner_core::format::NsgFormat;
-    let url = start_server(ServeOptions { bot_runner: ServeBotKind::None, formats: vec![NsgFormat::Standard], ..ServeOptions::default() }).await;
+    let url = start_server(ServeOptions { deals: true, bot_runner: ServeBotKind::None, formats: vec![NsgFormat::Standard], ..ServeOptions::default() }).await;
     let mut socket = open(&url, connect_in_format("eternal", NsgFormat::Eternal)).await;
     match next(&mut socket).await {
         ServerMessage::ConnectRejected { reason } => {
@@ -656,4 +656,20 @@ async fn a_seat_is_told_its_own_deck_and_never_its_opponents() {
     let mut again = open(&url, ClientMessage::Resume { session_token: runner_token }).await;
     let (_, _, _, corp_deck, runner_deck) = joined_with_decks(next(&mut again).await);
     assert_eq!((corp_deck.as_str(), runner_deck.as_str()), ("", "my_heist"));
+}
+
+/// A daemon deals no decks unless told to (Phase 4 §7 stage 3): a player
+/// who brings none is refused at the door, told to bring one, and never
+/// reaches the lobby; one who brings a deck plays as before.
+#[tokio::test]
+async fn a_server_deals_nobody_a_deck_by_default() {
+    let url = start_server(ServeOptions { bot_runner: ServeBotKind::None, ..ServeOptions::default() }).await;
+    let mut empty_handed = open(&url, connect("empty-handed", Some(Side::Corp))).await;
+    let reason = refused(next(&mut empty_handed).await);
+    assert!(reason.contains("deals no decks") && reason.contains("built-in"), "{reason}");
+    assert!(closed_by_server(&mut empty_handed).await);
+    assert_eq!(list_matches(&url).await.1, 0, "never reached the lobby");
+
+    let mut corp = open(&url, connect_with_deck("corp", None, brought("brick_stack", "mine"))).await;
+    queued(next(&mut corp).await);
 }

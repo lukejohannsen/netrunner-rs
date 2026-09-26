@@ -71,10 +71,22 @@ pub async fn run(config: &mut Config) -> Result<(), Box<dyn std::error::Error>> 
 }
 
 async fn run_remote(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
-    let brought = match &config.deck {
+    // A server deals nobody a deck (Phase 4 §7 stage 3), so a player
+    // always brings one: `--deck`, or the side's own deck flag when only
+    // `--side` is given. Neither is a question only the person can answer,
+    // so it is refused here rather than by the server. A spectator brings
+    // nothing.
+    let deck_name = match (&config.deck, config.side.map(Side::from)) {
+        _ if config.spectate.is_some() => None,
+        (Some(name), _) => Some(name.clone()),
+        (None, Some(Side::Corp)) => Some(config.corp_deck.clone()),
+        (None, Some(Side::Runner)) => Some(config.runner_deck.clone()),
+        (None, None) => return Err("bring a deck: --deck <name>, or --side corp|runner to bring --corp-deck or --runner-deck (a server deals none)".into()),
+    };
+    let brought = match deck_name {
         Some(name) => {
             let dir = netrunner_client::deck_store::resolve_decks_dir(config.decks_dir.as_deref())?;
-            Some(netrunner_client::deck_store::load(&dir, name)?.deck)
+            Some(netrunner_client::deck_store::load(&dir, &name)?.deck)
         }
         None => None,
     };

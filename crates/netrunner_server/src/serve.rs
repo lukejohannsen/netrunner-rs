@@ -139,6 +139,14 @@ pub struct ServeOptions {
     /// first, matching `netrunner_cli --format`'s default; a game hosted
     /// from a client's menu offers only the host's.
     pub formats: Vec<NsgFormat>,
+    /// Whether a player who brings no deck is dealt one, pinned or out of
+    /// the rotating sample pool. **Off by default** (Phase 4 §7 stage 3,
+    /// 26 September 2026): the game is about decks built to surprise, so
+    /// a `Connect` with no deck is refused, naming the built-in decks
+    /// every client offers. A bot seat is always dealt its deck; this is
+    /// about the people. On for a daemon that wants the old behaviour, and
+    /// for the tests of dealing itself.
+    pub deals: bool,
     /// Where the daemon keeps its `netrunner_rating::RatingBook`. Loaded
     /// at bind, rewritten after every rated match (temp file plus
     /// rename, like the deck store and the card cache), and the only
@@ -163,6 +171,7 @@ impl Default for ServeOptions {
             corp_deck: None,
             runner_deck: None,
             formats: ALL_FORMATS.to_vec(),
+            deals: false,
             ratings_file: None,
         }
     }
@@ -670,6 +679,11 @@ where
                     return Ok(());
                 }
             };
+            if deck.is_none() && !shared.options.deals {
+                tracing::info!(%player_name, "refused: brought no deck");
+                refuse(&session_tx, NO_DEAL);
+                return Ok(());
+            }
             // Checked before the player reaches the lobby or a bot, so an
             // illegal deck is a refusal at the door rather than a match that
             // fails to set up in front of an opponent who waited for it.
@@ -775,6 +789,9 @@ where
 }
 
 const AT_CAP: &str = "the host is at its match limit";
+
+/// Why a `Connect` with no deck is refused where the daemon deals none.
+const NO_DEAL: &str = "this server deals no decks: bring one of your own, or one of the built-in decks";
 
 /// The lobby a `Connect` asked for: the daemon's first format when it
 /// named none, the one it named when the daemon offers it, or a refusal

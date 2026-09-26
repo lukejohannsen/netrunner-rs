@@ -1412,7 +1412,7 @@ mod lesson_tests {
         use netrunner_server::serve::{ServeBotKind, ServeOptions, Server};
         let runtime = tokio::runtime::Builder::new_multi_thread().enable_all().worker_threads(2).build().unwrap();
         let url = runtime.block_on(async {
-            let options = ServeOptions { bot_runner: ServeBotKind::Heuristic, seed: Some(1), ..ServeOptions::default() };
+            let options = ServeOptions { bot_runner: ServeBotKind::Heuristic, seed: Some(1), deals: true, ..ServeOptions::default() };
             let server = Server::bind("127.0.0.1:0", options).await.unwrap();
             let url = format!("ws://{}", server.local_addr().unwrap());
             tokio::spawn(server.run());

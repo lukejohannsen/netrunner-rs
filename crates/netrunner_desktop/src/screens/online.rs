@@ -33,7 +33,8 @@ use bevy::prelude::*;
 
 use netrunner_client::connection::Goal;
 use netrunner_client::hosting::{self, Invitation, Reach, Way};
-use netrunner_client::online::{self, DeckChoice};
+use netrunner_client::online;
+use netrunner_core::decks::DeckFile;
 use netrunner_client::peer::Relay;
 use netrunner_client::play::MatchHandle;
 use netrunner_client::remote::{self, ConnectEvent, Connecting};
@@ -207,12 +208,11 @@ fn spawn(mut commands: Commands, theme: Res<Theme>, core: Res<ClientCore>, model
     commands.insert_resource(Dirty(true));
 }
 
-/// The decks offered: the host's deal, then every saved deck legal in
-/// `format`, the lobby chosen. A list that cannot be read still offers
-/// the deal.
-fn deck_choices(core: &ClientCore, format: NsgFormat) -> Vec<DeckChoice> {
+/// The decks offered: every deck legal in `format`, the lobby chosen,
+/// built-in and saved. There is no deal to ask a host for.
+fn deck_choices(core: &ClientCore, format: NsgFormat) -> Vec<DeckFile> {
     let decks_dir = core.decks_dir.clone().unwrap_or_else(|| std::env::temp_dir().join("netrunner-no-decks"));
-    online::deck_choices(&decks_dir, &core.registry, format).unwrap_or_else(|_| vec![DeckChoice::Dealt(None), DeckChoice::Dealt(Some(Side::Corp)), DeckChoice::Dealt(Some(Side::Runner))])
+    online::deck_choices(&decks_dir, &core.registry, format)
 }
 
 /// Escape steps back a page; from Home the navigation rule takes it off
@@ -334,11 +334,11 @@ fn carry_out(outcome: Outcome, form: &mut OnlineForm, net: &mut Net, core: &Clie
                 },
                 _ => None,
             };
-            host(form, net, core, runtime, port, reach, format, deck, relay);
+            host(form, net, core, runtime, port, reach, format, *deck, relay);
         }
         Outcome::Join { url, room, format, deck } => {
-            net.brought = deck.deck().map(|deck| deck.id.clone());
-            let hello = remote::connect_message(&player, deck.side(), room, deck.deck(), Some(format));
+            net.brought = Some(deck.id.clone());
+            let hello = remote::connect_message(&player, Some(deck.side), room, Some(*deck), Some(format));
             net.connecting = Some(remote::spawn(url.clone(), Goal::Play(hello)));
             form.apply(Intent::Waiting(format!("Connecting to {}…", shortened(&url))));
         }
@@ -366,11 +366,11 @@ fn carry_out(outcome: Outcome, form: &mut OnlineForm, net: &mut Net, core: &Clie
 /// Starts hosting and joins the server as its first seat. Inside the
 /// runtime's context (`carry_out`'s guard).
 #[allow(clippy::too_many_arguments)]
-fn host(form: &mut OnlineForm, net: &mut Net, core: &ClientCore, runtime: &TokioRuntime, port: u16, reach: Reach, format: NsgFormat, deck: DeckChoice, relay: Option<Relay>) {
+fn host(form: &mut OnlineForm, net: &mut Net, core: &ClientCore, runtime: &TokioRuntime, port: u16, reach: Reach, format: NsgFormat, deck: DeckFile, relay: Option<Relay>) {
     match start_hosting(port, reach, format, relay, runtime.handle()) {
         Ok((hosting, url)) => {
-            net.brought = deck.deck().map(|deck| deck.id.clone());
-            let hello = remote::connect_message(&core.player_name(), deck.side(), None, deck.deck(), Some(format));
+            net.brought = Some(deck.id.clone());
+            let hello = remote::connect_message(&core.player_name(), Some(deck.side), None, Some(deck), Some(format));
             net.connecting = Some(remote::spawn(url, Goal::Play(hello)));
             net.hosting = Some(hosting);
             net.shown.clear();
@@ -435,7 +435,8 @@ fn dev_page(
             form.apply(Intent::Open(Page::Host));
             let relay = (page == "ticket").then_some(Relay::Off);
             let format = form.format;
-            host(form, &mut net, &core, &runtime, 0, Reach::Network, format, DeckChoice::Dealt(None), relay);
+            let Some(deck) = form.chosen_deck().cloned() else { return };
+            host(form, &mut net, &core, &runtime, 0, Reach::Network, format, deck, relay);
             Outcome::Nothing
         }
         "spectate" | "spectate-corp" => {
@@ -474,8 +475,9 @@ async fn bots_play(url: String, decisions: u32) -> Result<(String, uuid::Uuid), 
     use netrunner_server::ServerMessage;
     use netrunner_server::protocol::ClientMessage;
 
-    let seat = |name: &str| remote::connect(&url, Goal::Play(remote::connect_message(name, None, None, None, None)), |_| {});
-    let (one, two) = tokio::join!(seat("Bot one"), seat("Bot two"));
+    // Each brings a built-in deck: a server deals nobody one.
+    let seat = |name: &str, deck: &str| remote::connect(&url, Goal::Play(remote::connect_message(name, None, None, netrunner_core::decks::by_id(deck), None)), |_| {});
+    let (one, two) = tokio::join!(seat("Bot one", "brick_stack"), seat("Bot two", "stolen_goods"));
     let (one, two) = (one.map_err(|error| error.to_string())?, two.map_err(|error| error.to_string())?);
     let made = Arc::new(AtomicU32::new(0));
     let (done_tx, mut done_rx) = tokio::sync::mpsc::unbounded_channel();
@@ -810,7 +812,7 @@ fn format_section(parent: &mut ChildSpawnerCommands, theme: &Theme, form: &Onlin
 
 fn deck_section(parent: &mut ChildSpawnerCommands, theme: &Theme, form: &OnlineForm) {
     section(parent, theme, "Your deck — its side is your seat", |section| {
-        let choices = form.decks.iter().map(|deck| Choice::plain(deck.label())).collect();
+        let choices = form.decks.iter().map(|deck| Choice::plain(online::label(deck))).collect();
         spawn_dropdown(section, theme, "", choices, form.deck, DeckDropdown);
     });
 }

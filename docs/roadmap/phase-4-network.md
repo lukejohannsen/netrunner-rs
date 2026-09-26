@@ -106,7 +106,15 @@ Asked for as: a server that simply exists on the internet, where people join a l
    - The identities stay public, because the rules show them.
 
    Tests: each seat, and a resume, is told its own deck and never the other's, and the list names neither. The rotation and pinning tests now read the identities off the views.
-3. **A server that deals nothing** (an option): a `Connect` with no deck is refused, naming the built-in decks.
+3. **A server deals nobody a deck** (`feat/no-dealt-decks`, built). `ServeOptions::deals` is off by default: a `Connect` with no deck is refused at the door, pointing to the built-in decks. `netrunner_server --deal` turns dealing back on, for a daemon that wants the old behaviour and for the tests of dealing itself. A bot seat is still dealt its own deck.
+   - **Both clients no longer offer a deal.** `online::deck_choices` lists every deck legal in the format, built-in first then saved, Corp decks before Runner. `DeckChoice` and its three "let the host deal" entries are gone.
+   - **The terminal's `--server` path always brings a deck:** `--deck`, or `--corp-deck`/`--runner-deck` when only `--side` is given. With neither it stops before connecting and says why.
+   - A game hosted from a client's menu deals nothing either, so the host and the joiner each bring a deck, and two decks for the same side do not pair.
+
+   Tests:
+   - `a_server_deals_nobody_a_deck_by_default`: refused at the door, never queued, and a brought deck still queues.
+   - The existing tests of dealing opt in with `deals: true`.
+   - The desktop's and the terminal's host-and-join tests now bring a deck for each side.
 4. **A rating the server keeps**: §5's stages (a)–(c), then (d)'s client surfaces.
 5. **Tournaments, run as Null Signal Games runs them in person.** The design below is grounded in their Organized Play Policies (v1.6.2, October 2023; read 26 September 2026, section numbers theirs). None of it is built.
 
