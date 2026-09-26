@@ -28,7 +28,7 @@ use netrunner_bots::BotAgent;
 use netrunner_core::cards::CardRegistry;
 use netrunner_core::rules::{legal_actions_for, GameState, Side, Viewer};
 use netrunner_core::view::build_client_view;
-use netrunner_session::{Seat, Session, SessionStep};
+use netrunner_session::{MatchHistory, Seat, Session, SessionStep};
 
 use crate::protocol::{ClientMessage, GameEndReason, ServerMessage};
 
@@ -165,6 +165,16 @@ impl ReattachHandle {
     }
 }
 
+/// How a match ended, as `MatchSession::run_with_outcome` hands it back.
+pub struct Finished {
+    pub state: GameState,
+    /// Every applied action and its events, in order: with the setup's
+    /// header, a record that replays the match bit for bit.
+    pub history: MatchHistory,
+    /// Who won and why; `None` for a stall.
+    pub outcome: Option<(Side, GameEndReason)>,
+}
+
 pub struct MatchSession {
     session: Session,
     corp: Option<ChannelSeat>,
@@ -270,15 +280,17 @@ impl MatchSession {
     /// `matches!(final.phase, GamePhase::GameOver(_))` to tell a real
     /// conclusion from an early exit.
     pub async fn run(self) -> GameState {
-        self.run_with_outcome().await.0
+        self.run_with_outcome().await.state
     }
 
-    /// `run`, plus the verdict the seats were sent: `None` only for a
-    /// stall, where nobody won. The final state alone cannot say who won
-    /// a match ended by surrender, disconnect or clock — the engine never
-    /// reached `GameOver` — and those are exactly the results a rating
-    /// must still count.
-    pub async fn run_with_outcome(mut self) -> (GameState, Option<(Side, GameEndReason)>) {
+    /// `run`, plus the verdict the seats were sent and the match's whole
+    /// history. The verdict is `None` only for a stall, where nobody won:
+    /// the final state alone cannot say who won a match ended by
+    /// surrender, disconnect or clock — the engine never reached
+    /// `GameOver` — and those are exactly the results a rating must still
+    /// count. The history is the record the host keeps (Phase 4 §5 stage
+    /// a); it used to be dropped here.
+    pub async fn run_with_outcome(mut self) -> Finished {
         // Without this, a channel-backed side would have nothing to act on
         // for its very first decision: every subsequent `StateUpdate` is
         // only sent *after* an action is applied, but nothing has been
@@ -382,7 +394,8 @@ impl MatchSession {
             }
         }
         let outcome = self.outcome;
-        (self.session.into_parts().0, outcome)
+        let (state, history) = self.session.into_parts();
+        Finished { state, history, outcome }
     }
 
     /// The awaiting seat's next message, servicing reattachments for
@@ -1190,7 +1203,7 @@ mod reattach_tests {
         runner_tx.send(ClientMessage::Surrender).unwrap();
         assert_eq!(expect_game_ended(corp_rx.recv().await), (Side::Corp, GameEndReason::Surrender));
         assert_eq!(expect_game_ended(runner_rx.recv().await), (Side::Corp, GameEndReason::Surrender));
-        let (_state, outcome) = run.await.unwrap();
+        let Finished { outcome, .. } = run.await.unwrap();
         assert_eq!(outcome, Some((Side::Corp, GameEndReason::Surrender)));
     }
 
