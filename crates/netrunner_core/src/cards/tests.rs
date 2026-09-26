@@ -10949,6 +10949,34 @@ mod vantage_point {
         assert!(state.pending_decision.is_none(), "not the first time this turn");
     }
 
+    /// A search shuffles the deck it searched, found or not, and nothing
+    /// else (CR 8.7.3). Editorial Division shuffled HQ, the zone it added
+    /// the found card to, and left R&D in the order the Corp had just seen.
+    /// A shuffle of n cards draws n - 1 rolls, which is what is counted.
+    #[test]
+    fn a_search_shuffles_the_deck_searched_and_not_the_hand_the_card_joins() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.identity = Some(id("editorial_division_ad_nihilum"));
+        state.corp.hq = vec![id("vulture_fund"), id("hedge_fund")];
+        state.corp.r_and_d = vec![id("hedge_fund"), id("hedge_fund"), id("reanimation_protocol"), id("hedge_fund")];
+        let (state, _) = apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: id("vulture_fund") }).expect("play");
+        let before = state.rng_step;
+        let (state, _) = pick(&state, &registry, crate::rules::test_support::position_of(&state, "reanimation_protocol"));
+        assert_eq!(state.corp.hq, vec![id("hedge_fund"), id("reanimation_protocol")], "HQ is not shuffled");
+        assert_eq!(state.rng_step - before, 2, "R&D's three cards are");
+
+        // Nothing to find: no choice is offered, and R&D is shuffled anyway.
+        let mut state = base_state();
+        state.corp.identity = Some(id("editorial_division_ad_nihilum"));
+        state.corp.hq = vec![id("vulture_fund")];
+        state.corp.r_and_d = vec![id("hedge_fund"); 3];
+        let before = state.rng_step;
+        let (state, _) = apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: id("vulture_fund") }).expect("play");
+        assert!(state.pending_decision.is_none());
+        assert_eq!(state.rng_step - before, 2, "a search that finds nothing still shuffles");
+    }
+
     #[test]
     fn take_a_dive_gives_bad_publicity_only_after_a_subroutine_resolved_and_leaves_the_game() {
         let registry = registry();
@@ -10995,6 +11023,32 @@ mod vantage_point {
         bare.phase = GamePhase::Action(Side::Runner);
         bare.runner.grip = vec![id("kompromat")];
         assert!(apply_action(&bare, &registry, PlayerAction::PlayEvent { card_id: id("kompromat") }).is_err());
+    }
+
+    /// A run's end rider waits behind a decision parked in the same action,
+    /// as a trigger does. Stealing Send a Message parks its "you may rez";
+    /// the steal ends the run, and Kompromat's question used to park beside
+    /// it, so neither was offered and the Corp had no legal action (the
+    /// 256-seed view sweep, seed 195).
+    #[test]
+    fn a_run_end_rider_waits_behind_a_decision_the_steal_parked() {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.grip = vec![id("kompromat")];
+        state.corp.r_and_d = vec![id("hedge_fund"), id("hedge_fund")];
+        let mut flywheel = ice_at_hq("flywheel");
+        flywheel.server = ServerId::Remote(0);
+        let spare = crate::rules::InstalledCard { install_id: InstallId(90), rezzed: false, ..ice_at_hq("palisade") };
+        state.corp.installed = vec![flywheel, root_at("send_a_message", 0), spare];
+        let state = play_run_event(&state, &registry, "kompromat", ServerId::Remote(0));
+        let state = through_flywheel_to_the_end(state, &registry);
+        let (state, _) = apply_action(&state, &registry, PlayerAction::StealAgenda { card_id: id("send_a_message") }).expect("steal");
+        assert!(state.pending_decision.is_some(), "Send a Message asks first");
+        assert!(state.pending_paid_choice.is_none(), "Kompromat's question waits");
+        assert!(!crate::rules::legal_actions(&state, &registry).is_empty());
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 1 }).expect("no rez");
+        assert!(state.pending_paid_choice.is_some(), "then Kompromat asks");
     }
 
     #[test]
