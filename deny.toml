@@ -78,6 +78,11 @@ allow = [
     # export): arboard's Windows backend, clipboard-win, and its
     # error-code are Boost-only. Permissive and GPL-compatible.
     "BSL-1.0",
+    # iroh's relay client in a browser (ws_stream_wasm, pharos,
+    # async_io_stream) is Unlicense-only. Compiled only for wasm, which
+    # nothing here targets, but the graph is resolved for every target.
+    # A public-domain dedication, and GPL-compatible.
+    "Unlicense",
     # This workspace's own ten crates.
     "GPL-3.0-or-later",
 ]

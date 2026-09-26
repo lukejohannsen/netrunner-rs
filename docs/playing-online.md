@@ -6,17 +6,43 @@ yourself. Under **Who can join** pick:
 - **this machine only**: for trying it out;
 - **anyone on your network**: someone on your wifi joins by the first
   address shown (`ws://192.168.…`);
-- **anyone on the internet**: as above, and the client also asks your
-  router to forward the port (UPnP, NAT-PMP or PCP). If the router agrees,
-  the waiting screen shows an address that works from anywhere. Give your
-  friend that one.
+- **anyone on the internet**: as above, and the waiting screen shows a
+  **ticket**: a long line starting `endpoint`. Give your friend that. It
+  works from anywhere, whatever your router is like. The client also asks
+  your router to forward the port (UPnP, NAT-PMP or PCP), and if the router
+  agrees, an address that works from anywhere is listed too.
 
-Your friend chooses **Join a game** and types the address.
+Your friend chooses **Join a game** and pastes the ticket, or types the
+address, into the same field.
+
+## How a ticket gets through
+
+A ticket names your machine by a key, not by an address. Both machines
+connect out: to each other where the networks allow it, and to a relay
+where they do not. Nothing has to be opened on your router, and it works
+behind a provider that shares one address between customers. The game is
+encrypted on the way.
+
+The relay is only a go-between for encrypted packets. By default it is one
+of the public relays run by n0, the makers of iroh (the library this uses),
+and you are given the nearest. To use a relay of your own, run n0's
+`iroh-relay` somewhere and put its address in your settings file
+(`settings.json` in the client's data folder):
+
+    "relay": "https://relay.example.org"
+
+`"relay": "off"` uses no relay. The ticket then works only where a direct
+connection can be made: on your network, or over IPv6. Your friend needs no
+setting: their client uses whatever relay your ticket names.
+
+A ticket lasts as long as you are hosting. Host again and you get a new
+one.
 
 ## When the router says no
 
-The waiting screen says why and what to do instead. There are three
-cases:
+You can still give out the ticket. If you would rather give out an
+address, the waiting screen says why the router refused and what to do
+instead. There are three cases:
 
 - **The router didn't answer.** Automatic port forwarding (usually
   labelled UPnP) is turned off, or your router doesn't support it. You
@@ -26,7 +52,7 @@ cases:
   hand in the router's settings, as above.
 - **Your provider shares one address between customers** (carrier-grade
   NAT, common on mobile broadband and some fibre). No setting on your
-  router can fix that. Use Tailscale instead.
+  router can fix that. Use the ticket, or Tailscale.
 
 ## Tailscale: works everywhere, no router settings
 

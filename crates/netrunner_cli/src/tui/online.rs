@@ -5,7 +5,8 @@
 //! host plays through a masked `ClientView` exactly as their opponent does,
 //! and the process holding the real `GameState` is the server task, not
 //! the player's screen. **Join** connects to a host (or a public
-//! `netrunner_server --serve` daemon) by address, optionally into a room.
+//! `netrunner_server --serve` daemon) by address, optionally into a room,
+//! or to a host by the ticket it gave out (`netrunner_client::peer`).
 //! **Watch** lists a server's matches and spectates one.
 //!
 //! **A player brings their own deck** (`ClientMessage::Connect::deck`), and
@@ -43,6 +44,7 @@ use netrunner_server::MatchSummary;
 
 use netrunner_client::deck_store;
 use netrunner_client::hosting::{self, normalize_address, Mapping, PortMapper, Reach, Share};
+use netrunner_client::peer::{Offer, PeerHost, Relay};
 use crate::remote::{self, ConnectEvent, Connecting, Joined};
 
 pub use netrunner_client::hosting::DEFAULT_PORT;
@@ -159,6 +161,9 @@ struct Hosting {
     /// last answer, polled on the menu's tick.
     mapping: Option<Box<dyn PortMapper>>,
     mapped: Mapping,
+    /// The host's ticket, for `Reach::Internet`: the way in that needs
+    /// nothing of the router. Dropping it closes the endpoint.
+    peer: Option<PeerHost>,
 }
 
 impl Hosting {
@@ -184,8 +189,8 @@ enum Mode {
 }
 
 const HOME: [(&str, &str); 3] = [
-    ("Host a game", "Run a game on this machine and give your opponent the address"),
-    ("Join a game", "Connect to a host or a public server by address"),
+    ("Host a game", "Run a game on this machine and give your opponent the address or the ticket"),
+    ("Join a game", "Connect to a host or a public server by address, or to a host by its ticket"),
     ("Watch a game", "List a server's matches and spectate one"),
 ];
 
@@ -199,6 +204,11 @@ pub struct OnlineScreen {
     default_address: String,
     hosting: Option<Hosting>,
     notice: Option<String>,
+    /// The relay a hosted game's ticket goes through (`Settings::relay`),
+    /// or why the setting could not be read — which only hosting for the
+    /// internet needs to know, so it is kept rather than refused at the
+    /// door.
+    relay: Result<Relay, String>,
 }
 
 impl OnlineScreen {
@@ -210,6 +220,7 @@ impl OnlineScreen {
         format: NsgFormat,
         player: String,
         default_address: String,
+        relay: Result<Relay, String>,
     ) -> Result<Self, String> {
         let mut decks = vec![DeckChoice::Dealt(None), DeckChoice::Dealt(Some(Side::Corp)), DeckChoice::Dealt(Some(Side::Runner))];
         let mut owned: Vec<DeckFile> = deck_store::list(decks_dir)?
@@ -219,7 +230,7 @@ impl OnlineScreen {
             .collect();
         owned.sort_by_key(|deck| (deck.side == Side::Runner, deck.name.to_lowercase()));
         decks.extend(owned.into_iter().map(|deck| DeckChoice::Brought(Box::new(deck))));
-        Ok(OnlineScreen { mode: Mode::Home { cursor: 0 }, decks, player, format, default_address, hosting: None, notice: None })
+        Ok(OnlineScreen { mode: Mode::Home { cursor: 0 }, decks, player, format, default_address, hosting: None, notice: None, relay })
     }
 
     fn form(&self, kind: FormKind) -> Form {
@@ -443,7 +454,7 @@ impl OnlineScreen {
                     self.mode = Mode::Form(form);
                     return OnlineStep::Continue;
                 };
-                match start_hosting(port, form.reach, self.format) {
+                match start_hosting(port, form.reach, self.format, &self.relay) {
                     Ok((hosting, local_url)) => {
                         let status = hosting_status(&hosting);
                         self.hosting = Some(hosting);
@@ -558,7 +569,7 @@ impl OnlineScreen {
             .fields()
             .iter()
             .map(|field| match field {
-                Field::Address => format!("Server address   {}", text(Field::Address, &form.address)),
+                Field::Address => format!("Address/ticket   {}", text(Field::Address, &form.address)),
                 Field::Room => format!(
                     "Room             {}",
                     if form.room.is_empty() && form.editing != Some(Field::Room) { "(none — the public queue)".to_string() } else { text(Field::Room, &form.room) }
@@ -598,6 +609,17 @@ fn draw_list(frame: &mut Frame, area: Rect, title: &str, items: Vec<ListItem>, c
 /// stands. One address per line, because the line is what they read out.
 fn hosting_status(hosting: &Hosting) -> String {
     let mut lines = vec!["Hosting. Give your opponent an address — waiting for them to join…".to_string()];
+    // The ticket first: it is the one that works whatever the router says.
+    if let Some(peer) = &hosting.peer {
+        lines.push(match peer.poll() {
+            Offer::Starting => "  preparing a ticket…".to_string(),
+            Offer::Ready { ticket, relayed: true } => format!("  Ticket — from anywhere; your opponent pastes it into Join:\n{ticket}"),
+            Offer::Ready { ticket, relayed: false } => format!(
+                "  Ticket — no relay answered, so it works only where a direct connection can be made (your network, or IPv6):\n{ticket}"
+            ),
+            Offer::Failed(error) => format!("  No ticket: {error}"),
+        });
+    }
     if hosting.mapping.is_some() {
         lines.push(match &hosting.mapped {
             Mapping::Asking => format!("  asking your router to open port {}…", hosting.port),
@@ -622,16 +644,28 @@ fn block_on_bounded<F: Future>(future: F) -> Option<F::Output> {
 /// Binds a human-vs-human server on `port` and starts it; returns it and
 /// the loopback URL the host joins by. Port 0 takes any free port (tests).
 /// `Reach::Internet` also starts asking the router to forward the port,
-/// which the tick polls.
+/// and offers a ticket (`peer`) whose streams this same server serves;
+/// the tick polls both.
 ///
 /// Unrated, by design: a rating is a claim by a server somebody else
 /// runs, and this process holds the seed and the unmasked state of the
 /// game its own host is playing in (`docs/identity-and-rating.md`).
-fn start_hosting(port: u16, reach: Reach, format: NsgFormat) -> Result<(Hosting, String), String> {
+fn start_hosting(port: u16, reach: Reach, format: NsgFormat, relay: &Result<Relay, String>) -> Result<(Hosting, String), String> {
+    let relay = match reach {
+        Reach::Internet => Some(relay.clone().map_err(|error| format!("the relay setting: {error}"))?),
+        _ => None,
+    };
     let options = ServeOptions { bot_runner: ServeBotKind::None, format, ..ServeOptions::default() };
     let listener = hosting::bind_listener(reach, port).map_err(|error| error.to_string())?;
     let server = Server::from_listener(listener, options).map_err(|error| error.to_string())?;
     let port = server.local_addr().map_err(|error| error.to_string())?.port();
+    let peer = relay.map(|relay| {
+        let acceptor = server.acceptor();
+        PeerHost::start(relay, move |stream, who| {
+            let acceptor = acceptor.clone();
+            tokio::spawn(async move { acceptor.serve(stream, &who).await });
+        })
+    });
     let task = tokio::spawn(server.run());
     let hosting = Hosting {
         task,
@@ -639,6 +673,7 @@ fn start_hosting(port: u16, reach: Reach, format: NsgFormat) -> Result<(Hosting,
         shares: hosting::share_addresses(reach, port),
         mapping: hosting::map_port(reach, port),
         mapped: Mapping::Asking,
+        peer,
     };
     Ok((hosting, format!("ws://127.0.0.1:{port}")))
 }
@@ -653,7 +688,7 @@ mod tests {
     fn screen(name: &str) -> (OnlineScreen, std::path::PathBuf) {
         let dir = std::env::temp_dir().join(format!("netrunner_online_{name}_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
-        let screen = OnlineScreen::open(&dir, &netrunner_client::decks::sample_deck_registry(), NsgFormat::Startup, name.to_string(), "ws://127.0.0.1:8080".into())
+        let screen = OnlineScreen::open(&dir, &netrunner_client::decks::sample_deck_registry(), NsgFormat::Startup, name.to_string(), "ws://127.0.0.1:8080".into(), Ok(Relay::Off))
             .unwrap();
         (screen, dir)
     }
@@ -772,6 +807,38 @@ mod tests {
 
         host.returned();
         assert!(host.hosting.is_none(), "the hosted server stops with the game");
+    }
+
+    /// Hosting for the internet gives out a ticket, and a joiner who
+    /// pastes it into Join is seated at the host's server — the same
+    /// server the host joined over loopback. The test screens have no
+    /// relay, so the ticket names this machine's own addresses.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn a_joiner_comes_in_by_the_hosts_ticket() {
+        let (mut host, _) = screen("ticket_host");
+        press(&mut host, &[KeyCode::Enter, KeyCode::Enter, KeyCode::Backspace, KeyCode::Backspace, KeyCode::Backspace, KeyCode::Backspace]);
+        press(&mut host, &[KeyCode::Char('0'), KeyCode::Enter, KeyCode::Down, KeyCode::Right, KeyCode::Down, KeyCode::Down, KeyCode::Enter]);
+        assert!(matches!(host.mode, Mode::Waiting { .. }), "{:?}", host.notice);
+        // The router is not what this is about, and a test asks no router.
+        host.hosting.as_mut().unwrap().mapping = None;
+        let Offer::Ready { ticket, .. } = host.hosting.as_mut().unwrap().peer.as_mut().expect("the internet gets a ticket").ready().await else {
+            panic!("no ticket")
+        };
+        let ticket = ticket.to_string();
+        host.tick();
+        let Mode::Waiting { status, .. } = &host.mode else { panic!("{:?}", host.notice) };
+        assert!(status.lines().any(|line| line == ticket), "the ticket is a line of its own, to copy whole: {status}");
+
+        let (mut joiner, _) = screen("ticket_joiner");
+        press(&mut joiner, &[KeyCode::Down, KeyCode::Enter, KeyCode::Enter]);
+        press(&mut joiner, &vec![KeyCode::Backspace; 40]);
+        for c in ticket.chars() {
+            joiner.key(KeyCode::Char(c));
+        }
+        press(&mut joiner, &[KeyCode::Enter, KeyCode::Down, KeyCode::Down, KeyCode::Down, KeyCode::Enter]);
+        let (joined, _) = until_play(&mut joiner).await;
+        let (hosted, _) = until_play(&mut host).await;
+        assert_ne!(joined.viewer, hosted.viewer, "the two are seated against each other");
     }
 
     /// A router request whose answer the test sets, and which says when it
