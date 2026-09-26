@@ -19,11 +19,11 @@ use netrunner_server::{ClientMessage, GameEndReason, ServerMessage};
 type Socket = WebSocketStream<MaybeTlsStream<TcpStream>>;
 
 async fn start_server(grace: Duration) -> String {
-    start_server_with(ServeOptions { reconnect_grace: grace, ..ServeOptions::default() }).await
+    start_server_with(ServeOptions { deals: true, reconnect_grace: grace, ..ServeOptions::default() }).await
 }
 
 async fn start_server_with(options: ServeOptions) -> String {
-    let options = ServeOptions { bot_runner: ServeBotKind::Heuristic, seed: Some(1), ..options };
+    let options = ServeOptions { deals: true, bot_runner: ServeBotKind::Heuristic, seed: Some(1), ..options };
     let server = Server::bind("127.0.0.1:0", options).await.expect("an ephemeral port binds");
     let addr = server.local_addr().unwrap();
     tokio::spawn(server.run());
@@ -139,7 +139,7 @@ async fn the_newest_connection_wins_the_seat() {
 /// its mulligan is told it is on the clock and then that it lost.
 #[tokio::test]
 async fn a_client_that_sits_on_its_mulligan_is_timed_out() {
-    let url = start_server_with(ServeOptions { turn_timeout: Some(Duration::from_millis(200)), ..ServeOptions::default() }).await;
+    let url = start_server_with(ServeOptions { deals: true, turn_timeout: Some(Duration::from_millis(200)), ..ServeOptions::default() }).await;
 
     let mut idle = open(&url, ClientMessage::Connect { player_name: "idle".into(), preferred_side: Some(Side::Corp), room: None, deck: None, format: None }).await;
     let (_, _, token) = joined(next(&mut idle).await);

@@ -181,9 +181,10 @@ pub struct Config {
     pub room: Option<String>,
 
     /// (remote mode) Bring this deck — a built-in id, a saved deck's name,
-    /// or a path — instead of being dealt one. Its side is your seat, so
-    /// `--side` may be left off (and must agree if given). The server
-    /// checks it against its own format and refuses an illegal one.
+    /// or a path. Its side is your seat, so `--side` may be left off (and
+    /// must agree if given). Without it, `--side` brings `--corp-deck` or
+    /// `--runner-deck`: a server deals nobody a deck. The server checks it
+    /// against its own format and refuses an illegal one.
     #[arg(long)]
     pub deck: Option<String>,
 

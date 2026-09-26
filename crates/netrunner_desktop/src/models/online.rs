@@ -23,7 +23,7 @@
 //! the form it came from with the reason — is tested without a socket.
 
 use netrunner_client::hosting::{normalize_address, Reach, DEFAULT_PORT};
-use netrunner_client::online::DeckChoice;
+use netrunner_core::decks::DeckFile;
 use netrunner_core::format::NsgFormat;
 use netrunner_core::rules::Side;
 use netrunner_server::MatchSummary;
@@ -98,9 +98,9 @@ pub enum Outcome {
     Redraw,
     /// Off the screen, to the main menu.
     Leave,
-    Host { port: u16, reach: Reach, format: NsgFormat, deck: DeckChoice },
+    Host { port: u16, reach: Reach, format: NsgFormat, deck: Box<DeckFile> },
     /// `room` is `None` for the host's public queue.
-    Join { url: String, room: Option<String>, format: NsgFormat, deck: DeckChoice },
+    Join { url: String, room: Option<String>, format: NsgFormat, deck: Box<DeckFile> },
     /// The format changed: the screen reads the decks legal in it and
     /// hands them to [`OnlineForm::set_decks`].
     Decks(NsgFormat),
@@ -121,9 +121,9 @@ pub struct OnlineForm {
     pub port: String,
     pub reach: Reach,
     pub format: NsgFormat,
-    /// The decks legal in `format`: the host's deal, then the built-in
-    /// and saved ones.
-    pub decks: Vec<DeckChoice>,
+    /// The decks legal in `format`, built-in and saved: there is no deal
+    /// to ask a host for (`netrunner_client::online`).
+    pub decks: Vec<DeckFile>,
     pub deck: usize,
     pub watch_from: Side,
     pub matches: Vec<MatchSummary>,
@@ -140,7 +140,7 @@ impl OnlineForm {
     /// `address` is where Join and Watch start: the last one used, or the
     /// terminal's default server.
     /// `format` is the one Settings names, where the form starts.
-    pub fn new(decks: Vec<DeckChoice>, address: String, format: NsgFormat) -> Self {
+    pub fn new(decks: Vec<DeckFile>, address: String, format: NsgFormat) -> Self {
         OnlineForm {
             page: Page::Home,
             came_from: Page::Home,
@@ -161,23 +161,22 @@ impl OnlineForm {
 
     /// Back on the screen after a game or a visit elsewhere: the decks
     /// read afresh, everything typed kept, and Home up.
-    pub fn reopen(&mut self, decks: Vec<DeckChoice>) {
+    pub fn reopen(&mut self, decks: Vec<DeckFile>) {
         self.set_decks(decks);
         self.page = Page::Home;
         self.notice = None;
     }
 
     /// The decks legal in the form's format, read afresh: the one chosen
-    /// stays chosen if it is still among them, and the deal is chosen
-    /// otherwise.
-    pub fn set_decks(&mut self, decks: Vec<DeckChoice>) {
-        let chosen = self.decks.get(self.deck).cloned();
-        self.deck = chosen.and_then(|chosen| decks.iter().position(|deck| *deck == chosen)).unwrap_or(0);
+    /// stays chosen if it is still among them, and the first otherwise.
+    pub fn set_decks(&mut self, decks: Vec<DeckFile>) {
+        let chosen = self.decks.get(self.deck).map(|deck| deck.id.clone());
+        self.deck = chosen.and_then(|chosen| decks.iter().position(|deck| deck.id == chosen)).unwrap_or(0);
         self.decks = decks;
     }
 
-    pub fn chosen_deck(&self) -> DeckChoice {
-        self.decks.get(self.deck).cloned().unwrap_or(DeckChoice::Dealt(None))
+    pub fn chosen_deck(&self) -> Option<&DeckFile> {
+        self.decks.get(self.deck)
     }
 
     pub fn apply(&mut self, intent: Intent) -> Outcome {
@@ -282,7 +281,13 @@ impl OnlineForm {
     }
 
     fn go(&mut self) -> Outcome {
-        let deck = self.chosen_deck();
+        let Some(deck) = self.chosen_deck().cloned().map(Box::new) else {
+            if matches!(self.page, Page::Host | Page::Join) {
+                self.notice = Some(format!("No deck is legal in {:?}: build one, or choose another format", self.format));
+                return Outcome::Redraw;
+            }
+            return Outcome::Nothing;
+        };
         match self.page {
             Page::Host => match self.port.parse::<u16>() {
                 Ok(port) => Outcome::Host { port, reach: self.reach, format: self.format, deck },
@@ -318,8 +323,12 @@ pub fn reach_pill(reach: Reach) -> &'static str {
 mod tests {
     use super::*;
 
+    fn deck(id: &str) -> DeckFile {
+        netrunner_core::decks::by_id(id).expect("a built-in deck")
+    }
+
     fn form() -> OnlineForm {
-        OnlineForm::new(vec![DeckChoice::Dealt(None), DeckChoice::Dealt(Some(Side::Runner))], "ws://127.0.0.1:8080".to_string(), NsgFormat::Startup)
+        OnlineForm::new(vec![deck("brick_stack"), deck("stolen_goods")], "ws://127.0.0.1:8080".to_string(), NsgFormat::Startup)
     }
 
     #[test]
@@ -345,7 +354,7 @@ mod tests {
         form.apply(Intent::Typed(Field::Port, "0".to_string()));
         form.apply(Intent::SetReach(Reach::Internet));
         form.apply(Intent::SetDeck(1));
-        assert_eq!(form.apply(Intent::Go), Outcome::Host { port: 0, reach: Reach::Internet, format: NsgFormat::Startup, deck: DeckChoice::Dealt(Some(Side::Runner)) });
+        assert_eq!(form.apply(Intent::Go), Outcome::Host { port: 0, reach: Reach::Internet, format: NsgFormat::Startup, deck: Box::new(deck("stolen_goods")) });
     }
 
     /// Join dials what was typed, an address given its scheme and port
@@ -356,7 +365,7 @@ mod tests {
         let mut form = form();
         form.apply(Intent::Open(Page::Join));
         form.apply(Intent::Typed(Field::Address, " 192.168.1.5 ".to_string()));
-        assert_eq!(form.apply(Intent::Go), Outcome::Join { url: "ws://192.168.1.5:8080".to_string(), room: None, format: NsgFormat::Startup, deck: DeckChoice::Dealt(None) });
+        assert_eq!(form.apply(Intent::Go), Outcome::Join { url: "ws://192.168.1.5:8080".to_string(), room: None, format: NsgFormat::Startup, deck: Box::new(deck("brick_stack")) });
         form.apply(Intent::Typed(Field::Room, "friday".to_string()));
         form.apply(Intent::Typed(Field::Address, "host.example:9000".to_string()));
         let Outcome::Join { url, room, .. } = form.apply(Intent::Go) else { panic!() };
@@ -400,7 +409,7 @@ mod tests {
         let mut form = form();
         form.apply(Intent::SetDeck(1));
         form.page = Page::Join;
-        form.reopen(vec![DeckChoice::Dealt(Some(Side::Corp)), DeckChoice::Dealt(None), DeckChoice::Dealt(Some(Side::Runner))]);
+        form.reopen(vec![deck("fine_print"), deck("brick_stack"), deck("stolen_goods")]);
         assert_eq!((form.deck, form.page), (2, Page::Home));
     }
 
@@ -414,11 +423,15 @@ mod tests {
         form.apply(Intent::SetDeck(1));
         assert_eq!(form.apply(Intent::SetFormat(NsgFormat::Startup)), Outcome::Nothing, "already the format");
         assert_eq!(form.apply(Intent::SetFormat(NsgFormat::Standard)), Outcome::Decks(NsgFormat::Standard));
-        form.set_decks(vec![DeckChoice::Dealt(None), DeckChoice::Dealt(Some(Side::Corp)), DeckChoice::Dealt(Some(Side::Runner))]);
+        form.set_decks(vec![deck("fine_print"), deck("brick_stack"), deck("stolen_goods")]);
         assert_eq!((form.deck, form.page), (2, Page::Join), "the same deck, and the page stays");
-        form.set_decks(vec![DeckChoice::Dealt(None)]);
-        assert_eq!(form.deck, 0, "a deck no longer legal falls back to the deal");
+        form.set_decks(vec![deck("fine_print")]);
+        assert_eq!(form.deck, 0, "a deck no longer legal falls back to the first");
+        form.apply(Intent::Typed(Field::Address, "host".to_string()));
         let Outcome::Join { format, .. } = form.apply(Intent::Go) else { panic!() };
         assert_eq!(format, NsgFormat::Standard);
+        form.set_decks(Vec::new());
+        assert_eq!(form.apply(Intent::Go), Outcome::Redraw, "no deck, nothing to join with");
+        assert!(form.notice.as_deref().is_some_and(|notice| notice.contains("No deck is legal")));
     }
 }

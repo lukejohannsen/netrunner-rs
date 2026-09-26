@@ -372,7 +372,7 @@ mod tests {
     use netrunner_server::serve::{ServeBotKind, ServeOptions, Server};
 
     async fn start_server() -> std::net::SocketAddr {
-        let options = ServeOptions { bot_runner: ServeBotKind::Heuristic, seed: Some(1), ..ServeOptions::default() };
+        let options = ServeOptions { bot_runner: ServeBotKind::Heuristic, seed: Some(1), deals: true, ..ServeOptions::default() };
         let server = Server::bind("127.0.0.1:0", options).await.unwrap();
         let addr = server.local_addr().unwrap();
         tokio::spawn(server.run());
@@ -468,7 +468,7 @@ mod tests {
     }
 
     async fn start_peer_host_with(relay: crate::peer::Relay) -> (crate::peer::PeerHost, String, bool) {
-        let options = ServeOptions { bot_runner: ServeBotKind::Heuristic, seed: Some(1), ..ServeOptions::default() };
+        let options = ServeOptions { bot_runner: ServeBotKind::Heuristic, seed: Some(1), deals: true, ..ServeOptions::default() };
         let acceptor = Server::bind("127.0.0.1:0", options).await.unwrap().acceptor();
         let mut host = crate::peer::PeerHost::start(relay, move |stream, who| {
             let acceptor = acceptor.clone();

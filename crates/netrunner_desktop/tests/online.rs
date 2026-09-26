@@ -129,7 +129,7 @@ fn a_hosted_game_seats_both_players_is_watched_and_leaving_concedes() {
 
     // The opponent: a seat through the same driver, over the address.
     let runtime = tokio::runtime::Builder::new_multi_thread().enable_all().worker_threads(2).build().unwrap();
-    let hello = remote::connect_message("guest", None, None, None, None);
+    let hello = remote::connect_message("guest", None, None, netrunner_core::decks::by_id("stolen_goods"), None);
     let mut guest = runtime.block_on(async { tokio::time::timeout(Duration::from_secs(10), remote::connect(&address, Goal::Play(hello), |_| {})).await }).expect("seated in time").unwrap();
 
     until(&mut app, "the board", |app| screen(app) == AppScreen::Game);

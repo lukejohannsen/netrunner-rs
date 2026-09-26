@@ -41,7 +41,8 @@ use netrunner_server::serve::{ServeBotKind, ServeOptions, Server};
 use netrunner_server::MatchSummary;
 
 use netrunner_client::hosting::{self, normalize_address, Invitation, Reach, Way};
-use netrunner_client::online::{self, DeckChoice};
+use netrunner_client::online;
+use netrunner_core::decks::DeckFile;
 use netrunner_client::peer::Relay;
 use crate::remote::{self, ConnectEvent, Connecting, Joined};
 
@@ -151,7 +152,7 @@ const HOME: [(&str, &str); 3] = [
 
 pub struct OnlineScreen {
     mode: Mode,
-    decks: Vec<DeckChoice>,
+    decks: Vec<DeckFile>,
     player: String,
     format: NsgFormat,
     /// The address Join and Watch start from: `--server`, as the flag path
@@ -177,7 +178,7 @@ impl OnlineScreen {
         default_address: String,
         relay: Result<Relay, String>,
     ) -> Result<Self, String> {
-        let decks = online::deck_choices(decks_dir, registry, format)?;
+        let decks = online::deck_choices(decks_dir, registry, format);
         Ok(OnlineScreen { mode: Mode::Home { cursor: 0 }, decks, player, format, default_address, hosting: None, notice: None, relay })
     }
 
@@ -389,8 +390,14 @@ impl OnlineScreen {
 
     /// Submits a form: joins the address, or starts the server and joins it.
     fn go(&mut self, form: Form) -> OnlineStep {
-        let choice = self.decks[form.deck].clone();
-        let brought = choice.deck().map(|deck| deck.id.clone());
+        // Every format's pool holds the built-in decks, so the list is
+        // never empty; the guard is for a pool that one day does not.
+        let Some(choice) = self.decks.get(form.deck).cloned() else {
+            self.notice = Some(format!("No deck is legal in {:?}: build one, or change the format in Settings", self.format));
+            self.mode = Mode::Form(form);
+            return OnlineStep::Continue;
+        };
+        let brought = Some(choice.id.clone());
         let (url, status) = match form.kind {
             FormKind::Join => {
                 let url = normalize_address(&form.address);
@@ -417,7 +424,7 @@ impl OnlineScreen {
             }
         };
         let room = (form.kind == FormKind::Join && !form.room.trim().is_empty()).then(|| form.room.trim().to_string());
-        let hello = remote::connect_message(&self.player, choice.side(), room, choice.deck(), Some(self.format));
+        let hello = remote::connect_message(&self.player, Some(choice.side), room, Some(choice), Some(self.format));
         self.mode = Mode::Waiting {
             connecting: remote::spawn(url.clone(), remote::Goal::Play(hello)),
             status,
@@ -474,7 +481,7 @@ impl OnlineScreen {
                 if form.editing.is_some() { "Type · Enter or Tab finishes" } else { "Up/Down choose · Enter edits or picks · Esc back" }
             }
             Mode::PickDeck { cursor, .. } => {
-                let items = self.decks.iter().map(|choice| ListItem::new(choice.label())).collect();
+                let items = self.decks.iter().map(|deck| ListItem::new(online::label(deck))).collect();
                 draw_list(frame, body, "Your deck — its side is your seat", items, Some(*cursor));
                 "Up/Down choose · Enter picks · Esc keeps the old choice"
             }
@@ -525,7 +532,7 @@ impl OnlineScreen {
                 ),
                 Field::Port => format!("Port             {}", text(Field::Port, &form.port)),
                 Field::Reach => format!("Who can join     ‹ {} ›", form.reach.label()),
-                Field::Deck => format!("Your deck        {}", self.decks[form.deck].label()),
+                Field::Deck => format!("Your deck        {}", self.decks.get(form.deck).map(online::label).unwrap_or_else(|| "none legal in this format".to_string())),
                 Field::Go => match form.kind {
                     FormKind::Join => "[ Connect ]".to_string(),
                     FormKind::Host => "[ Start hosting ]".to_string(),
@@ -632,7 +639,7 @@ mod tests {
 
     /// Picks the deck with this id in an open deck picker.
     fn pick_deck(screen: &mut OnlineScreen, id: &str) {
-        let index = screen.decks.iter().position(|choice| matches!(choice, DeckChoice::Brought(deck) if deck.id == id)).unwrap();
+        let index = screen.decks.iter().position(|deck| deck.id == id).unwrap();
         let Mode::PickDeck { cursor, .. } = &mut screen.mode else { panic!("the picker is open") };
         *cursor = index;
         screen.key(KeyCode::Enter);
@@ -757,7 +764,11 @@ mod tests {
         for c in ticket.chars() {
             joiner.key(KeyCode::Char(c));
         }
-        press(&mut joiner, &[KeyCode::Enter, KeyCode::Down, KeyCode::Down, KeyCode::Down, KeyCode::Enter]);
+        // The host brought the first deck, a Corp one; the joiner brings a
+        // Runner deck, since a server deals nobody one.
+        press(&mut joiner, &[KeyCode::Enter, KeyCode::Down, KeyCode::Down, KeyCode::Enter]);
+        pick_deck(&mut joiner, "stolen_goods");
+        press(&mut joiner, &[KeyCode::Down, KeyCode::Enter]);
         let (joined, _) = until_play(&mut joiner).await;
         let (hosted, _) = until_play(&mut host).await;
         assert_ne!(joined.viewer, hosted.viewer, "the two are seated against each other");
