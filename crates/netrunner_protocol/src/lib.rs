@@ -1,0 +1,185 @@
+//! Transport-agnostic wire messages between a server's `MatchSession` and
+//! one player's client — deliberately just serializable data, no transport
+//! assumptions baked in, so an in-process `tokio::sync::mpsc` pair and a
+//! WebSocket carry the exact same types unchanged.
+//!
+//! Lifted out of `netrunner_server` (Phase 4 §6 item 2) so a client can
+//! speak the protocol without depending on the server: the server
+//! re-exports this crate as its `protocol` module, so every
+//! `netrunner_server::{protocol::,}ClientMessage` path still resolves.
+
+use std::time::Duration;
+
+use serde::{Deserialize, Serialize};
+use uuid::Uuid;
+
+use netrunner_core::decks::DeckFile;
+use netrunner_core::rules::{PlayerAction, Side};
+use netrunner_core::view::ClientView;
+
+/// Re-exported, not defined here: both live in `netrunner_session` beside
+/// the driver that produces them. `GameEndReason` was never a transport
+/// concern — `netrunner_cli` used to depend on this whole crate purely to
+/// call `classify_end_reason` on its *offline* local path. Re-exporting
+/// keeps every existing `netrunner_server::{protocol::,}GameEndReason` path
+/// resolving, and the wire format is unaffected: moving a type does not
+/// change its serde representation.
+pub use netrunner_core::rules::{ConcealedAction, PublicAction};
+pub use netrunner_session::{GameEndReason, HistoryEntry, PublicHistoryEntry};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum ClientMessage {
+    /// Ask for a seat. `room` narrows who this player may be paired with
+    /// under a human-vs-human daemon: `None` is the public queue, a name
+    /// pairs only with the same name. `serde(default)` so a client built
+    /// before rooms existed still connects.
+    ///
+    /// `deck` is the decklist this player brings. **A brought deck decides
+    /// the seat** — its side is the side they play, so `preferred_side`
+    /// must agree or be `None` — and it is checked against the daemon's
+    /// format before anything else happens, refused with `ConnectRejected`
+    /// if either validator objects. `None` is the old behaviour: the daemon
+    /// deals that seat a deck, pinned or rotating. `serde(default)` so a
+    /// client built before this still connects. A daemon built before it
+    /// ignores the field and deals as it always did, which is why a client
+    /// that brought a deck checks `MatchJoined`'s deck ids.
+    Connect {
+        player_name: String,
+        preferred_side: Option<Side>,
+        #[serde(default)]
+        room: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        deck: Option<Box<DeckFile>>,
+    },
+    /// Take a seat back after the socket that held it dropped. The token is
+    /// the one `MatchJoined` issued for that seat, and it is the *only*
+    /// credential: a seat is worth exactly what a WebSocket connection was
+    /// worth before, so a 122-bit random identifier that only ever crossed
+    /// this one connection is the same trust the original `Connect` had.
+    /// The reply is `MatchJoined` again (same token, same side) followed by
+    /// a fresh `StateUpdate`, or `ResumeRejected`. Presented while still
+    /// queued in the lobby (the token `Queued` carried is the same one), it
+    /// swaps the socket under the queue entry and the reply is `Queued`.
+    Resume { session_token: Uuid },
+    /// What the daemon is hosting. Answered with `MatchList` before any
+    /// seat is taken, and the socket stays open for a `Connect` after.
+    /// Sent once seated it is ignored, like a repeated `Connect`.
+    ListMatches,
+    /// Watch a running match (an id from `MatchList`) from the
+    /// `Viewer::Spectator` perspective: the intersection of what the two
+    /// players see, and nothing to submit. Answered with `Spectating` and
+    /// then every `StateUpdate`/`ActionLog`/`DecisionClock`/`GameEnded`
+    /// the seats get, masked for a spectator; or `ConnectRejected` when no
+    /// live match has that id. Anything a spectator sends afterwards is
+    /// ignored — it holds no seat.
+    Spectate { match_id: Uuid },
+    SubmitAction(PlayerAction),
+    Surrender,
+}
+
+/// One running match as `ListMatches` reports it. Player names and the
+/// two published decklist ids; the seed is never on the wire, because it
+/// reproduces the order of R&D.
+///
+/// The deck ids are `#[serde(default)]` so a client built before they
+/// existed still parses a summary — and they are here at all because
+/// without them a lobby cannot say what any match is: the daemon deals a
+/// different matchup out of `decks::matchups()` for every match it seats.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MatchSummary {
+    pub match_id: Uuid,
+    pub corp: String,
+    pub runner: String,
+    #[serde(default)]
+    pub corp_deck: String,
+    #[serde(default)]
+    pub runner_deck: String,
+    pub started_secs_ago: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum ServerMessage {
+    /// The seat is taken. `session_token` is what `ClientMessage::Resume`
+    /// presents to take it back after a dropped connection; it is per
+    /// *seat*, not per match, so one player's token never reseats the
+    /// other. Sent again, unchanged, on a successful resume.
+    ///
+    /// `corp_deck`/`runner_deck` name the published decklists the host
+    /// dealt (`decks::DeckFile::id`), so a player can tell what they are
+    /// holding — the daemon rotates the pool rather than seating one
+    /// fixed pair. `#[serde(default)]` so an older client still parses
+    /// the message and simply shows nothing.
+    MatchJoined {
+        match_id: Uuid,
+        assigned_side: Side,
+        session_token: Uuid,
+        #[serde(default)]
+        corp_deck: String,
+        #[serde(default)]
+        runner_deck: String,
+    },
+    /// The reply to `Spectate`, before the first spectator `StateUpdate`.
+    /// Its own variant rather than a `MatchJoined` with no side: that
+    /// message's `assigned_side` and `session_token` are pinned by every
+    /// reconnect test and `netrunner_client::connection`, and a spectator has
+    /// neither. There is no token because there is nothing to resume —
+    /// `Spectate` again is the whole of reconnecting.
+    Spectating { match_id: Uuid },
+    /// Parked in the lobby until another human arrives: `position` is how
+    /// many are waiting, this player included. The token is the seat's
+    /// credential *already* — `MatchJoined` will carry the same one — so
+    /// a client that drops while waiting presents it with `Resume` and
+    /// gets its place back with nothing new to hold. A separate lobby
+    /// token was rejected: the client would hold two credentials and
+    /// swap at `MatchJoined`, and its reconnect loop keys on one.
+    Queued { session_token: Uuid, position: usize },
+    /// A `Connect` the host will not honour — at its match limit, or
+    /// setup failed — after which it closes the socket. Its own variant
+    /// for the reason `ResumeRejected` is: the client is waiting for
+    /// `MatchJoined` and has no action to have rejected.
+    ConnectRejected { reason: String },
+    /// The reply to `ListMatches`. `waiting_in_lobby` counts only waiters
+    /// whose socket is still open, so a client (or a test) can poll it to
+    /// see a dropped waiter go.
+    MatchList { matches: Vec<MatchSummary>, waiting_in_lobby: usize, max_matches: Option<usize> },
+    /// `ClientMessage::Resume` named a token the host does not hold: never
+    /// issued, or its match already over — including a match that ended
+    /// *because* this seat's grace period ran out. A client that missed
+    /// the `GameEnded` learns it this way; the host keeps no record of
+    /// finished matches, so it cannot say who won. Its own variant rather
+    /// than `ActionRejected` because a resuming client is waiting for
+    /// `MatchJoined` and nothing else — it has no action to have rejected.
+    ResumeRejected { reason: String },
+    /// Boxed — `ClientView` is by far the largest variant here, and this
+    /// enum is passed around/cloned as a whole regardless of which variant
+    /// is active.
+    StateUpdate(Box<ClientView>),
+    /// One resolved action, sent immediately after the `StateUpdate` it
+    /// produced, so a client can render a running game log.
+    ///
+    /// **Per viewer, like `StateUpdate`.** The Corp's and the Runner's
+    /// copies differ: the acting side's action and the engine's raw events
+    /// name cards the other seat's view conceals (the Corp's facedown
+    /// install, the HQ card the Runner just looked at), so each seat gets
+    /// `Session::last_entry_for(side)` — masked by
+    /// `netrunner_core::rules::masking` at the same boundary as the view.
+    /// The full `HistoryEntry` never leaves the host.
+    ///
+    /// One message per action rather than the whole log each time: a
+    /// `StateUpdate` is already per-action and the client already drains
+    /// messages in a loop, so resending a growing log would cost O(n²)
+    /// bytes over a match. Boxed for the same reason `StateUpdate` is — an
+    /// entry carries the action's `Vec<GameEvent>`.
+    ActionLog(Box<PublicHistoryEntry>),
+    ActionRejected { reason: String },
+    /// `side` has `remaining` to answer the decision it was just offered,
+    /// or forfeits with `GameEndReason::TimedOut`. Sent to both seats when
+    /// a clock starts, and again to a seat that reattaches mid-decision
+    /// with what is left; never sent when the host runs without a clock,
+    /// so a clock-less match's message sequence is exactly what it was.
+    /// A message rather than a `ClientView` field: the view is the
+    /// engine's, and `netrunner_core` knows no wall clock. One message per
+    /// decision rather than ticks: the client can count down by itself.
+    DecisionClock { side: Side, remaining: Duration },
+    GameEnded { winner: Side, reason: GameEndReason },
+}

@@ -27,6 +27,9 @@
 //! `board::ActionMap` says what a click on the board means, and
 //! `board::diff` says what changed between two views, so a client can
 //! animate without inferring anything from its own last frame.
+//! `connection` is a client's connection to a server as a state machine
+//! with no I/O, and `remote` the one tokio driver that plays a match through
+//! it.
 //! `hosting` is a game served from the player's own machine: the socket,
 //! the addresses to give out and the router asked to open the port.
 
@@ -37,6 +40,7 @@ pub mod board;
 pub mod card_face;
 pub mod card_text;
 pub mod cards;
+pub mod connection;
 pub mod deck_builder;
 pub mod deck_store;
 pub mod placement;
@@ -48,6 +52,7 @@ pub mod hosting;
 pub mod learn;
 pub mod prose;
 pub mod record;
+pub mod remote;
 pub mod replay;
 pub mod run_pass;
 pub mod selection;

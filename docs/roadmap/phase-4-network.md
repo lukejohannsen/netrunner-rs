@@ -37,9 +37,9 @@ Narration widened from 3 events to 31 in the same pass, on a criterion stated on
 
 **Stages, each its own branch and each useful without the next:** (a) the server keeps match records — no protocol change, and the server half of Phase 7 §8 item 15; (b) `netrunner_identity`, the client's key file, the handshake, ratings keyed by key; (c) seat commitments, receipts, `Rated`, `results.jsonl`, `--rebuild-ratings`; (d) client surfaces — the game-over panel and "your standing at `<server>`" on Profile, fetched and never stored as truth; (e) the free take-back online.
 
-**Open:** `netrunner_client` does not depend on `netrunner_server`, so the desktop's online play (Phase 7 §7) needs `ClientMessage`/`ServerMessage` somewhere lighter — most likely a `netrunner_protocol` crate; decide at stage (b), when the second consumer exists. Key rotation (a successor statement signed by the old key) is recorded and not designed.
+**Settled by §6 item 2 (25 September 2026):** the messages live in `netrunner_protocol`, which `netrunner_client` depends on without the server. **Open:** Key rotation (a successor statement signed by the old key) is recorded and not designed.
 
-## 6. A host reachable from outside — OPEN (25 September 2026); item 1 built
+## 6. A host reachable from outside — OPEN (25 September 2026); items 1 and 2 built
 
 Asked for as: a person hosts on their home network and friends outside it join, with no firewall rules. Three items, in order, each its own branch.
 
@@ -54,7 +54,23 @@ Asked for as: a person hosts on their home network and friends outside it join, 
    - **Every failure names the manual forward and Tailscale.** The forward is left out when the provider's NAT makes it useless.
    - `portmapper` added 47 crates to the workspace lock, all under licences `deny.toml` already allows. The alternative was `igd-next` with `crab_nat`: two crates for three protocols, and renewal to write.
    - Not tested against a router here: the TUI's handling of every answer is tested through a fake `PortMapper`. The real round trip is the manual check in the PR.
-2. **A sans-IO client connection in `netrunner_client`.** The handshake, queueing, resume and grace are a state machine (input bytes, output bytes, timeouts) that a client drives, rather than tokio tasks and a `Reconnector` that blocks. This is the pattern Firezone describes ([sans-IO](https://www.firezone.dev/blog/sans-io)). It makes reconnect and lobby tests deterministic without sockets, lets the terminal and the desktop share one connection (Bevy cannot block, AGENTS.md §5), and makes a second transport a transport change. It is also what Phase 7 §7, the desktop's online screen, stands on, and it settles §5's open `netrunner_protocol` question in passing.
+2. **A sans-IO client connection in `netrunner_client`** (`feat/sans-io-client-connection`, built). The pattern is Firezone's ([sans-IO](https://www.firezone.dev/blog/sans-io)).
+   - **`connection::Connection` is told what happened**: a transport opened, a message arrived, the transport went away, the clock passed the deadline it named, the player sent something or left. **It says what to do**: dial, send these, tell the screen this, wake me at this instant. Time is an argument and never read.
+   - **The rules of a connection it holds**:
+     - the handshake;
+     - the lobby;
+     - a seat resumed by its token;
+     - a place in the lobby resumed by the token `Queued` already carried (§3's "Open: resuming a lobby place" closes);
+     - a spectator watching again;
+     - no retry for a first connection that never got an answer, nor for a match that has ended;
+     - an attempt every second, each bounded at 3 s, giving up after 60 s;
+     - a first dial bounded at 10 s, where the old client had no bound at all.
+   - **Tested without a socket or a clock**: eleven tests in 0.00 s, including the whole 60-second give-up, which the blocking `Reconnector` could only have been tested at the speed of real time.
+   - **`remote` is the one driver**: a tokio task that dials, sends, reads and sleeps as the machine says, reporting through channels a caller only `try_recv`s. **A resume happens under the channel pair**: the same `rx` carries on, and a `watch` of the `Link` says what happened. So the terminal's `App` follows the link instead of swapping channels, its render loop no longer reconnects anything, and nothing on the render tick blocks.
+   - The driver is tested against a real server through a proxy that can be cut: a cut socket mid-match is resumed and the next view arrives on the same `rx`.
+   - **Messages, not bytes.** The machine takes typed messages rather than frames, because every transport this project has or plans carries whole messages. Bytes would put `serde_json` into every machine test for nothing.
+   - **`netrunner_protocol`** is the wire messages lifted out of the server, which re-exports them, so `netrunner_client` names them without the server. That settles §5's open question.
+   - **Not done: the server's side.** Its handshake stays tokio tasks, because its tests already drive it over sockets and nothing else needs to drive it.
 3. **A peer-to-peer transport: join by ticket, not by address.** A QUIC transport with hole punching and a relay as fallback (iroh is the candidate; its peer identity is an Ed25519 key, which is §5's player identity). This is what reaches a host behind carrier-grade NAT with nothing installed, and it encrypts what WebSocket sends in the clear today. Its own design first: the relays are a service somebody runs.
 
 **Rejected, with the reasons:**

@@ -14,13 +14,12 @@
 //! for either side or a preferred one — what `--mode remote` always did.
 //!
 //! **Nothing here waits on the network with the keyboard dead.** A
-//! connection runs as a task (`remote::spawn_connect`) that the menu polls
+//! connection runs as a task (`remote::spawn`) that the menu polls
 //! every frame (`tick`), so the lobby wait draws a status line and Esc
 //! abandons it — which closes the socket, so the daemon drops the waiter
-//! instead of pairing an opponent with someone who has gone. The two
-//! short blocking calls — binding the host's port and one `ListMatches`
-//! round trip — are bounded and run under `block_in_place`, the pattern
-//! `remote::Reconnector` set.
+//! instead of pairing an opponent with someone who has gone. The one short
+//! blocking call — a `ListMatches` round trip — is bounded and runs under
+//! `block_in_place`.
 //!
 //! Hot-seat play on one screen is deliberately absent: it would show each
 //! player the other's hidden cards.
@@ -40,7 +39,7 @@ use netrunner_core::decks::DeckFile;
 use netrunner_core::format::NsgFormat;
 use netrunner_core::rules::Side;
 use netrunner_server::serve::{ServeBotKind, ServeOptions, Server};
-use netrunner_server::{ClientMessage, MatchSummary};
+use netrunner_server::MatchSummary;
 
 use netrunner_client::deck_store;
 use netrunner_client::hosting::{self, normalize_address, Mapping, PortMapper, Reach, Share};
@@ -57,7 +56,7 @@ pub enum OnlineStep {
     Back,
     /// A seat or a spectator's place is ready: play it. `brought` is the
     /// id of the deck this player sent, for `play_remote`'s check.
-    Play { joined: Box<Joined>, url: String, brought: Option<String> },
+    Play { joined: Box<Joined>, brought: Option<String> },
 }
 
 /// The deck field's choices: a deck of the player's, or the host's deal.
@@ -253,7 +252,7 @@ impl OnlineScreen {
             *status = hosting_status(hosting);
         }
         let mut outcome = None;
-        while let Ok(event) = connecting.events.try_recv() {
+        while let Some(event) = connecting.poll() {
             match event {
                 ConnectEvent::Queued(position) => {
                     // The host's line keeps the address: waiting is exactly
@@ -263,6 +262,14 @@ impl OnlineScreen {
                         None => format!("In the lobby, waiting for an opponent ({position} waiting)…"),
                     };
                 }
+                // The lobby place's socket dropped and is being taken back:
+                // the place is kept by its token, and the next `Queued`
+                // puts the lobby line back.
+                ConnectEvent::Link(link) => {
+                    if let Some(line) = link.status_line(std::time::Instant::now()) {
+                        *status = line;
+                    }
+                }
                 other => {
                     outcome = Some(other);
                     break;
@@ -270,18 +277,18 @@ impl OnlineScreen {
             }
         }
         let Some(outcome) = outcome else { return OnlineStep::Continue };
-        let Mode::Waiting { url, brought, back, .. } = std::mem::replace(&mut self.mode, Mode::Home { cursor: 0 }) else {
+        let Mode::Waiting { brought, back, .. } = std::mem::replace(&mut self.mode, Mode::Home { cursor: 0 }) else {
             unreachable!("checked above")
         };
         match outcome {
-            ConnectEvent::Joined(joined) => OnlineStep::Play { joined, url, brought },
+            ConnectEvent::Joined(joined) => OnlineStep::Play { joined, brought },
             ConnectEvent::Failed(error) => {
                 self.hosting = None;
                 self.notice = Some(error.to_string());
                 self.mode = *back;
                 OnlineStep::Continue
             }
-            ConnectEvent::Queued(_) => unreachable!("handled in the loop"),
+            ConnectEvent::Queued(_) | ConnectEvent::Link(_) => unreachable!("handled in the loop"),
         }
     }
 
@@ -322,7 +329,9 @@ impl OnlineScreen {
             },
             Mode::Waiting { connecting, status, url, brought, back } => {
                 if matches!(key, KeyCode::Esc | KeyCode::Char('q')) {
-                    connecting.cancel();
+                    // Dropping it closes the socket with a `Close`, so the
+                    // daemon drops the waiter from its lobby.
+                    drop(connecting);
                     self.hosting = None;
                     self.mode = *back;
                 } else {
@@ -350,10 +359,10 @@ impl OnlineScreen {
                     KeyCode::Char('a') => editing = true,
                     KeyCode::Enter if !matches.is_empty() => {
                         let url = normalize_address(&address);
-                        let hello = ClientMessage::Spectate { match_id: matches[cursor].match_id };
+                        let goal = remote::Goal::Watch { match_id: matches[cursor].match_id };
                         let back = Box::new(Mode::Watch { address, editing, matches, cursor });
                         self.mode = Mode::Waiting {
-                            connecting: remote::spawn_connect(url.clone(), hello),
+                            connecting: remote::spawn(url.clone(), goal),
                             status: format!("Connecting to {url}…"),
                             url,
                             brought: None,
@@ -451,7 +460,7 @@ impl OnlineScreen {
         let room = (form.kind == FormKind::Join && !form.room.trim().is_empty()).then(|| form.room.trim().to_string());
         let hello = remote::connect_message(&self.player, choice.side(), room, choice.deck());
         self.mode = Mode::Waiting {
-            connecting: remote::spawn_connect(url.clone(), hello),
+            connecting: remote::spawn(url.clone(), remote::Goal::Play(hello)),
             status,
             url,
             brought,
@@ -602,8 +611,8 @@ fn hosting_status(hosting: &Hosting) -> String {
 
 /// Runs a future to completion from the menu's synchronous loop, giving up
 /// after `BLOCKING_TIMEOUT`. `block_in_place` parks this worker so the
-/// runtime's others carry on — the binary's multi-threaded runtime, which
-/// is what `Reconnector::try_resume` already relies on.
+/// runtime's others carry on, which needs the binary's multi-threaded
+/// runtime.
 fn block_on_bounded<F: Future>(future: F) -> Option<F::Output> {
     tokio::task::block_in_place(|| {
         tokio::runtime::Handle::current().block_on(async { tokio::time::timeout(BLOCKING_TIMEOUT, future).await.ok() })
@@ -664,11 +673,11 @@ mod tests {
     }
 
     /// Ticks until the connection resolves.
-    async fn until_play(screen: &mut OnlineScreen) -> (Box<Joined>, String, Option<String>) {
+    async fn until_play(screen: &mut OnlineScreen) -> (Box<Joined>, Option<String>) {
         let deadline = Instant::now() + Duration::from_secs(10);
         loop {
-            if let OnlineStep::Play { joined, url, brought } = screen.tick() {
-                return (joined, url, brought);
+            if let OnlineStep::Play { joined, brought } = screen.tick() {
+                return (joined, brought);
             }
             assert!(Instant::now() < deadline, "no seat within 10s; notice: {:?}", screen.notice);
             tokio::time::sleep(Duration::from_millis(20)).await;
@@ -740,13 +749,12 @@ mod tests {
         let Mode::Waiting { status, .. } = &host.mode else { panic!() };
         assert!(status.contains(&address), "the host's waiting line keeps the address to share: {status}");
 
-        let (joined, _, brought) = until_play(&mut joiner).await;
+        let (joined, brought) = until_play(&mut joiner).await;
         assert_eq!(joined.viewer, Viewer::Player(Side::Corp));
         assert_eq!(brought.as_deref(), Some("brick_stack"));
         assert_eq!(joined.decks, ("brick_stack".to_string(), "stolen_goods".to_string()));
-        let (hosted, host_url, _) = until_play(&mut host).await;
+        let (hosted, _) = until_play(&mut host).await;
         assert_eq!(hosted.viewer, Viewer::Player(Side::Runner));
-        assert_eq!(host_url, address);
 
         let (mut watcher, _) = screen("watcher");
         press(&mut watcher, &[KeyCode::Down, KeyCode::Down, KeyCode::Enter]);
@@ -759,7 +767,7 @@ mod tests {
         assert_eq!(matches.len(), 1);
         assert_eq!((matches[0].corp.as_str(), matches[0].runner.as_str()), ("joiner", "host"), "players go by their own names");
         watcher.key(KeyCode::Enter);
-        let (watching, _, _) = until_play(&mut watcher).await;
+        let (watching, _) = until_play(&mut watcher).await;
         assert_eq!(watching.viewer, Viewer::Spectator);
 
         host.returned();

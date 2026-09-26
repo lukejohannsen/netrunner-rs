@@ -4596,8 +4596,11 @@ name = "netrunner_client"
 version = "0.1.0"
 dependencies = [
  "dirs",
+ "futures-util",
  "netrunner_bots",
  "netrunner_core",
+ "netrunner_protocol",
+ "netrunner_server",
  "netrunner_session",
  "portmapper",
  "rand 0.9.5",
@@ -4605,6 +4608,8 @@ dependencies = [
  "serde_json",
  "socket2",
  "tokio",
+ "tokio-tungstenite",
+ "uuid",
 ]
 
 [[package]]
@@ -4640,6 +4645,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "netrunner_protocol"
+version = "0.1.0"
+dependencies = [
+ "netrunner_core",
+ "netrunner_session",
+ "serde",
+ "uuid",
+]
+
+[[package]]
 name = "netrunner_rating"
 version = "0.1.0"
 dependencies = [
@@ -4670,6 +4685,7 @@ dependencies = [
  "futures-util",
  "netrunner_bots",
  "netrunner_core",
+ "netrunner_protocol",
  "netrunner_rating",
  "netrunner_session",
  "rand 0.9.5",

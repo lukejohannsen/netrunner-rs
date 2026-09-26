@@ -203,8 +203,7 @@ Each its own branch, in this order; each is useful without the next.
    standing at `<server>`" — fetched, and never stored as truth.
 5. **The free take-back online.**
 
-**Open, carried by the roadmap entry:** `netrunner_client` does not depend on
-`netrunner_server`, so the desktop's online play (Phase 7 §7) needs
-`ClientMessage`/`ServerMessage` somewhere lighter than the server crate —
-most likely a `netrunner_protocol` crate that `netrunner_identity`'s envelope
-types can live beside. Decide it at stage 2, when the second consumer exists.
+**Settled (25 September 2026, Phase 4 §6 item 2):** `ClientMessage` and
+`ServerMessage` live in `netrunner_protocol`, which the server re-exports and
+`netrunner_client` depends on without the server. `netrunner_identity`'s
+envelope types can live beside them.

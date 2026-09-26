@@ -14,7 +14,7 @@ use netrunner_client::standing::{optional_trigger, standing_answer, Answer, Answ
 use std::time::{Duration, Instant};
 
 use ratatui::crossterm::event::{KeyCode, KeyEvent};
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, watch};
 
 use netrunner_client::board::{offered_label, routes, ActionMap, Asks, AutoBreak, Next, Route};
 use netrunner_core::cards::CardRegistry;
@@ -23,6 +23,7 @@ use netrunner_core::rules::{PlayerAction, Side, Viewer};
 use netrunner_core::view::ClientView;
 use netrunner_server::protocol::GameEndReason;
 use netrunner_server::{ClientMessage, ServerMessage};
+use netrunner_client::connection::Link;
 
 // Lifted into the shared client core for the desktop (Phase 7 §3); the
 // names stay reachable here so nothing in this crate had to move.
@@ -46,13 +47,20 @@ pub struct App {
     /// ActionLog`. Remote play had no log at all until the match driver
     /// grew a `MatchHistory` the server could forward.
     pub action_log: Vec<String>,
-    /// `rx` has closed under us — the socket behind it dropped. The render
-    /// loop owns what happens next (`remote::Reconnector`); this struct only
-    /// notices, and refuses to submit anything until `reconnected`.
+    /// The connection is down — reconnecting, or gone for good — so
+    /// nothing is submitted: an action chosen from the last view may be
+    /// stale by the time the seat is back.
     pub connection_lost: bool,
-    /// What the header shows while the connection is down, set by the
-    /// render loop from `Reconnector::status_line`.
+    /// What the header shows while the connection is down, from the
+    /// link's status line (`connection::Link::status_line`).
     pub connection_notice: Option<String>,
+    /// The connection's state, for a remote match
+    /// (`netrunner_client::remote::Joined::link`). A reconnect happens
+    /// under `tx`/`rx`, which carry on as they were; this is how the
+    /// screen learns of it. `None` for a channel pair with nothing behind
+    /// it that can drop.
+    link: Option<watch::Receiver<Link>>,
+    link_state: Link,
     /// Whose decision is on the clock and when it runs out, from the last
     /// `ServerMessage::DecisionClock`; `None` on a host without a clock.
     pub decision_clock: Option<(Side, Instant)>,
@@ -97,6 +105,8 @@ impl App {
             action_log: Vec::new(),
             connection_lost: false,
             connection_notice: None,
+            link: None,
+            link_state: Link::Up,
             decision_clock: None,
             modal: None,
             card_picker: None,
@@ -110,17 +120,33 @@ impl App {
         app
     }
 
-    /// Swaps in the channel pair a successful `Resume` produced. The first
-    /// message on the new `rx` is the server's fresh `StateUpdate`, so the
-    /// board is current the moment this returns; the log is not replayed
-    /// (see `ServerMessage::ActionLog`), and says so.
-    pub fn reconnected(&mut self, tx: mpsc::UnboundedSender<ClientMessage>, rx: mpsc::UnboundedReceiver<ServerMessage>) {
-        self.tx = tx;
-        self.rx = rx;
-        self.connection_lost = false;
-        self.connection_notice = None;
-        self.action_log.push("(reconnected — actions resolved while away are not listed)".to_string());
-        self.drain_messages();
+    /// Follows `link` from now on: the connection's drops and resumes.
+    pub fn follow_link(&mut self, link: watch::Receiver<Link>) {
+        self.link = Some(link);
+        self.read_link();
+    }
+
+    /// The link's latest state, onto the screen. Read ahead of the
+    /// messages, because a resume's `Link::Up` comes before the fresh view
+    /// it brings, and that view should be answered like any other.
+    fn read_link(&mut self) {
+        if let Some(link) = &mut self.link
+            && link.has_changed().unwrap_or(false)
+        {
+            let state = link.borrow_and_update().clone();
+            if state == Link::Up && self.link_state != Link::Up {
+                // The log is not replayed (see `ServerMessage::ActionLog`),
+                // and says so.
+                self.action_log.push("(reconnected — actions resolved while away are not listed)".to_string());
+                self.connection_notice = None;
+            }
+            self.connection_lost = state != Link::Up;
+            self.link_state = state;
+        }
+        if self.link_state != Link::Up {
+            // Recomputed every tick: the line counts the seconds.
+            self.connection_notice = self.link_state.status_line(Instant::now());
+        }
     }
 
     /// Non-blocking drain of every message the match session has sent
@@ -128,6 +154,7 @@ impl App {
     /// render tick, mirroring the ~100ms `event::poll` cadence the render
     /// loop already uses for keyboard input.
     pub fn drain_messages(&mut self) {
+        self.read_link();
         loop {
             let message = match self.rx.try_recv() {
                 Ok(message) => message,
@@ -138,6 +165,9 @@ impl App {
                 // socket looked like a very quiet opponent.
                 Err(mpsc::error::TryRecvError::Disconnected) => {
                     self.connection_lost = true;
+                    if self.connection_notice.is_none() && !self.is_game_over() {
+                        self.connection_notice = Some("Connection lost. Press q to quit.".to_string());
+                    }
                     break;
                 }
             };
@@ -756,8 +786,8 @@ mod tests {
     }
 }
 
-/// `App`'s half of reconnection: it notices the closed channel, holds
-/// submissions, and picks up where the new channel starts.
+/// `App`'s half of reconnection: it follows the link, holds submissions
+/// while it is down, and carries on down the same channels when it is up.
 #[cfg(test)]
 mod connection_tests {
     use super::*;
@@ -907,26 +937,42 @@ mod connection_tests {
     }
 
     #[test]
-    fn nothing_is_submitted_while_the_connection_is_down_and_the_new_channel_takes_over() {
-        let (mut app, server_tx, mut old_client_rx) = app_with_channels();
+    fn nothing_is_submitted_while_the_link_is_down_and_the_same_channel_carries_on() {
+        let (mut app, server_tx, mut client_rx) = app_with_channels();
+        let (link_tx, link) = watch::channel(Link::Up);
+        app.follow_link(link);
         let view = a_view(&app.registry);
         server_tx.send(ServerMessage::StateUpdate(Box::new(view.clone()))).unwrap();
-        drop(server_tx);
+        app.drain_messages();
+        let lost_at = Instant::now();
+        link_tx.send_replace(Link::Reconnecting { attempts: 1, since: lost_at });
         app.drain_messages();
         assert!(app.connection_lost);
         assert!(app.view.is_some(), "the last view stays on screen");
+        assert!(app.connection_notice.as_deref().is_some_and(|notice| notice.contains("reconnecting (attempt 1")), "{:?}", app.connection_notice);
 
         app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
-        assert!(old_client_rx.try_recv().is_err(), "an action chosen from a possibly-stale view is not sent");
+        assert!(client_rx.try_recv().is_err(), "an action chosen from a possibly-stale view is not sent");
 
-        let (new_server_tx, new_rx) = mpsc::unbounded_channel();
-        let (new_tx, mut new_client_rx) = mpsc::unbounded_channel();
-        new_server_tx.send(ServerMessage::StateUpdate(Box::new(view))).unwrap();
-        app.reconnected(new_tx, new_rx);
+        link_tx.send_replace(Link::Up);
+        server_tx.send(ServerMessage::StateUpdate(Box::new(view))).unwrap();
+        app.drain_messages();
         assert!(!app.connection_lost);
+        assert_eq!(app.connection_notice, None);
         assert!(app.action_log.last().unwrap().contains("reconnected"));
 
         app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
-        assert!(matches!(new_client_rx.try_recv(), Ok(ClientMessage::SubmitAction(_))), "submissions go down the new channel");
+        assert!(matches!(client_rx.try_recv(), Ok(ClientMessage::SubmitAction(_))), "submissions go down the same channel");
+    }
+
+    #[test]
+    fn a_link_down_for_good_says_why() {
+        let (mut app, _server_tx, _client_rx) = app_with_channels();
+        let (link_tx, link) = watch::channel(Link::Up);
+        app.follow_link(link);
+        link_tx.send_replace(Link::Down(netrunner_client::connection::ConnectionError::Rejected("the match is over".into())));
+        app.drain_messages();
+        assert!(app.connection_lost);
+        assert!(app.connection_notice.as_deref().is_some_and(|notice| notice.contains("the match is over")));
     }
 }

@@ -1,0 +1,20 @@
+[package]
+name = "netrunner_protocol"
+version = "0.1.0"
+edition = "2024"
+license.workspace = true
+repository.workspace = true
+
+# The wire messages between a server and a client, and nothing else. Its
+# own crate because both ends need them and neither may depend on the
+# other: `netrunner_client` (and through it the desktop) would otherwise
+# pull in the whole server — its WebSocket accept loop, its rating book
+# and its CLI parser — to name `ServerMessage` (Phase 4 §5's open
+# question, settled by Phase 4 §6 item 2).
+[dependencies]
+netrunner_core = { path = "../netrunner_core" }
+# `GameEndReason` and the masked history entries live beside the driver
+# that produces them.
+netrunner_session = { path = "../netrunner_session" }
+serde = { workspace = true }
+uuid = { version = "1", features = ["v4", "serde"] }
