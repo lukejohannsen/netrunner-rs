@@ -5650,6 +5650,29 @@ the same kind of work, so they go on this list:
 Not borrowed, with the reasons in the doc: slash commands that edit state,
 and diffs on the wire.
 
+## 9. Decklists searched and downloaded from NetrunnerDB — IDEA, not started (26 September 2026)
+
+The person's idea, recorded rather than built. A person should be able to
+search NetrunnerDB's published decklists (by identity, card, format or
+name) from the deck builder in either client, and download one as a saved
+deck. Today a list only arrives by pasting its text (`deck_builder`'s
+import, §5).
+
+- **NetrunnerDB has the API.** v2 has `/api/2.0/public/decklist/{id}` and
+  `/decklists/by_date/{date}`, and the v3 API
+  (`api.netrunnerdb.com/api/v3/public/decklists`) takes filters. Which of
+  them searches by card or identity is read off the API when this is
+  taken. Nothing here has been tried yet.
+- **The fetch belongs in `netrunner_card_sync`**, the only crate that does
+  network I/O for card data, and a downloaded list goes through the same
+  `Imported` path a pasted one does. A list is then judged the way a pasted
+  list is: legal in a format, or holding cards the engine does not play yet
+  (`Standing::Unplayable`).
+- **The same fetch serves the NSG pool plan**
+  ([nsg-card-pool.md](nsg-card-pool.md)), where current Standard tournament
+  lists join the `Sample` pool once Standard is complete. Whichever lands
+  first builds the fetch for both.
+
 ### 4bb. The mulligan box draws its cards at a reading size, and a glowing button's label shows — DONE (24 September 2026)
 
 A report from play: at the start of a game the mulligan box was huge and
