@@ -1,0 +1,91 @@
+{
+  "id": "borrowed_time",
+  "name": "Borrowed Time",
+  "side": "Runner",
+  "category": "Sweep",
+  "description": "Not a published list: built so the sweeps reach Vantage Point's first Criminal cards — Vic, Sell Out, Borrowed Goods, Rotary — on Stolen Goods' frame. Legal in every format but Snapshot.",
+  "style": "aggressive",
+  "identity": "virtual_intelligence_p_i_you_can_call_me_vic",
+  "cards": [
+    {
+      "card": "jailbreak",
+      "count": 3
+    },
+    {
+      "card": "mutual_favor",
+      "count": 2
+    },
+    {
+      "card": "overclock",
+      "count": 3
+    },
+    {
+      "card": "sure_gamble",
+      "count": 3
+    },
+    {
+      "card": "tread_lightly",
+      "count": 3
+    },
+    {
+      "card": "vrcation",
+      "count": 3
+    },
+    {
+      "card": "docklands_pass",
+      "count": 2
+    },
+    {
+      "card": "pennyshaver",
+      "count": 3
+    },
+    {
+      "card": "t400_memory_diamond",
+      "count": 1
+    },
+    {
+      "card": "red_team",
+      "count": 3
+    },
+    {
+      "card": "smartware_distributor",
+      "count": 3
+    },
+    {
+      "card": "verbal_plasticity",
+      "count": 2
+    },
+    {
+      "card": "buzzsaw",
+      "count": 2
+    },
+    {
+      "card": "carmen",
+      "count": 2
+    },
+    {
+      "card": "marjanah",
+      "count": 2
+    },
+    {
+      "card": "conduit",
+      "count": 1
+    },
+    {
+      "card": "leech",
+      "count": 2
+    },
+    {
+      "card": "sell_out",
+      "count": 3
+    },
+    {
+      "card": "borrowed_goods",
+      "count": 2
+    },
+    {
+      "card": "rotary",
+      "count": 1
+    }
+  ]
+}

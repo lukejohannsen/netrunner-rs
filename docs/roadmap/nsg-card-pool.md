@@ -415,6 +415,68 @@ Division.
 - `CardSubtype::printed` is the word as the card prints it, so the prose
   says "fracter", not a Rust name.
 
+#### Stage 1b — the first thirteen cards (26 September 2026)
+
+`feat/vp-stage-1b-first-cards`: Virtual Intelligence P.I. ("Vic"), Sell
+Out, Borrowed Goods, Rotary, Méliès City Luxury Line, Sleipnir, Retirement
+Plan, Nihilo Agent, Grubber, Paywall, Scapegoat, Flywheel, Vulture Fund.
+**No new `Effect`, `Trigger` or `EffectRequirement`.** Vantage Point 13 of
+66; `VP_UNIMPLEMENTED` 66 → 53.
+
+- **One engine change.** An ability a card names the *other* side as the
+  user of now works in both directions. Before, only N-Pot's direction
+  worked: the Runner using a Corp card's ability. Rotary's "[click],
+  2[credit]: Trash this hardware. Only the Corp can use this ability" is a
+  Runner card the Corp uses on its own turn, and `engine::activate_ability`
+  read the user off the phase before it found the card. On the Corp's turn
+  it looked only at the Corp's installs, so the Rotary was never found.
+  The card is now found where the install is, and `used_by` names the user.
+  The phase and priority checks after it still hold that user to their own
+  turn. `legal_actions_for` offers it to the Corp and not the Runner, and a
+  test pins both.
+- **Méliès City Luxury Line is the first card to set `steal_cost`**, a
+  click, and the steal path that was built for it and never exercised
+  holds. The test is one steal with a click to spare and one without.
+- **The Sweep decks** are three, none of them published:
+  - **Retirement Package**: Engineering the Future with the HB and Weyland
+    cards, on Discretion Advised's frame.
+  - **Paid Content**: Making News with the NBN cards, on Hyper Velocity's
+    frame.
+  - **Borrowed Time**: Vic with the Criminal cards, on Stolen Goods' frame.
+
+  The two Corp identities are Core Set cards no deck used. Borrowed Time
+  is legal in every format but Snapshot; the other two in Eternal and
+  Casual (pinned in `every_shipped_deck_is_legal_in_the_formats_pinned_for_it`).
+- **What the new decks surfaced.** They shifted `sweep_decks_for_seed`'s
+  rotation, and `board::diff`'s transitions test, which plays its first
+  six seeds, reached a Petty Cash played from Archives for the first time.
+  The diff had drawn it as a move back into Archives as well as the move to
+  removed from the game, so it is fixed in a commit of its own. Three tests
+  that had written Startup as "System Gateway and Elevation" now ask the
+  format's pool instead.
+- **Fidelity limits:**
+  - Rotary's "whenever you breach HQ or R&D" is a successful run on
+    either, as Docklands Pass's is.
+  - Nihilo Agent's "load … when it is empty, trash it" is three counters
+    and a self-trash after its own removal. Nothing else in the pool
+    removes its counters.
+  - Sleipnir's "from HQ or Archives" is a choice of zone, then a card.
+- **DSL ratio (`pool_status.py`): 25 of 70 `Effect` variants single-use,
+  2 unused** (`MillRnDAmount`, `Trace`), over 197 card files. It was 26
+  and 3: `RemoveBadPublicity` left the unused list for Nihilo Agent and
+  Scapegoat.
+- **Measured.** Both sweeps at 256 seeds are green. `coverage_identical.py
+  main`: the random seatings are **identical**, by view and by index; the
+  heuristic ones moved across the pool (Send a Message scored 44 → 24,
+  Public Access Plaza's turn starts 216 → 133, …). **That is
+  `determinize`, not a rule:** its Corp sample draws hidden cards from
+  every playable Corp card in the registry, and thirteen new ones changed
+  what the heuristic imagines in HQ and R&D. Checked, not inferred: this
+  branch against a copy without the ability-lookup change is identical in
+  all four shapes, so the engine change moves nothing. **Every card a stage
+  adds will do the same**, so a stage's heuristic reports are not diffed
+  against the last stage's — the Elevation rule, for the same reason.
+
 ### 2. Rebellion Without Rehearsal — 65 cards (C 7 / V 43 / M 15)
 
 **Decks:** Sweep decks on its three identities.

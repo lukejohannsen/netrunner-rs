@@ -434,6 +434,13 @@ mod tests {
             ("hostile_bid", &neither),
             ("pay_as_you_go", &neither),
             ("safety_net", &neither),
+            // Vantage Point Stage 1b's two Corp decks sit on Core Set
+            // identities (Engineering the Future, Making News), which no
+            // current pool holds. Its Runner deck, Borrowed Time, is every
+            // format but Snapshot: Vic and Stolen Goods' frame are all
+            // Startup cards.
+            ("retirement_package", &neither),
+            ("paid_content", &neither),
             ("quick_returns", &not_startup),
             ("the_syndicate_boosted", &not_startup),
             ("the_syndicate_starter", &not_startup),

@@ -1,0 +1,38 @@
+{
+  "id": "borrowed_goods",
+  "title": "Borrowed Goods",
+  "side": "Runner",
+  "card_type": "Hardware",
+  "cost": 0,
+  "continuous": [
+    {
+      "kind": {
+        "Memory": {
+          "per": 1
+        }
+      },
+      "applies_to": "Controller",
+      "text": "+1[mu]"
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnInstall",
+      "subject": "This",
+      "effects": [
+        {
+          "EffectIf": {
+            "condition": {
+              "Not": "IsTagged"
+            },
+            "effect": {
+              "GiveTags": 1
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "numeric_id": 36013,
+  "is_playable": true
+}

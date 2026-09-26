@@ -1,0 +1,84 @@
+{
+  "id": "sleipnir",
+  "title": "Sleipnir",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "CodeGate"
+  },
+  "cost": 4,
+  "strength": 4,
+  "subroutines": [
+    {
+      "text": "You may draw 1 card.",
+      "effect": {
+        "PresentChoice": {
+          "chooser": "Corp",
+          "options": [
+            {
+              "DrawCards": [
+                "Corp",
+                1
+              ]
+            },
+            {
+              "Sequence": []
+            }
+          ],
+          "texts": [
+            "You may draw 1 card",
+            ""
+          ]
+        }
+      }
+    },
+    {
+      "text": "You may shuffle 1 card from HQ or Archives into R&D.",
+      "effect": {
+        "PresentChoice": {
+          "chooser": "Corp",
+          "options": [
+            {
+              "PromptChooseCards": {
+                "side": "Corp",
+                "source": "OwnHq",
+                "filter": "Any",
+                "min": 1,
+                "max": 1,
+                "reveal": false,
+                "shuffle_after": true,
+                "destination": "OwnRAndD"
+              }
+            },
+            {
+              "PromptChooseCards": {
+                "side": "Corp",
+                "source": "OwnArchives",
+                "filter": "Any",
+                "min": 1,
+                "max": 1,
+                "reveal": false,
+                "shuffle_after": true,
+                "destination": "OwnRAndD"
+              }
+            },
+            {
+              "Sequence": []
+            }
+          ],
+          "texts": [
+            "shuffle 1 card from HQ or Archives into R&D — from HQ",
+            "shuffle 1 card from HQ or Archives into R&D — from Archives",
+            ""
+          ]
+        }
+      }
+    },
+    {
+      "text": "End the run.",
+      "effect": "EndTheRun"
+    }
+  ],
+  "triggers": [],
+  "numeric_id": 36030,
+  "is_playable": true
+}

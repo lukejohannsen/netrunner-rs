@@ -1,0 +1,95 @@
+{
+  "id": "paid_content",
+  "name": "Paid Content",
+  "side": "Corp",
+  "category": "Sweep",
+  "description": "Not a published list: built so the sweeps reach Vantage Point's first NBN cards — Nihilo Agent, Grubber, Paywall, Scapegoat — on Hyper Velocity's frame, under Making News. Eternal-legal only.",
+  "style": "rush",
+  "identity": "nbn_making_news",
+  "cards": [
+    {
+      "card": "orbital_superiority",
+      "count": 3
+    },
+    {
+      "card": "send_a_message",
+      "count": 3
+    },
+    {
+      "card": "superconducting_hub",
+      "count": 1
+    },
+    {
+      "card": "tomorrows_headline",
+      "count": 1
+    },
+    {
+      "card": "spin_doctor",
+      "count": 1
+    },
+    {
+      "card": "hansei_review",
+      "count": 1
+    },
+    {
+      "card": "hedge_fund",
+      "count": 3
+    },
+    {
+      "card": "neurospike",
+      "count": 2
+    },
+    {
+      "card": "predictive_planogram",
+      "count": 3
+    },
+    {
+      "card": "public_trail",
+      "count": 3
+    },
+    {
+      "card": "amaze_amusements",
+      "count": 2
+    },
+    {
+      "card": "manegarm_skunkworks",
+      "count": 2
+    },
+    {
+      "card": "ping",
+      "count": 3
+    },
+    {
+      "card": "funhouse",
+      "count": 3
+    },
+    {
+      "card": "whitespace",
+      "count": 1
+    },
+    {
+      "card": "tithe",
+      "count": 3
+    },
+    {
+      "card": "paywall",
+      "count": 3
+    },
+    {
+      "card": "grubber",
+      "count": 2
+    },
+    {
+      "card": "scapegoat",
+      "count": 2
+    },
+    {
+      "card": "nihilo_agent",
+      "count": 2
+    },
+    {
+      "card": "offworld_office",
+      "count": 1
+    }
+  ]
+}

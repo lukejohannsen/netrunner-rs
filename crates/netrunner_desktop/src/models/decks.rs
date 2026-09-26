@@ -397,8 +397,17 @@ mod tests {
         shelf.apply(Intent::Faction(None), book);
         shelf.apply(Intent::Legal(Some(NsgFormat::Startup)), book);
         let legal = count(&shelf);
-        assert!(legal > 0 && legal < all, "the test decks are Eternal-only: {legal} of {all}");
-        assert!(shelf.sections().iter().all(|section| section.title != "Test decks"));
+        assert!(legal > 0 && legal < all, "most test decks are Eternal-only: {legal} of {all}");
+        // The one test deck that is Startup-legal (Borrowed Time, all
+        // Startup cards) stays; every Eternal-only one is filtered out.
+        let test_decks: Vec<String> = shelf
+            .sections()
+            .iter()
+            .filter(|section| section.title == "Test decks")
+            .flat_map(|section| section.rows.clone())
+            .map(|i| shelf.rows[i].deck.id.clone())
+            .collect();
+        assert_eq!(test_decks, ["borrowed_time"]);
     }
 
     #[test]

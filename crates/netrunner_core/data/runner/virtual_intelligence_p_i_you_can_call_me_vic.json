@@ -1,0 +1,43 @@
+{
+  "id": "virtual_intelligence_p_i_you_can_call_me_vic",
+  "title": "Virtual Intelligence, P.I.: “You Can Call Me Vic”",
+  "side": "Runner",
+  "card_type": "Identity",
+  "cost": 0,
+  "min_deck_size": 45,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "AllOf": [
+          {
+            "Clicks": 1
+          },
+          {
+            "Credits": 1
+          }
+        ]
+      },
+      "requirement": "OncePerTurn",
+      "effect": {
+        "Sequence": [
+          {
+            "DrawCards": [
+              "Runner",
+              1
+            ]
+          },
+          {
+            "RemoveTags": {
+              "Fixed": 1
+            }
+          }
+        ]
+      },
+      "text": "Once per turn → [click], 1[credit]: Draw 1 card and remove 1 tag."
+    }
+  ],
+  "numeric_id": 36009,
+  "is_playable": true
+}

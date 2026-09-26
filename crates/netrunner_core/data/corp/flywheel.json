@@ -1,0 +1,81 @@
+{
+  "id": "flywheel",
+  "title": "Flywheel",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Sentry"
+  },
+  "cost": 2,
+  "strength": 3,
+  "subroutines": [
+    {
+      "text": "Gain 1[credit]. You may draw 1 card.",
+      "effect": {
+        "Sequence": [
+          {
+            "GainCredits": [
+              "Corp",
+              1
+            ]
+          },
+          {
+            "PresentChoice": {
+              "chooser": "Corp",
+              "options": [
+                {
+                  "DrawCards": [
+                    "Corp",
+                    1
+                  ]
+                },
+                {
+                  "Sequence": []
+                }
+              ],
+              "texts": [
+                "You may draw 1 card",
+                ""
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "text": "Gain 1[credit]. You may draw 1 card.",
+      "effect": {
+        "Sequence": [
+          {
+            "GainCredits": [
+              "Corp",
+              1
+            ]
+          },
+          {
+            "PresentChoice": {
+              "chooser": "Corp",
+              "options": [
+                {
+                  "DrawCards": [
+                    "Corp",
+                    1
+                  ]
+                },
+                {
+                  "Sequence": []
+                }
+              ],
+              "texts": [
+                "You may draw 1 card",
+                ""
+              ]
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "triggers": [],
+  "numeric_id": 36059,
+  "is_playable": true
+}

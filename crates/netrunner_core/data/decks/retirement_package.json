@@ -1,0 +1,87 @@
+{
+  "id": "retirement_package",
+  "name": "Retirement Package",
+  "side": "Corp",
+  "category": "Sweep",
+  "description": "Not a published list: built so the sweeps reach Vantage Point's first Haas-Bioroid and Weyland cards — Méliès City Luxury Line, Sleipnir, Retirement Plan, Flywheel, Vulture Fund — on Discretion Advised's frame, under Engineering the Future. Eternal-legal only.",
+  "style": "glacier",
+  "identity": "haas_bioroid_engineering_the_future",
+  "cards": [
+    {
+      "card": "offworld_office",
+      "count": 3
+    },
+    {
+      "card": "send_a_message",
+      "count": 3
+    },
+    {
+      "card": "nico_campaign",
+      "count": 3
+    },
+    {
+      "card": "government_subsidy",
+      "count": 3
+    },
+    {
+      "card": "hedge_fund",
+      "count": 3
+    },
+    {
+      "card": "predictive_planogram",
+      "count": 3
+    },
+    {
+      "card": "seamless_launch",
+      "count": 2
+    },
+    {
+      "card": "manegarm_skunkworks",
+      "count": 2
+    },
+    {
+      "card": "bran_1_0",
+      "count": 2
+    },
+    {
+      "card": "palisade",
+      "count": 1
+    },
+    {
+      "card": "pharos",
+      "count": 1
+    },
+    {
+      "card": "whitespace",
+      "count": 3
+    },
+    {
+      "card": "ansel_1_0",
+      "count": 3
+    },
+    {
+      "card": "tithe",
+      "count": 3
+    },
+    {
+      "card": "flywheel",
+      "count": 2
+    },
+    {
+      "card": "vulture_fund",
+      "count": 1
+    },
+    {
+      "card": "retirement_plan",
+      "count": 2
+    },
+    {
+      "card": "sleipnir",
+      "count": 3
+    },
+    {
+      "card": "melies_city_luxury_line",
+      "count": 2
+    }
+  ]
+}

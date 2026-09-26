@@ -92,9 +92,14 @@ pub fn transitions(before: &ClientView, after: &ClientView, entry: &PublicHistor
             GameEvent::EventPlayed { card, .. } => {
                 out.push(Transition::CardMoved { card: Some(card.clone()), install: None, from: Zone::Hand(Side::Runner), to: Zone::Discard(Side::Runner) });
             }
-            GameEvent::OperationPlayed { card, from_archives, .. } => {
-                let from = if *from_archives { Zone::Discard(Side::Corp) } else { Zone::Hand(Side::Corp) };
-                out.push(Transition::CardMoved { card: Some(card.clone()), install: None, from, to: Zone::Discard(Side::Corp) });
+            // One played out of Archives moves nowhere of its own: it leaves
+            // the game after it resolves (Petty Cash), and the engine's
+            // `CardRemovedFromGame` for it is the move, Archives to removed
+            // from the game. Named here as a second move back into Archives,
+            // it claimed a place the card was not in.
+            GameEvent::OperationPlayed { from_archives: true, .. } => {}
+            GameEvent::OperationPlayed { card, .. } => {
+                out.push(Transition::CardMoved { card: Some(card.clone()), install: None, from: Zone::Hand(Side::Corp), to: Zone::Discard(Side::Corp) });
             }
             GameEvent::CardDiscarded { side, card } => {
                 out.push(Transition::CardMoved { card: Some(card.clone()), install: None, from: Zone::Hand(*side), to: Zone::Discard(*side) });

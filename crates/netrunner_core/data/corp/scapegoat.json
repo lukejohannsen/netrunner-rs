@@ -1,0 +1,43 @@
+{
+  "id": "scapegoat",
+  "title": "Scapegoat",
+  "side": "Corp",
+  "card_type": "Operation",
+  "cost": 0,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Runner",
+            "options": [
+              {
+                "RemoveBadPublicity": 2
+              },
+              {
+                "PromptChooseCards": {
+                  "side": "Corp",
+                  "source": "OpponentInstalled",
+                  "filter": "Any",
+                  "min": 1,
+                  "max": 1,
+                  "reveal": false,
+                  "shuffle_after": true,
+                  "destination": "OpponentDeck"
+                }
+              }
+            ],
+            "texts": [
+              "Remove 2 bad publicity",
+              "Choose 1 installed Runner card. The Runner shuffles it into the stack"
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "numeric_id": 36054,
+  "is_playable": true
+}

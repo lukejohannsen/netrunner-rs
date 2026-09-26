@@ -1,0 +1,101 @@
+{
+  "id": "rotary",
+  "title": "Rotary",
+  "side": "Runner",
+  "card_type": "Hardware",
+  "cost": 3,
+  "continuous": [
+    {
+      "kind": {
+        "Memory": {
+          "per": 1
+        }
+      },
+      "applies_to": "Controller",
+      "text": "+1[mu]"
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnSuccessfulRun",
+      "subject": "Any",
+      "when": {
+        "Server": [
+          "Hq"
+        ]
+      },
+      "effects": [
+        {
+          "OfferPaidChoice": {
+            "side": "Runner",
+            "cost": {
+              "TakeTags": 1
+            },
+            "if_paid": {
+              "AddAdditionalAccess": {
+                "server": "Hq",
+                "count": 1
+              }
+            },
+            "if_declined": {
+              "Sequence": []
+            },
+            "text": "you may take 1 tag to access 1 additional card"
+          }
+        }
+      ]
+    },
+    {
+      "trigger": "OnSuccessfulRun",
+      "subject": "Any",
+      "when": {
+        "Server": [
+          "RnD"
+        ]
+      },
+      "effects": [
+        {
+          "OfferPaidChoice": {
+            "side": "Runner",
+            "cost": {
+              "TakeTags": 1
+            },
+            "if_paid": {
+              "AddAdditionalAccess": {
+                "server": "RnD",
+                "count": 1
+              }
+            },
+            "if_declined": {
+              "Sequence": []
+            },
+            "text": "you may take 1 tag to access 1 additional card"
+          }
+        }
+      ]
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "used_by": "Corp",
+      "cost": {
+        "AllOf": [
+          {
+            "Clicks": 1
+          },
+          {
+            "Credits": 2
+          }
+        ]
+      },
+      "requirement": "IsTagged",
+      "effect": {
+        "TrashCard": "ThisCard"
+      },
+      "text": "[click], 2[credit]: Trash this hardware. Only the Corp can use this ability, and only if the Runner is tagged."
+    }
+  ],
+  "numeric_id": 36014,
+  "is_playable": true
+}
