@@ -67,7 +67,7 @@ impl Identity {
     }
 
     pub fn public_key(&self) -> PublicKey {
-        PublicKey(self.0.verifying_key())
+        PublicKey(self.0.verifying_key().to_bytes())
     }
 
     /// The answer to a server's challenge: this key's signature over
@@ -102,8 +102,13 @@ impl fmt::Debug for Identity {
 /// A public key: who someone is to a server. On the wire and in files it
 /// is its base32 text (`Display`, `FromStr`); a string that is not a valid
 /// Ed25519 point is refused when it is read, never later when it is used.
-#[derive(Clone, Copy, PartialEq, Eq, Hash)]
-pub struct PublicKey(VerifyingKey);
+///
+/// **Held as its 32 bytes**, checked once when made, rather than as the
+/// decompressed `VerifyingKey`: that is about 200 bytes, and a key rides in
+/// messages, errors and events that are moved about far more often than
+/// a proof is verified.
+#[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct PublicKey([u8; 32]);
 
 impl PublicKey {
     /// The id a server's rating book files this key under.
@@ -121,11 +126,11 @@ impl PublicKey {
     }
 
     pub fn to_bytes(&self) -> [u8; 32] {
-        self.0.to_bytes()
+        self.0
     }
 
     pub fn from_bytes(bytes: &[u8; 32]) -> Result<Self, IdentityError> {
-        VerifyingKey::from_bytes(bytes).map(PublicKey).map_err(|error| IdentityError::BadKey(error.to_string()))
+        VerifyingKey::from_bytes(bytes).map(|_| PublicKey(*bytes)).map_err(|error| IdentityError::BadKey(error.to_string()))
     }
 
     /// Whether `signature` is this key's answer to `nonce` from the server
@@ -134,7 +139,9 @@ impl PublicKey {
     /// non-canonical encoding) is refused.
     pub fn verify_proof(&self, server_key: &PublicKey, nonce: &Nonce, signature: &Signature) -> Result<(), IdentityError> {
         let signature = ed25519_dalek::Signature::from_bytes(&signature.0);
-        self.0.verify_strict(&auth_statement(server_key, nonce), &signature).map_err(|_| IdentityError::Unproved)
+        // Checked when this key was made, so it decompresses.
+        let key = VerifyingKey::from_bytes(&self.0).map_err(|_| IdentityError::Unproved)?;
+        key.verify_strict(&auth_statement(server_key, nonce), &signature).map_err(|_| IdentityError::Unproved)
     }
 }
 
