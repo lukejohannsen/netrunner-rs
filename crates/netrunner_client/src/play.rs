@@ -1418,7 +1418,7 @@ mod lesson_tests {
             tokio::spawn(server.run());
             url
         });
-        let hello = crate::remote::connect_message("tester", Some(Side::Corp), None, None);
+        let hello = crate::remote::connect_message("tester", Some(Side::Corp), None, None, None);
         let joined = runtime.block_on(crate::remote::connect(&url, crate::connection::Goal::Play(hello), |_| {})).unwrap();
         let registry = Arc::new(crate::decks::sample_deck_registry());
         let mut handle = MatchHandle::start_remote(registry, joined, Side::Runner).unwrap();

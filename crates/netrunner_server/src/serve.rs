@@ -27,9 +27,18 @@
 //! `ResumeRejected` rather than answered with a `MatchJoined` for a match
 //! that no longer exists.
 //!
+//! **A lobby per format.** A daemon offers one or more formats
+//! (`ServeOptions::formats`), and a player is paired only with a player
+//! in the same format, their deck checked against it — so one public
+//! server holds a Startup queue and a Standard queue side by side, rather
+//! than an operator running a daemon for each. Pairing within a lobby is
+//! whoever is waiting: there is no list of waiters to pick an opponent
+//! from (declined, 26 September 2026), and a named room is how two people
+//! who know each other meet.
+//!
 //! **The lobby is a queue, not a slot, and a waiter's token is the same
 //! token.** Under `ServeBotKind::None` a `Connect` either pairs with the
-//! first waiter in the same room or joins the queue and is told so
+//! first waiter in the same format and room or joins the queue and is told so
 //! (`ServerMessage::Queued`). The token issued there is the one
 //! `MatchJoined` will carry later, so `Resume` while queued swaps the
 //! socket under the queue entry with nothing new for the client to hold.
@@ -60,7 +69,7 @@ use netrunner_core::rules::{Deck, GameState, Side};
 use netrunner_rating::{Outcome, RatingBook, Track};
 
 use crate::match_session::{MatchSession, PlayerSlot, ReattachHandle, TurnTimeout, DEFAULT_RECONNECT_GRACE};
-use crate::protocol::{ClientMessage, MatchSummary, ServerMessage};
+use crate::protocol::{ClientMessage, Lobby, MatchSummary, ServerMessage};
 use crate::fixtures::DealtMatchup;
 use crate::{fixtures, net};
 
@@ -122,11 +131,14 @@ pub struct ServeOptions {
     /// useful — configuration.
     pub corp_deck: Option<String>,
     pub runner_deck: Option<String>,
-    /// The competitive format every deck this daemon deals must be legal
-    /// in, checked once at `bind`. Startup by default, matching
-    /// `netrunner_cli --format`, so the two agree on what "legal" means
-    /// without the operator having to say it twice.
-    pub format: NsgFormat,
+    /// The lobbies: every format this daemon pairs players in, each a
+    /// queue of its own. A `Connect` naming no format joins the first,
+    /// which is what a client built before lobbies does. Every deck the
+    /// daemon can deal — pinned or rotating — must be legal in all of
+    /// them, checked once at `bind`. Every format by default, Startup
+    /// first, matching `netrunner_cli --format`'s default; a game hosted
+    /// from a client's menu offers only the host's.
+    pub formats: Vec<NsgFormat>,
     /// Where the daemon keeps its `netrunner_rating::RatingBook`. Loaded
     /// at bind, rewritten after every rated match (temp file plus
     /// rename, like the deck store and the card cache), and the only
@@ -150,11 +162,14 @@ impl Default for ServeOptions {
             turn_timeout: None,
             corp_deck: None,
             runner_deck: None,
-            format: NsgFormat::Startup,
+            formats: ALL_FORMATS.to_vec(),
             ratings_file: None,
         }
     }
 }
+
+/// Every format, in the order a daemon offers them by default.
+pub const ALL_FORMATS: [NsgFormat; 4] = [NsgFormat::Startup, NsgFormat::Standard, NsgFormat::Eternal, NsgFormat::Snapshot];
 
 /// A pinned decklist per side, each `None` if that side rotates.
 #[derive(Clone, Default)]
@@ -259,6 +274,7 @@ struct MatchEntry {
     runner: String,
     corp_deck: String,
     runner_deck: String,
+    format: NsgFormat,
     started_at: Instant,
     handle: ReattachHandle,
 }
@@ -270,6 +286,8 @@ struct PendingHuman {
     player_name: String,
     preferred_side: Option<Side>,
     room: Option<String>,
+    /// The lobby: a waiter pairs only within its own format.
+    format: NsgFormat,
     /// The deck this player brought, already checked at `Connect`. Its
     /// side is a requirement where `preferred_side` is only a preference.
     deck: Option<Box<DeckFile>>,
@@ -371,10 +389,16 @@ impl Registry {
                     corp_deck: entry.corp_deck.clone(),
                     runner_deck: entry.runner_deck.clone(),
                     started_secs_ago: now.saturating_duration_since(entry.started_at).as_secs(),
+                    format: Some(entry.format),
                 })
                 .collect(),
             waiting_in_lobby: self.lobby.len(),
             max_matches: options.max_matches,
+            lobbies: options
+                .formats
+                .iter()
+                .map(|&format| Lobby { format, waiting: self.lobby.iter().filter(|waiter| waiter.format == format && waiter.room.is_none()).count() })
+                .collect(),
         }
     }
 }
@@ -494,6 +518,9 @@ impl Server {
         if options.bot_level.is_some() && options.bot_runner == ServeBotKind::None {
             return Err(std::io::Error::other("--bot-level seats a bot, but --bot-runner none pairs humans; drop one of them"));
         }
+        if options.formats.is_empty() {
+            return Err(std::io::Error::other("a daemon needs at least one format to pair players in"));
+        }
         Ok(())
     }
 
@@ -504,17 +531,22 @@ impl Server {
             None => RatingBook::default(),
         };
         let cards = fixtures::sample_registry();
-        let pinned = PinnedDecks {
-            corp: pin_deck(options.corp_deck.as_deref(), Side::Corp, &cards, options.format)?,
-            runner: pin_deck(options.runner_deck.as_deref(), Side::Runner, &cards, options.format)?,
-        };
+        let mut pinned = PinnedDecks::default();
+        for &format in &options.formats {
+            pinned = PinnedDecks {
+                corp: pin_deck(options.corp_deck.as_deref(), Side::Corp, &cards, format)?,
+                runner: pin_deck(options.runner_deck.as_deref(), Side::Runner, &cards, format)?,
+            };
+        }
         // The rotating pool needs the same gate as a pinned deck, and for
         // a better reason: an operator who pins a deck names it and would
         // see it refused, while a rotating daemon deals whatever the seed
         // picks and would only find out mid-match. Checked once here
         // rather than per match — the pool is embedded and cannot change
         // while the process runs.
-        check_rotating_pool(&cards, options.format)?;
+        for &format in &options.formats {
+            check_rotating_pool(&cards, format)?;
+        }
         let shared = Shared {
             cards,
             registry: Arc::new(StdMutex::new(Registry { ratings, ..Registry::default() })),
@@ -583,7 +615,7 @@ impl Acceptor {
 /// answered inline without leaving this loop, so a client can look before
 /// it joins; anything else is skipped until one of these arrives.
 enum Handshake {
-    Connect { player_name: String, preferred_side: Option<Side>, room: Option<String>, deck: Option<Box<DeckFile>> },
+    Connect { player_name: String, preferred_side: Option<Side>, room: Option<String>, deck: Option<Box<DeckFile>>, format: Option<NsgFormat> },
     Resume { session_token: Uuid },
     Spectate { match_id: Uuid },
 }
@@ -597,8 +629,8 @@ where
     let handshake = loop {
         match ws_stream.next().await {
             Some(Ok(WsMessage::Text(text))) => match serde_json::from_str::<ClientMessage>(&text) {
-                Ok(ClientMessage::Connect { player_name, preferred_side, room, deck }) => {
-                    break Handshake::Connect { player_name, preferred_side, room, deck };
+                Ok(ClientMessage::Connect { player_name, preferred_side, room, deck, format }) => {
+                    break Handshake::Connect { player_name, preferred_side, room, deck, format };
                 }
                 Ok(ClientMessage::Resume { session_token }) => break Handshake::Resume { session_token },
                 Ok(ClientMessage::Spectate { match_id }) => break Handshake::Spectate { match_id },
@@ -613,16 +645,24 @@ where
     };
 
     match handshake {
-        Handshake::Connect { player_name, preferred_side, room, deck } => {
-            tracing::info!(%player_name, ?preferred_side, ?room, deck = deck.as_ref().map(|deck| deck.id.as_str()), "client connected");
+        Handshake::Connect { player_name, preferred_side, room, deck, format } => {
+            tracing::info!(%player_name, ?preferred_side, ?room, ?format, deck = deck.as_ref().map(|deck| deck.id.as_str()), "client connected");
             let (session_tx, bridge_rx) = mpsc::unbounded_channel::<ServerMessage>();
             let (bridge_tx, session_rx) = mpsc::unbounded_channel::<ClientMessage>();
             tokio::spawn(net::bridge_websocket(ws_stream, bridge_tx, bridge_rx));
+            let format = match lobby_for(format, &shared.options) {
+                Ok(format) => format,
+                Err(reason) => {
+                    tracing::info!(%player_name, %reason, "no such lobby");
+                    refuse(&session_tx, &reason);
+                    return Ok(());
+                }
+            };
             // Checked before the player reaches the lobby or a bot, so an
             // illegal deck is a refusal at the door rather than a match that
             // fails to set up in front of an opponent who waited for it.
             let preferred_side = match &deck {
-                Some(deck) => match check_brought_deck(deck, preferred_side, &shared) {
+                Some(deck) => match check_brought_deck(deck, preferred_side, format, &shared) {
                     Ok(side) => Some(side),
                     Err(reason) => {
                         tracing::info!(%player_name, deck = %deck.id, %reason, "brought deck refused");
@@ -635,8 +675,8 @@ where
             let slot = PlayerSlot::Channel { tx: session_tx.clone(), rx: session_rx };
 
             match shared.options.bot_runner {
-                ServeBotKind::None => enqueue_or_pair(&shared, player_name, preferred_side, room, deck, session_tx, slot),
-                kind => seat_vs_bot(&shared, kind, player_name, preferred_side, deck, session_tx, slot),
+                ServeBotKind::None => enqueue_or_pair(&shared, player_name, preferred_side, room, format, deck, session_tx, slot),
+                kind => seat_vs_bot(&shared, kind, player_name, preferred_side, format, deck, session_tx, slot),
             }
         }
         Handshake::Resume { session_token } => {
@@ -730,17 +770,30 @@ where
 
 const AT_CAP: &str = "the host is at its match limit";
 
+/// The lobby a `Connect` asked for: the daemon's first format when it
+/// named none, the one it named when the daemon offers it, or a refusal
+/// that names what is offered.
+fn lobby_for(asked: Option<NsgFormat>, options: &ServeOptions) -> Result<NsgFormat, String> {
+    match asked {
+        None => Ok(options.formats[0]),
+        Some(format) if options.formats.contains(&format) => Ok(format),
+        Some(format) => {
+            let offered: Vec<String> = options.formats.iter().map(|format| format!("{format:?}")).collect();
+            Err(format!("this server has no {format:?} lobby; it pairs players in {}", offered.join(", ")))
+        }
+    }
+}
+
 /// A brought deck's side, or why the daemon will not seat it: a side that
 /// contradicts `preferred_side`, or a deck either validator refuses in the
-/// daemon's format — the same `DeckFile::validate` a pinned deck and a
+/// lobby's format — the same `DeckFile::validate` a pinned deck and a
 /// local game go through, so "legal" means one thing on both ends.
-fn check_brought_deck(deck: &DeckFile, preferred_side: Option<Side>, shared: &Shared) -> Result<Side, String> {
+fn check_brought_deck(deck: &DeckFile, preferred_side: Option<Side>, format: NsgFormat, shared: &Shared) -> Result<Side, String> {
     if let Some(preferred) = preferred_side
         && preferred != deck.side
     {
         return Err(format!("you asked for the {preferred:?} seat but brought a {:?} deck", deck.side));
     }
-    let format = shared.options.format;
     deck.validate(&shared.cards, format).map_err(|error| format!("your deck {:?} is not legal in {format:?}: {error}", deck.name))?;
     Ok(deck.side)
 }
@@ -754,11 +807,13 @@ fn refuse(tx: &mpsc::UnboundedSender<ServerMessage>, reason: &str) {
     let _ = tx.send(ServerMessage::ConnectRejected { reason: reason.to_string() });
 }
 
+#[allow(clippy::too_many_arguments)]
 fn seat_vs_bot(
     shared: &Shared,
     kind: ServeBotKind,
     player_name: String,
     preferred_side: Option<Side>,
+    format: NsgFormat,
     deck: Option<Box<DeckFile>>,
     tx: mpsc::UnboundedSender<ServerMessage>,
     slot: PlayerSlot,
@@ -806,7 +861,7 @@ fn seat_vs_bot(
         Side::Corp => (human, bot),
         Side::Runner => (bot, human),
     };
-    start_match(shared, &mut registry, match_id, seed, corp, runner);
+    start_match(shared, &mut registry, match_id, seed, format, corp, runner);
 }
 
 /// `ServeBotKind::None`: pair with the first waiter in the same room, or
@@ -815,11 +870,13 @@ fn seat_vs_bot(
 /// explicit create/join protocol was rejected because a match only ever
 /// comes into being by pairing two waiters, so there is no open-match
 /// object for a second message to join.
+#[allow(clippy::too_many_arguments)]
 fn enqueue_or_pair(
     shared: &Shared,
     player_name: String,
     preferred_side: Option<Side>,
     room: Option<String>,
+    format: NsgFormat,
     deck: Option<Box<DeckFile>>,
     tx: mpsc::UnboundedSender<ServerMessage>,
     slot: PlayerSlot,
@@ -830,11 +887,11 @@ fn enqueue_or_pair(
         refuse(&tx, AT_CAP);
         return;
     }
-    let newcomer = PendingHuman { token: Uuid::new_v4(), player_name, preferred_side, room, deck, tx, slot };
+    let newcomer = PendingHuman { token: Uuid::new_v4(), player_name, preferred_side, room, format, deck, tx, slot };
 
-    // The first waiter in the room who can sit opposite: two Corp decks
-    // skip each other and both wait for a Runner.
-    let Some(index) = registry.lobby.iter().position(|waiter| waiter.room == newcomer.room && compatible(waiter, &newcomer)) else {
+    // The first waiter in the lobby and room who can sit opposite: two
+    // Corp decks skip each other and both wait for a Runner.
+    let Some(index) = registry.lobby.iter().position(|waiter| waiter.format == newcomer.format && waiter.room == newcomer.room && compatible(waiter, &newcomer)) else {
         let (token, tx) = (newcomer.token, newcomer.tx.clone());
         registry.lobby.push(newcomer);
         let position = registry.lobby.len();
@@ -844,7 +901,7 @@ fn enqueue_or_pair(
     let waiter = registry.lobby.remove(index);
     let (match_id, seed) = registry.allocate(shared.base_seed);
     let (corp, runner) = assign_sides(waiter, newcomer);
-    start_match(shared, &mut registry, match_id, seed, corp.seated(), runner.seated());
+    start_match(shared, &mut registry, match_id, seed, format, corp.seated(), runner.seated());
 }
 
 /// Sets up the state, builds the session, records the match and a ticket
@@ -855,7 +912,7 @@ fn enqueue_or_pair(
 /// ticket must exist before a client can possibly present it. Runs under
 /// the caller's registry lock so the cap it was admitted under still
 /// holds when the entry lands.
-fn start_match(shared: &Shared, registry: &mut Registry, match_id: Uuid, seed: u64, corp: SeatedPlayer, runner: SeatedPlayer) {
+fn start_match(shared: &Shared, registry: &mut Registry, match_id: Uuid, seed: u64, format: NsgFormat, corp: SeatedPlayer, runner: SeatedPlayer) {
     let mut dealt = shared.decks_for(seed);
     // A brought deck replaces the deal for its side, pinned or rotating:
     // the player chose it, and the operator's pin is the default for a
@@ -900,6 +957,7 @@ fn start_match(shared: &Shared, registry: &mut Registry, match_id: Uuid, seed: u
             runner: runner_name,
             corp_deck: corp_deck_id.clone(),
             runner_deck: runner_deck_id.clone(),
+            format,
             started_at: Instant::now(),
             handle: handle.clone(),
         },

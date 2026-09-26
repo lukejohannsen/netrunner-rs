@@ -43,6 +43,7 @@ use tokio_tungstenite::tungstenite::Message as WsMessage;
 use uuid::Uuid;
 
 use netrunner_core::decks::DeckFile;
+use netrunner_core::format::NsgFormat;
 use netrunner_core::rules::{Side, Viewer};
 use netrunner_protocol::{ClientMessage, MatchSummary, ServerMessage};
 
@@ -127,9 +128,11 @@ impl Connecting {
 }
 
 /// The `Connect` a player sends: their name, a seat preference, a room,
-/// and the deck they bring, whose side is then their seat.
-pub fn connect_message(player_name: &str, preferred_side: Option<Side>, room: Option<String>, deck: Option<DeckFile>) -> ClientMessage {
-    ClientMessage::Connect { player_name: player_name.to_string(), preferred_side, room, deck: deck.map(Box::new) }
+/// the deck they bring, whose side is then their seat, and the lobby —
+/// the format they play, which the deck must be legal in. `None` is the
+/// server's first lobby.
+pub fn connect_message(player_name: &str, preferred_side: Option<Side>, room: Option<String>, deck: Option<DeckFile>, format: Option<NsgFormat>) -> ClientMessage {
+    ClientMessage::Connect { player_name: player_name.to_string(), preferred_side, room, deck: deck.map(Box::new), format }
 }
 
 /// Starts a connection to `url` — a server's address or a host's ticket —
@@ -340,7 +343,7 @@ async fn list_over(target: Target, dialer: &Dialer) -> Result<(Vec<MatchSummary>
     let reply = loop {
         match socket.next().await {
             Some(Ok(WsMessage::Text(text))) => {
-                if let Ok(ServerMessage::MatchList { matches, waiting_in_lobby, max_matches }) = serde_json::from_str(&text) {
+                if let Ok(ServerMessage::MatchList { matches, waiting_in_lobby, max_matches, .. }) = serde_json::from_str(&text) {
                     break (matches, waiting_in_lobby, max_matches);
                 }
             }
@@ -421,7 +424,7 @@ mod tests {
     }
 
     fn corp() -> Goal {
-        Goal::Play(connect_message("tester", Some(Side::Corp), None, None))
+        Goal::Play(connect_message("tester", Some(Side::Corp), None, None, None))
     }
 
     #[tokio::test]

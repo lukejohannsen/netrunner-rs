@@ -405,7 +405,7 @@ mod tests {
     use netrunner_protocol::GameEndReason;
 
     fn hello() -> ClientMessage {
-        ClientMessage::Connect { player_name: "tester".into(), preferred_side: Some(Side::Corp), room: None, deck: None }
+        ClientMessage::Connect { player_name: "tester".into(), preferred_side: Some(Side::Corp), room: None, deck: None, format: None }
     }
 
     fn joined(token: Uuid) -> ServerMessage {

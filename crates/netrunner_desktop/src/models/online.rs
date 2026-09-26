@@ -8,6 +8,13 @@
 //! for a seat, and both end at the board through the same handle
 //! (`MatchHandle::start_remote`).
 //!
+//! **A game online is played in a format, and the format is the lobby.**
+//! Host and Join each choose one; a server pairs a player only with a
+//! player in the same format, and the decks offered are those legal in
+//! it. There is no list of waiting players to pick an opponent from
+//! (declined, 26 September 2026): a lobby pairs whoever is waiting, and a
+//! room is how two people who know each other meet.
+//!
 //! **No I/O here.** A press that needs the network — start hosting, dial,
 //! list a server's matches — is an [`Outcome`] the screen carries out, and
 //! what comes back is an [`Intent`] (`Waiting`, `Failed`, `Listed`). So
@@ -17,6 +24,7 @@
 
 use netrunner_client::hosting::{normalize_address, Reach, DEFAULT_PORT};
 use netrunner_client::online::DeckChoice;
+use netrunner_core::format::NsgFormat;
 use netrunner_core::rules::Side;
 use netrunner_server::MatchSummary;
 
@@ -63,6 +71,9 @@ pub enum Intent {
     Typed(Field, String),
     SetReach(Reach),
     SetDeck(usize),
+    /// The format played, which is the lobby joined or the one a hosted
+    /// game offers.
+    SetFormat(NsgFormat),
     /// Which side of the table a spectator sits nearer.
     SetWatchFrom(Side),
     /// Host's or Join's primary button.
@@ -87,9 +98,12 @@ pub enum Outcome {
     Redraw,
     /// Off the screen, to the main menu.
     Leave,
-    Host { port: u16, reach: Reach, deck: DeckChoice },
+    Host { port: u16, reach: Reach, format: NsgFormat, deck: DeckChoice },
     /// `room` is `None` for the host's public queue.
-    Join { url: String, room: Option<String>, deck: DeckChoice },
+    Join { url: String, room: Option<String>, format: NsgFormat, deck: DeckChoice },
+    /// The format changed: the screen reads the decks legal in it and
+    /// hands them to [`OnlineForm::set_decks`].
+    Decks(NsgFormat),
     List { url: String },
     Watch { url: String, match_id: uuid::Uuid },
     /// Stop waiting: whatever is hosting or dialling is dropped.
@@ -106,6 +120,9 @@ pub struct OnlineForm {
     pub room: String,
     pub port: String,
     pub reach: Reach,
+    pub format: NsgFormat,
+    /// The decks legal in `format`: the host's deal, then the built-in
+    /// and saved ones.
     pub decks: Vec<DeckChoice>,
     pub deck: usize,
     pub watch_from: Side,
@@ -122,7 +139,8 @@ pub struct OnlineForm {
 impl OnlineForm {
     /// `address` is where Join and Watch start: the last one used, or the
     /// terminal's default server.
-    pub fn new(decks: Vec<DeckChoice>, address: String) -> Self {
+    /// `format` is the one Settings names, where the form starts.
+    pub fn new(decks: Vec<DeckChoice>, address: String, format: NsgFormat) -> Self {
         OnlineForm {
             page: Page::Home,
             came_from: Page::Home,
@@ -130,6 +148,7 @@ impl OnlineForm {
             room: String::new(),
             port: DEFAULT_PORT.to_string(),
             reach: Reach::Network,
+            format,
             decks,
             deck: 0,
             watch_from: Side::Corp,
@@ -143,11 +162,18 @@ impl OnlineForm {
     /// Back on the screen after a game or a visit elsewhere: the decks
     /// read afresh, everything typed kept, and Home up.
     pub fn reopen(&mut self, decks: Vec<DeckChoice>) {
+        self.set_decks(decks);
+        self.page = Page::Home;
+        self.notice = None;
+    }
+
+    /// The decks legal in the form's format, read afresh: the one chosen
+    /// stays chosen if it is still among them, and the deal is chosen
+    /// otherwise.
+    pub fn set_decks(&mut self, decks: Vec<DeckChoice>) {
         let chosen = self.decks.get(self.deck).cloned();
         self.deck = chosen.and_then(|chosen| decks.iter().position(|deck| *deck == chosen)).unwrap_or(0);
         self.decks = decks;
-        self.page = Page::Home;
-        self.notice = None;
     }
 
     pub fn chosen_deck(&self) -> DeckChoice {
@@ -200,6 +226,11 @@ impl OnlineForm {
                 Outcome::Redraw
             }
             Intent::SetDeck(_) => Outcome::Nothing,
+            Intent::SetFormat(format) if format != self.format => {
+                self.format = format;
+                Outcome::Decks(format)
+            }
+            Intent::SetFormat(_) => Outcome::Nothing,
             Intent::SetWatchFrom(side) => {
                 self.watch_from = side;
                 Outcome::Redraw
@@ -254,7 +285,7 @@ impl OnlineForm {
         let deck = self.chosen_deck();
         match self.page {
             Page::Host => match self.port.parse::<u16>() {
-                Ok(port) => Outcome::Host { port, reach: self.reach, deck },
+                Ok(port) => Outcome::Host { port, reach: self.reach, format: self.format, deck },
                 Err(_) => {
                     self.notice = Some(format!("{:?} is not a port number", self.port));
                     Outcome::Redraw
@@ -266,7 +297,7 @@ impl OnlineForm {
             }
             Page::Join => {
                 let room = Some(self.room.trim().to_string()).filter(|room| !room.is_empty());
-                Outcome::Join { url: normalize_address(&self.address), room, deck }
+                Outcome::Join { url: normalize_address(&self.address), room, format: self.format, deck }
             }
             Page::Home | Page::Watch | Page::Waiting => Outcome::Nothing,
         }
@@ -288,7 +319,7 @@ mod tests {
     use super::*;
 
     fn form() -> OnlineForm {
-        OnlineForm::new(vec![DeckChoice::Dealt(None), DeckChoice::Dealt(Some(Side::Runner))], "ws://127.0.0.1:8080".to_string())
+        OnlineForm::new(vec![DeckChoice::Dealt(None), DeckChoice::Dealt(Some(Side::Runner))], "ws://127.0.0.1:8080".to_string(), NsgFormat::Startup)
     }
 
     #[test]
@@ -314,7 +345,7 @@ mod tests {
         form.apply(Intent::Typed(Field::Port, "0".to_string()));
         form.apply(Intent::SetReach(Reach::Internet));
         form.apply(Intent::SetDeck(1));
-        assert_eq!(form.apply(Intent::Go), Outcome::Host { port: 0, reach: Reach::Internet, deck: DeckChoice::Dealt(Some(Side::Runner)) });
+        assert_eq!(form.apply(Intent::Go), Outcome::Host { port: 0, reach: Reach::Internet, format: NsgFormat::Startup, deck: DeckChoice::Dealt(Some(Side::Runner)) });
     }
 
     /// Join dials what was typed, an address given its scheme and port
@@ -325,7 +356,7 @@ mod tests {
         let mut form = form();
         form.apply(Intent::Open(Page::Join));
         form.apply(Intent::Typed(Field::Address, " 192.168.1.5 ".to_string()));
-        assert_eq!(form.apply(Intent::Go), Outcome::Join { url: "ws://192.168.1.5:8080".to_string(), room: None, deck: DeckChoice::Dealt(None) });
+        assert_eq!(form.apply(Intent::Go), Outcome::Join { url: "ws://192.168.1.5:8080".to_string(), room: None, format: NsgFormat::Startup, deck: DeckChoice::Dealt(None) });
         form.apply(Intent::Typed(Field::Room, "friday".to_string()));
         form.apply(Intent::Typed(Field::Address, "host.example:9000".to_string()));
         let Outcome::Join { url, room, .. } = form.apply(Intent::Go) else { panic!() };
@@ -371,5 +402,23 @@ mod tests {
         form.page = Page::Join;
         form.reopen(vec![DeckChoice::Dealt(Some(Side::Corp)), DeckChoice::Dealt(None), DeckChoice::Dealt(Some(Side::Runner))]);
         assert_eq!((form.deck, form.page), (2, Page::Home));
+    }
+
+    /// The format is the lobby: choosing one asks for the decks legal in
+    /// it, keeps the deck chosen when it still is, and is what Host and
+    /// Join then send.
+    #[test]
+    fn the_format_is_the_lobby_and_reads_its_own_decks() {
+        let mut form = form();
+        form.apply(Intent::Open(Page::Join));
+        form.apply(Intent::SetDeck(1));
+        assert_eq!(form.apply(Intent::SetFormat(NsgFormat::Startup)), Outcome::Nothing, "already the format");
+        assert_eq!(form.apply(Intent::SetFormat(NsgFormat::Standard)), Outcome::Decks(NsgFormat::Standard));
+        form.set_decks(vec![DeckChoice::Dealt(None), DeckChoice::Dealt(Some(Side::Corp)), DeckChoice::Dealt(Some(Side::Runner))]);
+        assert_eq!((form.deck, form.page), (2, Page::Join), "the same deck, and the page stays");
+        form.set_decks(vec![DeckChoice::Dealt(None)]);
+        assert_eq!(form.deck, 0, "a deck no longer legal falls back to the deal");
+        let Outcome::Join { format, .. } = form.apply(Intent::Go) else { panic!() };
+        assert_eq!(format, NsgFormat::Standard);
     }
 }

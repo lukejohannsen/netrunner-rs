@@ -71,11 +71,11 @@ async fn closed_by_server(socket: &mut Socket) -> bool {
 }
 
 fn connect(name: &str, preferred_side: Option<Side>) -> ClientMessage {
-    ClientMessage::Connect { player_name: name.into(), preferred_side, room: None, deck: None }
+    ClientMessage::Connect { player_name: name.into(), preferred_side, room: None, deck: None, format: None }
 }
 
 fn connect_in_room(name: &str, room: &str) -> ClientMessage {
-    ClientMessage::Connect { player_name: name.into(), preferred_side: None, room: Some(room.into()), deck: None }
+    ClientMessage::Connect { player_name: name.into(), preferred_side: None, room: Some(room.into()), deck: None, format: None }
 }
 
 fn joined(message: ServerMessage) -> (Uuid, Side, Uuid) {
@@ -491,7 +491,7 @@ fn brought(published: &str, id: &str) -> Box<decks::DeckFile> {
 }
 
 fn connect_with_deck(name: &str, preferred_side: Option<Side>, deck: Box<decks::DeckFile>) -> ClientMessage {
-    ClientMessage::Connect { player_name: name.into(), preferred_side, room: None, deck: Some(deck) }
+    ClientMessage::Connect { player_name: name.into(), preferred_side, room: None, deck: Some(deck), format: None }
 }
 
 fn refused(message: ServerMessage) -> String {
@@ -558,4 +558,65 @@ async fn a_bot_daemon_plays_the_deck_the_human_brought() {
     let mut socket = open(&url, connect_with_deck("solo", None, brought("fine_print", "my_corp"))).await;
     let (_, side, _, corp_deck, _) = joined_with_decks(next(&mut socket).await);
     assert_eq!((side, corp_deck.as_str()), (Side::Corp, "my_corp"));
+}
+
+fn connect_in_format(name: &str, format: netrunner_core::format::NsgFormat) -> ClientMessage {
+    ClientMessage::Connect { player_name: name.into(), preferred_side: None, room: None, deck: None, format: Some(format) }
+}
+
+/// A lobby per format: a Startup player and a Standard player each wait
+/// in their own queue, the next Startup player pairs with the first, the
+/// match is listed under its format, and a player who names no format
+/// joins the first one the daemon offers.
+#[tokio::test]
+async fn players_are_paired_only_within_their_format() {
+    use netrunner_core::format::NsgFormat;
+    use netrunner_server::Lobby;
+    let url = human_daemon().await;
+
+    let mut startup = open(&url, connect_in_format("startup", NsgFormat::Startup)).await;
+    queued(next(&mut startup).await);
+    let mut standard = open(&url, connect_in_format("standard", NsgFormat::Standard)).await;
+    let (_, position) = queued(next(&mut standard).await);
+    assert_eq!(position, 2, "queued, not paired across formats");
+
+    let mut socket = open(&url, ClientMessage::ListMatches).await;
+    let ServerMessage::MatchList { lobbies, .. } = next(&mut socket).await else { panic!("expected MatchList") };
+    assert_eq!(
+        lobbies,
+        vec![
+            Lobby { format: NsgFormat::Startup, waiting: 1 },
+            Lobby { format: NsgFormat::Standard, waiting: 1 },
+            Lobby { format: NsgFormat::Eternal, waiting: 0 },
+            Lobby { format: NsgFormat::Snapshot, waiting: 0 },
+        ],
+        "every format is a lobby, Startup first"
+    );
+
+    // No format named is the first lobby, Startup: this pairs.
+    let mut unnamed = open(&url, connect("unnamed", None)).await;
+    let (unnamed_match, _, _) = joined(next(&mut unnamed).await);
+    let (startup_match, _, _) = joined(next(&mut startup).await);
+    assert_eq!(unnamed_match, startup_match);
+    let (matches, waiting) = list_matches(&url).await;
+    assert_eq!((matches.len(), waiting), (1, 1), "the Standard player still waits");
+    assert_eq!(matches[0].format, Some(NsgFormat::Startup));
+}
+
+/// A format the daemon does not offer is refused at the door, naming the
+/// ones it does, and never reaches a queue.
+#[tokio::test]
+async fn a_format_the_daemon_does_not_offer_is_refused() {
+    use netrunner_core::format::NsgFormat;
+    let url = start_server(ServeOptions { bot_runner: ServeBotKind::None, formats: vec![NsgFormat::Standard], ..ServeOptions::default() }).await;
+    let mut socket = open(&url, connect_in_format("eternal", NsgFormat::Eternal)).await;
+    match next(&mut socket).await {
+        ServerMessage::ConnectRejected { reason } => {
+            assert!(reason.contains("no Eternal lobby") && reason.contains("Standard"), "{reason}");
+        }
+        other => panic!("expected ConnectRejected, got {other:?}"),
+    }
+    assert!(closed_by_server(&mut socket).await);
+    assert_eq!(list_matches(&url).await.1, 0);
+    assert!(Server::bind("127.0.0.1:0", ServeOptions { formats: Vec::new(), ..ServeOptions::default() }).await.is_err(), "a daemon with no lobby does not start");
 }

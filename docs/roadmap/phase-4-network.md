@@ -87,3 +87,20 @@ Asked for as: a person hosts on their home network and friends outside it join, 
 - **Raw WireGuard built into the app.** It is a tunnel, and someone must still be reachable and keys still exchanged: that is rebuilding Tailscale.
 - **Tailscale or ZeroTier used as they are** need no code and work through every NAT, so they are the documented fallback (`docs/playing-online.md`), not a feature.
 
+
+## 7. A public server: lobbies by format, decks nobody sees — OPEN (26 September 2026)
+
+Asked for as: a server that simply exists on the internet, where people join a lobby for a format and are matched against a random opponent. Each player brings their own deck, and neither the opponent nor anyone browsing learns what it is or what it is called. Rated play is for this server; a game hosted peer to peer stays casual. Tournaments may come later.
+
+**Decided with the person, 26 September 2026:**
+- **A lobby per format, on one server.** It is not one daemon per format.
+- **No picking an opponent.** A lobby pairs whoever is waiting. Listing the waiting players and challenging one was proposed and declined. A named room remains the way two people who know each other meet.
+- **No dealt decks where the game is about the decks.** The player's surprise is the point, so the host dealing a deck to someone who brought none is not wanted there. Everyone has the built-in decks to bring.
+
+**Stages, each its own branch:**
+
+1. **Lobbies by format** (`feat/format-lobbies`, built). `ServeOptions::formats` lists the lobbies, every format by default with Startup first; `netrunner_server --format startup,standard` narrows them. `Connect::format` names the lobby, and `None`, which is what an older client sends, is the first one. A format the daemon does not offer is refused, naming the ones it does. A player is paired only within their format and room, and a brought deck is checked against the lobby's format. `MatchList::lobbies` counts each lobby's public waiters, and `MatchSummary::format` names a match's lobby. A game hosted from a client's menu offers only the host's chosen format. The desktop's Host and Join pages choose the format as pills and offer the decks legal in it. The terminal joins its Settings format and names it in the form's title. Tests: two players in different formats wait apart, a Connect naming no format joins the first lobby, the list reports lobbies and a match's format, and an unoffered format is refused.
+2. **A brought deck is private.** A saved deck's id is a slug of the name the player gave it, and it is sent to the opponent in `MatchJoined` and to anyone listing in `MatchSummary`. The server must see the whole list to validate and run it; nobody else sees any of it but what the rules reveal. So only a built-in deck's id may leave the server. A player's own deck goes out as nothing.
+3. **A server that deals nothing** (an option): a `Connect` with no deck is refused, naming the built-in decks.
+4. **A rating the server keeps**: §5's stages (a)–(c), then (d)'s client surfaces.
+5. **Tournaments**: not designed.
