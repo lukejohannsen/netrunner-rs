@@ -298,7 +298,8 @@ pub fn ice_key(rezzed: bool, kind: Option<netrunner_core::dsl::IceType>) -> &'st
         (true, Some(IceType::Barrier)) => "ice.rezzed.barrier",
         (true, Some(IceType::CodeGate)) => "ice.rezzed.code-gate",
         (true, Some(IceType::Sentry)) => "ice.rezzed.sentry",
-        (true, None) => "ice.rezzed",
+        // Ice with none of the three types has no type art of its own.
+        (true, None | Some(IceType::Other)) => "ice.rezzed",
     }
 }
 

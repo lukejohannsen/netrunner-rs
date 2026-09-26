@@ -1,0 +1,46 @@
+{
+  "id": "vicsek",
+  "title": "Vicsek",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Other"
+  },
+  "cost": 2,
+  "strength": 3,
+  "triggers": [],
+  "subroutines": [
+    {
+      "text": "Do X net damage and give the Runner X tags. X is equal to the number of tags the Runner has.",
+      "effect": {
+        "Sequence": [
+          {
+            "DealDamageAmount": [
+              "Net",
+              "RunnerTags"
+            ]
+          },
+          {
+            "GiveTags": "RunnerTags"
+          }
+        ]
+      }
+    },
+    {
+      "text": "Give the Runner 1 tag. Trash this ice.",
+      "effect": {
+        "Sequence": [
+          {
+            "GiveTags": {
+              "Fixed": 1
+            }
+          },
+          {
+            "TrashCard": "ThisCard"
+          }
+        ]
+      }
+    }
+  ],
+  "numeric_id": 36042,
+  "is_playable": true
+}

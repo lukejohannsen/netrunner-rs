@@ -462,7 +462,7 @@ mod tests {
 
     #[test]
     fn a_tag_is_prevented_by_an_interrupt_and_the_window_closes_with_nothing_left_to_ask() {
-        let (state, registry) = table(Effect::GiveTags(1), decoy());
+        let (state, registry) = table(Effect::GiveTags(crate::dsl::Amount::Fixed(1)), decoy());
         let (state, events) = act(&state, &registry, use_ability(SOURCE));
         assert_eq!(state.runner.tags, 0, "parked, not given");
         assert!(asking(&state));
@@ -479,7 +479,7 @@ mod tests {
 
     #[test]
     fn what_is_left_happens_once_nobody_can_prevent_more_of_it() {
-        let (state, registry) = table(Effect::GiveTags(2), decoy());
+        let (state, registry) = table(Effect::GiveTags(crate::dsl::Amount::Fixed(2)), decoy());
         let (state, _) = act(&state, &registry, use_ability(SOURCE));
         let (state, events) = act(&state, &registry, use_ability(DECOY));
         assert_eq!(state.runner.tags, 1, "one tag of two was prevented, and the only interrupt is spent");
@@ -508,14 +508,14 @@ mod tests {
         let (state, _) = act(&state, &registry, use_ability(SOURCE));
         assert!(state.pending_prevention.is_none() && state.runner.grip.len() == 2);
         // A tag, which a net-damage shield says nothing about.
-        let (state, registry) = table(Effect::GiveTags(1), paid);
+        let (state, registry) = table(Effect::GiveTags(crate::dsl::Amount::Fixed(1)), paid);
         let (state, _) = act(&state, &registry, use_ability(SOURCE));
         assert!(state.pending_prevention.is_none() && state.runner.tags == 1);
     }
 
     #[test]
     fn only_an_interrupt_or_a_pass_while_the_players_are_asked() {
-        let (mut state, mut registry) = table(Effect::GiveTags(1), decoy());
+        let (mut state, mut registry) = table(Effect::GiveTags(crate::dsl::Amount::Fixed(1)), decoy());
         registry.insert(with_paid_ability("program", Side::Runner, CardType::Program, None, Effect::GainCredits(Side::Runner, 1)));
         state.runner.resources.clicks = crate::rules::state::Clicks(1);
         let (state, _) = act(&state, &registry, use_ability(SOURCE));
@@ -533,7 +533,7 @@ mod tests {
     /// action the other player takes.
     #[test]
     fn an_interrupt_is_not_a_usable_paid_ability_outside_its_window() {
-        let (state, registry) = table(Effect::GiveTags(1), decoy());
+        let (state, registry) = table(Effect::GiveTags(crate::dsl::Amount::Fixed(1)), decoy());
         assert!(!paid_ability::has_usable_paid_ability(&state, &registry, Side::Runner));
         assert_eq!(apply_action(&state, &registry, use_ability(DECOY)).err().map(|_| ()), Some(()), "and cannot be used with nothing parked");
     }
@@ -568,7 +568,7 @@ mod tests {
     /// waits beneath, rather than taking the slot from the prevention.
     #[test]
     fn a_window_the_flow_opens_while_the_players_are_asked_waits_beneath() {
-        let (state, registry) = table(Effect::GiveTags(1), decoy());
+        let (state, registry) = table(Effect::GiveTags(crate::dsl::Amount::Fixed(1)), decoy());
         let (mut state, _) = act(&state, &registry, use_ability(SOURCE));
         paid_ability::open_window_for(&mut state, Side::Corp, WindowCheckpoint::PostAction { side: Side::Corp });
         assert!(asking(&state));
@@ -625,7 +625,7 @@ mod tests {
     /// about in its turn.
     #[test]
     fn the_rest_of_a_sequence_follows_the_parked_thing() {
-        let (mut state, mut registry) = table(Effect::Sequence(vec![Effect::DealDamage(DamageType::Net, 1), Effect::GiveTags(1)]), decoy());
+        let (mut state, mut registry) = table(Effect::Sequence(vec![Effect::DealDamage(DamageType::Net, 1), Effect::GiveTags(crate::dsl::Amount::Fixed(1))]), decoy());
         registry.insert(with_paid_ability(
             "program",
             Side::Runner,
@@ -653,7 +653,7 @@ mod tests {
     fn a_tag_parked_out_of_a_subroutines_choice_still_resumes_the_subroutines() {
         use crate::dsl::{IceType, SubroutineDef};
         use crate::rules::run::{EncounteredSubroutine, RunIce, RunPhase, RunState, SubroutineStatus};
-        let (mut state, registry) = table(Effect::GiveTags(1), decoy());
+        let (mut state, registry) = table(Effect::GiveTags(crate::dsl::Amount::Fixed(1)), decoy());
         state.phase = GamePhase::Action(Side::Runner);
         let subroutine = |id, effect: Effect, status| EncounteredSubroutine {
             id,
@@ -667,7 +667,7 @@ mod tests {
                 card_id: id("ice"),
                 ice_type: IceType::Sentry,
                 subroutines: vec![
-                    subroutine(0, Effect::GiveTags(1), SubroutineStatus::Resolved),
+                    subroutine(0, Effect::GiveTags(crate::dsl::Amount::Fixed(1)), SubroutineStatus::Resolved),
                     subroutine(1, Effect::EndTheRun, SubroutineStatus::Pending),
                 ],
                 rezzed: true,
@@ -677,7 +677,7 @@ mod tests {
         crate::rules::test_support::install_the_runs_ice(&mut state);
         state.pending_decision = Some(crate::rules::PendingDecision::ChooseEffect {
             chooser: Side::Runner,
-            options: vec![Effect::GiveTags(1)],
+            options: vec![Effect::GiveTags(crate::dsl::Amount::Fixed(1))],
             option_texts: Vec::new(),
             source_card: Some(id("ice")),
             prompting_card: None,
@@ -695,9 +695,9 @@ mod tests {
     /// Urtica Cipher with no counters on it: 0 net damage is not damage.
     #[test]
     fn none_of_it_is_not_an_occurrence() {
-        let (mut state, registry) = table(Effect::GiveTags(1), decoy());
+        let (mut state, registry) = table(Effect::GiveTags(crate::dsl::Amount::Fixed(1)), decoy());
         let source = id("source");
-        for nothing in [Effect::DealDamage(DamageType::Net, 0), Effect::GiveTags(0)] {
+        for nothing in [Effect::DealDamage(DamageType::Net, 0), Effect::GiveTags(crate::dsl::Amount::Fixed(0))] {
             let events = ability::evaluate_effect(&mut state, &nothing, &mut ResolutionContext::for_card(Some(&source)), &registry).unwrap();
             assert!(events.is_empty(), "{nothing:?}: {events:?}");
         }

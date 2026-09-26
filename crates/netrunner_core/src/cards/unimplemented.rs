@@ -13,8 +13,7 @@
 //! carries its code or its title (`cards::title_key`).
 //!
 //! Seeded by `scripts/catalog_sync.py --unimplemented <pack>` when the packs
-//! were embedded (Stage 0, 26 September 2026). Six ice here are also in
-//! `netrunnerdb::CATALOG_UNMODELABLE`, which the gate counts as printed.
+//! were embedded (Stage 0, 26 September 2026).
 
 /// *Vantage Point* (`vp`): tranche 1 of the NSG plan.
 pub(crate) const VP_UNIMPLEMENTED: &[(u32, &str)] = &[
@@ -49,7 +48,6 @@ pub(crate) const VP_UNIMPLEMENTED: &[(u32, &str)] = &[
     (36039, "ezaM"),
     (36040, "Knowledge Seeker"),
     (36041, "Lionsmane"),
-    (36042, "Vicsek"),
     (36043, "Cultivate"),
     (36045, "The Red Room"),
     (36048, "Magistrate Revontulet"),

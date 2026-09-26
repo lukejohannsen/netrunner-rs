@@ -476,12 +476,16 @@ fn server_features(server: ServerId) -> ([f32; SERVER_KIND_COUNT], f32) {
     (one_hot, remote_index)
 }
 
+/// Ice that prints none of the three (`IceType::Other`) is all zeros: no
+/// type is the absence of one, and a fourth slot would move `OBS_SIZE` for
+/// one card.
 fn ice_type_one_hot(ice_type: IceType) -> [f32; ICE_TYPE_COUNT] {
     let mut one_hot = [0.0; ICE_TYPE_COUNT];
     let index = match ice_type {
         IceType::Barrier => 0,
         IceType::CodeGate => 1,
         IceType::Sentry => 2,
+        IceType::Other => return one_hot,
     };
     one_hot[index] = 1.0;
     one_hot
@@ -1134,13 +1138,8 @@ mod tests {
                 .filter_map(|card| card.numeric_id.map(|id| id.0))
                 .collect();
             codes.sort_unstable();
-            // The catalog withholds the ice it cannot type yet
-            // (`CATALOG_UNMODELABLE`); those are printed too.
-            let withheld = netrunner_core::cards::netrunnerdb::unmodelable_codes()
-                .filter(|code| (first..first + len).contains(code))
-                .count();
             assert!(codes.iter().all(|code| (first..first + len).contains(code)), "{pack}: a code outside {first}..{}", first + len);
-            assert_eq!(codes.len() + withheld, len as usize, "{pack}: the block is not the pack's printings");
+            assert_eq!(codes.len(), len as usize, "{pack}: the block is not the pack's printings");
         }
     }
 

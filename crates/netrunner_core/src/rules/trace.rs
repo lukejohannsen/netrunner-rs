@@ -133,7 +133,7 @@ mod tests {
     #[test]
     fn exact_match_avoids_the_trace() {
         let mut state = game_state();
-        state.active_trace = Some(active_trace(3, Some(2), Effect::GiveTags(1)));
+        state.active_trace = Some(active_trace(3, Some(2), Effect::GiveTags(crate::dsl::Amount::Fixed(1))));
         let registry = a_runner_with_link(&mut state, 2);
 
         let events = submit_runner_bid(&mut state, 3, &registry).unwrap();
@@ -153,7 +153,7 @@ mod tests {
     #[test]
     fn runner_total_below_corp_total_fires_effect_on_success() {
         let mut state = game_state();
-        state.active_trace = Some(active_trace(3, Some(2), Effect::GiveTags(1)));
+        state.active_trace = Some(active_trace(3, Some(2), Effect::GiveTags(crate::dsl::Amount::Fixed(1))));
         let registry = a_runner_with_link(&mut state, 1);
 
         let events = submit_runner_bid(&mut state, 3, &registry).unwrap();
@@ -174,7 +174,7 @@ mod tests {
     #[test]
     fn zero_bid_both_sides_ties_and_is_avoided() {
         let mut state = game_state();
-        state.active_trace = Some(active_trace(0, Some(0), Effect::GiveTags(9)));
+        state.active_trace = Some(active_trace(0, Some(0), Effect::GiveTags(crate::dsl::Amount::Fixed(9))));
 
         let events = submit_runner_bid(&mut state, 0, &CardRegistry::new()).unwrap();
 
@@ -193,7 +193,7 @@ mod tests {
     #[test]
     fn corp_bid_with_insufficient_credits_errors_and_leaves_state_untouched() {
         let mut state = game_state();
-        state.active_trace = Some(active_trace(2, None, Effect::GiveTags(1)));
+        state.active_trace = Some(active_trace(2, None, Effect::GiveTags(crate::dsl::Amount::Fixed(1))));
 
         let result = submit_corp_bid(&mut state, &CardRegistry::new(), 10);
 
@@ -205,7 +205,7 @@ mod tests {
     #[test]
     fn runner_bid_with_insufficient_credits_errors_and_leaves_trace_pending() {
         let mut state = game_state();
-        state.active_trace = Some(active_trace(2, Some(1), Effect::GiveTags(1)));
+        state.active_trace = Some(active_trace(2, Some(1), Effect::GiveTags(crate::dsl::Amount::Fixed(1))));
 
         let result = submit_runner_bid(&mut state, 10, &CardRegistry::new());
 
@@ -217,7 +217,7 @@ mod tests {
     #[test]
     fn runner_bid_before_corp_bid_errors() {
         let mut state = game_state();
-        state.active_trace = Some(active_trace(2, None, Effect::GiveTags(1)));
+        state.active_trace = Some(active_trace(2, None, Effect::GiveTags(crate::dsl::Amount::Fixed(1))));
 
         assert_eq!(submit_runner_bid(&mut state, 0, &CardRegistry::new()), Err(RulesError::TraceNotAwaitingRunnerBid));
     }
@@ -260,7 +260,7 @@ mod tests {
     #[test]
     fn nested_subroutine_trace_resumes_remaining_subroutines_after_avoidance() {
         let mut state = game_state();
-        state.active_run = Some(ice_with_trace_pending_resume(Effect::GiveTags(3), Effect::EndTheRun));
+        state.active_run = Some(ice_with_trace_pending_resume(Effect::GiveTags(crate::dsl::Amount::Fixed(3)), Effect::EndTheRun));
         crate::rules::test_support::install_the_runs_ice(&mut state);
         state.active_trace = Some(TraceState {
             initiating_card: None,
@@ -281,7 +281,7 @@ mod tests {
     #[test]
     fn nested_subroutine_trace_resumes_remaining_subroutines_after_success() {
         let mut state = game_state();
-        state.active_run = Some(ice_with_trace_pending_resume(Effect::GiveTags(3), Effect::EndTheRun));
+        state.active_run = Some(ice_with_trace_pending_resume(Effect::GiveTags(crate::dsl::Amount::Fixed(3)), Effect::EndTheRun));
         state.active_trace = Some(TraceState {
             initiating_card: None,
             initiating_install: None,

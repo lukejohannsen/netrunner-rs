@@ -15,7 +15,9 @@
             "chooser": "Corp",
             "options": [
               {
-                "GiveTags": 1
+                "GiveTags": {
+                  "Fixed": 1
+                }
               },
               {
                 "ChooseNumber": {

@@ -97,7 +97,8 @@ Both are recorded below. Tranche 1, Vantage Point, is next.
   and Vicsek. They join Data Mine in `CATALOG_UNMODELABLE` until the tranche
   that builds the first of them gives `CardType::Ice` a way to say it. That
   is a mechanic, not a catalog change. The count test is exact now; it was a
-  floor that a missing pack could have passed.
+  floor that a missing pack could have passed. (Stage 2b gave the ice a
+  type, `IceType::Other`, and the catalog holds all 846.)
 - **Every NSG pack is gated** (`every_nsg_pack_card_is_implemented_or_explicitly_excluded`).
   Each pack has a list in `cards/unimplemented.rs`, seeded by
   `catalog_sync.py --unimplemented <pack>`: 562 entries across twelve
@@ -363,7 +364,7 @@ Division.
    Market (built, below). **2b — ice with no Barrier, Code Gate or
    Sentry:** Vicsek, alone, with the change to `CardType::Ice` it needs,
    which the rest of the unmodelable ice (Loot Box, Rime, Konjin,
-   Excalibur, Lycian Multi-Munition) then reuse.
+   Excalibur, Lycian Multi-Munition) then reuse (built, below).
 3. **Turn-log counts and standing kinds** (`PlayCost`, `AgendaPoints` and
    `StealCost` are the `ContinuousKind` words, each a new kind held to the
    DSL Growth Rule): Chain Reaction, Underdome Irregulars, Reverb, Hype
@@ -578,6 +579,59 @@ Stage 3 (above).
     identical with each reverted. What is left is the new cards, which
     `determinize` samples into every hidden Corp zone (Stage 1b's check),
     not re-checked card by card here.
+
+#### Stage 2b — ice with none of the three types (26 September 2026)
+
+`feat/vp-stage-2b-ice-with-no-breaker-type`: Vicsek. **No new `Effect`.**
+Vantage Point 22 of 66; `VP_UNIMPLEMENTED` 45 → 44.
+
+- **Ice that prints none of Barrier, Code Gate or Sentry is
+  `IceType::Other`**, a fourth variant, not `CardType::Ice(Option<..>)`.
+  Every reader asks "is this ice a barrier?", and equality with a variant
+  that is none of the three already answers no, so no matcher changed; an
+  `Option` would have put `Some(..)` at about two hundred sites and in
+  every ice card file. Only a breaker with no restriction breaks it (CR
+  3.9.5h), and a card that gains a type reaches it through
+  `ContinuousKind::GainSubtype` as it reaches any ice. `validate` refuses
+  `Other` where it can only mean nothing: a breaker restricted to it, a
+  card gaining it.
+- **`CATALOG_UNMODELABLE` is gone.** The catalog reads an ice's type as the
+  first of the three its keywords name, `Other` for none, so the seven
+  printings it withheld (Data Mine, Loot Box, Rime, Konjin, Excalibur,
+  Lycian Multi-Munition, Vicsek) are in the catalog: 846 of 846. The set
+  gates and the observation's reserved blocks no longer add them back.
+  Hafrún prints two types ("Barrier - Code Gate") and reads as its first
+  until Parhelion builds it.
+- **`GiveTags` takes an `Amount` in place**, as `PlaceAdvancementCounters`
+  did in Stage 2: twenty card files rewritten to `{"Fixed": n}` rather
+  than a `GiveTagsAmount` beside it. Vicsek's "X is equal to the number of
+  tags the Runner has" is read twice, once for the damage and once for the
+  tags, which agree because nothing between them changes the count: the
+  damage's prevention window admits only interrupts, and no interrupt
+  removes a tag. A primitive that fixes X once was not built for the one
+  card in the catalog that uses a defined X twice.
+- **The bots and clients.** The evaluator and the observation keep their
+  three flags: `Other` ice encodes as no one-hot (so `OBS_SIZE` does not
+  move), and the Corp's evaluator counts it broken only by a rig that
+  covers all three types, which an AI does (a rig of three typed breakers
+  reads as breaking it too, the one inexactness). The desktop draws a
+  rezzed one on the untyped tile art in the untyped steel frame.
+- **The deck.** Two Vicsek replace A Thousand Cuts' two Diviner (Jinteki
+  Sweep deck, Personal Evolution); Diviner is still in three other decks.
+- **DSL ratio (`pool_status.py`): 23 of 70 `Effect` variants
+  single-use, 2 unused** (`MillRnDAmount`, `Trace`), over 206 card files —
+  unchanged, one card later.
+- **Measured.** Both sweeps at 256 seeds are green, coverage gate
+  included, so Vicsek was seen in play. `coverage_identical.py main` (192
+  games a shape, seed 1): **the random seatings are identical**, by view
+  and by index. Vicsek is in a Sweep deck, which `--all-matchups` never
+  plays, so that is the engine change measured alone: `IceType::Other`,
+  `GiveTags(Amount)` and the seven printings joining the catalog move no
+  game. **The heuristic seatings move** (Corp wins 86 → 78 of 192: agenda
+  wins 72 → 68, flatlines 14 → 10). Checked, not inferred: this branch
+  without Vicsek's card file and deck swap is identical to `main` in all
+  four shapes, so the movement is the one new playable card `determinize`
+  samples into hidden Corp zones.
 
 ### 2. Rebellion Without Rehearsal — 65 cards (C 7 / V 43 / M 15)
 

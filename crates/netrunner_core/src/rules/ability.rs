@@ -352,7 +352,10 @@ pub fn evaluate_effect(
             Ok(events)
         }
 
-        Effect::GiveTags(amount) => prevention::would(state, registry, WouldHappen::Tags { amount: *amount }, ctx),
+        Effect::GiveTags(amount) => {
+            let amount = resolve_amount(amount, ctx, state, registry);
+            prevention::would(state, registry, WouldHappen::Tags { amount }, ctx)
+        }
 
         Effect::RemoveTags(amount) => {
             // The event reports what actually came off, not what was asked
@@ -3117,7 +3120,7 @@ mod tests {
     #[test]
     fn give_tags_always_targets_the_runner() {
         let mut state = game_state();
-        let events = evaluate_effect(&mut state, &Effect::GiveTags(2), &mut ResolutionContext::for_card(None), &CardRegistry::new()).unwrap();
+        let events = evaluate_effect(&mut state, &Effect::GiveTags(Amount::Fixed(2)), &mut ResolutionContext::for_card(None), &CardRegistry::new()).unwrap();
 
         assert_eq!(state.runner.tags, 2);
         assert_eq!(events, vec![GameEvent::TagsGiven { side: Side::Runner, amount: 2 }]);
@@ -3271,7 +3274,7 @@ mod tests {
     fn resolve_unbroken_subroutines_resolves_each_pending_subroutine_in_order() {
         let mut state = game_state();
         let mut ice = test_ice("ice_wall", 2, true);
-        ice.subroutines[0].definition.effect = Effect::GiveTags(2);
+        ice.subroutines[0].definition.effect = Effect::GiveTags(Amount::Fixed(2));
         ice.subroutines[1].definition.effect = Effect::GainCredits(Side::Corp, 3);
         state.active_run = Some(RunState {
             phase: RP::EncounterIce,
@@ -3295,7 +3298,7 @@ mod tests {
                 GameEvent::SubroutineFired {
                     card_id: CardId("ice_wall".to_string()),
                     index: 0,
-                    effect: Effect::GiveTags(2),
+                    effect: Effect::GiveTags(Amount::Fixed(2)),
                 },
                 GameEvent::TagsGiven { side: Side::Runner, amount: 2 },
                 GameEvent::SubroutineFired {
@@ -3314,7 +3317,7 @@ mod tests {
         let mut state = game_state();
         let mut ice = test_ice("ice_wall", 2, true);
         ice.subroutines[0].definition.effect = Effect::EndTheRun;
-        ice.subroutines[1].definition.effect = Effect::GiveTags(5);
+        ice.subroutines[1].definition.effect = Effect::GiveTags(Amount::Fixed(5));
         state.active_run = Some(RunState {
             phase: RP::EncounterIce,
             ice: vec![ice],
@@ -3344,7 +3347,7 @@ mod tests {
         let mut state = game_state();
         let mut ice = test_ice("ice_wall", 2, true);
         ice.subroutines[0].status = SubroutineStatus::Broken;
-        ice.subroutines[1].definition.effect = Effect::GiveTags(1);
+        ice.subroutines[1].definition.effect = Effect::GiveTags(Amount::Fixed(1));
         state.active_run = Some(RunState {
             phase: RP::EncounterIce,
             ice: vec![ice],
@@ -3719,7 +3722,7 @@ mod tests {
                 subject: None, when: None, acts_on_subject: false, first_each_turn: false,
                 text: None,
                 trigger: Trigger::OnAccessed,
-                effects: vec![Effect::GiveTags(1), Effect::GainCredits(Side::Corp, 2)],
+                effects: vec![Effect::GiveTags(Amount::Fixed(1)), Effect::GainCredits(Side::Corp, 2)],
                 requirement: None,
             }],
         )]);
@@ -4245,7 +4248,7 @@ mod tests {
     #[test]
     fn trace_effect_parks_pending_state_and_does_not_resolve_immediately() {
         let mut state = game_state();
-        let effect = Effect::Trace { base: 3, on_success: Box::new(Effect::GiveTags(1)) };
+        let effect = Effect::Trace { base: 3, on_success: Box::new(Effect::GiveTags(Amount::Fixed(1))) };
 
         let events = evaluate_effect(&mut state, &effect, &mut ResolutionContext::for_card(None), &CardRegistry::new()).unwrap();
 
@@ -4254,18 +4257,18 @@ mod tests {
         let trace = state.active_trace.expect("trace should be parked");
         assert_eq!(trace.base_strength, 3);
         assert_eq!(trace.corp_bid, None);
-        assert_eq!(trace.effect_on_success, Effect::GiveTags(1));
+        assert_eq!(trace.effect_on_success, Effect::GiveTags(Amount::Fixed(1)));
         assert_eq!(trace.resume, TraceResume::None);
     }
 
     #[test]
     fn trace_effect_while_already_active_errors() {
         let mut state = game_state();
-        evaluate_effect(&mut state, &Effect::Trace { base: 3, on_success: Box::new(Effect::GiveTags(1)) }, &mut ResolutionContext::for_card(None), &CardRegistry::new())
+        evaluate_effect(&mut state, &Effect::Trace { base: 3, on_success: Box::new(Effect::GiveTags(Amount::Fixed(1))) }, &mut ResolutionContext::for_card(None), &CardRegistry::new())
             .unwrap();
 
         let result =
-            evaluate_effect(&mut state, &Effect::Trace { base: 5, on_success: Box::new(Effect::GiveTags(2)) }, &mut ResolutionContext::for_card(None), &CardRegistry::new());
+            evaluate_effect(&mut state, &Effect::Trace { base: 5, on_success: Box::new(Effect::GiveTags(Amount::Fixed(2))) }, &mut ResolutionContext::for_card(None), &CardRegistry::new());
 
         assert_eq!(result, Err(RulesError::TraceAlreadyActive));
         assert_eq!(state.active_trace.unwrap().base_strength, 3, "original trace must be untouched");
@@ -4277,7 +4280,7 @@ mod tests {
         let mut ice = test_ice("ice_wall", 2, true);
         ice.subroutines[0].definition.effect =
             Effect::Trace { base: 2, on_success: Box::new(Effect::EndTheRun) };
-        ice.subroutines[1].definition.effect = Effect::GiveTags(5);
+        ice.subroutines[1].definition.effect = Effect::GiveTags(Amount::Fixed(5));
         state.active_run = Some(RunState {
             phase: RP::EncounterIce,
             ice: vec![ice],
@@ -4347,7 +4350,7 @@ mod tests {
             side: Side::Runner,
             cost: Cost::Credits(4),
             if_paid: Box::new(Effect::Sequence(Vec::new())),
-            if_declined: Box::new(Effect::GiveTags(1)),
+            if_declined: Box::new(Effect::GiveTags(Amount::Fixed(1))),
             text: None,
         };
 

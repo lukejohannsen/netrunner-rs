@@ -2959,7 +2959,7 @@ mod tests {
         let registry = CardRegistry::from_cards(vec![CardDefinition {
             interactive_on_access: Some(InteractiveOnAccess {
                 cost: Cost::Credits(4),
-                effects: vec![Effect::GiveTags(1)],
+                effects: vec![Effect::GiveTags(crate::dsl::Amount::Fixed(1))],
                 interaction: AccessInteraction::CorpPaysToApply,
                 requirement: None,
             }),
@@ -3013,7 +3013,7 @@ mod tests {
     fn ordinary_on_accessed_cards_are_unaffected_by_the_interactive_trigger_refactor() {
         let registry = CardRegistry::from_cards(vec![card_with_on_accessed(
             "snare",
-            vec![Effect::GiveTags(1)],
+            vec![Effect::GiveTags(crate::dsl::Amount::Fixed(1))],
         )]);
         let mut state = game_state(
             Vec::new(),
@@ -3070,7 +3070,7 @@ mod tests {
             "fetal_ai",
             Cost::Credits(4),
             vec![Effect::DealDamage(DamageType::Net, 2)],
-            vec![Effect::GiveTags(1)],
+            vec![Effect::GiveTags(crate::dsl::Amount::Fixed(1))],
         )]);
         let mut state = game_state(
             Vec::new(),
@@ -3220,7 +3220,7 @@ mod tests {
         // archives) for the self-trash to be observable at all.
         let registry = CardRegistry::from_cards(vec![card_with_on_accessed(
             "shock_ish",
-            vec![Effect::GiveTags(1), Effect::TrashCard(CardTarget::ThisCard)],
+            vec![Effect::GiveTags(crate::dsl::Amount::Fixed(1)), Effect::TrashCard(CardTarget::ThisCard)],
         )]);
         let mut state = game_state(
             vec![CardId("shock_ish".to_string())],

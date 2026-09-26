@@ -72,17 +72,22 @@ fn parse_keywords(keywords: Option<String>) -> Vec<String> {
 }
 
 /// NetrunnerDB's `ice` `type_code` carries no `IceType` payload of its own —
-/// the subtype only appears as the first segment of the keyword list (e.g.
-/// `"Sentry - Bioroid - Destroyer"`). Every ICE in the currently-embedded
-/// sets carries exactly one of these three as its first keyword, once
-/// `CATALOG_UNMODELABLE` has removed the one printing that carries none.
-fn infer_ice_type(keywords: &[String]) -> Option<IceType> {
-    match keywords.first().map(String::as_str) {
-        Some("Barrier") => Some(IceType::Barrier),
-        Some("Code Gate") => Some(IceType::CodeGate),
-        Some("Sentry") => Some(IceType::Sentry),
-        _ => None,
-    }
+/// the type is a keyword (e.g. `"Sentry - Bioroid - Destroyer"`). The first
+/// of Barrier, Code Gate and Sentry the keywords name, and `Other` for ice
+/// that names none (Vicsek's `"Trap - AP - Observer"`, a Mythic). Hafrún,
+/// the one printing that names two (`"Barrier - Code Gate"`), reads as its
+/// first until Parhelion builds it; a card that prints two types is that
+/// tranche's question.
+fn infer_ice_type(keywords: &[String]) -> IceType {
+    keywords
+        .iter()
+        .find_map(|keyword| match keyword.as_str() {
+            "Barrier" => Some(IceType::Barrier),
+            "Code Gate" => Some(IceType::CodeGate),
+            "Sentry" => Some(IceType::Sentry),
+            _ => None,
+        })
+        .unwrap_or(IceType::Other)
 }
 
 fn parse_card_type(type_code: &str, keywords: &[String]) -> Result<CardType, CardConversionError> {
@@ -90,9 +95,7 @@ fn parse_card_type(type_code: &str, keywords: &[String]) -> Result<CardType, Car
         "identity" => Ok(CardType::Identity),
         "agenda" => Ok(CardType::Agenda),
         "asset" => Ok(CardType::Asset),
-        "ice" => infer_ice_type(keywords)
-            .map(CardType::Ice)
-            .ok_or_else(|| CardConversionError::UnrecognizedIceKeywords(keywords.join(" - "))),
+        "ice" => Ok(CardType::Ice(infer_ice_type(keywords))),
         "operation" => Ok(CardType::Operation),
         "upgrade" => Ok(CardType::Upgrade),
         "event" => Ok(CardType::Event),
@@ -255,52 +258,9 @@ pub fn convert_dtos_lenient(dtos: Vec<NetrunnerDbCardDto>) -> (Vec<CardDefinitio
 /// compile-time embed, not a runtime filesystem read.
 pub fn load_embedded_netrunnerdb_sets() -> Result<CardRegistry, EmbeddedSetsError> {
     let packs: Vec<Vec<NetrunnerDbCardDto>> = serde_json::from_str(CATALOG_JSON)?;
-    let modelable = packs.into_iter().flatten().filter(|dto| !is_unmodelable(&dto.code)).collect();
     let mut registry = CardRegistry::new();
-    registry.merge(convert_dtos(modelable)?);
+    registry.merge(convert_dtos(packs.into_iter().flatten().collect())?);
     Ok(registry)
-}
-
-/// Catalog entries this crate's card schema cannot represent, keyed by
-/// NetrunnerDB code with a stated reason. Filtered out *before*
-/// `convert_dtos` rather than tolerated by `convert_dtos_lenient`, so an
-/// unexpected conversion failure still aborts loudly — the same
-/// explicit-exception-set discipline `SG_UNIMPLEMENTED` applies to card
-/// coverage, not a place to silence a real gap.
-///
-/// **Every entry but Data Mine is a card the NSG card-pool plan builds**
-/// (docs/roadmap/nsg-card-pool.md): six ice that print no Barrier, Code Gate
-/// or Sentry — a trap, and the Mythic ice that are none of the three. They
-/// are here, and in their set's `UNIMPLEMENTED` list, until the tranche that
-/// builds the first of them gives `CardType::Ice` a way to say it, which is
-/// that tranche's mechanic and not a catalog change. The set gates count
-/// them (`assert_set_accounted_for`), so a printed set still adds up.
-const CATALOG_UNMODELABLE: &[(&str, &str)] = &[
-    (
-        "01076",
-        "Data Mine — ICE whose keywords are \"Trap - AP\", with no Barrier/Code Gate/Sentry \
-         subtype at all. `CardType::Ice` carries a mandatory `IceType`; widening it to an \
-         `Option` would ripple through every `restrict_to` match and every ICE card file to \
-         accommodate a catalog-only card nothing implements.",
-    ),
-    ("26051", "Loot Box — ice whose only subtype is Trap"),
-    ("26065", "Rime — Mythic ice, no Barrier/Code Gate/Sentry"),
-    ("26109", "Konjin — Mythic - Psi ice, no Barrier/Code Gate/Sentry"),
-    ("29017", "Excalibur — Mythic - Grail ice, no Barrier/Code Gate/Sentry"),
-    ("34100", "Lycian Multi-Munition — Mythic - Destroyer ice; gains the subtypes it is given"),
-    ("36042", "Vicsek — Trap - AP - Observer ice, no Barrier/Code Gate/Sentry"),
-];
-
-/// Every code `CATALOG_UNMODELABLE` withholds: printed cards the catalog
-/// does not hold. The set gates count a printed set as its catalog entries
-/// plus these, and `netrunner_bots`' reserved vocabulary blocks are checked
-/// against the same sum.
-pub fn unmodelable_codes() -> impl Iterator<Item = u32> {
-    CATALOG_UNMODELABLE.iter().map(|(code, _)| code.parse().expect("an unmodelable entry is a numeric code"))
-}
-
-fn is_unmodelable(code: &str) -> bool {
-    CATALOG_UNMODELABLE.iter().any(|(excluded, _)| *excluded == code)
 }
 
 #[cfg(test)]
@@ -414,13 +374,12 @@ mod tests {
     }
 
     #[test]
-    fn rejects_ice_with_unrecognized_keywords() {
-        let mut dto = base_dto();
-        dto.keywords = Some("Mythic".to_string());
-        assert_eq!(
-            convert_one(dto),
-            Err(CardConversionError::UnrecognizedIceKeywords("Mythic".to_string()))
-        );
+    fn ice_that_prints_none_of_the_three_types_is_other() {
+        for keywords in ["Trap - AP - Observer", "Mythic", "Mythic - Destroyer"] {
+            let mut dto = base_dto();
+            dto.keywords = Some(keywords.to_string());
+            assert_eq!(convert_one(dto).expect("valid conversion").card_type, CardType::Ice(IceType::Other), "{keywords}");
+        }
     }
 
     #[test]
@@ -499,10 +458,10 @@ mod tests {
     #[test]
     fn load_embedded_netrunnerdb_sets_is_non_empty_and_matches_known_counts() {
         let registry = load_embedded_netrunnerdb_sets().expect("embedded sets should parse");
-        // Fifteen packs, 846 printings, less the seven `CATALOG_UNMODELABLE`
-        // withholds. Exact rather than a floor: a pack that failed to embed
-        // would have passed a floor for as long as the others outnumbered it.
-        assert_eq!(registry.len(), 846 - unmodelable_codes().count());
+        // Fifteen packs, 846 printings. Exact rather than a floor: a pack
+        // that failed to embed would have passed a floor for as long as the
+        // others outnumbered it.
+        assert_eq!(registry.len(), 846);
     }
 
     #[test]

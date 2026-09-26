@@ -20,7 +20,9 @@
             "on_success": {
               "Sequence": [
                 {
-                  "GiveTags": 1
+                  "GiveTags": {
+                    "Fixed": 1
+                  }
                 },
                 {
                   "LoseCredits": [

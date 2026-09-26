@@ -285,14 +285,11 @@ mod catalog_join_tests {
     /// title** (`cards::title_key`, with the side). A reprint has a code of
     /// its own and a card file one `numeric_id`, so a pack that reprints a
     /// built card — System Update 2021's Corroder — would otherwise read as
-    /// unbuilt. `codes` is the pack's printed range, which is how the gate
-    /// finds the printings `CATALOG_UNMODELABLE` withholds from the catalog:
-    /// they are printed, so they count, and they must be listed.
+    /// unbuilt.
     fn assert_set_accounted_for(
         set_code: &str,
         set_name: &str,
         printed: usize,
-        codes: std::ops::RangeInclusive<u32>,
         exceptions: &[(u32, &str)],
     ) {
         let catalog = crate::cards::load_embedded_netrunnerdb_sets().expect("catalog should parse");
@@ -319,14 +316,6 @@ mod catalog_join_tests {
                 built.insert(numeric_id.0);
             } else if !excluded.contains(&numeric_id.0) {
                 unaccounted.push(format!("{} ({})", entry.title, numeric_id.0));
-            }
-        }
-        for code in crate::cards::netrunnerdb::unmodelable_codes().filter(|code| codes.contains(code)) {
-            total += 1;
-            if implemented.contains(&code) {
-                built.insert(code);
-            } else if !excluded.contains(&code) {
-                unaccounted.push(format!("the unmodelable printing {code}"));
             }
         }
 
@@ -368,14 +357,14 @@ mod catalog_join_tests {
 
     #[test]
     fn every_system_gateway_card_is_implemented_or_explicitly_excluded() {
-        assert_set_accounted_for("sg", "System Gateway", 77, 30001..=30077, SG_UNIMPLEMENTED);
+        assert_set_accounted_for("sg", "System Gateway", 77, SG_UNIMPLEMENTED);
     }
 
     /// The same gate for *Elevation*, whose exception list shrinks one
     /// stage at a time — see `ELEV_UNIMPLEMENTED`.
     #[test]
     fn every_elevation_card_is_implemented_or_explicitly_excluded() {
-        assert_set_accounted_for("elev", "Elevation", 82, 35001..=35082, ELEV_UNIMPLEMENTED);
+        assert_set_accounted_for("elev", "Elevation", 82, ELEV_UNIMPLEMENTED);
     }
 
     /// The NSG card-pool plan's packs (docs/roadmap/nsg-card-pool.md), each
@@ -384,21 +373,21 @@ mod catalog_join_tests {
     #[test]
     fn every_nsg_pack_card_is_implemented_or_explicitly_excluded() {
         use crate::cards::unimplemented::*;
-        for (set_code, set_name, printed, codes, exceptions) in [
-            ("vp", "Vantage Point", 66, 36001..=36066, VP_UNIMPLEMENTED),
-            ("rwr", "Rebellion Without Rehearsal", 65, 34066..=34130, RWR_UNIMPLEMENTED),
-            ("tai", "The Automata Initiative", 65, 34001..=34065, TAI_UNIMPLEMENTED),
-            ("ph", "Parhelion", 63, 33066..=33128, PH_UNIMPLEMENTED),
-            ("msbp", "Midnight Sun Booster Pack", 7, 32001..=32007, MSBP_UNIMPLEMENTED),
-            ("ms", "Midnight Sun", 65, 33001..=33065, MS_UNIMPLEMENTED),
-            ("urbp", "Uprising Booster Pack", 7, 27001..=27007, URBP_UNIMPLEMENTED),
-            ("ur", "Uprising", 65, 26066..=26130, UR_UNIMPLEMENTED),
-            ("df", "Downfall", 65, 26001..=26065, DF_UNIMPLEMENTED),
-            ("su21", "System Update 2021", 82, 31001..=31082, SU21_UNIMPLEMENTED),
-            ("sm", "Salvaged Memories", 18, 29001..=29018, SM_UNIMPLEMENTED),
-            ("mor", "Magnum Opus Reprint", 6, 28001..=28006, MOR_UNIMPLEMENTED),
+        for (set_code, set_name, printed, exceptions) in [
+            ("vp", "Vantage Point", 66, VP_UNIMPLEMENTED),
+            ("rwr", "Rebellion Without Rehearsal", 65, RWR_UNIMPLEMENTED),
+            ("tai", "The Automata Initiative", 65, TAI_UNIMPLEMENTED),
+            ("ph", "Parhelion", 63, PH_UNIMPLEMENTED),
+            ("msbp", "Midnight Sun Booster Pack", 7, MSBP_UNIMPLEMENTED),
+            ("ms", "Midnight Sun", 65, MS_UNIMPLEMENTED),
+            ("urbp", "Uprising Booster Pack", 7, URBP_UNIMPLEMENTED),
+            ("ur", "Uprising", 65, UR_UNIMPLEMENTED),
+            ("df", "Downfall", 65, DF_UNIMPLEMENTED),
+            ("su21", "System Update 2021", 82, SU21_UNIMPLEMENTED),
+            ("sm", "Salvaged Memories", 18, SM_UNIMPLEMENTED),
+            ("mor", "Magnum Opus Reprint", 6, MOR_UNIMPLEMENTED),
         ] {
-            assert_set_accounted_for(set_code, set_name, printed, codes, exceptions);
+            assert_set_accounted_for(set_code, set_name, printed, exceptions);
         }
     }
 

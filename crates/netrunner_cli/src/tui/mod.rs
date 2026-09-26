@@ -1965,7 +1965,7 @@ mod tests {
         // "may" declined.
         state.pending_decision = Some(PendingDecision::ChooseEffect {
             chooser: Side::Corp,
-            options: vec![Effect::GiveTags(1), Effect::Sequence(vec![])],
+            options: vec![Effect::GiveTags(netrunner_core::dsl::Amount::Fixed(1)), Effect::Sequence(vec![])],
             option_texts: vec!["Give the Runner 1 tag.".to_string(), String::new()],
             source_card: Some(CardId("bigger_picture".to_string())),
             prompting_card: None,

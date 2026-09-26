@@ -15,11 +15,32 @@ use crate::rules::Side;
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct CardId(pub String);
 
+/// The breaker-facing axis of a piece of ice: which of the three types a
+/// typed breaker's `restrict_to` (and a `GainSubtype`) is matched against.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum IceType {
     Barrier,
     CodeGate,
     Sentry,
+    /// Ice that prints none of the three — a Trap (Vicsek, Data Mine, Loot
+    /// Box) or a Mythic (Rime, Konjin, Excalibur, Lycian Multi-Munition).
+    /// It is still a piece of ice with subtypes of its own
+    /// (`CardDefinition::subtypes`), but no fracter, decoder or killer
+    /// interacts with it: only a breaker with no `restrict_to` (an AI) does
+    /// (CR 3.9.5h: an interface ability that names no subtype "can be used
+    /// on any piece of ice"), or one whose target has *gained* a type
+    /// (`ContinuousKind::GainSubtype`), because the match is "prints it or
+    /// has gained it".
+    ///
+    /// **A fourth variant rather than `CardType::Ice(Option<IceType>)`**
+    /// (NSG card pool, Vantage Point Stage 2b, 26 September 2026): the
+    /// question every reader asks is "is this ice a barrier?", and equality
+    /// with a variant that is none of the three already answers no, so no
+    /// matcher changed. An `Option` would have put `Some(..)` at every one
+    /// of about two hundred sites and in every ice card file for a case one
+    /// card in the pool prints. `validate` refuses it where it could only
+    /// mean nothing: a breaker restricted to it, or a card gaining it.
+    Other,
 }
 
 /// A printed subtype: every word Comprehensive Rules 2.16.7 lists, spelled
@@ -788,6 +809,8 @@ pub enum PaysFor {
 /// this explicitly.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum CardValidationError {
+    #[error("card {0:?}: `IceType::Other` is ice with none of the three types, never a type — refused on {1}")]
+    OtherIsNotAnIceType(CardId, &'static str),
     #[error("Agenda {0:?} must not have subroutines")]
     AgendaHasSubroutines(CardId),
     #[error("card {0:?}: only a Runner card's paid ability can be a mid-access ability (`access`, CR 9.3.6b)")]
@@ -1034,6 +1057,10 @@ impl CardDefinition {
         // nothing. The substitution stops at a `then`, so a root it
         // changes names the placeholder where no number was chosen.
         let mut chosen_number_nobody_chose = false;
+        // `restrict_to: Some(Other)` parses and breaks exactly the ice a
+        // breaker with no restriction breaks, which is not what a card
+        // restricted to a type means.
+        let mut restricted_to_no_type = false;
         let roots = self
             .abilities
             .iter()
@@ -1044,6 +1071,7 @@ impl CardDefinition {
         for root in roots {
             root.for_each_effect(&mut |effect| {
                 prohibits_for_an_encounter |= matches!(effect, Effect::Prohibit { until: EffectDuration::Encounter, .. });
+                restricted_to_no_type |= matches!(effect, Effect::BreakSubroutines { restrict_to: Some(IceType::Other), .. });
             });
             chosen_number_nobody_chose |= root.clone().with_chosen_number(1) != *root;
         }
@@ -1052,6 +1080,9 @@ impl CardDefinition {
         }
         if prohibits_for_an_encounter {
             return Err(CardValidationError::ProhibitionForAnEncounter(self.id.clone()));
+        }
+        if restricted_to_no_type {
+            return Err(CardValidationError::OtherIsNotAnIceType(self.id.clone(), "a breaker restricted to it"));
         }
         // A continuous effect that does not fit parses and then applies to
         // nothing, which reads as a card that works: the scan finds no
@@ -1084,6 +1115,9 @@ impl CardDefinition {
                 (ContinuousKind::RezCost(_), _) => return misfit("RezCost", "only an installed Corp card is rezzed"),
                 (ContinuousKind::TrashCost(_), Scope::This | Scope::RootOfThisServer(_)) => {}
                 (ContinuousKind::TrashCost(_), _) => return misfit("TrashCost", "a trash cost is this card's own or that of a card in its server's root"),
+                (ContinuousKind::GainSubtype(IceType::Other), _) => {
+                    return Err(CardValidationError::OtherIsNotAnIceType(self.id.clone(), "a card gaining it"));
+                }
                 (ContinuousKind::GainSubtype(_), Scope::This | Scope::Host | Scope::Ice) => {}
                 (ContinuousKind::GainSubtype(_), _) => return misfit("GainSubtype", "an ice subtype is gained by ice: this card, its host, or each piece"),
                 (ContinuousKind::BoostsLastTheRun, Scope::This | Scope::Host) => {}
@@ -1420,6 +1454,46 @@ mod tests {
 
     /// A continuous effect that does not fit parses and then reaches
     /// nothing, which looks like a card that works — so a card file is
+    /// `IceType::Other` is ice with none of the three types. Restricting a
+    /// breaker to it would break what an AI breaks, and gaining it would
+    /// gain nothing, so neither parses into a card.
+    #[test]
+    fn other_is_never_a_type_to_break_or_to_gain() {
+        let gains_other = CardDefinition {
+            id: CardId("homebrew".to_string()),
+            side: Side::Corp,
+            card_type: CardType::Ice(IceType::Barrier),
+            strength: Some(1),
+            continuous: vec![ContinuousEffect {
+                kind: ContinuousKind::GainSubtype(IceType::Other),
+                applies_to: Scope::This,
+                condition: None,
+                first_each_turn: false,
+                text: None,
+            }],
+            ..Default::default()
+        };
+        assert!(matches!(gains_other.validate(), Err(CardValidationError::OtherIsNotAnIceType(..))));
+        let breaks_other = CardDefinition {
+            id: CardId("homebrew".to_string()),
+            side: Side::Runner,
+            card_type: CardType::Program,
+            strength: Some(1),
+            abilities: vec![AbilityDef {
+                trigger: Trigger::Paid,
+                text: Some("Break 1 subroutine.".to_string()),
+                cost: None,
+                requirement: None,
+                effect: Effect::BreakSubroutines { count: crate::dsl::SubroutineBreakCount::Fixed(1), restrict_to: Some(IceType::Other) },
+                cost_discount_if: None,
+                used_by: None,
+                access: false,
+            }],
+            ..Default::default()
+        };
+        assert!(matches!(breaks_other.validate(), Err(CardValidationError::OtherIsNotAnIceType(..))));
+    }
+
     /// refused rather than quietly printing a number nobody adds.
     #[test]
     fn a_continuous_effect_must_fit_the_card_that_prints_it() {

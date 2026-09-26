@@ -1302,7 +1302,7 @@ mod tests {
     fn resolve_subroutine_applies_its_effect() {
         let mut state = game_state();
         let mut ice = test_ice("ice_wall", 1, true);
-        ice.subroutines[0].definition.effect = Effect::GiveTags(2);
+        ice.subroutines[0].definition.effect = Effect::GiveTags(crate::dsl::Amount::Fixed(2));
         state.active_run = Some(run_state(RunPhase::EncounterIce, vec![ice], 0));
 
         let events = advance_run(&mut state, RunAction::ResolveSubroutine(0), &CardRegistry::new()).expect("should succeed");
@@ -1318,7 +1318,7 @@ mod tests {
                 GameEvent::SubroutineFired {
                     card_id: CardId("ice_wall".to_string()),
                     index: 0,
-                    effect: Effect::GiveTags(2),
+                    effect: Effect::GiveTags(crate::dsl::Amount::Fixed(2)),
                 },
                 GameEvent::TagsGiven { side: Side::Runner, amount: 2 },
             ]

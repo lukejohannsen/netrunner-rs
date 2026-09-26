@@ -511,7 +511,7 @@ mod tests {
             {
                 "trigger": "Paid",
                 "cost": "TrashSelf",
-                "effect": { "GiveTags": 1 }
+                "effect": { "GiveTags": { "Fixed": 1 } }
             }
         ],
         "subroutines": [
@@ -544,7 +544,7 @@ mod tests {
                 trigger: Trigger::Paid,
                 cost: Some(Cost::TrashSelf),
                 requirement: None,
-                effect: Effect::GiveTags(1),
+                effect: Effect::GiveTags(crate::dsl::Amount::Fixed(1)),
                 cost_discount_if: None, used_by: None, access: false }
         );
         assert_eq!(

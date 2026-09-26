@@ -7415,7 +7415,7 @@ mod system_gateway {
             initiating_install: None,
             base_strength: 1,
             corp_bid: None,
-            effect_on_success: crate::dsl::Effect::GiveTags(1),
+            effect_on_success: crate::dsl::Effect::GiveTags(crate::dsl::Amount::Fixed(1)),
             resume: crate::rules::TraceResume::None,
         });
         let highest = crate::rules::legal_actions(&tracing, &registry)
@@ -7503,7 +7503,7 @@ mod system_gateway {
             initiating_install: None,
             base_strength: 3,
             corp_bid: Some(0),
-            effect_on_success: crate::dsl::Effect::GiveTags(1),
+            effect_on_success: crate::dsl::Effect::GiveTags(crate::dsl::Amount::Fixed(1)),
             resume: crate::rules::TraceResume::None,
         });
         let bids: Vec<u32> = crate::rules::legal_actions(&state, &registry)
@@ -11094,5 +11094,66 @@ mod vantage_point {
         let witch_hunt = state.corp.installed.iter().find(|card| card.card == id("witch_hunt")).unwrap();
         assert_eq!(witch_hunt.advancement_tokens, 2);
         assert_eq!(state.corp.resources.credits, Credits(7));
+    }
+
+    /// Vicsek prints none of Barrier, Code Gate or Sentry (`IceType::Other`).
+    #[test]
+    fn vicsek_is_ice_of_no_breaker_type_read_off_the_catalog() {
+        let vicsek = registry().get(&id("vicsek")).cloned().expect("Vicsek");
+        assert_eq!(vicsek.card_type, crate::dsl::CardType::Ice(crate::dsl::IceType::Other));
+        assert_eq!(
+            vicsek.subtypes,
+            vec![crate::dsl::CardSubtype::Trap, crate::dsl::CardSubtype::Ap, crate::dsl::CardSubtype::Observer],
+            "its subtypes are its own"
+        );
+    }
+
+    /// X is the Runner's tags, so two tags become four with two net damage;
+    /// the second subroutine tags once more and trashes Vicsek, and the run
+    /// goes on past where it stood.
+    #[test]
+    fn vicsek_doubles_the_runners_tags_with_as_much_net_damage_then_tags_again_and_trashes_itself() {
+        let registry = registry();
+        for (tags, damage, after) in [(2, 2, 5), (0, 0, 1)] {
+            let mut state = base_state();
+            state.runner.tags = tags;
+            state.runner.grip = vec![id("sure_gamble"); 5];
+            let (state, _) = let_subroutines_fire(state, &registry, "vicsek");
+            assert_eq!(state.runner.heap.len(), damage, "starting from {tags} tags");
+            assert_eq!(state.runner.tags, after, "starting from {tags} tags");
+            assert!(state.corp.installed.iter().all(|card| card.card != id("vicsek")), "trashed");
+            assert!(state.corp.archives.iter().any(|archived| archived.card == id("vicsek")));
+            assert!(state.active_run.is_some(), "a trashed ice ends the encounter, not the run");
+        }
+    }
+
+    /// Only a breaker with no type restriction breaks it: Corroder is refused
+    /// on the type before its strength is asked, and Mayfly, pumped to 3,
+    /// breaks.
+    #[test]
+    fn only_an_ai_breaker_breaks_vicsek() {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        // A fixture install carries the strength an install would have.
+        state.runner.rig = vec![rig("corroder"), crate::rules::InstalledRunnerCard { base_strength: 1, ..rig("mayfly") }];
+        state.corp.installed.push(ice_at_hq("vicsek"));
+        let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("initiate run");
+        let (state, _) = crate::rules::test_support::continue_run(&state, &registry).expect("approach the ice");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner passes approach");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Corp }).expect("encounter");
+        // Each use hands the Corp priority, and the Corp passes it back.
+        let use_ability = |state: &GameState, card: &str, ability_index| {
+            let (state, _) = apply_action(state, &registry, PlayerAction::ActivateAbility { target: fixture_install_id(card), ability_index })?;
+            apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Corp }).map(|(state, _)| state)
+        };
+
+        let refused = use_ability(&state, "corroder", 1);
+        assert!(matches!(refused, Err(RulesError::InvalidBreakerSubtype { .. })), "{refused:?}");
+        let state = use_ability(&state, "mayfly", 1).expect("+1");
+        let state = use_ability(&state, "mayfly", 1).expect("+1");
+        let state = use_ability(&state, "mayfly", 0).expect("Mayfly breaks a subroutine");
+        let run = state.active_run.as_ref().expect("still encountering");
+        assert_eq!(run.ice[run.position].subroutines.iter().filter(|sub| sub.status == crate::rules::SubroutineStatus::Broken).count(), 1);
     }
 }

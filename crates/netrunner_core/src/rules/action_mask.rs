@@ -1189,7 +1189,7 @@ mod tests {
             initiating_install: None,
             base_strength: 2,
             corp_bid: None,
-            effect_on_success: DslEffect::GiveTags(1),
+            effect_on_success: DslEffect::GiveTags(crate::dsl::Amount::Fixed(1)),
             resume: crate::rules::state::TraceResume::None,
         });
 
@@ -1254,7 +1254,7 @@ mod tests {
             side: Side::Corp,
             cost: Cost::AnyOf(vec![Cost::Clicks(2), Cost::Credits(5)]),
             if_paid: Effect::Sequence(Vec::new()),
-            if_declined: Effect::GiveTags(1),
+            if_declined: Effect::GiveTags(crate::dsl::Amount::Fixed(1)),
             source_card: None,
             prompting_card: None,
             source_install: None,
