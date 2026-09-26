@@ -849,7 +849,7 @@ pub(crate) fn place_corp_card(
 /// empty for an installable type. Computed at park time and safe to trust
 /// at resolution: a parked decision blocks every other action, so nothing
 /// can change in between.
-pub(crate) fn corp_install_destinations(state: &GameState, card_def: &crate::dsl::CardDefinition, ignore_costs: bool) -> Vec<ServerId> {
+pub(crate) fn corp_install_destinations(state: &GameState, card_def: &crate::dsl::CardDefinition, ignore_costs: bool, discount: u32) -> Vec<ServerId> {
     let existing = super::legal_actions::existing_remote_ids(state);
     let mut remotes: Vec<ServerId> = existing.iter().copied().map(ServerId::Remote).collect();
     remotes.push(ServerId::Remote(super::legal_actions::fresh_remote_id(&existing)));
@@ -863,8 +863,12 @@ pub(crate) fn corp_install_destinations(state: &GameState, card_def: &crate::dsl
         CardType::Ice(_) => {
             let mut zones = vec![ServerId::Hq, ServerId::RnD, ServerId::Archives];
             zones.extend(remotes);
+            // Priced as `place_corp_card` prices it, discount and all:
+            // before Reanimation Protocol's 10[credit] the only discount
+            // was Mercia B4LL4RD's 1[credit], and a server that discount
+            // made affordable was not offered.
             if !ignore_costs {
-                zones.retain(|zone| ice_protecting(state, *zone) <= state.corp.resources.credits.0);
+                zones.retain(|zone| ice_protecting(state, *zone).saturating_sub(discount) <= state.corp.resources.credits.0);
             }
             zones
         }
@@ -874,7 +878,7 @@ pub(crate) fn corp_install_destinations(state: &GameState, card_def: &crate::dsl
 
 /// How many pieces of ICE already protect `server` — the install cost of
 /// the next one.
-fn ice_protecting(state: &GameState, server: TargetZone) -> u32 {
+pub(crate) fn ice_protecting(state: &GameState, server: TargetZone) -> u32 {
     state.corp.installed.iter().filter(|c| c.server == server && c.slot == InstallSlot::Ice).count() as u32
 }
 
@@ -1338,17 +1342,27 @@ fn play_event(
     // part of paying to play, so it lands here with the credits — before
     // `OnPlay` — and an unaffordable one fails the play before anything
     // resolves, which is what makes `legal_actions`' probe drop it.
+    let mut cost_events = Vec::new();
     if let Some(additional) = &card_def.additional_play_cost {
-        events.extend(ability::pay_cost(&mut next, registry, side, additional, Purpose::Other, Some(&card_id))?);
+        cost_events = ability::pay_cost(&mut next, registry, side, additional, Purpose::Other, Some(&card_id))?;
+        events.extend(cost_events.clone());
     }
     let played_event = GameEvent::EventPlayed { side, card: card_id.clone() };
     dispatcher::emit(&mut next, registry, &mut events, played_event)?;
+    // As `play_operation_card` does: the additional cost's events after.
+    events.extend(ability::dispatch_cost_events(&mut next, registry, &cost_events)?);
     // A played Event is trashed once it resolves — it goes to the Heap,
     // faceup, exactly as `play_operation` archives an Operation. This used
     // to be missing, so every Event the Runner played left the game: the
     // Heap under-reported by one card per Event, and the card-conservation
-    // sweep in `netrunner_session` could not have passed.
-    next.runner.heap.push(card_id);
+    // sweep in `netrunner_session` could not have passed. One that says
+    // "Remove this event from the game" leaves it instead.
+    if card_def.removed_after_play {
+        next.runner.removed_from_game.push(card_id.clone());
+        events.push(GameEvent::CardRemovedFromGame { side, card: card_id });
+    } else {
+        next.runner.heap.push(card_id);
+    }
 
     Ok((next, events))
 }
@@ -1438,8 +1452,10 @@ pub(crate) fn play_operation_card(
     // `OnPlay` — the same placement `play_event` gives it. Touch-ups is
     // the Corp's first Double; an unaffordable one fails the play, which
     // is what makes `legal_actions`' probe drop it.
+    let mut cost_events = Vec::new();
     if let Some(additional) = &card_def.additional_play_cost {
-        events.extend(ability::pay_cost(next, registry, side, additional, Purpose::Other, Some(&card_id))?);
+        cost_events = ability::pay_cost(next, registry, side, additional, Purpose::Other, Some(&card_id))?;
+        events.extend(cost_events.clone());
     }
     // A played Operation resolved in the open, so the Runner has seen it.
     // One played out of Archives leaves the game instead (Petty Cash's
@@ -1459,6 +1475,10 @@ pub(crate) fn play_operation_card(
     // `OnSuccessfulRun`/`OnInstall` above) from this one event.
     let played_event = GameEvent::OperationPlayed { side, card: card_id.clone(), from_archives };
     dispatcher::emit(next, registry, &mut events, played_event)?;
+    // The additional cost's own events, after the effect as every payer
+    // dispatches them (`ability::dispatch_cost_events`): Unleash's "remove
+    // 1 tag" is a tag removed, which Synapse Global hears.
+    events.extend(ability::dispatch_cost_events(next, registry, &cost_events)?);
 
     Ok(events)
 }
@@ -2248,7 +2268,7 @@ fn score_agenda(
     // Dividends: every advancement counter past the requirement becomes
     // `dividends` agenda counters on the scored copy (Off the Books).
     let agenda_counters = card_def.dividends.unwrap_or(0).saturating_mul(advancement_tokens - required);
-    next.corp.scored_agendas.push(ScoredAgenda { card: card_id.clone(), install_id, agenda_counters });
+    next.corp.scored_agendas.push(ScoredAgenda { card: card_id.clone(), install_id, agenda_counters, scored_on_turn: next.turn });
     next.corp.resources.agenda_points = next.corp.resources.agenda_points.gain(agenda_points);
 
     let scored_event = GameEvent::AgendaScored { card: card_id.clone(), agenda_points, server };

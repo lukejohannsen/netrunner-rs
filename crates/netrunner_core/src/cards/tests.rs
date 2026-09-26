@@ -10847,4 +10847,252 @@ mod vantage_point {
         }
     }
 
+    // --- Stage 2: bad publicity, tags and costs ---
+
+    /// A root card at a remote, by fixture.
+    fn root_at(card: &str, remote: u32) -> crate::rules::InstalledCard {
+        crate::rules::InstalledCard {
+            install_id: fixture_install_id(card),
+            card: id(card),
+            server: ServerId::Remote(remote),
+            slot: InstallSlot::Root,
+            ..Default::default()
+        }
+    }
+
+    /// Plays a run event and names `server` for it.
+    fn play_run_event(state: &GameState, registry: &CardRegistry, event: &str, server: ServerId) -> GameState {
+        let (state, _) = apply_action(state, registry, PlayerAction::PlayEvent { card_id: id(event) }).expect("play the run event");
+        apply_action(&state, registry, PlayerAction::ChooseServerForPendingDecision { server }).expect("name the server").0
+    }
+
+    /// From a run's initiation, passes a rezzed Flywheel by letting both
+    /// its subroutines fire (declining both draws), then runs on to the
+    /// end of the run.
+    fn through_flywheel_to_the_end(state: GameState, registry: &CardRegistry) -> GameState {
+        let (state, _) = crate::rules::test_support::continue_run(&state, registry).expect("approach flywheel");
+        let (state, _) = apply_action(&state, registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner passes approach");
+        let (state, _) = apply_action(&state, registry, PlayerAction::PassPriority { side: Side::Corp }).expect("corp passes approach");
+        let (state, _) = apply_action(&state, registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner passes encounter");
+        let (mut state, _) = apply_action(&state, registry, PlayerAction::PassPriority { side: Side::Corp }).expect("subroutines fire");
+        while state.pending_decision.is_some() {
+            state = apply_action(&state, registry, PlayerAction::ResolvePendingChoice { option_index: 1 }).expect("no draw").0;
+        }
+        to_the_end_of_the_run(state, registry)
+    }
+
+    fn to_the_end_of_the_run(state: GameState, registry: &CardRegistry) -> GameState {
+        let (state, _) = crate::rules::test_support::through_movement(&state, registry).expect("to the server");
+        if state.active_run.is_none() {
+            return state;
+        }
+        apply_action(&state, registry, PlayerAction::CompleteRun).expect("breach and end").0
+    }
+
+    #[test]
+    fn witch_hunt_takes_bad_publicity_when_scored_and_retags_the_runner_as_that_action_phase_ends() {
+        let registry = registry();
+        let mut state = base_state();
+        state.runner.tags = 1;
+        state.corp.installed = vec![crate::rules::InstalledCard { advancement_tokens: 4, ..root_at("witch_hunt", 0) }];
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ScoreAgenda { target: install_of(&state, "witch_hunt") }).expect("score");
+        assert_eq!(state.corp.bad_publicity, 1, "scoring it takes 1 bad publicity");
+        let (state, _) = apply_action(&crate::rules::test_support::clicks_spent(&state), &registry, PlayerAction::EndTurn).expect("end the turn");
+        let (state, _) = close_all_windows(state, &registry);
+        assert_eq!(state.runner.tags, 3, "every tag removed, then 3 given");
+
+        // Scored on an earlier turn, it does nothing now.
+        let mut later = base_state();
+        later.turn = 5;
+        later.runner.tags = 1;
+        later.corp.scored_agendas =
+            vec![crate::rules::ScoredAgenda { install_id: InstallId(7), scored_on_turn: 3, ..crate::rules::ScoredAgenda::plain(id("witch_hunt")) }];
+        let (later, _) = apply_action(&crate::rules::test_support::clicks_spent(&later), &registry, PlayerAction::EndTurn).expect("end the turn");
+        let (later, _) = close_all_windows(later, &registry);
+        assert_eq!(later.runner.tags, 1);
+    }
+
+    #[test]
+    fn witch_hunt_takes_bad_publicity_when_stolen() {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.corp.installed = vec![root_at("witch_hunt", 0)];
+        let (state, _) = run_to_completion(state, &registry, ServerId::Remote(0));
+        let (state, _) = apply_action(&state, &registry, PlayerAction::StealAgenda { card_id: id("witch_hunt") }).expect("steal");
+        assert_eq!(state.corp.bad_publicity, 1);
+    }
+
+    #[test]
+    fn editorial_division_fetches_a_liability_card_the_first_time_each_turn_the_corp_takes_bad_publicity() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.identity = Some(id("editorial_division_ad_nihilum"));
+        state.corp.resources.credits = Credits(20);
+        state.corp.hq = vec![id("vulture_fund"), id("vulture_fund")];
+        // An agenda that is a liability (Witch Hunt) is not offered.
+        state.corp.r_and_d = vec![id("hedge_fund"), id("witch_hunt"), id("reanimation_protocol"), id("unleash")];
+        let (state, _) = apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: id("vulture_fund") }).expect("play");
+        assert_eq!(state.corp.bad_publicity, 1);
+        let offered = crate::rules::legal_actions_for(&state, &registry, Side::Corp)
+            .into_iter()
+            .filter(|action| matches!(action, PlayerAction::ToggleCardSelection { .. }))
+            .count();
+        assert_eq!(offered, 2, "Reanimation Protocol (liability) and Unleash (gray ops); not Hedge Fund, not Witch Hunt");
+        let (state, _) = pick(&state, &registry, crate::rules::test_support::position_of(&state, "reanimation_protocol"));
+        assert!(state.corp.hq.contains(&id("reanimation_protocol")));
+        assert_eq!(state.corp.r_and_d.len(), 3);
+
+        // The second bad publicity this turn is not the first.
+        let (state, _) = apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: id("vulture_fund") }).expect("play again");
+        assert_eq!(state.corp.bad_publicity, 2);
+        assert!(state.pending_decision.is_none(), "not the first time this turn");
+    }
+
+    #[test]
+    fn take_a_dive_gives_bad_publicity_only_after_a_subroutine_resolved_and_leaves_the_game() {
+        let registry = registry();
+        for (ice, bad_publicity) in [(true, 1), (false, 0)] {
+            let mut state = base_state();
+            state.phase = GamePhase::Action(Side::Runner);
+            state.runner.grip = vec![id("take_a_dive")];
+            state.corp.r_and_d = vec![id("hedge_fund"), id("hedge_fund")];
+            if ice {
+                state.corp.installed = vec![ice_at_hq("flywheel")];
+            }
+            let state = play_run_event(&state, &registry, "take_a_dive", ServerId::Hq);
+            assert_eq!(state.runner.removed_from_game, vec![id("take_a_dive")], "removed, not trashed");
+            assert!(state.runner.heap.is_empty());
+            let state = if ice { through_flywheel_to_the_end(state, &registry) } else { to_the_end_of_the_run(state, &registry) };
+            assert_eq!(state.corp.bad_publicity, bad_publicity, "a subroutine resolved: {ice}");
+        }
+    }
+
+    #[test]
+    fn kompromat_runs_a_protected_server_and_the_corp_derezzes_a_piece_of_its_ice_or_takes_bad_publicity() {
+        let registry = registry();
+        for (derez, bad_publicity) in [(true, 0), (false, 1)] {
+            let mut state = base_state();
+            state.phase = GamePhase::Action(Side::Runner);
+            state.runner.grip = vec![id("kompromat")];
+            state.corp.r_and_d = vec![id("hedge_fund"), id("hedge_fund")];
+            state.corp.installed = vec![ice_at_hq("flywheel")];
+            let (offered, _) = apply_action(&state, &registry, PlayerAction::PlayEvent { card_id: id("kompromat") }).expect("play");
+            let Some(crate::rules::PendingDecision::ChooseServer { allowed_servers, .. }) = &offered.pending_decision else { panic!("a server is asked") };
+            assert_eq!(allowed_servers.as_deref(), Some(&[ServerId::Hq][..]), "only HQ is protected by ice");
+            let state = play_run_event(&state, &registry, "kompromat", ServerId::Hq);
+            let state = through_flywheel_to_the_end(state, &registry);
+            assert!(state.pending_paid_choice.is_some(), "the Corp is asked as the run ends");
+            let answer = if derez { PlayerAction::AcceptPendingPaidChoice { cost_option_index: None } } else { PlayerAction::DeclinePendingPaidChoice };
+            let (state, _) = apply_action(&state, &registry, answer).expect("the Corp answers");
+            assert_eq!(state.corp.bad_publicity, bad_publicity);
+            assert_eq!(state.corp.installed[0].rezzed, !derez, "the derez was the price");
+            assert_eq!(state.runner.removed_from_game, vec![id("kompromat")]);
+        }
+
+        // No ice anywhere: nothing to run, so nothing to play.
+        let mut bare = base_state();
+        bare.phase = GamePhase::Action(Side::Runner);
+        bare.runner.grip = vec![id("kompromat")];
+        assert!(apply_action(&bare, &registry, PlayerAction::PlayEvent { card_id: id("kompromat") }).is_err());
+    }
+
+    #[test]
+    fn reanimation_protocol_installs_and_rezzes_ice_from_archives_ten_credits_cheaper_in_total() {
+        let registry = registry();
+        // Mycoweb over the Paywall on HQ: the install costs 1 and the rez
+        // 8, the 10 off covering both. Grubber on a fresh remote, where its
+        // own "protecting a central server" does not fire: the rez of 5 is
+        // free, and it is a liability, so no bad publicity.
+        for (ice, server, credits, bad_publicity) in [("mycoweb", ServerId::Hq, 8, 1), ("grubber", ServerId::Remote(0), 8, 0)] {
+            let mut state = base_state();
+            state.corp.hq = vec![id("reanimation_protocol")];
+            state.corp.archives = vec![ArchivedCard::faceup(id(ice))];
+            state.corp.installed = vec![crate::rules::InstalledCard { rezzed: false, ..ice_at_hq("paywall") }];
+            let (state, _) = apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: id("reanimation_protocol") }).expect("play");
+            let (state, _) = pick(&state, &registry, 0);
+            let (state, _) = apply_action(&state, &registry, PlayerAction::ChooseServerForPendingDecision { server }).expect("install");
+            let installed = state.corp.installed.iter().find(|card| card.card == id(ice)).expect("installed");
+            assert!(installed.rezzed, "{ice} rezzed as it landed");
+            assert_eq!(state.corp.resources.credits, Credits(credits), "{ice}: 10 less the 2 to play");
+            assert_eq!(state.corp.bad_publicity, bad_publicity, "{ice}");
+        }
+
+        // A total too small to cover the rez: installed, not rezzed.
+        let mut poor = base_state();
+        poor.corp.resources.credits = Credits(2);
+        poor.corp.hq = vec![id("reanimation_protocol")];
+        poor.corp.archives = vec![ArchivedCard::faceup(id("biawak"))];
+        let (poor, _) = apply_action(&poor, &registry, PlayerAction::PlayOperation { card_id: id("reanimation_protocol") }).expect("play");
+        let (poor, _) = pick(&poor, &registry, 0);
+        let (poor, _) = apply_action(&poor, &registry, PlayerAction::ChooseServerForPendingDecision { server: ServerId::Hq }).expect("install");
+        let biawak = poor.corp.installed.iter().find(|card| card.card == id("biawak")).expect("installed");
+        assert!(!biawak.rezzed, "14 less 10 is more than the Corp has");
+        assert_eq!(poor.corp.bad_publicity, 0, "nothing rezzed, so nothing taken");
+    }
+
+    #[test]
+    fn unleash_removes_a_tag_rezzes_ice_for_free_and_may_resolve_one_of_its_subroutines() {
+        let registry = registry();
+        let mut state = base_state();
+        state.runner.tags = 1;
+        state.runner.grip = vec![id("sure_gamble")];
+        state.corp.hq = vec![id("unleash")];
+        state.corp.installed = vec![crate::rules::InstalledCard { rezzed: false, ..ice_at_hq("diviner") }];
+        let (state, _) = apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: id("unleash") }).expect("play");
+        assert_eq!(state.runner.tags, 0, "the tag was the cost");
+        let (state, _) = pick(&state, &registry, 0);
+        assert!(state.corp.installed[0].rezzed, "rezzed, ignoring all costs");
+        assert_eq!(state.corp.resources.credits, Credits(10));
+        // "You may resolve 1 subroutine": Diviner's net damage.
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("resolve it");
+        assert!(state.runner.grip.is_empty(), "1 net damage");
+
+        let mut untagged = base_state();
+        untagged.corp.hq = vec![id("unleash")];
+        untagged.corp.installed = vec![crate::rules::InstalledCard { rezzed: false, ..ice_at_hq("diviner") }];
+        assert!(apply_action(&untagged, &registry, PlayerAction::PlayOperation { card_id: id("unleash") }).is_err(), "no tag to remove");
+    }
+
+    #[test]
+    fn realloc_gains_each_chosen_ice_printed_rez_cost_and_derezzes_it() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.hq = vec![id("realloc")];
+        let mut second = ice_at_hq("mycoweb");
+        second.server = ServerId::RnD;
+        state.corp.installed = vec![ice_at_hq("paywall"), second];
+        let (state, _) = apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: id("realloc") }).expect("play");
+        assert_eq!(state.corp.resources.clicks, Clicks(1), "the play and the additional click");
+        let (state, _) = pick(&state, &registry, 0);
+        let (state, _) = pick(&state, &registry, 1);
+        assert_eq!(state.corp.resources.credits, Credits(10 + 1 + 8));
+        assert!(state.corp.installed.iter().all(|card| !card.rezzed), "both derezzed");
+    }
+
+    #[test]
+    fn flood_the_market_advances_once_for_each_protected_remote_with_a_root_card() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.hq = vec![id("flood_the_market")];
+        let ice = |remote| {
+            let mut card = ice_at_hq("paywall");
+            card.server = ServerId::Remote(remote);
+            card.install_id = InstallId(100 + remote);
+            card
+        };
+        // Remotes 0 and 2 have a root and ice; remote 1 has no ice.
+        state.corp.installed = vec![
+            root_at("witch_hunt", 0),
+            ice(0),
+            crate::rules::InstalledCard { install_id: InstallId(50), ..root_at("vulture_fund", 1) },
+            crate::rules::InstalledCard { install_id: InstallId(51), ..root_at("nihilo_agent", 2) },
+            ice(2),
+        ];
+        let (state, _) = apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: id("flood_the_market") }).expect("play");
+        let (state, _) = pick(&state, &registry, crate::rules::test_support::position_of(&state, "witch_hunt"));
+        let witch_hunt = state.corp.installed.iter().find(|card| card.card == id("witch_hunt")).unwrap();
+        assert_eq!(witch_hunt.advancement_tokens, 2);
+        assert_eq!(state.corp.resources.credits, Credits(7));
+    }
 }

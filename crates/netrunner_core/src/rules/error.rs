@@ -12,6 +12,8 @@ pub enum RulesError {
     NotEnoughCardsInGrip { required: u32, available: u32 },
     #[error("a cost trashes {required} card(s) and only {available} qualify")]
     NotEnoughCardsToTrash { required: u32, available: u32 },
+    #[error("a cost derezzes {required} card(s) and only {available} rezzed card(s) qualify")]
+    NotEnoughCardsToDerez { required: u32, available: u32 },
     #[error("a cost forfeits {required} agenda(s) and only {available} are scored")]
     NotEnoughAgendasToForfeit { required: u32, available: u32 },
     #[error("{side:?} attempted to spend {requested} click(s) but only has {available}")]
@@ -146,11 +148,11 @@ pub enum RulesError {
     #[error("no run is currently awaiting an access choice for that card")]
     NotInAccessPhase,
 
-    /// `Effect::PromptChooseServer` with `exclude_servers_run_this_turn`
-    /// found nothing left to offer — raised *before* parking, so the
-    /// ability is withheld rather than a click spent on an unresolvable
-    /// decision (Red Team once every central was run this turn).
-    #[error("every server this ability may target has already been run this turn")]
+    /// `Effect::PromptChooseServer`'s narrowed offer found nothing left —
+    /// raised *before* parking, so the ability is withheld rather than a
+    /// click spent on an unresolvable decision (Red Team once every
+    /// central was run this turn, Kompromat with no ice on the table).
+    #[error("no server this card may run is left to offer")]
     NoServerLeftToRun,
 
     #[error("{candidate:?} is not one of the candidates currently offered for access")]

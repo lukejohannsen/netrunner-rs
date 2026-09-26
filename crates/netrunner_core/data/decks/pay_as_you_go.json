@@ -3,7 +3,7 @@
   "name": "Pay As You Go",
   "side": "Runner",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach a payment two pools could make. Noise with the Core Set's three pool cards — Cyberfeeder, The Toolbox, Crash Space — beside Overclock, whose credits compete with theirs on every pump and break; viruses for Cyberfeeder to install. Eternal-legal only.",
+  "description": "Not a published list: built so the sweeps reach a payment two pools could make. Noise with the Core Set's three pool cards — Cyberfeeder, The Toolbox, Crash Space — beside Overclock, whose credits compete with theirs on every pump and break; viruses for Cyberfeeder to install. Vantage Point's Take a Dive in Jailbreak's place, so an Anarch run gives the Corp bad publicity. Eternal-legal only.",
   "style": "builder",
   "identity": "noise",
   "cards": [
@@ -56,7 +56,7 @@
       "count": 3
     },
     {
-      "card": "jailbreak",
+      "card": "take_a_dive",
       "count": 3
     },
     {

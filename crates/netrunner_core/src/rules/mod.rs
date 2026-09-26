@@ -30,7 +30,7 @@ mod prevention;
 pub mod turn_log;
 mod win;
 
-pub use ability::{evaluate_effect, process_card_triggers, resolve_unbroken_subroutines, ResolutionContext};
+pub use ability::{amount_on_table, evaluate_effect, process_card_triggers, resolve_unbroken_subroutines, ResolutionContext};
 pub use action::{PlayerAction, ServerTarget, TargetZone};
 pub use action_mask::{get_action_mask, ActionSpace};
 pub use damage::apply_damage;

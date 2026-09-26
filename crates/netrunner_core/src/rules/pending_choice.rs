@@ -330,6 +330,9 @@ fn instance_matches_filter(
         CardFilter::InAttackedServer => {
             corp_install.is_some_and(|c| state.active_run.as_ref().is_some_and(|run| run.server == c.server))
         }
+        CardFilter::InLastRunServer => {
+            corp_install.is_some_and(|c| state.last_completed_run.as_ref().is_some_and(|run| run.server == c.server))
+        }
         // Either zone an operation can be played from: HQ (Humanoid
         // Resources) or Archives (Plutus). The zone the selection reads
         // decides which, and `can_play_operation` is told, because playing
@@ -1181,17 +1184,46 @@ pub(crate) fn resolve_choose_server(
             Some(crate::dsl::CardType::Ice(_)) => InstallSlot::Ice,
             _ => InstallSlot::Root,
         };
+        // What of a "total" discount the install takes (CR 1.16.2f), read
+        // before the card lands and changes the count.
+        let install_takes = match (pending_install.pay_cost, slot) {
+            (true, InstallSlot::Ice) => crate::rules::engine::ice_protecting(state, server).min(pending_install.discount),
+            _ => 0,
+        };
         let mut events = vec![GameEvent::PendingChoiceResolved { chooser: Side::Corp, option_index: 0 }];
-        events.extend(crate::rules::engine::place_corp_card(
+        let placed = crate::rules::engine::place_corp_card(
             state,
             registry,
-            card_id,
+            card_id.clone(),
             server,
             slot,
             pending_install.pay_cost,
             pending_install.discount,
             false,
-        )?);
+        )?;
+        let landed = placed.iter().find_map(|event| match event {
+            GameEvent::CardInstalled { install, card: Some(card), .. } if *card == card_id => Some(*install),
+            _ => None,
+        });
+        events.extend(placed);
+        // "Install and rez" (Reanimation Protocol): the rest of the total
+        // off the rez, and the rider as the card rezzed if it was.
+        if let (true, Some(install)) = (pending_install.rez, landed) {
+            let rest = pending_install.discount - install_takes;
+            match crate::rules::engine::rez_install(state, registry, install, pending_install.pay_cost, rest) {
+                Ok(rezzed) => {
+                    events.extend(rezzed);
+                    if let Some(rider) = &pending_install.if_rezzed {
+                        let mut ctx = ability::ResolutionContext::for_parked(Some(install), Some(&card_id));
+                        ctx.prompting_card = prompting_card.as_ref().or(source_card.as_ref());
+                        events.extend(ability::evaluate_effect(state, rider, &mut ctx, registry)?);
+                    }
+                }
+                // Unaffordable: installed, not rezzed (CR 1.16.4b).
+                Err(RulesError::NotEnoughCredits { .. }) => {}
+                Err(other) => return Err(other),
+            }
+        }
         // The offering card's rider, with the chosen server substituted in
         // (`PromptInstallCorpCard::then`) — resolved as the parking install,
         // never as the card that just landed.
@@ -1405,7 +1437,7 @@ mod tests {
             shuffle_after: false,
             destination: None,
             then: Some(Box::new(Effect::Sequence(vec![
-                Effect::PlaceAdvancementCounters(2),
+                Effect::PlaceAdvancementCounters(crate::dsl::Amount::Fixed(2)),
                 Effect::PresentChoice { chooser: Side::Corp, options: vec![Effect::Sequence(Vec::new()), Effect::Sequence(Vec::new())], texts: Vec::new() },
             ]))),
             selected: Vec::new(),

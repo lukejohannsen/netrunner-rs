@@ -27,7 +27,9 @@
                   "EffectIf": {
                     "condition": "IsTagged",
                     "effect": {
-                      "PlaceAdvancementCounters": 1
+                      "PlaceAdvancementCounters": {
+                        "Fixed": 1
+                      }
                     }
                   }
                 }

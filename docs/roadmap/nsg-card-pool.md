@@ -359,13 +359,19 @@ Division.
    Sleipnir, Retirement Plan, Nihilo Agent, Grubber, Paywall, Scapegoat,
    Flywheel, Vulture Fund.
 2. **Bad publicity, tags and costs:** Editorial Division, Witch Hunt, Take
-   a Dive, Kompromat, Vicsek, Reanimation Protocol, Unleash,
-   Synchrocyclotron, realloc(), Flood the Market.
+   a Dive, Kompromat, Reanimation Protocol, Unleash, realloc(), Flood the
+   Market (built, below). **2b — ice with no Barrier, Code Gate or
+   Sentry:** Vicsek, alone, with the change to `CardType::Ice` it needs,
+   which the rest of the unmodelable ice (Loot Box, Rime, Konjin,
+   Excalibur, Lycian Multi-Munition) then reuse.
 3. **Turn-log counts and standing kinds** (`PlayCost`, `AgendaPoints` and
    `StealCost` are the `ContinuousKind` words, each a new kind held to the
    DSL Growth Rule): Chain Reaction, Underdome Irregulars, Reverb, Hype
    Machine, Tailgate, Perfect Recall, The Red Room, Lotus Haze, Magistrate
-   Revontulet, Let Them Dream.
+   Revontulet, Let Them Dream, and Synchrocyclotron, moved here from Stage
+   2 because "the first double operation you play each turn costs [click]
+   less" is a `PlayCost` on a click, with the "first each turn" of a price
+   (`TurnLog::none_yet`).
 4. **Ice and run triggers:** Vertigo, Sipa, Lethe, ezaM, The Tungsten
    Tailor, Lionsmane, Event Horizon, Shackleton Grid, Ansel 2.0.
 5. **Runner trigger and payment words** (`PaysFor` during a run; the
@@ -476,6 +482,102 @@ Plan, Nihilo Agent, Grubber, Paywall, Scapegoat, Flywheel, Vulture Fund.
   all four shapes, so the engine change moves nothing. **Every card a stage
   adds will do the same**, so a stage's heuristic reports are not diffed
   against the last stage's — the Elevation rule, for the same reason.
+
+#### Stage 2 — bad publicity, tags and costs (26 September 2026)
+
+`feat/vp-stage-2-bad-publicity`: Editorial Division: Ad Nihilum, Witch
+Hunt, Take a Dive, Kompromat, Reanimation Protocol, Unleash, realloc(),
+Flood the Market. **No new `Effect`.** Vantage Point 21 of 66;
+`VP_UNIMPLEMENTED` 53 → 45. Vicsek is Stage 2b and Synchrocyclotron
+Stage 3 (above).
+
+- **What the cards needed, and where it went:**
+  - **Taking bad publicity is a moment** (`Trigger::OnBadPublicityTaken`,
+    Editorial Division). "Take" and "give" are one event, the Corp's
+    (CR 1.14.2e), so Witch Hunt's "take 1" and Take a Dive's "give the
+    Corp 1" are both heard; `Effect::GiveBadPublicity` now dispatches its
+    event, and a zero is an occurrence of nothing.
+  - **The Runner has a removed-from-game zone**
+    (`RunnerState::removed_from_game`, in the view and the sweeps' card
+    count), and an event that prints "Remove this event from the game" says
+    so as a declaration (`CardDefinition::removed_after_play`) that
+    `engine::play_event` reads when it files the card.
+  - **A derez can be the price** (`Cost::Derez`, Kompromat's nested
+    "unless they derez 1 piece of ice", CR 1.16.11b), asked one card at a
+    time like `Cost::Trash`; the ice is "protecting the attacked server"
+    after the run has ended (`CardFilter::InLastRunServer`), because
+    `InAttackedServer` falling back on the last run would have made LEO
+    Construction usable after a run. A run offer can be narrowed to the
+    servers ice protects (`PromptChooseServer::only_protected_by_ice`).
+  - **"Install and rez … paying a total of 10 less"**
+    (`PromptInstallCorpCard::rez` and `if_rezzed`, Reanimation Protocol).
+    The Corp divides a total between the two costs (CR 1.16.2f); the
+    division taken is install first, which is never more credits. A rez it
+    cannot afford leaves the ice installed and unrezzed (CR 1.16.4b). The
+    offer of servers now prices a discount, which also let Mercia B4LL4RD's
+    1[credit] reach a server it made affordable.
+  - **"If you scored this agenda this turn"** is a fact about the copy
+    (`ScoredAgenda::scored_on_turn`, `EffectRequirement::
+    ThisAgendaScoredThisTurn`, Witch Hunt), not a turn-log count: a
+    second Witch Hunt, or one scored last turn, is not this one.
+  - **"If it is a non-liability ice"** asked as the card itself
+    (`EffectRequirement::ActingCardMatches`).
+  - **A count of servers** (`Amount::ProtectedRemotesWithRootCards`, Flood
+    the Market), and `PlaceAdvancementCounters` takes an `Amount` in place
+    of a number — seven card files rewritten rather than a
+    `PlaceAdvancementCountersAmount` beside it.
+  - `Amount::PrintedInstallCost` is `PrintedCost`: realloc() reads a rez
+    cost, and the printed cost is one number either way.
+- **Three fixes the cards reached.**
+  - A rez of "the chosen card" inside a sequence resolves as that card
+    (`RezInstalled`'s placeholder is the acting install): Unleash rezzes
+    the ice and then resolves one of its subroutines.
+  - Credits a card's text gains are that card's
+    (`AbilityGainedCredits` names the prompting card, not the card a
+    selection resolves as): realloc()'s are an operation's, which The
+    Zwicky Group hears.
+  - An additional play cost's events are dispatched after the play, as
+    every payer's are: Unleash's "remove 1 tag" is a tag removed.
+- **The decks.** **Ad Nihilum**, a new NBN Sweep deck on Editorial
+  Division with every gray ops and liability card the identity searches
+  for, the Weyland, Jinteki and HB operations on influence, and legal in
+  every format but Snapshot. **Take a Dive** replaces Jailbreak in Pay as
+  You Go (Noise), and **Kompromat** replaces Tread Lightly in Borrowed
+  Time (Vic); both cards it replaced are in other decks.
+- **Fidelity limits:**
+  - realloc()'s "choose 2 rezzed pieces of ice" is two choices of one,
+    each resolved before the next is offered. Nothing hidden changes in
+    between, and each card is its own instance of the effect anyway
+    (CR 9.12.2c names realloc()).
+  - Editorial Division shuffles R&D when the search is declined.
+  - The "total" discount is never asked: the Corp is given the division
+    that costs least.
+- **DSL ratio (`pool_status.py`): 23 of 70 `Effect` variants
+  single-use, 2 unused** (`MillRnDAmount`, `Trace`), over 205 card files.
+  It was 25 and 2: `ResolveSubroutineOfSelectedIce` (Unleash, beside
+  Mycoweb) and `SetRunEndedEffect` (Kompromat, beside Charm Offensive) left
+  the single-use list, and nothing joined it. The growth went into the vocabulary of when (`Trigger`), whether
+  (two requirements), what a card reads (`Amount`, `CardFilter`) and what
+  it costs (`Cost::Derez`).
+- **Measured.** Both sweeps at 256 seeds are green, coverage gate
+  included, so every Ad Nihilum card and both Runner events were seen in
+  play. `coverage_identical.py main` (192 games a shape, seed 1):
+  - **Random seatings differ, and the whole play difference is Mercia
+    B4LL4RD's offer.** Against a copy of this branch with only the
+    discount pricing of the install offer reverted, the random reports
+    differ from `main` in one line, `effects_seen: MoveThisCardToRoot`
+    0 → 85 — the effect walk now reaching `PromptInstallCorpCard::then`,
+    which Mercia's rider always resolved through and the report never
+    credited. With the pricing back, a few games branch (Corp flatlines
+    76 → 75, Mercia's action-phase triggers 85 → 87).
+  - **The credit attribution moves nothing:** against a copy without it,
+    all four reports are identical.
+  - **Heuristic seatings move across the pool** (Corp wins 69 → 86 of
+    192; The Zwicky Group's credit triggers 27 → 53, Mercia's 273 → 242).
+    Neither engine change above is it: the heuristic reports are
+    identical with each reverted. What is left is the new cards, which
+    `determinize` samples into every hidden Corp zone (Stage 1b's check),
+    not re-checked card by card here.
 
 ### 2. Rebellion Without Rehearsal — 65 cards (C 7 / V 43 / M 15)
 

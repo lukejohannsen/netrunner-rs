@@ -86,6 +86,22 @@ pub enum Cost {
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
         reveal: bool,
     },
+    /// The Corp derezzes `count` of its own rezzed installs that match
+    /// `filter` — Kompromat's "give the Corp 1 bad publicity unless they
+    /// derez 1 piece of ice protecting the attacked server", a nested cost
+    /// (CR 1.16.11b) the Corp pays or declines. `Trash`'s shape and its
+    /// asking: affordable when that many match, and the Corp is asked which
+    /// one card at a time, only when the answer changes what it is left
+    /// with (`payment::Ask::Card` over `OwnInstalled`). A card that is not
+    /// rezzed is never eligible, whatever the filter says, because a
+    /// facedown card cannot be turned facedown (CR 8.1.3). Composition
+    /// didn't work: `Effect::DerezCard` is an effect, and the Payment Rule
+    /// holds a printed cost to being a `Cost` — as a `PresentChoice`
+    /// option the derez could be chosen with no ice to derez.
+    Derez {
+        filter: CardFilter,
+        count: u32,
+    },
     /// The payer chooses which of these to pay — e.g. Manegarm Skunkworks's
     /// "spend [click][click] or pay 5 credits." Resolving *which* option is
     /// a player decision, not something `pay_cost` can pick on its own —
@@ -148,7 +164,7 @@ impl Cost {
     /// question is possible.
     pub fn may_ask(&self) -> bool {
         match self {
-            Cost::Trash { .. } | Cost::Forfeit(_) => true,
+            Cost::Trash { .. } | Cost::Forfeit(_) | Cost::Derez { .. } => true,
             Cost::AnyOf(costs) | Cost::AllOf(costs) => costs.iter().any(Cost::may_ask),
             _ => false,
         }

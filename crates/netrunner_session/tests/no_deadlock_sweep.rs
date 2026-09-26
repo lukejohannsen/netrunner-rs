@@ -344,6 +344,7 @@ fn assert_cards_are_conserved(state: &GameState, corp_deck: &Deck, runner_deck: 
             .iter()
             .chain(&runner.stack)
             .chain(&runner.heap)
+            .chain(&runner.removed_from_game)
             .chain(runner.rig.iter().map(|c| &c.card))
             // Hosted uninstalled on a rig card (Madani) — in no other zone.
             .chain(runner.rig.iter().flat_map(|c| c.hosted_cards.iter()).filter(|id| !corp_ids.contains_key(&id.0))),
@@ -612,6 +613,7 @@ fn visible_card_ids(view: &netrunner_core::view::ClientView) -> std::collections
     visible.extend(view.corp.removed_from_game.iter().map(|c| c.0.as_str()));
     visible.extend(view.runner.scored_agendas.iter().map(|c| c.0.as_str()));
     visible.extend(view.runner.heap.iter().map(|c| c.0.as_str()));
+    visible.extend(view.runner.removed_from_game.iter().map(|c| c.0.as_str()));
     visible.extend(view.runner.rig.iter().map(|c| c.card.0.as_str()));
     // Hosted faceup on a rig card (Madani's programs, Detente's HQ cards):
     // as public as the rig, whichever side's card it is.

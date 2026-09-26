@@ -203,6 +203,7 @@ fn concealed(trigger: Trigger, of: Option<Side>) -> bool {
         | Trigger::OnTagRemoved
         | Trigger::OnDamageDealt
         | Trigger::OnCardsTrashedFromHq
+        | Trigger::OnBadPublicityTaken
         | Trigger::OnDamageAboutToResolve
         | Trigger::Paid => false,
     }

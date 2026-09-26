@@ -24,7 +24,9 @@
             "then": {
               "Sequence": [
                 {
-                  "PlaceAdvancementCounters": 2
+                  "PlaceAdvancementCounters": {
+                    "Fixed": 2
+                  }
                 },
                 {
                   "PresentChoice": {

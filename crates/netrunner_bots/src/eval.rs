@@ -1812,9 +1812,15 @@ fn continuation_upside(
             i64::from(*amount),
             rd_spent + *amount as usize,
         )),
-        Effect::PlaceAdvancementCounters(amount) => {
-            Some(advancement_upside(state, side, registry, w, source, filter, *amount))
-        }
+        Effect::PlaceAdvancementCounters(amount) => Some(advancement_upside(
+            state,
+            side,
+            registry,
+            w,
+            source,
+            filter,
+            netrunner_core::rules::amount_on_table(amount, state, registry),
+        )),
         // Exact rather than a bound, unusually for this function: ending
         // the run removes precisely the penalty the Corp branch applies,
         // so the continuation is worth the term and nothing else. Zero
@@ -2653,6 +2659,7 @@ mod tests {
                 card: CardId("offworld_office".to_string()),
                 install_id: InstallId(1),
                 agenda_counters,
+                scored_on_turn: 0,
             }];
             evaluate_state(&state, Side::Corp, &registry)
         };
@@ -2811,7 +2818,7 @@ mod tests {
             reveal: false,
             shuffle_after: false,
             destination: None,
-            then: Some(Box::new(Effect::PlaceAdvancementCounters(1))),
+            then: Some(Box::new(Effect::PlaceAdvancementCounters(Amount::Fixed(1)))),
             selected: Vec::new(),
             source_card: None,
             prompting_card: None,
@@ -2888,7 +2895,7 @@ mod tests {
         let priced = evaluate_state(&parked, Side::Corp, &registry);
         let Some(PendingDecision::ChooseCards { then, .. }) = &mut parked.pending_decision else { unreachable!() };
         *then = Some(Box::new(Effect::Sequence(vec![
-            Effect::PlaceAdvancementCounters(1),
+            Effect::PlaceAdvancementCounters(Amount::Fixed(1)),
             Effect::PresentChoice {
                 chooser: Side::Corp,
                 options: vec![Effect::Sequence(Vec::new()), Effect::Sequence(Vec::new())],

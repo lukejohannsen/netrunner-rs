@@ -1,0 +1,37 @@
+{
+  "id": "take_a_dive",
+  "title": "Take a Dive",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 2,
+  "removed_after_play": true,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "PromptChooseServer": {
+            "chooser": "Runner",
+            "rez_cost_delta": 0,
+            "bonus_run_credits": 0,
+            "allowed_servers": [
+              "Hq",
+              "RnD"
+            ],
+            "on_success": {
+              "EffectIf": {
+                "condition": "SubroutineResolvedThisRun",
+                "effect": {
+                  "GiveBadPublicity": 1
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "numeric_id": 36002,
+  "is_playable": true
+}

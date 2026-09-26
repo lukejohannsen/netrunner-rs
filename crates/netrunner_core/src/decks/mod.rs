@@ -438,7 +438,9 @@ mod tests {
             // identities (Engineering the Future, Making News), which no
             // current pool holds. Its Runner deck, Borrowed Time, is every
             // format but Snapshot: Vic and Stolen Goods' frame are all
-            // Startup cards.
+            // Startup cards. Stage 2's Ad Nihilum is too: Editorial
+            // Division and every card with it is System Gateway, Elevation
+            // or Vantage Point.
             ("retirement_package", &neither),
             ("paid_content", &neither),
             ("quick_returns", &not_startup),

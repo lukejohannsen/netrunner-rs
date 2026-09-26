@@ -414,6 +414,14 @@ pub enum Effect {
         /// offering a click that parks an unresolvable decision.
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
         exclude_servers_run_this_turn: bool,
+        /// Offer only the servers at least one piece of ice protects,
+        /// rezzed or not — Kompromat's "Run a server protected by ice". A
+        /// field for the reason `exclude_servers_run_this_turn` is one:
+        /// what narrows a server offer is the offer's, and a requirement
+        /// could only withhold the whole card. Applied at the park with
+        /// it, so a table with no ice anywhere withholds the event.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        only_protected_by_ice: bool,
     },
     /// Rezzes an already-installed Corp card, paying the same way
     /// `PlayerAction::RezIce` does but without its "ice only while it is
@@ -591,6 +599,25 @@ pub enum Effect {
         /// `engine::corp_install_destinations` otherwise allows.
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
         remote_only: bool,
+        /// "Install **and rez**" — Reanimation Protocol's "Install and rez 1
+        /// piece of ice from Archives, paying a total of 10[credit] less".
+        /// The card is rezzed as it lands, paying its rez cost (unless
+        /// `ignore_costs`) less whatever of `discount` the install did not
+        /// use: CR 1.16.2f lets the Corp divide a "total" modifier between
+        /// the two costs, and the division taken is install first, which
+        /// is never more credits than another would be. A rez the Corp
+        /// cannot afford leaves the card installed and unrezzed (CR
+        /// 1.16.4b). A field rather than a `then`: `then` resolves as the
+        /// card that offered the prompt, and the rez is of the card that
+        /// landed, which only the resolution knows.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        rez: bool,
+        /// Resolves as the card just rezzed, and only if `rez` rezzed it —
+        /// Reanimation Protocol's "If you rezzed a piece of non-liability
+        /// ice this way, take 1 bad publicity" (the "non-liability" is an
+        /// `EffectRequirement::ActingCardMatches` inside it).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        if_rezzed: Option<Box<Effect>>,
     },
     /// Installs the resolving card — `acting_card`, a card sitting in the
     /// Runner's grip — into the rig, **paying** its install cost (with the
@@ -773,7 +800,12 @@ pub enum Effect {
     /// `Encounter`: nothing prints a prohibition that short.
     Prohibit { what: Prohibition, until: EffectDuration },
     /// Places `0` advancement counters on `acting_card` — e.g. Seamless
-    /// Launch's "place 2 advancement counters on 1 installed card". Distinct
+    /// Launch's "place 2 advancement counters on 1 installed card", Flood
+    /// the Market's "1 advancement counter … for each remote server that
+    /// has a card in its root and is protected by ice" (an `Amount` since
+    /// Flood the Market, which would otherwise have been a
+    /// `PlaceAdvancementCountersAmount` beside it, the shape
+    /// `DealDamageAmount` took). Distinct
     /// from `AddCounters`, which targets the generic `counters` field;
     /// advancement tokens are their own thing (`InstalledCard::
     /// advancement_tokens`, what `ScoreAgenda` reads). Authored as the
@@ -795,7 +827,7 @@ pub enum Effect {
     /// filters its own prompt with `CardFilter::Advanceable` and one that
     /// does not — Seamless Launch — legally targets ice. A blanket check
     /// here would break the latter.
-    PlaceAdvancementCounters(u32),
+    PlaceAdvancementCounters(Amount),
     /// `Effect::DealDamage` with `amount` resolved dynamically via
     /// `Amount` instead of authored as a flat `usize` — e.g. Neurospike's
     /// "X net damage, X = agenda points scored this turn." Delegates to the
@@ -963,11 +995,16 @@ pub enum Amount {
     /// 1 card for each click you have remaining", counted *after* the click
     /// that played it was spent. Resolves to 0 outside an action phase.
     ClicksRemaining,
-    /// The printed install cost of `acting_card` — "Knickknack" O'Brian's
-    /// "gain credits equal to its printed install cost", where the acting
-    /// card is the one the prompt selected. Read from the registry, so a
-    /// discount the card was installed with does not count.
-    PrintedInstallCost,
+    /// The cost printed on `acting_card` — its install cost for a Runner
+    /// card ("Knickknack" O'Brian's "gain credits equal to its printed
+    /// install cost"), its rez cost for ice, an asset or an upgrade
+    /// (realloc()'s "gain credits equal to its printed rez cost"), where
+    /// the acting card is the one the prompt selected. Read from the
+    /// registry, so a discount the card was paid for with does not count.
+    /// Was `PrintedInstallCost`, which realloc() would have had to read
+    /// as a rez cost: `CardDefinition::cost` is the one printed number
+    /// either way (CR 1.16.6a, 1.16.8).
+    PrintedCost,
     /// `u32` minus the cards the resolving `PromptChooseCards` selected
     /// (`ResolutionContext::selected_count`) — the R&D half of a sabotage
     /// of `u32`, resolved in the HQ selection's `then`. Saturating.
@@ -1017,6 +1054,13 @@ pub enum Amount {
     /// this server" is the sentence the next card prints. 0 for a card
     /// that is not a Corp install.
     IceProtectingThisServer,
+    /// Remote servers that have a card in the root and are protected by
+    /// ice — Flood the Market's "place 1 advancement counter on that card
+    /// for each remote server that has a card in its root and is protected
+    /// by ice". Any rez state, both halves, as the text does not say.
+    /// Composition had nothing to compose: `IceProtectingThisServer` counts
+    /// one server's ice, and no amount counts servers.
+    ProtectedRemotesWithRootCards,
 }
 
 /// What `Effect::EndTheRun` does the first time it would end a run with
@@ -1119,6 +1163,7 @@ impl Effect {
             Effect::LoseCreditsAmount(side, a) => Effect::LoseCreditsAmount(side, amount(a)),
             Effect::DrawCardsAmount(side, a) => Effect::DrawCardsAmount(side, amount(a)),
             Effect::RemoveTags(a) => Effect::RemoveTags(amount(a)),
+            Effect::PlaceAdvancementCounters(a) => Effect::PlaceAdvancementCounters(amount(a)),
             Effect::MillRnDAmount(a) => Effect::MillRnDAmount(amount(a)),
             Effect::DealDamageAmount(kind, a) => Effect::DealDamageAmount(kind, amount(a)),
             Effect::AddAdditionalAccessAmount { server, amount: a } => Effect::AddAdditionalAccessAmount { server, amount: amount(a) },
@@ -1143,8 +1188,10 @@ impl Effect {
     /// The nesting positions are the whole list of places one `Effect` can
     /// contain another — `Sequence`, `EffectIf`, `OfferPaidChoice` (both
     /// branches), `PresentChoice`, `PromptChooseCards::then`,
-    /// `PromptChooseServer::on_success`, `Trace::on_success` and
-    /// `SetAccessReplacement`. Kept as an exhaustive `match` with an
+    /// `PromptChooseServer::on_success`, `PromptInstallCorpCard::then` and
+    /// `if_rezzed`, `Trace::on_success` and `SetAccessReplacement`.
+    /// `PromptInstallCorpCard` was walked as a leaf until Reanimation
+    /// Protocol gave it a second nested effect. Kept as an exhaustive `match` with an
     /// explicit leaf arm rather than a `_ =>` so a new nesting variant is a
     /// compile error here, not a silently unwalked subtree.
     ///
@@ -1178,6 +1225,11 @@ impl Effect {
                 }
             }
             Effect::PromptChooseCards { then: None, .. } => {}
+            Effect::PromptInstallCorpCard { then, if_rezzed, .. } => {
+                for effect in [then, if_rezzed].into_iter().flatten() {
+                    effect.for_each_effect(f);
+                }
+            }
             // Leaves: everything that holds no `Effect`.
             Effect::GainCredits(..)
             | Effect::DealDamage(..)
@@ -1208,7 +1260,6 @@ impl Effect {
             | Effect::GainCreditsPerCounter { .. }
             | Effect::SwapInstalledIce(..)
             | Effect::InstallFromZoneIgnoringCost { .. }
-            | Effect::PromptInstallCorpCard { .. }
             | Effect::InstallRunnerCardFromGrip
             | Effect::InstallRunnerCardFromHeap
             | Effect::InstallRunnerCardFromGripWithDiscount(..)

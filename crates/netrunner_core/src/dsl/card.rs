@@ -494,6 +494,19 @@ pub struct CardDefinition {
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub playable_from_archives: bool,
 
+    /// This event is removed from the game once it has resolved, rather
+    /// than trashed — Take a Dive's and Kompromat's last line, "Remove
+    /// this event from the game." It lands in
+    /// `RunnerState::removed_from_game`, where nothing that reads the heap
+    /// finds it. A declaration rather than an effect: the event is still
+    /// resolving when its last instruction does, and `engine::play_event`
+    /// is what files a played event, so it is the one place that can file
+    /// this one elsewhere — an `OnPlay` that parks a decision (Take a
+    /// Dive's run offer) would otherwise leave the card to be trashed
+    /// after its own removal.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub removed_after_play: bool,
+
 
 
     /// What this card's hosted credits (`counters`, with `counter_kind:
@@ -852,6 +865,7 @@ impl Default for CardDefinition {
             hosted_cards_playable_from_grip: false,
             dividends: None,
             playable_from_archives: false,
+            removed_after_play: false,
             pays_for: Vec::new(),
             trash_when_empty: false,
             may_install_agendas_faceup: false,

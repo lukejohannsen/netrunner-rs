@@ -1,0 +1,95 @@
+{
+  "id": "ad_nihilum",
+  "name": "Ad Nihilum",
+  "side": "Corp",
+  "category": "Sweep",
+  "description": "Not a published list: built so the sweeps reach Vantage Point's bad publicity cards — Editorial Division, Witch Hunt, Flood the Market, Unleash, Reanimation Protocol, realloc() — with every gray ops and liability card the identity can search for.",
+  "style": "rush",
+  "identity": "editorial_division_ad_nihilum",
+  "cards": [
+    {
+      "card": "witch_hunt",
+      "count": 3
+    },
+    {
+      "card": "orbital_superiority",
+      "count": 3
+    },
+    {
+      "card": "send_a_message",
+      "count": 2
+    },
+    {
+      "card": "offworld_office",
+      "count": 1
+    },
+    {
+      "card": "flood_the_market",
+      "count": 3
+    },
+    {
+      "card": "hedge_fund",
+      "count": 3
+    },
+    {
+      "card": "bigger_picture",
+      "count": 2
+    },
+    {
+      "card": "public_trail",
+      "count": 2
+    },
+    {
+      "card": "scapegoat",
+      "count": 2
+    },
+    {
+      "card": "unleash",
+      "count": 2
+    },
+    {
+      "card": "reanimation_protocol",
+      "count": 2
+    },
+    {
+      "card": "realloc",
+      "count": 2
+    },
+    {
+      "card": "nihilo_agent",
+      "count": 2
+    },
+    {
+      "card": "public_access_plaza",
+      "count": 2
+    },
+    {
+      "card": "paywall",
+      "count": 3
+    },
+    {
+      "card": "grubber",
+      "count": 2
+    },
+    {
+      "card": "ping",
+      "count": 2
+    },
+    {
+      "card": "funhouse",
+      "count": 2
+    },
+    {
+      "card": "tithe",
+      "count": 2
+    },
+    {
+      "card": "whitespace",
+      "count": 1
+    },
+    {
+      "card": "doomscroll",
+      "count": 2
+    }
+  ]
+}

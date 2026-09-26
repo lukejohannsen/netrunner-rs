@@ -202,6 +202,14 @@ pub enum CardFilter {
     /// which is what makes the identity's ability legal only during one
     /// without a separate "during a run" requirement.
     InAttackedServer,
+    /// An installed Corp card in the root of, or protecting, the server the
+    /// most recently ended run was against (`GameState::
+    /// last_completed_run`) — Kompromat's "protecting the attacked server",
+    /// asked when that run ends. `InAttackedServer` matches nothing then,
+    /// since the run has left `active_run`; widening it to fall back on
+    /// the last run would have made LEO Construction's ability legal after
+    /// a run instead of during one. Instance-level.
+    InLastRunServer,
     /// An operation in the zone being selected from — HQ, or Archives for
     /// Plutus — that the Corp could play right now: its cost affordable
     /// and its `play_requirement` met. The offer half of
@@ -274,6 +282,7 @@ pub fn card_matches_filter(card: &CardDefinition, filter: &CardFilter) -> bool {
         CardFilter::Advanceable => card.advancement_requirement.is_some(),
         // Instance-level: where the card sits is state.
         CardFilter::InAttackedServer => true,
+        CardFilter::InLastRunServer => true,
         // The definition-level half; affordability and the play
         // requirement are instance-level.
         CardFilter::PlayableOperation => card.card_type == CardType::Operation,

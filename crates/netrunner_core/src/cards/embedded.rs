@@ -452,6 +452,9 @@ mod catalog_join_tests {
                 | Effect::SetRunEndedEffect(effect)
                 | Effect::ChooseNumber { then: effect, .. } => walk(effect, out),
                 Effect::PromptChooseCards { then: Some(then), .. } => walk(then, out),
+                Effect::PromptInstallCorpCard { then, if_rezzed, .. } => {
+                    then.iter().chain(if_rezzed.iter()).for_each(|e| walk(e, out))
+                }
                 Effect::PromptChooseServer { on_success, on_start, .. } => {
                     on_success.iter().for_each(|e| walk(e, out));
                     on_start.iter().for_each(|e| walk(e, out));
