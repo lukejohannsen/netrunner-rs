@@ -126,9 +126,15 @@ Asked for as: a server that simply exists on the internet, where people join a l
      - **A match never holds an attached socket.** The seek's slot is the task's own channel pair, so when the match lets go of the seat the task sends `BackInLobby` and the player seeks again on the same socket.
      - A seat taken back by `Resume` is attached again: the ticket remembers its lobby.
      - The server's lobbies have their format's name as id; a player's has a six-character code with no look-alike characters. A closed lobby is never listed.
-     - `Connect` still works as it did: one message that joins a lobby and seeks, with a socket that closes with the game. Its format-and-room queues are keys in the same lobby table.
+     - `Connect` was kept at first as a one-message join-and-seek.
      - Tests (`tests/attached.rs`): attach and join with no deck; a closed lobby's id and password, and the lobby disappearing when it empties; a chosen chair against a random one, then a second game with other decks on the same sockets; seek checks, cancel and withdrawal with the socket; a resumed seat returning to its lobby.
-   - **(b) Client core:** a connection that stays attached — lobbies, seeks, and each game handed to a `MatchHandle` — with a reconnect that re-attaches.
+   - **`Connect` removed** (`feat/attach-only`, built, at the person's request: nothing has been released, so there is no older client to keep working). This supersedes parts of stages 1 and 3:
+     - **The protocol:** `Connect` is gone, with its rooms, its preferred side and dealing to a player who brings no deck (`ServeOptions::deals`, `--deal`). The pinned and rotating decks are now only what a seated bot plays. Resuming a queue place is gone too, because a seek is withdrawn with its socket. Also gone are the compatibility shims kept for older clients: the `serde(default)` fields, and stage 1's `MatchList::lobbies`, which `ListLobbies` replaces.
+     - **The server:** `Resume` always reattaches through an attached task. A lobby id is read as typed: a format's in any case, a player's code in upper case.
+     - **The client core:** `connection::Goal::Play` takes a `Seat` — name, lobby, optional password and `Chair`. The machine attaches, joins the lobby, then seeks, each message sent when the one before it is answered. A refused lobby or seek ends the first connection with the reason. A drop while waiting starts again from attach; a drop while seated resumes. `remote::seat` and `seat_in_format` build a one-deck `Seat`, replacing `connect_message`.
+     - **The clients:** the desktop Join page's Room becomes Lobby (an id, blank for the format's own) plus an optional Password. The terminal's form names a lobby, and the flag path takes `--lobby` and `--password` in place of `--room`.
+     - Tests: `tests/lobby.rs` and `tests/reconnect.rs` rewritten on attach, join and seek, keeping every property they held that still means something. A bot's deck rotating or pinned is now read off the view's identities.
+   - **(b) Client core, the rest:** a connection that stays attached across games — lobby browsing and a second game without reconnecting — rather than one game per connection as `Goal::Play` still is.
    - **(c) Desktop:** a lobby browser, making a lobby, and a find-game panel with the chair and its deck or decks.
    - **(d) Terminal:** the same.
 5. **A rating the server keeps**: §5's stages (a)–(c), then (d)'s client surfaces.

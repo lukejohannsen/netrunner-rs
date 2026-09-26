@@ -87,7 +87,7 @@ async fn a_client_attaches_and_joins_a_lobby_with_no_deck() {
     let ServerMessage::LobbyJoined { lobby } = join(&mut socket, "standard", None).await else { panic!() };
     assert_eq!((lobby.format, lobby.players), (NsgFormat::Standard, 1));
     let ServerMessage::LobbyRefused { reason } = join(&mut socket, "nowhere", None).await else { panic!() };
-    assert!(reason.contains("no lobby nowhere"), "{reason}");
+    assert!(reason.contains("no lobby NOWHERE"), "a code is read in upper case: {reason}");
 }
 
 /// A closed lobby is not listed, is joined by its id, and asks for its
@@ -105,7 +105,9 @@ async fn a_closed_lobby_is_joined_by_its_id_and_password() {
     let ServerMessage::LobbyRefused { reason } = join(&mut friend, &lobby.id, None).await else { panic!() };
     assert!(reason.contains("password"), "{reason}");
     let ServerMessage::LobbyRefused { .. } = join(&mut friend, &lobby.id, Some("wrong")).await else { panic!() };
-    let ServerMessage::LobbyJoined { lobby: inside } = join(&mut friend, &lobby.id, Some("swordfish")).await else { panic!() };
+    // Typed in lower case, with a space: the id is the id.
+    let typed = format!(" {} ", lobby.id.to_lowercase());
+    let ServerMessage::LobbyJoined { lobby: inside } = join(&mut friend, &typed, Some("swordfish")).await else { panic!() };
     assert_eq!(inside.players, 2);
 
     for socket in [&mut host, &mut friend] {

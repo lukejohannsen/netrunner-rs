@@ -360,8 +360,7 @@ impl MatchSession {
                         // itself and is ignored.
                         // So is a lobby message: an attached connection
                         // keeps those for itself while it plays.
-                        ClientMessage::Connect { .. }
-                        | ClientMessage::Resume { .. }
+                        ClientMessage::Resume { .. }
                         | ClientMessage::ListMatches
                         | ClientMessage::Spectate { .. }
                         | ClientMessage::Attach { .. }

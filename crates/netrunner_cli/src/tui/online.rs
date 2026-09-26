@@ -5,7 +5,7 @@
 //! host plays through a masked `ClientView` exactly as their opponent does,
 //! and the process holding the real `GameState` is the server task, not
 //! the player's screen. **Join** connects to a host (or a public
-//! `netrunner_server --serve` daemon) by address, optionally into a room,
+//! `netrunner_server --serve` daemon) by address, optionally into a lobby by its id,
 //! or to a host by the ticket it gave out (`netrunner_client::peer`).
 //! **Watch** lists a server's matches and spectates one.
 //!
@@ -70,7 +70,10 @@ enum FormKind {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Field {
     Address,
-    Room,
+    /// A lobby's id: none for the format's own. A closed lobby with a
+    /// password is joined from the desktop, or with `--password`, until
+    /// Phase 4 §7 stage 4d.
+    Lobby,
     Port,
     Reach,
     Deck,
@@ -80,7 +83,7 @@ enum Field {
 impl FormKind {
     fn fields(self) -> &'static [Field] {
         match self {
-            FormKind::Join => &[Field::Address, Field::Room, Field::Deck, Field::Go],
+            FormKind::Join => &[Field::Address, Field::Lobby, Field::Deck, Field::Go],
             FormKind::Host => &[Field::Port, Field::Reach, Field::Deck, Field::Go],
         }
     }
@@ -91,7 +94,7 @@ struct Form {
     kind: FormKind,
     cursor: usize,
     address: String,
-    room: String,
+    lobby: String,
     port: String,
     /// Who the hosted game is for: this machine, the network, or the
     /// internet by way of the router (`hosting::Reach`).
@@ -109,7 +112,7 @@ impl Form {
     fn text_mut(&mut self, field: Field) -> Option<&mut String> {
         match field {
             Field::Address => Some(&mut self.address),
-            Field::Room => Some(&mut self.room),
+            Field::Lobby => Some(&mut self.lobby),
             Field::Port => Some(&mut self.port),
             _ => None,
         }
@@ -187,7 +190,7 @@ impl OnlineScreen {
             kind,
             cursor: 0,
             address: self.default_address.clone(),
-            room: String::new(),
+            lobby: String::new(),
             port: DEFAULT_PORT.to_string(),
             reach: Reach::Network,
             deck: 0,
@@ -373,7 +376,7 @@ impl OnlineScreen {
             KeyCode::Left if form.field() == Field::Reach => form.reach = form.reach.step(true),
             KeyCode::Right | KeyCode::Char(' ') if form.field() == Field::Reach => form.reach = form.reach.step(false),
             KeyCode::Enter => match form.field() {
-                Field::Address | Field::Room | Field::Port => form.editing = Some(form.field()),
+                Field::Address | Field::Lobby | Field::Port => form.editing = Some(form.field()),
                 Field::Reach => form.reach = form.reach.step(false),
                 Field::Deck => {
                     let cursor = form.deck;
@@ -423,8 +426,9 @@ impl OnlineScreen {
                 }
             }
         };
-        let room = (form.kind == FormKind::Join && !form.room.trim().is_empty()).then(|| form.room.trim().to_string());
-        let hello = remote::connect_message(&self.player, Some(choice.side), room, Some(choice), Some(self.format));
+        let named = (form.kind == FormKind::Join && !form.lobby.trim().is_empty()).then(|| form.lobby.trim().to_string());
+        let lobby = named.unwrap_or_else(|| netrunner_server::protocol::format_lobby_id(self.format));
+        let hello = remote::seat(&self.player, lobby, None, choice);
         self.mode = Mode::Waiting {
             connecting: remote::spawn(url.clone(), remote::Goal::Play(hello)),
             status,
@@ -503,7 +507,7 @@ impl OnlineScreen {
                     .iter()
                     .map(|m| {
                         // No decks: a server names none (`MatchSummary`).
-                        let lobby = m.format.map(|format| format!("  [{}]", netrunner_client::settings::format_name(format))).unwrap_or_default();
+                        let lobby = format!("  [{}]", netrunner_client::settings::format_name(m.format));
                         ListItem::new(format!("{} (Corp) vs {} (Runner){lobby} — {}s", m.corp, m.runner, m.started_secs_ago))
                     })
                     .collect();
@@ -526,9 +530,9 @@ impl OnlineScreen {
             .iter()
             .map(|field| match field {
                 Field::Address => format!("Address/ticket   {}", text(Field::Address, &form.address)),
-                Field::Room => format!(
-                    "Room             {}",
-                    if form.room.is_empty() && form.editing != Some(Field::Room) { "(none — the public queue)".to_string() } else { text(Field::Room, &form.room) }
+                Field::Lobby => format!(
+                    "Lobby            {}",
+                    if form.lobby.is_empty() && form.editing != Some(Field::Lobby) { "(none — the format's own lobby)".to_string() } else { text(Field::Lobby, &form.lobby) }
                 ),
                 Field::Port => format!("Port             {}", text(Field::Port, &form.port)),
                 Field::Reach => format!("Who can join     ‹ {} ›", form.reach.label()),

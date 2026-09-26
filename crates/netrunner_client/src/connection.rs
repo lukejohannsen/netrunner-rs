@@ -30,29 +30,48 @@
 //! whole messages, and JSON framing is the driver's one line. Bytes would
 //! put `serde_json` into every test for nothing.
 //!
+//! **How a game is asked for.** Every connection is attached (Phase 4 §7):
+//! the machine attaches with the player's name, joins the lobby it was
+//! given, and looks for a game in the chair it was given with that chair's
+//! deck or decks — three messages, each sent when the one before it is
+//! answered (`Seat`).
+//!
 //! **What reconnects.** A seat is taken back with its token
-//! (`ClientMessage::Resume`) — including a place in the lobby, whose token
-//! `Queued` already carries and which nothing used to resume. A spectator
-//! watches again (`Spectate`), which is the whole of reconnecting for a
-//! place with nothing to hold. A first connection that never got an answer
-//! is not retried: there is nothing to take back, and the player is
-//! looking at the address they typed. A match that has ended is not
-//! resumed either — the server has let the seat go.
+//! (`ClientMessage::Resume`). A place in a lobby's queue is not a seat —
+//! the server withdraws it with its socket — so a connection dropped while
+//! waiting attaches and looks again from the start. A spectator watches
+//! again (`Spectate`), which is the whole of reconnecting for a place with
+//! nothing to hold. A first connection that never got an answer is not
+//! retried: there is nothing to take back, and the player is looking at
+//! the address they typed. A match that has ended is not resumed either —
+//! the server has let the seat go.
 
 use std::collections::VecDeque;
 use std::time::{Duration, Instant};
 
 use netrunner_core::rules::Viewer;
-use netrunner_protocol::{ClientMessage, ServerMessage};
+use netrunner_protocol::{Chair, ClientMessage, ServerMessage};
 use uuid::Uuid;
 
 /// What the connection is for.
 #[derive(Debug, Clone)]
 pub enum Goal {
-    /// A seat, asked for with this `ClientMessage::Connect`.
-    Play(ClientMessage),
+    /// A game, looked for as this seat asks.
+    Play(Seat),
     /// A running match to watch.
     Watch { match_id: Uuid },
+}
+
+/// A game to look for: who is asking, in which lobby — a format's
+/// (`netrunner_protocol::format_lobby_id`) or a player's, with its
+/// password if it has one — and in which chair, with that chair's deck or
+/// decks.
+#[derive(Debug, Clone)]
+pub struct Seat {
+    pub player_name: String,
+    pub lobby: String,
+    pub password: Option<String>,
+    pub chair: Chair,
 }
 
 /// How long a dropped seat keeps trying. Longer than the server's default
@@ -171,7 +190,8 @@ struct Retry {
 pub struct Connection {
     goal: Goal,
     phase: Phase,
-    /// The seat's credential, from `Queued` or `MatchJoined`.
+    /// The seat's credential, from `Queued` or `MatchJoined`; presented
+    /// with `Resume` only once seated.
     token: Option<Uuid>,
     /// Given a place once, so the next is a resume.
     joined: bool,
@@ -208,8 +228,8 @@ impl Connection {
         }
         let hello = match (&self.goal, self.token) {
             (Goal::Watch { match_id }, _) => ClientMessage::Spectate { match_id: *match_id },
-            (Goal::Play(_), Some(session_token)) => ClientMessage::Resume { session_token },
-            (Goal::Play(connect), None) => connect.clone(),
+            (Goal::Play(_), Some(session_token)) if self.joined => ClientMessage::Resume { session_token },
+            (Goal::Play(seat), _) => ClientMessage::Attach { player_name: seat.player_name.clone() },
         };
         self.outbox.push_back(hello);
         self.phase = Phase::Greeting { since: now };
@@ -220,6 +240,17 @@ impl Connection {
     pub fn on_message(&mut self, message: ServerMessage, _now: Instant) {
         match (self.phase, message) {
             (Phase::Done, _) => {}
+            // Attached: into the lobby. In it: look for the game.
+            (Phase::Greeting { .. }, ServerMessage::Attached { .. }) => {
+                if let Goal::Play(seat) = &self.goal {
+                    self.outbox.push_back(ClientMessage::JoinLobby { lobby: seat.lobby.clone(), password: seat.password.clone() });
+                }
+            }
+            (Phase::Greeting { .. }, ServerMessage::LobbyJoined { .. }) => {
+                if let Goal::Play(seat) = &self.goal {
+                    self.outbox.push_back(ClientMessage::Seek { chair: seat.chair.clone() });
+                }
+            }
             (Phase::Greeting { .. } | Phase::Queued, ServerMessage::Queued { session_token, position }) => {
                 self.token = Some(session_token);
                 self.phase = Phase::Queued;
@@ -235,7 +266,10 @@ impl Connection {
             (Phase::Greeting { .. }, message @ ServerMessage::Spectating { .. }) => {
                 self.seated(Viewer::Spectator, None, (String::new(), String::new()), message);
             }
-            (Phase::Greeting { .. } | Phase::Queued, ServerMessage::ConnectRejected { reason } | ServerMessage::ResumeRejected { reason }) => {
+            (
+                Phase::Greeting { .. } | Phase::Queued,
+                ServerMessage::ConnectRejected { reason } | ServerMessage::ResumeRejected { reason } | ServerMessage::LobbyRefused { reason } | ServerMessage::SeekRefused { reason },
+            ) => {
                 self.fail(ConnectionError::Rejected(reason));
             }
             (Phase::Joined, message) => {
@@ -404,8 +438,23 @@ mod tests {
     use netrunner_core::rules::Side;
     use netrunner_protocol::GameEndReason;
 
-    fn hello() -> ClientMessage {
-        ClientMessage::Connect { player_name: "tester".into(), preferred_side: Some(Side::Corp), room: None, deck: None, format: None }
+    fn hello() -> Seat {
+        let deck = Box::new(netrunner_core::decks::by_id("brick_stack").expect("a built-in deck"));
+        Seat { player_name: "tester".into(), lobby: "startup".into(), password: None, chair: Chair::Corp(deck) }
+    }
+
+    fn lobby() -> netrunner_protocol::LobbyInfo {
+        netrunner_protocol::LobbyInfo { id: "startup".into(), name: "Startup".into(), format: netrunner_core::format::NsgFormat::Startup, permanent: true, closed: false, password: false, players: 1, seeking: 0 }
+    }
+
+    /// Opened and greeted: attached, in the lobby, and the seek sent.
+    fn greet(conn: &mut Connection, t0: Instant) {
+        conn.on_open(t0);
+        assert!(matches!(sent(conn)[..], [ClientMessage::Attach { .. }]));
+        conn.on_message(ServerMessage::Attached { lobbies: vec![lobby()] }, t0);
+        assert!(matches!(&sent(conn)[..], [ClientMessage::JoinLobby { lobby, password: None }] if lobby == "startup"));
+        conn.on_message(ServerMessage::LobbyJoined { lobby: lobby() }, t0);
+        assert!(matches!(sent(conn)[..], [ClientMessage::Seek { chair: Chair::Corp(_) }]));
     }
 
     fn joined(token: Uuid) -> ServerMessage {
@@ -431,8 +480,7 @@ mod tests {
     fn seated(t0: Instant, token: Uuid) -> Connection {
         let mut conn = Connection::new(Goal::Play(hello()), t0);
         assert!(conn.poll_dial());
-        conn.on_open(t0);
-        assert!(matches!(sent(&mut conn)[..], [ClientMessage::Connect { .. }]));
+        greet(&mut conn, t0);
         conn.on_message(joined(token), t0);
         assert!(matches!(events(&mut conn)[..], [Event::Joined { .. }]));
         conn
@@ -446,8 +494,7 @@ mod tests {
         assert!(conn.poll_dial(), "dials at once");
         assert!(!conn.poll_dial(), "once");
         assert!(!conn.submit(ClientMessage::Surrender), "nothing to send from before a seat");
-        conn.on_open(t0);
-        assert!(matches!(sent(&mut conn)[..], [ClientMessage::Connect { .. }]));
+        greet(&mut conn, t0);
         conn.on_message(joined(token), t0);
         let [Event::Joined { viewer, session_token, decks }] = &events(&mut conn)[..] else { panic!() };
         assert_eq!((*viewer, *session_token), (Viewer::Player(Side::Corp), Some(token)));
@@ -544,25 +591,38 @@ mod tests {
         assert!(matches!(events(&mut conn).last(), Some(Event::Link(Link::Down(ConnectionError::Rejected(_))))));
     }
 
+    /// A queue place is not a seat: the server withdraws it with the
+    /// socket, so a drop while waiting attaches and looks again.
     #[test]
-    fn a_place_in_the_lobby_is_resumed_too() {
+    fn a_drop_while_waiting_looks_again_from_the_start() {
         let t0 = Instant::now();
         let token = Uuid::new_v4();
         let mut conn = Connection::new(Goal::Play(hello()), t0);
         conn.poll_dial();
-        conn.on_open(t0);
-        sent(&mut conn);
+        greet(&mut conn, t0);
         conn.on_message(ServerMessage::Queued { session_token: token, position: 1 }, t0);
         assert!(matches!(events(&mut conn)[..], [Event::Queued(1)]));
         conn.on_closed(Closed::Dropped, t0);
         conn.on_timeout(t0);
         conn.poll_dial();
-        conn.on_open(t0);
-        assert!(matches!(sent(&mut conn)[..], [ClientMessage::Resume { session_token }] if session_token == token));
-        conn.on_message(ServerMessage::Queued { session_token: token, position: 1 }, t0);
-        conn.on_message(joined(token), t0);
+        greet(&mut conn, t0);
+        let fresh = Uuid::new_v4();
+        conn.on_message(ServerMessage::Queued { session_token: fresh, position: 1 }, t0);
+        conn.on_message(joined(fresh), t0);
         let events = events(&mut conn);
         assert!(matches!(events[..], [Event::Link(Link::Reconnecting { .. }), Event::Link(Link::Reconnecting { .. }), Event::Link(Link::Up), Event::Queued(1), Event::Joined { .. }]), "{events:?}");
+    }
+
+    /// A lobby or a seek refused ends the first connection with the reason.
+    #[test]
+    fn a_refused_seek_is_final() {
+        let t0 = Instant::now();
+        let mut conn = Connection::new(Goal::Play(hello()), t0);
+        conn.poll_dial();
+        greet(&mut conn, t0);
+        conn.on_message(ServerMessage::SeekRefused { reason: "not legal".into() }, t0);
+        assert!(conn.is_done());
+        assert!(matches!(events(&mut conn).last(), Some(Event::Link(Link::Down(ConnectionError::Rejected(reason)))) if reason == "not legal"));
     }
 
     #[test]

@@ -1,4 +1,4 @@
-//! The reconnection handshake over real WebSockets: `Connect`, drop the
+//! The reconnection handshake over real WebSockets: look for a game, drop the
 //! socket, `Resume` with the token, get the seat and a fresh view back.
 //! `MatchSession`'s own tests cover the channel-level contract; this is
 //! the only place the token registry and the bridge's lifetime are
@@ -19,11 +19,11 @@ use netrunner_server::{ClientMessage, GameEndReason, ServerMessage};
 type Socket = WebSocketStream<MaybeTlsStream<TcpStream>>;
 
 async fn start_server(grace: Duration) -> String {
-    start_server_with(ServeOptions { deals: true, reconnect_grace: grace, ..ServeOptions::default() }).await
+    start_server_with(ServeOptions { reconnect_grace: grace, ..ServeOptions::default() }).await
 }
 
 async fn start_server_with(options: ServeOptions) -> String {
-    let options = ServeOptions { deals: true, bot_runner: ServeBotKind::Heuristic, seed: Some(1), ..options };
+    let options = ServeOptions { bot_runner: ServeBotKind::Heuristic, seed: Some(1), ..options };
     let server = Server::bind("127.0.0.1:0", options).await.expect("an ephemeral port binds");
     let addr = server.local_addr().unwrap();
     tokio::spawn(server.run());
@@ -52,6 +52,18 @@ async fn next(socket: &mut Socket) -> ServerMessage {
     }
 }
 
+/// Attaches as `name`, joins the Startup lobby and looks for a game as
+/// the Corp; on this bot daemon the next message is `MatchJoined`.
+async fn play_corp(url: &str, name: &str) -> Socket {
+    let mut socket = open(url, ClientMessage::Attach { player_name: name.into() }).await;
+    assert!(matches!(next(&mut socket).await, ServerMessage::Attached { .. }));
+    send(&mut socket, ClientMessage::JoinLobby { lobby: "startup".into(), password: None }).await;
+    assert!(matches!(next(&mut socket).await, ServerMessage::LobbyJoined { .. }));
+    let deck = Box::new(netrunner_core::decks::by_id("brick_stack").expect("a built-in deck"));
+    send(&mut socket, ClientMessage::Seek { chair: netrunner_server::protocol::Chair::Corp(deck) }).await;
+    socket
+}
+
 fn joined(message: ServerMessage) -> (Uuid, Side, Uuid) {
     match message {
         ServerMessage::MatchJoined { match_id, assigned_side, session_token, .. } => (match_id, assigned_side, session_token),
@@ -63,7 +75,7 @@ fn joined(message: ServerMessage) -> (Uuid, Side, Uuid) {
 async fn a_dropped_client_resumes_its_seat_with_the_session_token() {
     let url = start_server(Duration::from_secs(30)).await;
 
-    let mut first = open(&url, ClientMessage::Connect { player_name: "first".into(), preferred_side: Some(Side::Corp), room: None, deck: None, format: None }).await;
+    let mut first = play_corp(&url, "first").await;
     let (match_id, side, token) = joined(next(&mut first).await);
     assert_eq!(side, Side::Corp);
     assert!(matches!(next(&mut first).await, ServerMessage::StateUpdate(_)));
@@ -95,7 +107,7 @@ async fn a_token_nobody_issued_is_refused() {
 async fn a_seat_forfeited_for_staying_away_cannot_resume() {
     let url = start_server(Duration::from_millis(200)).await;
 
-    let mut first = open(&url, ClientMessage::Connect { player_name: "first".into(), preferred_side: Some(Side::Corp), room: None, deck: None, format: None }).await;
+    let mut first = play_corp(&url, "first").await;
     let (_, _, token) = joined(next(&mut first).await);
     assert!(matches!(next(&mut first).await, ServerMessage::StateUpdate(_)));
     first.close(None).await.unwrap();
@@ -113,7 +125,7 @@ async fn a_seat_forfeited_for_staying_away_cannot_resume() {
 async fn the_newest_connection_wins_the_seat() {
     let url = start_server(Duration::from_secs(30)).await;
 
-    let mut first = open(&url, ClientMessage::Connect { player_name: "first".into(), preferred_side: Some(Side::Corp), room: None, deck: None, format: None }).await;
+    let mut first = play_corp(&url, "first").await;
     let (_, _, token) = joined(next(&mut first).await);
     assert!(matches!(next(&mut first).await, ServerMessage::StateUpdate(_)));
 
@@ -139,9 +151,9 @@ async fn the_newest_connection_wins_the_seat() {
 /// its mulligan is told it is on the clock and then that it lost.
 #[tokio::test]
 async fn a_client_that_sits_on_its_mulligan_is_timed_out() {
-    let url = start_server_with(ServeOptions { deals: true, turn_timeout: Some(Duration::from_millis(200)), ..ServeOptions::default() }).await;
+    let url = start_server_with(ServeOptions { turn_timeout: Some(Duration::from_millis(200)), ..ServeOptions::default() }).await;
 
-    let mut idle = open(&url, ClientMessage::Connect { player_name: "idle".into(), preferred_side: Some(Side::Corp), room: None, deck: None, format: None }).await;
+    let mut idle = play_corp(&url, "idle").await;
     let (_, _, token) = joined(next(&mut idle).await);
     assert!(matches!(next(&mut idle).await, ServerMessage::StateUpdate(_)));
     assert!(matches!(next(&mut idle).await, ServerMessage::DecisionClock { side: Side::Corp, .. }));

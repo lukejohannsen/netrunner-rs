@@ -30,54 +30,19 @@ pub use netrunner_session::{GameEndReason, HistoryEntry, PublicHistoryEntry};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ClientMessage {
-    /// Ask for a seat. `room` narrows who this player may be paired with
-    /// under a human-vs-human daemon: `None` is the public queue, a name
-    /// pairs only with the same name. `serde(default)` so a client built
-    /// before rooms existed still connects.
-    ///
-    /// `deck` is the decklist this player brings. **A brought deck decides
-    /// the seat** — its side is the side they play, so `preferred_side`
-    /// must agree or be `None` — and it is checked against the daemon's
-    /// format before anything else happens, refused with `ConnectRejected`
-    /// if either validator objects. `None` is the old behaviour: the daemon
-    /// deals that seat a deck, pinned or rotating. `serde(default)` so a
-    /// client built before this still connects. A daemon built before it
-    /// ignores the field and deals as it always did, which is why a client
-    /// that brought a deck checks `MatchJoined`'s deck ids.
-    ///
-    /// **There is no picking an opponent** (decided 26 September 2026):
-    /// a lobby pairs whoever is waiting, and a room is how two people who
-    /// already know each other meet. Listing the waiters and challenging
-    /// one was proposed and declined.
-    Connect {
-        player_name: String,
-        preferred_side: Option<Side>,
-        #[serde(default)]
-        room: Option<String>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        deck: Option<Box<DeckFile>>,
-        /// The lobby: players are paired only with players in the same
-        /// format (and room), and a brought deck is checked against it.
-        /// `None` is the daemon's first format, which is also what a
-        /// client built before lobbies gets. A format the daemon does not
-        /// offer is refused with `ConnectRejected`, naming the ones it
-        /// does.
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        format: Option<NsgFormat>,
-    },
     /// Take a seat back after the socket that held it dropped. The token is
     /// the one `MatchJoined` issued for that seat, and it is the *only*
     /// credential: a seat is worth exactly what a WebSocket connection was
     /// worth before, so a 122-bit random identifier that only ever crossed
-    /// this one connection is the same trust the original `Connect` had.
+    /// this one connection is the same trust the original `Attach` had.
     /// The reply is `MatchJoined` again (same token, same side) followed by
-    /// a fresh `StateUpdate`, or `ResumeRejected`. Presented while still
-    /// queued in the lobby (the token `Queued` carried is the same one), it
-    /// swaps the socket under the queue entry and the reply is `Queued`.
+    /// a fresh `StateUpdate`, or `ResumeRejected`; the connection is then
+    /// attached as the first one was, and back in its lobby after the
+    /// game. A seek is not a seat: it is withdrawn with its socket, and a
+    /// client that drops while looking attaches and looks again.
     Resume { session_token: Uuid },
-    /// What the daemon is hosting. Answered with `MatchList` before any
-    /// seat is taken, and the socket stays open for a `Connect` after.
-    /// Sent once seated it is ignored, like a repeated `Connect`.
+    /// What the daemon is hosting. Answered with `MatchList`, first thing
+    /// on a socket or from an attached connection.
     ListMatches,
     /// Watch a running match (an id from `MatchList`) from the
     /// `Viewer::Spectator` perspective: the intersection of what the two
@@ -93,9 +58,14 @@ pub enum ClientMessage {
     /// the lobbies are browsed, joined and left, and a game is looked for
     /// and played, all on this one connection, with no deck until a game
     /// is looked for (Phase 4 §7, decided 26 September 2026). Answered
-    /// with `Attached`. `Connect` remains the one-shot way in for a client
-    /// that wants a single game: it attaches, joins a lobby and looks for
-    /// a game in one message, and the socket closes when the game does.
+    /// with `Attached`. The only way to play: the one-shot `Connect`, which
+    /// carried a deck and closed with the game, was removed before
+    /// anything was released.
+    ///
+    /// **There is no picking an opponent** (decided 26 September 2026): a
+    /// lobby pairs whoever is waiting in it, and a closed lobby is how two
+    /// people who already know each other meet. Listing the waiters and
+    /// challenging one was proposed and declined.
     Attach { player_name: String },
     /// The open lobbies, answered with `Lobbies`. A closed lobby is never
     /// listed; it is joined by its id.
@@ -131,6 +101,13 @@ pub enum Chair {
     Random { corp: Box<DeckFile>, runner: Box<DeckFile> },
 }
 
+/// The id of a server's own lobby for `format`: its name in lower case
+/// (`startup`, `standard`, …). A client joins the lobby for the format it
+/// plays by this id, and a player's lobby never has one of these ids.
+pub fn format_lobby_id(format: NsgFormat) -> String {
+    format!("{format:?}").to_lowercase()
+}
+
 /// A lobby as `Lobbies` and `LobbyJoined` report it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LobbyInfo {
@@ -161,27 +138,15 @@ pub struct LobbyInfo {
 /// the name its builder gave it, so the list told anyone who asked what
 /// every player had built and called it — and a spectator is one message
 /// from telling a player. The identities are public the moment a game is
-/// watched; the lists are nobody's but their players'. A client built
-/// when the ids were here reads them as empty (`serde(default)`).
+/// watched; the lists are nobody's but their players'.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MatchSummary {
     pub match_id: Uuid,
     pub corp: String,
     pub runner: String,
     pub started_secs_ago: u64,
-    /// The lobby the match was paired in; `None` from a daemon built
-    /// before lobbies.
-    #[serde(default)]
-    pub format: Option<NsgFormat>,
-}
-
-/// One of a daemon's lobbies as `MatchList` reports it: a format it
-/// pairs players in, and how many wait in its public queue (a named
-/// room's waiters are counted in `MatchList::waiting_in_lobby` only).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Lobby {
+    /// The format of the lobby the match was paired in.
     pub format: NsgFormat,
-    pub waiting: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -195,17 +160,13 @@ pub enum ServerMessage {
     /// (`decks::DeckFile::id`) — **but only the seat's own.** The other
     /// side's is always empty: a deck is its player's secret, and what
     /// the opponent learns of it is what the rules reveal (Phase 4 §7
-    /// stage 2). The seat's own is there so a player knows what the host
-    /// dealt them, and so a client that brought a deck can tell a host
-    /// that predates bringing one dealt it something else.
-    /// `#[serde(default)]` so an older client still parses the message.
+    /// stage 2). The seat's own is there so a player who looked for a game
+    /// in a random chair knows which of their two decks is played.
     MatchJoined {
         match_id: Uuid,
         assigned_side: Side,
         session_token: Uuid,
-        #[serde(default)]
         corp_deck: String,
-        #[serde(default)]
         runner_deck: String,
     },
     /// The reply to `Spectate`, before the first spectator `StateUpdate`.
@@ -215,33 +176,20 @@ pub enum ServerMessage {
     /// neither. There is no token because there is nothing to resume —
     /// `Spectate` again is the whole of reconnecting.
     Spectating { match_id: Uuid },
-    /// Parked in the lobby until another human arrives: `position` is how
-    /// many are waiting, this player included. The token is the seat's
-    /// credential *already* — `MatchJoined` will carry the same one — so
-    /// a client that drops while waiting presents it with `Resume` and
-    /// gets its place back with nothing new to hold. A separate lobby
-    /// token was rejected: the client would hold two credentials and
-    /// swap at `MatchJoined`, and its reconnect loop keys on one.
+    /// Looking for a game in a lobby, until another player is paired
+    /// with this one: `position` is how many are waiting on the server,
+    /// this player included. The token is the one `MatchJoined` will
+    /// carry.
     Queued { session_token: Uuid, position: usize },
-    /// A `Connect` the host will not honour — at its match limit, or
-    /// setup failed — after which it closes the socket. Its own variant
-    /// for the reason `ResumeRejected` is: the client is waiting for
-    /// `MatchJoined` and has no action to have rejected.
+    /// A match that cannot be watched — no such match, or it ended — after
+    /// which the host closes the socket. Its own variant for the reason
+    /// `ResumeRejected` is: the client is waiting to be seated and has no
+    /// action to have rejected.
     ConnectRejected { reason: String },
     /// The reply to `ListMatches`. `waiting_in_lobby` counts only waiters
     /// whose socket is still open, so a client (or a test) can poll it to
     /// see a dropped waiter go.
-    ///
-    /// `lobbies` is every format the daemon pairs players in, its first
-    /// the one a `Connect` naming none joins; empty from a daemon built
-    /// before lobbies.
-    MatchList {
-        matches: Vec<MatchSummary>,
-        waiting_in_lobby: usize,
-        max_matches: Option<usize>,
-        #[serde(default)]
-        lobbies: Vec<Lobby>,
-    },
+    MatchList { matches: Vec<MatchSummary>, waiting_in_lobby: usize, max_matches: Option<usize> },
     /// `ClientMessage::Resume` named a token the host does not hold: never
     /// issued, or its match already over — including a match that ended
     /// *because* this seat's grace period ran out. A client that missed

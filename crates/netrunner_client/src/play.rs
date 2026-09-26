@@ -1422,13 +1422,13 @@ mod lesson_tests {
         use netrunner_server::serve::{ServeBotKind, ServeOptions, Server};
         let runtime = tokio::runtime::Builder::new_multi_thread().enable_all().worker_threads(2).build().unwrap();
         let url = runtime.block_on(async {
-            let options = ServeOptions { bot_runner: ServeBotKind::Heuristic, seed: Some(1), deals: true, ..ServeOptions::default() };
+            let options = ServeOptions { bot_runner: ServeBotKind::Heuristic, seed: Some(1), ..ServeOptions::default() };
             let server = Server::bind("127.0.0.1:0", options).await.unwrap();
             let url = format!("ws://{}", server.local_addr().unwrap());
             tokio::spawn(server.run());
             url
         });
-        let hello = crate::remote::connect_message("tester", Some(Side::Corp), None, None, None);
+        let hello = crate::remote::seat_in_format("tester", netrunner_core::format::NsgFormat::Startup, netrunner_core::decks::by_id("brick_stack").expect("a built-in deck"));
         let joined = runtime.block_on(crate::remote::connect(&url, crate::connection::Goal::Play(hello), |_| {})).unwrap();
         let registry = Arc::new(crate::decks::sample_deck_registry());
         let mut handle = MatchHandle::start_remote(registry, joined, Side::Runner).unwrap();
