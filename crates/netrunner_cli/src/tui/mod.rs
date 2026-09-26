@@ -96,7 +96,17 @@ async fn run_remote(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
         None => {
             let deck = brought.expect("a player always brings a deck");
             let lobby = config.lobby.clone().unwrap_or_else(|| netrunner_server::protocol::format_lobby_id(config.format.into()));
-            remote::Goal::Play(remote::seat(&record::player_name(config), lobby, config.password.clone(), deck))
+            // No data directory plays unrated, and says so; a key file
+            // that is there and unreadable stops here rather than play a
+            // game that quietly counts for nothing.
+            let credentials = match netrunner_client::identity::resolve_identity_dir() {
+                Ok(dir) => Some(netrunner_client::identity::Credentials::in_dir(&dir).map_err(|error| format!("your key: {error}"))?),
+                Err(error) => {
+                    eprintln!("Playing unrated: {error}");
+                    None
+                }
+            };
+            remote::Goal::Play(remote::seat(&record::player_name(config), lobby, config.password.clone(), deck).with_credentials(credentials))
         }
     };
     // Before the terminal is taken, so the lobby wait goes to stderr.

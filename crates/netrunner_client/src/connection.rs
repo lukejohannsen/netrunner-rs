@@ -36,6 +36,16 @@
 //! deck or decks — three messages, each sent when the one before it is
 //! answered (`Seat`).
 //!
+//! **Who is asking.** A seat with `credentials` proves its key before
+//! anything else on every transport it opens, a reconnect included:
+//! `Identify`, then the server's `Challenge` is signed, then the hello.
+//! A server that says it keeps its key (`lasting`) is held to the one
+//! remembered for its address (`with_pinned`), and one met for the first
+//! time is reported (`Event::ServerKey`) for the driver to remember. A
+//! key that differs ends the connection before this player's key is
+//! proved to it. A seat with no credentials skips all of it and plays
+//! unrated; a spectator never identifies.
+//!
 //! **What reconnects.** A seat is taken back with its token
 //! (`ClientMessage::Resume`). A place in a lobby's queue is not a seat —
 //! the server withdraws it with its socket — so a connection dropped while
@@ -50,6 +60,7 @@ use std::collections::VecDeque;
 use std::time::{Duration, Instant};
 
 use netrunner_core::rules::Viewer;
+use netrunner_identity::PublicKey;
 use netrunner_protocol::{Chair, ClientMessage, ServerMessage};
 use uuid::Uuid;
 
@@ -65,13 +76,17 @@ pub enum Goal {
 /// A game to look for: who is asking, in which lobby — a format's
 /// (`netrunner_protocol::format_lobby_id`) or a player's, with its
 /// password if it has one — and in which chair, with that chair's deck or
-/// decks.
+/// decks. `credentials` is the key the player proves, and where servers'
+/// keys are remembered; `None` plays unrated.
 #[derive(Debug, Clone)]
 pub struct Seat {
     pub player_name: String,
     pub lobby: String,
     pub password: Option<String>,
     pub chair: Chair,
+    /// Boxed: a signing key is a few hundred bytes, and a seat without
+    /// one should not carry the room for it.
+    pub credentials: Option<Box<crate::identity::Credentials>>,
 }
 
 /// How long a dropped seat keeps trying. Longer than the server's default
@@ -112,6 +127,10 @@ pub enum ConnectionError {
     Rejected(String),
     /// Reconnecting took longer than `MAX_WAIT`.
     GaveUp(Duration),
+    /// The server at this address proved a key other than the one
+    /// remembered for it. It may be a different server answering at the
+    /// address, so this player's key was not proved to it.
+    ServerKeyChanged { remembered: PublicKey, found: PublicKey },
 }
 
 impl std::fmt::Display for ConnectionError {
@@ -121,6 +140,14 @@ impl std::fmt::Display for ConnectionError {
             ConnectionError::ClosedBeforeSeat => write!(f, "server closed the connection before assigning a seat"),
             ConnectionError::Rejected(reason) => write!(f, "the server refused: {reason}"),
             ConnectionError::GaveUp(wait) => write!(f, "could not reconnect within {}s", wait.as_secs()),
+            ConnectionError::ServerKeyChanged { remembered, found } => write!(
+                f,
+                "the server at this address has a new key ({}, not the {} remembered), so it may not be the same server. \
+                 If its operator says the key changed, remove the address from {} and connect again",
+                found.fingerprint(),
+                remembered.fingerprint(),
+                crate::identity::KNOWN_SERVERS_FILE
+            ),
         }
     }
 }
@@ -157,6 +184,9 @@ impl Link {
 pub enum Event {
     /// Waiting in the lobby at this position.
     Queued(usize),
+    /// A server that keeps its key, met for the first time: remember it
+    /// for this address.
+    ServerKey(PublicKey),
     /// A place at a match. Sent once; a resume is a `Link` change.
     Joined { viewer: Viewer, session_token: Option<Uuid>, decks: (String, String) },
     /// A message about the match itself — a view, a log entry, a clock, a
@@ -195,6 +225,9 @@ pub struct Connection {
     token: Option<Uuid>,
     /// Given a place once, so the next is a resume.
     joined: bool,
+    /// The key the server at this address must prove, once one is
+    /// remembered or met.
+    pinned: Option<PublicKey>,
     /// `GameEnded` has arrived: a drop after it is not resumed.
     ended: bool,
     retry: Option<Retry>,
@@ -211,12 +244,20 @@ impl Connection {
             phase: Phase::Dialing { since: now },
             token: None,
             joined: false,
+            pinned: None,
             ended: false,
             retry: None,
             dial_due: true,
             outbox: VecDeque::new(),
             events: VecDeque::new(),
         }
+    }
+
+    /// The key the server at this address was last seen to have, which it
+    /// must prove again if it says it keeps its key.
+    pub fn with_pinned(mut self, key: Option<PublicKey>) -> Self {
+        self.pinned = key;
+        self
     }
 
     // --- inputs ---------------------------------------------------------
@@ -226,13 +267,30 @@ impl Connection {
         if !matches!(self.phase, Phase::Dialing { .. }) {
             return;
         }
-        let hello = match (&self.goal, self.token) {
+        let first = match self.credentials() {
+            Some(credentials) => ClientMessage::Identify { key: credentials.identity.public_key() },
+            None => self.hello(),
+        };
+        self.outbox.push_back(first);
+        self.phase = Phase::Greeting { since: now };
+    }
+
+    /// What a seat proves itself with, if it proves anything.
+    fn credentials(&self) -> Option<&crate::identity::Credentials> {
+        match &self.goal {
+            Goal::Play(seat) => seat.credentials.as_deref(),
+            Goal::Watch { .. } => None,
+        }
+    }
+
+    /// The message that asks for a place: after the key is proved, or
+    /// first when there is none to prove.
+    fn hello(&self) -> ClientMessage {
+        match (&self.goal, self.token) {
             (Goal::Watch { match_id }, _) => ClientMessage::Spectate { match_id: *match_id },
             (Goal::Play(_), Some(session_token)) if self.joined => ClientMessage::Resume { session_token },
             (Goal::Play(seat), _) => ClientMessage::Attach { player_name: seat.player_name.clone() },
-        };
-        self.outbox.push_back(hello);
-        self.phase = Phase::Greeting { since: now };
+        }
     }
 
     /// A message from the server. Takes the time like every input, though
@@ -240,6 +298,29 @@ impl Connection {
     pub fn on_message(&mut self, message: ServerMessage, _now: Instant) {
         match (self.phase, message) {
             (Phase::Done, _) => {}
+            // Sign the server's nonce — unless it is not the server this
+            // address was remembered with, which is told before anything
+            // is proved to it.
+            (Phase::Greeting { .. }, ServerMessage::Challenge { nonce, server_key, lasting }) => {
+                let Some(identity) = self.credentials().map(|credentials| credentials.identity.clone()) else { return };
+                if lasting {
+                    match self.pinned {
+                        Some(remembered) if remembered != server_key => {
+                            return self.fail(ConnectionError::ServerKeyChanged { remembered, found: server_key });
+                        }
+                        Some(_) => {}
+                        None => {
+                            self.pinned = Some(server_key);
+                            self.events.push_back(Event::ServerKey(server_key));
+                        }
+                    }
+                }
+                self.outbox.push_back(ClientMessage::Prove { signature: identity.prove(&server_key, &nonce) });
+            }
+            (Phase::Greeting { .. }, ServerMessage::Identified { .. }) => {
+                let hello = self.hello();
+                self.outbox.push_back(hello);
+            }
             // Attached: into the lobby. In it: look for the game.
             (Phase::Greeting { .. }, ServerMessage::Attached { .. }) => {
                 if let Goal::Play(seat) = &self.goal {
@@ -268,7 +349,11 @@ impl Connection {
             }
             (
                 Phase::Greeting { .. } | Phase::Queued,
-                ServerMessage::ConnectRejected { reason } | ServerMessage::ResumeRejected { reason } | ServerMessage::LobbyRefused { reason } | ServerMessage::SeekRefused { reason },
+                ServerMessage::ConnectRejected { reason }
+                | ServerMessage::ResumeRejected { reason }
+                | ServerMessage::LobbyRefused { reason }
+                | ServerMessage::SeekRefused { reason }
+                | ServerMessage::IdentifyRefused { reason },
             ) => {
                 self.fail(ConnectionError::Rejected(reason));
             }
@@ -440,7 +525,7 @@ mod tests {
 
     fn hello() -> Seat {
         let deck = Box::new(netrunner_core::decks::by_id("brick_stack").expect("a built-in deck"));
-        Seat { player_name: "tester".into(), lobby: "startup".into(), password: None, chair: Chair::Corp(deck) }
+        Seat { player_name: "tester".into(), lobby: "startup".into(), password: None, chair: Chair::Corp(deck), credentials: None }
     }
 
     fn lobby() -> netrunner_protocol::LobbyInfo {
@@ -672,5 +757,130 @@ mod tests {
         assert_eq!(Link::Up.status_line(t0), None);
         let line = Link::Reconnecting { attempts: 3, since: t0 }.status_line(t0 + Duration::from_secs(4)).unwrap();
         assert_eq!(line, "Connection lost — reconnecting (attempt 3, 4s of 60s)");
+    }
+
+    // --- proving a key ---------------------------------------------------
+
+    use netrunner_identity::{Identity, Nonce};
+
+    fn signed_in() -> Seat {
+        let credentials = crate::identity::Credentials { identity: Identity::from_secret([1; 32]), known_servers: None };
+        Seat { credentials: Some(Box::new(credentials)), ..hello() }
+    }
+
+    fn server() -> Identity {
+        Identity::from_secret([2; 32])
+    }
+
+    fn challenge(lasting: bool) -> ServerMessage {
+        ServerMessage::Challenge { nonce: Nonce([9; 32]), server_key: server().public_key(), lasting }
+    }
+
+    /// Identify, sign the challenge for this server, then the hello.
+    #[test]
+    fn a_seat_with_a_key_proves_it_before_it_attaches_and_learns_a_lasting_server() {
+        let t0 = Instant::now();
+        let mut conn = Connection::new(Goal::Play(signed_in()), t0);
+        conn.poll_dial();
+        conn.on_open(t0);
+        let me = Identity::from_secret([1; 32]).public_key();
+        assert!(matches!(sent(&mut conn)[..], [ClientMessage::Identify { key }] if key == me));
+        conn.on_message(challenge(true), t0);
+        let [ClientMessage::Prove { signature }] = sent(&mut conn)[..] else { panic!("expected Prove") };
+        assert_eq!(me.verify_proof(&server().public_key(), &Nonce([9; 32]), &signature), Ok(()), "signed for this server and this nonce");
+        assert!(matches!(&events(&mut conn)[..], [Event::ServerKey(key)] if *key == server().public_key()), "met for the first time: remember it");
+        conn.on_message(ServerMessage::Identified { key: me }, t0);
+        assert!(matches!(sent(&mut conn)[..], [ClientMessage::Attach { .. }]));
+    }
+
+    /// A server that makes a new key each run is neither remembered nor
+    /// held to a key remembered for its address.
+    #[test]
+    fn a_passing_server_key_is_not_remembered_or_checked() {
+        let t0 = Instant::now();
+        let other = Identity::from_secret([3; 32]).public_key();
+        let mut conn = Connection::new(Goal::Play(signed_in()), t0).with_pinned(Some(other));
+        conn.poll_dial();
+        conn.on_open(t0);
+        sent(&mut conn);
+        conn.on_message(challenge(false), t0);
+        assert!(matches!(sent(&mut conn)[..], [ClientMessage::Prove { .. }]));
+        assert!(events(&mut conn).is_empty());
+    }
+
+    /// A lasting key other than the one remembered ends the connection,
+    /// and nothing is proved to whoever answered.
+    #[test]
+    fn a_changed_server_key_is_refused_before_anything_is_proved() {
+        let t0 = Instant::now();
+        let remembered = Identity::from_secret([3; 32]).public_key();
+        let mut conn = Connection::new(Goal::Play(signed_in()), t0).with_pinned(Some(remembered));
+        conn.poll_dial();
+        conn.on_open(t0);
+        sent(&mut conn);
+        conn.on_message(challenge(true), t0);
+        assert!(sent(&mut conn).is_empty(), "no proof for a server that is not the one remembered");
+        assert!(conn.is_done());
+        let [Event::Link(Link::Down(ConnectionError::ServerKeyChanged { remembered: was, found }))] = &events(&mut conn)[..] else { panic!() };
+        assert_eq!((*was, *found), (remembered, server().public_key()));
+        let words = ConnectionError::ServerKeyChanged { remembered, found: server().public_key() }.to_string();
+        assert!(words.contains(&remembered.fingerprint()) && words.contains(crate::identity::KNOWN_SERVERS_FILE), "{words}");
+    }
+
+    #[test]
+    fn a_refused_proof_ends_the_connection() {
+        let t0 = Instant::now();
+        let mut conn = Connection::new(Goal::Play(signed_in()), t0);
+        conn.poll_dial();
+        conn.on_open(t0);
+        conn.on_message(challenge(true), t0);
+        conn.on_message(ServerMessage::IdentifyRefused { reason: "no".into() }, t0);
+        assert!(conn.is_done());
+    }
+
+    /// A reconnect proves the key again — it is a new socket — and then
+    /// resumes, held to the key the first connection met.
+    #[test]
+    fn a_reconnect_proves_the_key_again_then_resumes() {
+        let t0 = Instant::now();
+        let token = Uuid::new_v4();
+        let me = Identity::from_secret([1; 32]).public_key();
+        let mut conn = Connection::new(Goal::Play(signed_in()), t0);
+        conn.poll_dial();
+        conn.on_open(t0);
+        conn.on_message(challenge(true), t0);
+        conn.on_message(ServerMessage::Identified { key: me }, t0);
+        conn.on_message(ServerMessage::Attached { lobbies: vec![lobby()] }, t0);
+        conn.on_message(ServerMessage::LobbyJoined { lobby: lobby() }, t0);
+        conn.on_message(joined(token), t0);
+        sent(&mut conn);
+        events(&mut conn);
+
+        conn.on_closed(Closed::Dropped, t0);
+        conn.on_timeout(t0);
+        conn.poll_dial();
+        conn.on_open(t0);
+        assert!(matches!(sent(&mut conn)[..], [ClientMessage::Identify { .. }]));
+        let impostor = ServerMessage::Challenge { nonce: Nonce([1; 32]), server_key: Identity::from_secret([4; 32]).public_key(), lasting: true };
+        let mut again = Connection::new(Goal::Play(signed_in()), t0).with_pinned(conn.pinned);
+        again.poll_dial();
+        again.on_open(t0);
+        again.on_message(impostor, t0);
+        assert!(again.is_done(), "the key met on the first connection is held for the next");
+
+        conn.on_message(challenge(true), t0);
+        assert!(matches!(sent(&mut conn)[..], [ClientMessage::Prove { .. }]));
+        conn.on_message(ServerMessage::Identified { key: me }, t0);
+        assert!(matches!(sent(&mut conn)[..], [ClientMessage::Resume { session_token }] if session_token == token));
+    }
+
+    /// A spectator never identifies.
+    #[test]
+    fn a_spectator_proves_nothing() {
+        let t0 = Instant::now();
+        let mut conn = Connection::new(Goal::Watch { match_id: Uuid::nil() }, t0);
+        conn.poll_dial();
+        conn.on_open(t0);
+        assert!(matches!(sent(&mut conn)[..], [ClientMessage::Spectate { .. }]));
     }
 }

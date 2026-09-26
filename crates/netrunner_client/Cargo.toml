@@ -17,6 +17,9 @@ netrunner_bots = { path = "../netrunner_bots" }
 netrunner_session = { path = "../netrunner_session" }
 # The wire messages `connection` and `remote` speak, without the server.
 netrunner_protocol = { path = "../netrunner_protocol" }
+# `identity`, `connection`: the player's key, and the proof a connection
+# makes of it (Phase 4 §5).
+netrunner_identity = { path = "../netrunner_identity" }
 # `connection`: a seat's token is one.
 uuid = "1"
 serde = { workspace = true }

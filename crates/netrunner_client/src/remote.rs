@@ -48,6 +48,7 @@ use netrunner_core::rules::{Side, Viewer};
 use netrunner_protocol::{Chair, ClientMessage, MatchSummary, ServerMessage};
 
 use crate::connection::{Closed, Connection, ConnectionError, Event, Goal, Link, Seat};
+use crate::identity::{Credentials, KnownServers};
 use crate::peer::{self, Dialer, Ticket};
 
 /// A place at a match: the perspective it was given, the seat's token
@@ -135,7 +136,15 @@ pub fn seat(player_name: &str, lobby: String, password: Option<String>, deck: De
         Side::Corp => Chair::Corp(Box::new(deck)),
         Side::Runner => Chair::Runner(Box::new(deck)),
     };
-    Seat { player_name: player_name.to_string(), lobby, password, chair }
+    Seat { player_name: player_name.to_string(), lobby, password, chair, credentials: None }
+}
+
+impl Seat {
+    /// The seat proving `credentials`' key, or none: `None` plays unrated.
+    pub fn with_credentials(mut self, credentials: Option<Credentials>) -> Seat {
+        self.credentials = credentials.map(Box::new);
+        self
+    }
 }
 
 /// A game looked for in the server's own lobby for `format`, with one deck.
@@ -151,8 +160,11 @@ pub fn spawn(url: String, goal: Goal) -> Connecting {
     let (tx, commands) = mpsc::unbounded_channel();
     let (messages, rx) = mpsc::unbounded_channel();
     let (link_tx, link) = watch::channel(Link::Up);
-    let connection = Connection::new(goal, Instant::now());
-    tokio::spawn(drive(Target::of(url), connection, commands, setup_tx, messages, link_tx));
+    let target = Target::of(url);
+    let known = target.known_servers(&goal);
+    let pinned = known.as_ref().and_then(|(path, address)| KnownServers::load(path).ok()?.get(address));
+    let connection = Connection::new(goal, Instant::now()).with_pinned(pinned);
+    tokio::spawn(drive(target, connection, known, commands, setup_tx, messages, link_tx));
     Connecting { setup, parts: Some((tx, rx, link)) }
 }
 
@@ -186,6 +198,19 @@ enum Target {
 }
 
 impl Target {
+    /// Where the server's key is remembered, and under which address:
+    /// only for a server dialled by address, by a seat that proves a key.
+    /// A ticket names its host's key already, and a hosted game is never
+    /// rated, so it remembers nothing.
+    fn known_servers(&self, goal: &Goal) -> Option<(std::path::PathBuf, String)> {
+        let Goal::Play(seat) = goal else { return None };
+        let path = seat.credentials.as_ref()?.known_servers.clone()?;
+        match self {
+            Target::Url(url) => Some((path, url.clone())),
+            Target::Peer(_) => None,
+        }
+    }
+
     fn of(address: String) -> Target {
         match Ticket::parse(&address) {
             Some(ticket) => Target::Peer(ticket),
@@ -232,6 +257,7 @@ async fn dial_url(url: String) -> Result<Socket, String> {
 async fn drive(
     target: Target,
     mut conn: Connection,
+    known: Option<(std::path::PathBuf, String)>,
     mut commands: mpsc::UnboundedReceiver<ClientMessage>,
     setup: mpsc::UnboundedSender<Setup>,
     messages: mpsc::UnboundedSender<ServerMessage>,
@@ -257,6 +283,14 @@ async fn drive(
         }
         while let Some(event) = conn.poll_event() {
             match event {
+                // A failed write costs a warning next time, not this game.
+                Event::ServerKey(key) => {
+                    if let Some((path, address)) = &known {
+                        let mut servers = KnownServers::load(path).unwrap_or_default();
+                        servers.insert(address, key);
+                        let _ = servers.save(path);
+                    }
+                }
                 Event::Queued(position) => {
                     let _ = setup.send(Setup::Queued(position));
                 }
@@ -445,6 +479,40 @@ mod tests {
         joined.tx.send(ClientMessage::SubmitAction(PlayerAction::KeepHand)).unwrap();
         next_view(&mut joined.rx).await;
         assert_eq!(*joined.link.borrow(), Link::Up);
+    }
+
+    /// Against a server that keeps its key: the seat proves its own, the
+    /// server's is remembered for the address, and when another key
+    /// answers at that address later the connection is refused before
+    /// anything is proved to it.
+    #[tokio::test]
+    async fn a_server_key_is_remembered_by_address_and_a_new_one_refused() {
+        let dir = std::env::temp_dir().join(format!("netrunner_remote_pin_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let options = ServeOptions { bot_runner: ServeBotKind::Heuristic, seed: Some(1), data_dir: Some(dir.join("server")), ..ServeOptions::default() };
+        let server = Server::bind("127.0.0.1:0", options).await.unwrap();
+        let (addr, server_key) = (server.local_addr().unwrap(), server.public_key());
+        tokio::spawn(server.run());
+        let url = format!("ws://{addr}");
+        let credentials = Credentials::in_dir(&dir.join("client")).unwrap();
+        let signed_in = || {
+            let deck = netrunner_core::decks::by_id("brick_stack").expect("a built-in deck");
+            Goal::Play(seat_in_format("tester", NsgFormat::Startup, deck).with_credentials(Some(credentials.clone())))
+        };
+
+        let mut joined = connect(&url, signed_in(), |_| {}).await.unwrap();
+        next_view(&mut joined.rx).await;
+        let known_path = dir.join("client").join(crate::identity::KNOWN_SERVERS_FILE);
+        assert_eq!(KnownServers::load(&known_path).unwrap().get(&url), Some(server_key), "remembered on first contact");
+        drop(joined);
+
+        let mut known = KnownServers::default();
+        let impostor = netrunner_identity::Identity::from_secret([7; 32]).public_key();
+        known.insert(&url, impostor);
+        known.save(&known_path).unwrap();
+        let refused = connect(&url, signed_in(), |_| {}).await.err().expect("a server with another key is refused");
+        assert!(matches!(refused, ConnectionError::ServerKeyChanged { remembered, found } if remembered == impostor && found == server_key), "{refused}");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     /// The socket is cut mid-match: the link says so, the seat is taken

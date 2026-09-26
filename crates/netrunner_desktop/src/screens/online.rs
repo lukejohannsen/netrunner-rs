@@ -340,7 +340,14 @@ fn carry_out(outcome: Outcome, form: &mut OnlineForm, net: &mut Net, core: &Clie
         Outcome::Join { url, lobby, password, format, deck } => {
             net.brought = Some(deck.id.clone());
             let lobby = lobby.unwrap_or_else(|| format_lobby_id(format));
-            let hello = remote::seat(&player, lobby, password, *deck);
+            let credentials = match core.credentials() {
+                Ok(credentials) => credentials,
+                Err(error) => {
+                    form.apply(Intent::Failed(format!("Your key: {error}")));
+                    return;
+                }
+            };
+            let hello = remote::seat(&player, lobby, password, *deck).with_credentials(credentials);
             net.connecting = Some(remote::spawn(url.clone(), Goal::Play(hello)));
             form.apply(Intent::Waiting(format!("Connecting to {}…", shortened(&url))));
         }

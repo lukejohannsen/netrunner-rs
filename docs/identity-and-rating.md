@@ -208,8 +208,9 @@ Each its own branch, in this order; each is useful without the next.
    keyed by `key:<b32>`; `players.json`; an unidentified seat plays unrated.
    *Server half built 26 September 2026* (`feat/key-identity-server`): the
    crate, the messages, `--data-dir` (which replaced `--ratings-file`) and
-   one key in both chairs going unrated. The client half — its key file,
-   the machine's handshake, pinning — is the next branch.
+   one key in both chairs going unrated. The client half
+   (`feat/key-identity-client`, the same day) added the key file, the
+   machine's handshake and pinning by address.
 3. **Seat commitments, receipts, `ServerMessage::Rated`, `results.jsonl`,
    `--rebuild-ratings`.**
 4. **Client surfaces.** The game-over panel shows `Rated`; Profile shows "your

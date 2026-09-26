@@ -20,7 +20,7 @@ Narration widened from 3 events to 31 in the same pass, on a criterion stated on
 ## 4. Transport Efficiency — deferred
 - [ ] State deltas instead of full snapshots — only once profiling shows full `ClientView` broadcasts are a bottleneck. Do not trade simple-and-correct away speculatively.
 
-## 5. A rating is a server's to keep: identity is a key, a game leaves a signed receipt — OPEN, stage (b) server half built (26 September 2026)
+## 5. A rating is a server's to keep: identity is a key, a game leaves a signed receipt — OPEN, stage (b) built (26 September 2026)
 
 `docs/server-tracked-rating`. **No code; the reasoning is `docs/identity-and-rating.md` and this entry is its index.** It follows `fix/local-play-is-casual` (Phase 3 §2, same day), which took the rating *out* of the client: a rating is a claim to someone else, so it means something only between people and only when somebody other than the rated player keeps it. What is left to decide is how a server keeps one, and the hole in what it does today.
 
@@ -43,7 +43,15 @@ Narration widened from 3 events to 31 in the same pass, on a criterion stated on
 - **`--data-dir` replaces `--ratings-file`**, holding `identity.key` (created 0600, never replaced when unreadable — that is a bind error), `players.json` and `ratings.json`. `players.json` is a map rewritten whole rather than the sketched `players.jsonl`, because last-seen changes on every visit.
 - **Rated:** two proved keys, and two different ones. One key in both chairs goes unrated, since it would farm one role's rating off the other's. An unidentified seat plays unrated, and a bot game's human seat now carries no rating id at all.
 - Tests (`tests/identity.rs`): an honest proof, and a challenge naming the server's key; a fresh nonce per connection; a wrong key's signature, a proof made for another server (the relay) and a proof with no challenge each refused and closed; the key kept across a restart at 0600 and an unreadable one refusing to bind; a rating that follows the key through a rename and a restart, with nothing filed under a name; an unidentified seat and a key playing itself, both unrated.
-- **Next, the client half:** the key file under the data directory, the connection machine's handshake, and pinning a lasting server key.
+- **The client half** (`feat/key-identity-client`, same day).
+  - `netrunner_client::identity` owns the files: `identity.key` beside the settings, made on first use at 0600 and never replaced when unreadable, and `known_servers.json`, the servers' keys by the address they were dialled at. Both sit under `$NETRUNNER_IDENTITY_DIR` when it is set.
+  - `connection::Seat` carries optional `Credentials`. The machine proves the key on every transport it opens, a reconnect included, before `Attach` or `Resume`. A spectator never identifies.
+  - A lasting server key is held to the one remembered for the address (`with_pinned`). A key met for the first time is reported (`Event::ServerKey`) and written by the driver. A different key ends the connection with `ConnectionError::ServerKeyChanged`, naming both fingerprints and the file to edit, before anything is proved to it.
+  - Only an address is pinned. A ticket already names its host's key, and a hosted game is never rated, so neither client proves a key to a game it hosts.
+  - Both clients' Join prove the key: the desktop through `ClientCore::credentials`, and the terminal's menu and `--server` path through the same module. The flag path plays unrated with a warning when there is no data directory. An unreadable key file stops the join with the error, rather than playing a game that quietly counts for nothing.
+  - `PublicKey` is now held as its 32 checked bytes, because the decompressed point made every message and error holding one about 200 bytes larger. The credentials are boxed on a `Seat` for the same reason.
+  - Tests: six machine tests (proving before attaching and learning a lasting key; a passing key neither remembered nor checked; a changed key refused before any proof; a refused proof; a reconnect proving again then resuming, held to the key met first; a spectator proving nothing). One driver test against a real server with a data directory: the key remembered by address, then a different remembered key refused. Three for the files: made once at 0600, an unreadable file left alone, a server found by its address. The desktop's and the terminal's join tests now identify through a test directory.
+- **Next:** stage (a), the server keeps match records, then (c), seat commitments and receipts. Stage (d) will show the player their key, with "losing this file loses you; copying it plays as you elsewhere" beside it.
 
 **Settled by §6 item 2 (25 September 2026):** the messages live in `netrunner_protocol`, which `netrunner_client` depends on without the server. **Open:** Key rotation (a successor statement signed by the old key) is recorded and not designed.
 
