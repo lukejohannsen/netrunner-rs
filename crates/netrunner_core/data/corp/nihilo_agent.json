@@ -1,0 +1,59 @@
+{
+  "id": "nihilo_agent",
+  "title": "Nihilo Agent",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 1,
+  "trash_cost": 3,
+  "counter_kind": "Power",
+  "triggers": [
+    {
+      "trigger": "OnRez",
+      "subject": "This",
+      "effects": [
+        {
+          "AddCounters": 3
+        }
+      ]
+    },
+    {
+      "trigger": "OnTurnStart",
+      "effects": [
+        {
+          "RemoveTags": {
+            "Fixed": 1
+          }
+        },
+        {
+          "RemoveBadPublicity": 1
+        }
+      ]
+    },
+    {
+      "trigger": "OnDiscardPhaseEnd",
+      "effects": [
+        {
+          "GiveTags": 1
+        },
+        {
+          "GiveBadPublicity": 1
+        },
+        {
+          "RemoveCounters": 1
+        },
+        {
+          "EffectIf": {
+            "condition": {
+              "ThisCardCountersAtMost": 0
+            },
+            "effect": {
+              "TrashCard": "ThisCard"
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "numeric_id": 36049,
+  "is_playable": true
+}

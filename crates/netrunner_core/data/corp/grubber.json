@@ -1,0 +1,64 @@
+{
+  "id": "grubber",
+  "title": "Grubber",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Barrier"
+  },
+  "cost": 5,
+  "strength": 5,
+  "triggers": [
+    {
+      "trigger": "OnRez",
+      "subject": "This",
+      "effects": [
+        {
+          "EffectIf": {
+            "condition": {
+              "Not": "ProtectingRemote"
+            },
+            "effect": {
+              "GiveBadPublicity": 1
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "subroutines": [
+    {
+      "text": "End the run unless the Runner pays 3[credit].",
+      "effect": {
+        "OfferPaidChoice": {
+          "side": "Runner",
+          "cost": {
+            "Credits": 3
+          },
+          "if_paid": {
+            "Sequence": []
+          },
+          "if_declined": "EndTheRun",
+          "text": "End the run unless the Runner pays 3[credit]"
+        }
+      }
+    },
+    {
+      "text": "End the run unless the Runner pays 3[credit].",
+      "effect": {
+        "OfferPaidChoice": {
+          "side": "Runner",
+          "cost": {
+            "Credits": 3
+          },
+          "if_paid": {
+            "Sequence": []
+          },
+          "if_declined": "EndTheRun",
+          "text": "End the run unless the Runner pays 3[credit]"
+        }
+      }
+    }
+  ],
+  "numeric_id": 36050,
+  "is_playable": true
+}

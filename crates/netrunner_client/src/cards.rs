@@ -159,14 +159,18 @@ mod tests {
         registry
     }
 
-    /// Startup is System Gateway plus Elevation; Eternal is everything with
-    /// a catalog entry. The Core Set cards are the difference.
+    /// Startup is NetrunnerDB's Startup pool (System Gateway, Elevation,
+    /// Vantage Point); Eternal is everything with a catalog entry. The Core
+    /// Set cards are the difference. Asked of the pool itself, not a list of
+    /// packs, so a pack that joins Startup does not make this stale.
     #[test]
     fn the_pool_is_the_formats_packs_and_nothing_without_a_catalog_entry() {
         let registry = playable();
         let startup = format_pool(&registry, NsgFormat::Startup);
         let eternal = format_pool(&registry, NsgFormat::Eternal);
-        assert!(startup.iter().all(|card| matches!(card.set_code.as_deref(), Some("sg" | "elev"))));
+        let rules = NsgFormat::Startup.rules();
+        assert!(startup.iter().all(|card| card.numeric_id.is_some_and(|code| rules.in_pool(code))));
+        assert!(startup.iter().any(|card| card.set_code.as_deref() == Some("vp")), "Vantage Point is Startup");
         assert!(startup.len() < eternal.len(), "Core Set cards are outside Startup");
         assert_eq!(eternal.len(), registry.iter().filter(|card| card.numeric_id.is_some()).count());
         assert!(!startup.iter().any(|card| card.id.0 == "ice_wall"), "Ice Wall is Core Set");

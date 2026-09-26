@@ -1998,6 +1998,14 @@ fn activate_ability(
     let runner_active = runner_card.is_some();
     let is_identity = matches!(target, InstallId::CORP_IDENTITY | InstallId::RUNNER_IDENTITY);
 
+    // Whose card it is, read off where the install is — an install id names
+    // one card on one side of the table. It used to be read off the phase
+    // outside a window, which placed only the acting side's own cards: an
+    // ability the other side uses on a card the *acting* side does not own
+    // (Rotary's "Only the Corp can use this ability", a Runner card the
+    // Corp uses on its own turn) was never found. The checks below still
+    // hold the user, once `used_by` has named them, to their own action
+    // phase or their priority.
     let side = match &state.paid_ability_window {
         Some(window) => {
             if corp_active {
@@ -2012,6 +2020,8 @@ fn activate_ability(
             }
         }
         None => match state.phase {
+            GamePhase::Action(_) if corp_card.is_some() => Side::Corp,
+            GamePhase::Action(_) if runner_card.is_some() => Side::Runner,
             GamePhase::Action(side) => side,
             actual => return Err(RulesError::NotInActionPhase { actual }),
         },

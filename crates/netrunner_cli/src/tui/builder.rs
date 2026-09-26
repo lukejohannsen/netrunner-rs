@@ -1016,7 +1016,8 @@ mod tests {
         for id in &startup.pool {
             let card = registry.get(id).unwrap();
             assert_eq!(card.side, Side::Corp);
-            assert!(matches!(card.set_code.as_deref(), Some("sg" | "elev")), "{} is {:?}", card.title, card.set_code);
+            // In Startup's pool (by any printing), not a fixed pack list.
+            assert!(card.numeric_id.is_some_and(|code| NsgFormat::Startup.rules().in_pool(code)), "{} is {:?}", card.title, card.set_code);
         }
         let mut editor = startup;
         let all = editor.visible_pool(&registry).len();

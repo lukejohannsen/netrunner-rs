@@ -1,0 +1,28 @@
+{
+  "id": "melies_city_luxury_line",
+  "title": "Méliès City Luxury Line",
+  "side": "Corp",
+  "card_type": "Agenda",
+  "cost": 0,
+  "advancement_requirement": 5,
+  "agenda_points": 3,
+  "steal_cost": {
+    "Clicks": 1
+  },
+  "triggers": [
+    {
+      "trigger": "OnAgendaScored",
+      "subject": "This",
+      "effects": [
+        {
+          "GainClicks": [
+            "Corp",
+            1
+          ]
+        }
+      ]
+    }
+  ],
+  "numeric_id": 36026,
+  "is_playable": true
+}

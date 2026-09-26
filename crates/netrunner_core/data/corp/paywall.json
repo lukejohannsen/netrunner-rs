@@ -1,0 +1,44 @@
+{
+  "id": "paywall",
+  "title": "Paywall",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Barrier"
+  },
+  "cost": 1,
+  "strength": 1,
+  "triggers": [
+    {
+      "trigger": "OnEncounter",
+      "subject": "This",
+      "effects": [
+        {
+          "LoseCredits": [
+            "Runner",
+            1
+          ]
+        }
+      ]
+    }
+  ],
+  "subroutines": [
+    {
+      "text": "End the run unless the Runner pays 1[credit].",
+      "effect": {
+        "OfferPaidChoice": {
+          "side": "Runner",
+          "cost": {
+            "Credits": 1
+          },
+          "if_paid": {
+            "Sequence": []
+          },
+          "if_declined": "EndTheRun",
+          "text": "End the run unless the Runner pays 1[credit]"
+        }
+      }
+    }
+  ],
+  "numeric_id": 36052,
+  "is_playable": true
+}

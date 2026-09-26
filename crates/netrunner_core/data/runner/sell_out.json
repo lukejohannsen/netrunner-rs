@@ -1,0 +1,38 @@
+{
+  "id": "sell_out",
+  "title": "Sell Out",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 1,
+  "additional_play_cost": {
+    "Trash": {
+      "from": "OwnInstalled",
+      "filter": {
+        "CardType": "Resource"
+      },
+      "count": 1
+    }
+  },
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "GainCredits": [
+            "Runner",
+            4
+          ]
+        },
+        {
+          "DrawCards": [
+            "Runner",
+            2
+          ]
+        }
+      ]
+    }
+  ],
+  "numeric_id": 36011,
+  "is_playable": true
+}
