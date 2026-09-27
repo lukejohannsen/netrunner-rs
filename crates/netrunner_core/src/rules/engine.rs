@@ -2744,6 +2744,7 @@ mod tests {
                         only_breakable_by: None,
                     },
                     status: SubroutineStatus::Pending,
+                    gained: false,
                 })
                 .collect(),
             rezzed,
@@ -6875,11 +6876,13 @@ mod tests {
                         id: 0,
                         definition: SubroutineDef { text: "sub 0".to_string(), effect: Effect::GiveTags(crate::dsl::Amount::Fixed(1)), only_breakable_by: None },
                         status: SubroutineStatus::Pending,
+                        gained: false,
                     },
                     EncounteredSubroutine {
                         id: 1,
                         definition: SubroutineDef { text: "sub 1".to_string(), effect: Effect::GiveTags(crate::dsl::Amount::Fixed(2)), only_breakable_by: None },
                         status: SubroutineStatus::Pending,
+                        gained: false,
                     },
                 ],
                 rezzed: true,

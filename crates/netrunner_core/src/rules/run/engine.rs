@@ -38,7 +38,7 @@ fn build_run_ice(installed: &InstalledCard, registry: &CardRegistry) -> Result<O
         .subroutines
         .iter()
         .enumerate()
-        .map(|(id, def)| EncounteredSubroutine { id, definition: def.clone(), status: SubroutineStatus::Pending })
+        .map(|(id, def)| EncounteredSubroutine { id, definition: def.clone(), status: SubroutineStatus::Pending, gained: false })
         .collect();
 
     Ok(Some(RunIce {
@@ -202,11 +202,28 @@ pub fn start_run(state: &mut GameState, registry: &CardRegistry, server: ServerI
 /// a pass, an initiation with nothing to approach, and ice that left the
 /// table while it was being approached or encountered.
 fn enter_movement(run: &mut RunState, position: usize) {
+    // No ice is being encountered in the movement phase, so what was
+    // gained "for the remainder of that encounter" is gone (CR 9.8.3a's
+    // subroutines, `Effect::GainSubroutine`).
+    for ice in &mut run.ice {
+        if ice.subroutines.iter().any(|s| s.gained) {
+            ice.subroutines.retain(|s| !s.gained);
+            renumber_subroutines(ice);
+        }
+    }
     run.position = position;
     run.phase = RunPhase::Movement;
     run.ice_bypassed = false;
     run.fully_broken = false;
     run.jack_out_permitted = true;
+}
+
+/// Keeps each subroutine's `id` equal to its place in the list, which is
+/// what a break and a firing name it by.
+pub(crate) fn renumber_subroutines(ice: &mut RunIce) {
+    for (id, subroutine) in ice.subroutines.iter_mut().enumerate() {
+        subroutine.id = id;
+    }
 }
 
 /// Leaves the ICE at `position` behind — `EncounterIce --Continue-->` after
@@ -995,6 +1012,7 @@ mod tests {
                         only_breakable_by: None,
                     },
                     status: SubroutineStatus::Pending,
+                    gained: false,
                 })
                 .collect(),
             rezzed,

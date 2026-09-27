@@ -1346,6 +1346,7 @@ mod tests {
                     id,
                     definition: SubroutineDef { text: String::new(), effect: Effect::EndTheRun, only_breakable_by: None },
                     status: SubroutineStatus::Pending,
+                    gained: false,
                 })
                 .collect(),
             rezzed,

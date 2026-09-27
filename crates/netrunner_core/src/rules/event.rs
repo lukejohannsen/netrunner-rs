@@ -18,6 +18,11 @@ pub enum GameEvent {
     /// strength read later could have moved.
     SubroutineBroken { card_id: CardId, index: usize, strength: i32 },
     SubroutineFired { card_id: CardId, index: usize, effect: Effect },
+    /// The ice being encountered gained a subroutine ahead of the others
+    /// for the rest of the encounter (`Effect::GainSubroutine`); `text` is
+    /// its printed clause, which is how a log names it. An occurrence of
+    /// nothing a card hears.
+    SubroutineGained { card_id: CardId, text: String },
     IceStrengthModified { card_id: CardId, new_strength: i32, delta: i32 },
     /// `after_fully_breaking`: the ice is passed after an encounter in
     /// which the Runner fully broke it (CR 6.1.3f) — false for a piece of
@@ -534,7 +539,7 @@ impl GameEvent {
             | GameEvent::TraceAvoided { .. } | GameEvent::TraceSuccessful { .. } | GameEvent::GameOver { .. }
             | GameEvent::RunnerFlatlined | GameEvent::TurnStarted { .. } | GameEvent::TurnEnded { .. } => true,
             GameEvent::ClickSpent { .. } | GameEvent::CreditsGained { .. } | GameEvent::IceApproached { .. }
-            | GameEvent::SubroutineBroken { .. } | GameEvent::SubroutineFired { .. }
+            | GameEvent::SubroutineBroken { .. } | GameEvent::SubroutineFired { .. } | GameEvent::SubroutineGained { .. }
             | GameEvent::IceStrengthModified { .. } | GameEvent::IcePassed { .. } | GameEvent::IceBypassed { .. }
             | GameEvent::EncounterEnded { .. }
             | GameEvent::IceFullyBroken { .. }

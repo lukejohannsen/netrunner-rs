@@ -502,7 +502,7 @@ mod tests {
                     .subroutines
                     .iter()
                     .enumerate()
-                    .map(|(id, sub)| EncounteredSubroutine { id, definition: sub.clone(), status: SubroutineStatus::Pending })
+                    .map(|(id, sub)| EncounteredSubroutine { id, definition: sub.clone(), status: SubroutineStatus::Pending, gained: false })
                     .collect(),
                 rezzed: true,
             }],

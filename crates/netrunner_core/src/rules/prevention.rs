@@ -676,6 +676,7 @@ mod tests {
             id,
             definition: SubroutineDef { text: String::new(), effect, only_breakable_by: None },
             status,
+            gained: false,
         };
         state.active_run = Some(RunState {
             phase: RunPhase::EncounterIce,

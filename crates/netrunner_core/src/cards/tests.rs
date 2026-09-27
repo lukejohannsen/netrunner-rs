@@ -12765,4 +12765,59 @@ mod vantage_point {
         assert_eq!(tokens, Some(1));
         assert_eq!(state.runner.grip.len(), 1, "1 meat damage");
     }
+
+    // --- Stage 7e: a subroutine gained for an encounter ---
+
+    /// The first ice encountered this turn gains "Do 1 net damage. The
+    /// Runner draws 1 card." ahead of what it prints, for that encounter:
+    /// it fires first, it goes when the encounter does, and the second
+    /// encounter of the turn gains nothing.
+    #[test]
+    fn stick_and_poke_gives_the_first_ice_encountered_each_turn_a_subroutine_ahead_of_its_own() {
+        use crate::rules::{GameEvent, SubroutineStatus};
+        let registry = registry();
+        let mut state = base_state();
+        state.runner.rig = vec![rig("stick_and_poke")];
+        state.runner.grip = vec![id("sure_gamble"), id("sure_gamble")];
+        state.runner.stack = vec![id("diesel"), id("diesel"), id("diesel")];
+
+        // Fired: the gained subroutine first, then the Ice Wall's own.
+        let fired = encountering(state.clone(), &registry, &["ice_wall"]);
+        let ice = &fired.active_run.as_ref().expect("encountering").ice[0];
+        let texts: Vec<&str> = ice.subroutines.iter().map(|s| s.definition.text.as_str()).collect();
+        assert_eq!(texts, ["Do 1 net damage. The Runner draws 1 card.", "End the run."]);
+        assert_eq!(ice.subroutines.iter().map(|s| (s.id, s.gained)).collect::<Vec<_>>(), [(0, true), (1, false)]);
+        let (fired, events) = pass_the_encounter(&fired, &registry);
+        let order: Vec<usize> = events
+            .iter()
+            .filter_map(|event| match event {
+                GameEvent::SubroutineFired { index, .. } => Some(*index),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(order, [0, 1], "the gained subroutine fires ahead of the printed one");
+        assert_eq!(fired.runner.heap.len(), 1, "1 net damage");
+        assert_eq!(fired.runner.grip.len() + fired.runner.stack.len(), 4, "and a card drawn");
+        assert_eq!(fired.runner.stack.len(), 2);
+        assert!(fired.active_run.is_none(), "then the Ice Wall ends the run");
+
+        // Broken, and a second encounter the same turn: the gained
+        // subroutine is gone from the ice passed, and the next gains none.
+        let mut two = encountering(state, &registry, &["ice_wall", "ice_wall"]);
+        let events = break_some(&mut two, &registry, 2);
+        assert!(events.iter().any(|event| matches!(event, GameEvent::IceFullyBroken { .. })), "breaking both is breaking it fully");
+        let (mut two, _) = pass_the_encounter(&two, &registry);
+        let passed = &two.active_run.as_ref().expect("the run goes on").ice[0];
+        assert_eq!(passed.subroutines.iter().map(|s| (s.id, s.status)).collect::<Vec<_>>(), [(0, SubroutineStatus::Broken)]);
+        while two.active_run.as_ref().is_some_and(|run| run.phase != crate::rules::RunPhase::EncounterIce) {
+            let action = match two.paid_ability_window.as_ref() {
+                Some(window) => PlayerAction::PassPriority { side: window.active_priority },
+                None => PlayerAction::ContinueRun,
+            };
+            two = apply_action(&two, &registry, action).expect("on to the next ice").0;
+        }
+        let run = two.active_run.as_ref().expect("encountering the second");
+        assert_eq!(run.position, 1);
+        assert_eq!(run.ice[1].subroutines.len(), 1, "the first time each turn only");
+    }
 }

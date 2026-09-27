@@ -491,6 +491,9 @@ pub fn narrate_event(
         GameEvent::SubroutineBroken { card_id, index, .. } => {
             format!("broke subroutine {} on {}", index + 1, title(card_id))
         }
+        GameEvent::SubroutineGained { card_id, text } => {
+            format!("{} gained \u{201c}{}\u{201d} before its other subroutines", title(card_id), text.trim_end_matches('.'))
+        }
         GameEvent::IceFullyBroken { card_id, .. } => format!("fully broke {}", title(card_id)),
 
         // ---- harm ----
@@ -646,10 +649,22 @@ pub fn describe_action(action: &PlayerAction, registry: &CardRegistry, view: Opt
             format!("Install {} onto {}{}", title(card_id), install_label(host), if *trash_first { ", trashing programs first" } else { "" })
         }
         // The subroutine's own printed text, so the click is spent on
-        // "End the run" rather than on "subroutine 2".
+        // "End the run" rather than on "subroutine 2" — read off the run's
+        // list, where a subroutine the ice gained stands ahead of the
+        // printed ones, and off the card only with no view to read.
         PlayerAction::BreakSubroutineWithClick { ice_id, subroutine_index } => {
-            match registry.get(ice_id).and_then(|ice| ice.subroutines.get(*subroutine_index)) {
-                Some(sub) => format!("Break \"{}\" on {} (spend a click)", sub.text.trim_end_matches('.'), title(ice_id)),
+            let encountered = view
+                .and_then(|view| view.active_run.as_ref())
+                .and_then(|run| run.ice.get(run.position))
+                .and_then(|piece| piece.identity.as_ref())
+                .filter(|identity| identity.card == *ice_id)
+                .map(|identity| identity.subroutines.get(*subroutine_index).map(|sub| sub.definition.text.clone()));
+            let text = match encountered {
+                Some(text) => text,
+                None => registry.get(ice_id).and_then(|ice| ice.subroutines.get(*subroutine_index)).map(|sub| sub.text.clone()),
+            };
+            match text {
+                Some(text) => format!("Break \"{}\" on {} (spend a click)", text.trim_end_matches('.'), title(ice_id)),
                 None => format!("Break subroutine {} on {} (spend a click)", subroutine_index + 1, title(ice_id)),
             }
         }

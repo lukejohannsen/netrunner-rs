@@ -1156,6 +1156,7 @@ mod tests {
                     id: 0,
                     definition: SubroutineDef { text: "End the run.".to_string(), effect: Effect::EndTheRun, only_breakable_by: None },
                     status: SubroutineStatus::Pending,
+                    gained: false,
                 }],
                 rezzed: true,
             }],

@@ -499,6 +499,7 @@ mod tests {
             id: 0,
             definition: SubroutineDef { text: "give a tag".to_string(), effect: Effect::GiveTags(crate::dsl::Amount::Fixed(1)), only_breakable_by: None },
             status: SubroutineStatus::Pending,
+            gained: false,
         }
     }
 
@@ -562,6 +563,7 @@ mod tests {
             id: 0,
             definition: SubroutineDef { text: "do 1 net damage".to_string(), effect: Effect::DealDamage(DamageType::Net, 1), only_breakable_by: None },
             status: SubroutineStatus::Pending,
+            gained: false,
         };
         let behind_it = EncounteredSubroutine { id: 1, ..pending_subroutine() };
         state.active_run = Some(RunState {
@@ -804,6 +806,7 @@ mod tests {
             id: 0,
             definition: SubroutineDef { text: "end the run".to_string(), effect: Effect::EndTheRun, only_breakable_by: None },
             status: SubroutineStatus::Pending,
+            gained: false,
         };
         state.active_run = Some(RunState {
             phase: RunPhase::EncounterIce,
@@ -880,11 +883,13 @@ mod tests {
                         id: 0,
                         definition: SubroutineDef { text: "damage".to_string(), effect: Effect::DealDamage(DamageType::Net, 1), only_breakable_by: None },
                         status: SubroutineStatus::Resolved,
+                        gained: false,
                     },
                     EncounteredSubroutine {
                         id: 1,
                         definition: SubroutineDef { text: "end the run".to_string(), effect: Effect::EndTheRun, only_breakable_by: None },
                         status: SubroutineStatus::Pending,
+                        gained: false,
                     },
                 ],
                 rezzed: true,

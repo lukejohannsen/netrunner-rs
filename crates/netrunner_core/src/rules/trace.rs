@@ -250,11 +250,13 @@ mod tests {
                             only_breakable_by: None,
                         },
                         status: SubroutineStatus::Resolved,
+                        gained: false,
                     },
                     EncounteredSubroutine {
                         id: 1,
                         definition: crate::dsl::SubroutineDef { text: "remaining".to_string(), effect: remaining_effect, only_breakable_by: None },
                         status: SubroutineStatus::Pending,
+                        gained: false,
                     },
                 ],
                 rezzed: true,

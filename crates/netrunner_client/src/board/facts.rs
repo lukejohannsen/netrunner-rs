@@ -60,6 +60,15 @@ fn encounter(view: &ClientView, id: InstallId) -> Option<(i32, Vec<SubroutineSta
     Some((identity.current_strength, identity.subroutines.iter().map(|s| s.status).collect(), at))
 }
 
+/// The run's own list of subroutines for the ice at `id`, while the run is
+/// at it — approaching or encountering it.
+fn run_subroutines(view: &ClientView, id: InstallId) -> Option<&[netrunner_core::rules::EncounteredSubroutine]> {
+    let run = view.active_run.as_ref()?;
+    let (i, piece) = run.ice.iter().enumerate().find(|(_, p)| p.install_id == id)?;
+    let at = i == run.position && matches!(run.phase, RunPhase::ApproachIce | RunPhase::EncounterIce);
+    at.then_some(piece.identity.as_ref()?.subroutines.as_slice())
+}
+
 /// One subroutine of the ice a run is at: the clause the card prints and
 /// what has become of it this encounter.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -322,13 +331,16 @@ pub fn install_facts(view: &ClientView, id: InstallId, registry: &CardRegistry) 
                         (None, Some(printed)) => lines.push(strength_words(printed, Some(printed))),
                         (None, None) => {}
                     }
-                    let statuses = encounter(view, id).map(|(_, subs, at)| (subs, at));
-                    for (i, sub) in def.subroutines.iter().enumerate() {
-                        let status = match statuses.as_ref().and_then(|(subs, at)| at.then(|| subs.get(i)).flatten()) {
-                            Some(status) => format!(" — {}", subroutine_word(*status)),
-                            None => String::new(),
-                        };
-                        lines.push(format!("» {}{status}", sub.text));
+                    // At the encounter the run's own list, which holds what
+                    // the ice gained ahead of what it prints; the card's
+                    // list otherwise.
+                    match run_subroutines(view, id) {
+                        Some(subroutines) => {
+                            for sub in subroutines {
+                                lines.push(format!("» {} — {}", sub.definition.text, subroutine_word(sub.status)));
+                            }
+                        }
+                        None => lines.extend(def.subroutines.iter().map(|sub| format!("» {}", sub.text))),
                     }
                 }
             } else if card.advancement_tokens > 0 {
@@ -506,7 +518,7 @@ mod tests {
                     .subroutines
                     .iter()
                     .enumerate()
-                    .map(|(id, sub)| EncounteredSubroutine { id, definition: sub.clone(), status: statuses.get(id).copied().unwrap_or(SubroutineStatus::Pending) })
+                    .map(|(id, sub)| EncounteredSubroutine { id, definition: sub.clone(), status: statuses.get(id).copied().unwrap_or(SubroutineStatus::Pending), gained: false })
                     .collect(),
                 rezzed: true,
             }],

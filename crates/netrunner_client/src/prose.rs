@@ -310,6 +310,9 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
         Effect::AddToDeck(DeckEnd::Top) => "put it on top of its owner's deck".to_string(),
         Effect::ShuffleHostedIntoDeck => "shuffle all hosted cards into your stack".to_string(),
         Effect::AddToScoreAreaAsAgenda(as_agenda) => format!("add this card to your score area as {}", as_an_agenda(as_agenda)),
+        Effect::GainSubroutine(subroutine) => {
+            format!("the ice gains \u{201c}{}\u{201d} before its other subroutines, for the rest of the encounter", subroutine.text.trim_end_matches('.'))
+        }
         Effect::LookAtTopOfDeck { deck, count } => {
             format!("look at the top {} of {}", plural(*count, "card", "cards"), if *deck == Side::Corp { "R&D" } else { "the stack" })
         }

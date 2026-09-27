@@ -540,6 +540,7 @@ mod tests {
                         only_breakable_by: None,
                     },
                     status: SubroutineStatus::Pending,
+                    gained: false,
                 }],
                 rezzed: true,
             }],
