@@ -22,7 +22,8 @@
           }
         }
       },
-      "text": "3[credit]: Break 1 subroutine on this ice. Only the Runner can use this ability."
+      "text": "3[credit]: Break 1 subroutine on this ice. Only the Runner can use this ability.",
+      "requirement": "EncounteringThisIce"
     }
   ],
   "subroutines": [

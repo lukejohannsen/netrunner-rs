@@ -105,6 +105,7 @@ pub fn describe_zone(zone: &CardZoneRef) -> &'static str {
         CardZoneRef::OpponentDeck => "the opponent's deck",
         CardZoneRef::OpponentScoreArea => "the opponent's score area",
         CardZoneRef::OwnScoreArea => "your score area",
+        CardZoneRef::OpponentRemovedFromGame => "out of the game",
     }
 }
 
@@ -112,6 +113,8 @@ pub fn describe_cost(cost: &Cost) -> String {
     match cost {
         Cost::Credits(n) => plural(*n, "credit", "credits"),
         Cost::Clicks(n) => plural(*n, "click", "clicks"),
+        Cost::LoseClicks(n) => format!("lose {}", plural(*n, "click", "clicks")),
+        Cost::JackOut => "jack out".to_string(),
         Cost::TrashSelf => "trash this card".to_string(),
         Cost::ClearTags => "remove all tags".to_string(),
         Cost::RemoveTags(n) => format!("remove {}", plural(*n, "tag", "tags")),

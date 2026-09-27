@@ -2230,7 +2230,10 @@ pub(crate) fn cost_is_affordable(
         // The scan the payment spends from — it used to be a sum of its
         // own, which counted bad publicity and forgot the run's credits.
         Cost::Credits(amount) => payment::available(state, registry, side, purpose) >= *amount,
-        Cost::Clicks(amount) => state.resources(side).clicks.0 >= *amount,
+        Cost::Clicks(amount) | Cost::LoseClicks(amount) => state.resources(side).clicks.0 >= *amount,
+        // A run the Runner is in, and nothing else: there is no "cannot
+        // jack out" in the pool.
+        Cost::JackOut => side == Side::Runner && state.active_run.is_some(),
         Cost::RemoveCounters(amount) => counters_of(state, ctx).is_some_and(|counters| counters >= *amount),
         // Any one alternative being payable is enough — the payer picks.
         Cost::AnyOf(options) => options.iter().any(|option| cost_is_affordable(state, registry, side, option, purpose, ctx)),
@@ -2309,6 +2312,22 @@ pub(crate) fn pay_cost_ctx(
             })?;
             state.resources_mut(side).clicks = spent;
             Ok(std::iter::repeat_n(GameEvent::ClickSpent { side }, *amount as usize).collect())
+        }
+
+        // Lost, not spent: nothing about the ability is an action.
+        Cost::LoseClicks(amount) => {
+            let clicks = state.resources(side).clicks;
+            let left = clicks.spend(*amount).ok_or(RulesError::NotEnoughClicks { side, available: clicks.0, requested: *amount })?;
+            state.resources_mut(side).clicks = left;
+            Ok(vec![GameEvent::ClicksLost { side, amount: *amount }])
+        }
+
+        // The run ends as a jack-out, which the payer dispatches with the
+        // rest of its cost's events (`dispatch_cost_events`): "when a run
+        // ends" hears it.
+        Cost::JackOut => {
+            let run = run::end_run(state).ok_or(RulesError::NoActiveRun)?;
+            Ok(vec![GameEvent::RunJackedOut { server: run.server }])
         }
 
         Cost::TrashSelf => {
@@ -2658,6 +2677,14 @@ pub fn check_requirement(
             });
             if matches { Ok(()) } else { Err(RulesError::RequirementNotMet) }
         }
+        EffectRequirement::EncounteringThisIce => {
+            let matches = ctx.acting_install.is_some_and(|this| {
+                state.active_run.as_ref().is_some_and(|run| {
+                    run.phase == RunPhase::EncounterIce && run.ice.get(run.position).is_some_and(|ice| ice.install_id == this)
+                })
+            });
+            if matches { Ok(()) } else { Err(RulesError::RequirementNotMet) }
+        }
         EffectRequirement::DuringRun => {
             // Not merely `active_run.is_some()`: once the Runner is
             // accessing, or the run has ended but not been cleared, there
@@ -2963,6 +2990,7 @@ pub(crate) fn consume_requirement(
         | EffectRequirement::ThisCardCountersAtMost(_)
         | EffectRequirement::ThisCardCountersAtLeast(_)
         | EffectRequirement::EncounteringHostIce
+        | EffectRequirement::EncounteringThisIce
         | EffectRequirement::DuringEncounter
         | EffectRequirement::DuringRun
         | EffectRequirement::WasFirstAdvancementThisCard

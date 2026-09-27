@@ -8,6 +8,20 @@ use super::zone::{CardFilter, CardZoneRef};
 pub enum Cost {
     Credits(u32),
     Clicks(u32),
+    /// The payer loses `u32` clicks — Ansel 2.0's "**Lose [click][click]:**
+    /// Break up to 2 subroutines on this ice." Not `Clicks`: that cost
+    /// spends them, and a cost that begins with [click] makes the ability
+    /// an action (CR 9.5.2a), which a Runner mid-encounter cannot take.
+    /// This one begins with "lose", so it is used in the encounter's
+    /// window. Payable only with that many clicks (CR 1.16.1).
+    LoseClicks(u32),
+    /// The Runner jacks out — Lionsmane's "Do 2 net damage unless the
+    /// Runner jacks out", a nested cost (CR 1.16.11b: "[instructions]
+    /// unless [player] [cost]"), so an `Effect::OfferPaidChoice`'s price.
+    /// Not `Effect::EndTheRun`: a jack-out is the Runner's, ends the run as
+    /// `GameEvent::RunJackedOut`, and is nothing Shred's "the first time
+    /// … would end the run" can stop. Payable during a run.
+    JackOut,
     /// Trash the card this ability is printed on, as part of paying to
     /// activate it — distinct from `Effect::TrashCard(CardTarget::
     /// ThisCard)`, which is an effect (something the ability does),

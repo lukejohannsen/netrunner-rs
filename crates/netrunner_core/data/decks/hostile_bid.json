@@ -3,7 +3,7 @@
   "name": "Hostile Bid",
   "side": "Corp",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach bad publicity, which no other deck gives — Hostile Takeover is the only card in the pool that does — and meat damage for Crash Space to prevent (Measured Response). Weyland Consortium: Building a Better World, an identity no sample deck uses. Eternal-legal only. Vantage Point Stage 3a: Let Them Dream for Offworld Office.",
+  "description": "Not a published list: built so the sweeps reach bad publicity, which no other deck gives — Hostile Takeover is the only card in the pool that does — and meat damage for Crash Space to prevent (Measured Response). Weyland Consortium: Building a Better World, an identity no sample deck uses. Eternal-legal only. Vantage Point Stage 3a: Let Them Dream for Offworld Office. Vantage Point Stage 4b: two Event Horizon for two Tithe.",
   "style": "trap",
   "identity": "weyland_consortium_building_a_better_world",
   "cards": [
@@ -56,10 +56,6 @@
       "count": 2
     },
     {
-      "card": "tithe",
-      "count": 2
-    },
-    {
       "card": "whitespace",
       "count": 2
     },
@@ -85,6 +81,10 @@
     },
     {
       "card": "regolith_mining_license",
+      "count": 2
+    },
+    {
+      "card": "event_horizon",
       "count": 2
     }
   ]

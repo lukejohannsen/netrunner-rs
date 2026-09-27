@@ -231,6 +231,14 @@ pub enum EffectRequirement {
     /// encountered. Hard-gates (errors, does not silently skip) via
     /// `AbilityDef::requirement`'s usual treatment.
     EncounteringHostIce,
+    /// The active run is encountering the acting card itself — N-Pot's
+    /// and Ansel 2.0's "break … subroutines **on this ice**. Only the Runner
+    /// can use this ability." The break effect breaks whatever is being
+    /// encountered, so without this N-Pot's ability broke a subroutine on
+    /// any piece of ice the Runner met while an N-Pot was rezzed elsewhere.
+    /// Composition didn't work: `EncounteringHostIce` asks about a Trojan's
+    /// host, and the acting card here is the ice.
+    EncounteringThisIce,
     /// The active run is encountering a piece of ICE right now
     /// (`RunPhase::EncounterIce`) — any ICE, unlike
     /// `EncounteringHostIce`'s "the one my host is."

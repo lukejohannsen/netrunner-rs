@@ -71,7 +71,8 @@ fn owning_side(chooser: Side, zone: &CardZoneRef) -> Side {
         | CardZoneRef::OpponentDiscard
         | CardZoneRef::OpponentHand
         | CardZoneRef::OpponentDeck
-        | CardZoneRef::OpponentScoreArea => chooser.other(),
+        | CardZoneRef::OpponentScoreArea
+        | CardZoneRef::OpponentRemovedFromGame => chooser.other(),
         _ => chooser,
     }
 }
@@ -116,6 +117,10 @@ pub(crate) fn zone_card_ids(state: &GameState, chooser: Side, zone: &CardZoneRef
         CardZoneRef::OpponentInstalled | CardZoneRef::OwnInstalled => match owner {
             Side::Corp => state.corp.installed.iter().map(|c| c.card.clone()).collect(),
             Side::Runner => state.runner.rig.iter().map(|c| c.card.clone()).collect(),
+        },
+        CardZoneRef::OpponentRemovedFromGame => match owner {
+            Side::Corp => state.corp.removed_from_game.clone(),
+            Side::Runner => state.runner.removed_from_game.clone(),
         },
     }
 }
@@ -413,6 +418,10 @@ fn plain_zone_mut<'a>(state: &'a mut GameState, chooser: Side, zone: &CardZoneRe
         // through a selection's `destination`.
         CardZoneRef::OpponentScoreArea | CardZoneRef::OwnScoreArea => None,
         CardZoneRef::OpponentInstalled | CardZoneRef::OwnInstalled => None,
+        CardZoneRef::OpponentRemovedFromGame => match owner {
+            Side::Corp => Some(&mut state.corp.removed_from_game),
+            Side::Runner => Some(&mut state.runner.removed_from_game),
+        },
     }
 }
 
@@ -1027,6 +1036,9 @@ pub(crate) fn resolve_confirm_card_selection(
                 // could prevent never gets here: see the top of this loop.)
                 if is_discard_pile(dest) {
                     events.push(GameEvent::CardTrashed { side: owning_side(side, dest), card: card_id.clone() });
+                }
+                if matches!(dest, CardZoneRef::OpponentRemovedFromGame) {
+                    events.push(GameEvent::CardRemovedFromGame { side: owning_side(side, dest), card: card_id.clone() });
                 }
                 if matches!(source, CardZoneRef::OwnHq) && side == Side::Corp && is_discard_pile(dest) {
                     trashed_from_hq += 1;
