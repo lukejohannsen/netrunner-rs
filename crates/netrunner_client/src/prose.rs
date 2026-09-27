@@ -70,6 +70,7 @@ pub fn describe_amount(amount: &Amount) -> String {
         }
         Amount::TimesLastTurn(trigger) => format!("the times \"{}\" happened last turn", humanize(format!("{trigger:?}"))),
         Amount::HostedCounters => "the counters on this card".to_string(),
+        Amount::HostedCards => "the cards hosted on this card".to_string(),
         Amount::HostedAdvancementTokens => "the advancement tokens on this card".to_string(),
         Amount::InstalledIcebreakerCount => "the number of installed icebreakers".to_string(),
         Amount::FacedownCardsInArchives => "the number of facedown cards in Archives".to_string(),
@@ -297,6 +298,7 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
         Effect::FlipIdentity => "flip the identity".to_string(),
         Effect::AddToDeck(DeckEnd::Bottom) => "put it on the bottom of its owner's deck".to_string(),
         Effect::AddToDeck(DeckEnd::Top) => "put it on top of its owner's deck".to_string(),
+        Effect::ShuffleHostedIntoDeck => "shuffle all hosted cards into your stack".to_string(),
         Effect::LookAtTopOfDeck { deck, count } => {
             format!("look at the top {} of {}", plural(*count, "card", "cards"), if *deck == Side::Corp { "R&D" } else { "the stack" })
         }

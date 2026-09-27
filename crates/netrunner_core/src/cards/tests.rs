@@ -12516,6 +12516,53 @@ mod vantage_point {
         assert!(events.iter().any(|event| matches!(event, crate::rules::GameEvent::CardRemovedFromGame { side: Side::Runner, .. })));
     }
 
+    /// Hosts a grip card facedown for a draw when installed and at each
+    /// turn's start, up to four; the Corp sees how many and not which; and
+    /// "[trash]:" shuffles them into the stack, set aside as the cost is
+    /// paid rather than trashed with the program (CR 9.5.5).
+    #[test]
+    fn read_write_share_hosts_facedown_for_a_draw_and_shuffles_its_cards_into_the_stack() {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.grip = vec![id("read_write_share"), id("sure_gamble"), id("corsair")];
+        state.runner.stack = vec![id("sure_gamble"), id("sure_gamble")];
+        let (state, _) =
+            apply_action(&state, &registry, PlayerAction::InstallProgram { card_id: id("read_write_share"), trash_first: false }).expect("install");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("host one");
+        let corsair = state.runner.grip.iter().position(|c| c.0 == "corsair").expect("in the grip");
+        let (state, _) = pick(&state, &registry, corsair);
+        let share = &state.runner.rig[0];
+        assert_eq!(share.hosted_cards, vec![id("corsair")]);
+        assert_eq!(state.runner.grip.len(), 2, "one hosted, one drawn");
+        assert_eq!(state.runner.stack.len(), 1);
+
+        let corp = crate::view::build_client_view(&state, &registry, Side::Corp);
+        assert!(corp.runner.rig[0].hosted_cards.is_empty(), "facedown to the Corp");
+        assert_eq!(corp.runner.rig[0].hosted_unseen, 1);
+        let runner = crate::view::build_client_view(&state, &registry, Side::Runner);
+        assert_eq!(runner.runner.rig[0].hosted_cards, vec![id("corsair")], "its owner sees it");
+        assert_eq!(runner.runner.rig[0].hosted_unseen, 0);
+
+        // Four hosted: the turn's start asks nothing.
+        let mut full = state.clone();
+        full.runner.rig[0].hosted_cards = vec![id("corsair"); 4];
+        full.phase = GamePhase::Action(Side::Corp);
+        full.corp.resources.clicks = Clicks(0);
+        full.corp.r_and_d = vec![id("hedge_fund")];
+        let (full, _) = apply_action(&full, &registry, PlayerAction::EndTurn).expect("end the Corp's turn");
+        let (full, _) = pass_until_settled(full, &registry);
+        assert!(full.pending_decision.is_none(), "the limit is four");
+
+        let trash = PlayerAction::ActivateAbility { target: state.runner.rig[0].install_id, ability_index: 0 };
+        let (state, events) = apply_action(&state, &registry, trash).expect("trash it");
+        assert!(state.runner.rig.is_empty());
+        assert_eq!(state.runner.heap, vec![id("read_write_share")], "the hosted card was set aside, not trashed");
+        assert_eq!(state.runner.stack.len(), 2, "shuffled in");
+        assert!(state.runner.stack.contains(&id("corsair")));
+        assert!(!events.iter().any(|e| matches!(e, crate::rules::GameEvent::CardTrashed { card, .. } if card.0 == "corsair")));
+    }
+
     /// Hosts a bad publicity counter at the Corp's turn start for 3[credit]
     /// and a card, and hands it back as it is trashed: the interrupt
     /// resolves while the asset is still in its root (`rules::uninstall`),

@@ -708,7 +708,7 @@ fn encode_rig_card(installed: &PublicInstalledRunnerCard, def: Option<&CardDefin
     features.push(flag(def.is_some_and(|d| d.card_type == CardType::Resource)));
     features.push(norm(def.and_then(|d| d.memory_cost).unwrap_or(0) as f32, MAX_MEMORY_COST));
     features.extend(def.map_or([false; ICE_TYPE_COUNT], covers).map(flag));
-    features.push(norm(installed.hosted_cards.len() as f32, MAX_HOSTED_CARDS));
+    features.push(norm((installed.hosted_cards.len() + installed.hosted_unseen) as f32, MAX_HOSTED_CARDS));
 }
 
 /// Per ICE subtype, whether the rig breaks it and how strong its best

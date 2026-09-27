@@ -158,7 +158,7 @@ pub fn stacked<'a>(view: &'a ClientView, registry: &CardRegistry, chair: Side, a
 fn identical(view: &ClientView, actions: Option<&ActionMap>, a: &PublicInstalledRunnerCard, b: &PublicInstalledRunnerCard) -> bool {
     let used = |card: &PublicInstalledRunnerCard| view.runner.once_per_turn_used.iter().any(|key: &OncePerTurnKey| key.install == Some(card.install_id));
     let a_host = |host: InstallId| view.runner.rig.iter().any(|other| other.hosted_on_program == Some(host));
-    let alone = |card: &PublicInstalledRunnerCard| card.hosted_on_ice.is_none() && card.hosted_on_program.is_none() && card.hosted_cards.is_empty() && !a_host(card.install_id);
+    let alone = |card: &PublicInstalledRunnerCard| card.hosted_on_ice.is_none() && card.hosted_on_program.is_none() && card.hosted_cards.is_empty() && card.hosted_unseen == 0 && !a_host(card.install_id);
     a.card == b.card
         && a.current_strength == b.current_strength
         && a.counters == b.counters
@@ -215,6 +215,8 @@ mod tests {
             hosted_on_ice: None,
             hosted_on_program: None,
             hosted_cards: Vec::new(),
+            hosted_facedown: false,
+            hosted_unseen: 0,
             hosted_cards_playable: false,
             counters: 0,
         }

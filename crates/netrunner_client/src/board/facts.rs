@@ -360,7 +360,13 @@ pub fn install_facts(view: &ClientView, id: InstallId, registry: &CardRegistry) 
                 lines.push(format!("Hosted on {}", crate::actions::install_label(&program, registry, Some(view))));
             }
             if !rig.hosted_cards.is_empty() {
-                lines.push(format!("Hosts {}", rig.hosted_cards.iter().map(|c| card_title(c, registry)).collect::<Vec<_>>().join(", ")));
+                let facedown = if rig.hosted_facedown { " facedown" } else { "" };
+                lines.push(format!("Hosts{facedown} {}", rig.hosted_cards.iter().map(|c| card_title(c, registry)).collect::<Vec<_>>().join(", ")));
+            }
+            // Read-Write Share's cards, to anyone but their owner: a count.
+            if rig.hosted_unseen > 0 {
+                let n = rig.hosted_unseen;
+                lines.push(format!("Hosts {n} card{} facedown", if n == 1 { "" } else { "s" }));
             }
         }
     }

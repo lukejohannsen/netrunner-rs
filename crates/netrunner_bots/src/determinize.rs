@@ -248,7 +248,7 @@ fn cards_in_game(view: &ClientView, side: Side) -> usize {
                 + view.runner.stack_count
                 + view.runner.heap.len()
                 + view.runner.removed_from_game.len()
-                + view.runner.rig.iter().map(|card| 1 + card.hosted_cards.len()).sum::<usize>()
+                + view.runner.rig.iter().map(|card| 1 + card.hosted_cards.len() + card.hosted_unseen).sum::<usize>()
         }
     }
 }
@@ -727,7 +727,9 @@ pub fn determinize(view: &ClientView, registry: &CardRegistry, rng: &mut impl Rn
             counters: card.counters,
             hosted_on_ice: card.hosted_on_ice,
             hosted_on_program: card.hosted_on_program,
-            hosted_cards: card.hosted_cards.clone(),
+            // Cards hosted facedown are only counted for this viewer, and
+            // drawn like the grip they came from (Read-Write Share).
+            hosted_cards: card.hosted_cards.iter().cloned().chain(pools.draw_n(Slot::RunnerAny, card.hosted_unseen)).collect(),
             hosted_cards_playable: card.hosted_cards_playable,
         })
         .collect();
@@ -911,6 +913,11 @@ pub fn resample_hidden(state: &mut GameState, view: &ClientView, registry: &Card
     state.runner.stack = pools.draw_n(Slot::RunnerAny, state.runner.stack.len());
     if view.runner.grip_cards.is_none() {
         state.runner.grip = pools.draw_n(Slot::RunnerAny, state.runner.grip.len());
+    }
+    for (installed, seen) in state.runner.rig.iter_mut().zip(&view.runner.rig) {
+        if seen.hosted_unseen > 0 {
+            installed.hosted_cards = pools.draw_n(Slot::RunnerAny, installed.hosted_cards.len());
+        }
     }
     // A breach already under way reaches cards of the zones just re-drawn.
     if let Some(run) = state.active_run.as_mut() {
