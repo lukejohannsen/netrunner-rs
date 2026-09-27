@@ -951,6 +951,19 @@ pub(crate) fn resolve_confirm_card_selection(
     // AU Co.'s "trash 1 or more cards from HQ" (Hansei Review is what
     // does it in its deck).
     let mut trashed_from_hq = 0u32;
+    // A deck's order is the game's, so a card taken out of one is the copy
+    // at the place chosen, not the first copy from the bottom: taking "the
+    // top card" as a lower duplicate left the chosen copy on top. A search
+    // that shuffles afterwards has no order to keep, and is left taking the
+    // first copy, as it always has: a shuffle's result depends on the order
+    // it starts from, so changing which copy left would re-deal every
+    // shuffled deck in every recorded game.
+    // Positions already taken, to read later positions past them.
+    let from_deck = !shuffle_after && matches!(source, CardZoneRef::OwnRAndD | CardZoneRef::OwnStack | CardZoneRef::OpponentDeck);
+    let mut taken: Vec<usize> = Vec::new();
+    // How many of the selection landed on a deck, to put the first chosen
+    // on top (below).
+    let mut onto_deck = 0usize;
 
     if let Some(dest) = &destination {
         for (index, card_id) in selected.iter().enumerate() {
@@ -999,11 +1012,19 @@ pub(crate) fn resolve_confirm_card_selection(
                     // would lift a duplicate from lower down and leave the
                     // looked-at card on top for the next draw.
                     let from_top = matches!(source, CardZoneRef::TopOfOwnStack);
+                    let chosen = positions[index];
+                    let at = chosen - taken.iter().filter(|earlier| **earlier < chosen).count();
                     if let Some(zone) = plain_zone_mut(state, side, &source, source_install)
-                        && let Some(pos) =
-                            if from_top { zone.iter().rposition(|c| c == card_id) } else { zone.iter().position(|c| c == card_id) }
+                        && let Some(pos) = if from_top {
+                            zone.iter().rposition(|c| c == card_id)
+                        } else if from_deck {
+                            (zone.get(at) == Some(card_id)).then_some(at)
+                        } else {
+                            zone.iter().position(|c| c == card_id)
+                        }
                     {
                         zone.remove(pos);
+                        taken.push(chosen);
                         Some(false)
                     } else {
                         None
@@ -1023,6 +1044,7 @@ pub(crate) fn resolve_confirm_card_selection(
                     });
                 } else if let Some(zone) = plain_zone_mut(state, side, dest, source_install) {
                     zone.push(card_id.clone());
+                    onto_deck += 1;
                 }
                 // A card moved into a discard pile was trashed, and says so
                 // — `side` is the card's owner, as in `ability::trash_card`
@@ -1046,6 +1068,21 @@ pub(crate) fn resolve_confirm_card_selection(
                 events.extend(cascade);
             }
         }
+    }
+    // Cards put onto a deck go on top with the first chosen uppermost, so
+    // a selection from the top of a deck back onto it is an arrangement in
+    // the order the chooser picked, top first (CR 8.3.3): Cultivate's and
+    // Knowledge Seeker's "arrange them in any order". Pushed in the order
+    // chosen, the first chosen went deepest. A card left unchosen stays
+    // beneath the chosen ones, which is one of the arrangements too.
+    // Not before a shuffle, for the reason above.
+    let onto_a_deck = !shuffle_after && matches!(destination, Some(CardZoneRef::OwnRAndD | CardZoneRef::OwnStack | CardZoneRef::OpponentDeck));
+    if onto_a_deck
+        && onto_deck > 1
+        && let Some(zone) = destination.as_ref().and_then(|dest| plain_zone_mut(state, side, dest, source_install))
+    {
+        let len = zone.len();
+        zone[len - onto_deck..].reverse();
     }
     if shuffle_after {
         shuffle_decks(state, side, &source, destination.as_ref());

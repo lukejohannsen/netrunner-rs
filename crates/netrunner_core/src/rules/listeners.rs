@@ -199,6 +199,11 @@ pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
         }
         GameEvent::IceFullyBroken { position, .. } => vec![ice_moment(Trigger::OnIceFullyBroken, *position, IceFacts::default())],
         GameEvent::IceBypassed { position, .. } => vec![ice_moment(Trigger::OnIceBypassed, *position, IceFacts::default())],
+        // About the ice by its install, which the event carries: an
+        // encounter "end the run" ended is heard after the run is gone.
+        GameEvent::EncounterEnded { card_id, install } => {
+            vec![moment(Trigger::OnEncounterEnded, &card(card_id, Some(*install)), Some(Side::Runner))]
+        }
         // Only the Runner's spending is anyone's trigger, and only during a
         // run: Shackleton Grid's "during a run against this server" is the
         // moment's server, as "this server" is for every run moment.
@@ -212,6 +217,8 @@ pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
         }
         GameEvent::CardTrashed { by: None, .. } => Vec::new(),
         GameEvent::CardsLookedAt { .. } => Vec::new(),
+        // No card hears a reveal yet (Tocsin will).
+        GameEvent::CardRevealed { .. } => Vec::new(),
         // The Runner breached, but the cards are the Corp's: whoever
         // listens hears it, and none of it is a card to be "this".
         GameEvent::ArchivesTurnedFaceup { count } => vec![moment(Trigger::OnArchivesTurnedFaceup, &About::Cards(*count), None)],

@@ -284,6 +284,15 @@ pub(crate) fn boosts_last_the_run(state: &GameState, registry: &CardRegistry, in
     any(state, registry, Target::Rig { card, install }, |kind| matches!(kind, ContinuousKind::BoostsLastTheRun))
 }
 
+/// Whether `card`, being accessed now, is revealed while it is (CR 1.21.7:
+/// Esca's, Snare!'s and Byte!'s "while the Runner is accessing this asset
+/// in R&D, they must reveal it"). Asked of the card as it sits in its zone:
+/// what a card says about itself applies wherever it is.
+pub(crate) fn revealed_while_accessed(state: &GameState, registry: &CardRegistry, card: &CardId) -> bool {
+    let Some(definition) = registry.get(card) else { return false };
+    any(state, registry, Target::Card(definition), |kind| matches!(kind, ContinuousKind::RevealedWhileAccessed))
+}
+
 /// Whether the ice `install` has gained `subtype` — on top of the one it
 /// prints, which the caller already knows.
 pub fn ice_gains_subtype(state: &GameState, registry: &CardRegistry, install: InstallId, subtype: IceType) -> bool {

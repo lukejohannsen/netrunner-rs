@@ -34,6 +34,19 @@ pub enum GameEvent {
     /// subroutines will not fire and its own "when encountered" reactions
     /// do not resolve. The `IcePassed` follows on the next `Continue`.
     IceBypassed { card_id: CardId, position: u32 },
+    /// An encounter with this ice ended (CR 6.9.3e), however it ended: the
+    /// Runner passed on from it, "end the run" ended it with the run (CR
+    /// 6.1.4), or the ice left the table or was derezzed during it.
+    /// Knowledge Seeker's "whenever an encounter with this ice ends" hears
+    /// it. The install is carried because the run may be over by the time
+    /// anybody listens, and with it the run's list of ice.
+    EncounterEnded { card_id: CardId, install: crate::rules::state::InstallId },
+    /// `card`, `side`'s, is shown to both players and goes back to where it
+    /// was (CR 1.21.3) — the Runner revealing Esca, Snare! or Byte! while
+    /// accessing it in R&D (`ContinuousKind::RevealedWhileAccessed`), which
+    /// is how the Corp learns which of its cards was accessed there. Public
+    /// by definition; no card hears a reveal yet.
+    CardRevealed { side: Side, card: CardId },
     /// The Runner has passed the last piece of ICE (or there was none) and
     /// is approaching the server itself — NSG's approach-server step, where
     /// jacking out is legal and "when the Runner approaches this server"
@@ -493,7 +506,7 @@ impl GameEvent {
     pub fn may_teach_the_actor(&self) -> bool {
         match self {
             GameEvent::CardDrawn { .. } | GameEvent::CardAccessed { .. } | GameEvent::CardTrashedFromAccess { .. }
-            | GameEvent::CardsLookedAt { .. }
+            | GameEvent::CardsLookedAt { .. } | GameEvent::CardRevealed { .. }
             | GameEvent::AccessPassed { .. } | GameEvent::AgendaStolen { .. } | GameEvent::IceRezzed { .. }
             | GameEvent::IceEncountered { .. } | GameEvent::DamageTaken { .. } | GameEvent::CardsTrashedFromHq { .. }
             | GameEvent::MulliganTaken { .. } | GameEvent::HandKept { .. } | GameEvent::TraceInitiated { .. }
@@ -503,6 +516,7 @@ impl GameEvent {
             GameEvent::ClickSpent { .. } | GameEvent::CreditsGained { .. } | GameEvent::IceApproached { .. }
             | GameEvent::SubroutineBroken { .. } | GameEvent::SubroutineFired { .. }
             | GameEvent::IceStrengthModified { .. } | GameEvent::IcePassed { .. } | GameEvent::IceBypassed { .. }
+            | GameEvent::EncounterEnded { .. }
             | GameEvent::IceFullyBroken { .. }
             | GameEvent::ServerApproached { .. } | GameEvent::RunSucceeded { .. } | GameEvent::RunJackedOut { .. }
             | GameEvent::RunCompleted { .. } | GameEvent::CardInstalled { .. } | GameEvent::CardDerezzed { .. }

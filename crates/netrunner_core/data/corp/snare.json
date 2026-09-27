@@ -5,6 +5,16 @@
   "card_type": "Asset",
   "cost": 0,
   "trash_cost": 0,
+  "continuous": [
+    {
+      "kind": "RevealedWhileAccessed",
+      "applies_to": "This",
+      "while": {
+        "AccessingIn": "RnD"
+      },
+      "text": "While the Runner is accessing this asset in R&D, they must reveal it."
+    }
+  ],
   "triggers": [],
   "interactive_on_access": {
     "cost": {
@@ -12,7 +22,9 @@
     },
     "interaction": "CorpPaysToApply",
     "requirement": {
-      "Not": "AccessingArchives"
+      "Not": {
+        "AccessingIn": "Archives"
+      }
     },
     "effects": [
       {

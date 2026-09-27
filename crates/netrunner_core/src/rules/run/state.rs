@@ -191,6 +191,16 @@ pub enum AccessPhase {
     },
 }
 
+impl AccessPhase {
+    /// The card being accessed, when the access is at one.
+    pub fn card(&self) -> Option<&CardId> {
+        match self {
+            AccessPhase::SelectNextCard { .. } => None,
+            AccessPhase::PendingInteractiveTrigger { card_id, .. } | AccessPhase::PendingChoice { card_id, .. } => Some(card_id),
+        }
+    }
+}
+
 /// The in-progress state of resolving one server's worth of accessed cards,
 /// one at a time, via `PlayerAction::SelectCardToAccess`/`StealAgenda`/
 /// `TrashAccessedCard`/`PassAccessedCard`. Lives in `RunState::access_state`

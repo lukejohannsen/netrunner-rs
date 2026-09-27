@@ -367,11 +367,16 @@ pub fn evaluate_effect(
             if let Some(events) = prevention::run_ending(state, registry, ctx)? {
                 return Ok(events);
             }
+            // The encounter ends with the run (CR 6.1.4), and is heard
+            // first: Knowledge Seeker's "whenever an encounter with this
+            // ice ends" after its own "End the run".
+            let encounter = state.active_run.as_ref().and_then(run::encounter_ends);
             let run = run::end_run(state).expect("checked Some above");
             let server = run.server;
-            let ended_event = GameEvent::RunEndedByEffect { server };
-            let mut events = vec![ended_event.clone()];
-            events.extend(dispatcher::dispatch_event(state, registry, &ended_event)?);
+            let mut events = Vec::new();
+            for event in encounter.into_iter().chain([GameEvent::RunEndedByEffect { server }]) {
+                dispatcher::emit(state, registry, &mut events, event)?;
+            }
             Ok(events)
         }
 
@@ -2374,8 +2379,9 @@ pub(crate) fn pay_cost_ctx(
         // rest of its cost's events (`dispatch_cost_events`): "when a run
         // ends" hears it.
         Cost::JackOut => {
+            let encounter = state.active_run.as_ref().and_then(run::encounter_ends);
             let run = run::end_run(state).ok_or(RulesError::NoActiveRun)?;
-            Ok(vec![GameEvent::RunJackedOut { server: run.server }])
+            Ok(encounter.into_iter().chain([GameEvent::RunJackedOut { server: run.server }]).collect())
         }
 
         // The payer trashes it, and dispatches that with the rest of its
@@ -2715,13 +2721,13 @@ pub fn check_requirement(
         EffectRequirement::ArchivesHasFacedownCard => {
             if state.corp.has_facedown_in_archives() { Ok(()) } else { Err(RulesError::RequirementNotMet) }
         }
-        EffectRequirement::AccessingArchives => {
-            let accessing_archives = state
+        EffectRequirement::AccessingIn(server) => {
+            let accessing_there = state
                 .active_run
                 .as_ref()
                 .and_then(|run| run.access_state.as_ref())
-                .is_some_and(|access| access.server == ServerId::Archives);
-            if accessing_archives { Ok(()) } else { Err(RulesError::RequirementNotMet) }
+                .is_some_and(|access| access.server == *server);
+            if accessing_there { Ok(()) } else { Err(RulesError::RequirementNotMet) }
         }
         EffectRequirement::StoleAgendaDuringLastRun => {
             let stole = state.last_completed_run.as_ref().is_some_and(|run| run.agendas_stolen > 0);
@@ -3057,7 +3063,7 @@ pub(crate) fn consume_requirement(
         | EffectRequirement::LastRunWasOnHqOrRnD
         | EffectRequirement::StoleAgendaDuringLastRun
         | EffectRequirement::ArchivesHasFacedownCard
-        | EffectRequirement::AccessingArchives
+        | EffectRequirement::AccessingIn(_)
         | EffectRequirement::AccessedAnyCardDuringLastRun
         | EffectRequirement::ThisCardIsInstalled
         | EffectRequirement::ThisCardCountersAtMost(_)
@@ -3551,6 +3557,7 @@ mod tests {
                     index: 0,
                     effect: Effect::EndTheRun,
                 },
+                GameEvent::EncounterEnded { card_id: CardId("ice_wall".to_string()), install: crate::rules::state::InstallId(0) },
                 GameEvent::RunEndedByEffect { server: ServerId::Hq },
             ]
         );

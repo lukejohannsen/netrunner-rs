@@ -1183,6 +1183,10 @@ impl CardDefinition {
                 (ContinuousKind::AgendaPoints(_), _) => return misfit("AgendaPoints", "an agenda's points change in a score area, said by the agenda (`ScoreArea`)"),
                 (ContinuousKind::BoostsLastTheRun, Scope::This | Scope::Host) => {}
                 (ContinuousKind::BoostsLastTheRun, _) => return misfit("BoostsLastTheRun", "a boost is an icebreaker's: this card or its host"),
+                (ContinuousKind::RevealedWhileAccessed, Scope::This) if self.side == Side::Corp => {}
+                (ContinuousKind::RevealedWhileAccessed, _) => {
+                    return misfit("RevealedWhileAccessed", "only a Corp card is accessed, and it says so of itself (`This`)");
+                }
             }
         }
         Ok(())
