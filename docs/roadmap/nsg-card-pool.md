@@ -341,8 +341,9 @@ building.
 | Lockdown | UR: SYNC Rerouting, Argus Crackdown, NAPD Cordon, NEXT Activation Command, Hyoubu Precog Manifold | — | CR 3.5.1c |
 
 Two more mechanics, each first needed by a single card:
-- **Méliès U's secret, three-sided identity** (CR 1.5.2b). The flip is one
-  bit today.
+- **Méliès U's secret, three-sided identity** (CR 1.5.2b). Built in VP
+  Stage 8: the flip stays one bit, and which copy is in play is a second
+  number, hidden from the Runner until the back side shows it.
 - **A run that "cannot be declared successful"** (Flagship, VP; CR 6.8.4a),
   which every consumer of a successful run has to hear. Crisium Grid in the
   reprints reuses it.
@@ -403,7 +404,8 @@ Division.
    (built, below): Tocsin, an ability used from HQ. **7g** (built,
    below): Flagship, a run that cannot be declared successful and a limit
    on accesses. Stage 7 is complete.
-8. **Méliès U, alone:** hidden setup state, three sides, and masking.
+8. **Méliès U, alone:** hidden setup state, three sides, and masking
+   (built, below). **Vantage Point is complete, 66 of 66.**
 
 **Riskiest:**
 - Méliès U.
@@ -1676,6 +1678,71 @@ deck. **No new `Effect`.** Vantage Point 59 of 66; `VP_UNIMPLEMENTED`
   heuristic seatings moved, and without the card file and the deck swap
   they are identical in all four shapes — a ref that keeps the persistent
   fix, so that fix moved no game in a full pass of the pool.
+
+#### Stage 8 — Méliès U, a secret identity with three reverse sides (27 September 2026)
+
+1 → 0. **Vantage Point is complete: 66 of 66**, and with it Startup's pool.
+
+- **Which copy is in play is state, and secret.** CR 1.5.2b: the Corp
+  brings every copy, "secretly sets" one as its identity when its discard
+  phase ends, and the chosen copy always enters front side up. One card
+  file holds the front and all three backs, as a flip identity holds both
+  sides; `CorpState::identity_copy` says which back is the one printed on
+  the card in play, and `EffectRequirement::IdentityCopy(n)` gates each
+  back's text. The flip stays the one bit it was (CR 3.1.1a: only the
+  faceup side is active). The copy is `None` in the Runner's view while
+  the front is up and public once flipped (`PublicCorpState::
+  identity_copy`) — the card turned over. It starts at 0, which no back
+  side reads, rather than asking at setup: the Corp's first discard phase
+  ends before the Runner's first turn, so a copy is always chosen before
+  any run can flip it.
+- **A secret number is a flag on the number, masked in both channels.**
+  `Effect::ChooseNumber` gains `secret`, carried onto the parked decision
+  and `GameEvent::NumberChosen`. The decision itself is public — the
+  Runner sees the Corp is choosing, and from what range — but the answer's
+  log entry is `ConcealedAction::ChoosingSecretly` for the other seat
+  (read off the step's events, as `ChoosingPayment` is), and its
+  `NumberChosen` is dropped for them. `Effect::SetIdentityCopy` writes
+  the number; `validate` refuses it anywhere but inside a secret number's
+  `then` on a Corp identity (`IdentityCopySetInTheOpen`).
+- **"The Runner's" phase, on a Corp card.** "When the Runner's action
+  phase ends, gain 1[credit]" and "when the Runner's discard phase ends,
+  flip this identity" are the two triggers the pool prints about *your*
+  phase, turned on the other player. `EventFilter::Whose(Side)` names
+  whose moment a `Hears::OwnSide` trigger means, replacing its "your";
+  `validate` allows it on no other trigger. **Found on the way:** the
+  fire-time re-check (`listeners::when_admits`) never asked whose moment
+  it was, so a card with two entries for one trigger — Méliès U's own
+  discard phase and the Runner's — would have fired both at either. It
+  now asks through the same function as the scan (`whose_admits`).
+- **A flip is a moment.** `Trigger::OnIdentityFlipped` ("when you flip
+  this identity to this side"), heard only by the side just turned up;
+  `Effect::FlipIdentity` now dispatches `GameEvent::IdentityFlipped`
+  (Dewi Subrotoputri and Nebula Talent Management flip through it too, and
+  nothing of theirs hears it). "During a run on HQ" is
+  `EffectRequirement::DuringRunOn(server)`, which counts the breach,
+  unlike `DuringRun`. The back side composes: a look at the top of R&D,
+  then a "may" whose yes trashes it and takes a card from Archives to HQ —
+  a `PresentChoice` rather than a card selection, because a selection's
+  `then` fires on a choice of none and the Archives card is "if you do".
+- **Deck.** Honor Roll, a new Jinteki Sweep deck on Méliès U (Eternal and
+  Casual), built from the Jinteki and neutral cards A Thousand Cuts leaves
+  out, so Personal Evolution keeps its deck.
+- **DSL ratio (`pool_status.py`): 21 of 76 `Effect` variants single-use,
+  2 unused**, over 250 card files — `SetIdentityCopy` is new and
+  single-use, and `LookAtTopOfDeck` gained its second card.
+- **Real play.** Ninety-six games of Honor Roll against Pay As You Go
+  (seed 2). Random seats: 769 secret choices, 345 flips on a successful
+  central run, and the copy's side matched the server 128 times (37%, a
+  third expected); the Corp took the "may" 67 times. Heuristic seats: 1,349
+  choices, 573 flips, 198 matches — **but the heuristic Corp trashed the
+  top of R&D only 12 times in 198**, and it picks its copy without reading
+  where the Runner runs: both owed to Phase 5, like Flagship's rez.
+- **Measured.** Both sweeps at 256 seeds are green. Against `origin/main`,
+  `coverage_identical.py` has **all four shapes identical** — random and
+  heuristic, by view and by index: the new deck is a Sweep deck, which
+  `matchups()` never yields, and the engine changes (the whose re-check, a
+  flip dispatched, a turn-log row for it) moved no game of the pool.
 
 ### 2. Rebellion Without Rehearsal — 65 cards (C 7 / V 43 / M 15)
 

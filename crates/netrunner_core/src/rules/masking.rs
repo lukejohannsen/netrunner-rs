@@ -124,6 +124,12 @@ pub struct PublicCorpState {
     /// `CorpState::identity_flipped` — public, like the Runner's.
     #[serde(default)]
     pub identity_flipped: bool,
+    /// `CorpState::identity_copy` — which copy of Méliès U is in play
+    /// (CR 1.5.2b). `None` to the Runner (and a spectator) while the
+    /// identity is front side up, because the copy was set secretly; the
+    /// back side names it, so once flipped it is anybody's.
+    #[serde(default)]
+    pub identity_copy: Option<u8>,
     /// The Corp's once-per-turn abilities already used this turn
     /// (`CorpState::once_per_turn_used`), in the set's own order. Using one
     /// is done on the table, so both players know — **except a use by an
@@ -560,6 +566,12 @@ pub enum ConcealedAction {
     /// (`PendingPayment`) instead of being applied. The one residue here
     /// that is not a variant's: see `mask_logged_action_for_player`.
     ChoosingPayment,
+    /// The answer to a secret number (`Effect::ChooseNumber::secret`,
+    /// Méliès U's "secretly set your identity"). That a choice was made is
+    /// public; which is not. Read off the step's events like
+    /// `ChoosingPayment`, because `PlayerAction::ChooseNumber` names a
+    /// number aloud everywhere else.
+    ChoosingSecretly,
 }
 
 /// `mask_action_for_player` for an action as the log holds it: with the
@@ -587,6 +599,10 @@ pub fn mask_logged_action_for_player(action: &PlayerAction, actor: Side, events:
     let parked = events.iter().any(|event| matches!(event, GameEvent::PaymentChoiceOffered { .. }));
     if parked && !viewer.is(actor) {
         return PublicAction::Concealed(ConcealedAction::ChoosingPayment);
+    }
+    let secret = events.iter().any(|event| matches!(event, GameEvent::NumberChosen { secret: true, .. }));
+    if secret && matches!(action, PlayerAction::ChooseNumber { .. }) && !viewer.is(actor) {
+        return PublicAction::Concealed(ConcealedAction::ChoosingSecretly);
     }
     mask_action_for_player(action, actor, viewer)
 }
@@ -718,6 +734,8 @@ pub fn mask_event_for_player(event: &GameEvent, state: &GameState, viewer: impl 
         GameEvent::CardAddedToDeck { side, revealed: false, .. } => viewer.is(*side).then(visible).flatten(),
         // A look is the looker's alone.
         GameEvent::CardsLookedAt { side, .. } => viewer.is(*side).then(visible).flatten(),
+        // So is a secret number (Méliès U's copy).
+        GameEvent::NumberChosen { chooser, secret: true, .. } => viewer.is(*chooser).then(visible).flatten(),
         GameEvent::CardDiscarded { .. } => visible(),
         // A Corp trash lands faceup only if the Runner had seen the card
         // (`ability::orient`); a facedown copy now in Archives means this
@@ -1200,6 +1218,7 @@ fn mask_corp_state(corp: &CorpState, registry: &CardRegistry, owner_view: bool, 
         removed_from_game: corp.removed_from_game.clone(),
         identity_counters: corp.identity_counters,
         identity_flipped: corp.identity_flipped,
+        identity_copy: (owner_view || corp.identity_flipped).then_some(corp.identity_copy),
         once_per_turn_used: corp
             .once_per_turn_used
             .iter()

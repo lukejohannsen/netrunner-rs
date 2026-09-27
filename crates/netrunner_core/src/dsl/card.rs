@@ -890,6 +890,8 @@ pub enum CardValidationError {
     TrashWhenEmptyWithNothingToEmptyIt(CardId),
     #[error("card {0:?} reads `Amount::ChosenNumber` outside the `then` of an `Effect::ChooseNumber`, where no number has been chosen and it is 0")]
     ChosenNumberNobodyChose(CardId),
+    #[error("card {0:?} sets which copy of its identity is in play (`Effect::SetIdentityCopy`) other than as a Corp identity's secret number (`ChooseNumber` with `secret`), CR 1.5.2b")]
+    IdentityCopySetInTheOpen(CardId),
     #[error("Ice {0:?} must have a strength")]
     IceMissingStrength(CardId),
     #[error("card {0:?} of type {1:?} must not have a strength — only Ice and breaker-style Programs do")]
@@ -1081,6 +1083,8 @@ impl CardDefinition {
                 Some(EventFilter::Server(_)) => about == TriggerAbout::Server,
                 Some(EventFilter::Damage(_)) => about == TriggerAbout::Damage,
                 Some(EventFilter::AtLeast(_)) => about == TriggerAbout::Cards,
+                // Only a "your" can be made "the Runner's".
+                Some(EventFilter::Whose(_)) => triggered.trigger.hears() == crate::dsl::Hears::OwnSide,
                 // Only what the moment states: a pass says whether the ice
                 // was outermost and fully broken, a break its strength.
                 Some(EventFilter::Ice(required)) => {
@@ -1174,6 +1178,16 @@ impl CardDefinition {
         // breaker with no restriction breaks, which is not what a card
         // restricted to a type means.
         let mut restricted_to_no_type = false;
+        // `SetIdentityCopy` said in the open would tell the Runner the copy
+        // the Corp chose, and on anything but a Corp identity there is no
+        // copy to set (`CorpState::identity_copy`): every one must be the
+        // `then` of a secret number on one.
+        let (mut copies_set, mut copies_set_secretly) = (0usize, 0usize);
+        let sets_a_copy = |effect: &Effect| {
+            let mut count = 0usize;
+            effect.for_each_effect(&mut |e| count += usize::from(matches!(e, Effect::SetIdentityCopy(_))));
+            count
+        };
         let roots = self
             .abilities
             .iter()
@@ -1185,11 +1199,19 @@ impl CardDefinition {
             root.for_each_effect(&mut |effect| {
                 prohibits_for_an_encounter |= matches!(effect, Effect::Prohibit { until: EffectDuration::Encounter, .. });
                 restricted_to_no_type |= matches!(effect, Effect::BreakSubroutines { restrict_to: Some(IceType::Other), .. });
+                copies_set += usize::from(matches!(effect, Effect::SetIdentityCopy(_)));
+                if let Effect::ChooseNumber { secret: true, then, .. } = effect {
+                    copies_set_secretly += sets_a_copy(then);
+                }
             });
             chosen_number_nobody_chose |= root.clone().with_chosen_number(1) != *root;
         }
         if chosen_number_nobody_chose {
             return Err(CardValidationError::ChosenNumberNobodyChose(self.id.clone()));
+        }
+        let a_corp_identity = self.side == Side::Corp && self.card_type == CardType::Identity;
+        if copies_set > 0 && (copies_set > copies_set_secretly || !a_corp_identity) {
+            return Err(CardValidationError::IdentityCopySetInTheOpen(self.id.clone()));
         }
         if prohibits_for_an_encounter {
             return Err(CardValidationError::ProhibitionForAnEncounter(self.id.clone()));
@@ -1829,6 +1851,7 @@ mod tests {
             of: None,
             then: Box::new(Effect::Sequence(vec![Effect::RemoveTags(Amount::ChosenNumber)])),
             text: "Remove up to 2 tags".to_string(),
+            secret: false,
         };
         assert_eq!(event(asked).validate(), Ok(()));
         assert_eq!(
@@ -1844,6 +1867,7 @@ mod tests {
             of: None,
             then: Box::new(Effect::Sequence(Vec::new())),
             text: String::new(),
+            secret: false,
         };
         assert_eq!(event(bounded_by_itself).validate(), Err(CardValidationError::ChosenNumberNobodyChose(CardId("baz".to_string()))));
     }

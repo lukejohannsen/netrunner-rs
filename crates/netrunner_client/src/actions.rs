@@ -582,7 +582,8 @@ pub fn narrate_event(
         GameEvent::NumberChoiceOffered { .. } => return None,
         // A number named aloud is part of the record: what followed —
         // two tags off, ten credits across — only reads with it.
-        GameEvent::NumberChosen { amount, .. } => format!("chose {amount}"),
+        GameEvent::NumberChosen { amount, secret: false, .. } => format!("chose {amount}"),
+        GameEvent::NumberChosen { amount, secret: true, .. } => format!("chose {amount}, in secret"),
     };
     Some(line)
 }
@@ -878,6 +879,7 @@ pub fn describe_public_action(action: &PublicAction, registry: &CardRegistry, vi
         // The action behind it has not happened yet; the next line in the
         // log is what it turned out to be.
         PublicAction::Concealed(ConcealedAction::ChoosingPayment) => "Choose which credits to spend".to_string(),
+        PublicAction::Concealed(ConcealedAction::ChoosingSecretly) => "Choose in secret".to_string(),
     }
 }
 

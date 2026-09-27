@@ -748,7 +748,19 @@ pub fn evaluate_effect(
                 Side::Corp => state.corp.identity_flipped = !state.corp.identity_flipped,
                 Side::Runner => state.runner.identity_flipped = !state.runner.identity_flipped,
             }
-            Ok(vec![GameEvent::IdentityFlipped { side }])
+            // A moment since Méliès U: "when you flip this identity to this
+            // side" (`Trigger::OnIdentityFlipped`).
+            let mut events = Vec::new();
+            dispatcher::emit(state, registry, &mut events, GameEvent::IdentityFlipped { side })?;
+            Ok(events)
+        }
+
+        Effect::SetIdentityCopy(copy) => {
+            // `validate` holds this to a Corp identity's secret number; the
+            // number is at most the copies the card prints, so it fits.
+            let copy = resolve_amount(copy, ctx, state, registry);
+            state.corp.identity_copy = u8::try_from(copy).unwrap_or(u8::MAX);
+            Ok(Vec::new())
         }
 
         // The operation was filed in Archives, faceup, before its text
@@ -1204,7 +1216,7 @@ pub fn evaluate_effect(
             Ok(vec![GameEvent::PendingChoicePresented { chooser: *chooser, option_count: options.len() }])
         }
 
-        Effect::ChooseNumber { chooser, min, max, of, then, text } => {
+        Effect::ChooseNumber { chooser, min, max, of, then, text, secret } => {
             let mut most = resolve_amount(max, ctx, state, registry).min(crate::rules::action_mask::MAX_CHOSEN_NUMBER);
             if let Some(of) = of {
                 most = most.min(resolve_amount(of, ctx, state, registry));
@@ -1226,6 +1238,7 @@ pub fn evaluate_effect(
                 prompting_card: ctx.attributed_card(),
                 source_install: ctx.acting_install,
                 resume: PendingChoiceResume::None,
+                secret: *secret,
             });
             Ok(vec![GameEvent::NumberChoiceOffered { chooser: *chooser, min: *min, max: most }])
         }
@@ -1773,7 +1786,7 @@ pub(crate) fn fire_card_triggers(
             t.trigger == trigger
                 && due.heard.admits(t.subject)
                 && !(t.first_each_turn && due.not_the_first_this_turn)
-                && listeners::when_admits(state, registry, t, triggering_event)
+                && listeners::when_admits(state, registry, t, card_side, triggering_event)
         })
         .collect();
     for (triggered, _) in card.triggers.iter().zip(meant).filter(|(_, meant)| *meant) {
@@ -1881,7 +1894,7 @@ pub(crate) fn would_fire(state: &GameState, registry: &CardRegistry, due: &Defer
         t.trigger == due.trigger
             && due.heard.admits(t.subject)
             && !(t.first_each_turn && due.not_the_first_this_turn)
-            && listeners::when_admits(state, registry, t, due.event.as_ref())
+            && listeners::when_admits(state, registry, t, card.side, due.event.as_ref())
     };
     card.triggers.iter().filter(meant).any(|triggered| {
         triggered.requirement.as_ref().is_none_or(|requirement| check_requirement(state, requirement, card.side, &ctx, registry).is_ok())
@@ -2828,6 +2841,14 @@ pub fn check_requirement(
             };
             if flipped { Ok(()) } else { Err(RulesError::RequirementNotMet) }
         }
+        EffectRequirement::IdentityCopy(copy) => {
+            // Only the Corp's identity comes in copies (CR 1.5.2).
+            if side == Side::Corp && state.corp.identity_copy == *copy { Ok(()) } else { Err(RulesError::RequirementNotMet) }
+        }
+        EffectRequirement::DuringRunOn(server) => {
+            let on = state.active_run.as_ref().is_some_and(|run| run.server == *server && !matches!(run.phase, RunPhase::Ended));
+            if on { Ok(()) } else { Err(RulesError::RequirementNotMet) }
+        }
         EffectRequirement::MemoryFull => {
             if crate::rules::memory::available_memory(state, registry) == 0 { Ok(()) } else { Err(RulesError::RequirementNotMet) }
         }
@@ -3263,6 +3284,8 @@ pub(crate) fn consume_requirement(
         }
         EffectRequirement::RunnerCreditsAtMost(_)
         | EffectRequirement::IdentityFlipped
+        | EffectRequirement::IdentityCopy(_)
+        | EffectRequirement::DuringRunOn(_)
         | EffectRequirement::CurrentlyAccessingNonAgenda
         | EffectRequirement::CurrentlyAccessingInstalledCard { .. }
         | EffectRequirement::AgendaCameFromThisCardsServer

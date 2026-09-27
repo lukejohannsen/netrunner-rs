@@ -259,6 +259,7 @@ fn concealed(trigger: Trigger, of: Option<Side>) -> bool {
         | Trigger::OnCardsTrashedFromHq
         | Trigger::OnBadPublicityTaken
         | Trigger::OnDamageAboutToResolve
+        | Trigger::OnIdentityFlipped
         | Trigger::Paid => false,
     }
 }
@@ -317,10 +318,15 @@ impl Occurrences {
     }
 
     pub(crate) fn meant_by(trigger: Trigger, when: Option<&EventFilter>, controller: Side) -> Result<Occurrences, String> {
-        let of = (trigger.hears() == Hears::OwnSide).then_some(controller);
+        // Whose moments: the controller's for a trigger about "you",
+        // unless the card names the other player's (`EventFilter::Whose`).
+        let of = match when {
+            Some(EventFilter::Whose(side)) => Some(*side),
+            _ => (trigger.hears() == Hears::OwnSide).then_some(controller),
+        };
         let bit = |class: Class| 1u32 << class.column();
         let columns = match when {
-            None => None,
+            None | Some(EventFilter::Whose(_)) => None,
             Some(EventFilter::Server(servers)) => Some(
                 servers
                     .iter()

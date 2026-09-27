@@ -431,6 +431,8 @@ mod tests {
             ("the_catalyst_boosted", &neither),
             ("the_catalyst_starter", &neither),
             ("a_thousand_cuts", &neither),
+            // Vantage Point Stage 8: Méliès U's deck, pinned by the test.
+            ("honor_roll", &neither),
             ("hostile_bid", &neither),
             ("pay_as_you_go", &neither),
             ("safety_net", &neither),

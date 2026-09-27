@@ -219,6 +219,19 @@ pub enum EffectRequirement {
     /// identity_flipped`) — the gate on a flip identity's back-side
     /// trigger (Dewi Subrotoputri). Its front-side twin is `Not(IdentityFlipped)`.
     IdentityFlipped,
+    /// The controller's identity is copy `n` of itself (`CorpState::
+    /// identity_copy`, set by `Effect::SetIdentityCopy`) — the gate on
+    /// each of Méliès U's three reverse sides ("Side 1: When you flip this
+    /// identity to this side…"): one card file holds all three, as one
+    /// holds both sides of a flip identity, and only the copy in play
+    /// speaks (CR 1.5.2b, 3.1.1a).
+    IdentityCopy(u8),
+    /// A run on `server` is in progress, at any step of it — Méliès U's
+    /// "when you flip this identity to this side **during a run on HQ**".
+    /// The server the run is on (`RunState::server`), which is where it
+    /// was declared unless a card has moved it. Unlike `DuringRun`, the
+    /// breach counts: nothing here moves the run.
+    DuringRunOn(crate::rules::ServerId),
     /// The Runner is at the decision about a specific accessed card
     /// (`run::AccessPhase::PendingChoice`) and it is not an agenda —
     /// Gourmand's "trash the non-agenda card you are accessing". Read from
