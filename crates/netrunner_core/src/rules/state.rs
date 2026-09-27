@@ -44,11 +44,13 @@ impl Credits {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default, Serialize, Deserialize)]
-pub struct AgendaPoints(pub u32);
+pub struct AgendaPoints(pub i32);
 
 impl AgendaPoints {
-    /// Gains never fail in the rules; saturate rather than ever panicking on overflow.
-    pub fn gain(self, amount: u32) -> Self {
+    /// Gains never fail in the rules; saturate rather than ever panicking
+    /// on overflow. Signed, because a score can fall below 0: Word on the
+    /// Street is worth −1 in the Corp's score area (CR 1.17.1 sums them).
+    pub fn gain(self, amount: i32) -> Self {
         AgendaPoints(self.0.saturating_add(amount))
     }
 }
@@ -181,6 +183,27 @@ pub struct InstalledCard {
     /// `InstalledCard`, and a move keeps it.
     #[serde(default)]
     pub seen_by_runner: bool,
+    /// What has happened to this copy this turn — Sacrifice Zone
+    /// Expansion's "the first time each turn you advance **this agenda**",
+    /// which the turn's log cannot say because it counts classes, not
+    /// copies (`turn_log::CopyTurn`). Counted at the same door
+    /// (`turn_log::record`), and dated rather than reset. Not in the view:
+    /// a bot's sample starts each copy's turn afresh, as it does
+    /// `installed_this_turn`.
+    #[serde(default)]
+    pub this_turn: crate::rules::turn_log::CopyTurn,
+}
+
+impl InstalledCard {
+    /// Whether this install is *rezzed* in the rules' sense (CR 8.1.1): an
+    /// asset, upgrade or piece of ice that is faceup. A faceup agenda —
+    /// Sacrifice Zone Expansion, or one BANGUN flipped — is written with
+    /// the same `rezzed` flag, because faceup is what the flag records for
+    /// visibility, but it is "neither rezzed nor unrezzed", so a derez
+    /// cannot take it and "a rezzed card" does not mean it.
+    pub fn is_rezzed(&self, registry: &crate::cards::CardRegistry) -> bool {
+        self.rezzed && registry.get(&self.card).is_none_or(|definition| definition.card_type != crate::dsl::CardType::Agenda)
+    }
 }
 
 /// Every field at its neutral value, so test fixtures can spell out only the
@@ -206,6 +229,7 @@ impl Default for InstalledCard {
             counters: 0,
             installed_this_turn: false,
             seen_by_runner: false,
+            this_turn: Default::default(),
         }
     }
 }
@@ -361,13 +385,29 @@ pub struct ScoredAgenda {
     /// class. A turn number rather than a flag, so nothing resets it.
     #[serde(default)]
     pub scored_on_turn: u32,
+    /// Whether it was scored on the turn it was installed — the copy's
+    /// `InstalledCard::installed_this_turn` as it left the table, so
+    /// Myōshu's "an agenda … that you did not install this turn" and Word
+    /// on the Street's "an agenda they did not install this turn" can be
+    /// asked after it has. Read with `scored_on_turn`
+    /// (`CardFilter::InstalledThisTurn`).
+    #[serde(default)]
+    pub installed_on_scoring_turn: bool,
+    /// Set when this is not an agenda but a card added "as an agenda"
+    /// (CR 10.1.3): Myōshu, Word on the Street. It has only these
+    /// properties — its points, and whether it may be forfeited — and none
+    /// it printed, so it is not active (`rules::active`) and was not
+    /// scored (CR 1.17.3f). `card` may be the Runner's: Word on the Street
+    /// is added to the Corp's score area.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub as_agenda: Option<crate::dsl::AsAgenda>,
 }
 
 impl ScoredAgenda {
     /// A scored agenda with no counters and no install handle — the shape
     /// tests and fixtures want when only the card's identity matters.
     pub fn plain(card: CardId) -> Self {
-        ScoredAgenda { card, install_id: InstallId::PLACEHOLDER, agenda_counters: 0, scored_on_turn: 0 }
+        ScoredAgenda { card, install_id: InstallId::PLACEHOLDER, agenda_counters: 0, scored_on_turn: 0, installed_on_scoring_turn: false, as_agenda: None }
     }
 }
 

@@ -51,7 +51,9 @@ pub struct Counts {
     pub cards_drawn: u32,
     pub cards_installed: u32,
     /// Scored for the Corp, stolen for the Runner.
-    pub agenda_points: u32,
+    /// Signed: a card added "as an agenda" can be worth −1 (Word on the
+    /// Street).
+    pub agenda_points: i32,
     pub cards_rezzed: u32,
     pub runs: u32,
     pub successful_runs: u32,
@@ -82,8 +84,8 @@ pub struct Tally {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Row {
     pub label: &'static str,
-    pub corp: Option<u32>,
-    pub runner: Option<u32>,
+    pub corp: Option<i64>,
+    pub runner: Option<i64>,
 }
 
 impl Tally {
@@ -126,8 +128,10 @@ impl Tally {
             GameEvent::ProgramInstalled { side, .. } | GameEvent::HardwareInstalled { side, .. } | GameEvent::ResourceInstalled { side, .. } => {
                 self.side(*side).cards_installed += 1
             }
-            GameEvent::AgendaScored { agenda_points, .. } => self.corp.agenda_points += agenda_points,
-            GameEvent::AgendaStolen { agenda_points, .. } => self.runner.agenda_points += agenda_points,
+            GameEvent::AgendaScored { agenda_points, .. } => self.corp.agenda_points += *agenda_points as i32,
+            GameEvent::AgendaStolen { agenda_points, .. } => self.runner.agenda_points += *agenda_points as i32,
+            // Not scored (CR 1.17.3f), but on the Corp's score all the same.
+            GameEvent::AddedToScoreAreaAsAgenda { points, .. } => self.corp.agenda_points += points,
             // Every Corp card is turned faceup by the one rez, whatever
             // the event's name says (`engine::rez_install`).
             GameEvent::IceRezzed { .. } => self.corp.cards_rezzed += 1,
@@ -145,9 +149,13 @@ impl Tally {
     /// own, then the Runner's.
     pub fn rows(&self) -> Vec<Row> {
         let (c, r) = (&self.corp, &self.runner);
-        let both = |label, corp: u32, runner: u32| Row { label, corp: Some(corp), runner: Some(runner) };
-        let corp = |label, corp: u32| Row { label, corp: Some(corp), runner: None };
-        let runner = |label, runner: u32| Row { label, corp: None, runner: Some(runner) };
+        // Wide and signed: every count is a `u32`, and the points can be
+        // negative.
+        fn both(label: &'static str, corp: impl Into<i64>, runner: impl Into<i64>) -> Row {
+            Row { label, corp: Some(corp.into()), runner: Some(runner.into()) }
+        }
+        let corp = |label, corp: u32| Row { label, corp: Some(corp.into()), runner: None };
+        let runner = |label, runner: u32| Row { label, corp: None, runner: Some(runner.into()) };
         let mulligan = |counts: &Counts| u32::from(counts.first_hand == Some(FirstHand::Mulligan));
         vec![
             both("Mulligans", mulligan(c), mulligan(r)),

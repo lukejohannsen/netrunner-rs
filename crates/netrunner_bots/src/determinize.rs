@@ -232,14 +232,18 @@ fn embedded_decks() -> &'static [DeckFile] {
 /// preference between two lists sharing an identity, never a filter: a
 /// card in a play area the view does not model is one off, and one off
 /// must not throw away the right list.
-fn cards_in_game(view: &ClientView, side: Side) -> usize {
+fn cards_in_game(view: &ClientView, side: Side, registry: &CardRegistry) -> usize {
+    // The Corp's score area can hold a Runner card added "as an agenda"
+    // (Word on the Street), which is the Runner's to count.
+    let owner = |card: &CardId| registry.get(card).map_or(Side::Corp, |definition| definition.side);
+    let in_corp_score_area = view.corp.scored_agendas.iter().filter(|scored| owner(&scored.card) == side).count();
     match side {
         Side::Corp => {
             view.corp.hq_count
                 + view.corp.rd_count
                 + view.corp.archives.len()
                 + view.corp.servers.iter().map(|server| server.ice.len() + server.root.len()).sum::<usize>()
-                + view.corp.scored_agendas.len()
+                + in_corp_score_area
                 + view.runner.scored_agendas.len()
                 + view.corp.removed_from_game.len()
         }
@@ -249,6 +253,7 @@ fn cards_in_game(view: &ClientView, side: Side) -> usize {
                 + view.runner.heap.len()
                 + view.runner.removed_from_game.len()
                 + view.runner.rig.iter().map(|card| 1 + card.hosted_cards.len() + card.hosted_unseen).sum::<usize>()
+                + in_corp_score_area
         }
     }
 }
@@ -275,7 +280,7 @@ fn remaining_decklist(side: Side, identity: Option<&CardId>, visible: &[CardId],
     for card in visible.iter().filter(|id| registry.get(id).is_some_and(|card| card.side == side)) {
         *seen.entry(card).or_insert(0) += 1;
     }
-    let in_game = cards_in_game(view, side);
+    let in_game = cards_in_game(view, side, registry);
 
     let scored = candidates.map(|deck| {
         let explained: usize =
@@ -390,6 +395,8 @@ fn determinize_installed(
         // from its own play-out, same approximation as `counters` above.
         installed_this_turn: false,
         seen_by_runner: card.seen_by_runner,
+        // Nor what happened to the copy this turn (`turn_log::CopyTurn`).
+        this_turn: Default::default(),
     })).collect();
     let root = server_view.root.iter().map(|card| (card.position, InstalledCard {
         card: card.card.clone().unwrap_or_else(|| pools.draw(Slot::CorpRoot)),
@@ -409,6 +416,8 @@ fn determinize_installed(
         // from its own play-out, same approximation as `counters` above.
         installed_this_turn: false,
         seen_by_runner: card.seen_by_runner,
+        // Nor what happened to the copy this turn (`turn_log::CopyTurn`).
+        this_turn: Default::default(),
     }));
     ice.into_iter().chain(root).collect()
 }

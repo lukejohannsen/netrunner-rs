@@ -478,6 +478,10 @@ pub fn evaluate_effect(
                 .iter_mut()
                 .find(|c| c.install_id == install)
                 .ok_or_else(|| RulesError::CardNotInstalled { card: card_id.clone() })?;
+            // A faceup agenda is neither rezzed nor unrezzed (CR 8.1.1).
+            if installed.rezzed && !installed.is_rezzed(registry) {
+                return Ok(Vec::new());
+            }
             installed.rezzed = false;
             Ok(vec![GameEvent::CardDerezzed { install, card: Some(card_id) }])
         }
@@ -559,11 +563,14 @@ pub fn evaluate_effect(
                 install_id,
                 server: *into,
                 slot: resolved_slot,
-                rezzed: false,
+                // "Install only faceup" (Sacrifice Zone Expansion) holds
+                // for an install by a card's text too.
+                rezzed: card_def.installs_faceup,
                 advancement_tokens: 0,
                 counters: 0,
                 installed_this_turn: true,
                 seen_by_runner: false,
+                this_turn: Default::default(),
             };
             match insert_after {
                 Some(host) => {
@@ -742,6 +749,18 @@ pub fn evaluate_effect(
                 Side::Runner => state.runner.identity_flipped = !state.runner.identity_flipped,
             }
             Ok(vec![GameEvent::IdentityFlipped { side }])
+        }
+
+        // The operation was filed in Archives, faceup, before its text
+        // resolved (`engine::play_operation_card`); the newest faceup copy
+        // is this one.
+        Effect::AddToScoreAreaAsAgenda(as_agenda) => {
+            let card_id = acting_card.ok_or(RulesError::MissingActingCardContext)?.clone();
+            let Some(position) = state.corp.archives.iter().rposition(|archived| archived.card == card_id && !archived.facedown) else {
+                return Ok(Vec::new());
+            };
+            state.corp.archives.remove(position);
+            Ok(vec![add_to_score_area_as_agenda(state, card_id, *as_agenda)])
         }
 
         Effect::ShuffleHostedIntoDeck => {
@@ -1511,8 +1530,7 @@ pub fn evaluate_effect(
                 return Ok(Vec::new());
             }
             state.runner.scored_agendas.remove(position);
-            state.runner.resources.agenda_points =
-                crate::rules::state::AgendaPoints(state.runner.resources.agenda_points.0.saturating_sub(points));
+            state.runner.resources.agenda_points = state.runner.resources.agenda_points.gain(-(points as i32));
             let mut events = evaluate_effect(state, &Effect::RemoveTags(Amount::Fixed(points)), ctx, registry)?;
             // A fresh remote: see the variant's doc comment for why the
             // Corp is not asked where.
@@ -2245,6 +2263,36 @@ fn runner_is_accessing(state: &GameState, card_id: &CardId) -> bool {
         })
 }
 
+/// Puts `card` into the Corp's score area "as an agenda" (CR 10.1.3) — the
+/// one place both ways in go through: Myōshu's own text and Word on the
+/// Street's additional cost. The caller has taken the card out of wherever
+/// it was. A fresh handle, since the card is a new object where it lands;
+/// the stored tally moves as a score does, by the points the addition gave
+/// it, which may be negative.
+fn add_to_score_area_as_agenda(state: &mut GameState, card: CardId, as_agenda: crate::dsl::AsAgenda) -> GameEvent {
+    let install_id = state.allocate_install_id();
+    state.corp.scored_agendas.push(crate::rules::state::ScoredAgenda {
+        card: card.clone(),
+        install_id,
+        agenda_counters: 0,
+        scored_on_turn: state.turn,
+        installed_on_scoring_turn: false,
+        as_agenda: Some(as_agenda),
+    });
+    state.corp.resources.agenda_points = state.corp.resources.agenda_points.gain(as_agenda.points);
+    GameEvent::AddedToScoreAreaAsAgenda { card, points: as_agenda.points }
+}
+
+/// The positions in the Corp's score area that may be forfeited: every one
+/// but a card added "as an agenda" with "You cannot forfeit this agenda."
+/// (Word on the Street). The one list `Cost::Forfeit`'s affordability and
+/// its payment read.
+fn forfeitable(state: &GameState) -> Vec<usize> {
+    (0..state.corp.scored_agendas.len())
+        .filter(|&position| state.corp.scored_agendas[position].as_agenda.is_none_or(|as_agenda| !as_agenda.cannot_forfeit))
+        .collect()
+}
+
 pub(crate) fn trash_this_card(state: &mut GameState, registry: &CardRegistry, ctx: &ResolutionContext<'_>, by: Option<Side>) -> Result<Vec<GameEvent>, RulesError> {
     let card_id = &ctx.acting_card.ok_or(RulesError::MissingActingCardContext)?.clone();
     if let Some(position) = acting_corp_position(state, ctx) {
@@ -2343,6 +2391,10 @@ pub(crate) fn cost_is_affordable(
         // jack out" in the pool.
         Cost::JackOut => side == Side::Runner && state.active_run.is_some(),
         Cost::RemoveCounters(amount) => counters_of(state, ctx).is_some_and(|counters| counters >= *amount),
+        Cost::RemoveAdvancementCounters(amount) => acting_corp_install(state, ctx).is_some_and(|installed| installed.advancement_tokens >= *amount),
+        // Word on the Street's card is its own price: payable while it is
+        // in the rig.
+        Cost::AddToScoreAreaAsAgenda(_) => acting_rig_position(state, ctx).is_some(),
         // Any one alternative being payable is enough — the payer picks.
         Cost::AnyOf(options) => options.iter().any(|option| cost_is_affordable(state, registry, side, option, purpose, ctx)),
         // Every part must be payable — read against the same state, which
@@ -2351,7 +2403,7 @@ pub(crate) fn cost_is_affordable(
         Cost::AllOf(parts) => parts.iter().all(|part| cost_is_affordable(state, registry, side, part, purpose, ctx)),
         Cost::RemoveTags(amount) => state.runner.tags >= *amount,
         Cost::SufferDamage(_, amount) => state.runner.grip.len() >= *amount as usize,
-        Cost::Forfeit(count) => side == Side::Corp && state.corp.scored_agendas.len() >= *count as usize,
+        Cost::Forfeit(count) => side == Side::Corp && forfeitable(state).len() >= *count as usize,
         // The same scan the payment picks from.
         Cost::Trash { from, filter, count, .. } => {
             crate::rules::pending_choice::eligible_positions(state, registry, side, from, filter, ctx.acting_install).len() >= *count as usize
@@ -2371,7 +2423,7 @@ fn derez_eligible(state: &GameState, registry: &CardRegistry, side: Side, filter
     }
     crate::rules::pending_choice::eligible_positions(state, registry, side, &crate::dsl::CardZoneRef::OwnInstalled, filter, ctx.acting_install)
         .into_iter()
-        .filter(|&position| state.corp.installed[position].rezzed)
+        .filter(|&position| state.corp.installed[position].is_rezzed(registry))
         .collect()
 }
 
@@ -2507,11 +2559,11 @@ pub(crate) fn pay_cost_ctx(
         Cost::Forfeit(count) => {
             // Only the Corp's score area holds agendas with a handle each;
             // no Runner card in the pool forfeits.
-            if side != Side::Corp || state.corp.scored_agendas.len() < *count as usize {
-                return Err(RulesError::NotEnoughAgendasToForfeit { required: *count, available: state.corp.scored_agendas.len() as u32 });
+            let eligible = forfeitable(state);
+            if side != Side::Corp || eligible.len() < *count as usize {
+                return Err(RulesError::NotEnoughAgendasToForfeit { required: *count, available: eligible.len() as u32 });
             }
             let zone = crate::dsl::CardZoneRef::OwnScoreArea;
-            let eligible: Vec<usize> = (0..state.corp.scored_agendas.len()).collect();
             let picked = crate::rules::pending_choice::pick_for_cost(state, side, &zone, &eligible, *count, None)?;
             // Resolved to handles before any agenda leaves, which would
             // shift the positions still to be read.
@@ -2526,9 +2578,8 @@ pub(crate) fn pay_cost_ctx(
                 // recounts the score area and was right; this is the
                 // number the view, the HUD and the bots read, which kept
                 // the forfeited points.
-                let points = crate::rules::win::agenda_value_in(state, registry, &forfeited.card, Side::Corp);
-                state.corp.resources.agenda_points =
-                    crate::rules::state::AgendaPoints(state.corp.resources.agenda_points.0.saturating_sub(points));
+                let points = crate::rules::win::scored_value(state, registry, &forfeited);
+                state.corp.resources.agenda_points = state.corp.resources.agenda_points.gain(-points);
                 // Out of the game rather than to Archives (it was never on
                 // the table), taking its counters with it. Returned, not
                 // dispatched: the payer dispatches (`dispatch_cost_events`),
@@ -2600,6 +2651,31 @@ pub(crate) fn pay_cost_ctx(
                 return Err(RulesError::InsufficientCounters { card: card_id.clone(), required: *amount, available });
             }
             modify_counters(state, ctx, -i64::from(*amount))
+        }
+        Cost::RemoveAdvancementCounters(amount) => {
+            let card_id = acting_card.ok_or(RulesError::MissingActingCardContext)?;
+            let position = acting_corp_position(state, ctx).ok_or_else(|| RulesError::CardNotInstalled { card: card_id.clone() })?;
+            let installed = &mut state.corp.installed[position];
+            if installed.advancement_tokens < *amount {
+                return Err(RulesError::InsufficientCounters { card: card_id.clone(), required: *amount, available: installed.advancement_tokens });
+            }
+            installed.advancement_tokens -= amount;
+            Ok(vec![GameEvent::AdvancementCountersRemoved {
+                install: installed.install_id,
+                card: Some(installed.card.clone()),
+                advancement_tokens: installed.advancement_tokens,
+            }])
+        }
+        // Out of the rig and into the Corp's score area. Leaving the rig is
+        // leaving play, so what it hosts is trashed with it, as a trash
+        // would (`cascade_trash_hosted_on_rig_card`).
+        Cost::AddToScoreAreaAsAgenda(as_agenda) => {
+            let card_id = acting_card.ok_or(RulesError::MissingActingCardContext)?;
+            let position = acting_rig_position(state, ctx).ok_or_else(|| RulesError::CardNotInstalled { card: card_id.clone() })?;
+            let removed = state.runner.rig.remove(position);
+            let mut events = cascade_trash_hosted_on_rig_card(state, registry, &removed);
+            events.push(add_to_score_area_as_agenda(state, removed.card, *as_agenda));
+            Ok(events)
         }
     }
 }
@@ -3106,10 +3182,10 @@ pub(crate) fn resolve_amount(amount: &Amount, ctx: &ResolutionContext<'_>, state
         Amount::InHeapWithSubtype(subtype) => {
             state.runner.heap.iter().filter(|card| registry.get(card).is_some_and(|def| def.subtypes.contains(subtype))).count() as u32
         }
+        // "The greatest score of any player" (CR 1.17.1a), never below 0.
         Amount::ThreatLevel => {
-            let corp: u32 = state.corp.scored_agendas.iter().map(|s| crate::rules::win::agenda_value_in(state, registry, &s.card, Side::Corp)).sum();
-            let runner: u32 = state.runner.scored_agendas.iter().map(|c| crate::rules::win::agenda_value_in(state, registry, c, Side::Runner)).sum();
-            corp.max(runner)
+            let score = |side| crate::rules::win::score(state, registry, side);
+            score(Side::Corp).max(score(Side::Runner)).max(0) as u32
         }
     }
 }
@@ -3191,7 +3267,7 @@ mod tests {
     use crate::rules::run::{EncounteredSubroutine, RunIce, RunPhase as RP, RunState, ServerId, SubroutineStatus};
     use crate::rules::state::{
         AgendaPoints, Clicks, CorpState, GamePhase, InstalledCard, InstalledRunnerCard,
-        MemoryUnits, PlayerResources, RunnerState,
+        MemoryUnits, PlayerResources, RunnerState, ScoredAgenda,
     };
 
     fn installed_runner_card(id: &str, base_strength: i32) -> InstalledRunnerCard {
@@ -3201,6 +3277,28 @@ mod tests {
             base_strength,
             ..Default::default()
         }
+    }
+
+    /// A card added as an agenda with "You cannot forfeit this agenda."
+    /// is no forfeit's to take; one without the sentence is.
+    #[test]
+    fn a_card_that_cannot_be_forfeited_is_not_counted_toward_a_forfeit() {
+        let registry = CardRegistry::default();
+        let as_agenda = |points, cannot_forfeit| {
+            Some(crate::dsl::AsAgenda { points, cannot_forfeit })
+        };
+        let mut state = game_state();
+        state.corp.scored_agendas =
+            vec![ScoredAgenda { install_id: InstallId(1), as_agenda: as_agenda(-1, true), ..ScoredAgenda::plain(CardId("word_on_the_street".to_string())) }];
+        let ctx = ResolutionContext::for_card(None);
+        let forfeit = Cost::Forfeit(1);
+        assert!(!cost_is_affordable(&state, &registry, Side::Corp, &forfeit, Purpose::Other, &ctx));
+        assert!(pay_cost_ctx(&mut state.clone(), &registry, Side::Corp, &forfeit, Purpose::Other, &ctx).is_err());
+        state.corp.scored_agendas.push(ScoredAgenda { install_id: InstallId(2), as_agenda: as_agenda(2, false), ..ScoredAgenda::plain(CardId("myoshu".to_string())) });
+        assert!(cost_is_affordable(&state, &registry, Side::Corp, &forfeit, Purpose::Other, &ctx));
+        pay_cost_ctx(&mut state, &registry, Side::Corp, &forfeit, Purpose::Other, &ctx).expect("forfeit Myōshu");
+        assert_eq!(state.corp.scored_agendas.len(), 1, "Word on the Street stays");
+        assert_eq!(state.corp.removed_from_game, vec![CardId("myoshu".to_string())]);
     }
 
     fn game_state() -> GameState {

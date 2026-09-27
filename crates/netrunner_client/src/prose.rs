@@ -131,11 +131,21 @@ pub fn describe_cost(cost: &Cost) -> String {
         Cost::Trash { from, count, .. } => format!("trash {} from {}", plural(*count, "card", "cards"), describe_zone(from)),
         Cost::TakeTags(n) => format!("take {}", plural(*n, "tag", "tags")),
         Cost::RemoveCounters(n) => format!("remove {}", plural(*n, "counter", "counters")),
+        Cost::RemoveAdvancementCounters(n) => format!("remove {}", plural(*n, "hosted advancement counter", "hosted advancement counters")),
+        Cost::AddToScoreAreaAsAgenda(as_agenda) => format!("add this card to the Corp's score area as {}", as_an_agenda(as_agenda)),
         Cost::RemoveSelfFromGame => "remove this card from the game".to_string(),
         Cost::TrashRandomFromHq(n) => format!("trash {} at random from HQ", plural(*n, "card", "cards")),
         Cost::AnyOf(options) => options.iter().map(describe_cost).collect::<Vec<_>>().join(" or "),
         Cost::AllOf(parts) => parts.iter().map(describe_cost).collect::<Vec<_>>().join(" and "),
     }
+}
+
+/// "an agenda worth −1 agenda points that cannot be forfeited" — what a
+/// card added to a score area is (CR 10.1.3).
+fn as_an_agenda(as_agenda: &netrunner_core::dsl::AsAgenda) -> String {
+    let points = if as_agenda.points < 0 { format!("−{}", as_agenda.points.unsigned_abs()) } else { as_agenda.points.to_string() };
+    let worth = format!("an agenda worth {points} agenda point{}", if as_agenda.points.abs() == 1 { "" } else { "s" });
+    if as_agenda.cannot_forfeit { format!("{worth} that cannot be forfeited") } else { worth }
 }
 
 fn describe_target(target: &CardTarget, registry: &CardRegistry) -> String {
@@ -299,6 +309,7 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
         Effect::AddToDeck(DeckEnd::Bottom) => "put it on the bottom of its owner's deck".to_string(),
         Effect::AddToDeck(DeckEnd::Top) => "put it on top of its owner's deck".to_string(),
         Effect::ShuffleHostedIntoDeck => "shuffle all hosted cards into your stack".to_string(),
+        Effect::AddToScoreAreaAsAgenda(as_agenda) => format!("add this card to your score area as {}", as_an_agenda(as_agenda)),
         Effect::LookAtTopOfDeck { deck, count } => {
             format!("look at the top {} of {}", plural(*count, "card", "cards"), if *deck == Side::Corp { "R&D" } else { "the stack" })
         }
@@ -488,6 +499,7 @@ pub fn describe_continuous(effect: &ContinuousEffect) -> String {
         Scope::Playing(filter) if effect.first_each_turn => format!("the first card its controller plays each turn ({})", lower(format!("{filter:?}"))),
         Scope::Playing(filter) => format!("a card its controller plays ({})", lower(format!("{filter:?}"))),
         Scope::Stealing(filter) => format!("an agenda the Runner steals ({})", lower(format!("{filter:?}"))),
+        Scope::Scoring(filter) => format!("an agenda the Corp scores ({})", lower(format!("{filter:?}"))),
         Scope::ScoreArea(side) => format!("this agenda, in the {side:?}'s score area"),
     };
     let signed = |number: &Number| {
@@ -508,6 +520,7 @@ pub fn describe_continuous(effect: &ContinuousEffect) -> String {
         ContinuousKind::PlayCost(number) => format!("costs {} to play", signed(number)),
         ContinuousKind::PlayClicks(number) => format!("costs {} [click] to play", signed(number)),
         ContinuousKind::StealCost(number) => format!("costs {} to steal", signed(number)),
+        ContinuousKind::ScoreCost(cost) => format!("costs \"{}\" to score", describe_cost(cost)),
         ContinuousKind::AgendaPoints(number) => format!("is worth {} agenda points", signed(number)),
         ContinuousKind::GainSubtype(subtype) => format!("gains {}", lower(format!("{subtype:?}"))),
         ContinuousKind::BoostsLastTheRun => "keeps its strength boosts for the rest of the run".to_string(),

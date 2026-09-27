@@ -2697,6 +2697,8 @@ mod tests {
                 install_id: InstallId(1),
                 agenda_counters,
                 scored_on_turn: 0,
+                installed_on_scoring_turn: false,
+                as_agenda: None,
             }];
             evaluate_state(&state, Side::Corp, &registry)
         };

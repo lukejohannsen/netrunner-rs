@@ -200,6 +200,19 @@ pub enum CardFilter {
     /// Definition-level. Not a subtype: uniqueness is printed before the
     /// name (CR 2.2.1), and `CardDefinition::unique` is where it is read.
     Unique,
+    /// The positive twin of `NotInstalledThisTurn`: Word on the Street's
+    /// "an agenda the Corp installed this turn". A separate word rather
+    /// than `Not(NotInstalledThisTurn)`, because `Not` is definition-level
+    /// and would admit nothing. Instance-level, read off an install
+    /// (`InstalledCard::installed_this_turn`) and off a scored agenda
+    /// (`ScoredAgenda::installed_on_scoring_turn`, when it was scored this
+    /// turn).
+    InstalledThisTurn,
+    /// An agenda in a score area that was **scored** this turn — Myōshu's
+    /// "you scored an agenda this turn". Instance-level, read off
+    /// `ScoredAgenda::scored_on_turn`. A card added "as an agenda" was not
+    /// scored (CR 1.17.3f) and never matches.
+    ScoredThisTurn,
     /// At least one listed filter must match — `All`'s disjunctive twin,
     /// for MuslihaT's "an icebreaker *or* a run event". Both halves
     /// recurse, as `All` does.
@@ -344,5 +357,7 @@ pub fn card_matches_filter(card: &CardDefinition, filter: &CardFilter) -> bool {
         // Instance-level, not definition-level — see the variant's doc
         // comment. `eligible_cards` applies the real check.
         CardFilter::NotInstalledThisTurn => true,
+        CardFilter::InstalledThisTurn => true,
+        CardFilter::ScoredThisTurn => true,
     }
 }

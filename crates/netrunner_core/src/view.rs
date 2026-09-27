@@ -38,7 +38,7 @@ pub struct ServerView {
 pub struct CorpClientView {
     pub credits: u32,
     pub clicks: u32,
-    pub agenda_points: u32,
+    pub agenda_points: i32,
     pub bad_publicity: u32,
     /// See `masking::PublicCorpState::recurring_credits` — public, and
     /// carried so a determinized sample can reproduce what the Corp can
@@ -83,7 +83,7 @@ pub struct CorpClientView {
 pub struct RunnerClientView {
     pub credits: u32,
     pub clicks: u32,
-    pub agenda_points: u32,
+    pub agenda_points: i32,
     pub memory_units: u32,
     pub tags: u32,
     pub brain_damage: usize,

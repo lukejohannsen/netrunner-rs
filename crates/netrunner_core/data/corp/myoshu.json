@@ -1,0 +1,34 @@
+{
+  "id": "myoshu",
+  "title": "Myōshu",
+  "side": "Corp",
+  "card_type": "Operation",
+  "cost": 10,
+  "play_requirement": {
+    "ZoneHasAtLeast": {
+      "zone": "OwnScoreArea",
+      "count": 1,
+      "filter": {
+        "All": [
+          "ScoredThisTurn",
+          "NotInstalledThisTurn"
+        ]
+      }
+    }
+  },
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "AddToScoreAreaAsAgenda": {
+            "points": 2
+          }
+        }
+      ]
+    }
+  ],
+  "numeric_id": 36061,
+  "is_playable": true
+}

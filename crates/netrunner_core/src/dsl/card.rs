@@ -723,6 +723,14 @@ pub struct CardDefinition {
     /// in the pool declares an installed-and-rezzed ability.
     #[serde(default)]
     pub may_install_agendas_faceup: bool,
+    /// "Install only faceup." — Sacrifice Zone Expansion. The agenda is
+    /// installed faceup, which this engine writes as `InstalledCard::
+    /// rezzed` without a rez (no cost, no `OnRez`), the same flag BANGUN's
+    /// flip sets; and because its own text directs it, its abilities are
+    /// active while it is installed (CR 3.2.3a, `rules::active`), which
+    /// BANGUN's are not. An agenda only (`validate`).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub installs_faceup: bool,
 
     /// Ways this card may be rezzed beyond simply paying for it — Biawak's
     /// "you can forfeit 1 agenda as you rez this ice to pay for 10[c] of
@@ -877,6 +885,8 @@ pub enum CardValidationError {
     AgendaMissingScoringFields(CardId),
     #[error("card {0:?} of type {1:?} must not have agenda_points — only Agenda does")]
     UnexpectedAgendaPoints(CardId, CardType),
+    #[error("card {0:?} of type {1:?} cannot say \"install only faceup\" — only an agenda is installed facedown and says so")]
+    FaceupInstallNotAnAgenda(CardId, CardType),
     #[error("card {0:?}: a {1:?} trigger must say whether it hears `This` occurrence or `Any` (`subject`)")]
     TriggerMissingSubject(CardId, Trigger),
     #[error("card {0:?}: a {1:?} trigger is not about a card or a server, so it cannot name a `subject`")]
@@ -937,6 +947,7 @@ impl Default for CardDefinition {
             pays_for: Vec::new(),
             trash_when_empty: false,
             may_install_agendas_faceup: false,
+            installs_faceup: false,
             rez_alternatives: Vec::new(),
             influence_limit: None,
             additional_play_cost: None,
@@ -994,6 +1005,9 @@ impl CardDefinition {
         // advance this," which carries no scoring semantics of its own.
         if !is_agenda && self.agenda_points.is_some() {
             return Err(CardValidationError::UnexpectedAgendaPoints(self.id.clone(), self.card_type.clone()));
+        }
+        if !is_agenda && self.installs_faceup {
+            return Err(CardValidationError::FaceupInstallNotAnAgenda(self.id.clone(), self.card_type.clone()));
         }
         // `rules::payment` reads `pays_for` off active *installed* cards and
         // spends their `counters` as credits: a word on a card that hosts
@@ -1068,12 +1082,24 @@ impl CardDefinition {
             if let Err(why) = crate::rules::turn_log::Occurrences::meant_by(triggered.trigger, triggered.when.as_ref(), self.side) {
                 return Err(self.first_time_misfit(why));
             }
-            if triggered.subject == Some(Subject::This) {
-                return Err(self.first_time_misfit("\"this\" happens to a card once; the first time each turn is about `Any`".to_string()));
+            // "The first time each turn you advance this agenda" is counted
+            // on the copy (`InstalledCard::this_turn`), which only a Corp
+            // install keeps; a moment about a Runner card is, so far, one
+            // that happens to it once.
+            if triggered.subject == Some(Subject::This) && (self.side == Side::Runner || !crate::rules::turn_log::CopyTurn::counts(triggered.trigger)) {
+                return Err(self.first_time_misfit(format!(
+                    "the copy of a Corp install counts only what a card asks of it, which is being advanced; a {:?} about this card is not counted",
+                    triggered.trigger
+                )));
             }
             if triggered.requirement.as_ref().is_some_and(EffectRequirement::mentions_once_per_turn) {
                 return Err(self.first_time_misfit("`OncePerTurn` is a use limit on the card, and the first time each turn is a fact about the turn; a card prints one or the other".to_string()));
             }
+        }
+        // One printed ability counts on one thing: the copy, or the turn.
+        let about_this = first_time.iter().filter(|triggered| triggered.subject == Some(Subject::This)).count();
+        if about_this > 0 && about_this < first_time.len() {
+            return Err(self.first_time_misfit("a card's first-time entries share one count, and it is either this copy's or the turn's".to_string()));
         }
         // A card's first-time entries share one count, so two triggers one
         // event is an occurrence of would count that event twice.
@@ -1195,6 +1221,8 @@ impl CardDefinition {
                 (ContinuousKind::StealCost(_), _) => {
                     return misfit("StealCost", "an additional cost to steal is about an agenda being `Stealing`; an agenda's own is its `steal_cost`");
                 }
+                (ContinuousKind::ScoreCost(_), Scope::Scoring(_)) => {}
+                (ContinuousKind::ScoreCost(_), _) => return misfit("ScoreCost", "an additional cost to score is about an agenda being `Scoring`"),
                 (ContinuousKind::AgendaPoints(_), Scope::ScoreArea(_)) if self.card_type == CardType::Agenda => {}
                 (ContinuousKind::AgendaPoints(_), _) => return misfit("AgendaPoints", "an agenda's points change in a score area, said by the agenda (`ScoreArea`)"),
                 (ContinuousKind::BoostsLastTheRun, Scope::This | Scope::Host) => {}
@@ -1508,7 +1536,10 @@ mod tests {
         assert!(refused(card(Side::Corp, vec![first(Trigger::OnRez, any, Some(EventFilter::Card(CardFilter::CardType(CardType::Ice(IceType::Barrier)))), None)])));
         // A use limit and a fact about the turn are two things.
         assert!(refused(card(Side::Corp, vec![first(Trigger::OnTagsGiven, None, None, Some(EffectRequirement::OncePerTurn))])));
+        // "This" happens to a scored agenda once; advancing one happens
+        // again and again (Sacrifice Zone Expansion).
         assert!(refused(card(Side::Corp, vec![first(Trigger::OnAgendaScored, Some(Subject::This), None, None)])));
+        assert_eq!(card(Side::Corp, vec![first(Trigger::OnAdvance, Some(Subject::This), None, None)]).validate(), Ok(()));
         // One install is an `OnInstall` and an `OnCardInstalled`.
         assert!(refused(card(Side::Runner, vec![first(Trigger::OnInstall, any, None, None), first(Trigger::OnCardInstalled, any, None, None)])));
         // "The first time" spelled as an intervening if.

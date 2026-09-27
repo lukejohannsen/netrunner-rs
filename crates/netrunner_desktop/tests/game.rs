@@ -1044,7 +1044,7 @@ fn the_agendas_readout_opens_the_score_area_and_a_row_expands() {
         let mut model = app.world_mut().resource_mut::<Model>();
         let view = model.0.view.as_mut().unwrap();
         for (n, card) in [first, second].into_iter().enumerate() {
-            view.corp.scored_agendas.push(netrunner_core::rules::ScoredAgenda { card, install_id: InstallId(9000 + n as u32), agenda_counters: 0, scored_on_turn: 0 });
+            view.corp.scored_agendas.push(netrunner_core::rules::ScoredAgenda { card, install_id: InstallId(9000 + n as u32), agenda_counters: 0, scored_on_turn: 0, installed_on_scoring_turn: false, as_agenda: None });
         }
     }
     let readout = entity_with(&mut app, &Click::Target(Target::Pile(Pile::Agendas(Side::Corp)))).expect("the Corp's Agendas readout is a button");

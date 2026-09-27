@@ -45,6 +45,10 @@ pub(crate) enum Target<'a> {
     Corp { card: &'a CardDefinition, install: InstallId, server: ServerId, root: bool },
     /// An agenda in `side`'s score area.
     Scored { card: &'a CardDefinition, side: Side },
+    /// The Corp install `install`, an agenda the Corp is scoring (Word on
+    /// the Street's additional cost). The copy, not only the card, because
+    /// "an agenda the Corp installed this turn" is a fact about the copy.
+    Scoring { card: &'a CardDefinition, install: InstallId },
 }
 
 impl<'a> Target<'a> {
@@ -55,13 +59,14 @@ impl<'a> Target<'a> {
             | Target::InstallingOnto { card, .. }
             | Target::Rig { card, .. }
             | Target::Corp { card, .. }
-            | Target::Scored { card, .. } => Some(card),
+            | Target::Scored { card, .. }
+            | Target::Scoring { card, .. } => Some(card),
         }
     }
 
     fn install(&self) -> Option<InstallId> {
         match self {
-            Target::Rig { install, .. } | Target::Corp { install, .. } => Some(*install),
+            Target::Rig { install, .. } | Target::Corp { install, .. } | Target::Scoring { install, .. } => Some(*install),
             Target::Player(_) | Target::Card(_) | Target::InstallingOnto { .. } | Target::Scored { .. } => None,
         }
     }
@@ -195,6 +200,11 @@ fn applies(state: &GameState, source: &Source<'_>, scope: &Scope, target: &Targe
             card.side == source.side && matches!(card.card_type, CardType::Event | CardType::Operation) && card_matches_filter(card, filter)
         }
         (Scope::Stealing(filter), Target::Card(card)) => card.card_type == CardType::Agenda && card_matches_filter(card, filter),
+        (Scope::Scoring(filter), Target::Scoring { card, install }) => {
+            card.card_type == CardType::Agenda
+                && card_matches_filter(card, filter)
+                && crate::rules::pending_choice::copy_matches(state, filter, Some(*install))
+        }
         (Scope::Ice, Target::Corp { card, root: false, .. }) => matches!(card.card_type, CardType::Ice(_)),
         (Scope::RootOfThisServer(filter), Target::Corp { card, server, root: true, .. }) => {
             source.server == Some(*server) && card_matches_filter(card, filter)
@@ -399,6 +409,22 @@ pub(crate) fn steal_cost_added(state: &GameState, registry: &CardRegistry, card:
         _ => None,
     })
     .max(0) as u32
+}
+
+/// Every additional cost to score the Corp install `install` (Word on the
+/// Street), each with the card that imposes it and that card's install:
+/// the payer is the Corp, and a cost like "add this resource to their score
+/// area" is about the card that prints it (CR 1.16.10).
+pub(crate) fn score_costs(state: &GameState, registry: &CardRegistry, install: InstallId) -> Vec<(Cost, CardId, Option<InstallId>)> {
+    let Some(installed) = state.find_corp_install(install) else { return Vec::new() };
+    let Some(card) = registry.get(&installed.card) else { return Vec::new() };
+    let mut costs = Vec::new();
+    for_each_applying(state, registry, Target::Scoring { card, install }, |effect, source, _| {
+        if let ContinuousKind::ScoreCost(cost) = &effect.kind {
+            costs.push((cost.clone(), source.card.clone(), source.install));
+        }
+    });
+    costs
 }
 
 /// The agenda points the agenda `card` is worth in `side`'s score area:

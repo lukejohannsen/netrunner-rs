@@ -1,7 +1,7 @@
 use crate::cards::CardRegistry;
 use crate::dsl::CardId;
 use crate::rules::event::GameEvent;
-use crate::rules::state::{GamePhase, GameState, Side};
+use crate::rules::state::{GamePhase, GameState, ScoredAgenda, Side};
 
 /// The single transition into `GamePhase::GameOver` — every win, by any
 /// route (agenda points, flatline, deck-out), goes through here.
@@ -49,10 +49,27 @@ pub fn agenda_value_in(state: &GameState, registry: &CardRegistry, card_id: &Car
     registry.get(card_id).map_or(0, |card| crate::rules::continuous::agenda_points_in(state, registry, card, side))
 }
 
-/// Sums the agenda point value of every card in `side`'s score area. An
-/// unregistered or non-Agenda entry counts 0 rather than panicking.
-fn total_agenda_points<'a>(state: &GameState, scored_agendas: impl IntoIterator<Item = &'a CardId>, registry: &CardRegistry, side: Side) -> u32 {
-    scored_agendas.into_iter().map(|id| agenda_value_in(state, registry, id, side)).sum()
+/// What one entry in the Corp's score area is worth: an agenda's
+/// [`agenda_value_in`], or, for a card added "as an agenda", the points
+/// that addition gave it and nothing it prints (CR 10.1.3) — which may be
+/// negative (Word on the Street).
+pub fn scored_value(state: &GameState, registry: &CardRegistry, scored: &ScoredAgenda) -> i32 {
+    match scored.as_agenda {
+        Some(as_agenda) => as_agenda.points,
+        None => agenda_value_in(state, registry, &scored.card, Side::Corp) as i32,
+    }
+}
+
+/// `side`'s score (CR 1.17.1): the sum of what every card in its score
+/// area is worth, signed, since a card added as an agenda can be worth
+/// less than nothing. An unregistered or non-agenda entry counts 0 rather
+/// than panicking. The one sum the win check, the Amount that reads a
+/// score and a client's number all agree on.
+pub fn score(state: &GameState, registry: &CardRegistry, side: Side) -> i32 {
+    match side {
+        Side::Corp => state.corp.scored_agendas.iter().map(|scored| scored_value(state, registry, scored)).sum(),
+        Side::Runner => state.runner.scored_agendas.iter().map(|card| agenda_value_in(state, registry, card, Side::Runner) as i32).sum(),
+    }
 }
 
 /// Checks whether either side's score area has reached the winning
@@ -83,9 +100,10 @@ pub fn check_win_conditions(state: &mut GameState, registry: &CardRegistry) -> V
     // The threshold is a match rule (7 in Standard, 6 in the starter game),
     // read off the state rather than a const — see `MatchRules`.
     let winning = state.rules.winning_agenda_points;
-    if total_agenda_points(state, state.corp.scored_agendas.iter().map(|scored| &scored.card), registry, Side::Corp) >= winning {
+    let winning = i32::try_from(winning).unwrap_or(i32::MAX);
+    if score(state, registry, Side::Corp) >= winning {
         end_game(state, Side::Corp)
-    } else if total_agenda_points(state, &state.runner.scored_agendas, registry, Side::Runner) >= winning {
+    } else if score(state, registry, Side::Runner) >= winning {
         end_game(state, Side::Runner)
     } else {
         Vec::new()

@@ -1,0 +1,53 @@
+{
+  "id": "word_on_the_street",
+  "title": "Word on the Street",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 2,
+  "unique": true,
+  "continuous": [
+    {
+      "kind": {
+        "ScoreCost": {
+          "AddToScoreAreaAsAgenda": {
+            "points": -1,
+            "cannot_forfeit": true
+          }
+        }
+      },
+      "applies_to": {
+        "Scoring": "InstalledThisTurn"
+      },
+      "text": "As an additional cost to score an agenda the Corp installed this turn, they must add this resource to their score area as an agenda worth −1 agenda points"
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnAgendaScored",
+      "subject": "Any",
+      "when": {
+        "Card": "NotInstalledThisTurn"
+      },
+      "text": "When the Corp scores an agenda they did not install this turn, trash this resource, gain 4[credit], and draw 1 card.",
+      "effects": [
+        {
+          "TrashCard": "ThisCard"
+        },
+        {
+          "GainCredits": [
+            "Runner",
+            4
+          ]
+        },
+        {
+          "DrawCards": [
+            "Runner",
+            1
+          ]
+        }
+      ]
+    }
+  ],
+  "numeric_id": 36025,
+  "is_playable": true
+}

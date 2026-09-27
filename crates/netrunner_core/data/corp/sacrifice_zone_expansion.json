@@ -1,0 +1,61 @@
+{
+  "id": "sacrifice_zone_expansion",
+  "title": "Sacrifice Zone Expansion",
+  "side": "Corp",
+  "card_type": "Agenda",
+  "cost": 0,
+  "advancement_requirement": 4,
+  "agenda_points": 2,
+  "installs_faceup": true,
+  "triggers": [
+    {
+      "trigger": "OnAdvance",
+      "subject": "This",
+      "first_each_turn": true,
+      "text": "The first time each turn you advance this agenda, gain 3[credit].",
+      "effects": [
+        {
+          "GainCredits": [
+            "Corp",
+            3
+          ]
+        }
+      ]
+    },
+    {
+      "trigger": "OnSuccessfulRun",
+      "subject": "Any",
+      "text": "Once per turn → When the Runner makes a successful run on another server, you may remove 1 hosted advancement counter to do 1 meat damage.",
+      "requirement": {
+        "And": [
+          "OncePerTurn",
+          {
+            "Not": "RunAgainstThisServer"
+          }
+        ]
+      },
+      "effects": [
+        {
+          "OfferPaidChoice": {
+            "side": "Corp",
+            "cost": {
+              "RemoveAdvancementCounters": 1
+            },
+            "if_paid": {
+              "DealDamage": [
+                "Meat",
+                1
+              ]
+            },
+            "if_declined": {
+              "Sequence": []
+            },
+            "text": "you may remove 1 hosted advancement counter to do 1 meat damage"
+          }
+        }
+      ]
+    }
+  ],
+  "numeric_id": 36056,
+  "is_playable": true
+}

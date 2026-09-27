@@ -57,7 +57,7 @@ use crate::dsl::{CardDefinition, CardFilter, CardSubtype, CardType, EventFilter,
 use crate::rules::event::GameEvent;
 use crate::rules::listeners::{self, About, Moment};
 use crate::rules::run::ServerId;
-use crate::rules::state::{GameState, Side};
+use crate::rules::state::{GameState, InstallId, Side};
 
 const TRIGGERS: usize = Trigger::ALL.len();
 /// The widest of the four column sets: a card's `Kind`, once for a card
@@ -406,9 +406,18 @@ fn kinds(filter: &CardFilter) -> Result<Vec<Kind>, String> {
 /// asks `is_first` — exactly one, itself — and a price asks
 /// `TurnLog::none_yet`, because an install is priced before it happens.
 /// No card file writes a 0 or a 1, so none can write the wrong one.
-pub(crate) struct AsOf(TurnLog);
+pub(crate) struct AsOf(TurnLog, Option<(InstallId, CopyTurn)>);
 
 impl AsOf {
+    /// Whether the occurrence just counted is the first this turn of any
+    /// of `triggers` about the copy `install` — "the first time each turn
+    /// you advance **this agenda**". Read off the copy as it was counted,
+    /// for the one install the event was about.
+    pub(crate) fn is_first_on(&self, install: Option<InstallId>, turn: u32, triggers: &[Trigger]) -> bool {
+        let Some((counted, copy)) = self.1 else { return false };
+        install == Some(counted) && triggers.iter().map(|trigger| copy.count(turn, *trigger)).sum::<u32>() == 1
+    }
+
     /// Whether the occurrence just counted is the turn's first of `meant`
     /// — several where one printed ability is two entries ("an agenda is
     /// scored **or** stolen").
@@ -419,7 +428,62 @@ impl AsOf {
     /// For a test that plans an event it never recorded.
     #[cfg(test)]
     pub(crate) fn unrecorded(state: &GameState) -> AsOf {
-        AsOf(state.this_turn)
+        AsOf(state.this_turn, None)
+    }
+}
+
+/// What has happened to one Corp install this turn: for each trigger,
+/// whether a moment about this copy has been heard once, or more than once
+/// — all "the first time each turn … **this** card" asks. The turn's log
+/// counts classes (a card's kind, a server's) and has no column for one
+/// copy, and a count per install on `GameState` would be a table to keep in
+/// step with the installs; this rides on the install and leaves with it.
+///
+/// **Dated, never reset**: the counts are of `turn`, and read as none on
+/// any other, as `ScoredAgenda::scored_on_turn` is — so no turn start has a
+/// line for it. Public, as advancing and rezzing a card are: which copy was
+/// advanced is on the table even when the card is not.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CopyTurn {
+    turn: u32,
+    /// A bit per `Trigger::index`.
+    once: u64,
+    twice: u64,
+}
+
+// A bit per trigger.
+const _: () = assert!(Trigger::ALL.len() <= u64::BITS as usize);
+
+impl CopyTurn {
+    /// Whether moments of `trigger` are counted on the copy: those a card
+    /// may print "the first time each turn … this card" about, which is
+    /// advancing it (Sacrifice Zone Expansion) and, so far, nothing else. A
+    /// card leaves the table when it is scored, stolen or trashed, so its
+    /// copy could never count those; `validate` refuses the rest until a
+    /// card prints one.
+    pub(crate) fn counts(trigger: Trigger) -> bool {
+        matches!(trigger, Trigger::OnAdvance)
+    }
+
+    fn bump(&mut self, turn: u32, trigger: Trigger) {
+        if self.turn != turn {
+            *self = CopyTurn { turn, ..CopyTurn::default() };
+        }
+        let bit = 1u64 << trigger.index();
+        if self.once & bit != 0 {
+            self.twice |= bit;
+        }
+        self.once |= bit;
+    }
+
+    /// 0, 1, or 2 for "more than once": `turn`'s moments of `trigger`
+    /// about this copy.
+    pub(crate) fn count(&self, turn: u32, trigger: Trigger) -> u32 {
+        if self.turn != turn {
+            return 0;
+        }
+        let bit = 1u64 << trigger.index();
+        u32::from(self.once & bit != 0) + u32::from(self.twice & bit != 0)
     }
 }
 
@@ -611,9 +675,20 @@ impl From<Sparse> for TurnLog {
 /// anything reacts, so a card asking about the turn while it reacts to an
 /// occurrence finds that occurrence already counted.
 pub(crate) fn record(state: &mut GameState, registry: &CardRegistry, event: &GameEvent) -> AsOf {
+    let mut copy = None;
     for moment in listeners::moments(state, event) {
         let class = class_of(registry, &moment);
         state.this_turn.bump(moment.trigger, moment.of, class);
+        // And on the Corp install the moment is about, if it is one.
+        if let About::Card { install: Some(install), installed: true, .. } = moment.about
+            && CopyTurn::counts(moment.trigger)
+        {
+            let turn = state.turn;
+            if let Some(installed) = state.corp.installed.iter_mut().find(|installed| installed.install_id == install) {
+                installed.this_turn.bump(turn, moment.trigger);
+                copy = Some((install, installed.this_turn));
+            }
+        }
     }
     // The one sum. The points are on the event, so this is still the one
     // door: an agenda scored by a card's text is counted like any other.
@@ -621,7 +696,7 @@ pub(crate) fn record(state: &mut GameState, registry: &CardRegistry, event: &Gam
         let points = u8::try_from(*agenda_points).unwrap_or(u8::MAX);
         state.this_turn.agenda_points_scored = state.this_turn.agenda_points_scored.saturating_add(points);
     }
-    AsOf(state.this_turn)
+    AsOf(state.this_turn, copy)
 }
 
 /// An action was finished — see `TurnLog::actions_finished`.
