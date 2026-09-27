@@ -17,7 +17,6 @@
 
 /// *Vantage Point* (`vp`): tranche 1 of the NSG plan.
 pub(crate) const VP_UNIMPLEMENTED: &[(u32, &str)] = &[
-    (36003, "The Tungsten Tailor"),
     (36004, "Corsair"),
     (36005, "Lampades"),
     (36006, "Hackerspace"),
@@ -30,19 +29,15 @@ pub(crate) const VP_UNIMPLEMENTED: &[(u32, &str)] = &[
     (36020, "Methuselah"),
     (36021, "Touchstone"),
     (36022, "Read-Write Share"),
-    (36023, "Sipa"),
     (36024, "Stowaway"),
     (36025, "Word on the Street"),
     (36028, "Ansel 2.0"),
-    (36031, "Vertigo"),
     (36032, "Caveat Emptor"),
     (36036, "Méliès U: Only the Brightest"),
     (36038, "Esca"),
-    (36039, "ezaM"),
     (36040, "Knowledge Seeker"),
     (36041, "Lionsmane"),
     (36043, "Cultivate"),
-    (36051, "Lethe"),
     (36056, "Sacrifice Zone Expansion"),
     (36057, "Luana Campos"),
     (36058, "Event Horizon"),

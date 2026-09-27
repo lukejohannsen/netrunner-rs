@@ -1,0 +1,63 @@
+{
+  "id": "sipa",
+  "title": "Sipa",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 1,
+  "memory_cost": 2,
+  "triggers": [
+    {
+      "trigger": "OnIcePassed",
+      "subject": "Any",
+      "when": {
+        "Ice": {
+          "outermost": true,
+          "after_fully_breaking": true
+        }
+      },
+      "first_each_turn": true,
+      "acts_on_subject": true,
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Runner",
+            "options": [
+              {
+                "PromptChooseCards": {
+                  "side": "Runner",
+                  "source": "OpponentInstalled",
+                  "filter": {
+                    "All": [
+                      "Ice",
+                      "NotSourceCard"
+                    ]
+                  },
+                  "min": 1,
+                  "max": 1,
+                  "reveal": false,
+                  "shuffle_after": false,
+                  "then": {
+                    "SwapInstalledIce": [
+                      0,
+                      0
+                    ]
+                  }
+                }
+              },
+              {
+                "Sequence": []
+              }
+            ],
+            "texts": [
+              "you may swap it with another installed piece of ice",
+              ""
+            ]
+          }
+        }
+      ],
+      "text": "The first time each turn you pass the outermost piece of ice protecting a server after fully breaking it"
+    }
+  ],
+  "numeric_id": 36023,
+  "is_playable": true
+}

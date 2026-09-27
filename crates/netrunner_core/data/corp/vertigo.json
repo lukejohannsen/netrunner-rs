@@ -1,0 +1,40 @@
+{
+  "id": "vertigo",
+  "title": "Vertigo",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "CodeGate"
+  },
+  "cost": 1,
+  "strength": 1,
+  "triggers": [
+    {
+      "trigger": "OnIcePassed",
+      "subject": "This",
+      "requirement": {
+        "Not": {
+          "RunnerClicksAtLeast": 1
+        }
+      },
+      "effects": [
+        {
+          "Prohibit": {
+            "what": "StealOrTrash",
+            "until": "Run"
+          }
+        }
+      ],
+      "text": "When the Runner passes this ice, if they have no [click] remaining, they cannot steal or trash Corp cards for the remainder of this run."
+    }
+  ],
+  "subroutines": [
+    {
+      "text": "The Runner loses [click].",
+      "effect": {
+        "LoseClicks": 1
+      }
+    }
+  ],
+  "numeric_id": 36031,
+  "is_playable": true
+}

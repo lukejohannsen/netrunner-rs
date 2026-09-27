@@ -211,6 +211,94 @@ pub enum Trigger {
     /// both heard. Composition didn't work: no existing trigger's moment
     /// is a counter landing on the Corp, and `OnTagsGiven` is the Runner's.
     OnBadPublicityTaken,
+    /// "When the Runner passes this ice" (Vertigo), "the first time each
+    /// turn you pass the outermost piece of ice … after fully breaking it"
+    /// (Sipa) — `GameEvent::IcePassed`, about the ice passed. What was
+    /// true of the ice as it was passed (outermost, fully broken during
+    /// the encounter just ended, CR 6.1.3f) is the moment's to say
+    /// (`EventFilter::Ice`), because both are conditions on the event and
+    /// neither is a card's type. Composition didn't work: no moment was a
+    /// pass, and `OnIceApproached` is about the server, one step inward.
+    ///
+    /// **A facedown ice is not "this" to itself here.** An unrezzed piece
+    /// of ice is passed without being encountered, and its "when the
+    /// Runner passes this ice" is inactive (CR 9.1.7) — none of the
+    /// exceptions in CR 9.1.8 is a pass — so the moment is about the ice
+    /// only while it is rezzed (`listeners::moments`).
+    OnIcePassed,
+    /// "The first time each turn you break a subroutine on a piece of ice
+    /// with 0 or less strength" (The Tungsten Tailor) —
+    /// `GameEvent::SubroutineBroken`, about the ice. The strength it was
+    /// broken at is on the event (`EventFilter::Ice`).
+    OnSubroutineBroken,
+    /// "Whenever the Runner … fully breaks this ice" (Lethe): the first
+    /// time during an encounter that every subroutine on the ice is broken
+    /// (CR 6.5.7a), `GameEvent::IceFullyBroken`. A moment of its own, not
+    /// a filter on `OnSubroutineBroken`, because the rules name it and it
+    /// happens once an encounter however many subroutines break together.
+    OnIceFullyBroken,
+    /// "Whenever the Runner bypasses … this ice" (Lethe), CR 6.5.8 —
+    /// `GameEvent::IceBypassed`.
+    OnIceBypassed,
+}
+
+/// What a run's moment about a piece of ice says of it beyond the card —
+/// the words a card prints about the ice passed or broken: "the outermost
+/// piece of ice protecting a server" (CR 4.6.9b), "after fully breaking
+/// it" (CR 6.1.3f), "a piece of ice with 0 or less strength". Each is
+/// public (a strength is on the table during its encounter) and each is
+/// read off the event, never the state, so a trigger asked again where it
+/// fires (`listeners::when_admits`) gets the answer it was planned on.
+///
+/// As a filter (`EventFilter::Ice`), a `true` is required and a `false` is
+/// "either"; as what a moment was (`listeners::Moment::ice`), each is what
+/// held. Three booleans rather than a number because "the first time each
+/// turn" counts them in the turn log (`turn_log::Class::Ice`), which keys a
+/// fixed-size table and cannot hold a strength.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct IceFacts {
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub outermost: bool,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub after_fully_breaking: bool,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub at_most_zero_strength: bool,
+}
+
+impl IceFacts {
+    /// Whether every fact `self` requires holds in `moment`.
+    pub fn admits(self, moment: IceFacts) -> bool {
+        (!self.outermost || moment.outermost)
+            && (!self.after_fully_breaking || moment.after_fully_breaking)
+            && (!self.at_most_zero_strength || moment.at_most_zero_strength)
+    }
+
+    /// The facts `trigger`'s moment states; a filter may ask no others,
+    /// since the rest are always `false` there (`CardDefinition::validate`).
+    pub fn stated_by(trigger: Trigger) -> IceFacts {
+        match trigger {
+            Trigger::OnIcePassed => IceFacts { outermost: true, after_fully_breaking: true, at_most_zero_strength: false },
+            Trigger::OnSubroutineBroken => IceFacts { at_most_zero_strength: true, ..IceFacts::default() },
+            _ => IceFacts::default(),
+        }
+    }
+
+    /// The facts as a number, 0..8 — a column of the turn log.
+    pub fn bits(self) -> usize {
+        usize::from(self.outermost) | usize::from(self.after_fully_breaking) << 1 | usize::from(self.at_most_zero_strength) << 2
+    }
+
+    /// Every combination of the three, in `bits` order.
+    pub const ALL: [IceFacts; 8] = {
+        let mut all = [IceFacts { outermost: false, after_fully_breaking: false, at_most_zero_strength: false }; 8];
+        let mut bits = 0;
+        while bits < 8 {
+            all[bits] = IceFacts { outermost: bits & 1 != 0, after_fully_breaking: bits & 2 != 0, at_most_zero_strength: bits & 4 != 0 };
+            bits += 1;
+        }
+        all
+    };
 }
 
 /// Which occurrences of its trigger a `TriggeredEffect` hears: the one that
@@ -320,6 +408,15 @@ pub enum EventFilter {
     /// and as an intervening if a point of meat damage would have been the
     /// turn's first (the Turn History Rule).
     Damage(crate::dsl::DamageType),
+    /// What was true of the ice a run's moment is about (`IceFacts`):
+    /// Sipa's "the outermost piece of ice … after fully breaking it", The
+    /// Tungsten Tailor's "a piece of ice with 0 or less strength".
+    /// Composition didn't work: `Card` is decided off the definition, and
+    /// each of these is a fact about the ice at that moment; as an
+    /// intervening if, "the first time each turn" would have counted every
+    /// pass and every break (the Turn History Rule). Only on a trigger
+    /// about a piece of ice in a run (`Trigger::is_about_ice_in_a_run`).
+    Ice(IceFacts),
 }
 
 impl Trigger {
@@ -329,7 +426,7 @@ impl Trigger {
     /// `every_trigger_is_listed_at_its_own_index` holds the two together,
     /// and its exhaustive `match` is what stops a new variant compiling
     /// until it is listed here.
-    pub const ALL: [Trigger; 29] = [
+    pub const ALL: [Trigger; 33] = [
         Trigger::OnPlay,
         Trigger::OnRunStart,
         Trigger::OnEncounter,
@@ -359,6 +456,10 @@ impl Trigger {
         Trigger::OnOperationPlayed,
         Trigger::OnTagRemoved,
         Trigger::OnBadPublicityTaken,
+        Trigger::OnIcePassed,
+        Trigger::OnSubroutineBroken,
+        Trigger::OnIceFullyBroken,
+        Trigger::OnIceBypassed,
     ];
 
     /// This trigger's position in `ALL`.
@@ -389,7 +490,11 @@ impl Trigger {
             | Trigger::OnRez
             | Trigger::OnAdvance
             | Trigger::OnEncounter
-            | Trigger::OnAbilityGainedCredits => TriggerAbout::Card,
+            | Trigger::OnAbilityGainedCredits
+            | Trigger::OnIcePassed
+            | Trigger::OnSubroutineBroken
+            | Trigger::OnIceFullyBroken
+            | Trigger::OnIceBypassed => TriggerAbout::Card,
             Trigger::OnRunStart | Trigger::OnIceApproached | Trigger::OnApproachServer | Trigger::OnSuccessfulRun | Trigger::OnRunEnded => {
                 TriggerAbout::Server
             }
@@ -408,6 +513,13 @@ impl Trigger {
             // "whenever you do **meat** damage"; none does.
             Trigger::OnDamageAboutToResolve => TriggerAbout::Damage,
         }
+    }
+
+    /// Whether this trigger's moment is about a piece of ice in a run, so
+    /// that it says what was true of the ice (`IceFacts`) and a `when` may
+    /// ask it (`EventFilter::Ice`).
+    pub fn is_about_ice_in_a_run(self) -> bool {
+        matches!(self, Trigger::OnIcePassed | Trigger::OnSubroutineBroken | Trigger::OnIceFullyBroken | Trigger::OnIceBypassed)
     }
 
     /// Whether a `TriggeredEffect` using this trigger must say which
@@ -444,6 +556,13 @@ impl Trigger {
             | Trigger::OnAgendaStolen
             | Trigger::OnRez
             | Trigger::OnEncounter
+            // Only the Runner passes, breaks and bypasses ice, so a
+            // Runner card's "you pass" and a Corp card's "the Runner
+            // passes this ice" hear the one moment.
+            | Trigger::OnIcePassed
+            | Trigger::OnSubroutineBroken
+            | Trigger::OnIceFullyBroken
+            | Trigger::OnIceBypassed
             | Trigger::OnRunStart
             | Trigger::OnIceApproached
             | Trigger::OnApproachServer
@@ -469,7 +588,7 @@ mod tests {
         // Exhaustive, so a new variant stops here until it is added to
         // `Trigger::ALL` — the turn log indexes a fixed array by it.
         let listed = |trigger: Trigger| match trigger {
-            Trigger::OnPlay | Trigger::OnRunStart | Trigger::OnEncounter | Trigger::OnTurnStart | Trigger::OnAccessed | Trigger::OnTrashedFromAccess | Trigger::OnSuccessfulRun | Trigger::Paid | Trigger::OnInstall | Trigger::OnAgendaScored | Trigger::OnAgendaStolen | Trigger::OnDamageAboutToResolve | Trigger::OnRez | Trigger::OnApproachServer | Trigger::OnRunEnded | Trigger::OnBasicDrawAction | Trigger::OnTagsGiven | Trigger::OnAdvance | Trigger::OnDiscardPhaseEnd | Trigger::OnActionPhaseEnd | Trigger::OnCardInstalled | Trigger::OnDamageDealt | Trigger::OnCardsTrashedFromHq | Trigger::OnAbilityGainedCredits | Trigger::OnForfeit | Trigger::OnIceApproached | Trigger::OnOperationPlayed | Trigger::OnTagRemoved | Trigger::OnBadPublicityTaken => Trigger::ALL.contains(&trigger),
+            Trigger::OnPlay | Trigger::OnRunStart | Trigger::OnEncounter | Trigger::OnTurnStart | Trigger::OnAccessed | Trigger::OnTrashedFromAccess | Trigger::OnSuccessfulRun | Trigger::Paid | Trigger::OnInstall | Trigger::OnAgendaScored | Trigger::OnAgendaStolen | Trigger::OnDamageAboutToResolve | Trigger::OnRez | Trigger::OnApproachServer | Trigger::OnRunEnded | Trigger::OnBasicDrawAction | Trigger::OnTagsGiven | Trigger::OnAdvance | Trigger::OnDiscardPhaseEnd | Trigger::OnActionPhaseEnd | Trigger::OnCardInstalled | Trigger::OnDamageDealt | Trigger::OnCardsTrashedFromHq | Trigger::OnAbilityGainedCredits | Trigger::OnForfeit | Trigger::OnIceApproached | Trigger::OnOperationPlayed | Trigger::OnTagRemoved | Trigger::OnBadPublicityTaken | Trigger::OnIcePassed | Trigger::OnSubroutineBroken | Trigger::OnIceFullyBroken | Trigger::OnIceBypassed => Trigger::ALL.contains(&trigger),
         };
         assert!(Trigger::ALL.iter().all(|trigger| listed(*trigger)));
     }

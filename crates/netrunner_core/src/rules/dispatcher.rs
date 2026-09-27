@@ -421,6 +421,10 @@ fn still_applies(state: &GameState, due: &DeferredTrigger) -> bool {
                 | GameEvent::RunSucceeded { .. }
                 | GameEvent::IceEncountered { .. }
                 | GameEvent::RunInitiated { .. }
+                | GameEvent::IcePassed { .. }
+                | GameEvent::SubroutineBroken { .. }
+                | GameEvent::IceFullyBroken { .. }
+                | GameEvent::IceBypassed { .. }
         )
     );
     // A trigger pinned to an install that has since left play stands

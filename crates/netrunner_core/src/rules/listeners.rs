@@ -31,7 +31,7 @@
 //! saying it outlives being active.
 
 use crate::cards::CardRegistry;
-use crate::dsl::{CardId, EventFilter, Hears, Subject, Trigger, TriggeredEffect};
+use crate::dsl::{CardId, EventFilter, Hears, IceFacts, Subject, Trigger, TriggeredEffect};
 use crate::rules::active;
 use crate::rules::turn_log::{self, AsOf};
 use crate::rules::event::GameEvent;
@@ -66,6 +66,10 @@ pub(crate) struct Moment {
     /// (`Hears::OwnSide`): whose turn began, who installed, who dealt the
     /// damage.
     pub of: Option<Side>,
+    /// What was true of the ice, for a moment about a piece of ice in a
+    /// run (`Trigger::is_about_ice_in_a_run`) — read off the event, so a
+    /// `when` asked again where the trigger fires gets the same answer.
+    pub ice: Option<IceFacts>,
 }
 
 /// A card that may hear a moment.
@@ -88,7 +92,19 @@ struct Listener {
 /// `GameEvent` is a decision made here rather than a silence.
 pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
     let card = |card: &CardId, install: Option<InstallId>| About::Card { card: card.clone(), install, installed: install.is_some() };
-    let moment = |trigger, about: &About, of| Moment { trigger, about: about.clone(), of };
+    let moment = |trigger, about: &About, of| Moment { trigger, about: about.clone(), of, ice: None };
+    // A moment about the ice at `position` in the run's ice. Where the run
+    // or the ice has gone by the time the moment is asked again — a
+    // trigger fired after the run ended — it is about nothing, and keeps
+    // what the event says was true of the ice.
+    let ice_moment = |trigger, position: u32, facts: IceFacts| {
+        let about = state
+            .active_run
+            .as_ref()
+            .and_then(|run| run.ice.get(position as usize))
+            .map_or(About::Nothing, |ice| About::Card { card: ice.card_id.clone(), install: Some(ice.install_id), installed: true });
+        Moment { trigger, about, of: Some(Side::Runner), ice: Some(facts) }
+    };
     match event {
         GameEvent::EventPlayed { side, card: played } => vec![moment(Trigger::OnPlay, &card(played, None), Some(*side))],
 
@@ -164,6 +180,20 @@ pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
             vec![moment(Trigger::OnEncounter, &card(card_id, encountered_install(state)), Some(Side::Runner))]
         }
         GameEvent::RunSucceeded { server } => vec![moment(Trigger::OnSuccessfulRun, &About::Server(*server), Some(Side::Runner))],
+        // The run's four moments about the ice itself. The outermost piece
+        // of ice is the first in the run's list (CR 4.6.9b; `RunState::ice`
+        // is outermost first).
+        GameEvent::IcePassed { position, after_fully_breaking, .. } => vec![ice_moment(
+            Trigger::OnIcePassed,
+            *position,
+            IceFacts { outermost: *position == 0, after_fully_breaking: *after_fully_breaking, ..IceFacts::default() },
+        )],
+        GameEvent::SubroutineBroken { strength, .. } => {
+            let position = state.active_run.as_ref().map_or(0, |run| run.position as u32);
+            vec![ice_moment(Trigger::OnSubroutineBroken, position, IceFacts { at_most_zero_strength: *strength <= 0, ..IceFacts::default() })]
+        }
+        GameEvent::IceFullyBroken { position, .. } => vec![ice_moment(Trigger::OnIceFullyBroken, *position, IceFacts::default())],
+        GameEvent::IceBypassed { position, .. } => vec![ice_moment(Trigger::OnIceBypassed, *position, IceFacts::default())],
         // Only the ordinary conclusions: a flatline or an agenda win
         // mid-access ends the game, and nothing resolves after that.
         GameEvent::RunCompleted { server } | GameEvent::RunJackedOut { server } | GameEvent::RunEndedByEffect { server } => {
@@ -203,11 +233,8 @@ pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
         GameEvent::ClickSpent { .. }
         | GameEvent::CreditsGained { .. }
         | GameEvent::CardDrawn { .. }
-        | GameEvent::SubroutineBroken { .. }
         | GameEvent::SubroutineFired { .. }
         | GameEvent::IceStrengthModified { .. }
-        | GameEvent::IcePassed { .. }
-        | GameEvent::IceBypassed { .. }
         | GameEvent::CardDerezzed { .. }
         | GameEvent::IceSwapped { .. }
         | GameEvent::CardMoved { .. }
@@ -339,8 +366,11 @@ fn is_this(listener: &Listener, moment: &Moment) -> bool {
 }
 
 /// Whether what a moment is about passes a card's `when`.
-fn passes(registry: &CardRegistry, filter: &EventFilter, about: &About) -> bool {
-    match (filter, about) {
+fn passes(registry: &CardRegistry, filter: &EventFilter, moment: &Moment) -> bool {
+    if let EventFilter::Ice(required) = filter {
+        return moment.ice.is_some_and(|facts| required.admits(facts));
+    }
+    match (filter, &moment.about) {
         (EventFilter::Card(filter), About::Card { card, .. }) => {
             registry.get(card).is_some_and(|definition| crate::dsl::card_matches_filter(definition, filter))
         }
@@ -364,7 +394,7 @@ fn passes(registry: &CardRegistry, filter: &EventFilter, about: &About) -> bool 
 pub(crate) fn when_admits(state: &GameState, registry: &CardRegistry, triggered: &TriggeredEffect, event: Option<&GameEvent>) -> bool {
     let Some(filter) = &triggered.when else { return true };
     let Some(event) = event else { return false };
-    moments(state, event).iter().any(|moment| moment.trigger == triggered.trigger && passes(registry, filter, &moment.about))
+    moments(state, event).iter().any(|moment| moment.trigger == triggered.trigger && passes(registry, filter, moment))
 }
 
 /// Whether one `TriggeredEffect` on `listener` hears `moment`.
@@ -377,7 +407,7 @@ fn hears(registry: &CardRegistry, triggered: &TriggeredEffect, listener: &Listen
     if triggered.first_each_turn && later {
         return false;
     }
-    if triggered.when.as_ref().is_some_and(|filter| !passes(registry, filter, &moment.about)) {
+    if triggered.when.as_ref().is_some_and(|filter| !passes(registry, filter, moment)) {
         return false;
     }
     if triggered.trigger.hears() == Hears::OwnSide && moment.of.is_some_and(|side| side != listener.side) {
@@ -412,6 +442,12 @@ fn listeners(state: &GameState, registry: &CardRegistry, moments: &[Moment]) -> 
     // gone from the table — it listens for what is about itself.
     for moment in moments {
         let About::Card { card, install, .. } = &moment.about else { continue };
+        // A pass, a break and a bypass are none of CR 9.1.8's exceptions,
+        // so ice hears them only while it is active (9.1.7): an unrezzed
+        // Vertigo passed does not fire.
+        if moment.trigger.is_about_ice_in_a_run() {
+            continue;
+        }
         let Some(side) = registry.get(card).map(|definition| definition.side) else { continue };
         let group = match side {
             Side::Corp => &mut corp,

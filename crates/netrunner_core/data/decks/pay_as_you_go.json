@@ -3,7 +3,7 @@
   "name": "Pay As You Go",
   "side": "Runner",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach a payment two pools could make. Noise with the Core Set's three pool cards — Cyberfeeder, The Toolbox, Crash Space — beside Overclock, whose credits compete with theirs on every pump and break; viruses for Cyberfeeder to install. Vantage Point's Take a Dive in Jailbreak's place, so an Anarch run gives the Corp bad publicity. Eternal-legal only. Vantage Point Stage 3b: Chain Reaction for Overclock.",
+  "description": "Not a published list: built so the sweeps reach a payment two pools could make. Noise with the Core Set's three pool cards — Cyberfeeder, The Toolbox, Crash Space — beside Overclock, whose credits compete with theirs on every pump and break; viruses for Cyberfeeder to install. Vantage Point's Take a Dive in Jailbreak's place, so an Anarch run gives the Corp bad publicity. Eternal-legal only. Vantage Point Stage 3b: Chain Reaction for Overclock. Vantage Point Stage 4a: The Tungsten Tailor for Scrounge and a Wildcat Strike.",
   "style": "builder",
   "identity": "noise",
   "cards": [
@@ -65,18 +65,18 @@
     },
     {
       "card": "wildcat_strike",
-      "count": 3
+      "count": 2
     },
     {
       "card": "smartware_distributor",
       "count": 3
     },
     {
-      "card": "scrounge",
-      "count": 1
+      "card": "t400_memory_diamond",
+      "count": 2
     },
     {
-      "card": "t400_memory_diamond",
+      "card": "the_tungsten_tailor",
       "count": 2
     }
   ]

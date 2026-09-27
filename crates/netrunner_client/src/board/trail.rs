@@ -131,7 +131,7 @@ impl RunTrail {
                     }
                 }
             }
-            GameEvent::SubroutineBroken { card_id, index } => {
+            GameEvent::SubroutineBroken { card_id, index, .. } => {
                 self.mark_subroutine(*index, SubroutineStatus::Broken);
                 self.consequences.push(format!("{} broken on {}", subroutine_words(card_id, *index, registry), title(card_id)));
             }
@@ -473,6 +473,7 @@ mod tests {
             bad_publicity_credits: 0,
             bonus_run_credits: 0,
             redirect_on_approach: None,
+            fully_broken: false,
         };
         let mut trail = RunTrail::begin(&run);
         assert_eq!(trail.stage, Stage::AtIce(0));
@@ -481,7 +482,7 @@ mod tests {
         let ice = CardId("palisade".to_string());
         for event in [
             GameEvent::SubroutineFired { card_id: ice.clone(), index: 0, effect: netrunner_core::dsl::Effect::EndTheRun },
-            GameEvent::IcePassed { server: ServerId::Hq, position: 0 },
+            GameEvent::IcePassed { server: ServerId::Hq, position: 0, after_fully_breaking: false },
             GameEvent::IceApproached { server: ServerId::Hq, position: 1 },
         ] {
             trail.observe(&event, &registry);
@@ -495,7 +496,7 @@ mod tests {
         trail.observe(&GameEvent::RunJackedOut { server: ServerId::Hq }, &registry);
         assert_eq!(trail.stage, Stage::AtServer);
         assert_eq!(trail.outcome, Some(Outcome::JackedOut));
-        assert!(is_step(&GameEvent::IcePassed { server: ServerId::Hq, position: 0 }));
+        assert!(is_step(&GameEvent::IcePassed { server: ServerId::Hq, position: 0, after_fully_breaking: false }));
         assert!(!is_step(&GameEvent::IceRezzed { card: ice, server: ServerId::Hq, install: InstallId(3) }));
     }
 }

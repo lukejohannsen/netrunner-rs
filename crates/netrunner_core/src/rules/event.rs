@@ -11,10 +11,24 @@ pub enum GameEvent {
     CardDrawn { side: Side },
     IceApproached { server: ServerId, position: u32 },
     IceEncountered { card_id: CardId, strength: i32, subroutine_count: usize },
-    SubroutineBroken { card_id: CardId, index: usize },
+    /// `strength` is the ice's strength as the subroutine was broken
+    /// (`continuous::ice_strength`), carried because what a card hears
+    /// about the break is read off the event (`EventFilter::Ice`, The
+    /// Tungsten Tailor's "a piece of ice with 0 or less strength") and a
+    /// strength read later could have moved.
+    SubroutineBroken { card_id: CardId, index: usize, strength: i32 },
     SubroutineFired { card_id: CardId, index: usize, effect: Effect },
     IceStrengthModified { card_id: CardId, new_strength: i32, delta: i32 },
-    IcePassed { server: ServerId, position: u32 },
+    /// `after_fully_breaking`: the ice is passed after an encounter in
+    /// which the Runner fully broke it (CR 6.1.3f) — false for a piece of
+    /// ice passed unrezzed, and for one whose encounter ended with a
+    /// subroutine unbroken. Sipa reads it.
+    IcePassed { server: ServerId, position: u32, after_fully_breaking: bool },
+    /// The Runner fully broke the ice being encountered: the first time
+    /// this encounter that every subroutine on it was broken (CR 6.5.7a).
+    /// Lethe gives a tag for it. `position` is where it stands in the
+    /// run's ice, as `IceBypassed`'s is.
+    IceFullyBroken { card_id: CardId, position: u32 },
     /// The Runner bypassed the ice being encountered
     /// (`Effect::BypassEncounteredIce`, Fransofia Ward): its remaining
     /// subroutines will not fire and its own "when encountered" reactions
@@ -453,6 +467,7 @@ impl GameEvent {
             GameEvent::ClickSpent { .. } | GameEvent::CreditsGained { .. } | GameEvent::IceApproached { .. }
             | GameEvent::SubroutineBroken { .. } | GameEvent::SubroutineFired { .. }
             | GameEvent::IceStrengthModified { .. } | GameEvent::IcePassed { .. } | GameEvent::IceBypassed { .. }
+            | GameEvent::IceFullyBroken { .. }
             | GameEvent::ServerApproached { .. } | GameEvent::RunSucceeded { .. } | GameEvent::RunJackedOut { .. }
             | GameEvent::RunCompleted { .. } | GameEvent::CardInstalled { .. } | GameEvent::CardDerezzed { .. }
             | GameEvent::IceSwapped { .. } | GameEvent::CardMoved { .. } | GameEvent::RunInitiated { .. }

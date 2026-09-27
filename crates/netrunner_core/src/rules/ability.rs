@@ -280,7 +280,21 @@ pub fn evaluate_effect(
             prevention::would(state, registry, WouldHappen::Damage { kind: *damage_type, amount: *amount as u32 }, ctx)
         }
 
-        Effect::ModifyStrength(delta) => {
+        Effect::ModifyStrength { delta, each_ice, duration } => {
+            let source = |fallback: &CardId| acting_card.cloned().unwrap_or_else(|| fallback.clone());
+            // "Each piece of ice … for the remainder of this run" (ezaM):
+            // every piece of ice, the ones installed later too, which is
+            // `On::EachIce` asked at every read — not one entry per ice.
+            if *each_ice {
+                let until = lingering::until(state, *duration)?;
+                let encountered = state.active_run.as_ref().filter(|run| run.phase == RunPhase::EncounterIce).and_then(|run| run.ice.get(run.position)).cloned();
+                let fallback = encountered.as_ref().map_or_else(|| CardId(String::new()), |ice| ice.card_id.clone());
+                state.lingering.push(LingeringEffect { what: Lingering::Strength(*delta), on: On::EachIce, until, source: source(&fallback) });
+                return Ok(encountered
+                    .map(|ice| GameEvent::IceStrengthModified { new_strength: continuous::ice_strength(state, registry, &ice), card_id: ice.card_id, delta: *delta })
+                    .into_iter()
+                    .collect());
+            }
             let run = state.active_run.as_ref().ok_or(RulesError::NoActiveRun)?;
             if run.phase != RunPhase::EncounterIce {
                 return Err(RulesError::NotInEncounter);
@@ -289,19 +303,15 @@ pub fn evaluate_effect(
             // `NotInEncounter` doubles as the defensive fallback here if
             // `position` were ever out of bounds — an invariant violation
             // that shouldn't happen while `phase == EncounterIce`, but
-            // `.get_mut` avoids a raw-index panic regardless.
+            // `.get` avoids a raw-index panic regardless.
             let ice = run.ice.get(position).ok_or(RulesError::NotInEncounter)?;
-            let (card_id, install) = (ice.card_id.clone(), ice.install_id);
+            let card_id = ice.card_id.clone();
             // "For the remainder of this encounter" (Leech). This wrote the
             // delta into `RunIce::current_strength`, where nothing took it
             // back out, so it lasted the run.
-            let source = acting_card.cloned().unwrap_or_else(|| card_id.clone());
-            state.lingering.push(LingeringEffect {
-                what: Lingering::Strength(*delta),
-                on: On::Install(install),
-                until: Until::EndOfEncounter(install),
-                source,
-            });
+            let until = lingering::until(state, *duration)?;
+            let (on, source) = (ice.install_id, source(&card_id));
+            state.lingering.push(LingeringEffect { what: Lingering::Strength(*delta), on: On::Install(on), until, source });
             let run = state.active_run.as_ref().ok_or(RulesError::NoActiveRun)?;
             let new_strength = continuous::ice_strength(state, registry, &run.ice[position]);
             Ok(vec![GameEvent::IceStrengthModified { card_id, new_strength, delta: *delta }])
@@ -676,7 +686,14 @@ pub fn evaluate_effect(
             Ok(vec![GameEvent::CardHosted { card, host: acting }])
         }
 
-        Effect::BypassEncounteredIce => run::bypass_encountered_ice(state),
+        // A moment Lethe hears, so it goes through the one door.
+        Effect::BypassEncounteredIce => {
+            let mut events = Vec::new();
+            for event in run::bypass_encountered_ice(state)? {
+                dispatcher::emit(state, registry, &mut events, event)?;
+            }
+            Ok(events)
+        }
 
         Effect::FlipIdentity => {
             // Whichever identity is resolving. Only an identity carries a
@@ -867,8 +884,9 @@ pub fn evaluate_effect(
             };
             let mut events = Vec::new();
             for idx in pending.into_iter().take(take) {
-                let (card_id, _effect) = run::transition_subroutine(state, idx, SubroutineStatus::Broken)?;
-                events.push(GameEvent::SubroutineBroken { card_id, index: idx });
+                for event in run::break_subroutine(state, registry, idx)? {
+                    dispatcher::emit(state, registry, &mut events, event)?;
+                }
             }
             Ok(events)
         }
@@ -895,8 +913,9 @@ pub fn evaluate_effect(
             };
             let mut events = Vec::new();
             for idx in pending.into_iter().take(take) {
-                let (card_id, _effect) = run::transition_subroutine(state, idx, SubroutineStatus::Broken)?;
-                events.push(GameEvent::SubroutineBroken { card_id, index: idx });
+                for event in run::break_subroutine(state, registry, idx)? {
+                    dispatcher::emit(state, registry, &mut events, event)?;
+                }
             }
             Ok(events)
         }
@@ -3470,7 +3489,7 @@ mod tests {
         let mut registry = CardRegistry::new();
         registry.insert(crate::rules::test_support::ice_printing("ice_wall", 3));
 
-        let events = evaluate_effect(&mut state, &Effect::ModifyStrength(2), &mut ResolutionContext::for_card(None), &registry).unwrap();
+        let events = evaluate_effect(&mut state, &Effect::ModifyStrength { delta: 2, each_ice: false, duration: crate::dsl::EffectDuration::Encounter }, &mut ResolutionContext::for_card(None), &registry).unwrap();
 
         let ice = state.active_run.as_ref().unwrap().ice[0].clone();
         assert_eq!(continuous::ice_strength(&state, &registry, &ice), 5);
@@ -3497,7 +3516,7 @@ mod tests {
             });
 
         assert_eq!(
-            evaluate_effect(&mut state, &Effect::ModifyStrength(2), &mut ResolutionContext::for_card(None), &CardRegistry::new()),
+            evaluate_effect(&mut state, &Effect::ModifyStrength { delta: 2, each_ice: false, duration: crate::dsl::EffectDuration::Encounter }, &mut ResolutionContext::for_card(None), &CardRegistry::new()),
             Err(RulesError::NotInEncounter)
         );
     }
@@ -3506,7 +3525,7 @@ mod tests {
     fn modify_strength_with_no_active_run_errors() {
         let mut state = game_state();
         assert_eq!(
-            evaluate_effect(&mut state, &Effect::ModifyStrength(2), &mut ResolutionContext::for_card(None), &CardRegistry::new()),
+            evaluate_effect(&mut state, &Effect::ModifyStrength { delta: 2, each_ice: false, duration: crate::dsl::EffectDuration::Encounter }, &mut ResolutionContext::for_card(None), &CardRegistry::new()),
             Err(RulesError::NoActiveRun)
         );
     }
@@ -4125,8 +4144,8 @@ mod tests {
         assert_eq!(
             events,
             vec![
-                GameEvent::SubroutineBroken { card_id: CardId("ice_wall".to_string()), index: 0 },
-                GameEvent::SubroutineBroken { card_id: CardId("ice_wall".to_string()), index: 1 },
+                GameEvent::SubroutineBroken { card_id: CardId("ice_wall".to_string()), index: 0, strength: 0 },
+                GameEvent::SubroutineBroken { card_id: CardId("ice_wall".to_string()), index: 1, strength: 0 },
             ]
         );
     }
@@ -4142,7 +4161,7 @@ mod tests {
             &CardRegistry::new())
         .unwrap();
 
-        assert_eq!(events.len(), 1);
+        assert_eq!(events.len(), 2, "the break and the full break");
         let ice = &state.active_run.unwrap().ice[0];
         assert_eq!(ice.subroutines[0].status, SubroutineStatus::Broken);
     }
@@ -4158,7 +4177,7 @@ mod tests {
             &CardRegistry::new())
         .unwrap();
 
-        assert_eq!(events.len(), 3);
+        assert_eq!(events.len(), 4, "three breaks and the full break");
         let ice = state.active_run.unwrap().ice;
         assert!(ice[0].subroutines.iter().all(|s| s.status == SubroutineStatus::Broken));
     }
@@ -4237,7 +4256,7 @@ mod tests {
 
         assert_eq!(
             events,
-            vec![GameEvent::SubroutineBroken { card_id: CardId("ice_wall".to_string()), index: 0 }]
+            vec![GameEvent::SubroutineBroken { card_id: CardId("ice_wall".to_string()), index: 0, strength: 2 }, GameEvent::IceFullyBroken { card_id: CardId("ice_wall".to_string()), position: 0 }]
         );
         let ice = &state.active_run.unwrap().ice[0];
         assert_eq!(ice.subroutines[0].status, SubroutineStatus::Broken);
@@ -4255,7 +4274,7 @@ mod tests {
             &CardRegistry::new())
         .unwrap();
 
-        assert_eq!(events, vec![GameEvent::SubroutineBroken { card_id: CardId("ice_wall".to_string()), index: 1 }]);
+        assert_eq!(events, vec![GameEvent::SubroutineBroken { card_id: CardId("ice_wall".to_string()), index: 1, strength: 0 }, GameEvent::IceFullyBroken { card_id: CardId("ice_wall".to_string()), position: 0 }]);
     }
 
     fn ice_encounter_state_of_type(
@@ -4291,7 +4310,7 @@ mod tests {
 
         assert_eq!(
             events,
-            vec![GameEvent::SubroutineBroken { card_id: CardId("ice_wall".to_string()), index: 0 }]
+            vec![GameEvent::SubroutineBroken { card_id: CardId("ice_wall".to_string()), index: 0, strength: 0 }, GameEvent::IceFullyBroken { card_id: CardId("ice_wall".to_string()), position: 0 }]
         );
     }
 
@@ -4334,7 +4353,7 @@ mod tests {
 
             assert_eq!(
                 events,
-                vec![GameEvent::SubroutineBroken { card_id: CardId("ice_wall".to_string()), index: 0 }]
+                vec![GameEvent::SubroutineBroken { card_id: CardId("ice_wall".to_string()), index: 0, strength: 0 }, GameEvent::IceFullyBroken { card_id: CardId("ice_wall".to_string()), position: 0 }]
             );
         }
     }

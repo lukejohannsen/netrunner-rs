@@ -278,6 +278,7 @@ mod tests {
             bad_publicity_credits: 0,
             bonus_run_credits: 0,
             redirect_on_approach: None,
+            fully_broken: false,
         };
         // No ice: the steps are there, and none of them counts a piece.
         view.active_run = Some(run.clone());

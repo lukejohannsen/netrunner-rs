@@ -1017,6 +1017,11 @@ impl CardDefinition {
                 Some(EventFilter::Card(_) | EventFilter::InstalledCard(_)) => about == TriggerAbout::Card,
                 Some(EventFilter::Server(_)) => about == TriggerAbout::Server,
                 Some(EventFilter::Damage(_)) => about == TriggerAbout::Damage,
+                // Only what the moment states: a pass says whether the ice
+                // was outermost and fully broken, a break its strength.
+                Some(EventFilter::Ice(required)) => {
+                    triggered.trigger.is_about_ice_in_a_run() && required.admits(crate::dsl::IceFacts::stated_by(triggered.trigger))
+                }
             };
             if !filter_fits {
                 return Err(CardValidationError::TriggerFilterOfTheWrongKind(self.id.clone(), triggered.trigger));

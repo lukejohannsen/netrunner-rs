@@ -2030,6 +2030,7 @@ mod tests {
             bad_publicity_credits: 0,
             bonus_run_credits: 0,
             redirect_on_approach: None,
+            fully_broken: false,
         });
         view.legal_actions = vec![PlayerAction::StealAgenda { card_id: card.clone() }];
 

@@ -4057,7 +4057,7 @@ mod tests {
             vec![
                 GameEvent::PriorityPassed { side: Side::Corp },
                 GameEvent::PaidAbilityWindowClosed,
-                GameEvent::IcePassed { server: ServerId::Hq, position: 0 },
+                GameEvent::IcePassed { server: ServerId::Hq, position: 0, after_fully_breaking: false },
             ]
         );
 
@@ -4702,7 +4702,7 @@ mod tests {
             events,
             vec![
                 GameEvent::ClickSpent { side: Side::Runner },
-                GameEvent::SubroutineBroken { card_id: CardId("ice_wall".to_string()), index: 0 },
+                GameEvent::SubroutineBroken { card_id: CardId("ice_wall".to_string()), index: 0, strength: 0 },
             ]
         );
     }
@@ -4921,7 +4921,7 @@ mod tests {
             Side::Runner,
             Trigger::Paid,
             Some(Cost::Credits(1)),
-            Effect::ModifyStrength(1),
+            Effect::ModifyStrength { delta: 1, each_ice: false, duration: crate::dsl::EffectDuration::Encounter },
         ));
 
         let (next, events) = apply_action(
@@ -5071,7 +5071,8 @@ mod tests {
             vec![
                 GameEvent::CreditsSpent { side: Side::Runner, amount: 1 },
                 GameEvent::AbilityActivated { side: Side::Runner, card_id, ability_index: 0 },
-                GameEvent::SubroutineBroken { card_id: CardId("ice_wall".to_string()), index: 0 },
+                GameEvent::SubroutineBroken { card_id: CardId("ice_wall".to_string()), index: 0, strength: 0 },
+                GameEvent::IceFullyBroken { card_id: CardId("ice_wall".to_string()), position: 0 },
             ]
         );
     }
@@ -5267,7 +5268,7 @@ mod tests {
             Side::Runner,
             Trigger::Paid,
             Some(Cost::Credits(1)),
-            Effect::ModifyStrength(1),
+            Effect::ModifyStrength { delta: 1, each_ice: false, duration: crate::dsl::EffectDuration::Encounter },
         ));
 
         let (next, _events) = apply_action(
@@ -5307,7 +5308,7 @@ mod tests {
             Side::Runner,
             Trigger::Paid,
             Some(Cost::Credits(1)),
-            Effect::ModifyStrength(1),
+            Effect::ModifyStrength { delta: 1, each_ice: false, duration: crate::dsl::EffectDuration::Encounter },
         ));
 
         let result = apply_action(
@@ -5425,7 +5426,7 @@ mod tests {
             Side::Runner,
             Trigger::Paid,
             Some(Cost::Credits(1)),
-            Effect::ModifyStrength(1),
+            Effect::ModifyStrength { delta: 1, each_ice: false, duration: crate::dsl::EffectDuration::Encounter },
         ));
 
         let result = apply_action(
@@ -5452,7 +5453,7 @@ mod tests {
             Side::Runner,
             Trigger::Paid,
             Some(Cost::Credits(1)),
-            Effect::ModifyStrength(1),
+            Effect::ModifyStrength { delta: 1, each_ice: false, duration: crate::dsl::EffectDuration::Encounter },
         ));
 
         let result = apply_action(
@@ -5476,7 +5477,7 @@ mod tests {
             Side::Runner,
             Trigger::OnEncounter,
             Some(Cost::Credits(1)),
-            Effect::ModifyStrength(1),
+            Effect::ModifyStrength { delta: 1, each_ice: false, duration: crate::dsl::EffectDuration::Encounter },
         ));
 
         let result = apply_action(

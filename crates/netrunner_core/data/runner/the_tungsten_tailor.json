@@ -1,0 +1,41 @@
+{
+  "id": "the_tungsten_tailor",
+  "title": "The Tungsten Tailor",
+  "side": "Runner",
+  "card_type": "Hardware",
+  "cost": 3,
+  "continuous": [
+    {
+      "kind": {
+        "Strength": {
+          "per": -1
+        }
+      },
+      "applies_to": "Ice",
+      "text": "Each piece of ice gets −1 strength."
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnSubroutineBroken",
+      "subject": "Any",
+      "when": {
+        "Ice": {
+          "at_most_zero_strength": true
+        }
+      },
+      "first_each_turn": true,
+      "effects": [
+        {
+          "GainCredits": [
+            "Runner",
+            1
+          ]
+        }
+      ],
+      "text": "The first time each turn you break a subroutine on a piece of ice with 0 or less strength, gain 1[credit]."
+    }
+  ],
+  "numeric_id": 36003,
+  "is_playable": true
+}

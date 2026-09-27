@@ -411,6 +411,17 @@ pub struct RunState {
     /// reactions and stand down any already deferred.
     #[serde(default)]
     pub ice_bypassed: bool,
+    /// Whether the Runner has fully broken the ice at `position` during
+    /// this encounter (CR 6.5.7a: the first time every subroutine on it is
+    /// broken) — set where a subroutine is broken
+    /// (`run::break_subroutine`), cleared when an encounter begins and by
+    /// `enter_movement`. Read when the ice is passed, which is what "after
+    /// fully breaking it" asks (CR 6.1.3f: only the encounter just ended
+    /// counts), and what keeps a second full break in one encounter from
+    /// being a second occurrence (6.5.7d). State and not context, because
+    /// the break and the pass are separate actions.
+    #[serde(default)]
+    pub fully_broken: bool,
     /// A temporary Runner credit pool for this run only, set once at run
     /// start by whatever initiated it (e.g. Overclock's "place 5 credits on
     /// this event, then run any server — you can spend hosted credits
@@ -471,6 +482,7 @@ impl Default for RunState {
             bonus_run_credits: 0,
             initiated_by: None,
             ice_bypassed: false,
+            fully_broken: false,
             agendas_stolen_this_run: 0,
             persistent_trashed_upgrades: Vec::new(),
             on_success_effect: None,

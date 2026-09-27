@@ -30,7 +30,10 @@
         "RemoveCounters": 1
       },
       "effect": {
-        "ModifyStrength": -1
+        "ModifyStrength": {
+          "delta": -1,
+          "duration": "Encounter"
+        }
       },
       "requirement": "DuringEncounter",
       "text": "Hosted virus counter: The ice you are encountering gets -1 strength for the remainder of this encounter."
