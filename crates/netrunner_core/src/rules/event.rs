@@ -52,6 +52,13 @@ pub enum GameEvent {
     /// is how the Corp learns which of its cards was accessed there. Public
     /// by definition; no card hears a reveal yet.
     CardRevealed { side: Side, card: CardId },
+    /// The run against `server` reached its Success Phase and was not
+    /// declared successful (CR 6.9.5a, 6.8.4a): a card said runs there
+    /// cannot be (`ContinuousKind::CannotBeDeclaredSuccessful`, Flagship).
+    /// It is not unsuccessful either, and the breach follows. An occurrence
+    /// of nothing a card hears — "when a run is successful" is exactly
+    /// what did not happen.
+    RunNotDeclaredSuccessful { server: ServerId },
     /// The Runner has passed the last piece of ICE (or there was none) and
     /// is approaching the server itself — NSG's approach-server step, where
     /// jacking out is legal and "when the Runner approaches this server"
@@ -540,6 +547,7 @@ impl GameEvent {
             | GameEvent::RunnerFlatlined | GameEvent::TurnStarted { .. } | GameEvent::TurnEnded { .. } => true,
             GameEvent::ClickSpent { .. } | GameEvent::CreditsGained { .. } | GameEvent::IceApproached { .. }
             | GameEvent::SubroutineBroken { .. } | GameEvent::SubroutineFired { .. } | GameEvent::SubroutineGained { .. }
+            | GameEvent::RunNotDeclaredSuccessful { .. }
             | GameEvent::IceStrengthModified { .. } | GameEvent::IcePassed { .. } | GameEvent::IceBypassed { .. }
             | GameEvent::EncounterEnded { .. }
             | GameEvent::IceFullyBroken { .. }

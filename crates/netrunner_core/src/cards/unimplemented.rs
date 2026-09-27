@@ -18,7 +18,6 @@
 /// *Vantage Point* (`vp`): tranche 1 of the NSG plan.
 pub(crate) const VP_UNIMPLEMENTED: &[(u32, &str)] = &[
     (36036, "Méliès U: Only the Brightest"),
-    (36064, "Flagship"),
 ];
 
 /// *Rebellion Without Rehearsal* (`rwr`): tranche 2 of the NSG plan.

@@ -49,12 +49,15 @@ pub(crate) enum Target<'a> {
     /// the Street's additional cost). The copy, not only the card, because
     /// "an agenda the Corp installed this turn" is a fact about the copy.
     Scoring { card: &'a CardDefinition, install: InstallId },
+    /// The run against `server`: whether it may be declared successful,
+    /// how many cards it may access.
+    Run { server: ServerId },
 }
 
 impl<'a> Target<'a> {
     fn card(&self) -> Option<&'a CardDefinition> {
         match self {
-            Target::Player(_) => None,
+            Target::Player(_) | Target::Run { .. } => None,
             Target::Card(card)
             | Target::InstallingOnto { card, .. }
             | Target::Rig { card, .. }
@@ -67,7 +70,7 @@ impl<'a> Target<'a> {
     fn install(&self) -> Option<InstallId> {
         match self {
             Target::Rig { install, .. } | Target::Corp { install, .. } | Target::Scoring { install, .. } => Some(*install),
-            Target::Player(_) | Target::Card(_) | Target::InstallingOnto { .. } | Target::Scored { .. } => None,
+            Target::Player(_) | Target::Card(_) | Target::InstallingOnto { .. } | Target::Scored { .. } | Target::Run { .. } => None,
         }
     }
 
@@ -121,7 +124,7 @@ fn for_each_applying<'a>(
             if source.own_text_only != is_own_text {
                 continue;
             }
-            if source.server_text_only && !matches!(effect.applies_to, Scope::RootOfThisServer(_)) {
+            if source.server_text_only && !matches!(effect.applies_to, Scope::RootOfThisServer(_) | Scope::RunsOnThisServer) {
                 continue;
             }
             if !applies(state, &source, &effect.applies_to, &target) {
@@ -209,6 +212,7 @@ fn applies(state: &GameState, source: &Source<'_>, scope: &Scope, target: &Targe
         (Scope::RootOfThisServer(filter), Target::Corp { card, server, root: true, .. }) => {
             source.server == Some(*server) && card_matches_filter(card, filter)
         }
+        (Scope::RunsOnThisServer, Target::Run { server }) => source.server == Some(*server),
         _ => false,
     }
 }
@@ -229,6 +233,28 @@ pub(crate) fn any(state: &GameState, registry: &CardRegistry, target: Target<'_>
     let mut found = false;
     for_each_applying(state, registry, target, |effect, _, _| found |= is(&effect.kind));
     found
+}
+
+/// Whether the run against `server` may be declared successful (CR 6.9.5a):
+/// no active card — and no persistent upgrade trashed this run — says runs
+/// there cannot be (`ContinuousKind::CannotBeDeclaredSuccessful`).
+pub(crate) fn may_be_declared_successful(state: &GameState, registry: &CardRegistry, server: ServerId) -> bool {
+    !any(state, registry, Target::Run { server }, |kind| matches!(kind, ContinuousKind::CannotBeDeclaredSuccessful))
+}
+
+/// Every "cannot access more than N cards other than this one" standing on
+/// the run against `server` (`ContinuousKind::AccessOthersAtMost`): the
+/// number, the card that says it, and its install while it is still on
+/// the table. A persistent upgrade the Runner trashed this run keeps its
+/// limit and has no install (CR 9.12.5).
+pub(crate) fn access_limits(state: &GameState, registry: &CardRegistry, server: ServerId) -> Vec<(u32, CardId, Option<InstallId>)> {
+    let mut limits = Vec::new();
+    for_each_applying(state, registry, Target::Run { server }, |effect, source, _| {
+        if let ContinuousKind::AccessOthersAtMost(count) = effect.kind {
+            limits.push((count, source.card.clone(), source.install));
+        }
+    });
+    limits
 }
 
 fn strength(kind: &ContinuousKind) -> Option<&Number> {

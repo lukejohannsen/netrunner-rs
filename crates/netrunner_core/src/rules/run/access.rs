@@ -98,8 +98,15 @@ fn zone_holds(state: &GameState, server: ServerId, card: &CardId, earlier_copies
 
 /// Drops every candidate that has left the breached server since the breach
 /// began (CR 7.4.5): an install no longer in its root, a card no longer in
-/// Archives, a card of HQ or R&D no longer there.
-fn prune_candidates(state: &mut GameState, server: ServerId) {
+/// Archives, a card of HQ or R&D no longer there. And every candidate the
+/// Runner is now prohibited from accessing (CR 7.4.2): once they have
+/// accessed as many cards other than a Flagship as it allows, only the
+/// Flagship itself is left (7.4.2b) — a limit that did nothing before the
+/// first access, and never touched the random access limit. It is asked
+/// afresh at each offer, so a limit that stops applying lets the cards
+/// back (7.4.2a); the one in the pool persists when its card is trashed.
+fn prune_candidates(state: &mut GameState, registry: &CardRegistry, server: ServerId) {
+    let limits = continuous::access_limits(state, registry, server);
     let still_in_root: Vec<InstallId> = state
         .corp
         .installed
@@ -123,6 +130,13 @@ fn prune_candidates(state: &mut GameState, server: ServerId) {
         AccessCandidate::Archived(card) => pile.contains(card),
         AccessCandidate::Zone => false,
     });
+    for (count, card, install) in limits {
+        let others = access.resolved_cards.iter().filter(|accessed| **accessed != card).count();
+        if others >= count as usize {
+            access.from_zone.clear();
+            access.candidates.retain(|candidate| matches!(candidate, AccessCandidate::Root(root) if Some(*root) == install));
+        }
+    }
 }
 
 /// What the Runner may choose among now: the zone, while it has a card
@@ -166,7 +180,7 @@ fn take_candidate(state: &mut GameState, candidate: &AccessCandidate) -> Option<
 /// is over (`RunCompleted`), with one there is nothing to choose and it is
 /// accessed, and with more the Runner picks (`AccessPhase::SelectNextCard`).
 fn offer_next(state: &mut GameState, registry: &CardRegistry, server: ServerId) -> Result<Vec<GameEvent>, RulesError> {
-    prune_candidates(state, server);
+    prune_candidates(state, registry, server);
     let access = state
         .active_run
         .as_mut()
@@ -770,7 +784,9 @@ enum RemovedFrom {
     Hand,
     Deck,
     Archives,
-    Installed { slot: InstallSlot },
+    /// `rezzed`: whether it was, which is what makes a persistent ability
+    /// persist (CR 9.12.5a).
+    Installed { slot: InstallSlot, rezzed: bool },
     /// Nothing matched — the card is not in any Corp zone. Callers treat
     /// this as "nothing to remove" rather than an error; the access state
     /// that named the card is the authority on its existence.
@@ -800,7 +816,7 @@ fn remove_from_corp_zone(
 ) -> Result<(RemovedFrom, Vec<GameEvent>), RulesError> {
     let from_the_table = |state: &mut GameState, install: InstallId| -> Result<(RemovedFrom, Vec<GameEvent>), RulesError> {
         Ok(match uninstall::corp_install(state, registry, install)? {
-            Some((removed, announced)) => (RemovedFrom::Installed { slot: removed.slot }, announced),
+            Some((removed, announced)) => (RemovedFrom::Installed { slot: removed.slot, rezzed: removed.rezzed }, announced),
             None => (RemovedFrom::Nowhere, Vec::new()),
         })
     };
@@ -891,7 +907,9 @@ fn move_to_archives(
         return Ok(Vec::new());
     }
     let (from, announced) = remove_from_corp_zone(state, registry, card_id, server, install)?;
-    if let RemovedFrom::Installed { slot: InstallSlot::Root } = from {
+    // Only a rezzed card's persistent abilities persist (CR 9.12.5a): an
+    // unrezzed one had none active to keep.
+    if let RemovedFrom::Installed { slot: InstallSlot::Root, rezzed: true } = from {
         // "(If the Runner trashes this card while accessing it, this ability
         // still applies for the remainder of this run.)" — record it so
         // `Trigger::OnRunEnded` can still reach it from the registry once

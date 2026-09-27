@@ -81,12 +81,11 @@ fn is_one(amount: &Amount) -> bool {
 
 /// What changes. Closed, with a payload per kind, and **only the kinds a
 /// card in the pool prints** (the DSL Growth Rule): the ones the comparison
-/// with jinteki.net names and no card here needs yet are additional
-/// subroutines, "cannot be broken", advancement requirements that change
-/// while installed, what a card can host, the number of cards accessed,
-/// and a standing
-/// prohibition (every "cannot" in the pool has a duration, so it is an
-/// `Effect::Prohibit` and `continuous::cannot` reads the lingering list).
+/// with jinteki.net names and no card here needs yet are "cannot be
+/// broken" and advancement requirements that change while installed.
+/// Every "cannot" about a player in the pool has a duration, so it is an
+/// `Effect::Prohibit` and `continuous::cannot` reads the lingering list;
+/// the standing ones are about runs on a server (`RunsOnThisServer`).
 /// Each is a variant here when a card prints it — never a field on
 /// `CardDefinition`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -173,6 +172,21 @@ pub enum ContinuousKind {
     /// the action list and by the install. No payload: which cards is the
     /// scope's to say.
     MayHost,
+    /// A run it applies to cannot be declared successful — Flagship's
+    /// "Runs against this server cannot be declared successful. (This effect
+    /// does not cause runs to become unsuccessful.)" The Success Phase is
+    /// still reached and the server still breached (CR 6.9.5, 6.8.4a); only
+    /// the declaration, and everything that hears it, is withheld
+    /// (`engine::complete_run`). About `RunsOnThisServer`.
+    CannotBeDeclaredSuccessful,
+    /// During a run it applies to, the Runner cannot access more than this
+    /// many cards other than the card that says so — Flagship's "the Runner
+    /// cannot access more than 1 card other than this upgrade". Once they
+    /// have, every other candidate stops being one (CR 7.4.2b): it does
+    /// nothing until a card is accessed, and never changes the random
+    /// access limit. The card itself stays a candidate. Asked by the
+    /// breach as it offers each candidate (`run::access::prune_candidates`).
+    AccessOthersAtMost(u32),
 }
 
 /// Which cards an effect is about, read from the card that prints it.
@@ -220,6 +234,11 @@ pub enum Scope {
     /// install being scored (`continuous::Target::Scoring`), so an
     /// instance word (`InstalledThisTurn`) is read off that copy.
     Scoring(CardFilter),
+    /// Each run against the server this card is installed in — Flagship's
+    /// "Runs against this server" and "During each run against this
+    /// server". A run is not a card, so this is asked about
+    /// `continuous::Target::Run`, and only by the run's own steps.
+    RunsOnThisServer,
     /// This agenda, while it is in `side`'s score area — Let Them Dream.
     /// The card's own text, like `This`, and read only there: a question
     /// about a scored agenda says whose score area it is in.

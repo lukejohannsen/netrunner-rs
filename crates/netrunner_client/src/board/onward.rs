@@ -183,7 +183,7 @@ mod tests {
             Onward::FireSubroutines(_) => events.iter().any(|e| matches!(e, GameEvent::SubroutineFired { .. })),
             Onward::Movement => run.is_some_and(|r| r.phase == RunPhase::Movement),
             Onward::JackOutDecision => run.is_some_and(|r| r.phase == RunPhase::Movement && r.jack_out_permitted) && window.is_none(),
-            Onward::Breach(_) => events.iter().any(|e| matches!(e, GameEvent::RunSucceeded { .. })),
+            Onward::Breach(_) => events.iter().any(|e| matches!(e, GameEvent::RunSucceeded { .. } | GameEvent::RunNotDeclaredSuccessful { .. })),
             Onward::TurnBegins(side) => window == Some(WindowCheckpoint::StartOfTurn { side: *side }) || state.phase == GamePhase::Action(*side),
             Onward::Actions(side) => window.is_none() && state.phase == GamePhase::Action(*side),
             Onward::TurnEnds(side) => window == Some(WindowCheckpoint::TurnBeginning { side: side.other() }),

@@ -521,8 +521,8 @@ fn install_card_candidates(state: &GameState, registry: &CardRegistry) -> Vec<Pl
             CardType::Upgrade => {
                 let mut zones = vec![ServerId::Hq, ServerId::RnD, ServerId::Archives];
                 zones.extend(remote_zones.iter().copied());
-                let only_in = registry.get(card_id).and_then(|card| card.install_only_in);
-                for zone in zones.into_iter().filter(|zone| only_in.is_none_or(|kind| kind.admits(*zone))) {
+                let card = registry.get(card_id);
+                for zone in zones.into_iter().filter(|zone| card.is_none_or(|card| card.may_be_installed_in(*zone))) {
                     push(card_id, zone, InstallSlot::Root);
                 }
             }

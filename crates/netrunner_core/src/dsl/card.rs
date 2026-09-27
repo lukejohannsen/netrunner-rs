@@ -229,17 +229,26 @@ impl CardSubtype {
     }
 }
 
-/// A kind of server, as an install restriction names one.
+/// A kind of server, as an install restriction names one: a central or a
+/// remote, or one central server by name ("HQ or R&D only").
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ServerKind {
     Central,
     Remote,
+    Hq,
+    RnD,
 }
 
 impl ServerKind {
     /// Whether `server` is one of this kind.
     pub fn admits(self, server: crate::rules::ServerId) -> bool {
-        matches!(server, crate::rules::ServerId::Remote(_)) == (self == ServerKind::Remote)
+        use crate::rules::ServerId;
+        match self {
+            ServerKind::Central => !matches!(server, ServerId::Remote(_)),
+            ServerKind::Remote => matches!(server, ServerId::Remote(_)),
+            ServerKind::Hq => server == ServerId::Hq,
+            ServerKind::RnD => server == ServerId::RnD,
+        }
     }
 }
 
@@ -447,16 +456,18 @@ pub struct CardDefinition {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub additional_play_cost: Option<Cost>,
 
-    /// "Central server only." / "Remote server only." — where an upgrade
-    /// may be installed, beyond what its type allows (an agenda or an
-    /// asset is remote-only by type). The Red Room is the first; La Costa
-    /// Grid, Tranquility Home Grid, Tucana and ZATO City Grid print the
-    /// other. A declaration the install reads, like `removed_after_play`:
-    /// it is about where the card may go, not a standing effect of it. It
-    /// holds at all times, inactive or not (CR 8.5.12), so a move honours
-    /// it too (`Effect::MoveThisCardToRoot` and Lotus Haze's offer).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub install_only_in: Option<ServerKind>,
+    /// "Central server only." / "Remote server only." / "HQ or R&D only."
+    /// — where an upgrade may be installed, beyond what its type allows (an
+    /// agenda or an asset is remote-only by type): any of the kinds listed,
+    /// and anywhere when the list is empty. The Red Room is the first;
+    /// Flagship names two servers (VP Stage 7g), which is why it is a list.
+    /// A declaration the install reads, like `removed_after_play`: it is
+    /// about where the card may go, not a standing effect of it. It holds
+    /// at all times, inactive or not (CR 8.5.12), so a move honours it too
+    /// (`Effect::MoveThisCardToRoot` and Lotus Haze's offer). Asked through
+    /// `may_be_installed_in`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub install_only_in: Vec<ServerKind>,
 
     /// "N[recurring-credit]" as the card prints it — Azimat's and Mahkota
     /// Langit Grid's 2, NBN: Making News's 2. Comprehensive Rules 1.10.5a:
@@ -955,7 +966,7 @@ impl Default for CardDefinition {
             rez_alternatives: Vec::new(),
             influence_limit: None,
             additional_play_cost: None,
-            install_only_in: None,
+            install_only_in: Vec::new(),
             click_breakable: false,
             counter_kind: None,
             numeric_id: None,
@@ -978,6 +989,12 @@ impl Default for CardDefinition {
 }
 
 impl CardDefinition {
+    /// Whether this card may be installed in, or moved to, `server`'s root
+    /// as far as its own restriction goes (`install_only_in`).
+    pub fn may_be_installed_in(&self, server: crate::rules::ServerId) -> bool {
+        self.install_only_in.is_empty() || self.install_only_in.iter().any(|kind| kind.admits(server))
+    }
+
     /// Checks the semantic rules `CardValidationError` documents. Structural
     /// well-formedness (right field types, valid enum tags) is already
     /// guaranteed by having deserialized successfully — this only catches
@@ -1255,6 +1272,12 @@ impl CardDefinition {
                 (ContinuousKind::BoostsLastTheRun, _) => return misfit("BoostsLastTheRun", "a boost is an icebreaker's: this card or its host"),
                 (ContinuousKind::MayHost, Scope::InstallingOntoThis(_)) => {}
                 (ContinuousKind::MayHost, _) => return misfit("MayHost", "what may be installed onto this card is said by `InstallingOntoThis`"),
+                (ContinuousKind::CannotBeDeclaredSuccessful | ContinuousKind::AccessOthersAtMost(_), Scope::RunsOnThisServer)
+                    if matches!(self.card_type, CardType::Upgrade | CardType::Asset) => {}
+                (ContinuousKind::CannotBeDeclaredSuccessful | ContinuousKind::AccessOthersAtMost(_), _) => {
+                    return misfit("RunsOnThisServer", "a run's success and its accesses are said of the runs on this card's server, by a card in its root");
+                }
+                (_, Scope::RunsOnThisServer) => return misfit("RunsOnThisServer", "only a run's success and its accesses are about the runs on a server"),
                 (ContinuousKind::RevealedWhileAccessed, Scope::This) if self.side == Side::Corp => {}
                 (ContinuousKind::RevealedWhileAccessed, _) => {
                     return misfit("RevealedWhileAccessed", "only a Corp card is accessed, and it says so of itself (`This`)");

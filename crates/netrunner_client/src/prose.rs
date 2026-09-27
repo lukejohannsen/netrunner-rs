@@ -505,6 +505,7 @@ pub fn describe_continuous(effect: &ContinuousEffect) -> String {
         Scope::Stealing(filter) => format!("an agenda the Runner steals ({})", lower(format!("{filter:?}"))),
         Scope::Scoring(filter) => format!("an agenda the Corp scores ({})", lower(format!("{filter:?}"))),
         Scope::ScoreArea(side) => format!("this agenda, in the {side:?}'s score area"),
+        Scope::RunsOnThisServer => "each run against this server".to_string(),
     };
     let signed = |number: &Number| {
         let each = if number.per < 0 { format!("−{}", number.per.unsigned_abs()) } else { format!("+{}", number.per) };
@@ -530,6 +531,8 @@ pub fn describe_continuous(effect: &ContinuousEffect) -> String {
         ContinuousKind::BoostsLastTheRun => "keeps its strength boosts for the rest of the run".to_string(),
         ContinuousKind::RevealedWhileAccessed => "is revealed while it is accessed".to_string(),
         ContinuousKind::MayHost => "may be installed there".to_string(),
+        ContinuousKind::CannotBeDeclaredSuccessful => "cannot be declared successful".to_string(),
+        ContinuousKind::AccessOthersAtMost(n) => format!("accesses at most {} other than this card", plural(*n, "card", "cards")),
     };
     match &effect.condition {
         Some(condition) => format!("{whom} {what}, while {}", lower(format!("{condition:?}"))),

@@ -87,6 +87,9 @@ pub struct RunTrail {
     /// `RunSucceeded` was seen: the run is successful whether or not it
     /// has finished accessing.
     pub successful: bool,
+    /// `RunNotDeclaredSuccessful` was seen: the server was reached and
+    /// breached, and the run is still not successful.
+    pub withheld: bool,
     pub outcome: Option<Outcome>,
     /// What the run did, in order, in a few words each.
     pub consequences: Vec<String>,
@@ -97,7 +100,7 @@ impl RunTrail {
     /// named and with their subroutines where the viewer may see them,
     /// each step's state from the run's position and phase.
     pub fn begin(run: &PublicRunState) -> Self {
-        let mut trail = RunTrail { server: run.server, ice: Vec::new(), stage: Stage::Starting, successful: false, outcome: None, consequences: Vec::new() };
+        let mut trail = RunTrail { server: run.server, ice: Vec::new(), stage: Stage::Starting, successful: false, withheld: false, outcome: None, consequences: Vec::new() };
         trail.sync(Some(run));
         trail
     }
@@ -175,6 +178,16 @@ impl RunTrail {
             GameEvent::ServerApproached { .. } => {
                 self.pass_everything();
                 self.stage = Stage::AtServer;
+            }
+            // The server is reached and breached, but the run is not
+            // declared successful (Flagship): the view's phase cannot tell
+            // the two apart, so the trail remembers which it was.
+            GameEvent::RunNotDeclaredSuccessful { .. } => {
+                self.pass_everything();
+                self.withheld = true;
+                if !matches!(self.stage, Stage::Accessing { .. }) {
+                    self.stage = Stage::AtServer;
+                }
             }
             GameEvent::RunSucceeded { .. } => {
                 self.pass_everything();
@@ -280,7 +293,7 @@ impl RunTrail {
                 Stage::Accessing { count, card }
             }
         };
-        if matches!(run.phase, RunPhase::Success | RunPhase::AccessingCard) {
+        if matches!(run.phase, RunPhase::Success | RunPhase::AccessingCard) && !self.withheld {
             self.successful = true;
         }
     }
@@ -344,6 +357,7 @@ pub fn is_step(event: &GameEvent) -> bool {
             | GameEvent::IceBypassed { .. }
             | GameEvent::ServerApproached { .. }
             | GameEvent::RunSucceeded { .. }
+            | GameEvent::RunNotDeclaredSuccessful { .. }
             | GameEvent::CardAccessed { .. }
             | GameEvent::RunJackedOut { .. }
             | GameEvent::RunEndedByEffect { .. }

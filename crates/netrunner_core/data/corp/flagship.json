@@ -1,0 +1,31 @@
+{
+  "id": "flagship",
+  "title": "Flagship",
+  "side": "Corp",
+  "card_type": "Upgrade",
+  "cost": 3,
+  "unique": true,
+  "install_only_in": [
+    "Hq",
+    "RnD"
+  ],
+  "continuous": [
+    {
+      "kind": "CannotBeDeclaredSuccessful",
+      "applies_to": "RunsOnThisServer",
+      "text": "Runs against this server cannot be declared successful."
+    },
+    {
+      "kind": {
+        "AccessOthersAtMost": 1
+      },
+      "applies_to": "RunsOnThisServer",
+      "text": "During each run against this server, the Runner cannot access more than 1 card other than this upgrade."
+    }
+  ],
+  "triggers": [],
+  "trash_cost": 4,
+  "persistent_after_trash": true,
+  "numeric_id": 36064,
+  "is_playable": true
+}
