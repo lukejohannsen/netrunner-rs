@@ -474,6 +474,14 @@ pub enum Effect {
         /// it, so a table with no ice anywhere withholds the event.
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
         only_protected_by_ice: bool,
+        /// Offer only servers of this kind that exist — Aircheck's "you may
+        /// run a remote server". A field for the reason the two above are:
+        /// what narrows a server offer is the offer's. A remote with
+        /// nothing in it is not a server to run, so the fresh one
+        /// `legal_actions` offers "any server" is not among them, and with
+        /// no remote on the table the effect fails rather than park.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        only_in: Option<crate::dsl::ServerKind>,
     },
     /// Rezzes an already-installed Corp card, paying the same way
     /// `PlayerAction::RezIce` does but without its "ice only while it is
@@ -1233,6 +1241,12 @@ pub enum Prohibition {
     ScoreAgendas,
     /// The Runner cannot steal or trash the cards they access.
     StealOrTrash,
+    /// The Runner cannot lose or spend credits from their credit pool —
+    /// Aircheck's "while this event is active, … you cannot lose or spend
+    /// credits from your credit pool", for the run it makes. Asked by
+    /// `payment::sources`, where the credit pool then holds nothing, and
+    /// by `Effect::LoseCredits`.
+    SpendOrLoseCreditPool,
 }
 
 impl Prohibition {
@@ -1240,7 +1254,7 @@ impl Prohibition {
     pub fn binds(self) -> Side {
         match self {
             Prohibition::ScoreAgendas => Side::Corp,
-            Prohibition::StealOrTrash => Side::Runner,
+            Prohibition::StealOrTrash | Prohibition::SpendOrLoseCreditPool => Side::Runner,
         }
     }
 }

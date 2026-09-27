@@ -1,0 +1,59 @@
+{
+  "id": "aircheck",
+  "title": "Aircheck",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 1,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "PromptChooseServer": {
+            "chooser": "Runner",
+            "rez_cost_delta": 0,
+            "bonus_run_credits": 4,
+            "allowed_servers": [
+              "Hq",
+              "RnD"
+            ],
+            "on_start": {
+              "Prohibit": {
+                "what": "SpendOrLoseCreditPool",
+                "until": "Run"
+              }
+            },
+            "on_success": {
+              "SetRunEndedEffect": {
+                "PresentChoice": {
+                  "chooser": "Runner",
+                  "options": [
+                    {
+                      "PromptChooseServer": {
+                        "chooser": "Runner",
+                        "rez_cost_delta": 0,
+                        "bonus_run_credits": 0,
+                        "only_in": "Remote"
+                      }
+                    },
+                    {
+                      "Sequence": []
+                    }
+                  ],
+                  "texts": [
+                    "you may run a remote server",
+                    ""
+                  ]
+                }
+              }
+            }
+          }
+        }
+      ],
+      "text": "Place 4[credit] on this event. While this event is active, you can spend hosted credits, and you cannot lose or spend credits from your credit pool. Run HQ or R&D. When that run ends, if it was successful, you may run a remote server."
+    }
+  ],
+  "numeric_id": 36018,
+  "is_playable": true
+}
