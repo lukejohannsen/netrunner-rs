@@ -333,6 +333,22 @@ pub(crate) fn additional_play_cost_of(state: &GameState, registry: &CardRegistry
     (clicks > 0).then_some(Cost::Clicks(clicks))
 }
 
+/// What stealing the agenda `card` costs the Runner, if anything: its
+/// printed cost to steal and what the table adds (Magistrate Revontulet's
+/// 3[c]), one price paid together (CR 1.16.10b), either of which lets the
+/// Runner decline (1.17.3d). The one question the access asks and a bot
+/// pricing a run asks: the heuristic Runner counted a faceup agenda in
+/// Archives as a steal it could not miss, ran it four times a turn with
+/// no credits under a rezzed Magistrate, and never clicked for one.
+pub fn steal_price(state: &GameState, registry: &CardRegistry, card: &CardDefinition) -> Option<Cost> {
+    let added = if card.agenda_points.is_some() { steal_cost_added(state, registry, card) } else { 0 };
+    match (card.steal_cost.clone(), added) {
+        (printed, 0) => printed,
+        (None, added) => Some(Cost::Credits(added)),
+        (Some(printed), added) => Some(Cost::AllOf(vec![printed, Cost::Credits(added)])),
+    }
+}
+
 /// The credits the table adds to the cost of stealing the agenda `card`
 /// (Magistrate Revontulet), 0 when it adds none.
 pub(crate) fn steal_cost_added(state: &GameState, registry: &CardRegistry, card: &CardDefinition) -> u32 {

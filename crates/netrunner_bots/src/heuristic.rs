@@ -551,6 +551,37 @@ mod tests {
         assert!(runs_archives, "two unseen cards in Archives outrank one in HQ");
     }
 
+    /// A faceup agenda in Archives is worth running for only when the
+    /// Runner can pay to steal it. Under a rezzed Magistrate Revontulet
+    /// (3[credit] more to steal) with no credits, the one-ply Runner ran
+    /// Archives four times a turn, passed the agenda each time and never
+    /// clicked for a credit, until the game ran out of steps (the 256-seed
+    /// view sweep, seed 120, Paid Content against Borrowed Time).
+    #[test]
+    fn runs_archives_for_a_faceup_agenda_only_when_it_can_pay_to_steal_it() {
+        use netrunner_core::cards::register_playable_cards;
+        use netrunner_core::rules::{ArchivedCard, InstallId, InstallSlot, InstalledCard};
+        let mut registry = CardRegistry::new();
+        register_playable_cards(&mut registry);
+        let mut state = open_board(&mut registry);
+        state.corp.archives = vec![ArchivedCard::faceup(CardId("orbital_superiority".to_string()))];
+        state.corp.installed = vec![InstalledCard {
+            install_id: InstallId(40),
+            card: CardId("magistrate_revontulet".to_string()),
+            server: ServerId::Remote(0),
+            slot: InstallSlot::Root,
+            rezzed: true,
+            ..Default::default()
+        }];
+        let runs_archives = |state: &GameState| {
+            let view = build_client_view(state, &registry, Side::Runner);
+            (1..=8).any(|seed| HeuristicAgent::new(Side::Runner, seed).select_action(&view, &registry) == PlayerAction::InitiateRun { server: ServerId::Archives })
+        };
+        assert!(runs_archives(&state), "with 5[credit] the steal is paid for");
+        state.runner.resources.credits = Credits(0);
+        assert!(!runs_archives(&state), "with nothing, the agenda cannot be stolen");
+    }
+
     /// A trap the Runner has sprung is one it can see (`InstalledCard::
     /// seen_by_runner`): the same advanced face-down Urtica that draws the
     /// run while unseen — two tokens are an agenda about to score, as far

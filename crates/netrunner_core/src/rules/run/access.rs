@@ -255,15 +255,7 @@ pub(crate) fn at_mid_access_window(state: &GameState) -> bool {
 fn compute_pending_choice(state: &GameState, card_id: &CardId, registry: &CardRegistry) -> AccessPhase {
     let card_def = registry.get(card_id);
     let is_agenda = card_def.is_some_and(|c| c.agenda_points.is_some());
-    // The agenda's printed cost to steal and what the table adds
-    // (Magistrate Revontulet's 3[c]) are one price, paid together
-    // (CR 1.16.10b), and either one lets the Runner decline (1.17.3d).
-    let added = card_def.filter(|_| is_agenda).map_or(0, |card| continuous::steal_cost_added(state, registry, card));
-    let steal_cost = match (card_def.and_then(|c| c.steal_cost.clone()), added) {
-        (printed, 0) => printed,
-        (None, added) => Some(Cost::Credits(added)),
-        (Some(printed), added) => Some(Cost::AllOf(vec![printed, Cost::Credits(added)])),
-    };
+    let steal_cost = card_def.and_then(|card| continuous::steal_price(state, registry, card));
     let mandatory_steal = is_agenda && steal_cost.is_none();
     // What the table adds (`ContinuousKind::TrashCost` — Mahkota Langit
     // Grid, rezzed or trashed earlier in this run), never below 0. Asked
