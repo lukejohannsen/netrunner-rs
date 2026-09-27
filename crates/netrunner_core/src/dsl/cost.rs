@@ -183,6 +183,17 @@ impl Cost {
         }
     }
 
+    /// Whether paying this takes the ability's own source off the table —
+    /// "[trash]:", or a removal from the game. Its hosted cards are then
+    /// set aside for an effect that acts on them (CR 9.5.5).
+    pub fn uninstalls_its_source(&self) -> bool {
+        match self {
+            Cost::TrashSelf | Cost::RemoveSelfFromGame => true,
+            Cost::AnyOf(costs) | Cost::AllOf(costs) => costs.iter().any(Cost::uninstalls_its_source),
+            _ => false,
+        }
+    }
+
     /// Whether paying this could ask the payer which cards — the structural
     /// half of `payment::could_ask`, which copies an action only where a
     /// question is possible.

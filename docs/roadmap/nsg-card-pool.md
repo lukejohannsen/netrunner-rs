@@ -393,13 +393,13 @@ Division.
    **6c** (built, below): Aircheck,
    which locks the credit pool and so breaks the invariant that a payment
    may always reach the pool. Stage 6 is complete.
-7. **Hosting, the score area and access limits**, split four ways by
-   mechanic. **7a** (built, below): Luana Campos, a card leaving the
-   table as a moment it can interrupt. **7b:** Read-Write Share and
-   Hackerspace, the Runner's hosting (facedown hosted cards, a resource
-   installed onto a resource). **7c:** Myōshu, Word on the Street and
-   Sacrifice Zone Expansion, the score area. **7d:** Flagship, Tocsin and
-   Stick and Poke.
+7. **Hosting, the score area and access limits**, split by mechanic.
+   **7a** (built, below): Luana Campos, a card leaving the table as a
+   moment it can interrupt. **7b** (built, below): Read-Write Share,
+   cards hosted facedown. **7c:** Hackerspace, a resource installed onto
+   a resource. **7d:** Myōshu, Word on the Street and Sacrifice Zone
+   Expansion, the score area. **7e:** Flagship, Tocsin and Stick and
+   Poke.
 8. **Méliès U, alone:** hidden setup state, three sides, and masking.
 
 **Riskiest:**
@@ -1357,6 +1357,56 @@ deck. **No new `Effect`.** Vantage Point 57 of 66; `VP_UNIMPLEMENTED`
   (seed 2) installed Luana 94 times and rezzed her 79; 48 rezzed Luanas
   were announced on their way out, and one handed a hosted bad publicity
   back to the Corp.
+
+#### Stage 7b — cards hosted facedown (27 September 2026)
+
+`feat/vp-stage-7b-runner-hosting`: Read-Write Share, on the Spare Parts
+Sweep deck. **One new `Effect`**, `ShuffleHostedIntoDeck`. Vantage Point
+58 of 66; `VP_UNIMPLEMENTED` 9 → 8. Hackerspace, planned beside it, is a
+different mechanic (an install onto a host, which grows the action
+space) and is Stage 7c.
+
+- **A card hosted facedown is its owner's to see** (CR 1.13.7, 1.21.2a).
+  `CardDefinition::hosts_facedown` says so of the host, and the mask reads
+  it: the Corp's and a spectator's view of the host carries
+  `hosted_unseen`, a count, where the Runner's carries the cards. Nothing
+  is seeded onto the install, because every reader holds a registry. The
+  hosting itself is a `PromptChooseCards` from the grip onto
+  `HostedOnSource`, whose `CardsSelected` is already shown only to its
+  chooser. `determinize` draws the cards a Corp sample cannot see from
+  the Runner's unseen pool, as it draws a grip, and the observation counts
+  them with the cards it can.
+- **"Limit 4 hosted cards"** is `Not(AmountAtLeast(HostedCards, 4))` on
+  both triggers, beside a grip with a card in it (`Amount::HostedCards`,
+  cards where `HostedCounters` counts counters).
+- **Cards hosted on a card its own cost trashes are set aside, not
+  trashed** (CR 9.5.5), when the effect acts on them. "[trash]: Shuffle
+  all hosted cards into your stack" took them to the heap with the
+  program, and a "whenever you trash" would have heard each one.
+  `engine::activate_ability` now takes them off the host before paying a
+  cost that `uninstalls_its_source`, when the effect `acts_on_hosted_cards`,
+  puts them on the resolution (`ResolutionContext::set_aside`), and trashes
+  whatever the effect leaves. The context, not the state, because the one
+  effect that reads them never parks.
+- **Why a new `Effect`.** `PromptChooseCards` over `HostedOnSource` finds no
+  host once the cost has trashed it, and asks a question "all" does not;
+  `AddToDeck` moves the acting card. `ShuffleHostedIntoDeck` records no
+  event: which cards is the Runner's to know, and the stack's count says
+  how many.
+- **Deck.** Spare Parts: two Read-Write Share for two Creative Commission.
+- **Fidelity limits.** The cards are not "distinct groups … freely
+  arranged" (CR 1.13.7d) in any sense the view shows: they are a list in
+  the order hosted.
+- **DSL ratio (`pool_status.py`): 20 of 73 `Effect` variants single-use,
+  2 unused**, over 242 card files (was 19 of 72).
+- **Measured.** Both sweeps at 256 seeds are green. Against `origin/main`,
+  `coverage_identical.py` has both random seatings **identical**. The
+  heuristic seatings moved, and without Read-Write Share's card file (and
+  the deck swap) they are identical in all four shapes (`determinize`).
+- **Real play.** Ninety-six random games of Spare Parts against Hostile
+  Bid (seed 2) installed Read-Write Share 57 times, hosted a card on
+  install 53 times and trashed it for the shuffle 56 times; the random
+  Runner trashes it before its turn-start trigger comes round.
 
 ### 2. Rebellion Without Rehearsal — 65 cards (C 7 / V 43 / M 15)
 

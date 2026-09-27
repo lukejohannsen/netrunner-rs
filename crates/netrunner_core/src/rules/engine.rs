@@ -2147,6 +2147,13 @@ fn activate_ability(
     // Taken before the cost, which may trash the card the effect reads
     // (Fermenter): see `ResolutionContext::last_known`.
     let last_known = ability::last_known(&next, &ability_ctx(is_identity, target, &card_id));
+    // Set aside, not trashed, when the cost uninstalls the card and the
+    // effect acts on what it hosts (CR 9.5.5): Read-Write Share's hosted
+    // cards go into the stack, and a "whenever you trash" hears nothing.
+    let set_aside = match (&ability.cost, next.runner.rig.iter_mut().find(|c| c.install_id == target)) {
+        (Some(cost), Some(host)) if cost.uninstalls_its_source() && ability.effect.acts_on_hosted_cards() => std::mem::take(&mut host.hosted_cards),
+        _ => Vec::new(),
+    };
     let mut cost_events = Vec::new();
     if let Some(cost) = &ability.cost {
         // A conditional per-ability discount (e.g. Marjanah: "-1 to use if
@@ -2165,8 +2172,14 @@ fn activate_ability(
         events.extend(cost_events.iter().cloned());
     }
     events.push(GameEvent::AbilityActivated { side, card_id: card_id.clone(), ability_index });
-    let mut effect_ctx = ability::ResolutionContext { last_known, ..ability_ctx(is_identity, target, &card_id) };
+    let mut effect_ctx = ability::ResolutionContext { last_known, set_aside, ..ability_ctx(is_identity, target, &card_id) };
     events.extend(ability::evaluate_effect(&mut next, &ability.effect, &mut effect_ctx, registry)?);
+    // What the effect left set aside is trashed (CR 9.5.5, at the next
+    // checkpoint): only a rig card hosts cards, and only its owner's.
+    for card in std::mem::take(&mut effect_ctx.set_aside) {
+        next.runner.heap.push(card.clone());
+        events.push(GameEvent::CardTrashed { side: Side::Runner, card, by: None });
+    }
     events.extend(ability::dispatch_cost_events(&mut next, registry, &cost_events)?);
     // `check_requirement` above only reads — without this, a `Paid`
     // ability's `EffectRequirement::OncePerTurn` (e.g. Telework Contract's

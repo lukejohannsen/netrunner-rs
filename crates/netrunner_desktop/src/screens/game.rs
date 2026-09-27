@@ -3110,8 +3110,9 @@ fn spawn_rig(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore
                             if def.card_type == CardType::Program && def.strength.is_some() {
                                 chips.push(format!("str {}", card.current_strength));
                             }
-                            if !card.hosted_cards.is_empty() {
-                                chips.push(format!("{} hosted", card.hosted_cards.len()));
+                            let hosted = card.hosted_cards.len() + card.hosted_unseen;
+                            if hosted > 0 {
+                                chips.push(format!("{hosted} hosted"));
                             }
                             if let Some(host) = card.hosted_on_ice {
                                 chips.push(format!("on {}", netrunner_client::board::rig::host_label(view, &core.registry, host)));

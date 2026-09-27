@@ -847,6 +847,15 @@ pub enum Effect {
     /// the card is in none of its owner's zones, per the `TrashCard`
     /// "already gone" precedent.
     AddToDeck(DeckEnd),
+    /// Shuffles every card hosted on `acting_card` into its owner's stack
+    /// — Read-Write Share's "[trash]: Shuffle all hosted cards into your
+    /// stack". The cost has uninstalled the host by the time this
+    /// resolves, so the cards are the ones set aside as it was paid (CR
+    /// 9.5.5, `ResolutionContext::set_aside`), or, with no such cost, the
+    /// ones still hosted. Composition didn't work: `PromptChooseCards` over
+    /// `HostedOnSource` finds no host once the cost has trashed it, asks a
+    /// question "all" does not, and `AddToDeck` moves the acting card.
+    ShuffleHostedIntoDeck,
     /// The controller looks at the top `count` cards of `deck`'s owner's
     /// deck and nobody else sees them (`GameEvent::CardsLookedAt`, masked
     /// for the other player) — Hiram "0mission" Svensson's "look at the
@@ -1087,6 +1096,11 @@ pub enum Amount {
     /// `acting_card`'s own hosted advancement token count (Corp installed
     /// cards only) — e.g. Clearinghouse, Urtica Cipher.
     HostedAdvancementTokens,
+    /// How many cards are hosted on `acting_card` without being installed
+    /// (`InstalledRunnerCard::hosted_cards`) — Read-Write Share's "Limit 4
+    /// hosted cards", read through `EffectRequirement::AmountAtLeast`
+    /// under a `Not`. `HostedCounters` counts counters, not cards.
+    HostedCards,
     /// Count of Runner-installed icebreakers (`dsl::zone::CardFilter::
     /// Icebreaker`'s heuristic), including `acting_card` itself if it
     /// qualifies — e.g. Unity's pump ability.
@@ -1409,6 +1423,7 @@ impl Effect {
             | Effect::LoseCreditsAmount(..)
             | Effect::FlipIdentity
             | Effect::AddToDeck(_)
+            | Effect::ShuffleHostedIntoDeck
             | Effect::LookAtTopOfDeck { .. }
             | Effect::HostRigCardOnInstall { .. }
             | Effect::DrawCardsAmount(..)
@@ -1451,6 +1466,17 @@ impl Effect {
         let mut ends = false;
         self.for_each_effect(&mut |effect| ends |= matches!(effect, Effect::EndTheRun));
         ends
+    }
+
+    /// Whether this effect refers to or acts on the cards hosted on its
+    /// source — what makes a cost that uninstalls the source set them aside
+    /// rather than trash them (CR 9.5.5).
+    pub fn acts_on_hosted_cards(&self) -> bool {
+        let mut acts = false;
+        self.for_each_effect(&mut |effect| {
+            acts |= matches!(effect, Effect::ShuffleHostedIntoDeck | Effect::TrashCard(CardTarget::HostedOnThisCard));
+        });
+        acts
     }
 
     /// The prevention this effect holds, if it holds one — what makes the

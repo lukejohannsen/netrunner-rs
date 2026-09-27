@@ -171,10 +171,20 @@ pub struct PublicInstalledRunnerCard {
     /// icebreaker). Public for the same reason as `hosted_on_ice`.
     #[serde(default)]
     pub hosted_on_program: Option<InstallId>,
-    /// Cards hosted faceup on this card without being installed (Madani).
-    /// Public: hosted faceup means hosted faceup.
+    /// Cards hosted on this card without being installed (Madani), that
+    /// the viewer may see: every one hosted faceup, and one hosted
+    /// facedown only for its owner. Hosted faceup means hosted faceup.
     #[serde(default)]
     pub hosted_cards: Vec<CardId>,
+    /// Whether this card hosts its cards facedown (Read-Write Share) —
+    /// printed on it, so public.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub hosted_facedown: bool,
+    /// How many hosted cards the viewer may not see: the Corp's and a
+    /// spectator's count of a card hosted facedown. A number and never the
+    /// cards, as a grip is to the Corp (`MaskedZone`).
+    #[serde(default)]
+    pub hosted_unseen: usize,
     /// Whether `hosted_cards` are playable as grip cards (Bling) — see
     /// `state::InstalledRunnerCard::hosted_cards_playable`. Public: it is
     /// printed on the host.
@@ -1201,14 +1211,18 @@ fn mask_corp_state(corp: &CorpState, registry: &CardRegistry, owner_view: bool, 
 /// said to ripple into every consumer crate; `view::build_client_view` is
 /// the one production caller and holds one), so a view could show a
 /// breaker one short of the ice it was about to break.
-fn mask_installed_runner_card(state: &GameState, registry: &CardRegistry, card: &InstalledRunnerCard) -> PublicInstalledRunnerCard {
+fn mask_installed_runner_card(state: &GameState, registry: &CardRegistry, card: &InstalledRunnerCard, owner_view: bool) -> PublicInstalledRunnerCard {
+    let hosted_facedown = registry.get(&card.card).is_some_and(|definition| definition.hosts_facedown);
+    let hidden = hosted_facedown && !owner_view;
     PublicInstalledRunnerCard {
         card: card.card.clone(),
         install_id: card.install_id,
         current_strength: continuous::breaker_strength(state, registry, card),
         hosted_on_ice: card.hosted_on_ice,
         hosted_on_program: card.hosted_on_program,
-        hosted_cards: card.hosted_cards.clone(),
+        hosted_cards: if hidden { Vec::new() } else { card.hosted_cards.clone() },
+        hosted_facedown,
+        hosted_unseen: if hidden { card.hosted_cards.len() } else { 0 },
         hosted_cards_playable: card.hosted_cards_playable,
         counters: card.counters,
     }
@@ -1224,7 +1238,7 @@ fn mask_runner_state(state: &GameState, registry: &CardRegistry, owner_view: boo
         tags: runner.tags,
         grip: mask_zone(&runner.grip, owner_view),
         stack: mask_zone(&runner.stack, owner_view),
-        rig: runner.rig.iter().map(|card| mask_installed_runner_card(state, registry, card)).collect(),
+        rig: runner.rig.iter().map(|card| mask_installed_runner_card(state, registry, card, owner_view)).collect(),
         heap: runner.heap.clone(),
         removed_from_game: runner.removed_from_game.clone(),
         scored_agendas: runner.scored_agendas.clone(),
@@ -1729,6 +1743,8 @@ mod tests {
             hosted_on_ice: None,
             hosted_on_program: None,
             hosted_cards: Vec::new(),
+            hosted_facedown: false,
+            hosted_unseen: 0,
             hosted_cards_playable: false,
             counters: 0,
         }];

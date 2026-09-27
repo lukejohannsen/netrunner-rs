@@ -116,6 +116,15 @@ pub struct ResolutionContext<'a> {
     /// because it is read within this one resolution: both cards read it
     /// before anything they do can park, and it does not survive a park.
     pub last_known: Option<LastKnown>,
+    /// The cards that were hosted on the acting install when its own cost
+    /// took it off the table, set aside rather than trashed with it because
+    /// the effect acts on them (CR 9.5.5: "set aside any hosted cards ...
+    /// as the trigger cost is paid") — Read-Write Share's "[trash]: Shuffle
+    /// all hosted cards into your stack". Filled by the payer
+    /// (`engine::activate_ability`), which trashes whatever the effect
+    /// leaves. On the context because the effect that reads it resolves
+    /// without parking.
+    pub set_aside: Vec<CardId>,
 }
 
 /// What `ResolutionContext::last_known` remembers of an install.
@@ -733,6 +742,23 @@ pub fn evaluate_effect(
                 Side::Runner => state.runner.identity_flipped = !state.runner.identity_flipped,
             }
             Ok(vec![GameEvent::IdentityFlipped { side }])
+        }
+
+        Effect::ShuffleHostedIntoDeck => {
+            let cards = if ctx.set_aside.is_empty() {
+                acting_rig_position(state, ctx).map(|position| std::mem::take(&mut state.runner.rig[position].hosted_cards)).unwrap_or_default()
+            } else {
+                std::mem::take(&mut ctx.set_aside)
+            };
+            if cards.is_empty() {
+                return Ok(Vec::new());
+            }
+            // Only a rig card hosts cards, and only its owner's: hosted from
+            // the grip. Nothing is recorded: which cards is the Runner's to
+            // know, and the stack's count says how many.
+            state.runner.stack.extend(cards);
+            crate::rules::pending_choice::shuffle_decks(state, Side::Runner, &crate::dsl::CardZoneRef::OwnStack, None);
+            Ok(Vec::new())
         }
 
         Effect::AddToDeck(end) => {
@@ -3028,6 +3054,7 @@ pub(crate) fn resolve_amount(amount: &Amount, ctx: &ResolutionContext<'_>, state
         Amount::TimesLastTurn(trigger) => state.last_turn.times(*trigger),
         Amount::HostedCounters => counters_of(state, ctx).unwrap_or(0),
         Amount::HostedAdvancementTokens => advancement_tokens_of(state, ctx).unwrap_or(0),
+        Amount::HostedCards => acting_rig_card(state, ctx).map_or(0, |card| card.hosted_cards.len() as u32),
         Amount::InstalledIcebreakerCount => installed_icebreaker_count(state, registry),
         Amount::FacedownCardsInArchives => state.corp.archives.iter().filter(|a| a.facedown).count() as u32,
         Amount::CreditsLostThisResolution => ctx.credits_lost,

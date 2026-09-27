@@ -520,6 +520,14 @@ pub struct CardDefinition {
     /// ability only.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub hosted_cards_playable_from_grip: bool,
+    /// Cards hosted on this card are hosted facedown (Read-Write Share's
+    /// "host 1 card from your grip facedown on this program"): their owner
+    /// sees them and nobody else does. Read off the card by the mask
+    /// (`masking::PublicInstalledRunnerCard::hosted_unseen`), which holds
+    /// a registry, so nothing is seeded onto the install: unlike
+    /// `hosted_cards_playable_from_grip`, no registry-less reader asks.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub hosts_facedown: bool,
     /// Dividends N — "when you score this agenda, place N agenda counters
     /// on it for each excess advancement counter" (Off the Books). Read
     /// once, by `engine::score_agenda`, which puts the counters on the
@@ -922,6 +930,7 @@ impl Default for CardDefinition {
             memory_cost: None,
             installs_on_ice: false,
             hosted_cards_playable_from_grip: false,
+            hosts_facedown: false,
             dividends: None,
             playable_from_archives: false,
             removed_after_play: false,
