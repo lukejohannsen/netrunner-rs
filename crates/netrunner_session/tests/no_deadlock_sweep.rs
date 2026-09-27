@@ -23,7 +23,7 @@ use netrunner_core::cards::{register_playable_cards, CardRegistry};
 use netrunner_core::decks::{self, DeckFile};
 use netrunner_core::rules::{AccessCandidate, Deck, GameEvent, GameState, MaskedZone, PublicAccessPhase, Side, Viewer};
 use netrunner_session::coverage::played_pool_card_ids;
-use netrunner_session::{Coverage, PublicHistoryEntry, Seat, Session, SessionStep};
+use netrunner_session::{in_parallel, Coverage, PublicHistoryEntry, Seat, Session, SessionStep};
 
 /// How many seeds the sweep walks, default 32 — sized for the inner loop,
 /// matching `system_gateway_delivery::sweep_seed_count`. Raise it for a deep
@@ -93,13 +93,14 @@ impl Seating {
 /// on the same games, for free.
 #[test]
 fn view_based_agents_never_reach_a_state_with_no_legal_action() {
-    let mut coverage = Coverage::default();
-
-    for seed in 0..sweep_seed_count() {
+    // Every (seed, seating) is its own game, played on its own thread
+    // (`netrunner_session::in_parallel`); a failure still names its seed.
+    let jobs: Vec<(u64, Seating)> = (0..sweep_seed_count()).flat_map(|seed| Seating::ALL.map(|seating| (seed, seating))).collect();
+    let games = in_parallel(&jobs, |&(seed, seating)| {
         let (corp_deck, runner_deck) = sweep_decks_for_seed(seed);
         let matchup = format!("{} vs {}", corp_deck.id, runner_deck.id);
-
-        for seating in Seating::ALL {
+        let mut coverage = Coverage::default();
+        {
             let mut registry = CardRegistry::new();
             register_playable_cards(&mut registry);
             let (state, _events) =
@@ -132,6 +133,11 @@ fn view_based_agents_never_reach_a_state_with_no_legal_action() {
             assert!(!session.history().is_empty(), "seed {seed} ({matchup}): recorded no actions");
             coverage.absorb_match(session.history(), session.registry(), &outcome);
         }
+        coverage
+    });
+    let mut coverage = Coverage::default();
+    for game in &games {
+        coverage.merge(game);
     }
 
     let mut registry = CardRegistry::new();
@@ -223,8 +229,9 @@ fn the_flatline_during_an_encounter_window_position_plays_out() {
 /// strictly stronger one.
 #[test]
 fn no_client_view_or_log_entry_ever_names_a_card_it_conceals() {
-    let mut selections_seen = 0;
-    for seed in 0..sweep_seed_count() {
+    let seeds: Vec<u64> = (0..sweep_seed_count()).collect();
+    let selections_by_seed = in_parallel(&seeds, |&seed| {
+        let mut selections_seen = 0;
         let (corp_deck, runner_deck) = sweep_decks_for_seed(seed);
         let matchup = format!("{} vs {}", corp_deck.id, runner_deck.id);
 
@@ -291,7 +298,9 @@ fn no_client_view_or_log_entry_ever_names_a_card_it_conceals() {
                 }
             }
         }
-    }
+        selections_seen
+    });
+    let selections_seen: u64 = selections_by_seed.iter().sum();
     assert!(selections_seen > 0, "no seat was ever choosing cards, so the selection rule was never exercised");
 }
 
