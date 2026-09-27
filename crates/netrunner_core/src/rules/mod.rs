@@ -28,6 +28,7 @@ mod trace;
 mod turn;
 mod prevention;
 pub mod turn_log;
+mod uninstall;
 mod win;
 
 pub use ability::{amount_on_table, evaluate_effect, process_card_triggers, resolve_unbroken_subroutines, ResolutionContext};

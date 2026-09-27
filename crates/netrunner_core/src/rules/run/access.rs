@@ -8,6 +8,7 @@ use crate::rules::payment::{self, Purpose};
 use crate::rules::event::GameEvent;
 use crate::rules::run::state::{AccessCandidate, AccessPhase, AccessState, RunPhase, ServerId};
 use crate::rules::state::{ArchivedCard, GameState, InstallId, InstallSlot, Side};
+use crate::rules::uninstall;
 
 /// Root (non-ICE) installs on `server` — ICE is excluded via
 /// `InstalledCard::slot`, which the installing action declares explicitly
@@ -735,7 +736,8 @@ pub fn resolve_steal(
     // the next run and an installed agenda stayed scorable after being
     // stolen (ROADMAP Rules Audit T2). `pending.server` is what tells two
     // copies of one agenda in two remotes apart.
-    remove_from_corp_zone(state, card_id, pending.server, pending.install);
+    let (_, announced) = remove_from_corp_zone(state, registry, card_id, pending.server, pending.install)?;
+    events.extend(announced);
     state.runner.scored_agendas.push(card_id.clone());
     // Counted for `Trigger::OnRunEnded` consumers that gate on "if the
     // Runner stole any agendas during that run" (AMAZE Amusements), since
@@ -786,21 +788,29 @@ enum RemovedFrom {
 /// accessed copy is the top one and a duplicate may sit deeper. Archives
 /// is included because an agenda *stolen* out of Archives leaves it, even
 /// though a card *trashed* while being accessed there stays put.
+///
+/// An install leaves through `rules::uninstall`, and what that announced
+/// comes back beside where the card was.
 fn remove_from_corp_zone(
     state: &mut GameState,
+    registry: &CardRegistry,
     card_id: &CardId,
     server: ServerId,
     install: Option<InstallId>,
-) -> RemovedFrom {
+) -> Result<(RemovedFrom, Vec<GameEvent>), RulesError> {
+    let from_the_table = |state: &mut GameState, install: InstallId| -> Result<(RemovedFrom, Vec<GameEvent>), RulesError> {
+        Ok(match uninstall::corp_install(state, registry, install)? {
+            Some((removed, announced)) => (RemovedFrom::Installed { slot: removed.slot }, announced),
+            None => (RemovedFrom::Nowhere, Vec::new()),
+        })
+    };
     // The access pinned the exact instance: take that one and nothing
     // else. Two copies of one upgrade in a root used to both resolve to
     // the lower-indexed install (ROADMAP Rules Audit follow-ups).
     if let Some(install) = install
-        && let Some(pos) = state.corp.installed.iter().position(|c| c.install_id == install)
+        && state.find_corp_install(install).is_some()
     {
-        let slot = state.corp.installed[pos].slot;
-        state.corp.installed.remove(pos);
-        return RemovedFrom::Installed { slot };
+        return from_the_table(state, install);
     }
     let installed_at = |installed: &crate::rules::state::InstalledCard| {
         &installed.card == card_id && installed.slot == InstallSlot::Root
@@ -823,27 +833,26 @@ fn remove_from_corp_zone(
         ServerId::Hq | ServerId::RnD | ServerId::Archives => state.corp.installed.iter().position(on_server),
     };
     if let Some(pos) = position {
-        let slot = state.corp.installed[pos].slot;
-        state.corp.installed.remove(pos);
-        return RemovedFrom::Installed { slot };
+        let install = state.corp.installed[pos].install_id;
+        return from_the_table(state, install);
     }
     match server {
         ServerId::Hq => {
             if let Some(pos) = state.corp.hq.iter().position(|c| c == card_id) {
                 state.corp.hq.remove(pos);
-                return RemovedFrom::Hand;
+                return Ok((RemovedFrom::Hand, Vec::new()));
             }
         }
         ServerId::RnD => {
             if let Some(pos) = state.corp.r_and_d.iter().rposition(|c| c == card_id) {
                 state.corp.r_and_d.remove(pos);
-                return RemovedFrom::Deck;
+                return Ok((RemovedFrom::Deck, Vec::new()));
             }
         }
         ServerId::Archives => {
             if let Some(pos) = state.corp.archives.iter().position(|c| &c.card == card_id) {
                 state.corp.archives.remove(pos);
-                return RemovedFrom::Archives;
+                return Ok((RemovedFrom::Archives, Vec::new()));
             }
         }
         ServerId::Remote(_) => {}
@@ -851,12 +860,12 @@ fn remove_from_corp_zone(
     // Not where the server said — take it from wherever it actually is.
     if let Some(pos) = state.corp.hq.iter().position(|c| c == card_id) {
         state.corp.hq.remove(pos);
-        RemovedFrom::Hand
+        Ok((RemovedFrom::Hand, Vec::new()))
     } else if let Some(pos) = state.corp.r_and_d.iter().rposition(|c| c == card_id) {
         state.corp.r_and_d.remove(pos);
-        RemovedFrom::Deck
+        Ok((RemovedFrom::Deck, Vec::new()))
     } else {
-        RemovedFrom::Nowhere
+        Ok((RemovedFrom::Nowhere, Vec::new()))
     }
 }
 
@@ -877,11 +886,12 @@ fn move_to_archives(
     card_id: &CardId,
     server: ServerId,
     install: Option<InstallId>,
-) {
+) -> Result<Vec<GameEvent>, RulesError> {
     if server == ServerId::Archives && install.is_none() {
-        return;
+        return Ok(Vec::new());
     }
-    if let RemovedFrom::Installed { slot: InstallSlot::Root } = remove_from_corp_zone(state, card_id, server, install) {
+    let (from, announced) = remove_from_corp_zone(state, registry, card_id, server, install)?;
+    if let RemovedFrom::Installed { slot: InstallSlot::Root } = from {
         // "(If the Runner trashes this card while accessing it, this ability
         // still applies for the remainder of this run.)" — record it so
         // `Trigger::OnRunEnded` can still reach it from the registry once
@@ -898,6 +908,7 @@ fn move_to_archives(
     }
     // The Runner just accessed this card, so it lands faceup.
     state.corp.archives.push(ArchivedCard::faceup(card_id.clone()));
+    Ok(announced)
 }
 
 /// Resolves `Effect::TrashCurrentlyAccessedCard` — trashes whatever card is
@@ -925,9 +936,9 @@ pub fn trash_currently_accessed_card_without_cost(
         return Err(RulesError::CannotTrashFromArchives { card: card_id });
     }
 
-    move_to_archives(state, registry, &card_id, server, install);
+    let mut events = move_to_archives(state, registry, &card_id, server, install)?;
     let trashed_event = GameEvent::CardTrashedFromAccess { card: card_id.clone(), cost_paid: 0, install };
-    let mut events = vec![trashed_event.clone()];
+    events.push(trashed_event.clone());
     events.extend(dispatcher::dispatch_event(state, registry, &trashed_event)?);
     events.extend(advance_or_finish(state, registry, server, card_id)?);
     Ok(events)
@@ -958,7 +969,7 @@ pub fn resolve_trash(
 
     let cost_events = ability::pay_cost(state, registry, Side::Runner, &Cost::Credits(cost), Purpose::TrashCost, Some(card_id))?;
     let mut events = cost_events.clone();
-    move_to_archives(state, registry, card_id, pending.server, pending.install);
+    events.extend(move_to_archives(state, registry, card_id, pending.server, pending.install)?);
     let trashed_event = GameEvent::CardTrashedFromAccess { card: card_id.clone(), cost_paid: cost, install: pending.install };
     dispatcher::emit(state, registry, &mut events, trashed_event)?;
     events.extend(ability::dispatch_cost_events(state, registry, &cost_events)?);

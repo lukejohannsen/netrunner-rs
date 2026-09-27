@@ -11,6 +11,7 @@ use crate::rules::listeners;
 use crate::rules::event::GameEvent;
 use crate::rules::payment::{self, Purpose};
 use crate::rules::prevention;
+use crate::rules::uninstall;
 use crate::rules::run::{self, AccessPhase, RunPhase, ServerId, SubroutineStatus};
 use crate::rules::state::{
     ArchivedCard, Clicks, Credits, DeferredTrigger, GameState, InstallId, InstallSlot, InstalledCard, InstalledRunnerCard, OncePerTurnKey, PendingChoiceResume, PendingDecision, PendingPaidChoice,
@@ -402,11 +403,17 @@ pub fn evaluate_effect(
         }
 
         Effect::GiveBadPublicity(amount) => {
-            state.corp.bad_publicity = state.corp.bad_publicity.saturating_add(*amount);
+            let amount = resolve_amount(amount, ctx, state, registry);
+            // Taking none is not taking bad publicity: Editorial Division
+            // must not hear a Luana Campos that hosted nothing.
+            if amount == 0 {
+                return Ok(Vec::new());
+            }
+            state.corp.bad_publicity = state.corp.bad_publicity.saturating_add(amount);
             // Dispatched here, as `RemoveTags` dispatches its removal:
             // Editorial Division hears the Corp take it.
             let mut events = Vec::new();
-            dispatcher::emit(state, registry, &mut events, GameEvent::BadPublicityGiven { amount: *amount })?;
+            dispatcher::emit(state, registry, &mut events, GameEvent::BadPublicityGiven { amount })?;
             Ok(events)
         }
 
@@ -756,8 +763,9 @@ pub fn evaluate_effect(
                 if !state.runner.rig.iter().any(|c| c.install_id == install && c.card == card_id) {
                     return Ok(Vec::new());
                 }
-                let (card, _, mut events) = crate::rules::pending_choice::remove_installed_card(state, registry, Side::Runner, &crate::dsl::CardZoneRef::OwnInstalled, install)
+                let removed = crate::rules::pending_choice::remove_installed_card(state, registry, Side::Runner, &crate::dsl::CardZoneRef::OwnInstalled, install)?
                     .ok_or(RulesError::InstallNotFound(install))?;
+                let (card, mut events) = (removed.card, removed.cascade);
                 place(&mut state.runner.stack, card.clone());
                 events.push(GameEvent::CardAddedToDeck { side: Side::Runner, card, top, revealed: true });
                 return Ok(events);
@@ -1845,26 +1853,31 @@ fn installed_target(state: &GameState, registry: &CardRegistry, target: &CardTar
 /// asked about does. Exact with two copies installed, where
 /// `trash_card`'s `CardTarget`s name a card and take the first. Nothing
 /// happens if the install left play while the trash was parked.
-pub(crate) fn trash_install(state: &mut GameState, registry: &CardRegistry, owner: Side, install: InstallId, by: Option<Side>) -> Vec<GameEvent> {
+pub(crate) fn trash_install(
+    state: &mut GameState,
+    registry: &CardRegistry,
+    owner: Side,
+    install: InstallId,
+    by: Option<Side>,
+) -> Result<Vec<GameEvent>, RulesError> {
     match owner {
         Side::Corp => {
-            let Some(position) = state.corp.installed.iter().position(|c| c.install_id == install) else { return Vec::new() };
-            let removed = state.corp.installed.remove(position);
+            let Some((removed, mut events)) = uninstall::corp_install(state, registry, install)? else { return Ok(Vec::new()) };
             // A rezzed install was faceup on the table, and a card the
             // Runner is accessing has been seen whatever its rez state.
             let seen = removed.rezzed || runner_is_accessing(state, &removed.card);
             state.corp.archives.push(orient(removed.card.clone(), seen));
-            let mut events = vec![GameEvent::CardTrashed { side: Side::Corp, card: removed.card, by }];
+            events.push(GameEvent::CardTrashed { side: Side::Corp, card: removed.card, by });
             events.extend(cascade_trash_hosted_programs(state, install));
-            events
+            Ok(events)
         }
         Side::Runner => {
-            let Some(position) = state.runner.rig.iter().position(|c| c.install_id == install) else { return Vec::new() };
+            let Some(position) = state.runner.rig.iter().position(|c| c.install_id == install) else { return Ok(Vec::new()) };
             let removed = state.runner.rig.remove(position);
             state.runner.heap.push(removed.card.clone());
             let mut events = vec![GameEvent::CardTrashed { side: Side::Runner, card: removed.card.clone(), by }];
             events.extend(cascade_trash_hosted_on_rig_card(state, registry, &removed));
-            events
+            Ok(events)
         }
     }
 }
@@ -2035,13 +2048,13 @@ pub(crate) fn trash_card(
                 .iter()
                 .position(|installed| installed.card == *card && installed.server == *server)
                 .ok_or_else(|| RulesError::CardNotInstalled { card: card.clone() })?;
+            let install = state.corp.installed[position].install_id;
+            let Some((removed, mut events)) = uninstall::corp_install(state, registry, install)? else { return Ok(Vec::new()) };
             // A rezzed install was face-up on the table, so the Runner has
             // already seen it; an unrezzed one they never did.
-            let seen = state.corp.installed[position].rezzed || runner_is_accessing(state, card);
-            let install = state.corp.installed[position].install_id;
-            state.corp.installed.remove(position);
+            let seen = removed.rezzed || runner_is_accessing(state, card);
             state.corp.archives.push(orient(card.clone(), seen));
-            let mut events = vec![GameEvent::CardTrashed { side: Side::Corp, card: card.clone(), by }];
+            events.push(GameEvent::CardTrashed { side: Side::Corp, card: card.clone(), by });
             events.extend(cascade_trash_hosted_programs(state, install));
             Ok(events)
         }
@@ -2212,11 +2225,11 @@ pub(crate) fn trash_this_card(state: &mut GameState, registry: &CardRegistry, ct
         // Same rezzed-or-not rule as `CardTarget::CorpInstalled` above,
         // widened for the access case: a card the Runner is accessing right
         // now has been seen regardless of rez state.
-        let seen = state.corp.installed[position].rezzed || runner_is_accessing(state, card_id);
         let install = state.corp.installed[position].install_id;
-        state.corp.installed.remove(position);
+        let Some((removed, mut events)) = uninstall::corp_install(state, registry, install)? else { return Ok(Vec::new()) };
+        let seen = removed.rezzed || runner_is_accessing(state, card_id);
         state.corp.archives.push(orient(card_id.clone(), seen));
-        let mut events = vec![GameEvent::CardTrashed { side: Side::Corp, card: card_id.clone(), by }];
+        events.push(GameEvent::CardTrashed { side: Side::Corp, card: card_id.clone(), by });
         events.extend(cascade_trash_hosted_programs(state, install));
         return Ok(events);
     }
@@ -2430,10 +2443,13 @@ pub(crate) fn pay_cost_ctx(
             let card_id = acting_card.ok_or(RulesError::MissingActingCardContext)?;
             let position =
                 acting_corp_position(state, ctx).ok_or_else(|| RulesError::CardNotInstalled { card: card_id.clone() })?;
-            state.corp.installed.remove(position);
+            let install = state.corp.installed[position].install_id;
+            let (_, mut events) = uninstall::corp_install(state, registry, install)?
+                .ok_or_else(|| RulesError::CardNotInstalled { card: card_id.clone() })?;
             // Deliberately not Archives — see `Cost::RemoveSelfFromGame`.
             state.corp.removed_from_game.push(card_id.clone());
-            Ok(vec![GameEvent::CardRemovedFromGame { side, card: card_id.clone() }])
+            events.push(GameEvent::CardRemovedFromGame { side, card: card_id.clone() });
+            Ok(events)
         }
 
         Cost::ClearTags => {
@@ -3021,6 +3037,7 @@ pub(crate) fn resolve_amount(amount: &Amount, ctx: &ResolutionContext<'_>, state
         // rather than a running counter that a forfeit would have to
         // decrement.
         Amount::RunnerTags => state.runner.tags,
+        Amount::BadPublicity => state.corp.bad_publicity,
         Amount::IceProtectingThisServer => acting_corp_install(state, ctx).map_or(0, |installed| {
             state.corp.installed.iter().filter(|other| other.server == installed.server && other.slot == InstallSlot::Ice).count() as u32
         }),
@@ -3231,7 +3248,7 @@ mod tests {
         }];
         let install = state.runner.rig[0].install_id;
 
-        let events = trash_install(&mut state, &registry, Side::Runner, install, Some(Side::Corp));
+        let events = trash_install(&mut state, &registry, Side::Runner, install, Some(Side::Corp)).unwrap();
 
         assert_eq!(state.runner.heap, vec![CardId("detente".to_string())], "only Detente is the Runner's");
         assert_eq!(state.corp.archives, vec![ArchivedCard::faceup(CardId("hedge_fund".to_string()))]);
@@ -3408,7 +3425,7 @@ mod tests {
     #[test]
     fn give_bad_publicity_increases_the_counter() {
         let mut state = game_state();
-        let events = evaluate_effect(&mut state, &Effect::GiveBadPublicity(2), &mut ResolutionContext::for_card(None), &CardRegistry::new()).unwrap();
+        let events = evaluate_effect(&mut state, &Effect::GiveBadPublicity(Amount::Fixed(2)), &mut ResolutionContext::for_card(None), &CardRegistry::new()).unwrap();
 
         assert_eq!(state.corp.bad_publicity, 2);
         assert_eq!(events, vec![GameEvent::BadPublicityGiven { amount: 2 }]);

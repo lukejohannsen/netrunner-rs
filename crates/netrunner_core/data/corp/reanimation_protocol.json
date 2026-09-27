@@ -37,7 +37,9 @@
                       }
                     },
                     "effect": {
-                      "GiveBadPublicity": 1
+                      "GiveBadPublicity": {
+                        "Fixed": 1
+                      }
                     }
                   }
                 }

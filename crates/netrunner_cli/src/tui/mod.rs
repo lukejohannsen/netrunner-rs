@@ -1674,6 +1674,7 @@ fn counter_label(card: Option<&CardId>, counters: u32, registry: &CardRegistry) 
             CounterKind::Virus => "virus",
             CounterKind::Power => "power",
             CounterKind::Credit => "credits",
+            CounterKind::BadPublicity => "bad publicity",
         })
         .unwrap_or("counters");
     format!(", {counters} {kind}")

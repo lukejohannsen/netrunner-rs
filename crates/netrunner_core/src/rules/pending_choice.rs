@@ -16,6 +16,7 @@ use crate::rules::lingering::{Lingering, LingeringEffect, On, Until};
 use crate::rules::paid_ability;
 use crate::rules::prevention;
 use crate::rules::run;
+use crate::rules::uninstall;
 use crate::rules::state::{ArchivedCard, GameState, InstallId, InstallSlot, PendingChoiceResume, PendingDecision, PendingPaidChoiceResume, Side, WouldHappen};
 
 /// Who `state.pending_decision` is currently awaiting a choice from, if
@@ -452,36 +453,49 @@ fn is_corp_archives(chooser: Side, zone: &CardZoneRef) -> bool {
 /// with two copies installed the one the chooser pointed at is the one
 /// that goes.
 ///
-/// Returns `(card, was_public, cascade)`: a piece of ICE leaving the table
-/// takes the trojans hosted on it along (`ability::
-/// cascade_trash_hosted_programs`), exactly as `trash_card` does — this was
-/// the one removal site that did not, leaving a hosted Botulus/Tranquilizer
-/// in the rig pointing at ICE that no longer existed.
+/// A piece of ICE leaving the table takes the trojans hosted on it along
+/// (`ability::cascade_trash_hosted_programs`), exactly as `trash_card`
+/// does — this was the one removal site that did not, leaving a hosted
+/// Botulus/Tranquilizer in the rig pointing at ICE that no longer existed.
+/// A Corp install leaves through `rules::uninstall`, and what it announced
+/// on the way out comes back apart from the cascade, because it happened
+/// before the card went and the cascade after.
 pub(crate) fn remove_installed_card(
     state: &mut GameState,
     registry: &CardRegistry,
     chooser: Side,
     zone: &CardZoneRef,
     install_id: InstallId,
-) -> Option<(CardId, bool, Vec<GameEvent>)> {
+) -> Result<Option<RemovedInstall>, RulesError> {
     match owning_side(chooser, zone) {
         Side::Corp => {
-            let pos = state.corp.installed.iter().position(|c| c.install_id == install_id)?;
-            let removed = state.corp.installed.remove(pos);
+            let Some((removed, announced)) = uninstall::corp_install(state, registry, install_id)? else { return Ok(None) };
             let cascade = if removed.slot == InstallSlot::Ice {
                 ability::cascade_trash_hosted_programs(state, removed.install_id)
             } else {
                 Vec::new()
             };
-            Some((removed.card, removed.rezzed, cascade))
+            Ok(Some(RemovedInstall { card: removed.card, was_public: removed.rezzed, announced, cascade }))
         }
         Side::Runner => {
-            let pos = state.runner.rig.iter().position(|c| c.install_id == install_id)?;
+            let Some(pos) = state.runner.rig.iter().position(|c| c.install_id == install_id) else { return Ok(None) };
             let removed = state.runner.rig.remove(pos);
             let cascade = ability::cascade_trash_hosted_on_rig_card(state, registry, &removed);
-            Some((removed.card, true, cascade))
+            Ok(Some(RemovedInstall { card: removed.card, was_public: true, announced: Vec::new(), cascade }))
         }
     }
+}
+
+/// What `remove_installed_card` took off the table.
+pub(crate) struct RemovedInstall {
+    pub card: CardId,
+    /// Whether the card was faceup there — every Runner card, and a rezzed
+    /// Corp card — so the caller can orient it in Archives.
+    pub was_public: bool,
+    /// What `rules::uninstall` announced before the card went.
+    pub announced: Vec<GameEvent>,
+    /// What left with it.
+    pub cascade: Vec<GameEvent>,
 }
 
 /// The positions in `zone` a `Cost::Trash` takes, asking the payer only
@@ -572,10 +586,11 @@ pub(crate) fn trash_as_cost(
         let was_public = match (&installs, zone) {
             (Some(ids), _) => {
                 let install = ids.get(positions[index]).copied().ok_or(RulesError::CardNotEligibleForSelection(positions[index]))?;
-                let (_, was_public, hosted) =
-                    remove_installed_card(state, registry, side, zone, install).ok_or(RulesError::CardNotEligibleForSelection(positions[index]))?;
-                cascade = hosted;
-                was_public
+                let removed =
+                    remove_installed_card(state, registry, side, zone, install)?.ok_or(RulesError::CardNotEligibleForSelection(positions[index]))?;
+                events.extend(removed.announced);
+                cascade = removed.cascade;
+                removed.was_public
             }
             (None, _) => {
                 let hand = plain_zone_mut(state, side, zone, source).ok_or(RulesError::CardNotEligibleForSelection(positions[index]))?;
@@ -995,13 +1010,14 @@ pub(crate) fn resolve_confirm_card_selection(
                 }
             }
             let moved: Option<bool> = match &source {
-                CardZoneRef::OpponentInstalled | CardZoneRef::OwnInstalled => selected_installs
-                    .get(index)
-                    .and_then(|install_id| remove_installed_card(state, registry, side, &source, *install_id))
-                    .map(|(_, was_public, hosted)| {
-                        cascade = hosted;
-                        was_public
+                CardZoneRef::OpponentInstalled | CardZoneRef::OwnInstalled => match selected_installs.get(index) {
+                    Some(install_id) => remove_installed_card(state, registry, side, &source, *install_id)?.map(|removed| {
+                        events.extend(removed.announced);
+                        cascade = removed.cascade;
+                        removed.was_public
                     }),
+                    None => None,
+                },
                 _ if is_corp_archives(side, &source) => {
                     let pos = state.corp.archives.iter().position(|a| &a.card == card_id);
                     pos.map(|pos| !state.corp.archives.remove(pos).facedown)

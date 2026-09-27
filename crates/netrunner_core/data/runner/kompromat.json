@@ -39,7 +39,9 @@
                     "Sequence": []
                   },
                   "if_declined": {
-                    "GiveBadPublicity": 1
+                    "GiveBadPublicity": {
+                      "Fixed": 1
+                    }
                   },
                   "text": "give the Corp 1 bad publicity unless they derez 1 piece of ice protecting the attacked server"
                 }

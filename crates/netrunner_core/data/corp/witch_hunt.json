@@ -12,7 +12,9 @@
       "subject": "This",
       "effects": [
         {
-          "GiveBadPublicity": 1
+          "GiveBadPublicity": {
+            "Fixed": 1
+          }
         }
       ]
     },
@@ -21,7 +23,9 @@
       "subject": "This",
       "effects": [
         {
-          "GiveBadPublicity": 1
+          "GiveBadPublicity": {
+            "Fixed": 1
+          }
         }
       ]
     },

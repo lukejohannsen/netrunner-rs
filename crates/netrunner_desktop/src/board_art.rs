@@ -325,6 +325,8 @@ pub fn token_key(kind: netrunner_client::board::TokenKind) -> &'static str {
         TokenKind::Counter(Some(CounterKind::Virus)) => "counter.virus",
         TokenKind::Counter(Some(CounterKind::Power)) => "counter.power",
         TokenKind::Counter(Some(CounterKind::Credit)) => "counter.credit",
+        // Bad publicity hosted on a card is the readout's own mark.
+        TokenKind::Counter(Some(CounterKind::BadPublicity)) => "hud.bad-publicity",
         TokenKind::Counter(None) => "counter",
     }
 }

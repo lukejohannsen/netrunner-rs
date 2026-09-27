@@ -500,7 +500,7 @@ with the rule quoted.
 | 8.2 | Card Movements | unreviewed |  |
 | 8.3 | Arranging and Rearranging Cards | read in part | VP Stage 6a: 8.3.3, arranging the top of a deck "in any order" is a selection from those cards back onto the deck, the first chosen landing on top (`PromptChooseCards` over `TopOfZone(n)` into the same deck: Cultivate, Knowledge Seeker); a card left unchosen stays beneath, which is one of the arrangements. 8.3.3b, Cultivate's trash and add-to-HQ act on the looked-at cards before the rest are arranged. 8.3.1a holds by construction. 8.3.2 (arranging ice) is not in the pool. |
 | 8.4 | Drawing Cards | unreviewed |  |
-| 8.5 | Installing and Uninstalling Cards | deviates | B4 only. B1–B3 fixed: like cards are trashed at 8.5.16c, before the install cost, with the forced ones unasked and the player's own behind `trash_first`. 1[c] per ice not counting trashed ice, trashed cards keep their status (8.5.7), and a server emptied by its own install's trash keeps its identity (8.5.9); these match. VP Stage 3b: 8.5.12 "Central server only" is `install_only_in`, refused at the install and honoured by a move. |
+| 8.5 | Installing and Uninstalling Cards | deviates | B4 only. B1–B3 fixed: like cards are trashed at 8.5.16c, before the install cost, with the forced ones unasked and the player's own behind `trash_first`. 1[c] per ice not counting trashed ice, trashed cards keep their status (8.5.7), and a server emptied by its own install's trash keeps its identity (8.5.9); these match. VP Stage 3b: 8.5.12 "Central server only" is `install_only_in`, refused at the install and honoured by a move. VP Stage 7a: 8.5.1b's "for any reason" is `rules::uninstall`, the one door a Corp install leaves the table through (trashed, scored, stolen, removed from the game, the ◆ rule). |
 | 8.6 | Playing Events and Operations | read in part | F6 (order only). |
 | 8.7 | Searching for Cards | read in part | A search shuffles the deck searched, found or not, before the rest of its ability resolves (8.7.3): `pending_choice::shuffle_decks`, 26 September 2026. It had shuffled the destination, so Editorial Division, Malapert Data Vault and Off the Books shuffled HQ and Mutual Favor the grip, and a search that found nothing shuffled nothing. |
 | 8.8 | Swapping Cards | unreviewed |  |
@@ -517,7 +517,7 @@ with the rule quoted.
 | 9.6 | Conditional Abilities | read in part | Audit: a trigger whose source left is dropped, a resolving ability finishes; matches. |
 | 9.7 | Play Abilities | unreviewed |  |
 | 9.8 | Subroutines | read in part | Audit: unbroken subroutines in printed order, stopping at an ended run; matches. 9.8.2–9.8.3 (new in v26.03): no pool card adds subroutines. |
-| 9.9 | Interrupts and Replacement Effects | read in part | Interrupts and prevention: `rules::prevention` (the Prevention Rule, Rules Audit item 4). Expose is deferred. |
+| 9.9 | Interrupts and Replacement Effects | read in part | Interrupts and prevention: `rules::prevention` (the Prevention Rule, Rules Audit item 4). Expose is deferred. VP Stage 7a: a "would be uninstalled" interrupt (9.9.3d) is announced by `rules::uninstall` while the card is still installed, and only for an active card (9.9.4b); a checkpoint's trash carries out no instruction and opens no interrupt window (9.9.4). |
 | 9.10 | Lingering Effects | read in part | Lingering effects: `rules::lingering` (the Continuous Effect Rule). |
 | 9.11 | Identifying Instructions | unreviewed |  |
 | 9.12 | Other Rules and Terminology | conforms | F5 fixed: a gain of 0 does not take place (9.12.2b). |

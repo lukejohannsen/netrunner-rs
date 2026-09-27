@@ -425,6 +425,12 @@ pub enum GameEvent {
     /// is is the payload, as it is for the parked thing itself. Were four
     /// events, a pair per kind, with tags about to need a third pair.
     AboutToResolve { what: WouldHappen },
+    /// A Corp install is about to leave the table (CR 8.5.1b), announced
+    /// by `rules::uninstall` before it goes — and only when the card is
+    /// active and its own text interrupts it (Luana Campos), because only
+    /// an active interrupt is marked pending (CR 9.9.4b) and nothing else
+    /// hears the moment. So the card is always rezzed, and public.
+    AboutToBeUninstalled { card: CardId, install: crate::rules::state::InstallId },
     /// `amount` of `what` was prevented; the rest, if any, follows as the
     /// event it always was.
     Prevented { what: WouldHappen, amount: u32 },
@@ -545,7 +551,7 @@ impl GameEvent {
             | GameEvent::AdditionalAccessGranted { .. } | GameEvent::AccessReplacementSet { .. }
             | GameEvent::AccessReplaced { .. } | GameEvent::CreditsLost { .. } | GameEvent::ClicksLost { .. }
             | GameEvent::ClicksGained { .. }
-            | GameEvent::AgendaScored { .. } | GameEvent::AboutToResolve { .. }
+            | GameEvent::AgendaScored { .. } | GameEvent::AboutToResolve { .. } | GameEvent::AboutToBeUninstalled { .. }
             | GameEvent::Prevented { .. } | GameEvent::CountersAdded { .. } | GameEvent::CountersRemoved { .. }
             | GameEvent::BasicDrawActionTaken { .. }
             | GameEvent::PendingChoicePresented { .. } | GameEvent::PendingChoiceResolved { .. }

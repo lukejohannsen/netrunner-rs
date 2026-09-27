@@ -780,6 +780,10 @@ pub enum CounterKind {
     Virus,
     Power,
     Credit,
+    /// The Corp's bad publicity, hosted on a card where "it has no effect
+    /// while hosted" (Luana Campos). Named so the view can say what the
+    /// counters are; they are counted with the rest.
+    BadPublicity,
 }
 
 /// See `CardDefinition::pays_for` — what a card's hosted credits may be

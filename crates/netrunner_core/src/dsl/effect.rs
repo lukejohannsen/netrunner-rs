@@ -153,8 +153,10 @@ pub enum Effect {
     /// (`Amount::ChosenNumber`) instead of every tag there is.
     RemoveTags(Amount),
     /// Deliberately no `Side` param — Bad Publicity exists solely on
-    /// `CorpState` in this data model, same rationale as `GiveTags`.
-    GiveBadPublicity(u32),
+    /// `CorpState` in this data model, same rationale as `GiveTags`. An
+    /// `Amount` since Luana Campos's "take all hosted bad publicity" is
+    /// the counters on the card, as `GiveTags` became one for Vicsek.
+    GiveBadPublicity(Amount),
     /// Deliberately no `Side` param, same rationale as `GiveBadPublicity`.
     RemoveBadPublicity(u32),
     TrashCard(CardTarget),
@@ -1134,6 +1136,10 @@ pub enum Amount {
     /// `EffectRequirement::AmountAtLeast`. `EffectRequirement::IsTagged`
     /// answers only "at least one".
     RunnerTags,
+    /// The Corp's bad publicity — Luana Campos's "you may host 1 of your
+    /// bad publicity counters", which is not offered with none to host.
+    /// `RunnerTags`'s sibling: no requirement asked it before.
+    BadPublicity,
     /// The number `Effect::ChooseNumber` was answered with, inside its
     /// `then`. **A placeholder, written over when the number is chosen**
     /// (`Effect::with_chosen_number`, the convention

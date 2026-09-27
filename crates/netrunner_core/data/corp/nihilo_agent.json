@@ -38,7 +38,9 @@
           }
         },
         {
-          "GiveBadPublicity": 1
+          "GiveBadPublicity": {
+            "Fixed": 1
+          }
         },
         {
           "RemoveCounters": 1
