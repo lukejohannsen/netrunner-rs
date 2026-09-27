@@ -12876,4 +12876,126 @@ mod vantage_point {
         let refused = apply_action(&table, &registry, PlayerAction::ActivateAbility { target: fixture_install_id("tocsin"), ability_index: 0 });
         assert!(refused.is_err(), "no ability on the table");
     }
+
+    // --- Stage 7g: a run not declared successful, and an access limit ---
+
+    fn flagship_in_hq_root() -> crate::rules::InstalledCard {
+        crate::rules::InstalledCard { slot: InstallSlot::Root, ..ice_at_hq("flagship") }
+    }
+
+    /// Runs HQ with Flagship rezzed in its root and a random access limit
+    /// of 2, up to the breach. Gabriel Santiago would gain 2[credit] on a
+    /// successful run on HQ.
+    fn run_hq_past_flagship(registry: &CardRegistry) -> (GameState, Vec<crate::rules::GameEvent>) {
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.identity = Some(id("gabriel_santiago"));
+        state.runner.resources.credits = Credits(5);
+        state.corp.installed.push(flagship_in_hq_root());
+        state.corp.hq = vec![id("hedge_fund"), id("ice_wall"), id("palisade")];
+        let (state, _) = apply_action(&state, registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("initiate run");
+        let (mut state, _) = crate::rules::test_support::through_movement(&state, registry).expect("to the server");
+        state.active_run.as_mut().expect("running").additional_hq_access = 1;
+        apply_action(&state, registry, PlayerAction::CompleteRun).expect("past the approach")
+    }
+
+    fn accessed(events: &[crate::rules::GameEvent]) -> Vec<String> {
+        events
+            .iter()
+            .filter_map(|event| match event {
+                crate::rules::GameEvent::CardAccessed { card, .. } => Some(card.0.clone()),
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// Flagship withholds the declaration and nothing else: the server is
+    /// breached, no "successful run" is heard, and after one card of HQ
+    /// the only candidate left is Flagship, however many HQ would give.
+    #[test]
+    fn flagship_breaches_without_success_and_allows_one_card_besides_itself() {
+        use crate::rules::GameEvent;
+        use crate::rules::AccessCandidate;
+        let registry = registry();
+        let (state, events) = run_hq_past_flagship(&registry);
+        assert!(events.iter().any(|e| matches!(e, GameEvent::RunNotDeclaredSuccessful { server: ServerId::Hq })));
+        assert!(!events.iter().any(|e| matches!(e, GameEvent::RunSucceeded { .. })), "not declared successful");
+        assert_eq!(state.this_turn.times(crate::dsl::Trigger::OnSuccessfulRun), 0, "and not counted as one");
+        assert_eq!(state.runner.resources.credits, Credits(5), "Gabriel Santiago hears nothing");
+        assert!(!state.active_run.as_ref().expect("breaching").declared_successful);
+
+        // A card of HQ first: then Flagship is all that is left.
+        let (state, first) = apply_action(&state, &registry, PlayerAction::SelectCardToAccess { candidate: AccessCandidate::Zone }).expect("access HQ");
+        let card = CardId(accessed(&first)[0].clone());
+        let (state, next) = apply_action(&state, &registry, PlayerAction::PassAccessedCard { card_id: card }).expect("pass it");
+        assert_eq!(accessed(&next), ["flagship"], "only Flagship is still a candidate");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::PassAccessedCard { card_id: id("flagship") }).expect("pass Flagship");
+        assert!(state.active_run.is_none(), "the breach is over after two accesses of three offered");
+    }
+
+    /// Trashed while it is accessed, Flagship persists for the rest of the
+    /// run (CR 9.12.5): one card of HQ, and the breach is over.
+    #[test]
+    fn flagship_trashed_on_access_still_limits_the_run() {
+        use crate::rules::AccessCandidate;
+        let registry = registry();
+        let (state, _) = run_hq_past_flagship(&registry);
+        let flagship = AccessCandidate::Root(fixture_install_id("flagship"));
+        let (state, _) = apply_action(&state, &registry, PlayerAction::SelectCardToAccess { candidate: flagship }).expect("access Flagship");
+        let (state, events) = apply_action(&state, &registry, PlayerAction::TrashAccessedCard { card_id: id("flagship") }).expect("trash it");
+        assert!(state.corp.archives.iter().any(|a| a.card.0 == "flagship"));
+        assert_eq!(accessed(&events).len(), 1, "one card of HQ, offered alone: {events:?}");
+        let card = CardId(accessed(&events)[0].clone());
+        let (state, _) = apply_action(&state, &registry, PlayerAction::PassAccessedCard { card_id: card }).expect("pass it");
+        assert!(state.active_run.is_none(), "no second card of HQ: {:?}", state.active_run);
+    }
+
+    /// Unrezzed, Flagship is not active: the run is successful, and trashed
+    /// on access it leaves nothing to persist — only a rezzed card's
+    /// persistent abilities do (CR 9.12.5a) — so HQ gives both its cards.
+    #[test]
+    fn an_unrezzed_flagship_neither_withholds_success_nor_persists() {
+        use crate::rules::{AccessCandidate, GameEvent};
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.credits = Credits(5);
+        state.corp.installed.push(crate::rules::InstalledCard { rezzed: false, ..flagship_in_hq_root() });
+        state.corp.hq = vec![id("hedge_fund"), id("ice_wall"), id("palisade")];
+        let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("initiate run");
+        let (mut state, _) = crate::rules::test_support::through_movement(&state, &registry).expect("to the server");
+        state.active_run.as_mut().expect("running").additional_hq_access = 1;
+        let (state, events) = apply_action(&state, &registry, PlayerAction::CompleteRun).expect("successful");
+        assert!(events.iter().any(|e| matches!(e, GameEvent::RunSucceeded { .. })));
+        let flagship = AccessCandidate::Root(fixture_install_id("flagship"));
+        let (state, _) = apply_action(&state, &registry, PlayerAction::SelectCardToAccess { candidate: flagship }).expect("access Flagship");
+        let (mut state, _) = apply_action(&state, &registry, PlayerAction::TrashAccessedCard { card_id: id("flagship") }).expect("trash it");
+        assert!(state.active_run.as_ref().is_some_and(|run| run.persistent_trashed_upgrades.is_empty()));
+        let mut from_hq = 0;
+        while let Some(card) = state.active_run.as_ref().and_then(|run| run.access_state.as_ref()).and_then(|access| access.currently_accessing.clone()) {
+            from_hq += 1;
+            state = apply_action(&state, &registry, PlayerAction::PassAccessedCard { card_id: card }).expect("pass").0;
+        }
+        assert_eq!(from_hq, 2, "both cards of the random access limit");
+    }
+
+    /// "HQ or R&D only."
+    #[test]
+    fn flagship_is_installed_only_in_hq_or_r_and_d() {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Corp);
+        state.corp.resources.clicks = Clicks(3);
+        state.corp.hq = vec![id("flagship")];
+        let mut servers: Vec<ServerId> = crate::rules::legal_actions_for(&state, &registry, Side::Corp)
+            .into_iter()
+            .filter_map(|action| match action {
+                PlayerAction::InstallCard { card_id, zone, slot: InstallSlot::Root, .. } if card_id.0 == "flagship" => Some(zone),
+                _ => None,
+            })
+            .collect();
+        servers.sort_by_key(|server| format!("{server:?}"));
+        servers.dedup();
+        assert_eq!(servers, [ServerId::Hq, ServerId::RnD]);
+    }
 }

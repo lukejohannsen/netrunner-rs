@@ -274,6 +274,7 @@ pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
         | GameEvent::CardDrawn { .. }
         | GameEvent::SubroutineFired { .. }
         | GameEvent::SubroutineGained { .. }
+        | GameEvent::RunNotDeclaredSuccessful { .. }
         | GameEvent::IceStrengthModified { .. }
         | GameEvent::CardDerezzed { .. }
         | GameEvent::IceSwapped { .. }

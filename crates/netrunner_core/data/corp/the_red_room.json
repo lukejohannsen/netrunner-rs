@@ -4,7 +4,9 @@
   "side": "Corp",
   "card_type": "Upgrade",
   "cost": 1,
-  "install_only_in": "Central",
+  "install_only_in": [
+    "Central"
+  ],
   "triggers": [
     {
       "trigger": "OnAgendaScored",

@@ -782,7 +782,7 @@ pub(crate) fn place_corp_card(
         }
     }
     // The Red Room's "Central server only."
-    if card_def.install_only_in.is_some_and(|kind| !kind.admits(zone)) {
+    if !card_def.may_be_installed_in(zone) {
         return Err(RulesError::InstallRestricted { card: card_id });
     }
     // Step 8.5.16c, before the cost: a remote holds one agenda or asset
@@ -871,7 +871,7 @@ pub(crate) fn corp_install_destinations(state: &GameState, card_def: &crate::dsl
         CardType::Upgrade => {
             let mut zones = vec![ServerId::Hq, ServerId::RnD, ServerId::Archives];
             zones.extend(remotes);
-            zones.retain(|zone| card_def.install_only_in.is_none_or(|kind| kind.admits(*zone)));
+            zones.retain(|zone| card_def.may_be_installed_in(*zone));
             zones
         }
         CardType::Ice(_) => {
@@ -1232,6 +1232,21 @@ fn complete_run(
     // leave was the movement phase before the server was approached. (With
     // approach and success merged, a random Runner once jacked out of half
     // its successful runs from the window that used to open here.)
+    // A card that says runs here cannot be declared successful withholds
+    // the declaration and nothing else (CR 6.9.5a, 6.8.4a): no
+    // `RunSucceeded`, so nothing that hears one, and no "if successful"
+    // replacement of the breach (Account Siphon's) — but the breach itself
+    // is 6.9.5b, and follows at once, with nothing that could have parked
+    // ahead of it.
+    if !continuous::may_be_declared_successful(&next, registry, server) {
+        if let Some(run) = next.active_run.as_mut() {
+            run.access_replacement = None;
+            run.access_replacement_card = None;
+        }
+        let mut events = vec![GameEvent::RunNotDeclaredSuccessful { server }];
+        events.extend(run::breach(&mut next, registry)?);
+        return Ok((next, events));
+    }
     if let Some(run) = next.active_run.as_mut() {
         run.declared_successful = true;
     }

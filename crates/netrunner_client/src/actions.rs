@@ -528,6 +528,7 @@ pub fn narrate_event(
 
         // ---- runs and traces ----
         GameEvent::RunSucceeded { server } => format!("the run on {} succeeded", server_name(*server)),
+        GameEvent::RunNotDeclaredSuccessful { server } => format!("the run on {} could not be declared successful", server_name(*server)),
         GameEvent::RunJackedOut { server } => format!("the Runner jacked out of {}", server_name(*server)),
         GameEvent::RunEndedByEffect { server } => format!("the run on {} was ended", server_name(*server)),
         GameEvent::RunEndPrevented { server } => format!("the end of the run on {} was prevented", server_name(*server)),

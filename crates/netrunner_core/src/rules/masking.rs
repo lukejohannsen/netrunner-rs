@@ -880,6 +880,7 @@ pub fn mask_event_for_player(event: &GameEvent, state: &GameState, viewer: impl 
         | GameEvent::SubroutineBroken { .. }
         | GameEvent::SubroutineFired { .. }
         | GameEvent::SubroutineGained { .. }
+        | GameEvent::RunNotDeclaredSuccessful { .. }
         | GameEvent::IceStrengthModified { .. }
         | GameEvent::IcePassed { .. }
         | GameEvent::IceBypassed { .. }

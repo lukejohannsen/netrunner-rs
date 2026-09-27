@@ -1373,10 +1373,10 @@ pub fn evaluate_effect(
             let own = installed.server;
             // "Central server only" holds at all times: such an upgrade is
             // not moved into a server it may not occupy (CR 8.5.12).
-            let only_in = registry.get(&installed.card).and_then(|card| card.install_only_in);
+            let card = registry.get(&installed.card);
             let mut servers = vec![ServerId::Hq, ServerId::RnD, ServerId::Archives];
             servers.extend(crate::rules::legal_actions::existing_remote_ids(state).into_iter().map(ServerId::Remote));
-            servers.retain(|server| *server != own && only_in.is_none_or(|kind| kind.admits(*server)));
+            servers.retain(|server| *server != own && card.is_none_or(|card| card.may_be_installed_in(*server)));
             if servers.is_empty() {
                 return Ok(Vec::new());
             }
@@ -1462,7 +1462,7 @@ pub fn evaluate_effect(
         Effect::MoveThisCardToRoot(server) => {
             let Some(position) = acting_corp_position(state, ctx) else { return Ok(Vec::new()) };
             let installed = &state.corp.installed[position];
-            let may_occupy = registry.get(&installed.card).and_then(|card| card.install_only_in).is_none_or(|kind| kind.admits(*server));
+            let may_occupy = registry.get(&installed.card).is_none_or(|card| card.may_be_installed_in(*server));
             if installed.slot != crate::rules::state::InstallSlot::Root || installed.server == *server || !may_occupy {
                 return Ok(Vec::new());
             }

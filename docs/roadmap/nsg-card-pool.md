@@ -400,8 +400,9 @@ Division.
    installed onto a resource. **7d** (built, below): Myōshu, Word on the
    Street and Sacrifice Zone Expansion, the score area. **7e** (built,
    below): Stick and Poke, a subroutine gained for an encounter. **7f**
-   (built, below): Tocsin, an ability used from HQ. **7g:** Flagship, a run that cannot be
-   declared successful and a limit on accesses.
+   (built, below): Tocsin, an ability used from HQ. **7g** (built,
+   below): Flagship, a run that cannot be declared successful and a limit
+   on accesses. Stage 7 is complete.
 8. **Méliès U, alone:** hidden setup state, three sides, and masking.
 
 **Riskiest:**
@@ -1622,6 +1623,59 @@ deck. **No new `Effect`.** Vantage Point 59 of 66; `VP_UNIMPLEMENTED`
   Go (seed 2) used Tocsin from HQ 10 times, and it was installed 73 times.
   With the heuristic Corp, it was installed 70 times, rezzed 45, and never
   used from HQ.
+
+#### Stage 7g — a run not declared successful, and a limit on accesses (27 September 2026)
+
+2 → 1. Stage 7 is complete; Méliès U is the last card of the set.
+
+- **A run is a target.** The continuous layer gains
+  `continuous::Target::Run { server }` and a scope read from the card that
+  prints it, `Scope::RunsOnThisServer` ("Runs against this server",
+  "During each run against this server"). Two kinds the `ContinuousKind`
+  doc had named as deferred come in on it, `CannotBeDeclaredSuccessful`
+  and `AccessOthersAtMost(n)`, each asked by the run's own step and never
+  stored. `validate` holds both to that scope on a card in a root.
+- **Success withheld, breach kept** (CR 6.9.5a–b, 6.8.4a). `CompleteRun`
+  still commits past the approach; when a card says runs there cannot be
+  declared successful, it emits `GameEvent::RunNotDeclaredSuccessful` in
+  place of `RunSucceeded` — so nothing that hears a successful run hears
+  it, and the turn log does not count one — drops Account Siphon's "if
+  successful, instead of breaching", and breaches at once. Nothing can
+  park in between, because no success was dispatched, so the run state
+  gains no field. The run trail remembers the difference, since the view's
+  phase cannot tell it.
+- **The access limit is CR 7.4.2b**, asked where the breach already prunes
+  its candidates (`run::access::prune_candidates`): once the Runner has
+  accessed `n` cards other than the Flagship, every candidate but the
+  Flagship stops being one. It does nothing before the first access,
+  never changes the random access limit, and is asked afresh at each
+  offer (7.4.2a). **Persistent** is the existing persistent-upgrade path,
+  whose server-only sources now read `RunsOnThisServer` too. Flagship's
+  flag is card-wide, which is exact: its other ability is spent before
+  the breach in which it could be trashed.
+- **Found on the way: an unrezzed persistent upgrade persisted.** An
+  access-trash recorded any card with the flag, rezzed or not; CR 9.12.5a
+  keeps only a rezzed card's persistent abilities. AMAZE Amusements and
+  Mahkota Langit Grid trashed unrezzed no longer persist.
+- **"HQ or R&D only"** made `install_only_in` a list of `ServerKind`s (`Hq`
+  and `RnD` join `Central` and `Remote`), asked through
+  `CardDefinition::may_be_installed_in` at the five places that read it.
+- **Deck.** Hostile Bid: two Flagship for two Wall of Static.
+- **DSL ratio (`pool_status.py`): 21 of 75 `Effect` variants single-use,
+  2 unused**, over 249 card files — no new `Effect`: two kinds, a scope, a
+  target and an event.
+- **Real play.** Ninety-six games of Hostile Bid against Pay As You Go
+  (seed 2): with a random Corp, Flagship was installed 83 times and
+  rezzed 41, and 56 runs were breached without being declared successful
+  (169 against the heuristic Runner, which runs more). **The heuristic
+  Corp installs Flagship and never rezzes it** (82 installs, 0 rezzes), so
+  it never withholds a success: a gap in the Corp's rez choices for an
+  upgrade with no printed payoff, owed to Phase 5.
+- **Measured.** Both sweeps at 256 seeds are green. Against `origin/main`,
+  `coverage_identical.py` has both random seatings **identical**. The
+  heuristic seatings moved, and without the card file and the deck swap
+  they are identical in all four shapes — a ref that keeps the persistent
+  fix, so that fix moved no game in a full pass of the pool.
 
 ### 2. Rebellion Without Rehearsal — 65 cards (C 7 / V 43 / M 15)
 
