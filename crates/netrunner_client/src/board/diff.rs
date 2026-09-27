@@ -127,7 +127,7 @@ pub fn transitions(before: &ClientView, after: &ClientView, entry: &PublicHistor
                 let (from, install) = locate(before, card);
                 out.push(Transition::CardMoved { card: Some(card.clone()), install, from, to: Zone::RemovedFromGame });
             }
-            GameEvent::CardAddedToBottomOfDeck { side, card } => {
+            GameEvent::CardAddedToDeck { side, card, .. } => {
                 let (from, install) = locate(before, card);
                 out.push(Transition::CardMoved { card: Some(card.clone()), install, from, to: Zone::Deck(*side) });
             }

@@ -583,10 +583,17 @@ pub fn evaluate_effect(
         Effect::InstallRunnerCardFromGripWithDiscount(discount) => {
             use crate::rules::engine::{can_install_runner_card_from_zone_with_discount, install_runner_card_from_zone_with_discount, RunnerCardSource};
             let card_id = acting_card.ok_or(RulesError::UnresolvedCardTarget)?.clone();
-            if !can_install_runner_card_from_zone_with_discount(state, registry, &card_id, RunnerCardSource::Grip, *discount) {
+            if !can_install_runner_card_from_zone_with_discount(state, registry, &card_id, RunnerCardSource::Grip, discount.credits()) {
                 return Ok(Vec::new());
             }
-            install_runner_card_from_zone_with_discount(state, registry, card_id, RunnerCardSource::Grip, *discount)
+            let events = install_runner_card_from_zone_with_discount(state, registry, card_id.clone(), RunnerCardSource::Grip, discount.credits())?;
+            // The card resolving is installed now, and the rest of this
+            // resolution means that install: Beta Build's "when that run
+            // ends, if that program has not been uninstalled" reads the
+            // handle through the run it starts (`PendingDecision::
+            // ChooseServer::source_install`, `Effect::AddToDeck`).
+            ctx.acting_install = state.runner.rig.iter().rev().find(|c| c.card == card_id).map(|c| c.install_id).or(ctx.acting_install);
+            Ok(events)
         }
 
         Effect::InstallRunnerCardFromHost => {
@@ -708,10 +715,12 @@ pub fn evaluate_effect(
             Ok(vec![GameEvent::IdentityFlipped { side }])
         }
 
-        Effect::AddToBottomOfDeck => {
+        Effect::AddToDeck(end) => {
             let card_id = acting_card.ok_or(RulesError::UnresolvedCardTarget)?.clone();
-            // Both decks draw from the end of the `Vec`, so index 0 is the
-            // bottom.
+            let top = *end == crate::dsl::DeckEnd::Top;
+            // Both decks draw from the end of the `Vec`: the end is the top
+            // and index 0 the bottom.
+            let place = |deck: &mut Vec<CardId>, card: CardId| if top { deck.push(card) } else { deck.insert(0, card) };
             if registry.get(&card_id).is_some_and(|card| card.side == Side::Corp) {
                 let taken = if let Some(position) = state.corp.hq.iter().position(|c| c == &card_id) {
                     Some(state.corp.hq.remove(position))
@@ -723,16 +732,28 @@ pub fn evaluate_effect(
                     None
                 };
                 return Ok(taken.map_or_else(Vec::new, |card| {
-                    state.corp.r_and_d.insert(0, card.clone());
-                    vec![GameEvent::CardAddedToBottomOfDeck { side: Side::Corp, card }]
+                    place(&mut state.corp.r_and_d, card.clone());
+                    vec![GameEvent::CardAddedToDeck { side: Side::Corp, card, top, revealed: false }]
                 }));
             }
-            let zones = [&mut state.runner.heap, &mut state.runner.grip];
-            for zone in zones {
+            // "That program", named by its install: the one this
+            // resolution installed, if it is still in the rig. Gone, or
+            // reinstalled under another handle, it is not moved.
+            if let Some(install) = ctx.acting_install {
+                if !state.runner.rig.iter().any(|c| c.install_id == install && c.card == card_id) {
+                    return Ok(Vec::new());
+                }
+                let (card, _, mut events) = crate::rules::pending_choice::remove_installed_card(state, registry, Side::Runner, &crate::dsl::CardZoneRef::OwnInstalled, install)
+                    .ok_or(RulesError::InstallNotFound(install))?;
+                place(&mut state.runner.stack, card.clone());
+                events.push(GameEvent::CardAddedToDeck { side: Side::Runner, card, top, revealed: true });
+                return Ok(events);
+            }
+            for (zone, revealed) in [(&mut state.runner.heap, true), (&mut state.runner.grip, false)] {
                 if let Some(position) = zone.iter().position(|c| c == &card_id) {
                     zone.remove(position);
-                    state.runner.stack.insert(0, card_id.clone());
-                    return Ok(vec![GameEvent::CardAddedToBottomOfDeck { side: Side::Runner, card: card_id }]);
+                    place(&mut state.runner.stack, card_id.clone());
+                    return Ok(vec![GameEvent::CardAddedToDeck { side: Side::Runner, card: card_id, top, revealed }]);
                 }
             }
             Ok(Vec::new())

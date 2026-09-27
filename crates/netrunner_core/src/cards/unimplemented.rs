@@ -24,7 +24,6 @@ pub(crate) const VP_UNIMPLEMENTED: &[(u32, &str)] = &[
     (36015, "Baker"),
     (36017, "Hiram “0mission” Svensson: Shadow of the Past"),
     (36018, "Aircheck"),
-    (36019, "Beta Build"),
     (36022, "Read-Write Share"),
     (36025, "Word on the Street"),
     (36036, "Méliès U: Only the Brightest"),

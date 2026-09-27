@@ -492,6 +492,11 @@ fn assert_no_concealed_card_is_named_in_log(
         if let GameEvent::CardsSelected { cards, revealed: true, .. } = event {
             visible.extend(cards.iter().map(|c| c.0.as_str()));
         }
+        // A card moved into a deck out of a zone both players see (the
+        // heap, the rig): they watched it go.
+        if let GameEvent::CardAddedToDeck { card, revealed: true, .. } = event {
+            visible.insert(card.0.as_str());
+        }
     }
 
     let mut concealed = masked_install_ids(view, state, &visible);

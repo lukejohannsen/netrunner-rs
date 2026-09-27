@@ -3,7 +3,7 @@
   "name": "Safety Net",
   "side": "Runner",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach the prevention window. Kate with the Core Set's three interrupts — Decoy, Net Shield, Sacrificial Construct — in an otherwise ordinary Shaper rig. Eternal-legal only. Vantage Point Stage 4a: Sipa for DZMZ Optimizer. Stage 5a: Methuselah for T400 Memory Diamond, Touchstone for Smartware Distributor. Stage 5b: Stowaway for two Creative Commission.",
+  "description": "Not a published list: built so the sweeps reach the prevention window. Kate with the Core Set's three interrupts — Decoy, Net Shield, Sacrificial Construct — in an otherwise ordinary Shaper rig. Eternal-legal only. Vantage Point Stage 4a: Sipa for DZMZ Optimizer. Stage 5a: Methuselah for T400 Memory Diamond, Touchstone for Smartware Distributor. Stage 5b: Stowaway for two Creative Commission. Stage 5c: Beta Build for two Diesel.",
   "style": "builder",
   "identity": "kate_mccaffrey",
   "cards": [
@@ -49,7 +49,7 @@
     },
     {
       "card": "diesel",
-      "count": 3
+      "count": 1
     },
     {
       "card": "creative_commission",
@@ -81,6 +81,10 @@
     },
     {
       "card": "stowaway",
+      "count": 2
+    },
+    {
+      "card": "beta_build",
       "count": 2
     }
   ]

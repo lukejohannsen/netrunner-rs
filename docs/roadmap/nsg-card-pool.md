@@ -382,9 +382,10 @@ Division.
    credit pool" is a moment the payment sites have to dispatch. **5b**
    (built, below): Stowaway (a Trojan's "this server" is its host's),
    Nurse Hạnh (Archives' facedown cards turned faceup, two or more).
-   **5c:** Hiram (a trash from any location is a moment; "look at the top
-   card of R&D" shows one player a hidden card), Beta Build (a run-end
-   rider about the program it installed).
+   **5c** (built, below): Beta Build (a run-end rider about the program it
+   installed). **5d:** Hiram (a trash the Runner carries out, from any
+   location, is a moment, CR 1.14.5a; "look at the top card of R&D" shows
+   one player a hidden card).
 6. **Arrange, reveal, stealth credits:** Cultivate, Knowledge Seeker, Esca,
    Corsair, Baker, Lampades, Aircheck. Aircheck locks the credit pool,
    which breaks the invariant that a payment may always reach the pool.
@@ -991,6 +992,58 @@ Point 45 of 66; `VP_UNIMPLEMENTED` 25 → 21.
   four shapes apart from the event count (120 in the heuristic seatings),
   so all of the heuristic movement is the new cards in `determinize`'s
   pools.
+
+#### Stage 5c — "that program", through the run it starts (27 September 2026)
+
+`feat/vp-stage-5c-beta-build`: Beta Build. **No new `Effect`.** Vantage
+Point 48 of 66; `VP_UNIMPLEMENTED` 19 → 18.
+
+- **A text install names what it installed.** After
+  `InstallRunnerCardFromGripWithDiscount` installs the resolving card, the
+  rest of the resolution means that install (`ResolutionContext::
+  acting_install`). The server prompt already carries the handle through
+  the park (`PendingDecision::ChooseServer::source_install`), and so does
+  `SetRunEndedEffect`, so "when that run ends, if that program has not
+  been uninstalled" needs no field and no placeholder. Uninstalled, the
+  program has no handle; reinstalled, it has another. Either way nothing
+  moves.
+- **`AddToBottomOfDeck` is `AddToDeck(DeckEnd)`** (five cards), and it
+  takes the acting install out of the rig. `GameEvent::CardAddedToBottomOfDeck`
+  is `CardAddedToDeck { top, revealed }`. `revealed` says whether the card
+  came out of a zone both players see (the heap, the rig), so the opponent
+  may be told which card now sits in the stack. Out of the grip the event
+  is its owner's. It had been shown to the Corp whatever the zone. The
+  view sweep's log check caught Beta Build's return to the stack and now
+  reads the flag, as it reads a revealed `CardsSelected`.
+- **"Ignoring all costs"** is a discount (`dsl::Discount::AllCosts`, with
+  `Credits(n)` for Illumination and Topan), shared by the install and its
+  offer (`CardFilter::InstallableRunnerCardWithDiscount`). The memory
+  limit still applies, since it is not a cost.
+- **"Non-virus" is `CardFilter::Not`**, definition-level.
+- **"Run any server" happens whatever the search finds.** The run with the
+  rider is in the search's continuation, and a plain run is the fallback
+  when the stack holds no program to find. The fallback comes first,
+  because it is read before the search takes anything.
+- **The decks.** In Safety Net, two Beta Build for two Diesel (one Diesel
+  stays; it is in no other deck).
+- **Fidelity limit:** a Trojan is not offered. A text install cannot place
+  one on ice yet (`InstallRunnerCardFromGrip`'s exclusion), so finding one
+  would install nothing.
+- **A test that checked nothing past 200 lines (#235).** The client's log
+  concealment test read each action's lines as the slice the capped log
+  grew by. Past `MAX_LOG_LINES` the slice was empty, so five of its six
+  games went mostly unchecked, and its "the Corp advances" precondition
+  hung on one seed, which this card's movement broke. It now checks every
+  line.
+- **DSL ratio (`pool_status.py`): 20 of 71 `Effect` variants
+  single-use, 2 unused**, over 232 card files.
+- **Measured.** Both sweeps at 256 seeds are green, coverage gate
+  included. `coverage_identical.py origin/main`: **the random seatings
+  play the same games**, differing only in the renamed effect and event
+  (`AddToBottomOfDeck` 36 → `AddToDeck` 36, the event 8 → 8). The
+  heuristic seatings move slightly (Corp flatline wins 12 → 10, Runner
+  deck-outs 0 → 2). Checked: without Beta Build's file the heuristic
+  seatings are byte-identical to `main`.
 
 ### 2. Rebellion Without Rehearsal — 65 cards (C 7 / V 43 / M 15)
 

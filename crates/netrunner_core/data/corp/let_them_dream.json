@@ -47,7 +47,9 @@
                         {
                           "Sequence": []
                         },
-                        "AddToBottomOfDeck"
+                        {
+                          "AddToDeck": "Bottom"
+                        }
                       ],
                       "texts": [
                         "Add that agenda to HQ",
@@ -76,7 +78,9 @@
                         {
                           "Sequence": []
                         },
-                        "AddToBottomOfDeck"
+                        {
+                          "AddToDeck": "Bottom"
+                        }
                       ],
                       "texts": [
                         "Add that agenda to HQ",
@@ -105,7 +109,9 @@
                         {
                           "Sequence": []
                         },
-                        "AddToBottomOfDeck"
+                        {
+                          "AddToDeck": "Bottom"
+                        }
                       ],
                       "texts": [
                         "Add that agenda to HQ",

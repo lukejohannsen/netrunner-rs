@@ -301,7 +301,7 @@ fn instance_matches_filter(
         // and the resolution can never disagree. Grip cards only; the
         // definition-level type half already ran in `card_matches_filter`.
         CardFilter::InstallableRunnerCard => {
-            instance_matches_filter(state, registry, chooser, zone, position, &CardFilter::InstallableRunnerCardWithDiscount(0), source)
+            instance_matches_filter(state, registry, chooser, zone, position, &CardFilter::InstallableRunnerCardWithDiscount(crate::dsl::Discount::Credits(0)), source)
         }
         CardFilter::InstallableRunnerCardWithDiscount(discount) => {
             use crate::rules::engine::{can_install_runner_card_from_zone_with_discount, RunnerCardSource};
@@ -313,7 +313,7 @@ fn instance_matches_filter(
             };
             from.is_some_and(|from| {
                 zone_card_ids(state, chooser, zone, source).get(position).is_some_and(|card| {
-                    can_install_runner_card_from_zone_with_discount(state, registry, card, from, *discount)
+                    can_install_runner_card_from_zone_with_discount(state, registry, card, from, discount.credits())
                 })
             })
         }

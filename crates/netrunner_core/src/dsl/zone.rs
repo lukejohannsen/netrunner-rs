@@ -174,7 +174,13 @@ pub enum CardFilter {
     NotSourceCard,
     /// `InstallableRunnerCard` priced `u32` cheaper — the offer half of
     /// `Effect::InstallRunnerCardFromGripWithDiscount`.
-    InstallableRunnerCardWithDiscount(u32),
+    InstallableRunnerCardWithDiscount(crate::dsl::Discount),
+    /// A card the inner filter does not admit — Beta Build's "1
+    /// **non-virus** program". Definition-level only: an instance-level
+    /// word under it (`Rezzed`, `NotSourceCard`) is read by its
+    /// definition half, which admits every card, so its negation admits
+    /// none. Composition didn't work: every other word is a positive one.
+    Not(Box<CardFilter>),
     /// An installed Corp card that is rezzed — Charm Offensive's "1 rezzed
     /// copy". Instance-level, like `UnrezzedIce`, and any card type.
     Rezzed,
@@ -315,6 +321,7 @@ pub fn card_matches_filter(card: &CardDefinition, filter: &CardFilter) -> bool {
         CardFilter::AccessedDuringLastRun => true,
         CardFilter::All(filters) => filters.iter().all(|filter| card_matches_filter(card, filter)),
         CardFilter::AnyOf(filters) => filters.iter().any(|filter| card_matches_filter(card, filter)),
+        CardFilter::Not(filter) => !card_matches_filter(card, filter),
         CardFilter::HasSubtype(subtype) => card.subtypes.contains(subtype),
         CardFilter::Advanceable => card.advancement_requirement.is_some(),
         // Instance-level: where the card sits is state.

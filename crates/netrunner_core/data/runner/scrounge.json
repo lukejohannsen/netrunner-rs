@@ -46,7 +46,9 @@
                           "max": 1,
                           "reveal": true,
                           "shuffle_after": false,
-                          "then": "AddToBottomOfDeck"
+                          "then": {
+            "AddToDeck": "Bottom"
+          }
                         }
                       },
                       {

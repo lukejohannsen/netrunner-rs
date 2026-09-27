@@ -179,8 +179,13 @@ pub enum GameEvent {
     /// `Trigger::OnDiscardPhaseEnd`.
     DiscardPhaseEnded { side: Side },
     CardDiscarded { side: Side, card: CardId },
-    /// `Effect::AddToBottomOfDeck` moved `card` under `side`'s deck.
-    CardAddedToBottomOfDeck { side: Side, card: CardId },
+    /// `Effect::AddToDeck` put `card` on top of `side`'s deck (`top`) or
+    /// under it. `revealed` when it came out of a zone both players see —
+    /// the Runner's heap, the rig (Beta Build) — so the opponent may be
+    /// told which card now sits in a deck they cannot see into; out of the
+    /// grip, HQ, R&D or Archives it is its owner's to know
+    /// (`masking::mask_event_for_player`), as a `CardsSelected` is.
+    CardAddedToDeck { side: Side, card: CardId, top: bool, revealed: bool },
     /// `Effect::HostRigCardOnInstall` hosted the rig card `card` on the rig
     /// card `host` (GAMEDRAGON™ Pro on an icebreaker).
     CardHosted { card: CardId, host: CardId },
@@ -490,7 +495,7 @@ impl GameEvent {
             | GameEvent::EventPlayed { .. } | GameEvent::OperationPlayed { .. } | GameEvent::HardwareInstalled { .. }
             | GameEvent::ProgramInstalled { .. } | GameEvent::ResourceInstalled { .. }
             | GameEvent::DiscardPending { .. } | GameEvent::DiscardPhaseEnded { .. }
-            | GameEvent::CardDiscarded { .. } | GameEvent::CardAddedToBottomOfDeck { .. }
+            | GameEvent::CardDiscarded { .. } | GameEvent::CardAddedToDeck { .. }
             | GameEvent::CardHosted { .. } | GameEvent::IdentityFlipped { .. } | GameEvent::ActionPhaseEnded { .. }
             | GameEvent::RunEndPrevented { .. } | GameEvent::RunRedirected { .. } | GameEvent::CreditsSpent { .. }
             | GameEvent::TagsGiven { .. } | GameEvent::TagsCleared { .. } | GameEvent::CardTrashed { .. }

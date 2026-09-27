@@ -62,7 +62,9 @@
                 "reveal": false,
                 "shuffle_after": false,
                 "destination": "OwnRAndD",
-                "then": "AddToBottomOfDeck"
+                "then": {
+            "AddToDeck": "Bottom"
+          }
               }
             },
             {
