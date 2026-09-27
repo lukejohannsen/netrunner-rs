@@ -241,7 +241,27 @@ What landed:
    ability carries its printed clause (the Linked Clause Rule's quote
    gate). Each card gets a per-card test. The stage shrinks the set's
    `UNIMPLEMENTED` list.
-5. **Before merging:**
+5. **The clients, in the same stage.** What a card adds to the view, the
+   log or a decision, a person must be able to see in both clients, and
+   the stage that adds it ships it (the person's decision, 27 September
+   2026, after Vantage Point's view had to be caught up in one go, #250).
+   - A new field in anything a seat receives fails
+     `netrunner_client::view_ledger` until it has a line there: **drawn**
+     (where, in both clients), **engine's** (and why a person needs no
+     picture of it), or **OWED**.
+   - A new `GameEvent`, `PlayerAction`, `Lingering` or decision is worded
+     where those are already exhaustive (`actions`, `board::affordance`,
+     `board::hud::in_effect`, `board::Prompt`) — read the words it gets,
+     not only that it compiles.
+   - Draw it through a `netrunner_client` module both clients stand on,
+     and hold it with a test there; a desktop change also gets a headless
+     test in `crates/netrunner_desktop/tests/` (never a window opened on
+     the person's screen to check it).
+   - What cannot be drawn in the stage is **OWED**: a row in the [client
+     ledger](#client-ledger--what-the-clients-owe) below, named in the
+     stage entry. A tranche does not close with a row it added still open
+     unless its entry says why it waits.
+6. **Before merging:**
    - `cargo test --workspace` green and `cargo clippy --workspace
      --all-targets` silent.
    - Both sweeps at `NETRUNNER_SWEEP_SEEDS=256`, `--release`.
@@ -250,11 +270,33 @@ What landed:
    - `pool_status.py`'s ratio, and its pack counts.
    If a stage's single-use `Effect` variants approach its card count, stop
    and build a composition primitive first (the DSL Growth Rule).
-6. **Record** a stage entry under its tranche below: the cards; each new
-   primitive and why composition failed; what the sweeps found; the
+7. **Record** a stage entry under its tranche below: the cards; each new
+   primitive and why composition failed; what the clients now show, and
+   any ledger row it opened or closed; what the sweeps found; the
    fidelity limits; the ratio. A tranche closes when its list is empty.
    Its packs then join the deck builder's legal pool for their formats,
    and the `ROADMAP.md` row moves.
+
+## Client ledger — what the clients owe
+
+Every view field a person should see and cannot yet, and every client
+change a card update needs that has not shipped. A row is added by the
+stage that opens it (and marked **OWED** in
+`crates/netrunner_client/src/view_ledger.rs`), and removed by the change
+that draws it, which says so in its own entry. Open rows, 27 September
+2026. Vantage Point's own gaps were closed by #250 and by the ledger's PR
+(a run's own credits — the bad publicity fund Vantage Point's cards fill —
+beside the Runner's credits); the first four rows predate it, and the
+ledger found them:
+
+| Field or need | What a person misses | Opened by |
+|---|---|---|
+| `CorpClientView::identity_counters` | AU Co.'s power counters on the Corp identity (spent by its own ability) | Elevation |
+| `CorpClientView::recurring_credits`, `recurring_credits_max` | an identity's recurring credits left this turn (NBN: Making News) | Core Set |
+| `PublicInstalledCard::seen_by_runner` | to the Corp, which of its facedown cards the Runner has already seen | Phase 5 §20 (trap play) |
+| `PublicRunState::redirect_on_approach` | during a Maintenance Access run, the server it will be redirected to | Elevation |
+| The terminal's card in question after a look | Méliès U's "You may trash that card" shows no card in the terminal; the "looked at" log line is above it (the desktop pop-up shows it, `Prompt::card_after`) | Vantage Point (#250) |
+| A real-screen look at #250's desktop pieces | the identity chip, the In effect lines and the removed-from-game rows are held by headless tests only | Vantage Point (#250) |
 
 ## The surveys
 
