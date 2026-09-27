@@ -1185,7 +1185,14 @@ mod tests {
                         session.submit(action).expect("a legal action");
                         let seat_view = session.view_for(viewer);
                         let Some(entry) = session.last_entry_for(viewer) else { continue };
-                        let before = log.len();
+                        // This entry's lines, from the log's own writer,
+                        // and not as the slice the log grew by: the log
+                        // keeps its last `MAX_LOG_LINES`, so once a game
+                        // reached 200 lines that slice was empty and the
+                        // rest of the game was never checked — nor any
+                        // advance counted, which is why one seed in six
+                        // was all that held the precondition below.
+                        let written = entry_lines(&entry, session.registry(), Some(&seat_view));
                         push_log_line(&mut log, &entry, session.registry(), Some(&seat_view));
 
                         // Checked against the board *as it stands for this
@@ -1234,12 +1241,12 @@ mod tests {
                         // the sweep's entry-level gate makes the same
                         // exemption. Only the action line earns it; the
                         // narrated lines under it are still checked.
-                        let own_action_line = log.get(before).cloned().unwrap_or_default();
+                        let own_action_line = written.first().cloned().unwrap_or_default();
                         let concealed: Vec<String> = concealed
                             .into_iter()
                             .filter(|title| !(viewer.side() == Some(entry.side) && own_action_line.contains(title.as_str())))
                             .collect();
-                        for line in &log[before..] {
+                        for line in &written {
                             // **Every line, not only the advances.** This
                             // is the fog rule at the layer a person
                             // actually reads. The sweep's own scan checks
