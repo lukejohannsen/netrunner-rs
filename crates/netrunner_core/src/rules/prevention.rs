@@ -343,7 +343,18 @@ fn finish_within(
         state.paid_ability_window = None;
     }
     if pending.resume == PreventionResume::ResumeSubroutines {
-        events.extend(paid_ability::resolve_encounter_ice(state, registry)?);
+        if state.is_resolution_blocked() {
+            // What happened parked something of its own — a tag heard by
+            // NBN: Reality Plus, whose "gain 2 or draw 2" is a choice. The
+            // subroutine loop would stop at it at once, so the intent is
+            // handed to it instead, and its answer resumes the loop. It
+            // was lost here: the choice resumed nothing, and the
+            // encounter sat with its later subroutines pending and no
+            // player to act (the 256-seed view sweep, seed 155).
+            crate::rules::pending_choice::mark_parked_resume_subroutines(state);
+        } else {
+            events.extend(paid_ability::resolve_encounter_ice(state, registry)?);
+        }
     }
     Ok(events)
 }

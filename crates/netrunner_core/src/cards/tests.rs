@@ -12328,6 +12328,33 @@ mod vantage_point {
         }
     }
 
+    /// A tag let through the prevention window can trigger a card that
+    /// parks a choice (NBN: Reality Plus's "gain 2 or draw 2"); the ice's
+    /// later subroutines still fire once it is answered. They did not: the
+    /// subroutine loop stopped at the parked choice, and nothing told the
+    /// choice the subroutines were unfinished, so the encounter sat with
+    /// Doomscroll's net damage pending and nobody had an action (the
+    /// 256-seed view sweep, seed 155, Fine Print against Safety Net).
+    #[test]
+    fn a_choice_parked_by_a_tag_let_through_the_prevention_window_resumes_the_subroutines() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.identity = Some(id("nbn_reality_plus"));
+        state.corp.r_and_d = vec![id("hedge_fund"), id("hedge_fund")];
+        state.runner.rig = vec![rig("decoy")];
+        state.runner.grip = vec![id("sure_gamble"), id("sure_gamble"), id("sure_gamble")];
+        let (state, _) = let_subroutines_fire(state, &registry, "doomscroll");
+        assert!(state.pending_prevention.is_some(), "Decoy could prevent the tag");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner lets it through");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Corp }).expect("corp passes");
+        assert_eq!(state.runner.tags, 1);
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("NBN: gain 2");
+        assert_eq!(state.runner.grip.len(), 2, "the second subroutine's net damage");
+        let run = state.active_run.as_ref().expect("the run goes on");
+        assert_ne!(run.phase, crate::rules::RunPhase::EncounterIce, "the encounter is over");
+        assert!(!crate::rules::legal_actions(&state, &registry).is_empty());
+    }
+
     /// Its second subroutine removes a card in the heap from the game.
     #[test]
     fn ansel_2_0_removes_a_card_in_the_heap_from_the_game() {
