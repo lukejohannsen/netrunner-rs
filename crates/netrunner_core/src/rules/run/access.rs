@@ -390,6 +390,11 @@ fn present_card_for_access(
         access.pending_install_rezzed = rezzed;
     }
     let mut events = vec![GameEvent::CardAccessed { card: card_id.clone(), server, install }];
+    // "They must reveal it" (CR 1.21.7): the Corp is shown which of its
+    // cards this is, as the view shows it for the rest of the access.
+    if crate::rules::continuous::revealed_while_accessed(state, registry, card_id) {
+        events.push(GameEvent::CardRevealed { side: Side::Corp, card: card_id.clone() });
+    }
 
     // An unmet `requirement` means the trigger does not apply to *this*
     // access at all (Snare! accessed in Archives), so nothing is parked and

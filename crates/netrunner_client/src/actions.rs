@@ -475,6 +475,7 @@ pub fn narrate_event(
             let names: Vec<String> = cards.iter().map(&title).collect();
             format!("looked at the top of {}: {}", if *deck == Side::Corp { "R&D" } else { "the stack" }, and_list(&names))
         }
+        GameEvent::CardRevealed { card, .. } => format!("revealed {}", title(card)),
         GameEvent::CardsTrashedFromHq { count } => format!("trashed {count} card(s) from HQ"),
 
         // ---- what the cards did ----
@@ -540,7 +541,7 @@ pub fn narrate_event(
         // line here is the cheap way to say more.
         GameEvent::ClickSpent { .. } | GameEvent::CreditsGained { .. } | GameEvent::CardDrawn { .. } |
         GameEvent::IceApproached { .. } | GameEvent::IceEncountered { .. } | GameEvent::IceStrengthModified
-        { .. } | GameEvent::IcePassed { .. } | GameEvent::IceBypassed { .. } | GameEvent::ServerApproached {
+        { .. } | GameEvent::IcePassed { .. } | GameEvent::IceBypassed { .. } | GameEvent::EncounterEnded { .. } | GameEvent::ServerApproached {
         .. } | GameEvent::RunCompleted { .. } | GameEvent::RunInitiated { .. } | GameEvent::EventPlayed { ..
         } | GameEvent::OperationPlayed { .. } | GameEvent::HardwareInstalled { .. } |
         GameEvent::ProgramInstalled { .. } | GameEvent::ResourceInstalled { .. } | GameEvent::CardAccessed {

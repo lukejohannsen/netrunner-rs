@@ -175,16 +175,19 @@ pub enum EffectRequirement {
     /// (`state::ArchivedCard::facedown`) — e.g. Jinteki: Restoring
     /// Humanity's "if there is a facedown card in Archives".
     ArchivesHasFacedownCard,
-    /// The access currently being resolved is against Archives — read from
+    /// The access currently being resolved is in this server — read from
     /// `active_run.access_state.server`, so it answers "where is the Runner
     /// accessing this card *right now*", not where the card lives.
     ///
     /// Not composable from the existing vocabulary: nothing else in it can
     /// see the accessed server at all. Exists for Snare!'s "when the Runner
     /// accesses this asset anywhere except in Archives", which is spelled
-    /// `Not(AccessingArchives)` — hence the positive form here, leaving the
-    /// negation to the `Not` combinator that already exists.
-    AccessingArchives,
+    /// `Not(AccessingIn(Archives))` — hence the positive form here, leaving
+    /// the negation to the `Not` combinator that already exists — and for
+    /// "while the Runner is accessing this asset in R&D" (Esca, Snare!,
+    /// Byte!: `ContinuousKind::RevealedWhileAccessed`). It was
+    /// `AccessingArchives` until the second server was printed.
+    AccessingIn(crate::rules::ServerId),
     /// `acting_card`'s current generic counter total (wherever it's
     /// currently installed/rigged) is at most `amount` — e.g. a
     /// hosted-credit-pool resource/asset detecting "this pool is now empty"
@@ -466,7 +469,7 @@ pub struct InteractiveOnAccess {
     /// is presented for access. Unmet means no decision is parked and
     /// access proceeds straight to its normal `PendingChoice` — the trigger
     /// simply does not apply here. Snare!'s "anywhere except in Archives"
-    /// is `Not(AccessingArchives)`. `None` for a trigger that always
+    /// is `Not(AccessingIn(Archives))`. `None` for a trigger that always
     /// applies.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub requirement: Option<EffectRequirement>,

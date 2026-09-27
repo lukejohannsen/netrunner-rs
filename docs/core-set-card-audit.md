@@ -31,7 +31,7 @@ The System Gateway audit (`docs/system-gateway-card-audit.md`), repeated over th
 | Ice Wall | **Fixed** | Neither printed clause was modelled: no `advancement_requirement: 0` marker, so `AdvanceCard` refused it, and no per-counter strength — `WhileHostedAdvancementsAtLeast` is a threshold, not a rate. New `StrengthModifier::PerHostedAdvancement(1)`, baked at encounter like its siblings (advancement cannot change mid-run). |
 | PAD Campaign | Faithful | |
 | Scorched Earth | Faithful | `IsTagged` play requirement; 4 meat. |
-| Snare! | Faithful* | `interactive_on_access` (`CorpPaysToApply`, `Not(AccessingArchives)`), unaffordable ⇒ not offered. The R&D "must reveal it" clause is implicit — both sides observe the access in this engine; no separate reveal is modelled. |
+| Snare! | Faithful* | `interactive_on_access` (`CorpPaysToApply`, `Not(AccessingIn(Archives))`), unaffordable ⇒ not offered. The R&D "must reveal it" clause is `ContinuousKind::RevealedWhileAccessed` (VP Stage 6a): a public `CardRevealed`, and the Corp's view names the card for the rest of the access. |
 | Wall of Static | Faithful | |
 
 ## Runner cards

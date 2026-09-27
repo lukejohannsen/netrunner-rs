@@ -402,7 +402,7 @@ with the rule quoted.
 | 1.18 | Advancing Cards | read in part | 1.18.1–1.18.2: placing an advancement counter is not advancing (`PlaceAdvancementCounters`, `listeners`). Cited: 1.18.1, 1.18.2. |
 | 1.19 | Trashing | conforms | F4 fixed: a hosted card goes to its owner's discard pile (1.19.1). |
 | 1.20 | Memory | unreviewed |  |
-| 1.21 | Card Visibility | unreviewed |  |
+| 1.21 | Card Visibility | read in part | VP Stage 6a: 1.21.3, to reveal a card is to show it to all players (`GameEvent::CardRevealed`, public). 1.21.7, "While the Runner is accessing this [type] in R&D, they must reveal it" is a static ability for the whole access: `ContinuousKind::RevealedWhileAccessed` with `while: AccessingIn(RnD)` (Esca, Snare!, Byte!), shown in the log and, per 1.21.6, in the Corp's view of the access until it ends. |
 
 ### 2. Parts of a Card
 
@@ -472,7 +472,7 @@ with the rule quoted.
 
 | § | Section | Status | Notes |
 |---|---|---|---|
-| 6.1 | General | read in part | 6.1.3f read for Sipa (VP Stage 4a): passing a piece of ice "after fully breaking it" is only the encounter just ended — `GameEvent::IcePassed::after_fully_breaking`, false for a pass straight out of the approach (unrezzed ice). |
+| 6.1 | General | read in part | 6.1.3f read for Sipa (VP Stage 4a): passing a piece of ice "after fully breaking it" is only the encounter just ended — `GameEvent::IcePassed::after_fully_breaking`, false for a pass straight out of the approach (unrezzed ice). VP Stage 6a: 6.1.4, "end the run" ends the encounter with the run, so an encounter ends at 6.9.3e, by "end the run", by a subroutine moving the run, or by the ice leaving the table or being derezzed during it — each `GameEvent::EncounterEnded`, heard by `Trigger::OnEncounterEnded` (Knowledge Seeker). |
 | 6.2 | Position | unreviewed |  |
 | 6.3 | Initiation | read in part | Audit: bad publicity credits arrive before the run begins and go when it ends; matches. |
 | 6.4 | Approach Ice | unreviewed |  |
@@ -498,7 +498,7 @@ with the rule quoted.
 |---|---|---|---|
 | 8.1 | Faceup and Facedown Status | read in part | 8.1.3 derez: only by card effects (8.1.3a), no inherent cost (8.1.3b), and only a rezzed card is derezzed — `Effect::DerezCard`, `Cost::Derez` (VP Stage 2). 8.1.4: facedown Runner installs are not modelled (Rules Audit backlog item 10). |
 | 8.2 | Card Movements | unreviewed |  |
-| 8.3 | Arranging and Rearranging Cards | unreviewed |  |
+| 8.3 | Arranging and Rearranging Cards | read in part | VP Stage 6a: 8.3.3, arranging the top of a deck "in any order" is a selection from those cards back onto the deck, the first chosen landing on top (`PromptChooseCards` over `TopOfZone(n)` into the same deck: Cultivate, Knowledge Seeker); a card left unchosen stays beneath, which is one of the arrangements. 8.3.3b, Cultivate's trash and add-to-HQ act on the looked-at cards before the rest are arranged. 8.3.1a holds by construction. 8.3.2 (arranging ice) is not in the pool. |
 | 8.4 | Drawing Cards | unreviewed |  |
 | 8.5 | Installing and Uninstalling Cards | deviates | B4 only. B1–B3 fixed: like cards are trashed at 8.5.16c, before the install cost, with the forced ones unasked and the player's own behind `trash_first`. 1[c] per ice not counting trashed ice, trashed cards keep their status (8.5.7), and a server emptied by its own install's trash keeps its identity (8.5.9); these match. VP Stage 3b: 8.5.12 "Central server only" is `install_only_in`, refused at the install and honoured by a move. |
 | 8.6 | Playing Events and Operations | read in part | F6 (order only). |

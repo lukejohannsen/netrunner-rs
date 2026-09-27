@@ -1,0 +1,58 @@
+{
+  "id": "knowledge_seeker",
+  "title": "Knowledge Seeker",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "CodeGate"
+  },
+  "cost": 5,
+  "strength": 5,
+  "counter_kind": "Virus",
+  "triggers": [
+    {
+      "trigger": "OnEncounterEnded",
+      "subject": "This",
+      "requirement": {
+        "ThisCardCountersAtLeast": 3
+      },
+      "effects": [
+        "PurgeVirusCounters",
+        {
+          "DerezCard": "ThisCard"
+        }
+      ],
+      "text": "Whenever an encounter with this ice ends, if it has 3 or more hosted virus counters, purge virus counters and derez this ice."
+    }
+  ],
+  "subroutines": [
+    {
+      "text": "Place 1 virus counter on this ice.",
+      "effect": {
+        "AddCounters": 1
+      }
+    },
+    {
+      "text": "Look at the top 4 cards of R&D and arrange them in any order.",
+      "effect": {
+        "PromptChooseCards": {
+          "side": "Corp",
+          "source": "OwnRAndD",
+          "filter": {
+            "TopOfZone": 4
+          },
+          "min": 0,
+          "max": 4,
+          "reveal": false,
+          "shuffle_after": false,
+          "destination": "OwnRAndD"
+        }
+      }
+    },
+    {
+      "text": "End the run.",
+      "effect": "EndTheRun"
+    }
+  ],
+  "numeric_id": 36040,
+  "is_playable": true
+}

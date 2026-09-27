@@ -1,6 +1,6 @@
 //! A rez that gives the card nothing to do: a trap's.
 //!
-//! Byte!, Snare! and Urtica Cipher do their work when the Runner accesses
+//! Byte!, Esca, Snare! and Urtica Cipher do their work when the Runner accesses
 //! them, face down — the subject of a moment hears it wherever it is (the
 //! Listener Rule), and an access interaction resolves on the card as
 //! accessed. Rezzing one gains the Corp nothing and shows the Runner what
@@ -25,18 +25,19 @@
 //! `exactly_the_traps_gain_nothing_by_a_rez` is where to find out.
 
 use netrunner_core::cards::CardRegistry;
-use netrunner_core::dsl::{CardDefinition, CardType, Subject, Trigger};
+use netrunner_core::dsl::{CardDefinition, CardType, ContinuousKind, Subject, Trigger};
 use netrunner_core::rules::PlayerAction;
 use netrunner_core::view::ClientView;
 
 /// Whether rezzing `card` gives it nothing to do: a non-ice card with no
-/// ability, standing effect, subroutine, recurring or hosted credits, and
-/// no trigger but its own access — which, with an access interaction,
-/// works face down.
+/// ability, subroutine, recurring or hosted credits, no standing effect but
+/// its reveal while accessed (Esca's, Snare!'s and Byte!'s, which is about
+/// the access), and no trigger but its own access — which, with an access
+/// interaction, works face down.
 pub fn gains_nothing(card: &CardDefinition) -> bool {
     !matches!(card.card_type, CardType::Ice(_))
         && card.abilities.is_empty()
-        && card.continuous.is_empty()
+        && card.continuous.iter().all(|effect| effect.kind == ContinuousKind::RevealedWhileAccessed)
         && card.subroutines.is_empty()
         && card.recurring_credits.is_none()
         && card.pays_for.is_empty()
@@ -65,7 +66,7 @@ mod tests {
         let registry = crate::decks::sample_deck_registry();
         let mut idle: Vec<&str> = registry.iter().filter(|card| card.side == Side::Corp && card.card_type != CardType::Agenda && card.card_type != CardType::Identity && gains_nothing(card)).map(|card| card.id.0.as_str()).collect();
         idle.sort_unstable();
-        assert_eq!(idle, ["byte", "snare", "urtica_cipher"]);
+        assert_eq!(idle, ["byte", "esca", "snare", "urtica_cipher"]);
     }
 
     /// The Corp's view of an unrezzed Urtica Cipher (install 1) and an

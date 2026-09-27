@@ -6564,7 +6564,9 @@ mod system_gateway {
 
         let viruses: Vec<CardId> = registry
             .iter()
-            .filter(|card| card.counter_kind == Some(CounterKind::Virus))
+            // The Runner's: Knowledge Seeker, a Corp ice, hosts virus
+            // counters too, and its own test purges them off the table.
+            .filter(|card| card.counter_kind == Some(CounterKind::Virus) && card.side == Side::Runner)
             .map(|card| card.id.clone())
             .collect();
         let mut sorted = viruses.iter().map(|id| id.0.as_str()).collect::<Vec<_>>();
@@ -10545,9 +10547,18 @@ mod vantage_point {
     /// up to the encounter, where the Runner breaks nothing. Returns the
     /// state as the encounter window closes and the subroutines begin to
     /// fire, with the events of that last step.
-    fn let_subroutines_fire(mut state: GameState, registry: &CardRegistry, card: &str) -> (GameState, Vec<crate::rules::GameEvent>) {
+    fn let_subroutines_fire(state: GameState, registry: &CardRegistry, card: &str) -> (GameState, Vec<crate::rules::GameEvent>) {
+        let_subroutines_fire_on(state, registry, ice_at_hq(card))
+    }
+
+    /// `let_subroutines_fire`, for a piece of ice set up by the caller.
+    fn let_subroutines_fire_on(
+        mut state: GameState,
+        registry: &CardRegistry,
+        ice: crate::rules::InstalledCard,
+    ) -> (GameState, Vec<crate::rules::GameEvent>) {
         state.phase = GamePhase::Action(Side::Runner);
-        state.corp.installed.push(ice_at_hq(card));
+        state.corp.installed.push(ice);
         let (state, _) = apply_action(&state, registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("initiate run");
         let (state, _) = crate::rules::test_support::continue_run(&state, registry).expect("approach the ice");
         let (state, _) = apply_action(&state, registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner passes approach");
@@ -12184,6 +12195,137 @@ mod vantage_point {
         let events = crate::rules::evaluate_effect(&mut state, &trash, &mut crate::rules::ResolutionContext::for_card(Some(&corp_card)), &registry).expect("trash");
         assert!(events.iter().any(|event| matches!(event, crate::rules::GameEvent::CardTrashed { by: Some(Side::Corp), .. })));
         assert!(looked_at(&events).is_empty());
+    }
+
+    /// Selects the cards at `positions`, in that order, and confirms.
+    fn pick_in_order(state: &GameState, registry: &CardRegistry, positions: &[usize]) -> (GameState, Vec<crate::rules::GameEvent>) {
+        let mut state = state.clone();
+        let mut events = Vec::new();
+        for &position in positions {
+            let (next, more) = apply_action(&state, registry, PlayerAction::ToggleCardSelection { position }).expect("select a card");
+            state = next;
+            events.extend(more);
+        }
+        let (state, more) = apply_action(&state, registry, PlayerAction::ConfirmCardSelection).expect("confirm the selection");
+        events.extend(more);
+        (state, events)
+    }
+
+    /// Cultivate: of the top five, one is trashed facedown and one goes to
+    /// HQ, and the other three are put back in the order the Corp picks
+    /// them, top first. The top of R&D is the end of the pile.
+    #[test]
+    fn cultivate_trashes_one_adds_one_to_hq_and_arranges_the_rest() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.hq = vec![id("cultivate")];
+        state.corp.r_and_d = ["ice_wall", "anoetic_void", "biawak", "clearinghouse", "diviner", "enigma"].map(id).to_vec();
+        let (state, _) = apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: id("cultivate") }).expect("play");
+        let (state, _) = pick(&state, &registry, 4);
+        assert_eq!(state.corp.archives.last().map(|card| (card.card.clone(), card.facedown)), Some((id("diviner"), true)));
+        let (state, _) = pick(&state, &registry, 1);
+        assert!(state.corp.hq.contains(&id("anoetic_void")));
+        assert_eq!(state.corp.r_and_d, ["ice_wall", "biawak", "clearinghouse", "enigma"].map(id).to_vec());
+        // c on top, then b; e, left unpicked, below them.
+        let (state, _) = pick_in_order(&state, &registry, &[2, 1]);
+        assert_eq!(state.corp.r_and_d, ["ice_wall", "enigma", "biawak", "clearinghouse"].map(id).to_vec());
+    }
+
+    /// A card taken from the top of a deck is the copy on top, not the
+    /// lowest copy of the same card: a lower duplicate taken instead left
+    /// the chosen card where it was.
+    #[test]
+    fn a_card_taken_from_the_top_of_r_and_d_is_the_copy_on_top() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.hq = vec![id("cultivate")];
+        state.corp.r_and_d = ["hedge_fund", "ice_wall", "hedge_fund"].map(id).to_vec();
+        let (state, _) = apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: id("cultivate") }).expect("play");
+        let (state, _) = pick(&state, &registry, 2);
+        assert_eq!(state.corp.r_and_d, ["hedge_fund", "ice_wall"].map(id).to_vec(), "the top Hedge Fund was trashed");
+    }
+
+    fn knowledge_seeker(counters: u32) -> crate::rules::InstalledCard {
+        crate::rules::InstalledCard { counters, ..ice_at_hq("knowledge_seeker") }
+    }
+
+    /// Its subroutines place a virus counter, arrange the top four of R&D
+    /// and end the run; the encounter ends with the run, and with a third
+    /// counter it purges every virus counter and derezzes itself.
+    #[test]
+    fn knowledge_seeker_arranges_r_and_d_ends_the_run_and_derezzes_at_three_counters() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.r_and_d = ["anoetic_void", "biawak", "clearinghouse", "diviner", "enigma"].map(id).to_vec();
+        state.runner.rig = vec![crate::rules::InstalledRunnerCard { counters: 2, ..rig("botulus") }];
+        let (state, _) = let_subroutines_fire_on(state, &registry, knowledge_seeker(2));
+        // b to the top, the rest of the top four left in order beneath it.
+        let (state, events) = pick_in_order(&state, &registry, &[1]);
+        assert_eq!(state.corp.r_and_d, ["anoetic_void", "clearinghouse", "diviner", "enigma", "biawak"].map(id).to_vec());
+        assert!(state.active_run.is_none(), "the third subroutine ended the run");
+        assert!(events.iter().any(|event| matches!(event, crate::rules::GameEvent::EncounterEnded { .. })));
+        let seeker = state.corp.installed.iter().find(|card| card.card == id("knowledge_seeker")).expect("installed");
+        assert!(!seeker.rezzed, "derezzed at three counters");
+        assert_eq!(seeker.counters, 0, "its own counters were purged");
+        assert_eq!(state.runner.rig[0].counters, 0, "and the Runner's");
+    }
+
+    /// Below three counters, the encounter's end does nothing.
+    #[test]
+    fn knowledge_seeker_stays_rezzed_below_three_counters() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.r_and_d = ["anoetic_void", "biawak"].map(id).to_vec();
+        let (state, _) = let_subroutines_fire_on(state, &registry, knowledge_seeker(0));
+        let (state, _) = pick_in_order(&state, &registry, &[]);
+        let seeker = state.corp.installed.iter().find(|card| card.card == id("knowledge_seeker")).expect("installed");
+        assert!(seeker.rezzed);
+        assert_eq!(seeker.counters, 1);
+    }
+
+    /// Accessed in R&D, Esca is revealed to the Corp, costs the Runner a
+    /// credit, and does a net damage to a tagged Runner.
+    #[test]
+    fn esca_is_revealed_in_r_and_d_and_bites_a_tagged_runner() {
+        let registry = registry();
+        for tags in [0, 1] {
+            let mut state = base_state();
+            state.phase = GamePhase::Action(Side::Runner);
+            state.runner.tags = tags;
+            state.runner.resources.credits = Credits(3);
+            state.runner.grip = vec![id("sure_gamble"), id("sure_gamble")];
+            state.corp.r_and_d = vec![id("esca")];
+            let (state, events) = run_to_completion(state, &registry, ServerId::RnD);
+            let revealed = events
+                .iter()
+                .find(|event| matches!(event, crate::rules::GameEvent::CardRevealed { .. }))
+                .expect("revealed while accessed in R&D");
+            assert!(crate::rules::mask_event_for_player(revealed, &state, Side::Corp).is_some(), "the Corp is shown it");
+            let view = crate::view::build_client_view(&state, &registry, Side::Corp);
+            let accessing = view.active_run.as_ref().and_then(|run| run.access_state.as_ref()).map(|access| &access.phase);
+            assert!(
+                matches!(accessing, Some(crate::rules::PublicAccessPhase::PendingChoice { card: Some(card), .. }) if card == &id("esca")),
+                "and the view names it for the rest of the access: {accessing:?}"
+            );
+            assert_eq!(state.runner.resources.credits, Credits(2));
+            assert_eq!(state.runner.grip.len(), 2 - tags as usize, "net damage only when tagged");
+        }
+    }
+
+    /// Snare! and Byte! print the same sentence; in HQ none of them is
+    /// revealed.
+    #[test]
+    fn snare_is_revealed_in_r_and_d_but_not_in_hq() {
+        let registry = registry();
+        for (server, revealed) in [(ServerId::RnD, true), (ServerId::Hq, false)] {
+            let mut state = base_state();
+            state.phase = GamePhase::Action(Side::Runner);
+            state.corp.r_and_d = vec![id("snare")];
+            state.corp.hq = vec![id("snare")];
+            let (_, events) = run_to_completion(state, &registry, server);
+            let shown = events.iter().any(|event| matches!(event, crate::rules::GameEvent::CardRevealed { card, .. } if *card == id("snare")));
+            assert_eq!(shown, revealed, "{server:?}");
+        }
     }
 
     /// Its second subroutine removes a card in the heap from the game.

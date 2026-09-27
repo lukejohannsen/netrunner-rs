@@ -150,6 +150,13 @@ pub enum ContinuousKind {
     /// instead — GAMEDRAGON™ Pro. A fact about the card, with no payload,
     /// which is the kind the numbers-only proposal had no room for.
     BoostsLastTheRun,
+    /// The card is revealed while the Runner is accessing it — "While the
+    /// Runner is accessing this asset in R&D, they must reveal it" (CR
+    /// 1.21.7), the `while` saying where (`AccessingIn(RnD)`). Esca,
+    /// Snare! and Byte! print it. A kind rather than a word on the access
+    /// because it is a static ability of the card's, read wherever the card
+    /// is, like every `Scope::This` effect.
+    RevealedWhileAccessed,
 }
 
 /// Which cards an effect is about, read from the card that prints it.

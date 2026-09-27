@@ -286,7 +286,7 @@ pub enum PublicAccessPhase {
     /// Runner only that some interactive trigger fired". That confused
     /// two viewers. It is right that the *Runner* learns nothing extra,
     /// but the Corp is the one being asked, and both cards that ask it of
-    /// them (Snare!, Byte!) carry `Not(AccessingArchives)` — so the
+    /// them (Snare!, Byte!) carry `Not(AccessingIn(Archives))` — so the
     /// question was only ever put in the cases the rule blanked, leaving
     /// the Corp to answer "pay 4 credits?" about a card their own view
     /// refused to name. `legal_actions_for` handed them
@@ -800,6 +800,15 @@ pub fn mask_event_for_player(event: &GameEvent, state: &GameState, viewer: impl 
         // gets nothing. Dropped whole rather than struck out: the card is
         // the whole of the event. It went unseen while every trap outside
         // `Trap` was rezzed on sight (Phase 5 §20).
+        // A card accessed out of HQ or R&D fires where it sits (Esca's
+        // "when the Runner accesses this asset"): the Runner accessed it
+        // and the Corp resolves it, but a spectator saw neither — in R&D
+        // the reveal (`CardRevealed`) is what shows them.
+        GameEvent::TriggerFired { card, trigger: crate::dsl::Trigger::OnAccessed }
+            if matches!(viewer, Viewer::Spectator) && (state.corp.hq.contains(card) || state.corp.r_and_d.contains(card)) =>
+        {
+            None
+        }
         GameEvent::TriggerFired { card, trigger } if concealed(card) => {
             (viewer.is(Side::Runner) && *trigger == crate::dsl::Trigger::OnAccessed).then(visible).flatten()
         }
@@ -821,6 +830,21 @@ pub fn mask_event_for_player(event: &GameEvent, state: &GameState, viewer: impl 
             cards: cards.iter().filter(|card| !concealed(card)).cloned().collect(),
         }),
         GameEvent::VirusCountersPurged { .. } => visible(),
+        // Ice derezzed by the action that encountered it — Knowledge
+        // Seeker at its third counter — was faceup when these happened, and
+        // the Runner remembers it (`seen_by_runner`, set by the rez). A
+        // spectator's view keeps no memory, so their log keeps to it.
+        GameEvent::IceEncountered { card_id, .. }
+        | GameEvent::SubroutineBroken { card_id, .. }
+        | GameEvent::SubroutineFired { card_id, .. }
+        | GameEvent::IceStrengthModified { card_id, .. }
+        | GameEvent::IceBypassed { card_id, .. }
+        | GameEvent::IceFullyBroken { card_id, .. }
+        | GameEvent::EncounterEnded { card_id, .. }
+            if concealed(card_id) =>
+        {
+            None
+        }
         // Public by construction. Encounter events only ever name rezzed
         // ICE (`run::engine` passes unrezzed ICE without emitting them);
         // plays and Runner installs are faceup; `IceRezzed`, `AgendaScored`,
@@ -839,6 +863,8 @@ pub fn mask_event_for_player(event: &GameEvent, state: &GameState, viewer: impl 
         | GameEvent::IceStrengthModified { .. }
         | GameEvent::IcePassed { .. }
         | GameEvent::IceBypassed { .. }
+        | GameEvent::EncounterEnded { .. }
+        | GameEvent::CardRevealed { .. }
         | GameEvent::IceFullyBroken { .. }
         | GameEvent::ServerApproached { .. }
         | GameEvent::RunSucceeded { .. }
@@ -994,7 +1020,7 @@ fn mask_access_phase(phase: &AccessPhase, card_visible: bool, viewer: Viewer) ->
             // **The decider always learns the card, whatever zone it came
             // from.** They are being asked to pay a cost for *this card's*
             // ability, and the only cards that ask it of the Corp — Snare!,
-            // Byte! — carry `Not(AccessingArchives)`, so the base rule
+            // Byte! — carry `Not(AccessingIn(Archives))`, so the base rule
             // above blanked the card in every case where the question is
             // ever put. That left the Corp answering "pay 4 credits?" about
             // a card the view refused to name, while
@@ -1021,14 +1047,14 @@ fn mask_access_phase(phase: &AccessPhase, card_visible: bool, viewer: Viewer) ->
     }
 }
 
-fn mask_access_state(access: &AccessState, card_visible: bool, viewer: Viewer) -> PublicAccessState {
+fn mask_access_state(access: &AccessState, card_visible: bool, revealed: bool, viewer: Viewer) -> PublicAccessState {
     PublicAccessState {
         server: access.server,
         candidates: access.candidates.clone(),
         from_zone: access.from_zone.len() as u32,
         resolved_cards: mask_zone(&access.resolved_cards, card_visible),
         pending_install: access.pending_install,
-        phase: mask_access_phase(&access.phase, card_visible, viewer),
+        phase: mask_access_phase(&access.phase, card_visible || revealed, viewer),
     }
 }
 
@@ -1037,12 +1063,18 @@ fn mask_run_state(state: &GameState, registry: &CardRegistry, run: &RunState, vi
     // server is Archives (an always-public zone) — the Corp, and a
     // spectator, learn what was hit when it lands in a public zone.
     let card_visible = viewer.is(Side::Runner) || run.server == ServerId::Archives;
+    // …or it is revealed while it is accessed (CR 1.21.6: it stays visible
+    // until the access is over), which shows the card being accessed and
+    // nothing already behind the Runner.
+    let revealed = run.access_state.as_ref().and_then(|access| access.phase.card()).is_some_and(|card| {
+        crate::rules::continuous::revealed_while_accessed(state, registry, card)
+    });
     PublicRunState {
         server: run.server,
         phase: run.phase,
         ice: run.ice.iter().map(|ice| mask_run_ice(state, registry, ice, viewer.is(Side::Corp))).collect(),
         position: run.position,
-        access_state: run.access_state.as_ref().map(|access| mask_access_state(access, card_visible, viewer)),
+        access_state: run.access_state.as_ref().map(|access| mask_access_state(access, card_visible, revealed, viewer)),
         jack_out_permitted: run.jack_out_permitted,
         declared_successful: run.declared_successful,
         bad_publicity_credits: run.bad_publicity_credits,

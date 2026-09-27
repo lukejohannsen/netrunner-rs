@@ -230,7 +230,8 @@ fn concealed(trigger: Trigger, of: Option<Side>) -> bool {
         // piece of ice has.
         | Trigger::OnSubroutineBroken
         | Trigger::OnIceFullyBroken
-        | Trigger::OnIceBypassed => false,
+        | Trigger::OnIceBypassed
+        | Trigger::OnEncounterEnded => false,
         // An unrezzed piece of ice is passed without being seen. The log
         // counts a pass by its `IceFacts`, which do not name the card, but
         // a filter on the card itself is refused.

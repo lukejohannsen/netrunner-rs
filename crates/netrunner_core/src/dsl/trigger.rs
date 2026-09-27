@@ -250,6 +250,13 @@ pub enum Trigger {
     /// "Whenever the Runner bypasses … this ice" (Lethe), CR 6.5.8 —
     /// `GameEvent::IceBypassed`.
     OnIceBypassed,
+    /// "Whenever an encounter with this ice ends" (Knowledge Seeker) —
+    /// `GameEvent::EncounterEnded`, about the ice, however the encounter
+    /// ended (CR 6.9.3e, and CR 6.1.4 for an encounter "end the run" ends
+    /// with the run). Composition didn't work: `OnIcePassed` misses the
+    /// commonest ending of all for ice that ends the run, and nothing else
+    /// happens after the last subroutine.
+    OnEncounterEnded,
     /// "When the Runner spends credits from outside their credit pool
     /// during a run against this server" (Shackleton Grid) —
     /// `GameEvent::CreditsSpentFromOutsidePool`, once per payment, about
@@ -472,7 +479,7 @@ impl Trigger {
     /// `every_trigger_is_listed_at_its_own_index` holds the two together,
     /// and its exhaustive `match` is what stops a new variant compiling
     /// until it is listed here.
-    pub const ALL: [Trigger; 36] = [
+    pub const ALL: [Trigger; 37] = [
         Trigger::OnPlay,
         Trigger::OnRunStart,
         Trigger::OnEncounter,
@@ -506,6 +513,7 @@ impl Trigger {
         Trigger::OnSubroutineBroken,
         Trigger::OnIceFullyBroken,
         Trigger::OnIceBypassed,
+        Trigger::OnEncounterEnded,
         Trigger::OnCreditsSpentOutsidePool,
         Trigger::OnArchivesTurnedFaceup,
         Trigger::OnCardTrashed,
@@ -544,6 +552,7 @@ impl Trigger {
             | Trigger::OnSubroutineBroken
             | Trigger::OnIceFullyBroken
             | Trigger::OnIceBypassed
+            | Trigger::OnEncounterEnded
             | Trigger::OnCardTrashed => TriggerAbout::Card,
             Trigger::OnRunStart
             | Trigger::OnIceApproached
@@ -618,6 +627,7 @@ impl Trigger {
             | Trigger::OnSubroutineBroken
             | Trigger::OnIceFullyBroken
             | Trigger::OnIceBypassed
+            | Trigger::OnEncounterEnded
             | Trigger::OnRunStart
             | Trigger::OnIceApproached
             | Trigger::OnApproachServer
@@ -645,7 +655,7 @@ mod tests {
         // Exhaustive, so a new variant stops here until it is added to
         // `Trigger::ALL` — the turn log indexes a fixed array by it.
         let listed = |trigger: Trigger| match trigger {
-            Trigger::OnPlay | Trigger::OnRunStart | Trigger::OnEncounter | Trigger::OnTurnStart | Trigger::OnAccessed | Trigger::OnTrashedFromAccess | Trigger::OnSuccessfulRun | Trigger::Paid | Trigger::OnInstall | Trigger::OnAgendaScored | Trigger::OnAgendaStolen | Trigger::OnDamageAboutToResolve | Trigger::OnRez | Trigger::OnApproachServer | Trigger::OnRunEnded | Trigger::OnBasicDrawAction | Trigger::OnTagsGiven | Trigger::OnAdvance | Trigger::OnDiscardPhaseEnd | Trigger::OnActionPhaseEnd | Trigger::OnCardInstalled | Trigger::OnDamageDealt | Trigger::OnCardsTrashedFromHq | Trigger::OnAbilityGainedCredits | Trigger::OnForfeit | Trigger::OnIceApproached | Trigger::OnCardPlayed | Trigger::OnTagRemoved | Trigger::OnBadPublicityTaken | Trigger::OnIcePassed | Trigger::OnSubroutineBroken | Trigger::OnIceFullyBroken | Trigger::OnIceBypassed | Trigger::OnCreditsSpentOutsidePool | Trigger::OnArchivesTurnedFaceup | Trigger::OnCardTrashed => Trigger::ALL.contains(&trigger),
+            Trigger::OnPlay | Trigger::OnRunStart | Trigger::OnEncounter | Trigger::OnTurnStart | Trigger::OnAccessed | Trigger::OnTrashedFromAccess | Trigger::OnSuccessfulRun | Trigger::Paid | Trigger::OnInstall | Trigger::OnAgendaScored | Trigger::OnAgendaStolen | Trigger::OnDamageAboutToResolve | Trigger::OnRez | Trigger::OnApproachServer | Trigger::OnRunEnded | Trigger::OnBasicDrawAction | Trigger::OnTagsGiven | Trigger::OnAdvance | Trigger::OnDiscardPhaseEnd | Trigger::OnActionPhaseEnd | Trigger::OnCardInstalled | Trigger::OnDamageDealt | Trigger::OnCardsTrashedFromHq | Trigger::OnAbilityGainedCredits | Trigger::OnForfeit | Trigger::OnIceApproached | Trigger::OnCardPlayed | Trigger::OnTagRemoved | Trigger::OnBadPublicityTaken | Trigger::OnIcePassed | Trigger::OnSubroutineBroken | Trigger::OnIceFullyBroken | Trigger::OnIceBypassed | Trigger::OnEncounterEnded | Trigger::OnCreditsSpentOutsidePool | Trigger::OnArchivesTurnedFaceup | Trigger::OnCardTrashed => Trigger::ALL.contains(&trigger),
         };
         assert!(Trigger::ALL.iter().all(|trigger| listed(*trigger)));
     }

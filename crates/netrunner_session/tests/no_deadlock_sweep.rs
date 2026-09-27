@@ -502,6 +502,10 @@ fn assert_no_concealed_card_is_named_in_log(
         if let GameEvent::CardsLookedAt { cards, .. } = event {
             visible.extend(cards.iter().map(|c| c.0.as_str()));
         }
+        // A reveal is a reveal (Esca accessed in R&D).
+        if let GameEvent::CardRevealed { card, .. } = event {
+            visible.insert(card.0.as_str());
+        }
     }
 
     let mut concealed = masked_install_ids(view, state, &visible);

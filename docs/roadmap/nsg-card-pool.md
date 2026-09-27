@@ -386,9 +386,12 @@ Division.
    installed). **5d** (built, below): Hiram (a trash the Runner carries
    out, from any location, is a moment, CR 1.14.5a; "look at the top card
    of R&D" shows one player a hidden card). Stage 5 is complete.
-6. **Arrange, reveal, stealth credits:** Cultivate, Knowledge Seeker, Esca,
-   Corsair, Baker, Lampades, Aircheck. Aircheck locks the credit pool,
-   which breaks the invariant that a payment may always reach the pool.
+6. **Arrange, reveal, stealth credits.** **6a** (built, below): Cultivate,
+   Knowledge Seeker, Esca — arranging the top of R&D, a reveal while
+   accessed in R&D, an encounter's end as a moment. **6b:** Corsair, Baker,
+   Lampades — credits spendable only from stealth cards. **6c:** Aircheck,
+   which locks the credit pool and so breaks the invariant that a payment
+   may always reach the pool.
 7. **Hosting, the score area and access limits:** Hackerspace, Read-Write
    Share, Luana Campos, Stick and Poke, Word on the Street, Myōshu,
    Flagship, Sacrifice Zone Expansion, Tocsin.
@@ -1105,6 +1108,86 @@ Stage 5 is complete.
   show it heard: Hiram's install entry fired 47 times and its trash entry
   18, for 65 looks, beside Methuselah (203), Shackleton Grid (3) and Beta
   Build (3).
+
+#### Stage 6a — arrange, a reveal, and the end of an encounter (27 September 2026)
+
+`feat/vp-stage-6a-arrange-reveal-encounter-end`: Cultivate, Knowledge
+Seeker and Esca, on the A Thousand Cuts Sweep deck. **No new `Effect`.**
+Vantage Point 52 of 66; `VP_UNIMPLEMENTED` 17 → 14.
+
+- **Arranging the top of a deck is a selection back onto it** (CR 8.3.3).
+  A selection put onto a deck now lands with the first card chosen on top
+  (it was pushed in the order chosen, so the first went deepest; every
+  card in the pool had put at most one card there). Cultivate is three
+  `PromptChooseCards` over `TopOfZone`: one of the top five to Archives,
+  one of the top four to HQ, and up to three back onto R&D. Knowledge
+  Seeker's second subroutine is the last of those for four. A card left
+  unchosen stays beneath the chosen ones, which is one of the
+  arrangements too, and with fewer cards in R&D the prompt still asks.
+  Composition worked, so no `Effect` was added.
+- **A card taken from a deck is the copy at the place chosen.** It was the
+  first copy from the bottom, so choosing the top card when a lower copy
+  of the same card was in R&D left the chosen card on top (AU Co.,
+  Poétrï, Embedded Reporting, and now Cultivate). Neither this nor the
+  new top-first order applies to a selection that shuffles afterwards: a
+  shuffle's result depends on the order it starts from, and doing either
+  first re-dealt every shuffled R&D in the pool (Sprint, Sleipnir, Next
+  Big Thing and five more).
+- **An encounter's end is a moment:** `GameEvent::EncounterEnded`, heard
+  by `Trigger::OnEncounterEnded` about the ice. An encounter ends when it
+  completes (CR 6.9.3e), when "end the run" ends it with the run
+  (CR 6.1.4), when a subroutine moves the run, when a jack-out is paid
+  as a cost, and when the ice leaves the table or is derezzed during it
+  (`run::encounter_ends`, asked at each). `reconcile_ice` now dispatches
+  the pass and the end it makes itself; two of its three callers handed
+  them on undispatched. Knowledge Seeker's third virus counter purges
+  every virus counter in play, the Runner's included, and derezzes it.
+- **A reveal while accessed** (CR 1.21.7): `ContinuousKind::
+  RevealedWhileAccessed` with `while: AccessingIn(RnD)`. It is a static
+  ability of the card's, so a standing kind with `Scope::This` rather
+  than a word on the access. Esca, Snare! and Byte! all print it; the
+  latter two did not say it until now. The access emits
+  `GameEvent::CardRevealed`, public, and the Corp's view names the card
+  for the rest of the access (CR 1.21.6). `AccessingArchives` became
+  `AccessingIn(ServerId)` when a second server was printed.
+- **What the sweeps found.**
+  - The log concealment check found Esca's trigger named to a spectator
+    when Esca is accessed from HQ or R&D: it is the first card to fire
+    from a hidden zone. It is now the Runner's and the Corp's only.
+  - The same check found Knowledge Seeker's encounter events named to a
+    spectator after it derezzed itself in the action that encountered
+    it. Encounter events of ice now concealed from the viewer are dropped
+    for that viewer. The Runner remembers the ice (`seen_by_runner`, set
+    at the rez), so only a spectator loses them.
+  - The client's trap classifier (`board::rez::gains_nothing`) read
+    Snare!'s new standing effect as a reason to rez it. The reveal is
+    about the access, so the classifier ignores it, and Esca joins the
+    traps.
+- **Deck.** A Thousand Cuts: two Knowledge Seeker for two Palisade, two
+  Esca for two Regolith Mining License, two Cultivate for two
+  Retribution.
+- **Fidelity limits.** The client does not yet word an arrangement as
+  "top first"; the prompt is a card selection. The arranged cards are not
+  made new objects (CR 8.3.3): nothing in the engine remembers a card in
+  R&D by identity.
+- **DSL ratio (`pool_status.py`): 20 of 72 `Effect` variants single-use,
+  2 unused**, over 236 card files (21 before: Knowledge Seeker is the
+  second card to purge). The growth is one `Trigger`, one
+  `ContinuousKind`, and one `EffectRequirement` generalised in place.
+- **Measured.** Both sweeps at 256 seeds are green, coverage gate
+  included. `coverage_identical.py origin/main` differs in all four
+  shapes, and each difference was attributed with a temporary ref:
+  - **Random seatings** moved only through the copy taken from the top
+    of a deck. With that one line reverted, both random shapes differ
+    from main only in the new events' counts (`EncounterEnded` 0 → 911,
+    `CardRevealed` 0 → 4). On HEAD, the Runner's wins on agenda points
+    go 112 → 113 and on the Corp decking 5 → 4.
+  - **Heuristic seatings** moved only through `determinize` sampling the
+    three new cards. With the card files removed, they differ from main
+    only in event counts. They are unmoved by the top-copy fix.
+- **Real play.** Twenty-four random games of A Thousand Cuts against Pay
+  as You Go (seed 1): Esca's trigger fired 31 times, Cultivate 8,
+  Knowledge Seeker's derez once, over 40 ended encounters and 7 reveals.
 
 ### 2. Rebellion Without Rehearsal — 65 cards (C 7 / V 43 / M 15)
 

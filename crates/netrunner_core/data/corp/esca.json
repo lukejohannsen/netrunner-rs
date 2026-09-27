@@ -1,0 +1,46 @@
+{
+  "id": "esca",
+  "title": "Esca",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 0,
+  "trash_cost": 3,
+  "continuous": [
+    {
+      "kind": "RevealedWhileAccessed",
+      "applies_to": "This",
+      "while": {
+        "AccessingIn": "RnD"
+      },
+      "text": "While the Runner is accessing this asset in R&D, they must reveal it."
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnAccessed",
+      "subject": "This",
+      "effects": [
+        {
+          "LoseCredits": [
+            "Runner",
+            1
+          ]
+        },
+        {
+          "EffectIf": {
+            "condition": "IsTagged",
+            "effect": {
+              "DealDamage": [
+                "Net",
+                1
+              ]
+            }
+          }
+        }
+      ],
+      "text": "When the Runner accesses this asset, they lose 1[credit]. If they are tagged, do 1 net damage."
+    }
+  ],
+  "numeric_id": 36038,
+  "is_playable": true
+}

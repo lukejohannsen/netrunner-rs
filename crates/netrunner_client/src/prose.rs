@@ -500,6 +500,7 @@ pub fn describe_continuous(effect: &ContinuousEffect) -> String {
         ContinuousKind::AgendaPoints(number) => format!("is worth {} agenda points", signed(number)),
         ContinuousKind::GainSubtype(subtype) => format!("gains {}", lower(format!("{subtype:?}"))),
         ContinuousKind::BoostsLastTheRun => "keeps its strength boosts for the rest of the run".to_string(),
+        ContinuousKind::RevealedWhileAccessed => "is revealed while it is accessed".to_string(),
     };
     match &effect.condition {
         Some(condition) => format!("{whom} {what}, while {}", lower(format!("{condition:?}"))),
