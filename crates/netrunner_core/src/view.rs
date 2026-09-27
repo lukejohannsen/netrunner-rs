@@ -57,6 +57,14 @@ pub struct CorpClientView {
     pub archives: Vec<PublicArchivedCard>,
     pub servers: Vec<ServerView>,
     pub scored_agendas: Vec<ScoredAgenda>,
+    /// What each of `scored_agendas` is worth now, in the same order:
+    /// `win::scored_value`, the number the score sums. Not the printed
+    /// value — a card added as an agenda is worth what the addition said
+    /// (Word on the Street's −1) — so a client listing the score area
+    /// shows the same numbers as the total under them. Derived, public,
+    /// and never read back into a state.
+    #[serde(default)]
+    pub scored_worth: Vec<i32>,
     /// Public — see `PublicCorpState::removed_from_game`.
     #[serde(default)]
     pub removed_from_game: Vec<CardId>,
@@ -104,6 +112,12 @@ pub struct RunnerClientView {
     pub rig: Vec<PublicInstalledRunnerCard>,
     pub link_strength: u32,
     pub scored_agendas: Vec<CardId>,
+    /// What each of `scored_agendas` is worth in the Runner's score area,
+    /// in the same order (`win::agenda_value_in`): Let Them Dream, stolen,
+    /// is worth 1 less than it prints, and a list of stolen agendas that
+    /// said "2 points" summed to more than the total beside it.
+    #[serde(default)]
+    pub scored_worth: Vec<i32>,
     /// Servers run this turn, oldest first — public, see
     /// `PublicRunnerState::servers_run_this_turn`.
     #[serde(default)]
@@ -323,6 +337,7 @@ pub fn build_client_view(state: &GameState, registry: &CardRegistry, viewer: imp
         rd_count: zone_count(&public.corp.r_and_d),
         archives: public.corp.archives,
         servers: group_by_server(&public.corp.installed),
+        scored_worth: state.corp.scored_agendas.iter().map(|scored| crate::rules::scored_value(state, registry, scored)).collect(),
         scored_agendas: public.corp.scored_agendas,
         removed_from_game: public.corp.removed_from_game,
     };
@@ -346,6 +361,12 @@ pub fn build_client_view(state: &GameState, registry: &CardRegistry, viewer: imp
         identity_flipped: public.runner.identity_flipped,
         once_per_turn_used: public.runner.once_per_turn_used,
         identity: public.runner.identity,
+        scored_worth: state
+            .runner
+            .scored_agendas
+            .iter()
+            .map(|card| crate::rules::agenda_value_in(state, registry, card, Side::Runner) as i32)
+            .collect(),
         scored_agendas: public.runner.scored_agendas,
     };
 

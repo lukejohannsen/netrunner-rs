@@ -883,6 +883,60 @@ fn each_side_has_an_avatar_and_the_active_side_is_lit() {
     assert_eq!(overlays(&mut app), 1, "the opponent's identity opens to read");
 }
 
+/// What Vantage Point added to the view, drawn: a flip identity's chip
+/// on its disc (Nebula Talent Management plays the sample deck
+/// not_so_subtle) and the side up on its sheet, what a card put in force
+/// for a while under the prompt, and the Runner's cards out of the game
+/// under the heap. The view is given what no short game reaches: the flip,
+/// Aircheck's lock and an event removed from the game.
+#[test]
+fn a_flip_identity_what_is_in_effect_and_what_left_the_game_are_drawn() {
+    use netrunner_core::dsl::{CardId, Prohibition};
+    use netrunner_core::rules::lingering::{Lingering, LingeringEffect, On, Until};
+    use netrunner_desktop::screens::game::{IdentityChip, InEffect};
+    let (mut app, _dir) = headless_client();
+    start_a_game_with(&mut app, Side::Runner, "not_so_subtle");
+    wait_for(&mut app, "the first decision", |app| click_entry_count(app) > 0);
+    let chip_text = |app: &mut App, side: Side| -> Option<String> {
+        let world = app.world_mut();
+        let chip = world.query::<(Entity, &IdentityChip)>().iter(world).find(|(_, c)| c.0 == side).map(|(e, _)| e)?;
+        let child = world.get::<Children>(chip)?.iter().next()?;
+        world.get::<Text>(child).map(|t| t.0.clone())
+    };
+    assert_eq!(chip_text(&mut app, Side::Corp).as_deref(), Some("Front"), "Nebula flips, and starts on its front");
+    assert!(app.world_mut().query::<&InEffect>().iter(app.world()).next().is_none(), "nothing is in effect yet");
+    {
+        let mut model = app.world_mut().resource_mut::<Model>();
+        let view = model.0.view.as_mut().unwrap();
+        view.corp.identity_flipped = true;
+        view.lingering.push(LingeringEffect { what: Lingering::Cannot(Prohibition::SpendOrLoseCreditPool), on: On::Player(Side::Runner), until: Until::EndOfRun, source: CardId("aircheck".into()) });
+        view.runner.removed_from_game.push(CardId("sure_gamble".into()));
+    }
+    app.world_mut().resource_mut::<BoardFit>().face = 0.0;
+    app.update();
+    app.update();
+    assert_eq!(chip_text(&mut app, Side::Corp).as_deref(), Some("Flipped"));
+    assert!(app.world_mut().query::<&InEffect>().iter(app.world()).next().is_some(), "the rail has an In effect heading");
+    assert!(texts(&mut app).iter().any(|t| t.starts_with("Aircheck: the Runner cannot spend or lose credits")), "and Aircheck's line");
+
+    // The identity's sheet says which side is up beside the card.
+    let avatar = app.world_mut().query::<(Entity, &Avatar)>().iter(app.world()).find(|(_, a)| a.0 == Side::Corp).map(|(e, _)| e).expect("the Corp has an avatar");
+    right_click(&mut app, avatar);
+    let facts: Vec<String> = {
+        let world = app.world_mut();
+        world.query_filtered::<&Text, With<InstallFact>>().iter(world).map(|t| t.0.clone()).collect()
+    };
+    assert_eq!(facts, ["Its flip side is up"]);
+    escape(&mut app);
+
+    // The heap's sheet lists what left the game under the heap.
+    let heap = entity_with(&mut app, &Click::Target(Target::Pile(netrunner_client::board::Pile::Heap))).expect("the heap has a button");
+    right_click(&mut app, heap);
+    let (sheet, _) = overlay_text(&mut app);
+    assert!(sheet.iter().any(|t| t == "Removed from the game"), "{sheet:?}");
+    assert!(sheet.iter().any(|t| t.contains("1 removed from the game")), "{sheet:?}");
+}
+
 /// A Trojan sits on its ice: a button of its own inside the ice's tile,
 /// with the Trojan's click and the Trojan's sheet, while its copy in the
 /// program row is a ghost that is still the same button (Phase 7 §8
