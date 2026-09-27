@@ -1,0 +1,27 @@
+{
+  "id": "nurse_hanh",
+  "title": "Nurse Hạnh",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 1,
+  "unique": true,
+  "triggers": [
+    {
+      "trigger": "OnArchivesTurnedFaceup",
+      "when": {
+        "AtLeast": 2
+      },
+      "effects": [
+        {
+          "DrawCards": [
+            "Runner",
+            2
+          ]
+        }
+      ],
+      "text": "Whenever 2 or more facedown cards in Archives are turned faceup, draw 2 cards."
+    }
+  ],
+  "numeric_id": 36007,
+  "is_playable": true
+}

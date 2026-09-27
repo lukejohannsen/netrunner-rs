@@ -365,6 +365,7 @@ pub fn engine_reading(card: &CardDefinition, registry: &CardRegistry) -> Vec<Str
             Some(EventFilter::Card(filter)) => when = format!("{when}, of {}", humanize(format!("{filter:?}"))),
             Some(EventFilter::InstalledCard(filter)) => when = format!("{when}, of an installed card ({})", humanize(format!("{filter:?}"))),
             Some(EventFilter::Damage(kind)) => when = format!("{when}, of {} damage", format!("{kind:?}").to_lowercase()),
+            Some(EventFilter::AtLeast(least)) => when = format!("{when}, {least} or more"),
             Some(EventFilter::Ice(facts)) => {
                 let words: Vec<&str> = [
                     (facts.outermost, "the outermost ice"),

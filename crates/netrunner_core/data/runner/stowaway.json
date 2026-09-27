@@ -1,0 +1,26 @@
+{
+  "id": "stowaway",
+  "title": "Stowaway",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 0,
+  "memory_cost": 1,
+  "installs_on_ice": true,
+  "triggers": [
+    {
+      "trigger": "OnSuccessfulRun",
+      "subject": "This",
+      "effects": [
+        {
+          "GainCredits": [
+            "Runner",
+            2
+          ]
+        }
+      ],
+      "text": "Whenever you make a successful run on this server, gain 2[credit]."
+    }
+  ],
+  "numeric_id": 36024,
+  "is_playable": true
+}

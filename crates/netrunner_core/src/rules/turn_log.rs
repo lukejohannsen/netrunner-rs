@@ -242,6 +242,7 @@ fn concealed(trigger: Trigger, of: Option<Side>) -> bool {
         | Trigger::OnSuccessfulRun
         | Trigger::OnRunEnded
         | Trigger::OnCreditsSpentOutsidePool
+        | Trigger::OnArchivesTurnedFaceup
         | Trigger::OnTurnStart
         | Trigger::OnActionPhaseEnd
         | Trigger::OnDiscardPhaseEnd
@@ -263,6 +264,8 @@ fn class_of(registry: &CardRegistry, moment: &Moment) -> Class {
     match &moment.about {
         About::Nothing => Class::Nothing,
         About::Damage(kind) => Class::Damage(*kind),
+        // How many is a number, which a fixed table cannot hold.
+        About::Cards(_) => Class::Nothing,
         About::Server(ServerId::Archives) => Class::Server(ServerClass::Archives),
         About::Server(ServerId::RnD) => Class::Server(ServerClass::RnD),
         About::Server(ServerId::Hq) => Class::Server(ServerClass::Hq),
@@ -324,6 +327,9 @@ impl Occurrences {
                     .fold(0, |mask, column| mask | column),
             ),
             Some(EventFilter::Damage(kind)) => Some(bit(Class::Damage(*kind))),
+            Some(EventFilter::AtLeast(_)) => {
+                return Err(format!("the turn counts a {trigger:?} without how many cards it was about, so \"the first\" cannot be narrowed by a number"));
+            }
             Some(EventFilter::Ice(required)) => {
                 Some(IceFacts::ALL.iter().filter(|facts| required.admits(**facts)).map(|facts| bit(Class::Ice(*facts))).fold(0, |mask, column| mask | column))
             }
