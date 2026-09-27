@@ -69,6 +69,7 @@ pub mod standing;
 pub mod table;
 pub mod tally;
 pub mod start;
+mod view_ledger;
 
 /// The OS data directory every client file lives under — the base
 /// `settings`, `deck_store` and `record` resolve from, and the one a

@@ -81,8 +81,17 @@ pub fn readouts(view: &ClientView, side: Side) -> Vec<Readout> {
         }
         Side::Runner => {
             let runner = &view.runner;
+            // A run's own credits — the bad publicity fund (CR 6.9.1b, kept
+            // apart from the credit pool) and a run event's (Overclock) —
+            // beside the pool as "5 +2": gone when the run ends, so
+            // neither the pool nor the sum is the number the person needs.
+            let for_the_run = view.active_run.as_ref().map_or(0, |run| run.bad_publicity_credits + run.bonus_run_credits);
+            let credits = match for_the_run {
+                0 => runner.credits.to_string(),
+                n => format!("{} +{n}", runner.credits),
+            };
             vec![
-                quiet("Credits", runner.credits.to_string()),
+                quiet("Credits", credits),
                 quiet("Clicks", runner.clicks.to_string()),
                 points(Side::Runner, runner.agenda_points),
                 quiet("Grip", runner.grip_count.to_string()),
@@ -474,6 +483,20 @@ mod tests {
         assert_eq!(lines.len(), 2, "{lines:?}");
         assert_eq!(lines[0], "Aircheck: the Runner cannot spend or lose credits from their credit pool, for the rest of this run");
         assert!(lines[1].ends_with(": the Runner has 1 fewer allotted click next turn"), "{lines:?}");
+    }
+
+    /// During a run the Runner's credits read "pool +run": the bad
+    /// publicity fund and a run event's credits, which the pool excludes.
+    #[test]
+    fn a_runs_own_credits_sit_beside_the_pool() {
+        let registry = crate::decks::sample_deck_registry();
+        let (corp_deck, runner_deck) = sweep_decks_for_seed(0);
+        let (mut state, _) = GameState::setup(&corp_deck.to_deck(), &runner_deck.to_deck(), &registry, 0).unwrap();
+        let credits = |state: &GameState| readouts(&netrunner_core::view::build_client_view(state, &registry, Side::Runner), Side::Runner)[0].value.clone();
+        let pool = state.runner.resources.credits.0;
+        assert_eq!(credits(&state), pool.to_string());
+        state.active_run = Some(netrunner_core::rules::RunState { server: netrunner_core::rules::ServerId::Hq, bad_publicity_credits: 2, bonus_run_credits: 1, ..Default::default() });
+        assert_eq!(credits(&state), format!("{pool} +3"));
     }
 
     #[test]

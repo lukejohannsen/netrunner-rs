@@ -32,6 +32,7 @@ No rendering engine is mandated. Any client — terminal, desktop, web — obeys
 - A client renders a `ClientView` and submits a `PlayerAction` **chosen from `view.legal_actions`**.
 - A client NEVER touches `GameState`, NEVER re-derives legality, and NEVER mutates rules state directly.
 - Anything a client needs to display must be reachable from `ClientView`. If it isn't, extend the masking layer with an explicit rule about who may see it — do not reach around it.
+- **What reaches the view is drawn, or says why not — in the change that adds it.** `netrunner_client::view_ledger` destructures every struct a seat receives with every field named, so a new field does not compile under `cargo test` until its line says **drawn** (where, in both clients), **engine's** (and why a person needs no picture of it) or **OWED** — and an OWED field is a row of the client ledger in `docs/roadmap/nsg-card-pool.md` until it is drawn. Vantage Point's view was caught up after the set, in one PR (#250); the person asked (27 September 2026) that a card update's UI work be tracked and shipped with it.
 
 `netrunner_cli` (ratatui TUI) is the reference client for the *contract*; `netrunner_desktop` (Bevy) is the graphical one, and both stand on `netrunner_client` — see §5 for what that shares and the conventions the desktop follows.
 

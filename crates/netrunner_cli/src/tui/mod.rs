@@ -1246,7 +1246,9 @@ fn draw_header(frame: &mut Frame, area: Rect, app: &impl RenderableView) {
         click_pool(view.corp.clicks, CORP_MAX_CLICKS),
         view.corp.agenda_points,
         view.corp.bad_publicity,
-        view.runner.credits,
+        // "5 +2" in a run: the bad publicity fund and a run event's
+        // credits beside the pool, as the desktop's readout says it.
+        netrunner_client::board::hud::readouts(view, Side::Runner)[0].value,
         click_pool(view.runner.clicks, RUNNER_MAX_CLICKS),
         view.runner.tags,
         view.runner.memory_units,
