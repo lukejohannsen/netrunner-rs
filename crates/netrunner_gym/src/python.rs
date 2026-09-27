@@ -187,9 +187,12 @@ mod tests {
     /// 1677 → 2621 for the installs that trash first (Rules Conformance B),
     /// appended the same way: the three install segments again, with
     /// `trash_first`, after `ChooseNumber`.
+    ///
+    /// 2621 → 3133 for a resource installed onto a rig card (VP Stage 7c,
+    /// Hackerspace), appended.
     #[test]
     fn action_space_size_constant_is_pinned() {
-        assert_eq!(ACTION_SPACE_SIZE, 2621);
+        assert_eq!(ACTION_SPACE_SIZE, 3133);
     }
 
     /// Pinned for the same reason as `ACTION_SPACE_SIZE`: it is the model's

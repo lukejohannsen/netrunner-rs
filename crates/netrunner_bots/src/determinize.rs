@@ -726,7 +726,7 @@ pub fn determinize(view: &ClientView, registry: &CardRegistry, rng: &mut impl Rn
             // search's reach entirely.
             counters: card.counters,
             hosted_on_ice: card.hosted_on_ice,
-            hosted_on_program: card.hosted_on_program,
+            hosted_on_rig_card: card.hosted_on_rig_card,
             // Cards hosted facedown are only counted for this viewer, and
             // drawn like the grip they came from (Read-Write Share).
             hosted_cards: card.hosted_cards.iter().cloned().chain(pools.draw_n(Slot::RunnerAny, card.hosted_unseen)).collect(),

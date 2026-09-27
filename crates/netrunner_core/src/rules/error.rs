@@ -91,6 +91,11 @@ pub enum RulesError {
     #[error("card {0:?} is not an installed piece of ICE and cannot host a Trojan Program")]
     HostIsNotIce(CardId),
 
+    /// `PlayerAction::InstallResource`'s `host` is not in the rig, or does
+    /// not say `card` may be installed onto it (`ContinuousKind::MayHost`).
+    #[error("card {card:?} cannot be installed onto {host:?}")]
+    CannotInstallOnto { card: CardId, host: crate::rules::state::InstallId },
+
     #[error("card {card:?} is already rezzed")]
     AlreadyRezzed { card: CardId },
 

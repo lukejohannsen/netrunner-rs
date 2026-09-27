@@ -157,8 +157,8 @@ pub fn stacked<'a>(view: &'a ClientView, registry: &CardRegistry, chair: Side, a
 /// Whether `a` and `b` are copies nothing tells apart (see [`stacked`]).
 fn identical(view: &ClientView, actions: Option<&ActionMap>, a: &PublicInstalledRunnerCard, b: &PublicInstalledRunnerCard) -> bool {
     let used = |card: &PublicInstalledRunnerCard| view.runner.once_per_turn_used.iter().any(|key: &OncePerTurnKey| key.install == Some(card.install_id));
-    let a_host = |host: InstallId| view.runner.rig.iter().any(|other| other.hosted_on_program == Some(host));
-    let alone = |card: &PublicInstalledRunnerCard| card.hosted_on_ice.is_none() && card.hosted_on_program.is_none() && card.hosted_cards.is_empty() && card.hosted_unseen == 0 && !a_host(card.install_id);
+    let a_host = |host: InstallId| view.runner.rig.iter().any(|other| other.hosted_on_rig_card == Some(host));
+    let alone = |card: &PublicInstalledRunnerCard| card.hosted_on_ice.is_none() && card.hosted_on_rig_card.is_none() && card.hosted_cards.is_empty() && card.hosted_unseen == 0 && !a_host(card.install_id);
     a.card == b.card
         && a.current_strength == b.current_strength
         && a.counters == b.counters
@@ -213,7 +213,7 @@ mod tests {
             install_id: InstallId(id),
             current_strength: 0,
             hosted_on_ice: None,
-            hosted_on_program: None,
+            hosted_on_rig_card: None,
             hosted_cards: Vec::new(),
             hosted_facedown: false,
             hosted_unseen: 0,
@@ -258,7 +258,7 @@ mod tests {
         assert_eq!(hardware(&view, &registry, None).len(), 2, "a card hosted on one copy");
 
         let mut elsewhere = install("cyberfeeder", 2);
-        elsewhere.hosted_on_program = Some(InstallId(9));
+        elsewhere.hosted_on_rig_card = Some(InstallId(9));
         view.runner.rig = vec![install("cyberfeeder", 1), elsewhere];
         assert_eq!(hardware(&view, &registry, None).len(), 2, "one copy hosted on another card");
     }

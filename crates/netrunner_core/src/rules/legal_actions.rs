@@ -597,7 +597,14 @@ fn play_card_candidates(state: &GameState, registry: &CardRegistry) -> Vec<Playe
                     candidates.push(PlayerAction::InstallProgram { card_id: card_id.clone(), trash_first: true });
                 }
             }
-            CardType::Resource => candidates.push(PlayerAction::InstallResource { card_id: card_id.clone() }),
+            CardType::Resource => {
+                candidates.push(PlayerAction::InstallResource { card_id: card_id.clone(), host: None });
+                // And onto each rig card that says it may host it
+                // (Hackerspace), priced there by the probe that follows.
+                for host in state.runner.rig.iter().filter(|host| crate::rules::continuous::may_install_onto(state, registry, card, host.install_id)) {
+                    candidates.push(PlayerAction::InstallResource { card_id: card_id.clone(), host: Some(host.install_id) });
+                }
+            }
             // A trojan (`installs_on_ice`) — offered by
             // `install_program_on_ice_candidates` instead.
             CardType::Program => {}

@@ -356,7 +356,7 @@ pub fn install_facts(view: &ClientView, id: InstallId, registry: &CardRegistry) 
             if let Some(ice) = rig.hosted_on_ice {
                 lines.push(format!("Hosted on {}", crate::actions::install_label(&ice, registry, Some(view))));
             }
-            if let Some(program) = rig.hosted_on_program {
+            if let Some(program) = rig.hosted_on_rig_card {
                 lines.push(format!("Hosted on {}", crate::actions::install_label(&program, registry, Some(view))));
             }
             if !rig.hosted_cards.is_empty() {

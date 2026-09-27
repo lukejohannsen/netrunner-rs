@@ -159,7 +159,20 @@ pub enum PlayerAction {
     /// `InstallProgram`) — added because no action previously existed for
     /// installing a `CardType::Resource` card at all (`Resource`s could
     /// only ever leave the Rig via `TrashResource`, never enter it).
-    InstallResource { card_id: CardId },
+    ///
+    /// `host` installs the resource onto that rig card instead
+    /// (`state::InstalledRunnerCard::hosted_on_rig_card`), where the host
+    /// says it may be (`ContinuousKind::MayHost`, Hackerspace) — refused
+    /// with `RulesError::CannotInstallOnto` otherwise — at the price asked
+    /// with the host known (`continuous::install_cost_onto`). A field
+    /// rather than a variant, as `trash_first` is: it is the same install
+    /// to another place, and an `InstallId` for the reason
+    /// `InstallProgramOnIce`'s is one — two copies of a host.
+    InstallResource {
+        card_id: CardId,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        host: Option<InstallId>,
+    },
     /// Spend 1 click and `card_id`'s registry cost in credits, move
     /// `card_id` from the Grip onto the Corp ICE named by `host`
     /// (`state::InstalledRunnerCard::hosted_on_ice`) rather than into the
@@ -586,7 +599,7 @@ mod tests {
             PlayerAction::PlayOperation { card_id: card() },
             PlayerAction::InstallHardware { card_id: card() },
             PlayerAction::InstallProgram { card_id: card(), trash_first: false },
-            PlayerAction::InstallResource { card_id: card() },
+            PlayerAction::InstallResource { card_id: card(), host: None },
             PlayerAction::InstallProgramOnIce { card_id: card(), host: install, trash_first: false },
             PlayerAction::BreakSubroutineWithClick { ice_id: card(), subroutine_index: 0 },
             PlayerAction::EndTurn,

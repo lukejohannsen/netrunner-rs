@@ -3,14 +3,14 @@
 The Rust consts are private, so this table is a copy — and a copy of a
 layout is exactly the kind of thing that goes stale silently. `SEGMENTS`
 is therefore checked against the pinned `ActionSpace::SIZE` at import: if
-the lengths stop summing to 2,621 the layout moved and every consumer
+the lengths stop summing to 3,133 the layout moved and every consumer
 fails loudly at startup rather than mislabelling a slot.
 
 Shared by `diagnose_policy_head.py` and `train_alpha_netrunner.py` so the
 two cannot disagree about which slots are which.
 """
 
-SIZE = 2621
+SIZE = 3133
 
 _H, _I, _REMOTE, _ABIL, _SUBS = 16, 32, 10, 4, 8
 _DECK, _ACCESS, _COST, _PENDING, _TRACE, _NUMBER = 50, 32, 2, 4, 30, 30
@@ -38,6 +38,9 @@ _SEGMENT_LENGTHS = [
     ("install card, trashing first", _H * _ZONE * 2),
     ("install program, trashing first", _H),
     ("install program on ice, trashing first", _H * _I),
+    # Appended (VP Stage 7c): a resource installed onto a rig card
+    # (Hackerspace), hand slot by rig slot.
+    ("install resource onto a host", _H * _I),
 ]
 
 SEGMENTS = []

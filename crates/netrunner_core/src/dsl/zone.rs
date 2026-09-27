@@ -196,6 +196,10 @@ pub enum CardFilter {
     /// A card printed with this subtype — MuslihaT's "a run event".
     /// Definition-level.
     HasSubtype(crate::dsl::CardSubtype),
+    /// A unique (◆) card — Hackerspace's "unique (◆) companion resources".
+    /// Definition-level. Not a subtype: uniqueness is printed before the
+    /// name (CR 2.2.1), and `CardDefinition::unique` is where it is read.
+    Unique,
     /// At least one listed filter must match — `All`'s disjunctive twin,
     /// for MuslihaT's "an icebreaker *or* a run event". Both halves
     /// recurse, as `All` does.
@@ -323,6 +327,7 @@ pub fn card_matches_filter(card: &CardDefinition, filter: &CardFilter) -> bool {
         CardFilter::AnyOf(filters) => filters.iter().any(|filter| card_matches_filter(card, filter)),
         CardFilter::Not(filter) => !card_matches_filter(card, filter),
         CardFilter::HasSubtype(subtype) => card.subtypes.contains(subtype),
+        CardFilter::Unique => card.unique,
         CardFilter::Advanceable => card.advancement_requirement.is_some(),
         // Instance-level: where the card sits is state.
         CardFilter::InAttackedServer => true,

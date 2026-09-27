@@ -3182,7 +3182,7 @@ mod system_gateway {
         state.runner.grip = vec![CardId("red_team".to_string())];
 
         let (state, events) =
-            apply_action(&state, &registry, PlayerAction::InstallResource { card_id: CardId("red_team".to_string()) })
+            apply_action(&state, &registry, PlayerAction::InstallResource { card_id: CardId("red_team".to_string()), host: None })
                 .expect("install red team");
         assert_eq!(state.runner.resources.credits, Credits(5), "10 - 5 (install cost)");
         assert_eq!(state.runner.rig[0].counters, 12);
@@ -3261,7 +3261,7 @@ mod system_gateway {
         state.runner.resources.credits = Credits(5);
         state.runner.grip = vec![CardId("red_team".to_string())];
         let (state, _) =
-            apply_action(&state, &registry, PlayerAction::InstallResource { card_id: CardId("red_team".to_string()) }).expect("install");
+            apply_action(&state, &registry, PlayerAction::InstallResource { card_id: CardId("red_team".to_string()), host: None }).expect("install");
         let (state, _) = apply_action(
             &state,
             &registry,
@@ -3497,7 +3497,7 @@ mod system_gateway {
         let (state, _) = apply_action(
             &state,
             &registry,
-            PlayerAction::InstallResource { card_id: CardId("telework_contract".to_string()) },
+            PlayerAction::InstallResource { card_id: CardId("telework_contract".to_string()), host: None },
         )
         .expect("install telework contract");
         assert_eq!(state.runner.resources.credits, Credits(9), "10 - 1 (install cost)");
@@ -3683,7 +3683,7 @@ mod system_gateway {
         let (state, _) = apply_action(
             &state,
             &registry,
-            PlayerAction::InstallResource { card_id: CardId("smartware_distributor".to_string()) },
+            PlayerAction::InstallResource { card_id: CardId("smartware_distributor".to_string()), host: None },
         )
         .expect("install smartware distributor");
         assert_eq!(state.runner.resources.credits, Credits(10), "cost 0");
@@ -4023,7 +4023,7 @@ mod system_gateway {
         state.runner.stack = (0..4).map(|i| CardId(format!("stack_card_{i}"))).collect();
 
         let (state, _) = apply_action(&state, &registry, PlayerAction::DrawCardClick { side: Side::Runner }).expect("the turn's first draw");
-        let (state, _) = apply_action(&state, &registry, PlayerAction::InstallResource { card_id: CardId("verbal_plasticity".to_string()) }).expect("install");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::InstallResource { card_id: CardId("verbal_plasticity".to_string()), host: None }).expect("install");
         let held = state.runner.grip.len();
         let (state, _) = apply_action(&state, &registry, PlayerAction::DrawCardClick { side: Side::Runner }).expect("the turn's second draw");
         assert_eq!(state.runner.grip.len(), held + 1, "one card: this was not the turn's first draw");
@@ -4043,7 +4043,7 @@ mod system_gateway {
         state.runner.grip =
             vec![CardId("telework_contract".to_string()), CardId("dzmz_optimizer".to_string()), CardId("corroder".to_string())];
 
-        let (state, _) = apply_action(&state, &registry, PlayerAction::InstallResource { card_id: CardId("telework_contract".to_string()) })
+        let (state, _) = apply_action(&state, &registry, PlayerAction::InstallResource { card_id: CardId("telework_contract".to_string()), host: None })
             .expect("install telework contract");
         assert_eq!(state.runner.resources.credits, Credits(9), "a resource pays its printed 1, and spends nobody's first time");
         let (mut state, _) = apply_action(&state, &registry, PlayerAction::InstallHardware { card_id: CardId("dzmz_optimizer".to_string()) })
@@ -6626,7 +6626,7 @@ mod system_gateway {
         state.runner.grip = vec![CardId("side_hustle".to_string())];
 
         let (state, _) =
-            apply_action(&state, &registry, PlayerAction::InstallResource { card_id: CardId("side_hustle".to_string()) })
+            apply_action(&state, &registry, PlayerAction::InstallResource { card_id: CardId("side_hustle".to_string()), host: None })
                 .expect("install side hustle");
         assert_eq!(state.runner.rig[0].counters, 1, "when you install this resource, place 1 credit on it");
         assert_eq!(state.runner.resources.credits, Credits(0));
@@ -6749,7 +6749,7 @@ mod system_gateway {
         let (state, _) = apply_action(&state, &registry, PlayerAction::ToggleCardSelection { position: 0 }).expect("pick cleaver");
         let (state, events) = apply_action(&state, &registry, PlayerAction::ConfirmCardSelection).expect("host on it");
         assert!(events.iter().any(|e| matches!(e, crate::rules::GameEvent::CardHosted { .. })));
-        assert_eq!(state.runner.rig[1].hosted_on_program, Some(InstallId(1)));
+        assert_eq!(state.runner.rig[1].hosted_on_rig_card, Some(InstallId(1)));
         assert_eq!(
             crate::rules::continuous::breaker_strength(&state, &registry, &state.runner.rig[0]),
             4,
@@ -7062,7 +7062,7 @@ mod system_gateway {
         let registry = sg_registry();
         let mut state = runner_turn(2, 4);
         state.runner.grip = vec![CardId("open_market".to_string())];
-        let (state, _) = apply_action(&state, &registry, PlayerAction::InstallResource { card_id: CardId("open_market".to_string()) })
+        let (state, _) = apply_action(&state, &registry, PlayerAction::InstallResource { card_id: CardId("open_market".to_string()), host: None })
             .expect("install open market");
         assert_eq!(state.runner.rig[0].counters, 6, "when you install this resource, load 6 credits onto it");
         assert_eq!(state.runner.resources.credits, Credits(0), "its own cost comes from the wallet");
@@ -7071,7 +7071,7 @@ mod system_gateway {
         state.runner.rig = vec![rig_card_with_counters("open_market", 6)];
         state.runner.grip = vec![CardId("telework_contract".to_string()), CardId("telework_contract".to_string())];
         corp_rd_filler(&mut state);
-        let (state, _) = apply_action(&state, &registry, PlayerAction::InstallResource { card_id: CardId("telework_contract".to_string()) })
+        let (state, _) = apply_action(&state, &registry, PlayerAction::InstallResource { card_id: CardId("telework_contract".to_string()), host: None })
             .expect("a 1[c] Job, paid from the market");
         assert_eq!(state.runner.rig[0].counters, 5, "hosted credits pay first");
         assert_eq!(state.runner.resources.credits, Credits(1), "the wallet is untouched");
@@ -7084,7 +7084,7 @@ mod system_gateway {
         // Drained to zero by an install: trashed on the spot.
         let mut state = state;
         state.runner.rig[0].counters = 1;
-        let (state, events) = apply_action(&state, &registry, PlayerAction::InstallResource { card_id: CardId("telework_contract".to_string()) })
+        let (state, events) = apply_action(&state, &registry, PlayerAction::InstallResource { card_id: CardId("telework_contract".to_string()), host: None })
             .expect("a second 1[c] Job, paid from the last hosted credit");
         assert!(events.iter().any(|e| matches!(e, crate::rules::GameEvent::CardTrashed { side: Side::Runner, card, .. } if card.0 == "open_market")));
         assert!(!state.runner.rig.iter().any(|c| c.card.0 == "open_market"), "when it is empty, trash it");
@@ -7525,7 +7525,7 @@ mod system_gateway {
         let mut state = runner_turn(2, 4);
         state.runner.rig = vec![rig_card_with_counters("open_market", 6)];
         state.runner.grip = vec![CardId("verbal_plasticity".to_string())];
-        let install = PlayerAction::InstallResource { card_id: CardId("verbal_plasticity".to_string()) };
+        let install = PlayerAction::InstallResource { card_id: CardId("verbal_plasticity".to_string()), host: None };
         assert!(apply_action(&state, &registry, install).is_err(), "neither a connection nor a job: the wallet's 2[c] is all there is for a 3[c] resource");
     }
 
@@ -12514,6 +12514,55 @@ mod vantage_point {
         assert!(state.runner.heap.is_empty());
         assert_eq!(state.runner.removed_from_game, vec![id("sure_gamble")]);
         assert!(events.iter().any(|event| matches!(event, crate::rules::GameEvent::CardRemovedFromGame { side: Side::Runner, .. })));
+    }
+
+    /// A unique connection may be installed onto it for 1[credit] less, and
+    /// is offered there; a connection that is not unique is not. The hosted
+    /// resource leaves with its host, and a hosted companion beside a
+    /// hosted connection is +2 maximum hand size.
+    #[test]
+    fn hackerspace_hosts_unique_connections_for_a_credit_less_and_a_companion_beside_one_is_hand_size() {
+        let mut registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.credits = Credits(5);
+        state.runner.rig = vec![rig("hackerspace")];
+        let hackerspace = state.runner.rig[0].install_id;
+        state.runner.grip = vec![id("nurse_hanh"), id("rent_rioters")];
+        let onto = |card: &str| PlayerAction::InstallResource { card_id: id(card), host: Some(hackerspace) };
+        let legal = crate::rules::legal_actions(&state, &registry);
+        assert!(legal.contains(&onto("nurse_hanh")), "a unique connection: {legal:?}");
+        assert!(!legal.contains(&onto("rent_rioters")), "not unique");
+        assert!(matches!(
+            apply_action(&state, &registry, onto("rent_rioters")),
+            Err(crate::rules::RulesError::CannotInstallOnto { .. })
+        ));
+
+        let (state, _) = apply_action(&state, &registry, onto("nurse_hanh")).expect("install onto Hackerspace");
+        assert_eq!(state.runner.resources.credits, Credits(5), "Nurse Hạnh's 1[credit], less 1");
+        let nurse = state.runner.rig.iter().find(|c| c.card.0 == "nurse_hanh").expect("installed");
+        assert_eq!(nurse.hosted_on_rig_card, Some(hackerspace));
+        assert_eq!(crate::rules::continuous::hand_size(&state, &registry, Side::Runner), 0, "a connection alone is not enough");
+
+        // No unique companion is in the pool yet, so one is made for the
+        // hand-size clause.
+        registry.insert(crate::dsl::CardDefinition {
+            id: id("a_companion"),
+            title: "A Companion".to_string(),
+            side: Side::Runner,
+            card_type: crate::dsl::CardType::Resource,
+            unique: true,
+            subtypes: vec![crate::dsl::CardSubtype::Companion],
+            ..Default::default()
+        });
+        let mut both = state.clone();
+        both.runner.rig.push(crate::rules::InstalledRunnerCard { hosted_on_rig_card: Some(hackerspace), ..rig("a_companion") });
+        assert_eq!(crate::rules::continuous::hand_size(&both, &registry, Side::Runner), 2, "+2 maximum hand size");
+
+        let removed = crate::rules::pending_choice::remove_installed_card(&mut both, &registry, Side::Runner, &crate::dsl::CardZoneRef::OwnInstalled, hackerspace)
+            .expect("nothing to announce")
+            .expect("installed");
+        assert!(removed.cascade.iter().any(|e| matches!(e, crate::rules::GameEvent::CardTrashed { card, .. } if card.0 == "nurse_hanh")), "the hosted resource goes with it");
     }
 
     /// Hosts a grip card facedown for a draw when installed and at each

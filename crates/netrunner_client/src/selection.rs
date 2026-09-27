@@ -276,7 +276,7 @@ fn install_words(view: &ClientView, install: InstallId, card: Option<&CardId>, r
         }
     }
     let rig = view.runner.rig.iter().find(|c| c.install_id == install);
-    let place = match rig.and_then(|r| r.hosted_on_ice.or(r.hosted_on_program)) {
+    let place = match rig.and_then(|r| r.hosted_on_ice.or(r.hosted_on_rig_card)) {
         Some(host) => format!("hosted on {}", crate::actions::install_label(&host, registry, Some(view))),
         None => "in the rig".to_string(),
     };

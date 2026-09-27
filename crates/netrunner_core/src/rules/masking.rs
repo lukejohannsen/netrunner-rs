@@ -168,9 +168,10 @@ pub struct PublicInstalledRunnerCard {
     /// it against the server's `ice` list.
     pub hosted_on_ice: Option<InstallId>,
     /// Which rig card this card is hosted on (GAMEDRAGON™ Pro on an
-    /// icebreaker). Public for the same reason as `hosted_on_ice`.
+    /// icebreaker, a connection on Hackerspace). Public for the same reason
+    /// as `hosted_on_ice`.
     #[serde(default)]
-    pub hosted_on_program: Option<InstallId>,
+    pub hosted_on_rig_card: Option<InstallId>,
     /// Cards hosted on this card without being installed (Madani), that
     /// the viewer may see: every one hosted faceup, and one hosted
     /// facedown only for its owner. Hosted faceup means hosted faceup.
@@ -1219,7 +1220,7 @@ fn mask_installed_runner_card(state: &GameState, registry: &CardRegistry, card: 
         install_id: card.install_id,
         current_strength: continuous::breaker_strength(state, registry, card),
         hosted_on_ice: card.hosted_on_ice,
-        hosted_on_program: card.hosted_on_program,
+        hosted_on_rig_card: card.hosted_on_rig_card,
         hosted_cards: if hidden { Vec::new() } else { card.hosted_cards.clone() },
         hosted_facedown,
         hosted_unseen: if hidden { card.hosted_cards.len() } else { 0 },
@@ -1741,7 +1742,7 @@ mod tests {
             install_id: InstallId::PLACEHOLDER,
             current_strength: 3,
             hosted_on_ice: None,
-            hosted_on_program: None,
+            hosted_on_rig_card: None,
             hosted_cards: Vec::new(),
             hosted_facedown: false,
             hosted_unseen: 0,

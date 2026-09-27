@@ -482,6 +482,7 @@ pub fn describe_continuous(effect: &ContinuousEffect) -> String {
         Scope::Controller => "its controller".to_string(),
         Scope::Installing(filter) if effect.first_each_turn => format!("the first card its controller installs each turn ({})", lower(format!("{filter:?}"))),
         Scope::Installing(filter) => format!("a card its controller installs ({})", lower(format!("{filter:?}"))),
+        Scope::InstallingOntoThis(filter) => format!("a card its controller installs onto this card ({})", lower(format!("{filter:?}"))),
         Scope::Ice => "each piece of ice".to_string(),
         Scope::RootOfThisServer(filter) => format!("each card in the root of this server ({})", lower(format!("{filter:?}"))),
         Scope::Playing(filter) if effect.first_each_turn => format!("the first card its controller plays each turn ({})", lower(format!("{filter:?}"))),
@@ -511,6 +512,7 @@ pub fn describe_continuous(effect: &ContinuousEffect) -> String {
         ContinuousKind::GainSubtype(subtype) => format!("gains {}", lower(format!("{subtype:?}"))),
         ContinuousKind::BoostsLastTheRun => "keeps its strength boosts for the rest of the run".to_string(),
         ContinuousKind::RevealedWhileAccessed => "is revealed while it is accessed".to_string(),
+        ContinuousKind::MayHost => "may be installed there".to_string(),
     };
     match &effect.condition {
         Some(condition) => format!("{whom} {what}, while {}", lower(format!("{condition:?}"))),

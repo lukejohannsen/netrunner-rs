@@ -97,7 +97,7 @@ pub fn action_card(action: &PlayerAction, view: &ClientView) -> Option<CardId> {
         | PlayerAction::PlayOperation { card_id }
         | PlayerAction::InstallHardware { card_id }
         | PlayerAction::InstallProgram { card_id, .. }
-        | PlayerAction::InstallResource { card_id }
+        | PlayerAction::InstallResource { card_id, .. }
         | PlayerAction::InstallProgramOnIce { card_id, .. }
         | PlayerAction::DiscardCard { card_id }
         | PlayerAction::StealAgenda { card_id }

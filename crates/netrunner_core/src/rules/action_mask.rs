@@ -238,13 +238,20 @@ const INSTALL_PROGRAM_TRASHING_LEN: usize = INSTALL_PROGRAM_LEN;
 const INSTALL_PROGRAM_ON_ICE_TRASHING_START: usize = INSTALL_PROGRAM_TRASHING_START + INSTALL_PROGRAM_TRASHING_LEN;
 const INSTALL_PROGRAM_ON_ICE_TRASHING_LEN: usize = INSTALL_PROGRAM_ON_ICE_LEN;
 
+/// `InstallResource` onto a rig card (Hackerspace) — every hand slot
+/// crossed with every rig slot, laid out as `InstallProgramOnIce` is across
+/// the Corp's installs. **Appended** (VP Stage 7c), so nothing moved: 2621 →
+/// 3133.
+const INSTALL_RESOURCE_ON_HOST_START: usize = INSTALL_PROGRAM_ON_ICE_TRASHING_START + INSTALL_PROGRAM_ON_ICE_TRASHING_LEN;
+const INSTALL_RESOURCE_ON_HOST_LEN: usize = MAX_HAND_SIZE * MAX_INSTALLED_PER_SIDE;
+
 /// A fixed, categorical index space over `PlayerAction` — see the module
 /// doc comment. A zero-sized marker type; every operation is an associated
 /// function/const, since the encoding itself carries no per-instance state.
 pub struct ActionSpace;
 
 impl ActionSpace {
-    pub const SIZE: usize = INSTALL_PROGRAM_ON_ICE_TRASHING_START + INSTALL_PROGRAM_ON_ICE_TRASHING_LEN;
+    pub const SIZE: usize = INSTALL_RESOURCE_ON_HOST_START + INSTALL_RESOURCE_ON_HOST_LEN;
 
     /// The flat index `action` occupies given `state` — `None` if `action`
     /// can't be placed (a dynamic field exceeds its cap, or a
@@ -305,8 +312,13 @@ impl ActionSpace {
                 let start = if *trash_first { INSTALL_PROGRAM_TRASHING_START } else { INSTALL_PROGRAM_START };
                 Some(start + bounded_position(&state.runner.playable_hand(), card_id, MAX_HAND_SIZE)?)
             }
-            PlayerAction::InstallResource { card_id } => {
+            PlayerAction::InstallResource { card_id, host: None } => {
                 Some(INSTALL_RESOURCE_START + bounded_position(&state.runner.playable_hand(), card_id, MAX_HAND_SIZE)?)
+            }
+            PlayerAction::InstallResource { card_id, host: Some(host) } => {
+                let hand_slot = bounded_position(&state.runner.playable_hand(), card_id, MAX_HAND_SIZE)?;
+                let host_slot = bounded_position_rig(&state.runner.rig, *host, MAX_INSTALLED_PER_SIDE)?;
+                Some(INSTALL_RESOURCE_ON_HOST_START + hand_slot * MAX_INSTALLED_PER_SIDE + host_slot)
             }
             PlayerAction::InstallProgramOnIce { card_id, host, trash_first } => {
                 let hand_slot = bounded_position(&state.runner.playable_hand(), card_id, MAX_HAND_SIZE)?;
@@ -564,7 +576,7 @@ impl ActionSpace {
         }
         if let Some(local) = in_segment(index, INSTALL_RESOURCE_START, INSTALL_RESOURCE_LEN) {
             let card_id = state.runner.playable_hand().get(local)?.clone();
-            return Some(PlayerAction::InstallResource { card_id });
+            return Some(PlayerAction::InstallResource { card_id, host: None });
         }
         for (start, trash_first) in [(INSTALL_PROGRAM_ON_ICE_START, false), (INSTALL_PROGRAM_ON_ICE_TRASHING_START, true)] {
             if let Some(local) = in_segment(index, start, INSTALL_PROGRAM_ON_ICE_LEN) {
@@ -590,6 +602,11 @@ impl ActionSpace {
         }
         if let Some(local) = in_segment(index, CHOOSE_NUMBER_START, CHOOSE_NUMBER_LEN) {
             return Some(PlayerAction::ChooseNumber { amount: local as u32 });
+        }
+        if let Some(local) = in_segment(index, INSTALL_RESOURCE_ON_HOST_START, INSTALL_RESOURCE_ON_HOST_LEN) {
+            let card_id = state.runner.playable_hand().get(local / MAX_INSTALLED_PER_SIDE)?.clone();
+            let host = state.runner.rig.get(local % MAX_INSTALLED_PER_SIDE)?.install_id;
+            return Some(PlayerAction::InstallResource { card_id, host: Some(host) });
         }
         None
     }
@@ -1466,7 +1483,11 @@ mod tests {
         // `InstallProgramOnIce` again with `trash_first`, laid out as their
         // plain segments (416 + 16 + 512); every index below 1677 is
         // unchanged.
-        assert_eq!(ActionSpace::SIZE, 2621);
+        //
+        // **2621 → 3133: a resource installed onto a rig card (VP Stage
+        // 7c, Hackerspace), appended.** Hand slot by rig slot (512).
+        assert_eq!(ActionSpace::SIZE, 3133);
+        assert_eq!(INSTALL_RESOURCE_ON_HOST_START, 2621, "appended after the installs that trash first");
         assert_eq!(CHOOSE_NUMBER_START, 1646, "appended: nothing before it moved");
         assert_eq!(INSTALL_CARD_TRASHING_START, 1677, "appended after ChooseNumber");
     }

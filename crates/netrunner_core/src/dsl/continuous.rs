@@ -157,6 +157,14 @@ pub enum ContinuousKind {
     /// because it is a static ability of the card's, read wherever the card
     /// is, like every `Scope::This` effect.
     RevealedWhileAccessed,
+    /// A card may be installed onto this one — Hackerspace's "You can
+    /// install unique companion resources and unique connection resources
+    /// onto this resource". A permission, and so a standing effect of the
+    /// host's, about the cards its `Scope::InstallingOntoThis` filter
+    /// admits; `continuous::may_install_onto` is the one question, put by
+    /// the action list and by the install. No payload: which cards is the
+    /// scope's to say.
+    MayHost,
 }
 
 /// Which cards an effect is about, read from the card that prints it.
@@ -179,6 +187,13 @@ pub enum Scope {
     Controller,
     /// A card its controller is installing, matching the filter.
     Installing(CardFilter),
+    /// A card its controller is installing *onto this card*, matching the
+    /// filter — Hackerspace's "each resource installed this way costs
+    /// 1[credit] less to install", and what it may host (`MayHost`). Not
+    /// `Installing`: that reaches every install, and the host is what a
+    /// price asked onto nothing cannot know (`continuous::Target::
+    /// InstallingOnto`).
+    InstallingOntoThis(CardFilter),
     /// Each piece of ice.
     Ice,
     /// Each card in the root of the server this one is installed in,

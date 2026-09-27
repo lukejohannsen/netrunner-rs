@@ -288,6 +288,14 @@ pub enum EffectRequirement {
     /// `CardId` — a copy installed elsewhere must not answer for the copy
     /// being accessed out of R&D.
     ThisCardIsInstalled,
+    /// This card hosts an installed card the filter admits (`state::
+    /// InstalledRunnerCard::hosted_on_rig_card`) — Hackerspace's "while
+    /// this resource has a hosted **companion** and a hosted
+    /// **connection**", two of these under `And`. Not a count through
+    /// `AmountAtLeast`: `Amount::HostedCards` counts the cards hosted
+    /// without being installed, and this asks about kinds of installed
+    /// ones.
+    HostsInstalled(crate::dsl::CardFilter),
     /// The advancement just placed by the `Trigger::OnAdvance` event
     /// currently being dispatched was the first one this card has ever
     /// received — e.g. Weyland Consortium: Built to Last's "whenever you

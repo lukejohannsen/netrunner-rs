@@ -865,7 +865,7 @@ pub enum Effect {
     /// and a look is neither.
     LookAtTopOfDeck { deck: Side, count: u32 },
     /// Hosts the rig card `card` on the rig card `host` —
-    /// `state::InstalledRunnerCard::hosted_on_program` — GAMEDRAGON™ Pro's
+    /// `state::InstalledRunnerCard::hosted_on_rig_card` — GAMEDRAGON™ Pro's
     /// "you may host this hardware on an installed non-AI icebreaker". A
     /// relation between two installs, which nothing composable can name:
     /// both are authored as `InstallId::PLACEHOLDER` and substituted when
