@@ -49,6 +49,9 @@ pub(crate) enum Target<'a> {
     /// the Street's additional cost). The copy, not only the card, because
     /// "an agenda the Corp installed this turn" is a fact about the copy.
     Scoring { card: &'a CardDefinition, install: InstallId },
+    /// The rig install `install`, a resource the Corp is trashing with the
+    /// basic action (Sebastião Souza Pessoa's additional cost).
+    Trashing { card: &'a CardDefinition, install: InstallId },
     /// The run against `server`: whether it may be declared successful,
     /// how many cards it may access.
     Run { server: ServerId },
@@ -63,13 +66,14 @@ impl<'a> Target<'a> {
             | Target::Rig { card, .. }
             | Target::Corp { card, .. }
             | Target::Scored { card, .. }
-            | Target::Scoring { card, .. } => Some(card),
+            | Target::Scoring { card, .. }
+            | Target::Trashing { card, .. } => Some(card),
         }
     }
 
     fn install(&self) -> Option<InstallId> {
         match self {
-            Target::Rig { install, .. } | Target::Corp { install, .. } | Target::Scoring { install, .. } => Some(*install),
+            Target::Rig { install, .. } | Target::Corp { install, .. } | Target::Scoring { install, .. } | Target::Trashing { install, .. } => Some(*install),
             Target::Player(_) | Target::Card(_) | Target::InstallingOnto { .. } | Target::Scored { .. } | Target::Run { .. } => None,
         }
     }
@@ -208,6 +212,7 @@ fn applies(state: &GameState, source: &Source<'_>, scope: &Scope, target: &Targe
                 && card_matches_filter(card, filter)
                 && crate::rules::pending_choice::copy_matches(state, filter, Some(*install))
         }
+        (Scope::Trashing(filter), Target::Trashing { card, .. }) => card.card_type == CardType::Resource && card_matches_filter(card, filter),
         (Scope::Ice, Target::Corp { card, root: false, .. }) => matches!(card.card_type, CardType::Ice(_)),
         (Scope::RootOfThisServer(filter), Target::Corp { card, server, root: true, .. }) => {
             source.server == Some(*server) && card_matches_filter(card, filter)
@@ -447,6 +452,22 @@ pub(crate) fn score_costs(state: &GameState, registry: &CardRegistry, install: I
     let mut costs = Vec::new();
     for_each_applying(state, registry, Target::Scoring { card, install }, |effect, source, _| {
         if let ContinuousKind::ScoreCost(cost) = &effect.kind {
+            costs.push((cost.clone(), source.card.clone(), source.install));
+        }
+    });
+    costs
+}
+
+/// Every additional cost to trash the rig install `install` with the basic
+/// action (Sebastião Souza Pessoa, Manuel Lattes de Moura), each with the
+/// card that imposes it and that card's install, as [`score_costs`] has
+/// them: the payer is the Corp.
+pub(crate) fn basic_trash_costs(state: &GameState, registry: &CardRegistry, install: InstallId) -> Vec<(Cost, CardId, Option<InstallId>)> {
+    let Some(installed) = state.find_rig_install(install) else { return Vec::new() };
+    let Some(card) = registry.get(&installed.card) else { return Vec::new() };
+    let mut costs = Vec::new();
+    for_each_applying(state, registry, Target::Trashing { card, install }, |effect, source, _| {
+        if let ContinuousKind::BasicTrashCost(cost) = &effect.kind {
             costs.push((cost.clone(), source.card.clone(), source.install));
         }
     });

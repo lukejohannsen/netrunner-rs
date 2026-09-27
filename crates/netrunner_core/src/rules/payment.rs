@@ -548,6 +548,11 @@ fn pays_a_cost_that_may_ask(state: &GameState, registry: &CardRegistry, action: 
                 .is_some_and(crate::dsl::Cost::may_ask)
         }
         PlayerAction::AcceptPendingPaidChoice { .. } => state.pending_paid_choice.as_ref().is_some_and(|choice| choice.cost.may_ask()),
+        // Sebastião Souza Pessoa's "the Corp must trash 1 card from HQ" asks
+        // which card whenever HQ holds two that differ.
+        PlayerAction::TrashResource { target } => {
+            crate::rules::continuous::basic_trash_costs(state, registry, *target).iter().any(|(cost, ..)| cost.may_ask())
+        }
         // An additional cost to play that takes cards asks which: Sell
         // Out's "trash 1 installed resource" with two installed. Left off
         // this list, the 256-seed view sweep's debug assertion found it

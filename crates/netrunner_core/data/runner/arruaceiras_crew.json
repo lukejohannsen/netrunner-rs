@@ -1,0 +1,59 @@
+{
+  "id": "arruaceiras_crew",
+  "title": "Arruaceiras Crew",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 2,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "TakeTags": 1
+      },
+      "requirement": {
+        "And": [
+          "OncePerTurn",
+          "DuringEncounter"
+        ]
+      },
+      "effect": {
+        "ModifyStrength": {
+          "delta": -2,
+          "duration": "Encounter"
+        }
+      },
+      "text": "Once per turn → Take 1 tag: The ice you are encountering gets –2 strength for the remainder of this encounter."
+    },
+    {
+      "trigger": "Paid",
+      "cost": {
+        "AllOf": [
+          "TrashSelf",
+          {
+            "Credits": 2
+          }
+        ]
+      },
+      "requirement": {
+        "And": [
+          "DuringEncounter",
+          {
+            "Not": {
+              "AmountAtLeast": [
+                "EncounteredIceStrength",
+                1
+              ]
+            }
+          }
+        ]
+      },
+      "effect": {
+        "TrashCard": "EncounteredIce"
+      },
+      "text": "[trash], 2[credit]: Trash the ice you are encountering if its strength is 0 or less."
+    }
+  ],
+  "numeric_id": 34073,
+  "is_playable": true
+}

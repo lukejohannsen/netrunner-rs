@@ -1,0 +1,71 @@
+{
+  "id": "manuel_lattes_de_moura",
+  "title": "Manuel Lattes de Moura",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 2,
+  "unique": true,
+  "continuous": [
+    {
+      "kind": {
+        "BasicTrashCost": {
+          "Trash": {
+            "from": "OwnHq",
+            "filter": "Any",
+            "count": 1
+          }
+        }
+      },
+      "applies_to": "This",
+      "while": {
+        "AmountAtLeast": [
+          "ThreatLevel",
+          3
+        ]
+      },
+      "text": "Threat 3 → As an additional cost to trash this resource with the basic action, the Corp must trash 1 card from HQ."
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnSuccessfulRun",
+      "subject": "Any",
+      "when": {
+        "Server": [
+          "Hq"
+        ]
+      },
+      "requirement": "IsTagged",
+      "effects": [
+        {
+          "AddAdditionalAccess": {
+            "server": "Hq",
+            "count": 1
+          }
+        }
+      ],
+      "text": "Whenever you breach HQ or R&D while you are tagged, access 1 additional card."
+    },
+    {
+      "trigger": "OnSuccessfulRun",
+      "subject": "Any",
+      "when": {
+        "Server": [
+          "RnD"
+        ]
+      },
+      "requirement": "IsTagged",
+      "effects": [
+        {
+          "AddAdditionalAccess": {
+            "server": "RnD",
+            "count": 1
+          }
+        }
+      ],
+      "text": "Whenever you breach HQ or R&D while you are tagged, access 1 additional card."
+    }
+  ],
+  "numeric_id": 34075,
+  "is_playable": true
+}

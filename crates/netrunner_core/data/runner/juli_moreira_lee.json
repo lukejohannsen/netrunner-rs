@@ -1,0 +1,58 @@
+{
+  "id": "juli_moreira_lee",
+  "title": "Juli Moreira Lee",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 2,
+  "unique": true,
+  "counter_kind": "Power",
+  "triggers": [
+    {
+      "trigger": "OnInstall",
+      "subject": "This",
+      "effects": [
+        {
+          "AddCounters": 4
+        }
+      ],
+      "text": "When you install this resource, load 4 power counters onto it."
+    },
+    {
+      "trigger": "OnActionTaken",
+      "subject": "Any",
+      "when": {
+        "InstalledCard": {
+          "CardType": "Resource"
+        }
+      },
+      "first_each_turn": true,
+      "requirement": {
+        "ThisCardCountersAtLeast": 1
+      },
+      "effects": [
+        {
+          "RemoveCounters": 1
+        },
+        {
+          "GainClicks": [
+            "Runner",
+            1
+          ]
+        },
+        {
+          "EffectIf": {
+            "condition": {
+              "ThisCardCountersAtMost": 0
+            },
+            "effect": {
+              "TrashCard": "ThisCard"
+            }
+          }
+        }
+      ],
+      "text": "The first time each turn you take an action on an installed resource, remove 1 hosted power counter and gain [click]."
+    }
+  ],
+  "numeric_id": 34084,
+  "is_playable": true
+}

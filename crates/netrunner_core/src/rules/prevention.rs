@@ -393,11 +393,12 @@ fn happen(
         }
         WouldHappen::Tags { .. } => {
             // Always the Runner — see `Effect::GiveTags`.
+            let had = state.runner.tags;
             state.runner.tags = state.runner.tags.saturating_add(amount);
             let mut events = Vec::new();
             // Dispatched, so NBN: Reality Plus hears a tag whichever card
             // gave it.
-            dispatcher::emit(state, registry, &mut events, GameEvent::TagsGiven { side: Side::Runner, amount })?;
+            dispatcher::emit(state, registry, &mut events, GameEvent::TagsGiven { side: Side::Runner, amount, had })?;
             Ok(events)
         }
         // Dispatched here, where the trash happens, as the tags above are.
@@ -501,7 +502,7 @@ mod tests {
         let (state, events) = act(&state, &registry, use_ability(DECOY));
         assert_eq!(state.runner.tags, 1, "one tag of two was prevented, and the only interrupt is spent");
         assert!(state.pending_prevention.is_none() && !asking(&state));
-        assert!(events.contains(&GameEvent::TagsGiven { side: Side::Runner, amount: 1 }));
+        assert!(events.contains(&GameEvent::TagsGiven { side: Side::Runner, amount: 1, had: 0 }));
     }
 
     /// The gate is "somebody can use one on this", not "a card that

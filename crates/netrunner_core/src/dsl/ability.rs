@@ -344,6 +344,15 @@ pub enum EffectRequirement {
     /// CardAdvanced`'s `advancement_tokens == 1` *is* "this was the first".
     /// No `GameState` field backs it — the event already carried the fact.
     WasFirstAdvancementThisCard,
+    /// The tags just taken (the triggering `GameEvent::TagsGiven`) were
+    /// taken with none — Sebastião Souza Pessoa's "whenever you take 1 or
+    /// more tags, if you had no tags". Read off the event, which says how
+    /// many the Runner had (`TagsGiven::had`), the way
+    /// `WasFirstAdvancementThisCard` reads `CardAdvanced`. Composition
+    /// didn't work: by the time the trigger resolves the state holds the
+    /// tags just taken, and `Not(AmountAtLeast(RunnerTags, n))` cannot
+    /// name the n the event gave.
+    HadNoTags,
     /// The Corp has at least this many credits — Fransofia Ward's "if the
     /// Corp has 15[c] or more". `RunnerCreditsAtMost`'s Corp-side sibling.
     CorpCreditsAtLeast(u32),

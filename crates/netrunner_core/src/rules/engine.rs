@@ -2209,7 +2209,13 @@ fn activate_ability(
         cost_events = ability::pay_cost_ctx(&mut next, registry, side, &discounted, Purpose::Ability(card_def), &ability_ctx(is_identity, target, &card_id))?;
         events.extend(cost_events.iter().cloned());
     }
-    events.push(GameEvent::AbilityActivated { side, card_id: card_id.clone(), ability_index });
+    // "When used" abilities meet their condition as the cost is paid (CR
+    // 9.5.7b), so the use is heard with the cost's events, after the effect
+    // — the Payment Rule's order for every cost — rather than dispatched
+    // into the middle of the resolution it announces.
+    let activated = GameEvent::AbilityActivated { side, card_id: card_id.clone(), ability_index, install: (!is_identity).then_some(target), action: ability.is_action() };
+    events.push(activated.clone());
+    cost_events.push(activated);
     let mut effect_ctx = ability::ResolutionContext { last_known, set_aside, ..ability_ctx(is_identity, target, &card_id) };
     events.extend(ability::evaluate_effect(&mut next, &ability.effect, &mut effect_ctx, registry)?);
     // What the effect left set aside is trashed (CR 9.5.5, at the next
@@ -2278,7 +2284,10 @@ fn activate_hand_ability(
         cost_events = ability::pay_cost_ctx(&mut next, registry, side, cost, Purpose::Ability(card_def), &ctx)?;
         events.extend(cost_events.iter().cloned());
     }
-    events.push(GameEvent::AbilityActivated { side, card_id: card_id.clone(), ability_index });
+    // Heard with the cost's events, as `activate_ability`'s is.
+    let activated = GameEvent::AbilityActivated { side, card_id: card_id.clone(), ability_index, install: None, action: ability.is_action() };
+    events.push(activated.clone());
+    cost_events.push(activated);
     let mut effect_ctx = ability::ResolutionContext::for_card(Some(&card_id));
     events.extend(ability::evaluate_effect(&mut next, &ability.effect, &mut effect_ctx, registry)?);
     events.extend(ability::dispatch_cost_events(&mut next, registry, &cost_events)?);
@@ -2547,6 +2556,20 @@ fn trash_resource(
 
     let mut events = vec![GameEvent::ClickSpent { side }];
     events.extend(ability::pay_cost(&mut next, registry, side, &Cost::Credits(2), Purpose::Other, None)?);
+    // Additional costs to trash it (Sebastião Souza Pessoa, Manuel Lattes
+    // de Moura), paid with the click and the credits: all of them or none
+    // (CR 1.16.10b), so one the Corp cannot pay refuses the action, which is
+    // what keeps it off the action list. The trash is the action's effect,
+    // not a cost, so no checkpoint of its own (CR 1.16.10c).
+    let mut cost_events = Vec::new();
+    for (cost, source, source_install) in continuous::basic_trash_costs(&next, registry, target) {
+        let ctx = match source_install {
+            Some(install) => ability::ResolutionContext::for_install(install, &source),
+            None => ability::ResolutionContext::for_card(Some(&source)),
+        };
+        cost_events.extend(ability::pay_cost_ctx(&mut next, registry, side, &cost, Purpose::Other, &ctx)?);
+    }
+    events.extend(cost_events.iter().cloned());
 
     let position = next
         .runner
@@ -2559,6 +2582,7 @@ fn trash_resource(
     // The Corp's own basic action: it carries the trash out.
     dispatcher::emit(&mut next, registry, &mut events, GameEvent::CardTrashed { side: Side::Runner, card: card_id, by: Some(Side::Corp) })?;
     events.extend(ability::cascade_trash_hosted_on_rig_card(&mut next, registry, &removed));
+    events.extend(ability::dispatch_cost_events(&mut next, registry, &cost_events)?);
 
     Ok((next, events))
 }
@@ -4585,7 +4609,7 @@ mod tests {
                 GameEvent::CreditsSpent { side: Side::Runner, amount: 0 },
                 GameEvent::TraceRunnerBidSubmitted { runner_bid: 0, total_strength: 0 },
                 GameEvent::TraceSuccessful { corp_total: 2, runner_total: 0 },
-                GameEvent::TagsGiven { side: Side::Runner, amount: 1 },
+                GameEvent::TagsGiven { side: Side::Runner, amount: 1, had: 0 },
             ]
         );
     }
@@ -5087,7 +5111,7 @@ mod tests {
             events,
             vec![
                 GameEvent::CreditsSpent { side: Side::Runner, amount: 1 },
-                GameEvent::AbilityActivated { side: Side::Runner, card_id, ability_index: 0 },
+                GameEvent::AbilityActivated { side: Side::Runner, card_id: card_id.clone(), ability_index: 0, install: Some(install_of(&state, &card_id.0)), action: false },
                 GameEvent::IceStrengthModified {
                     card_id: CardId("ice_wall".to_string()),
                     new_strength: 1,
@@ -5133,7 +5157,7 @@ mod tests {
             events,
             vec![
                 GameEvent::CreditsSpent { side: Side::Runner, amount: 1 },
-                GameEvent::AbilityActivated { side: Side::Runner, card_id: card_id.clone(), ability_index: 0 },
+                GameEvent::AbilityActivated { side: Side::Runner, card_id: card_id.clone(), ability_index: 0, install: Some(install_of(&state, &card_id.0)), action: false },
                 GameEvent::StrengthBoosted {
                     card_id,
                     new_strength: 3,
@@ -5174,7 +5198,7 @@ mod tests {
             events,
             vec![
                 GameEvent::CardTrashed { side: Side::Runner, card: card_id.clone(), by: Some(Side::Runner) },
-                GameEvent::AbilityActivated { side: Side::Runner, card_id: card_id.clone(), ability_index: 0 },
+                GameEvent::AbilityActivated { side: Side::Runner, card_id: card_id.clone(), ability_index: 0, install: Some(install_of(&state, &card_id.0)), action: false },
                 GameEvent::CreditsGained { side: Side::Runner, amount: 5 },
                 GameEvent::AbilityGainedCredits { side: Side::Runner, card: card_id },
             ]
@@ -5220,7 +5244,7 @@ mod tests {
             events,
             vec![
                 GameEvent::CreditsSpent { side: Side::Runner, amount: 1 },
-                GameEvent::AbilityActivated { side: Side::Runner, card_id, ability_index: 0 },
+                GameEvent::AbilityActivated { side: Side::Runner, card_id: card_id.clone(), ability_index: 0, install: Some(install_of(&state, &card_id.0)), action: false },
                 GameEvent::SubroutineBroken { card_id: CardId("ice_wall".to_string()), index: 0, strength: 0 },
                 GameEvent::IceFullyBroken { card_id: CardId("ice_wall".to_string()), position: 0 },
             ]
@@ -6737,7 +6761,7 @@ mod tests {
             events,
             vec![
                 GameEvent::CreditsSpent { side: Side::Runner, amount: 1 },
-                GameEvent::AbilityActivated { side: Side::Runner, card_id: card_id.clone(), ability_index: 0 },
+                GameEvent::AbilityActivated { side: Side::Runner, card_id: card_id.clone(), ability_index: 0, install: Some(install_of(&state, &card_id.0)), action: false },
                 GameEvent::CreditsGained { side: Side::Runner, amount: 3 },
                 GameEvent::AbilityGainedCredits { side: Side::Runner, card: card_id },
             ]

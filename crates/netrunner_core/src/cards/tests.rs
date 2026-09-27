@@ -419,7 +419,7 @@ fn snare_asks_the_corp_to_pay_and_deals_three_net_damage_and_a_tag_when_it_does(
         e,
         crate::rules::GameEvent::DamageTaken { damage_type: crate::dsl::DamageType::Net, amount: 3, responsible: Some(crate::rules::Side::Corp) }
     )));
-    assert!(events.iter().any(|e| matches!(e, crate::rules::GameEvent::TagsGiven { side: Side::Runner, amount: 1 })));
+    assert!(events.iter().any(|e| matches!(e, crate::rules::GameEvent::TagsGiven { side: Side::Runner, amount: 1, .. })));
 }
 
 #[test]
@@ -1802,7 +1802,7 @@ mod system_gateway {
             apply_action(&state, &registry, PlayerAction::RezIce { ice: install_of(&state, "ping") }).expect("rez ping mid-approach");
 
         assert_eq!(state.runner.tags, 1);
-        assert!(events.iter().any(|e| matches!(e, crate::rules::GameEvent::TagsGiven { side: Side::Runner, amount: 1 })));
+        assert!(events.iter().any(|e| matches!(e, crate::rules::GameEvent::TagsGiven { side: Side::Runner, amount: 1, .. })));
     }
 
     /// Behind ice the approach is the last step of the movement after the
@@ -1886,7 +1886,7 @@ mod system_gateway {
         let (state, events) =
             apply_action(&state, &registry, PlayerAction::DeclinePendingPaidChoice).expect("decline to pay");
         assert_eq!(state.runner.tags, 1);
-        assert!(events.iter().any(|e| matches!(e, crate::rules::GameEvent::TagsGiven { side: Side::Runner, amount: 1 })));
+        assert!(events.iter().any(|e| matches!(e, crate::rules::GameEvent::TagsGiven { side: Side::Runner, amount: 1, .. })));
     }
 
     #[test]
@@ -1988,7 +1988,7 @@ mod system_gateway {
             .expect("score orbital superiority");
 
         assert_eq!(state.runner.tags, 1);
-        assert!(events.iter().any(|e| matches!(e, crate::rules::GameEvent::TagsGiven { side: Side::Runner, amount: 1 })));
+        assert!(events.iter().any(|e| matches!(e, crate::rules::GameEvent::TagsGiven { side: Side::Runner, amount: 1, .. })));
     }
 
     #[test]
@@ -6118,7 +6118,7 @@ mod system_gateway {
         )
         .expect("tomorrow's headline should score");
         assert_eq!(scored.runner.tags, 1);
-        assert!(events.iter().any(|e| matches!(e, crate::rules::GameEvent::TagsGiven { side: Side::Runner, amount: 1 })));
+        assert!(events.iter().any(|e| matches!(e, crate::rules::GameEvent::TagsGiven { side: Side::Runner, amount: 1, .. })));
 
         // Stolen by the Runner off a run on HQ.
         let mut stolen = base_state();
@@ -6132,7 +6132,7 @@ mod system_gateway {
                 .expect("runner steals tomorrow's headline");
 
         assert_eq!(stolen.runner.tags, 1, "the same trigger fires on a steal");
-        assert!(events.iter().any(|e| matches!(e, crate::rules::GameEvent::TagsGiven { side: Side::Runner, amount: 1 })));
+        assert!(events.iter().any(|e| matches!(e, crate::rules::GameEvent::TagsGiven { side: Side::Runner, amount: 1, .. })));
     }
 
     #[test]
@@ -13411,5 +13411,232 @@ mod rebellion_without_rehearsal {
         assert!(state.corp.installed.iter().any(|card| card.card == id("ice_wall")), "installed");
         assert!(state.corp.archives.is_empty());
         assert_eq!(state.corp.resources.credits, Credits(7), "ignoring all costs: Offworld Office's 7 only");
+    }
+
+    const SEBASTIAO: &str = "sebastiao_souza_pessoa_activist_organizer";
+
+    /// Gives the Runner `amount` tags the way a card's text does, through
+    /// the prevention door and its dispatch.
+    fn give_tags(state: &mut GameState, registry: &CardRegistry, amount: u32) -> Vec<GameEvent> {
+        let mut ctx = crate::rules::ResolutionContext::for_card(None);
+        crate::rules::evaluate_effect(state, &crate::dsl::Effect::GiveTags(crate::dsl::Amount::Fixed(amount)), &mut ctx, registry).expect("tags")
+    }
+
+    #[test]
+    fn sebastiao_installs_a_connection_for_two_less_only_off_the_first_tags() {
+        let registry = registry();
+        for (had, asked) in [(0, true), (1, false)] {
+            let mut state = runner_turn();
+            state.runner.identity = Some(id(SEBASTIAO));
+            state.runner.tags = had;
+            state.runner.resources.credits = Credits(0);
+            state.runner.grip = vec![id("manuel_lattes_de_moura"), id("sure_gamble")];
+            give_tags(&mut state, &registry, 1);
+            assert_eq!(state.pending_decision.is_some(), asked, "had {had} tags");
+            if asked {
+                let (state, _) = apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("install one");
+                let offered = crate::rules::legal_actions_for(&state, &registry, Side::Runner);
+                assert!(offered.contains(&PlayerAction::ToggleCardSelection { position: 0 }), "the connection");
+                assert!(!offered.contains(&PlayerAction::ToggleCardSelection { position: 1 }), "not Sure Gamble");
+                let (state, _) = apply_action(&state, &registry, PlayerAction::ToggleCardSelection { position: 0 }).expect("Manuel");
+                let (state, _) = apply_action(&state, &registry, PlayerAction::ConfirmCardSelection).expect("confirm");
+                assert!(state.runner.rig.iter().any(|card| card.card == id("manuel_lattes_de_moura")), "installed at 2 less, for nothing");
+            }
+        }
+    }
+
+    #[test]
+    fn sebastiao_makes_the_corp_trash_a_card_from_hq_to_trash_a_connection() {
+        let registry = registry();
+        let trash = |card| PlayerAction::TrashResource { target: fixture_install_id(card) };
+        let mut state = base_state();
+        state.runner.identity = Some(id(SEBASTIAO));
+        state.runner.tags = 1;
+        state.runner.rig = vec![rig("manuel_lattes_de_moura"), rig("telework_contract")];
+        assert!(apply_action(&state, &registry, trash("manuel_lattes_de_moura")).is_err(), "nothing in HQ to pay with");
+        let offered = crate::rules::legal_actions_for(&state, &registry, Side::Corp);
+        assert!(!offered.contains(&trash("manuel_lattes_de_moura")) && offered.contains(&trash("telework_contract")), "a Job is not a connection");
+
+        state.corp.hq = vec![id("hedge_fund"), id("ice_wall")];
+        let (mut state, _) = apply_action(&state, &registry, trash("manuel_lattes_de_moura")).expect("the Corp is asked which");
+        while state.pending_payment.is_some() {
+            let answer = crate::rules::legal_actions_for(&state, &registry, Side::Corp).into_iter().next().expect("an answer");
+            state = apply_action(&state, &registry, answer).expect("answer").0;
+        }
+        assert!(state.runner.heap.contains(&id("manuel_lattes_de_moura")));
+        assert_eq!((state.corp.hq.len(), state.corp.archives.len()), (1, 1), "one card from HQ paid for it");
+        assert_eq!((state.corp.resources.credits, state.corp.resources.clicks), (Credits(8), Clicks(2)), "with the [click] and 2[credit]");
+    }
+
+    #[test]
+    fn manuel_costs_the_corp_a_card_from_hq_to_trash_at_threat_three() {
+        let registry = registry();
+        let trash = PlayerAction::TrashResource { target: fixture_install_id("manuel_lattes_de_moura") };
+        let mut state = base_state();
+        state.runner.tags = 1;
+        state.runner.rig = vec![rig("manuel_lattes_de_moura")];
+        assert!(apply_action(&state, &registry, trash.clone()).is_ok(), "threat 0: the basic action's cost only");
+        at_threat(&mut state, 4);
+        assert!(apply_action(&state, &registry, trash.clone()).is_err(), "threat 3, and HQ is empty");
+        state.corp.hq = vec![id("hedge_fund")];
+        let (state, _) = apply_action(&state, &registry, trash).expect("the one card pays");
+        assert!(state.corp.hq.is_empty() && state.runner.heap.contains(&id("manuel_lattes_de_moura")));
+    }
+
+    #[test]
+    fn manuel_accesses_one_more_from_hq_while_the_runner_is_tagged() {
+        let registry = registry();
+        for (tags, extra) in [(0, 0), (1, 1)] {
+            let mut state = runner_turn();
+            state.runner.tags = tags;
+            state.runner.rig = vec![rig("manuel_lattes_de_moura")];
+            state.corp.hq = vec![id("hq_card_0"), id("hq_card_1")];
+            let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run");
+            let (state, _) = crate::rules::test_support::through_movement(&state, &registry).expect("to the server");
+            let (state, _) = apply_action(&state, &registry, PlayerAction::CompleteRun).expect("breach");
+            assert_eq!(state.active_run.as_ref().unwrap().additional_hq_access, extra, "{tags} tags");
+        }
+    }
+
+    /// Runs Privileged Access up to its breach, which it replaces.
+    fn privileged_access_run(state: GameState, registry: &CardRegistry) -> GameState {
+        let (state, _) = apply_action(&state, registry, PlayerAction::PlayEvent { card_id: id("privileged_access") }).expect("play");
+        let (state, _) = crate::rules::test_support::through_movement(&state, registry).expect("to Archives");
+        let (state, _) = apply_action(&state, registry, PlayerAction::CompleteRun).expect("successful");
+        pass_until_settled(state, registry).0
+    }
+
+    #[test]
+    fn privileged_access_takes_a_tag_instead_of_breaching_and_installs_from_the_heap() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.grip = vec![id("privileged_access")];
+        state.runner.tags = 1;
+        assert!(apply_action(&state, &registry, PlayerAction::PlayEvent { card_id: id("privileged_access") }).is_err(), "only if untagged");
+
+        state.runner.tags = 0;
+        state.runner.resources.credits = Credits(2);
+        state.runner.heap = vec![id("manuel_lattes_de_moura"), id("corroder")];
+        state.corp.archives = vec![ArchivedCard { card: id("hedge_fund"), facedown: false }];
+        at_threat(&mut state, 4);
+        let state = privileged_access_run(state, &registry);
+        assert_eq!(state.runner.tags, 1, "the tag, instead of the breach");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("a resource");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ToggleCardSelection { position: 0 }).expect("Manuel");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ConfirmCardSelection).expect("installed for 2 less");
+        assert!(state.runner.rig.iter().any(|card| card.card == id("manuel_lattes_de_moura")));
+        assert_eq!(state.runner.resources.credits, Credits(2), "Manuel's 2 less is free");
+        // Threat 3: a program from the heap, paying for it.
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("a program");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ToggleCardSelection { position: 0 }).expect("Corroder");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ConfirmCardSelection).expect("installed at its cost");
+        assert!(state.runner.rig.iter().any(|card| card.card == id("corroder")) && state.runner.resources.credits == Credits(0));
+        assert!(state.active_run.is_none() && state.corp.archives.len() == 1, "Archives never breached");
+    }
+
+    #[test]
+    fn amanuensis_banks_a_counter_at_a_tagged_turn_end_and_spends_it_to_draw_two_on_a_removal() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.tags = 2;
+        state.runner.rig = vec![rig("amanuensis")];
+        state.runner.stack = vec![id("sure_gamble"), id("sure_gamble"), id("sure_gamble")];
+        let (state, _) = apply_action(&state, &registry, PlayerAction::RemoveTag).expect("nothing hosted yet");
+        assert!(state.pending_paid_choice.is_none(), "no counter to remove");
+        let (ended, _) = apply_action(&crate::rules::test_support::clicks_spent(&state), &registry, PlayerAction::EndTurn).expect("end turn");
+        let (ended, _) = close_all_windows(ended, &registry);
+        assert_eq!(ended.runner.rig[0].counters, 1, "tagged as the turn ended");
+
+        let mut again = runner_turn();
+        again.runner = ended.runner.clone();
+        again.runner.resources.clicks = Clicks(4);
+        let (asked, _) = apply_action(&again, &registry, PlayerAction::RemoveTag).expect("remove the last tag");
+        assert!(asked.pending_paid_choice.is_some());
+        let (drew, _) = apply_action(&asked, &registry, PlayerAction::AcceptPendingPaidChoice { cost_option_index: None }).expect("draw 2");
+        assert_eq!((drew.runner.grip.len(), drew.runner.rig[0].counters), (2, 0));
+    }
+
+    #[test]
+    fn amelia_earhart_may_cash_three_counters_and_herself_for_ten_of_the_corps_credits() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.resources.credits = Credits(12);
+        state.runner.rig = vec![crate::rules::InstalledRunnerCard { counters: 3, ..rig("amelia_earhart") }];
+        let (mut state, _) = apply_action(&crate::rules::test_support::clicks_spent(&state), &registry, PlayerAction::EndTurn).expect("end the Corp's turn");
+        while state.pending_paid_choice.is_none() {
+            let side = state.paid_ability_window.as_ref().expect("a window before the Runner's turn begins").active_priority;
+            state = apply_action(&state, &registry, PlayerAction::PassPriority { side }).expect("pass").0;
+        }
+        assert!(state.pending_paid_choice.as_ref().is_some_and(|choice| choice.side == Side::Runner), "when the Runner's turn begins");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::AcceptPendingPaidChoice { cost_option_index: None }).expect("cash in");
+        assert_eq!(state.corp.resources.credits, Credits(2));
+        assert!(state.runner.rig.is_empty() && state.runner.heap.contains(&id("amelia_earhart")));
+    }
+
+    #[test]
+    fn amelia_earhart_counts_a_run_on_hq_or_rnd_that_accessed_three_cards() {
+        let registry = registry();
+        for (extra, counted) in [(1, 0), (2, 1)] {
+            let mut state = runner_turn();
+            state.runner.rig = vec![rig("amelia_earhart")];
+            state.corp.hq = vec![id("hq_card_0"), id("hq_card_1"), id("hq_card_2")];
+            let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run");
+            let (mut state, _) = crate::rules::test_support::through_movement(&state, &registry).expect("to the server");
+            state.active_run.as_mut().unwrap().additional_hq_access = extra;
+            let (mut state, _) = apply_action(&state, &registry, PlayerAction::CompleteRun).expect("breach");
+            while let Some(card) = state.active_run.as_ref().and_then(|run| run.access_state.as_ref()).and_then(|access| access.phase.card().cloned()) {
+                state = apply_action(&state, &registry, PlayerAction::PassAccessedCard { card_id: card }).expect("pass").0;
+                state = pass_until_settled(state, &registry).0;
+            }
+            assert!(state.active_run.is_none());
+            assert_eq!(state.runner.rig[0].counters, counted, "{} cards accessed", extra + 1);
+        }
+    }
+
+    #[test]
+    fn juli_moreira_lee_gives_a_click_back_for_the_first_action_on_a_resource_each_turn() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.grip = vec![id("juli_moreira_lee")];
+        state.runner.rig = vec![crate::rules::InstalledRunnerCard { counters: 9, ..rig("telework_contract") }];
+        let (state, _) = apply_action(&state, &registry, PlayerAction::InstallResource { card_id: id("juli_moreira_lee"), host: None }).expect("install");
+        let juli = |state: &GameState| state.runner.rig.iter().find(|card| card.card == id("juli_moreira_lee")).map(|card| card.counters);
+        assert_eq!((juli(&state), state.runner.resources.clicks), (Some(4), Clicks(3)), "loaded with four");
+        let telework = PlayerAction::ActivateAbility { target: fixture_install_id("telework_contract"), ability_index: 0 };
+        let (state, events) = apply_action(&state, &registry, telework).expect("an action on a resource");
+        assert!(events.iter().any(|event| matches!(event, GameEvent::TriggerFired { trigger: crate::dsl::Trigger::OnActionTaken, .. })));
+        assert_eq!((juli(&state), state.runner.resources.clicks), (Some(3), Clicks(3)), "the click back");
+
+        // A second action on a resource this turn is not the first.
+        let mut second = state.clone();
+        second.runner.once_per_turn_used.clear();
+        let (second, _) = apply_action(&second, &registry, PlayerAction::ActivateAbility { target: fixture_install_id("telework_contract"), ability_index: 0 }).expect("again");
+        assert_eq!((juli(&second), second.runner.resources.clicks), (Some(3), Clicks(2)));
+
+        // The last counter empties her, and she is trashed.
+        let mut last = runner_turn();
+        last.runner.rig = vec![crate::rules::InstalledRunnerCard { counters: 9, ..rig("telework_contract") }, crate::rules::InstalledRunnerCard { counters: 1, ..rig("juli_moreira_lee") }];
+        let (last, _) = apply_action(&last, &registry, PlayerAction::ActivateAbility { target: fixture_install_id("telework_contract"), ability_index: 0 }).expect("use");
+        assert_eq!((juli(&last), last.runner.resources.clicks), (None, Clicks(4)));
+        assert!(last.runner.heap.contains(&id("juli_moreira_lee")));
+    }
+
+    #[test]
+    fn arruaceiras_crew_weakens_the_ice_for_a_tag_then_trashes_it_at_zero() {
+        let registry = registry();
+        let crew = |index| PlayerAction::ActivateAbility { target: fixture_install_id("arruaceiras_crew"), ability_index: index };
+        let mut state = runner_turn();
+        state.runner.rig = vec![rig("arruaceiras_crew")];
+        state.corp.installed = vec![ice_at_hq("ice_wall")];
+        let at_ice = encounter(&state, &registry);
+        assert!(apply_action(&at_ice, &registry, crew(1)).is_err(), "Ice Wall is at 1");
+        let (weak, _) = apply_action(&at_ice, &registry, crew(0)).expect("take a tag");
+        assert_eq!((weak.runner.tags, encountered_strength(&weak, &registry)), (1, -1));
+        let (weak, _) = apply_action(&weak, &registry, PlayerAction::PassPriority { side: Side::Corp }).expect("corp passes back");
+        assert!(apply_action(&weak, &registry, crew(0)).is_err(), "once per turn");
+        let (trashed, _) = apply_action(&weak, &registry, crew(1)).expect("trash it");
+        assert!(trashed.corp.installed.is_empty() && trashed.corp.archives.iter().any(|card| card.card == id("ice_wall")));
+        assert!(trashed.runner.heap.contains(&id("arruaceiras_crew")));
+        assert_eq!(trashed.runner.resources.credits, Credits(8));
     }
 }

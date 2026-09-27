@@ -1863,10 +1863,11 @@ reaches Vantage Point's cards by building a deck.
    an Eye moved to Stage 3 when the stage was taken: its "Access →" is an
    ability on an *event*, active through the run it starts (CR 8.6.5),
    which no card has needed yet.
-2. **Tags, purge, and a cost on the Corp's basic trash action:**
-   Sebastião Souza Pessoa, Manuel Lattes de Moura, Privileged Access, Amanuensis, Amelia Earhart,
-   Juli Moreira Lee, Arruaceiras Crew, Malandragem, Physarum Entangler,
-   Heliamphora.
+2. **Tags, purge, and a cost on the Corp's basic trash action**, in two
+   parts when it was taken: **2a**, tags and the trash cost (built, below):
+   Sebastião Souza Pessoa, Manuel Lattes de Moura, Privileged Access,
+   Amanuensis, Amelia Earhart, Juli Moreira Lee, Arruaceiras Crew; **2b**,
+   purge and bypass: Malandragem, Physarum Entangler, Heliamphora.
 3. **Runner access and run words:** Eye for an Eye, “Pretty” Mary da Silva, Cupellation, Trick Shot,
    Window of Opportunity, Alarm Clock, Meeting of Minds, Muse, Ashen
    Epilogue, Boi-tatá.
@@ -1972,6 +1973,93 @@ an Eye went to Stage 3 (above).
   swaps is **identical in all four shapes**, so the movement is
   `determinize` sampling five new Corp cards, and the tag, use-limit and
   resolving-operation changes move no game of the pool.
+
+#### Stage 2a — tags and a cost on the Corp's basic trash action (27 September 2026)
+
+`feat/rwr-stage-2a-tags-and-basic-trash-cost`: Sebastião Souza Pessoa:
+Activist Organizer, Manuel Lattes de Moura, Privileged Access, Amanuensis,
+Amelia Earhart, Juli Moreira Lee, Arruaceiras Crew. Rebellion Without
+Rehearsal 16 of 65; `RWR_UNIMPLEMENTED` 56 → 49. Stage 2 was split when it
+was taken: purge and bypass (Malandragem, Physarum Entangler, Heliamphora)
+are Stage 2b.
+
+- **An additional cost on the Corp's basic trash action**
+  (`ContinuousKind::BasicTrashCost`, CR 5.2.6g, 1.16.10). Sebastião's "to
+  trash a **connection** resource with the basic action, the Corp must
+  trash 1 card from HQ" is about a resource being `Scope::Trashing`, and
+  Manuel's "to trash **this** resource" is `Scope::This` under a threat 3
+  `while`. `ScoreCost`'s shape: a `Cost`, asked of the install being
+  trashed (`continuous::basic_trash_costs`) and paid with the action's
+  [click] and 2[credit], all of it or none (1.16.10b), so a Corp with an
+  empty HQ is not offered the trash — the Corp declines by not taking the
+  action (1.16.10a). The card from HQ is asked by the payment's replay, one
+  card at a time (`payment::could_ask` admits `TrashResource`). Both
+  clients' explanation of the action now says a Runner card may add to its
+  price; the question is the card-payment kind they already draw.
+- **"If you had no tags" is on the event.** `TagsGiven` carries `had`, the
+  tags before (both sites that give tags: the prevention door and
+  `Cost::TakeTags`), read by `EffectRequirement::HadNoTags` the way
+  `WasFirstAdvancementThisCard` reads `CardAdvanced`: by the time
+  Sebastião's trigger resolves the state holds the tags just taken.
+- **The use of an action is a moment** (`Trigger::OnActionTaken`, CR
+  9.5.7b): `AbilityActivated` carries the copy used and whether the ability
+  is an action (its cost begins with [click], 9.5.2a), because the listener
+  scan reads no registry, and it is heard with the cost's events after the
+  effect, the order every cost's events already had. Juli Moreira Lee's
+  "the first time each turn you take an action on an installed resource"
+  is that trigger with `when: InstalledCard(CardType(Resource))` and
+  `first_each_turn`. "When your turn ends" (Amanuensis) is
+  `OnDiscardPhaseEnd`, which the rules make the same step (CR 5.7.2d).
+- **Two `Amount`s, one `Effect` fewer.** `CardsAccessedLastRun` is Amelia
+  Earhart's "if you accessed 3 or more cards during that run" under
+  `AmountAtLeast`, and took over `Effect::GainCreditsPerCardAccessedThisRun`
+  — Zahya Sadeghi is `GainCreditsAmount(Runner, CardsAccessedLastRun)` now.
+  `EncounteredIceStrength` (never below 0) is Arruaceiras Crew's "if its
+  strength is 0 or less", `Not(AmountAtLeast(.., 1))`, with
+  `CardTarget::EncounteredIce` to trash it by the run's handle. The
+  heap install took a `Discount` (`InstallRunnerCardFromHeap(Discount)`,
+  Scrounge and Magdalene rewritten to `Credits(0)`) for Privileged Access's
+  "paying 2[credit] less", as `PlayOperation { from }` took Plutus's zone.
+- **The rest composes.** Manuel's "whenever you breach HQ or R&D while you
+  are tagged" is Docklands Pass's `OnSuccessfulRun` per server;
+  Privileged Access is Account Siphon's replacement of the breach;
+  Amanuensis and Amelia are `OfferPaidChoice`s over counter costs.
+- **Deck** — **Grassroots** (`DeckCategory::Sweep`, Eternal and Casual):
+  Sebastião on an Anarch rig of connections (Friend of a Friend, Manuel,
+  Nurse Hạnh, Rent Rioters, Arruaceiras Crew, Hackerspace to host them),
+  Privileged Access and Friend of a Friend to take the first tag, and
+  Amanuensis; Juli Moreira Lee and Amelia Earhart on influence.
+- **Real play**, 96 games of Fine Print against Grassroots (seed 2). Random
+  seats: Sebastião's install trigger 119 times, Privileged Access played
+  29, Manuel's extra access 25, Juli's click 6, Amanuensis's counter 49 and
+  its draw 3, Arruaceiras Crew used 30 times; the Corp took the basic trash
+  action 57 times and trashed from HQ 47 times, which only the two new
+  costs do in these decks. **Amelia Earhart was installed 10 times and
+  never counted a run** — three accesses on one run of HQ or R&D is rare
+  for a random Runner — so her two triggers are reached by the per-card
+  tests alone. The heuristic Runner installs none of the deck's
+  resources (Amanuensis 23 times, Privileged Access played 6), and the
+  heuristic Corp never trashes one: the Phase 5 debt again.
+- **Fidelity limits:** Privileged Access's two installs are conditioned on
+  the Runner being tagged after the tag, so a Decoy that prevents the
+  event's tag on a Runner tagged earlier in the run still lets them
+  happen; and the two "when you take a tag with this event" abilities
+  resolve in printed order rather than the Runner's. Manuel's extra access
+  is heard at the run's success, as every "when you breach" in the pool
+  is, so a run Flagship keeps from being declared successful gets none.
+- **DSL ratio (`pool_status.py`): 19 of 75 `Effect` variants single-use,
+  2 unused**, over 266 card files (21 of 76 over 259 before).
+- **Measured.** Both sweeps at 256 seeds are green. Against
+  `origin/main`, `coverage_identical.py` has the random seatings playing
+  the same games by view and by index: the one difference is the effect
+  Zahya's gain is counted under (`GainCreditsAmount` 316 → 409,
+  `GainCreditsPerCardAccessedThisRun` 93 → 0). The heuristic ones moved
+  (Corp wins 67 → 76 of 192, one Runner deck-out). Checked, not inferred:
+  a ref with the engine changes and without the seven cards and their deck
+  is **the same games in all four shapes**, the rename apart, so the
+  movement is `determinize` sampling seven new Runner cards, and the trash
+  cost, `had`, the dispatched use of an ability and the heap discount move
+  no game of the pool.
 
 ### 3. The Automata Initiative — 65 cards (C 14 / V 35 / M 16)
 

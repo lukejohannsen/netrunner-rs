@@ -30,7 +30,11 @@
             "shuffle_after": false,
             "then": {
               "Sequence": [
-                "InstallRunnerCardFromHeap",
+                {
+                  "InstallRunnerCardFromHeap": {
+                    "Credits": 0
+                  }
+                },
                 {
                   "PresentChoice": {
                     "chooser": "Runner",

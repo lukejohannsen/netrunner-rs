@@ -22,7 +22,10 @@
       },
       "effects": [
         {
-          "GainCreditsPerCardAccessedThisRun": "Runner"
+          "GainCreditsAmount": [
+            "Runner",
+            "CardsAccessedLastRun"
+          ]
         }
       ]
     }

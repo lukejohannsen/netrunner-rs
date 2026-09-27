@@ -33,7 +33,11 @@
                   "max": 1,
                   "reveal": false,
                   "shuffle_after": false,
-                  "then": "InstallRunnerCardFromHeap"
+                  "then": {
+                    "InstallRunnerCardFromHeap": {
+                      "Credits": 0
+                    }
+                  }
                 }
               },
               {

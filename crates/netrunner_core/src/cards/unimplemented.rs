@@ -20,15 +20,10 @@ pub(crate) const VP_UNIMPLEMENTED: &[(u32, &str)] = &[];
 
 /// *Rebellion Without Rehearsal* (`rwr`): tranche 2 of the NSG plan.
 pub(crate) const RWR_UNIMPLEMENTED: &[(u32, &str)] = &[
-    (34066, "Sebastião Souza Pessoa: Activist Organizer"),
     (34067, "Eye for an Eye"),
-    (34068, "Privileged Access"),
-    (34069, "Amanuensis"),
     (34070, "The Wizard’s Chest"),
     (34071, "Boi-tatá"),
     (34072, "Heliamphora"),
-    (34073, "Arruaceiras Crew"),
-    (34075, "Manuel Lattes de Moura"),
     (34076, "Meeting of Minds"),
     (34077, "Window of Opportunity"),
     (34078, "Alarm Clock"),
@@ -36,8 +31,6 @@ pub(crate) const RWR_UNIMPLEMENTED: &[(u32, &str)] = &[
     (34080, "Cupellation"),
     (34081, "Malandragem"),
     (34082, "Physarum Entangler"),
-    (34083, "Amelia Earhart"),
-    (34084, "Juli Moreira Lee"),
     (34085, "Burner"),
     (34086, "Spree"),
     (34087, "Trick Shot"),

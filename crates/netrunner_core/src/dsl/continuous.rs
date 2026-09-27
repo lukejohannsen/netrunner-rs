@@ -145,6 +145,17 @@ pub enum ContinuousKind {
     /// with the score, and then a checkpoint, before the agenda moves
     /// (CR 1.16.10b–c); the Corp may decline by not scoring (CR 1.17.3b).
     ScoreCost(crate::dsl::Cost),
+    /// A cost the Corp pays, as an additional cost, to trash a resource with
+    /// the basic action (CR 5.2.6g) — Sebastião Souza Pessoa's "As an
+    /// additional cost to trash a **connection** resource with the basic
+    /// action, the Corp must trash 1 card from HQ" (`Scope::Trashing`), and
+    /// Manuel Lattes de Moura's "to trash **this** resource" (`Scope::This`,
+    /// under a threat `while`). `ScoreCost`'s shape: a `Cost`, because what
+    /// is paid is a card. Paid with the action's own [click] and 2[credit],
+    /// all at once (CR 1.16.10b), and the Corp declines by not taking the
+    /// action (CR 1.16.10a). Composition didn't work: nothing priced the
+    /// basic action, whose cost was written in the handler.
+    BasicTrashCost(crate::dsl::Cost),
     /// Agenda points an agenda is worth where it is — Let Them Dream's
     /// "while this agenda is in the Runner's score area, it is worth 1 less
     /// agenda point". Asked, never stored: the win check totals each score
@@ -234,6 +245,12 @@ pub enum Scope {
     /// install being scored (`continuous::Target::Scoring`), so an
     /// instance word (`InstalledThisTurn`) is read off that copy.
     Scoring(CardFilter),
+    /// A resource the Corp is trashing with the basic action, matching the
+    /// filter — Sebastião Souza Pessoa's "a **connection** resource". The
+    /// trash action's half of `Scoring`: asked of the install being trashed
+    /// (`continuous::Target::Trashing`), so a card's own text about itself
+    /// is `This` and what an identity says about the rig is this.
+    Trashing(CardFilter),
     /// Each run against the server this card is installed in — Flagship's
     /// "Runs against this server" and "During each run against this
     /// server". A run is not a card, so this is asked about

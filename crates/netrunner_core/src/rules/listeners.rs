@@ -174,6 +174,11 @@ pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
         GameEvent::AdvancementCountersPlaced { .. } => Vec::new(),
         // A cost paid; nothing prints "when a counter is removed".
         GameEvent::AdvancementCountersRemoved { .. } => Vec::new(),
+        // Only an action is "taking an action on" a card (CR 9.5.2a).
+        GameEvent::AbilityActivated { side, card_id, install, action: true, .. } => {
+            vec![moment(Trigger::OnActionTaken, &card(card_id, *install), Some(*side))]
+        }
+        GameEvent::AbilityActivated { action: false, .. } => Vec::new(),
         GameEvent::AbilityGainedCredits { side, card: source } => {
             vec![moment(Trigger::OnAbilityGainedCredits, &card(source, None), Some(*side))]
         }
@@ -296,7 +301,6 @@ pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
         | GameEvent::CreditsSpent { .. }
         | GameEvent::CardRemovedFromGame { .. }
         | GameEvent::GameOver { .. }
-        | GameEvent::AbilityActivated { .. }
         | GameEvent::AccessPassed { .. }
         | GameEvent::PaidAbilityWindowOpened { .. }
         | GameEvent::PriorityPassed { .. }
@@ -827,7 +831,7 @@ mod tests {
         let registry = registry(vec![reality_plus]);
         let mut state = GameState::default();
         state.corp.identity = Some(CardId("nbn_reality_plus".to_string()));
-        let tagged = GameEvent::TagsGiven { side: Side::Runner, amount: 1 };
+        let tagged = GameEvent::TagsGiven { side: Side::Runner, amount: 1, had: 0 };
 
         let first = turn_log::record(&mut state, &registry, &tagged);
         assert_eq!(who(&super::plan_for(&state, &registry, &tagged, &first)), vec![("nbn_reality_plus", Heard::AsBystander)]);

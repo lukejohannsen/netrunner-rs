@@ -604,15 +604,15 @@ pub fn evaluate_effect(
             evaluate_effect(state, &Effect::DrawCards(*side, resolved), ctx, registry)
         }
 
-        Effect::InstallRunnerCardFromHeap => {
-            use crate::rules::engine::{can_install_runner_card_from_zone, install_runner_card_from_zone_paying_cost, RunnerCardSource};
+        Effect::InstallRunnerCardFromHeap(discount) => {
+            use crate::rules::engine::{can_install_runner_card_from_zone_with_discount, install_runner_card_from_zone_with_discount, RunnerCardSource};
             let card_id = acting_card.ok_or(RulesError::UnresolvedCardTarget)?.clone();
             // Same leniency as the grip variant: an uninstallable pick stays
             // where it is.
-            if !can_install_runner_card_from_zone(state, registry, &card_id, RunnerCardSource::Heap) {
+            if !can_install_runner_card_from_zone_with_discount(state, registry, &card_id, RunnerCardSource::Heap, discount.credits()) {
                 return Ok(Vec::new());
             }
-            install_runner_card_from_zone_paying_cost(state, registry, card_id, RunnerCardSource::Heap)
+            install_runner_card_from_zone_with_discount(state, registry, card_id, RunnerCardSource::Heap, discount.credits())
         }
 
         Effect::InstallRunnerCardFromGripWithDiscount(discount) => {
@@ -1242,11 +1242,6 @@ pub fn evaluate_effect(
                 secret: *secret,
             });
             Ok(vec![GameEvent::NumberChoiceOffered { chooser: *chooser, min: *min, max: most }])
-        }
-
-        Effect::GainCreditsPerCardAccessedThisRun(side) => {
-            let amount = state.last_completed_run.as_ref().map_or(0, |run| run.cards_accessed);
-            gain_credits_from_ability(state, registry, *side, amount, ctx)
         }
 
         Effect::PromptChooseCards { side, source, filter, min, max, reveal, shuffle_after, destination, then } => {
@@ -1921,7 +1916,7 @@ fn installed_target(state: &GameState, registry: &CardRegistry, target: &CardTar
         CardTarget::CorpInstalled { card, server } => {
             state.corp.installed.iter().position(|installed| installed.card == *card && installed.server == *server).map(corp)
         }
-        CardTarget::HostIce => {
+        CardTarget::HostIce | CardTarget::EncounteredIce => {
             let (host, _, _) = resolve_corp_installed_target(state, target, ctx).ok()?;
             state.corp.installed.iter().position(|installed| installed.install_id == host).map(corp)
         }
@@ -1991,6 +1986,14 @@ fn resolve_corp_installed_target(
             let host = acting_rig_card(state, ctx).and_then(|c| c.hosted_on_ice).ok_or(RulesError::UnresolvedCardTarget)?;
             let installed = state.find_corp_install(host).ok_or(RulesError::InstallNotFound(host))?;
             Ok((host, installed.card.clone(), installed.server))
+        }
+        // By install, off the run: two copies of one ice on a server are
+        // two targets.
+        CardTarget::EncounteredIce => {
+            let run = state.active_run.as_ref().filter(|run| run.phase == crate::rules::run::RunPhase::EncounterIce).ok_or(RulesError::NotInEncounter)?;
+            let ice = run.ice.get(run.position).ok_or(RulesError::NotInEncounter)?;
+            let installed = state.find_corp_install(ice.install_id).ok_or(RulesError::InstallNotFound(ice.install_id))?;
+            Ok((ice.install_id, installed.card.clone(), installed.server))
         }
         // A `PromptChooseCards::then` over the Corp's installs runs with the
         // chosen install as the acting one — Maglectric Rapid's "derez 1
@@ -2147,6 +2150,12 @@ pub(crate) fn trash_card(
         CardTarget::HostIce => {
             let (_, host, server) = resolve_corp_installed_target(state, target, ctx)?;
             trash_card(state, registry, &CardTarget::CorpInstalled { card: host, server }, ctx)
+        }
+
+        // By its handle, which the run holds.
+        CardTarget::EncounteredIce => {
+            let (install, _, _) = resolve_corp_installed_target(state, target, ctx)?;
+            trash_install(state, registry, Side::Corp, install, by)
         }
 
         // Handled by `evaluate_effect`'s `TrashCard` arm before it gets
@@ -2681,8 +2690,9 @@ pub(crate) fn pay_cost_ctx(
         }
 
         Cost::TakeTags(amount) => {
+            let had = state.runner.tags;
             state.runner.tags = state.runner.tags.saturating_add(*amount);
-            Ok(vec![GameEvent::TagsGiven { side: Side::Runner, amount: *amount }])
+            Ok(vec![GameEvent::TagsGiven { side: Side::Runner, amount: *amount, had }])
         }
 
         // `AnyOf`'s choice is resolved by the caller before `pay_cost` is
@@ -3042,6 +3052,12 @@ pub fn check_requirement(
             );
             if was_first { Ok(()) } else { Err(RulesError::RequirementNotMet) }
         }
+        EffectRequirement::HadNoTags => {
+            // Off the triggering event, as `WasFirstAdvancementThisCard`
+            // is: the state has the tags just taken.
+            let had_none = matches!(ctx.triggering_event, Some(GameEvent::TagsGiven { side: Side::Runner, had: 0, .. }));
+            if had_none { Ok(()) } else { Err(RulesError::RequirementNotMet) }
+        }
         EffectRequirement::CorpCreditsAtLeast(amount) => {
             if state.corp.resources.credits.0 >= *amount { Ok(()) } else { Err(RulesError::RequirementNotMet) }
         }
@@ -3261,6 +3277,13 @@ pub(crate) fn resolve_amount(amount: &Amount, ctx: &ResolutionContext<'_>, state
             state.runner.heap.iter().filter(|card| registry.get(card).is_some_and(|def| def.subtypes.contains(subtype))).count() as u32
         }
         // "The greatest score of any player" (CR 1.17.1a), never below 0.
+        Amount::CardsAccessedLastRun => state.last_completed_run.as_ref().map_or(0, |run| run.cards_accessed),
+        Amount::EncounteredIceStrength => state
+            .active_run
+            .as_ref()
+            .filter(|run| run.phase == crate::rules::run::RunPhase::EncounterIce)
+            .and_then(|run| run.ice.get(run.position))
+            .map_or(0, |ice| crate::rules::continuous::ice_strength(state, registry, ice).max(0) as u32),
         Amount::ThreatLevel => {
             let score = |side| crate::rules::win::score(state, registry, side);
             score(Side::Corp).max(score(Side::Runner)).max(0) as u32
@@ -3334,6 +3357,7 @@ pub(crate) fn consume_requirement(
         | EffectRequirement::AboutToApproach(_)
         | EffectRequirement::DuringRun
         | EffectRequirement::WasFirstAdvancementThisCard
+        | EffectRequirement::HadNoTags
         | EffectRequirement::CorpCreditsAtLeast(_)
         | EffectRequirement::RunEventActive
         | EffectRequirement::InstalledWithoutSpendingCredits
@@ -3626,7 +3650,7 @@ mod tests {
         let events = evaluate_effect(&mut state, &Effect::GiveTags(Amount::Fixed(2)), &mut ResolutionContext::for_card(None), &CardRegistry::new()).unwrap();
 
         assert_eq!(state.runner.tags, 2);
-        assert_eq!(events, vec![GameEvent::TagsGiven { side: Side::Runner, amount: 2 }]);
+        assert_eq!(events, vec![GameEvent::TagsGiven { side: Side::Runner, amount: 2, had: 0 }]);
     }
 
     #[test]
@@ -3804,7 +3828,7 @@ mod tests {
                     index: 0,
                     effect: Effect::GiveTags(Amount::Fixed(2)),
                 },
-                GameEvent::TagsGiven { side: Side::Runner, amount: 2 },
+                GameEvent::TagsGiven { side: Side::Runner, amount: 2, had: 0 },
                 GameEvent::SubroutineFired {
                     card_id: CardId("ice_wall".to_string()),
                     index: 1,
@@ -4247,7 +4271,7 @@ mod tests {
         assert_eq!(
             events,
             vec![
-                GameEvent::TagsGiven { side: Side::Runner, amount: 1 },
+                GameEvent::TagsGiven { side: Side::Runner, amount: 1, had: 0 },
                 GameEvent::CreditsGained { side: Side::Corp, amount: 2 },
                 GameEvent::AbilityGainedCredits { side: Side::Corp, card: CardId("snare".to_string()) },
             ]
@@ -4898,7 +4922,7 @@ mod tests {
 
         let events = evaluate_effect(
             &mut state,
-            &Effect::GainCreditsPerCardAccessedThisRun(Side::Runner), &mut ResolutionContext::for_card(None),
+            &Effect::GainCreditsAmount(Side::Runner, Amount::CardsAccessedLastRun), &mut ResolutionContext::for_card(None),
             &CardRegistry::new())
         .unwrap();
 
@@ -4912,7 +4936,7 @@ mod tests {
 
         let events = evaluate_effect(
             &mut state,
-            &Effect::GainCreditsPerCardAccessedThisRun(Side::Runner), &mut ResolutionContext::for_card(None),
+            &Effect::GainCreditsAmount(Side::Runner, Amount::CardsAccessedLastRun), &mut ResolutionContext::for_card(None),
             &CardRegistry::new())
         .unwrap();
 
@@ -4928,7 +4952,7 @@ mod tests {
         let events = pay_cost(&mut state, &CardRegistry::new(), Side::Runner, &Cost::TakeTags(1), Purpose::Other, None).unwrap();
 
         assert_eq!(state.runner.tags, 1);
-        assert_eq!(events, vec![GameEvent::TagsGiven { side: Side::Runner, amount: 1 }]);
+        assert_eq!(events, vec![GameEvent::TagsGiven { side: Side::Runner, amount: 1, had: 0 }]);
     }
 
     #[test]

@@ -750,7 +750,7 @@ mod tests {
                     index: 0,
                     effect: Effect::GiveTags(crate::dsl::Amount::Fixed(1)),
                 },
-                GameEvent::TagsGiven { side: Side::Runner, amount: 1 },
+                GameEvent::TagsGiven { side: Side::Runner, amount: 1, had: 0 },
                 GameEvent::EncounterEnded { card_id: CardId("ice_wall".to_string()), install: crate::rules::state::InstallId(0) },
                 GameEvent::IcePassed { server: ServerId::Hq, position: 0, after_fully_breaking: false },
             ]

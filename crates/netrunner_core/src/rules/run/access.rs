@@ -3104,7 +3104,7 @@ mod tests {
             vec![
                 GameEvent::CardAccessed { card: CardId("snare".to_string()), server: ServerId::Archives, install: None },
                 GameEvent::TriggerFired { card: CardId("snare".to_string()), trigger: crate::dsl::Trigger::OnAccessed },
-                GameEvent::TagsGiven { side: Side::Runner, amount: 1 },
+                GameEvent::TagsGiven { side: Side::Runner, amount: 1, had: 0 },
                 GameEvent::ArchivesTurnedFaceup { count: 1 },
             ]
         );
@@ -3159,7 +3159,7 @@ mod tests {
             vec![
                 GameEvent::CreditsSpent { side: Side::Runner, amount: 4 },
                 GameEvent::TriggerFired { card: CardId("fetal_ai".to_string()), trigger: crate::dsl::Trigger::OnAccessed },
-                GameEvent::TagsGiven { side: Side::Runner, amount: 1 },
+                GameEvent::TagsGiven { side: Side::Runner, amount: 1, had: 0 },
             ]
         );
         assert_eq!(
@@ -3308,7 +3308,7 @@ mod tests {
             vec![
                 GameEvent::CardAccessed { card: CardId("shock_ish".to_string()), server: ServerId::Hq, install: None },
                 GameEvent::TriggerFired { card: CardId("shock_ish".to_string()), trigger: crate::dsl::Trigger::OnAccessed },
-                GameEvent::TagsGiven { side: Side::Runner, amount: 1 },
+                GameEvent::TagsGiven { side: Side::Runner, amount: 1, had: 0 },
                 GameEvent::CardTrashed { side: Side::Corp, card: CardId("shock_ish".to_string()), by: Some(Side::Corp) },
                 GameEvent::RunCompleted { server: ServerId::Hq },
             ]
