@@ -1303,8 +1303,13 @@ fn access_prospect(state: &GameState, run: &RunState, registry: &CardRegistry, w
                     // A face-up agenda in Archives is a steal the breach
                     // cannot miss, so it is worth the points outright
                     // rather than a hidden access's 0.6 — the one reason
-                    // to run a pile the Runner has already read.
-                    if def.card_type == CardType::Agenda {
+                    // to run a pile the Runner has already read. Only one
+                    // the Runner can pay to steal: under a rezzed
+                    // Magistrate Revontulet, with no credits, it was worth
+                    // four Archives runs a turn and never a credit click,
+                    // until the game ran out of steps (the 256-seed view
+                    // sweep, seed 120).
+                    if def.card_type == CardType::Agenda && can_pay_to_steal(state, registry, def, credits) {
                         trash_gain += f64::from(def.agenda_points.unwrap_or(0)) * w.agenda_point_weight;
                     }
                 }
@@ -1322,6 +1327,26 @@ fn access_prospect(state: &GameState, run: &RunState, registry: &CardRegistry, w
         - ambushes as f64 * w.known_ambush_weight
         - trap
         + trash_gain
+}
+
+/// Whether the Runner, holding `credits`, could pay what stealing `agenda`
+/// costs right now (`continuous::steal_price`). A price with anything but
+/// credits and clicks in it is taken as unpayable: no such agenda is in
+/// the pool, and overvaluing a run is the error that stalled a game.
+fn can_pay_to_steal(state: &GameState, registry: &CardRegistry, agenda: &netrunner_core::dsl::CardDefinition, credits: u32) -> bool {
+    use netrunner_core::dsl::Cost;
+    fn needs(cost: &Cost) -> Option<(u32, u32)> {
+        match cost {
+            Cost::Credits(n) => Some((*n, 0)),
+            Cost::Clicks(n) => Some((0, *n)),
+            Cost::AllOf(parts) => parts.iter().try_fold((0, 0), |(c, k), part| needs(part).map(|(pc, pk)| (c + pc, k + pk))),
+            _ => None,
+        }
+    }
+    match netrunner_core::rules::continuous::steal_price(state, registry, agenda) {
+        None => true,
+        Some(cost) => needs(&cost).is_some_and(|(c, k)| c <= credits && k <= state.runner.resources.clicks.0),
+    }
 }
 
 /// The damage a known trap would do if accessed now: its fixed damage,
