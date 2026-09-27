@@ -195,6 +195,47 @@ pub fn identity_side(view: &ClientView, side: Side, registry: &CardRegistry) -> 
     Some(IdentitySide { flipped, copy: copy.filter(|_| secret), secret })
 }
 
+/// What an identity holds, apart from its printed text: the side up, for
+/// one that flips ([`IdentitySide::line`]); its recurring credits left
+/// (NBN: Making News, "2 of 2 recurring credits"); otherwise its counters
+/// (AU Co.'s power counters, which its own ability spends). Both clients
+/// list these — the desktop on the identity's sheet, the terminal on its
+/// identity line — and they were drawn nowhere before the client ledger
+/// named them. Empty for an identity with nothing on it.
+pub fn identity_facts(view: &ClientView, side: Side, registry: &CardRegistry) -> Vec<String> {
+    let mut facts: Vec<String> = identity_side(view, side, registry).map(|face| face.line()).into_iter().collect();
+    if side == Side::Corp {
+        let corp = &view.corp;
+        let kind = corp.identity.as_ref().and_then(|id| registry.get(id)).and_then(|card| card.counter_kind);
+        // A recurring credit is the identity's counter too (CR 1.10.5):
+        // said once, as what it is.
+        if corp.recurring_credits_max > 0 {
+            facts.push(format!("{} of {} recurring credit{} left", corp.recurring_credits, corp.recurring_credits_max, if corp.recurring_credits_max == 1 { "" } else { "s" }));
+        } else if corp.identity_counters > 0 {
+            facts.push(super::facts::counter_word(kind, corp.identity_counters));
+        }
+    }
+    facts
+}
+
+/// The words on the avatar's chip: the side up for a flip identity, else
+/// what it holds in a few words ("2 credits", "3 power counters"); `None`
+/// when there is nothing to say.
+pub fn identity_chip(view: &ClientView, side: Side, registry: &CardRegistry) -> Option<String> {
+    if let Some(face) = identity_side(view, side, registry) {
+        return Some(face.chip());
+    }
+    let corp = &view.corp;
+    if side != Side::Corp {
+        return None;
+    }
+    if corp.recurring_credits_max > 0 {
+        return Some(format!("{} of {}", corp.recurring_credits, corp.recurring_credits_max));
+    }
+    let kind = corp.identity.as_ref().and_then(|id| registry.get(id)).and_then(|card| card.counter_kind);
+    (corp.identity_counters > 0).then(|| super::facts::counter_word(kind, corp.identity_counters))
+}
+
 /// The cards `side` has removed from the game, in the order they left:
 /// Petty Cash played out of Archives, a forfeited agenda and Spin Doctor
 /// on the Corp's side; an event that says "remove this event from the
@@ -219,7 +260,10 @@ pub fn removed_from_game(view: &ClientView, side: Side) -> &[CardId] {
 /// had no place at all: Vantage Point's credit-pool lock and its changes
 /// to next turn's clicks, a score lock, a rez-cost tax on each piece of
 /// ice, Shred's hold on the run's end — each a rule in force that the
-/// person could see only by remembering the card.
+/// person could see only by remembering the card. First, when a run is
+/// announced as going elsewhere (Maintenance Access), where it will go:
+/// the run carries the destination and not the card, so that line is the
+/// run's ("This run: …").
 pub fn in_effect(view: &ClientView, registry: &CardRegistry) -> Vec<String> {
     use netrunner_core::dsl::{EndRunPrevention, Prohibition};
     use netrunner_core::rules::lingering::{Lingering, On, Until};
@@ -228,7 +272,12 @@ pub fn in_effect(view: &ClientView, registry: &CardRegistry) -> Vec<String> {
         On::Player(side) => *side,
         _ => fallback,
     };
-    view.lingering
+    // Maintenance Access: the run it started is announced as going
+    // elsewhere once it reaches Archives (`redirect_on_approach`).
+    let redirect = view.active_run.as_ref().and_then(|run| run.redirect_on_approach.map(|to| (run.server, to))).map(|(from, to)| {
+        format!("This run: when the Runner would approach {}, the attacked server becomes {} instead", super::action_map::server_name(from), super::action_map::server_name(to))
+    });
+    redirect.into_iter().chain(view.lingering
         .iter()
         .filter_map(|effect| {
             let what = match (&effect.what, &effect.on) {
@@ -263,7 +312,7 @@ pub fn in_effect(view: &ClientView, registry: &CardRegistry) -> Vec<String> {
                 Until::NextTurnOf(_) => "",
             };
             Some(format!("{}: {what}{until}", title(&effect.source)))
-        })
+        }))
         .collect()
 }
 
@@ -497,6 +546,41 @@ mod tests {
         assert_eq!(credits(&state), pool.to_string());
         state.active_run = Some(netrunner_core::rules::RunState { server: netrunner_core::rules::ServerId::Hq, bad_publicity_credits: 2, bonus_run_credits: 1, ..Default::default() });
         assert_eq!(credits(&state), format!("{pool} +3"));
+    }
+
+    /// What an identity holds is said: Making News' recurring credits
+    /// once, as credits; AU Co.'s power counters; nothing for an identity
+    /// with nothing on it.
+    #[test]
+    fn an_identitys_credits_and_counters_are_said() {
+        let registry = crate::decks::sample_deck_registry();
+        let (corp_deck, runner_deck) = sweep_decks_for_seed(0);
+        let (mut state, _) = GameState::setup(&corp_deck.to_deck(), &runner_deck.to_deck(), &registry, 0).unwrap();
+        let seen = |state: &GameState| {
+            let view = netrunner_core::view::build_client_view(state, &registry, Side::Runner);
+            (identity_facts(&view, Side::Corp, &registry), identity_chip(&view, Side::Corp, &registry))
+        };
+        state.corp.identity = Some(CardId("nbn_making_news".into()));
+        state.corp.identity_counters = 1;
+        assert_eq!(seen(&state), (vec!["1 of 2 recurring credits left".to_string()], Some("1 of 2".to_string())));
+        state.corp.identity = Some(CardId("au_co_the_gold_standard_in_clones".into()));
+        state.corp.identity_counters = 3;
+        assert_eq!(seen(&state), (vec!["3 power counters".to_string()], Some("3 power counters".to_string())));
+        state.corp.identity_counters = 0;
+        assert_eq!(seen(&state), (Vec::new(), None));
+    }
+
+    /// A Maintenance Access run says where it is going before it gets
+    /// there.
+    #[test]
+    fn a_redirected_run_says_where_it_will_go() {
+        use netrunner_core::rules::{RunState, ServerId};
+        let registry = crate::decks::sample_deck_registry();
+        let (corp_deck, runner_deck) = sweep_decks_for_seed(0);
+        let (mut state, _) = GameState::setup(&corp_deck.to_deck(), &runner_deck.to_deck(), &registry, 0).unwrap();
+        state.active_run = Some(RunState { server: ServerId::Archives, redirect_on_approach: Some(ServerId::Hq), ..Default::default() });
+        let view = netrunner_core::view::build_client_view(&state, &registry, Side::Corp);
+        assert_eq!(in_effect(&view, &registry), ["This run: when the Runner would approach Archives, the attacked server becomes HQ instead"]);
     }
 
     #[test]

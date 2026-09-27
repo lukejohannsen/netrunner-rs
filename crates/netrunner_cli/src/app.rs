@@ -50,6 +50,8 @@ pub struct App {
     /// ActionLog`. Remote play had no log at all until the match driver
     /// grew a `MatchHistory` the server could forward.
     pub action_log: Vec<String>,
+    /// The last log entry the server sent this seat (`RenderableView::last_entry`).
+    last_entry: Option<netrunner_client::play::PublicHistoryEntry>,
     /// The connection is down — reconnecting, or gone for good — so
     /// nothing is submitted: an action chosen from the last view may be
     /// stale by the time the seat is back.
@@ -107,6 +109,7 @@ impl App {
             game_ended: None,
             rated: None,
             action_log: Vec::new(),
+            last_entry: None,
             connection_lost: false,
             connection_notice: None,
             link: None,
@@ -228,7 +231,8 @@ impl App {
                     self.view = Some(*view);
                 }
                 ServerMessage::ActionLog(entry) => {
-                    push_log_line(&mut self.action_log, &entry, &self.registry, self.view.as_ref())
+                    push_log_line(&mut self.action_log, &entry, &self.registry, self.view.as_ref());
+                    self.last_entry = Some(*entry);
                 }
                 ServerMessage::ActionRejected { reason } => {
                     self.breaking = None;
@@ -433,6 +437,13 @@ pub trait RenderableView {
     /// The running action log. Both paths have one now, so both render the
     /// same four-region layout.
     fn action_log(&self) -> &[String];
+    /// The masked log entry that produced the view on the board, where the
+    /// surface keeps one: a choice parked by that action may be about a
+    /// card only its log names (Méliès U's look at R&D,
+    /// `board::Prompt::looked_at`). `None` where there is none to ask.
+    fn last_entry(&self) -> Option<&netrunner_client::play::PublicHistoryEntry> {
+        None
+    }
     /// What the board may act on right now, and in which mood, so a card
     /// the engine will accept something on is drawn in colour
     /// (`netrunner_client::board::affordance`). Built from the view the
@@ -677,6 +688,10 @@ impl RenderableView for App {
 
     fn action_log(&self) -> &[String] {
         &self.action_log
+    }
+
+    fn last_entry(&self) -> Option<&netrunner_client::play::PublicHistoryEntry> {
+        self.last_entry.as_ref()
     }
 
     fn last_rejection(&self) -> Option<&str> {

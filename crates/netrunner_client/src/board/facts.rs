@@ -169,7 +169,7 @@ pub fn encounter_subroutines(view: &ClientView) -> Option<Encounter> {
     })
 }
 
-fn counter_word(kind: Option<CounterKind>, n: u32) -> String {
+pub(crate) fn counter_word(kind: Option<CounterKind>, n: u32) -> String {
     let name = match kind {
         Some(CounterKind::Virus) => "virus counter",
         Some(CounterKind::Power) => "power counter",
@@ -265,7 +265,18 @@ pub fn tile_title(view: &ClientView, id: InstallId, registry: &CardRegistry) -> 
             parts.push("face down".to_string());
         }
     }
+    if seen_face_down(view, card) {
+        parts.push("seen".to_string());
+    }
     parts.join(" · ")
+}
+
+/// Whether `card` is one of the Corp's own face-down cards the Runner has
+/// already seen — asked from the Corp's chair only: the Runner knows what
+/// they saw (the view keeps the card named to them), and a spectator is
+/// told nothing the Corp is told about its own cards.
+pub fn seen_face_down(view: &ClientView, card: &PublicInstalledCard) -> bool {
+    view.viewer.is(netrunner_core::rules::Side::Corp) && !card.rezzed && card.seen_by_runner
 }
 
 /// A Corp tile's advancement tokens and counters, in [`tile_label`]'s
@@ -319,6 +330,11 @@ pub fn install_facts(view: &ClientView, id: InstallId, registry: &CardRegistry) 
                 (false, Some(def), _) => lines.push(format!("Unrezzed — rez cost {}", def.cost)),
                 (false, None, _) if card.slot == InstallSlot::Ice => lines.push("Unrezzed — the Corp may rez it as it is approached".to_string()),
                 (false, None, _) => lines.push("Face down — unrezzed; an agenda, an asset or an upgrade".to_string()),
+            }
+            // To the Corp: a card still face down that the Runner has
+            // already seen, so it is no bluff (`seen_by_runner`).
+            if seen_face_down(view, card) {
+                lines.push("The Runner has seen it — accessed, and still face down".to_string());
             }
             if let Some(def) = def {
                 if let (Some(points), Some(need)) = (def.agenda_points, def.advancement_requirement) {
@@ -637,6 +653,31 @@ mod tests {
         assert!(!tile_title(&corp, InstallId(901), &registry).contains("faceup"));
         let runner = netrunner_core::view::build_client_view(&state, &registry, Side::Runner);
         assert!(tile_title(&runner, InstallId(901), &registry).contains("face down"));
+    }
+
+    /// To the Corp, a face-down card the Runner has already seen is marked
+    /// "seen" on its tile and says so on its sheet; to the Runner nothing
+    /// is added, since they know what they saw.
+    #[test]
+    fn the_corp_is_told_which_face_down_cards_the_runner_has_seen() {
+        let registry = crate::decks::sample_deck_registry();
+        let (corp_deck, runner_deck) = sweep_decks_for_seed(0);
+        let (mut state, _) = GameState::setup(&corp_deck.to_deck(), &runner_deck.to_deck(), &registry, 0).unwrap();
+        state.corp.installed = vec![netrunner_core::rules::InstalledCard {
+            install_id: InstallId(900),
+            card: CardId("pad_campaign".into()),
+            server: netrunner_core::rules::ServerId::Remote(0),
+            seen_by_runner: true,
+            ..Default::default()
+        }];
+        let corp = netrunner_core::view::build_client_view(&state, &registry, Side::Corp);
+        assert!(tile_title(&corp, InstallId(900), &registry).ends_with(" · seen"), "{}", tile_title(&corp, InstallId(900), &registry));
+        assert!(install_facts(&corp, InstallId(900), &registry).unwrap().iter().any(|line| line.starts_with("The Runner has seen it")));
+        let runner = netrunner_core::view::build_client_view(&state, &registry, Side::Runner);
+        assert!(!tile_title(&runner, InstallId(900), &registry).contains("seen"));
+        state.corp.installed[0].rezzed = true;
+        let corp = netrunner_core::view::build_client_view(&state, &registry, Side::Corp);
+        assert!(!tile_title(&corp, InstallId(900), &registry).contains("seen"), "a rezzed card is seen by everyone");
     }
 
     #[test]

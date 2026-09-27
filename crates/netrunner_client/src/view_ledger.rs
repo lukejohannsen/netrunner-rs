@@ -68,8 +68,8 @@ fn every_field_of_the_view_is_accounted_for(view: ClientView) {
         clicks: _,              // drawn: hud::readouts
         agenda_points: _,       // drawn: hud::readouts
         bad_publicity: _,       // drawn: hud::readouts
-        recurring_credits: _,   // OWED: an identity's recurring credits, on its sheet (client ledger)
-        recurring_credits_max: _, // OWED: with recurring_credits
+        recurring_credits: _,   // drawn: hud::identity_facts / identity_chip ("2 of 2 recurring credits left")
+        recurring_credits_max: _, // drawn: with recurring_credits
         hq_count: _,            // drawn: HQ's column header, the terminal's server line
         hq_cards: _,            // drawn: the Corp's own hand in both clients
         rd_count: _,            // drawn: R&D's column header, the terminal's server line
@@ -78,7 +78,7 @@ fn every_field_of_the_view_is_accounted_for(view: ClientView) {
         scored_agendas,         // below
         scored_worth: _,        // drawn: hud::score_area, each row's points
         removed_from_game: _,   // drawn: under Archives' sheet; the terminal's identity line and card picker
-        identity_counters: _,   // OWED: AU Co.'s power counters on the identity, on its sheet (client ledger)
+        identity_counters: _,   // drawn: hud::identity_facts / identity_chip (AU Co.'s power counters)
         identity_flipped: _,    // drawn: hud::identity_side — the avatar chip, the identity sheet, the terminal's identity line
         identity_copy: _,       // drawn: hud::identity_side ("Side 2")
         once_per_turn_used: _,  // engine's: a use limit the action list already honours; board::rig tells copies apart by it
@@ -123,7 +123,7 @@ fn every_field_of_the_view_is_accounted_for(view: ClientView) {
             card: _,               // drawn: the tile's face, or its back when hidden
             advancement_tokens: _, // drawn: board::facts tile_tokens
             counters: _,           // drawn: board::facts tile_tokens
-            seen_by_runner: _,     // OWED: the Corp's facedown cards the Runner has seen, marked (client ledger)
+            seen_by_runner: _,     // drawn: facts::seen_face_down — "seen" on the Corp's tile, a line on its sheet, the terminal's server line
         } in ice.into_iter().chain(root)
         {}
     }
@@ -162,7 +162,7 @@ fn every_field_of_the_view_is_accounted_for(view: ClientView) {
         declared_successful: _,  // drawn: board::onward's words for the run's next step
         bad_publicity_credits: _, // drawn: hud::readouts, beside the Runner's credits
         bonus_run_credits: _,    // drawn: hud::readouts, beside the Runner's credits
-        redirect_on_approach: _, // OWED: Maintenance Access's announced destination, during its run (client ledger)
+        redirect_on_approach: _, // drawn: hud::in_effect ("This run: … the attacked server becomes HQ instead")
         fully_broken: _,         // drawn: every subroutine's broken mark on the encountered ice says it (board::facts)
     }) = active_run
     {

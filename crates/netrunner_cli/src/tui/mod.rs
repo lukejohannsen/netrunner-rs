@@ -544,6 +544,7 @@ fn drive_local(
                     Prompted::TookBack => {
                         if let Some(rewound) = session.rewind() {
                             pop_log_entries(&mut ui.action_log, rewound.removed, "You took that back.");
+                            ui.last_entry = session.last_entry_for(human_side);
                             ui.asking_again = true;
                             ui.run_pass.stop();
                         }
@@ -590,6 +591,7 @@ fn log_last(session: &Session, ui: &mut LocalUiState, human_side: Side) {
     ui.run_pass.see(&after);
     if let Some(entry) = session.last_entry_for(human_side) {
         push_log_line(&mut ui.action_log, &entry, &ui.registry, Some(&after));
+        ui.last_entry = Some(entry);
     }
 }
 
@@ -738,6 +740,8 @@ struct LocalUiState {
     view: Option<ClientView>,
     selected: usize,
     action_log: Vec<String>,
+    /// The human seat's last masked log entry (`RenderableView::last_entry`).
+    last_entry: Option<netrunner_client::play::PublicHistoryEntry>,
     /// The live lesson step's filter over `view.legal_actions`, as handed
     /// over by `LessonStep::Prompt`. Empty outside a lesson.
     ///
@@ -792,6 +796,7 @@ impl LocalUiState {
             view: None,
             selected: 0,
             action_log: Vec::new(),
+            last_entry: None,
             allowed: Vec::new(),
             show_all: false,
             coaching: None,
@@ -1024,6 +1029,10 @@ impl RenderableView for LocalUiState {
         &self.action_log
     }
 
+    fn last_entry(&self) -> Option<&netrunner_client::play::PublicHistoryEntry> {
+        self.last_entry.as_ref()
+    }
+
     fn last_rejection(&self) -> Option<&str> {
         self.last_rejection.as_deref()
     }
@@ -1109,7 +1118,8 @@ fn draw_frame(frame: &mut Frame, ui: &impl RenderableView, game_over: Option<(Si
 
 /// The card a choice is about, when it is a card and not a place: the
 /// card under the cursor of a card selection ("Select Hedge Fund" shows
-/// Hedge Fund), or the card an install from a card's text is placing.
+/// Hedge Fund), the card just looked at that a choice asks about, or the
+/// card an install from a card's text is placing.
 /// Drawn like an access, over the board with the actions pane still
 /// live, because the person cannot choose between cards by their names.
 /// Not the card *asking* (`Prompt::card`'s other answer): a run on a
@@ -1123,6 +1133,11 @@ fn card_in_question(view: &ClientView, ui: &impl RenderableView) -> Option<(Stri
         let candidate = selection.candidate(position)?;
         let title = if candidate.selected { format!("Selected — {}", selection.display(candidate)) } else { selection.display(candidate) };
         return Some((title, face(candidate.card.as_ref()?)?));
+    }
+    // A choice about a card just looked at (Méliès U's "You may trash that
+    // card"): the card looked at, which only the chooser's log names.
+    if let Some(card) = netrunner_client::board::Prompt::looked_at(view, ui.last_entry()) {
+        return Some((format!("You looked at {}", card_title(&card, registry)), face(&card)?));
     }
     let placement = Placement::of(view, registry)?;
     Some((format!("Installing {}", placement.card_name()), face(placement.card()?)?))
@@ -1394,9 +1409,10 @@ fn draw_board(frame: &mut Frame, area: Rect, app: &impl RenderableView) {
     );
 }
 
-/// A block's first line: whose identity it is and, for one with more
-/// than one side, which is up (`hud::IdentitySide::line` — Méliès U's
-/// copy, Dewi's flip), then what that side has removed from the game.
+/// A block's first line: whose identity it is and what it holds
+/// (`hud::identity_facts` — the side up for Méliès U or Dewi, Making News'
+/// recurring credits, AU Co.'s counters), then what that side has removed
+/// from the game.
 /// Always there, both parts at zero too, so nothing under it moves when
 /// an identity flips or a card leaves the game. The board named neither
 /// identity until this line.
@@ -1407,7 +1423,7 @@ fn identity_line(view: &ClientView, side: Side, registry: &CardRegistry) -> Line
         Side::Runner => view.runner.identity.as_ref(),
     };
     let name = identity.map_or_else(|| "—".to_string(), |id| card_title(id, registry));
-    let face = hud::identity_side(view, side, registry).map(|face| format!(" · {}", face.line())).unwrap_or_default();
+    let face: String = hud::identity_facts(view, side, registry).into_iter().map(|fact| format!(" · {fact}")).collect();
     let removed = hud::removed_from_game(view, side);
     let removed = match removed.len() {
         0 => "none".to_string(),
@@ -1482,6 +1498,8 @@ fn format_server(server: &ServerView, view: &ClientView, registry: &CardRegistry
         // (`board::rig::hosted_on`); the rig's line calls it a ghost.
         let hosted: Vec<String> = netrunner_client::board::rig::hosted_on(view, card.install_id).into_iter().map(|trojan| card_title(&trojan.card, registry)).collect();
         let hosts = if hosted.is_empty() { String::new() } else { format!(" [hosts {}]", hosted.join(", ")) };
+        // The Corp's own face-down card the Runner has already seen.
+        let rez = if netrunner_client::board::facts::seen_face_down(view, card) { format!("{rez}, seen by the Runner") } else { rez.to_string() };
         if card.advancement_tokens > 0 {
             format!("{label} ({rez}, {} adv{counters}){hosts}", card.advancement_tokens)
         } else {
@@ -1828,6 +1846,43 @@ mod tests {
         assert!(screen.contains("Identity: Nebula Talent Management: Making Stars · Its flip side is up   Removed from the game: none"), "{screen}");
         assert!(screen.contains("Removed from the game: Sure Gamble"), "{screen}");
         assert!(screen.contains("In effect — Aircheck: the Runner cannot spend or lose credits"), "{screen}");
+    }
+
+    /// A choice about a card just looked at draws that card over the
+    /// board, as the desktop's pop-up shows it: Méliès U's "You may trash
+    /// that card" is about the top of R&D, which only the Corp's log names.
+    #[test]
+    fn a_choice_after_a_look_draws_the_card_looked_at() {
+        use netrunner_core::dsl::CardId;
+        use netrunner_core::rules::{ConcealedAction, GameEvent, PendingChoiceResume, PendingDecision, PublicAction};
+        use netrunner_core::view::build_client_view;
+
+        let registry = decks::sample_deck_registry();
+        let corp_deck = netrunner_core::decks::by_id("discretion_advised").unwrap().to_deck();
+        let runner_deck = netrunner_core::decks::by_id("stolen_goods").unwrap().to_deck();
+        let (mut state, _events) = GameState::setup(&corp_deck, &runner_deck, &registry, 3).unwrap();
+        state.pending_decision = Some(PendingDecision::ChooseEffect {
+            chooser: Side::Corp,
+            options: Vec::new(),
+            option_texts: Vec::new(),
+            source_card: None,
+            prompting_card: Some(CardId("melies_u_only_the_brightest".into())),
+            source_install: None,
+            resume: PendingChoiceResume::None,
+        });
+        let view = build_client_view(&state, &registry, Side::Corp);
+        let mut ui = LocalUiState::new(registry, Side::Corp);
+        ui.last_entry = Some(netrunner_client::play::PublicHistoryEntry {
+            turn_number: 1,
+            side: Side::Runner,
+            action: PublicAction::Concealed(ConcealedAction::ChoosingSecretly),
+            events: vec![GameEvent::CardsLookedAt { side: Side::Corp, deck: Side::Corp, cards: vec![CardId("hedge_fund".into())] }],
+        });
+        ui.begin_decision(view);
+        let mut terminal = Terminal::new(TestBackend::new(200, 50)).unwrap();
+        terminal.draw(|frame| draw_frame(frame, &ui, None)).unwrap();
+        let rendered = format!("{:?}", terminal.backend().buffer());
+        assert!(rendered.contains("You looked at Hedge Fund"), "the card looked at is drawn");
     }
 
     /// The player's own hand is drawn, and only theirs: the same position

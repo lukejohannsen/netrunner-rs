@@ -709,17 +709,22 @@ impl Prompt {
     /// parked by the same action as the look, so a look from an earlier
     /// action never stands in for a later question.
     pub fn card_after(view: &ClientView, registry: &CardRegistry, entry: Option<&netrunner_session::PublicHistoryEntry>) -> Option<CardId> {
+        Prompt::looked_at(view, entry).or_else(|| Prompt::card(view, registry))
+    }
+
+    /// The card a choice parked by `entry` is about because its chooser
+    /// just looked at it — [`Prompt::card_after`]'s own answer, for a
+    /// client that shows no asking card (the terminal draws only the card
+    /// in question, never the one asking).
+    pub fn looked_at(view: &ClientView, entry: Option<&netrunner_session::PublicHistoryEntry>) -> Option<CardId> {
         let chooser = match &view.pending_decision {
-            Some(PendingDecision::ChooseEffect { chooser, .. }) if view.pending_payment.is_none() => *chooser,
-            _ => return Prompt::card(view, registry),
+            Some(PendingDecision::ChooseEffect { chooser, .. }) if view.pending_payment.is_none() && view.viewer.is(*chooser) => *chooser,
+            _ => return None,
         };
-        let looked = entry.and_then(|entry| {
-            entry.events.iter().rev().find_map(|event| match event {
-                netrunner_core::rules::GameEvent::CardsLookedAt { side, cards, .. } if *side == chooser && view.viewer.is(chooser) => cards.first().cloned(),
-                _ => None,
-            })
-        });
-        looked.or_else(|| Prompt::card(view, registry))
+        entry?.events.iter().rev().find_map(|event| match event {
+            netrunner_core::rules::GameEvent::CardsLookedAt { side, cards, .. } if *side == chooser => cards.first().cloned(),
+            _ => None,
+        })
     }
 }
 

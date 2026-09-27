@@ -406,8 +406,9 @@ pub struct Avatar(pub Side);
 /// while.
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
 pub struct InEffect;
-/// The chip on a flip identity's disc naming the side that is up
-/// ("Front", "Flipped", "Side 2" — `hud::IdentitySide::chip`).
+/// The chip on an identity's disc: the side up for one that flips
+/// ("Front", "Flipped", "Side 2"), else what it holds ("2 of 2",
+/// "3 power counters") — `hud::identity_chip`.
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
 pub struct IdentityChip(pub Side);
 /// A side's avatar bar, and whether it is lit for that side's turn.
@@ -2426,8 +2427,12 @@ fn spawn_avatar_bar(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &Cli
                 // Which side of a flip identity is up, on the disc's foot
                 // over the ring: only that side is active (CR 3.1.1a), and
                 // the view had said so since Dewi with nothing drawing it.
-                // Absolute, so the bar's rule holds — nothing in it moves.
-                if let Some(face) = hud::identity_side(view, side, &core.registry) {
+                // An identity that does not flip says what it holds there
+                // instead — Making News' recurring credits, AU Co.'s power
+                // counters (`hud::identity_chip`). Absolute, so the bar's
+                // rule holds — nothing in it moves.
+                if let Some(words) = hud::identity_chip(view, side, &core.registry) {
+                    let flipped = hud::identity_side(view, side, &core.registry).is_some_and(|face| face.flipped);
                     disc_node
                         .spawn((
                             Node { position_type: PositionType::Absolute, left: px(0), right: px(0), bottom: px(0), justify_content: JustifyContent::Center, ..default() },
@@ -2438,11 +2443,11 @@ fn spawn_avatar_bar(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &Cli
                                 IdentityChip(side),
                                 Node { padding: UiRect::axes(px(8), px(1)), border: UiRect::all(px(1)), border_radius: BorderRadius::MAX, ..default() },
                                 BackgroundColor(theme.glass_strong),
-                                BorderColor::all(if face.flipped { colour } else { theme.glass_border }),
+                                BorderColor::all(if flipped { colour } else { theme.glass_border }),
                                 bevy::picking::Pickable::IGNORE,
                             ))
                             .with_children(|chip| {
-                                chip.spawn((Text::new(face.chip()), theme.font(layout::BAR_WORD * 0.8), TextColor(theme.text), bevy::picking::Pickable::IGNORE));
+                                chip.spawn((Text::new(words), theme.font(layout::BAR_WORD * 0.8), TextColor(theme.text), bevy::picking::Pickable::IGNORE));
                             });
                         });
                 }
@@ -4679,12 +4684,14 @@ fn card_sheet(panel: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore
 }
 
 /// A side's identity: the card alone, as `card_sheet` draws any card,
-/// unless it has more than one side — then which side is up beside it
-/// (`hud::IdentitySide::line`), because the printed face shows every side
-/// and only the one up is active (CR 3.1.1a).
+/// unless it holds something the face cannot show — then that beside it
+/// (`hud::identity_facts`): which side is up, because the printed face
+/// shows every side and only the one up is active (CR 3.1.1a), its
+/// recurring credits left, its counters.
 #[allow(clippy::too_many_arguments)]
 fn identity_sheet(panel: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore, images: &CardImages, game: &Game, side: Side, id: &CardId) {
-    let Some((def, face)) = core.registry.get(id).zip(game.view.as_ref().and_then(|view| hud::identity_side(view, side, &core.registry))) else {
+    let facts = game.view.as_ref().map(|view| hud::identity_facts(view, side, &core.registry)).unwrap_or_default();
+    let Some(def) = core.registry.get(id).filter(|_| !facts.is_empty()) else {
         card_sheet(panel, theme, core, images, id);
         return;
     };
@@ -4693,7 +4700,9 @@ fn identity_sheet(panel: &mut ChildSpawnerCommands, theme: &Theme, core: &Client
         spawn_face(row, theme, &Face::of(def), FaceSize::Large, image, ());
         row.spawn((Node { flex_grow: 1.0, min_width: px(0), flex_direction: FlexDirection::Column, row_gap: px(8), ..default() },)).with_children(|column| {
             column.spawn(widgets::label(theme, "State"));
-            column.spawn((InstallFact, Text::new(face.line()), theme.font(size::SMALL), TextColor(theme.text), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
+            for line in facts {
+                column.spawn((InstallFact, Text::new(line), theme.font(size::SMALL), TextColor(theme.text), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
+            }
         });
     });
 }
