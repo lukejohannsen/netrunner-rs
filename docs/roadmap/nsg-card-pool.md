@@ -365,7 +365,7 @@ Division.
    Sentry:** Vicsek, alone, with the change to `CardType::Ice` it needs,
    which the rest of the unmodelable ice (Loot Box, Rime, Konjin,
    Excalibur, Lycian Multi-Munition) then reuse (built, below).
-3. **Turn-log counts and standing kinds** (3a built, below; 3b next) (`PlayCost`, `AgendaPoints` and
+3. **Turn-log counts and standing kinds** (3a and 3b built, below) (`PlayCost`, `AgendaPoints` and
    `StealCost` are the `ContinuousKind` words, each a new kind held to the
    DSL Growth Rule): Chain Reaction, Underdome Irregulars, Reverb, Hype
    Machine, Tailgate, Perfect Recall, The Red Room, Lotus Haze, Magistrate
@@ -697,6 +697,66 @@ the search-shuffle fix Let Them Dream's R&D search needed.
   which `--all-matchups` never plays). The heuristic seatings move (Corp
   wins 75 → 78 of 192), the movement `determinize` makes of every new
   playable card; not re-checked card by card this stage.
+
+#### Stage 3b — turn-log counts and hosted counters (26 September 2026)
+
+`feat/vp-stage-3b-turn-counts-and-counters`: Chain Reaction, Underdome
+Irregulars, The Red Room, Perfect Recall, Lotus Haze. **One new `Effect`**
+(`PromptMoveThisCardToAnotherRoot`). Vantage Point 33 of 66;
+`VP_UNIMPLEMENTED` 38 → 33. Stage 3 is complete.
+
+- **"If you made a successful run on HQ, R&D, and Archives this turn",
+  "if a piece of ice was rezzed this turn"** are
+  `Amount::TimesThisTurnWhen { trigger, when }`: the turn-log count
+  narrowed by the same `EventFilter` a trigger's `when` uses, read through
+  `turn_log::Occurrences`. `TimesThisTurn` had named no filter because
+  `Amount` was `Copy`; dropping `Copy` broke nothing in the workspace.
+  `CardFilter::Ice` says "a piece of ice" of any type, which the log counts
+  as one kind.
+- **"Central server only"** is a declaration, `CardDefinition::
+  install_only_in` (`ServerKind::Central`/`Remote`), refused by
+  `place_corp_card` and left out of both install offers, and honoured by a
+  move (CR 8.5.12). Four later cards print "Remote server only".
+- **"During a run against another server"** is `And(DuringRun,
+  Not(RunAgainstThisServer))`, a requirement asked of the card's own
+  server at any step of the run.
+- **"The Runner cannot steal or trash copies of that card"** is a lingering
+  prohibition aimed at copies (`lingering::On::CopiesOf`, made by
+  `Effect::Prohibit { copies_of_it }` as the revealed card), and the four
+  access sites ask `continuous::cannot_about` of the card accessed, so a
+  copy the Runner may not steal may be passed.
+- **"Move 1 rezzed upgrade to the root of another server"** is the new
+  `Effect`: every existing server choice starts a run or installs a card,
+  so it parks `ChooseServer` in a third mode (`move_to_root`) and resolves
+  as `MoveThisCardToRoot`. The servers offered are the ones that exist, its
+  own excepted.
+- **The decks.** Chain Reaction for Overclock (Pay as You Go); Underdome
+  Irregulars for Overclock (Borrowed Time); The Red Room for PAD Campaign
+  and Lotus Haze for Offworld Office (A Thousand Cuts); Perfect Recall for
+  Manegarm Skunkworks (Retirement Package).
+- **Fidelity limit:** Chain Reaction's "trash 2" is two choices of one,
+  each resolved before the next. A move honours an install restriction
+  (CR 8.5.12: it "applies at all times"), so Lotus Haze never offers The
+  Red Room a remote.
+- **DSL ratio (`pool_status.py`): 23 of 71 `Effect` variants
+  single-use, 2 unused**, over 217 card files. It was 22 of 70: the new
+  `PromptMoveThisCardToAnotherRoot` is single-use (Lotus Haze), its reason
+  on the variant; everything else went into the vocabulary of what a card
+  reads (`Amount`, `CardFilter`, `EffectRequirement`) and a declaration.
+- **A gate entry, reasoned:** no agent played Chain Reaction in the 768
+  games of the deep view sweep — it needs successful runs on all three
+  centrals in one turn with a click to spare, which no agent plans and no
+  random seat completed. It is on `CARDS_RARE_WITH_SWEEP_DECKS` with that
+  reason and no batch that demands it; its per-card test is what reaches
+  it, and it stays in Pay as You Go so an agent that does make that turn
+  plays it under the sweep.
+- **Measured.** Both sweeps at 256 seeds are green (the view sweep with the
+  entry above; before it, its only failure was that gate line — no
+  deadlock, no crash). `coverage_identical.py main`: **the random seatings
+  are identical**, by view and by index — the turn-log amount, the install
+  restriction, the copies prohibition and the move change no game in the
+  pool. The heuristic seatings move (Corp wins 78 → 89 of 192), the movement `determinize`
+  makes of every new playable card; not re-checked card by card.
 
 ### 2. Rebellion Without Rehearsal — 65 cards (C 7 / V 43 / M 15)
 

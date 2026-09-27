@@ -145,6 +145,12 @@ pub enum EffectRequirement {
     /// ApproachIce`/`EncounterIce`) — e.g. Ping's "when you rez this ice
     /// during a run against this server."
     RezzedDuringRunAgainstThisServer,
+    /// A run is active against the server the checking card is installed
+    /// in, at any step — The Red Room's "use this ability only during a run
+    /// against another server" is `And(DuringRun, Not(this))`.
+    /// `RezzedDuringRunAgainstThisServer` also asks about the step (before
+    /// the server is reached), which "during a run against" does not.
+    RunAgainstThisServer,
     /// The most recent `Effect::DealDamage` **in this same resolution**
     /// discarded at least one card whose registry `cost` is odd — e.g.
     /// Diviner's subroutine ("if you trash a card this way with a printed

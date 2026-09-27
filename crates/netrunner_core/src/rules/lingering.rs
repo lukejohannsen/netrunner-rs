@@ -56,7 +56,7 @@ pub struct LingeringEffect {
 /// Lightly: the card says "the rez cost of **each piece of ice**", and a
 /// server named when the run began is the wrong server once the run is
 /// redirected (`RunState::redirect_on_approach`).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum On {
     /// One installed card — a rig card or a piece of ice; install handles
     /// are one sequence, so the handle says which.
@@ -65,6 +65,11 @@ pub enum On {
     EachIce,
     /// A player: who a prohibition binds.
     Player(Side),
+    /// Every copy of a card: a prohibition that binds its player only about
+    /// those — Perfect Recall's "the Runner cannot steal or trash copies of
+    /// that card for the remainder of this run". A copy is the same card
+    /// by id; a revealed card, so the id rides in a view unmasked.
+    CopiesOf(CardId),
 }
 
 /// What changes. Only what a card in the pool does for a duration.
@@ -169,6 +174,22 @@ pub fn listed(held: &[LingeringEffect], what: Prohibition) -> bool {
 
 fn in_force(list: &[LingeringEffect], what: Prohibition, holds: impl Fn(&LingeringEffect) -> bool) -> bool {
     list.iter().any(|effect| effect.what == Lingering::Cannot(what) && effect.on == On::Player(what.binds()) && holds(effect))
+}
+
+/// Whether a prohibition is in force about `card`: bound on its player, or
+/// on copies of `card` (Perfect Recall). The question an access asks.
+pub fn prohibits_about(state: &GameState, what: Prohibition, card: &CardId) -> bool {
+    in_force_about(&state.lingering, what, card, |effect| effect.holds(state))
+}
+
+/// [`prohibits_about`] over a view's list.
+pub fn listed_about(held: &[LingeringEffect], what: Prohibition, card: &CardId) -> bool {
+    in_force_about(held, what, card, |_| true)
+}
+
+fn in_force_about(list: &[LingeringEffect], what: Prohibition, card: &CardId, holds: impl Fn(&LingeringEffect) -> bool) -> bool {
+    in_force(list, what, &holds)
+        || list.iter().any(|effect| effect.what == Lingering::Cannot(what) && effect.on == On::CopiesOf(card.clone()) && holds(effect))
 }
 
 /// A rig card's strength before the table is asked: what it prints (as

@@ -517,7 +517,8 @@ fn install_card_candidates(state: &GameState, registry: &CardRegistry) -> Vec<Pl
             CardType::Upgrade => {
                 let mut zones = vec![ServerId::Hq, ServerId::RnD, ServerId::Archives];
                 zones.extend(remote_zones.iter().copied());
-                for zone in zones {
+                let only_in = registry.get(card_id).and_then(|card| card.install_only_in);
+                for zone in zones.into_iter().filter(|zone| only_in.is_none_or(|kind| kind.admits(*zone))) {
                     push(card_id, zone, InstallSlot::Root);
                 }
             }
@@ -780,7 +781,7 @@ fn access_flow_candidates(state: &GameState, registry: &CardRegistry) -> Vec<Pla
             // kept out of the mask entirely, matching `resolve_steal`/
             // `resolve_trash`'s own hard error, rather than offering an
             // action that would just fail.
-            let steal_and_trash_blocked = continuous::cannot(state, registry, Prohibition::StealOrTrash);
+            let steal_and_trash_blocked = continuous::cannot_about(state, registry, Prohibition::StealOrTrash, card_id);
             if !steal_and_trash_blocked && (*mandatory_steal || steal_cost.is_some()) {
                 candidates.push(PlayerAction::StealAgenda { card_id: card_id.clone() });
             }

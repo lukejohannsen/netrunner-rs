@@ -1370,6 +1370,7 @@ mod tests {
         // produce, and every option would probe as illegal.
         state.phase = GamePhase::Action(Side::Runner);
         state.pending_decision = Some(crate::rules::state::PendingDecision::ChooseServer {
+            move_to_root: false,
             install: None,
             chooser: Side::Runner,
             rez_cost_delta: 3,

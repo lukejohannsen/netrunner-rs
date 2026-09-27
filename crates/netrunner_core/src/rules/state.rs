@@ -1111,6 +1111,11 @@ pub enum PendingDecision {
         /// has. `None` for every run-shaped choice.
         #[serde(default)]
         install: Option<PendingInstallFromZone>,
+        /// The third mode: the chosen server's root receives the parking
+        /// install (`source_install`), moved rather than installed —
+        /// `Effect::PromptMoveThisCardToAnotherRoot`, Lotus Haze.
+        #[serde(default)]
+        move_to_root: bool,
         /// Seeded onto the resulting `run::RunState::on_success_effect` —
         /// see `Effect::PromptChooseServer::on_success`.
         on_success: Option<Box<Effect>>,

@@ -220,6 +220,10 @@ pub enum CardFilter {
     /// table says which server "this" was — the payer's `last_known` does,
     /// and it does not survive the park. Matches nothing unresolved.
     InRootOfThisServer,
+    /// A piece of ice, of any type — Underdome Irregulars' "if a piece of
+    /// ice was rezzed this turn". `CardType(Ice(_))` names a type, and the
+    /// turn log counts ice as ice.
+    Ice,
     /// An installed Corp card in the root of `server`: what
     /// `InRootOfThisServer` becomes when it resolves. Instance-level.
     InRootOf(ServerId),
@@ -311,6 +315,7 @@ pub fn card_matches_filter(card: &CardDefinition, filter: &CardFilter) -> bool {
         CardFilter::InAttackedServer => true,
         CardFilter::InLastRunServer => true,
         CardFilter::InRootOfThisServer | CardFilter::InRootOf(_) => true,
+        CardFilter::Ice => matches!(card.card_type, CardType::Ice(_)),
         // The definition-level half; affordability and the play
         // requirement are instance-level.
         CardFilter::PlayableOperation => card.card_type == CardType::Operation,

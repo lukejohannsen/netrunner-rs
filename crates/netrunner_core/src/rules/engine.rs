@@ -776,6 +776,10 @@ pub(crate) fn place_corp_card(
             return Err(RulesError::CardTypeMismatch { card: card_id, expected: "an agenda, asset or upgrade" });
         }
     }
+    // The Red Room's "Central server only."
+    if card_def.install_only_in.is_some_and(|kind| !kind.admits(zone)) {
+        return Err(RulesError::InstallRestricted { card: card_id });
+    }
     // Step 8.5.16c, before the cost: a remote holds one agenda or asset
     // and a root one region, so the old one goes (CR 8.5.6a, 3.6.5d), and
     // with `trash_first` whatever else the Corp picks. The second region
@@ -858,6 +862,7 @@ pub(crate) fn corp_install_destinations(state: &GameState, card_def: &crate::dsl
         CardType::Upgrade => {
             let mut zones = vec![ServerId::Hq, ServerId::RnD, ServerId::Archives];
             zones.extend(remotes);
+            zones.retain(|zone| card_def.install_only_in.is_none_or(|kind| kind.admits(*zone)));
             zones
         }
         CardType::Ice(_) => {

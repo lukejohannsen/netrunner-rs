@@ -344,6 +344,7 @@ fn kinds(filter: &CardFilter) -> Result<Vec<Kind>, String> {
     }
     let card_types = match filter {
         CardFilter::Any => return Ok(Kind::ALL.to_vec()),
+        CardFilter::Ice => return Ok(vec![Kind::Ice]),
         CardFilter::CardType(card_type) => std::slice::from_ref(card_type),
         CardFilter::CardTypeOneOf(card_types) => card_types.as_slice(),
         _ => return Err(format!("the turn counts a card by its type and nothing finer, so \"the first\" cannot be narrowed by {filter:?}")),
@@ -432,6 +433,13 @@ impl TurnLog {
 
     pub fn agenda_points_scored(&self) -> u32 {
         u32::from(self.agenda_points_scored)
+    }
+
+    /// How many of `trigger`'s moments this turn its `when` admits, as a
+    /// card on `controller`'s side means them (`Occurrences::meant_by`);
+    /// 0 for a filter finer than the log counts, which `validate` refuses.
+    pub(crate) fn times_when(&self, trigger: Trigger, when: &EventFilter, controller: Side) -> u32 {
+        Occurrences::meant_by(trigger, Some(when), controller).map_or(0, |occurrences| self.count(&occurrences))
     }
 
     fn count(&self, occurrences: &Occurrences) -> u32 {

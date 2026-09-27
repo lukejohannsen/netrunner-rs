@@ -229,6 +229,20 @@ impl CardSubtype {
     }
 }
 
+/// A kind of server, as an install restriction names one.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ServerKind {
+    Central,
+    Remote,
+}
+
+impl ServerKind {
+    /// Whether `server` is one of this kind.
+    pub fn admits(self, server: crate::rules::ServerId) -> bool {
+        matches!(server, crate::rules::ServerId::Remote(_)) == (self == ServerKind::Remote)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum CardType {
     Agenda,
@@ -432,6 +446,17 @@ pub struct CardDefinition {
     /// common case.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub additional_play_cost: Option<Cost>,
+
+    /// "Central server only." / "Remote server only." — where an upgrade
+    /// may be installed, beyond what its type allows (an agenda or an
+    /// asset is remote-only by type). The Red Room is the first; La Costa
+    /// Grid, Tranquility Home Grid, Tucana and ZATO City Grid print the
+    /// other. A declaration the install reads, like `removed_after_play`:
+    /// it is about where the card may go, not a standing effect of it. It
+    /// holds at all times, inactive or not (CR 8.5.12), so a move honours
+    /// it too (`Effect::MoveThisCardToRoot` and Lotus Haze's offer).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub install_only_in: Option<ServerKind>,
 
     /// "N[recurring-credit]" as the card prints it — Azimat's and Mahkota
     /// Langit Grid's 2, NBN: Making News's 2. Comprehensive Rules 1.10.5a:
@@ -895,6 +920,7 @@ impl Default for CardDefinition {
             rez_alternatives: Vec::new(),
             influence_limit: None,
             additional_play_cost: None,
+            install_only_in: None,
             click_breakable: false,
             counter_kind: None,
             numeric_id: None,
@@ -1576,7 +1602,7 @@ mod tests {
             strength: Some(1),
             subroutines: vec![SubroutineDef {
                 text: "The Runner cannot steal or trash Corp cards.".to_string(),
-                effect: Effect::Sequence(vec![Effect::Prohibit { what: Prohibition::StealOrTrash, until }]),
+                effect: Effect::Sequence(vec![Effect::Prohibit { what: Prohibition::StealOrTrash, until, copies_of_it: false }]),
                 only_breakable_by: None,
             }],
             ..CardDefinition::default()

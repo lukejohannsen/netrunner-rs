@@ -692,7 +692,7 @@ pub fn resolve_steal(
     card_id: &CardId,
     registry: &CardRegistry,
 ) -> Result<Vec<GameEvent>, RulesError> {
-    if continuous::cannot(state, registry, Prohibition::StealOrTrash) {
+    if continuous::cannot_about(state, registry, Prohibition::StealOrTrash, card_id) {
         return Err(RulesError::StealAndTrashPreventedThisRun);
     }
     let pending = require_pending(state, card_id)?;
@@ -923,7 +923,7 @@ pub fn resolve_trash(
     card_id: &CardId,
     registry: &CardRegistry,
 ) -> Result<Vec<GameEvent>, RulesError> {
-    if continuous::cannot(state, registry, Prohibition::StealOrTrash) {
+    if continuous::cannot_about(state, registry, Prohibition::StealOrTrash, card_id) {
         return Err(RulesError::StealAndTrashPreventedThisRun);
     }
     let pending = require_pending(state, card_id)?;
@@ -956,7 +956,7 @@ pub fn resolve_pass(
     registry: &CardRegistry,
 ) -> Result<Vec<GameEvent>, RulesError> {
     let pending = require_pending(state, card_id)?;
-    let steal_blocked = continuous::cannot(state, registry, Prohibition::StealOrTrash);
+    let steal_blocked = continuous::cannot_about(state, registry, Prohibition::StealOrTrash, card_id);
     if pending.mandatory_steal && !steal_blocked {
         return Err(RulesError::MandatoryStealViolation { card: card_id.clone() });
     }

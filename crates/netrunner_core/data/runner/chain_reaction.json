@@ -1,0 +1,106 @@
+{
+  "id": "chain_reaction",
+  "title": "Chain Reaction",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 1,
+  "play_requirement": {
+    "And": [
+      {
+        "And": [
+          {
+            "AmountAtLeast": [
+              {
+                "TimesThisTurnWhen": {
+                  "trigger": "OnSuccessfulRun",
+                  "when": {
+                    "Server": [
+                      "Hq"
+                    ]
+                  }
+                }
+              },
+              1
+            ]
+          },
+          {
+            "AmountAtLeast": [
+              {
+                "TimesThisTurnWhen": {
+                  "trigger": "OnSuccessfulRun",
+                  "when": {
+                    "Server": [
+                      "RnD"
+                    ]
+                  }
+                }
+              },
+              1
+            ]
+          }
+        ]
+      },
+      {
+        "AmountAtLeast": [
+          {
+            "TimesThisTurnWhen": {
+              "trigger": "OnSuccessfulRun",
+              "when": {
+                "Server": [
+                  "Archives"
+                ]
+              }
+            }
+          },
+          1
+        ]
+      }
+    ]
+  },
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "PromptChooseCards": {
+            "side": "Runner",
+            "source": "OpponentInstalled",
+            "filter": "Any",
+            "min": 1,
+            "max": 1,
+            "reveal": false,
+            "shuffle_after": false,
+            "destination": "OpponentDiscard"
+          }
+        },
+        {
+          "PromptChooseCards": {
+            "side": "Runner",
+            "source": "OpponentInstalled",
+            "filter": "Any",
+            "min": 1,
+            "max": 1,
+            "reveal": false,
+            "shuffle_after": false,
+            "destination": "OpponentDiscard"
+          }
+        },
+        {
+          "PromptChooseCards": {
+            "side": "Corp",
+            "source": "OpponentInstalled",
+            "filter": "Any",
+            "min": 1,
+            "max": 1,
+            "reveal": false,
+            "shuffle_after": false,
+            "destination": "OpponentDiscard"
+          }
+        }
+      ]
+    }
+  ],
+  "numeric_id": 36001,
+  "is_playable": true
+}

@@ -578,8 +578,19 @@ pub const EVENTS_RARE_WITH_SWEEP_DECKS: &[(&str, &str, u64)] = &[
 /// do install it are the only ones where its credits compete with a run's
 /// under an agent; taking it out would pass the gate with no agent ever
 /// having reached it.
-pub const CARDS_RARE_WITH_SWEEP_DECKS: &[(&str, &str, u64)] =
-    &[("the_toolbox", "a 9[c] console in one sweep deck, installed only by a random seat: the heuristic Runner has no term for a pool card", 2048)];
+///
+/// Chain Reaction plays only after successful runs on HQ, R&D and Archives
+/// in one turn, with a click and a credit left. No agent plans three
+/// central runs, and a random one completed that turn in none of the 768
+/// games of the first deep sweep with three copies in *Pay As You Go*
+/// (Vantage Point Stage 3b), so there is no rate to set a batch from; it
+/// is demanded of no sweep this project runs, and its per-card test is
+/// what reaches it. It stays in the deck so that the day an agent does
+/// make that turn, its play is under the sweep.
+pub const CARDS_RARE_WITH_SWEEP_DECKS: &[(&str, &str, u64)] = &[
+    ("the_toolbox", "a 9[c] console in one sweep deck, installed only by a random seat: the heuristic Runner has no term for a pool card", 2048),
+    ("chain_reaction", "needs successful runs on all three centrals in one turn; 0 of 768 deep-sweep games, so no batch demands it", 1_000_000),
+];
 
 /// Every non-identity card the sample decks (`decks::matchups()`) contain,
 /// deduplicated and sorted — the universe the headless report describes
