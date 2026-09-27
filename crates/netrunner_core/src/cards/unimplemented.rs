@@ -26,12 +26,9 @@ pub(crate) const VP_UNIMPLEMENTED: &[(u32, &str)] = &[
     (36017, "Hiram “0mission” Svensson: Shadow of the Past"),
     (36018, "Aircheck"),
     (36019, "Beta Build"),
-    (36020, "Methuselah"),
-    (36021, "Touchstone"),
     (36022, "Read-Write Share"),
     (36024, "Stowaway"),
     (36025, "Word on the Street"),
-    (36032, "Caveat Emptor"),
     (36036, "Méliès U: Only the Brightest"),
     (36038, "Esca"),
     (36040, "Knowledge Seeker"),
@@ -41,7 +38,6 @@ pub(crate) const VP_UNIMPLEMENTED: &[(u32, &str)] = &[
     (36060, "Tocsin"),
     (36061, "Myōshu"),
     (36064, "Flagship"),
-    (36065, "Shackleton Grid"),
 ];
 
 /// *Rebellion Without Rehearsal* (`rwr`): tranche 2 of the NSG plan.

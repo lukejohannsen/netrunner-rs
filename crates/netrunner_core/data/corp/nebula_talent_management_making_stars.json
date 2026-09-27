@@ -13,7 +13,7 @@
           {
             "Not": "IdentityFlipped"
           },
-          { "AmountAtLeast": [{ "TimesThisTurn": "OnOperationPlayed" }, 1] }
+          { "AmountAtLeast": [{ "TimesThisTurn": "OnCardPlayed" }, 1] }
         ]
       },
       "effects": [
@@ -27,7 +27,7 @@
       ]
     },
     {
-      "trigger": "OnOperationPlayed",
+      "trigger": "OnCardPlayed",
       "subject": "Any",
       "first_each_turn": true,
       "requirement": "IdentityFlipped",

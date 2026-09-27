@@ -94,6 +94,13 @@ pub enum Lingering {
     /// third field no view carried: every bot sample taken during a Shred
     /// run believed the next "End the run" would end it.
     PreventRunEnding(EndRunPrevention),
+    /// A change to a player's click allotment for their next turn —
+    /// Aggressive Trendsetting's "+1 allotted [click] for your next turn",
+    /// Caveat Emptor's "−1 allotted [click] for their next turn" — taken
+    /// by `turn::enter_start_of_turn` as it assigns the allotment
+    /// ([`take_allotted_clicks`]). Was `CorpState::extra_clicks_next_turn`,
+    /// a field no view carried.
+    AllottedClicks(i32),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -103,6 +110,10 @@ pub enum Until {
     EndOfRun,
     /// The end of this turn, by `GameState::turn`.
     EndOfTurn(u32),
+    /// Until `side`'s next turn begins, where the effect is taken
+    /// (`Lingering::AllottedClicks`): it holds until then, and nothing
+    /// but that turn's start ends it.
+    NextTurnOf(Side),
 }
 
 impl LingeringEffect {
@@ -114,6 +125,7 @@ impl LingeringEffect {
             }),
             Until::EndOfRun => state.active_run.is_some(),
             Until::EndOfTurn(turn) => state.turn == turn,
+            Until::NextTurnOf(_) => true,
         }
     }
 }
@@ -141,7 +153,7 @@ pub fn strength(state: &GameState, on: InstallId) -> i32 {
         .filter(|effect| effect.on == On::Install(on) && effect.holds(state))
         .map(|effect| match effect.what {
             Lingering::Strength(delta) => delta,
-            Lingering::RezCost(_) | Lingering::Cannot(_) | Lingering::PreventRunEnding(_) => 0,
+            Lingering::RezCost(_) | Lingering::Cannot(_) | Lingering::PreventRunEnding(_) | Lingering::AllottedClicks(_) => 0,
         })
         .sum()
 }
@@ -158,7 +170,7 @@ pub fn ice_strength(state: &GameState, on: InstallId) -> i32 {
             .filter(|effect| effect.on == On::EachIce && effect.holds(state))
             .map(|effect| match effect.what {
                 Lingering::Strength(delta) => delta,
-                Lingering::RezCost(_) | Lingering::Cannot(_) | Lingering::PreventRunEnding(_) => 0,
+                Lingering::RezCost(_) | Lingering::Cannot(_) | Lingering::PreventRunEnding(_) | Lingering::AllottedClicks(_) => 0,
             })
             .sum::<i32>()
 }
@@ -172,7 +184,7 @@ pub fn ice_rez_cost(state: &GameState) -> i32 {
         .filter(|effect| effect.on == On::EachIce && effect.holds(state))
         .map(|effect| match effect.what {
             Lingering::RezCost(delta) => delta,
-            Lingering::Strength(_) | Lingering::Cannot(_) | Lingering::PreventRunEnding(_) => 0,
+            Lingering::Strength(_) | Lingering::Cannot(_) | Lingering::PreventRunEnding(_) | Lingering::AllottedClicks(_) => 0,
         })
         .sum()
 }
@@ -213,6 +225,20 @@ fn in_force_about(list: &[LingeringEffect], what: Prohibition, card: &CardId, ho
 /// installed) and the pumps still running on it.
 pub fn rig_strength(state: &GameState, card: &InstalledRunnerCard) -> i32 {
     card.base_strength + strength(state, card.install_id)
+}
+
+/// What the allotment changes waiting for `side`'s turn add up to, taken
+/// off the list: the turn they were for has begun.
+pub(crate) fn take_allotted_clicks(state: &mut GameState, side: Side) -> i32 {
+    let mut total = 0;
+    state.lingering.retain(|effect| match (effect.what, &effect.until) {
+        (Lingering::AllottedClicks(delta), Until::NextTurnOf(whose)) if *whose == side => {
+            total += delta;
+            false
+        }
+        _ => true,
+    });
+    total
 }
 
 /// Drops what no longer holds.

@@ -7,7 +7,7 @@
   "min_deck_size": 45,
   "triggers": [
     {
-      "trigger": "OnOperationPlayed",
+      "trigger": "OnCardPlayed",
       "subject": "Any",
       "when": {
         "Card": {

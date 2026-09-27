@@ -1,0 +1,31 @@
+{
+  "id": "touchstone",
+  "title": "Touchstone",
+  "side": "Runner",
+  "card_type": "Hardware",
+  "cost": 2,
+  "counter_kind": "Credit",
+  "pays_for": [
+    "DuringRuns"
+  ],
+  "triggers": [
+    {
+      "trigger": "OnCardPlayed",
+      "subject": "Any",
+      "when": {
+        "Card": {
+          "CardType": "Event"
+        }
+      },
+      "first_each_turn": true,
+      "effects": [
+        {
+          "AddCounters": 1
+        }
+      ],
+      "text": "The first time each turn you play an event, place 1[credit] on this hardware."
+    }
+  ],
+  "numeric_id": 36021,
+  "is_playable": true
+}

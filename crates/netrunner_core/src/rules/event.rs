@@ -335,6 +335,18 @@ pub enum GameEvent {
     PaymentChoiceOffered { side: Side },
     BadPublicityCreditsSpent { amount: u32 },
     BonusRunCreditsSpent { amount: u32 },
+    /// A payment took `amount` credits from somewhere other than `side`'s
+    /// credit pool — hosted credits, bad publicity's, a run event's, an
+    /// identity's — once per payment, whatever the pools, and beside the
+    /// events that say which. Shackleton Grid's "when the Runner spends
+    /// credits from outside their credit pool during a run against this
+    /// server": a moment of its own because no spend event was one — the
+    /// three that exist are per pool, so a payment from two pools would
+    /// have been two moments. `run_against` is the server of the run in
+    /// progress as the credits were spent, on the event because the
+    /// payer dispatches it after the effect it paid for (`ability::
+    /// dispatch_cost_events`), which may have ended the run.
+    CreditsSpentFromOutsidePool { side: Side, amount: u32, run_against: Option<ServerId> },
     /// A `PendingDecision::ChooseCards` was confirmed — `cards` is the
     /// committed selection, `revealed` mirrors the originating `Effect::
     /// PromptChooseCards::reveal`.
@@ -488,6 +500,7 @@ impl GameEvent {
             | GameEvent::TriggerFired { .. } | GameEvent::VirusCountersPurged { .. }
             | GameEvent::PaymentChoiceOffered { .. }
             | GameEvent::BadPublicityCreditsSpent { .. } | GameEvent::BonusRunCreditsSpent { .. }
+            | GameEvent::CreditsSpentFromOutsidePool { .. }
             | GameEvent::CardsSelected { .. } | GameEvent::PendingCardSelectionOffered { .. }
             | GameEvent::MemoryLimitExceeded { .. } | GameEvent::PendingServerChoiceOffered { .. }
             | GameEvent::BadPublicityGiven { .. } | GameEvent::BadPublicityRemoved { .. }

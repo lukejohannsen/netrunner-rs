@@ -293,15 +293,6 @@ pub struct CorpState {
     /// temporary per-run credit pool (`run::RunState::bad_publicity_credits`)
     /// at `engine::initiate_run`.
     pub bad_publicity: u32,
-    /// Clicks banked onto the Corp's *next* turn allotment by
-    /// `Effect::GainClicksNextTurn` (Aggressive Trendsetting), added to
-    /// the printed three by `turn::enter_start_of_turn` and zeroed as it
-    /// is spent. On `GameState` rather than `ability::ResolutionContext`
-    /// because it must outlive the resolution that banked it by a whole
-    /// turn — AGENTS.md's State Hygiene test, the same one
-    /// `last_completed_run` passes.
-    #[serde(default)]
-    pub extra_clicks_next_turn: u32,
     /// Power counters hosted on the Corp's *identity* — AU Co.: The Gold
     /// Standard in Clones, the first card in the pool to put counters
     /// somewhere that is not an install, a rig card or a scored agenda.

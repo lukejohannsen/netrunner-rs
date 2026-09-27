@@ -398,6 +398,7 @@ fn covers(word: &PaysFor, purpose: Purpose<'_>, host: Option<InstallId>, state: 
         (PaysFor::TraceAttempts, Purpose::Trace) => true,
         (PaysFor::UsingIcebreakers, Purpose::Ability(card)) => card_matches_filter(card, &crate::dsl::CardFilter::Icebreaker),
         (PaysFor::RemovingTags, Purpose::RemoveTag) => true,
+        (PaysFor::DuringRuns, _) => state.active_run.is_some(),
         (PaysFor::Installing(filter), Purpose::Install(card)) => card_matches_filter(card, filter),
         (PaysFor::RezzingInThisServer, Purpose::Rez(rezzing)) => {
             let installed = |id: InstallId| state.corp.installed.iter().find(|c| c.install_id == id);
@@ -551,8 +552,14 @@ fn pools_could_ask(state: &GameState) -> bool {
 fn class_of(state: &GameState, registry: &CardRegistry, side: Side, pool: Pool) -> Class {
     let of_card = |card: Option<&crate::dsl::CardId>| {
         let definition = card.and_then(|card| registry.get(card));
+        let words = definition.map(|d| d.pays_for.clone()).unwrap_or_default();
+        // "During runs" pays for anything while one is in progress, and a
+        // pool is only ever classed for a payment it covers — so during a
+        // run it is as broad as the credit pool, and Cyberfeeder's credit
+        // goes before Methuselah's unasked, as it would before the pool's.
+        let during_a_run = state.active_run.is_some() && words.contains(&PaysFor::DuringRuns);
         Class {
-            breadth: Breadth::Words(definition.map(|d| d.pays_for.clone()).unwrap_or_default()),
+            breadth: if during_a_run { Breadth::Anything } else { Breadth::Words(words) },
             life: if definition.is_some_and(|d| d.recurring_credits.is_some()) { Life::Turn } else { Life::Kept },
         }
     };
@@ -596,6 +603,11 @@ pub(crate) fn pay(
     state.payment_answers.drain(..planned.answers_used);
 
     let mut events = Vec::new();
+    let elsewhere: u32 = planned.spend.iter().filter(|(pool, _)| *pool != Pool::Wallet).map(|(_, spend)| spend).sum();
+    if elsewhere > 0 {
+        let run_against = state.active_run.as_ref().map(|run| run.server);
+        events.push(GameEvent::CreditsSpentFromOutsidePool { side, amount: elsewhere, run_against });
+    }
     let mut from_hosted = 0;
     for (pool, spend) in planned.spend {
         match pool {

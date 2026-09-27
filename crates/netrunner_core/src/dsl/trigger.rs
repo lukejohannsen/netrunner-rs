@@ -189,14 +189,24 @@ pub enum Trigger {
     /// being approached out. Distinct from `OnEncounter`, which needs the
     /// ice rezzed and the Runner committed to it.
     OnIceApproached,
-    /// "Whenever you play an operation" — fired against the Corp's identity
-    /// for every `GameEvent::OperationPlayed`, whatever the operation's
-    /// subtype: Nebula Talent Management: Making Stars reads every
-    /// operation. Weyland Consortium: Building a Better World reads the
-    /// transactions, with `when: Card(HasSubtype(Transaction))` — it had a
-    /// variant of its own, `OnTransactionPlayed`, until a trigger could take
-    /// a filter.
-    OnOperationPlayed,
+    /// "Whenever you play an operation", "the first time each turn you play
+    /// an event" — every `GameEvent::OperationPlayed` and
+    /// `GameEvent::EventPlayed`, heard by the player who played it, whatever
+    /// the card's subtype: Nebula Talent Management: Making Stars reads
+    /// every operation. Weyland Consortium: Building a Better World reads
+    /// the transactions, with `when: Card(HasSubtype(Transaction))` — it
+    /// had a variant of its own, `OnTransactionPlayed`, until a trigger
+    /// could take a filter.
+    ///
+    /// Was `OnOperationPlayed`, heard of operations alone. Touchstone is
+    /// the first card to hear an event played by a card other than the
+    /// event, and `OnPlay` could not be it: `OnPlay` is how the DSL spells
+    /// a play's *resolution*, a step of its own that nobody orders
+    /// (`dispatcher::dispatch_event`), so a Touchstone hearing it would
+    /// have been ordered against the event it heard. The Corp only ever
+    /// plays operations and the Runner events, so the two cards that
+    /// heard it before hear exactly what they did.
+    OnCardPlayed,
     /// "Whenever a tag is removed" — fired against the Corp's identity
     /// when the Runner loses a tag by any route (`TagRemoved`,
     /// `TagsRemoved`, `TagsCleared`). Synapse Global: Faster than Thought
@@ -240,6 +250,16 @@ pub enum Trigger {
     /// "Whenever the Runner bypasses … this ice" (Lethe), CR 6.5.8 —
     /// `GameEvent::IceBypassed`.
     OnIceBypassed,
+    /// "When the Runner spends credits from outside their credit pool
+    /// during a run against this server" (Shackleton Grid) —
+    /// `GameEvent::CreditsSpentFromOutsidePool`, once per payment, about
+    /// the server of the run it was made in, so "this server" is
+    /// `Subject::This` as it is for every other run moment. A spend
+    /// outside a run, and any spend of the Corp's, is an occurrence of
+    /// nothing until a card listens for one (`listeners::moments`).
+    /// Composition didn't work: no moment was a payment, and the three
+    /// spend events are one per pool.
+    OnCreditsSpentOutsidePool,
 }
 
 /// What a run's moment about a piece of ice says of it beyond the card —
@@ -426,7 +446,7 @@ impl Trigger {
     /// `every_trigger_is_listed_at_its_own_index` holds the two together,
     /// and its exhaustive `match` is what stops a new variant compiling
     /// until it is listed here.
-    pub const ALL: [Trigger; 33] = [
+    pub const ALL: [Trigger; 34] = [
         Trigger::OnPlay,
         Trigger::OnRunStart,
         Trigger::OnEncounter,
@@ -453,13 +473,14 @@ impl Trigger {
         Trigger::OnAbilityGainedCredits,
         Trigger::OnForfeit,
         Trigger::OnIceApproached,
-        Trigger::OnOperationPlayed,
+        Trigger::OnCardPlayed,
         Trigger::OnTagRemoved,
         Trigger::OnBadPublicityTaken,
         Trigger::OnIcePassed,
         Trigger::OnSubroutineBroken,
         Trigger::OnIceFullyBroken,
         Trigger::OnIceBypassed,
+        Trigger::OnCreditsSpentOutsidePool,
     ];
 
     /// This trigger's position in `ALL`.
@@ -481,7 +502,7 @@ impl Trigger {
             Trigger::OnPlay
             | Trigger::OnInstall
             | Trigger::OnCardInstalled
-            | Trigger::OnOperationPlayed
+            | Trigger::OnCardPlayed
             | Trigger::OnAccessed
             | Trigger::OnTrashedFromAccess
             | Trigger::OnAgendaScored
@@ -495,9 +516,12 @@ impl Trigger {
             | Trigger::OnSubroutineBroken
             | Trigger::OnIceFullyBroken
             | Trigger::OnIceBypassed => TriggerAbout::Card,
-            Trigger::OnRunStart | Trigger::OnIceApproached | Trigger::OnApproachServer | Trigger::OnSuccessfulRun | Trigger::OnRunEnded => {
-                TriggerAbout::Server
-            }
+            Trigger::OnRunStart
+            | Trigger::OnIceApproached
+            | Trigger::OnApproachServer
+            | Trigger::OnSuccessfulRun
+            | Trigger::OnRunEnded
+            | Trigger::OnCreditsSpentOutsidePool => TriggerAbout::Server,
             // A phase, a count or a player, never a card.
             Trigger::OnTurnStart
             | Trigger::OnActionPhaseEnd
@@ -540,7 +564,7 @@ impl Trigger {
             | Trigger::OnBasicDrawAction
             | Trigger::OnInstall
             | Trigger::OnCardInstalled
-            | Trigger::OnOperationPlayed
+            | Trigger::OnCardPlayed
             | Trigger::OnAdvance
             | Trigger::OnAbilityGainedCredits
             | Trigger::OnDamageDealt
@@ -568,6 +592,7 @@ impl Trigger {
             | Trigger::OnApproachServer
             | Trigger::OnSuccessfulRun
             | Trigger::OnRunEnded
+            | Trigger::OnCreditsSpentOutsidePool
             | Trigger::OnTagsGiven
             | Trigger::OnTagRemoved
             | Trigger::OnDamageAboutToResolve
@@ -588,7 +613,7 @@ mod tests {
         // Exhaustive, so a new variant stops here until it is added to
         // `Trigger::ALL` — the turn log indexes a fixed array by it.
         let listed = |trigger: Trigger| match trigger {
-            Trigger::OnPlay | Trigger::OnRunStart | Trigger::OnEncounter | Trigger::OnTurnStart | Trigger::OnAccessed | Trigger::OnTrashedFromAccess | Trigger::OnSuccessfulRun | Trigger::Paid | Trigger::OnInstall | Trigger::OnAgendaScored | Trigger::OnAgendaStolen | Trigger::OnDamageAboutToResolve | Trigger::OnRez | Trigger::OnApproachServer | Trigger::OnRunEnded | Trigger::OnBasicDrawAction | Trigger::OnTagsGiven | Trigger::OnAdvance | Trigger::OnDiscardPhaseEnd | Trigger::OnActionPhaseEnd | Trigger::OnCardInstalled | Trigger::OnDamageDealt | Trigger::OnCardsTrashedFromHq | Trigger::OnAbilityGainedCredits | Trigger::OnForfeit | Trigger::OnIceApproached | Trigger::OnOperationPlayed | Trigger::OnTagRemoved | Trigger::OnBadPublicityTaken | Trigger::OnIcePassed | Trigger::OnSubroutineBroken | Trigger::OnIceFullyBroken | Trigger::OnIceBypassed => Trigger::ALL.contains(&trigger),
+            Trigger::OnPlay | Trigger::OnRunStart | Trigger::OnEncounter | Trigger::OnTurnStart | Trigger::OnAccessed | Trigger::OnTrashedFromAccess | Trigger::OnSuccessfulRun | Trigger::Paid | Trigger::OnInstall | Trigger::OnAgendaScored | Trigger::OnAgendaStolen | Trigger::OnDamageAboutToResolve | Trigger::OnRez | Trigger::OnApproachServer | Trigger::OnRunEnded | Trigger::OnBasicDrawAction | Trigger::OnTagsGiven | Trigger::OnAdvance | Trigger::OnDiscardPhaseEnd | Trigger::OnActionPhaseEnd | Trigger::OnCardInstalled | Trigger::OnDamageDealt | Trigger::OnCardsTrashedFromHq | Trigger::OnAbilityGainedCredits | Trigger::OnForfeit | Trigger::OnIceApproached | Trigger::OnCardPlayed | Trigger::OnTagRemoved | Trigger::OnBadPublicityTaken | Trigger::OnIcePassed | Trigger::OnSubroutineBroken | Trigger::OnIceFullyBroken | Trigger::OnIceBypassed | Trigger::OnCreditsSpentOutsidePool => Trigger::ALL.contains(&trigger),
         };
         assert!(Trigger::ALL.iter().all(|trigger| listed(*trigger)));
     }

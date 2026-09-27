@@ -311,16 +311,13 @@ pub(crate) fn enter_start_of_turn(
     next.phase = GamePhase::StartOfTurn(next_side);
     next.turn += 1;
 
-    // Aggressive Trendsetting's "+1 allotted [click] for your next turn",
-    // banked during the Runner's turn and spent here — part of the
-    // allotment, so it is inside the `TurnStarted` event's `clicks` count
-    // and any `OnTurnStart` ability that adds clicks (Otto Campaign) stacks
-    // on top of it.
-    let banked = match next_side {
-        Side::Corp => std::mem::take(&mut next.corp.extra_clicks_next_turn),
-        Side::Runner => 0,
-    };
-    next.resources_mut(next_side).clicks = Clicks(clicks_for(next_side) + banked);
+    // Aggressive Trendsetting's "+1 allotted [click] for your next turn"
+    // and Caveat Emptor's "−1 allotted [click]", made on an earlier turn
+    // and taken here — part of the allotment, so inside the `TurnStarted`
+    // event's `clicks` count, and any `OnTurnStart` ability that adds
+    // clicks (Otto Campaign) stacks on top of it.
+    let changed = crate::rules::lingering::take_allotted_clicks(next, next_side);
+    next.resources_mut(next_side).clicks = Clicks(clicks_for(next_side).saturating_add_signed(changed));
 
     // Before the turn's first moment, so the new turn counts from here.
     turn_log::rotate(next);

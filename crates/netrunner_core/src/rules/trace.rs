@@ -55,7 +55,8 @@ pub(crate) fn submit_runner_bid(
         return Err(RulesError::TraceNotAwaitingRunnerBid);
     }
 
-    let mut events = ability::pay_cost(state, registry, Side::Runner, &Cost::Credits(amount), Purpose::Trace, None)?;
+    let paid = ability::pay_cost(state, registry, Side::Runner, &Cost::Credits(amount), Purpose::Trace, None)?;
+    let mut events = paid.clone();
 
     let trace = state.active_trace.take().expect("checked Some above");
     let corp_total = trace.base_strength.saturating_add(trace.corp_bid.expect("checked Some above"));
@@ -73,6 +74,11 @@ pub(crate) fn submit_runner_bid(
             registry,
         )?);
     }
+
+    // A bid mid-run from the run's credits is a spend from outside the
+    // credit pool, heard after the trace it paid for resolved
+    // (`ability::dispatch_cost_events`).
+    events.extend(ability::dispatch_cost_events(state, registry, &paid)?);
 
     if trace.resume == TraceResume::ResumeSubroutines {
         events.extend(paid_ability::resolve_encounter_ice(state, registry)?);

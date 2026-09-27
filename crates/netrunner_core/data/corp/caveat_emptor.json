@@ -1,0 +1,60 @@
+{
+  "id": "caveat_emptor",
+  "title": "Caveat Emptor",
+  "side": "Corp",
+  "card_type": "Operation",
+  "cost": 5,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Corp",
+            "options": [
+              {
+                "Sequence": [
+                  {
+                    "GainCredits": [
+                      "Corp",
+                      6
+                    ]
+                  },
+                  {
+                    "AllottedClicksNextTurn": [
+                      "Runner",
+                      -1
+                    ]
+                  }
+                ]
+              },
+              {
+                "Sequence": [
+                  {
+                    "GainCredits": [
+                      "Corp",
+                      10
+                    ]
+                  },
+                  {
+                    "AllottedClicksNextTurn": [
+                      "Runner",
+                      1
+                    ]
+                  }
+                ]
+              }
+            ],
+            "texts": [
+              "Gain 6[credit]. The Runner gets −1 allotted [click] for their next turn.",
+              "Gain 10[credit]. The Runner gets +1 allotted [click] for their next turn."
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "numeric_id": 36032,
+  "is_playable": true
+}

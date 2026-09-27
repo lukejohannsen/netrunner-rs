@@ -1342,7 +1342,7 @@ mod tests {
         };
         state.pending_decision = Some(crate::rules::state::PendingDecision::ChooseTriggerOrder {
             chooser: Side::Corp,
-            pending: vec![due(crate::dsl::Trigger::OnPlay), due(crate::dsl::Trigger::OnOperationPlayed)],
+            pending: vec![due(crate::dsl::Trigger::OnPlay), due(crate::dsl::Trigger::OnCardPlayed)],
             resume: crate::rules::state::PendingChoiceResume::None,
         });
         let mut registry = CardRegistry::new();

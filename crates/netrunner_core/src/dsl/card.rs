@@ -823,6 +823,13 @@ pub enum PaysFor {
     /// remove 1 tag". Not a card's text removing tags, which costs nothing
     /// a pool could pay.
     RemovingTags,
+    /// Anything, while a run is in progress — Methuselah's and
+    /// Touchstone's "You can spend hosted credits during runs". A word
+    /// about *when*, where the others are about *what*, so during a run a
+    /// pool that prints it is as broad as the credit pool
+    /// (`payment::class_of`), and a narrower pool (Cyberfeeder's) is spent
+    /// before it unasked.
+    DuringRuns,
 }
 
 /// Semantic checks `serde`'s structural `Deserialize` can't express on its
@@ -1054,7 +1061,7 @@ impl CardDefinition {
         }
         // A card's first-time entries share one count, so two triggers one
         // event is an occurrence of would count that event twice.
-        for (one, other) in [(Trigger::OnPlay, Trigger::OnOperationPlayed), (Trigger::OnInstall, Trigger::OnCardInstalled)] {
+        for (one, other) in [(Trigger::OnPlay, Trigger::OnCardPlayed), (Trigger::OnInstall, Trigger::OnCardInstalled)] {
             if first_time.iter().any(|triggered| triggered.trigger == one) && first_time.iter().any(|triggered| triggered.trigger == other) {
                 return Err(self.first_time_misfit(format!("one event is both a {one:?} and a {other:?}, and the card's first-time entries share a count")));
             }

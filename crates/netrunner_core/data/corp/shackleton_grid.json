@@ -1,0 +1,26 @@
+{
+  "id": "shackleton_grid",
+  "title": "Shackleton Grid",
+  "side": "Corp",
+  "card_type": "Upgrade",
+  "cost": 1,
+  "trash_cost": 3,
+  "triggers": [
+    {
+      "trigger": "OnCreditsSpentOutsidePool",
+      "subject": "This",
+      "requirement": "OncePerTurn",
+      "effects": [
+        {
+          "DealDamage": [
+            "Meat",
+            4
+          ]
+        }
+      ],
+      "text": "Once per turn → When the Runner spends credits from outside their credit pool during a run against this server, you may do 4 meat damage."
+    }
+  ],
+  "numeric_id": 36065,
+  "is_playable": true
+}

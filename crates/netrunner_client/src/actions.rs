@@ -552,7 +552,7 @@ pub fn narrate_event(
         GameEvent::TraceCorpBidSubmitted { .. } | GameEvent::TraceRunnerBidSubmitted { .. } |
         GameEvent::TriggerOrderPending { .. } | GameEvent::TriggerOrderChosen { .. } |
         GameEvent::VirusCountersPurged { .. } | GameEvent::BadPublicityCreditsSpent { .. } |
-        GameEvent::BonusRunCreditsSpent { .. } | GameEvent::CardsSelected { .. } |
+        GameEvent::BonusRunCreditsSpent { .. } | GameEvent::CreditsSpentFromOutsidePool { .. } | GameEvent::CardsSelected { .. } |
         GameEvent::PendingCardSelectionOffered { .. } | GameEvent::PendingServerChoiceOffered { .. } |
         GameEvent::HandKept { .. } | GameEvent::MulliganTaken { .. } | GameEvent::AdditionalAccessGranted {
         .. } | GameEvent::AccessReplacementSet { .. } | GameEvent::AccessReplaced { .. } |

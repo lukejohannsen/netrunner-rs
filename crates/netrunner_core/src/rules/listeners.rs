@@ -106,15 +106,18 @@ pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
         Moment { trigger, about, of: Some(Side::Runner), ice: Some(facts) }
     };
     match event {
-        GameEvent::EventPlayed { side, card: played } => vec![moment(Trigger::OnPlay, &card(played, None), Some(*side))],
+        GameEvent::EventPlayed { side, card: played } => {
+            let about = card(played, None);
+            vec![moment(Trigger::OnPlay, &about, Some(*side)), moment(Trigger::OnCardPlayed, &about, Some(*side))]
+        }
 
         // What kind of operation, program or server is the listening card's
         // to ask (`TriggeredEffect::when`), not a second moment: "whenever
-        // you play a transaction" is `OnOperationPlayed` heard by a card
+        // you play a transaction" is `OnCardPlayed` heard by a card
         // that means transactions.
         GameEvent::OperationPlayed { side, card: played, .. } => {
             let about = card(played, None);
-            vec![moment(Trigger::OnPlay, &about, Some(*side)), moment(Trigger::OnOperationPlayed, &about, Some(*side))]
+            vec![moment(Trigger::OnPlay, &about, Some(*side)), moment(Trigger::OnCardPlayed, &about, Some(*side))]
         }
 
         GameEvent::ProgramInstalled { side, card: installed, .. }
@@ -194,6 +197,13 @@ pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
         }
         GameEvent::IceFullyBroken { position, .. } => vec![ice_moment(Trigger::OnIceFullyBroken, *position, IceFacts::default())],
         GameEvent::IceBypassed { position, .. } => vec![ice_moment(Trigger::OnIceBypassed, *position, IceFacts::default())],
+        // Only the Runner's spending is anyone's trigger, and only during a
+        // run: Shackleton Grid's "during a run against this server" is the
+        // moment's server, as "this server" is for every run moment.
+        GameEvent::CreditsSpentFromOutsidePool { side: Side::Runner, run_against: Some(server), .. } => {
+            vec![moment(Trigger::OnCreditsSpentOutsidePool, &About::Server(*server), Some(Side::Runner))]
+        }
+        GameEvent::CreditsSpentFromOutsidePool { .. } => Vec::new(),
         // Only the ordinary conclusions: a flatline or an agenda win
         // mid-access ends the game, and nothing resolves after that.
         GameEvent::RunCompleted { server } | GameEvent::RunJackedOut { server } | GameEvent::RunEndedByEffect { server } => {
@@ -569,7 +579,7 @@ mod tests {
     fn an_asset_that_reacts_to_an_operation_being_played_is_asked() {
         let registry = registry(vec![
             listens("hedge_fund", Side::Corp, CardType::Operation, Trigger::OnPlay, Some(Subject::This)),
-            listens("press_office", Side::Corp, CardType::Asset, Trigger::OnOperationPlayed, Some(Subject::Any)),
+            listens("press_office", Side::Corp, CardType::Asset, Trigger::OnCardPlayed, Some(Subject::Any)),
         ]);
         let mut state = GameState { phase: GamePhase::Action(Side::Corp), ..Default::default() };
         state.corp.installed = vec![on_the_table("press_office", 1, ServerId::Remote(0), true)];

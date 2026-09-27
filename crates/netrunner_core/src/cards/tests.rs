@@ -720,7 +720,7 @@ fn scorched_earth_requires_a_tagged_runner_and_deals_four_meat_damage() {
 /// pool as every other playable card, so — unlike when these cards were
 /// only reachable through the `fs-loader` filesystem path — they run in the
 /// default build.
-/// A card that means transactions filters `OnOperationPlayed` by `subtypes`,
+/// A card that means transactions filters `OnCardPlayed` by `subtypes`,
 /// not catalog keywords — and three printed Transactions (Hedge Fund,
 /// Hansei Review, Predictive Planogram) lacked the field, so Weyland
 /// Consortium: Building a Better World never paid on them.
@@ -9069,16 +9069,19 @@ mod system_gateway {
 
         // Refusing hands the Corp a fourth click next turn.
         let (declined, _) = apply_action(&state, &registry, PlayerAction::DeclinePendingPaidChoice).expect("refuse");
-        assert_eq!(declined.corp.extra_clicks_next_turn, 1);
+        let allotted = |state: &GameState| -> Vec<crate::rules::lingering::Lingering> {
+            state.lingering.iter().filter(|e| matches!(e.what, crate::rules::lingering::Lingering::AllottedClicks(_))).map(|e| e.what).collect()
+        };
+        assert_eq!(allotted(&declined), vec![crate::rules::lingering::Lingering::AllottedClicks(1)], "a lingering effect, which rides in a view");
         let (declined, _) = pass_until_settled(declined, &registry);
         let (declined, _) = apply_action(&crate::rules::test_support::clicks_spent(&declined), &registry, PlayerAction::EndTurn).expect("end the Runner turn");
         let (declined, _) = pass_until_settled(declined, &registry);
         assert_eq!(declined.corp.resources.clicks, Clicks(4), "three plus the banked one");
-        assert_eq!(declined.corp.extra_clicks_next_turn, 0, "spent, not kept");
+        assert!(allotted(&declined).is_empty(), "spent, not kept");
 
         // Paying the click costs the Runner one and banks nothing.
         let (paid, _) = apply_action(&state, &registry, PlayerAction::AcceptPendingPaidChoice { cost_option_index: None }).expect("pay");
-        assert_eq!(paid.corp.extra_clicks_next_turn, 0);
+        assert!(allotted(&paid).is_empty());
         assert_eq!(paid.runner.resources.clicks, Clicks(2), "one for the run, one for this");
 
         // Only the first trash each turn, and only of an *installed* card.
@@ -11923,6 +11926,112 @@ mod vantage_point {
         let run = state.active_run.as_ref().expect("still encountering");
         assert_eq!(run.ice[run.position].subroutines.iter().filter(|sub| sub.status == crate::rules::SubroutineStatus::Broken).count(), 2);
         assert!(!crate::rules::legal_actions(&state, &registry).contains(&PlayerAction::ActivateAbility { target: ansel, ability_index: 0 }), "no clicks left to lose");
+    }
+
+    /// A run begins, the Runner trashes a hardware from the grip, and the
+    /// two credits it places pay for a break during the run and for nothing
+    /// once it is over.
+    #[test]
+    fn methuselah_trades_a_hardware_in_the_grip_for_two_credits_it_spends_only_during_runs() {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.credits = Credits(0);
+        state.runner.rig = vec![rig("methuselah"), rig("corroder")];
+        state.runner.grip = vec![id("touchstone"), id("sipa")];
+        state.corp.installed = vec![ice_at_hq("ice_wall")];
+        let methuselah = install_of(&state, "methuselah");
+        let hosted = |state: &GameState| state.runner.rig.iter().find(|card| card.install_id == methuselah).map_or(0, |card| card.counters);
+
+        let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("initiate run");
+        assert!(paid_choice_offered(&state), "a run began");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::AcceptPendingPaidChoice { cost_option_index: None }).expect("trash Touchstone");
+        assert_eq!(state.runner.heap, vec![id("touchstone")], "the only hardware in the grip");
+        assert_eq!(hosted(&state), 2);
+
+        let (state, _) = crate::rules::test_support::continue_run(&state, &registry).expect("approach the ice");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner passes approach");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Corp }).expect("corp passes approach");
+        let pump = PlayerAction::ActivateAbility { target: install_of(&state, "corroder"), ability_index: 0 };
+        let (state, _) = apply_action(&state, &registry, pump).expect("an empty credit pool pumps from Methuselah");
+        assert_eq!(hosted(&state), 1);
+
+        let mut after = state.clone();
+        after.active_run = None;
+        after.lingering.clear();
+        let install = PlayerAction::InstallProgram { card_id: id("sipa"), trash_first: false };
+        assert!(apply_action(&after, &registry, install).is_err(), "outside a run its credits pay for nothing");
+    }
+
+    /// The first event each turn places a credit; the second does not.
+    #[test]
+    fn touchstone_hosts_a_credit_for_the_first_event_each_turn() {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.rig = vec![rig("touchstone")];
+        state.runner.grip = vec![id("sure_gamble"), id("sure_gamble")];
+        let touchstone = install_of(&state, "touchstone");
+        let hosted = |state: &GameState| state.runner.rig.iter().find(|card| card.install_id == touchstone).map_or(0, |card| card.counters);
+        let play = PlayerAction::PlayEvent { card_id: id("sure_gamble") };
+        let (state, _) = apply_action(&state, &registry, play.clone()).expect("first event");
+        assert_eq!(hosted(&state), 1);
+        assert_eq!(state.runner.resources.credits, Credits(10 - 5 + 9), "the event resolved as ever");
+        let (state, _) = apply_action(&state, &registry, play).expect("second event");
+        assert_eq!(hosted(&state), 1, "only the first each turn");
+    }
+
+    /// Credits spent from outside the credit pool during a run against its
+    /// server do 4 meat damage, once per turn; a run elsewhere does not.
+    #[test]
+    fn shackleton_grid_does_meat_damage_when_the_runner_spends_credits_from_outside_the_pool() {
+        let registry = registry();
+        for (grid_on, damaged) in [(ServerId::Hq, true), (ServerId::RnD, false)] {
+            let mut state = base_state();
+            state.runner.grip = vec![id("sure_gamble"); 5];
+            state.runner.rig = vec![rig("corroder")];
+            state.corp.installed = vec![crate::rules::InstalledCard {
+                install_id: fixture_install_id("shackleton_grid"),
+                card: id("shackleton_grid"),
+                server: grid_on,
+                slot: InstallSlot::Root,
+                rezzed: true,
+                ..Default::default()
+            }];
+            let mut state = encountering(state, &registry, &["ice_wall"]);
+            state.active_run.as_mut().expect("a run").bad_publicity_credits = 2;
+            let pump = PlayerAction::ActivateAbility { target: install_of(&state, "corroder"), ability_index: 0 };
+            let (state, events) = apply_action(&state, &registry, pump.clone()).expect("pump from bad publicity's credits");
+            assert!(events.iter().any(|event| matches!(event, crate::rules::GameEvent::CreditsSpentFromOutsidePool { amount: 1, .. })), "{events:?}");
+            assert_eq!(state.runner.heap.len(), if damaged { 4 } else { 0 }, "grid on {grid_on:?}");
+            // The ability handed priority to the Corp, who passes it back.
+            let (state, _) = apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Corp }).expect("corp passes");
+            let (state, _) = apply_action(&state, &registry, pump).expect("pump again");
+            assert_eq!(state.runner.heap.len(), if damaged { 4 } else { 0 }, "once per turn");
+            assert_eq!(state.runner.resources.credits, Credits(10), "both pumps came out of bad publicity's credits");
+        }
+    }
+
+    /// Six credits and a click fewer for the Runner's next turn, or ten and
+    /// a click more — a lingering effect, which rides in the view, taken as
+    /// that turn begins.
+    #[test]
+    fn caveat_emptor_changes_the_runners_next_allotment_by_a_click_either_way() {
+        let registry = registry();
+        for (option, credits, clicks) in [(0, 10 - 5 + 6, 3), (1, 10 - 5 + 10, 5)] {
+            let mut state = base_state();
+            state.corp.hq = vec![id("caveat_emptor")];
+            let (state, _) = apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: id("caveat_emptor") }).expect("play");
+            let (state, _) = apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: option }).expect("choose");
+            assert_eq!(state.corp.resources.credits, Credits(credits));
+            let view = crate::view::build_client_view(&state, &registry, Side::Runner);
+            assert!(view.lingering.iter().any(|effect| matches!(effect.what, crate::rules::lingering::Lingering::AllottedClicks(_))), "the Runner sees it");
+            let (state, _) = apply_action(&crate::rules::test_support::clicks_spent(&state), &registry, PlayerAction::EndTurn).expect("end the Corp turn");
+            let (state, _) = pass_until_settled(state, &registry);
+            assert_eq!(state.phase, GamePhase::Action(Side::Runner));
+            assert_eq!(state.runner.resources.clicks, Clicks(clicks), "option {option}");
+            assert!(state.lingering.is_empty(), "taken, not kept");
+        }
     }
 
     /// Its second subroutine removes a card in the heap from the game.
