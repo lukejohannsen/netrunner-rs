@@ -12328,6 +12328,105 @@ mod vantage_point {
         }
     }
 
+    fn hosting(card: &str, credits: u32) -> crate::rules::InstalledRunnerCard {
+        crate::rules::InstalledRunnerCard { counters: credits, ..rig(card) }
+    }
+
+    fn hosted_on(state: &GameState, card: &str) -> u32 {
+        state.runner.rig.iter().find(|installed| installed.card == id(card)).map_or(0, |installed| installed.counters)
+    }
+
+    /// Runs HQ into a rezzed `ice` and stops at its encounter's window.
+    fn encountering_at_hq(mut state: GameState, registry: &CardRegistry, ice: &str) -> GameState {
+        state.phase = GamePhase::Action(Side::Runner);
+        state.corp.installed.push(ice_at_hq(ice));
+        let (mut state, _) = apply_action(&state, registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("initiate run");
+        if state.pending_paid_choice.is_some() {
+            state = apply_action(&state, registry, PlayerAction::DeclinePendingPaidChoice).expect("decline Methuselah's trade").0;
+        }
+        let (state, _) = crate::rules::test_support::continue_run(&state, registry).expect("approach the ice");
+        let (state, _) = apply_action(&state, registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner passes approach");
+        let (state, _) = apply_action(&state, registry, PlayerAction::PassPriority { side: Side::Corp }).expect("corp passes approach");
+        assert_eq!(state.active_run.as_ref().map(|run| run.phase), Some(crate::rules::RunPhase::EncounterIce));
+        state
+    }
+
+    /// Corsair's strength cut is paid from stealth cards only: Methuselah's
+    /// credits pay it and the credit pool cannot, and it is for a barrier.
+    #[test]
+    fn corsair_cuts_a_barriers_strength_with_stealth_credits_only() {
+        let registry = registry();
+        let cut = |state: &GameState| {
+            let corsair = install_of(state, "corsair");
+            apply_action(state, &registry, PlayerAction::ActivateAbility { target: corsair, ability_index: 1 })
+        };
+        let mut state = base_state();
+        state.runner.resources.credits = Credits(5);
+        state.runner.rig = vec![hosting("methuselah", 1), rig("corsair")];
+        let state = encountering_at_hq(state, &registry, "ice_wall");
+        let (after, _) = cut(&state).expect("a credit from Methuselah");
+        let run = after.active_run.as_ref().expect("the run goes on");
+        assert_eq!(crate::rules::continuous::ice_strength(&after, &registry, &run.ice[run.position]), 1 - 3);
+        assert_eq!(hosted_on(&after, "methuselah"), 0);
+        assert_eq!(after.runner.resources.credits, Credits(5), "the credit pool is not a stealth card");
+        assert!(cut(&after).is_err(), "Methuselah is empty and the credit pool cannot pay");
+
+        let mut state = base_state();
+        state.runner.rig = vec![hosting("methuselah", 2), rig("corsair")];
+        let state = encountering_at_hq(state, &registry, "enigma");
+        assert!(cut(&state).is_err(), "a code gate is not a barrier");
+    }
+
+    /// Lampades installs with three power counters, and at an access pays a
+    /// counter and the card's printed cost from stealth cards to trash it.
+    #[test]
+    fn lampades_trashes_the_card_it_is_accessing_for_its_printed_cost_in_stealth_credits() {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.grip = vec![id("lampades")];
+        let (state, _) = apply_action(&state, &registry, PlayerAction::InstallProgram { card_id: id("lampades"), trash_first: false }).expect("install");
+        assert_eq!(hosted_on(&state, "lampades"), 3);
+
+        for (stealth, trashed) in [(2, true), (1, false)] {
+            let mut state = state.clone();
+            state.runner.resources.credits = Credits(5);
+            state.runner.rig.push(hosting("touchstone", stealth));
+            state.corp.installed = vec![root_at("pad_campaign", 0)];
+            let (state, _) = run_to_completion(state, &registry, ServerId::Remote(0));
+            let lampades = install_of(&state, "lampades");
+            let used = apply_action(&state, &registry, PlayerAction::ActivateAbility { target: lampades, ability_index: 0 });
+            assert_eq!(used.is_ok(), trashed, "PAD Campaign costs 2, with {stealth} on Touchstone");
+            if let Ok((state, _)) = used {
+                assert!(state.corp.installed.is_empty(), "trashed");
+                assert_eq!(hosted_on(&state, "lampades"), 2);
+                assert_eq!(hosted_on(&state, "touchstone"), 0);
+                assert_eq!(state.runner.resources.credits, Credits(5));
+            }
+        }
+    }
+
+    /// Baker runs Archives, and before the approach a stealth credit changes
+    /// the attacked server to HQ.
+    #[test]
+    fn baker_runs_archives_and_pays_a_stealth_credit_to_approach_hq_instead() {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.rig = vec![rig("baker"), hosting("touchstone", 1)];
+        state.corp.hq = vec![id("hedge_fund")];
+        let baker = install_of(&state, "baker");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ActivateAbility { target: baker, ability_index: 0 }).expect("[click]: Run Archives");
+        assert_eq!(state.active_run.as_ref().map(|run| run.server), Some(ServerId::Archives));
+        let (state, _) = crate::rules::test_support::continue_run(&state, &registry).expect("into the movement phase");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ActivateAbility { target: baker, ability_index: 1 }).expect("pay a stealth credit");
+        assert_eq!(hosted_on(&state, "touchstone"), 0);
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("HQ");
+        let (state, _) = crate::rules::test_support::through_movement(&state, &registry).expect("approach");
+        assert_eq!(state.active_run.as_ref().map(|run| run.server), Some(ServerId::Hq), "the attacked server is HQ");
+        assert!(apply_action(&state, &registry, PlayerAction::ActivateAbility { target: baker, ability_index: 1 }).is_err(), "once redirected, not again");
+    }
+
     /// A tag let through the prevention window can trigger a card that
     /// parks a choice (NBN: Reality Plus's "gain 2 or draw 2"); the ice's
     /// later subroutines still fire once it is answered. They did not: the

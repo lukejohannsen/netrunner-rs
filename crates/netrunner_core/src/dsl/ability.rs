@@ -254,6 +254,22 @@ pub enum EffectRequirement {
     /// paid ability" answer yes on essentially every action, which is the
     /// gate `WindowCheckpoint::PostAction` depends on.
     DuringEncounter,
+    /// The Runner is encountering ice of this type, printed or gained —
+    /// Corsair's "the **barrier** you are encountering gets −3 strength".
+    /// `DuringEncounter` does not say which ice, and an unrestricted
+    /// strength cut would be offered, and paid for, against a sentry.
+    /// Asked the way a restricted break is (`Effect::BreakSubroutines`).
+    Encountering(crate::dsl::IceType),
+    /// The active run was begun by this card (`RunState::initiated_by`) —
+    /// Baker's "[click]: Run Archives. When you would approach Archives…",
+    /// whose second sentence is about the run its first began.
+    ThisCardStartedTheRun,
+    /// The run has passed all its ice and will approach this server next
+    /// (the movement phase with no position left inward, CR 6.9.4g), with
+    /// no redirect already set — the last paid ability window before
+    /// Baker's "when you would approach Archives (after passing all ice),
+    /// you may pay 1[credit] to instead change the attacked server".
+    AboutToApproach(crate::rules::ServerId),
     /// The most recently concluded run (`GameState::last_completed_run`)
     /// accessed at least one card — e.g. Zahya Sadeghi, whose "once per
     /// turn" is consumed the moment her trigger fires, and whose

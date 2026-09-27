@@ -2283,6 +2283,9 @@ pub(crate) fn cost_is_affordable(
         // The scan the payment spends from — it used to be a sum of its
         // own, which counted bad publicity and forgot the run's credits.
         Cost::Credits(amount) => payment::available(state, registry, side, purpose) >= *amount,
+        Cost::CreditsFrom { amount, from } => {
+            payment::available_from(state, registry, side, purpose, Some(from)) >= resolve_amount(amount, ctx, state, registry)
+        }
         Cost::Clicks(amount) | Cost::LoseClicks(amount) => state.resources(side).clicks.0 >= *amount,
         // A run the Runner is in, and nothing else: there is no "cannot
         // jack out" in the pool.
@@ -2355,6 +2358,10 @@ pub(crate) fn pay_cost_ctx(
         // beside the credit pool, and which of them this payment may use
         // is read off `purpose`.
         Cost::Credits(amount) => payment::pay(state, registry, side, *amount, purpose),
+        Cost::CreditsFrom { amount, from } => {
+            let amount = resolve_amount(amount, ctx, state, registry);
+            payment::pay_from(state, registry, side, amount, purpose, Some(from))
+        }
 
         Cost::Clicks(amount) => {
             let clicks = state.resources(side).clicks;
@@ -2779,6 +2786,22 @@ pub fn check_requirement(
                 state.active_run.as_ref().is_some_and(|run| run.phase == RunPhase::EncounterIce);
             if encountering { Ok(()) } else { Err(RulesError::RequirementNotMet) }
         }
+        EffectRequirement::Encountering(ice_type) => {
+            let encountering = state.active_run.as_ref().filter(|run| run.phase == RunPhase::EncounterIce).and_then(|run| run.ice.get(run.position)).is_some_and(|ice| {
+                ice.ice_type == *ice_type || continuous::ice_gains_subtype(state, registry, ice.install_id, *ice_type)
+            });
+            if encountering { Ok(()) } else { Err(RulesError::RequirementNotMet) }
+        }
+        EffectRequirement::ThisCardStartedTheRun => {
+            let started = ctx.acting_card.is_some_and(|this| state.active_run.as_ref().and_then(|run| run.initiated_by.as_ref()) == Some(this));
+            if started { Ok(()) } else { Err(RulesError::RequirementNotMet) }
+        }
+        EffectRequirement::AboutToApproach(server) => {
+            let next = state.active_run.as_ref().is_some_and(|run| {
+                run.phase == RunPhase::Movement && run.position >= run.ice.len() && run.server == *server && run.redirect_on_approach.is_none()
+            });
+            if next { Ok(()) } else { Err(RulesError::RequirementNotMet) }
+        }
         EffectRequirement::AccessedAnyCardDuringLastRun => {
             let accessed = state.last_completed_run.as_ref().is_some_and(|run| run.cards_accessed > 0);
             if accessed { Ok(()) } else { Err(RulesError::RequirementNotMet) }
@@ -2955,6 +2978,13 @@ pub(crate) fn resolve_amount(amount: &Amount, ctx: &ResolutionContext<'_>, state
             _ => 0,
         },
         Amount::PrintedCost => ctx.acting_card.and_then(|card| registry.get(card)).map_or(0, |def| def.cost),
+        Amount::AccessedCardPrintedCost => state
+            .active_run
+            .as_ref()
+            .and_then(|run| run.access_state.as_ref())
+            .and_then(|access| access.phase.card())
+            .and_then(|card| registry.get(card))
+            .map_or(0, |def| def.cost),
         Amount::RemainingAfterSelection(total) => total.saturating_sub(ctx.selected_count),
         Amount::Fixed(n) => *n,
         // A placeholder `Effect::with_chosen_number` writes over before a
@@ -3071,6 +3101,9 @@ pub(crate) fn consume_requirement(
         | EffectRequirement::EncounteringHostIce
         | EffectRequirement::EncounteringThisIce
         | EffectRequirement::DuringEncounter
+        | EffectRequirement::Encountering(_)
+        | EffectRequirement::ThisCardStartedTheRun
+        | EffectRequirement::AboutToApproach(_)
         | EffectRequirement::DuringRun
         | EffectRequirement::WasFirstAdvancementThisCard
         | EffectRequirement::CorpCreditsAtLeast(_)

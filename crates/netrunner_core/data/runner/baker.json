@@ -1,0 +1,63 @@
+{
+  "id": "baker",
+  "title": "Baker",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 3,
+  "memory_cost": 1,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "Clicks": 1
+      },
+      "requirement": "OncePerTurn",
+      "effect": {
+        "InitiateRun": "Archives"
+      },
+      "text": "Once per turn → [click]: Run Archives."
+    },
+    {
+      "trigger": "Paid",
+      "cost": {
+        "CreditsFrom": {
+          "amount": {
+            "Fixed": 1
+          },
+          "from": {
+            "HasSubtype": "Stealth"
+          }
+        }
+      },
+      "requirement": {
+        "And": [
+          "ThisCardStartedTheRun",
+          {
+            "AboutToApproach": "Archives"
+          }
+        ]
+      },
+      "effect": {
+        "PresentChoice": {
+          "chooser": "Runner",
+          "options": [
+            {
+              "RedirectRunOnApproach": "Hq"
+            },
+            {
+              "RedirectRunOnApproach": "RnD"
+            }
+          ],
+          "texts": [
+            "change the attacked server to HQ or R&D and approach that server — HQ",
+            "change the attacked server to HQ or R&D and approach that server — R&D"
+          ]
+        }
+      },
+      "text": "you may pay 1[credit] to instead change the attacked server to HQ or R&D and approach that server"
+    }
+  ],
+  "numeric_id": 36015,
+  "is_playable": true
+}

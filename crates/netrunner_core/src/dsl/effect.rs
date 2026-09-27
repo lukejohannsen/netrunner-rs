@@ -1105,6 +1105,11 @@ pub enum Amount {
     /// as a rez cost: `CardDefinition::cost` is the one printed number
     /// either way (CR 1.16.6a, 1.16.8).
     PrintedCost,
+    /// The printed rez or play cost of the card the Runner is accessing —
+    /// Lampades's price. `PrintedCost` reads the acting card, which in a
+    /// paid ability is the card whose ability it is; the accessed card is
+    /// the run's (`AccessPhase::card`). 0 when nothing is being accessed.
+    AccessedCardPrintedCost,
     /// `u32` minus the cards the resolving `PromptChooseCards` selected
     /// (`ResolutionContext::selected_count`) — the R&D half of a sabotage
     /// of `u32`, resolved in the HQ selection's `then`. Saturating.

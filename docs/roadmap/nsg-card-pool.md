@@ -389,7 +389,8 @@ Division.
 6. **Arrange, reveal, stealth credits.** **6a** (built, below): Cultivate,
    Knowledge Seeker, Esca — arranging the top of R&D, a reveal while
    accessed in R&D, an encounter's end as a moment. **6b:** Corsair, Baker,
-   Lampades — credits spendable only from stealth cards. **6c:** Aircheck,
+   Lampades — credits spendable only from stealth cards (built, below).
+   **6c:** Aircheck,
    which locks the credit pool and so breaks the invariant that a payment
    may always reach the pool.
 7. **Hosting, the score area and access limits:** Hackerspace, Read-Write
@@ -1188,6 +1189,70 @@ Vantage Point 52 of 66; `VP_UNIMPLEMENTED` 17 → 14.
 - **Real play.** Twenty-four random games of A Thousand Cuts against Pay
   as You Go (seed 1): Esca's trigger fired 31 times, Cultivate 8,
   Knowledge Seeker's derez once, over 40 ended encounters and 7 reveals.
+
+#### Stage 6b — credits only from stealth cards (27 September 2026)
+
+`feat/vp-stage-6b-stealth-credits`: Corsair, Lampades and Baker, on the
+Safety Net Sweep deck. **No new `Effect`.** Vantage Point 55 of 66;
+`VP_UNIMPLEMENTED` 14 → 11.
+
+- **"Spend credits only from stealth cards"** (CR 1.10.4b, read from the
+  payer's side) is `Cost::CreditsFrom { amount, from }`: `payment::sources`
+  takes a `from` filter, and only a pool on a card it matches pays —
+  hosted credits by their host, the run's own by the card that began the
+  run (`RunState::initiated_by`, which Aircheck will fill). Bad publicity
+  is on no card and the credit pool is not a card, so the pool stays the
+  last source holding nothing: the first payment that cannot reach the
+  credit pool. Affordability and paying read the one scan, as the Payment
+  Rule has it. A cost rather than a word on the ability, because the
+  printed sentence limits the credits and a cost is where the credits
+  are; `amount` is an `Amount` because Lampades's price is "the printed
+  rez or play cost of the card you are accessing"
+  (`Amount::AccessedCardPrintedCost`).
+- **Corsair** breaks barrier subroutines for 1[credit] from anywhere, and
+  its −3 strength (`ModifyStrength` for the encounter) is paid from
+  stealth cards and offered only against a barrier
+  (`EffectRequirement::Encountering(IceType)`, printed or gained, asked
+  as a restricted break is).
+- **Lampades** is an access ability (`AbilityDef::access`, as Gourmand):
+  a hosted power counter and the accessed card's printed cost in stealth
+  credits trash it (`TrashCurrentlyAccessedCard`), and not an agenda,
+  which prints neither cost.
+- **Baker**'s "[click]: Run Archives" is `InitiateRun`, and its "when you
+  would approach Archives, you may pay 1[credit] to instead change the
+  attacked server to HQ or R&D" is a paid ability usable when the run it
+  began has passed all its ice and is about to approach Archives
+  (`ThisCardStartedTheRun`, `AboutToApproach(ServerId)`), whose choice is
+  Maintenance Access's `RedirectRunOnApproach`.
+- **Deck.** Safety Net (Kate, 15 influence, now all spent): two Corsair
+  for two Corroder, Lampades for Mayfly, Baker for a Jailbreak, beside
+  its Methuselah and Touchstone, the stealth cards that pay for them.
+- **Fidelity limits.** Baker's credit is paid in the last paid ability
+  window before the approach (CR 6.9.4e) rather than at it, so the Corp
+  acts in that window after the Runner has chosen. Nothing in the pool
+  cares, but a card that did would see the order.
+- **DSL ratio (`pool_status.py`): 19 of 72 `Effect` variants single-use,
+  2 unused**, over 239 card files (20 before). The growth is one `Cost`,
+  one `Amount` and three `EffectRequirement`s.
+- **What the sweeps found.** The 256-seed view sweep stalled at seed 155
+  (Fine Print against Safety Net): Doomscroll's tag went through the
+  prevention window, NBN: Reality Plus heard it and parked its "gain 2
+  or draw 2", and once that was answered nothing resumed the ice's later
+  subroutines. `prevention::finish` now hands "the subroutines are not
+  finished" to whatever the prevention let through parked. The code was
+  the same on main, where a test reproduces it: fixed in its own PR,
+  #239, identical to main in all four shapes.
+- **Measured.** Both sweeps at 256 seeds are green, coverage gate
+  included. `coverage_identical.py origin/main`: both random seatings
+  **identical** (Safety Net is a Sweep deck, and the payment change moves
+  nothing no card limits). The heuristic seatings moved, and with the
+  three card files removed they are identical in all four shapes:
+  `determinize` sampling the new cards is the whole of it.
+- **Real play.** Ninety-six random games of Safety Net against Hostile Bid
+  (seed 2): Corsair's and Lampades's stealth-paid abilities were used 3
+  times each, Baker's 46, with 2 runs redirected to HQ or R&D. Stealth
+  credits are rarely on hand in random play, which is why the two are
+  rare.
 
 ### 2. Rebellion Without Rehearsal — 65 cards (C 7 / V 43 / M 15)
 

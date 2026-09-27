@@ -430,7 +430,26 @@ fn hosted_credits(state: &GameState, side: Side, install: InstallId) -> u32 {
 /// Everywhere `side` could take credits from to pay for `purpose`, in the
 /// order they are spent, each with what it holds. Empty pools are left out
 /// but the credit pool, which is always the last entry.
-pub(crate) fn sources(state: &GameState, registry: &CardRegistry, side: Side, purpose: Purpose<'_>) -> Vec<Source> {
+///
+/// `from` is for a payment that says whose credits it may be paid with —
+/// Corsair's, Lampades's and Baker's "spend credits only from **stealth**
+/// cards" (`Cost::CreditsFrom`, CR 1.10.4b read from the payer's side).
+/// Only a pool on a card `from` matches pays: hosted credits by their host,
+/// the run's own by the card that began the run (Aircheck). Bad publicity
+/// is on no card, and the credit pool is not a card either, so it is still
+/// the last entry, holding nothing — the one place a payment cannot reach
+/// the credit pool.
+pub(crate) fn sources(
+    state: &GameState,
+    registry: &CardRegistry,
+    side: Side,
+    purpose: Purpose<'_>,
+    from: Option<&crate::dsl::CardFilter>,
+) -> Vec<Source> {
+    let admits = |card: Option<&crate::dsl::CardId>| match from {
+        None => true,
+        Some(filter) => card.and_then(|card| registry.get(card)).is_some_and(|definition| card_matches_filter(definition, filter)),
+    };
     let mut sources = Vec::new();
     let mut push = |pool: Pool, credits: u32| {
         if credits > 0 {
@@ -447,24 +466,31 @@ pub(crate) fn sources(state: &GameState, registry: &CardRegistry, side: Side, pu
     .filter_map(|card| {
         let install = card.install?;
         let definition = registry.get(card.card)?;
-        definition.pays_for.iter().any(|word| covers(word, purpose, Some(install), state, registry)).then_some(install)
+        let pays = definition.pays_for.iter().any(|word| covers(word, purpose, Some(install), state, registry));
+        (pays && admits(Some(card.card))).then_some(install)
     })
     .collect();
     for install in hosts {
         push(Pool::Hosted(install), hosted_credits(state, side, install));
     }
     if let (Side::Runner, Some(run)) = (side, state.active_run.as_ref()) {
-        push(Pool::BadPublicity, run.bad_publicity_credits);
-        push(Pool::Run, run.bonus_run_credits);
+        if from.is_none() {
+            push(Pool::BadPublicity, run.bad_publicity_credits);
+        }
+        if admits(run.initiated_by.as_ref()) {
+            push(Pool::Run, run.bonus_run_credits);
+        }
     }
     let identity_pays = side == Side::Corp
+        && admits(state.corp.identity.as_ref())
         && state.corp.identity.as_ref().and_then(|identity| registry.get(identity)).is_some_and(|definition| {
             definition.pays_for.iter().any(|word| covers(word, purpose, None, state, registry))
         });
     if identity_pays {
         push(Pool::Identity, state.corp.identity_counters);
     }
-    sources.push(Source { pool: Pool::Wallet, credits: state.resources(side).credits.0 });
+    let wallet = if from.is_some() { 0 } else { state.resources(side).credits.0 };
+    sources.push(Source { pool: Pool::Wallet, credits: wallet });
     sources
 }
 
@@ -577,7 +603,19 @@ fn class_of(state: &GameState, registry: &CardRegistry, side: Side, pool: Pool) 
 /// How many credits `side` could put towards `purpose` — the one
 /// affordability question, asked of the same scan `pay` spends from.
 pub(crate) fn available(state: &GameState, registry: &CardRegistry, side: Side, purpose: Purpose<'_>) -> u32 {
-    sources(state, registry, side, purpose).iter().fold(0u32, |total, source| total.saturating_add(source.credits))
+    available_from(state, registry, side, purpose, None)
+}
+
+/// `available`, for a payment limited to the credits on cards `from`
+/// matches (`sources`).
+pub(crate) fn available_from(
+    state: &GameState,
+    registry: &CardRegistry,
+    side: Side,
+    purpose: Purpose<'_>,
+    from: Option<&crate::dsl::CardFilter>,
+) -> u32 {
+    sources(state, registry, side, purpose, from).iter().fold(0u32, |total, source| total.saturating_add(source.credits))
 }
 
 /// Pays `amount` credits for `purpose`. `RulesError::NotEnoughCredits` —
@@ -593,7 +631,20 @@ pub(crate) fn pay(
     amount: u32,
     purpose: Purpose<'_>,
 ) -> Result<Vec<GameEvent>, RulesError> {
-    let sources = sources(state, registry, side, purpose);
+    pay_from(state, registry, side, amount, purpose, None)
+}
+
+/// `pay`, limited to the credits on cards `from` matches
+/// (`sources`): the credit pool holds nothing for it.
+pub(crate) fn pay_from(
+    state: &mut GameState,
+    registry: &CardRegistry,
+    side: Side,
+    amount: u32,
+    purpose: Purpose<'_>,
+    from: Option<&crate::dsl::CardFilter>,
+) -> Result<Vec<GameEvent>, RulesError> {
+    let sources = sources(state, registry, side, purpose, from);
     let total = sources.iter().fold(0u32, |total, source| total.saturating_add(source.credits));
     if total < amount {
         return Err(RulesError::NotEnoughCredits { side, available: total, requested: amount });
@@ -811,7 +862,7 @@ mod tests {
         state.runner.rig = vec![InstalledRunnerCard { install_id: azimat, card: CardId("azimat".to_string()), counters: 2, ..Default::default() }];
         state.active_run = Some(RunState { bad_publicity_credits: 1, ..Default::default() });
         assert_eq!(
-            sources(&state, &registry, Side::Runner, Purpose::TrashCost),
+            sources(&state, &registry, Side::Runner, Purpose::TrashCost, None),
             vec![
                 Source { pool: Pool::Hosted(azimat), credits: 2 },
                 Source { pool: Pool::BadPublicity, credits: 1 },
@@ -819,11 +870,11 @@ mod tests {
             ]
         );
         assert_eq!(
-            sources(&state, &registry, Side::Runner, Purpose::Other),
+            sources(&state, &registry, Side::Runner, Purpose::Other, None),
             vec![Source { pool: Pool::BadPublicity, credits: 1 }, Source { pool: Pool::Wallet, credits: 4 }],
             "Azimat's credits pay trash costs and nothing else"
         );
-        assert_eq!(sources(&state, &registry, Side::Corp, Purpose::Other), vec![Source { pool: Pool::Wallet, credits: 0 }]);
+        assert_eq!(sources(&state, &registry, Side::Corp, Purpose::Other, None), vec![Source { pool: Pool::Wallet, credits: 0 }]);
     }
 
     // `plan` is pure, so its rules are pinned here without an engine.
@@ -977,7 +1028,7 @@ mod tests {
         state.runner.rig = vec![rig_card("cyberfeeder", 1)];
         let feeder = Pool::Hosted(fixture_install_id("cyberfeeder"));
         let of = |id: &str| registry.get(&CardId(id.to_string())).expect("in the pool");
-        let pools = |purpose| sources(&state, &registry, Side::Runner, purpose).into_iter().map(|source| source.pool).collect::<Vec<_>>();
+        let pools = |purpose| sources(&state, &registry, Side::Runner, purpose, None).into_iter().map(|source| source.pool).collect::<Vec<_>>();
         assert_eq!(pools(Purpose::Ability(of("corroder"))), vec![feeder, Pool::Wallet], "a fracter's pump or break");
         assert_eq!(pools(Purpose::Ability(of("madani"))), vec![Pool::Wallet], "a console's ability is not an icebreaker's");
         assert_eq!(pools(Purpose::Install(of("hantu"))), vec![feeder, Pool::Wallet], "a virus program");
