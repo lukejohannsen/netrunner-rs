@@ -12074,6 +12074,58 @@ mod vantage_point {
         }
     }
 
+    /// Plays Beta Build with `stack` and `credits`, answers its search with
+    /// the stack position `pick_at` (if it asks), and chooses HQ.
+    fn beta_build(stack: &[&str], credits: u32, pick_at: Option<usize>) -> (GameState, CardRegistry) {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.credits = Credits(credits);
+        state.runner.stack = stack.iter().map(|card| id(card)).collect();
+        state.runner.grip = vec![id("beta_build")];
+        let (mut state, _) = apply_action(&state, &registry, PlayerAction::PlayEvent { card_id: id("beta_build") }).expect("play");
+        if let Some(position) = pick_at {
+            state = pick(&state, &registry, position).0;
+        }
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ChooseServerForPendingDecision { server: ServerId::Hq }).expect("run HQ");
+        (state, registry)
+    }
+
+    /// A non-virus program from the stack is installed for nothing, the
+    /// run happens, and when it ends the program goes back on top of the
+    /// stack. A virus is never offered.
+    #[test]
+    fn beta_build_installs_a_non_virus_program_free_and_returns_it_to_the_top_of_the_stack_when_the_run_ends() {
+        // Fermenter is a virus; Corroder (position 1) is the only choice.
+        let (state, registry) = beta_build(&["fermenter", "corroder", "sure_gamble"], 3, Some(1));
+        assert_eq!(state.runner.resources.credits, Credits(0), "the event cost 3 and the install nothing");
+        assert!(state.runner.rig.iter().any(|card| card.card == id("corroder")));
+        assert!(state.active_run.is_some(), "run any server");
+        let (state, events) = drive(state, &registry, |state, _| state.active_run.is_none());
+        assert!(state.runner.rig.is_empty(), "uninstalled as the run ended");
+        assert_eq!(state.runner.stack.last(), Some(&id("corroder")), "on top of the stack");
+        assert!(events.contains(&crate::rules::GameEvent::CardAddedToDeck { side: Side::Runner, card: id("corroder"), top: true, revealed: true }));
+    }
+
+    /// With no program to find, the run still happens.
+    #[test]
+    fn beta_build_runs_even_when_the_stack_holds_no_program_to_find() {
+        let (state, _) = beta_build(&["fermenter", "sure_gamble"], 3, None);
+        assert!(state.active_run.is_some());
+        assert!(state.runner.rig.is_empty());
+    }
+
+    /// A program trashed during the run is not added to the stack.
+    #[test]
+    fn beta_build_leaves_a_program_that_was_uninstalled_during_the_run() {
+        let (mut state, registry) = beta_build(&["corroder"], 3, Some(0));
+        let installed = state.runner.rig.remove(0);
+        state.runner.heap.push(installed.card);
+        let (state, _) = drive(state, &registry, |state, _| state.active_run.is_none());
+        assert!(state.runner.stack.is_empty());
+        assert!(state.runner.heap.contains(&id("corroder")), "left where it went");
+    }
+
     /// Its second subroutine removes a card in the heap from the game.
     #[test]
     fn ansel_2_0_removes_a_card_in_the_heap_from_the_game() {

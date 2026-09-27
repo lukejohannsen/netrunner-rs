@@ -28,7 +28,7 @@
 //! which is still a word rather than a number.
 
 use netrunner_core::cards::CardRegistry;
-use netrunner_core::dsl::{
+use netrunner_core::dsl::{DeckEnd, Discount, 
     Amount, EffectDuration, CardDefinition, CardId, CardTarget, CardZoneRef, ContinuousEffect, ContinuousKind, Cost, DamageType, Effect, EventFilter, Number, PaysFor, Preventable, Prohibition,
     Scope, SubroutineBreakCount,
 };
@@ -276,7 +276,8 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
         Effect::PromptInstallCorpCard { .. } => "install a card".to_string(),
         Effect::InstallRunnerCardFromGrip => "install a card from the grip".to_string(),
         Effect::InstallRunnerCardFromHeap => "install a card from the heap".to_string(),
-        Effect::InstallRunnerCardFromGripWithDiscount(n) => format!("install a card from the grip, paying {n} less"),
+        Effect::InstallRunnerCardFromGripWithDiscount(Discount::Credits(n)) => format!("install a card from the grip, paying {n} less"),
+        Effect::InstallRunnerCardFromGripWithDiscount(Discount::AllCosts) => "install a card from the grip, ignoring all costs".to_string(),
         Effect::InstallRunnerCardFromHost => "install the hosted card".to_string(),
         Effect::RedirectRunOnApproach(server) => format!("redirect the run to {}", describe_server(*server)),
         Effect::SetRunEndedEffect(effect) => format!("when the run ends, {}", describe_effect(effect, registry)),
@@ -287,7 +288,8 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
         Effect::BypassEncounteredIce => "bypass this ice".to_string(),
         Effect::PurgeVirusCounters => "purge virus counters".to_string(),
         Effect::FlipIdentity => "flip the identity".to_string(),
-        Effect::AddToBottomOfDeck => "put it on the bottom of its owner's deck".to_string(),
+        Effect::AddToDeck(DeckEnd::Bottom) => "put it on the bottom of its owner's deck".to_string(),
+        Effect::AddToDeck(DeckEnd::Top) => "put it on top of its owner's deck".to_string(),
         Effect::HostRigCardOnInstall { .. } => "host it on an installed card".to_string(),
         Effect::Prohibit { what, until, copies_of_it } => {
             let what = match (what, copies_of_it) {

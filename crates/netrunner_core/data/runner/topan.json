@@ -18,7 +18,7 @@
           "side": "Runner",
           "source": "OwnGrip",
           "filter": {
-            "InstallableRunnerCardWithDiscount": 2
+            "InstallableRunnerCardWithDiscount": {"Credits": 2}
           },
           "min": 1,
           "max": 1,
@@ -27,7 +27,7 @@
           "then": {
             "Sequence": [
               {
-                "InstallRunnerCardFromGripWithDiscount": 2
+                "InstallRunnerCardFromGripWithDiscount": {"Credits": 2}
               },
               {
                 "DealDamage": [

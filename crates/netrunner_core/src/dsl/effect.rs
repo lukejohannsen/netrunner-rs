@@ -22,6 +22,35 @@ pub enum StackZone {
     Stack,
 }
 
+/// How much less a card's text installs a card for — `Effect::
+/// InstallRunnerCardFromGripWithDiscount` and the offer that goes with it,
+/// `CardFilter::InstallableRunnerCardWithDiscount`, so the two agree.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Discount {
+    /// "Paying 1[credit] less" (Illumination, Topan).
+    Credits(u32),
+    /// "Ignoring all costs" (Beta Build).
+    AllCosts,
+}
+
+impl Discount {
+    /// The credits it takes off an install cost; all of any cost.
+    pub fn credits(self) -> u32 {
+        match self {
+            Discount::Credits(credits) => credits,
+            Discount::AllCosts => u32::MAX,
+        }
+    }
+}
+
+/// Which end of a deck `Effect::AddToDeck` puts a card on. The top is the
+/// end of the `Vec` a draw pops from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum DeckEnd {
+    Top,
+    Bottom,
+}
+
 /// What an `Effect::TrashCard` targets.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum CardTarget {
@@ -670,7 +699,11 @@ pub enum Effect {
     /// Paired with `CardFilter::InstallableRunnerCardWithDiscount` so the
     /// offer and the price agree. A discount parameter rather than a
     /// separate pricing effect: nothing composable subtracts from a cost.
-    InstallRunnerCardFromGripWithDiscount(u32),
+    ///
+    /// Or ignoring all costs — Beta Build's "Install it, ignoring all
+    /// costs" (`Discount::AllCosts`). The memory limit still applies: it
+    /// is not a cost (CR 1.16).
+    InstallRunnerCardFromGripWithDiscount(Discount),
     /// Installs the resolving card from the cards **hosted on the acting
     /// install** (`InstalledRunnerCard::hosted_cards`, the parking card's
     /// own — `ResolutionContext::acting_install`), paying its cost —
@@ -788,17 +821,22 @@ pub enum Effect {
     /// than swapping the identity card: one card, two sides, and every
     /// side's text gated by `EffectRequirement::IdentityFlipped`.
     FlipIdentity,
-    /// Moves `acting_card` to the **bottom** of its owner's deck — from the
-    /// Runner's grip or heap to the stack (Scrounge's "You may add 1 program
-    /// from your heap to the bottom of your stack"), or from HQ, Archives or
-    /// R&D to R&D (Let Them Dream's "add that agenda to HQ or the bottom of
-    /// R&D"). `PromptChooseCards::destination` cannot express it: a
-    /// destination zone receives cards at its *top* (the end of the `Vec` a
-    /// draw pops from), and no existing primitive addresses the bottom of a
-    /// deck. It was the Runner's alone, as `AddToBottomOfStack`, until the
-    /// Corp's first card needed it. A no-op when the card is in none of its
-    /// owner's zones, per the `TrashCard` "already gone" precedent.
-    AddToBottomOfDeck,
+    /// Moves `acting_card` to the top or the **bottom** of its owner's deck
+    /// — from the Runner's grip or heap to the stack (Scrounge's "You may
+    /// add 1 program from your heap to the bottom of your stack"), from HQ,
+    /// Archives or R&D to R&D (Let Them Dream's "add that agenda to HQ or
+    /// the bottom of R&D"), or, when the resolution names the card's
+    /// install (`ResolutionContext::acting_install`), out of the rig (Beta
+    /// Build's "when that run ends, if that program has not been
+    /// uninstalled, add it to the top of your stack"). The install is the
+    /// "if": a program uninstalled since has no handle, and a copy
+    /// reinstalled has another, so either way nothing moves.
+    /// `PromptChooseCards::destination` could not say the bottom, and it
+    /// cannot say "this install" at all. It was `AddToBottomOfDeck`, and
+    /// before that the Runner's alone as `AddToBottomOfStack`. A no-op when
+    /// the card is in none of its owner's zones, per the `TrashCard`
+    /// "already gone" precedent.
+    AddToDeck(DeckEnd),
     /// Hosts the rig card `card` on the rig card `host` —
     /// `state::InstalledRunnerCard::hosted_on_program` — GAMEDRAGON™ Pro's
     /// "you may host this hardware on an installed non-AI icebreaker". A
@@ -1337,7 +1375,7 @@ impl Effect {
             | Effect::ResolveSomeOf { .. }
             | Effect::LoseCreditsAmount(..)
             | Effect::FlipIdentity
-            | Effect::AddToBottomOfDeck
+            | Effect::AddToDeck(_)
             | Effect::HostRigCardOnInstall { .. }
             | Effect::DrawCardsAmount(..)
             | Effect::Prohibit { .. }

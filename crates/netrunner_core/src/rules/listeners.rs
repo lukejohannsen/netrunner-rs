@@ -256,7 +256,7 @@ pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
         | GameEvent::TurnEnded { .. }
         | GameEvent::DiscardPending { .. }
         | GameEvent::CardDiscarded { .. }
-        | GameEvent::CardAddedToBottomOfDeck { .. }
+        | GameEvent::CardAddedToDeck { .. }
         | GameEvent::CardHosted { .. }
         | GameEvent::IdentityFlipped { .. }
         | GameEvent::RunEndPrevented { .. }
