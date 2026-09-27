@@ -837,6 +837,14 @@ pub enum Effect {
     /// the card is in none of its owner's zones, per the `TrashCard`
     /// "already gone" precedent.
     AddToDeck(DeckEnd),
+    /// The controller looks at the top `count` cards of `deck`'s owner's
+    /// deck and nobody else sees them (`GameEvent::CardsLookedAt`, masked
+    /// for the other player) — Hiram "0mission" Svensson's "look at the
+    /// top card of R&D". Nothing moves and nothing is chosen. Composition
+    /// didn't work: `PromptChooseCards` over the deck shows its chooser the
+    /// cards, but it is a choice — a prompt to answer and a card to move —
+    /// and a look is neither.
+    LookAtTopOfDeck { deck: Side, count: u32 },
     /// Hosts the rig card `card` on the rig card `host` —
     /// `state::InstalledRunnerCard::hosted_on_program` — GAMEDRAGON™ Pro's
     /// "you may host this hardware on an installed non-AI icebreaker". A
@@ -1376,6 +1384,7 @@ impl Effect {
             | Effect::LoseCreditsAmount(..)
             | Effect::FlipIdentity
             | Effect::AddToDeck(_)
+            | Effect::LookAtTopOfDeck { .. }
             | Effect::HostRigCardOnInstall { .. }
             | Effect::DrawCardsAmount(..)
             | Effect::Prohibit { .. }

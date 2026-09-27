@@ -221,7 +221,16 @@ pub enum GameEvent {
     /// `Cost::ClearTags` zeroed the Runner's tag count. Named for clearing,
     /// not purging — see `Cost::ClearTags`'s doc comment.
     TagsCleared { side: Side },
-    CardTrashed { side: Side, card: CardId },
+    /// `card`, `side`'s, went to its owner's discard pile. `by` is the
+    /// player who carried the trash out (CR 1.14.5a) — the controller of
+    /// the text that trashed it, the chooser of a selection, the payer of
+    /// a cost, the player installing over it — and `None` when the rules
+    /// did it: a card leaving with its host, the unique rule, a card
+    /// emptied of the credits it hosted. Hiram "0mission" Svensson hears
+    /// the Runner trash a piece of hardware from any location
+    /// (`Trigger::OnCardTrashed`, an occurrence only when `by` names a
+    /// player).
+    CardTrashed { side: Side, card: CardId, by: Option<Side> },
     /// A card left play permanently, bypassing the discard pile — Spin
     /// Doctor's `Cost::RemoveSelfFromGame`. Distinct from `CardTrashed`
     /// so a listener can tell "in Archives" from "gone".
@@ -356,6 +365,11 @@ pub enum GameEvent {
     /// 7.3.2), once per breach — Nurse Hạnh's "whenever 2 or more facedown
     /// cards in Archives are turned faceup". Never emitted for none.
     ArchivesTurnedFaceup { count: u32 },
+    /// `side` looked at `cards`, the top of `deck`'s owner's deck, top
+    /// first (`Effect::LookAtTopOfDeck`). Shown to `side` alone
+    /// (`masking::mask_event_for_player`): a look is not a reveal, and the
+    /// deck's owner does not know its order either.
+    CardsLookedAt { side: Side, deck: Side, cards: Vec<CardId> },
     /// A `PendingDecision::ChooseCards` was confirmed — `cards` is the
     /// committed selection, `revealed` mirrors the originating `Effect::
     /// PromptChooseCards::reveal`.
@@ -479,6 +493,7 @@ impl GameEvent {
     pub fn may_teach_the_actor(&self) -> bool {
         match self {
             GameEvent::CardDrawn { .. } | GameEvent::CardAccessed { .. } | GameEvent::CardTrashedFromAccess { .. }
+            | GameEvent::CardsLookedAt { .. }
             | GameEvent::AccessPassed { .. } | GameEvent::AgendaStolen { .. } | GameEvent::IceRezzed { .. }
             | GameEvent::IceEncountered { .. } | GameEvent::DamageTaken { .. } | GameEvent::CardsTrashedFromHq { .. }
             | GameEvent::MulliganTaken { .. } | GameEvent::HandKept { .. } | GameEvent::TraceInitiated { .. }

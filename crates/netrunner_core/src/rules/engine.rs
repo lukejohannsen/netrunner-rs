@@ -2417,7 +2417,8 @@ fn trash_resource(
         .ok_or(RulesError::InstallNotFound(target))?;
     let removed = next.runner.rig.remove(position);
     next.runner.heap.push(removed.card.clone());
-    events.push(GameEvent::CardTrashed { side: Side::Runner, card: card_id });
+    // The Corp's own basic action: it carries the trash out.
+    dispatcher::emit(&mut next, registry, &mut events, GameEvent::CardTrashed { side: Side::Runner, card: card_id, by: Some(Side::Corp) })?;
     events.extend(ability::cascade_trash_hosted_on_rig_card(&mut next, registry, &removed));
 
     Ok((next, events))
@@ -3002,7 +3003,7 @@ mod tests {
         let (state, events) = apply_action(&state, &registry, PlayerAction::InstallHardware { card_id: penny.clone() }).unwrap();
         assert_eq!(state.runner.rig.len(), 1, "the second copy replaced the first");
         assert_eq!(state.runner.heap, vec![penny.clone()]);
-        assert!(events.contains(&GameEvent::CardTrashed { side: Side::Runner, card: penny }));
+        assert!(events.iter().any(|e| matches!(e, GameEvent::CardTrashed { side: Side::Runner, card, .. } if *card == penny)));
 
         let doctor = CardId("spin_doctor".to_string());
         let installed = vec![InstalledCard {
@@ -3025,7 +3026,7 @@ mod tests {
         // first: the ◆ rule is about active cards, and used to be applied
         // at install, which trashed a copy the rules leave alone.
         assert_eq!(next.corp.installed.len(), 2, "two copies, one of them facedown");
-        assert!(!events.contains(&GameEvent::CardTrashed { side: Side::Corp, card: doctor.clone() }));
+        assert!(!events.iter().any(|e| matches!(e, GameEvent::CardTrashed { side: Side::Corp, card, .. } if *card == doctor.clone())));
 
         // Rezzing it is what makes it active — and the older copy goes.
         let second = next.corp.installed.iter().find(|c| !c.rezzed).expect("the new copy is facedown").install_id;
@@ -3033,7 +3034,7 @@ mod tests {
         assert_eq!(next.corp.installed.len(), 1);
         assert_eq!(next.corp.installed[0].server, ServerId::Remote(1), "the copy that became active stays");
         assert_eq!(next.corp.archives, vec![ArchivedCard::faceup(doctor.clone())], "a rezzed copy lands faceup");
-        assert!(events.contains(&GameEvent::CardTrashed { side: Side::Corp, card: doctor }));
+        assert!(events.iter().any(|e| matches!(e, GameEvent::CardTrashed { side: Side::Corp, card, .. } if *card == doctor)));
     }
 
     /// Rules Audit T5: a remote holds one agenda or asset, so installing a
@@ -3078,7 +3079,7 @@ mod tests {
             next.corp.installed.iter().filter(|c| c.server == ServerId::Remote(0)).map(|c| &c.card).collect();
         assert_eq!(remote_root, vec![&upgrade, &agenda], "the asset left, the upgrade stayed, the agenda arrived");
         assert_eq!(next.corp.archives, vec![ArchivedCard::faceup(asset.clone())], "a rezzed occupant lands faceup");
-        assert!(events.contains(&GameEvent::CardTrashed { side: Side::Corp, card: asset }));
+        assert!(events.iter().any(|e| matches!(e, GameEvent::CardTrashed { side: Side::Corp, card, .. } if *card == asset)));
 
         // An unrezzed occupant lands facedown, and an upgrade installs
         // alongside without trashing anything.
@@ -5031,7 +5032,7 @@ mod tests {
         assert_eq!(
             events,
             vec![
-                GameEvent::CardTrashed { side: Side::Runner, card: card_id.clone() },
+                GameEvent::CardTrashed { side: Side::Runner, card: card_id.clone(), by: Some(Side::Runner) },
                 GameEvent::AbilityActivated { side: Side::Runner, card_id: card_id.clone(), ability_index: 0 },
                 GameEvent::CreditsGained { side: Side::Runner, amount: 5 },
                 GameEvent::AbilityGainedCredits { side: Side::Runner, card: card_id },
@@ -6464,7 +6465,7 @@ mod tests {
             vec![
                 GameEvent::ClickSpent { side: Side::Corp },
                 GameEvent::CreditsSpent { side: Side::Corp, amount: 2 },
-                GameEvent::CardTrashed { side: Side::Runner, card: card_id },
+                GameEvent::CardTrashed { side: Side::Runner, card: card_id, by: Some(Side::Corp) },
             ]
         );
     }

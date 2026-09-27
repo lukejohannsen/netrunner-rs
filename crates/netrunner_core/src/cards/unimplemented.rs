@@ -22,7 +22,6 @@ pub(crate) const VP_UNIMPLEMENTED: &[(u32, &str)] = &[
     (36006, "Hackerspace"),
     (36008, "Stick and Poke"),
     (36015, "Baker"),
-    (36017, "Hiram “0mission” Svensson: Shadow of the Past"),
     (36018, "Aircheck"),
     (36022, "Read-Write Share"),
     (36025, "Word on the Street"),

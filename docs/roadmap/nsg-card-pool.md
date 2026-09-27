@@ -383,9 +383,9 @@ Division.
    (built, below): Stowaway (a Trojan's "this server" is its host's),
    Nurse Hạnh (Archives' facedown cards turned faceup, two or more).
    **5c** (built, below): Beta Build (a run-end rider about the program it
-   installed). **5d:** Hiram (a trash the Runner carries out, from any
-   location, is a moment, CR 1.14.5a; "look at the top card of R&D" shows
-   one player a hidden card).
+   installed). **5d** (built, below): Hiram (a trash the Runner carries
+   out, from any location, is a moment, CR 1.14.5a; "look at the top card
+   of R&D" shows one player a hidden card). Stage 5 is complete.
 6. **Arrange, reveal, stealth credits:** Cultivate, Knowledge Seeker, Esca,
    Corsair, Baker, Lampades, Aircheck. Aircheck locks the credit pool,
    which breaks the invariant that a payment may always reach the pool.
@@ -1044,6 +1044,67 @@ Point 48 of 66; `VP_UNIMPLEMENTED` 19 → 18.
   heuristic seatings move slightly (Corp flatline wins 12 → 10, Runner
   deck-outs 0 → 2). Checked: without Beta Build's file the heuristic
   seatings are byte-identical to `main`.
+
+#### Stage 5d — who trashed it, and a look nobody else sees (27 September 2026)
+
+`feat/vp-stage-5d-hiram`: Hiram "0mission" Svensson: Shadow of the Past,
+on the new Spare Parts Sweep deck. **One new `Effect`**
+(`LookAtTopOfDeck`). Vantage Point 49 of 66; `VP_UNIMPLEMENTED` 18 → 17.
+Stage 5 is complete.
+
+- **A trash says who carried it out** (`GameEvent::CardTrashed::by`, CR
+  1.14.5a: a condition about an effect a player performs is met only when
+  that player carries it out). Assigned by the site that trashes:
+  - text: the controller of the card resolving (`ability::carried_out_by`);
+  - a selection: its chooser;
+  - a cost: its payer;
+  - an install's like-card trash: the player installing (CR 8.5.6);
+  - the Corp's basic action against a tagged Runner's resource: the Corp;
+  - the rules' trashes are `None`: a host's hosted cards, the console
+    limit and the unique rule (CR 3.8.5b, 10.1.1: "are trashed"), and a
+    card emptied of its hosted credits in the middle of a payment.
+  A parked trash carries it too (`WouldHappen::Trash::by`).
+- **`Trigger::OnCardTrashed`** is heard by the player who carried the
+  trash out (`Hears::OwnSide`), about the card; a `None` trash is an
+  occurrence of nothing. Every other trash is dispatched where it happens
+  (`ability::dispatch_trashes`) — effects, selections, a prevented-or-not
+  parked trash, an install's trash, the basic action — and a cost's by its
+  payer, as before. The dispatch audit found no site left out across both
+  256-seed sweeps. The event does not say whether the card was installed,
+  so `validate` refuses an `InstalledCard` filter on the trigger. The turn
+  log counts it without the card's type (`turn_log::concealed`): a Corp
+  card trashed from HQ goes facedown.
+- **"Look at the top card of R&D"** is `Effect::LookAtTopOfDeck { deck,
+  count }` and `GameEvent::CardsLookedAt`, masked for everyone but the
+  looker. Neither player is told R&D's order, so the Corp is not shown it.
+  Composition didn't work: a selection over the deck shows its chooser the
+  cards, but it is a prompt to answer and a card to move. The view sweep's
+  log check reads a look in a seat's own entry as that seat's to know.
+- **Hiram** is two entries, one printed ability: `OnCardInstalled` and
+  `OnCardTrashed`, each `when: Card(CardType(Hardware))`.
+- **The deck.** Spare Parts, a Shaper Sweep deck on Hiram: hardware to
+  install (T400, DZMZ, GAMEDRAGON™ Pro, Touchstone) and to trash
+  (Methuselah's price as a run begins, and a second console beside it).
+  Eternal and Casual, for its Core Set cards.
+- **Fidelity limits.** A card that names another player to carry out its
+  trash (Noise's "the Corp trashes the top card of R&D") is read as its
+  controller's. Damage takes its cards as discards (`CardDiscarded`), so a
+  hardware lost to damage the Runner is responsible for is not heard. The
+  look is in the Runner's log, not in their view, so a bot's sample does
+  not keep the card on top of R&D.
+- **DSL ratio (`pool_status.py`): 21 of 72 `Effect` variants
+  single-use, 2 unused**, over 233 card files (20 of 71 before).
+  `LookAtTopOfDeck` is the one, with its reason on the variant; the
+  vocabulary it adds (`by`, a trigger) is what the next "whenever you
+  trash" card reuses.
+- **Measured.** Both sweeps at 256 seeds are green, coverage gate
+  included. `coverage_identical.py origin/main` is **identical in all four
+  shapes**: Hiram is an identity, which `determinize` never samples, and
+  Spare Parts is a Sweep deck, so no game in the pool hears the new moment.
+  Twenty-four random games of Spare Parts against Hostile Bid (seed 1)
+  show it heard: Hiram's install entry fired 47 times and its trash entry
+  18, for 65 looks, beside Methuselah (203), Shackleton Grid (3) and Beta
+  Build (3).
 
 ### 2. Rebellion Without Rehearsal — 65 cards (C 7 / V 43 / M 15)
 

@@ -1021,6 +1021,8 @@ impl CardDefinition {
             let about = triggered.trigger.about();
             let filter_fits = match &triggered.when {
                 None => true,
+                // A trash does not say whether the card was installed.
+                Some(EventFilter::InstalledCard(_)) if triggered.trigger == Trigger::OnCardTrashed => false,
                 Some(EventFilter::Card(_) | EventFilter::InstalledCard(_)) => about == TriggerAbout::Card,
                 Some(EventFilter::Server(_)) => about == TriggerAbout::Server,
                 Some(EventFilter::Damage(_)) => about == TriggerAbout::Damage,

@@ -64,7 +64,7 @@ pub(crate) fn matches(word: &Preventable, what: &WouldHappen, state: &GameState,
     match (word, what) {
         (Preventable::Damage { kind, .. }, WouldHappen::Damage { kind: dealt, .. }) => kind.is_none_or(|kind| kind == *dealt),
         (Preventable::Tags(_), WouldHappen::Tags { .. }) => true,
-        (Preventable::Trash(filter), WouldHappen::Trash { owner, install }) => {
+        (Preventable::Trash(filter), WouldHappen::Trash { owner, install, .. }) => {
             let card = match owner {
                 Side::Corp => state.find_corp_install(*install).map(|installed| &installed.card),
                 Side::Runner => state.find_rig_install(*install).map(|installed| &installed.card),
@@ -389,7 +389,13 @@ fn happen(
             dispatcher::emit(state, registry, &mut events, GameEvent::TagsGiven { side: Side::Runner, amount })?;
             Ok(events)
         }
-        WouldHappen::Trash { owner, install } => Ok(ability::trash_install(state, registry, *owner, *install)),
+        // Dispatched here, where the trash happens, as the tags above are.
+        WouldHappen::Trash { owner, install, by } => {
+            let mut events = ability::trash_install(state, registry, *owner, *install, *by);
+            let fired = ability::dispatch_trashes(state, registry, &events)?;
+            events.extend(fired);
+            Ok(events)
+        }
     }
 }
 
@@ -612,12 +618,12 @@ mod tests {
         let (saved, events) = act(&state, &registry, use_ability(DECOY));
         assert!(saved.find_rig_install(PROGRAM).is_some());
         assert_eq!(saved.runner.heap, vec![id("construct")]);
-        assert!(events.contains(&GameEvent::Prevented { what: WouldHappen::Trash { owner: Side::Runner, install: PROGRAM }, amount: 1 }));
+        assert!(events.contains(&GameEvent::Prevented { what: WouldHappen::Trash { owner: Side::Runner, install: PROGRAM, by: Some(Side::Corp) }, amount: 1 }));
 
         let (lost, _) = act(&state, &registry, PlayerAction::PassPriority { side: Side::Runner });
         let (lost, events) = act(&lost, &registry, PlayerAction::PassPriority { side: Side::Corp });
         assert!(lost.find_rig_install(PROGRAM).is_none());
-        assert!(events.contains(&GameEvent::CardTrashed { side: Side::Runner, card: id("program") }));
+        assert!(events.iter().any(|e| matches!(e, GameEvent::CardTrashed { side: Side::Runner, card, .. } if *card == id("program"))));
     }
 
     /// Snare!'s shape: the damage parks, and the tag behind it in the same

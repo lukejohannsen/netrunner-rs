@@ -1078,8 +1078,8 @@ mod system_gateway {
                 .expect("pick palisade");
         let (state, events) = apply_action(&state, &registry, PlayerAction::ConfirmCardSelection).expect("trash it");
 
-        assert!(events.contains(&crate::rules::GameEvent::CardTrashed { side: Side::Corp, card: CardId("palisade".to_string()) }));
-        assert!(events.contains(&crate::rules::GameEvent::CardTrashed { side: Side::Runner, card: CardId("botulus".to_string()) }), "{events:?}");
+        assert!(events.iter().any(|e| matches!(e, crate::rules::GameEvent::CardTrashed { side: Side::Corp, card, .. } if *card == CardId("palisade".to_string()))));
+        assert!(events.iter().any(|e| matches!(e, crate::rules::GameEvent::CardTrashed { side: Side::Runner, card, .. } if *card == CardId("botulus".to_string()))), "{events:?}");
         assert_eq!(state.corp.installed.len(), 1, "whitespace remains");
         assert!(state.corp.archives.iter().any(|a| a.card.0 == "palisade" && !a.facedown), "a rezzed ICE lands faceup");
         let rig: Vec<&str> = state.runner.rig.iter().map(|c| c.card.0.as_str()).collect();
@@ -1116,7 +1116,7 @@ mod system_gateway {
             let (state, _) = apply_action(&state, &registry, PlayerAction::ToggleCardSelection { position: 0 }).expect("toggle");
             apply_action(&state, &registry, PlayerAction::ConfirmCardSelection).expect("confirm")
         };
-        let trashed = crate::rules::GameEvent::CardTrashed { side: Side::Corp, card: CardId("hedge_fund".to_string()) };
+        let trashed = crate::rules::GameEvent::CardTrashed { side: Side::Corp, card: CardId("hedge_fund".to_string()), by: Some(Side::Corp) };
 
         let (state, events) = run(crate::dsl::CardZoneRef::OwnArchives);
         assert!(events.contains(&trashed), "{events:?}");
@@ -1175,7 +1175,7 @@ mod system_gateway {
             apply_action(&state, &registry, PlayerAction::ConfirmCardSelection).expect("and trashes it");
 
         assert!(
-            events.contains(&crate::rules::GameEvent::CardTrashed { side: Side::Runner, card: CardId("pennyshaver".to_string()) }),
+            events.iter().any(|e| matches!(e, crate::rules::GameEvent::CardTrashed { side: Side::Runner, card, .. } if *card == CardId("pennyshaver".to_string()))),
             "a selection-trash says so, naming the card's owner: {events:?}"
         );
         assert_eq!(memory_limit_exceeded(&events), Some(1), "{events:?}");
@@ -1199,7 +1199,7 @@ mod system_gateway {
         let (state, events) = apply_action(&state, &registry, PlayerAction::ConfirmCardSelection).expect("trash unity");
 
         assert_eq!(memory_limit_exceeded(&events), None, "within the limit again");
-        assert!(events.contains(&crate::rules::GameEvent::CardTrashed { side: Side::Runner, card: CardId("unity".to_string()) }));
+        assert!(events.iter().any(|e| matches!(e, crate::rules::GameEvent::CardTrashed { side: Side::Runner, card, .. } if *card == CardId("unity".to_string()))));
         assert!(state.pending_decision.is_none());
         let rig: Vec<&str> = state.runner.rig.iter().map(|c| c.card.0.as_str()).collect();
         assert_eq!(rig, vec!["corroder", "cleaver", "buzzsaw", "carmen"]);
@@ -1422,7 +1422,7 @@ mod system_gateway {
         assert_eq!(after.corp.archives, vec![crate::rules::ArchivedCard::facedown(CardId("enigma".to_string()))], "as it was on the table (CR 8.5.7)");
         let ice: Vec<&str> = after.corp.installed.iter().map(|c| c.card.0.as_str()).collect();
         assert_eq!(ice, vec!["ice_wall", "palisade"], "the new ice outermost");
-        assert!(events.contains(&crate::rules::GameEvent::CardTrashed { side: Side::Corp, card: CardId("enigma".to_string()) }));
+        assert!(events.iter().any(|e| matches!(e, crate::rules::GameEvent::CardTrashed { side: Side::Corp, card, .. } if *card == CardId("enigma".to_string()))));
         assert!(after.pending_payment.is_none() && after.payment_answers.is_empty());
     }
 
@@ -3805,7 +3805,7 @@ mod system_gateway {
         let rig: Vec<&str> = state.runner.rig.iter().map(|c| c.card.0.as_str()).collect();
         assert_eq!(rig, vec!["pantograph"], "the newer console stays");
         assert_eq!(state.runner.heap, vec![CardId("carnivore".to_string())]);
-        assert!(events.contains(&crate::rules::GameEvent::CardTrashed { side: Side::Runner, card: CardId("carnivore".to_string()) }));
+        assert!(events.iter().any(|e| matches!(e, crate::rules::GameEvent::CardTrashed { side: Side::Runner, card, .. } if *card == CardId("carnivore".to_string()))));
     }
 
     #[test]
@@ -6774,7 +6774,7 @@ mod system_gateway {
         let removed = crate::rules::pending_choice::remove_installed_card(&mut state, &registry, Side::Runner, &crate::dsl::CardZoneRef::OwnInstalled, InstallId(1))
             .expect("cleaver was installed");
         assert_eq!(removed.0, CardId("cleaver".to_string()));
-        assert!(removed.2.iter().any(|e| matches!(e, crate::rules::GameEvent::CardTrashed { side: Side::Runner, card } if card.0 == "gamedragon_pro")));
+        assert!(removed.2.iter().any(|e| matches!(e, crate::rules::GameEvent::CardTrashed { side: Side::Runner, card, .. } if card.0 == "gamedragon_pro")));
         assert!(state.runner.rig.is_empty(), "nothing left to host on");
     }
 
@@ -7083,7 +7083,7 @@ mod system_gateway {
         state.runner.rig[0].counters = 1;
         let (state, events) = apply_action(&state, &registry, PlayerAction::InstallResource { card_id: CardId("telework_contract".to_string()) })
             .expect("a second 1[c] Job, paid from the last hosted credit");
-        assert!(events.iter().any(|e| matches!(e, crate::rules::GameEvent::CardTrashed { side: Side::Runner, card } if card.0 == "open_market")));
+        assert!(events.iter().any(|e| matches!(e, crate::rules::GameEvent::CardTrashed { side: Side::Runner, card, .. } if card.0 == "open_market")));
         assert!(!state.runner.rig.iter().any(|c| c.card.0 == "open_market"), "when it is empty, trash it");
         assert_eq!(state.runner.resources.credits, Credits(2), "nothing from the wallet");
     }
@@ -12124,6 +12124,66 @@ mod vantage_point {
         let (state, _) = drive(state, &registry, |state, _| state.active_run.is_none());
         assert!(state.runner.stack.is_empty());
         assert!(state.runner.heap.contains(&id("corroder")), "left where it went");
+    }
+
+    fn looked_at(events: &[crate::rules::GameEvent]) -> Vec<CardId> {
+        events
+            .iter()
+            .filter_map(|event| match event {
+                crate::rules::GameEvent::CardsLookedAt { side: Side::Runner, deck: Side::Corp, cards } => Some(cards.clone()),
+                _ => None,
+            })
+            .flatten()
+            .collect()
+    }
+
+    /// Installing a piece of hardware shows Hiram's Runner the top card of
+    /// R&D, and nobody else.
+    #[test]
+    fn hiram_looks_at_the_top_of_r_and_d_when_the_runner_installs_hardware() {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.identity = Some(id("hiram_0mission_svensson_shadow_of_the_past"));
+        state.runner.grip = vec![id("t400_memory_diamond"), id("sure_gamble")];
+        state.corp.r_and_d = vec![id("hedge_fund"), id("ice_wall")];
+        let (state, events) = apply_action(&state, &registry, PlayerAction::InstallHardware { card_id: id("t400_memory_diamond") }).expect("install");
+        assert_eq!(looked_at(&events), vec![id("ice_wall")], "the top of R&D is the end of the pile");
+        let look = events.iter().find(|event| matches!(event, crate::rules::GameEvent::CardsLookedAt { .. })).expect("a look");
+        assert!(crate::rules::mask_event_for_player(look, &state, Side::Corp).is_none(), "the Corp is not shown it");
+        assert!(crate::rules::mask_event_for_player(look, &state, Side::Runner).is_some());
+        assert_eq!(state.corp.r_and_d, vec![id("hedge_fund"), id("ice_wall")], "nothing moved");
+    }
+
+    /// A piece of hardware the Runner trashes from the grip — Methuselah's
+    /// price as a run begins — is a look too.
+    #[test]
+    fn hiram_looks_when_the_runner_trashes_hardware_from_the_grip() {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.identity = Some(id("hiram_0mission_svensson_shadow_of_the_past"));
+        state.runner.rig = vec![rig("methuselah")];
+        state.runner.grip = vec![id("touchstone")];
+        state.corp.r_and_d = vec![id("hedge_fund")];
+        let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run");
+        let (_, events) = apply_action(&state, &registry, PlayerAction::AcceptPendingPaidChoice { cost_option_index: None }).expect("trash Touchstone");
+        assert_eq!(looked_at(&events), vec![id("hedge_fund")]);
+    }
+
+    /// A trash the Corp carries out is not the Runner's (CR 1.14.5a).
+    #[test]
+    fn hiram_does_not_look_when_the_corp_trashes_the_runners_hardware() {
+        let registry = registry();
+        let mut state = base_state();
+        state.runner.identity = Some(id("hiram_0mission_svensson_shadow_of_the_past"));
+        state.runner.rig = vec![rig("t400_memory_diamond")];
+        state.corp.r_and_d = vec![id("hedge_fund")];
+        let trash = crate::dsl::Effect::TrashCard(crate::dsl::CardTarget::RunnerRig(id("t400_memory_diamond")));
+        let corp_card = id("ice_wall");
+        let events = crate::rules::evaluate_effect(&mut state, &trash, &mut crate::rules::ResolutionContext::for_card(Some(&corp_card)), &registry).expect("trash");
+        assert!(events.iter().any(|event| matches!(event, crate::rules::GameEvent::CardTrashed { by: Some(Side::Corp), .. })));
+        assert!(looked_at(&events).is_empty());
     }
 
     /// Its second subroutine removes a card in the heap from the game.
