@@ -489,7 +489,10 @@ pub(crate) fn sources(
     if identity_pays {
         push(Pool::Identity, state.corp.identity_counters);
     }
-    let wallet = if from.is_some() { 0 } else { state.resources(side).credits.0 };
+    // Nor can it while Aircheck locks it: "you cannot lose or spend
+    // credits from your credit pool" for the run it makes.
+    let locked = side == Side::Runner && crate::rules::continuous::cannot(state, registry, crate::dsl::Prohibition::SpendOrLoseCreditPool);
+    let wallet = if from.is_some() || locked { 0 } else { state.resources(side).credits.0 };
     sources.push(Source { pool: Pool::Wallet, credits: wallet });
     sources
 }

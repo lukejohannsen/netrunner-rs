@@ -1019,7 +1019,10 @@ pub fn evaluate_effect(
             // for `Amount::CreditsLostThisResolution` (Account Siphon's
             // "2[c] for each credit lost"), and emitted, since "loses 3"
             // against a 2-credit pool loses 2.
-            let lost = (*amount).min(before);
+            // Aircheck's "you cannot lose … credits from your credit pool":
+            // nothing is lost, and the event says so.
+            let locked = *side == Side::Runner && continuous::cannot(state, registry, crate::dsl::Prohibition::SpendOrLoseCreditPool);
+            let lost = if locked { 0 } else { (*amount).min(before) };
             state.resources_mut(*side).credits = Credits(before - lost);
             ctx.credits_lost = lost;
             Ok(vec![GameEvent::CreditsLost { side: *side, amount: lost }])
@@ -1200,6 +1203,7 @@ pub fn evaluate_effect(
             on_start,
             exclude_servers_run_this_turn,
             only_protected_by_ice,
+            only_in,
         } => {
             // A parked `ChooseServer` is only ever resolved by
             // `run::start_run`, which rejects a second concurrent run — so
@@ -1230,7 +1234,7 @@ pub fn evaluate_effect(
             // ability. The narrowed list is what the decision carries, so
             // resolution's re-check and the candidate filter need no
             // knowledge of why a server is missing.
-            let allowed_servers = if *exclude_servers_run_this_turn || *only_protected_by_ice {
+            let allowed_servers = if *exclude_servers_run_this_turn || *only_protected_by_ice || only_in.is_some() {
                 let already_run = &state.runner.servers_run_this_turn;
                 // `None` means every server — enumerated the way
                 // `legal_actions` offers them, fresh remote included.
@@ -1250,6 +1254,15 @@ pub fn evaluate_effect(
                     .into_iter()
                     .filter(|server| !*exclude_servers_run_this_turn || !already_run.contains(server))
                     .filter(|server| !*only_protected_by_ice || protected(server))
+                    .filter(|server| {
+                        only_in.is_none_or(|kind| {
+                            let exists = match server {
+                                ServerId::Remote(id) => crate::rules::legal_actions::existing_remote_ids(state).contains(id),
+                                _ => true,
+                            };
+                            kind.admits(*server) && exists
+                        })
+                    })
                     .collect();
                 if offered.is_empty() {
                     return Err(RulesError::NoServerLeftToRun);

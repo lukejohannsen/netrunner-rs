@@ -305,6 +305,7 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
                 (Prohibition::StealOrTrash, true) => "the Runner cannot steal or trash copies of that card",
                 (Prohibition::ScoreAgendas, false) => "the Corp cannot score agendas",
                 (Prohibition::ScoreAgendas, true) => "the Corp cannot score copies of that agenda",
+                (Prohibition::SpendOrLoseCreditPool, _) => "the Runner cannot lose or spend credits from their credit pool",
             };
             format!("{what} {}", duration(until))
         }

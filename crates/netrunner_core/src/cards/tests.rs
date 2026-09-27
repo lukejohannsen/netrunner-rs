@@ -12454,6 +12454,52 @@ mod vantage_point {
         assert!(!crate::rules::legal_actions(&state, &registry).is_empty());
     }
 
+    /// Aircheck's run is paid for from its own four credits, which are a
+    /// stealth card's, and never from the credit pool, which nothing can
+    /// take from either (Esca's "they lose 1[credit]"). A successful run
+    /// offers a run on a remote server, with the pool free again.
+    #[test]
+    fn aircheck_locks_the_credit_pool_for_its_run_and_offers_a_remote_after_success() {
+        let registry = registry();
+        let locked = |state: &GameState| crate::rules::continuous::cannot(state, &registry, crate::dsl::Prohibition::SpendOrLoseCreditPool);
+        let bonus = |state: &GameState| state.active_run.as_ref().map_or(0, |run| run.bonus_run_credits);
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.credits = Credits(5);
+        state.runner.grip = vec![id("aircheck")];
+        state.runner.rig = vec![rig("corsair")];
+        state.corp.r_and_d = vec![id("esca")];
+        state.corp.installed = vec![root_at("pad_campaign", 0), crate::rules::InstalledCard { server: ServerId::RnD, ..ice_at_hq("ice_wall") }];
+        let state = play_run_event(&state, &registry, "aircheck", ServerId::RnD);
+        assert_eq!(state.runner.resources.credits, Credits(4), "Aircheck cost 1");
+        assert!(locked(&state));
+        assert_eq!(bonus(&state), 4);
+
+        let (state, _) = crate::rules::test_support::continue_run(&state, &registry).expect("approach Ice Wall");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner passes approach");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Corp }).expect("corp passes approach");
+        let corsair = install_of(&state, "corsair");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ActivateAbility { target: corsair, ability_index: 1 }).expect("a stealth card's credit");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Corp }).expect("corp passes back");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ActivateAbility { target: corsair, ability_index: 0 }).expect("break");
+        assert_eq!((bonus(&state), state.runner.resources.credits), (2, Credits(4)), "both paid from Aircheck, none from the pool");
+
+        let (state, _) = crate::rules::test_support::through_movement(&state, &registry).expect("to the server");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::CompleteRun).expect("breach R&D");
+        assert_eq!(state.runner.resources.credits, Credits(4), "Esca's loss takes nothing from a locked pool");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::PassAccessedCard { card_id: id("esca") }).expect("leave Esca");
+        assert!(state.active_run.is_none());
+        assert!(!locked(&state), "the lock lasts the run");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("run a remote");
+        let offered = crate::rules::legal_actions_for(&state, &registry, Side::Runner);
+        assert!(
+            offered.iter().all(|action| matches!(action, PlayerAction::ChooseServerForPendingDecision { server: ServerId::Remote(0) })),
+            "the one remote on the table, nothing else: {offered:?}"
+        );
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ChooseServerForPendingDecision { server: ServerId::Remote(0) }).expect("run it");
+        assert_eq!(state.active_run.as_ref().map(|run| run.server), Some(ServerId::Remote(0)));
+    }
+
     /// Its second subroutine removes a card in the heap from the game.
     #[test]
     fn ansel_2_0_removes_a_card_in_the_heap_from_the_game() {

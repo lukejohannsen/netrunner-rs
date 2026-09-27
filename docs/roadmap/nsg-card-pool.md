@@ -390,9 +390,9 @@ Division.
    Knowledge Seeker, Esca — arranging the top of R&D, a reveal while
    accessed in R&D, an encounter's end as a moment. **6b:** Corsair, Baker,
    Lampades — credits spendable only from stealth cards (built, below).
-   **6c:** Aircheck,
+   **6c** (built, below): Aircheck,
    which locks the credit pool and so breaks the invariant that a payment
-   may always reach the pool.
+   may always reach the pool. Stage 6 is complete.
 7. **Hosting, the score area and access limits:** Hackerspace, Read-Write
    Share, Luana Campos, Stick and Poke, Word on the Street, Myōshu,
    Flagship, Sacrifice Zone Expansion, Tocsin.
@@ -1253,6 +1253,45 @@ Safety Net Sweep deck. **No new `Effect`.** Vantage Point 55 of 66;
   times each, Baker's 46, with 2 runs redirected to HQ or R&D. Stealth
   credits are rarely on hand in random play, which is why the two are
   rare.
+
+#### Stage 6c — a locked credit pool (27 September 2026)
+
+`feat/vp-stage-6c-aircheck`: Aircheck, on Safety Net. **No new `Effect`.**
+Vantage Point 56 of 66; `VP_UNIMPLEMENTED` 11 → 10. Stage 6 is complete.
+
+- **Composed.** "Place 4[credit] on this event … you can spend hosted
+  credits" is Overclock's shape: `PromptChooseServer` with
+  `bonus_run_credits: 4`, the run's own pool, whose card is the event that
+  began the run (`RunState::initiated_by`). Aircheck is a stealth card, so
+  Corsair, Lampades and Baker may spend those credits (6b's `from`).
+  "Run HQ or R&D" is `allowed_servers`. "When that run ends, if it was
+  successful, you may run a remote server" is an `on_success` that arms a
+  `SetRunEndedEffect`: the run-end rider is set only once the run has
+  succeeded, so no condition on the run's end is needed.
+- **"You cannot lose or spend credits from your credit pool"** is
+  `Prohibition::SpendOrLoseCreditPool`, made by the run's `on_start` for
+  the run (a lingering effect, which the view carries, so a bot's sample
+  sees the lock). `payment::sources` then gives the credit pool nothing,
+  as it does for a payment limited to stealth cards, and
+  `Effect::LoseCredits` takes nothing from it. Those are the only two
+  places a Runner's credit pool goes down.
+- **`PromptChooseServer::only_in: Option<ServerKind>`**: "a remote
+  server", the remotes on the table. The fresh remote that "any server"
+  offers is not one, and with no remote the offer fails rather than park,
+  so the "may" is left with its decline.
+- **Fidelity limits.** The event is taken to be active for the run it
+  makes and no longer, so the second run is an ordinary one: its credits
+  are the credit pool's, and the event's unspent credits are gone with
+  the first run.
+- **DSL ratio (`pool_status.py`): 19 of 72 `Effect` variants single-use,
+  2 unused**, over 240 card files (unchanged). The growth is one
+  `Prohibition` and one offer field.
+- **Measured.** Both sweeps at 256 seeds are green. Against the 6b branch,
+  `coverage_identical.py` has both random seatings **identical**. The
+  heuristic seatings moved, and without Aircheck's card file they are
+  identical in all four shapes (`determinize`).
+- **Real play.** Ninety-six random games of Safety Net against Hostile Bid
+  (seed 2) played Aircheck 33 times.
 
 ### 2. Rebellion Without Rehearsal — 65 cards (C 7 / V 43 / M 15)
 
