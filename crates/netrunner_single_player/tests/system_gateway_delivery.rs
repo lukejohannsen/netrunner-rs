@@ -157,9 +157,12 @@ impl Seating {
 /// The card universe is this fixture's own two decks, not the sample pool.
 #[test]
 fn no_panics_or_deadlocks_across_many_seeds_system_gateway() {
-    let mut coverage = Coverage::default();
-    for seed in 0..sweep_seed_count() {
-        for seating in Seating::ALL {
+    // Every (seed, seating) is its own game, played on its own thread
+    // (`netrunner_session::in_parallel`); a failure still names its seed.
+    let jobs: Vec<(u64, Seating)> = (0..sweep_seed_count()).flat_map(|seed| Seating::ALL.map(|seating| (seed, seating))).collect();
+    let games = netrunner_session::in_parallel(&jobs, |&(seed, seating)| {
+        let mut coverage = Coverage::default();
+        {
             let registry = sg_registry();
             let (corp_deck, runner_deck) = sg_decks();
             let (state, _events) =
@@ -180,6 +183,11 @@ fn no_panics_or_deadlocks_across_many_seeds_system_gateway() {
             assert!(!history.is_empty(), "seed {seed} ({seating:?}): history should be non-empty");
             coverage.absorb_match(&history, &registry, &outcome);
         }
+        coverage
+    });
+    let mut coverage = Coverage::default();
+    for game in &games {
+        coverage.merge(game);
     }
 
     let (corp_deck, runner_deck) = sg_decks();
@@ -242,7 +250,6 @@ fn the_anoetic_void_then_skunkworks_position_plays_out() {
 /// "does every deck finish", not "does every pairing".
 #[test]
 fn every_sample_deck_matchup_finishes() {
-    let mut coverage = Coverage::default();
     // The schedule's own pool: the samples and the `Sweep` decks, so the
     // period reaches the prevention decks through the `ActionSpace` too.
     let sample = |side| netrunner_core::decks::for_side(side)
@@ -251,9 +258,11 @@ fn every_sample_deck_matchup_finishes() {
         .count();
     let schedule_period = sample(Side::Corp).max(sample(Side::Runner)) as u64;
     let expected_games = 4 * schedule_period;
-    for index in 0..schedule_period {
+    let jobs: Vec<(u64, u64)> = (0..schedule_period).flat_map(|index| (0..4u64).map(move |seed| (index, seed))).collect();
+    let games = netrunner_session::in_parallel(&jobs, |&(index, seed)| {
         let (corp_deck, runner_deck) = netrunner_session::sweep_decks_for_seed(index);
-        for seed in 0..4u64 {
+        let mut coverage = Coverage::default();
+        {
             let registry = sg_registry();
             let label = format!("{}_vs_{} seed {seed}", corp_deck.id, runner_deck.id);
             let (state, _events) =
@@ -282,6 +291,11 @@ fn every_sample_deck_matchup_finishes() {
             );
             coverage.absorb_match(&history, &registry, &outcome);
         }
+        coverage
+    });
+    let mut coverage = Coverage::default();
+    for game in &games {
+        coverage.merge(game);
     }
 
     // No coverage gate here, deliberately. Forty-eight games is too small a
@@ -318,10 +332,10 @@ fn every_sample_deck_matchup_finishes() {
 /// What only a real game can check is that it does *not* fire constantly.
 #[test]
 fn post_action_windows_stay_rare() {
-    let mut opened = 0usize;
-    let mut steps = 0usize;
-
-    for seed in 0..16u64 {
+    let seeds: Vec<u64> = (0..16).collect();
+    let counts = netrunner_session::in_parallel(&seeds, |&seed| {
+        let mut opened = 0usize;
+        let mut steps = 0usize;
         let registry = sg_registry();
         let (corp_deck, runner_deck) = sg_decks();
         let (state, _events) =
@@ -358,7 +372,9 @@ fn post_action_windows_stay_rare() {
                 _ => break,
             }
         }
-    }
+        (opened, steps)
+    });
+    let (opened, steps) = counts.iter().fold((0, 0), |(opened, steps), (o, s)| (opened + o, steps + s));
 
     assert!(
         opened * 10 < steps,

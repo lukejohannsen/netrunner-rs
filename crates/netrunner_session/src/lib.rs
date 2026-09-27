@@ -14,10 +14,12 @@ pub mod coverage;
 pub mod history;
 pub mod lesson;
 pub mod outcome;
+pub mod parallel;
 pub mod session;
 
 pub use coverage::{played_pool_card_ids, sweep_decks_for_seed, Coverage};
 pub use history::{HistoryEntry, HistoryReadError, MatchHistory, MatchRecordHeader, PublicHistoryEntry, RecordedBot};
 pub use lesson::{LessonError, LessonSession, LessonStep};
 pub use outcome::{classify_end_reason, GameEndReason};
+pub use parallel::in_parallel;
 pub use session::{Rewind, Rewound, Seat, Session, SessionStep, StallReason, SubmitError, DECISION_BUDGET, MAX_STEPS, UNDO_DEPTH};
