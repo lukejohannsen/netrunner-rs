@@ -212,7 +212,9 @@ fn short_after(state: &GameState, registry: &CardRegistry, memory_cost: u32, pic
 fn balance_without(state: &GameState, registry: &CardRegistry, picked: &[InstallId]) -> i32 {
     let mut without = state.clone();
     for install in picked {
-        pending_choice::remove_installed_card(&mut without, registry, Side::Runner, &CardZoneRef::OwnInstalled, *install);
+        // A rig card announces nothing on its way out, so there is nothing
+        // to fail.
+        let _ = pending_choice::remove_installed_card(&mut without, registry, Side::Runner, &CardZoneRef::OwnInstalled, *install);
     }
     memory::memory_balance(&without, registry)
 }
@@ -248,9 +250,11 @@ fn ask(state: &mut GameState, side: Side, card: &CardId, left: &[InstallId], may
 fn trash(state: &mut GameState, registry: &CardRegistry, side: Side, picked: &[InstallId]) -> Result<Vec<GameEvent>, RulesError> {
     let mut events = Vec::new();
     for install in picked {
-        let Some((card, was_public, cascade)) = pending_choice::remove_installed_card(state, registry, side, &CardZoneRef::OwnInstalled, *install) else {
+        let Some(removed) = pending_choice::remove_installed_card(state, registry, side, &CardZoneRef::OwnInstalled, *install)? else {
             continue;
         };
+        let (card, was_public, cascade) = (removed.card, removed.was_public, removed.cascade);
+        events.extend(removed.announced);
         match side {
             Side::Corp => state.corp.archives.push(if was_public { ArchivedCard::faceup(card.clone()) } else { ArchivedCard::facedown(card.clone()) }),
             Side::Runner => state.runner.heap.push(card.clone()),

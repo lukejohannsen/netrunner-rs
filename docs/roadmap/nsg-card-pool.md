@@ -393,9 +393,13 @@ Division.
    **6c** (built, below): Aircheck,
    which locks the credit pool and so breaks the invariant that a payment
    may always reach the pool. Stage 6 is complete.
-7. **Hosting, the score area and access limits:** Hackerspace, Read-Write
-   Share, Luana Campos, Stick and Poke, Word on the Street, Myōshu,
-   Flagship, Sacrifice Zone Expansion, Tocsin.
+7. **Hosting, the score area and access limits**, split four ways by
+   mechanic. **7a** (built, below): Luana Campos, a card leaving the
+   table as a moment it can interrupt. **7b:** Read-Write Share and
+   Hackerspace, the Runner's hosting (facedown hosted cards, a resource
+   installed onto a resource). **7c:** Myōshu, Word on the Street and
+   Sacrifice Zone Expansion, the score area. **7d:** Flagship, Tocsin and
+   Stick and Poke.
 8. **Méliès U, alone:** hidden setup state, three sides, and masking.
 
 **Riskiest:**
@@ -1292,6 +1296,67 @@ Vantage Point 56 of 66; `VP_UNIMPLEMENTED` 11 → 10. Stage 6 is complete.
   identical in all four shapes (`determinize`).
 - **Real play.** Ninety-six random games of Safety Net against Hostile Bid
   (seed 2) played Aircheck 33 times.
+
+#### Stage 7a — one door off the table (27 September 2026)
+
+`feat/vp-stage-7a-luana-campos`: Luana Campos, on the Hostile Bid Sweep
+deck. **No new `Effect`.** Vantage Point 57 of 66; `VP_UNIMPLEMENTED`
+10 → 9.
+
+- **A Corp install leaves the table through one door**, `rules::uninstall`.
+  A card is uninstalled "when it stops being installed for any reason"
+  (CR 8.5.1b), and nine places each took the card out of
+  `CorpState::installed` itself. Between them they are every way the pool
+  uninstalls a Corp card: trashed by a card's text, after a prevention
+  window, by a selection or to make room for an install; trashed or
+  stolen by the Runner on access; scored; removed from the game; and
+  trashed by the ◆ rule. Each still decides where
+  the card goes and what leaves with it; the door only takes it off the
+  table, after saying so.
+- **"When this asset would be uninstalled" is a moment**,
+  `Trigger::OnWouldBeUninstalled`, heard as `GameEvent::AboutToBeUninstalled`
+  while the card is still in its root. A "would" is an interrupt (CR
+  9.9.3d), and an interrupt is marked pending only if it is active (CR
+  9.9.4b), so the door announces a card that is rezzed and prints the
+  trigger and no other: an announcement nobody could hear is left out, as
+  a tag or a trash about to happen is when nobody could prevent it, and a
+  facedown card is never named. The ◆ rule's trash is a checkpoint's,
+  which carries out no instruction and so opens no interrupt window (CR
+  9.9.4); it takes the card through the door's other way out, which
+  announces nothing (and which could not: the checkpoint runs inside
+  `dispatch_event`, whose own checkpoint would find the older copy still
+  installed). `OnCardTrashed` could not say it: it is heard after the
+  card has gone, and with it the counters.
+- **Hosted bad publicity is counters on the card.** "Host 1 of your bad
+  publicity counters on this asset" is `RemoveBadPublicity(1)` and
+  `AddCounters(1)`, behind `AmountAtLeast(BadPublicity, 1)` so that
+  nothing is asked with none to host (`Amount::BadPublicity`, the
+  `RunnerTags` of the other side). "Take all hosted bad publicity" is
+  `GiveBadPublicity(HostedCounters)`: the effect takes an `Amount` now, as
+  `GiveTags` came to, and taking none dispatches nothing, so Editorial
+  Division never hears a Luana that hosted nothing.
+  `CounterKind::BadPublicity` names the counters for the view; both
+  clients word them and the desktop badges them with the bad publicity
+  readout's mark.
+- **Deck.** Hostile Bid: two Luana Campos for two PAD Campaign. Its three
+  Hostile Takeovers are what she has to host.
+- **Fidelity limits.** "Uninstalled" for a Corp card only: no Runner card
+  in the pool interrupts its own uninstalling (Nanuq, in Parhelion, is the
+  first that cares, and its words are a replacement, "remove it from the
+  game"). The interrupt resolves in the dispatch that announced it; a
+  second card of the Corp's that heard the same moment would be ordered
+  with it as simultaneous triggers are, but no other card does.
+- **DSL ratio (`pool_status.py`): 19 of 72 `Effect` variants single-use,
+  2 unused**, over 241 card files (unchanged). The growth is a `Trigger`
+  (37 → 38), an `Amount`, a `CounterKind` and an event.
+- **Measured.** Both sweeps at 256 seeds are green. Against `origin/main`,
+  `coverage_identical.py` has both random seatings **identical**. The
+  heuristic seatings moved, and without Luana's card file (and the deck
+  swap) they are identical in all four shapes (`determinize`).
+- **Real play.** Ninety-six random games of Hostile Bid against Safety Net
+  (seed 2) installed Luana 94 times and rezzed her 79; 48 rezzed Luanas
+  were announced on their way out, and one handed a hosted bad publicity
+  back to the Corp.
 
 ### 2. Rebellion Without Rehearsal — 65 cards (C 7 / V 43 / M 15)
 

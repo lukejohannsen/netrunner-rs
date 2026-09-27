@@ -865,6 +865,8 @@ pub fn mask_event_for_player(event: &GameEvent, state: &GameState, viewer: impl 
         | GameEvent::IceBypassed { .. }
         | GameEvent::EncounterEnded { .. }
         | GameEvent::CardRevealed { .. }
+        // Announced only for a rezzed card (`rules::uninstall`).
+        | GameEvent::AboutToBeUninstalled { .. }
         | GameEvent::IceFullyBroken { .. }
         | GameEvent::ServerApproached { .. }
         | GameEvent::RunSucceeded { .. }

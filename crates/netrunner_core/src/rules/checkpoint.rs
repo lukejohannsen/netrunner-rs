@@ -46,6 +46,7 @@ use crate::rules::active;
 use crate::rules::event::GameEvent;
 use crate::rules::lingering;
 use crate::rules::state::{ArchivedCard, GameState, InstallId, Side};
+use crate::rules::uninstall;
 use crate::rules::win;
 
 /// Runs the standing checks. `event` is what just happened, when something
@@ -122,8 +123,7 @@ fn enforce_unique(state: &mut GameState, registry: &CardRegistry, event: Option<
     };
     let active = active_copies(&mut active::corp(state, registry));
     for install in older_copies(&active, just_rezzed) {
-        let Some(position) = state.corp.installed.iter().position(|installed| installed.install_id == install) else { continue };
-        let trashed = state.corp.installed.remove(position);
+        let Some(trashed) = uninstall::corp_install_at_checkpoint(state, install) else { continue };
         state.corp.archives.push(ArchivedCard::faceup(trashed.card.clone()));
         events.push(GameEvent::CardTrashed { side: Side::Corp, card: trashed.card, by: None });
     }

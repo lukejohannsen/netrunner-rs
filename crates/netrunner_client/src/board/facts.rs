@@ -165,6 +165,7 @@ fn counter_word(kind: Option<CounterKind>, n: u32) -> String {
         Some(CounterKind::Virus) => "virus counter",
         Some(CounterKind::Power) => "power counter",
         Some(CounterKind::Credit) => "credit",
+        Some(CounterKind::BadPublicity) => "bad publicity counter",
         None => "counter",
     };
     format!("{n} {name}{}", if n == 1 { "" } else { "s" })

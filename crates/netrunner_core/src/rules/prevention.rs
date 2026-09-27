@@ -402,7 +402,7 @@ fn happen(
         }
         // Dispatched here, where the trash happens, as the tags above are.
         WouldHappen::Trash { owner, install, by } => {
-            let mut events = ability::trash_install(state, registry, *owner, *install, *by);
+            let mut events = ability::trash_install(state, registry, *owner, *install, *by)?;
             let fired = ability::dispatch_trashes(state, registry, &events)?;
             events.extend(fired);
             Ok(events)

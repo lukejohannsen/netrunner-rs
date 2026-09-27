@@ -1,0 +1,73 @@
+{
+  "id": "luana_campos",
+  "title": "Luana Campos",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 1,
+  "trash_cost": 3,
+  "counter_kind": "BadPublicity",
+  "triggers": [
+    {
+      "trigger": "OnTurnStart",
+      "requirement": {
+        "AmountAtLeast": [
+          "BadPublicity",
+          1
+        ]
+      },
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Corp",
+            "options": [
+              {
+                "Sequence": [
+                  {
+                    "RemoveBadPublicity": 1
+                  },
+                  {
+                    "AddCounters": 1
+                  },
+                  {
+                    "GainCredits": [
+                      "Corp",
+                      3
+                    ]
+                  },
+                  {
+                    "DrawCards": [
+                      "Corp",
+                      1
+                    ]
+                  }
+                ]
+              },
+              {
+                "Sequence": []
+              }
+            ],
+            "texts": [
+              "host 1 of your bad publicity counters on this asset",
+              ""
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "trigger": "OnWouldBeUninstalled",
+      "subject": "This",
+      "requirement": {
+        "ThisCardCountersAtLeast": 1
+      },
+      "effects": [
+        {
+          "GiveBadPublicity": "HostedCounters"
+        }
+      ],
+      "text": "When this asset would be uninstalled, take all hosted bad publicity."
+    }
+  ],
+  "numeric_id": 36057,
+  "is_playable": true
+}

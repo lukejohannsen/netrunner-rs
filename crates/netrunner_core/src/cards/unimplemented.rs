@@ -23,7 +23,6 @@ pub(crate) const VP_UNIMPLEMENTED: &[(u32, &str)] = &[
     (36025, "Word on the Street"),
     (36036, "Méliès U: Only the Brightest"),
     (36056, "Sacrifice Zone Expansion"),
-    (36057, "Luana Campos"),
     (36060, "Tocsin"),
     (36061, "Myōshu"),
     (36064, "Flagship"),

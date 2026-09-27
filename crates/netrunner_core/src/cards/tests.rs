@@ -6774,9 +6774,10 @@ mod system_gateway {
         // The host leaving the rig takes the hardware with it.
         let mut state = state;
         let removed = crate::rules::pending_choice::remove_installed_card(&mut state, &registry, Side::Runner, &crate::dsl::CardZoneRef::OwnInstalled, InstallId(1))
+            .expect("nothing to announce")
             .expect("cleaver was installed");
-        assert_eq!(removed.0, CardId("cleaver".to_string()));
-        assert!(removed.2.iter().any(|e| matches!(e, crate::rules::GameEvent::CardTrashed { side: Side::Runner, card, .. } if card.0 == "gamedragon_pro")));
+        assert_eq!(removed.card, CardId("cleaver".to_string()));
+        assert!(removed.cascade.iter().any(|e| matches!(e, crate::rules::GameEvent::CardTrashed { side: Side::Runner, card, .. } if card.0 == "gamedragon_pro")));
         assert!(state.runner.rig.is_empty(), "nothing left to host on");
     }
 
@@ -7620,8 +7621,9 @@ mod system_gateway {
         // The console leaving takes its hosted cards to the heap.
         let mut state = state;
         let removed = crate::rules::pending_choice::remove_installed_card(&mut state, &registry, Side::Runner, &crate::dsl::CardZoneRef::OwnInstalled, InstallId(1))
+            .expect("nothing to announce")
             .expect("madani was installed");
-        assert!(removed.2.iter().any(|e| matches!(e, crate::rules::GameEvent::CardTrashed { card, .. } if card.0 == "cleaver")));
+        assert!(removed.cascade.iter().any(|e| matches!(e, crate::rules::GameEvent::CardTrashed { card, .. } if card.0 == "cleaver")));
         assert!(state.runner.heap.contains(&CardId("cleaver".to_string())));
     }
 
@@ -12512,5 +12514,61 @@ mod vantage_point {
         assert!(state.runner.heap.is_empty());
         assert_eq!(state.runner.removed_from_game, vec![id("sure_gamble")]);
         assert!(events.iter().any(|event| matches!(event, crate::rules::GameEvent::CardRemovedFromGame { side: Side::Runner, .. })));
+    }
+
+    /// Hosts a bad publicity counter at the Corp's turn start for 3[credit]
+    /// and a card, and hands it back as it is trashed: the interrupt
+    /// resolves while the asset is still in its root (`rules::uninstall`),
+    /// so the Corp takes the counter before the card is trashed.
+    #[test]
+    fn luana_campos_hosts_a_bad_publicity_and_hands_it_back_when_trashed() {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(0);
+        state.corp.bad_publicity = 1;
+        state.corp.resources.credits = Credits(0);
+        state.corp.r_and_d = vec![id("hedge_fund"), id("hedge_fund")];
+        state.corp.installed = vec![crate::rules::InstalledCard { rezzed: true, ..root_at("luana_campos", 0) }];
+        let (state, _) = apply_action(&state, &registry, PlayerAction::EndTurn).expect("end the Runner's turn");
+        let (state, _) = pass_until_settled(state, &registry);
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("host it");
+        let (state, _) = pass_until_settled(state, &registry);
+        assert_eq!(state.corp.bad_publicity, 0, "hosted, where it has no effect");
+        assert_eq!(state.corp.installed[0].counters, 1);
+        assert_eq!(state.corp.resources.credits, Credits(3));
+        assert_eq!(state.corp.hq.len(), 2, "the turn's draw and Luana's");
+
+        // With none to host, nothing is asked.
+        let mut again = state.clone();
+        again.phase = GamePhase::Action(Side::Runner);
+        again.runner.resources.clicks = Clicks(0);
+        let (again, _) = apply_action(&again, &registry, PlayerAction::EndTurn).expect("end the Runner's turn");
+        let (again, _) = pass_until_settled(again, &registry);
+        assert!(again.pending_decision.is_none(), "no bad publicity to host");
+
+        let mut state = state;
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state.runner.resources.credits = Credits(10);
+        let want = PlayerAction::TrashAccessedCard { card_id: id("luana_campos") };
+        let (mut state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Remote(0) }).expect("run");
+        for _ in 0..30 {
+            let legal = crate::rules::legal_actions(&state, &registry);
+            if legal.contains(&want) {
+                break;
+            }
+            let action = legal
+                .into_iter()
+                .find(|a| matches!(a, PlayerAction::PassPriority { .. } | PlayerAction::ContinueRun | PlayerAction::CompleteRun))
+                .expect("a way on to the access");
+            state = apply_action(&state, &registry, action).expect("walk to the access").0;
+        }
+        let (state, events) = apply_action(&state, &registry, want).expect("trash it for 3");
+        assert_eq!(state.corp.bad_publicity, 1, "taken back as it went");
+        assert!(state.corp.installed.is_empty());
+        let taken = events.iter().position(|e| matches!(e, crate::rules::GameEvent::BadPublicityGiven { amount: 1 }));
+        let trashed = events.iter().position(|e| matches!(e, crate::rules::GameEvent::CardTrashedFromAccess { .. }));
+        assert!(taken.is_some() && taken < trashed, "the interrupt resolves first: {events:?}");
     }
 }

@@ -23,7 +23,9 @@
               "EffectIf": {
                 "condition": "SubroutineResolvedThisRun",
                 "effect": {
-                  "GiveBadPublicity": 1
+                  "GiveBadPublicity": {
+                    "Fixed": 1
+                  }
                 }
               }
             }

@@ -18,6 +18,7 @@ use crate::rules::turn;
 use crate::rules::turn_log;
 use crate::rules::checkpoint;
 use crate::rules::continuous;
+use crate::rules::uninstall;
 
 impl GameState {
     /// Ergonomic `state.step(registry, action)` alias for `apply_action`,
@@ -2285,7 +2286,10 @@ fn score_agenda(
     // turn's last click could not be scored until the next turn (ROADMAP
     // Rules Audit T6).
     let mut next = state.clone();
-    let install_id = next.corp.installed.remove(position).install_id;
+    // Scored is uninstalled (CR 1.17.5), so it leaves by the door. An
+    // agenda is never rezzed, so nothing is announced.
+    let install_id = next.corp.installed[position].install_id;
+    let (_, announced) = uninstall::corp_install(&mut next, registry, install_id)?.ok_or(RulesError::InstallNotFound(install_id))?;
     // Dividends: every advancement counter past the requirement becomes
     // `dividends` agenda counters on the scored copy (Off the Books).
     let agenda_counters = card_def.dividends.unwrap_or(0).saturating_mul(advancement_tokens - required);
@@ -2293,7 +2297,8 @@ fn score_agenda(
     next.corp.resources.agenda_points = next.corp.resources.agenda_points.gain(agenda_points);
 
     let scored_event = GameEvent::AgendaScored { card: card_id.clone(), agenda_points, server };
-    let mut events = vec![scored_event.clone()];
+    let mut events = announced;
+    events.push(scored_event.clone());
     if agenda_counters > 0 {
         events.push(GameEvent::CountersAdded { card: card_id.clone(), amount: agenda_counters });
     }

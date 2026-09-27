@@ -283,6 +283,17 @@ pub enum Trigger {
     /// Composition didn't work: `OnTrashedFromAccess` is one kind of trash
     /// and `OnCardsTrashedFromHq` a batch from one zone.
     OnCardTrashed,
+    /// "[interrupt] → When this asset would be uninstalled" (Luana
+    /// Campos) — `GameEvent::AboutToBeUninstalled`, announced by
+    /// `rules::uninstall`, the one door a Corp install leaves the table
+    /// through (a card stops being installed "for any reason", CR 8.5.1b),
+    /// before the card goes: a "would" is an interrupt, marked pending
+    /// while the instruction is imminent and only if it is active (CR
+    /// 9.9.3d, 9.9.4b). About the card, and only ever printed about the
+    /// card itself. Composition didn't work: `OnCardTrashed` is
+    /// heard after the card has gone, and with it what it hosted, and a
+    /// trash is one way of being uninstalled among several.
+    OnWouldBeUninstalled,
 }
 
 /// What a run's moment about a piece of ice says of it beyond the card —
@@ -479,7 +490,7 @@ impl Trigger {
     /// `every_trigger_is_listed_at_its_own_index` holds the two together,
     /// and its exhaustive `match` is what stops a new variant compiling
     /// until it is listed here.
-    pub const ALL: [Trigger; 37] = [
+    pub const ALL: [Trigger; 38] = [
         Trigger::OnPlay,
         Trigger::OnRunStart,
         Trigger::OnEncounter,
@@ -517,6 +528,7 @@ impl Trigger {
         Trigger::OnCreditsSpentOutsidePool,
         Trigger::OnArchivesTurnedFaceup,
         Trigger::OnCardTrashed,
+        Trigger::OnWouldBeUninstalled,
     ];
 
     /// This trigger's position in `ALL`.
@@ -553,7 +565,8 @@ impl Trigger {
             | Trigger::OnIceFullyBroken
             | Trigger::OnIceBypassed
             | Trigger::OnEncounterEnded
-            | Trigger::OnCardTrashed => TriggerAbout::Card,
+            | Trigger::OnCardTrashed
+            | Trigger::OnWouldBeUninstalled => TriggerAbout::Card,
             Trigger::OnRunStart
             | Trigger::OnIceApproached
             | Trigger::OnApproachServer
@@ -614,6 +627,7 @@ impl Trigger {
             // itself, so `Subject::This` already says whose they are.
             Trigger::OnPlay
             | Trigger::OnForfeit
+            | Trigger::OnWouldBeUninstalled
             | Trigger::OnAccessed
             | Trigger::OnTrashedFromAccess
             | Trigger::OnAgendaScored
@@ -655,7 +669,7 @@ mod tests {
         // Exhaustive, so a new variant stops here until it is added to
         // `Trigger::ALL` — the turn log indexes a fixed array by it.
         let listed = |trigger: Trigger| match trigger {
-            Trigger::OnPlay | Trigger::OnRunStart | Trigger::OnEncounter | Trigger::OnTurnStart | Trigger::OnAccessed | Trigger::OnTrashedFromAccess | Trigger::OnSuccessfulRun | Trigger::Paid | Trigger::OnInstall | Trigger::OnAgendaScored | Trigger::OnAgendaStolen | Trigger::OnDamageAboutToResolve | Trigger::OnRez | Trigger::OnApproachServer | Trigger::OnRunEnded | Trigger::OnBasicDrawAction | Trigger::OnTagsGiven | Trigger::OnAdvance | Trigger::OnDiscardPhaseEnd | Trigger::OnActionPhaseEnd | Trigger::OnCardInstalled | Trigger::OnDamageDealt | Trigger::OnCardsTrashedFromHq | Trigger::OnAbilityGainedCredits | Trigger::OnForfeit | Trigger::OnIceApproached | Trigger::OnCardPlayed | Trigger::OnTagRemoved | Trigger::OnBadPublicityTaken | Trigger::OnIcePassed | Trigger::OnSubroutineBroken | Trigger::OnIceFullyBroken | Trigger::OnIceBypassed | Trigger::OnEncounterEnded | Trigger::OnCreditsSpentOutsidePool | Trigger::OnArchivesTurnedFaceup | Trigger::OnCardTrashed => Trigger::ALL.contains(&trigger),
+            Trigger::OnPlay | Trigger::OnRunStart | Trigger::OnEncounter | Trigger::OnTurnStart | Trigger::OnAccessed | Trigger::OnTrashedFromAccess | Trigger::OnSuccessfulRun | Trigger::Paid | Trigger::OnInstall | Trigger::OnAgendaScored | Trigger::OnAgendaStolen | Trigger::OnDamageAboutToResolve | Trigger::OnRez | Trigger::OnApproachServer | Trigger::OnRunEnded | Trigger::OnBasicDrawAction | Trigger::OnTagsGiven | Trigger::OnAdvance | Trigger::OnDiscardPhaseEnd | Trigger::OnActionPhaseEnd | Trigger::OnCardInstalled | Trigger::OnDamageDealt | Trigger::OnCardsTrashedFromHq | Trigger::OnAbilityGainedCredits | Trigger::OnForfeit | Trigger::OnIceApproached | Trigger::OnCardPlayed | Trigger::OnTagRemoved | Trigger::OnBadPublicityTaken | Trigger::OnIcePassed | Trigger::OnSubroutineBroken | Trigger::OnIceFullyBroken | Trigger::OnIceBypassed | Trigger::OnEncounterEnded | Trigger::OnCreditsSpentOutsidePool | Trigger::OnArchivesTurnedFaceup | Trigger::OnCardTrashed | Trigger::OnWouldBeUninstalled => Trigger::ALL.contains(&trigger),
         };
         assert!(Trigger::ALL.iter().all(|trigger| listed(*trigger)));
     }
