@@ -1,0 +1,47 @@
+{
+  "id": "lampades",
+  "title": "Lampades",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 1,
+  "memory_cost": 1,
+  "counter_kind": "Power",
+  "triggers": [
+    {
+      "trigger": "OnInstall",
+      "subject": "This",
+      "effects": [
+        {
+          "AddCounters": 3
+        }
+      ],
+      "text": "When you install this program, place 3 power counters on it."
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "access": true,
+      "cost": {
+        "AllOf": [
+          {
+            "RemoveCounters": 1
+          },
+          {
+            "CreditsFrom": {
+              "amount": "AccessedCardPrintedCost",
+              "from": {
+                "HasSubtype": "Stealth"
+              }
+            }
+          }
+        ]
+      },
+      "requirement": "CurrentlyAccessingNonAgenda",
+      "effect": "TrashCurrentlyAccessedCard",
+      "text": "Access → Hosted power counter, pay the printed rez or play cost of the card you are accessing: Trash that card."
+    }
+  ],
+  "numeric_id": 36005,
+  "is_playable": true
+}

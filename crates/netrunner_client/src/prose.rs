@@ -76,6 +76,7 @@ pub fn describe_amount(amount: &Amount) -> String {
         Amount::CreditsLostThisResolution => "the credits just lost".to_string(),
         Amount::ClicksRemaining => "the clicks remaining".to_string(),
         Amount::PrintedCost => "its printed cost".to_string(),
+        Amount::AccessedCardPrintedCost => "the printed cost of the card being accessed".to_string(),
         Amount::ProtectedRemotesWithRootCards => "the number of remote servers with a card in the root and protected by ice".to_string(),
         Amount::RemainingAfterSelection(n) => format!("{n} less the cards chosen"),
         Amount::ThreatLevel => "the threat level".to_string(),
@@ -112,6 +113,10 @@ pub fn describe_zone(zone: &CardZoneRef) -> &'static str {
 pub fn describe_cost(cost: &Cost) -> String {
     match cost {
         Cost::Credits(n) => plural(*n, "credit", "credits"),
+        Cost::CreditsFrom { amount: Amount::Fixed(n), from } => {
+            format!("{} from {}", plural(*n, "credit", "credits"), humanize(format!("{from:?}")).to_lowercase())
+        }
+        Cost::CreditsFrom { amount, from } => format!("credits equal to {}, from {}", describe_amount(amount), humanize(format!("{from:?}")).to_lowercase()),
         Cost::Clicks(n) => plural(*n, "click", "clicks"),
         Cost::LoseClicks(n) => format!("lose {}", plural(*n, "click", "clicks")),
         Cost::JackOut => "jack out".to_string(),

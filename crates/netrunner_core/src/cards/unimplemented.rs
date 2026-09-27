@@ -17,11 +17,8 @@
 
 /// *Vantage Point* (`vp`): tranche 1 of the NSG plan.
 pub(crate) const VP_UNIMPLEMENTED: &[(u32, &str)] = &[
-    (36004, "Corsair"),
-    (36005, "Lampades"),
     (36006, "Hackerspace"),
     (36008, "Stick and Poke"),
-    (36015, "Baker"),
     (36018, "Aircheck"),
     (36022, "Read-Write Share"),
     (36025, "Word on the Street"),

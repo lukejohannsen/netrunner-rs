@@ -1,12 +1,22 @@
 use serde::{Deserialize, Serialize};
 
-use super::effect::DamageType;
+use super::effect::{Amount, DamageType};
 use super::zone::{CardFilter, CardZoneRef};
 
 /// What a player must pay to activate a `Paid`-triggered `AbilityDef`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Cost {
     Credits(u32),
+    /// Credits paid only from the cards `from` matches — "Spend credits
+    /// only from **stealth** cards to use this ability" (Corsair, Lampades,
+    /// Baker: `HasSubtype(Stealth)`), CR 1.10.4b read from the payer's
+    /// side. The credit pool is not a card, so it cannot pay
+    /// (`payment::sources`' `from`). `amount` is an `Amount` because
+    /// Lampades's is "the printed rez or play cost of the card you are
+    /// accessing" (`Amount::AccessedCardPrintedCost`). Not a restriction
+    /// on the ability beside `Credits`: the printed sentence limits the
+    /// credits, and a cost is where the credits are.
+    CreditsFrom { amount: Amount, from: CardFilter },
     Clicks(u32),
     /// The payer loses `u32` clicks — Ansel 2.0's "**Lose [click][click]:**
     /// Break up to 2 subroutines on this ice." Not `Clicks`: that cost

@@ -1,0 +1,53 @@
+{
+  "id": "corsair",
+  "title": "Corsair",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 3,
+  "memory_cost": 1,
+  "strength": 0,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "text": "Interface → 1[credit]: Break 1 barrier subroutine.",
+      "cost": {
+        "Credits": 1
+      },
+      "effect": {
+        "BreakSubroutines": {
+          "count": {
+            "Fixed": 1
+          },
+          "restrict_to": "Barrier"
+        }
+      },
+      "requirement": "DuringEncounter"
+    },
+    {
+      "trigger": "Paid",
+      "text": "1[credit]: The barrier you are encountering gets −3 strength for the remainder of this encounter.",
+      "cost": {
+        "CreditsFrom": {
+          "amount": {
+            "Fixed": 1
+          },
+          "from": {
+            "HasSubtype": "Stealth"
+          }
+        }
+      },
+      "effect": {
+        "ModifyStrength": {
+          "delta": -3,
+          "duration": "Encounter"
+        }
+      },
+      "requirement": {
+        "Encountering": "Barrier"
+      }
+    }
+  ],
+  "numeric_id": 36004,
+  "is_playable": true
+}
