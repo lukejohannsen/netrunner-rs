@@ -255,8 +255,9 @@ What landed:
      not only that it compiles.
    - Draw it through a `netrunner_client` module both clients stand on,
      and hold it with a test there; a desktop change also gets a headless
-     test in `crates/netrunner_desktop/tests/` (never a window opened on
-     the person's screen to check it).
+     test in `crates/netrunner_desktop/tests/`, and a screenshot is taken
+     on a virtual compositor ([below](#client-ledger--what-the-clients-owe)),
+     never in a window on the person's screen.
    - What cannot be drawn in the stage is **OWED**: a row in the [client
      ledger](#client-ledger--what-the-clients-owe) below, named in the
      stage entry. A tranche does not close with a row it added still open
@@ -283,20 +284,44 @@ Every view field a person should see and cannot yet, and every client
 change a card update needs that has not shipped. A row is added by the
 stage that opens it (and marked **OWED** in
 `crates/netrunner_client/src/view_ledger.rs`), and removed by the change
-that draws it, which says so in its own entry. Open rows, 27 September
-2026. Vantage Point's own gaps were closed by #250 and by the ledger's PR
-(a run's own credits — the bad publicity fund Vantage Point's cards fill —
-beside the Runner's credits); the first four rows predate it, and the
-ledger found them:
+that draws it, which says so in its own entry.
 
-| Field or need | What a person misses | Opened by |
-|---|---|---|
-| `CorpClientView::identity_counters` | AU Co.'s power counters on the Corp identity (spent by its own ability) | Elevation |
-| `CorpClientView::recurring_credits`, `recurring_credits_max` | an identity's recurring credits left this turn (NBN: Making News) | Core Set |
-| `PublicInstalledCard::seen_by_runner` | to the Corp, which of its facedown cards the Runner has already seen | Phase 5 §20 (trap play) |
-| `PublicRunState::redirect_on_approach` | during a Maintenance Access run, the server it will be redirected to | Elevation |
-| The terminal's card in question after a look | Méliès U's "You may trash that card" shows no card in the terminal; the "looked at" log line is above it (the desktop pop-up shows it, `Prompt::card_after`) | Vantage Point (#250) |
-| A real-screen look at #250's desktop pieces | the identity chip, the In effect lines and the removed-from-game rows are held by headless tests only | Vantage Point (#250) |
+**No open rows** (27 September 2026). The ledger's first pass found four
+fields older than Vantage Point drawn nowhere, and #250 left two; all six
+were cleared before Rebellion Without Rehearsal:
+
+- AU Co.'s power counters and Making News' recurring credits
+  (`identity_counters`, `recurring_credits`): `hud::identity_facts` on the
+  identity's sheet and the terminal's identity line, and
+  `hud::identity_chip` on the avatar's foot ("3 power counters", "1 of 2")
+  for an identity that does not flip.
+- To the Corp, which face-down cards the Runner has already seen
+  (`seen_by_runner`): "seen" on the tile, a line on its sheet, "seen by
+  the Runner" on the terminal's server line (`facts::seen_face_down`),
+  never to the Runner, who knows what they saw.
+- Maintenance Access's destination (`redirect_on_approach`): the first
+  In effect line during its run (`hud::in_effect`).
+- The terminal's card after a look: `Prompt::looked_at`, drawn over the
+  board as "You looked at …" from the last masked entry each terminal
+  surface now keeps (`RenderableView::last_entry`).
+- A real-screen look at the desktop: taken on a virtual compositor, off
+  the person's screen (below), with Méliès U's chip on the avatar's foot.
+
+**Screenshots never open a window on the person's screen.** Run the
+desktop's dev hooks on KDE's virtual compositor, with scratch settings so
+the person's own are not read or written:
+
+```bash
+env -u DISPLAY kwin_wayland --virtual --socket netrunner-shot --width 2560 --height 1600 &
+env -u DISPLAY WAYLAND_DISPLAY=netrunner-shot XDG_DATA_HOME=<scratch>/data XDG_CONFIG_HOME=<scratch>/config \
+  NETRUNNER_GAME=corp NETRUNNER_AUTOPLAY=40 NETRUNNER_WINDOW=2560x1600 NETRUNNER_SCREENSHOT=<scratch>/shot.png \
+  cargo run -q -p netrunner_desktop
+```
+
+A deck the default format refuses (a Sweep deck, Eternal-only) leaves the
+board at "No game in progress"; copy it into a scratch
+`NETRUNNER_DECKS_DIR` as a saved deck, and the scratch settings' default
+format (Casual) plays it.
 
 ## The surveys
 

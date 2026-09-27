@@ -139,6 +139,10 @@ impl RenderableView for Replay {
         self.inner.log_text()
     }
 
+    fn last_entry(&self) -> Option<&netrunner_client::play::PublicHistoryEntry> {
+        self.inner.entry(self.inner.cursor())
+    }
+
     fn coaching(&self) -> Option<&Coaching> {
         Some(&self.coaching)
     }
