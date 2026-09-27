@@ -3076,7 +3076,9 @@ fn spawn_rig(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore
                             for (i, card) in cards.iter().enumerate() {
                                 let Some(def) = core.registry.get(&card.card) else { continue };
                                 let image = def.numeric_id.and_then(|code| images.face(code, size));
-                                let entity = spawn_face(cards_row, theme, &Face::of(def), size, image, (Button, Click::Target(Target::Install(card.install_id))));
+                                // A drop place too: a resource carried onto a host
+                                // that takes it (Hackerspace) installs there.
+                                let entity = spawn_face(cards_row, theme, &Face::of(def), size, image, (Button, Click::Target(Target::Install(card.install_id)), DropPlace::one(Target::Install(card.install_id))));
                                 if i > 0 && pull < 0.0 {
                                     cards_row.commands().entity(entity).entry::<Node>().and_modify(move |mut node| node.margin.left = px(pull));
                                 }

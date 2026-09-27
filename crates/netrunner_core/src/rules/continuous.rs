@@ -35,6 +35,10 @@ pub(crate) enum Target<'a> {
     Player(Side),
     /// A card that is not installed: one being installed, priced from a hand.
     Card(&'a CardDefinition),
+    /// A card being installed onto the rig card `host` (Hackerspace). What
+    /// `Target::Card` is asked too, and also what a host's
+    /// `Scope::InstallingOntoThis` reaches.
+    InstallingOnto { card: &'a CardDefinition, host: InstallId },
     /// A card in the rig.
     Rig { card: &'a CardDefinition, install: InstallId },
     /// A Corp install, in the root of `server` or protecting it.
@@ -47,14 +51,18 @@ impl<'a> Target<'a> {
     fn card(&self) -> Option<&'a CardDefinition> {
         match self {
             Target::Player(_) => None,
-            Target::Card(card) | Target::Rig { card, .. } | Target::Corp { card, .. } | Target::Scored { card, .. } => Some(card),
+            Target::Card(card)
+            | Target::InstallingOnto { card, .. }
+            | Target::Rig { card, .. }
+            | Target::Corp { card, .. }
+            | Target::Scored { card, .. } => Some(card),
         }
     }
 
     fn install(&self) -> Option<InstallId> {
         match self {
             Target::Rig { install, .. } | Target::Corp { install, .. } => Some(*install),
-            Target::Player(_) | Target::Card(_) | Target::Scored { .. } => None,
+            Target::Player(_) | Target::Card(_) | Target::InstallingOnto { .. } | Target::Scored { .. } => None,
         }
     }
 
@@ -174,10 +182,15 @@ fn applies(state: &GameState, source: &Source<'_>, scope: &Scope, target: &Targe
                 .rig
                 .iter()
                 .find(|card| card.install_id == install)
-                .is_some_and(|card| card.hosted_on_program == Some(host) || card.hosted_on_ice == Some(host))
+                .is_some_and(|card| card.hosted_on_rig_card == Some(host) || card.hosted_on_ice == Some(host))
         }
         (Scope::Controller, Target::Player(side)) => source.side == *side,
-        (Scope::Installing(filter), Target::Card(card)) => card.side == source.side && card_matches_filter(card, filter),
+        (Scope::Installing(filter), Target::Card(card) | Target::InstallingOnto { card, .. }) => {
+            card.side == source.side && card_matches_filter(card, filter)
+        }
+        (Scope::InstallingOntoThis(filter), Target::InstallingOnto { card, host }) => {
+            source.install == Some(*host) && card.side == source.side && card_matches_filter(card, filter)
+        }
         (Scope::Playing(filter), Target::Card(card)) => {
             card.side == source.side && matches!(card.card_type, CardType::Event | CardType::Operation) && card_matches_filter(card, filter)
         }
@@ -309,7 +322,27 @@ pub fn ice_gains_subtype(state: &GameState, registry: &CardRegistry, install: In
 /// that was a use of the card is what let a DZMZ Optimizer installed after
 /// the turn's first program lower the second.
 pub(crate) fn install_cost_of(state: &GameState, registry: &CardRegistry, card: &CardDefinition) -> u32 {
-    (card.cost as i32 + sum(state, registry, Target::Card(card), install_cost)).max(0) as u32
+    install_cost_onto(state, registry, card, None)
+}
+
+/// `install_cost_of`, for an install onto the rig card `host` when there is
+/// one: the same question, asked of a target that knows where the card is
+/// going, so a host's own discount (Hackerspace's "each resource installed
+/// this way costs 1[credit] less") is in it and every other is too.
+pub(crate) fn install_cost_onto(state: &GameState, registry: &CardRegistry, card: &CardDefinition, host: Option<InstallId>) -> u32 {
+    let target = match host {
+        Some(host) => Target::InstallingOnto { card, host },
+        None => Target::Card(card),
+    };
+    (card.cost as i32 + sum(state, registry, target, install_cost)).max(0) as u32
+}
+
+/// Whether `card` may be installed onto the rig card `host` — a host that
+/// says so of it (`ContinuousKind::MayHost`, Hackerspace). The one
+/// question, for the action list and for the install that is refused
+/// without it.
+pub(crate) fn may_install_onto(state: &GameState, registry: &CardRegistry, card: &CardDefinition, host: InstallId) -> bool {
+    any(state, registry, Target::InstallingOnto { card, host }, |kind| matches!(kind, ContinuousKind::MayHost))
 }
 
 
@@ -522,7 +555,7 @@ mod tests {
         let registry = CardRegistry::from_cards(vec![breaker, pad]);
         let mut state = GameState::default();
         let strong = |install: u32| InstalledRunnerCard { base_strength: 1, ..in_the_rig("breaker", install) };
-        state.runner.rig = vec![strong(1), strong(2), InstalledRunnerCard { hosted_on_program: Some(InstallId(2)), ..in_the_rig("pad", 3) }];
+        state.runner.rig = vec![strong(1), strong(2), InstalledRunnerCard { hosted_on_rig_card: Some(InstallId(2)), ..in_the_rig("pad", 3) }];
 
         assert_eq!(breaker_strength(&state, &registry, &state.runner.rig[0]), 1);
         assert_eq!(breaker_strength(&state, &registry, &state.runner.rig[1]), 2);

@@ -396,8 +396,8 @@ Division.
 7. **Hosting, the score area and access limits**, split by mechanic.
    **7a** (built, below): Luana Campos, a card leaving the table as a
    moment it can interrupt. **7b** (built, below): Read-Write Share,
-   cards hosted facedown. **7c:** Hackerspace, a resource installed onto
-   a resource. **7d:** Myōshu, Word on the Street and Sacrifice Zone
+   cards hosted facedown. **7c** (built, below): Hackerspace, a resource
+   installed onto a resource. **7d:** Myōshu, Word on the Street and Sacrifice Zone
    Expansion, the score area. **7e:** Flagship, Tocsin and Stick and
    Poke.
 8. **Méliès U, alone:** hidden setup state, three sides, and masking.
@@ -1407,6 +1407,54 @@ space) and is Stage 7c.
   Bid (seed 2) installed Read-Write Share 57 times, hosted a card on
   install 53 times and trashed it for the shuffle 56 times; the random
   Runner trashes it before its turn-start trigger comes round.
+
+#### Stage 7c — a resource installed onto a resource (27 September 2026)
+
+`feat/vp-stage-7c-hackerspace`: Hackerspace, on the Pay as You Go Sweep
+deck. **No new `Effect`.** Vantage Point 59 of 66; `VP_UNIMPLEMENTED`
+8 → 7.
+
+- **An install onto a card is a destination** (CR 8.5.1a, declared with
+  the rest of it at 8.5.16b): `PlayerAction::InstallResource` carries a
+  `host`, the rig card it goes onto (`InstalledRunnerCard::
+  hosted_on_rig_card`, which was `hosted_on_program` until a resource
+  hosted one). A field, as `trash_first` is, because it is the same
+  install to another place. `ActionSpace` 2621 → 3133, **appended**: hand
+  slot by rig slot, as `InstallProgramOnIce` is by the Corp's installs,
+  so every recorded index keeps its meaning and a policy needs a wider
+  head. The hosted card leaves with its host, as GAMEDRAGON™ Pro did.
+- **Which cards may go there is a standing permission of the host's**,
+  `ContinuousKind::MayHost`, about the cards a new scope admits,
+  `Scope::InstallingOntoThis(filter)`. The same scope carries "each
+  resource installed this way costs 1[credit] less", so the permission and
+  the discount name the cards once each, in the card's own words. The
+  scan is asked of a target that knows the host (`Target::InstallingOnto`):
+  `continuous::may_install_onto` for the action list and the install, and
+  `install_cost_onto` for the price, where `install_cost_of` is the same
+  question with no host. `CardFilter::Unique` says "unique (♦)".
+- **"While this resource has a hosted companion and a hosted connection"**
+  is `EffectRequirement::HostsInstalled(filter)`, twice under `And`, on a
+  `HandSize` of +2. **No unique companion is in the pool yet**, so the
+  sweeps cannot reach it; the card test makes one.
+- **Both clients** word the install ("Install Nurse Hạnh onto
+  Hackerspace"), and the desktop's rig cards are drop places, so a card
+  carried onto a host that takes it installs there; the smallest lit
+  place under the pointer wins, so everywhere else in the rig is still
+  the plain install.
+- **Deck.** Pay as You Go: two Hackerspace for two T400 Memory Diamond,
+  and a third Nurse Hạnh (a unique connection) for Smartware Distributor.
+- **DSL ratio (`pool_status.py`): 20 of 73 `Effect` variants single-use,
+  2 unused**, over 243 card files (unchanged). The growth is a kind, a
+  scope, a filter word and a requirement.
+- **Measured.** Both sweeps at 256 seeds are green. Against `origin/main`,
+  `coverage_identical.py` has both random seatings **identical**, the
+  index path included, so the wider `ActionSpace` moved no index a
+  random agent draws from. The heuristic seatings moved, and without
+  Hackerspace's card file (and the deck swap) they are identical in all
+  four shapes (`determinize`).
+- **Real play.** Ninety-six random games of Pay as You Go against
+  Hostile Bid (seed 2) installed Hackerspace 26 times and installed Nurse
+  Hạnh onto it 8 times.
 
 ### 2. Rebellion Without Rehearsal — 65 cards (C 7 / V 43 / M 15)
 

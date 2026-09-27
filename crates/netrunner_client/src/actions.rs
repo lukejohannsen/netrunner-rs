@@ -632,7 +632,8 @@ pub fn describe_action(action: &PlayerAction, registry: &CardRegistry, view: Opt
         PlayerAction::InstallHardware { card_id } => format!("Install {}", title(card_id)),
         PlayerAction::InstallProgram { card_id, trash_first: false } => format!("Install {}", title(card_id)),
         PlayerAction::InstallProgram { card_id, trash_first: true } => format!("Install {}, trashing programs first", title(card_id)),
-        PlayerAction::InstallResource { card_id } => format!("Install {}", title(card_id)),
+        PlayerAction::InstallResource { card_id, host: None } => format!("Install {}", title(card_id)),
+        PlayerAction::InstallResource { card_id, host: Some(host) } => format!("Install {} onto {}", title(card_id), install_label(host)),
         PlayerAction::InstallProgramOnIce { card_id, host, trash_first } => {
             format!("Install {} onto {}{}", title(card_id), install_label(host), if *trash_first { ", trashing programs first" } else { "" })
         }
@@ -905,8 +906,12 @@ pub fn explain_action(action: &PlayerAction, registry: &CardRegistry, view: Opti
             title(card_id),
             if *trash_first { " First trash any of your installed programs, one at a time." } else { "" }
         ),
-        PlayerAction::InstallResource { card_id } => format!(
+        PlayerAction::InstallResource { card_id, host: None } => format!(
             "Spend 1 click and its install cost to install {}. Resources stay in play but can be trashed by the Corp if you are tagged.",
+            title(card_id)
+        ),
+        PlayerAction::InstallResource { card_id, host: Some(_) } => format!(
+            "Spend 1 click and its install cost to install {} onto a card that hosts it. It leaves play if its host does.",
             title(card_id)
         ),
         PlayerAction::InstallProgramOnIce { card_id, .. } => format!("Install {} hosted on a piece of ice — a trojan works on the ice it lives on.", title(card_id)),
@@ -1490,7 +1495,7 @@ mod tests {
             PlayerAction::PlayOperation { card_id: card() },
             PlayerAction::InstallHardware { card_id: card() },
             PlayerAction::InstallProgram { card_id: card(), trash_first: false },
-            PlayerAction::InstallResource { card_id: card() },
+            PlayerAction::InstallResource { card_id: card(), host: None },
             PlayerAction::InstallProgramOnIce { card_id: card(), host: install, trash_first: false },
             PlayerAction::BreakSubroutineWithClick { ice_id: card(), subroutine_index: 0 },
             PlayerAction::EndTurn,

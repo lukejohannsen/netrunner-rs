@@ -1170,7 +1170,10 @@ impl CardDefinition {
                 (ContinuousKind::Link(_), _) => return misfit("Link", "link is the Runner's, so it applies to a Runner card's `Controller`"),
                 (ContinuousKind::HandSize(_), Scope::Controller) => {}
                 (ContinuousKind::HandSize(_), _) => return misfit("HandSize", "a maximum hand size is a player's, so it applies to the card's `Controller`"),
-                (ContinuousKind::InstallCost(_), Scope::This | Scope::Installing(_)) => {}
+                (_, Scope::InstallingOntoThis(_)) if !hosted || self.side != Side::Runner => {
+                    return misfit("InstallingOntoThis", "only a Runner's installed card has cards installed onto it");
+                }
+                (ContinuousKind::InstallCost(_), Scope::This | Scope::Installing(_) | Scope::InstallingOntoThis(_)) => {}
                 (ContinuousKind::InstallCost(_), _) => return misfit("InstallCost", "an install cost is this card's own or that of a card being `Installing`"),
                 (ContinuousKind::RezCost(_), Scope::This | Scope::Ice | Scope::RootOfThisServer(_)) => {}
                 (ContinuousKind::RezCost(_), _) => return misfit("RezCost", "only an installed Corp card is rezzed"),
@@ -1196,6 +1199,8 @@ impl CardDefinition {
                 (ContinuousKind::AgendaPoints(_), _) => return misfit("AgendaPoints", "an agenda's points change in a score area, said by the agenda (`ScoreArea`)"),
                 (ContinuousKind::BoostsLastTheRun, Scope::This | Scope::Host) => {}
                 (ContinuousKind::BoostsLastTheRun, _) => return misfit("BoostsLastTheRun", "a boost is an icebreaker's: this card or its host"),
+                (ContinuousKind::MayHost, Scope::InstallingOntoThis(_)) => {}
+                (ContinuousKind::MayHost, _) => return misfit("MayHost", "what may be installed onto this card is said by `InstallingOntoThis`"),
                 (ContinuousKind::RevealedWhileAccessed, Scope::This) if self.side == Side::Corp => {}
                 (ContinuousKind::RevealedWhileAccessed, _) => {
                     return misfit("RevealedWhileAccessed", "only a Corp card is accessed, and it says so of itself (`This`)");

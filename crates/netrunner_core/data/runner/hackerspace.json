@@ -1,0 +1,87 @@
+{
+  "id": "hackerspace",
+  "title": "Hackerspace",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 2,
+  "triggers": [],
+  "continuous": [
+    {
+      "kind": "MayHost",
+      "applies_to": {
+        "InstallingOntoThis": {
+          "All": [
+            {
+              "CardType": "Resource"
+            },
+            "Unique",
+            {
+              "AnyOf": [
+                {
+                  "HasSubtype": "Companion"
+                },
+                {
+                  "HasSubtype": "Connection"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "text": "You can install unique (♦) companion resources and unique (♦) connection resources onto this resource."
+    },
+    {
+      "kind": {
+        "InstallCost": {
+          "per": -1
+        }
+      },
+      "applies_to": {
+        "InstallingOntoThis": {
+          "All": [
+            {
+              "CardType": "Resource"
+            },
+            "Unique",
+            {
+              "AnyOf": [
+                {
+                  "HasSubtype": "Companion"
+                },
+                {
+                  "HasSubtype": "Connection"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "text": "Each resource installed this way costs 1[credit] less to install."
+    },
+    {
+      "kind": {
+        "HandSize": {
+          "per": 2
+        }
+      },
+      "applies_to": "Controller",
+      "while": {
+        "And": [
+          {
+            "HostsInstalled": {
+              "HasSubtype": "Companion"
+            }
+          },
+          {
+            "HostsInstalled": {
+              "HasSubtype": "Connection"
+            }
+          }
+        ]
+      },
+      "text": "While this resource has a hosted companion and a hosted connection, you get +2 maximum hand size."
+    }
+  ],
+  "numeric_id": 36006,
+  "is_playable": true
+}

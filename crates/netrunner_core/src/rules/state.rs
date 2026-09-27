@@ -452,15 +452,17 @@ pub struct InstalledRunnerCard {
     /// so trashing either took the trojans of both, and *Botulus* could
     /// break on the wrong copy (ROADMAP Rules Audit §4).
     pub hosted_on_ice: Option<InstallId>,
-    /// The rig card this card is hosted on, for Hardware that lives on an
-    /// icebreaker (GAMEDRAGON™ Pro) — the Runner-side sibling of
+    /// The rig card this card is hosted on — hardware that lives on an
+    /// icebreaker (GAMEDRAGON™ Pro), a resource installed onto a resource
+    /// (Hackerspace). It was `hosted_on_program` until a resource hosted
+    /// one. The Runner-side sibling of
     /// `hosted_on_ice`, keyed by install for the same two-copies reason.
     /// `None` for every card installed in the rig on its own. The host
     /// leaving the rig takes the hosted card with it
     /// (`ability::cascade_trash_hosted_on_rig_card`), exactly as ICE
     /// leaving play takes its Trojans.
     #[serde(default)]
-    pub hosted_on_program: Option<InstallId>,
+    pub hosted_on_rig_card: Option<InstallId>,
     /// Cards hosted on this card **without being installed** — Madani's
     /// faceup programs. Public, like the rig. They are not in any other
     /// zone (the card-conservation invariant counts them here), leave with
@@ -490,7 +492,7 @@ impl Default for InstalledRunnerCard {
             base_strength: 0,
             counters: 0,
             hosted_on_ice: None,
-            hosted_on_program: None,
+            hosted_on_rig_card: None,
             hosted_cards: Vec::new(),
             hosted_cards_playable: false,
         }

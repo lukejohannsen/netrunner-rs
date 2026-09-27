@@ -833,7 +833,7 @@ pub fn evaluate_effect(
                 .iter_mut()
                 .find(|c| c.install_id == *card)
                 .ok_or(RulesError::InstallNotFound(*card))?;
-            hosted.hosted_on_program = Some(*host);
+            hosted.hosted_on_rig_card = Some(*host);
             let hosted_card = hosted.card.clone();
             let host_card = state.runner.rig.iter().find(|c| c.install_id == *host).map(|c| c.card.clone()).unwrap();
             Ok(vec![GameEvent::CardHosted { card: hosted_card, host: host_card }])
@@ -2180,7 +2180,7 @@ fn trash_hosted_card(state: &mut GameState, registry: &CardRegistry, card: CardI
 
 /// The rig-side twin of `cascade_trash_hosted_programs`: when the rig card
 /// `host` leaves the rig, every card hosted on it
-/// (`InstalledRunnerCard::hosted_on_program == Some(host)`) is trashed too
+/// (`InstalledRunnerCard::hosted_on_rig_card == Some(host)`) is trashed too
 /// — GAMEDRAGON™ Pro goes with the icebreaker it sits on. Called from
 /// every site that removes a rig card. A no-op for the overwhelming
 /// majority of rig cards, which host nothing.
@@ -2195,7 +2195,7 @@ pub(crate) fn cascade_trash_hosted_on_rig_card(state: &mut GameState, registry: 
         // The rules trash what its host took with it, not a player.
         events.push(trash_hosted_card(state, registry, hosted.clone(), None));
     }
-    while let Some(position) = state.runner.rig.iter().position(|c| c.hosted_on_program == Some(host)) {
+    while let Some(position) = state.runner.rig.iter().position(|c| c.hosted_on_rig_card == Some(host)) {
         let removed = state.runner.rig.remove(position);
         state.runner.heap.push(removed.card.clone());
         events.push(GameEvent::CardTrashed { side: Side::Runner, card: removed.card, by: None });
@@ -2869,6 +2869,14 @@ pub fn check_requirement(
             });
             if installed { Ok(()) } else { Err(RulesError::RequirementNotMet) }
         }
+        EffectRequirement::HostsInstalled(filter) => {
+            let hosts = ctx.acting_install.is_some_and(|host| {
+                state.runner.rig.iter().filter(|card| card.hosted_on_rig_card == Some(host)).any(|card| {
+                    registry.get(&card.card).is_some_and(|definition| card_matches_filter(definition, filter))
+                })
+            });
+            if hosts { Ok(()) } else { Err(RulesError::RequirementNotMet) }
+        }
         EffectRequirement::WasFirstAdvancementThisCard => {
             // Answered from the triggering event itself: `CardAdvanced`
             // already carries the running total, and `== 1` *is* "this was
@@ -3153,6 +3161,7 @@ pub(crate) fn consume_requirement(
         | EffectRequirement::AccessingIn(_)
         | EffectRequirement::AccessedAnyCardDuringLastRun
         | EffectRequirement::ThisCardIsInstalled
+        | EffectRequirement::HostsInstalled(_)
         | EffectRequirement::ThisCardCountersAtMost(_)
         | EffectRequirement::ThisCardCountersAtLeast(_)
         | EffectRequirement::EncounteringHostIce

@@ -317,7 +317,7 @@ fn apply_action_once(
         PlayerAction::PlayOperation { card_id } => play_operation(state, registry, card_id),
         PlayerAction::InstallHardware { card_id } => install_hardware(state, registry, card_id),
         PlayerAction::InstallProgram { card_id, trash_first } => install_program(state, registry, card_id, trash_first),
-        PlayerAction::InstallResource { card_id } => install_resource(state, registry, card_id),
+        PlayerAction::InstallResource { card_id, host } => install_resource(state, registry, card_id, host),
         PlayerAction::InstallProgramOnIce { card_id, host, trash_first } => {
             install_program_on_ice(state, registry, card_id, host, trash_first)
         }
@@ -1519,7 +1519,7 @@ fn seed_rig_card(
         card: card_id,
         counters: 0,
         hosted_on_ice: None,
-        hosted_on_program: None,
+        hosted_on_rig_card: None,
         hosted_cards: Vec::new(),
         hosted_cards_playable: card_def.hosted_cards_playable_from_grip,
     })
@@ -1912,6 +1912,7 @@ fn install_resource(
     state: &GameState,
     registry: &CardRegistry,
     card_id: CardId,
+    host: Option<InstallId>,
 ) -> Result<(GameState, Vec<GameEvent>), RulesError> {
     let side = Side::Runner;
     require_phase(state, GamePhase::Action(side))?;
@@ -1926,11 +1927,23 @@ fn install_resource(
     if card_def.card_type != CardType::Resource {
         return Err(RulesError::CardNotResource { card: card_id });
     }
-    let cost = continuous::install_cost_of(&next, registry, card_def);
+    // Asked of the table with the card already out of the grip, as the
+    // price is: the host must still be there and still say so.
+    if let Some(host) = host
+        && (next.find_rig_install(host).is_none() || !continuous::may_install_onto(&next, registry, card_def, host))
+    {
+        return Err(RulesError::CannotInstallOnto { card: card_id, host });
+    }
+    let cost = continuous::install_cost_onto(&next, registry, card_def, host);
 
     let mut events = vec![GameEvent::ClickSpent { side }];
     events.extend(ability::pay_cost(&mut next, registry, side, &Cost::Credits(cost), Purpose::Install(card_def), Some(&card_id))?);
     events.extend(install_into_rig(&mut next, registry, &card_id, None)?);
+    if let Some(host) = host
+        && let Some(installed) = next.runner.rig.last_mut()
+    {
+        installed.hosted_on_rig_card = Some(host);
+    }
     let installed_event = GameEvent::ResourceInstalled { side, card: card_id, credits_paid: cost };
     dispatcher::emit(&mut next, registry, &mut events, installed_event)?;
 
@@ -6168,13 +6181,13 @@ mod tests {
             Some(RulesError::CardTypeMismatch { card: card("hardware"), expected: "a program" })
         );
         assert_eq!(
-            play(PlayerAction::InstallResource { card_id: card("event") }),
+            play(PlayerAction::InstallResource { card_id: card("event"), host: None }),
             Some(RulesError::CardNotResource { card: card("event") })
         );
         assert_eq!(play(PlayerAction::PlayEvent { card_id: card("event") }), None);
         assert_eq!(play(PlayerAction::InstallHardware { card_id: card("hardware") }), None);
         assert_eq!(play(PlayerAction::InstallProgram { card_id: card("program"), trash_first: false }), None);
-        assert_eq!(play(PlayerAction::InstallResource { card_id: card("resource") }), None);
+        assert_eq!(play(PlayerAction::InstallResource { card_id: card("resource"), host: None }), None);
     }
 
     /// Corp state whose Runner opponent holds one usable paid ability
