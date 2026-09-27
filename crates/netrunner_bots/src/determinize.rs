@@ -601,6 +601,8 @@ fn determinize_run(
         // will not fire.
         initiated_by: None,
         ice_bypassed: false,
+        // Public, and what a pass "after fully breaking it" reads (Sipa).
+        fully_broken: run.fully_broken,
         additional_rd_access: 0,
         additional_hq_access: 0,
         access_replacement: None,

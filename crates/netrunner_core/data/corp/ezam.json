@@ -1,0 +1,85 @@
+{
+  "id": "ezam",
+  "title": "ezaM",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "CodeGate"
+  },
+  "cost": 1,
+  "strength": 3,
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "Clicks": 1
+      },
+      "requirement": {
+        "ZoneHasAtLeast": {
+          "zone": "OwnInstalled",
+          "count": 1,
+          "filter": {
+            "All": [
+              "Ice",
+              "NotSourceCard"
+            ]
+          }
+        }
+      },
+      "effect": {
+        "PromptChooseCards": {
+          "side": "Corp",
+          "source": "OwnInstalled",
+          "filter": {
+            "All": [
+              "Ice",
+              "NotSourceCard"
+            ]
+          },
+          "min": 1,
+          "max": 1,
+          "reveal": false,
+          "shuffle_after": false,
+          "then": {
+            "SwapInstalledIce": [
+              0,
+              0
+            ]
+          }
+        }
+      },
+      "text": "[click]: Swap this ice with another installed piece of ice."
+    }
+  ],
+  "triggers": [],
+  "subroutines": [
+    {
+      "text": "Look at the top card of R&D. You may add that card to the bottom of R&D.",
+      "effect": {
+        "PromptChooseCards": {
+          "side": "Corp",
+          "source": "OwnRAndD",
+          "filter": {
+            "TopOfZone": 1
+          },
+          "min": 0,
+          "max": 1,
+          "reveal": false,
+          "shuffle_after": false,
+          "then": "AddToBottomOfDeck"
+        }
+      }
+    },
+    {
+      "text": "Each piece of ice gets +1 strength for the remainder of this run.",
+      "effect": {
+        "ModifyStrength": {
+          "delta": 1,
+          "each_ice": true,
+          "duration": "Run"
+        }
+      }
+    }
+  ],
+  "numeric_id": 36039,
+  "is_playable": true
+}

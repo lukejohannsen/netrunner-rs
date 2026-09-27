@@ -169,8 +169,16 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
         Effect::LoseCreditsAmount(side, amount) => format!("{} loses credits equal to {}", who(*side), describe_amount(amount)),
         Effect::DealDamage(kind, n) => format!("do {} {} damage", n, damage_word(kind)),
         Effect::DealDamageAmount(kind, amount) => format!("do {} damage equal to {}", damage_word(kind), describe_amount(amount)),
-        Effect::ModifyStrength(n) if *n >= 0 => format!("+{n} strength"),
-        Effect::ModifyStrength(n) => format!("{n} strength"),
+        Effect::ModifyStrength { delta, each_ice, duration } => {
+            let which = if *each_ice { "each piece of ice gets" } else { "the encountered ice gets" };
+            let sign = if *delta >= 0 { "+" } else { "" };
+            let until = match duration {
+                EffectDuration::Encounter => "this encounter",
+                EffectDuration::Run => "this run",
+                EffectDuration::Turn => "this turn",
+            };
+            format!("{which} {sign}{delta} strength for the remainder of {until}")
+        }
         Effect::DrawCards(side, n) => format!("{} draws {}", who(*side), plural(*n, "card", "cards")),
         Effect::DrawCardsAmount(side, amount) => format!("{} draws cards equal to {}", who(*side), describe_amount(amount)),
         Effect::EndTheRun => "end the run".to_string(),
@@ -352,6 +360,17 @@ pub fn engine_reading(card: &CardDefinition, registry: &CardRegistry) -> Vec<Str
             Some(EventFilter::Card(filter)) => when = format!("{when}, of {}", humanize(format!("{filter:?}"))),
             Some(EventFilter::InstalledCard(filter)) => when = format!("{when}, of an installed card ({})", humanize(format!("{filter:?}"))),
             Some(EventFilter::Damage(kind)) => when = format!("{when}, of {} damage", format!("{kind:?}").to_lowercase()),
+            Some(EventFilter::Ice(facts)) => {
+                let words: Vec<&str> = [
+                    (facts.outermost, "the outermost ice"),
+                    (facts.after_fully_breaking, "after fully breaking it"),
+                    (facts.at_most_zero_strength, "on ice with 0 or less strength"),
+                ]
+                .into_iter()
+                .filter_map(|(holds, word)| holds.then_some(word))
+                .collect();
+                when = format!("{when}, {}", words.join(", "));
+            }
             None => {}
         }
         if trigger.first_each_turn {

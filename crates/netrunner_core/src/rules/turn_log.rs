@@ -53,14 +53,14 @@
 use serde::{Deserialize, Serialize};
 
 use crate::cards::CardRegistry;
-use crate::dsl::{CardDefinition, CardFilter, CardSubtype, CardType, EventFilter, Hears, Trigger};
+use crate::dsl::{CardDefinition, CardFilter, CardSubtype, CardType, EventFilter, Hears, IceFacts, Trigger};
 use crate::rules::event::GameEvent;
 use crate::rules::listeners::{self, About, Moment};
 use crate::rules::run::ServerId;
 use crate::rules::state::{GameState, Side};
 
 const TRIGGERS: usize = Trigger::ALL.len();
-/// The widest of the three column sets: a card's `Kind`, once for a card
+/// The widest of the four column sets: a card's `Kind`, once for a card
 /// that was on the table when it happened and once for one that was not.
 const CLASSES: usize = Kind::COUNT * 2;
 
@@ -75,6 +75,14 @@ pub enum Class {
     Server(ServerClass),
     /// A kind of damage, which both players see dealt.
     Damage(crate::dsl::DamageType),
+    /// A moment about a piece of ice in a run, counted by what was true of
+    /// the ice (`IceFacts`) rather than by its type, which is always ice:
+    /// Sipa's "the first time each turn you pass the outermost piece of ice
+    /// … after fully breaking it" and The Tungsten Tailor's "the first time
+    /// each turn you break a subroutine on a piece of ice with 0 or less
+    /// strength" count only those. Public, like the rest: both players saw
+    /// the position, the breaks and the strength.
+    Ice(IceFacts),
     /// A moment about nothing a card could point at — a phase, a tag.
     Nothing,
 }
@@ -173,6 +181,7 @@ impl Class {
             Class::Card { kind, installed } => kind as usize + if installed { Kind::COUNT } else { 0 },
             Class::Server(server) => server as usize,
             Class::Damage(kind) => kind as usize,
+            Class::Ice(facts) => facts.bits(),
             Class::Nothing => 0,
         }
     }
@@ -216,7 +225,16 @@ fn concealed(trigger: Trigger, of: Option<Side>) -> bool {
         | Trigger::OnForfeit
         | Trigger::OnRez
         | Trigger::OnEncounter
-        | Trigger::OnAbilityGainedCredits => false,
+        | Trigger::OnAbilityGainedCredits
+        // Broken or bypassed only in an encounter, which only a rezzed
+        // piece of ice has.
+        | Trigger::OnSubroutineBroken
+        | Trigger::OnIceFullyBroken
+        | Trigger::OnIceBypassed => false,
+        // An unrezzed piece of ice is passed without being seen. The log
+        // counts a pass by its `IceFacts`, which do not name the card, but
+        // a filter on the card itself is refused.
+        Trigger::OnIcePassed => true,
         // Not about a card.
         Trigger::OnRunStart
         | Trigger::OnIceApproached
@@ -238,6 +256,9 @@ fn concealed(trigger: Trigger, of: Option<Side>) -> bool {
 }
 
 fn class_of(registry: &CardRegistry, moment: &Moment) -> Class {
+    if let Some(facts) = moment.ice {
+        return Class::Ice(facts);
+    }
     match &moment.about {
         About::Nothing => Class::Nothing,
         About::Damage(kind) => Class::Damage(*kind),
@@ -302,6 +323,13 @@ impl Occurrences {
                     .fold(0, |mask, column| mask | column),
             ),
             Some(EventFilter::Damage(kind)) => Some(bit(Class::Damage(*kind))),
+            Some(EventFilter::Ice(required)) => {
+                Some(IceFacts::ALL.iter().filter(|facts| required.admits(**facts)).map(|facts| bit(Class::Ice(*facts))).fold(0, |mask, column| mask | column))
+            }
+            // A moment about ice is counted by its facts, not its type.
+            Some(EventFilter::Card(_) | EventFilter::InstalledCard(_)) if trigger.is_about_ice_in_a_run() => {
+                return Err(format!("the turn counts a {trigger:?} by what was true of the ice, not by the card, so \"the first\" is narrowed with `Ice`"));
+            }
             Some(EventFilter::Card(_) | EventFilter::InstalledCard(_)) if concealed(trigger, of) => {
                 return Err(format!("the card a {trigger:?} is about is hidden from a player, so the turn counts it without its type and \"the first\" cannot be narrowed by one"));
             }
@@ -481,10 +509,18 @@ impl TurnLog {
 /// ended most recently, either side's, so on the Corp's turn it is the
 /// Runner's — which is when an operation printed "during their last turn"
 /// (Public Trail, Measured Response) can be played at all.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(from = "Vec<(Trigger, u8)>", into = "Vec<(Trigger, u8)>")]
 pub struct LastTurn {
     times: [u8; TRIGGERS],
+}
+
+/// By hand: `Default` is derived for arrays only to 32, and there are more
+/// triggers than that.
+impl Default for LastTurn {
+    fn default() -> Self {
+        LastTurn { times: [0; TRIGGERS] }
+    }
 }
 
 impl LastTurn {

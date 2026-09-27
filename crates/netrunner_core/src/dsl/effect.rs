@@ -87,7 +87,20 @@ pub enum Effect {
     /// param: damage in this engine's model always targets the Runner,
     /// same as `apply_damage` itself.
     DealDamage(DamageType, usize),
-    ModifyStrength(i32),
+    /// A piece of ice gets `delta` strength for a duration: the encountered
+    /// ice (Leech's "the ice you are encountering gets -1 strength for the
+    /// remainder of this encounter"), or with `each_ice` every piece of ice
+    /// wherever it is installed (ezaM's "each piece of ice gets +1 strength
+    /// for the remainder of this run"), a `Lingering::Strength` on
+    /// `On::EachIce`. One effect with a word rather than a second beside
+    /// it: the two sentences differ only in which ice and for how long,
+    /// which is what a lingering effect already carries.
+    ModifyStrength {
+        delta: i32,
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        each_ice: bool,
+        duration: EffectDuration,
+    },
     /// `Side`-explicit for the same reason as `GainCredits`.
     DrawCards(Side, u32),
     /// `DrawCards` with a computed amount — Ritual's "Draw 1 card for each
@@ -1277,7 +1290,7 @@ impl Effect {
             // Leaves: everything that holds no `Effect`.
             Effect::GainCredits(..)
             | Effect::DealDamage(..)
-            | Effect::ModifyStrength(..)
+            | Effect::ModifyStrength { .. }
             | Effect::DrawCards(..)
             | Effect::EndTheRun
             | Effect::GiveTags(..)

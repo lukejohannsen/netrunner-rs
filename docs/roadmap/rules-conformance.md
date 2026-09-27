@@ -472,11 +472,11 @@ with the rule quoted.
 
 | § | Section | Status | Notes |
 |---|---|---|---|
-| 6.1 | General | unreviewed |  |
+| 6.1 | General | read in part | 6.1.3f read for Sipa (VP Stage 4a): passing a piece of ice "after fully breaking it" is only the encounter just ended — `GameEvent::IcePassed::after_fully_breaking`, false for a pass straight out of the approach (unrezzed ice). |
 | 6.2 | Position | unreviewed |  |
 | 6.3 | Initiation | read in part | Audit: bad publicity credits arrive before the run begins and go when it ends; matches. |
 | 6.4 | Approach Ice | unreviewed |  |
-| 6.5 | Encounter Ice | unreviewed |  |
+| 6.5 | Encounter Ice | read in part | 6.5.7 read for Lethe and Sipa (VP Stage 4a): the Runner fully breaks the encountered ice the first time every subroutine on it is broken (6.5.7a), once an encounter (6.5.7d) — `run::break_subroutine`, `GameEvent::IceFullyBroken`, `RunState::fully_broken`. Not modelled: 6.5.7c (ice with no subroutines is fully broken as 6.9.3b begins) and 6.5.7b (which object fully broke it); no card in the pool that asks meets either. 6.5.8 bypass is a moment of its own (`Trigger::OnIceBypassed`). |
 | 6.6 | Movement | unreviewed |  |
 | 6.7 | Success | unreviewed |  |
 | 6.8 | Run Ends Phase | unreviewed |  |
@@ -509,7 +509,7 @@ with the rule quoted.
 
 | § | Section | Status | Notes |
 |---|---|---|---|
-| 9.1 | General | read in part | 9.1: a card's abilities work while it is active (`rules::active`). Cited: 9.1. |
+| 9.1 | General | read in part | 9.1: a card's abilities work while it is active (`rules::active`). Cited: 9.1. 9.1.7 and 9.1.8 read for Vertigo (VP Stage 4a): a pass, a break and a bypass are none of 9.1.8's exceptions, so a piece of ice hears those moments only while active — an unrezzed Vertigo passed does not fire (`listeners`: the subject rule does not reach `Trigger::is_about_ice_in_a_run`). |
 | 9.2 | Timing and Priority | read in part | F1 fixed: no action in a paid ability window (9.2.7b). Active player first and own-order simultaneous triggers match. |
 | 9.3 | Interpreting Card Text | unreviewed |  |
 | 9.4 | Static Abilities | unreviewed |  |

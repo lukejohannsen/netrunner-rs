@@ -353,6 +353,12 @@ pub struct PublicRunState {
     /// announced destination. Public: the event was played face-up.
     #[serde(default)]
     pub redirect_on_approach: Option<ServerId>,
+    /// `RunState::fully_broken`: public, since both players saw every
+    /// subroutine broken, and carried so a sample built from the view
+    /// passes the ice "after fully breaking it" where the real game will
+    /// (Sipa).
+    #[serde(default)]
+    pub fully_broken: bool,
 }
 
 /// `GameState` as visible to one player: hidden zones are collapsed to a
@@ -830,6 +836,7 @@ pub fn mask_event_for_player(event: &GameEvent, state: &GameState, viewer: impl 
         | GameEvent::IceStrengthModified { .. }
         | GameEvent::IcePassed { .. }
         | GameEvent::IceBypassed { .. }
+        | GameEvent::IceFullyBroken { .. }
         | GameEvent::ServerApproached { .. }
         | GameEvent::RunSucceeded { .. }
         | GameEvent::RunJackedOut { .. }
@@ -1038,6 +1045,7 @@ fn mask_run_state(state: &GameState, registry: &CardRegistry, run: &RunState, vi
         bad_publicity_credits: run.bad_publicity_credits,
         bonus_run_credits: run.bonus_run_credits,
         redirect_on_approach: run.redirect_on_approach,
+        fully_broken: run.fully_broken,
     }
 }
 

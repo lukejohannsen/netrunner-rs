@@ -274,7 +274,7 @@ pub fn breaker_strength(state: &GameState, registry: &CardRegistry, card: &Insta
 pub fn ice_strength(state: &GameState, registry: &CardRegistry, ice: &RunIce) -> i32 {
     let printed = registry.get(&ice.card_id).and_then(|definition| definition.strength).unwrap_or(0);
     let table = Target::corp_install(state, registry, ice.install_id).map_or(0, |target| sum(state, registry, target, strength));
-    printed + table + lingering::strength(state, ice.install_id)
+    printed + table + lingering::ice_strength(state, ice.install_id)
 }
 
 /// Whether a boost to the icebreaker `install` lasts the run rather than the

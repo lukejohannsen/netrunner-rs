@@ -146,6 +146,23 @@ pub fn strength(state: &GameState, on: InstallId) -> i32 {
         .sum()
 }
 
+/// What the lingering effects that still hold add to the strength of the
+/// piece of ice `on`: its own, and what each piece of ice gets (ezaM).
+/// Apart from `strength`, which a rig card asks too, because `EachIce` is
+/// never about an icebreaker.
+pub fn ice_strength(state: &GameState, on: InstallId) -> i32 {
+    strength(state, on)
+        + state
+            .lingering
+            .iter()
+            .filter(|effect| effect.on == On::EachIce && effect.holds(state))
+            .map(|effect| match effect.what {
+                Lingering::Strength(delta) => delta,
+                Lingering::RezCost(_) | Lingering::Cannot(_) | Lingering::PreventRunEnding(_) => 0,
+            })
+            .sum::<i32>()
+}
+
 /// What the lingering effects that still hold add to the rez cost of a
 /// piece of ice.
 pub fn ice_rez_cost(state: &GameState) -> i32 {

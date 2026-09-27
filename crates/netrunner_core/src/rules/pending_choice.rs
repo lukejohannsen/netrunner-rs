@@ -1090,6 +1090,11 @@ pub(crate) fn resolve_confirm_card_selection(
                 Some(Effect::RezInstalled { install: *chosen, pay_cost, discount })
             }
             (Effect::SwapInstalledIce(_, _), _, [a, b, ..]) => Some(Effect::SwapInstalledIce(*a, *b)),
+            // One selected: "swap **this ice** with another installed piece
+            // of ice" (ezaM) and "swap **it** with …" (Sipa, whose trigger
+            // acts on the ice it passed) — the other half is the install
+            // the choice acts as. Nothing to swap with once that has gone.
+            (Effect::SwapInstalledIce(_, _), _, [chosen]) => source_install.map(|this| Effect::SwapInstalledIce(this, *chosen)),
             // The parking card hosts *itself* on the install it chose —
             // GAMEDRAGON™ Pro picking an icebreaker. Both placeholders are
             // substituted here, since only this site knows both installs.

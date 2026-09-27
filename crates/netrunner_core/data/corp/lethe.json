@@ -1,0 +1,98 @@
+{
+  "id": "lethe",
+  "title": "Lethe",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Sentry"
+  },
+  "cost": 9,
+  "strength": 6,
+  "triggers": [
+    {
+      "trigger": "OnIceBypassed",
+      "subject": "This",
+      "effects": [
+        {
+          "GiveTags": {
+            "Fixed": 1
+          }
+        }
+      ],
+      "text": "Whenever the Runner bypasses or fully breaks this ice, give them 1 tag."
+    },
+    {
+      "trigger": "OnIceFullyBroken",
+      "subject": "This",
+      "effects": [
+        {
+          "GiveTags": {
+            "Fixed": 1
+          }
+        }
+      ],
+      "text": "Whenever the Runner bypasses or fully breaks this ice, give them 1 tag."
+    }
+  ],
+  "subroutines": [
+    {
+      "text": "You may add 1 card from Archives to the top or bottom of R&D.",
+      "effect": {
+        "PresentChoice": {
+          "chooser": "Corp",
+          "options": [
+            {
+              "PromptChooseCards": {
+                "side": "Corp",
+                "source": "OwnArchives",
+                "filter": "Any",
+                "min": 1,
+                "max": 1,
+                "reveal": false,
+                "shuffle_after": false,
+                "destination": "OwnRAndD"
+              }
+            },
+            {
+              "PromptChooseCards": {
+                "side": "Corp",
+                "source": "OwnArchives",
+                "filter": "Any",
+                "min": 1,
+                "max": 1,
+                "reveal": false,
+                "shuffle_after": false,
+                "destination": "OwnRAndD",
+                "then": "AddToBottomOfDeck"
+              }
+            },
+            {
+              "Sequence": []
+            }
+          ],
+          "texts": [
+            "add 1 card from Archives to the top or bottom of R&D — top",
+            "add 1 card from Archives to the top or bottom of R&D — bottom",
+            ""
+          ]
+        }
+      }
+    },
+    {
+      "text": "Add 1 installed Runner card to the grip.",
+      "effect": {
+        "PromptChooseCards": {
+          "side": "Corp",
+          "source": "OpponentInstalled",
+          "filter": "Any",
+          "min": 1,
+          "max": 1,
+          "reveal": true,
+          "shuffle_after": false,
+          "destination": "OpponentHand"
+        }
+      }
+    }
+  ],
+  "numeric_id": 36051,
+  "is_playable": true
+}

@@ -172,7 +172,7 @@ pub fn start_run(state: &mut GameState, registry: &CardRegistry, server: ServerI
         .flatten()
         .collect();
 
-    state.active_run = Some(RunState { agendas_stolen_this_run: 0, persistent_trashed_upgrades: Vec::new(), redirect_on_approach: None, on_end_effect: None, on_end_card: None, on_end_install: None, subroutine_resolved: false, initiated_by: None, ice_bypassed: false,
+    state.active_run = Some(RunState { agendas_stolen_this_run: 0, persistent_trashed_upgrades: Vec::new(), redirect_on_approach: None, on_end_effect: None, on_end_card: None, on_end_install: None, subroutine_resolved: false, initiated_by: None, ice_bypassed: false, fully_broken: false,
         on_success_effect: None,
         on_success_card: None,
         on_success_install: None,
@@ -205,6 +205,7 @@ fn enter_movement(run: &mut RunState, position: usize) {
     run.position = position;
     run.phase = RunPhase::Movement;
     run.ice_bypassed = false;
+    run.fully_broken = false;
     run.jack_out_permitted = true;
 }
 
@@ -215,7 +216,10 @@ fn enter_movement(run: &mut RunState, position: usize) {
 /// step (`approach_next`), after the Runner has decided whether to jack out
 /// and the Corp has had its window.
 fn pass_current_ice(run: &mut RunState, position: usize) -> Vec<GameEvent> {
-    let event = GameEvent::IcePassed { server: run.server, position: position as u32 };
+    // "After fully breaking it" is the encounter just ended (CR 6.1.3f): a
+    // pass straight out of the approach — unrezzed ice — had none.
+    let after_fully_breaking = run.phase == RunPhase::EncounterIce && run.fully_broken;
+    let event = GameEvent::IcePassed { server: run.server, position: position as u32, after_fully_breaking };
     enter_movement(run, position + 1);
     vec![event]
 }
@@ -429,7 +433,12 @@ pub fn advance_run(
         .filter(|event| {
             matches!(
                 event,
-                GameEvent::IceEncountered { .. } | GameEvent::ServerApproached { .. } | GameEvent::IceApproached { .. }
+                GameEvent::IceEncountered { .. }
+                    | GameEvent::ServerApproached { .. }
+                    | GameEvent::IceApproached { .. }
+                    | GameEvent::IcePassed { .. }
+                    | GameEvent::SubroutineBroken { .. }
+                    | GameEvent::IceFullyBroken { .. }
             )
         })
         .cloned()
@@ -686,6 +695,7 @@ fn continue_run(state: &mut GameState, registry: &CardRegistry) -> Result<Vec<Ga
             // mid-encounter).
             run.jack_out_permitted = false;
             run.phase = RunPhase::EncounterIce;
+            run.fully_broken = false;
             // The number the break contest will use, asked once the run is
             // standing on the ice: this read what the ice was built with,
             // a third reading beside the contest's and the view's.
@@ -789,19 +799,46 @@ fn step_subroutine(
     resolve: bool,
     registry: &CardRegistry,
 ) -> Result<Vec<GameEvent>, RulesError> {
-    let to = if resolve { SubroutineStatus::Resolved } else { SubroutineStatus::Broken };
-    let (card_id, effect) = transition_subroutine(state, index, to)?;
-
-    if resolve {
-        if let Some(run) = state.active_run.as_mut() {
-            run.subroutine_resolved = true;
-        }
-        let mut events = vec![GameEvent::SubroutineFired { card_id, index, effect: effect.clone() }];
-        events.extend(evaluate_effect(state, &effect, &mut crate::rules::ability::ResolutionContext::default(), registry)?);
-        Ok(events)
-    } else {
-        Ok(vec![GameEvent::SubroutineBroken { card_id, index }])
+    if !resolve {
+        return break_subroutine(state, registry, index);
     }
+    let (card_id, effect) = transition_subroutine(state, index, SubroutineStatus::Resolved)?;
+    if let Some(run) = state.active_run.as_mut() {
+        run.subroutine_resolved = true;
+    }
+    let mut events = vec![GameEvent::SubroutineFired { card_id, index, effect: effect.clone() }];
+    events.extend(evaluate_effect(state, &effect, &mut crate::rules::ability::ResolutionContext::default(), registry)?);
+    Ok(events)
+}
+
+/// Breaks subroutine `index` on the ice being encountered: the one way a
+/// subroutine is broken, for a breaker's ability, a click and a card that
+/// breaks unconditionally alike. `SubroutineBroken` carries the ice's
+/// strength as it was broken, and the first time this encounter that
+/// every subroutine on the ice is broken, `IceFullyBroken` follows it (CR
+/// 6.5.7a) — once, however many break together, and not again if the ice
+/// gains more (6.5.7d). The caller dispatches both.
+///
+/// A subroutine that resolved is not broken, so ice whose encounter
+/// resolved one is never fully broken; ice with no subroutines at all is
+/// fully broken when step 6.9.3b begins (6.5.7c), which this does not
+/// model — no card in the pool that asks is met by one.
+pub(crate) fn break_subroutine(state: &mut GameState, registry: &CardRegistry, index: usize) -> Result<Vec<GameEvent>, RulesError> {
+    let strength = state
+        .active_run
+        .as_ref()
+        .and_then(|run| run.ice.get(run.position))
+        .map_or(0, |ice| continuous::ice_strength(state, registry, ice));
+    let (card_id, _) = transition_subroutine(state, index, SubroutineStatus::Broken)?;
+    let mut events = vec![GameEvent::SubroutineBroken { card_id: card_id.clone(), index, strength }];
+    let run = state.active_run.as_mut().expect("transition_subroutine found the run");
+    let position = run.position;
+    let every_one_broken = run.ice[position].subroutines.iter().all(|s| s.status == SubroutineStatus::Broken);
+    if every_one_broken && !run.fully_broken {
+        run.fully_broken = true;
+        events.push(GameEvent::IceFullyBroken { card_id, position: position as u32 });
+    }
+    Ok(events)
 }
 
 /// Ends the active run — the **only** way `active_run` goes from `Some` to
@@ -1093,7 +1130,7 @@ mod tests {
         let (ib, rb) = ice_pair("b", 2, true);
         let mut state = reconciling_state(vec![ia, ib], run_state(RunPhase::EncounterIce, vec![ra, rb], 0));
         let events = reconcile_ice(&mut state, &CardRegistry::new()).unwrap();
-        assert_eq!(events, Some(vec![GameEvent::IcePassed { server: ServerId::Hq, position: 0 }]));
+        assert_eq!(events, Some(vec![GameEvent::IcePassed { server: ServerId::Hq, position: 0, after_fully_breaking: false }]));
         let run = hq(&state);
         assert_eq!(run.position, 1);
         assert_eq!(run.phase, RunPhase::Movement);
@@ -1204,7 +1241,7 @@ mod tests {
 
         let run = state.active_run.unwrap();
         assert_eq!(run.phase, RunPhase::Movement);
-        assert_eq!(events, vec![GameEvent::IcePassed { server: ServerId::Hq, position: 0 }]);
+        assert_eq!(events, vec![GameEvent::IcePassed { server: ServerId::Hq, position: 0, after_fully_breaking: false }]);
         // Never encountered — its subroutines were never touched.
         assert!(run.ice[0].subroutines.iter().all(|s| s.status == SubroutineStatus::Pending));
     }
@@ -1224,7 +1261,7 @@ mod tests {
         assert_eq!(run.phase, RunPhase::Movement);
         assert_eq!(run.position, 1);
         assert!(run.jack_out_permitted);
-        assert_eq!(events, vec![GameEvent::IcePassed { server: ServerId::Hq, position: 0 }], "nothing approached yet");
+        assert_eq!(events, vec![GameEvent::IcePassed { server: ServerId::Hq, position: 0, after_fully_breaking: false }], "nothing approached yet");
     }
 
     /// CR 6.9.4 end to end at the engine's run level: the jack-out decision,
@@ -1242,7 +1279,7 @@ mod tests {
         let registry = CardRegistry::new();
 
         let passed = advance_run(&mut state, RunAction::Continue, &registry).unwrap();
-        assert_eq!(passed, vec![GameEvent::IcePassed { server: ServerId::Hq, position: 0 }]);
+        assert_eq!(passed, vec![GameEvent::IcePassed { server: ServerId::Hq, position: 0, after_fully_breaking: false }]);
         let run = state.active_run.as_ref().unwrap();
         assert_eq!((run.phase, run.position, run.jack_out_permitted), (RunPhase::Movement, 1, true));
 
@@ -1338,7 +1375,7 @@ mod tests {
         );
         assert_eq!(
             events,
-            vec![GameEvent::SubroutineBroken { card_id: CardId("ice_wall".to_string()), index: 0 }]
+            vec![GameEvent::SubroutineBroken { card_id: CardId("ice_wall".to_string()), index: 0, strength: 0 }]
         );
     }
 
@@ -1366,7 +1403,7 @@ mod tests {
         let run = state.active_run.unwrap();
         assert_eq!(run.phase, RunPhase::Movement);
         assert_eq!(run.position, 1);
-        assert_eq!(events, vec![GameEvent::IcePassed { server: ServerId::Hq, position: 0 }]);
+        assert_eq!(events, vec![GameEvent::IcePassed { server: ServerId::Hq, position: 0, after_fully_breaking: false }]);
     }
 
     #[test]
@@ -1401,7 +1438,7 @@ mod tests {
 
         let run = state.active_run.unwrap();
         assert_eq!((run.phase, run.position), (RunPhase::Movement, 1));
-        assert_eq!(events, vec![GameEvent::IcePassed { server: ServerId::Hq, position: 0 }], "the server is not yet approached");
+        assert_eq!(events, vec![GameEvent::IcePassed { server: ServerId::Hq, position: 0, after_fully_breaking: false }], "the server is not yet approached");
     }
 
     #[test]

@@ -373,11 +373,15 @@ Division.
    2 because "the first double operation you play each turn costs [click]
    less" is a `PlayCost` on a click, with the "first each turn" of a price
    (`TurnLog::none_yet`).
-4. **Ice and run triggers:** Vertigo, Sipa, Lethe, ezaM, The Tungsten
-   Tailor, Lionsmane, Event Horizon, Shackleton Grid, Ansel 2.0.
+4. **Ice and run triggers:** **4a**, the run's moments about ice
+   (built, below): Vertigo, Sipa, Lethe, ezaM, The Tungsten Tailor.
+   **4b**: Lionsmane, Event Horizon, Ansel 2.0.
 5. **Runner trigger and payment words** (`PaysFor` during a run; the
    Runner's allotted clicks): Hiram, Touchstone, Methuselah, Beta Build,
-   Stowaway, Nurse Hạnh, Caveat Emptor.
+   Stowaway, Nurse Hạnh, Caveat Emptor, and Shackleton Grid, moved here
+   from Stage 4: "when the Runner spends credits from outside their
+   credit pool" is a moment every payment site would have to dispatch,
+   which is this stage's payment work.
 6. **Arrange, reveal, stealth credits:** Cultivate, Knowledge Seeker, Esca,
    Corsair, Baker, Lampades, Aircheck. Aircheck locks the credit pool,
    which breaks the invariant that a payment may always reach the pool.
@@ -757,6 +761,79 @@ Irregulars, The Red Room, Perfect Recall, Lotus Haze. **One new `Effect`**
   restriction, the copies prohibition and the move change no game in the
   pool. The heuristic seatings move (Corp wins 78 → 89 of 192), the movement `determinize`
   makes of every new playable card; not re-checked card by card.
+
+#### Stage 4a — the run's moments about ice (26 September 2026)
+
+`feat/vp-stage-4a-ice-moments`: Vertigo, Sipa, Lethe, ezaM, The Tungsten
+Tailor. **No new `Effect`.** Vantage Point 38 of 66; `VP_UNIMPLEMENTED`
+33 → 28. Stage 4 was split: Lionsmane, Event Horizon and Ansel 2.0 are
+4b, and Shackleton Grid moved to Stage 5 (above).
+
+- **Four moments a card can hear**, each a step the rules name:
+  `Trigger::OnIcePassed`, `OnSubroutineBroken`, `OnIceFullyBroken` (CR
+  6.5.7a, a new `GameEvent::IceFullyBroken`) and `OnIceBypassed` (6.5.8).
+  The three events that already existed (`IcePassed`, `SubroutineBroken`,
+  `IceBypassed`) were occurrences of nothing and are now dispatched: the
+  run engine's own dispatch takes the pass and a click-break, a breaker's
+  break and a bypass go through `dispatcher::emit`.
+- **What was true of the ice is read off the event** (`dsl::IceFacts`,
+  `EventFilter::Ice`): "the outermost piece of ice" (position 0,
+  CR 4.6.9b), "after fully breaking it" (`IcePassed::after_fully_breaking`,
+  CR 6.1.3f: only the encounter just ended) and "a piece of ice with 0 or
+  less strength" (`SubroutineBroken::strength`, the strength it was broken
+  at). On the event rather than the state because a trigger's `when` is
+  asked again where it fires. `validate` admits only the facts a trigger
+  states.
+- **"The first time each turn" counts them.** Sipa's and The Tungsten
+  Tailor's first times are narrower than a card's type, so the turn log
+  counts a moment about ice by its facts (`turn_log::Class::Ice`, eight
+  columns), not as `Kind::Ice`. This was the gap Ryō "Phoenix" Ōno is
+  deferred on, filled for the words these two print; Ryō's "after a
+  subroutine resolved during that run" is still not one of them.
+- **Fully broken is run state** (`RunState::fully_broken`, in the view and
+  the determinized sample): set by `run::break_subroutine`, now the one
+  way any subroutine is broken, and cleared as an encounter begins. Not
+  modelled: ice with no subroutines is fully broken as step 6.9.3b begins
+  (6.5.7c).
+- **A facedown ice is not "this" to itself for these moments.** An
+  unrezzed Vertigo is passed without being encountered, and its "when the
+  Runner passes this ice" is inactive (CR 9.1.7, none of 9.1.8's
+  exceptions): the Listener Rule's "the subject always hears it" does not
+  reach a moment about ice in a run.
+- **`ModifyStrength` takes which ice and how long** (`each_ice`,
+  `duration`) in place of a number, and "each piece of ice gets +1
+  strength for the remainder of this run" is a `Lingering::Strength` on
+  `On::EachIce`, which `lingering::ice_strength` adds and a rig card's
+  strength does not. Leech's file rewritten. **A selection of one swaps
+  it with the card the choice acts as**: ezaM's "this ice", and Sipa's
+  "it" through `acts_on_subject`.
+- **A sweep finding:** Lethe's "add 1 installed Runner card to the grip"
+  failed the view sweep's concealment check (seed 57): the Corp's log
+  named a card now in the grip. The card was faceup on the table when
+  chosen, so the selection is marked revealed, which also gives the
+  Runner's log the line.
+- **The decks.** Sipa for DZMZ Optimizer (Safety Net); The Tungsten Tailor
+  for Scrounge and a Wildcat Strike (Pay as You Go); Vertigo for Tithe
+  (Retirement Package); two ezaM for two Tithe (A Thousand Cuts); two
+  Lethe for two Tithe (Paid Content). Every card replaced is in another
+  deck.
+- **Fidelity limits:** Lethe's first subroutine asks top or bottom before
+  the card. ezaM's "look at the top card" is a selection of it that may
+  be left.
+- **DSL ratio (`pool_status.py`): 21 of 71 `Effect` variants single-use,
+  2 unused**, over 222 card files. It was 23: `SwapInstalledIce` (Tāo
+  Salonga's, now ezaM's and Sipa's too) and `ModifyStrength` (Leech's,
+  now ezaM's) left the single-use list.
+- **Measured.** Both sweeps at 256 seeds are green, coverage gate
+  included, so every new card was seen in play. `coverage_identical.py
+  main` (192 games a shape, seed 1): **the random seatings differ in one
+  line**, `events/IceFullyBroken` 0 → 42, by view and by index — the new
+  event counted where it happens, and no game in the pool moved: the new
+  moments, the facts, the turn-log columns, the dispatch of the three old
+  events and the rewritten Leech change nothing a card in the pool did.
+  The heuristic seatings move (Corp wins 89 → 82 of 192), the movement
+  `determinize` makes of every new playable card; not re-checked card by
+  card.
 
 ### 2. Rebellion Without Rehearsal — 65 cards (C 7 / V 43 / M 15)
 

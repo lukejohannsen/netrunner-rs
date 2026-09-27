@@ -478,9 +478,10 @@ pub fn narrate_event(
         GameEvent::SubroutineFired { card_id, index, .. } => {
             format!("subroutine {} on {} fired", index + 1, title(card_id))
         }
-        GameEvent::SubroutineBroken { card_id, index } => {
+        GameEvent::SubroutineBroken { card_id, index, .. } => {
             format!("broke subroutine {} on {}", index + 1, title(card_id))
         }
+        GameEvent::IceFullyBroken { card_id, .. } => format!("fully broke {}", title(card_id)),
 
         // ---- harm ----
         GameEvent::DamageTaken { damage_type, amount, .. } => {

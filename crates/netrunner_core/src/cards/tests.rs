@@ -1827,7 +1827,7 @@ mod system_gateway {
         let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run");
         let (state, _) = crate::rules::test_support::continue_run(&state, &registry).expect("approach Ice Wall");
         let (state, events) = close_all_windows(state, &registry);
-        assert!(events.contains(&crate::rules::GameEvent::IcePassed { server: ServerId::Hq, position: 0 }), "unrezzed, passed");
+        assert!(events.contains(&crate::rules::GameEvent::IcePassed { server: ServerId::Hq, position: 0, after_fully_breaking: false }), "unrezzed, passed");
         assert!(state.pending_paid_choice.is_none(), "the server is not approached by the pass");
         let (state, events) = crate::rules::test_support::through_movement(&state, &registry).expect("to the server");
         let fired = events
@@ -5125,7 +5125,7 @@ mod system_gateway {
 
         let (state, events) = close_all_windows(state, &registry);
         assert!(!events.iter().any(|e| matches!(e, crate::rules::GameEvent::IceEncountered { .. })), "{events:?}");
-        assert!(events.contains(&crate::rules::GameEvent::IcePassed { server: ServerId::Hq, position: 0 }));
+        assert!(events.contains(&crate::rules::GameEvent::IcePassed { server: ServerId::Hq, position: 0, after_fully_breaking: false }));
         assert_eq!(state.active_run.as_ref().unwrap().phase, crate::rules::RunPhase::Movement);
     }
 
@@ -11557,5 +11557,275 @@ mod vantage_point {
         let (state, _) = pick(&state, &registry, crate::rules::test_support::position_of(&state, "the_red_room"));
         let Some(crate::rules::PendingDecision::ChooseServer { allowed_servers, .. }) = &state.pending_decision else { panic!("a server is asked") };
         assert_eq!(allowed_servers.as_deref(), Some(&[ServerId::RnD, ServerId::Archives][..]));
+    }
+
+    // --- Stage 4a: the run's moments about ice ---
+
+    /// Runs HQ, whose ice is `ice` outermost first, and passes every window
+    /// up to the encounter with the outermost, which is left open.
+    fn encountering(mut state: GameState, registry: &CardRegistry, ice: &[&str]) -> GameState {
+        state.phase = GamePhase::Action(Side::Runner);
+        state.corp.installed.extend(ice.iter().map(|card| ice_at_hq(card)));
+        let (state, _) = apply_action(&state, registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("initiate run");
+        let (state, _) = crate::rules::test_support::continue_run(&state, registry).expect("approach the ice");
+        let (state, _) = apply_action(&state, registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner passes approach");
+        let (state, _) = apply_action(&state, registry, PlayerAction::PassPriority { side: Side::Corp }).expect("corp passes approach");
+        assert_eq!(state.active_run.as_ref().map(|run| run.phase), Some(crate::rules::RunPhase::EncounterIce));
+        state
+    }
+
+    /// Breaks `count` subroutines on the encountered ice as a card's text
+    /// would, through the one door.
+    fn break_some(state: &mut GameState, registry: &CardRegistry, count: u32) -> Vec<crate::rules::GameEvent> {
+        let breaks = crate::dsl::Effect::BreakSubroutinesUnconditionally { count: crate::dsl::SubroutineBreakCount::Fixed(count) };
+        crate::rules::evaluate_effect(state, &breaks, &mut crate::rules::ResolutionContext::for_card(None), registry).expect("break")
+    }
+
+    /// Both players pass the encounter's window, and the Runner goes on:
+    /// with every subroutine broken, that passes the ice.
+    fn pass_the_encounter(state: &GameState, registry: &CardRegistry) -> (GameState, Vec<crate::rules::GameEvent>) {
+        let (state, mut events) = apply_action(state, registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner passes encounter");
+        let (state, more) = apply_action(&state, registry, PlayerAction::PassPriority { side: Side::Corp }).expect("corp passes encounter");
+        events.extend(more);
+        (state, events)
+    }
+
+    fn passed(events: &[crate::rules::GameEvent]) -> Option<bool> {
+        events.iter().find_map(|event| match event {
+            crate::rules::GameEvent::IcePassed { after_fully_breaking, .. } => Some(*after_fully_breaking),
+            _ => None,
+        })
+    }
+
+    /// Passed with no click left, Vertigo bars steals and trashes for the
+    /// rest of the run; with a click left, or passed unrezzed, it does not.
+    /// Its subroutine takes a click on the way.
+    #[test]
+    fn vertigo_bars_steals_and_trashes_only_when_passed_rezzed_with_no_click_left() {
+        let registry = registry();
+        for (clicks, rezzed, barred) in [(2, true, true), (3, true, false), (1, false, false)] {
+            let mut state = base_state();
+            state.runner.resources.clicks = Clicks(clicks);
+            state.phase = GamePhase::Action(Side::Runner);
+            state.corp.installed.push(crate::rules::InstalledCard { rezzed, ..ice_at_hq("vertigo") });
+            let (mut state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("initiate run");
+            let mut events = Vec::new();
+            // Every window passed, every subroutine let fire, up to the pass.
+            while passed(&events).is_none() {
+                let legal = crate::rules::legal_actions(&state, &registry);
+                let next = legal
+                    .iter()
+                    .find(|action| matches!(action, PlayerAction::PassPriority { .. }))
+                    .or_else(|| legal.iter().find(|action| matches!(action, PlayerAction::ContinueRun)))
+                    .cloned()
+                    .expect("a way on");
+                let (next_state, more) = apply_action(&state, &registry, next).expect("on");
+                state = next_state;
+                events.extend(more);
+            }
+            assert_eq!(crate::rules::lingering::prohibits(&state, crate::dsl::Prohibition::StealOrTrash), barred, "{clicks} clicks, rezzed {rezzed}");
+        }
+    }
+
+    /// A tag the first time the ice is fully broken, not for the first of
+    /// its two subroutines; a tag for a bypass too.
+    #[test]
+    fn lethe_tags_the_runner_when_fully_broken_or_bypassed() {
+        let registry = registry();
+        let mut state = encountering(base_state(), &registry, &["lethe"]);
+        let events = break_some(&mut state, &registry, 1);
+        assert!(!events.iter().any(|event| matches!(event, crate::rules::GameEvent::IceFullyBroken { .. })));
+        assert_eq!(state.runner.tags, 0, "one of two is not fully broken");
+        let events = break_some(&mut state, &registry, 1);
+        assert_eq!(events.iter().filter(|event| matches!(event, crate::rules::GameEvent::IceFullyBroken { .. })).count(), 1);
+        assert_eq!(state.runner.tags, 1);
+        assert!(state.active_run.as_ref().is_some_and(|run| run.fully_broken));
+
+        let mut state = encountering(base_state(), &registry, &["lethe"]);
+        crate::rules::evaluate_effect(
+            &mut state,
+            &crate::dsl::Effect::BypassEncounteredIce,
+            &mut crate::rules::ResolutionContext::for_card(None),
+            &registry,
+        )
+        .expect("bypass");
+        assert_eq!(state.runner.tags, 1, "bypassed");
+    }
+
+    /// The first subroutine is the Corp's to decline; the second returns an
+    /// installed Runner card to the grip.
+    #[test]
+    fn lethe_returns_an_installed_runner_card_to_the_grip() {
+        let registry = registry();
+        let mut state = base_state();
+        state.runner.rig = vec![rig("sipa")];
+        state.corp.archives = vec![crate::rules::ArchivedCard { card: id("hedge_fund"), facedown: false }];
+        let (state, _) = let_subroutines_fire(state, &registry, "lethe");
+        let decline = crate::rules::legal_actions(&state, &registry)
+            .into_iter()
+            .rfind(|action| matches!(action, PlayerAction::ResolvePendingChoice { .. }))
+            .expect("the Corp may decline");
+        let (state, _) = apply_action(&state, &registry, decline).expect("decline");
+        assert_eq!(state.corp.archives.len(), 1, "left in Archives");
+        let (state, _) = pick(&state, &registry, 0);
+        assert!(state.runner.rig.is_empty());
+        assert_eq!(state.runner.grip, vec![id("sipa")]);
+    }
+
+    /// Its first subroutine puts a card from Archives on top of R&D.
+    #[test]
+    fn lethe_adds_a_card_from_archives_to_the_top_of_r_and_d() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.r_and_d = vec![id("ice_wall")];
+        state.corp.archives = vec![crate::rules::ArchivedCard { card: id("hedge_fund"), facedown: true }];
+        let (state, _) = let_subroutines_fire(state, &registry, "lethe");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("to the top");
+        let (state, _) = pick(&state, &registry, 0);
+        assert!(state.corp.archives.is_empty());
+        assert_eq!(state.corp.r_and_d.last(), Some(&id("hedge_fund")), "the top of R&D is its last card");
+    }
+
+    /// Every window passed, every subroutine let fire and every access
+    /// passed, until `stop` holds of what has happened.
+    fn drive(
+        state: GameState,
+        registry: &CardRegistry,
+        stop: impl Fn(&GameState, &[crate::rules::GameEvent]) -> bool,
+    ) -> (GameState, Vec<crate::rules::GameEvent>) {
+        let (mut state, mut events) = (state, Vec::new());
+        while !stop(&state, &events) {
+            let legal = crate::rules::legal_actions(&state, registry);
+            let next = legal
+                .iter()
+                .find(|action| matches!(action, PlayerAction::PassPriority { .. }))
+                .or_else(|| legal.iter().find(|action| matches!(action, PlayerAction::ContinueRun | PlayerAction::CompleteRun)))
+                .or_else(|| legal.iter().find(|action| matches!(action, PlayerAction::PassAccessedCard { .. })))
+                .cloned()
+                .unwrap_or_else(|| panic!("a way on from {:?}", state.pending_decision));
+            let (next_state, more) = apply_action(&state, registry, next).expect("on");
+            state = next_state;
+            events.extend(more);
+        }
+        (state, events)
+    }
+
+    fn swap_offered(state: &GameState) -> bool {
+        matches!(state.pending_decision, Some(crate::rules::PendingDecision::ChooseEffect { chooser: Side::Runner, .. }))
+    }
+
+    /// Passing the outermost ice after fully breaking it offers the swap;
+    /// the second such pass that turn does not.
+    #[test]
+    fn sipa_swaps_the_outermost_ice_it_passed_fully_broken_with_another_the_first_time_each_turn() {
+        let registry = registry();
+        let mut state = base_state();
+        state.runner.rig = vec![rig("sipa")];
+        state.corp.installed.push(crate::rules::InstalledCard { server: ServerId::RnD, ..ice_at_hq("ice_wall") });
+
+        let mut state = encountering(state, &registry, &["palisade"]);
+        break_some(&mut state, &registry, 1);
+        let (state, events) = pass_the_encounter(&state, &registry);
+        assert_eq!(passed(&events), Some(true), "Palisade's one subroutine was broken");
+        assert!(swap_offered(&state), "{:?}", state.pending_decision);
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("swap");
+        let ice_wall = crate::rules::test_support::position_of(&state, "ice_wall");
+        let (state, _) = pick(&state, &registry, ice_wall);
+        let server_of = |state: &GameState, card: &str| state.corp.installed.iter().find(|c| c.card == id(card)).map(|c| c.server);
+        assert_eq!((server_of(&state, "palisade"), server_of(&state, "ice_wall")), (Some(ServerId::RnD), Some(ServerId::Hq)), "swapped");
+
+        // The run ends; a second run breaks and passes the Ice Wall now on HQ.
+        let (state, _) = drive(state, &registry, |state, _| state.active_run.is_none());
+        let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run again");
+        let (mut state, _) = drive(state, &registry, |state, _| state.active_run.as_ref().is_some_and(|run| run.phase == crate::rules::RunPhase::EncounterIce));
+        break_some(&mut state, &registry, 1);
+        let (state, events) = pass_the_encounter(&state, &registry);
+        assert_eq!(passed(&events), Some(true));
+        assert!(!swap_offered(&state), "not the first time this turn");
+    }
+
+    /// A pass after an encounter whose subroutine fired is not "after fully
+    /// breaking it", and is not the turn's first of what Sipa counts.
+    #[test]
+    fn sipa_ignores_a_pass_with_a_subroutine_left_unbroken() {
+        let registry = registry();
+        let mut state = base_state();
+        state.runner.rig = vec![rig("sipa")];
+        state.corp.installed.push(crate::rules::InstalledCard { server: ServerId::RnD, ..ice_at_hq("ice_wall") });
+        let state = encountering(state, &registry, &["vertigo"]);
+        let (state, events) = drive(state, &registry, |_, events| passed(events).is_some());
+        assert_eq!(passed(&events), Some(false));
+        assert!(!swap_offered(&state));
+        let sipa = crate::dsl::EventFilter::Ice(crate::dsl::IceFacts { outermost: true, after_fully_breaking: true, ..Default::default() });
+        assert_eq!(state.this_turn.times_when(crate::dsl::Trigger::OnIcePassed, &sipa, Side::Runner), 0);
+        assert_eq!(state.this_turn.times(crate::dsl::Trigger::OnIcePassed), 1);
+    }
+
+    /// Each piece of ice gets −1 strength; the first subroutine broken each
+    /// turn on ice at 0 or less pays 1[credit], a break on stronger ice
+    /// first not counting.
+    #[test]
+    fn the_tungsten_tailor_weakens_ice_and_pays_for_the_first_break_at_zero_strength() {
+        let registry = registry();
+        let mut state = base_state();
+        state.runner.rig = vec![rig("the_tungsten_tailor")];
+        // Ice Wall and Vertigo print 1, so both stand at 0.
+        let mut state = encountering(state, &registry, &["ice_wall", "vertigo"]);
+        let run = state.active_run.as_ref().expect("run");
+        assert_eq!(crate::rules::continuous::ice_strength(&state, &registry, &run.ice[0]), 0, "Ice Wall at 1 − 1");
+        let credits = state.runner.resources.credits;
+        break_some(&mut state, &registry, 1);
+        assert_eq!(state.runner.resources.credits, Credits(credits.0 + 1), "at 0 strength");
+        let (state, _) = pass_the_encounter(&state, &registry);
+        let (mut state, _) = drive(state, &registry, |state, _| state.active_run.as_ref().is_some_and(|run| run.phase == crate::rules::RunPhase::EncounterIce));
+        break_some(&mut state, &registry, 1);
+        assert_eq!(state.runner.resources.credits, Credits(credits.0 + 1), "only the first");
+
+        let mut state = base_state();
+        state.runner.rig = vec![rig("the_tungsten_tailor")];
+        let mut state = encountering(state, &registry, &["palisade"]);
+        let credits = state.runner.resources.credits;
+        break_some(&mut state, &registry, 1);
+        assert_eq!(state.runner.resources.credits, credits, "Palisade is at 1");
+        let tailor = crate::dsl::EventFilter::Ice(crate::dsl::IceFacts { at_most_zero_strength: true, ..Default::default() });
+        assert_eq!(state.this_turn.times_when(crate::dsl::Trigger::OnSubroutineBroken, &tailor, Side::Runner), 0);
+    }
+
+    /// "[click]: Swap this ice with another installed piece of ice."
+    #[test]
+    fn ezam_swaps_itself_with_another_piece_of_ice_for_a_click() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.installed = vec![ice_at_hq("ezam"), crate::rules::InstalledCard { server: ServerId::RnD, ..ice_at_hq("ice_wall") }];
+        let ezam = install_of(&state, "ezam");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ActivateAbility { target: ezam, ability_index: 0 }).expect("swap");
+        let (state, _) = pick(&state, &registry, crate::rules::test_support::position_of(&state, "ice_wall"));
+        assert_eq!(state.corp.resources.clicks, Clicks(2));
+        assert_eq!(state.corp.installed.iter().find(|c| c.install_id == ezam).map(|c| c.server), Some(ServerId::RnD));
+
+        let mut alone = base_state();
+        alone.corp.installed = vec![ice_at_hq("ezam")];
+        let offered = crate::rules::legal_actions(&alone, &registry)
+            .contains(&PlayerAction::ActivateAbility { target: install_of(&alone, "ezam"), ability_index: 0 });
+        assert!(!offered, "no other ice to swap with");
+    }
+
+    /// Its subroutines: the top of R&D may go to the bottom, and each piece
+    /// of ice — elsewhere too — gets +1 strength for the rest of the run.
+    #[test]
+    fn ezam_may_bottom_the_top_of_r_and_d_and_strengthens_every_ice_for_the_run() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.r_and_d = vec![id("hedge_fund"), id("ice_wall")];
+        state.corp.installed.push(crate::rules::InstalledCard { server: ServerId::RnD, ..ice_at_hq("palisade") });
+        let (state, _) = let_subroutines_fire(state, &registry, "ezam");
+        // The top card of R&D is its last.
+        let (state, _) = pick(&state, &registry, crate::rules::test_support::position_of(&state, "ice_wall"));
+        assert_eq!(state.corp.r_and_d, vec![id("ice_wall"), id("hedge_fund")], "Ice Wall to the bottom");
+        let palisade = state.corp.installed.iter().find(|c| c.card == id("palisade")).expect("palisade");
+        assert_eq!(crate::rules::lingering::ice_strength(&state, palisade.install_id), 1, "a piece of ice on another server");
+        let (state, _) = drive(state, &registry, |state, _| state.active_run.is_none());
+        let palisade = state.corp.installed.iter().find(|c| c.card == id("palisade")).expect("palisade");
+        assert_eq!(crate::rules::lingering::ice_strength(&state, palisade.install_id), 0, "for the remainder of the run");
     }
 }

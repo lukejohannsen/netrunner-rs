@@ -718,7 +718,7 @@ mod tests {
             vec![
                 GameEvent::PriorityPassed { side: Side::Corp },
                 GameEvent::PaidAbilityWindowClosed,
-                GameEvent::IcePassed { server: ServerId::Hq, position: 0 },
+                GameEvent::IcePassed { server: ServerId::Hq, position: 0, after_fully_breaking: false },
             ]
         );
     }
@@ -749,7 +749,7 @@ mod tests {
                     effect: Effect::GiveTags(crate::dsl::Amount::Fixed(1)),
                 },
                 GameEvent::TagsGiven { side: Side::Runner, amount: 1 },
-                GameEvent::IcePassed { server: ServerId::Hq, position: 0 },
+                GameEvent::IcePassed { server: ServerId::Hq, position: 0, after_fully_breaking: false },
             ]
         );
     }
