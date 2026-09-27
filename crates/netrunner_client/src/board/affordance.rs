@@ -104,6 +104,7 @@ pub(super) fn affordance_of(action: &PlayerAction, passing: bool) -> Affordance 
         | PlayerAction::InitiateRun { .. }
         | PlayerAction::PlayEvent { .. }
         | PlayerAction::PlayOperation { .. }
+        | PlayerAction::ActivateHandAbility { .. }
         | PlayerAction::InstallHardware { .. }
         | PlayerAction::InstallProgram { .. }
         | PlayerAction::InstallResource { .. }

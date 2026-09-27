@@ -399,8 +399,8 @@ Division.
    cards hosted facedown. **7c** (built, below): Hackerspace, a resource
    installed onto a resource. **7d** (built, below): Myōshu, Word on the
    Street and Sacrifice Zone Expansion, the score area. **7e** (built,
-   below): Stick and Poke, a subroutine gained for an encounter. **7f:**
-   Tocsin, an ability used from HQ. **7g:** Flagship, a run that cannot be
+   below): Stick and Poke, a subroutine gained for an encounter. **7f**
+   (built, below): Tocsin, an ability used from HQ. **7g:** Flagship, a run that cannot be
    declared successful and a limit on accesses.
 8. **Méliès U, alone:** hidden setup state, three sides, and masking.
 
@@ -1577,6 +1577,51 @@ deck. **No new `Effect`.** Vantage Point 59 of 66; `VP_UNIMPLEMENTED`
   Go (seed 2) installed Stick and Poke 42 times, and ice gained its
   subroutine 123 times. **The heuristic Runner never installs it** (0 in
   96 games), so the card gate is met by random seats alone.
+
+#### Stage 7f — an ability used from HQ (27 September 2026)
+
+3 → 2.
+
+- **An ability that can only affect the game from a zone is active
+  there** (CR 9.1.8b). Tocsin's "[click], 1[credit], reveal and trash this
+  ice from HQ:" is `AbilityDef::from_hand`, and it has no ability on the
+  table: `ActivateAbility` refuses it and does not offer it.
+- **Its own action, `PlayerAction::ActivateHandAbility { card_id,
+  ability_index }`**, because `ActivateAbility` names an install and a
+  card in HQ has none. Which copy is `PlayOperation`'s question, with
+  `PlayOperation`'s answer. It is an action (`classify_action`); `validate`
+  holds every hand ability to one, the only kind the pool prints.
+  **`ActionSpace` 3133 → 3261, appended**: each hand's slot by ability
+  slot, HQ then the grip, so every recorded index keeps its meaning
+  (`scripts/action_space_segments.py`, the gym's pin).
+- **`Cost::RevealAndTrashSelf`**: the card leaves the hand revealed
+  (`CardRevealed`), so it lands in Archives faceup (CR 4.4.6b), where
+  `TrashSelf` out of HQ lands facedown.
+- **"Up to 1 barrier and up to 1 sentry", shuffled once**, is two
+  `PromptChooseCards` in a `Sequence`, only the second shuffling. Nested as
+  a `then`, a search that found no barrier would never have looked for a
+  sentry, because a prompt with nothing to choose resolves nothing after
+  it.
+- **Deck.** Hostile Bid: two Tocsin for two Enigma.
+- **The coverage gate never saw the action in either 768-game deep
+  sweep.** A random Corp holding Tocsin also has two dozen places to
+  install it, and the rotation seldom gives Hostile Bid to a random Corp;
+  the heuristic Corp installs and rezzes it (70 and 45 times in 96 games)
+  and never uses it from HQ. So it is a reasoned rare action at 2048
+  games, as `ChooseNumber` is, and the card test holds its `ActionSpace`
+  round trip and its mask bit.
+- **DSL ratio (`pool_status.py`): 21 of 75 `Effect` variants single-use,
+  2 unused**, over 248 card files (no new `Effect`; a cost, a flag and an
+  action).
+- **Measured.** Both sweeps at 256 seeds are green. Against `origin/main`,
+  `coverage_identical.py` has both random seatings **identical**, the
+  index path included, so the wider `ActionSpace` moved nothing a random
+  agent draws. The heuristic seatings moved, and without the card file and
+  the deck swap they are identical in all four shapes (`determinize`).
+- **Real play.** Ninety-six random games of Hostile Bid against Pay As You
+  Go (seed 2) used Tocsin from HQ 10 times, and it was installed 73 times.
+  With the heuristic Corp, it was installed 70 times, rezzed 45, and never
+  used from HQ.
 
 ### 2. Rebellion Without Rehearsal — 65 cards (C 7 / V 43 / M 15)
 

@@ -190,9 +190,12 @@ mod tests {
     ///
     /// 2621 → 3133 for a resource installed onto a rig card (VP Stage 7c,
     /// Hackerspace), appended.
+    ///
+    /// 3133 → 3261 for an ability used from a hand (VP Stage 7f, Tocsin),
+    /// appended.
     #[test]
     fn action_space_size_constant_is_pinned() {
-        assert_eq!(ACTION_SPACE_SIZE, 3133);
+        assert_eq!(ACTION_SPACE_SIZE, 3261);
     }
 
     /// Pinned for the same reason as `ACTION_SPACE_SIZE`: it is the model's

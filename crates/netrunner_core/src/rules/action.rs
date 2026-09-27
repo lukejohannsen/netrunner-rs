@@ -252,6 +252,15 @@ pub enum PlayerAction {
     /// `RulesError::InvalidAbilityIndex`/`RulesError::AbilityNotManuallyActivatable`
     /// respectively.
     ActivateAbility { target: InstallId, ability_index: usize },
+    /// Pay and resolve the `ability_index`-th ability of `card_id`, a card
+    /// in its owner's hand, that says it is used from there
+    /// (`AbilityDef::from_hand`, CR 9.1.8b) — Tocsin's "[click], 1[credit],
+    /// reveal and trash this ice from HQ:". Its own action because
+    /// `ActivateAbility` names an install, and a card in HQ has none; which
+    /// copy is the same question as `PlayOperation`'s, with the same
+    /// answer. Every such ability in the pool is an action, taken in its
+    /// user's action window (CR 9.5.2a).
+    ActivateHandAbility { card_id: CardId, ability_index: usize },
     /// Place one advancement token on `target`, a Corp-installed card.
     /// Corp-only. Costs 1 click + 1 credit (`pay_cost(state, side,
     /// &Cost::Credits(1))`, in addition to the click). `target` must name a
@@ -540,6 +549,7 @@ impl PlayerAction {
         "KeepHand",
         "TakeMulligan",
         "ActivateAbility",
+        "ActivateHandAbility",
         "AdvanceCard",
         "ScoreAgenda",
         "RemoveTag",
@@ -607,6 +617,7 @@ mod tests {
             PlayerAction::KeepHand,
             PlayerAction::TakeMulligan,
             PlayerAction::ActivateAbility { target: install, ability_index: 0 },
+            PlayerAction::ActivateHandAbility { card_id: card(), ability_index: 0 },
             PlayerAction::AdvanceCard { target: install },
             PlayerAction::ScoreAgenda { target: install },
             PlayerAction::RemoveTag,
@@ -653,6 +664,7 @@ mod tests {
                 | PlayerAction::KeepHand
                 | PlayerAction::TakeMulligan
                 | PlayerAction::ActivateAbility { .. }
+                | PlayerAction::ActivateHandAbility { .. }
                 | PlayerAction::AdvanceCard { .. }
                 | PlayerAction::ScoreAgenda { .. }
                 | PlayerAction::RemoveTag

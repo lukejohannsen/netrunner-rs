@@ -501,6 +501,15 @@ pub const ACTIONS_RARE_WITH_SAMPLE_DECKS: &[(&str, &str, u64)] = &[
     // deck, same threshold.
     ("PayAccessTrigger", "needs the Corp holding 4 credits as the Runner accesses Byte!", 512),
     ("DeclineAccessTrigger", "needs the Runner accessing Byte! and the Corp declining or unable to pay", 512),
+    // Tocsin (VP Stage 7f), used from HQ, is the pool's one ability of a
+    // card in a hand, and it is in one Corp list, Hostile Bid. Measured: 10
+    // uses in 96 random games of Hostile Bid against Pay As You Go (seed 2),
+    // where a random Corp holding it also has some two dozen places to
+    // install it; **none in either 768-game deep sweep**, whose rotation
+    // gives Hostile Bid to a random Corp in a few dozen games. The heuristic
+    // Corp never uses it. The card test holds the mechanism and its
+    // `ActionSpace` round trip (`tocsin_is_used_from_hq_for_a_barrier_and_a_sentry`).
+    ("ActivateHandAbility", "needs Tocsin in HQ on a random Corp's turn, with a click and a credit, chosen over installing it", 2048),
 ];
 
 /// Cards in the sample decks that the sweep is permitted never to see in

@@ -428,7 +428,7 @@ mod tests {
             title: card.to_string(),
             side,
             card_type,
-            abilities: vec![AbilityDef { text: None, trigger: Trigger::Paid, cost, requirement: None, effect, cost_discount_if: None, used_by: None, access: false }],
+            abilities: vec![AbilityDef { text: None, trigger: Trigger::Paid, cost, requirement: None, effect, cost_discount_if: None, used_by: None, access: false, from_hand: false }],
             is_playable: true,
             ..Default::default()
         }

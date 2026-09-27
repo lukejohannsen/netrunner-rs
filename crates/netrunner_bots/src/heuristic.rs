@@ -335,7 +335,7 @@ mod tests {
             cost: None,
             requirement: None,
             effect: Effect::BreakSubroutines { count: SubroutineBreakCount::All, restrict_to: Some(IceType::Barrier) },
-            cost_discount_if: None, used_by: None, access: false }];
+            cost_discount_if: None, used_by: None, access: false, from_hand: false }];
         registry.insert(cleaver);
 
         let mut state = GameState::new(0);
@@ -413,6 +413,7 @@ mod tests {
             cost_discount_if: None,
             used_by: None,
             access: false,
+            from_hand: false,
         }];
         assert_eq!(choose(cleaver), PlayerAction::DrawCardClick { side: Side::Runner }, "a breaker on top is worth the draw");
         assert_eq!(

@@ -2435,6 +2435,11 @@ pub(crate) fn cost_is_affordable(
         Cost::Derez { filter, count } => derez_eligible(state, registry, side, filter, ctx).len() >= *count as usize,
         Cost::TrashSelf | Cost::RemoveSelfFromGame | Cost::TakeTags(_) | Cost::ClearTags => true,
         Cost::TrashRandomFromHq(count) => state.corp.hq.len() as u32 >= *count,
+        // Payable while the card is in its owner's hand.
+        Cost::RevealAndTrashSelf => ctx.acting_card.is_some_and(|card| match side {
+            Side::Corp => state.corp.hq.contains(card),
+            Side::Runner => state.runner.grip.contains(card),
+        }),
     }
 }
 
@@ -2524,6 +2529,23 @@ pub(crate) fn pay_cost_ctx(
         Cost::TrashSelf => {
             acting_card.ok_or(RulesError::MissingActingCardContext)?;
             trash_this_card(state, registry, ctx, Some(side))
+        }
+
+        // Out of the hand, faceup: it was shown as it went (CR 4.4.6b). The
+        // payer dispatches the trash with the rest of its cost's events.
+        Cost::RevealAndTrashSelf => {
+            let card = acting_card.ok_or(RulesError::MissingActingCardContext)?.clone();
+            let hand = match side {
+                Side::Corp => &mut state.corp.hq,
+                Side::Runner => &mut state.runner.grip,
+            };
+            let position = hand.iter().position(|c| *c == card).ok_or_else(|| RulesError::CardNotInHand { side, card: card.clone() })?;
+            hand.remove(position);
+            match side {
+                Side::Corp => state.corp.archives.push(ArchivedCard::faceup(card.clone())),
+                Side::Runner => state.runner.heap.push(card.clone()),
+            }
+            Ok(vec![GameEvent::CardRevealed { side, card: card.clone() }, GameEvent::CardTrashed { side, card, by: Some(side) }])
         }
 
         Cost::TrashRandomFromHq(count) => {

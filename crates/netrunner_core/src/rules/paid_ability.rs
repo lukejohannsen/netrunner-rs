@@ -475,7 +475,7 @@ mod tests {
                 cost: None,
                 requirement: None,
                 effect: Effect::GainCredits(Side::Corp, 1),
-                cost_discount_if: None, used_by: None, access: false }],
+                cost_discount_if: None, used_by: None, access: false, from_hand: false }],
             ..Default::default()
         });
         let mut state = base_state();

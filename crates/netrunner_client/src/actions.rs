@@ -695,6 +695,14 @@ pub fn describe_action(action: &PlayerAction, registry: &CardRegistry, view: Opt
                 None => format!("Activate ability {ability_index} on {}", install_label(target)),
             }
         }
+        // The printed line, off the card in the hand: the whole of it names
+        // the card ("… reveal and trash this ice from HQ").
+        PlayerAction::ActivateHandAbility { card_id, ability_index } => {
+            match registry.get(card_id).and_then(|def| def.abilities.get(*ability_index)).and_then(|ability| ability.text.as_ref()) {
+                Some(text) => format!("{}: {}", title(card_id), text.trim_end_matches('.')),
+                None => format!("Use {} from your hand", title(card_id)),
+            }
+        }
         PlayerAction::AdvanceCard { target } => format!("Advance {}", install_label(target)),
         PlayerAction::ScoreAgenda { target } => format!("Score {}", install_label(target)),
         PlayerAction::RemoveTag => "Remove a tag".to_string(),
@@ -943,6 +951,10 @@ pub fn explain_action(action: &PlayerAction, registry: &CardRegistry, view: Opti
         PlayerAction::DiscardCard { card_id } => format!("Discard {} to get down to your maximum hand size.", title(card_id)),
         PlayerAction::KeepHand => "Keep these 5 cards as your opening hand.".to_string(),
         PlayerAction::TakeMulligan => "Shuffle this hand back and draw 5 new cards. You only get one mulligan, and you keep whatever comes.".to_string(),
+        PlayerAction::ActivateHandAbility { card_id, .. } => format!(
+            "Use {}'s ability from your hand, where the card says it works, paying its cost as printed.",
+            title(card_id)
+        ),
         PlayerAction::ActivateAbility { .. } => "Use one of this card's paid abilities, paying its cost — an icebreaker's abilities boost its strength or break subroutines during an encounter.".to_string(),
         PlayerAction::AdvanceCard { .. } => "Spend 1 click and 1 credit to place an advancement token. An agenda scores once it has as many tokens as its advancement requirement.".to_string(),
         PlayerAction::ScoreAgenda { .. } => "Score this fully advanced agenda: its points go to your score area, and 7 points (6 in the starter game) wins.".to_string(),
@@ -1526,6 +1538,7 @@ mod tests {
             PlayerAction::KeepHand,
             PlayerAction::TakeMulligan,
             PlayerAction::ActivateAbility { target: install, ability_index: 0 },
+            PlayerAction::ActivateHandAbility { card_id: card(), ability_index: 0 },
             PlayerAction::AdvanceCard { target: install },
             PlayerAction::ScoreAgenda { target: install },
             PlayerAction::RemoveTag,
