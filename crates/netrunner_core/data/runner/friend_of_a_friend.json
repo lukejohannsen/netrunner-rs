@@ -1,0 +1,69 @@
+{
+  "id": "friend_of_a_friend",
+  "title": "Friend of a Friend",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 3,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "text": "[click], [trash]: Gain 5[credit] and remove 1 tag.",
+      "cost": {
+        "AllOf": [
+          {
+            "Clicks": 1
+          },
+          "TrashSelf"
+        ]
+      },
+      "effect": {
+        "Sequence": [
+          {
+            "GainCredits": [
+              "Runner",
+              5
+            ]
+          },
+          {
+            "RemoveTags": {
+              "Fixed": 1
+            }
+          }
+        ]
+      }
+    },
+    {
+      "trigger": "Paid",
+      "text": "[click], [trash]: Gain 9[credit] and take 1 tag. Use this ability only if you are not tagged.",
+      "cost": {
+        "AllOf": [
+          {
+            "Clicks": 1
+          },
+          "TrashSelf"
+        ]
+      },
+      "requirement": {
+        "Not": "IsTagged"
+      },
+      "effect": {
+        "Sequence": [
+          {
+            "GainCredits": [
+              "Runner",
+              9
+            ]
+          },
+          {
+            "GiveTags": {
+              "Fixed": 1
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "numeric_id": 34074,
+  "is_playable": true
+}

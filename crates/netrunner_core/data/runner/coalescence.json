@@ -1,0 +1,39 @@
+{
+  "id": "coalescence",
+  "title": "Coalescence",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 2,
+  "memory_cost": 1,
+  "counter_kind": "Power",
+  "triggers": [
+    {
+      "trigger": "OnInstall",
+      "subject": "This",
+      "effects": [
+        {
+          "AddCounters": 2
+        }
+      ],
+      "text": "When you install this program, place 2 power counters on it."
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "text": "Hosted power counter: Gain 2[credit]. Use this ability only during your turn.",
+      "cost": {
+        "RemoveCounters": 1
+      },
+      "requirement": "DuringYourTurn",
+      "effect": {
+        "GainCredits": [
+          "Runner",
+          2
+        ]
+      }
+    }
+  ],
+  "numeric_id": 34089,
+  "is_playable": true
+}

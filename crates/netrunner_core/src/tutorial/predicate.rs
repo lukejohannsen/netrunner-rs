@@ -260,13 +260,13 @@ pub fn event_side(event: &GameEvent) -> Option<Side> {
         | GameEvent::CardDiscarded { side, .. }
         | GameEvent::CreditsSpent { side, .. }
         | GameEvent::TagsGiven { side, .. }
-        | GameEvent::TagsCleared { side }
+        | GameEvent::TagsCleared { side, .. }
         | GameEvent::CardTrashed { side, .. }
         | GameEvent::CardRemovedFromGame { side, .. }
         | GameEvent::AbilityActivated { side, .. }
         | GameEvent::PaidAbilityWindowOpened { side }
         | GameEvent::PriorityPassed { side }
-        | GameEvent::TagRemoved { side }
+        | GameEvent::TagRemoved { side, .. }
         | GameEvent::TagsRemoved { side, .. }
         | GameEvent::CardsSelected { side, .. }
         | GameEvent::PendingCardSelectionOffered { side, .. }

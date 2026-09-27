@@ -1857,14 +1857,17 @@ reaches Vantage Point's cards by building a deck.
 **Decks:** Sweep decks on its three identities.
 
 **Stages:**
-1. **Composes, plus small requirements:** Eye for an Eye, Friend of a
+1. **Composes, plus small requirements** (built, below): Friend of a
    Friend, Corporate Hospitality, Boto, Capacitor, Seraph, The Powers That
-   Be, Coalescence, Valentina Ferreira Carvalho, Pressure Spike.
+   Be, Coalescence, Valentina Ferreira Carvalho, Pressure Spike. Eye for
+   an Eye moved to Stage 3 when the stage was taken: its "Access →" is an
+   ability on an *event*, active through the run it starts (CR 8.6.5),
+   which no card has needed yet.
 2. **Tags, purge, and a cost on the Corp's basic trash action:**
    Sebastião Souza Pessoa, Manuel Lattes de Moura, Privileged Access, Amanuensis, Amelia Earhart,
    Juli Moreira Lee, Arruaceiras Crew, Malandragem, Physarum Entangler,
    Heliamphora.
-3. **Runner access and run words:** “Pretty” Mary da Silva, Cupellation, Trick Shot,
+3. **Runner access and run words:** Eye for an Eye, “Pretty” Mary da Silva, Cupellation, Trick Shot,
    Window of Opportunity, Alarm Clock, Meeting of Minds, Muse, Ashen
    Epilogue, Boi-tatá.
 4. **Corp advancement and movement words:** Charlotte Caçador, Cohort
@@ -1889,6 +1892,86 @@ reaches Vantage Point's cards by building a deck.
 - See How They Run.
 
 **Banned:** Tributary and Trick Shot, on Standard's list.
+
+#### Stage 1 — the first nine cards (27 September 2026)
+
+`feat/rwr-stage-1-first-cards`: Friend of a Friend, Coalescence, Pressure
+Spike, Valentina Ferreira Carvalho, Corporate Hospitality, Boto,
+Capacitor, Seraph, The Powers That Be. **No new `Effect` or `Trigger`.**
+Rebellion Without Rehearsal 9 of 65; `RWR_UNIMPLEMENTED` 65 → 56. Eye for
+an Eye went to Stage 3 (above).
+
+- **Two use words, each an `EffectRequirement`.** `OncePerRun`, Pressure
+  Spike's "Use this ability only once per run": `OncePerTurn`'s use
+  limit, keyed the same way (`OncePerTurnKey`), spent where it is used,
+  and held by the run (`RunState::once_per_run_used`), so a new run is
+  the reset and there is no clearing site to forget. `PublicRunState`
+  carries it — a sample that did not would offer the +9 twice — masked
+  as the Corp's once-per-turn set is. `DuringYourTurn`, Coalescence's
+  "only during your turn" and Valentina's "when you install this resource
+  during your turn": the asking side is the active player
+  (`listeners::active_side`). `validate` holds `OncePerRun` to the two
+  rules `OncePerTurn` has (never on a continuous effect; one per card).
+- **A tag removal says who removed it.** `TagRemoved`, `TagsRemoved` and
+  `TagsCleared` carry `by` (CR 1.14.3a: either player removes the
+  Runner's tags to pay a cost): the text's controller, a cost's payer, the
+  Runner's basic action. `OnTagRemoved`'s moment is the remover's, and
+  `EventFilter::Whose` is now allowed on it (`Trigger::states_whose`, the
+  triggers whose moment names a player), so Valentina's "whenever **you**
+  remove 1 or more tags" is `when: Whose(Runner)` and does not hear
+  Synapse Global's "[click], remove 1 tag" — which the log had called
+  "Runner removed 1 tag(s)" and now calls the Corp's.
+- **An operation resolving is not in its own Archives** (CR 8.6.7a). The
+  engine files an operation into Archives as it is played, before its
+  text resolves (Rules Conformance F6, recorded as changing nothing), and
+  Corporate Hospitality's "Add 1 card from Archives to HQ" offered the
+  Corporate Hospitality resolving it — a free replay each time. Its own
+  copy is never eligible now (`pending_choice::resolving_operation_in`,
+  asked by `eligible_positions`, which takes the choosing card); the
+  filing itself stays early, because a resolution parked across actions
+  has no marked end.
+- **The rest composes.** Boto and Capacitor are `Strength` kinds with a
+  `while` (threat 4; the Runner tagged); Boto's "you may trash 1 card
+  from HQ to end the run" is the Corp's `OfferPaidChoice` over
+  `Cost::Trash`, as Anoetic Void's is; Seraph's encounter is the
+  Runner's `OfferPaidChoice` over `AnyOf` two costs; The Powers That Be
+  is Ansel 1.0's install from HQ or Archives with `ignore_costs`.
+- **The clients.** One view field, `PublicRunState::once_per_run_used`,
+  is the engine's in `view_ledger` (a use limit the action list and
+  `board::breaks` honour, as `once_per_turn_used` is). The log words a
+  tag removal by its remover. The requirements reach the inspector's
+  "Engine reads it as" through `prose`'s generic rendering ("once per
+  run", "during your turn"). The paid choices and the install prompt are
+  kinds both clients already draw. No ledger row opened.
+- **Decks** — swaps into Eternal-only Sweep decks, so no Startup pin
+  moves: two Friend of a Friend for two Sure Gamble and two Valentina
+  added in Pay As You Go; two Coalescence and two Pressure Spike for three
+  Telework Contract and a Creative Commission in Safety Net; two Corporate
+  Hospitality for two Government Subsidy in Retirement Package; two
+  Capacitor and two Seraph for three Ping and the Whitespace, two The
+  Powers That Be for two Hedge Fund, in Paid Content; two Boto for two
+  Enigma in Honor Roll. The set's identities (Sebastião, Nuvem SA,
+  Thunderbolt Armaments) get Sweep decks of their own in their stages.
+- **Real play**, 96 games a pairing (seed 2). Random seats use all nine:
+  Friend of a Friend activated 25 times, Valentina's tag trigger 7 and
+  its threat-3 install 14, Coalescence 251 counters spent, Corporate
+  Hospitality played 95 times, The Powers That Be installing off 83
+  scores in one heuristic pairing. **The heuristic Runner never installs
+  Friend of a Friend, Valentina or Coalescence** — the Phase 5 debt of
+  earlier stages (resources and economy programs it does not value).
+- **Fidelity limits:** Pressure Spike's pumps last the encounter, as
+  every breaker's does here. Corporate Hospitality excludes only the copy
+  resolving, found as the last faceup copy of it in Archives.
+- **DSL ratio (`pool_status.py`): 21 of 76 `Effect` variants single-use,
+  2 unused**, over 259 card files — unchanged.
+- **Measured.** Both sweeps at 256 seeds are green. Against
+  `origin/main`, `coverage_identical.py` has the random seatings
+  **identical**, by view and by index; the heuristic ones moved (Corp wins
+  81 → 82 of 192, two deck-outs gone). Checked, not inferred: a ref with
+  the engine changes and without the new cards, their tests and the deck
+  swaps is **identical in all four shapes**, so the movement is
+  `determinize` sampling five new Corp cards, and the tag, use-limit and
+  resolving-operation changes move no game of the pool.
 
 ### 3. The Automata Initiative — 65 cards (C 14 / V 35 / M 16)
 

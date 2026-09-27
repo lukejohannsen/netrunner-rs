@@ -376,6 +376,13 @@ pub struct PublicRunState {
     /// (Sipa).
     #[serde(default)]
     pub fully_broken: bool,
+    /// `RunState::once_per_run_used`: the once-per-run abilities already
+    /// used this run, public as a use is — except one by a Corp install
+    /// the viewer cannot see, as `PublicCorpState::once_per_turn_used`
+    /// leaves out. Carried so a sample built from the view does not offer
+    /// Pressure Spike's +9 a second time.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub once_per_run_used: Vec<OncePerTurnKey>,
 }
 
 /// `GameState` as visible to one player: hidden zones are collapsed to a
@@ -1124,6 +1131,15 @@ fn mask_run_state(state: &GameState, registry: &CardRegistry, run: &RunState, vi
         bonus_run_credits: run.bonus_run_credits,
         redirect_on_approach: run.redirect_on_approach,
         fully_broken: run.fully_broken,
+        once_per_run_used: run
+            .once_per_run_used
+            .iter()
+            .filter(|used| {
+                viewer.is(Side::Corp)
+                    || used.install.is_none_or(|install| !state.corp.installed.iter().any(|card| card.install_id == install && !card.rezzed))
+            })
+            .cloned()
+            .collect(),
     }
 }
 

@@ -1,0 +1,73 @@
+{
+  "id": "pressure_spike",
+  "title": "Pressure Spike",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 4,
+  "strength": 1,
+  "memory_cost": 1,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "text": "Interface → 1[credit]: Break 1 barrier subroutine.",
+      "cost": {
+        "Credits": 1
+      },
+      "effect": {
+        "BreakSubroutines": {
+          "count": {
+            "Fixed": 1
+          },
+          "restrict_to": "Barrier"
+        }
+      },
+      "requirement": "DuringEncounter"
+    },
+    {
+      "trigger": "Paid",
+      "text": "2[credit]: +3 strength.",
+      "cost": {
+        "Credits": 2
+      },
+      "effect": {
+        "BoostStrength": {
+          "amount": 3,
+          "duration": "Encounter"
+        }
+      },
+      "requirement": "DuringEncounter"
+    },
+    {
+      "trigger": "Paid",
+      "text": "Threat 4 → 2[credit]: +9 strength. Use this ability only once per run.",
+      "cost": {
+        "Credits": 2
+      },
+      "effect": {
+        "BoostStrength": {
+          "amount": 9,
+          "duration": "Encounter"
+        }
+      },
+      "requirement": {
+        "And": [
+          "DuringEncounter",
+          {
+            "And": [
+              {
+                "AmountAtLeast": [
+                  "ThreatLevel",
+                  4
+                ]
+              },
+              "OncePerRun"
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "numeric_id": 34092,
+  "is_playable": true
+}

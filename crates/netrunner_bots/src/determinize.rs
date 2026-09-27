@@ -613,6 +613,7 @@ fn determinize_run(
         ice_bypassed: false,
         // Public, and what a pass "after fully breaking it" reads (Sipa).
         fully_broken: run.fully_broken,
+        once_per_run_used: run.once_per_run_used.iter().cloned().collect(),
         additional_rd_access: 0,
         additional_hq_access: 0,
         access_replacement: None,

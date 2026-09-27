@@ -244,8 +244,10 @@ pub enum GameEvent {
     CreditsSpent { side: Side, amount: u32 },
     TagsGiven { side: Side, amount: u32 },
     /// `Cost::ClearTags` zeroed the Runner's tag count. Named for clearing,
-    /// not purging — see `Cost::ClearTags`'s doc comment.
-    TagsCleared { side: Side },
+    /// not purging — see `Cost::ClearTags`'s doc comment. `side` is whose
+    /// tags they were and `by` the player who removed them, as on
+    /// `TagsRemoved`.
+    TagsCleared { side: Side, by: Side },
     /// `card`, `side`'s, went to its owner's discard pile. `by` is the
     /// player who carried the trash out (CR 1.14.5a) — the controller of
     /// the text that trashed it, the chooser of a selection, the payer of
@@ -350,8 +352,17 @@ pub enum GameEvent {
     TraceRunnerBidSubmitted { runner_bid: u32, total_strength: u32 },
     TraceAvoided { corp_total: u32, runner_total: u32 },
     TraceSuccessful { corp_total: u32, runner_total: u32 },
-    TagRemoved { side: Side },
-    TagsRemoved { side: Side, amount: u32 },
+    /// The Runner's basic action removed one of `side`'s tags; `by` is the
+    /// Runner, and is carried so every tag removal says who removed it.
+    TagRemoved { side: Side, by: Side },
+    /// `amount` of `side`'s tags came off, removed by `by`: the controller
+    /// of the effect that removed them, or the player who paid a
+    /// remove-a-tag cost. **Whose tags and who removed them are two
+    /// players** — Synapse Global's "[click], remove 1 tag" is the Corp
+    /// removing the Runner's — and Valentina Ferreira Carvalho's "whenever
+    /// **you** remove 1 or more tags" hears only the Runner's removals
+    /// (`listeners::moments` makes `by` the moment's player).
+    TagsRemoved { side: Side, amount: u32, by: Side },
     /// Two or more of `chooser`'s own cards react to the same event, so
     /// they get to pick the resolution order — a
     /// `PendingDecision::ChooseTriggerOrder` is now parked.

@@ -464,6 +464,14 @@ pub struct RunState {
     /// a later run.
     #[serde(default)]
     pub persistent_trashed_upgrades: Vec<CardId>,
+    /// The abilities printed "Use this ability only once per run" already
+    /// used during this run (`EffectRequirement::OncePerRun`) — Pressure
+    /// Spike's threat pump — keyed by card and copy as `once_per_turn_used`
+    /// is. On the run rather than beside the turn's set, because the run's
+    /// end is the limit's end and a new `RunState` is the reset, with no
+    /// clearing site to forget.
+    #[serde(default, skip_serializing_if = "std::collections::BTreeSet::is_empty")]
+    pub once_per_run_used: std::collections::BTreeSet<crate::rules::state::OncePerTurnKey>,
 }
 
 /// Every field at its neutral value, for test fixtures — see
@@ -498,6 +506,7 @@ impl Default for RunState {
             initiated_by: None,
             ice_bypassed: false,
             fully_broken: false,
+            once_per_run_used: Default::default(),
             agendas_stolen_this_run: 0,
             persistent_trashed_upgrades: Vec::new(),
             on_success_effect: None,

@@ -1,0 +1,70 @@
+{
+  "id": "valentina_ferreira_carvalho",
+  "title": "Valentina Ferreira Carvalho",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 2,
+  "triggers": [
+    {
+      "trigger": "OnTagRemoved",
+      "when": {
+        "Whose": "Runner"
+      },
+      "effects": [
+        {
+          "GainCredits": [
+            "Runner",
+            1
+          ]
+        }
+      ],
+      "text": "Whenever you remove 1 or more tags, gain 1[credit]."
+    },
+    {
+      "trigger": "OnInstall",
+      "subject": "This",
+      "requirement": {
+        "And": [
+          {
+            "AmountAtLeast": [
+              "ThreatLevel",
+              3
+            ]
+          },
+          "DuringYourTurn"
+        ]
+      },
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Runner",
+            "options": [
+              {
+                "RemoveTags": {
+                  "Fixed": 1
+                }
+              },
+              {
+                "GainCredits": [
+                  "Runner",
+                  2
+                ]
+              },
+              {
+                "Sequence": []
+              }
+            ],
+            "texts": [
+              "you may remove 1 tag",
+              "gain 2[credit]",
+              ""
+            ]
+          }
+        }
+      ],
+      "text": "Threat 3 → When you install this resource during your turn, you may remove 1 tag or gain 2[credit]."
+    }
+  ],
+  "numeric_id": 34095,
+  "is_playable": true
+}

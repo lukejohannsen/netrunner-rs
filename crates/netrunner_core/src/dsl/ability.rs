@@ -113,6 +113,21 @@ pub enum EffectRequirement {
     /// ability is actually used: a trigger that fired, a paid ability that
     /// resolved, an install that took a discount.
     OncePerTurn,
+    /// A printed "Use this ability only once per run": `OncePerTurn`'s use
+    /// limit, spent the same way, but held by the run
+    /// (`RunState::once_per_run_used`) and so false outside one. Pressure
+    /// Spike's threat pump. Composition didn't work: `OncePerTurn` would
+    /// deny the pump to the turn's second run, and a lingering prohibition
+    /// has nothing to name one ability of one card by.
+    OncePerRun,
+    /// "Use this ability only during your turn" — the side asking is the
+    /// active player (`listeners::active_side`), which holds through the
+    /// paid ability windows of that player's own turn, runs included.
+    /// Coalescence, and Valentina Ferreira Carvalho's "when you install
+    /// this resource during your turn". Composition didn't work: no
+    /// requirement or `Amount` reads whose turn it is, and `GamePhase::
+    /// Action` is only a step of it.
+    DuringYourTurn,
     /// The Runner's credit total is at most `0` — e.g. Whitespace's second
     /// subroutine ("if the Runner has 6 credits or less, end the run").
     RunnerCreditsAtMost(u32),
@@ -429,6 +444,16 @@ impl EffectRequirement {
                 EffectRequirement::And(Box::new(a.with_chosen_number(number)), Box::new(b.with_chosen_number(number)))
             }
             other => other,
+        }
+    }
+
+    /// Whether this is, or contains under `And`/`Not`, a `OncePerRun`.
+    pub fn mentions_once_per_run(&self) -> bool {
+        match self {
+            EffectRequirement::OncePerRun => true,
+            EffectRequirement::And(one, other) => one.mentions_once_per_run() || other.mentions_once_per_run(),
+            EffectRequirement::Not(inner) => inner.mentions_once_per_run(),
+            _ => false,
         }
     }
 

@@ -230,6 +230,7 @@ mod tests {
             bonus_run_credits: 0,
             redirect_on_approach: None,
             fully_broken: false,
+            once_per_run_used: Vec::new(),
         });
         view
     }
