@@ -102,7 +102,7 @@ pub(crate) fn before_corp_install(
         }
     }
     picked.extend(forced);
-    Ok(trash(state, registry, Side::Corp, &picked))
+    trash(state, registry, Side::Corp, &picked)
 }
 
 /// The Corp cards the rules trash under this install (CR 8.5.6a): the
@@ -179,7 +179,7 @@ pub(crate) fn before_program_install(
             },
         }
     }
-    Ok(trash(state, registry, Side::Runner, &picked))
+    trash(state, registry, Side::Runner, &picked)
 }
 
 /// Whether a program of `memory_cost` could be installed at all: it fits
@@ -243,8 +243,9 @@ fn ask(state: &mut GameState, side: Side, card: &CardId, left: &[InstallId], may
 }
 
 /// Makes the trashes, in the order picked: CR 8.5.7's placement, and each
-/// host's hosted cards with it.
-fn trash(state: &mut GameState, registry: &CardRegistry, side: Side, picked: &[InstallId]) -> Vec<GameEvent> {
+/// host's hosted cards with it. The player installing carries them out
+/// (CR 8.5.6), and they are dispatched here, ahead of the install.
+fn trash(state: &mut GameState, registry: &CardRegistry, side: Side, picked: &[InstallId]) -> Result<Vec<GameEvent>, RulesError> {
     let mut events = Vec::new();
     for install in picked {
         let Some((card, was_public, cascade)) = pending_choice::remove_installed_card(state, registry, side, &CardZoneRef::OwnInstalled, *install) else {
@@ -254,10 +255,12 @@ fn trash(state: &mut GameState, registry: &CardRegistry, side: Side, picked: &[I
             Side::Corp => state.corp.archives.push(if was_public { ArchivedCard::faceup(card.clone()) } else { ArchivedCard::facedown(card.clone()) }),
             Side::Runner => state.runner.heap.push(card.clone()),
         }
-        events.push(GameEvent::CardTrashed { side, card });
+        events.push(GameEvent::CardTrashed { side, card, by: Some(side) });
         events.extend(cascade);
     }
-    events
+    let fired = crate::rules::ability::dispatch_trashes(state, registry, &events)?;
+    events.extend(fired);
+    Ok(events)
 }
 
 /// Whether applying `action` could ask an install's question — the part of

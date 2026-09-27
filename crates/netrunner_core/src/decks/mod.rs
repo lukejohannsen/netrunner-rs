@@ -434,6 +434,9 @@ mod tests {
             ("hostile_bid", &neither),
             ("pay_as_you_go", &neither),
             ("safety_net", &neither),
+            // Vantage Point Stage 5d: Hiram's deck carries Core Set cards
+            // (Net Shield among them), as Safety Net does.
+            ("spare_parts", &neither),
             // Vantage Point Stage 1b's two Corp decks sit on Core Set
             // identities (Engineering the Future, Making News), which no
             // current pool holds. Its Runner deck, Borrowed Time, is every

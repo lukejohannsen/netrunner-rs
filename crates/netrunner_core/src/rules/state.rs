@@ -782,7 +782,8 @@ pub enum WouldHappen {
     /// effect pointed at is the one that goes, and a handle says nothing
     /// about a facedown Corp card, so this rides in a view and in an event
     /// as it is.
-    Trash { owner: Side, install: InstallId },
+    /// `by` is who would carry it out (`GameEvent::CardTrashed::by`).
+    Trash { owner: Side, install: InstallId, by: Option<Side> },
 }
 
 impl WouldHappen {

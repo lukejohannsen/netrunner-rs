@@ -497,6 +497,11 @@ fn assert_no_concealed_card_is_named_in_log(
         if let GameEvent::CardAddedToDeck { card, revealed: true, .. } = event {
             visible.insert(card.0.as_str());
         }
+        // A look is masked for everyone but the looker, so one left in
+        // this seat's entry is theirs to know (Hiram's top of R&D).
+        if let GameEvent::CardsLookedAt { cards, .. } = event {
+            visible.extend(cards.iter().map(|c| c.0.as_str()));
+        }
     }
 
     let mut concealed = masked_install_ids(view, state, &visible);

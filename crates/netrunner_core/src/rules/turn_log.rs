@@ -235,6 +235,9 @@ fn concealed(trigger: Trigger, of: Option<Side>) -> bool {
         // counts a pass by its `IceFacts`, which do not name the card, but
         // a filter on the card itself is refused.
         Trigger::OnIcePassed => true,
+        // A Corp card trashed out of HQ or R&D goes facedown, unseen by
+        // the Runner; the log counts every trash without its type.
+        Trigger::OnCardTrashed => true,
         // Not about a card.
         Trigger::OnRunStart
         | Trigger::OnIceApproached

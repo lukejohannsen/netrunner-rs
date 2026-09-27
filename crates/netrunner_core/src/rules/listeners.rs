@@ -206,6 +206,12 @@ pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
             vec![moment(Trigger::OnCreditsSpentOutsidePool, &About::Server(*server), Some(Side::Runner))]
         }
         GameEvent::CreditsSpentFromOutsidePool { .. } => Vec::new(),
+        // Heard by whoever carried it out; the rules' trashes are nobody's.
+        GameEvent::CardTrashed { card: trashed, by: Some(by), .. } => {
+            vec![moment(Trigger::OnCardTrashed, &About::Card { card: trashed.clone(), install: None, installed: false }, Some(*by))]
+        }
+        GameEvent::CardTrashed { by: None, .. } => Vec::new(),
+        GameEvent::CardsLookedAt { .. } => Vec::new(),
         // The Runner breached, but the cards are the Corp's: whoever
         // listens hears it, and none of it is a card to be "this".
         GameEvent::ArchivesTurnedFaceup { count } => vec![moment(Trigger::OnArchivesTurnedFaceup, &About::Cards(*count), None)],
@@ -263,7 +269,6 @@ pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
         | GameEvent::RunRedirected { .. }
         | GameEvent::RunnerFlatlined
         | GameEvent::CreditsSpent { .. }
-        | GameEvent::CardTrashed { .. }
         | GameEvent::CardRemovedFromGame { .. }
         | GameEvent::GameOver { .. }
         | GameEvent::AbilityActivated { .. }

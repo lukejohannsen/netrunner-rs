@@ -470,7 +470,11 @@ pub fn narrate_event(
         GameEvent::IceRezzed { install, card, server } => {
             format!("rezzed {} protecting {}", named(&Some(card.clone()), install), server_name(*server))
         }
-        GameEvent::CardTrashed { side, card } => format!("{side:?} trashed {}", title(card)),
+        GameEvent::CardTrashed { side, card, .. } => format!("{side:?} trashed {}", title(card)),
+        GameEvent::CardsLookedAt { deck, cards, .. } => {
+            let names: Vec<String> = cards.iter().map(&title).collect();
+            format!("looked at the top of {}: {}", if *deck == Side::Corp { "R&D" } else { "the stack" }, and_list(&names))
+        }
         GameEvent::CardsTrashedFromHq { count } => format!("trashed {count} card(s) from HQ"),
 
         // ---- what the cards did ----

@@ -577,7 +577,7 @@ impl Prompt {
             let title = match &prevention.what {
                 WouldHappen::Damage { kind, .. } => format!("Prevent {left} {} damage?", format!("{kind:?}").to_lowercase()),
                 WouldHappen::Tags { .. } => format!("Prevent {left} tag{}?", if left == 1 { "" } else { "s" }),
-                WouldHappen::Trash { owner, install } => {
+                WouldHappen::Trash { owner, install, .. } => {
                     let card = match owner {
                         Side::Runner => view.runner.rig.iter().find(|c| c.install_id == *install).map(|c| &c.card),
                         Side::Corp => None,

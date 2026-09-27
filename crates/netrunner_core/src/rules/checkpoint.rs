@@ -81,7 +81,7 @@ fn enforce_consoles(state: &mut GameState, registry: &CardRegistry) -> Vec<GameE
         let Some(position) = state.runner.rig.iter().position(|installed| installed.install_id == install) else { continue };
         let trashed = state.runner.rig.remove(position);
         state.runner.heap.push(trashed.card.clone());
-        events.push(GameEvent::CardTrashed { side: Side::Runner, card: trashed.card.clone() });
+        events.push(GameEvent::CardTrashed { side: Side::Runner, card: trashed.card.clone(), by: None });
         events.extend(ability::cascade_trash_hosted_on_rig_card(state, registry, &trashed));
     }
     events
@@ -125,7 +125,7 @@ fn enforce_unique(state: &mut GameState, registry: &CardRegistry, event: Option<
         let Some(position) = state.corp.installed.iter().position(|installed| installed.install_id == install) else { continue };
         let trashed = state.corp.installed.remove(position);
         state.corp.archives.push(ArchivedCard::faceup(trashed.card.clone()));
-        events.push(GameEvent::CardTrashed { side: Side::Corp, card: trashed.card });
+        events.push(GameEvent::CardTrashed { side: Side::Corp, card: trashed.card, by: None });
     }
 
     let active = active_copies(&mut active::runner(state));
@@ -133,7 +133,7 @@ fn enforce_unique(state: &mut GameState, registry: &CardRegistry, event: Option<
         let Some(position) = state.runner.rig.iter().position(|installed| installed.install_id == install) else { continue };
         let trashed = state.runner.rig.remove(position);
         state.runner.heap.push(trashed.card.clone());
-        events.push(GameEvent::CardTrashed { side: Side::Runner, card: trashed.card.clone() });
+        events.push(GameEvent::CardTrashed { side: Side::Runner, card: trashed.card.clone(), by: None });
         events.extend(ability::cascade_trash_hosted_on_rig_card(state, registry, &trashed));
     }
     events
@@ -220,7 +220,7 @@ mod tests {
         let events = state_based(&mut by_install, &registry, None);
         assert_eq!(by_install.corp.installed.iter().map(|c| c.install_id).collect::<Vec<_>>(), vec![InstallId(2)]);
         assert_eq!(by_install.corp.archives, vec![ArchivedCard::faceup(CardId("spin_doctor".to_string()))]);
-        assert_eq!(events, vec![GameEvent::CardTrashed { side: Side::Corp, card: CardId("spin_doctor".to_string()) }]);
+        assert_eq!(events, vec![GameEvent::CardTrashed { side: Side::Corp, card: CardId("spin_doctor".to_string()), by: None }]);
 
         // …but a rez says which copy just became active, and it may be the
         // one installed first.

@@ -1,0 +1,103 @@
+{
+  "id": "spare_parts",
+  "name": "Spare Parts",
+  "side": "Runner",
+  "category": "Sweep",
+  "description": "Not a published list: built so the sweeps reach Hiram “0mission” Svensson, Vantage Point's Shaper identity (Stage 5d), on a rig of hardware to install and trash — Methuselah trashes hardware from the grip as a run begins, and Pantograph beside it is a second console the rules trash. In-faction only.",
+  "style": "builder",
+  "identity": "hiram_0mission_svensson_shadow_of_the_past",
+  "cards": [
+    {
+      "card": "t400_memory_diamond",
+      "count": 3
+    },
+    {
+      "card": "dzmz_optimizer",
+      "count": 2
+    },
+    {
+      "card": "gamedragon_pro",
+      "count": 2
+    },
+    {
+      "card": "methuselah",
+      "count": 2
+    },
+    {
+      "card": "pantograph",
+      "count": 1
+    },
+    {
+      "card": "touchstone",
+      "count": 3
+    },
+    {
+      "card": "gordian_blade",
+      "count": 2
+    },
+    {
+      "card": "echelon",
+      "count": 2
+    },
+    {
+      "card": "principia",
+      "count": 2
+    },
+    {
+      "card": "unity",
+      "count": 1
+    },
+    {
+      "card": "mayfly",
+      "count": 2
+    },
+    {
+      "card": "net_shield",
+      "count": 1
+    },
+    {
+      "card": "devadatta_drone",
+      "count": 1
+    },
+    {
+      "card": "sure_gamble",
+      "count": 3
+    },
+    {
+      "card": "diesel",
+      "count": 3
+    },
+    {
+      "card": "beta_build",
+      "count": 2
+    },
+    {
+      "card": "creative_commission",
+      "count": 2
+    },
+    {
+      "card": "the_makers_eye",
+      "count": 2
+    },
+    {
+      "card": "jailbreak",
+      "count": 2
+    },
+    {
+      "card": "overclock",
+      "count": 2
+    },
+    {
+      "card": "vrcation",
+      "count": 1
+    },
+    {
+      "card": "telework_contract",
+      "count": 2
+    },
+    {
+      "card": "smartware_distributor",
+      "count": 2
+    }
+  ]
+}

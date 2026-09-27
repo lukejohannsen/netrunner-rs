@@ -290,6 +290,9 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
         Effect::FlipIdentity => "flip the identity".to_string(),
         Effect::AddToDeck(DeckEnd::Bottom) => "put it on the bottom of its owner's deck".to_string(),
         Effect::AddToDeck(DeckEnd::Top) => "put it on top of its owner's deck".to_string(),
+        Effect::LookAtTopOfDeck { deck, count } => {
+            format!("look at the top {} of {}", plural(*count, "card", "cards"), if *deck == Side::Corp { "R&D" } else { "the stack" })
+        }
         Effect::HostRigCardOnInstall { .. } => "host it on an installed card".to_string(),
         Effect::Prohibit { what, until, copies_of_it } => {
             let what = match (what, copies_of_it) {

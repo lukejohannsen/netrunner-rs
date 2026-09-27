@@ -590,7 +590,7 @@ pub(crate) fn trash_as_cost(
         } else {
             state.runner.heap.push(card_id.clone());
         }
-        events.push(GameEvent::CardTrashed { side: owning_side(side, &discard), card: card_id.clone() });
+        events.push(GameEvent::CardTrashed { side: owning_side(side, &discard), card: card_id.clone(), by: Some(side) });
         if matches!(zone, CardZoneRef::OwnHq) && side == Side::Corp {
             trashed_from_hq += 1;
         }
@@ -974,7 +974,7 @@ pub(crate) fn resolve_confirm_card_selection(
                 && selected.len() == 1
                 && let Some(install) = selected_installs.get(index)
             {
-                let what = WouldHappen::Trash { owner: owning_side(side, &source), install: *install };
+                let what = WouldHappen::Trash { owner: owning_side(side, &source), install: *install, by: Some(side) };
                 if prevention::could_prevent(state, registry, &what) {
                     let mut ctx = ability::ResolutionContext::for_parked(source_install, source_card.as_ref());
                     events.extend(prevention::would(state, registry, what, &mut ctx)?);
@@ -1035,7 +1035,7 @@ pub(crate) fn resolve_confirm_card_selection(
                 // `CardTrashed`, so this changes no rules. (A trash somebody
                 // could prevent never gets here: see the top of this loop.)
                 if is_discard_pile(dest) {
-                    events.push(GameEvent::CardTrashed { side: owning_side(side, dest), card: card_id.clone() });
+                    events.push(GameEvent::CardTrashed { side: owning_side(side, dest), card: card_id.clone(), by: Some(side) });
                 }
                 if matches!(dest, CardZoneRef::OpponentRemovedFromGame) {
                     events.push(GameEvent::CardRemovedFromGame { side: owning_side(side, dest), card: card_id.clone() });
@@ -1050,6 +1050,11 @@ pub(crate) fn resolve_confirm_card_selection(
     if shuffle_after {
         shuffle_decks(state, side, &source, destination.as_ref());
     }
+    // The chooser carried out each trash (CR 1.14.5) — the Corp's "trash
+    // 1 installed program", Bulwark's "the Runner trashes" — and each is
+    // heard before the batch.
+    let fired = ability::dispatch_trashes(state, registry, &events)?;
+    events.extend(fired);
     if trashed_from_hq > 0 {
         let batch = GameEvent::CardsTrashedFromHq { count: trashed_from_hq };
         dispatcher::emit(state, registry, &mut events, batch)?;

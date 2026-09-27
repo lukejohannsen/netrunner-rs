@@ -702,11 +702,13 @@ pub fn mask_event_for_player(event: &GameEvent, state: &GameState, viewer: impl 
         // know; a card that revealed it said so in its own event. Out of
         // the heap or the rig both players watched it go.
         GameEvent::CardAddedToDeck { side, revealed: false, .. } => viewer.is(*side).then(visible).flatten(),
+        // A look is the looker's alone.
+        GameEvent::CardsLookedAt { side, .. } => viewer.is(*side).then(visible).flatten(),
         GameEvent::CardDiscarded { .. } => visible(),
         // A Corp trash lands faceup only if the Runner had seen the card
         // (`ability::orient`); a facedown copy now in Archives means this
         // may have been it.
-        GameEvent::CardTrashed { side: Side::Corp, card } => (!concealed(card)).then(visible).flatten(),
+        GameEvent::CardTrashed { side: Side::Corp, card, .. } => (!concealed(card)).then(visible).flatten(),
         // Removal from the game is always in the open — Spin Doctor's
         // self-removal comes off a rezzed card and Petty Cash is played
         // out of Archives — and `PublicCorpState::removed_from_game`
@@ -2078,13 +2080,13 @@ mod tests {
     fn a_facedown_copy_in_archives_conceals_a_corp_trash() {
         // `cyberdex_trial` sits facedown in Archives; nothing hides `hostile_takeover`.
         let state = game_state(corp_state_with_cards());
-        let hidden = GameEvent::CardTrashed { side: Side::Corp, card: id("cyberdex_trial") };
-        let shown = GameEvent::CardTrashed { side: Side::Corp, card: id("hostile_takeover") };
+        let hidden = GameEvent::CardTrashed { side: Side::Corp, card: id("cyberdex_trial"), by: None };
+        let shown = GameEvent::CardTrashed { side: Side::Corp, card: id("hostile_takeover"), by: None };
         assert_eq!(mask_event_for_player(&hidden, &state, Side::Runner), None);
         assert_eq!(mask_event_for_player(&hidden, &state, Side::Corp), Some(hidden.clone()));
         assert_eq!(mask_event_for_player(&shown, &state, Side::Runner), Some(shown.clone()));
 
-        let runner_trash = GameEvent::CardTrashed { side: Side::Runner, card: id("cyberdex_trial") };
+        let runner_trash = GameEvent::CardTrashed { side: Side::Runner, card: id("cyberdex_trial"), by: None };
         assert_eq!(mask_event_for_player(&runner_trash, &state, Side::Runner), Some(runner_trash.clone()));
     }
 
@@ -2251,7 +2253,7 @@ mod tests {
     #[test]
     fn a_trash_about_to_happen_names_no_card_and_passes_unmasked() {
         let state = game_state(corp_state_with_cards());
-        let what = crate::rules::WouldHappen::Trash { owner: Side::Corp, install: InstallId(1069) };
+        let what = crate::rules::WouldHappen::Trash { owner: Side::Corp, install: InstallId(1069), by: Some(Side::Runner) };
         let about_to = GameEvent::AboutToResolve { what: what.clone() };
         let prevented = GameEvent::Prevented { what, amount: 1 };
         for viewer in [Side::Corp, Side::Runner] {

@@ -115,7 +115,7 @@ pub fn transitions(before: &ClientView, after: &ClientView, entry: &PublicHistor
                     out.push(Transition::CardMoved { card: None, install: None, from: Zone::Hand(Side::Corp), to: Zone::Discard(Side::Corp) });
                 }
             }
-            GameEvent::CardTrashed { side, card } => {
+            GameEvent::CardTrashed { side, card, .. } => {
                 let (from, install) = locate(before, card);
                 out.push(Transition::CardMoved { card: Some(card.clone()), install, from, to: Zone::Discard(*side) });
             }
