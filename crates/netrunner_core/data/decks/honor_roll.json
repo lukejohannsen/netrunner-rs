@@ -1,0 +1,99 @@
+{
+  "id": "honor_roll",
+  "name": "Honor Roll",
+  "side": "Corp",
+  "category": "Sweep",
+  "description": "Not a published list: built so the sweeps play Méliès U: Only the Brightest (Vantage Point Stage 8), a secret identity of three reverse sides that flips when the Runner makes a successful run on a central server. Jinteki and neutral cards the other Jinteki deck leaves out — Diviner, Mycoweb, Empiricist, Semak-samun, Peer Review, Mitra Aman, Anoetic Void — with Hansei Review and Longevity Serum to fill Archives for the back sides to draw on. Eternal-legal only.",
+  "style": "glacier",
+  "identity": "melies_u_only_the_brightest",
+  "cards": [
+    {
+      "card": "proprionegation",
+      "count": 3
+    },
+    {
+      "card": "sericulture_expansion",
+      "count": 3
+    },
+    {
+      "card": "longevity_serum",
+      "count": 1
+    },
+    {
+      "card": "offworld_office",
+      "count": 2
+    },
+    {
+      "card": "superconducting_hub",
+      "count": 2
+    },
+    {
+      "card": "karuna",
+      "count": 3
+    },
+    {
+      "card": "diviner",
+      "count": 2
+    },
+    {
+      "card": "mycoweb",
+      "count": 2
+    },
+    {
+      "card": "empiricist",
+      "count": 2
+    },
+    {
+      "card": "semak_samun",
+      "count": 2
+    },
+    {
+      "card": "enigma",
+      "count": 2
+    },
+    {
+      "card": "whitespace",
+      "count": 2
+    },
+    {
+      "card": "hedge_fund",
+      "count": 3
+    },
+    {
+      "card": "hansei_review",
+      "count": 2
+    },
+    {
+      "card": "peer_review",
+      "count": 2
+    },
+    {
+      "card": "unleash",
+      "count": 2
+    },
+    {
+      "card": "pad_campaign",
+      "count": 2
+    },
+    {
+      "card": "regolith_mining_license",
+      "count": 2
+    },
+    {
+      "card": "phat_gioan_baotixita",
+      "count": 1
+    },
+    {
+      "card": "mitra_aman",
+      "count": 2
+    },
+    {
+      "card": "mahkota_langit_grid",
+      "count": 2
+    },
+    {
+      "card": "anoetic_void",
+      "count": 1
+    }
+  ]
+}

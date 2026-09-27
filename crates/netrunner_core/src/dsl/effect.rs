@@ -841,7 +841,27 @@ pub enum Effect {
         /// The printed clause the number is about (the Linked Clause
         /// Rule), shown as the prompt.
         text: String,
+        /// "**Secretly** set your identity to any copy" (Méliès U, CR
+        /// 1.5.2b): the other player is told a number was chosen and never
+        /// which — the answer is concealed in the log
+        /// (`masking::ConcealedAction::ChoosingSecretly`) and its
+        /// `GameEvent::NumberChosen` is dropped for them. A flag on the
+        /// decision rather than an effect of its own, because what is
+        /// chosen is still a number in a range and `then` still reads it.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        secret: bool,
     },
+    /// Sets the controller's identity to copy `n` of itself (Méliès U's
+    /// "secretly set your identity to any copy of Méliès U: Only the
+    /// Brightest", CR 1.5.2b) — `CorpState::identity_copy`, read by
+    /// `EffectRequirement::IdentityCopy` on the reverse side each copy
+    /// prints. The copy entering play always does so front side up, so
+    /// this never flips anything. Only ever the `then` of a secret
+    /// `ChooseNumber` (`CardDefinition::validate`). Composition didn't
+    /// work: which copy is in play is state no existing effect writes, and
+    /// the one-bit flip (`FlipIdentity`) cannot tell three reverse sides
+    /// apart.
+    SetIdentityCopy(Amount),
     /// Flips the Runner's identity to its other side
     /// (`RunnerState::identity_flipped`) — Dewi Subrotoputri. A flag rather
     /// than swapping the identity card: one card, two sides, and every
@@ -1361,9 +1381,10 @@ impl Effect {
             Effect::DealDamageAmount(kind, a) => Effect::DealDamageAmount(kind, amount(a)),
             Effect::AddAdditionalAccessAmount { server, amount: a } => Effect::AddAdditionalAccessAmount { server, amount: amount(a) },
             Effect::BoostStrengthAmount { amount: a, duration } => Effect::BoostStrengthAmount { amount: amount(a), duration },
-            Effect::ChooseNumber { chooser, min, max, of, then, text } => {
-                Effect::ChooseNumber { chooser, min, max: amount(max), of: of.map(amount), then, text }
+            Effect::ChooseNumber { chooser, min, max, of, then, text, secret } => {
+                Effect::ChooseNumber { chooser, min, max: amount(max), of: of.map(amount), then, text, secret }
             }
+            Effect::SetIdentityCopy(a) => Effect::SetIdentityCopy(amount(a)),
             Effect::Sequence(effects) => Effect::Sequence(all(effects)),
             Effect::PresentChoice { chooser, options, texts } => Effect::PresentChoice { chooser, options: all(options), texts },
             Effect::ResolveSomeOf { chooser, count, options, texts } => Effect::ResolveSomeOf { chooser, count, options: all(options), texts },
@@ -1467,6 +1488,7 @@ impl Effect {
             | Effect::ResolveSomeOf { .. }
             | Effect::LoseCreditsAmount(..)
             | Effect::FlipIdentity
+            | Effect::SetIdentityCopy(_)
             | Effect::AddToDeck(_)
             | Effect::ShuffleHostedIntoDeck
             | Effect::AddToScoreAreaAsAgenda(_)

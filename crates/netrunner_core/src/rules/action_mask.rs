@@ -1251,6 +1251,7 @@ mod tests {
             prompting_card: None,
             source_install: None,
             resume: crate::rules::state::PendingChoiceResume::None,
+            secret: false,
         });
 
         assert_roundtrips(&state, &registry);

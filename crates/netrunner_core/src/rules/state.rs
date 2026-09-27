@@ -334,6 +334,20 @@ pub struct CorpState {
     /// one effect and one requirement serve both.
     #[serde(default)]
     pub identity_flipped: bool,
+    /// Which copy of itself the Corp's identity is — the "Side 1/2/3" a
+    /// Méliès U prints on its back (CR 1.5.2b), set by
+    /// `Effect::SetIdentityCopy` from a secret `ChooseNumber` and read by
+    /// `EffectRequirement::IdentityCopy`. **Hidden from the Runner while
+    /// the front side is up** (`masking::PublicCorpState::identity_copy`)
+    /// and public once flipped, which is the card turned over.
+    ///
+    /// 0 until the first "secretly set", which no back side matches. The
+    /// copy a game starts on is never read: the Corp's first discard
+    /// phase ends before the Runner's first turn, so a copy is always
+    /// chosen before any run can flip it — and asking at setup would have
+    /// been a decision no position depends on.
+    #[serde(default)]
+    pub identity_copy: u8,
     /// The Corp's once-per-turn abilities used this turn
     /// (`EffectRequirement::OncePerTurn`, `OncePerTurnKey`). Cleared for both
     /// sides at every turn start (`turn::enter_start_of_turn`): once per
@@ -1124,6 +1138,10 @@ pub enum PendingDecision {
         /// See `PendingPaidChoice::source_install`.
         source_install: Option<InstallId>,
         resume: PendingChoiceResume,
+        /// `Effect::ChooseNumber::secret`: the answer is the chooser's
+        /// alone. The decision itself — who is choosing, from what range —
+        /// is public, as a secret choice being made is (CR 1.5.2b).
+        secret: bool,
     },
     ChooseServer {
         chooser: Side,

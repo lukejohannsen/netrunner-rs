@@ -681,6 +681,11 @@ pub fn determinize(view: &ClientView, registry: &CardRegistry, rng: &mut impl Rn
         identity_counters: view.corp.identity_counters,
         // Public, and carried: a flipped Corp identity has different text.
         identity_flipped: view.corp.identity_flipped,
+        // Carried where the view has it. A copy the Runner has not seen
+        // is 0, which no back side reads — and no sample carries the
+        // identity (above), so its text never runs in one: guessing a copy
+        // would spend the sample's randomness on nothing.
+        identity_copy: view.corp.identity_copy.unwrap_or(0),
         removed_from_game: view.corp.removed_from_game.clone(),
         scored_agendas: view.corp.scored_agendas.clone(),
         // The engine seeds this from the decklist; the registry-wide list
@@ -997,6 +1002,7 @@ mod tests {
             corp: CS {
                 identity: None,
                 identity_counters: 0,
+                identity_copy: 0,
                 identity_flipped: false,
                 bad_publicity: 0,
                 removed_from_game: Vec::new(), once_per_turn_used: Default::default(),

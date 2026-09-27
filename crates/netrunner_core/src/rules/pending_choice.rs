@@ -830,13 +830,13 @@ pub(crate) fn resolve_choose_number(
     if amount < *min || amount > *max {
         return Err(RulesError::ChosenNumberOutOfRange { amount, min: *min, max: *max });
     }
-    let Some(PendingDecision::ChooseNumber { chooser, then, source_card, prompting_card, source_install, resume, .. }) =
+    let Some(PendingDecision::ChooseNumber { chooser, then, source_card, prompting_card, source_install, resume, secret, .. }) =
         state.pending_decision.take()
     else {
         return Err(RulesError::NoPendingDecision);
     };
 
-    let mut events = vec![GameEvent::NumberChosen { chooser, amount }];
+    let mut events = vec![GameEvent::NumberChosen { chooser, amount, secret }];
     let mut ctx = ability::ResolutionContext::for_parked(source_install, source_card.as_ref());
     ctx.prompting_card = prompting_card.as_ref().or(source_card.as_ref());
     events.extend(ability::evaluate_effect(state, &then.with_chosen_number(amount), &mut ctx, registry)?);

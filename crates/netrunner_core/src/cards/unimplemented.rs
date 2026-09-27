@@ -16,9 +16,7 @@
 //! were embedded (Stage 0, 26 September 2026).
 
 /// *Vantage Point* (`vp`): tranche 1 of the NSG plan.
-pub(crate) const VP_UNIMPLEMENTED: &[(u32, &str)] = &[
-    (36036, "Méliès U: Only the Brightest"),
-];
+pub(crate) const VP_UNIMPLEMENTED: &[(u32, &str)] = &[];
 
 /// *Rebellion Without Rehearsal* (`rwr`): tranche 2 of the NSG plan.
 pub(crate) const RWR_UNIMPLEMENTED: &[(u32, &str)] = &[

@@ -12998,4 +12998,137 @@ mod vantage_point {
         servers.dedup();
         assert_eq!(servers, [ServerId::Hq, ServerId::RnD]);
     }
+
+    // --- Stage 8: Méliès U, a secret identity with three reverse sides ---
+
+    const MELIES: &str = "melies_u_only_the_brightest";
+
+    /// Passes priority until the game stops for something other than a
+    /// window — here, a decision parked by a phase ending.
+    fn pass_windows_to_a_decision(mut state: GameState, registry: &CardRegistry) -> (GameState, Vec<crate::rules::GameEvent>) {
+        let mut events = Vec::new();
+        while state.pending_decision.is_none()
+            && let Some(window) = &state.paid_ability_window
+        {
+            let side = window.active_priority;
+            let (next, more) = apply_action(&state, registry, PlayerAction::PassPriority { side }).expect("pass priority");
+            state = next;
+            events.extend(more);
+        }
+        (state, events)
+    }
+
+    /// "When your discard phase ends, secretly set your identity": the
+    /// Corp is asked for a copy, and the Runner sees that it was asked and
+    /// never which — not in the view, not in the log, not in an event.
+    #[test]
+    fn melies_u_secretly_sets_its_copy_as_the_corps_discard_phase_ends() {
+        use crate::rules::{mask_event_for_player, mask_logged_action_for_player, mask_state_for_player, ConcealedAction, PublicAction};
+        use crate::rules::GameEvent;
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Corp);
+        state.corp.identity = Some(id(MELIES));
+        state.corp.r_and_d = vec![id("hedge_fund")];
+        let (state, _) = apply_action(&crate::rules::test_support::clicks_spent(&state), &registry, PlayerAction::EndTurn).expect("end turn");
+        let (state, _) = pass_windows_to_a_decision(state, &registry);
+        assert!(
+            matches!(state.pending_decision, Some(crate::rules::PendingDecision::ChooseNumber { chooser: Side::Corp, min: 1, max: 3, secret: true, .. })),
+            "{:?}",
+            state.pending_decision
+        );
+        let answer = PlayerAction::ChooseNumber { amount: 2 };
+        let (state, events) = apply_action(&state, &registry, answer.clone()).expect("choose copy 2");
+        assert_eq!(state.corp.identity_copy, 2);
+        assert!(!state.corp.identity_flipped, "a copy always enters front side up");
+
+        assert_eq!(mask_state_for_player(&state, &registry, Side::Runner).corp.identity_copy, None);
+        assert_eq!(mask_state_for_player(&state, &registry, Side::Corp).corp.identity_copy, Some(2));
+        assert_eq!(
+            mask_logged_action_for_player(&answer, Side::Corp, &events, Side::Runner),
+            PublicAction::Concealed(ConcealedAction::ChoosingSecretly)
+        );
+        assert_eq!(mask_logged_action_for_player(&answer, Side::Corp, &events, Side::Corp), PublicAction::Visible(answer.clone()));
+        let chosen = events.iter().find(|e| matches!(e, GameEvent::NumberChosen { .. })).expect("the number was chosen");
+        assert_eq!(mask_event_for_player(chosen, &state, Side::Runner), None);
+        assert!(mask_event_for_player(chosen, &state, Side::Corp).is_some());
+    }
+
+    /// Runs `server` (no ice) to success with Méliès U on copy `copy`.
+    fn run_on_melies(registry: &CardRegistry, copy: u8, server: ServerId) -> (GameState, Vec<crate::rules::GameEvent>) {
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.corp.identity = Some(id(MELIES));
+        state.corp.identity_copy = copy;
+        state.corp.r_and_d = vec![id("ice_wall"), id("palisade")];
+        state.corp.archives = vec![crate::rules::ArchivedCard::faceup(id("hedge_fund"))];
+        let (state, _) = apply_action(&state, registry, PlayerAction::InitiateRun { server }).expect("initiate run");
+        let (state, _) = crate::rules::test_support::through_movement(&state, registry).expect("to the server");
+        apply_action(&state, registry, PlayerAction::CompleteRun).expect("successful")
+    }
+
+    /// Side 2 flipped up during a run on R&D: the Corp looks at the top of
+    /// R&D, may trash it, and if it does takes a card from Archives.
+    #[test]
+    fn melies_u_side_two_flipped_on_r_and_d_trashes_the_top_card_and_recurs_one() {
+        use crate::rules::mask_state_for_player;
+        use crate::rules::GameEvent;
+        let registry = registry();
+        let (state, events) = run_on_melies(&registry, 2, ServerId::RnD);
+        assert!(state.corp.identity_flipped);
+        assert!(events.iter().any(|e| matches!(e, GameEvent::IdentityFlipped { side: Side::Corp })));
+        assert!(events.iter().any(|e| matches!(e, GameEvent::CardsLookedAt { side: Side::Corp, .. })), "{events:?}");
+        assert_eq!(mask_state_for_player(&state, &registry, Side::Runner).corp.identity_copy, Some(2), "the back side names it");
+
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("trash it");
+        let top = state.corp.r_and_d.last().cloned();
+        assert_eq!(state.corp.r_and_d.len(), 1, "the top card went");
+        assert!(state.corp.archives.iter().any(|a| a.card.0 == "palisade" && a.facedown), "facedown: the Runner never saw it");
+        let hedge_fund = state.corp.archives.iter().position(|a| a.card.0 == "hedge_fund").expect("in Archives");
+        let (state, _) = pick(&state, &registry, hedge_fund);
+        assert!(state.corp.hq.contains(&id("hedge_fund")), "added to HQ");
+        assert_eq!(state.corp.r_and_d.last().cloned(), top);
+    }
+
+    /// A copy's side speaks only during a run on its own server: Side 1
+    /// flipped on R&D does nothing but flip.
+    #[test]
+    fn melies_u_flipped_on_another_server_does_nothing_more() {
+        let registry = registry();
+        let (state, _) = run_on_melies(&registry, 1, ServerId::RnD);
+        assert!(state.corp.identity_flipped);
+        assert!(state.pending_decision.is_none(), "{:?}", state.pending_decision);
+        assert_eq!(state.corp.r_and_d.len(), 2);
+    }
+
+    /// "When the Runner's action phase ends, gain 1[credit]" is the front
+    /// side's, and "when the Runner's discard phase ends, flip this
+    /// identity" the back's: flipped during the Runner's turn, the Corp
+    /// gains nothing that turn and is front side up again as it ends.
+    /// Neither is heard at the Corp's own phase endings.
+    #[test]
+    fn melies_u_hears_the_runners_phases_on_its_own_side() {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.corp.identity = Some(id(MELIES));
+        state.corp.identity_copy = 3;
+        state.corp.r_and_d = vec![id("hedge_fund")];
+        state.runner.stack = vec![id("sure_gamble")];
+        let credits = state.corp.resources.credits;
+        let (state, _) = apply_action(&crate::rules::test_support::clicks_spent(&state), &registry, PlayerAction::EndTurn).expect("end turn");
+        let (state, _) = close_all_windows(state, &registry);
+        assert_eq!(state.corp.resources.credits, Credits(credits.0 + 1), "front side up: 1 credit");
+        assert!(state.pending_decision.is_none(), "the Runner's discard phase sets no copy: {:?}", state.pending_decision);
+
+        // Flipped, a Runner turn gains nothing and ends with the flip back.
+        let mut state = state;
+        state.phase = GamePhase::Action(Side::Runner);
+        state.corp.identity_flipped = true;
+        let credits = state.corp.resources.credits;
+        let (state, _) = apply_action(&crate::rules::test_support::clicks_spent(&state), &registry, PlayerAction::EndTurn).expect("end turn");
+        let (state, _) = close_all_windows(state, &registry);
+        assert_eq!(state.corp.resources.credits, credits, "the back side prints no credit");
+        assert!(!state.corp.identity_flipped, "flipped back as the Runner's discard phase ended");
+    }
 }

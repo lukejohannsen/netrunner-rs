@@ -181,6 +181,7 @@ pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
         GameEvent::TurnStarted { side, .. } => vec![moment(Trigger::OnTurnStart, &About::Nothing, Some(*side))],
         GameEvent::ActionPhaseEnded { side } => vec![moment(Trigger::OnActionPhaseEnd, &About::Nothing, Some(*side))],
         GameEvent::DiscardPhaseEnded { side } => vec![moment(Trigger::OnDiscardPhaseEnd, &About::Nothing, Some(*side))],
+        GameEvent::IdentityFlipped { side } => vec![moment(Trigger::OnIdentityFlipped, &About::Nothing, Some(*side))],
         GameEvent::BasicDrawActionTaken { side } => vec![moment(Trigger::OnBasicDrawAction, &About::Nothing, Some(*side))],
 
         GameEvent::RunInitiated { server } => vec![moment(Trigger::OnRunStart, &About::Server(*server), Some(Side::Runner))],
@@ -284,7 +285,6 @@ pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
         | GameEvent::CardDiscarded { .. }
         | GameEvent::CardAddedToDeck { .. }
         | GameEvent::CardHosted { .. }
-        | GameEvent::IdentityFlipped { .. }
         | GameEvent::RunEndPrevented { .. }
         | GameEvent::RunRedirected { .. }
         | GameEvent::RunnerFlatlined
@@ -425,6 +425,9 @@ fn passes(state: &GameState, registry: &CardRegistry, filter: &EventFilter, mome
     if let EventFilter::Ice(required) = filter {
         return moment.ice.is_some_and(|facts| required.admits(facts));
     }
+    if let EventFilter::Whose(side) = filter {
+        return moment.of == Some(*side);
+    }
     match (filter, &moment.about) {
         (EventFilter::Card(filter), About::Card { card, install, .. }) => {
             registry.get(card).is_some_and(|definition| crate::dsl::card_matches_filter(definition, filter)) && crate::rules::pending_choice::copy_matches(state, filter, *install)
@@ -447,10 +450,32 @@ fn passes(state: &GameState, registry: &CardRegistry, filter: &EventFilter, mome
 /// printed "on HQ, … / on R&D, …"). What a moment is about is in the event,
 /// so the answer cannot have changed since the scan. A filter with no event
 /// to read admits nothing.
-pub(crate) fn when_admits(state: &GameState, registry: &CardRegistry, triggered: &TriggeredEffect, event: Option<&GameEvent>) -> bool {
-    let Some(filter) = &triggered.when else { return true };
-    let Some(event) = event else { return false };
-    moments(state, event).iter().any(|moment| moment.trigger == triggered.trigger && passes(state, registry, filter, moment))
+///
+/// Whose moment it was is asked again too (`whose_admits`), for the same
+/// reason: Méliès U hears the discard phase ending on its own "your" and
+/// on "the Runner's", and the queued trigger stands for both entries.
+pub(crate) fn when_admits(state: &GameState, registry: &CardRegistry, triggered: &TriggeredEffect, controller: Side, event: Option<&GameEvent>) -> bool {
+    let Some(event) = event else { return triggered.when.is_none() };
+    let mut meant = moments(state, event).into_iter().filter(|moment| moment.trigger == triggered.trigger).peekable();
+    // A trigger queued with an event that is no occurrence of it (a
+    // continuation, a fixture) had nothing to narrow before, and has not now.
+    if triggered.when.is_none() && meant.peek().is_none() {
+        return true;
+    }
+    meant.any(|moment| {
+        whose_admits(triggered, controller, &moment) && triggered.when.as_ref().is_none_or(|filter| passes(state, registry, filter, &moment))
+    })
+}
+
+/// Whether `moment` is one of the side's `triggered` hears: for a trigger
+/// phrased about "you" (`Hears::OwnSide`), the controller's own — or, where
+/// the card names another's (`EventFilter::Whose`, "when the Runner's
+/// discard phase ends"), that one's, which `passes` then checks.
+fn whose_admits(triggered: &TriggeredEffect, controller: Side, moment: &Moment) -> bool {
+    if matches!(triggered.when, Some(EventFilter::Whose(_))) || triggered.trigger.hears() != Hears::OwnSide {
+        return true;
+    }
+    moment.of.is_none_or(|side| side == controller)
 }
 
 /// Whether one `TriggeredEffect` on `listener` hears `moment`.
@@ -466,7 +491,7 @@ fn hears(state: &GameState, registry: &CardRegistry, triggered: &TriggeredEffect
     if triggered.when.as_ref().is_some_and(|filter| !passes(state, registry, filter, moment)) {
         return false;
     }
-    if triggered.trigger.hears() == Hears::OwnSide && moment.of.is_some_and(|side| side != listener.side) {
+    if !whose_admits(triggered, listener.side, moment) {
         return false;
     }
     let is_this = is_this(listener, moment);

@@ -1,0 +1,322 @@
+{
+  "id": "melies_u_only_the_brightest",
+  "title": "Méliès U: Only the Brightest",
+  "side": "Corp",
+  "card_type": "Identity",
+  "cost": 0,
+  "min_deck_size": 45,
+  "triggers": [
+    {
+      "trigger": "OnDiscardPhaseEnd",
+      "requirement": {
+        "Not": "IdentityFlipped"
+      },
+      "effects": [
+        {
+          "ChooseNumber": {
+            "chooser": "Corp",
+            "min": 1,
+            "max": {
+              "Fixed": 3
+            },
+            "then": {
+              "SetIdentityCopy": "ChosenNumber"
+            },
+            "text": "secretly set your identity to any copy of Méliès U: Only the Brightest",
+            "secret": true
+          }
+        }
+      ],
+      "text": "When your discard phase ends, secretly set your identity to any copy of Méliès U: Only the Brightest."
+    },
+    {
+      "trigger": "OnSuccessfulRun",
+      "subject": "Any",
+      "when": {
+        "Server": [
+          "Hq",
+          "RnD",
+          "Archives"
+        ]
+      },
+      "requirement": {
+        "Not": "IdentityFlipped"
+      },
+      "effects": [
+        "FlipIdentity"
+      ],
+      "text": "When the Runner makes a successful run on a central server, flip this identity."
+    },
+    {
+      "trigger": "OnActionPhaseEnd",
+      "when": {
+        "Whose": "Runner"
+      },
+      "requirement": {
+        "Not": "IdentityFlipped"
+      },
+      "effects": [
+        {
+          "GainCredits": [
+            "Corp",
+            1
+          ]
+        }
+      ],
+      "text": "When the Runner’s action phase ends, gain 1[credit]."
+    },
+    {
+      "trigger": "OnIdentityFlipped",
+      "requirement": {
+        "And": [
+          "IdentityFlipped",
+          {
+            "And": [
+              {
+                "IdentityCopy": 1
+              },
+              {
+                "And": [
+                  {
+                    "DuringRunOn": "Hq"
+                  },
+                  {
+                    "ZoneHasAtLeast": {
+                      "zone": "OwnRAndD",
+                      "count": 1,
+                      "filter": "Any"
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "effects": [
+        {
+          "Sequence": [
+            {
+              "LookAtTopOfDeck": {
+                "deck": "Corp",
+                "count": 1
+              }
+            },
+            {
+              "PresentChoice": {
+                "chooser": "Corp",
+                "options": [
+                  {
+                    "Sequence": [
+                      {
+                        "TrashCard": {
+                          "TopOfStack": {
+                            "side": "Corp",
+                            "zone": "RAndD"
+                          }
+                        }
+                      },
+                      {
+                        "PromptChooseCards": {
+                          "side": "Corp",
+                          "source": "OwnArchives",
+                          "filter": "Any",
+                          "min": 1,
+                          "max": 1,
+                          "reveal": false,
+                          "shuffle_after": false,
+                          "destination": "OwnHq"
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "Sequence": []
+                  }
+                ],
+                "texts": [
+                  "You may trash that card. If you do, add 1 card from Archives to HQ",
+                  ""
+                ]
+              }
+            }
+          ]
+        }
+      ],
+      "text": "When you flip this identity to this side during a run on HQ, look at the top card of R&D."
+    },
+    {
+      "trigger": "OnIdentityFlipped",
+      "requirement": {
+        "And": [
+          "IdentityFlipped",
+          {
+            "And": [
+              {
+                "IdentityCopy": 2
+              },
+              {
+                "And": [
+                  {
+                    "DuringRunOn": "RnD"
+                  },
+                  {
+                    "ZoneHasAtLeast": {
+                      "zone": "OwnRAndD",
+                      "count": 1,
+                      "filter": "Any"
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "effects": [
+        {
+          "Sequence": [
+            {
+              "LookAtTopOfDeck": {
+                "deck": "Corp",
+                "count": 1
+              }
+            },
+            {
+              "PresentChoice": {
+                "chooser": "Corp",
+                "options": [
+                  {
+                    "Sequence": [
+                      {
+                        "TrashCard": {
+                          "TopOfStack": {
+                            "side": "Corp",
+                            "zone": "RAndD"
+                          }
+                        }
+                      },
+                      {
+                        "PromptChooseCards": {
+                          "side": "Corp",
+                          "source": "OwnArchives",
+                          "filter": "Any",
+                          "min": 1,
+                          "max": 1,
+                          "reveal": false,
+                          "shuffle_after": false,
+                          "destination": "OwnHq"
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "Sequence": []
+                  }
+                ],
+                "texts": [
+                  "You may trash that card. If you do, add 1 card from Archives to HQ",
+                  ""
+                ]
+              }
+            }
+          ]
+        }
+      ],
+      "text": "When you flip this identity to this side during a run on R&D, look at the top card of R&D."
+    },
+    {
+      "trigger": "OnIdentityFlipped",
+      "requirement": {
+        "And": [
+          "IdentityFlipped",
+          {
+            "And": [
+              {
+                "IdentityCopy": 3
+              },
+              {
+                "And": [
+                  {
+                    "DuringRunOn": "Archives"
+                  },
+                  {
+                    "ZoneHasAtLeast": {
+                      "zone": "OwnRAndD",
+                      "count": 1,
+                      "filter": "Any"
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "effects": [
+        {
+          "Sequence": [
+            {
+              "LookAtTopOfDeck": {
+                "deck": "Corp",
+                "count": 1
+              }
+            },
+            {
+              "PresentChoice": {
+                "chooser": "Corp",
+                "options": [
+                  {
+                    "Sequence": [
+                      {
+                        "TrashCard": {
+                          "TopOfStack": {
+                            "side": "Corp",
+                            "zone": "RAndD"
+                          }
+                        }
+                      },
+                      {
+                        "PromptChooseCards": {
+                          "side": "Corp",
+                          "source": "OwnArchives",
+                          "filter": "Any",
+                          "min": 1,
+                          "max": 1,
+                          "reveal": false,
+                          "shuffle_after": false,
+                          "destination": "OwnHq"
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "Sequence": []
+                  }
+                ],
+                "texts": [
+                  "You may trash that card. If you do, add 1 card from Archives to HQ",
+                  ""
+                ]
+              }
+            }
+          ]
+        }
+      ],
+      "text": "When you flip this identity to this side during a run on Archives, look at the top card of R&D."
+    },
+    {
+      "trigger": "OnDiscardPhaseEnd",
+      "when": {
+        "Whose": "Runner"
+      },
+      "requirement": "IdentityFlipped",
+      "effects": [
+        "FlipIdentity"
+      ],
+      "text": "When the Runner’s discard phase ends, flip this identity."
+    }
+  ],
+  "numeric_id": 36036,
+  "is_playable": true
+}

@@ -386,7 +386,7 @@ with the rule quoted.
 | 1.2 | Golden Rules | unreviewed |  |
 | 1.3 | Symbols | n/a | Symbols. The house spellings (`[click]`, `[credit]`…) are how `rules_sync.py` renders them. |
 | 1.4 | Deck Construction | conforms | Read rule by rule (21 September 2026) and G1–G2 fixed: the agenda band is `min`–`min + 1` (1.4.6), an identity cannot be a deck card (1.4.4), a *Learn to Play* identity is legal only with its published lists (1.4.1a, `DeckFile::validate`), and both validators read a card's own copy limit (1.4.7). Every out-of-faction non-agenda card in the catalog prints an influence cost, so 1.4.4's last clause holds for the pool. 1.4.8 (tournament rules) is n/a. |
-| 1.5 | Extra Cards | unreviewed |  |
+| 1.5 | Extra Cards | read in part | VP Stage 8: 1.5.2b, Méliès U — every copy is brought, the one in play is "secretly set" when the first ability resolves and enters front side up. One card file holds all three backs; `CorpState::identity_copy` says which is in play, hidden from the Runner until flipped, and chosen by a secret `ChooseNumber`. The copy a game starts on is not asked for: none can be flipped before the first secret set. Cited: 1.5.2b. |
 | 1.6 | Starting the Game | read in part | Audit: 5 credits, 5 cards, Corp mulligans first, Corp goes first; matches. |
 | 1.7 | Ending the Game | deviates | E3 only, which no card reaches. E1 and E2 fixed. 7 points checked at checkpoints matches. |
 | 1.8 | Cards | unreviewed |  |
@@ -431,7 +431,7 @@ with the rule quoted.
 
 | § | Section | Status | Notes |
 |---|---|---|---|
-| 3.1 | Identities | unreviewed |  |
+| 3.1 | Identities | read in part | 3.1.1a: only the faceup side of a double-sided identity is active — each side's text is gated on `EffectRequirement::IdentityFlipped` (Dewi Subrotoputri, Nebula Talent Management, Méliès U), and a flip is a moment the side turned up hears (`Trigger::OnIdentityFlipped`, VP Stage 8). Cited: 3.1.1a. |
 | 3.2 | Agendas | read in part | VP Stage 7d: 3.2.3a, an agenda its own text installs faceup is neither rezzed nor unrezzed and its abilities are active while installed (`CardDefinition::installs_faceup`, written as `InstalledCard::rezzed` without a rez; `rules::active`, Sacrifice Zone Expansion). BANGUN's faceup agendas stay inactive, as the rule says. Cited: 3.2.3a. |
 | 3.3 | Assets | unreviewed |  |
 | 3.4 | Ice | unreviewed |  |

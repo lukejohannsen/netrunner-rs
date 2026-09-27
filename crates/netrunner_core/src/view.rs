@@ -67,6 +67,10 @@ pub struct CorpClientView {
     /// Public — a flip identity's side is visible to both players.
     #[serde(default)]
     pub identity_flipped: bool,
+    /// `PublicCorpState::identity_copy`: which copy of Méliès U is in
+    /// play, `None` to a Runner who has not seen it turned over.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub identity_copy: Option<u8>,
     /// `PublicCorpState::once_per_turn_used` — which also says what a
     /// Runner's view leaves out of it.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -310,6 +314,7 @@ pub fn build_client_view(state: &GameState, registry: &CardRegistry, viewer: imp
         recurring_credits: public.corp.recurring_credits,
         identity_counters: public.corp.identity_counters,
         identity_flipped: public.corp.identity_flipped,
+        identity_copy: public.corp.identity_copy,
         once_per_turn_used: public.corp.once_per_turn_used,
         identity: public.corp.identity,
         recurring_credits_max: public.corp.recurring_credits_max,

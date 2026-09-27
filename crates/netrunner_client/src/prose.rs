@@ -265,9 +265,10 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
             who(*chooser),
             options.iter().map(|option| describe_effect(option, registry)).collect::<Vec<_>>().join(" / ")
         ),
-        Effect::ChooseNumber { chooser, min, max, of, then, .. } => format!(
-            "{} chooses a number from {min} to {}{}, then: {}",
+        Effect::ChooseNumber { chooser, min, max, of, then, secret, .. } => format!(
+            "{} {}chooses a number from {min} to {}{}, then: {}",
             who(*chooser),
+            if *secret { "secretly " } else { "" },
             describe_amount(max),
             of.as_ref().map(|of| format!(" (at most {})", describe_amount(of))).unwrap_or_default(),
             describe_effect(then, registry)
@@ -307,6 +308,7 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
         Effect::BypassEncounteredIce => "bypass this ice".to_string(),
         Effect::PurgeVirusCounters => "purge virus counters".to_string(),
         Effect::FlipIdentity => "flip the identity".to_string(),
+        Effect::SetIdentityCopy(copy) => format!("make copy {} of the identity the one in play", describe_amount(copy)),
         Effect::AddToDeck(DeckEnd::Bottom) => "put it on the bottom of its owner's deck".to_string(),
         Effect::AddToDeck(DeckEnd::Top) => "put it on top of its owner's deck".to_string(),
         Effect::ShuffleHostedIntoDeck => "shuffle all hosted cards into your stack".to_string(),
@@ -396,6 +398,7 @@ pub fn engine_reading(card: &CardDefinition, registry: &CardRegistry) -> Vec<Str
             Some(EventFilter::InstalledCard(filter)) => when = format!("{when}, of an installed card ({})", humanize(format!("{filter:?}"))),
             Some(EventFilter::Damage(kind)) => when = format!("{when}, of {} damage", format!("{kind:?}").to_lowercase()),
             Some(EventFilter::AtLeast(least)) => when = format!("{when}, {least} or more"),
+            Some(EventFilter::Whose(side)) => when = format!("{when}, the {side:?}'s"),
             Some(EventFilter::Ice(facts)) => {
                 let words: Vec<&str> = [
                     (facts.outermost, "the outermost ice"),

@@ -491,7 +491,12 @@ pub enum GameEvent {
     NumberChoiceOffered { chooser: Side, min: u32, max: u32 },
     /// `PlayerAction::ChooseNumber` named this number. Not emitted when the
     /// range held one number and nobody was asked.
-    NumberChosen { chooser: Side, amount: u32 },
+    ///
+    /// `secret` when the decision was (`Effect::ChooseNumber::secret`):
+    /// then the other player never receives this event
+    /// (`masking::mask_event_for_player`) and the answering action is
+    /// concealed in their log.
+    NumberChosen { chooser: Side, amount: u32, secret: bool },
     /// `Effect::OfferPaidChoice` parked a `state::PendingPaidChoice`,
     /// awaiting `PlayerAction::AcceptPendingPaidChoice`/
     /// `DeclinePendingPaidChoice`.
