@@ -402,7 +402,7 @@ with the rule quoted.
 | 1.18 | Advancing Cards | read in part | 1.18.1–1.18.2: placing an advancement counter is not advancing (`PlaceAdvancementCounters`, `listeners`). Cited: 1.18.1, 1.18.2. |
 | 1.19 | Trashing | conforms | F4 fixed: a hosted card goes to its owner's discard pile (1.19.1). |
 | 1.20 | Memory | unreviewed |  |
-| 1.21 | Card Visibility | read in part | VP Stage 6a: 1.21.3, to reveal a card is to show it to all players (`GameEvent::CardRevealed`, public). 1.21.7, "While the Runner is accessing this [type] in R&D, they must reveal it" is a static ability for the whole access: `ContinuousKind::RevealedWhileAccessed` with `while: AccessingIn(RnD)` (Esca, Snare!, Byte!), shown in the log and, per 1.21.6, in the Corp's view of the access until it ends. |
+| 1.21 | Card Visibility | read in part | VP Stage 6a: 1.21.3, to reveal a card is to show it to all players (`GameEvent::CardRevealed`, public). VP Stage 7f: a card revealed as it is trashed from HQ lands in Archives faceup, the Runner having seen it (4.4.6b, `Cost::RevealAndTrashSelf`). 1.21.7, "While the Runner is accessing this [type] in R&D, they must reveal it" is a static ability for the whole access: `ContinuousKind::RevealedWhileAccessed` with `while: AccessingIn(RnD)` (Esca, Snare!, Byte!), shown in the log and, per 1.21.6, in the Corp's view of the access until it ends. |
 
 ### 2. Parts of a Card
 
@@ -509,7 +509,7 @@ with the rule quoted.
 
 | § | Section | Status | Notes |
 |---|---|---|---|
-| 9.1 | General | read in part | 9.1: a card's abilities work while it is active (`rules::active`). Cited: 9.1. 9.1.7 and 9.1.8 read for Vertigo (VP Stage 4a): a pass, a break and a bypass are none of 9.1.8's exceptions, so a piece of ice hears those moments only while active — an unrezzed Vertigo passed does not fire (`listeners`: the subject rule does not reach `Trigger::is_about_ice_in_a_run`). |
+| 9.1 | General | read in part | 9.1: a card's abilities work while it is active (`rules::active`). Cited: 9.1. VP Stage 7f: 9.1.8b, an ability that can only affect the game from a zone is active there — Tocsin's in HQ (`AbilityDef::from_hand`, `PlayerAction::ActivateHandAbility`), and not on the table. 9.1.7 and 9.1.8 read for Vertigo (VP Stage 4a): a pass, a break and a bypass are none of 9.1.8's exceptions, so a piece of ice hears those moments only while active — an unrezzed Vertigo passed does not fire (`listeners`: the subject rule does not reach `Trigger::is_about_ice_in_a_run`). |
 | 9.2 | Timing and Priority | read in part | F1 fixed: no action in a paid ability window (9.2.7b). Active player first and own-order simultaneous triggers match. |
 | 9.3 | Interpreting Card Text | unreviewed |  |
 | 9.4 | Static Abilities | unreviewed |  |

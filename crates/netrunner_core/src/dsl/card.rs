@@ -865,6 +865,8 @@ pub enum CardValidationError {
     OtherIsNotAnIceType(CardId, &'static str),
     #[error("Agenda {0:?} must not have subroutines")]
     AgendaHasSubroutines(CardId),
+    #[error("card {0:?}: an ability used from the hand (`from_hand`) must be an action — a paid ability whose cost begins with [click]")]
+    HandAbilityNotAnAction(CardId),
     #[error("card {0:?}: only a Runner card's paid ability can be a mid-access ability (`access`, CR 9.3.6b)")]
     AccessFlagOnWhatCannotBeOne(CardId),
     #[error("card {0:?} says what its hosted credits pay for but hosts no credits (`counter_kind: Credit`), or is an event or operation, which hosts nothing")]
@@ -1031,6 +1033,12 @@ impl CardDefinition {
         // is an ability that could never be used.
         if self.abilities.iter().any(|ability| ability.access && (ability.trigger != Trigger::Paid || self.side != Side::Runner)) {
             return Err(CardValidationError::AccessFlagOnWhatCannotBeOne(self.id.clone()));
+        }
+        // An ability used from the hand is taken as an action
+        // (`ActivateHandAbility` is classified as one), which is the only
+        // kind a pool card prints, and it is no mid-access ability.
+        if self.abilities.iter().any(|ability| ability.from_hand && (!ability.is_action() || ability.access)) {
+            return Err(CardValidationError::HandAbilityNotAnAction(self.id.clone()));
         }
         if self.trash_when_empty && self.pays_for.is_empty() {
             return Err(CardValidationError::TrashWhenEmptyWithNothingToEmptyIt(self.id.clone()));
@@ -1368,7 +1376,7 @@ mod tests {
                     // Netrunner only permits them while encountering ICE.
                     requirement: Some(EffectRequirement::DuringEncounter),
                     effect: Effect::BoostStrength { amount: 1, duration: EffectDuration::Encounter },
-                    cost_discount_if: None, used_by: None, access: false },
+                    cost_discount_if: None, used_by: None, access: false, from_hand: false },
                 AbilityDef {
                     text: Some("Interface → 1[credit]: Break 1 barrier subroutine.".to_string()),
                     trigger: Trigger::Paid,
@@ -1380,7 +1388,7 @@ mod tests {
                         count: SubroutineBreakCount::Fixed(1),
                         restrict_to: Some(IceType::Barrier),
                     },
-                    cost_discount_if: None, used_by: None, access: false },
+                    cost_discount_if: None, used_by: None, access: false, from_hand: false },
             ]
         );
     }
@@ -1620,6 +1628,7 @@ mod tests {
                 cost_discount_if: None,
                 used_by: None,
                 access: false,
+                from_hand: false,
             }],
             ..Default::default()
         };
@@ -1678,6 +1687,32 @@ mod tests {
     /// and then holds only while nobody could do the thing it forbids —
     /// found wherever the effect is nested, since Ansel's is a subroutine
     /// and Luminal's the second step of a trigger.
+    /// An ability used from the hand is taken as an action, so it must be
+    /// one: a paid ability whose cost begins with [click].
+    #[test]
+    fn validate_refuses_a_hand_ability_that_is_not_an_action() {
+        let ice = |cost: Cost| CardDefinition {
+            id: CardId("alarm".to_string()),
+            side: Side::Corp,
+            card_type: CardType::Ice(IceType::CodeGate),
+            strength: Some(1),
+            abilities: vec![AbilityDef {
+                trigger: Trigger::Paid,
+                text: None,
+                cost: Some(cost),
+                requirement: None,
+                effect: Effect::EndTheRun,
+                cost_discount_if: None,
+                used_by: None,
+                access: false,
+                from_hand: true,
+            }],
+            ..CardDefinition::default()
+        };
+        assert_eq!(ice(Cost::AllOf(vec![Cost::Clicks(1), Cost::RevealAndTrashSelf])).validate(), Ok(()));
+        assert_eq!(ice(Cost::RevealAndTrashSelf).validate(), Err(CardValidationError::HandAbilityNotAnAction(CardId("alarm".to_string()))));
+    }
+
     /// A gained subroutine is the encountered ice's for the encounter, so
     /// only a trigger on the encounter that acts on "it" may say one.
     #[test]
@@ -1743,6 +1778,7 @@ mod tests {
                 cost_discount_if: None,
                 used_by: None,
                 access: true,
+                from_hand: false,
             }],
             ..CardDefinition::default()
         };

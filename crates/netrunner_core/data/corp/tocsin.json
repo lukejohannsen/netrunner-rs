@@ -1,0 +1,82 @@
+{
+  "id": "tocsin",
+  "title": "Tocsin",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "CodeGate"
+  },
+  "cost": 8,
+  "strength": 5,
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "from_hand": true,
+      "text": "[click], 1[credit], reveal and trash this ice from HQ: Search R&D for up to 1 barrier and up to 1 sentry and reveal them. (Shuffle R&D after searching it.) Add those cards to HQ.",
+      "cost": {
+        "AllOf": [
+          {
+            "Clicks": 1
+          },
+          {
+            "Credits": 1
+          },
+          "RevealAndTrashSelf"
+        ]
+      },
+      "effect": {
+        "Sequence": [
+          {
+            "PromptChooseCards": {
+              "side": "Corp",
+              "source": "OwnRAndD",
+              "filter": {
+                "IceOfType": "Barrier"
+              },
+              "min": 0,
+              "max": 1,
+              "reveal": true,
+              "shuffle_after": false,
+              "destination": "OwnHq"
+            }
+          },
+          {
+            "PromptChooseCards": {
+              "side": "Corp",
+              "source": "OwnRAndD",
+              "filter": {
+                "IceOfType": "Sentry"
+              },
+              "min": 0,
+              "max": 1,
+              "reveal": true,
+              "shuffle_after": true,
+              "destination": "OwnHq"
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "subroutines": [
+    {
+      "text": "The Runner loses 2[credit].",
+      "effect": {
+        "LoseCredits": [
+          "Runner",
+          2
+        ]
+      }
+    },
+    {
+      "text": "End the run.",
+      "effect": "EndTheRun"
+    },
+    {
+      "text": "End the run.",
+      "effect": "EndTheRun"
+    }
+  ],
+  "triggers": [],
+  "numeric_id": 36060,
+  "is_playable": true
+}

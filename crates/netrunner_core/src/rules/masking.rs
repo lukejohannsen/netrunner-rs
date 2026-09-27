@@ -638,6 +638,9 @@ pub fn mask_action_for_player(action: &PlayerAction, actor: Side, viewer: impl I
         | PlayerAction::KeepHand
         | PlayerAction::TakeMulligan
         | PlayerAction::ActivateAbility { .. }
+        // The card is revealed by its own cost as the action is taken; a
+        // payment that parks ahead of it is concealed by the log's mask.
+        | PlayerAction::ActivateHandAbility { .. }
         | PlayerAction::AdvanceCard { .. }
         | PlayerAction::ScoreAgenda { .. }
         | PlayerAction::RemoveTag

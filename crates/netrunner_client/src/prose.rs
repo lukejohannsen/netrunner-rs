@@ -134,6 +134,7 @@ pub fn describe_cost(cost: &Cost) -> String {
         Cost::RemoveAdvancementCounters(n) => format!("remove {}", plural(*n, "hosted advancement counter", "hosted advancement counters")),
         Cost::AddToScoreAreaAsAgenda(as_agenda) => format!("add this card to the Corp's score area as {}", as_an_agenda(as_agenda)),
         Cost::RemoveSelfFromGame => "remove this card from the game".to_string(),
+        Cost::RevealAndTrashSelf => "reveal and trash this card from your hand".to_string(),
         Cost::TrashRandomFromHq(n) => format!("trash {} at random from HQ", plural(*n, "card", "cards")),
         Cost::AnyOf(options) => options.iter().map(describe_cost).collect::<Vec<_>>().join(" or "),
         Cost::AllOf(parts) => parts.iter().map(describe_cost).collect::<Vec<_>>().join(" and "),

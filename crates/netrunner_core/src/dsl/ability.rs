@@ -67,6 +67,16 @@ pub struct AbilityDef {
     /// ability, with a trigger cost paid the same way (CR 9.5.1).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub access: bool,
+    /// Used while the card is in its owner's hand, and only there — Tocsin's
+    /// "[click], 1[credit], reveal and trash this ice from HQ:". An ability
+    /// that can only affect the game from a zone is active in it (CR
+    /// 9.1.8b), so this card has an ability in HQ and none on the table.
+    /// Its own action, `PlayerAction::ActivateHandAbility`, because
+    /// `ActivateAbility` names an install and a card in HQ has none. The
+    /// only kind a pool card prints is an action (it begins with [click]),
+    /// and `validate` holds it to that.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub from_hand: bool,
 }
 
 impl AbilityDef {
@@ -576,7 +586,7 @@ mod tests {
                 cost: Some(Cost::Credits(3)),
                 requirement: None,
                 effect: Effect::DealDamage(DamageType::Net, 1),
-                cost_discount_if: None, used_by: None, access: false }
+                cost_discount_if: None, used_by: None, access: false, from_hand: false }
         );
         assert_eq!(
             bundle.abilities[1],
@@ -586,7 +596,7 @@ mod tests {
                 cost: Some(Cost::TrashSelf),
                 requirement: None,
                 effect: Effect::GiveTags(crate::dsl::Amount::Fixed(1)),
-                cost_discount_if: None, used_by: None, access: false }
+                cost_discount_if: None, used_by: None, access: false, from_hand: false }
         );
         assert_eq!(
             bundle.subroutines[0],

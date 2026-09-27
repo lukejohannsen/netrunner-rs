@@ -243,6 +243,9 @@ fn action_owner(state: &GameState, registry: &CardRegistry, action: &PlayerActio
         | PlayerAction::PurgeVirusCounters
         | PlayerAction::SubmitCorpTraceBid { .. } => Side::Corp,
 
+        // A card in a hand is its owner's to use.
+        PlayerAction::ActivateHandAbility { card_id, .. } => registry.get(card_id).map_or(Side::Corp, |card| card.side),
+
         // Symmetric, but only ever legal when `phase` names exactly one
         // side — this action already passed the `legal_actions` probe, so
         // `phase` is guaranteed to match one of these arms.
@@ -353,6 +356,7 @@ fn candidate_actions(state: &GameState, registry: &CardRegistry) -> Vec<PlayerAc
     candidates.extend(break_subroutine_with_click_candidates(state, registry));
     candidates.extend(discard_candidates(state));
     candidates.extend(activate_ability_candidates(state, registry));
+    candidates.extend(hand_ability_candidates(state, registry));
     candidates.extend(advance_score_trash_candidates(state, registry));
     candidates.extend(access_flow_candidates(state, registry));
     candidates.extend(pass_priority_candidates(state));
@@ -737,8 +741,27 @@ fn paid_ability_candidates(card_id: &CardId, target: InstallId, registry: &CardR
     card.abilities
         .iter()
         .enumerate()
-        .filter(|(_, ability)| ability.trigger == Trigger::Paid)
+        .filter(|(_, ability)| ability.trigger == Trigger::Paid && !ability.from_hand)
         .map(|(ability_index, _)| PlayerAction::ActivateAbility { target, ability_index })
+        .collect()
+}
+
+/// `ActivateHandAbility` for each card in either hand with an ability used
+/// from there (CR 9.1.8b), once per card however many copies: the copies
+/// are the same choice, as `PlayOperation`'s are.
+fn hand_ability_candidates(state: &GameState, registry: &CardRegistry) -> Vec<PlayerAction> {
+    let mut hand: Vec<&CardId> = state.corp.hq.iter().chain(&state.runner.grip).collect();
+    hand.sort();
+    hand.dedup();
+    hand.into_iter()
+        .filter_map(|card_id| registry.get(card_id).map(|card| (card_id, card)))
+        .flat_map(|(card_id, card)| {
+            card.abilities
+                .iter()
+                .enumerate()
+                .filter(|(_, ability)| ability.trigger == Trigger::Paid && ability.from_hand)
+                .map(move |(ability_index, _)| PlayerAction::ActivateHandAbility { card_id: card_id.clone(), ability_index })
+        })
         .collect()
 }
 
@@ -1126,7 +1149,7 @@ mod tests {
             cost: Some(Cost::Credits(1)),
             requirement: None,
             effect: Effect::BoostStrength { amount: 1, duration: crate::dsl::EffectDuration::Encounter },
-            cost_discount_if: None, used_by: None, access: false }];
+            cost_discount_if: None, used_by: None, access: false, from_hand: false }];
         registry.insert(breaker);
 
         // Phase stays `Action(Runner)` throughout a run regardless of who
@@ -1460,7 +1483,7 @@ mod tests {
             cost: Some(Cost::Credits(1)),
             requirement: None,
             effect: Effect::GainCredits(Side::Runner, 1),
-            cost_discount_if: None, used_by: None, access: false }];
+            cost_discount_if: None, used_by: None, access: false, from_hand: false }];
         registry.insert(breaker);
 
         let mut state = runner_state(3, 5);

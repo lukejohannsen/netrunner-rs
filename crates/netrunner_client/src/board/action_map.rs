@@ -443,7 +443,7 @@ fn targets_of(action: &PlayerAction, view: &ClientView) -> Vec<Target> {
         PlayerAction::InstallHardware { card_id } | PlayerAction::InstallProgram { card_id, .. } | PlayerAction::InstallResource { card_id, host: None } => {
             vec![Target::HandCard(card_id.clone()), Target::Rig]
         }
-        PlayerAction::DiscardCard { card_id } => vec![Target::HandCard(card_id.clone())],
+        PlayerAction::DiscardCard { card_id } | PlayerAction::ActivateHandAbility { card_id, .. } => vec![Target::HandCard(card_id.clone())],
         PlayerAction::ActivateAbility { target, .. } if *target == InstallId::CORP_IDENTITY => vec![Target::Identity(Side::Corp)],
         PlayerAction::ActivateAbility { target, .. } if *target == InstallId::RUNNER_IDENTITY => vec![Target::Identity(Side::Runner)],
         PlayerAction::RezIce { ice: target }

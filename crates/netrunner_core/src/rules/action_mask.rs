@@ -245,13 +245,19 @@ const INSTALL_PROGRAM_ON_ICE_TRASHING_LEN: usize = INSTALL_PROGRAM_ON_ICE_LEN;
 const INSTALL_RESOURCE_ON_HOST_START: usize = INSTALL_PROGRAM_ON_ICE_TRASHING_START + INSTALL_PROGRAM_ON_ICE_TRASHING_LEN;
 const INSTALL_RESOURCE_ON_HOST_LEN: usize = MAX_HAND_SIZE * MAX_INSTALLED_PER_SIDE;
 
+/// `ActivateHandAbility` (Tocsin): each side's hand slot crossed with each
+/// ability slot, the Corp's HQ first, then the grip. **Appended** (VP Stage
+/// 7f), so nothing moved: 3133 → 3261.
+const HAND_ABILITY_START: usize = INSTALL_RESOURCE_ON_HOST_START + INSTALL_RESOURCE_ON_HOST_LEN;
+const HAND_ABILITY_LEN: usize = 2 * MAX_HAND_SIZE * MAX_ABILITIES_PER_CARD;
+
 /// A fixed, categorical index space over `PlayerAction` — see the module
 /// doc comment. A zero-sized marker type; every operation is an associated
 /// function/const, since the encoding itself carries no per-instance state.
 pub struct ActionSpace;
 
 impl ActionSpace {
-    pub const SIZE: usize = INSTALL_RESOURCE_ON_HOST_START + INSTALL_RESOURCE_ON_HOST_LEN;
+    pub const SIZE: usize = HAND_ABILITY_START + HAND_ABILITY_LEN;
 
     /// The flat index `action` occupies given `state` — `None` if `action`
     /// can't be placed (a dynamic field exceeds its cap, or a
@@ -328,6 +334,16 @@ impl ActionSpace {
             }
             PlayerAction::PlayOperation { card_id } => {
                 Some(PLAY_OPERATION_START + bounded_position(&state.corp.playable_hand(), card_id, MAX_HAND_SIZE)?)
+            }
+            PlayerAction::ActivateHandAbility { card_id, ability_index } => {
+                if *ability_index >= MAX_ABILITIES_PER_CARD {
+                    return None;
+                }
+                let (side, slot) = match bounded_position(&state.corp.hq, card_id, MAX_HAND_SIZE) {
+                    Some(slot) => (0, slot),
+                    None => (1, bounded_position(&state.runner.grip, card_id, MAX_HAND_SIZE)?),
+                };
+                Some(HAND_ABILITY_START + (side * MAX_HAND_SIZE + slot) * MAX_ABILITIES_PER_CARD + ability_index)
             }
 
             PlayerAction::BreakSubroutineWithClick { subroutine_index, .. } => (*subroutine_index
@@ -608,6 +624,12 @@ impl ActionSpace {
             let host = state.runner.rig.get(local % MAX_INSTALLED_PER_SIDE)?.install_id;
             return Some(PlayerAction::InstallResource { card_id, host: Some(host) });
         }
+        if let Some(local) = in_segment(index, HAND_ABILITY_START, HAND_ABILITY_LEN) {
+            let (hand_slot, ability_index) = (local / MAX_ABILITIES_PER_CARD, local % MAX_ABILITIES_PER_CARD);
+            let hand = if hand_slot < MAX_HAND_SIZE { &state.corp.hq } else { &state.runner.grip };
+            let card_id = hand.get(hand_slot % MAX_HAND_SIZE)?.clone();
+            return Some(PlayerAction::ActivateHandAbility { card_id, ability_index });
+        }
         None
     }
 }
@@ -869,7 +891,7 @@ mod tests {
                     cost: Some(Cost::Credits(1)),
                     requirement: None,
                     effect: Effect::BoostStrength { amount: 1, duration: crate::dsl::EffectDuration::Encounter },
-                    cost_discount_if: None, used_by: None, access: false },
+                    cost_discount_if: None, used_by: None, access: false, from_hand: false },
                 AbilityDef {
                     text: None,
                     trigger: Trigger::Paid,
@@ -879,7 +901,7 @@ mod tests {
                         count: crate::dsl::SubroutineBreakCount::Fixed(1),
                         restrict_to: Some(IceType::Barrier),
                     },
-                    cost_discount_if: None, used_by: None, access: false },
+                    cost_discount_if: None, used_by: None, access: false, from_hand: false },
             ],
             strength: Some(2),
             is_playable: true,
@@ -1487,7 +1509,10 @@ mod tests {
         //
         // **2621 → 3133: a resource installed onto a rig card (VP Stage
         // 7c, Hackerspace), appended.** Hand slot by rig slot (512).
-        assert_eq!(ActionSpace::SIZE, 3133);
+        // **3133 → 3261: an ability used from a hand (VP Stage 7f,
+        // Tocsin), appended.** Each hand's slot by ability slot (128).
+        assert_eq!(ActionSpace::SIZE, 3261);
+        assert_eq!(HAND_ABILITY_START, 3133, "appended after a resource installed onto a rig card");
         assert_eq!(INSTALL_RESOURCE_ON_HOST_START, 2621, "appended after the installs that trash first");
         assert_eq!(CHOOSE_NUMBER_START, 1646, "appended: nothing before it moved");
         assert_eq!(INSTALL_CARD_TRASHING_START, 1677, "appended after ChooseNumber");

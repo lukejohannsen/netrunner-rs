@@ -331,6 +331,7 @@ fn apply_action_once(
         PlayerAction::ActivateAbility { target, ability_index } => {
             activate_ability(state, registry, target, ability_index)
         }
+        PlayerAction::ActivateHandAbility { card_id, ability_index } => activate_hand_ability(state, registry, card_id, ability_index),
         PlayerAction::AdvanceCard { target } => advance_card(state, registry, target),
         PlayerAction::ScoreAgenda { target } => score_agenda(state, registry, target),
         PlayerAction::RemoveTag => remove_tag(state, registry),
@@ -579,6 +580,9 @@ fn classify_action(state: &GameState, registry: &CardRegistry, action: &PlayerAc
         | PlayerAction::RemoveTag
         | PlayerAction::TrashResource { .. }
         | PlayerAction::PurgeVirusCounters => ActionKind::Action,
+
+        // Every ability used from the hand is an action (`validate`).
+        PlayerAction::ActivateHandAbility { .. } => ActionKind::Action,
 
         PlayerAction::ActivateAbility { target, ability_index } => {
             if ability_is_action(state, registry, *target, *ability_index) {
@@ -2109,7 +2113,9 @@ fn activate_ability(
         .abilities
         .get(ability_index)
         .ok_or(RulesError::InvalidAbilityIndex(ability_index))?;
-    if ability.trigger != Trigger::Paid {
+    // An ability used from the hand is not there to use on the table (CR
+    // 9.1.8b): `ActivateHandAbility` is its door.
+    if ability.trigger != Trigger::Paid || ability.from_hand {
         return Err(RulesError::AbilityNotManuallyActivatable(ability_index));
     }
     // N-Pot's "only the Runner can use this ability": the card is the
@@ -2213,6 +2219,58 @@ fn activate_ability(
         paid_ability::note_window_action(&mut next, side);
     }
 
+    Ok((next, events))
+}
+
+/// `PlayerAction::ActivateHandAbility`: an ability a card in its owner's
+/// hand says is used from there (`AbilityDef::from_hand`, CR 9.1.8b) —
+/// Tocsin's "[click], 1[credit], reveal and trash this ice from HQ:". An
+/// action (`validate` holds every such ability to one), so it is taken in
+/// its owner's action window and nowhere else, like a [click] ability on
+/// the table; the rest is `activate_ability`'s order — requirement, cost,
+/// effect, then the cost's events. The card has no install, so the effect
+/// resolves as the card (`ResolutionContext::for_card`).
+fn activate_hand_ability(
+    state: &GameState,
+    registry: &CardRegistry,
+    card_id: CardId,
+    ability_index: usize,
+) -> Result<(GameState, Vec<GameEvent>), RulesError> {
+    let card_def = registry.get(&card_id).ok_or_else(|| RulesError::CardNotFoundInRegistry(card_id.clone()))?;
+    let side = card_def.side;
+    let in_hand = match side {
+        Side::Corp => state.corp.hq.contains(&card_id),
+        Side::Runner => state.runner.grip.contains(&card_id),
+    };
+    if !in_hand {
+        return Err(RulesError::CardNotInHand { side, card: card_id });
+    }
+    let ability = card_def.abilities.get(ability_index).ok_or(RulesError::InvalidAbilityIndex(ability_index))?;
+    if ability.trigger != Trigger::Paid || !ability.from_hand {
+        return Err(RulesError::AbilityNotManuallyActivatable(ability_index));
+    }
+    require_phase(state, GamePhase::Action(side))?;
+    paid_ability::require_no_window(state)?;
+    let ctx = ability::ResolutionContext::for_card(Some(&card_id));
+    if let Some(requirement) = &ability.requirement {
+        ability::check_requirement(state, requirement, side, &ctx, registry)?;
+    }
+
+    let mut next = state.clone();
+    let mut events = Vec::new();
+    let mut cost_events = Vec::new();
+    if let Some(cost) = &ability.cost {
+        cost_events = ability::pay_cost_ctx(&mut next, registry, side, cost, Purpose::Ability(card_def), &ctx)?;
+        events.extend(cost_events.iter().cloned());
+    }
+    events.push(GameEvent::AbilityActivated { side, card_id: card_id.clone(), ability_index });
+    let mut effect_ctx = ability::ResolutionContext::for_card(Some(&card_id));
+    events.extend(ability::evaluate_effect(&mut next, &ability.effect, &mut effect_ctx, registry)?);
+    events.extend(ability::dispatch_cost_events(&mut next, registry, &cost_events)?);
+    if let Some(requirement) = &ability.requirement {
+        ability::consume_requirement(&mut next, requirement, side, &ctx);
+    }
+    paid_ability::note_window_action(&mut next, side);
     Ok((next, events))
 }
 
@@ -4972,7 +5030,7 @@ mod tests {
             title: card_id.to_string(),
             side,
             card_type: CardType::Program,
-            abilities: vec![AbilityDef { text: None, trigger, cost, requirement: None, effect, cost_discount_if: None, used_by: None, access: false }],
+            abilities: vec![AbilityDef { text: None, trigger, cost, requirement: None, effect, cost_discount_if: None, used_by: None, access: false, from_hand: false }],
             is_playable: true,
             ..Default::default()
         }
@@ -6238,7 +6296,7 @@ mod tests {
                 cost: Some(Cost::Credits(1)),
                 requirement: None,
                 effect: Effect::GainCredits(Side::Runner, 1),
-                cost_discount_if: None, used_by: None, access: false }],
+                cost_discount_if: None, used_by: None, access: false, from_hand: false }],
             ..test_card("pennyshaver", Side::Runner, CardType::Hardware, 0, None)
         });
 
@@ -6274,7 +6332,7 @@ mod tests {
                 cost: Some(Cost::Clicks(1)),
                 requirement: None,
                 effect: Effect::GainCredits(Side::Runner, 1),
-                cost_discount_if: None, used_by: None, access: false }],
+                cost_discount_if: None, used_by: None, access: false, from_hand: false }],
             ..test_card("pennyshaver", Side::Runner, CardType::Hardware, 0, None)
         });
         registry.insert(CardDefinition {
@@ -6284,7 +6342,7 @@ mod tests {
                 cost: Some(Cost::Credits(1)),
                 requirement: None,
                 effect: Effect::GainCredits(Side::Corp, 1),
-                cost_discount_if: None, used_by: None, access: false }],
+                cost_discount_if: None, used_by: None, access: false, from_hand: false }],
             ..test_card("corp_bank", Side::Corp, CardType::Asset, 0, None)
         });
         let mut state = runner_state(3, 5, 0);
@@ -6823,7 +6881,7 @@ mod tests {
                 count: SubroutineBreakCount::Fixed(1),
                 restrict_to: Some(IceType::Barrier),
             },
-            cost_discount_if: None, used_by: None, access: false });
+            cost_discount_if: None, used_by: None, access: false, from_hand: false });
         registry.insert(card);
 
         // Runner boosts; priority passes to Corp.

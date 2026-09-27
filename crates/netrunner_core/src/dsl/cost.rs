@@ -167,6 +167,13 @@ pub enum Cost {
     /// `RulesError::MissingActingCardContext` without an acting card, and
     /// `RulesError::CardNotInstalled` if it isn't a Corp install.
     RemoveSelfFromGame,
+    /// The card this is printed on, in its owner's hand, is revealed (CR
+    /// 1.21.3) and trashed — Tocsin's "reveal and trash this ice from HQ:".
+    /// The Runner has seen it, so it goes to Archives faceup (CR 4.4.6b).
+    /// The price of an ability used from the hand (`AbilityDef::from_hand`),
+    /// so affordable only while the card is there. Distinct from
+    /// `TrashSelf`, which trashes a card out of HQ facedown.
+    RevealAndTrashSelf,
     /// The Corp reveals and trashes `u32` cards from HQ at random — Shred's
     /// "unless the Corp reveals and trashes X cards from HQ at random",
     /// built by the engine into the `OfferPaidChoice` it parks (X is the

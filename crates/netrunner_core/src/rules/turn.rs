@@ -628,7 +628,7 @@ mod tests {
                 cost: Some(Cost::Clicks(1)),
                 requirement: None,
                 effect: Effect::GainCredits(Side::Corp, 3),
-                cost_discount_if: None, used_by: None, access: false }],
+                cost_discount_if: None, used_by: None, access: false, from_hand: false }],
             is_playable: true,
             ..Default::default()
         });

@@ -12820,4 +12820,60 @@ mod vantage_point {
         assert_eq!(run.position, 1);
         assert_eq!(run.ice[1].subroutines.len(), 1, "the first time each turn only");
     }
+
+    // --- Stage 7f: an ability used from HQ ---
+
+    /// In HQ, Tocsin is an action: a click, a credit and the card itself,
+    /// revealed and trashed faceup, fetch a barrier and a sentry out of R&D,
+    /// revealed, and R&D is shuffled once. On the table it has no ability.
+    #[test]
+    fn tocsin_is_used_from_hq_for_a_barrier_and_a_sentry() {
+        use crate::rules::GameEvent;
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Corp);
+        state.corp.resources.clicks = Clicks(3);
+        state.corp.resources.credits = Credits(5);
+        state.corp.hq = vec![id("tocsin"), id("hedge_fund")];
+        state.corp.r_and_d = vec![id("ice_wall"), id("hedge_fund"), id("ballista"), id("palisade")];
+
+        let use_it = PlayerAction::ActivateHandAbility { card_id: id("tocsin"), ability_index: 0 };
+        assert!(crate::rules::legal_actions_for(&state, &registry, Side::Corp).contains(&use_it), "offered from HQ");
+        let index = crate::rules::ActionSpace::index_of(&state, &use_it).expect("placed in the action space");
+        assert_eq!(crate::rules::ActionSpace::action_at(&state, index), Some(use_it.clone()), "and read back from it");
+        assert!(crate::rules::get_action_mask(&state, &registry)[index], "and in the mask");
+        let (state, events) = apply_action(&state, &registry, use_it.clone()).expect("use Tocsin");
+        assert!(events.iter().any(|e| matches!(e, GameEvent::CardRevealed { side: Side::Corp, card } if card.0 == "tocsin")));
+        assert_eq!((state.corp.resources.clicks, state.corp.resources.credits), (Clicks(2), Credits(4)));
+        assert!(state.corp.archives.iter().any(|a| a.card.0 == "tocsin" && !a.facedown), "trashed faceup: it was revealed");
+        assert_eq!(state.corp.hq, vec![id("hedge_fund")]);
+
+        let pick = |state: &GameState, card: &str| {
+            let position = state.corp.r_and_d.iter().position(|c| c.0 == card).expect("in R&D");
+            let (state, _) = apply_action(state, &registry, PlayerAction::ToggleCardSelection { position }).expect("select");
+            apply_action(&state, &registry, PlayerAction::ConfirmCardSelection).expect("confirm")
+        };
+        // Palisade is a barrier too; the Corp takes the Ice Wall.
+        let (state, _) = pick(&state, "ice_wall");
+        let rng_before_the_sentry = state.rng_step;
+        let (state, events) = pick(&state, "ballista");
+        assert!(events.iter().any(|e| matches!(e, GameEvent::CardsSelected { revealed: true, .. })), "revealed");
+        let mut hq: Vec<&str> = state.corp.hq.iter().map(|c| c.0.as_str()).collect();
+        hq.sort();
+        assert_eq!(hq, ["ballista", "hedge_fund", "ice_wall"]);
+        assert_eq!(state.corp.r_and_d.len(), 2);
+        assert_ne!(state.rng_step, rng_before_the_sentry, "R&D is shuffled after the search");
+        assert!(state.pending_decision.is_none());
+
+        // Installed, it is ice with three subroutines and no ability.
+        let mut table = base_state();
+        table.phase = GamePhase::Action(Side::Corp);
+        table.corp.resources.clicks = Clicks(3);
+        table.corp.installed.push(ice_at_hq("tocsin"));
+        assert!(!crate::rules::legal_actions_for(&table, &registry, Side::Corp)
+            .iter()
+            .any(|a| matches!(a, PlayerAction::ActivateAbility { .. } | PlayerAction::ActivateHandAbility { .. })));
+        let refused = apply_action(&table, &registry, PlayerAction::ActivateAbility { target: fixture_install_id("tocsin"), ability_index: 0 });
+        assert!(refused.is_err(), "no ability on the table");
+    }
 }
