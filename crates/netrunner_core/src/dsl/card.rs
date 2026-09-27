@@ -903,6 +903,8 @@ pub enum CardValidationError {
     ContinuousEffectDoesNotFit(CardId, &'static str, &'static str),
     #[error("card {0:?}: a prohibition lasts a run or a turn — nothing prints one for an encounter, and the guards that ask are not asked during one")]
     ProhibitionForAnEncounter(CardId),
+    #[error("card {0:?}: a subroutine is gained by the ice being encountered, so only an `OnEncounter` trigger that `acts_on_subject` can say it")]
+    GainedSubroutineWithNoEncounter(CardId),
 }
 
 /// Every field at its neutral value, matching what serde fills in for an
@@ -1166,6 +1168,22 @@ impl CardDefinition {
         }
         if prohibits_for_an_encounter {
             return Err(CardValidationError::ProhibitionForAnEncounter(self.id.clone()));
+        }
+        // "It gains a subroutine" is about the ice being encountered and
+        // lasts that encounter (`Effect::GainSubroutine`): said anywhere
+        // else it would find no encounter and do nothing.
+        let gains_subroutine = |effect: &Effect| {
+            let mut found = false;
+            effect.for_each_effect(&mut |e| found |= matches!(e, Effect::GainSubroutine(_)));
+            found
+        };
+        let gains_at_an_encounter = |triggered: &TriggeredEffect| triggered.trigger == Trigger::OnEncounter && triggered.acts_on_subject;
+        if self.triggers.iter().any(|triggered| !gains_at_an_encounter(triggered) && triggered.effects.iter().any(gains_subroutine))
+            || self.abilities.iter().any(|ability| gains_subroutine(&ability.effect))
+            || self.subroutines.iter().any(|subroutine| gains_subroutine(&subroutine.effect))
+            || self.interactive_on_access.iter().flat_map(|interactive| &interactive.effects).any(gains_subroutine)
+        {
+            return Err(CardValidationError::GainedSubroutineWithNoEncounter(self.id.clone()));
         }
         if restricted_to_no_type {
             return Err(CardValidationError::OtherIsNotAnIceType(self.id.clone(), "a breaker restricted to it"));
@@ -1660,6 +1678,33 @@ mod tests {
     /// and then holds only while nobody could do the thing it forbids —
     /// found wherever the effect is nested, since Ansel's is a subroutine
     /// and Luminal's the second step of a trigger.
+    /// A gained subroutine is the encountered ice's for the encounter, so
+    /// only a trigger on the encounter that acts on "it" may say one.
+    #[test]
+    fn validate_refuses_a_gained_subroutine_outside_an_encounter() {
+        let gains = Effect::GainSubroutine(Box::new(SubroutineDef { text: "End the run.".to_string(), effect: Effect::EndTheRun, only_breakable_by: None }));
+        let resource = |trigger: Trigger, acts_on_subject: bool| CardDefinition {
+            id: CardId("gainer".to_string()),
+            side: Side::Runner,
+            card_type: CardType::Resource,
+            triggers: vec![TriggeredEffect {
+                trigger,
+                subject: Some(Subject::Any),
+                when: None,
+                acts_on_subject,
+                first_each_turn: false,
+                text: None,
+                effects: vec![gains.clone()],
+                requirement: None,
+            }],
+            ..CardDefinition::default()
+        };
+        assert_eq!(resource(Trigger::OnEncounter, true).validate(), Ok(()));
+        let refused = Err(CardValidationError::GainedSubroutineWithNoEncounter(CardId("gainer".to_string())));
+        assert_eq!(resource(Trigger::OnEncounter, false).validate(), refused);
+        assert_eq!(resource(Trigger::OnCardInstalled, true).validate(), refused);
+    }
+
     #[test]
     fn validate_refuses_a_prohibition_that_lasts_an_encounter() {
         use crate::dsl::effect::Prohibition;

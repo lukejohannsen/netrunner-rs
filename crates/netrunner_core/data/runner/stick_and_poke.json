@@ -1,0 +1,42 @@
+{
+  "id": "stick_and_poke",
+  "title": "Stick and Poke",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 0,
+  "unique": true,
+  "triggers": [
+    {
+      "trigger": "OnEncounter",
+      "subject": "Any",
+      "first_each_turn": true,
+      "acts_on_subject": true,
+      "text": "The first time each turn you encounter a piece of ice, it gains",
+      "effects": [
+        {
+          "GainSubroutine": {
+            "text": "Do 1 net damage. The Runner draws 1 card.",
+            "effect": {
+              "Sequence": [
+                {
+                  "DealDamage": [
+                    "Net",
+                    1
+                  ]
+                },
+                {
+                  "DrawCards": [
+                    "Runner",
+                    1
+                  ]
+                }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "numeric_id": 36008,
+  "is_playable": true
+}

@@ -2750,6 +2750,7 @@ mod tests {
             id,
             definition: netrunner_core::dsl::SubroutineDef { text: String::new(), effect: Effect::EndTheRun, only_breakable_by: None },
             status: SubroutineStatus::Pending,
+            gained: false,
         };
         let mut encountering = running.clone();
         encountering.active_run = Some(RunState {
@@ -3067,6 +3068,7 @@ mod tests {
                     id,
                     definition: netrunner_core::dsl::SubroutineDef { text: String::new(), effect: Effect::EndTheRun, only_breakable_by: None },
                     status: SubroutineStatus::Pending,
+                    gained: false,
                 })
                 .collect(),
             rezzed,

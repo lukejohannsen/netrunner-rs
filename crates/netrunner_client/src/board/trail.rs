@@ -37,6 +37,11 @@ pub struct IceStep {
     /// One status per subroutine the viewer may see; empty for an ice
     /// whose identity the mask withholds.
     pub subs: Vec<SubroutineStatus>,
+    /// Each of those subroutines' printed clause, off the run's own list:
+    /// a subroutine the ice gained for the encounter stands ahead of the
+    /// printed ones, so the card's list, read by index, would name the
+    /// wrong one.
+    pub texts: Vec<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -133,11 +138,20 @@ impl RunTrail {
             }
             GameEvent::SubroutineBroken { card_id, index, .. } => {
                 self.mark_subroutine(*index, SubroutineStatus::Broken);
-                self.consequences.push(format!("{} broken on {}", subroutine_words(card_id, *index, registry), title(card_id)));
+                self.consequences.push(format!("{} broken on {}", self.subroutine_words(card_id, *index, registry), title(card_id)));
             }
             GameEvent::SubroutineFired { card_id, index, .. } => {
                 self.mark_subroutine(*index, SubroutineStatus::Resolved);
-                self.consequences.push(format!("{} fired on {}", subroutine_words(card_id, *index, registry), title(card_id)));
+                self.consequences.push(format!("{} fired on {}", self.subroutine_words(card_id, *index, registry), title(card_id)));
+            }
+            GameEvent::SubroutineGained { card_id, text } => {
+                if let Stage::AtIce(position) = self.stage
+                    && let Some(step) = self.ice.get_mut(position)
+                {
+                    step.subs.insert(0, SubroutineStatus::Pending);
+                    step.texts.insert(0, text.clone());
+                }
+                self.consequences.push(format!("{} gained \u{201c}{}\u{201d}", title(card_id), text.trim_end_matches('.')));
             }
             GameEvent::IcePassed { position, .. } => {
                 if let Some(step) = self.ice.get_mut(*position as usize)
@@ -212,10 +226,11 @@ impl RunTrail {
         let mut ice = Vec::with_capacity(run.ice.len());
         for (i, piece) in run.ice.iter().enumerate() {
             let known = self.ice.iter().find(|s| s.install == piece.install_id);
-            let mut step = known.cloned().unwrap_or(IceStep { install: piece.install_id, card: None, state: IceState::Upcoming, subs: Vec::new() });
+            let mut step = known.cloned().unwrap_or(IceStep { install: piece.install_id, card: None, state: IceState::Upcoming, subs: Vec::new(), texts: Vec::new() });
             if let Some(identity) = &piece.identity {
                 step.card = Some(identity.card.clone());
                 step.subs = identity.subroutines.iter().map(|s| s.status).collect();
+                step.texts = identity.subroutines.iter().map(|s| s.definition.text.clone()).collect();
             }
             step.state = match run.phase {
                 RunPhase::Initiation => IceState::Upcoming,
@@ -283,6 +298,20 @@ impl RunTrail {
         format!("Run on {}", server_name(self.server))
     }
 
+    /// The printed clause of a subroutine when the card is known, else its
+    /// number: the Linked Clause Rule says a person reads the card's words.
+    /// The run's own list first, where a gained subroutine has its place;
+    /// the card's printed list for an ice the trail has not been shown.
+    fn subroutine_words(&self, card: &CardId, index: usize, registry: &CardRegistry) -> String {
+        let at = match self.stage {
+            Stage::AtIce(position) => self.ice.get(position).and_then(|step| step.texts.get(index).cloned()),
+            _ => None,
+        };
+        at.or_else(|| registry.get(card).and_then(|def| def.subroutines.get(index)).map(|sub| sub.text.clone()))
+            .map(|text| format!("\u{201c}{}\u{201d}", text.trim_end_matches('.')))
+            .unwrap_or_else(|| format!("subroutine {}", index + 1))
+    }
+
     fn mark_subroutine(&mut self, index: usize, status: SubroutineStatus) {
         if let Stage::AtIce(position) = self.stage
             && let Some(step) = self.ice.get_mut(position)
@@ -331,6 +360,7 @@ pub fn concerns_run(event: &GameEvent) -> bool {
             GameEvent::RunInitiated { .. }
                 | GameEvent::SubroutineBroken { .. }
                 | GameEvent::SubroutineFired { .. }
+                | GameEvent::SubroutineGained { .. }
                 | GameEvent::IceRezzed { .. }
                 | GameEvent::AgendaStolen { .. }
                 | GameEvent::CardTrashedFromAccess { .. }
@@ -339,15 +369,6 @@ pub fn concerns_run(event: &GameEvent) -> bool {
         )
 }
 
-/// The printed clause of a subroutine when the card is known, else its
-/// number: the Linked Clause Rule says a person reads the card's words.
-fn subroutine_words(card: &CardId, index: usize, registry: &CardRegistry) -> String {
-    registry
-        .get(card)
-        .and_then(|def| def.subroutines.get(index))
-        .map(|sub| format!("\u{201c}{}\u{201d}", sub.text.trim_end_matches('.')))
-        .unwrap_or_else(|| format!("subroutine {}", index + 1))
-}
 
 fn plural(n: u32) -> &'static str {
     if n == 1 { "" } else { "s" }

@@ -65,14 +65,19 @@ pub enum SubroutineStatus {
 }
 
 /// One subroutine on the ICE currently being encountered, individually
-/// addressable by `id` (its index within `RunIce::subroutines`). `status`
-/// tracks whether the Runner broke it, let it fire (`Resolved`), or hasn't
+/// addressable by `id` (its index within `RunIce::subroutines`, kept equal
+/// to it when a subroutine is gained ahead of the rest). `status` tracks
+/// whether the Runner broke it, let it fire (`Resolved`), or hasn't
 /// handled it yet (`Pending`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct EncounteredSubroutine {
     pub id: usize,
     pub definition: SubroutineDef,
     pub status: SubroutineStatus,
+    /// Gained for this encounter (`Effect::GainSubroutine`), not printed:
+    /// it goes when the encounter does (`run::engine::enter_movement`).
+    /// Public, like the rest of the list: the Runner is facing it.
+    pub gained: bool,
 }
 
 /// A single piece of ICE within a run's ice stack, as seen by the run state

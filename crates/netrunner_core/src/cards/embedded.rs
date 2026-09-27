@@ -440,6 +440,7 @@ mod catalog_join_tests {
                 | Effect::SetAccessReplacement { effect, .. }
                 | Effect::SetRunEndedEffect(effect)
                 | Effect::ChooseNumber { then: effect, .. } => walk(effect, out),
+                Effect::GainSubroutine(subroutine) => walk(&subroutine.effect, out),
                 Effect::PromptChooseCards { then: Some(then), .. } => walk(then, out),
                 Effect::PromptInstallCorpCard { then, if_rezzed, .. } => {
                     then.iter().chain(if_rezzed.iter()).for_each(|e| walk(e, out))
@@ -534,6 +535,12 @@ mod catalog_join_tests {
                     Effect::ChooseNumber { text, .. } => {
                         checked += 1;
                         failures.extend(quote("chosen number", text));
+                    }
+                    // A gained subroutine is read on the ice it is gained
+                    // by, so its words are the card's quote of it.
+                    Effect::GainSubroutine(subroutine) => {
+                        checked += 1;
+                        failures.extend(quote("gained subroutine", &subroutine.text));
                     }
                     _ => {}
                 }

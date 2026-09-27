@@ -537,6 +537,7 @@ fn determinize_run(
                                 id,
                                 definition: definition.clone(),
                                 status: SubroutineStatus::Pending,
+                                gained: false,
                             })
                             .collect()
                     })
@@ -1675,11 +1676,13 @@ mod tests {
                         id: 0,
                         definition: subroutine(),
                         status: netrunner_core::rules::SubroutineStatus::Pending,
+                        gained: false,
                     },
                     netrunner_core::rules::EncounteredSubroutine {
                         id: 1,
                         definition: subroutine(),
                         status: netrunner_core::rules::SubroutineStatus::Pending,
+                        gained: false,
                     },
                 ],
                 rezzed: false,

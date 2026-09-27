@@ -763,6 +763,30 @@ pub fn evaluate_effect(
             Ok(vec![add_to_score_area_as_agenda(state, card_id, *as_agenda)])
         }
 
+        // "It" is the encountered ice, as the trigger's subject; a
+        // resolution that finds the encounter over (a run ended by a
+        // trigger ahead of it) has nothing left to add to.
+        Effect::GainSubroutine(subroutine) => {
+            let Some(install) = ctx.acting_install else { return Err(RulesError::MissingActingCardContext) };
+            let Some(run) = state.active_run.as_mut() else { return Ok(Vec::new()) };
+            if run.phase != RunPhase::EncounterIce {
+                return Ok(Vec::new());
+            }
+            let position = run.position;
+            let Some(ice) = run.ice.get_mut(position).filter(|ice| ice.install_id == install) else { return Ok(Vec::new()) };
+            ice.subroutines.insert(
+                0,
+                run::EncounteredSubroutine {
+                    id: 0,
+                    definition: (**subroutine).clone(),
+                    status: SubroutineStatus::Pending,
+                    gained: true,
+                },
+            );
+            run::renumber_subroutines(ice);
+            Ok(vec![GameEvent::SubroutineGained { card_id: ice.card_id.clone(), text: subroutine.text.clone() }])
+        }
+
         Effect::ShuffleHostedIntoDeck => {
             let cards = if ctx.set_aside.is_empty() {
                 acting_rig_position(state, ctx).map(|position| std::mem::take(&mut state.runner.rig[position].hosted_cards)).unwrap_or_default()
@@ -3681,6 +3705,7 @@ mod tests {
                         only_breakable_by: None,
                     },
                     status: SubroutineStatus::Pending,
+                    gained: false,
                 })
                 .collect(),
             rezzed,

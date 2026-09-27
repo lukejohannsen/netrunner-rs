@@ -2135,7 +2135,7 @@ mod tests {
                 card_id: wall.id.clone(),
                 install_id: InstallId(1),
                 ice_type,
-                subroutines: wall.subroutines.iter().enumerate().map(|(id, sub)| EncounteredSubroutine { id, definition: sub.clone(), status: SubroutineStatus::Pending }).collect(),
+                subroutines: wall.subroutines.iter().enumerate().map(|(id, sub)| EncounteredSubroutine { id, definition: sub.clone(), status: SubroutineStatus::Pending, gained: false }).collect(),
                 rezzed: true,
             }],
             ..Default::default()

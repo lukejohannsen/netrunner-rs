@@ -398,8 +398,10 @@ Division.
    moment it can interrupt. **7b** (built, below): Read-Write Share,
    cards hosted facedown. **7c** (built, below): Hackerspace, a resource
    installed onto a resource. **7d** (built, below): Myōshu, Word on the
-   Street and Sacrifice Zone Expansion, the score area. **7e:** Flagship, Tocsin and Stick and
-   Poke.
+   Street and Sacrifice Zone Expansion, the score area. **7e** (built,
+   below): Stick and Poke, a subroutine gained for an encounter. **7f:**
+   Tocsin, an ability used from HQ. **7g:** Flagship, a run that cannot be
+   declared successful and a limit on accesses.
 8. **Méliès U, alone:** hidden setup state, three sides, and masking.
 
 **Riskiest:**
@@ -1536,6 +1538,45 @@ deck. **No new `Effect`.** Vantage Point 59 of 66; `VP_UNIMPLEMENTED`
   played 52 times and Sacrifice Zone Expansion's first advance paid 166
   times. **No Corp ever scored an agenda installed that turn with Word on
   the Street out**, so its cost is reached by the card test alone.
+
+#### Stage 7e — a subroutine gained for an encounter (27 September 2026)
+
+4 → 3.
+
+- **Ice gains a subroutine** with `Effect::GainSubroutine`, said by an
+  `OnEncounter` trigger that acts on its subject (Stick and Poke's "it
+  gains “[subroutine] Do 1 net damage. The Runner draws 1 card.”, before
+  its other subroutines, for the remainder of that encounter"). `validate`
+  refuses it anywhere else, where it would find no encounter. Gained from
+  another card's ability and said to come first, it is ordered ahead of
+  every other subroutine, the newest first (CR 9.8.3a); the other
+  categories of 9.8.3 wait for a card that prints them.
+- **It lives in the run's list for the encounter**, where each
+  subroutine's status already lives, not as a lingering effect: a status
+  has to be broken, fired and counted toward "fully broken" with the rest.
+  It is written at the front with every `id` renumbered, because a break
+  and a firing name a subroutine by its place, and marked
+  `EncounteredSubroutine::gained`, which `run::engine::enter_movement` —
+  the one step every encounter the run survives leaves by — drops. Ice
+  fully broken before it gains one stays fully broken (CR 6.5.7d).
+- **Three client sites read the card's printed list by index** and would
+  have named the wrong subroutine once one stood ahead of it: the tile's
+  facts, the run trail's words for a break or a firing, and the
+  click-break label. Each reads the run's own list now.
+  `GameEvent::SubroutineGained` tells the log what the ice gained; it is
+  an occurrence of nothing a card hears.
+- **Deck.** Pay As You Go: two Stick and Poke for two Wildcat Strike.
+- **DSL ratio (`pool_status.py`): 21 of 75 `Effect` variants single-use,
+  2 unused**, over 247 card files — the one new `Effect`, single-use.
+- **Measured.** Both sweeps at 256 seeds are green. Against `origin/main`,
+  `coverage_identical.py` has both random seatings **identical**. The
+  heuristic seatings moved, and without the card file and the deck swap
+  they are identical in all four shapes (`determinize`). The two heuristic
+  seatings part again (one report each), as they did before Stage 7d.
+- **Real play.** Ninety-six random games of Hostile Bid against Pay As You
+  Go (seed 2) installed Stick and Poke 42 times, and ice gained its
+  subroutine 123 times. **The heuristic Runner never installs it** (0 in
+  96 games), so the card gate is met by random seats alone.
 
 ### 2. Rebellion Without Rehearsal — 65 cards (C 7 / V 43 / M 15)
 

@@ -852,6 +852,7 @@ pub fn mask_event_for_player(event: &GameEvent, state: &GameState, viewer: impl 
         GameEvent::IceEncountered { card_id, .. }
         | GameEvent::SubroutineBroken { card_id, .. }
         | GameEvent::SubroutineFired { card_id, .. }
+        | GameEvent::SubroutineGained { card_id, .. }
         | GameEvent::IceStrengthModified { card_id, .. }
         | GameEvent::IceBypassed { card_id, .. }
         | GameEvent::IceFullyBroken { card_id, .. }
@@ -875,6 +876,7 @@ pub fn mask_event_for_player(event: &GameEvent, state: &GameState, viewer: impl 
         | GameEvent::IceEncountered { .. }
         | GameEvent::SubroutineBroken { .. }
         | GameEvent::SubroutineFired { .. }
+        | GameEvent::SubroutineGained { .. }
         | GameEvent::IceStrengthModified { .. }
         | GameEvent::IcePassed { .. }
         | GameEvent::IceBypassed { .. }
@@ -1835,6 +1837,7 @@ mod tests {
                     id: 0,
                     definition: SubroutineDef { text: "End the run.".to_string(), effect: Effect::EndTheRun, only_breakable_by: None },
                     status: SubroutineStatus::Pending,
+                    gained: false,
                 }]
             } else {
                 Vec::new()

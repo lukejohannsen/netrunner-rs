@@ -883,6 +883,24 @@ pub enum Effect {
     /// Composition didn't work: no effect moves a card into a score area
     /// without scoring or stealing it.
     AddToScoreAreaAsAgenda(AsAgenda),
+    /// The acting install — the ice being encountered, reached through
+    /// `TriggeredEffect::acts_on_subject` — gains this subroutine before
+    /// its other subroutines for the remainder of the encounter: Stick and
+    /// Poke's "it gains “[subroutine] Do 1 net damage. The Runner draws 1
+    /// card.”, before its other subroutines, for the remainder of that
+    /// encounter." Gained from an ability that is not the ice's own and
+    /// said to come first, so it is ordered ahead of every subroutine the
+    /// ice has, the newest such first (CR 9.8.3a). It is the ice's
+    /// subroutine: it fires as the ice's and is broken like one, and ice
+    /// already fully broken stays so (CR 6.5.7d). Written into the run's
+    /// list for the encounter (`EncounteredSubroutine::gained`), which is
+    /// where a subroutine's status already lives, and dropped at the one
+    /// step every encounter leaves by (`run::engine::enter_movement`). A
+    /// no-op when that ice is not being encountered. The only order and
+    /// duration a pool card prints; "after", and a subroutine gained for
+    /// longer (CR 9.8.3e), wait for one that does. Composition didn't
+    /// work: nothing adds to a subroutine list.
+    GainSubroutine(Box<crate::dsl::SubroutineDef>),
     /// The controller looks at the top `count` cards of `deck`'s owner's
     /// deck and nobody else sees them (`GameEvent::CardsLookedAt`, masked
     /// for the other player) — Hiram "0mission" Svensson's "look at the
@@ -1452,6 +1470,7 @@ impl Effect {
             | Effect::AddToDeck(_)
             | Effect::ShuffleHostedIntoDeck
             | Effect::AddToScoreAreaAsAgenda(_)
+            | Effect::GainSubroutine(_)
             | Effect::LookAtTopOfDeck { .. }
             | Effect::HostRigCardOnInstall { .. }
             | Effect::DrawCardsAmount(..)
