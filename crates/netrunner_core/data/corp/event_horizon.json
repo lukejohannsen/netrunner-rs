@@ -1,0 +1,69 @@
+{
+  "id": "event_horizon",
+  "title": "Event Horizon",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Sentry"
+  },
+  "cost": 4,
+  "strength": 0,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": "TrashSelf",
+      "requirement": "RunAgainstThisServer",
+      "effect": "EndTheRun",
+      "text": "[trash]: End the run. Use this ability only during a run against this server."
+    }
+  ],
+  "subroutines": [
+    {
+      "text": "Trash 1 installed program unless the Runner pays 3[credit].",
+      "effect": {
+        "OfferPaidChoice": {
+          "side": "Runner",
+          "cost": {
+            "Credits": 3
+          },
+          "if_paid": {
+            "Sequence": []
+          },
+          "if_declined": {
+            "PromptChooseCards": {
+              "side": "Corp",
+              "source": "OpponentInstalled",
+              "filter": {
+                "CardType": "Program"
+              },
+              "min": 1,
+              "max": 1,
+              "reveal": false,
+              "shuffle_after": false,
+              "destination": "OpponentDiscard"
+            }
+          },
+          "text": "Trash 1 installed program unless the Runner pays 3[credit]"
+        }
+      }
+    },
+    {
+      "text": "End the run unless the Runner pays 3[credit].",
+      "effect": {
+        "OfferPaidChoice": {
+          "side": "Runner",
+          "cost": {
+            "Credits": 3
+          },
+          "if_paid": {
+            "Sequence": []
+          },
+          "if_declined": "EndTheRun",
+          "text": "End the run unless the Runner pays 3[credit]"
+        }
+      }
+    }
+  ],
+  "numeric_id": 36058,
+  "is_playable": true
+}

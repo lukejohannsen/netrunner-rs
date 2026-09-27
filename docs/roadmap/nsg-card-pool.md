@@ -375,7 +375,7 @@ Division.
    (`TurnLog::none_yet`).
 4. **Ice and run triggers:** **4a**, the run's moments about ice
    (built, below): Vertigo, Sipa, Lethe, ezaM, The Tungsten Tailor.
-   **4b**: Lionsmane, Event Horizon, Ansel 2.0.
+   **4b** (built, below): Lionsmane, Event Horizon, Ansel 2.0.
 5. **Runner trigger and payment words** (`PaysFor` during a run; the
    Runner's allotted clicks): Hiram, Touchstone, Methuselah, Beta Build,
    Stowaway, Nurse Hạnh, Caveat Emptor, and Shackleton Grid, moved here
@@ -834,6 +834,56 @@ Tailor. **No new `Effect`.** Vantage Point 38 of 66; `VP_UNIMPLEMENTED`
   The heuristic seatings move (Corp wins 89 → 82 of 192), the movement
   `determinize` makes of every new playable card; not re-checked card by
   card.
+
+#### Stage 4b — two costs and a break on this ice (26 September 2026)
+
+`feat/vp-stage-4b-lionsmane-event-horizon-ansel`: Lionsmane, Event
+Horizon, Ansel 2.0. **No new `Effect`.** Vantage Point 41 of 66;
+`VP_UNIMPLEMENTED` 28 → 25. Stage 4 is complete.
+
+- **"Unless the Runner jacks out" is a cost** (`Cost::JackOut`,
+  Lionsmane): CR 1.16.11b makes "[instructions] unless [player] [cost]" a
+  nested cost, so it is an `OfferPaidChoice`'s price, not an effect. It
+  ends the run as a jack-out (`GameEvent::RunJackedOut`, dispatched by the
+  payer), which "when a run ends" hears and Shred's "would end the run"
+  does not stop.
+- **"Lose [click][click]:" is a cost that is not an action**
+  (`Cost::LoseClicks`, Ansel 2.0): CR 9.5.2a makes an ability an action
+  only when its cost begins with [click], so the Runner uses this one in
+  the encounter's window. It spends nothing, so no `ClickSpent`.
+- **"Break … subroutines on this ice"** asks that the acting card be the
+  ice encountered (`EffectRequirement::EncounteringThisIce`). **N-Pot had
+  the bug this closes:** its "3[credit]: Break 1 subroutine on this ice"
+  broke a subroutine on whatever piece of ice the Runner was encountering
+  while an N-Pot was rezzed anywhere. Checked: Ansel 2.0's test fails for
+  N-Pot on the file without the requirement.
+- **"Remove 1 card in the heap from the game"** is a selection's
+  destination (`CardZoneRef::OpponentRemovedFromGame`, each side's
+  `removed_from_game`), recorded as `CardRemovedFromGame`.
+- Event Horizon's "[trash]: End the run. Use this ability only during a
+  run against this server" composes: `Cost::TrashSelf` and Stage 3b's
+  `RunAgainstThisServer`.
+- **The decks.** Two Lionsmane for two Public Trail (A Thousand Cuts); two
+  Event Horizon for two Tithe (Hostile Bid); two Ansel 2.0 for two Ansel
+  1.0 (Retirement Package). Every card replaced is in another deck.
+- **Fidelity limit:** Ansel 2.0's "break up to 2" breaks two when two are
+  left; breaking fewer is never better for the Runner.
+- **DSL ratio (`pool_status.py`): 21 of 71 `Effect` variants
+  single-use, 2 unused**, over 225 card files — unchanged. The growth went
+  into what a card costs (`Cost`, two words), whether it may (one
+  requirement) and where a card goes (one zone).
+- **Measured.** Both sweeps at 256 seeds are green, coverage gate
+  included. `coverage_identical.py origin/main` (192 games a shape, seed
+  1): **the random seatings move, and all of it is the N-Pot fix.**
+  `effects_seen/BreakSubroutinesUnconditionally` 16 → 10 by view and by
+  index — six breaks a random Runner had made with an N-Pot on some other
+  piece of ice — and the games after them branch (Runner agenda wins
+  111 → 112, deck-outs 6 → 5). Checked, not inferred: this branch with
+  only N-Pot's file reverted is **identical** to `main` in both random
+  seatings, so the two costs, the requirement on Ansel 2.0 and the new
+  zone move nothing else. The heuristic seatings move (Corp wins 82 → 88
+  of 192), N-Pot and the `determinize` movement of three new cards
+  together; not separated.
 
 ### 2. Rebellion Without Rehearsal — 65 cards (C 7 / V 43 / M 15)
 

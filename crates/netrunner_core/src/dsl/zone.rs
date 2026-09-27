@@ -69,6 +69,11 @@ pub enum CardZoneRef {
     /// (`Cost::Forfeit`: Biawak's and Plutus's "forfeit 1 agenda"). A source
     /// only, like `OpponentScoreArea`.
     OwnScoreArea,
+    /// Out of the game, on the opposing side — the Runner's cards removed
+    /// from it (`RunnerState::removed_from_game`) when the chooser is the
+    /// Corp: Ansel 2.0's "remove 1 card in the heap from the game" — and
+    /// the Corp's when the chooser is the Runner. A destination only.
+    OpponentRemovedFromGame,
 }
 
 impl CardZoneRef {
@@ -90,7 +95,8 @@ impl CardZoneRef {
             | CardZoneRef::OwnInstalled
             | CardZoneRef::HostedOnSource
             | CardZoneRef::OpponentScoreArea
-            | CardZoneRef::OwnScoreArea => false,
+            | CardZoneRef::OwnScoreArea
+            | CardZoneRef::OpponentRemovedFromGame => false,
         }
     }
 }

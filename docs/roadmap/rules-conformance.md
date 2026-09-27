@@ -397,7 +397,7 @@ with the rule quoted.
 | 1.13 | Host, Hosted, and Hosting | unreviewed |  |
 | 1.14 | Ownership and Control | read in part | 1.14.2e: the Corp controls every bad publicity counter, so taking it and being given it are one event, the Corp's (`Trigger::OnBadPublicityTaken`, VP Stage 2). 1.14.3a: either player removes tags to pay a cost (Unleash's additional cost). |
 | 1.15 | Targets | unreviewed |  |
-| 1.16 | Costs | read in part | Costs are `Cost`, never effects (Rules Audit item 8): 1.16.1a not prevented, 1.16.3 checkpoint after a cost, 1.16.11 nested costs. VP Stage 2: 1.16.11b "unless" is a nested cost (Kompromat's derez is `Cost::Derez`); 1.16.2f a "total" discount is divided by the Corp, taken install first, which is never more credits (Reanimation Protocol); 1.16.4b an install-and-rez the Corp cannot pay leaves the card unrezzed. Cited: 1.16, 1.16.1, 1.16.11, 1.16.11b, 1.16.1a, 1.16.2f, 1.16.3, 1.16.4b. VP Stage 3a: 1.16.10b additional costs to steal are one price with the printed one (Magistrate Revontulet's `StealCost` beside Méliès City Luxury Line's `steal_cost`), and 1.17.3d lets the Runner decline it. |
+| 1.16 | Costs | read in part | Costs are `Cost`, never effects (Rules Audit item 8): 1.16.1a not prevented, 1.16.3 checkpoint after a cost, 1.16.11 nested costs. VP Stage 2: 1.16.11b "unless" is a nested cost (Kompromat's derez is `Cost::Derez`); 1.16.2f a "total" discount is divided by the Corp, taken install first, which is never more credits (Reanimation Protocol); 1.16.4b an install-and-rez the Corp cannot pay leaves the card unrezzed. Cited: 1.16, 1.16.1, 1.16.11, 1.16.11b, 1.16.1a, 1.16.2f, 1.16.3, 1.16.4b. VP Stage 3a: 1.16.10b additional costs to steal are one price with the printed one (Magistrate Revontulet's `StealCost` beside Méliès City Luxury Line's `steal_cost`), and 1.17.3d lets the Runner decline it. VP Stage 4b: "unless the Runner jacks out" is a nested cost too (1.16.11b, `Cost::JackOut`, Lionsmane). |
 | 1.17 | Score, Scoring and Stealing | conforms | F3 fixed: a forfeit lowers the shown score (1.17.1). Scoring conditions match. |
 | 1.18 | Advancing Cards | read in part | 1.18.1–1.18.2: placing an advancement counter is not advancing (`PlaceAdvancementCounters`, `listeners`). Cited: 1.18.1, 1.18.2. |
 | 1.19 | Trashing | conforms | F4 fixed: a hosted card goes to its owner's discard pile (1.19.1). |
@@ -513,7 +513,7 @@ with the rule quoted.
 | 9.2 | Timing and Priority | read in part | F1 fixed: no action in a paid ability window (9.2.7b). Active player first and own-order simultaneous triggers match. |
 | 9.3 | Interpreting Card Text | unreviewed |  |
 | 9.4 | Static Abilities | unreviewed |  |
-| 9.5 | Paid Abilities | read in part | F1 fixed: a [click] ability is an action (9.5.2a), taken only in its user's action window. Cited: 9.5.2a. |
+| 9.5 | Paid Abilities | read in part | F1 fixed: a [click] ability is an action (9.5.2a), taken only in its user's action window. VP Stage 4b: a trigger cost that begins with "lose [click]" is not one (Ansel 2.0's break, `Cost::LoseClicks`), so the Runner uses it mid-encounter. Cited: 9.5.2a. |
 | 9.6 | Conditional Abilities | read in part | Audit: a trigger whose source left is dropped, a resolving ability finishes; matches. |
 | 9.7 | Play Abilities | unreviewed |  |
 | 9.8 | Subroutines | read in part | Audit: unbroken subroutines in printed order, stopping at an ended run; matches. 9.8.2–9.8.3 (new in v26.03): no pool card adds subroutines. |

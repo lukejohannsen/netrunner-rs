@@ -11828,4 +11828,114 @@ mod vantage_point {
         let palisade = state.corp.installed.iter().find(|c| c.card == id("palisade")).expect("palisade");
         assert_eq!(crate::rules::lingering::ice_strength(&state, palisade.install_id), 0, "for the remainder of the run");
     }
+
+    // --- Stage 4b: Lionsmane, Event Horizon, Ansel 2.0 ---
+
+    fn paid_choice_offered(state: &GameState) -> bool {
+        state.pending_paid_choice.is_some()
+    }
+
+    /// Two net damage; two more unless the Runner pays 3; two more unless
+    /// they jack out — which ends the run as a jack-out, not by an effect.
+    #[test]
+    fn lionsmane_does_net_damage_unless_paid_off_or_jacked_out_of() {
+        let registry = registry();
+        let mut state = base_state();
+        state.runner.grip = vec![id("sure_gamble"); 6];
+        let (state, _) = let_subroutines_fire(state, &registry, "lionsmane");
+        assert_eq!(state.runner.heap.len(), 2, "the first subroutine");
+        assert!(paid_choice_offered(&state));
+        let (state, _) = apply_action(&state, &registry, PlayerAction::AcceptPendingPaidChoice { cost_option_index: None }).expect("pay 3");
+        assert_eq!(state.runner.resources.credits, Credits(7));
+        assert!(paid_choice_offered(&state), "the third subroutine asks");
+        let (state, events) = apply_action(&state, &registry, PlayerAction::AcceptPendingPaidChoice { cost_option_index: None }).expect("jack out");
+        assert!(events.iter().any(|event| matches!(event, crate::rules::GameEvent::RunJackedOut { .. })), "{events:?}");
+        assert!(state.active_run.is_none());
+        assert_eq!(state.runner.heap.len(), 2, "neither of the other two landed");
+
+        let mut state = base_state();
+        state.runner.grip = vec![id("sure_gamble"); 6];
+        let (state, _) = let_subroutines_fire(state, &registry, "lionsmane");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::DeclinePendingPaidChoice).expect("decline");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::DeclinePendingPaidChoice).expect("decline");
+        assert_eq!(state.runner.heap.len(), 6);
+        assert!(state.active_run.is_some(), "the run goes on");
+    }
+
+    /// "[trash]: End the run" only during a run against its own server.
+    #[test]
+    fn event_horizon_trashes_itself_to_end_a_run_against_its_server_only() {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.corp.installed = vec![ice_at_hq("event_horizon"), crate::rules::InstalledCard { server: ServerId::RnD, ..ice_at_hq("ice_wall") }];
+        let horizon = install_of(&state, "event_horizon");
+        let use_it = PlayerAction::ActivateAbility { target: horizon, ability_index: 0 };
+
+        let (elsewhere, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::RnD }).expect("run R&D");
+        let (elsewhere, _) = apply_action(&elsewhere, &registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner passes");
+        assert!(!crate::rules::legal_actions(&elsewhere, &registry).contains(&use_it), "not a run against its server");
+
+        let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run HQ");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner passes");
+        assert!(crate::rules::legal_actions(&state, &registry).contains(&use_it));
+        let (state, _) = apply_action(&state, &registry, use_it).expect("end the run");
+        assert!(state.active_run.is_none());
+        assert!(state.corp.archives.iter().any(|archived| archived.card == id("event_horizon")), "the cost trashed it");
+    }
+
+    /// Declining to pay trashes a program the Corp chooses; paying keeps it.
+    #[test]
+    fn event_horizon_trashes_a_program_unless_the_runner_pays_three() {
+        let registry = registry();
+        let mut state = base_state();
+        state.runner.rig = vec![rig("corroder")];
+        let (state, _) = let_subroutines_fire(state, &registry, "event_horizon");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::DeclinePendingPaidChoice).expect("decline");
+        let (state, _) = pick(&state, &registry, 0);
+        assert!(state.runner.rig.is_empty());
+        assert_eq!(state.runner.heap, vec![id("corroder")]);
+        let (state, _) = apply_action(&state, &registry, PlayerAction::AcceptPendingPaidChoice { cost_option_index: None }).expect("pay to go on");
+        assert!(state.active_run.is_some());
+    }
+
+    /// The Runner loses two clicks to break two subroutines, while
+    /// encountering this Ansel 2.0 and not another piece of ice — and
+    /// N-Pot's break is held to its own encounter the same way.
+    #[test]
+    fn ansel_2_0_is_broken_for_two_clicks_only_while_it_is_encountered() {
+        let registry = registry();
+        for card in ["ansel_2_0", "n_pot"] {
+            let mut state = base_state();
+            // Rezzed on R&D while the Runner meets a Vertigo on HQ.
+            state.corp.installed.push(crate::rules::InstalledCard { install_id: InstallId(70), server: ServerId::RnD, ..ice_at_hq(card) });
+            let state = encountering(state, &registry, &["vertigo"]);
+            let use_it = PlayerAction::ActivateAbility { target: InstallId(70), ability_index: 0 };
+            assert!(!crate::rules::legal_actions(&state, &registry).contains(&use_it), "{card} while encountering Vertigo");
+        }
+
+        let mut state = encountering(base_state(), &registry, &["ansel_2_0"]);
+        state.runner.resources.clicks = Clicks(2);
+        let ansel = install_of(&state, "ansel_2_0");
+        let (state, events) = apply_action(&state, &registry, PlayerAction::ActivateAbility { target: ansel, ability_index: 0 }).expect("break two");
+        assert!(events.contains(&crate::rules::GameEvent::ClicksLost { side: Side::Runner, amount: 2 }));
+        assert_eq!(state.runner.resources.clicks, Clicks(0));
+        let run = state.active_run.as_ref().expect("still encountering");
+        assert_eq!(run.ice[run.position].subroutines.iter().filter(|sub| sub.status == crate::rules::SubroutineStatus::Broken).count(), 2);
+        assert!(!crate::rules::legal_actions(&state, &registry).contains(&PlayerAction::ActivateAbility { target: ansel, ability_index: 0 }), "no clicks left to lose");
+    }
+
+    /// Its second subroutine removes a card in the heap from the game.
+    #[test]
+    fn ansel_2_0_removes_a_card_in_the_heap_from_the_game() {
+        let registry = registry();
+        let mut state = base_state();
+        state.runner.heap = vec![id("sure_gamble")];
+        let (state, _) = let_subroutines_fire(state, &registry, "ansel_2_0");
+        // Nothing installed to trash, so the first subroutine asks nothing.
+        let (state, events) = pick(&state, &registry, 0);
+        assert!(state.runner.heap.is_empty());
+        assert_eq!(state.runner.removed_from_game, vec![id("sure_gamble")]);
+        assert!(events.iter().any(|event| matches!(event, crate::rules::GameEvent::CardRemovedFromGame { side: Side::Runner, .. })));
+    }
 }
