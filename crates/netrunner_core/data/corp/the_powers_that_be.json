@@ -1,0 +1,85 @@
+{
+  "id": "the_powers_that_be",
+  "title": "The Powers That Be",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 1,
+  "trash_cost": 3,
+  "triggers": [
+    {
+      "trigger": "OnAgendaScored",
+      "subject": "Any",
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Corp",
+            "options": [
+              {
+                "PromptChooseCards": {
+                  "side": "Corp",
+                  "source": "OwnHq",
+                  "filter": {
+                    "CardTypeOneOf": [
+                      {
+                        "Ice": "Barrier"
+                      },
+                      "Agenda",
+                      "Asset",
+                      "Upgrade"
+                    ]
+                  },
+                  "min": 1,
+                  "max": 1,
+                  "reveal": false,
+                  "shuffle_after": false,
+                  "then": {
+                    "PromptInstallCorpCard": {
+                      "origin_zone": "OwnHq",
+                      "ignore_costs": true
+                    }
+                  }
+                }
+              },
+              {
+                "PromptChooseCards": {
+                  "side": "Corp",
+                  "source": "OwnArchives",
+                  "filter": {
+                    "CardTypeOneOf": [
+                      {
+                        "Ice": "Barrier"
+                      },
+                      "Agenda",
+                      "Asset",
+                      "Upgrade"
+                    ]
+                  },
+                  "min": 1,
+                  "max": 1,
+                  "reveal": false,
+                  "shuffle_after": false,
+                  "then": {
+                    "PromptInstallCorpCard": {
+                      "origin_zone": "OwnArchives",
+                      "ignore_costs": true
+                    }
+                  }
+                }
+              },
+              {
+                "Sequence": []
+              }
+            ],
+            "texts": [
+              "you may install 1 card from HQ or Archives, ignoring all costs — from HQ",
+              "you may install 1 card from HQ or Archives, ignoring all costs — from Archives",
+              ""
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "numeric_id": 34130,
+  "is_playable": true
+}

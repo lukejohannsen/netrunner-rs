@@ -245,18 +245,23 @@ pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
         GameEvent::CardsTrashedFromHq { .. } => vec![moment(Trigger::OnCardsTrashedFromHq, &About::Nothing, Some(Side::Corp))],
         // Only the Runner's tags are anyone's trigger, and removing none is
         // not removing one.
-        GameEvent::TagsRemoved { side: Side::Runner, amount: 0 } => Vec::new(),
-        GameEvent::TagRemoved { side: Side::Runner } | GameEvent::TagsRemoved { side: Side::Runner, .. } | GameEvent::TagsCleared { side: Side::Runner } => {
-            vec![moment(Trigger::OnTagRemoved, &About::Nothing, Some(Side::Runner))]
+        // The moment is the remover's (CR 1.14.3a: either player can remove
+        // the Runner's tags), so "whenever **you** remove" can be told from
+        // Synapse Global's cost, the Corp removing the Runner's tag.
+        GameEvent::TagsRemoved { side: Side::Runner, amount: 0, .. } => Vec::new(),
+        GameEvent::TagRemoved { side: Side::Runner, by }
+        | GameEvent::TagsRemoved { side: Side::Runner, by, .. }
+        | GameEvent::TagsCleared { side: Side::Runner, by } => {
+            vec![moment(Trigger::OnTagRemoved, &About::Nothing, Some(*by))]
         }
         GameEvent::TagsGiven { side: Side::Runner, .. } => vec![moment(Trigger::OnTagsGiven, &About::Nothing, Some(Side::Runner))],
         // Bad publicity is only ever the Corp's (CR 1.14.2e), and taking
         // none is not taking some.
         GameEvent::BadPublicityGiven { amount: 0 } => Vec::new(),
         GameEvent::BadPublicityGiven { .. } => vec![moment(Trigger::OnBadPublicityTaken, &About::Nothing, Some(Side::Corp))],
-        GameEvent::TagRemoved { side: Side::Corp }
+        GameEvent::TagRemoved { side: Side::Corp, .. }
         | GameEvent::TagsRemoved { side: Side::Corp, .. }
-        | GameEvent::TagsCleared { side: Side::Corp }
+        | GameEvent::TagsCleared { side: Side::Corp, .. }
         | GameEvent::TagsGiven { side: Side::Corp, .. } => Vec::new(),
 
         // "When you would suffer damage" is the one "would" a card in the

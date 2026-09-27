@@ -3,7 +3,7 @@
   "name": "Paid Content",
   "side": "Corp",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach Vantage Point's first NBN cards — Nihilo Agent, Grubber, Paywall, Scapegoat — on Hyper Velocity's frame, under Making News. Eternal-legal only. Vantage Point Stage 3a: Hype Machine for AMAZE Amusements, Magistrate Revontulet for Nihilo Agent. Vantage Point Stage 4a: two Lethe for two Tithe.",
+  "description": "Not a published list: built so the sweeps reach Vantage Point's first NBN cards — Nihilo Agent, Grubber, Paywall, Scapegoat — on Hyper Velocity's frame, under Making News. Eternal-legal only. Vantage Point Stage 3a: Hype Machine for AMAZE Amusements, Magistrate Revontulet for Nihilo Agent. Vantage Point Stage 4a: two Lethe for two Tithe. Rebellion Without Rehearsal Stage 1: two Capacitor and two Seraph for three Ping and the Whitespace, which the deck's tags feed, and two The Powers That Be for two Hedge Fund.",
   "style": "rush",
   "identity": "nbn_making_news",
   "cards": [
@@ -33,7 +33,7 @@
     },
     {
       "card": "hedge_fund",
-      "count": 3
+      "count": 1
     },
     {
       "card": "neurospike",
@@ -56,16 +56,8 @@
       "count": 2
     },
     {
-      "card": "ping",
-      "count": 3
-    },
-    {
       "card": "funhouse",
       "count": 3
-    },
-    {
-      "card": "whitespace",
-      "count": 1
     },
     {
       "card": "tithe",
@@ -93,6 +85,18 @@
     },
     {
       "card": "lethe",
+      "count": 2
+    },
+    {
+      "card": "capacitor",
+      "count": 2
+    },
+    {
+      "card": "seraph",
+      "count": 2
+    },
+    {
+      "card": "the_powers_that_be",
       "count": 2
     }
   ]

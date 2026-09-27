@@ -390,9 +390,9 @@ fn pending_decision_candidates(state: &GameState, registry: &CardRegistry) -> Ve
         Some(crate::rules::state::PendingDecision::ChooseEffect { options, .. }) => {
             (0..options.len()).map(|i| PlayerAction::ResolvePendingChoice { option_index: i }).collect()
         }
-        Some(crate::rules::state::PendingDecision::ChooseCards { side, source, filter, source_install, .. }) => {
+        Some(crate::rules::state::PendingDecision::ChooseCards { side, source, filter, source_install, source_card, .. }) => {
             let mut candidates: Vec<PlayerAction> =
-                crate::rules::pending_choice::eligible_positions(state, registry, *side, source, filter, *source_install)
+                crate::rules::pending_choice::eligible_positions(state, registry, *side, source, filter, *source_install, source_card.as_ref())
                     .into_iter()
                     .map(|position| PlayerAction::ToggleCardSelection { position })
                     .collect();

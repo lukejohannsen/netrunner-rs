@@ -207,10 +207,12 @@ pub enum Trigger {
     /// plays operations and the Runner events, so the two cards that
     /// heard it before hear exactly what they did.
     OnCardPlayed,
-    /// "Whenever a tag is removed" — fired against the Corp's identity
-    /// when the Runner loses a tag by any route (`TagRemoved`,
-    /// `TagsRemoved`, `TagsCleared`). Synapse Global: Faster than Thought
-    /// installs off it, including off its own remove-a-tag ability.
+    /// "Whenever a tag is removed" — heard when the Runner loses a tag by
+    /// any route (`TagRemoved`, `TagsRemoved`, `TagsCleared`). Synapse
+    /// Global: Faster than Thought installs off it, including off its own
+    /// remove-a-tag ability. The moment is the remover's, so "whenever
+    /// **you** remove 1 or more tags" (Valentina Ferreira Carvalho) is this
+    /// trigger with `when: Whose(Runner)` (`Trigger::states_whose`).
     OnTagRemoved,
     /// "The first time each turn you take bad publicity" — fired against
     /// the Corp's cards when the Corp takes bad publicity by any route
@@ -492,9 +494,11 @@ pub enum EventFilter {
     AtLeast(u32),
     /// The moment is this player's — "when **the Runner's** discard phase
     /// ends", printed on a Corp identity (Méliès U). Only on a trigger
-    /// phrased about its controller (`Hears::OwnSide`), whose "your" it
-    /// replaces: `listeners` hears the named side's occurrences instead of
-    /// the controller's. Composition didn't work: `OwnSide` was decided
+    /// whose moment names a player (`Trigger::states_whose`): on one
+    /// phrased about its controller (`Hears::OwnSide`) it replaces the
+    /// "your", and `listeners` hears the named side's occurrences instead
+    /// of the controller's; on a tag's removal it is "whenever **you**
+    /// remove", which a trigger about the game cannot otherwise say. Composition didn't work: `OwnSide` was decided
     /// before `when` was read, so no filter could reach the other side's
     /// phase, and a `Trigger` per "the Runner's" would be the variant the
     /// Listener Rule forbids.
@@ -624,6 +628,16 @@ impl Trigger {
     /// beginning.
     pub fn names_a_subject(self) -> bool {
         matches!(self.about(), TriggerAbout::Card | TriggerAbout::Server)
+    }
+
+    /// Whether this trigger's moment names a player a card may ask for with
+    /// `EventFilter::Whose`: every trigger phrased about "you", and a tag's
+    /// removal, whose moment is the remover's (CR 1.14.3a) though Synapse
+    /// Global's "whenever a tag is removed" hears anyone's. Other triggers
+    /// about the game carry a player (a run is the Runner's) that no card
+    /// asks for, and a `Whose` on one would read as a restriction it is not.
+    pub fn states_whose(self) -> bool {
+        self.hears() == Hears::OwnSide || self == Trigger::OnTagRemoved
     }
 
     /// Whose moment this trigger hears. Read off how the pool's cards print

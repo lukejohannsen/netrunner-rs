@@ -1083,8 +1083,8 @@ impl CardDefinition {
                 Some(EventFilter::Server(_)) => about == TriggerAbout::Server,
                 Some(EventFilter::Damage(_)) => about == TriggerAbout::Damage,
                 Some(EventFilter::AtLeast(_)) => about == TriggerAbout::Cards,
-                // Only a "your" can be made "the Runner's".
-                Some(EventFilter::Whose(_)) => triggered.trigger.hears() == crate::dsl::Hears::OwnSide,
+                // Only a moment that names a player can be made one's.
+                Some(EventFilter::Whose(_)) => triggered.trigger.states_whose(),
                 // Only what the moment states: a pass says whether the ice
                 // was outermost and fully broken, a break its strength.
                 Some(EventFilter::Ice(required)) => {
@@ -1148,8 +1148,16 @@ impl CardDefinition {
             return Err(CardValidationError::OncePerTurnDoesNotFit(self.id.clone(), "a continuous effect is read, never used, so its `while` cannot be a `OncePerTurn`"));
         }
         let once_per_turn = self.triggers.iter().filter_map(|triggered| triggered.requirement.as_ref()).chain(self.abilities.iter().filter_map(|ability| ability.requirement.as_ref()));
-        if once_per_turn.filter(|requirement| requirement.mentions_once_per_turn()).count() > 1 {
+        if once_per_turn.clone().filter(|requirement| requirement.mentions_once_per_turn()).count() > 1 {
             return Err(CardValidationError::OncePerTurnDoesNotFit(self.id.clone(), "two once-per-turn abilities on one card would share one use (`OncePerTurnKey` is the card and which copy)"));
+        }
+        // The same two rules hold for the run's use limit, which is keyed
+        // the same way.
+        if self.continuous.iter().any(|effect| effect.condition.as_ref().is_some_and(EffectRequirement::mentions_once_per_run)) {
+            return Err(CardValidationError::OncePerTurnDoesNotFit(self.id.clone(), "a continuous effect is read, never used, so its `while` cannot be a `OncePerRun`"));
+        }
+        if once_per_turn.filter(|requirement| requirement.mentions_once_per_run()).count() > 1 {
+            return Err(CardValidationError::OncePerTurnDoesNotFit(self.id.clone(), "two once-per-run abilities on one card would share one use (`OncePerTurnKey` is the card and which copy)"));
         }
         for effect in self.continuous.iter().filter(|effect| effect.first_each_turn) {
             let occurrences = match &effect.applies_to {

@@ -189,14 +189,14 @@ pub(crate) fn selection_positions(
             .collect();
         return Some(SelectionPositions { chooser: payment.side, corp_archives: false, candidates });
     }
-    let Some(PendingDecision::ChooseCards { side, source, filter, selected, source_install, .. }) = state.pending_decision.as_ref() else {
+    let Some(PendingDecision::ChooseCards { side, source, filter, selected, source_install, source_card, .. }) = state.pending_decision.as_ref() else {
         return None;
     };
     let corp_archives = matches!(source, CardZoneRef::OwnArchives)
         || (matches!(source, CardZoneRef::OpponentDiscard) && owning_side(*side, source) == Side::Corp);
     let cards = zone_card_ids(state, *side, source, *source_install);
     let installs = zone_install_ids(state, *side, source);
-    let mut positions = eligible_positions(state, registry, *side, source, filter, *source_install);
+    let mut positions = eligible_positions(state, registry, *side, source, filter, *source_install, source_card.as_ref());
     positions.extend(selected.iter().copied());
     positions.sort_unstable();
     positions.dedup();
@@ -244,6 +244,9 @@ fn hosted_cards_of_mut(state: &mut GameState, source: Option<InstallId>) -> Opti
 /// contain cards the chooser's own `ClientView` masks. A position names
 /// the slot on the table without publishing what sits in it, and — unlike
 /// a `CardId` — distinguishes two copies of the same card.
+///
+/// `source_card` is the card whose text is choosing: an operation among
+/// its own Archives never finds itself (`resolving_operation_in`).
 pub(crate) fn eligible_positions(
     state: &GameState,
     registry: &CardRegistry,
@@ -251,14 +254,39 @@ pub(crate) fn eligible_positions(
     zone: &CardZoneRef,
     filter: &CardFilter,
     source: Option<InstallId>,
+    source_card: Option<&CardId>,
 ) -> Vec<usize> {
+    let resolving = source_card.and_then(|card| resolving_operation_in(state, registry, chooser, zone, card));
     zone_card_ids(state, chooser, zone, source)
         .into_iter()
         .enumerate()
+        .filter(|(position, _)| Some(*position) != resolving)
         .filter(|(_, id)| registry.get(id).is_some_and(|card| card_matches_filter(card, filter)))
         .filter(|(position, _)| instance_matches_filter(state, registry, chooser, zone, *position, filter, source))
         .map(|(position, _)| position)
         .collect()
+}
+
+/// Where in the Corp's Archives an operation that is still resolving sits,
+/// when `zone` is those Archives and `card` is that operation.
+///
+/// **It is not there yet.** CR 8.6.7a places a played card in the play
+/// area, and 8.6.7g trashes it only once its play abilities have resolved;
+/// the engine files an operation into Archives as it is played
+/// (`engine::play_operation_card`) so that an `OnPlay` which parks a
+/// decision finds the card where it will end up. Corporate Hospitality's
+/// "Add 1 card from Archives to HQ" then offered the Corporate
+/// Hospitality resolving it, a free replay every time. Filing it late
+/// would need the end of a resolution that may be parked across several
+/// actions, which nothing marks; the copy the play filed is the last
+/// faceup one of that card, since nothing reaches Archives between the
+/// filing and the resolution it is waiting behind.
+fn resolving_operation_in(state: &GameState, registry: &CardRegistry, chooser: Side, zone: &CardZoneRef, card: &CardId) -> Option<usize> {
+    let corp_archives = matches!(zone, CardZoneRef::OwnArchives | CardZoneRef::OpponentDiscard) && owning_side(chooser, zone) == Side::Corp;
+    if !corp_archives || registry.get(card)?.card_type != crate::dsl::CardType::Operation {
+        return None;
+    }
+    state.corp.archives.iter().rposition(|archived| archived.card == *card && !archived.facedown)
 }
 
 /// The instance-level half of `CardFilter`, which `card_matches_filter`
@@ -914,15 +942,15 @@ pub(crate) fn resolve_toggle_card_selection(
     registry: &CardRegistry,
     position: usize,
 ) -> Result<Vec<GameEvent>, RulesError> {
-    let Some(PendingDecision::ChooseCards { side, source, filter, source_install, .. }) = state.pending_decision.as_ref() else {
+    let Some(PendingDecision::ChooseCards { side, source, filter, source_install, source_card, .. }) = state.pending_decision.as_ref() else {
         return Err(RulesError::NoPendingDecision);
     };
     // Cloned out so the immutable borrow of `state.pending_decision` ends
     // here — `eligible_positions` needs `state` immutably too, and the
     // subsequent mutation needs it mutably.
-    let (side, source, filter, source_install) = (*side, source.clone(), filter.clone(), *source_install);
+    let (side, source, filter, source_install, source_card) = (*side, source.clone(), filter.clone(), *source_install, source_card.clone());
 
-    if !eligible_positions(state, registry, side, &source, &filter, source_install).contains(&position) {
+    if !eligible_positions(state, registry, side, &source, &filter, source_install, source_card.as_ref()).contains(&position) {
         return Err(RulesError::CardNotEligibleForSelection(position));
     }
 

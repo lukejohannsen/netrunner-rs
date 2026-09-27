@@ -518,8 +518,10 @@ pub fn narrate_event(
         },
         GameEvent::RunnerFlatlined => "the Runner is flatlined".to_string(),
         GameEvent::TagsGiven { side, amount } => format!("{side:?} took {amount} tag(s)"),
-        GameEvent::TagRemoved { side } => format!("{side:?} removed a tag"),
-        GameEvent::TagsRemoved { side, amount } => format!("{side:?} removed {amount} tag(s)"),
+        // The remover, not whose tags: Synapse Global's cost is the Corp
+        // removing the Runner's tag, which read "Runner removed 1 tag(s)".
+        GameEvent::TagRemoved { by, .. } => format!("{by:?} removed a tag"),
+        GameEvent::TagsRemoved { by, amount, .. } => format!("{by:?} removed {amount} tag(s)"),
         GameEvent::BadPublicityGiven { amount } => format!("the Corp took {amount} bad publicity"),
         GameEvent::BadPublicityRemoved { amount } => format!("the Corp removed {amount} bad publicity"),
 

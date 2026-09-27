@@ -2463,7 +2463,7 @@ fn remove_tag(state: &GameState, registry: &CardRegistry) -> Result<(GameState, 
     events.extend(ability::pay_cost(&mut next, registry, side, &Cost::Credits(2), Purpose::RemoveTag, None)?);
 
     next.runner.tags -= 1;
-    let removed = GameEvent::TagRemoved { side };
+    let removed = GameEvent::TagRemoved { side, by: side };
     // The Corp's identity may react to a tag coming off however it went
     // (Synapse Global: Faster than Thought).
     dispatcher::emit(&mut next, registry, &mut events, removed)?;
@@ -5767,7 +5767,7 @@ mod tests {
             vec![
                 GameEvent::ClickSpent { side: Side::Runner },
                 GameEvent::CreditsSpent { side: Side::Runner, amount: 2 },
-                GameEvent::TagRemoved { side: Side::Runner },
+                GameEvent::TagRemoved { side: Side::Runner, by: Side::Runner },
             ]
         );
     }

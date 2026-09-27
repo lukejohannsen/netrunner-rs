@@ -401,7 +401,8 @@ pub fn evaluate_effect(
             // must not fire on a request that removed nothing.
             let removed = state.runner.tags.min(resolve_amount(amount, ctx, state, registry));
             state.runner.tags -= removed;
-            let event = GameEvent::TagsRemoved { side: Side::Runner, amount: removed };
+            let by = acting_side(acting_card, registry);
+            let event = GameEvent::TagsRemoved { side: Side::Runner, amount: removed, by };
             // Dispatched here rather than from the caller, for the same
             // reason `DamageTaken` is: the event is produced deep in an
             // effect and returned, and Synapse Global: Faster than Thought
@@ -1250,7 +1251,7 @@ pub fn evaluate_effect(
 
         Effect::PromptChooseCards { side, source, filter, min, max, reveal, shuffle_after, destination, then } => {
             let filter = &filter.clone().with_this_server(acting_server(state, ctx));
-            let available = crate::rules::pending_choice::eligible_positions(state, registry, *side, source, filter, ctx.acting_install);
+            let available = crate::rules::pending_choice::eligible_positions(state, registry, *side, source, filter, ctx.acting_install, ctx.acting_card);
             if available.is_empty() || available.len() < *min as usize {
                 // Nothing to do — same "silently no-op" leniency
                 // `DrawCards`/`TrashCard`'s "already gone" case establish.
@@ -2443,7 +2444,7 @@ pub(crate) fn cost_is_affordable(
         Cost::Forfeit(count) => side == Side::Corp && forfeitable(state).len() >= *count as usize,
         // The same scan the payment picks from.
         Cost::Trash { from, filter, count, .. } => {
-            crate::rules::pending_choice::eligible_positions(state, registry, side, from, filter, ctx.acting_install).len() >= *count as usize
+            crate::rules::pending_choice::eligible_positions(state, registry, side, from, filter, ctx.acting_install, ctx.acting_card).len() >= *count as usize
         }
         Cost::Derez { filter, count } => derez_eligible(state, registry, side, filter, ctx).len() >= *count as usize,
         Cost::TrashSelf | Cost::RemoveSelfFromGame | Cost::TakeTags(_) | Cost::ClearTags => true,
@@ -2463,7 +2464,7 @@ fn derez_eligible(state: &GameState, registry: &CardRegistry, side: Side, filter
     if side != Side::Corp {
         return Vec::new();
     }
-    crate::rules::pending_choice::eligible_positions(state, registry, side, &crate::dsl::CardZoneRef::OwnInstalled, filter, ctx.acting_install)
+    crate::rules::pending_choice::eligible_positions(state, registry, side, &crate::dsl::CardZoneRef::OwnInstalled, filter, ctx.acting_install, ctx.acting_card)
         .into_iter()
         .filter(|&position| state.corp.installed[position].is_rezzed(registry))
         .collect()
@@ -2591,7 +2592,7 @@ pub(crate) fn pay_cost_ctx(
 
         Cost::ClearTags => {
             state.runner.tags = 0;
-            Ok(vec![GameEvent::TagsCleared { side }])
+            Ok(vec![GameEvent::TagsCleared { side: Side::Runner, by: side }])
         }
 
         Cost::RemoveTags(amount) => {
@@ -2601,7 +2602,7 @@ pub(crate) fn pay_cost_ctx(
             state.runner.tags -= *amount;
             // Returned, not dispatched: the payer dispatches its cost's
             // events after the effect (`dispatch_cost_events`).
-            Ok(vec![GameEvent::TagsRemoved { side: Side::Runner, amount: *amount }])
+            Ok(vec![GameEvent::TagsRemoved { side: Side::Runner, amount: *amount, by: side }])
         }
 
         Cost::SufferDamage(damage_type, amount) => {
@@ -2651,7 +2652,7 @@ pub(crate) fn pay_cost_ctx(
         }
 
         Cost::Trash { from, filter, count, reveal } => {
-            let eligible = crate::rules::pending_choice::eligible_positions(state, registry, side, from, filter, ctx.acting_install);
+            let eligible = crate::rules::pending_choice::eligible_positions(state, registry, side, from, filter, ctx.acting_install, ctx.acting_card);
             if eligible.len() < *count as usize {
                 return Err(RulesError::NotEnoughCardsToTrash { required: *count, available: eligible.len() as u32 });
             }
@@ -2862,6 +2863,16 @@ pub fn check_requirement(
             }
             Ok(())
         }
+        EffectRequirement::OncePerRun => {
+            let key = OncePerTurnKey { card: ctx.acting_card.cloned(), install: ctx.acting_install };
+            match &state.active_run {
+                Some(run) if !run.once_per_run_used.contains(&key) => Ok(()),
+                _ => Err(RulesError::RequirementNotMet),
+            }
+        }
+        EffectRequirement::DuringYourTurn => {
+            if crate::rules::listeners::active_side(state) == side { Ok(()) } else { Err(RulesError::RequirementNotMet) }
+        }
         EffectRequirement::RunnerCreditsAtMost(amount) => {
             if state.runner.resources.credits.0 > *amount {
                 return Err(RulesError::RequirementNotMet);
@@ -2877,7 +2888,7 @@ pub fn check_requirement(
         EffectRequirement::ZoneHasAtLeast { zone, count, filter } => {
             let found = match filter {
                 Some(filter) => {
-                    crate::rules::pending_choice::eligible_positions(state, registry, side, zone, filter, ctx.acting_install).len()
+                    crate::rules::pending_choice::eligible_positions(state, registry, side, zone, filter, ctx.acting_install, ctx.acting_card).len()
                 }
                 None => crate::rules::pending_choice::zone_card_ids(state, side, zone, ctx.acting_install).len(),
             };
@@ -3278,11 +3289,17 @@ pub(crate) fn consume_requirement(
             };
             used.insert(OncePerTurnKey { card: ctx.acting_card.cloned(), install: ctx.acting_install });
         }
+        EffectRequirement::OncePerRun => {
+            if let Some(run) = state.active_run.as_mut() {
+                run.once_per_run_used.insert(OncePerTurnKey { card: ctx.acting_card.cloned(), install: ctx.acting_install });
+            }
+        }
         EffectRequirement::And(a, b) => {
             consume_requirement(state, a, side, ctx);
             consume_requirement(state, b, side, ctx);
         }
         EffectRequirement::RunnerCreditsAtMost(_)
+        | EffectRequirement::DuringYourTurn
         | EffectRequirement::IdentityFlipped
         | EffectRequirement::IdentityCopy(_)
         | EffectRequirement::DuringRunOn(_)
@@ -3622,7 +3639,7 @@ mod tests {
         // The event reports the tag that actually came off, not the five
         // asked for — Synapse Global: Faster than Thought reacts to a
         // removal, and must not react to a request that removed nothing.
-        assert_eq!(events, vec![GameEvent::TagsRemoved { side: Side::Runner, amount: 1 }]);
+        assert_eq!(events, vec![GameEvent::TagsRemoved { side: Side::Runner, amount: 1, by: Side::Corp }]);
     }
 
     #[test]
@@ -4163,7 +4180,7 @@ mod tests {
         let events = pay_cost(&mut state, &CardRegistry::new(), Side::Runner, &Cost::ClearTags, Purpose::Other, None).unwrap();
 
         assert_eq!(state.runner.tags, 0);
-        assert_eq!(events, vec![GameEvent::TagsCleared { side: Side::Runner }]);
+        assert_eq!(events, vec![GameEvent::TagsCleared { side: Side::Runner, by: Side::Runner }]);
     }
 
     #[test]

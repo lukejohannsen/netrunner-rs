@@ -1,0 +1,76 @@
+{
+  "id": "seraph",
+  "title": "Seraph",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Sentry"
+  },
+  "cost": 10,
+  "strength": 5,
+  "triggers": [
+    {
+      "trigger": "OnEncounter",
+      "subject": "This",
+      "effects": [
+        {
+          "OfferPaidChoice": {
+            "side": "Runner",
+            "cost": {
+              "AnyOf": [
+                {
+                  "SufferDamage": [
+                    "Net",
+                    2
+                  ]
+                },
+                {
+                  "TakeTags": 1
+                }
+              ]
+            },
+            "if_paid": {
+              "Sequence": []
+            },
+            "if_declined": {
+              "LoseCredits": [
+                "Runner",
+                3
+              ]
+            },
+            "text": "they lose 3[credit] unless they suffer 2 net damage or take 1 tag"
+          }
+        }
+      ]
+    }
+  ],
+  "subroutines": [
+    {
+      "text": "The Runner loses 3[credit].",
+      "effect": {
+        "LoseCredits": [
+          "Runner",
+          3
+        ]
+      }
+    },
+    {
+      "text": "Do 2 net damage.",
+      "effect": {
+        "DealDamage": [
+          "Net",
+          2
+        ]
+      }
+    },
+    {
+      "text": "Give the Runner 1 tag.",
+      "effect": {
+        "GiveTags": {
+          "Fixed": 1
+        }
+      }
+    }
+  ],
+  "numeric_id": 34118,
+  "is_playable": true
+}
