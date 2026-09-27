@@ -64,7 +64,11 @@ pub fn readouts(view: &ClientView, side: Side) -> Vec<Readout> {
     // but a three-pointer's; close enough to be worth the colour.
     // Named for what a click opens, not for the number: the points *are*
     // the agendas, and "Points" did not say there was a pile behind it.
-    let points = |side, points: u32| Readout { label: "Agendas", value: format!("{points}/{to_win}"), alarm: points + 2 >= to_win && points > 0, opens: Some(Pile::Agendas(side)) };
+    // Signed: Word on the Street can put a score below 0.
+    let points = |side, points: i32| {
+        let to_win = i32::try_from(to_win).unwrap_or(i32::MAX);
+        Readout { label: "Agendas", value: format!("{points}/{to_win}"), alarm: points + 2 >= to_win && points > 0, opens: Some(Pile::Agendas(side)) }
+    };
     match side {
         Side::Corp => {
             let corp = &view.corp;
@@ -107,7 +111,11 @@ pub fn details(view: &ClientView, side: Side) -> Option<String> {
 pub struct ScoredCard {
     pub card: CardId,
     pub title: String,
-    pub points: u32,
+    /// Signed: a card added "as an agenda" can be worth −1.
+    pub points: i32,
+    /// Added "as an agenda" rather than scored or stolen (CR 10.1.3), and
+    /// whether it may be forfeited — Myōshu, Word on the Street.
+    pub as_agenda: Option<netrunner_core::dsl::AsAgenda>,
     /// The handle the agenda kept from its install, when the side scored
     /// it: a scored agenda's ability is activated by it. A stolen agenda
     /// has none.
@@ -127,13 +135,17 @@ impl ScoredCard {
     pub fn facts(&self, side: Side, registry: &CardRegistry) -> Vec<String> {
         let mut lines = Vec::new();
         let def = registry.get(&self.card);
-        let how = match side {
-            Side::Corp => "Scored by the Corp",
-            Side::Runner => "Stolen by the Runner",
+        let how = match (side, self.as_agenda) {
+            (_, Some(_)) => "Added as an agenda",
+            (Side::Corp, None) => "Scored by the Corp",
+            (Side::Runner, None) => "Stolen by the Runner",
         };
-        match def.and_then(|d| d.advancement_requirement) {
+        match def.and_then(|d| d.advancement_requirement).filter(|_| self.as_agenda.is_none()) {
             Some(need) => lines.push(format!("{how} · {} point{} · advancement requirement {need}", self.points, if self.points == 1 { "" } else { "s" })),
             None => lines.push(format!("{how} · {} point{}", self.points, if self.points == 1 { "" } else { "s" })),
+        }
+        if self.as_agenda.is_some_and(|as_agenda| as_agenda.cannot_forfeit) {
+            lines.push("Cannot be forfeited".to_string());
         }
         if self.counters > 0 {
             lines.push(format!("{} agenda counter{}", self.counters, if self.counters == 1 { "" } else { "s" }));
@@ -146,19 +158,22 @@ impl ScoredCard {
 /// the printed value: the view carries only the side's total, and a card
 /// that changes what an agenda is worth moves that total, not the card.
 pub fn score_area(view: &ClientView, side: Side, registry: &CardRegistry) -> Vec<ScoredCard> {
-    let entry = |card: &CardId, install: Option<InstallId>, counters: u32| {
+    let entry = |card: &CardId, install: Option<InstallId>, counters: u32, as_agenda: Option<netrunner_core::dsl::AsAgenda>| {
         let def = registry.get(card);
         ScoredCard {
             card: card.clone(),
             title: def.map_or_else(|| card.0.replace('_', " "), |d| d.title.clone()),
-            points: def.and_then(|d| d.agenda_points).unwrap_or(0),
+            // A card added as an agenda is worth what the addition said,
+            // never what it prints (CR 10.1.3).
+            points: as_agenda.map_or_else(|| def.and_then(|d| d.agenda_points).unwrap_or(0) as i32, |as_agenda| as_agenda.points),
+            as_agenda,
             install,
             counters,
         }
     };
     match side {
-        Side::Corp => view.corp.scored_agendas.iter().map(|a| entry(&a.card, Some(a.install_id), a.agenda_counters)).collect(),
-        Side::Runner => view.runner.scored_agendas.iter().map(|c| entry(c, None, 0)).collect(),
+        Side::Corp => view.corp.scored_agendas.iter().map(|a| entry(&a.card, Some(a.install_id), a.agenda_counters, a.as_agenda)).collect(),
+        Side::Runner => view.runner.scored_agendas.iter().map(|c| entry(c, None, 0, None)).collect(),
     }
 }
 
@@ -208,7 +223,7 @@ mod tests {
         let to_win = view.rules.winning_agenda_points;
         assert_eq!(readouts(&view, Side::Corp)[2].value, format!("0/{to_win}"));
         assert!(!readouts(&view, Side::Corp)[2].alarm);
-        view.corp.agenda_points = to_win - 2;
+        view.corp.agenda_points = to_win as i32 - 2;
         assert!(readouts(&view, Side::Corp)[2].alarm);
     }
 
@@ -222,7 +237,7 @@ mod tests {
         let stolen = score_area(&view, Side::Runner, &registry);
         assert_eq!(stolen.len(), 2, "two copies are two rows");
         assert_eq!(stolen[0].title, agenda.title);
-        assert_eq!(stolen[0].points, agenda.agenda_points.unwrap());
+        assert_eq!(stolen[0].points, agenda.agenda_points.unwrap() as i32);
         assert!(stolen[0].install.is_none(), "a stolen agenda has no ability handle");
         let facts = stolen[0].facts(Side::Runner, &registry);
         assert!(facts[0].starts_with("Stolen by the Runner"), "{facts:?}");

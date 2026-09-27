@@ -746,7 +746,7 @@ pub fn resolve_steal(
         run.agendas_stolen_this_run = run.agendas_stolen_this_run.saturating_add(1);
     }
     let agenda_points = crate::rules::win::agenda_value_in(state, registry, card_id, Side::Runner);
-    state.runner.resources.agenda_points = state.runner.resources.agenda_points.gain(agenda_points);
+    state.runner.resources.agenda_points = state.runner.resources.agenda_points.gain(agenda_points as i32);
     let stolen_event = GameEvent::AgendaStolen { card: card_id.clone(), agenda_points };
     // Jinteki: Personal Evolution-style identity reaction to a steal —
     // unconditional dispatch, no per-turn gate.

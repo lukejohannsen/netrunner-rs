@@ -142,6 +142,23 @@ pub enum Cost {
     /// this many are available; otherwise removes them via the same
     /// counter-mutation path `Effect::RemoveCounters` uses.
     RemoveCounters(u32),
+    /// Remove `u32` advancement counters hosted on the acting card —
+    /// Sacrifice Zone Expansion's "you may remove 1 hosted advancement
+    /// counter to do 1 meat damage". Not `RemoveCounters`: advancement
+    /// counters are not the card's generic counters
+    /// (`InstalledCard::advancement_tokens`). Payable only with that many
+    /// (CR 1.16.1).
+    RemoveAdvancementCounters(u32),
+    /// The card this is printed on goes to the Corp's score area "as an
+    /// agenda" (CR 10.1.3) — Word on the Street's "As an additional cost to
+    /// score an agenda the Corp installed this turn, they must add this
+    /// resource to their score area as an agenda worth −1 agenda points".
+    /// Paid by the Corp, out of the Runner's rig: an additional cost is the
+    /// payer's, wherever the card that imposes it is
+    /// (`ContinuousKind::ScoreCost`). The effect of the same name is the
+    /// same move made by a card's own text. Payable while the card is
+    /// installed.
+    AddToScoreAreaAsAgenda(crate::dsl::AsAgenda),
     /// Removes the acting card from the game entirely — Spin Doctor's
     /// "Remove this asset from the game:" ability cost. Distinct from
     /// `TrashSelf`: a trashed card goes to Archives (where it stays

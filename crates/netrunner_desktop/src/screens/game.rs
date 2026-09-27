@@ -4529,7 +4529,7 @@ fn end_table(panel: &mut ChildSpawnerCommands, theme: &Theme, tally: &netrunner_
             (words, if side == you { theme.accent } else { theme.text_dim })
         };
         line(table, "", [heading(Side::Corp), heading(Side::Runner)], theme.text_dim);
-        let cell = |n: Option<u32>| (n.map_or_else(String::new, |n| n.to_string()), theme.text);
+        let cell = |n: Option<i64>| (n.map_or_else(String::new, |n| n.to_string()), theme.text);
         for row in tally.rows() {
             line(table, row.label, [cell(row.corp), cell(row.runner)], theme.text_dim);
         }

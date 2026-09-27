@@ -288,11 +288,20 @@ fn instance_matches_filter(
     let corp_install = (installed_zone && owning_side(chooser, zone) == Side::Corp)
         .then(|| state.corp.installed.get(position))
         .flatten();
+    // The Corp's score area is the other list of copies a turn-word reads.
+    let score_area = matches!(zone, CardZoneRef::OwnScoreArea | CardZoneRef::OpponentScoreArea);
+    let scored = (score_area && owning_side(chooser, zone) == Side::Corp).then(|| state.corp.scored_agendas.get(position)).flatten();
 
     match filter {
         // No Runner card needs this restriction yet; a rig card is never
         // eligible rather than silently always-eligible.
-        CardFilter::NotInstalledThisTurn => corp_install.is_some_and(|c| !c.installed_this_turn),
+        CardFilter::NotInstalledThisTurn => {
+            corp_install.is_some_and(|c| !c.installed_this_turn) || scored.is_some_and(|scored| !installed_this_turn(state, scored))
+        }
+        CardFilter::InstalledThisTurn => {
+            corp_install.is_some_and(|c| c.installed_this_turn) || scored.is_some_and(|scored| installed_this_turn(state, scored))
+        }
+        CardFilter::ScoredThisTurn => scored.is_some_and(|scored| scored_this_turn(state, scored)),
         // Only an unrezzed installed Corp card can be a rez target. The
         // Runner has no rez state, so a rig card is never eligible.
         CardFilter::UnrezzedIce => corp_install.is_some_and(|c| !c.rezzed),
@@ -318,7 +327,7 @@ fn instance_matches_filter(
                 })
             })
         }
-        CardFilter::Rezzed => corp_install.is_some_and(|c| c.rezzed),
+        CardFilter::Rezzed => corp_install.is_some_and(|c| c.is_rezzed(registry)),
         CardFilter::Unrezzed => corp_install.is_some_and(|c| !c.rezzed),
         CardFilter::AgendaPointsAtMostRunnerTags => zone_card_ids(state, chooser, zone, source)
             .get(position)
@@ -381,6 +390,49 @@ fn instance_matches_filter(
         CardFilter::All(filters) => {
             filters.iter().all(|filter| instance_matches_filter(state, registry, chooser, zone, position, filter, source))
         }
+        _ => true,
+    }
+}
+
+/// Whether the agenda in a score area was scored this turn (Myōshu's "you
+/// scored an agenda this turn"). A card added "as an agenda" was not scored
+/// (CR 1.17.3f).
+pub(crate) fn scored_this_turn(state: &GameState, scored: &crate::rules::state::ScoredAgenda) -> bool {
+    scored.as_agenda.is_none() && scored.scored_on_turn == state.turn
+}
+
+/// Whether the agenda in a score area was installed this turn: scored this
+/// turn, on the turn it was installed.
+pub(crate) fn installed_this_turn(state: &GameState, scored: &crate::rules::state::ScoredAgenda) -> bool {
+    scored_this_turn(state, scored) && scored.installed_on_scoring_turn
+}
+
+/// The copy's half of a card filter, for the words about when a copy was
+/// installed or scored — Word on the Street's "when the Corp scores an
+/// agenda they **did not install this turn**" in a trigger's `when`, and
+/// "an agenda the Corp **installed this turn**" in a `Scope::Scoring`. Read
+/// off the install `install` names, or the scored copy that kept its handle
+/// (`ScoredAgenda::installed_on_scoring_turn`). Every other word, no copy
+/// (or one gone from both places), and an instance word under `AnyOf` or
+/// `Not` pass, as `EventFilter::Card` always let an instance word pass: the
+/// definition half is the rest of the answer.
+pub(crate) fn copy_matches(state: &GameState, filter: &crate::dsl::CardFilter, install: Option<InstallId>) -> bool {
+    use crate::dsl::CardFilter;
+    let Some(install) = install else { return true };
+    let installed = state.find_corp_install(install);
+    let scored = state.corp.find_scored(install);
+    if installed.is_none() && scored.is_none() {
+        return true;
+    }
+    match filter {
+        CardFilter::All(parts) => parts.iter().all(|part| copy_matches(state, part, Some(install))),
+        CardFilter::InstalledThisTurn => {
+            installed.is_some_and(|c| c.installed_this_turn) || scored.is_some_and(|scored| installed_this_turn(state, scored))
+        }
+        CardFilter::NotInstalledThisTurn => {
+            installed.is_some_and(|c| !c.installed_this_turn) || scored.is_some_and(|scored| !installed_this_turn(state, scored))
+        }
+        CardFilter::ScoredThisTurn => scored.is_some_and(|scored| scored_this_turn(state, scored)),
         _ => true,
     }
 }

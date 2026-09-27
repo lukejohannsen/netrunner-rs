@@ -155,6 +155,9 @@ pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
         }
         GameEvent::AgendaStolen { card: stolen, .. } => vec![moment(Trigger::OnAgendaStolen, &card(stolen, None), Some(Side::Runner))],
         GameEvent::AgendaForfeited { card: forfeited } => vec![moment(Trigger::OnForfeit, &card(forfeited, None), None)],
+        // Not scored (CR 1.17.3f), and nothing prints "when a card is added
+        // to a score area".
+        GameEvent::AddedToScoreAreaAsAgenda { .. } => Vec::new(),
 
         GameEvent::IceRezzed { card: rezzed, install, .. } => vec![moment(Trigger::OnRez, &card(rezzed, Some(*install)), Some(Side::Corp))],
         GameEvent::CardAdvanced { install, card: advanced, .. } => match advanced {
@@ -169,6 +172,8 @@ pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
         // rule here instead of deriving it again. A card that triggers on a
         // *placement* would need a `Trigger` of its own; none prints one.
         GameEvent::AdvancementCountersPlaced { .. } => Vec::new(),
+        // A cost paid; nothing prints "when a counter is removed".
+        GameEvent::AdvancementCountersRemoved { .. } => Vec::new(),
         GameEvent::AbilityGainedCredits { side, card: source } => {
             vec![moment(Trigger::OnAbilityGainedCredits, &card(source, None), Some(*side))]
         }
@@ -345,9 +350,9 @@ pub(crate) fn plan_for(state: &GameState, registry: &CardRegistry, event: &GameE
         // "The first time each turn": one verdict a card, because its
         // first-time entries share a count, judged against the log as the
         // event was recorded rather than as it stands now.
-        let later = definition.triggers.iter().any(|triggered| triggered.first_each_turn) && !as_of.is_first(&turn_log::first_time_of(definition));
+        let later = definition.triggers.iter().any(|triggered| triggered.first_each_turn) && !is_first(state, definition, &listener, as_of);
         for moment in &moments {
-            let mut hearing = definition.triggers.iter().filter(|triggered| hears(registry, triggered, &listener, moment, later)).peekable();
+            let mut hearing = definition.triggers.iter().filter(|triggered| hears(state, registry, triggered, &listener, moment, later)).peekable();
             if hearing.peek().is_none() {
                 continue;
             }
@@ -384,6 +389,21 @@ pub(crate) fn plan_for(state: &GameState, registry: &CardRegistry, event: &GameE
     plan
 }
 
+/// Whether the occurrence `as_of` counted is the first this turn of what
+/// `definition`'s "first time each turn" entries listen for. A card whose
+/// first time is about itself ("you advance **this agenda**") is judged on
+/// its copy, the rest on the turn; `validate` keeps a card to one or the
+/// other.
+fn is_first(state: &GameState, definition: &crate::dsl::CardDefinition, listener: &Listener, as_of: &AsOf) -> bool {
+    let first_time = definition.triggers.iter().filter(|triggered| triggered.first_each_turn);
+    if first_time.clone().any(|triggered| triggered.subject == Some(Subject::This)) {
+        let triggers: Vec<Trigger> = first_time.map(|triggered| triggered.trigger).collect();
+        as_of.is_first_on(listener.install, state.turn, &triggers)
+    } else {
+        as_of.is_first(&turn_log::first_time_of(definition))
+    }
+}
+
 /// Whether `moment` is about `listener` itself — or, for a moment about a
 /// server, about the server it is in.
 fn is_this(listener: &Listener, moment: &Moment) -> bool {
@@ -398,13 +418,13 @@ fn is_this(listener: &Listener, moment: &Moment) -> bool {
 }
 
 /// Whether what a moment is about passes a card's `when`.
-fn passes(registry: &CardRegistry, filter: &EventFilter, moment: &Moment) -> bool {
+fn passes(state: &GameState, registry: &CardRegistry, filter: &EventFilter, moment: &Moment) -> bool {
     if let EventFilter::Ice(required) = filter {
         return moment.ice.is_some_and(|facts| required.admits(facts));
     }
     match (filter, &moment.about) {
-        (EventFilter::Card(filter), About::Card { card, .. }) => {
-            registry.get(card).is_some_and(|definition| crate::dsl::card_matches_filter(definition, filter))
+        (EventFilter::Card(filter), About::Card { card, install, .. }) => {
+            registry.get(card).is_some_and(|definition| crate::dsl::card_matches_filter(definition, filter)) && crate::rules::pending_choice::copy_matches(state, filter, *install)
         }
         (EventFilter::InstalledCard(filter), About::Card { card, installed: true, .. }) => {
             registry.get(card).is_some_and(|definition| crate::dsl::card_matches_filter(definition, filter))
@@ -427,11 +447,11 @@ fn passes(registry: &CardRegistry, filter: &EventFilter, moment: &Moment) -> boo
 pub(crate) fn when_admits(state: &GameState, registry: &CardRegistry, triggered: &TriggeredEffect, event: Option<&GameEvent>) -> bool {
     let Some(filter) = &triggered.when else { return true };
     let Some(event) = event else { return false };
-    moments(state, event).iter().any(|moment| moment.trigger == triggered.trigger && passes(registry, filter, moment))
+    moments(state, event).iter().any(|moment| moment.trigger == triggered.trigger && passes(state, registry, filter, moment))
 }
 
 /// Whether one `TriggeredEffect` on `listener` hears `moment`.
-fn hears(registry: &CardRegistry, triggered: &TriggeredEffect, listener: &Listener, moment: &Moment, later: bool) -> bool {
+fn hears(state: &GameState, registry: &CardRegistry, triggered: &TriggeredEffect, listener: &Listener, moment: &Moment, later: bool) -> bool {
     if triggered.trigger != moment.trigger {
         return false;
     }
@@ -440,7 +460,7 @@ fn hears(registry: &CardRegistry, triggered: &TriggeredEffect, listener: &Listen
     if triggered.first_each_turn && later {
         return false;
     }
-    if triggered.when.as_ref().is_some_and(|filter| !passes(registry, filter, moment)) {
+    if triggered.when.as_ref().is_some_and(|filter| !passes(state, registry, filter, moment)) {
         return false;
     }
     if triggered.trigger.hears() == Hears::OwnSide && moment.of.is_some_and(|side| side != listener.side) {
@@ -846,7 +866,7 @@ mod tests {
         trendsetting.triggers[0].first_each_turn = true;
         let registry = registry(vec![trendsetting, listens("pad_campaign", Side::Corp, CardType::Asset, Trigger::OnTurnStart, None)]);
         let mut state = GameState { phase: GamePhase::Action(Side::Runner), ..Default::default() };
-        state.corp.scored_agendas = vec![crate::rules::state::ScoredAgenda { card: CardId("aggressive_trendsetting".to_string()), install_id: InstallId(7), agenda_counters: 0, scored_on_turn: 0 }];
+        state.corp.scored_agendas = vec![crate::rules::state::ScoredAgenda { card: CardId("aggressive_trendsetting".to_string()), install_id: InstallId(7), agenda_counters: 0, scored_on_turn: 0, installed_on_scoring_turn: false, as_agenda: None }];
 
         let trash = |install| GameEvent::CardTrashedFromAccess { card: CardId("pad_campaign".to_string()), cost_paid: 4, install };
         let as_of = turn_log::record(&mut state, &registry, &trash(None));

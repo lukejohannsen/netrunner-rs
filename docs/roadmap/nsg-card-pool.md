@@ -397,8 +397,8 @@ Division.
    **7a** (built, below): Luana Campos, a card leaving the table as a
    moment it can interrupt. **7b** (built, below): Read-Write Share,
    cards hosted facedown. **7c** (built, below): Hackerspace, a resource
-   installed onto a resource. **7d:** Myōshu, Word on the Street and Sacrifice Zone
-   Expansion, the score area. **7e:** Flagship, Tocsin and Stick and
+   installed onto a resource. **7d** (built, below): Myōshu, Word on the
+   Street and Sacrifice Zone Expansion, the score area. **7e:** Flagship, Tocsin and Stick and
    Poke.
 8. **Méliès U, alone:** hidden setup state, three sides, and masking.
 
@@ -1455,6 +1455,87 @@ deck. **No new `Effect`.** Vantage Point 59 of 66; `VP_UNIMPLEMENTED`
 - **Real play.** Ninety-six random games of Pay as You Go against
   Hostile Bid (seed 2) installed Hackerspace 26 times and installed Nurse
   Hạnh onto it 8 times.
+
+#### Stage 7d — the score area (27 September 2026)
+
+7 → 4.
+
+- **A card added to a score area "as an agenda"** (CR 10.1.3) keeps
+  nothing it printed and has only what the addition gives it:
+  `dsl::AsAgenda`, its points and whether "You cannot forfeit this
+  agenda.", carried on the copy as `ScoredAgenda::as_agenda`. So it is not
+  active (`rules::active`: Word on the Street in the Corp's score area is
+  a −1, not a resource), offers no ability, and was not scored (CR
+  1.17.3f): `GameEvent::AddedToScoreAreaAsAgenda` is an occurrence of
+  nothing. Myōshu adds itself with `Effect::AddToScoreAreaAsAgenda`, out
+  of Archives, where an operation is filed before its text resolves. A
+  forfeit counts only what may be forfeited, in the one list its
+  affordability and its payment read.
+- **A score is signed.** Word on the Street is worth −1, so
+  `AgendaPoints`, the view's points and the end-of-game tally are `i32`,
+  and the win check, the threat level and a client's number read one sum
+  (`rules::score`, CR 1.17.1). A printed agenda is still never worth
+  less than 0.
+- **An additional cost to score** is `ContinuousKind::ScoreCost(Cost)`
+  about `Scope::Scoring(filter)`, asked of the install being scored
+  (`continuous::Target::Scoring`), so "an agenda the Corp installed this
+  turn" is read off the copy. It is paid by the Corp out of the Runner's
+  rig (`Cost::AddToScoreAreaAsAgenda`: the card it is printed on), with
+  the score, and a checkpoint follows before the agenda moves (CR
+  1.16.10b–c). A Corp that will not pay does not score (CR 1.17.3b).
+  `StealCost` stayed a number: what is paid there is credits.
+- **"Installed this turn" and "scored this turn" are read off copies,
+  including scored ones.** A scored agenda keeps whether it was
+  installed the turn it was scored (`ScoredAgenda::
+  installed_on_scoring_turn`); `CardFilter::InstalledThisTurn` (the
+  positive twin, since `Not` is definition-level) and `ScoredThisTurn`
+  read it, in a selection (Myōshu's play requirement, a
+  `ZoneHasAtLeast` over the score area) and in a trigger's `when` (Word
+  on the Street's "an agenda they did not install this turn",
+  `pending_choice::copy_matches`, which `listeners` and the continuous
+  scan share).
+- **Install only faceup** (CR 3.2.3a) is `CardDefinition::installs_faceup`,
+  written as `InstalledCard::rezzed` with no rez, the flag BANGUN's flip
+  already sets; the difference the rule draws is that this agenda's
+  abilities are active on the table and BANGUN's are not. Because the flag
+  is shared, **"rezzed" in the rules' sense is now asked, not read**
+  (`InstalledCard::is_rezzed`, CR 8.1.1): a faceup agenda is neither
+  rezzed nor unrezzed, so `CardFilter::Rezzed`, `Cost::Derez` and
+  `Effect::DerezCard` pass it by. Before, a BANGUN-flipped agenda could be
+  derezzed.
+- **"The first time each turn you advance this agenda"** is counted on
+  the copy. The turn's log counts classes, so a first time about one card
+  had nowhere to be counted, and `validate` refused it. A Corp install
+  now keeps `turn_log::CopyTurn` (dated, never reset), bumped at the same
+  door as the log (`turn_log::record`) for the triggers a card can ask
+  about per copy — advancing, and so far nothing else — and the verdict
+  rides on `AsOf` as the turn's does. Not in the view: a bot's sample
+  starts each copy's turn afresh, as it does `installed_this_turn`.
+- **"You may remove 1 hosted advancement counter to do 1 meat damage"**
+  is an `OfferPaidChoice` over `Cost::RemoveAdvancementCounters`, behind
+  `And(OncePerTurn, Not(RunAgainstThisServer))` for "on another server";
+  `GameEvent::AdvancementCountersRemoved` says it.
+- **Decks.** Hostile Bid: two Sacrifice Zone Expansion for two Off the
+  Books (the points unchanged), two Myōshu for a Hedge Fund and a
+  Measured Response. Borrowed Time: two Word on the Street for two Sure
+  Gamble.
+- **DSL ratio (`pool_status.py`): 20 of 74 `Effect` variants single-use,
+  2 unused**, over 246 card files. The one new `Effect` is Myōshu's; the
+  rest of the growth is a kind, a scope, two costs and two filter words.
+- **Measured.** Both sweeps at 256 seeds are green. Against `origin/main`,
+  `coverage_identical.py` has both random seatings **identical**. The
+  heuristic seatings moved, and without the three card files (and the
+  deck swaps) they are identical in all four shapes (`determinize`). The
+  two heuristic seatings now give one report where they gave two: on
+  `main` the index path parted from the view in a single game (one
+  `PurgeVirusCounters`), which the new trajectories no longer reach.
+- **Real play.** Ninety-six random games of Hostile Bid against Borrowed
+  Time (seed 2) installed Sacrifice Zone Expansion 102 times, paid its
+  first advance 43 times and spent a counter on meat damage 16 times, and
+  Word on the Street paid out 4 times. With the heuristic Corp, Myōshu was
+  played 52 times and Sacrifice Zone Expansion's first advance paid 166
+  times. **No Corp ever scored an agenda installed that turn with Word on
+  the Street out**, so its cost is reached by the card test alone.
 
 ### 2. Rebellion Without Rehearsal — 65 cards (C 7 / V 43 / M 15)
 

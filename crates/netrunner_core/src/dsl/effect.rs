@@ -94,6 +94,22 @@ pub enum HostedCardOrigin {
     TopOfStack,
 }
 
+/// What a card added to a score area "as an agenda" is (CR 10.1.3): it
+/// loses every property it printed and has only these. A card file writes
+/// the numbers the card prints — Myōshu's "worth 2 agenda points", Word on
+/// the Street's "worth −1 agenda points with “You cannot forfeit this
+/// agenda.”" — and the score area keeps them on the copy
+/// (`ScoredAgenda::as_agenda`) for as long as it is there.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AsAgenda {
+    /// Signed: Word on the Street is worth −1 (CR 1.17.1 sums them).
+    pub points: i32,
+    /// "You cannot forfeit this agenda."
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub cannot_forfeit: bool,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Effect {
     /// `Side` is explicit — even though most cards only ever grant
@@ -856,6 +872,17 @@ pub enum Effect {
     /// `HostedOnSource` finds no host once the cost has trashed it, asks a
     /// question "all" does not, and `AddToDeck` moves the acting card.
     ShuffleHostedIntoDeck,
+    /// Adds the acting card to the Corp's score area "as an agenda"
+    /// (CR 10.1.3) — Myōshu's "Add this operation to your score area as an
+    /// agenda worth 2 agenda points." It is not scored (CR 1.17.3f), so
+    /// nothing that hears a score hears it, and it keeps nothing it printed
+    /// (`ScoredAgenda::as_agenda`). An operation is filed in Archives before
+    /// its text resolves (`engine::play_operation_card`), so that is where
+    /// it is taken from; a no-op when it is not there. The Corp's score
+    /// area only, because it is the only one a pool card adds to.
+    /// Composition didn't work: no effect moves a card into a score area
+    /// without scoring or stealing it.
+    AddToScoreAreaAsAgenda(AsAgenda),
     /// The controller looks at the top `count` cards of `deck`'s owner's
     /// deck and nobody else sees them (`GameEvent::CardsLookedAt`, masked
     /// for the other player) — Hiram "0mission" Svensson's "look at the
@@ -1424,6 +1451,7 @@ impl Effect {
             | Effect::FlipIdentity
             | Effect::AddToDeck(_)
             | Effect::ShuffleHostedIntoDeck
+            | Effect::AddToScoreAreaAsAgenda(_)
             | Effect::LookAtTopOfDeck { .. }
             | Effect::HostRigCardOnInstall { .. }
             | Effect::DrawCardsAmount(..)

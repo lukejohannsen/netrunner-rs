@@ -749,6 +749,10 @@ pub fn mask_event_for_player(event: &GameEvent, state: &GameState, viewer: impl 
             })
         }
         GameEvent::AdvancementCountersPlaced { .. } => visible(),
+        GameEvent::AdvancementCountersRemoved { install, card: Some(card), advancement_tokens } if concealed(card) => {
+            Some(GameEvent::AdvancementCountersRemoved { install: *install, card: None, advancement_tokens: *advancement_tokens })
+        }
+        GameEvent::AdvancementCountersRemoved { .. } => visible(),
         // Tāo Salonga swaps ice the Runner may not be able to identify.
         // Each identity is struck on its own condition — one of the two is
         // often a rezzed piece the Runner can name — and both handles stay,
@@ -916,6 +920,8 @@ pub fn mask_event_for_player(event: &GameEvent, state: &GameState, viewer: impl 
         // Both name cards that were public where they were: an agenda in
         // the score area, and a card resolving faceup.
         | GameEvent::AgendaForfeited { .. }
+        // A resolved operation, or a faceup rig card, into the score area.
+        | GameEvent::AddedToScoreAreaAsAgenda { .. }
         | GameEvent::AbilityGainedCredits { .. }
         | GameEvent::PaidAbilityWindowOpened { .. }
         | GameEvent::PriorityPassed { .. }

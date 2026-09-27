@@ -711,8 +711,9 @@ fn activate_ability_candidates(state: &GameState, registry: &CardRegistry) -> Ve
         candidates.extend(paid_ability_candidates(&installed.card, installed.install_id, registry));
     }
     // The score area too — Proprionegation's counter ability is used from
-    // there, and a scored agenda needs no rez check.
-    for scored in &state.corp.scored_agendas {
+    // there, and a scored agenda needs no rez check. A card there "as an
+    // agenda" has lost its abilities (CR 10.1.3).
+    for scored in state.corp.scored_agendas.iter().filter(|scored| scored.as_agenda.is_none()) {
         candidates.extend(paid_ability_candidates(&scored.card, scored.install_id, registry));
     }
     for rig_card in &state.runner.rig {

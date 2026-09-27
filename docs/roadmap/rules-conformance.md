@@ -397,8 +397,8 @@ with the rule quoted.
 | 1.13 | Host, Hosted, and Hosting | read in part | VP Stage 7b: cards hosted without being installed are faceup (1.13.7b) unless the host says facedown (1.13.7, `CardDefinition::hosts_facedown`), and one hosted facedown is its controller's to look at (1.21.2a) and a count to everyone else (`PublicInstalledRunnerCard::hosted_unseen`). |
 | 1.14 | Ownership and Control | read in part | 1.14.2e: the Corp controls every bad publicity counter, so taking it and being given it are one event, the Corp's (`Trigger::OnBadPublicityTaken`, VP Stage 2). 1.14.3a: either player removes tags to pay a cost (Unleash's additional cost). VP Stage 5d: 1.14.5a, a trigger condition about an effect a player performs is met only when that player carries it out — `GameEvent::CardTrashed::by` (the text's controller, a selection's chooser, a cost's payer, the player installing; `None` for the rules' trashes), heard by `Trigger::OnCardTrashed` (Hiram “0mission” Svensson). **Not modelled:** a card that names another player to carry out its trash (Noise's "the Corp trashes") is read as its controller's, and damage takes cards as discards, which nothing hears. |
 | 1.15 | Targets | unreviewed |  |
-| 1.16 | Costs | read in part | Costs are `Cost`, never effects (Rules Audit item 8): 1.16.1a not prevented, 1.16.3 checkpoint after a cost, 1.16.11 nested costs. VP Stage 2: 1.16.11b "unless" is a nested cost (Kompromat's derez is `Cost::Derez`); 1.16.2f a "total" discount is divided by the Corp, taken install first, which is never more credits (Reanimation Protocol); 1.16.4b an install-and-rez the Corp cannot pay leaves the card unrezzed. Cited: 1.16, 1.16.1, 1.16.11, 1.16.11b, 1.16.1a, 1.16.2f, 1.16.3, 1.16.4b. VP Stage 3a: 1.16.10b additional costs to steal are one price with the printed one (Magistrate Revontulet's `StealCost` beside Méliès City Luxury Line's `steal_cost`), and 1.17.3d lets the Runner decline it. VP Stage 4b: "unless the Runner jacks out" is a nested cost too (1.16.11b, `Cost::JackOut`, Lionsmane). |
-| 1.17 | Score, Scoring and Stealing | conforms | F3 fixed: a forfeit lowers the shown score (1.17.1). Scoring conditions match. |
+| 1.16 | Costs | read in part | Costs are `Cost`, never effects (Rules Audit item 8): 1.16.1a not prevented, 1.16.3 checkpoint after a cost, 1.16.11 nested costs. VP Stage 2: 1.16.11b "unless" is a nested cost (Kompromat's derez is `Cost::Derez`); 1.16.2f a "total" discount is divided by the Corp, taken install first, which is never more credits (Reanimation Protocol); 1.16.4b an install-and-rez the Corp cannot pay leaves the card unrezzed. Cited: 1.16, 1.16.1, 1.16.11, 1.16.11b, 1.16.1a, 1.16.2f, 1.16.3, 1.16.4b. VP Stage 3a: 1.16.10b additional costs to steal are one price with the printed one (Magistrate Revontulet's `StealCost` beside Méliès City Luxury Line's `steal_cost`), and 1.17.3d lets the Runner decline it. VP Stage 4b: "unless the Runner jacks out" is a nested cost too (1.16.11b, `Cost::JackOut`, Lionsmane). VP Stage 7d: 1.16.10b–c, an additional cost to score is paid with the score and followed by a checkpoint before the agenda moves (`ContinuousKind::ScoreCost` about `Scope::Scoring`, Word on the Street); scoring has no cost of its own (1.17.3c), and a Corp that will not pay does not score (1.17.3b). Cited: 1.16.10b, 1.16.10c. |
+| 1.17 | Score, Scoring and Stealing | conforms | F3 fixed: a forfeit lowers the shown score (1.17.1). Scoring conditions match. VP Stage 7d: a score is a signed sum (1.17.1, `win::score`), since a card added as an agenda can be worth −1; such a card was not scored (1.17.3f), so it is an occurrence of nothing (`GameEvent::AddedToScoreAreaAsAgenda`) and `CardFilter::ScoredThisTurn` never admits it. Cited: 1.17.1, 1.17.3f. |
 | 1.18 | Advancing Cards | read in part | 1.18.1–1.18.2: placing an advancement counter is not advancing (`PlaceAdvancementCounters`, `listeners`). Cited: 1.18.1, 1.18.2. |
 | 1.19 | Trashing | conforms | F4 fixed: a hosted card goes to its owner's discard pile (1.19.1). |
 | 1.20 | Memory | unreviewed |  |
@@ -432,7 +432,7 @@ with the rule quoted.
 | § | Section | Status | Notes |
 |---|---|---|---|
 | 3.1 | Identities | unreviewed |  |
-| 3.2 | Agendas | unreviewed |  |
+| 3.2 | Agendas | read in part | VP Stage 7d: 3.2.3a, an agenda its own text installs faceup is neither rezzed nor unrezzed and its abilities are active while installed (`CardDefinition::installs_faceup`, written as `InstalledCard::rezzed` without a rez; `rules::active`, Sacrifice Zone Expansion). BANGUN's faceup agendas stay inactive, as the rule says. Cited: 3.2.3a. |
 | 3.3 | Assets | unreviewed |  |
 | 3.4 | Ice | unreviewed |  |
 | 3.5 | Operations | unreviewed |  |
@@ -526,7 +526,7 @@ with the rule quoted.
 
 | § | Section | Status | Notes |
 |---|---|---|---|
-| 10.1 | General | unreviewed |  |
+| 10.1 | General | read in part | VP Stage 7d: 10.1.3, a card added to a score area "as an agenda" loses its properties and has only the ones the addition gives it (`dsl::AsAgenda` on `ScoredAgenda::as_agenda`: points, and "you cannot forfeit"), so it is not active (`rules::active`). **Not modelled:** a converted card leaving the score area other than by forfeit is trashed — nothing in the pool moves one out any other way — and only the Corp's score area takes one (Myōshu, Word on the Street). Cited: 10.1.3. |
 | 10.2 | Information | unreviewed |  |
 | 10.3 | Checkpoints | deviates | E3. B2 fixed: 10.3.1d's console half is `checkpoint::enforce_consoles`. The step order (durations, win, unique, triggers) matches. |
 | 10.4 | Damage | read in part | F2 fixed: the responsible player is recorded (10.4.1). Flatline, core-damage hand size, random trash match. |

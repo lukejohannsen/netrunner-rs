@@ -9662,7 +9662,7 @@ mod system_gateway {
         state.corp.resources.credits = Credits(4);
         state.corp.scored_agendas = vec![crate::rules::ScoredAgenda::plain(CardId("greenmail".to_string()))];
         let greenmail_points = registry.get(&CardId("greenmail".to_string())).and_then(|c| c.agenda_points).expect("an agenda");
-        state.corp.resources.agenda_points = crate::rules::AgendaPoints(greenmail_points);
+        state.corp.resources.agenda_points = crate::rules::AgendaPoints(greenmail_points as i32);
         state.corp.installed = vec![ice_installed("biawak", ServerId::Hq, false)];
         let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run");
         let (state, _) = crate::rules::test_support::continue_run(&state, &registry).expect("approach");
@@ -11564,7 +11564,7 @@ mod vantage_point {
         let registry = registry();
         let mut state = base_state();
         state.corp.scored_agendas =
-            vec![crate::rules::ScoredAgenda { card: id("lotus_haze"), install_id: InstallId(95), agenda_counters: 1, scored_on_turn: 0 }];
+            vec![crate::rules::ScoredAgenda { card: id("lotus_haze"), install_id: InstallId(95), agenda_counters: 1, scored_on_turn: 0, installed_on_scoring_turn: false, as_agenda: None }];
         state.corp.installed = vec![
             crate::rules::InstalledCard { install_id: InstallId(96), card: id("the_red_room"), server: ServerId::Hq, slot: InstallSlot::Root, rezzed: true, ..Default::default() },
             root_at("vulture_fund", 0),
@@ -12666,5 +12666,103 @@ mod vantage_point {
         let taken = events.iter().position(|e| matches!(e, crate::rules::GameEvent::BadPublicityGiven { amount: 1 }));
         let trashed = events.iter().position(|e| matches!(e, crate::rules::GameEvent::CardTrashedFromAccess { .. }));
         assert!(taken.is_some() && taken < trashed, "the interrupt resolves first: {events:?}");
+    }
+
+    /// An agenda installed this turn costs Word on the Street, which goes
+    /// to the Corp's score area as a −1 that cannot be forfeited and hears
+    /// nothing there; Myōshu is played only after scoring an agenda that
+    /// was not installed this turn, and is worth 2 from the score area.
+    #[test]
+    fn word_on_the_street_is_a_minus_one_to_score_a_fresh_agenda_and_myoshu_follows_an_old_one() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.resources.credits = Credits(20);
+        state.runner.rig = vec![rig("word_on_the_street")];
+        let fresh = crate::rules::InstalledCard { advancement_tokens: 2, installed_this_turn: true, ..root_at("hostile_takeover", 0) };
+        let old = crate::rules::InstalledCard { advancement_tokens: 4, ..root_at("offworld_office", 1) };
+        let (fresh_id, old_id) = (fresh.install_id, old.install_id);
+        state.corp.installed = vec![fresh, old];
+        state.corp.hq = vec![id("myoshu")];
+        let play_myoshu = PlayerAction::PlayOperation { card_id: id("myoshu") };
+
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ScoreAgenda { target: fresh_id }).expect("score the fresh one");
+        assert!(state.runner.rig.is_empty(), "Word on the Street paid for it");
+        let word = &state.corp.scored_agendas[0];
+        assert_eq!((word.card.0.as_str(), word.as_agenda.map(|a| (a.points, a.cannot_forfeit))), ("word_on_the_street", Some((-1, true))));
+        assert_eq!(crate::rules::score(&state, &registry, Side::Corp), 0, "Hostile Takeover's 1, and −1");
+        assert_eq!(state.corp.resources.agenda_points, AgendaPoints(0), "the tally agrees");
+        assert!(!crate::rules::legal_actions(&state, &registry).contains(&play_myoshu), "that agenda was installed this turn");
+
+        let credits = state.runner.resources.credits;
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ScoreAgenda { target: old_id }).expect("score the old one");
+        assert_eq!(state.runner.resources.credits, credits, "in a score area, Word on the Street is no resource");
+        assert!(crate::rules::legal_actions(&state, &registry).contains(&play_myoshu));
+        let (state, _) = apply_action(&state, &registry, play_myoshu).expect("play Myōshu");
+        assert!(!state.corp.archives.iter().any(|a| a.card.0 == "myoshu"), "added to the score area, not trashed");
+        assert_eq!(state.corp.scored_agendas.last().and_then(|s| s.as_agenda).map(|a| a.points), Some(2));
+        assert_eq!(crate::rules::score(&state, &registry, Side::Corp), 4, "and Offworld Office's 2 and Myōshu's 2");
+        assert_eq!(state.corp.resources.agenda_points, AgendaPoints(4));
+    }
+
+    /// When the Corp scores an agenda they did not install this turn, Word
+    /// on the Street trashes itself for 4[credit] and a card, and is no
+    /// price for that one.
+    #[test]
+    fn word_on_the_street_pays_the_runner_when_an_old_agenda_is_scored() {
+        let registry = registry();
+        let mut state = base_state();
+        state.runner.rig = vec![rig("word_on_the_street")];
+        state.runner.stack = vec![id("sure_gamble")];
+        let old = crate::rules::InstalledCard { advancement_tokens: 2, ..root_at("hostile_takeover", 0) };
+        let target = old.install_id;
+        state.corp.installed = vec![old];
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ScoreAgenda { target }).expect("score");
+        let (state, _) = pass_until_settled(state, &registry);
+        assert_eq!(state.corp.scored_agendas.len(), 1, "no price for an agenda installed earlier");
+        assert_eq!(state.runner.heap, vec![id("word_on_the_street")]);
+        assert_eq!(state.runner.resources.credits, Credits(14));
+        assert_eq!(state.runner.grip, vec![id("sure_gamble")]);
+    }
+
+    /// Installed faceup, where the Runner sees it and it is active: the
+    /// first advance each turn *of this agenda* gains 3[credit], whatever
+    /// was advanced before it, and once per turn a successful run on
+    /// another server may spend one of its counters on 1 meat damage.
+    #[test]
+    fn sacrifice_zone_expansion_installs_faceup_pays_its_first_advance_and_spends_a_counter_on_meat() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.resources.clicks = Clicks(4);
+        state.corp.hq = vec![id("sacrifice_zone_expansion")];
+        state.corp.installed = vec![root_at("hostile_takeover", 0)];
+        let other = state.corp.installed[0].install_id;
+        let install = PlayerAction::InstallCard { card_id: id("sacrifice_zone_expansion"), zone: ServerId::Remote(1), slot: InstallSlot::Root, trash_first: false };
+        let (state, _) = apply_action(&state, &registry, install).expect("install");
+        let zone = state.corp.installed.iter().find(|c| c.card.0 == "sacrifice_zone_expansion").expect("installed").clone();
+        assert!(zone.rezzed, "faceup");
+        let runner = crate::view::build_client_view(&state, &registry, Side::Runner);
+        assert!(runner.corp.servers.iter().flat_map(|s| s.root.iter()).any(|c| c.card.as_ref().is_some_and(|c| c.0 == "sacrifice_zone_expansion")), "the Runner sees it");
+
+        // Something else advanced first does not use up this agenda's first.
+        let (state, _) = apply_action(&state, &registry, PlayerAction::AdvanceCard { target: other }).expect("advance another agenda");
+        let (state, _) = pass_until_settled(state, &registry);
+        let before = state.corp.resources.credits;
+        let (state, _) = apply_action(&state, &registry, PlayerAction::AdvanceCard { target: zone.install_id }).expect("advance it");
+        let (state, _) = pass_until_settled(state, &registry);
+        assert_eq!(state.corp.resources.credits, Credits(before.0 - 1 + 3), "the first time this turn");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::AdvanceCard { target: zone.install_id }).expect("again");
+        let (mut state, _) = pass_until_settled(state, &registry);
+        assert_eq!(state.corp.resources.credits, Credits(before.0 - 2 + 3), "not the second");
+
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.grip = vec![id("sure_gamble"), id("sure_gamble")];
+        let (on_it, _) = run_to_completion(state.clone(), &registry, ServerId::Remote(1));
+        assert!(on_it.pending_paid_choice.is_none(), "a run on its own server");
+        let (state, _) = run_to_completion(state, &registry, ServerId::Hq);
+        assert!(state.pending_paid_choice.is_some(), "another server");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::AcceptPendingPaidChoice { cost_option_index: None }).expect("spend a counter");
+        let tokens = state.corp.installed.iter().find(|c| c.install_id == zone.install_id).map(|c| c.advancement_tokens);
+        assert_eq!(tokens, Some(1));
+        assert_eq!(state.runner.grip.len(), 1, "1 meat damage");
     }
 }

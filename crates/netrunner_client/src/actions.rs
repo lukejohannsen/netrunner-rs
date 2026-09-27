@@ -461,6 +461,11 @@ pub fn narrate_event(
             at(install),
             if *advancement_tokens == 1 { "" } else { "s" }
         ),
+        GameEvent::AdvancementCountersRemoved { install, advancement_tokens, .. } => format!(
+            "removed advancement counters from {}, now at {advancement_tokens} advancement token{}",
+            at(install),
+            if *advancement_tokens == 1 { "" } else { "s" }
+        ),
         GameEvent::IceSwapped { a, b, .. } if a == b => format!("swapped the ice at {} for another", at(a)),
         GameEvent::IceSwapped { a, b, .. } => format!("swapped {} with {}", at(a), at(b)),
         GameEvent::CardMoved { install, from, to, .. } => {
@@ -514,6 +519,9 @@ pub fn narrate_event(
             format!("stole {} for {agenda_points} point(s)", title(card))
         }
         GameEvent::AgendaForfeited { card } => format!("forfeited {}", title(card)),
+        GameEvent::AddedToScoreAreaAsAgenda { card, points } => {
+            format!("added {} to the Corp's score area as an agenda worth {points} agenda point{}", title(card), if points.abs() == 1 { "" } else { "s" })
+        }
 
         // ---- runs and traces ----
         GameEvent::RunSucceeded { server } => format!("the run on {} succeeded", server_name(*server)),

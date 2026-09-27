@@ -185,8 +185,8 @@ pub struct Board {
     /// Runner: how many of the three ICE subtypes the rig can break, from
     /// the evaluator's own `breaker_coverage`.
     pub rig_coverage: usize,
-    pub own_points: u32,
-    pub opponent_points: u32,
+    pub own_points: i32,
+    pub opponent_points: i32,
 }
 
 impl Board {

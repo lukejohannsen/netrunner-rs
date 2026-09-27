@@ -806,11 +806,15 @@ pub(crate) fn place_corp_card(
         install_id,
         server: zone,
         slot,
-        rezzed: false,
+        // "Install only faceup." — installed faceup without a rez: no rez
+        // cost and no `OnRez` (CR 3.2.3a: neither rezzed nor unrezzed),
+        // written as the one flag a faceup Corp install has.
+        rezzed: card_def.installs_faceup,
         advancement_tokens: 0,
         counters: 0,
         installed_this_turn: true,
         seen_by_runner: false,
+        this_turn: Default::default(),
     };
     // New ICE is installed in the **outermost** position (Null Signal
     // Games' install rule): `corp.installed`'s vec order per server is
@@ -2311,19 +2315,47 @@ fn score_agenda(
     // shape" — and it changed what was scorable: a 5/3 advanced with the
     // turn's last click could not be scored until the next turn (ROADMAP
     // Rules Audit T6).
+    let installed_this_turn = state.corp.installed[position].installed_this_turn;
     let mut next = state.clone();
-    // Scored is uninstalled (CR 1.17.5), so it leaves by the door. An
-    // agenda is never rezzed, so nothing is announced.
+    // Additional costs to score (Word on the Street), paid with the score
+    // and followed by a checkpoint before the agenda moves (CR 1.16.10b–c).
+    // Scoring has no cost of its own to add them to, and a Corp that will
+    // not pay them simply does not score (CR 1.17.3b), so an unpayable one
+    // refuses the score, which is what keeps it off the action list.
+    let mut cost_events = Vec::new();
+    for (cost, source, source_install) in continuous::score_costs(&next, registry, target) {
+        let ctx = match source_install {
+            Some(install) => ability::ResolutionContext::for_install(install, &source),
+            None => ability::ResolutionContext::for_card(Some(&source)),
+        };
+        cost_events.extend(ability::pay_cost_ctx(&mut next, registry, side, &cost, Purpose::Other, &ctx)?);
+    }
+    let mut events = cost_events.clone();
+    if !cost_events.is_empty() {
+        events.extend(checkpoint::state_based(&mut next, registry, None));
+        if next.is_over() {
+            return Ok((next, events));
+        }
+    }
+    // Scored is uninstalled (CR 1.17.5), so it leaves by the door. No
+    // agenda prints an interrupt about leaving, so nothing is announced.
     let install_id = next.corp.installed[position].install_id;
     let (_, announced) = uninstall::corp_install(&mut next, registry, install_id)?.ok_or(RulesError::InstallNotFound(install_id))?;
     // Dividends: every advancement counter past the requirement becomes
     // `dividends` agenda counters on the scored copy (Off the Books).
     let agenda_counters = card_def.dividends.unwrap_or(0).saturating_mul(advancement_tokens - required);
-    next.corp.scored_agendas.push(ScoredAgenda { card: card_id.clone(), install_id, agenda_counters, scored_on_turn: next.turn });
-    next.corp.resources.agenda_points = next.corp.resources.agenda_points.gain(agenda_points);
+    next.corp.scored_agendas.push(ScoredAgenda {
+        card: card_id.clone(),
+        install_id,
+        agenda_counters,
+        scored_on_turn: next.turn,
+        installed_on_scoring_turn: installed_this_turn,
+        as_agenda: None,
+    });
+    next.corp.resources.agenda_points = next.corp.resources.agenda_points.gain(agenda_points as i32);
 
     let scored_event = GameEvent::AgendaScored { card: card_id.clone(), agenda_points, server };
-    let mut events = announced;
+    events.extend(announced);
     events.push(scored_event.clone());
     if agenda_counters > 0 {
         events.push(GameEvent::CountersAdded { card: card_id.clone(), amount: agenda_counters });
@@ -2335,6 +2367,9 @@ fn score_agenda(
     // The win is the checkpoint's, and it comes first: `dispatch_event`
     // checks the score areas before it plans a trigger.
     events.extend(dispatcher::dispatch_event(&mut next, registry, &scored_event)?);
+    // The additional cost's own events, after, as every payer dispatches
+    // them (`ability::dispatch_cost_events`).
+    events.extend(ability::dispatch_cost_events(&mut next, registry, &cost_events)?);
 
     Ok((next, events))
 }

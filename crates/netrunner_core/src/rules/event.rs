@@ -259,6 +259,11 @@ pub enum GameEvent {
     /// went; this one says *why*, which is what `Trigger::OnForfeit` keys
     /// off.
     AgendaForfeited { card: CardId },
+    /// A card was added to the Corp's score area "as an agenda" worth
+    /// `points` (CR 10.1.3) — Myōshu out of Archives, Word on the Street out
+    /// of the Runner's rig. It was not scored (CR 1.17.3f), so this is an
+    /// occurrence of nothing a card hears.
+    AddedToScoreAreaAsAgenda { card: CardId, points: i32 },
     /// Credits gained by a resolving card's ability, naming the card —
     /// emitted with `CreditsGained` whenever the resolution has an acting
     /// card. The Zwicky Group: Invisible Hands draws off it. Carries no
@@ -299,6 +304,15 @@ pub enum GameEvent {
         #[serde(default)]
         install: crate::rules::state::InstallId,
         #[serde(default)]
+        card: Option<CardId>,
+        advancement_tokens: u32,
+    },
+    /// Advancement counters were removed from an install as a cost
+    /// (`Cost::RemoveAdvancementCounters`, Sacrifice Zone Expansion);
+    /// `advancement_tokens` is what is left. Masked as
+    /// `AdvancementCountersPlaced` is.
+    AdvancementCountersRemoved {
+        install: crate::rules::state::InstallId,
         card: Option<CardId>,
         advancement_tokens: u32,
     },
@@ -534,10 +548,11 @@ impl GameEvent {
             | GameEvent::CardHosted { .. } | GameEvent::IdentityFlipped { .. } | GameEvent::ActionPhaseEnded { .. }
             | GameEvent::RunEndPrevented { .. } | GameEvent::RunRedirected { .. } | GameEvent::CreditsSpent { .. }
             | GameEvent::TagsGiven { .. } | GameEvent::TagsCleared { .. } | GameEvent::CardTrashed { .. }
-            | GameEvent::CardRemovedFromGame { .. } | GameEvent::AgendaForfeited { .. }
+            | GameEvent::CardRemovedFromGame { .. } | GameEvent::AgendaForfeited { .. } | GameEvent::AddedToScoreAreaAsAgenda { .. }
             | GameEvent::AbilityGainedCredits { .. } | GameEvent::RunEndedByEffect { .. }
             | GameEvent::AbilityActivated { .. } | GameEvent::CardAdvanced { .. }
-            | GameEvent::AdvancementCountersPlaced { .. } | GameEvent::PaidAbilityWindowOpened { .. }
+            | GameEvent::AdvancementCountersPlaced { .. } | GameEvent::AdvancementCountersRemoved { .. }
+            | GameEvent::PaidAbilityWindowOpened { .. }
             | GameEvent::PriorityPassed { .. } | GameEvent::PaidAbilityWindowClosed
             | GameEvent::StrengthBoosted { .. } | GameEvent::TagRemoved { .. } | GameEvent::TagsRemoved { .. }
             | GameEvent::TriggerOrderPending { .. } | GameEvent::TriggerOrderChosen { .. }

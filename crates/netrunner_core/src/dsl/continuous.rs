@@ -138,6 +138,14 @@ pub enum ContinuousKind {
     /// (CR 1.16.10: additional costs are paid together with it; the Runner
     /// may decline to steal rather than pay, CR 1.17.3d).
     StealCost(Number),
+    /// A cost the Corp pays, as an additional cost, to score an agenda —
+    /// Word on the Street's "As an additional cost to score an agenda the
+    /// Corp installed this turn, they must add this resource to their score
+    /// area…", about the agendas `Scope::Scoring` admits. A `Cost` rather
+    /// than `StealCost`'s number, because what is paid here is a card. Paid
+    /// with the score, and then a checkpoint, before the agenda moves
+    /// (CR 1.16.10b–c); the Corp may decline by not scoring (CR 1.17.3b).
+    ScoreCost(crate::dsl::Cost),
     /// Agenda points an agenda is worth where it is — Let Them Dream's
     /// "while this agenda is in the Runner's score area, it is worth 1 less
     /// agenda point". Asked, never stored: the win check totals each score
@@ -207,6 +215,11 @@ pub enum Scope {
     /// An agenda the Runner is stealing, matching the filter — Magistrate
     /// Revontulet's "an agenda".
     Stealing(CardFilter),
+    /// An agenda the Corp is scoring, matching the filter — Word on the
+    /// Street's "an agenda the Corp installed this turn". Asked of the
+    /// install being scored (`continuous::Target::Scoring`), so an
+    /// instance word (`InstalledThisTurn`) is read off that copy.
+    Scoring(CardFilter),
     /// This agenda, while it is in `side`'s score area — Let Them Dream.
     /// The card's own text, like `This`, and read only there: a question
     /// about a scored agenda says whose score area it is in.

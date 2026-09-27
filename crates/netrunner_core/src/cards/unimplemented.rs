@@ -18,11 +18,8 @@
 /// *Vantage Point* (`vp`): tranche 1 of the NSG plan.
 pub(crate) const VP_UNIMPLEMENTED: &[(u32, &str)] = &[
     (36008, "Stick and Poke"),
-    (36025, "Word on the Street"),
     (36036, "Méliès U: Only the Brightest"),
-    (36056, "Sacrifice Zone Expansion"),
     (36060, "Tocsin"),
-    (36061, "Myōshu"),
     (36064, "Flagship"),
 ];
 

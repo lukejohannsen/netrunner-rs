@@ -156,7 +156,8 @@ pub fn transitions(before: &ClientView, after: &ClientView, entry: &PublicHistor
             // this match ends in a catch-all, so the second one has to be
             // named here or a placed counter would appear with no beat.
             GameEvent::CardAdvanced { install, advancement_tokens, .. }
-            | GameEvent::AdvancementCountersPlaced { install, advancement_tokens, .. } => {
+            | GameEvent::AdvancementCountersPlaced { install, advancement_tokens, .. }
+            | GameEvent::AdvancementCountersRemoved { install, advancement_tokens, .. } => {
                 let from = corp_install(before, *install).map_or(0, |c| c.advancement_tokens);
                 out.push(Transition::Advancement { install: *install, from, to: *advancement_tokens });
             }
