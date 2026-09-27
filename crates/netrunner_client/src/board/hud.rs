@@ -106,6 +106,158 @@ pub fn details(view: &ClientView, side: Side) -> Option<String> {
     }
 }
 
+/// Which side of a side's identity is up, for an identity that has more
+/// than one: Dewi Subrotoputri and Nebula Talent Management flip, and
+/// Méliès U: Only the Brightest has three reverse sides, one set in secret
+/// at the end of each of the Corp's discard phases (CR 1.5.2b). Only the
+/// faceup side is active (CR 3.1.1a), so which one is up is what the
+/// identity *does* right now — and the view carried it from the day the
+/// first flip identity played, with neither client ever drawing it.
+///
+/// Read off the masked view: which copy of Méliès U is in play is
+/// `CorpClientView::identity_copy`, the Corp's own to see and the Runner's
+/// once it has been turned over.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct IdentitySide {
+    pub flipped: bool,
+    /// Which copy is in play, where the identity has several and the
+    /// viewer may know: 1 to 3 for Méliès U.
+    pub copy: Option<u8>,
+    /// The identity picks its reverse side in secret (Méliès U) and, as
+    /// far as the viewer can tell, has picked one: the Corp knows none is
+    /// set before its first discard phase ends, and the Runner, who never
+    /// sees the number, is first asked anything after it has.
+    pub secret: bool,
+}
+
+impl IdentitySide {
+    /// The side up, in a word or two: what fits on the avatar.
+    pub fn chip(&self) -> String {
+        match (self.flipped, self.copy) {
+            (true, Some(copy)) => format!("Side {copy}"),
+            (true, None) => "Flipped".to_string(),
+            (false, _) => "Front".to_string(),
+        }
+    }
+
+    /// The side up, as a sheet or the terminal's board says it.
+    pub fn line(&self) -> String {
+        match (self.flipped, self.copy, self.secret) {
+            (true, Some(copy), _) => format!("Side {copy} is up"),
+            (true, None, _) => "Its flip side is up".to_string(),
+            (false, Some(copy), true) => format!("Its front is up · side {copy} is set, in secret"),
+            (false, None, true) => "Its front is up · the side under it is set in secret".to_string(),
+            (false, _, _) => "Its front is up".to_string(),
+        }
+    }
+}
+
+/// [`IdentitySide`] for `side`'s identity, or `None` for an identity with
+/// one side — told by its text, which is the only place that says it can
+/// flip (`Effect::FlipIdentity`).
+pub fn identity_side(view: &ClientView, side: Side, registry: &CardRegistry) -> Option<IdentitySide> {
+    let identity = match side {
+        Side::Corp => view.corp.identity.as_ref(),
+        Side::Runner => view.runner.identity.as_ref(),
+    }?;
+    let card = registry.get(identity)?;
+    let (mut flips, mut secret) = (false, false);
+    let mut look = |effect: &netrunner_core::dsl::Effect| {
+        flips |= matches!(effect, netrunner_core::dsl::Effect::FlipIdentity);
+        secret |= matches!(effect, netrunner_core::dsl::Effect::SetIdentityCopy(_));
+    };
+    for trigger in &card.triggers {
+        for effect in &trigger.effects {
+            effect.for_each_effect(&mut look);
+        }
+    }
+    for ability in &card.abilities {
+        ability.effect.for_each_effect(&mut look);
+    }
+    if !flips {
+        return None;
+    }
+    let (flipped, copy) = match side {
+        // 0 is "not set yet": nothing is in play but the front.
+        Side::Corp => (view.corp.identity_flipped, view.corp.identity_copy.filter(|copy| *copy > 0)),
+        Side::Runner => (view.runner.identity_flipped, None),
+    };
+    let secret = secret && !(side == Side::Corp && view.corp.identity_copy == Some(0));
+    Some(IdentitySide { flipped, copy: copy.filter(|_| secret), secret })
+}
+
+/// The cards `side` has removed from the game, in the order they left:
+/// Petty Cash played out of Archives, a forfeited agenda and Spin Doctor
+/// on the Corp's side; an event that says "remove this event from the
+/// game" on the Runner's (the Runner's pile arrived with Vantage Point).
+/// Public, and a zone neither client had drawn.
+pub fn removed_from_game(view: &ClientView, side: Side) -> &[CardId] {
+    match side {
+        Side::Corp => &view.corp.removed_from_game,
+        Side::Runner => &view.runner.removed_from_game,
+    }
+}
+
+/// What is in effect for a while, one line each with the card that made
+/// it: "Aircheck: the Runner cannot spend or lose credits from their
+/// credit pool, for the rest of this run". Words, not the printed
+/// symbols, so the terminal reads it as the desktop does. Read off the view's lingering
+/// effects, which hold only while their duration runs.
+///
+/// **A strength is left out**, because the number it changes is already
+/// on the card it is about (a breaker's chip, the encountered ice's
+/// panel) and a boost bought three times would be three lines. The rest
+/// had no place at all: Vantage Point's credit-pool lock and its changes
+/// to next turn's clicks, a score lock, a rez-cost tax on each piece of
+/// ice, Shred's hold on the run's end — each a rule in force that the
+/// person could see only by remembering the card.
+pub fn in_effect(view: &ClientView, registry: &CardRegistry) -> Vec<String> {
+    use netrunner_core::dsl::{EndRunPrevention, Prohibition};
+    use netrunner_core::rules::lingering::{Lingering, On, Until};
+    let title = |id: &CardId| registry.get(id).map_or_else(|| id.0.replace('_', " "), |card| card.title.clone());
+    let who = |on: &On, fallback: Side| match on {
+        On::Player(side) => *side,
+        _ => fallback,
+    };
+    view.lingering
+        .iter()
+        .filter_map(|effect| {
+            let what = match (&effect.what, &effect.on) {
+                (Lingering::Strength(_), _) => return None,
+                (Lingering::RezCost(n), _) => {
+                    let credits = n.unsigned_abs();
+                    format!("each piece of ice costs {credits} credit{} {} to rez", if credits == 1 { "" } else { "s" }, if *n >= 0 { "more" } else { "less" })
+                }
+                (Lingering::Cannot(what), On::CopiesOf(card)) => match what {
+                    Prohibition::StealOrTrash => format!("the Runner cannot steal or trash copies of {}", title(card)),
+                    Prohibition::ScoreAgendas => format!("the Corp cannot score copies of {}", title(card)),
+                    Prohibition::SpendOrLoseCreditPool => "the Runner cannot spend or lose credits from their credit pool".to_string(),
+                },
+                (Lingering::Cannot(what), _) => match what {
+                    Prohibition::StealOrTrash => "the Runner cannot steal or trash cards".to_string(),
+                    Prohibition::ScoreAgendas => "the Corp cannot score agendas".to_string(),
+                    Prohibition::SpendOrLoseCreditPool => "the Runner cannot spend or lose credits from their credit pool".to_string(),
+                },
+                (Lingering::PreventRunEnding(EndRunPrevention::UnlessCorpTrashesRootCountFromHq), _) => {
+                    "the first time the Corp would end the run, it ends only if the Corp trashes a card from HQ for each card in the server's root".to_string()
+                }
+                (Lingering::AllottedClicks(n), on) => {
+                    let side = who(on, Side::Runner);
+                    let clicks = n.unsigned_abs();
+                    format!("the {side:?} has {clicks} {} allotted click{} next turn", if *n >= 0 { "more" } else { "fewer" }, if clicks == 1 { "" } else { "s" })
+                }
+            };
+            let until = match effect.until {
+                Until::EndOfEncounter(_) => ", for this encounter",
+                Until::EndOfRun => ", for the rest of this run",
+                Until::EndOfTurn(_) => ", for the rest of this turn",
+                Until::NextTurnOf(_) => "",
+            };
+            Some(format!("{}: {what}{until}", title(&effect.source)))
+        })
+        .collect()
+}
+
 /// One agenda in a side's score area, as its list shows it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ScoredCard {
@@ -144,6 +296,11 @@ impl ScoredCard {
             Some(need) => lines.push(format!("{how} · {} point{} · advancement requirement {need}", self.points, if self.points == 1 { "" } else { "s" })),
             None => lines.push(format!("{how} · {} point{}", self.points, if self.points == 1 { "" } else { "s" })),
         }
+        // What the table makes of it, when that is not what it prints:
+        // Let Them Dream in the Runner's score area.
+        if let Some(printed) = def.and_then(|d| d.agenda_points).filter(|printed| self.as_agenda.is_none() && *printed as i32 != self.points) {
+            lines.push(format!("Prints {printed} point{}; its text changes that here", if printed == 1 { "" } else { "s" }));
+        }
         if self.as_agenda.is_some_and(|as_agenda| as_agenda.cannot_forfeit) {
             lines.push("Cannot be forfeited".to_string());
         }
@@ -154,26 +311,35 @@ impl ScoredCard {
     }
 }
 
-/// A side's score area, in the order the agendas arrived. The points are
-/// the printed value: the view carries only the side's total, and a card
-/// that changes what an agenda is worth moves that total, not the card.
+/// A side's score area, in the order the agendas arrived, each worth what
+/// the engine counts it as now (`scored_worth`, which the view carries
+/// beside the list): Let Them Dream stolen is worth 1 less than it prints,
+/// and while the list read the printed value its rows summed to more than
+/// the total over them.
 pub fn score_area(view: &ClientView, side: Side, registry: &CardRegistry) -> Vec<ScoredCard> {
-    let entry = |card: &CardId, install: Option<InstallId>, counters: u32, as_agenda: Option<netrunner_core::dsl::AsAgenda>| {
+    let entry = |card: &CardId, worth: Option<i32>, install: Option<InstallId>, counters: u32, as_agenda: Option<netrunner_core::dsl::AsAgenda>| {
         let def = registry.get(card);
         ScoredCard {
             card: card.clone(),
             title: def.map_or_else(|| card.0.replace('_', " "), |d| d.title.clone()),
             // A card added as an agenda is worth what the addition said,
-            // never what it prints (CR 10.1.3).
-            points: as_agenda.map_or_else(|| def.and_then(|d| d.agenda_points).unwrap_or(0) as i32, |as_agenda| as_agenda.points),
+            // never what it prints (CR 10.1.3); the view's number says so
+            // already, and the fallback, for a view built by hand, too.
+            points: worth.unwrap_or_else(|| as_agenda.map_or_else(|| def.and_then(|d| d.agenda_points).unwrap_or(0) as i32, |as_agenda| as_agenda.points)),
             as_agenda,
             install,
             counters,
         }
     };
     match side {
-        Side::Corp => view.corp.scored_agendas.iter().map(|a| entry(&a.card, Some(a.install_id), a.agenda_counters, a.as_agenda)).collect(),
-        Side::Runner => view.runner.scored_agendas.iter().map(|c| entry(c, None, 0, None)).collect(),
+        Side::Corp => view
+            .corp
+            .scored_agendas
+            .iter()
+            .enumerate()
+            .map(|(i, a)| entry(&a.card, view.corp.scored_worth.get(i).copied(), Some(a.install_id), a.agenda_counters, a.as_agenda))
+            .collect(),
+        Side::Runner => view.runner.scored_agendas.iter().enumerate().map(|(i, c)| entry(c, view.runner.scored_worth.get(i).copied(), None, 0, None)).collect(),
     }
 }
 
@@ -242,6 +408,72 @@ mod tests {
         let facts = stolen[0].facts(Side::Runner, &registry);
         assert!(facts[0].starts_with("Stolen by the Runner"), "{facts:?}");
         assert!(stolen[0].line().contains(&agenda.title));
+    }
+
+    /// A stolen Let Them Dream is worth 1 less than it prints, and the
+    /// row says what the total counts rather than the printed 2.
+    #[test]
+    fn the_score_area_lists_what_each_agenda_is_worth_now() {
+        let registry = crate::decks::sample_deck_registry();
+        let (corp_deck, runner_deck) = sweep_decks_for_seed(0);
+        let (mut state, _) = GameState::setup(&corp_deck.to_deck(), &runner_deck.to_deck(), &registry, 0).unwrap();
+        let dream = CardId("let_them_dream".into());
+        state.runner.scored_agendas = vec![dream.clone()];
+        let view = netrunner_core::view::build_client_view(&state, &registry, Side::Runner);
+        let stolen = score_area(&view, Side::Runner, &registry);
+        assert_eq!(registry.get(&dream).and_then(|card| card.agenda_points), Some(2));
+        assert_eq!(stolen[0].points, 1, "worth 1 less in the Runner's score area");
+        let facts = stolen[0].facts(Side::Runner, &registry);
+        assert!(facts[0].contains("1 point"), "{facts:?}");
+        assert!(facts.iter().any(|line| line.starts_with("Prints 2 points")), "{facts:?}");
+    }
+
+    /// Méliès U's copy is the Corp's to see from the moment it is set and
+    /// the Runner's once it is turned over; an identity with one side has
+    /// no side to name, and Dewi's flip reads as its flip side.
+    #[test]
+    fn a_flip_identity_says_which_side_is_up_to_whoever_may_know() {
+        let registry = crate::decks::sample_deck_registry();
+        let (corp_deck, runner_deck) = sweep_decks_for_seed(0);
+        let (mut state, _) = GameState::setup(&corp_deck.to_deck(), &runner_deck.to_deck(), &registry, 0).unwrap();
+        let as_seen = |state: &GameState, viewer: Side, side: Side| {
+            identity_side(&netrunner_core::view::build_client_view(state, &registry, viewer), side, &registry)
+        };
+        state.corp.identity = Some(CardId("melies_u_only_the_brightest".into()));
+        state.runner.identity = Some(CardId("dewi_subrotoputri".into()));
+        let front = as_seen(&state, Side::Corp, Side::Corp).expect("Méliès U flips");
+        assert_eq!((front.chip().as_str(), front.line().as_str()), ("Front", "Its front is up"), "nothing is set before the first discard phase ends");
+        state.corp.identity_copy = 2;
+        assert_eq!(as_seen(&state, Side::Corp, Side::Corp).unwrap().line(), "Its front is up · side 2 is set, in secret");
+        assert_eq!(as_seen(&state, Side::Runner, Side::Corp).unwrap().line(), "Its front is up · the side under it is set in secret");
+        state.corp.identity_flipped = true;
+        assert_eq!(as_seen(&state, Side::Runner, Side::Corp).unwrap().chip(), "Side 2", "turned over, it is public");
+        assert_eq!(as_seen(&state, Side::Corp, Side::Runner).unwrap().chip(), "Front");
+        state.runner.identity_flipped = true;
+        assert_eq!(as_seen(&state, Side::Corp, Side::Runner).unwrap().line(), "Its flip side is up");
+        state.runner.identity = Some(CardId("hiram_0mission_svensson_shadow_of_the_past".into()));
+        assert_eq!(as_seen(&state, Side::Corp, Side::Runner), None, "one side, nothing to say");
+    }
+
+    /// A lasting rule reads with the card that made it; a strength does
+    /// not, because the number it changes is already on the card.
+    #[test]
+    fn what_is_in_effect_is_listed_by_the_card_that_made_it() {
+        use netrunner_core::dsl::Prohibition;
+        use netrunner_core::rules::lingering::{Lingering, LingeringEffect, On, Until};
+        let registry = crate::decks::sample_deck_registry();
+        let mut view = view();
+        assert!(in_effect(&view, &registry).is_empty());
+        let made = |what, on, until, source: &str| LingeringEffect { what, on, until, source: CardId(source.into()) };
+        view.lingering = vec![
+            made(Lingering::Cannot(Prohibition::SpendOrLoseCreditPool), On::Player(Side::Runner), Until::EndOfRun, "aircheck"),
+            made(Lingering::AllottedClicks(-1), On::Player(Side::Runner), Until::NextTurnOf(Side::Runner), "caveat_emptor"),
+            made(Lingering::Strength(2), On::Install(InstallId(3)), Until::EndOfEncounter(InstallId(4)), "aircheck"),
+        ];
+        let lines = in_effect(&view, &registry);
+        assert_eq!(lines.len(), 2, "{lines:?}");
+        assert_eq!(lines[0], "Aircheck: the Runner cannot spend or lose credits from their credit pool, for the rest of this run");
+        assert!(lines[1].ends_with(": the Runner has 1 fewer allotted click next turn"), "{lines:?}");
     }
 
     #[test]

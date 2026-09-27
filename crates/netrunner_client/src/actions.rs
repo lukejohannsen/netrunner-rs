@@ -200,7 +200,8 @@ pub struct CardZone {
 
 /// Every place the view names a card in, in table order: the viewer's
 /// hand first, then identities, the Corp's board, scored agendas and
-/// Archives, the Runner's rig, stolen agendas and heap. A place with no
+/// Archives, the Runner's rig, stolen agendas and heap, then what each
+/// side has removed from the game. A place with no
 /// visible card is left out, except the viewer's own hand.
 pub fn visible_zones(view: &ClientView, registry: &CardRegistry) -> Vec<CardZone> {
     let title = |id: &CardId| registry.get(id).map_or_else(|| id.0.clone(), |card| card.title.clone());
@@ -236,7 +237,13 @@ pub fn visible_zones(view: &ClientView, registry: &CardRegistry) -> Vec<CardZone
         for card in server.ice.iter().chain(server.root.iter()) {
             if let Some(id) = &card.card {
                 let slot = if card.slot == InstallSlot::Ice { "ICE" } else { "root" };
-                let rez = if card.rezzed { "rezzed" } else { "unrezzed" };
+                let agenda = registry.get(id).is_some_and(|def| def.card_type == netrunner_core::dsl::CardType::Agenda);
+                let rez = match (agenda, card.rezzed) {
+                    (true, true) => "faceup",
+                    (true, false) => "facedown",
+                    (false, true) => "rezzed",
+                    (false, false) => "unrezzed",
+                };
                 board.push((format!("{place} {slot}: {} ({rez})", title(id)), id.clone()));
             }
         }
@@ -247,6 +254,8 @@ pub fn visible_zones(view: &ClientView, registry: &CardRegistry) -> Vec<CardZone
     zone("Runner rig", view.runner.rig.iter().map(|card| (title(&card.card), card.card.clone())).collect());
     zone("Runner stolen", plain(&view.runner.scored_agendas));
     zone("Heap", plain(&view.runner.heap));
+    zone("Corp removed from the game", plain(&view.corp.removed_from_game));
+    zone("Runner removed from the game", plain(&view.runner.removed_from_game));
     zones
 }
 

@@ -251,8 +251,13 @@ pub fn tile_title(view: &ClientView, id: InstallId, registry: &CardRegistry) -> 
         }
         (InstallSlot::Root, Some(def)) => {
             parts.push(def.title.clone());
-            if def.card_type != CardType::Agenda {
-                parts.push(if card.rezzed { "rezzed".to_string() } else { "unrezzed".to_string() });
+            // An agenda is never rezzed (CR 8.1.1); one installed faceup
+            // (Sacrifice Zone Expansion, BANGUN's) says so, since to its
+            // own side a facedown agenda looks the same.
+            match (def.card_type == CardType::Agenda, card.rezzed) {
+                (false, rezzed) => parts.push(if rezzed { "rezzed".to_string() } else { "unrezzed".to_string() }),
+                (true, true) => parts.push("faceup".to_string()),
+                (true, false) => {}
             }
         }
         (InstallSlot::Root, None) => {
@@ -308,7 +313,8 @@ pub fn install_facts(view: &ClientView, id: InstallId, registry: &CardRegistry) 
             }
             let is_agenda = def.is_some_and(|d| d.card_type == CardType::Agenda);
             match (card.rezzed, def, is_agenda) {
-                (_, _, true) => {}
+                (true, _, true) => lines.push("Installed faceup — the Runner can see it".to_string()),
+                (false, _, true) => {}
                 (true, _, _) => lines.push("Rezzed".to_string()),
                 (false, Some(def), _) => lines.push(format!("Unrezzed — rez cost {}", def.cost)),
                 (false, None, _) if card.slot == InstallSlot::Ice => lines.push("Unrezzed — the Corp may rez it as it is approached".to_string()),
@@ -605,6 +611,34 @@ mod tests {
     /// Real games: whenever a view is mid-encounter, the marks are the
     /// same words the sheet lists for that ice — one vocabulary, so a
     /// person reads "broken" in one sense wherever they look.
+    /// An agenda installed faceup says so to both sides — to its own, a
+    /// facedown agenda looks the same — and one installed facedown is a
+    /// face-down card to the Runner.
+    #[test]
+    fn an_agenda_installed_faceup_says_so() {
+        let registry = crate::decks::sample_deck_registry();
+        let (corp_deck, runner_deck) = sweep_decks_for_seed(0);
+        let (mut state, _) = GameState::setup(&corp_deck.to_deck(), &runner_deck.to_deck(), &registry, 0).unwrap();
+        let agenda = |install: u32, rezzed: bool| netrunner_core::rules::InstalledCard {
+            install_id: InstallId(install),
+            card: CardId("sacrifice_zone_expansion".into()),
+            server: netrunner_core::rules::ServerId::Remote(0),
+            rezzed,
+            ..Default::default()
+        };
+        state.corp.installed = vec![agenda(900, true), agenda(901, false)];
+        for viewer in [Side::Corp, Side::Runner] {
+            let view = netrunner_core::view::build_client_view(&state, &registry, viewer);
+            let title = tile_title(&view, InstallId(900), &registry);
+            assert!(title.contains("faceup"), "{viewer:?}: {title}");
+            assert!(install_facts(&view, InstallId(900), &registry).unwrap().iter().any(|line| line.starts_with("Installed faceup")));
+        }
+        let corp = netrunner_core::view::build_client_view(&state, &registry, Side::Corp);
+        assert!(!tile_title(&corp, InstallId(901), &registry).contains("faceup"));
+        let runner = netrunner_core::view::build_client_view(&state, &registry, Side::Runner);
+        assert!(tile_title(&runner, InstallId(901), &registry).contains("face down"));
+    }
+
     #[test]
     fn the_marks_and_the_sheet_say_the_same_words() {
         let mut marked = 0;

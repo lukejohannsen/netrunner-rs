@@ -1310,7 +1310,7 @@ fn draw_board(frame: &mut Frame, area: Rect, app: &impl RenderableView) {
     // One map per frame rather than per card: `ActionMap::build` labels
     // every legal action, and the hand and the rig both ask it.
     let actions = app.action_map();
-    let mut corp_lines = Vec::new();
+    let mut corp_lines = vec![identity_line(view, Side::Corp, app.registry())];
     // `Some` only for the viewer's own hand — the masking layer decided
     // that, and this draws exactly what it handed over. Until this line
     // existed the TUI printed the count and nothing else, so a human
@@ -1328,6 +1328,11 @@ fn draw_board(frame: &mut Frame, area: Rect, app: &impl RenderableView) {
     for server in netrunner_client::board::table_servers(view) {
         corp_lines.push(Line::from(format_server(&server, view, app.registry())));
     }
+    // What a card put in force for a while (`hud::in_effect`), under the
+    // servers where the rest of the table's state is.
+    for line in netrunner_client::board::hud::in_effect(view, app.registry()) {
+        corp_lines.push(Line::styled(format!("In effect — {line}"), Style::default().fg(Color::Yellow)));
+    }
     if let Some(run) = &view.active_run {
         corp_lines.push(Line::from(""));
         corp_lines.push(run_phase_strip(run.phase));
@@ -1339,6 +1344,7 @@ fn draw_board(frame: &mut Frame, area: Rect, app: &impl RenderableView) {
     );
 
     let mut runner_lines = vec![
+        identity_line(view, Side::Runner, app.registry()),
         Line::from(format!("Grip: {} cards   Stack: {} cards   Heap: {} cards", view.runner.grip_count, view.runner.stack_count, view.runner.heap.len())),
     ];
     if let Some(cards) = &view.runner.grip_cards {
@@ -1384,6 +1390,28 @@ fn draw_board(frame: &mut Frame, area: Rect, app: &impl RenderableView) {
         Paragraph::new(runner_lines).wrap(Wrap { trim: false }).block(Block::default().borders(Borders::ALL).title(runner_title)),
         runner_area,
     );
+}
+
+/// A block's first line: whose identity it is and, for one with more
+/// than one side, which is up (`hud::IdentitySide::line` — Méliès U's
+/// copy, Dewi's flip), then what that side has removed from the game.
+/// Always there, both parts at zero too, so nothing under it moves when
+/// an identity flips or a card leaves the game. The board named neither
+/// identity until this line.
+fn identity_line(view: &ClientView, side: Side, registry: &CardRegistry) -> Line<'static> {
+    use netrunner_client::board::hud;
+    let identity = match side {
+        Side::Corp => view.corp.identity.as_ref(),
+        Side::Runner => view.runner.identity.as_ref(),
+    };
+    let name = identity.map_or_else(|| "—".to_string(), |id| card_title(id, registry));
+    let face = hud::identity_side(view, side, registry).map(|face| format!(" · {}", face.line())).unwrap_or_default();
+    let removed = hud::removed_from_game(view, side);
+    let removed = match removed.len() {
+        0 => "none".to_string(),
+        _ => removed.iter().map(|id| card_title(id, registry)).collect::<Vec<_>>().join(", "),
+    };
+    Line::from(format!("Identity: {name}{face}   Removed from the game: {removed}"))
 }
 
 /// The viewer's own hand on one wrapped line: `Hand: Hedge Fund
@@ -1435,7 +1463,15 @@ fn mood_style(mood: Option<Affordance>) -> Style {
 
 fn format_server(server: &ServerView, view: &ClientView, registry: &CardRegistry) -> String {
     let describe = |card: &netrunner_core::rules::PublicInstalledCard| {
-        let rez = if card.rezzed { "rezzed" } else { "unrezzed" };
+        // An agenda is never rezzed (CR 8.1.1); one installed faceup
+        // (Sacrifice Zone Expansion, BANGUN's) says so instead.
+        let agenda = card.card.as_ref().and_then(|id| registry.get(id)).is_some_and(|def| def.card_type == netrunner_core::dsl::CardType::Agenda);
+        let rez = match (agenda, card.rezzed) {
+            (true, true) => "faceup",
+            (true, false) => "facedown",
+            (false, true) => "rezzed",
+            (false, false) => "unrezzed",
+        };
         let label = card.card.as_ref().map(|id| card_title(id, registry)).unwrap_or_else(|| "???".to_string());
         // `None` means this viewer may not see the count at all (unrezzed,
         // and not theirs), which renders the same as "none placed".
@@ -1758,6 +1794,38 @@ mod tests {
         assert!(rows.iter().any(|row| row.contains("Ice Wall (rezzed) [hosts Botulus]")), "the ice lists its Trojan:\n{}", rows.join("\n"));
         let programs = rows.iter().find(|row| row.contains("Programs:")).unwrap();
         assert!(programs.contains("Botulus (") && programs.contains("on Ice Wall"), "the ghost names its host: {programs}");
+    }
+
+    /// Each block names its identity, the side up for one that flips,
+    /// and what that side has removed from the game; what a card put in
+    /// force for a while is listed under the servers. Nebula Talent
+    /// Management flips; the flip, Aircheck's lock and the removed event
+    /// are given to the view, since no opening reaches them.
+    #[test]
+    fn the_board_names_each_identity_its_side_and_what_is_in_effect() {
+        use netrunner_core::dsl::{CardId, Prohibition};
+        use netrunner_core::rules::lingering::{Lingering, LingeringEffect, On, Until};
+        use netrunner_core::view::build_client_view;
+
+        let registry = decks::sample_deck_registry();
+        let corp_deck = netrunner_core::decks::by_id("not_so_subtle").unwrap().to_deck();
+        let runner_deck = netrunner_core::decks::by_id("stolen_goods").unwrap().to_deck();
+        let (state, _events) = GameState::setup(&corp_deck, &runner_deck, &registry, 3).unwrap();
+        let mut view = build_client_view(&state, &registry, Side::Runner);
+        view.corp.identity_flipped = true;
+        view.runner.removed_from_game.push(CardId("sure_gamble".into()));
+        view.lingering.push(LingeringEffect { what: Lingering::Cannot(Prohibition::SpendOrLoseCreditPool), on: On::Player(Side::Runner), until: Until::EndOfRun, source: CardId("aircheck".into()) });
+
+        let mut ui = LocalUiState::new(registry, Side::Runner);
+        ui.begin_decision(view);
+        let mut terminal = Terminal::new(TestBackend::new(220, 50)).unwrap();
+        terminal.draw(|frame| draw_frame(frame, &ui, None)).unwrap();
+        let buffer = terminal.backend().buffer();
+        let rows: Vec<String> = (0..buffer.area.height).map(|y| (0..buffer.area.width).map(|x| buffer[(x, y)].symbol().to_string()).collect()).collect();
+        let screen = rows.join("\n");
+        assert!(screen.contains("Identity: Nebula Talent Management: Making Stars · Its flip side is up   Removed from the game: none"), "{screen}");
+        assert!(screen.contains("Removed from the game: Sure Gamble"), "{screen}");
+        assert!(screen.contains("In effect — Aircheck: the Runner cannot spend or lose credits"), "{screen}");
     }
 
     /// The player's own hand is drawn, and only theirs: the same position

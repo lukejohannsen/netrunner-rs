@@ -402,6 +402,14 @@ pub struct HudPanel(pub Side);
 /// identity's click. For a test to press, and to read which it is.
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Avatar(pub Side);
+/// The rail's "In effect" heading, over what a card put in force for a
+/// while.
+#[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
+pub struct InEffect;
+/// The chip on a flip identity's disc naming the side that is up
+/// ("Front", "Flipped", "Side 2" — `hud::IdentitySide::chip`).
+#[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
+pub struct IdentityChip(pub Side);
 /// A side's avatar bar, and whether it is lit for that side's turn.
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
 pub struct AvatarBar {
@@ -2415,6 +2423,29 @@ fn spawn_avatar_bar(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &Cli
                         bevy::picking::Pickable::IGNORE,
                     ));
                 }
+                // Which side of a flip identity is up, on the disc's foot
+                // over the ring: only that side is active (CR 3.1.1a), and
+                // the view had said so since Dewi with nothing drawing it.
+                // Absolute, so the bar's rule holds — nothing in it moves.
+                if let Some(face) = hud::identity_side(view, side, &core.registry) {
+                    disc_node
+                        .spawn((
+                            Node { position_type: PositionType::Absolute, left: px(0), right: px(0), bottom: px(0), justify_content: JustifyContent::Center, ..default() },
+                            bevy::picking::Pickable::IGNORE,
+                        ))
+                        .with_children(|foot| {
+                            foot.spawn((
+                                IdentityChip(side),
+                                Node { padding: UiRect::axes(px(8), px(1)), border: UiRect::all(px(1)), border_radius: BorderRadius::MAX, ..default() },
+                                BackgroundColor(theme.glass_strong),
+                                BorderColor::all(if face.flipped { colour } else { theme.glass_border }),
+                                bevy::picking::Pickable::IGNORE,
+                            ))
+                            .with_children(|chip| {
+                                chip.spawn((Text::new(face.chip()), theme.font(layout::BAR_WORD * 0.8), TextColor(theme.text), bevy::picking::Pickable::IGNORE));
+                            });
+                        });
+                }
             });
             // An identity's own ability has nowhere else to live: it is
             // not an install and not in hand.
@@ -3367,6 +3398,16 @@ fn spawn_rail(parent: &mut ChildSpawnerCommands, theme: &Theme, game: &Game, hel
             parent.spawn((widgets::dim(theme, prompt.detail.clone()), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
         }
     }
+    // A rule a card put in force for a while (`hud::in_effect`): the
+    // credit pool locked for a run, next turn's clicks, a score lock. Under
+    // the prompt, because it is what the person is deciding under.
+    let lasting = game.view.as_ref().map(|view| hud::in_effect(view, game.registry())).unwrap_or_default();
+    if !lasting.is_empty() {
+        parent.spawn((InEffect, widgets::label(theme, "In effect")));
+        for line in lasting {
+            parent.spawn((widgets::dim(theme, line), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
+        }
+    }
     if let Some(rejection) = &game.rejection {
         parent.spawn((widgets::notice(theme, format!("Rejected: {rejection}"), ()), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
     }
@@ -3651,7 +3692,7 @@ fn spawn_decision_popup(parent: &mut ChildSpawnerCommands, theme: &Theme, core: 
     // card going in, or the card whose text is asking.
     let single: Option<CardId> = match &access {
         Some(access) => Some(access.card.clone()),
-        None if choices.is_empty() && opening.is_none() => view.and_then(|view| Prompt::card(view, &core.registry)),
+        None if choices.is_empty() && opening.is_none() => view.and_then(|view| Prompt::card_after(view, &core.registry, game.last_entry())),
         None => None,
     };
     // What the words and the list of buttons take, guessed before the
@@ -4493,6 +4534,7 @@ fn spawn_overlay(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &Client
                 } else if let Some(sheet) = &game.sheet {
                     match (&sheet.target, game.card_of(&sheet.target)) {
                         (Target::Install(id), card) => install_sheet(panel, theme, core, images, game, *id, card.as_ref()),
+                        (Target::Identity(side), Some(id)) => identity_sheet(panel, theme, core, images, game, *side, &id),
                         (_, Some(id)) => card_sheet(panel, theme, core, images, &id),
                         (Target::Server(server), None) if sheet.stack => stack_sheet(panel, theme, core, images, game, *server, window),
                         (_, None) => zone_sheet(panel, theme, core, images, game, &sheet.target, window),
@@ -4634,6 +4676,26 @@ fn card_sheet(panel: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore
     };
     let image = def.numeric_id.and_then(|code| images.face(code, FaceSize::Large));
     spawn_face(panel, theme, &Face::of(def), FaceSize::Large, image, ());
+}
+
+/// A side's identity: the card alone, as `card_sheet` draws any card,
+/// unless it has more than one side — then which side is up beside it
+/// (`hud::IdentitySide::line`), because the printed face shows every side
+/// and only the one up is active (CR 3.1.1a).
+#[allow(clippy::too_many_arguments)]
+fn identity_sheet(panel: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore, images: &CardImages, game: &Game, side: Side, id: &CardId) {
+    let Some((def, face)) = core.registry.get(id).zip(game.view.as_ref().and_then(|view| hud::identity_side(view, side, &core.registry))) else {
+        card_sheet(panel, theme, core, images, id);
+        return;
+    };
+    panel.spawn((Node { flex_direction: FlexDirection::Row, column_gap: px(16), align_items: AlignItems::FlexStart, ..default() },)).with_children(|row| {
+        let image = def.numeric_id.and_then(|code| images.face(code, FaceSize::Large));
+        spawn_face(row, theme, &Face::of(def), FaceSize::Large, image, ());
+        row.spawn((Node { flex_grow: 1.0, min_width: px(0), flex_direction: FlexDirection::Column, row_gap: px(8), ..default() },)).with_children(|column| {
+            column.spawn(widgets::label(theme, "State"));
+            column.spawn((InstallFact, Text::new(face.line()), theme.font(size::SMALL), TextColor(theme.text), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
+        });
+    });
 }
 
 /// An installed card: the face (or the back, for a card the viewer
@@ -4822,8 +4884,20 @@ fn zone_sheet(panel: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore
         Target::Pile(Pile::Agendas(_)) => unreachable!("the score area returned above"),
         Target::HandCard(_) | Target::Install(_) | Target::Identity(_) | Target::Position(_) | Target::Rig | Target::Table => (String::new(), Vec::new()),
     };
+    // What left the game from this side, under the pile a person looks
+    // in for a card that has gone: the heap for the Runner, Archives for
+    // the Corp. Public, and drawn nowhere before (`hud::removed_from_game`).
+    let removed: &[CardId] = match target {
+        Target::Pile(Pile::Heap) => hud::removed_from_game(view, Side::Runner),
+        Target::Server(ServerId::Archives) => hud::removed_from_game(view, Side::Corp),
+        _ => &[],
+    };
+    let caption = match removed.len() {
+        0 => caption,
+        n => format!("{caption} · {n} removed from the game, below"),
+    };
     panel.spawn(widgets::dim(theme, caption));
-    if !shown.is_empty() {
+    if !shown.is_empty() || !removed.is_empty() {
         // A wrapping row inside a column that scrolls: a pile of forty
         // is ten rows of faces, and the wheel reaches them all. The faces
         // are `layout::PILE_FACE`, a size up from the browser's grid,
@@ -4853,6 +4927,17 @@ fn zone_sheet(panel: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore
                         }
                     }
                 });
+                if !removed.is_empty() {
+                    column.spawn((widgets::label(theme, "Removed from the game"), Node { flex_shrink: 0.0, margin: UiRect::top(px(8)), ..default() }));
+                    column.spawn(wrap_row()).with_children(|row| {
+                        for id in removed {
+                            if let Some(def) = core.registry.get(id) {
+                                let image = def.numeric_id.and_then(|code| images.face(code, size));
+                                spawn_face(row, theme, &Face::of(def), size, image, (Button, Click::Inspect(id.clone())));
+                            }
+                        }
+                    });
+                }
             })
             .id();
         panel.spawn((Node { width: percent(100), flex_direction: FlexDirection::Row, column_gap: px(4), ..default() },)).add_child(scroll).with_children(|row| {

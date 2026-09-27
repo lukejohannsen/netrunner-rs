@@ -699,6 +699,30 @@ impl Prompt {
     }
 }
 
+impl Prompt {
+    /// [`Prompt::card`], after the entry that parked the decision: a
+    /// choice about a card its asker has just looked at shows *that* card.
+    /// Méliès U's reverse side looks at the top of R&D and asks "You may
+    /// trash that card" — the card in question is the one looked at, which
+    /// only the looker's copy of the log names (`GameEvent::CardsLookedAt`,
+    /// masked to them), not the identity asking. Asked only of a choice
+    /// parked by the same action as the look, so a look from an earlier
+    /// action never stands in for a later question.
+    pub fn card_after(view: &ClientView, registry: &CardRegistry, entry: Option<&netrunner_session::PublicHistoryEntry>) -> Option<CardId> {
+        let chooser = match &view.pending_decision {
+            Some(PendingDecision::ChooseEffect { chooser, .. }) if view.pending_payment.is_none() => *chooser,
+            _ => return Prompt::card(view, registry),
+        };
+        let looked = entry.and_then(|entry| {
+            entry.events.iter().rev().find_map(|event| match event {
+                netrunner_core::rules::GameEvent::CardsLookedAt { side, cards, .. } if *side == chooser && view.viewer.is(chooser) => cards.first().cloned(),
+                _ => None,
+            })
+        });
+        looked.or_else(|| Prompt::card(view, registry))
+    }
+}
+
 fn title_of(card: Option<&CardId>, registry: &CardRegistry) -> String {
     card.map_or_else(|| "A card".to_string(), |id| card_title(id, registry))
 }
@@ -813,6 +837,31 @@ mod tests {
         let view = netrunner_core::view::build_client_view(&state, &registry, Side::Corp);
         assert!(ActionMap::build(&view, &registry).is_empty());
         assert_eq!(Prompt::of(&view, &registry).expect("told who is deciding").title, "The Runner is choosing how to pay", "the other chair cannot see whether it is credits or cards");
+    }
+
+    /// A choice parked by the action that looked at a card shows the card
+    /// looked at, to the looker: Méliès U asks "You may trash that card"
+    /// about the top of R&D, not about itself. With no look in the entry,
+    /// the asking card as before.
+    #[test]
+    fn a_choice_after_a_look_shows_the_card_looked_at() {
+        use netrunner_core::rules::{GameEvent, PendingChoiceResume, PublicAction};
+        let registry = CardRegistry::default();
+        let mut view = netrunner_core::view::build_client_view(&GameState::new(1), &registry, Side::Corp);
+        view.pending_decision = Some(PendingDecision::ChooseEffect {
+            chooser: Side::Corp,
+            options: Vec::new(),
+            option_texts: Vec::new(),
+            source_card: None,
+            prompting_card: Some(CardId("melies_u_only_the_brightest".into())),
+            source_install: None,
+            resume: PendingChoiceResume::None,
+        });
+        let entry = |events| netrunner_session::PublicHistoryEntry { turn_number: 1, side: Side::Runner, action: PublicAction::Concealed(netrunner_core::rules::ConcealedAction::ChoosingSecretly), events };
+        let looked = entry(vec![GameEvent::CardsLookedAt { side: Side::Corp, deck: Side::Corp, cards: vec![CardId("hedge_fund".into())] }]);
+        assert_eq!(Prompt::card_after(&view, &registry, Some(&looked)), Some(CardId("hedge_fund".into())));
+        assert_eq!(Prompt::card_after(&view, &registry, Some(&entry(Vec::new()))), Some(CardId("melies_u_only_the_brightest".into())));
+        assert_eq!(Prompt::card_after(&view, &registry, None), Some(CardId("melies_u_only_the_brightest".into())));
     }
 
     /// A text choice shows the card whose text is asking, and only to the

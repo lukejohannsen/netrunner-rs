@@ -871,6 +871,32 @@ mod tests {
         assert_eq!(status.standing.badge(NsgFormat::Startup), "Startup-legal");
     }
 
+    /// Startup is whole: Vantage Point was the last of its three packs to
+    /// be built (NSG pool, VP Stage 8), so a Startup pool asked for what is
+    /// not playable yet is empty on both sides, and every identity Startup
+    /// allows is one a deck can take. A card added to Startup's pool by a
+    /// re-sync fails here until it is built.
+    #[test]
+    fn every_startup_card_is_playable() {
+        let registry = registry();
+        let catalog = catalog(&registry);
+        let book = CardBook::new(&registry, &catalog);
+        let rules = NsgFormat::Startup.rules();
+        for side in [Side::Corp, Side::Runner] {
+            let filter = PoolFilter { playability: Playability::NotYet, ..PoolFilter::new(side, NsgFormat::Startup) };
+            let waiting: Vec<&str> = pool(book, &filter).iter().map(|card| card.title.as_str()).collect();
+            assert!(waiting.is_empty(), "{side:?} Startup cards not playable yet: {waiting:?}");
+            let offered = identities(&registry, side, NsgFormat::Startup);
+            let unoffered: Vec<&str> = catalog
+                .iter()
+                .filter(|card| card.card_type == CardType::Identity && card.side == side && legal_in(card, rules))
+                .filter(|card| !offered.iter().any(|identity| same_title(identity, card)))
+                .map(|card| card.title.as_str())
+                .collect();
+            assert!(unoffered.is_empty(), "{side:?} Startup identities not offered: {unoffered:?}");
+        }
+    }
+
     /// A reprint spelled with a curly apostrophe is the card the engine
     /// plays under its first printing: System Update 2021's The Maker’s Eye
     /// resolves to the Core Set's playable The Maker's Eye.

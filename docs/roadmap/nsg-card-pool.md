@@ -1744,6 +1744,47 @@ deck. **No new `Effect`.** Vantage Point 59 of 66; `VP_UNIMPLEMENTED`
   `matchups()` never yields, and the engine changes (the whose re-check, a
   flip dispatched, a turn-log row for it) moved no game of the pool.
 
+#### After Vantage Point — both clients show what it added (27 September 2026)
+
+Each stage had put what a card needed into the view; nothing had made
+the clients draw it. A read of every view field Stage 0 to Stage 8 added,
+against what the terminal and the desktop draw, found six gaps, and one
+from before (a flip identity's side, which the view had carried since Dewi
+and Nebula with neither client showing it):
+
+- **Which side of an identity is up** (`board::hud::IdentitySide`): a
+  chip on the desktop's avatar disc ("Front", "Flipped", "Side 2"), a line
+  on the identity's sheet, and a first line in each of the terminal's
+  blocks — which named neither identity until now. Méliès U's copy is the
+  Corp's to see once set and the Runner's once turned over.
+- **Each scored card's worth now** (`CorpClientView::scored_worth`,
+  `RunnerClientView::scored_worth`, beside `scored_agendas`): the score
+  list read printed points, so a stolen Let Them Dream said 2 under a
+  total that counted 1. The one core change; derived, never read back.
+- **What left the game** (`hud::removed_from_game`): the Runner's pile,
+  new with Vantage Point, and the Corp's, which no client had drawn — under
+  the heap's and Archives' sheets on the desktop, on the identity line and
+  in the card picker's zones in the terminal.
+- **What is in effect for a while** (`hud::in_effect`): Aircheck's locked
+  credit pool, Caveat Emptor's and Aggressive Trendsetting's next-turn
+  clicks, a score lock, Tread Lightly's rez tax, Shred's hold — under the
+  desktop's prompt, and under the terminal's servers. A strength is left
+  out; its number is already on the card.
+- **An agenda installed faceup says so** — "faceup" on its tile and in
+  both clients' lists, where the terminal had called it "rezzed" and a
+  Corp saw a faceup agenda the same as a facedown one.
+- **A choice about a card just looked at shows that card**
+  (`Prompt::card_after`): Méliès U's "You may trash that card" showed the
+  identity asking, not the top of R&D, which only the looker's log names.
+  The desktop's pop-up; the terminal already has the log line above it.
+
+**Startup is whole.** Its three packs are built, so every Startup card and
+identity is playable in both deck builders, which
+`every_startup_card_is_playable` now holds: a card a re-sync adds to the
+pool fails it until it is built. No published Startup list is shipped as a
+sample deck yet — the stages were played through Sweep decks — so a person
+reaches Vantage Point's cards by building a deck.
+
 ### 2. Rebellion Without Rehearsal — 65 cards (C 7 / V 43 / M 15)
 
 **Decks:** Sweep decks on its three identities.

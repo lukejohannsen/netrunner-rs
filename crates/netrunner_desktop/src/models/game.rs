@@ -521,6 +521,12 @@ impl Game {
         &self.registry
     }
 
+    /// The chair's log entry that produced the view on the board — what a
+    /// prompt parked by that action may be about (`Prompt::card_after`).
+    pub fn last_entry(&self) -> Option<&PublicHistoryEntry> {
+        self.entries.last()
+    }
+
     /// The optional trigger the person is being asked, which the pop-up
     /// offers to answer for good (`Intent::Remember`); `None` in a
     /// replay and while nothing is awaited.
