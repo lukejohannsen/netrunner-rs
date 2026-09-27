@@ -1153,7 +1153,7 @@ mod tests {
                 .unwrap();
 
         assert_eq!(state.runner.tags, 1);
-        assert_eq!(events, vec![GameEvent::TriggerFired { card: CardId("ping".to_string()), trigger: Trigger::OnRez }, GameEvent::TagsGiven { side: Side::Runner, amount: 1 }]);
+        assert_eq!(events, vec![GameEvent::TriggerFired { card: CardId("ping".to_string()), trigger: Trigger::OnRez }, GameEvent::TagsGiven { side: Side::Runner, amount: 1, had: 0 }]);
     }
 
     #[test]
@@ -1262,7 +1262,7 @@ mod tests {
         state.corp.identity = Some(CardId("nbn_reality_plus".to_string()));
 
         let events =
-            dispatch_event(&mut state, &registry, &GameEvent::TagsGiven { side: Side::Runner, amount: 1 }).unwrap();
+            dispatch_event(&mut state, &registry, &GameEvent::TagsGiven { side: Side::Runner, amount: 1, had: 0 }).unwrap();
 
         assert_eq!(state.corp.resources.credits, Credits(7));
         assert!(events.contains(&GameEvent::CreditsGained { side: Side::Corp, amount: 2 }));
@@ -1275,7 +1275,7 @@ mod tests {
         // only — confirm a (hypothetical) Corp-side TagsGiven is a no-op.
         let mut state = empty_state();
         let events =
-            dispatch_event(&mut state, &CardRegistry::new(), &GameEvent::TagsGiven { side: Side::Corp, amount: 1 }).unwrap();
+            dispatch_event(&mut state, &CardRegistry::new(), &GameEvent::TagsGiven { side: Side::Corp, amount: 1, had: 0 }).unwrap();
         assert!(events.is_empty());
     }
 

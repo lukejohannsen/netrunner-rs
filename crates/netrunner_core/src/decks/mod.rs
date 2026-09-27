@@ -446,6 +446,10 @@ mod tests {
             // Startup cards. Stage 2's Ad Nihilum is too: Editorial
             // Division and every card with it is System Gateway, Elevation
             // or Vantage Point.
+            // Rebellion Without Rehearsal Stage 2a: Sebastião's deck
+            // carries Core Set cards (Cyberfeeder, Corroder), as Pay As You
+            // Go does.
+            ("grassroots", &neither),
             ("retirement_package", &neither),
             ("paid_content", &neither),
             ("quick_returns", &not_startup),

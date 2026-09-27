@@ -1,0 +1,184 @@
+{
+  "id": "privileged_access",
+  "title": "Privileged Access",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 0,
+  "play_requirement": {
+    "Not": "IsTagged"
+  },
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "InitiateRun": "Archives"
+        },
+        {
+          "SetAccessReplacement": {
+            "server": "Archives",
+            "effect": {
+              "Sequence": [
+                {
+                  "GiveTags": {
+                    "Fixed": 1
+                  }
+                },
+                {
+                  "EffectIf": {
+                    "condition": "IsTagged",
+                    "effect": {
+                      "EffectIf": {
+                        "condition": {
+                          "ZoneHasAtLeast": {
+                            "zone": "OwnHeap",
+                            "count": 1,
+                            "filter": {
+                              "All": [
+                                {
+                                  "CardType": "Resource"
+                                },
+                                {
+                                  "InstallableRunnerCardWithDiscount": {
+                                    "Credits": 2
+                                  }
+                                }
+                              ]
+                            }
+                          }
+                        },
+                        "effect": {
+                          "PresentChoice": {
+                            "chooser": "Runner",
+                            "options": [
+                              {
+                                "PromptChooseCards": {
+                                  "side": "Runner",
+                                  "source": "OwnHeap",
+                                  "filter": {
+                                    "All": [
+                                      {
+                                        "CardType": "Resource"
+                                      },
+                                      {
+                                        "InstallableRunnerCardWithDiscount": {
+                                          "Credits": 2
+                                        }
+                                      }
+                                    ]
+                                  },
+                                  "min": 1,
+                                  "max": 1,
+                                  "reveal": false,
+                                  "shuffle_after": false,
+                                  "then": {
+                                    "InstallRunnerCardFromHeap": {
+                                      "Credits": 2
+                                    }
+                                  }
+                                }
+                              },
+                              {
+                                "Sequence": []
+                              }
+                            ],
+                            "texts": [
+                              "you may install 1 resource from your heap, paying 2[credit] less",
+                              ""
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                {
+                  "EffectIf": {
+                    "condition": {
+                      "And": [
+                        "IsTagged",
+                        {
+                          "AmountAtLeast": [
+                            "ThreatLevel",
+                            3
+                          ]
+                        }
+                      ]
+                    },
+                    "effect": {
+                      "EffectIf": {
+                        "condition": {
+                          "ZoneHasAtLeast": {
+                            "zone": "OwnHeap",
+                            "count": 1,
+                            "filter": {
+                              "All": [
+                                {
+                                  "CardType": "Program"
+                                },
+                                {
+                                  "InstallableRunnerCardWithDiscount": {
+                                    "Credits": 0
+                                  }
+                                }
+                              ]
+                            }
+                          }
+                        },
+                        "effect": {
+                          "PresentChoice": {
+                            "chooser": "Runner",
+                            "options": [
+                              {
+                                "PromptChooseCards": {
+                                  "side": "Runner",
+                                  "source": "OwnHeap",
+                                  "filter": {
+                                    "All": [
+                                      {
+                                        "CardType": "Program"
+                                      },
+                                      {
+                                        "InstallableRunnerCardWithDiscount": {
+                                          "Credits": 0
+                                        }
+                                      }
+                                    ]
+                                  },
+                                  "min": 1,
+                                  "max": 1,
+                                  "reveal": false,
+                                  "shuffle_after": false,
+                                  "then": {
+                                    "InstallRunnerCardFromHeap": {
+                                      "Credits": 0
+                                    }
+                                  }
+                                }
+                              },
+                              {
+                                "Sequence": []
+                              }
+                            ],
+                            "texts": [
+                              "you may install 1 program from your heap",
+                              ""
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      ],
+      "text": "Run Archives. If successful, instead of breaching Archives, take 1 tag."
+    }
+  ],
+  "numeric_id": 34068,
+  "is_playable": true
+}

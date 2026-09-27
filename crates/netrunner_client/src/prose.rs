@@ -88,6 +88,8 @@ pub fn describe_amount(amount: &Amount) -> String {
         Amount::IceProtectingThisServer => "the number of pieces of ice protecting this server".to_string(),
         Amount::IceProtecting(server) => format!("the number of pieces of ice protecting {}", describe_server(*server)),
         Amount::OtherUnrezzedIce => "the number of other unrezzed pieces of ice".to_string(),
+        Amount::CardsAccessedLastRun => "the cards accessed during that run".to_string(),
+        Amount::EncounteredIceStrength => "the strength of the ice being encountered".to_string(),
     }
 }
 
@@ -157,6 +159,7 @@ fn describe_target(target: &CardTarget, registry: &CardRegistry) -> String {
         CardTarget::TopOfStack { side, .. } => format!("the top card of {}'s deck", who(*side)),
         CardTarget::HostIce => "the host ice".to_string(),
         CardTarget::HostedOnThisCard => "the card hosted here".to_string(),
+        CardTarget::EncounteredIce => "the ice being encountered".to_string(),
     }
 }
 
@@ -279,7 +282,6 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
             count,
             options.iter().map(|option| describe_effect(option, registry)).collect::<Vec<_>>().join(" / ")
         ),
-        Effect::GainCreditsPerCardAccessedThisRun(side) => format!("{} gains 1 credit per card accessed this run", who(*side)),
         Effect::PromptChooseCards { side, source, min, max, .. } => {
             let how_many = if min == max { plural(*min, "card", "cards") } else { format!("{min} to {max} cards") };
             format!("{} chooses {how_many} from {}", who(*side), describe_zone(source))
@@ -295,7 +297,9 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
         Effect::InstallFromZoneIgnoringCost { .. } => "install a card, ignoring its cost".to_string(),
         Effect::PromptInstallCorpCard { .. } => "install a card".to_string(),
         Effect::InstallRunnerCardFromGrip => "install a card from the grip".to_string(),
-        Effect::InstallRunnerCardFromHeap => "install a card from the heap".to_string(),
+        Effect::InstallRunnerCardFromHeap(Discount::Credits(0)) => "install a card from the heap".to_string(),
+        Effect::InstallRunnerCardFromHeap(Discount::Credits(n)) => format!("install a card from the heap, paying {n} less"),
+        Effect::InstallRunnerCardFromHeap(Discount::AllCosts) => "install a card from the heap, ignoring all costs".to_string(),
         Effect::InstallRunnerCardFromGripWithDiscount(Discount::Credits(n)) => format!("install a card from the grip, paying {n} less"),
         Effect::InstallRunnerCardFromGripWithDiscount(Discount::AllCosts) => "install a card from the grip, ignoring all costs".to_string(),
         Effect::InstallRunnerCardFromHost => "install the hosted card".to_string(),
@@ -509,6 +513,7 @@ pub fn describe_continuous(effect: &ContinuousEffect) -> String {
         Scope::Scoring(filter) => format!("an agenda the Corp scores ({})", lower(format!("{filter:?}"))),
         Scope::ScoreArea(side) => format!("this agenda, in the {side:?}'s score area"),
         Scope::RunsOnThisServer => "each run against this server".to_string(),
+        Scope::Trashing(filter) => format!("a resource the Corp trashes with the basic action ({})", lower(format!("{filter:?}"))),
     };
     let signed = |number: &Number| {
         let each = if number.per < 0 { format!("−{}", number.per.unsigned_abs()) } else { format!("+{}", number.per) };
@@ -529,6 +534,7 @@ pub fn describe_continuous(effect: &ContinuousEffect) -> String {
         ContinuousKind::PlayClicks(number) => format!("costs {} [click] to play", signed(number)),
         ContinuousKind::StealCost(number) => format!("costs {} to steal", signed(number)),
         ContinuousKind::ScoreCost(cost) => format!("costs \"{}\" to score", describe_cost(cost)),
+        ContinuousKind::BasicTrashCost(cost) => format!("costs the Corp \"{}\" to trash with the basic action", describe_cost(cost)),
         ContinuousKind::AgendaPoints(number) => format!("is worth {} agenda points", signed(number)),
         ContinuousKind::GainSubtype(subtype) => format!("gains {}", lower(format!("{subtype:?}"))),
         ContinuousKind::BoostsLastTheRun => "keeps its strength boosts for the rest of the run".to_string(),

@@ -878,6 +878,8 @@ mod tests {
                     side: Side::Runner,
                     card_id: CardId("cleaver".to_string()),
                     ability_index: 0,
+                    install: None,
+                    action: false,
                 }],
             ),
             &registry(),

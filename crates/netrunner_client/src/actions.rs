@@ -517,7 +517,7 @@ pub fn narrate_event(
             WouldHappen::Trash { .. } => "a trash was prevented".to_string(),
         },
         GameEvent::RunnerFlatlined => "the Runner is flatlined".to_string(),
-        GameEvent::TagsGiven { side, amount } => format!("{side:?} took {amount} tag(s)"),
+        GameEvent::TagsGiven { side, amount, .. } => format!("{side:?} took {amount} tag(s)"),
         // The remover, not whose tags: Synapse Global's cost is the Corp
         // removing the Runner's tag, which read "Runner removed 1 tag(s)".
         GameEvent::TagRemoved { by, .. } => format!("{by:?} removed a tag"),
@@ -975,7 +975,10 @@ pub fn explain_action(action: &PlayerAction, registry: &CardRegistry, view: Opti
         PlayerAction::RemoveTag => "Spend 1 click and 2 credits to remove a tag. While tagged, the Corp can trash your resources.".to_string(),
         PlayerAction::PurgeVirusCounters => "Spend all 3 clicks to remove every virus counter in play.".to_string(),
         PlayerAction::ChooseTriggerToResolve { .. } => "Several of your cards want to trigger at once; choose which resolves first.".to_string(),
-        PlayerAction::TrashResource { .. } => "Spend 1 click and 2 credits to trash one of the tagged Runner's resources.".to_string(),
+        // A Runner card may add to the price (`ContinuousKind::BasicTrashCost`):
+        // the words say so rather than price it, since what is added is the
+        // engine's to know and the payment asks for it as it is paid.
+        PlayerAction::TrashResource { .. } => "Spend 1 click and 2 credits to trash one of the tagged Runner's resources. Some Runner cards add to the price — a card from HQ, which you choose as you pay — and the action is offered only when you can pay it all.".to_string(),
         PlayerAction::SelectCardToAccess { candidate } => match candidate {
             AccessCandidate::Zone => format!(
                 "Access {} — you see it only as you access it, and steal it if it is an agenda.",

@@ -1,0 +1,67 @@
+{
+  "id": "amelia_earhart",
+  "title": "Amelia Earhart",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 0,
+  "unique": true,
+  "counter_kind": "Power",
+  "triggers": [
+    {
+      "trigger": "OnRunEnded",
+      "subject": "Any",
+      "when": {
+        "Server": [
+          "Hq",
+          "RnD"
+        ]
+      },
+      "requirement": {
+        "AmountAtLeast": [
+          "CardsAccessedLastRun",
+          3
+        ]
+      },
+      "effects": [
+        {
+          "AddCounters": 1
+        }
+      ],
+      "text": "Whenever a run on HQ or R&D ends, if you accessed 3 or more cards during that run, place 1 power counter on this resource."
+    },
+    {
+      "trigger": "OnTurnStart",
+      "requirement": {
+        "ThisCardCountersAtLeast": 3
+      },
+      "effects": [
+        {
+          "OfferPaidChoice": {
+            "side": "Runner",
+            "cost": {
+              "AllOf": [
+                {
+                  "RemoveCounters": 3
+                },
+                "TrashSelf"
+              ]
+            },
+            "if_paid": {
+              "LoseCredits": [
+                "Corp",
+                10
+              ]
+            },
+            "if_declined": {
+              "Sequence": []
+            },
+            "text": "you may remove 3 hosted power counters and trash this resource. If you do, the Corp loses 10[credit]"
+          }
+        }
+      ],
+      "text": "When your turn begins, you may remove 3 hosted power counters and trash this resource. If you do, the Corp loses 10[credit]."
+    }
+  ],
+  "numeric_id": 34083,
+  "is_playable": true
+}

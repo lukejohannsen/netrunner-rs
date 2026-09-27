@@ -1,0 +1,64 @@
+{
+  "id": "amanuensis",
+  "title": "Amanuensis",
+  "side": "Runner",
+  "card_type": "Hardware",
+  "cost": 2,
+  "unique": true,
+  "counter_kind": "Power",
+  "continuous": [
+    {
+      "kind": {
+        "Memory": {
+          "per": 1
+        }
+      },
+      "applies_to": "Controller",
+      "text": "+1[mu]"
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnDiscardPhaseEnd",
+      "requirement": "IsTagged",
+      "effects": [
+        {
+          "AddCounters": 1
+        }
+      ],
+      "text": "When your turn ends, place 1 power counter on this hardware if you are tagged."
+    },
+    {
+      "trigger": "OnTagRemoved",
+      "when": {
+        "Whose": "Runner"
+      },
+      "requirement": {
+        "ThisCardCountersAtLeast": 1
+      },
+      "effects": [
+        {
+          "OfferPaidChoice": {
+            "side": "Runner",
+            "cost": {
+              "RemoveCounters": 1
+            },
+            "if_paid": {
+              "DrawCards": [
+                "Runner",
+                2
+              ]
+            },
+            "if_declined": {
+              "Sequence": []
+            },
+            "text": "you may remove 1 hosted power counter to draw 2 cards"
+          }
+        }
+      ],
+      "text": "Whenever you remove 1 or more tags, you may remove 1 hosted power counter to draw 2 cards."
+    }
+  ],
+  "numeric_id": 34069,
+  "is_playable": true
+}

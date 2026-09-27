@@ -1415,7 +1415,7 @@ mod tests {
                     index: 0,
                     effect: Effect::GiveTags(crate::dsl::Amount::Fixed(2)),
                 },
-                GameEvent::TagsGiven { side: Side::Runner, amount: 2 },
+                GameEvent::TagsGiven { side: Side::Runner, amount: 2, had: 0 },
             ]
         );
     }

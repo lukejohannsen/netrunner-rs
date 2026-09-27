@@ -172,7 +172,7 @@ mod tests {
                 GameEvent::CreditsSpent { side: Side::Runner, amount: 3 },
                 GameEvent::TraceRunnerBidSubmitted { runner_bid: 3, total_strength: 4 },
                 GameEvent::TraceSuccessful { corp_total: 5, runner_total: 4 },
-                GameEvent::TagsGiven { side: Side::Runner, amount: 1 },
+                GameEvent::TagsGiven { side: Side::Runner, amount: 1, had: 0 },
             ]
         );
     }

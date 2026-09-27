@@ -1296,6 +1296,11 @@ impl CardDefinition {
                 }
                 (ContinuousKind::ScoreCost(_), Scope::Scoring(_)) => {}
                 (ContinuousKind::ScoreCost(_), _) => return misfit("ScoreCost", "an additional cost to score is about an agenda being `Scoring`"),
+                (ContinuousKind::BasicTrashCost(_), Scope::This) if self.card_type == CardType::Resource => {}
+                (ContinuousKind::BasicTrashCost(_), Scope::Trashing(_)) => {}
+                (ContinuousKind::BasicTrashCost(_), _) => {
+                    return misfit("BasicTrashCost", "the basic action trashes a resource: this one's own, or one being `Trashing`");
+                }
                 (ContinuousKind::AgendaPoints(_), Scope::ScoreArea(_)) if self.card_type == CardType::Agenda => {}
                 (ContinuousKind::AgendaPoints(_), _) => return misfit("AgendaPoints", "an agenda's points change in a score area, said by the agenda (`ScoreArea`)"),
                 (ContinuousKind::BoostsLastTheRun, Scope::This | Scope::Host) => {}

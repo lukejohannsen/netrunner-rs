@@ -1,0 +1,107 @@
+{
+  "id": "sebastiao_souza_pessoa_activist_organizer",
+  "title": "Sebastião Souza Pessoa: Activist Organizer",
+  "side": "Runner",
+  "card_type": "Identity",
+  "cost": 0,
+  "min_deck_size": 45,
+  "continuous": [
+    {
+      "kind": {
+        "BasicTrashCost": {
+          "Trash": {
+            "from": "OwnHq",
+            "filter": "Any",
+            "count": 1
+          }
+        }
+      },
+      "applies_to": {
+        "Trashing": {
+          "HasSubtype": "Connection"
+        }
+      },
+      "text": "As an additional cost to trash a connection resource with the basic action, the Corp must trash 1 card from HQ."
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnTagsGiven",
+      "requirement": "HadNoTags",
+      "effects": [
+        {
+          "EffectIf": {
+            "condition": {
+              "ZoneHasAtLeast": {
+                "zone": "OwnGrip",
+                "count": 1,
+                "filter": {
+                  "All": [
+                    {
+                      "CardType": "Resource"
+                    },
+                    {
+                      "HasSubtype": "Connection"
+                    },
+                    {
+                      "InstallableRunnerCardWithDiscount": {
+                        "Credits": 2
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "effect": {
+              "PresentChoice": {
+                "chooser": "Runner",
+                "options": [
+                  {
+                    "PromptChooseCards": {
+                      "side": "Runner",
+                      "source": "OwnGrip",
+                      "filter": {
+                        "All": [
+                          {
+                            "CardType": "Resource"
+                          },
+                          {
+                            "HasSubtype": "Connection"
+                          },
+                          {
+                            "InstallableRunnerCardWithDiscount": {
+                              "Credits": 2
+                            }
+                          }
+                        ]
+                      },
+                      "min": 1,
+                      "max": 1,
+                      "reveal": false,
+                      "shuffle_after": false,
+                      "then": {
+                        "InstallRunnerCardFromGripWithDiscount": {
+                          "Credits": 2
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "Sequence": []
+                  }
+                ],
+                "texts": [
+                  "you may install 1 connection resource from your grip, paying 2[credit] less",
+                  ""
+                ]
+              }
+            }
+          }
+        }
+      ],
+      "text": "Whenever you take 1 or more tags, if you had no tags, you may install 1 connection resource from your grip, paying 2[credit] less."
+    }
+  ],
+  "numeric_id": 34066,
+  "is_playable": true
+}

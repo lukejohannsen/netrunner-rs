@@ -82,6 +82,13 @@ pub enum CardTarget {
     /// hosted cards". Only meaningful for `Effect::TrashCard`; each hosted
     /// card goes to its owner's discard pile.
     HostedOnThisCard,
+    /// The piece of ice the Runner is encountering — Arruaceiras Crew's
+    /// "trash the ice you are encountering". Resolved off the run
+    /// (`RunState::ice` at its position, in `RunPhase::EncounterIce`),
+    /// then treated like `CorpInstalled`; `RulesError::NotInEncounter`
+    /// outside one. `ModifyStrength` needed no target, because it only
+    /// ever meant this ice.
+    EncounteredIce,
 }
 
 /// Where `Effect::HostCardOnThisCard` takes the card from.
@@ -387,13 +394,6 @@ pub enum Effect {
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         texts: Vec<String>,
     },
-    /// Grants `side` 1 credit for each card accessed during the just-ended
-    /// run (`GameState::last_completed_run`) — e.g. Zahya Sadeghi's "gain 1
-    /// credit for each time you accessed a card during that run." A
-    /// narrowly-scoped one-off (rather than a general dynamic-amount
-    /// system, which no card needs yet) — see this variant's tracking note
-    /// in `ROADMAP.md` for the planned future generalization.
-    GainCreditsPerCardAccessedThisRun(Side),
     /// Offers `side` a choice of up to `max` (at least `min`) cards from
     /// `source` matching `filter`, optionally moving the chosen cards to
     /// `destination` (shuffling it afterward if `shuffle_after`), then
@@ -543,7 +543,7 @@ pub enum Effect {
     /// Removes *every* counter currently on `acting_card` and grants `side`
     /// that many credits — e.g. Pennyshaver's "place 1 credit on this
     /// hardware, then take all credits from it." A narrowly-scoped one-off
-    /// (like `GainCreditsPerCardAccessedThisRun`) rather than a general
+    /// rather than a general
     /// dynamic-amount system, which no card needs yet — the M4 plan
     /// section claimed hosted-credit-pool cards would need no new `Effect`
     /// variants at all, but "take a variable amount, not a fixed N" is a
@@ -570,15 +570,14 @@ pub enum Effect {
     DerezCard(CardTarget),
     /// Gains `credits_per_counter` credits for each of `acting_card`'s own
     /// hosted counters — a narrow, proportional one-off distinct from
-    /// `TakeAllCountersAsCredits`'s flat 1-per-counter payout and from
-    /// `GainCreditsPerCardAccessedThisRun`'s unrelated read, kept
+    /// `TakeAllCountersAsCredits`'s flat 1-per-counter payout, kept
     /// deliberately separate from removing the counters (the caller pairs
     /// it with its own cost/cleanup, e.g. Fermenter's "[click], [trash]:
     /// gain 2 credits for each hosted virus counter" — the `TrashSelf`
     /// cost already disposes of the card and its counters together, so
     /// this effect only needs to read the count once). To be folded into a
-    /// general `Amount` vocabulary alongside `TakeAllCountersAsCredits`/
-    /// `GainCreditsPerCardAccessedThisRun` in a later milestone.
+    /// general `Amount` vocabulary alongside `TakeAllCountersAsCredits` in
+    /// a later milestone.
     GainCreditsPerCounter { side: Side, credits_per_counter: u32 },
     /// Exchanges two Corp ICE's `server`/`slot` positions in place — e.g.
     /// Tāo Salonga's "you may swap 2 installed pieces of ice." Both
@@ -713,13 +712,19 @@ pub enum Effect {
     InstallRunnerCardFromGrip,
     /// `InstallRunnerCardFromGrip` for a card sitting in the **heap** —
     /// Scrounge's "Install 1 program from your heap", Magdalene
-    /// Keino-Chemutai's install from among the cards just discarded. A
+    /// Keino-Chemutai's install from among the cards just discarded — paying
+    /// the `Discount` less: Privileged Access's "install 1 resource from
+    /// your heap, paying 2[credit] less", with `CardFilter::
+    /// InstallableRunnerCardWithDiscount` over `OwnHeap` as the offer. A
     /// sibling rather than a zone parameter on the grip variant so every
     /// existing card JSON keeps its bare `"InstallRunnerCardFromGrip"`
     /// string; both share one pricing and eligibility path
-    /// (`engine::can_install_runner_card_from_zone`). Same Trojan exclusion
-    /// and same silent no-op when the pick is no longer installable.
-    InstallRunnerCardFromHeap,
+    /// (`engine::can_install_runner_card_from_zone_with_discount`). Same
+    /// Trojan exclusion and same silent no-op when the pick is no longer
+    /// installable. The discount was taken into this variant rather than a
+    /// fourth beside it (`Credits(0)` for the two cards that pay in full),
+    /// as `PlayOperation { from }` took Plutus's zone.
+    InstallRunnerCardFromHeap(Discount),
     /// `InstallRunnerCardFromGrip` paying `u32` less — Illumination's
     /// "install up to 3 cards from your grip, paying 1[c] less for each".
     /// Paired with `CardFilter::InstallableRunnerCardWithDiscount` so the
@@ -1113,10 +1118,12 @@ fn is_zero_u32(value: &u32) -> bool {
 /// `AddAdditionalAccess`/`BoostStrength` for the handful of cards whose text
 /// scales with some other piece of state. Deliberately a small, closed set
 /// (not a general expression language) — extend only when a real card needs
-/// a new formula. `TakeAllCountersAsCredits`/`GainCreditsPerCounter`/
-/// `GainCreditsPerCardAccessedThisRun` predate this enum and aren't folded
-/// into it (no behavior change, no card needs the refactor yet) — see
-/// ROADMAP.md's tracking note for the planned future consolidation.
+/// a new formula. `TakeAllCountersAsCredits`/`GainCreditsPerCounter`
+/// predate this enum and aren't folded into it (no behavior change, no card
+/// needs the refactor yet) — see ROADMAP.md's tracking note for the planned
+/// future consolidation. `GainCreditsPerCardAccessedThisRun` was the third,
+/// and went when Amelia Earhart needed its count as a number
+/// (`CardsAccessedLastRun`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Amount {
     /// A plain literal — lets an amount-typed effect field be authored with
@@ -1263,6 +1270,19 @@ pub enum Amount {
     /// each piece of ice protecting HQ", priced from the grip, where the
     /// card is on no server for `IceProtectingThisServer` to read.
     IceProtecting(ServerId),
+    /// Cards the Runner accessed during the run that ended most recently
+    /// (`CompletedRun::cards_accessed`) — Zahya Sadeghi's "gain 1[credit]
+    /// for each card accessed", and Amelia Earhart's "if you accessed 3 or
+    /// more cards during that run" through `AmountAtLeast`. It replaced
+    /// `Effect::GainCreditsPerCardAccessedThisRun`, a gain that could not
+    /// be a threshold; 0 before any run has ended.
+    CardsAccessedLastRun,
+    /// The strength of the piece of ice being encountered, never below 0
+    /// (`continuous::ice_strength`, which may be) — Arruaceiras Crew's
+    /// "trash the ice you are encountering if its strength is 0 or less",
+    /// `Not(AmountAtLeast(.., 1))`, since an `Amount` is unsigned. 0
+    /// outside an encounter. No amount read a strength.
+    EncounteredIceStrength,
     /// Unrezzed pieces of ice other than `acting_card`'s install, wherever
     /// they are — Reverb's "lowered by 1[credit] for each other unrezzed
     /// piece of ice". No amount counted ice by rez state.
@@ -1466,7 +1486,6 @@ impl Effect {
             | Effect::Prevent(..)
             | Effect::AddCounters(..)
             | Effect::RemoveCounters(..)
-            | Effect::GainCreditsPerCardAccessedThisRun(..)
             | Effect::RezInstalled { .. }
             | Effect::TakeAllCountersAsCredits(..)
             | Effect::TrashCurrentlyAccessedCard
@@ -1475,7 +1494,7 @@ impl Effect {
             | Effect::SwapInstalledIce(..)
             | Effect::InstallFromZoneIgnoringCost { .. }
             | Effect::InstallRunnerCardFromGrip
-            | Effect::InstallRunnerCardFromHeap
+            | Effect::InstallRunnerCardFromHeap(_)
             | Effect::InstallRunnerCardFromGripWithDiscount(..)
             | Effect::InstallRunnerCardFromHost
             | Effect::RedirectRunOnApproach(..)

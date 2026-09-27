@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::dsl::{EffectDuration, CardId, DamageType, Effect};
 use crate::rules::run::ServerId;
-use crate::rules::state::{Side, WouldHappen};
+use crate::rules::state::{InstallId, Side, WouldHappen};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum GameEvent {
@@ -242,7 +242,11 @@ pub enum GameEvent {
     },
     RunnerFlatlined,
     CreditsSpent { side: Side, amount: u32 },
-    TagsGiven { side: Side, amount: u32 },
+    /// `had` is how many tags `side` had before these — Sebastião Souza
+    /// Pessoa's "whenever you take 1 or more tags, **if you had no tags**",
+    /// a fact about the moment that the state has lost by the time the
+    /// trigger resolves (`EffectRequirement::HadNoTags`).
+    TagsGiven { side: Side, amount: u32, had: u32 },
     /// `Cost::ClearTags` zeroed the Runner's tag count. Named for clearing,
     /// not purging — see `Cost::ClearTags`'s doc comment. `side` is whose
     /// tags they were and `by` the player who removed them, as on
@@ -285,7 +289,13 @@ pub enum GameEvent {
     AbilityGainedCredits { side: Side, card: CardId },
     RunEndedByEffect { server: ServerId },
     GameOver { winner: Side },
-    AbilityActivated { side: Side, card_id: CardId, ability_index: usize },
+    /// `install` is the copy used, `None` for an identity or a card used
+    /// from the hand; `action` is whether the ability is an action (CR
+    /// 9.5.2a: its cost begins with [click]), which is what Juli Moreira
+    /// Lee's "the first time each turn you take an action on an installed
+    /// resource" hears (`Trigger::OnActionTaken`). The listener scan reads
+    /// no registry, so the event says it.
+    AbilityActivated { side: Side, card_id: CardId, ability_index: usize, install: Option<InstallId>, action: bool },
     /// `advancement_tokens` is the count *after* this advancement, which is
     /// what `EffectRequirement::WasFirstAdvancementThisCard` reads off the
     /// resolution context rather than needing a flag of its own.
