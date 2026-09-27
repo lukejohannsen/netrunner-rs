@@ -1391,13 +1391,14 @@ pub fn evaluate_effect(
             evaluate_effect(state, &Effect::PresentChoice { chooser: Side::Corp, options, texts: Vec::new() }, ctx, registry)
         }
 
-        Effect::GainClicksNextTurn(side, amount) => {
-            // Runner-side is authored nowhere and banked nowhere: the
-            // Runner's allotment has no field of its own to add to, and no
-            // card prints it. Recorded as a no-op rather than a panic.
-            if *side == Side::Corp {
-                state.corp.extra_clicks_next_turn = state.corp.extra_clicks_next_turn.saturating_add(*amount);
-            }
+        Effect::AllottedClicksNextTurn(side, delta) => {
+            let source = acting_card.cloned().ok_or(RulesError::UnresolvedCardTarget)?;
+            state.lingering.push(LingeringEffect {
+                what: Lingering::AllottedClicks(*delta),
+                on: On::Player(*side),
+                until: Until::NextTurnOf(*side),
+                source,
+            });
             Ok(Vec::new())
         }
 
@@ -3742,6 +3743,7 @@ mod tests {
         assert_eq!(
             events,
             vec![
+                GameEvent::CreditsSpentFromOutsidePool { side: Side::Runner, amount: 3, run_against: Some(state.active_run.as_ref().unwrap().server) },
                 GameEvent::BadPublicityCreditsSpent { amount: 3 },
                 GameEvent::CreditsSpent { side: Side::Runner, amount: 5 },
             ]

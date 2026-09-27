@@ -221,7 +221,9 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
         }
         Effect::LoseClicks(n) => format!("lose {}", plural(*n, "click", "clicks")),
         Effect::GainClicks(side, n) => format!("{} gains {}", who(*side), plural(*n, "click", "clicks")),
-        Effect::GainClicksNextTurn(side, n) => format!("{} gains {} next turn", who(*side), plural(*n, "click", "clicks")),
+        Effect::AllottedClicksNextTurn(side, n) => {
+            format!("{} gets {}{} allotted {} next turn", who(*side), if *n < 0 { "−" } else { "+" }, n.unsigned_abs(), if n.unsigned_abs() == 1 { "click" } else { "clicks" })
+        }
         Effect::InitiateRun(server) => format!("run {}", describe_server(*server)),
         Effect::Prevent(Preventable::Damage { kind, up_to }) => match kind {
             Some(kind) => format!("prevent up to {up_to} {} damage", format!("{kind:?}").to_lowercase()),
@@ -449,6 +451,7 @@ pub fn describe_pays_for(word: &PaysFor) -> String {
         PaysFor::TraceAttempts => "during trace attempts".to_string(),
         PaysFor::UsingIcebreakers => "to pay for using icebreakers".to_string(),
         PaysFor::RemovingTags => "to take the basic action to remove a tag".to_string(),
+        PaysFor::DuringRuns => "during runs".to_string(),
     }
 }
 

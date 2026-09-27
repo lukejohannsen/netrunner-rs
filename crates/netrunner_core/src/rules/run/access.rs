@@ -701,9 +701,13 @@ pub fn resolve_steal(
     }
 
     let mut events = Vec::new();
+    let mut cost_events = Vec::new();
     if let Some(cost) = &pending.steal_cost {
+        // Asked of the scan the payment spends from: this was the credit
+        // pool alone, which refused a steal that bad publicity's credits
+        // or Methuselah's would have paid.
         if let Cost::Credits(requested) = cost {
-            let available = state.runner.resources.credits.0;
+            let available = payment::available(state, registry, Side::Runner, Purpose::Other);
             if available < *requested {
                 return Err(RulesError::CannotAffordStealCost {
                     card: card_id.clone(),
@@ -712,7 +716,8 @@ pub fn resolve_steal(
                 });
             }
         }
-        events.extend(ability::pay_cost(state, registry, Side::Runner, cost, Purpose::Other, Some(card_id))?);
+        cost_events = ability::pay_cost(state, registry, Side::Runner, cost, Purpose::Other, Some(card_id))?;
+        events.extend(cost_events.iter().cloned());
     }
 
     // The agenda leaves the Corp's zone — HQ, the top of R&D, the remote's
@@ -739,6 +744,10 @@ pub fn resolve_steal(
     // that reaches the threshold has won, and the identity does not get to
     // flatline the winner.
     dispatcher::emit(state, registry, &mut events, stolen_event)?;
+    // The cost's own moments after what it paid for (`ability::
+    // dispatch_cost_events`): Shackleton Grid hears a steal paid for with
+    // bad publicity's credits.
+    events.extend(ability::dispatch_cost_events(state, registry, &cost_events)?);
 
     events.extend(advance_or_finish(state, registry, pending.server, card_id.clone())?);
     Ok(events)
@@ -939,10 +948,12 @@ pub fn resolve_trash(
         return Err(RulesError::CannotAffordTrashCost { card: card_id.clone(), available, requested: cost });
     }
 
-    let mut events = ability::pay_cost(state, registry, Side::Runner, &Cost::Credits(cost), Purpose::TrashCost, Some(card_id))?;
+    let cost_events = ability::pay_cost(state, registry, Side::Runner, &Cost::Credits(cost), Purpose::TrashCost, Some(card_id))?;
+    let mut events = cost_events.clone();
     move_to_archives(state, registry, card_id, pending.server, pending.install);
     let trashed_event = GameEvent::CardTrashedFromAccess { card: card_id.clone(), cost_paid: cost, install: pending.install };
     dispatcher::emit(state, registry, &mut events, trashed_event)?;
+    events.extend(ability::dispatch_cost_events(state, registry, &cost_events)?);
 
     events.extend(advance_or_finish(state, registry, pending.server, card_id.clone())?);
     Ok(events)
@@ -1019,9 +1030,10 @@ fn resolve_access_trigger(
         .unwrap_or_default();
 
     let mut events = Vec::new();
+    let mut cost_events = Vec::new();
     if paid {
         if let Cost::Credits(requested) = &pending.cost {
-            let available = state.resources(pending.decider).credits.0;
+            let available = payment::available(state, registry, pending.decider, Purpose::Other);
             if available < *requested {
                 return Err(RulesError::CannotAffordAccessTriggerCost {
                     card: card_id.clone(),
@@ -1030,7 +1042,8 @@ fn resolve_access_trigger(
                 });
             }
         }
-        events.extend(ability::pay_cost(state, registry, pending.decider, &pending.cost, Purpose::Other, Some(card_id))?);
+        cost_events = ability::pay_cost(state, registry, pending.decider, &pending.cost, Purpose::Other, Some(card_id))?;
+        events.extend(cost_events.iter().cloned());
     }
 
     if paid != interaction.effects_resolve_on_decline() {
@@ -1049,6 +1062,7 @@ fn resolve_access_trigger(
         }
     }
 
+    events.extend(ability::dispatch_cost_events(state, registry, &cost_events)?);
     let choice_events = enter_pending_choice_unless_self_trashed(state, registry, pending.server, card_id, &events)?;
     events.extend(choice_events);
     Ok(events)
@@ -1191,7 +1205,7 @@ mod tests {
         seed: u64,
     ) -> GameState {
         GameState {
-            corp: crate::rules::state::CorpState { identity: None, extra_clicks_next_turn: 0, identity_counters: 0, identity_flipped: false, bad_publicity: 0, removed_from_game: Vec::new(), once_per_turn_used: Default::default(),
+            corp: crate::rules::state::CorpState { identity: None, identity_counters: 0, identity_flipped: false, bad_publicity: 0, removed_from_game: Vec::new(), once_per_turn_used: Default::default(),
                 scored_agendas: Vec::new(),
                 playable_from_archives: Vec::new(),
                 resources: PlayerResources {

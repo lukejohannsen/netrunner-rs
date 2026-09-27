@@ -232,16 +232,22 @@ pub enum Effect {
     /// [click][click][click]" on score. Takes a `Side` (unlike
     /// `LoseClicks`) because the only card needing it is Corp-side.
     GainClicks(Side, u32),
-    /// Adds to `side`'s click allotment for their *next* turn, not the
+    /// Changes `side`'s click allotment for their *next* turn, not the
     /// current one — Aggressive Trendsetting's "you get +1 allotted
     /// [click] for your next turn", which resolves during the Runner's
     /// turn and so has no Corp click pool to add to (`turn::
     /// enter_start_of_turn` *assigns* the allotment, overwriting anything
-    /// `GainClicks` had put there). Banked on `CorpState::
-    /// extra_clicks_next_turn` and spent by that assignment. Corp-side
-    /// only today, but takes a `Side` like `GainClicks` rather than
-    /// hard-coding one.
-    GainClicksNextTurn(Side, u32),
+    /// `GainClicks` had put there), and Caveat Emptor's "the Runner gets
+    /// −1 allotted [click] for their next turn" (or +1). A lingering effect
+    /// on the player until that turn begins (`Lingering::AllottedClicks`),
+    /// taken as the allotment is assigned.
+    ///
+    /// Was `GainClicksNextTurn(Side, u32)`, banked on `CorpState::
+    /// extra_clicks_next_turn` — a field no view carried, so every bot
+    /// sample after Aggressive Trendsetting's ability planned the Corp's
+    /// next turn a click short — and a no-op for the Runner, which had no
+    /// field. Signed, because Caveat Emptor takes a click away.
+    AllottedClicksNextTurn(Side, i32),
     /// Initiates a run on `server`, exactly like `PlayerAction::InitiateRun`
     /// (same `RunState` shape, `RulesError::RunAlreadyInProgress` guard) but
     /// without spending a click — the enclosing `PlayEvent`/`PlayOperation`
@@ -994,7 +1000,7 @@ pub enum Amount {
     /// anyone and about anything (`rules::turn_log`) — "if you made a
     /// successful run this turn" is `AmountAtLeast(TimesThisTurn(
     /// OnSuccessfulRun), 1)` (Carmen, Marjanah, Mutual Favor), "if you
-    /// played an operation this turn" the same over `OnOperationPlayed`
+    /// played an operation this turn" the same over `OnCardPlayed`
     /// (Nebula Talent Management). Composition didn't work because no
     /// existing `Amount` reads the turn; this one took over three
     /// requirements that each read a flag of their own
@@ -1346,7 +1352,7 @@ impl Effect {
             | Effect::MoveRunToOutermost(..)
             | Effect::InstallAgendaFromRunnerScoreArea
             | Effect::SwapApproachedIceWithCard { .. }
-            | Effect::GainClicksNextTurn(..)
+            | Effect::AllottedClicksNextTurn(..)
             | Effect::GainCreditsAmount(..) => {}
         }
     }

@@ -217,7 +217,7 @@ fn concealed(trigger: Trigger, of: Option<Side>) -> bool {
         // Played, rezzed, encountered, scored, stolen, forfeited, trashed
         // faceup by the Runner, or a faceup card's ability: on the table.
         Trigger::OnPlay
-        | Trigger::OnOperationPlayed
+        | Trigger::OnCardPlayed
         | Trigger::OnCardInstalled
         | Trigger::OnTrashedFromAccess
         | Trigger::OnAgendaScored
@@ -241,6 +241,7 @@ fn concealed(trigger: Trigger, of: Option<Side>) -> bool {
         | Trigger::OnApproachServer
         | Trigger::OnSuccessfulRun
         | Trigger::OnRunEnded
+        | Trigger::OnCreditsSpentOutsidePool
         | Trigger::OnTurnStart
         | Trigger::OnActionPhaseEnd
         | Trigger::OnDiscardPhaseEnd

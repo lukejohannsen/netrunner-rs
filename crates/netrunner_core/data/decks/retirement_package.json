@@ -3,7 +3,7 @@
   "name": "Retirement Package",
   "side": "Corp",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach Vantage Point's first Haas-Bioroid and Weyland cards — Méliès City Luxury Line, Sleipnir, Retirement Plan, Flywheel, Vulture Fund — on Discretion Advised's frame, under Engineering the Future. Eternal-legal only. Vantage Point Stage 3a: Reverb for Whitespace, and two Synchrocyclotron for two NICO Campaign, lowering Retirement Plan's additional click. Vantage Point Stage 3b: Perfect Recall for Manegarm Skunkworks. Vantage Point Stage 4a: Vertigo for Tithe. Vantage Point Stage 4b: two Ansel 2.0 for two Ansel 1.0.",
+  "description": "Not a published list: built so the sweeps reach Vantage Point's first Haas-Bioroid and Weyland cards — Méliès City Luxury Line, Sleipnir, Retirement Plan, Flywheel, Vulture Fund — on Discretion Advised's frame, under Engineering the Future. Eternal-legal only. Vantage Point Stage 3a: Reverb for Whitespace, and two Synchrocyclotron for two NICO Campaign, lowering Retirement Plan's additional click. Vantage Point Stage 3b: Perfect Recall for Manegarm Skunkworks. Vantage Point Stage 4a: Vertigo for Tithe. Vantage Point Stage 4b: two Ansel 2.0 for two Ansel 1.0. Stage 5a: Caveat Emptor for two Hedge Fund.",
   "style": "glacier",
   "identity": "haas_bioroid_engineering_the_future",
   "cards": [
@@ -25,7 +25,7 @@
     },
     {
       "card": "hedge_fund",
-      "count": 3
+      "count": 1
     },
     {
       "card": "predictive_planogram",
@@ -89,6 +89,10 @@
     },
     {
       "card": "ansel_2_0",
+      "count": 2
+    },
+    {
+      "card": "caveat_emptor",
       "count": 2
     }
   ]

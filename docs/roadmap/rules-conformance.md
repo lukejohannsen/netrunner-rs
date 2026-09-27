@@ -391,8 +391,8 @@ with the rule quoted.
 | 1.7 | Ending the Game | deviates | E3 only, which no card reaches. E1 and E2 fixed. 7 points checked at checkpoints matches. |
 | 1.8 | Cards | unreviewed |  |
 | 1.9 | Counters and Tokens | unreviewed |  |
-| 1.10 | Credits | read in part | 1.10.5 recurring credits: `CardDefinition::recurring_credits`, `payment::place_recurring` / `refill` (Payment Rule). Cited: 1.10.5, 1.10.5a, 1.10.5b. |
-| 1.11 | Clicks | read in part | Audit: 3 and 4 clicks match. |
+| 1.10 | Credits | read in part | 1.10.5 recurring credits: `CardDefinition::recurring_credits`, `payment::place_recurring` / `refill` (Payment Rule). Cited: 1.10.5, 1.10.5a, 1.10.5b. VP Stage 5a: 1.10.4c, credits a card lets be spent during a time period pay for any purpose while it runs (`PaysFor::DuringRuns`, Methuselah, Touchstone); 1.10.3c, the payer divides a payment among the allowed places (`payment::plan`); 1.10.4 and 10.6, hosted credits and the bad publicity fund are outside the credit pool (`GameEvent::CreditsSpentFromOutsidePool`, Shackleton Grid). |
+| 1.11 | Clicks | read in part | Audit: 3 and 4 clicks match. VP Stage 5a: 1.11.2, a change to a player's allotment for their next turn is a lingering effect taken as the turn's first step gains it (`Lingering::AllottedClicks`, Aggressive Trendsetting, Caveat Emptor). |
 | 1.12 | Objects | read in part | 1.12.2a: an effect acts on the object a card became after it moved (Priority Construction). Cited: 1.12.2a. |
 | 1.13 | Host, Hosted, and Hosting | unreviewed |  |
 | 1.14 | Ownership and Control | read in part | 1.14.2e: the Corp controls every bad publicity counter, so taking it and being given it are one event, the Corp's (`Trigger::OnBadPublicityTaken`, VP Stage 2). 1.14.3a: either player removes tags to pay a cost (Unleash's additional cost). |

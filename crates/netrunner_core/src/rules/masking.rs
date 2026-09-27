@@ -893,6 +893,7 @@ pub fn mask_event_for_player(event: &GameEvent, state: &GameState, viewer: impl 
         | GameEvent::BadPublicityCreditsSpent { .. }
         | GameEvent::PaymentChoiceOffered { .. }
         | GameEvent::BonusRunCreditsSpent { .. }
+        | GameEvent::CreditsSpentFromOutsidePool { .. }
         | GameEvent::MemoryLimitExceeded { .. }
         | GameEvent::PendingServerChoiceOffered { .. }
         | GameEvent::BadPublicityGiven { .. }

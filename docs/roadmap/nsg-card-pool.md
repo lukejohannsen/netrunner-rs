@@ -376,12 +376,15 @@ Division.
 4. **Ice and run triggers:** **4a**, the run's moments about ice
    (built, below): Vertigo, Sipa, Lethe, ezaM, The Tungsten Tailor.
    **4b** (built, below): Lionsmane, Event Horizon, Ansel 2.0.
-5. **Runner trigger and payment words** (`PaysFor` during a run; the
-   Runner's allotted clicks): Hiram, Touchstone, Methuselah, Beta Build,
-   Stowaway, Nurse Hạnh, Caveat Emptor, and Shackleton Grid, moved here
+5. **Runner trigger and payment words.** **5a** (built, below):
+   Methuselah, Touchstone, Caveat Emptor, and Shackleton Grid, moved here
    from Stage 4: "when the Runner spends credits from outside their
-   credit pool" is a moment every payment site would have to dispatch,
-   which is this stage's payment work.
+   credit pool" is a moment the payment sites have to dispatch. **5b:**
+   Hiram (a trash from any location is a moment; "look at the top card of
+   R&D" shows one player a hidden card), Beta Build (a run-end rider about
+   the program it installed), Stowaway (a Trojan's "this server" is its
+   host's), Nurse Hạnh (Archives' facedown cards turned faceup, two or
+   more).
 6. **Arrange, reveal, stealth credits:** Cultivate, Knowledge Seeker, Esca,
    Corsair, Baker, Lampades, Aircheck. Aircheck locks the credit pool,
    which breaks the invariant that a payment may always reach the pool.
@@ -884,6 +887,65 @@ Horizon, Ansel 2.0. **No new `Effect`.** Vantage Point 41 of 66;
   zone move nothing else. The heuristic seatings move (Corp wins 82 → 88
   of 192), N-Pot and the `determinize` movement of three new cards
   together; not separated.
+
+#### Stage 5a — credits during runs, a spend from outside the pool, a next turn's clicks (26 September 2026)
+
+`feat/vp-stage-5a-methuselah-touchstone-shackleton-caveat`: Methuselah,
+Touchstone, Shackleton Grid, Caveat Emptor. **No new `Effect`.** Vantage
+Point 45 of 66; `VP_UNIMPLEMENTED` 25 → 21.
+
+- **"You can spend hosted credits during runs"** is a `PaysFor` word
+  about *when* (`DuringRuns`, Methuselah and Touchstone): CR 1.10.4c lets
+  such credits pay for any purpose while the period runs. During a run
+  the pool is classed as broad as the credit pool (`payment::class_of`),
+  so Cyberfeeder's credit is spent before Methuselah's without a question.
+- **A spend from outside the credit pool is a moment**
+  (`GameEvent::CreditsSpentFromOutsidePool`, once per payment;
+  `Trigger::OnCreditsSpentOutsidePool`, Shackleton Grid). It is about the
+  server of the run it was made in, so "during a run against this server"
+  is `Subject::This`. Only the Runner's spend during a run is a moment; any
+  other spend is an occurrence of nothing. The payer dispatches it after
+  what it paid for. Five sites that did not dispatch their cost's events
+  now do: a text install, a steal cost, an access trash, a paid access
+  interaction and the Runner's trace bid. The dispatch audit named the
+  trace bid.
+- **Two affordability sums gone:** the steal-cost and access-interaction
+  checks counted the credit pool alone, which refused a steal that bad
+  publicity's credits would have paid for. They ask `payment::available`.
+- **`OnOperationPlayed` is `OnCardPlayed`** and hears events too.
+  Touchstone could not listen to `OnPlay`, the play's own resolution step,
+  which nobody orders. The Corp only plays operations, so Nebula Talent
+  Management and Building a Better World hear what they did.
+- **A change to a next turn's allotment is a lingering effect**
+  (`Lingering::AllottedClicks` until `Until::NextTurnOf(side)`, taken as
+  CR 1.11.2's first step assigns the clicks). `GainClicksNextTurn(Side,
+  u32)` became `AllottedClicksNextTurn(Side, i32)`, which Aggressive
+  Trendsetting and Caveat Emptor both use. It was
+  `CorpState::extra_clicks_next_turn`, a field no view carried, so every
+  bot sample after Trendsetting planned the Corp a click short. For the
+  Runner it was a silent no-op.
+- **The decks.** In Safety Net, two Methuselah for two T400 Memory Diamond
+  and three Touchstone for three Smartware Distributor. In Hostile Bid,
+  two Shackleton Grid for two Regolith Mining License. In Retirement
+  Package, two Caveat Emptor for two Hedge Fund. Every card replaced is in
+  another deck.
+- **Fidelity limit:** Shackleton Grid's "you may" always fires. Declining
+  4 meat damage is never better. A declined once-per-turn ability is not
+  used (CR 9.3.6g), and a requirement spent on resolution cannot say that.
+- **DSL ratio (`pool_status.py`): 20 of 71 `Effect` variants
+  single-use, 2 unused**, over 229 card files, down from 21:
+  `AllottedClicksNextTurn` has two cards.
+- **Measured.** Both sweeps at 256 seeds are green, coverage gate
+  included. `coverage_identical.py origin/main --expect-renames
+  OnOperationPlayed=OnCardPlayed` (192 games a shape, seed 1): **the
+  random seatings play the same games.** They differ only in the renamed
+  effect and in the new event now being counted, 50 times by view and by
+  index. The heuristic seatings move: Corp agenda wins 73 → 59 of 192,
+  Runner 103 → 117. Checked, not inferred: this branch without the four
+  card files (engine changes kept) is identical to `main` in all four
+  shapes apart from the new event (17 in heuristic-view). So all of the
+  heuristic movement is the new cards entering `determinize`'s hidden
+  pools; the view now carrying Trendsetting's click moved nothing.
 
 ### 2. Rebellion Without Rehearsal — 65 cards (C 7 / V 43 / M 15)
 

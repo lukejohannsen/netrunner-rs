@@ -1705,33 +1705,41 @@ pub(crate) fn install_runner_card_from_zone_with_discount(
         .ok_or_else(|| RulesError::CardNotFoundInRegistry(card_id.clone()))?
         .clone();
     let mut events = Vec::new();
+    let paid;
     match card_def.card_type {
         CardType::Program => {
             let memory_cost = card_def.memory_cost.unwrap_or(0);
             events.extend(crate::rules::install_trash::before_program_install(next, registry, &card_id, memory_cost, false)?);
             let cost = continuous::install_cost_of(next, registry, &card_def)
                 .saturating_sub(discount);
-            events.extend(ability::pay_cost(next, registry, side, &Cost::Credits(cost), Purpose::Install(&card_def), Some(&card_id))?);
+            paid = ability::pay_cost(next, registry, side, &Cost::Credits(cost), Purpose::Install(&card_def), Some(&card_id))?;
+            events.extend(paid.iter().cloned());
             events.extend(install_into_rig(next, registry, &card_id, None)?);
             let installed_event = GameEvent::ProgramInstalled { side, card: card_id, memory_cost: memory_cost as u8, credits_paid: cost };
             dispatcher::emit(next, registry, &mut events, installed_event)?;
         }
         CardType::Hardware => {
             let cost = continuous::install_cost_of(next, registry, &card_def).saturating_sub(discount);
-            events.extend(ability::pay_cost(next, registry, side, &Cost::Credits(cost), Purpose::Install(&card_def), Some(&card_id))?);
+            paid = ability::pay_cost(next, registry, side, &Cost::Credits(cost), Purpose::Install(&card_def), Some(&card_id))?;
+            events.extend(paid.iter().cloned());
             events.extend(install_into_rig(next, registry, &card_id, None)?);
             let installed_event = GameEvent::HardwareInstalled { side, card: card_id, credits_paid: cost };
             dispatcher::emit(next, registry, &mut events, installed_event)?;
         }
         CardType::Resource => {
             let cost = continuous::install_cost_of(next, registry, &card_def).saturating_sub(discount);
-            events.extend(ability::pay_cost(next, registry, side, &Cost::Credits(cost), Purpose::Install(&card_def), Some(&card_id))?);
+            paid = ability::pay_cost(next, registry, side, &Cost::Credits(cost), Purpose::Install(&card_def), Some(&card_id))?;
+            events.extend(paid.iter().cloned());
             events.extend(install_into_rig(next, registry, &card_id, None)?);
             let installed_event = GameEvent::ResourceInstalled { side, card: card_id, credits_paid: cost };
             dispatcher::emit(next, registry, &mut events, installed_event)?;
         }
         _ => return Err(RulesError::CardTypeMismatch { card: card_id, expected: "a program, hardware or resource" }),
     }
+    // A text install can happen mid-run, paid for from outside the credit
+    // pool (Methuselah's "during runs"), which Shackleton Grid hears —
+    // after the install it paid for (`ability::dispatch_cost_events`).
+    events.extend(ability::dispatch_cost_events(next, registry, &paid)?);
     Ok(events)
 }
 

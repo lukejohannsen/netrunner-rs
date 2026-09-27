@@ -667,9 +667,6 @@ pub fn determinize(view: &ClientView, registry: &CardRegistry, rng: &mut impl Rn
         // Runner's view leaves out a use by a facedown Corp install, which
         // the sample then believes unspent — the one approximation left.
         once_per_turn_used: view.corp.once_per_turn_used.iter().cloned().collect(),
-        // Not carried by `ClientView`, and a rollout re-derives it from its
-        // own play-out — the same approximation as `installed_this_turn`.
-        extra_clicks_next_turn: 0,
         // Public on the identity, and carried straight off the view.
         identity_counters: view.corp.identity_counters,
         // Public, and carried: a flipped Corp identity has different text.
@@ -982,7 +979,6 @@ mod tests {
         CoreGameState {
             corp: CS {
                 identity: None,
-                extra_clicks_next_turn: 0,
                 identity_counters: 0,
                 identity_flipped: false,
                 bad_publicity: 0,
