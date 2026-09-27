@@ -347,6 +347,10 @@ pub enum GameEvent {
     /// payer dispatches it after the effect it paid for (`ability::
     /// dispatch_cost_events`), which may have ended the run.
     CreditsSpentFromOutsidePool { side: Side, amount: u32, run_against: Option<ServerId> },
+    /// A breach of Archives turned `count` facedown cards faceup (CR
+    /// 7.3.2), once per breach — Nurse Hạnh's "whenever 2 or more facedown
+    /// cards in Archives are turned faceup". Never emitted for none.
+    ArchivesTurnedFaceup { count: u32 },
     /// A `PendingDecision::ChooseCards` was confirmed — `cards` is the
     /// committed selection, `revealed` mirrors the originating `Effect::
     /// PromptChooseCards::reveal`.
@@ -500,7 +504,7 @@ impl GameEvent {
             | GameEvent::TriggerFired { .. } | GameEvent::VirusCountersPurged { .. }
             | GameEvent::PaymentChoiceOffered { .. }
             | GameEvent::BadPublicityCreditsSpent { .. } | GameEvent::BonusRunCreditsSpent { .. }
-            | GameEvent::CreditsSpentFromOutsidePool { .. }
+            | GameEvent::CreditsSpentFromOutsidePool { .. } | GameEvent::ArchivesTurnedFaceup { .. }
             | GameEvent::CardsSelected { .. } | GameEvent::PendingCardSelectionOffered { .. }
             | GameEvent::MemoryLimitExceeded { .. } | GameEvent::PendingServerChoiceOffered { .. }
             | GameEvent::BadPublicityGiven { .. } | GameEvent::BadPublicityRemoved { .. }

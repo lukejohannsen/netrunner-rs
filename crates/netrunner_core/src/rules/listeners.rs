@@ -55,6 +55,8 @@ pub(crate) enum About {
     Server(ServerId),
     /// A kind of damage.
     Damage(crate::dsl::DamageType),
+    /// A number of cards no event names one by one.
+    Cards(u32),
 }
 
 /// One thing an event is an occurrence of.
@@ -204,6 +206,9 @@ pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
             vec![moment(Trigger::OnCreditsSpentOutsidePool, &About::Server(*server), Some(Side::Runner))]
         }
         GameEvent::CreditsSpentFromOutsidePool { .. } => Vec::new(),
+        // The Runner breached, but the cards are the Corp's: whoever
+        // listens hears it, and none of it is a card to be "this".
+        GameEvent::ArchivesTurnedFaceup { count } => vec![moment(Trigger::OnArchivesTurnedFaceup, &About::Cards(*count), None)],
         // Only the ordinary conclusions: a flatline or an agenda win
         // mid-access ends the game, and nothing resolves after that.
         GameEvent::RunCompleted { server } | GameEvent::RunJackedOut { server } | GameEvent::RunEndedByEffect { server } => {
@@ -366,7 +371,7 @@ pub(crate) fn plan_for(state: &GameState, registry: &CardRegistry, event: &GameE
 /// server, about the server it is in.
 fn is_this(listener: &Listener, moment: &Moment) -> bool {
     match &moment.about {
-        About::Nothing | About::Damage(_) => false,
+        About::Nothing | About::Damage(_) | About::Cards(_) => false,
         About::Card { install: Some(install), .. } => listener.install == Some(*install),
         // A card with no handle left is "this" only to itself, and it is
         // listening only because it is the subject.
@@ -389,6 +394,7 @@ fn passes(registry: &CardRegistry, filter: &EventFilter, moment: &Moment) -> boo
         }
         (EventFilter::Server(servers), About::Server(server)) => servers.contains(server),
         (EventFilter::Damage(kind), About::Damage(dealt)) => kind == dealt,
+        (EventFilter::AtLeast(least), About::Cards(count)) => count >= least,
         // `CardDefinition::validate` refuses the mismatch in a card file.
         _ => false,
     }

@@ -32,7 +32,10 @@ pub(crate) struct ActiveCard<'a> {
     pub side: Side,
     pub card: &'a CardId,
     pub install: Option<InstallId>,
-    /// The server a Corp install is in or protecting.
+    /// The server a Corp install is in or protecting, and the one a
+    /// Trojan's host ice protects — Stowaway's "whenever you make a
+    /// successful run on **this server**". A rig card that is not hosted
+    /// on ice is in no server.
     pub server: Option<ServerId>,
     pub place: Place,
 }
@@ -73,7 +76,7 @@ pub(crate) fn runner(state: &GameState) -> impl Iterator<Item = ActiveCard<'_>> 
         side: Side::Runner,
         card: &installed.card,
         install: Some(installed.install_id),
-        server: None,
+        server: installed.hosted_on_ice.and_then(|host| state.corp.installed.iter().find(|ice| ice.install_id == host)).map(|ice| ice.server),
         place: Place::Installed,
     });
     identity.chain(rig)

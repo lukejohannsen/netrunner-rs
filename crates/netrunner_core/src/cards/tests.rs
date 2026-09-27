@@ -12034,6 +12034,46 @@ mod vantage_point {
         }
     }
 
+    /// Hosted on a piece of ice protecting HQ, a successful run on HQ pays
+    /// 2[credit]: "this server" is the one its host protects. A run on R&D
+    /// pays nothing.
+    #[test]
+    fn stowaway_gains_two_on_a_successful_run_on_its_host_ices_server() {
+        let registry = registry();
+        for (server, gained) in [(ServerId::Hq, 2), (ServerId::RnD, 0)] {
+            let mut state = base_state();
+            state.phase = GamePhase::Action(Side::Runner);
+            state.corp.installed = vec![crate::rules::InstalledCard { rezzed: false, ..ice_at_hq("ice_wall") }];
+            let host = install_of(&state, "ice_wall");
+            state.runner.rig = vec![crate::rules::InstalledRunnerCard { hosted_on_ice: Some(host), ..rig("stowaway") }];
+            let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server }).expect("initiate run");
+            let (state, _) = drive(state, &registry, |_, events| events.iter().any(|event| matches!(event, crate::rules::GameEvent::RunSucceeded { .. })));
+            assert_eq!(state.runner.resources.credits, Credits(10 + gained), "a run on {server:?}");
+        }
+    }
+
+    /// Two facedown cards turned faceup by a breach of Archives draw two;
+    /// one does not, however many faceup cards are there beside it.
+    #[test]
+    fn nurse_hanh_draws_two_when_a_breach_turns_two_facedown_cards_in_archives_faceup() {
+        let registry = registry();
+        for (facedown, drawn) in [(2, 2), (1, 0)] {
+            let mut state = base_state();
+            state.phase = GamePhase::Action(Side::Runner);
+            state.runner.rig = vec![rig("nurse_hanh")];
+            state.runner.stack = vec![id("sure_gamble"); 3];
+            state.corp.archives = (0..3).map(|n| ArchivedCard { card: id("hedge_fund"), facedown: n < facedown }).collect();
+            let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Archives }).expect("initiate run");
+            let (state, events) = drive(state, &registry, |state, _| state.active_run.as_ref().is_some_and(|run| run.access_state.is_some()));
+            let turned = events.iter().find_map(|event| match event {
+                crate::rules::GameEvent::ArchivesTurnedFaceup { count } => Some(*count),
+                _ => None,
+            });
+            assert_eq!(turned, Some(facedown));
+            assert_eq!(state.runner.grip.len(), drawn, "{facedown} facedown");
+        }
+    }
+
     /// Its second subroutine removes a card in the heap from the game.
     #[test]
     fn ansel_2_0_removes_a_card_in_the_heap_from_the_game() {

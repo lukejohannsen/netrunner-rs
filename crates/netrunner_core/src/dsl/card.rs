@@ -1024,6 +1024,7 @@ impl CardDefinition {
                 Some(EventFilter::Card(_) | EventFilter::InstalledCard(_)) => about == TriggerAbout::Card,
                 Some(EventFilter::Server(_)) => about == TriggerAbout::Server,
                 Some(EventFilter::Damage(_)) => about == TriggerAbout::Damage,
+                Some(EventFilter::AtLeast(_)) => about == TriggerAbout::Cards,
                 // Only what the moment states: a pass says whether the ice
                 // was outermost and fully broken, a break its strength.
                 Some(EventFilter::Ice(required)) => {

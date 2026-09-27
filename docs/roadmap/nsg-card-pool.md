@@ -379,12 +379,12 @@ Division.
 5. **Runner trigger and payment words.** **5a** (built, below):
    Methuselah, Touchstone, Caveat Emptor, and Shackleton Grid, moved here
    from Stage 4: "when the Runner spends credits from outside their
-   credit pool" is a moment the payment sites have to dispatch. **5b:**
-   Hiram (a trash from any location is a moment; "look at the top card of
-   R&D" shows one player a hidden card), Beta Build (a run-end rider about
-   the program it installed), Stowaway (a Trojan's "this server" is its
-   host's), Nurse Hạnh (Archives' facedown cards turned faceup, two or
-   more).
+   credit pool" is a moment the payment sites have to dispatch. **5b**
+   (built, below): Stowaway (a Trojan's "this server" is its host's),
+   Nurse Hạnh (Archives' facedown cards turned faceup, two or more).
+   **5c:** Hiram (a trash from any location is a moment; "look at the top
+   card of R&D" shows one player a hidden card), Beta Build (a run-end
+   rider about the program it installed).
 6. **Arrange, reveal, stealth credits:** Cultivate, Knowledge Seeker, Esca,
    Corsair, Baker, Lampades, Aircheck. Aircheck locks the credit pool,
    which breaks the invariant that a payment may always reach the pool.
@@ -946,6 +946,51 @@ Point 45 of 66; `VP_UNIMPLEMENTED` 25 → 21.
   shapes apart from the new event (17 in heuristic-view). So all of the
   heuristic movement is the new cards entering `determinize`'s hidden
   pools; the view now carrying Trendsetting's click moved nothing.
+
+#### Stage 5b — a count on a moment, a Trojan's server (26 September 2026)
+
+`feat/vp-stage-5b-stowaway-nurse-hanh`: Stowaway, Nurse Hạnh. **No new
+`Effect`.** Vantage Point 47 of 66; `VP_UNIMPLEMENTED` 21 → 19.
+
+- **A breach of Archives turning facedown cards faceup is a moment**
+  (`GameEvent::ArchivesTurnedFaceup { count }`, CR 7.3.2;
+  `Trigger::OnArchivesTurnedFaceup`, Nurse Hạnh). It is about a number of
+  cards (`TriggerAbout::Cards`, `listeners::About::Cards`), and "2 or
+  more" is `EventFilter::AtLeast(2)` in the trigger condition, where the
+  printed sentence puts it. The turn log holds no number, so a first time
+  narrowed by one is refused. It is dispatched once the first access is
+  offered, so a reaction that parks waits beside the Runner's choice of
+  card and is not overwritten by it.
+- **A Trojan's "this server" is the server its host ice protects**
+  (`active::runner`: a hosted program's `server` is its host's). Stowaway's
+  "whenever you make a successful run on this server" is then
+  `Subject::This`, as it is for an upgrade. Checked: the test fails with
+  the rig card in no server.
+- **The decks.** In Pay as You Go (Noise mills R&D facedown into
+  Archives), two Nurse Hạnh for two Smartware Distributor. In Safety Net,
+  two Stowaway for two Creative Commission. Every card replaced is in
+  another deck.
+- **The sweep found a bot blind spot, fixed first in its own PR (#233).**
+  The 256-seed view sweep stalled at seed 120 (Paid Content against
+  Borrowed Time, heuristic Runner). With a rezzed Magistrate Revontulet
+  and no credits, the one-ply Runner priced faceup agendas in Archives as
+  certain steals and ran Archives four times a turn until the game ran
+  out of steps. The evaluator now asks the steal price
+  (`continuous::steal_price`, the question the access asks). That fix is
+  identical to `main` in all four shapes. Neither deck in that game
+  changed on this branch, which only reached the position by another
+  trajectory.
+- **DSL ratio (`pool_status.py`): 20 of 71 `Effect` variants
+  single-use, 2 unused**, over 231 card files.
+- **Measured.** Both sweeps at 256 seeds are green, coverage gate
+  included. `coverage_identical.py` against #233 (192 games a shape, seed
+  1): **the random seatings play the same games**, differing only in the
+  new event now being counted (194 by view and by index). The heuristic
+  seatings move: Corp agenda wins 59 → 74 of 192. Checked, not inferred:
+  without the two card files the branch is identical to its base in all
+  four shapes apart from the event count (120 in the heuristic seatings),
+  so all of the heuristic movement is the new cards in `determinize`'s
+  pools.
 
 ### 2. Rebellion Without Rehearsal — 65 cards (C 7 / V 43 / M 15)
 

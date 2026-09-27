@@ -527,6 +527,9 @@ pub fn access_server(
         return Ok(events);
     }
 
+    // Counted before the breach turns them (CR 7.3.2): Nurse Hạnh hears
+    // how many were facedown.
+    let turned_faceup = if server == ServerId::Archives { state.corp.archives.iter().filter(|archived| archived.facedown).count() as u32 } else { 0 };
     let (candidates, from_zone) = begin_breach(state, server);
     if candidates.is_empty() && from_zone.is_empty() {
         super::engine::end_run(state);
@@ -550,7 +553,15 @@ pub fn access_server(
         pending_install_rezzed: false,
         phase: AccessPhase::SelectNextCard { selectable_cards: Vec::new() },
     });
-    offer_next(state, registry, server)
+    let mut events = offer_next(state, registry, server)?;
+    // Dispatched once the first access is offered rather than ahead of it:
+    // a reaction that parks (two Nurse Hạnh to order) then waits beside
+    // the Runner's choice of card instead of being overwritten by it, and
+    // nothing a card in the pool does on hearing it touches the access.
+    if turned_faceup > 0 {
+        dispatcher::emit(state, registry, &mut events, GameEvent::ArchivesTurnedFaceup { count: turned_faceup })?;
+    }
+    Ok(events)
 }
 
 /// The `AccessState` fields `resolve_steal`/`resolve_trash`/`resolve_pass`
@@ -1548,7 +1559,7 @@ mod tests {
             0,
         );
         state.active_run = Some(run_in_success(ServerId::Archives));
-        assert_eq!(access_server(&mut state, ServerId::Archives, &registry()).unwrap(), Vec::new());
+        assert_eq!(access_server(&mut state, ServerId::Archives, &registry()).unwrap(), vec![GameEvent::ArchivesTurnedFaceup { count: 2 }], "the breach turned both over (CR 7.3.2)");
         assert_eq!(state.active_run.unwrap().access_state.unwrap().candidates, vec![archived("hedge_fund"), archived("ice_wall")]);
     }
 
@@ -2243,7 +2254,7 @@ mod tests {
         );
         state.active_run = Some(run_in_success(ServerId::Archives));
         let first = access_server(&mut state, ServerId::Archives, &registry()).unwrap();
-        assert_eq!(first, Vec::new());
+        assert_eq!(first, vec![GameEvent::ArchivesTurnedFaceup { count: 2 }]);
         assert_eq!(
             state.active_run.as_ref().unwrap().access_state.as_ref().unwrap().phase,
             AccessPhase::SelectNextCard {
@@ -2559,7 +2570,8 @@ mod tests {
         );
         assert_eq!(events[2], GameEvent::AboutToResolve { what: crate::rules::WouldHappen::Damage { kind: DamageType::Net, amount: 2 } });
         assert_eq!(events[3], GameEvent::DamageTaken { damage_type: DamageType::Net, amount: 2, responsible: Some(Side::Corp) });
-        assert_eq!(events.len(), 6);
+        assert_eq!(events.last(), Some(&GameEvent::ArchivesTurnedFaceup { count: 1 }));
+        assert_eq!(events.len(), 7);
     }
 
     #[test]
@@ -2740,7 +2752,10 @@ mod tests {
 
         assert_eq!(
             events,
-            vec![GameEvent::CardAccessed { card: CardId("fetal_ai".to_string()), server: ServerId::Archives, install: None }]
+            vec![
+                GameEvent::CardAccessed { card: CardId("fetal_ai".to_string()), server: ServerId::Archives, install: None },
+                GameEvent::ArchivesTurnedFaceup { count: 1 },
+            ]
         );
         assert_eq!(
             state.active_run.as_ref().unwrap().access_state.as_ref().unwrap().phase,
@@ -3056,6 +3071,7 @@ mod tests {
                 GameEvent::CardAccessed { card: CardId("snare".to_string()), server: ServerId::Archives, install: None },
                 GameEvent::TriggerFired { card: CardId("snare".to_string()), trigger: crate::dsl::Trigger::OnAccessed },
                 GameEvent::TagsGiven { side: Side::Runner, amount: 1 },
+                GameEvent::ArchivesTurnedFaceup { count: 1 },
             ]
         );
     }

@@ -6685,7 +6685,7 @@ mod tests {
         registry.insert(test_card("card_b", Side::Corp, CardType::Asset, 0, None));
 
         let (state, events) = apply_action(&state, &registry, PlayerAction::CompleteRun).expect("action should succeed");
-        assert_eq!(events, vec![GameEvent::RunSucceeded { server: ServerId::Archives }]);
+        assert_eq!(events, vec![GameEvent::RunSucceeded { server: ServerId::Archives }, GameEvent::ArchivesTurnedFaceup { count: 2 }]);
         assert!(state.paid_ability_window.is_none());
         assert!(matches!(state.active_run.as_ref().unwrap().access_state.as_ref().unwrap().phase, run::AccessPhase::SelectNextCard { .. }));
 
