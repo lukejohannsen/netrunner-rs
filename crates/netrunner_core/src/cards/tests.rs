@@ -15379,4 +15379,72 @@ mod rebellion_without_rehearsal {
         assert!(state.pending_decision.is_none(), "the game is over at the Corp's bid");
         assert_eq!(state.runner.grip.len(), 2, "0 and 0 match");
     }
+
+    // ---- Stage 7c: ice that moves as a run begins ----
+
+    fn tributary_on_rnd_and_an_ice_wall_on_hq() -> GameState {
+        let mut state = runner_turn();
+        state.corp.hq = vec![id("ice_wall")];
+        state.corp.installed = vec![
+            crate::rules::InstalledCard { server: ServerId::RnD, ..ice_at_hq("tributary") },
+            ice_at_hq("enigma"),
+        ];
+        state
+    }
+
+    /// The first run of the turn may pull Tributary in front of the
+    /// attacked server, from another, and the Runner approaches it first;
+    /// the second run is not asked.
+    #[test]
+    fn tributary_moves_to_the_outermost_position_of_the_first_run_each_turn() {
+        let registry = registry();
+        let state = tributary_on_rnd_and_an_ice_wall_on_hq();
+        let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run HQ");
+        assert!(matches!(state.pending_decision, Some(crate::rules::PendingDecision::ChooseEffect { chooser: Side::Corp, .. })), "you may move this ice");
+        let (state, events) = apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("move it");
+        assert!(events.iter().any(|e| matches!(e, GameEvent::CardMoved { from: ServerId::RnD, to: ServerId::Hq, .. })));
+        let hq: Vec<&str> = state.corp.installed.iter().filter(|c| c.server == ServerId::Hq).map(|c| c.card.0.as_str()).collect();
+        assert_eq!(hq, ["tributary", "enigma"], "outermost");
+        let (state, _) = crate::rules::test_support::continue_run(&state, &registry).expect("approach");
+        let run = state.active_run.as_ref().expect("a run");
+        assert_eq!((run.position, run.ice[run.position].card_id.0.as_str()), (0, "tributary"), "the Runner approaches it");
+
+        // Jacked out, a second run this turn asks nothing.
+        let mut again = tributary_on_rnd_and_an_ice_wall_on_hq();
+        let (first, _) = apply_action(&again, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run HQ");
+        let (first, _) = apply_action(&first, &registry, PlayerAction::ResolvePendingChoice { option_index: 1 }).expect("stay");
+        again.this_turn = first.this_turn;
+        let (second, _) = apply_action(&again, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run HQ again");
+        assert!(second.pending_decision.is_none(), "the first time each turn only");
+    }
+
+    /// Its subroutines: may draw, may install ice from HQ protecting
+    /// another server free, and +2 strength to each piece of ice for the
+    /// rest of the run.
+    #[test]
+    fn tributary_draws_installs_ice_elsewhere_and_strengthens_every_ice_for_the_run() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.hq = vec![id("ice_wall")];
+        state.corp.r_and_d = vec![id("hedge_fund")];
+        state.corp.installed = vec![ice_at_hq("tributary")];
+        let credits = state.corp.resources.credits;
+        let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run HQ");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 1 }).expect("already outermost");
+        let (state, _) = crate::rules::test_support::continue_run(&state, &registry).expect("approach the ice");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner passes approach");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Corp }).expect("corp passes approach");
+        let (state, _) = let_subroutines_fire(&state, &registry);
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("draw 1");
+        assert!(state.corp.hq.contains(&id("hedge_fund")));
+        let wall = state.corp.hq.iter().position(|c| c.0 == "ice_wall").expect("in HQ");
+        let state = select(&state, &registry, &[wall]);
+        let offered = crate::rules::legal_actions_for(&state, &registry, Side::Corp);
+        assert!(!offered.contains(&PlayerAction::ChooseServerForPendingDecision { server: ServerId::Hq }), "another server");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ChooseServerForPendingDecision { server: ServerId::RnD }).expect("on R&D");
+        assert!(state.corp.installed.iter().any(|c| c.card.0 == "ice_wall" && c.server == ServerId::RnD));
+        assert_eq!(state.corp.resources.credits, credits, "ignoring all costs");
+        let run = state.active_run.as_ref().expect("the encounter goes on");
+        assert_eq!(crate::rules::continuous::ice_strength(&state, &registry, &run.ice[0]), 6, "4, +2 for the run");
+    }
 }

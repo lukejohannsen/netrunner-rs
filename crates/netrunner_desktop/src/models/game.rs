@@ -2091,7 +2091,7 @@ mod tests {
             reveal: false,
             shuffle_after: false,
             destination: None,
-            then: Some(Box::new(Effect::PromptInstallCorpCard { origin_zone: CardZoneRef::OwnHq, ignore_costs: false, discount: 0, then: None, remote_only: false, rez: false, if_rezzed: None, if_installed: None })),
+            then: Some(Box::new(Effect::PromptInstallCorpCard { origin_zone: CardZoneRef::OwnHq, ignore_costs: false, discount: 0, then: None, remote_only: false, another_server: false, rez: false, if_rezzed: None, if_installed: None })),
             selected: Vec::new(),
             source_card: Some(CardId("scatter_field".to_string())),
             prompting_card: Some(CardId("scatter_field".to_string())),

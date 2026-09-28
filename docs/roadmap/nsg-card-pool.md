@@ -1908,7 +1908,7 @@ reaches Vantage Point's cards by building a deck.
 7. **Expendable, moving ice, psi, re-encounter**, in five parts when it was
    taken: **7a**, expendable cards (built, below): Eminent Domain, Descent;
    **7b**, a psi game (built, below): See How They Run; **7c**, ice that moves as a run
-   begins: Tributary; **7d**, an encounter repeated: Sisyphus Protocol;
+   begins (built, below): Tributary; **7d**, an encounter repeated: Sisyphus Protocol;
    **7e**, a trojan hosted by an event's ability: Spree.
 8. **A card's identity changes:** Thunderbolt Armaments: Peace Through Power, Lycian
    Multi-Munition, Jeitinho.
@@ -3339,6 +3339,58 @@ Descent. **No new `Effect`.** Rebellion Without Rehearsal 58 of 65;
   73 → 76 of 192, flatlines 15 → 16, Runner agenda wins 103 → 100). A ref
   with the engine, bot and client changes and without the card and the
   deck is identical to `main` in all four shapes, so the heuristic
+  movement is `determinize` sampling a new Corp card.
+
+#### Stage 7c — ice that moves as a run begins (28 September 2026)
+
+`feat/rwr-stage-7c-tributary`: Tributary. **One new `Effect`.** Rebellion
+Without Rehearsal 60 of 65; `RWR_UNIMPLEMENTED` 6 → 5.
+
+- **"The first time each turn a run begins, you may move this ice to the
+  outermost position protecting the attacked server. (The Runner will
+  approach this ice.)"** is an `OnRunStart` trigger with
+  `first_each_turn`, `subject: Any`, and a `PresentChoice` of
+  `Effect::MoveThisIceToOutermost` or nothing.
+  - The effect takes the ice out of `corp.installed` and puts it back in
+    front of the attacked server's ice, which that list keeps
+    outermost-first per server (CR 6.2.2a). It keeps its rez state,
+    counters and install id, and `CardMoved` is emitted when it changes
+    server.
+  - The run follows through `run::reconcile_ice`: a run at initiation
+    re-anchors on position 0, so the Runner approaches the moved ice
+    (6.2.5a puts the Runner's first position at 6.9.1d, after the run has
+    begun).
+  - Composition didn't work: the only move of ice was `SwapInstalledIce`,
+    which cannot take ice to another server or in front of a server with
+    no ice.
+  - The offer is made on the turn's first run even when Tributary is
+    already outermost there, where accepting does nothing. Refusing it
+    there would take a requirement no other card needs.
+- **"You may install 1 piece of ice from HQ protecting another server,
+  ignoring all costs"** is `PromptInstallCorpCard` with a new word,
+  `another_server`: every destination but the acting install's server,
+  as `remote_only` narrows Peer Review's. **"Each piece of ice gets +2
+  strength for the remainder of this run"** is ezaM's `ModifyStrength`
+  on `EachIce`.
+- **Client:** nothing new reaches the view. The board draws ice where the
+  view has it, the log already says "moved Tributary from R&D to HQ", and
+  the run's strength is in `hud::in_effect` as ezaM's is.
+- **Deck** — A Thousand Cuts: two Tributary for a Karuna and an ezaM, ice
+  for ice. Tributary is banned in Standard, and the Sweep decks are
+  Eternal.
+- **Real play**, 96 games of A Thousand Cuts against Safety Net (seed 2):
+  - Random seats: installed 49 times and rezzed 15. The run-start offer
+    came 60 times and the ice moved 26 times; 130 subroutines fired.
+  - Heuristic seats: installed 68 and rezzed 35. The offer came 139 times
+    and the ice moved 49 times; 202 subroutines fired.
+- **DSL ratio (`pool_status.py`): 23 of 87 `Effect` variants single-use,
+  1 unused**, over 310 card files (22 of 86 before).
+- **Measured.** Both sweeps at 256 seeds are green. Against 7b,
+  `coverage_identical.py` has both random seatings **identical**, and the
+  heuristic ones moved (Corp agenda wins 76 → 79 of 192, flatlines
+  16 → 14, Runner agenda wins 100 → 96, Runner deck-outs 0 → 3). A ref
+  with the effect, the install word and the prose and without the card
+  and the deck is identical to 7b in all four shapes, so the heuristic
   movement is `determinize` sampling a new Corp card.
 
 ### 3. The Automata Initiative — 65 cards (C 14 / V 35 / M 16)

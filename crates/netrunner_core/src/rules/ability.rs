@@ -1642,7 +1642,7 @@ pub fn evaluate_effect(
             Ok(vec![GameEvent::PendingServerChoiceOffered { chooser: Side::Corp }])
         }
 
-        Effect::PromptInstallCorpCard { origin_zone, ignore_costs, discount, then, remote_only, rez, if_rezzed, if_installed } => {
+        Effect::PromptInstallCorpCard { origin_zone, ignore_costs, discount, then, remote_only, another_server, rez, if_rezzed, if_installed } => {
             let card_id = acting_card.ok_or(RulesError::UnresolvedCardTarget)?.clone();
             // First match by position: two copies of one card in HQ are
             // indistinguishable and interchangeable, so "the copy the Corp
@@ -1670,6 +1670,10 @@ pub fn evaluate_effect(
             let mut allowed = crate::rules::engine::corp_install_destinations(state, card_def, *ignore_costs, *discount);
             if *remote_only {
                 allowed.retain(|server| matches!(server, crate::rules::run::ServerId::Remote(_)));
+            }
+            if *another_server {
+                let own = acting_corp_position(state, ctx).map(|position| state.corp.installed[position].server);
+                allowed.retain(|server| Some(*server) != own);
             }
             if allowed.is_empty() {
                 return Ok(Vec::new());
@@ -1717,6 +1721,34 @@ pub fn evaluate_effect(
             // Heard by the card that moved (Isaac Liberdade).
             let mut events = Vec::new();
             dispatcher::emit(state, registry, &mut events, GameEvent::CardMoved { install, card: Some(card), from, to: *server })?;
+            Ok(events)
+        }
+
+        Effect::MoveThisIceToOutermost => {
+            let Some(server) = state.active_run.as_ref().map(|run| run.server) else { return Ok(Vec::new()) };
+            let Some(position) = acting_corp_position(state, ctx) else { return Ok(Vec::new()) };
+            if state.corp.installed[position].slot != crate::rules::state::InstallSlot::Ice {
+                return Ok(Vec::new());
+            }
+            let outermost = state.corp.installed.iter().position(|c| c.server == server && c.slot == crate::rules::state::InstallSlot::Ice);
+            if outermost == Some(position) {
+                return Ok(Vec::new());
+            }
+            // Out of the list and back in front of the attacked server's
+            // ice: `corp.installed` is outermost-first per server
+            // (`engine::place_corp_card`).
+            let mut ice = state.corp.installed.remove(position);
+            let from = ice.server;
+            ice.server = server;
+            let (card, install) = (ice.card.clone(), ice.install_id);
+            match state.corp.installed.iter().position(|c| c.server == server && c.slot == crate::rules::state::InstallSlot::Ice) {
+                Some(index) => state.corp.installed.insert(index, ice),
+                None => state.corp.installed.push(ice),
+            }
+            let mut events = Vec::new();
+            if from != server {
+                dispatcher::emit(state, registry, &mut events, GameEvent::CardMoved { install, card: Some(card), from, to: server })?;
+            }
             Ok(events)
         }
 
