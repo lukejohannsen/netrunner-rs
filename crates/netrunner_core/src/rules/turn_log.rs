@@ -263,6 +263,7 @@ fn concealed(trigger: Trigger, of: Option<Side>) -> bool {
         | Trigger::OnBadPublicityTaken
         | Trigger::OnDamageAboutToResolve
         | Trigger::OnIdentityFlipped
+        | Trigger::OnVirusCountersPurged
         | Trigger::Paid => false,
     }
 }

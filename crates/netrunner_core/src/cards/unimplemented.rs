@@ -29,8 +29,6 @@ pub(crate) const RWR_UNIMPLEMENTED: &[(u32, &str)] = &[
     (34078, "Alarm Clock"),
     (34079, "Jeitinho"),
     (34080, "Cupellation"),
-    (34081, "Malandragem"),
-    (34082, "Physarum Entangler"),
     (34085, "Burner"),
     (34086, "Spree"),
     (34087, "Trick Shot"),

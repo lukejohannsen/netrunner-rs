@@ -17,6 +17,14 @@ pub enum Cost {
     /// on the ability beside `Credits`: the printed sentence limits the
     /// credits, and a cost is where the credits are.
     CreditsFrom { amount: Amount, from: CardFilter },
+    /// Credits reckoned when the cost is paid (CR 1.16.2b), from wherever
+    /// credits may be spent — Physarum Entangler's "you may pay 1[credit]
+    /// for each subroutine it has" (`Amount::EncounteredIceSubroutines`).
+    /// `Credits` is a printed number and `CreditsFrom` limits the source;
+    /// this is the credit pool's own, with the count read like
+    /// `CreditsFrom`'s. Composition didn't work: no cost took a number the
+    /// state decides.
+    CreditsAmount(Amount),
     Clicks(u32),
     /// The payer loses `u32` clicks — Ansel 2.0's "**Lose [click][click]:**
     /// Break up to 2 subroutines on this ice." Not `Clicks`: that cost
@@ -160,12 +168,14 @@ pub enum Cost {
     /// installed.
     AddToScoreAreaAsAgenda(crate::dsl::AsAgenda),
     /// Removes the acting card from the game entirely — Spin Doctor's
-    /// "Remove this asset from the game:" ability cost. Distinct from
-    /// `TrashSelf`: a trashed card goes to Archives (where it stays
-    /// accessible and countable), whereas a removed one goes to
-    /// `CorpState::removed_from_game` and is gone for good.
+    /// "Remove this asset from the game:" ability cost, and Malandragem's
+    /// "you may remove this program from the game to bypass it" out of the
+    /// rig. Distinct from `TrashSelf`: a trashed card goes to its owner's
+    /// discard pile (where it stays accessible and countable), whereas a
+    /// removed one goes to `removed_from_game` and is gone for good.
     /// `RulesError::MissingActingCardContext` without an acting card, and
-    /// `RulesError::CardNotInstalled` if it isn't a Corp install.
+    /// `RulesError::CardNotInstalled` if it is neither a Corp install nor a
+    /// rig card.
     RemoveSelfFromGame,
     /// The card this is printed on, in its owner's hand, is revealed (CR
     /// 1.21.3) and trashed — Tocsin's "reveal and trash this ice from HQ:".

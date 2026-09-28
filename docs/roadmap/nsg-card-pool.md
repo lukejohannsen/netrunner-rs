@@ -1867,8 +1867,12 @@ reaches Vantage Point's cards by building a deck.
    parts when it was taken: **2a**, tags and the trash cost (built, below):
    Sebastião Souza Pessoa, Manuel Lattes de Moura, Privileged Access,
    Amanuensis, Amelia Earhart, Juli Moreira Lee, Arruaceiras Crew; **2b**,
-   purge and bypass: Malandragem, Physarum Entangler, Heliamphora.
-3. **Runner access and run words:** Eye for an Eye, “Pretty” Mary da Silva, Cupellation, Trick Shot,
+   purge and bypass (built, below): Malandragem, Physarum Entangler.
+   Heliamphora moved to Stage 3 when 2b was taken: its "whenever you
+   would access a card in Archives, you may host it faceup on this
+   program instead" is an interrupt at an access, and hosting the card
+   being accessed is Cupellation's too; its purge half is 2b's trigger.
+3. **Runner access and run words:** Eye for an Eye, Heliamphora, “Pretty” Mary da Silva, Cupellation, Trick Shot,
    Window of Opportunity, Alarm Clock, Meeting of Minds, Muse, Ashen
    Epilogue, Boi-tatá.
 4. **Corp advancement and movement words:** Charlotte Caçador, Cohort
@@ -2060,6 +2064,64 @@ are Stage 2b.
   movement is `determinize` sampling seven new Runner cards, and the trash
   cost, `had`, the dispatched use of an ability and the heap discount move
   no game of the pool.
+
+#### Stage 2b — purge and bypass (27 September 2026)
+
+`feat/rwr-stage-2b-purge-and-bypass`: Malandragem, Physarum Entangler.
+Rebellion Without Rehearsal 18 of 65; `RWR_UNIMPLEMENTED` 49 → 47.
+Heliamphora went to Stage 3 (above).
+
+- **A purge is a moment** (`Trigger::OnVirusCountersPurged`, CR 10.1.2):
+  `VirusCountersPurged` was recorded and never dispatched; it is now, from
+  the basic action and from Flyswatter's `Effect::PurgeVirusCounters`,
+  heard by every active card whether or not it hosts counters. Physarum
+  Entangler's "when the Corp purges virus counters, trash this program".
+- **A credit cost reckoned as it is paid** (`Cost::CreditsAmount`, CR
+  1.16.2b), over `Amount::EncounteredIceSubroutines`, printed and gained:
+  Physarum's "pay 1[credit] for each subroutine it has", in an
+  `OfferPaidChoice` gated on its host being encountered and not a barrier
+  (`EncounteringHostIce`, `Not(Encountering(Barrier))`). `CreditsFrom`
+  limits where the credits come from; this one takes them from anywhere.
+- **Removal from the game out of the rig.** `Cost::RemoveSelfFromGame`
+  was Spin Doctor's and read only Corp installs; it now removes a rig card
+  too (what it hosted is trashed with it), which is Malandragem's threat 4
+  "remove this program from the game to bypass it". Its "when it is empty,
+  remove it from the game" is `Effect::RemoveFromGame(ThisCard)`, the same
+  move made by the card's text, after the counter its bypass spends.
+  Its strength-3 gate is `Not(AmountAtLeast(EncounteredIceStrength, 4))`.
+- **A card's second trigger on one moment waits for the first** (found by
+  Malandragem's tests). A card's `TriggeredEffect`s for one moment fire in
+  one loop (`ability::fire_card_triggers`), and when the first parked a
+  decision the second parked its own over it: at threat 4 the counter
+  offer was never asked. The rest now wait on the queue behind the parked
+  one, as the rest of a `Sequence` does, counted by
+  `DeferredTrigger::fired`; a bypass by the first still stands the second
+  down. No card before Malandragem had two that could both fire on one
+  moment: Rotary's differ by server, Dewi Subrotoputri's by side and
+  Méliès U's by which copy is up.
+- **Deck** — Grassroots: Malandragem and two Physarum Entangler for the
+  Cleaver, the Shred and a Fermenter (influence 15 of 15).
+- **Real play**, 96 games of Fine Print against Grassroots (seed 2). Random
+  seats: Malandragem's encounter triggers 15 times, Physarum's 12, and 12
+  of the Corp's 88 purges trashed a Physarum; 7 pieces of ice bypassed.
+  The heuristic Runner installs neither and the heuristic Corp never
+  purges: the Phase 5 debt again.
+- **Fidelity limits:** a declined Malandragem bypass has spent its "once
+  per turn", which the rules say it has not (CR 9.3.6g) — the engine
+  spends a trigger's use limit when it fires, as it does Zahya's; recorded
+  in the conformance ledger's 9.3 row. Its two offers are asked in
+  printed order, not the Runner's.
+- **DSL ratio (`pool_status.py`): 19 of 76 `Effect` variants single-use,
+  2 unused**, over 268 card files (19 of 75 over 266 before):
+  `RemoveFromGame` is the one new variant, single-use.
+- **Measured.** Both sweeps at 256 seeds are green. Against
+  `origin/main`, `coverage_identical.py` has the random seatings
+  **identical**, by view and by index; the heuristic ones moved (Corp
+  agenda wins 76 → 67 of 192). Checked, not inferred: a ref with the
+  engine changes — the purge dispatched, the new cost and effect, the
+  queued second trigger — and without the two cards and the deck swap is
+  **identical in all four shapes**, so the movement is `determinize`
+  sampling two new Runner cards.
 
 ### 3. The Automata Initiative — 65 cards (C 14 / V 35 / M 16)
 

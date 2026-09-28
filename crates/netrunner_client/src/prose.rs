@@ -90,6 +90,7 @@ pub fn describe_amount(amount: &Amount) -> String {
         Amount::OtherUnrezzedIce => "the number of other unrezzed pieces of ice".to_string(),
         Amount::CardsAccessedLastRun => "the cards accessed during that run".to_string(),
         Amount::EncounteredIceStrength => "the strength of the ice being encountered".to_string(),
+        Amount::EncounteredIceSubroutines => "the subroutines on the ice being encountered".to_string(),
     }
 }
 
@@ -120,6 +121,7 @@ pub fn describe_cost(cost: &Cost) -> String {
         Cost::CreditsFrom { amount: Amount::Fixed(n), from } => {
             format!("{} from {}", plural(*n, "credit", "credits"), humanize(format!("{from:?}")).to_lowercase())
         }
+        Cost::CreditsAmount(amount) => format!("credits equal to {}", describe_amount(amount)),
         Cost::CreditsFrom { amount, from } => format!("credits equal to {}, from {}", describe_amount(amount), humanize(format!("{from:?}")).to_lowercase()),
         Cost::Clicks(n) => plural(*n, "click", "clicks"),
         Cost::LoseClicks(n) => format!("lose {}", plural(*n, "click", "clicks")),
@@ -213,6 +215,7 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
         Effect::GiveBadPublicity(Amount::Fixed(n)) => format!("the Corp takes {}", plural(*n, "bad publicity", "bad publicity")),
         Effect::GiveBadPublicity(amount) => format!("the Corp takes bad publicity equal to {}", describe_amount(amount)),
         Effect::RemoveBadPublicity(n) => format!("remove {}", plural(*n, "bad publicity", "bad publicity")),
+        Effect::RemoveFromGame(target) => format!("remove {} from the game", describe_target(target, registry)),
         Effect::TrashCard(target) => format!("trash {}", describe_target(target, registry)),
         Effect::DerezCard(target) => format!("derez {}", describe_target(target, registry)),
         Effect::BoostStrength { amount, duration: d } => format!("+{amount} strength {}", duration(d)),

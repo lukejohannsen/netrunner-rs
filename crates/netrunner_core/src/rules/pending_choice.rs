@@ -1275,6 +1275,7 @@ pub(crate) fn resolve_confirm_card_selection(
                 continuation: Some(effect.clone()),
                 heard: Default::default(),
                 not_the_first_this_turn: false,
+                fired: 0,
             });
         } else if let Some(effect) = effect {
             let mut ctx = ability::ResolutionContext::for_parked(acting_install, acting);

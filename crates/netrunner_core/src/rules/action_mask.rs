@@ -1380,6 +1380,7 @@ mod tests {
             continuation: None,
             heard: Default::default(),
             not_the_first_this_turn: false,
+            fired: 0,
         };
         state.pending_decision = Some(crate::rules::state::PendingDecision::ChooseTriggerOrder {
             chooser: Side::Corp,

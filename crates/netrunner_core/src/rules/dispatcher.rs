@@ -843,6 +843,7 @@ mod tests {
                 // …and what it heard the event as, decided when it happened.
                 heard: crate::rules::state::Heard::AsBystander,
                 not_the_first_this_turn: false,
+                fired: 0,
             }],
             "the untouched remainder is queued, not dropped"
         );
@@ -947,6 +948,7 @@ mod tests {
             continuation: None,
             heard: Default::default(),
             not_the_first_this_turn: false,
+            fired: 0,
         }];
         let credits_before = state.corp.resources.credits;
 
@@ -977,6 +979,7 @@ mod tests {
             continuation: None,
             heard: Default::default(),
             not_the_first_this_turn: false,
+            fired: 0,
         };
 
         let mut ended = empty_state();
@@ -1012,6 +1015,7 @@ mod tests {
             continuation: None,
             heard: Default::default(),
             not_the_first_this_turn: false,
+            fired: 0,
         }];
         let before = state.runner.resources.credits;
         drain_deferred_triggers(&mut state, &registry).unwrap();
@@ -1052,6 +1056,7 @@ mod tests {
             continuation: None,
             heard: Default::default(),
             not_the_first_this_turn: false,
+            fired: 0,
         };
 
         // First advancement: the requirement is met even though the trigger
@@ -1080,6 +1085,7 @@ mod tests {
             continuation: None,
             heard: Default::default(),
             not_the_first_this_turn: false,
+            fired: 0,
         }];
         let before = state.corp.resources.credits;
         drain_deferred_triggers(&mut state, &registry).unwrap();
@@ -1124,6 +1130,7 @@ mod tests {
             continuation: None,
             heard: Default::default(),
             not_the_first_this_turn: false,
+            fired: 0,
         };
         state.deferred_triggers = vec![queued("parks_a_choice"), queued("pad_campaign")];
 

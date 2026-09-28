@@ -1306,6 +1306,19 @@ pub struct DeferredTrigger {
     /// counted more. `false` for an entry built by hand.
     #[serde(default)]
     pub not_the_first_this_turn: bool,
+    /// How many of the `TriggeredEffect`s this entry fires have already
+    /// resolved: a card with two for one moment — Malandragem's two "when
+    /// you encounter" offers — fires them one after the other, and when the
+    /// first parks a decision the rest wait on the queue behind it, as the
+    /// rest of a `Sequence` does. Before this the second offer was written
+    /// over the first one's parked choice, and the first was never asked.
+    /// 0 for every entry but such a remainder.
+    #[serde(default, skip_serializing_if = "is_zero_u8")]
+    pub fired: u8,
+}
+
+fn is_zero_u8(value: &u8) -> bool {
+    *value == 0
 }
 
 /// What a planned trigger's card was to the event it heard.

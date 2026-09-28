@@ -183,6 +183,13 @@ pub enum Effect {
     /// Deliberately no `Side` param, same rationale as `GiveBadPublicity`.
     RemoveBadPublicity(u32),
     TrashCard(CardTarget),
+    /// `TrashCard`'s removal from the game — Malandragem's "When it is
+    /// empty, remove it from the game". Only `CardTarget::ThisCard` is
+    /// printed; any other target is `RulesError::UnresolvedCardTarget`.
+    /// The same move as `Cost::RemoveSelfFromGame`, made by a card's text
+    /// rather than paid. Composition didn't work: `TrashCard` sends a card
+    /// to its owner's discard pile, where Scrounge finds it again.
+    RemoveFromGame(CardTarget),
     /// Boosts a Runner rig card's own strength — unlike `ModifyStrength`,
     /// which always targets whatever ICE is currently being encountered,
     /// this always targets whichever rig card activated the ability (see
@@ -1283,6 +1290,11 @@ pub enum Amount {
     /// `Not(AmountAtLeast(.., 1))`, since an `Amount` is unsigned. 0
     /// outside an encounter. No amount read a strength.
     EncounteredIceStrength,
+    /// Subroutines on the piece of ice being encountered, printed and gained
+    /// (`RunIce::subroutines`) — Physarum Entangler's "1[credit] for each
+    /// subroutine it has", `Cost::CreditsAmount`'s number. 0 outside an
+    /// encounter. No amount counted subroutines.
+    EncounteredIceSubroutines,
     /// Unrezzed pieces of ice other than `acting_card`'s install, wherever
     /// they are — Reverb's "lowered by 1[credit] for each other unrezzed
     /// piece of ice". No amount counted ice by rez state.
@@ -1475,6 +1487,7 @@ impl Effect {
             | Effect::GiveBadPublicity(..)
             | Effect::RemoveBadPublicity(..)
             | Effect::TrashCard(..)
+            | Effect::RemoveFromGame(..)
             | Effect::BoostStrength { .. }
             | Effect::BreakSubroutines { .. }
             | Effect::BreakSubroutinesUnconditionally { .. }

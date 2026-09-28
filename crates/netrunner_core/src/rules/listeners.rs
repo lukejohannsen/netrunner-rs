@@ -227,6 +227,8 @@ pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
             vec![moment(Trigger::OnCardTrashed, &About::Card { card: trashed.clone(), install: None, installed: false }, Some(*by))]
         }
         GameEvent::CardTrashed { by: None, .. } => Vec::new(),
+        // The Corp purges, whatever the card that made it (CR 10.1.2).
+        GameEvent::VirusCountersPurged { .. } => vec![moment(Trigger::OnVirusCountersPurged, &About::Nothing, Some(Side::Corp))],
         GameEvent::CardsLookedAt { .. } => Vec::new(),
         // No card hears a reveal yet: Esca, Tocsin and the traps reveal, and
         // nothing in the pool asks what was revealed.
@@ -314,7 +316,6 @@ pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
         | GameEvent::TriggerOrderPending { .. }
         | GameEvent::TriggerOrderChosen { .. }
         | GameEvent::TriggerFired { .. }
-        | GameEvent::VirusCountersPurged { .. }
         | GameEvent::BadPublicityCreditsSpent { .. }
         | GameEvent::PaymentChoiceOffered { .. }
         | GameEvent::BonusRunCreditsSpent { .. }
@@ -394,6 +395,7 @@ pub(crate) fn plan_for(state: &GameState, registry: &CardRegistry, event: &GameE
                     continuation: None,
                     heard,
                     not_the_first_this_turn: later,
+                    fired: 0,
                 },
             ));
         }
