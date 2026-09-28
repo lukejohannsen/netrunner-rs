@@ -2089,10 +2089,20 @@ fn break_subroutine_with_click(
     if current_ice.subroutines.get(subroutine_index).is_some_and(|s| s.definition.only_breakable_by.is_some()) {
         return Err(RulesError::SubroutineNotBreakableByThis { ice: ice_id, index: subroutine_index });
     }
+    // A printed subroutine past the ice's `BreakLimit` is not clickable
+    // either: a click is no icebreaker, so no exception covers it.
+    let printed = current_ice.subroutines.get(subroutine_index).is_some_and(|s| !s.gained);
+    let limit = continuous::breaks_left(state, registry, current_ice, None).filter(|_| printed);
+    if limit == Some(0) {
+        return Err(RulesError::SubroutineNotBreakableByThis { ice: ice_id, index: subroutine_index });
+    }
 
     let mut next = state.clone();
     spend_click(&mut next, side)?;
     let mut events = vec![GameEvent::ClickSpent { side }];
+    if limit.is_some() && let Some(run) = next.active_run.as_mut() {
+        run.this_encounter.limited_breaks += 1;
+    }
     events.extend(run::advance_run(&mut next, RunAction::BreakSubroutine(subroutine_index), registry)?);
     paid_ability::note_window_action(&mut next, side);
 

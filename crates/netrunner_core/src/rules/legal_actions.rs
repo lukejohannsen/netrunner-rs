@@ -689,9 +689,11 @@ fn break_subroutine_with_click_candidates(state: &GameState, registry: &CardRegi
     if !registry.get(&ice.card_id).is_some_and(|c| c.click_breakable) {
         return Vec::new();
     }
+    let limit_spent = crate::rules::continuous::breaks_left(state, registry, ice, None) == Some(0);
     ice.subroutines
         .iter()
         .filter(|s| s.status == SubroutineStatus::Pending && s.definition.only_breakable_by.is_none())
+        .filter(|s| s.gained || !limit_spent)
         .map(|s| PlayerAction::BreakSubroutineWithClick { ice_id: ice.card_id.clone(), subroutine_index: s.id })
         .collect()
 }

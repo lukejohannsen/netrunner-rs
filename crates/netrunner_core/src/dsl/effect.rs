@@ -1405,6 +1405,14 @@ pub enum Amount {
     /// which is relative to the actor: the sentence names both hands. No
     /// amount counted a hand.
     CardsInHand(Side),
+    /// How many times this trigger's moment has happened this turn to the
+    /// copy resolving — its install, read off `InstalledCard::this_turn`
+    /// (`turn_log::CopyTurn`, which counts only advancing and rezzing) —
+    /// Cloud Eater's "if it was rezzed this turn", `AmountAtLeast(
+    /// TimesThisTurnOnThisCopy(OnRez), 1)`. 0 for a trigger the copy does
+    /// not count, or with no Corp install resolving. `TimesThisTurn` counts
+    /// the turn's moments by class, and a class has no copy in it.
+    TimesThisTurnOnThisCopy(crate::dsl::Trigger),
 }
 
 /// What `Effect::EndTheRun` does the first time it would end a run with

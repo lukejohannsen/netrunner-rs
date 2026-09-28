@@ -25,7 +25,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::dsl::ability::EffectRequirement;
-use crate::dsl::card::IceType;
+use crate::dsl::card::{CardSubtype, IceType};
 use crate::dsl::effect::Amount;
 use crate::dsl::zone::CardFilter;
 use crate::rules::Side;
@@ -198,6 +198,28 @@ pub enum ContinuousKind {
     /// access limit. The card itself stays a candidate. Asked by the
     /// breach as it offers each candidate (`run::access::prune_candidates`).
     AccessOthersAtMost(u32),
+    /// During each encounter with this ice, the Runner cannot break more
+    /// than `at_most` of its printed subroutines, except using an icebreaker
+    /// printed with `except_using` — Hammer's "cannot break more than 1 of
+    /// its printed subroutines except using **killers**". A gained
+    /// subroutine is not printed and is never limited; a break that is
+    /// excepted is not counted. Asked by both break effects, which break
+    /// no more than is left (`continuous::breaks_left`) and count what they
+    /// broke in `RunState::this_encounter`. About `This`, on ice. Afshar
+    /// and Akhet print it with no exception and a `while`.
+    BreakLimit {
+        at_most: u32,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        except_using: Option<CardSubtype>,
+    },
+    /// The Corp cannot trash more than this many installed Runner cards
+    /// with this ice during each encounter — Sorocaban Blade. Once it has,
+    /// a selection this ice's text makes to trash an installed Runner card
+    /// offers nothing (`continuous::may_trash_with`), and the trashes it
+    /// has made are counted in `RunState::this_encounter`, where it was
+    /// carried out: a trash the Runner prevented is not one. About `This`,
+    /// on ice.
+    TrashLimit(u32),
 }
 
 /// Which cards an effect is about, read from the card that prints it.

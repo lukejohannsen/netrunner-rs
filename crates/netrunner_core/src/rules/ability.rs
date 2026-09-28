@@ -1106,27 +1106,11 @@ pub fn evaluate_effect(
             // printed subtype may break (Semak-samun) stays pending for a
             // breaker without it.
             let breaker_def = registry.get(acting);
-            let pending: Vec<usize> = ice
-                .subroutines
-                .iter()
-                .filter(|s| s.status == SubroutineStatus::Pending && subroutine_breakable_by(s, breaker_def))
-                .map(|s| s.id)
-                .collect();
+            let pending = breakable_now(state, registry, ice, breaker_def);
             if pending.is_empty() {
                 return Err(RulesError::NoBreakableSubroutine { ice: ice_card_id });
             }
-
-            let take = match count {
-                SubroutineBreakCount::All => pending.len(),
-                SubroutineBreakCount::Fixed(n) => (*n as usize).min(pending.len()),
-            };
-            let mut events = Vec::new();
-            for idx in pending.into_iter().take(take) {
-                for event in run::break_subroutine(state, registry, idx)? {
-                    dispatcher::emit(state, registry, &mut events, event)?;
-                }
-            }
-            Ok(events)
+            break_pending(state, registry, pending, count)
         }
 
         Effect::BreakSubroutinesUnconditionally { count } => {
@@ -1136,26 +1120,11 @@ pub fn evaluate_effect(
             }
             let ice = &run.ice[run.position];
             let breaker_def = acting_card.and_then(|card| registry.get(card));
-            let pending: Vec<usize> = ice
-                .subroutines
-                .iter()
-                .filter(|s| s.status == SubroutineStatus::Pending && subroutine_breakable_by(s, breaker_def))
-                .map(|s| s.id)
-                .collect();
+            let pending = breakable_now(state, registry, ice, breaker_def);
             if pending.is_empty() {
                 return Err(RulesError::NoBreakableSubroutine { ice: ice.card_id.clone() });
             }
-            let take = match count {
-                SubroutineBreakCount::All => pending.len(),
-                SubroutineBreakCount::Fixed(n) => (*n as usize).min(pending.len()),
-            };
-            let mut events = Vec::new();
-            for idx in pending.into_iter().take(take) {
-                for event in run::break_subroutine(state, registry, idx)? {
-                    dispatcher::emit(state, registry, &mut events, event)?;
-                }
-            }
-            Ok(events)
+            break_pending(state, registry, pending, count)
         }
 
         Effect::Trace { base, on_success } => {
@@ -1364,7 +1333,14 @@ pub fn evaluate_effect(
         Effect::PromptChooseCards { side, source, filter, min, max, reveal, shuffle_after, destination, then } => {
             let filter = &filter.clone().with_this_server(acting_server(state, ctx));
             let available = crate::rules::pending_choice::eligible_positions(state, registry, *side, source, filter, ctx.acting_install, ctx.acting_card);
-            if available.is_empty() || available.len() < *min as usize {
+            // An installed Runner card trashed by the text of ice whose
+            // `TrashLimit` this encounter has spent (Sorocaban Blade): there
+            // is nothing it may choose.
+            let trash_spent = *side == Side::Corp
+                && matches!(source, crate::dsl::CardZoneRef::OpponentInstalled)
+                && matches!(destination, Some(crate::dsl::CardZoneRef::OpponentDiscard))
+                && !continuous::may_trash_with(state, registry, ctx.acting_install);
+            if trash_spent || available.is_empty() || available.len() < *min as usize {
                 // Nothing to do — same "silently no-op" leniency
                 // `DrawCards`/`TrashCard`'s "already gone" case establish.
                 // e.g. Hansei Review's "if there are any cards in HQ".
@@ -3401,6 +3377,58 @@ fn subroutine_breakable_by(subroutine: &crate::rules::run::EncounteredSubroutine
     }
 }
 
+/// The subroutines on the encountered `ice` that `breaker` may break now,
+/// in the order a break takes them, each with whether its break counts
+/// against the ice's `BreakLimit`: pending, breakable by this breaker
+/// (`only_breakable_by`), and no more of the printed ones than the limit
+/// leaves (`continuous::breaks_left`). A gained subroutine is not printed,
+/// so it is never limited.
+fn breakable_now(
+    state: &GameState,
+    registry: &CardRegistry,
+    ice: &crate::rules::run::RunIce,
+    breaker: Option<&crate::dsl::CardDefinition>,
+) -> Vec<(usize, bool)> {
+    let mut left = continuous::breaks_left(state, registry, ice, breaker);
+    let mut breakable = Vec::new();
+    for subroutine in ice.subroutines.iter().filter(|s| s.status == SubroutineStatus::Pending && subroutine_breakable_by(s, breaker)) {
+        let limited = left.is_some() && !subroutine.gained;
+        if limited {
+            match left.as_mut() {
+                Some(0) => continue,
+                Some(room) => *room -= 1,
+                None => {}
+            }
+        }
+        breakable.push((subroutine.id, limited));
+    }
+    breakable
+}
+
+/// Breaks the first `count` of `pending` (`breakable_now`), counting each
+/// limited break for the rest of the encounter.
+fn break_pending(
+    state: &mut GameState,
+    registry: &CardRegistry,
+    pending: Vec<(usize, bool)>,
+    count: &SubroutineBreakCount,
+) -> Result<Vec<GameEvent>, RulesError> {
+    let take = match count {
+        SubroutineBreakCount::All => pending.len(),
+        SubroutineBreakCount::Fixed(n) => (*n as usize).min(pending.len()),
+    };
+    let mut events = Vec::new();
+    for (idx, limited) in pending.into_iter().take(take) {
+        if limited && let Some(run) = state.active_run.as_mut() {
+            run.this_encounter.limited_breaks += 1;
+        }
+        for event in run::break_subroutine(state, registry, idx)? {
+            dispatcher::emit(state, registry, &mut events, event)?;
+        }
+    }
+    Ok(events)
+}
+
 /// An `Amount` read off the table alone, with no card resolving it — what
 /// a bot's evaluator asks of a card text it has not played yet (Flood the
 /// Market's count of protected remotes). An amount that reads the
@@ -3522,6 +3550,10 @@ pub(crate) fn resolve_amount(amount: &Amount, ctx: &ResolutionContext<'_>, state
         }
         Amount::CardsInHand(Side::Corp) => state.corp.hq.len() as u32,
         Amount::CardsInHand(Side::Runner) => state.runner.grip.len() as u32,
+        Amount::TimesThisTurnOnThisCopy(trigger) => ctx
+            .acting_install
+            .and_then(|install| state.corp.installed.iter().find(|installed| installed.install_id == install))
+            .map_or(0, |installed| installed.this_turn.count(state.turn, *trigger)),
     }
 }
 

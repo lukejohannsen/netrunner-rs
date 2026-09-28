@@ -1171,6 +1171,11 @@ pub(crate) fn resolve_confirm_card_selection(
                 // could prevent never gets here: see the top of this loop.)
                 if is_discard_pile(dest) {
                     events.push(GameEvent::CardTrashed { side: owning_side(side, dest), card: card_id.clone(), installed: matches!(source, CardZoneRef::OpponentInstalled | CardZoneRef::OwnInstalled), by: Some(side) });
+                    // The encountered ice's trash, when its text chose the
+                    // card (Sorocaban Blade's limit).
+                    if matches!(source, CardZoneRef::OpponentInstalled) && side == Side::Corp {
+                        crate::rules::continuous::note_runner_card_trashed_by(state, source_install);
+                    }
                 }
                 if matches!(dest, CardZoneRef::OpponentRemovedFromGame) {
                     events.push(GameEvent::CardRemovedFromGame { side: owning_side(side, dest), card: card_id.clone() });

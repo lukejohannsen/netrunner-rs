@@ -98,6 +98,7 @@ pub fn describe_amount(amount: &Amount) -> String {
         Amount::EncounteredIceSubroutines => "the subroutines on the ice being encountered".to_string(),
         Amount::CardsInHand(Side::Corp) => "the cards in HQ".to_string(),
         Amount::CardsInHand(Side::Runner) => "the cards in the grip".to_string(),
+        Amount::TimesThisTurnOnThisCopy(trigger) => format!("the times \"{}\" has happened to this card this turn", humanize(format!("{trigger:?}"))),
     }
 }
 
@@ -572,6 +573,15 @@ pub fn describe_continuous(effect: &ContinuousEffect) -> String {
         ContinuousKind::MayHost => "may be installed there".to_string(),
         ContinuousKind::CannotBeDeclaredSuccessful => "cannot be declared successful".to_string(),
         ContinuousKind::AccessOthersAtMost(n) => format!("accesses at most {} other than this card", plural(*n, "card", "cards")),
+        ContinuousKind::BreakLimit { at_most, except_using: None } => {
+            format!("at most {} of its printed subroutines can be broken each encounter", at_most)
+        }
+        ContinuousKind::BreakLimit { at_most, except_using: Some(subtype) } => format!(
+            "at most {} of its printed subroutines can be broken each encounter, except with {} icebreakers",
+            at_most,
+            subtype.printed().to_lowercase()
+        ),
+        ContinuousKind::TrashLimit(n) => format!("trashes at most {} each encounter", plural(*n, "installed Runner card", "installed Runner cards")),
     };
     match &effect.condition {
         Some(condition) => format!("{whom} {what}, while {}", lower(format!("{condition:?}"))),

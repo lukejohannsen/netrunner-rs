@@ -370,6 +370,7 @@ mod tests {
             bonus_run_credits: 0,
             redirect_on_approach: None,
             fully_broken: false,
+            this_encounter: Default::default(),
             once_per_run_used: Vec::new(),
             initiated_by: None,
             begun_as_the_turn_began: false,

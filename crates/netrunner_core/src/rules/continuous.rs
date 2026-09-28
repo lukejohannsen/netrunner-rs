@@ -337,6 +337,52 @@ pub fn ice_strength(state: &GameState, registry: &CardRegistry, ice: &RunIce) ->
     printed + table + lingering::ice_strength(state, ice.install_id)
 }
 
+/// How many more of the encountered `ice`'s printed subroutines `breaker`
+/// may break this encounter (`ContinuousKind::BreakLimit`, Hammer's
+/// "cannot break more than 1 of its printed subroutines except using
+/// killers"), or `None` when nothing limits it: no limit stands, or every
+/// one that does excepts this breaker. A click breaks as no icebreaker
+/// (`None` breaker), so an exception never covers one.
+pub(crate) fn breaks_left(state: &GameState, registry: &CardRegistry, ice: &RunIce, breaker: Option<&CardDefinition>) -> Option<u32> {
+    let target = Target::corp_install(state, registry, ice.install_id)?;
+    let broken = state.active_run.as_ref().map_or(0, |run| run.this_encounter.limited_breaks);
+    let mut left: Option<u32> = None;
+    for_each_applying(state, registry, target, |effect, _, _| {
+        if let ContinuousKind::BreakLimit { at_most, except_using } = effect.kind {
+            let excepted = except_using.is_some_and(|subtype| breaker.is_some_and(|def| def.subtypes.contains(&subtype)));
+            if !excepted {
+                let room = at_most.saturating_sub(broken);
+                left = Some(left.map_or(room, |other| other.min(room)));
+            }
+        }
+    });
+    left
+}
+
+/// Whether the Corp may still trash an installed Runner card with the text
+/// of `install` (`ContinuousKind::TrashLimit`, Sorocaban Blade's "you
+/// cannot trash more than 1 installed Runner card with this ice during
+/// each encounter"): always, unless `install` is the ice being encountered
+/// and its limit is spent. The count is of this encounter, so the limit is
+/// about nothing outside one.
+pub(crate) fn may_trash_with(state: &GameState, registry: &CardRegistry, install: Option<InstallId>) -> bool {
+    let Some(run) = state.active_run.as_ref() else { return true };
+    let encountered = run.phase == crate::rules::run::RunPhase::EncounterIce && run.ice.get(run.position).is_some_and(|ice| Some(ice.install_id) == install);
+    let Some(target) = install.filter(|_| encountered).and_then(|install| Target::corp_install(state, registry, install)) else { return true };
+    let trashed = run.this_encounter.runner_cards_trashed;
+    !any(state, registry, target, |kind| matches!(kind, ContinuousKind::TrashLimit(at_most) if trashed >= *at_most))
+}
+
+/// Counts an installed Runner card trashed by the text of `install`, when
+/// that is the ice being encountered — what `may_trash_with` reads.
+pub(crate) fn note_runner_card_trashed_by(state: &mut GameState, install: Option<InstallId>) {
+    let Some(run) = state.active_run.as_mut() else { return };
+    let encountered = run.phase == crate::rules::run::RunPhase::EncounterIce && run.ice.get(run.position).is_some_and(|ice| Some(ice.install_id) == install);
+    if encountered {
+        run.this_encounter.runner_cards_trashed += 1;
+    }
+}
+
 /// Whether a boost to the icebreaker `install` lasts the run rather than the
 /// encounter.
 pub(crate) fn boosts_last_the_run(state: &GameState, registry: &CardRegistry, install: InstallId) -> bool {
