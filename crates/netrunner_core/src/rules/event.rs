@@ -260,8 +260,12 @@ pub enum GameEvent {
     /// emptied of the credits it hosted. Hiram "0mission" Svensson hears
     /// the Runner trash a piece of hardware from any location
     /// (`Trigger::OnCardTrashed`, an occurrence only when `by` names a
-    /// player).
-    CardTrashed { side: Side, card: CardId, by: Option<Side> },
+    /// player). `installed`: it was on the table when it was trashed, not
+    /// in a hand, a deck or hosted uninstalled — Boi-tatá's "if you
+    /// trashed any of your installed cards this turn", which the turn log
+    /// counts by `turn_log::Class::Card`'s `installed` and could not while
+    /// every trash was counted as one out of a hand.
+    CardTrashed { side: Side, card: CardId, installed: bool, by: Option<Side> },
     /// A card left play permanently, bypassing the discard pile — Spin
     /// Doctor's `Cost::RemoveSelfFromGame`. Distinct from `CardTrashed`
     /// so a listener can tell "in Archives" from "gone".

@@ -147,6 +147,12 @@ impl Kind {
         }
     }
 
+    /// A Runner card's type: every Runner card trashed goes faceup to the
+    /// heap, from wherever it was, so both players see what it was.
+    fn is_runners(self) -> bool {
+        matches!(self, Kind::Hardware | Kind::Resource | Kind::Program | Kind::Event | Kind::DoubleEvent)
+    }
+
     fn of(card_type: &CardType) -> Kind {
         match card_type {
             CardType::Agenda => Kind::Agenda,
@@ -242,7 +248,9 @@ fn concealed(trigger: Trigger, of: Option<Side>) -> bool {
         // a filter on the card itself is refused.
         Trigger::OnIcePassed => true,
         // A Corp card trashed out of HQ or R&D goes facedown, unseen by
-        // the Runner; the log counts every trash without its type.
+        // the Runner, so the log counts a Corp card's trash without its
+        // type. A Runner card's is seen wherever it came from, and counted
+        // with it (`seen_anyway`).
         Trigger::OnCardTrashed => true,
         // Not about a card.
         Trigger::OnRunStart
@@ -268,6 +276,15 @@ fn concealed(trigger: Trigger, of: Option<Side>) -> bool {
     }
 }
 
+/// The exception to `concealed`, which is decided by the trigger alone:
+/// a trashed card of a kind only the Runner has (`Kind::is_runners`) went
+/// faceup to the heap, whoever trashed it and from wherever — Boi-tatá's
+/// "if you trashed any of your installed cards this turn" is a count by
+/// type and place, and the Corp saw both.
+fn seen_anyway(trigger: Trigger, kind: Kind) -> bool {
+    trigger == Trigger::OnCardTrashed && kind.is_runners()
+}
+
 fn class_of(registry: &CardRegistry, moment: &Moment) -> Class {
     if let Some(facts) = moment.ice {
         return Class::Ice(facts);
@@ -281,9 +298,10 @@ fn class_of(registry: &CardRegistry, moment: &Moment) -> Class {
         About::Server(ServerId::RnD) => Class::Server(ServerClass::RnD),
         About::Server(ServerId::Hq) => Class::Server(ServerClass::Hq),
         About::Server(ServerId::Remote(_)) => Class::Server(ServerClass::Remote),
-        About::Card { installed, .. } if concealed(moment.trigger, moment.of) => Class::Card { kind: Kind::Unseen, installed: *installed },
         About::Card { card, installed, .. } => {
-            Class::Card { kind: registry.get(card).map_or(Kind::Unseen, Kind::of_card), installed: *installed }
+            let kind = registry.get(card).map_or(Kind::Unseen, Kind::of_card);
+            let kind = if concealed(moment.trigger, moment.of) && !seen_anyway(moment.trigger, kind) { Kind::Unseen } else { kind };
+            Class::Card { kind, installed: *installed }
         }
     }
 }
@@ -353,7 +371,9 @@ impl Occurrences {
             Some(EventFilter::Card(_) | EventFilter::InstalledCard(_)) if trigger.is_about_ice_in_a_run() => {
                 return Err(format!("the turn counts a {trigger:?} by what was true of the ice, not by the card, so \"the first\" is narrowed with `Ice`"));
             }
-            Some(EventFilter::Card(_) | EventFilter::InstalledCard(_)) if concealed(trigger, of) => {
+            Some(EventFilter::Card(filter) | EventFilter::InstalledCard(filter))
+                if concealed(trigger, of) && !kinds(filter)?.iter().all(|kind| seen_anyway(trigger, *kind)) =>
+            {
                 return Err(format!("the card a {trigger:?} is about is hidden from a player, so the turn counts it without its type and \"the first\" cannot be narrowed by one"));
             }
             Some(EventFilter::Card(filter)) => Some(kinds(filter)?.iter().map(|kind| bit(Class::Card { kind: *kind, installed: false }) | bit(Class::Card { kind: *kind, installed: true })).fold(0, |mask, column| mask | column)),

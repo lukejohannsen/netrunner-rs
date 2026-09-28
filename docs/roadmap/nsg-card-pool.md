@@ -1872,9 +1872,12 @@ reaches Vantage Point's cards by building a deck.
    would access a card in Archives, you may host it faceup on this
    program instead" is an interrupt at an access, and hosting the card
    being accessed is Cupellation's too; its purge half is 2b's trigger.
-3. **Runner access and run words:** Eye for an Eye, Heliamphora, “Pretty” Mary da Silva, Cupellation, Trick Shot,
-   Window of Opportunity, Alarm Clock, Meeting of Minds, Muse, Ashen
-   Epilogue, Boi-tatá.
+3. **Runner access and run words**, in three parts when it was taken:
+   **3a**, the small words (built, below): Boi-tatá, Meeting of Minds,
+   “Pretty” Mary da Silva, Ashen Epilogue; **3b**, access abilities not
+   on an installed card, and a card hosted as it is accessed: Eye for an
+   Eye, Cupellation, Heliamphora; **3c**, run words and a search that
+   installs: Trick Shot, Window of Opportunity, Alarm Clock, Muse.
 4. **Corp advancement and movement words:** Charlotte Caçador, Cohort
    Guidance Program, Hearts and Minds, Logjam, Isaac Liberdade, The Holo
    Man, Business As Usual, Janaína “JK” Dumont Kindelán, Kingmaking, Stoke the Embers.
@@ -2122,6 +2125,71 @@ Heliamphora went to Stage 3 (above).
   queued second trigger — and without the two cards and the deck swap is
   **identical in all four shapes**, so the movement is `determinize`
   sampling two new Runner cards.
+
+#### Stage 3a — the small words (27 September 2026)
+
+`feat/rwr-stage-3a-small-words`: Boi-tatá, Meeting of Minds, “Pretty”
+Mary da Silva, Ashen Epilogue. **No new `Effect`: one generalised in
+place.** Rebellion Without Rehearsal 22 of 65; `RWR_UNIMPLEMENTED`
+47 → 43. Stage 3 was split (above): the access abilities are 3b, the run
+words and Muse 3c.
+
+- **A trash says whether the card was installed** (`CardTrashed::
+  installed`), and the turn log counts it: every `OnCardTrashed` moment
+  was counted as a card out of a hand, so "installed" could not be asked.
+  And a **Runner card's trash is counted by its type** — every Runner card
+  trashed goes faceup to the heap, whoever trashed it and from wherever —
+  while a Corp card's stays `Unseen` (`turn_log::seen_anyway`, beside
+  `concealed`). Boi-tatá's "if you trashed any of your installed cards
+  this turn" is then a turn-log count, `TimesThisTurnWhen { OnCardTrashed,
+  InstalledCard(Program, Hardware, Resource) }` under each ability's
+  `cost_discount_if`, as Marjanah's is: the moment is the trasher's, so a
+  Corp trashing the Runner's resource is not counted, and a card out of
+  the grip is not installed.
+- **A shuffle names its zones** (`Effect::ShuffleIntoDeck(zones)`): Read-
+  Write Share's `ShuffleHostedIntoDeck` took the zones when Ashen
+  Epilogue's "shuffle your grip and heap into your stack" needed two more
+  (`HostedOnSource`, `OwnGrip`, `OwnHeap`; the Runner's only, as no Corp
+  card prints one). Its "remove the top 5 cards of your stack from the
+  game" is five `RemoveFromGame(TopOfStack)`, which 2b's effect now
+  resolves, and "remove this event" the existing `removed_after_play`.
+- **Two amounts.** `CardsSelected`, Meeting of Minds's "gain 1[credit]
+  for each card revealed this way", read in the reveal's `then` as
+  `RemainingAfterSelection` is; its two halves are `PromptChooseCards` over
+  the stack (shuffled, to the grip) and over the grip (revealed, kept),
+  one pair per subtype behind a `PresentChoice`. `AccessLimit(server)`,
+  Mary's "if you are allowed to access 2 or more cards in R&D during this
+  breach": 1 plus the additional accesses granted so far (CR 7.3.5a–b),
+  asked as her trigger resolves. Her "whenever you breach" is heard at the
+  run's success, as every "when you breach" in the pool is; a same-moment
+  bonus counts if the Runner orders it first.
+- **Decks** — Grassroots: two Boi-tatá for the Hantu (every self-trash in
+  the deck makes it cheaper) and an Ashen Epilogue for a Wildcat Strike.
+  Spare Parts: two Mary, which The Maker's Eye and Jailbreak give a second
+  R&D access to add to, and two Meeting of Minds for the connections, on
+  six influence — for a Vrcation, a Telework Contract, a Diesel and an
+  Overclock.
+- **Real play**, 96 games of Fine Print against each (seed 2). Random
+  seats: Boi-tatá installed 15 times and used 4, Ashen Epilogue played 8,
+  Mary installed 29 and triggered 5, Meeting of Minds played 6. The
+  heuristic Runner uses Boi-tatá (282 uses in 49 installs) and plays Ashen
+  Epilogue 4 times, and never installs Mary or plays Meeting of Minds.
+- **Fidelity limits:** Meeting of Minds offers every card of the subtype
+  in the grip and lets the Runner pick any number, a reveal of none
+  included, and the stack's search is by subtype over resources only, as
+  printed.
+- **DSL ratio (`pool_status.py`): 17 of 76 `Effect` variants single-use,
+  2 unused**, over 272 card files (19 of 76 over 268 before): the shuffle
+  and `RemoveFromGame` each have a second card.
+- **Measured.** Both sweeps at 256 seeds are green. Against
+  `origin/main`, `coverage_identical.py` has the random seatings
+  **identical**, by view and by index; the heuristic ones moved (Corp
+  agenda wins 67 → 71 of 192, flatlines 15 → 20). Checked, not inferred:
+  a ref with the engine changes — the trash's `installed`, a Runner card's
+  trash counted by type, the shuffle's zones, the two amounts — and
+  without the four cards and the deck swaps is **identical in all four
+  shapes**, so the movement is `determinize` sampling four new Runner
+  cards.
 
 ### 3. The Automata Initiative — 65 cards (C 14 / V 35 / M 16)
 

@@ -2222,7 +2222,7 @@ fn activate_ability(
     // checkpoint): only a rig card hosts cards, and only its owner's.
     for card in std::mem::take(&mut effect_ctx.set_aside) {
         next.runner.heap.push(card.clone());
-        events.push(GameEvent::CardTrashed { side: Side::Runner, card, by: None });
+        events.push(GameEvent::CardTrashed { side: Side::Runner, card, installed: false, by: None });
     }
     events.extend(ability::dispatch_cost_events(&mut next, registry, &cost_events)?);
     // `check_requirement` above only reads — without this, a `Paid`
@@ -2581,7 +2581,7 @@ fn trash_resource(
     let removed = next.runner.rig.remove(position);
     next.runner.heap.push(removed.card.clone());
     // The Corp's own basic action: it carries the trash out.
-    dispatcher::emit(&mut next, registry, &mut events, GameEvent::CardTrashed { side: Side::Runner, card: card_id, by: Some(Side::Corp) })?;
+    dispatcher::emit(&mut next, registry, &mut events, GameEvent::CardTrashed { side: Side::Runner, card: card_id, installed: true, by: Some(Side::Corp) })?;
     events.extend(ability::cascade_trash_hosted_on_rig_card(&mut next, registry, &removed));
     events.extend(ability::dispatch_cost_events(&mut next, registry, &cost_events)?);
 
@@ -5198,7 +5198,7 @@ mod tests {
         assert_eq!(
             events,
             vec![
-                GameEvent::CardTrashed { side: Side::Runner, card: card_id.clone(), by: Some(Side::Runner) },
+                GameEvent::CardTrashed { side: Side::Runner, card: card_id.clone(), installed: true, by: Some(Side::Runner) },
                 GameEvent::AbilityActivated { side: Side::Runner, card_id: card_id.clone(), ability_index: 0, install: Some(install_of(&state, &card_id.0)), action: false },
                 GameEvent::CreditsGained { side: Side::Runner, amount: 5 },
                 GameEvent::AbilityGainedCredits { side: Side::Runner, card: card_id },
@@ -6636,7 +6636,7 @@ mod tests {
             vec![
                 GameEvent::ClickSpent { side: Side::Corp },
                 GameEvent::CreditsSpent { side: Side::Corp, amount: 2 },
-                GameEvent::CardTrashed { side: Side::Runner, card: card_id, by: Some(Side::Corp) },
+                GameEvent::CardTrashed { side: Side::Runner, card: card_id, installed: true, by: Some(Side::Corp) },
             ]
         );
     }

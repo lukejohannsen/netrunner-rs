@@ -1,0 +1,70 @@
+{
+  "id": "ashen_epilogue",
+  "title": "Ashen Epilogue",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 5,
+  "removed_after_play": true,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "ShuffleIntoDeck": [
+            "OwnGrip",
+            "OwnHeap"
+          ]
+        },
+        {
+          "RemoveFromGame": {
+            "TopOfStack": {
+              "side": "Runner",
+              "zone": "Stack"
+            }
+          }
+        },
+        {
+          "RemoveFromGame": {
+            "TopOfStack": {
+              "side": "Runner",
+              "zone": "Stack"
+            }
+          }
+        },
+        {
+          "RemoveFromGame": {
+            "TopOfStack": {
+              "side": "Runner",
+              "zone": "Stack"
+            }
+          }
+        },
+        {
+          "RemoveFromGame": {
+            "TopOfStack": {
+              "side": "Runner",
+              "zone": "Stack"
+            }
+          }
+        },
+        {
+          "RemoveFromGame": {
+            "TopOfStack": {
+              "side": "Runner",
+              "zone": "Stack"
+            }
+          }
+        },
+        {
+          "DrawCards": [
+            "Runner",
+            5
+          ]
+        }
+      ]
+    }
+  ],
+  "numeric_id": 34094,
+  "is_playable": true
+}

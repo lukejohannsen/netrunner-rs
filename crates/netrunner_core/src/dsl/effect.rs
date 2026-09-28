@@ -895,15 +895,22 @@ pub enum Effect {
     /// the card is in none of its owner's zones, per the `TrashCard`
     /// "already gone" precedent.
     AddToDeck(DeckEnd),
-    /// Shuffles every card hosted on `acting_card` into its owner's stack
-    /// — Read-Write Share's "[trash]: Shuffle all hosted cards into your
-    /// stack". The cost has uninstalled the host by the time this
-    /// resolves, so the cards are the ones set aside as it was paid (CR
-    /// 9.5.5, `ResolutionContext::set_aside`), or, with no such cost, the
-    /// ones still hosted. Composition didn't work: `PromptChooseCards` over
-    /// `HostedOnSource` finds no host once the cost has trashed it, asks a
-    /// question "all" does not, and `AddToDeck` moves the acting card.
-    ShuffleHostedIntoDeck,
+    /// Shuffles every card in each of these zones into the acting card's
+    /// owner's deck — Read-Write Share's "[trash]: Shuffle all hosted cards
+    /// into your stack" (`HostedOnSource`) and Ashen Epilogue's "Shuffle
+    /// your grip and heap into your stack" (`OwnGrip`, `OwnHeap`). The
+    /// Runner's zones only: no Corp card in the pool prints it, and
+    /// Archives would need its faceup cards turned down; any other zone is
+    /// `RulesError::UnresolvedCardTarget`. A hosting cost has uninstalled
+    /// the host by the time this resolves, so the hosted cards are the ones
+    /// set aside as it was paid (CR 9.5.5, `ResolutionContext::set_aside`),
+    /// or, with no such cost, the ones still hosted. Composition didn't
+    /// work: `PromptChooseCards` over a zone asks a question "all" does
+    /// not, finds no host once the cost has trashed it, and `AddToDeck`
+    /// moves the acting card. It was `ShuffleHostedIntoDeck`, Read-Write
+    /// Share's alone, and took the zones when Ashen Epilogue needed two
+    /// more.
+    ShuffleIntoDeck(Vec<crate::dsl::CardZoneRef>),
     /// Adds the acting card to the Corp's score area "as an agenda"
     /// (CR 10.1.3) — Myōshu's "Add this operation to your score area as an
     /// agenda worth 2 agenda points." It is not scored (CR 1.17.3f), so
@@ -1217,6 +1224,11 @@ pub enum Amount {
     /// (`ResolutionContext::selected_count`) — the R&D half of a sabotage
     /// of `u32`, resolved in the HQ selection's `then`. Saturating.
     RemainingAfterSelection(u32),
+    /// How many cards the resolving `PromptChooseCards` selected
+    /// (`ResolutionContext::selected_count`) — Meeting of Minds's "Gain
+    /// 1[credit] for each card revealed this way", read in the reveal's
+    /// `then`. 0 outside a selection's `then`.
+    CardsSelected,
     /// The threat level: the greater of the two players' scores, in agenda
     /// points (Null Signal Games' *Elevation* rule — "the threat level is
     /// equal to the greatest score of any player"). Read through
@@ -1284,6 +1296,12 @@ pub enum Amount {
     /// `Effect::GainCreditsPerCardAccessedThisRun`, a gain that could not
     /// be a threshold; 0 before any run has ended.
     CardsAccessedLastRun,
+    /// How many cards the active run's breach of HQ or R&D may access:
+    /// 1, plus each additional access granted so far (CR 7.3.5a–b,
+    /// `RunState::additional_hq_access`/`additional_rd_access`) — "Pretty"
+    /// Mary da Silva's "if you are allowed to access 2 or more cards in
+    /// R&D during this breach". 0 for any other server, and with no run.
+    AccessLimit(ServerId),
     /// The strength of the piece of ice being encountered, never below 0
     /// (`continuous::ice_strength`, which may be) — Arruaceiras Crew's
     /// "trash the ice you are encountering if its strength is 0 or less",
@@ -1522,7 +1540,7 @@ impl Effect {
             | Effect::FlipIdentity
             | Effect::SetIdentityCopy(_)
             | Effect::AddToDeck(_)
-            | Effect::ShuffleHostedIntoDeck
+            | Effect::ShuffleIntoDeck(..)
             | Effect::AddToScoreAreaAsAgenda(_)
             | Effect::GainSubroutine(_)
             | Effect::LookAtTopOfDeck { .. }
@@ -1575,7 +1593,8 @@ impl Effect {
     pub fn acts_on_hosted_cards(&self) -> bool {
         let mut acts = false;
         self.for_each_effect(&mut |effect| {
-            acts |= matches!(effect, Effect::ShuffleHostedIntoDeck | Effect::TrashCard(CardTarget::HostedOnThisCard));
+            acts |= matches!(effect, Effect::TrashCard(CardTarget::HostedOnThisCard))
+                || matches!(effect, Effect::ShuffleIntoDeck(zones) if zones.contains(&crate::dsl::CardZoneRef::HostedOnSource));
         });
         acts
     }

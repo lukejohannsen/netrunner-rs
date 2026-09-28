@@ -22,9 +22,7 @@ pub(crate) const VP_UNIMPLEMENTED: &[(u32, &str)] = &[];
 pub(crate) const RWR_UNIMPLEMENTED: &[(u32, &str)] = &[
     (34067, "Eye for an Eye"),
     (34070, "The Wizard’s Chest"),
-    (34071, "Boi-tatá"),
     (34072, "Heliamphora"),
-    (34076, "Meeting of Minds"),
     (34077, "Window of Opportunity"),
     (34078, "Alarm Clock"),
     (34079, "Jeitinho"),
@@ -35,8 +33,6 @@ pub(crate) const RWR_UNIMPLEMENTED: &[(u32, &str)] = &[
     (34088, "Cataloguer"),
     (34090, "Lobisomem"),
     (34091, "Muse"),
-    (34093, "“Pretty” Mary da Silva"),
-    (34094, "Ashen Epilogue"),
     (34096, "Thunderbolt Armaments: Peace Through Power"),
     (34097, "Lightning Laboratory"),
     (34098, "Warm Reception"),
