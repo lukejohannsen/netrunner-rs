@@ -1894,8 +1894,8 @@ reaches Vantage Point's cards by building a deck.
    happens in its encounter (built, below): Hammer, Sorocaban Blade, Cloud
    Eater; **5c**, derez words (built, below): Brasília Government Grid,
    Warm Reception; **5d**, a delayed conditional ability, "when this turn
-   ends" (CR 9.6.13): Lightning Laboratory, moved out of 5c when it was
-   taken; **5e**, a Weyland identity and its agenda: Nuvem SA: Law of the
+   ends" (CR 9.6.13, built, below): Lightning Laboratory, moved out of 5c
+   when it was taken; **5e**, a Weyland identity and its agenda: Nuvem SA: Law of the
    Land, The Basalt Spire, on a Sweep deck of Nuvem's own.
 6. **Terminal, reveal, set aside, arrange, X:** Active Policing, Bring
    Them Home, Burner, The Wizard’s Chest, Cataloguer, Lobisomem.
@@ -2772,6 +2772,63 @@ in the engine is yet.
   prohibition on an install, and ezaM's file rewritten to the new word —
   and without the two cards and the deck swap is **identical in all four
   shapes**, so the movement is `determinize` sampling two new Corp cards.
+
+#### Stage 5d — a delayed conditional ability (28 September 2026)
+
+`feat/rwr-stage-5d-lightning-laboratory`: Lightning Laboratory. **One new
+`Effect`.** Rebellion Without Rehearsal 48 of 65; `RWR_UNIMPLEMENTED`
+18 → 17.
+
+- **"When this turn ends, derez 2 pieces of ice protecting that server"**
+  resolves after the resolution that made it. Until now nothing could do
+  that except a run's own end rider (`SetRunEndedEffect`, one slot on the
+  run). It is a delayed conditional ability (CR 9.6.13):
+  `Effect::WhenThisTurnEnds` leaves a `lingering::DelayedAbility` on
+  `GameState::delayed`, dated by the turn and waiting for
+  `Trigger::OnDiscardPhaseEnd` (CR 5.6.3d: the turn and the discard phase
+  end at one step). "That server" is the attacked server, written in as
+  the ability is made (`Effect::with_attacked_server`, which rewrites
+  `CardFilter::InAttackedServer` to `InServer`), because the run is over
+  by the time it resolves.
+- **It is heard like a trigger** (`listeners::plan_for`): it goes in
+  beside its side's reactions to the turn's end, so its controller orders
+  it with them, and it resolves as the card that made it.
+  `dispatcher::dispatch_event` takes it off the list as it is planned, so
+  it resolves once (9.6.13c), and drops any left from an earlier turn. A
+  pending decision is no obstacle: it is a queued continuation like any
+  other.
+- **The rest composes:**
+  - "Whenever a run begins, you may remove 1 hosted agenda counter" is an
+    `OfferPaidChoice` of `Cost::RemoveCounters` on the scored agenda.
+  - "Rez up to 2 pieces of ice protecting the attacked server, ignoring
+    all costs" is two selections of one card, each a free `RezInstalled`.
+    Additional costs are ignored too (CR 1.16.5c), so Piranhas's bad
+    publicity is never asked for.
+  - "Derez 2" is two selections that must each take a card while one is
+    there, so a server with one rezzed piece of ice derezzes that one.
+- **Client:** the view carries the list (`ClientView::delayed`).
+  `hud::in_effect` draws it in both clients as "when this turn ends, …",
+  in `prose`'s words, and a bot's sample resolves it too.
+- **Fixed on the way:** `Effect::for_each_effect` now walks a text
+  install's `if_installed` rider, which 5c left out.
+- **Deck** — Retirement Package: two Lightning Laboratory for two
+  Offworld Office, point for point.
+- **Real play**, 96 games of Retirement Package against Safety Net
+  (seed 2). Random seats: scored 6 times and stolen 77, its run-start
+  offer made 12 times. Heuristic seats: scored 43 times and stolen 36, the
+  offer made 97 times.
+- **DSL ratio (`pool_status.py`): 18 of 81 `Effect` variants single-use,
+  2 unused**, over 298 card files (17 of 80 over 297 before). The new
+  variant is `WhenThisTurnEnds`, which Test Run and the later sets'
+  "when this turn ends" riders will reuse.
+- **Measured.** Both sweeps at 256 seeds are green. Against `origin/main`
+  (5c), `coverage_identical.py` has the random seatings **identical**, by
+  view and by index; the heuristic ones moved (Corp agenda wins 79 → 75
+  of 192, flatlines 14 → 13, Runner agenda wins 98 → 103). A ref with
+  the engine changes — the effect, the delayed ability and its hearing,
+  the view's list — and without the card and the deck swap is
+  **identical in all four shapes**, so the movement is `determinize`
+  sampling a new Corp agenda.
 
 ### 3. The Automata Initiative — 65 cards (C 14 / V 35 / M 16)
 

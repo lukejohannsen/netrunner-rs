@@ -839,6 +839,7 @@ pub fn determinize(view: &ClientView, registry: &CardRegistry, rng: &mut impl Rn
         // both players see. `LingeringEffect::holds` reads the sample's own
         // run and turn, which are the view's.
         lingering: view.lingering.clone(),
+        delayed: view.delayed.clone(),
         deferred_triggers: Vec::new(),
         seed: rng.random(),
         rng_step: 0,

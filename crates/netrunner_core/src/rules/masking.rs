@@ -461,6 +461,11 @@ pub struct PublicGameState {
     /// will end with the encounter.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub lingering: Vec<lingering::LingeringEffect>,
+    /// `GameState::delayed`, whole: public, as each was made by a card both
+    /// players watched resolve, and carried so a sample built from the view
+    /// resolves Lightning Laboratory's derez where the real game will.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub delayed: Vec<lingering::DelayedAbility>,
     /// `GameState::this_turn` and `last_turn`, whole and the same to every
     /// viewer. They need no mask because `rules::turn_log` never counted
     /// anything one player did not see: a moment about a concealed card is
@@ -540,6 +545,7 @@ pub fn mask_state_for_player(state: &GameState, registry: &CardRegistry, viewer:
             own: viewer.is(payment.side).then(|| payment.clone()),
         }),
         lingering: state.lingering.iter().filter(|effect| effect.holds(state)).cloned().collect(),
+        delayed: state.delayed.clone(),
         this_turn: state.this_turn,
         last_turn: state.last_turn,
     }

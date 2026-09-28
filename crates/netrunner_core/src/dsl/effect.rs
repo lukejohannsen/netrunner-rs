@@ -1055,6 +1055,16 @@ pub enum Effect {
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
         this_install: bool,
     },
+    /// Leaves `Box<Effect>` waiting until this turn ends, then resolves it
+    /// as the card that made it (a `lingering::DelayedAbility`, CR 9.6.13)
+    /// — Lightning Laboratory's "When this turn ends, derez 2 pieces of ice
+    /// protecting that server". "That server" is the attacked server, and
+    /// the run is over by then, so `CardFilter::InAttackedServer` is
+    /// written over with the server as the ability is made
+    /// (`Effect::with_attacked_server`). Composition didn't work: nothing
+    /// resolved later than the resolution that asked for it, but the run's
+    /// own end (`SetRunEndedEffect`, one slot on the run).
+    WhenThisTurnEnds(Box<Effect>),
     /// Places `0` advancement counters on `acting_card` — e.g. Seamless
     /// Launch's "place 2 advancement counters on 1 installed card", Flood
     /// the Market's "1 advancement counter … for each remote server that
@@ -1580,6 +1590,37 @@ impl Effect {
         }
     }
 
+    /// This effect with every `CardFilter::InAttackedServer` a card
+    /// selection names written over by `InServer(server)` — what an ability
+    /// that outlives the run means by "that server"
+    /// (`Effect::WhenThisTurnEnds`). Walks the nestings a card uses:
+    /// `Sequence`, `EffectIf`, `OfferPaidChoice`, `PresentChoice` and a
+    /// selection's `then`.
+    pub fn with_attacked_server(self, server: ServerId) -> Effect {
+        let boxed = |effect: Box<Effect>| Box::new(effect.with_attacked_server(server));
+        let all = |effects: Vec<Effect>| effects.into_iter().map(|e| e.with_attacked_server(server)).collect();
+        match self {
+            Effect::PromptChooseCards { side, source, filter, min, max, reveal, shuffle_after, destination, then } => Effect::PromptChooseCards {
+                side,
+                source,
+                filter: filter.with_attacked_server(server),
+                min,
+                max,
+                reveal,
+                shuffle_after,
+                destination,
+                then: then.map(boxed),
+            },
+            Effect::Sequence(effects) => Effect::Sequence(all(effects)),
+            Effect::PresentChoice { chooser, options, texts } => Effect::PresentChoice { chooser, options: all(options), texts },
+            Effect::EffectIf { condition, effect } => Effect::EffectIf { condition, effect: boxed(effect) },
+            Effect::OfferPaidChoice { side, cost, if_paid, if_declined, text } => {
+                Effect::OfferPaidChoice { side, cost, if_paid: boxed(if_paid), if_declined: boxed(if_declined), text }
+            }
+            other => other,
+        }
+    }
+
     /// Calls `f` on this effect and then on every effect nested inside it,
     /// depth-first in authoring order.
     ///
@@ -1610,6 +1651,7 @@ impl Effect {
             Effect::EffectIf { effect, .. }
             | Effect::Trace { on_success: effect, .. }
             | Effect::SetRunEndedEffect(effect)
+            | Effect::WhenThisTurnEnds(effect)
             | Effect::ChooseNumber { then: effect, .. }
             | Effect::SetAccessReplacement { effect, .. } => effect.for_each_effect(f),
             Effect::OfferPaidChoice { if_paid, if_declined, .. } => {
@@ -1623,8 +1665,8 @@ impl Effect {
                 }
             }
             Effect::PromptChooseCards { then: None, .. } => {}
-            Effect::PromptInstallCorpCard { then, if_rezzed, .. } => {
-                for effect in [then, if_rezzed].into_iter().flatten() {
+            Effect::PromptInstallCorpCard { then, if_rezzed, if_installed, .. } => {
+                for effect in [then, if_rezzed, if_installed].into_iter().flatten() {
                     effect.for_each_effect(f);
                 }
             }

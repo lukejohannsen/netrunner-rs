@@ -69,6 +69,13 @@ pub fn dispatch_event(
     // Planned after the riders: an access bonus or a trash they resolve is
     // part of the state the triggers happen in.
     let plan = listeners::plan_for(state, registry, event, &as_of);
+    // A delayed ability the plan holds is taken: it resolves once (CR
+    // 9.6.13c). One left from an earlier turn never will, and goes too.
+    if !state.delayed.is_empty() {
+        let heard: Vec<Trigger> = listeners::moments(state, event).iter().map(|moment| moment.trigger).collect();
+        let turn = state.turn;
+        state.delayed.retain(|delayed| delayed.turn >= turn && !heard.iter().any(|trigger| listeners::delayed_hears_on(delayed, *trigger, turn)));
+    }
     // One side at a time, the active player's first (the plan's order). A
     // side orders its own simultaneous triggers; the order *between* the
     // sides is the rules', never a choice.
