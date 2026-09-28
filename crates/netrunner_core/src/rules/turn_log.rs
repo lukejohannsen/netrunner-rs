@@ -108,10 +108,16 @@ pub enum Kind {
     /// played, so a double is as public as an operation.
     DoubleOperation,
     DoubleEvent,
+    /// A **mandate** operation, the second subtype given a column, for
+    /// Sudden Commandment's "if this operation is the first mandate you
+    /// played this turn" — as public as a double. No card in the catalog
+    /// is both a double and a mandate, so a card has one column
+    /// (`of_card` reads double first).
+    MandateOperation,
 }
 
 impl Kind {
-    const COUNT: usize = 13;
+    const COUNT: usize = 14;
     const ALL: [Kind; Kind::COUNT] = [
         Kind::Unseen,
         Kind::Agenda,
@@ -126,13 +132,17 @@ impl Kind {
         Kind::Upgrade,
         Kind::DoubleOperation,
         Kind::DoubleEvent,
+        Kind::MandateOperation,
     ];
 
-    /// The column a card is counted in: its type, or its type's double.
+    /// The column a card is counted in: its type, or its type's double or
+    /// mandate.
     fn of_card(definition: &CardDefinition) -> Kind {
         let double = definition.subtypes.contains(&CardSubtype::Double);
+        let mandate = definition.subtypes.contains(&CardSubtype::Mandate);
         match Kind::of(&definition.card_type) {
             Kind::Operation if double => Kind::DoubleOperation,
+            Kind::Operation if mandate => Kind::MandateOperation,
             Kind::Event if double => Kind::DoubleEvent,
             kind => kind,
         }
@@ -141,7 +151,7 @@ impl Kind {
     /// Every column a card of `card_type` may be counted in.
     fn all_of(card_type: &CardType) -> Vec<Kind> {
         match Kind::of(card_type) {
-            Kind::Operation => vec![Kind::Operation, Kind::DoubleOperation],
+            Kind::Operation => vec![Kind::Operation, Kind::DoubleOperation, Kind::MandateOperation],
             Kind::Event => vec![Kind::Event, Kind::DoubleEvent],
             kind => vec![kind],
         }
@@ -406,18 +416,20 @@ pub(crate) fn first_time_of(definition: &CardDefinition) -> Vec<Occurrences> {
 
 /// The `Kind`s a card filter admits, where it is no finer than one.
 fn kinds(filter: &CardFilter) -> Result<Vec<Kind>, String> {
-    // "A double operation": the one subtype the log counts apart.
+    // "A double operation", "a mandate": the subtypes the log counts
+    // apart.
     if let CardFilter::All(parts) = filter
         && let [first, second] = parts.as_slice()
     {
-        let double_of = match (first, second) {
-            (CardFilter::CardType(card_type), CardFilter::HasSubtype(CardSubtype::Double))
-            | (CardFilter::HasSubtype(CardSubtype::Double), CardFilter::CardType(card_type)) => Some(card_type),
+        let subtype_of = match (first, second) {
+            (CardFilter::CardType(card_type), CardFilter::HasSubtype(subtype))
+            | (CardFilter::HasSubtype(subtype), CardFilter::CardType(card_type)) => Some((card_type, subtype)),
             _ => None,
         };
-        match double_of {
-            Some(CardType::Operation) => return Ok(vec![Kind::DoubleOperation]),
-            Some(CardType::Event) => return Ok(vec![Kind::DoubleEvent]),
+        match subtype_of {
+            Some((CardType::Operation, CardSubtype::Double)) => return Ok(vec![Kind::DoubleOperation]),
+            Some((CardType::Event, CardSubtype::Double)) => return Ok(vec![Kind::DoubleEvent]),
+            Some((CardType::Operation, CardSubtype::Mandate)) => return Ok(vec![Kind::MandateOperation]),
             _ => {}
         }
     }

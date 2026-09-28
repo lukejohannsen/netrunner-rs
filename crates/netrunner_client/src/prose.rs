@@ -96,6 +96,8 @@ pub fn describe_amount(amount: &Amount) -> String {
         Amount::CardsAccessedLastRun => "the cards accessed during that run".to_string(),
         Amount::EncounteredIceStrength => "the strength of the ice being encountered".to_string(),
         Amount::EncounteredIceSubroutines => "the subroutines on the ice being encountered".to_string(),
+        Amount::CardsInHand(Side::Corp) => "the cards in HQ".to_string(),
+        Amount::CardsInHand(Side::Runner) => "the cards in the grip".to_string(),
     }
 }
 
@@ -139,6 +141,7 @@ pub fn describe_cost(cost: &Cost) -> String {
         Cost::Derez { count, .. } => format!("derez {}", plural(*count, "card", "cards")),
         Cost::Trash { from, count, .. } => format!("trash {} from {}", plural(*count, "card", "cards"), describe_zone(from)),
         Cost::TakeTags(n) => format!("take {}", plural(*n, "tag", "tags")),
+        Cost::TakeBadPublicity(n) => format!("take {n} bad publicity"),
         Cost::RemoveCounters(n) => format!("remove {}", plural(*n, "counter", "counters")),
         Cost::RemoveAdvancementCounters(n) => format!("remove {}", plural(*n, "hosted advancement counter", "hosted advancement counters")),
         Cost::AddToScoreAreaAsAgenda(as_agenda) => format!("add this card to the Corp's score area as {}", as_an_agenda(as_agenda)),

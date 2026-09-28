@@ -1398,6 +1398,13 @@ pub enum Amount {
     /// they are — Reverb's "lowered by 1[credit] for each other unrezzed
     /// piece of ice". No amount counted ice by rez state.
     OtherUnrezzedIce,
+    /// The cards in a player's hand — HQ for the Corp, the grip for the
+    /// Runner, whichever side is acting — Piranhas's "if there are more
+    /// cards in HQ than in the grip", read through
+    /// `EffectRequirement::MoreThan`. A side rather than a `CardZoneRef`,
+    /// which is relative to the actor: the sentence names both hands. No
+    /// amount counted a hand.
+    CardsInHand(Side),
 }
 
 /// What `Effect::EndTheRun` does the first time it would end a run with

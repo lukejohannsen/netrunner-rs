@@ -373,6 +373,11 @@ pub enum EffectRequirement {
     /// card count, a threat level) is a new `Amount` at most, never a new
     /// requirement. `ThisCardCountersAtLeast` predates it and stays.
     AmountAtLeast(crate::dsl::Amount, u32),
+    /// The first `Amount` is greater than the second — Piranhas's "End the
+    /// run if there are more cards in HQ than in the grip". `AmountAtLeast`
+    /// compares against a number the card file writes, and this compares
+    /// two the state decides; no pool card compared two before.
+    MoreThan(crate::dsl::Amount, crate::dsl::Amount),
     /// The active side has not finished an action yet this turn
     /// (`TurnLog::actions_finished`) — Petty Cash's play condition. Not an
     /// `Amount::TimesThisTurn`: finishing an action is not a moment any
