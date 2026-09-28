@@ -341,8 +341,9 @@ pub enum GameEvent {
         card: Option<CardId>,
         advancement_tokens: u32,
     },
-    /// Advancement counters were removed from an install as a cost
-    /// (`Cost::RemoveAdvancementCounters`, Sacrifice Zone Expansion);
+    /// Advancement counters were removed from an install, as a cost
+    /// (`Cost::RemoveAdvancementCounters`, Sacrifice Zone Expansion) or by a
+    /// card's text (`Effect::RemoveAdvancementCounters`, Hearts and Minds);
     /// `advancement_tokens` is what is left. Masked as
     /// `AdvancementCountersPlaced` is.
     AdvancementCountersRemoved {

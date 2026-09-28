@@ -1,0 +1,85 @@
+{
+  "id": "isaac_liberdade",
+  "title": "Isaac Liberdade",
+  "side": "Corp",
+  "card_type": "Upgrade",
+  "cost": 3,
+  "unique": true,
+  "trash_cost": 2,
+  "continuous": [
+    {
+      "kind": {
+        "Strength": {
+          "per": 2
+        }
+      },
+      "applies_to": {
+        "IceProtectingThisServer": "Advanced"
+      },
+      "text": "Each advanced piece of ice protecting this server gets +2 strength."
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnCardMoved",
+      "subject": "This",
+      "effects": [
+        {
+          "PromptChooseCards": {
+            "side": "Corp",
+            "source": "OwnInstalled",
+            "filter": {
+              "All": [
+                "Ice",
+                "InThisServer",
+                "Unadvanced"
+              ]
+            },
+            "min": 0,
+            "max": 1,
+            "reveal": false,
+            "shuffle_after": false,
+            "then": {
+              "EffectIf": {
+                "condition": {
+                  "AmountAtLeast": [
+                    "CardsSelected",
+                    1
+                  ]
+                },
+                "effect": {
+                  "PlaceAdvancementCounters": {
+                    "Fixed": 1
+                  }
+                }
+              }
+            }
+          }
+        }
+      ],
+      "text": "Whenever this upgrade moves to the root of a server, you may place 1 advancement counter on a piece of ice protecting that server that has no advancement counters."
+    },
+    {
+      "trigger": "OnDiscardPhaseEnd",
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Corp",
+            "options": [
+              "PromptMoveThisCardToAnotherRoot",
+              {
+                "Sequence": []
+              }
+            ],
+            "texts": [
+              "move this upgrade to the root of another server",
+              ""
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "numeric_id": 34129,
+  "is_playable": true
+}

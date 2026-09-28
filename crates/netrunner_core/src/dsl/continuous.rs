@@ -232,6 +232,14 @@ pub enum Scope {
     /// Each card in the root of the server this one is installed in,
     /// matching the filter.
     RootOfThisServer(CardFilter),
+    /// Each piece of ice protecting the server this one is installed in,
+    /// matching the filter — Isaac Liberdade's "Each **advanced** piece of
+    /// ice protecting this server gets +2 strength". The filter is read off
+    /// the definition and off the copy (`pending_choice::copy_matches`), so
+    /// an instance word (`Advanced`) is asked of the ice itself.
+    /// Composition didn't work: `Ice` reaches every piece, and `while` is
+    /// asked of the card that prints it, not of the ice.
+    IceProtectingThisServer(CardFilter),
     /// An event or operation its controller is playing, matching the filter
     /// — Synchrocyclotron's "double operation". The play's half of
     /// `Installing`: both price a card from the hand, and `first_each_turn`

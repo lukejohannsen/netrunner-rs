@@ -1261,7 +1261,10 @@ impl CardDefinition {
                 (ContinuousKind::Strength(_), Scope::This) if self.strength.is_none() => {
                     return misfit("Strength", "this card prints no strength to change");
                 }
-                (ContinuousKind::Strength(_), Scope::This | Scope::Host | Scope::Ice) => {}
+                (_, Scope::IceProtectingThisServer(_)) if self.card_type != CardType::Upgrade && self.card_type != CardType::Asset => {
+                    return misfit("IceProtectingThisServer", "only an asset or an upgrade is in a server's root");
+                }
+                (ContinuousKind::Strength(_), Scope::This | Scope::Host | Scope::Ice | Scope::IceProtectingThisServer(_)) => {}
                 (ContinuousKind::Strength(_), _) => return misfit("Strength", "strength belongs to this card, its host, or ice"),
                 (ContinuousKind::Memory(_), Scope::Controller) if self.side == Side::Runner => {}
                 (ContinuousKind::Memory(_), _) => return misfit("Memory", "memory is the Runner's, so it applies to a Runner card's `Controller`"),

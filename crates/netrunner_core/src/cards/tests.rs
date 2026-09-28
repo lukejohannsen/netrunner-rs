@@ -14290,4 +14290,79 @@ mod rebellion_without_rehearsal {
         let both = select(&both, &registry, &[]);
         assert_eq!(both.corp.installed[0].advancement_tokens, 1);
     }
+
+    // ---- Stage 4b: an upgrade that moves, counters that move ----
+
+    #[test]
+    fn isaac_liberdade_gives_advanced_ice_in_its_server_two_strength() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.installed = vec![ice_at_hq("ice_wall"), in_root("isaac_liberdade", ServerId::Hq, true)];
+        state.corp.installed[0].advancement_tokens = 1;
+        assert_eq!(encountered_strength(&encounter(&state, &registry), &registry), 1 + 1 + 2);
+        state.corp.installed[0].advancement_tokens = 0;
+        assert_eq!(encountered_strength(&encounter(&state, &registry), &registry), 1, "not advanced");
+        state.corp.installed[0].advancement_tokens = 1;
+        state.corp.installed[1].server = ServerId::RnD;
+        assert_eq!(encountered_strength(&encounter(&state, &registry), &registry), 1 + 1, "another server's ice");
+    }
+
+    #[test]
+    fn isaac_liberdade_may_move_as_the_turn_ends_and_advances_an_unadvanced_ice_where_it_lands() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.r_and_d = vec![id("hedge_fund"); 3];
+        let mut advanced = ice_at_hq("ice_wall");
+        advanced.server = ServerId::RnD;
+        advanced.advancement_tokens = 2;
+        let mut bare = ice_at_hq("enigma");
+        bare.server = ServerId::RnD;
+        state.corp.installed = vec![in_root("isaac_liberdade", ServerId::Hq, true), advanced, bare];
+        let (mut state, _) = apply_action(&crate::rules::test_support::clicks_spent(&state), &registry, PlayerAction::EndTurn).expect("corp ends turn");
+        while state.pending_decision.is_none() {
+            let side = state.paid_ability_window.as_ref().expect("a window before the discard phase ends").active_priority;
+            state = apply_action(&state, &registry, PlayerAction::PassPriority { side }).expect("pass").0;
+        }
+        assert!(matches!(state.pending_decision, Some(crate::rules::PendingDecision::ChooseEffect { chooser: Side::Corp, .. })), "you may move it");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("move it");
+        let (state, events) = apply_action(&state, &registry, PlayerAction::ChooseServerForPendingDecision { server: ServerId::RnD }).expect("to R&D");
+        assert!(events.iter().any(|event| matches!(event, GameEvent::CardMoved { to: ServerId::RnD, .. })));
+        assert_eq!(state.corp.installed[0].server, ServerId::RnD);
+        let offered = crate::rules::legal_actions_for(&state, &registry, Side::Corp);
+        assert!(!offered.contains(&PlayerAction::ToggleCardSelection { position: 1 }), "the Ice Wall is advanced");
+        assert!(offered.contains(&PlayerAction::ToggleCardSelection { position: 2 }), "the Enigma has none");
+        let state = select(&state, &registry, &[2]);
+        assert_eq!(state.corp.installed[2].advancement_tokens, 1);
+    }
+
+    #[test]
+    fn hearts_and_minds_moves_a_counter_to_a_card_you_can_advance_and_places_one_while_unprotected() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.r_and_d = vec![id("hedge_fund"); 3];
+        let mut ice = ice_at_hq("enigma");
+        ice.advancement_tokens = 2;
+        state.corp.installed = vec![in_root("hearts_and_minds", ServerId::Remote(0), true), ice, in_root("offworld_office", ServerId::Remote(1), false)];
+        let turn = to_corp_turn_start(&state, &registry);
+        // The move: from the Enigma, which cannot be advanced, to the agenda.
+        let offered = crate::rules::legal_actions_for(&turn, &registry, Side::Corp);
+        assert!(offered.contains(&PlayerAction::ToggleCardSelection { position: 1 }), "a card hosting a counter");
+        assert!(!offered.contains(&PlayerAction::ToggleCardSelection { position: 2 }), "the agenda hosts none");
+        let moved = select(&turn, &registry, &[1]);
+        assert!(!crate::rules::legal_actions_for(&moved, &registry, Side::Corp).contains(&PlayerAction::ToggleCardSelection { position: 1 }), "only a card you can advance");
+        let moved = select(&moved, &registry, &[2]);
+        assert_eq!((moved.corp.installed[1].advancement_tokens, moved.corp.installed[2].advancement_tokens), (1, 1));
+        // Its server has no ice: a counter placed as well.
+        let placed = select(&moved, &registry, &[2]);
+        assert_eq!(placed.corp.installed[2].advancement_tokens, 2);
+
+        // Protected, it only moves.
+        let mut guarded = state.clone();
+        let mut wall = ice_at_hq("ice_wall");
+        wall.server = ServerId::Remote(0);
+        guarded.corp.installed.push(wall);
+        let turn = to_corp_turn_start(&guarded, &registry);
+        let moved = select(&select(&turn, &registry, &[1]), &registry, &[2]);
+        assert!(moved.pending_decision.is_none(), "no placement behind ice");
+    }
 }

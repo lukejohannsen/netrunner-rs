@@ -1067,6 +1067,16 @@ pub enum Effect {
     /// does not — Seamless Launch — legally targets ice. A blanket check
     /// here would break the latter.
     PlaceAdvancementCounters(Amount),
+    /// Removes up to `Amount` advancement counters from the acting install
+    /// — the first half of Hearts and Minds' "move 1 advancement counter
+    /// from an installed card to an installed card you can advance", as the
+    /// `then` of a selection of the card it leaves, whose placing half is a
+    /// second selection. Moving is not advancing (CR 1.18.2). Composition
+    /// didn't work: the only removal was a cost
+    /// (`Cost::RemoveAdvancementCounters`), paid by the card that prints
+    /// it, and this is some other card's counter. A no-op on a card that
+    /// has left the table.
+    RemoveAdvancementCounters(Amount),
     /// `Effect::DealDamage` with `amount` resolved dynamically via
     /// `Amount` instead of authored as a flat `usize` — e.g. Neurospike's
     /// "X net damage, X = agenda points scored this turn." Delegates to the
@@ -1501,6 +1511,7 @@ impl Effect {
             }
             Effect::SetIdentityCopy(a) => Effect::SetIdentityCopy(amount(a)),
             Effect::RemoveCounters(a) => Effect::RemoveCounters(amount(a)),
+            Effect::RemoveAdvancementCounters(a) => Effect::RemoveAdvancementCounters(amount(a)),
             Effect::Sequence(effects) => Effect::Sequence(all(effects)),
             Effect::PresentChoice { chooser, options, texts } => Effect::PresentChoice { chooser, options: all(options), texts },
             Effect::ResolveSomeOf { chooser, count, options, texts } => Effect::ResolveSomeOf { chooser, count, options: all(options), texts },
@@ -1617,6 +1628,7 @@ impl Effect {
             | Effect::DrawCardsAmount(..)
             | Effect::Prohibit { .. }
             | Effect::PlaceAdvancementCounters(..)
+            | Effect::RemoveAdvancementCounters(..)
             | Effect::DealDamageAmount(..)
             | Effect::AddAdditionalAccessAmount { .. }
             | Effect::BoostStrengthAmount { .. }

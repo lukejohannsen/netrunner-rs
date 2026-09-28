@@ -1883,8 +1883,8 @@ reaches Vantage Point's cards by building a deck.
 4. **Corp advancement and movement words**, in three parts when it was
    taken: **4a**, advancement counters placed and removed (built, below):
    Charlotte Caçador, Cohort Guidance Program, Logjam, Business As Usual,
-   Kingmaking; **4b**, an upgrade that moves and counters that move: Isaac
-   Liberdade, Hearts and Minds; **4c**, where an install came from, and a
+   Kingmaking; **4b**, an upgrade that moves and counters that move
+   (built, below): Isaac Liberdade, Hearts and Minds; **4c**, where an install came from, and a
    card returned to HQ as a cost: The Holo Man, Stoke the Embers, Janaína
    “JK” Dumont Kindelán.
 5. **Corp ice and rez words:** Lightning Laboratory, Warm Reception,
@@ -2459,6 +2459,67 @@ where an install came from ("installed any cards from HQ this turn",
   its ten card files, the three filters and the amount — and without the
   five cards and the deck swaps is **identical in all four shapes**, so the
   movement is `determinize` sampling five new Corp cards.
+
+#### Stage 4b — an upgrade that moves, and counters that move (27 September 2026)
+
+`feat/rwr-stage-4b-moving-upgrades`: Isaac Liberdade, Hearts and Minds.
+**One new `Effect` and one new `Trigger`.** Rebellion Without Rehearsal 36
+of 65; `RWR_UNIMPLEMENTED` 31 → 29.
+
+- **A move is heard** (`Trigger::OnCardMoved`, new): Isaac Liberdade's
+  "Whenever this upgrade moves to the root of a server" is
+  `GameEvent::CardMoved`, which `Effect::MoveThisCardToRoot` now
+  dispatches (it was recorded and heard by nothing). About the card that
+  moved, printed only about the card itself, and counted by the turn log
+  as unseen, since a root card moves with its rez state. "When your turn
+  ends, you may move this upgrade to the root of another server" is an
+  `OnDiscardPhaseEnd` offer of Lotus Haze's `PromptMoveThisCardToAnotherRoot`.
+- **A standing effect on the ice of one server**
+  (`Scope::IceProtectingThisServer`, new): "Each advanced piece of ice
+  protecting this server gets +2 strength". Its filter is read off the
+  definition and off the copy (`pending_choice::copy_matches`), so
+  `CardFilter::Advanced` is asked of the ice whose strength is read.
+  `Advanced` and `Unadvanced` are words of their own because `Not` is
+  decided off the definition alone; `InThisServer` (the root and the ice)
+  is written over as `InServer` where the acting card is, as
+  `InRootOfThisServer` is — "a piece of ice protecting that server that
+  has no advancement counters" is `All([Ice, InThisServer, Unadvanced])`.
+- **A counter moved** (`Effect::RemoveAdvancementCounters`, new): Hearts and
+  Minds' "move 1 advancement counter from an installed card to an
+  installed card you can advance" is a selection of an `Advanced` card
+  whose `then` removes one and selects the card it goes to — moving is not
+  advancing (CR 1.18.2). The removal was only ever a cost, paid by the
+  card that prints it. The offer is made only while a card you can advance
+  is installed (`ZoneHasAtLeast` with a filter), so the counter always has
+  somewhere to go; "If this server is not protected by ice, you may also
+  place 1" reads `IceProtectingThisServer`.
+- **Client:** nothing new reaches the view; `prose` has words for the
+  scope, the effect and the filters.
+- **Deck** — Hostile Bid: two Hearts and Minds for a PAD Campaign and a
+  Government Subsidy, and an Isaac Liberdade for a Whitespace.
+- **Real play**, 96 games of Hostile Bid against Pay as You Go (seed 2).
+  Random seats: Isaac Liberdade installed 47 times and rezzed 20, its
+  turn-end move offered 99 times and taken 40, each move heard; Hearts and
+  Minds' turn start heard 176 times. The heuristic Corp installs Isaac 44
+  times and never rezzes it; Hearts and Minds it rezzes 86 times and hears
+  924.
+- **Fidelity limits:** Hearts and Minds' source is chosen before its
+  destination, so a card you can advance may be picked as both — a move
+  onto itself, which changes nothing.
+- **DSL ratio (`pool_status.py`): 17 of 80 `Effect` variants single-use,
+  2 unused**, over 286 card files (18 of 79 over 284 before):
+  `PromptMoveThisCardToAnotherRoot` found its second card (Isaac
+  Liberdade). `RemoveAdvancementCounters` is Hearts and Minds' alone as an
+  effect; the script reads variant names off card-file keys and counts the
+  cost of the same name (Charlotte Caçador, Sacrifice Zone Expansion).
+- **Measured.** Both sweeps at 256 seeds are green, the fog gate
+  included. Against `origin/main` (4a), `coverage_identical.py` has the
+  random seatings **identical**, by view and by index; the heuristic ones
+  moved (Corp agenda wins 63 → 64 of 192, flatlines 16 → 17). Checked, not
+  inferred: a ref with the engine changes — the move dispatched and heard,
+  the scope, the effect, the four filters — and without the two cards and
+  the deck swap is **identical in all four shapes**, so the movement is
+  `determinize` sampling two new Corp cards.
 
 ### 3. The Automata Initiative — 65 cards (C 14 / V 35 / M 16)
 

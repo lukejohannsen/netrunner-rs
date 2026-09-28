@@ -1023,6 +1023,17 @@ pub fn evaluate_effect(
             Ok(vec![GameEvent::AdvancementCountersPlaced { install, card: Some(card_id.clone()), advancement_tokens }])
         }
 
+        Effect::RemoveAdvancementCounters(amount) => {
+            let removed = resolve_amount(amount, ctx, state, registry);
+            let Some(installed) = acting_corp_install_mut(state, ctx) else { return Ok(Vec::new()) };
+            installed.advancement_tokens = installed.advancement_tokens.saturating_sub(removed);
+            Ok(vec![GameEvent::AdvancementCountersRemoved {
+                install: installed.install_id,
+                card: Some(installed.card.clone()),
+                advancement_tokens: installed.advancement_tokens,
+            }])
+        }
+
         Effect::BoostStrength { amount, duration } => {
             let acting = acting_card.ok_or(RulesError::UnresolvedCardTarget)?;
             require_encounter(state)?;
@@ -1577,7 +1588,10 @@ pub fn evaluate_effect(
             }
             let (card, from, install) = (installed.card.clone(), installed.server, installed.install_id);
             state.corp.installed[position].server = *server;
-            Ok(vec![GameEvent::CardMoved { install, card: Some(card), from, to: *server }])
+            // Heard by the card that moved (Isaac Liberdade).
+            let mut events = Vec::new();
+            dispatcher::emit(state, registry, &mut events, GameEvent::CardMoved { install, card: Some(card), from, to: *server })?;
+            Ok(events)
         }
 
         Effect::PlayOperation { from } => {

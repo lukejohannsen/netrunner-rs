@@ -229,6 +229,10 @@ pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
         GameEvent::CardTrashed { by: None, .. } => Vec::new(),
         // The Corp purges, whatever the card that made it (CR 10.1.2).
         GameEvent::VirusCountersPurged { .. } => vec![moment(Trigger::OnVirusCountersPurged, &About::Nothing, Some(Side::Corp))],
+        GameEvent::CardMoved { install, card: moved, .. } => match moved {
+            Some(moved) => vec![moment(Trigger::OnCardMoved, &card(moved, Some(*install)), Some(Side::Corp))],
+            None => Vec::new(),
+        },
         GameEvent::CardsLookedAt { .. } => Vec::new(),
         // No card hears a reveal yet: Esca, Tocsin and the traps reveal, and
         // nothing in the pool asks what was revealed.
@@ -291,7 +295,6 @@ pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
         | GameEvent::IceStrengthModified { .. }
         | GameEvent::CardDerezzed { .. }
         | GameEvent::IceSwapped { .. }
-        | GameEvent::CardMoved { .. }
         | GameEvent::TurnEnded { .. }
         | GameEvent::DiscardPending { .. }
         | GameEvent::CardDiscarded { .. }

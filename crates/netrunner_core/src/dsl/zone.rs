@@ -299,6 +299,24 @@ pub enum CardFilter {
     /// (`CardDefinition::counter_kind`, as the purge reads it); how many it
     /// holds is instance-level.
     HostsCounters(crate::dsl::CounterKind),
+    /// A card in the server the acting card is in, its root or its ice —
+    /// Isaac Liberdade's "a piece of ice protecting that server" (with
+    /// `Ice`). A placeholder, as `InRootOfThisServer` is: written over as
+    /// `InServer` where the acting card's server is known (`with_this_server`)
+    /// and matching nothing where it is not.
+    InThisServer,
+    /// A card in this server, its root or its ice. `InRootOf` is the root
+    /// alone; a card "protecting" a server is `All([Ice, InServer(..)])`.
+    InServer(ServerId),
+    /// An installed card hosting at least one advancement counter — Isaac
+    /// Liberdade's "each **advanced** piece of ice" and Hearts and Minds'
+    /// "move 1 advancement counter **from** an installed card", which is
+    /// only offered where there is one. Instance-level.
+    Advanced,
+    /// An installed card hosting none — Isaac Liberdade's "a piece of ice
+    /// … that has no advancement counters". Its own word because `Not` is
+    /// decided off the definition alone. Instance-level.
+    Unadvanced,
 }
 
 /// Whether `card` is eligible under `filter`. `CardType(CardType::Ice(_))`
@@ -313,6 +331,7 @@ impl CardFilter {
     pub fn with_this_server(self, server: Option<ServerId>) -> CardFilter {
         match self {
             CardFilter::InRootOfThisServer => server.map_or(CardFilter::InRootOfThisServer, CardFilter::InRootOf),
+            CardFilter::InThisServer => server.map_or(CardFilter::InThisServer, CardFilter::InServer),
             CardFilter::All(filters) => CardFilter::All(filters.into_iter().map(|filter| filter.with_this_server(server)).collect()),
             CardFilter::AnyOf(filters) => CardFilter::AnyOf(filters.into_iter().map(|filter| filter.with_this_server(server)).collect()),
             other => other,
@@ -364,6 +383,7 @@ pub fn card_matches_filter(card: &CardDefinition, filter: &CardFilter) -> bool {
         CardFilter::InAttackedServer => true,
         CardFilter::InLastRunServer => true,
         CardFilter::InRootOfThisServer | CardFilter::InRootOf(_) => true,
+        CardFilter::InThisServer | CardFilter::InServer(_) | CardFilter::Advanced | CardFilter::Unadvanced => true,
         CardFilter::Ice => matches!(card.card_type, CardType::Ice(_)),
         // The definition-level half; affordability and the play
         // requirement are instance-level.
