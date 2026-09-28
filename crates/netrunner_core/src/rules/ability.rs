@@ -474,7 +474,10 @@ pub fn evaluate_effect(
 
         Effect::AddCounters(amount) => modify_counters(state, ctx, i64::from(*amount)),
 
-        Effect::RemoveCounters(amount) => modify_counters(state, ctx, -i64::from(*amount)),
+        Effect::RemoveCounters(amount) => {
+            let amount = resolve_amount(amount, ctx, state, registry);
+            modify_counters(state, ctx, -i64::from(amount))
+        }
 
         Effect::TakeAllCountersAsCredits(side) => {
             let card_id = acting_card.ok_or(RulesError::UnresolvedCardTarget)?;
@@ -1209,6 +1212,16 @@ pub fn evaluate_effect(
             let purged = crate::rules::engine::purge_all_virus_counters(state, registry);
             let mut events = Vec::new();
             dispatcher::emit(state, registry, &mut events, purged)?;
+            Ok(events)
+        }
+
+        Effect::TurnFaceupInArchives => {
+            let card = acting_card.ok_or(RulesError::MissingActingCardContext)?;
+            let mut events = Vec::new();
+            if let Some(archived) = state.corp.archives.iter_mut().find(|archived| archived.facedown && &archived.card == card) {
+                archived.facedown = false;
+                dispatcher::emit(state, registry, &mut events, GameEvent::ArchivesTurnedFaceup { count: 1 })?;
+            }
             Ok(events)
         }
 
@@ -2442,6 +2455,25 @@ fn add_to_score_area_as_agenda(state: &mut GameState, card: CardId, as_agenda: c
     GameEvent::AddedToScoreAreaAsAgenda { card, points: as_agenda.points }
 }
 
+/// Adds `card`, an agenda out of whatever Corp zone it just left, to the
+/// Corp's score area as itself (CR 1.17.3e): worth what it prints, never
+/// scored (`ScoredAgenda::scored_on_turn` 0), so nothing that hears a score
+/// hears it. The checkpoint after the action is what a win by it waits for.
+pub(crate) fn add_agenda_to_score_area(state: &mut GameState, registry: &CardRegistry, card: CardId) -> GameEvent {
+    let agenda_points = registry.get(&card).map_or(0, |def| crate::rules::continuous::agenda_points_in(state, registry, def, Side::Corp));
+    let install_id = state.allocate_install_id();
+    state.corp.scored_agendas.push(crate::rules::state::ScoredAgenda {
+        card: card.clone(),
+        install_id,
+        agenda_counters: 0,
+        scored_on_turn: 0,
+        installed_on_scoring_turn: false,
+        as_agenda: None,
+    });
+    state.corp.resources.agenda_points = state.corp.resources.agenda_points.gain(agenda_points as i32);
+    GameEvent::AgendaAddedToScoreArea { card, agenda_points }
+}
+
 /// The positions in the Corp's score area that may be forfeited: every one
 /// but a card added "as an agenda" with "You cannot forfeit this agenda."
 /// (Word on the Street). The one list `Cost::Forfeit`'s affordability and
@@ -3367,6 +3399,18 @@ pub(crate) fn resolve_amount(amount: &Amount, ctx: &ResolutionContext<'_>, state
         Amount::HostedCards => acting_rig_card(state, ctx).map_or(0, |card| card.hosted_cards.len() as u32),
         Amount::InstalledIcebreakerCount => installed_icebreaker_count(state, registry),
         Amount::FacedownCardsInArchives => state.corp.archives.iter().filter(|a| a.facedown).count() as u32,
+        // By discriminant: ice is one card type (CR 2.15.2) whatever its
+        // `IceType`, which is a subtype.
+        Amount::CardTypesAmongFaceupInArchives => {
+            let mut types: Vec<std::mem::Discriminant<crate::dsl::CardType>> = Vec::new();
+            for def in state.corp.archives.iter().filter(|archived| !archived.facedown).filter_map(|archived| registry.get(&archived.card)) {
+                let kind = std::mem::discriminant(&def.card_type);
+                if !types.contains(&kind) {
+                    types.push(kind);
+                }
+            }
+            types.len() as u32
+        }
         Amount::CreditsLostThisResolution => ctx.credits_lost,
         // The greater of the two scores, in agenda points — Null Signal
         // Games' *Elevation* threat-level rule. Read off the score areas
@@ -4508,7 +4552,7 @@ mod tests {
         state.runner.rig[0].counters = 1;
         let acting = CardId("gorman_drip".to_string());
 
-        let events = evaluate_effect(&mut state, &Effect::RemoveCounters(3), &mut ResolutionContext::for_card(Some(&acting)), &CardRegistry::new()).unwrap();
+        let events = evaluate_effect(&mut state, &Effect::RemoveCounters(Amount::Fixed(3)), &mut ResolutionContext::for_card(Some(&acting)), &CardRegistry::new()).unwrap();
 
         assert_eq!(state.runner.rig[0].counters, 0);
         assert_eq!(events, vec![GameEvent::CountersRemoved { card: acting, amount: 3 }]);

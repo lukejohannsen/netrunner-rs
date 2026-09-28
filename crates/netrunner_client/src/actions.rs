@@ -544,6 +544,9 @@ pub fn narrate_event(
             format!("stole {} for {agenda_points} point(s)", title(card))
         }
         GameEvent::AgendaForfeited { card } => format!("forfeited {}", title(card)),
+        GameEvent::AgendaAddedToScoreArea { card, agenda_points } => {
+            format!("added {} to the Corp's score area for {agenda_points} point(s)", title(card))
+        }
         GameEvent::AddedToScoreAreaAsAgenda { card, points } => {
             format!("added {} to the Corp's score area as an agenda worth {points} agenda point{}", title(card), if points.abs() == 1 { "" } else { "s" })
         }

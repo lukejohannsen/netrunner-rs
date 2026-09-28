@@ -18,7 +18,9 @@
       "trigger": "OnTurnStart",
       "effects": [
         {
-          "RemoveCounters": 2
+          "RemoveCounters": {
+            "Fixed": 2
+          }
         },
         {
           "GainCredits": [

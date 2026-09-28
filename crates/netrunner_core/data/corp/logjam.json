@@ -1,0 +1,66 @@
+{
+  "id": "logjam",
+  "title": "Logjam",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Barrier"
+  },
+  "cost": 6,
+  "strength": 0,
+  "advancement_requirement": 0,
+  "continuous": [
+    {
+      "kind": {
+        "Strength": {
+          "per": 1,
+          "of": "HostedAdvancementTokens"
+        }
+      },
+      "applies_to": "This",
+      "text": "It gets +1 strength for each hosted advancement counter."
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnRez",
+      "subject": "This",
+      "effects": [
+        {
+          "PlaceAdvancementCounters": {
+            "Fixed": 1
+          }
+        },
+        {
+          "PlaceAdvancementCounters": "CardTypesAmongFaceupInArchives"
+        }
+      ],
+      "text": "When you rez this ice, place 1 advancement counter on it plus 1 advancement counter for each card type among faceup cards in Archives."
+    }
+  ],
+  "subroutines": [
+    {
+      "text": "Gain 2[credit]. End the run.",
+      "effect": {
+        "Sequence": [
+          {
+            "GainCredits": [
+              "Corp",
+              2
+            ]
+          },
+          "EndTheRun"
+        ]
+      }
+    },
+    {
+      "text": "End the run.",
+      "effect": "EndTheRun"
+    },
+    {
+      "text": "End the run.",
+      "effect": "EndTheRun"
+    }
+  ],
+  "numeric_id": 34127,
+  "is_playable": true
+}

@@ -14097,4 +14097,197 @@ mod rebellion_without_rehearsal {
         assert_eq!((botulus.hosted_on_ice, botulus.hosted_on_rig_card), (Some(fixture_install_id("ice_wall")), None));
     }
 
+
+    // ---- Stage 4a: advancement words ----
+
+    fn in_root(card: &str, server: ServerId, rezzed: bool) -> crate::rules::InstalledCard {
+        crate::rules::InstalledCard {
+            install_id: fixture_install_id(card),
+            card: id(card),
+            server,
+            slot: InstallSlot::Root,
+            rezzed,
+            ..Default::default()
+        }
+    }
+
+    /// From the Corp's action phase, both turns ended and every window
+    /// passed, to the moment the Corp's next turn begins and its
+    /// "when your turn begins" abilities are asked.
+    fn to_corp_turn_start(state: &GameState, registry: &CardRegistry) -> GameState {
+        let (state, _) = apply_action(&crate::rules::test_support::clicks_spent(state), registry, PlayerAction::EndTurn).expect("corp ends turn");
+        let (state, _) = close_all_windows(state, registry);
+        let (state, _) = apply_action(&crate::rules::test_support::clicks_spent(&state), registry, PlayerAction::EndTurn).expect("runner ends turn");
+        let (state, _) = apply_action(&state, registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner passes");
+        let (state, _) = apply_action(&state, registry, PlayerAction::PassPriority { side: Side::Corp }).expect("corp passes into their turn");
+        let (state, _) = apply_action(&state, registry, PlayerAction::PassPriority { side: Side::Corp }).expect("corp passes the window before the turn begins");
+        apply_action(&state, registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner passes, the turn begins").0
+    }
+
+    fn select(state: &GameState, registry: &CardRegistry, positions: &[usize]) -> GameState {
+        let mut state = state.clone();
+        for position in positions {
+            state = apply_action(&state, registry, PlayerAction::ToggleCardSelection { position: *position }).expect("select").0;
+        }
+        apply_action(&state, registry, PlayerAction::ConfirmCardSelection).expect("confirm").0
+    }
+
+    #[test]
+    fn charlotte_cacador_spends_a_counter_at_turn_start_for_four_and_a_card_and_trashes_with_one_for_three() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.r_and_d = vec![id("hedge_fund"); 3];
+        state.corp.installed = vec![in_root("charlotte_cacador", ServerId::Remote(0), false)];
+        let charlotte = install_of(&state, "charlotte_cacador");
+        assert!(crate::rules::legal_actions(&state, &registry).contains(&PlayerAction::AdvanceCard { target: charlotte }), "you can advance this asset");
+        state.corp.installed[0].rezzed = true;
+        state.corp.installed[0].advancement_tokens = 2;
+
+        let state = to_corp_turn_start(&state, &registry);
+        assert!(state.pending_paid_choice.is_some(), "you may remove a counter");
+        let (credits, hand) = (state.corp.resources.credits, state.corp.hq.len());
+        let (state, _) = apply_action(&state, &registry, PlayerAction::AcceptPendingPaidChoice { cost_option_index: None }).expect("remove one");
+        assert_eq!((state.corp.resources.credits, state.corp.hq.len()), (Credits(credits.0 + 4), hand + 1));
+        assert_eq!(state.corp.installed[0].advancement_tokens, 1);
+
+        let (state, _) = close_all_windows(state, &registry);
+        let credits = state.corp.resources.credits;
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ActivateAbility { target: charlotte, ability_index: 0 }).expect("trash, hosted counter: 3");
+        assert_eq!(state.corp.resources.credits, Credits(credits.0 + 3));
+        assert!(state.corp.installed.is_empty() && state.corp.archives_contains(&id("charlotte_cacador")));
+    }
+
+    #[test]
+    fn charlotte_cacador_cannot_trash_for_credits_without_a_hosted_counter() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.installed = vec![in_root("charlotte_cacador", ServerId::Remote(0), true)];
+        let charlotte = install_of(&state, "charlotte_cacador");
+        assert!(apply_action(&state, &registry, PlayerAction::ActivateAbility { target: charlotte, ability_index: 0 }).is_err());
+    }
+
+    #[test]
+    fn cohort_guidance_program_trashes_from_hq_for_two_and_a_card_or_turns_archives_over_for_a_counter() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.r_and_d = vec![id("hedge_fund"); 3];
+        state.corp.hq = vec![id("ice_wall")];
+        state.corp.archives = vec![ArchivedCard { card: id("hedge_fund"), facedown: false }, ArchivedCard { card: id("pad_campaign"), facedown: true }];
+        state.corp.installed = vec![in_root("cohort_guidance_program", ServerId::Remote(0), true), ice_at_hq("ice_wall")];
+        let turn = to_corp_turn_start(&state, &registry);
+        assert!(matches!(turn.pending_decision, Some(crate::rules::PendingDecision::ChooseEffect { chooser: Side::Corp, .. })));
+
+        // The first mode: a card from HQ goes to Archives facedown.
+        let (first, _) = apply_action(&turn, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("trash from HQ");
+        let hand = first.corp.hq.len();
+        let credits = first.corp.resources.credits;
+        let ice_wall = first.corp.hq.iter().position(|card| card == &id("ice_wall")).expect("the ice in HQ");
+        let first = select(&first, &registry, &[ice_wall]);
+        assert_eq!((first.corp.resources.credits, first.corp.hq.len()), (Credits(credits.0 + 2), hand - 1 + 1));
+        assert!(first.corp.archives.iter().any(|archived| archived.card == id("ice_wall") && archived.facedown));
+
+        // The second: only the facedown card is offered, and a counter goes
+        // on an installed card, which need not be one you can advance.
+        let (second, _) = apply_action(&turn, &registry, PlayerAction::ResolvePendingChoice { option_index: 1 }).expect("turn one faceup");
+        let offered = crate::rules::legal_actions_for(&second, &registry, Side::Corp);
+        assert!(!offered.contains(&PlayerAction::ToggleCardSelection { position: 0 }), "not a faceup card");
+        let (second, events) = {
+            let (state, _) = apply_action(&second, &registry, PlayerAction::ToggleCardSelection { position: 1 }).expect("the facedown one");
+            apply_action(&state, &registry, PlayerAction::ConfirmCardSelection).expect("confirm")
+        };
+        assert!(events.iter().any(|event| matches!(event, GameEvent::ArchivesTurnedFaceup { count: 1 })));
+        assert!(second.corp.archives.iter().all(|archived| !archived.facedown));
+        let cohort = second.corp.installed.iter().position(|card| card.card == id("cohort_guidance_program")).expect("still installed");
+        let second = select(&second, &registry, &[cohort]);
+        assert_eq!(second.corp.installed[cohort].advancement_tokens, 1, "an installed card, advanceable or not");
+    }
+
+    #[test]
+    fn kingmaking_draws_up_to_three_and_adds_a_one_point_agenda_from_hq_unscored() {
+        let registry = registry();
+        let mut state = base_state();
+        state.turn = 3;
+        state.corp.r_and_d = vec![id("hedge_fund"); 5];
+        state.corp.hq = vec![id("superconducting_hub"), id("offworld_office")];
+        state.corp.installed = vec![in_root("kingmaking", ServerId::Remote(0), false)];
+        state.corp.installed[0].advancement_tokens = 4;
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ScoreAgenda { target: install_of(&state, "kingmaking") }).expect("score");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ChooseNumber { amount: 2 }).expect("draw two");
+        assert_eq!(state.corp.hq.len(), 4);
+        let offered = crate::rules::legal_actions_for(&state, &registry, Side::Corp);
+        assert!(offered.contains(&PlayerAction::ToggleCardSelection { position: 0 }), "Superconducting Hub is worth 1");
+        assert!(!offered.contains(&PlayerAction::ToggleCardSelection { position: 1 }), "Offworld Office is worth 2");
+        let (chosen, _) = apply_action(&state, &registry, PlayerAction::ToggleCardSelection { position: 0 }).expect("the hub");
+        let (state, events) = apply_action(&chosen, &registry, PlayerAction::ConfirmCardSelection).expect("add it");
+        assert!(events.iter().any(|event| matches!(event, GameEvent::AgendaAddedToScoreArea { agenda_points: 1, .. })));
+        assert!(!events.iter().any(|event| matches!(event, GameEvent::AgendaScored { card, .. } if *card == id("superconducting_hub"))), "not scored");
+        assert_eq!(state.corp.resources.agenda_points, AgendaPoints(3));
+        let hub = state.corp.scored_agendas.iter().find(|scored| scored.card == id("superconducting_hub")).expect("in the score area");
+        assert!(!crate::rules::pending_choice::scored_this_turn(&state, hub), "added, never scored (CR 1.17.3e)");
+    }
+
+    #[test]
+    fn logjam_rezzes_with_one_counter_plus_one_per_card_type_faceup_in_archives() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.installed = vec![ice_at_hq("logjam")];
+        state.corp.installed[0].rezzed = false;
+        state.corp.archives = vec![
+            ArchivedCard { card: id("hedge_fund"), facedown: false },
+            ArchivedCard { card: id("hedge_fund"), facedown: false },
+            ArchivedCard { card: id("ice_wall"), facedown: false },
+            ArchivedCard { card: id("enigma"), facedown: false },
+            ArchivedCard { card: id("pad_campaign"), facedown: true },
+        ];
+        let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run HQ");
+        let (state, _) = crate::rules::test_support::continue_run(&state, &registry).expect("approach Logjam");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner passes approach");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::RezIce { ice: fixture_install_id("logjam") }).expect("rez Logjam");
+        assert_eq!(state.corp.installed[0].advancement_tokens, 1 + 2, "an operation and ice, the facedown asset unseen");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner passes again");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Corp }).expect("corp passes approach");
+        assert_eq!(encountered_strength(&state, &registry), 3, "+1 per hosted counter");
+        let credits = state.corp.resources.credits;
+        let (state, _) = let_subroutines_fire(&state, &registry);
+        assert_eq!(state.corp.resources.credits, Credits(credits.0 + 2));
+        assert!(state.active_run.is_none(), "the run ended");
+    }
+
+    #[test]
+    fn business_as_usual_advances_two_different_cards_or_clears_a_virus_card_and_both_at_threat_three() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.hq = vec![id("business_as_usual")];
+        state.corp.installed = vec![in_root("offworld_office", ServerId::Remote(0), false), ice_at_hq("ice_wall")];
+        let mut virus = rig("leech");
+        virus.counters = 2;
+        state.runner.rig = vec![rig("sure_gamble"), virus];
+        let play = PlayerAction::PlayOperation { card_id: id("business_as_usual") };
+
+        // Below threat 3: one mode. The second pick cannot be the first card.
+        let (one, _) = apply_action(&state, &registry, play.clone()).expect("play");
+        assert!(matches!(&one.pending_decision, Some(crate::rules::PendingDecision::ChooseEffect { options, .. }) if options.len() == 2));
+        let (one, _) = apply_action(&one, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("advance mode");
+        let one = select(&one, &registry, &[0]);
+        let offered = crate::rules::legal_actions_for(&one, &registry, Side::Corp);
+        assert!(!offered.contains(&PlayerAction::ToggleCardSelection { position: 0 }), "each of 2 cards: not the same one twice");
+        let one = select(&one, &registry, &[1]);
+        assert_eq!((one.corp.installed[0].advancement_tokens, one.corp.installed[1].advancement_tokens), (1, 1));
+        assert_eq!(one.runner.rig[1].counters, 2, "the other mode did not resolve");
+
+        // At threat 3: the other mode too, which offers only a card hosting
+        // virus counters.
+        let mut threat = state.clone();
+        at_threat(&mut threat, 4);
+        let (both, _) = apply_action(&threat, &registry, play).expect("play");
+        let (both, _) = apply_action(&both, &registry, PlayerAction::ResolvePendingChoice { option_index: 1 }).expect("virus mode first");
+        let offered = crate::rules::legal_actions_for(&both, &registry, Side::Corp);
+        assert!(!offered.contains(&PlayerAction::ToggleCardSelection { position: 0 }), "Sure Gamble hosts nothing");
+        let both = select(&both, &registry, &[1]);
+        assert_eq!(both.runner.rig[1].counters, 0, "all of them");
+        let (both, _) = apply_action(&both, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("and the other mode");
+        let both = select(&both, &registry, &[0]);
+        let both = select(&both, &registry, &[]);
+        assert_eq!(both.corp.installed[0].advancement_tokens, 1);
+    }
 }

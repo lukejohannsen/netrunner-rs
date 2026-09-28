@@ -406,6 +406,9 @@ pub struct ScoredAgenda {
     /// `InstalledCard::installed_this_turn`, which the Turn History Rule
     /// keeps: the turn log counts occurrences, and "this agenda" is not a
     /// class. A turn number rather than a flag, so nothing resets it.
+    /// `0` — the setup, before the first turn — for an agenda added to the
+    /// score area directly (CR 1.17.3e: Kingmaking's "add 1 agenda … from
+    /// HQ to your score area"), which was never scored.
     #[serde(default)]
     pub scored_on_turn: u32,
     /// Whether it was scored on the turn it was installed — the copy's

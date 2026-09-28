@@ -1880,9 +1880,13 @@ reaches Vantage Point's cards by building a deck.
    (built, below): Trick Shot, Window of Opportunity, Alarm Clock; **3d**,
    a search that installs onto a host (built, below): Muse. Stage 3 is
    complete.
-4. **Corp advancement and movement words:** Charlotte Caçador, Cohort
-   Guidance Program, Hearts and Minds, Logjam, Isaac Liberdade, The Holo
-   Man, Business As Usual, Janaína “JK” Dumont Kindelán, Kingmaking, Stoke the Embers.
+4. **Corp advancement and movement words**, in three parts when it was
+   taken: **4a**, advancement counters placed and removed (built, below):
+   Charlotte Caçador, Cohort Guidance Program, Logjam, Business As Usual,
+   Kingmaking; **4b**, an upgrade that moves and counters that move: Isaac
+   Liberdade, Hearts and Minds; **4c**, where an install came from, and a
+   card returned to HQ as a cost: The Holo Man, Stoke the Embers, Janaína
+   “JK” Dumont Kindelán.
 5. **Corp ice and rez words:** Lightning Laboratory, Warm Reception,
    Working Prototype, Brasília Government Grid, Sorocaban Blade, Hammer,
    Cloud Eater, Piranhas, Sudden Commandment, Nuvem SA: Law of the Land, The Basalt Spire.
@@ -2367,6 +2371,94 @@ Rehearsal 29 of 65; `RWR_UNIMPLEMENTED` 37 → 36. **Stage 3 is complete.**
   a ref with the host install and the stack source and without Muse and
   the deck swap is **identical in all four shapes**, so the movement is
   `determinize` sampling Muse.
+
+#### Stage 4a — advancement counters placed and removed (27 September 2026)
+
+`feat/rwr-stage-4a-advancement-words`: Charlotte Caçador, Cohort Guidance
+Program, Logjam, Business As Usual, Kingmaking. **One new `Effect`.**
+Rebellion Without Rehearsal 34 of 65; `RWR_UNIMPLEMENTED` 36 → 31. Stage 4
+was split: Isaac Liberdade and Hearts and Minds are 4b, and The Holo Man,
+Stoke the Embers and Janaína “JK” Dumont Kindelán are 4c, all three needing
+where an install came from ("installed any cards from HQ this turn",
+"install this agenda from anywhere except HQ").
+
+- **A card in Archives turned faceup by a card's text**
+  (`Effect::TurnFaceupInArchives`, new): Cohort Guidance Program's "Turn 1
+  facedown card in Archives faceup", the `then` of a selection of
+  `CardFilter::Facedown` cards there, heard as the breach's turning over is
+  (`ArchivesTurnedFaceup`, one card). "Trash 1 card from HQ. If you do" is
+  a selection whose `destination` is Archives — facedown, as a card out of
+  HQ lands — and whose `then` is the gain and the draw, so it resolves only
+  when a card went; "place 1 advancement counter on an installed card" is
+  any installed card, advanceable or not (CR 1.18.2).
+- **An agenda added to the score area** (CR 1.17.3e): Kingmaking's "You may
+  add 1 agenda worth 1 or less agenda points from HQ to your score area" is
+  a selection whose `destination` is the Corp's score area, which no
+  selection could name before (`ability::add_agenda_to_score_area`). Worth
+  what it prints, never scored (`ScoredAgenda::scored_on_turn` 0), and
+  announced as `GameEvent::AgendaAddedToScoreArea`, an occurrence of
+  nothing; the log and the end-of-game table count it. `CardFilter::
+  AgendaPointsAtMost` is the "worth 1 or less"; "draw up to 3" is a
+  `ChooseNumber`.
+- **"Remove all" is an amount:** `Effect::RemoveCounters` takes an `Amount`
+  (ten card files rewritten to `Fixed`), so Business As Usual's "Remove all
+  virus counters from 1 installed card" is `RemoveCounters(HostedCounters)`
+  on a selection of `CardFilter::HostsCounters(Virus)` — a card with none
+  is never offered.
+- **Business As Usual composes.** "Place 1 advancement counter on each of up
+  to 2 installed cards you can advance" is a selection of one whose `then`
+  places a counter and selects a second from the rest (`NotSourceCard`,
+  the first being the install the second prompt acts as); each placement
+  waits on a card having been chosen (`AmountAtLeast(CardsSelected, 1)`),
+  because a `then` resolves with nothing chosen too, as the parking card.
+  "Threat 3 → You may also resolve the other mode" is a `ResolveSomeOf` of
+  two over the two modes and a decline.
+- **Logjam** is Ice Wall's words and a new amount, `CardTypesAmongFaceupIn
+  Archives` (types, so ice is one type whatever its subtype, CR 2.15.2):
+  "place 1 advancement counter on it plus 1 … for each card type" is two
+  placements. **Charlotte Caçador** composes: "you may remove 1 hosted
+  advancement counter to gain 4" is a nested cost (CR 1.16.11a), an
+  `OfferPaidChoice` of `Cost::RemoveAdvancementCounters`, and "[trash],
+  hosted advancement counter:" is the two costs, the counter first.
+- **Client:** nothing new reaches the view, so `view_ledger` is unmoved;
+  both clients' logs say "added Superconducting Hub to the Corp's score
+  area for 1 point(s)" (`actions`), the end-of-game table counts it
+  (`tally`), and `prose` has words for the new effect, amount and filters.
+- **Decks** — Honor Roll: two Cohort Guidance Program and a Charlotte
+  Caçador for two Regolith Mining License and an Unleash (two PAD Campaign
+  out would have made it Standard-legal, which its pin refuses). Hostile
+  Bid: two Logjam for two Palisade, two Business As Usual for two Petty
+  Cash. Paid Content: two Kingmaking for two Orbital Superiority, with the
+  deck's Superconducting Hub the agenda it adds.
+- **Real play**, 96 games a pairing (seed 2), each deck against a Runner
+  Sweep deck. Honor Roll against Grassroots: random seats install Charlotte
+  Caçador 19 times and trash it for credits 10, and Cohort Guidance
+  Program's turn start is heard 76 times; the heuristic Corp installs both
+  (30 and 66) and hears them 271 and 563 times, and never trashes Charlotte
+  for its 3. Hostile Bid against Pay as You Go: random seats play Business
+  As Usual 87 times; the heuristic Corp plays none, and rezzes Logjam 43
+  times, whose subroutines fire 192. Paid Content against Safety Net:
+  Kingmaking scored 46 times by the heuristic Corp and heard 34 — the other
+  twelve were the game's last points, which end it before the trigger
+  resolves.
+- **Fidelity limits:** Logjam's counters are placed in two steps, heard as
+  two placements by a card that listens (none does). Business As Usual's
+  virus counters are the Runner's cards': no Corp card in the pool hosts
+  one.
+- **DSL ratio (`pool_status.py`): 18 of 79 `Effect` variants single-use,
+  2 unused**, over 284 card files (19 of 78 over 279 before):
+  `TurnFaceupInArchives` is the new one, its reason on the variant, and
+  `DrawCardsAmount` (Kingmaking) and `ResolveSomeOf` (Business As Usual)
+  each found a second card.
+- **Measured.** Both sweeps at 256 seeds are green, the fog gate
+  included. Against `origin/main`, `coverage_identical.py` has the random
+  seatings **identical**, by view and by index; the heuristic ones moved
+  (Corp agenda wins 64 → 63 of 192, flatlines 17 → 16, a Corp deck-out
+  0 → 1). Checked, not inferred: a ref with the engine changes — the
+  faceup turn, the score-area destination, `RemoveCounters` by amount and
+  its ten card files, the three filters and the amount — and without the
+  five cards and the deck swaps is **identical in all four shapes**, so the
+  movement is `determinize` sampling five new Corp cards.
 
 ### 3. The Automata Initiative — 65 cards (C 14 / V 35 / M 16)
 

@@ -353,8 +353,12 @@ pub enum Effect {
     /// card that's neither a rezzed Corp install nor a Runner rig card.
     AddCounters(u32),
     /// Saturating-removes `amount` generic counters from `acting_card`. Same
-    /// target/error rules as `AddCounters`.
-    RemoveCounters(u32),
+    /// target/error rules as `AddCounters`. An `Amount` since Business As
+    /// Usual's "Remove **all** virus counters from 1 installed card"
+    /// (`HostedCounters`, as the `then` of a selection of the card), which
+    /// would otherwise have been a `RemoveAllCounters` beside it — the shape
+    /// `PlaceAdvancementCounters` took.
+    RemoveCounters(Amount),
     /// Evaluates `effect` only if `condition` holds; otherwise silently
     /// no-ops (`Ok(Vec::new())`) — the same soft-gate convention
     /// `dsl::card::TriggeredEffect::requirement` already uses, but usable
@@ -818,6 +822,15 @@ pub enum Effect {
     /// during a run against this server, purge virus counters". Not
     /// composable: no primitive sweeps counters off every card at once.
     PurgeVirusCounters,
+    /// The acting card, facedown in Archives, is turned faceup — Cohort
+    /// Guidance Program's "Turn 1 facedown card in Archives faceup", as the
+    /// `then` of a selection of `Facedown` cards there. Heard as a breach's
+    /// turning over is (`GameEvent::ArchivesTurnedFaceup`, one card). The
+    /// copy turned is the first facedown one of that card: facedown copies
+    /// of one card are the same card to both players. A no-op when none is
+    /// facedown any more. Composition didn't work: nothing turned a card in
+    /// Archives over but the breach (CR 7.3.2), which turns them all.
+    TurnFaceupInArchives,
     /// "Resolve `count` of the following in any order" — Key Performance
     /// Indicators. `chooser` picks one of `options`; it resolves, then the
     /// remaining options are offered again with `count - 1`, until the
@@ -1235,6 +1248,11 @@ pub enum Amount {
     InstalledIcebreakerCount,
     /// Facedown cards currently in Archives — *Jinteki: Restoring Humanity*.
     FacedownCardsInArchives,
+    /// How many card types there are among the faceup cards in Archives —
+    /// Logjam's "1 advancement counter for each card type among faceup
+    /// cards in Archives". Types, not subtypes, so every piece of ice is one
+    /// type. No amount counted distinct kinds of anything.
+    CardTypesAmongFaceupInArchives,
     /// Credits actually removed by the most recent `Effect::LoseCredits`
     /// **in this same resolution** (`ResolutionContext::credits_lost` —
     /// the printed amount capped by what the side had), the same
@@ -1482,6 +1500,7 @@ impl Effect {
                 Effect::ChooseNumber { chooser, min, max: amount(max), of: of.map(amount), then, text, secret }
             }
             Effect::SetIdentityCopy(a) => Effect::SetIdentityCopy(amount(a)),
+            Effect::RemoveCounters(a) => Effect::RemoveCounters(amount(a)),
             Effect::Sequence(effects) => Effect::Sequence(all(effects)),
             Effect::PresentChoice { chooser, options, texts } => Effect::PresentChoice { chooser, options: all(options), texts },
             Effect::ResolveSomeOf { chooser, count, options, texts } => Effect::ResolveSomeOf { chooser, count, options: all(options), texts },
@@ -1582,6 +1601,7 @@ impl Effect {
             | Effect::HostCardOnThisCard(_)
             | Effect::BypassEncounteredIce
             | Effect::PurgeVirusCounters
+            | Effect::TurnFaceupInArchives
             | Effect::ResolveSomeOf { .. }
             | Effect::LoseCreditsAmount(..)
             | Effect::FlipIdentity

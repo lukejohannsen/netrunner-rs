@@ -1,0 +1,220 @@
+{
+  "id": "business_as_usual",
+  "title": "Business As Usual",
+  "side": "Corp",
+  "card_type": "Operation",
+  "cost": 0,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "EffectIf": {
+            "condition": {
+              "Not": {
+                "AmountAtLeast": [
+                  "ThreatLevel",
+                  3
+                ]
+              }
+            },
+            "effect": {
+              "PresentChoice": {
+                "chooser": "Corp",
+                "options": [
+                  {
+                    "PromptChooseCards": {
+                      "side": "Corp",
+                      "source": "OwnInstalled",
+                      "filter": "Advanceable",
+                      "min": 0,
+                      "max": 1,
+                      "reveal": false,
+                      "shuffle_after": false,
+                      "then": {
+                        "EffectIf": {
+                          "condition": {
+                            "AmountAtLeast": [
+                              "CardsSelected",
+                              1
+                            ]
+                          },
+                          "effect": {
+                            "Sequence": [
+                              {
+                                "PlaceAdvancementCounters": {
+                                  "Fixed": 1
+                                }
+                              },
+                              {
+                                "PromptChooseCards": {
+                                  "side": "Corp",
+                                  "source": "OwnInstalled",
+                                  "filter": {
+                                    "All": [
+                                      "Advanceable",
+                                      "NotSourceCard"
+                                    ]
+                                  },
+                                  "min": 0,
+                                  "max": 1,
+                                  "reveal": false,
+                                  "shuffle_after": false,
+                                  "then": {
+                                    "EffectIf": {
+                                      "condition": {
+                                        "AmountAtLeast": [
+                                          "CardsSelected",
+                                          1
+                                        ]
+                                      },
+                                      "effect": {
+                                        "PlaceAdvancementCounters": {
+                                          "Fixed": 1
+                                        }
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "PromptChooseCards": {
+                      "side": "Corp",
+                      "source": "OpponentInstalled",
+                      "filter": {
+                        "HostsCounters": "Virus"
+                      },
+                      "min": 1,
+                      "max": 1,
+                      "reveal": false,
+                      "shuffle_after": false,
+                      "then": {
+                        "RemoveCounters": "HostedCounters"
+                      }
+                    }
+                  }
+                ],
+                "texts": [
+                  "Place 1 advancement counter on each of up to 2 installed cards you can advance.",
+                  "Remove all virus counters from 1 installed card."
+                ]
+              }
+            }
+          }
+        },
+        {
+          "EffectIf": {
+            "condition": {
+              "AmountAtLeast": [
+                "ThreatLevel",
+                3
+              ]
+            },
+            "effect": {
+              "ResolveSomeOf": {
+                "chooser": "Corp",
+                "count": 2,
+                "options": [
+                  {
+                    "PromptChooseCards": {
+                      "side": "Corp",
+                      "source": "OwnInstalled",
+                      "filter": "Advanceable",
+                      "min": 0,
+                      "max": 1,
+                      "reveal": false,
+                      "shuffle_after": false,
+                      "then": {
+                        "EffectIf": {
+                          "condition": {
+                            "AmountAtLeast": [
+                              "CardsSelected",
+                              1
+                            ]
+                          },
+                          "effect": {
+                            "Sequence": [
+                              {
+                                "PlaceAdvancementCounters": {
+                                  "Fixed": 1
+                                }
+                              },
+                              {
+                                "PromptChooseCards": {
+                                  "side": "Corp",
+                                  "source": "OwnInstalled",
+                                  "filter": {
+                                    "All": [
+                                      "Advanceable",
+                                      "NotSourceCard"
+                                    ]
+                                  },
+                                  "min": 0,
+                                  "max": 1,
+                                  "reveal": false,
+                                  "shuffle_after": false,
+                                  "then": {
+                                    "EffectIf": {
+                                      "condition": {
+                                        "AmountAtLeast": [
+                                          "CardsSelected",
+                                          1
+                                        ]
+                                      },
+                                      "effect": {
+                                        "PlaceAdvancementCounters": {
+                                          "Fixed": 1
+                                        }
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "PromptChooseCards": {
+                      "side": "Corp",
+                      "source": "OpponentInstalled",
+                      "filter": {
+                        "HostsCounters": "Virus"
+                      },
+                      "min": 1,
+                      "max": 1,
+                      "reveal": false,
+                      "shuffle_after": false,
+                      "then": {
+                        "RemoveCounters": "HostedCounters"
+                      }
+                    }
+                  },
+                  {
+                    "Sequence": []
+                  }
+                ],
+                "texts": [
+                  "Place 1 advancement counter on each of up to 2 installed cards you can advance.",
+                  "Remove all virus counters from 1 installed card.",
+                  ""
+                ]
+              }
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "numeric_id": 34128,
+  "is_playable": true
+}
