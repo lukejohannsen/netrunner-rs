@@ -47,10 +47,8 @@ pub(crate) const RWR_UNIMPLEMENTED: &[(u32, &str)] = &[
     (34121, "Nuvem SA: Law of the Land"),
     (34122, "Eminent Domain"),
     (34123, "The Basalt Spire"),
-    (34124, "Hearts and Minds"),
     (34125, "Descent"),
     (34126, "Hammer"),
-    (34129, "Isaac Liberdade"),
 ];
 
 /// *The Automata Initiative* (`tai`): tranche 3 of the NSG plan.

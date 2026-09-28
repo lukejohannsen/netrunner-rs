@@ -385,6 +385,10 @@ fn instance_matches_filter(
         }
         CardFilter::InRootOf(server) => corp_install.is_some_and(|c| c.server == *server && c.slot == InstallSlot::Root),
         CardFilter::InRootOfThisServer => false,
+        CardFilter::InServer(server) => corp_install.is_some_and(|c| c.server == *server),
+        CardFilter::InThisServer => false,
+        CardFilter::Advanced => corp_install.is_some_and(|c| c.advancement_tokens > 0),
+        CardFilter::Unadvanced => corp_install.is_some_and(|c| c.advancement_tokens == 0),
         // Either zone an operation can be played from: HQ (Humanoid
         // Resources) or Archives (Plutus). The zone the selection reads
         // decides which, and `can_play_operation` is told, because playing
@@ -468,6 +472,10 @@ pub(crate) fn copy_matches(state: &GameState, filter: &crate::dsl::CardFilter, i
             installed.is_some_and(|c| !c.installed_this_turn) || scored.is_some_and(|scored| !installed_this_turn(state, scored))
         }
         CardFilter::ScoredThisTurn => scored.is_some_and(|scored| scored_this_turn(state, scored)),
+        // Isaac Liberdade's "each advanced piece of ice", asked of the ice
+        // whose strength is read (`Scope::IceProtectingThisServer`).
+        CardFilter::Advanced => installed.is_some_and(|c| c.advancement_tokens > 0),
+        CardFilter::Unadvanced => installed.is_some_and(|c| c.advancement_tokens == 0),
         _ => true,
     }
 }

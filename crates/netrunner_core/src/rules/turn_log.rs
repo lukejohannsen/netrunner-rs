@@ -247,6 +247,11 @@ fn concealed(trigger: Trigger, of: Option<Side>) -> bool {
         // counts a pass by its `IceFacts`, which do not name the card, but
         // a filter on the card itself is refused.
         Trigger::OnIcePassed => true,
+        // A root card moves with its rez state, so a facedown one moves
+        // unseen. None in the pool is moved facedown — every mover names a
+        // rezzed card or moves itself, being active — but nothing in the
+        // move says so.
+        Trigger::OnCardMoved => true,
         // A Corp card trashed out of HQ or R&D goes facedown, unseen by
         // the Runner, so the log counts a Corp card's trash without its
         // type. A Runner card's is seen wherever it came from, and counted

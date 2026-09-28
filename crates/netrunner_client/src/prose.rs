@@ -355,6 +355,8 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
         }
         Effect::PlaceAdvancementCounters(Amount::Fixed(n)) => format!("place {}", plural(*n, "advancement token", "advancement tokens")),
         Effect::PlaceAdvancementCounters(amount) => format!("place advancement tokens equal to {}", describe_amount(amount)),
+        Effect::RemoveAdvancementCounters(Amount::Fixed(n)) => format!("remove {}", plural(*n, "advancement token", "advancement tokens")),
+        Effect::RemoveAdvancementCounters(amount) => format!("remove advancement tokens equal to {}", describe_amount(amount)),
         Effect::MoveThisCardToRoot(server) => format!("move this card to {}", describe_server(*server)),
         Effect::PromptMoveThisCardToAnotherRoot => "move it to the root of another server".to_string(),
         Effect::PlayOperation { .. } => "play an operation".to_string(),
@@ -526,6 +528,7 @@ pub fn describe_continuous(effect: &ContinuousEffect) -> String {
         Scope::InstallingOntoThis(filter) => format!("a card its controller installs onto this card ({})", lower(format!("{filter:?}"))),
         Scope::Ice => "each piece of ice".to_string(),
         Scope::RootOfThisServer(filter) => format!("each card in the root of this server ({})", lower(format!("{filter:?}"))),
+        Scope::IceProtectingThisServer(filter) => format!("each piece of ice protecting this server ({})", lower(format!("{filter:?}"))),
         Scope::Playing(filter) if effect.first_each_turn => format!("the first card its controller plays each turn ({})", lower(format!("{filter:?}"))),
         Scope::Playing(filter) => format!("a card its controller plays ({})", lower(format!("{filter:?}"))),
         Scope::Stealing(filter) => format!("an agenda the Runner steals ({})", lower(format!("{filter:?}"))),

@@ -322,6 +322,13 @@ pub enum Trigger {
     /// Composition didn't work: no moment was a purge, which was recorded
     /// and never dispatched.
     OnVirusCountersPurged,
+    /// "Whenever this upgrade moves to the root of a server" (Isaac
+    /// Liberdade) — `GameEvent::CardMoved`, a root card moved to another
+    /// server's root by a card's text (`Effect::MoveThisCardToRoot`, and
+    /// the prompt that resolves as it), about the card that moved.
+    /// Composition didn't work: a move is not an install (it has no
+    /// `CardInstalled`), and was an occurrence of nothing.
+    OnCardMoved,
 }
 
 /// What a run's moment about a piece of ice says of it beyond the card —
@@ -529,7 +536,7 @@ impl Trigger {
     /// `every_trigger_is_listed_at_its_own_index` holds the two together,
     /// and its exhaustive `match` is what stops a new variant compiling
     /// until it is listed here.
-    pub const ALL: [Trigger; 41] = [
+    pub const ALL: [Trigger; 42] = [
         Trigger::OnPlay,
         Trigger::OnRunStart,
         Trigger::OnEncounter,
@@ -571,6 +578,7 @@ impl Trigger {
         Trigger::OnIdentityFlipped,
         Trigger::OnActionTaken,
         Trigger::OnVirusCountersPurged,
+        Trigger::OnCardMoved,
     ];
 
     /// This trigger's position in `ALL`.
@@ -609,6 +617,7 @@ impl Trigger {
             | Trigger::OnEncounterEnded
             | Trigger::OnCardTrashed
             | Trigger::OnWouldBeUninstalled
+            | Trigger::OnCardMoved
             | Trigger::OnActionTaken => TriggerAbout::Card,
             Trigger::OnRunStart
             | Trigger::OnIceApproached
@@ -685,6 +694,8 @@ impl Trigger {
             Trigger::OnPlay
             | Trigger::OnForfeit
             | Trigger::OnWouldBeUninstalled
+            // Printed only about the card itself, as "this upgrade".
+            | Trigger::OnCardMoved
             | Trigger::OnAccessed
             | Trigger::OnTrashedFromAccess
             | Trigger::OnAgendaScored
@@ -727,7 +738,7 @@ mod tests {
         // Exhaustive, so a new variant stops here until it is added to
         // `Trigger::ALL` — the turn log indexes a fixed array by it.
         let listed = |trigger: Trigger| match trigger {
-            Trigger::OnPlay | Trigger::OnRunStart | Trigger::OnEncounter | Trigger::OnTurnStart | Trigger::OnAccessed | Trigger::OnTrashedFromAccess | Trigger::OnSuccessfulRun | Trigger::Paid | Trigger::OnInstall | Trigger::OnAgendaScored | Trigger::OnAgendaStolen | Trigger::OnDamageAboutToResolve | Trigger::OnRez | Trigger::OnApproachServer | Trigger::OnRunEnded | Trigger::OnBasicDrawAction | Trigger::OnTagsGiven | Trigger::OnAdvance | Trigger::OnDiscardPhaseEnd | Trigger::OnActionPhaseEnd | Trigger::OnCardInstalled | Trigger::OnDamageDealt | Trigger::OnCardsTrashedFromHq | Trigger::OnAbilityGainedCredits | Trigger::OnForfeit | Trigger::OnIceApproached | Trigger::OnCardPlayed | Trigger::OnTagRemoved | Trigger::OnBadPublicityTaken | Trigger::OnIcePassed | Trigger::OnSubroutineBroken | Trigger::OnIceFullyBroken | Trigger::OnIceBypassed | Trigger::OnEncounterEnded | Trigger::OnCreditsSpentOutsidePool | Trigger::OnArchivesTurnedFaceup | Trigger::OnCardTrashed | Trigger::OnWouldBeUninstalled | Trigger::OnIdentityFlipped | Trigger::OnActionTaken | Trigger::OnVirusCountersPurged => Trigger::ALL.contains(&trigger),
+            Trigger::OnPlay | Trigger::OnRunStart | Trigger::OnEncounter | Trigger::OnTurnStart | Trigger::OnAccessed | Trigger::OnTrashedFromAccess | Trigger::OnSuccessfulRun | Trigger::Paid | Trigger::OnInstall | Trigger::OnAgendaScored | Trigger::OnAgendaStolen | Trigger::OnDamageAboutToResolve | Trigger::OnRez | Trigger::OnApproachServer | Trigger::OnRunEnded | Trigger::OnBasicDrawAction | Trigger::OnTagsGiven | Trigger::OnAdvance | Trigger::OnDiscardPhaseEnd | Trigger::OnActionPhaseEnd | Trigger::OnCardInstalled | Trigger::OnDamageDealt | Trigger::OnCardsTrashedFromHq | Trigger::OnAbilityGainedCredits | Trigger::OnForfeit | Trigger::OnIceApproached | Trigger::OnCardPlayed | Trigger::OnTagRemoved | Trigger::OnBadPublicityTaken | Trigger::OnIcePassed | Trigger::OnSubroutineBroken | Trigger::OnIceFullyBroken | Trigger::OnIceBypassed | Trigger::OnEncounterEnded | Trigger::OnCreditsSpentOutsidePool | Trigger::OnArchivesTurnedFaceup | Trigger::OnCardTrashed | Trigger::OnWouldBeUninstalled | Trigger::OnIdentityFlipped | Trigger::OnActionTaken | Trigger::OnVirusCountersPurged | Trigger::OnCardMoved => Trigger::ALL.contains(&trigger),
         };
         assert!(Trigger::ALL.iter().all(|trigger| listed(*trigger)));
     }

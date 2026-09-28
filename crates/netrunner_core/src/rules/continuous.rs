@@ -217,6 +217,12 @@ fn applies(state: &GameState, source: &Source<'_>, scope: &Scope, target: &Targe
         (Scope::RootOfThisServer(filter), Target::Corp { card, server, root: true, .. }) => {
             source.server == Some(*server) && card_matches_filter(card, filter)
         }
+        (Scope::IceProtectingThisServer(filter), Target::Corp { card, server, root: false, install }) => {
+            source.server == Some(*server)
+                && matches!(card.card_type, CardType::Ice(_))
+                && card_matches_filter(card, filter)
+                && crate::rules::pending_choice::copy_matches(state, filter, Some(*install))
+        }
         (Scope::RunsOnThisServer, Target::Run { server }) => source.server == Some(*server),
         _ => false,
     }
