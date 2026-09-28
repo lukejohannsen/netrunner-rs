@@ -1884,9 +1884,10 @@ reaches Vantage Point's cards by building a deck.
    taken: **4a**, advancement counters placed and removed (built, below):
    Charlotte Caçador, Cohort Guidance Program, Logjam, Business As Usual,
    Kingmaking; **4b**, an upgrade that moves and counters that move
-   (built, below): Isaac Liberdade, Hearts and Minds; **4c**, where an install came from, and a
-   card returned to HQ as a cost: The Holo Man, Stoke the Embers, Janaína
-   “JK” Dumont Kindelán.
+   (built, below): Isaac Liberdade, Hearts and Minds; **4c**, where an
+   install came from, and a card returned to HQ as a cost (built, below):
+   The Holo Man, Stoke the Embers, Janaína “JK” Dumont Kindelán. Stage 4
+   is complete.
 5. **Corp ice and rez words:** Lightning Laboratory, Warm Reception,
    Working Prototype, Brasília Government Grid, Sorocaban Blade, Hammer,
    Cloud Eater, Piranhas, Sudden Commandment, Nuvem SA: Law of the Land, The Basalt Spire.
@@ -2520,6 +2521,77 @@ of 65; `RWR_UNIMPLEMENTED` 31 → 29.
   the scope, the effect, the four filters — and without the two cards and
   the deck swap is **identical in all four shapes**, so the movement is
   `determinize` sampling two new Corp cards.
+
+#### Stage 4c — where an install came from, and a card back to HQ (27 September 2026)
+
+`feat/rwr-stage-4c-install-origin`: The Holo Man, Stoke the Embers,
+Janaína “JK” Dumont Kindelán. **No new `Effect` or `Trigger`.** Rebellion
+Without Rehearsal 39 of 65; `RWR_UNIMPLEMENTED` 29 → 26. **Stage 4 is
+complete.**
+
+- **An install says where the card came from**
+  (`GameEvent::CardInstalled::from_hq`): set by `engine::place_corp_card`'s
+  callers — the basic action, a text install out of HQ, Archives or R&D,
+  Word on the Street's agenda out of the Runner's score area — and public,
+  as a card leaving HQ is. Two words read it. Stoke the Embers' "When you
+  install this agenda from anywhere except HQ" is a `when`,
+  `EventFilter::InstalledFromHq(false)`, read off the moment
+  (`listeners::Moment::from_hq`, as `ice` is) and refused by `validate` on
+  anything but a Corp card's `OnInstall`. The Holo Man's "If you have not
+  installed any cards from HQ this turn" is `Amount::
+  CardsInstalledFromHqThisTurn`, a sum the turn log keeps beside
+  `agenda_points_scored` (the Turn History Rule: where a card came from is
+  no `Class`, and every Corp install from HQ is facedown, so its cells are
+  unseen anyway). The view carries it with the log.
+- **Two costs** (`Cost::RevealSelf`, `Cost::AddSelfToHq`): Stoke the Embers'
+  "you may reveal it. If you do, …" is a nested cost (CR 1.16.11a), an
+  `OfferPaidChoice` of revealing the facedown agenda — which stays facedown
+  (CR 1.21.3a) and is remembered by the Runner as an accessed card is
+  (`seen_by_runner`). JK's "[click], add this asset to HQ:" goes through
+  `rules::uninstall`, announced as `GameEvent::CardAddedToHand` (the card
+  named only if it was faceup), and her "Take all credits from this asset"
+  is `GainCreditsAmount(HostedCounters)`, read off the counters she had as
+  she left (`ResolutionContext::last_known`). "You may install 1 card from
+  HQ" waits on a card having been chosen, or the `then` would install JK
+  herself, now in HQ, as the parking card.
+- **The Holo Man** composes otherwise: "move this upgrade to the root of
+  another server" is 4b's offer as the turn begins, and "1 card in the
+  root of or protecting this server" is `CardFilter::InThisServer`.
+- **Client:** nothing new reaches the view; both clients' logs say which
+  card went back to HQ (`actions`), and `prose` has words for the costs,
+  the amount and the filter.
+- **Deck** — Paid Content: two Stoke the Embers for the last Orbital
+  Superiority and the Offworld Office, for The Powers That Be to install
+  out of Archives; The Holo Man for the Hansei Review and JK for the Hedge
+  Fund.
+- **Real play**, 96 games of Paid Content against Safety Net (seed 2).
+  Random seats: The Holo Man installed 50 times, its turn-start move heard
+  129 and its ability used 4; JK installed 58 times and returned to HQ 19;
+  Stoke the Embers installed 90 times, every one from HQ. The heuristic
+  Corp scores Stoke 43 times and returns JK 63, and never uses The Holo
+  Man's ability. **Stoke's "from anywhere except HQ" was not reached in
+  either seating**: The Powers That Be must find it in Archives as an
+  agenda is scored, and the card test is its reach so far.
+- **Fidelity limits:** none found beyond the pool's: no card but JK returns
+  an install to HQ, and no card but Stoke the Embers is revealed where it
+  lies.
+- **DSL ratio (`pool_status.py`): 17 of 80 `Effect` variants single-use,
+  2 unused**, over 289 card files (17 of 80 over 286 before).
+- **Measured.** Both sweeps at 256 seeds are green, the fog gate
+  included — after the gate learned two things the log may name to a
+  seat: a faceup card going back to HQ (`CardAddedToHand { faceup: true }`,
+  seed 60, JK), and a card the Runner accessed, once a view taken after
+  the game ended mid access no longer holds the access (seed 176, Esca's
+  net damage flatlining the Runner in HQ — masking shows every access to
+  the Runner by design; the gate had no rule for the end of a game there,
+  and a new card's sampling reached it). Against `origin/main` (4b),
+  `coverage_identical.py` has the random seatings **identical**, by view
+  and by index; the heuristic ones moved (Corp agenda wins 64 → 66 of
+  192, flatlines 17 → 16). Checked, not inferred: a ref with the engine
+  changes — the install's origin and its sum, the filter, the two costs
+  and the event — and without the three cards and the deck swap is
+  **identical in all four shapes**, so the movement is `determinize`
+  sampling three new Corp cards.
 
 ### 3. The Automata Initiative — 65 cards (C 14 / V 35 / M 16)
 

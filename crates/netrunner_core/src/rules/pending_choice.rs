@@ -1408,6 +1408,7 @@ pub(crate) fn resolve_choose_server(
             pending_install.pay_cost,
             pending_install.discount,
             false,
+            matches!(pending_install.origin, crate::dsl::CardZoneRef::OwnHq),
         )?;
         let landed = placed.iter().find_map(|event| match event {
             GameEvent::CardInstalled { install, card: Some(card), .. } if *card == card_id => Some(*install),

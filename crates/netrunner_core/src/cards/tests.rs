@@ -14365,4 +14365,119 @@ mod rebellion_without_rehearsal {
         let moved = select(&select(&turn, &registry, &[1]), &registry, &[2]);
         assert!(moved.pending_decision.is_none(), "no placement behind ice");
     }
+
+    // ---- Stage 4c: where an install came from, a card back to HQ ----
+
+    #[test]
+    fn the_holo_man_places_three_counters_in_its_server_unless_a_card_came_from_hq_this_turn_then_two() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.hq = vec![id("pad_campaign")];
+        state.corp.installed = vec![in_root("the_holo_man", ServerId::Hq, true), ice_at_hq("ice_wall"), ice_at_hq("enigma")];
+        state.corp.installed[2].server = ServerId::RnD;
+        let use_it = PlayerAction::ActivateAbility { target: fixture_install_id("the_holo_man"), ability_index: 0 };
+
+        let (three, _) = apply_action(&state, &registry, use_it.clone()).expect("[click], 4[credit]");
+        let offered = crate::rules::legal_actions_for(&three, &registry, Side::Corp);
+        assert!(offered.contains(&PlayerAction::ToggleCardSelection { position: 0 }), "the root of this server");
+        assert!(!offered.contains(&PlayerAction::ToggleCardSelection { position: 2 }), "another server's ice");
+        let three = select(&three, &registry, &[1]);
+        assert_eq!(three.corp.installed[1].advancement_tokens, 3, "nothing installed from HQ this turn");
+        assert_eq!(three.corp.resources.credits, Credits(10 - 4));
+        let three = close_all_windows(three, &registry).0;
+        assert!(apply_action(&three, &registry, use_it.clone()).is_err(), "once per turn");
+
+        let (installed, _) = apply_action(&state, &registry, PlayerAction::InstallCard { card_id: id("pad_campaign"), zone: ServerId::Remote(0), slot: InstallSlot::Root, trash_first: false })
+            .expect("install from HQ");
+        assert_eq!(installed.this_turn.installed_from_hq(), 1);
+        let installed = close_all_windows(installed, &registry).0;
+        let (two, _) = apply_action(&installed, &registry, use_it).expect("[click], 4[credit]");
+        let two = select(&two, &registry, &[1]);
+        assert_eq!(two.corp.installed[1].advancement_tokens, 2);
+    }
+
+    #[test]
+    fn the_holo_man_may_move_to_another_root_as_the_turn_begins() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.r_and_d = vec![id("hedge_fund"); 3];
+        state.corp.installed = vec![in_root("the_holo_man", ServerId::Hq, true)];
+        let turn = to_corp_turn_start(&state, &registry);
+        let (turn, _) = apply_action(&turn, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("move it");
+        let (turn, _) = apply_action(&turn, &registry, PlayerAction::ChooseServerForPendingDecision { server: ServerId::Archives }).expect("to Archives");
+        assert_eq!(turn.corp.installed[0].server, ServerId::Archives);
+    }
+
+    #[test]
+    fn stoke_the_embers_may_be_revealed_when_installed_from_archives_but_not_from_hq() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.hq = vec![id("stoke_the_embers")];
+        state.corp.installed = vec![ice_at_hq("ice_wall")];
+        let (from_hq, _) = apply_action(&state, &registry, PlayerAction::InstallCard { card_id: id("stoke_the_embers"), zone: ServerId::Remote(0), slot: InstallSlot::Root, trash_first: false })
+            .expect("install from HQ");
+        assert!(from_hq.pending_paid_choice.is_none(), "from HQ: nothing to reveal");
+
+        // Out of Archives, through The Powers That Be.
+        let mut state = base_state();
+        state.corp.installed = vec![in_root("the_powers_that_be", ServerId::Remote(0), true), in_root("offworld_office", ServerId::Remote(1), false), ice_at_hq("ice_wall")];
+        state.corp.installed[1].advancement_tokens = 4;
+        state.corp.archives = vec![ArchivedCard { card: id("stoke_the_embers"), facedown: true }];
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ScoreAgenda { target: install_of(&state, "offworld_office") }).expect("score");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ChooseTriggerToResolve { index: 1 }).expect("order");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 1 }).expect("from Archives");
+        let state = select(&state, &registry, &[0]);
+        let remote = crate::rules::legal_actions_for(&state, &registry, Side::Corp)
+            .into_iter()
+            .find(|action| matches!(action, PlayerAction::ChooseServerForPendingDecision { server: ServerId::Remote(_) }))
+            .expect("a remote to install it in");
+        let (state, events) = apply_action(&state, &registry, remote).expect("a remote");
+        assert!(events.iter().any(|event| matches!(event, GameEvent::CardInstalled { from_hq: false, .. })));
+        assert!(state.pending_paid_choice.is_some(), "you may reveal it");
+        let credits = state.corp.resources.credits;
+        let (state, events) = apply_action(&state, &registry, PlayerAction::AcceptPendingPaidChoice { cost_option_index: None }).expect("reveal it");
+        assert!(events.iter().any(|event| matches!(event, GameEvent::CardRevealed { card, .. } if *card == id("stoke_the_embers"))));
+        let stoke = state.corp.installed.iter().position(|card| card.card == id("stoke_the_embers")).expect("installed");
+        assert!(state.corp.installed[stoke].seen_by_runner && !state.corp.installed[stoke].rezzed, "revealed, still facedown");
+        assert_eq!(state.corp.resources.credits, Credits(credits.0 + 2));
+        let state = select(&state, &registry, &[stoke]);
+        assert_eq!(state.corp.installed[stoke].advancement_tokens, 1, "on itself, an installed card");
+    }
+
+    #[test]
+    fn stoke_the_embers_gains_three_and_places_a_counter_when_scored() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.installed = vec![in_root("stoke_the_embers", ServerId::Remote(0), false), ice_at_hq("ice_wall")];
+        state.corp.installed[0].advancement_tokens = 4;
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ScoreAgenda { target: install_of(&state, "stoke_the_embers") }).expect("score");
+        assert_eq!(state.corp.resources.credits, Credits(13));
+        let state = select(&state, &registry, &[0]);
+        assert_eq!(state.corp.installed[0].advancement_tokens, 1);
+    }
+
+    #[test]
+    fn jk_banks_three_a_turn_and_goes_back_to_hq_for_them_and_an_install() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.r_and_d = vec![id("hedge_fund"); 3];
+        state.corp.hq = vec![id("ice_wall")];
+        state.corp.installed = vec![in_root("janaina_jk_dumont_kindelan", ServerId::Remote(0), true)];
+        let state = to_corp_turn_start(&state, &registry);
+        let state = close_all_windows(state, &registry).0;
+        assert_eq!(state.corp.installed[0].counters, 3, "placed as the turn began");
+        let credits = state.corp.resources.credits;
+        let (state, events) = apply_action(&state, &registry, PlayerAction::ActivateAbility { target: fixture_install_id("janaina_jk_dumont_kindelan"), ability_index: 0 })
+            .expect("[click], add this asset to HQ");
+        assert!(events.iter().any(|event| matches!(event, GameEvent::CardAddedToHand { faceup: true, .. })));
+        assert_eq!(state.corp.resources.credits, Credits(credits.0 + 3), "the credits it held");
+        assert!(state.corp.installed.is_empty() && state.corp.hq.contains(&id("janaina_jk_dumont_kindelan")));
+        let ice = state.corp.hq.iter().position(|card| card == &id("ice_wall")).expect("the ice in HQ");
+        let state = select(&state, &registry, &[ice]);
+        let offered = crate::rules::legal_actions_for(&state, &registry, Side::Corp);
+        let first = offered.into_iter().next().expect("a destination");
+        let (state, _) = apply_action(&state, &registry, first).expect("install it");
+        assert!(state.corp.installed.iter().any(|card| card.card == id("ice_wall")));
+        assert_eq!(state.this_turn.installed_from_hq(), 1, "an install from HQ");
+    }
 }

@@ -88,6 +88,13 @@ pub enum GameEvent {
         #[serde(default)]
         card: Option<CardId>,
         server: ServerId,
+        /// Whether the card came out of HQ — The Holo Man's "if you have
+        /// not installed any cards from HQ this turn" (`turn_log`'s sum)
+        /// and Stoke the Embers' "When you install this agenda from anywhere
+        /// except HQ" (`EventFilter::InstalledFromHq`). Public: both players
+        /// see which zone a card leaves.
+        #[serde(default)]
+        from_hq: bool,
     },
     /// `install` names which copy was rezzed, so `Trigger::OnRez` resolves
     /// on that copy — two Nico Campaigns used to load both sets of counters
@@ -211,6 +218,13 @@ pub enum GameEvent {
     /// grip, HQ, R&D or Archives it is its owner's to know
     /// (`masking::mask_event_for_player`), as a `CardsSelected` is.
     CardAddedToDeck { side: Side, card: CardId, top: bool, revealed: bool },
+    /// An installed card went back to its owner's hand — Janaína “JK”
+    /// Dumont Kindelán's "add this asset to HQ" (`Cost::AddSelfToHq`).
+    /// `faceup` is whether it was rezzed as it left, which is what decides
+    /// whether a viewer who may not identify a facedown Corp install
+    /// learns what it was (`masking`); the handle is public, as it is for
+    /// an install. An occurrence of nothing a card hears.
+    CardAddedToHand { side: Side, card: Option<CardId>, install: crate::rules::state::InstallId, faceup: bool },
     /// `Effect::HostRigCardOnInstall` hosted the rig card `card` on the rig
     /// card `host` (GAMEDRAGON™ Pro on an icebreaker).
     CardHosted { card: CardId, host: CardId },
@@ -598,7 +612,7 @@ impl GameEvent {
             | GameEvent::CardHosted { .. } | GameEvent::IdentityFlipped { .. } | GameEvent::ActionPhaseEnded { .. }
             | GameEvent::RunEndPrevented { .. } | GameEvent::RunRedirected { .. } | GameEvent::CreditsSpent { .. }
             | GameEvent::TagsGiven { .. } | GameEvent::TagsCleared { .. } | GameEvent::CardTrashed { .. }
-            | GameEvent::CardRemovedFromGame { .. } | GameEvent::AgendaForfeited { .. } | GameEvent::AddedToScoreAreaAsAgenda { .. } | GameEvent::AgendaAddedToScoreArea { .. }
+            | GameEvent::CardRemovedFromGame { .. } | GameEvent::AgendaForfeited { .. } | GameEvent::AddedToScoreAreaAsAgenda { .. } | GameEvent::AgendaAddedToScoreArea { .. } | GameEvent::CardAddedToHand { .. }
             | GameEvent::AbilityGainedCredits { .. } | GameEvent::RunEndedByEffect { .. }
             | GameEvent::AbilityActivated { .. } | GameEvent::CardAdvanced { .. }
             | GameEvent::AdvancementCountersPlaced { .. } | GameEvent::AdvancementCountersRemoved { .. }

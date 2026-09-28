@@ -1,0 +1,82 @@
+{
+  "id": "janaina_jk_dumont_kindelan",
+  "title": "Janaína “JK” Dumont Kindelán",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 1,
+  "unique": true,
+  "trash_cost": 1,
+  "counter_kind": "Credit",
+  "triggers": [
+    {
+      "trigger": "OnTurnStart",
+      "effects": [
+        {
+          "AddCounters": 3
+        }
+      ],
+      "text": "When your turn begins, place 3[credit] on this asset."
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "AllOf": [
+          {
+            "Clicks": 1
+          },
+          "AddSelfToHq"
+        ]
+      },
+      "effect": {
+        "Sequence": [
+          {
+            "GainCreditsAmount": [
+              "Corp",
+              "HostedCounters"
+            ]
+          },
+          {
+            "PromptChooseCards": {
+              "side": "Corp",
+              "source": "OwnHq",
+              "filter": {
+                "CardTypeOneOf": [
+                  {
+                    "Ice": "Barrier"
+                  },
+                  "Agenda",
+                  "Asset",
+                  "Upgrade"
+                ]
+              },
+              "min": 0,
+              "max": 1,
+              "reveal": false,
+              "shuffle_after": false,
+              "then": {
+                "EffectIf": {
+                  "condition": {
+                    "AmountAtLeast": [
+                      "CardsSelected",
+                      1
+                    ]
+                  },
+                  "effect": {
+                    "PromptInstallCorpCard": {
+                      "origin_zone": "OwnHq"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        ]
+      },
+      "text": "Take all credits from this asset. You may install 1 card from HQ."
+    }
+  ],
+  "numeric_id": 34115,
+  "is_playable": true
+}

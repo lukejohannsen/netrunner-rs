@@ -75,6 +75,7 @@ pub fn describe_amount(amount: &Amount) -> String {
         Amount::InstalledIcebreakerCount => "the number of installed icebreakers".to_string(),
         Amount::FacedownCardsInArchives => "the number of facedown cards in Archives".to_string(),
         Amount::CardTypesAmongFaceupInArchives => "the number of card types among faceup cards in Archives".to_string(),
+        Amount::CardsInstalledFromHqThisTurn => "the cards installed from HQ this turn".to_string(),
         Amount::CreditsLostThisResolution => "the credits just lost".to_string(),
         Amount::ClicksRemaining => "the clicks remaining".to_string(),
         Amount::PrintedCost => "its printed cost".to_string(),
@@ -143,6 +144,8 @@ pub fn describe_cost(cost: &Cost) -> String {
         Cost::AddToScoreAreaAsAgenda(as_agenda) => format!("add this card to the Corp's score area as {}", as_an_agenda(as_agenda)),
         Cost::RemoveSelfFromGame => "remove this card from the game".to_string(),
         Cost::RevealAndTrashSelf => "reveal and trash this card from your hand".to_string(),
+        Cost::RevealSelf => "reveal this card".to_string(),
+        Cost::AddSelfToHq => "add this card to HQ".to_string(),
         Cost::TrashRandomFromHq(n) => format!("trash {} at random from HQ", plural(*n, "card", "cards")),
         Cost::AnyOf(options) => options.iter().map(describe_cost).collect::<Vec<_>>().join(" or "),
         Cost::AllOf(parts) => parts.iter().map(describe_cost).collect::<Vec<_>>().join(" and "),
@@ -424,6 +427,8 @@ pub fn engine_reading(card: &CardDefinition, registry: &CardRegistry) -> Vec<Str
             Some(EventFilter::Damage(kind)) => when = format!("{when}, of {} damage", format!("{kind:?}").to_lowercase()),
             Some(EventFilter::AtLeast(least)) => when = format!("{when}, {least} or more"),
             Some(EventFilter::Whose(side)) => when = format!("{when}, the {side:?}'s"),
+            Some(EventFilter::InstalledFromHq(true)) => when = format!("{when}, from HQ"),
+            Some(EventFilter::InstalledFromHq(false)) => when = format!("{when}, from anywhere except HQ"),
             Some(EventFilter::Ice(facts)) => {
                 let words: Vec<&str> = [
                     (facts.outermost, "the outermost ice"),

@@ -366,6 +366,9 @@ impl Occurrences {
                     .fold(0, |mask, column| mask | column),
             ),
             Some(EventFilter::Damage(kind)) => Some(bit(Class::Damage(*kind))),
+            Some(EventFilter::InstalledFromHq(_)) => {
+                return Err(format!("the turn counts a {trigger:?} without where the card came from, so \"the first\" cannot be narrowed by it"));
+            }
             Some(EventFilter::AtLeast(_)) => {
                 return Err(format!("the turn counts a {trigger:?} without how many cards it was about, so \"the first\" cannot be narrowed by a number"));
             }
@@ -539,11 +542,18 @@ pub struct TurnLog {
     /// The printed agenda points on agendas scored this turn — a sum, where
     /// every cell above is a count (Neurospike).
     agenda_points_scored: u8,
+    /// The Corp's installs this turn of a card out of HQ — The Holo Man's
+    /// "If you have not installed any cards from HQ this turn". A count
+    /// beside the cells, not a column of them: where a card came from is
+    /// no `Class`, and every Corp install from HQ is facedown, so its
+    /// cells are `Unseen` anyway. Public all the same, as the card's
+    /// leaving HQ is.
+    installed_from_hq: u8,
 }
 
 impl Default for TurnLog {
     fn default() -> Self {
-        TurnLog { counts: [[[0; CLASSES]; WHOSE]; TRIGGERS], actions_finished: 0, agenda_points_scored: 0 }
+        TurnLog { counts: [[[0; CLASSES]; WHOSE]; TRIGGERS], actions_finished: 0, agenda_points_scored: 0, installed_from_hq: 0 }
     }
 }
 
@@ -573,6 +583,10 @@ impl TurnLog {
 
     pub fn agenda_points_scored(&self) -> u32 {
         u32::from(self.agenda_points_scored)
+    }
+
+    pub fn installed_from_hq(&self) -> u32 {
+        u32::from(self.installed_from_hq)
     }
 
     /// How many of `trigger`'s moments this turn its `when` admits, as a
@@ -670,6 +684,8 @@ struct Sparse {
     actions_finished: u8,
     #[serde(default, skip_serializing_if = "is_zero")]
     agenda_points_scored: u8,
+    #[serde(default, skip_serializing_if = "is_zero")]
+    installed_from_hq: u8,
 }
 
 fn is_zero(count: &u8) -> bool {
@@ -688,13 +704,18 @@ impl From<TurnLog> for Sparse {
                 }
             }
         }
-        Sparse { cells, actions_finished: log.actions_finished, agenda_points_scored: log.agenda_points_scored }
+        Sparse { cells, actions_finished: log.actions_finished, agenda_points_scored: log.agenda_points_scored, installed_from_hq: log.installed_from_hq }
     }
 }
 
 impl From<Sparse> for TurnLog {
     fn from(sparse: Sparse) -> Self {
-        let mut log = TurnLog { actions_finished: sparse.actions_finished, agenda_points_scored: sparse.agenda_points_scored, ..TurnLog::default() };
+        let mut log = TurnLog {
+            actions_finished: sparse.actions_finished,
+            agenda_points_scored: sparse.agenda_points_scored,
+            installed_from_hq: sparse.installed_from_hq,
+            ..TurnLog::default()
+        };
         for (trigger, whose, column, count) in sparse.cells {
             // A cell off the end is a log written by some other build;
             // dropping it beats a panic in a deserializer.
@@ -725,11 +746,14 @@ pub(crate) fn record(state: &mut GameState, registry: &CardRegistry, event: &Gam
             }
         }
     }
-    // The one sum. The points are on the event, so this is still the one
+    // The sums. The points are on the event, so this is still the one
     // door: an agenda scored by a card's text is counted like any other.
     if let GameEvent::AgendaScored { agenda_points, .. } = event {
         let points = u8::try_from(*agenda_points).unwrap_or(u8::MAX);
         state.this_turn.agenda_points_scored = state.this_turn.agenda_points_scored.saturating_add(points);
+    }
+    if let GameEvent::CardInstalled { side: Side::Corp, from_hq: true, .. } = event {
+        state.this_turn.installed_from_hq = state.this_turn.installed_from_hq.saturating_add(1);
     }
     AsOf(state.this_turn, copy)
 }
@@ -800,7 +824,7 @@ mod tests {
             side: Side::Corp,
             install: InstallId(1),
             card: Some(CardId("an_agenda".into())),
-            server: ServerId::Remote(0),
+            server: ServerId::Remote(0), from_hq: true,
         };
         record(&mut state, &registry, &corp);
         assert_eq!(state.this_turn.times_about(Trigger::OnInstall, Class::Card { kind: Kind::Unseen, installed: true }), 1);

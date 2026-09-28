@@ -1,0 +1,97 @@
+{
+  "id": "the_holo_man",
+  "title": "The Holo Man",
+  "side": "Corp",
+  "card_type": "Upgrade",
+  "cost": 2,
+  "unique": true,
+  "trash_cost": 2,
+  "triggers": [
+    {
+      "trigger": "OnTurnStart",
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Corp",
+            "options": [
+              "PromptMoveThisCardToAnotherRoot",
+              {
+                "Sequence": []
+              }
+            ],
+            "texts": [
+              "move this upgrade to the root of another server",
+              ""
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "AllOf": [
+          {
+            "Clicks": 1
+          },
+          {
+            "Credits": 4
+          }
+        ]
+      },
+      "requirement": "OncePerTurn",
+      "effect": {
+        "PromptChooseCards": {
+          "side": "Corp",
+          "source": "OwnInstalled",
+          "filter": "InThisServer",
+          "min": 1,
+          "max": 1,
+          "reveal": false,
+          "shuffle_after": false,
+          "then": {
+            "Sequence": [
+              {
+                "EffectIf": {
+                  "condition": {
+                    "AmountAtLeast": [
+                      "CardsInstalledFromHqThisTurn",
+                      1
+                    ]
+                  },
+                  "effect": {
+                    "PlaceAdvancementCounters": {
+                      "Fixed": 2
+                    }
+                  }
+                }
+              },
+              {
+                "EffectIf": {
+                  "condition": {
+                    "Not": {
+                      "AmountAtLeast": [
+                        "CardsInstalledFromHqThisTurn",
+                        1
+                      ]
+                    }
+                  },
+                  "effect": {
+                    "PlaceAdvancementCounters": {
+                      "Fixed": 3
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      },
+      "text": "Place 2 advancement counters on 1 card in the root of or protecting this server."
+    }
+  ],
+  "numeric_id": 34120,
+  "is_playable": true
+}

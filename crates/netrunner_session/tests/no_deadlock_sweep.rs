@@ -497,6 +497,11 @@ fn assert_no_concealed_card_is_named_in_log(
         if let GameEvent::CardAddedToDeck { card, revealed: true, .. } = event {
             visible.insert(card.0.as_str());
         }
+        // A faceup install back to its owner's hand (JK's "add this asset
+        // to HQ"): they watched it leave the table.
+        if let GameEvent::CardAddedToHand { card: Some(card), faceup: true, .. } = event {
+            visible.insert(card.0.as_str());
+        }
         // A look is masked for everyone but the looker, so one left in
         // this seat's entry is theirs to know (Hiram's top of R&D).
         if let GameEvent::CardsLookedAt { cards, .. } = event {
@@ -504,6 +509,15 @@ fn assert_no_concealed_card_is_named_in_log(
         }
         // A reveal is a reveal (Esca accessed in R&D).
         if let GameEvent::CardRevealed { card, .. } = event {
+            visible.insert(card.0.as_str());
+        }
+        // An access shows the Runner the card (`masking`'s rule for
+        // `CardAccessed`), though a view taken once the game has ended mid
+        // access — a flatline from the card's own "when accessed" — no
+        // longer holds the access that showed it.
+        if let GameEvent::CardAccessed { card, .. } = event
+            && side.is(Side::Runner)
+        {
             visible.insert(card.0.as_str());
         }
     }

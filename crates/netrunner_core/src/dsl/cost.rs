@@ -184,6 +184,21 @@ pub enum Cost {
     /// so affordable only while the card is there. Distinct from
     /// `TrashSelf`, which trashes a card out of HQ facedown.
     RevealAndTrashSelf,
+    /// The acting Corp install is revealed (CR 1.21.3) and stays as it was
+    /// — Stoke the Embers' "you may reveal it. If you do, …", a nested
+    /// cost (CR 1.16.11a). Revealing does not turn it faceup (CR 1.21.3a);
+    /// the Runner remembers it (`InstalledCard::seen_by_runner`), as after
+    /// an access. Payable while the card is installed. Composition didn't
+    /// work: the only reveal was of a card leaving the hand.
+    RevealSelf,
+    /// The acting Corp install goes back to HQ — Janaína “JK” Dumont
+    /// Kindelán's "[click], **add this asset to HQ**:". Through the one door
+    /// an install leaves the table by (`rules::uninstall`), so its counters
+    /// go with it and an effect after reads them as they were
+    /// (`ResolutionContext::last_known`). Payable while the card is
+    /// installed. Composition didn't work: every other way off the table is
+    /// a trash or a removal from the game.
+    AddSelfToHq,
     /// The Corp reveals and trashes `u32` cards from HQ at random — Shred's
     /// "unless the Corp reveals and trashes X cards from HQ at random",
     /// built by the engine into the `OfferPaidChoice` it parks (X is the
@@ -222,7 +237,7 @@ impl Cost {
     /// set aside for an effect that acts on them (CR 9.5.5).
     pub fn uninstalls_its_source(&self) -> bool {
         match self {
-            Cost::TrashSelf | Cost::RemoveSelfFromGame => true,
+            Cost::TrashSelf | Cost::RemoveSelfFromGame | Cost::AddSelfToHq => true,
             Cost::AnyOf(costs) | Cost::AllOf(costs) => costs.iter().any(Cost::uninstalls_its_source),
             _ => false,
         }
