@@ -189,6 +189,10 @@ pub struct ClientView {
     /// moment comes (Lightning Laboratory's derez as the turn ends).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub delayed: Vec<crate::rules::lingering::DelayedAbility>,
+    /// `PublicGameState::revealed` verbatim — the cards revealed in a hand
+    /// that an ability still resolving has not moved yet (Burner's).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub revealed: Vec<crate::rules::RevealedCard>,
     /// The cards a parked `PendingDecision::ChooseCards` is choosing
     /// between, one per position the chooser can still name — so a client
     /// can say "Select Hedge Fund" where it said "Toggle selection of card
@@ -393,6 +397,7 @@ pub fn build_client_view(state: &GameState, registry: &CardRegistry, viewer: imp
         pending_payment: public.pending_payment,
         lingering: public.lingering,
         delayed: public.delayed,
+        revealed: public.revealed,
         selection,
         legal_actions: viewer.side().map(|side| legal_actions_for(state, registry, side)).unwrap_or_default(),
     }

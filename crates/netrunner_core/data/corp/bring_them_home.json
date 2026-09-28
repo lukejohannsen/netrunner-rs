@@ -63,7 +63,7 @@
               "RevealAtRandom": {
                 "side": "Runner",
                 "count": 2,
-                "then": {
+                "each": {
                   "AddToDeck": "Top"
                 }
               }
@@ -86,7 +86,7 @@
                       "RevealAtRandom": {
                         "side": "Runner",
                         "count": 1,
-                        "then": {
+                        "each": {
                           "Sequence": [
                             {
                               "AddToDeck": "Top"

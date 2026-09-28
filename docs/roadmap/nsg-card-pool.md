@@ -1898,11 +1898,12 @@ reaches Vantage Point's cards by building a deck.
    when it was taken; **5e**, a Weyland identity and its agenda (built, below): Nuvem
    SA: Law of the Land, The Basalt Spire, on a Sweep deck of Nuvem's own.
    Stage 5 is complete.
-6. **Terminal, reveal, set aside, arrange, X**, in four parts when it was
+6. **Terminal, reveal, set aside, arrange, X**, in five parts when it was
    taken: **6a**, terminal operations (built, below): Active Policing,
-   Bring Them Home; **6b**, a breach replaced on HQ and R&D: Burner,
-   Cataloguer; **6c**, cards set aside: The Wizard’s Chest; **6d**, an X
-   cost: Lobisomem.
+   Bring Them Home; **6b**, cards that stay revealed while the Runner
+   chooses among them (built, below): Burner; **6c**, a breach outside a
+   run: Cataloguer, moved out of 6b when it was taken; **6d**, cards set
+   aside: The Wizard’s Chest; **6e**, an X cost: Lobisomem.
 7. **Expendable, moving ice, psi, re-encounter:** Eminent Domain, Descent,
    Tributary, See How They Run, Sisyphus Protocol, Spree.
 8. **A card's identity changes:** Thunderbolt Armaments: Peace Through Power, Lycian
@@ -2996,6 +2997,56 @@ Rehearsal 52 of 65; `RWR_UNIMPLEMENTED` 15 → 13.
   changes and without the two cards and the decks is identical to `main`
   in all four shapes, so the engine moved nothing a game shows, and the
   heuristic movement is `determinize` sampling two new Corp cards.
+
+#### Stage 6b — cards that stay revealed (28 September 2026)
+
+`feat/rwr-stage-6b-burner`: Burner. **No new `Effect`.** Rebellion Without
+Rehearsal 53 of 65; `RWR_UNIMPLEMENTED` 13 → 12. Cataloguer went to 6c
+(above): its "[click], hosted power counter: Breach R&D" is a breach with
+no run, which the access machinery, built on `RunState`, has no door for.
+
+- **"Reveal 3 cards in HQ at random. Add 2 of the revealed cards to the
+  top and/or bottom of R&D"** puts a choice after the reveal, among the
+  cards it revealed. CR 1.21.6 keeps them visible "until the entire
+  ability is finished resolving or the card moves", and the choosing
+  parks, so the list is on the state: `GameState::revealed`, one
+  `RevealedCard { side, card }` a card.
+  - An entry comes off as its card moves (`AddToDeck`), and the list is
+    emptied when an action ends with nothing parked or queued.
+  - `CardFilter::Revealed` selects among the list. It works by card, not
+    position: a hand has no order either player sees, and two copies of
+    one card are the same card.
+  - Burner is `SetAccessReplacement` on HQ, then `RevealAtRandom` with
+    nothing to do for each card, then two selections of one revealed card.
+    Each selection's `then` offers the top or the bottom of R&D.
+  - A selection of at least one with nothing eligible is skipped, so a
+    thinner HQ adds what it has.
+- **`RevealAtRandom`'s `then` is now `each`, and optional.** 6a's
+  resolution-context flag (`revealed_in_hand`) is gone. `AddToDeck` reads
+  the list instead, so it takes a revealed card from the hand it was
+  revealed in, and in the open, whichever effect moves it.
+- **The view carries the list** (`ClientView::revealed`: shown to both, so
+  the same to both). `hud::in_effect` draws it in both clients ("revealed
+  in HQ: Hedge Fund"), and the chooser's pop-up already draws the
+  candidates as their cards.
+- **`determinize` seats each revealed card in the sampled hand.** Revealed
+  is known, and a sample that drew HQ anew had nothing for Burner's
+  selection to offer, so both it and `resample_hidden` put the revealed
+  cards back over cards that are not.
+- **Deck** — Safety Net: two Burner for the two Jailbreak, a run on HQ for
+  a run on HQ or R&D.
+- **Real play**, 96 games of Retirement Package against Safety Net (seed
+  2): played 36 times by random seats, with 15 breaches of HQ replaced;
+  **never by the heuristic Runner**.
+- **DSL ratio (`pool_status.py`): 19 of 83 `Effect` variants single-use,
+  1 unused**, over 303 card files (20 of 83 over 302 before):
+  `RevealAtRandom` has its second card.
+- **Measured.** Both sweeps at 256 seeds are green. Against `origin/main`
+  (6a), `coverage_identical.py` has both random seatings **identical** and
+  the heuristic ones moved by one game (Corp agenda wins 71 → 70 of 192,
+  Runner agenda wins 106 → 107). A ref with the engine changes and without
+  Burner and the deck is identical to `main` in all four shapes, so the
+  heuristic movement is `determinize` sampling a new Runner card.
 
 ### 3. The Automata Initiative — 65 cards (C 14 / V 35 / M 16)
 

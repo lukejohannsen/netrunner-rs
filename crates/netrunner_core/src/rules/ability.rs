@@ -125,12 +125,6 @@ pub struct ResolutionContext<'a> {
     /// leaves. On the context because the effect that reads it resolves
     /// without parking.
     pub set_aside: Vec<CardId>,
-    /// The acting card is one `Effect::RevealAtRandom` revealed in its
-    /// owner's hand, so `AddToDeck` takes it from there — not from the
-    /// heap, which it otherwise searches first and where another copy may
-    /// be — and says so in the open: both players saw it. On the context
-    /// because the `then` it is read by never parks (`validate`).
-    pub revealed_in_hand: bool,
 }
 
 /// What `ResolutionContext::last_known` remembers of an install.
@@ -718,9 +712,10 @@ pub fn evaluate_effect(
             crate::rules::turn::force_action_phase_end(state, side, registry)
         }
 
-        // Drawn together and first, so the `then` that moves one cannot be
-        // dealt it again; revealed, so each is public (CR 1.21.3).
-        Effect::RevealAtRandom { side, count, then } => {
+        // Drawn together and first, so the `each` that moves one cannot be
+        // dealt it again; revealed, so each is public (CR 1.21.3) and stays
+        // so until it moves (`GameState::revealed`).
+        Effect::RevealAtRandom { side, count, each } => {
             let mut hand: Vec<CardId> = match side {
                 Side::Corp => state.corp.hq.clone(),
                 Side::Runner => state.runner.grip.clone(),
@@ -732,11 +727,15 @@ pub fn evaluate_effect(
             }
             let mut events = Vec::new();
             for card in &drawn {
+                state.revealed.push(crate::rules::state::RevealedCard { side: *side, card: card.clone() });
                 events.push(GameEvent::CardRevealed { side: *side, card: card.clone() });
-                let mut revealed = ResolutionContext::for_card(Some(card));
-                revealed.prompting_card = ctx.prompting_card.or(acting_card);
-                revealed.revealed_in_hand = true;
-                events.extend(evaluate_effect(state, then, &mut revealed, registry)?);
+            }
+            if let Some(each) = each {
+                for card in &drawn {
+                    let mut revealed = ResolutionContext::for_card(Some(card));
+                    revealed.prompting_card = ctx.prompting_card.or(acting_card);
+                    events.extend(evaluate_effect(state, each, &mut revealed, registry)?);
+                }
             }
             Ok(events)
         }
@@ -987,7 +986,7 @@ pub fn evaluate_effect(
             let place = |deck: &mut Vec<CardId>, card: CardId| if top { deck.push(card) } else { deck.insert(0, card) };
             if registry.get(&card_id).is_some_and(|card| card.side == Side::Corp) {
                 let in_hq = state.corp.hq.iter().position(|c| c == &card_id);
-                if ctx.revealed_in_hand {
+                if take_revealed(state, Side::Corp, &card_id) {
                     return Ok(in_hq.map_or_else(Vec::new, |position| {
                         let card = state.corp.hq.remove(position);
                         place(&mut state.corp.r_and_d, card.clone());
@@ -1022,7 +1021,7 @@ pub fn evaluate_effect(
                 events.push(GameEvent::CardAddedToDeck { side: Side::Runner, card, top, revealed: true });
                 return Ok(events);
             }
-            if ctx.revealed_in_hand {
+            if take_revealed(state, Side::Runner, &card_id) {
                 let Some(position) = state.runner.grip.iter().position(|c| c == &card_id) else { return Ok(Vec::new()) };
                 state.runner.grip.remove(position);
                 place(&mut state.runner.stack, card_id.clone());
@@ -3036,6 +3035,17 @@ pub(crate) fn pay_cost_ctx(
 /// player to do it — Noise's "the Corp trashes the top card of R&D" —
 /// is still read as its controller's; nothing in the pool hears the
 /// difference yet.
+/// Whether `card` is one revealed in `side`'s hand (`GameState::revealed`),
+/// taking it off the list if so: a revealed card that moves is revealed no
+/// longer (CR 1.21.6). `AddToDeck` asks, so it takes the card from the hand
+/// it was revealed in — not the heap, which it otherwise searches first —
+/// and moves it in the open.
+fn take_revealed(state: &mut GameState, side: Side, card: &CardId) -> bool {
+    let Some(at) = state.revealed.iter().position(|revealed| revealed.side == side && &revealed.card == card) else { return false };
+    state.revealed.remove(at);
+    true
+}
+
 fn carried_out_by(registry: &CardRegistry, ctx: &ResolutionContext<'_>) -> Option<Side> {
     ctx.acting_card.and_then(|card| registry.get(card)).map(|definition| definition.side)
 }

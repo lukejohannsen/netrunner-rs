@@ -437,6 +437,12 @@ fn apply_action_once(
     // step ended it, and the window after an action follows it (5.7.1e).
     let finished_a_run = state.active_run.is_some() && next.active_run.is_none();
     events.extend(open_post_action_window(&mut next, registry, &action_kind, finished_a_run));
+    // A revealed card is visible "until the entire ability is finished
+    // resolving" (CR 1.21.6): with nothing parked and nothing queued,
+    // every ability this action began has finished.
+    if !next.is_resolution_blocked() && next.deferred_triggers.is_empty() && next.pending_payment.is_none() {
+        next.revealed.clear();
+    }
     #[cfg(debug_assertions)]
     dispatcher::audit::check(&next, &events);
     Ok((next, events))

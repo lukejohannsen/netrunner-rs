@@ -1079,18 +1079,28 @@ pub enum Effect {
     /// with its rezzes and scores, which 5.4.3a skips.
     EndActionPhase,
     /// Reveals `count` cards at random from `side`'s hand — HQ or the grip
-    /// — and resolves `then` as each in turn: Bring Them Home's "Reveal and
-    /// add 2 cards at random from the grip to the top of the stack" is
-    /// `then: AddToDeck(Top)`, and its threat's "reveal 1 card in the grip
-    /// at random. The Runner shuffles it into the stack" adds a shuffle.
-    /// The cards are drawn together, before any moves, with the state's
-    /// own PRNG, so a `then` that moves one cannot be dealt it twice;
-    /// fewer in the hand, fewer revealed. `then` must not park
+    /// — and, with `each`, resolves it as each card in turn: Bring Them
+    /// Home's "Reveal and add 2 cards at random from the grip to the top of
+    /// the stack" is `each: AddToDeck(Top)`, and its threat's "reveal 1
+    /// card in the grip at random. The Runner shuffles it into the stack"
+    /// adds a shuffle. The cards are drawn together, before any moves, with
+    /// the state's own PRNG, so an `each` that moves one cannot be dealt it
+    /// twice; fewer in the hand, fewer revealed. They stay revealed until
+    /// they move or the ability has finished (`GameState::revealed`, CR
+    /// 1.21.6), so a later step can choose among them: Burner's "reveal 3
+    /// cards in HQ at random. Add 2 of the revealed cards to the top and/or
+    /// bottom of R&D" reveals with no `each` and selects over
+    /// `CardFilter::Revealed`. `each` must not park
     /// (`CardDefinition::validate`): the cards after it would be dropped.
     /// Composition didn't work: `TrashCard(RandomFromHq)` trashes what it
     /// draws and nothing else, and every other card an effect acts on is
     /// one a player chose or the acting card.
-    RevealAtRandom { side: crate::rules::Side, count: u32, then: Box<Effect> },
+    RevealAtRandom {
+        side: crate::rules::Side,
+        count: u32,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        each: Option<Box<Effect>>,
+    },
     /// Places `0` advancement counters on `acting_card` — e.g. Seamless
     /// Launch's "place 2 advancement counters on 1 installed card", Flood
     /// the Market's "1 advancement counter … for each remote server that
@@ -1683,7 +1693,6 @@ impl Effect {
             | Effect::Trace { on_success: effect, .. }
             | Effect::SetRunEndedEffect(effect)
             | Effect::WhenThisTurnEnds(effect)
-            | Effect::RevealAtRandom { then: effect, .. }
             | Effect::ChooseNumber { then: effect, .. }
             | Effect::SetAccessReplacement { effect, .. } => effect.for_each_effect(f),
             Effect::OfferPaidChoice { if_paid, if_declined, .. } => {
@@ -1697,6 +1706,8 @@ impl Effect {
                 }
             }
             Effect::PromptChooseCards { then: None, .. } => {}
+            Effect::RevealAtRandom { each: Some(effect), .. } => effect.for_each_effect(f),
+            Effect::RevealAtRandom { each: None, .. } => {}
             Effect::PromptInstallCorpCard { then, if_rezzed, if_installed, .. } => {
                 for effect in [then, if_rezzed, if_installed].into_iter().flatten() {
                     effect.for_each_effect(f);

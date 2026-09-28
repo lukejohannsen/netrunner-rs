@@ -840,6 +840,8 @@ pub fn determinize(view: &ClientView, registry: &CardRegistry, rng: &mut impl Rn
         // run and turn, which are the view's.
         lingering: view.lingering.clone(),
         delayed: view.delayed.clone(),
+        // Public: both players were shown each card.
+        revealed: view.revealed.clone(),
         deferred_triggers: Vec::new(),
         seed: rng.random(),
         rng_step: 0,
@@ -847,8 +849,40 @@ pub fn determinize(view: &ClientView, registry: &CardRegistry, rng: &mut impl Rn
         // Public, and the win threshold the search plays toward.
         rules: view.rules,
     };
+    let mut state = state;
+    seat_revealed(&mut state);
     debug_assert_strengths_agree(&state, view, registry);
     state
+}
+
+/// Puts each card revealed in a hand the viewer cannot see
+/// (`GameState::revealed`) into the sampled hand, over a card that is not
+/// one of them. Revealed is known: a sample that drew Burner's three cards
+/// out of HQ anew had nothing for the Runner to choose, and every
+/// `CardFilter::Revealed` selection in it failed.
+fn seat_revealed(state: &mut GameState) {
+    for side in [Side::Corp, Side::Runner] {
+        let wanted: Vec<CardId> = state.revealed.iter().filter(|revealed| revealed.side == side).map(|revealed| revealed.card.clone()).collect();
+        let hand = match side {
+            Side::Corp => &mut state.corp.hq,
+            Side::Runner => &mut state.runner.grip,
+        };
+        // Which positions already hold a revealed card, a copy each.
+        let mut kept = vec![false; hand.len()];
+        let mut missing = Vec::new();
+        for card in wanted {
+            match (0..hand.len()).find(|&at| !kept[at] && hand[at] == card) {
+                Some(at) => kept[at] = true,
+                None => missing.push(card),
+            }
+        }
+        for card in missing {
+            if let Some(at) = (0..hand.len()).find(|&at| !kept[at]) {
+                hand[at] = card;
+                kept[at] = true;
+            }
+        }
+    }
 }
 
 /// A sample's strengths are the view's. Both are public and both are the
@@ -940,6 +974,7 @@ pub fn resample_hidden(state: &mut GameState, view: &ClientView, registry: &Card
             installed.hosted_cards = pools.draw_n(Slot::RunnerAny, installed.hosted_cards.len());
         }
     }
+    seat_revealed(state);
     // A breach already under way reaches cards of the zones just re-drawn.
     if let Some(run) = state.active_run.as_mut() {
         draw_from_zone(run, &state.corp, rng);
@@ -1247,6 +1282,24 @@ mod tests {
 
         let sample = determinize(&view, &registry, &mut rng);
         assert_eq!(sample.runner.grip, vec![CardId("sure_gamble".to_string())]);
+    }
+
+    /// A card revealed in HQ is known to the Runner, so every sample holds
+    /// it there, however HQ is otherwise drawn — and a redraw keeps it too.
+    #[test]
+    fn a_card_revealed_in_hq_is_in_every_sample_of_it() {
+        let mut state = state_with_hidden_zones();
+        let revealed = state.corp.hq[0].clone();
+        state.revealed = vec![netrunner_core::rules::RevealedCard { side: Side::Corp, card: revealed.clone() }];
+        let registry = registry();
+        let view = build_client_view(&state, &registry, Side::Runner);
+        for seed in 0..16 {
+            let mut sample = determinize(&view, &registry, &mut StdRng::seed_from_u64(seed));
+            assert!(sample.corp.hq.contains(&revealed), "seed {seed}");
+            assert_eq!(sample.corp.hq.len(), view.corp.hq_count);
+            resample_hidden(&mut sample, &view, &registry, &mut StdRng::seed_from_u64(seed + 100));
+            assert!(sample.corp.hq.contains(&revealed), "seed {seed}, redrawn");
+        }
     }
 
     #[test]

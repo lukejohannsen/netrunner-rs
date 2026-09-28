@@ -271,6 +271,15 @@ impl ArchivedCard {
     }
 }
 
+/// A card revealed in `side`'s hand (`GameState::revealed`). By card, not
+/// position: a hand has no order a player sees, and two copies of one card
+/// are the same card to both of them.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RevealedCard {
+    pub side: Side,
+    pub card: CardId,
+}
+
 /// One use of an `EffectRequirement::OncePerTurn` gate this turn: the card
 /// that printed it, and which copy.
 ///
@@ -1462,6 +1471,15 @@ pub struct GameState {
     /// "When this turn ends, …".
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub delayed: Vec<crate::rules::lingering::DelayedAbility>,
+    /// Cards revealed in their owner's hand and still there (CR 1.21.6:
+    /// visible "until the entire ability is finished resolving or the card
+    /// moves") — Burner's three cards out of HQ, which the Runner then
+    /// chooses among (`CardFilter::Revealed`). On the state because the
+    /// choosing parks. Taken off as each card moves (`Effect::AddToDeck`)
+    /// and emptied when an action ends with nothing parked or queued, which
+    /// is when the ability that revealed them has finished.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub revealed: Vec<RevealedCard>,
     /// What has happened this turn, counted where it is heard — see
     /// `rules::turn_log`. Never add a `*_this_turn` field beside it.
     #[serde(default)]
@@ -1563,6 +1581,7 @@ impl Default for GameState {
             last_completed_run: None,
             lingering: Vec::new(),
             delayed: Vec::new(),
+            revealed: Vec::new(),
             this_turn: TurnLog::default(),
             last_turn: TurnLog::default(),
             deferred_triggers: Vec::new(),

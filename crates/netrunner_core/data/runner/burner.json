@@ -1,0 +1,92 @@
+{
+  "id": "burner",
+  "title": "Burner",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 1,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "InitiateRun": "Hq"
+        },
+        {
+          "SetAccessReplacement": {
+            "server": "Hq",
+            "optional": false,
+            "effect": {
+              "Sequence": [
+                {
+                  "RevealAtRandom": {
+                    "side": "Corp",
+                    "count": 3
+                  }
+                },
+                {
+                  "PromptChooseCards": {
+                    "side": "Runner",
+                    "source": "OpponentHand",
+                    "filter": "Revealed",
+                    "min": 1,
+                    "max": 1,
+                    "reveal": false,
+                    "shuffle_after": false,
+                    "then": {
+                      "PresentChoice": {
+                        "chooser": "Runner",
+                        "options": [
+                          {
+                            "AddToDeck": "Top"
+                          },
+                          {
+                            "AddToDeck": "Bottom"
+                          }
+                        ],
+                        "texts": [
+                          "Add 2 of the revealed cards to the top and/or bottom of R&D — the top",
+                          "Add 2 of the revealed cards to the top and/or bottom of R&D — the bottom"
+                        ]
+                      }
+                    }
+                  }
+                },
+                {
+                  "PromptChooseCards": {
+                    "side": "Runner",
+                    "source": "OpponentHand",
+                    "filter": "Revealed",
+                    "min": 1,
+                    "max": 1,
+                    "reveal": false,
+                    "shuffle_after": false,
+                    "then": {
+                      "PresentChoice": {
+                        "chooser": "Runner",
+                        "options": [
+                          {
+                            "AddToDeck": "Top"
+                          },
+                          {
+                            "AddToDeck": "Bottom"
+                          }
+                        ],
+                        "texts": [
+                          "Add 2 of the revealed cards to the top and/or bottom of R&D — the top",
+                          "Add 2 of the revealed cards to the top and/or bottom of R&D — the bottom"
+                        ]
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "numeric_id": 34085,
+  "is_playable": true
+}

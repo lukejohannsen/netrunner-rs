@@ -271,6 +271,15 @@ pub enum CardFilter {
     /// re-finds the card by) the whole of R&D. The top of R&D and of the
     /// stack is the *end* of the `Vec` — see `zone_card_ids`.
     TopOfZone(u32),
+    /// A card revealed in its owner's hand by the ability still resolving
+    /// (`GameState::revealed`) — Burner's "Add 2 of the revealed cards to
+    /// the top and/or bottom of R&D". Instance-level, like `TopOfZone`:
+    /// which card was revealed is state, not the card's definition. By card
+    /// rather than position, so two copies in HQ with one revealed are both
+    /// eligible; they are the same card, and a selection of one takes it
+    /// off the list. Composition didn't work: nothing else names cards an
+    /// earlier step picked at random.
+    Revealed,
     /// Ice of exactly this subtype — Mycoweb's "a rezzed **sentry**" and
     /// "another rezzed **code gate**". `CardType(Ice(_))`'s payload is
     /// explicitly a don't-care (see this module's `card_matches_filter`
@@ -403,7 +412,7 @@ pub fn card_matches_filter(card: &CardDefinition, filter: &CardFilter) -> bool {
         // requirement are instance-level.
         CardFilter::PlayableOperation => card.card_type == CardType::Operation,
         // Purely instance-level: where the card sits in its zone.
-        CardFilter::TopOfZone(_) => true,
+        CardFilter::TopOfZone(_) | CardFilter::Revealed => true,
         CardFilter::IceOfType(ice_type) => matches!(&card.card_type, CardType::Ice(t) if t == ice_type),
         CardFilter::InstallableRunnerCardWithDiscount(_) => card_matches_filter(card, &CardFilter::InstallableRunnerCard),
         // Instance-level, not definition-level — see the variant's doc
