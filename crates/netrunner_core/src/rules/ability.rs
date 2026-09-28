@@ -613,7 +613,13 @@ pub fn evaluate_effect(
                 state,
                 registry,
                 &mut events,
-                GameEvent::CardInstalled { side: Side::Corp, install: install_id, card: Some(card_id.clone()), server: *into },
+                GameEvent::CardInstalled {
+                    side: Side::Corp,
+                    install: install_id,
+                    card: Some(card_id.clone()),
+                    server: *into,
+                    from_hq: matches!(origin_zone, crate::dsl::CardZoneRef::OwnHq),
+                },
             )?;
             Ok(events)
         }
@@ -1692,6 +1698,7 @@ pub fn evaluate_effect(
                 false,
                 0,
                 false,
+                false,
             )?);
             Ok(events)
         }
@@ -2639,6 +2646,7 @@ pub(crate) fn cost_is_affordable(
         Cost::Derez { filter, count } => derez_eligible(state, registry, side, filter, ctx).len() >= *count as usize,
         Cost::TrashSelf | Cost::RemoveSelfFromGame | Cost::TakeTags(_) | Cost::ClearTags => true,
         Cost::TrashRandomFromHq(count) => state.corp.hq.len() as u32 >= *count,
+        Cost::RevealSelf | Cost::AddSelfToHq => side == Side::Corp && acting_corp_install(state, ctx).is_some(),
         // Payable while the card is in its owner's hand.
         Cost::RevealAndTrashSelf => ctx.acting_card.is_some_and(|card| match side {
             Side::Corp => state.corp.hq.contains(card),
@@ -2772,6 +2780,24 @@ pub(crate) fn pay_cost_ctx(
         }
 
         Cost::RemoveSelfFromGame => remove_this_card_from_game(state, registry, ctx),
+
+        // Shown and left as it was (CR 1.21.3a): still facedown, and
+        // remembered by the Runner as an accessed card is.
+        Cost::RevealSelf => {
+            let card_id = acting_card.ok_or(RulesError::MissingActingCardContext)?.clone();
+            let position = acting_corp_position(state, ctx).ok_or_else(|| RulesError::CardNotInstalled { card: card_id.clone() })?;
+            state.corp.installed[position].seen_by_runner = true;
+            Ok(vec![GameEvent::CardRevealed { side: Side::Corp, card: card_id }])
+        }
+
+        Cost::AddSelfToHq => {
+            let card_id = acting_card.ok_or(RulesError::MissingActingCardContext)?.clone();
+            let install = acting_corp_install(state, ctx).map(|installed| installed.install_id).ok_or_else(|| RulesError::CardNotInstalled { card: card_id.clone() })?;
+            let (removed, mut events) = uninstall::corp_install(state, registry, install)?.ok_or_else(|| RulesError::CardNotInstalled { card: card_id.clone() })?;
+            state.corp.hq.push(removed.card.clone());
+            events.push(GameEvent::CardAddedToHand { side: Side::Corp, card: Some(removed.card), install, faceup: removed.rezzed });
+            Ok(events)
+        }
 
         Cost::ClearTags => {
             state.runner.tags = 0;
@@ -3402,6 +3428,7 @@ pub(crate) fn resolve_amount(amount: &Amount, ctx: &ResolutionContext<'_>, state
         // `then` resolves; read anywhere else it is nothing.
         Amount::ChosenNumber => 0,
         Amount::AgendaPointsScoredThisTurn => state.this_turn.agenda_points_scored(),
+        Amount::CardsInstalledFromHqThisTurn => state.this_turn.installed_from_hq(),
         Amount::TimesThisTurn(trigger) => state.this_turn.times(*trigger),
         Amount::TimesThisTurnWhen { trigger, when } => {
             let controller = ctx.acting_card.and_then(|card| registry.get(card)).map_or(Side::Runner, |card| card.side);

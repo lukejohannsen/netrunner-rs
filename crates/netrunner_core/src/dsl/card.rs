@@ -1085,6 +1085,9 @@ impl CardDefinition {
                 Some(EventFilter::AtLeast(_)) => about == TriggerAbout::Cards,
                 // Only a moment that names a player can be made one's.
                 Some(EventFilter::Whose(_)) => triggered.trigger.states_whose(),
+                // Only a Corp install's moment says where the card came
+                // from (`listeners::Moment::from_hq`).
+                Some(EventFilter::InstalledFromHq(_)) => triggered.trigger == Trigger::OnInstall && self.side == crate::rules::Side::Corp,
                 // Only what the moment states: a pass says whether the ice
                 // was outermost and fully broken, a break its strength.
                 Some(EventFilter::Ice(required)) => {

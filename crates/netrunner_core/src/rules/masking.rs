@@ -741,10 +741,17 @@ pub fn mask_event_for_player(event: &GameEvent, state: &GameState, viewer: impl 
         // card hit the table. Dropping the whole event instead was a real
         // loss for an install a card's own text performed (Ansel 1.0):
         // no action names one, so the Runner's log had no record of it.
-        GameEvent::CardInstalled { side: Side::Corp, install, card: Some(card), server } if concealed(card) => {
-            Some(GameEvent::CardInstalled { side: Side::Corp, install: *install, card: None, server: *server })
+        GameEvent::CardInstalled { side: Side::Corp, install, card: Some(card), server, from_hq } if concealed(card) => {
+            Some(GameEvent::CardInstalled { side: Side::Corp, install: *install, card: None, server: *server, from_hq: *from_hq })
         }
         GameEvent::CardInstalled { .. } => visible(),
+        // Back to HQ from the table: a card that was rezzed there is named
+        // to everyone, a facedown one only to its owner — struck out, as an
+        // install is, since the handle and the empty root are public.
+        GameEvent::CardAddedToHand { side, faceup: false, install, .. } if !viewer.is(*side) => {
+            Some(GameEvent::CardAddedToHand { side: *side, card: None, install: *install, faceup: false })
+        }
+        GameEvent::CardAddedToHand { .. } => visible(),
         // A discard has no install to name — it never reached the table —
         // so it is still dropped whole. `turn::discard_to_pile` sends an
         // HQ discard facedown because the Runner never saw it.
@@ -2116,7 +2123,7 @@ mod tests {
             side: Side::Corp,
             install: InstallId(1069),
             card: Some(id("ice_wall")),
-            server: ServerId::Hq,
+            server: ServerId::Hq, from_hq: true,
         };
         assert_eq!(
             mask_event_for_player(&installed, &state, Side::Runner),
@@ -2124,7 +2131,7 @@ mod tests {
                 side: Side::Corp,
                 install: InstallId(1069),
                 card: None,
-                server: ServerId::Hq,
+                server: ServerId::Hq, from_hq: true,
             }),
             "the Runner keeps which install and where, never what"
         );
@@ -2135,7 +2142,7 @@ mod tests {
             side: Side::Corp,
             install: InstallId(1070),
             card: Some(id("enigma")),
-            server: ServerId::RnD,
+            server: ServerId::RnD, from_hq: true,
         };
         assert_eq!(mask_event_for_player(&rezzed, &state, Side::Runner), Some(rezzed.clone()));
 
@@ -2477,7 +2484,7 @@ mod tests {
             side: Side::Corp,
             install: InstallId(1069),
             card: Some(id("ice_wall")),
-            server: ServerId::Hq,
+            server: ServerId::Hq, from_hq: true,
         };
         assert_eq!(
             mask_event_for_player(&corp_install, &state, Viewer::Spectator),
@@ -2485,7 +2492,7 @@ mod tests {
                 side: Side::Corp,
                 install: InstallId(1069),
                 card: None,
-                server: ServerId::Hq,
+                server: ServerId::Hq, from_hq: true,
             })
         );
         assert_eq!(mask_event_for_player(&runner_secret, &state, Viewer::Spectator), None);

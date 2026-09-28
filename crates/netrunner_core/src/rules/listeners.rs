@@ -72,6 +72,10 @@ pub(crate) struct Moment {
     /// run (`Trigger::is_about_ice_in_a_run`) — read off the event, so a
     /// `when` asked again where the trigger fires gets the same answer.
     pub ice: Option<IceFacts>,
+    /// Whether an install came out of HQ, for a Corp install's moment —
+    /// read off the event (`GameEvent::CardInstalled::from_hq`) for the
+    /// same reason as `ice`.
+    pub from_hq: Option<bool>,
 }
 
 /// A card that may hear a moment.
@@ -94,7 +98,7 @@ struct Listener {
 /// `GameEvent` is a decision made here rather than a silence.
 pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
     let card = |card: &CardId, install: Option<InstallId>| About::Card { card: card.clone(), install, installed: install.is_some() };
-    let moment = |trigger, about: &About, of| Moment { trigger, about: about.clone(), of, ice: None };
+    let moment = |trigger, about: &About, of| Moment { trigger, about: about.clone(), of, ice: None, from_hq: None };
     // A moment about the ice at `position` in the run's ice. Where the run
     // or the ice has gone by the time the moment is asked again — a
     // trigger fired after the run ended — it is about nothing, and keeps
@@ -105,7 +109,7 @@ pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
             .as_ref()
             .and_then(|run| run.ice.get(position as usize))
             .map_or(About::Nothing, |ice| About::Card { card: ice.card_id.clone(), install: Some(ice.install_id), installed: true });
-        Moment { trigger, about, of: Some(Side::Runner), ice: Some(facts) }
+        Moment { trigger, about, of: Some(Side::Runner), ice: Some(facts), from_hq: None }
     };
     match event {
         GameEvent::EventPlayed { side, card: played } => {
@@ -130,8 +134,8 @@ pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
         }
         // The Corp's installs. `card` is `None` only in a masked copy of the
         // event, which the engine never dispatches.
-        GameEvent::CardInstalled { side, install, card: installed, .. } => match installed {
-            Some(installed) => vec![moment(Trigger::OnInstall, &card(installed, Some(*install)), Some(*side))],
+        GameEvent::CardInstalled { side, install, card: installed, from_hq, .. } => match installed {
+            Some(installed) => vec![Moment { from_hq: Some(*from_hq), ..moment(Trigger::OnInstall, &card(installed, Some(*install)), Some(*side)) }],
             None => Vec::new(),
         },
 
@@ -158,6 +162,7 @@ pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
         // Not scored (CR 1.17.3f), and nothing prints "when a card is added
         // to a score area".
         GameEvent::AddedToScoreAreaAsAgenda { .. } | GameEvent::AgendaAddedToScoreArea { .. } => Vec::new(),
+        GameEvent::CardAddedToHand { .. } => Vec::new(),
 
         GameEvent::IceRezzed { card: rezzed, install, .. } => vec![moment(Trigger::OnRez, &card(rezzed, Some(*install)), Some(Side::Corp))],
         GameEvent::CardAdvanced { install, card: advanced, .. } => match advanced {
@@ -441,6 +446,9 @@ fn passes(state: &GameState, registry: &CardRegistry, filter: &EventFilter, mome
     }
     if let EventFilter::Whose(side) = filter {
         return moment.of == Some(*side);
+    }
+    if let EventFilter::InstalledFromHq(from_hq) = filter {
+        return moment.from_hq == Some(*from_hq);
     }
     match (filter, &moment.about) {
         (EventFilter::Card(filter), About::Card { card, install, .. }) => {
@@ -864,7 +872,7 @@ mod tests {
         let mut state = GameState::default();
         state.corp.identity = Some(CardId("haas_bioroid_engineering_the_future".to_string()));
         let runners = GameEvent::ProgramInstalled { side: Side::Runner, card: CardId("leech".to_string()), memory_cost: 1, credits_paid: 0 };
-        let corps = GameEvent::CardInstalled { side: Side::Corp, install: InstallId(1), card: Some(CardId("pad_campaign".to_string())), server: ServerId::Remote(0) };
+        let corps = GameEvent::CardInstalled { side: Side::Corp, install: InstallId(1), card: Some(CardId("pad_campaign".to_string())), server: ServerId::Remote(0), from_hq: true };
 
         let as_of = turn_log::record(&mut state, &registry, &runners);
         assert!(super::plan_for(&state, &registry, &runners, &as_of).is_empty(), "\"you\" is the Corp");

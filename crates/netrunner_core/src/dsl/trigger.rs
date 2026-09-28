@@ -527,6 +527,14 @@ pub enum EventFilter {
     /// phase, and a `Trigger` per "the Runner's" would be the variant the
     /// Listener Rule forbids.
     Whose(crate::rules::Side),
+    /// The Corp install came out of HQ, or did not — Stoke the Embers'
+    /// "When you install this agenda **from anywhere except HQ**"
+    /// (`InstalledFromHq(false)`). Read off the moment, which the event
+    /// states (`GameEvent::CardInstalled::from_hq`). Only on `OnInstall`.
+    /// Composition didn't work: no filter read where a card came from, and
+    /// as an intervening if it would sit where the printed sentence does
+    /// not put it.
+    InstalledFromHq(bool),
 }
 
 impl Trigger {

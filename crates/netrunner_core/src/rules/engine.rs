@@ -735,7 +735,7 @@ fn install_card(
     next.corp.hq.remove(position);
 
     let mut events = vec![GameEvent::ClickSpent { side }];
-    events.extend(place_corp_card(&mut next, registry, card_id, zone, slot, true, 0, trash_first)?);
+    events.extend(place_corp_card(&mut next, registry, card_id, zone, slot, true, 0, trash_first, true)?);
     Ok((next, events))
 }
 
@@ -759,6 +759,7 @@ pub(crate) fn place_corp_card(
     pay_cost: bool,
     discount: u32,
     trash_first: bool,
+    from_hq: bool,
 ) -> Result<Vec<GameEvent>, RulesError> {
     let side = Side::Corp;
     // The registry lookup stays even though the printed cost is not paid
@@ -843,6 +844,7 @@ pub(crate) fn place_corp_card(
         install: install_id,
         card: Some(card_id),
         server: zone,
+        from_hq,
     };
 
     // Haas-Bioroid: Engineering the Future-style identity reaction — "the
@@ -3183,7 +3185,7 @@ mod tests {
                     side: Side::Corp,
                     install: next.corp.installed[0].install_id,
                     card: Some(card_id),
-                    server: ServerId::Hq,
+                    server: ServerId::Hq, from_hq: true,
                 },
             ]
         );

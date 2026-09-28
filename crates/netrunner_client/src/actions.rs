@@ -544,6 +544,13 @@ pub fn narrate_event(
             format!("stole {} for {agenda_points} point(s)", title(card))
         }
         GameEvent::AgendaForfeited { card } => format!("forfeited {}", title(card)),
+        GameEvent::CardAddedToHand { side, card, .. } => {
+            let hand = if *side == Side::Corp { "HQ" } else { "the grip" };
+            match card {
+                Some(card) => format!("{} went back to {hand}", title(card)),
+                None => format!("a facedown card went back to {hand}"),
+            }
+        }
         GameEvent::AgendaAddedToScoreArea { card, agenda_points } => {
             format!("added {} to the Corp's score area for {agenda_points} point(s)", title(card))
         }
@@ -1165,7 +1172,7 @@ mod tests {
             side: Side::Corp,
             install: InstallId(7),
             card: None,
-            server: ServerId::Remote(0),
+            server: ServerId::Remote(0), from_hq: true,
         };
         let clicked = PublicAction::Concealed(ConcealedAction::InstallCard {
             zone: ServerId::Remote(0),

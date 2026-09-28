@@ -1263,6 +1263,12 @@ pub enum Amount {
     /// cards in Archives". Types, not subtypes, so every piece of ice is one
     /// type. No amount counted distinct kinds of anything.
     CardTypesAmongFaceupInArchives,
+    /// The Corp's installs of a card out of HQ this turn (`rules::
+    /// turn_log`'s sum beside the cells) — The Holo Man's "If you have not
+    /// installed any cards from HQ this turn", `Not(AmountAtLeast(.., 1))`.
+    /// Composition didn't work: `TimesThisTurn(OnInstall)` counts an
+    /// install from Archives or R&D as well.
+    CardsInstalledFromHqThisTurn,
     /// Credits actually removed by the most recent `Effect::LoseCredits`
     /// **in this same resolution** (`ResolutionContext::credits_lost` —
     /// the printed amount capped by what the side had), the same
