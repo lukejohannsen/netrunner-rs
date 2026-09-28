@@ -1888,9 +1888,13 @@ reaches Vantage Point's cards by building a deck.
    install came from, and a card returned to HQ as a cost (built, below):
    The Holo Man, Stoke the Embers, Janaína “JK” Dumont Kindelán. Stage 4
    is complete.
-5. **Corp ice and rez words:** Lightning Laboratory, Warm Reception,
-   Working Prototype, Brasília Government Grid, Sorocaban Blade, Hammer,
-   Cloud Eater, Piranhas, Sudden Commandment, Nuvem SA: Law of the Land, The Basalt Spire.
+5. **Corp ice and rez words**, in four parts when it was taken: **5a**, a
+   rez's price, counters on a rez and a mandate (built, below): Piranhas,
+   Working Prototype, Sudden Commandment; **5b**, ice that limits what
+   happens in its encounter: Hammer, Sorocaban Blade, Cloud Eater; **5c**,
+   derez words: Brasília Government Grid, Warm Reception, Lightning
+   Laboratory; **5d**, a Weyland identity and its agenda: Nuvem SA: Law of
+   the Land, The Basalt Spire, on a Sweep deck of Nuvem's own.
 6. **Terminal, reveal, set aside, arrange, X:** Active Policing, Bring
    Them Home, Burner, The Wizard’s Chest, Cataloguer, Lobisomem.
 7. **Expendable, moving ice, psi, re-encounter:** Eminent Domain, Descent,
@@ -2592,6 +2596,63 @@ complete.**
   and the event — and without the three cards and the deck swap is
   **identical in all four shapes**, so the movement is `determinize`
   sampling three new Corp cards.
+
+#### Stage 5a — a rez's price, counters on a rez, a mandate (28 September 2026)
+
+`feat/rwr-stage-5a-piranhas-working-prototype-sudden-commandment`:
+Piranhas, Working Prototype, Sudden Commandment. **No new `Effect` or
+`Trigger`.** Rebellion Without Rehearsal 42 of 65; `RWR_UNIMPLEMENTED`
+26 → 23. Stage 5 was split in four when it was taken (the plan, above).
+
+- **Piranhas's additional rez cost** is two `rez_alternatives`, as
+  Plutus's is: "take 1 bad publicity" (`Cost::TakeBadPublicity`, the Corp
+  twin of `TakeTags`, never prevented and heard as bad publicity taken
+  through `dispatch_cost_events`) or "remove 1 tag" (`Cost::RemoveTags`).
+  With one payable it is taken unasked; with both the Corp is asked
+  (`payment::Ask::Alternative`), and paid with the rez (CR 1.16.10b). "End
+  the run if there are more cards in HQ than in the grip" compares two
+  numbers the state decides (`EffectRequirement::MoreThan` over
+  `Amount::CardsInHand`), where `AmountAtLeast` compares one with a number
+  the file writes.
+- **Working Prototype** composes: "whenever you rez a card (including this
+  asset)" is `OnRez` about `Any` — the subject of a rez hears it, so its own
+  counts — and "add 1 installed resource to the top of the stack" is a
+  selection out of the rig onto the Runner's deck, which lands on top.
+- **Sudden Commandment's "the first mandate you played this turn"** is a
+  turn-log column (`turn_log::Kind::MandateOperation`), as Synchrocyclotron's
+  double operation was, read by `TimesThisTurnWhen`. It is judged as the
+  operation begins to resolve and the threat level as the clause is
+  reached (CR 9.3.6f, after the operation it plays): the card is two
+  branches, not-first ahead of first, so a second copy played out of HQ
+  neither takes the first's click nor gives one of its own. "Play 1
+  non-terminal operation from HQ" waits on a card having been chosen.
+- **Client:** nothing new reaches the view; `prose` has words for the cost
+  and the amount.
+- **Decks** — Paid Content: two Piranhas for a Funhouse and a Paywall,
+  rezzed off the deck's tags, and two Sudden Commandment for two Predictive
+  Planogram. Retirement Package: two Working Prototype for the NICO
+  Campaign and the Government Subsidy.
+- **Real play**, 96 games against Safety Net (seed 2). Paid Content,
+  random seats: Piranhas installed 118 times, rezzed 14, 93 subroutines
+  fired; Sudden Commandment played 64 times. Heuristic seats: Piranhas
+  rezzed 24 times and 180 subroutines fired; **the heuristic Corp never
+  plays Sudden Commandment**. Retirement Package: Working Prototype rezzed
+  94 times with random seats and heard 300 rezzes; its abilities were used
+  104 times, and 290 by the heuristic Corp.
+- **Fidelity limits:** none found beyond the pool's: Sudden Commandment is
+  the catalog's only mandate, and no card names a terminal operation's
+  end of the action phase yet (Stage 6), so "non-terminal" only narrows
+  the choice.
+- **DSL ratio (`pool_status.py`): 17 of 80 `Effect` variants single-use,
+  2 unused**, over 292 card files (17 of 80 over 289 before).
+- **Measured.** Both sweeps at 256 seeds are green. Against `origin/main`
+  (4c), `coverage_identical.py` has the random seatings **identical**, by
+  view and by index; the heuristic ones moved (Corp agenda wins 66 of 192
+  unchanged, flatlines 16 → 15, Runner agenda wins 109 → 111, deck-outs
+  1 → 0). Checked, not inferred: a ref with the engine changes — the
+  cost, the requirement and its amount, the mandate column — and without
+  the three cards and the deck swaps is **identical in all four shapes**,
+  so the movement is `determinize` sampling three new Corp cards.
 
 ### 3. The Automata Initiative — 65 cards (C 14 / V 35 / M 16)
 
