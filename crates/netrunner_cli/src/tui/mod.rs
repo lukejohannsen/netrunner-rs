@@ -1567,6 +1567,10 @@ fn run_phase_strip(phase: RunPhase) -> Line<'static> {
 /// than a keypress away in the card sheet because an encounter is
 /// decided in, not read about afterwards.
 fn format_run(view: &ClientView, run: &netrunner_core::rules::PublicRunState, registry: &CardRegistry) -> Vec<Line<'static>> {
+    // A breach with no run (Cataloguer's) has no ice to count.
+    if run.breach_only {
+        return vec![Line::from(format!("Breach of {}", server_label(run.server)))];
+    }
     let mut lines = vec![Line::from(format!("Run on {} (ICE {}/{})", server_label(run.server), run.position, run.ice.len()))];
     let met = netrunner_client::board::encounter_subroutines(view);
     for (index, ice) in run.ice.iter().enumerate() {
@@ -2153,6 +2157,7 @@ mod tests {
             }),
             jack_out_permitted: false,
             declared_successful: false,
+            breach_only: false,
             bad_publicity_credits: 0,
             bonus_run_credits: 0,
             redirect_on_approach: None,

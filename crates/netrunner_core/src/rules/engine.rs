@@ -1251,6 +1251,7 @@ fn complete_run(
         if let Some(run) = next.active_run.as_mut() {
             run.access_replacement = None;
             run.access_replacement_card = None;
+            run.access_replacement_install = None;
         }
         let mut events = vec![GameEvent::RunNotDeclaredSuccessful { server }];
         events.extend(run::breach(&mut next, registry)?);

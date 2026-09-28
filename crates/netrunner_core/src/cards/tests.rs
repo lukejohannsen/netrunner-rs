@@ -15009,4 +15009,71 @@ mod rebellion_without_rehearsal {
         assert!(state.pending_decision.is_none(), "no second card to choose");
         assert!(state.revealed.is_empty());
     }
+
+    // ---- Stage 6c: a breach with no run ----
+
+    fn with_cataloguer(counters: u32) -> GameState {
+        let mut state = runner_turn();
+        state.runner.rig = vec![crate::rules::InstalledRunnerCard { card: id("cataloguer"), install_id: fixture_install_id("cataloguer"), counters, ..Default::default() }];
+        state.corp.r_and_d = vec![id("ice_wall"), id("enigma"), id("hedge_fund"), id("pad_campaign"), id("offworld_office")];
+        state
+    }
+
+    fn successful_rnd_run(state: &GameState, registry: &CardRegistry) -> GameState {
+        let (state, _) = apply_action(state, registry, PlayerAction::InitiateRun { server: ServerId::RnD }).expect("run R&D");
+        let (state, _) = crate::rules::test_support::through_movement(&state, registry).expect("to the server");
+        apply_action(&state, registry, PlayerAction::CompleteRun).expect("successful").0
+    }
+
+    #[test]
+    fn cataloguer_may_spend_a_counter_to_arrange_the_top_four_of_rnd_instead_of_breaching() {
+        let registry = registry();
+        let state = successful_rnd_run(&with_cataloguer(2), &registry);
+        assert!(state.pending_decision.is_some(), "instead of breaching, you may");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("remove a counter");
+        assert_eq!(state.runner.rig[0].counters, 1);
+        // Arrange: the bottom of the four on top, then the top card under it.
+        let view = crate::view::build_client_view(&state, &registry, Side::Runner);
+        assert_eq!(view.selection.len(), 4, "the top four, shown to the Runner");
+        let (bottom_of_four, top) = (view.selection[0].position, view.selection[3].position);
+        let state = select(&state, &registry, &[bottom_of_four, top]);
+        assert_eq!(state.corp.r_and_d, vec![id("ice_wall"), id("hedge_fund"), id("pad_campaign"), id("offworld_office"), id("enigma")]);
+        assert!(state.active_run.is_none(), "the run is over, nothing accessed");
+        assert!(state.pending_decision.is_none());
+
+        // Declined, the Runner breaches as usual, and keeps the counter.
+        let state = successful_rnd_run(&with_cataloguer(2), &registry);
+        let (state, events) = apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 1 }).expect("breach instead");
+        assert!(events.iter().any(|event| matches!(event, GameEvent::CardAccessed { .. })), "{events:?}");
+        assert_eq!(state.runner.rig[0].counters, 2);
+
+        // With no counter there is nothing to offer.
+        let state = successful_rnd_run(&with_cataloguer(0), &registry);
+        assert!(state.pending_decision.is_none());
+    }
+
+    #[test]
+    fn cataloguer_breaches_rnd_with_no_run_for_a_click_and_its_last_counter_then_goes() {
+        let registry = registry();
+        let use_it = PlayerAction::ActivateAbility { target: fixture_install_id("cataloguer"), ability_index: 0 };
+        assert!(apply_action(&with_cataloguer(1), &registry, use_it.clone()).is_err(), "only after a successful run on R&D this turn");
+
+        // A successful run on R&D, its breach taken as usual.
+        let mut state = with_cataloguer(1);
+        crate::rules::turn_log::record(&mut state, &registry, &GameEvent::RunSucceeded { server: ServerId::RnD });
+        state.last_completed_run = None;
+        let clicks = state.runner.resources.clicks;
+        let (state, events) = apply_action(&state, &registry, use_it).expect("breach R&D");
+        assert_eq!(state.runner.resources.clicks, Clicks(clicks.0 - 1));
+        assert!(events.iter().any(|event| matches!(event, GameEvent::CardAccessed { card, .. } if card == &id("offworld_office"))), "{events:?}");
+        let run = state.active_run.as_ref().expect("the breach stands at its access");
+        assert!(run.breach_only);
+        assert!(state.run_in_progress().is_none(), "and it is no run");
+        let (state, events) = apply_action(&state, &registry, PlayerAction::StealAgenda { card_id: id("offworld_office") }).expect("steal it");
+        assert!(state.active_run.is_none(), "the breach is over");
+        assert!(!events.iter().any(|event| matches!(event, GameEvent::RunCompleted { .. })), "no run ended: {events:?}");
+        assert!(state.last_completed_run.is_none(), "the last run is still the last run");
+        assert!(state.runner.rig.is_empty(), "empty, so trashed");
+        assert!(state.runner.heap.contains(&id("cataloguer")));
+    }
 }

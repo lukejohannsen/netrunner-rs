@@ -474,7 +474,8 @@ fn assert_selection_is_the_choosers_alone(view: &netrunner_core::view::ClientVie
 ///
 /// Two things in the entry itself count as visible. A `CardsSelected {
 /// revealed: true }` — a reveal is a reveal, and the cards it names may
-/// well still sit in the hand they were revealed from. And the viewer's
+/// well still sit in the hand they were revealed from — or one of the
+/// viewer's own, whose cards they chose from the list they were shown. And the viewer's
 /// *own* action: they chose it from a list they were shown, so a card it
 /// names is theirs to know even once the view has moved on — the Runner
 /// who passes on an HQ card still knows what they passed on after the run
@@ -490,6 +491,15 @@ fn assert_no_concealed_card_is_named_in_log(
     let mut visible = visible_card_ids(view);
     for event in &entry.events {
         if let GameEvent::CardsSelected { cards, revealed: true, .. } = event {
+            visible.extend(cards.iter().map(|c| c.0.as_str()));
+        }
+        // The chooser's own selection: they picked each card from the list
+        // their view showed them (`ClientView::selection`), and the mask
+        // leaves the names to them alone — the Runner arranging the top of
+        // R&D under Cataloguer names cards back in a deck they cannot see.
+        if let GameEvent::CardsSelected { side: chooser, cards, .. } = event
+            && side.is(*chooser)
+        {
             visible.extend(cards.iter().map(|c| c.0.as_str()));
         }
         // A card moved into a deck out of a zone both players see (the

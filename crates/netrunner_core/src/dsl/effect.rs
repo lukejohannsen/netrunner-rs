@@ -1078,6 +1078,13 @@ pub enum Effect {
     /// Corp at 0 clicks still has the action phase's paid ability window,
     /// with its rezzes and scores, which 5.4.3a skips.
     EndActionPhase,
+    /// The Runner breaches this server, with no run — Cataloguer's
+    /// "[click], hosted power counter: Breach R&D" (CR 7.3.1; `run::engine::
+    /// start_breach`). Accessed as any breach is, and nothing a run owes
+    /// follows: no successful run, no run ending, no new last run.
+    /// Composition didn't work: every breach began at a run's success step
+    /// (`CompleteRun`), which a card's text outside a run does not reach.
+    Breach(crate::rules::ServerId),
     /// Reveals `count` cards at random from `side`'s hand — HQ or the grip
     /// — and, with `each`, resolves it as each card in turn: Bring Them
     /// Home's "Reveal and add 2 cards at random from the grip to the top of
@@ -1783,6 +1790,7 @@ impl Effect {
             | Effect::SwapApproachedIceWithCard { .. }
             | Effect::AllottedClicksNextTurn(..)
             | Effect::EndActionPhase
+            | Effect::Breach(_)
             | Effect::GainCreditsAmount(..) => {}
         }
     }

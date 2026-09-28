@@ -586,6 +586,7 @@ fn determinize_run(
         access_state,
         jack_out_permitted: run.jack_out_permitted,
         declared_successful: run.declared_successful,
+        breach_only: run.breach_only,
         // Public and carried by the view — see `PublicRunState`. Zeroing
         // these made the sample poorer than the information the searcher
         // actually has: an action the Runner can really pay for out of
@@ -622,6 +623,7 @@ fn determinize_run(
         additional_hq_access: 0,
         access_replacement: None,
         access_replacement_card: None,
+        access_replacement_install: None,
         cards_accessed_count: 0,
         // Approximated, like `cards_accessed_count`/`bad_publicity_credits`
         // above: `ClientView` doesn't carry either, and both only matter at

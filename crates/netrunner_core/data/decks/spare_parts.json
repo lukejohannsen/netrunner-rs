@@ -3,13 +3,13 @@
   "name": "Spare Parts",
   "side": "Runner",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach Hiram “0mission” Svensson, Vantage Point's Shaper identity (Stage 5d), on a rig of hardware to install and trash — Methuselah trashes hardware from the grip as a run begins, and Pantograph beside it is a second console the rules trash. In-faction only. Stage 7b: two Read-Write Share for two Creative Commission. Stage 3a: two “Pretty” Mary da Silva, which The Maker's Eye and Jailbreak give a second R&D access to add to, and two Meeting of Minds for the connections, on six influence — for a Vrcation, a Telework Contract, a Diesel and an Overclock. Stage 3b: two Cupellation, which Jailbreak's HQ runs give a card to host and a second breach to spend it on, on four more influence — for a Beta Build and a Sure Gamble. Stage 3c: two Trick Shot, an Alarm Clock and a Window of Opportunity, on thirteen influence of fifteen — for a Meeting of Minds, a Touchstone, a T400 Memory Diamond and a Diesel. Stage 3d: two Muse and a Stowaway for Muse to find and put on ice, in-faction — for a DZMZ Optimizer, a Principia and a Mayfly.",
+  "description": "Not a published list: built so the sweeps reach Hiram “0mission” Svensson, Vantage Point's Shaper identity (Stage 5d), on a rig of hardware to install and trash — Methuselah trashes hardware from the grip as a run begins, and Pantograph beside it is a second console the rules trash. In-faction only. Stage 7b: two Read-Write Share for two Creative Commission. Stage 3a: two “Pretty” Mary da Silva, which The Maker's Eye and Jailbreak give a second R&D access to add to, and two Meeting of Minds for the connections, on six influence — for a Vrcation, a Telework Contract, a Diesel and an Overclock. Stage 3b: two Cupellation, which Jailbreak's HQ runs give a card to host and a second breach to spend it on, on four more influence — for a Beta Build and a Sure Gamble. Stage 3c: two Trick Shot, an Alarm Clock and a Window of Opportunity, on thirteen influence of fifteen — for a Meeting of Minds, a Touchstone, a T400 Memory Diamond and a Diesel. Stage 3d: two Muse and a Stowaway for Muse to find and put on ice, in-faction — for a DZMZ Optimizer, a Principia and a Mayfly. Rebellion Without Rehearsal Stage 6c: two Cataloguer for a T400 Memory Diamond and a Sure Gamble.",
   "style": "builder",
   "identity": "hiram_0mission_svensson_shadow_of_the_past",
   "cards": [
     {
       "card": "t400_memory_diamond",
-      "count": 2
+      "count": 1
     },
     {
       "card": "dzmz_optimizer",
@@ -61,7 +61,7 @@
     },
     {
       "card": "sure_gamble",
-      "count": 2
+      "count": 1
     },
     {
       "card": "diesel",
@@ -126,6 +126,10 @@
     {
       "card": "stowaway",
       "count": 1
+    },
+    {
+      "card": "cataloguer",
+      "count": 2
     }
   ]
 }

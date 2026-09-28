@@ -162,6 +162,7 @@ fn every_field_of_the_view_is_accounted_for(view: ClientView) {
         access_state,            // below
         jack_out_permitted: _,   // drawn: the Jack out control, greyed when it is not
         declared_successful: _,  // drawn: board::onward's words for the run's next step
+        breach_only: _,          // drawn: board::phase ("Breach of R&D", its access the one step, the desktop's panel) and the terminal's run strip
         bad_publicity_credits: _, // drawn: hud::readouts, beside the Runner's credits
         bonus_run_credits: _,    // drawn: hud::readouts, beside the Runner's credits
         redirect_on_approach: _, // drawn: hud::in_effect ("This run: … the attacked server becomes HQ instead")

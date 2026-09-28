@@ -336,6 +336,17 @@ pub struct RunState {
     /// `CompleteRun`.
     #[serde(default)]
     pub declared_successful: bool,
+    /// This is a breach and no run (CR 7.3.1: "card abilities can also
+    /// directly instruct the Runner to breach a server") — Cataloguer's
+    /// "[click], hosted power counter: Breach R&D", begun by
+    /// `Effect::Breach`. The access machinery is the run's, so a breach
+    /// with no run stands in a `RunState` at its access, with no ice and
+    /// nothing declared successful. What only a run has is refused on the
+    /// flag: it is not a run in progress to a card (`GameState::
+    /// run_in_progress`), its end is no `RunCompleted` a card hears, and it
+    /// leaves `last_completed_run` the last *run*.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub breach_only: bool,
     /// Temporary Runner credit pool for this run only, seeded from
     /// `state::CorpState::bad_publicity` at `engine::initiate_run`.
     /// Spendable via `ability::pay_cost`'s `Cost::Credits` arm — draws from
@@ -375,6 +386,11 @@ pub struct RunState {
     /// the siphon. `None` in a state recorded before the field existed.
     #[serde(default)]
     pub access_replacement_card: Option<CardId>,
+    /// …and which copy of it, when it is installed: Cataloguer's "remove 1
+    /// hosted power counter" is from the Cataloguer that set it, not the
+    /// first of two.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub access_replacement_install: Option<InstallId>,
     /// How many cards this run's breach has accessed, counted by
     /// `run::access::present_card_for_access` as each is accessed (CR
     /// 7.3.6: only accesses actually performed; `0` if the run hasn't
@@ -521,11 +537,13 @@ impl Default for RunState {
             access_state: None,
             jack_out_permitted: false,
             declared_successful: false,
+            breach_only: false,
             bad_publicity_credits: 0,
             additional_rd_access: 0,
             additional_hq_access: 0,
             access_replacement: None,
             access_replacement_card: None,
+            access_replacement_install: None,
             cards_accessed_count: 0,
             redirect_on_approach: None,
             bonus_run_credits: 0,

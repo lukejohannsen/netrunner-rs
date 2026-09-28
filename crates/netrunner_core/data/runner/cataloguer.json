@@ -1,0 +1,130 @@
+{
+  "id": "cataloguer",
+  "title": "Cataloguer",
+  "side": "Runner",
+  "card_type": "Hardware",
+  "cost": 2,
+  "counter_kind": "Power",
+  "triggers": [
+    {
+      "trigger": "OnInstall",
+      "subject": "This",
+      "effects": [
+        {
+          "AddCounters": 2
+        }
+      ],
+      "text": "When you install this hardware, load 2 power counters onto it."
+    },
+    {
+      "trigger": "OnSuccessfulRun",
+      "subject": "Any",
+      "when": {
+        "Server": [
+          "RnD"
+        ]
+      },
+      "requirement": {
+        "ThisCardCountersAtLeast": 1
+      },
+      "effects": [
+        {
+          "SetAccessReplacement": {
+            "server": "RnD",
+            "optional": true,
+            "effect": {
+              "Sequence": [
+                {
+                  "RemoveCounters": {
+                    "Fixed": 1
+                  }
+                },
+                {
+                  "LookAtTopOfDeck": {
+                    "deck": "Corp",
+                    "count": 4
+                  }
+                },
+                {
+                  "PromptChooseCards": {
+                    "side": "Runner",
+                    "source": "OpponentDeck",
+                    "filter": {
+                      "TopOfZone": 4
+                    },
+                    "min": 0,
+                    "max": 4,
+                    "reveal": false,
+                    "shuffle_after": false,
+                    "destination": "OpponentDeck"
+                  }
+                },
+                {
+                  "EffectIf": {
+                    "condition": {
+                      "ThisCardCountersAtMost": 0
+                    },
+                    "effect": {
+                      "TrashCard": "ThisCard"
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      ],
+      "text": "Whenever you make a successful run on R&D, instead of breaching R&D, you may remove 1 hosted power counter to look at the top 4 cards of R&D and arrange them in any order."
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "AllOf": [
+          {
+            "Clicks": 1
+          },
+          {
+            "RemoveCounters": 1
+          }
+        ]
+      },
+      "requirement": {
+        "AmountAtLeast": [
+          {
+            "TimesThisTurnWhen": {
+              "trigger": "OnSuccessfulRun",
+              "when": {
+                "Server": [
+                  "RnD"
+                ]
+              }
+            }
+          },
+          1
+        ]
+      },
+      "effect": {
+        "Sequence": [
+          {
+            "Breach": "RnD"
+          },
+          {
+            "EffectIf": {
+              "condition": {
+                "ThisCardCountersAtMost": 0
+              },
+              "effect": {
+                "TrashCard": "ThisCard"
+              }
+            }
+          }
+        ]
+      },
+      "text": "[click], hosted power counter: Breach R&D."
+    }
+  ],
+  "numeric_id": 34088,
+  "is_playable": true
+}
