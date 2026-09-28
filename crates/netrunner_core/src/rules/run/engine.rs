@@ -194,6 +194,7 @@ pub fn start_run(state: &mut GameState, registry: &CardRegistry, server: ServerI
         additional_hq_access: 0,
         access_replacement: None,
         access_replacement_card: None,
+        access_replacement_install: None,
         access_state: None,
         bad_publicity_credits: state.corp.bad_publicity,
         server,
@@ -205,10 +206,28 @@ pub fn start_run(state: &mut GameState, registry: &CardRegistry, server: ServerI
         // installed).
         jack_out_permitted: false,
         declared_successful: false,
+        breach_only: false,
         cards_accessed_count: 0, bonus_run_credits: 0,
         begun_as_the_turn_began,
     });
     Ok(())
+}
+
+/// A breach of `server` with no run — Cataloguer's "Breach R&D" (CR
+/// 7.3.1: "card abilities can also directly instruct the Runner to breach a
+/// server"; `Effect::Breach`). It stands in a `RunState` flagged
+/// `breach_only`, with no ice and nothing declared successful, because the
+/// access machinery is the run's; nothing a run owes — its moments, its
+/// windows, its place in `last_completed_run` — is paid for it. Refused
+/// while a run or another breach is in progress: CR 7.3.8 would delay it
+/// until that breach ends, and no card in the pool breaches from inside
+/// one.
+pub(crate) fn start_breach(state: &mut GameState, registry: &CardRegistry, server: ServerId) -> Result<Vec<GameEvent>, RulesError> {
+    if state.active_run.is_some() {
+        return Err(RulesError::RunAlreadyInProgress);
+    }
+    state.active_run = Some(RunState { server, phase: RunPhase::Success, breach_only: true, ..RunState::default() });
+    super::access::breach(state, registry)
 }
 
 /// Puts the run into the movement phase at `position` — the next ice
@@ -930,7 +949,9 @@ pub(crate) fn break_subroutine(state: &mut GameState, registry: &CardRegistry, i
 /// (`access_server`'s `RunCompleted`, `jack_out`'s event lookup).
 pub(crate) fn end_run(state: &mut GameState) -> Option<RunState> {
     let run = state.active_run.take();
-    if let Some(run) = &run {
+    // A breach with no run leaves the last run the last run: Cataloguer's
+    // breach is no "run on R&D" for anything that asks about the last.
+    if let Some(run) = run.as_ref().filter(|run| !run.breach_only) {
         state.last_completed_run = Some(CompletedRun::snapshot(run));
     }
     // Back to the turn's start for a run begun there (`start_run`), with its

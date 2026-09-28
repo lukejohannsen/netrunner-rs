@@ -70,7 +70,14 @@ pub fn bar(view: &ClientView) -> Bar {
 fn segments(view: &ClientView) -> Vec<Segment> {
     let mut segments = vec![turn_segment(view)];
     if let Some(run) = &view.active_run {
-        segments.push(run_segment(run.phase, run.position, run.ice.len(), &super::action_map::server_name(run.server)));
+        let server = super::action_map::server_name(run.server);
+        // A breach with no run (Cataloguer's "Breach R&D") has no run's
+        // steps to show: it is its access, and nothing else.
+        if run.breach_only {
+            segments.push(Segment { title: format!("Breach of {server}"), steps: vec![Step { label: "Access".to_string(), state: State::Now }] });
+        } else {
+            segments.push(run_segment(run.phase, run.position, run.ice.len(), &server));
+        }
     }
     segments
 }
@@ -275,6 +282,7 @@ mod tests {
             access_state: None,
             jack_out_permitted: true,
             declared_successful: false,
+            breach_only: false,
             bad_publicity_credits: 0,
             bonus_run_credits: 0,
             redirect_on_approach: None,
@@ -289,6 +297,13 @@ mod tests {
         let approaching = bar(&view);
         assert_eq!(approaching.segments.len(), 2, "the turn keeps its own steps");
         assert_eq!(approaching.segments[1].title, "Run on HQ");
+        let mut breach = run.clone();
+        breach.breach_only = true;
+        breach.phase = RunPhase::AccessingCard;
+        view.active_run = Some(breach);
+        let breaching = bar(&view);
+        assert_eq!(breaching.segments[1].title, "Breach of HQ");
+        assert_eq!(breaching.segments[1].steps.len(), 1, "a breach is its access alone");
         assert_eq!(labels(&approaching.segments[1]), ["Initiation", "Approach", "Encounter", "Movement", "Access"]);
         assert_eq!(now(&approaching.segments[1]), ["Approach"]);
 

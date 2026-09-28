@@ -23,7 +23,6 @@ pub(crate) const RWR_UNIMPLEMENTED: &[(u32, &str)] = &[
     (34070, "The Wizard’s Chest"),
     (34079, "Jeitinho"),
     (34086, "Spree"),
-    (34088, "Cataloguer"),
     (34090, "Lobisomem"),
     (34096, "Thunderbolt Armaments: Peace Through Power"),
     (34100, "Lycian Multi-Munition"),

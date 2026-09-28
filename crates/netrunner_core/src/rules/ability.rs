@@ -707,6 +707,8 @@ pub fn evaluate_effect(
             Ok(Vec::new())
         }
 
+        Effect::Breach(server) => crate::rules::run::start_breach(state, registry, *server),
+
         Effect::EndActionPhase => {
             let side = carried_out_by(registry, ctx).ok_or(RulesError::MissingActingCardContext)?;
             crate::rules::turn::force_action_phase_end(state, side, registry)
@@ -1251,6 +1253,7 @@ pub fn evaluate_effect(
             let run = state.active_run.as_mut().ok_or(RulesError::NoActiveRun)?;
             run.access_replacement = Some((*server, (**effect).clone(), *optional));
             run.access_replacement_card = acting_card.cloned();
+            run.access_replacement_install = ctx.acting_install;
             Ok(vec![GameEvent::AccessReplacementSet { server: *server }])
         }
 
@@ -3148,7 +3151,7 @@ pub fn check_requirement(
             if side == Side::Corp && state.corp.identity_copy == *copy { Ok(()) } else { Err(RulesError::RequirementNotMet) }
         }
         EffectRequirement::DuringRunOn(server) => {
-            let on = state.active_run.as_ref().is_some_and(|run| run.server == *server && !matches!(run.phase, RunPhase::Ended));
+            let on = state.run_in_progress().is_some_and(|run| run.server == *server && !matches!(run.phase, RunPhase::Ended));
             if on { Ok(()) } else { Err(RulesError::RequirementNotMet) }
         }
         EffectRequirement::MemoryFull => {
@@ -3166,7 +3169,7 @@ pub fn check_requirement(
         }
         EffectRequirement::OncePerRun => {
             let key = OncePerTurnKey { card: ctx.acting_card.cloned(), install: ctx.acting_install };
-            match &state.active_run {
+            match state.run_in_progress() {
                 Some(run) if !run.once_per_run_used.contains(&key) => Ok(()),
                 _ => Err(RulesError::RequirementNotMet),
             }
@@ -3215,7 +3218,7 @@ pub fn check_requirement(
         }
         EffectRequirement::RunAgainstThisServer => {
             let own_server = acting_corp_install(state, ctx).map(|c| c.server);
-            let matches = own_server.is_some_and(|own| state.active_run.as_ref().is_some_and(|run| run.server == own));
+            let matches = own_server.is_some_and(|own| state.run_in_progress().is_some_and(|run| run.server == own));
             if matches { Ok(()) } else { Err(RulesError::RequirementNotMet) }
         }
         EffectRequirement::LastDamageTrashedOddCostCard => {

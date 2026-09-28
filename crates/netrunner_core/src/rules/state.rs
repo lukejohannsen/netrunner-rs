@@ -1651,6 +1651,15 @@ impl GameState {
     /// Note this is *not* the same question as `legal_actions::
     /// current_actor`, which resolves *who* may act next; this only asks
     /// whether automatic resolution must stop.
+    /// The run in progress, if there is one — not a breach with no run
+    /// (`RunState::breach_only`, Cataloguer's), which stands in
+    /// `active_run` because the access machinery is the run's. What a card
+    /// means by "during a run" asks this; what blocks actions while
+    /// anything is being accessed asks `active_run`.
+    pub fn run_in_progress(&self) -> Option<&crate::rules::run::RunState> {
+        self.active_run.as_ref().filter(|run| !run.breach_only)
+    }
+
     pub fn is_resolution_blocked(&self) -> bool {
         self.active_trace.is_some()
             || self.pending_prevention.is_some()

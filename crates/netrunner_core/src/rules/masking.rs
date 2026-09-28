@@ -357,6 +357,9 @@ pub struct PublicRunState {
     /// view breaches where the real game will.
     #[serde(default)]
     pub declared_successful: bool,
+    /// `RunState::breach_only`: public, as what began it was.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub breach_only: bool,
     /// Credits this run may still draw from Bad Publicity. Never masked:
     /// `PublicCorpState::bad_publicity` is already public, and how much of
     /// it this run has spent is something both players track openly —
@@ -1171,6 +1174,7 @@ fn mask_run_state(state: &GameState, registry: &CardRegistry, run: &RunState, vi
         access_state: run.access_state.as_ref().map(|access| mask_access_state(access, card_visible, revealed, viewer)),
         jack_out_permitted: run.jack_out_permitted,
         declared_successful: run.declared_successful,
+        breach_only: run.breach_only,
         bad_publicity_credits: run.bad_publicity_credits,
         bonus_run_credits: run.bonus_run_credits,
         redirect_on_approach: run.redirect_on_approach,

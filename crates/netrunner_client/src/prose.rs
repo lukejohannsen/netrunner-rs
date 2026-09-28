@@ -332,6 +332,7 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
         Effect::SetRunEndedEffect(effect) => format!("when the run ends, {}", describe_effect(effect, registry)),
         Effect::WhenThisTurnEnds(effect) => format!("when this turn ends, {}", describe_effect(effect, registry)),
         Effect::EndActionPhase => "your action phase ends".to_string(),
+        Effect::Breach(server) => format!("breach {}", describe_server(*server)),
         Effect::RevealAtRandom { side, count, each } => {
             let hand = if *side == Side::Corp { "HQ" } else { "the grip" };
             match each {

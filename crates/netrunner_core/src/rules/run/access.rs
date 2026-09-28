@@ -189,7 +189,11 @@ fn offer_next(state: &mut GameState, registry: &CardRegistry, server: ServerId) 
     let options = selectable(access);
     match options.len() {
         0 => {
-            super::engine::end_run(state);
+            // A breach with no run ends as nothing a card hears: there was
+            // no run to complete.
+            if super::engine::end_run(state).is_some_and(|run| run.breach_only) {
+                return Ok(Vec::new());
+            }
             let completed_event = GameEvent::RunCompleted { server };
             let mut events = vec![completed_event.clone()];
             events.extend(crate::rules::dispatcher::dispatch_event(state, registry, &completed_event)?);
@@ -231,9 +235,10 @@ pub(crate) fn accessing_in_the_discard_pile(state: &GameState) -> bool {
 /// `RunCompleted` (a flatline mid-access). Otherwise the run stands in
 /// `RunPhase::AccessingCard`, and the Runner's decisions finish it.
 pub(crate) fn breach(state: &mut GameState, registry: &CardRegistry) -> Result<Vec<GameEvent>, RulesError> {
-    let server = state.active_run.as_ref().ok_or(RulesError::NoActiveRun)?.server;
+    let run = state.active_run.as_ref().ok_or(RulesError::NoActiveRun)?;
+    let (server, breach_only) = (run.server, run.breach_only);
     let mut events = access_server(state, server, registry)?;
-    if state.active_run.is_none() && !events.iter().any(|e| matches!(e, GameEvent::RunCompleted { .. })) {
+    if !breach_only && state.active_run.is_none() && !events.iter().any(|e| matches!(e, GameEvent::RunCompleted { .. })) {
         dispatcher::emit(state, registry, &mut events, GameEvent::RunCompleted { server })?;
     }
     Ok(events)
@@ -507,6 +512,7 @@ fn try_replace_access(
         .take()
         .expect("just confirmed access_replacement is Some above");
     let card = state.active_run.as_mut().and_then(|run| run.access_replacement_card.take());
+    let install = state.active_run.as_mut().and_then(|run| run.access_replacement_install.take());
 
     if optional {
         // "You **may** … instead of breaching" (Account Siphon): the
@@ -526,13 +532,15 @@ fn try_replace_access(
             ],
             source_card: card.clone(),
             prompting_card: card,
-            source_install: None,
+            source_install: install,
             resume: crate::rules::state::PendingChoiceResume::None,
         });
         return Ok(Some(vec![GameEvent::PendingChoicePresented { chooser: Side::Runner, option_count: 2 }]));
     }
 
-    let mut events = ability::evaluate_effect(state, &effect, &mut ability::ResolutionContext::for_card(card.as_ref()), registry)?;
+    let mut ctx = ability::ResolutionContext::for_card(card.as_ref());
+    ctx.acting_install = install;
+    let mut events = ability::evaluate_effect(state, &effect, &mut ctx, registry)?;
     super::engine::end_run(state);
     events.push(GameEvent::AccessReplaced { server });
     Ok(Some(events))
@@ -680,7 +688,9 @@ fn finish_if_game_over(state: &mut GameState, server: ServerId) -> Option<Vec<Ga
         // — this used to push its own `GameOver` unless the caller's last
         // event was one, and `advance_or_finish` passed an empty slice, so
         // a steal whose identity reaction flatlined emitted it twice.
-        super::engine::end_run(state);
+        if super::engine::end_run(state).is_some_and(|run| run.breach_only) {
+            return Some(Vec::new());
+        }
         Some(vec![GameEvent::RunCompleted { server }])
     } else {
         None

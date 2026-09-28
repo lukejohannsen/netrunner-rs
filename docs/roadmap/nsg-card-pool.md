@@ -1902,7 +1902,7 @@ reaches Vantage Point's cards by building a deck.
    taken: **6a**, terminal operations (built, below): Active Policing,
    Bring Them Home; **6b**, cards that stay revealed while the Runner
    chooses among them (built, below): Burner; **6c**, a breach outside a
-   run: Cataloguer, moved out of 6b when it was taken; **6d**, cards set
+   run (built, below): Cataloguer, moved out of 6b when it was taken; **6d**, cards set
    aside: The Wizard’s Chest; **6e**, an X cost: Lobisomem.
 7. **Expendable, moving ice, psi, re-encounter:** Eminent Domain, Descent,
    Tributary, See How They Run, Sisyphus Protocol, Spree.
@@ -3047,6 +3047,76 @@ no run, which the access machinery, built on `RunState`, has no door for.
   Runner agenda wins 106 → 107). A ref with the engine changes and without
   Burner and the deck is identical to `main` in all four shapes, so the
   heuristic movement is `determinize` sampling a new Runner card.
+
+#### Stage 6c — a breach with no run (28 September 2026)
+
+`feat/rwr-stage-6c-cataloguer`: Cataloguer. **One new `Effect`.** Rebellion
+Without Rehearsal 54 of 65; `RWR_UNIMPLEMENTED` 12 → 11.
+
+- **"[click], hosted power counter: Breach R&D"** is CR 7.3.1's "card
+  abilities can also directly instruct the Runner to breach a server",
+  which nothing did: every breach began at a run's success step.
+  `Effect::Breach(server)` (`run::start_breach`) stands the breach in a
+  `RunState` flagged `breach_only`, with no ice and nothing declared
+  successful, because the access machinery, 139 references to
+  `access_state` across the workspace, is the run's.
+  - Moving the access state out of the run was rejected for its size.
+    The flag refuses what only a run has.
+  - `GameState::run_in_progress` is what a card means by "during a run",
+    and it is none: "during a run on", "a run against this server" and
+    "once per run" ask it. `DuringRun` already excluded the access, and
+    an encounter or "this card started the run" cannot hold with no ice
+    and no event.
+  - The breach's end is no `RunCompleted` a card hears, and it leaves
+    `last_completed_run` the last *run*.
+  - It is refused inside a run or another breach. CR 7.3.8 would delay
+    it, and nothing in the pool breaches from inside one.
+  - What blocks actions mid-access still reads `active_run`, so nothing
+    else is taken while the Runner accesses.
+- **"Instead of breaching R&D, you may remove 1 hosted power counter to
+  look at the top 4 cards of R&D and arrange them in any order"** composes:
+  - An optional `SetAccessReplacement` from a successful-run trigger.
+  - The counter's removal, `LookAtTopOfDeck`, and the Runner's selection
+    of the top four back onto R&D, the first chosen on top.
+  - The replacement now remembers the install that set it
+    (`RunState::access_replacement_install`), so the counter comes off
+    the copy that offered it, not the first of two.
+- "When it is empty, trash it" is Juli Moreira Lee's shape, after each
+  removal.
+- **Client:** the view carries the flag (`PublicRunState::breach_only`).
+  Both clients' run displays say "Breach of R&D":
+  - `board::phase` gives the breach a segment with its access as the one
+    step, which the desktop's panel draws.
+  - The terminal's run strip says it without counting ice.
+- **The fog gate learned a chooser's own selection.** The 256-seed view
+  sweep failed at seed 167 on the Runner's arrangement: its
+  `CardsSelected` names R&D cards back in a deck the Runner's view no
+  longer shows. The mask leaves a selection's names to its chooser, who
+  picked each card from the list their view held (`ClientView::
+  selection`), so the gate now counts them as seen, as it did the
+  chooser's own action.
+- **Deck** — Spare Parts: two Cataloguer for a T400 Memory Diamond and a
+  Sure Gamble.
+- **Real play**, 96 games of Retirement Package against Spare Parts (seed
+  2): random seats installed it 30 times and breached with it 3 times,
+  and the replacement was offered 15 times. **The heuristic Runner never
+  installed it.**
+- **Fidelity limits:**
+  - A breach with no run that ends the game mid-access still records a
+    `RunCompleted`, pushed and not dispatched, because the game's end has
+    already taken the run.
+  - The breach is shown with the run's panel and trail.
+- **DSL ratio (`pool_status.py`): 20 of 84 `Effect` variants single-use,
+  1 unused**, over 304 card files (19 of 83 over 303 before). `Breach` is
+  Cataloguer's until the pool's other breach cards (Hades Shard, Raymond
+  Flint) arrive.
+- **Measured.** Both sweeps at 256 seeds are green. Against `origin/main`
+  (6b), `coverage_identical.py` has both random seatings **identical** and
+  the heuristic ones moved (Corp agenda wins 70 → 74 of 192, flatlines
+  14 → 12, Runner agenda wins 107 → 105). A ref with the engine changes
+  and without Cataloguer and the deck is identical to `main` in all four
+  shapes, so the heuristic movement is `determinize` sampling a new
+  Runner card.
 
 ### 3. The Automata Initiative — 65 cards (C 14 / V 35 / M 16)
 
