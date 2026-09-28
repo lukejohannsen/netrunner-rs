@@ -685,7 +685,7 @@ pub(crate) fn trash_as_cost(
         } else {
             state.runner.heap.push(card_id.clone());
         }
-        events.push(GameEvent::CardTrashed { side: owning_side(side, &discard), card: card_id.clone(), by: Some(side) });
+        events.push(GameEvent::CardTrashed { side: owning_side(side, &discard), card: card_id.clone(), installed: installs.is_some(), by: Some(side) });
         if matches!(zone, CardZoneRef::OwnHq) && side == Side::Corp {
             trashed_from_hq += 1;
         }
@@ -1153,7 +1153,7 @@ pub(crate) fn resolve_confirm_card_selection(
                 // `CardTrashed`, so this changes no rules. (A trash somebody
                 // could prevent never gets here: see the top of this loop.)
                 if is_discard_pile(dest) {
-                    events.push(GameEvent::CardTrashed { side: owning_side(side, dest), card: card_id.clone(), by: Some(side) });
+                    events.push(GameEvent::CardTrashed { side: owning_side(side, dest), card: card_id.clone(), installed: matches!(source, CardZoneRef::OpponentInstalled | CardZoneRef::OwnInstalled), by: Some(side) });
                 }
                 if matches!(dest, CardZoneRef::OpponentRemovedFromGame) {
                     events.push(GameEvent::CardRemovedFromGame { side: owning_side(side, dest), card: card_id.clone() });

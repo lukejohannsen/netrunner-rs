@@ -3309,7 +3309,7 @@ mod tests {
                 GameEvent::CardAccessed { card: CardId("shock_ish".to_string()), server: ServerId::Hq, install: None },
                 GameEvent::TriggerFired { card: CardId("shock_ish".to_string()), trigger: crate::dsl::Trigger::OnAccessed },
                 GameEvent::TagsGiven { side: Side::Runner, amount: 1, had: 0 },
-                GameEvent::CardTrashed { side: Side::Corp, card: CardId("shock_ish".to_string()), by: Some(Side::Corp) },
+                GameEvent::CardTrashed { side: Side::Corp, card: CardId("shock_ish".to_string()), installed: false, by: Some(Side::Corp) },
                 GameEvent::RunCompleted { server: ServerId::Hq },
             ]
         );

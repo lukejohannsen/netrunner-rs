@@ -1,0 +1,52 @@
+{
+  "id": "pretty_mary_da_silva",
+  "title": "“Pretty” Mary da Silva",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 1,
+  "unique": true,
+  "triggers": [
+    {
+      "trigger": "OnSuccessfulRun",
+      "subject": "Any",
+      "when": {
+        "Server": [
+          "RnD"
+        ]
+      },
+      "requirement": {
+        "AmountAtLeast": [
+          {
+            "AccessLimit": "RnD"
+          },
+          2
+        ]
+      },
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Runner",
+            "options": [
+              {
+                "AddAdditionalAccess": {
+                  "server": "RnD",
+                  "count": 1
+                }
+              },
+              {
+                "Sequence": []
+              }
+            ],
+            "texts": [
+              "you may access 1 additional card",
+              ""
+            ]
+          }
+        }
+      ],
+      "text": "Whenever you breach R&D, if you are allowed to access 2 or more cards in R&D during this breach, you may access 1 additional card."
+    }
+  ],
+  "numeric_id": 34093,
+  "is_playable": true
+}

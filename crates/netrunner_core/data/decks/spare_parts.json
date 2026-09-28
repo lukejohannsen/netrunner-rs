@@ -3,7 +3,7 @@
   "name": "Spare Parts",
   "side": "Runner",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach Hiram “0mission” Svensson, Vantage Point's Shaper identity (Stage 5d), on a rig of hardware to install and trash — Methuselah trashes hardware from the grip as a run begins, and Pantograph beside it is a second console the rules trash. In-faction only. Stage 7b: two Read-Write Share for two Creative Commission.",
+  "description": "Not a published list: built so the sweeps reach Hiram “0mission” Svensson, Vantage Point's Shaper identity (Stage 5d), on a rig of hardware to install and trash — Methuselah trashes hardware from the grip as a run begins, and Pantograph beside it is a second console the rules trash. In-faction only. Stage 7b: two Read-Write Share for two Creative Commission. Stage 3a: two “Pretty” Mary da Silva, which The Maker's Eye and Jailbreak give a second R&D access to add to, and two Meeting of Minds for the connections, on six influence — for a Vrcation, a Telework Contract, a Diesel and an Overclock.",
   "style": "builder",
   "identity": "hiram_0mission_svensson_shadow_of_the_past",
   "cards": [
@@ -65,7 +65,7 @@
     },
     {
       "card": "diesel",
-      "count": 3
+      "count": 2
     },
     {
       "card": "beta_build",
@@ -81,15 +81,11 @@
     },
     {
       "card": "overclock",
-      "count": 2
-    },
-    {
-      "card": "vrcation",
       "count": 1
     },
     {
       "card": "telework_contract",
-      "count": 2
+      "count": 1
     },
     {
       "card": "smartware_distributor",
@@ -97,6 +93,14 @@
     },
     {
       "card": "read_write_share",
+      "count": 2
+    },
+    {
+      "card": "pretty_mary_da_silva",
+      "count": 2
+    },
+    {
+      "card": "meeting_of_minds",
       "count": 2
     }
   ]

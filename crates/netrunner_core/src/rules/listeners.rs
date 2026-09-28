@@ -223,8 +223,8 @@ pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
         }
         GameEvent::CreditsSpentFromOutsidePool { .. } => Vec::new(),
         // Heard by whoever carried it out; the rules' trashes are nobody's.
-        GameEvent::CardTrashed { card: trashed, by: Some(by), .. } => {
-            vec![moment(Trigger::OnCardTrashed, &About::Card { card: trashed.clone(), install: None, installed: false }, Some(*by))]
+        GameEvent::CardTrashed { card: trashed, installed, by: Some(by), .. } => {
+            vec![moment(Trigger::OnCardTrashed, &About::Card { card: trashed.clone(), install: None, installed: *installed }, Some(*by))]
         }
         GameEvent::CardTrashed { by: None, .. } => Vec::new(),
         // The Corp purges, whatever the card that made it (CR 10.1.2).

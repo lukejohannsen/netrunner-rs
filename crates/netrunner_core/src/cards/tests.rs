@@ -1116,7 +1116,7 @@ mod system_gateway {
             let (state, _) = apply_action(&state, &registry, PlayerAction::ToggleCardSelection { position: 0 }).expect("toggle");
             apply_action(&state, &registry, PlayerAction::ConfirmCardSelection).expect("confirm")
         };
-        let trashed = crate::rules::GameEvent::CardTrashed { side: Side::Corp, card: CardId("hedge_fund".to_string()), by: Some(Side::Corp) };
+        let trashed = crate::rules::GameEvent::CardTrashed { side: Side::Corp, card: CardId("hedge_fund".to_string()), installed: false, by: Some(Side::Corp) };
 
         let (state, events) = run(crate::dsl::CardZoneRef::OwnArchives);
         assert!(events.contains(&trashed), "{events:?}");
@@ -13731,4 +13731,107 @@ mod rebellion_without_rehearsal {
         let (gone, _) = apply_action(&declined, &registry, PlayerAction::AcceptPendingPaidChoice { cost_option_index: None }).expect("remove it");
         assert!(bypassed(&gone) && gone.runner.removed_from_game.contains(&id("malandragem")));
     }
+
+    #[test]
+    fn boi_tata_costs_a_credit_less_once_the_runner_has_trashed_an_installed_card_of_theirs() {
+        let registry = registry();
+        let pump = PlayerAction::ActivateAbility { target: fixture_install_id("boi_tata"), ability_index: 1 };
+        let mut state = runner_turn();
+        state.runner.tags = 1;
+        state.runner.rig = vec![rig("boi_tata"), rig("friend_of_a_friend")];
+        state.corp.installed = vec![ice_at_hq("ice_wall")];
+        let (pumped, _) = apply_action(&encounter(&state, &registry), &registry, pump.clone()).expect("+3 at full price");
+        assert_eq!(pumped.runner.resources.credits, Credits(10 - 3));
+
+        // Friend of a Friend's "[trash]" is the Runner trashing their own
+        // installed card.
+        let use_friend = PlayerAction::ActivateAbility { target: fixture_install_id("friend_of_a_friend"), ability_index: 0 };
+        let (traded, _) = apply_action(&state, &registry, use_friend).expect("five and a tag off");
+        let (pumped, _) = apply_action(&encounter(&traded, &registry), &registry, pump).expect("+3 for a credit less");
+        assert_eq!(pumped.runner.resources.credits, Credits(10 + 5 - 2));
+    }
+
+    #[test]
+    fn a_trash_counts_for_boi_tata_only_when_the_runner_trashed_an_installed_card_of_theirs() {
+        let registry = registry();
+        let counted = |event: GameEvent| {
+            let mut state = runner_turn();
+            crate::rules::turn_log::record(&mut state, &registry, &event);
+            let definition = registry.get(&id("boi_tata")).expect("Boi-tatá");
+            let Some((crate::dsl::EffectRequirement::AmountAtLeast(crate::dsl::Amount::TimesThisTurnWhen { trigger, when }, 1), 1)) =
+                definition.abilities[1].cost_discount_if.clone()
+            else {
+                panic!("Boi-tatá's discount reads the turn")
+            };
+            state.this_turn.times_when(trigger, &when, Side::Runner) > 0
+        };
+        let trashed = |card: &str, installed, by| GameEvent::CardTrashed { side: Side::Runner, card: id(card), installed, by: Some(by) };
+        assert!(counted(trashed("friend_of_a_friend", true, Side::Runner)));
+        assert!(!counted(trashed("friend_of_a_friend", false, Side::Runner)), "out of the grip");
+        assert!(!counted(trashed("friend_of_a_friend", true, Side::Corp)), "the Corp trashed it");
+        let corp_card = GameEvent::CardTrashed { side: Side::Corp, card: id("ice_wall"), installed: true, by: Some(Side::Runner) };
+        assert!(!counted(corp_card), "not one of the Runner's");
+    }
+
+    #[test]
+    fn meeting_of_minds_finds_a_resource_of_the_chosen_subtype_and_pays_a_credit_a_revealed_card() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.grip = vec![id("meeting_of_minds"), id("friend_of_a_friend"), id("valentina_ferreira_carvalho"), id("sure_gamble")];
+        state.runner.stack = vec![id("sure_gamble"), id("manuel_lattes_de_moura"), id("amelia_earhart")];
+        let (state, _) = apply_action(&state, &registry, PlayerAction::PlayEvent { card_id: id("meeting_of_minds") }).expect("play");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("connection");
+        let offered = crate::rules::legal_actions(&state, &registry);
+        assert!(offered.contains(&PlayerAction::ToggleCardSelection { position: 1 }), "Manuel");
+        assert!(!offered.contains(&PlayerAction::ToggleCardSelection { position: 2 }), "Amelia is virtual");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ToggleCardSelection { position: 1 }).expect("Manuel");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ConfirmCardSelection).expect("to the grip");
+        assert!(state.runner.grip.contains(&id("manuel_lattes_de_moura")));
+        let at = |card: &str| state.runner.grip.iter().position(|c| *c == id(card)).expect("in the grip");
+        let offered = crate::rules::legal_actions(&state, &registry);
+        assert!(!offered.contains(&PlayerAction::ToggleCardSelection { position: at("sure_gamble") }), "not a connection");
+        let mut state = state.clone();
+        for card in ["friend_of_a_friend", "valentina_ferreira_carvalho", "manuel_lattes_de_moura"] {
+            let position = state.runner.grip.iter().position(|c| *c == id(card)).unwrap();
+            state = apply_action(&state, &registry, PlayerAction::ToggleCardSelection { position }).expect("reveal").0;
+        }
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ConfirmCardSelection).expect("revealed");
+        assert_eq!(state.runner.resources.credits, Credits(10 - 4 + 3));
+        assert_eq!(state.runner.grip.len(), 4, "a reveal keeps the cards");
+    }
+
+    #[test]
+    fn pretty_mary_adds_an_rnd_access_only_to_a_breach_already_allowed_two() {
+        let registry = registry();
+        for (granted, offered) in [(0, false), (1, true)] {
+            let mut state = runner_turn();
+            state.runner.rig = vec![rig("pretty_mary_da_silva")];
+            state.corp.r_and_d = vec![id("hedge_fund"), id("hedge_fund"), id("hedge_fund")];
+            let (mut state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::RnD }).expect("run");
+            state.active_run.as_mut().unwrap().additional_rd_access = granted;
+            let (state, _) = crate::rules::test_support::through_movement(&state, &registry).expect("to the server");
+            let (state, _) = apply_action(&state, &registry, PlayerAction::CompleteRun).expect("breach");
+            assert_eq!(state.pending_decision.is_some(), offered, "{granted} granted");
+            if offered {
+                let (state, _) = apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("one more");
+                assert_eq!(state.active_run.as_ref().map(|run| run.additional_rd_access), Some(2));
+            }
+        }
+    }
+
+    #[test]
+    fn ashen_epilogue_shuffles_the_grip_and_heap_in_removes_five_draws_five_and_leaves_the_game() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.grip = vec![id("ashen_epilogue"), id("sure_gamble"), id("sure_gamble")];
+        state.runner.heap = vec![id("corroder"), id("corroder"), id("corroder")];
+        state.runner.stack = vec![id("amanuensis"); 10];
+        let (state, _) = apply_action(&state, &registry, PlayerAction::PlayEvent { card_id: id("ashen_epilogue") }).expect("play");
+        assert!(state.runner.heap.is_empty(), "the heap went in, and the event did not go to it");
+        assert_eq!((state.runner.grip.len(), state.runner.stack.len()), (5, 5));
+        assert_eq!(state.runner.removed_from_game.len(), 6, "five off the top, and the event");
+        assert!(state.runner.removed_from_game.contains(&id("ashen_epilogue")));
+        assert_eq!(state.runner.resources.credits, Credits(10 - 5));
+    }
+
 }
