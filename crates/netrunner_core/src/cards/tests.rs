@@ -14064,4 +14064,37 @@ mod rebellion_without_rehearsal {
         assert_eq!(state.phase, GamePhase::Action(Side::Runner));
     }
 
+
+    #[test]
+    fn muse_installs_a_found_program_on_itself_and_a_found_trojan_on_a_chosen_piece_of_ice() {
+        let registry = registry();
+        let install_muse = PlayerAction::InstallProgram { card_id: id("muse"), trash_first: false };
+        let mut state = runner_turn();
+        state.runner.grip = vec![id("muse")];
+        state.runner.stack = vec![id("corroder"), id("sure_gamble")];
+        state.runner.heap = vec![id("botulus"), id("muse")];
+        state.corp.installed = vec![ice_at_hq("ice_wall")];
+        let (state, _) = apply_action(&state, &registry, install_muse.clone()).expect("install Muse");
+        let muse = install_of(&state, "muse");
+
+        let (stack, _) = apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("the stack");
+        let at = |card: &str| stack.runner.stack.iter().position(|c| *c == id(card)).expect("in the stack");
+        assert!(!crate::rules::legal_actions(&stack, &registry).contains(&PlayerAction::ToggleCardSelection { position: at("sure_gamble") }));
+        let (stack, _) = apply_action(&stack, &registry, PlayerAction::ToggleCardSelection { position: at("corroder") }).expect("Corroder");
+        let (stack, _) = apply_action(&stack, &registry, PlayerAction::ConfirmCardSelection).expect("installed on Muse");
+        let corroder = stack.runner.rig.iter().find(|card| card.card == id("corroder")).expect("installed");
+        assert_eq!(corroder.hosted_on_rig_card, Some(muse));
+        assert_eq!(stack.runner.resources.credits, Credits(10 - 2 - 2));
+
+        let (heap, _) = apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 1 }).expect("the heap");
+        assert!(!crate::rules::legal_actions(&heap, &registry).contains(&PlayerAction::ToggleCardSelection { position: 1 }), "not a daemon");
+        let (heap, _) = apply_action(&heap, &registry, PlayerAction::ToggleCardSelection { position: 0 }).expect("Botulus");
+        let (heap, _) = apply_action(&heap, &registry, PlayerAction::ConfirmCardSelection).expect("a trojan: which ice?");
+        assert!(heap.runner.rig.iter().all(|card| card.card != id("botulus")), "not yet");
+        let (heap, _) = apply_action(&heap, &registry, PlayerAction::ToggleCardSelection { position: 0 }).expect("Ice Wall");
+        let (heap, _) = apply_action(&heap, &registry, PlayerAction::ConfirmCardSelection).expect("installed on it");
+        let botulus = heap.runner.rig.iter().find(|card| card.card == id("botulus")).expect("installed");
+        assert_eq!((botulus.hosted_on_ice, botulus.hosted_on_rig_card), (Some(fixture_install_id("ice_wall")), None));
+    }
+
 }

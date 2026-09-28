@@ -1,0 +1,112 @@
+{
+  "id": "muse",
+  "title": "Muse",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 2,
+  "memory_cost": 1,
+  "triggers": [
+    {
+      "trigger": "OnInstall",
+      "subject": "This",
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Runner",
+            "options": [
+              {
+                "PromptChooseCards": {
+                  "side": "Runner",
+                  "source": "OwnStack",
+                  "filter": {
+                    "All": [
+                      {
+                        "CardType": "Program"
+                      },
+                      {
+                        "Not": {
+                          "HasSubtype": "Daemon"
+                        }
+                      }
+                    ]
+                  },
+                  "min": 0,
+                  "max": 1,
+                  "reveal": false,
+                  "shuffle_after": true,
+                  "then": {
+                    "InstallProgramOnHost": {
+                      "from": "OwnStack"
+                    }
+                  }
+                }
+              },
+              {
+                "PromptChooseCards": {
+                  "side": "Runner",
+                  "source": "OwnHeap",
+                  "filter": {
+                    "All": [
+                      {
+                        "CardType": "Program"
+                      },
+                      {
+                        "Not": {
+                          "HasSubtype": "Daemon"
+                        }
+                      }
+                    ]
+                  },
+                  "min": 0,
+                  "max": 1,
+                  "reveal": false,
+                  "shuffle_after": false,
+                  "then": {
+                    "InstallProgramOnHost": {
+                      "from": "OwnHeap"
+                    }
+                  }
+                }
+              },
+              {
+                "PromptChooseCards": {
+                  "side": "Runner",
+                  "source": "OwnGrip",
+                  "filter": {
+                    "All": [
+                      {
+                        "CardType": "Program"
+                      },
+                      {
+                        "Not": {
+                          "HasSubtype": "Daemon"
+                        }
+                      }
+                    ]
+                  },
+                  "min": 0,
+                  "max": 1,
+                  "reveal": false,
+                  "shuffle_after": false,
+                  "then": {
+                    "InstallProgramOnHost": {
+                      "from": "OwnGrip"
+                    }
+                  }
+                }
+              }
+            ],
+            "texts": [
+              "search your stack",
+              "heap",
+              "grip"
+            ]
+          }
+        }
+      ],
+      "text": "When you install this program, search your stack, heap, or grip for 1 non-daemon program."
+    }
+  ],
+  "numeric_id": 34091,
+  "is_playable": true
+}

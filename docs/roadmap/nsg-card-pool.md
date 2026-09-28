@@ -1878,7 +1878,8 @@ reaches Vantage Point's cards by building a deck.
    on an installed card, and a card hosted as it is accessed (built,
    below): Eye for an Eye, Cupellation, Heliamphora; **3c**, run words
    (built, below): Trick Shot, Window of Opportunity, Alarm Clock; **3d**,
-   a search that installs onto a host: Muse.
+   a search that installs onto a host (built, below): Muse. Stage 3 is
+   complete.
 4. **Corp advancement and movement words:** Charlotte Caçador, Cohort
    Guidance Program, Hearts and Minds, Logjam, Isaac Liberdade, The Holo
    Man, Business As Usual, Janaína “JK” Dumont Kindelán, Kingmaking, Stoke the Embers.
@@ -2325,6 +2326,47 @@ host out of three zones is a stage's work of its own.
   start and its return, the placed and carried run credits — and without
   the three cards and the deck swap is **identical in all four shapes**,
   so the movement is `determinize` sampling three new Runner cards.
+
+#### Stage 3d — a search that installs onto a host (27 September 2026)
+
+`feat/rwr-stage-3d-muse`: Muse. **One new `Effect`.** Rebellion Without
+Rehearsal 29 of 65; `RWR_UNIMPLEMENTED` 37 → 36. **Stage 3 is complete.**
+
+- **A text install onto a host** (`Effect::InstallProgramOnHost`, new):
+  Muse's "search your stack, heap, or grip for 1 non-daemon program … If
+  that program is a trojan, install it on a piece of ice. Otherwise,
+  install it on this program." The search is a `PresentChoice` of the
+  three zones, each a `PromptChooseCards` (the stack's shuffled after),
+  whose `then` is the install: it resolves as the program found, with
+  Muse the acting install. A program goes onto Muse
+  (`InstalledRunnerCard::hosted_on_rig_card`, as Hackerspace hosts a
+  resource, and trashed with it); a Trojan's ice is the Runner's to
+  choose, so the effect parks a selection of ice whose `then` is itself
+  with the program written in — the State Hygiene Rule's third case — and
+  installs on the ice it resolves as. `engine::install_program_onto` is
+  the text install's steps with a host (the memory limit's trash, the
+  price, `ProgramInstalled`); `RunnerCardSource` gained the stack.
+  Nothing happens when the program cannot be installed that way, as for
+  every text install.
+- **Deck** — Spare Parts: two Muse and a Stowaway for it to find and put
+  on ice, in faction, for a DZMZ Optimizer, a Principia and a Mayfly.
+- **Real play**, 96 games of Fine Print against Spare Parts (seed 2).
+  Random seats install Muse 24 times, its search asked 19; the heuristic
+  Runner installs none.
+- **Fidelity limits:** the search offers the programs of one zone at a
+  time, the zone chosen first, where the rules have the Runner search
+  all three. A program hosted on Muse takes memory as any program does —
+  Muse prints nothing otherwise.
+- **DSL ratio (`pool_status.py`): 19 of 78 `Effect` variants single-use,
+  2 unused**, over 279 card files (18 of 77 over 278 before):
+  `InstallProgramOnHost` is the new one, its reason on the variant.
+- **Measured.** Both sweeps at 256 seeds are green, the fog gate
+  included. Against 3c, `coverage_identical.py` has the random seatings
+  **identical**, by view and by index; the heuristic ones moved (Corp
+  agenda wins 67 → 64 of 192, flatlines 13 → 17). Checked, not inferred:
+  a ref with the host install and the stack source and without Muse and
+  the deck swap is **identical in all four shapes**, so the movement is
+  `determinize` sampling Muse.
 
 ### 3. The Automata Initiative — 65 cards (C 14 / V 35 / M 16)
 

@@ -822,6 +822,48 @@ pub fn evaluate_effect(
             Ok(vec![GameEvent::SubroutineGained { card_id: ice.card_id.clone(), text: subroutine.text.clone() }])
         }
 
+        Effect::InstallProgramOnHost { card, from } => {
+            use crate::rules::engine::{can_install_program_onto, install_program_onto, ProgramHost, RunnerCardSource};
+            let source = match from {
+                crate::dsl::CardZoneRef::OwnGrip => RunnerCardSource::Grip,
+                crate::dsl::CardZoneRef::OwnHeap => RunnerCardSource::Heap,
+                crate::dsl::CardZoneRef::OwnStack => RunnerCardSource::Stack,
+                _ => return Err(RulesError::UnresolvedCardTarget),
+            };
+            let host = ctx.acting_install.ok_or(RulesError::UnresolvedCardTarget)?;
+            match card {
+                // The ice was chosen: this resolves as it.
+                Some(program) => {
+                    if !can_install_program_onto(state, registry, program, source, true) || state.find_corp_install(host).is_none() {
+                        return Ok(Vec::new());
+                    }
+                    install_program_onto(state, registry, program.clone(), source, ProgramHost::Ice(host))
+                }
+                None => {
+                    let program = acting_card.ok_or(RulesError::UnresolvedCardTarget)?.clone();
+                    let trojan = registry.get(&program).is_some_and(|def| def.installs_on_ice);
+                    if !can_install_program_onto(state, registry, &program, source, trojan) {
+                        return Ok(Vec::new());
+                    }
+                    if !trojan {
+                        return install_program_onto(state, registry, program, source, ProgramHost::RigCard(host));
+                    }
+                    let choose_ice = Effect::PromptChooseCards {
+                        side: Side::Runner,
+                        source: crate::dsl::CardZoneRef::OpponentInstalled,
+                        filter: CardFilter::Ice,
+                        min: 1,
+                        max: 1,
+                        reveal: false,
+                        shuffle_after: false,
+                        destination: None,
+                        then: Some(Box::new(Effect::InstallProgramOnHost { card: Some(program), from: from.clone() })),
+                    };
+                    evaluate_effect(state, &choose_ice, ctx, registry)
+                }
+            }
+        }
+
         Effect::PlaceRunCredits(amount) => {
             let credits = resolve_amount(amount, ctx, state, registry);
             state.active_run.as_mut().ok_or(RulesError::NoActiveRun)?.bonus_run_credits += credits;

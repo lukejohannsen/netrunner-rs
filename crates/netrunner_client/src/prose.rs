@@ -323,6 +323,9 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
         Effect::SetIdentityCopy(copy) => format!("make copy {} of the identity the one in play", describe_amount(copy)),
         Effect::AddToDeck(DeckEnd::Bottom) => "put it on the bottom of its owner's deck".to_string(),
         Effect::AddToDeck(DeckEnd::Top) => "put it on top of its owner's deck".to_string(),
+        Effect::InstallProgramOnHost { from, .. } => {
+            format!("install that program from {} on this card, or a trojan on a piece of ice", describe_zone(from))
+        }
         Effect::PlaceRunCredits(amount) => format!("place {} [credit] on this card, to spend during the run", describe_amount(amount)),
         Effect::ShuffleIntoDeck(zones) => {
             let zones: Vec<&str> = zones.iter().map(|zone| if *zone == CardZoneRef::HostedOnSource { "all hosted cards" } else { describe_zone(zone) }).collect();
