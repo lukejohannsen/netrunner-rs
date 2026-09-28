@@ -376,6 +376,9 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
         Effect::GainSubroutine(subroutine) => {
             format!("the ice gains \u{201c}{}\u{201d} before its other subroutines, for the rest of the encounter", subroutine.text.trim_end_matches('.'))
         }
+        Effect::GainIceSubtype(kind) => {
+            format!("this ice gains {} while it remains rezzed", crate::board::facts::ice_type_words(&[*kind]))
+        }
         Effect::LookAtTopOfDeck { deck, count } => {
             format!("look at the top {} of {}", plural(*count, "card", "cards"), if *deck == Side::Corp { "R&D" } else { "the stack" })
         }

@@ -1026,6 +1026,18 @@ pub enum Effect {
     /// longer (CR 9.8.3e), wait for one that does. Composition didn't
     /// work: nothing adds to a subroutine list.
     GainSubroutine(Box<crate::dsl::SubroutineDef>),
+    /// The acting install — a piece of ice, as it is rezzed — gains
+    /// `subtype` while it remains rezzed: Lycian Multi-Munition's "choose 1
+    /// or more subtypes among barrier, code gate, and sentry. This ice
+    /// gains the chosen subtypes while it remains rezzed", one of these per
+    /// subtype under the `PresentChoice` that is the choice. Made as a
+    /// `Lingering::GainSubtype` until `Until::WhileRezzed`, public like the
+    /// choice, which the Corp makes with the ice faceup. A no-op on
+    /// anything that is not a rezzed piece of ice. Composition didn't work:
+    /// a gained subtype was only ever declared (`ContinuousKind::
+    /// GainSubtype`), which holds while its source is active and has
+    /// nowhere to keep which subtype was chosen.
+    GainIceSubtype(crate::dsl::IceType),
     /// The controller looks at the top `count` cards of `deck`'s owner's
     /// deck and nobody else sees them (`GameEvent::CardsLookedAt`, masked
     /// for the other player) — Hiram "0mission" Svensson's "look at the
@@ -1850,6 +1862,7 @@ impl Effect {
             | Effect::InstallProgramOnHost { .. }
             | Effect::AddToScoreAreaAsAgenda(_)
             | Effect::GainSubroutine(_)
+            | Effect::GainIceSubtype(_)
             | Effect::LookAtTopOfDeck { .. }
             | Effect::HostRigCardOnInstall { .. }
             | Effect::DrawCardsAmount(..)

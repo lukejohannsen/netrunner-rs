@@ -29,10 +29,14 @@ pub enum GameEvent {
     /// ice passed unrezzed, and for one whose encounter ended with a
     /// subroutine unbroken. Sipa reads it.
     ///
-    /// `rezzed_as` is the ice's type if it was rezzed as it was passed,
-    /// which both players see — Sisyphus Protocol's "passes a rezzed code
-    /// gate or sentry" is read off it (`IceFacts::rezzed_code_gate_or_sentry`).
-    IcePassed { server: ServerId, position: u32, after_fully_breaking: bool, rezzed_as: Option<crate::dsl::IceType> },
+    /// `rezzed_as` is the ice's types if it was rezzed as it was passed,
+    /// printed and gained (`continuous::ice_types`: a Lycian Multi-Munition
+    /// is the subtypes it was rezzed as), and empty for ice passed
+    /// unrezzed; both players see them. Sisyphus Protocol's "passes a
+    /// rezzed code gate or sentry" is read off it (`IceFacts::
+    /// rezzed_code_gate_or_sentry`). A list rather than one type since a
+    /// piece of ice can gain more than one.
+    IcePassed { server: ServerId, position: u32, after_fully_breaking: bool, rezzed_as: Vec<crate::dsl::IceType> },
     /// The Runner fully broke the ice being encountered: the first time
     /// this encounter that every subroutine on it was broken (CR 6.5.7a).
     /// Lethe gives a tag for it. `position` is where it stands in the

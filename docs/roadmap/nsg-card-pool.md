@@ -1911,8 +1911,11 @@ reaches Vantage Point's cards by building a deck.
    begins (built, below): Tributary; **7d**, an encounter repeated (built, below): Sisyphus Protocol;
    **7e**, a trojan hosted by an event's ability (built, below): Spree.
    Stage 7 is complete.
-8. **A card's identity changes:** Thunderbolt Armaments: Peace Through Power, Lycian
-   Multi-Munition, Jeitinho.
+8. **A card's identity changes**, in three parts when it was taken: **8a**,
+   a subtype chosen at rez (built, below): Lycian Multi-Munition; **8b**, a
+   subroutine gained for the rest of the run: Thunderbolt Armaments: Peace
+   Through Power, on a Sweep deck of its own; **8c**, a card added to the
+   Runner's score area as an agenda, and a third way to win: Jeitinho.
 
 **Riskiest:**
 - Jeitinho: a third way to win (`rules/win.rs`).
@@ -3496,6 +3499,69 @@ Rehearsal 62 of 65; `RWR_UNIMPLEMENTED` 4 → 3. **Stage 7 is complete.**
   the ice host and the HUD line and without the card and the deck is
   identical to 7d in all four shapes, so the move is `determinize`
   sampling a new Runner card.
+
+#### Stage 8a — a subtype chosen at rez, held while rezzed (28 September 2026)
+
+`feat/rwr-stage-8a-lycian-multi-munition`: Lycian Multi-Munition. **One
+new `Effect`.** Rebellion Without Rehearsal 63 of 65; `RWR_UNIMPLEMENTED`
+3 → 2.
+
+- **"Choose 1 or more subtypes among barrier, code gate, and sentry. This
+  ice gains the chosen subtypes while it remains rezzed"** is a choice
+  kept for a duration (CR 9.10.3), and its duration is "until the source
+  becomes inactive" (9.10.3c). So it is a lingering effect and not a
+  continuous one: a declared `GainSubtype` holds while its source is
+  active, and has nowhere to keep which subtype was chosen.
+  - `Lingering::GainSubtype(IceType)`, one per subtype chosen, until a
+    new duration, `Until::WhileRezzed(install)`. It is made by the new
+    `Effect::GainIceSubtype`, which `validate` allows only on ice and
+    never of `IceType::Other`.
+  - `continuous::ice_gains_subtype` reads it beside the table. That is the
+    one question a typed break, Corsair's "the barrier you are
+    encountering" and Lycian's own "if this ice is a code gate"
+    (`Encountering(CodeGate)`, an existing requirement) all ask.
+  - A rez starts a new rezzed period and drops what the last one left
+    (`lingering::forget_rezzed_period`, in `engine::rez_install`). An
+    entry that holds while its card is rezzed would hold again at the
+    next rez, and nothing guarantees a checkpoint sweeps it in between.
+- **Seven answers** (one, two or all three types) are more than the four a
+  decision holds, so the choice is two decisions: one type, or "two or
+  more" and then which.
+- **"When a turn ends, derez this ice"** is either player's discard phase
+  end: two triggers with `when: Whose(..)`, the words Méliès U uses for
+  "the Runner's".
+- **A pass says every type the ice has.** `GameEvent::IcePassed::rezzed_as`
+  is now the list of types, printed and gained (`continuous::ice_types`),
+  because Sisyphus Protocol's "passes a rezzed code gate or sentry" read
+  the printed type alone and would not have heard a Lycian rezzed as a
+  sentry.
+- **Client**, both clients:
+  - On the desktop, the ice's tile is lit as the type it gained, when it
+    prints none of the three (`facts::ice_kind`).
+  - Its sheet says "A barrier and sentry while it remains rezzed".
+  - The in-effect list has one line per piece of ice
+    (`hud::in_effect`).
+  - No view field is new: the choice is in `ClientView::lingering`, which
+    the view ledger already has as drawn.
+- **Deck** — Retirement Package (Engineering the Future): two Lycian
+  Multi-Munition for a Vertigo and a Reverb, ice for ice.
+- **Real play**, 96 games of Retirement Package against Safety Net (seed
+  2):
+  - Random seats: rezzed 66 times, the choice made each time, derezzed
+    at a turn's end 62 times; subroutines fired 202 times and broken
+    twice.
+  - Heuristic seats: rezzed 188 times, derezzed 175 times; subroutines
+    fired 549 times and broken 15 times.
+- **DSL ratio (`pool_status.py`): 24 of 89 `Effect` variants single-use,
+  1 unused**, over 313 card files (23 of 88 before).
+- **Measured.** Both sweeps at 256 seeds are green. Against 7e,
+  `coverage_identical.py` has both random seatings **identical**. The
+  heuristic ones moved: Corp agenda wins 78 → 72 of 192, Runner agenda
+  wins 96 → 103, flatlines 16 → 17, deck-outs 2 → 0.
+  - A ref with the lingering effect, the new effect, the pass's list of
+    types and the clients, and without the card and the deck, is
+    identical to 7e in all four shapes.
+  - So the move is `determinize` sampling a new Corp card, not a rule.
 
 ### 3. The Automata Initiative — 65 cards (C 14 / V 35 / M 16)
 

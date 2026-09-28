@@ -1827,7 +1827,7 @@ mod system_gateway {
         let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run");
         let (state, _) = crate::rules::test_support::continue_run(&state, &registry).expect("approach Ice Wall");
         let (state, events) = close_all_windows(state, &registry);
-        assert!(events.contains(&crate::rules::GameEvent::IcePassed { server: ServerId::Hq, position: 0, after_fully_breaking: false, rezzed_as: None }), "unrezzed, passed");
+        assert!(events.contains(&crate::rules::GameEvent::IcePassed { server: ServerId::Hq, position: 0, after_fully_breaking: false, rezzed_as: vec![] }), "unrezzed, passed");
         assert!(state.pending_paid_choice.is_none(), "the server is not approached by the pass");
         let (state, events) = crate::rules::test_support::through_movement(&state, &registry).expect("to the server");
         let fired = events
@@ -5125,7 +5125,7 @@ mod system_gateway {
 
         let (state, events) = close_all_windows(state, &registry);
         assert!(!events.iter().any(|e| matches!(e, crate::rules::GameEvent::IceEncountered { .. })), "{events:?}");
-        assert!(events.contains(&crate::rules::GameEvent::IcePassed { server: ServerId::Hq, position: 0, after_fully_breaking: false, rezzed_as: None }));
+        assert!(events.contains(&crate::rules::GameEvent::IcePassed { server: ServerId::Hq, position: 0, after_fully_breaking: false, rezzed_as: vec![] }));
         assert_eq!(state.active_run.as_ref().unwrap().phase, crate::rules::RunPhase::Movement);
     }
 
@@ -15474,7 +15474,7 @@ mod rebellion_without_rehearsal {
     fn sisyphus_protocol_makes_the_runner_encounter_a_passed_code_gate_again_for_a_credit() {
         let registry = registry();
         let (state, events) = passing_tributary_with_sisyphus(&registry);
-        assert!(events.iter().any(|e| matches!(e, GameEvent::IcePassed { rezzed_as: Some(crate::dsl::IceType::CodeGate), .. })));
+        assert!(events.iter().any(|e| matches!(e, GameEvent::IcePassed { rezzed_as, .. } if rezzed_as == &[crate::dsl::IceType::CodeGate])));
         assert!(state.pending_paid_choice.is_some(), "you may pay 1 credit or trash 1 card from HQ");
         let credits = state.corp.resources.credits;
         let (state, events) = apply_action(&state, &registry, PlayerAction::AcceptPendingPaidChoice { cost_option_index: Some(0) }).expect("pay 1");
@@ -15551,5 +15551,113 @@ mod rebellion_without_rehearsal {
         assert_eq!(offered, vec![Some(id("enigma"))], "a piece of ice protecting the attacked server");
         let state = select(&state, &registry, &[view.selection[0].position]);
         assert_eq!(state.runner.rig[0].hosted_on_ice, Some(enigma), "the trojan moved");
+    }
+
+    // ---- Stage 8a: a subtype chosen at rez, held while rezzed ----
+
+    /// A run on HQ at an unrezzed Lycian Multi-Munition, the Runner with
+    /// Corroder installed, rezzed on approach and answered with `choices`
+    /// (the first question's option, then the second's where it asks one),
+    /// up to the encounter window.
+    fn lycian_rezzed_as(registry: &CardRegistry, choices: &[usize]) -> GameState {
+        lycian_rezzed_from(lycian_unrezzed(), registry, choices)
+    }
+
+    fn lycian_unrezzed() -> GameState {
+        let mut state = runner_turn();
+        state.runner.rig = vec![rig("corroder")];
+        state.corp.installed = vec![crate::rules::InstalledCard { rezzed: false, ..ice_at_hq("lycian_multi_munition") }];
+        state
+    }
+
+    fn lycian_rezzed_from(state: GameState, registry: &CardRegistry, choices: &[usize]) -> GameState {
+        let lycian = fixture_install_id("lycian_multi_munition");
+        let (state, _) = apply_action(&state, registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("initiate run");
+        let (state, _) = crate::rules::test_support::continue_run(&state, registry).expect("approach the ice");
+        let (state, _) = apply_action(&state, registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner passes approach");
+        let (mut state, _) = apply_action(&state, registry, PlayerAction::RezIce { ice: lycian }).expect("rez it on approach");
+        for &option_index in choices {
+            assert!(matches!(state.pending_decision, Some(crate::rules::PendingDecision::ChooseEffect { chooser: Side::Corp, .. })), "choose 1 or more subtypes");
+            state = apply_action(&state, registry, PlayerAction::ResolvePendingChoice { option_index }).expect("choose").0;
+        }
+        assert!(state.pending_decision.is_none());
+        let (state, _) = apply_action(&state, registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner passes approach");
+        let (state, _) = apply_action(&state, registry, PlayerAction::PassPriority { side: Side::Corp }).expect("corp passes approach");
+        assert_eq!(state.active_run.as_ref().map(|run| run.phase), Some(crate::rules::RunPhase::EncounterIce));
+        state
+    }
+
+    fn gained(state: &GameState, registry: &CardRegistry) -> Vec<crate::dsl::IceType> {
+        use crate::dsl::IceType;
+        let lycian = fixture_install_id("lycian_multi_munition");
+        [IceType::Barrier, IceType::CodeGate, IceType::Sentry].into_iter().filter(|t| crate::rules::continuous::ice_gains_subtype(state, registry, lycian, *t)).collect()
+    }
+
+    /// Rezzed as a barrier and a sentry, it is both and not a code gate:
+    /// the code gate subroutine does nothing, the sentry one trashes a
+    /// program and the barrier one pays 1 and ends the run.
+    #[test]
+    fn lycian_multi_munition_is_the_subtypes_chosen_as_it_is_rezzed_and_fires_only_theirs() {
+        use crate::dsl::IceType;
+        let registry = registry();
+        let state = lycian_rezzed_as(&registry, &[3, 1]);
+        assert_eq!(gained(&state, &registry), [IceType::Barrier, IceType::Sentry]);
+        let (clicks, credits) = (state.runner.resources.clicks, state.runner.resources.credits);
+        let corp_credits = state.corp.resources.credits;
+        let (state, _) = let_subroutines_fire(&state, &registry);
+        let view = crate::view::build_client_view(&state, &registry, Side::Corp);
+        assert_eq!(view.selection.len(), 1, "trash 1 installed program");
+        let state = select(&state, &registry, &[view.selection[0].position]);
+        assert!(state.runner.rig.is_empty(), "Corroder trashed");
+        assert_eq!((state.runner.resources.clicks, state.runner.resources.credits), (clicks, credits), "not a code gate");
+        assert_eq!(state.corp.resources.credits, Credits(corp_credits.0 + 1), "a barrier: gain 1");
+        assert!(state.active_run.is_none(), "and end the run");
+    }
+
+    /// Rezzed as a code gate alone, the Runner loses a click and a credit
+    /// and passes it as a code gate — what Sisyphus Protocol hears.
+    #[test]
+    fn lycian_multi_munition_rezzed_as_a_code_gate_is_passed_as_one() {
+        use crate::dsl::IceType;
+        let registry = registry();
+        let state = lycian_rezzed_as(&registry, &[1]);
+        assert_eq!(gained(&state, &registry), [IceType::CodeGate]);
+        let (clicks, credits) = (state.runner.resources.clicks, state.runner.resources.credits);
+        let (state, events) = let_subroutines_fire(&state, &registry);
+        assert_eq!(state.runner.resources.clicks.0 + 1, clicks.0, "loses [click]");
+        assert_eq!(state.runner.resources.credits.0 + 1, credits.0, "and 1[credit]");
+        assert_eq!(state.runner.rig.len(), 1, "not a sentry");
+        assert!(events.iter().any(|e| matches!(e, GameEvent::IcePassed { rezzed_as, .. } if rezzed_as == &[IceType::CodeGate])), "passed as its subroutines finish: {events:?}");
+    }
+
+    /// "When a turn ends, derez this ice": either player's. Derezzed, it
+    /// loses what it gained, and its next rez chooses again.
+    #[test]
+    fn lycian_multi_munition_derezzes_when_a_turn_ends_and_chooses_again_at_its_next_rez() {
+        use crate::dsl::IceType;
+        let registry = registry();
+        let state = lycian_rezzed_as(&registry, &[3, 3]);
+        assert_eq!(gained(&state, &registry), [IceType::Barrier, IceType::CodeGate, IceType::Sentry]);
+        let (state, _) = let_subroutines_fire(&state, &registry);
+        let view = crate::view::build_client_view(&state, &registry, Side::Corp);
+        let state = select(&state, &registry, &[view.selection[0].position]);
+        assert!(state.active_run.is_none(), "a barrier too: the run ends");
+        let (state, _) = apply_action(&crate::rules::test_support::clicks_spent(&state), &registry, PlayerAction::EndTurn).expect("end the Runner's turn");
+        let (state, _) = close_all_windows(state, &registry);
+        let lycian = fixture_install_id("lycian_multi_munition");
+        assert!(state.corp.installed.iter().any(|c| c.install_id == lycian && !c.rezzed), "derezzed as the Runner's turn ended");
+        assert!(gained(&state, &registry).is_empty(), "it keeps nothing it gained");
+
+        // What an earlier rezzed period left, as a derez inside one action
+        // would leave it with no checkpoint to sweep it.
+        let mut state = lycian_unrezzed();
+        state.lingering.push(crate::rules::lingering::LingeringEffect {
+            what: crate::rules::lingering::Lingering::GainSubtype(IceType::Barrier),
+            on: crate::rules::lingering::On::Install(lycian),
+            until: crate::rules::lingering::Until::WhileRezzed(lycian),
+            source: id("lycian_multi_munition"),
+        });
+        let state = lycian_rezzed_from(state, &registry, &[2]);
+        assert_eq!(gained(&state, &registry), [IceType::Sentry], "a rez begins a new rezzed period");
     }
 }

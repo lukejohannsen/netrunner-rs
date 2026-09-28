@@ -132,6 +132,16 @@ pub enum Lingering {
     /// ([`take_allotted_clicks`]). Was `CorpState::extra_clicks_next_turn`,
     /// a field no view carried.
     AllottedClicks(i32),
+    /// A piece of ice has this subtype on top of what it prints — Lycian
+    /// Multi-Munition's "choose 1 or more subtypes among barrier, code
+    /// gate, and sentry. This ice gains the chosen subtypes while it
+    /// remains rezzed", one entry per subtype chosen, made by
+    /// `Effect::GainIceSubtype` and read with the table's by
+    /// `continuous::ice_gains_subtype`, so a typed breaker, a "the barrier
+    /// you are encountering" and a pass of "a rezzed code gate or sentry"
+    /// all see it. Lingering rather than continuous: the subtype was
+    /// *chosen*, once, and a declared effect has nowhere to keep a choice.
+    GainSubtype(crate::dsl::IceType),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -145,6 +155,14 @@ pub enum Until {
     /// (`Lingering::AllottedClicks`): it holds until then, and nothing
     /// but that turn's start ends it.
     NextTurnOf(Side),
+    /// For as long as this install stays rezzed: "while it remains rezzed"
+    /// (Lycian Multi-Munition). It stops holding when the card is derezzed
+    /// or leaves the table, and a rez of the same install starts a new
+    /// period, so `engine::rez_install` drops what an earlier one left
+    /// (`forget_rezzed_period`) — otherwise a card derezzed and rezzed
+    /// inside one action, with no checkpoint to sweep between, would carry
+    /// its last choice into the next.
+    WhileRezzed(InstallId),
 }
 
 impl LingeringEffect {
@@ -157,6 +175,7 @@ impl LingeringEffect {
             Until::EndOfRun => state.active_run.is_some(),
             Until::EndOfTurn(turn) => state.turn == turn,
             Until::NextTurnOf(_) => true,
+            Until::WhileRezzed(install) => state.corp.installed.iter().any(|card| card.install_id == install && card.rezzed),
         }
     }
 }
@@ -184,7 +203,7 @@ pub fn strength(state: &GameState, on: InstallId) -> i32 {
         .filter(|effect| effect.on == On::Install(on) && effect.holds(state))
         .map(|effect| match effect.what {
             Lingering::Strength(delta) => delta,
-            Lingering::RezCost(_) | Lingering::Cannot(_) | Lingering::PreventRunEnding(_) | Lingering::AllottedClicks(_) => 0,
+            Lingering::RezCost(_) | Lingering::Cannot(_) | Lingering::PreventRunEnding(_) | Lingering::AllottedClicks(_) | Lingering::GainSubtype(_) => 0,
         })
         .sum()
 }
@@ -201,7 +220,7 @@ pub fn ice_strength(state: &GameState, on: InstallId) -> i32 {
             .filter(|effect| effect.on == On::EachIce && effect.holds(state))
             .map(|effect| match effect.what {
                 Lingering::Strength(delta) => delta,
-                Lingering::RezCost(_) | Lingering::Cannot(_) | Lingering::PreventRunEnding(_) | Lingering::AllottedClicks(_) => 0,
+                Lingering::RezCost(_) | Lingering::Cannot(_) | Lingering::PreventRunEnding(_) | Lingering::AllottedClicks(_) | Lingering::GainSubtype(_) => 0,
             })
             .sum::<i32>()
 }
@@ -215,9 +234,32 @@ pub fn ice_rez_cost(state: &GameState) -> i32 {
         .filter(|effect| effect.on == On::EachIce && effect.holds(state))
         .map(|effect| match effect.what {
             Lingering::RezCost(delta) => delta,
-            Lingering::Strength(_) | Lingering::Cannot(_) | Lingering::PreventRunEnding(_) | Lingering::AllottedClicks(_) => 0,
+            Lingering::Strength(_) | Lingering::Cannot(_) | Lingering::PreventRunEnding(_) | Lingering::AllottedClicks(_) | Lingering::GainSubtype(_) => 0,
         })
         .sum()
+}
+
+/// Whether a lingering effect that still holds gives the ice `on` the
+/// subtype `subtype`. `continuous::ice_gains_subtype` asks it beside the
+/// table.
+pub fn gains_subtype(state: &GameState, on: InstallId, subtype: crate::dsl::IceType) -> bool {
+    gained(&state.lingering, on, subtype, |effect| effect.holds(state))
+}
+
+/// [`gains_subtype`] over a list already filtered to what holds — the one a
+/// `ClientView` carries, for a client drawing the ice's type.
+pub fn listed_subtype(held: &[LingeringEffect], on: InstallId, subtype: crate::dsl::IceType) -> bool {
+    gained(held, on, subtype, |_| true)
+}
+
+fn gained(list: &[LingeringEffect], on: InstallId, subtype: crate::dsl::IceType, holds: impl Fn(&LingeringEffect) -> bool) -> bool {
+    list.iter().any(|effect| effect.what == Lingering::GainSubtype(subtype) && effect.on == On::Install(on) && holds(effect))
+}
+
+/// Drops what an earlier rezzed period of `install` left: a rez starts a
+/// new one (`Until::WhileRezzed`).
+pub(crate) fn forget_rezzed_period(state: &mut GameState, install: InstallId) {
+    state.lingering.retain(|effect| effect.until != Until::WhileRezzed(install));
 }
 
 /// Whether a prohibition is in force. Who it binds is the prohibition's

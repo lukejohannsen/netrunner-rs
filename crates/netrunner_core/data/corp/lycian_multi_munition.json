@@ -1,0 +1,193 @@
+{
+  "id": "lycian_multi_munition",
+  "title": "Lycian Multi-Munition",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Other"
+  },
+  "cost": 3,
+  "strength": 1,
+  "triggers": [
+    {
+      "trigger": "OnRez",
+      "subject": "This",
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Corp",
+            "options": [
+              {
+                "GainIceSubtype": "Barrier"
+              },
+              {
+                "GainIceSubtype": "CodeGate"
+              },
+              {
+                "GainIceSubtype": "Sentry"
+              },
+              {
+                "PresentChoice": {
+                  "chooser": "Corp",
+                  "options": [
+                    {
+                      "Sequence": [
+                        {
+                          "GainIceSubtype": "Barrier"
+                        },
+                        {
+                          "GainIceSubtype": "CodeGate"
+                        }
+                      ]
+                    },
+                    {
+                      "Sequence": [
+                        {
+                          "GainIceSubtype": "Barrier"
+                        },
+                        {
+                          "GainIceSubtype": "Sentry"
+                        }
+                      ]
+                    },
+                    {
+                      "Sequence": [
+                        {
+                          "GainIceSubtype": "CodeGate"
+                        },
+                        {
+                          "GainIceSubtype": "Sentry"
+                        }
+                      ]
+                    },
+                    {
+                      "Sequence": [
+                        {
+                          "GainIceSubtype": "Barrier"
+                        },
+                        {
+                          "GainIceSubtype": "CodeGate"
+                        },
+                        {
+                          "GainIceSubtype": "Sentry"
+                        }
+                      ]
+                    }
+                  ],
+                  "texts": [
+                    "barrier, code gate",
+                    "barrier — and sentry",
+                    "code gate, and sentry",
+                    "barrier, code gate, and sentry"
+                  ]
+                }
+              }
+            ],
+            "texts": [
+              "barrier",
+              "code gate",
+              "sentry",
+              "choose 1 or more subtypes — two or more"
+            ]
+          }
+        }
+      ],
+      "text": "When you rez this ice, choose 1 or more subtypes among barrier, code gate, and sentry. This ice gains the chosen subtypes while it remains rezzed."
+    },
+    {
+      "trigger": "OnDiscardPhaseEnd",
+      "when": {
+        "Whose": "Corp"
+      },
+      "effects": [
+        {
+          "DerezCard": "ThisCard"
+        }
+      ],
+      "text": "When a turn ends, derez this ice."
+    },
+    {
+      "trigger": "OnDiscardPhaseEnd",
+      "when": {
+        "Whose": "Runner"
+      },
+      "effects": [
+        {
+          "DerezCard": "ThisCard"
+        }
+      ],
+      "text": "When a turn ends, derez this ice."
+    }
+  ],
+  "subroutines": [
+    {
+      "text": "If this ice is a code gate, the Runner loses [click] and 1[credit].",
+      "effect": {
+        "EffectIf": {
+          "condition": {
+            "Encountering": "CodeGate"
+          },
+          "effect": {
+            "Sequence": [
+              {
+                "LoseClicks": 1
+              },
+              {
+                "LoseCredits": [
+                  "Runner",
+                  1
+                ]
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "text": "If this ice is a sentry, trash 1 installed program.",
+      "effect": {
+        "EffectIf": {
+          "condition": {
+            "Encountering": "Sentry"
+          },
+          "effect": {
+            "PromptChooseCards": {
+              "side": "Corp",
+              "source": "OpponentInstalled",
+              "filter": {
+                "CardType": "Program"
+              },
+              "min": 1,
+              "max": 1,
+              "reveal": false,
+              "shuffle_after": false,
+              "destination": "OpponentDiscard"
+            }
+          }
+        }
+      }
+    },
+    {
+      "text": "If this ice is a barrier, gain 1[credit] and end the run.",
+      "effect": {
+        "EffectIf": {
+          "condition": {
+            "Encountering": "Barrier"
+          },
+          "effect": {
+            "Sequence": [
+              {
+                "GainCredits": [
+                  "Corp",
+                  1
+                ]
+              },
+              "EndTheRun"
+            ]
+          }
+        }
+      }
+    }
+  ],
+  "numeric_id": 34100,
+  "is_playable": true
+}

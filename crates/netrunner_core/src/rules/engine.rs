@@ -1122,6 +1122,9 @@ pub(crate) fn rez_install(
     if available < rez_cost {
         return Err(RulesError::NotEnoughCredits { side, available, requested: rez_cost });
     }
+    // A rez starts a new rezzed period: what the last one chose is gone
+    // (`lingering::Until::WhileRezzed`).
+    crate::rules::lingering::forget_rezzed_period(next, ice);
     let rezzed = next.corp.installed.iter_mut().find(|c| c.install_id == ice).expect("resolved above");
     rezzed.rezzed = true;
     // Face up is seen: a card derezzed later stays one the Runner knows.
@@ -4353,7 +4356,7 @@ mod tests {
                 GameEvent::PriorityPassed { side: Side::Corp },
                 GameEvent::PaidAbilityWindowClosed,
                 GameEvent::EncounterEnded { card_id: CardId("ice_wall".to_string()), install: crate::rules::state::InstallId(0) },
-                GameEvent::IcePassed { server: ServerId::Hq, position: 0, after_fully_breaking: false, rezzed_as: Some(crate::dsl::IceType::Barrier) },
+                GameEvent::IcePassed { server: ServerId::Hq, position: 0, after_fully_breaking: false, rezzed_as: vec![crate::dsl::IceType::Barrier] },
             ]
         );
 
