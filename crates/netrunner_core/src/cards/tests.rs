@@ -14952,4 +14952,61 @@ mod rebellion_without_rehearsal {
         assert_eq!(events.iter().filter(|event| matches!(event, GameEvent::CardRevealed { .. })).count(), 1);
         assert!(events.iter().any(|event| matches!(event, GameEvent::ActionPhaseEnded { side: Side::Corp })), "after the threat's offer");
     }
+
+    // ---- Stage 6b: a breach of HQ replaced ----
+
+    #[test]
+    fn burner_reveals_three_in_hq_and_the_runner_puts_two_on_top_or_bottom_of_rnd_instead_of_breaching() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.grip = vec![id("burner")];
+        state.corp.hq = vec![id("hedge_fund"), id("ice_wall"), id("enigma"), id("pad_campaign")];
+        state.corp.r_and_d = vec![id("offworld_office"), id("offworld_office")];
+        let (state, _) = apply_action(&state, &registry, PlayerAction::PlayEvent { card_id: id("burner") }).expect("play Burner");
+        let (state, _) = crate::rules::test_support::through_movement(&state, &registry).expect("to the server");
+        let (state, events) = apply_action(&state, &registry, PlayerAction::CompleteRun).expect("instead of breaching");
+        assert!(!events.iter().any(|event| matches!(event, GameEvent::CardAccessed { .. })), "nothing accessed");
+        let revealed: Vec<CardId> = events.iter().filter_map(|event| match event { GameEvent::CardRevealed { card, .. } => Some(card.clone()), _ => None }).collect();
+        assert_eq!(revealed.len(), 3);
+        assert_eq!(state.revealed.len(), 3, "revealed while the Runner chooses");
+
+        // The Runner is offered the revealed cards and no other.
+        let view = crate::view::build_client_view(&state, &registry, Side::Runner);
+        let offered: Vec<CardId> = view.selection.iter().filter_map(|candidate| candidate.card.clone()).collect();
+        assert_eq!(offered.len(), 3);
+        assert!(offered.iter().all(|card| revealed.contains(card)));
+        let first = view.selection[0].clone();
+        let state = select(&state, &registry, &[first.position]);
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("to the top");
+        assert_eq!(state.corp.r_and_d.last(), first.card.as_ref(), "on top of R&D");
+        assert_eq!(state.revealed.len(), 2, "moved, so no longer revealed");
+
+        let view = crate::view::build_client_view(&state, &registry, Side::Runner);
+        assert_eq!(view.selection.len(), 2, "the two still revealed");
+        let second = view.selection[0].clone();
+        let state = select(&state, &registry, &[second.position]);
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 1 }).expect("to the bottom");
+        assert_eq!(state.corp.r_and_d.first(), second.card.as_ref(), "under R&D");
+        assert_eq!(state.corp.r_and_d.len(), 4);
+        assert_eq!(state.corp.hq.len(), 2, "one revealed card stays, with the one never revealed");
+        assert!(state.revealed.is_empty(), "the ability has finished");
+        assert!(state.active_run.is_none(), "the run is over");
+    }
+
+    #[test]
+    fn burner_with_one_card_in_hq_adds_that_one() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.grip = vec![id("burner")];
+        state.corp.hq = vec![id("hedge_fund")];
+        let (state, _) = apply_action(&state, &registry, PlayerAction::PlayEvent { card_id: id("burner") }).expect("play Burner");
+        let (state, _) = crate::rules::test_support::through_movement(&state, &registry).expect("to the server");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::CompleteRun).expect("instead of breaching");
+        let state = select(&state, &registry, &[0]);
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("to the top");
+        assert_eq!(state.corp.r_and_d, vec![id("hedge_fund")]);
+        assert!(state.corp.hq.is_empty());
+        assert!(state.pending_decision.is_none(), "no second card to choose");
+        assert!(state.revealed.is_empty());
+    }
 }

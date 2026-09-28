@@ -376,6 +376,15 @@ fn instance_matches_filter(
             let len = zone_card_ids(state, chooser, zone, source).len();
             position >= len.saturating_sub(*count as usize)
         }
+        // Only a hand holds a revealed card, and only its owner's.
+        CardFilter::Revealed => {
+            let owner = owning_side(chooser, zone);
+            let in_a_hand = matches!(zone, CardZoneRef::OwnHq | CardZoneRef::OwnGrip | CardZoneRef::OpponentHand);
+            in_a_hand
+                && zone_card_ids(state, chooser, zone, source)
+                    .get(position)
+                    .is_some_and(|card| state.revealed.iter().any(|revealed| revealed.side == owner && &revealed.card == card))
+        }
         // Root or ice, any rez state — the filter's caller says which.
         CardFilter::InAttackedServer => {
             corp_install.is_some_and(|c| state.active_run.as_ref().is_some_and(|run| run.server == c.server))

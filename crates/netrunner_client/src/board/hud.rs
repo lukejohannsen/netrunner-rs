@@ -320,6 +320,11 @@ pub fn in_effect(view: &ClientView, registry: &CardRegistry) -> Vec<String> {
         .chain(view.delayed.iter().map(|delayed| {
             format!("{}: when this turn ends, {}", title(&delayed.card), crate::prose::describe_effect(&delayed.effect, registry))
         }))
+        // A card revealed in a hand and not moved yet (Burner's three out
+        // of HQ while the Runner chooses): both players were shown it.
+        .chain(view.revealed.iter().map(|revealed| {
+            format!("revealed in {}: {}", if revealed.side == Side::Corp { "HQ" } else { "the grip" }, title(&revealed.card))
+        }))
         .collect()
 }
 
@@ -539,6 +544,14 @@ mod tests {
         assert_eq!(lines.len(), 2, "{lines:?}");
         assert_eq!(lines[0], "Aircheck: the Runner cannot spend or lose credits from their credit pool, for the rest of this run");
         assert!(lines[1].ends_with(": the Runner has 1 fewer allotted click next turn"), "{lines:?}");
+    }
+
+    #[test]
+    fn a_card_revealed_in_a_hand_is_listed_until_it_moves() {
+        let registry = crate::decks::sample_deck_registry();
+        let mut view = view();
+        view.revealed = vec![netrunner_core::rules::RevealedCard { side: Side::Corp, card: CardId("hedge_fund".into()) }];
+        assert_eq!(in_effect(&view, &registry), ["revealed in HQ: Hedge Fund"]);
     }
 
     /// During a run the Runner's credits read "pool +run": the bad

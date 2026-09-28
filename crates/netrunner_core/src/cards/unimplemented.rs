@@ -22,7 +22,6 @@ pub(crate) const VP_UNIMPLEMENTED: &[(u32, &str)] = &[];
 pub(crate) const RWR_UNIMPLEMENTED: &[(u32, &str)] = &[
     (34070, "The Wizard’s Chest"),
     (34079, "Jeitinho"),
-    (34085, "Burner"),
     (34086, "Spree"),
     (34088, "Cataloguer"),
     (34090, "Lobisomem"),

@@ -892,7 +892,7 @@ pub enum CardValidationError {
     ChosenNumberNobodyChose(CardId),
     #[error("card {0:?} sets which copy of its identity is in play (`Effect::SetIdentityCopy`) other than as a Corp identity's secret number (`ChooseNumber` with `secret`), CR 1.5.2b")]
     IdentityCopySetInTheOpen(CardId),
-    #[error("card {0:?} resolves something after a random reveal (`Effect::RevealAtRandom::then`) that is not a move into a deck (`AddToDeck`, `ShuffleIntoDeck`, in a `Sequence`), which could park a decision and drop the cards revealed after it")]
+    #[error("card {0:?} resolves something for each card of a random reveal (`Effect::RevealAtRandom::each`) that is not a move into a deck (`AddToDeck`, `ShuffleIntoDeck`, in a `Sequence`), which could park a decision and drop the cards revealed after it")]
     RevealedCardsCannotWait(CardId),
     #[error("Ice {0:?} must have a strength")]
     IceMissingStrength(CardId),
@@ -1219,8 +1219,8 @@ impl CardDefinition {
         };
         for root in roots {
             root.for_each_effect(&mut |effect| {
-                if let Effect::RevealAtRandom { then, .. } = effect {
-                    revealed_cards_wait |= !never_parks(then);
+                if let Effect::RevealAtRandom { each: Some(each), .. } = effect {
+                    revealed_cards_wait |= !never_parks(each);
                 }
                 prohibits_for_an_encounter |= matches!(effect, Effect::Prohibit { until: EffectDuration::Encounter, .. });
                 restricted_to_no_type |= matches!(effect, Effect::BreakSubroutines { restrict_to: Some(IceType::Other), .. });

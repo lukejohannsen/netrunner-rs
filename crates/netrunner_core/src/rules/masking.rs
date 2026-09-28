@@ -466,6 +466,10 @@ pub struct PublicGameState {
     /// resolves Lightning Laboratory's derez where the real game will.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub delayed: Vec<lingering::DelayedAbility>,
+    /// `GameState::revealed`, whole: a revealed card is shown to both
+    /// players (CR 1.21.3), so the list is the same to every viewer.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub revealed: Vec<crate::rules::RevealedCard>,
     /// `GameState::this_turn` and `last_turn`, whole and the same to every
     /// viewer. They need no mask because `rules::turn_log` never counted
     /// anything one player did not see: a moment about a concealed card is
@@ -546,6 +550,7 @@ pub fn mask_state_for_player(state: &GameState, registry: &CardRegistry, viewer:
         }),
         lingering: state.lingering.iter().filter(|effect| effect.holds(state)).cloned().collect(),
         delayed: state.delayed.clone(),
+        revealed: state.revealed.clone(),
         this_turn: state.this_turn,
         last_turn: state.last_turn,
     }

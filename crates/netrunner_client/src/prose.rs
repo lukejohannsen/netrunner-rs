@@ -332,9 +332,12 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
         Effect::SetRunEndedEffect(effect) => format!("when the run ends, {}", describe_effect(effect, registry)),
         Effect::WhenThisTurnEnds(effect) => format!("when this turn ends, {}", describe_effect(effect, registry)),
         Effect::EndActionPhase => "your action phase ends".to_string(),
-        Effect::RevealAtRandom { side, count, then } => {
+        Effect::RevealAtRandom { side, count, each } => {
             let hand = if *side == Side::Corp { "HQ" } else { "the grip" };
-            format!("reveal {count} card(s) in {hand} at random, and for each: {}", describe_effect(then, registry))
+            match each {
+                Some(each) => format!("reveal {count} card(s) in {hand} at random, and for each: {}", describe_effect(each, registry)),
+                None => format!("reveal {count} card(s) in {hand} at random"),
+            }
         }
         Effect::ArmRunEndPrevention(_) => "the run cannot be ended by the next end-the-run effect".to_string(),
         Effect::Sabotage(n) => format!("sabotage {n}"),
