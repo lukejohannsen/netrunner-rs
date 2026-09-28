@@ -30,19 +30,16 @@ pub(crate) const RWR_UNIMPLEMENTED: &[(u32, &str)] = &[
     (34097, "Lightning Laboratory"),
     (34098, "Warm Reception"),
     (34100, "Lycian Multi-Munition"),
-    (34101, "Sorocaban Blade"),
     (34102, "Active Policing"),
     (34104, "Brasília Government Grid"),
     (34105, "See How They Run"),
     (34106, "Sisyphus Protocol"),
-    (34110, "Cloud Eater"),
     (34111, "Tributary"),
     (34112, "Bring Them Home"),
     (34121, "Nuvem SA: Law of the Land"),
     (34122, "Eminent Domain"),
     (34123, "The Basalt Spire"),
     (34125, "Descent"),
-    (34126, "Hammer"),
 ];
 
 /// *The Automata Initiative* (`tai`): tranche 3 of the NSG plan.

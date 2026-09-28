@@ -1,0 +1,98 @@
+{
+  "id": "cloud_eater",
+  "title": "Cloud Eater",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Sentry"
+  },
+  "cost": 10,
+  "strength": 6,
+  "unique": true,
+  "triggers": [
+    {
+      "trigger": "OnEncounterEnded",
+      "subject": "This",
+      "requirement": {
+        "AmountAtLeast": [
+          {
+            "TimesThisTurnOnThisCopy": "OnRez"
+          },
+          1
+        ]
+      },
+      "effects": [
+        {
+          "OfferPaidChoice": {
+            "side": "Runner",
+            "cost": {
+              "AnyOf": [
+                {
+                  "TakeTags": 2
+                },
+                {
+                  "SufferDamage": [
+                    "Net",
+                    3
+                  ]
+                }
+              ]
+            },
+            "if_paid": {
+              "Sequence": []
+            },
+            "if_declined": {
+              "PromptChooseCards": {
+                "side": "Corp",
+                "source": "OpponentInstalled",
+                "filter": "Any",
+                "min": 1,
+                "max": 1,
+                "reveal": false,
+                "shuffle_after": false,
+                "destination": "OpponentDiscard"
+              }
+            },
+            "text": "trash 1 installed Runner card unless the Runner takes 2 tags or suffers 3 net damage"
+          }
+        }
+      ],
+      "text": "Whenever an encounter with this ice ends, if it was rezzed this turn, trash 1 installed Runner card unless the Runner takes 2 tags or suffers 3 net damage."
+    }
+  ],
+  "subroutines": [
+    {
+      "text": "Trash 1 installed Runner card.",
+      "effect": {
+        "PromptChooseCards": {
+          "side": "Corp",
+          "source": "OpponentInstalled",
+          "filter": "Any",
+          "min": 1,
+          "max": 1,
+          "reveal": false,
+          "shuffle_after": false,
+          "destination": "OpponentDiscard"
+        }
+      }
+    },
+    {
+      "text": "Give the Runner 2 tags.",
+      "effect": {
+        "GiveTags": {
+          "Fixed": 2
+        }
+      }
+    },
+    {
+      "text": "Do 3 net damage.",
+      "effect": {
+        "DealDamage": [
+          "Net",
+          3
+        ]
+      }
+    }
+  ],
+  "numeric_id": 34110,
+  "is_playable": true
+}
