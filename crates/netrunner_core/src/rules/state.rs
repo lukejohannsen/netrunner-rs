@@ -1337,6 +1337,14 @@ pub struct DeferredTrigger {
     /// 0 for every entry but such a remainder.
     #[serde(default, skip_serializing_if = "is_zero_u8")]
     pub fired: u8,
+    /// `Some`: not a trigger nor an effect but a moment to announce once
+    /// everything queued ahead of it has resolved — `GameEvent::
+    /// FinishedResolving`, Nuvem SA's "whenever you finish resolving an
+    /// operation", queued behind an operation whose resolution parked a
+    /// decision. The queue is where the rest of that resolution waits, so
+    /// the end of the queue ahead of this is the end of the resolution.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub announce: Option<GameEvent>,
 }
 
 fn is_zero_u8(value: &u8) -> bool {

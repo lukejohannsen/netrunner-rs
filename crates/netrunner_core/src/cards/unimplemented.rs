@@ -33,9 +33,7 @@ pub(crate) const RWR_UNIMPLEMENTED: &[(u32, &str)] = &[
     (34106, "Sisyphus Protocol"),
     (34111, "Tributary"),
     (34112, "Bring Them Home"),
-    (34121, "Nuvem SA: Law of the Land"),
     (34122, "Eminent Domain"),
-    (34123, "The Basalt Spire"),
     (34125, "Descent"),
 ];
 

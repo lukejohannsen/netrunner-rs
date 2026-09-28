@@ -35,7 +35,7 @@
 //! re-derives a win.
 
 use crate::cards::CardRegistry;
-use crate::dsl::Trigger;
+use crate::dsl::{CardId, Trigger};
 use crate::rules::ability;
 use crate::rules::checkpoint;
 use crate::rules::error::RulesError;
@@ -110,6 +110,40 @@ pub(crate) fn emit(
     let fired = dispatch_event(state, registry, events.last().expect("pushed above"))?;
     events.extend(fired);
     Ok(())
+}
+
+/// Announces that `card`'s resolution has finished (`GameEvent::
+/// FinishedResolving`, Nuvem SA: Law of the Land): at once when nothing
+/// waits, or behind what does, since the queue is where the rest of a
+/// parked resolution is (`DeferredTrigger::announce`).
+pub(crate) fn finished_resolving(
+    state: &mut GameState,
+    registry: &CardRegistry,
+    events: &mut Vec<GameEvent>,
+    side: Side,
+    card: CardId,
+) -> Result<(), RulesError> {
+    if state.is_over() {
+        return Ok(());
+    }
+    let event = GameEvent::FinishedResolving { side, card: card.clone() };
+    if state.is_resolution_blocked() || !state.deferred_triggers.is_empty() {
+        state.deferred_triggers.push(DeferredTrigger {
+            card,
+            trigger: Trigger::OnFinishedResolving,
+            target: None,
+            install: None,
+            target_install: None,
+            event: None,
+            continuation: None,
+            heard: Default::default(),
+            not_the_first_this_turn: false,
+            fired: 0,
+            announce: Some(event),
+        });
+        return Ok(());
+    }
+    emit(state, registry, events, event)
 }
 
 /// **Every event a card can hear is dispatched** — checked, in every debug
@@ -380,6 +414,13 @@ fn fire_one(
 ) -> Result<Vec<GameEvent>, RulesError> {
     if !still_applies(state, due) {
         return Ok(Vec::new());
+    }
+    // A moment queued to be announced once what was ahead of it has
+    // resolved (`DeferredTrigger::announce`): announced now.
+    if let Some(event) = &due.announce {
+        let mut events = Vec::new();
+        emit(state, registry, &mut events, event.clone())?;
+        return Ok(events);
     }
     // A queued continuation (the rest of a `Sequence`) resolves as the
     // card it was pinned to, with the event it had — no trigger lookup, no
@@ -832,7 +873,7 @@ mod tests {
         );
         assert_eq!(
             state.deferred_triggers,
-            vec![DeferredTrigger {
+            vec![DeferredTrigger { announce: None,
                 // …and the install it reacts as, so the deferred copy is the
                 // one that was on the table, not the first with that name.
                 install: Some(InstallId(1074)),
@@ -948,7 +989,7 @@ mod tests {
             rezzed: true,
             ..Default::default()
         }];
-        state.deferred_triggers = vec![DeferredTrigger { install: None, target_install: None,
+        state.deferred_triggers = vec![DeferredTrigger { announce: None, install: None, target_install: None,
             card: CardId("pad_campaign".to_string()),
             trigger: Trigger::OnTurnStart,
             target: None, event: None,
@@ -978,7 +1019,7 @@ mod tests {
             Trigger::OnApproachServer,
             Effect::GainCredits(Side::Corp, 1),
         ));
-        let due = DeferredTrigger { install: None, target_install: None,
+        let due = DeferredTrigger { announce: None, install: None, target_install: None,
             card: CardId("manegarm_skunkworks".to_string()),
             trigger: Trigger::OnApproachServer,
             target: None,
@@ -1014,7 +1055,7 @@ mod tests {
         let mut state = empty_state();
         state.active_run = None;
         state.runner.rig = vec![rig_card("mayfly")];
-        state.deferred_triggers = vec![DeferredTrigger { install: None, target_install: None,
+        state.deferred_triggers = vec![DeferredTrigger { announce: None, install: None, target_install: None,
             card: CardId("mayfly".to_string()),
             trigger: Trigger::OnRunEnded,
             target: None,
@@ -1051,7 +1092,7 @@ mod tests {
         card.triggers[0].requirement = Some(crate::dsl::EffectRequirement::WasFirstAdvancementThisCard);
         registry.insert(card);
 
-        let queue_with = |advancement_tokens: u32| DeferredTrigger { install: None, target_install: None,
+        let queue_with = |advancement_tokens: u32| DeferredTrigger { announce: None, install: None, target_install: None,
             card: CardId("built_to_last".to_string()),
             trigger: Trigger::OnAdvance,
             target: None,
@@ -1084,7 +1125,7 @@ mod tests {
         // And a trigger queued with no event at all declines rather than
         // guessing — the honest answer when the context is genuinely absent.
         let mut state = empty_state();
-        state.deferred_triggers = vec![DeferredTrigger { install: None, target_install: None,
+        state.deferred_triggers = vec![DeferredTrigger { announce: None, install: None, target_install: None,
             card: CardId("built_to_last".to_string()),
             trigger: Trigger::OnAdvance,
             target: None,
@@ -1130,7 +1171,7 @@ mod tests {
             ..Default::default()
         };
         state.corp.installed = vec![rezzed("parks_a_choice"), rezzed("pad_campaign")];
-        let queued = |id: &str| DeferredTrigger { install: None, target_install: None,
+        let queued = |id: &str| DeferredTrigger { announce: None, install: None, target_install: None,
             card: CardId(id.to_string()),
             trigger: Trigger::OnTurnStart,
             target: None, event: None,

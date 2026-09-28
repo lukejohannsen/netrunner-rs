@@ -981,6 +981,10 @@ pub fn mask_event_for_player(event: &GameEvent, state: &GameState, viewer: impl 
         // A count, not a card: what left HQ stays hidden until it is seen
         // in Archives, which `mask_corp_state` already decides per card.
         | GameEvent::CardsTrashedFromHq { .. }
+        | GameEvent::CardsTrashedFromRnD { .. }
+        // A card that resolved in the open: an operation played, or an
+        // expendable card revealed to be used.
+        | GameEvent::FinishedResolving { .. }
         // Both name cards that were public where they were: an agenda in
         // the score area, and a card resolving faceup.
         | GameEvent::AgendaForfeited { .. }

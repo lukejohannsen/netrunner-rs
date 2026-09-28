@@ -1519,6 +1519,8 @@ pub(crate) fn play_operation_card(
     // dispatches them (`ability::dispatch_cost_events`): Unleash's "remove
     // 1 tag" is a tag removed, which Synapse Global hears.
     events.extend(ability::dispatch_cost_events(next, registry, &cost_events)?);
+    // "Whenever you finish resolving an operation" (Nuvem SA).
+    dispatcher::finished_resolving(next, registry, &mut events, side, card_id)?;
 
     Ok(events)
 }
@@ -2380,6 +2382,11 @@ fn activate_hand_ability(
     events.extend(ability::dispatch_cost_events(&mut next, registry, &cost_events)?);
     if let Some(requirement) = &ability.requirement {
         ability::consume_requirement(&mut next, requirement, side, &ctx);
+    }
+    // "Whenever you finish resolving … an action on an expendable card"
+    // (Nuvem SA): Tocsin's, used from HQ.
+    if ability.is_action() && card_def.subtypes.contains(&crate::dsl::CardSubtype::Expendable) {
+        dispatcher::finished_resolving(&mut next, registry, &mut events, side, card_id)?;
     }
     paid_ability::note_window_action(&mut next, side);
     Ok((next, events))
@@ -4536,6 +4543,7 @@ mod tests {
                 GameEvent::TriggerFired { card: CardId("hedge_fund".to_string()), trigger: crate::dsl::Trigger::OnPlay },
                 GameEvent::CreditsGained { side: Side::Corp, amount: 9 },
                 GameEvent::AbilityGainedCredits { side: Side::Corp, card: CardId("hedge_fund".to_string()) },
+                GameEvent::FinishedResolving { side: Side::Corp, card: card_id.clone() },
             ]
         );
 
@@ -4698,6 +4706,9 @@ mod tests {
                 GameEvent::TraceRunnerBidSubmitted { runner_bid: 0, total_strength: 0 },
                 GameEvent::TraceSuccessful { corp_total: 2, runner_total: 0 },
                 GameEvent::TagsGiven { side: Side::Runner, amount: 1, had: 0 },
+                // The operation finishes resolving once its trace has: the
+                // announcement waited on the queue behind it.
+                GameEvent::FinishedResolving { side: Side::Corp, card: CardId("sea_source".to_string()) },
             ]
         );
     }
@@ -6079,7 +6090,7 @@ mod tests {
             ..Default::default()
         };
         state.corp.installed = vec![rezzed("parks_a_choice"), rezzed("pad_campaign")];
-        state.deferred_triggers = vec![crate::rules::state::DeferredTrigger { install: None, target_install: None,
+        state.deferred_triggers = vec![crate::rules::state::DeferredTrigger { announce: None, install: None, target_install: None,
             card: CardId("pad_campaign".to_string()),
             trigger: Trigger::OnTurnStart,
             target: None, event: None,
@@ -6144,7 +6155,7 @@ mod tests {
         state.pending_decision = Some(crate::rules::state::PendingDecision::ChooseTriggerOrder {
             chooser: Side::Corp,
             pending: vec![
-                crate::rules::state::DeferredTrigger { install: None, target_install: None,
+                crate::rules::state::DeferredTrigger { announce: None, install: None, target_install: None,
                     card: CardId("pad_campaign".to_string()),
                     trigger: Trigger::OnTurnStart,
                     target: None, event: None,
@@ -6153,7 +6164,7 @@ mod tests {
                     not_the_first_this_turn: false,
                     fired: 0,
                 },
-                crate::rules::state::DeferredTrigger { install: None, target_install: None,
+                crate::rules::state::DeferredTrigger { announce: None, install: None, target_install: None,
                     card: CardId("nico_campaign".to_string()),
                     trigger: Trigger::OnTurnStart,
                     target: None, event: None,
@@ -6231,7 +6242,7 @@ mod tests {
         // The two copies are told apart only by the event they carry — the
         // same shape a real dispatch produces, since `DeferredTrigger` has
         // no install handle.
-        let due = |id: &str, clicks: u32| crate::rules::state::DeferredTrigger { install: None, target_install: None,
+        let due = |id: &str, clicks: u32| crate::rules::state::DeferredTrigger { announce: None, install: None, target_install: None,
             card: CardId(id.to_string()),
             trigger: Trigger::OnTurnStart,
             target: None,
@@ -6314,7 +6325,7 @@ mod tests {
             install_id: InstallId(7),
             ..Default::default()
         }];
-        let due = |trigger: Trigger| crate::rules::state::DeferredTrigger { install: None, target_install: None,
+        let due = |trigger: Trigger| crate::rules::state::DeferredTrigger { announce: None, install: None, target_install: None,
             card: CardId("docklands_style_pass".to_string()),
             trigger,
             target: None,

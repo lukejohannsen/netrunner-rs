@@ -1,0 +1,107 @@
+{
+  "id": "land_grab",
+  "name": "Land Grab",
+  "side": "Corp",
+  "category": "Sweep",
+  "description": "Not a published list: built so the sweeps reach Rebellion Without Rehearsal's Nuvem SA: Law of the Land and The Basalt Spire — every operation and every action on an expendable card (Tocsin) a look at the top of R&D, and the turn's first trash from it two credits — on Hostile Bid's frame, three Hostile Takeover out for two The Basalt Spire and a third copy of the operations, Tocsin and Logjam in. Eternal-legal only. Rebellion Without Rehearsal Stage 5e.",
+  "style": "trap",
+  "identity": "nuvem_sa_law_of_the_land",
+  "cards": [
+    {
+      "card": "above_the_law",
+      "count": 1
+    },
+    {
+      "card": "off_the_books",
+      "count": 1
+    },
+    {
+      "card": "greenmail",
+      "count": 3
+    },
+    {
+      "card": "let_them_dream",
+      "count": 2
+    },
+    {
+      "card": "orbital_superiority",
+      "count": 1
+    },
+    {
+      "card": "ice_wall",
+      "count": 3
+    },
+    {
+      "card": "palisade",
+      "count": 1
+    },
+    {
+      "card": "ballista",
+      "count": 2
+    },
+    {
+      "card": "whitespace",
+      "count": 1
+    },
+    {
+      "card": "hedge_fund",
+      "count": 3
+    },
+    {
+      "card": "measured_response",
+      "count": 3
+    },
+    {
+      "card": "event_horizon",
+      "count": 2
+    },
+    {
+      "card": "shackleton_grid",
+      "count": 2
+    },
+    {
+      "card": "luana_campos",
+      "count": 2
+    },
+    {
+      "card": "sacrifice_zone_expansion",
+      "count": 2
+    },
+    {
+      "card": "myoshu",
+      "count": 3
+    },
+    {
+      "card": "tocsin",
+      "count": 3
+    },
+    {
+      "card": "flagship",
+      "count": 2
+    },
+    {
+      "card": "logjam",
+      "count": 3
+    },
+    {
+      "card": "business_as_usual",
+      "count": 3
+    },
+    {
+      "card": "hearts_and_minds",
+      "count": 2
+    },
+    {
+      "card": "isaac_liberdade",
+      "count": 1
+    },
+    {
+      "card": "hammer",
+      "count": 2
+    },
+    {
+      "card": "the_basalt_spire",
+      "count": 2
+    }
+  ]
+}

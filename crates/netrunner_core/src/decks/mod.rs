@@ -434,6 +434,9 @@ mod tests {
             // Vantage Point Stage 8: Méliès U's deck, pinned by the test.
             ("honor_roll", &neither),
             ("hostile_bid", &neither),
+            // Rebellion Without Rehearsal Stage 5e: Nuvem SA's deck, on
+            // Hostile Bid's frame and its Hedge Funds.
+            ("land_grab", &neither),
             ("pay_as_you_go", &neither),
             ("safety_net", &neither),
             // Vantage Point Stage 5d: Hiram's deck carries Core Set cards

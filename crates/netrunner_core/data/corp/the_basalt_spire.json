@@ -1,0 +1,77 @@
+{
+  "id": "the_basalt_spire",
+  "title": "The Basalt Spire",
+  "side": "Corp",
+  "card_type": "Agenda",
+  "cost": 0,
+  "advancement_requirement": 5,
+  "agenda_points": 3,
+  "triggers": [
+    {
+      "trigger": "OnAgendaStolen",
+      "subject": "This",
+      "effects": [
+        {
+          "PromptChooseCards": {
+            "side": "Corp",
+            "source": "OwnArchives",
+            "filter": "Any",
+            "min": 0,
+            "max": 1,
+            "reveal": false,
+            "shuffle_after": false,
+            "destination": "OwnHq"
+          }
+        }
+      ],
+      "text": "When the Runner steals this agenda, you may add 1 card from Archives to HQ."
+    },
+    {
+      "trigger": "OnAgendaScored",
+      "subject": "This",
+      "effects": [
+        {
+          "AddCounters": 2
+        }
+      ],
+      "text": "When you score this agenda, place 2 agenda counters on it."
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "AllOf": [
+          {
+            "RemoveCounters": 1
+          },
+          {
+            "Trash": {
+              "from": "OwnRAndD",
+              "filter": {
+                "TopOfZone": 1
+              },
+              "count": 1
+            }
+          }
+        ]
+      },
+      "requirement": "OncePerTurn",
+      "effect": {
+        "PromptChooseCards": {
+          "side": "Corp",
+          "source": "OwnArchives",
+          "filter": "Any",
+          "min": 1,
+          "max": 1,
+          "reveal": false,
+          "shuffle_after": false,
+          "destination": "OwnHq"
+        }
+      },
+      "text": "Add 1 card from Archives to HQ."
+    }
+  ],
+  "numeric_id": 34123,
+  "is_playable": true
+}
