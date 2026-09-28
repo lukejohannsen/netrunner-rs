@@ -215,7 +215,7 @@ pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
             IceFacts {
                 outermost: *position == 0,
                 after_fully_breaking: *after_fully_breaking,
-                rezzed_code_gate_or_sentry: matches!(rezzed_as, Some(crate::dsl::IceType::CodeGate | crate::dsl::IceType::Sentry)),
+                rezzed_code_gate_or_sentry: rezzed_as.iter().any(|ice_type| matches!(ice_type, crate::dsl::IceType::CodeGate | crate::dsl::IceType::Sentry)),
                 ..IceFacts::default()
             },
         )],

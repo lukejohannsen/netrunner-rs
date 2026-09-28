@@ -925,6 +925,17 @@ pub fn evaluate_effect(
             Ok(vec![GameEvent::SubroutineGained { card_id: ice.card_id.clone(), text: subroutine.text.clone() }])
         }
 
+        Effect::GainIceSubtype(subtype) => {
+            let Some(install) = ctx.acting_install else { return Err(RulesError::MissingActingCardContext) };
+            let rezzed_ice = state.corp.installed.iter().any(|card| card.install_id == install && card.rezzed && card.slot == InstallSlot::Ice);
+            if !rezzed_ice {
+                return Ok(Vec::new());
+            }
+            let source = acting_card.cloned().ok_or(RulesError::MissingActingCardContext)?;
+            state.lingering.push(LingeringEffect { what: Lingering::GainSubtype(*subtype), on: On::Install(install), until: lingering::Until::WhileRezzed(install), source });
+            Ok(Vec::new())
+        }
+
         Effect::InstallProgramOnHost { card, from } => {
             use crate::rules::engine::{can_install_program_onto, install_program_onto, ProgramHost, RunnerCardSource};
             let source = match from {

@@ -288,6 +288,8 @@ pub fn in_effect(view: &ClientView, registry: &CardRegistry) -> Vec<String> {
         .filter_map(|effect| {
             let what = match (&effect.what, &effect.on) {
                 (Lingering::Strength(_), _) => return None,
+                // One line per piece of ice for every type it gained, below.
+                (Lingering::GainSubtype(_), _) => return None,
                 (Lingering::RezCost(n), _) => {
                     let credits = n.unsigned_abs();
                     format!("each piece of ice costs {credits} credit{} {} to rez", if credits == 1 { "" } else { "s" }, if *n >= 0 { "more" } else { "less" })
@@ -317,9 +319,25 @@ pub fn in_effect(view: &ClientView, registry: &CardRegistry) -> Vec<String> {
                 Until::EndOfRun => ", for the rest of this run",
                 Until::EndOfTurn(_) => ", for the rest of this turn",
                 Until::NextTurnOf(_) => "",
+                Until::WhileRezzed(_) => ", while it remains rezzed",
             };
             Some(format!("{}: {what}{until}", title(&effect.source)))
         }))
+        // Lycian Multi-Munition: the subtypes it was rezzed as, one line for
+        // the piece of ice rather than one per subtype.
+        .chain({
+            let mut gained: Vec<(InstallId, CardId)> = Vec::new();
+            for effect in &view.lingering {
+                if let (Lingering::GainSubtype(_), On::Install(install)) = (&effect.what, &effect.on)
+                    && !gained.iter().any(|(seen, _)| seen == install)
+                {
+                    gained.push((*install, effect.source.clone()));
+                }
+            }
+            gained.into_iter().map(|(install, source)| {
+                format!("{}: it is a {} while it remains rezzed", title(&source), super::facts::ice_type_words(&super::facts::gained_ice_types(view, install)))
+            })
+        })
         // A delayed ability (Lightning Laboratory's derez): what it will do,
         // in the words the card inspector uses, since it is a sentence of
         // the card's that has not resolved yet.
@@ -556,6 +574,20 @@ mod tests {
         assert_eq!(lines.len(), 2, "{lines:?}");
         assert_eq!(lines[0], "Aircheck: the Runner cannot spend or lose credits from their credit pool, for the rest of this run");
         assert!(lines[1].ends_with(": the Runner has 1 fewer allotted click next turn"), "{lines:?}");
+    }
+
+    /// Lycian Multi-Munition's choice is one line for the piece of ice,
+    /// however many subtypes it chose.
+    #[test]
+    fn the_subtypes_a_piece_of_ice_was_rezzed_as_are_one_line() {
+        use netrunner_core::dsl::IceType;
+        use netrunner_core::rules::lingering::{Lingering, LingeringEffect, On, Until};
+        let registry = crate::decks::sample_deck_registry();
+        let mut view = view();
+        let lycian = InstallId(7);
+        let gained = |kind| LingeringEffect { what: Lingering::GainSubtype(kind), on: On::Install(lycian), until: Until::WhileRezzed(lycian), source: CardId("lycian_multi_munition".into()) };
+        view.lingering = vec![gained(IceType::Sentry), gained(IceType::Barrier)];
+        assert_eq!(in_effect(&view, &registry), ["Lycian Multi-Munition: it is a barrier and sentry while it remains rezzed"]);
     }
 
     #[test]

@@ -25,7 +25,7 @@
 //! belongs beside the other board words, tested over real views.
 
 use netrunner_core::cards::CardRegistry;
-use netrunner_core::dsl::{CardId, CardType, CounterKind};
+use netrunner_core::dsl::{CardId, CardType, CounterKind, IceType};
 use netrunner_core::rules::{InstallId, InstallSlot, PublicInstalledCard, PublicInstalledRunnerCard, RunPhase, ServerId, SubroutineStatus};
 use netrunner_core::view::ClientView;
 
@@ -326,7 +326,13 @@ pub fn install_facts(view: &ClientView, id: InstallId, registry: &CardRegistry) 
             match (card.rezzed, def, is_agenda) {
                 (true, _, true) => lines.push("Installed faceup — the Runner can see it".to_string()),
                 (false, _, true) => {}
-                (true, _, _) => lines.push("Rezzed".to_string()),
+                (true, _, _) => {
+                    lines.push("Rezzed".to_string());
+                    let gained = gained_ice_types(view, id);
+                    if !gained.is_empty() {
+                        lines.push(format!("A {} while it remains rezzed", ice_type_words(&gained)));
+                    }
+                }
                 (false, Some(def), _) => lines.push(format!("Unrezzed — rez cost {}", def.cost)),
                 (false, None, _) if card.slot == InstallSlot::Ice => lines.push("Unrezzed — the Corp may rez it as it is approached".to_string()),
                 (false, None, _) => lines.push("Face down — unrezzed; an agenda, an asset or an upgrade".to_string()),
@@ -405,6 +411,46 @@ pub fn install_facts(view: &ClientView, id: InstallId, registry: &CardRegistry) 
         }
     }
     Some(lines)
+}
+
+/// The types a piece of ice has gained while it remains rezzed, as the
+/// view carries them — Lycian Multi-Munition's choice at its rez
+/// (`lingering::Lingering::GainSubtype`) — in the order the rules list
+/// them.
+pub fn gained_ice_types(view: &ClientView, id: InstallId) -> Vec<IceType> {
+    [IceType::Barrier, IceType::CodeGate, IceType::Sentry]
+        .into_iter()
+        .filter(|kind| netrunner_core::rules::lingering::listed_subtype(&view.lingering, id, *kind))
+        .collect()
+}
+
+/// The type an ice tile is lit as: what it prints, or, for ice that
+/// prints none of the three (a Mythic, a Trap), the first it has gained.
+/// `None` for a card the viewer cannot name.
+pub fn ice_kind(view: &ClientView, id: InstallId, registry: &CardRegistry) -> Option<IceType> {
+    let printed = card_of(view, id).and_then(|card| registry.get(&card)).and_then(|def| match def.card_type {
+        CardType::Ice(kind) => Some(kind),
+        _ => None,
+    })?;
+    match printed {
+        IceType::Other => Some(gained_ice_types(view, id).first().copied().unwrap_or(IceType::Other)),
+        kind => Some(kind),
+    }
+}
+
+/// "barrier", "barrier and sentry", "barrier, code gate and sentry".
+pub fn ice_type_words(kinds: &[IceType]) -> String {
+    let word = |kind: &IceType| match kind {
+        IceType::Barrier => "barrier",
+        IceType::CodeGate => "code gate",
+        IceType::Sentry => "sentry",
+        IceType::Other => "piece of ice",
+    };
+    match kinds {
+        [] => String::new(),
+        [one] => word(one).to_string(),
+        [rest @ .., last] => format!("{} and {}", rest.iter().map(word).collect::<Vec<_>>().join(", "), word(last)),
+    }
 }
 
 /// The sheet's heading for an install the viewer cannot name.

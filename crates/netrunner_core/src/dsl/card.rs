@@ -874,6 +874,8 @@ pub enum PaysFor {
 pub enum CardValidationError {
     #[error("card {0:?}: `IceType::Other` is ice with none of the three types, never a type — refused on {1}")]
     OtherIsNotAnIceType(CardId, &'static str),
+    #[error("card {0:?}: `GainIceSubtype` is \"this ice gains\" — said on a card that is not ice, it has nothing to act on")]
+    SubtypeGainedByNonIce(CardId),
     #[error("Agenda {0:?} must not have subroutines")]
     AgendaHasSubroutines(CardId),
     #[error("card {0:?}: an ability used from the hand (`from_hand`) must be an action — a paid ability whose cost begins with [click]")]
@@ -1280,6 +1282,19 @@ impl CardDefinition {
         }
         if restricted_to_no_type {
             return Err(CardValidationError::OtherIsNotAnIceType(self.id.clone(), "a breaker restricted to it"));
+        }
+        // "This ice gains the chosen subtypes" acts on the acting install,
+        // so only ice can say it, and gaining `Other` would mean nothing.
+        let mut gained = Vec::new();
+        let mut gains = |effect: &Effect| effect.for_each_effect(&mut |e| if let Effect::GainIceSubtype(subtype) = e { gained.push(*subtype) });
+        self.triggers.iter().flat_map(|triggered| &triggered.effects).for_each(&mut gains);
+        self.abilities.iter().map(|ability| &ability.effect).for_each(&mut gains);
+        self.subroutines.iter().map(|subroutine| &subroutine.effect).for_each(&mut gains);
+        if gained.contains(&IceType::Other) {
+            return Err(CardValidationError::OtherIsNotAnIceType(self.id.clone(), "a card gaining it"));
+        }
+        if !gained.is_empty() && !matches!(self.card_type, CardType::Ice(_)) {
+            return Err(CardValidationError::SubtypeGainedByNonIce(self.id.clone()));
         }
         // A continuous effect that does not fit parses and then applies to
         // nothing, which reads as a card that works: the scan finds no
@@ -1818,6 +1833,33 @@ mod tests {
 
     /// A gained subroutine is the encountered ice's for the encounter, so
     /// only a trigger on the encounter that acts on "it" may say one.
+    /// "This ice gains the chosen subtypes" (`Effect::GainIceSubtype`) is
+    /// said by ice, of one of the three types.
+    #[test]
+    fn validate_refuses_a_subtype_gained_by_a_card_that_is_not_ice_or_of_no_type() {
+        let card = |card_type: CardType, subtype: IceType| CardDefinition {
+            id: CardId("gainer".to_string()),
+            side: Side::Corp,
+            strength: matches!(card_type, CardType::Ice(_)).then_some(1),
+            card_type,
+            triggers: vec![TriggeredEffect {
+                trigger: Trigger::OnRez,
+                subject: Some(Subject::This),
+                when: None,
+                acts_on_subject: false,
+                first_each_turn: false,
+                text: None,
+                effects: vec![Effect::GainIceSubtype(subtype)],
+                requirement: None,
+            }],
+            ..Default::default()
+        };
+        assert_eq!(card(CardType::Ice(IceType::Other), IceType::Sentry).validate(), Ok(()));
+        assert!(matches!(card(CardType::Ice(IceType::Other), IceType::Other).validate(), Err(CardValidationError::OtherIsNotAnIceType(..))));
+        let asset = card(CardType::Asset, IceType::Sentry).validate();
+        assert!(matches!(asset, Err(CardValidationError::SubtypeGainedByNonIce(_))), "{asset:?}");
+    }
+
     #[test]
     fn validate_refuses_a_gained_subroutine_outside_an_encounter() {
         let gains = Effect::GainSubroutine(Box::new(SubroutineDef { text: "End the run.".to_string(), effect: Effect::EndTheRun, only_breakable_by: None }));

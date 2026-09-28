@@ -400,10 +400,25 @@ pub(crate) fn revealed_while_accessed(state: &GameState, registry: &CardRegistry
 }
 
 /// Whether the ice `install` has gained `subtype` — on top of the one it
-/// prints, which the caller already knows.
+/// prints, which the caller already knows: from the table (a declared
+/// `GainSubtype`) or from a choice that is still holding (Lycian
+/// Multi-Munition's, `lingering::gains_subtype`).
 pub fn ice_gains_subtype(state: &GameState, registry: &CardRegistry, install: InstallId, subtype: IceType) -> bool {
+    if crate::rules::lingering::gains_subtype(state, install, subtype) {
+        return true;
+    }
     let Some(target) = Target::corp_install(state, registry, install) else { return false };
     any(state, registry, target, |kind| *kind == ContinuousKind::GainSubtype(subtype))
+}
+
+/// Every type the run's ice `ice` has now: what it prints, unless that is
+/// none of the three, and each of the three it has gained. The one list a
+/// pass is recorded with (`GameEvent::IcePassed::rezzed_as`).
+pub fn ice_types(state: &GameState, registry: &CardRegistry, ice: &crate::rules::run::RunIce) -> Vec<IceType> {
+    [IceType::Barrier, IceType::CodeGate, IceType::Sentry]
+        .into_iter()
+        .filter(|subtype| ice.ice_type == *subtype || ice_gains_subtype(state, registry, ice.install_id, *subtype))
+        .collect()
 }
 
 /// What installing `card` costs the Runner right now. The one question,

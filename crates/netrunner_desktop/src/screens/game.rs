@@ -2968,11 +2968,8 @@ fn spawn_tile(column: &mut ChildSpawnerCommands, theme: &Theme, art: Option<&Boa
 #[allow(clippy::too_many_arguments)]
 fn spawn_server_ice(column: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore, art: Option<&BoardArt>, game: &Game, view: &ClientView, server: &ServerView, shown: &std::ops::Range<usize>, chair: Side, encountered: Option<InstallId>, lit: &Lit, size: FaceSize, height: f32, depth: Depth) {
     for ice in layout::ice_top_down(&server.ice[shown.clone()], chair) {
-        let def = ice.card.as_ref().and_then(|id| core.registry.get(id));
-        let kind = def.and_then(|d| match &d.card_type {
-            CardType::Ice(kind) => Some(*kind),
-            _ => None,
-        });
+        // Lit as its type, printed or — Lycian Multi-Munition's — gained.
+        let kind = facts::ice_kind(view, ice.install_id, &core.registry);
         let key = board_art::ice_key(ice.rezzed, kind);
         let look = TileLook {
             title: facts::tile_title(view, ice.install_id, &core.registry),
