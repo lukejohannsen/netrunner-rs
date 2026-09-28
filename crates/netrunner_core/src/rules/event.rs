@@ -290,6 +290,17 @@ pub enum GameEvent {
     /// from HQ" reads the batch, and `CardTrashed` cannot answer it: it
     /// names no zone, and fires for every Corp card trashed anywhere.
     CardsTrashedFromHq { count: u32 },
+    /// One or more cards left R&D for Archives at once — a mill, a cost, a
+    /// selection — beside the per-card `CardTrashed`s, the R&D twin of
+    /// `CardsTrashedFromHq`. `by` is who carried the trash out (CR 1.14.5),
+    /// as on `CardTrashed`: Nuvem SA hears the Corp's own, never the
+    /// Runner's trash of a card accessed there.
+    CardsTrashedFromRnD { count: u32, by: Option<Side> },
+    /// The resolution of `card` has finished — an operation played, or an
+    /// action on an expendable card used from HQ — announced once whatever
+    /// it parked has resolved (`DeferredTrigger::announce`). Nuvem SA:
+    /// Law of the Land hears it.
+    FinishedResolving { side: Side, card: CardId },
     /// An agenda left the Corp's score area as a forfeit (Biawak's rez,
     /// Plutus's). Paired with `CardRemovedFromGame`, which says where it
     /// went; this one says *why*, which is what `Trigger::OnForfeit` keys
@@ -592,10 +603,12 @@ impl GameEvent {
             | GameEvent::CardsLookedAt { .. } | GameEvent::CardRevealed { .. }
             | GameEvent::AccessPassed { .. } | GameEvent::AgendaStolen { .. } | GameEvent::IceRezzed { .. }
             | GameEvent::IceEncountered { .. } | GameEvent::DamageTaken { .. } | GameEvent::CardsTrashedFromHq { .. }
+            | GameEvent::CardsTrashedFromRnD { .. }
             | GameEvent::MulliganTaken { .. } | GameEvent::HandKept { .. } | GameEvent::TraceInitiated { .. }
             | GameEvent::TraceCorpBidSubmitted { .. } | GameEvent::TraceRunnerBidSubmitted { .. }
             | GameEvent::TraceAvoided { .. } | GameEvent::TraceSuccessful { .. } | GameEvent::GameOver { .. }
             | GameEvent::RunnerFlatlined | GameEvent::TurnStarted { .. } | GameEvent::TurnEnded { .. } => true,
+            GameEvent::FinishedResolving { .. } => false,
             GameEvent::ClickSpent { .. } | GameEvent::CreditsGained { .. } | GameEvent::IceApproached { .. }
             | GameEvent::SubroutineBroken { .. } | GameEvent::SubroutineFired { .. } | GameEvent::SubroutineGained { .. }
             | GameEvent::RunNotDeclaredSuccessful { .. }

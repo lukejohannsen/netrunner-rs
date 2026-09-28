@@ -502,6 +502,7 @@ pub fn narrate_event(
         }
         GameEvent::CardRevealed { card, .. } => format!("revealed {}", title(card)),
         GameEvent::CardsTrashedFromHq { count } => format!("trashed {count} card(s) from HQ"),
+        GameEvent::CardsTrashedFromRnD { count, .. } => format!("trashed {count} card(s) from R&D"),
 
         // ---- what the cards did ----
         GameEvent::TriggerFired { card, trigger } => format!("{} triggered ({trigger:?})", title(card)),
@@ -583,6 +584,7 @@ pub fn narrate_event(
         // Not narrated: the entry's action line already carries these, or
         // they are bookkeeping a player does not read a log for. Adding a
         // line here is the cheap way to say more.
+        GameEvent::FinishedResolving { .. } |
         GameEvent::ClickSpent { .. } | GameEvent::CreditsGained { .. } | GameEvent::CardDrawn { .. } |
         GameEvent::IceApproached { .. } | GameEvent::IceEncountered { .. } | GameEvent::IceStrengthModified
         { .. } | GameEvent::IcePassed { .. } | GameEvent::IceBypassed { .. } | GameEvent::EncounterEnded { .. } | GameEvent::ServerApproached {
@@ -1632,7 +1634,7 @@ mod tests {
         use netrunner_core::view::build_client_view;
 
         let (mut state, registry) = setup();
-        let due = |trigger: Trigger| DeferredTrigger { install: None, target_install: None,
+        let due = |trigger: Trigger| DeferredTrigger { announce: None, install: None, target_install: None,
             card: CardId("docklands_pass".to_string()),
             trigger,
             target: None,

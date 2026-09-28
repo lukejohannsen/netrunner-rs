@@ -688,8 +688,19 @@ pub(crate) fn trash_as_cost(
                 removed.was_public
             }
             (None, _) => {
+                // A deck's order is the game's: the copy at the position
+                // chosen (the top of R&D, The Basalt Spire), read past the
+                // ones already taken. A hand's copies are one card.
+                let deck = matches!(zone, CardZoneRef::OwnRAndD | CardZoneRef::OwnStack);
+                let chosen = positions[index];
+                let at = chosen - positions[..index].iter().filter(|earlier| **earlier < chosen).count();
                 let hand = plain_zone_mut(state, side, zone, source).ok_or(RulesError::CardNotEligibleForSelection(positions[index]))?;
-                let position = hand.iter().position(|c| c == card_id).ok_or(RulesError::CardNotEligibleForSelection(positions[index]))?;
+                let position = if deck {
+                    (hand.get(at) == Some(card_id)).then_some(at)
+                } else {
+                    hand.iter().position(|c| c == card_id)
+                }
+                .ok_or(RulesError::CardNotEligibleForSelection(positions[index]))?;
                 hand.remove(position);
                 false
             }
@@ -708,6 +719,9 @@ pub(crate) fn trash_as_cost(
     }
     if trashed_from_hq > 0 {
         events.push(GameEvent::CardsTrashedFromHq { count: trashed_from_hq });
+    }
+    if matches!(zone, CardZoneRef::OwnRAndD) && side == Side::Corp && !selected.is_empty() {
+        events.push(GameEvent::CardsTrashedFromRnD { count: selected.len() as u32, by: Some(side) });
     }
     Ok(events)
 }
@@ -1061,6 +1075,7 @@ pub(crate) fn resolve_confirm_card_selection(
     // AU Co.'s "trash 1 or more cards from HQ" (Hansei Review is what
     // does it in its deck).
     let mut trashed_from_hq = 0u32;
+    let mut trashed_from_rnd = 0u32;
     // A deck's order is the game's, so a card taken out of one is the copy
     // at the place chosen, not the first copy from the bottom: taking "the
     // top card" as a lower duplicate left the chosen copy on top. A search
@@ -1183,6 +1198,9 @@ pub(crate) fn resolve_confirm_card_selection(
                 if matches!(source, CardZoneRef::OwnHq) && side == Side::Corp && is_discard_pile(dest) {
                     trashed_from_hq += 1;
                 }
+                if matches!(source, CardZoneRef::OwnRAndD) && side == Side::Corp && is_discard_pile(dest) {
+                    trashed_from_rnd += 1;
+                }
                 events.extend(cascade);
             }
         }
@@ -1212,6 +1230,10 @@ pub(crate) fn resolve_confirm_card_selection(
     events.extend(fired);
     if trashed_from_hq > 0 {
         let batch = GameEvent::CardsTrashedFromHq { count: trashed_from_hq };
+        dispatcher::emit(state, registry, &mut events, batch)?;
+    }
+    if trashed_from_rnd > 0 {
+        let batch = GameEvent::CardsTrashedFromRnD { count: trashed_from_rnd, by: Some(side) };
         dispatcher::emit(state, registry, &mut events, batch)?;
     }
 
@@ -1287,7 +1309,7 @@ pub(crate) fn resolve_confirm_card_selection(
         // The trash above was parked for prevention: the `then` waits its
         // turn behind it, as the rest of a `Sequence` does.
         if let (Some(effect), Some(card), true) = (&effect, acting, state.pending_prevention.is_some()) {
-            state.deferred_triggers.push(crate::rules::state::DeferredTrigger {
+            state.deferred_triggers.push(crate::rules::state::DeferredTrigger { announce: None,
                 card: card.clone(),
                 trigger: crate::dsl::Trigger::OnPlay,
                 target: None,

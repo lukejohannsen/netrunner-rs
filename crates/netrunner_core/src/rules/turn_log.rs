@@ -262,6 +262,9 @@ fn concealed(trigger: Trigger, of: Option<Side>) -> bool {
         // rezzed card or moves itself, being active — but nothing in the
         // move says so.
         Trigger::OnCardMoved => true,
+        // An operation resolves in the open, and an expendable card is
+        // revealed as it is used from HQ.
+        Trigger::OnFinishedResolving => false,
         // A Corp card trashed out of HQ or R&D goes facedown, unseen by
         // the Runner, so the log counts a Corp card's trash without its
         // type. A Runner card's is seen wherever it came from, and counted
@@ -283,6 +286,7 @@ fn concealed(trigger: Trigger, of: Option<Side>) -> bool {
         | Trigger::OnTagRemoved
         | Trigger::OnDamageDealt
         | Trigger::OnCardsTrashedFromHq
+        | Trigger::OnCardsTrashedFromRnD
         | Trigger::OnBadPublicityTaken
         | Trigger::OnDamageAboutToResolve
         | Trigger::OnIdentityFlipped

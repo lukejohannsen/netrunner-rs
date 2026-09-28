@@ -750,6 +750,7 @@ pub fn evaluate_effect(
         Effect::MillRnDAmount(amount) => {
             let count = resolve_amount(amount, ctx, state, registry);
             let mut events = Vec::new();
+            let mut trashed = 0;
             for _ in 0..count {
                 if state.corp.r_and_d.is_empty() {
                     break;
@@ -757,6 +758,13 @@ pub fn evaluate_effect(
                 let milled = trash_card(state, registry, &CardTarget::TopOfStack { side: Side::Corp, zone: StackZone::RAndD }, ctx)?;
                 events.extend(dispatch_trashes(state, registry, &milled)?);
                 events.extend(milled);
+                trashed += 1;
+            }
+            // The batch, after its cards, as HQ's is (Nuvem SA's "the first
+            // time you trash a card from R&D").
+            if trashed > 0 {
+                let batch = GameEvent::CardsTrashedFromRnD { count: trashed, by: carried_out_by(registry, ctx) };
+                dispatcher::emit(state, registry, &mut events, batch)?;
             }
             Ok(events)
         }
@@ -1856,7 +1864,7 @@ pub fn process_card_triggers(
     trigger: Trigger,
     triggering_event: Option<&GameEvent>,
 ) -> Result<Vec<GameEvent>, RulesError> {
-    let due = DeferredTrigger {
+    let due = DeferredTrigger { announce: None,
         card: card_id.clone(),
         trigger,
         target: None,
@@ -1994,7 +2002,7 @@ pub(crate) fn evaluate_sequence(
         if state.is_resolution_blocked() {
             let rest = &effects[index + 1..];
             if let (Some(card), false) = (ctx.acting_card, rest.is_empty()) {
-                state.deferred_triggers.push(crate::rules::state::DeferredTrigger {
+                state.deferred_triggers.push(crate::rules::state::DeferredTrigger { announce: None,
                     card: card.clone(),
                     trigger: Trigger::OnPlay,
                     target: None,

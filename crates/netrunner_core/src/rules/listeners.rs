@@ -259,6 +259,8 @@ pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
         },
         // One occurrence per batch, not per card: "trash 1 **or more**".
         GameEvent::CardsTrashedFromHq { .. } => vec![moment(Trigger::OnCardsTrashedFromHq, &About::Nothing, Some(Side::Corp))],
+        GameEvent::CardsTrashedFromRnD { by, .. } => vec![moment(Trigger::OnCardsTrashedFromRnD, &About::Nothing, *by)],
+        GameEvent::FinishedResolving { side, card: resolved } => vec![moment(Trigger::OnFinishedResolving, &card(resolved, None), Some(*side))],
         // Only the Runner's tags are anyone's trigger, and removing none is
         // not removing one.
         // The moment is the remover's (CR 1.14.3a: either player can remove
@@ -393,7 +395,7 @@ pub(crate) fn plan_for(state: &GameState, registry: &CardRegistry, event: &GameE
             };
             plan.push((
                 listener.side,
-                DeferredTrigger {
+                DeferredTrigger { announce: None,
                     card: listener.card.clone(),
                     install: listener.install,
                     trigger: moment.trigger,
@@ -415,7 +417,7 @@ pub(crate) fn plan_for(state: &GameState, registry: &CardRegistry, event: &GameE
     for moment in &moments {
         for delayed in state.delayed.iter().filter(|delayed| delayed_hears(state, delayed, moment.trigger)) {
             let side = registry.get(&delayed.card).map_or(Side::Corp, |card| card.side);
-            let due = DeferredTrigger {
+            let due = DeferredTrigger { announce: None,
                 card: delayed.card.clone(),
                 install: delayed.install,
                 trigger: moment.trigger,
