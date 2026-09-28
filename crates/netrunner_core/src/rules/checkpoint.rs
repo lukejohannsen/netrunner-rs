@@ -71,7 +71,7 @@ pub(crate) fn state_based(state: &mut GameState, registry: &CardRegistry, event:
 /// recently active is the newest install — the same reading the ◆ rule
 /// makes of the rig.
 fn enforce_consoles(state: &mut GameState, registry: &CardRegistry) -> Vec<GameEvent> {
-    let consoles: Vec<InstallId> = active::runner(state)
+    let consoles: Vec<InstallId> = active::runner(state, registry)
         .filter(|card| card.place == active::Place::Installed)
         .filter(|card| registry.get(card.card).is_some_and(|definition| definition.subtypes.contains(&CardSubtype::Console)))
         .filter_map(|card| card.install)
@@ -128,7 +128,7 @@ fn enforce_unique(state: &mut GameState, registry: &CardRegistry, event: Option<
         events.push(GameEvent::CardTrashed { side: Side::Corp, card: trashed.card, installed: true, by: None });
     }
 
-    let active = active_copies(&mut active::runner(state));
+    let active = active_copies(&mut active::runner(state, registry));
     for install in older_copies(&active, None) {
         let Some(position) = state.runner.rig.iter().position(|installed| installed.install_id == install) else { continue };
         let trashed = state.runner.rig.remove(position);

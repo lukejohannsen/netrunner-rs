@@ -89,6 +89,12 @@ pub enum CardTarget {
     /// outside one. `ModifyStrength` needed no target, because it only
     /// ever meant this ice.
     EncounteredIce,
+    /// A random card from HQ, trashed facedown as the Corp's other unseen
+    /// trashes are — Heliamphora's "they trash 2 cards from HQ at random",
+    /// one per `TrashCard`. Nothing when HQ is empty. The trash is the
+    /// resolving card's controller's (`CardTrashed::by`), as every "the
+    /// Corp trashes" a Runner card prints is (conformance ledger, 1.14).
+    RandomFromHq,
 }
 
 /// Where `Effect::HostCardOnThisCard` takes the card from.
@@ -99,6 +105,13 @@ pub enum HostedCardOrigin {
     /// The top card of the Runner's stack — Bling's "host the top card of
     /// your stack faceup".
     TopOfStack,
+    /// The card the Runner is accessing, from wherever it is — Cupellation's
+    /// "Host the non-agenda card you are accessing faceup on this program.
+    /// (If it was installed, it becomes uninstalled.)" and Heliamphora's
+    /// "host it faceup on this program instead". Moving it ends the access
+    /// (CR 7.1.7), which `run::host_currently_accessed_card` does as a
+    /// trash does. `RulesError::NotInAccessPhase` with nothing accessed.
+    AccessedCard,
 }
 
 /// What a card added to a score area "as an agenda" is (CR 10.1.3): it

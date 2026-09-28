@@ -13834,4 +13834,116 @@ mod rebellion_without_rehearsal {
         assert_eq!(state.runner.resources.credits, Credits(10 - 5));
     }
 
+
+    /// A run on `server` from the Runner's action window, up to the card it
+    /// accesses: movement, the success, and a pick when the breach offers
+    /// more than one candidate.
+    fn breach(state: GameState, registry: &CardRegistry, server: ServerId) -> GameState {
+        let (state, _) = apply_action(&state, registry, PlayerAction::InitiateRun { server }).expect("run");
+        let (state, _) = crate::rules::test_support::through_movement(&state, registry).expect("to the server");
+        let (state, _) = apply_action(&state, registry, PlayerAction::CompleteRun).expect("successful");
+        first_access(state, registry)
+    }
+
+    /// Picks the first candidate while the breach is asking which.
+    fn first_access(mut state: GameState, registry: &CardRegistry) -> GameState {
+        while let Some(crate::rules::AccessPhase::SelectNextCard { selectable_cards }) =
+            state.active_run.as_ref().and_then(|run| run.access_state.as_ref()).map(|access| access.phase.clone())
+        {
+            let candidate = selectable_cards[0].clone();
+            state = apply_action(&state, registry, PlayerAction::SelectCardToAccess { candidate }).expect("access").0;
+        }
+        state
+    }
+
+    #[test]
+    fn eye_for_an_eye_tags_the_runner_for_an_extra_hq_access_and_trashes_an_accessed_card_for_a_grip_card() {
+        let registry = registry();
+        let eye = PlayerAction::ActivateAbility { target: crate::rules::InstallId::RUN_EVENT, ability_index: 0 };
+        let mut state = runner_turn();
+        state.runner.grip = vec![id("eye_for_an_eye"), id("sure_gamble")];
+        state.corp.hq = vec![id("pad_campaign"), id("pad_campaign")];
+        state.runner.tags = 1;
+        assert!(apply_action(&state, &registry, PlayerAction::PlayEvent { card_id: id("eye_for_an_eye") }).is_err(), "only if untagged");
+        state.runner.tags = 0;
+        let (state, _) = apply_action(&state, &registry, PlayerAction::PlayEvent { card_id: id("eye_for_an_eye") }).expect("play");
+        assert!(!crate::rules::legal_actions(&state, &registry).contains(&eye), "not before an access");
+        let (state, _) = crate::rules::test_support::through_movement(&state, &registry).expect("to HQ");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::CompleteRun).expect("successful");
+        assert_eq!((state.runner.tags, state.active_run.as_ref().map(|run| run.additional_hq_access)), (1, Some(1)), "a tag, and a second card");
+        let state = first_access(state, &registry);
+        assert!(crate::rules::legal_actions(&state, &registry).contains(&eye), "the event's ability, for its run");
+        let (state, _) = apply_action(&state, &registry, eye.clone()).expect("a grip card for the accessed one");
+        assert!(state.runner.heap.contains(&id("sure_gamble")) && state.runner.grip.is_empty());
+        assert_eq!(state.corp.archives.iter().filter(|card| card.card == id("pad_campaign")).count(), 1);
+        // The second access: nothing left in the grip to pay with.
+        let state = first_access(state, &registry);
+        assert!(!crate::rules::legal_actions(&state, &registry).contains(&eye));
+        let (state, _) = apply_action(&state, &registry, PlayerAction::PassAccessedCard { card_id: id("pad_campaign") }).expect("pass");
+        assert!(state.active_run.is_none());
+        assert!(!crate::rules::legal_actions(&state, &registry).contains(&eye), "gone with its run");
+    }
+
+    #[test]
+    fn cupellation_hosts_an_accessed_card_then_trades_itself_for_two_more_hq_accesses() {
+        let registry = registry();
+        let host = PlayerAction::ActivateAbility { target: fixture_install_id("cupellation"), ability_index: 0 };
+        let mut state = runner_turn();
+        state.runner.rig = vec![rig("cupellation")];
+        state.corp.hq = vec![id("pad_campaign")];
+        let state = breach(state, &registry, ServerId::Hq);
+        let (state, _) = apply_action(&state, &registry, host.clone()).expect("host it for 1");
+        assert_eq!(state.runner.rig[0].hosted_cards, vec![id("pad_campaign")]);
+        assert!(state.corp.hq.is_empty() && state.active_run.is_none(), "its access ended with the move");
+        assert_eq!(state.runner.resources.credits, Credits(10 - 1));
+
+        // "Limit 1 hosted card", and never an agenda.
+        let mut again = state.clone();
+        again.corp.hq = vec![id("hedge_fund"), id("hedge_fund"), id("hedge_fund"), id("hedge_fund")];
+        let again = breach(again, &registry, ServerId::Hq);
+        assert!(again.pending_paid_choice.is_some(), "a hosted Corp card: the offer");
+        let (again, _) = apply_action(&again, &registry, PlayerAction::AcceptPendingPaidChoice { cost_option_index: None }).expect("pay and trash");
+        assert!(again.runner.rig.is_empty());
+        assert!(again.corp.archives.iter().any(|card| card.card == id("pad_campaign")), "its hosted card to Archives");
+        assert_eq!(again.active_run.as_ref().map(|run| run.additional_hq_access), Some(2));
+
+        let mut full = state.clone();
+        full.corp.hq = vec![id("hedge_fund")];
+        let full = breach(full, &registry, ServerId::Hq);
+        let full = if full.pending_paid_choice.is_some() {
+            apply_action(&full, &registry, PlayerAction::DeclinePendingPaidChoice).expect("keep it").0
+        } else {
+            full
+        };
+        let full = first_access(full, &registry);
+        assert!(!crate::rules::legal_actions(&full, &registry).contains(&host), "one hosted card at most");
+    }
+
+    #[test]
+    fn heliamphora_hosts_one_archives_card_a_breach_and_costs_the_corp_two_hq_cards_on_a_purge() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.rig = vec![rig("heliamphora")];
+        state.corp.archives = vec![ArchivedCard { card: id("hedge_fund"), facedown: false }, ArchivedCard { card: id("pad_campaign"), facedown: false }];
+        let state = breach(state, &registry, ServerId::Archives);
+        assert!(state.pending_decision.is_some(), "may host it");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("host it");
+        assert_eq!(state.runner.rig[0].hosted_cards.len(), 1);
+        assert_eq!(state.corp.archives.len(), 1);
+        let state = first_access(state, &registry);
+        assert!(state.pending_decision.is_none(), "once each time you breach Archives");
+
+        let mut purge = state.clone();
+        purge.active_run = None;
+        purge.phase = GamePhase::Action(Side::Corp);
+        purge.corp.resources.clicks = Clicks(3);
+        purge.corp.hq = vec![id("hedge_fund"), id("hedge_fund"), id("hedge_fund")];
+        let before = purge.corp.archives.len();
+        let (purge, _) = apply_action(&purge, &registry, PlayerAction::PurgeVirusCounters).expect("purge");
+        let purge = pass_until_settled(purge, &registry).0;
+        assert_eq!(purge.corp.hq.len(), 1, "two at random");
+        assert!(purge.runner.rig.is_empty() && purge.runner.heap.contains(&id("heliamphora")));
+        assert_eq!(purge.corp.archives.len(), before + 2 + 1, "the two, and the card it hosted");
+    }
+
 }

@@ -280,6 +280,7 @@ mod tests {
             redirect_on_approach: None,
             fully_broken: false,
             once_per_run_used: Vec::new(),
+            initiated_by: None,
         };
         // No ice: the steps are there, and none of them counts a piece.
         view.active_run = Some(run.clone());

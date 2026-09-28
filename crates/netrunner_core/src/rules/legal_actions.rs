@@ -276,6 +276,8 @@ fn action_owner(state: &GameState, registry: &CardRegistry, action: &PlayerActio
                 state.corp.identity.clone()
             } else if *target == InstallId::RUNNER_IDENTITY {
                 state.runner.identity.clone()
+            } else if *target == InstallId::RUN_EVENT {
+                crate::rules::run::run_event(state, registry).cloned()
             } else {
                 state
                     .find_corp_install(*target)
@@ -299,7 +301,7 @@ fn action_owner(state: &GameState, registry: &CardRegistry, action: &PlayerActio
                 || state.corp.find_scored(*target).is_some()
             {
                 Side::Corp
-            } else if *target == InstallId::RUNNER_IDENTITY || state.find_rig_install(*target).is_some() {
+            } else if matches!(*target, InstallId::RUNNER_IDENTITY | InstallId::RUN_EVENT) || state.find_rig_install(*target).is_some() {
                 Side::Runner
             } else {
                 unreachable!("ActivateAbility({target:?}) passed legal_actions but owns no matching installed/rig card")
@@ -729,6 +731,11 @@ fn activate_ability_candidates(state: &GameState, registry: &CardRegistry) -> Ve
     }
     if let Some(identity) = &state.runner.identity {
         candidates.extend(paid_ability_candidates(identity, InstallId::RUNNER_IDENTITY, registry));
+    }
+    // The run's event, in the play area for as long as the run lasts (CR
+    // 8.6.5) — Eye for an Eye's "Access →".
+    if let Some(event) = crate::rules::run::run_event(state, registry) {
+        candidates.extend(paid_ability_candidates(event, InstallId::RUN_EVENT, registry));
     }
     candidates
 }

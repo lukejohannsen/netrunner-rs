@@ -446,6 +446,10 @@ fn targets_of(action: &PlayerAction, view: &ClientView) -> Vec<Target> {
         PlayerAction::DiscardCard { card_id } | PlayerAction::ActivateHandAbility { card_id, .. } => vec![Target::HandCard(card_id.clone())],
         PlayerAction::ActivateAbility { target, .. } if *target == InstallId::CORP_IDENTITY => vec![Target::Identity(Side::Corp)],
         PlayerAction::ActivateAbility { target, .. } if *target == InstallId::RUNNER_IDENTITY => vec![Target::Identity(Side::Runner)],
+        // The run's event is not on the board: its ability ("Access →", Eye
+        // for an Eye) is a decision under the prompt, which names the card
+        // it is about.
+        PlayerAction::ActivateAbility { target, .. } if *target == InstallId::RUN_EVENT => Vec::new(),
         PlayerAction::RezIce { ice: target }
         | PlayerAction::ActivateAbility { target, .. }
         | PlayerAction::AdvanceCard { target }

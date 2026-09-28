@@ -132,6 +132,11 @@ const DISCARD_CARD_LEN: usize = MAX_HAND_SIZE;
 /// and lose only the 32nd slot, which no real board reaches. Taking a slot
 /// rather than adding a segment keeps `ActionSpace::SIZE` stable.
 const IDENTITY_ABILITY_SLOT: usize = MAX_INSTALLED_PER_SIDE - 1;
+/// The Runner's slot for the run's event in the play area
+/// (`InstallId::RUN_EVENT`), the one before the identity's — so a rig card
+/// loses the 31st slot too, which no real board reaches either, and the
+/// size is stable again.
+const RUN_EVENT_ABILITY_SLOT: usize = MAX_INSTALLED_PER_SIDE - 2;
 const ACTIVATE_ABILITY_CORP_START: usize = DISCARD_CARD_START + DISCARD_CARD_LEN;
 const ACTIVATE_ABILITY_CORP_LEN: usize = MAX_INSTALLED_PER_SIDE * MAX_ABILITIES_PER_CARD;
 
@@ -368,10 +373,13 @@ impl ActionSpace {
                 if *target == InstallId::RUNNER_IDENTITY {
                     return Some(ACTIVATE_ABILITY_RUNNER_START + IDENTITY_ABILITY_SLOT * MAX_ABILITIES_PER_CARD + ability_index);
                 }
+                if *target == InstallId::RUN_EVENT {
+                    return Some(ACTIVATE_ABILITY_RUNNER_START + RUN_EVENT_ABILITY_SLOT * MAX_ABILITIES_PER_CARD + ability_index);
+                }
                 if let Some(slot) = corp_ability_slot(state, *target) {
                     Some(ACTIVATE_ABILITY_CORP_START + slot * MAX_ABILITIES_PER_CARD + ability_index)
                 } else {
-                    let slot = bounded_position_rig(&state.runner.rig, *target, IDENTITY_ABILITY_SLOT)?;
+                    let slot = bounded_position_rig(&state.runner.rig, *target, RUN_EVENT_ABILITY_SLOT)?;
                     Some(ACTIVATE_ABILITY_RUNNER_START + slot * MAX_ABILITIES_PER_CARD + ability_index)
                 }
             }
@@ -531,6 +539,8 @@ impl ActionSpace {
             let ability_index = local % MAX_ABILITIES_PER_CARD;
             let target = if slot == IDENTITY_ABILITY_SLOT {
                 state.runner.identity.as_ref().map(|_| InstallId::RUNNER_IDENTITY)?
+            } else if slot == RUN_EVENT_ABILITY_SLOT {
+                state.active_run.as_ref().and_then(|run| run.initiated_by.as_ref()).map(|_| InstallId::RUN_EVENT)?
             } else {
                 state.runner.rig.get(slot)?.install_id
             };

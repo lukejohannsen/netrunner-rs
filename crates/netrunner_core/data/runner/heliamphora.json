@@ -1,0 +1,68 @@
+{
+  "id": "heliamphora",
+  "title": "Heliamphora",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 1,
+  "memory_cost": 1,
+  "triggers": [
+    {
+      "trigger": "OnAccessed",
+      "subject": "Any",
+      "requirement": {
+        "And": [
+          "OncePerRun",
+          {
+            "And": [
+              {
+                "AccessingIn": "Archives"
+              },
+              {
+                "Not": {
+                  "CurrentlyAccessingInstalledCard": {}
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Runner",
+            "options": [
+              {
+                "HostCardOnThisCard": "AccessedCard"
+              },
+              {
+                "Sequence": []
+              }
+            ],
+            "texts": [
+              "you may host it faceup on this program instead",
+              ""
+            ]
+          }
+        }
+      ],
+      "text": "Whenever you would access a card in Archives, you may host it faceup on this program instead."
+    },
+    {
+      "trigger": "OnVirusCountersPurged",
+      "effects": [
+        {
+          "TrashCard": "RandomFromHq"
+        },
+        {
+          "TrashCard": "RandomFromHq"
+        },
+        {
+          "TrashCard": "ThisCard"
+        }
+      ],
+      "text": "When the Corp purges virus counters, they trash 2 cards from HQ at random. Trash this program."
+    }
+  ],
+  "numeric_id": 34072,
+  "is_playable": true
+}

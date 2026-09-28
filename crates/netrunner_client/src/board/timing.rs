@@ -371,6 +371,7 @@ mod tests {
             redirect_on_approach: None,
             fully_broken: false,
             once_per_run_used: Vec::new(),
+            initiated_by: None,
         }
     }
 

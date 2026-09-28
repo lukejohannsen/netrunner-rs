@@ -154,7 +154,7 @@ fn for_each_applying<'a>(
     // (`Scope::Controller`), and it is the one asked after every action
     // (`memory::refresh`), so it does not walk the other side's table.
     match target {
-        Target::Player(Side::Runner) => active::runner(state).for_each(|active| ask(active.into())),
+        Target::Player(Side::Runner) => active::runner(state, registry).for_each(|active| ask(active.into())),
         Target::Player(Side::Corp) => active::corp(state, registry).for_each(|active| ask(active.into())),
         _ => active::active_cards(state, registry).for_each(|active| ask(active.into())),
     }

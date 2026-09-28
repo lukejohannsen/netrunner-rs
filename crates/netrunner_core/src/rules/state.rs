@@ -120,6 +120,15 @@ impl InstallId {
     /// with no acting install, and `action_mask` gives each its own slot.
     pub const CORP_IDENTITY: InstallId = InstallId(u32::MAX - 1);
     pub const RUNNER_IDENTITY: InstallId = InstallId(u32::MAX);
+    /// The event in the play area that started the active run (CR 8.6.5:
+    /// "An operation or event that initiates a timing structure remains
+    /// active in the play area for the duration of that timing
+    /// structure") — `run::run_event`. Its paid abilities are used through
+    /// this id: Eye for an Eye's "Access → Trash 1 card from your grip:
+    /// Trash the card you are accessing." Never installed, so never
+    /// allocated, like the identities; `action_mask` gives it the Runner's
+    /// second-to-last slot.
+    pub const RUN_EVENT: InstallId = InstallId(u32::MAX - 2);
 }
 
 impl Default for InstallId {

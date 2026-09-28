@@ -554,6 +554,7 @@ fn ability_is_action(state: &GameState, registry: &CardRegistry, target: Install
     let card = match target {
         InstallId::CORP_IDENTITY => state.corp.identity.as_ref(),
         InstallId::RUNNER_IDENTITY => state.runner.identity.as_ref(),
+        InstallId::RUN_EVENT => run::run_event(state, registry),
         _ => state
             .find_corp_install(target)
             .map(|c| &c.card)
@@ -2071,10 +2072,14 @@ fn activate_ability(
     };
     let corp_active =
         corp_install.is_some_and(|c| c.rezzed) || scored.is_some() || (target == InstallId::CORP_IDENTITY && corp_card.is_some());
-    let runner_card =
-        if target == InstallId::RUNNER_IDENTITY { state.runner.identity.clone() } else { state.find_rig_install(target).map(|c| c.card.clone()) };
+    let runner_card = match target {
+        InstallId::RUNNER_IDENTITY => state.runner.identity.clone(),
+        InstallId::RUN_EVENT => run::run_event(state, registry).cloned(),
+        _ => state.find_rig_install(target).map(|c| c.card.clone()),
+    };
     let runner_active = runner_card.is_some();
-    let is_identity = matches!(target, InstallId::CORP_IDENTITY | InstallId::RUNNER_IDENTITY);
+    // Neither an identity nor the run's event has an install of its own.
+    let is_identity = matches!(target, InstallId::CORP_IDENTITY | InstallId::RUNNER_IDENTITY | InstallId::RUN_EVENT);
 
     // Whose card it is, read off where the install is — an install id names
     // one card on one side of the table. It used to be read off the phase
