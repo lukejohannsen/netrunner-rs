@@ -1,0 +1,157 @@
+{
+  "id": "lightning_laboratory",
+  "title": "Lightning Laboratory",
+  "side": "Corp",
+  "card_type": "Agenda",
+  "cost": 0,
+  "advancement_requirement": 4,
+  "agenda_points": 2,
+  "triggers": [
+    {
+      "trigger": "OnAgendaScored",
+      "subject": "This",
+      "effects": [
+        {
+          "AddCounters": 1
+        }
+      ],
+      "text": "When you score this agenda, place 1 agenda counter on it."
+    },
+    {
+      "trigger": "OnRunStart",
+      "subject": "Any",
+      "requirement": {
+        "ThisCardCountersAtLeast": 1
+      },
+      "effects": [
+        {
+          "OfferPaidChoice": {
+            "side": "Corp",
+            "cost": {
+              "RemoveCounters": 1
+            },
+            "if_paid": {
+              "Sequence": [
+                {
+                  "PromptChooseCards": {
+                    "side": "Corp",
+                    "source": "OwnInstalled",
+                    "filter": {
+                      "All": [
+                        "UnrezzedIce",
+                        "InAttackedServer"
+                      ]
+                    },
+                    "min": 0,
+                    "max": 1,
+                    "reveal": false,
+                    "shuffle_after": false,
+                    "then": {
+                      "EffectIf": {
+                        "condition": {
+                          "AmountAtLeast": [
+                            "CardsSelected",
+                            1
+                          ]
+                        },
+                        "effect": {
+                          "RezInstalled": {
+                            "install": 0
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                {
+                  "PromptChooseCards": {
+                    "side": "Corp",
+                    "source": "OwnInstalled",
+                    "filter": {
+                      "All": [
+                        "UnrezzedIce",
+                        "InAttackedServer"
+                      ]
+                    },
+                    "min": 0,
+                    "max": 1,
+                    "reveal": false,
+                    "shuffle_after": false,
+                    "then": {
+                      "EffectIf": {
+                        "condition": {
+                          "AmountAtLeast": [
+                            "CardsSelected",
+                            1
+                          ]
+                        },
+                        "effect": {
+                          "RezInstalled": {
+                            "install": 0
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                {
+                  "WhenThisTurnEnds": {
+                    "Sequence": [
+                      {
+                        "PromptChooseCards": {
+                          "side": "Corp",
+                          "source": "OwnInstalled",
+                          "filter": {
+                            "All": [
+                              "Ice",
+                              "Rezzed",
+                              "InAttackedServer"
+                            ]
+                          },
+                          "min": 1,
+                          "max": 1,
+                          "reveal": false,
+                          "shuffle_after": false,
+                          "then": {
+                            "DerezCard": "ThisCard"
+                          }
+                        }
+                      },
+                      {
+                        "PromptChooseCards": {
+                          "side": "Corp",
+                          "source": "OwnInstalled",
+                          "filter": {
+                            "All": [
+                              "Ice",
+                              "Rezzed",
+                              "InAttackedServer"
+                            ]
+                          },
+                          "min": 1,
+                          "max": 1,
+                          "reveal": false,
+                          "shuffle_after": false,
+                          "then": {
+                            "DerezCard": "ThisCard"
+                          }
+                        }
+                      }
+                    ]
+                  }
+                }
+              ]
+            },
+            "if_declined": {
+              "Sequence": []
+            },
+            "text": "you may remove 1 hosted agenda counter to rez up to 2 pieces of ice protecting the attacked server, ignoring all costs"
+          }
+        }
+      ],
+      "text": "Whenever a run begins, you may remove 1 hosted agenda counter to rez up to 2 pieces of ice protecting the attacked server, ignoring all costs. When this turn ends, derez 2 pieces of ice protecting that server."
+    }
+  ],
+  "numeric_id": 34097,
+  "is_playable": true
+}

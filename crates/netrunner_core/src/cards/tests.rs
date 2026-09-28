@@ -14758,4 +14758,45 @@ mod rebellion_without_rehearsal {
         state.turn += 1;
         assert!(crate::rules::legal_actions_for(&state, &registry, Side::Corp).contains(&PlayerAction::ScoreAgenda { target: installed }), "next turn it may");
     }
+
+    // ---- Stage 5d: a delayed conditional ability ----
+
+    #[test]
+    fn lightning_laboratory_rezzes_two_ice_free_as_a_run_begins_and_derezzes_them_as_the_turn_ends() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.turn = 2;
+        let mut enigma = ice_at_hq("enigma");
+        enigma.rezzed = false;
+        let mut wall = ice_at_hq("ice_wall");
+        wall.rezzed = false;
+        state.corp.installed = vec![wall, enigma];
+        state.corp.scored_agendas = vec![crate::rules::ScoredAgenda {
+            install_id: fixture_install_id("lightning_laboratory"),
+            agenda_counters: 1,
+            ..crate::rules::ScoredAgenda::plain(id("lightning_laboratory"))
+        }];
+        let credits = state.corp.resources.credits;
+        let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run HQ");
+        assert!(state.pending_paid_choice.is_some(), "offered as the run begins");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::AcceptPendingPaidChoice { cost_option_index: None }).expect("spend the counter");
+        let state = select(&state, &registry, &[0]);
+        let state = select(&state, &registry, &[1]);
+        assert!(state.corp.installed.iter().all(|ice| ice.rezzed), "both rezzed");
+        assert_eq!(state.corp.resources.credits, credits, "ignoring all costs");
+        assert_eq!(state.corp.scored_agendas[0].agenda_counters, 0);
+        assert_eq!(state.delayed.len(), 1, "the derez waits for the turn's end");
+
+        // The run is over; the turn ends, and the derez resolves.
+        let mut state = state;
+        state.active_run = None;
+        state.paid_ability_window = None;
+        let (state, _) = apply_action(&crate::rules::test_support::clicks_spent(&state), &registry, PlayerAction::EndTurn).expect("runner ends turn");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner passes");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Corp }).expect("corp passes: the turn ends");
+        let state = select(&state, &registry, &[0]);
+        let state = select(&state, &registry, &[1]);
+        assert!(state.corp.installed.iter().all(|ice| !ice.rezzed), "both derezzed as the turn ended");
+        assert!(state.delayed.is_empty(), "it resolved once");
+    }
 }
