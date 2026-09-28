@@ -1,0 +1,100 @@
+{
+  "id": "attini",
+  "title": "Attini",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "CodeGate"
+  },
+  "cost": 6,
+  "strength": 5,
+  "triggers": [],
+  "continuous": [
+    {
+      "kind": {
+        "Cannot": "SpendCredits"
+      },
+      "applies_to": {
+        "Player": "Runner"
+      },
+      "while": {
+        "And": [
+          {
+            "AmountAtLeast": [
+              "ThreatLevel",
+              3
+            ]
+          },
+          "ResolvingThisIcesSubroutines"
+        ]
+      },
+      "text": "Threat 3 → The Runner cannot spend credits while subroutines on this ice are resolving."
+    }
+  ],
+  "subroutines": [
+    {
+      "text": "Do 1 net damage unless the Runner pays 2[credit].",
+      "effect": {
+        "OfferPaidChoice": {
+          "side": "Runner",
+          "cost": {
+            "Credits": 2
+          },
+          "if_paid": {
+            "Sequence": []
+          },
+          "if_declined": {
+            "DealDamage": [
+              "Net",
+              1
+            ]
+          },
+          "text": "Do 1 net damage unless the Runner pays 2[credit]"
+        }
+      }
+    },
+    {
+      "text": "Do 1 net damage unless the Runner pays 2[credit].",
+      "effect": {
+        "OfferPaidChoice": {
+          "side": "Runner",
+          "cost": {
+            "Credits": 2
+          },
+          "if_paid": {
+            "Sequence": []
+          },
+          "if_declined": {
+            "DealDamage": [
+              "Net",
+              1
+            ]
+          },
+          "text": "Do 1 net damage unless the Runner pays 2[credit]"
+        }
+      }
+    },
+    {
+      "text": "Do 1 net damage unless the Runner pays 2[credit].",
+      "effect": {
+        "OfferPaidChoice": {
+          "side": "Runner",
+          "cost": {
+            "Credits": 2
+          },
+          "if_paid": {
+            "Sequence": []
+          },
+          "if_declined": {
+            "DealDamage": [
+              "Net",
+              1
+            ]
+          },
+          "text": "Do 1 net damage unless the Runner pays 2[credit]"
+        }
+      }
+    }
+  ],
+  "numeric_id": 34042,
+  "is_playable": true
+}

@@ -407,6 +407,11 @@ fn apply_action_once(
         events.extend(settled);
         events.extend(dispatcher::drain_deferred_triggers(&mut next, registry)?);
     }
+    // A turn-begins ability that parked held up the rest of the turn's
+    // beginning — the Corp's mandatory draw, then the window
+    // (`turn::finish_turn_beginning`, a no-op unless that is where the
+    // game stands).
+    events.extend(crate::rules::turn::finish_turn_beginning(&mut next));
     // The standing checks once more, for whatever changed them without an
     // event a card can hear — agenda points moved by a card's text, a
     // unique card turned faceup by one. After the drain: a deferred trigger

@@ -381,6 +381,13 @@ pub(crate) fn enter_start_of_turn(
 /// empty R&D lost before its turn started. Now the draw is the step it
 /// is, and a failed one loses there (CR 1.7.2c) — after the turn-begins
 /// abilities, which may have drawn or looked, have resolved.
+///
+/// **Resolved, not merely dispatched.** A turn-begins ability that parks —
+/// Balanced Coverage's "you may choose a card type to look at the top card
+/// of R&D", Clearinghouse's choice — leaves the rest of this step owed
+/// ([`finish_turn_beginning`]), and the action that clears the park pays
+/// it. It drew underneath the decision, so Balanced Coverage would have
+/// looked at the card after the one the Corp had just drawn.
 pub(crate) fn begin_turn(state: &mut GameState, side: Side, registry: &CardRegistry) -> Result<Vec<GameEvent>, RulesError> {
     // Comprehensive Rules 1.10.5a/c: recurring credits refill "before
     // abilities meet their trigger conditions for your turn beginning".
@@ -391,10 +398,31 @@ pub(crate) fn begin_turn(state: &mut GameState, side: Side, registry: &CardRegis
     let clicks = state.resources(side).clicks.0;
     let turn_started = GameEvent::TurnStarted { side, clicks };
     dispatcher::emit(state, registry, &mut events, turn_started)?;
-    if state.is_over() {
+    if state.resolution_halted() {
         return Ok(events);
     }
+    events.extend(draw_and_open_the_turn(state, side));
+    Ok(events)
+}
 
+/// The rest of [`begin_turn`] once its turn-begins abilities have all
+/// resolved: the Corp's mandatory draw and the window ahead of the first
+/// action. Owed while the phase is `StartOfTurn` and no window is open —
+/// the turn-beginning window has closed and the start-of-turn one has not
+/// opened, which is only ever true across a turn-begins ability that
+/// parked — and paid by `engine::apply_action` once nothing is parked or
+/// queued. Read off the state rather than kept in a flag: nothing has to
+/// remember to clear it.
+pub(crate) fn finish_turn_beginning(state: &mut GameState) -> Vec<GameEvent> {
+    let GamePhase::StartOfTurn(side) = state.phase else { return Vec::new() };
+    if state.paid_ability_window.is_some() || state.resolution_halted() || !state.deferred_triggers.is_empty() {
+        return Vec::new();
+    }
+    draw_and_open_the_turn(state, side)
+}
+
+fn draw_and_open_the_turn(state: &mut GameState, side: Side) -> Vec<GameEvent> {
+    let mut events = Vec::new();
     if side == Side::Corp {
         // "The Corp performs their mandatory draw" (CR 5.6.1e). Top of R&D
         // is the end of the Vec, as `RunnerState::stack`'s is.
@@ -405,13 +433,13 @@ pub(crate) fn begin_turn(state: &mut GameState, side: Side, registry: &CardRegis
             }
             None => {
                 events.extend(win::end_game(state, Side::Runner));
-                return Ok(events);
+                return events;
             }
         }
     }
 
     events.push(paid_ability::open_window_for(state, side, WindowCheckpoint::StartOfTurn { side }));
-    Ok(events)
+    events
 }
 
 #[cfg(test)]

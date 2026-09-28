@@ -192,6 +192,17 @@ pub struct ClientView {
     /// moment comes (Lightning Laboratory's derez as the turn ends).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub delayed: Vec<crate::rules::lingering::DelayedAbility>,
+    /// The prohibitions a card's standing effect puts in force right now,
+    /// each with the card that says so — Attini's "the Runner cannot spend
+    /// credits" while its subroutines resolve at threat 3
+    /// (`continuous::standing_prohibitions`). The engine's answer, so a
+    /// client says why an offer to pay is missing without re-deriving the
+    /// threat level or the encounter. Public: the card is a rezzed piece of
+    /// ice both players see, and the facts its `while` reads are public.
+    /// Nothing rebuilds a state from it, since the table it is read off
+    /// is in the view already.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub standing_cannot: Vec<StandingProhibition>,
     /// `PublicGameState::revealed` verbatim — the cards revealed in a hand
     /// that an ability still resolving has not moved yet (Burner's).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -310,6 +321,14 @@ fn active_player(phase: GamePhase) -> Side {
     }
 }
 
+/// One entry of [`ClientView::standing_cannot`]: a prohibition in force,
+/// and the card whose standing effect puts it there.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct StandingProhibition {
+    pub what: crate::dsl::Prohibition,
+    pub source: crate::dsl::CardId,
+}
+
 impl ClientView {
     /// Whether a prohibition is in force — "the Runner cannot steal or
     /// trash", "the Corp cannot score agendas". The engine's own answer
@@ -317,7 +336,7 @@ impl ClientView {
     /// masking already filtered to what holds. It explains a legal-action
     /// list to a person; it never decides one.
     pub fn cannot(&self, what: crate::dsl::Prohibition) -> bool {
-        crate::rules::lingering::listed(&self.lingering, what)
+        crate::rules::lingering::listed(&self.lingering, what) || self.standing_cannot.iter().any(|standing| standing.what == what)
     }
 
     /// [`ClientView::cannot`] about one card, as an access asks it.
@@ -401,6 +420,14 @@ pub fn build_client_view(state: &GameState, registry: &CardRegistry, viewer: imp
         pending_payment: public.pending_payment,
         lingering: public.lingering,
         delayed: public.delayed,
+        standing_cannot: crate::dsl::Prohibition::ALL
+            .into_iter()
+            .flat_map(|what| {
+                crate::rules::continuous::standing_prohibitions(state, registry, what)
+                    .into_iter()
+                    .map(move |source| StandingProhibition { what, source: source.clone() })
+            })
+            .collect(),
         revealed: public.revealed,
         selection,
         legal_actions: viewer.side().map(|side| legal_actions_for(state, registry, side)).unwrap_or_default(),

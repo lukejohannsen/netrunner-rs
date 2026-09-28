@@ -60,6 +60,7 @@ fn every_field_of_the_view_is_accounted_for(view: ClientView) {
         pending_payment,       // below
         lingering: _,          // drawn: hud::in_effect (desktop rail, terminal under the servers); a strength is on its card
         delayed: _,            // drawn: hud::in_effect ("when this turn ends, …"), both clients
+        standing_cannot: _,    // drawn: hud::in_effect ("Attini: the Runner cannot spend credits"), both clients
         revealed: _,           // drawn: hud::in_effect ("revealed in HQ: …"), both clients; the chooser's pop-up draws them as its cards
         selection: _,          // drawn: selection::Selection (the pop-up's cards, the terminal's card in question)
         legal_actions: _,      // drawn: board::ActionMap — every action is a control, a menu entry or a pop-up button

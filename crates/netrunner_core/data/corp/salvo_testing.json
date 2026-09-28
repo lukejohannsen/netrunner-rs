@@ -1,0 +1,40 @@
+{
+  "id": "salvo_testing",
+  "title": "Salvo Testing",
+  "side": "Corp",
+  "card_type": "Agenda",
+  "cost": 0,
+  "advancement_requirement": 5,
+  "agenda_points": 3,
+  "triggers": [
+    {
+      "trigger": "OnAgendaScored",
+      "subject": "Any",
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Corp",
+            "options": [
+              {
+                "DealDamage": [
+                  "Brain",
+                  1
+                ]
+              },
+              {
+                "Sequence": []
+              }
+            ],
+            "texts": [
+              "you may do 1 core damage",
+              ""
+            ]
+          }
+        }
+      ],
+      "text": "Whenever you score an agenda (including this one), you may do 1 core damage."
+    }
+  ],
+  "numeric_id": 34031,
+  "is_playable": true
+}

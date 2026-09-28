@@ -370,7 +370,14 @@ mod tests {
                             let after = session.view_for(*viewer);
                             let entry = session.last_entry_for(*viewer).unwrap();
                             let ts = transitions(&before[i], &after, &entry);
-                            let seen: HashSet<CardId> = nameable(&before[i]).union(&nameable(&after)).cloned().collect();
+                            // A card revealed and moved on in the one action —
+                            // Bring Them Home's grip cards, onto the stack — is
+                            // shown by the entry itself, in neither view.
+                            let shown = entry.events.iter().filter_map(|event| match event {
+                                GameEvent::CardRevealed { card, .. } => Some(card.clone()),
+                                _ => None,
+                            });
+                            let seen: HashSet<CardId> = nameable(&before[i]).union(&nameable(&after)).cloned().chain(shown).collect();
                             for t in &ts {
                                 match t {
                                     Transition::CardMoved { card, install, from, to } => {

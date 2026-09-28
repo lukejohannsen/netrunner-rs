@@ -280,6 +280,18 @@ pub enum EffectRequirement {
     /// Composition didn't work: `EncounteringHostIce` asks about a Trojan's
     /// host, and the acting card here is the ice.
     EncounteringThisIce,
+    /// Subroutines on this ice are resolving — Attini's "while subroutines
+    /// on this ice are resolving". The run is encountering the acting ice
+    /// and a subroutine on it has resolved this encounter: from the first
+    /// resolution at step 6.9.3c, through every interrupt window and
+    /// decision a subroutine parks (CR 9.1.2b, whose example is Attini),
+    /// until the encounter is complete, which the engine takes straight
+    /// after the last one (`paid_ability::resolve_encounter_ice`). Not in
+    /// the break window before it (6.9.3b), where nothing has resolved.
+    /// Composition didn't work: `EncounteringThisIce` is true in that
+    /// window too, and `SubroutineResolvedThisRun` is about any ice this
+    /// run.
+    ResolvingThisIcesSubroutines,
     /// The active run is encountering a piece of ICE right now
     /// (`RunPhase::EncounterIce`) — any ICE, unlike
     /// `EncounteringHostIce`'s "the one my host is."

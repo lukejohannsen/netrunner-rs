@@ -451,6 +451,12 @@ pub(crate) fn sources(
     purpose: Purpose<'_>,
     from: Option<&crate::dsl::CardFilter>,
 ) -> Vec<Source> {
+    // Attini's "the Runner cannot spend credits": every pool is spent
+    // from, so there is nothing to offer — the wallet stays, empty, as the
+    // one source every list ends with.
+    if side == Side::Runner && crate::rules::continuous::cannot(state, registry, crate::dsl::Prohibition::SpendCredits) {
+        return vec![Source { pool: Pool::Wallet, credits: 0 }];
+    }
     let admits = |card: Option<&crate::dsl::CardId>| match from {
         None => true,
         Some(filter) => card.and_then(|card| registry.get(card)).is_some_and(|definition| card_matches_filter(definition, filter)),
