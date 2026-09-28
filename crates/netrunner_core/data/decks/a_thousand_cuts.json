@@ -3,7 +3,7 @@
   "name": "A Thousand Cuts",
   "side": "Corp",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach the prevention window from the other chair. Personal Evolution dealing net damage, giving tags and trashing programs — Snare!, Urtica Cipher, Neurospike, Public Trail, Retribution, Ansel 1.0, Ballista, and Vantage Point's Vicsek, ice of none of the three types that turns tags into more tags. Eternal-legal only. Vantage Point Stage 3b: The Red Room for PAD Campaign, Lotus Haze for Offworld Office. Vantage Point Stage 4a: two ezaM for two Tithe. Vantage Point Stage 4b: two Lionsmane for two Public Trail. Vantage Point Stage 6a: two Knowledge Seeker for two Palisade, two Esca for two Regolith Mining License, two Cultivate for two Retribution. Rebellion Without Rehearsal Stage 5b: two Cloud Eater for the Tithe and the Ballista. Rebellion Without Rehearsal Stage 6a: two Bring Them Home for the Regolith Mining License and a Hedge Fund. Rebellion Without Rehearsal Stage 7b: two See How They Run for two Proprionegation, an agenda for an agenda. Rebellion Without Rehearsal Stage 7c: two Tributary for a Karuna and an ezaM, ice for ice. The Automata Initiative Stage 1: two Fujii Asset Retrieval for Longevity Serum, Proprionegation and a Sericulture Expansion, six points for six; three Mindscaping for two Hedge Fund and the slot that left; two Attini for two Karuna.",
+  "description": "Not a published list: built so the sweeps reach the prevention window from the other chair. Personal Evolution dealing net damage, giving tags and trashing programs — Snare!, Urtica Cipher, Neurospike, Public Trail, Retribution, Ansel 1.0, Ballista, and Vantage Point's Vicsek, ice of none of the three types that turns tags into more tags. Eternal-legal only. Vantage Point Stage 3b: The Red Room for PAD Campaign, Lotus Haze for Offworld Office. Vantage Point Stage 4a: two ezaM for two Tithe. Vantage Point Stage 4b: two Lionsmane for two Public Trail. Vantage Point Stage 6a: two Knowledge Seeker for two Palisade, two Esca for two Regolith Mining License, two Cultivate for two Retribution. Rebellion Without Rehearsal Stage 5b: two Cloud Eater for the Tithe and the Ballista. Rebellion Without Rehearsal Stage 6a: two Bring Them Home for the Regolith Mining License and a Hedge Fund. Rebellion Without Rehearsal Stage 7b: two See How They Run for two Proprionegation, an agenda for an agenda. Rebellion Without Rehearsal Stage 7c: two Tributary for a Karuna and an ezaM, ice for ice. The Automata Initiative Stage 1: two Fujii Asset Retrieval for Longevity Serum, Proprionegation and a Sericulture Expansion, six points for six; three Mindscaping for two Hedge Fund and the slot that left; two Attini for two Karuna. The Automata Initiative Stage 3: two Phoneutria for two Neurospike, and two Tatu-Bola for two Byte.",
   "style": "trap",
   "identity": "jinteki_personal_evolution",
   "cards": [
@@ -24,15 +24,7 @@
       "count": 3
     },
     {
-      "card": "byte",
-      "count": 2
-    },
-    {
       "card": "the_red_room",
-      "count": 2
-    },
-    {
-      "card": "neurospike",
       "count": 2
     },
     {
@@ -93,6 +85,14 @@
     },
     {
       "card": "attini",
+      "count": 2
+    },
+    {
+      "card": "phoneutria",
+      "count": 2
+    },
+    {
+      "card": "tatu_bola",
       "count": 2
     }
   ]

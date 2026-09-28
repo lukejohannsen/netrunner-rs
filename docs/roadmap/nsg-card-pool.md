@@ -3971,6 +3971,99 @@ half.
   shapes, so the heuristic movement is `determinize` sampling the new
   cards.
 
+#### Stage 3 — the pass, and the ice's subtypes (28 September 2026)
+
+`feat/tai-stage-3-pass-triggers-banner`: Phoneutria, Tatu-Bola, Virtual
+Service Agent, Curupira, Laser Pointer and Banner. **No new `Effect`.** The
+Automata Initiative 25 of 65; `TAI_UNIMPLEMENTED` 46 → 40.
+
+- **Which kind of breaker broke the printed subroutines is carried out on
+  the pass.** Virtual Service Agent's "whenever the Runner passes this ice
+  after encountering it, if they did not break its printed subroutine with a
+  decoder during that encounter" is asked as the pass's trigger resolves,
+  and the encounter's tally is reset as the movement phase begins, before
+  that.
+  - `EncounterTally::printed_broken_with`, a set of the four icebreaker
+    subtypes (CR 2.16.7i) as bits, because the tally is `Copy`. Written by
+    `run::break_subroutine` from the card whose ability broke a subroutine
+    the ice prints; a click, or a card's text with no breaker, adds nothing.
+  - The pass carries it (`GameEvent::IcePassed::printed_broken_with`), and
+    `EffectRequirement::BrokePrintedSubroutineWith(subtype)` reads it off the
+    triggering event, as `HadNoTags` reads `TagsGiven`. `validate` holds it
+    to an `OnIcePassed` trigger and an icebreaker subtype.
+  - "After encountering it" needs no word: the pass is a moment about the
+    ice only while it is rezzed, and rezzed ice is encountered before it is
+    passed.
+- **A piece of ice's subroutines can be unable to end the run.** Banner's
+  "Interface → 2[credit]: Subroutines on the barrier you are encountering
+  cannot end the run for the remainder of this encounter" is `Effect::Prohibit`
+  with `Prohibition::EndTheRun`, about the encountered ice
+  (`Prohibit::encountered_ice`, `lingering::On::Install`) for the encounter.
+  - `Effect::EndTheRun` asks it while that ice's subroutines are resolving,
+    and does nothing (CR 1.2.2); the rest of the subroutines resolve (1.2.4).
+    That stretch is `run::resolving_subroutines_of`, which Attini's
+    `ResolvingThisIcesSubroutines` now reads too, so the two cannot disagree.
+  - A cannot, not Shred's prevention: nobody uses it and it has no "first
+    time". `validate` admits `Encounter` for this prohibition alone, and
+    only about the encountered ice.
+  - An interface ability that breaks nothing is held to CR 3.9.5g by the
+    card file: `Not(MoreThan(EncounteredIceStrength, ThisCardStrength))`,
+    over one new `Amount`, the acting rig card's strength. Banner is refused
+    against Brân 1.0, 6 to its 5.
+- **"Swap it" is said by the ice passed.** Tatu-Bola's "When the Runner
+  passes this ice, you may swap it with a piece of ice from HQ. If you do,
+  gain 4[credit]" is Mitra Aman's swap with `this_ice`: the install the
+  selection's `then` acts as, rather than the ice being approached, which a
+  pass has none of. It is offered only with ice in HQ, and the gain is in the
+  same `then`, so it is paid only for a swap.
+- **A swapped-in piece of ice is no longer named to the Runner by the card it
+  replaced.** The swap kept the install's `seen_by_runner`, so a rezzed ice
+  swapped for one from HQ would have shown the Runner the new card, facedown.
+  Tatu-Bola is always rezzed as it swaps; Mitra Aman's approached ice could
+  have been seen too. The swap now clears it and the copy's turn with the
+  card (Rules Conformance 6.2).
+- **The rest compose.** Phoneutria is Vertigo's pass with
+  `AmountAtLeast(CardsInHand(Runner), 4)`; Curupira is Malandragem's paid
+  bypass for 3 counters on a barrier and Lobisomem's "whenever it fully
+  breaks" (`ByThis`); Laser Pointer is Malandragem's threat-4 bypass with
+  its own trash as the cost and "AP, destroyer, or observer" as a `when` over
+  the catalog's subtypes.
+- **Client**, both clients: nothing added to the view — the new fields are on
+  the run's tally and an event, and the prohibition is a lingering effect the
+  view already carries. The "in effect" lines name it ("Banner: subroutines on
+  Ice Wall cannot end the run, for this encounter"), and the prose names the
+  new words.
+- **Decks** — swaps into Eternal-only Sweep decks, count for count, each card
+  taken out still in another deck the sweeps play: A Thousand Cuts
+  (Phoneutria for Neurospike, Tatu-Bola for Byte), Paid Content (Virtual
+  Service Agent for Paywall), Hit List (Curupira for Marjanah, Laser Pointer
+  for Leech), Pay As You Go (Banner for two of three Corroder). No new deck,
+  so the sweep schedule is unchanged.
+- **DSL ratio (`pool_status.py`): 22 of 90 `Effect` variants single-use,
+  1 unused**, over 340 card files (23 of 90 before: Tatu-Bola is the swap's
+  second card).
+- **Real play**, 96 games a seating (seed 2; the Corp decks against Safety
+  Net, the Runner decks against Hostile Bid, Hit List against A Thousand Cuts
+  too):
+  - Random seats use all six: Phoneutria rezzed 28 times and its pass tagged
+    once, Tatu-Bola passed and swapped 3 times, Virtual Service Agent's pass
+    tagged 62 times, Curupira installed 66 times and its fully-broken counter
+    placed 7 times, Laser Pointer trashed to bypass 9 times, Banner used 4
+    times.
+  - Heuristic seats: the Corp swapped Tatu-Bola on each of the 46 passes
+    it heard, Virtual Service Agent is broken 132
+    times and tags 23, and the Runner installs Curupira and bypasses with it
+    (49 bypasses, 201 counters against Hostile Bid). The heuristic Runner
+    never installs Laser Pointer or Banner (Phase 5 debt).
+- **Measured.** Both sweeps at 256 seeds are green, the card gate included.
+  Against `origin/main`, `coverage_identical.py` has both random seatings
+  **identical** and both heuristic ones moved (Corp agenda wins 74 → 62,
+  Corp flatlines 16 → 18, Runner agenda wins 102 → 110, deck-outs 0 → 2,
+  steps 120976 → 116542, of 192). A pinned ref with every engine and client
+  change and none of the cards, decks or tests is **identical** to main in
+  all four shapes, the swap's cleared `seen_by_runner` included, so the
+  heuristic movement is `determinize` sampling the new cards.
+
 ### 4. Parhelion — 63 cards (C 19 / V 26 / M 18)
 
 **Decks:** Sweep decks on its four identities. Nova Initiumia and Ampère

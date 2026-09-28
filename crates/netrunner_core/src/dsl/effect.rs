@@ -1100,13 +1100,15 @@ pub enum Effect {
     /// entry about the player the prohibition names, holding for as long
     /// as the state says `until` is running, and asked through
     /// `continuous::cannot` by the guard and the action list alike.
-    /// `RulesError::NoActiveRun` for a `Run` with no run to last.
+    /// `RulesError::NoActiveRun` for a `Run` with no run to last, and
+    /// `NotInEncounter` for an `Encounter` with none.
     ///
     /// Replaced `PreventStealAndTrashForRemainderOfRun` and
     /// `PreventScoringForRemainderOfTurn`, which each set a flag of their
     /// own with a reset of its own — and the score lock's was on a field
     /// no view carried, so no bot sample ever saw it. `validate` refuses
-    /// `Encounter`: nothing prints a prohibition that short.
+    /// `Encounter` but for Banner's, about the encountered ice: the guards
+    /// every other prohibition answers are not asked during an encounter.
     Prohibit {
         what: Prohibition,
         until: EffectDuration,
@@ -1123,6 +1125,13 @@ pub enum Effect {
         /// install's is, so a facedown card is bound without being named.
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
         this_install: bool,
+        /// Only about the ice being encountered — Banner's "Subroutines on
+        /// the barrier you are encountering cannot end the run for the
+        /// remainder of this encounter" (`lingering::On::Install` of that
+        /// ice). The acting card is the breaker, so neither flag above
+        /// could name it.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        encountered_ice: bool,
     },
     /// Leaves `Box<Effect>` waiting until this turn ends, then resolves it
     /// as the card that made it (a `lingering::DelayedAbility`, CR 9.6.13)
@@ -1360,8 +1369,18 @@ pub enum Effect {
     /// cannot reach a zone; `InstallFromZoneIgnoringCost` adds a card
     /// beside the approached ice rather than in its place, and has no way
     /// to send the displaced one back. A swap is one move, not two.
+    ///
+    /// `this_ice` swaps the install resolving it instead — Tatu-Bola's
+    /// "When the Runner passes this ice, you may swap it with a piece of ice
+    /// from HQ", said by a pass, when nothing is being approached. The
+    /// acting install is the ice's own through the selection's `then`
+    /// (`pending_choice::resolve_confirm_card_selection`), and it may be
+    /// swapped at any step of the run. A flag rather than a second variant:
+    /// what happens to the two cards is the same move.
     SwapApproachedIceWithCard {
         origin: CardZoneRef,
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        this_ice: bool,
     },
 }
 
@@ -1579,6 +1598,16 @@ pub enum Amount {
     /// `Not(AmountAtLeast(.., 1))`, since an `Amount` is unsigned. 0
     /// outside an encounter. No amount read a strength.
     EncounteredIceStrength,
+    /// The strength of the acting rig card, never below 0
+    /// (`continuous::breaker_strength`) — the rule every interface ability
+    /// is held to (CR 3.9.5g: "only … if the icebreaker has strength greater
+    /// than or equal to the strength of the encountered ice"), for one that
+    /// breaks nothing: Banner's "Interface → 2[credit]: Subroutines on the
+    /// barrier you are encountering cannot end the run", as `Not(MoreThan(
+    /// EncounteredIceStrength, ThisCardStrength))`. A break checks the
+    /// strengths itself (`Effect::BreakSubroutines`); nothing else an
+    /// interface ability did had needed to. 0 for anything not in the rig.
+    ThisCardStrength,
     /// Subroutines on the piece of ice being encountered, printed and gained
     /// (`RunIce::subroutines`) — Physarum Entangler's "1[credit] for each
     /// subroutine it has", `Cost::CreditsAmount`'s number. 0 outside an
@@ -1702,18 +1731,31 @@ pub enum Prohibition {
     /// payment takes is a credit spent. Not `SpendOrLoseCreditPool`, which
     /// leaves the hosted credits spendable and forbids a loss.
     SpendCredits,
+    /// A piece of ice's subroutines cannot end the run — Banner's
+    /// "Subroutines on the barrier you are encountering cannot end the run
+    /// for the remainder of this encounter", always about one ice
+    /// (`Effect::Prohibit::encountered_ice`). Asked by `Effect::EndTheRun`
+    /// while that ice's subroutines are resolving, the same stretch
+    /// Attini's `ResolvingThisIcesSubroutines` names: the "end the run"
+    /// resolves and does nothing, and the rest of the ice's subroutines
+    /// resolve (CR 1.2.2, the "cannot" takes precedence; 1.2.4, the rest of
+    /// the instruction is carried out). Nobody uses it, so it opens no
+    /// window. The subroutines are the Corp's card's, so it binds
+    /// the Corp. Not `EndRunPrevention`, Shred's, which is a prevention
+    /// with a condition and a first time.
+    EndTheRun,
 }
 
 impl Prohibition {
     /// Every prohibition, for a question put about each of them
     /// (`view::build_client_view`'s `standing_cannot`).
-    pub const ALL: [Prohibition; 4] =
-        [Prohibition::ScoreAgendas, Prohibition::StealOrTrash, Prohibition::SpendOrLoseCreditPool, Prohibition::SpendCredits];
+    pub const ALL: [Prohibition; 5] =
+        [Prohibition::ScoreAgendas, Prohibition::StealOrTrash, Prohibition::SpendOrLoseCreditPool, Prohibition::SpendCredits, Prohibition::EndTheRun];
 
     /// The player it binds.
     pub fn binds(self) -> Side {
         match self {
-            Prohibition::ScoreAgendas => Side::Corp,
+            Prohibition::ScoreAgendas | Prohibition::EndTheRun => Side::Corp,
             Prohibition::StealOrTrash | Prohibition::SpendOrLoseCreditPool | Prohibition::SpendCredits => Side::Runner,
         }
     }

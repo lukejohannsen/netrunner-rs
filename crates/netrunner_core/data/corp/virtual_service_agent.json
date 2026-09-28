@@ -1,0 +1,42 @@
+{
+  "id": "virtual_service_agent",
+  "title": "Virtual Service Agent",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "CodeGate"
+  },
+  "cost": 2,
+  "strength": 2,
+  "triggers": [
+    {
+      "trigger": "OnIcePassed",
+      "subject": "This",
+      "requirement": {
+        "Not": {
+          "BrokePrintedSubroutineWith": "Decoder"
+        }
+      },
+      "effects": [
+        {
+          "GiveTags": {
+            "Fixed": 1
+          }
+        }
+      ],
+      "text": "Whenever the Runner passes this ice after encountering it, if they did not break its printed subroutine with a decoder during that encounter, give them 1 tag."
+    }
+  ],
+  "subroutines": [
+    {
+      "text": "The Runner loses 1[credit].",
+      "effect": {
+        "LoseCredits": [
+          "Runner",
+          1
+        ]
+      }
+    }
+  ],
+  "numeric_id": 34054,
+  "is_playable": true
+}

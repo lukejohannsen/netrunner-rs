@@ -1,0 +1,45 @@
+{
+  "id": "laser_pointer",
+  "title": "Laser Pointer",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 2,
+  "memory_cost": 1,
+  "triggers": [
+    {
+      "trigger": "OnEncounter",
+      "subject": "Any",
+      "when": {
+        "Card": {
+          "AnyOf": [
+            {
+              "HasSubtype": "AP"
+            },
+            {
+              "HasSubtype": "Destroyer"
+            },
+            {
+              "HasSubtype": "Observer"
+            }
+          ]
+        }
+      },
+      "effects": [
+        {
+          "OfferPaidChoice": {
+            "side": "Runner",
+            "cost": "TrashSelf",
+            "if_paid": "BypassEncounteredIce",
+            "if_declined": {
+              "Sequence": []
+            },
+            "text": "you may trash this program to bypass that ice"
+          }
+        }
+      ],
+      "text": "Whenever you encounter a piece of AP, destroyer, or observer ice, you may trash this program to bypass that ice."
+    }
+  ],
+  "numeric_id": 34016,
+  "is_playable": true
+}

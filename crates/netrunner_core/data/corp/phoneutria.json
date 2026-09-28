@@ -1,0 +1,54 @@
+{
+  "id": "phoneutria",
+  "title": "Phoneutria",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Sentry"
+  },
+  "cost": 4,
+  "strength": 2,
+  "triggers": [
+    {
+      "trigger": "OnIcePassed",
+      "subject": "This",
+      "requirement": {
+        "AmountAtLeast": [
+          {
+            "CardsInHand": "Runner"
+          },
+          4
+        ]
+      },
+      "effects": [
+        {
+          "GiveTags": {
+            "Fixed": 1
+          }
+        }
+      ],
+      "text": "When the Runner passes this ice, if there are 4 or more cards in the grip, give them 1 tag."
+    }
+  ],
+  "subroutines": [
+    {
+      "text": "Do 1 net damage.",
+      "effect": {
+        "DealDamage": [
+          "Net",
+          1
+        ]
+      }
+    },
+    {
+      "text": "Do 1 net damage.",
+      "effect": {
+        "DealDamage": [
+          "Net",
+          1
+        ]
+      }
+    }
+  ],
+  "numeric_id": 34043,
+  "is_playable": true
+}

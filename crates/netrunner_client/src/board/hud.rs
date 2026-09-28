@@ -274,6 +274,7 @@ fn cannot_words(what: netrunner_core::dsl::Prohibition) -> &'static str {
         Prohibition::ScoreAgendas => "the Corp cannot score agendas",
         Prohibition::SpendOrLoseCreditPool => "the Runner cannot spend or lose credits from their credit pool",
         Prohibition::SpendCredits => "the Runner cannot spend credits",
+        Prohibition::EndTheRun => "subroutines cannot end the run",
     }
 }
 
@@ -323,6 +324,11 @@ pub fn in_effect(view: &ClientView, registry: &CardRegistry) -> Vec<String> {
                     what => cannot_words(*what).to_string(),
                 },
                 (Lingering::Cannot(Prohibition::ScoreAgendas), On::Install(_)) => "the Corp cannot score the card it installed".to_string(),
+                // Banner: about the ice being encountered.
+                (Lingering::Cannot(Prohibition::EndTheRun), On::Install(ice)) => {
+                    let ice = super::facts::card_of(view, *ice).map_or_else(|| "the ice".to_string(), |card| title(&card));
+                    format!("subroutines on {ice} cannot end the run")
+                }
                 (Lingering::Cannot(what), _) => cannot_words(*what).to_string(),
                 (Lingering::PreventRunEnding(EndRunPrevention::UnlessCorpTrashesRootCountFromHq), _) => {
                     "the first time the Corp would end the run, it ends only if the Corp trashes a card from HQ for each card in the server's root".to_string()

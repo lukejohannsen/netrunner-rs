@@ -365,6 +365,17 @@ pub enum EffectRequirement {
     /// tags just taken, and `Not(AmountAtLeast(RunnerTags, n))` cannot
     /// name the n the event gave.
     HadNoTags,
+    /// In the encounter the triggering pass ended, an icebreaker of this
+    /// subtype broke one of the ice's printed subroutines — Virtual Service
+    /// Agent's "if they did not break its printed subroutine with a
+    /// decoder during that encounter", as `Not`. Read off the pass
+    /// (`GameEvent::IcePassed::printed_broken_with`), the way `HadNoTags`
+    /// reads `TagsGiven`. Composition didn't work: the encounter's tally is
+    /// reset as the movement phase begins, before the pass's triggers
+    /// resolve, and no other word says which kind of breaker broke a
+    /// subroutine. `validate` holds it to `OnIcePassed` and to the four
+    /// icebreaker subtypes (`run::BrokenWith::KINDS`).
+    BrokePrintedSubroutineWith(crate::dsl::CardSubtype),
     /// The Corp has at least this many credits — Fransofia Ward's "if the
     /// Corp has 15[c] or more". `RunnerCreditsAtMost`'s Corp-side sibling.
     CorpCreditsAtLeast(u32),
