@@ -208,6 +208,7 @@ pub fn start_run(state: &mut GameState, registry: &CardRegistry, server: ServerI
         declared_successful: false,
         breach_only: false,
         forced_encounter: false,
+        event_counters: 0,
         cards_accessed_count: 0, bonus_run_credits: 0,
         begun_as_the_turn_began,
     });

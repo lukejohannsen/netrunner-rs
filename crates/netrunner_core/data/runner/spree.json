@@ -1,0 +1,79 @@
+{
+  "id": "spree",
+  "title": "Spree",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 0,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "PromptChooseServer": {
+            "chooser": "Runner",
+            "rez_cost_delta": 0,
+            "bonus_run_credits": 0,
+            "on_start": {
+              "AddCounters": 3
+            }
+          }
+        }
+      ],
+      "text": "Place 3 power counters on this event, then run any server."
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "RemoveCounters": 1
+      },
+      "effect": {
+        "PromptChooseCards": {
+          "side": "Runner",
+          "source": "OwnInstalled",
+          "filter": {
+            "All": [
+              {
+                "CardType": "Program"
+              },
+              {
+                "HasSubtype": "Trojan"
+              }
+            ]
+          },
+          "min": 1,
+          "max": 1,
+          "reveal": false,
+          "shuffle_after": false,
+          "then": {
+            "PromptChooseCards": {
+              "side": "Runner",
+              "source": "OpponentInstalled",
+              "filter": {
+                "All": [
+                  "Ice",
+                  "InAttackedServer"
+                ]
+              },
+              "min": 1,
+              "max": 1,
+              "reveal": false,
+              "shuffle_after": false,
+              "then": {
+                "HostRigCardOnInstall": {
+                  "card": 0,
+                  "host": 0
+                }
+              }
+            }
+          }
+        }
+      },
+      "text": "Hosted power counter: Host 1 installed trojan program on a piece of ice protecting the attacked server."
+    }
+  ],
+  "numeric_id": 34086,
+  "is_playable": true
+}

@@ -2160,6 +2160,7 @@ mod tests {
             declared_successful: false,
             breach_only: false,
             forced_encounter: false,
+            event_counters: 0,
             bad_publicity_credits: 0,
             bonus_run_credits: 0,
             redirect_on_approach: None,

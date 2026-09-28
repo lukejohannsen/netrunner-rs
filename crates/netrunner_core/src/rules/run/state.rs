@@ -400,6 +400,14 @@ pub struct RunState {
     /// players saw what forced it.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub forced_encounter: bool,
+    /// Counters on the event that began this run, while it is in the play
+    /// area (CR 8.6.5) — Spree's "place 3 power counters on this event",
+    /// spent by its "hosted power counter:" ability. Kept on the run
+    /// because the play area lasts as long as the run does: the engine puts
+    /// a played event in the heap (`run::run_event`), where no counter is
+    /// kept, and the counters go with the run. Public, as counters are.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub event_counters: u32,
     /// Temporary Runner credit pool for this run only, seeded from
     /// `state::CorpState::bad_publicity` at `engine::initiate_run`.
     /// Spendable via `ability::pay_cost`'s `Cost::Credits` arm — draws from
@@ -592,6 +600,7 @@ impl Default for RunState {
             declared_successful: false,
             breach_only: false,
             forced_encounter: false,
+            event_counters: 0,
             bad_publicity_credits: 0,
             additional_rd_access: 0,
             additional_hq_access: 0,
@@ -618,4 +627,8 @@ impl Default for RunState {
             on_success_install: None,
         }
     }
+}
+
+fn is_zero(n: &u32) -> bool {
+    *n == 0
 }
