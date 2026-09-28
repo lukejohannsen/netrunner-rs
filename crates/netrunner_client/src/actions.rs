@@ -504,6 +504,10 @@ pub fn narrate_event(
             format!("looked at the top of {}: {}", if *deck == Side::Corp { "R&D" } else { "the stack" }, and_list(&names))
         }
         GameEvent::CardRevealed { card, .. } => format!("revealed {}", title(card)),
+        GameEvent::CardsSetAside { cards, .. } => {
+            let names: Vec<String> = cards.iter().map(&title).collect();
+            format!("set aside {}", and_list(&names))
+        }
         // Out of a zone both saw, or revealed first (Bring Them Home); a
         // card only its owner saw moving is a count, which the deck shows.
         GameEvent::CardAddedToDeck { side, card, top, revealed: true } => format!(

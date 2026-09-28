@@ -1632,6 +1632,9 @@ pub(crate) enum RunnerCardSource {
     /// The cards hosted on this rig install (`InstalledRunnerCard::
     /// hosted_cards`) — Madani.
     Hosted(InstallId),
+    /// The Runner's set-aside cards (`RunnerState::set_aside`) — The
+    /// Wizard's Chest.
+    SetAside,
 }
 
 impl RunnerCardSource {
@@ -1639,6 +1642,7 @@ impl RunnerCardSource {
         match self {
             RunnerCardSource::Grip => Some(&state.runner.grip),
             RunnerCardSource::Heap => Some(&state.runner.heap),
+            RunnerCardSource::SetAside => Some(&state.runner.set_aside),
             RunnerCardSource::Stack => Some(&state.runner.stack),
             RunnerCardSource::Hosted(host) => {
                 state.runner.rig.iter().find(|c| c.install_id == host).map(|c| &c.hosted_cards)
@@ -1650,6 +1654,7 @@ impl RunnerCardSource {
         match self {
             RunnerCardSource::Grip => Some(&mut state.runner.grip),
             RunnerCardSource::Heap => Some(&mut state.runner.heap),
+            RunnerCardSource::SetAside => Some(&mut state.runner.set_aside),
             RunnerCardSource::Stack => Some(&mut state.runner.stack),
             RunnerCardSource::Hosted(host) => {
                 state.runner.rig.iter_mut().find(|c| c.install_id == host).map(|c| &mut c.hosted_cards)

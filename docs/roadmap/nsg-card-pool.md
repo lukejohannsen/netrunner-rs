@@ -1903,7 +1903,7 @@ reaches Vantage Point's cards by building a deck.
    Bring Them Home; **6b**, cards that stay revealed while the Runner
    chooses among them (built, below): Burner; **6c**, a breach outside a
    run (built, below): Cataloguer, moved out of 6b when it was taken; **6d**, cards set
-   aside: The Wizard’s Chest; **6e**, an X cost: Lobisomem.
+   aside (built, below): The Wizard’s Chest; **6e**, an X cost: Lobisomem.
 7. **Expendable, moving ice, psi, re-encounter:** Eminent Domain, Descent,
    Tributary, See How They Run, Sisyphus Protocol, Spree.
 8. **A card's identity changes:** Thunderbolt Armaments: Peace Through Power, Lycian
@@ -3117,6 +3117,58 @@ Without Rehearsal 54 of 65; `RWR_UNIMPLEMENTED` 12 → 11.
   and without Cataloguer and the deck is identical to `main` in all four
   shapes, so the heuristic movement is `determinize` sampling a new
   Runner card.
+
+#### Stage 6d — cards set aside (28 September 2026)
+
+`feat/rwr-stage-6d-wizards-chest`: The Wizard’s Chest. **One new `Effect`,
+and one renamed to take a zone.** Rebellion Without Rehearsal 55 of 65;
+`RWR_UNIMPLEMENTED` 11 → 10.
+
+- **"Set aside cards from the top of your stack faceup until you set aside
+  2 cards of the chosen type"** is CR 4.8's set-aside zone, which no card
+  had used. The cards wait there while the Runner chooses one to install,
+  and that choice parks, so the zone is on the state:
+  `RunnerState::set_aside`.
+  - The zone is shared by both players (4.8.1). Only the Runner's text
+    sets anything aside yet, so only the Runner's side has a list.
+  - The cards are faceup (4.8.6), so it is public: in `PublicRunnerState`,
+    copied by `determinize`, and struck from the sampled pools.
+  - `Effect::SetAsideFromTopUntil { filter, count }` reads down the stack
+    until `count` cards match or the stack runs out, and announces
+    `GameEvent::CardsSetAside`, which no card hears.
+  - The rest is `CardZoneRef::OwnSetAside`: a selection over it, an
+    install out of it (`RunnerCardSource::SetAside`), and
+    `ShuffleIntoDeck([OwnSetAside])` for "shuffle the rest of the
+    set-aside cards into your stack".
+- **"You may install 1 of those 2 cards, ignoring all costs"** installs
+  out of that zone. `InstallRunnerCardFromHeap(Discount)` took the zone
+  and became `InstallRunnerCardFromZone { from, discount }`, as
+  `PlayOperation { from }` once took Plutus's, rather than a fifth install
+  variant beside the four. Scrounge's, Privileged Access's and Magdalene
+  Keino-Chemutai's files say `from: OwnHeap`.
+- "Choose hardware, program, or resource" is a `PresentChoice` of three.
+  "Use this hardware only if you made a successful run on HQ, R&D, and
+  Archives this turn" is Chain Reaction's requirement.
+- **Client:** `hud::in_effect` lists the set-aside cards in both clients
+  ("set aside: Sure Gamble, Corroder"). The log says what was set aside,
+  and the chooser's pop-up draws the ones it offers as their cards.
+- **Deck** — Grassroots: two The Wizard’s Chest for the Scrounge and a
+  Sure Gamble.
+- **Real play**, 96 games of Retirement Package against Grassroots (seed
+  2): random seats installed it 44 times; the heuristic Runner never did.
+  **Neither seating ever used its ability**, since three successful runs
+  in a turn are rare, so the card test is its reach.
+- **DSL ratio (`pool_status.py`): 21 of 85 `Effect` variants single-use,
+  1 unused**, over 305 card files (20 of 84 over 304 before). The new one
+  is `SetAsideFromTopUntil`.
+- **Measured.** Both sweeps at 256 seeds are green. A ref with the engine
+  changes and without the card and the deck differs from `main` (6c) in
+  the rename alone, in all four shapes: `effects_seen` counts the same
+  heap installs as `InstallRunnerCardFromZone` (202 in the random
+  seatings, 206 in the heuristic), and nothing else moved. With the card,
+  both random seatings are the same, and the heuristic ones moved by a
+  game or two (Corp agenda wins 74 → 73 of 192, flatlines 12 → 11, Runner
+  agenda wins 105 → 107): `determinize` sampling a new Runner card.
 
 ### 3. The Automata Initiative — 65 cards (C 14 / V 35 / M 16)
 

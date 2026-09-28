@@ -640,15 +640,39 @@ pub fn evaluate_effect(
             evaluate_effect(state, &Effect::DrawCards(*side, resolved), ctx, registry)
         }
 
-        Effect::InstallRunnerCardFromHeap(discount) => {
+        Effect::InstallRunnerCardFromZone { from, discount } => {
             use crate::rules::engine::{can_install_runner_card_from_zone_with_discount, install_runner_card_from_zone_with_discount, RunnerCardSource};
+            let source = match from {
+                crate::dsl::CardZoneRef::OwnHeap => RunnerCardSource::Heap,
+                crate::dsl::CardZoneRef::OwnSetAside => RunnerCardSource::SetAside,
+                _ => return Err(RulesError::UnresolvedCardTarget),
+            };
             let card_id = acting_card.ok_or(RulesError::UnresolvedCardTarget)?.clone();
             // Same leniency as the grip variant: an uninstallable pick stays
             // where it is.
-            if !can_install_runner_card_from_zone_with_discount(state, registry, &card_id, RunnerCardSource::Heap, discount.credits()) {
+            if !can_install_runner_card_from_zone_with_discount(state, registry, &card_id, source, discount.credits()) {
                 return Ok(Vec::new());
             }
-            install_runner_card_from_zone_with_discount(state, registry, card_id, RunnerCardSource::Heap, discount.credits())
+            install_runner_card_from_zone_with_discount(state, registry, card_id, source, discount.credits())
+        }
+
+        // Read down the stack from its top (the end of the `Vec`) until
+        // enough match; each card goes faceup into the set-aside zone.
+        Effect::SetAsideFromTopUntil { filter, count } => {
+            let mut matched = 0;
+            let mut cards = Vec::new();
+            while matched < *count {
+                let Some(card) = state.runner.stack.pop() else { break };
+                if registry.get(&card).is_some_and(|definition| crate::dsl::card_matches_filter(definition, filter)) {
+                    matched += 1;
+                }
+                state.runner.set_aside.push(card.clone());
+                cards.push(card);
+            }
+            if cards.is_empty() {
+                return Ok(Vec::new());
+            }
+            Ok(vec![GameEvent::CardsSetAside { side: Side::Runner, cards }])
         }
 
         Effect::InstallRunnerCardFromGripWithDiscount(discount) => {
@@ -961,6 +985,7 @@ pub fn evaluate_effect(
                     crate::dsl::CardZoneRef::HostedOnSource => cards.extend(std::mem::take(&mut ctx.set_aside)),
                     crate::dsl::CardZoneRef::OwnGrip => cards.append(&mut state.runner.grip),
                     crate::dsl::CardZoneRef::OwnHeap => cards.append(&mut state.runner.heap),
+                    crate::dsl::CardZoneRef::OwnSetAside => cards.append(&mut state.runner.set_aside),
                     _ => return Err(RulesError::UnresolvedCardTarget),
                 }
             }

@@ -325,6 +325,12 @@ pub fn in_effect(view: &ClientView, registry: &CardRegistry) -> Vec<String> {
         .chain(view.revealed.iter().map(|revealed| {
             format!("revealed in {}: {}", if revealed.side == Side::Corp { "HQ" } else { "the grip" }, title(&revealed.card))
         }))
+        // The set-aside zone (The Wizard's Chest's cards while the Runner
+        // chooses one): faceup, so both players read it.
+        .chain((!view.runner.set_aside.is_empty()).then(|| {
+            let names: Vec<String> = view.runner.set_aside.iter().map(&title).collect();
+            format!("set aside: {}", names.join(", "))
+        }))
         .collect()
 }
 
@@ -552,6 +558,9 @@ mod tests {
         let mut view = view();
         view.revealed = vec![netrunner_core::rules::RevealedCard { side: Side::Corp, card: CardId("hedge_fund".into()) }];
         assert_eq!(in_effect(&view, &registry), ["revealed in HQ: Hedge Fund"]);
+        view.revealed.clear();
+        view.runner.set_aside = vec![CardId("sure_gamble".into()), CardId("corroder".into())];
+        assert_eq!(in_effect(&view, &registry), ["set aside: Sure Gamble, Corroder"]);
     }
 
     /// During a run the Runner's credits read "pool +run": the bad

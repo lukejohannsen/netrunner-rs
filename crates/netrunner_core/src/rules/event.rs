@@ -52,6 +52,10 @@ pub enum GameEvent {
     /// is how the Corp learns which of its cards was accessed there. Public
     /// by definition; no card hears a reveal yet.
     CardRevealed { side: Side, card: CardId },
+    /// `cards`, `side`'s, went faceup into the set-aside zone, in that
+    /// order (The Wizard's Chest, `Effect::SetAsideFromTopUntil`). Public:
+    /// set aside faceup, so shown to both (CR 4.8.6). No card hears it.
+    CardsSetAside { side: Side, cards: Vec<CardId> },
     /// The run against `server` reached its Success Phase and was not
     /// declared successful (CR 6.9.5a, 6.8.4a): a card said runs there
     /// cannot be (`ContinuousKind::CannotBeDeclaredSuccessful`, Flagship).
@@ -600,7 +604,7 @@ impl GameEvent {
     pub fn may_teach_the_actor(&self) -> bool {
         match self {
             GameEvent::CardDrawn { .. } | GameEvent::CardAccessed { .. } | GameEvent::CardTrashedFromAccess { .. }
-            | GameEvent::CardsLookedAt { .. } | GameEvent::CardRevealed { .. }
+            | GameEvent::CardsLookedAt { .. } | GameEvent::CardRevealed { .. } | GameEvent::CardsSetAside { .. }
             | GameEvent::AccessPassed { .. } | GameEvent::AgendaStolen { .. } | GameEvent::IceRezzed { .. }
             | GameEvent::IceEncountered { .. } | GameEvent::DamageTaken { .. } | GameEvent::CardsTrashedFromHq { .. }
             | GameEvent::CardsTrashedFromRnD { .. }

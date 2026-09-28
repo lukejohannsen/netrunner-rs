@@ -458,7 +458,7 @@ with the rule quoted.
 | 4.5 | Score Area | unreviewed |  |
 | 4.6 | Play Area | read in part | A3 closed by B (4.6.6f). The view and desktop mask a root card by identity only, so a slot shows no type. Remotes exist while occupied, and new ice goes outermost; these match. The other board-layout rules (4.6.5c, 4.6.7b–d, 4.6.8c, 4.6.9a) have not been read against the board yet. |
 | 4.7 | Bank | unreviewed |  |
-| 4.8 | Set Aside | not modelled | No set-aside zone (Rules Audit backlog item 10); masking needs an explicit who-may-see rule first. VP Stage 7b: 4.8.5's one case, cards set aside as a trigger cost uninstalls their host, lives on the resolution (`ResolutionContext::set_aside`), because the one effect that reads them never parks. |
+| 4.8 | Set Aside | read in part | RWR Stage 6d: the zone, for faceup cards the Runner's text sets aside (`RunnerState::set_aside`, The Wizard's Chest) — public, as 4.8.6's faceup is; an install out of it, a selection over it and a shuffle back. 4.8.3, a card leaving the zone treated as coming from where it was, is not modelled beyond this: nothing in the pool asks where an install came from but a Corp install out of HQ. **Not modelled:** a Corp card set aside, and a facedown one (4.8.7's groups), which no card in the pool makes. VP Stage 7b: 4.8.5's one case, cards set aside as a trigger cost uninstalls their host, lives on the resolution (`ResolutionContext::set_aside`), because the one effect that reads them never parks. Cited: 4.8.1, 4.8.6, 4.8.7. |
 | 4.9 | Remove from the Game | unreviewed |  |
 
 ### 5. Turns

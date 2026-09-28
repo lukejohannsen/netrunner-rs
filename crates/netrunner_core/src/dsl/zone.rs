@@ -22,6 +22,11 @@ pub enum CardZoneRef {
     OwnStack,
     OwnGrip,
     OwnHeap,
+    /// The Runner's own cards in the set-aside zone (`RunnerState::
+    /// set_aside`, CR 4.8) — The Wizard's Chest's "You may install 1 of
+    /// those 2 cards", chosen from what it set aside. Faceup, so a
+    /// selection over it shows nothing new.
+    OwnSetAside,
     /// The opposing side's installed cards (Corp's `installed` if the
     /// chooser is Runner, or the Runner's `rig` if the chooser is Corp).
     /// Eligibility filtering is done by the enclosing `Effect::
@@ -90,6 +95,7 @@ impl CardZoneRef {
             | CardZoneRef::OwnArchives
             | CardZoneRef::OwnGrip
             | CardZoneRef::OwnHeap
+            | CardZoneRef::OwnSetAside
             | CardZoneRef::OpponentInstalled
             | CardZoneRef::OpponentDiscard
             | CardZoneRef::OwnInstalled

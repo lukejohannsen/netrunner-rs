@@ -99,6 +99,7 @@ fn every_field_of_the_view_is_accounted_for(view: ClientView) {
         stack_count: _,         // drawn: the Stack pile button, the terminal's pile line
         heap: _,                // drawn: the Heap pile button and sheet, the terminal's pile line
         removed_from_game: _,   // drawn: under the Heap's sheet; the terminal's identity line and card picker
+        set_aside: _,           // drawn: hud::in_effect ("set aside: …"), both clients; the chooser's pop-up draws the ones it offers
         rig,                    // below
         link_strength: _,       // drawn: hud::details
         scored_agendas: _,      // drawn: hud::score_area (a card each)

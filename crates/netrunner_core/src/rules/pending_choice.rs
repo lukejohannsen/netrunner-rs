@@ -99,6 +99,7 @@ pub(crate) fn zone_card_ids(state: &GameState, chooser: Side, zone: &CardZoneRef
         CardZoneRef::TopOfOwnStack => state.runner.stack.last().cloned().into_iter().collect(),
         CardZoneRef::OwnGrip => state.runner.grip.clone(),
         CardZoneRef::OwnHeap => state.runner.heap.clone(),
+        CardZoneRef::OwnSetAside => state.runner.set_aside.clone(),
         CardZoneRef::OpponentDiscard => match owner {
             Side::Corp => state.corp.archives.iter().map(|a| a.card.clone()).collect(),
             Side::Runner => state.runner.heap.clone(),
@@ -346,6 +347,7 @@ fn instance_matches_filter(
             let from = match zone {
                 CardZoneRef::OwnGrip => Some(RunnerCardSource::Grip),
                 CardZoneRef::OwnHeap => Some(RunnerCardSource::Heap),
+                CardZoneRef::OwnSetAside => Some(RunnerCardSource::SetAside),
                 CardZoneRef::HostedOnSource => source.map(RunnerCardSource::Hosted),
                 _ => None,
             };
@@ -506,6 +508,7 @@ fn plain_zone_mut<'a>(state: &'a mut GameState, chooser: Side, zone: &CardZoneRe
         CardZoneRef::OwnStack | CardZoneRef::TopOfOwnStack => Some(&mut state.runner.stack),
         CardZoneRef::OwnGrip => Some(&mut state.runner.grip),
         CardZoneRef::OwnHeap => Some(&mut state.runner.heap),
+        CardZoneRef::OwnSetAside => Some(&mut state.runner.set_aside),
         CardZoneRef::OpponentDiscard => match owner {
             Side::Corp => None,
             Side::Runner => Some(&mut state.runner.heap),
