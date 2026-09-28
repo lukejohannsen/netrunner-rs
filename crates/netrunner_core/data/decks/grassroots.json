@@ -3,7 +3,7 @@
   "name": "Grassroots",
   "side": "Runner",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach Sebastião Souza Pessoa, Rebellion Without Rehearsal's Anarch identity (Stage 2a), on a rig of connections for the Corp to pay HQ to trash — Friend of a Friend and Privileged Access take the first tag his install hears, Arruaceiras Crew takes one to weaken the ice, and Amanuensis draws when they go. Juli Moreira Lee and Amelia Earhart on influence. Eternal-legal only.",
+  "description": "Not a published list: built so the sweeps reach Sebastião Souza Pessoa, Rebellion Without Rehearsal's Anarch identity (Stage 2a), on a rig of connections for the Corp to pay HQ to trash — Friend of a Friend and Privileged Access take the first tag his install hears, Arruaceiras Crew takes one to weaken the ice, and Amanuensis draws when they go. Juli Moreira Lee and Amelia Earhart on influence. Eternal-legal only. Stage 2b: Malandragem and two Physarum Entangler for the Cleaver, the Shred and a Fermenter, so a purge has a program to trash and an encounter two ways to be bypassed.",
   "style": "builder",
   "identity": "sebastiao_souza_pessoa_activist_organizer",
   "cards": [
@@ -68,10 +68,6 @@
       "count": 2
     },
     {
-      "card": "shred",
-      "count": 1
-    },
-    {
       "card": "amanuensis",
       "count": 2
     },
@@ -92,15 +88,19 @@
       "count": 2
     },
     {
-      "card": "cleaver",
-      "count": 1
-    },
-    {
       "card": "leech",
       "count": 2
     },
     {
       "card": "fermenter",
+      "count": 1
+    },
+    {
+      "card": "malandragem",
+      "count": 1
+    },
+    {
+      "card": "physarum_entangler",
       "count": 2
     }
   ]

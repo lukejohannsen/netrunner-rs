@@ -1,0 +1,52 @@
+{
+  "id": "physarum_entangler",
+  "title": "Physarum Entangler",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 0,
+  "memory_cost": 1,
+  "installs_on_ice": true,
+  "triggers": [
+    {
+      "trigger": "OnEncounter",
+      "subject": "Any",
+      "requirement": {
+        "And": [
+          "EncounteringHostIce",
+          {
+            "Not": {
+              "Encountering": "Barrier"
+            }
+          }
+        ]
+      },
+      "effects": [
+        {
+          "OfferPaidChoice": {
+            "side": "Runner",
+            "cost": {
+              "CreditsAmount": "EncounteredIceSubroutines"
+            },
+            "if_paid": "BypassEncounteredIce",
+            "if_declined": {
+              "Sequence": []
+            },
+            "text": "you may pay 1[credit] for each subroutine it has. If you do, bypass that ice"
+          }
+        }
+      ],
+      "text": "Whenever you encounter host ice, if it is not a barrier, you may pay 1[credit] for each subroutine it has. If you do, bypass that ice."
+    },
+    {
+      "trigger": "OnVirusCountersPurged",
+      "effects": [
+        {
+          "TrashCard": "ThisCard"
+        }
+      ],
+      "text": "When the Corp purges virus counters, trash this program."
+    }
+  ],
+  "numeric_id": 34082,
+  "is_playable": true
+}

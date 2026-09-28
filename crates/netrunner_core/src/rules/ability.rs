@@ -432,6 +432,9 @@ pub fn evaluate_effect(
             Ok(vec![GameEvent::BadPublicityRemoved { amount: *amount }])
         }
 
+        Effect::RemoveFromGame(CardTarget::ThisCard) => remove_this_card_from_game(state, registry, ctx),
+        Effect::RemoveFromGame(_) => Err(RulesError::UnresolvedCardTarget),
+
         Effect::TrashCard(target) => {
             // Hosted, uninstalled cards (Bling's) have no prevention
             // window of their own and no single owner: each goes to its
@@ -1123,7 +1126,14 @@ pub fn evaluate_effect(
             evaluate_effect(state, &Effect::LoseCredits(*side, amount), ctx, registry)
         }
 
-        Effect::PurgeVirusCounters => Ok(vec![crate::rules::engine::purge_all_virus_counters(state, registry)]),
+        // Dispatched where it happens, as the basic action's is:
+        // "when the Corp purges virus counters" hears Flyswatter too.
+        Effect::PurgeVirusCounters => {
+            let purged = crate::rules::engine::purge_all_virus_counters(state, registry);
+            let mut events = Vec::new();
+            dispatcher::emit(state, registry, &mut events, purged)?;
+            Ok(events)
+        }
 
         // Rewritten into the `PresentChoice` it is shorthand for: each option
         // followed by the same offer over the rest, one fewer to resolve.
@@ -1738,6 +1748,7 @@ pub fn process_card_triggers(
         continuation: None,
         heard: Default::default(),
         not_the_first_this_turn: false,
+        fired: 0,
     };
     fire_card_triggers(state, registry, &due, false)
 }
@@ -1785,7 +1796,17 @@ pub(crate) fn fire_card_triggers(
                 && listeners::when_admits(state, registry, t, card_side, triggering_event)
         })
         .collect();
-    for (triggered, _) in card.triggers.iter().zip(meant).filter(|(_, meant)| *meant) {
+    let fired_before = usize::from(due.fired);
+    let meant: Vec<&crate::dsl::TriggeredEffect> =
+        card.triggers.iter().zip(meant).filter(|(_, meant)| *meant).map(|(triggered, _)| triggered).collect();
+    for (index, triggered) in meant.iter().enumerate().skip(fired_before) {
+        // The one before parked a decision: the rest wait behind it on the
+        // queue, as the rest of a `Sequence` does, rather than park a
+        // second over it (`DeferredTrigger::fired`).
+        if index > fired_before && state.is_resolution_blocked() {
+            state.deferred_triggers.push(DeferredTrigger { fired: index as u8, ..due.clone() });
+            break;
+        }
         // The requirement is checked as the *reacting* card, the effects
         // resolve as the target (the card itself, unless `target` says
         // otherwise) — separate contexts, and one pair per
@@ -1865,6 +1886,7 @@ pub(crate) fn evaluate_sequence(
                     continuation: Some(Effect::Sequence(rest.to_vec())),
                     heard: Default::default(),
                     not_the_first_this_turn: false,
+                    fired: 0,
                 });
             }
             break;
@@ -1892,7 +1914,8 @@ pub(crate) fn would_fire(state: &GameState, registry: &CardRegistry, due: &Defer
             && !(t.first_each_turn && due.not_the_first_this_turn)
             && listeners::when_admits(state, registry, t, card.side, due.event.as_ref())
     };
-    card.triggers.iter().filter(meant).any(|triggered| {
+    // What already fired from this entry is not still to come.
+    card.triggers.iter().filter(meant).skip(usize::from(due.fired)).any(|triggered| {
         triggered.requirement.as_ref().is_none_or(|requirement| check_requirement(state, requirement, card.side, &ctx, registry).is_ok())
     })
 }
@@ -2340,6 +2363,28 @@ fn forfeitable(state: &GameState) -> Vec<usize> {
         .collect()
 }
 
+/// Removes the acting install from the game — `Cost::RemoveSelfFromGame`
+/// (Spin Doctor, Malandragem) and `Effect::RemoveFromGame(ThisCard)`
+/// (Malandragem's "when it is empty"). Deliberately not a discard pile: a
+/// removed card is gone for good. What a rig card hosted is trashed with it,
+/// as when a host is trashed.
+fn remove_this_card_from_game(state: &mut GameState, registry: &CardRegistry, ctx: &ResolutionContext<'_>) -> Result<Vec<GameEvent>, RulesError> {
+    let card_id = ctx.acting_card.ok_or(RulesError::MissingActingCardContext)?.clone();
+    if let Some(position) = acting_corp_position(state, ctx) {
+        let install = state.corp.installed[position].install_id;
+        let (_, mut events) = uninstall::corp_install(state, registry, install)?.ok_or_else(|| RulesError::CardNotInstalled { card: card_id.clone() })?;
+        state.corp.removed_from_game.push(card_id.clone());
+        events.push(GameEvent::CardRemovedFromGame { side: Side::Corp, card: card_id });
+        return Ok(events);
+    }
+    let position = acting_rig_position(state, ctx).ok_or_else(|| RulesError::CardNotInstalled { card: card_id.clone() })?;
+    let removed = state.runner.rig.remove(position);
+    state.runner.removed_from_game.push(card_id.clone());
+    let mut events = vec![GameEvent::CardRemovedFromGame { side: Side::Runner, card: card_id }];
+    events.extend(cascade_trash_hosted_on_rig_card(state, registry, &removed));
+    Ok(events)
+}
+
 pub(crate) fn trash_this_card(state: &mut GameState, registry: &CardRegistry, ctx: &ResolutionContext<'_>, by: Option<Side>) -> Result<Vec<GameEvent>, RulesError> {
     let card_id = &ctx.acting_card.ok_or(RulesError::MissingActingCardContext)?.clone();
     if let Some(position) = acting_corp_position(state, ctx) {
@@ -2433,6 +2478,7 @@ pub(crate) fn cost_is_affordable(
         Cost::CreditsFrom { amount, from } => {
             payment::available_from(state, registry, side, purpose, Some(from)) >= resolve_amount(amount, ctx, state, registry)
         }
+        Cost::CreditsAmount(amount) => payment::available(state, registry, side, purpose) >= resolve_amount(amount, ctx, state, registry),
         Cost::Clicks(amount) | Cost::LoseClicks(amount) => state.resources(side).clicks.0 >= *amount,
         // A run the Runner is in, and nothing else: there is no "cannot
         // jack out" in the pool.
@@ -2518,6 +2564,10 @@ pub(crate) fn pay_cost_ctx(
             let amount = resolve_amount(amount, ctx, state, registry);
             payment::pay_from(state, registry, side, amount, purpose, Some(from))
         }
+        Cost::CreditsAmount(amount) => {
+            let amount = resolve_amount(amount, ctx, state, registry);
+            payment::pay(state, registry, side, amount, purpose)
+        }
 
         Cost::Clicks(amount) => {
             let clicks = state.resources(side).clicks;
@@ -2586,18 +2636,7 @@ pub(crate) fn pay_cost_ctx(
             Ok(events)
         }
 
-        Cost::RemoveSelfFromGame => {
-            let card_id = acting_card.ok_or(RulesError::MissingActingCardContext)?;
-            let position =
-                acting_corp_position(state, ctx).ok_or_else(|| RulesError::CardNotInstalled { card: card_id.clone() })?;
-            let install = state.corp.installed[position].install_id;
-            let (_, mut events) = uninstall::corp_install(state, registry, install)?
-                .ok_or_else(|| RulesError::CardNotInstalled { card: card_id.clone() })?;
-            // Deliberately not Archives — see `Cost::RemoveSelfFromGame`.
-            state.corp.removed_from_game.push(card_id.clone());
-            events.push(GameEvent::CardRemovedFromGame { side, card: card_id.clone() });
-            Ok(events)
-        }
+        Cost::RemoveSelfFromGame => remove_this_card_from_game(state, registry, ctx),
 
         Cost::ClearTags => {
             state.runner.tags = 0;
@@ -3277,6 +3316,12 @@ pub(crate) fn resolve_amount(amount: &Amount, ctx: &ResolutionContext<'_>, state
             state.runner.heap.iter().filter(|card| registry.get(card).is_some_and(|def| def.subtypes.contains(subtype))).count() as u32
         }
         // "The greatest score of any player" (CR 1.17.1a), never below 0.
+        Amount::EncounteredIceSubroutines => state
+            .active_run
+            .as_ref()
+            .filter(|run| run.phase == crate::rules::run::RunPhase::EncounterIce)
+            .and_then(|run| run.ice.get(run.position))
+            .map_or(0, |ice| ice.subroutines.len() as u32),
         Amount::CardsAccessedLastRun => state.last_completed_run.as_ref().map_or(0, |run| run.cards_accessed),
         Amount::EncounteredIceStrength => state
             .active_run

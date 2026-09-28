@@ -1,0 +1,101 @@
+{
+  "id": "malandragem",
+  "title": "Malandragem",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 4,
+  "memory_cost": 1,
+  "counter_kind": "Power",
+  "triggers": [
+    {
+      "trigger": "OnInstall",
+      "subject": "This",
+      "effects": [
+        {
+          "AddCounters": 2
+        }
+      ],
+      "text": "When you install this program, load 2 power counters onto it."
+    },
+    {
+      "trigger": "OnEncounter",
+      "subject": "Any",
+      "requirement": {
+        "And": [
+          "OncePerTurn",
+          {
+            "And": [
+              {
+                "ThisCardCountersAtLeast": 1
+              },
+              {
+                "Not": {
+                  "AmountAtLeast": [
+                    "EncounteredIceStrength",
+                    4
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "effects": [
+        {
+          "OfferPaidChoice": {
+            "side": "Runner",
+            "cost": {
+              "RemoveCounters": 1
+            },
+            "if_paid": {
+              "Sequence": [
+                "BypassEncounteredIce",
+                {
+                  "EffectIf": {
+                    "condition": {
+                      "ThisCardCountersAtMost": 0
+                    },
+                    "effect": {
+                      "RemoveFromGame": "ThisCard"
+                    }
+                  }
+                }
+              ]
+            },
+            "if_declined": {
+              "Sequence": []
+            },
+            "text": "you may remove 1 hosted power counter to bypass it"
+          }
+        }
+      ],
+      "text": "Once per turn → When you encounter a piece of ice, if its strength is 3 or less, you may remove 1 hosted power counter to bypass it."
+    },
+    {
+      "trigger": "OnEncounter",
+      "subject": "Any",
+      "requirement": {
+        "AmountAtLeast": [
+          "ThreatLevel",
+          4
+        ]
+      },
+      "effects": [
+        {
+          "OfferPaidChoice": {
+            "side": "Runner",
+            "cost": "RemoveSelfFromGame",
+            "if_paid": "BypassEncounteredIce",
+            "if_declined": {
+              "Sequence": []
+            },
+            "text": "you may remove this program from the game to bypass it"
+          }
+        }
+      ],
+      "text": "Threat 4 → Whenever you encounter a piece of ice, you may remove this program from the game to bypass it."
+    }
+  ],
+  "numeric_id": 34081,
+  "is_playable": true
+}

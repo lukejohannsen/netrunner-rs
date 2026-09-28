@@ -2503,7 +2503,8 @@ fn purge_virus_counters(
 
     let mut next = state.clone();
     let mut events = ability::pay_cost(&mut next, registry, side, &Cost::Clicks(3), Purpose::Other, None)?;
-    events.push(purge_all_virus_counters(&mut next, registry));
+    let purged = purge_all_virus_counters(&mut next, registry);
+    dispatcher::emit(&mut next, registry, &mut events, purged)?;
 
     Ok((next, events))
 }
@@ -5998,6 +5999,7 @@ mod tests {
             continuation: None,
             heard: Default::default(),
             not_the_first_this_turn: false,
+            fired: 0,
         }];
         state.pending_decision = Some(crate::rules::state::PendingDecision::ChooseEffect {
             option_texts: Vec::new(),
@@ -6062,6 +6064,7 @@ mod tests {
                     continuation: None,
                     heard: Default::default(),
                     not_the_first_this_turn: false,
+                    fired: 0,
                 },
                 crate::rules::state::DeferredTrigger { install: None, target_install: None,
                     card: CardId("nico_campaign".to_string()),
@@ -6070,6 +6073,7 @@ mod tests {
                     continuation: None,
                     heard: Default::default(),
                     not_the_first_this_turn: false,
+                    fired: 0,
                 },
             ],
             resume: crate::rules::state::PendingChoiceResume::None,
@@ -6148,6 +6152,7 @@ mod tests {
             continuation: None,
             heard: Default::default(),
             not_the_first_this_turn: false,
+            fired: 0,
         };
         state.pending_decision = Some(crate::rules::state::PendingDecision::ChooseTriggerOrder {
             chooser: Side::Corp,
@@ -6230,6 +6235,7 @@ mod tests {
             continuation: None,
             heard: Default::default(),
             not_the_first_this_turn: false,
+            fired: 0,
         };
         state.pending_decision = Some(crate::rules::state::PendingDecision::ChooseTriggerOrder {
             chooser: Side::Runner,

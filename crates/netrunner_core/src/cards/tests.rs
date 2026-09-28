@@ -13639,4 +13639,96 @@ mod rebellion_without_rehearsal {
         assert!(trashed.runner.heap.contains(&id("arruaceiras_crew")));
         assert_eq!(trashed.runner.resources.credits, Credits(8));
     }
+
+    fn bypassed(state: &GameState) -> bool {
+        state.active_run.as_ref().is_some_and(|run| run.ice_bypassed)
+    }
+
+    #[test]
+    fn malandragem_bypasses_weak_ice_once_a_turn_for_a_counter_and_leaves_the_game_when_empty() {
+        let registry = registry();
+        let accept = PlayerAction::AcceptPendingPaidChoice { cost_option_index: None };
+        let mut state = runner_turn();
+        state.runner.grip = vec![id("malandragem")];
+        state.corp.installed = vec![ice_at_hq("ice_wall")];
+        let (state, _) = apply_action(&state, &registry, PlayerAction::InstallProgram { card_id: id("malandragem"), trash_first: false }).expect("install");
+        assert_eq!(state.runner.rig[0].counters, 2, "loaded with two");
+        let at_ice = encounter(&state, &registry);
+        assert!(at_ice.pending_paid_choice.is_some(), "Ice Wall is strength 1");
+        let (through, _) = apply_action(&at_ice, &registry, accept.clone()).expect("bypass");
+        assert!(bypassed(&through) && through.runner.rig[0].counters == 1);
+
+        // Once per turn: a second run the same turn is not offered.
+        let (past, _) = crate::rules::test_support::through_movement(&through, &registry).expect("past the ice");
+        let (ended, _) = apply_action(&past, &registry, PlayerAction::CompleteRun).expect("an empty HQ");
+        let (ended, _) = pass_until_settled(ended, &registry);
+        assert!(ended.active_run.is_none());
+        let again = encounter(&ended, &registry);
+        assert!(again.pending_paid_choice.is_none(), "once per turn");
+
+        // The last counter empties it, and it leaves the game.
+        let mut last = runner_turn();
+        last.runner.rig = vec![crate::rules::InstalledRunnerCard { counters: 1, ..rig("malandragem") }];
+        last.corp.installed = vec![ice_at_hq("ice_wall")];
+        let (gone, _) = apply_action(&encounter(&last, &registry), &registry, accept).expect("bypass");
+        assert!(bypassed(&gone) && gone.runner.rig.is_empty() && gone.runner.removed_from_game.contains(&id("malandragem")));
+    }
+
+    #[test]
+    fn malandragem_at_threat_four_leaves_the_game_to_bypass_ice_too_strong_for_its_counters() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.rig = vec![crate::rules::InstalledRunnerCard { counters: 2, ..rig("malandragem") }];
+        state.corp.installed = vec![ice_at_hq("boto")];
+        assert!(encounter(&state, &registry).pending_paid_choice.is_none(), "Boto is strength 4, and threat 0");
+        at_threat(&mut state, 4);
+        let at_ice = encounter(&state, &registry);
+        assert!(at_ice.pending_paid_choice.is_some(), "threat 4");
+        let (gone, _) = apply_action(&at_ice, &registry, PlayerAction::AcceptPendingPaidChoice { cost_option_index: None }).expect("remove it");
+        assert!(bypassed(&gone) && gone.runner.removed_from_game.contains(&id("malandragem")));
+    }
+
+    #[test]
+    fn physarum_entangler_bypasses_its_host_for_a_credit_a_subroutine_unless_a_barrier_and_dies_to_a_purge() {
+        let registry = registry();
+        let hosted = |host: &str| crate::rules::InstalledRunnerCard { hosted_on_ice: Some(fixture_install_id(host)), ..rig("physarum_entangler") };
+        let mut state = runner_turn();
+        state.runner.rig = vec![hosted("ice_wall")];
+        state.corp.installed = vec![ice_at_hq("ice_wall")];
+        assert!(encounter(&state, &registry).pending_paid_choice.is_none(), "Ice Wall is a barrier");
+
+        state.runner.rig = vec![hosted("enigma")];
+        state.corp.installed = vec![ice_at_hq("enigma")];
+        let at_ice = encounter(&state, &registry);
+        assert!(at_ice.pending_paid_choice.is_some(), "a code gate");
+        let (through, _) = apply_action(&at_ice, &registry, PlayerAction::AcceptPendingPaidChoice { cost_option_index: None }).expect("pay 2");
+        assert!(bypassed(&through));
+        assert_eq!(through.runner.resources.credits, Credits(10 - 2), "Enigma has two subroutines");
+
+        let mut purge = base_state();
+        purge.runner.rig = vec![hosted("enigma")];
+        purge.corp.installed = vec![ice_at_hq("enigma")];
+        let (purged, events) = apply_action(&purge, &registry, PlayerAction::PurgeVirusCounters).expect("purge");
+        assert!(events.iter().any(|event| matches!(event, GameEvent::TriggerFired { trigger: crate::dsl::Trigger::OnVirusCountersPurged, .. })));
+        assert!(purged.runner.rig.is_empty() && purged.runner.heap.contains(&id("physarum_entangler")));
+    }
+
+    /// Both of Malandragem's "when you encounter" offers are asked, one
+    /// after the other: the second waits behind the first's parked choice,
+    /// and a bypass by the first leaves the second nothing to do.
+    #[test]
+    fn malandragem_asks_both_of_its_offers_on_one_encounter_in_turn() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.rig = vec![crate::rules::InstalledRunnerCard { counters: 2, ..rig("malandragem") }];
+        state.corp.installed = vec![ice_at_hq("ice_wall")];
+        at_threat(&mut state, 4);
+        let at_ice = encounter(&state, &registry);
+        let text = |state: &GameState| state.pending_paid_choice.as_ref().and_then(|choice| choice.text.clone());
+        assert_eq!(text(&at_ice).as_deref(), Some("you may remove 1 hosted power counter to bypass it"), "the first, in printed order");
+        let (declined, _) = apply_action(&at_ice, &registry, PlayerAction::DeclinePendingPaidChoice).expect("decline it");
+        assert_eq!(text(&declined).as_deref(), Some("you may remove this program from the game to bypass it"), "then the threat 4 offer");
+        let (gone, _) = apply_action(&declined, &registry, PlayerAction::AcceptPendingPaidChoice { cost_option_index: None }).expect("remove it");
+        assert!(bypassed(&gone) && gone.runner.removed_from_game.contains(&id("malandragem")));
+    }
 }
