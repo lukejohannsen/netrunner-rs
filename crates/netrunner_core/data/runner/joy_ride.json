@@ -1,0 +1,33 @@
+{
+  "id": "joy_ride",
+  "title": "Joy Ride",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 2,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "PromptChooseServer": {
+            "chooser": "Runner",
+            "rez_cost_delta": 0,
+            "bonus_run_credits": 0,
+            "allowed_servers": [
+              "RnD"
+            ],
+            "on_success": {
+              "DrawCards": [
+                "Runner",
+                5
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "numeric_id": 34021,
+  "is_playable": true
+}

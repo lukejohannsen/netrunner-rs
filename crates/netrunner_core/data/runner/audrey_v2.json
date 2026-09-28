@@ -1,0 +1,59 @@
+{
+  "id": "audrey_v2",
+  "title": "Audrey v2",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 3,
+  "strength": 0,
+  "memory_cost": 2,
+  "counter_kind": "Virus",
+  "triggers": [
+    {
+      "trigger": "OnTrashedFromAccess",
+      "subject": "Any",
+      "effects": [
+        {
+          "AddCounters": 1
+        }
+      ],
+      "text": "Whenever you trash a card you are accessing, place 1 virus counter on this program."
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "RemoveCounters": 1
+      },
+      "effect": {
+        "BreakSubroutines": {
+          "count": {
+            "Fixed": 2
+          }
+        }
+      },
+      "requirement": "DuringEncounter",
+      "text": "Interface → Hosted virus counter: Break up to 2 subroutines."
+    },
+    {
+      "trigger": "Paid",
+      "cost": {
+        "Trash": {
+          "from": "OwnGrip",
+          "filter": "Any",
+          "count": 1
+        }
+      },
+      "effect": {
+        "BoostStrength": {
+          "amount": 3,
+          "duration": "Encounter"
+        }
+      },
+      "requirement": "DuringEncounter",
+      "text": "Trash 1 card from your grip: +3 strength."
+    }
+  ],
+  "numeric_id": 34004,
+  "is_playable": true
+}

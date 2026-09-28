@@ -1,0 +1,53 @@
+{
+  "id": "armed_asset_protection",
+  "title": "Armed Asset Protection",
+  "side": "Corp",
+  "card_type": "Operation",
+  "cost": 2,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "GainCredits": [
+            "Corp",
+            3
+          ]
+        },
+        {
+          "GainCreditsAmount": [
+            "Corp",
+            "CardTypesAmongFaceupInArchives"
+          ]
+        },
+        {
+          "EffectIf": {
+            "condition": {
+              "ZoneHasAtLeast": {
+                "zone": "OwnArchives",
+                "count": 1,
+                "filter": {
+                  "All": [
+                    {
+                      "CardType": "Agenda"
+                    },
+                    "Faceup"
+                  ]
+                }
+              }
+            },
+            "effect": {
+              "GainCredits": [
+                "Corp",
+                2
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "numeric_id": 34061,
+  "is_playable": true
+}

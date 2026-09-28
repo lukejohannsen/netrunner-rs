@@ -1,0 +1,52 @@
+{
+  "id": "mic",
+  "title": "M.I.C.",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "CodeGate"
+  },
+  "cost": 6,
+  "strength": 4,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": "TrashSelf",
+      "requirement": "RunAgainstThisServer",
+      "effect": {
+        "OfferPaidChoice": {
+          "side": "Runner",
+          "cost": {
+            "Clicks": 1
+          },
+          "if_paid": {
+            "Sequence": []
+          },
+          "if_declined": "EndTheRun",
+          "text": "End the run unless the Runner spends [click]"
+        }
+      },
+      "text": "[trash]: End the run unless the Runner spends [click]. Use this ability only during a run on this server."
+    }
+  ],
+  "subroutines": [
+    {
+      "text": "The Runner loses [click].",
+      "effect": {
+        "LoseClicks": 1
+      }
+    },
+    {
+      "text": "The Runner loses [click].",
+      "effect": {
+        "LoseClicks": 1
+      }
+    },
+    {
+      "text": "End the run.",
+      "effect": "EndTheRun"
+    }
+  ],
+  "numeric_id": 34036,
+  "is_playable": true
+}

@@ -1,0 +1,56 @@
+{
+  "id": "lilypad",
+  "title": "LilyPAD",
+  "side": "Runner",
+  "card_type": "Hardware",
+  "cost": 4,
+  "unique": true,
+  "continuous": [
+    {
+      "kind": {
+        "Memory": {
+          "per": 2
+        }
+      },
+      "applies_to": "Controller",
+      "text": "+2[mu]"
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnCardInstalled",
+      "subject": "Any",
+      "when": {
+        "Card": {
+          "CardType": "Program"
+        }
+      },
+      "first_each_turn": true,
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Runner",
+            "options": [
+              {
+                "DrawCards": [
+                  "Runner",
+                  1
+                ]
+              },
+              {
+                "Sequence": []
+              }
+            ],
+            "texts": [
+              "you may draw 1 card",
+              ""
+            ]
+          }
+        }
+      ],
+      "text": "The first time each turn you install a program, you may draw 1 card."
+    }
+  ],
+  "numeric_id": 34023,
+  "is_playable": true
+}
