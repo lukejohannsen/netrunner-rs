@@ -1909,7 +1909,8 @@ reaches Vantage Point's cards by building a deck.
    taken: **7a**, expendable cards (built, below): Eminent Domain, Descent;
    **7b**, a psi game (built, below): See How They Run; **7c**, ice that moves as a run
    begins (built, below): Tributary; **7d**, an encounter repeated (built, below): Sisyphus Protocol;
-   **7e**, a trojan hosted by an event's ability: Spree.
+   **7e**, a trojan hosted by an event's ability (built, below): Spree.
+   Stage 7 is complete.
 8. **A card's identity changes:** Thunderbolt Armaments: Peace Through Power, Lycian
    Multi-Munition, Jeitinho.
 
@@ -3445,6 +3446,56 @@ Without Rehearsal 60 of 65; `RWR_UNIMPLEMENTED` 6 → 5.
   without the card and the deck, is identical to 7c in all four shapes.
   So the whole move is the new card in the bots' samples (`determinize`),
   not a rule; the Sweep decks are never in `matchups()`.
+
+#### Stage 7e — a trojan hosted by an event's ability (28 September 2026)
+
+`feat/rwr-stage-7e-spree`: Spree. **No new `Effect`.** Rebellion Without
+Rehearsal 62 of 65; `RWR_UNIMPLEMENTED` 4 → 3. **Stage 7 is complete.**
+
+- **"Place 3 power counters on this event, then run any server"** puts
+  counters on a card in the play area (CR 8.6.5), which no card had done.
+  They are kept on the run (`RunState::event_counters`), because the
+  engine files a played event in the heap and reads the play area off the
+  run (`run::run_event`), so the counters go with the run.
+  - They are placed by the rider the event leaves on its run
+    (`PromptChooseServer::on_start`, `AddCounters(3)`), after the run has
+    begun rather than before. Nothing can read them in between.
+  - A counter cost and a counter effect find them when the resolution is
+    the run event's own (`ability::acting_is_run_event`: its paid ability,
+    `InstallId::RUN_EVENT`, or its rider).
+- **"Hosted power counter: Host 1 installed trojan program on a piece of
+  ice protecting the attacked server"** is the run event's paid ability,
+  as Eye for an Eye's is: a selection of a trojan program in the rig, then
+  of ice `InAttackedServer`, then GAMEDRAGON™ Pro's
+  `HostRigCardOnInstall`. That effect now takes a piece of ice as its
+  host (`hosted_on_ice`) as well as a rig card, rather than adding a
+  second effect.
+  - The trojan is chosen first, so the second selection parks as the
+    trojan, and the substitution the effect already had names both
+    installs.
+  - Nothing withholds the ability with no trojan installed. The rules
+    let a player use an ability that turns out to do nothing, and random
+    seats spend counters that way.
+- **Client:** `hud::in_effect` says "This run: Spree has 2 power counters"
+  in both clients, since the play area has no place on the board; a
+  trojan's move is the board's, and the log's "hosted".
+- **Deck** — Safety Net, whose Stowaway is a trojan: two Spree for a
+  Touchstone and a Decoy.
+- **Real play**, 96 games of Retirement Package against Safety Net (seed
+  2):
+  - Random seats: Spree played 45 times and its ability used 90 times, 16
+    of those with a trojan to choose.
+  - The heuristic Runner never plays it, nor installs Stowaway.
+- **DSL ratio (`pool_status.py`): 23 of 88 `Effect` variants single-use,
+  1 unused**, over 312 card files (24 of 88 before):
+  `HostRigCardOnInstall` has its second card.
+- **Measured.** Both sweeps at 256 seeds are green. Against 7d,
+  `coverage_identical.py` has both random seatings **identical**, and the
+  heuristic ones moved (Corp agenda wins 71 → 78 of 192, flatlines
+  14 → 16, Runner agenda wins 104 → 96). A ref with the event's counters,
+  the ice host and the HUD line and without the card and the deck is
+  identical to 7d in all four shapes, so the move is `determinize`
+  sampling a new Runner card.
 
 ### 3. The Automata Initiative — 65 cards (C 14 / V 35 / M 16)
 

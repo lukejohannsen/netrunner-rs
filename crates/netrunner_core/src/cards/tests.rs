@@ -15517,4 +15517,39 @@ mod rebellion_without_rehearsal {
         assert_eq!(state.active_run.as_ref().map(|run| run.phase), Some(crate::rules::RunPhase::Movement), "passed");
         assert!(state.pending_paid_choice.is_none(), "a code gate or sentry only");
     }
+
+    // ---- Stage 7e: a trojan hosted by an event's ability ----
+
+    /// Spree's counters are on the event while its run lasts, and each
+    /// moves an installed trojan onto a piece of ice protecting the
+    /// attacked server.
+    #[test]
+    fn spree_runs_with_three_counters_each_moving_a_trojan_onto_the_attacked_servers_ice() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.grip = vec![id("spree")];
+        state.corp.installed = vec![
+            crate::rules::InstalledCard { server: ServerId::RnD, ..ice_at_hq("ice_wall") },
+            ice_at_hq("enigma"),
+        ];
+        let wall = install_of(&state, "ice_wall");
+        state.runner.rig = vec![crate::rules::InstalledRunnerCard { hosted_on_ice: Some(wall), ..rig("botulus") }];
+        let (state, _) = apply_action(&state, &registry, PlayerAction::PlayEvent { card_id: id("spree") }).expect("play Spree");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ChooseServerForPendingDecision { server: ServerId::Hq }).expect("run HQ");
+        let run = state.active_run.as_ref().expect("run any server");
+        assert_eq!(run.event_counters, 3, "place 3 power counters on this event");
+        let view = crate::view::build_client_view(&state, &registry, Side::Corp);
+        assert_eq!(view.active_run.as_ref().map(|run| run.event_counters), Some(3), "public");
+
+        let use_it = PlayerAction::ActivateAbility { target: crate::rules::InstallId::RUN_EVENT, ability_index: 0 };
+        let (state, _) = apply_action(&state, &registry, use_it).expect("hosted power counter");
+        assert_eq!(state.active_run.as_ref().map(|run| run.event_counters), Some(2));
+        let state = select(&state, &registry, &[0]);
+        let enigma = install_of(&state, "enigma");
+        let view = crate::view::build_client_view(&state, &registry, Side::Runner);
+        let offered: Vec<Option<CardId>> = view.selection.iter().map(|candidate| candidate.card.clone()).collect();
+        assert_eq!(offered, vec![Some(id("enigma"))], "a piece of ice protecting the attacked server");
+        let state = select(&state, &registry, &[view.selection[0].position]);
+        assert_eq!(state.runner.rig[0].hosted_on_ice, Some(enigma), "the trojan moved");
+    }
 }

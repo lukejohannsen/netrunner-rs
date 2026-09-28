@@ -366,6 +366,9 @@ pub struct PublicRunState {
     /// `RunState::forced_encounter`: public, as what forced it was.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub forced_encounter: bool,
+    /// `RunState::event_counters`: public, as counters on a card are.
+    #[serde(default)]
+    pub event_counters: u32,
     /// Credits this run may still draw from Bad Publicity. Never masked:
     /// `PublicCorpState::bad_publicity` is already public, and how much of
     /// it this run has spent is something both players track openly —
@@ -1193,6 +1196,7 @@ fn mask_run_state(state: &GameState, registry: &CardRegistry, run: &RunState, vi
         declared_successful: run.declared_successful,
         breach_only: run.breach_only,
         forced_encounter: run.forced_encounter,
+        event_counters: run.event_counters,
         bad_publicity_credits: run.bad_publicity_credits,
         bonus_run_credits: run.bonus_run_credits,
         redirect_on_approach: run.redirect_on_approach,

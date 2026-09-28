@@ -1078,6 +1078,16 @@ pub fn evaluate_effect(
             Ok(vec![GameEvent::CardsLookedAt { side: looker, deck: *deck, cards }])
         }
 
+        // Onto a piece of ice: Spree's "host 1 installed trojan program on a
+        // piece of ice protecting the attacked server", a trojan moved from
+        // the ice it was on.
+        Effect::HostRigCardOnInstall { card, host } if state.corp.installed.iter().any(|c| c.install_id == *host && c.slot == crate::rules::state::InstallSlot::Ice) => {
+            let host_card = state.corp.installed.iter().find(|c| c.install_id == *host).map(|c| c.card.clone()).expect("checked above");
+            let hosted = state.runner.rig.iter_mut().find(|c| c.install_id == *card).ok_or(RulesError::InstallNotFound(*card))?;
+            hosted.hosted_on_ice = Some(*host);
+            hosted.hosted_on_rig_card = None;
+            Ok(vec![GameEvent::CardHosted { card: hosted.card.clone(), host: host_card }])
+        }
         Effect::HostRigCardOnInstall { card, host } => {
             if card == host {
                 return Err(RulesError::InstallNotFound(*host));
@@ -2391,6 +2401,8 @@ pub(crate) fn modify_counters(
         &mut state.corp.scored_agendas[position].agenda_counters
     } else if acting_is_corp_identity(state, ctx) {
         &mut state.corp.identity_counters
+    } else if let Some(run) = state.active_run.as_mut().filter(|run| acting_is_run_event(run, ctx)) {
+        &mut run.event_counters
     } else {
         return Err(RulesError::CardNotEligibleForCounters(card_id));
     };
@@ -3551,7 +3563,19 @@ fn counters_of(state: &GameState, ctx: &ResolutionContext<'_>) -> Option<u32> {
         .or_else(|| acting_rig_card(state, ctx).map(|c| c.counters))
         .or_else(|| acting_scored_position(state, ctx).map(|position| state.corp.scored_agendas[position].agenda_counters))
         .or_else(|| acting_is_corp_identity(state, ctx).then_some(state.corp.identity_counters))
+        .or_else(|| state.active_run.as_ref().filter(|run| acting_is_run_event(run, ctx)).map(|run| run.event_counters))
         .or_else(|| remembered(state, ctx).map(|known| known.counters))
+}
+
+/// Whether the resolution is the run's event's own — its paid ability
+/// (`InstallId::RUN_EVENT`), or a rider the event left on the run as it
+/// began it (`PromptChooseServer::on_start`, resolved as the card with no
+/// install) — so its counters are `RunState::event_counters`.
+fn acting_is_run_event(run: &crate::rules::RunState, ctx: &ResolutionContext<'_>) -> bool {
+    match ctx.acting_install {
+        Some(install) => install == InstallId::RUN_EVENT,
+        None => ctx.acting_card.is_some() && run.initiated_by.as_ref() == ctx.acting_card,
+    }
 }
 
 /// `acting_card`'s current advancement token total, if it's a Corp

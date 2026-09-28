@@ -277,7 +277,13 @@ pub fn in_effect(view: &ClientView, registry: &CardRegistry) -> Vec<String> {
     let redirect = view.active_run.as_ref().and_then(|run| run.redirect_on_approach.map(|to| (run.server, to))).map(|(from, to)| {
         format!("This run: when the Runner would approach {}, the attacked server becomes {} instead", super::action_map::server_name(from), super::action_map::server_name(to))
     });
-    redirect.into_iter().chain(view.lingering
+    // Spree: counters on the event in the play area, which has no place
+    // on the board of its own (`event_counters`).
+    let event_counters = view.active_run.as_ref().filter(|run| run.event_counters > 0).map(|run| {
+        let event = run.initiated_by.as_ref().map_or_else(|| "the run's event".to_string(), &title);
+        format!("This run: {event} has {} power counter{}", run.event_counters, if run.event_counters == 1 { "" } else { "s" })
+    });
+    redirect.into_iter().chain(event_counters).chain(view.lingering
         .iter()
         .filter_map(|effect| {
             let what = match (&effect.what, &effect.on) {
@@ -597,6 +603,19 @@ mod tests {
         assert_eq!(seen(&state), (vec!["3 power counters".to_string()], Some("3 power counters".to_string())));
         state.corp.identity_counters = 0;
         assert_eq!(seen(&state), (Vec::new(), None));
+    }
+
+    /// Spree's counters are on an event in the play area, which the board
+    /// has no place for: the run says them.
+    #[test]
+    fn a_run_says_the_counters_on_its_event() {
+        use netrunner_core::rules::{RunState, ServerId};
+        let registry = crate::decks::sample_deck_registry();
+        let (corp_deck, runner_deck) = sweep_decks_for_seed(0);
+        let (mut state, _) = GameState::setup(&corp_deck.to_deck(), &runner_deck.to_deck(), &registry, 0).unwrap();
+        state.active_run = Some(RunState { server: ServerId::Hq, initiated_by: Some(CardId("spree".into())), event_counters: 2, ..Default::default() });
+        let view = netrunner_core::view::build_client_view(&state, &registry, Side::Corp);
+        assert_eq!(in_effect(&view, &registry), ["This run: Spree has 2 power counters"]);
     }
 
     /// A Maintenance Access run says where it is going before it gets

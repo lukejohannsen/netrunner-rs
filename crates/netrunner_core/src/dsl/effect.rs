@@ -1044,7 +1044,10 @@ pub enum Effect {
     /// selected one. `RulesError::InstallNotFound` if either has left the
     /// rig, `RulesError::HostIsNotIce`-style rejection is not needed:
     /// eligibility is the prompt's `CardFilter::Icebreaker`. Re-hosting an
-    /// already-hosted card simply moves it.
+    /// already-hosted card simply moves it. The host may be a piece of ice
+    /// (`hosted_on_ice`): Spree's "host 1 installed trojan program on a
+    /// piece of ice protecting the attacked server", the trojan chosen
+    /// first and the ice second, so the parking card is the trojan.
     HostRigCardOnInstall { card: crate::rules::InstallId, host: crate::rules::InstallId },
     /// "The Runner cannot steal or trash Corp cards for the remainder of
     /// this run" (Ansel 1.0), "You cannot score agendas for the remainder
