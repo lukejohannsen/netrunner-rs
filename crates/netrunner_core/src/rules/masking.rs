@@ -383,6 +383,15 @@ pub struct PublicRunState {
     /// Pressure Spike's +9 a second time.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub once_per_run_used: Vec<OncePerTurnKey>,
+    /// `RunState::initiated_by`: the card whose text started the run. Public
+    /// — only a Runner card starts one, an event both players saw played or
+    /// a faceup program. Carried so the clients can name the run's event on
+    /// the ability it has for the length of the run (`InstallId::
+    /// RUN_EVENT`, Eye for an Eye's "Access →"), and so a sample built from
+    /// the view has it: Sang Kancil's "if a run event is active" read false
+    /// in every sample before.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub initiated_by: Option<CardId>,
 }
 
 /// `GameState` as visible to one player: hidden zones are collapsed to a
@@ -1131,6 +1140,7 @@ fn mask_run_state(state: &GameState, registry: &CardRegistry, run: &RunState, vi
         bonus_run_credits: run.bonus_run_credits,
         redirect_on_approach: run.redirect_on_approach,
         fully_broken: run.fully_broken,
+        initiated_by: run.initiated_by.clone(),
         once_per_run_used: run
             .once_per_run_used
             .iter()

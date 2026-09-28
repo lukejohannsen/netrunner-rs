@@ -526,7 +526,7 @@ fn listeners(state: &GameState, registry: &CardRegistry, moments: &[Moment]) -> 
     // audiences agreed on.
     let listening = |card: active::ActiveCard<'_>| Listener { side: card.side, card: card.card.clone(), install: card.install, server: card.server, active: true };
     corp.extend(active::corp(state, registry).map(listening));
-    runner.extend(active::runner(state).map(listening));
+    runner.extend(active::runner(state, registry).map(listening));
 
     // The subject leads its side: "when you score this agenda" before the
     // identity's "whenever you score an agenda". It is already listening

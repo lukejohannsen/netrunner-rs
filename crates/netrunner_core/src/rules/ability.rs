@@ -1,6 +1,6 @@
 use crate::cards::CardRegistry;
 use crate::dsl::{
-    card_matches_filter, Amount, EffectDuration, CardFilter, CardId, CardSubtype, CardTarget, CardType, Cost, Effect,
+    card_matches_filter, Amount, EffectDuration, CardFilter, CardId, CardSubtype, CardTarget, Cost, Effect,
     EffectRequirement, HostedCardOrigin, StackZone, SubroutineBreakCount, Trigger, TriggeredEffect,
 };
 use crate::rules::continuous;
@@ -739,6 +739,12 @@ pub fn evaluate_effect(
                     Some(card) => card,
                     None => return Ok(Vec::new()),
                 },
+                HostedCardOrigin::AccessedCard => {
+                    let position = acting_rig_position(state, ctx)
+                        .ok_or_else(|| RulesError::CardNotInRig { side: Side::Runner, card: acting.clone() })?;
+                    let host = state.runner.rig[position].install_id;
+                    return run::host_currently_accessed_card(state, registry, host);
+                }
             };
             let position = acting_rig_position(state, ctx)
                 .ok_or_else(|| RulesError::CardNotInRig { side: Side::Runner, card: acting.clone() })?;
@@ -1967,7 +1973,7 @@ fn installed_target(state: &GameState, registry: &CardRegistry, target: &CardTar
             state.corp.installed.iter().position(|installed| installed.install_id == host).map(corp)
         }
         CardTarget::RunnerRig(card) => state.runner.rig.iter().position(|installed| &installed.card == card).map(rig),
-        CardTarget::TopOfStack { .. } | CardTarget::HostedOnThisCard => None,
+        CardTarget::TopOfStack { .. } | CardTarget::HostedOnThisCard | CardTarget::RandomFromHq => None,
     }
 }
 
@@ -2050,7 +2056,7 @@ fn resolve_corp_installed_target(
             let installed = state.find_corp_install(install).ok_or(RulesError::UnresolvedCardTarget)?;
             Ok((install, installed.card.clone(), installed.server))
         }
-        CardTarget::RunnerRig(_) | CardTarget::TopOfStack { .. } | CardTarget::HostedOnThisCard => {
+        CardTarget::RunnerRig(_) | CardTarget::TopOfStack { .. } | CardTarget::HostedOnThisCard | CardTarget::RandomFromHq => {
             Err(RulesError::UnresolvedCardTarget)
         }
     }
@@ -2246,6 +2252,18 @@ pub(crate) fn trash_card(
             // applied, and the Runner had no legal action (seed 181 of
             // Hostile Bid against Pay As You Go, the first deck on Noise).
             Ok(popped.map(|card| GameEvent::CardTrashed { side: *side, card, installed: false, by }).into_iter().collect())
+        }
+
+        // Drawn with the state's own PRNG, as `Cost::TrashRandomFromHq` is,
+        // and facedown: nobody chose it and the Runner has not seen it.
+        CardTarget::RandomFromHq => {
+            if state.corp.hq.is_empty() {
+                return Ok(Vec::new());
+            }
+            let index = (state.next_u64() % state.corp.hq.len() as u64) as usize;
+            let card = state.corp.hq.remove(index);
+            state.corp.archives.push(ArchivedCard::facedown(card.clone()));
+            Ok(vec![GameEvent::CardTrashed { side: Side::Corp, card, installed: false, by }])
         }
     }
 }
@@ -3124,12 +3142,9 @@ pub fn check_requirement(
             if state.corp.resources.credits.0 >= *amount { Ok(()) } else { Err(RulesError::RequirementNotMet) }
         }
         EffectRequirement::RunEventActive => {
-            let active = state
-                .active_run
-                .as_ref()
-                .and_then(|run| run.initiated_by.as_ref())
+            let active = crate::rules::run::run_event(state, registry)
                 .and_then(|card| registry.get(card))
-                .is_some_and(|def| def.card_type == CardType::Event && def.subtypes.contains(&CardSubtype::Run));
+                .is_some_and(|def| def.subtypes.contains(&CardSubtype::Run));
             if active { Ok(()) } else { Err(RulesError::RequirementNotMet) }
         }
         EffectRequirement::InstalledWithoutSpendingCredits => {

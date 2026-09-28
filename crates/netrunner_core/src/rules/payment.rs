@@ -460,7 +460,7 @@ pub(crate) fn sources(
     // card's words about its hosted credits are text like any other.
     let hosts: Vec<InstallId> = match side {
         Side::Corp => active::corp(state, registry).filter(|card| card.place == Place::Installed).collect::<Vec<_>>(),
-        Side::Runner => active::runner(state).filter(|card| card.place == Place::Installed).collect::<Vec<_>>(),
+        Side::Runner => active::runner(state, registry).filter(|card| card.place == Place::Installed).collect::<Vec<_>>(),
     }
     .into_iter()
     .filter_map(|card| {
@@ -536,6 +536,7 @@ fn pays_a_cost_that_may_ask(state: &GameState, registry: &CardRegistry, action: 
             let card = match *target {
                 InstallId::CORP_IDENTITY => state.corp.identity.as_ref(),
                 InstallId::RUNNER_IDENTITY => state.runner.identity.as_ref(),
+                InstallId::RUN_EVENT => crate::rules::run::run_event(state, registry),
                 target => state
                     .find_corp_install(target)
                     .map(|c| &c.card)
@@ -716,7 +717,7 @@ pub(crate) fn refill(state: &mut GameState, registry: &CardRegistry, side: Side)
     let recurring = |card: &crate::dsl::CardId| registry.get(card).and_then(|definition| definition.recurring_credits);
     let due: Vec<(Option<InstallId>, crate::dsl::CardId, u32)> = match side {
         Side::Corp => active::corp(state, registry).collect::<Vec<_>>(),
-        Side::Runner => active::runner(state).collect::<Vec<_>>(),
+        Side::Runner => active::runner(state, registry).collect::<Vec<_>>(),
     }
     .into_iter()
     // A scored agenda's counters are agenda counters, and the Runner's

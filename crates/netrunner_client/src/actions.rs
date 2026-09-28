@@ -287,6 +287,12 @@ pub fn card_title(card_id: &CardId, registry: &CardRegistry) -> String {
 /// anything.
 pub fn install_label(id: &InstallId, registry: &CardRegistry, view: Option<&ClientView>) -> String {
     let Some(view) = view else { return format!("install #{}", id.0) };
+    if *id == InstallId::RUN_EVENT {
+        return match view.active_run.as_ref().and_then(|run| run.initiated_by.as_ref()) {
+            Some(event) => card_title(event, registry),
+            None => "the run's event".to_string(),
+        };
+    }
     for server in &view.corp.servers {
         for card in server.ice.iter().chain(server.root.iter()) {
             if card.install_id != *id {
@@ -326,6 +332,11 @@ pub fn candidate_label(candidate: &AccessCandidate, registry: &CardRegistry, vie
 /// The card an install id resolves to in the view, when the viewer may
 /// see it — a rezzed or own Corp install, or any rig card.
 pub fn installed_card_id(view: &ClientView, id: &InstallId) -> Option<CardId> {
+    // The run's event, which is not installed but has abilities for as
+    // long as its run lasts (CR 8.6.5).
+    if *id == InstallId::RUN_EVENT {
+        return view.active_run.as_ref().and_then(|run| run.initiated_by.clone());
+    }
     view.corp
         .servers
         .iter()
@@ -1636,6 +1647,27 @@ mod tests {
             describe_action(&PlayerAction::ChooseTriggerToResolve { index: 1 }, &registry, None),
             "Resolve trigger #1 first",
             "with no view (the action log) the position is all there is to show"
+        );
+    }
+    /// The run's event is not on the table, so its ability is named by the
+    /// view's `initiated_by`, and the button says whose it is.
+    #[test]
+    fn a_run_events_ability_is_named_after_the_event() {
+        use netrunner_core::dsl::CardId;
+        use netrunner_core::rules::{apply_action, GamePhase};
+        use netrunner_core::view::build_client_view;
+
+        let (mut state, registry) = setup();
+        let eye = CardId("eye_for_an_eye".to_string());
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = netrunner_core::rules::Clicks(4);
+        state.runner.grip.push(eye.clone());
+        let (state, _) = apply_action(&state, &registry, PlayerAction::PlayEvent { card_id: eye }).expect("run HQ");
+        let view = build_client_view(&state, &registry, Side::Runner);
+        let use_it = PlayerAction::ActivateAbility { target: InstallId::RUN_EVENT, ability_index: 0 };
+        assert_eq!(
+            describe_action(&use_it, &registry, Some(&view)),
+            "Eye for an Eye: Access → Trash 1 card from your grip: Trash the card you are accessing"
         );
     }
 }

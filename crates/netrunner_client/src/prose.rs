@@ -164,6 +164,7 @@ fn describe_target(target: &CardTarget, registry: &CardRegistry) -> String {
         CardTarget::HostIce => "the host ice".to_string(),
         CardTarget::HostedOnThisCard => "the card hosted here".to_string(),
         CardTarget::EncounteredIce => "the ice being encountered".to_string(),
+        CardTarget::RandomFromHq => "a random card from HQ".to_string(),
     }
 }
 
@@ -313,6 +314,7 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
         Effect::ArmRunEndPrevention(_) => "the run cannot be ended by the next end-the-run effect".to_string(),
         Effect::Sabotage(n) => format!("sabotage {n}"),
         Effect::MillRnDAmount(amount) => format!("trash cards from the top of R&D equal to {}", describe_amount(amount)),
+        Effect::HostCardOnThisCard(netrunner_core::dsl::HostedCardOrigin::AccessedCard) => "host the card being accessed on this card".to_string(),
         Effect::HostCardOnThisCard(_) => "host a card on this card".to_string(),
         Effect::BypassEncounteredIce => "bypass this ice".to_string(),
         Effect::PurgeVirusCounters => "purge virus counters".to_string(),

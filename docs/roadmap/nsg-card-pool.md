@@ -1875,8 +1875,8 @@ reaches Vantage Point's cards by building a deck.
 3. **Runner access and run words**, in three parts when it was taken:
    **3a**, the small words (built, below): Boi-tatá, Meeting of Minds,
    “Pretty” Mary da Silva, Ashen Epilogue; **3b**, access abilities not
-   on an installed card, and a card hosted as it is accessed: Eye for an
-   Eye, Cupellation, Heliamphora; **3c**, run words and a search that
+   on an installed card, and a card hosted as it is accessed (built,
+   below): Eye for an Eye, Cupellation, Heliamphora; **3c**, run words and a search that
    installs: Trick Shot, Window of Opportunity, Alarm Clock, Muse.
 4. **Corp advancement and movement words:** Charlotte Caçador, Cohort
    Guidance Program, Hearts and Minds, Logjam, Isaac Liberdade, The Holo
@@ -2190,6 +2190,75 @@ words and Muse 3c.
   without the four cards and the deck swaps is **identical in all four
   shapes**, so the movement is `determinize` sampling four new Runner
   cards.
+
+#### Stage 3b — the run's event, and a card hosted as it is accessed (27 September 2026)
+
+`feat/rwr-stage-3b-access`: Eye for an Eye, Cupellation, Heliamphora.
+**No new `Effect`, `Trigger` or `PlayerAction`.** Rebellion Without
+Rehearsal 25 of 65; `RWR_UNIMPLEMENTED` 43 → 40.
+
+- **The event that started the run is active until it ends** (CR 8.6.5):
+  `rules::active` has a fourth place, `Place::PlayArea`, read off
+  `RunState::initiated_by` when it names an event (`run::run_event`). The
+  engine files a played event in the heap as it resolves, so the play area
+  is read from the run, and the event is inactive once its run is over.
+  Its triggers hear the run — Eye for an Eye's "If successful, take 1 tag
+  and access 1 additional card" is an `OnSuccessfulRun` on the event
+  itself, `requirement: ThisCardStartedTheRun` — and its paid abilities
+  are used through `InstallId::RUN_EVENT`, a third id beside the two
+  identities': its "Access → Trash 1 card from your grip: Trash the card
+  you are accessing" is an ordinary `ActivateAbility`, in the Runner's
+  second-to-last `ActionSpace` slot, so the space's size is unchanged
+  (a rig card loses its 31st slot, which no board reaches). Before this,
+  no event text could outlive its play except as a rider on the run.
+- **A card hosted as it is accessed** (`HostedCardOrigin::AccessedCard`,
+  `run::host_currently_accessed_card`): taken from wherever it is — HQ,
+  R&D, Archives, or a root through `uninstall::corp_install` — and hosted
+  faceup, not installed (CR 1.13.2a); the access ends with the move (CR
+  7.1.7), as a trash's does. Cupellation's "Access → 1[credit]" is an
+  access ability on the program, "limit 1 hosted card" its requirement
+  (`Not(AmountAtLeast(HostedCards, 1))`: no rule says more), and its
+  "whenever you breach HQ … pay 1[credit] and trash this program to access
+  2 additional cards" an `OfferPaidChoice` at the run's success.
+- **Heliamphora hears the access** (`OnAccessed`, when it is in Archives'
+  pile, not its root), and its "host it … instead" is a `PresentChoice`
+  resolved before the Runner's decision about the card. Its purge half is
+  2b's trigger with a new target, `CardTarget::RandomFromHq`: "they trash
+  2 cards from HQ at random", facedown, twice, then itself.
+- **The view carries the run's event** (`PublicRunState::initiated_by`,
+  public: only a Runner card starts a run). Both clients name the event on
+  its ability's button, a decision under the prompt since the event is not
+  on the board (`board::action_map`, `actions::install_label`), and
+  `determinize` copies it — so a sample now sees Sang Kancil's "if a run
+  event is active", which it read false in every sample before.
+- **Decks** — Grassroots: two Eye for an Eye for the Take a Dive and a
+  Heliamphora for a Charm Offensive. Spare Parts: two Cupellation, on four
+  more influence (10 of 15), for a Beta Build and a Sure Gamble.
+  Cupellation was meant for Borrowed Time, the Criminal Sweep deck, and
+  would have cost it Startup.
+- **Real play**, 96 games of Fine Print against each (seed 2). Random
+  seats: Eye for an Eye played 18 times, successful 5, its ability used
+  3; Heliamphora installed 13, heard 10 Archives accesses, trashed by 4
+  purges; Cupellation installed 36, hosted 22 cards, its HQ offer heard
+  17 times. The heuristic Runner plays and installs none of the three.
+- **Fidelity limits:** Heliamphora's "instead" is an access, then a
+  host: the card is accessed first, so a card's own "when accessed" in
+  Archives still resolves and it counts as accessed. A true interrupt
+  would park the access before it began, an access phase and a pair of
+  actions of its own. A declined host has spent its "once each time you
+  breach Archives" (the 9.3.6g deviation recorded in 2b). "The Corp
+  trashes" is the Runner's trash, as for Noise (conformance, 1.14).
+- **DSL ratio (`pool_status.py`): 17 of 76 `Effect` variants single-use,
+  2 unused**, over 275 card files (17 of 76 over 272 before).
+- **Measured.** Both sweeps at 256 seeds are green, the fog gate
+  included. Against `origin/main`, `coverage_identical.py` has the random
+  seatings **identical**, by view and by index; the heuristic ones moved
+  (Corp agenda wins 71 → 71 of 192, flatlines 20 → 9). Checked, not
+  inferred: a ref with the engine changes — the run's event active and
+  in the view, `RUN_EVENT`, the accessed card hosted, the random HQ
+  trash — and without the three cards and the deck swaps is **identical
+  in all four shapes**, so the movement is `determinize` sampling three
+  new Runner cards; the samples' Sang Kancil moved no game of the pool.
 
 ### 3. The Automata Initiative — 65 cards (C 14 / V 35 / M 16)
 

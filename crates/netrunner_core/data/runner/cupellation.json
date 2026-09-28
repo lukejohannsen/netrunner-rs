@@ -1,0 +1,79 @@
+{
+  "id": "cupellation",
+  "title": "Cupellation",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 1,
+  "memory_cost": 1,
+  "triggers": [
+    {
+      "trigger": "OnSuccessfulRun",
+      "subject": "Any",
+      "when": {
+        "Server": [
+          "Hq"
+        ]
+      },
+      "requirement": {
+        "AmountAtLeast": [
+          "HostedCards",
+          1
+        ]
+      },
+      "effects": [
+        {
+          "OfferPaidChoice": {
+            "side": "Runner",
+            "cost": {
+              "AllOf": [
+                {
+                  "Credits": 1
+                },
+                "TrashSelf"
+              ]
+            },
+            "if_paid": {
+              "AddAdditionalAccess": {
+                "server": "Hq",
+                "count": 2
+              }
+            },
+            "if_declined": {
+              "Sequence": []
+            },
+            "text": "you may pay 1[credit] and trash this program to access 2 additional cards"
+          }
+        }
+      ],
+      "text": "Whenever you breach HQ, if this program has a hosted Corp card, you may pay 1[credit] and trash this program to access 2 additional cards."
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "access": true,
+      "cost": {
+        "Credits": 1
+      },
+      "requirement": {
+        "And": [
+          "CurrentlyAccessingNonAgenda",
+          {
+            "Not": {
+              "AmountAtLeast": [
+                "HostedCards",
+                1
+              ]
+            }
+          }
+        ]
+      },
+      "effect": {
+        "HostCardOnThisCard": "AccessedCard"
+      },
+      "text": "Access → 1[credit]: Host the non-agenda card you are accessing faceup on this program."
+    }
+  ],
+  "numeric_id": 34080,
+  "is_playable": true
+}

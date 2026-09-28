@@ -1,0 +1,62 @@
+{
+  "id": "eye_for_an_eye",
+  "title": "Eye for an Eye",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 1,
+  "play_requirement": {
+    "Not": "IsTagged"
+  },
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "InitiateRun": "Hq"
+        }
+      ]
+    },
+    {
+      "trigger": "OnSuccessfulRun",
+      "subject": "Any",
+      "when": {
+        "Server": [
+          "Hq"
+        ]
+      },
+      "requirement": "ThisCardStartedTheRun",
+      "effects": [
+        {
+          "GiveTags": {
+            "Fixed": 1
+          }
+        },
+        {
+          "AddAdditionalAccess": {
+            "server": "Hq",
+            "count": 1
+          }
+        }
+      ],
+      "text": "If successful, take 1 tag and access 1 additional card when you breach HQ."
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "access": true,
+      "cost": {
+        "Trash": {
+          "from": "OwnGrip",
+          "filter": "Any",
+          "count": 1
+        }
+      },
+      "effect": "TrashCurrentlyAccessedCard",
+      "text": "Access → Trash 1 card from your grip: Trash the card you are accessing."
+    }
+  ],
+  "numeric_id": 34067,
+  "is_playable": true
+}

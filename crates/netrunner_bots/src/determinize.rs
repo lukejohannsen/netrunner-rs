@@ -604,12 +604,14 @@ fn determinize_run(
         on_end_card: None,
         on_end_install: None,
         subroutine_resolved: false,
-        // Not in the view either: which card started the run (Sang
-        // Kancil's cheaper boost) and whether the encountered ice was
-        // bypassed. A rollout starting mid-encounter sees no bypass, which
-        // only ever makes the searcher pay for subroutines the real game
-        // will not fire.
-        initiated_by: None,
+        // Public since RWR Stage 3b: the run's event has abilities of its
+        // own for the run (Eye for an Eye), and Sang Kancil's boost asks
+        // whether it is a run event.
+        initiated_by: run.initiated_by.clone(),
+        // Not in the view: whether the encountered ice was bypassed. A
+        // rollout starting mid-encounter sees no bypass, which only ever
+        // makes the searcher pay for subroutines the real game will not
+        // fire.
         ice_bypassed: false,
         // Public, and what a pass "after fully breaking it" reads (Sipa).
         fully_broken: run.fully_broken,

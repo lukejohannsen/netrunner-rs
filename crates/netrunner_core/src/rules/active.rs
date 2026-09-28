@@ -1,7 +1,8 @@
 //! Which cards are active — one answer, for everything that asks.
 //!
 //! A card's abilities work while it is active (CR 9.1): an identity, a scored
-//! agenda, a rezzed install that is not an agenda, and everything in the rig.
+//! agenda, a rezzed install that is not an agenda, everything in the rig, and
+//! the event whose run is under way (CR 8.6.5).
 //! That sentence was written out twice — in `listeners`, for who hears an
 //! event, and again in `checkpoint`, for which copies of a unique card count —
 //! with a comment in each pointing at the other, and the continuous-effect
@@ -31,6 +32,11 @@ pub(crate) enum Place {
     Identity,
     ScoreArea,
     Installed,
+    /// The event that started the active run, active in the play area for
+    /// as long as the run lasts (CR 8.6.5, `run::run_event`): Eye for an
+    /// Eye's "If successful" and its "Access →" are its own text, heard and
+    /// used during that run and never after.
+    PlayArea,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -51,7 +57,7 @@ pub(crate) struct ActiveCard<'a> {
 /// the table. An iterator rather than a `Vec`, because `memory::refresh`
 /// asks after every action and a search applies millions of them.
 pub(crate) fn active_cards<'a>(state: &'a GameState, registry: &'a CardRegistry) -> impl Iterator<Item = ActiveCard<'a>> + 'a {
-    corp(state, registry).chain(runner(state))
+    corp(state, registry).chain(runner(state, registry))
 }
 
 pub(crate) fn corp<'a>(state: &'a GameState, registry: &'a CardRegistry) -> impl Iterator<Item = ActiveCard<'a>> + 'a {
@@ -77,7 +83,7 @@ pub(crate) fn corp<'a>(state: &'a GameState, registry: &'a CardRegistry) -> impl
     identity.chain(scored).chain(installed)
 }
 
-pub(crate) fn runner(state: &GameState) -> impl Iterator<Item = ActiveCard<'_>> + '_ {
+pub(crate) fn runner<'a>(state: &'a GameState, registry: &'a CardRegistry) -> impl Iterator<Item = ActiveCard<'a>> + 'a {
     let identity =
         state.runner.identity.iter().map(|card| ActiveCard { side: Side::Runner, card, install: None, server: None, place: Place::Identity });
     let rig = state.runner.rig.iter().map(|installed| ActiveCard {
@@ -87,5 +93,12 @@ pub(crate) fn runner(state: &GameState) -> impl Iterator<Item = ActiveCard<'_>> 
         server: installed.hosted_on_ice.and_then(|host| state.corp.installed.iter().find(|ice| ice.install_id == host)).map(|ice| ice.server),
         place: Place::Installed,
     });
-    identity.chain(rig)
+    let run_event = crate::rules::run::run_event(state, registry).into_iter().map(|card| ActiveCard {
+        side: Side::Runner,
+        card,
+        install: None,
+        server: None,
+        place: Place::PlayArea,
+    });
+    identity.chain(rig).chain(run_event)
 }

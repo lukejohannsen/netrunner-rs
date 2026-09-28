@@ -510,6 +510,7 @@ mod tests {
             redirect_on_approach: None,
             fully_broken: false,
             once_per_run_used: Vec::new(),
+            initiated_by: None,
         };
         let mut trail = RunTrail::begin(&run);
         assert_eq!(trail.stage, Stage::AtIce(0));

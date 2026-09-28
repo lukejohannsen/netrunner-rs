@@ -165,6 +165,7 @@ fn every_field_of_the_view_is_accounted_for(view: ClientView) {
         redirect_on_approach: _, // drawn: hud::in_effect ("This run: … the attacked server becomes HQ instead")
         fully_broken: _,         // drawn: every subroutine's broken mark on the encountered ice says it (board::facts)
         once_per_run_used: _,    // engine's: a use limit the action list and board::breaks already honour, as once_per_turn_used
+        initiated_by: _,         // drawn: names the run's event on the ability it has for the run, actions::describe (both clients' buttons)
     }) = active_run
     {
         for PublicRunIce {
