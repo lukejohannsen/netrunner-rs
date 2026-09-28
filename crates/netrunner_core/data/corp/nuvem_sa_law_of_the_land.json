@@ -1,0 +1,70 @@
+{
+  "id": "nuvem_sa_law_of_the_land",
+  "title": "Nuvem SA: Law of the Land",
+  "side": "Corp",
+  "card_type": "Identity",
+  "cost": 0,
+  "min_deck_size": 50,
+  "triggers": [
+    {
+      "trigger": "OnFinishedResolving",
+      "subject": "Any",
+      "when": {
+        "Card": {
+          "AnyOf": [
+            {
+              "CardType": "Operation"
+            },
+            {
+              "HasSubtype": "Expendable"
+            }
+          ]
+        }
+      },
+      "effects": [
+        {
+          "LookAtTopOfDeck": {
+            "deck": "Corp",
+            "count": 1
+          }
+        },
+        {
+          "PresentChoice": {
+            "chooser": "Corp",
+            "options": [
+              {
+                "MillRnDAmount": {
+                  "Fixed": 1
+                }
+              },
+              {
+                "Sequence": []
+              }
+            ],
+            "texts": [
+              "You may trash that card",
+              ""
+            ]
+          }
+        }
+      ],
+      "text": "Whenever you finish resolving an operation or an action on an expendable card, look at the top card of R&D. You may trash that card."
+    },
+    {
+      "trigger": "OnCardsTrashedFromRnD",
+      "first_each_turn": true,
+      "requirement": "DuringYourTurn",
+      "effects": [
+        {
+          "GainCredits": [
+            "Corp",
+            2
+          ]
+        }
+      ],
+      "text": "The first time you trash a card from R&D during each of your turns, gain 2[credit]."
+    }
+  ],
+  "numeric_id": 34121,
+  "is_playable": true
+}

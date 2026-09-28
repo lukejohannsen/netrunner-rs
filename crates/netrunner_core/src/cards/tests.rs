@@ -14799,4 +14799,53 @@ mod rebellion_without_rehearsal {
         assert!(state.corp.installed.iter().all(|ice| !ice.rezzed), "both derezzed as the turn ended");
         assert!(state.delayed.is_empty(), "it resolved once");
     }
+
+    // ---- Stage 5e: a resolution's end, and a trash from R&D ----
+
+    #[test]
+    fn nuvem_looks_at_rnd_after_each_operation_and_pays_two_for_the_turns_first_trash_from_it() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.identity = Some(id("nuvem_sa_law_of_the_land"));
+        state.corp.hq = vec![id("hedge_fund"), id("hedge_fund")];
+        state.corp.r_and_d = vec![id("hedge_fund"), id("ice_wall"), id("enigma")];
+        let (state, events) = apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: id("hedge_fund") }).expect("play Hedge Fund");
+        assert!(events.iter().any(|event| matches!(event, GameEvent::FinishedResolving { .. })));
+        assert!(events.iter().any(|event| matches!(event, GameEvent::CardsLookedAt { .. })), "looked at the top of R&D");
+        let credits = state.corp.resources.credits;
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("trash it");
+        assert_eq!(state.corp.r_and_d, vec![id("hedge_fund"), id("ice_wall")], "the top card went");
+        assert!(state.corp.archives.iter().any(|card| card.card == id("enigma") && card.facedown));
+        assert_eq!(state.corp.resources.credits, Credits(credits.0 + 2), "the turn's first trash from R&D");
+
+        let (state, _) = apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: id("hedge_fund") }).expect("play another");
+        let credits = state.corp.resources.credits;
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("trash again");
+        assert_eq!(state.corp.resources.credits, credits, "not the first");
+        assert_eq!(state.corp.r_and_d, vec![id("hedge_fund")]);
+    }
+
+    #[test]
+    fn the_basalt_spire_trades_a_counter_and_the_top_of_rnd_for_a_card_from_archives_once_a_turn() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.identity = Some(id("nuvem_sa_law_of_the_land"));
+        state.corp.r_and_d = vec![id("ice_wall"), id("hedge_fund"), id("ice_wall")];
+        state.corp.archives = vec![ArchivedCard::faceup(id("enigma"))];
+        state.corp.scored_agendas = vec![crate::rules::ScoredAgenda {
+            install_id: fixture_install_id("the_basalt_spire"),
+            agenda_counters: 2,
+            ..crate::rules::ScoredAgenda::plain(id("the_basalt_spire"))
+        }];
+        let credits = state.corp.resources.credits;
+        let use_it = PlayerAction::ActivateAbility { target: fixture_install_id("the_basalt_spire"), ability_index: 0 };
+        let (state, _) = apply_action(&state, &registry, use_it.clone()).expect("counter and the top of R&D");
+        assert_eq!(state.corp.r_and_d, vec![id("ice_wall"), id("hedge_fund")], "the top copy went, not the bottom one");
+        assert_eq!(state.corp.scored_agendas[0].agenda_counters, 1);
+        let enigma = state.corp.archives.iter().position(|card| card.card == id("enigma")).unwrap();
+        let state = select(&state, &registry, &[enigma]);
+        assert!(state.corp.hq.contains(&id("enigma")), "added to HQ");
+        assert_eq!(state.corp.resources.credits, Credits(credits.0 + 2), "Nuvem pays for the trash the cost made");
+        assert!(apply_action(&state, &registry, use_it).is_err(), "once per turn");
+    }
 }
