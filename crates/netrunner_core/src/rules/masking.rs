@@ -369,6 +369,10 @@ pub struct PublicRunState {
     /// `RunState::event_counters`: public, as counters on a card are.
     #[serde(default)]
     pub event_counters: u32,
+    /// `RunState::gained_for_the_run`: public, as the rez and the ability
+    /// that gave them were.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub gained_for_the_run: Vec<crate::rules::run::GainedForTheRun>,
     /// Credits this run may still draw from Bad Publicity. Never masked:
     /// `PublicCorpState::bad_publicity` is already public, and how much of
     /// it this run has spent is something both players track openly —
@@ -1197,6 +1201,7 @@ fn mask_run_state(state: &GameState, registry: &CardRegistry, run: &RunState, vi
         breach_only: run.breach_only,
         forced_encounter: run.forced_encounter,
         event_counters: run.event_counters,
+        gained_for_the_run: run.gained_for_the_run.clone(),
         bad_publicity_credits: run.bad_publicity_credits,
         bonus_run_credits: run.bonus_run_credits,
         redirect_on_approach: run.redirect_on_approach,

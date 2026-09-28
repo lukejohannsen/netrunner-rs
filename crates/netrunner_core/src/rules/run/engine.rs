@@ -7,7 +7,7 @@ use crate::rules::dispatcher;
 use crate::rules::error::RulesError;
 use crate::rules::event::GameEvent;
 use crate::rules::run::action::RunAction;
-use crate::rules::run::state::{EncounteredSubroutine, RunIce, RunPhase, RunState, ServerId, SubroutineStatus};
+use crate::rules::run::state::{EncounteredSubroutine, GainedForTheRun, RunIce, RunPhase, RunState, ServerId, SubroutineStatus};
 use crate::rules::state::CompletedRun;
 use crate::rules::state::{GamePhase, GameState, InstallSlot, InstalledCard, Side, WindowCheckpoint};
 
@@ -186,7 +186,7 @@ pub fn start_run(state: &mut GameState, registry: &CardRegistry, server: ServerI
         .flatten()
         .collect();
 
-    state.active_run = Some(RunState { agendas_stolen_this_run: 0, once_per_run_used: Default::default(), persistent_trashed_upgrades: Vec::new(), redirect_on_approach: None, on_end_effect: None, on_end_card: None, on_end_install: None, subroutine_resolved: false, initiated_by: None, ice_bypassed: false, fully_broken: false, this_encounter: Default::default(),
+    state.active_run = Some(RunState { gained_for_the_run: Vec::new(), agendas_stolen_this_run: 0, once_per_run_used: Default::default(), persistent_trashed_upgrades: Vec::new(), redirect_on_approach: None, on_end_effect: None, on_end_card: None, on_end_install: None, subroutine_resolved: false, initiated_by: None, ice_bypassed: false, fully_broken: false, this_encounter: Default::default(),
         on_success_effect: None,
         on_success_card: None,
         on_success_install: None,
@@ -255,6 +255,31 @@ fn enter_movement(run: &mut RunState, position: usize) {
     run.jack_out_permitted = true;
 }
 
+/// Adds to the ice at `position`, as an encounter with it begins, what it
+/// gained for the rest of this run (`RunState::gained_for_the_run`): those
+/// said to come before its other subroutines ahead of them, the newest
+/// first (CR 9.8.3a), and those said to come after behind them, the oldest
+/// first (9.8.3e). Marked `gained`, so they go when the encounter does and
+/// the next encounter adds them again. Called by both ways an encounter
+/// begins: the approach's `Continue` and a forced encounter.
+fn add_gained_for_the_run(run: &mut RunState, position: usize) {
+    let Some(install) = run.ice.get(position).map(|ice| ice.install_id) else { return };
+    let gained: Vec<GainedForTheRun> = run.gained_for_the_run.iter().filter(|gained| gained.ice == install).cloned().collect();
+    if gained.is_empty() {
+        return;
+    }
+    let ice = &mut run.ice[position];
+    for gained in gained {
+        let subroutine = EncounteredSubroutine { id: 0, definition: gained.subroutine, status: SubroutineStatus::Pending, gained: true };
+        if gained.after {
+            ice.subroutines.push(subroutine);
+        } else {
+            ice.subroutines.insert(0, subroutine);
+        }
+    }
+    renumber_subroutines(ice);
+}
+
 /// Keeps each subroutine's `id` equal to its place in the list, which is
 /// what a break and a firing name it by.
 pub(crate) fn renumber_subroutines(ice: &mut RunIce) {
@@ -315,6 +340,7 @@ pub(crate) fn force_encounter(state: &mut GameState, registry: &CardRegistry, in
     run.fully_broken = false;
     run.ice_bypassed = false;
     run.this_encounter = Default::default();
+    add_gained_for_the_run(run, position);
     crate::rules::lingering::sweep(state);
     // The movement phase's window, if one was open, belonged to a step the
     // run has left.
@@ -838,6 +864,7 @@ fn continue_run(state: &mut GameState, registry: &CardRegistry) -> Result<Vec<Ga
             run.phase = RunPhase::EncounterIce;
             run.fully_broken = false;
             run.this_encounter = Default::default();
+            add_gained_for_the_run(run, position);
             // The number the break contest will use, asked once the run is
             // standing on the ice: this read what the ice was built with,
             // a third reading beside the contest's and the view's.

@@ -1008,24 +1008,40 @@ pub enum Effect {
     /// Composition didn't work: no effect moves a card into a score area
     /// without scoring or stealing it.
     AddToScoreAreaAsAgenda(AsAgenda),
-    /// The acting install — the ice being encountered, reached through
-    /// `TriggeredEffect::acts_on_subject` — gains this subroutine before
-    /// its other subroutines for the remainder of the encounter: Stick and
-    /// Poke's "it gains “[subroutine] Do 1 net damage. The Runner draws 1
-    /// card.”, before its other subroutines, for the remainder of that
-    /// encounter." Gained from an ability that is not the ice's own and
-    /// said to come first, so it is ordered ahead of every subroutine the
-    /// ice has, the newest such first (CR 9.8.3a). It is the ice's
-    /// subroutine: it fires as the ice's and is broken like one, and ice
-    /// already fully broken stays so (CR 6.5.7d). Written into the run's
-    /// list for the encounter (`EncounteredSubroutine::gained`), which is
-    /// where a subroutine's status already lives, and dropped at the one
-    /// step every encounter leaves by (`run::engine::enter_movement`). A
-    /// no-op when that ice is not being encountered. The only order and
-    /// duration a pool card prints; "after", and a subroutine gained for
-    /// longer (CR 9.8.3e), wait for one that does. Composition didn't
-    /// work: nothing adds to a subroutine list.
-    GainSubroutine(Box<crate::dsl::SubroutineDef>),
+    /// The acting install — a piece of ice, reached through
+    /// `TriggeredEffect::acts_on_subject` — gains `subroutine`, before or
+    /// after its other subroutines, for `duration`:
+    /// - Stick and Poke's "it gains “[subroutine] Do 1 net damage. The
+    ///   Runner draws 1 card.”, before its other subroutines, for the
+    ///   remainder of that encounter" — the ice being encountered, ordered
+    ///   ahead of every subroutine it has, the newest such first (CR
+    ///   9.8.3a). Written into the run's list for the encounter
+    ///   (`EncounteredSubroutine::gained`), which is where a subroutine's
+    ///   status already lives, and dropped at the one step every encounter
+    ///   leaves by (`run::engine::enter_movement`); a no-op when that ice is
+    ///   not being encountered.
+    /// - Thunderbolt Armaments' "that ice gets +1 strength and gains
+    ///   “[subroutine] End the run unless the Runner trashes 1 of their
+    ///   installed cards.” after its other subroutines for the remainder of
+    ///   that run" — the ice just rezzed, which need not be encountered
+    ///   yet. Kept on the run (`RunState::gained_for_the_run`) and added to
+    ///   the list at every encounter with that ice that run
+    ///   (`run::engine::add_gained_for_the_run`), after the rest, oldest
+    ///   first (9.8.3e); to the encounter in progress too, if it is that
+    ///   ice's. A no-op outside a run.
+    ///
+    /// It is the ice's subroutine: it fires as the ice's and is broken
+    /// like one, and ice already fully broken stays so (CR 6.5.7d).
+    /// `Turn` is refused by `validate`: nothing is encountered outside a
+    /// run. Composition didn't work: nothing adds to a subroutine list.
+    GainSubroutine {
+        subroutine: Box<crate::dsl::SubroutineDef>,
+        /// "After its other subroutines" (9.8.3e) rather than before them
+        /// (9.8.3a).
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        after: bool,
+        duration: EffectDuration,
+    },
     /// The acting install — a piece of ice, as it is rezzed — gains
     /// `subtype` while it remains rezzed: Lycian Multi-Munition's "choose 1
     /// or more subtypes among barrier, code gate, and sentry. This ice
@@ -1861,7 +1877,7 @@ impl Effect {
             | Effect::PlaceRunCredits(..)
             | Effect::InstallProgramOnHost { .. }
             | Effect::AddToScoreAreaAsAgenda(_)
-            | Effect::GainSubroutine(_)
+            | Effect::GainSubroutine { .. }
             | Effect::GainIceSubtype(_)
             | Effect::LookAtTopOfDeck { .. }
             | Effect::HostRigCardOnInstall { .. }

@@ -15660,4 +15660,73 @@ mod rebellion_without_rehearsal {
         let state = lycian_rezzed_from(state, &registry, &[2]);
         assert_eq!(gained(&state, &registry), [IceType::Sentry], "a rez begins a new rezzed period");
     }
+
+    // ---- Stage 8b: a subroutine gained for the rest of the run ----
+
+    /// A run on HQ at an unrezzed `ice`, under Thunderbolt Armaments, the
+    /// Runner holding three cards with Corroder installed, rezzed on
+    /// approach, up to the encounter window.
+    fn thunderbolt_rezzes(registry: &CardRegistry, ice: &str) -> GameState {
+        let mut state = runner_turn();
+        state.corp.identity = Some(id("thunderbolt_armaments_peace_through_power"));
+        state.runner.grip = vec![id("sure_gamble"); 3];
+        state.runner.rig = vec![rig("corroder")];
+        state.corp.installed = vec![crate::rules::InstalledCard { rezzed: false, ..ice_at_hq(ice) }];
+        let (state, _) = apply_action(&state, registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("initiate run");
+        let (state, _) = crate::rules::test_support::continue_run(&state, registry).expect("approach the ice");
+        let (state, _) = apply_action(&state, registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner passes approach");
+        let (state, _) = apply_action(&state, registry, PlayerAction::RezIce { ice: fixture_install_id(ice) }).expect("rez it on approach");
+        let (state, _) = apply_action(&state, registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner passes approach");
+        let (state, _) = apply_action(&state, registry, PlayerAction::PassPriority { side: Side::Corp }).expect("corp passes approach");
+        assert_eq!(state.active_run.as_ref().map(|run| run.phase), Some(crate::rules::RunPhase::EncounterIce));
+        state
+    }
+
+    fn subroutine_texts(state: &GameState) -> Vec<String> {
+        let run = state.active_run.as_ref().expect("a run");
+        run.ice[run.position].subroutines.iter().map(|sub| sub.definition.text.clone()).collect()
+    }
+
+    const THUNDERBOLT_SUBROUTINE: &str = "End the run unless the Runner trashes 1 of their installed cards.";
+
+    /// AP ice rezzed during a run: +1 strength, and the identity's
+    /// subroutine after its own (CR 9.8.3e); declined, it ends the run.
+    #[test]
+    fn thunderbolt_armaments_gives_ap_ice_rezzed_during_a_run_strength_and_a_last_subroutine() {
+        let registry = registry();
+        let state = thunderbolt_rezzes(&registry, "tithe");
+        assert_eq!(encountered_strength(&state, &registry), 2, "1, and +1 for the run");
+        assert_eq!(subroutine_texts(&state), ["Do 1 net damage.", "Gain 1 credit.", THUNDERBOLT_SUBROUTINE]);
+        let (state, _) = let_subroutines_fire(&state, &registry);
+        assert!(state.pending_paid_choice.is_some(), "unless the Runner trashes 1 of their installed cards");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::DeclinePendingPaidChoice).expect("keep Corroder");
+        assert!(state.active_run.is_none(), "the run ends");
+        assert_eq!(state.runner.rig.len(), 1);
+    }
+
+    /// Paid with an installed card, the run goes on, and the subroutine is
+    /// the ice's for the rest of the run, not only this encounter.
+    #[test]
+    fn thunderbolt_armaments_subroutine_paid_lets_the_run_go_on_and_lasts_the_run() {
+        let registry = registry();
+        let state = thunderbolt_rezzes(&registry, "tithe");
+        let (state, _) = let_subroutines_fire(&state, &registry);
+        let (state, _) = apply_action(&state, &registry, PlayerAction::AcceptPendingPaidChoice { cost_option_index: Some(0) }).expect("trash Corroder");
+        assert!(state.runner.rig.is_empty(), "Corroder trashed to pay");
+        let run = state.active_run.as_ref().expect("the run goes on");
+        assert_eq!(run.phase, crate::rules::RunPhase::Movement, "passed");
+        assert!(run.ice[0].subroutines.iter().all(|sub| sub.definition.text != THUNDERBOLT_SUBROUTINE), "the encounter's list is gone with it");
+        assert_eq!(run.gained_for_the_run.len(), 1, "kept for the next encounter this run");
+        assert_eq!(crate::rules::continuous::ice_strength(&state, &registry, &run.ice[0]), 2, "the strength lasts the run too");
+    }
+
+    /// Ice that is neither AP nor destroyer gains nothing.
+    #[test]
+    fn thunderbolt_armaments_ignores_ice_that_is_neither_ap_nor_destroyer() {
+        let registry = registry();
+        let state = thunderbolt_rezzes(&registry, "enigma");
+        assert_eq!(encountered_strength(&state, &registry), 2, "Enigma's printed strength");
+        assert!(subroutine_texts(&state).iter().all(|text| text != THUNDERBOLT_SUBROUTINE));
+        assert!(state.active_run.as_ref().is_some_and(|run| run.gained_for_the_run.is_empty()));
+    }
 }

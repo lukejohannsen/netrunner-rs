@@ -80,6 +80,17 @@ pub struct EncounteredSubroutine {
     pub gained: bool,
 }
 
+/// One entry of `RunState::gained_for_the_run`: which ice, what it
+/// gained, and on which side of its other subroutines.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GainedForTheRun {
+    pub ice: InstallId,
+    pub subroutine: SubroutineDef,
+    /// After the ice's other subroutines (CR 9.8.3e) rather than before
+    /// them (9.8.3a).
+    pub after: bool,
+}
+
 /// Counts for one encounter, about the ice being encountered — Hammer's
 /// "cannot break more than 1 of its printed subroutines" and Sorocaban
 /// Blade's "cannot trash more than 1 installed Runner card with this ice".
@@ -408,6 +419,19 @@ pub struct RunState {
     /// kept, and the counters go with the run. Public, as counters are.
     #[serde(default, skip_serializing_if = "is_zero")]
     pub event_counters: u32,
+    /// Subroutines pieces of ice gained for the rest of this run from an
+    /// ability not their own — Thunderbolt Armaments' "that ice … gains
+    /// “[subroutine] End the run unless…” after its other subroutines for
+    /// the remainder of that run" (`Effect::GainSubroutine`, `duration:
+    /// Run`), oldest first. Added to the ice's list at each encounter with
+    /// it (`run::engine::add_gained_for_the_run`), because the encounter's
+    /// list is rebuilt each time — the rest of what an encounter gained
+    /// goes with it. On the run and not in `GameState::lingering`, which
+    /// holds flat values a search clone copies in a few words: a subroutine
+    /// is an effect tree. It goes with the run, so nothing resets it.
+    /// Public: both players saw the rez and the ability.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub gained_for_the_run: Vec<GainedForTheRun>,
     /// Temporary Runner credit pool for this run only, seeded from
     /// `state::CorpState::bad_publicity` at `engine::initiate_run`.
     /// Spendable via `ability::pay_cost`'s `Cost::Credits` arm — draws from
@@ -601,6 +625,7 @@ impl Default for RunState {
             breach_only: false,
             forced_encounter: false,
             event_counters: 0,
+            gained_for_the_run: Vec::new(),
             bad_publicity_credits: 0,
             additional_rd_access: 0,
             additional_hq_access: 0,

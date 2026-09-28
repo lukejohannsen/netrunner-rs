@@ -373,8 +373,14 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
             format!("shuffle {} into your stack", zones.join(" and "))
         }
         Effect::AddToScoreAreaAsAgenda(as_agenda) => format!("add this card to your score area as {}", as_an_agenda(as_agenda)),
-        Effect::GainSubroutine(subroutine) => {
-            format!("the ice gains \u{201c}{}\u{201d} before its other subroutines, for the rest of the encounter", subroutine.text.trim_end_matches('.'))
+        Effect::GainSubroutine { subroutine, after, duration } => {
+            let order = if *after { "after" } else { "before" };
+            let how_long = match duration {
+                netrunner_core::dsl::EffectDuration::Encounter => "the rest of the encounter",
+                netrunner_core::dsl::EffectDuration::Run => "the rest of the run",
+                netrunner_core::dsl::EffectDuration::Turn => "the rest of the turn",
+            };
+            format!("the ice gains \u{201c}{}\u{201d} {order} its other subroutines, for {how_long}", subroutine.text.trim_end_matches('.'))
         }
         Effect::GainIceSubtype(kind) => {
             format!("this ice gains {} while it remains rezzed", crate::board::facts::ice_type_words(&[*kind]))

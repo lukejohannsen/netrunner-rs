@@ -15,23 +15,26 @@
       "effects": [
         {
           "GainSubroutine": {
-            "text": "Do 1 net damage. The Runner draws 1 card.",
-            "effect": {
-              "Sequence": [
-                {
-                  "DealDamage": [
-                    "Net",
-                    1
-                  ]
-                },
-                {
-                  "DrawCards": [
-                    "Runner",
-                    1
-                  ]
-                }
-              ]
-            }
+            "subroutine": {
+              "text": "Do 1 net damage. The Runner draws 1 card.",
+              "effect": {
+                "Sequence": [
+                  {
+                    "DealDamage": [
+                      "Net",
+                      1
+                    ]
+                  },
+                  {
+                    "DrawCards": [
+                      "Runner",
+                      1
+                    ]
+                  }
+                ]
+              }
+            },
+            "duration": "Encounter"
           }
         }
       ]

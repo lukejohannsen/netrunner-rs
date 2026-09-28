@@ -21,7 +21,6 @@ pub(crate) const VP_UNIMPLEMENTED: &[(u32, &str)] = &[];
 /// *Rebellion Without Rehearsal* (`rwr`): tranche 2 of the NSG plan.
 pub(crate) const RWR_UNIMPLEMENTED: &[(u32, &str)] = &[
     (34079, "Jeitinho"),
-    (34096, "Thunderbolt Armaments: Peace Through Power"),
 ];
 
 /// *The Automata Initiative* (`tai`): tranche 3 of the NSG plan.
