@@ -125,6 +125,12 @@ pub struct ResolutionContext<'a> {
     /// leaves. On the context because the effect that reads it resolves
     /// without parking.
     pub set_aside: Vec<CardId>,
+    /// The acting card is one `Effect::RevealAtRandom` revealed in its
+    /// owner's hand, so `AddToDeck` takes it from there — not from the
+    /// heap, which it otherwise searches first and where another copy may
+    /// be — and says so in the open: both players saw it. On the context
+    /// because the `then` it is read by never parks (`validate`).
+    pub revealed_in_hand: bool,
 }
 
 /// What `ResolutionContext::last_known` remembers of an install.
@@ -707,6 +713,34 @@ pub fn evaluate_effect(
             Ok(Vec::new())
         }
 
+        Effect::EndActionPhase => {
+            let side = carried_out_by(registry, ctx).ok_or(RulesError::MissingActingCardContext)?;
+            crate::rules::turn::force_action_phase_end(state, side, registry)
+        }
+
+        // Drawn together and first, so the `then` that moves one cannot be
+        // dealt it again; revealed, so each is public (CR 1.21.3).
+        Effect::RevealAtRandom { side, count, then } => {
+            let mut hand: Vec<CardId> = match side {
+                Side::Corp => state.corp.hq.clone(),
+                Side::Runner => state.runner.grip.clone(),
+            };
+            let mut drawn = Vec::new();
+            while drawn.len() < *count as usize && !hand.is_empty() {
+                let index = (state.next_u64() % hand.len() as u64) as usize;
+                drawn.push(hand.remove(index));
+            }
+            let mut events = Vec::new();
+            for card in &drawn {
+                events.push(GameEvent::CardRevealed { side: *side, card: card.clone() });
+                let mut revealed = ResolutionContext::for_card(Some(card));
+                revealed.prompting_card = ctx.prompting_card.or(acting_card);
+                revealed.revealed_in_hand = true;
+                events.extend(evaluate_effect(state, then, &mut revealed, registry)?);
+            }
+            Ok(events)
+        }
+
         Effect::ArmRunEndPrevention(prevention) => {
             state.active_run.as_ref().ok_or(RulesError::NoActiveRun)?;
             let source = acting_card.ok_or(RulesError::MissingActingCardContext)?.clone();
@@ -929,7 +963,11 @@ pub fn evaluate_effect(
                     _ => return Err(RulesError::UnresolvedCardTarget),
                 }
             }
-            if cards.is_empty() {
+            // Nothing to shuffle in is nothing to do — unless the card
+            // names no zone at all, which is "shuffle your stack" (Bring
+            // Them Home's "the Runner shuffles it into the stack", after
+            // `AddToDeck` has put it there).
+            if cards.is_empty() && !zones.is_empty() {
                 return Ok(Vec::new());
             }
             // Only a rig card hosts cards, and only its owner's: hosted from
@@ -948,7 +986,15 @@ pub fn evaluate_effect(
             // and index 0 the bottom.
             let place = |deck: &mut Vec<CardId>, card: CardId| if top { deck.push(card) } else { deck.insert(0, card) };
             if registry.get(&card_id).is_some_and(|card| card.side == Side::Corp) {
-                let taken = if let Some(position) = state.corp.hq.iter().position(|c| c == &card_id) {
+                let in_hq = state.corp.hq.iter().position(|c| c == &card_id);
+                if ctx.revealed_in_hand {
+                    return Ok(in_hq.map_or_else(Vec::new, |position| {
+                        let card = state.corp.hq.remove(position);
+                        place(&mut state.corp.r_and_d, card.clone());
+                        vec![GameEvent::CardAddedToDeck { side: Side::Corp, card, top, revealed: true }]
+                    }));
+                }
+                let taken = if let Some(position) = in_hq {
                     Some(state.corp.hq.remove(position))
                 } else if let Some(position) = state.corp.archives.iter().position(|a| a.card == card_id) {
                     Some(state.corp.archives.remove(position).card)
@@ -975,6 +1021,12 @@ pub fn evaluate_effect(
                 place(&mut state.runner.stack, card.clone());
                 events.push(GameEvent::CardAddedToDeck { side: Side::Runner, card, top, revealed: true });
                 return Ok(events);
+            }
+            if ctx.revealed_in_hand {
+                let Some(position) = state.runner.grip.iter().position(|c| c == &card_id) else { return Ok(Vec::new()) };
+                state.runner.grip.remove(position);
+                place(&mut state.runner.stack, card_id.clone());
+                return Ok(vec![GameEvent::CardAddedToDeck { side: Side::Runner, card: card_id, top, revealed: true }]);
             }
             for (zone, revealed) in [(&mut state.runner.heap, true), (&mut state.runner.grip, false)] {
                 if let Some(position) = zone.iter().position(|c| c == &card_id) {
@@ -3519,6 +3571,10 @@ pub(crate) fn resolve_amount(amount: &Amount, ctx: &ResolutionContext<'_>, state
             state.this_turn.times_when(*trigger, when, controller)
         }
         Amount::TimesLastTurn(trigger) => state.last_turn.times(*trigger),
+        Amount::TimesLastTurnWhen { trigger, when } => {
+            let controller = ctx.acting_card.and_then(|card| registry.get(card)).map_or(Side::Runner, |card| card.side);
+            state.last_turn.times_when(*trigger, when, controller)
+        }
         Amount::HostedCounters => counters_of(state, ctx).unwrap_or(0),
         Amount::HostedAdvancementTokens => advancement_tokens_of(state, ctx).unwrap_or(0),
         Amount::HostedCards => acting_rig_card(state, ctx).map_or(0, |card| card.hosted_cards.len() as u32),

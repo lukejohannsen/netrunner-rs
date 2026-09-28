@@ -28,11 +28,9 @@ pub(crate) const RWR_UNIMPLEMENTED: &[(u32, &str)] = &[
     (34090, "Lobisomem"),
     (34096, "Thunderbolt Armaments: Peace Through Power"),
     (34100, "Lycian Multi-Munition"),
-    (34102, "Active Policing"),
     (34105, "See How They Run"),
     (34106, "Sisyphus Protocol"),
     (34111, "Tributary"),
-    (34112, "Bring Them Home"),
     (34122, "Eminent Domain"),
     (34125, "Descent"),
 ];

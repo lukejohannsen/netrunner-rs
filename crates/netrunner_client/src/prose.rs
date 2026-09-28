@@ -69,6 +69,9 @@ pub fn describe_amount(amount: &Amount) -> String {
             format!("the times \"{}\" has happened this turn ({})", humanize(format!("{trigger:?}")), humanize(format!("{when:?}")).to_lowercase())
         }
         Amount::TimesLastTurn(trigger) => format!("the times \"{}\" happened last turn", humanize(format!("{trigger:?}"))),
+        Amount::TimesLastTurnWhen { trigger, when } => {
+            format!("the times \"{}\" happened last turn ({})", humanize(format!("{trigger:?}")), humanize(format!("{when:?}")).to_lowercase())
+        }
         Amount::HostedCounters => "the counters on this card".to_string(),
         Amount::HostedCards => "the cards hosted on this card".to_string(),
         Amount::HostedAdvancementTokens => "the advancement tokens on this card".to_string(),
@@ -328,6 +331,11 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
         Effect::RedirectRunOnApproach(server) => format!("redirect the run to {}", describe_server(*server)),
         Effect::SetRunEndedEffect(effect) => format!("when the run ends, {}", describe_effect(effect, registry)),
         Effect::WhenThisTurnEnds(effect) => format!("when this turn ends, {}", describe_effect(effect, registry)),
+        Effect::EndActionPhase => "your action phase ends".to_string(),
+        Effect::RevealAtRandom { side, count, then } => {
+            let hand = if *side == Side::Corp { "HQ" } else { "the grip" };
+            format!("reveal {count} card(s) in {hand} at random, and for each: {}", describe_effect(then, registry))
+        }
         Effect::ArmRunEndPrevention(_) => "the run cannot be ended by the next end-the-run effect".to_string(),
         Effect::Sabotage(n) => format!("sabotage {n}"),
         Effect::MillRnDAmount(amount) => format!("trash cards from the top of R&D equal to {}", describe_amount(amount)),
@@ -439,6 +447,7 @@ pub fn engine_reading(card: &CardDefinition, registry: &CardRegistry) -> Vec<Str
             Some(EventFilter::Damage(kind)) => when = format!("{when}, of {} damage", format!("{kind:?}").to_lowercase()),
             Some(EventFilter::AtLeast(least)) => when = format!("{when}, {least} or more"),
             Some(EventFilter::Whose(side)) => when = format!("{when}, the {side:?}'s"),
+            Some(EventFilter::OwnedBy { owner, whose }) => when = format!("{when}, the {whose:?}'s, of a {owner:?} card"),
             Some(EventFilter::InstalledFromHq(true)) => when = format!("{when}, from HQ"),
             Some(EventFilter::InstalledFromHq(false)) => when = format!("{when}, from anywhere except HQ"),
             Some(EventFilter::Ice(facts)) => {

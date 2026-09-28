@@ -160,7 +160,7 @@ pub struct ClientView {
     #[serde(default)]
     pub this_turn: crate::rules::turn_log::TurnLog,
     #[serde(default)]
-    pub last_turn: crate::rules::turn_log::LastTurn,
+    pub last_turn: crate::rules::turn_log::TurnLog,
     /// `GameState::rules` verbatim — a client has to be able to say how
     /// many agenda points win this match.
     #[serde(default)]

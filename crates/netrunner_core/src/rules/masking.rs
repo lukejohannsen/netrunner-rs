@@ -5,7 +5,7 @@ use crate::dsl::{CardId, Cost, IceType};
 use crate::rules::action::{PlayerAction, TargetZone};
 use crate::rules::event::GameEvent;
 use crate::rules::{continuous, lingering};
-use crate::rules::turn_log::{LastTurn, TurnLog};
+use crate::rules::turn_log::TurnLog;
 use crate::rules::run::{AccessCandidate, AccessPhase, AccessState, EncounteredSubroutine, RunIce, RunPhase, RunState, ServerId};
 use crate::rules::state::{ArchivedCard, CorpState, OncePerTurnKey, GamePhase, GameState, InstallId, InstallSlot, InstalledCard, InstalledRunnerCard, MemoryUnits, PaidAbilityWindow, PendingDecision, ScoredAgenda,
     PendingPrevention, PlayerResources, Side, TraceState,
@@ -476,7 +476,7 @@ pub struct PublicGameState {
     #[serde(default)]
     pub this_turn: TurnLog,
     #[serde(default)]
-    pub last_turn: LastTurn,
+    pub last_turn: TurnLog,
 }
 
 /// Who a masked projection is for.

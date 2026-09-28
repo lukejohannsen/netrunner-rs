@@ -482,6 +482,10 @@ fn passes(state: &GameState, registry: &CardRegistry, filter: &EventFilter, mome
     if let EventFilter::Whose(side) = filter {
         return moment.of == Some(*side);
     }
+    if let EventFilter::OwnedBy { owner, whose } = filter {
+        return moment.of == Some(*whose)
+            && matches!(&moment.about, About::Card { card, .. } if registry.get(card).is_some_and(|definition| definition.side == *owner));
+    }
     if let EventFilter::InstalledFromHq(from_hq) = filter {
         return moment.from_hq == Some(*from_hq);
     }
@@ -529,7 +533,7 @@ pub(crate) fn when_admits(state: &GameState, registry: &CardRegistry, triggered:
 /// the card names another's (`EventFilter::Whose`, "when the Runner's
 /// discard phase ends"), that one's, which `passes` then checks.
 fn whose_admits(triggered: &TriggeredEffect, controller: Side, moment: &Moment) -> bool {
-    if matches!(triggered.when, Some(EventFilter::Whose(_))) || triggered.trigger.hears() != Hears::OwnSide {
+    if matches!(triggered.when, Some(EventFilter::Whose(_) | EventFilter::OwnedBy { .. })) || triggered.trigger.hears() != Hears::OwnSide {
         return true;
     }
     moment.of.is_none_or(|side| side == controller)

@@ -1898,8 +1898,11 @@ reaches Vantage Point's cards by building a deck.
    when it was taken; **5e**, a Weyland identity and its agenda (built, below): Nuvem
    SA: Law of the Land, The Basalt Spire, on a Sweep deck of Nuvem's own.
    Stage 5 is complete.
-6. **Terminal, reveal, set aside, arrange, X:** Active Policing, Bring
-   Them Home, Burner, The Wizard’s Chest, Cataloguer, Lobisomem.
+6. **Terminal, reveal, set aside, arrange, X**, in four parts when it was
+   taken: **6a**, terminal operations (built, below): Active Policing,
+   Bring Them Home; **6b**, a breach replaced on HQ and R&D: Burner,
+   Cataloguer; **6c**, cards set aside: The Wizard’s Chest; **6d**, an X
+   cost: Lobisomem.
 7. **Expendable, moving ice, psi, re-encounter:** Eminent Domain, Descent,
    Tributary, See How They Run, Sisyphus Protocol, Spree.
 8. **A card's identity changes:** Thunderbolt Armaments: Peace Through Power, Lycian
@@ -2902,6 +2905,97 @@ new `Trigger`s.** Rebellion Without Rehearsal 50 of 65;
   differs from `main` in exactly those event counts in all four shapes
   and in nothing else, so the heuristic movement is `determinize`
   sampling two new Corp cards.
+
+#### Stage 6a — terminal operations (28 September 2026)
+
+`feat/rwr-stage-6a-terminal-active-policing-bring-them-home`: Active
+Policing, Bring Them Home. **Two new `Effect`s.** Rebellion Without
+Rehearsal 52 of 65; `RWR_UNIMPLEMENTED` 15 → 13.
+
+- **"After you resolve this operation, your action phase ends"** is CR
+  5.4.3, which nothing did until now: an action phase ended only by the
+  basic pass with no clicks left. It is `Effect::EndActionPhase`, last in
+  each card's resolution, which is where "after" puts it. So a decision
+  the operation parks first is answered first, and so is the threat's
+  offer. It announces the action phase's end (`ActionPhaseEnded`) and goes
+  on to the discard step (`turn::force_action_phase_end`). Clicks left are
+  not spent. They are lost with the turn (5.6.3c), and nothing can spend
+  them first, because neither the discard step nor the end-of-turn window
+  admits an action (5.4.3d). Zeroing the clicks instead was rejected: a
+  Corp at 0 clicks still has the action phase's paid ability window, with
+  its rezzes and scores, and 5.4.3a skips it. Outside its player's action
+  phase it does nothing (5.4.4).
+- **"If the Runner stole or trashed a Corp card during their last turn"**
+  needed more of the last turn than its row totals. The Runner's trash of
+  their own program is in the same row. `GameState::last_turn` is now the
+  whole `TurnLog` of the turn that ended (the `LastTurn` totals type is
+  gone). `Amount::TimesLastTurnWhen` narrows it as `TimesThisTurnWhen`
+  narrows this turn's. `EventFilter::OwnedBy { owner, whose }` says "the
+  Runner's moment, about a Corp card"; neither `Whose` nor a `Card` filter
+  says both.
+  - The log can count it because every card it counts `Unseen` is a Corp
+    card. So the Corp's columns are those and every Corp type.
+  - The requirement is stolen, trashed as accessed, or trashed by the
+    Runner, written `Not(And(Not, And(Not, Not)))`, because there is no
+    `Or`.
+- **"Reveal and add 2 cards at random from the grip to the top of the
+  stack"** is `Effect::RevealAtRandom { side, count, then }`:
+  - The cards are drawn together, before any moves, and each is revealed
+    (`CardRevealed`). `then` resolves as each card.
+  - `validate` refuses a `then` that could park, since the cards after it
+    would be dropped.
+  - The revealed card is marked on the resolution context
+    (`revealed_in_hand`), so `AddToDeck` takes it from the grip. Otherwise
+    it searches the heap first and moves another copy. It also moves the
+    card in the open.
+  - The threat's "the Runner shuffles it into the stack" is `AddToDeck`
+    then `ShuffleIntoDeck([])`, which now shuffles the stack alone when it
+    names no zone.
+- **Client:** nothing new reaches the view but the rest of the last turn's
+  log, which `view_ledger` already had as the engine's. Both clients' logs
+  now say "the Corp's action phase ended" when anything but the basic pass
+  ends it, and name a card added to a deck in the open ("added Sure Gamble
+  to the top of the stack").
+- **Decks:**
+  - Retirement Package: two Active Policing for the Predictive Planogram
+    and the Hedge Fund.
+  - A Thousand Cuts: two Bring Them Home for the Regolith Mining License
+    and a Hedge Fund.
+  - Pay As You Go: an Alarm Clock and a Sure Gamble for its Gordian Blade
+    and a Crash Space.
+- **Why Pay As You Go changed:** the 256-seed view sweep's coverage gate
+  failed on Alarm Clock, never installed across 768 games once the Corp
+  decks it met had changed.
+  - It was one copy in Spare Parts, which has no influence left for a
+    second.
+  - Measured over 64 games against A Thousand Cuts, it was installed in 7
+    random games and in no heuristic one. At about 15 Spare Parts seeds a
+    seating, the gate had about a one-in-six chance of missing it on
+    `main` too.
+  - Borrowed Time, in-faction, is the one Runner Sweep deck of Startup
+    cards and would lose Startup, and Grassroots has no influence either.
+- **Real play**, 96 games against Safety Net (seed 2):
+  - Active Policing (Retirement Package): played 40 times by random seats
+    and **never by the heuristic Corp**.
+  - Bring Them Home (A Thousand Cuts): played 23 times in both seatings.
+- **Fidelity limits:**
+  - A terminal card's end does nothing mid-run or with a window open (CR
+    5.4.3b closes them, and the engine has no step for it). No terminal
+    card in the pool resolves anywhere but its player's action window.
+  - Nuvem SA's "finish resolving" is announced after the action phase has
+    ended, not while it is ending. The two are out of faction together.
+- **DSL ratio (`pool_status.py`): 20 of 83 `Effect` variants single-use,
+  1 unused**, over 302 card files (19 of 81 over 300 before).
+  `EndActionPhase` is used by both cards, and `RevealAtRandom` by Bring
+  Them Home.
+- **Measured.** Both sweeps at 256 seeds are green. Against `origin/main`
+  (5e), `coverage_identical.py` has both random seatings **identical**: the
+  pass plays the sample decks' matchups, and every deck changed is a Sweep
+  deck. The heuristic ones moved (Corp agenda wins 70 → 71 of 192,
+  flatlines 11 → 14, Runner agenda wins 110 → 106). A ref with the engine
+  changes and without the two cards and the decks is identical to `main`
+  in all four shapes, so the engine moved nothing a game shows, and the
+  heuristic movement is `determinize` sampling two new Corp cards.
 
 ### 3. The Automata Initiative — 65 cards (C 14 / V 35 / M 16)
 

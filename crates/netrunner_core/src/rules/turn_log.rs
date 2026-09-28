@@ -362,7 +362,7 @@ impl Occurrences {
         // Whose moments: the controller's for a trigger about "you",
         // unless the card names the other player's (`EventFilter::Whose`).
         let of = match when {
-            Some(EventFilter::Whose(side)) => Some(*side),
+            Some(EventFilter::Whose(side) | EventFilter::OwnedBy { whose: side, .. }) => Some(*side),
             _ => (trigger.hears() == Hears::OwnSide).then_some(controller),
         };
         let bit = |class: Class| 1u32 << class.column();
@@ -380,6 +380,20 @@ impl Occurrences {
                     .fold(0, |mask, column| mask | column),
             ),
             Some(EventFilter::Damage(kind)) => Some(bit(Class::Damage(*kind))),
+            // By owner: a card counted `Unseen` is always a Corp card —
+            // installed facedown, advanced, accessed, trashed out of HQ or
+            // R&D — so the Corp's are those and every Corp type, and the
+            // Runner's the Runner types, which are never concealed.
+            Some(EventFilter::OwnedBy { owner, .. }) => Some(
+                Kind::ALL
+                    .iter()
+                    .filter(|kind| match owner {
+                        Side::Runner => kind.is_runners(),
+                        Side::Corp => !kind.is_runners() && **kind != Kind::Identity,
+                    })
+                    .map(|kind| bit(Class::Card { kind: *kind, installed: false }) | bit(Class::Card { kind: *kind, installed: true }))
+                    .fold(0, |mask, column| mask | column),
+            ),
             Some(EventFilter::InstalledFromHq(_)) => {
                 return Err(format!("the turn counts a {trigger:?} without where the card came from, so \"the first\" cannot be narrowed by it"));
             }
@@ -643,51 +657,6 @@ impl TurnLog {
     }
 }
 
-/// The turn before this one, as far as any card asks: how many times each
-/// moment happened, not what each was about. No card in the pool prints a
-/// "last turn" narrower than "made a successful run", and a second whole
-/// table would be carried by every clone for a question nobody puts.
-///
-/// **Whose turn "last turn" was is the rotation's:** it is the turn that
-/// ended most recently, either side's, so on the Corp's turn it is the
-/// Runner's — which is when an operation printed "during their last turn"
-/// (Public Trail, Measured Response) can be played at all.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(from = "Vec<(Trigger, u8)>", into = "Vec<(Trigger, u8)>")]
-pub struct LastTurn {
-    times: [u8; TRIGGERS],
-}
-
-/// By hand: `Default` is derived for arrays only to 32, and there are more
-/// triggers than that.
-impl Default for LastTurn {
-    fn default() -> Self {
-        LastTurn { times: [0; TRIGGERS] }
-    }
-}
-
-impl LastTurn {
-    pub fn times(&self, trigger: Trigger) -> u32 {
-        u32::from(self.times[trigger.index()])
-    }
-}
-
-impl From<Vec<(Trigger, u8)>> for LastTurn {
-    fn from(rows: Vec<(Trigger, u8)>) -> Self {
-        let mut last = LastTurn::default();
-        for (trigger, times) in rows {
-            last.times[trigger.index()] = times;
-        }
-        last
-    }
-}
-
-impl From<LastTurn> for Vec<(Trigger, u8)> {
-    fn from(last: LastTurn) -> Self {
-        Trigger::ALL.iter().map(|trigger| (*trigger, last.times[trigger.index()])).filter(|(_, times)| *times > 0).collect()
-    }
-}
-
 /// `TurnLog` on the wire and in a failed assertion: the cells that are not
 /// zero. A `StateUpdate` would otherwise carry three hundred zeros, and
 /// serde derives arrays only to 32.
@@ -784,12 +753,17 @@ pub(crate) fn record_action_finished(state: &mut GameState) {
 /// sides at every turn start — five fields each had a line of their own in
 /// `turn::enter_start_of_turn`, under whichever side's branch their first
 /// card cared about.
+///
+/// **Whose turn "last turn" was is the rotation's:** it is the turn that
+/// ended most recently, either side's, so on the Corp's turn it is the
+/// Runner's — which is when an operation printed "during their last turn"
+/// (Public Trail, Active Policing) can be played at all. The whole log is
+/// kept: it was a row of totals, `LastTurn`, while no card asked a last
+/// turn anything narrower than "made a successful run", and Active
+/// Policing's "stole or trashed **a Corp card**" is a column of it — the
+/// Runner's own trashes are in the same row.
 pub(crate) fn rotate(state: &mut GameState) {
-    let mut last = LastTurn::default();
-    for trigger in Trigger::ALL {
-        last.times[trigger.index()] = u8::try_from(state.this_turn.times(trigger)).unwrap_or(u8::MAX);
-    }
-    state.last_turn = last;
+    state.last_turn = state.this_turn;
     state.this_turn = TurnLog::default();
 }
 
@@ -828,7 +802,7 @@ mod tests {
         assert_eq!(state.this_turn, TurnLog::default());
         assert_eq!(state.last_turn.times(Trigger::OnSuccessfulRun), 3);
         rotate(&mut state);
-        assert_eq!(state.last_turn, LastTurn::default());
+        assert_eq!(state.last_turn, TurnLog::default());
     }
 
     /// The fog rule of the module doc: the Runner's program is counted as a
@@ -858,7 +832,7 @@ mod tests {
         let read: TurnLog = serde_json::from_str(&serde_json::to_string(&state.this_turn).unwrap()).unwrap();
         assert_eq!(read, state.this_turn);
         rotate(&mut state);
-        let read: LastTurn = serde_json::from_str(&serde_json::to_string(&state.last_turn).unwrap()).unwrap();
+        let read: TurnLog = serde_json::from_str(&serde_json::to_string(&state.last_turn).unwrap()).unwrap();
         assert_eq!(read, state.last_turn);
     }
 }

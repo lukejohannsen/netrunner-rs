@@ -14848,4 +14848,108 @@ mod rebellion_without_rehearsal {
         assert_eq!(state.corp.resources.credits, Credits(credits.0 + 2), "Nuvem pays for the trash the cost made");
         assert!(apply_action(&state, &registry, use_it).is_err(), "once per turn");
     }
+
+    // ---- Stage 6a: terminal operations ----
+
+    /// The turn that ended most recently saw `event`, and nothing else.
+    fn last_turn_saw(state: &mut GameState, registry: &CardRegistry, event: GameEvent) {
+        crate::rules::turn_log::record(state, registry, &event);
+        crate::rules::turn_log::rotate(state);
+    }
+
+    #[test]
+    fn a_terminal_operation_is_played_only_after_the_runner_stole_or_trashed_a_corp_card() {
+        let registry = registry();
+        let play = |card: &str, last: Option<GameEvent>| {
+            let mut state = base_state();
+            state.corp.hq = vec![id(card)];
+            state.runner.grip = vec![id("sure_gamble"); 3];
+            if let Some(event) = last {
+                last_turn_saw(&mut state, &registry, event);
+            }
+            apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: id(card) }).is_ok()
+        };
+        let own_program = GameEvent::CardTrashed { side: Side::Runner, card: id("mayfly"), installed: true, by: Some(Side::Runner) };
+        let by_the_corp = GameEvent::CardTrashed { side: Side::Corp, card: id("pad_campaign"), installed: true, by: Some(Side::Corp) };
+        let corp_card = GameEvent::CardTrashed { side: Side::Corp, card: id("pad_campaign"), installed: true, by: Some(Side::Runner) };
+        let accessed = GameEvent::CardTrashedFromAccess { card: id("pad_campaign"), cost_paid: 4, install: None };
+        let stolen = GameEvent::AgendaStolen { card: id("offworld_office"), agenda_points: 2 };
+        for card in ["active_policing", "bring_them_home"] {
+            assert!(!play(card, None), "{card}: nothing happened");
+            assert!(!play(card, Some(own_program.clone())), "{card}: the Runner's own program is no Corp card");
+            assert!(!play(card, Some(by_the_corp.clone())), "{card}: the Corp's own trash is not the Runner's");
+            assert!(play(card, Some(corp_card.clone())), "{card}: a Corp card the Runner trashed");
+            assert!(play(card, Some(accessed.clone())), "{card}: a Corp card trashed as it was accessed");
+            assert!(play(card, Some(stolen.clone())), "{card}: a stolen agenda");
+        }
+    }
+
+    #[test]
+    fn active_policing_installs_from_hq_costs_the_runner_a_click_and_ends_the_action_phase_with_clicks_left() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.hq = vec![id("active_policing"), id("ice_wall")];
+        last_turn_saw(&mut state, &registry, GameEvent::AgendaStolen { card: id("offworld_office"), agenda_points: 2 });
+        let (state, _) = apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: id("active_policing") }).expect("play it");
+        let wall = state.corp.hq.iter().position(|card| card == &id("ice_wall")).expect("the ice");
+        let state = select(&state, &registry, &[wall]);
+        let (state, events) =
+            apply_action(&state, &registry, PlayerAction::ChooseServerForPendingDecision { server: ServerId::Hq }).expect("install it on HQ");
+        assert!(state.corp.installed.iter().any(|install| install.card == id("ice_wall")), "installed");
+        assert!(state.pending_paid_choice.is_none(), "no threat, no offer");
+        assert!(events.iter().any(|event| matches!(event, GameEvent::ActionPhaseEnded { side: Side::Corp })), "the action phase ended");
+        assert_eq!(state.corp.resources.clicks, Clicks(2), "with a click unspent");
+        let window = state.paid_ability_window.as_ref().expect("the end-of-turn window");
+        assert_eq!(window.checkpoint, crate::rules::WindowCheckpoint::EndOfTurn { side: Side::Corp });
+        let offered = crate::rules::legal_actions_for(&state, &registry, Side::Corp);
+        assert!(!offered.contains(&PlayerAction::GainCreditClick { side: Side::Corp }), "no action is taken with it");
+        let (state, _) = close_all_windows(state, &registry);
+        assert_eq!(state.phase, GamePhase::Action(Side::Runner));
+        assert_eq!(state.runner.resources.clicks, Clicks(3), "−1 allotted [click]");
+
+        // At threat 3 the Corp may pay 2 for a second.
+        let mut state = base_state();
+        state.corp.hq = vec![id("active_policing")];
+        at_threat(&mut state, 4);
+        last_turn_saw(&mut state, &registry, GameEvent::AgendaStolen { card: id("offworld_office"), agenda_points: 2 });
+        let (state, _) = apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: id("active_policing") }).expect("play it");
+        assert!(state.pending_decision.is_none(), "an empty HQ has nothing to install");
+        assert!(state.paid_ability_window.is_none(), "the phase waits for the offer");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::AcceptPendingPaidChoice { cost_option_index: None }).expect("pay 2");
+        assert_eq!(state.corp.resources.credits, Credits(8));
+        let (state, _) = close_all_windows(state, &registry);
+        assert_eq!(state.runner.resources.clicks, Clicks(2), "−2 allotted [click]");
+    }
+
+    #[test]
+    fn bring_them_home_puts_two_random_grip_cards_on_the_stack_revealed_and_shuffles_a_third_in_at_threat() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.hq = vec![id("bring_them_home")];
+        state.runner.grip = vec![id("sure_gamble"), id("mayfly"), id("carmen"), id("boi_tata")];
+        state.runner.heap = vec![id("sure_gamble"), id("mayfly"), id("carmen"), id("boi_tata")];
+        state.runner.stack = vec![id("hedge_fund")];
+        last_turn_saw(&mut state, &registry, GameEvent::AgendaStolen { card: id("offworld_office"), agenda_points: 2 });
+        let (state, events) = apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: id("bring_them_home") }).expect("play it");
+        let revealed: Vec<&CardId> = events.iter().filter_map(|event| match event { GameEvent::CardRevealed { card, .. } => Some(card), _ => None }).collect();
+        assert_eq!(revealed.len(), 2);
+        assert_eq!(state.runner.grip.len(), 2);
+        assert_eq!(state.runner.heap.len(), 4, "the heap's copies stayed");
+        assert_eq!(state.runner.stack.len(), 3);
+        assert!(state.runner.stack[1..].iter().all(|card| revealed.contains(&card)), "the revealed cards are on top");
+        assert!(events.iter().all(|event| !matches!(event, GameEvent::CardAddedToDeck { revealed: false, .. })), "each move in the open");
+        assert!(events.iter().any(|event| matches!(event, GameEvent::ActionPhaseEnded { side: Side::Corp })));
+
+        let mut state = base_state();
+        state.corp.hq = vec![id("bring_them_home")];
+        state.runner.grip = vec![id("sure_gamble"), id("mayfly"), id("carmen")];
+        at_threat(&mut state, 4);
+        last_turn_saw(&mut state, &registry, GameEvent::AgendaStolen { card: id("offworld_office"), agenda_points: 2 });
+        let (state, _) = apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: id("bring_them_home") }).expect("play it");
+        let (state, events) = apply_action(&state, &registry, PlayerAction::AcceptPendingPaidChoice { cost_option_index: None }).expect("pay 2");
+        assert!(state.runner.grip.is_empty(), "the last card went too");
+        assert_eq!(state.runner.stack.len(), 3);
+        assert_eq!(events.iter().filter(|event| matches!(event, GameEvent::CardRevealed { .. })).count(), 1);
+        assert!(events.iter().any(|event| matches!(event, GameEvent::ActionPhaseEnded { side: Side::Corp })), "after the threat's offer");
+    }
 }

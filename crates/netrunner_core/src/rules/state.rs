@@ -6,7 +6,7 @@ use crate::dsl::{CardFilter, CardId, CardZoneRef, Cost, DamageType, Effect, Trig
 use crate::rules::event::GameEvent;
 use crate::rules::lingering::LingeringEffect;
 use crate::rules::run::{RunState, ServerId};
-use crate::rules::turn_log::{LastTurn, TurnLog};
+use crate::rules::turn_log::TurnLog;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Side {
@@ -1466,9 +1466,9 @@ pub struct GameState {
     /// `rules::turn_log`. Never add a `*_this_turn` field beside it.
     #[serde(default)]
     pub this_turn: TurnLog,
-    /// The turn before, as far as a card asks — `turn_log::LastTurn`.
+    /// The turn that ended most recently, whole — `turn_log::rotate`.
     #[serde(default)]
-    pub last_turn: LastTurn,
+    pub last_turn: TurnLog,
     /// Triggers owed but not yet fired, because an earlier trigger in the
     /// same dispatch parked something blocking. Drained by
     /// `dispatcher::drain_deferred_triggers` from `engine::apply_action`,
@@ -1564,7 +1564,7 @@ impl Default for GameState {
             lingering: Vec::new(),
             delayed: Vec::new(),
             this_turn: TurnLog::default(),
-            last_turn: LastTurn::default(),
+            last_turn: TurnLog::default(),
             deferred_triggers: Vec::new(),
             seed: 0,
             rng_step: 0,

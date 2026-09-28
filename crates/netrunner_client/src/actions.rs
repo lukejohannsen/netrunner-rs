@@ -369,6 +369,9 @@ fn action_implies(event: &GameEvent, action: &PublicAction) -> bool {
             | (GameEvent::TagRemoved { .. }, Some(PlayerAction::RemoveTag))
             | (GameEvent::SubroutineBroken { .. }, Some(PlayerAction::BreakSubroutineWithClick { .. }))
             | (GameEvent::RunJackedOut { .. }, Some(PlayerAction::JackOut))
+            // Ending the turn ends the action phase; only a terminal card
+            // ends it any other way, and that is worth the line.
+            | (GameEvent::ActionPhaseEnded { .. }, Some(PlayerAction::EndTurn))
     )
 }
 
@@ -501,6 +504,15 @@ pub fn narrate_event(
             format!("looked at the top of {}: {}", if *deck == Side::Corp { "R&D" } else { "the stack" }, and_list(&names))
         }
         GameEvent::CardRevealed { card, .. } => format!("revealed {}", title(card)),
+        // Out of a zone both saw, or revealed first (Bring Them Home); a
+        // card only its owner saw moving is a count, which the deck shows.
+        GameEvent::CardAddedToDeck { side, card, top, revealed: true } => format!(
+            "added {} to the {} of {}",
+            title(card),
+            if *top { "top" } else { "bottom" },
+            if *side == Side::Corp { "R&D" } else { "the stack" }
+        ),
+        GameEvent::ActionPhaseEnded { side } => format!("the {side:?}'s action phase ended"),
         GameEvent::CardsTrashedFromHq { count } => format!("trashed {count} card(s) from HQ"),
         GameEvent::CardsTrashedFromRnD { count, .. } => format!("trashed {count} card(s) from R&D"),
 
@@ -593,8 +605,8 @@ pub fn narrate_event(
         GameEvent::ProgramInstalled { .. } | GameEvent::ResourceInstalled { .. } | GameEvent::CardAccessed {
         .. } | GameEvent::TurnEnded { .. } | GameEvent::TurnStarted { .. } | GameEvent::DiscardPending { ..
         } | GameEvent::DiscardPhaseEnded { .. } | GameEvent::CardDiscarded { .. } |
-        GameEvent::CardAddedToDeck { .. } | GameEvent::CardHosted { .. } |
-        GameEvent::ActionPhaseEnded { .. } | GameEvent::RunRedirected { .. } | GameEvent::CreditsSpent { ..
+        GameEvent::CardAddedToDeck { revealed: false, .. } | GameEvent::CardHosted { .. } |
+        GameEvent::RunRedirected { .. } | GameEvent::CreditsSpent { ..
         } | GameEvent::TagsCleared { .. } | GameEvent::CardRemovedFromGame { .. } |
         GameEvent::AbilityGainedCredits { .. } | GameEvent::AbilityActivated { .. } |
         GameEvent::CardTrashedFromAccess { .. } | GameEvent::AccessPassed { .. } |
