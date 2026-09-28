@@ -1,0 +1,39 @@
+{
+  "id": "fujii_asset_retrieval",
+  "title": "Fujii Asset Retrieval",
+  "side": "Corp",
+  "card_type": "Agenda",
+  "cost": 0,
+  "advancement_requirement": 5,
+  "agenda_points": 3,
+  "triggers": [
+    {
+      "trigger": "OnAgendaScored",
+      "subject": "This",
+      "effects": [
+        {
+          "DealDamage": [
+            "Net",
+            2
+          ]
+        }
+      ],
+      "text": "When this agenda is scored or stolen, do 2 net damage."
+    },
+    {
+      "trigger": "OnAgendaStolen",
+      "subject": "This",
+      "effects": [
+        {
+          "DealDamage": [
+            "Net",
+            2
+          ]
+        }
+      ],
+      "text": "When this agenda is scored or stolen, do 2 net damage."
+    }
+  ],
+  "numeric_id": 34040,
+  "is_playable": true
+}

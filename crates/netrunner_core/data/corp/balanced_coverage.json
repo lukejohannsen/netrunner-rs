@@ -1,0 +1,400 @@
+{
+  "id": "balanced_coverage",
+  "title": "Balanced Coverage",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 1,
+  "trash_cost": 3,
+  "triggers": [
+    {
+      "trigger": "OnTurnStart",
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Corp",
+            "options": [
+              {
+                "Sequence": [
+                  {
+                    "LookAtTopOfDeck": {
+                      "deck": "Corp",
+                      "count": 1
+                    }
+                  },
+                  {
+                    "PresentChoice": {
+                      "chooser": "Corp",
+                      "options": [
+                        {
+                          "EffectIf": {
+                            "condition": {
+                              "ZoneHasAtLeast": {
+                                "zone": "OwnRAndD",
+                                "count": 1,
+                                "filter": {
+                                  "All": [
+                                    {
+                                      "TopOfZone": 1
+                                    },
+                                    {
+                                      "CardType": "Agenda"
+                                    }
+                                  ]
+                                }
+                              }
+                            },
+                            "effect": {
+                              "PromptChooseCards": {
+                                "side": "Corp",
+                                "source": "OwnRAndD",
+                                "filter": {
+                                  "All": [
+                                    {
+                                      "TopOfZone": 1
+                                    },
+                                    {
+                                      "CardType": "Agenda"
+                                    }
+                                  ]
+                                },
+                                "min": 1,
+                                "max": 1,
+                                "reveal": true,
+                                "shuffle_after": false,
+                                "then": {
+                                  "GainCredits": [
+                                    "Corp",
+                                    2
+                                  ]
+                                }
+                              }
+                            }
+                          }
+                        },
+                        {
+                          "Sequence": []
+                        }
+                      ],
+                      "texts": [
+                        "you may reveal it and gain 2[credit]",
+                        ""
+                      ]
+                    }
+                  }
+                ]
+              },
+              {
+                "Sequence": [
+                  {
+                    "LookAtTopOfDeck": {
+                      "deck": "Corp",
+                      "count": 1
+                    }
+                  },
+                  {
+                    "PresentChoice": {
+                      "chooser": "Corp",
+                      "options": [
+                        {
+                          "EffectIf": {
+                            "condition": {
+                              "ZoneHasAtLeast": {
+                                "zone": "OwnRAndD",
+                                "count": 1,
+                                "filter": {
+                                  "All": [
+                                    {
+                                      "TopOfZone": 1
+                                    },
+                                    {
+                                      "CardType": {
+                                        "Ice": "Barrier"
+                                      }
+                                    }
+                                  ]
+                                }
+                              }
+                            },
+                            "effect": {
+                              "PromptChooseCards": {
+                                "side": "Corp",
+                                "source": "OwnRAndD",
+                                "filter": {
+                                  "All": [
+                                    {
+                                      "TopOfZone": 1
+                                    },
+                                    {
+                                      "CardType": {
+                                        "Ice": "Barrier"
+                                      }
+                                    }
+                                  ]
+                                },
+                                "min": 1,
+                                "max": 1,
+                                "reveal": true,
+                                "shuffle_after": false,
+                                "then": {
+                                  "GainCredits": [
+                                    "Corp",
+                                    2
+                                  ]
+                                }
+                              }
+                            }
+                          }
+                        },
+                        {
+                          "Sequence": []
+                        }
+                      ],
+                      "texts": [
+                        "you may reveal it and gain 2[credit]",
+                        ""
+                      ]
+                    }
+                  }
+                ]
+              },
+              {
+                "PresentChoice": {
+                  "chooser": "Corp",
+                  "options": [
+                    {
+                      "Sequence": [
+                        {
+                          "LookAtTopOfDeck": {
+                            "deck": "Corp",
+                            "count": 1
+                          }
+                        },
+                        {
+                          "PresentChoice": {
+                            "chooser": "Corp",
+                            "options": [
+                              {
+                                "EffectIf": {
+                                  "condition": {
+                                    "ZoneHasAtLeast": {
+                                      "zone": "OwnRAndD",
+                                      "count": 1,
+                                      "filter": {
+                                        "All": [
+                                          {
+                                            "TopOfZone": 1
+                                          },
+                                          {
+                                            "CardType": "Asset"
+                                          }
+                                        ]
+                                      }
+                                    }
+                                  },
+                                  "effect": {
+                                    "PromptChooseCards": {
+                                      "side": "Corp",
+                                      "source": "OwnRAndD",
+                                      "filter": {
+                                        "All": [
+                                          {
+                                            "TopOfZone": 1
+                                          },
+                                          {
+                                            "CardType": "Asset"
+                                          }
+                                        ]
+                                      },
+                                      "min": 1,
+                                      "max": 1,
+                                      "reveal": true,
+                                      "shuffle_after": false,
+                                      "then": {
+                                        "GainCredits": [
+                                          "Corp",
+                                          2
+                                        ]
+                                      }
+                                    }
+                                  }
+                                }
+                              },
+                              {
+                                "Sequence": []
+                              }
+                            ],
+                            "texts": [
+                              "you may reveal it and gain 2[credit]",
+                              ""
+                            ]
+                          }
+                        }
+                      ]
+                    },
+                    {
+                      "Sequence": [
+                        {
+                          "LookAtTopOfDeck": {
+                            "deck": "Corp",
+                            "count": 1
+                          }
+                        },
+                        {
+                          "PresentChoice": {
+                            "chooser": "Corp",
+                            "options": [
+                              {
+                                "EffectIf": {
+                                  "condition": {
+                                    "ZoneHasAtLeast": {
+                                      "zone": "OwnRAndD",
+                                      "count": 1,
+                                      "filter": {
+                                        "All": [
+                                          {
+                                            "TopOfZone": 1
+                                          },
+                                          {
+                                            "CardType": "Operation"
+                                          }
+                                        ]
+                                      }
+                                    }
+                                  },
+                                  "effect": {
+                                    "PromptChooseCards": {
+                                      "side": "Corp",
+                                      "source": "OwnRAndD",
+                                      "filter": {
+                                        "All": [
+                                          {
+                                            "TopOfZone": 1
+                                          },
+                                          {
+                                            "CardType": "Operation"
+                                          }
+                                        ]
+                                      },
+                                      "min": 1,
+                                      "max": 1,
+                                      "reveal": true,
+                                      "shuffle_after": false,
+                                      "then": {
+                                        "GainCredits": [
+                                          "Corp",
+                                          2
+                                        ]
+                                      }
+                                    }
+                                  }
+                                }
+                              },
+                              {
+                                "Sequence": []
+                              }
+                            ],
+                            "texts": [
+                              "you may reveal it and gain 2[credit]",
+                              ""
+                            ]
+                          }
+                        }
+                      ]
+                    },
+                    {
+                      "Sequence": [
+                        {
+                          "LookAtTopOfDeck": {
+                            "deck": "Corp",
+                            "count": 1
+                          }
+                        },
+                        {
+                          "PresentChoice": {
+                            "chooser": "Corp",
+                            "options": [
+                              {
+                                "EffectIf": {
+                                  "condition": {
+                                    "ZoneHasAtLeast": {
+                                      "zone": "OwnRAndD",
+                                      "count": 1,
+                                      "filter": {
+                                        "All": [
+                                          {
+                                            "TopOfZone": 1
+                                          },
+                                          {
+                                            "CardType": "Upgrade"
+                                          }
+                                        ]
+                                      }
+                                    }
+                                  },
+                                  "effect": {
+                                    "PromptChooseCards": {
+                                      "side": "Corp",
+                                      "source": "OwnRAndD",
+                                      "filter": {
+                                        "All": [
+                                          {
+                                            "TopOfZone": 1
+                                          },
+                                          {
+                                            "CardType": "Upgrade"
+                                          }
+                                        ]
+                                      },
+                                      "min": 1,
+                                      "max": 1,
+                                      "reveal": true,
+                                      "shuffle_after": false,
+                                      "then": {
+                                        "GainCredits": [
+                                          "Corp",
+                                          2
+                                        ]
+                                      }
+                                    }
+                                  }
+                                }
+                              },
+                              {
+                                "Sequence": []
+                              }
+                            ],
+                            "texts": [
+                              "you may reveal it and gain 2[credit]",
+                              ""
+                            ]
+                          }
+                        }
+                      ]
+                    }
+                  ],
+                  "texts": [
+                    "choose a card type — asset",
+                    "choose a card type — operation",
+                    "choose a card type — upgrade"
+                  ]
+                }
+              },
+              {
+                "Sequence": []
+              }
+            ],
+            "texts": [
+              "choose a card type — agenda",
+              "choose a card type — ice",
+              "choose a card type — asset, operation or upgrade",
+              ""
+            ]
+          }
+        }
+      ],
+      "text": "When your turn begins, you may choose a card type to look at the top card of R&D. If that card has the chosen type, you may reveal it and gain 2[credit]."
+    }
+  ],
+  "numeric_id": 34050,
+  "is_playable": true
+}

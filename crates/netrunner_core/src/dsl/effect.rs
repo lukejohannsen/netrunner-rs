@@ -1687,14 +1687,26 @@ pub enum Prohibition {
     /// `payment::sources`, where the credit pool then holds nothing, and
     /// by `Effect::LoseCredits`.
     SpendOrLoseCreditPool,
+    /// The Runner cannot spend credits, from any pool — Attini's "Threat 3
+    /// → The Runner cannot spend credits while subroutines on this ice are
+    /// resolving", a standing effect (`ContinuousKind::Cannot`). Asked by
+    /// `payment::sources`, which then has nothing to offer: every credit a
+    /// payment takes is a credit spent. Not `SpendOrLoseCreditPool`, which
+    /// leaves the hosted credits spendable and forbids a loss.
+    SpendCredits,
 }
 
 impl Prohibition {
+    /// Every prohibition, for a question put about each of them
+    /// (`view::build_client_view`'s `standing_cannot`).
+    pub const ALL: [Prohibition; 4] =
+        [Prohibition::ScoreAgendas, Prohibition::StealOrTrash, Prohibition::SpendOrLoseCreditPool, Prohibition::SpendCredits];
+
     /// The player it binds.
     pub fn binds(self) -> Side {
         match self {
             Prohibition::ScoreAgendas => Side::Corp,
-            Prohibition::StealOrTrash | Prohibition::SpendOrLoseCreditPool => Side::Runner,
+            Prohibition::StealOrTrash | Prohibition::SpendOrLoseCreditPool | Prohibition::SpendCredits => Side::Runner,
         }
     }
 }

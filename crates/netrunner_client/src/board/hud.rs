@@ -264,6 +264,19 @@ pub fn removed_from_game(view: &ClientView, side: Side) -> &[CardId] {
 /// announced as going elsewhere (Maintenance Access), where it will go:
 /// the run carries the destination and not the card, so that line is the
 /// run's ("This run: …").
+/// A prohibition in force, as the In effect list says it: the same words
+/// whether a card made it for a duration or a card's standing effect has it
+/// on right now.
+fn cannot_words(what: netrunner_core::dsl::Prohibition) -> &'static str {
+    use netrunner_core::dsl::Prohibition;
+    match what {
+        Prohibition::StealOrTrash => "the Runner cannot steal or trash cards",
+        Prohibition::ScoreAgendas => "the Corp cannot score agendas",
+        Prohibition::SpendOrLoseCreditPool => "the Runner cannot spend or lose credits from their credit pool",
+        Prohibition::SpendCredits => "the Runner cannot spend credits",
+    }
+}
+
 pub fn in_effect(view: &ClientView, registry: &CardRegistry) -> Vec<String> {
     use netrunner_core::dsl::{EndRunPrevention, Prohibition};
     use netrunner_core::rules::lingering::{Lingering, On, Until};
@@ -290,7 +303,10 @@ pub fn in_effect(view: &ClientView, registry: &CardRegistry) -> Vec<String> {
         let order = if gained.after { "after" } else { "before" };
         format!("This run: {ice} has \u{201c}{}\u{201d} {order} its other subroutines", gained.subroutine.text.trim_end_matches('.'))
     }).collect();
-    redirect.into_iter().chain(event_counters).chain(gained_for_the_run).chain(view.lingering
+    // Attini: a prohibition a card's standing effect has in force right
+    // now (`standing_cannot`) — why an offer to pay has no Accept.
+    let standing = view.standing_cannot.iter().map(|standing| format!("{}: {}", title(&standing.source), cannot_words(standing.what)));
+    redirect.into_iter().chain(event_counters).chain(gained_for_the_run).chain(standing).chain(view.lingering
         .iter()
         .filter_map(|effect| {
             let what = match (&effect.what, &effect.on) {
@@ -304,14 +320,10 @@ pub fn in_effect(view: &ClientView, registry: &CardRegistry) -> Vec<String> {
                 (Lingering::Cannot(what), On::CopiesOf(card)) => match what {
                     Prohibition::StealOrTrash => format!("the Runner cannot steal or trash copies of {}", title(card)),
                     Prohibition::ScoreAgendas => format!("the Corp cannot score copies of {}", title(card)),
-                    Prohibition::SpendOrLoseCreditPool => "the Runner cannot spend or lose credits from their credit pool".to_string(),
+                    what => cannot_words(*what).to_string(),
                 },
                 (Lingering::Cannot(Prohibition::ScoreAgendas), On::Install(_)) => "the Corp cannot score the card it installed".to_string(),
-                (Lingering::Cannot(what), _) => match what {
-                    Prohibition::StealOrTrash => "the Runner cannot steal or trash cards".to_string(),
-                    Prohibition::ScoreAgendas => "the Corp cannot score agendas".to_string(),
-                    Prohibition::SpendOrLoseCreditPool => "the Runner cannot spend or lose credits from their credit pool".to_string(),
-                },
+                (Lingering::Cannot(what), _) => cannot_words(*what).to_string(),
                 (Lingering::PreventRunEnding(EndRunPrevention::UnlessCorpTrashesRootCountFromHq), _) => {
                     "the first time the Corp would end the run, it ends only if the Corp trashes a card from HQ for each card in the server's root".to_string()
                 }
@@ -598,6 +610,19 @@ mod tests {
         assert_eq!(lines.len(), 2, "{lines:?}");
         assert_eq!(lines[0], "Aircheck: the Runner cannot spend or lose credits from their credit pool, for the rest of this run");
         assert!(lines[1].ends_with(": the Runner has 1 fewer allotted click next turn"), "{lines:?}");
+    }
+
+    /// Attini's standing "cannot", in force only while its subroutines
+    /// resolve at threat 3, reads as the card that says it — the reason an
+    /// offer to pay 2[credit] has no Accept.
+    #[test]
+    fn a_standing_prohibition_is_listed_by_the_card_that_says_it() {
+        use netrunner_core::dsl::Prohibition;
+        use netrunner_core::view::StandingProhibition;
+        let registry = crate::decks::sample_deck_registry();
+        let mut view = view();
+        view.standing_cannot = vec![StandingProhibition { what: Prohibition::SpendCredits, source: CardId("attini".into()) }];
+        assert_eq!(in_effect(&view, &registry), vec!["Attini: the Runner cannot spend credits".to_string()]);
     }
 
     /// Lycian Multi-Munition's choice is one line for the piece of ice,

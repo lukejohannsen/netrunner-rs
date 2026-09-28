@@ -1,0 +1,44 @@
+{
+  "id": "cybersand_harvester",
+  "title": "Cybersand Harvester",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 2,
+  "trash_cost": 4,
+  "counter_kind": "Credit",
+  "pays_for": [
+    {
+      "Installing": "Any"
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnRez",
+      "subject": "Any",
+      "when": {
+        "Card": "Ice"
+      },
+      "effects": [
+        {
+          "AddCounters": 2
+        }
+      ],
+      "text": "Whenever you rez a piece of ice, place 2[credit] on this asset."
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": "TrashSelf",
+      "effect": {
+        "GainCreditsPerCounter": {
+          "side": "Corp",
+          "credits_per_counter": 1
+        }
+      },
+      "text": "[trash]: Take all credits from this asset."
+    }
+  ],
+  "numeric_id": 34058,
+  "is_playable": true
+}

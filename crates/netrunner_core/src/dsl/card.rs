@@ -1393,6 +1393,9 @@ impl CardDefinition {
                 (ContinuousKind::CannotBeDeclaredSuccessful | ContinuousKind::AccessOthersAtMost(_), _) => {
                     return misfit("RunsOnThisServer", "a run's success and its accesses are said of the runs on this card's server, by a card in its root");
                 }
+                (kind, Scope::Player(_)) if !matches!(kind, ContinuousKind::Cannot(_)) => {
+                    return misfit("Player", "only a prohibition is about a player named by side");
+                }
                 (_, Scope::RunsOnThisServer) => return misfit("RunsOnThisServer", "only a run's success and its accesses are about the runs on a server"),
                 (ContinuousKind::BreakLimit { .. } | ContinuousKind::TrashLimit(_), Scope::This) if matches!(self.card_type, CardType::Ice(_)) => {}
                 (ContinuousKind::BreakLimit { .. } | ContinuousKind::TrashLimit(_), _) => {
@@ -1402,6 +1405,8 @@ impl CardDefinition {
                 (ContinuousKind::RevealedWhileAccessed, _) => {
                     return misfit("RevealedWhileAccessed", "only a Corp card is accessed, and it says so of itself (`This`)");
                 }
+                (ContinuousKind::Cannot(what), Scope::Player(side)) if what.binds() == *side => {}
+                (ContinuousKind::Cannot(_), _) => return misfit("Cannot", "a prohibition is about the player it binds (`Player`)"),
             }
         }
         Ok(())

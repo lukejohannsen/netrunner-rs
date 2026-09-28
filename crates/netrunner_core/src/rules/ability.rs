@@ -3445,6 +3445,17 @@ pub fn check_requirement(
             });
             if matches { Ok(()) } else { Err(RulesError::RequirementNotMet) }
         }
+        EffectRequirement::ResolvingThisIcesSubroutines => {
+            let resolving = ctx.acting_install.is_some_and(|this| {
+                state.active_run.as_ref().is_some_and(|run| {
+                    run.phase == RunPhase::EncounterIce
+                        && run.ice.get(run.position).is_some_and(|ice| {
+                            ice.install_id == this && ice.subroutines.iter().any(|s| s.status == SubroutineStatus::Resolved)
+                        })
+                })
+            });
+            if resolving { Ok(()) } else { Err(RulesError::RequirementNotMet) }
+        }
         EffectRequirement::DuringRun => {
             // Not merely `active_run.is_some()`: once the Runner is
             // accessing, or the run has ended but not been cleared, there
@@ -3922,6 +3933,7 @@ pub(crate) fn consume_requirement(
         | EffectRequirement::ThisCardCountersAtLeast(_)
         | EffectRequirement::EncounteringHostIce
         | EffectRequirement::EncounteringThisIce
+        | EffectRequirement::ResolvingThisIcesSubroutines
         | EffectRequirement::DuringEncounter
         | EffectRequirement::Encountering(_)
         | EffectRequirement::ThisCardStartedTheRun

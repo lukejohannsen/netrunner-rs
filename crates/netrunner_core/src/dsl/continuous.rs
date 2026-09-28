@@ -83,9 +83,10 @@ fn is_one(amount: &Amount) -> bool {
 /// card in the pool prints** (the DSL Growth Rule): the ones the comparison
 /// with jinteki.net names and no card here needs yet are "cannot be
 /// broken" and advancement requirements that change while installed.
-/// Every "cannot" about a player in the pool has a duration, so it is an
-/// `Effect::Prohibit` and `continuous::cannot` reads the lingering list;
-/// the standing ones are about runs on a server (`RunsOnThisServer`).
+/// A "cannot" about a player with a duration is an `Effect::Prohibit`, on
+/// the lingering list; one that stands for as long as its card is active
+/// is `Cannot`, and `continuous::cannot` reads both. The standing ones
+/// about a run are about runs on a server (`RunsOnThisServer`).
 /// Each is a variant here when a card prints it — never a field on
 /// `CardDefinition`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -220,6 +221,15 @@ pub enum ContinuousKind {
     /// carried out: a trash the Runner prevented is not one. About `This`,
     /// on ice.
     TrashLimit(u32),
+    /// A player cannot do something for as long as this is on — Attini's
+    /// "Threat 3 → The Runner cannot spend credits while subroutines on
+    /// this ice are resolving". About `Player`, the one the prohibition
+    /// binds (`Prohibition::binds`), and asked by `continuous::cannot`
+    /// beside the lingering list. Composition didn't work: every "cannot"
+    /// before this one had a duration and was made by something that
+    /// resolved (`Effect::Prohibit`), and this one is made by nothing — it
+    /// is on while its `while` holds.
+    Cannot(crate::dsl::Prohibition),
 }
 
 /// Which cards an effect is about, read from the card that prints it.
@@ -290,6 +300,11 @@ pub enum Scope {
     /// The card's own text, like `This`, and read only there: a question
     /// about a scored agenda says whose score area it is in.
     ScoreArea(Side),
+    /// A player, named by side — Attini's "**The Runner** cannot spend
+    /// credits". Not a card, so it is reached only by a question about a
+    /// player that walks both sides' cards (`continuous::Target::Bound`):
+    /// the Corp's ice binds the Runner. Only a `Cannot` is about one.
+    Player(Side),
 }
 
 impl Scope {

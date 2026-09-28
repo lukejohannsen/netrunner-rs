@@ -3775,6 +3775,118 @@ new `Effect`.** Rebellion Without Rehearsal 65 of 65; `RWR_UNIMPLEMENTED`
 
 **Banned:** Cybersand Harvester.
 
+#### Stage 1 — nine Corp cards, and a standing "cannot" (28 September 2026)
+
+`feat/tai-stage-1-attini-cannot-spend-credits`: Salvo Testing, Fujii Asset
+Retrieval, Jaguarundi, Attini, Mindscaping, Pivot, Cybersand Harvester,
+Behold! and Balanced Coverage. **No new `Effect`.** The Automata
+Initiative 9 of 65; `TAI_UNIMPLEMENTED` 65 → 56.
+
+- **Attini is the one card that did not compose.** "Threat 3 → The Runner
+  cannot spend credits while subroutines on this ice are resolving" is a
+  standing prohibition, and every "cannot" before it had a duration and
+  was made by something that resolved (`Effect::Prohibit`, on the
+  lingering list).
+  - `ContinuousKind::Cannot(Prohibition)`, about the player it binds
+    (`Scope::Player(Side)`; `validate` holds the two together and refuses
+    `Player` on any other kind). `continuous::cannot` reads it beside the
+    lingering list, through a question that walks both tables
+    (`Target::Bound`), because the Corp's ice binds the Runner.
+  - `Prohibition::SpendCredits`: every pool, not only the credit pool
+    (Aircheck's `SpendOrLoseCreditPool`), and no word about a loss.
+    `payment::sources` offers nothing while it holds, so the one door
+    every payment goes through is the one place it is honoured.
+  - `EffectRequirement::ResolvingThisIcesSubroutines`: the run is
+    encountering this ice and a subroutine on it has resolved this
+    encounter — from 6.9.3c's first resolution to the encounter's end,
+    through every window a subroutine opens. CR 9.1.2b's own example is
+    Attini: the Runner cannot pay for an interrupt during a subroutine's
+    net damage either. Not in the break window before it, where Attini
+    is broken with credits like any code gate.
+  - Composing it as "do 1 net damage" at threat 3 was the alternative, and
+    is right for the three "unless the Runner pays" and wrong for any
+    credit-costed interrupt the pool gains.
+- **The mandatory draw now waits for the turn-begins abilities to
+  resolve** (CR 5.6.1d–e; Rules Conformance C1, fixed again).
+  `turn::begin_turn` drew straight after dispatching "turn begins", so an
+  ability that parked a decision had the draw and the window opened
+  underneath it. Balanced Coverage would have looked at the card after
+  the one just drawn, and AU Co.'s dig already did — its test said "the
+  mandatory draw took Ice Wall; the top 3 are now…". Clearinghouse,
+  Charlotte Caçador and Cohort Guidance Program park there too.
+  - The rest of the step is owed while the phase is `StartOfTurn` with no
+    window open, which is true only across such a park, and
+    `engine::apply_action` pays it once nothing is parked or queued
+    (`turn::finish_turn_beginning`). Read off the state, not a flag.
+  - Four tests had the old order written into them; each now says the
+    draw waited.
+- **Balanced Coverage always asks.** "If that card has the chosen type,
+  you may reveal it" as a selection of the matching top card parked only
+  on a match, so the Runner would have learned the top of R&D from the
+  Corp being asked, even when the Corp kept the agenda to itself. The
+  look is followed by a choice the Corp is always offered ("you may reveal
+  it and gain 2[credit]"), and the reveal checks the type
+  (`ZoneHasAtLeast` with the top card's filter). Six answers (five types
+  and none) are more than a decision holds, so asset, operation and
+  upgrade are a second decision.
+- **The rest compose.** Salvo Testing is The Powers That Be's "whenever
+  you score" with a "may"; Fujii is Jinteki: Personal Evolution's two
+  triggers about itself; Jaguarundi's "unless they spend [click]" is a
+  nested `Cost::Clicks` (Funhouse's shape); Mindscaping's "up to 3" is two
+  `EffectIf`s on the tag count; Pivot is Corporate Hospitality's
+  additional click, a search, and Humanoid Resources' install or play from
+  HQ behind the threat; Cybersand Harvester hosts credits for `Installing`
+  and is trashed for what is left (Fermenter's `GainCreditsPerCounter`,
+  read off the card its cost trashed); Behold! is Snare! with two tags.
+- **Found on the way:** `board::diff`'s test named Buzzsaw to the Corp
+  moving from the grip to the stack. Bring Them Home had revealed it and
+  put it back in the one action, so it was in neither view; the entry's
+  own `CardRevealed` now counts as seen. No leak — the edited decks had
+  re-rolled seed 0 onto the path.
+- **Client**, both clients: `ClientView::standing_cannot`, the engine's
+  verdict with the card that says it (drawn: `hud::in_effect`, "Attini:
+  the Runner cannot spend credits", both clients), so the reason an offer
+  to pay has no Accept is on the screen without a client reading the
+  threat level. `ClientView::cannot` reads it too. Behold! is a trap to
+  `board::rez::gains_nothing`, unasked. No ledger row opened.
+- **Decks** — swaps into Eternal-only Sweep decks, point for point:
+  Retirement Package (Salvo Testing, Jaguarundi), A Thousand Cuts (Fujii,
+  Mindscaping, Attini), Paid Content (Balanced Coverage, Behold!), Hostile
+  Bid (Cybersand Harvester, Pivot). No new deck, so the sweep schedule is
+  unchanged.
+- **DSL ratio (`pool_status.py`): 23 of 90 `Effect` variants single-use,
+  1 unused**, over 324 card files (24 of 90 before).
+- **Real play**, 96 games of each edited Corp deck against Safety Net
+  (seed 2):
+  - Random seats use all nine: Salvo Testing scored twice (its trigger
+    twice), Jaguarundi's threat-4 encounter asked 21 times, Fujii stolen
+    44 times (its damage 26), Mindscaping played 43 times, Attini rezzed
+    4 times with 17 subroutines fired, Balanced Coverage heard 246 turn
+    starts, Behold! paid for twice, Cybersand Harvester trashed for its
+    credits 43 times, Pivot played 33 times.
+  - Heuristic seats: Salvo Testing scored 48 times, Attini rezzed 15
+    times, Cybersand Harvester banked on 126 rezzes. The heuristic Corp
+    never plays Mindscaping or Pivot and never pays for Behold! (Phase 5
+    debt).
+  - Whether Attini's prohibition held in play is not in the report: a
+    threat of 3 is rare in these games, so it is reached by the card's
+    test.
+- **Measured.** Both sweeps at 256 seeds are green. Against `origin/main`,
+  `coverage_identical.py` has all four seatings moved, and the move is
+  attributed in three pinned steps:
+  - The standing prohibition, the requirement, the view field and the
+    clients, without the cards, the decks or the turn fix: **identical**
+    to main in all four shapes.
+  - Adding the cards and the deck swaps: both random seatings
+    **identical**; the heuristic ones moved (Corp flatlines 14 → 18,
+    Runner agenda wins 107 → 104, deck-outs 1 → 0, of 192) — `determinize`
+    sampling the new Corp cards.
+  - Adding the turn fix: every seating moved, the random ones by where the
+    draw now falls — AU Co.'s turn-start dig fired 12 → 8 times and asked
+    18 → 12 times by view, steps 74352 → 73018 — and the heuristic Corp
+    agenda wins 70 → 71, Runner agenda wins 104 → 103. That is the rule
+    change, and the one rule change in the stage.
+
 ### 4. Parhelion — 63 cards (C 19 / V 26 / M 18)
 
 **Decks:** Sweep decks on its four identities. Nova Initiumia and Ampère

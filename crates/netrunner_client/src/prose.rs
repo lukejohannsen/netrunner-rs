@@ -409,6 +409,7 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
                 (Prohibition::ScoreAgendas, false) => "the Corp cannot score agendas",
                 (Prohibition::ScoreAgendas, true) => "the Corp cannot score copies of that agenda",
                 (Prohibition::SpendOrLoseCreditPool, _) => "the Runner cannot lose or spend credits from their credit pool",
+                (Prohibition::SpendCredits, _) => "the Runner cannot spend credits",
             };
             format!("{what} {}", duration(until))
         }
@@ -601,6 +602,7 @@ pub fn describe_continuous(effect: &ContinuousEffect) -> String {
         Scope::ScoreArea(side) => format!("this agenda, in the {side:?}'s score area"),
         Scope::RunsOnThisServer => "each run against this server".to_string(),
         Scope::Trashing(filter) => format!("a resource the Corp trashes with the basic action ({})", lower(format!("{filter:?}"))),
+        Scope::Player(side) => format!("the {side:?}"),
     };
     let signed = |number: &Number| {
         let each = if number.per < 0 { format!("−{}", number.per.unsigned_abs()) } else { format!("+{}", number.per) };
@@ -638,6 +640,13 @@ pub fn describe_continuous(effect: &ContinuousEffect) -> String {
             subtype.printed().to_lowercase()
         ),
         ContinuousKind::TrashLimit(n) => format!("trashes at most {} each encounter", plural(*n, "installed Runner card", "installed Runner cards")),
+        ContinuousKind::Cannot(what) => match what {
+            Prohibition::ScoreAgendas => "cannot score agendas",
+            Prohibition::StealOrTrash => "cannot steal or trash cards",
+            Prohibition::SpendOrLoseCreditPool => "cannot lose or spend credits from their credit pool",
+            Prohibition::SpendCredits => "cannot spend credits",
+        }
+        .to_string(),
     };
     match &effect.condition {
         Some(condition) => format!("{whom} {what}, while {}", lower(format!("{condition:?}"))),

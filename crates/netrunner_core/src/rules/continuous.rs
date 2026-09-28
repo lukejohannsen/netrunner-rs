@@ -55,12 +55,17 @@ pub(crate) enum Target<'a> {
     /// The run against `server`: whether it may be declared successful,
     /// how many cards it may access.
     Run { server: ServerId },
+    /// A player, as a prohibition binds them (`Scope::Player`). Apart from
+    /// `Player`, which walks only that player's own cards because it is
+    /// asked after every action (`memory::refresh`): the Corp's ice binds
+    /// the Runner (Attini), so this walks both tables.
+    Bound(Side),
 }
 
 impl<'a> Target<'a> {
     fn card(&self) -> Option<&'a CardDefinition> {
         match self {
-            Target::Player(_) | Target::Run { .. } => None,
+            Target::Player(_) | Target::Run { .. } | Target::Bound(_) => None,
             Target::Card(card)
             | Target::InstallingOnto { card, .. }
             | Target::Rig { card, .. }
@@ -74,7 +79,7 @@ impl<'a> Target<'a> {
     fn install(&self) -> Option<InstallId> {
         match self {
             Target::Rig { install, .. } | Target::Corp { install, .. } | Target::Scoring { install, .. } | Target::Trashing { install, .. } => Some(*install),
-            Target::Player(_) | Target::Card(_) | Target::InstallingOnto { .. } | Target::Scored { .. } | Target::Run { .. } => None,
+            Target::Player(_) | Target::Card(_) | Target::InstallingOnto { .. } | Target::Scored { .. } | Target::Run { .. } | Target::Bound(_) => None,
         }
     }
 
@@ -224,6 +229,7 @@ fn applies(state: &GameState, source: &Source<'_>, scope: &Scope, target: &Targe
                 && crate::rules::pending_choice::copy_matches(state, filter, Some(*install))
         }
         (Scope::RunsOnThisServer, Target::Run { server }) => source.server == Some(*server),
+        (Scope::Player(side), Target::Bound(bound)) => side == bound,
         _ => false,
     }
 }
@@ -582,8 +588,23 @@ pub(crate) fn rez_cost_delta(state: &GameState, registry: &CardRegistry, install
 /// standing one ("while this is rezzed, the Runner cannot…") is a
 /// `ContinuousKind` no card needs yet (named on that enum), and this is
 /// where its scan joins: the callers already ask here.
-pub fn cannot(state: &GameState, _registry: &CardRegistry, what: Prohibition) -> bool {
-    lingering::prohibits(state, what)
+pub fn cannot(state: &GameState, registry: &CardRegistry, what: Prohibition) -> bool {
+    lingering::prohibits(state, what) || !standing_prohibitions(state, registry, what).is_empty()
+}
+
+/// The active cards whose standing `Cannot(what)` is on right now — Attini
+/// while its subroutines resolve at threat 3 — as a view carries them
+/// (`ClientView::standing_cannot`), so a client can say which card forbids
+/// it. Beside the lingering list, never on it: nothing resolved to make
+/// it, and it ends when its `while` stops holding, with nothing to sweep.
+pub fn standing_prohibitions<'a>(state: &'a GameState, registry: &'a CardRegistry, what: Prohibition) -> Vec<&'a CardId> {
+    let mut found = Vec::new();
+    for_each_applying(state, registry, Target::Bound(what.binds()), |effect, source, _| {
+        if effect.kind == ContinuousKind::Cannot(what) && !found.contains(&source.card) {
+            found.push(source.card);
+        }
+    });
+    found
 }
 
 /// [`cannot`] about one card: also what binds only copies of it (Perfect

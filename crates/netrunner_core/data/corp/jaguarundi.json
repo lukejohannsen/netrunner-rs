@@ -1,0 +1,68 @@
+{
+  "id": "jaguarundi",
+  "title": "Jaguarundi",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Sentry"
+  },
+  "cost": 4,
+  "strength": 3,
+  "triggers": [
+    {
+      "trigger": "OnEncounter",
+      "subject": "This",
+      "requirement": {
+        "AmountAtLeast": [
+          "ThreatLevel",
+          4
+        ]
+      },
+      "effects": [
+        {
+          "OfferPaidChoice": {
+            "side": "Runner",
+            "cost": {
+              "Clicks": 1
+            },
+            "if_paid": {
+              "Sequence": []
+            },
+            "if_declined": {
+              "GiveTags": {
+                "Fixed": 1
+              }
+            },
+            "text": "give them 1 tag unless they spend [click]"
+          }
+        }
+      ],
+      "text": "Threat 4 → When the Runner encounters this ice, give them 1 tag unless they spend [click]."
+    }
+  ],
+  "subroutines": [
+    {
+      "text": "Give the Runner 1 tag.",
+      "effect": {
+        "GiveTags": {
+          "Fixed": 1
+        }
+      }
+    },
+    {
+      "text": "If the Runner is tagged, do 1 core damage.",
+      "effect": {
+        "EffectIf": {
+          "condition": "IsTagged",
+          "effect": {
+            "DealDamage": [
+              "Brain",
+              1
+            ]
+          }
+        }
+      }
+    }
+  ],
+  "numeric_id": 34035,
+  "is_playable": true
+}

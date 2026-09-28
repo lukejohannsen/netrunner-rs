@@ -3,7 +3,7 @@
   "name": "Retirement Package",
   "side": "Corp",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach Vantage Point's first Haas-Bioroid and Weyland cards — Méliès City Luxury Line, Sleipnir, Retirement Plan, Flywheel, Vulture Fund — on Discretion Advised's frame, under Engineering the Future. Eternal-legal only. Vantage Point Stage 3a: Reverb for Whitespace, and two Synchrocyclotron for two NICO Campaign, lowering Retirement Plan's additional click. Vantage Point Stage 3b: Perfect Recall for Manegarm Skunkworks. Vantage Point Stage 4a: Vertigo for Tithe. Vantage Point Stage 4b: two Ansel 2.0 for two Ansel 1.0. Stage 5a: Caveat Emptor for two Hedge Fund. Rebellion Without Rehearsal Stage 1: two Corporate Hospitality for two Government Subsidy. Rebellion Without Rehearsal Stage 5a: two Working Prototype for the NICO Campaign and the Government Subsidy. Rebellion Without Rehearsal Stage 5b: two Sorocaban Blade for the Palisade and the Pharos. Rebellion Without Rehearsal Stage 5c: two Brasília Government Grid for two Seamless Launch, and two Warm Reception for two Predictive Planogram. Rebellion Without Rehearsal Stage 5d: two Lightning Laboratory for two Offworld Office, point for point. Rebellion Without Rehearsal Stage 6a: two Active Policing for the Predictive Planogram and the Hedge Fund. Rebellion Without Rehearsal Stage 8a: two Lycian Multi-Munition for a Vertigo and a Reverb, ice for ice.",
+  "description": "Not a published list: built so the sweeps reach Vantage Point's first Haas-Bioroid and Weyland cards — Méliès City Luxury Line, Sleipnir, Retirement Plan, Flywheel, Vulture Fund — on Discretion Advised's frame, under Engineering the Future. Eternal-legal only. Vantage Point Stage 3a: Reverb for Whitespace, and two Synchrocyclotron for two NICO Campaign, lowering Retirement Plan's additional click. Vantage Point Stage 3b: Perfect Recall for Manegarm Skunkworks. Vantage Point Stage 4a: Vertigo for Tithe. Vantage Point Stage 4b: two Ansel 2.0 for two Ansel 1.0. Stage 5a: Caveat Emptor for two Hedge Fund. Rebellion Without Rehearsal Stage 1: two Corporate Hospitality for two Government Subsidy. Rebellion Without Rehearsal Stage 5a: two Working Prototype for the NICO Campaign and the Government Subsidy. Rebellion Without Rehearsal Stage 5b: two Sorocaban Blade for the Palisade and the Pharos. Rebellion Without Rehearsal Stage 5c: two Brasília Government Grid for two Seamless Launch, and two Warm Reception for two Predictive Planogram. Rebellion Without Rehearsal Stage 5d: two Lightning Laboratory for two Offworld Office, point for point. Rebellion Without Rehearsal Stage 6a: two Active Policing for the Predictive Planogram and the Hedge Fund. Rebellion Without Rehearsal Stage 8a: two Lycian Multi-Munition for a Vertigo and a Reverb, ice for ice. The Automata Initiative Stage 1: two Salvo Testing for two Méliès City Luxury Line, point for point, and two Jaguarundi for two Flywheel, sentry for sentry.",
   "style": "glacier",
   "identity": "haas_bioroid_engineering_the_future",
   "cards": [
@@ -32,10 +32,6 @@
       "count": 1
     },
     {
-      "card": "flywheel",
-      "count": 2
-    },
-    {
       "card": "vulture_fund",
       "count": 1
     },
@@ -46,10 +42,6 @@
     {
       "card": "sleipnir",
       "count": 3
-    },
-    {
-      "card": "melies_city_luxury_line",
-      "count": 2
     },
     {
       "card": "synchrocyclotron",
@@ -97,6 +89,14 @@
     },
     {
       "card": "lycian_multi_munition",
+      "count": 2
+    },
+    {
+      "card": "salvo_testing",
+      "count": 2
+    },
+    {
+      "card": "jaguarundi",
       "count": 2
     }
   ]
