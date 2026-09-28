@@ -1420,6 +1420,32 @@ pub fn evaluate_effect(
             Ok(vec![GameEvent::PendingChoicePresented { chooser: *chooser, option_count: options.len() }])
         }
 
+        Effect::PsiGame { on_match, on_differ } => {
+            // What each could spend on a bid (CR 10.14.3), fixed as the
+            // game begins; a player who could bid only 0 is not asked.
+            let most = |side| {
+                crate::rules::payment::available(state, registry, side, crate::rules::payment::Purpose::Other)
+                    .min(crate::rules::pending_choice::PSI_MAX_BID)
+            };
+            let (corp_max, runner_max) = (most(Side::Corp), most(Side::Runner));
+            state.pending_decision = Some(PendingDecision::PsiGame {
+                corp_bid: if corp_max == 0 { crate::rules::state::PsiBid::Bid(0) } else { crate::rules::state::PsiBid::Awaiting },
+                corp_max,
+                runner_max,
+                on_match: on_match.clone(),
+                on_differ: on_differ.clone(),
+                source_card: acting_card.cloned(),
+                prompting_card: ctx.attributed_card(),
+                source_install: ctx.acting_install,
+                resume: PendingChoiceResume::None,
+            });
+            match (corp_max, runner_max) {
+                (0, 0) => crate::rules::pending_choice::finish_psi_game(state, registry, 0, Vec::new()),
+                (0, _) => Ok(vec![GameEvent::NumberChoiceOffered { chooser: Side::Runner, min: 0, max: runner_max }]),
+                _ => Ok(vec![GameEvent::NumberChoiceOffered { chooser: Side::Corp, min: 0, max: corp_max }]),
+            }
+        }
+
         Effect::ChooseNumber { chooser, min, max, of, then, text, secret } => {
             let mut most = resolve_amount(max, ctx, state, registry).min(crate::rules::action_mask::MAX_CHOSEN_NUMBER);
             if let Some(of) = of {

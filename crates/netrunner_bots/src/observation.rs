@@ -50,7 +50,7 @@ use std::sync::OnceLock;
 use netrunner_core::cards::CardRegistry;
 use netrunner_core::dsl::{CardDefinition, CardId, CardType, Cost, IceType};
 use netrunner_core::rules::{
-    ActionSpace, GamePhase, GameState, InstallSlot, MaskedZone, PendingDecision, PublicAccessPhase,
+    ActionSpace, GamePhase, GameState, InstallSlot, MaskedZone, PendingDecision, PsiBid, PublicAccessPhase,
     PublicAccessState, PublicInstalledCard, PublicInstalledRunnerCard, PublicRunIce, PublicRunState, RunPhase, ServerId,
     Side, SubroutineStatus,
 };
@@ -836,6 +836,10 @@ fn encode_decision(view: &ClientView, features: &mut Vec<f32>) {
         // Revisit with the next deliberate reshape of the observation.
         | PendingDecision::ChooseNumber { chooser, .. } => *chooser,
         PendingDecision::ChooseCards { side, .. } => *side,
+        // A psi game is a number decision too, with no slot for the same
+        // reason; its bidder is whoever has not bid.
+        PendingDecision::PsiGame { corp_bid: PsiBid::Awaiting, .. } => Side::Corp,
+        PendingDecision::PsiGame { .. } => Side::Runner,
     });
     let access_decider = view.active_run.as_ref().and_then(|run| match &run.access_state.as_ref()?.phase {
         PublicAccessPhase::PendingInteractiveTrigger { decider, .. } => Some(*decider),

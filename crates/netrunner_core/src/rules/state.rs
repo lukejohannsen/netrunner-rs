@@ -973,6 +973,18 @@ pub enum PendingChoiceResume {
     ResumeSubroutines,
 }
 
+/// The Corp's bid in a psi game (`PendingDecision::PsiGame`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum PsiBid {
+    /// Not bid yet: the Corp is being asked.
+    Awaiting,
+    Bid(u32),
+    /// Bid, and not the viewer's to know — what the Runner's view and a
+    /// spectator's carry in place of `Bid` (`masking`). Never on a real
+    /// state; a bot's sample guesses a bid for it (`determinize`).
+    Concealed,
+}
+
 /// The install half of a `PendingDecision::ChooseServer` — which card the
 /// chosen server receives, named as a **position** into `origin`, never a
 /// `CardId`: the decision passes through `PublicGameState` unmasked, and a
@@ -1176,6 +1188,30 @@ pub enum PendingDecision {
         /// alone. The decision itself — who is choosing, from what range —
         /// is public, as a secret choice being made is (CR 1.5.2b).
         secret: bool,
+    },
+    /// `Effect::PsiGame` parked this (CR 10.14.6): the Corp bids while
+    /// `corp_bid` is `Awaiting`, then the Runner, each with
+    /// `PlayerAction::ChooseNumber` from 0 to their `*_max` — 2, or less
+    /// if they could spend less (10.14.3), fixed when parked. The Runner's
+    /// answer reveals and spends both bids and resolves `on_match` or
+    /// `on_differ` as the card that asked.
+    ///
+    /// **The Corp's bid is the one thing here the Runner is not shown:**
+    /// the view has it `Concealed` (`masking`), its `NumberChosen` is
+    /// secret, and `GameEvent::PsiBidsRevealed` shows both once the Runner
+    /// has bid. A player who can bid only 0 is not asked.
+    PsiGame {
+        corp_bid: PsiBid,
+        corp_max: u32,
+        runner_max: u32,
+        on_match: Box<Effect>,
+        on_differ: Box<Effect>,
+        source_card: Option<CardId>,
+        /// See `ChooseCards::prompting_card`.
+        prompting_card: Option<CardId>,
+        /// See `PendingPaidChoice::source_install`.
+        source_install: Option<InstallId>,
+        resume: PendingChoiceResume,
     },
     ChooseServer {
         chooser: Side,

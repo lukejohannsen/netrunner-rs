@@ -435,6 +435,10 @@ mod catalog_join_tests {
                     walk(if_paid, out);
                     walk(if_declined, out);
                 }
+                Effect::PsiGame { on_match, on_differ } => {
+                    walk(on_match, out);
+                    walk(on_differ, out);
+                }
                 Effect::EffectIf { effect, .. }
                 | Effect::Trace { on_success: effect, .. }
                 | Effect::SetAccessReplacement { effect, .. }

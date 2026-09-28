@@ -1045,6 +1045,7 @@ pub fn mask_event_for_player(event: &GameEvent, state: &GameState, viewer: impl 
         | GameEvent::PendingChoiceResolved { .. }
         | GameEvent::NumberChoiceOffered { .. }
         | GameEvent::NumberChosen { .. }
+        | GameEvent::PsiBidsRevealed { .. }
         | GameEvent::PendingPaidChoiceOffered { .. }
         | GameEvent::PendingPaidChoiceAccepted { .. }
         | GameEvent::PendingPaidChoiceDeclined { .. } => visible(),
@@ -1079,6 +1080,15 @@ fn mask_pending_decision(decision: &PendingDecision, state: &GameState, viewer: 
             *prompting_card = conceal(prompting_card);
         }
         PendingDecision::ChooseTriggerOrder { .. } => {}
+        // The Corp's bid is the Corp's until the Runner has bid, which
+        // resolves the game (CR 10.14.2); that one has been made is public.
+        PendingDecision::PsiGame { corp_bid, source_card, prompting_card, .. } => {
+            if !viewer.is(Side::Corp) && matches!(corp_bid, crate::rules::state::PsiBid::Bid(_)) {
+                *corp_bid = crate::rules::state::PsiBid::Concealed;
+            }
+            *source_card = conceal(source_card);
+            *prompting_card = conceal(prompting_card);
+        }
     }
     masked
 }

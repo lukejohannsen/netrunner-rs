@@ -566,6 +566,11 @@ pub enum GameEvent {
     /// (`masking::mask_event_for_player`) and the answering action is
     /// concealed in their log.
     NumberChosen { chooser: Side, amount: u32, secret: bool },
+    /// Both bids of a psi game, revealed together once the Runner has bid
+    /// (CR 10.14.6c) and spent after this (10.14.4) — the first moment the
+    /// Runner learns the Corp's (`Effect::PsiGame`). Heard by no card: none
+    /// in the pool triggers on a revealed bid (10.14.5).
+    PsiBidsRevealed { corp: u32, runner: u32 },
     /// `Effect::OfferPaidChoice` parked a `state::PendingPaidChoice`,
     /// awaiting `PlayerAction::AcceptPendingPaidChoice`/
     /// `DeclinePendingPaidChoice`.
@@ -617,7 +622,7 @@ impl GameEvent {
             | GameEvent::IceEncountered { .. } | GameEvent::DamageTaken { .. } | GameEvent::CardsTrashedFromHq { .. }
             | GameEvent::CardsTrashedFromRnD { .. }
             | GameEvent::MulliganTaken { .. } | GameEvent::HandKept { .. } | GameEvent::TraceInitiated { .. }
-            | GameEvent::TraceCorpBidSubmitted { .. } | GameEvent::TraceRunnerBidSubmitted { .. }
+            | GameEvent::TraceCorpBidSubmitted { .. } | GameEvent::TraceRunnerBidSubmitted { .. } | GameEvent::PsiBidsRevealed { .. }
             | GameEvent::TraceAvoided { .. } | GameEvent::TraceSuccessful { .. } | GameEvent::GameOver { .. }
             | GameEvent::RunnerFlatlined | GameEvent::TurnStarted { .. } | GameEvent::TurnEnded { .. } => true,
             GameEvent::FinishedResolving { .. } => false,

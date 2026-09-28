@@ -568,6 +568,26 @@ impl Prompt {
                     title: format!("{}: {}", asked_by(prompting_card, source_card), if text.is_empty() { "choose a number" } else { text.as_str() }),
                     detail: format!("{min} to {max}"),
                 },
+                // Who is bidding, and what the viewer may know of the other
+                // bid: the Corp's is shown to the Runner only as made.
+                PendingDecision::PsiGame { corp_bid, corp_max, runner_max, source_card, prompting_card, .. } => {
+                    let card = asked_by(prompting_card, source_card);
+                    let corp_bidding = *corp_bid == netrunner_core::rules::PsiBid::Awaiting;
+                    match (view.viewer.side(), corp_bidding) {
+                        (Some(Side::Corp), true) | (Some(Side::Runner), false) => Prompt {
+                            title: format!("{card}: play a Psi Game — bid in secret"),
+                            detail: format!("0 to {} credits", if corp_bidding { corp_max } else { runner_max }),
+                        },
+                        (_, true) => Prompt { title: format!("{card}: the Corp is bidding in secret"), detail: String::new() },
+                        (_, false) => Prompt {
+                            title: format!("{card}: the Runner is bidding"),
+                            detail: match corp_bid {
+                                netrunner_core::rules::PsiBid::Bid(bid) => format!("you bid {bid}"),
+                                _ => "the Corp has bid".to_string(),
+                            },
+                        },
+                    }
+                }
                 PendingDecision::ChooseServer { source_card, prompting_card, install, .. } => match Placement::of(view, registry) {
                     Some(placement) => Prompt { title: format!("{}: {}", asked_by(prompting_card, source_card), placement.question()), detail: placement.detail() },
                     None if install.is_some() => Prompt { title: format!("{}: installing a card", asked_by(prompting_card, source_card)), detail: String::new() },
@@ -688,6 +708,8 @@ impl Prompt {
                 | PendingDecision::ChooseNumber { chooser, source_card, prompting_card, .. } => {
                     view.viewer.is(*chooser).then(|| asked_by(prompting_card, source_card)).flatten()
                 }
+                // Both bid, so both are shown the card that asked.
+                PendingDecision::PsiGame { source_card, prompting_card, .. } => asked_by(prompting_card, source_card),
                 PendingDecision::ChooseServer { chooser, source_card, prompting_card, install, .. } => match Placement::of(view, registry) {
                     Some(placement) => placement.card().cloned().or_else(|| asked_by(prompting_card, source_card)),
                     None if install.is_none() && view.viewer.is(*chooser) => asked_by(prompting_card, source_card),

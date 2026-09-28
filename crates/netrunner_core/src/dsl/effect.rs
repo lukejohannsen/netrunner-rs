@@ -1121,6 +1121,22 @@ pub enum Effect {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         each: Option<Box<Effect>>,
     },
+    /// "Play a Psi Game" (CR 10.14.6): each player secretly bids 0, 1 or
+    /// 2[credit], no more than they could spend (10.14.3), then both bids
+    /// are revealed and spent (10.14.4) and `on_match` or `on_differ`
+    /// resolves (10.14.6d) — See How They Run's "If the bids differ, do 1
+    /// core damage. If the bids match, do 1 net damage." Parks a
+    /// `state::PendingDecision::PsiGame`, the Corp bidding first and the
+    /// Runner told only that it has, each answered by
+    /// `PlayerAction::ChooseNumber`. Composition didn't work: two secret
+    /// `ChooseNumber`s cannot compare their numbers, since a nested choice
+    /// keeps its own placeholder, and branching on the Corp's bid would put
+    /// the bid in the continuation the Runner's decision carries, which a
+    /// view passes through whole.
+    PsiGame {
+        on_match: Box<Effect>,
+        on_differ: Box<Effect>,
+    },
     /// Places `0` advancement counters on `acting_card` — e.g. Seamless
     /// Launch's "place 2 advancement counters on 1 installed card", Flood
     /// the Market's "1 advancement counter … for each remote server that
@@ -1655,6 +1671,7 @@ impl Effect {
             Effect::OfferPaidChoice { side, cost, if_paid, if_declined, text } => {
                 Effect::OfferPaidChoice { side, cost, if_paid: boxed(if_paid), if_declined: boxed(if_declined), text }
             }
+            Effect::PsiGame { on_match, on_differ } => Effect::PsiGame { on_match: boxed(on_match), on_differ: boxed(on_differ) },
             other => other,
         }
     }
@@ -1686,6 +1703,7 @@ impl Effect {
             Effect::OfferPaidChoice { side, cost, if_paid, if_declined, text } => {
                 Effect::OfferPaidChoice { side, cost, if_paid: boxed(if_paid), if_declined: boxed(if_declined), text }
             }
+            Effect::PsiGame { on_match, on_differ } => Effect::PsiGame { on_match: boxed(on_match), on_differ: boxed(on_differ) },
             other => other,
         }
     }
@@ -1726,6 +1744,10 @@ impl Effect {
             Effect::OfferPaidChoice { if_paid, if_declined, .. } => {
                 if_paid.for_each_effect(f);
                 if_declined.for_each_effect(f);
+            }
+            Effect::PsiGame { on_match, on_differ } => {
+                on_match.for_each_effect(f);
+                on_differ.for_each_effect(f);
             }
             Effect::PromptChooseCards { then: Some(effect), .. } => effect.for_each_effect(f),
             Effect::PromptChooseServer { on_success, on_start, .. } => {

@@ -249,6 +249,17 @@ fn every_field_of_the_view_is_accounted_for(view: ClientView) {
                 resume: _,         // engine's
                 secret: _,         // drawn: the other seat's log reads "Choose in secret" (actions)
             } => {}
+            PendingDecision::PsiGame {
+                corp_bid: _,       // drawn: Prompt::of — "the Corp is bidding" / "has bid"; the Corp's own "you bid 2"
+                corp_max: _,       // drawn: Prompt::of's detail and the buttons, to the Corp
+                runner_max: _,     // drawn: as corp_max, to the Runner
+                on_match: _,       // engine's: what the outcome resolves (the card's text says it)
+                on_differ: _,      // engine's: as on_match
+                source_card: _,    // drawn: Prompt::of, Prompt::card
+                prompting_card: _, // drawn: as source_card
+                source_install: _, // engine's
+                resume: _,         // engine's
+            } => {}
             PendingDecision::ChooseServer {
                 chooser: _,         // drawn: Prompt::of, Prompt::card
                 rez_cost_delta: _,  // drawn: once the run starts, as a lingering rez tax (hud::in_effect)

@@ -212,6 +212,11 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
         Effect::LoseCredits(side, n) => format!("{} loses {}", who(*side), plural(*n, "credit", "credits")),
         Effect::LoseCreditsAmount(side, amount) => format!("{} loses credits equal to {}", who(*side), describe_amount(amount)),
         Effect::DealDamage(kind, n) => format!("do {} {} damage", n, damage_word(kind)),
+        Effect::PsiGame { on_match, on_differ } => format!(
+            "play a Psi Game: if the bids match, {}; if they differ, {}",
+            describe_effect(on_match, registry),
+            describe_effect(on_differ, registry)
+        ),
         Effect::DealDamageAmount(kind, amount) => format!("do {} damage equal to {}", damage_word(kind), describe_amount(amount)),
         Effect::ModifyStrength { delta, ice, duration } => {
             let which = match ice {
@@ -628,7 +633,8 @@ pub fn decision_card(view: &ClientView) -> Option<&CardId> {
         PendingDecision::ChooseEffect { source_card, prompting_card, .. }
         | PendingDecision::ChooseCards { source_card, prompting_card, .. }
         | PendingDecision::ChooseServer { source_card, prompting_card, .. }
-        | PendingDecision::ChooseNumber { source_card, prompting_card, .. } => prompting_card.as_ref().or(source_card.as_ref()),
+        | PendingDecision::ChooseNumber { source_card, prompting_card, .. }
+        | PendingDecision::PsiGame { source_card, prompting_card, .. } => prompting_card.as_ref().or(source_card.as_ref()),
         PendingDecision::ChooseTriggerOrder { .. } => None,
     }
 }
@@ -714,6 +720,10 @@ pub fn decision_prompt(view: &ClientView, registry: &CardRegistry) -> Option<Str
         // "Bigger Picture asks — Remove any number of tags (0 to 3)".
         PendingDecision::ChooseNumber { text, min, max, .. } if !text.is_empty() => asks(format!("{text} ({min} to {max})")),
         PendingDecision::ChooseNumber { min, max, .. } => asks(format!("choose a number from {min} to {max}")),
+        PendingDecision::PsiGame { corp_bid: netrunner_core::rules::PsiBid::Awaiting, corp_max, .. } => {
+            asks(format!("play a Psi Game: the Corp bids 0 to {corp_max} credits, in secret"))
+        }
+        PendingDecision::PsiGame { runner_max, .. } => asks(format!("play a Psi Game: the Corp has bid; the Runner bids 0 to {runner_max} credits")),
     }
 }
 
