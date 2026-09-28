@@ -24,7 +24,6 @@ pub(crate) const RWR_UNIMPLEMENTED: &[(u32, &str)] = &[
     (34086, "Spree"),
     (34096, "Thunderbolt Armaments: Peace Through Power"),
     (34100, "Lycian Multi-Munition"),
-    (34106, "Sisyphus Protocol"),
 ];
 
 /// *The Automata Initiative* (`tai`): tranche 3 of the NSG plan.

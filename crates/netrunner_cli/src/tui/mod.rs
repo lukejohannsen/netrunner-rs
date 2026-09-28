@@ -1571,7 +1571,8 @@ fn format_run(view: &ClientView, run: &netrunner_core::rules::PublicRunState, re
     if run.breach_only {
         return vec![Line::from(format!("Breach of {}", server_label(run.server)))];
     }
-    let mut lines = vec![Line::from(format!("Run on {} (ICE {}/{})", server_label(run.server), run.position, run.ice.len()))];
+    let again = if run.forced_encounter { ", encountering it again" } else { "" };
+    let mut lines = vec![Line::from(format!("Run on {} (ICE {}/{}){again}", server_label(run.server), run.position, run.ice.len()))];
     let met = netrunner_client::board::encounter_subroutines(view);
     for (index, ice) in run.ice.iter().enumerate() {
         let marker = if index == run.position { ">" } else { " " };
@@ -2158,6 +2159,7 @@ mod tests {
             jack_out_permitted: false,
             declared_successful: false,
             breach_only: false,
+            forced_encounter: false,
             bad_publicity_credits: 0,
             bonus_run_credits: 0,
             redirect_on_approach: None,

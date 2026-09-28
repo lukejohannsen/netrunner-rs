@@ -368,6 +368,12 @@ pub struct IceFacts {
     pub after_fully_breaking: bool,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub at_most_zero_strength: bool,
+    /// "Passes a **rezzed code gate or sentry**" — Sisyphus Protocol, the
+    /// one card that asks. Rezzed because an unrezzed piece of ice's type
+    /// is not public; and one fact rather than a type, because the facts
+    /// are bits of a turn-log column and a type would multiply them.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub rezzed_code_gate_or_sentry: bool,
 }
 
 impl IceFacts {
@@ -376,29 +382,39 @@ impl IceFacts {
         (!self.outermost || moment.outermost)
             && (!self.after_fully_breaking || moment.after_fully_breaking)
             && (!self.at_most_zero_strength || moment.at_most_zero_strength)
+            && (!self.rezzed_code_gate_or_sentry || moment.rezzed_code_gate_or_sentry)
     }
 
     /// The facts `trigger`'s moment states; a filter may ask no others,
     /// since the rest are always `false` there (`CardDefinition::validate`).
     pub fn stated_by(trigger: Trigger) -> IceFacts {
         match trigger {
-            Trigger::OnIcePassed => IceFacts { outermost: true, after_fully_breaking: true, at_most_zero_strength: false },
+            Trigger::OnIcePassed => IceFacts { outermost: true, after_fully_breaking: true, rezzed_code_gate_or_sentry: true, ..IceFacts::default() },
             Trigger::OnSubroutineBroken => IceFacts { at_most_zero_strength: true, ..IceFacts::default() },
             _ => IceFacts::default(),
         }
     }
 
-    /// The facts as a number, 0..8 — a column of the turn log.
+    /// The facts as a number, 0..16 — a column of the turn log.
     pub fn bits(self) -> usize {
-        usize::from(self.outermost) | usize::from(self.after_fully_breaking) << 1 | usize::from(self.at_most_zero_strength) << 2
+        usize::from(self.outermost)
+            | usize::from(self.after_fully_breaking) << 1
+            | usize::from(self.at_most_zero_strength) << 2
+            | usize::from(self.rezzed_code_gate_or_sentry) << 3
     }
 
-    /// Every combination of the three, in `bits` order.
-    pub const ALL: [IceFacts; 8] = {
-        let mut all = [IceFacts { outermost: false, after_fully_breaking: false, at_most_zero_strength: false }; 8];
+    /// Every combination of the four, in `bits` order.
+    pub const ALL: [IceFacts; 16] = {
+        let none = IceFacts { outermost: false, after_fully_breaking: false, at_most_zero_strength: false, rezzed_code_gate_or_sentry: false };
+        let mut all = [none; 16];
         let mut bits = 0;
-        while bits < 8 {
-            all[bits] = IceFacts { outermost: bits & 1 != 0, after_fully_breaking: bits & 2 != 0, at_most_zero_strength: bits & 4 != 0 };
+        while bits < 16 {
+            all[bits] = IceFacts {
+                outermost: bits & 1 != 0,
+                after_fully_breaking: bits & 2 != 0,
+                at_most_zero_strength: bits & 4 != 0,
+                rezzed_code_gate_or_sentry: bits & 8 != 0,
+            };
             bits += 1;
         }
         all

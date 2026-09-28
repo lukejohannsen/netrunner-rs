@@ -363,6 +363,9 @@ pub struct PublicRunState {
     /// `RunState::breach_only`: public, as what began it was.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub breach_only: bool,
+    /// `RunState::forced_encounter`: public, as what forced it was.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub forced_encounter: bool,
     /// Credits this run may still draw from Bad Publicity. Never masked:
     /// `PublicCorpState::bad_publicity` is already public, and how much of
     /// it this run has spent is something both players track openly —
@@ -1189,6 +1192,7 @@ fn mask_run_state(state: &GameState, registry: &CardRegistry, run: &RunState, vi
         jack_out_permitted: run.jack_out_permitted,
         declared_successful: run.declared_successful,
         breach_only: run.breach_only,
+        forced_encounter: run.forced_encounter,
         bad_publicity_credits: run.bad_publicity_credits,
         bonus_run_credits: run.bonus_run_credits,
         redirect_on_approach: run.redirect_on_approach,

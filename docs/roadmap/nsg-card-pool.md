@@ -1908,7 +1908,7 @@ reaches Vantage Point's cards by building a deck.
 7. **Expendable, moving ice, psi, re-encounter**, in five parts when it was
    taken: **7a**, expendable cards (built, below): Eminent Domain, Descent;
    **7b**, a psi game (built, below): See How They Run; **7c**, ice that moves as a run
-   begins (built, below): Tributary; **7d**, an encounter repeated: Sisyphus Protocol;
+   begins (built, below): Tributary; **7d**, an encounter repeated (built, below): Sisyphus Protocol;
    **7e**, a trojan hosted by an event's ability: Spree.
 8. **A card's identity changes:** Thunderbolt Armaments: Peace Through Power, Lycian
    Multi-Munition, Jeitinho.
@@ -3392,6 +3392,59 @@ Without Rehearsal 60 of 65; `RWR_UNIMPLEMENTED` 6 → 5.
   with the effect, the install word and the prose and without the card
   and the deck is identical to 7b in all four shapes, so the heuristic
   movement is `determinize` sampling a new Corp card.
+
+#### Stage 7d — an encounter repeated (28 September 2026)
+
+`feat/rwr-stage-7d-sisyphus-protocol`: Sisyphus Protocol. **One new
+`Effect`.** Rebellion Without Rehearsal 61 of 65; `RWR_UNIMPLEMENTED` 5 → 4.
+
+- **"The first time each turn the Runner passes a rezzed code gate or
+  sentry"** is `OnIcePassed` with `first_each_turn`, `subject: Any` and
+  `acts_on_subject`, narrowed by a new `IceFacts` word,
+  `rezzed_code_gate_or_sentry`.
+  - The pass event carries the ice's type if it was rezzed as it was
+    passed (`IcePassed::rezzed_as`, public), and the moment's fact is read
+    off the event, as the other facts are.
+  - A fact rather than a type because the facts are bits of a turn-log
+    column. The fourth doubles the ice's columns to 16, still within the
+    table's widest set (28), which a compile-time assertion now holds.
+- **"You may pay 1[credit] or trash 1 card from HQ. If you do, the Runner
+  encounters that ice again"** is an `OfferPaidChoice` of `AnyOf`, as
+  Cloud Eater's is, whose `if_paid` is `Effect::ForceEncounter`: CR
+  6.5.9a's forced encounter, whose own example is The Twins.
+  - `run::force_encounter` puts the run back into the encounter at that
+    ice's position. It is a new encounter: the ice's printed subroutines
+    again, rebuilt from the install, and `lingering::sweep` for what the
+    last one bought. It clears the movement phase's window, announces
+    `IceEncountered` (so "when encountered" is heard), and opens the
+    encounter's window.
+  - `RunState::forced_encounter` makes that encounter's end a return to
+    the movement phase just inward of the ice, with **no second pass**
+    (`pass_current_ice`). An "end the run" ends both (6.5.9b), as any
+    encounter's does.
+  - Only from the movement phase, and only for ice still protecting the
+    attacked server and rezzed; otherwise nothing, as 6.2.8c's "instead
+    the Runner does nothing".
+  - Composition didn't work: nothing moved a run back into an encounter,
+    and every encounter's end was a pass.
+- **Client:** the new field is drawn. The desktop's phase bar reads
+  "Encounter ice 1 of 2 again" and the terminal's run strip "encountering
+  it again"; the encounter panel is the one any encounter gets.
+- **Deck** — Honor Roll (Méliès U): two Sisyphus Protocol for two
+  Proprionegation, 2 points for 2 (20 still).
+- **Real play**, 96 games of Honor Roll against Safety Net (seed 2):
+  - The heuristic Corp scored it 24 times, and the offer came 28 times.
+  - Random seats never scored it: it was stolen 29 times.
+- **DSL ratio (`pool_status.py`): 24 of 88 `Effect` variants single-use,
+  1 unused**, over 311 card files (23 of 87 before).
+- **Measured.** Both sweeps at 256 seeds are green. Against 7c,
+  `coverage_identical.py` has both random seatings **identical**, and the
+  heuristic ones moved more than the earlier stages' (Corp agenda wins
+  79 → 71 of 192, Runner agenda wins 96 → 104). A ref with the pass
+  event's new field, the fact, the forced encounter and the clients, and
+  without the card and the deck, is identical to 7c in all four shapes.
+  So the whole move is the new card in the bots' samples (`determinize`),
+  not a rule; the Sweep decks are never in `matchups()`.
 
 ### 3. The Automata Initiative — 65 cards (C 14 / V 35 / M 16)
 
