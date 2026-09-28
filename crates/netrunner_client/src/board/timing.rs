@@ -367,6 +367,7 @@ mod tests {
             jack_out_permitted: true,
             declared_successful: false,
             breach_only: false,
+            forced_encounter: false,
             bad_publicity_credits: 0,
             bonus_run_credits: 0,
             redirect_on_approach: None,

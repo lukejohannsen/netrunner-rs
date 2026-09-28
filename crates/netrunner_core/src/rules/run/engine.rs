@@ -207,6 +207,7 @@ pub fn start_run(state: &mut GameState, registry: &CardRegistry, server: ServerI
         jack_out_permitted: false,
         declared_successful: false,
         breach_only: false,
+        forced_encounter: false,
         cards_accessed_count: 0, bonus_run_credits: 0,
         begun_as_the_turn_began,
     });
@@ -274,9 +275,62 @@ fn pass_current_ice(run: &mut RunState, position: usize) -> Vec<GameEvent> {
     // The encounter is complete before the ice is passed (CR 6.9.3e, then
     // 6.9.4a).
     let mut events: Vec<GameEvent> = encounter_ends(run).into_iter().collect();
-    events.push(GameEvent::IcePassed { server: run.server, position: position as u32, after_fully_breaking });
+    // A forced encounter's end is a return to the movement phase it was
+    // forced from, the ice already passed there (CR 6.5.9a).
+    if std::mem::take(&mut run.forced_encounter) {
+        enter_movement(run, position + 1);
+        return events;
+    }
+    let rezzed_as = run.ice.get(position).filter(|ice| ice.rezzed).map(|ice| ice.ice_type);
+    events.push(GameEvent::IcePassed { server: run.server, position: position as u32, after_fully_breaking, rezzed_as });
     enter_movement(run, position + 1);
     events
+}
+
+/// `Effect::ForceEncounter`: the Runner encounters `install` again without
+/// moving (CR 6.5.9a) — Sisyphus Protocol's "the Runner encounters that
+/// ice again", heard as the ice is passed, so the run is in the movement
+/// phase just inward of it. The encounter is a new one: the ice's
+/// subroutines are its printed ones again and what the last encounter
+/// bought or gained is gone (`lingering::sweep`, and the ice rebuilt from
+/// the install). `RunState::forced_encounter` sends its end back to the
+/// movement phase without a second pass; the encounter's window opens as
+/// any encounter's does. Nothing outside the movement phase, or for ice
+/// not protecting the attacked server any more (6.2.8c's "instead the
+/// Runner does nothing").
+pub(crate) fn force_encounter(state: &mut GameState, registry: &CardRegistry, install: crate::rules::state::InstallId) -> Result<Vec<GameEvent>, RulesError> {
+    let Some(run) = state.active_run.as_ref() else { return Ok(Vec::new()) };
+    let Some(position) = run.ice.iter().position(|ice| ice.install_id == install) else { return Ok(Vec::new()) };
+    let Some(installed) = state.corp.installed.iter().find(|c| c.install_id == install) else { return Ok(Vec::new()) };
+    if run.phase != RunPhase::Movement || !installed.rezzed {
+        return Ok(Vec::new());
+    }
+    let Some(fresh) = build_run_ice(installed, registry)? else { return Ok(Vec::new()) };
+    let run = state.active_run.as_mut().expect("checked above");
+    run.ice[position] = fresh;
+    run.position = position;
+    run.phase = RunPhase::EncounterIce;
+    run.forced_encounter = true;
+    run.jack_out_permitted = false;
+    run.fully_broken = false;
+    run.ice_bypassed = false;
+    run.this_encounter = Default::default();
+    crate::rules::lingering::sweep(state);
+    // The movement phase's window, if one was open, belonged to a step the
+    // run has left.
+    if state.paid_ability_window.as_ref().is_some_and(|window| window.checkpoint == crate::rules::state::WindowCheckpoint::Run) {
+        state.paid_ability_window = None;
+    }
+    let ice = &state.active_run.as_ref().expect("checked above").ice[position];
+    let encountered = GameEvent::IceEncountered {
+        card_id: ice.card_id.clone(),
+        strength: continuous::ice_strength(state, registry, ice),
+        subroutine_count: ice.subroutines.len(),
+    };
+    let mut events = Vec::new();
+    crate::rules::dispatcher::emit(state, registry, &mut events, encountered)?;
+    events.extend(crate::rules::paid_ability::open_window_if_at_checkpoint(state, registry));
+    Ok(events)
 }
 
 /// `GameEvent::EncounterEnded` for the ice the run is encountering, if it
@@ -1234,7 +1288,7 @@ mod tests {
         let (ib, rb) = ice_pair("b", 2, true);
         let mut state = reconciling_state(vec![ia, ib], run_state(RunPhase::EncounterIce, vec![ra, rb], 0));
         let events = reconcile_ice(&mut state, &CardRegistry::new()).unwrap();
-        assert_eq!(events, Some(vec![GameEvent::EncounterEnded { card_id: CardId("a".to_string()), install: crate::rules::state::InstallId(1) }, GameEvent::IcePassed { server: ServerId::Hq, position: 0, after_fully_breaking: false }]));
+        assert_eq!(events, Some(vec![GameEvent::EncounterEnded { card_id: CardId("a".to_string()), install: crate::rules::state::InstallId(1) }, GameEvent::IcePassed { server: ServerId::Hq, position: 0, after_fully_breaking: false, rezzed_as: None }]));
         let run = hq(&state);
         assert_eq!(run.position, 1);
         assert_eq!(run.phase, RunPhase::Movement);
@@ -1349,7 +1403,7 @@ mod tests {
 
         let run = state.active_run.unwrap();
         assert_eq!(run.phase, RunPhase::Movement);
-        assert_eq!(events, vec![GameEvent::IcePassed { server: ServerId::Hq, position: 0, after_fully_breaking: false }]);
+        assert_eq!(events, vec![GameEvent::IcePassed { server: ServerId::Hq, position: 0, after_fully_breaking: false, rezzed_as: None }]);
         // Never encountered — its subroutines were never touched.
         assert!(run.ice[0].subroutines.iter().all(|s| s.status == SubroutineStatus::Pending));
     }
@@ -1369,7 +1423,7 @@ mod tests {
         assert_eq!(run.phase, RunPhase::Movement);
         assert_eq!(run.position, 1);
         assert!(run.jack_out_permitted);
-        assert_eq!(events, vec![GameEvent::IcePassed { server: ServerId::Hq, position: 0, after_fully_breaking: false }], "nothing approached yet");
+        assert_eq!(events, vec![GameEvent::IcePassed { server: ServerId::Hq, position: 0, after_fully_breaking: false, rezzed_as: None }], "nothing approached yet");
     }
 
     /// CR 6.9.4 end to end at the engine's run level: the jack-out decision,
@@ -1387,7 +1441,7 @@ mod tests {
         let registry = CardRegistry::new();
 
         let passed = advance_run(&mut state, RunAction::Continue, &registry).unwrap();
-        assert_eq!(passed, vec![GameEvent::EncounterEnded { card_id: CardId("ice_wall_0".to_string()), install: crate::rules::state::InstallId(0) }, GameEvent::IcePassed { server: ServerId::Hq, position: 0, after_fully_breaking: false }]);
+        assert_eq!(passed, vec![GameEvent::EncounterEnded { card_id: CardId("ice_wall_0".to_string()), install: crate::rules::state::InstallId(0) }, GameEvent::IcePassed { server: ServerId::Hq, position: 0, after_fully_breaking: false, rezzed_as: Some(crate::dsl::IceType::Barrier) }]);
         let run = state.active_run.as_ref().unwrap();
         assert_eq!((run.phase, run.position, run.jack_out_permitted), (RunPhase::Movement, 1, true));
 
@@ -1512,7 +1566,7 @@ mod tests {
         let run = state.active_run.unwrap();
         assert_eq!(run.phase, RunPhase::Movement);
         assert_eq!(run.position, 1);
-        assert_eq!(events, vec![GameEvent::EncounterEnded { card_id: CardId("ice_wall_0".to_string()), install: crate::rules::state::InstallId(0) }, GameEvent::IcePassed { server: ServerId::Hq, position: 0, after_fully_breaking: false }]);
+        assert_eq!(events, vec![GameEvent::EncounterEnded { card_id: CardId("ice_wall_0".to_string()), install: crate::rules::state::InstallId(0) }, GameEvent::IcePassed { server: ServerId::Hq, position: 0, after_fully_breaking: false, rezzed_as: Some(crate::dsl::IceType::Barrier) }]);
     }
 
     #[test]
@@ -1547,7 +1601,7 @@ mod tests {
 
         let run = state.active_run.unwrap();
         assert_eq!((run.phase, run.position), (RunPhase::Movement, 1));
-        assert_eq!(events, vec![GameEvent::EncounterEnded { card_id: CardId("ice_wall".to_string()), install: crate::rules::state::InstallId(0) }, GameEvent::IcePassed { server: ServerId::Hq, position: 0, after_fully_breaking: false }], "the server is not yet approached");
+        assert_eq!(events, vec![GameEvent::EncounterEnded { card_id: CardId("ice_wall".to_string()), install: crate::rules::state::InstallId(0) }, GameEvent::IcePassed { server: ServerId::Hq, position: 0, after_fully_breaking: false, rezzed_as: Some(crate::dsl::IceType::Barrier) }], "the server is not yet approached");
     }
 
     #[test]

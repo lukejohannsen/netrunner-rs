@@ -209,10 +209,15 @@ pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
         // The run's four moments about the ice itself. The outermost piece
         // of ice is the first in the run's list (CR 4.6.9b; `RunState::ice`
         // is outermost first).
-        GameEvent::IcePassed { position, after_fully_breaking, .. } => vec![ice_moment(
+        GameEvent::IcePassed { position, after_fully_breaking, rezzed_as, .. } => vec![ice_moment(
             Trigger::OnIcePassed,
             *position,
-            IceFacts { outermost: *position == 0, after_fully_breaking: *after_fully_breaking, ..IceFacts::default() },
+            IceFacts {
+                outermost: *position == 0,
+                after_fully_breaking: *after_fully_breaking,
+                rezzed_code_gate_or_sentry: matches!(rezzed_as, Some(crate::dsl::IceType::CodeGate | crate::dsl::IceType::Sentry)),
+                ..IceFacts::default()
+            },
         )],
         GameEvent::SubroutineBroken { strength, .. } => {
             let position = state.active_run.as_ref().map_or(0, |run| run.position as u32);

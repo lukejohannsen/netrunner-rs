@@ -1234,6 +1234,16 @@ pub enum Effect {
     /// (`SwapInstalledIce`), which cannot take a piece of ice to another
     /// server or ahead of a server with no ice.
     MoveThisIceToOutermost,
+    /// The Runner encounters the ice this resolves as again, without
+    /// moving (CR 6.5.9a, a forced encounter) — Sisyphus Protocol's "If you
+    /// do, the Runner encounters that ice again", heard as the ice is
+    /// passed (`acts_on_subject`). `run::force_encounter`: a new encounter
+    /// of that ice, whose end goes back to the movement phase it was forced
+    /// from without passing it again (`RunState::forced_encounter`). A
+    /// no-op outside the movement phase or for ice no longer protecting the
+    /// attacked server. Composition didn't work: nothing moved a run back
+    /// to an encounter, and every encounter's end was a pass.
+    ForceEncounter,
     /// Plays the acting card as an operation out of `from`, spending no
     /// click — Humanoid Resources' "you may play 1 operation from HQ"
     /// (`OwnHq`) and Plutus's "you may play 1 transaction operation from
@@ -1849,6 +1859,7 @@ impl Effect {
             | Effect::MoveThisCardToRoot(..)
             | Effect::PromptMoveThisCardToAnotherRoot
             | Effect::MoveThisIceToOutermost
+            | Effect::ForceEncounter
             | Effect::PlayOperation { .. }
             | Effect::ResolveSubroutineOfSelectedIce
             | Effect::MoveRunToOutermost(..)

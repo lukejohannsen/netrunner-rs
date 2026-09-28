@@ -390,6 +390,16 @@ pub struct RunState {
     /// leaves `last_completed_run` the last *run*.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub breach_only: bool,
+    /// The encounter under way is a forced one (CR 6.5.9a): the Runner
+    /// was made to encounter a piece of ice again without moving —
+    /// Sisyphus Protocol's "the Runner encounters that ice again", begun by
+    /// `Effect::ForceEncounter` in the movement phase after the ice was
+    /// passed. Its end returns the run to that movement phase without
+    /// passing the ice a second time (`pass_current_ice`); an "end the
+    /// run" ends both (6.5.9b), as it does any encounter. Public: both
+    /// players saw what forced it.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub forced_encounter: bool,
     /// Temporary Runner credit pool for this run only, seeded from
     /// `state::CorpState::bad_publicity` at `engine::initiate_run`.
     /// Spendable via `ability::pay_cost`'s `Cost::Credits` arm — draws from
@@ -581,6 +591,7 @@ impl Default for RunState {
             jack_out_permitted: false,
             declared_successful: false,
             breach_only: false,
+            forced_encounter: false,
             bad_publicity_credits: 0,
             additional_rd_access: 0,
             additional_hq_access: 0,

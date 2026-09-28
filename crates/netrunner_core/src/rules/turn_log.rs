@@ -63,6 +63,8 @@ const TRIGGERS: usize = Trigger::ALL.len();
 /// The widest of the four column sets: a card's `Kind`, once for a card
 /// that was on the table when it happened and once for one that was not.
 const CLASSES: usize = Kind::COUNT * 2;
+// The ice's facts are a column set of their own, and must fit the widest.
+const _: () = assert!(IceFacts::ALL.len() <= CLASSES);
 
 /// What a counted moment was about, as coarsely as a card in the pool
 /// distinguishes — and no finer than both players saw.

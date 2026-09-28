@@ -1827,7 +1827,7 @@ mod system_gateway {
         let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run");
         let (state, _) = crate::rules::test_support::continue_run(&state, &registry).expect("approach Ice Wall");
         let (state, events) = close_all_windows(state, &registry);
-        assert!(events.contains(&crate::rules::GameEvent::IcePassed { server: ServerId::Hq, position: 0, after_fully_breaking: false }), "unrezzed, passed");
+        assert!(events.contains(&crate::rules::GameEvent::IcePassed { server: ServerId::Hq, position: 0, after_fully_breaking: false, rezzed_as: None }), "unrezzed, passed");
         assert!(state.pending_paid_choice.is_none(), "the server is not approached by the pass");
         let (state, events) = crate::rules::test_support::through_movement(&state, &registry).expect("to the server");
         let fired = events
@@ -5125,7 +5125,7 @@ mod system_gateway {
 
         let (state, events) = close_all_windows(state, &registry);
         assert!(!events.iter().any(|e| matches!(e, crate::rules::GameEvent::IceEncountered { .. })), "{events:?}");
-        assert!(events.contains(&crate::rules::GameEvent::IcePassed { server: ServerId::Hq, position: 0, after_fully_breaking: false }));
+        assert!(events.contains(&crate::rules::GameEvent::IcePassed { server: ServerId::Hq, position: 0, after_fully_breaking: false, rezzed_as: None }));
         assert_eq!(state.active_run.as_ref().unwrap().phase, crate::rules::RunPhase::Movement);
     }
 
@@ -15446,5 +15446,75 @@ mod rebellion_without_rehearsal {
         assert_eq!(state.corp.resources.credits, credits, "ignoring all costs");
         let run = state.active_run.as_ref().expect("the encounter goes on");
         assert_eq!(crate::rules::continuous::ice_strength(&state, &registry, &run.ice[0]), 6, "4, +2 for the run");
+    }
+
+    // ---- Stage 7d: an encounter repeated ----
+
+    /// A run on HQ past a rezzed Tributary (a code gate whose subroutines
+    /// do not end the run), Sisyphus Protocol scored, both of Tributary's
+    /// questions declined, up to the moment it is passed.
+    fn passing_tributary_with_sisyphus(registry: &CardRegistry) -> (GameState, Vec<GameEvent>) {
+        let mut state = runner_turn();
+        state.corp.hq = vec![id("hedge_fund")];
+        state.corp.installed = vec![ice_at_hq("tributary")];
+        state.corp.scored_agendas = vec![crate::rules::ScoredAgenda::plain(id("sisyphus_protocol"))];
+        let (state, _) = apply_action(&state, registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run HQ");
+        let (state, _) = apply_action(&state, registry, PlayerAction::ResolvePendingChoice { option_index: 1 }).expect("Tributary stays");
+        let (state, _) = crate::rules::test_support::continue_run(&state, registry).expect("approach");
+        let (state, _) = apply_action(&state, registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner passes approach");
+        let (state, _) = apply_action(&state, registry, PlayerAction::PassPriority { side: Side::Corp }).expect("corp passes approach");
+        let (state, _) = let_subroutines_fire(&state, registry);
+        apply_action(&state, registry, PlayerAction::ResolvePendingChoice { option_index: 1 }).expect("no draw")
+    }
+
+    /// CR 6.5.9a: paid for, the Runner encounters the passed ice again
+    /// without moving, and that encounter's end goes back to the movement
+    /// phase with no second pass.
+    #[test]
+    fn sisyphus_protocol_makes_the_runner_encounter_a_passed_code_gate_again_for_a_credit() {
+        let registry = registry();
+        let (state, events) = passing_tributary_with_sisyphus(&registry);
+        assert!(events.iter().any(|e| matches!(e, GameEvent::IcePassed { rezzed_as: Some(crate::dsl::IceType::CodeGate), .. })));
+        assert!(state.pending_paid_choice.is_some(), "you may pay 1 credit or trash 1 card from HQ");
+        let credits = state.corp.resources.credits;
+        let (state, events) = apply_action(&state, &registry, PlayerAction::AcceptPendingPaidChoice { cost_option_index: Some(0) }).expect("pay 1");
+        assert_eq!(state.corp.resources.credits, Credits(credits.0 - 1));
+        assert!(events.iter().any(|e| matches!(e, GameEvent::IceEncountered { card_id, .. } if card_id.0 == "tributary")), "encountered again");
+        let run = state.active_run.as_ref().expect("the run goes on");
+        assert!(run.forced_encounter && run.phase == crate::rules::RunPhase::EncounterIce && run.position == 0);
+        assert!(run.ice[0].subroutines.iter().all(|s| s.status == crate::rules::SubroutineStatus::Pending), "a new encounter");
+        let view = crate::view::build_client_view(&state, &registry, Side::Runner);
+        assert!(view.active_run.as_ref().is_some_and(|run| run.forced_encounter), "shown");
+
+        let (state, _) = let_subroutines_fire(&state, &registry);
+        let (state, events) = apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 1 }).expect("no draw");
+        assert!(!events.iter().any(|e| matches!(e, GameEvent::IcePassed { .. })), "not passed a second time");
+        assert!(events.iter().any(|e| matches!(e, GameEvent::EncounterEnded { .. })));
+        let run = state.active_run.as_ref().expect("the run goes on");
+        assert!(!run.forced_encounter && run.phase == crate::rules::RunPhase::Movement && run.position == 1, "back where it was");
+        assert!(state.pending_paid_choice.is_none(), "the first time each turn only");
+    }
+
+    /// Declined, or for a barrier, nothing happens.
+    #[test]
+    fn sisyphus_protocol_declined_lets_the_run_go_on_and_ignores_barriers() {
+        let registry = registry();
+        let (state, _) = passing_tributary_with_sisyphus(&registry);
+        let (state, _) = apply_action(&state, &registry, PlayerAction::DeclinePendingPaidChoice).expect("decline");
+        let run = state.active_run.as_ref().expect("the run goes on");
+        assert!(!run.forced_encounter && run.phase == crate::rules::RunPhase::Movement);
+
+        let mut barrier = runner_turn();
+        barrier.corp.installed = vec![ice_at_hq("ice_wall")];
+        barrier.corp.scored_agendas = vec![crate::rules::ScoredAgenda::plain(id("sisyphus_protocol"))];
+        barrier.runner.rig = vec![crate::rules::InstalledRunnerCard { base_strength: 2, ..rig("corroder") }];
+        barrier.runner.resources.credits = Credits(5);
+        let state = encounter(&barrier, &registry);
+        let mut state = use_ability(&state, &registry, "corroder", 1).expect("break the barrier");
+        while let Some(window) = state.paid_ability_window.as_ref().filter(|_| state.active_run.as_ref().is_some_and(|run| run.phase == crate::rules::RunPhase::EncounterIce)) {
+            state = apply_action(&state, &registry, PlayerAction::PassPriority { side: window.active_priority }).expect("pass").0;
+        }
+        assert_eq!(state.active_run.as_ref().map(|run| run.phase), Some(crate::rules::RunPhase::Movement), "passed");
+        assert!(state.pending_paid_choice.is_none(), "a code gate or sentry only");
     }
 }

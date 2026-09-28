@@ -398,6 +398,7 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
         Effect::RemoveAdvancementCounters(amount) => format!("remove advancement tokens equal to {}", describe_amount(amount)),
         Effect::MoveThisCardToRoot(server) => format!("move this card to {}", describe_server(*server)),
         Effect::PromptMoveThisCardToAnotherRoot => "move it to the root of another server".to_string(),
+        Effect::ForceEncounter => "the Runner encounters that ice again".to_string(),
         Effect::MoveThisIceToOutermost => "move this ice to the outermost position protecting the attacked server".to_string(),
         Effect::PlayOperation { .. } => "play an operation".to_string(),
         Effect::ResolveSubroutineOfSelectedIce => "resolve a subroutine of the chosen ice".to_string(),

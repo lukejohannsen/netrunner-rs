@@ -76,7 +76,7 @@ fn segments(view: &ClientView) -> Vec<Segment> {
         if run.breach_only {
             segments.push(Segment { title: format!("Breach of {server}"), steps: vec![Step { label: "Access".to_string(), state: State::Now }] });
         } else {
-            segments.push(run_segment(run.phase, run.position, run.ice.len(), &server));
+            segments.push(run_segment(run.phase, run.position, run.ice.len(), run.forced_encounter, &server));
         }
     }
     segments
@@ -153,7 +153,11 @@ fn turn_steps(view: &ClientView, at: usize) -> Vec<Step> {
 /// different bar on every ice. Approach, encounter and movement repeat
 /// once per piece of ice, so the bar goes back from movement to approach;
 /// the count on the approach says how far in the run is.
-fn run_segment(phase: RunPhase, position: usize, ice: usize, server: &str) -> Segment {
+/// `forced`: the encounter is a forced one (`PublicRunState::
+/// forced_encounter`, Sisyphus Protocol's), which the bar calls an
+/// encounter "again" — the run is otherwise where it was, in the movement
+/// after the ice was passed.
+fn run_segment(phase: RunPhase, position: usize, ice: usize, forced: bool, server: &str) -> Segment {
     let at = match phase {
         RunPhase::Initiation => 0,
         RunPhase::ApproachIce => 1,
@@ -169,7 +173,7 @@ fn run_segment(phase: RunPhase, position: usize, ice: usize, server: &str) -> Se
     let labels = [
         "Initiation".to_string(),
         of_ice("Approach"),
-        of_ice("Encounter"),
+        if forced { format!("{} again", of_ice("Encounter")) } else { of_ice("Encounter") },
         "Movement".to_string(),
         "Access".to_string(),
         // The run is over but the trail is still on the board; naming the
@@ -283,6 +287,7 @@ mod tests {
             jack_out_permitted: true,
             declared_successful: false,
             breach_only: false,
+            forced_encounter: false,
             bad_publicity_credits: 0,
             bonus_run_credits: 0,
             redirect_on_approach: None,

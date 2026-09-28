@@ -1,0 +1,51 @@
+{
+  "id": "sisyphus_protocol",
+  "title": "Sisyphus Protocol",
+  "side": "Corp",
+  "card_type": "Agenda",
+  "cost": 0,
+  "advancement_requirement": 5,
+  "agenda_points": 2,
+  "triggers": [
+    {
+      "trigger": "OnIcePassed",
+      "subject": "Any",
+      "when": {
+        "Ice": {
+          "rezzed_code_gate_or_sentry": true
+        }
+      },
+      "first_each_turn": true,
+      "acts_on_subject": true,
+      "effects": [
+        {
+          "OfferPaidChoice": {
+            "side": "Corp",
+            "cost": {
+              "AnyOf": [
+                {
+                  "Credits": 1
+                },
+                {
+                  "Trash": {
+                    "from": "OwnHq",
+                    "filter": "Any",
+                    "count": 1
+                  }
+                }
+              ]
+            },
+            "if_paid": "ForceEncounter",
+            "if_declined": {
+              "Sequence": []
+            },
+            "text": "you may pay 1[credit] or trash 1 card from HQ"
+          }
+        }
+      ],
+      "text": "The first time each turn the Runner passes a rezzed code gate or sentry, you may pay 1[credit] or trash 1 card from HQ. If you do, the Runner encounters that ice again."
+    }
+  ],
+  "numeric_id": 34106,
+  "is_playable": true
+}

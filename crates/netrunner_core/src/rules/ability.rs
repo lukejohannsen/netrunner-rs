@@ -1724,6 +1724,11 @@ pub fn evaluate_effect(
             Ok(events)
         }
 
+        Effect::ForceEncounter => {
+            let Some(install) = ctx.acting_install else { return Ok(Vec::new()) };
+            crate::rules::run::force_encounter(state, registry, install)
+        }
+
         Effect::MoveThisIceToOutermost => {
             let Some(server) = state.active_run.as_ref().map(|run| run.server) else { return Ok(Vec::new()) };
             let Some(position) = acting_corp_position(state, ctx) else { return Ok(Vec::new()) };
