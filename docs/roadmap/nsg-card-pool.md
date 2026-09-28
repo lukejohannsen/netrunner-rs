@@ -1895,8 +1895,9 @@ reaches Vantage Point's cards by building a deck.
    Eater; **5c**, derez words (built, below): Brasília Government Grid,
    Warm Reception; **5d**, a delayed conditional ability, "when this turn
    ends" (CR 9.6.13, built, below): Lightning Laboratory, moved out of 5c
-   when it was taken; **5e**, a Weyland identity and its agenda: Nuvem SA: Law of the
-   Land, The Basalt Spire, on a Sweep deck of Nuvem's own.
+   when it was taken; **5e**, a Weyland identity and its agenda (built, below): Nuvem
+   SA: Law of the Land, The Basalt Spire, on a Sweep deck of Nuvem's own.
+   Stage 5 is complete.
 6. **Terminal, reveal, set aside, arrange, X:** Active Policing, Bring
    Them Home, Burner, The Wizard’s Chest, Cataloguer, Lobisomem.
 7. **Expendable, moving ice, psi, re-encounter:** Eminent Domain, Descent,
@@ -2829,6 +2830,78 @@ in the engine is yet.
   the view's list — and without the card and the deck swap is
   **identical in all four shapes**, so the movement is `determinize`
   sampling a new Corp agenda.
+
+#### Stage 5e — a resolution's end, and a trash from R&D (28 September 2026)
+
+`feat/rwr-stage-5e-nuvem-basalt-spire`: Nuvem SA: Law of the Land, The
+Basalt Spire, and Nuvem's Sweep deck, Land Grab. **No new `Effect`; two
+new `Trigger`s.** Rebellion Without Rehearsal 50 of 65;
+`RWR_UNIMPLEMENTED` 17 → 15. **Stage 5 is complete.**
+
+- **"Whenever you finish resolving an operation or an action on an
+  expendable card"** is a moment the engine did not have. An operation's
+  play is heard before it resolves (`OnCardPlayed`), and its resolution
+  may be parked across several actions, which nothing marked. CR 8.6.7h
+  puts "conditions related to … finishing resolving" after the play
+  abilities and the trash, and that end is now `GameEvent::
+  FinishedResolving`, heard by `Trigger::OnFinishedResolving` about the
+  card. `dispatcher::finished_resolving` announces it at once when
+  nothing waits. Otherwise it goes on the queue behind whatever does
+  (`DeferredTrigger::announce`), because the queue is where the rest of a
+  parked resolution is. An operation announces it at the end of
+  `engine::play_operation_card`, whether played by the basic action or by
+  a card's text. An expendable card announces it when an action
+  (`[click]`) ability used from HQ has resolved, which is Tocsin's today.
+- **"The first time you trash a card from R&D during each of your turns"**
+  is `GameEvent::CardsTrashedFromRnD { count, by }`, the R&D twin of AU
+  Co.'s HQ batch, heard by `Trigger::OnCardsTrashedFromRnD` as the
+  trasher's moment (CR 1.14.5). It is emitted from a mill
+  (`MillRnDAmount`, which Nuvem's "you may trash that card" takes off
+  the unused list), a cost (`Cost::Trash` from R&D) and a selection into
+  Archives alike. Nuvem's first-time ability is `first_each_turn` over it
+  with `DuringYourTurn`. The Runner's trash of a card accessed in R&D is
+  no Corp trash, and is not in the batch.
+- **The Basalt Spire:**
+  - Its "hosted agenda counter, trash the top card of R&D:" cost is
+    `RemoveCounters` with a `Cost::Trash` from R&D over
+    `CardFilter::TopOfZone(1)`.
+  - That found a bug: a cost that trashed out of a deck took the first
+    copy of the card from the bottom, not the one at the position chosen,
+    so with a duplicate lower down the wrong card went. It now takes the
+    chosen copy, as a selection out of a deck already did.
+  - Its steal and score abilities compose.
+- **Client:** nothing new reaches the view. Both clients' logs say
+  "trashed N card(s) from R&D", and a resolution's end is not narrated:
+  the action line already says the operation was played.
+- **Deck** — Land Grab, a new Sweep deck on Nuvem SA over Hostile Bid's
+  frame: three Hostile Takeover out for two The Basalt Spire (23 points in
+  50 cards), and a third copy of Hedge Fund, Measured Response, Myōshu,
+  Business As Usual, Tocsin and Logjam in. It is pinned Eternal-only, and
+  the sweep schedule re-rolls with a Corp deck more, as it did for
+  Vantage Point's Sweep decks.
+- **Real play**, 96 games of Land Grab against Safety Net (seed 2):
+  - Random seats: Nuvem's look fired 154 times and its R&D gain 68.
+  - Heuristic seats: the look fired 146 times and the gain 70; The Basalt
+    Spire was scored 28 times.
+  - **The Basalt Spire's ability was used in neither seating**, and the
+    heuristic Corp never used Tocsin from HQ. The card test is their reach
+    so far.
+- **Fidelity limits:** only Tocsin is an expendable card in the pool, and
+  its action is the one announced. An expendable card's ability that is
+  not an action announces nothing, as the card says.
+- **DSL ratio (`pool_status.py`): 19 of 81 `Effect` variants single-use,
+  1 unused**, over 300 card files (18 of 81, 2 unused, over 298 before).
+  The move is `MillRnDAmount`, from unused to used by one card.
+- **Measured.** Both sweeps at 256 seeds are green. Against `origin/main`
+  (5d), `coverage_identical.py` has the random seatings moved **only in
+  the two new events' counts** (`FinishedResolving` 0 → 395,
+  `CardsTrashedFromRnD` 0 → 15; every other section of the report is
+  identical, so no play moved), and the heuristic ones moved (Corp agenda
+  wins 75 → 70 of 192, flatlines 13 → 11, Runner agenda wins 103 → 110).
+  A ref with the engine changes and without the two cards and the deck
+  differs from `main` in exactly those event counts in all four shapes
+  and in nothing else, so the heuristic movement is `determinize`
+  sampling two new Corp cards.
 
 ### 3. The Automata Initiative — 65 cards (C 14 / V 35 / M 16)
 
