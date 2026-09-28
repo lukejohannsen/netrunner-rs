@@ -134,6 +134,7 @@ pub fn describe_cost(cost: &Cost) -> String {
             format!("{} from {}", plural(*n, "credit", "credits"), humanize(format!("{from:?}")).to_lowercase())
         }
         Cost::CreditsAmount(amount) => format!("credits equal to {}", describe_amount(amount)),
+        Cost::CreditsX { .. } => "X credits".to_string(),
         Cost::CreditsFrom { amount, from } => format!("credits equal to {}, from {}", describe_amount(amount), humanize(format!("{from:?}")).to_lowercase()),
         Cost::Clicks(n) => plural(*n, "click", "clicks"),
         Cost::LoseClicks(n) => format!("lose {}", plural(*n, "click", "clicks")),
@@ -245,6 +246,7 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
             let which = match count {
                 SubroutineBreakCount::Fixed(n) => plural(*n, "subroutine", "subroutines"),
                 SubroutineBreakCount::All => "all subroutines".to_string(),
+                SubroutineBreakCount::ChosenNumber => "X subroutines".to_string(),
             };
             match restrict_to {
                 Some(kind) => format!("break {which} on a {kind:?}"),
@@ -254,6 +256,7 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
         Effect::BreakSubroutinesUnconditionally { count } => match count {
             SubroutineBreakCount::Fixed(n) => format!("break {}", plural(*n, "subroutine", "subroutines")),
             SubroutineBreakCount::All => "break all subroutines".to_string(),
+            SubroutineBreakCount::ChosenNumber => "break X subroutines".to_string(),
         },
         Effect::Trace { base, on_success } => format!("trace {base}: if successful, {}", describe_effect(on_success, registry)),
         Effect::AddAdditionalAccess { server, count } => {
@@ -456,6 +459,7 @@ pub fn engine_reading(card: &CardDefinition, registry: &CardRegistry) -> Vec<Str
             Some(EventFilter::AtLeast(least)) => when = format!("{when}, {least} or more"),
             Some(EventFilter::Whose(side)) => when = format!("{when}, the {side:?}'s"),
             Some(EventFilter::OwnedBy { owner, whose }) => when = format!("{when}, the {whose:?}'s, of a {owner:?} card"),
+            Some(EventFilter::ByThis) => when = format!("{when}, by this card"),
             Some(EventFilter::InstalledFromHq(true)) => when = format!("{when}, from HQ"),
             Some(EventFilter::InstalledFromHq(false)) => when = format!("{when}, from anywhere except HQ"),
             Some(EventFilter::Ice(facts)) => {
@@ -680,6 +684,7 @@ pub fn decision_prompt(view: &ClientView, registry: &CardRegistry) -> Option<Str
                 question.remaining
             ),
             netrunner_core::rules::PaymentAsk::Alternative { card, .. } => format!("Rez {} — how will you pay?", title(card, registry)),
+            netrunner_core::rules::PaymentAsk::X { max } => format!("Choose X, from 0 to {max} — you pay X credits"),
             netrunner_core::rules::PaymentAsk::Install(question) => {
                 format!("Install {} — trash which first? {}", title(&question.card, registry), install_trash_detail(question))
             }

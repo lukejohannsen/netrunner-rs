@@ -1,0 +1,100 @@
+{
+  "id": "lobisomem",
+  "title": "Lobisomem",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 8,
+  "strength": 2,
+  "memory_cost": 2,
+  "counter_kind": "Power",
+  "triggers": [
+    {
+      "trigger": "OnInstall",
+      "subject": "This",
+      "effects": [
+        {
+          "AddCounters": 1
+        }
+      ],
+      "text": "When you install this program and whenever it fully breaks a code gate, place 1 power counter on this program."
+    },
+    {
+      "trigger": "OnIceFullyBroken",
+      "subject": "Any",
+      "when": "ByThis",
+      "requirement": {
+        "Encountering": "CodeGate"
+      },
+      "effects": [
+        {
+          "AddCounters": 1
+        }
+      ],
+      "text": "When you install this program and whenever it fully breaks a code gate, place 1 power counter on this program."
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "text": "Interface → 1[credit]: Break 1 code gate subroutine.",
+      "cost": {
+        "Credits": 1
+      },
+      "effect": {
+        "BreakSubroutines": {
+          "count": {
+            "Fixed": 1
+          },
+          "restrict_to": "CodeGate"
+        }
+      },
+      "requirement": "DuringEncounter"
+    },
+    {
+      "trigger": "Paid",
+      "text": "Interface → X[credit], hosted power counter: Break X barrier subroutines.",
+      "cost": {
+        "AllOf": [
+          {
+            "CreditsX": {
+              "max": "EncounteredIceSubroutines"
+            }
+          },
+          {
+            "RemoveCounters": 1
+          }
+        ]
+      },
+      "effect": {
+        "BreakSubroutines": {
+          "count": "ChosenNumber",
+          "restrict_to": "Barrier"
+        }
+      },
+      "requirement": {
+        "And": [
+          "DuringEncounter",
+          {
+            "Encountering": "Barrier"
+          }
+        ]
+      }
+    },
+    {
+      "trigger": "Paid",
+      "text": "1[credit]: +2 strength.",
+      "cost": {
+        "Credits": 1
+      },
+      "effect": {
+        "BoostStrength": {
+          "amount": 2,
+          "duration": "Encounter"
+        }
+      },
+      "requirement": "DuringEncounter"
+    }
+  ],
+  "numeric_id": 34090,
+  "is_playable": true
+}

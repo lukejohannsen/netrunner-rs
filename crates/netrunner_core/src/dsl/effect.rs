@@ -1606,6 +1606,11 @@ pub enum SubroutineBreakCount {
     Fixed(u32),
     /// Breaks every currently-pending subroutine.
     All,
+    /// Breaks up to the number chosen — the placeholder a `Cost::CreditsX`
+    /// writes its X over (`Effect::with_chosen_number`, which turns it into
+    /// `Fixed`): Lobisomem's "Break X barrier subroutines". Read anywhere
+    /// else it breaks none, as `Amount::ChosenNumber` is 0.
+    ChosenNumber,
 }
 
 impl Effect {
@@ -1640,6 +1645,9 @@ impl Effect {
             Effect::SetIdentityCopy(a) => Effect::SetIdentityCopy(amount(a)),
             Effect::RemoveCounters(a) => Effect::RemoveCounters(amount(a)),
             Effect::RemoveAdvancementCounters(a) => Effect::RemoveAdvancementCounters(amount(a)),
+            Effect::BreakSubroutines { count: SubroutineBreakCount::ChosenNumber, restrict_to } => {
+                Effect::BreakSubroutines { count: SubroutineBreakCount::Fixed(number), restrict_to }
+            }
             Effect::Sequence(effects) => Effect::Sequence(all(effects)),
             Effect::PresentChoice { chooser, options, texts } => Effect::PresentChoice { chooser, options: all(options), texts },
             Effect::ResolveSomeOf { chooser, count, options, texts } => Effect::ResolveSomeOf { chooser, count, options: all(options), texts },

@@ -177,6 +177,10 @@ pub enum Ask {
     /// position, or by `ConfirmCardSelection` for "no more" when
     /// `may_stop`.
     Install(InstallQuestion),
+    /// X, for a cost that prints one (`Cost::CreditsX`, CR 1.16.2c):
+    /// 0 to `max`, `max` already the most the payer could spend. Answered
+    /// by `PlayerAction::ChooseNumber`.
+    X { max: u32 },
 }
 
 impl Ask {
@@ -187,6 +191,7 @@ impl Ask {
             Ask::Pools(question) => (question.min..=question.max).collect(),
             Ask::Card(question) => question.eligible.clone(),
             Ask::Alternative { offered, .. } => offered.clone(),
+            Ask::X { max } => (0..=*max).collect(),
             Ask::Install(question) => {
                 let stop = question.may_stop.then_some(crate::rules::install_trash::STOP);
                 stop.into_iter().chain(question.eligible.iter().map(|candidate| candidate.position)).collect()
@@ -198,7 +203,7 @@ impl Ask {
     pub fn action_for(&self, answer: u32) -> crate::rules::PlayerAction {
         use crate::rules::PlayerAction;
         match self {
-            Ask::Pools(_) => PlayerAction::ChooseNumber { amount: answer },
+            Ask::Pools(_) | Ask::X { .. } => PlayerAction::ChooseNumber { amount: answer },
             Ask::Card(_) => PlayerAction::ToggleCardSelection { position: answer as usize },
             Ask::Alternative { .. } => PlayerAction::ResolvePendingChoice { option_index: answer as usize },
             Ask::Install(_) if answer == crate::rules::install_trash::STOP => PlayerAction::ConfirmCardSelection,

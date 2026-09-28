@@ -529,6 +529,11 @@ impl Prompt {
                         format!("The cost takes {} more.", question.remaining)
                     },
                 },
+                // An X cost: X is named before it is paid (CR 1.16.2c).
+                Some(netrunner_core::rules::PendingPayment { question: netrunner_core::rules::PaymentAsk::X { max }, .. }) => Prompt {
+                    title: "Choose X".to_string(),
+                    detail: format!("Pay X credits, from 0 to {max}. The ability uses the X you pay."),
+                },
                 Some(netrunner_core::rules::PendingPayment { question: netrunner_core::rules::PaymentAsk::Alternative { card, .. }, .. }) => Prompt {
                     title: format!("Rez {}", title_of(Some(card), registry)),
                     detail: "It prints more than one way to pay for it. Which?".to_string(),

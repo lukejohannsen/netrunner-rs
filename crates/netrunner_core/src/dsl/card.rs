@@ -892,6 +892,8 @@ pub enum CardValidationError {
     ChosenNumberNobodyChose(CardId),
     #[error("card {0:?} sets which copy of its identity is in play (`Effect::SetIdentityCopy`) other than as a Corp identity's secret number (`ChooseNumber` with `secret`), CR 1.5.2b")]
     IdentityCopySetInTheOpen(CardId),
+    #[error("card {0:?} prints an X cost (`Cost::CreditsX`) somewhere but first in an ability's cost, or on something that is not an ability; X is chosen before anything is paid (CR 1.16.2c)")]
+    XCostNotFirst(CardId),
     #[error("card {0:?} resolves something for each card of a random reveal (`Effect::RevealAtRandom::each`) that is not a move into a deck (`AddToDeck`, `ShuffleIntoDeck`, in a `Sequence`), which could park a decision and drop the cards revealed after it")]
     RevealedCardsCannotWait(CardId),
     #[error("Ice {0:?} must have a strength")]
@@ -1088,6 +1090,7 @@ impl CardDefinition {
                 // Only a moment that names a player can be made one's.
                 Some(EventFilter::Whose(_)) => triggered.trigger.states_whose(),
                 Some(EventFilter::OwnedBy { .. }) => about == TriggerAbout::Card && triggered.trigger.states_whose(),
+                Some(EventFilter::ByThis) => triggered.trigger == Trigger::OnIceFullyBroken,
                 // Only a Corp install's moment says where the card came
                 // from (`listeners::Moment::from_hq`).
                 Some(EventFilter::InstalledFromHq(_)) => triggered.trigger == Trigger::OnInstall && self.side == crate::rules::Side::Corp,
@@ -1217,6 +1220,19 @@ impl CardDefinition {
             effect.for_each_effect(&mut |e| plain &= matches!(e, Effect::Sequence(_) | Effect::AddToDeck(_) | Effect::ShuffleIntoDeck(_)));
             plain
         };
+        // An ability that prints an X names it as the chosen number, which
+        // the payer writes in (`Cost::CreditsX`): its effect is exempt from
+        // the check below, and its X must come first in the cost.
+        let x_first = |cost: &crate::dsl::Cost| match cost {
+            crate::dsl::Cost::CreditsX { .. } => true,
+            crate::dsl::Cost::AllOf(parts) => matches!(parts.first(), Some(crate::dsl::Cost::CreditsX { .. })) && !parts[1..].iter().any(crate::dsl::Cost::names_x),
+            _ => false,
+        };
+        if self.abilities.iter().filter_map(|ability| ability.cost.as_ref()).any(|cost| cost.names_x() && !x_first(cost)) {
+            return Err(CardValidationError::XCostNotFirst(self.id.clone()));
+        }
+        let x_effects: Vec<&Effect> =
+            self.abilities.iter().filter(|ability| ability.cost.as_ref().is_some_and(crate::dsl::Cost::names_x)).map(|ability| &ability.effect).collect();
         for root in roots {
             root.for_each_effect(&mut |effect| {
                 if let Effect::RevealAtRandom { each: Some(each), .. } = effect {
@@ -1229,7 +1245,9 @@ impl CardDefinition {
                     copies_set_secretly += sets_a_copy(then);
                 }
             });
-            chosen_number_nobody_chose |= root.clone().with_chosen_number(1) != *root;
+            if !x_effects.iter().any(|x| std::ptr::eq(*x, root)) {
+                chosen_number_nobody_chose |= root.clone().with_chosen_number(1) != *root;
+            }
         }
         if chosen_number_nobody_chose {
             return Err(CardValidationError::ChosenNumberNobodyChose(self.id.clone()));

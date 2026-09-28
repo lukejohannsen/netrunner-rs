@@ -394,6 +394,9 @@ impl Occurrences {
                     .map(|kind| bit(Class::Card { kind: *kind, installed: false }) | bit(Class::Card { kind: *kind, installed: true }))
                     .fold(0, |mask, column| mask | column),
             ),
+            Some(EventFilter::ByThis) => {
+                return Err(format!("the turn counts a {trigger:?} without which object did it, so \"the first\" cannot be narrowed to this card's"));
+            }
             Some(EventFilter::InstalledFromHq(_)) => {
                 return Err(format!("the turn counts a {trigger:?} without where the card came from, so \"the first\" cannot be narrowed by it"));
             }

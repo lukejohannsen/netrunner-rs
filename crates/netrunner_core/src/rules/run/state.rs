@@ -91,6 +91,49 @@ pub struct EncounterTally {
     pub limited_breaks: u32,
     /// Installed Runner cards trashed by this ice's text.
     pub runner_cards_trashed: u32,
+    /// Whose abilities broke this encounter's subroutines — what CR
+    /// 6.5.7b asks when the ice is fully broken: "if all its subroutines
+    /// were broken using abilities on a single object, that object also
+    /// fully breaks the ice" (Lobisomem's "whenever it fully breaks a code
+    /// gate"). A tally rather than a mark on each subroutine, because the
+    /// one question is whether every break was one install's.
+    #[serde(default, skip_serializing_if = "BrokenBy::is_nothing")]
+    pub broken_by: BrokenBy,
+}
+
+/// `EncounterTally::broken_by`.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum BrokenBy {
+    /// Nothing broken yet this encounter.
+    #[default]
+    Nothing,
+    /// Every break so far by abilities on this install.
+    Only(InstallId),
+    /// By more than one object, or by something that is none (a click).
+    Mixed,
+}
+
+impl BrokenBy {
+    fn is_nothing(&self) -> bool {
+        *self == BrokenBy::Nothing
+    }
+
+    /// The tally after one more break, by `by`.
+    pub fn and(self, by: Option<InstallId>) -> BrokenBy {
+        match (self, by) {
+            (BrokenBy::Nothing, Some(install)) => BrokenBy::Only(install),
+            (BrokenBy::Only(so_far), Some(install)) if so_far == install => self,
+            _ => BrokenBy::Mixed,
+        }
+    }
+
+    /// The object that fully broke the ice, if one did.
+    pub fn object(self) -> Option<InstallId> {
+        match self {
+            BrokenBy::Only(install) => Some(install),
+            BrokenBy::Nothing | BrokenBy::Mixed => None,
+        }
+    }
 }
 
 /// A single piece of ICE within a run's ice stack, as seen by the run state
