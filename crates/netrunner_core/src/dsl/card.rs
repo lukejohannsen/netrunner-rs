@@ -1264,19 +1264,29 @@ impl CardDefinition {
         if prohibits_for_an_encounter {
             return Err(CardValidationError::ProhibitionForAnEncounter(self.id.clone()));
         }
-        // "It gains a subroutine" is about the ice being encountered and
-        // lasts that encounter (`Effect::GainSubroutine`): said anywhere
-        // else it would find no encounter and do nothing.
-        let gains_subroutine = |effect: &Effect| {
-            let mut found = false;
-            effect.for_each_effect(&mut |e| found |= matches!(e, Effect::GainSubroutine(_)));
+        // "It gains a subroutine" acts on a piece of ice the trigger is
+        // about (`Effect::GainSubroutine`), so it is said only by a trigger
+        // that acts on its subject: for the encounter, as the ice is
+        // encountered; for the rest of the run, as it is encountered or
+        // rezzed. Anywhere else it would find no ice, or no encounter, and
+        // do nothing, and nothing is encountered outside a run.
+        let gains = |effect: &Effect| {
+            let mut found = Vec::new();
+            effect.for_each_effect(&mut |e| if let Effect::GainSubroutine { duration, .. } = e { found.push(*duration) });
             found
         };
-        let gains_at_an_encounter = |triggered: &TriggeredEffect| triggered.trigger == Trigger::OnEncounter && triggered.acts_on_subject;
-        if self.triggers.iter().any(|triggered| !gains_at_an_encounter(triggered) && triggered.effects.iter().any(gains_subroutine))
-            || self.abilities.iter().any(|ability| gains_subroutine(&ability.effect))
-            || self.subroutines.iter().any(|subroutine| gains_subroutine(&subroutine.effect))
-            || self.interactive_on_access.iter().flat_map(|interactive| &interactive.effects).any(gains_subroutine)
+        let fits = |triggered: &TriggeredEffect, duration: EffectDuration| {
+            triggered.acts_on_subject
+                && match duration {
+                    EffectDuration::Encounter => triggered.trigger == Trigger::OnEncounter,
+                    EffectDuration::Run => matches!(triggered.trigger, Trigger::OnEncounter | Trigger::OnRez),
+                    EffectDuration::Turn => false,
+                }
+        };
+        if self.triggers.iter().any(|triggered| triggered.effects.iter().flat_map(gains).any(|duration| !fits(triggered, duration)))
+            || self.abilities.iter().any(|ability| !gains(&ability.effect).is_empty())
+            || self.subroutines.iter().any(|subroutine| !gains(&subroutine.effect).is_empty())
+            || self.interactive_on_access.iter().flat_map(|interactive| &interactive.effects).any(|effect| !gains(effect).is_empty())
         {
             return Err(CardValidationError::GainedSubroutineWithNoEncounter(self.id.clone()));
         }
@@ -1862,7 +1872,7 @@ mod tests {
 
     #[test]
     fn validate_refuses_a_gained_subroutine_outside_an_encounter() {
-        let gains = Effect::GainSubroutine(Box::new(SubroutineDef { text: "End the run.".to_string(), effect: Effect::EndTheRun, only_breakable_by: None }));
+        let gains = Effect::GainSubroutine { subroutine: Box::new(SubroutineDef { text: "End the run.".to_string(), effect: Effect::EndTheRun, only_breakable_by: None }), after: false, duration: EffectDuration::Encounter };
         let resource = |trigger: Trigger, acts_on_subject: bool| CardDefinition {
             id: CardId("gainer".to_string()),
             side: Side::Runner,

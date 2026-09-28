@@ -229,6 +229,7 @@ mod tests {
             breach_only: false,
             forced_encounter: false,
             event_counters: 0,
+            gained_for_the_run: Vec::new(),
             bad_publicity_credits: 0,
             bonus_run_credits: 0,
             redirect_on_approach: None,

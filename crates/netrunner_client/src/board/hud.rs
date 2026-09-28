@@ -283,7 +283,14 @@ pub fn in_effect(view: &ClientView, registry: &CardRegistry) -> Vec<String> {
         let event = run.initiated_by.as_ref().map_or_else(|| "the run's event".to_string(), &title);
         format!("This run: {event} has {} power counter{}", run.event_counters, if run.event_counters == 1 { "" } else { "s" })
     });
-    redirect.into_iter().chain(event_counters).chain(view.lingering
+    // Thunderbolt Armaments: a subroutine a piece of ice has for the rest
+    // of the run (`gained_for_the_run`), which its card does not print.
+    let gained_for_the_run: Vec<String> = view.active_run.iter().flat_map(|run| &run.gained_for_the_run).map(|gained| {
+        let ice = super::facts::card_of(view, gained.ice).map_or_else(|| "a piece of ice".to_string(), |card| title(&card));
+        let order = if gained.after { "after" } else { "before" };
+        format!("This run: {ice} has \u{201c}{}\u{201d} {order} its other subroutines", gained.subroutine.text.trim_end_matches('.'))
+    }).collect();
+    redirect.into_iter().chain(event_counters).chain(gained_for_the_run).chain(view.lingering
         .iter()
         .filter_map(|effect| {
             let what = match (&effect.what, &effect.on) {
@@ -648,6 +655,28 @@ mod tests {
         state.active_run = Some(RunState { server: ServerId::Hq, initiated_by: Some(CardId("spree".into())), event_counters: 2, ..Default::default() });
         let view = netrunner_core::view::build_client_view(&state, &registry, Side::Corp);
         assert_eq!(in_effect(&view, &registry), ["This run: Spree has 2 power counters"]);
+    }
+
+    /// Thunderbolt Armaments' subroutine is the ice's for the rest of the
+    /// run, which its card does not print: the run says it, and the ice's
+    /// sheet lists it after the printed ones.
+    #[test]
+    fn a_subroutine_gained_for_the_run_is_said_and_listed_on_the_ice() {
+        use netrunner_core::dsl::{Effect, SubroutineDef};
+        use netrunner_core::rules::{GainedForTheRun, InstallSlot, InstalledCard, RunState, ServerId};
+        let registry = crate::decks::sample_deck_registry();
+        let (corp_deck, runner_deck) = sweep_decks_for_seed(0);
+        let (mut state, _) = GameState::setup(&corp_deck.to_deck(), &runner_deck.to_deck(), &registry, 0).unwrap();
+        let tithe = InstallId(900);
+        state.corp.installed.push(InstalledCard { install_id: tithe, card: CardId("tithe".into()), server: ServerId::Hq, slot: InstallSlot::Ice, rezzed: true, ..Default::default() });
+        let subroutine = SubroutineDef { text: "End the run unless the Runner trashes 1 of their installed cards.".into(), effect: Effect::EndTheRun, only_breakable_by: None };
+        state.active_run = Some(RunState { server: ServerId::Hq, gained_for_the_run: vec![GainedForTheRun { ice: tithe, subroutine, after: true }], ..Default::default() });
+        let view = netrunner_core::view::build_client_view(&state, &registry, Side::Runner);
+        assert_eq!(in_effect(&view, &registry), ["This run: Tithe has \u{201c}End the run unless the Runner trashes 1 of their installed cards\u{201d} after its other subroutines"]);
+        let sheet = super::super::facts::install_facts(&view, tithe, &registry).expect("on the board");
+        let listed: Vec<&String> = sheet.iter().filter(|line| line.starts_with('»')).collect();
+        assert_eq!(listed.len(), 3, "{sheet:?}");
+        assert_eq!(listed[2], "» End the run unless the Runner trashes 1 of their installed cards. — for the rest of this run");
     }
 
     /// A Maintenance Access run says where it is going before it gets

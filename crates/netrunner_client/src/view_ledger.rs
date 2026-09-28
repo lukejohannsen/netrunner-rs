@@ -165,6 +165,7 @@ fn every_field_of_the_view_is_accounted_for(view: ClientView) {
         declared_successful: _,  // drawn: board::onward's words for the run's next step
         breach_only: _,          // drawn: board::phase ("Breach of R&D", its access the one step, the desktop's panel) and the terminal's run strip
         event_counters: _,       // drawn: hud::in_effect ("This run: Spree has 2 power counters"), both clients
+        gained_for_the_run: _,   // drawn: the encounter's list (facts::install_facts), and outside it the ice's sheet ("» … — for the rest of this run") and hud::in_effect, both clients
         forced_encounter: _,     // drawn: board::phase ("Encounter ice 1 of 2 again"), the terminal's run strip ("encountering it again")
         bad_publicity_credits: _, // drawn: hud::readouts, beside the Runner's credits
         bonus_run_credits: _,    // drawn: hud::readouts, beside the Runner's credits

@@ -904,23 +904,29 @@ pub fn evaluate_effect(
         // "It" is the encountered ice, as the trigger's subject; a
         // resolution that finds the encounter over (a run ended by a
         // trigger ahead of it) has nothing left to add to.
-        Effect::GainSubroutine(subroutine) => {
+        Effect::GainSubroutine { subroutine, after, duration } => {
             let Some(install) = ctx.acting_install else { return Err(RulesError::MissingActingCardContext) };
             let Some(run) = state.active_run.as_mut() else { return Ok(Vec::new()) };
+            // For the rest of the run: kept on the run for every encounter
+            // with this ice to come (`run::engine::add_gained_for_the_run`).
+            if *duration == crate::dsl::EffectDuration::Run {
+                run.gained_for_the_run.push(run::GainedForTheRun { ice: install, subroutine: (**subroutine).clone(), after: *after });
+            }
+            // And for the encounter in progress, if it is this ice's. "It" is
+            // the encountered ice, as the trigger's subject; a resolution that
+            // finds the encounter over (a run ended by a trigger ahead of it)
+            // has nothing left to add to.
             if run.phase != RunPhase::EncounterIce {
                 return Ok(Vec::new());
             }
             let position = run.position;
             let Some(ice) = run.ice.get_mut(position).filter(|ice| ice.install_id == install) else { return Ok(Vec::new()) };
-            ice.subroutines.insert(
-                0,
-                run::EncounteredSubroutine {
-                    id: 0,
-                    definition: (**subroutine).clone(),
-                    status: SubroutineStatus::Pending,
-                    gained: true,
-                },
-            );
+            let gained = run::EncounteredSubroutine { id: 0, definition: (**subroutine).clone(), status: SubroutineStatus::Pending, gained: true };
+            if *after {
+                ice.subroutines.push(gained);
+            } else {
+                ice.subroutines.insert(0, gained);
+            }
             run::renumber_subroutines(ice);
             Ok(vec![GameEvent::SubroutineGained { card_id: ice.card_id.clone(), text: subroutine.text.clone() }])
         }

@@ -1913,8 +1913,8 @@ reaches Vantage Point's cards by building a deck.
    Stage 7 is complete.
 8. **A card's identity changes**, in three parts when it was taken: **8a**,
    a subtype chosen at rez (built, below): Lycian Multi-Munition; **8b**, a
-   subroutine gained for the rest of the run: Thunderbolt Armaments: Peace
-   Through Power, on a Sweep deck of its own; **8c**, a card added to the
+   subroutine gained for the rest of the run (built, below): Thunderbolt
+   Armaments: Peace Through Power, on a Sweep deck of its own; **8c**, a card added to the
    Runner's score area as an agenda, and a third way to win: Jeitinho.
 
 **Riskiest:**
@@ -3562,6 +3562,88 @@ new `Effect`.** Rebellion Without Rehearsal 63 of 65; `RWR_UNIMPLEMENTED`
     types and the clients, and without the card and the deck, is
     identical to 7e in all four shapes.
   - So the move is `determinize` sampling a new Corp card, not a rule.
+
+#### Stage 8b — a subroutine gained for the rest of the run (28 September 2026)
+
+`feat/rwr-stage-8b-thunderbolt-armaments`: Thunderbolt Armaments: Peace
+Through Power, on the Deterrence Sweep deck. **No new `Effect`.**
+Rebellion Without Rehearsal 64 of 65; `RWR_UNIMPLEMENTED` 2 → 1.
+
+- **"That ice … gains “[subroutine] End the run unless the Runner trashes
+  1 of their installed cards.” after its other subroutines for the
+  remainder of that run"** is the case Stick and Poke's
+  `Effect::GainSubroutine` said it was waiting for: "after" (CR 9.8.3e),
+  and a subroutine gained for longer than an encounter. So the variant
+  grows the two words, `GainSubroutine { subroutine, after, duration }`,
+  rather than a second variant beside it.
+  - One gained for the run is kept on the run
+    (`RunState::gained_for_the_run`), not in `GameState::lingering`.
+    The lingering list holds flat values a search clone copies in a few
+    words, and a subroutine is an effect tree. It goes with the run, so
+    nothing resets it.
+  - The encounter's list is rebuilt at each encounter. So
+    `run::engine::add_gained_for_the_run` adds the run's entries at both
+    ways an encounter begins, the approach's `Continue` and a forced
+    encounter:
+    - "Before" subroutines go ahead of the ice's own, the newest first
+      (9.8.3a).
+    - "After" subroutines go behind them, the oldest first (9.8.3e).
+    - Both are marked `gained`, so they leave with the encounter.
+  - The ice need not be encountered when it gains it: it is rezzed on
+    approach. If the ice is being encountered, the current encounter gets
+    the subroutine as well.
+  - `validate` accepts a gain for the run from a trigger that acts on its
+    subject as the ice is rezzed or encountered, and refuses one for a
+    turn.
+- **The rest is words the engine had:**
+  - "+1 strength … for the remainder of that run" is Brasília Government
+    Grid's `ModifyStrength { ice: This, duration: Run }`.
+  - "AP or destroyer ice" is `AnyOf` over `HasSubtype`.
+  - "During a run" is the `DuringRun` requirement.
+  - "Unless the Runner trashes 1 of their installed cards" is an
+    `OfferPaidChoice` to the Runner of `Cost::Trash` over `OwnInstalled`.
+- **Client:** `PublicRunState::gained_for_the_run` is new in the view,
+  and the view ledger has it as drawn. Bot samples copy it
+  (`determinize`).
+  - During the encounter, it is in the encounter's list, as any gained
+    subroutine is.
+  - Outside an encounter, the ice's sheet lists it after the printed
+    subroutines, "— for the rest of this run".
+  - The in-effect list says "This run: Tithe has “…” after its other
+    subroutines", in both clients.
+- **Deck — Deterrence**, on Thunderbolt Armaments:
+  - Retirement Package's frame after 8a, with two Tithe for two Vertigo
+    and two Bumi 1.0 for two Reverb, so half its ice is AP or destroyer:
+    Ansel 1.0 and 2.0, Sorocaban Blade, Lycian Multi-Munition, Bumi 1.0,
+    Tithe.
+  - It is Standard as well: Engineering the Future was the frame's one
+    Core Set card.
+- **Why two Runner Sweep decks changed:** a new Corp deck re-pairs every
+  sweep seed.
+  - The 256-seed view sweep's card gate then missed two single copies:
+    Rotary (Borrowed Time) and Ashen Epilogue (Grassroots).
+  - In 48 random games against Deterrence they were installed 7 times and
+    played 5 times. At about 15 random games a Runner deck a sweep, a miss
+    is sampling.
+  - Each is now a two-of: Rotary for a Sell Out, Ashen Epilogue for a
+    Friend of a Friend.
+  - Ashen Epilogue for a Privileged Access moved the miss to Malandragem
+    instead. Grassroots has no influence to double Malandragem, and no
+    other Runner Sweep deck can take it: Borrowed Time would lose Startup,
+    and the rest have no influence left.
+  - This is a fragility of the gate, not a finding. Grassroots holds nine
+    single copies, so the next Corp deck may move a miss again.
+- **Real play**, 96 games of Deterrence against Safety Net (seed 2):
+  - Random seats: the identity fired on 120 of the 143 rezzes of AP or
+    destroyer ice; the other 23 were outside a run.
+  - Heuristic seats: it fired on all 373.
+- **DSL ratio (`pool_status.py`): 23 of 89 `Effect` variants single-use,
+  1 unused**, over 314 card files (24 of 89 before): `GainSubroutine` has
+  its second card.
+- **Measured.** Both sweeps at 256 seeds are green. Against 8a,
+  `coverage_identical.py` has **all four shapes identical**, heuristic
+  included. An identity is not a card `determinize` samples, and
+  Stick and Poke's rewritten effect plays as it did.
 
 ### 3. The Automata Initiative — 65 cards (C 14 / V 35 / M 16)
 

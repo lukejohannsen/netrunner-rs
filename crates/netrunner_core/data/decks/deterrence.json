@@ -1,0 +1,103 @@
+{
+  "id": "deterrence",
+  "name": "Deterrence",
+  "side": "Corp",
+  "category": "Sweep",
+  "description": "Not a published list: built so the sweeps reach Thunderbolt Armaments: Peace Through Power, Rebellion Without Rehearsal's Haas-Bioroid identity, whose AP and destroyer ice gain strength and a subroutine as they are rezzed during a run. Retirement Package's frame after Rebellion Without Rehearsal Stage 8a, with two Tithe for its two Vertigo and two Bumi 1.0 for its two Reverb, so that half its ice is AP or destroyer: Ansel 1.0, Ansel 2.0, Sorocaban Blade, Lycian Multi-Munition, Bumi 1.0 and Tithe. Standard-legal: Engineering the Future was the frame's one Core Set card.",
+  "style": "glacier",
+  "identity": "thunderbolt_armaments_peace_through_power",
+  "cards": [
+    {
+      "card": "offworld_office",
+      "count": 1
+    },
+    {
+      "card": "send_a_message",
+      "count": 3
+    },
+    {
+      "card": "perfect_recall",
+      "count": 2
+    },
+    {
+      "card": "bran_1_0",
+      "count": 2
+    },
+    {
+      "card": "ansel_1_0",
+      "count": 1
+    },
+    {
+      "card": "flywheel",
+      "count": 2
+    },
+    {
+      "card": "vulture_fund",
+      "count": 1
+    },
+    {
+      "card": "retirement_plan",
+      "count": 2
+    },
+    {
+      "card": "sleipnir",
+      "count": 3
+    },
+    {
+      "card": "melies_city_luxury_line",
+      "count": 2
+    },
+    {
+      "card": "synchrocyclotron",
+      "count": 2
+    },
+    {
+      "card": "ansel_2_0",
+      "count": 2
+    },
+    {
+      "card": "caveat_emptor",
+      "count": 2
+    },
+    {
+      "card": "corporate_hospitality",
+      "count": 2
+    },
+    {
+      "card": "working_prototype",
+      "count": 2
+    },
+    {
+      "card": "sorocaban_blade",
+      "count": 2
+    },
+    {
+      "card": "brasilia_government_grid",
+      "count": 2
+    },
+    {
+      "card": "warm_reception",
+      "count": 2
+    },
+    {
+      "card": "lightning_laboratory",
+      "count": 2
+    },
+    {
+      "card": "active_policing",
+      "count": 2
+    },
+    {
+      "card": "lycian_multi_munition",
+      "count": 2
+    },
+    {
+      "card": "tithe",
+      "count": 2
+    },
+    {
+      "card": "bumi_1_0",
+      "count": 2
+    }
+  ]
+}

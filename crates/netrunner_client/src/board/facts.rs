@@ -368,7 +368,17 @@ pub fn install_facts(view: &ClientView, id: InstallId, registry: &CardRegistry) 
                                 lines.push(format!("» {} — {}", sub.definition.text, subroutine_word(sub.status)));
                             }
                         }
-                        None => lines.extend(def.subroutines.iter().map(|sub| format!("» {}", sub.text))),
+                        // Outside an encounter, the card's list, with what the
+                        // run has given this ice either side of it
+                        // (`PublicRunState::gained_for_the_run`: before, the
+                        // newest first; after, the oldest first).
+                        None => {
+                            let gained: Vec<_> = view.active_run.iter().flat_map(|run| &run.gained_for_the_run).filter(|gained| gained.ice == id).collect();
+                            let for_the_run = |text: &str| format!("» {text} — for the rest of this run");
+                            lines.extend(gained.iter().rev().filter(|gained| !gained.after).map(|gained| for_the_run(&gained.subroutine.text)));
+                            lines.extend(def.subroutines.iter().map(|sub| format!("» {}", sub.text)));
+                            lines.extend(gained.iter().filter(|gained| gained.after).map(|gained| for_the_run(&gained.subroutine.text)));
+                        }
                     }
                 }
             } else if card.advancement_tokens > 0 {

@@ -590,6 +590,7 @@ fn determinize_run(
         breach_only: run.breach_only,
         forced_encounter: run.forced_encounter,
         event_counters: run.event_counters,
+        gained_for_the_run: run.gained_for_the_run.clone(),
         // Public and carried by the view — see `PublicRunState`. Zeroing
         // these made the sample poorer than the information the searcher
         // actually has: an action the Runner can really pay for out of
