@@ -1,0 +1,94 @@
+{
+  "id": "tributary",
+  "title": "Tributary",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "CodeGate"
+  },
+  "cost": 3,
+  "strength": 4,
+  "triggers": [
+    {
+      "trigger": "OnRunStart",
+      "subject": "Any",
+      "first_each_turn": true,
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Corp",
+            "options": [
+              "MoveThisIceToOutermost",
+              {
+                "Sequence": []
+              }
+            ],
+            "texts": [
+              "you may move this ice to the outermost position protecting the attacked server",
+              ""
+            ]
+          }
+        }
+      ],
+      "text": "The first time each turn a run begins, you may move this ice to the outermost position protecting the attacked server."
+    }
+  ],
+  "subroutines": [
+    {
+      "text": "You may draw 1 card. You may install 1 piece of ice from HQ protecting another server, ignoring all costs.",
+      "effect": {
+        "Sequence": [
+          {
+            "PresentChoice": {
+              "chooser": "Corp",
+              "options": [
+                {
+                  "DrawCards": [
+                    "Corp",
+                    1
+                  ]
+                },
+                {
+                  "Sequence": []
+                }
+              ],
+              "texts": [
+                "You may draw 1 card",
+                ""
+              ]
+            }
+          },
+          {
+            "PromptChooseCards": {
+              "side": "Corp",
+              "source": "OwnHq",
+              "filter": "Ice",
+              "min": 0,
+              "max": 1,
+              "reveal": false,
+              "shuffle_after": false,
+              "then": {
+                "PromptInstallCorpCard": {
+                  "origin_zone": "OwnHq",
+                  "ignore_costs": true,
+                  "another_server": true
+                }
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "text": "Each piece of ice gets +2 strength for the remainder of this run.",
+      "effect": {
+        "ModifyStrength": {
+          "delta": 2,
+          "ice": "EachIce",
+          "duration": "Run"
+        }
+      }
+    }
+  ],
+  "numeric_id": 34111,
+  "is_playable": true
+}

@@ -704,6 +704,13 @@ pub enum Effect {
         /// `engine::corp_install_destinations` otherwise allows.
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
         remote_only: bool,
+        /// Offer every server but the one the acting install is in —
+        /// Tributary's "install 1 piece of ice from HQ **protecting another
+        /// server**", from the ice being encountered. A field for the reason
+        /// `remote_only` is one: what narrows an install's destinations is
+        /// the install's.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        another_server: bool,
         /// "Install **and rez**" — Reanimation Protocol's "Install and rez 1
         /// piece of ice from Archives, paying a total of 10[credit] less".
         /// The card is rezzed as it lands, paying its rez cost (unless
@@ -1213,6 +1220,20 @@ pub enum Effect {
     /// that exist, its own excepted: a remote is created by an install,
     /// not by a move.
     PromptMoveThisCardToAnotherRoot,
+    /// Moves the acting install — a piece of ice — to the outermost
+    /// position protecting the attacked server, from wherever it is:
+    /// Tributary's "the first time each turn a run begins, you may move
+    /// this ice to the outermost position protecting the attacked server.
+    /// (The Runner will approach this ice.)" Not an install, as
+    /// `MoveThisCardToRoot` is not: it keeps its rez state, counters and
+    /// install id, and emits `GameEvent::CardMoved` when it changes server.
+    /// The run follows through `run::reconcile_ice`, which at initiation
+    /// re-anchors on the new outermost ice, so the Runner approaches it.
+    /// A no-op with no run, or with the ice already outermost there.
+    /// Composition didn't work: the only moves of ice are a swap of two
+    /// (`SwapInstalledIce`), which cannot take a piece of ice to another
+    /// server or ahead of a server with no ice.
+    MoveThisIceToOutermost,
     /// Plays the acting card as an operation out of `from`, spending no
     /// click — Humanoid Resources' "you may play 1 operation from HQ"
     /// (`OwnHq`) and Plutus's "you may play 1 transaction operation from
@@ -1827,6 +1848,7 @@ impl Effect {
             | Effect::BoostStrengthAmount { .. }
             | Effect::MoveThisCardToRoot(..)
             | Effect::PromptMoveThisCardToAnotherRoot
+            | Effect::MoveThisIceToOutermost
             | Effect::PlayOperation { .. }
             | Effect::ResolveSubroutineOfSelectedIce
             | Effect::MoveRunToOutermost(..)
