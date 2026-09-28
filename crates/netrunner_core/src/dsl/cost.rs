@@ -70,6 +70,15 @@ pub enum Cost {
     /// rather than folded into `OfferPaidChoice` itself so it composes with
     /// `Cost::AnyOf` the same way every other cost does.
     TakeTags(u32),
+    /// The Corp takes `u32` bad publicity as payment — Piranhas's "As an
+    /// additional cost to rez this ice, take 1 bad publicity or remove 1
+    /// tag", one of its two `rez_alternatives`. `TakeTags`' Corp twin:
+    /// always payable by the Corp, never prevented (CR 1.16.1a), and heard
+    /// as a bad publicity taken (Editorial Division) through
+    /// `ability::dispatch_cost_events`. Composition didn't work:
+    /// `Effect::GiveBadPublicity` is an effect, and a rez's additional cost
+    /// is paid before the rez.
+    TakeBadPublicity(u32),
     /// The Runner suffers `u32` damage of a type as payment — Semak-samun's
     /// "End the run unless the Runner suffers 3 net damage", the damage
     /// twin of Funhouse's `TakeTags`. Paid through `damage::apply_damage`

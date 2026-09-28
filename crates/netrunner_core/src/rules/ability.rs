@@ -2645,6 +2645,7 @@ pub(crate) fn cost_is_affordable(
         }
         Cost::Derez { filter, count } => derez_eligible(state, registry, side, filter, ctx).len() >= *count as usize,
         Cost::TrashSelf | Cost::RemoveSelfFromGame | Cost::TakeTags(_) | Cost::ClearTags => true,
+        Cost::TakeBadPublicity(_) => side == Side::Corp,
         Cost::TrashRandomFromHq(count) => state.corp.hq.len() as u32 >= *count,
         Cost::RevealSelf | Cost::AddSelfToHq => side == Side::Corp && acting_corp_install(state, ctx).is_some(),
         // Payable while the card is in its owner's hand.
@@ -2887,6 +2888,11 @@ pub(crate) fn pay_cost_ctx(
                 events.push(GameEvent::CardDerezzed { install, card: Some(installed.card.clone()) });
             }
             Ok(events)
+        }
+
+        Cost::TakeBadPublicity(amount) => {
+            state.corp.bad_publicity = state.corp.bad_publicity.saturating_add(*amount);
+            Ok(vec![GameEvent::BadPublicityGiven { amount: *amount }])
         }
 
         Cost::TakeTags(amount) => {
@@ -3281,6 +3287,9 @@ pub fn check_requirement(
         EffectRequirement::AmountAtLeast(amount, min) => {
             if resolve_amount(amount, ctx, state, registry) >= *min { Ok(()) } else { Err(RulesError::RequirementNotMet) }
         }
+        EffectRequirement::MoreThan(more, than) => {
+            if resolve_amount(more, ctx, state, registry) > resolve_amount(than, ctx, state, registry) { Ok(()) } else { Err(RulesError::RequirementNotMet) }
+        }
         EffectRequirement::NoActionTakenThisTurn => {
             if state.this_turn.actions_finished() == 0 { Ok(()) } else { Err(RulesError::RequirementNotMet) }
         }
@@ -3511,6 +3520,8 @@ pub(crate) fn resolve_amount(amount: &Amount, ctx: &ResolutionContext<'_>, state
             let score = |side| crate::rules::win::score(state, registry, side);
             score(Side::Corp).max(score(Side::Runner)).max(0) as u32
         }
+        Amount::CardsInHand(Side::Corp) => state.corp.hq.len() as u32,
+        Amount::CardsInHand(Side::Runner) => state.runner.grip.len() as u32,
     }
 }
 
@@ -3585,6 +3596,7 @@ pub(crate) fn consume_requirement(
         | EffectRequirement::RunEventActive
         | EffectRequirement::InstalledWithoutSpendingCredits
         | EffectRequirement::AmountAtLeast(..)
+        | EffectRequirement::MoreThan(..)
         | EffectRequirement::NoActionTakenThisTurn
         | EffectRequirement::PlayedFromArchives => {}
     }
