@@ -1888,14 +1888,15 @@ reaches Vantage Point's cards by building a deck.
    install came from, and a card returned to HQ as a cost (built, below):
    The Holo Man, Stoke the Embers, Janaína “JK” Dumont Kindelán. Stage 4
    is complete.
-5. **Corp ice and rez words**, in four parts when it was taken: **5a**, a
+5. **Corp ice and rez words**, in five parts when it was taken: **5a**, a
    rez's price, counters on a rez and a mandate (built, below): Piranhas,
    Working Prototype, Sudden Commandment; **5b**, ice that limits what
    happens in its encounter (built, below): Hammer, Sorocaban Blade, Cloud
-   Eater; **5c**,
-   derez words: Brasília Government Grid, Warm Reception, Lightning
-   Laboratory; **5d**, a Weyland identity and its agenda: Nuvem SA: Law of
-   the Land, The Basalt Spire, on a Sweep deck of Nuvem's own.
+   Eater; **5c**, derez words (built, below): Brasília Government Grid,
+   Warm Reception; **5d**, a delayed conditional ability, "when this turn
+   ends" (CR 9.6.13): Lightning Laboratory, moved out of 5c when it was
+   taken; **5e**, a Weyland identity and its agenda: Nuvem SA: Law of the
+   Land, The Basalt Spire, on a Sweep deck of Nuvem's own.
 6. **Terminal, reveal, set aside, arrange, X:** Active Policing, Bring
    Them Home, Burner, The Wizard’s Chest, Cataloguer, Lobisomem.
 7. **Expendable, moving ice, psi, re-encounter:** Eminent Domain, Descent,
@@ -2713,6 +2714,64 @@ Rehearsal 45 of 65; `RWR_UNIMPLEMENTED` 23 → 20.
   swaps is **identical in all four shapes**, so the movement is
   `determinize` sampling three new pieces of Corp ice, which is a
   measurement of the bots rather than of the rules.
+
+#### Stage 5c — derez words (28 September 2026)
+
+`feat/rwr-stage-5c-brasilia-warm-reception`: Brasília Government Grid,
+Warm Reception. **No new `Effect` or `Trigger`.** Rebellion Without
+Rehearsal 47 of 65; `RWR_UNIMPLEMENTED` 20 → 18. Lightning Laboratory
+moved to 5d: its "When this turn ends, derez 2 pieces of ice protecting
+that server" is a delayed conditional ability (CR 9.6.13), which nothing
+in the engine is yet.
+
+- **Brasília Government Grid** reacts as itself and acts on the rezzed
+  ice (`acts_on_subject`, the requirement read as the grid: once per
+  turn, a run against its server). "You may derez another installed piece
+  of ice. If you do, …" is a nested cost (CR 1.16.11a, as Stoke the
+  Embers' reveal): `Cost::Derez` over the other ice, and "the rezzed ice
+  gets +3 strength for the remainder of that run" needs a strength on the
+  ice resolving, which need not be encountered — a rez comes as the ice
+  is approached. `ModifyStrength`'s `each_ice` bool became
+  `ice: StrengthOf` (`Encountered`, `EachIce`, `This`); ezaM's file says
+  `EachIce`.
+- **Warm Reception:** "you may install 1 card from HQ. You cannot score
+  that card this turn" is a text install with a rider about the card that
+  landed (`PromptInstallCorpCard::if_installed`, beside `then`, which
+  resolves as the card that offered it, and `if_rezzed`). The rider is a
+  prohibition on that install alone (`Prohibit::this_install`, a
+  `lingering::On::Install` — a public handle, so a facedown card is bound
+  without being named), and a score asks the install
+  (`continuous::cannot_install`), in the action list and the guard alike.
+  "If this server is not protected by ice, you may derez this asset to
+  derez another installed card" is a nested cost of its own,
+  `Cost::DerezSelf`: `Cost::Derez` chooses by a filter, and
+  `Not(NotSourceCard)` is read off a definition, so it would take every
+  copy.
+- **Client:** nothing new reaches the view (a prohibition on an install
+  rides in `lingering`, which both clients draw); `hud::in_effect` says
+  "the Corp cannot score the card it installed", and `prose` has words for
+  the strength's ice, the prohibition and the cost.
+- **Deck** — Retirement Package: two Brasília Government Grid for two
+  Seamless Launch, and two Warm Reception for two Predictive Planogram.
+- **Real play**, 96 games of Retirement Package against Safety Net
+  (seed 2). Random seats: Brasília Government Grid rezzed 129 times (more
+  than it was installed: Warm Reception derezzes it) and its rez trigger
+  fired 42 times; Warm Reception's turn start fired 326 times. Heuristic
+  seats: the grid's trigger fired 24 times, Warm Reception's 1,054.
+- **Fidelity limits:** the grid's "once per turn" is spent when its
+  trigger fires, whether its "may" is taken or not — the deviation from
+  CR 9.3.6g already recorded for Malandragem (`rules-conformance.md`,
+  9.3).
+- **DSL ratio (`pool_status.py`): 17 of 80 `Effect` variants single-use,
+  2 unused**, over 297 card files (17 of 80 over 295 before).
+- **Measured.** Both sweeps at 256 seeds are green. Against `origin/main`
+  (5b), `coverage_identical.py` has the random seatings **identical**, by
+  view and by index; the heuristic ones moved (Corp agenda wins 77 → 79
+  of 192, flatlines 15 → 14, Runner agenda wins 99 → 98). A ref with the
+  engine changes — the strength's ice, the cost, the rider and the
+  prohibition on an install, and ezaM's file rewritten to the new word —
+  and without the two cards and the deck swap is **identical in all four
+  shapes**, so the movement is `determinize` sampling two new Corp cards.
 
 ### 3. The Automata Initiative — 65 cards (C 14 / V 35 / M 16)
 
