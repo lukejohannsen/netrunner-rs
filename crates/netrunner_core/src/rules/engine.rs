@@ -4543,6 +4543,7 @@ mod tests {
                 GameEvent::TriggerFired { card: CardId("hedge_fund".to_string()), trigger: crate::dsl::Trigger::OnPlay },
                 GameEvent::CreditsGained { side: Side::Corp, amount: 9 },
                 GameEvent::AbilityGainedCredits { side: Side::Corp, card: CardId("hedge_fund".to_string()) },
+                GameEvent::FinishedResolving { side: Side::Corp, card: card_id.clone() },
             ]
         );
 
@@ -4705,6 +4706,9 @@ mod tests {
                 GameEvent::TraceRunnerBidSubmitted { runner_bid: 0, total_strength: 0 },
                 GameEvent::TraceSuccessful { corp_total: 2, runner_total: 0 },
                 GameEvent::TagsGiven { side: Side::Runner, amount: 1, had: 0 },
+                // The operation finishes resolving once its trace has: the
+                // announcement waited on the queue behind it.
+                GameEvent::FinishedResolving { side: Side::Corp, card: CardId("sea_source".to_string()) },
             ]
         );
     }
