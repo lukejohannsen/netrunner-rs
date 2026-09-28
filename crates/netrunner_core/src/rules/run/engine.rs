@@ -154,6 +154,20 @@ mod run_precondition_tests {
 }
 
 pub fn start_run(state: &mut GameState, registry: &CardRegistry, server: ServerId) -> Result<(), RulesError> {
+    // A run a card's text starts as the Runner's turn begins — Alarm
+    // Clock's "When your turn begins, you may run HQ" (CR 5.7.1d, before
+    // the action phase) — is run in the action phase's shape, which is the
+    // only one the run's windows and steps know, and the turn's start is
+    // put back when it ends (`end_run`): the window that step opens, whose
+    // closing begins the action phase. The basic action is refused outside
+    // the action phase before it gets here (`engine::initiate_run`).
+    let begun_as_the_turn_began = state.phase == GamePhase::StartOfTurn(Side::Runner);
+    if begun_as_the_turn_began {
+        state.phase = GamePhase::Action(Side::Runner);
+        if matches!(state.paid_ability_window.as_ref().map(|window| window.checkpoint), Some(WindowCheckpoint::StartOfTurn { .. })) {
+            state.paid_ability_window = None;
+        }
+    }
     check_run_may_begin(state)?;
     // Every run, however it was started — see `RunnerState::servers_run_this_turn`.
     state.runner.servers_run_this_turn.push(server);
@@ -192,6 +206,7 @@ pub fn start_run(state: &mut GameState, registry: &CardRegistry, server: ServerI
         jack_out_permitted: false,
         declared_successful: false,
         cards_accessed_count: 0, bonus_run_credits: 0,
+        begun_as_the_turn_began,
     });
     Ok(())
 }
@@ -915,6 +930,17 @@ pub(crate) fn end_run(state: &mut GameState) -> Option<RunState> {
     let run = state.active_run.take();
     if let Some(run) = &run {
         state.last_completed_run = Some(CompletedRun::snapshot(run));
+    }
+    // Back to the turn's start for a run begun there (`start_run`), with its
+    // window, unless the run ended the game.
+    if run.as_ref().is_some_and(|run| run.begun_as_the_turn_began) && !state.is_over() {
+        state.phase = GamePhase::StartOfTurn(Side::Runner);
+        if matches!(state.paid_ability_window.as_ref().map(|w| w.checkpoint), Some(WindowCheckpoint::Run)) {
+            state.paid_ability_window = None;
+        }
+        crate::rules::paid_ability::open_window_for(state, Side::Runner, WindowCheckpoint::StartOfTurn { side: Side::Runner });
+        checkpoint::expire_durations(state);
+        return run;
     }
     // A run's window ends with the run: it was opened at one of the run's
     // steps, and closing it resumes nothing once the run is gone

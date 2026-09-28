@@ -1224,6 +1224,11 @@ pub struct CompletedRun {
     pub on_end_card: Option<CardId>,
     #[serde(default)]
     pub on_end_install: Option<InstallId>,
+    /// `RunState::bonus_run_credits` at conclusion: the credits the run's
+    /// event still hosted — `Amount::RunCreditsLeftLastRun`, Trick Shot's
+    /// credits carried into the run its end starts.
+    #[serde(default)]
+    pub run_credits_left: u32,
 }
 
 impl CompletedRun {
@@ -1241,6 +1246,7 @@ impl CompletedRun {
             on_end_effect: run.on_end_effect.clone(),
             on_end_card: run.on_end_card.clone(),
             on_end_install: run.on_end_install,
+            run_credits_left: run.bonus_run_credits,
         }
     }
 }

@@ -924,6 +924,15 @@ pub enum Effect {
     /// Share's alone, and took the zones when Ashen Epilogue needed two
     /// more.
     ShuffleIntoDeck(Vec<crate::dsl::CardZoneRef>),
+    /// Places credits on the run's event, spendable during the run as its
+    /// others are (`RunState::bonus_run_credits`, Overclock's pool) —
+    /// Trick Shot's "If successful, place 2[credit] on this event", and the
+    /// credits it still hosts carried into the run its end starts
+    /// (`Amount::RunCreditsLeftLastRun`). `RulesError::NoActiveRun` with no
+    /// run. Composition didn't work: the pool is set only as a run begins
+    /// (`PromptChooseServer::bonus_run_credits`), from a number the card
+    /// file writes.
+    PlaceRunCredits(Amount),
     /// Adds the acting card to the Corp's score area "as an agenda"
     /// (CR 10.1.3) — Myōshu's "Add this operation to your score area as an
     /// agenda worth 2 agenda points." It is not scored (CR 1.17.3f), so
@@ -1309,6 +1318,11 @@ pub enum Amount {
     /// `Effect::GainCreditsPerCardAccessedThisRun`, a gain that could not
     /// be a threshold; 0 before any run has ended.
     CardsAccessedLastRun,
+    /// The credits the run's event still hosted when the last run ended
+    /// (`CompletedRun::run_credits_left`) — what Trick Shot's "When that run
+    /// ends, you may run a remote server" carries into that run, the event
+    /// being still in play with its credits (CR 8.6.5). 0 with no run.
+    RunCreditsLeftLastRun,
     /// How many cards the active run's breach of HQ or R&D may access:
     /// 1, plus each additional access granted so far (CR 7.3.5a–b,
     /// `RunState::additional_hq_access`/`additional_rd_access`) — "Pretty"
@@ -1554,6 +1568,7 @@ impl Effect {
             | Effect::SetIdentityCopy(_)
             | Effect::AddToDeck(_)
             | Effect::ShuffleIntoDeck(..)
+            | Effect::PlaceRunCredits(..)
             | Effect::AddToScoreAreaAsAgenda(_)
             | Effect::GainSubroutine(_)
             | Effect::LookAtTopOfDeck { .. }

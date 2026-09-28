@@ -392,6 +392,11 @@ pub struct PublicRunState {
     /// in every sample before.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub initiated_by: Option<CardId>,
+    /// `RunState::begun_as_the_turn_began`: public, as the run is. Carried
+    /// so a sample ends Alarm Clock's run where the game does, at the
+    /// turn's start rather than in the action phase.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub begun_as_the_turn_began: bool,
 }
 
 /// `GameState` as visible to one player: hidden zones are collapsed to a
@@ -1141,6 +1146,7 @@ fn mask_run_state(state: &GameState, registry: &CardRegistry, run: &RunState, vi
         redirect_on_approach: run.redirect_on_approach,
         fully_broken: run.fully_broken,
         initiated_by: run.initiated_by.clone(),
+        begun_as_the_turn_began: run.begun_as_the_turn_began,
         once_per_run_used: run
             .once_per_run_used
             .iter()

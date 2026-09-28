@@ -1,0 +1,61 @@
+{
+  "id": "alarm_clock",
+  "title": "Alarm Clock",
+  "side": "Runner",
+  "card_type": "Hardware",
+  "cost": 2,
+  "unique": true,
+  "triggers": [
+    {
+      "trigger": "OnTurnStart",
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Runner",
+            "options": [
+              {
+                "InitiateRun": "Hq"
+              },
+              {
+                "Sequence": []
+              }
+            ],
+            "texts": [
+              "you may run HQ",
+              ""
+            ]
+          }
+        }
+      ],
+      "text": "When your turn begins, you may run HQ."
+    },
+    {
+      "trigger": "OnEncounter",
+      "subject": "Any",
+      "requirement": {
+        "And": [
+          "ThisCardStartedTheRun",
+          "OncePerRun"
+        ]
+      },
+      "effects": [
+        {
+          "OfferPaidChoice": {
+            "side": "Runner",
+            "cost": {
+              "Clicks": 2
+            },
+            "if_paid": "BypassEncounteredIce",
+            "if_declined": {
+              "Sequence": []
+            },
+            "text": "you may spend [click][click] to bypass it"
+          }
+        }
+      ],
+      "text": "The first time you encounter a piece of ice during that run, you may spend [click][click] to bypass it."
+    }
+  ],
+  "numeric_id": 34078,
+  "is_playable": true
+}

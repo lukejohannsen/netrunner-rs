@@ -21,12 +21,9 @@ pub(crate) const VP_UNIMPLEMENTED: &[(u32, &str)] = &[];
 /// *Rebellion Without Rehearsal* (`rwr`): tranche 2 of the NSG plan.
 pub(crate) const RWR_UNIMPLEMENTED: &[(u32, &str)] = &[
     (34070, "The Wizard’s Chest"),
-    (34077, "Window of Opportunity"),
-    (34078, "Alarm Clock"),
     (34079, "Jeitinho"),
     (34085, "Burner"),
     (34086, "Spree"),
-    (34087, "Trick Shot"),
     (34088, "Cataloguer"),
     (34090, "Lobisomem"),
     (34091, "Muse"),

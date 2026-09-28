@@ -822,6 +822,12 @@ pub fn evaluate_effect(
             Ok(vec![GameEvent::SubroutineGained { card_id: ice.card_id.clone(), text: subroutine.text.clone() }])
         }
 
+        Effect::PlaceRunCredits(amount) => {
+            let credits = resolve_amount(amount, ctx, state, registry);
+            state.active_run.as_mut().ok_or(RulesError::NoActiveRun)?.bonus_run_credits += credits;
+            Ok(Vec::new())
+        }
+
         Effect::ShuffleIntoDeck(zones) => {
             let mut cards = Vec::new();
             for zone in zones {
@@ -3297,6 +3303,7 @@ pub(crate) fn resolve_amount(amount: &Amount, ctx: &ResolutionContext<'_>, state
             .map_or(0, |def| def.cost),
         Amount::RemainingAfterSelection(total) => total.saturating_sub(ctx.selected_count),
         Amount::CardsSelected => ctx.selected_count,
+        Amount::RunCreditsLeftLastRun => state.last_completed_run.as_ref().map_or(0, |run| run.run_credits_left),
         Amount::AccessLimit(server) => state.active_run.as_ref().map_or(0, |run| match server {
             ServerId::Hq => 1 + run.additional_hq_access,
             ServerId::RnD => 1 + run.additional_rd_access,
@@ -5007,7 +5014,7 @@ mod tests {
     #[test]
     fn gain_credits_per_card_accessed_this_run_reads_the_last_completed_run() {
         let mut state = game_state();
-        state.last_completed_run = Some(CompletedRun { server: ServerId::Hq, cards_accessed: 3, agendas_stolen: 0, persistent_trashed_upgrades: Vec::new(), accessed_cards: Vec::new(), on_end_effect: None, on_end_card: None, on_end_install: None });
+        state.last_completed_run = Some(CompletedRun { server: ServerId::Hq, cards_accessed: 3, agendas_stolen: 0, persistent_trashed_upgrades: Vec::new(), accessed_cards: Vec::new(), on_end_effect: None, on_end_card: None, on_end_install: None, run_credits_left: 0 });
 
         let events = evaluate_effect(
             &mut state,
@@ -5190,13 +5197,13 @@ mod tests {
     #[test]
     fn last_run_was_on_hq_or_rnd_requirement() {
         let mut state = game_state();
-        state.last_completed_run = Some(CompletedRun { server: ServerId::Archives, cards_accessed: 0, agendas_stolen: 0, persistent_trashed_upgrades: Vec::new(), accessed_cards: Vec::new(), on_end_effect: None, on_end_card: None, on_end_install: None });
+        state.last_completed_run = Some(CompletedRun { server: ServerId::Archives, cards_accessed: 0, agendas_stolen: 0, persistent_trashed_upgrades: Vec::new(), accessed_cards: Vec::new(), on_end_effect: None, on_end_card: None, on_end_install: None, run_credits_left: 0 });
         assert_eq!(
             check_requirement(&state, &EffectRequirement::LastRunWasOnHqOrRnD, Side::Runner, &ResolutionContext::for_card(None), &CardRegistry::new()),
             Err(RulesError::RequirementNotMet)
         );
 
-        state.last_completed_run = Some(CompletedRun { server: ServerId::Hq, cards_accessed: 2, agendas_stolen: 0, persistent_trashed_upgrades: Vec::new(), accessed_cards: Vec::new(), on_end_effect: None, on_end_card: None, on_end_install: None });
+        state.last_completed_run = Some(CompletedRun { server: ServerId::Hq, cards_accessed: 2, agendas_stolen: 0, persistent_trashed_upgrades: Vec::new(), accessed_cards: Vec::new(), on_end_effect: None, on_end_card: None, on_end_install: None, run_credits_left: 0 });
         assert_eq!(
             check_requirement(&state, &EffectRequirement::LastRunWasOnHqOrRnD, Side::Runner, &ResolutionContext::for_card(None), &CardRegistry::new()),
             Ok(())

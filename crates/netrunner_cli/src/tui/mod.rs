@@ -2159,6 +2159,7 @@ mod tests {
             fully_broken: false,
             once_per_run_used: Vec::new(),
             initiated_by: None,
+            begun_as_the_turn_began: false,
         });
         view.legal_actions = vec![PlayerAction::StealAgenda { card_id: card.clone() }];
 

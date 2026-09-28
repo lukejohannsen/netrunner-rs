@@ -1876,8 +1876,9 @@ reaches Vantage Point's cards by building a deck.
    **3a**, the small words (built, below): Boi-tatá, Meeting of Minds,
    “Pretty” Mary da Silva, Ashen Epilogue; **3b**, access abilities not
    on an installed card, and a card hosted as it is accessed (built,
-   below): Eye for an Eye, Cupellation, Heliamphora; **3c**, run words and a search that
-   installs: Trick Shot, Window of Opportunity, Alarm Clock, Muse.
+   below): Eye for an Eye, Cupellation, Heliamphora; **3c**, run words
+   (built, below): Trick Shot, Window of Opportunity, Alarm Clock; **3d**,
+   a search that installs onto a host: Muse.
 4. **Corp advancement and movement words:** Charlotte Caçador, Cohort
    Guidance Program, Hearts and Minds, Logjam, Isaac Liberdade, The Holo
    Man, Business As Usual, Janaína “JK” Dumont Kindelán, Kingmaking, Stoke the Embers.
@@ -2259,6 +2260,71 @@ Rehearsal 25 of 65; `RWR_UNIMPLEMENTED` 43 → 40.
   trash — and without the three cards and the deck swaps is **identical
   in all four shapes**, so the movement is `determinize` sampling three
   new Runner cards; the samples' Sang Kancil moved no game of the pool.
+
+#### Stage 3c — run words (27 September 2026)
+
+`feat/rwr-stage-3c-run-words`: Trick Shot, Window of Opportunity, Alarm
+Clock. **One new `Effect`.** Rebellion Without Rehearsal 28 of 65;
+`RWR_UNIMPLEMENTED` 40 → 37. Muse went to 3d (above): its install onto a
+host out of three zones is a stage's work of its own.
+
+- **A run begun as the Runner's turn begins** (CR 5.7.1d): Alarm Clock's
+  "When your turn begins, you may run HQ" starts a run in the
+  `StartOfTurn` phase, which the run's windows and steps do not know.
+  `run::start_run` runs it in the action phase's shape — the turn's start
+  window taken down, the phase `Action(Runner)` — and `run::end_run`, the
+  one door every run leaves by, puts the turn back when it ends: the
+  phase, and the window of 5.7.1e whose closing begins the action phase.
+  `RunState::begun_as_the_turn_began` says so, carried in the view
+  (`PublicRunState`) so a sample ends the run where the game does. The
+  basic action is still refused outside the action phase
+  (`engine::initiate_run`). "The first time you encounter a piece of ice
+  during that run, you may spend [click][click] to bypass it" is an
+  `OnEncounter` on the hardware, `ThisCardStartedTheRun` and `OncePerRun`
+  — spent at the first encounter whatever the answer, which is what "the
+  first time" means.
+- **Credits on the run's event** (`Effect::PlaceRunCredits`, new): the
+  run's pool (`RunState::bonus_run_credits`, Overclock's), placed by a
+  card's text rather than only as a run begins. Trick Shot places 4 as it
+  runs R&D and 2 more on success (an `OnSuccessfulRun` on the event, 3b's
+  play area), and its "When that run ends, you may run a remote server"
+  carries what is left into that run: `CompletedRun::run_credits_left`,
+  read as `Amount::RunCreditsLeftLastRun` by the second run's `on_start`.
+  The event is still in play (CR 8.6.5), so its credits are.
+- **Window of Opportunity composes.** The install is a `PresentChoice`
+  over a grip selection of programs and hardware; "When that run begins,
+  derez 1 piece of ice protecting that server" is the run's `on_start`, a
+  selection of rezzed ice in the attacked server whose `then` derezzes it
+  and sets the run's end rider as that ice: the Corp's "may rez the ice
+  derezzed this way, ignoring all costs" is a `PresentChoice` resolving as
+  the ice, so `RezInstalled`'s placeholder is the one derezzed.
+- **Deck** — Spare Parts: two Trick Shot, an Alarm Clock and a Window of
+  Opportunity, on thirteen influence of fifteen, for a Meeting of Minds, a
+  Touchstone, a T400 Memory Diamond and a Diesel. None fits Borrowed Time,
+  which would lose Startup.
+- **Real play**, 96 games of Fine Print against Spare Parts (seed 2).
+  Random seats: Alarm Clock installed 10 times, its turn-start offer heard
+  43 times and its bypass offer 4; Trick Shot played 21 times, successful
+  12; Window of Opportunity played 11, its derez asked 3 times. The
+  heuristic Runner uses none of the three.
+- **Fidelity limits:** Alarm Clock's run is asked for among the Runner's
+  other "when your turn begins" abilities and resolved when it is chosen,
+  so an ability ordered after it resolves after the run, as the rules have
+  it; the Corp's rez window of 5.7.1e comes once, after the run. The
+  heuristic's samples of a turn-start run see the run as the action
+  phase's.
+- **DSL ratio (`pool_status.py`): 18 of 77 `Effect` variants single-use,
+  2 unused**, over 278 card files (17 of 76 over 275 before):
+  `PlaceRunCredits` is the new one, Trick Shot's alone, its reason on the
+  variant.
+- **Measured.** Both sweeps at 256 seeds are green, the fog gate
+  included. Against `origin/main`, `coverage_identical.py` has the random
+  seatings **identical**, by view and by index; the heuristic ones moved
+  (Corp agenda wins 71 → 67 of 192, flatlines 9 → 13). Checked, not
+  inferred: a ref with the engine changes — the run begun at the turn's
+  start and its return, the placed and carried run credits — and without
+  the three cards and the deck swap is **identical in all four shapes**,
+  so the movement is `determinize` sampling three new Runner cards.
 
 ### 3. The Automata Initiative — 65 cards (C 14 / V 35 / M 16)
 
