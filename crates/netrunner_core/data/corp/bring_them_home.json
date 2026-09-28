@@ -1,0 +1,117 @@
+{
+  "id": "bring_them_home",
+  "title": "Bring Them Home",
+  "side": "Corp",
+  "card_type": "Operation",
+  "cost": 0,
+  "play_requirement": {
+    "Not": {
+      "And": [
+        {
+          "Not": {
+            "AmountAtLeast": [
+              {
+                "TimesLastTurn": "OnAgendaStolen"
+              },
+              1
+            ]
+          }
+        },
+        {
+          "And": [
+            {
+              "Not": {
+                "AmountAtLeast": [
+                  {
+                    "TimesLastTurn": "OnTrashedFromAccess"
+                  },
+                  1
+                ]
+              }
+            },
+            {
+              "Not": {
+                "AmountAtLeast": [
+                  {
+                    "TimesLastTurnWhen": {
+                      "trigger": "OnCardTrashed",
+                      "when": {
+                        "OwnedBy": {
+                          "owner": "Corp",
+                          "whose": "Runner"
+                        }
+                      }
+                    }
+                  },
+                  1
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "Sequence": [
+            {
+              "RevealAtRandom": {
+                "side": "Runner",
+                "count": 2,
+                "then": {
+                  "AddToDeck": "Top"
+                }
+              }
+            },
+            {
+              "EffectIf": {
+                "condition": {
+                  "AmountAtLeast": [
+                    "ThreatLevel",
+                    3
+                  ]
+                },
+                "effect": {
+                  "OfferPaidChoice": {
+                    "side": "Corp",
+                    "cost": {
+                      "Credits": 2
+                    },
+                    "if_paid": {
+                      "RevealAtRandom": {
+                        "side": "Runner",
+                        "count": 1,
+                        "then": {
+                          "Sequence": [
+                            {
+                              "AddToDeck": "Top"
+                            },
+                            {
+                              "ShuffleIntoDeck": []
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    "if_declined": {
+                      "Sequence": []
+                    },
+                    "text": "You may pay 2[credit] to reveal 1 card in the grip at random"
+                  }
+                }
+              }
+            },
+            "EndActionPhase"
+          ]
+        }
+      ]
+    }
+  ],
+  "numeric_id": 34112,
+  "is_playable": true
+}

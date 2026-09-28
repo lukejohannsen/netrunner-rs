@@ -945,7 +945,8 @@ pub enum Effect {
     /// not, finds no host once the cost has trashed it, and `AddToDeck`
     /// moves the acting card. It was `ShuffleHostedIntoDeck`, Read-Write
     /// Share's alone, and took the zones when Ashen Epilogue needed two
-    /// more.
+    /// more. With no zones it shuffles the stack alone — Bring Them Home's
+    /// "the Runner shuffles it into the stack", after an `AddToDeck`.
     ShuffleIntoDeck(Vec<crate::dsl::CardZoneRef>),
     /// Places credits on the run's event, spendable during the run as its
     /// others are (`RunState::bonus_run_credits`, Overclock's pool) —
@@ -1065,6 +1066,31 @@ pub enum Effect {
     /// resolved later than the resolution that asked for it, but the run's
     /// own end (`SetRunEndedEffect`, one slot on the run).
     WhenThisTurnEnds(Box<Effect>),
+    /// "After you resolve this operation, your action phase ends" — a
+    /// terminal card's line (Active Policing, Bring Them Home): the rest of
+    /// the resolving card's controller's action phase is skipped and their
+    /// discard phase begins, clicks unspent (CR 5.4.3,
+    /// `turn::force_action_phase_end`). Last in the card's resolution,
+    /// where "after" puts it, so a decision it parks earlier is answered
+    /// first. Nothing outside that player's action phase (CR 5.4.4).
+    /// Composition didn't work: nothing ended a phase but the basic pass
+    /// with no clicks left, and losing the clicks is not the same — a
+    /// Corp at 0 clicks still has the action phase's paid ability window,
+    /// with its rezzes and scores, which 5.4.3a skips.
+    EndActionPhase,
+    /// Reveals `count` cards at random from `side`'s hand — HQ or the grip
+    /// — and resolves `then` as each in turn: Bring Them Home's "Reveal and
+    /// add 2 cards at random from the grip to the top of the stack" is
+    /// `then: AddToDeck(Top)`, and its threat's "reveal 1 card in the grip
+    /// at random. The Runner shuffles it into the stack" adds a shuffle.
+    /// The cards are drawn together, before any moves, with the state's
+    /// own PRNG, so a `then` that moves one cannot be dealt it twice;
+    /// fewer in the hand, fewer revealed. `then` must not park
+    /// (`CardDefinition::validate`): the cards after it would be dropped.
+    /// Composition didn't work: `TrashCard(RandomFromHq)` trashes what it
+    /// draws and nothing else, and every other card an effect acts on is
+    /// one a player chose or the acting card.
+    RevealAtRandom { side: crate::rules::Side, count: u32, then: Box<Effect> },
     /// Places `0` advancement counters on `acting_card` — e.g. Seamless
     /// Launch's "place 2 advancement counters on 1 installed card", Flood
     /// the Market's "1 advancement counter … for each remote server that
@@ -1261,13 +1287,18 @@ pub enum Amount {
     /// workspace (Vantage Point Stage 3b).
     TimesThisTurnWhen { trigger: crate::dsl::Trigger, when: crate::dsl::EventFilter },
     /// The same count for the turn that ended most recently, either
-    /// side's (`turn_log::LastTurn`) — "play only if the Runner made a
+    /// side's (`GameState::last_turn`) — "play only if the Runner made a
     /// successful run during their last turn" (Public Trail, Measured
     /// Response), asked on the Corp's turn, when the last turn was the
-    /// Runner's. Its own variant rather than a flag on the one above: a
-    /// last turn keeps its totals only, and a card file should not be
-    /// able to ask it for more.
+    /// Runner's.
     TimesLastTurn(crate::dsl::Trigger),
+    /// `TimesLastTurn` narrowed as `TimesThisTurnWhen` narrows this turn's
+    /// — Active Policing's and Bring Them Home's "if the Runner … trashed a
+    /// Corp card during their last turn" (`EventFilter::OwnedBy`), where
+    /// the row alone counts the Runner's trash of their own program too.
+    /// Composition didn't work: a last turn kept its row totals only
+    /// (`turn_log::LastTurn`, removed) until a card asked it for a column.
+    TimesLastTurnWhen { trigger: crate::dsl::Trigger, when: crate::dsl::EventFilter },
     /// `acting_card`'s own hosted generic counter count — e.g. Conduit's
     /// R&D-access bonus.
     HostedCounters,
@@ -1652,6 +1683,7 @@ impl Effect {
             | Effect::Trace { on_success: effect, .. }
             | Effect::SetRunEndedEffect(effect)
             | Effect::WhenThisTurnEnds(effect)
+            | Effect::RevealAtRandom { then: effect, .. }
             | Effect::ChooseNumber { then: effect, .. }
             | Effect::SetAccessReplacement { effect, .. } => effect.for_each_effect(f),
             Effect::OfferPaidChoice { if_paid, if_declined, .. } => {
@@ -1739,6 +1771,7 @@ impl Effect {
             | Effect::InstallAgendaFromRunnerScoreArea
             | Effect::SwapApproachedIceWithCard { .. }
             | Effect::AllottedClicksNextTurn(..)
+            | Effect::EndActionPhase
             | Effect::GainCreditsAmount(..) => {}
         }
     }

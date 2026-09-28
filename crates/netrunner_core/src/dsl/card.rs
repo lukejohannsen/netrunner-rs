@@ -892,6 +892,8 @@ pub enum CardValidationError {
     ChosenNumberNobodyChose(CardId),
     #[error("card {0:?} sets which copy of its identity is in play (`Effect::SetIdentityCopy`) other than as a Corp identity's secret number (`ChooseNumber` with `secret`), CR 1.5.2b")]
     IdentityCopySetInTheOpen(CardId),
+    #[error("card {0:?} resolves something after a random reveal (`Effect::RevealAtRandom::then`) that is not a move into a deck (`AddToDeck`, `ShuffleIntoDeck`, in a `Sequence`), which could park a decision and drop the cards revealed after it")]
+    RevealedCardsCannotWait(CardId),
     #[error("Ice {0:?} must have a strength")]
     IceMissingStrength(CardId),
     #[error("card {0:?} of type {1:?} must not have a strength — only Ice and breaker-style Programs do")]
@@ -1085,6 +1087,7 @@ impl CardDefinition {
                 Some(EventFilter::AtLeast(_)) => about == TriggerAbout::Cards,
                 // Only a moment that names a player can be made one's.
                 Some(EventFilter::Whose(_)) => triggered.trigger.states_whose(),
+                Some(EventFilter::OwnedBy { .. }) => about == TriggerAbout::Card && triggered.trigger.states_whose(),
                 // Only a Corp install's moment says where the card came
                 // from (`listeners::Moment::from_hq`).
                 Some(EventFilter::InstalledFromHq(_)) => triggered.trigger == Trigger::OnInstall && self.side == crate::rules::Side::Corp,
@@ -1206,8 +1209,19 @@ impl CardDefinition {
             .chain(self.triggers.iter().flat_map(|triggered| &triggered.effects))
             .chain(self.subroutines.iter().map(|subroutine| &subroutine.effect))
             .chain(self.interactive_on_access.iter().flat_map(|interactive| &interactive.effects));
+        // A random reveal resolves its `then` once per card with nothing to
+        // wait on, so a `then` must be one that never parks.
+        let mut revealed_cards_wait = false;
+        let never_parks = |effect: &Effect| {
+            let mut plain = true;
+            effect.for_each_effect(&mut |e| plain &= matches!(e, Effect::Sequence(_) | Effect::AddToDeck(_) | Effect::ShuffleIntoDeck(_)));
+            plain
+        };
         for root in roots {
             root.for_each_effect(&mut |effect| {
+                if let Effect::RevealAtRandom { then, .. } = effect {
+                    revealed_cards_wait |= !never_parks(then);
+                }
                 prohibits_for_an_encounter |= matches!(effect, Effect::Prohibit { until: EffectDuration::Encounter, .. });
                 restricted_to_no_type |= matches!(effect, Effect::BreakSubroutines { restrict_to: Some(IceType::Other), .. });
                 copies_set += usize::from(matches!(effect, Effect::SetIdentityCopy(_)));
@@ -1219,6 +1233,9 @@ impl CardDefinition {
         }
         if chosen_number_nobody_chose {
             return Err(CardValidationError::ChosenNumberNobodyChose(self.id.clone()));
+        }
+        if revealed_cards_wait {
+            return Err(CardValidationError::RevealedCardsCannotWait(self.id.clone()));
         }
         let a_corp_identity = self.side == Side::Corp && self.card_type == CardType::Identity;
         if copies_set > 0 && (copies_set > copies_set_secretly || !a_corp_identity) {

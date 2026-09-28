@@ -167,16 +167,43 @@ pub fn end_turn(state: &GameState, registry: &CardRegistry) -> Result<(GameState
     }
 
     let mut next = state.clone();
-    let mut events = Vec::new();
-    // "The Corp's action phase formally ends. Conditions related to the
-    // action phase ending are met" (CR 5.6.2d) — Cacophony.
-    let action_phase_ended = GameEvent::ActionPhaseEnded { side };
-    dispatcher::emit(&mut next, registry, &mut events, action_phase_ended)?;
-    if next.is_over() {
-        return Ok((next, events));
-    }
-    events.extend(begin_discard_step(&mut next, side, registry)?);
+    let events = end_action_phase(&mut next, side, registry)?;
     Ok((next, events))
+}
+
+/// "The Corp's action phase formally ends. Conditions related to the
+/// action phase ending are met" (CR 5.6.2d) — Cacophony — and the discard
+/// step follows. `end_turn`'s, once the active player has passed with no
+/// clicks left, and `force_action_phase_end`'s.
+fn end_action_phase(state: &mut GameState, side: Side, registry: &CardRegistry) -> Result<Vec<GameEvent>, RulesError> {
+    let mut events = Vec::new();
+    dispatcher::emit(state, registry, &mut events, GameEvent::ActionPhaseEnded { side })?;
+    if state.is_over() {
+        return Ok(events);
+    }
+    events.extend(begin_discard_step(state, side, registry)?);
+    Ok(events)
+}
+
+/// A terminal card's "after you resolve this operation, your action phase
+/// ends" (`Effect::EndActionPhase`, CR 5.4.3): the rest of the action phase
+/// is skipped and the game goes on to `side`'s discard phase, however many
+/// clicks are left. They are not spent: they are lost with the turn (CR
+/// 5.6.3c, `finish_turn`), and nothing can spend them first, because the
+/// discard step parks or opens the end-of-turn window, and neither admits
+/// an action (CR 5.4.3d: "players cannot take actions during this window").
+///
+/// Does nothing outside `side`'s action phase (CR 5.4.4) — on the other
+/// player's turn, in a discard phase, or a second time, once the window
+/// the first opened is open. Also nothing during a run or with a window
+/// open: CR 5.4.3b closes the windows and ends what is resolving, which
+/// the engine has no step for, and no terminal card in the pool resolves
+/// anywhere but its controller's action window, where neither is so.
+pub(crate) fn force_action_phase_end(state: &mut GameState, side: Side, registry: &CardRegistry) -> Result<Vec<GameEvent>, RulesError> {
+    if state.phase != GamePhase::Action(side) || state.active_run.is_some() || state.paid_ability_window.is_some() {
+        return Ok(Vec::new());
+    }
+    end_action_phase(state, side, registry)
 }
 
 /// The discard step (CR 5.6.3a, 5.7.2a): `side` discards down to its

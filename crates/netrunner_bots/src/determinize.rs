@@ -1538,7 +1538,13 @@ mod tests {
         let registry = registry();
         let mut state = CoreGameState::new(0);
         state.phase = GamePhase::Action(Side::Corp);
-        state.last_turn = vec![(Trigger::OnSuccessfulRun, 2)].into();
+        // Two of the Runner's successful runs, then the turn they were in
+        // ends.
+        let succeeded = GameEvent::RunSucceeded { server: ServerId::Hq };
+        for _ in 0..2 {
+            netrunner_core::rules::dispatch_event(&mut state, &registry, &succeeded).expect("a run succeeded");
+        }
+        state.last_turn = std::mem::take(&mut state.this_turn);
         let scored = GameEvent::AgendaScored { card: CardId("corp_agenda_0".to_string()), agenda_points: 2, server: ServerId::Remote(0) };
         netrunner_core::rules::dispatch_event(&mut state, &registry, &scored).expect("scored");
         let install = |id: u32, rezzed| InstalledCard {

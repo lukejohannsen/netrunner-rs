@@ -550,6 +550,16 @@ pub enum EventFilter {
     /// as an intervening if it would sit where the printed sentence does
     /// not put it.
     InstalledFromHq(bool),
+    /// The card the moment is about is `owner`'s, **and** the moment is
+    /// `whose` — Active Policing's "the Runner … trashed a Corp card",
+    /// where the Runner's trash of their own program is not one. Neither
+    /// half alone says it: `Whose` admits every card, and a `Card` filter
+    /// on a trigger phrased about its controller (`OnCardTrashed`) hears
+    /// the controller's moments, which for a Corp card are the Corp's own
+    /// trashes. Counted in the log because a card's owner is public
+    /// wherever its type is not: every card the log counts `Unseen` is a
+    /// Corp card (`turn_log::Occurrences::meant_by`).
+    OwnedBy { owner: crate::rules::Side, whose: crate::rules::Side },
 }
 
 impl Trigger {
