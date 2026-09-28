@@ -1244,7 +1244,7 @@ mod tests {
             ..Default::default()
         }];
         state.last_completed_run = Some(crate::rules::state::CompletedRun {
-            accessed_cards: Vec::new(), on_end_effect: None, on_end_card: None, on_end_install: None,
+            accessed_cards: Vec::new(), on_end_effect: None, on_end_card: None, on_end_install: None, run_credits_left: 0,
             server: ServerId::Hq,
             cards_accessed: 0,
             agendas_stolen: 0,

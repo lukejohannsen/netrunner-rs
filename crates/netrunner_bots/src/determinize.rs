@@ -608,6 +608,7 @@ fn determinize_run(
         // own for the run (Eye for an Eye), and Sang Kancil's boost asks
         // whether it is a run event.
         initiated_by: run.initiated_by.clone(),
+        begun_as_the_turn_began: run.begun_as_the_turn_began,
         // Not in the view: whether the encountered ice was bypassed. A
         // rollout starting mid-encounter sees no bypass, which only ever
         // makes the searcher pay for subroutines the real game will not

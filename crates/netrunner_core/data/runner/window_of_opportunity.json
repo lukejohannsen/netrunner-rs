@@ -1,0 +1,105 @@
+{
+  "id": "window_of_opportunity",
+  "title": "Window of Opportunity",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 1,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Runner",
+            "options": [
+              {
+                "PromptChooseCards": {
+                  "side": "Runner",
+                  "source": "OwnGrip",
+                  "filter": {
+                    "All": [
+                      {
+                        "CardTypeOneOf": [
+                          "Program",
+                          "Hardware"
+                        ]
+                      },
+                      "InstallableRunnerCard"
+                    ]
+                  },
+                  "min": 1,
+                  "max": 1,
+                  "reveal": false,
+                  "shuffle_after": false,
+                  "then": "InstallRunnerCardFromGrip"
+                }
+              },
+              {
+                "Sequence": []
+              }
+            ],
+            "texts": [
+              "You may install 1 program or piece of hardware from your grip",
+              ""
+            ]
+          }
+        },
+        {
+          "PromptChooseServer": {
+            "chooser": "Runner",
+            "rez_cost_delta": 0,
+            "bonus_run_credits": 0,
+            "on_start": {
+              "PromptChooseCards": {
+                "side": "Runner",
+                "source": "OpponentInstalled",
+                "filter": {
+                  "All": [
+                    "Ice",
+                    "Rezzed",
+                    "InAttackedServer"
+                  ]
+                },
+                "min": 1,
+                "max": 1,
+                "reveal": false,
+                "shuffle_after": false,
+                "then": {
+                  "Sequence": [
+                    {
+                      "DerezCard": "ThisCard"
+                    },
+                    {
+                      "SetRunEndedEffect": {
+                        "PresentChoice": {
+                          "chooser": "Corp",
+                          "options": [
+                            {
+                              "RezInstalled": {
+                                "install": 0
+                              }
+                            },
+                            {
+                              "Sequence": []
+                            }
+                          ],
+                          "texts": [
+                            "the Corp may rez the ice derezzed this way, ignoring all costs",
+                            ""
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "numeric_id": 34077,
+  "is_playable": true
+}

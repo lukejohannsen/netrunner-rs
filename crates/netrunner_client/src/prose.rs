@@ -81,6 +81,7 @@ pub fn describe_amount(amount: &Amount) -> String {
         Amount::ProtectedRemotesWithRootCards => "the number of remote servers with a card in the root and protected by ice".to_string(),
         Amount::RemainingAfterSelection(n) => format!("{n} less the cards chosen"),
         Amount::CardsSelected => "the cards chosen".to_string(),
+        Amount::RunCreditsLeftLastRun => "the credits left on it from that run".to_string(),
         Amount::AccessLimit(server) => format!("the cards you may access in {}", describe_server(*server)),
         Amount::ThreatLevel => "the threat level".to_string(),
         Amount::RunnerTags => "the Runner's tags".to_string(),
@@ -322,6 +323,7 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
         Effect::SetIdentityCopy(copy) => format!("make copy {} of the identity the one in play", describe_amount(copy)),
         Effect::AddToDeck(DeckEnd::Bottom) => "put it on the bottom of its owner's deck".to_string(),
         Effect::AddToDeck(DeckEnd::Top) => "put it on top of its owner's deck".to_string(),
+        Effect::PlaceRunCredits(amount) => format!("place {} [credit] on this card, to spend during the run", describe_amount(amount)),
         Effect::ShuffleIntoDeck(zones) => {
             let zones: Vec<&str> = zones.iter().map(|zone| if *zone == CardZoneRef::HostedOnSource { "all hosted cards" } else { describe_zone(zone) }).collect();
             format!("shuffle {} into your stack", zones.join(" and "))

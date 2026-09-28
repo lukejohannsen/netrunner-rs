@@ -446,6 +446,12 @@ pub struct RunState {
     /// Usually `0`.
     #[serde(default)]
     pub bonus_run_credits: u32,
+    /// Whether a card's text began this run as the Runner's turn began
+    /// (Alarm Clock), so that its end puts the turn back at its start
+    /// (`engine::start_run`, `engine::end_run`). Part of the run, so a new
+    /// run is the reset.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub begun_as_the_turn_began: bool,
     /// How many agendas the Runner has stolen during this run
     /// (`run::access::resolve_steal`). Snapshotted into
     /// `state::CompletedRun::agendas_stolen` when the run concludes, since
@@ -503,6 +509,7 @@ impl Default for RunState {
             cards_accessed_count: 0,
             redirect_on_approach: None,
             bonus_run_credits: 0,
+            begun_as_the_turn_began: false,
             initiated_by: None,
             ice_bypassed: false,
             fully_broken: false,

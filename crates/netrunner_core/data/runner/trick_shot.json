@@ -1,0 +1,76 @@
+{
+  "id": "trick_shot",
+  "title": "Trick Shot",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 1,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "InitiateRun": "RnD"
+        },
+        {
+          "PlaceRunCredits": {
+            "Fixed": 4
+          }
+        },
+        {
+          "SetRunEndedEffect": {
+            "PresentChoice": {
+              "chooser": "Runner",
+              "options": [
+                {
+                  "PromptChooseServer": {
+                    "chooser": "Runner",
+                    "rez_cost_delta": 0,
+                    "bonus_run_credits": 0,
+                    "only_in": "Remote",
+                    "on_start": {
+                      "PlaceRunCredits": "RunCreditsLeftLastRun"
+                    }
+                  }
+                },
+                {
+                  "Sequence": []
+                }
+              ],
+              "texts": [
+                "you may run a remote server",
+                ""
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "trigger": "OnSuccessfulRun",
+      "subject": "Any",
+      "when": {
+        "Server": [
+          "RnD"
+        ]
+      },
+      "requirement": "ThisCardStartedTheRun",
+      "effects": [
+        {
+          "PlaceRunCredits": {
+            "Fixed": 2
+          }
+        },
+        {
+          "AddAdditionalAccess": {
+            "server": "RnD",
+            "count": 1
+          }
+        }
+      ],
+      "text": "If successful, place 2[credit] on this event and access 1 additional card when you breach R&D."
+    }
+  ],
+  "numeric_id": 34087,
+  "is_playable": true
+}

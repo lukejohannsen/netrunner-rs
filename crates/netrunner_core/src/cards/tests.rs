@@ -13946,4 +13946,122 @@ mod rebellion_without_rehearsal {
         assert_eq!(purge.corp.archives.len(), before + 2 + 1, "the two, and the card it hosted");
     }
 
+
+    /// Plays the run on: passes a window, goes on, declares it successful,
+    /// until something is parked, a card is at its access, or the run is
+    /// over.
+    fn run_on(mut state: GameState, registry: &CardRegistry) -> GameState {
+        loop {
+            let parked = state.pending_decision.is_some() || state.pending_paid_choice.is_some() || state.pending_payment.is_some();
+            let accessing = state.active_run.as_ref().is_some_and(|run| run.access_state.is_some());
+            if parked || accessing || state.active_run.is_none() {
+                return state;
+            }
+            let offered = crate::rules::legal_actions(&state, registry);
+            let action = match &state.paid_ability_window {
+                Some(window) => PlayerAction::PassPriority { side: window.active_priority },
+                None if offered.contains(&PlayerAction::CompleteRun) => PlayerAction::CompleteRun,
+                None if offered.contains(&PlayerAction::ContinueRun) => PlayerAction::ContinueRun,
+                None => return state,
+            };
+            state = apply_action(&state, registry, action).expect("the run goes on").0;
+        }
+    }
+
+    /// Passes every accessed card until the run is over.
+    fn pass_every_access(mut state: GameState, registry: &CardRegistry) -> GameState {
+        loop {
+            state = first_access(run_on(state, registry), registry);
+            let card = state.active_run.as_ref().and_then(|run| run.access_state.as_ref()).and_then(|access| match &access.phase {
+                crate::rules::AccessPhase::PendingChoice { card_id, .. } => Some(card_id.clone()),
+                _ => None,
+            });
+            match card {
+                Some(card_id) if state.pending_decision.is_none() && state.pending_paid_choice.is_none() => {
+                    state = apply_action(&state, registry, PlayerAction::PassAccessedCard { card_id }).expect("pass").0;
+                }
+                _ => return state,
+            }
+        }
+    }
+
+    #[test]
+    fn trick_shot_hosts_four_then_two_more_for_an_extra_rnd_access_and_carries_them_into_a_remote_run() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.grip = vec![id("trick_shot")];
+        state.corp.r_and_d = vec![id("hedge_fund"); 3];
+        state.corp.installed = vec![crate::rules::InstalledCard {
+            install_id: fixture_install_id("pad_campaign"),
+            card: id("pad_campaign"),
+            server: ServerId::Remote(1),
+            slot: InstallSlot::Root,
+            ..Default::default()
+        }];
+        let (state, _) = apply_action(&state, &registry, PlayerAction::PlayEvent { card_id: id("trick_shot") }).expect("play");
+        assert_eq!(state.active_run.as_ref().map(|run| (run.server, run.bonus_run_credits)), Some((ServerId::RnD, 4)));
+        let state = run_on(state, &registry);
+        assert_eq!(state.active_run.as_ref().map(|run| (run.bonus_run_credits, run.additional_rd_access)), Some((6, 1)), "+2 and a card");
+        let state = pass_every_access(state, &registry);
+        assert!(state.active_run.is_none() && state.pending_decision.is_some(), "may run a remote");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("a remote");
+        let (state, _) =
+            apply_action(&state, &registry, PlayerAction::ChooseServerForPendingDecision { server: ServerId::Remote(1) }).expect("Remote 1");
+        assert_eq!(state.active_run.as_ref().map(|run| (run.server, run.bonus_run_credits)), Some((ServerId::Remote(1), 6)), "the six left");
+    }
+
+    #[test]
+    fn window_of_opportunity_installs_derezzes_the_ice_for_its_run_and_lets_the_corp_rez_it_free_after() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.grip = vec![id("window_of_opportunity"), id("corroder")];
+        state.corp.installed = vec![ice_at_hq("ice_wall")];
+        let (state, _) = apply_action(&state, &registry, PlayerAction::PlayEvent { card_id: id("window_of_opportunity") }).expect("play");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("install one");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ToggleCardSelection { position: 0 }).expect("Corroder");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ConfirmCardSelection).expect("installed");
+        assert!(state.runner.rig.iter().any(|card| card.card == id("corroder")));
+        assert_eq!(state.runner.resources.credits, Credits(10 - 1 - 2));
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ChooseServerForPendingDecision { server: ServerId::Hq }).expect("HQ");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ToggleCardSelection { position: 0 }).expect("Ice Wall");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ConfirmCardSelection).expect("derezzed");
+        assert!(!state.corp.installed[0].rezzed, "derezzed as the run begins");
+        let corp_credits = state.corp.resources.credits;
+        let state = pass_every_access(state, &registry);
+        assert!(state.active_run.is_none());
+        assert!(state.pending_decision.is_some(), "the Corp may rez it");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("rez it");
+        assert!(state.corp.installed[0].rezzed);
+        assert_eq!(state.corp.resources.credits, corp_credits, "ignoring all costs");
+    }
+
+    #[test]
+    fn alarm_clock_runs_hq_as_the_turn_begins_and_bypasses_the_first_ice_for_two_clicks() {
+        let registry = registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Corp);
+        state.corp.resources.clicks = Clicks(0);
+        state.runner.rig = vec![rig("alarm_clock")];
+        state.corp.installed = vec![ice_at_hq("ice_wall")];
+        state.corp.hq = vec![id("hedge_fund")];
+        let (mut state, _) = apply_action(&state, &registry, PlayerAction::EndTurn).expect("the Corp's turn ends");
+        while state.pending_decision.is_none() {
+            let window = state.paid_ability_window.as_ref().expect("a window to pass").active_priority;
+            state = apply_action(&state, &registry, PlayerAction::PassPriority { side: window }).expect("pass").0;
+        }
+        assert_eq!(state.phase, GamePhase::StartOfTurn(Side::Runner));
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("run HQ");
+        assert_eq!(state.active_run.as_ref().map(|run| run.server), Some(ServerId::Hq));
+        let state = run_on(state, &registry);
+        assert!(state.pending_paid_choice.is_some(), "the first ice: two clicks to bypass it");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::AcceptPendingPaidChoice { cost_option_index: None }).expect("bypass");
+        assert_eq!(state.runner.resources.clicks, Clicks(2));
+        let state = pass_every_access(state, &registry);
+        assert!(state.active_run.is_none() && state.runner.resources.clicks == Clicks(2));
+        assert_eq!(state.phase, GamePhase::StartOfTurn(Side::Runner), "back at the turn's start");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Runner }).expect("the Runner passes");
+        let state = pass_until_settled(state, &registry).0;
+        assert_eq!(state.phase, GamePhase::Action(Side::Runner));
+    }
+
 }
