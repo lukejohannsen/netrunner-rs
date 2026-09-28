@@ -109,6 +109,9 @@ pub struct RunnerClientView {
     /// Public — see `RunnerState::removed_from_game`.
     #[serde(default)]
     pub removed_from_game: Vec<CardId>,
+    /// Public — see `RunnerState::set_aside`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub set_aside: Vec<CardId>,
     pub rig: Vec<PublicInstalledRunnerCard>,
     pub link_strength: u32,
     pub scored_agendas: Vec<CardId>,
@@ -362,6 +365,7 @@ pub fn build_client_view(state: &GameState, registry: &CardRegistry, viewer: imp
         stack_count: zone_count(&public.runner.stack),
         heap: public.runner.heap,
         removed_from_game: public.runner.removed_from_game,
+        set_aside: public.runner.set_aside,
         rig: public.runner.rig,
         link_strength: public.runner.link_strength,
         servers_run_this_turn: public.runner.servers_run_this_turn.clone(),

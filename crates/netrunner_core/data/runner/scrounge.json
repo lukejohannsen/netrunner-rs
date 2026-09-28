@@ -31,8 +31,11 @@
             "then": {
               "Sequence": [
                 {
-                  "InstallRunnerCardFromHeap": {
-                    "Credits": 0
+                  "InstallRunnerCardFromZone": {
+                    "from": "OwnHeap",
+                    "discount": {
+                      "Credits": 0
+                    }
                   }
                 },
                 {
@@ -51,8 +54,8 @@
                           "reveal": true,
                           "shuffle_after": false,
                           "then": {
-            "AddToDeck": "Bottom"
-          }
+                            "AddToDeck": "Bottom"
+                          }
                         }
                       },
                       {

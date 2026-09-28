@@ -2154,7 +2154,11 @@ one.
     at breach give them, and which jinteki shuffles away. **Answered (21
     September 2026): they are not** — "Discard piles are not ordered" (CR
     4.4.2) — and fixed as Rules Conformance A2: anyone but the Corp sees
-    the pile faceup cards first, by name.
+    the pile faceup cards first, by name. **The set-aside zone has its
+    home (NSG pool, RWR Stage 6d, 28 September 2026):** faceup cards the
+    Runner's text sets aside, `RunnerState::set_aside`, public because
+    faceup (CR 4.8.6) — the who-may-see rule is that one; a facedown set
+    aside (4.8.7) still has none, and no card in the pool makes one.
 
 ## Advancing a card and placing a counter on it were one event — DONE (20 September 2026)
 

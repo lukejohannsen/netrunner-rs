@@ -113,6 +113,7 @@ pub fn describe_zone(zone: &CardZoneRef) -> &'static str {
         CardZoneRef::OwnStack => "the stack",
         CardZoneRef::OwnGrip => "the grip",
         CardZoneRef::OwnHeap => "the heap",
+        CardZoneRef::OwnSetAside => "the cards set aside",
         CardZoneRef::OpponentInstalled => "the opponent's installed cards",
         CardZoneRef::OpponentDiscard => "the opponent's discard pile",
         CardZoneRef::OwnInstalled => "your installed cards",
@@ -322,9 +323,12 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
         Effect::InstallFromZoneIgnoringCost { .. } => "install a card, ignoring its cost".to_string(),
         Effect::PromptInstallCorpCard { .. } => "install a card".to_string(),
         Effect::InstallRunnerCardFromGrip => "install a card from the grip".to_string(),
-        Effect::InstallRunnerCardFromHeap(Discount::Credits(0)) => "install a card from the heap".to_string(),
-        Effect::InstallRunnerCardFromHeap(Discount::Credits(n)) => format!("install a card from the heap, paying {n} less"),
-        Effect::InstallRunnerCardFromHeap(Discount::AllCosts) => "install a card from the heap, ignoring all costs".to_string(),
+        Effect::InstallRunnerCardFromZone { from, discount: Discount::Credits(0) } => format!("install a card from {}", describe_zone(from)),
+        Effect::InstallRunnerCardFromZone { from, discount: Discount::Credits(n) } => format!("install a card from {}, paying {n} less", describe_zone(from)),
+        Effect::InstallRunnerCardFromZone { from, discount: Discount::AllCosts } => format!("install a card from {}, ignoring all costs", describe_zone(from)),
+        Effect::SetAsideFromTopUntil { filter, count } => {
+            format!("set aside cards from the top of the stack until {count} ({}) are set aside", humanize(format!("{filter:?}")).to_lowercase())
+        }
         Effect::InstallRunnerCardFromGripWithDiscount(Discount::Credits(n)) => format!("install a card from the grip, paying {n} less"),
         Effect::InstallRunnerCardFromGripWithDiscount(Discount::AllCosts) => "install a card from the grip, ignoring all costs".to_string(),
         Effect::InstallRunnerCardFromHost => "install the hosted card".to_string(),

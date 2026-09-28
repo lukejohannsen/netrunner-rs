@@ -757,8 +757,21 @@ pub enum Effect {
     /// Trojan exclusion and same silent no-op when the pick is no longer
     /// installable. The discount was taken into this variant rather than a
     /// fourth beside it (`Credits(0)` for the two cards that pay in full),
-    /// as `PlayOperation { from }` took Plutus's zone.
-    InstallRunnerCardFromHeap(Discount),
+    /// as `PlayOperation { from }` took Plutus's zone, and so was the zone
+    /// when The Wizard's Chest's "You may install 1 of those 2 cards,
+    /// ignoring all costs" installed out of the set-aside zone: it was
+    /// `InstallRunnerCardFromHeap(Discount)`. `from` is `OwnHeap` or
+    /// `OwnSetAside`; anything else is `RulesError::UnresolvedCardTarget`.
+    InstallRunnerCardFromZone { from: crate::dsl::CardZoneRef, discount: Discount },
+    /// Sets cards aside faceup from the top of the Runner's stack, one at a
+    /// time, until `count` of them match `filter` or the stack is empty —
+    /// The Wizard's Chest's "Set aside cards from the top of your stack
+    /// faceup until you set aside 2 cards of the chosen type"
+    /// (`RunnerState::set_aside`, CR 4.8). What is set aside is public
+    /// (`GameEvent::CardsSetAside`). Composition didn't work: no effect
+    /// reads down a deck until a condition holds, and a card left in the
+    /// stack cannot wait for the install choice that follows.
+    SetAsideFromTopUntil { filter: crate::dsl::CardFilter, count: u32 },
     /// `InstallRunnerCardFromGrip` paying `u32` less — Illumination's
     /// "install up to 3 cards from your grip, paying 1[c] less for each".
     /// Paired with `CardFilter::InstallableRunnerCardWithDiscount` so the
@@ -1751,7 +1764,8 @@ impl Effect {
             | Effect::SwapInstalledIce(..)
             | Effect::InstallFromZoneIgnoringCost { .. }
             | Effect::InstallRunnerCardFromGrip
-            | Effect::InstallRunnerCardFromHeap(_)
+            | Effect::InstallRunnerCardFromZone { .. }
+            | Effect::SetAsideFromTopUntil { .. }
             | Effect::InstallRunnerCardFromGripWithDiscount(..)
             | Effect::InstallRunnerCardFromHost
             | Effect::RedirectRunOnApproach(..)

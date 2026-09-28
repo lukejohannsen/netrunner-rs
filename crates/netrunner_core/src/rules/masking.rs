@@ -229,6 +229,9 @@ pub struct PublicRunnerState {
     /// Never masked — see `RunnerState::removed_from_game`.
     #[serde(default)]
     pub removed_from_game: Vec<CardId>,
+    /// Never masked: faceup (`RunnerState::set_aside`).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub set_aside: Vec<CardId>,
     /// Never masked — stolen Agendas sit in a fully public score area.
     pub scored_agendas: Vec<CardId>,
     /// Never masked — static link strength, like `tags`, is plain public
@@ -952,6 +955,7 @@ pub fn mask_event_for_player(event: &GameEvent, state: &GameState, viewer: impl 
         | GameEvent::IceBypassed { .. }
         | GameEvent::EncounterEnded { .. }
         | GameEvent::CardRevealed { .. }
+        | GameEvent::CardsSetAside { .. }
         // Announced only for a rezzed card (`rules::uninstall`).
         | GameEvent::AboutToBeUninstalled { .. }
         | GameEvent::IceFullyBroken { .. }
@@ -1340,6 +1344,7 @@ fn mask_runner_state(state: &GameState, registry: &CardRegistry, owner_view: boo
         rig: runner.rig.iter().map(|card| mask_installed_runner_card(state, registry, card, owner_view)).collect(),
         heap: runner.heap.clone(),
         removed_from_game: runner.removed_from_game.clone(),
+        set_aside: runner.set_aside.clone(),
         scored_agendas: runner.scored_agendas.clone(),
         // Asked, like a strength: the identity's printed link and what the
         // rig adds. It was a stored field that only the identity ever wrote.

@@ -15076,4 +15076,53 @@ mod rebellion_without_rehearsal {
         assert!(state.runner.rig.is_empty(), "empty, so trashed");
         assert!(state.runner.heap.contains(&id("cataloguer")));
     }
+
+    // ---- Stage 6d: cards set aside ----
+
+    fn with_the_wizards_chest(ran_all_three: bool) -> GameState {
+        let mut state = runner_turn();
+        state.runner.rig = vec![crate::rules::InstalledRunnerCard { card: id("the_wizards_chest"), install_id: fixture_install_id("the_wizards_chest"), ..Default::default() }];
+        // Bottom to top: the top is the end.
+        state.runner.stack = vec![id("diesel"), id("corroder"), id("sure_gamble"), id("mayfly"), id("t400_memory_diamond"), id("cyberfeeder"), id("sure_gamble")];
+        if ran_all_three {
+            for server in [ServerId::Hq, ServerId::RnD, ServerId::Archives] {
+                crate::rules::turn_log::record(&mut state, &registry(), &GameEvent::RunSucceeded { server });
+            }
+        }
+        state
+    }
+
+    #[test]
+    fn the_wizards_chest_sets_aside_until_two_of_a_type_installs_one_free_and_shuffles_the_rest_back() {
+        let registry = registry();
+        let use_it = PlayerAction::ActivateAbility { target: fixture_install_id("the_wizards_chest"), ability_index: 0 };
+        assert!(apply_action(&with_the_wizards_chest(false), &registry, use_it.clone()).is_err(), "only after HQ, R&D and Archives");
+
+        let state = with_the_wizards_chest(true);
+        let credits = state.runner.resources.credits;
+        let (state, _) = apply_action(&state, &registry, use_it.clone()).expect("trash it");
+        assert!(state.runner.heap.contains(&id("the_wizards_chest")));
+        let (state, events) = apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 1 }).expect("programs");
+        let set_aside = events.iter().find_map(|event| match event { GameEvent::CardsSetAside { cards, .. } => Some(cards.clone()), _ => None }).expect("set aside");
+        assert_eq!(set_aside, vec![id("sure_gamble"), id("cyberfeeder"), id("t400_memory_diamond"), id("mayfly"), id("sure_gamble"), id("corroder")], "down to the second program");
+        assert_eq!(state.runner.stack, vec![id("diesel")]);
+        let view = crate::view::build_client_view(&state, &registry, Side::Runner);
+        assert_eq!(view.runner.set_aside.len(), 6, "faceup, in the view");
+        let offered: Vec<CardId> = view.selection.iter().filter_map(|candidate| candidate.card.clone()).collect();
+        assert_eq!(offered, vec![id("mayfly"), id("corroder")], "one of those 2 cards");
+        let state = select(&state, &registry, &[view.selection[0].position]);
+        assert!(state.runner.rig.iter().any(|card| card.card == id("mayfly")), "installed");
+        assert_eq!(state.runner.resources.credits, credits, "ignoring all costs");
+        assert!(state.runner.set_aside.is_empty(), "the rest shuffled back");
+        assert_eq!(state.runner.stack.len(), 6);
+        assert!(!state.runner.stack.contains(&id("mayfly")));
+
+        // Declined: all of them go back.
+        let (state, _) = apply_action(&with_the_wizards_chest(true), &registry, use_it).expect("trash it");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("hardware");
+        let state = select(&state, &registry, &[]);
+        assert!(state.runner.set_aside.is_empty());
+        assert_eq!(state.runner.stack.len(), 7);
+        assert!(state.runner.rig.is_empty());
+    }
 }

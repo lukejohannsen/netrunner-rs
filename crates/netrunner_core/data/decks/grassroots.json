@@ -3,7 +3,7 @@
   "name": "Grassroots",
   "side": "Runner",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach Sebastião Souza Pessoa, Rebellion Without Rehearsal's Anarch identity (Stage 2a), on a rig of connections for the Corp to pay HQ to trash — Friend of a Friend and Privileged Access take the first tag his install hears, Arruaceiras Crew takes one to weaken the ice, and Amanuensis draws when they go. Juli Moreira Lee and Amelia Earhart on influence. Eternal-legal only. Stage 2b: Malandragem and two Physarum Entangler for the Cleaver, the Shred and a Fermenter, so a purge has a program to trash and an encounter two ways to be bypassed. Stage 3a: two Boi-tatá for the Hantu, which every self-trash above makes cheaper, and an Ashen Epilogue for a Wildcat Strike. Stage 3b: two Eye for an Eye for the Take a Dive, a tag Sebastião hears off an HQ run, and a Heliamphora for a Charm Offensive, which a Corp purging Physarum has to trash HQ for.",
+  "description": "Not a published list: built so the sweeps reach Sebastião Souza Pessoa, Rebellion Without Rehearsal's Anarch identity (Stage 2a), on a rig of connections for the Corp to pay HQ to trash — Friend of a Friend and Privileged Access take the first tag his install hears, Arruaceiras Crew takes one to weaken the ice, and Amanuensis draws when they go. Juli Moreira Lee and Amelia Earhart on influence. Eternal-legal only. Stage 2b: Malandragem and two Physarum Entangler for the Cleaver, the Shred and a Fermenter, so a purge has a program to trash and an encounter two ways to be bypassed. Stage 3a: two Boi-tatá for the Hantu, which every self-trash above makes cheaper, and an Ashen Epilogue for a Wildcat Strike. Stage 3b: two Eye for an Eye for the Take a Dive, a tag Sebastião hears off an HQ run, and a Heliamphora for a Charm Offensive, which a Corp purging Physarum has to trash HQ for. Rebellion Without Rehearsal Stage 6d: two The Wizard’s Chest for the Scrounge and a Sure Gamble.",
   "style": "builder",
   "identity": "sebastiao_souza_pessoa_activist_organizer",
   "cards": [
@@ -49,14 +49,10 @@
     },
     {
       "card": "sure_gamble",
-      "count": 3
+      "count": 2
     },
     {
       "card": "wildcat_strike",
-      "count": 1
-    },
-    {
-      "card": "scrounge",
       "count": 1
     },
     {
@@ -110,6 +106,10 @@
     {
       "card": "heliamphora",
       "count": 1
+    },
+    {
+      "card": "the_wizards_chest",
+      "count": 2
     }
   ]
 }

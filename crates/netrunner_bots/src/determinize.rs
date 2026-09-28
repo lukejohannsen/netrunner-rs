@@ -191,6 +191,7 @@ fn visible_cards(view: &ClientView) -> Vec<CardId> {
     }
     ids.extend(view.runner.heap.iter().cloned());
     ids.extend(view.runner.removed_from_game.iter().cloned());
+    ids.extend(view.runner.set_aside.iter().cloned());
     ids.extend(view.runner.scored_agendas.iter().cloned());
     for rig_card in &view.runner.rig {
         ids.push(rig_card.card.clone());
@@ -773,6 +774,7 @@ pub fn determinize(view: &ClientView, registry: &CardRegistry, rng: &mut impl Rn
         rig,
         heap: view.runner.heap.clone(),
         removed_from_game: view.runner.removed_from_game.clone(),
+        set_aside: view.runner.set_aside.clone(),
         once_per_turn_used: view.runner.once_per_turn_used.iter().cloned().collect(),
         servers_run_this_turn: view.runner.servers_run_this_turn.clone(),
         discarded_this_discard_phase: view.runner.discarded_this_discard_phase.clone(),
@@ -1076,6 +1078,7 @@ mod tests {
                     ..Default::default()
                 }],
                 removed_from_game: Vec::new(),
+                set_aside: Vec::new(),
                 heap: Vec::new(),
                 once_per_turn_used: Default::default(), servers_run_this_turn: Vec::new(), discarded_this_discard_phase: Vec::new(), identity_flipped: false,
             },

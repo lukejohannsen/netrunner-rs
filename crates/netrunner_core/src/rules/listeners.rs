@@ -242,6 +242,7 @@ pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
         // No card hears a reveal yet: Esca, Tocsin and the traps reveal, and
         // nothing in the pool asks what was revealed.
         GameEvent::CardRevealed { .. } => Vec::new(),
+        GameEvent::CardsSetAside { .. } => Vec::new(),
         // The Runner breached, but the cards are the Corp's: whoever
         // listens hears it, and none of it is a card to be "this".
         GameEvent::ArchivesTurnedFaceup { count } => vec![moment(Trigger::OnArchivesTurnedFaceup, &About::Cards(*count), None)],

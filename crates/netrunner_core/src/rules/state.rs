@@ -622,6 +622,15 @@ pub struct RunnerState {
     /// masked.
     #[serde(default)]
     pub removed_from_game: Vec<CardId>,
+    /// The Runner's cards in the set-aside zone (CR 4.8), set aside faceup
+    /// by a card's text and still waiting there — The Wizard's Chest's
+    /// "Set aside cards from the top of your stack faceup until …" while
+    /// the Runner chooses one to install. The zone is shared by both
+    /// players (4.8.1); only the Runner's text sets anything aside yet, so
+    /// only the Runner's side has a list. Faceup, so public (4.8.6), and
+    /// emptied by the same resolution, which shuffles the rest back.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub set_aside: Vec<CardId>,
     /// Agendas the Runner has stolen, in steal order. Fully public — never
     /// masked. See `CorpState::scored_agendas`'s doc comment.
     pub scored_agendas: Vec<CardId>,

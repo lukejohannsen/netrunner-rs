@@ -73,8 +73,11 @@
                                   "reveal": false,
                                   "shuffle_after": false,
                                   "then": {
-                                    "InstallRunnerCardFromHeap": {
-                                      "Credits": 2
+                                    "InstallRunnerCardFromZone": {
+                                      "from": "OwnHeap",
+                                      "discount": {
+                                        "Credits": 2
+                                      }
                                     }
                                   }
                                 }
@@ -151,8 +154,11 @@
                                   "reveal": false,
                                   "shuffle_after": false,
                                   "then": {
-                                    "InstallRunnerCardFromHeap": {
-                                      "Credits": 0
+                                    "InstallRunnerCardFromZone": {
+                                      "from": "OwnHeap",
+                                      "discount": {
+                                        "Credits": 0
+                                      }
                                     }
                                   }
                                 }
