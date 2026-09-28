@@ -408,7 +408,40 @@ pub(crate) fn plan_for(state: &GameState, registry: &CardRegistry, event: &GameE
             ));
         }
     }
+    // A delayed conditional ability waiting for this moment is one of its
+    // reactions (CR 9.6.13), its controller's to order with the rest: it
+    // goes in beside its side's entries, and resolves as the card that
+    // made it. `dispatcher::dispatch_event` takes it off the list.
+    for moment in &moments {
+        for delayed in state.delayed.iter().filter(|delayed| delayed_hears(state, delayed, moment.trigger)) {
+            let side = registry.get(&delayed.card).map_or(Side::Corp, |card| card.side);
+            let due = DeferredTrigger {
+                card: delayed.card.clone(),
+                install: delayed.install,
+                trigger: moment.trigger,
+                target: None,
+                target_install: None,
+                event: Some(event.clone()),
+                continuation: Some(delayed.effect.clone()),
+                heard: Default::default(),
+                not_the_first_this_turn: false,
+                fired: 0,
+            };
+            let at = plan.iter().rposition(|(planned, _)| *planned == side).map_or(plan.len(), |last| last + 1);
+            plan.insert(at, (side, due));
+        }
+    }
     plan
+}
+
+/// Whether the delayed ability `delayed` waits for a moment of `trigger`
+/// now: its moment, on the turn it was made for.
+pub(crate) fn delayed_hears(state: &GameState, delayed: &crate::rules::lingering::DelayedAbility, trigger: Trigger) -> bool {
+    delayed_hears_on(delayed, trigger, state.turn)
+}
+
+pub(crate) fn delayed_hears_on(delayed: &crate::rules::lingering::DelayedAbility, trigger: Trigger, turn: u32) -> bool {
+    delayed.when == trigger && delayed.turn == turn
 }
 
 /// Whether the occurrence `as_of` counted is the first this turn of what

@@ -691,6 +691,22 @@ pub fn evaluate_effect(
             Ok(Vec::new())
         }
 
+        Effect::WhenThisTurnEnds(effect) => {
+            let card = acting_card.ok_or(RulesError::MissingActingCardContext)?.clone();
+            let effect = match state.active_run.as_ref() {
+                Some(run) => (**effect).clone().with_attacked_server(run.server),
+                None => (**effect).clone(),
+            };
+            state.delayed.push(crate::rules::lingering::DelayedAbility {
+                when: Trigger::OnDiscardPhaseEnd,
+                turn: state.turn,
+                effect,
+                card,
+                install: ctx.acting_install,
+            });
+            Ok(Vec::new())
+        }
+
         Effect::ArmRunEndPrevention(prevention) => {
             state.active_run.as_ref().ok_or(RulesError::NoActiveRun)?;
             let source = acting_card.ok_or(RulesError::MissingActingCardContext)?.clone();

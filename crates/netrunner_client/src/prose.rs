@@ -327,6 +327,7 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
         Effect::InstallRunnerCardFromHost => "install the hosted card".to_string(),
         Effect::RedirectRunOnApproach(server) => format!("redirect the run to {}", describe_server(*server)),
         Effect::SetRunEndedEffect(effect) => format!("when the run ends, {}", describe_effect(effect, registry)),
+        Effect::WhenThisTurnEnds(effect) => format!("when this turn ends, {}", describe_effect(effect, registry)),
         Effect::ArmRunEndPrevention(_) => "the run cannot be ended by the next end-the-run effect".to_string(),
         Effect::Sabotage(n) => format!("sabotage {n}"),
         Effect::MillRnDAmount(amount) => format!("trash cards from the top of R&D equal to {}", describe_amount(amount)),

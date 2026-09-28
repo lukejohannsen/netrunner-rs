@@ -339,6 +339,20 @@ impl CardFilter {
     }
 }
 
+impl CardFilter {
+    /// `InAttackedServer` written over by `InServer(server)`, through `All`
+    /// and `AnyOf` — "that server", after the run (`Effect::
+    /// with_attacked_server`).
+    pub fn with_attacked_server(self, server: ServerId) -> CardFilter {
+        match self {
+            CardFilter::InAttackedServer => CardFilter::InServer(server),
+            CardFilter::All(filters) => CardFilter::All(filters.into_iter().map(|filter| filter.with_attacked_server(server)).collect()),
+            CardFilter::AnyOf(filters) => CardFilter::AnyOf(filters.into_iter().map(|filter| filter.with_attacked_server(server)).collect()),
+            other => other,
+        }
+    }
+}
+
 pub fn card_matches_filter(card: &CardDefinition, filter: &CardFilter) -> bool {
     match filter {
         CardFilter::Any => true,

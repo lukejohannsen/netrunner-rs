@@ -1449,6 +1449,11 @@ pub struct GameState {
     /// effects are not, and why nothing depends on when the list is swept.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub lingering: Vec<LingeringEffect>,
+    /// Delayed conditional abilities waiting for their moment
+    /// (`lingering::DelayedAbility`, CR 9.6.13) — Lightning Laboratory's
+    /// "When this turn ends, …".
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub delayed: Vec<crate::rules::lingering::DelayedAbility>,
     /// What has happened this turn, counted where it is heard — see
     /// `rules::turn_log`. Never add a `*_this_turn` field beside it.
     #[serde(default)]
@@ -1549,6 +1554,7 @@ impl Default for GameState {
             payment_answers: Vec::new(),
             last_completed_run: None,
             lingering: Vec::new(),
+            delayed: Vec::new(),
             this_turn: TurnLog::default(),
             last_turn: LastTurn::default(),
             deferred_triggers: Vec::new(),

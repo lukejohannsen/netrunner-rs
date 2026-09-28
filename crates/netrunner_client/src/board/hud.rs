@@ -314,6 +314,12 @@ pub fn in_effect(view: &ClientView, registry: &CardRegistry) -> Vec<String> {
             };
             Some(format!("{}: {what}{until}", title(&effect.source)))
         }))
+        // A delayed ability (Lightning Laboratory's derez): what it will do,
+        // in the words the card inspector uses, since it is a sentence of
+        // the card's that has not resolved yet.
+        .chain(view.delayed.iter().map(|delayed| {
+            format!("{}: when this turn ends, {}", title(&delayed.card), crate::prose::describe_effect(&delayed.effect, registry))
+        }))
         .collect()
 }
 
