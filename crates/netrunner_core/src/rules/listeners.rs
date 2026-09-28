@@ -76,6 +76,11 @@ pub(crate) struct Moment {
     /// read off the event (`GameEvent::CardInstalled::from_hq`) for the
     /// same reason as `ice`.
     pub from_hq: Option<bool>,
+    /// The object whose abilities did it, for a moment that names one —
+    /// the install that fully broke the ice (CR 6.5.7b,
+    /// `GameEvent::IceFullyBroken::by`), which Lobisomem's "whenever **it**
+    /// fully breaks" asks through `EventFilter::ByThis`.
+    pub by: Option<InstallId>,
 }
 
 /// A card that may hear a moment.
@@ -98,7 +103,7 @@ struct Listener {
 /// `GameEvent` is a decision made here rather than a silence.
 pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
     let card = |card: &CardId, install: Option<InstallId>| About::Card { card: card.clone(), install, installed: install.is_some() };
-    let moment = |trigger, about: &About, of| Moment { trigger, about: about.clone(), of, ice: None, from_hq: None };
+    let moment = |trigger, about: &About, of| Moment { trigger, about: about.clone(), of, ice: None, from_hq: None, by: None };
     // A moment about the ice at `position` in the run's ice. Where the run
     // or the ice has gone by the time the moment is asked again — a
     // trigger fired after the run ended — it is about nothing, and keeps
@@ -109,7 +114,7 @@ pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
             .as_ref()
             .and_then(|run| run.ice.get(position as usize))
             .map_or(About::Nothing, |ice| About::Card { card: ice.card_id.clone(), install: Some(ice.install_id), installed: true });
-        Moment { trigger, about, of: Some(Side::Runner), ice: Some(facts), from_hq: None }
+        Moment { trigger, about, of: Some(Side::Runner), ice: Some(facts), from_hq: None, by: None }
     };
     match event {
         GameEvent::EventPlayed { side, card: played } => {
@@ -213,7 +218,7 @@ pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
             let position = state.active_run.as_ref().map_or(0, |run| run.position as u32);
             vec![ice_moment(Trigger::OnSubroutineBroken, position, IceFacts { at_most_zero_strength: *strength <= 0, ..IceFacts::default() })]
         }
-        GameEvent::IceFullyBroken { position, .. } => vec![ice_moment(Trigger::OnIceFullyBroken, *position, IceFacts::default())],
+        GameEvent::IceFullyBroken { position, by, .. } => vec![Moment { by: *by, ..ice_moment(Trigger::OnIceFullyBroken, *position, IceFacts::default()) }],
         GameEvent::IceBypassed { position, .. } => vec![ice_moment(Trigger::OnIceBypassed, *position, IceFacts::default())],
         // About the ice by its install, which the event carries: an
         // encounter "end the run" ended is heard after the run is gone.
@@ -476,7 +481,12 @@ fn is_this(listener: &Listener, moment: &Moment) -> bool {
 }
 
 /// Whether what a moment is about passes a card's `when`.
-fn passes(state: &GameState, registry: &CardRegistry, filter: &EventFilter, moment: &Moment) -> bool {
+fn passes(state: &GameState, registry: &CardRegistry, filter: &EventFilter, moment: &Moment, install: Option<InstallId>) -> bool {
+    // "Whenever **it** fully breaks": the object the moment names is the
+    // listening install.
+    if let EventFilter::ByThis = filter {
+        return moment.by.is_some() && moment.by == install;
+    }
     if let EventFilter::Ice(required) = filter {
         return moment.ice.is_some_and(|facts| required.admits(facts));
     }
@@ -516,7 +526,7 @@ fn passes(state: &GameState, registry: &CardRegistry, filter: &EventFilter, mome
 /// Whose moment it was is asked again too (`whose_admits`), for the same
 /// reason: Méliès U hears the discard phase ending on its own "your" and
 /// on "the Runner's", and the queued trigger stands for both entries.
-pub(crate) fn when_admits(state: &GameState, registry: &CardRegistry, triggered: &TriggeredEffect, controller: Side, event: Option<&GameEvent>) -> bool {
+pub(crate) fn when_admits(state: &GameState, registry: &CardRegistry, triggered: &TriggeredEffect, controller: Side, install: Option<InstallId>, event: Option<&GameEvent>) -> bool {
     let Some(event) = event else { return triggered.when.is_none() };
     let mut meant = moments(state, event).into_iter().filter(|moment| moment.trigger == triggered.trigger).peekable();
     // A trigger queued with an event that is no occurrence of it (a
@@ -525,7 +535,7 @@ pub(crate) fn when_admits(state: &GameState, registry: &CardRegistry, triggered:
         return true;
     }
     meant.any(|moment| {
-        whose_admits(triggered, controller, &moment) && triggered.when.as_ref().is_none_or(|filter| passes(state, registry, filter, &moment))
+        whose_admits(triggered, controller, &moment) && triggered.when.as_ref().is_none_or(|filter| passes(state, registry, filter, &moment, install))
     })
 }
 
@@ -550,7 +560,7 @@ fn hears(state: &GameState, registry: &CardRegistry, triggered: &TriggeredEffect
     if triggered.first_each_turn && later {
         return false;
     }
-    if triggered.when.as_ref().is_some_and(|filter| !passes(state, registry, filter, moment)) {
+    if triggered.when.as_ref().is_some_and(|filter| !passes(state, registry, filter, moment, listener.install)) {
         return false;
     }
     if !whose_admits(triggered, listener.side, moment) {

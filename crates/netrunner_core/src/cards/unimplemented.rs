@@ -22,7 +22,6 @@ pub(crate) const VP_UNIMPLEMENTED: &[(u32, &str)] = &[];
 pub(crate) const RWR_UNIMPLEMENTED: &[(u32, &str)] = &[
     (34079, "Jeitinho"),
     (34086, "Spree"),
-    (34090, "Lobisomem"),
     (34096, "Thunderbolt Armaments: Peace Through Power"),
     (34100, "Lycian Multi-Munition"),
     (34105, "See How They Run"),

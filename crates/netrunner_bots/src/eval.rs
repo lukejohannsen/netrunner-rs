@@ -1528,7 +1528,10 @@ fn break_cost(state: &GameState, card: &InstalledRunnerCard, ice: &RunIce, regis
             Effect::BreakSubroutines { count, restrict_to } if restrict_to.is_none_or(|r| ice_is(state, ice, r, registry)) => {
                 let activations = match count {
                     SubroutineBreakCount::Fixed(n) => pending.div_ceil((*n).max(1)),
-                    SubroutineBreakCount::All => 1,
+                    // X is chosen to cover them all; only an X cost names
+                    // it, and one is not a plain credit cost, so this is
+                    // skipped above.
+                    SubroutineBreakCount::All | SubroutineBreakCount::ChosenNumber => 1,
                 };
                 keep_min(&mut cheapest_break, credits * activations);
             }

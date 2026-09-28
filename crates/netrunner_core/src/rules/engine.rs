@@ -91,6 +91,12 @@ pub fn apply_action(
             }
             amount
         }
+        (crate::rules::payment::Ask::X { max }, PlayerAction::ChooseNumber { amount }) => {
+            if amount > *max {
+                return Err(RulesError::ChosenNumberOutOfRange { amount, min: 0, max: *max });
+            }
+            amount
+        }
         (crate::rules::payment::Ask::Card(question), PlayerAction::ToggleCardSelection { position }) => {
             let position = u32::try_from(position).map_err(|_| RulesError::CardNotEligibleForSelection(position))?;
             if !question.eligible.contains(&position) {
@@ -2294,6 +2300,7 @@ fn activate_ability(
         _ => Vec::new(),
     };
     let mut cost_events = Vec::new();
+    let mut chosen_x = None;
     if let Some(cost) = &ability.cost {
         // A conditional per-ability discount (e.g. Marjanah: "-1 to use if
         // you made a successful run this turn") only meaningfully applies
@@ -2307,9 +2314,17 @@ fn activate_ability(
             }
             _ => cost.clone(),
         };
+        // An X cost is asked first (CR 1.16.2c), so X is the first answer
+        // the payment will take — read before paying takes it.
+        chosen_x = discounted.names_x().then(|| next.payment_answers.first().copied()).flatten();
         cost_events = ability::pay_cost_ctx(&mut next, registry, side, &discounted, Purpose::Ability(card_def), &ability_ctx(is_identity, target, &card_id))?;
         events.extend(cost_events.iter().cloned());
     }
+    // X is written into the effect as any chosen number is.
+    let effect = match chosen_x {
+        Some(x) => ability.effect.clone().with_chosen_number(x),
+        None => ability.effect.clone(),
+    };
     // "When used" abilities meet their condition as the cost is paid (CR
     // 9.5.7b), so the use is heard with the cost's events, after the effect
     // — the Payment Rule's order for every cost — rather than dispatched
@@ -2318,7 +2333,7 @@ fn activate_ability(
     events.push(activated.clone());
     cost_events.push(activated);
     let mut effect_ctx = ability::ResolutionContext { last_known, set_aside, ..ability_ctx(is_identity, target, &card_id) };
-    events.extend(ability::evaluate_effect(&mut next, &ability.effect, &mut effect_ctx, registry)?);
+    events.extend(ability::evaluate_effect(&mut next, &effect, &mut effect_ctx, registry)?);
     // What the effect left set aside is trashed (CR 9.5.5, at the next
     // checkpoint): only a rig card hosts cards, and only its owner's.
     for card in std::mem::take(&mut effect_ctx.set_aside) {
@@ -5357,7 +5372,9 @@ mod tests {
                 GameEvent::CreditsSpent { side: Side::Runner, amount: 1 },
                 GameEvent::AbilityActivated { side: Side::Runner, card_id: card_id.clone(), ability_index: 0, install: Some(install_of(&state, &card_id.0)), action: false },
                 GameEvent::SubroutineBroken { card_id: CardId("ice_wall".to_string()), index: 0, strength: 0 },
-                GameEvent::IceFullyBroken { card_id: CardId("ice_wall".to_string()), position: 0 },
+                // Corroder broke every subroutine, so it fully broke the ice
+                // too (CR 6.5.7b).
+                GameEvent::IceFullyBroken { card_id: CardId("ice_wall".to_string()), position: 0, by: Some(install_of(&state, &card_id.0)) },
             ]
         );
     }

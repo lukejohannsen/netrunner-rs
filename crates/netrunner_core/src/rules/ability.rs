@@ -1226,7 +1226,7 @@ pub fn evaluate_effect(
             if pending.is_empty() {
                 return Err(RulesError::NoBreakableSubroutine { ice: ice_card_id });
             }
-            break_pending(state, registry, pending, count)
+            break_pending(state, registry, pending, count, ctx.acting_install)
         }
 
         Effect::BreakSubroutinesUnconditionally { count } => {
@@ -1240,7 +1240,7 @@ pub fn evaluate_effect(
             if pending.is_empty() {
                 return Err(RulesError::NoBreakableSubroutine { ice: ice.card_id.clone() });
             }
-            break_pending(state, registry, pending, count)
+            break_pending(state, registry, pending, count, ctx.acting_install)
         }
 
         Effect::Trace { base, on_success } => {
@@ -1998,7 +1998,7 @@ pub(crate) fn fire_card_triggers(
             t.trigger == trigger
                 && due.heard.admits(t.subject)
                 && !(t.first_each_turn && due.not_the_first_this_turn)
-                && listeners::when_admits(state, registry, t, card_side, triggering_event)
+                && listeners::when_admits(state, registry, t, card_side, due.install, triggering_event)
         })
         .collect();
     let fired_before = usize::from(due.fired);
@@ -2117,7 +2117,7 @@ pub(crate) fn would_fire(state: &GameState, registry: &CardRegistry, due: &Defer
         t.trigger == due.trigger
             && due.heard.admits(t.subject)
             && !(t.first_each_turn && due.not_the_first_this_turn)
-            && listeners::when_admits(state, registry, t, card.side, due.event.as_ref())
+            && listeners::when_admits(state, registry, t, card.side, due.install, due.event.as_ref())
     };
     // What already fired from this entry is not still to come.
     card.triggers.iter().filter(meant).skip(usize::from(due.fired)).any(|triggered| {
@@ -2715,6 +2715,8 @@ pub(crate) fn cost_is_affordable(
             payment::available_from(state, registry, side, purpose, Some(from)) >= resolve_amount(amount, ctx, state, registry)
         }
         Cost::CreditsAmount(amount) => payment::available(state, registry, side, purpose) >= resolve_amount(amount, ctx, state, registry),
+        // X may be 0.
+        Cost::CreditsX { .. } => true,
         Cost::Clicks(amount) | Cost::LoseClicks(amount) => state.resources(side).clicks.0 >= *amount,
         // A run the Runner is in, and nothing else: there is no "cannot
         // jack out" in the pool.
@@ -2806,6 +2808,22 @@ pub(crate) fn pay_cost_ctx(
         Cost::CreditsAmount(amount) => {
             let amount = resolve_amount(amount, ctx, state, registry);
             payment::pay(state, registry, side, amount, purpose)
+        }
+
+        // X is named before it is paid (CR 1.16.2c): asked by replay,
+        // no more than the printed bound or what could be spent.
+        Cost::CreditsX { max } => {
+            let most = resolve_amount(max, ctx, state, registry)
+                .min(payment::available(state, registry, side, purpose))
+                .min(crate::rules::action_mask::MAX_CHOSEN_NUMBER);
+            if state.payment_answers.is_empty() {
+                return Err(RulesError::PaymentChoiceNeeded { side, amount: most, question: payment::Ask::X { max: most } });
+            }
+            let x = state.payment_answers.remove(0);
+            if x > most {
+                return Err(RulesError::ChosenNumberOutOfRange { amount: x, min: 0, max: most });
+            }
+            payment::pay(state, registry, side, x, purpose)
         }
 
         Cost::Clicks(amount) => {
@@ -3549,17 +3567,19 @@ fn break_pending(
     registry: &CardRegistry,
     pending: Vec<(usize, bool)>,
     count: &SubroutineBreakCount,
+    by: Option<InstallId>,
 ) -> Result<Vec<GameEvent>, RulesError> {
     let take = match count {
         SubroutineBreakCount::All => pending.len(),
         SubroutineBreakCount::Fixed(n) => (*n as usize).min(pending.len()),
+        SubroutineBreakCount::ChosenNumber => 0,
     };
     let mut events = Vec::new();
     for (idx, limited) in pending.into_iter().take(take) {
         if limited && let Some(run) = state.active_run.as_mut() {
             run.this_encounter.limited_breaks += 1;
         }
-        for event in run::break_subroutine(state, registry, idx)? {
+        for event in run::break_subroutine(state, registry, idx, by)? {
             dispatcher::emit(state, registry, &mut events, event)?;
         }
     }
@@ -5081,7 +5101,7 @@ mod tests {
 
         assert_eq!(
             events,
-            vec![GameEvent::SubroutineBroken { card_id: CardId("ice_wall".to_string()), index: 0, strength: 2 }, GameEvent::IceFullyBroken { card_id: CardId("ice_wall".to_string()), position: 0 }]
+            vec![GameEvent::SubroutineBroken { card_id: CardId("ice_wall".to_string()), index: 0, strength: 2 }, GameEvent::IceFullyBroken { card_id: CardId("ice_wall".to_string()), position: 0, by: None }]
         );
         let ice = &state.active_run.unwrap().ice[0];
         assert_eq!(ice.subroutines[0].status, SubroutineStatus::Broken);
@@ -5099,7 +5119,7 @@ mod tests {
             &CardRegistry::new())
         .unwrap();
 
-        assert_eq!(events, vec![GameEvent::SubroutineBroken { card_id: CardId("ice_wall".to_string()), index: 1, strength: 0 }, GameEvent::IceFullyBroken { card_id: CardId("ice_wall".to_string()), position: 0 }]);
+        assert_eq!(events, vec![GameEvent::SubroutineBroken { card_id: CardId("ice_wall".to_string()), index: 1, strength: 0 }, GameEvent::IceFullyBroken { card_id: CardId("ice_wall".to_string()), position: 0, by: None }]);
     }
 
     fn ice_encounter_state_of_type(
@@ -5135,7 +5155,7 @@ mod tests {
 
         assert_eq!(
             events,
-            vec![GameEvent::SubroutineBroken { card_id: CardId("ice_wall".to_string()), index: 0, strength: 0 }, GameEvent::IceFullyBroken { card_id: CardId("ice_wall".to_string()), position: 0 }]
+            vec![GameEvent::SubroutineBroken { card_id: CardId("ice_wall".to_string()), index: 0, strength: 0 }, GameEvent::IceFullyBroken { card_id: CardId("ice_wall".to_string()), position: 0, by: None }]
         );
     }
 
@@ -5178,7 +5198,7 @@ mod tests {
 
             assert_eq!(
                 events,
-                vec![GameEvent::SubroutineBroken { card_id: CardId("ice_wall".to_string()), index: 0, strength: 0 }, GameEvent::IceFullyBroken { card_id: CardId("ice_wall".to_string()), position: 0 }]
+                vec![GameEvent::SubroutineBroken { card_id: CardId("ice_wall".to_string()), index: 0, strength: 0 }, GameEvent::IceFullyBroken { card_id: CardId("ice_wall".to_string()), position: 0, by: None }]
             );
         }
     }

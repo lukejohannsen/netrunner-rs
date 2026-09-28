@@ -33,7 +33,15 @@ pub enum GameEvent {
     /// this encounter that every subroutine on it was broken (CR 6.5.7a).
     /// Lethe gives a tag for it. `position` is where it stands in the
     /// run's ice, as `IceBypassed`'s is.
-    IceFullyBroken { card_id: CardId, position: u32 },
+    /// `by` is the object that fully broke it too, when every subroutine
+    /// was broken by abilities on that one install (CR 6.5.7b) —
+    /// Lobisomem's "whenever it fully breaks". Public, as each break was.
+    IceFullyBroken {
+        card_id: CardId,
+        position: u32,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        by: Option<crate::rules::state::InstallId>,
+    },
     /// The Runner bypassed the ice being encountered
     /// (`Effect::BypassEncounteredIce`, Fransofia Ward): its remaining
     /// subroutines will not fire and its own "when encountered" reactions

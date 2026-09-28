@@ -15125,4 +15125,63 @@ mod rebellion_without_rehearsal {
         assert_eq!(state.runner.stack.len(), 7);
         assert!(state.runner.rig.is_empty());
     }
+
+    // ---- Stage 6e: an X cost ----
+
+    fn lobisomem_against(ice: &str, counters: u32) -> GameState {
+        let mut state = runner_turn();
+        state.corp.installed = vec![ice_at_hq(ice)];
+        state.runner.rig = vec![crate::rules::InstalledRunnerCard { base_strength: 2, counters, ..rig("lobisomem") }];
+        state.runner.resources.credits = Credits(10);
+        encounter(&state, &registry())
+    }
+
+    #[test]
+    fn lobisomem_gains_a_counter_as_it_is_installed_and_whenever_it_alone_fully_breaks_a_code_gate() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.grip = vec![id("lobisomem")];
+        state.runner.resources.credits = Credits(10);
+        let (state, _) = apply_action(&state, &registry, PlayerAction::InstallProgram { card_id: id("lobisomem"), trash_first: false }).expect("install it");
+        assert_eq!(state.runner.rig[0].counters, 1, "when you install this program");
+
+        let state = lobisomem_against("enigma", 0);
+        let state = use_ability(&state, &registry, "lobisomem", 0).expect("break one");
+        assert_eq!(state.runner.rig[0].counters, 0, "not fully broken yet");
+        let state = use_ability(&state, &registry, "lobisomem", 0).expect("and the other");
+        assert_eq!(state.runner.rig[0].counters, 1, "it fully broke a code gate");
+    }
+
+    #[test]
+    fn lobisomem_pays_x_and_a_counter_to_break_x_barrier_subroutines() {
+        let registry = registry();
+        let state = lobisomem_against("reverb", 1);
+        let use_x = PlayerAction::ActivateAbility { target: fixture_install_id("lobisomem"), ability_index: 1 };
+        let (state, _) = apply_action(&state, &registry, use_x.clone()).expect("asks for X");
+        let payment = state.pending_payment.as_ref().expect("X is chosen before paying");
+        assert_eq!(payment.question, crate::rules::PaymentAsk::X { max: 2 }, "up to the ice's subroutines");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ChooseNumber { amount: 2 }).expect("X = 2");
+        assert_eq!(state.runner.resources.credits, Credits(8), "paid X");
+        assert_eq!(state.runner.rig[0].counters, 0, "and the counter");
+        let run = state.active_run.as_ref().expect("still encountering");
+        assert!(run.ice[run.position].subroutines.iter().all(|s| s.status == crate::rules::SubroutineStatus::Broken), "broke X");
+        assert!(apply_action(&state, &registry, use_x).is_err(), "no counter left");
+
+        // It breaks barriers only.
+        let state = lobisomem_against("enigma", 1);
+        let use_x = PlayerAction::ActivateAbility { target: fixture_install_id("lobisomem"), ability_index: 1 };
+        assert!(apply_action(&state, &registry, use_x).is_err());
+    }
+
+    /// CR 6.5.7b: the object fully breaks the ice only if every break was
+    /// its own; a second breaker, or a click, and no object did.
+    #[test]
+    fn an_ice_is_fully_broken_by_an_object_only_when_that_object_broke_all_of_it() {
+        use crate::rules::BrokenBy;
+        let (one, two) = (crate::rules::InstallId(7), crate::rules::InstallId(8));
+        assert_eq!(BrokenBy::Nothing.and(Some(one)).and(Some(one)).object(), Some(one));
+        assert_eq!(BrokenBy::Nothing.and(Some(one)).and(Some(two)).object(), None);
+        assert_eq!(BrokenBy::Nothing.and(Some(one)).and(None).object(), None, "a click is no object's");
+        assert_eq!(BrokenBy::Nothing.object(), None);
+    }
 }

@@ -25,6 +25,19 @@ pub enum Cost {
     /// `CreditsFrom`'s. Composition didn't work: no cost took a number the
     /// state decides.
     CreditsAmount(Amount),
+    /// "X[credit]" — Lobisomem's "Interface → X[credit], hosted power
+    /// counter: Break X barrier subroutines". The payer chooses and
+    /// announces X, 0 to `max`, before paying (CR 1.16.2c), asked by the
+    /// payment's replay (`payment::Ask::X`, answered by `PlayerAction::
+    /// ChooseNumber`) and bounded by what they could spend; then X credits
+    /// are paid from wherever credits may be. The effect names X as the
+    /// chosen-number placeholder, which the payer writes over with the X
+    /// chosen (`Effect::with_chosen_number`), so X is written into the
+    /// effect as every chosen number is. First in an ability's cost, since
+    /// X is chosen before anything is paid (`CardDefinition::validate`).
+    /// Composition didn't work: `CreditsAmount` is a number the state
+    /// decides, and no cost let the payer name one.
+    CreditsX { max: Amount },
     Clicks(u32),
     /// The payer loses `u32` clicks — Ansel 2.0's "**Lose [click][click]:**
     /// Break up to 2 subroutines on this ice." Not `Clicks`: that cost
@@ -263,9 +276,18 @@ impl Cost {
     /// Whether paying this could ask the payer which cards — the structural
     /// half of `payment::could_ask`, which copies an action only where a
     /// question is possible.
+    /// Whether the cost prints an X (`CreditsX`), at the front or inside.
+    pub fn names_x(&self) -> bool {
+        match self {
+            Cost::CreditsX { .. } => true,
+            Cost::AnyOf(costs) | Cost::AllOf(costs) => costs.iter().any(Cost::names_x),
+            _ => false,
+        }
+    }
+
     pub fn may_ask(&self) -> bool {
         match self {
-            Cost::Trash { .. } | Cost::Forfeit(_) | Cost::Derez { .. } => true,
+            Cost::Trash { .. } | Cost::Forfeit(_) | Cost::Derez { .. } | Cost::CreditsX { .. } => true,
             Cost::AnyOf(costs) | Cost::AllOf(costs) => costs.iter().any(Cost::may_ask),
             _ => false,
         }

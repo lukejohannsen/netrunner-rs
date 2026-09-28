@@ -1903,7 +1903,8 @@ reaches Vantage Point's cards by building a deck.
    Bring Them Home; **6b**, cards that stay revealed while the Runner
    chooses among them (built, below): Burner; **6c**, a breach outside a
    run (built, below): Cataloguer, moved out of 6b when it was taken; **6d**, cards set
-   aside (built, below): The Wizard’s Chest; **6e**, an X cost: Lobisomem.
+   aside (built, below): The Wizard’s Chest; **6e**, an X cost (built, below): Lobisomem. Stage 6 is
+   complete.
 7. **Expendable, moving ice, psi, re-encounter:** Eminent Domain, Descent,
    Tributary, See How They Run, Sisyphus Protocol, Spree.
 8. **A card's identity changes:** Thunderbolt Armaments: Peace Through Power, Lycian
@@ -3169,6 +3170,64 @@ and one renamed to take a zone.** Rebellion Without Rehearsal 55 of 65;
   both random seatings are the same, and the heuristic ones moved by a
   game or two (Corp agenda wins 74 → 73 of 192, flatlines 12 → 11, Runner
   agenda wins 105 → 107): `determinize` sampling a new Runner card.
+
+#### Stage 6e — an X cost, and the object that fully breaks (28 September 2026)
+
+`feat/rwr-stage-6e-lobisomem`: Lobisomem. **No new `Effect`.** Rebellion
+Without Rehearsal 56 of 65; `RWR_UNIMPLEMENTED` 10 → 9. **Stage 6 is
+complete.**
+
+- **"Interface → X[credit], hosted power counter: Break X barrier
+  subroutines"** is CR 1.16.2c: the payer chooses and announces X before
+  paying. It is `Cost::CreditsX { max }`, asked by the payment's own
+  replay (`payment::Ask::X`, answered by `PlayerAction::ChooseNumber`, so
+  `ActionSpace` is unmoved).
+  - X runs from 0 to the printed bound, capped by what the payer could
+    spend and by `MAX_CHOSEN_NUMBER`. Lobisomem's bound is the encountered
+    ice's subroutines.
+  - X is then paid from wherever credits may be.
+  - X reaches the effect the way every chosen number does: written into it
+    (`Effect::with_chosen_number`, the State Hygiene Rule).
+    `SubroutineBreakCount::ChosenNumber` is the placeholder, and
+    `activate_ability` writes the payment's first answer over it.
+  - That answer is X because `validate` holds an X to the front of its
+    ability's cost, which is also where 1.16.2c puts it.
+- **"Whenever it fully breaks a code gate"** is CR 6.5.7b: "if all its
+  subroutines were broken using abilities on a single object, that object
+  also fully breaks the ice".
+  - The encounter's tally now says whose breaks they were
+    (`EncounterTally::broken_by`: nothing yet, one install, or mixed; a
+    click is no object's). `IceFullyBroken` carries the object (`by`), and
+    the moment does too (`Moment::by`).
+  - `EventFilter::ByThis` says "it", and only on `OnIceFullyBroken`, the
+    one moment that names an object that did it. "A code gate" is the
+    trigger's `Encountering(CodeGate)`, because a `when` holds one filter
+    and the moment is in the encounter.
+  - A tally rather than a mark on each subroutine: the one question is
+    whether every break was one install's, and about thirty subroutine
+    literals would have taken a field.
+- **Client:** both clients word the question ("Choose X, from 0 to 2 — you
+  pay X credits"), and the pop-up's buttons are its numbers. The tally
+  rides in the view as the engine's, beside the encounter's other counts.
+- **Deck** — Safety Net: two Lobisomem for a Gordian Blade and a Sure
+  Gamble, a decoder for a decoder.
+- **Real play**, 96 games of Retirement Package against Safety Net (seed
+  2):
+  - Heuristic seats: installed 29 times, abilities used 169 times, and a
+    code gate fully broken by it alone 101 times. The Runner chose 11
+    numbers against 11 payment questions.
+  - Random seats: installed 11 times, with one code gate fully broken by
+    it.
+- **DSL ratio (`pool_status.py`): 21 of 85 `Effect` variants single-use,
+  1 unused**, over 306 card files, unchanged: the X is a cost and a
+  break count, not an effect.
+- **Measured.** Both sweeps at 256 seeds are green. Against `origin/main`
+  (6d), `coverage_identical.py` has both random seatings **identical**, and
+  the heuristic ones moved (Corp agenda wins 73 → 77 of 192, flatlines
+  11 → 12, Runner agenda wins 107 → 102). A ref with the engine changes
+  and without Lobisomem and the deck is identical to `main` in all four
+  shapes, so the heuristic movement is `determinize` sampling a new
+  Runner card.
 
 ### 3. The Automata Initiative — 65 cards (C 14 / V 35 / M 16)
 

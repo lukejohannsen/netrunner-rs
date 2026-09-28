@@ -888,7 +888,8 @@ fn step_subroutine(
     registry: &CardRegistry,
 ) -> Result<Vec<GameEvent>, RulesError> {
     if !resolve {
-        return break_subroutine(state, registry, index);
+        // A click is no object's ability.
+        return break_subroutine(state, registry, index, None);
     }
     let (card_id, effect) = transition_subroutine(state, index, SubroutineStatus::Resolved)?;
     if let Some(run) = state.active_run.as_mut() {
@@ -911,7 +912,7 @@ fn step_subroutine(
 /// resolved one is never fully broken; ice with no subroutines at all is
 /// fully broken when step 6.9.3b begins (6.5.7c), which this does not
 /// model — no card in the pool that asks is met by one.
-pub(crate) fn break_subroutine(state: &mut GameState, registry: &CardRegistry, index: usize) -> Result<Vec<GameEvent>, RulesError> {
+pub(crate) fn break_subroutine(state: &mut GameState, registry: &CardRegistry, index: usize, by: Option<crate::rules::state::InstallId>) -> Result<Vec<GameEvent>, RulesError> {
     let strength = state
         .active_run
         .as_ref()
@@ -920,11 +921,12 @@ pub(crate) fn break_subroutine(state: &mut GameState, registry: &CardRegistry, i
     let (card_id, _) = transition_subroutine(state, index, SubroutineStatus::Broken)?;
     let mut events = vec![GameEvent::SubroutineBroken { card_id: card_id.clone(), index, strength }];
     let run = state.active_run.as_mut().expect("transition_subroutine found the run");
+    run.this_encounter.broken_by = run.this_encounter.broken_by.and(by);
     let position = run.position;
     let every_one_broken = run.ice[position].subroutines.iter().all(|s| s.status == SubroutineStatus::Broken);
     if every_one_broken && !run.fully_broken {
         run.fully_broken = true;
-        events.push(GameEvent::IceFullyBroken { card_id, position: position as u32 });
+        events.push(GameEvent::IceFullyBroken { card_id, position: position as u32, by: run.this_encounter.broken_by.object() });
     }
     Ok(events)
 }
