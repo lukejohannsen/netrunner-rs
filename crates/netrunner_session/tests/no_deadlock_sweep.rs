@@ -340,7 +340,9 @@ fn assert_cards_are_conserved(state: &GameState, corp_deck: &Deck, runner_deck: 
             .chain(corp.archives.iter().map(|a| &a.card))
             .chain(corp.installed.iter().map(|c| &c.card))
             .chain(corp.scored_agendas.iter().map(|s| &s.card))
-            .chain(&state.runner.scored_agendas)
+            // Stolen agendas; a Runner card added as an agenda (Jeitinho) is
+            // counted with the Runner's below.
+            .chain(state.runner.scored_agendas.iter().map(|s| &s.card).filter(|id| corp_ids.contains_key(&id.0)))
             .chain(&corp.removed_from_game)
             .chain(hosted_corp),
     );
@@ -356,7 +358,9 @@ fn assert_cards_are_conserved(state: &GameState, corp_deck: &Deck, runner_deck: 
             .chain(&runner.removed_from_game)
             .chain(runner.rig.iter().map(|c| &c.card))
             // Hosted uninstalled on a rig card (Madani) — in no other zone.
-            .chain(runner.rig.iter().flat_map(|c| c.hosted_cards.iter()).filter(|id| !corp_ids.contains_key(&id.0))),
+            .chain(runner.rig.iter().flat_map(|c| c.hosted_cards.iter()).filter(|id| !corp_ids.contains_key(&id.0)))
+            // A Runner card added to the score area as an agenda (Jeitinho).
+            .chain(runner.scored_agendas.iter().map(|s| &s.card).filter(|id| !corp_ids.contains_key(&id.0))),
     );
     assert_eq!(runner_cards, deck_tally(runner_deck), "seed {seed} ({matchup}): Runner cards are not conserved");
 }
@@ -658,7 +662,7 @@ fn visible_card_ids(view: &netrunner_core::view::ClientView) -> std::collections
     visible.extend(view.corp.archives.iter().filter_map(|a| a.card.as_ref()).map(|c| c.0.as_str()));
     visible.extend(view.corp.scored_agendas.iter().map(|c| c.card.0.as_str()));
     visible.extend(view.corp.removed_from_game.iter().map(|c| c.0.as_str()));
-    visible.extend(view.runner.scored_agendas.iter().map(|c| c.0.as_str()));
+    visible.extend(view.runner.scored_agendas.iter().map(|c| c.card.0.as_str()));
     visible.extend(view.runner.heap.iter().map(|c| c.0.as_str()));
     visible.extend(view.runner.removed_from_game.iter().map(|c| c.0.as_str()));
     visible.extend(view.runner.rig.iter().map(|c| c.card.0.as_str()));

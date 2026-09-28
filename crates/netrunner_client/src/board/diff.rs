@@ -146,7 +146,7 @@ pub fn transitions(before: &ClientView, after: &ClientView, entry: &PublicHistor
                 out.push(Transition::AgendaStolen { card: card.clone(), points: *agenda_points });
             }
             GameEvent::AgendaForfeited { card } => {
-                let side = if before.runner.scored_agendas.contains(card) { Side::Runner } else { Side::Corp };
+                let side = if before.runner.scored_agendas.iter().any(|scored| scored.card == *card) { Side::Runner } else { Side::Corp };
                 out.push(Transition::CardMoved { card: Some(card.clone()), install: None, from: Zone::Scored(side), to: Zone::Discard(Side::Corp) });
             }
             GameEvent::IceRezzed { install, card, .. } => out.push(Transition::Revealed { install: *install, card: card.clone() }),
@@ -281,7 +281,7 @@ fn locate(view: &ClientView, card: &CardId) -> (Zone, Option<InstallId>) {
     if view.corp.scored_agendas.iter().any(|a| a.card == *card) {
         return (Zone::Scored(Side::Corp), None);
     }
-    if view.runner.scored_agendas.contains(card) {
+    if view.runner.scored_agendas.iter().any(|scored| scored.card == *card) {
         return (Zone::Scored(Side::Runner), None);
     }
     if view.corp.archives.iter().any(|a| a.card.as_ref() == Some(card)) {
@@ -318,7 +318,7 @@ mod tests {
             .chain(view.runner.rig.iter().flat_map(|c| c.hosted_cards.iter().cloned()))
             .chain(view.runner.heap.iter().cloned())
             .chain(view.runner.removed_from_game.iter().cloned())
-            .chain(view.runner.scored_agendas.iter().cloned())
+            .chain(view.runner.scored_agendas.iter().map(|scored| scored.card.clone()))
             .chain(view.corp.identity.iter().cloned())
             .chain(view.runner.identity.iter().cloned())
             .collect()
@@ -332,7 +332,7 @@ mod tests {
             Zone::Discard(Side::Runner) => view.runner.heap.contains(card),
             Zone::Rig => view.runner.rig.iter().any(|c| c.card == *card),
             Zone::Scored(Side::Corp) => view.corp.scored_agendas.iter().any(|a| a.card == *card),
-            Zone::Scored(Side::Runner) => view.runner.scored_agendas.contains(card),
+            Zone::Scored(Side::Runner) => view.runner.scored_agendas.iter().any(|scored| scored.card == *card),
             Zone::Server(server, slot) => view.corp.servers.iter().filter(|s| s.server == server).flat_map(|s| s.ice.iter().chain(s.root.iter())).any(|c| c.slot == slot && c.card.as_ref() == Some(card)),
             Zone::RemovedFromGame | Zone::Deck(_) | Zone::Hidden => true,
         }
@@ -440,7 +440,7 @@ mod tests {
                                         scored += 1;
                                         assert!(after.corp.scored_agendas.iter().any(|a| a.card == *card));
                                     }
-                                    Transition::AgendaStolen { card, .. } => assert!(after.runner.scored_agendas.contains(card)),
+                                    Transition::AgendaStolen { card, .. } => assert!(after.runner.scored_agendas.iter().any(|scored| scored.card == *card)),
                                     Transition::TurnStarted { turn, .. } => assert_eq!(*turn, after.turn),
                                     Transition::Damage { .. } | Transition::GameOver { .. } => {}
                                 }

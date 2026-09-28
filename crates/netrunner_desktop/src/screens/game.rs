@@ -5077,6 +5077,7 @@ fn end_reason(reason: netrunner_client::play::GameEndReason) -> &'static str {
         GameEndReason::AgendaThreshold => "enough agenda points",
         GameEndReason::Flatline => "the Runner was flatlined",
         GameEndReason::Deckout => "the Corp ran out of cards",
+        GameEndReason::CardText => "what a card says (the log names it)",
         GameEndReason::Surrender => "the other side surrendered",
         GameEndReason::Disconnected => "the other side disconnected",
         GameEndReason::TimedOut => "the other side ran out of time",

@@ -128,6 +128,10 @@ pub struct AsAgenda {
     /// "You cannot forfeit this agenda."
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub cannot_forfeit: bool,
+    /// "As an **assassination** agenda" (Jeitinho): the one subtype the
+    /// converted card has, which `Amount::InScoreAreaWithSubtype` counts.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub subtype: Option<crate::dsl::CardSubtype>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -997,17 +1001,30 @@ pub enum Effect {
         card: Option<CardId>,
         from: crate::dsl::CardZoneRef,
     },
-    /// Adds the acting card to the Corp's score area "as an agenda"
+    /// Adds the acting card to its controller's score area "as an agenda"
     /// (CR 10.1.3) — Myōshu's "Add this operation to your score area as an
-    /// agenda worth 2 agenda points." It is not scored (CR 1.17.3f), so
-    /// nothing that hears a score hears it, and it keeps nothing it printed
+    /// agenda worth 2 agenda points", Jeitinho's "you may add this hardware
+    /// to your score area as an assassination agenda worth 0 agenda
+    /// points". It is not scored or stolen (CR 1.17.3f), so nothing that
+    /// hears a score hears it, and it keeps nothing it printed
     /// (`ScoredAgenda::as_agenda`). An operation is filed in Archives before
     /// its text resolves (`engine::play_operation_card`), so that is where
-    /// it is taken from; a no-op when it is not there. The Corp's score
-    /// area only, because it is the only one a pool card adds to.
-    /// Composition didn't work: no effect moves a card into a score area
-    /// without scoring or stealing it.
+    /// it is taken from; a Runner card is taken out of the rig, what it
+    /// hosts trashed with it as `Cost::AddToScoreAreaAsAgenda` does. A no-op
+    /// when it is not there. Composition didn't work: no effect moves a
+    /// card into a score area without scoring or stealing it.
     AddToScoreAreaAsAgenda(AsAgenda),
+    /// The acting card's controller wins the game — Jeitinho's "Then, if
+    /// you have 3 assassination agendas in your score area, you win the
+    /// game", under an `EffectIf`. A third way to win beside the two the
+    /// rules give (CR 1.7.2: agenda points, and flatline or an empty R&D),
+    /// through the one door into `GameOver` (`win::end_game`), announced
+    /// first as `GameEvent::WonByCardText` so a driver can say why.
+    /// Immediate, not a standing condition: the card says it as part of an
+    /// ability's resolution, not as a rule checked at every checkpoint.
+    /// Composition didn't work: nothing ends the game but the standing
+    /// checks and the failed draw.
+    WinTheGame,
     /// The acting install — a piece of ice, reached through
     /// `TriggeredEffect::acts_on_subject` — gains `subroutine`, before or
     /// after its other subroutines, for `duration`:
@@ -1509,6 +1526,13 @@ pub enum Amount {
     /// `CardFilter` is not — the day a second zone is counted is the day
     /// to pay for that.
     InHeapWithSubtype(crate::dsl::CardSubtype),
+    /// Agendas of this subtype in the acting card's controller's score
+    /// area — Jeitinho's "if you have 3 **assassination** agendas in your
+    /// score area". A card added as an agenda has the subtype it was added
+    /// as and none it prints (`AsAgenda::subtype`, CR 10.1.3); a stolen or
+    /// scored agenda has what it prints. `InHeapWithSubtype`'s shape, for
+    /// the reason given there: `Amount` is `Copy`, a `CardFilter` is not.
+    InScoreAreaWithSubtype(crate::dsl::CardSubtype),
     /// Pieces of ice protecting the server `acting_card` is installed on or
     /// protecting, itself included — Scatter Field's "while this is the
     /// only piece of ice protecting this server", as
@@ -1877,6 +1901,7 @@ impl Effect {
             | Effect::PlaceRunCredits(..)
             | Effect::InstallProgramOnHost { .. }
             | Effect::AddToScoreAreaAsAgenda(_)
+            | Effect::WinTheGame
             | Effect::GainSubroutine { .. }
             | Effect::GainIceSubtype(_)
             | Effect::LookAtTopOfDeck { .. }

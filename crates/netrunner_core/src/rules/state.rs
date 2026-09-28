@@ -631,9 +631,13 @@ pub struct RunnerState {
     /// emptied by the same resolution, which shuffles the rest back.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub set_aside: Vec<CardId>,
-    /// Agendas the Runner has stolen, in steal order. Fully public — never
-    /// masked. See `CorpState::scored_agendas`'s doc comment.
-    pub scored_agendas: Vec<CardId>,
+    /// Agendas the Runner has stolen, in steal order, and cards added "as
+    /// an agenda" (Jeitinho). Fully public — never masked. See
+    /// `CorpState::scored_agendas`'s doc comment. The same entry as the
+    /// Corp's: it was a bare `CardId` until a card entered the Runner's
+    /// score area as an agenda of a subtype (CR 10.1.3), which the entry's
+    /// `as_agenda` is where to say.
+    pub scored_agendas: Vec<ScoredAgenda>,
     /// The Runner's once-per-turn abilities used this turn — see
     /// `CorpState::once_per_turn_used`.
     #[serde(default)]
@@ -1420,6 +1424,9 @@ pub enum Heard {
     AsSubject,
     /// An active card the event was about: both.
     AsBoth,
+    /// A card in the Runner's heap: its `from_heap` triggers only (CR
+    /// 9.1.8b, Jeitinho).
+    FromHeap,
 }
 
 impl Heard {
@@ -1427,6 +1434,7 @@ impl Heard {
     pub fn admits(self, subject: Option<crate::dsl::Subject>) -> bool {
         use crate::dsl::Subject;
         match (self, subject) {
+            (Heard::FromHeap, _) => true,
             (Heard::Unfiltered | Heard::AsBoth, _) | (_, None) => true,
             (Heard::AsBystander, Some(subject)) => subject == Subject::Any,
             (Heard::AsSubject, Some(subject)) => subject == Subject::This,

@@ -457,6 +457,9 @@ mod tests {
             // carries Core Set cards (Cyberfeeder, Corroder), as Pay As You
             // Go does.
             ("grassroots", &neither),
+            // Rebellion Without Rehearsal Stage 8c: Jeitinho's deck, on Gabriel
+            // Santiago, a Core Set identity.
+            ("hit_list", &neither),
             ("retirement_package", &neither),
             ("paid_content", &neither),
             ("quick_returns", &not_startup),

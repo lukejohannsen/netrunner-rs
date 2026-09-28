@@ -2428,7 +2428,7 @@ mod tests {
         growing.card_type = CardType::Asset;
         growing.advancement_requirement = Some(0);
         growing.triggers = vec![TriggeredEffect {
-            subject: None, when: None, acts_on_subject: false, first_each_turn: false,
+            subject: None, when: None, acts_on_subject: false, first_each_turn: false, from_heap: false,
             text: None,
             trigger: Trigger::OnAccessed,
             effects: vec![Effect::DealDamageAmount(DamageType::Net, Amount::HostedAdvancementTokens)],
@@ -2462,7 +2462,7 @@ mod tests {
         ambush.card_type = CardType::Asset;
         ambush.advancement_requirement = Some(0);
         ambush.triggers = vec![TriggeredEffect {
-            subject: None, when: None, acts_on_subject: false, first_each_turn: false,
+            subject: None, when: None, acts_on_subject: false, first_each_turn: false, from_heap: false,
             text: None,
             trigger: Trigger::OnTurnStart,
             effects: vec![Effect::DealDamageAmount(DamageType::Meat, Amount::HostedAdvancementTokens)],
@@ -2489,7 +2489,7 @@ mod tests {
     #[test]
     fn a_face_down_ambush_is_worth_more_only_to_a_corp_that_plays_for_damage() {
         let on_access = TriggeredEffect {
-            subject: None, when: None, acts_on_subject: false, first_each_turn: false,
+            subject: None, when: None, acts_on_subject: false, first_each_turn: false, from_heap: false,
             text: None,
             trigger: Trigger::OnAccessed,
             effects: vec![Effect::DealDamageAmount(DamageType::Net, Amount::HostedAdvancementTokens)],
@@ -2541,7 +2541,7 @@ mod tests {
     fn a_lure_trap_is_worth_icing_and_a_hand_trap_is_worth_holding() {
         use netrunner_core::rules::{InstallSlot, ServerId};
         let on_access = TriggeredEffect {
-            subject: None, when: None, acts_on_subject: false, first_each_turn: false,
+            subject: None, when: None, acts_on_subject: false, first_each_turn: false, from_heap: false,
             text: None,
             trigger: Trigger::OnAccessed,
             effects: vec![Effect::DealDamageAmount(DamageType::Net, Amount::HostedAdvancementTokens)],
@@ -2638,7 +2638,7 @@ mod tests {
     #[test]
     fn no_corp_profile_would_rather_its_trap_were_face_up() {
         let on_access = |effect| TriggeredEffect {
-            subject: Some(netrunner_core::dsl::Subject::This), when: None, acts_on_subject: false, first_each_turn: false,
+            subject: Some(netrunner_core::dsl::Subject::This), when: None, acts_on_subject: false, first_each_turn: false, from_heap: false,
             text: None,
             trigger: Trigger::OnAccessed,
             effects: vec![effect],
@@ -3638,7 +3638,7 @@ mod tests {
     fn ambush(id: &str) -> CardDefinition {
         let mut def = asset(id, 0);
         def.triggers = vec![TriggeredEffect {
-            subject: None, when: None, acts_on_subject: false, first_each_turn: false,
+            subject: None, when: None, acts_on_subject: false, first_each_turn: false, from_heap: false,
             text: None,
             trigger: Trigger::OnAccessed,
             effects: vec![Effect::DealDamage(DamageType::Net, 2)],

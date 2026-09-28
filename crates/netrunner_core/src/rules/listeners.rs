@@ -95,6 +95,9 @@ struct Listener {
     /// itself when it is not active, a persistent upgrade trashed during
     /// the run — hear only what is about *them*.
     active: bool,
+    /// A card in the Runner's heap, which hears its `from_heap` triggers
+    /// and nothing else (CR 9.1.8b, Jeitinho).
+    in_heap: bool,
 }
 
 /// What `event` is an occurrence of. Most events are an occurrence of
@@ -321,6 +324,7 @@ pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
         | GameEvent::RunEndPrevented { .. }
         | GameEvent::RunRedirected { .. }
         | GameEvent::RunnerFlatlined
+        | GameEvent::WonByCardText { .. }
         | GameEvent::CreditsSpent { .. }
         | GameEvent::CardRemovedFromGame { .. }
         | GameEvent::GameOver { .. }
@@ -401,6 +405,7 @@ pub(crate) fn plan_for(state: &GameState, registry: &CardRegistry, event: &GameE
                 _ => (None, None),
             };
             let heard = match (listener.active, is_this(&listener, moment)) {
+                _ if listener.in_heap => Heard::FromHeap,
                 (true, true) => Heard::AsBoth,
                 (true, false) => Heard::AsBystander,
                 (false, _) => Heard::AsSubject,
@@ -572,6 +577,13 @@ fn hears(state: &GameState, registry: &CardRegistry, triggered: &TriggeredEffect
     if !whose_admits(triggered, listener.side, moment) {
         return false;
     }
+    // A heap listener hears its heap triggers, and nothing else does.
+    if triggered.from_heap != listener.in_heap {
+        return false;
+    }
+    if listener.in_heap {
+        return true;
+    }
     let is_this = is_this(listener, moment);
     match triggered.subject {
         Some(Subject::This) => is_this,
@@ -591,7 +603,7 @@ fn listeners(state: &GameState, registry: &CardRegistry, moments: &[Moment]) -> 
     // always asked them: the score area before the table — the order
     // `DiscardPhaseEnded` always asked in, and the only one the old
     // audiences agreed on.
-    let listening = |card: active::ActiveCard<'_>| Listener { side: card.side, card: card.card.clone(), install: card.install, server: card.server, active: true };
+    let listening = |card: active::ActiveCard<'_>| Listener { side: card.side, card: card.card.clone(), install: card.install, server: card.server, active: true, in_heap: false };
     corp.extend(active::corp(state, registry).map(listening));
     runner.extend(active::runner(state, registry).map(listening));
 
@@ -619,7 +631,7 @@ fn listeners(state: &GameState, registry: &CardRegistry, moments: &[Moment]) -> 
             Some(position) => group.remove(position),
             None => {
                 let server = install.and_then(|install| state.corp.installed.iter().find(|c| c.install_id == install)).map(|c| c.server);
-                Listener { side, card: card.clone(), install: *install, server, active: false }
+                Listener { side, card: card.clone(), install: *install, server, active: false, in_heap: false }
             }
         };
         group.insert(0, subject);
@@ -637,8 +649,21 @@ fn listeners(state: &GameState, registry: &CardRegistry, moments: &[Moment]) -> 
             install: None,
             server: Some(completed.server),
             active: false,
+            in_heap: false,
         }));
     }
+
+    // A card in the Runner's heap whose text is active there (CR 9.1.8b:
+    // Jeitinho's "install this hardware from your heap"). One listener a
+    // card, since copies in a heap are the same card to both players;
+    // after the table, as the heap is no part of it.
+    let mut in_heap: Vec<&CardId> = Vec::new();
+    for card in &state.runner.heap {
+        if !in_heap.contains(&card) && registry.get(card).is_some_and(|definition| definition.triggers.iter().any(|triggered| triggered.from_heap)) {
+            in_heap.push(card);
+        }
+    }
+    runner.extend(in_heap.into_iter().map(|card| Listener { side: Side::Runner, card: card.clone(), install: None, server: None, active: false, in_heap: true }));
 
     match active_side(state) {
         Side::Corp => corp.into_iter().chain(runner).collect(),
@@ -697,7 +722,7 @@ mod tests {
             title: id.to_string(),
             side,
             card_type,
-            triggers: vec![TriggeredEffect { subject, when: None, acts_on_subject: false, first_each_turn: false, text: None, trigger, effects: vec![Effect::GainCredits(side, 1)], requirement: None }],
+            triggers: vec![TriggeredEffect { subject, when: None, acts_on_subject: false, first_each_turn: false, from_heap: false, text: None, trigger, effects: vec![Effect::GainCredits(side, 1)], requirement: None }],
             ..Default::default()
         }
     }

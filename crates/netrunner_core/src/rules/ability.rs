@@ -894,11 +894,20 @@ pub fn evaluate_effect(
         // is this one.
         Effect::AddToScoreAreaAsAgenda(as_agenda) => {
             let card_id = acting_card.ok_or(RulesError::MissingActingCardContext)?.clone();
+            // A Runner card, out of the rig into the Runner's score area.
+            // Leaving the rig is leaving play, so what it hosts is trashed
+            // with it, as the cost of the same name does.
+            if let Some(position) = acting_rig_position(state, ctx) {
+                let removed = state.runner.rig.remove(position);
+                let mut events = cascade_trash_hosted_on_rig_card(state, registry, &removed);
+                events.push(add_to_score_area_as_agenda(state, Side::Runner, removed.card, *as_agenda));
+                return Ok(events);
+            }
             let Some(position) = state.corp.archives.iter().rposition(|archived| archived.card == card_id && !archived.facedown) else {
                 return Ok(Vec::new());
             };
             state.corp.archives.remove(position);
-            Ok(vec![add_to_score_area_as_agenda(state, card_id, *as_agenda)])
+            Ok(vec![add_to_score_area_as_agenda(state, Side::Corp, card_id, *as_agenda)])
         }
 
         // "It" is the encountered ice, as the trigger's subject; a
@@ -929,6 +938,14 @@ pub fn evaluate_effect(
             }
             run::renumber_subroutines(ice);
             Ok(vec![GameEvent::SubroutineGained { card_id: ice.card_id.clone(), text: subroutine.text.clone() }])
+        }
+
+        Effect::WinTheGame => {
+            let card = acting_card.cloned().ok_or(RulesError::MissingActingCardContext)?;
+            let winner = registry.get(&card).map(|definition| definition.side).ok_or_else(|| RulesError::CardNotFoundInRegistry(card.clone()))?;
+            let mut events = vec![GameEvent::WonByCardText { winner, card }];
+            events.extend(crate::rules::win::end_game(state, winner));
+            Ok(events)
         }
 
         Effect::GainIceSubtype(subtype) => {
@@ -1855,7 +1872,7 @@ pub fn evaluate_effect(
 
         Effect::InstallAgendaFromRunnerScoreArea => {
             let card_id = acting_card.ok_or(RulesError::UnresolvedCardTarget)?.clone();
-            let Some(position) = state.runner.scored_agendas.iter().position(|c| c == &card_id) else {
+            let Some(position) = state.runner.scored_agendas.iter().position(|scored| scored.card == card_id && scored.as_agenda.is_none()) else {
                 return Ok(Vec::new());
             };
             let points = crate::rules::win::agenda_value_in(state, registry, &card_id, Side::Runner);
@@ -2087,6 +2104,9 @@ pub(crate) fn fire_card_triggers(
         .map(|t| {
             t.trigger == trigger
                 && due.heard.admits(t.subject)
+                // A heap ability resolves only as heard from the heap, and
+                // a card in play never resolves one (`Heard::FromHeap`).
+                && t.from_heap == (due.heard == crate::rules::state::Heard::FromHeap)
                 && !(t.first_each_turn && due.not_the_first_this_turn)
                 && listeners::when_admits(state, registry, t, card_side, due.install, triggering_event)
         })
@@ -2206,6 +2226,7 @@ pub(crate) fn would_fire(state: &GameState, registry: &CardRegistry, due: &Defer
     let meant = |t: &&TriggeredEffect| {
         t.trigger == due.trigger
             && due.heard.admits(t.subject)
+            && t.from_heap == (due.heard == crate::rules::state::Heard::FromHeap)
             && !(t.first_each_turn && due.not_the_first_this_turn)
             && listeners::when_admits(state, registry, t, card.side, due.install, due.event.as_ref())
     };
@@ -2648,18 +2669,23 @@ fn runner_is_accessing(state: &GameState, card_id: &CardId) -> bool {
 /// it was. A fresh handle, since the card is a new object where it lands;
 /// the stored tally moves as a score does, by the points the addition gave
 /// it, which may be negative.
-fn add_to_score_area_as_agenda(state: &mut GameState, card: CardId, as_agenda: crate::dsl::AsAgenda) -> GameEvent {
+fn add_to_score_area_as_agenda(state: &mut GameState, side: Side, card: CardId, as_agenda: crate::dsl::AsAgenda) -> GameEvent {
     let install_id = state.allocate_install_id();
-    state.corp.scored_agendas.push(crate::rules::state::ScoredAgenda {
+    let entry = crate::rules::state::ScoredAgenda {
         card: card.clone(),
         install_id,
         agenda_counters: 0,
         scored_on_turn: state.turn,
         installed_on_scoring_turn: false,
         as_agenda: Some(as_agenda),
-    });
-    state.corp.resources.agenda_points = state.corp.resources.agenda_points.gain(as_agenda.points);
-    GameEvent::AddedToScoreAreaAsAgenda { card, points: as_agenda.points }
+    };
+    let (scored, resources) = match side {
+        Side::Corp => (&mut state.corp.scored_agendas, &mut state.corp.resources),
+        Side::Runner => (&mut state.runner.scored_agendas, &mut state.runner.resources),
+    };
+    scored.push(entry);
+    resources.agenda_points = resources.agenda_points.gain(as_agenda.points);
+    GameEvent::AddedToScoreAreaAsAgenda { side, card, points: as_agenda.points, subtype: as_agenda.subtype }
 }
 
 /// Adds `card`, an agenda out of whatever Corp zone it just left, to the
@@ -3060,7 +3086,7 @@ pub(crate) fn pay_cost_ctx(
                 // recounts the score area and was right; this is the
                 // number the view, the HUD and the bots read, which kept
                 // the forfeited points.
-                let points = crate::rules::win::scored_value(state, registry, &forfeited);
+                let points = crate::rules::win::scored_value(state, registry, &forfeited, Side::Corp);
                 state.corp.resources.agenda_points = state.corp.resources.agenda_points.gain(-points);
                 // Out of the game rather than to Archives (it was never on
                 // the table), taking its counters with it. Returned, not
@@ -3162,7 +3188,7 @@ pub(crate) fn pay_cost_ctx(
             let position = acting_rig_position(state, ctx).ok_or_else(|| RulesError::CardNotInstalled { card: card_id.clone() })?;
             let removed = state.runner.rig.remove(position);
             let mut events = cascade_trash_hosted_on_rig_card(state, registry, &removed);
-            events.push(add_to_score_area_as_agenda(state, removed.card, *as_agenda));
+            events.push(add_to_score_area_as_agenda(state, Side::Corp, removed.card, *as_agenda));
             Ok(events)
         }
     }
@@ -3792,6 +3818,20 @@ pub(crate) fn resolve_amount(amount: &Amount, ctx: &ResolutionContext<'_>, state
             .iter()
             .filter(|c| c.slot == InstallSlot::Ice && !c.rezzed && Some(c.install_id) != ctx.acting_install)
             .count() as u32,
+        Amount::InScoreAreaWithSubtype(subtype) => {
+            let side = ctx.acting_card.and_then(|card| registry.get(card)).map_or(Side::Runner, |definition| definition.side);
+            let scored = match side {
+                Side::Corp => &state.corp.scored_agendas,
+                Side::Runner => &state.runner.scored_agendas,
+            };
+            scored
+                .iter()
+                .filter(|entry| match entry.as_agenda {
+                    Some(as_agenda) => as_agenda.subtype == Some(*subtype),
+                    None => registry.get(&entry.card).is_some_and(|definition| definition.subtypes.contains(subtype)),
+                })
+                .count() as u32
+        }
         Amount::InHeapWithSubtype(subtype) => {
             state.runner.heap.iter().filter(|card| registry.get(card).is_some_and(|def| def.subtypes.contains(subtype))).count() as u32
         }
@@ -3927,7 +3967,7 @@ mod tests {
     fn a_card_that_cannot_be_forfeited_is_not_counted_toward_a_forfeit() {
         let registry = CardRegistry::default();
         let as_agenda = |points, cannot_forfeit| {
-            Some(crate::dsl::AsAgenda { points, cannot_forfeit })
+            Some(crate::dsl::AsAgenda { points, cannot_forfeit, subtype: None })
         };
         let mut state = game_state();
         state.corp.scored_agendas =
@@ -4781,7 +4821,7 @@ mod tests {
         let registry = CardRegistry::from_cards(vec![card_with_triggers(
             "snare",
             vec![TriggeredEffect {
-                subject: None, when: None, acts_on_subject: false, first_each_turn: false,
+                subject: None, when: None, acts_on_subject: false, first_each_turn: false, from_heap: false,
                 text: None,
                 trigger: Trigger::OnAccessed,
                 effects: vec![Effect::GiveTags(Amount::Fixed(1)), Effect::GainCredits(Side::Corp, 2)],
@@ -4819,7 +4859,7 @@ mod tests {
         let on = |server: ServerId, credits: u32| TriggeredEffect {
             subject: Some(crate::dsl::Subject::Any),
             when: Some(crate::dsl::EventFilter::Server(vec![server])),
-            acts_on_subject: false, first_each_turn: false,
+            acts_on_subject: false, first_each_turn: false, from_heap: false,
             text: None,
             trigger: Trigger::OnSuccessfulRun,
             effects: vec![Effect::GainCredits(Side::Runner, credits)],
@@ -4845,7 +4885,7 @@ mod tests {
         let registry = CardRegistry::from_cards(vec![card_with_triggers(
             "hedge_fund",
             vec![TriggeredEffect {
-                subject: None, when: None, acts_on_subject: false, first_each_turn: false,
+                subject: None, when: None, acts_on_subject: false, first_each_turn: false, from_heap: false,
                 text: None,
                 trigger: Trigger::OnPlay,
                 effects: vec![Effect::GainCredits(Side::Corp, 9)],

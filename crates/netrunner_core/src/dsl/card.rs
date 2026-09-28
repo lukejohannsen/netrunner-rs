@@ -318,6 +318,16 @@ pub struct TriggeredEffect {
     /// stolen"), and share one count.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub first_each_turn: bool,
+    /// Active while the card is in its owner's heap, and only there (CR
+    /// 9.1.8b: "abilities that can only affect the game state from a
+    /// particular zone are active in that zone") — Jeitinho's "whenever
+    /// you bypass a piece of ice, you may spend [click] to install this
+    /// hardware from your heap". A card in the Runner's heap listens for
+    /// these triggers and no others (`listeners`, `Heard::FromHeap`), and
+    /// the same card on the table does not hear them. The Runner's heap
+    /// only: no pool card prints one for Archives.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub from_heap: bool,
     /// The printed sentence this trigger implements, quoted from the
     /// card, when a card author has linked it; optional and ungated —
     /// see `AbilityDef::text` for the linked-clause idea.
@@ -874,6 +884,8 @@ pub enum PaysFor {
 pub enum CardValidationError {
     #[error("card {0:?}: `IceType::Other` is ice with none of the three types, never a type — refused on {1}")]
     OtherIsNotAnIceType(CardId, &'static str),
+    #[error("card {0:?}: a trigger active in the heap (`from_heap`) is the Runner's — the heap is the only zone listened to")]
+    HeapTriggerOnCorpCard(CardId),
     #[error("card {0:?}: `GainIceSubtype` is \"this ice gains\" — said on a card that is not ice, it has nothing to act on")]
     SubtypeGainedByNonIce(CardId),
     #[error("Agenda {0:?} must not have subroutines")]
@@ -1293,6 +1305,9 @@ impl CardDefinition {
         if restricted_to_no_type {
             return Err(CardValidationError::OtherIsNotAnIceType(self.id.clone(), "a breaker restricted to it"));
         }
+        if self.side == Side::Corp && self.triggers.iter().any(|triggered| triggered.from_heap) {
+            return Err(CardValidationError::HeapTriggerOnCorpCard(self.id.clone()));
+        }
         // "This ice gains the chosen subtypes" acts on the acting install,
         // so only ice can say it, and gaining `Other` would mean nothing.
         let mut gained = Vec::new();
@@ -1430,7 +1445,7 @@ mod tests {
         assert_eq!(
             card.triggers,
             vec![TriggeredEffect {
-                subject: Some(Subject::This), when: None, acts_on_subject: false, first_each_turn: false,
+                subject: Some(Subject::This), when: None, acts_on_subject: false, first_each_turn: false, from_heap: false,
                 text: None,
                 trigger: Trigger::OnPlay,
                 effects: vec![Effect::GainCredits(Side::Corp, 9)],
@@ -1452,7 +1467,7 @@ mod tests {
         assert_eq!(
             card.triggers,
             vec![TriggeredEffect {
-                subject: Some(Subject::This), when: None, acts_on_subject: false, first_each_turn: false,
+                subject: Some(Subject::This), when: None, acts_on_subject: false, first_each_turn: false, from_heap: false,
                 text: None,
                 trigger: Trigger::OnPlay,
                 effects: vec![Effect::GainCredits(Side::Runner, 9)],
@@ -1618,7 +1633,7 @@ mod tests {
             id: CardId("homebrew".to_string()),
             side: Side::Runner,
             card_type: CardType::Resource,
-            triggers: vec![TriggeredEffect { trigger, subject, when, acts_on_subject, first_each_turn: false, text: None, effects: vec![], requirement: None }],
+            triggers: vec![TriggeredEffect { trigger, subject, when, acts_on_subject, first_each_turn: false, from_heap: false, text: None, effects: vec![], requirement: None }],
             ..Default::default()
         };
         let on_hq = || Some(EventFilter::Server(vec![crate::rules::ServerId::Hq]));
@@ -1670,6 +1685,7 @@ mod tests {
             when,
             acts_on_subject: false,
             first_each_turn: true,
+            from_heap: false,
             text: None,
             effects: vec![],
             requirement,
@@ -1714,7 +1730,7 @@ mod tests {
             discount(Scope::Installing(CardFilter::CardType(CardType::Program)), Some(EffectRequirement::OncePerTurn)).validate(),
             Err(CardValidationError::OncePerTurnDoesNotFit(..))
         ));
-        let once = |trigger: Trigger| TriggeredEffect { first_each_turn: false, ..first(trigger, None, None, Some(EffectRequirement::OncePerTurn)) };
+        let once = |trigger: Trigger| TriggeredEffect { first_each_turn: false, from_heap: false, ..first(trigger, None, None, Some(EffectRequirement::OncePerTurn)) };
         assert_eq!(card(Side::Corp, vec![once(Trigger::OnTagsGiven)]).validate(), Ok(()));
         assert!(matches!(card(Side::Corp, vec![once(Trigger::OnTagsGiven), once(Trigger::OnTagRemoved)]).validate(), Err(CardValidationError::OncePerTurnDoesNotFit(..))));
         assert!(refused(discount(Scope::Controller, None)));
@@ -1857,7 +1873,7 @@ mod tests {
                 subject: Some(Subject::This),
                 when: None,
                 acts_on_subject: false,
-                first_each_turn: false,
+                first_each_turn: false, from_heap: false,
                 text: None,
                 effects: vec![Effect::GainIceSubtype(subtype)],
                 requirement: None,
@@ -1882,7 +1898,7 @@ mod tests {
                 subject: Some(Subject::Any),
                 when: None,
                 acts_on_subject,
-                first_each_turn: false,
+                first_each_turn: false, from_heap: false,
                 text: None,
                 effects: vec![gains.clone()],
                 requirement: None,

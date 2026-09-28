@@ -233,7 +233,7 @@ pub struct PublicRunnerState {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub set_aside: Vec<CardId>,
     /// Never masked — stolen Agendas sit in a fully public score area.
-    pub scored_agendas: Vec<CardId>,
+    pub scored_agendas: Vec<ScoredAgenda>,
     /// Never masked — static link strength, like `tags`, is plain public
     /// information (relevant to both sides during a trace).
     pub link_strength: u32,
@@ -993,6 +993,7 @@ pub fn mask_event_for_player(event: &GameEvent, state: &GameState, viewer: impl 
         | GameEvent::AgendaStolen { .. }
         | GameEvent::DamageTaken { .. }
         | GameEvent::RunnerFlatlined
+        | GameEvent::WonByCardText { .. }
         | GameEvent::CreditsSpent { .. }
         | GameEvent::TagsGiven { .. }
         | GameEvent::TagsCleared { .. }
@@ -1542,7 +1543,7 @@ mod tests {
                 ..Default::default()
             }],
             heap: vec![CardId("easy_mark".to_string())],
-            scored_agendas: vec![CardId("priority_requisition".to_string())],
+            scored_agendas: vec![ScoredAgenda::plain(CardId("priority_requisition".to_string()))],
             ..Default::default()
         }
     }
@@ -1924,7 +1925,7 @@ mod tests {
         let masked_for_runner = mask_state_for_player(&state, Side::Runner);
 
         let expected_corp = vec![ScoredAgenda::plain(CardId("hostile_takeover".to_string()))];
-        let expected_runner = vec![CardId("priority_requisition".to_string())];
+        let expected_runner = vec![ScoredAgenda::plain(CardId("priority_requisition".to_string()))];
         assert_eq!(masked_for_corp.corp.scored_agendas, expected_corp);
         assert_eq!(masked_for_runner.corp.scored_agendas, expected_corp);
         assert_eq!(masked_for_corp.runner.scored_agendas, expected_runner);

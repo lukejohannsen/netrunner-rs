@@ -9390,11 +9390,11 @@ mod system_gateway {
 
         // Threat 2: one 2-point agenda in the Runner's score area is not enough.
         let mut low = state.clone();
-        low.runner.scored_agendas = vec![CardId("offworld_office".to_string())];
+        low.runner.scored_agendas = vec![crate::rules::ScoredAgenda::plain(CardId("offworld_office".to_string()))];
         assert!(!crate::rules::legal_actions(&low, &registry).contains(&play));
 
         // Threat 4, but no run last turn.
-        state.runner.scored_agendas = vec![CardId("offworld_office".to_string()); 2];
+        state.runner.scored_agendas = vec![crate::rules::ScoredAgenda::plain(CardId("offworld_office".to_string())); 2];
         let mut quiet = state.clone();
         quiet.last_turn = Default::default();
         assert!(!crate::rules::legal_actions(&quiet, &registry).contains(&play));
@@ -10352,7 +10352,7 @@ mod system_gateway {
         let registry = sg_registry();
         let trash_it = |threat_points: usize, rezzed: bool| {
             let mut state = runner_turn(10, 4);
-            state.runner.scored_agendas = vec![CardId("offworld_office".to_string()); threat_points];
+            state.runner.scored_agendas = vec![crate::rules::ScoredAgenda::plain(CardId("offworld_office".to_string())); threat_points];
             state.corp.installed = vec![corp_root("public_access_plaza", ServerId::Remote(0))];
             state.corp.installed[0].rezzed = rezzed;
             let want = PlayerAction::TrashAccessedCard { card_id: CardId("public_access_plaza".to_string()) };
@@ -10395,7 +10395,7 @@ mod system_gateway {
         let registry = sg_registry();
         let approach = |runner_points: usize| {
             let mut state = runner_turn(10, 4);
-            state.runner.scored_agendas = vec![CardId("offworld_office".to_string()); runner_points];
+            state.runner.scored_agendas = vec![crate::rules::ScoredAgenda::plain(CardId("offworld_office".to_string())); runner_points];
             state.corp.installed = vec![ice_installed("n_pot", ServerId::Hq, true)];
             let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run");
             let (state, _) = crate::rules::test_support::continue_run(&state, &registry).expect("approach");
@@ -10504,8 +10504,8 @@ mod system_gateway {
         let mut state = base_state();
         state.corp.hq = vec![CardId("ip_enforcement".to_string())];
         state.runner.scored_agendas = vec![
-            CardId("offworld_office".to_string()),
-            CardId("send_a_message".to_string()),
+            crate::rules::ScoredAgenda::plain(CardId("offworld_office".to_string())),
+            crate::rules::ScoredAgenda::plain(CardId("send_a_message".to_string())),
         ];
         state.runner.resources.agenda_points = AgendaPoints(5);
         state.runner.tags = 2;
@@ -10516,7 +10516,7 @@ mod system_gateway {
         let (state, _) = apply_action(&state, &registry, PlayerAction::ToggleCardSelection { position: position_of(&state, "offworld_office") }).expect("the 2-pointer");
         let (state, _) = apply_action(&state, &registry, PlayerAction::ConfirmCardSelection).expect("take it back");
         assert_eq!(state.runner.tags, 0, "two tags paid for two points");
-        assert_eq!(state.runner.scored_agendas, vec![CardId("send_a_message".to_string())]);
+        assert_eq!(state.runner.scored_agendas.iter().map(|scored| scored.card.clone()).collect::<Vec<_>>(), vec![CardId("send_a_message".to_string())]);
         assert_eq!(state.runner.resources.agenda_points, AgendaPoints(3));
         let installed = state.corp.installed.iter().find(|c| c.card.0 == "offworld_office").expect("back on the table");
         assert!(matches!(installed.server, ServerId::Remote(_)));
@@ -13160,7 +13160,7 @@ mod rebellion_without_rehearsal {
 
     /// Threat `points`, from 2-point agendas in the Runner's score area.
     fn at_threat(state: &mut GameState, points: usize) {
-        state.runner.scored_agendas = vec![id("offworld_office"); points / 2];
+        state.runner.scored_agendas = vec![crate::rules::ScoredAgenda::plain(id("offworld_office")); points / 2];
     }
 
     fn runner_turn() -> GameState {
@@ -15728,5 +15728,101 @@ mod rebellion_without_rehearsal {
         assert_eq!(encountered_strength(&state, &registry), 2, "Enigma's printed strength");
         assert!(subroutine_texts(&state).iter().all(|text| text != THUNDERBOLT_SUBROUTINE));
         assert!(state.active_run.as_ref().is_some_and(|run| run.gained_for_the_run.is_empty()));
+    }
+
+    // ---- Stage 8c: a card added to the Runner's score area as an agenda ----
+
+    /// A Runner turn with Jeitinho installed and a successful run made on
+    /// each of `servers` (all three centrals empty), clicks spent, ended —
+    /// up to the moment the turn's end is asked about.
+    fn jeitinho_turn_ends_after(registry: &CardRegistry, servers: &[ServerId], already: usize) -> GameState {
+        let mut state = runner_turn();
+        state.runner.rig = vec![rig("jeitinho")];
+        state.runner.scored_agendas = vec![
+            crate::rules::ScoredAgenda {
+                as_agenda: Some(crate::dsl::AsAgenda { points: 0, cannot_forfeit: false, subtype: Some(crate::dsl::CardSubtype::Assassination) }),
+                ..crate::rules::ScoredAgenda::plain(id("jeitinho"))
+            };
+            already
+        ];
+        for server in servers {
+            let (ran, _) = run_to_completion(state, registry, *server);
+            state = pass_until_settled(ran, registry).0;
+            assert!(state.active_run.is_none(), "the run on {server:?} is over");
+        }
+        let (state, _) = apply_action(&crate::rules::test_support::clicks_spent(&state), registry, PlayerAction::EndTurn).expect("end the turn");
+        pass_until_settled(state, registry).0
+    }
+
+    /// Runs on HQ, R&D and Archives this turn: as the turn ends, the Runner
+    /// may add it to their score area as a 0-point assassination agenda.
+    #[test]
+    fn jeitinho_joins_the_score_area_as_a_0_point_assassination_agenda_after_all_three_centrals() {
+        let registry = registry();
+        let state = jeitinho_turn_ends_after(&registry, &[ServerId::Hq, ServerId::RnD, ServerId::Archives], 0);
+        assert!(matches!(state.pending_decision, Some(crate::rules::PendingDecision::ChooseEffect { chooser: Side::Runner, .. })), "you may: {:?}", state.pending_decision);
+        let (state, events) = apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("add it");
+        assert!(state.runner.rig.is_empty(), "out of the rig");
+        let scored = &state.runner.scored_agendas;
+        assert_eq!(scored.len(), 1);
+        assert_eq!((scored[0].card.clone(), scored[0].as_agenda.and_then(|a| a.subtype)), (id("jeitinho"), Some(crate::dsl::CardSubtype::Assassination)));
+        assert_eq!(crate::rules::score(&state, &registry, Side::Runner), 0, "worth 0");
+        assert!(events.iter().any(|e| matches!(e, GameEvent::AddedToScoreAreaAsAgenda { side: Side::Runner, points: 0, .. })));
+        assert!(!state.is_over(), "one of three");
+    }
+
+    /// Without Archives, nothing is asked.
+    #[test]
+    fn jeitinho_asks_nothing_without_a_successful_run_on_every_central() {
+        let registry = registry();
+        let state = jeitinho_turn_ends_after(&registry, &[ServerId::Hq, ServerId::RnD], 0);
+        assert!(state.pending_decision.is_none(), "{:?}", state.pending_decision);
+        assert_eq!(state.runner.rig.len(), 1);
+    }
+
+    /// The third assassination agenda wins the game — a third way to win.
+    #[test]
+    fn jeitinho_third_assassination_agenda_wins_the_game() {
+        let registry = registry();
+        let state = jeitinho_turn_ends_after(&registry, &[ServerId::Hq, ServerId::RnD, ServerId::Archives], 2);
+        let (state, events) = apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("add the third");
+        assert_eq!(state.phase, GamePhase::GameOver(Side::Runner));
+        assert!(events.iter().any(|e| matches!(e, GameEvent::WonByCardText { winner: Side::Runner, card } if card == &id("jeitinho"))), "{events:?}");
+        assert_eq!(crate::rules::score(&state, &registry, Side::Runner), 0, "on no points at all");
+    }
+
+    /// Threat 3: a bypass offers to install it from the heap for a click;
+    /// below the threat, or with it on the table, nothing is offered.
+    #[test]
+    fn jeitinho_installs_from_the_heap_for_a_click_when_the_runner_bypasses_ice_at_threat_3() {
+        let registry = registry();
+        let accept = PlayerAction::AcceptPendingPaidChoice { cost_option_index: None };
+        let setup = |threat: usize, jeitinho_in_rig: bool| {
+            let mut state = runner_turn();
+            state.runner.rig = vec![crate::rules::InstalledRunnerCard { counters: 2, ..rig("malandragem") }];
+            if jeitinho_in_rig {
+                state.runner.rig.push(rig("jeitinho"));
+            } else {
+                state.runner.heap = vec![id("jeitinho")];
+            }
+            state.corp.installed = vec![ice_at_hq("ice_wall")];
+            at_threat(&mut state, threat);
+            state
+        };
+        let at_ice = encounter(&setup(4, false), &registry);
+        let (bypassed_it, _) = apply_action(&at_ice, &registry, accept.clone()).expect("Malandragem bypasses");
+        assert!(bypassed(&bypassed_it));
+        assert!(bypassed_it.pending_paid_choice.is_some(), "you may spend [click] to install this hardware from your heap");
+        let (clicks, credits) = (bypassed_it.runner.resources.clicks, bypassed_it.runner.resources.credits);
+        let (installed, _) = apply_action(&bypassed_it, &registry, accept.clone()).expect("spend a click");
+        assert!(installed.runner.rig.iter().any(|c| c.card == id("jeitinho")), "installed from the heap");
+        assert!(installed.runner.heap.is_empty());
+        assert_eq!(installed.runner.resources.clicks.0 + 1, clicks.0, "[click]");
+        assert_eq!(installed.runner.resources.credits.0 + 1, credits.0, "and its install cost");
+
+        let (low, _) = apply_action(&encounter(&setup(2, false), &registry), &registry, accept.clone()).expect("bypass at threat 2");
+        assert!(low.pending_paid_choice.is_none(), "Threat 3");
+        let (on_table, _) = apply_action(&encounter(&setup(4, true), &registry), &registry, accept).expect("bypass with it installed");
+        assert!(on_table.pending_paid_choice.is_none(), "active in the heap only");
     }
 }

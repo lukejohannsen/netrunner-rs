@@ -1915,7 +1915,9 @@ reaches Vantage Point's cards by building a deck.
    a subtype chosen at rez (built, below): Lycian Multi-Munition; **8b**, a
    subroutine gained for the rest of the run (built, below): Thunderbolt
    Armaments: Peace Through Power, on a Sweep deck of its own; **8c**, a card added to the
-   Runner's score area as an agenda, and a third way to win: Jeitinho.
+   Runner's score area as an agenda, and a third way to win (built,
+   below): Jeitinho, on a Sweep deck of its own. Stage 8 is complete, and
+   with it Rebellion Without Rehearsal, 65 of 65.
 
 **Riskiest:**
 - Jeitinho: a third way to win (`rules/win.rs`).
@@ -3644,6 +3646,94 @@ Rebellion Without Rehearsal 64 of 65; `RWR_UNIMPLEMENTED` 2 → 1.
   `coverage_identical.py` has **all four shapes identical**, heuristic
   included. An identity is not a card `determinize` samples, and
   Stick and Poke's rewritten effect plays as it did.
+
+#### Stage 8c — a card added to the Runner's score area, and a third way to win (28 September 2026)
+
+`feat/rwr-stage-8c-jeitinho`: Jeitinho, on the Hit List Sweep deck. **One
+new `Effect`.** Rebellion Without Rehearsal 65 of 65; `RWR_UNIMPLEMENTED`
+1 → 0. **Stage 8 is complete, and Rebellion Without Rehearsal with it.**
+
+- **The Runner's score area is a list of `ScoredAgenda`**, as the Corp's
+  is.
+  - It was a bare `CardId` list, which had nowhere to say that a card was
+    added "as an assassination agenda" (CR 10.1.3).
+  - The field has the same type in the state and in the view.
+  - `win::scored_value` takes a side and is the one worth for both score
+    areas.
+  - A steal records its turn.
+- **"You may add this hardware to your score area as an assassination
+  agenda worth 0 agenda points"** is Myōshu's
+  `Effect::AddToScoreAreaAsAgenda`.
+  - A Runner card now comes out of the rig into the Runner's score area.
+    What it hosts is trashed with it, as Word on the Street's cost of the
+    same name does.
+  - `AsAgenda` gains `subtype`, and `GameEvent::AddedToScoreAreaAsAgenda`
+    says whose score area and which subtype.
+  - The turn's three successful runs are three `TimesThisTurnWhen`s over
+    `OnSuccessfulRun`.
+- **"Then, if you have 3 assassination agendas in your score area, you
+  win the game"** is a third way to win, beside the two CR 1.7.2 lists.
+  - The count is `Amount::InScoreAreaWithSubtype`. It has
+    `InHeapWithSubtype`'s shape, because `Amount` is `Copy` and a
+    `CardFilter` is not.
+  - The win is the one new effect, `Effect::WinTheGame`, through
+    `win::end_game`, the one door into `GameOver`.
+  - It is announced first as `GameEvent::WonByCardText`, so
+    `classify_end_reason` names the new `GameEndReason::CardText` rather
+    than guessing from the scores.
+  - It is immediate, as the card says, not a standing check.
+- **"Threat 3 → Whenever you bypass a piece of ice, you may spend [click]
+  to install this hardware from your heap"** can only affect the game
+  from the heap, so it is active there (CR 9.1.8b).
+  - `TriggeredEffect::from_heap` marks such a trigger.
+  - A card in the Runner's heap listens for those triggers and no others
+    (`Listener::in_heap`, `Heard::FromHeap`), and the same card on the
+    table does not hear them. `validate` refuses one on a Corp card.
+  - The install is the existing `InstallRunnerCardFromZone { from:
+    OwnHeap }` on the acting card, and Threat 3 is `AmountAtLeast(
+    ThreatLevel, 3)`.
+- **Client**, both clients:
+  - The score-area row says "Added as an assassination agenda · 0 points".
+  - The log says "added Jeitinho to the Runner's score area as an
+    assassination agenda …" and "the Runner wins the game by Jeitinho".
+  - The desktop's end of game names the reason, and the terminal prints
+    it (`CardText`).
+  - The view ledger now holds the Runner's score entries field by field,
+    as it holds the Corp's.
+- **Deck — Hit List**, on Gabriel Santiago, the one Criminal identity no
+  deck plays: Borrowed Time's frame with three Jeitinho for a Tailgate, a
+  VRcation and a Pennyshaver. No Runner Sweep deck had 4 influence to
+  spare, and Borrowed Time would have lost Startup.
+- **The sweep schedule paired only part of the pool.**
+  - `sweep_decks_for_seed` played `seed % C` against `seed % R`. Hit List
+    made the lists 24 Corp and 18 Runner decks, which share a factor of
+    6.
+  - So 256 seeds were 72 pairings, each Runner deck against 4 Corp
+    decks. The 256-seed card gate then missed Safety Net's Lobisomem,
+    which is installed in about one game in four.
+  - The Runner rotation now steps one deck each `lcm(C, R)` seeds
+    (`coverage::pairing_cycle`), so 256 seeds are 256 pairings again.
+  - For coprime lengths, as through 8b, nothing below `lcm` seeds
+    changes. So 8b's two Sweep deck edits answered a full schedule, and
+    their reason stands.
+- **Real play**, 96 games of Hit List against Retirement Package (seed 2):
+  - Random seats installed Jeitinho 69 times. They never made a
+    successful run on all three centrals in one turn, and Hit List holds
+    no way to bypass ice. So neither the score area nor the heap was ever
+    reached.
+  - The heuristic Runner never installs it.
+  - Adding it to the score area, the win and the heap install are
+    reached by the card's tests alone.
+- **DSL ratio (`pool_status.py`): 24 of 90 `Effect` variants single-use,
+  1 unused**, over 315 card files (23 of 89 before).
+- **Measured.** Both sweeps at 256 seeds are green. Against 8b,
+  `coverage_identical.py` has both random seatings **identical**, and the
+  heuristic ones moved: Corp agenda wins 72 → 70 of 192, flatlines
+  17 → 14, Runner agenda wins 103 → 107, deck-outs 0 → 1.
+  - A ref with the score area, the heap listener, the win, the schedule
+    and the clients, and without the card and the deck, is identical to
+    8b in all four shapes.
+  - So the move is `determinize` sampling a new Runner card, not a rule.
 
 ### 3. The Automata Initiative — 65 cards (C 14 / V 35 / M 16)
 

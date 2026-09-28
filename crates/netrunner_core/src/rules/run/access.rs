@@ -7,7 +7,7 @@ use crate::rules::error::RulesError;
 use crate::rules::payment::{self, Purpose};
 use crate::rules::event::GameEvent;
 use crate::rules::run::state::{AccessCandidate, AccessPhase, AccessState, RunPhase, ServerId};
-use crate::rules::state::{ArchivedCard, GameState, InstallId, InstallSlot, Side};
+use crate::rules::state::{ArchivedCard, GameState, InstallId, InstallSlot, ScoredAgenda, Side};
 use crate::rules::uninstall;
 
 /// Root (non-ICE) installs on `server` — ICE is excluded via
@@ -762,7 +762,7 @@ pub fn resolve_steal(
     // copies of one agenda in two remotes apart.
     let (_, announced) = remove_from_corp_zone(state, registry, card_id, pending.server, pending.install)?;
     events.extend(announced);
-    state.runner.scored_agendas.push(card_id.clone());
+    state.runner.scored_agendas.push(ScoredAgenda { scored_on_turn: state.turn, ..ScoredAgenda::plain(card_id.clone()) });
     // Counted for `Trigger::OnRunEnded` consumers that gate on "if the
     // Runner stole any agendas during that run" (AMAZE Amusements), since
     // the `RunState` itself is gone by the time that trigger fires.
@@ -1220,7 +1220,7 @@ mod tests {
     /// `OnAccessed` trigger firing `effects` — Snare!/Fetal AI-style traps.
     fn card_with_on_accessed(id: &str, effects: Vec<Effect>) -> CardDefinition {
         CardDefinition {
-            triggers: vec![TriggeredEffect { subject: Some(crate::dsl::Subject::This), when: None, acts_on_subject: false, first_each_turn: false, text: None, trigger: Trigger::OnAccessed, effects, requirement: None }],
+            triggers: vec![TriggeredEffect { subject: Some(crate::dsl::Subject::This), when: None, acts_on_subject: false, first_each_turn: false, from_heap: false, text: None, trigger: Trigger::OnAccessed, effects, requirement: None }],
             trash_cost: None,
             ..trashable_card(id, 0)
         }
@@ -1230,7 +1230,7 @@ mod tests {
     /// `OnTrashedFromAccess` trigger firing `effects` — Shock!-style.
     fn trashable_card_with_on_trashed_from_access(id: &str, trash_cost: u32, effects: Vec<Effect>) -> CardDefinition {
         CardDefinition {
-            triggers: vec![TriggeredEffect { subject: Some(crate::dsl::Subject::This), when: None, acts_on_subject: false, first_each_turn: false, text: None, trigger: Trigger::OnTrashedFromAccess, effects, requirement: None }],
+            triggers: vec![TriggeredEffect { subject: Some(crate::dsl::Subject::This), when: None, acts_on_subject: false, first_each_turn: false, from_heap: false, text: None, trigger: Trigger::OnTrashedFromAccess, effects, requirement: None }],
             ..trashable_card(id, trash_cost)
         }
     }
@@ -1856,7 +1856,7 @@ mod tests {
         );
 
         let events = resolve_steal(&mut state, &card_id, &registry).expect("steal should succeed");
-        assert_eq!(state.runner.scored_agendas, vec![card_id.clone()]);
+        assert_eq!(state.runner.scored_agendas.iter().map(|scored| scored.card.clone()).collect::<Vec<_>>(), vec![card_id.clone()]);
         assert_eq!(state.runner.resources.agenda_points, AgendaPoints(3));
         assert_eq!(state.active_run, None);
         assert_eq!(
@@ -1884,7 +1884,7 @@ mod tests {
         access_server(&mut state, ServerId::RnD, &registry).unwrap();
         resolve_steal(&mut state, &agenda, &registry).unwrap();
         assert_eq!(state.corp.r_and_d, vec![agenda.clone(), other.clone()], "the top copy left R&D");
-        assert_eq!(state.runner.scored_agendas, vec![agenda.clone()]);
+        assert_eq!(state.runner.scored_agendas.iter().map(|scored| scored.card.clone()).collect::<Vec<_>>(), vec![agenda.clone()]);
 
         // HQ.
         let mut state = game_state(vec![agenda.clone()], Vec::new(), Vec::new(), Vec::new(), 0);
@@ -1995,7 +1995,7 @@ mod tests {
             side: Side::Corp,
             card_type: CardType::Identity,
             triggers: vec![crate::dsl::TriggeredEffect {
-                subject: None, when: None, acts_on_subject: false, first_each_turn: false,
+                subject: None, when: None, acts_on_subject: false, first_each_turn: false, from_heap: false,
                 text: None,
                 trigger: crate::dsl::Trigger::OnAgendaStolen,
                 effects: vec![Effect::DealDamage(crate::dsl::DamageType::Net, 1)],
@@ -2013,7 +2013,7 @@ mod tests {
 
         let events = resolve_steal(&mut state, &agenda, &registry).unwrap();
 
-        assert_eq!(state.runner.scored_agendas, vec![agenda], "the steal itself stands");
+        assert_eq!(state.runner.scored_agendas.iter().map(|scored| scored.card.clone()).collect::<Vec<_>>(), vec![agenda], "the steal itself stands");
         assert_eq!(state.phase, GamePhase::GameOver(Side::Corp));
         assert_eq!(events.iter().filter(|e| matches!(e, GameEvent::GameOver { .. })).count(), 1, "{events:?}");
         assert!(state.active_run.is_none());
@@ -2113,7 +2113,7 @@ mod tests {
         );
         // Simulate having already stolen 4 points' worth of Agendas earlier
         // in the game.
-        state.runner.scored_agendas = vec![CardId("already_scored".to_string())];
+        state.runner.scored_agendas = vec![crate::rules::ScoredAgenda::plain(CardId("already_scored".to_string()))];
         state.runner.resources.agenda_points = AgendaPoints(4);
         state.active_run = Some(run_in_success(ServerId::Archives));
         access_server(&mut state, ServerId::Archives, &registry).unwrap();
@@ -2151,7 +2151,7 @@ mod tests {
             Vec::new(),
             0,
         );
-        state.runner.scored_agendas = vec![CardId("already_scored".to_string())];
+        state.runner.scored_agendas = vec![crate::rules::ScoredAgenda::plain(CardId("already_scored".to_string()))];
         state.runner.resources.agenda_points = AgendaPoints(4);
         state.active_run = Some(run_in_success(ServerId::Archives));
         access_server(&mut state, ServerId::Archives, &registry).unwrap();
@@ -2193,7 +2193,7 @@ mod tests {
         let events = resolve_steal(&mut state, &card_id, &registry).expect("steal should succeed");
 
         assert_eq!(state.runner.resources.credits, Credits(0));
-        assert_eq!(state.runner.scored_agendas, vec![card_id.clone()]);
+        assert_eq!(state.runner.scored_agendas.iter().map(|scored| scored.card.clone()).collect::<Vec<_>>(), vec![card_id.clone()]);
         assert_eq!(
             events,
             vec![
@@ -3160,7 +3160,7 @@ mod tests {
     ) -> CardDefinition {
         CardDefinition {
             interactive_on_access: Some(InteractiveOnAccess { cost, effects: avoided_effects, interaction: AccessInteraction::default(), requirement: None }),
-            triggers: vec![TriggeredEffect { subject: Some(crate::dsl::Subject::This), when: None, acts_on_subject: false, first_each_turn: false, text: None, trigger: Trigger::OnAccessed, effects: on_accessed_effects, requirement: None }],
+            triggers: vec![TriggeredEffect { subject: Some(crate::dsl::Subject::This), when: None, acts_on_subject: false, first_each_turn: false, from_heap: false, text: None, trigger: Trigger::OnAccessed, effects: on_accessed_effects, requirement: None }],
             trash_cost: None,
             ..trashable_card(id, 0)
         }
@@ -3263,7 +3263,7 @@ mod tests {
         );
 
         let events = resolve_steal(&mut state, &card_id, &registry).expect("stealing should succeed");
-        assert_eq!(state.runner.scored_agendas, vec![card_id.clone()]);
+        assert_eq!(state.runner.scored_agendas.iter().map(|scored| scored.card.clone()).collect::<Vec<_>>(), vec![card_id.clone()]);
         assert_eq!(
             events,
             vec![

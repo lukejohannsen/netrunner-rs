@@ -21,6 +21,10 @@ pub enum GameEndReason {
     AgendaThreshold,
     Flatline,
     Deckout,
+    /// A card's text said its controller wins — Jeitinho's third
+    /// assassination agenda (`GameEvent::WonByCardText`), the one win the
+    /// rules do not list (CR 1.7.2).
+    CardText,
     Surrender,
     /// The side that had to act dropped its connection and did not come
     /// back within the host's grace period. Like `Surrender`, a transport
@@ -50,6 +54,9 @@ pub enum GameEndReason {
 pub fn classify_end_reason(events: &[GameEvent], winner: Side, state: &GameState) -> GameEndReason {
     if events.iter().any(|event| matches!(event, GameEvent::RunnerFlatlined)) {
         return GameEndReason::Flatline;
+    }
+    if events.iter().any(|event| matches!(event, GameEvent::WonByCardText { .. })) {
+        return GameEndReason::CardText;
     }
     if winner == Side::Runner && state.corp.r_and_d.is_empty() {
         return GameEndReason::Deckout;

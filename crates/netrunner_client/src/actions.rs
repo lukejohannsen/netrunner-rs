@@ -252,7 +252,7 @@ pub fn visible_zones(view: &ClientView, registry: &CardRegistry) -> Vec<CardZone
     zone("Corp scored", view.corp.scored_agendas.iter().map(|agenda| (title(&agenda.card), agenda.card.clone())).collect());
     zone("Archives", view.corp.archives.iter().filter_map(|archived| archived.card.as_ref()).map(|id| (title(id), id.clone())).collect());
     zone("Runner rig", view.runner.rig.iter().map(|card| (title(&card.card), card.card.clone())).collect());
-    zone("Runner stolen", plain(&view.runner.scored_agendas));
+    zone("Runner stolen", view.runner.scored_agendas.iter().map(|agenda| (title(&agenda.card), agenda.card.clone())).collect());
     zone("Heap", plain(&view.runner.heap));
     zone("Corp removed from the game", plain(&view.corp.removed_from_game));
     zone("Runner removed from the game", plain(&view.runner.removed_from_game));
@@ -545,6 +545,7 @@ pub fn narrate_event(
             WouldHappen::Trash { .. } => "a trash was prevented".to_string(),
         },
         GameEvent::RunnerFlatlined => "the Runner is flatlined".to_string(),
+        GameEvent::WonByCardText { winner, card } => format!("the {winner:?} wins the game by {}", title(card)),
         GameEvent::TagsGiven { side, amount, .. } => format!("{side:?} took {amount} tag(s)"),
         // The remover, not whose tags: Synapse Global's cost is the Corp
         // removing the Runner's tag, which read "Runner removed 1 tag(s)".
@@ -571,8 +572,11 @@ pub fn narrate_event(
         GameEvent::AgendaAddedToScoreArea { card, agenda_points } => {
             format!("added {} to the Corp's score area for {agenda_points} point(s)", title(card))
         }
-        GameEvent::AddedToScoreAreaAsAgenda { card, points } => {
-            format!("added {} to the Corp's score area as an agenda worth {points} agenda point{}", title(card), if points.abs() == 1 { "" } else { "s" })
+        GameEvent::AddedToScoreAreaAsAgenda { side, card, points, subtype } => {
+            let whose = if *side == Side::Corp { "the Corp's" } else { "the Runner's" };
+            // Jeitinho's is "an assassination agenda".
+            let kind = subtype.as_ref().map_or_else(|| "an agenda".to_string(), crate::prose::a_subtype_agenda);
+            format!("added {} to {whose} score area as {kind} worth {points} agenda point{}", title(card), if points.abs() == 1 { "" } else { "s" })
         }
 
         // ---- runs and traces ----
@@ -1325,7 +1329,7 @@ mod tests {
                             .chain(seat_view.runner.grip_cards.clone().unwrap_or_default())
                             .chain(seat_view.runner.rig.iter().map(|c| c.card.clone()))
                             .chain(seat_view.runner.heap.iter().cloned())
-                            .chain(seat_view.runner.scored_agendas.iter().cloned())
+                            .chain(seat_view.runner.scored_agendas.iter().map(|scored| scored.card.clone()))
                             .filter_map(|card| session.registry().get(&card).map(|d| d.title.clone()))
                             .collect();
                         let concealed: Vec<String> = seat_view

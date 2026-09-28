@@ -93,6 +93,7 @@ pub fn describe_amount(amount: &Amount) -> String {
         Amount::BadPublicity => "the Corp's bad publicity".to_string(),
         Amount::ChosenNumber => "the number chosen".to_string(),
         Amount::InHeapWithSubtype(subtype) => format!("the number of {} cards in the heap", subtype.printed().to_lowercase()),
+        Amount::InScoreAreaWithSubtype(subtype) => format!("the number of {} agendas in your score area", subtype.printed().to_lowercase()),
         Amount::IceProtectingThisServer => "the number of pieces of ice protecting this server".to_string(),
         Amount::IceProtecting(server) => format!("the number of pieces of ice protecting {}", describe_server(*server)),
         Amount::OtherUnrezzedIce => "the number of other unrezzed pieces of ice".to_string(),
@@ -164,9 +165,18 @@ pub fn describe_cost(cost: &Cost) -> String {
 
 /// "an agenda worth −1 agenda points that cannot be forfeited" — what a
 /// card added to a score area is (CR 10.1.3).
+/// "an assassination agenda", "a security agenda": the subtype a card was
+/// added to a score area as (`AsAgenda::subtype`).
+pub fn a_subtype_agenda(subtype: &netrunner_core::dsl::CardSubtype) -> String {
+    let word = subtype.printed().to_lowercase();
+    let article = if word.starts_with(['a', 'e', 'i', 'o', 'u']) { "an" } else { "a" };
+    format!("{article} {word} agenda")
+}
+
 fn as_an_agenda(as_agenda: &netrunner_core::dsl::AsAgenda) -> String {
     let points = if as_agenda.points < 0 { format!("−{}", as_agenda.points.unsigned_abs()) } else { as_agenda.points.to_string() };
-    let worth = format!("an agenda worth {points} agenda point{}", if as_agenda.points.abs() == 1 { "" } else { "s" });
+    let kind = as_agenda.subtype.as_ref().map_or_else(|| "an agenda".to_string(), a_subtype_agenda);
+    let worth = format!("{kind} worth {points} agenda point{}", if as_agenda.points.abs() == 1 { "" } else { "s" });
     if as_agenda.cannot_forfeit { format!("{worth} that cannot be forfeited") } else { worth }
 }
 
@@ -382,6 +392,7 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
             };
             format!("the ice gains \u{201c}{}\u{201d} {order} its other subroutines, for {how_long}", subroutine.text.trim_end_matches('.'))
         }
+        Effect::WinTheGame => "you win the game".to_string(),
         Effect::GainIceSubtype(kind) => {
             format!("this ice gains {} while it remains rezzed", crate::board::facts::ice_type_words(&[*kind]))
         }

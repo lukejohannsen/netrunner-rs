@@ -49,14 +49,14 @@ pub fn agenda_value_in(state: &GameState, registry: &CardRegistry, card_id: &Car
     registry.get(card_id).map_or(0, |card| crate::rules::continuous::agenda_points_in(state, registry, card, side))
 }
 
-/// What one entry in the Corp's score area is worth: an agenda's
+/// What one entry in `side`'s score area is worth: an agenda's
 /// [`agenda_value_in`], or, for a card added "as an agenda", the points
 /// that addition gave it and nothing it prints (CR 10.1.3) — which may be
-/// negative (Word on the Street).
-pub fn scored_value(state: &GameState, registry: &CardRegistry, scored: &ScoredAgenda) -> i32 {
+/// negative (Word on the Street), or 0 (Jeitinho, in the Runner's).
+pub fn scored_value(state: &GameState, registry: &CardRegistry, scored: &ScoredAgenda, side: Side) -> i32 {
     match scored.as_agenda {
         Some(as_agenda) => as_agenda.points,
-        None => agenda_value_in(state, registry, &scored.card, Side::Corp) as i32,
+        None => agenda_value_in(state, registry, &scored.card, side) as i32,
     }
 }
 
@@ -67,8 +67,8 @@ pub fn scored_value(state: &GameState, registry: &CardRegistry, scored: &ScoredA
 /// score and a client's number all agree on.
 pub fn score(state: &GameState, registry: &CardRegistry, side: Side) -> i32 {
     match side {
-        Side::Corp => state.corp.scored_agendas.iter().map(|scored| scored_value(state, registry, scored)).sum(),
-        Side::Runner => state.runner.scored_agendas.iter().map(|card| agenda_value_in(state, registry, card, Side::Runner) as i32).sum(),
+        Side::Corp => state.corp.scored_agendas.iter().map(|scored| scored_value(state, registry, scored, side)).sum(),
+        Side::Runner => state.runner.scored_agendas.iter().map(|scored| scored_value(state, registry, scored, side)).sum(),
     }
 }
 
@@ -151,7 +151,7 @@ mod tests {
                     agenda_points: AgendaPoints(0),
                 },
                 memory_units: MemoryUnits(0),
-                scored_agendas: runner_scored,
+                scored_agendas: runner_scored.into_iter().map(ScoredAgenda::plain).collect(),
                 ..Default::default()
             },
             phase: GamePhase::Action(Side::Corp),

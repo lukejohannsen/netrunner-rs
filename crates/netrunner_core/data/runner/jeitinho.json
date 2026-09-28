@@ -1,0 +1,141 @@
+{
+  "id": "jeitinho",
+  "title": "Jeitinho",
+  "side": "Runner",
+  "card_type": "Hardware",
+  "cost": 1,
+  "triggers": [
+    {
+      "trigger": "OnDiscardPhaseEnd",
+      "requirement": {
+        "And": [
+          {
+            "AmountAtLeast": [
+              {
+                "TimesThisTurnWhen": {
+                  "trigger": "OnSuccessfulRun",
+                  "when": {
+                    "Server": [
+                      "Hq"
+                    ]
+                  }
+                }
+              },
+              1
+            ]
+          },
+          {
+            "And": [
+              {
+                "AmountAtLeast": [
+                  {
+                    "TimesThisTurnWhen": {
+                      "trigger": "OnSuccessfulRun",
+                      "when": {
+                        "Server": [
+                          "RnD"
+                        ]
+                      }
+                    }
+                  },
+                  1
+                ]
+              },
+              {
+                "AmountAtLeast": [
+                  {
+                    "TimesThisTurnWhen": {
+                      "trigger": "OnSuccessfulRun",
+                      "when": {
+                        "Server": [
+                          "Archives"
+                        ]
+                      }
+                    }
+                  },
+                  1
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Runner",
+            "options": [
+              {
+                "Sequence": [
+                  {
+                    "AddToScoreAreaAsAgenda": {
+                      "points": 0,
+                      "subtype": "Assassination"
+                    }
+                  },
+                  {
+                    "EffectIf": {
+                      "condition": {
+                        "AmountAtLeast": [
+                          {
+                            "InScoreAreaWithSubtype": "Assassination"
+                          },
+                          3
+                        ]
+                      },
+                      "effect": "WinTheGame"
+                    }
+                  }
+                ]
+              },
+              {
+                "Sequence": []
+              }
+            ],
+            "texts": [
+              "you may add this hardware to your score area as an assassination agenda worth 0 agenda points",
+              ""
+            ]
+          }
+        }
+      ],
+      "text": "When your turn ends, if you made a successful run on HQ, R&D, and Archives this turn, you may add this hardware to your score area as an assassination agenda worth 0 agenda points. Then, if you have 3 assassination agendas in your score area, you win the game."
+    },
+    {
+      "trigger": "OnIceBypassed",
+      "subject": "Any",
+      "from_heap": true,
+      "requirement": {
+        "AmountAtLeast": [
+          "ThreatLevel",
+          3
+        ]
+      },
+      "effects": [
+        {
+          "OfferPaidChoice": {
+            "side": "Runner",
+            "cost": {
+              "Clicks": 1
+            },
+            "if_paid": {
+              "InstallRunnerCardFromZone": {
+                "from": "OwnHeap",
+                "discount": {
+                  "Credits": 0
+                }
+              }
+            },
+            "if_declined": {
+              "Sequence": []
+            },
+            "text": "you may spend [click] to install this hardware from your heap"
+          }
+        }
+      ],
+      "text": "Threat 3 → Whenever you bypass a piece of ice, you may spend [click] to install this hardware from your heap."
+    }
+  ],
+  "numeric_id": 34079,
+  "is_playable": true
+}

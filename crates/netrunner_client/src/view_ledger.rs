@@ -102,7 +102,7 @@ fn every_field_of_the_view_is_accounted_for(view: ClientView) {
         set_aside: _,           // drawn: hud::in_effect ("set aside: …"), both clients; the chooser's pop-up draws the ones it offers
         rig,                    // below
         link_strength: _,       // drawn: hud::details
-        scored_agendas: _,      // drawn: hud::score_area (a card each)
+        scored_agendas: runner_scored, // below, as the Corp's
         scored_worth: _,        // drawn: hud::score_area, each row's points
         servers_run_this_turn: _, // engine's: Red Team's legality and the evaluator; each run is in the log
         discarded_this_discard_phase: _, // engine's: re-evaluating a parked Magdalene choice in a sample; the discards are in the heap
@@ -137,8 +137,8 @@ fn every_field_of_the_view_is_accounted_for(view: ClientView) {
         agenda_counters: _,          // drawn: hud::ScoredCard::facts
         scored_on_turn: _,           // engine's: "scored this turn" filters; the score is in the log
         installed_on_scoring_turn: _, // engine's: "installed this turn" filters on a score-area copy
-        as_agenda: _,                // drawn: hud::ScoredCard::facts ("Added as an agenda", "Cannot be forfeited")
-    } in scored_agendas
+        as_agenda: _,                // drawn: hud::ScoredCard::facts ("Added as an assassination agenda", "Cannot be forfeited")
+    } in scored_agendas.into_iter().chain(runner_scored)
     {}
 
     for PublicInstalledRunnerCard {
