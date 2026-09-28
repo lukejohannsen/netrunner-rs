@@ -1616,6 +1616,8 @@ pub(crate) fn can_install_runner_card_from_grip(
 pub(crate) enum RunnerCardSource {
     Grip,
     Heap,
+    /// The stack, searched — Muse's "search your stack, heap, or grip".
+    Stack,
     /// The cards hosted on this rig install (`InstalledRunnerCard::
     /// hosted_cards`) — Madani.
     Hosted(InstallId),
@@ -1626,6 +1628,7 @@ impl RunnerCardSource {
         match self {
             RunnerCardSource::Grip => Some(&state.runner.grip),
             RunnerCardSource::Heap => Some(&state.runner.heap),
+            RunnerCardSource::Stack => Some(&state.runner.stack),
             RunnerCardSource::Hosted(host) => {
                 state.runner.rig.iter().find(|c| c.install_id == host).map(|c| &c.hosted_cards)
             }
@@ -1636,6 +1639,7 @@ impl RunnerCardSource {
         match self {
             RunnerCardSource::Grip => Some(&mut state.runner.grip),
             RunnerCardSource::Heap => Some(&mut state.runner.heap),
+            RunnerCardSource::Stack => Some(&mut state.runner.stack),
             RunnerCardSource::Hosted(host) => {
                 state.runner.rig.iter_mut().find(|c| c.install_id == host).map(|c| &mut c.hosted_cards)
             }
@@ -1764,6 +1768,72 @@ pub(crate) fn install_runner_card_from_zone_with_discount(
     // A text install can happen mid-run, paid for from outside the credit
     // pool (Methuselah's "during runs"), which Shackleton Grid hears —
     // after the install it paid for (`ability::dispatch_cost_events`).
+    events.extend(ability::dispatch_cost_events(next, registry, &paid)?);
+    Ok(events)
+}
+
+/// Where `install_program_onto` puts a program: a piece of ice for a
+/// Trojan, or a rig card hosting it (`InstalledRunnerCard::
+/// hosted_on_rig_card`, as Hackerspace hosts a resource).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ProgramHost {
+    Ice(InstallId),
+    RigCard(InstallId),
+}
+
+/// Whether `card_id` could be installed out of `source` onto a host of
+/// this kind right now: a program, a Trojan exactly when the host is ice,
+/// able to fit once programs are trashed to make room (CR 3.9.3b), and
+/// affordable. The gate `Effect::InstallProgramOnHost` asks before it
+/// installs, as `can_install_runner_card_from_zone` is for the rig.
+pub(crate) fn can_install_program_onto(state: &GameState, registry: &CardRegistry, card_id: &CardId, source: RunnerCardSource, onto_ice: bool) -> bool {
+    if !source.zone(state).is_some_and(|zone| zone.contains(card_id)) {
+        return false;
+    }
+    let Some(card_def) = registry.get(card_id) else { return false };
+    card_def.card_type == CardType::Program
+        && card_def.installs_on_ice == onto_ice
+        && crate::rules::install_trash::program_could_fit(state, registry, card_def.memory_cost.unwrap_or(0))
+        && payment::available(state, registry, Side::Runner, Purpose::Install(card_def)) >= preview_runner_install_cost(state, registry, card_def)
+}
+
+/// Installs the program `card_id` out of `source` onto `host`, paying its
+/// cost — Muse's "If that program is a trojan, install it on a piece of
+/// ice. Otherwise, install it on this program." The text install's steps
+/// (`install_runner_card_from_zone_with_discount`): the memory limit's
+/// trash (CR 8.5.16c), the price, the rig entry, `ProgramInstalled`; with
+/// the host set on the entry, as `install_program_on_ice` and Hackerspace's
+/// resource install set theirs.
+pub(crate) fn install_program_onto(
+    next: &mut GameState,
+    registry: &CardRegistry,
+    card_id: CardId,
+    source: RunnerCardSource,
+    host: ProgramHost,
+) -> Result<Vec<GameEvent>, RulesError> {
+    let side = Side::Runner;
+    let card_def = registry.get(&card_id).ok_or_else(|| RulesError::CardNotFoundInRegistry(card_id.clone()))?.clone();
+    if card_def.card_type != CardType::Program {
+        return Err(RulesError::CardTypeMismatch { card: card_id, expected: "a program" });
+    }
+    let zone = source.zone_mut(next).ok_or_else(|| RulesError::CardNotInHand { side, card: card_id.clone() })?;
+    let position = zone.iter().position(|c| c == &card_id).ok_or_else(|| RulesError::CardNotInHand { side, card: card_id.clone() })?;
+    zone.remove(position);
+    let memory_cost = card_def.memory_cost.unwrap_or(0);
+    let mut events = crate::rules::install_trash::before_program_install(next, registry, &card_id, memory_cost, false)?;
+    let cost = continuous::install_cost_of(next, registry, &card_def);
+    let paid = ability::pay_cost(next, registry, side, &Cost::Credits(cost), Purpose::Install(&card_def), Some(&card_id))?;
+    events.extend(paid.iter().cloned());
+    let on_ice = match host {
+        ProgramHost::Ice(ice) => Some(ice),
+        ProgramHost::RigCard(_) => None,
+    };
+    events.extend(install_into_rig(next, registry, &card_id, on_ice)?);
+    if let (ProgramHost::RigCard(rig_host), Some(installed)) = (host, next.runner.rig.last_mut()) {
+        installed.hosted_on_rig_card = Some(rig_host);
+    }
+    let installed_event = GameEvent::ProgramInstalled { side, card: card_id, memory_cost: memory_cost as u8, credits_paid: cost };
+    dispatcher::emit(next, registry, &mut events, installed_event)?;
     events.extend(ability::dispatch_cost_events(next, registry, &paid)?);
     Ok(events)
 }

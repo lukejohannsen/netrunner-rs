@@ -26,7 +26,6 @@ pub(crate) const RWR_UNIMPLEMENTED: &[(u32, &str)] = &[
     (34086, "Spree"),
     (34088, "Cataloguer"),
     (34090, "Lobisomem"),
-    (34091, "Muse"),
     (34096, "Thunderbolt Armaments: Peace Through Power"),
     (34097, "Lightning Laboratory"),
     (34098, "Warm Reception"),

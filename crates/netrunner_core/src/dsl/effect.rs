@@ -933,6 +933,26 @@ pub enum Effect {
     /// (`PromptChooseServer::bonus_run_credits`), from a number the card
     /// file writes.
     PlaceRunCredits(Amount),
+    /// Installs the program this resolves as out of `from`, paying its cost,
+    /// onto a host — Muse's "If that program is a trojan, install it on a
+    /// piece of ice. Otherwise, install it on this program.", as the `then`
+    /// of the search that found it: the program is the acting card and the
+    /// install searching (Muse) the acting install. A Trojan's ice is the
+    /// Runner's to choose, so it parks a selection of ice whose `then` is
+    /// this effect again with the program written in (`card`: a value a
+    /// player chose, written into the effect that waits — the State
+    /// Hygiene Rule), resolving as the ice it installs on. A card file
+    /// leaves `card` out. Nothing happens when the program cannot be
+    /// installed that way (unaffordable, too big, no ice), as for every
+    /// text install. `from` is the Runner's grip, heap or stack. Composition
+    /// didn't work: every text install puts the card in the rig
+    /// (`InstallRunnerCardFromGrip` and its siblings), and the trojan's
+    /// host is a choice they cannot make.
+    InstallProgramOnHost {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        card: Option<CardId>,
+        from: crate::dsl::CardZoneRef,
+    },
     /// Adds the acting card to the Corp's score area "as an agenda"
     /// (CR 10.1.3) — Myōshu's "Add this operation to your score area as an
     /// agenda worth 2 agenda points." It is not scored (CR 1.17.3f), so
@@ -1569,6 +1589,7 @@ impl Effect {
             | Effect::AddToDeck(_)
             | Effect::ShuffleIntoDeck(..)
             | Effect::PlaceRunCredits(..)
+            | Effect::InstallProgramOnHost { .. }
             | Effect::AddToScoreAreaAsAgenda(_)
             | Effect::GainSubroutine(_)
             | Effect::LookAtTopOfDeck { .. }
