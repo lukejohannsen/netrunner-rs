@@ -1,0 +1,67 @@
+{
+  "id": "charlotte_cacador",
+  "title": "Charlotte Caçador",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 0,
+  "unique": true,
+  "advancement_requirement": 0,
+  "trash_cost": 2,
+  "triggers": [
+    {
+      "trigger": "OnTurnStart",
+      "effects": [
+        {
+          "OfferPaidChoice": {
+            "side": "Corp",
+            "cost": {
+              "RemoveAdvancementCounters": 1
+            },
+            "if_paid": {
+              "Sequence": [
+                {
+                  "GainCredits": [
+                    "Corp",
+                    4
+                  ]
+                },
+                {
+                  "DrawCards": [
+                    "Corp",
+                    1
+                  ]
+                }
+              ]
+            },
+            "if_declined": {
+              "Sequence": []
+            },
+            "text": "remove 1 hosted advancement counter to gain 4[credit] and draw 1 card"
+          }
+        }
+      ]
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "AllOf": [
+          {
+            "RemoveAdvancementCounters": 1
+          },
+          "TrashSelf"
+        ]
+      },
+      "effect": {
+        "GainCredits": [
+          "Corp",
+          3
+        ]
+      },
+      "text": "[trash], hosted advancement counter: Gain 3[credit]."
+    }
+  ],
+  "numeric_id": 34107,
+  "is_playable": true
+}

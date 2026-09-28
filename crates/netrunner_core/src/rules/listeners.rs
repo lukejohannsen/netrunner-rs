@@ -157,7 +157,7 @@ pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
         GameEvent::AgendaForfeited { card: forfeited } => vec![moment(Trigger::OnForfeit, &card(forfeited, None), None)],
         // Not scored (CR 1.17.3f), and nothing prints "when a card is added
         // to a score area".
-        GameEvent::AddedToScoreAreaAsAgenda { .. } => Vec::new(),
+        GameEvent::AddedToScoreAreaAsAgenda { .. } | GameEvent::AgendaAddedToScoreArea { .. } => Vec::new(),
 
         GameEvent::IceRezzed { card: rezzed, install, .. } => vec![moment(Trigger::OnRez, &card(rezzed, Some(*install)), Some(Side::Corp))],
         GameEvent::CardAdvanced { install, card: advanced, .. } => match advanced {

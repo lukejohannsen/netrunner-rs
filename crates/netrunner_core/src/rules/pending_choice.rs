@@ -357,6 +357,13 @@ fn instance_matches_filter(
         }
         CardFilter::Rezzed => corp_install.is_some_and(|c| c.is_rezzed(registry)),
         CardFilter::Unrezzed => corp_install.is_some_and(|c| !c.rezzed),
+        // Only a card in Archives lies facedown in a zone a selection reads.
+        CardFilter::Facedown => is_corp_archives(chooser, zone) && state.corp.archives.get(position).is_some_and(|archived| archived.facedown),
+        // The kind is the definition's half; this is the count.
+        CardFilter::HostsCounters(_) => {
+            let rig_card = (installed_zone && owning_side(chooser, zone) == Side::Runner).then(|| state.runner.rig.get(position)).flatten();
+            corp_install.map(|c| c.counters).or(rig_card.map(|c| c.counters)).is_some_and(|counters| counters > 0)
+        }
         CardFilter::AgendaPointsAtMostRunnerTags => zone_card_ids(state, chooser, zone, source)
             .get(position)
             .and_then(|card| registry.get(card))
@@ -494,9 +501,9 @@ fn plain_zone_mut<'a>(state: &'a mut GameState, chooser: Side, zone: &CardZoneRe
             Side::Corp => Some(&mut state.corp.r_and_d),
             Side::Runner => Some(&mut state.runner.stack),
         },
-        // A source only — `Effect::InstallAgendaFromRunnerScoreArea` takes
-        // the card out itself, and nothing ever pushes into a score area
-        // through a selection's `destination`.
+        // Not a list of cards: `Effect::InstallAgendaFromRunnerScoreArea`
+        // takes a card out itself, and the Corp's own is a `destination`
+        // only through `ability::add_agenda_to_score_area` (Kingmaking).
         CardZoneRef::OpponentScoreArea | CardZoneRef::OwnScoreArea => None,
         CardZoneRef::OpponentInstalled | CardZoneRef::OwnInstalled => None,
         CardZoneRef::OpponentRemovedFromGame => match owner {
@@ -1138,6 +1145,8 @@ pub(crate) fn resolve_confirm_card_selection(
                     } else {
                         ArchivedCard::facedown(card_id.clone())
                     });
+                } else if matches!(dest, CardZoneRef::OwnScoreArea) && side == Side::Corp {
+                    events.push(ability::add_agenda_to_score_area(state, registry, card_id.clone()));
                 } else if let Some(zone) = plain_zone_mut(state, side, dest, source_install) {
                     zone.push(card_id.clone());
                     onto_deck += 1;

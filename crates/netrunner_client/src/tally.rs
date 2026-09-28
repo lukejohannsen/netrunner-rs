@@ -130,8 +130,10 @@ impl Tally {
             }
             GameEvent::AgendaScored { agenda_points, .. } => self.corp.agenda_points += *agenda_points as i32,
             GameEvent::AgendaStolen { agenda_points, .. } => self.runner.agenda_points += *agenda_points as i32,
-            // Not scored (CR 1.17.3f), but on the Corp's score all the same.
+            // Not scored (CR 1.17.3e, 1.17.3f), but on the Corp's score all
+            // the same.
             GameEvent::AddedToScoreAreaAsAgenda { points, .. } => self.corp.agenda_points += points,
+            GameEvent::AgendaAddedToScoreArea { agenda_points, .. } => self.corp.agenda_points += *agenda_points as i32,
             // Every Corp card is turned faceup by the one rez, whatever
             // the event's name says (`engine::rez_install`).
             GameEvent::IceRezzed { .. } => self.corp.cards_rezzed += 1,

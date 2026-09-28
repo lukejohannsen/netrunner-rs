@@ -1,0 +1,49 @@
+{
+  "id": "kingmaking",
+  "title": "Kingmaking",
+  "side": "Corp",
+  "card_type": "Agenda",
+  "cost": 0,
+  "advancement_requirement": 4,
+  "agenda_points": 2,
+  "triggers": [
+    {
+      "trigger": "OnAgendaScored",
+      "subject": "This",
+      "effects": [
+        {
+          "ChooseNumber": {
+            "chooser": "Corp",
+            "max": {
+              "Fixed": 3
+            },
+            "then": {
+              "DrawCardsAmount": [
+                "Corp",
+                "ChosenNumber"
+              ]
+            },
+            "text": "draw up to 3 cards"
+          }
+        },
+        {
+          "PromptChooseCards": {
+            "side": "Corp",
+            "source": "OwnHq",
+            "filter": {
+              "AgendaPointsAtMost": 1
+            },
+            "min": 0,
+            "max": 1,
+            "reveal": false,
+            "shuffle_after": false,
+            "destination": "OwnScoreArea"
+          }
+        }
+      ],
+      "text": "When you score this agenda, draw up to 3 cards. You may add 1 agenda worth 1 or less agenda points from HQ to your score area."
+    }
+  ],
+  "numeric_id": 34113,
+  "is_playable": true
+}

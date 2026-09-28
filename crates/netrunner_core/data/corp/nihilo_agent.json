@@ -43,7 +43,9 @@
           }
         },
         {
-          "RemoveCounters": 1
+          "RemoveCounters": {
+            "Fixed": 1
+          }
         },
         {
           "EffectIf": {

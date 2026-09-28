@@ -36,12 +36,9 @@ pub(crate) const RWR_UNIMPLEMENTED: &[(u32, &str)] = &[
     (34104, "Brasília Government Grid"),
     (34105, "See How They Run"),
     (34106, "Sisyphus Protocol"),
-    (34107, "Charlotte Caçador"),
-    (34108, "Cohort Guidance Program"),
     (34110, "Cloud Eater"),
     (34111, "Tributary"),
     (34112, "Bring Them Home"),
-    (34113, "Kingmaking"),
     (34114, "Stoke the Embers"),
     (34115, "Janaína “JK” Dumont Kindelán"),
     (34117, "Piranhas"),
@@ -53,8 +50,6 @@ pub(crate) const RWR_UNIMPLEMENTED: &[(u32, &str)] = &[
     (34124, "Hearts and Minds"),
     (34125, "Descent"),
     (34126, "Hammer"),
-    (34127, "Logjam"),
-    (34128, "Business As Usual"),
     (34129, "Isaac Liberdade"),
 ];
 

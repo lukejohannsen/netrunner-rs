@@ -286,6 +286,12 @@ pub enum GameEvent {
     /// of the Runner's rig. It was not scored (CR 1.17.3f), so this is an
     /// occurrence of nothing a card hears.
     AddedToScoreAreaAsAgenda { card: CardId, points: i32 },
+    /// An agenda was added to the Corp's score area by a card's text, worth
+    /// what it prints (CR 1.17.3e) — Kingmaking's "add 1 agenda worth 1 or
+    /// less agenda points from HQ to your score area", a selection whose
+    /// `destination` is the score area. Neither scored nor stolen, so an
+    /// occurrence of nothing a card hears; public, as the score area is.
+    AgendaAddedToScoreArea { card: CardId, agenda_points: u32 },
     /// Credits gained by a resolving card's ability, naming the card —
     /// emitted with `CreditsGained` whenever the resolution has an acting
     /// card. The Zwicky Group: Invisible Hands draws off it. Carries no
@@ -591,7 +597,7 @@ impl GameEvent {
             | GameEvent::CardHosted { .. } | GameEvent::IdentityFlipped { .. } | GameEvent::ActionPhaseEnded { .. }
             | GameEvent::RunEndPrevented { .. } | GameEvent::RunRedirected { .. } | GameEvent::CreditsSpent { .. }
             | GameEvent::TagsGiven { .. } | GameEvent::TagsCleared { .. } | GameEvent::CardTrashed { .. }
-            | GameEvent::CardRemovedFromGame { .. } | GameEvent::AgendaForfeited { .. } | GameEvent::AddedToScoreAreaAsAgenda { .. }
+            | GameEvent::CardRemovedFromGame { .. } | GameEvent::AgendaForfeited { .. } | GameEvent::AddedToScoreAreaAsAgenda { .. } | GameEvent::AgendaAddedToScoreArea { .. }
             | GameEvent::AbilityGainedCredits { .. } | GameEvent::RunEndedByEffect { .. }
             | GameEvent::AbilityActivated { .. } | GameEvent::CardAdvanced { .. }
             | GameEvent::AdvancementCountersPlaced { .. } | GameEvent::AdvancementCountersRemoved { .. }

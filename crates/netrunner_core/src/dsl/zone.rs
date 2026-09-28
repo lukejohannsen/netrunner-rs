@@ -284,6 +284,21 @@ pub enum CardFilter {
     /// only because it reads the tag count, which is state; the point
     /// value is the card's own.
     AgendaPointsAtMostRunnerTags,
+    /// An agenda worth no more than this many printed points — Kingmaking's
+    /// "1 agenda worth 1 or less agenda points from HQ". Composition didn't
+    /// work: `AgendaPointsAtMostRunnerTags` compares against a tag count,
+    /// and no other filter reads a number.
+    AgendaPointsAtMost(u32),
+    /// A facedown card in Archives — Cohort Guidance Program's "Turn 1
+    /// facedown card in Archives faceup". Instance-level: which way up a
+    /// card lies is state, and matches nothing outside Archives.
+    Facedown,
+    /// A card hosting at least one counter of this kind — Business As
+    /// Usual's "Remove all virus counters from 1 installed card", so a card
+    /// with nothing to remove is never offered. The kind is the card's own
+    /// (`CardDefinition::counter_kind`, as the purge reads it); how many it
+    /// holds is instance-level.
+    HostsCounters(crate::dsl::CounterKind),
 }
 
 /// Whether `card` is eligible under `filter`. `CardType(CardType::Ice(_))`
@@ -335,6 +350,9 @@ pub fn card_matches_filter(card: &CardDefinition, filter: &CardFilter) -> bool {
         CardFilter::Rezzed => true,
         CardFilter::Unrezzed => true,
         CardFilter::AgendaPointsAtMostRunnerTags => card.agenda_points.is_some(),
+        CardFilter::AgendaPointsAtMost(points) => card.card_type == CardType::Agenda && card.agenda_points.is_some_and(|printed| printed <= *points),
+        CardFilter::Facedown => true,
+        CardFilter::HostsCounters(kind) => card.counter_kind == Some(*kind),
         CardFilter::AccessedDuringLastRun => true,
         CardFilter::All(filters) => filters.iter().all(|filter| card_matches_filter(card, filter)),
         CardFilter::AnyOf(filters) => filters.iter().any(|filter| card_matches_filter(card, filter)),

@@ -967,6 +967,8 @@ pub fn mask_event_for_player(event: &GameEvent, state: &GameState, viewer: impl 
         | GameEvent::AgendaForfeited { .. }
         // A resolved operation, or a faceup rig card, into the score area.
         | GameEvent::AddedToScoreAreaAsAgenda { .. }
+        // An agenda out of HQ into the score area, where it is public.
+        | GameEvent::AgendaAddedToScoreArea { .. }
         | GameEvent::AbilityGainedCredits { .. }
         | GameEvent::PaidAbilityWindowOpened { .. }
         | GameEvent::PriorityPassed { .. }

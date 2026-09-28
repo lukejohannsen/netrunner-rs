@@ -25,7 +25,9 @@
       "effect": {
         "Sequence": [
           {
-            "RemoveCounters": 3
+            "RemoveCounters": {
+              "Fixed": 3
+            }
           },
           {
             "GainCredits": [
