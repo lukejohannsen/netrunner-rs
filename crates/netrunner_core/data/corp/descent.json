@@ -1,0 +1,143 @@
+{
+  "id": "descent",
+  "title": "Descent",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "CodeGate"
+  },
+  "cost": 2,
+  "strength": 1,
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "from_hand": true,
+      "text": "[click], 1[credit], reveal and trash this ice from HQ: Draw 1 card. Reveal up to 2 agendas in HQ and/or Archives and shuffle them into R&D.",
+      "cost": {
+        "AllOf": [
+          {
+            "Clicks": 1
+          },
+          {
+            "Credits": 1
+          },
+          "RevealAndTrashSelf"
+        ]
+      },
+      "effect": {
+        "Sequence": [
+          {
+            "DrawCards": [
+              "Corp",
+              1
+            ]
+          },
+          {
+            "PresentChoice": {
+              "chooser": "Corp",
+              "options": [
+                {
+                  "PromptChooseCards": {
+                    "side": "Corp",
+                    "source": "OwnHq",
+                    "filter": {
+                      "CardType": "Agenda"
+                    },
+                    "min": 1,
+                    "max": 2,
+                    "reveal": true,
+                    "shuffle_after": true,
+                    "destination": "OwnRAndD"
+                  }
+                },
+                {
+                  "PromptChooseCards": {
+                    "side": "Corp",
+                    "source": "OwnArchives",
+                    "filter": {
+                      "CardType": "Agenda"
+                    },
+                    "min": 1,
+                    "max": 2,
+                    "reveal": true,
+                    "shuffle_after": true,
+                    "destination": "OwnRAndD"
+                  }
+                },
+                {
+                  "Sequence": [
+                    {
+                      "PromptChooseCards": {
+                        "side": "Corp",
+                        "source": "OwnHq",
+                        "filter": {
+                          "CardType": "Agenda"
+                        },
+                        "min": 1,
+                        "max": 1,
+                        "reveal": true,
+                        "shuffle_after": true,
+                        "destination": "OwnRAndD"
+                      }
+                    },
+                    {
+                      "PromptChooseCards": {
+                        "side": "Corp",
+                        "source": "OwnArchives",
+                        "filter": {
+                          "CardType": "Agenda"
+                        },
+                        "min": 1,
+                        "max": 1,
+                        "reveal": true,
+                        "shuffle_after": true,
+                        "destination": "OwnRAndD"
+                      }
+                    }
+                  ]
+                },
+                {
+                  "Sequence": []
+                }
+              ],
+              "texts": [
+                "Reveal up to 2 agendas in HQ and/or Archives and shuffle them into R&D — from HQ",
+                "Reveal up to 2 agendas in HQ and/or Archives and shuffle them into R&D — from Archives",
+                "Reveal up to 2 agendas in HQ and/or Archives and shuffle them into R&D — 1 from each",
+                ""
+              ]
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "subroutines": [
+    {
+      "text": "End the run.",
+      "effect": "EndTheRun"
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnTurnStart",
+      "effects": [
+        {
+          "OfferPaidChoice": {
+            "side": "Corp",
+            "cost": "AddSelfToHq",
+            "if_paid": {
+              "Sequence": []
+            },
+            "if_declined": {
+              "Sequence": []
+            },
+            "text": "When your turn begins, you may add this ice to HQ."
+          }
+        }
+      ],
+      "text": "When your turn begins, you may add this ice to HQ."
+    }
+  ],
+  "numeric_id": 34125,
+  "is_playable": true
+}

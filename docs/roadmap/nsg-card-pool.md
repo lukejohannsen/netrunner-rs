@@ -1905,8 +1905,11 @@ reaches Vantage Point's cards by building a deck.
    run (built, below): Cataloguer, moved out of 6b when it was taken; **6d**, cards set
    aside (built, below): The Wizard’s Chest; **6e**, an X cost (built, below): Lobisomem. Stage 6 is
    complete.
-7. **Expendable, moving ice, psi, re-encounter:** Eminent Domain, Descent,
-   Tributary, See How They Run, Sisyphus Protocol, Spree.
+7. **Expendable, moving ice, psi, re-encounter**, in five parts when it was
+   taken: **7a**, expendable cards (built, below): Eminent Domain, Descent;
+   **7b**, a psi game: See How They Run; **7c**, ice that moves as a run
+   begins: Tributary; **7d**, an encounter repeated: Sisyphus Protocol;
+   **7e**, a trojan hosted by an event's ability: Spree.
 8. **A card's identity changes:** Thunderbolt Armaments: Peace Through Power, Lycian
    Multi-Munition, Jeitinho.
 
@@ -3228,6 +3231,62 @@ complete.**
   and without Lobisomem and the deck is identical to `main` in all four
   shapes, so the heuristic movement is `determinize` sampling a new
   Runner card.
+
+#### Stage 7a — expendable cards (28 September 2026)
+
+`feat/rwr-stage-7a-expendable-eminent-domain-descent`: Eminent Domain,
+Descent. **No new `Effect`.** Rebellion Without Rehearsal 58 of 65;
+`RWR_UNIMPLEMENTED` 9 → 7.
+
+- **"[click], 1[credit], reveal and trash this … from HQ:"** is VP Stage
+  7f's action from HQ (`AbilityDef::from_hand`, `Cost::RevealAndTrashSelf`,
+  `PlayerAction::ActivateHandAbility`), on an agenda for the first time.
+  Nothing about it was ice-shaped.
+- **"Install and rez 1 card from HQ, paying a total of 5[credit] less"** is
+  Reanimation Protocol's `PromptInstallCorpCard { rez, discount }`, from
+  HQ: the install takes what it can of the total and the rez the rest (CR
+  1.16.2f). **"Search R&D for 1 card. Install and rez that card, ignoring
+  all costs"** is the same from R&D, after a search that shuffles first
+  (CR 8.7.3), as Poétrï's install from R&D is.
+- **An "install and rez" may choose a card it cannot rez** (CR 8.5.13d),
+  and the card is then revealed. That was new to the engine. An agenda
+  (CR 8.1.2c) stays installed facedown and is revealed (`CardRevealed`,
+  and the Runner remembers it as an accessed card, `seen_by_runner`);
+  `rez_install` would have rezzed it. A card the Corp cannot afford to rez
+  is revealed as well, which also reaches Reanimation Protocol.
+- **"Reveal up to 2 agendas in HQ and/or Archives and shuffle them into
+  R&D"** is a `PresentChoice` of from HQ, from Archives, one from each, or
+  none, as Sleipnir's "from HQ or Archives" is. Every selection shuffles,
+  so a one-from-each whose Archives half finds nothing still leaves R&D
+  shuffled.
+- **"When your turn begins, you may add this ice to HQ"** is Janaína's
+  `Cost::AddSelfToHq` as an `OfferPaidChoice` with nothing after it. The
+  add is the card's effect, not a cost, but nothing prevents a card going
+  to HQ and nothing follows it, so the two read the same. The alternative
+  was an `Effect` one card would use. Active only while rezzed, as an
+  installed card's trigger is.
+- **Client:** nothing new reaches the view. A card revealed on the table
+  is drawn as a remembered Corp card, and the log already says "revealed
+  Offworld Office".
+- **Deck** — Land Grab, whose Nuvem SA looks at the top of R&D after each
+  action on an expendable card: two Eminent Domain for a Sacrifice
+  Zone Expansion and a Hedge Fund (23 agenda points still), and two
+  Descent for two Ice Wall.
+- **Real play**, 96 games of Land Grab against Safety Net (seed 2):
+  - Random seats: Descent used from HQ 9 times and installed 102, Eminent
+    Domain used from HQ 18 times and scored 3.
+  - The heuristic Corp: never used either from HQ, as it never uses
+    Tocsin. It scored Eminent Domain 21 times, and Descent's turn-start
+    offer came 559 times.
+- **DSL ratio (`pool_status.py`): 21 of 85 `Effect` variants single-use,
+  1 unused**, over 308 card files, unchanged.
+- **Measured.** Both sweeps at 256 seeds are green. Against `origin/main`
+  (6e), `coverage_identical.py` has both random seatings **identical**, and
+  the heuristic ones moved (Corp agenda wins 77 → 73 of 192, flatlines
+  12 → 15, Runner agenda wins 102 → 103). A ref with the reveal and
+  without the cards and the deck is identical to `main` in all four
+  shapes, so the heuristic movement is `determinize` sampling new Corp
+  cards.
 
 ### 3. The Automata Initiative — 65 cards (C 14 / V 35 / M 16)
 

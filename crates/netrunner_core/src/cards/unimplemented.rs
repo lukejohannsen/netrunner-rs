@@ -27,8 +27,6 @@ pub(crate) const RWR_UNIMPLEMENTED: &[(u32, &str)] = &[
     (34105, "See How They Run"),
     (34106, "Sisyphus Protocol"),
     (34111, "Tributary"),
-    (34122, "Eminent Domain"),
-    (34125, "Descent"),
 ];
 
 /// *The Automata Initiative* (`tai`): tranche 3 of the NSG plan.

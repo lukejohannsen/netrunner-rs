@@ -3,7 +3,7 @@
   "name": "Land Grab",
   "side": "Corp",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach Rebellion Without Rehearsal's Nuvem SA: Law of the Land and The Basalt Spire — every operation and every action on an expendable card (Tocsin) a look at the top of R&D, and the turn's first trash from it two credits — on Hostile Bid's frame, three Hostile Takeover out for two The Basalt Spire and a third copy of the operations, Tocsin and Logjam in. Eternal-legal only. Rebellion Without Rehearsal Stage 5e.",
+  "description": "Not a published list: built so the sweeps reach Rebellion Without Rehearsal's Nuvem SA: Law of the Land and The Basalt Spire — every operation and every action on an expendable card (Tocsin) a look at the top of R&D, and the turn's first trash from it two credits — on Hostile Bid's frame, three Hostile Takeover out for two The Basalt Spire and a third copy of the operations, Tocsin and Logjam in. Eternal-legal only. Rebellion Without Rehearsal Stage 5e; in Stage 7a, two Eminent Domain for a Sacrifice Zone Expansion and a Hedge Fund, and two Descent for two Ice Wall, more expendable cards for Nuvem to look at the top of R&D by.",
   "style": "trap",
   "identity": "nuvem_sa_law_of_the_land",
   "cards": [
@@ -29,7 +29,7 @@
     },
     {
       "card": "ice_wall",
-      "count": 3
+      "count": 1
     },
     {
       "card": "palisade",
@@ -45,7 +45,7 @@
     },
     {
       "card": "hedge_fund",
-      "count": 3
+      "count": 2
     },
     {
       "card": "measured_response",
@@ -65,7 +65,7 @@
     },
     {
       "card": "sacrifice_zone_expansion",
-      "count": 2
+      "count": 1
     },
     {
       "card": "myoshu",
@@ -101,6 +101,14 @@
     },
     {
       "card": "the_basalt_spire",
+      "count": 2
+    },
+    {
+      "card": "eminent_domain",
+      "count": 2
+    },
+    {
+      "card": "descent",
       "count": 2
     }
   ]

@@ -1,0 +1,92 @@
+{
+  "id": "eminent_domain",
+  "title": "Eminent Domain",
+  "side": "Corp",
+  "card_type": "Agenda",
+  "cost": 0,
+  "advancement_requirement": 3,
+  "agenda_points": 1,
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "from_hand": true,
+      "text": "[click], 1[credit], reveal and trash this agenda from HQ: Install and rez 1 card from HQ, paying a total of 5[credit] less.",
+      "cost": {
+        "AllOf": [
+          {
+            "Clicks": 1
+          },
+          {
+            "Credits": 1
+          },
+          "RevealAndTrashSelf"
+        ]
+      },
+      "effect": {
+        "PromptChooseCards": {
+          "side": "Corp",
+          "source": "OwnHq",
+          "filter": {
+            "CardTypeOneOf": [
+              {
+                "Ice": "Barrier"
+              },
+              "Agenda",
+              "Asset",
+              "Upgrade"
+            ]
+          },
+          "min": 1,
+          "max": 1,
+          "reveal": false,
+          "shuffle_after": false,
+          "then": {
+            "PromptInstallCorpCard": {
+              "origin_zone": "OwnHq",
+              "discount": 5,
+              "rez": true
+            }
+          }
+        }
+      }
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnAgendaScored",
+      "subject": "This",
+      "effects": [
+        {
+          "PromptChooseCards": {
+            "side": "Corp",
+            "source": "OwnRAndD",
+            "filter": {
+              "CardTypeOneOf": [
+                {
+                  "Ice": "Barrier"
+                },
+                "Agenda",
+                "Asset",
+                "Upgrade"
+              ]
+            },
+            "min": 0,
+            "max": 1,
+            "reveal": false,
+            "shuffle_after": true,
+            "then": {
+              "PromptInstallCorpCard": {
+                "origin_zone": "OwnRAndD",
+                "ignore_costs": true,
+                "rez": true
+              }
+            }
+          }
+        }
+      ],
+      "text": "When you score this agenda, you may search R&D for 1 card."
+    }
+  ],
+  "numeric_id": 34122,
+  "is_playable": true
+}

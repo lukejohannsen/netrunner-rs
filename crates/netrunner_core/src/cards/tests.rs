@@ -15184,4 +15184,126 @@ mod rebellion_without_rehearsal {
         assert_eq!(BrokenBy::Nothing.and(Some(one)).and(None).object(), None, "a click is no object's");
         assert_eq!(BrokenBy::Nothing.object(), None);
     }
+
+    // ---- Stage 7a: expendable ----
+
+    fn corp_action_phase(hq: &[&str]) -> GameState {
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Corp);
+        state.corp.resources.clicks = Clicks(3);
+        state.corp.resources.credits = Credits(10);
+        state.corp.hq = hq.iter().map(|card| id(card)).collect();
+        state
+    }
+
+    /// From HQ, a click, a credit and the agenda itself install and rez a
+    /// card from HQ, 5[credit] off the install and the rez together (CR
+    /// 1.16.2f): Tocsin on HQ over an Ice Wall costs 1 + 8, so 4.
+    #[test]
+    fn eminent_domain_from_hq_installs_and_rezzes_a_card_paying_a_total_of_five_less() {
+        let registry = registry();
+        let mut state = corp_action_phase(&["eminent_domain", "tocsin"]);
+        state.corp.installed = vec![ice_at_hq("ice_wall")];
+        let use_it = PlayerAction::ActivateHandAbility { card_id: id("eminent_domain"), ability_index: 0 };
+        assert!(crate::rules::legal_actions_for(&state, &registry, Side::Corp).contains(&use_it), "offered from HQ");
+        let (state, events) = apply_action(&state, &registry, use_it).expect("use it");
+        assert!(events.iter().any(|e| matches!(e, GameEvent::CardRevealed { card, .. } if card.0 == "eminent_domain")));
+        assert!(state.corp.archives.iter().any(|a| a.card.0 == "eminent_domain" && !a.facedown), "trashed faceup");
+        assert_eq!((state.corp.resources.clicks, state.corp.resources.credits), (Clicks(2), Credits(9)));
+
+        let state = select(&state, &registry, &[0]);
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ChooseServerForPendingDecision { server: ServerId::Hq }).expect("on HQ");
+        let tocsin = state.corp.installed.iter().find(|c| c.card.0 == "tocsin").expect("installed");
+        assert!(tocsin.rezzed, "and rezzed");
+        assert_eq!(state.corp.resources.credits, Credits(5), "1 + 8, less 5");
+    }
+
+    /// An agenda cannot be rezzed (CR 8.1.2c): it is installed facedown and
+    /// revealed, so the Runner sees the "install and rez" was carried out
+    /// (CR 8.5.13d).
+    #[test]
+    fn an_agenda_installed_and_rezzed_stays_facedown_and_is_revealed() {
+        let registry = registry();
+        let state = corp_action_phase(&["eminent_domain", "offworld_office"]);
+        let use_it = PlayerAction::ActivateHandAbility { card_id: id("eminent_domain"), ability_index: 0 };
+        let (state, _) = apply_action(&state, &registry, use_it).expect("use it");
+        let state = select(&state, &registry, &[0]);
+        let remote = crate::rules::legal_actions_for(&state, &registry, Side::Corp)
+            .into_iter()
+            .find(|action| matches!(action, PlayerAction::ChooseServerForPendingDecision { server: ServerId::Remote(_) }))
+            .expect("a new remote");
+        let (state, events) = apply_action(&state, &registry, remote).expect("install it");
+        let office = state.corp.installed.iter().find(|c| c.card.0 == "offworld_office").expect("installed");
+        assert!(!office.rezzed && office.seen_by_runner, "facedown, and revealed");
+        assert!(events.iter().any(|e| matches!(e, GameEvent::CardRevealed { card, .. } if card.0 == "offworld_office")));
+        let view = crate::view::build_client_view(&state, &registry, Side::Runner);
+        assert!(format!("{:?}", view.corp).contains("offworld_office"), "the Runner sees which card it is");
+    }
+
+    /// Scored, it searches R&D for a card and installs and rezzes it free.
+    #[test]
+    fn eminent_domain_scored_installs_and_rezzes_a_card_from_rnd_ignoring_all_costs() {
+        let registry = registry();
+        let mut state = corp_action_phase(&[]);
+        state.corp.r_and_d = vec![id("hedge_fund"), id("tocsin"), id("ice_wall")];
+        state.corp.installed = vec![crate::rules::InstalledCard { advancement_tokens: 3, ..in_root("eminent_domain", ServerId::Remote(0), false) }];
+        let target = install_of(&state, "eminent_domain");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ScoreAgenda { target }).expect("score it");
+        let position = state.corp.r_and_d.iter().position(|c| c.0 == "tocsin").expect("in R&D");
+        let state = select(&state, &registry, &[position]);
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ChooseServerForPendingDecision { server: ServerId::Hq }).expect("on HQ");
+        let tocsin = state.corp.installed.iter().find(|c| c.card.0 == "tocsin").expect("installed from R&D");
+        assert!(tocsin.rezzed);
+        assert_eq!(state.corp.resources.credits, Credits(10), "ignoring all costs");
+        assert_eq!(state.corp.r_and_d.len(), 2);
+    }
+
+    /// From HQ: draw 1, then up to 2 agendas out of HQ and Archives, one
+    /// from each here, revealed and shuffled into R&D.
+    #[test]
+    fn descent_from_hq_draws_and_shuffles_agendas_from_hq_and_archives_into_rnd() {
+        let registry = registry();
+        let mut state = corp_action_phase(&["descent", "offworld_office", "hedge_fund"]);
+        state.corp.r_and_d = vec![id("ice_wall")];
+        state.corp.archives = vec![ArchivedCard { card: id("hostile_takeover"), facedown: true }];
+        let use_it = PlayerAction::ActivateHandAbility { card_id: id("descent"), ability_index: 0 };
+        let (state, _) = apply_action(&state, &registry, use_it).expect("use it");
+        assert!(state.corp.hq.contains(&id("ice_wall")), "drew 1");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 2 }).expect("1 from each");
+        let from_hq = state.corp.hq.iter().position(|c| c.0 == "offworld_office").expect("in HQ");
+        let state = select(&state, &registry, &[from_hq]);
+        let from_archives = state.corp.archives.iter().position(|a| a.card.0 == "hostile_takeover").expect("in Archives");
+        let (state, events) = {
+            let (state, _) = apply_action(&state, &registry, PlayerAction::ToggleCardSelection { position: from_archives }).expect("select");
+            apply_action(&state, &registry, PlayerAction::ConfirmCardSelection).expect("confirm")
+        };
+        assert!(events.iter().any(|e| matches!(e, GameEvent::CardsSelected { revealed: true, .. })), "revealed");
+        let mut rnd: Vec<&str> = state.corp.r_and_d.iter().map(|c| c.0.as_str()).collect();
+        rnd.sort();
+        assert_eq!(rnd, ["hostile_takeover", "offworld_office"]);
+        assert_eq!(state.corp.hq, vec![id("hedge_fund"), id("ice_wall")]);
+        assert!(state.pending_decision.is_none());
+    }
+
+    /// Rezzed, it may go back to HQ when the Corp's turn begins, to be used
+    /// from there again.
+    #[test]
+    fn descent_may_return_to_hq_as_the_corps_turn_begins() {
+        let registry = registry();
+        let mut state = corp_action_phase(&[]);
+        state.corp.r_and_d = vec![id("hedge_fund"); 3];
+        state.corp.installed = vec![ice_at_hq("descent")];
+        let state = to_corp_turn_start(&state, &registry);
+        assert!(state.pending_paid_choice.is_some(), "you may add this ice to HQ");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::AcceptPendingPaidChoice { cost_option_index: None }).expect("add it");
+        assert!(state.corp.installed.is_empty());
+        assert!(state.corp.hq.contains(&id("descent")));
+
+        // Unrezzed, it is not active and asks nothing.
+        let mut state = corp_action_phase(&[]);
+        state.corp.r_and_d = vec![id("hedge_fund"); 3];
+        state.corp.installed = vec![crate::rules::InstalledCard { rezzed: false, ..ice_at_hq("descent") }];
+        let state = to_corp_turn_start(&state, &registry);
+        assert!(state.pending_paid_choice.is_none());
+    }
 }

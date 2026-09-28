@@ -1463,7 +1463,22 @@ pub(crate) fn resolve_choose_server(
         }
         // "Install and rez" (Reanimation Protocol): the rest of the total
         // off the rez, and the rider as the card rezzed if it was.
-        if let (true, Some(install)) = (pending_install.rez, landed) {
+        // A card that cannot be rezzed — an agenda (CR 8.1.2c), or one the
+        // Corp cannot afford (CR 1.16.4b) — stays installed facedown and is
+        // revealed (CR 8.5.13d), since the Runner could otherwise not tell
+        // that the "install and rez" was carried out. Eminent Domain's is
+        // the first that may install an agenda.
+        let reveal = |state: &mut GameState, events: &mut Vec<GameEvent>| {
+            if let Some(installed) = state.corp.installed.iter_mut().find(|c| Some(c.install_id) == landed) {
+                installed.seen_by_runner = true;
+                events.push(GameEvent::CardRevealed { side: Side::Corp, card: card_id.clone() });
+            }
+        };
+        let rezzable = !matches!(registry.get(&card_id).map(|c| &c.card_type), Some(crate::dsl::CardType::Agenda));
+        if pending_install.rez && !rezzable {
+            reveal(state, &mut events);
+        }
+        if let (true, true, Some(install)) = (pending_install.rez, rezzable, landed) {
             let rest = pending_install.discount - install_takes;
             match crate::rules::engine::rez_install(state, registry, install, pending_install.pay_cost, rest) {
                 Ok(rezzed) => {
@@ -1475,7 +1490,7 @@ pub(crate) fn resolve_choose_server(
                     }
                 }
                 // Unaffordable: installed, not rezzed (CR 1.16.4b).
-                Err(RulesError::NotEnoughCredits { .. }) => {}
+                Err(RulesError::NotEnoughCredits { .. }) => reveal(state, &mut events),
                 Err(other) => return Err(other),
             }
         }
