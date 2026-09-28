@@ -1,0 +1,101 @@
+{
+  "id": "warm_reception",
+  "title": "Warm Reception",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 1,
+  "trash_cost": 2,
+  "triggers": [
+    {
+      "trigger": "OnTurnStart",
+      "effects": [
+        {
+          "PromptChooseCards": {
+            "side": "Corp",
+            "source": "OwnHq",
+            "filter": {
+              "CardTypeOneOf": [
+                "Agenda",
+                "Asset",
+                "Upgrade",
+                {
+                  "Ice": "Barrier"
+                }
+              ]
+            },
+            "min": 0,
+            "max": 1,
+            "reveal": false,
+            "shuffle_after": false,
+            "then": {
+              "EffectIf": {
+                "condition": {
+                  "AmountAtLeast": [
+                    "CardsSelected",
+                    1
+                  ]
+                },
+                "effect": {
+                  "PromptInstallCorpCard": {
+                    "origin_zone": "OwnHq",
+                    "if_installed": {
+                      "Prohibit": {
+                        "what": "ScoreAgendas",
+                        "until": "Turn",
+                        "this_install": true
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "EffectIf": {
+            "condition": {
+              "Not": {
+                "AmountAtLeast": [
+                  "IceProtectingThisServer",
+                  1
+                ]
+              }
+            },
+            "effect": {
+              "OfferPaidChoice": {
+                "side": "Corp",
+                "cost": "DerezSelf",
+                "if_paid": {
+                  "PromptChooseCards": {
+                    "side": "Corp",
+                    "source": "OwnInstalled",
+                    "filter": {
+                      "All": [
+                        "Rezzed",
+                        "NotSourceCard"
+                      ]
+                    },
+                    "min": 1,
+                    "max": 1,
+                    "reveal": false,
+                    "shuffle_after": false,
+                    "then": {
+                      "DerezCard": "ThisCard"
+                    }
+                  }
+                },
+                "if_declined": {
+                  "Sequence": []
+                },
+                "text": "you may derez this asset to derez another installed card"
+              }
+            }
+          }
+        }
+      ],
+      "text": "When your turn begins, you may install 1 card from HQ. You cannot score that card this turn. If this server is not protected by ice, you may derez this asset to derez another installed card."
+    }
+  ],
+  "numeric_id": 34098,
+  "is_playable": true
+}

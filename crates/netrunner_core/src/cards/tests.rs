@@ -14703,4 +14703,59 @@ mod rebellion_without_rehearsal {
         let ended = broken_through(encounter(&earlier, &registry));
         assert!(ended.pending_paid_choice.is_none() && ended.pending_decision.is_none());
     }
+
+    // ---- Stage 5c: derez words ----
+
+    #[test]
+    fn brasilia_government_grid_derezzes_other_ice_once_a_turn_for_three_strength_on_the_rezzed_ice() {
+        let registry = registry();
+        let mut state = runner_turn();
+        let mut wall = in_root("ice_wall", ServerId::Remote(0), false);
+        wall.slot = InstallSlot::Ice;
+        state.corp.installed = vec![in_root("brasilia_government_grid", ServerId::Remote(0), true), wall, ice_at_hq("enigma")];
+        let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Remote(0) }).expect("run the remote");
+        let (state, _) = crate::rules::test_support::continue_run(&state, &registry).expect("approach Ice Wall");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner passes approach");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::RezIce { ice: fixture_install_id("ice_wall") }).expect("rez Ice Wall");
+        assert!(state.pending_paid_choice.is_some(), "offered the derez");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::AcceptPendingPaidChoice { cost_option_index: None }).expect("derez Enigma");
+        let enigma = state.corp.installed.iter().find(|card| card.card == id("enigma")).unwrap();
+        assert!(!enigma.rezzed, "the other ice is derezzed");
+        let run = state.active_run.as_ref().unwrap();
+        assert_eq!(crate::rules::continuous::ice_strength(&state, &registry, &run.ice[run.position]), 1 + 3, "+3 for the run");
+    }
+
+    #[test]
+    fn warm_reception_installs_from_hq_as_the_turn_begins_bars_scoring_it_and_trades_its_rez_for_another() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.r_and_d = vec![id("hedge_fund"); 3];
+        state.corp.hq = vec![id("hostile_takeover")];
+        state.corp.installed = vec![in_root("warm_reception", ServerId::Remote(0), true), in_root("working_prototype", ServerId::Remote(1), true)];
+        let state = to_corp_turn_start(&state, &registry);
+        let agenda = state.corp.hq.iter().position(|card| card == &id("hostile_takeover")).expect("the agenda in HQ");
+        let state = select(&state, &registry, &[agenda]);
+        let offered = crate::rules::legal_actions_for(&state, &registry, Side::Corp);
+        let remote = offered
+            .into_iter()
+            .find(|action| matches!(action, PlayerAction::ChooseServerForPendingDecision { server: ServerId::Remote(2) }))
+            .expect("a new remote to install in");
+        let (state, _) = apply_action(&state, &registry, remote).expect("install it");
+        let installed = state.corp.installed.iter().find(|card| card.card == id("hostile_takeover")).expect("installed").install_id;
+
+        // The server is not protected: the derez is offered, and taken.
+        assert!(state.pending_paid_choice.is_some(), "offered the derez");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::AcceptPendingPaidChoice { cost_option_index: None }).expect("derez this asset");
+        let prototype = state.corp.installed.iter().position(|card| card.card == id("working_prototype")).unwrap();
+        let state = select(&state, &registry, &[prototype]);
+        let (mut state, _) = close_all_windows(state, &registry);
+        assert!(state.corp.installed.iter().all(|card| !card.rezzed || card.card == id("hostile_takeover")), "both derezzed");
+
+        // "You cannot score that card this turn."
+        state.corp.installed.iter_mut().find(|card| card.install_id == installed).unwrap().advancement_tokens = 2;
+        assert!(apply_action(&state, &registry, PlayerAction::ScoreAgenda { target: installed }).is_err());
+        assert!(!crate::rules::legal_actions_for(&state, &registry, Side::Corp).contains(&PlayerAction::ScoreAgenda { target: installed }));
+        state.turn += 1;
+        assert!(crate::rules::legal_actions_for(&state, &registry, Side::Corp).contains(&PlayerAction::ScoreAgenda { target: installed }), "next turn it may");
+    }
 }
