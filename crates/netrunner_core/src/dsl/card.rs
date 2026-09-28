@@ -1818,7 +1818,7 @@ mod tests {
             strength: Some(1),
             subroutines: vec![SubroutineDef {
                 text: "The Runner cannot steal or trash Corp cards.".to_string(),
-                effect: Effect::Sequence(vec![Effect::Prohibit { what: Prohibition::StealOrTrash, until, copies_of_it: false }]),
+                effect: Effect::Sequence(vec![Effect::Prohibit { what: Prohibition::StealOrTrash, until, copies_of_it: false, this_install: false }]),
                 only_breakable_by: None,
             }],
             ..CardDefinition::default()

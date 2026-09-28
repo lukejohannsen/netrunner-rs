@@ -290,12 +290,23 @@ pub fn evaluate_effect(
             prevention::would(state, registry, WouldHappen::Damage { kind: *damage_type, amount: *amount as u32 }, ctx)
         }
 
-        Effect::ModifyStrength { delta, each_ice, duration } => {
+        Effect::ModifyStrength { delta, ice: which, duration } => {
             let source = |fallback: &CardId| acting_card.cloned().unwrap_or_else(|| fallback.clone());
+            // "The rezzed ice gets +3 strength for the remainder of that run"
+            // (Brasília Government Grid): the Corp install resolving, which
+            // need not be encountered — a rez during a run comes as the ice
+            // is approached.
+            if *which == crate::dsl::StrengthOf::This {
+                let install = ctx.acting_install.filter(|install| state.corp.installed.iter().any(|c| c.install_id == *install && c.slot == crate::rules::state::InstallSlot::Ice));
+                let (Some(install), Some(card_id)) = (install, acting_card.cloned()) else { return Err(RulesError::UnresolvedCardTarget) };
+                let until = lingering::until(state, *duration)?;
+                state.lingering.push(LingeringEffect { what: Lingering::Strength(*delta), on: On::Install(install), until, source: ctx.attributed_card().unwrap_or_else(|| card_id.clone()) });
+                return Ok(Vec::new());
+            }
             // "Each piece of ice … for the remainder of this run" (ezaM):
             // every piece of ice, the ones installed later too, which is
             // `On::EachIce` asked at every read — not one entry per ice.
-            if *each_ice {
+            if *which == crate::dsl::StrengthOf::EachIce {
                 let until = lingering::until(state, *duration)?;
                 let encountered = state.active_run.as_ref().filter(|run| run.phase == RunPhase::EncounterIce).and_then(|run| run.ice.get(run.position)).cloned();
                 let fallback = encountered.as_ref().map_or_else(|| CardId(String::new()), |ice| ice.card_id.clone());
@@ -1000,7 +1011,7 @@ pub fn evaluate_effect(
             crate::rules::engine::install_runner_card_from_grip_paying_cost(state, registry, card_id)
         }
 
-        Effect::Prohibit { what, until, copies_of_it } => {
+        Effect::Prohibit { what, until, copies_of_it, this_install } => {
             let until = lingering::until(state, *until)?;
             // The card whose text it is, for whoever shows it; a prohibition
             // with no card behind it has nothing to be shown as. About
@@ -1009,6 +1020,9 @@ pub fn evaluate_effect(
             let acting = acting_card.cloned().ok_or(RulesError::UnresolvedCardTarget)?;
             let (on, source) = if *copies_of_it {
                 (On::CopiesOf(acting.clone()), ctx.attributed_card().unwrap_or(acting))
+            } else if *this_install {
+                let install = ctx.acting_install.ok_or(RulesError::UnresolvedCardTarget)?;
+                (On::Install(install), ctx.attributed_card().unwrap_or(acting))
             } else {
                 (On::Player(what.binds()), acting)
             };
@@ -1499,7 +1513,7 @@ pub fn evaluate_effect(
             Ok(vec![GameEvent::PendingServerChoiceOffered { chooser: Side::Corp }])
         }
 
-        Effect::PromptInstallCorpCard { origin_zone, ignore_costs, discount, then, remote_only, rez, if_rezzed } => {
+        Effect::PromptInstallCorpCard { origin_zone, ignore_costs, discount, then, remote_only, rez, if_rezzed, if_installed } => {
             let card_id = acting_card.ok_or(RulesError::UnresolvedCardTarget)?.clone();
             // First match by position: two copies of one card in HQ are
             // indistinguishable and interchangeable, so "the copy the Corp
@@ -1548,6 +1562,7 @@ pub fn evaluate_effect(
                     then: then.clone(),
                     rez: *rez,
                     if_rezzed: if_rezzed.clone(),
+                    if_installed: if_installed.clone(),
                 }),
                 // Deliberately NOT the chosen card: `source_card` passes
                 // through the masked view, and the pick out of HQ is
@@ -2624,6 +2639,7 @@ pub(crate) fn cost_is_affordable(
         Cost::TakeBadPublicity(_) => side == Side::Corp,
         Cost::TrashRandomFromHq(count) => state.corp.hq.len() as u32 >= *count,
         Cost::RevealSelf | Cost::AddSelfToHq => side == Side::Corp && acting_corp_install(state, ctx).is_some(),
+        Cost::DerezSelf => side == Side::Corp && acting_corp_install(state, ctx).is_some_and(|installed| installed.is_rezzed(registry)),
         // Payable while the card is in its owner's hand.
         Cost::RevealAndTrashSelf => ctx.acting_card.is_some_and(|card| match side {
             Side::Corp => state.corp.hq.contains(card),
@@ -2765,6 +2781,13 @@ pub(crate) fn pay_cost_ctx(
             let position = acting_corp_position(state, ctx).ok_or_else(|| RulesError::CardNotInstalled { card: card_id.clone() })?;
             state.corp.installed[position].seen_by_runner = true;
             Ok(vec![GameEvent::CardRevealed { side: Side::Corp, card: card_id }])
+        }
+
+        Cost::DerezSelf => {
+            let card_id = acting_card.ok_or(RulesError::MissingActingCardContext)?.clone();
+            let installed = acting_corp_install_mut(state, ctx).filter(|installed| installed.rezzed).ok_or_else(|| RulesError::CardNotInstalled { card: card_id.clone() })?;
+            installed.rezzed = false;
+            Ok(vec![GameEvent::CardDerezzed { install: installed.install_id, card: Some(card_id) }])
         }
 
         Cost::AddSelfToHq => {
@@ -4172,7 +4195,7 @@ mod tests {
         let mut registry = CardRegistry::new();
         registry.insert(crate::rules::test_support::ice_printing("ice_wall", 3));
 
-        let events = evaluate_effect(&mut state, &Effect::ModifyStrength { delta: 2, each_ice: false, duration: crate::dsl::EffectDuration::Encounter }, &mut ResolutionContext::for_card(None), &registry).unwrap();
+        let events = evaluate_effect(&mut state, &Effect::ModifyStrength { delta: 2, ice: crate::dsl::StrengthOf::Encountered, duration: crate::dsl::EffectDuration::Encounter }, &mut ResolutionContext::for_card(None), &registry).unwrap();
 
         let ice = state.active_run.as_ref().unwrap().ice[0].clone();
         assert_eq!(continuous::ice_strength(&state, &registry, &ice), 5);
@@ -4199,7 +4222,7 @@ mod tests {
             });
 
         assert_eq!(
-            evaluate_effect(&mut state, &Effect::ModifyStrength { delta: 2, each_ice: false, duration: crate::dsl::EffectDuration::Encounter }, &mut ResolutionContext::for_card(None), &CardRegistry::new()),
+            evaluate_effect(&mut state, &Effect::ModifyStrength { delta: 2, ice: crate::dsl::StrengthOf::Encountered, duration: crate::dsl::EffectDuration::Encounter }, &mut ResolutionContext::for_card(None), &CardRegistry::new()),
             Err(RulesError::NotInEncounter)
         );
     }
@@ -4208,7 +4231,7 @@ mod tests {
     fn modify_strength_with_no_active_run_errors() {
         let mut state = game_state();
         assert_eq!(
-            evaluate_effect(&mut state, &Effect::ModifyStrength { delta: 2, each_ice: false, duration: crate::dsl::EffectDuration::Encounter }, &mut ResolutionContext::for_card(None), &CardRegistry::new()),
+            evaluate_effect(&mut state, &Effect::ModifyStrength { delta: 2, ice: crate::dsl::StrengthOf::Encountered, duration: crate::dsl::EffectDuration::Encounter }, &mut ResolutionContext::for_card(None), &CardRegistry::new()),
             Err(RulesError::NoActiveRun)
         );
     }
