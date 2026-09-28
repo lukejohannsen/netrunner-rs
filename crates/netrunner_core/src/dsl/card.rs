@@ -1319,6 +1319,10 @@ impl CardDefinition {
                     return misfit("RunsOnThisServer", "a run's success and its accesses are said of the runs on this card's server, by a card in its root");
                 }
                 (_, Scope::RunsOnThisServer) => return misfit("RunsOnThisServer", "only a run's success and its accesses are about the runs on a server"),
+                (ContinuousKind::BreakLimit { .. } | ContinuousKind::TrashLimit(_), Scope::This) if matches!(self.card_type, CardType::Ice(_)) => {}
+                (ContinuousKind::BreakLimit { .. } | ContinuousKind::TrashLimit(_), _) => {
+                    return misfit("BreakLimit", "what may be broken on or trashed with a piece of ice during its encounter is said by the ice of itself (`This`)");
+                }
                 (ContinuousKind::RevealedWhileAccessed, Scope::This) if self.side == Side::Corp => {}
                 (ContinuousKind::RevealedWhileAccessed, _) => {
                     return misfit("RevealedWhileAccessed", "only a Corp card is accessed, and it says so of itself (`This`)");

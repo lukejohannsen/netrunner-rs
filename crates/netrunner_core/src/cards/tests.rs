@@ -14610,4 +14610,97 @@ mod rebellion_without_rehearsal {
         assert_eq!(low.corp.resources.credits, Credits(credits.0 + 4), "Hedge Fund played from HQ");
         assert!(low.pending_paid_choice.is_none());
     }
+
+    // ---- Stage 5b: ice that limits its encounter ----
+
+    /// The Runner uses an ability in the encounter's window, and the Corp,
+    /// given priority by it, passes back.
+    fn use_ability(state: &GameState, registry: &CardRegistry, card: &str, ability_index: usize) -> Result<GameState, RulesError> {
+        let (state, _) = apply_action(state, registry, PlayerAction::ActivateAbility { target: fixture_install_id(card), ability_index })?;
+        Ok(apply_action(&state, registry, PlayerAction::PassPriority { side: Side::Corp }).map_or(state.clone(), |(state, _)| state))
+    }
+
+    #[test]
+    fn hammer_lets_one_printed_subroutine_be_broken_except_by_killers() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.installed = vec![ice_at_hq("hammer")];
+        state.runner.rig = vec![rig("mayfly"), rig("carmen")];
+        state.runner.resources.credits = Credits(20);
+        let mut state = encounter(&state, &registry);
+        for _ in 0..4 {
+            state = use_ability(&state, &registry, "mayfly", 1).expect("+1 strength");
+        }
+        let state = use_ability(&state, &registry, "mayfly", 0).expect("the AI breaks one");
+        assert_eq!(state.active_run.as_ref().unwrap().this_encounter.limited_breaks, 1);
+        assert!(use_ability(&state, &registry, "mayfly", 0).is_err(), "and no second");
+        let offered = crate::rules::legal_actions_for(&state, &registry, Side::Runner);
+        assert!(!offered.contains(&PlayerAction::ActivateAbility { target: fixture_install_id("mayfly"), ability_index: 0 }), "not offered either");
+        let state = use_ability(&state, &registry, "carmen", 1).expect("+3 strength");
+        let state = use_ability(&state, &registry, "carmen", 1).expect("+3 strength");
+        let state = use_ability(&state, &registry, "carmen", 0).expect("a killer breaks another");
+        let state = use_ability(&state, &registry, "carmen", 0).expect("and the last");
+        let run = state.active_run.as_ref().unwrap();
+        assert!(run.ice[run.position].subroutines.iter().all(|s| s.status == crate::rules::SubroutineStatus::Broken));
+        assert_eq!(run.this_encounter.limited_breaks, 1, "a killer's breaks are not counted");
+    }
+
+    #[test]
+    fn sorocaban_blade_trashes_one_installed_runner_card_an_encounter() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.installed = vec![ice_at_hq("sorocaban_blade")];
+        state.runner.rig = vec![rig("juli_moreira_lee"), rig("detente"), rig("mayfly")];
+        let state = encounter(&state, &registry);
+        let (state, _) = let_subroutines_fire(&state, &registry);
+        let state = select(&state, &registry, &[0]);
+        let (state, _) = close_all_windows(state, &registry);
+        assert!(state.pending_decision.is_none(), "the hardware and the program are not offered");
+        let left: Vec<CardId> = state.runner.rig.iter().map(|card| card.card.clone()).collect();
+        assert_eq!(left, vec![id("detente"), id("mayfly")], "only the resource was trashed");
+    }
+
+    #[test]
+    fn cloud_eater_trashes_a_card_as_its_encounter_ends_unless_paid_for_only_when_rezzed_this_turn() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.installed = vec![ice_at_hq("cloud_eater")];
+        state.corp.installed[0].rezzed = false;
+        state.corp.resources.credits = Credits(10);
+        state.runner.rig = vec![rig("carmen"), rig("juli_moreira_lee")];
+        state.runner.resources.credits = Credits(20);
+        state.runner.grip = vec![id("sure_gamble"); 5];
+        let broken_through = |state: GameState| {
+            let mut state = state;
+            for ability in [1, 1, 0, 0, 0] {
+                state = use_ability(&state, &registry, "carmen", ability).expect("pump and break");
+            }
+            let (state, _) = apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner passes");
+            if state.pending_paid_choice.is_some() {
+                return state;
+            }
+            // The Runner's pass may already have ended the encounter.
+            apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Corp }).map_or(state.clone(), |(state, _)| state)
+        };
+
+        // Rezzed on this approach: the Runner is asked, declines, and the
+        // Corp trashes a card.
+        let state_rezzed = rez_and_encounter(&state, &registry, "cloud_eater");
+        let ended = broken_through(state_rezzed);
+        assert!(ended.pending_paid_choice.is_some(), "the Runner is asked");
+        let (declined, _) = apply_action(&ended, &registry, PlayerAction::DeclinePendingPaidChoice).expect("let a card go");
+        let trashed = select(&declined, &registry, &[1]);
+        assert_eq!(trashed.runner.rig.len(), 1);
+        assert!(trashed.runner.heap.contains(&id("juli_moreira_lee")));
+        // Or pays 2 tags instead.
+        let (paid, _) = apply_action(&ended, &registry, PlayerAction::AcceptPendingPaidChoice { cost_option_index: Some(0) }).expect("take 2 tags");
+        assert_eq!(paid.runner.tags, 2);
+        assert_eq!(paid.runner.rig.len(), 2);
+
+        // Rezzed on an earlier turn: nothing as the encounter ends.
+        let mut earlier = state.clone();
+        earlier.corp.installed[0].rezzed = true;
+        let ended = broken_through(encounter(&earlier, &registry));
+        assert!(ended.pending_paid_choice.is_none() && ended.pending_decision.is_none());
+    }
 }

@@ -80,6 +80,19 @@ pub struct EncounteredSubroutine {
     pub gained: bool,
 }
 
+/// Counts for one encounter, about the ice being encountered — Hammer's
+/// "cannot break more than 1 of its printed subroutines" and Sorocaban
+/// Blade's "cannot trash more than 1 installed Runner card with this ice".
+/// Public: both players watched each break and each trash.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EncounterTally {
+    /// Printed subroutines broken by a breaker the ice's `BreakLimit` does
+    /// not except.
+    pub limited_breaks: u32,
+    /// Installed Runner cards trashed by this ice's text.
+    pub runner_cards_trashed: u32,
+}
+
 /// A single piece of ICE within a run's ice stack, as seen by the run state
 /// machine. Built by `run::start_run` from the Corp's `InstalledCard`s on
 /// the targeted server (`CardRegistry`-looked-up for its subtype and
@@ -437,6 +450,13 @@ pub struct RunState {
     /// the break and the pass are separate actions.
     #[serde(default)]
     pub fully_broken: bool,
+    /// What the ice being encountered has limited so far this encounter
+    /// (`ContinuousKind::BreakLimit`, `TrashLimit`), cleared where
+    /// `fully_broken` is: when an encounter begins and by `enter_movement`.
+    /// State and not context, because each break and each subroutine's
+    /// trash is an action of its own.
+    #[serde(default)]
+    pub this_encounter: EncounterTally,
     /// A temporary Runner credit pool for this run only, set once at run
     /// start by whatever initiated it (e.g. Overclock's "place 5 credits on
     /// this event, then run any server — you can spend hosted credits
@@ -513,6 +533,7 @@ impl Default for RunState {
             initiated_by: None,
             ice_bypassed: false,
             fully_broken: false,
+            this_encounter: EncounterTally::default(),
             once_per_run_used: Default::default(),
             agendas_stolen_this_run: 0,
             persistent_trashed_upgrades: Vec::new(),

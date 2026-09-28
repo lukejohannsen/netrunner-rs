@@ -1,0 +1,75 @@
+{
+  "id": "sorocaban_blade",
+  "title": "Sorocaban Blade",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Sentry"
+  },
+  "cost": 4,
+  "strength": 2,
+  "continuous": [
+    {
+      "kind": {
+        "TrashLimit": 1
+      },
+      "applies_to": "This",
+      "text": "You cannot trash more than 1 installed Runner card with this ice during each encounter."
+    }
+  ],
+  "subroutines": [
+    {
+      "text": "Trash 1 installed resource.",
+      "effect": {
+        "PromptChooseCards": {
+          "side": "Corp",
+          "source": "OpponentInstalled",
+          "filter": {
+            "CardType": "Resource"
+          },
+          "min": 1,
+          "max": 1,
+          "reveal": false,
+          "shuffle_after": false,
+          "destination": "OpponentDiscard"
+        }
+      }
+    },
+    {
+      "text": "Trash 1 installed piece of hardware.",
+      "effect": {
+        "PromptChooseCards": {
+          "side": "Corp",
+          "source": "OpponentInstalled",
+          "filter": {
+            "CardType": "Hardware"
+          },
+          "min": 1,
+          "max": 1,
+          "reveal": false,
+          "shuffle_after": false,
+          "destination": "OpponentDiscard"
+        }
+      }
+    },
+    {
+      "text": "Trash 1 installed program.",
+      "effect": {
+        "PromptChooseCards": {
+          "side": "Corp",
+          "source": "OpponentInstalled",
+          "filter": {
+            "CardType": "Program"
+          },
+          "min": 1,
+          "max": 1,
+          "reveal": false,
+          "shuffle_after": false,
+          "destination": "OpponentDiscard"
+        }
+      }
+    }
+  ],
+  "triggers": [],
+  "numeric_id": 34101,
+  "is_playable": true
+}

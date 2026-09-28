@@ -186,7 +186,7 @@ pub fn start_run(state: &mut GameState, registry: &CardRegistry, server: ServerI
         .flatten()
         .collect();
 
-    state.active_run = Some(RunState { agendas_stolen_this_run: 0, once_per_run_used: Default::default(), persistent_trashed_upgrades: Vec::new(), redirect_on_approach: None, on_end_effect: None, on_end_card: None, on_end_install: None, subroutine_resolved: false, initiated_by: None, ice_bypassed: false, fully_broken: false,
+    state.active_run = Some(RunState { agendas_stolen_this_run: 0, once_per_run_used: Default::default(), persistent_trashed_upgrades: Vec::new(), redirect_on_approach: None, on_end_effect: None, on_end_card: None, on_end_install: None, subroutine_resolved: false, initiated_by: None, ice_bypassed: false, fully_broken: false, this_encounter: Default::default(),
         on_success_effect: None,
         on_success_card: None,
         on_success_install: None,
@@ -230,6 +230,7 @@ fn enter_movement(run: &mut RunState, position: usize) {
     run.phase = RunPhase::Movement;
     run.ice_bypassed = false;
     run.fully_broken = false;
+    run.this_encounter = Default::default();
     run.jack_out_permitted = true;
 }
 
@@ -763,6 +764,7 @@ fn continue_run(state: &mut GameState, registry: &CardRegistry) -> Result<Vec<Ga
             run.jack_out_permitted = false;
             run.phase = RunPhase::EncounterIce;
             run.fully_broken = false;
+            run.this_encounter = Default::default();
             // The number the break contest will use, asked once the run is
             // standing on the ice: this read what the ice was built with,
             // a third reading beside the contest's and the view's.

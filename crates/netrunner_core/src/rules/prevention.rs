@@ -57,7 +57,7 @@ use crate::rules::payment::Purpose;
 use crate::rules::event::GameEvent;
 use crate::rules::lingering::Lingering;
 use crate::rules::paid_ability;
-use crate::rules::state::{GameState, InstallSlot, PendingPrevention, PreventionResume, Side, WindowCheckpoint, WouldHappen};
+use crate::rules::state::{GameState, InstallId, InstallSlot, PendingPrevention, PreventionResume, Side, WindowCheckpoint, WouldHappen};
 
 /// Whether `word` — what a card says it prevents — is about `what`.
 pub(crate) fn matches(word: &Preventable, what: &WouldHappen, state: &GameState, registry: &CardRegistry) -> bool {
@@ -139,7 +139,8 @@ pub(crate) fn would(
     let heard = matches!(what, WouldHappen::Damage { .. });
     if state.pending_prevention.is_some() || !(heard || could_prevent(state, registry, &what)) {
         let responsible = responsible_for(registry, ctx.acting_card);
-        return happen(state, registry, &what, what.amount(), responsible, Some(ctx));
+        let source = ctx.acting_install;
+        return happen(state, registry, &what, what.amount(), responsible, source, Some(ctx));
     }
     state.pending_prevention = Some(PendingPrevention {
         what: what.clone(),
@@ -337,7 +338,7 @@ fn finish_within(
     let left = pending.what.amount() - prevented;
     if left > 0 {
         let responsible = responsible_for(registry, pending.source_card.as_ref());
-        events.extend(happen(state, registry, &pending.what, left, responsible, ctx)?);
+        events.extend(happen(state, registry, &pending.what, left, responsible, pending.source_install, ctx)?);
     }
     if state.paid_ability_window.as_ref().is_some_and(|w| w.checkpoint == WindowCheckpoint::Run) && state.active_run.is_none() {
         state.paid_ability_window = None;
@@ -376,6 +377,7 @@ fn happen(
     what: &WouldHappen,
     amount: u32,
     responsible: Option<Side>,
+    source: Option<InstallId>,
     ctx: Option<&mut ResolutionContext<'_>>,
 ) -> Result<Vec<GameEvent>, RulesError> {
     match what {
@@ -404,6 +406,12 @@ fn happen(
         // Dispatched here, where the trash happens, as the tags above are.
         WouldHappen::Trash { owner, install, by } => {
             let mut events = ability::trash_install(state, registry, *owner, *install, *by)?;
+            // Carried out, so it is one of the encountered ice's trashes
+            // when the ice's text made it (Sorocaban Blade's limit); one
+            // the Runner prevented never gets here.
+            if *owner == Side::Runner && *by == Some(Side::Corp) {
+                crate::rules::continuous::note_runner_card_trashed_by(state, source);
+            }
             let fired = ability::dispatch_trashes(state, registry, &events)?;
             events.extend(fired);
             Ok(events)

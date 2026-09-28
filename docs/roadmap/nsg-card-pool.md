@@ -1891,7 +1891,8 @@ reaches Vantage Point's cards by building a deck.
 5. **Corp ice and rez words**, in four parts when it was taken: **5a**, a
    rez's price, counters on a rez and a mandate (built, below): Piranhas,
    Working Prototype, Sudden Commandment; **5b**, ice that limits what
-   happens in its encounter: Hammer, Sorocaban Blade, Cloud Eater; **5c**,
+   happens in its encounter (built, below): Hammer, Sorocaban Blade, Cloud
+   Eater; **5c**,
    derez words: Brasília Government Grid, Warm Reception, Lightning
    Laboratory; **5d**, a Weyland identity and its agenda: Nuvem SA: Law of
    the Land, The Basalt Spire, on a Sweep deck of Nuvem's own.
@@ -2653,6 +2654,65 @@ Piranhas, Working Prototype, Sudden Commandment. **No new `Effect` or
   cost, the requirement and its amount, the mandate column — and without
   the three cards and the deck swaps is **identical in all four shapes**,
   so the movement is `determinize` sampling three new Corp cards.
+
+#### Stage 5b — ice that limits its encounter (28 September 2026)
+
+`feat/rwr-stage-5b-hammer-sorocaban-blade-cloud-eater`: Hammer, Sorocaban
+Blade, Cloud Eater. **No new `Effect` or `Trigger`.** Rebellion Without
+Rehearsal 45 of 65; `RWR_UNIMPLEMENTED` 23 → 20.
+
+- **What an encounter allows is said by the ice, of itself**, as two
+  standing kinds about `This` (the Continuous Effect Rule, and `validate`
+  refuses either off ice). Hammer's "the Runner cannot break more than 1
+  of its printed subroutines except using killers" is
+  `ContinuousKind::BreakLimit { at_most, except_using }`: both break
+  effects, and the bioroid click break with it, break no more printed
+  subroutines than the limit leaves (`continuous::breaks_left`), a gained
+  subroutine is never limited (CR 9.8.3a), and an excepted breaker's
+  breaks are not counted. Sorocaban Blade's "you cannot trash more than 1
+  installed Runner card with this ice during each encounter" is
+  `ContinuousKind::TrashLimit`: once spent, a selection the ice's text
+  makes to trash an installed Runner card offers nothing
+  (`continuous::may_trash_with`). A trash is counted where it is carried
+  out — the selection, or the prevention window's end — so one the Runner
+  prevented is not one. Afshar and Akhet print the break limit with no
+  exception and a `while`.
+- **The encounter's counts are on the run** (`RunState::this_encounter`,
+  an `EncounterTally`), cleared where `fully_broken` is — as an encounter
+  begins and by `enter_movement` — and carried in the view, so a bot's
+  sample is held to the limits the game is.
+- **Cloud Eater's "if it was rezzed this turn"** is a count on the copy:
+  `turn_log::CopyTurn` counts rezzing beside advancing, read by
+  `Amount::TimesThisTurnOnThisCopy(OnRez)`. Its encounter-end ability is
+  Seraph's shape, a nested cost the Runner pays or declines (CR 1.16.11b).
+- **Client:** the view carries the tally, which the action list and
+  `board::breaks` already honour (`view_ledger`: engine's); `prose` has
+  words for the two kinds and the amount.
+- **Decks** — Hostile Bid: two Hammer for two Kessleroid. Retirement
+  Package: two Sorocaban Blade for the Palisade and the Pharos. A Thousand
+  Cuts: two Cloud Eater for the Tithe and the Ballista.
+- **Real play**, 96 games against Safety Net (seed 2). Hammer: rezzed 7
+  times with random seats and 44 with heuristic ones, 230 subroutines
+  fired and 34 broken. Sorocaban Blade: rezzed 49 and 52 times, 337 and
+  189 subroutines fired. Cloud Eater costs 10 and **random seats never
+  rezzed it**; heuristic seats rezzed it 8 times, and its encounter-end
+  ability fired 7.
+- **Fidelity limits:** a bot's sample still does not carry a copy's
+  counts for the turn (`determinize` leaves `CopyTurn` empty, as it did
+  for advancing), so a sample of a Cloud Eater rezzed this turn does not
+  see its encounter-end ability coming.
+- **DSL ratio (`pool_status.py`): 17 of 80 `Effect` variants single-use,
+  2 unused**, over 295 card files (17 of 80 over 292 before).
+- **Measured.** Both sweeps at 256 seeds are green. Against `origin/main`
+  (5a), `coverage_identical.py` has the random seatings **identical**, by
+  view and by index; the heuristic ones moved further than any stage
+  before (Corp agenda wins 66 → 77 of 192, Runner agenda wins 111 → 99,
+  deck-outs 0 → 1, flatlines 15 unchanged). Checked, not inferred: a ref
+  with the engine changes — the two kinds and their tally, the copy's
+  rez count and its amount — and without the three cards and the deck
+  swaps is **identical in all four shapes**, so the movement is
+  `determinize` sampling three new pieces of Corp ice, which is a
+  measurement of the bots rather than of the rules.
 
 ### 3. The Automata Initiative — 65 cards (C 14 / V 35 / M 16)
 

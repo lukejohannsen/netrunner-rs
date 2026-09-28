@@ -376,6 +376,12 @@ pub struct PublicRunState {
     /// (Sipa).
     #[serde(default)]
     pub fully_broken: bool,
+    /// `RunState::this_encounter`: public, since both players watched each
+    /// break and each trash, and carried so a sample built from the view
+    /// is held to Hammer's and Sorocaban Blade's limits where the real
+    /// game is.
+    #[serde(default)]
+    pub this_encounter: crate::rules::run::EncounterTally,
     /// `RunState::once_per_run_used`: the once-per-run abilities already
     /// used this run, public as a use is — except one by a Corp install
     /// the viewer cannot see, as `PublicCorpState::once_per_turn_used`
@@ -1154,6 +1160,7 @@ fn mask_run_state(state: &GameState, registry: &CardRegistry, run: &RunState, vi
         bonus_run_credits: run.bonus_run_credits,
         redirect_on_approach: run.redirect_on_approach,
         fully_broken: run.fully_broken,
+        this_encounter: run.this_encounter,
         initiated_by: run.initiated_by.clone(),
         begun_as_the_turn_began: run.begun_as_the_turn_began,
         once_per_run_used: run

@@ -506,13 +506,14 @@ const _: () = assert!(Trigger::ALL.len() <= u64::BITS as usize);
 
 impl CopyTurn {
     /// Whether moments of `trigger` are counted on the copy: those a card
-    /// may print "the first time each turn … this card" about, which is
-    /// advancing it (Sacrifice Zone Expansion) and, so far, nothing else. A
-    /// card leaves the table when it is scored, stolen or trashed, so its
-    /// copy could never count those; `validate` refuses the rest until a
-    /// card prints one.
+    /// asks of one copy, which is advancing it (Sacrifice Zone Expansion's
+    /// "the first time each turn") and rezzing it (Cloud Eater's "if it was
+    /// rezzed this turn", `Amount::TimesThisTurnOnThisCopy`) and, so far,
+    /// nothing else. A card leaves the table when it is scored, stolen or
+    /// trashed, so its copy could never count those; `validate` refuses the
+    /// rest until a card prints one.
     pub(crate) fn counts(trigger: Trigger) -> bool {
-        matches!(trigger, Trigger::OnAdvance)
+        matches!(trigger, Trigger::OnAdvance | Trigger::OnRez)
     }
 
     fn bump(&mut self, turn: u32, trigger: Trigger) {

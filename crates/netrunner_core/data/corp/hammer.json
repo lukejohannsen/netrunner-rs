@@ -1,0 +1,91 @@
+{
+  "id": "hammer",
+  "title": "Hammer",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Sentry"
+  },
+  "cost": 6,
+  "strength": 4,
+  "continuous": [
+    {
+      "kind": {
+        "BreakLimit": {
+          "at_most": 1,
+          "except_using": "Killer"
+        }
+      },
+      "applies_to": "This",
+      "text": "During each encounter with this ice, the Runner cannot break more than 1 of its printed subroutines except using killers."
+    }
+  ],
+  "subroutines": [
+    {
+      "text": "Give the Runner 1 tag.",
+      "effect": {
+        "GiveTags": {
+          "Fixed": 1
+        }
+      }
+    },
+    {
+      "text": "Trash 1 installed resource or piece of hardware.",
+      "effect": {
+        "PromptChooseCards": {
+          "side": "Corp",
+          "source": "OpponentInstalled",
+          "filter": {
+            "CardTypeOneOf": [
+              "Resource",
+              "Hardware"
+            ]
+          },
+          "min": 1,
+          "max": 1,
+          "reveal": false,
+          "shuffle_after": false,
+          "destination": "OpponentDiscard"
+        }
+      }
+    },
+    {
+      "text": "Trash 1 installed program that is not a decoder, fracter, or killer.",
+      "effect": {
+        "PromptChooseCards": {
+          "side": "Corp",
+          "source": "OpponentInstalled",
+          "filter": {
+            "All": [
+              {
+                "CardType": "Program"
+              },
+              {
+                "Not": {
+                  "AnyOf": [
+                    {
+                      "HasSubtype": "Decoder"
+                    },
+                    {
+                      "HasSubtype": "Fracter"
+                    },
+                    {
+                      "HasSubtype": "Killer"
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          "min": 1,
+          "max": 1,
+          "reveal": false,
+          "shuffle_after": false,
+          "destination": "OpponentDiscard"
+        }
+      }
+    }
+  ],
+  "triggers": [],
+  "numeric_id": 34126,
+  "is_playable": true
+}
