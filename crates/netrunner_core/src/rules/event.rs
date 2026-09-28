@@ -275,6 +275,11 @@ pub enum GameEvent {
         responsible: Option<Side>,
     },
     RunnerFlatlined,
+    /// `winner` won by what `card` says — Jeitinho's third assassination
+    /// agenda (`Effect::WinTheGame`), the win the rules do not list (CR
+    /// 1.7.2). Emitted just before `GameOver`, so a driver can say why the
+    /// game ended rather than guess it from the scores.
+    WonByCardText { winner: Side, card: CardId },
     CreditsSpent { side: Side, amount: u32 },
     /// `had` is how many tags `side` had before these — Sebastião Souza
     /// Pessoa's "whenever you take 1 or more tags, **if you had no tags**",
@@ -326,11 +331,19 @@ pub enum GameEvent {
     /// went; this one says *why*, which is what `Trigger::OnForfeit` keys
     /// off.
     AgendaForfeited { card: CardId },
-    /// A card was added to the Corp's score area "as an agenda" worth
-    /// `points` (CR 10.1.3) — Myōshu out of Archives, Word on the Street out
-    /// of the Runner's rig. It was not scored (CR 1.17.3f), so this is an
+    /// A card was added to `side`'s score area "as an agenda" worth
+    /// `points` (CR 10.1.3) — Myōshu out of Archives and Word on the Street
+    /// out of the Runner's rig into the Corp's, Jeitinho out of the rig into
+    /// the Runner's. It was not scored (CR 1.17.3f), so this is an
     /// occurrence of nothing a card hears.
-    AddedToScoreAreaAsAgenda { card: CardId, points: i32 },
+    /// `subtype` is the one it was added as ("an assassination agenda").
+    AddedToScoreAreaAsAgenda {
+        side: Side,
+        card: CardId,
+        points: i32,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        subtype: Option<crate::dsl::CardSubtype>,
+    },
     /// An agenda was added to the Corp's score area by a card's text, worth
     /// what it prints (CR 1.17.3e) — Kingmaking's "add 1 agenda worth 1 or
     /// less agenda points from HQ to your score area", a selection whose
@@ -632,7 +645,7 @@ impl GameEvent {
             | GameEvent::MulliganTaken { .. } | GameEvent::HandKept { .. } | GameEvent::TraceInitiated { .. }
             | GameEvent::TraceCorpBidSubmitted { .. } | GameEvent::TraceRunnerBidSubmitted { .. } | GameEvent::PsiBidsRevealed { .. }
             | GameEvent::TraceAvoided { .. } | GameEvent::TraceSuccessful { .. } | GameEvent::GameOver { .. }
-            | GameEvent::RunnerFlatlined | GameEvent::TurnStarted { .. } | GameEvent::TurnEnded { .. } => true,
+            | GameEvent::RunnerFlatlined | GameEvent::WonByCardText { .. } | GameEvent::TurnStarted { .. } | GameEvent::TurnEnded { .. } => true,
             GameEvent::FinishedResolving { .. } => false,
             GameEvent::ClickSpent { .. } | GameEvent::CreditsGained { .. } | GameEvent::IceApproached { .. }
             | GameEvent::SubroutineBroken { .. } | GameEvent::SubroutineFired { .. } | GameEvent::SubroutineGained { .. }

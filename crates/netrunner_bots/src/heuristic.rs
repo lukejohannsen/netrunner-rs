@@ -513,7 +513,7 @@ mod tests {
         use netrunner_core::dsl::{DamageType, Effect, Trigger, TriggeredEffect};
         let mut def = blank_card(id, CardType::Asset);
         def.triggers = vec![TriggeredEffect {
-            subject: None, when: None, acts_on_subject: false, first_each_turn: false,
+            subject: None, when: None, acts_on_subject: false, first_each_turn: false, from_heap: false,
             text: None,
             trigger: Trigger::OnAccessed,
             effects: vec![Effect::DealDamage(DamageType::Net, 2)],

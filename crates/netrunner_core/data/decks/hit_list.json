@@ -1,0 +1,99 @@
+{
+  "id": "hit_list",
+  "name": "Hit List",
+  "side": "Runner",
+  "category": "Sweep",
+  "description": "Not a published list: built so the sweeps reach Jeitinho, Rebellion Without Rehearsal's Criminal weapon, which the Runner adds to their score area as an assassination agenda after a turn of successful runs on HQ, R&D and Archives, and wins with the third. On Gabriel Santiago, the one Criminal identity no deck plays, whose HQ credits pay for the turn's first run, and on Borrowed Time's frame after Rebellion Without Rehearsal Stage 8b, with three Jeitinho for a Tailgate, a VRcation and a Pennyshaver. Eternal-legal only: Gabriel Santiago is a Core Set card.",
+  "style": "aggressive",
+  "identity": "gabriel_santiago",
+  "cards": [
+    {
+      "card": "tailgate",
+      "count": 2
+    },
+    {
+      "card": "mutual_favor",
+      "count": 2
+    },
+    {
+      "card": "underdome_irregulars",
+      "count": 3
+    },
+    {
+      "card": "sure_gamble",
+      "count": 1
+    },
+    {
+      "card": "kompromat",
+      "count": 3
+    },
+    {
+      "card": "vrcation",
+      "count": 2
+    },
+    {
+      "card": "docklands_pass",
+      "count": 2
+    },
+    {
+      "card": "pennyshaver",
+      "count": 2
+    },
+    {
+      "card": "t400_memory_diamond",
+      "count": 1
+    },
+    {
+      "card": "red_team",
+      "count": 3
+    },
+    {
+      "card": "smartware_distributor",
+      "count": 3
+    },
+    {
+      "card": "verbal_plasticity",
+      "count": 2
+    },
+    {
+      "card": "buzzsaw",
+      "count": 2
+    },
+    {
+      "card": "carmen",
+      "count": 2
+    },
+    {
+      "card": "marjanah",
+      "count": 2
+    },
+    {
+      "card": "conduit",
+      "count": 1
+    },
+    {
+      "card": "leech",
+      "count": 2
+    },
+    {
+      "card": "sell_out",
+      "count": 2
+    },
+    {
+      "card": "borrowed_goods",
+      "count": 2
+    },
+    {
+      "card": "rotary",
+      "count": 2
+    },
+    {
+      "card": "word_on_the_street",
+      "count": 2
+    },
+    {
+      "card": "jeitinho",
+      "count": 3
+    }
+  ]
+}

@@ -755,6 +755,7 @@ fn end_reason_of(step: &SessionStep) -> String {
             GameEndReason::AgendaThreshold => "agenda_threshold",
             GameEndReason::Flatline => "flatline",
             GameEndReason::Deckout => "deckout",
+            GameEndReason::CardText => "card_text",
             GameEndReason::Surrender => "surrender",
             GameEndReason::Disconnected => "disconnected",
             GameEndReason::TimedOut => "timed_out",

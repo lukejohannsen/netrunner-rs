@@ -192,7 +192,7 @@ fn visible_cards(view: &ClientView) -> Vec<CardId> {
     ids.extend(view.runner.heap.iter().cloned());
     ids.extend(view.runner.removed_from_game.iter().cloned());
     ids.extend(view.runner.set_aside.iter().cloned());
-    ids.extend(view.runner.scored_agendas.iter().cloned());
+    ids.extend(view.runner.scored_agendas.iter().map(|scored| scored.card.clone()));
     for rig_card in &view.runner.rig {
         ids.push(rig_card.card.clone());
         ids.extend(rig_card.hosted_cards.iter().cloned());
@@ -1129,7 +1129,7 @@ mod tests {
                 .chain(state.corp.archives.iter().map(|a| &a.card))
                 .chain(state.corp.installed.iter().map(|c| &c.card))
                 .chain(state.corp.scored_agendas.iter().map(|s| &s.card))
-                .chain(&state.runner.scored_agendas)
+                .chain(state.runner.scored_agendas.iter().map(|s| &s.card))
                 .chain(&state.corp.removed_from_game)
                 .cloned(),
         )
@@ -1182,7 +1182,7 @@ mod tests {
         let discarded = state.corp.r_and_d.remove(0);
         state.corp.archives.push(netrunner_core::rules::ArchivedCard { card: discarded, facedown: false });
         let stolen = state.corp.r_and_d.remove(0);
-        state.runner.scored_agendas.push(stolen);
+        state.runner.scored_agendas.push(netrunner_core::rules::ScoredAgenda::plain(stolen));
 
         let view = build_client_view(&state, &registry, Side::Runner);
         let sample = determinize(&view, &registry, &mut rng);

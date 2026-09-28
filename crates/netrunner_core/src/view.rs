@@ -114,7 +114,7 @@ pub struct RunnerClientView {
     pub set_aside: Vec<CardId>,
     pub rig: Vec<PublicInstalledRunnerCard>,
     pub link_strength: u32,
-    pub scored_agendas: Vec<CardId>,
+    pub scored_agendas: Vec<ScoredAgenda>,
     /// What each of `scored_agendas` is worth in the Runner's score area,
     /// in the same order (`win::agenda_value_in`): Let Them Dream, stolen,
     /// is worth 1 less than it prints, and a list of stolen agendas that
@@ -348,7 +348,7 @@ pub fn build_client_view(state: &GameState, registry: &CardRegistry, viewer: imp
         rd_count: zone_count(&public.corp.r_and_d),
         archives: public.corp.archives,
         servers: group_by_server(&public.corp.installed),
-        scored_worth: state.corp.scored_agendas.iter().map(|scored| crate::rules::scored_value(state, registry, scored)).collect(),
+        scored_worth: state.corp.scored_agendas.iter().map(|scored| crate::rules::scored_value(state, registry, scored, Side::Corp)).collect(),
         scored_agendas: public.corp.scored_agendas,
         removed_from_game: public.corp.removed_from_game,
     };
@@ -377,7 +377,7 @@ pub fn build_client_view(state: &GameState, registry: &CardRegistry, viewer: imp
             .runner
             .scored_agendas
             .iter()
-            .map(|card| crate::rules::agenda_value_in(state, registry, card, Side::Runner) as i32)
+            .map(|scored| crate::rules::scored_value(state, registry, scored, Side::Runner))
             .collect(),
         scored_agendas: public.runner.scored_agendas,
     };

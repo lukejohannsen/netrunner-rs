@@ -614,10 +614,12 @@ pub fn sample_pool_card_ids(registry: &CardRegistry) -> Vec<CardId> {
 
 /// The decks the sweeps play at seed `seed`: the `seed`th Corp deck and
 /// the `seed`th Runner deck of the sample pool, each modulo its own list
-/// (sorted by id, as `decks::for_side` returns them). Every deck is
-/// played within `max(C, R)` seeds, and every deck at least
-/// `seeds / max(C, R)` times — so the default 32-seed run reaches the
-/// whole pool and the 256-seed run plays each deck many times over.
+/// (sorted by id, as `decks::for_side` returns them), the Runner's
+/// stepped on one deck each time the pairings would repeat
+/// (`pairing_cycle`). Every deck is played within `max(C, R)` seeds, and
+/// every deck at least `seeds / max(C, R)` times — so the default 32-seed
+/// run reaches the whole pool and the 256-seed run plays each deck many
+/// times over, against different decks each cycle.
 /// Rotating `seed` over the full `matchups()` cross product instead would
 /// spend the default run on the first few Corp decks once the pool is
 /// 16 × 12. The cross product stays what self-play, `bench`, the gym and
@@ -639,9 +641,29 @@ pub fn sweep_decks_for_seed(seed: u64) -> (DeckFile, DeckFile) {
     let corps = sample(Side::Corp);
     let runners = sample(Side::Runner);
     assert!(!corps.is_empty() && !runners.is_empty(), "the embedded sample decks should yield at least one matchup");
-    let corp = corps[(seed % corps.len() as u64) as usize].clone();
-    let runner = runners[(seed % runners.len() as u64) as usize].clone();
+    let (c, r) = (corps.len() as u64, runners.len() as u64);
+    let corp = corps[(seed % c) as usize].clone();
+    let runner = runners[((seed + seed / pairing_cycle(c, r)) % r) as usize].clone();
     (corp, runner)
+}
+
+/// How many seeds `sweep_decks_for_seed` plays before its pairings would
+/// repeat: `lcm(C, R)`. At each multiple the Runner rotation steps one
+/// deck on, so the next cycle pairs every Runner deck with Corp decks it
+/// has not met.
+///
+/// **Without the step, two lists whose lengths share a factor meet only
+/// part of each other.** At Rebellion Without Rehearsal Stage 8c the pool
+/// was 24 Corp decks and 18 Runner decks, gcd 6, and `seed % C` against
+/// `seed % R` gave 72 pairings in 256 seeds, each Runner deck against 4
+/// Corp decks. Safety Net's Lobisomem was then never seen in 768 games
+/// while it is installed in about one game in four. With the step, the
+/// 256 seeds are about 256 pairings, and after `C × R` seeds every one.
+fn pairing_cycle(corps: u64, runners: u64) -> u64 {
+    fn gcd(a: u64, b: u64) -> u64 {
+        if b == 0 { a } else { gcd(b, a % b) }
+    }
+    corps / gcd(corps, runners) * runners
 }
 
 /// The card universe the sweep's card gate demands at `seed_count` seeds:
@@ -813,6 +835,19 @@ mod tests {
         HistoryEntry { turn_number: 1, side, action, events }
     }
 
+    /// The deep sweep's 256 seeds are 256 different pairings, whatever the
+    /// two lists' lengths share (`pairing_cycle`): at 24 Corp and 18 Runner
+    /// decks they were 72, each Runner deck against 4 Corp decks.
+    #[test]
+    fn the_deep_sweep_plays_a_different_pairing_every_seed() {
+        let corps = netrunner_core::decks::for_side(Side::Corp).into_iter().filter(|deck| matches!(deck.category, DeckCategory::Sample | DeckCategory::Sweep)).count() as u64;
+        let runners = netrunner_core::decks::for_side(Side::Runner).into_iter().filter(|deck| matches!(deck.category, DeckCategory::Sample | DeckCategory::Sweep)).count() as u64;
+        let pairings: std::collections::HashSet<(String, String)> = (0..256).map(sweep_decks_for_seed).map(|(corp, runner)| (corp.id, runner.id)).collect();
+        assert_eq!(pairings.len() as u64, (corps * runners).min(256));
+        assert_eq!(pairing_cycle(24, 18), 72);
+        assert_eq!(pairing_cycle(23, 17), 391);
+    }
+
     #[test]
     fn counts_actions_events_cards_and_runs_from_one_entry() {
         let mut coverage = Coverage::default();
@@ -901,7 +936,7 @@ mod tests {
             side: Side::Corp,
             card_type: CardType::Operation,
             triggers: vec![TriggeredEffect {
-                subject: None, when: None, acts_on_subject: false, first_each_turn: false,
+                subject: None, when: None, acts_on_subject: false, first_each_turn: false, from_heap: false,
                 text: None,
                 trigger: Trigger::OnPlay,
                 effects: vec![Effect::GainCredits(Side::Corp, 1)],

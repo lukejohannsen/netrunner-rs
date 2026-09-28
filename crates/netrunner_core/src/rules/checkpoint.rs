@@ -189,7 +189,7 @@ mod tests {
             card_type: CardType::Identity,
             triggers: vec![TriggeredEffect {
                 trigger: Trigger::OnAgendaStolen,
-                subject: Some(Subject::Any), when: None, acts_on_subject: false, first_each_turn: false,
+                subject: Some(Subject::Any), when: None, acts_on_subject: false, first_each_turn: false, from_heap: false,
                 text: None,
                 effects: vec![Effect::DealDamage(DamageType::Net, 1)],
                 requirement: None,
@@ -199,7 +199,7 @@ mod tests {
         let registry = CardRegistry::from_cards(vec![agenda, personal_evolution]);
         let mut state = GameState { phase: GamePhase::Action(Side::Runner), ..Default::default() };
         state.corp.identity = Some(CardId("personal_evolution".to_string()));
-        state.runner.scored_agendas = vec![CardId("the_last_agenda".to_string())];
+        state.runner.scored_agendas = vec![crate::rules::ScoredAgenda::plain(CardId("the_last_agenda".to_string()))];
         assert!(state.runner.grip.is_empty(), "one net damage would flatline");
 
         let stolen = GameEvent::AgendaStolen { card: CardId("the_last_agenda".to_string()), agenda_points: 7 };

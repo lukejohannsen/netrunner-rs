@@ -117,7 +117,7 @@ pub(crate) fn zone_card_ids(state: &GameState, chooser: Side, zone: &CardZoneRef
         },
         CardZoneRef::OpponentScoreArea | CardZoneRef::OwnScoreArea => match owner {
             Side::Corp => state.corp.scored_agendas.iter().map(|s| s.card.clone()).collect(),
-            Side::Runner => state.runner.scored_agendas.clone(),
+            Side::Runner => state.runner.scored_agendas.iter().map(|s| s.card.clone()).collect(),
         },
         CardZoneRef::OpponentInstalled | CardZoneRef::OwnInstalled => match owner {
             Side::Corp => state.corp.installed.iter().map(|c| c.card.clone()).collect(),
