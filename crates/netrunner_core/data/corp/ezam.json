@@ -76,7 +76,7 @@
       "effect": {
         "ModifyStrength": {
           "delta": 1,
-          "each_ice": true,
+          "ice": "EachIce",
           "duration": "Run"
         }
       }

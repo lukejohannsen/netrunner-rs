@@ -149,6 +149,7 @@ pub fn describe_cost(cost: &Cost) -> String {
         Cost::RemoveSelfFromGame => "remove this card from the game".to_string(),
         Cost::RevealAndTrashSelf => "reveal and trash this card from your hand".to_string(),
         Cost::RevealSelf => "reveal this card".to_string(),
+        Cost::DerezSelf => "derez this card".to_string(),
         Cost::AddSelfToHq => "add this card to HQ".to_string(),
         Cost::TrashRandomFromHq(n) => format!("trash {} at random from HQ", plural(*n, "card", "cards")),
         Cost::AnyOf(options) => options.iter().map(describe_cost).collect::<Vec<_>>().join(" or "),
@@ -207,8 +208,12 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
         Effect::LoseCreditsAmount(side, amount) => format!("{} loses credits equal to {}", who(*side), describe_amount(amount)),
         Effect::DealDamage(kind, n) => format!("do {} {} damage", n, damage_word(kind)),
         Effect::DealDamageAmount(kind, amount) => format!("do {} damage equal to {}", damage_word(kind), describe_amount(amount)),
-        Effect::ModifyStrength { delta, each_ice, duration } => {
-            let which = if *each_ice { "each piece of ice gets" } else { "the encountered ice gets" };
+        Effect::ModifyStrength { delta, ice, duration } => {
+            let which = match ice {
+                netrunner_core::dsl::StrengthOf::Encountered => "the encountered ice gets",
+                netrunner_core::dsl::StrengthOf::EachIce => "each piece of ice gets",
+                netrunner_core::dsl::StrengthOf::This => "this ice gets",
+            };
             let sign = if *delta >= 0 { "+" } else { "" };
             let until = match duration {
                 EffectDuration::Encounter => "this encounter",
@@ -350,8 +355,10 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
             format!("look at the top {} of {}", plural(*count, "card", "cards"), if *deck == Side::Corp { "R&D" } else { "the stack" })
         }
         Effect::HostRigCardOnInstall { .. } => "host it on an installed card".to_string(),
-        Effect::Prohibit { what, until, copies_of_it } => {
+        Effect::Prohibit { what, until, copies_of_it, this_install } => {
             let what = match (what, copies_of_it) {
+                (Prohibition::ScoreAgendas, _) if *this_install => "the Corp cannot score that card",
+                (Prohibition::StealOrTrash, _) if *this_install => "the Runner cannot steal or trash that card",
                 (Prohibition::StealOrTrash, false) => "the Runner cannot steal or trash cards",
                 (Prohibition::StealOrTrash, true) => "the Runner cannot steal or trash copies of that card",
                 (Prohibition::ScoreAgendas, false) => "the Corp cannot score agendas",

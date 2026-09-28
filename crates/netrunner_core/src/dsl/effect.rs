@@ -152,18 +152,22 @@ pub enum Effect {
     /// param: damage in this engine's model always targets the Runner,
     /// same as `apply_damage` itself.
     DealDamage(DamageType, usize),
-    /// A piece of ice gets `delta` strength for a duration: the encountered
-    /// ice (Leech's "the ice you are encountering gets -1 strength for the
-    /// remainder of this encounter"), or with `each_ice` every piece of ice
-    /// wherever it is installed (ezaM's "each piece of ice gets +1 strength
-    /// for the remainder of this run"), a `Lingering::Strength` on
-    /// `On::EachIce`. One effect with a word rather than a second beside
-    /// it: the two sentences differ only in which ice and for how long,
-    /// which is what a lingering effect already carries.
+    /// A piece of ice gets `delta` strength for a duration: which ice is
+    /// `ice` (`StrengthOf`) — the encountered ice (Leech's "the ice you are
+    /// encountering gets -1 strength for the remainder of this
+    /// encounter"), every piece of ice wherever it is installed (ezaM's
+    /// "each piece of ice gets +1 strength for the remainder of this run",
+    /// a `Lingering::Strength` on `On::EachIce`), or the ice resolving
+    /// (Brasília Government Grid's "the rezzed ice gets +3 strength for the
+    /// remainder of that run", the rezzed ice being what its trigger acts
+    /// on). One effect with a word rather than a second beside it: the
+    /// sentences differ only in which ice and for how long, which is what
+    /// a lingering effect already carries. The word was `each_ice: bool`
+    /// until the third ice.
     ModifyStrength {
         delta: i32,
-        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
-        each_ice: bool,
+        #[serde(default, skip_serializing_if = "StrengthOf::is_encountered")]
+        ice: StrengthOf,
         duration: EffectDuration,
     },
     /// `Side`-explicit for the same reason as `GainCredits`.
@@ -719,6 +723,12 @@ pub enum Effect {
         /// `EffectRequirement::ActingCardMatches` inside it).
         #[serde(default, skip_serializing_if = "Option::is_none")]
         if_rezzed: Option<Box<Effect>>,
+        /// Resolves as the card that landed, once it has — Warm Reception's
+        /// "You cannot score that card this turn". `then` resolves as the
+        /// card that offered the install and `if_rezzed` only when the card
+        /// was rezzed too; neither is the card installed, unrezzed.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        if_installed: Option<Box<Effect>>,
     },
     /// Installs the resolving card — `acting_card`, a card sitting in the
     /// Runner's grip — into the rig, **paying** its install cost (with the
@@ -1037,6 +1047,13 @@ pub enum Effect {
         /// the card revealed (`lingering::On::CopiesOf`).
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
         copies_of_it: bool,
+        /// Only about the install resolving it — Warm Reception's "You
+        /// cannot score that card this turn", said by the text install's
+        /// `if_installed` rider as the card that landed
+        /// (`lingering::On::Install`). The handle is public, as every
+        /// install's is, so a facedown card is bound without being named.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        this_install: bool,
     },
     /// Places `0` advancement counters on `acting_card` — e.g. Seamless
     /// Launch's "place 2 advancement counters on 1 installed card", Flood
@@ -1462,6 +1479,25 @@ pub enum Preventable {
     /// "Prevent a player from trashing 1 installed program or piece of
     /// hardware" — one installed card the filter admits.
     Trash(CardFilter),
+}
+
+/// Which ice an `Effect::ModifyStrength` changes.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum StrengthOf {
+    /// The ice being encountered.
+    #[default]
+    Encountered,
+    /// Each piece of ice, wherever it is installed, those installed later
+    /// too.
+    EachIce,
+    /// The Corp install resolving the effect (`acting_install`).
+    This,
+}
+
+impl StrengthOf {
+    fn is_encountered(&self) -> bool {
+        *self == StrengthOf::Encountered
+    }
 }
 
 /// What a player cannot do while an `Effect::Prohibit` holds. Only what a

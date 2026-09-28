@@ -291,6 +291,7 @@ pub fn in_effect(view: &ClientView, registry: &CardRegistry) -> Vec<String> {
                     Prohibition::ScoreAgendas => format!("the Corp cannot score copies of {}", title(card)),
                     Prohibition::SpendOrLoseCreditPool => "the Runner cannot spend or lose credits from their credit pool".to_string(),
                 },
+                (Lingering::Cannot(Prohibition::ScoreAgendas), On::Install(_)) => "the Corp cannot score the card it installed".to_string(),
                 (Lingering::Cannot(what), _) => match what {
                     Prohibition::StealOrTrash => "the Runner cannot steal or trash cards".to_string(),
                     Prohibition::ScoreAgendas => "the Corp cannot score agendas".to_string(),

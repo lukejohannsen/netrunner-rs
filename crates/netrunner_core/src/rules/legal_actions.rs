@@ -778,8 +778,8 @@ fn hand_ability_candidates(state: &GameState, registry: &CardRegistry) -> Vec<Pl
 /// (Runner rig), keyed off each card's registry definition.
 fn advance_score_trash_candidates(state: &GameState, registry: &CardRegistry) -> Vec<PlayerAction> {
     let mut candidates = Vec::new();
-    let cannot_score = continuous::cannot(state, registry, Prohibition::ScoreAgendas);
     for installed in &state.corp.installed {
+        let cannot_score = continuous::cannot_install(state, registry, Prohibition::ScoreAgendas, installed.install_id);
         let Some(card) = registry.get(&installed.card) else { continue };
         if card.advancement_requirement.is_some() {
             candidates.push(PlayerAction::AdvanceCard { target: installed.install_id });

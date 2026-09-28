@@ -2444,7 +2444,7 @@ fn score_agenda(
     paid_ability::require_no_window(state)?;
     // Luminal Transubstantiation's lockout. Asked here and by
     // `legal_actions`, of the same predicate, so the two can't disagree.
-    if continuous::cannot(state, registry, Prohibition::ScoreAgendas) {
+    if continuous::cannot_install(state, registry, Prohibition::ScoreAgendas, target) {
         return Err(RulesError::CannotScoreAgendasThisTurn);
     }
 
@@ -5183,7 +5183,7 @@ mod tests {
             Side::Runner,
             Trigger::Paid,
             Some(Cost::Credits(1)),
-            Effect::ModifyStrength { delta: 1, each_ice: false, duration: crate::dsl::EffectDuration::Encounter },
+            Effect::ModifyStrength { delta: 1, ice: crate::dsl::StrengthOf::Encountered, duration: crate::dsl::EffectDuration::Encounter },
         ));
 
         let (next, events) = apply_action(
@@ -5530,7 +5530,7 @@ mod tests {
             Side::Runner,
             Trigger::Paid,
             Some(Cost::Credits(1)),
-            Effect::ModifyStrength { delta: 1, each_ice: false, duration: crate::dsl::EffectDuration::Encounter },
+            Effect::ModifyStrength { delta: 1, ice: crate::dsl::StrengthOf::Encountered, duration: crate::dsl::EffectDuration::Encounter },
         ));
 
         let (next, _events) = apply_action(
@@ -5570,7 +5570,7 @@ mod tests {
             Side::Runner,
             Trigger::Paid,
             Some(Cost::Credits(1)),
-            Effect::ModifyStrength { delta: 1, each_ice: false, duration: crate::dsl::EffectDuration::Encounter },
+            Effect::ModifyStrength { delta: 1, ice: crate::dsl::StrengthOf::Encountered, duration: crate::dsl::EffectDuration::Encounter },
         ));
 
         let result = apply_action(
@@ -5688,7 +5688,7 @@ mod tests {
             Side::Runner,
             Trigger::Paid,
             Some(Cost::Credits(1)),
-            Effect::ModifyStrength { delta: 1, each_ice: false, duration: crate::dsl::EffectDuration::Encounter },
+            Effect::ModifyStrength { delta: 1, ice: crate::dsl::StrengthOf::Encountered, duration: crate::dsl::EffectDuration::Encounter },
         ));
 
         let result = apply_action(
@@ -5715,7 +5715,7 @@ mod tests {
             Side::Runner,
             Trigger::Paid,
             Some(Cost::Credits(1)),
-            Effect::ModifyStrength { delta: 1, each_ice: false, duration: crate::dsl::EffectDuration::Encounter },
+            Effect::ModifyStrength { delta: 1, ice: crate::dsl::StrengthOf::Encountered, duration: crate::dsl::EffectDuration::Encounter },
         ));
 
         let result = apply_action(
@@ -5739,7 +5739,7 @@ mod tests {
             Side::Runner,
             Trigger::OnEncounter,
             Some(Cost::Credits(1)),
-            Effect::ModifyStrength { delta: 1, each_ice: false, duration: crate::dsl::EffectDuration::Encounter },
+            Effect::ModifyStrength { delta: 1, ice: crate::dsl::StrengthOf::Encountered, duration: crate::dsl::EffectDuration::Encounter },
         ));
 
         let result = apply_action(

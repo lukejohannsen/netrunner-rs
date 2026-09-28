@@ -994,6 +994,10 @@ pub struct PendingInstallFromZone {
     pub rez: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub if_rezzed: Option<Box<Effect>>,
+    /// `Effect::PromptInstallCorpCard::if_installed`, resolved as the card
+    /// that landed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub if_installed: Option<Box<Effect>>,
 }
 
 /// A payment that could come from more than one place, waiting on the payer

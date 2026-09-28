@@ -200,6 +200,14 @@ pub enum Cost {
     /// an access. Payable while the card is installed. Composition didn't
     /// work: the only reveal was of a card leaving the hand.
     RevealSelf,
+    /// The acting Corp install is derezzed — Warm Reception's "you may
+    /// derez this asset to derez another installed card", a nested cost
+    /// (CR 1.16.11a) the Corp pays or declines. `Derez`'s own card: that
+    /// cost chooses among installs a filter admits, and no filter names the
+    /// card itself (`Not` is read off a definition, so `Not(NotSourceCard)`
+    /// would take every copy). Payable while it is installed and rezzed
+    /// (CR 8.1.3).
+    DerezSelf,
     /// The acting Corp install goes back to HQ — Janaína “JK” Dumont
     /// Kindelán's "[click], **add this asset to HQ**:". Through the one door
     /// an install leaves the table by (`rules::uninstall`), so its counters

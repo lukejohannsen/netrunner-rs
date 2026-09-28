@@ -1420,6 +1420,13 @@ pub(crate) fn resolve_choose_server(
             _ => None,
         });
         events.extend(placed);
+        // The rider about the card that landed (Warm Reception's "you
+        // cannot score that card this turn"), as that card.
+        if let (Some(rider), Some(install)) = (&pending_install.if_installed, landed) {
+            let mut ctx = ability::ResolutionContext::for_parked(Some(install), Some(&card_id));
+            ctx.prompting_card = prompting_card.as_ref().or(source_card.as_ref());
+            events.extend(ability::evaluate_effect(state, rider, &mut ctx, registry)?);
+        }
         // "Install and rez" (Reanimation Protocol): the rest of the total
         // off the rez, and the rider as the card rezzed if it was.
         if let (true, Some(install)) = (pending_install.rez, landed) {

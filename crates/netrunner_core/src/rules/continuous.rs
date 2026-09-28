@@ -577,6 +577,12 @@ pub fn cannot_about(state: &GameState, _registry: &CardRegistry, what: Prohibiti
     lingering::prohibits_about(state, what, card)
 }
 
+/// [`cannot`] about one install: also what binds only it (Warm
+/// Reception). A score asks this, of the agenda scored.
+pub fn cannot_install(state: &GameState, _registry: &CardRegistry, what: Prohibition, install: InstallId) -> bool {
+    lingering::prohibits_install(state, what, install)
+}
+
 /// What the table adds to the cost of trashing the Corp install `install`.
 pub(crate) fn trash_cost_delta(state: &GameState, registry: &CardRegistry, install: InstallId) -> i32 {
     let Some(target) = Target::corp_install(state, registry, install) else { return 0 };

@@ -1,0 +1,56 @@
+{
+  "id": "brasilia_government_grid",
+  "title": "Brasília Government Grid",
+  "side": "Corp",
+  "card_type": "Upgrade",
+  "cost": 0,
+  "trash_cost": 3,
+  "triggers": [
+    {
+      "trigger": "OnRez",
+      "subject": "Any",
+      "when": {
+        "Card": "Ice"
+      },
+      "acts_on_subject": true,
+      "requirement": {
+        "And": [
+          "OncePerTurn",
+          "RezzedDuringRunAgainstThisServer"
+        ]
+      },
+      "effects": [
+        {
+          "OfferPaidChoice": {
+            "side": "Corp",
+            "cost": {
+              "Derez": {
+                "filter": {
+                  "All": [
+                    "Ice",
+                    "NotSourceCard"
+                  ]
+                },
+                "count": 1
+              }
+            },
+            "if_paid": {
+              "ModifyStrength": {
+                "delta": 3,
+                "ice": "This",
+                "duration": "Run"
+              }
+            },
+            "if_declined": {
+              "Sequence": []
+            },
+            "text": "you may derez another installed piece of ice. If you do, the rezzed ice gets +3 strength for the remainder of that run"
+          }
+        }
+      ],
+      "text": "When you rez a piece of ice during a run against this server, you may derez another installed piece of ice. If you do, the rezzed ice gets +3 strength for the remainder of that run."
+    }
+  ],
+  "numeric_id": 34104,
+  "is_playable": true
+}

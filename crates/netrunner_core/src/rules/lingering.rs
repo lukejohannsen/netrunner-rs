@@ -221,6 +221,14 @@ fn in_force_about(list: &[LingeringEffect], what: Prohibition, card: &CardId, ho
         || list.iter().any(|effect| effect.what == Lingering::Cannot(what) && effect.on == On::CopiesOf(card.clone()) && holds(effect))
 }
 
+/// Whether a prohibition is in force about the install `install`: bound on
+/// its player, or on that install alone (Warm Reception's "you cannot
+/// score that card this turn"). The question a score asks.
+pub fn prohibits_install(state: &GameState, what: Prohibition, install: InstallId) -> bool {
+    in_force(&state.lingering, what, |effect| effect.holds(state))
+        || state.lingering.iter().any(|effect| effect.what == Lingering::Cannot(what) && effect.on == On::Install(install) && effect.holds(state))
+}
+
 /// A rig card's strength before the table is asked: what it prints (as
 /// installed) and the pumps still running on it.
 pub fn rig_strength(state: &GameState, card: &InstalledRunnerCard) -> i32 {
