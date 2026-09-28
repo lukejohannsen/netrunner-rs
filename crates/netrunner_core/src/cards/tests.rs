@@ -14480,4 +14480,134 @@ mod rebellion_without_rehearsal {
         assert!(state.corp.installed.iter().any(|card| card.card == id("ice_wall")));
         assert_eq!(state.this_turn.installed_from_hq(), 1, "an install from HQ");
     }
+
+    // ---- Stage 5a: a rez's price, counters on a rez, a mandate ----
+
+    /// From a run on HQ approaching its only ice, rezzed by the Corp, to
+    /// the encounter window.
+    fn rez_and_encounter(state: &GameState, registry: &CardRegistry, ice: &str) -> GameState {
+        let (state, _) = apply_action(state, registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run HQ");
+        let (state, _) = crate::rules::test_support::continue_run(&state, registry).expect("approach the ice");
+        let (state, _) = apply_action(&state, registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner passes approach");
+        let (mut state, _) = apply_action(&state, registry, PlayerAction::RezIce { ice: fixture_install_id(ice) }).expect("rez it");
+        if state.pending_payment.is_some() {
+            return state;
+        }
+        for side in [Side::Runner, Side::Corp] {
+            state = apply_action(&state, registry, PlayerAction::PassPriority { side }).expect("pass approach").0;
+        }
+        state
+    }
+
+    #[test]
+    fn piranhas_costs_a_bad_publicity_or_a_tag_to_rez_and_ends_the_run_while_hq_outnumbers_the_grip() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.installed = vec![ice_at_hq("piranhas")];
+        state.corp.installed[0].rezzed = false;
+        state.corp.r_and_d = vec![id("hedge_fund"); 3];
+        state.corp.hq = vec![id("hedge_fund"); 3];
+        state.runner.grip = vec![id("sure_gamble"); 2];
+
+        // Untagged, bad publicity is the one way to pay, and it is taken
+        // unasked.
+        let untagged = rez_and_encounter(&state, &registry, "piranhas");
+        assert!(untagged.corp.installed[0].rezzed);
+        assert_eq!(untagged.corp.bad_publicity, 1);
+        let (fired, _) = let_subroutines_fire(&untagged, &registry);
+        let (fired, _) = apply_action(&fired, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("the Corp draws");
+        let (fired, _) = close_all_windows(fired, &registry);
+        assert_eq!(fired.corp.hq.len(), 4, "drew 1");
+        assert_eq!(fired.runner.grip.len(), 1, "1 net damage");
+        assert!(fired.active_run.is_none(), "4 cards in HQ, 1 in the grip: the run ended");
+
+        // Tagged, the Corp chooses; removing the tag leaves the bad
+        // publicity where it was. Declining the draw with 4 in the grip
+        // leaves 3 against 3, which is not more.
+        let mut tagged = state.clone();
+        tagged.runner.tags = 1;
+        tagged.runner.grip = vec![id("sure_gamble"); 4];
+        let asked = rez_and_encounter(&tagged, &registry, "piranhas");
+        assert!(matches!(&asked.pending_payment, Some(crate::rules::PendingPayment { question: crate::rules::PaymentAsk::Alternative { .. }, .. })));
+        let (paid, _) = apply_action(&asked, &registry, PlayerAction::ResolvePendingChoice { option_index: 1 }).expect("remove a tag");
+        assert_eq!((paid.runner.tags, paid.corp.bad_publicity), (0, 0));
+        assert!(paid.corp.installed[0].rezzed);
+        let mut paid = paid;
+        for side in [Side::Runner, Side::Corp] {
+            paid = apply_action(&paid, &registry, PlayerAction::PassPriority { side }).expect("pass approach").0;
+        }
+        let (fired, _) = let_subroutines_fire(&paid, &registry);
+        let (fired, _) = apply_action(&fired, &registry, PlayerAction::ResolvePendingChoice { option_index: 1 }).expect("no draw");
+        let (fired, _) = close_all_windows(fired, &registry);
+        assert_eq!((fired.corp.hq.len(), fired.runner.grip.len()), (3, 3));
+        assert!(fired.active_run.is_some(), "HQ does not outnumber the grip");
+    }
+
+    #[test]
+    fn working_prototype_counts_every_rez_including_its_own_and_spends_counters_for_credits_and_a_resource() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.installed = vec![in_root("working_prototype", ServerId::Remote(0), false), in_root("pad_campaign", ServerId::Remote(1), false)];
+        state.runner.rig = vec![rig("juli_moreira_lee")];
+        state.runner.stack = vec![id("sure_gamble")];
+        let (state, _) = apply_action(&state, &registry, PlayerAction::RezIce { ice: fixture_install_id("working_prototype") }).expect("rez it");
+        assert_eq!(state.corp.installed[0].counters, 1, "its own rez");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::RezIce { ice: fixture_install_id("pad_campaign") }).expect("rez another");
+        assert_eq!(state.corp.installed[0].counters, 2, "another card's rez");
+
+        let (credits, clicks) = (state.corp.resources.credits, state.corp.resources.clicks);
+        let (spent, _) = apply_action(&state, &registry, PlayerAction::ActivateAbility { target: fixture_install_id("working_prototype"), ability_index: 0 })
+            .expect("[click], 1 counter: gain 3");
+        assert_eq!(spent.corp.resources.credits, Credits(credits.0 + 3));
+        assert_eq!(spent.corp.resources.clicks, Clicks(clicks.0 - 1));
+        assert_eq!(spent.corp.installed[0].counters, 1);
+        assert!(apply_action(&spent, &registry, PlayerAction::ActivateAbility { target: fixture_install_id("working_prototype"), ability_index: 1 }).is_err(), "5 counters");
+
+        let mut five = state.clone();
+        five.corp.installed[0].counters = 5;
+        let (five, _) = apply_action(&five, &registry, PlayerAction::ActivateAbility { target: fixture_install_id("working_prototype"), ability_index: 1 })
+            .expect("[click], 5 counters: gain 6 and stack a resource");
+        let five = select(&five, &registry, &[0]);
+        assert_eq!(five.corp.resources.credits, Credits(credits.0 + 6));
+        assert_eq!(five.corp.installed[0].counters, 0);
+        assert!(five.runner.rig.is_empty(), "the resource left the rig");
+        assert_eq!(five.runner.stack.last(), Some(&id("juli_moreira_lee")), "on top of the stack");
+    }
+
+    #[test]
+    fn sudden_commandment_draws_two_plays_a_non_terminal_operation_and_sells_a_click_only_as_the_first_mandate() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.r_and_d = vec![id("hedge_fund"); 6];
+        state.corp.hq = vec![id("sudden_commandment"), id("sudden_commandment")];
+        at_threat(&mut state, 4);
+
+        // The first plays the second out of HQ. The second is not the
+        // turn's first mandate and offers nothing; the first still is, and
+        // does, after the second has resolved.
+        let (state, _) = apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: id("sudden_commandment") }).expect("play one");
+        assert_eq!(state.corp.hq.len(), 3, "drew 2");
+        let second = state.corp.hq.iter().position(|card| card == &id("sudden_commandment")).expect("the other copy");
+        let state = select(&state, &registry, &[second]);
+        assert_eq!(state.corp.hq.len(), 4, "the second drew 2");
+        let state = select(&state, &registry, &[]);
+        let credits = state.corp.resources.credits;
+        let clicks = state.corp.resources.clicks;
+        assert!(state.pending_paid_choice.is_some(), "the first mandate offers the click");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::AcceptPendingPaidChoice { cost_option_index: None }).expect("pay 3 for a click");
+        assert_eq!(state.corp.resources.credits, Credits(credits.0 - 3));
+        assert_eq!(state.corp.resources.clicks, Clicks(clicks.0 + 1));
+        assert!(state.pending_paid_choice.is_none() && state.pending_decision.is_none(), "one offer, not two");
+
+        // Below threat 3 there is no offer at all.
+        let mut low = base_state();
+        low.corp.r_and_d = vec![id("hedge_fund"); 6];
+        low.corp.hq = vec![id("sudden_commandment")];
+        let (low, _) = apply_action(&low, &registry, PlayerAction::PlayOperation { card_id: id("sudden_commandment") }).expect("play it");
+        let hedge = low.corp.hq.iter().position(|card| card == &id("hedge_fund")).expect("a drawn operation");
+        let credits = low.corp.resources.credits;
+        let low = select(&low, &registry, &[hedge]);
+        assert_eq!(low.corp.resources.credits, Credits(credits.0 + 4), "Hedge Fund played from HQ");
+        assert!(low.pending_paid_choice.is_none());
+    }
 }

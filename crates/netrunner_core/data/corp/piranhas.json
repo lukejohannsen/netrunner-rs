@@ -1,0 +1,77 @@
+{
+  "id": "piranhas",
+  "title": "Piranhas",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "CodeGate"
+  },
+  "cost": 5,
+  "strength": 6,
+  "rez_alternatives": [
+    {
+      "cost": {
+        "TakeBadPublicity": 1
+      }
+    },
+    {
+      "cost": {
+        "RemoveTags": 1
+      }
+    }
+  ],
+  "subroutines": [
+    {
+      "text": "You may draw 1 card.",
+      "effect": {
+        "PresentChoice": {
+          "chooser": "Corp",
+          "options": [
+            {
+              "DrawCards": [
+                "Corp",
+                1
+              ]
+            },
+            {
+              "Sequence": []
+            }
+          ],
+          "texts": [
+            "draw 1 card",
+            ""
+          ]
+        }
+      }
+    },
+    {
+      "text": "Do 1 net damage.",
+      "effect": {
+        "DealDamage": [
+          "Net",
+          1
+        ]
+      }
+    },
+    {
+      "text": "End the run if there are more cards in HQ than in the grip.",
+      "effect": {
+        "EffectIf": {
+          "condition": {
+            "MoreThan": [
+              {
+                "CardsInHand": "Corp"
+              },
+              {
+                "CardsInHand": "Runner"
+              }
+            ]
+          },
+          "effect": "EndTheRun"
+        }
+      }
+    }
+  ],
+  "triggers": [],
+  "numeric_id": 34117,
+  "is_playable": true
+}
