@@ -285,7 +285,7 @@ pub(crate) fn eligible_positions(
 /// actions, which nothing marks; the copy the play filed is the last
 /// faceup one of that card, since nothing reaches Archives between the
 /// filing and the resolution it is waiting behind.
-fn resolving_operation_in(state: &GameState, registry: &CardRegistry, chooser: Side, zone: &CardZoneRef, card: &CardId) -> Option<usize> {
+pub(crate) fn resolving_operation_in(state: &GameState, registry: &CardRegistry, chooser: Side, zone: &CardZoneRef, card: &CardId) -> Option<usize> {
     let corp_archives = matches!(zone, CardZoneRef::OwnArchives | CardZoneRef::OpponentDiscard) && owning_side(chooser, zone) == Side::Corp;
     if !corp_archives || registry.get(card)?.card_type != crate::dsl::CardType::Operation {
         return None;
@@ -364,6 +364,7 @@ fn instance_matches_filter(
         CardFilter::Unrezzed => corp_install.is_some_and(|c| !c.rezzed),
         // Only a card in Archives lies facedown in a zone a selection reads.
         CardFilter::Facedown => is_corp_archives(chooser, zone) && state.corp.archives.get(position).is_some_and(|archived| archived.facedown),
+        CardFilter::Faceup => is_corp_archives(chooser, zone) && state.corp.archives.get(position).is_some_and(|archived| !archived.facedown),
         // The kind is the definition's half; this is the count.
         CardFilter::HostsCounters(_) => {
             let rig_card = (installed_zone && owning_side(chooser, zone) == Side::Runner).then(|| state.runner.rig.get(position)).flatten();

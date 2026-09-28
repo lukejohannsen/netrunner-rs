@@ -3782,8 +3782,15 @@ pub(crate) fn resolve_amount(amount: &Amount, ctx: &ResolutionContext<'_>, state
         // By discriminant: ice is one card type (CR 2.15.2) whatever its
         // `IceType`, which is a subtype.
         Amount::CardTypesAmongFaceupInArchives => {
+            // Not the operation counting them: it is in the play area until
+            // it has resolved (CR 8.6.7a), though the engine files it early
+            // — Armed Asset Protection would have counted its own type.
+            let resolving = ctx.acting_card.and_then(|card| {
+                crate::rules::pending_choice::resolving_operation_in(state, registry, Side::Corp, &crate::dsl::CardZoneRef::OwnArchives, card)
+            });
             let mut types: Vec<std::mem::Discriminant<crate::dsl::CardType>> = Vec::new();
-            for def in state.corp.archives.iter().filter(|archived| !archived.facedown).filter_map(|archived| registry.get(&archived.card)) {
+            let faceup = state.corp.archives.iter().enumerate().filter(|(position, archived)| !archived.facedown && Some(*position) != resolving);
+            for def in faceup.filter_map(|(_, archived)| registry.get(&archived.card)) {
                 let kind = std::mem::discriminant(&def.card_type);
                 if !types.contains(&kind) {
                     types.push(kind);
@@ -3866,6 +3873,8 @@ pub(crate) fn resolve_amount(amount: &Amount, ctx: &ResolutionContext<'_>, state
         }
         Amount::CardsInHand(Side::Corp) => state.corp.hq.len() as u32,
         Amount::CardsInHand(Side::Runner) => state.runner.grip.len() as u32,
+        Amount::Credits(Side::Corp) => state.corp.resources.credits.0,
+        Amount::Credits(Side::Runner) => state.runner.resources.credits.0,
         Amount::TimesThisTurnOnThisCopy(trigger) => ctx
             .acting_install
             .and_then(|install| state.corp.installed.iter().find(|installed| installed.install_id == install))

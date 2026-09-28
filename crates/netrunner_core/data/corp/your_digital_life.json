@@ -1,0 +1,25 @@
+{
+  "id": "your_digital_life",
+  "title": "Your Digital Life",
+  "side": "Corp",
+  "card_type": "Operation",
+  "cost": 2,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "GainCreditsAmount": [
+            "Corp",
+            {
+              "CardsInHand": "Corp"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "numeric_id": 34056,
+  "is_playable": true
+}

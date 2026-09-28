@@ -308,6 +308,12 @@ pub enum CardFilter {
     /// facedown card in Archives faceup". Instance-level: which way up a
     /// card lies is state, and matches nothing outside Archives.
     Facedown,
+    /// A faceup card in Archives — Armed Asset Protection's "if any of
+    /// those cards are agendas", of the faceup cards it counts. `Facedown`'s
+    /// other half. Composition didn't work: `Not` is read off a definition,
+    /// where which way up a card lies is not, so `Not(Facedown)` matches
+    /// nothing.
+    Faceup,
     /// A card hosting at least one counter of this kind — Business As
     /// Usual's "Remove all virus counters from 1 installed card", so a card
     /// with nothing to remove is never offered. The kind is the card's own
@@ -400,6 +406,7 @@ pub fn card_matches_filter(card: &CardDefinition, filter: &CardFilter) -> bool {
         CardFilter::AgendaPointsAtMostRunnerTags => card.agenda_points.is_some(),
         CardFilter::AgendaPointsAtMost(points) => card.card_type == CardType::Agenda && card.agenda_points.is_some_and(|printed| printed <= *points),
         CardFilter::Facedown => true,
+        CardFilter::Faceup => true,
         CardFilter::HostsCounters(kind) => card.counter_kind == Some(*kind),
         CardFilter::AccessedDuringLastRun => true,
         CardFilter::All(filters) => filters.iter().all(|filter| card_matches_filter(card, filter)),

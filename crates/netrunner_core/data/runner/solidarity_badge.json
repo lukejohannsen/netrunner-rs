@@ -1,0 +1,84 @@
+{
+  "id": "solidarity_badge",
+  "title": "Solidarity Badge",
+  "side": "Runner",
+  "card_type": "Hardware",
+  "cost": 1,
+  "unique": true,
+  "counter_kind": "Power",
+  "triggers": [
+    {
+      "trigger": "OnTrashedFromAccess",
+      "subject": "Any",
+      "first_each_turn": true,
+      "effects": [
+        {
+          "AddCounters": 1
+        }
+      ],
+      "text": "The first time each turn you trash a Corp card, place 1 power counter on this hardware."
+    },
+    {
+      "trigger": "OnCardTrashed",
+      "subject": "Any",
+      "when": {
+        "OwnedBy": {
+          "owner": "Corp",
+          "whose": "Runner"
+        }
+      },
+      "first_each_turn": true,
+      "effects": [
+        {
+          "AddCounters": 1
+        }
+      ],
+      "text": "The first time each turn you trash a Corp card, place 1 power counter on this hardware."
+    },
+    {
+      "trigger": "OnTurnStart",
+      "requirement": {
+        "ThisCardCountersAtLeast": 1
+      },
+      "effects": [
+        {
+          "OfferPaidChoice": {
+            "side": "Runner",
+            "cost": {
+              "RemoveCounters": 1
+            },
+            "if_paid": {
+              "PresentChoice": {
+                "chooser": "Runner",
+                "options": [
+                  {
+                    "DrawCards": [
+                      "Runner",
+                      1
+                    ]
+                  },
+                  {
+                    "RemoveTags": {
+                      "Fixed": 1
+                    }
+                  }
+                ],
+                "texts": [
+                  "draw 1 card",
+                  "remove 1 tag"
+                ]
+              }
+            },
+            "if_declined": {
+              "Sequence": []
+            },
+            "text": "you may remove 1 hosted power counter to draw 1 card or remove 1 tag"
+          }
+        }
+      ],
+      "text": "When your turn begins, you may remove 1 hosted power counter to draw 1 card or remove 1 tag."
+    }
+  ],
+  "numeric_id": 34003,
+  "is_playable": true
+}

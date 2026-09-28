@@ -1,0 +1,30 @@
+{
+  "id": "b_1001",
+  "title": "B-1001",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 1,
+  "unique": true,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "RemoveTags": 1
+      },
+      "requirement": {
+        "And": [
+          "DuringRun",
+          {
+            "Not": "RunAgainstThisServer"
+          }
+        ]
+      },
+      "effect": "EndTheRun",
+      "text": "Remove 1 tag: End the run. Use this ability only during a run against another server."
+    }
+  ],
+  "trash_cost": 3,
+  "numeric_id": 34065,
+  "is_playable": true
+}

@@ -1,0 +1,61 @@
+{
+  "id": "shibboleth",
+  "title": "Shibboleth",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 1,
+  "strength": 3,
+  "memory_cost": 1,
+  "continuous": [
+    {
+      "kind": {
+        "Strength": {
+          "per": -2
+        }
+      },
+      "applies_to": "This",
+      "while": {
+        "AmountAtLeast": [
+          "ThreatLevel",
+          4
+        ]
+      },
+      "text": "Threat 4 → This program gets −2 strength."
+    }
+  ],
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "Credits": 1
+      },
+      "effect": {
+        "BreakSubroutines": {
+          "count": {
+            "Fixed": 1
+          },
+          "restrict_to": "CodeGate"
+        }
+      },
+      "requirement": "DuringEncounter",
+      "text": "Interface → 1[credit]: Break 1 code gate subroutine."
+    },
+    {
+      "trigger": "Paid",
+      "cost": {
+        "Credits": 2
+      },
+      "effect": {
+        "BoostStrength": {
+          "amount": 2,
+          "duration": "Encounter"
+        }
+      },
+      "requirement": "DuringEncounter",
+      "text": "2[credit]: +2 strength."
+    }
+  ],
+  "numeric_id": 34018,
+  "is_playable": true
+}

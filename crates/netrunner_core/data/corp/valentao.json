@@ -1,0 +1,63 @@
+{
+  "id": "valentao",
+  "title": "Valentão",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "CodeGate"
+  },
+  "cost": 5,
+  "strength": 6,
+  "rez_alternatives": [
+    {
+      "cost": {
+        "TakeBadPublicity": 1
+      }
+    },
+    {
+      "cost": {
+        "RemoveTags": 1
+      }
+    }
+  ],
+  "subroutines": [
+    {
+      "text": "Gain 2[credit].",
+      "effect": {
+        "GainCredits": [
+          "Corp",
+          2
+        ]
+      }
+    },
+    {
+      "text": "The Runner loses 2[credit].",
+      "effect": {
+        "LoseCredits": [
+          "Runner",
+          2
+        ]
+      }
+    },
+    {
+      "text": "End the run if you have more credits than the Runner.",
+      "effect": {
+        "EffectIf": {
+          "condition": {
+            "MoreThan": [
+              {
+                "Credits": "Corp"
+              },
+              {
+                "Credits": "Runner"
+              }
+            ]
+          },
+          "effect": "EndTheRun"
+        }
+      }
+    }
+  ],
+  "triggers": [],
+  "numeric_id": 34060,
+  "is_playable": true
+}

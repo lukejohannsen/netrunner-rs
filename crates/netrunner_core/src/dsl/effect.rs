@@ -1595,6 +1595,14 @@ pub enum Amount {
     /// which is relative to the actor: the sentence names both hands. No
     /// amount counted a hand.
     CardsInHand(Side),
+    /// The credits in a player's credit pool — Valentão's "End the run if
+    /// you have more credits than the Runner", through
+    /// `EffectRequirement::MoreThan`, as `CardsInHand` names both hands.
+    /// The pool, not what the player could spend: a card's hosted credits
+    /// are the card's, not the player's (CR 1.10.4). Composition didn't
+    /// work: `RunnerCreditsAtMost` and `CorpCreditsAtLeast` compare with a
+    /// number the card file writes.
+    Credits(Side),
     /// How many times this trigger's moment has happened this turn to the
     /// copy resolving — its install, read off `InstalledCard::this_turn`
     /// (`turn_log::CopyTurn`, which counts only advancing and rezzing) —

@@ -102,6 +102,8 @@ pub fn describe_amount(amount: &Amount) -> String {
         Amount::EncounteredIceSubroutines => "the subroutines on the ice being encountered".to_string(),
         Amount::CardsInHand(Side::Corp) => "the cards in HQ".to_string(),
         Amount::CardsInHand(Side::Runner) => "the cards in the grip".to_string(),
+        Amount::Credits(Side::Corp) => "the Corp's credits".to_string(),
+        Amount::Credits(Side::Runner) => "the Runner's credits".to_string(),
         Amount::TimesThisTurnOnThisCopy(trigger) => format!("the times \"{}\" has happened to this card this turn", humanize(format!("{trigger:?}"))),
     }
 }

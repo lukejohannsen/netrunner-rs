@@ -3887,6 +3887,90 @@ Initiative 9 of 65; `TAI_UNIMPLEMENTED` 65 → 56.
     agenda wins 70 → 71, Runner agenda wins 104 → 103. That is the rule
     change, and the one rule change in the stage.
 
+#### Stage 2 — ten cards, and two small words (28 September 2026)
+
+`feat/tai-stage-2-valentao-credits-armed-asset-faceup`: Joy Ride,
+Shibboleth, LilyPAD, Solidarity Badge, Audrey v2, Your Digital Life, Armed
+Asset Protection, Valentão, B-1001 and M.I.C. **No new `Effect`.** The
+Automata Initiative 19 of 65; `TAI_UNIMPLEMENTED` 56 → 46. Five of the ten
+are Corp cards: the plan's "Runner, composes" named the stage by its first
+half.
+
+- **Two words, each a sentence no existing word could say.**
+  - `Amount::Credits(Side)`: Valentão's "End the run if you have more
+    credits than the Runner" is `MoreThan(Credits(Corp), Credits(Runner))`,
+    as Piranhas compared two hands. The credit pool, not what a player could
+    spend (CR 1.10.4); `RunnerCreditsAtMost` and `CorpCreditsAtLeast`
+    compare with a number the card file writes.
+  - `CardFilter::Faceup`: Armed Asset Protection's "if any of those cards
+    are agendas", of the faceup cards it has just counted. `Not(Facedown)`
+    was the obvious spelling and matches nothing, because `Not` is read off
+    a definition and which way up a card lies is not in one.
+- **An operation is not in its own count of Archives.** The engine files an
+  operation in Archives as it is played, and a selection already skipped
+  the copy resolving (RWR Stage 1, CR 8.6.7a); the count of card types among
+  faceup cards in Archives did not, so Armed Asset Protection would always
+  have counted an operation — its own. The count now leaves it out the same
+  way (`pending_choice::resolving_operation_in`). Logjam, the one other card
+  that counts, is ice and unaffected (Rules Conformance 8.6).
+- **The rest compose.**
+  - Joy Ride is Jailbreak's run with R&D alone and "draw 5".
+  - Shibboleth is Gordian Blade with Manuel Lattes de Moura's threat
+    `while` on a −2 `Strength`.
+  - LilyPAD is Pantograph's memory and "the first time each turn you
+    install a program" as `OnCardInstalled` with `first_each_turn`.
+  - Solidarity Badge's "the first time each turn you trash a Corp card" is
+    two entries sharing one count — a trash on access, and a trash of a
+    Corp card the Runner carried out (`OwnedBy`, Active Policing's word) —
+    and its turn-begins "you may remove 1 hosted power counter to draw 1
+    card or remove 1 tag" is Cacophony's paid choice around a choice of two.
+  - Audrey v2 is Botulus's counter-cost break without a host (an AI: any
+    type, strength contested) and Carnivore's grip trash as the price of
+    +3 strength.
+  - Your Digital Life is `GainCreditsAmount` over `CardsInHand(Corp)`.
+  - Valentão is Piranhas's rez alternatives.
+  - B-1001 is The Red Room's "during a run against another server" with
+    Synapse Global's "remove 1 tag" as the Corp's cost.
+  - M.I.C. is Event Horizon's "[trash]: … Use this ability only during a
+    run on this server" with Jaguarundi's "unless the Runner spends
+    [click]" as what the trash buys.
+- **Client**: nothing added to the view, so no ledger line and no drawing.
+  The prose names the new amount ("the Corp's credits").
+- **Decks** — swaps into Eternal-only Sweep decks, count for count, each
+  card taken out still in another deck the sweeps play: Safety Net (Joy
+  Ride for Overclock and Diesel), Spare Parts (LilyPAD for DZMZ Optimizer
+  and T400 Memory Diamond), Hit List (Shibboleth for VRcation), Grassroots
+  (Solidarity Badge for Rent Rioters, Audrey v2 for Buzzsaw), Retirement
+  Package (M.I.C. for two of three Sleipnir), Paid Content (Your Digital
+  Life for Scapegoat, B-1001 for Public Trail and Tithe), Hostile Bid
+  (Valentão for Ballista), Land Grab (Armed Asset Protection for Hedge
+  Fund). No new deck, so the sweep schedule is unchanged.
+- **DSL ratio (`pool_status.py`): 23 of 90 `Effect` variants single-use,
+  1 unused**, over 334 card files (unchanged).
+- **Real play**, 96 games of each edited deck (seed 2; the Corp decks
+  against Safety Net, the Runner decks against Hostile Bid):
+  - Random seats use all ten: Joy Ride played 96 times across four
+    Corp decks, Shibboleth installed 60 times, LilyPAD's draw heard 16
+    times, Solidarity Badge installed 48 times (its counter 22 times, its
+    turn start 38), Audrey v2 installed 29 times with 10 counters from
+    trashes, M.I.C. trashed for its ability 20 times, Your Digital Life
+    played 37 times, Armed Asset Protection 46, Valentão rezzed 28 times
+    over four matchups, B-1001 used 26 times.
+  - Heuristic seats: Audrey v2 and Shibboleth are installed and used (98
+    and 249 activations), Armed Asset Protection played 86 times, Your
+    Digital Life 64, B-1001 used 10 times, M.I.C. and Valentão rezzed.
+    The heuristic Runner never installs Solidarity Badge or plays Joy
+    Ride, and the heuristic Corp never trashes M.I.C. for its ability
+    (Phase 5 debt).
+- **Measured.** Both sweeps at 256 seeds are green, the card gate included.
+  Against `origin/main`, `coverage_identical.py` has both random seatings
+  **identical** and both heuristic ones moved (Corp agenda wins 71 → 74,
+  Corp flatlines 18 → 16, Runner agenda wins 103 → 102, steps 115764 →
+  120976, of 192). A pinned ref with the two words and the count fix but
+  none of the cards, decks or tests is **identical** to main in all four
+  shapes, so the heuristic movement is `determinize` sampling the new
+  cards.
+
 ### 4. Parhelion — 63 cards (C 19 / V 26 / M 18)
 
 **Decks:** Sweep decks on its four identities. Nova Initiumia and Ampère
