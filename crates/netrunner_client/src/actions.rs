@@ -634,6 +634,10 @@ pub fn narrate_event(
         // two tags off, ten credits across — only reads with it.
         GameEvent::NumberChosen { amount, secret: false, .. } => format!("chose {amount}"),
         GameEvent::NumberChosen { amount, secret: true, .. } => format!("chose {amount}, in secret"),
+        GameEvent::PsiBidsRevealed { corp, runner } => format!(
+            "revealed the psi game's bids: the Corp {corp}[credit], the Runner {runner}[credit] — the bids {}",
+            if corp == runner { "match" } else { "differ" }
+        ),
     };
     Some(line)
 }

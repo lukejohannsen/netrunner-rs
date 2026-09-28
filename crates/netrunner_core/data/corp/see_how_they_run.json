@@ -1,0 +1,41 @@
+{
+  "id": "see_how_they_run",
+  "title": "See How They Run",
+  "side": "Corp",
+  "card_type": "Agenda",
+  "cost": 0,
+  "advancement_requirement": 4,
+  "agenda_points": 2,
+  "triggers": [
+    {
+      "trigger": "OnAgendaScored",
+      "subject": "This",
+      "effects": [
+        {
+          "GiveTags": {
+            "Fixed": 1
+          }
+        },
+        {
+          "PsiGame": {
+            "on_match": {
+              "DealDamage": [
+                "Net",
+                1
+              ]
+            },
+            "on_differ": {
+              "DealDamage": [
+                "Brain",
+                1
+              ]
+            }
+          }
+        }
+      ],
+      "text": "When you score this agenda, give the Runner 1 tag. Play a Psi Game."
+    }
+  ],
+  "numeric_id": 34105,
+  "is_playable": true
+}

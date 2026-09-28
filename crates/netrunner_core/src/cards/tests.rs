@@ -15306,4 +15306,77 @@ mod rebellion_without_rehearsal {
         let state = to_corp_turn_start(&state, &registry);
         assert!(state.pending_paid_choice.is_none());
     }
+
+    // ---- Stage 7b: a psi game ----
+
+    /// See How They Run scored, with the Runner holding three cards and
+    /// `runner_credits`, and the Corp 10.
+    fn see_how_they_run_scored(registry: &CardRegistry, runner_credits: u32) -> (GameState, Vec<GameEvent>) {
+        let mut state = corp_action_phase(&[]);
+        state.runner.resources.credits = Credits(runner_credits);
+        state.runner.grip = vec![id("sure_gamble"); 3];
+        state.corp.installed = vec![crate::rules::InstalledCard { advancement_tokens: 4, ..in_root("see_how_they_run", ServerId::Remote(0), false) }];
+        let target = install_of(&state, "see_how_they_run");
+        apply_action(&state, registry, PlayerAction::ScoreAgenda { target }).expect("score it")
+    }
+
+    /// CR 10.14.6: the Corp bids 0–2 in secret, then the Runner; both are
+    /// revealed and spent, and bids that differ do 1 core damage. The
+    /// Runner is told a bid was made and never which until they have bid.
+    #[test]
+    fn see_how_they_run_tags_then_plays_a_psi_game_whose_different_bids_do_core_damage() {
+        use crate::rules::{PendingDecision, PsiBid};
+        let registry = registry();
+        let (state, _) = see_how_they_run_scored(&registry, 5);
+        assert_eq!(state.runner.tags, 1, "give the Runner 1 tag");
+        let bids: Vec<PlayerAction> = (0..=2).map(|amount| PlayerAction::ChooseNumber { amount }).collect();
+        assert_eq!(crate::rules::legal_actions_for(&state, &registry, Side::Corp), bids, "the Corp bids first");
+        assert!(crate::rules::legal_actions_for(&state, &registry, Side::Runner).is_empty());
+
+        let corp_bids = PlayerAction::ChooseNumber { amount: 2 };
+        let (state, events) = apply_action(&state, &registry, corp_bids.clone()).expect("the Corp bids 2");
+        assert_eq!(crate::rules::legal_actions_for(&state, &registry, Side::Runner), bids, "then the Runner");
+        let view = crate::view::build_client_view(&state, &registry, Side::Runner);
+        assert!(matches!(view.pending_decision, Some(PendingDecision::PsiGame { corp_bid: PsiBid::Concealed, .. })), "bid, but not which");
+        let corps = crate::view::build_client_view(&state, &registry, Side::Corp);
+        assert!(matches!(corps.pending_decision, Some(PendingDecision::PsiGame { corp_bid: PsiBid::Bid(2), .. })));
+        assert_eq!(
+            crate::rules::mask_logged_action_for_player(&corp_bids, Side::Corp, &events, Side::Runner),
+            crate::rules::PublicAction::Concealed(crate::rules::ConcealedAction::ChoosingSecretly),
+            "concealed in the Runner's log"
+        );
+        assert!(events.iter().all(|event| !matches!(
+            crate::rules::mask_event_for_player(event, &state, Side::Runner),
+            Some(GameEvent::NumberChosen { .. } | GameEvent::PsiBidsRevealed { .. })
+        )));
+
+        let (state, events) = apply_action(&state, &registry, PlayerAction::ChooseNumber { amount: 1 }).expect("the Runner bids 1");
+        assert!(events.iter().any(|e| matches!(e, GameEvent::PsiBidsRevealed { corp: 2, runner: 1 })), "both revealed");
+        assert_eq!((state.corp.resources.credits, state.runner.resources.credits), (Credits(8), Credits(4)), "and spent");
+        assert_eq!(state.runner.brain_damage, 1, "the bids differ: 1 core damage");
+        assert!(state.pending_decision.is_none());
+    }
+
+    #[test]
+    fn see_how_they_run_does_net_damage_when_the_bids_match() {
+        let registry = registry();
+        let (state, _) = see_how_they_run_scored(&registry, 5);
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ChooseNumber { amount: 1 }).expect("the Corp bids 1");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ChooseNumber { amount: 1 }).expect("the Runner bids 1");
+        assert_eq!(state.runner.brain_damage, 0);
+        assert_eq!(state.runner.grip.len(), 2, "the bids match: 1 net damage");
+        assert_eq!((state.corp.resources.credits, state.runner.resources.credits), (Credits(9), Credits(4)));
+    }
+
+    /// A player cannot bid what they cannot spend, and can always bid 0
+    /// (CR 10.14.3): a Runner with nothing is not asked.
+    #[test]
+    fn a_runner_with_no_credits_bids_0_unasked() {
+        let registry = registry();
+        let (state, _) = see_how_they_run_scored(&registry, 0);
+        let (state, events) = apply_action(&state, &registry, PlayerAction::ChooseNumber { amount: 0 }).expect("the Corp bids 0");
+        assert!(events.iter().any(|e| matches!(e, GameEvent::PsiBidsRevealed { corp: 0, runner: 0 })));
+        assert!(state.pending_decision.is_none(), "the game is over at the Corp's bid");
+        assert_eq!(state.runner.grip.len(), 2, "0 and 0 match");
+    }
 }

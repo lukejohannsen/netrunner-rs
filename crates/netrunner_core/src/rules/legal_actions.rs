@@ -423,6 +423,11 @@ fn pending_decision_candidates(state: &GameState, registry: &CardRegistry) -> Ve
         Some(crate::rules::state::PendingDecision::ChooseNumber { min, max, .. }) => {
             (*min..=*max).map(|amount| PlayerAction::ChooseNumber { amount }).collect()
         }
+        // The bidder's every bid; who bids is `pending_decision_chooser`'s.
+        Some(crate::rules::state::PendingDecision::PsiGame { corp_bid, corp_max, runner_max, .. }) => {
+            let max = if *corp_bid == crate::rules::state::PsiBid::Awaiting { *corp_max } else { *runner_max };
+            (0..=max).map(|amount| PlayerAction::ChooseNumber { amount }).collect()
+        }
     }
 }
 

@@ -17,7 +17,7 @@ use crate::rules::paid_ability;
 use crate::rules::prevention;
 use crate::rules::run;
 use crate::rules::uninstall;
-use crate::rules::state::{ArchivedCard, GameState, InstallId, InstallSlot, PendingChoiceResume, PendingDecision, PendingPaidChoiceResume, Side, WouldHappen};
+use crate::rules::state::{ArchivedCard, GameState, InstallId, InstallSlot, PendingChoiceResume, PendingDecision, PendingPaidChoiceResume, PsiBid, Side, WouldHappen};
 
 /// Who `state.pending_decision` is currently awaiting a choice from, if
 /// anything is parked — used by `engine::apply_action`'s blocking guard and
@@ -29,6 +29,8 @@ pub(crate) fn pending_decision_chooser(state: &GameState) -> Option<Side> {
         PendingDecision::ChooseServer { chooser, .. } => Some(*chooser),
         PendingDecision::ChooseTriggerOrder { chooser, .. } => Some(*chooser),
         PendingDecision::ChooseNumber { chooser, .. } => Some(*chooser),
+        PendingDecision::PsiGame { corp_bid: PsiBid::Awaiting, .. } => Some(Side::Corp),
+        PendingDecision::PsiGame { .. } => Some(Side::Runner),
     }
 }
 
@@ -48,7 +50,8 @@ pub(crate) fn mark_parked_resume_subroutines(state: &mut GameState) {
         | Some(PendingDecision::ChooseCards { resume, .. })
         | Some(PendingDecision::ChooseServer { resume, .. })
         | Some(PendingDecision::ChooseTriggerOrder { resume, .. })
-        | Some(PendingDecision::ChooseNumber { resume, .. }) => {
+        | Some(PendingDecision::ChooseNumber { resume, .. })
+        | Some(PendingDecision::PsiGame { resume, .. }) => {
             *resume = PendingChoiceResume::ResumeSubroutines
         }
         None => {}
@@ -893,6 +896,9 @@ pub(crate) fn resolve_choose_number(
     registry: &CardRegistry,
     amount: u32,
 ) -> Result<Vec<GameEvent>, RulesError> {
+    if matches!(state.pending_decision, Some(PendingDecision::PsiGame { .. })) {
+        return resolve_psi_bid(state, registry, amount);
+    }
     let Some(PendingDecision::ChooseNumber { min, max, .. }) = state.pending_decision.as_ref() else {
         return Err(RulesError::NoPendingDecision);
     };
@@ -912,6 +918,69 @@ pub(crate) fn resolve_choose_number(
 
     if resume == PendingChoiceResume::ResumeSubroutines {
         // As `resolve_choice`: `then` may have parked something further.
+        mark_parked_resume_subroutines(state);
+        events.extend(paid_ability::resolve_encounter_ice(state, registry)?);
+    }
+    Ok(events)
+}
+
+/// The most either player may bid in a psi game (CR 10.14.6b).
+pub(crate) const PSI_MAX_BID: u32 = 2;
+
+/// Resolves `PlayerAction::ChooseNumber` as a bid in a parked psi game
+/// (`Effect::PsiGame`): the Corp's is kept secret, and the Runner's
+/// reveals both and ends the game (`finish_psi_game`). A Runner who can
+/// bid only 0 is not asked, so the Corp's bid can end it too.
+pub(crate) fn resolve_psi_bid(state: &mut GameState, registry: &CardRegistry, amount: u32) -> Result<Vec<GameEvent>, RulesError> {
+    let Some(PendingDecision::PsiGame { corp_bid, corp_max, runner_max, .. }) = state.pending_decision.as_mut() else {
+        return Err(RulesError::NoPendingDecision);
+    };
+    let (chooser, max) = if *corp_bid == PsiBid::Awaiting { (Side::Corp, *corp_max) } else { (Side::Runner, *runner_max) };
+    if amount > max {
+        return Err(RulesError::ChosenNumberOutOfRange { amount, min: 0, max });
+    }
+    if chooser == Side::Runner {
+        let events = vec![GameEvent::NumberChosen { chooser, amount, secret: false }];
+        return finish_psi_game(state, registry, amount, events);
+    }
+    *corp_bid = PsiBid::Bid(amount);
+    let runner_max = *runner_max;
+    let mut events = vec![GameEvent::NumberChosen { chooser, amount, secret: true }];
+    if runner_max == 0 {
+        return finish_psi_game(state, registry, 0, events);
+    }
+    events.push(GameEvent::NumberChoiceOffered { chooser: Side::Runner, min: 0, max: runner_max });
+    Ok(events)
+}
+
+/// Reveals both bids of the parked psi game, spends them and resolves
+/// what the outcome calls for, as the card that asked (CR 10.14.4,
+/// 10.14.6c–d). The active player pays first (10.14.4c); no checkpoint
+/// comes between, since this is one action.
+pub(crate) fn finish_psi_game(
+    state: &mut GameState,
+    registry: &CardRegistry,
+    runner_bid: u32,
+    mut events: Vec<GameEvent>,
+) -> Result<Vec<GameEvent>, RulesError> {
+    let Some(PendingDecision::PsiGame { corp_bid: PsiBid::Bid(corp_bid), on_match, on_differ, source_card, prompting_card, source_install, resume, .. }) =
+        state.pending_decision.take()
+    else {
+        return Err(RulesError::NoPendingDecision);
+    };
+    events.push(GameEvent::PsiBidsRevealed { corp: corp_bid, runner: runner_bid });
+    let active = crate::rules::listeners::active_side(state);
+    for side in [active, active.other()] {
+        let bid = if side == Side::Corp { corp_bid } else { runner_bid };
+        if bid > 0 {
+            events.extend(ability::pay_cost(state, registry, side, &Cost::Credits(bid), Purpose::Other, source_card.as_ref())?);
+        }
+    }
+    let outcome = if corp_bid == runner_bid { on_match } else { on_differ };
+    let mut ctx = ability::ResolutionContext::for_parked(source_install, source_card.as_ref());
+    ctx.prompting_card = prompting_card.as_ref().or(source_card.as_ref());
+    events.extend(ability::evaluate_effect(state, &outcome, &mut ctx, registry)?);
+    if resume == PendingChoiceResume::ResumeSubroutines {
         mark_parked_resume_subroutines(state);
         events.extend(paid_ability::resolve_encounter_ice(state, registry)?);
     }

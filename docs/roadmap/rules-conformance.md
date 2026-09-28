@@ -544,7 +544,7 @@ with the rule quoted.
 | 10.11 | Mark | not modelled | Mark — Rules Audit backlog item 10. |
 | 10.12 | Sabotage | read in part | `Effect::Sabotage`; not yet read against 10.12. |
 | 10.13 | Dividends | read in part | `CardDefinition::dividends`; not yet read against 10.13. |
-| 10.14 | Bidding | unreviewed |  |
+| 10.14 | Bidding | read in part | RWR Stage 7b: 10.14.6, a psi game (`Effect::PsiGame`, See How They Run). Each player bids 0 to 2, no more than they could spend (10.14.3, `payment::available`, fixed as the game begins); a player who can bid only 0 is not asked. The Corp bids first and the Runner is told only that it has (10.14.2: `PsiBid::Concealed` in the view, a secret `NumberChosen` in the log); the Runner's bid reveals both (`PsiBidsRevealed`) and both are spent, the active player's first (10.14.4, 10.14.4c), before the outcome resolves (10.14.6c–d), all in one action with no checkpoint between. **Not modelled:** 10.14.5's triggers on revealed bids, which no card in the pool has. Traces (10.8) bid through their own actions. Cited: 10.14.2, 10.14.3, 10.14.4c, 10.14.6. |
 
 ### 11. Appendix: Timing Structure Reference
 

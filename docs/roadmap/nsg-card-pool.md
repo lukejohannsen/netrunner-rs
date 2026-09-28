@@ -1907,7 +1907,7 @@ reaches Vantage Point's cards by building a deck.
    complete.
 7. **Expendable, moving ice, psi, re-encounter**, in five parts when it was
    taken: **7a**, expendable cards (built, below): Eminent Domain, Descent;
-   **7b**, a psi game: See How They Run; **7c**, ice that moves as a run
+   **7b**, a psi game (built, below): See How They Run; **7c**, ice that moves as a run
    begins: Tributary; **7d**, an encounter repeated: Sisyphus Protocol;
    **7e**, a trojan hosted by an event's ability: Spree.
 8. **A card's identity changes:** Thunderbolt Armaments: Peace Through Power, Lycian
@@ -3287,6 +3287,59 @@ Descent. **No new `Effect`.** Rebellion Without Rehearsal 58 of 65;
   without the cards and the deck is identical to `main` in all four
   shapes, so the heuristic movement is `determinize` sampling new Corp
   cards.
+
+#### Stage 7b — a psi game (28 September 2026)
+
+`feat/rwr-stage-7b-psi-see-how-they-run`: See How They Run. **One new
+`Effect`.** Rebellion Without Rehearsal 59 of 65; `RWR_UNIMPLEMENTED` 7 → 6.
+
+- **"Play a Psi Game. If the bids differ, do 1 core damage. If the bids
+  match, do 1 net damage"** is CR 10.14.6, which no card had needed. It is
+  `Effect::PsiGame { on_match, on_differ }`, which parks a
+  `PendingDecision::PsiGame`. The Corp bids first, then the Runner, each
+  with `PlayerAction::ChooseNumber`, so `ActionSpace` is unmoved. The
+  Runner's bid reveals both (`GameEvent::PsiBidsRevealed`), both are
+  spent, the active player's first (10.14.4c), and the outcome resolves as
+  the card that asked, all in that one action.
+  - Each bids 0 to 2, and no more than they could spend (10.14.3,
+    `payment::available`, fixed as the game begins). A player who can bid
+    only 0 is not asked, so a Runner with nothing ends the game at the
+    Corp's bid.
+  - **The Corp's bid is hidden until the Runner has bid.** It is
+    `PsiBid::Concealed` in the Runner's view and a spectator's. It is
+    Méliès U's secret `NumberChosen` in the log, which hides the answer
+    and drops the event for the other seat. A bot's sample guesses it
+    uniformly from the bids it could be (`determinize::sample_decision`).
+    The reveal teaches the Runner something (`may_teach_the_actor`), as a
+    trace's bids do.
+  - Composition didn't work. Two secret `ChooseNumber`s cannot compare
+    their numbers, since a nested choice keeps its own placeholder.
+    Branching on the Corp's bid would put the bid into the continuation
+    the Runner's decision carries, which a view passes through whole.
+- **Client:** both clients word each chair's side of it: "play a Psi Game
+  — bid in secret, 0 to 2 credits" to the bidder, "the Corp is bidding in
+  secret" and "the Corp has bid" to the Runner, and "you bid 2" to the
+  Corp while the Runner bids. The buttons are the bids. The log reads
+  "revealed the psi game's bids: the Corp 2[credit], the Runner
+  1[credit] — the bids differ". `view_ledger` has every field of the new
+  decision.
+- **Deck** — A Thousand Cuts: two See How They Run for two Proprionegation,
+  a 2-point, 4-advancement agenda for another.
+- **Real play**, 96 games of A Thousand Cuts against Safety Net (seed 2):
+  - Random seats never scored it: the random Corp flatlined in 80 games.
+  - The heuristic Corp scored it once, and that game played its psi game
+    to the end. The sweeps and the card tests carry the rest.
+- **DSL ratio (`pool_status.py`): 22 of 86 `Effect` variants single-use,
+  1 unused**, over 309 card files (21 of 85 before). `PsiGame` is used by
+  See How They Run alone for now; Adrian Seis, Konjin and Hyoubu Precog
+  Manifold print one too.
+- **Measured.** Both sweeps at 256 seeds are green, the fog gate included.
+  Against `origin/main` (7a), `coverage_identical.py` has both random
+  seatings **identical**, and the heuristic ones moved (Corp agenda wins
+  73 → 76 of 192, flatlines 15 → 16, Runner agenda wins 103 → 100). A ref
+  with the engine, bot and client changes and without the card and the
+  deck is identical to `main` in all four shapes, so the heuristic
+  movement is `determinize` sampling a new Corp card.
 
 ### 3. The Automata Initiative — 65 cards (C 14 / V 35 / M 16)
 

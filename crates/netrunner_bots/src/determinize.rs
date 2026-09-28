@@ -51,7 +51,7 @@ use netrunner_core::rules::{
     ArchivedCard,
     AccessPhase, AccessState, AgendaPoints, Clicks, CorpState, Credits, EncounteredSubroutine, GameState, InstallSlot,
     InstalledCard, InstalledRunnerCard, MaskedZone, MemoryUnits, PlayerResources, PublicAccessPhase,
-    RunIce, RunState, RunnerState, ServerId, Side, SubroutineStatus,
+    PendingDecision, PsiBid, RunIce, RunState, RunnerState, ServerId, Side, SubroutineStatus,
 };
 use netrunner_core::view::ClientView;
 
@@ -820,7 +820,7 @@ pub fn determinize(view: &ClientView, registry: &CardRegistry, rng: &mut impl Rn
         active_trace: view.active_trace.clone(),
         pending_prevention: view.pending_prevention.clone(),
         pending_paid_choice: view.pending_paid_choice.clone(),
-        pending_decision: view.pending_decision.clone(),
+        pending_decision: sample_decision(view, rng),
         // A parked payment is the payer's own unplayed action, so only the
         // payer's view holds it (`masking::PublicPendingPayment::own`) — and
         // the payer is the only seat asked to act while one is parked, so
@@ -857,6 +857,17 @@ pub fn determinize(view: &ClientView, registry: &CardRegistry, rng: &mut impl Rn
     seat_revealed(&mut state);
     debug_assert_strengths_agree(&state, view, registry);
     state
+}
+
+/// The view's parked decision, with a bid the viewer was not shown (the
+/// Corp's in a psi game, `PsiBid::Concealed`) guessed from the bids it
+/// could have been — uniformly, since nothing in the view says which.
+fn sample_decision(view: &ClientView, rng: &mut impl Rng) -> Option<PendingDecision> {
+    let mut decision = view.pending_decision.clone()?;
+    if let PendingDecision::PsiGame { corp_bid: corp_bid @ PsiBid::Concealed, corp_max, .. } = &mut decision {
+        *corp_bid = PsiBid::Bid(rng.random_range(0..=*corp_max));
+    }
+    Some(decision)
 }
 
 /// Puts each card revealed in a hand the viewer cannot see
