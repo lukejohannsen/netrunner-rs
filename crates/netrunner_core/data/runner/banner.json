@@ -1,0 +1,48 @@
+{
+  "id": "banner",
+  "title": "Banner",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 4,
+  "strength": 5,
+  "memory_cost": 1,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "text": "Interface → 2[credit]: Subroutines on the barrier you are encountering cannot end the run for the remainder of this encounter.",
+      "cost": {
+        "Credits": 2
+      },
+      "effect": {
+        "Prohibit": {
+          "what": "EndTheRun",
+          "until": "Encounter",
+          "encountered_ice": true
+        }
+      },
+      "requirement": {
+        "And": [
+          "DuringEncounter",
+          {
+            "And": [
+              {
+                "Encountering": "Barrier"
+              },
+              {
+                "Not": {
+                  "MoreThan": [
+                    "EncounteredIceStrength",
+                    "ThisCardStrength"
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "numeric_id": 34005,
+  "is_playable": true
+}

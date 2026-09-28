@@ -307,7 +307,8 @@ fn pass_current_ice(run: &mut RunState, position: usize, rezzed_as: Vec<crate::d
         enter_movement(run, position + 1);
         return events;
     }
-    events.push(GameEvent::IcePassed { server: run.server, position: position as u32, after_fully_breaking, rezzed_as });
+    let printed_broken_with = if run.phase == RunPhase::EncounterIce { run.this_encounter.printed_broken_with } else { Default::default() };
+    events.push(GameEvent::IcePassed { server: run.server, position: position as u32, after_fully_breaking, rezzed_as, printed_broken_with });
     enter_movement(run, position + 1);
     events
 }
@@ -750,12 +751,24 @@ pub(crate) fn swap_approached_ice_with_card(
     registry: &CardRegistry,
     card_id: &CardId,
     origin: &crate::dsl::CardZoneRef,
+    this_ice: Option<crate::rules::state::InstallId>,
 ) -> Result<Vec<GameEvent>, RulesError> {
-    let Some(run) = state.active_run.as_ref() else { return Ok(Vec::new()) };
-    if run.phase != RunPhase::ApproachIce {
+    // The ice in the slot: the one named (Tatu-Bola's "swap it"), or the
+    // one being approached (Mitra Aman's), which only an approach has.
+    let approached = match this_ice {
+        Some(install) => install,
+        None => {
+            let Some(run) = state.active_run.as_ref() else { return Ok(Vec::new()) };
+            if run.phase != RunPhase::ApproachIce {
+                return Ok(Vec::new());
+            }
+            let Some(approached) = run.ice.get(run.position).map(|ice| ice.install_id) else { return Ok(Vec::new()) };
+            approached
+        }
+    };
+    if !state.find_corp_install(approached).is_some_and(|installed| installed.slot == crate::rules::state::InstallSlot::Ice) {
         return Ok(Vec::new());
     }
-    let Some(approached) = run.ice.get(run.position).map(|ice| ice.install_id) else { return Ok(Vec::new()) };
     if !registry.get(card_id).is_some_and(|def| matches!(def.card_type, crate::dsl::CardType::Ice(_))) {
         return Ok(Vec::new());
     }
@@ -784,6 +797,12 @@ pub(crate) fn swap_approached_ice_with_card(
     installed.rezzed = false;
     installed.advancement_tokens = 0;
     installed.counters = 0;
+    // What the Runner remembers is the card that left, and what the copy
+    // did this turn was that card's: the new one arrives facedown and
+    // unseen. Kept, the Runner's view named the new ice by the old card's
+    // `seen_by_runner` — Tatu-Bola is always rezzed as it swaps.
+    installed.seen_by_runner = false;
+    installed.this_turn = Default::default();
     match origin {
         crate::dsl::CardZoneRef::OwnHq => state.corp.hq.push(displaced.clone()),
         _ => state.corp.archives.push(if was_rezzed {
@@ -984,6 +1003,19 @@ fn step_subroutine(
     Ok(events)
 }
 
+/// The ice whose subroutines are resolving: the ice being encountered,
+/// from its first subroutine's resolution (CR 6.9.3c) to the encounter's
+/// end, through every window a subroutine opens. Attini's "while
+/// subroutines on this ice are resolving" and Banner's "subroutines on the
+/// barrier you are encountering cannot end the run" both ask it. A
+/// subroutine is marked resolved before its effect is evaluated
+/// (`step_subroutine`), so the first one's own effect is inside it.
+pub(crate) fn resolving_subroutines_of(state: &GameState) -> Option<crate::rules::state::InstallId> {
+    let run = state.active_run.as_ref().filter(|run| run.phase == RunPhase::EncounterIce)?;
+    let ice = run.ice.get(run.position)?;
+    ice.subroutines.iter().any(|subroutine| subroutine.status == SubroutineStatus::Resolved).then_some(ice.install_id)
+}
+
 /// Breaks subroutine `index` on the ice being encountered: the one way a
 /// subroutine is broken, for a breaker's ability, a click and a card that
 /// breaks unconditionally alike. `SubroutineBroken` carries the ice's
@@ -1004,8 +1036,21 @@ pub(crate) fn break_subroutine(state: &mut GameState, registry: &CardRegistry, i
         .map_or(0, |ice| continuous::ice_strength(state, registry, ice));
     let (card_id, _) = transition_subroutine(state, index, SubroutineStatus::Broken)?;
     let mut events = vec![GameEvent::SubroutineBroken { card_id: card_id.clone(), index, strength }];
+    // What kind of icebreaker broke it, when it was printed (Virtual
+    // Service Agent's "its printed subroutine with a decoder"): the
+    // subtypes of the card whose ability it was, read before the run is
+    // borrowed. A click is no card's.
+    let breaker_subtypes = by
+        .and_then(|install| state.find_rig_install(install))
+        .and_then(|card| registry.get(&card.card))
+        .map(|definition| definition.subtypes.clone())
+        .unwrap_or_default();
     let run = state.active_run.as_mut().expect("transition_subroutine found the run");
     run.this_encounter.broken_by = run.this_encounter.broken_by.and(by);
+    let printed = run.ice.get(run.position).and_then(|ice| ice.subroutines.get(index)).is_some_and(|subroutine| !subroutine.gained);
+    if printed {
+        run.this_encounter.printed_broken_with = run.this_encounter.printed_broken_with.with(&breaker_subtypes);
+    }
     let position = run.position;
     let every_one_broken = run.ice[position].subroutines.iter().all(|s| s.status == SubroutineStatus::Broken);
     if every_one_broken && !run.fully_broken {
@@ -1318,7 +1363,7 @@ mod tests {
         let (ib, rb) = ice_pair("b", 2, true);
         let mut state = reconciling_state(vec![ia, ib], run_state(RunPhase::EncounterIce, vec![ra, rb], 0));
         let events = reconcile_ice(&mut state, &CardRegistry::new()).unwrap();
-        assert_eq!(events, Some(vec![GameEvent::EncounterEnded { card_id: CardId("a".to_string()), install: crate::rules::state::InstallId(1) }, GameEvent::IcePassed { server: ServerId::Hq, position: 0, after_fully_breaking: false, rezzed_as: vec![] }]));
+        assert_eq!(events, Some(vec![GameEvent::EncounterEnded { card_id: CardId("a".to_string()), install: crate::rules::state::InstallId(1) }, GameEvent::IcePassed { server: ServerId::Hq, position: 0, after_fully_breaking: false, rezzed_as: vec![], printed_broken_with: Default::default() }]));
         let run = hq(&state);
         assert_eq!(run.position, 1);
         assert_eq!(run.phase, RunPhase::Movement);
@@ -1433,7 +1478,7 @@ mod tests {
 
         let run = state.active_run.unwrap();
         assert_eq!(run.phase, RunPhase::Movement);
-        assert_eq!(events, vec![GameEvent::IcePassed { server: ServerId::Hq, position: 0, after_fully_breaking: false, rezzed_as: vec![] }]);
+        assert_eq!(events, vec![GameEvent::IcePassed { server: ServerId::Hq, position: 0, after_fully_breaking: false, rezzed_as: vec![], printed_broken_with: Default::default() }]);
         // Never encountered — its subroutines were never touched.
         assert!(run.ice[0].subroutines.iter().all(|s| s.status == SubroutineStatus::Pending));
     }
@@ -1453,7 +1498,7 @@ mod tests {
         assert_eq!(run.phase, RunPhase::Movement);
         assert_eq!(run.position, 1);
         assert!(run.jack_out_permitted);
-        assert_eq!(events, vec![GameEvent::IcePassed { server: ServerId::Hq, position: 0, after_fully_breaking: false, rezzed_as: vec![] }], "nothing approached yet");
+        assert_eq!(events, vec![GameEvent::IcePassed { server: ServerId::Hq, position: 0, after_fully_breaking: false, rezzed_as: vec![], printed_broken_with: Default::default() }], "nothing approached yet");
     }
 
     /// CR 6.9.4 end to end at the engine's run level: the jack-out decision,
@@ -1471,7 +1516,7 @@ mod tests {
         let registry = CardRegistry::new();
 
         let passed = advance_run(&mut state, RunAction::Continue, &registry).unwrap();
-        assert_eq!(passed, vec![GameEvent::EncounterEnded { card_id: CardId("ice_wall_0".to_string()), install: crate::rules::state::InstallId(0) }, GameEvent::IcePassed { server: ServerId::Hq, position: 0, after_fully_breaking: false, rezzed_as: vec![crate::dsl::IceType::Barrier] }]);
+        assert_eq!(passed, vec![GameEvent::EncounterEnded { card_id: CardId("ice_wall_0".to_string()), install: crate::rules::state::InstallId(0) }, GameEvent::IcePassed { server: ServerId::Hq, position: 0, after_fully_breaking: false, rezzed_as: vec![crate::dsl::IceType::Barrier], printed_broken_with: Default::default() }]);
         let run = state.active_run.as_ref().unwrap();
         assert_eq!((run.phase, run.position, run.jack_out_permitted), (RunPhase::Movement, 1, true));
 
@@ -1596,7 +1641,7 @@ mod tests {
         let run = state.active_run.unwrap();
         assert_eq!(run.phase, RunPhase::Movement);
         assert_eq!(run.position, 1);
-        assert_eq!(events, vec![GameEvent::EncounterEnded { card_id: CardId("ice_wall_0".to_string()), install: crate::rules::state::InstallId(0) }, GameEvent::IcePassed { server: ServerId::Hq, position: 0, after_fully_breaking: false, rezzed_as: vec![crate::dsl::IceType::Barrier] }]);
+        assert_eq!(events, vec![GameEvent::EncounterEnded { card_id: CardId("ice_wall_0".to_string()), install: crate::rules::state::InstallId(0) }, GameEvent::IcePassed { server: ServerId::Hq, position: 0, after_fully_breaking: false, rezzed_as: vec![crate::dsl::IceType::Barrier], printed_broken_with: Default::default() }]);
     }
 
     #[test]
@@ -1631,7 +1676,7 @@ mod tests {
 
         let run = state.active_run.unwrap();
         assert_eq!((run.phase, run.position), (RunPhase::Movement, 1));
-        assert_eq!(events, vec![GameEvent::EncounterEnded { card_id: CardId("ice_wall".to_string()), install: crate::rules::state::InstallId(0) }, GameEvent::IcePassed { server: ServerId::Hq, position: 0, after_fully_breaking: false, rezzed_as: vec![crate::dsl::IceType::Barrier] }], "the server is not yet approached");
+        assert_eq!(events, vec![GameEvent::EncounterEnded { card_id: CardId("ice_wall".to_string()), install: crate::rules::state::InstallId(0) }, GameEvent::IcePassed { server: ServerId::Hq, position: 0, after_fully_breaking: false, rezzed_as: vec![crate::dsl::IceType::Barrier], printed_broken_with: Default::default() }], "the server is not yet approached");
     }
 
     #[test]

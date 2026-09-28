@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::rules::state::InstallId;
 
-use crate::dsl::{CardId, Cost, Effect, IceType, SubroutineDef};
+use crate::dsl::{CardId, CardSubtype, Cost, Effect, IceType, SubroutineDef};
 use crate::rules::state::Side;
 
 /// Which Corp zone/server a run targets. Central servers are singletons;
@@ -110,6 +110,44 @@ pub struct EncounterTally {
     /// one question is whether every break was one install's.
     #[serde(default, skip_serializing_if = "BrokenBy::is_nothing")]
     pub broken_by: BrokenBy,
+    /// Which kinds of icebreaker broke one of the ice's *printed*
+    /// subroutines this encounter — Virtual Service Agent's "if they did
+    /// not break its printed subroutine with a **decoder** during that
+    /// encounter". Carried out of the encounter on the pass that ends it
+    /// (`GameEvent::IcePassed::printed_broken_with`), because the tally is
+    /// reset as the movement phase begins and the pass's triggers resolve
+    /// after that.
+    #[serde(default, skip_serializing_if = "BrokenWith::is_empty")]
+    pub printed_broken_with: BrokenWith,
+}
+
+/// A set of the icebreaker subtypes (CR 2.16.7i: AI, decoder, fracter,
+/// killer) — `EncounterTally::printed_broken_with`. Bits rather than a
+/// list, because the tally is `Copy` and is cloned with every search
+/// state; only the four words an icebreaker is typed by, since those are
+/// what "with a decoder" can name.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BrokenWith(u8);
+
+impl BrokenWith {
+    /// The subtypes the set can hold, each at its own bit.
+    pub const KINDS: [CardSubtype; 4] = [CardSubtype::Ai, CardSubtype::Decoder, CardSubtype::Fracter, CardSubtype::Killer];
+
+    pub fn is_empty(&self) -> bool {
+        self.0 == 0
+    }
+
+    /// The set with every icebreaker subtype among `subtypes` added.
+    pub fn with(self, subtypes: &[CardSubtype]) -> BrokenWith {
+        let bits = Self::KINDS.iter().enumerate().filter(|(_, kind)| subtypes.contains(kind)).fold(0, |bits, (bit, _)| bits | 1 << bit);
+        BrokenWith(self.0 | bits)
+    }
+
+    /// Whether `subtype` is in the set; never, for a word that is not an
+    /// icebreaker's.
+    pub fn includes(self, subtype: CardSubtype) -> bool {
+        Self::KINDS.iter().position(|kind| *kind == subtype).is_some_and(|bit| self.0 & 1 << bit != 0)
+    }
 }
 
 /// `EncounterTally::broken_by`.

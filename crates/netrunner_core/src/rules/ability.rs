@@ -384,6 +384,14 @@ pub fn evaluate_effect(
             if state.active_run.is_none() {
                 return Ok(Vec::new());
             }
+            // Subroutines on this ice cannot end the run (Banner): while
+            // they resolve, an "end the run" does nothing and the rest of
+            // them go on (CR 1.2.2).
+            if crate::rules::run::resolving_subroutines_of(state)
+                .is_some_and(|ice| continuous::cannot_install(state, registry, crate::dsl::Prohibition::EndTheRun, ice))
+            {
+                return Ok(Vec::new());
+            }
             // A standing prevention is asked first (Shred).
             if let Some(events) = prevention::run_ending(state, registry, ctx)? {
                 return Ok(events);
@@ -1157,14 +1165,23 @@ pub fn evaluate_effect(
             crate::rules::engine::install_runner_card_from_grip_paying_cost(state, registry, card_id)
         }
 
-        Effect::Prohibit { what, until, copies_of_it, this_install } => {
+        Effect::Prohibit { what, until, copies_of_it, this_install, encountered_ice } => {
             let until = lingering::until(state, *until)?;
             // The card whose text it is, for whoever shows it; a prohibition
             // with no card behind it has nothing to be shown as. About
             // copies, the acting card is the one revealed, and the text is
             // the card that asked for it.
             let acting = acting_card.cloned().ok_or(RulesError::UnresolvedCardTarget)?;
-            let (on, source) = if *copies_of_it {
+            let (on, source) = if *encountered_ice {
+                let ice = state
+                    .active_run
+                    .as_ref()
+                    .filter(|run| run.phase == RunPhase::EncounterIce)
+                    .and_then(|run| run.ice.get(run.position))
+                    .map(|ice| ice.install_id)
+                    .ok_or(RulesError::NotInEncounter)?;
+                (On::Install(ice), acting)
+            } else if *copies_of_it {
                 (On::CopiesOf(acting.clone()), ctx.attributed_card().unwrap_or(acting))
             } else if *this_install {
                 let install = ctx.acting_install.ok_or(RulesError::UnresolvedCardTarget)?;
@@ -1908,9 +1925,19 @@ pub fn evaluate_effect(
             crate::rules::run::move_run_to_outermost(state, registry, *server)
         }
 
-        Effect::SwapApproachedIceWithCard { origin } => {
+        Effect::SwapApproachedIceWithCard { origin, this_ice } => {
             let card_id = acting_card.ok_or(RulesError::UnresolvedCardTarget)?.clone();
-            crate::rules::run::swap_approached_ice_with_card(state, registry, &card_id, origin)
+            // "Swap it": nothing to swap once the ice has left the table
+            // while the choice waited.
+            let this = if *this_ice {
+                match ctx.acting_install.filter(|install| state.find_corp_install(*install).is_some()) {
+                    Some(install) => Some(install),
+                    None => return Ok(Vec::new()),
+                }
+            } else {
+                None
+            };
+            crate::rules::run::swap_approached_ice_with_card(state, registry, &card_id, origin, this)
         }
 
         Effect::DealDamageAmount(damage_type, amount) => {
@@ -3446,14 +3473,7 @@ pub fn check_requirement(
             if matches { Ok(()) } else { Err(RulesError::RequirementNotMet) }
         }
         EffectRequirement::ResolvingThisIcesSubroutines => {
-            let resolving = ctx.acting_install.is_some_and(|this| {
-                state.active_run.as_ref().is_some_and(|run| {
-                    run.phase == RunPhase::EncounterIce
-                        && run.ice.get(run.position).is_some_and(|ice| {
-                            ice.install_id == this && ice.subroutines.iter().any(|s| s.status == SubroutineStatus::Resolved)
-                        })
-                })
-            });
+            let resolving = ctx.acting_install.is_some_and(|this| crate::rules::run::resolving_subroutines_of(state) == Some(this));
             if resolving { Ok(()) } else { Err(RulesError::RequirementNotMet) }
         }
         EffectRequirement::DuringRun => {
@@ -3523,6 +3543,12 @@ pub fn check_requirement(
             // is: the state has the tags just taken.
             let had_none = matches!(ctx.triggering_event, Some(GameEvent::TagsGiven { side: Side::Runner, had: 0, .. }));
             if had_none { Ok(()) } else { Err(RulesError::RequirementNotMet) }
+        }
+        EffectRequirement::BrokePrintedSubroutineWith(subtype) => {
+            // Off the pass, as `HadNoTags` is off its event: the encounter's
+            // own tally went as the movement phase began.
+            let broke = matches!(ctx.triggering_event, Some(GameEvent::IcePassed { printed_broken_with, .. }) if printed_broken_with.includes(*subtype));
+            if broke { Ok(()) } else { Err(RulesError::RequirementNotMet) }
         }
         EffectRequirement::CorpCreditsAtLeast(amount) => {
             if state.corp.resources.credits.0 >= *amount { Ok(()) } else { Err(RulesError::RequirementNotMet) }
@@ -3875,6 +3901,10 @@ pub(crate) fn resolve_amount(amount: &Amount, ctx: &ResolutionContext<'_>, state
         Amount::CardsInHand(Side::Runner) => state.runner.grip.len() as u32,
         Amount::Credits(Side::Corp) => state.corp.resources.credits.0,
         Amount::Credits(Side::Runner) => state.runner.resources.credits.0,
+        Amount::ThisCardStrength => ctx
+            .acting_install
+            .and_then(|install| state.find_rig_install(install))
+            .map_or(0, |card| crate::rules::continuous::breaker_strength(state, registry, card).max(0) as u32),
         Amount::TimesThisTurnOnThisCopy(trigger) => ctx
             .acting_install
             .and_then(|install| state.corp.installed.iter().find(|installed| installed.install_id == install))
@@ -3950,6 +3980,7 @@ pub(crate) fn consume_requirement(
         | EffectRequirement::DuringRun
         | EffectRequirement::WasFirstAdvancementThisCard
         | EffectRequirement::HadNoTags
+        | EffectRequirement::BrokePrintedSubroutineWith(_)
         | EffectRequirement::CorpCreditsAtLeast(_)
         | EffectRequirement::RunEventActive
         | EffectRequirement::InstalledWithoutSpendingCredits

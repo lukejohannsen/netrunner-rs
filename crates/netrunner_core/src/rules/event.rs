@@ -36,7 +36,21 @@ pub enum GameEvent {
     /// rezzed code gate or sentry" is read off it (`IceFacts::
     /// rezzed_code_gate_or_sentry`). A list rather than one type since a
     /// piece of ice can gain more than one.
-    IcePassed { server: ServerId, position: u32, after_fully_breaking: bool, rezzed_as: Vec<crate::dsl::IceType> },
+    ///
+    /// `printed_broken_with` is which kinds of icebreaker broke one of its
+    /// printed subroutines in the encounter the pass ends (`run::
+    /// EncounterTally::printed_broken_with`): Virtual Service Agent's "if
+    /// they did not break its printed subroutine with a decoder during that
+    /// encounter", which is asked as the pass's trigger resolves, after the
+    /// encounter's tally is gone. Public, as each break was.
+    IcePassed {
+        server: ServerId,
+        position: u32,
+        after_fully_breaking: bool,
+        rezzed_as: Vec<crate::dsl::IceType>,
+        #[serde(default, skip_serializing_if = "crate::rules::BrokenWith::is_empty")]
+        printed_broken_with: crate::rules::BrokenWith,
+    },
     /// The Runner fully broke the ice being encountered: the first time
     /// this encounter that every subroutine on it was broken (CR 6.5.7a).
     /// Lethe gives a tag for it. `position` is where it stands in the

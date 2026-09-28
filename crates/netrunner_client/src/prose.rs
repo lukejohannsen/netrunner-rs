@@ -104,6 +104,7 @@ pub fn describe_amount(amount: &Amount) -> String {
         Amount::CardsInHand(Side::Runner) => "the cards in the grip".to_string(),
         Amount::Credits(Side::Corp) => "the Corp's credits".to_string(),
         Amount::Credits(Side::Runner) => "the Runner's credits".to_string(),
+        Amount::ThisCardStrength => "this program's strength".to_string(),
         Amount::TimesThisTurnOnThisCopy(trigger) => format!("the times \"{}\" has happened to this card this turn", humanize(format!("{trigger:?}"))),
     }
 }
@@ -402,8 +403,9 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
             format!("look at the top {} of {}", plural(*count, "card", "cards"), if *deck == Side::Corp { "R&D" } else { "the stack" })
         }
         Effect::HostRigCardOnInstall { .. } => "host it on an installed card".to_string(),
-        Effect::Prohibit { what, until, copies_of_it, this_install } => {
+        Effect::Prohibit { what, until, copies_of_it, this_install, encountered_ice } => {
             let what = match (what, copies_of_it) {
+                (Prohibition::EndTheRun, _) if *encountered_ice => "subroutines on the ice being encountered cannot end the run",
                 (Prohibition::ScoreAgendas, _) if *this_install => "the Corp cannot score that card",
                 (Prohibition::StealOrTrash, _) if *this_install => "the Runner cannot steal or trash that card",
                 (Prohibition::StealOrTrash, false) => "the Runner cannot steal or trash cards",
@@ -412,6 +414,7 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
                 (Prohibition::ScoreAgendas, true) => "the Corp cannot score copies of that agenda",
                 (Prohibition::SpendOrLoseCreditPool, _) => "the Runner cannot lose or spend credits from their credit pool",
                 (Prohibition::SpendCredits, _) => "the Runner cannot spend credits",
+                (Prohibition::EndTheRun, _) => "subroutines cannot end the run",
             };
             format!("{what} {}", duration(until))
         }
@@ -427,6 +430,7 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
         Effect::ResolveSubroutineOfSelectedIce => "resolve a subroutine of the chosen ice".to_string(),
         Effect::MoveRunToOutermost(server) => format!("move the run to the outermost ice of {}", describe_server(*server)),
         Effect::InstallAgendaFromRunnerScoreArea => "install an agenda from the Runner's score area".to_string(),
+        Effect::SwapApproachedIceWithCard { this_ice: true, .. } => "swap this ice with a card".to_string(),
         Effect::SwapApproachedIceWithCard { .. } => "swap the approached ice with a card".to_string(),
     }
 }
@@ -647,6 +651,7 @@ pub fn describe_continuous(effect: &ContinuousEffect) -> String {
             Prohibition::StealOrTrash => "cannot steal or trash cards",
             Prohibition::SpendOrLoseCreditPool => "cannot lose or spend credits from their credit pool",
             Prohibition::SpendCredits => "cannot spend credits",
+            Prohibition::EndTheRun => "cannot end the run with a subroutine",
         }
         .to_string(),
     };

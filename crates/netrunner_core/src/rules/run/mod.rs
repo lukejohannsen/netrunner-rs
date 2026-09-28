@@ -10,13 +10,13 @@ pub use access::{
 pub(crate) use access::{at_mid_access_window, breach, breaching, host_currently_accessed_card};
 pub use action::RunAction;
 pub use engine::{advance_run, start_run};
-pub(crate) use engine::{force_encounter, start_breach};
+pub(crate) use engine::{force_encounter, resolving_subroutines_of, start_breach};
 pub(crate) use engine::{
     break_subroutine, bypass_encountered_ice, check_run_may_begin, encounter_ends, end_run, move_run_to_outermost, reconcile_ice, renumber_subroutines,
     swap_approached_ice_with_card, transition_subroutine,
 };
 pub use state::{
-    AccessCandidate, AccessPhase, AccessState, BrokenBy, EncounterTally, EncounteredSubroutine, GainedForTheRun, RunIce, RunPhase, RunState, ServerId,
+    AccessCandidate, AccessPhase, AccessState, BrokenBy, BrokenWith, EncounterTally, EncounteredSubroutine, GainedForTheRun, RunIce, RunPhase, RunState, ServerId,
     SubroutineStatus,
 };
 

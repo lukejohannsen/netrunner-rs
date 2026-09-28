@@ -934,8 +934,10 @@ pub enum CardValidationError {
     OncePerTurnDoesNotFit(CardId, &'static str),
     #[error("card {0:?}: a continuous {1} effect does not fit — {2}")]
     ContinuousEffectDoesNotFit(CardId, &'static str, &'static str),
-    #[error("card {0:?}: a prohibition lasts a run or a turn — nothing prints one for an encounter, and the guards that ask are not asked during one")]
+    #[error("card {0:?}: a prohibition lasts a run or a turn — the guards that ask are not asked during an encounter — except that the encountered ice's subroutines cannot end the run, which is about that ice (`encountered_ice`) and lasts that encounter")]
     ProhibitionForAnEncounter(CardId),
+    #[error("card {0:?}: which kind of icebreaker broke the printed subroutines (`BrokePrintedSubroutineWith`) is read off a pass, so only an `OnIcePassed` trigger asks it, and only about an icebreaker subtype (AI, decoder, fracter, killer)")]
+    BrokenWithOutsideAPass(CardId),
     #[error("card {0:?}: a subroutine is gained by the ice being encountered, so only an `OnEncounter` trigger that `acts_on_subject` can say it")]
     GainedSubroutineWithNoEncounter(CardId),
 }
@@ -1182,6 +1184,28 @@ impl CardDefinition {
         if once_per_turn.filter(|requirement| requirement.mentions_once_per_run()).count() > 1 {
             return Err(CardValidationError::OncePerTurnDoesNotFit(self.id.clone(), "two once-per-run abilities on one card would share one use (`OncePerTurnKey` is the card and which copy)"));
         }
+        // Which breaker broke the printed subroutines is read off a pass
+        // (`GameEvent::IcePassed`), so only a pass's trigger can ask it; and
+        // only an icebreaker's subtype can be one it names, since the pass
+        // records no other.
+        for triggered in &self.triggers {
+            let mut named = Vec::new();
+            if let Some(requirement) = &triggered.requirement {
+                broke_printed_with(requirement, &mut named);
+            }
+            let misfit = !named.is_empty()
+                && (triggered.trigger != Trigger::OnIcePassed || named.iter().any(|subtype| !crate::rules::BrokenWith::KINDS.contains(subtype)));
+            if misfit {
+                return Err(CardValidationError::BrokenWithOutsideAPass(self.id.clone()));
+            }
+        }
+        let mut named = Vec::new();
+        for requirement in self.abilities.iter().filter_map(|ability| ability.requirement.as_ref()).chain(self.continuous.iter().filter_map(|effect| effect.condition.as_ref())) {
+            broke_printed_with(requirement, &mut named);
+        }
+        if !named.is_empty() {
+            return Err(CardValidationError::BrokenWithOutsideAPass(self.id.clone()));
+        }
         for effect in self.continuous.iter().filter(|effect| effect.first_each_turn) {
             let occurrences = match &effect.applies_to {
                 Scope::Installing(filter) => crate::rules::turn_log::Occurrences::installs(filter, self.side),
@@ -1198,7 +1222,10 @@ impl CardDefinition {
         }
         // `Prohibit { until: Encounter }` parses and would hold for a window
         // in which nobody scores, steals or trashes: a card that reads as
-        // working and forbids nothing.
+        // working and forbids nothing. The one prohibition that is about an
+        // encounter — Banner's, that the encountered ice's subroutines
+        // cannot end the run — is about that ice and lasts that encounter,
+        // and nothing else is.
         let mut prohibits_for_an_encounter = false;
         // `Amount::ChosenNumber` outside an `Effect::ChooseNumber::then`
         // parses and reads as 0: a card that removes no tags and says
@@ -1252,7 +1279,11 @@ impl CardDefinition {
                 if let Effect::RevealAtRandom { each: Some(each), .. } = effect {
                     revealed_cards_wait |= !never_parks(each);
                 }
-                prohibits_for_an_encounter |= matches!(effect, Effect::Prohibit { until: EffectDuration::Encounter, .. });
+                if let Effect::Prohibit { what, until, encountered_ice, .. } = effect {
+                    let about_the_ice = *what == crate::dsl::Prohibition::EndTheRun;
+                    prohibits_for_an_encounter |= about_the_ice != *encountered_ice
+                        || about_the_ice != (*until == EffectDuration::Encounter);
+                }
                 restricted_to_no_type |= matches!(effect, Effect::BreakSubroutines { restrict_to: Some(IceType::Other), .. });
                 copies_set += usize::from(matches!(effect, Effect::SetIdentityCopy(_)));
                 if let Effect::ChooseNumber { secret: true, then, .. } = effect {
@@ -1410,6 +1441,20 @@ impl CardDefinition {
             }
         }
         Ok(())
+    }
+}
+
+/// The subtypes `requirement` asks `BrokePrintedSubroutineWith` about,
+/// anywhere in it.
+fn broke_printed_with(requirement: &EffectRequirement, named: &mut Vec<CardSubtype>) {
+    match requirement {
+        EffectRequirement::BrokePrintedSubroutineWith(subtype) => named.push(*subtype),
+        EffectRequirement::Not(inner) => broke_printed_with(inner, named),
+        EffectRequirement::And(a, b) => {
+            broke_printed_with(a, named);
+            broke_printed_with(b, named);
+        }
+        _ => {}
     }
 }
 
@@ -1919,21 +1964,56 @@ mod tests {
     #[test]
     fn validate_refuses_a_prohibition_that_lasts_an_encounter() {
         use crate::dsl::effect::Prohibition;
-        let ice = |until| CardDefinition {
+        let ice = |what, until, encountered_ice| CardDefinition {
             id: CardId("bar".to_string()),
             side: Side::Corp,
             card_type: CardType::Ice(IceType::CodeGate),
             strength: Some(1),
             subroutines: vec![SubroutineDef {
                 text: "The Runner cannot steal or trash Corp cards.".to_string(),
-                effect: Effect::Sequence(vec![Effect::Prohibit { what: Prohibition::StealOrTrash, until, copies_of_it: false, this_install: false }]),
+                effect: Effect::Sequence(vec![Effect::Prohibit { what, until, copies_of_it: false, this_install: false, encountered_ice }]),
                 only_breakable_by: None,
             }],
             ..CardDefinition::default()
         };
-        assert_eq!(ice(EffectDuration::Run).validate(), Ok(()));
-        assert_eq!(ice(EffectDuration::Turn).validate(), Ok(()));
-        assert_eq!(ice(EffectDuration::Encounter).validate(), Err(CardValidationError::ProhibitionForAnEncounter(CardId("bar".to_string()))));
+        let refused = Err(CardValidationError::ProhibitionForAnEncounter(CardId("bar".to_string())));
+        assert_eq!(ice(Prohibition::StealOrTrash, EffectDuration::Run, false).validate(), Ok(()));
+        assert_eq!(ice(Prohibition::StealOrTrash, EffectDuration::Turn, false).validate(), Ok(()));
+        assert_eq!(ice(Prohibition::StealOrTrash, EffectDuration::Encounter, false).validate(), refused);
+        // Banner's: about the encountered ice, for that encounter, and
+        // nothing else is.
+        assert_eq!(ice(Prohibition::EndTheRun, EffectDuration::Encounter, true).validate(), Ok(()));
+        assert_eq!(ice(Prohibition::EndTheRun, EffectDuration::Run, true).validate(), refused);
+        assert_eq!(ice(Prohibition::EndTheRun, EffectDuration::Encounter, false).validate(), refused);
+        assert_eq!(ice(Prohibition::StealOrTrash, EffectDuration::Encounter, true).validate(), refused);
+    }
+
+    /// Which kind of breaker broke the printed subroutines is on the pass,
+    /// so only a pass can ask it, and only about an icebreaker's subtype.
+    #[test]
+    fn validate_refuses_a_breaker_kind_asked_anywhere_but_a_pass() {
+        let asks = |trigger, subtype| CardDefinition {
+            id: CardId("vsa".to_string()),
+            side: Side::Corp,
+            card_type: CardType::Ice(IceType::CodeGate),
+            strength: Some(2),
+            triggers: vec![TriggeredEffect {
+                trigger,
+                subject: Some(Subject::This),
+                requirement: Some(EffectRequirement::Not(Box::new(EffectRequirement::BrokePrintedSubroutineWith(subtype)))),
+                effects: vec![Effect::GiveTags(crate::dsl::Amount::Fixed(1))],
+                when: None,
+                acts_on_subject: false,
+                first_each_turn: false,
+                from_heap: false,
+                text: None,
+            }],
+            ..CardDefinition::default()
+        };
+        let refused = Err(CardValidationError::BrokenWithOutsideAPass(CardId("vsa".to_string())));
+        assert_eq!(asks(Trigger::OnIcePassed, CardSubtype::Decoder).validate(), Ok(()));
+        assert_eq!(asks(Trigger::OnEncounterEnded, CardSubtype::Decoder).validate(), refused);
+        assert_eq!(asks(Trigger::OnIcePassed, CardSubtype::Virus).validate(), refused, "not an icebreaker's subtype");
     }
 
     /// `Amount::ChosenNumber` means something only inside the `then` of the
