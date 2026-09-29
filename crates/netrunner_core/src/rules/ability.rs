@@ -1014,10 +1014,14 @@ pub fn evaluate_effect(
                 crate::dsl::CardZoneRef::OwnStack => RunnerCardSource::Stack,
                 _ => return Err(RulesError::UnresolvedCardTarget),
             };
-            let host = ctx.acting_install.ok_or(RulesError::UnresolvedCardTarget)?;
+            // The host is the acting install: the ice once it is chosen, and
+            // Muse for a program that goes on Muse. A trojan not yet placed
+            // needs none — Arissana Rocha Nahu's install is her identity's.
+            let host = || ctx.acting_install.ok_or(RulesError::UnresolvedCardTarget);
             match card {
                 // The ice was chosen: this resolves as it.
                 Some(program) => {
+                    let host = host()?;
                     if !can_install_program_onto(state, registry, program, source, true) || state.find_corp_install(host).is_none() {
                         return Ok(Vec::new());
                     }
@@ -1030,7 +1034,7 @@ pub fn evaluate_effect(
                         return Ok(Vec::new());
                     }
                     if !trojan {
-                        return install_program_onto(state, registry, program, source, ProgramHost::RigCard(host));
+                        return install_program_onto(state, registry, program, source, ProgramHost::RigCard(host()?));
                     }
                     let choose_ice = Effect::PromptChooseCards {
                         side: Side::Runner,
@@ -1797,7 +1801,7 @@ pub fn evaluate_effect(
             // that cannot be installed at all.
             let Some(position) = position else { return Ok(Vec::new()) };
             let Some(card_def) = registry.get(&card_id) else { return Ok(Vec::new()) };
-            let mut allowed = crate::rules::engine::corp_install_destinations(state, card_def, *ignore_costs, *discount);
+            let mut allowed = crate::rules::engine::corp_install_destinations(state, registry, card_def, *ignore_costs, *discount);
             if *remote_only {
                 allowed.retain(|server| matches!(server, crate::rules::run::ServerId::Remote(_)));
             }
@@ -1967,6 +1971,10 @@ pub fn evaluate_effect(
             // later than it was built, and paying half a cost is worse
             // than doing nothing.
             if state.runner.tags < points {
+                return Ok(Vec::new());
+            }
+            // Into a new remote, which a limit on remotes may forbid.
+            if !crate::rules::legal_actions::may_add_remote(state, registry) {
                 return Ok(Vec::new());
             }
             state.runner.scored_agendas.remove(position);
@@ -3942,6 +3950,7 @@ pub(crate) fn resolve_amount(amount: &Amount, ctx: &ResolutionContext<'_>, state
         Amount::ChosenNumber => 0,
         Amount::AgendaPointsScoredThisTurn => state.this_turn.agenda_points_scored(),
         Amount::CardsInstalledFromHqThisTurn => state.this_turn.installed_from_hq(),
+        Amount::CardsInstalledInRemotesThisTurn => state.this_turn.installed_in_remotes(),
         Amount::ClickGainsInRunsThisTurn => state.this_turn.click_gains_in_runs(),
         Amount::TimesThisTurn(trigger) => state.this_turn.times(*trigger),
         Amount::TimesThisTurnWhen { trigger, when } => {

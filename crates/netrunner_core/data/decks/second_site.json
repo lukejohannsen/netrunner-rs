@@ -1,0 +1,103 @@
+{
+  "id": "second_site",
+  "name": "Second Site",
+  "side": "Corp",
+  "category": "Sweep",
+  "description": "Not a published list: built so the sweeps reach A Teia: IP Recovery, The Automata Initiative's Jinteki identity, which keeps to two remote servers and installs a second card free in the other the first time each turn. A Thousand Cuts' frame under a new identity (The Automata Initiative Stage 8c).",
+  "style": "trap",
+  "identity": "a_teia_ip_recovery",
+  "cards": [
+    {
+      "card": "sericulture_expansion",
+      "count": 2
+    },
+    {
+      "card": "lotus_haze",
+      "count": 3
+    },
+    {
+      "card": "snare",
+      "count": 3
+    },
+    {
+      "card": "urtica_cipher",
+      "count": 1
+    },
+    {
+      "card": "the_red_room",
+      "count": 2
+    },
+    {
+      "card": "retribution",
+      "count": 1
+    },
+    {
+      "card": "vicsek",
+      "count": 2
+    },
+    {
+      "card": "knowledge_seeker",
+      "count": 2
+    },
+    {
+      "card": "ansel_1_0",
+      "count": 1
+    },
+    {
+      "card": "ezam",
+      "count": 1
+    },
+    {
+      "card": "lionsmane",
+      "count": 2
+    },
+    {
+      "card": "esca",
+      "count": 2
+    },
+    {
+      "card": "cultivate",
+      "count": 2
+    },
+    {
+      "card": "cloud_eater",
+      "count": 2
+    },
+    {
+      "card": "bring_them_home",
+      "count": 2
+    },
+    {
+      "card": "see_how_they_run",
+      "count": 2
+    },
+    {
+      "card": "tributary",
+      "count": 2
+    },
+    {
+      "card": "fujii_asset_retrieval",
+      "count": 2
+    },
+    {
+      "card": "mindscaping",
+      "count": 3
+    },
+    {
+      "card": "attini",
+      "count": 2
+    },
+    {
+      "card": "phoneutria",
+      "count": 2
+    },
+    {
+      "card": "tatu_bola",
+      "count": 2
+    },
+    {
+      "card": "front_company",
+      "count": 2
+    }
+  ]
+}

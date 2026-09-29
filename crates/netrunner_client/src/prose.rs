@@ -79,6 +79,7 @@ pub fn describe_amount(amount: &Amount) -> String {
         Amount::FacedownCardsInArchives => "the number of facedown cards in Archives".to_string(),
         Amount::CardTypesAmongFaceupInArchives => "the number of card types among faceup cards in Archives".to_string(),
         Amount::CardsInstalledFromHqThisTurn => "the cards installed from HQ this turn".to_string(),
+        Amount::CardsInstalledInRemotesThisTurn => "the cards installed in remote servers this turn".to_string(),
         Amount::ClickGainsInRunsThisTurn => "the times you gained [click] during a run this turn".to_string(),
         Amount::CreditsLostThisResolution => "the credits just lost".to_string(),
         Amount::ClicksRemaining => "the clicks remaining".to_string(),
@@ -535,6 +536,12 @@ pub fn engine_reading(card: &CardDefinition, registry: &CardRegistry) -> Vec<Str
             }
             Some(EventFilter::InstalledFromHq(true)) => when = format!("{when}, from HQ"),
             Some(EventFilter::InstalledFromHq(false)) => when = format!("{when}, from anywhere except HQ"),
+            Some(EventFilter::InstalledIn(kind)) => when = format!("{when}, in {}", match kind {
+                netrunner_core::dsl::ServerKind::Remote => "a remote server",
+                netrunner_core::dsl::ServerKind::Central => "a central server",
+                netrunner_core::dsl::ServerKind::Hq => "HQ",
+                netrunner_core::dsl::ServerKind::RnD => "R&D",
+            }),
             Some(EventFilter::Ice(facts)) => {
                 let words: Vec<&str> = [
                     (facts.outermost, "the outermost ice"),
@@ -671,6 +678,7 @@ pub fn describe_continuous(effect: &ContinuousEffect) -> String {
         ContinuousKind::PlayClicks(number) => format!("costs {} [click] to play", signed(number)),
         ContinuousKind::StealCost(cost) => format!("to steal it, also {}", describe_cost(cost)),
         ContinuousKind::AdditionalTrashCost(cost) => format!("to trash it, also {}", describe_cost(cost)),
+        ContinuousKind::RemoteServerLimit(n) => format!("may have no more than {}", plural(*n, "remote server", "remote servers")),
         ContinuousKind::ScoreCost(cost) => format!("costs \"{}\" to score", describe_cost(cost)),
         ContinuousKind::BasicTrashCost(cost) => format!("costs the Corp \"{}\" to trash with the basic action", describe_cost(cost)),
         ContinuousKind::AgendaPoints(number) => format!("is worth {} agenda points", signed(number)),

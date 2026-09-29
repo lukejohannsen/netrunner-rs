@@ -1128,7 +1128,7 @@ impl CardDefinition {
                 Some(EventFilter::Host) => about == TriggerAbout::Card && self.installs_on_ice,
                 // Only a Corp install's moment says where the card came
                 // from (`listeners::Moment::from_hq`).
-                Some(EventFilter::InstalledFromHq(_)) => triggered.trigger == Trigger::OnInstall && self.side == crate::rules::Side::Corp,
+                Some(EventFilter::InstalledFromHq(_) | EventFilter::InstalledIn(_)) => triggered.trigger == Trigger::OnInstall && self.side == crate::rules::Side::Corp,
                 // Only an install is in a root or not.
                 Some(EventFilter::InRoot) => triggered.trigger == Trigger::OnInstall,
                 // Only a trash says which pile the card left.
@@ -1433,6 +1433,8 @@ impl CardDefinition {
                     return misfit("PlayCost", "a play cost is this card's own or that of a card being `Playing`");
                 }
                 (ContinuousKind::StealCost(_), Scope::Stealing(_) | Scope::StealingFromThisServer) => {}
+                (ContinuousKind::RemoteServerLimit(_), Scope::Controller) => {}
+                (ContinuousKind::RemoteServerLimit(_), _) => return misfit("RemoteServerLimit", "a limit on remote servers is its controller's"),
                 (ContinuousKind::AdditionalTrashCost(_), Scope::This) => {}
                 (ContinuousKind::AdditionalTrashCost(_), _) => {
                     return misfit("AdditionalTrashCost", "an additional cost to trash a card the Runner accesses is that card's own");

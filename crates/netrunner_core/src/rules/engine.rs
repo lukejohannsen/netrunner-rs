@@ -782,6 +782,14 @@ pub(crate) fn place_corp_card(
     // The registry lookup stays even though the printed cost is not paid
     // here: a card the engine cannot describe is not installable.
     let card_def = registry.get(&card_id).ok_or_else(|| RulesError::CardNotFoundInRegistry(card_id.clone()))?;
+    // A new remote past A Teia: IP Recovery's "Limit 2 remote servers":
+    // the install is refused, whoever offered it.
+    if let ServerId::Remote(n) = zone
+        && !super::legal_actions::existing_remote_ids(next).contains(&n)
+        && !super::legal_actions::may_add_remote(next, registry)
+    {
+        return Err(RulesError::RemoteServerLimit { limit: crate::rules::continuous::remote_server_limit(next, registry).unwrap_or(0) });
+    }
     // The slot must fit the card. `install_card_candidates` only ever
     // offers matching pairs, but `apply_action` is the authority, not
     // `legal_actions` (AGENTS.md): a remote client submits here directly,
@@ -882,10 +890,12 @@ pub(crate) fn place_corp_card(
 /// empty for an installable type. Computed at park time and safe to trust
 /// at resolution: a parked decision blocks every other action, so nothing
 /// can change in between.
-pub(crate) fn corp_install_destinations(state: &GameState, card_def: &crate::dsl::CardDefinition, ignore_costs: bool, discount: u32) -> Vec<ServerId> {
+pub(crate) fn corp_install_destinations(state: &GameState, registry: &CardRegistry, card_def: &crate::dsl::CardDefinition, ignore_costs: bool, discount: u32) -> Vec<ServerId> {
     let existing = super::legal_actions::existing_remote_ids(state);
     let mut remotes: Vec<ServerId> = existing.iter().copied().map(ServerId::Remote).collect();
-    remotes.push(ServerId::Remote(super::legal_actions::fresh_remote_id(&existing)));
+    if super::legal_actions::may_add_remote(state, registry) {
+        remotes.push(ServerId::Remote(super::legal_actions::fresh_remote_id(&existing)));
+    }
     match card_def.card_type {
         CardType::Agenda | CardType::Asset => remotes,
         CardType::Upgrade => {

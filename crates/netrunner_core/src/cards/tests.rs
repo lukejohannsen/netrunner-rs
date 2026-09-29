@@ -17851,4 +17851,87 @@ mod the_automata_initiative {
         let (breached, _) = run_to_completion(state, &registry, ServerId::Remote(0));
         assert!(!matches!(breached.pending_decision, Some(PendingDecision::PsiGame { .. })));
     }
+
+    // ---- Stage 8c: a limit on remote servers, and a program installed during a run ----
+
+    /// Passes the run's windows until `action` is legal for the Runner.
+    fn until_asked_or(mut state: GameState, registry: &CardRegistry, action: &PlayerAction) -> GameState {
+        for _ in 0..6 {
+            if crate::rules::legal_actions_for(&state, registry, Side::Runner).contains(action) {
+                return state;
+            }
+            state = match &state.paid_ability_window {
+                Some(window) => apply_action(&state, registry, PlayerAction::PassPriority { side: window.active_priority }).expect("pass").0,
+                None => crate::rules::test_support::continue_run(&state, registry).expect("continue").0,
+            };
+        }
+        panic!("{action:?} never offered");
+    }
+
+    fn install(card: &str, server: ServerId, slot: InstallSlot) -> PlayerAction {
+        PlayerAction::InstallCard { card_id: id(card), zone: server, slot, trash_first: false }
+    }
+
+    #[test]
+    fn a_teia_installs_a_second_card_free_in_another_remote_the_first_time_each_turn_and_keeps_to_two_remotes() {
+        let registry = registry();
+        let mut state = corp_turn(&["pad_campaign", "hostile_takeover", "ice_wall", "sure_gamble"]);
+        state.corp.hq.retain(|card| *card != id("sure_gamble"));
+        state.corp.identity = Some(id("a_teia_ip_recovery"));
+        let (asked, _) = apply_action(&state, &registry, install("pad_campaign", ServerId::Remote(0), InstallSlot::Root)).expect("install in a remote");
+        assert!(matches!(asked.pending_decision, Some(PendingDecision::ChooseCards { side: Side::Corp, .. })), "you may install 1 card from HQ: {:?}", asked.pending_decision);
+        let agenda = asked.corp.hq.iter().position(|card| *card == id("hostile_takeover")).expect("in HQ");
+        let where_to = select_in_order(&asked, &registry, &[agenda]);
+        assert_eq!(allowed(&where_to), [ServerId::Remote(1)], "another remote server, and no central");
+        let credits = where_to.corp.resources.credits;
+        let placed = to_server(&where_to, &registry, ServerId::Remote(1));
+        assert!(placed.corp.installed.iter().any(|c| c.card == id("hostile_takeover") && c.server == ServerId::Remote(1)));
+        assert_eq!(placed.corp.resources.credits, credits, "ignoring all costs");
+        let agenda = placed.corp.installed.iter().find(|c| c.card == id("hostile_takeover")).map(|c| c.install_id).expect("installed");
+        assert!(crate::rules::continuous::cannot_install(&placed, &registry, crate::dsl::Prohibition::ScoreAgendas, agenda), "you cannot score the second card this turn");
+
+        // Two remotes: no third, by any install.
+        let (placed, _) = close_all_windows(placed, &registry);
+        let offered = crate::rules::legal_actions_for(&placed, &registry, Side::Corp);
+        assert!(!offered.iter().any(|action| matches!(action, PlayerAction::InstallCard { zone: ServerId::Remote(2), .. })), "limit 2 remote servers");
+        assert!(matches!(apply_action(&placed, &registry, install("ice_wall", ServerId::Remote(2), InstallSlot::Ice)), Err(RulesError::RemoteServerLimit { limit: 2 })));
+        // The first time each turn: ice on a remote now asks nothing.
+        let (again, _) = apply_action(&placed, &registry, install("ice_wall", ServerId::Remote(0), InstallSlot::Ice)).expect("protect a remote");
+        assert!(again.pending_decision.is_none(), "not the first time this turn");
+    }
+
+    #[test]
+    fn arissana_installs_a_program_from_the_grip_during_a_run_and_trashes_it_as_the_run_ends_unless_it_is_a_trojan() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.identity = Some(id("arissana_rocha_nahu_street_artist"));
+        state.runner.grip = vec![id("corroder"), id("pichacao")];
+        state.corp.installed = vec![ice_at_hq("ice_wall")];
+        let use_it = PlayerAction::ActivateAbility { target: InstallId::RUNNER_IDENTITY, ability_index: 0 };
+        assert!(!crate::rules::legal_actions_for(&state, &registry, Side::Runner).contains(&use_it), "only during a run");
+
+        let (running, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Archives }).expect("run Archives");
+        let running = until_asked_or(running, &registry, &use_it);
+        let (asked, _) = apply_action(&running, &registry, use_it.clone()).expect("0[credit]: install 1 program from your grip");
+        let corroder = asked.runner.grip.iter().position(|card| *card == id("corroder")).expect("in the grip");
+        let installed = select_in_order(&asked, &registry, &[corroder]);
+        assert!(installed.runner.rig.iter().any(|card| card.card == id("corroder")), "installed, paying its cost");
+        assert_eq!(installed.runner.resources.credits, Credits(8));
+        let (installed, _) = close_all_windows(installed, &registry);
+        let (at_server, _) = crate::rules::test_support::through_movement(&installed, &registry).expect("to Archives");
+        let (ended, _) = apply_action(&at_server, &registry, PlayerAction::CompleteRun).expect("an empty Archives: the run ends");
+        let (ended, _) = close_all_windows(ended, &registry);
+        assert!(ended.active_run.is_none());
+        assert!(ended.runner.heap.contains(&id("corroder")), "when that run ends, trash that program: {:?}", ended.runner.rig);
+        assert!(!crate::rules::legal_actions_for(&ended, &registry, Side::Runner).contains(&use_it));
+
+        // A trojan goes on a piece of ice, and stays.
+        let (running, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run HQ");
+        let running = until_asked_or(running, &registry, &use_it);
+        let (asked, _) = apply_action(&running, &registry, use_it).expect("use it");
+        let pichacao = asked.runner.grip.iter().position(|card| *card == id("pichacao")).expect("in the grip");
+        let on_ice = select_in_order(&asked, &registry, &[pichacao]);
+        let host = select_in_order(&on_ice, &registry, &[0]);
+        assert!(host.runner.rig.iter().any(|card| card.card == id("pichacao") && card.hosted_on_ice.is_some()), "{:?}", host.runner.rig);
+    }
 }

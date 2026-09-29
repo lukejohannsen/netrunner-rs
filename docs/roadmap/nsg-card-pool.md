@@ -4671,6 +4671,59 @@ Inácio. **No new `Effect`.** The Automata Initiative 61 of 65;
     | Runner agenda wins | 127 | 112 |
     | Steps | 109018 | 115913 |
 
+#### Stage 8c — a limit on remote servers, and a program installed during a run (29 September 2026)
+
+`feat/tai-stage-8c-arissana-a-teia`: A Teia: IP Recovery and Arissana Rocha
+Nahu: Street Artist, each on a Sweep deck of its own. **No new `Effect`.**
+The Automata Initiative 63 of 65; `TAI_UNIMPLEMENTED` 4 → 2.
+
+- **"Limit 2 remote servers"** (CR 4.6.8f,
+  `ContinuousKind::RemoteServerLimit`, on the identity's controller).
+  - Every Corp install refuses a new remote past the limit
+    (`engine::place_corp_card`, `RulesError::RemoteServerLimit`).
+  - Every offer of a fresh remote asks the same question
+    (`legal_actions::may_add_remote`): the install action,
+    `corp_install_destinations` for text installs, and the one effect
+    that installs into a new remote unasked.
+- **"The first time each turn you install a card in the root of or
+  protecting a remote server".**
+  - `EventFilter::InstalledIn(ServerKind)` reads the install's server off
+    the moment, as `InstalledFromHq` reads where it came from.
+  - "The first time" cannot be `first_each_turn`, since the turn log's
+    classes hold no server. It is a count beside the cells, as The Holo
+    Man's installs from HQ are: `TurnLog::installed_in_remotes`,
+    `Amount::CardsInstalledInRemotesThisTurn`, under `Not(AmountAtLeast(..,
+    2))`.
+  - The second card is Peer Review's install, restricted to another
+    remote (`another_server` from the first card, by `acts_on_subject`),
+    with Warm Reception's "you cannot score that card this turn".
+- **Arissana's install during a run.**
+  - "Use this ability only during a run" is `RunInProgress`, beside
+    `OncePerTurn`.
+  - The program chosen goes by Muse's words: a trojan onto a piece of ice
+    the Runner picks (`InstallProgramOnHost`), anything else into the rig
+    (`InstallRunnerCardFromGrip`) with a run-end rider trashing it.
+  - `InstallProgramOnHost` no longer asks for a host until it has one to
+    use. A trojan's ice is chosen first, and an identity's ability has no
+    install.
+  - Recorded, not built: the run has one end-of-run rider slot, so
+    Arissana used on a run Hannah "Wheels" Pilintra started replaces
+    Hannah's tag.
+- **Decks.** Second Site (A Teia, on A Thousand Cuts' frame) and Street
+  Gallery (Arissana, on Safety Net's). Both are Eternal-only, being on
+  Core Set frames.
+- **Real play**, 96 games a seating (seed 2), Second Site against Street
+  Gallery.
+  - Random seats: A Teia's trigger resolved 464 times, and Arissana's
+    ability was used 714 times.
+  - Heuristic seats: A Teia's trigger resolved 315 times, but the Runner
+    never uses Arissana's ability (Phase 5 debt).
+- **Measured.** Both sweeps at 256 seeds are green, the card gate included.
+  - `coverage_identical.py` reports every shape identical against
+    `origin/main`, with the cards and without them.
+  - Identities are not sampled by `determinize`, and Sweep decks are in no
+    `matchups()`, so the heuristic seatings do not move either.
+
 ### 4. Parhelion — 63 cards (C 19 / V 26 / M 18)
 
 **Decks:** Sweep decks on its four identities. Nova Initiumia and Ampère

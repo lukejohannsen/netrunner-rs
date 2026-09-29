@@ -388,6 +388,10 @@ pub enum RulesError {
     #[error("{card:?} is not {expected}")]
     CardTypeMismatch { card: CardId, expected: &'static str },
 
+    /// A new remote server beyond the Corp's limit (A Teia: IP Recovery's
+    /// "Limit 2 remote servers", `ContinuousKind::RemoteServerLimit`).
+    #[error("the Corp may have no more than {limit} remote servers")]
+    RemoteServerLimit { limit: u32 },
     /// An agenda or asset named for a central server's root. Only upgrades
     /// may be installed in a central's root; `install_card_candidates`
     /// offers agendas and assets to remotes only, and the handler agrees.

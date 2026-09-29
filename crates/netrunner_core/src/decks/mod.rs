@@ -450,6 +450,11 @@ mod tests {
             // deck, on Retirement Package's frame: without Engineering the
             // Future it holds no Core Set card, so it is Standard too.
             ("deterrence", &not_startup),
+            // The Automata Initiative Stage 8c: A Teia's and Arissana's
+            // decks, on A Thousand Cuts' and Safety Net's frames, whose Core
+            // Set cards keep them out of Standard.
+            ("second_site", &neither),
+            ("street_gallery", &neither),
             ("pay_as_you_go", &neither),
             ("safety_net", &neither),
             // Vantage Point Stage 5d: Hiram's deck carries Core Set cards

@@ -1,0 +1,79 @@
+{
+  "id": "arissana_rocha_nahu_street_artist",
+  "title": "Arissana Rocha Nahu: Street Artist",
+  "side": "Runner",
+  "card_type": "Identity",
+  "cost": 0,
+  "base_link": 0,
+  "min_deck_size": 45,
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "Credits": 0
+      },
+      "requirement": {
+        "And": [
+          "OncePerTurn",
+          "RunInProgress"
+        ]
+      },
+      "effect": {
+        "PromptChooseCards": {
+          "side": "Runner",
+          "source": "OwnGrip",
+          "filter": {
+            "CardType": "Program"
+          },
+          "min": 1,
+          "max": 1,
+          "reveal": false,
+          "shuffle_after": false,
+          "then": {
+            "Sequence": [
+              {
+                "EffectIf": {
+                  "condition": {
+                    "ActingCardMatches": {
+                      "HasSubtype": "Trojan"
+                    }
+                  },
+                  "effect": {
+                    "InstallProgramOnHost": {
+                      "from": "OwnGrip"
+                    }
+                  }
+                }
+              },
+              {
+                "EffectIf": {
+                  "condition": {
+                    "Not": {
+                      "ActingCardMatches": {
+                        "HasSubtype": "Trojan"
+                      }
+                    }
+                  },
+                  "effect": {
+                    "Sequence": [
+                      "InstallRunnerCardFromGrip",
+                      {
+                        "SetRunEndedEffect": {
+                          "TrashCard": "ThisCard"
+                        }
+                      }
+                    ]
+                  }
+                }
+              }
+            ]
+          }
+        }
+      },
+      "text": "Once per turn → 0[credit]: Install 1 program from your grip (paying its install cost). Use this ability only during a run. When that run ends, trash that program if it is not a trojan."
+    }
+  ],
+  "triggers": [],
+  "numeric_id": 34020,
+  "is_playable": true
+}

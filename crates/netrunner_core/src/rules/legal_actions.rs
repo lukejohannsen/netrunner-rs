@@ -470,6 +470,13 @@ pub(crate) fn existing_remote_ids(state: &GameState) -> Vec<u32> {
     ids
 }
 
+/// Whether the Corp may make another remote server — below A Teia: IP
+/// Recovery's limit, or with none. The one question every offer of a fresh
+/// remote and every install asks (`engine::place_corp_card`).
+pub(crate) fn may_add_remote(state: &GameState, registry: &CardRegistry) -> bool {
+    crate::rules::continuous::remote_server_limit(state, registry).is_none_or(|limit| (existing_remote_ids(state).len() as u32) < limit)
+}
+
 /// The smallest remote id not currently in use — offers "install into a
 /// new remote" without the engine having any such concept itself (see
 /// `ServerId`'s doc comment: `Remote(n)` for any `n` is accepted
@@ -492,7 +499,9 @@ fn install_card_candidates(state: &GameState, registry: &CardRegistry) -> Vec<Pl
     let existing_remotes = existing_remote_ids(state);
     let fresh_remote = fresh_remote_id(&existing_remotes);
     let mut remote_zones: Vec<ServerId> = existing_remotes.iter().copied().map(ServerId::Remote).collect();
-    remote_zones.push(ServerId::Remote(fresh_remote));
+    if may_add_remote(state, registry) {
+        remote_zones.push(ServerId::Remote(fresh_remote));
+    }
 
     let mut candidates = Vec::new();
     // Each install twice: plain, and trashing like cards first (CR 8.5.6),
