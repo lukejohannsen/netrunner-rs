@@ -271,8 +271,12 @@ pub enum GameEvent {
     /// an install. An occurrence of nothing a card hears.
     CardAddedToHand { side: Side, card: Option<CardId>, install: crate::rules::state::InstallId, faceup: bool },
     /// `Effect::HostRigCardOnInstall` hosted the rig card `card` on the rig
-    /// card `host` (GAMEDRAGON™ Pro on an icebreaker).
-    CardHosted { card: CardId, host: CardId },
+    /// card `host` (GAMEDRAGON™ Pro on an icebreaker), or on a piece of ice
+    /// (Stowaway, Spree's trojan). `host` is struck out for a viewer who
+    /// cannot identify it (`masking`): a Runner card may be hosted on
+    /// unrezzed ice, which the event named to the Runner (the 256-seed
+    /// view sweep, seed 166, Stowaway on a facedown Tithe).
+    CardHosted { card: CardId, host: Option<CardId> },
     /// `Effect::FlipIdentity` turned `side`'s identity over.
     IdentityFlipped { side: Side },
     /// `side`'s action phase ended (`turn::end_turn`) — drives

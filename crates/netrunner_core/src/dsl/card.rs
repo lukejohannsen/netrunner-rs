@@ -1968,7 +1968,7 @@ mod tests {
 
     #[test]
     fn validate_refuses_a_gained_subroutine_outside_an_encounter() {
-        let gains = Effect::GainSubroutine { subroutine: Box::new(SubroutineDef { text: "End the run.".to_string(), effect: Effect::EndTheRun, only_breakable_by: None }), after: false, duration: EffectDuration::Encounter };
+        let gains = Effect::GainSubroutine { subroutine: Box::new(SubroutineDef { text: "End the run.".to_string(), effect: Effect::EndTheRun, only_breakable_by: None }), after: false, duration: EffectDuration::Encounter, count: None };
         let resource = |trigger: Trigger, acts_on_subject: bool| CardDefinition {
             id: CardId("gainer".to_string()),
             side: Side::Runner,

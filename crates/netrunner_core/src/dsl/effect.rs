@@ -1091,6 +1091,11 @@ pub enum Effect {
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
         after: bool,
         duration: EffectDuration,
+        /// How many copies — Starlit Knight's "it gains X “[subroutine] End
+        /// the run.” subroutines … X is equal to the number of tags the
+        /// Runner has", read as it is gained. `None` is one.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        count: Option<Amount>,
     },
     /// The acting install — a piece of ice, as it is rezzed — gains
     /// `subtype` while it remains rezzed: Lycian Multi-Munition's "choose 1
@@ -1743,6 +1748,12 @@ pub enum Preventable {
     /// "Prevent a player from trashing 1 installed program or piece of
     /// hardware" — one installed card the filter admits.
     Trash(CardFilter),
+    /// "Prevent a “when encountered” ability on a piece of ice" (AirbladeX
+    /// (JSRF Ed.)): one of the encountered ice's own `OnEncounter`
+    /// triggers, about to resolve. Composition didn't work: prevention knew
+    /// only damage, tags and a trash, each something a card's text does,
+    /// and this is an ability that would resolve.
+    EncounterAbility,
 }
 
 /// Which ice an `Effect::ModifyStrength` changes.

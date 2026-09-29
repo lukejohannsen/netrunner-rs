@@ -553,6 +553,7 @@ pub fn narrate_event(
             WouldHappen::Damage { kind, .. } => format!("{amount} {} damage was prevented", format!("{kind:?}").to_lowercase()),
             WouldHappen::Tags { .. } => format!("{amount} tag(s) prevented"),
             WouldHappen::Trash { .. } => "a trash was prevented".to_string(),
+            WouldHappen::EncounterAbility { .. } => "a \"when encountered\" ability was prevented".to_string(),
         },
         GameEvent::RunnerFlatlined => "the Runner is flatlined".to_string(),
         GameEvent::WonByCardText { winner, card } => format!("the {winner:?} wins the game by {}", title(card)),

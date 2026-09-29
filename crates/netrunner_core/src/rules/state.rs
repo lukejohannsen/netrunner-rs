@@ -874,6 +874,12 @@ pub enum WouldHappen {
     /// as it is.
     /// `by` is who would carry it out (`GameEvent::CardTrashed::by`).
     Trash { owner: Side, install: InstallId, by: Option<Side> },
+    /// A "when encountered" ability on the encountered piece of ice would
+    /// resolve — the ice's own `OnEncounter` trigger, which waits in
+    /// `PendingPrevention::waiting` and resolves only if nobody prevents
+    /// it. Named by the ice's handle: the ice is rezzed and being
+    /// encountered, so it is public.
+    EncounterAbility { ice: InstallId },
 }
 
 impl WouldHappen {
@@ -882,14 +888,14 @@ impl WouldHappen {
     pub fn amount(&self) -> u32 {
         match self {
             WouldHappen::Damage { amount, .. } | WouldHappen::Tags { amount } => *amount,
-            WouldHappen::Trash { .. } => 1,
+            WouldHappen::Trash { .. } | WouldHappen::EncounterAbility { .. } => 1,
         }
     }
 
     /// Who it happens to, and so who is asked first.
     pub fn affects(&self) -> Side {
         match self {
-            WouldHappen::Damage { .. } | WouldHappen::Tags { .. } => Side::Runner,
+            WouldHappen::Damage { .. } | WouldHappen::Tags { .. } | WouldHappen::EncounterAbility { .. } => Side::Runner,
             WouldHappen::Trash { owner, .. } => *owner,
         }
     }
@@ -926,6 +932,11 @@ pub struct PendingPrevention {
     #[serde(default)]
     pub source_install: Option<InstallId>,
     pub resume: PreventionResume,
+    /// The trigger a `WouldHappen::EncounterAbility` is: it resolves once
+    /// the asking is over, if it was not prevented. `None` for everything
+    /// else, which `happen` makes happen from `what` alone.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub waiting: Option<Box<DeferredTrigger>>,
 }
 
 /// What to do once a `PendingPaidChoice` resolves, mirroring `TraceResume`/

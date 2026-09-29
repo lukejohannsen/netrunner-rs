@@ -7832,7 +7832,7 @@ mod system_gateway {
         let (state, _) = apply_action(&state, &registry, PlayerAction::CompleteRun).expect("success on hq");
         assert!(matches!(state.pending_decision, Some(crate::rules::PendingDecision::ChooseEffect { chooser: Side::Runner, .. })));
         let (state, events) = apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("host one");
-        assert!(events.iter().any(|e| matches!(e, crate::rules::GameEvent::CardHosted { host, .. } if host.0 == "detente")));
+        assert!(events.iter().any(|e| matches!(e, crate::rules::GameEvent::CardHosted { host: Some(host), .. } if host.0 == "detente")));
         assert_eq!(state.runner.rig[0].hosted_cards.len(), 1);
         assert_eq!(state.corp.hq.len(), 2);
 
@@ -8056,7 +8056,7 @@ mod system_gateway {
         let (state, _) = apply_action(&state, &registry, PlayerAction::InstallProgram { card_id: CardId("marjanah".to_string()), trash_first: false }).expect("install for 0");
         assert!(matches!(state.pending_decision, Some(crate::rules::PendingDecision::ChooseEffect { chooser: Side::Runner, .. })), "you may host");
         let (state, events) = apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("host it");
-        assert!(events.iter().any(|e| matches!(e, crate::rules::GameEvent::CardHosted { card, host } if card.0 == "sure_gamble" && host.0 == "bling")));
+        assert!(events.iter().any(|e| matches!(e, crate::rules::GameEvent::CardHosted { card, host: Some(host) } if card.0 == "sure_gamble" && host.0 == "bling")));
         assert_eq!(state.runner.rig[0].hosted_cards, vec![CardId("sure_gamble".to_string())]);
         assert_eq!(state.runner.stack, vec![CardId("diesel".to_string())]);
 
@@ -17715,5 +17715,67 @@ mod the_automata_initiative {
         assert!(derezzed.runner.rig.is_empty());
         let enigma = derezzed.corp.installed.iter().find(|c| c.card == id("enigma")).expect("still installed");
         assert!(!enigma.rezzed, "derez that ice");
+    }
+
+    // ---- Stage 8a: a prevented "when encountered" ability, and subroutines gained by count ----
+
+    #[test]
+    fn starlit_knight_at_threat_four_gains_an_end_the_run_after_its_own_for_each_tag() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.installed = vec![ice_at_hq("starlit_knight")];
+        state.runner.tags = 2;
+        let subroutines = |state: &GameState| state.active_run.as_ref().map(|run| run.ice[0].subroutines.iter().map(|s| s.definition.text.clone()).collect::<Vec<_>>());
+        let low = encounter(&state, &registry);
+        assert_eq!(subroutines(&low).map(|subs| subs.len()), Some(2), "Threat 4");
+
+        at_threat(&mut state, 4);
+        let encountering = encounter(&state, &registry);
+        assert_eq!(
+            subroutines(&encountering),
+            Some(["Give the Runner 1 tag.", "Give the Runner 1 tag.", "End the run.", "End the run."].map(String::from).to_vec()),
+            "X = 2 tags, after its other subroutines"
+        );
+        assert_eq!(encountering.active_run.as_ref().map(|run| run.gained_for_the_run.len()), Some(2), "for the remainder of this run");
+        let (fired, _) = let_subroutines_fire(&encountering, &registry);
+        assert_eq!(fired.runner.tags, 4);
+        assert!(fired.active_run.is_none(), "end the run");
+    }
+
+    #[test]
+    fn airbladex_spends_a_counter_to_prevent_a_when_encountered_ability_or_a_net_damage_during_a_run_and_is_trashed_empty() {
+        let registry = registry();
+        let airblade = fixture_install_id("airbladex_jsrf_ed");
+        let prevent = |ability_index: usize| PlayerAction::ActivateAbility { target: airblade, ability_index };
+        let mut state = runner_turn();
+        state.runner.rig = vec![rig("airbladex_jsrf_ed", 3)];
+        state.corp.installed = vec![ice_at_hq("paywall")];
+        let asked = encounter(&state, &registry);
+        assert!(
+            matches!(asked.pending_prevention.as_ref().map(|p| &p.what), Some(crate::rules::WouldHappen::EncounterAbility { .. })),
+            "Paywall's \"when encountered\" waits: {:?}",
+            asked.pending_prevention
+        );
+        assert_eq!(asked.runner.resources.credits, Credits(10), "not yet resolved");
+        let (prevented, events) = apply_action(&asked, &registry, prevent(1)).expect("hosted power counter: prevent it");
+        assert!(events.iter().any(|e| matches!(e, GameEvent::Prevented { .. })), "{events:?}");
+        assert_eq!(prevented.runner.resources.credits, Credits(10), "the Runner loses nothing");
+        assert!(prevented.pending_prevention.is_none());
+        assert_eq!(prevented.runner.rig[0].counters, 2);
+        let (resolved, _) = apply_action(&asked, &registry, PlayerAction::PassPriority { side: Side::Runner }).expect("let it resolve");
+        let (resolved, _) = close_all_windows(resolved, &registry);
+        assert_eq!(resolved.runner.resources.credits, Credits(9), "Paywall's 1[credit]");
+
+        // Net damage during a run, with the last counter: trashed empty.
+        state.runner.rig = vec![rig("airbladex_jsrf_ed", 1)];
+        state.runner.grip = vec![id("sure_gamble")];
+        state.corp.installed = vec![ice_at_hq("tithe")];
+        let encountering = encounter(&state, &registry);
+        let (damaging, _) = let_subroutines_fire(&encountering, &registry);
+        assert!(damaging.pending_prevention.is_some(), "1 net damage waits");
+        let (prevented, _) = apply_action(&damaging, &registry, prevent(0)).expect("prevent 1 net damage");
+        assert_eq!(prevented.runner.grip, [id("sure_gamble")]);
+        assert!(prevented.runner.rig.is_empty(), "when it is empty, trash it");
+        assert!(prevented.runner.heap.contains(&id("airbladex_jsrf_ed")));
     }
 }

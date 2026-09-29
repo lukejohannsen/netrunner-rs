@@ -1,0 +1,57 @@
+{
+  "id": "starlit_knight",
+  "title": "Starlit Knight",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Sentry"
+  },
+  "cost": 5,
+  "strength": 2,
+  "triggers": [
+    {
+      "trigger": "OnEncounter",
+      "subject": "This",
+      "acts_on_subject": true,
+      "requirement": {
+        "AmountAtLeast": [
+          "ThreatLevel",
+          4
+        ]
+      },
+      "effects": [
+        {
+          "GainSubroutine": {
+            "subroutine": {
+              "text": "End the run.",
+              "effect": "EndTheRun"
+            },
+            "after": true,
+            "duration": "Run",
+            "count": "RunnerTags"
+          }
+        }
+      ],
+      "text": "Threat 4 → When the Runner encounters this ice, it gains X \"[subroutine] End the run.\" subroutines for the remainder of this run, after its other subroutines. X is equal to the number of tags the Runner has."
+    }
+  ],
+  "subroutines": [
+    {
+      "text": "Give the Runner 1 tag.",
+      "effect": {
+        "GiveTags": {
+          "Fixed": 1
+        }
+      }
+    },
+    {
+      "text": "Give the Runner 1 tag.",
+      "effect": {
+        "GiveTags": {
+          "Fixed": 1
+        }
+      }
+    }
+  ],
+  "numeric_id": 34053,
+  "is_playable": true
+}

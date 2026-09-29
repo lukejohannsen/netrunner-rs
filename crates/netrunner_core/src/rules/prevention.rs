@@ -57,7 +57,7 @@ use crate::rules::payment::Purpose;
 use crate::rules::event::GameEvent;
 use crate::rules::lingering::Lingering;
 use crate::rules::paid_ability;
-use crate::rules::state::{GameState, InstallId, InstallSlot, PendingPrevention, PreventionResume, Side, WindowCheckpoint, WouldHappen};
+use crate::rules::state::{DeferredTrigger, GameState, InstallId, InstallSlot, PendingPrevention, PreventionResume, Side, WindowCheckpoint, WouldHappen};
 
 /// Whether `word` — what a card says it prevents — is about `what`.
 pub(crate) fn matches(word: &Preventable, what: &WouldHappen, state: &GameState, registry: &CardRegistry) -> bool {
@@ -71,6 +71,7 @@ pub(crate) fn matches(word: &Preventable, what: &WouldHappen, state: &GameState,
             };
             card.and_then(|card| registry.get(card)).is_some_and(|definition| crate::dsl::card_matches_filter(definition, filter))
         }
+        (Preventable::EncounterAbility, WouldHappen::EncounterAbility { .. }) => true,
         _ => false,
     }
 }
@@ -80,7 +81,7 @@ fn prevents_up_to(word: &Preventable) -> u32 {
     match word {
         Preventable::Damage { up_to, .. } => *up_to,
         Preventable::Tags(amount) => *amount,
-        Preventable::Trash(_) => 1,
+        Preventable::Trash(_) | Preventable::EncounterAbility => 1,
     }
 }
 
@@ -149,12 +150,53 @@ pub(crate) fn would(
         source_card: ctx.acting_card.cloned(),
         source_install: ctx.acting_install,
         resume: PreventionResume::None,
+        waiting: None,
     });
     let about_to = GameEvent::AboutToResolve { what };
     let mut events = Vec::new();
     dispatcher::emit(state, registry, &mut events, about_to)?;
     events.extend(settle_within(state, registry, Some(ctx))?.unwrap_or_default());
     Ok(events)
+}
+
+/// The "when encountered" ability `due` is about to resolve (CR 6.5.x's
+/// encounter, a trigger of the encountered ice's own): if somebody could
+/// prevent it (AirbladeX (JSRF Ed.)), it is parked with the trigger waiting
+/// in `PendingPrevention::waiting`, and `Some` is the asking. `None` when
+/// it resolves as it would have: not the encountered ice's own
+/// `OnEncounter`, a requirement that would not let it fire, something else
+/// already parked, or nobody able to prevent it.
+pub(crate) fn encounter_ability(state: &mut GameState, registry: &CardRegistry, due: &DeferredTrigger) -> Result<Option<Vec<GameEvent>>, RulesError> {
+    let Some(ice) = due.install else { return Ok(None) };
+    let encountering = state
+        .active_run
+        .as_ref()
+        .is_some_and(|run| run.phase == crate::rules::run::RunPhase::EncounterIce && run.ice.get(run.position).is_some_and(|encountered| encountered.install_id == ice));
+    let is_ice = registry.get(&due.card).is_some_and(|card| matches!(card.card_type, crate::dsl::CardType::Ice(_)));
+    let what = WouldHappen::EncounterAbility { ice };
+    if due.trigger != Trigger::OnEncounter
+        || due.continuation.is_some()
+        || !encountering
+        || !is_ice
+        || state.pending_prevention.is_some()
+        || !ability::would_fire(state, registry, due)
+        || !could_prevent(state, registry, &what)
+    {
+        return Ok(None);
+    }
+    state.pending_prevention = Some(PendingPrevention {
+        what: what.clone(),
+        prevented: 0,
+        interrupted: None,
+        source_card: Some(due.card.clone()),
+        source_install: Some(ice),
+        resume: PreventionResume::None,
+        waiting: Some(Box::new(due.clone())),
+    });
+    let mut events = Vec::new();
+    dispatcher::emit(state, registry, &mut events, GameEvent::AboutToResolve { what })?;
+    events.extend(settle_within(state, registry, None)?.unwrap_or_default());
+    Ok(Some(events))
 }
 
 /// A run is about to be ended by a card's text: asks the standing
@@ -336,7 +378,12 @@ fn finish_within(
         state.paid_ability_window = Some(window);
     }
     let left = pending.what.amount() - prevented;
-    if left > 0 {
+    // Not prevented: the ability resolves, as it would have.
+    if left > 0
+        && let Some(due) = &pending.waiting
+    {
+        events.extend(ability::fire_card_triggers(state, registry, due, true)?);
+    } else if left > 0 {
         let responsible = responsible_for(registry, pending.source_card.as_ref());
         events.extend(happen(state, registry, &pending.what, left, responsible, pending.source_install, ctx)?);
     }
@@ -404,6 +451,8 @@ fn happen(
             Ok(events)
         }
         // Dispatched here, where the trash happens, as the tags above are.
+        // Resolved from `PendingPrevention::waiting` by `finish_within`.
+        WouldHappen::EncounterAbility { .. } => Ok(Vec::new()),
         WouldHappen::Trash { owner, install, by } => {
             let mut events = ability::trash_install(state, registry, *owner, *install, *by)?;
             // Carried out, so it is one of the encountered ice's trashes
