@@ -450,6 +450,10 @@ mod tests {
             // deck, on Retirement Package's frame: without Engineering the
             // Future it holds no Core Set card, so it is Standard too.
             ("deterrence", &not_startup),
+            // Parhelion Stage 1: Thule Subsea's deck, on Retirement
+            // Package's frame, which without Engineering the Future holds
+            // no Core Set card, so it is Standard too.
+            ("undertow", &not_startup),
             // The Automata Initiative Stage 8c: A Teia's and Arissana's
             // decks, on A Thousand Cuts' and Safety Net's frames, whose Core
             // Set cards keep them out of Standard.

@@ -1,0 +1,52 @@
+{
+  "id": "gaslight",
+  "title": "Gaslight",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 0,
+  "trash_cost": 2,
+  "triggers": [
+    {
+      "trigger": "OnTurnStart",
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Corp",
+            "options": [
+              {
+                "Sequence": [
+                  {
+                    "TrashCard": "ThisCard"
+                  },
+                  {
+                    "PromptChooseCards": {
+                      "side": "Corp",
+                      "source": "OwnRAndD",
+                      "filter": {
+                        "CardType": "Operation"
+                      },
+                      "min": 0,
+                      "max": 1,
+                      "reveal": true,
+                      "shuffle_after": true,
+                      "destination": "OwnHq"
+                    }
+                  }
+                ]
+              },
+              {
+                "Sequence": []
+              }
+            ],
+            "texts": [
+              "you may trash this asset. If you do, search R&D for an operation and reveal it",
+              ""
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "numeric_id": 33114,
+  "is_playable": true
+}

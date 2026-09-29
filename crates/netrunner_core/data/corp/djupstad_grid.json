@@ -1,0 +1,26 @@
+{
+  "id": "djupstad_grid",
+  "title": "Djupstad Grid",
+  "side": "Corp",
+  "card_type": "Upgrade",
+  "cost": 4,
+  "trash_cost": 4,
+  "triggers": [
+    {
+      "trigger": "OnAgendaScored",
+      "subject": "Any",
+      "requirement": "AgendaCameFromThisCardsServer",
+      "effects": [
+        {
+          "DealDamage": [
+            "Brain",
+            1
+          ]
+        }
+      ],
+      "text": "Whenever you score an agenda from the root of this server, do 1 core damage."
+    }
+  ],
+  "numeric_id": 33102,
+  "is_playable": true
+}

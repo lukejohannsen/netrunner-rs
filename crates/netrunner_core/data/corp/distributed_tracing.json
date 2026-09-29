@@ -1,0 +1,33 @@
+{
+  "id": "distributed_tracing",
+  "title": "Distributed Tracing",
+  "side": "Corp",
+  "card_type": "Operation",
+  "cost": 3,
+  "additional_play_cost": {
+    "Clicks": 1
+  },
+  "play_requirement": {
+    "AmountAtLeast": [
+      {
+        "TimesLastTurn": "OnAgendaStolen"
+      },
+      1
+    ]
+  },
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "GiveTags": {
+            "Fixed": 1
+          }
+        }
+      ]
+    }
+  ],
+  "numeric_id": 33100,
+  "is_playable": true
+}
