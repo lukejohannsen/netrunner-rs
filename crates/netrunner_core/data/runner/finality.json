@@ -1,0 +1,32 @@
+{
+  "id": "finality",
+  "title": "Finality",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 2,
+  "additional_play_cost": {
+    "SufferDamage": [
+      "Brain",
+      1
+    ]
+  },
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "InitiateRun": "RnD"
+        },
+        {
+          "AddAdditionalAccess": {
+            "server": "RnD",
+            "count": 3
+          }
+        }
+      ]
+    }
+  ],
+  "numeric_id": 33066,
+  "is_playable": true
+}

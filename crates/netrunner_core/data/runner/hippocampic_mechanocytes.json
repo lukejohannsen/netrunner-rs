@@ -1,0 +1,41 @@
+{
+  "id": "hippocampic_mechanocytes",
+  "title": "Hippocampic Mechanocytes",
+  "side": "Runner",
+  "card_type": "Hardware",
+  "cost": 0,
+  "unique": true,
+  "counter_kind": "Power",
+  "continuous": [
+    {
+      "kind": {
+        "HandSize": {
+          "per": 1,
+          "of": "HostedCounters"
+        }
+      },
+      "applies_to": "Controller",
+      "text": "You get +1 maximum hand size for each hosted power counter."
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnInstall",
+      "subject": "This",
+      "effects": [
+        {
+          "AddCounters": 2
+        },
+        {
+          "DealDamage": [
+            "Meat",
+            1
+          ]
+        }
+      ],
+      "text": "When you install this hardware, place 2 power counters on it and suffer 1 meat damage."
+    }
+  ],
+  "numeric_id": 33085,
+  "is_playable": true
+}

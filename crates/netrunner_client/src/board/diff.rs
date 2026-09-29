@@ -436,7 +436,13 @@ mod tests {
                                     Transition::BadPublicity { to, .. } => assert_eq!(after.corp.bad_publicity, *to),
                                     Transition::RunStarted { server } => {
                                         runs += 1;
-                                        assert_eq!(after.active_run.as_ref().map(|r| r.server), Some(*server));
+                                        // A game that ends in the action that began the run
+                                        // takes the run with it: Front Company's damage as the
+                                        // run begins can flatline the Runner.
+                                        let over = entry.events.iter().any(|event| matches!(event, GameEvent::GameOver { .. }));
+                                        if !over {
+                                            assert_eq!(after.active_run.as_ref().map(|r| r.server), Some(*server));
+                                        }
                                     }
                                     Transition::RunMoved { position, phase, .. } => {
                                         let run = after.active_run.as_ref().expect("a moved run is on");

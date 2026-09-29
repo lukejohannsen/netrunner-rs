@@ -261,10 +261,11 @@ pub(crate) fn eligible_positions(
     source_card: Option<&CardId>,
 ) -> Vec<usize> {
     let resolving = source_card.and_then(|card| resolving_operation_in(state, registry, chooser, zone, card));
+    let running = run_event_in(state, registry, chooser, zone);
     zone_card_ids(state, chooser, zone, source)
         .into_iter()
         .enumerate()
-        .filter(|(position, _)| Some(*position) != resolving)
+        .filter(|(position, _)| Some(*position) != resolving && Some(*position) != running)
         .filter(|(_, id)| registry.get(id).is_some_and(|card| card_matches_filter(card, filter)))
         .filter(|(position, _)| instance_matches_filter(state, registry, chooser, zone, *position, filter, source))
         .map(|(position, _)| position)
@@ -291,6 +292,28 @@ pub(crate) fn resolving_operation_in(state: &GameState, registry: &CardRegistry,
         return None;
     }
     state.corp.archives.iter().rposition(|archived| archived.card == *card && !archived.facedown)
+}
+
+/// Where in the Runner's heap the event that began the run in progress
+/// sits, when `zone` is that heap — so that nothing chooses it there.
+///
+/// It is not there yet either: an event that initiates a run stays in the
+/// play area until the run is over (CR 8.6.5), and the engine files it in
+/// the heap as it is played, reading the play area off the run
+/// (`run::run_event`). Katorga Breakout's "if successful, add 1 card from
+/// your heap to your grip" offered the Katorga Breakout whose run it was.
+/// Unlike an operation's own Archives search this is about every chooser,
+/// not only the card resolving: the card is in no heap for anyone. The
+/// copy is the last one of its card in the heap, as with the operation; a
+/// second copy trashed during the run would be the one excluded, which is
+/// the same card.
+pub(crate) fn run_event_in(state: &GameState, registry: &CardRegistry, chooser: Side, zone: &CardZoneRef) -> Option<usize> {
+    let heap = matches!(zone, CardZoneRef::OwnHeap | CardZoneRef::OpponentDiscard) && owning_side(chooser, zone) == Side::Runner;
+    if !heap {
+        return None;
+    }
+    let event = crate::rules::run::run_event(state, registry)?;
+    state.runner.heap.iter().rposition(|card| card == event)
 }
 
 /// The instance-level half of `CardFilter`, which `card_matches_filter`

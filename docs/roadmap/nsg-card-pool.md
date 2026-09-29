@@ -4940,6 +4940,96 @@ clients:** card files, decks and tests only. Parhelion 10 of 63;
     | Runner deck-outs | 0 | 2 | 2 |
     | Steps | 122418 | 122046 | 122033 |
 
+#### Stage 2a — seven Runner cards and a Weyland operation, composed (29 September 2026)
+
+`feat/ph-stage-2a-runner-composes`: Finality, Katorga Breakout, Nga, Num,
+Zenit Chip JZ-2MJ, Hippocampic Mechanocytes, Dr. Nuka Vrolyck and End of
+the Line. **No new `Effect`, and one rule fix.** Parhelion 18 of 63;
+`PH_UNIMPLEMENTED` 53 → 45.
+
+Stage 2 was split by mechanic. Hostile Architecture moved to Stage 2b,
+because it needs two things the engine does not have:
+- One `when` that says two things: the Runner's trash of a Corp card that
+  was installed.
+- A rezzed card hearing its own trash under "any": "(including this
+  asset)", which is CR 4.6.6i's Warroid Tracker example.
+
+- **What each is made of.**
+  - Finality is The Maker's Eye with 3 additional accesses, and its
+    additional cost is `Cost::SufferDamage` as an `additional_play_cost`.
+  - Katorga Breakout is Overclock's any-server run. Its `on_success`
+    selects one heap card into the grip.
+  - Nga and Dr. Nuka Vrolyck load counters the way Juli Moreira Lee does,
+    and "when it is empty, trash it" follows the spend, as on Cataloguer.
+  - Nga's "you may remove 1 hosted power counter to sabotage 1" is a paid
+    choice priced `Cost::RemoveCounters`, on the first successful run each
+    turn.
+  - Num is a killer at strength 8 with no boost.
+  - Zenit Chip's core damage is an install trigger. Its draw is Gabriel
+    Santiago's first-time `OnSuccessfulRun` with `when` set to the three
+    centrals.
+  - Hippocampic Mechanocytes' hand size is `HandSize { per: 1, of:
+    HostedCounters }`.
+  - End of the Line's additional cost is `Cost::RemoveTags(1)`.
+- **Fixed: a run event could find itself in the heap** (CR 8.6.5).
+  - An event that begins a run stays in the play area until the run is
+    over. The engine files it in the heap as it is played, and reads the
+    play area off the run.
+  - Katorga Breakout's "if successful, add 1 card from your heap" was
+    offered the Katorga Breakout whose run it was.
+  - `pending_choice::run_event_in` now keeps the run's event out of
+    every heap selection, whoever is choosing. It is the sibling of
+    `resolving_operation_in`, which keeps an operation out of its own
+    Archives selection (CR 8.6.7a).
+  - The fix is recorded under 8.6 in
+    [rules-conformance.md](rules-conformance.md).
+- **Found on the way:** `board::diff`'s transitions test assumed that a
+  run is still in progress after the action that began it.
+  - The deck swaps re-rolled seed 0 onto a game where Front Company's
+    damage flatlines the Runner as the run begins. The game ends, and the
+    run with it.
+  - The check is now skipped when the entry holds `GameOver`. This was not
+    a client bug: the transition is right, and there is no run left to
+    compare it with.
+- **Client.** Nothing added to the view, the log or a decision, so no
+  ledger line and no ledger row.
+- **Decks.**
+  - Pay As You Go took two Finality, two Katorga Breakout, two Nga and two
+    Num. They replace two Fermenter, two Leech, a Take a Dive, a
+    Cyberfeeder, a Nurse Hạnh and a Buzzsaw, all of which another deck
+    still carries.
+  - Picket Line took two Zenit Chip JZ-2MJ for two Jailbreak.
+  - Street Gallery took two Hippocampic Mechanocytes and two Dr. Nuka
+    Vrolyck for two Joy Ride and two Living Mural, which Safety Net still
+    carries.
+  - Land Grab took two End of the Line for two Business As Usual. Its
+    Oppo Research gives the tags that End of the Line needs to be played.
+- **DSL ratio (`pool_status.py`): 17 of 91 `Effect` variants
+  single-use** (18 before), 1 unused, over 398 card files.
+- **Real play**, 96 games a seating (seed 2), each Runner deck against
+  Retirement Package and Land Grab against Safety Net.
+  - Random seats: Finality played 20 times, Katorga Breakout 27 (its heap
+    choice asked 6 times), Nga installed 22 times with its successful-run
+    trigger resolving 53 times, and Num installed 11 times.
+  - Random seats: Zenit Chip installed 37 times with its draw heard 92
+    times, Hippocampic Mechanocytes installed 50 times, and Dr. Nuka
+    Vrolyck installed 27 times and used 30. End of the Line was played
+    twice.
+  - Heuristic seats: Finality played 21 times, Num installed 34 times and
+    used 75, and End of the Line played once.
+  - The heuristic Runner never plays Katorga Breakout and never installs
+    Nga, Zenit Chip, Hippocampic Mechanocytes or Dr. Nuka Vrolyck (Phase 5
+    debt).
+- **Measured.** Both sweeps at 256 seeds are green, the card gate
+  included.
+  - `coverage_identical.py` against `origin/main` has both random
+    seatings **identical**.
+  - A ref with the heap fix alone is identical in all four shapes.
+  - With the cards, the heuristic seatings moved: `determinize` samples
+    End of the Line among the Corp's hidden cards. Of 192 games (view):
+    Corp agenda wins 82 → 70, Corp flatlines 9 → 15, Runner agenda wins
+    99 → 107, Runner deck-outs 2 → 0.
+
 ### 5. Midnight Sun and its Booster Pack — 65 cards (C 22 / V 26 / M 17)
 
 **Decks:** Sweep decks on its five identities.
