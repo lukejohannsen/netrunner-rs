@@ -23,6 +23,20 @@
 //! the game, not when it moves. A stage is a condition inside a term,
 //! never a switch between weight sets, and `stage::Stage` is what such a
 //! term will read.
+//!
+//! **Economy at the guide's rate (Stage 5)** is eight terms after the
+//! old sum, every one zero in `Weights::default()` and set by
+//! `Weights::at_the_guides_rate`, which the turn planner scores with:
+//! a click is a credit; a card's declared economy is read off the DSL
+//! (`read::declared_income`) for what a play nets and what an installed
+//! economy card will still pay over the turns the stage expects
+//! (`stage::horizon` — the first term to read the stage, and the stage
+//! is a condition inside it); the Corp keeps the rez that stops a run
+//! and a face-down ICE it cannot rez is worth half; the Corp reads the
+//! Runner's credits against its scoring remote (the taxing window) and
+//! the Runner reads the Corp's against a rez and an unfinished install.
+//! The one-ply reference scores with the default, so it has not moved
+//! and every ladder rung with it; Stage 8 makes the eight the default.
 
 use netrunner_core::cards::CardRegistry;
 use netrunner_core::dsl::{
@@ -52,7 +66,141 @@ use fundamentals::*;
 use read::*;
 
 pub use read::{breaker_coverage, covers, damage_grows_with_advancement, is_hand_trap, is_lure_trap, is_unrezzed_threat, punishes_access_with_damage, server_break_cost};
-pub use stage::{stage, Stage};
+pub use stage::{horizon, stage, Stage};
+
+// ---------------------------------------------------------------------
+// Economy at the guide's rate (Phase 5 §25 Stage 5). **Every constant in
+// this block is zero in `Weights::default()` and set by
+// `Weights::at_the_guides_rate`**, which the turn planner scores with.
+// The one-ply `HeuristicAgent` scores with the default, so it is the
+// fixed reference the planner is measured against and the base of every
+// ladder rung until Stage 8 — a term that moved the default would move
+// the reference and the rungs with it, and the measurement would be of
+// nothing. Stage 8 makes these the default when the reference is
+// deleted. The strategy guide's sentences are quoted where a constant
+// is theirs.
+// ---------------------------------------------------------------------
+
+/// Each click its owner has left this turn. "A click can always be
+/// turned into 1 credit or 1 card with a basic action, so a click is
+/// worth at least one of either" — so a click is priced at the credit it
+/// would buy, and every action is judged against that rate: a free
+/// action (a rez, a score) keeps the click's worth, a card that gives
+/// clicks (Nanomanagement) is worth the clicks, and one that takes them
+/// (Creative Commission) pays for them. For the planner it is the floor
+/// a line's unspent clicks were already priced at (`planner::click_floor`,
+/// which now adds only what the evaluator does not carry); for the
+/// chooser it moves nothing between two click actions.
+const CLICK_WEIGHT: f64 = 0.4;
+/// Each credit an active economy card will still pay over the turns the
+/// stage expects (`stage::horizon`, `read::future_credits`) — an
+/// installed PAD Campaign, Regolith Mining License's counters, Telework
+/// Contract's, a Fermenter's cashout — and the same credits read off a
+/// card in hand for what installing it would be worth.
+///
+/// **Why five-eighths of a credit now (0.25 against 0.4).** The term
+/// banks the card's future, so using the card has to beat banking it:
+/// taking 3[c] off Regolith for a click is +1.2 − 0.4 for the click −
+/// what the stock loses (2 net credits at this weight, 0.5), +0.3 over
+/// the credit click, and at the full credit weight it would be −0.4 and
+/// the Corp would never take what it installed. Clicking 3 counters onto
+/// Smartware Distributor is 3 × 0.25 − 0.4 = +0.35, so a click that
+/// buys three credits over three turns beats one that buys one, which
+/// is the guide's "only good if it beats that rate". And a PAD Campaign
+/// installed early (9 turns) is 2.25 against the 1.6 its install and rez
+/// cost, so it goes down and is rezzed, while the same card late (2
+/// turns, 0.5) is not worth the credits. Hedge Fund stays the best
+/// economy play at +1.2: "four credits for one click".
+const FUTURE_CREDIT_WEIGHT: f64 = 0.25;
+/// An event in the Runner's grip, at this fraction of what its play is
+/// worth (`fundamentals::play_value`) — the Runner's `HELD_CARD_WEIGHT`
+/// shape for the cards that term leaves at zero, and half for the same
+/// reason: the card still has to be played, and the other half is what
+/// playing it earns. Nothing for a card that declares no economy.
+///
+/// **The Corp's hand is not priced held, and that is a measurement.**
+/// The term was written for both hands — a Hedge Fund in HQ at half its
+/// play, so the Corp would draw toward it — and the Corp leg of the
+/// bench said no: with it on, the planner Corp lost 0.068 of win share
+/// to the one-ply reference on seed 1, with it off it *gained* 0.031,
+/// and the precepts report says why. A planner sees a draw's value
+/// through the line that plays what it draws, so a held value is not
+/// a reason to draw but a reason to hold: the Corp kept the Hedge
+/// Funds it could not afford at 4[c] and played 2.7 economy operations
+/// a game where the reference played 2.8 and the same planner without
+/// the term 3.6, and its HQ was full at a third more of the Runner's HQ
+/// runs. The Runner's events kept the term: +0.02 on the Runner leg,
+/// inside the band, recorded as such. A flat value per card in HQ was
+/// a switch for the same reason one stage earlier (`RD_DRAW_RESERVE`).
+const DECLARED_VALUE_WEIGHT: f64 = 0.5;
+/// Each credit the Corp is short of its rez reserve
+/// (`read::rez_reserve`: the dearest unrezzed piece of ICE it has
+/// installed). The Corp's `SAVINGS_SHORTFALL_WEIGHT`, at the same
+/// weight, and the same shape for the same reason: a penalty on the
+/// shortfall vanishes the moment the rez is affordable, so it never
+/// fights the rez it exists to enable; a bonus on credits held would.
+/// Stage 4 found the planner Corp at its turn start able to rez what it
+/// held 0.46 of the time against the chooser's 0.70, because every click
+/// of a line that drew and installed beat the credit click and nothing
+/// priced the credits an install would need to be turned face up. At
+/// 0.3 a credit click closing the gap is +0.7, ahead of an install at
+/// +1.0 only once the ICE in hand would raise the reserve, and behind
+/// advancing (+1.1) always.
+const REZ_RESERVE_WEIGHT: f64 = 0.3;
+/// Each unrezzed piece of ICE whose printed rez cost the Corp does not
+/// hold, subtracted from the `UNREZZED_INSTALL_WEIGHT` it is paid: half
+/// of it, so a piece the Corp cannot turn face up is worth half of one it
+/// can. **The term the first measurement of this stage asked for.** With
+/// the reserve alone the planner Corp arrived at its turn with 4.2
+/// credits where Stage 4's had 7.8 and the chooser 15: it installed
+/// every ICE it drew (15.5 installs a game, the chooser's count, in
+/// three-quarters of the turns) because a face-down card was worth the
+/// same 1.0 whether or not its rez was in the bank, so "draw, install"
+/// was worth 0.5 a click against a credit's 0.4 for as long as R&D
+/// held ICE, and the reserve only taxed the spending that followed.
+/// At 0.5, installing a Pharos on 2[c] where no fort term wants it is
+/// +0.5 less the reserve it raises, under the credit click; the first
+/// piece on an open central still goes down, as a bluff, because the
+/// fort term carries it; and with the seven in hand every install is
+/// +1.0 as it always was. The rez itself is priced as before — this is
+/// the price of the promise, not of the rez. The Runner cannot read it: a face-down card's cost is
+/// hidden, and `visible_install_value` reads none.
+const UNAFFORDABLE_ICE_WEIGHT: f64 = 0.5;
+/// Each installed agenda in a server the Runner cannot afford to break
+/// into right now, were the Corp to rez what its credits cover
+/// (`read::taxing_cost` against the Runner's credits) — the guide's
+/// taxing window, precept 2: "a Runner who spent everything cannot run
+/// your next one". The Corp reading the Runner's credits, which are
+/// public. Stage 1 measured the window happening 0.49 of scores with no
+/// term reading it; this is the term. One advancement token's worth: an
+/// agenda worth installing behind the fort while the window is open,
+/// never worth installing naked (the window is shut on a server with
+/// no ICE, where the break costs nothing).
+const TAXING_WINDOW_WEIGHT: f64 = 1.5;
+/// Each credit the Corp would spend rezzing the unrezzed ICE ahead of the
+/// Runner in the run — `TYPICAL_REZ_COST` a piece, or what the Corp has
+/// left — at this weight: the Runner reading the Corp's credits against
+/// its unrezzed rez costs (precept 8, "make the Corp rez": "every rez
+/// costs the Corp credits it wanted for scoring"). The Corp's credit is
+/// worth 0.2 to the Runner, and Stage 1 measured a run into unrezzed ICE
+/// drawing a rez 0.64 of the time; 0.12 is the product. A piece the
+/// Corp cannot afford to rez costs it nothing and is worth nothing here.
+const FORCED_REZ_WEIGHT: f64 = 0.12;
+/// A face-down card in the root of the server the Runner is running,
+/// when the Corp holds the credits to finish advancing it next turn
+/// (`TYPICAL_ADVANCEMENT_REQUIREMENT` less its tokens): "an unadvanced
+/// card is only a threat if the Corp can afford to finish it next turn".
+/// Half a token's worth (`ADVANCED_CARD_PROSPECT_WEIGHT`), on top of the
+/// hidden access, so a fresh install in front of a rich Corp is worth a
+/// remote run over a central and one in front of a broke Corp is not.
+const FINISHABLE_INSTALL_WEIGHT: f64 = 0.5;
+/// What a face-down piece of ICE costs to rez when its cost cannot be
+/// read: the mean printed rez cost over the pool's 62 ICE is 4.4.
+const TYPICAL_REZ_COST: u32 = 4;
+/// What a face-down card needs to be scored when its requirement cannot
+/// be read: the pool's 35 agendas need 2–5, median 3 — the low side, so
+/// the Runner errs toward the run.
+const TYPICAL_ADVANCEMENT_REQUIREMENT: u32 = 3;
 
 const WIN_SCORE: f64 = 1000.0;
 const AGENDA_POINT_WEIGHT: f64 = 20.0;
@@ -843,6 +991,53 @@ pub struct Weights {
     /// Corp only: subtracted, per installed agenda, for each piece of ICE
     /// short of `fort_cap` in front of it. See `EXPOSED_AGENDA_WEIGHT`.
     pub exposed_agenda_weight: f64,
+    /// Each click the side has left this turn. See `CLICK_WEIGHT`. Zero
+    /// by default, with the six below: the guide's-rate terms, set by
+    /// `at_the_guides_rate` for the planner.
+    pub click_weight: f64,
+    /// Each future credit an economy card declares. See
+    /// `FUTURE_CREDIT_WEIGHT`.
+    pub future_credit_weight: f64,
+    /// A card in hand at this fraction of its declared economy. See
+    /// `DECLARED_VALUE_WEIGHT`.
+    pub declared_value_weight: f64,
+    /// Corp only: each credit short of the rez reserve. See
+    /// `REZ_RESERVE_WEIGHT`.
+    pub rez_reserve_weight: f64,
+    /// Corp only: each unrezzed piece of ICE it cannot afford to rez,
+    /// subtracted. See `UNAFFORDABLE_ICE_WEIGHT`.
+    pub unaffordable_ice_weight: f64,
+    /// Corp only: each installed agenda under the taxing window. See
+    /// `TAXING_WINDOW_WEIGHT`.
+    pub taxing_window_weight: f64,
+    /// Runner only: each credit the Corp would spend rezzing ahead of the
+    /// run. See `FORCED_REZ_WEIGHT`.
+    pub forced_rez_weight: f64,
+    /// Runner only: a face-down root card the Corp can afford to finish.
+    /// See `FINISHABLE_INSTALL_WEIGHT`.
+    pub finishable_install_weight: f64,
+}
+
+impl Weights {
+    /// These weights with the economy terms at the guide's rate (Phase 5
+    /// §25 Stage 5): the click, the future credit, the card in hand, the
+    /// rez reserve, the unaffordable ICE, the taxing window, the forced
+    /// rez and the finishable install. What `planner::PlanningAgent` scores with over any
+    /// personality; the one-ply reference keeps the default, so the
+    /// planner is measured against a chooser that has not moved.
+    pub fn at_the_guides_rate(self) -> Self {
+        Weights {
+            click_weight: CLICK_WEIGHT,
+            future_credit_weight: FUTURE_CREDIT_WEIGHT,
+            declared_value_weight: DECLARED_VALUE_WEIGHT,
+            rez_reserve_weight: REZ_RESERVE_WEIGHT,
+            unaffordable_ice_weight: UNAFFORDABLE_ICE_WEIGHT,
+            taxing_window_weight: TAXING_WINDOW_WEIGHT,
+            forced_rez_weight: FORCED_REZ_WEIGHT,
+            finishable_install_weight: FINISHABLE_INSTALL_WEIGHT,
+            ..self
+        }
+    }
 }
 
 impl Default for Weights {
@@ -898,6 +1093,14 @@ impl Default for Weights {
             fort_weight: FORT_WEIGHT,
             fort_cap: FORT_CAP,
             exposed_agenda_weight: EXPOSED_AGENDA_WEIGHT,
+            click_weight: 0.0,
+            future_credit_weight: 0.0,
+            declared_value_weight: 0.0,
+            rez_reserve_weight: 0.0,
+            unaffordable_ice_weight: 0.0,
+            taxing_window_weight: 0.0,
+            forced_rez_weight: 0.0,
+            finishable_install_weight: 0.0,
         }
     }
 }
@@ -939,10 +1142,19 @@ pub fn evaluate_state_with(state: &GameState, side: Side, registry: &CardRegistr
     }
     score += own.credits.0 as f64 * w.own_credit_weight;
     score -= opponent.credits.0 as f64 * w.opponent_credit_weight;
-
+    // The guide's-rate terms are added after the whole of the old sum,
+    // on both arms, so at zero weight the sum's order — and its rounding
+    // — is the one `coverage_identical.py` pinned.
+    let horizon = horizon(stage(state));
     match side {
-        Side::Corp => corp::score(state, registry, w, &mut score),
-        Side::Runner => runner::score(state, registry, w, &mut score),
+        Side::Corp => corp::score(state, registry, w, horizon, &mut score),
+        Side::Runner => runner::score(state, registry, w, horizon, &mut score),
+    }
+    if w.click_weight != 0.0 {
+        score += f64::from(own.clicks.0) * w.click_weight;
+    }
+    if w.declared_value_weight != 0.0 {
+        score += held_declared_value(state, side, registry, w) * w.declared_value_weight;
     }
     score
 }
@@ -962,5 +1174,44 @@ mod tests {
             assert_eq!(evaluate_state(&state, side, &empty()), evaluate_state_with(&state, side, &empty(), &Weights::default()));
         }
         assert_eq!(Weights::default().installed_agenda_weight, 0.0, "the balanced Corp has no install preference by type");
+    }
+
+    /// The reference is pinned: every guide's-rate term is zero in the
+    /// default weights and in every personality's, so the one-ply
+    /// chooser and every ladder rung score exactly as they did before
+    /// Stage 5, and `at_the_guides_rate` is what moves.
+    #[test]
+    fn the_guides_rate_terms_are_off_in_every_weights_the_reference_scores_with() {
+        let off = |w: &Weights| {
+            [w.click_weight, w.future_credit_weight, w.declared_value_weight, w.rez_reserve_weight, w.unaffordable_ice_weight, w.taxing_window_weight, w.forced_rez_weight, w.finishable_install_weight]
+        };
+        assert_eq!(off(&Weights::default()), [0.0; 8]);
+        for personality in crate::Personality::ALL {
+            assert_eq!(off(&personality.weights()), [0.0; 8], "{personality:?}");
+        }
+        let guide = Weights::default().at_the_guides_rate();
+        assert!(off(&guide).iter().all(|w| *w > 0.0));
+        assert_eq!(Weights { click_weight: 0.0, future_credit_weight: 0.0, declared_value_weight: 0.0, rez_reserve_weight: 0.0, unaffordable_ice_weight: 0.0, taxing_window_weight: 0.0, forced_rez_weight: 0.0, finishable_install_weight: 0.0, ..guide }, Weights::default(), "the guide's rate is those eight and nothing else");
+        assert_eq!(guide.click_weight, guide.own_credit_weight, "a click is worth the credit it would buy");
+        assert!(guide.future_credit_weight < guide.own_credit_weight, "a credit later is worth less than one now");
+    }
+
+    /// A click left is worth the credit it would buy, at the guide's
+    /// rate and not before, so a free action keeps what a click action
+    /// spends.
+    #[test]
+    fn a_click_left_is_worth_a_credit_at_the_guides_rate() {
+        use netrunner_core::rules::Clicks;
+        let registry = empty();
+        let mut three = GameState::new(0);
+        three.phase = GamePhase::Action(Side::Corp);
+        three.corp.resources.clicks = Clicks(3);
+        let mut two = three.clone();
+        two.corp.resources.clicks = Clicks(2);
+        assert_eq!(evaluate_state(&three, Side::Corp, &registry), evaluate_state(&two, Side::Corp, &registry), "the reference does not price a click");
+        let guide = Weights::default().at_the_guides_rate();
+        let delta = evaluate_state_with(&three, Side::Corp, &registry, &guide) - evaluate_state_with(&two, Side::Corp, &registry, &guide);
+        assert!((delta - guide.own_credit_weight).abs() < 1e-9, "{delta}");
+        assert_eq!(evaluate_state_with(&three, Side::Runner, &registry, &guide), evaluate_state_with(&two, Side::Runner, &registry, &guide), "the Corp's clicks are not the Runner's");
     }
 }

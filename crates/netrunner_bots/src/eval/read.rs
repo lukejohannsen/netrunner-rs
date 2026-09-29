@@ -406,6 +406,290 @@ pub(super) fn subtype_slot(subtype: IceType) -> Option<usize> {
     }
 }
 
+/// What a card's declared text pays its owner, read off the DSL the way
+/// the trap recognisers are — never off the card's name (Phase 5 §25
+/// Stage 5). One reading serves three questions: what a play is worth
+/// (`play_value`), what an installed economy card will still pay over the
+/// turns left (`future_credits`), and so what the card is worth in hand.
+///
+/// A card *declares* an economy; it does not declare an income schedule,
+/// so the schedule here is the one a person reads off the same words:
+/// "when your turn begins, gain 1[c]" is a credit a turn; "[click]: take
+/// 3[c] from this asset" is a click's use a turn, worth what it takes
+/// over the credit the click would have bought; counters the credits are
+/// taken from are the stock and bound the total; "[trash]: gain 2[c] for
+/// each hosted counter" is the counters cashed once. Everything read is
+/// a `Fixed` amount: a computed `Amount` is counted as nothing, the
+/// cheaper direction.
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub(super) struct Income {
+    /// Credits a play nets its owner — the gains its "when you play"
+    /// text declares less its play cost — for an event or operation.
+    pub play_credits: i32,
+    /// Cards the play draws.
+    pub play_cards: u32,
+    /// Clicks the play gives (Nanomanagement) or takes (Creative
+    /// Commission), the click spent playing it not counted.
+    pub play_clicks: i32,
+    /// Credits each of its owner's turn starts pays while the card is
+    /// active, recurring credits included.
+    pub turn_credits: u32,
+    /// Cards each turn start draws.
+    pub turn_cards: u32,
+    /// Credits one use of the card's own click ability takes (or, on a
+    /// card whose turn starts pay off its counters, the counters one use
+    /// places), and the clicks that use costs.
+    pub click_credits: u32,
+    pub click_cost: u32,
+    /// The click ability trashes the card: one use, not one a turn.
+    pub click_trashes: bool,
+    /// The click ability places the credits on the card for its turn
+    /// starts to pay off (Smartware Distributor) rather than taking them:
+    /// the click is priced by the stock it adds when it is taken, so the
+    /// future counts the stock and not the clicks.
+    pub click_places: bool,
+    /// Credits per hosted counter a trash-and-cash ability pays.
+    pub cashout_per_counter: u32,
+    /// The credits come off hosted counters, so the counters bound them;
+    /// `printed_stock` is what the card places on itself when it arrives.
+    pub stocked: bool,
+    pub printed_stock: u32,
+}
+
+/// What one effect adds up to for `side`: credits, cards, clicks and
+/// counters, and the cashout rate if it names one. A `Sequence` is the
+/// sum; an `EffectIf` is taken as if its condition held (the card is
+/// read for what it can do); a `PresentChoice` is the best option when
+/// `side` chooses and the worst when the opponent does (Wildcat Strike
+/// is the Corp's to answer). Anything else is nothing.
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+struct Tally {
+    credits: i32,
+    cards: i32,
+    clicks: i32,
+    counters: i32,
+    cashout_per_counter: u32,
+}
+
+impl Tally {
+    fn add(self, other: Tally) -> Tally {
+        Tally {
+            credits: self.credits + other.credits,
+            cards: self.cards + other.cards,
+            clicks: self.clicks + other.clicks,
+            counters: self.counters + other.counters,
+            cashout_per_counter: self.cashout_per_counter.max(other.cashout_per_counter),
+        }
+    }
+
+    /// The order two options of a choice are compared in: credits,
+    /// cards and clicks alike, each about a click's worth.
+    fn worth(self) -> i32 {
+        self.credits + self.cards + self.clicks
+    }
+}
+
+fn tally(effect: &Effect, side: Side) -> Tally {
+    let own = |s: &Side| *s == side;
+    match effect {
+        Effect::GainCredits(s, n) if own(s) => Tally { credits: *n as i32, ..Default::default() },
+        Effect::LoseCredits(s, n) if own(s) => Tally { credits: -(*n as i32), ..Default::default() },
+        Effect::DrawCards(s, n) if own(s) => Tally { cards: *n as i32, ..Default::default() },
+        Effect::GainClicks(s, n) if own(s) => Tally { clicks: *n as i32, ..Default::default() },
+        Effect::LoseClicks(n) => Tally { clicks: -(*n as i32), ..Default::default() },
+        Effect::AddCounters(n) => Tally { counters: *n as i32, ..Default::default() },
+        Effect::RemoveCounters(Amount::Fixed(n)) => Tally { counters: -(*n as i32), ..Default::default() },
+        Effect::GainCreditsPerCounter { side: s, credits_per_counter } if own(s) => {
+            Tally { cashout_per_counter: *credits_per_counter, ..Default::default() }
+        }
+        Effect::TakeAllCountersAsCredits(s) if own(s) => Tally { cashout_per_counter: 1, ..Default::default() },
+        Effect::Sequence(effects) => effects.iter().fold(Tally::default(), |sum, effect| sum.add(tally(effect, side))),
+        Effect::EffectIf { effect, .. } => tally(effect, side),
+        Effect::PresentChoice { chooser, options, .. } => {
+            let tallies = options.iter().map(|option| tally(option, side));
+            if *chooser == side { tallies.max_by_key(|t| t.worth()) } else { tallies.min_by_key(|t| t.worth()) }
+                .unwrap_or_default()
+        }
+        _ => Tally::default(),
+    }
+}
+
+/// `Income` for `def`, read as the struct's docs say.
+pub(super) fn declared_income(def: &CardDefinition) -> Income {
+    let side = def.side;
+    let mut income = Income::default();
+    if matches!(def.card_type, CardType::Event | CardType::Operation) {
+        let play = def
+            .triggers
+            .iter()
+            .filter(|trigger| trigger.trigger == Trigger::OnPlay)
+            .flat_map(|trigger| trigger.effects.iter())
+            .fold(Tally::default(), |sum, effect| sum.add(tally(effect, side)));
+        income.play_credits = play.credits - def.cost as i32;
+        income.play_cards = play.cards.max(0) as u32;
+        income.play_clicks = play.clicks;
+        return income;
+    }
+    for trigger in &def.triggers {
+        let sum = trigger.effects.iter().fold(Tally::default(), |sum, effect| sum.add(tally(effect, side)));
+        match trigger.trigger {
+            Trigger::OnTurnStart => {
+                income.turn_credits += sum.credits.max(0) as u32;
+                income.turn_cards += sum.cards.max(0) as u32;
+                if sum.counters < 0 {
+                    income.stocked = true;
+                }
+            }
+            Trigger::OnRez | Trigger::OnInstall => income.printed_stock += sum.counters.max(0) as u32,
+            _ => {}
+        }
+    }
+    income.turn_credits += def.recurring_credits.unwrap_or(0);
+    for ability in def.abilities.iter().filter(|ability| ability.trigger == Trigger::Paid) {
+        let (clicks, trashes) = click_cost(ability.cost.as_ref());
+        if clicks == 0 && !trashes {
+            continue;
+        }
+        let sum = tally(&ability.effect, side);
+        if sum.cashout_per_counter > 0 {
+            income.cashout_per_counter = income.cashout_per_counter.max(sum.cashout_per_counter);
+            continue;
+        }
+        // Credits the click takes off the card (Regolith, Telework), or
+        // counters it places that the card's own turn starts pay off
+        // (Smartware Distributor): either is credits for a click.
+        let credits = if sum.credits > 0 {
+            sum.credits as u32
+        } else if sum.counters > 0 && income.stocked && income.turn_credits > 0 {
+            sum.counters as u32
+        } else {
+            continue;
+        };
+        if credits > income.click_credits {
+            income.click_credits = credits;
+            income.click_cost = clicks;
+            income.click_trashes = trashes;
+            income.click_places = sum.credits <= 0;
+            if sum.counters < 0 {
+                income.stocked = true;
+            }
+        }
+    }
+    income
+}
+
+/// The clicks a cost takes and whether it trashes the card.
+fn click_cost(cost: Option<&Cost>) -> (u32, bool) {
+    match cost {
+        None => (0, false),
+        Some(Cost::Clicks(n)) => (*n, false),
+        Some(Cost::TrashSelf) => (0, true),
+        Some(Cost::AllOf(parts)) => parts.iter().fold((0, false), |(clicks, trashes), part| {
+            let (c, t) = click_cost(Some(part));
+            (clicks + c, trashes || t)
+        }),
+        Some(_) => (0, false),
+    }
+}
+
+/// Credits an active card will still pay over `horizon` more of its
+/// owner's turns, net of the clicks its uses cost: its turn-start credits
+/// and cards (a card at a credit), its click ability used once a turn
+/// for what it takes over the credit the click would have bought, both
+/// bounded by the stock when the credits come off counters (`hosted`, or
+/// the printed stock for a card not yet on the table), and its counters
+/// cashed at the rate its text names. Zero for a card that declares no
+/// economy.
+pub(super) fn future_credits(income: &Income, hosted: Option<u32>, horizon: u32) -> f64 {
+    let stock = if income.stocked { Some(hosted.unwrap_or(income.printed_stock)) } else { None };
+    let turn = (income.turn_credits + income.turn_cards) * horizon;
+    let turn = stock.map_or(turn, |stock| turn.min(stock));
+    let click = if income.click_credits > income.click_cost && !income.click_places {
+        let net = income.click_credits - income.click_cost;
+        if income.click_trashes {
+            net
+        } else {
+            let uses = stock.map_or(horizon, |stock| horizon.min(stock / income.click_credits.max(1)));
+            net * uses
+        }
+    } else {
+        0
+    };
+    let cashout = income.cashout_per_counter * hosted.unwrap_or(income.printed_stock);
+    f64::from(turn + click + cashout)
+}
+
+/// The Corp's rez reserve: the printed cost of the dearest unrezzed piece
+/// of ICE it has installed, on any server — the one rez that stops a run
+/// (the strategy guide: "they can afford the expensive run, or the rez
+/// that stops it"). Zero with nothing face down. Printed cost, ignoring
+/// what the table adds or takes off it, as `is_unrezzed_threat` reads it.
+pub(super) fn rez_reserve(state: &GameState, registry: &CardRegistry) -> u32 {
+    use netrunner_core::rules::InstallSlot;
+    state
+        .corp
+        .installed
+        .iter()
+        .filter(|card| card.slot == InstallSlot::Ice && !card.rezzed)
+        .filter_map(|card| registry.get(&card.card))
+        .map(|def| def.cost)
+        .max()
+        .unwrap_or(0)
+}
+
+/// Unrezzed ICE the Corp could not rez right now at its printed cost —
+/// the installs that are a promise the bank does not cover. See
+/// `UNAFFORDABLE_ICE_WEIGHT`.
+pub(super) fn unaffordable_ice(state: &GameState, registry: &CardRegistry) -> usize {
+    use netrunner_core::rules::InstallSlot;
+    let credits = state.corp.resources.credits.0;
+    state
+        .corp
+        .installed
+        .iter()
+        .filter(|card| card.slot == InstallSlot::Ice && !card.rezzed)
+        .filter_map(|card| registry.get(&card.card))
+        .filter(|def| def.cost > credits)
+        .count()
+}
+
+/// What the rig would spend to break into `server` if the Corp rezzed what
+/// it can afford: `server_break_cost`'s reading with the unrezzed ICE the
+/// Corp's credits cover added, taken in the order the Runner meets it,
+/// each piece's rez paid out of one budget. `None` when a piece the Corp
+/// could turn face up is one no rig card breaks. The Corp's reading of
+/// its own taxing window, which it can make because the face-down ICE is
+/// its own; the Runner's reading is `server_break_cost`, rezzed only.
+pub(super) fn taxing_cost(state: &GameState, server: netrunner_core::rules::ServerId, registry: &CardRegistry) -> Option<u32> {
+    use netrunner_core::rules::{EncounteredSubroutine, InstallSlot, RunIce};
+    let mut total = 0;
+    let mut budget = state.corp.resources.credits.0;
+    for installed in state.corp.installed.iter().filter(|c| c.server == server && c.slot == InstallSlot::Ice) {
+        let def = registry.get(&installed.card)?;
+        if !installed.rezzed {
+            if def.cost > budget {
+                continue;
+            }
+            budget -= def.cost;
+        }
+        let CardType::Ice(ice_type) = def.card_type else { continue };
+        let ice = RunIce {
+            card_id: installed.card.clone(),
+            install_id: installed.install_id,
+            ice_type,
+            subroutines: def
+                .subroutines
+                .iter()
+                .enumerate()
+                .map(|(id, definition)| EncounteredSubroutine { id, definition: definition.clone(), status: SubroutineStatus::Pending, gained: false })
+                .collect(),
+            rezzed: true,
+        };
+        total += cheapest_break_cost(state, &ice, registry)?;
+    }
+    Some(total)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -538,5 +822,115 @@ mod tests {
         let mayfly = |strength| vec![InstalledRunnerCard { base_strength: strength, ..rig_card("mayfly") }];
         assert_eq!(run_term(mayfly(1), 0, sentry(), 0, &registry), ACTIVE_RUN_WEIGHT, "a free AI break costs nothing");
         assert_eq!(run_term(mayfly(0), 9, sentry(), 0, &registry), 0.0, "one point short and no pump ability");
+    }
+
+    /// The economy is read off the pool's own cards, as printed: what
+    /// each play nets, what each install pays a turn, and what stock the
+    /// credits come off. A card that declares no economy reads as
+    /// nothing.
+    #[test]
+    fn declared_income_reads_the_pools_economy_cards_as_printed() {
+        let pool = pool();
+        let income = |id: &str| declared_income(&printed(&pool, id));
+        let hedge = income("hedge_fund");
+        assert_eq!((hedge.play_credits, hedge.play_cards, hedge.play_clicks), (4, 0, 0), "5 for 9");
+        assert_eq!(income("diesel").play_cards, 3);
+        assert_eq!(income("nanomanagement").play_clicks, 2);
+        let commission = income("creative_commission");
+        assert_eq!((commission.play_credits, commission.play_clicks), (4, -1));
+        // A choice the Corp makes for the Runner is read at its worst
+        // option; one the owner makes at its best.
+        assert_eq!(income("wildcat_strike").play_cards, 4, "the Corp gives the cards, not the six credits");
+        let planogram = income("predictive_planogram");
+        assert!(planogram.play_credits == 3 || planogram.play_cards == 3, "one of the two, the Corp's choice: {planogram:?}");
+
+        let pad = income("pad_campaign");
+        assert_eq!((pad.turn_credits, pad.stocked), (1, false), "a credit a turn, for as long as it stands");
+        let regolith = income("regolith_mining_license");
+        assert_eq!((regolith.click_credits, regolith.click_cost, regolith.stocked, regolith.printed_stock), (3, 1, true, 15));
+        let telework = income("telework_contract");
+        assert_eq!((telework.click_credits, telework.stocked, telework.printed_stock), (3, true, 9));
+        let nico = income("nico_campaign");
+        assert_eq!((nico.turn_credits, nico.stocked, nico.printed_stock), (3, true, 9));
+        let smartware = income("smartware_distributor");
+        assert_eq!((smartware.turn_credits, smartware.stocked, smartware.click_credits, smartware.click_places), (1, true, 3, true), "a click places three credits its turns pay off");
+        assert!(!regolith.click_places);
+        let fermenter = income("fermenter");
+        assert_eq!((fermenter.cashout_per_counter, fermenter.printed_stock), (2, 1));
+        let rioters = income("rent_rioters");
+        assert_eq!((rioters.click_credits, rioters.click_cost, rioters.click_trashes), (9, 3, true));
+
+        let wall = income("palisade");
+        assert_eq!(wall, Income::default(), "ICE declares no economy");
+        assert_eq!(income("offworld_office").turn_credits, 0, "an agenda's text is read once it is scored, not here");
+    }
+
+    /// What an active card will still pay: a turn's income over the
+    /// horizon, bounded by the stock where the credits come off counters;
+    /// a click's use once a turn for what it takes over the credit the
+    /// click would have bought; a cashout at the printed rate.
+    #[test]
+    fn future_credits_are_bounded_by_the_stock_and_the_horizon() {
+        let pool = pool();
+        let future = |id: &str, hosted: Option<u32>, horizon: u32| future_credits(&declared_income(&printed(&pool, id)), hosted, horizon);
+        assert_eq!(future("pad_campaign", None, 9), 9.0);
+        assert_eq!(future("pad_campaign", None, 2), 2.0);
+        assert_eq!(future("nico_campaign", Some(9), 9), 9.0, "three turns of three, then the card is gone");
+        assert_eq!(future("nico_campaign", Some(3), 9), 3.0, "one turn left on it");
+        assert_eq!(future("regolith_mining_license", Some(15), 9), 10.0, "five uses of 3 for a click: 2 net each");
+        assert_eq!(future("regolith_mining_license", Some(15), 2), 4.0, "two uses in the turns left");
+        assert_eq!(future("regolith_mining_license", None, 9), 10.0, "in hand, at its printed stock");
+        assert_eq!(future("telework_contract", Some(9), 9), 6.0, "three uses, one a turn");
+        assert_eq!(future("smartware_distributor", Some(0), 9), 0.0, "nothing placed, nothing paid");
+        assert_eq!(future("smartware_distributor", Some(3), 9), 3.0);
+        assert_eq!(future("fermenter", Some(4), 9), 8.0, "cashed at 2 a counter");
+        assert_eq!(future("rent_rioters", None, 9), 6.0, "9 for three clicks, once");
+        assert_eq!(future("palisade", None, 9), 0.0);
+    }
+
+    /// The rez reserve is the dearest face-down piece, wherever it is;
+    /// the taxing cost counts the face-down ICE the Corp's credits cover,
+    /// in the order the Runner meets it.
+    #[test]
+    fn the_rez_reserve_and_the_taxing_cost_read_the_corps_own_ice() {
+        use netrunner_core::rules::{InstallSlot, ServerId};
+        let registry = CardRegistry::from_cards(vec![
+            with_etr(ice("cheap", 2)),
+            with_etr(ice("dear", 6)),
+            priced_breaker("cleaver", Some(IceType::Barrier), (1, 2), (2, 1)),
+        ]);
+        let piece = |id: &str, n: u32, server: ServerId, rezzed: bool| InstalledCard {
+            card: CardId(id.to_string()),
+            install_id: netrunner_core::rules::InstallId(n),
+            server,
+            slot: InstallSlot::Ice,
+            rezzed,
+            ..Default::default()
+        };
+        let mut state = GameState::new(0);
+        state.runner.rig = vec![InstalledRunnerCard { base_strength: 3, ..rig_card("cleaver") }];
+        state.corp.installed = vec![piece("cheap", 1, ServerId::Hq, true), piece("dear", 2, ServerId::Remote(0), false), piece("cheap", 3, ServerId::Remote(0), false)];
+        assert_eq!(rez_reserve(&state, &registry), 6);
+        state.corp.installed[1].rezzed = true;
+        assert_eq!(rez_reserve(&state, &registry), 2, "the dear one is face up now");
+        state.corp.installed[1].rezzed = false;
+
+        // Each piece breaks for 1[c] once rezzed. With no credits the
+        // Corp rezzes nothing on the remote; with 6 it rezzes the dear
+        // piece it meets first and cannot afford the cheap one after.
+        state.corp.resources.credits = Credits(0);
+        assert_eq!(taxing_cost(&state, ServerId::Remote(0), &registry), Some(0));
+        assert_eq!(taxing_cost(&state, ServerId::Hq, &registry), Some(1), "rezzed ICE is priced whatever the Corp holds");
+        state.corp.resources.credits = Credits(6);
+        assert_eq!(taxing_cost(&state, ServerId::Remote(0), &registry), Some(1));
+        state.corp.resources.credits = Credits(8);
+        assert_eq!(taxing_cost(&state, ServerId::Remote(0), &registry), Some(2));
+        state.runner.rig.clear();
+        assert_eq!(taxing_cost(&state, ServerId::Remote(0), &registry), None, "no rig card breaks it at any price");
+    }
+
+    fn with_etr(mut ice: CardDefinition) -> CardDefinition {
+        ice.subroutines = vec![netrunner_core::dsl::SubroutineDef { text: String::new(), effect: Effect::EndTheRun, only_breakable_by: None }];
+        ice
     }
 }

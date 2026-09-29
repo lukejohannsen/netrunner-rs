@@ -11,6 +11,26 @@ pub(crate) fn empty() -> CardRegistry {
     CardRegistry::new()
 }
 
+/// Every playable card as printed, for the terms that read a card's
+/// declared text: the economy is tested on the pool's own Hedge Fund,
+/// PAD Campaign and Regolith Mining License rather than on stand-ins,
+/// because the reading is of what those cards say.
+pub(crate) fn pool() -> CardRegistry {
+    let mut registry = CardRegistry::new();
+    netrunner_core::cards::register_playable_cards(&mut registry);
+    registry
+}
+
+/// A card of the pool by id, cloned.
+pub(crate) fn printed(registry: &CardRegistry, id: &str) -> CardDefinition {
+    registry.get(&CardId(id.to_string())).unwrap_or_else(|| panic!("{id} is in the pool")).clone()
+}
+
+/// The default weights at the guide's rate (Stage 5).
+pub(crate) fn guide() -> Weights {
+    Weights::default().at_the_guides_rate()
+}
+
 pub(crate) fn ice(id: &str, cost: u32) -> CardDefinition {
     CardDefinition {
         id: CardId(id.to_string()),

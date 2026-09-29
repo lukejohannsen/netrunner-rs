@@ -187,12 +187,15 @@ impl PlanningAgent {
         Self::with_personality(side, seed, Personality::Balanced)
     }
 
-    /// `new`, scoring with `personality.weights()`.
+    /// `new`, scoring with `personality.weights()` at the guide's rate
+    /// (`Weights::at_the_guides_rate`, Stage 5): the economy terms are
+    /// the planner's, and the one-ply reference keeps the default so the
+    /// planner is measured against a chooser that has not moved.
     pub fn with_personality(side: Side, seed: u64, personality: Personality) -> Self {
         Self {
             side,
             rng: StdRng::seed_from_u64(seed),
-            weights: personality.weights(),
+            weights: personality.weights().at_the_guides_rate(),
             knowledge: Knowledge::default(),
             plan: None,
             stats: PlanStats::default(),
@@ -525,9 +528,13 @@ impl Search<'_> {
 }
 
 /// One credit's worth of score, and the edge, for each unspent click —
-/// the least a click buys, and the preference for keeping it.
+/// the least a click buys, and the preference for keeping it. What the
+/// evaluator already prices a click at (`Weights::click_weight`, the
+/// guide's rate since Stage 5) is not paid twice: at that rate the floor
+/// is the edge alone.
 fn click_floor(state: &GameState, side: Side, weights: &Weights) -> f64 {
-    f64::from(state.resources(side).clicks.0) * weights.own_credit_weight * (1.0 + KEPT_CLICK_EDGE)
+    let unpriced = (weights.own_credit_weight - weights.click_weight).max(0.0);
+    f64::from(state.resources(side).clicks.0) * (unpriced + weights.own_credit_weight * KEPT_CLICK_EDGE)
 }
 
 /// `PLAN_BEAM` best nodes, plus the best node under each first action not
@@ -863,5 +870,19 @@ mod cost {
                 runner.stats()
             );
         }
+    }
+
+    /// The floor is what the evaluator does not already price: a credit's
+    /// worth and the edge at the reference weights, the edge alone at the
+    /// guide's rate, where the click term carries the credit.
+    #[test]
+    fn the_click_floor_pays_only_what_the_evaluator_does_not() {
+        use netrunner_core::rules::Clicks;
+        let mut state = GameState::new(0);
+        state.corp.resources.clicks = Clicks(2);
+        let reference = Weights::default();
+        let guide = reference.at_the_guides_rate();
+        assert!((click_floor(&state, Side::Corp, &reference) - 2.0 * reference.own_credit_weight * (1.0 + KEPT_CLICK_EDGE)).abs() < 1e-9);
+        assert!((click_floor(&state, Side::Corp, &guide) - 2.0 * guide.own_credit_weight * KEPT_CLICK_EDGE).abs() < 1e-9);
     }
 }

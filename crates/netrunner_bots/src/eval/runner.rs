@@ -32,16 +32,18 @@ use super::*;
 /// card-started path (`Effect::InitiateRun` through `run/engine.rs`'s
 /// deduplicating push) records a repeat run once, and that run is priced
 /// as if it were the first — the cheaper direction.
-pub(super) fn access_prospect(state: &GameState, run: &RunState, registry: &CardRegistry, w: &Weights, credits: u32) -> f64 {
+pub(super) fn access_prospect(state: &GameState, run: &RunState, registry: &CardRegistry, w: &Weights, credits: u32, horizon: u32) -> f64 {
     use netrunner_core::rules::{InstallSlot, ServerId};
     let server = run.server;
     let earlier = runs_earlier_this_turn(state, server);
     let seen = earlier > 0;
     let mut hidden = 0.0_f64;
     let mut tokens = 0u32;
+    let mut finishable = 0usize;
     let mut ambushes = 0usize;
     let mut damage = 0usize;
     let mut trash_gain = 0.0;
+    let corp_credits = state.corp.resources.credits.0;
     for installed in state.corp.installed.iter().filter(|card| card.server == server && card.slot == InstallSlot::Root) {
         if installed.rezzed || installed.seen_by_runner {
             let Some(def) = registry.get(&installed.card) else { continue };
@@ -52,12 +54,18 @@ pub(super) fn access_prospect(state: &GameState, run: &RunState, registry: &Card
             if let Some(cost) = def.trash_cost
                 && cost <= credits
             {
-                let removed = visible_install_value(installed, registry, w) * w.opponent_board_weight;
+                let removed = visible_install_value(installed, registry, w, horizon) * w.opponent_board_weight;
                 trash_gain += (removed - f64::from(cost) * w.own_credit_weight).max(0.0);
             }
         } else if !seen {
             hidden += 1.0;
             tokens += installed.advancement_tokens;
+            // "Read the counters on it and the Corp's credits": the
+            // Corp's credits are public, the card's requirement is not,
+            // so a typical one stands in. See `FINISHABLE_INSTALL_WEIGHT`.
+            if corp_credits + installed.advancement_tokens >= TYPICAL_ADVANCEMENT_REQUIREMENT {
+                finishable += 1;
+            }
         }
     }
     match server {
@@ -103,9 +111,26 @@ pub(super) fn access_prospect(state: &GameState, run: &RunState, registry: &Card
         damage as f64 * w.known_trap_damage_weight
     };
     hidden * w.active_run_weight + f64::from(tokens) * w.advanced_card_prospect_weight
+        + finishable as f64 * w.finishable_install_weight
         - ambushes as f64 * w.known_ambush_weight
         - trap
         + trash_gain
+}
+
+/// The credits the Corp would spend rezzing the unrezzed ICE still ahead
+/// of the Runner in `run`, `TYPICAL_REZ_COST` a piece out of what the
+/// Corp has, outermost first, until it runs out — what precept 8's run
+/// makes the Corp pay. See `FORCED_REZ_WEIGHT`. Reads the Corp's
+/// credits and the ICE's position, never the sampled card under it.
+pub(super) fn forced_rez_credits(state: &GameState, run: &RunState) -> u32 {
+    let mut budget = state.corp.resources.credits.0;
+    let mut spent = 0;
+    for _ in run.ice.iter().skip(run.position).filter(|ice| !ice.rezzed) {
+        let rez = TYPICAL_REZ_COST.min(budget);
+        budget -= rez;
+        spent += rez;
+    }
+    spent
 }
 
 /// Whether the Runner, holding `credits`, could pay what stealing `agenda`
@@ -139,8 +164,8 @@ pub(super) fn runs_earlier_this_turn(state: &GameState, server: netrunner_core::
 
 /// The Corp's board as the Runner's evaluation reads it, summed over
 /// `visible_install_value`; subtracted at `opponent_board_weight`.
-pub(super) fn visible_corp_board(state: &GameState, registry: &CardRegistry, w: &Weights) -> f64 {
-    state.corp.installed.iter().map(|installed| visible_install_value(installed, registry, w)).sum()
+pub(super) fn visible_corp_board(state: &GameState, registry: &CardRegistry, w: &Weights, horizon: u32) -> f64 {
+    state.corp.installed.iter().map(|installed| visible_install_value(installed, registry, w, horizon)).sum()
 }
 
 /// `corp_install_value` for a viewer who cannot see under a face-down
@@ -174,9 +199,9 @@ pub(super) fn visible_corp_board(state: &GameState, registry: &CardRegistry, w: 
 /// the Runner column falls 0.000 to 0.010 a rung — which is why a Corp
 /// column taken on this build is not strictly comparable with one taken
 /// before it: the reference Runner is not byte-identical either.
-pub(super) fn visible_install_value(installed: &InstalledCard, registry: &CardRegistry, w: &Weights) -> f64 {
+pub(super) fn visible_install_value(installed: &InstalledCard, registry: &CardRegistry, w: &Weights, horizon: u32) -> f64 {
     if installed.rezzed {
-        corp_install_value(installed, registry, w, [true; 3])
+        corp_install_value(installed, registry, w, [true; 3], horizon)
     } else {
         w.unrezzed_install_weight + f64::from(installed.advancement_tokens) * w.advancement_weight
     }
@@ -184,14 +209,27 @@ pub(super) fn visible_install_value(installed: &InstalledCard, registry: &CardRe
 
 /// What the Runner's grip is worth, summed over `install_delta` and
 /// floored at zero per card; scaled by `held_card_weight`.
-pub(super) fn held_cards_value(state: &GameState, registry: &CardRegistry, w: &Weights) -> f64 {
+pub(super) fn held_cards_value(state: &GameState, registry: &CardRegistry, w: &Weights, horizon: u32) -> f64 {
     let rig = rig_coverage(state, registry);
     state
         .runner
         .grip
         .iter()
         .filter_map(|card| registry.get(card))
-        .map(|def| install_delta(def, rig, w).max(0.0))
+        .map(|def| install_delta(def, rig, w, horizon).max(0.0))
+        .sum()
+}
+
+/// The future credits the rig's economy cards declare, each read with
+/// its own hosted counters as the stock (`read::future_credits`), for
+/// `future_credit_weight`. Zero at the default weights.
+pub(super) fn rig_income(state: &GameState, registry: &CardRegistry, horizon: u32) -> f64 {
+    state
+        .runner
+        .rig
+        .iter()
+        .filter_map(|card| registry.get(&card.card).map(|def| (def, card.counters)))
+        .map(|(def, counters)| future_credits(&declared_income(def), Some(counters), horizon))
         .sum()
 }
 
@@ -204,12 +242,20 @@ pub(super) fn held_cards_value(state: &GameState, registry: &CardRegistry, w: &W
 /// out made a held Cleaver worth more than the installed one and the
 /// install a net loss. Zero for anything that is not a program, hardware
 /// or resource.
-pub(super) fn install_delta(def: &CardDefinition, rig: [bool; 3], w: &Weights) -> f64 {
+pub(super) fn install_delta(def: &CardDefinition, rig: [bool; 3], w: &Weights, horizon: u32) -> f64 {
     if !matches!(def.card_type, CardType::Program | CardType::Hardware | CardType::Resource) {
         return 0.0;
     }
     let new_coverage = covers(def).iter().zip(rig).filter(|(grip, rig)| **grip && !rig).count();
-    w.board_presence_weight + new_coverage as f64 * w.breaker_coverage_weight
+    // The same future credits `rig_income` will count once the card is
+    // installed, so an economy card is live in hand exactly when the
+    // Runner would install it — the breaker's arithmetic, for money.
+    let income = if w.future_credit_weight != 0.0 {
+        future_credits(&declared_income(def), None, horizon) * w.future_credit_weight
+    } else {
+        0.0
+    };
+    w.board_presence_weight + new_coverage as f64 * w.breaker_coverage_weight + income
         - f64::from(def.cost) * w.own_credit_weight
         - f64::from(def.memory_cost.unwrap_or(0)) * w.memory_weight
 }
@@ -235,28 +281,36 @@ pub(super) fn breaker_savings_shortfall(state: &GameState, registry: &CardRegist
 
 /// The Runner's terms, added to `score` in the order `evaluate_state_with`
 /// always added them — see `corp::score`.
-pub(super) fn score(state: &GameState, registry: &CardRegistry, w: &Weights, score: &mut f64) {
+pub(super) fn score(state: &GameState, registry: &CardRegistry, w: &Weights, horizon: u32, score: &mut f64) {
     *score -= state.runner.tags as f64 * w.tag_weight;
     *score += state.runner.rig.len() as f64 * w.board_presence_weight;
     *score += state.runner.memory_units.0 as f64 * w.memory_weight;
     *score += breaker_coverage(state, registry) as f64 * w.breaker_coverage_weight;
     *score -= breaker_savings_shortfall(state, registry) as f64 * w.savings_shortfall_weight;
     *score -= w.grip_floor.saturating_sub(state.runner.grip.len()) as f64 * w.grip_shortfall_weight;
-    *score += held_cards_value(state, registry, w) * w.held_card_weight;
-    *score -= visible_corp_board(state, registry, w) * w.opponent_board_weight;
+    *score += held_cards_value(state, registry, w, horizon) * w.held_card_weight;
+    *score -= visible_corp_board(state, registry, w, horizon) * w.opponent_board_weight;
     if state.this_turn.times(Trigger::OnSuccessfulRun) > 0 {
         *score += w.successful_run_weight;
     }
     if let Some(run) = &state.active_run {
         let pool = state.runner.resources.credits.0 + run.bad_publicity_credits;
         if let Some(due) = remaining_break_cost(state, run, registry).filter(|due| *due <= pool) {
-            *score += access_prospect(state, run, registry, w, pool - due);
+            *score += access_prospect(state, run, registry, w, pool - due, horizon);
         }
         *score -= pending_subroutines(run) as f64 * w.pending_subroutine_weight;
         *score -= strength_shortfall(state, run, registry) as f64 * w.strength_shortfall_weight;
         if w.unrezzed_threat_weight != 0.0 {
             *score -= unbreakable_unrezzed_ice(state, run, registry) as f64 * w.unrezzed_threat_weight;
         }
+        if w.forced_rez_weight != 0.0 {
+            *score += f64::from(forced_rez_credits(state, run)) * w.forced_rez_weight;
+        }
+    }
+    // The guide's-rate terms, after everything above (see
+    // `evaluate_state_with`).
+    if w.future_credit_weight != 0.0 {
+        *score += rig_income(state, registry, horizon) * w.future_credit_weight;
     }
 }
 
@@ -884,5 +938,109 @@ mod tests {
             evaluate_state(&without, Side::Runner, &registry),
             "Barrier is covered, so a second Cleaver is worth what an unknown card is"
         );
+    }
+
+    /// Precept 11's owed lever: an economy resource is live in hand at
+    /// the guide's rate — worth drawing toward and installing — and dead
+    /// at the reference, which priced it at its presence less its cost.
+    #[test]
+    fn an_economy_resource_is_live_in_hand_at_the_guides_rate_and_installed() {
+        use netrunner_core::rules::MemoryUnits;
+        let pool = pool();
+        let w = guide();
+        let rig = [false; 3];
+        let telework = printed(&pool, "telework_contract");
+        assert!(install_delta(&telework, rig, &w, horizon(Stage::Early)) > install_delta(&telework, rig, &Weights::default(), 9) + 1.0);
+        let mut held = GameState::new(0);
+        held.runner.resources.credits = Credits(5);
+        held.runner.memory_units = MemoryUnits(4);
+        held.runner.grip = corp_cards("filler", GRIP_FLOOR);
+        held.runner.grip.push(CardId("telework_contract".to_string()));
+        let mut installed = held.clone();
+        installed.runner.grip.pop();
+        installed.runner.resources.credits = Credits(4);
+        installed.runner.rig = vec![InstalledRunnerCard { card: CardId("telework_contract".to_string()), counters: 9, ..Default::default() }];
+        assert!(evaluate_state_with(&installed, Side::Runner, &pool, &w) > evaluate_state_with(&held, Side::Runner, &pool, &w), "installing it beats holding it");
+        let mut clicked = held.clone();
+        clicked.runner.resources.credits = Credits(6);
+        assert!(evaluate_state_with(&installed, Side::Runner, &pool, &w) > evaluate_state_with(&clicked, Side::Runner, &pool, &w), "and beats a credit");
+        // Taking the credits off it beats the credit click, as for the Corp.
+        let mut took = installed.clone();
+        took.runner.resources.credits = Credits(7);
+        took.runner.rig[0].counters = 6;
+        let mut clicked_instead = installed.clone();
+        clicked_instead.runner.resources.credits = Credits(5);
+        assert!(evaluate_state_with(&took, Side::Runner, &pool, &w) > evaluate_state_with(&clicked_instead, Side::Runner, &pool, &w));
+    }
+
+    /// Precept 12: an economy asset the Corp has rezzed is worth trashing
+    /// early, when its turns pay the Corp more than the trash costs the
+    /// Runner, and not late — the same yield the Corp reads, at the
+    /// Runner's half weight.
+    #[test]
+    fn a_rezzed_economy_asset_is_worth_trashing_early_and_not_late() {
+        use netrunner_core::rules::ServerId;
+        let pool = pool();
+        let w = guide();
+        let pad = |stage_points: i32| {
+            let mut state = GameState::new(0);
+            state.runner.resources.credits = Credits(5);
+            state.runner.resources.agenda_points = netrunner_core::rules::AgendaPoints(stage_points);
+            state.corp.installed = vec![InstalledCard { card: CardId("pad_campaign".to_string()), install_id: InstallId(1), server: ServerId::Remote(0), rezzed: true, ..Default::default() }];
+            let run = RunState { server: ServerId::Remote(0), ..Default::default() };
+            access_prospect(&state, &run, &pool, &w, 5, horizon(stage(&state)))
+        };
+        assert!(pad(0) > 0.0, "early: the run that trashes it is worth starting, {}", pad(0));
+        assert_eq!(pad(6), 0.0, "late: 4[c] to trash two turns of income is not");
+        let reference = Weights::default();
+        let mut state = GameState::new(0);
+        state.runner.resources.credits = Credits(5);
+        state.corp.installed = vec![InstalledCard { card: CardId("pad_campaign".to_string()), install_id: InstallId(1), server: ServerId::Remote(0), rezzed: true, ..Default::default() }];
+        assert_eq!(access_prospect(&state, &RunState { server: ServerId::Remote(0), ..Default::default() }, &pool, &reference, 5, 9), 0.0, "the reference never paid 4[c] for it");
+    }
+
+    /// "An unadvanced card is only a threat if the Corp can afford to
+    /// finish it next turn": a fresh remote install in front of a rich
+    /// Corp is worth a run over a central, and in front of a broke one
+    /// it is one hidden card like any other.
+    #[test]
+    fn a_face_down_remote_card_is_a_threat_only_while_the_corp_can_afford_to_finish_it() {
+        use netrunner_core::rules::ServerId;
+        let registry = CardRegistry::from_cards(vec![advanceable("plan", 3)]);
+        let w = guide();
+        let remote = |corp_credits: u32| {
+            let mut state = GameState::new(0);
+            state.corp.resources.credits = Credits(corp_credits);
+            state.corp.hq = corp_cards("hq", 4);
+            state.corp.installed = vec![InstalledCard { card: CardId("plan".to_string()), install_id: InstallId(1), server: ServerId::Remote(0), ..Default::default() }];
+            let prospect = |server| access_prospect(&state, &RunState { server, ..Default::default() }, &registry, &w, 0, 9);
+            (prospect(ServerId::Remote(0)), prospect(ServerId::Hq))
+        };
+        let (rich_remote, hq) = remote(3);
+        assert!((rich_remote - (w.active_run_weight + w.finishable_install_weight)).abs() < 1e-9, "{rich_remote}");
+        assert!(rich_remote > hq);
+        let (broke_remote, _) = remote(2);
+        assert!((broke_remote - w.active_run_weight).abs() < 1e-9, "{broke_remote}");
+    }
+
+    /// "Make the Corp rez": a run into unrezzed ICE is worth the credits
+    /// the rez would cost the Corp, and nothing when the Corp has none to
+    /// spend.
+    #[test]
+    fn a_run_into_unrezzed_ice_is_worth_the_rez_it_forces() {
+        use netrunner_core::rules::ServerId;
+        let w = guide();
+        let run = |ice: Vec<RunIce>, corp_credits: u32| {
+            let mut state = GameState::new(0);
+            state.corp.resources.credits = Credits(corp_credits);
+            let run = RunState { server: ServerId::Hq, ice, position: 0, ..Default::default() };
+            forced_rez_credits(&state, &run)
+        };
+        let unrezzed = || vec![run_ice(3, IceType::Barrier, 1, false), run_ice(3, IceType::Barrier, 1, false)];
+        assert_eq!(run(unrezzed(), 10), 2 * TYPICAL_REZ_COST);
+        assert_eq!(run(unrezzed(), 5), 5, "the second rez is what is left");
+        assert_eq!(run(unrezzed(), 0), 0);
+        assert_eq!(run(vec![run_ice(3, IceType::Barrier, 1, true)], 10), 0, "rezzed already");
+        assert!(w.forced_rez_weight * f64::from(TYPICAL_REZ_COST) < w.active_run_weight, "a forced rez is worth less than the access itself");
     }
 }
