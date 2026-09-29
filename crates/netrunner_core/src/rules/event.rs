@@ -359,6 +359,12 @@ pub enum GameEvent {
     /// it parked has resolved (`DeferredTrigger::announce`). Nuvem SA:
     /// Law of the Land hears it.
     FinishedResolving { side: Side, card: CardId },
+    /// `side` has finished taking `action` — every basic action and
+    /// [click] ability, and a run once it has begun — announced once
+    /// whatever it parked has resolved, as `FinishedResolving` is. Wage
+    /// Workers hears it (`Trigger::OnActionFinished`); the turn log has
+    /// already counted it (`TurnLog::times_taken`).
+    ActionFinished { side: Side, action: crate::rules::turn_log::SameAction },
     /// An agenda left the Corp's score area as a forfeit (Biawak's rez,
     /// Plutus's). Paired with `CardRemovedFromGame`, which says where it
     /// went; this one says *why*, which is what `Trigger::OnForfeit` keys
@@ -679,7 +685,7 @@ impl GameEvent {
             | GameEvent::TraceCorpBidSubmitted { .. } | GameEvent::TraceRunnerBidSubmitted { .. } | GameEvent::PsiBidsRevealed { .. }
             | GameEvent::TraceAvoided { .. } | GameEvent::TraceSuccessful { .. } | GameEvent::GameOver { .. }
             | GameEvent::RunnerFlatlined | GameEvent::WonByCardText { .. } | GameEvent::TurnStarted { .. } | GameEvent::TurnEnded { .. } => true,
-            GameEvent::FinishedResolving { .. } => false,
+            GameEvent::FinishedResolving { .. } | GameEvent::ActionFinished { .. } => false,
             GameEvent::ClickSpent { .. } | GameEvent::CreditsGained { .. } | GameEvent::IceApproached { .. }
             | GameEvent::SubroutineBroken { .. } | GameEvent::SubroutineFired { .. } | GameEvent::SubroutineGained { .. }
             | GameEvent::RunNotDeclaredSuccessful { .. }

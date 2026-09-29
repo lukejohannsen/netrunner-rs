@@ -1050,6 +1050,8 @@ pub fn mask_event_for_player(event: &GameEvent, state: &GameState, viewer: impl 
         // A card that resolved in the open: an operation played, or an
         // expendable card revealed to be used.
         | GameEvent::FinishedResolving { .. }
+        // A basic action, a handle, or a card its own cost revealed.
+        | GameEvent::ActionFinished { .. }
         // Both name cards that were public where they were: an agenda in
         // the score area, and a card resolving faceup.
         | GameEvent::AgendaForfeited { .. }

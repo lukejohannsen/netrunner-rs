@@ -818,7 +818,11 @@ pub fn resolve_steal(
     // copies of one agenda in two remotes apart.
     let (_, announced) = remove_from_corp_zone(state, registry, card_id, pending.server, pending.install)?;
     events.extend(announced);
-    state.runner.scored_agendas.push(ScoredAgenda { scored_on_turn: state.turn, ..ScoredAgenda::plain(card_id.clone()) });
+    // A handle of its own: an ability of the agenda is used from the
+    // Runner's score area by the Corp (Oracle Thinktank), and an ability
+    // names its card by install.
+    let install_id = state.allocate_install_id();
+    state.runner.scored_agendas.push(ScoredAgenda { scored_on_turn: state.turn, install_id, ..ScoredAgenda::plain(card_id.clone()) });
     // Counted for `Trigger::OnRunEnded` consumers that gate on "if the
     // Runner stole any agendas during that run" (AMAZE Amusements), since
     // the `RunState` itself is gone by the time that trigger fires.

@@ -626,6 +626,14 @@ pub struct RunState {
     /// log's: that counts the turn, and a second run is a fresh count.
     #[serde(default, skip_serializing_if = "is_zero")]
     pub encounters: u32,
+    /// The action this run (or breach) is part of, which finishes when it
+    /// ends: a run is an action in progress until it is over (CR 5.2.2a),
+    /// and so is the event or ability that began one (Dirty Laundry,
+    /// Cataloguer). Set by `engine::apply_action` when the action that
+    /// began it returns, and announced by it as the run ends
+    /// (`GameEvent::ActionFinished`); `None` for a run no action began.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub finishes: Option<crate::rules::turn_log::SameAction>,
     /// The card whose effect started this run (`Effect::InitiateRun`,
     /// `Effect::PromptChooseServer`) — `None` for a basic-action run.
     /// `EffectRequirement::RunEventActive` (Sang Kancil) asks whether it
@@ -725,6 +733,7 @@ impl Default for RunState {
             phase: RunPhase::Initiation,
             ice: Vec::new(),
             position: 0,
+            finishes: None,
             access_state: None,
             jack_out_permitted: false,
             declared_successful: false,

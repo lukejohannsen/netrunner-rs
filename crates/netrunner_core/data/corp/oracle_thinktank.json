@@ -1,0 +1,54 @@
+{
+  "id": "oracle_thinktank",
+  "title": "Oracle Thinktank",
+  "side": "Corp",
+  "card_type": "Agenda",
+  "cost": 0,
+  "advancement_requirement": 3,
+  "agenda_points": 1,
+  "triggers": [
+    {
+      "trigger": "OnAgendaStolen",
+      "subject": "This",
+      "effects": [
+        {
+          "GiveTags": {
+            "Fixed": 1
+          }
+        }
+      ]
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "used_by": "Corp",
+      "text": "[click], remove 1 tag: Shuffle this agenda into R&D. The Corp can use this ability only if this agenda is in the Runner's score area.",
+      "cost": {
+        "AllOf": [
+          {
+            "Clicks": 1
+          },
+          {
+            "RemoveTags": 1
+          }
+        ]
+      },
+      "requirement": "InRunnersScoreArea",
+      "effect": {
+        "Sequence": [
+          {
+            "AddToDeck": "Top"
+          },
+          {
+            "ShuffleIntoDeck": [
+              "OwnRAndD"
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "numeric_id": 34049,
+  "is_playable": true
+}

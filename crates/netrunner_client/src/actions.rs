@@ -309,7 +309,10 @@ pub fn install_label(id: &InstallId, registry: &CardRegistry, view: Option<&Clie
     }
     match view.runner.rig.iter().find(|c| c.install_id == *id) {
         Some(rig_card) => card_title(&rig_card.card, registry),
-        None => format!("install #{}", id.0),
+        None => match scored_card_id(view, id) {
+            Some(card) => card_title(&card, registry),
+            None => format!("install #{}", id.0),
+        },
     }
 }
 
@@ -344,6 +347,17 @@ pub fn installed_card_id(view: &ClientView, id: &InstallId) -> Option<CardId> {
         .find(|card| card.install_id == *id)
         .and_then(|card| card.card.clone())
         .or_else(|| view.runner.rig.iter().find(|card| card.install_id == *id).map(|card| card.card.clone()))
+        .or_else(|| scored_card_id(view, id))
+}
+
+/// An agenda in either score area by the handle it kept there — a scored
+/// agenda's ability (Proprionegation) and a stolen one's, which the Corp
+/// uses from the Runner's score area (Oracle Thinktank). Faceup in both.
+fn scored_card_id(view: &ClientView, id: &InstallId) -> Option<CardId> {
+    if *id == InstallId::PLACEHOLDER {
+        return None;
+    }
+    view.corp.scored_agendas.iter().chain(&view.runner.scored_agendas).find(|scored| scored.install_id == *id).map(|scored| scored.card.clone())
 }
 
 /// Whether the entry's own action line already says what `event` says, so
@@ -617,6 +631,8 @@ pub fn narrate_event(
         // they are bookkeeping a player does not read a log for. Adding a
         // line here is the cheap way to say more.
         GameEvent::FinishedResolving { .. } |
+        // The action's own line says it was taken; its end adds nothing.
+        GameEvent::ActionFinished { .. } |
         GameEvent::ClickSpent { .. } | GameEvent::CreditsGained { .. } | GameEvent::CardDrawn { .. } |
         GameEvent::IceApproached { .. } | GameEvent::IceEncountered { .. } | GameEvent::IceStrengthModified
         { .. } | GameEvent::IcePassed { .. } | GameEvent::IceBypassed { .. } | GameEvent::EncounterEnded { .. } | GameEvent::ServerApproached {

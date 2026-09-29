@@ -488,7 +488,18 @@ pub fn score_area(view: &ClientView, side: Side, registry: &CardRegistry) -> Vec
             .enumerate()
             .map(|(i, a)| entry(&a.card, view.corp.scored_worth.get(i).copied(), Some(a.install_id), a.agenda_counters, a.as_agenda))
             .collect(),
-        Side::Runner => view.runner.scored_agendas.iter().enumerate().map(|(i, a)| entry(&a.card, view.runner.scored_worth.get(i).copied(), None, 0, a.as_agenda)).collect(),
+        // A stolen agenda's handle is the Corp's way to its ability there
+        // (Oracle Thinktank); a card added as an agenda has none to use.
+        Side::Runner => view
+            .runner
+            .scored_agendas
+            .iter()
+            .enumerate()
+            .map(|(i, a)| {
+                let install = (a.install_id != InstallId::PLACEHOLDER && a.as_agenda.is_none()).then_some(a.install_id);
+                entry(&a.card, view.runner.scored_worth.get(i).copied(), install, 0, a.as_agenda)
+            })
+            .collect(),
     }
 }
 
@@ -553,7 +564,7 @@ mod tests {
         assert_eq!(stolen.len(), 2, "two copies are two rows");
         assert_eq!(stolen[0].title, agenda.title);
         assert_eq!(stolen[0].points, agenda.agenda_points.unwrap() as i32);
-        assert!(stolen[0].install.is_none(), "a stolen agenda has no ability handle");
+        assert!(stolen[0].install.is_none(), "a copy placed with no handle offers no ability");
         let facts = stolen[0].facts(Side::Runner, &registry);
         assert!(facts[0].starts_with("Stolen by the Runner"), "{facts:?}");
         assert!(stolen[0].line().contains(&agenda.title));

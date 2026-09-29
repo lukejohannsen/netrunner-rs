@@ -1,0 +1,42 @@
+{
+  "id": "wage_workers",
+  "title": "Wage Workers",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 2,
+  "trash_cost": 4,
+  "triggers": [
+    {
+      "trigger": "OnActionFinished",
+      "requirement": {
+        "And": [
+          {
+            "AmountAtLeast": [
+              "TimesThisActionThisTurn",
+              3
+            ]
+          },
+          {
+            "Not": {
+              "AmountAtLeast": [
+                "TimesThisActionThisTurn",
+                4
+              ]
+            }
+          }
+        ]
+      },
+      "text": "Whenever you finish taking an action, if you have taken that action exactly 3 times this turn, gain [click].",
+      "effects": [
+        {
+          "GainClicks": [
+            "Corp",
+            1
+          ]
+        }
+      ]
+    }
+  ],
+  "numeric_id": 34033,
+  "is_playable": true
+}

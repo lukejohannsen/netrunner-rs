@@ -634,6 +634,10 @@ fn determinize_run(
         breached: run.breached,
         // Public, and what S-Dobrado's "the second time" reads.
         encounters: run.encounters,
+        // Not in the view: which action the run is part of. Only its end
+        // announces it (`GameEvent::ActionFinished`), and the only card
+        // that hears one is the Corp's, about the Corp's own actions.
+        finishes: None,
         this_encounter: run.this_encounter.clone(),
         once_per_run_used: run.once_per_run_used.iter().cloned().collect(),
         additional_rd_access: 0,

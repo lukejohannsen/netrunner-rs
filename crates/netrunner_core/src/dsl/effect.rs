@@ -1529,6 +1529,13 @@ pub enum Amount {
     /// moment no card hears, so no cell of the log counts it, and "during a
     /// run" is no `Class`.
     ClickGainsInRunsThisTurn,
+    /// The times this turn the action just finished was taken, counting it
+    /// — Wage Workers' "if you have taken that action exactly 3 times this
+    /// turn" (`TurnLog::times_taken`), with "that action" read off the
+    /// triggering `GameEvent::ActionFinished`; 0 outside one. Composition
+    /// didn't work: "the same action" (CR 5.2.5a) is no trigger and no
+    /// `Class`, so `TimesThisTurn` cannot count one.
+    TimesThisActionThisTurn,
     /// Credits actually removed by the most recent `Effect::LoseCredits`
     /// **in this same resolution** (`ResolutionContext::credits_lost` —
     /// the printed amount capped by what the side had), the same
