@@ -154,6 +154,54 @@ pub(super) fn continuation_upside(
     }
 }
 
+/// What playing an event or operation nets its owner, at the guide's
+/// rate: its declared credits, its cards at a click each ("1 credit or
+/// 1 card"), the clicks it gives or takes, less the click that plays it.
+/// Hedge Fund is 4 × 0.4 − 0.4 = +1.2, Diesel 3 × 0.4 − 0.4 = +0.8,
+/// Creative Commission 4 × 0.4 − 2 × 0.4 = +0.8, and Nanomanagement
+/// −4 × 0.4 + 0.4 = −1.2: its clicks are worth what they do, which is
+/// the planner's line to find, not this term's. Floored at zero for a
+/// card in hand — a card is never worth less held than discarded.
+pub(super) fn play_value(income: &Income, w: &Weights) -> f64 {
+    f64::from(income.play_credits) * w.own_credit_weight
+        + f64::from(income.play_cards) * w.click_weight
+        + f64::from(income.play_clicks - 1) * w.click_weight
+}
+
+/// What an event or operation in hand declares, at the guide's rate:
+/// its play's net (`play_value`), floored at zero — a card is never
+/// worth less held than discarded. An install's future credits are
+/// priced where the install is (`runner::install_delta`, the rig, a
+/// rezzed Corp card), never held: a held value is a reason to hold, not
+/// to draw, and the Corp's hand is nothing here for that reason
+/// (`DECLARED_VALUE_WEIGHT`).
+pub(super) fn declared_value(def: &CardDefinition, w: &Weights) -> f64 {
+    match def.card_type {
+        CardType::Event | CardType::Operation => play_value(&declared_income(def), w).max(0.0),
+        _ => 0.0,
+    }
+}
+
+/// `declared_value` summed over the Runner's events in grip, for
+/// `DECLARED_VALUE_WEIGHT` — see that constant for why the Corp's hand
+/// is nothing here, and the Runner's install cards are left to
+/// `held_cards_value`, which already prices them at `held_card_weight`
+/// with the future credits inside `install_delta`; counting them here
+/// too would pay the same yield twice.
+pub(super) fn held_declared_value(state: &GameState, side: Side, registry: &CardRegistry, w: &Weights) -> f64 {
+    if side != Side::Runner {
+        return 0.0;
+    }
+    state
+        .runner
+        .grip
+        .iter()
+        .filter_map(|card| registry.get(card))
+        .filter(|def| matches!(def.card_type, CardType::Event))
+        .map(|def| declared_value(def, w))
+        .sum()
+}
+
 pub(super) fn own_hand_zone(side: Side) -> CardZoneRef {
     match side {
         Side::Corp => CardZoneRef::OwnHq,
@@ -220,8 +268,10 @@ pub(super) fn advancement_upside(
     // Advancing does not change what the rig covers, so the unbreakable
     // term is the same on both sides of the delta and cancels; the real
     // coverage is passed anyway rather than a stand-in that only happens
-    // to cancel today.
+    // to cancel today. The horizon likewise: a token changes no card's
+    // income.
     let rig = rig_coverage(state, registry);
+    let horizon = horizon(stage(state));
     for installed in &state.corp.installed {
         let Some(def) = registry.get(&installed.card) else { return 0.0 };
         if !card_matches_filter(def, filter) {
@@ -229,7 +279,7 @@ pub(super) fn advancement_upside(
         }
         let mut advanced = installed.clone();
         advanced.advancement_tokens += amount;
-        let delta = corp_install_value(&advanced, registry, w, rig) - corp_install_value(installed, registry, w, rig);
+        let delta = corp_install_value(&advanced, registry, w, rig, horizon) - corp_install_value(installed, registry, w, rig, horizon);
         worst = Some(worst.map_or(delta, |worst: f64| worst.min(delta)));
     }
     worst.unwrap_or(0.0).max(0.0)
@@ -528,5 +578,48 @@ mod tests {
         runner_resolved.runner.grip.pop();
         runner_parked.pending_decision = Some(parked(Side::Runner, CardZoneRef::OwnGrip));
         assert!(evaluate_state(&runner_resolved, Side::Runner, &registry) > evaluate_state(&runner_parked, Side::Runner, &registry));
+    }
+
+    /// A play is worth what its text declares over the click that plays
+    /// it: Hedge Fund four credits for a click, Diesel three cards, and
+    /// Nanomanagement nothing on its own — its clicks are worth what the
+    /// line does with them.
+    #[test]
+    fn a_play_is_worth_its_declared_credits_cards_and_clicks_over_the_click_it_costs() {
+        let pool = pool();
+        let w = guide();
+        let value = |id: &str| play_value(&declared_income(&printed(&pool, id)), &w);
+        assert!((value("hedge_fund") - 1.2).abs() < 1e-9, "{}", value("hedge_fund"));
+        assert!((value("diesel") - 0.8).abs() < 1e-9);
+        assert!((value("creative_commission") - 0.8).abs() < 1e-9, "four credits for two clicks");
+        assert!(value("nanomanagement") < 0.0);
+        assert_eq!(declared_value(&printed(&pool, "nanomanagement"), &w), 0.0, "floored in hand");
+        assert!(value("hedge_fund") > value("diesel"), "the guide's best economy play");
+    }
+
+    /// The Runner holds a Sure Gamble for something and a card with no
+    /// economy for nothing; the Corp's hand is priced by the line that
+    /// plays it and not held at all (see `DECLARED_VALUE_WEIGHT`).
+    #[test]
+    fn an_event_in_grip_is_worth_its_declared_economy_and_the_corps_hand_is_not_held() {
+        let pool = pool();
+        let w = guide();
+        let runner_holding = |id: &str, w: &Weights| {
+            let mut state = GameState::new(0);
+            state.runner.grip = corp_cards("filler", GRIP_FLOOR);
+            state.runner.grip.push(CardId(id.to_string()));
+            evaluate_state_with(&state, Side::Runner, &pool, w)
+        };
+        assert!((runner_holding("sure_gamble", &w) - runner_holding("palisade", &w) - 1.2 * w.declared_value_weight).abs() < 1e-9);
+        assert_eq!(runner_holding("sure_gamble", &Weights::default()), runner_holding("palisade", &Weights::default()), "the reference is unmoved");
+        let corp_holding = |id: &str| {
+            let mut state = GameState::new(0);
+            state.corp.r_and_d = corp_cards("rd", RD_DRAW_RESERVE + 10);
+            state.corp.hq = corp_cards("filler", HQ_FLOOR);
+            state.corp.hq.push(CardId(id.to_string()));
+            evaluate_state_with(&state, Side::Corp, &pool, &w)
+        };
+        assert_eq!(corp_holding("hedge_fund"), corp_holding("palisade"), "a Hedge Fund in HQ is worth what the line that plays it is worth");
+        assert_eq!(declared_value(&printed(&pool, "pad_campaign"), &w), 0.0, "an install's future is priced where the install is");
     }
 }

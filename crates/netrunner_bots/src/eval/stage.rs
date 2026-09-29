@@ -41,6 +41,25 @@ impl Stage {
     }
 }
 
+/// How many more of its own turns a seat should expect from a state in
+/// each stage — the horizon an installed economy card pays over (Phase 5
+/// §25 Stage 5, the first term to read the stage). Read off the
+/// baseline's own-turn counts a game (`diag precepts`, Casual, the
+/// one-ply reference both chairs): early 7.3–7.4, middle 4.6–5.1, late
+/// 3.6–4.5 — so from an early state about half of early and all of the
+/// rest remain, from a middle state half of middle and late, from a
+/// late state half of late. The planner's games are shorter (5.1 / 3.3 /
+/// 3.2), and the numbers sit between the two. An expectation, not a
+/// promise: the discount on a future credit (`FUTURE_CREDIT_WEIGHT`)
+/// carries the rest of the uncertainty.
+pub fn horizon(stage: Stage) -> u32 {
+    match stage {
+        Stage::Early => 9,
+        Stage::Middle => 5,
+        Stage::Late => 2,
+    }
+}
+
 /// The stage `state` is in — see the module docs. Reads ICE positions and
 /// public points only, so a sample and the real state agree on it.
 pub fn stage(state: &GameState) -> Stage {
@@ -88,5 +107,13 @@ mod tests {
         fresh.runner.resources.agenda_points = AgendaPoints(6);
         assert_eq!(stage(&fresh), Stage::Late, "the clock beats an empty board");
         assert!(Stage::Early < Stage::Middle && Stage::Middle < Stage::Late, "the order is the game's");
+    }
+
+    /// The horizon shortens with the stage and is never nothing: a card
+    /// installed on the last turn still pays that turn.
+    #[test]
+    fn the_horizon_shortens_with_the_stage() {
+        assert!(horizon(Stage::Early) > horizon(Stage::Middle) && horizon(Stage::Middle) > horizon(Stage::Late));
+        assert!(horizon(Stage::Late) >= 1);
     }
 }

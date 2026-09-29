@@ -8,16 +8,23 @@ use super::*;
 /// the rez added to the card's value, taken back, and
 /// `revealed_trap_weight` more. Zero for anything that is not a face-up
 /// trap. See `REVEALED_TRAP_WEIGHT`.
-pub(super) fn revealed_trap_cost(installed: &InstalledCard, registry: &CardRegistry, w: &Weights, rig: [bool; 3]) -> f64 {
+pub(super) fn revealed_trap_cost(installed: &InstalledCard, registry: &CardRegistry, w: &Weights, rig: [bool; 3], horizon: u32) -> f64 {
     if !installed.rezzed || !registry.get(&installed.card).is_some_and(punishes_access_with_damage) {
         return 0.0;
     }
     let face_down = InstalledCard { rezzed: false, ..installed.clone() };
-    corp_install_value(installed, registry, w, rig) - corp_install_value(&face_down, registry, w, rig)
+    corp_install_value(installed, registry, w, rig, horizon) - corp_install_value(&face_down, registry, w, rig, horizon)
         + w.revealed_trap_weight
 }
 
-pub(super) fn corp_install_value(installed: &InstalledCard, registry: &CardRegistry, w: &Weights, rig: [bool; 3]) -> f64 {
+/// What one Corp install is worth, to the Corp and (rezzed, through
+/// `visible_install_value`) to the Runner. `horizon` is the turns the
+/// stage expects (`stage::horizon`), over which a rezzed economy card's
+/// declared income is counted at `future_credit_weight` — only once it
+/// is face up, because a face-down asset pays nothing until its rez,
+/// and the card in hand was already priced for what the rez would buy
+/// (`fundamentals::declared_value`).
+pub(super) fn corp_install_value(installed: &InstalledCard, registry: &CardRegistry, w: &Weights, rig: [bool; 3], horizon: u32) -> f64 {
     let def = registry.get(&installed.card);
     let is_ice = def.is_some_and(|d| matches!(d.card_type, CardType::Ice(_)));
     let mut value = if installed.rezzed {
@@ -25,6 +32,13 @@ pub(super) fn corp_install_value(installed: &InstalledCard, registry: &CardRegis
     } else {
         w.unrezzed_install_weight
     };
+    if installed.rezzed
+        && !is_ice
+        && w.future_credit_weight != 0.0
+        && let Some(def) = def
+    {
+        value += future_credits(&declared_income(def), Some(installed.counters), horizon) * w.future_credit_weight;
+    }
     // What the rig cannot break is what holds — and only once it is face
     // up, which is the whole point: a term paid on the face-down card too
     // is present on both sides of the rez and cancels out of the decision
@@ -223,15 +237,15 @@ pub(super) fn protected_agenda_ice(state: &GameState, registry: &CardRegistry, c
 /// The Corp's terms, added to `score` in the order `evaluate_state_with`
 /// always added them — a sum's rounding follows its order, and this
 /// module split is byte-identical to the one file it replaces.
-pub(super) fn score(state: &GameState, registry: &CardRegistry, w: &Weights, score: &mut f64) {
+pub(super) fn score(state: &GameState, registry: &CardRegistry, w: &Weights, horizon: u32, score: &mut f64) {
     *score -= state.corp.bad_publicity as f64 * w.bad_publicity_weight;
     // Computed once and handed down rather than read per install:
     // the rig does not change between two cards on the same board,
     // and `corp_install_value` is called for every one of them.
     let rig = rig_coverage(state, registry);
     for installed in &state.corp.installed {
-        *score += corp_install_value(installed, registry, w, rig);
-        *score -= revealed_trap_cost(installed, registry, w, rig);
+        *score += corp_install_value(installed, registry, w, rig, horizon);
+        *score -= revealed_trap_cost(installed, registry, w, rig, horizon);
     }
     *score += f64::from(scored_agenda_counters(state)) * w.agenda_counter_weight;
     *score += protected_agenda_ice(state, registry, w.agenda_protection_cap) as f64 * w.agenda_protection_weight;
@@ -257,6 +271,35 @@ pub(super) fn score(state: &GameState, registry: &CardRegistry, w: &Weights, sco
     {
         *score -= w.active_run_against_weight;
     }
+    // The guide's-rate terms, after everything above (see
+    // `evaluate_state_with`).
+    if w.rez_reserve_weight != 0.0 {
+        let short = rez_reserve(state, registry).saturating_sub(state.corp.resources.credits.0);
+        *score -= f64::from(short) * w.rez_reserve_weight;
+    }
+    if w.unaffordable_ice_weight != 0.0 {
+        *score -= unaffordable_ice(state, registry) as f64 * w.unaffordable_ice_weight;
+    }
+    if w.taxing_window_weight != 0.0 {
+        *score += agendas_under_the_window(state, registry) as f64 * w.taxing_window_weight;
+    }
+}
+
+/// Installed, unscored agendas in a server the Runner cannot afford to
+/// break into right now, were the Corp to rez what its credits cover
+/// (`read::taxing_cost`, `None` — a piece no rig card breaks — counted
+/// as shut to the Runner). See `TAXING_WINDOW_WEIGHT`.
+pub(super) fn agendas_under_the_window(state: &GameState, registry: &CardRegistry) -> usize {
+    use netrunner_core::rules::InstallSlot;
+    let runner = state.runner.resources.credits.0;
+    state
+        .corp
+        .installed
+        .iter()
+        .filter(|card| card.slot == InstallSlot::Root)
+        .filter(|card| registry.get(&card.card).is_some_and(|def| def.card_type == CardType::Agenda))
+        .filter(|agenda| taxing_cost(state, agenda.server, registry).is_none_or(|cost| cost > runner))
+        .count()
 }
 
 
@@ -928,5 +971,131 @@ mod tests {
         let mut no_run = parked(Vec::new(), 8);
         no_run.active_run = None;
         assert_eq!(pending_decision_upside(&no_run, Side::Corp, &registry, &w), 0.0);
+    }
+
+    /// The decision `FUTURE_CREDIT_WEIGHT` was sized for: taking the
+    /// credits off Regolith Mining License beats the credit click, at the
+    /// guide's rate, even though the term banks the stock — because a
+    /// credit later is worth less than one now.
+    #[test]
+    fn taking_credits_off_an_installed_economy_card_beats_the_credit_click() {
+        use netrunner_core::rules::Clicks;
+        let pool = pool();
+        let w = guide();
+        let regolith = |counters: u32, credits: u32, clicks: u32| {
+            let mut state = GameState::new(0);
+            state.phase = GamePhase::Action(Side::Corp);
+            state.corp.resources.credits = Credits(credits);
+            state.corp.resources.clicks = Clicks(clicks);
+            state.corp.installed = vec![InstalledCard {
+                card: CardId("regolith_mining_license".to_string()),
+                install_id: InstallId(1),
+                rezzed: true,
+                counters,
+                ..Default::default()
+            }];
+            evaluate_state_with(&state, Side::Corp, &pool, &w)
+        };
+        let took = regolith(12, 8, 2);
+        let clicked = regolith(15, 6, 2);
+        assert!(took > clicked, "3[c] off the license beats 1[c] for the click: {took} vs {clicked}");
+        assert!(regolith(15, 5, 3) > regolith(12, 8, 3) - 3.0 * w.own_credit_weight, "and the stock on the card is worth something");
+    }
+
+    /// PAD Campaign is worth its install and rez early and not late: the
+    /// same card, the same price, a different horizon.
+    #[test]
+    fn an_economy_asset_pays_for_its_rez_early_and_not_late() {
+        let pool = pool();
+        let w = guide();
+        let board = |rezzed: bool, credits: u32, stage_points: i32| {
+            let mut state = GameState::new(0);
+            state.corp.resources.credits = Credits(credits);
+            state.runner.resources.agenda_points = netrunner_core::rules::AgendaPoints(stage_points);
+            state.corp.installed = vec![InstalledCard { card: CardId("pad_campaign".to_string()), install_id: InstallId(1), rezzed, ..Default::default() }];
+            evaluate_state_with(&state, Side::Corp, &pool, &w)
+        };
+        // Points are the Runner's, so the Corp's own score does not move
+        // with them except through the stage.
+        let early = board(true, 3, 0) - board(false, 5, 0);
+        let late = board(true, 3, 6) - board(false, 5, 6);
+        assert!(early > late, "{early} vs {late}");
+        assert!(early > w.rezzed_asset_weight, "early the rez is worth more than the bare asset term");
+    }
+
+    /// The Corp's savings term: short of the rez that stops a run, a
+    /// credit is worth more, and once the rez is affordable the term is
+    /// gone — so it never fights the rez.
+    #[test]
+    fn a_credit_is_worth_more_while_the_corp_cannot_afford_its_dearest_rez() {
+        use netrunner_core::rules::InstallSlot;
+        let registry = CardRegistry::from_cards(vec![ice("pharos", 7)]);
+        let w = guide();
+        let holding = |credits: u32| {
+            let mut state = GameState::new(0);
+            state.corp.resources.credits = Credits(credits);
+            state.corp.installed = vec![InstalledCard { card: CardId("pharos".to_string()), install_id: InstallId(1), slot: InstallSlot::Ice, ..Default::default() }];
+            evaluate_state_with(&state, Side::Corp, &registry, &w)
+        };
+        assert!(((holding(5) - holding(4)) - (w.own_credit_weight + w.rez_reserve_weight)).abs() < 1e-9, "a credit toward the reserve");
+        assert!(((holding(7) - holding(6)) - (w.own_credit_weight + w.rez_reserve_weight + w.unaffordable_ice_weight)).abs() < 1e-9, "the credit that covers the rez is worth the promise too");
+        assert!(((holding(8) - holding(7)) - w.own_credit_weight).abs() < 1e-9, "a credit past it is a credit");
+        // The cover: the same install is worth `unaffordable_ice_weight`
+        // less on 2[c] than on 9[c], over and above the reserve it is
+        // short of — so the first piece on an open central still goes
+        // down as a bluff (the fort term carries it), and a piece the
+        // fort does not want waits for the credits.
+        let install_gain = |credits: u32| {
+            let mut held = GameState::new(0);
+            held.corp.resources.credits = Credits(credits);
+            held.corp.r_and_d = corp_cards("rd", RD_DRAW_RESERVE + 10);
+            held.corp.hq = corp_cards("hq", HQ_FLOOR);
+            held.corp.hq.push(CardId("pharos".to_string()));
+            let mut installed = held.clone();
+            installed.corp.hq.pop();
+            installed.corp.installed = vec![InstalledCard { card: CardId("pharos".to_string()), install_id: InstallId(1), slot: InstallSlot::Ice, server: netrunner_core::rules::ServerId::Remote(0), ..Default::default() }];
+            evaluate_state_with(&installed, Side::Corp, &registry, &w) - evaluate_state_with(&held, Side::Corp, &registry, &w)
+        };
+        let poor = install_gain(2);
+        let rich = install_gain(9);
+        assert!(((rich - poor) - (w.unaffordable_ice_weight + 5.0 * w.rez_reserve_weight)).abs() < 1e-9, "{rich} vs {poor}");
+        // The credit click while short of the reserve is worth the credit
+        // and the reserve it closes.
+        assert!(poor < w.own_credit_weight + w.rez_reserve_weight, "broke, a credit click beats the install: {poor}");
+        assert!(rich > w.own_credit_weight, "with the rez in the bank the install is worth making: {rich}");
+        let reference = Weights::default();
+        let mut short = GameState::new(0);
+        short.corp.resources.credits = Credits(0);
+        short.corp.installed = vec![InstalledCard { card: CardId("pharos".to_string()), install_id: InstallId(1), slot: InstallSlot::Ice, ..Default::default() }];
+        let mut flush = short.clone();
+        flush.corp.resources.credits = Credits(7);
+        assert!(((evaluate_state_with(&flush, Side::Corp, &registry, &reference) - evaluate_state_with(&short, Side::Corp, &registry, &reference)) - 7.0 * reference.own_credit_weight).abs() < 1e-9, "the reference reads no reserve");
+    }
+
+    /// The taxing window, read by the Corp: an agenda behind ICE the
+    /// Runner cannot afford is worth more than the same agenda when they
+    /// can, and a naked agenda is under no window at all.
+    #[test]
+    fn an_installed_agenda_is_worth_more_while_the_runner_cannot_afford_its_server() {
+        use netrunner_core::rules::{InstallSlot, ServerId};
+        let mut wall = ice("wall", 3);
+        wall.subroutines = vec![netrunner_core::dsl::SubroutineDef { text: String::new(), effect: Effect::EndTheRun, only_breakable_by: None }];
+        let registry = CardRegistry::from_cards(vec![advanceable("plan", 3), wall, priced_breaker("cleaver", Some(IceType::Barrier), (2, 1), (1, 1))]);
+        let w = guide();
+        let board = |pieces: usize, runner_credits: u32| {
+            let mut state = GameState::new(0);
+            state.corp.resources.credits = Credits(10);
+            state.runner.resources.credits = Credits(runner_credits);
+            state.runner.rig = vec![InstalledRunnerCard { base_strength: 3, ..rig_card("cleaver") }];
+            state.corp.installed = vec![InstalledCard { card: CardId("plan".to_string()), install_id: InstallId(1), server: ServerId::Remote(0), ..Default::default() }];
+            for n in 0..pieces {
+                state.corp.installed.push(InstalledCard { card: CardId("wall".to_string()), install_id: InstallId(10 + n as u32), server: ServerId::Remote(0), slot: InstallSlot::Ice, rezzed: true, ..Default::default() });
+            }
+            evaluate_state_with(&state, Side::Corp, &registry, &w)
+        };
+        // Two pieces at 2[c] a break: the window is open under 4[c].
+        let open = board(2, 3) - board(2, 4);
+        assert!((open - (w.taxing_window_weight + w.opponent_credit_weight)).abs() < 1e-9, "{open}");
+        assert!(((board(0, 0) - board(0, 4)) - 4.0 * w.opponent_credit_weight).abs() < 1e-9, "no window on a naked agenda");
     }
 }
