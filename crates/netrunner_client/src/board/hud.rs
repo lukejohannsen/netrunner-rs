@@ -275,6 +275,7 @@ fn cannot_words(what: netrunner_core::dsl::Prohibition) -> &'static str {
         Prohibition::SpendOrLoseCreditPool => "the Runner cannot spend or lose credits from their credit pool",
         Prohibition::SpendCredits => "the Runner cannot spend credits",
         Prohibition::EndTheRun => "subroutines cannot end the run",
+        Prohibition::RunOnRemote => "the Runner cannot run on a remote server",
     }
 }
 
@@ -632,6 +633,26 @@ mod tests {
         let mut view = view();
         view.standing_cannot = vec![StandingProhibition { what: Prohibition::SpendCredits, source: CardId("attini".into()) }];
         assert_eq!(in_effect(&view, &registry), vec!["Attini: the Runner cannot spend credits".to_string()]);
+    }
+
+    /// Front Company's "the first run each turn cannot be made against a
+    /// remote server" is in force until the turn's first run, and is listed
+    /// by the card until then: the reason no remote is offered to run.
+    #[test]
+    fn front_company_keeps_the_first_run_off_the_remotes_and_says_so_until_it_is_made() {
+        let registry = crate::decks::sample_deck_registry();
+        let (corp_deck, runner_deck) = sweep_decks_for_seed(0);
+        let (mut state, _) = GameState::setup(&corp_deck.to_deck(), &runner_deck.to_deck(), &registry, 0).unwrap();
+        state.corp.installed.push(netrunner_core::rules::InstalledCard {
+            install_id: netrunner_core::rules::InstallId(900),
+            card: CardId("front_company".into()),
+            server: netrunner_core::rules::ServerId::Remote(0),
+            slot: netrunner_core::rules::InstallSlot::Root,
+            rezzed: true,
+            ..Default::default()
+        });
+        let view = netrunner_core::view::build_client_view(&state, &registry, Side::Runner);
+        assert_eq!(in_effect(&view, &registry), vec!["Front Company: the Runner cannot run on a remote server".to_string()]);
     }
 
     /// Lycian Multi-Munition's choice is one line for the piece of ice,

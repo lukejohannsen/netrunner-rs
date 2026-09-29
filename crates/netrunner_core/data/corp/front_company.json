@@ -1,0 +1,53 @@
+{
+  "id": "front_company",
+  "title": "Front Company",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 2,
+  "trash_cost": 2,
+  "unique": true,
+  "rez_requirement": "DuringYourTurn",
+  "continuous": [
+    {
+      "kind": {
+        "Cannot": "RunOnRemote"
+      },
+      "applies_to": {
+        "Player": "Runner"
+      },
+      "first_each_turn": true,
+      "text": "The first run each turn cannot be made against a remote server."
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnRunStart",
+      "subject": "Any",
+      "when": {
+        "Server": [
+          "Archives"
+        ]
+      },
+      "first_each_turn": true,
+      "requirement": {
+        "Not": {
+          "AmountAtLeast": [
+            "IceProtectingThisServer",
+            1
+          ]
+        }
+      },
+      "effects": [
+        {
+          "DealDamage": [
+            "Net",
+            2
+          ]
+        }
+      ],
+      "text": "The first time each turn a run on Archives begins, if this server is not protected by ice, do 2 net damage."
+    }
+  ],
+  "numeric_id": 34041,
+  "is_playable": true
+}

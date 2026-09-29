@@ -4215,6 +4215,130 @@ MK IV. **One new `Effect`** (`AddToHand`). The Automata Initiative 34 of 65;
     cascade fix included.
   - So the heuristic movement is `determinize` sampling the new cards.
 
+#### Stage 5 — Corp install and server words (28 September 2026)
+
+`feat/tai-stage-5-corp-install-and-server-words`: Vovô Ozetti, Greasing the
+Palm, Ablative Barrier, Tucana, Front Company, Federal Fundraising,
+Epiphany Analytica: Nations Undivided and Lago Paranoá Shelter. **No new
+`Effect`.** The Automata Initiative 42 of 65; `TAI_UNIMPLEMENTED` 31 → 23.
+
+- **A card can say when it may be rezzed** (Front Company's "Rez only
+  during your turn").
+  - `CardDefinition::rez_requirement`, asked as the card by
+    `engine::rez_install`, the one place a Corp card is turned faceup. So a
+    card's text that would rez it on the Runner's turn rezzes nothing, as
+    an unaffordable rez does (`RulesError::RezRestricted`, swallowed where
+    `NotEnoughCredits` is), and the rez action is refused.
+  - A field beside `play_requirement` and `install_only_in`, the card's
+    other restrictions on its own way into play. Not a continuous effect:
+    those are what an active card does, and a card being rezzed is not
+    active yet.
+- **"The first run each turn cannot be made against a remote server"**
+  (Front Company).
+  - `Prohibition::RunOnRemote`, a standing `Cannot` on the Runner with
+    `ContinuousEffect::first_each_turn`. The first of what is the
+    prohibition's own word (`Prohibition::counted_as`, the turn's runs), so
+    the card writes no count.
+  - Asked where the server is announced (CR 6.3.2a): `run::start_run`,
+    which every run goes through, and the servers a card's text offers to
+    run, which leave the remotes out. The basic action is never offered.
+  - Drawn: "Front Company: the Runner cannot run on a remote server" in
+    the In effect list until the turn's first run.
+  - Its other sentence composes: "the first time each turn a run on
+    Archives begins" is `OnRunStart` with `when: Server([Archives])` and
+    `first_each_turn`; "if this server is not protected by ice" is
+    `Amount::IceProtectingThisServer` under a `Not`, which Federal
+    Fundraising uses too.
+- **"The Corp installs a card in the root of a server"** (Lago Paranoá
+  Shelter): `EventFilter::InRoot`.
+  - Read off the card installed: ice is the only type installed protecting
+    a server and never in a root (CR 3.4.2).
+  - It says whose moment it is, as `Whose` does, since a `Card` filter on
+    an "install" trigger hears its controller's installs.
+  - The turn log now counts a Corp install of ice as ice, which the table
+    shows (`turn_log::seen_anyway`), so "the first" of the Corp's root
+    installs is the first install it counts unseen.
+  - "You may trash the top card of your stack to draw 1 card" is a
+    `Cost::Trash` from `TopOfOwnStack` in an `OfferPaidChoice`.
+- **A persisting ability hears the whole run** (Tucana's "Persistent →
+  Whenever an agenda is scored or stolen from the root of this server").
+  - A persistent upgrade the Runner trashed while accessing it was heard
+    only at the run's end (AMAZE Amusements). It now listens for the rest
+    of the run as an active card does: it "never becomes inactive" (CR
+    9.12.5b). No card but Tucana hears anything new: AMAZE Amusements'
+    one trigger is the run's end, and Flagship and Mahkota Langit Grid
+    have none.
+  - Its "this server" is the attacked one
+    (`EffectRequirement::AgendaCameFromThisCardsServer` falls back to the
+    run's server for it), as in 1.12.6a's AMAZE Amusements example.
+  - The search is Eminent Domain's: a selection of ice out of R&D,
+    shuffled, then an install and rez paying a total of 3[credit] less.
+  - `install_only_in: [Remote]` says "Remote server only".
+- **A rez discount on the ice protecting a server** (Vovô Ozetti):
+  `RezCost` now admits `Scope::IceProtectingThisServer`. Its threat-4
+  root discount is `RootOfThisServer` with a `while`, and "When your turn
+  ends, you may move this upgrade" is Lotus Haze's move, offered by the
+  upgrade itself.
+- **The rest composes.**
+  - Greasing the Palm: an install from HQ whose `if_installed` offers
+    `Cost::RemoveTags(1)` for an advancement counter on that card, asked
+    only of a tagged Runner.
+  - Ablative Barrier: Ping's "when you rez this ice during a run against
+    this server" at threat 3, then a choice of HQ or Archives, each an
+    install with `another_server`.
+  - Federal Fundraising: Knowledge Seeker's arrangement of the top of R&D,
+    then a draw under the "not protected by ice" condition.
+  - Epiphany Analytica: two triggers sharing one first-time count ("steals
+    or trashes a Corp card", the second `OwnedBy { Corp, Runner }`), and
+    Poétrï's install from the top 3 of R&D behind a look.
+- **Decks.**
+  - Grand Opening, a new Corp Sweep deck on Epiphany Analytica (Standard,
+    Eternal and Casual). Paid Content's frame, less its out-of-faction
+    cards and three NBN ones, so Federal Fundraising, Vovô Ozetti, Greasing
+    the Palm, Ablative Barrier and Tucana fit the fifteen influence.
+  - A Thousand Cuts: two Front Company for two Urtica Cipher.
+  - Grassroots: two Lago Paranoá Shelter for two Friend of a Friend.
+  - Every card taken out is still in another deck the sweeps play.
+- **DSL ratio (`pool_status.py`): 23 of 91 `Effect` variants single-use,
+  1 unused**, over 357 card files — unmoved.
+- **Real play**, 96 games a seating (seed 2), Grand Opening and A Thousand
+  Cuts against Grassroots.
+  - Random seats use all eight:
+    - Epiphany Analytica took a counter 215 times and spent one 134 times.
+    - Federal Fundraising asked 354 times as the turn began.
+    - Vovô Ozetti installed 51 times, offered its move 252 times.
+    - Greasing the Palm played 24 times.
+    - Ablative Barrier rezzed 29 times, 9 of them at threat 3 during a run
+      on its server.
+    - Tucana installed 38 times; it heard a steal once and a score never.
+    - Front Company rezzed 31 times, its Archives damage 20 times.
+    - Lago Paranoá Shelter installed 36 times, offered 135 times.
+  - Heuristic seats:
+    - Federal Fundraising asked 1259 times, Vovô Ozetti 530.
+    - Front Company rezzed 54 times, its Archives damage 24 times.
+    - Greasing the Palm played 9 times, Ablative Barrier's rez trigger 9.
+  - The heuristic Corp never spends an Epiphany Analytica counter, and the
+    heuristic Runner never installs Lago Paranoá Shelter (Phase 5 debt).
+  - Tucana's score trigger is reached by its test alone.
+- **Measured.** Both sweeps at 256 seeds are green, the card gate included.
+  - Against `origin/main`, `coverage_identical.py` has both random
+    seatings **identical**. Both heuristic ones moved, of 192 games (view
+    and index alike, but for main's flatline and deck-out counts, 22 and 1
+    by index):
+
+    | | main | Stage 5 |
+    |---|---|---|
+    | Corp agenda wins | 64 | 60 |
+    | Corp flatlines | 23 | 10 |
+    | Runner agenda wins | 105 | 120 |
+    | Deck-outs | 0 | 2 |
+    | Steps | 112281 | 111335 |
+
+  - A pinned ref with every engine and client change and none of the
+    cards or decks is **identical** to main in all four shapes, the turn
+    log's count of the Corp's ice and the persisting listeners included.
+  - So the heuristic movement is `determinize` sampling the new cards.
+
 ### 4. Parhelion — 63 cards (C 19 / V 26 / M 18)
 
 **Decks:** Sweep decks on its four identities. Nova Initiumia and Ampère

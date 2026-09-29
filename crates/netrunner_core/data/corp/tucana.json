@@ -1,0 +1,69 @@
+{
+  "id": "tucana",
+  "title": "Tucana",
+  "side": "Corp",
+  "card_type": "Upgrade",
+  "cost": 2,
+  "trash_cost": 1,
+  "unique": true,
+  "install_only_in": [
+    "Remote"
+  ],
+  "persistent_after_trash": true,
+  "triggers": [
+    {
+      "trigger": "OnAgendaScored",
+      "subject": "Any",
+      "requirement": "AgendaCameFromThisCardsServer",
+      "effects": [
+        {
+          "PromptChooseCards": {
+            "side": "Corp",
+            "source": "OwnRAndD",
+            "filter": "Ice",
+            "min": 0,
+            "max": 1,
+            "reveal": false,
+            "shuffle_after": true,
+            "then": {
+              "PromptInstallCorpCard": {
+                "origin_zone": "OwnRAndD",
+                "discount": 3,
+                "rez": true
+              }
+            }
+          }
+        }
+      ],
+      "text": "Persistent → Whenever an agenda is scored or stolen from the root of this server, you may search R&D for 1 piece of ice."
+    },
+    {
+      "trigger": "OnAgendaStolen",
+      "subject": "Any",
+      "requirement": "AgendaCameFromThisCardsServer",
+      "effects": [
+        {
+          "PromptChooseCards": {
+            "side": "Corp",
+            "source": "OwnRAndD",
+            "filter": "Ice",
+            "min": 0,
+            "max": 1,
+            "reveal": false,
+            "shuffle_after": true,
+            "then": {
+              "PromptInstallCorpCard": {
+                "origin_zone": "OwnRAndD",
+                "discount": 3,
+                "rez": true
+              }
+            }
+          }
+        }
+      ],
+      "text": "Persistent → Whenever an agenda is scored or stolen from the root of this server, you may search R&D for 1 piece of ice."
+    }
+  ],
+  "numeric_id": 34064,
+  "is_playable": true
+}

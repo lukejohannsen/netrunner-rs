@@ -1,0 +1,107 @@
+{
+  "id": "grand_opening",
+  "name": "Grand Opening",
+  "side": "Corp",
+  "category": "Sweep",
+  "description": "Not a published list: built so the sweeps play Epiphany Analytica: Nations Undivided (The Automata Initiative Stage 5), whose counters come from the Runner's first steal or trash each turn and install from the top of R&D, with the stage's install and server cards — Federal Fundraising, Vovô Ozetti, Greasing the Palm, Ablative Barrier and Tucana — on Paid Content's frame, less its out-of-faction cards so the five fit the fifteen influence. Eternal-legal only.",
+  "style": "rush",
+  "identity": "epiphany_analytica_nations_undivided",
+  "cards": [
+    {
+      "card": "send_a_message",
+      "count": 3
+    },
+    {
+      "card": "superconducting_hub",
+      "count": 1
+    },
+    {
+      "card": "tomorrows_headline",
+      "count": 1
+    },
+    {
+      "card": "funhouse",
+      "count": 2
+    },
+    {
+      "card": "grubber",
+      "count": 2
+    },
+    {
+      "card": "magistrate_revontulet",
+      "count": 2
+    },
+    {
+      "card": "lethe",
+      "count": 2
+    },
+    {
+      "card": "capacitor",
+      "count": 2
+    },
+    {
+      "card": "seraph",
+      "count": 2
+    },
+    {
+      "card": "the_powers_that_be",
+      "count": 2
+    },
+    {
+      "card": "kingmaking",
+      "count": 2
+    },
+    {
+      "card": "stoke_the_embers",
+      "count": 2
+    },
+    {
+      "card": "piranhas",
+      "count": 2
+    },
+    {
+      "card": "sudden_commandment",
+      "count": 1
+    },
+    {
+      "card": "balanced_coverage",
+      "count": 2
+    },
+    {
+      "card": "behold",
+      "count": 2
+    },
+    {
+      "card": "your_digital_life",
+      "count": 2
+    },
+    {
+      "card": "b_1001",
+      "count": 2
+    },
+    {
+      "card": "virtual_service_agent",
+      "count": 2
+    },
+    {
+      "card": "federal_fundraising",
+      "count": 3
+    },
+    {
+      "card": "vovo_ozetti",
+      "count": 1
+    },
+    {
+      "card": "greasing_the_palm",
+      "count": 2
+    },
+    {
+      "card": "ablative_barrier",
+      "count": 2
+    },
+    {
+      "card": "tucana",
+      "count": 1
+    }
+  ]
+}

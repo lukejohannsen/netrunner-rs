@@ -303,9 +303,18 @@ fn concealed(trigger: Trigger, of: Option<Side>) -> bool {
 /// a trashed card of a kind only the Runner has (`Kind::is_runners`) went
 /// faceup to the heap, whoever trashed it and from wherever — Boi-tatá's
 /// "if you trashed any of your installed cards this turn" is a count by
-/// type and place, and the Corp saw both.
+/// type and place, and the Corp saw both. And a piece of ice the Corp
+/// installs is seen to be ice.
 fn seen_anyway(trigger: Trigger, kind: Kind) -> bool {
-    trigger == Trigger::OnCardTrashed && kind.is_runners()
+    match trigger {
+        Trigger::OnCardTrashed => kind.is_runners(),
+        // A facedown piece of ice is installed protecting a server, where
+        // both players see it is ice (CR 3.4.2) — what it is stays hidden.
+        // So the log can tell the Corp's root installs from its ice
+        // (`EventFilter::InRoot`).
+        Trigger::OnInstall => kind == Kind::Ice,
+        _ => false,
+    }
 }
 
 fn class_of(registry: &CardRegistry, moment: &Moment) -> Class {
@@ -367,6 +376,7 @@ impl Occurrences {
         // unless the card names the other player's (`EventFilter::Whose`).
         let of = match when {
             Some(EventFilter::Whose(side) | EventFilter::OwnedBy { whose: side, .. }) => Some(*side),
+            Some(EventFilter::InRoot) => Some(Side::Corp),
             _ => (trigger.hears() == Hears::OwnSide).then_some(controller),
         };
         let bit = |class: Class| 1u32 << class.column();
@@ -398,6 +408,9 @@ impl Occurrences {
                     .map(|kind| bit(Class::Card { kind: *kind, installed: false }) | bit(Class::Card { kind: *kind, installed: true }))
                     .fold(0, |mask, column| mask | column),
             ),
+            // A Corp install of ice is counted as ice (`seen_anyway`), so
+            // every install it counts unseen went into a root.
+            Some(EventFilter::InRoot) => Some(bit(Class::Card { kind: Kind::Unseen, installed: false }) | bit(Class::Card { kind: Kind::Unseen, installed: true })),
             Some(EventFilter::Host) => {
                 return Err(format!("the turn counts a {trigger:?} without which card hosted what, so \"the first\" cannot be narrowed to this card's host"));
             }

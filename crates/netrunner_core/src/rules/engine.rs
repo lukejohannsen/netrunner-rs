@@ -1121,7 +1121,15 @@ pub(crate) fn rez_install(
     let (ice_id, server) = (installed.card.clone(), installed.server);
     // The lookup stays a hard error even though the price comes from
     // `rez_price`: a card the engine cannot describe is not rezzable.
-    registry.get(&ice_id).ok_or_else(|| RulesError::CardNotFoundInRegistry(ice_id.clone()))?;
+    let card_def = registry.get(&ice_id).ok_or_else(|| RulesError::CardNotFoundInRegistry(ice_id.clone()))?;
+    // "Rez only during your turn", asked as the card: here rather than in
+    // `rez_ice`, so a card's text that rezzes it is refused too.
+    if let Some(requirement) = &card_def.rez_requirement {
+        let ctx = ability::ResolutionContext::for_install(ice, &ice_id);
+        if ability::check_requirement(next, requirement, side, &ctx, registry).is_err() {
+            return Err(RulesError::RezRestricted { card: ice_id });
+        }
+    }
 
     let (rez_cost, available) = rez_price(next, registry, ice, pay_cost, discount);
     if available < rez_cost {

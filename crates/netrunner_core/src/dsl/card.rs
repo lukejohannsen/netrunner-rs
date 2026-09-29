@@ -770,6 +770,16 @@ pub struct CardDefinition {
     /// does not.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub rez_alternatives: Vec<RezAlternative>,
+    /// "Rez only during your turn" (Front Company): when this card may be
+    /// turned faceup, asked as the card by `engine::rez_install`, the one
+    /// place a Corp card is rezzed, so a card's text that rezzes it is held
+    /// to it as the rez action is (CR 1.2.2, the "cannot" takes
+    /// precedence). A field beside `play_requirement` and
+    /// `install_only_in`, the card's other restrictions on its own way into
+    /// play, and not a continuous effect: a standing effect is what an
+    /// *active* card does, and a card being rezzed is not active yet.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rez_requirement: Option<EffectRequirement>,
     /// What this card does for as long as it is active — "+1[mu]", "costs
     /// 2[c] less to install if…", "host ice gains barrier". **A standing
     /// effect goes here, never in a field of its own**: see
@@ -986,6 +996,7 @@ impl Default for CardDefinition {
             may_install_agendas_faceup: false,
             installs_faceup: false,
             rez_alternatives: Vec::new(),
+            rez_requirement: None,
             influence_limit: None,
             additional_play_cost: None,
             install_only_in: Vec::new(),
@@ -1112,6 +1123,8 @@ impl CardDefinition {
                 // Only a Corp install's moment says where the card came
                 // from (`listeners::Moment::from_hq`).
                 Some(EventFilter::InstalledFromHq(_)) => triggered.trigger == Trigger::OnInstall && self.side == crate::rules::Side::Corp,
+                // Only an install is in a root or not.
+                Some(EventFilter::InRoot) => triggered.trigger == Trigger::OnInstall,
                 // Only what the moment states: a pass says whether the ice
                 // was outermost and fully broken, a break its strength.
                 Some(EventFilter::Ice(required)) => {
@@ -1209,12 +1222,17 @@ impl CardDefinition {
             return Err(CardValidationError::BrokenWithOutsideAPass(self.id.clone()));
         }
         for effect in self.continuous.iter().filter(|effect| effect.first_each_turn) {
-            let occurrences = match &effect.applies_to {
-                Scope::Installing(filter) => crate::rules::turn_log::Occurrences::installs(filter, self.side),
-                Scope::Playing(filter) => crate::rules::turn_log::Occurrences::plays(filter, self.side),
+            let counted = match &effect.kind {
+                ContinuousKind::Cannot(what) => what.counted_as(),
+                _ => None,
+            };
+            let occurrences = match (&effect.applies_to, counted) {
+                (Scope::Installing(filter), _) => crate::rules::turn_log::Occurrences::installs(filter, self.side),
+                (Scope::Playing(filter), _) => crate::rules::turn_log::Occurrences::plays(filter, self.side),
+                (Scope::Player(_), Some(trigger)) => crate::rules::turn_log::Occurrences::meant_by(trigger, None, self.side),
                 _ => {
                     return Err(self.first_time_misfit(
-                        "a continuous effect is about the first of something only where it is about an install or a play (`Installing`, `Playing`)".to_string(),
+                        "a continuous effect is about the first of something only where it is about an install, a play (`Installing`, `Playing`) or a prohibition the turn counts (`Prohibition::counted_as`)".to_string(),
                     ));
                 }
             };
@@ -1390,7 +1408,7 @@ impl CardDefinition {
                 }
                 (ContinuousKind::InstallCost(_), Scope::This | Scope::Installing(_) | Scope::InstallingOntoThis(_)) => {}
                 (ContinuousKind::InstallCost(_), _) => return misfit("InstallCost", "an install cost is this card's own or that of a card being `Installing`"),
-                (ContinuousKind::RezCost(_), Scope::This | Scope::Ice | Scope::RootOfThisServer(_)) => {}
+                (ContinuousKind::RezCost(_), Scope::This | Scope::Ice | Scope::RootOfThisServer(_) | Scope::IceProtectingThisServer(_)) => {}
                 (ContinuousKind::RezCost(_), _) => return misfit("RezCost", "only an installed Corp card is rezzed"),
                 (ContinuousKind::TrashCost(_), Scope::This | Scope::RootOfThisServer(_)) => {}
                 (ContinuousKind::TrashCost(_), _) => return misfit("TrashCost", "a trash cost is this card's own or that of a card in its server's root"),
@@ -2044,6 +2062,31 @@ mod tests {
         assert_eq!(hears(true, Trigger::OnDerez).validate(), Ok(()));
         assert_eq!(hears(false, Trigger::OnDerez).validate(), Err(CardValidationError::TriggerFilterOfTheWrongKind(CardId("saci".to_string()), Trigger::OnDerez)));
         assert_eq!(hears(true, Trigger::OnRunStart).validate(), Err(CardValidationError::TriggerFilterOfTheWrongKind(CardId("saci".to_string()), Trigger::OnRunStart)), "a run begins on a server");
+    }
+
+    /// Only an install goes into a root or not, and "the first" of the
+    /// Corp's root installs is counted: the log sees its ice as ice.
+    #[test]
+    fn validate_admits_in_root_only_on_an_install_and_as_a_first_time() {
+        let hears = |trigger| CardDefinition {
+            id: CardId("lago_paranoa_shelter".to_string()),
+            side: Side::Runner,
+            card_type: CardType::Resource,
+            triggers: vec![TriggeredEffect {
+                trigger,
+                subject: Some(Subject::Any),
+                requirement: None,
+                effects: vec![Effect::DrawCards(Side::Runner, 1)],
+                when: Some(EventFilter::InRoot),
+                acts_on_subject: false,
+                first_each_turn: true,
+                from_heap: false,
+                text: None,
+            }],
+            ..CardDefinition::default()
+        };
+        assert_eq!(hears(Trigger::OnInstall).validate(), Ok(()));
+        assert_eq!(hears(Trigger::OnRez).validate(), Err(CardValidationError::TriggerFilterOfTheWrongKind(CardId("lago_paranoa_shelter".to_string()), Trigger::OnRez)));
     }
 
     /// `Amount::ChosenNumber` means something only inside the `then` of the

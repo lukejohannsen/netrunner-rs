@@ -176,9 +176,15 @@ fn for_each_applying<'a>(
 /// card: none counted yet, because a price is asked before the install or
 /// the play.
 fn first_this_turn(state: &GameState, source: &Source<'_>, effect: &ContinuousEffect) -> bool {
-    let occurrences = match &effect.applies_to {
-        Scope::Installing(filter) => turn_log::Occurrences::installs(filter, source.side),
-        Scope::Playing(filter) => turn_log::Occurrences::plays(filter, source.side),
+    let occurrences = match (&effect.applies_to, &effect.kind) {
+        (Scope::Installing(filter), _) => turn_log::Occurrences::installs(filter, source.side),
+        (Scope::Playing(filter), _) => turn_log::Occurrences::plays(filter, source.side),
+        // "The first run each turn cannot be made…": asked before the run
+        // is announced, so none counted yet.
+        (Scope::Player(_), ContinuousKind::Cannot(what)) => match what.counted_as() {
+            Some(trigger) => turn_log::Occurrences::meant_by(trigger, None, source.side),
+            None => return true,
+        },
         _ => return true,
     };
     occurrences.is_ok_and(|occurrences| state.this_turn.none_yet(&occurrences))

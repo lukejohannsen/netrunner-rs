@@ -599,6 +599,19 @@ pub enum EventFilter {
     /// (`EncounteringHostIce`) is an intervening if about the run, which a
     /// rez is not.
     Host,
+    /// The Corp installed the card in the root of a server — Lago Paranoá
+    /// Shelter's "The first time each turn **the Corp installs a card in
+    /// the root of a server**". Read off the card installed: ice is the only
+    /// type installed protecting a server and is never installed in a root
+    /// (CR 3.4.2), so every other Corp install is in one. It says whose
+    /// moment it is, as `Whose` does, and only on `OnInstall`. The turn log
+    /// counts a Corp install of ice as ice, which the table shows, and every
+    /// other Corp install unseen, so "the first" is the first install it
+    /// counts unseen (`turn_log::seen_anyway`). Composition didn't work:
+    /// `Whose(Corp)` admits the Corp's ice as well, and a `Card` filter on a
+    /// trigger about its controller hears the controller's installs, which
+    /// for a Runner card are the Runner's.
+    InRoot,
 }
 
 impl Trigger {

@@ -437,6 +437,10 @@ mod tests {
             // Rebellion Without Rehearsal Stage 5e: Nuvem SA's deck, on
             // Hostile Bid's frame and its Hedge Funds.
             ("land_grab", &neither),
+            // The Automata Initiative Stage 5: Epiphany Analytica's deck,
+            // on Paid Content's frame. Without Making News and Neurospike
+            // it holds no Core Set card, so it is Standard too.
+            ("grand_opening", &not_startup),
             // Rebellion Without Rehearsal Stage 8b: Thunderbolt Armaments'
             // deck, on Retirement Package's frame: without Engineering the
             // Future it holds no Core Set card, so it is Standard too.

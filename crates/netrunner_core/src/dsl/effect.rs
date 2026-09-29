@@ -1759,19 +1759,45 @@ pub enum Prohibition {
     /// the Corp. Not `EndRunPrevention`, Shred's, which is a prevention
     /// with a condition and a first time.
     EndTheRun,
+    /// The Runner cannot run on a remote server — Front Company's "The
+    /// first run each turn cannot be made against a remote server", a
+    /// standing effect on the turn's first run (`ContinuousEffect::
+    /// first_each_turn`, counting the turn's runs: `counted_as`). Asked
+    /// where a run's server is announced (CR 6.3.2a): `run::start_run`,
+    /// which every run goes through, and the servers a card's text offers
+    /// to run (`Effect::PromptChooseServer`), which then leave the remotes
+    /// out.
+    RunOnRemote,
 }
 
 impl Prohibition {
     /// Every prohibition, for a question put about each of them
     /// (`view::build_client_view`'s `standing_cannot`).
-    pub const ALL: [Prohibition; 5] =
-        [Prohibition::ScoreAgendas, Prohibition::StealOrTrash, Prohibition::SpendOrLoseCreditPool, Prohibition::SpendCredits, Prohibition::EndTheRun];
+    pub const ALL: [Prohibition; 6] = [
+        Prohibition::ScoreAgendas,
+        Prohibition::StealOrTrash,
+        Prohibition::SpendOrLoseCreditPool,
+        Prohibition::SpendCredits,
+        Prohibition::EndTheRun,
+        Prohibition::RunOnRemote,
+    ];
 
     /// The player it binds.
     pub fn binds(self) -> Side {
         match self {
             Prohibition::ScoreAgendas | Prohibition::EndTheRun => Side::Corp,
-            Prohibition::StealOrTrash | Prohibition::SpendOrLoseCreditPool | Prohibition::SpendCredits => Side::Runner,
+            Prohibition::StealOrTrash | Prohibition::SpendOrLoseCreditPool | Prohibition::SpendCredits | Prohibition::RunOnRemote => Side::Runner,
+        }
+    }
+
+    /// The moment the thing prohibited is, where the turn log counts it —
+    /// so "the **first** run each turn cannot…" can be said with
+    /// `ContinuousEffect::first_each_turn` rather than a count written into
+    /// the card. `None` for a prohibition no card says of a first.
+    pub(crate) fn counted_as(self) -> Option<crate::dsl::Trigger> {
+        match self {
+            Prohibition::RunOnRemote => Some(crate::dsl::Trigger::OnRunStart),
+            Prohibition::ScoreAgendas | Prohibition::StealOrTrash | Prohibition::SpendOrLoseCreditPool | Prohibition::SpendCredits | Prohibition::EndTheRun => None,
         }
     }
 }

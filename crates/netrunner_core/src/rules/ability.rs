@@ -1641,7 +1641,11 @@ pub fn evaluate_effect(
             // ability. The narrowed list is what the decision carries, so
             // resolution's re-check and the candidate filter need no
             // knowledge of why a server is missing.
-            let allowed_servers = if *exclude_servers_run_this_turn || *only_protected_by_ice || only_in.is_some() {
+            // "The first run each turn cannot be made against a remote
+            // server" (Front Company): not offered, as `start_run` would
+            // refuse it.
+            let no_remote = crate::rules::continuous::cannot(state, registry, crate::dsl::Prohibition::RunOnRemote);
+            let allowed_servers = if *exclude_servers_run_this_turn || *only_protected_by_ice || only_in.is_some() || no_remote {
                 let already_run = &state.runner.servers_run_this_turn;
                 // `None` means every server — enumerated the way
                 // `legal_actions` offers them, fresh remote included.
@@ -1661,6 +1665,7 @@ pub fn evaluate_effect(
                     .into_iter()
                     .filter(|server| !*exclude_servers_run_this_turn || !already_run.contains(server))
                     .filter(|server| !*only_protected_by_ice || protected(server))
+                    .filter(|server| !no_remote || !matches!(server, ServerId::Remote(_)))
                     .filter(|server| {
                         only_in.is_none_or(|kind| {
                             let exists = match server {
@@ -1876,7 +1881,7 @@ pub fn evaluate_effect(
                 *install
             };
             match crate::rules::engine::rez_install(state, registry, install, *pay_cost, *discount) {
-                Err(RulesError::NotEnoughCredits { .. }) => Ok(Vec::new()),
+                Err(RulesError::NotEnoughCredits { .. } | RulesError::RezRestricted { .. }) => Ok(Vec::new()),
                 other => other,
             }
         }
@@ -3671,7 +3676,13 @@ pub fn check_requirement(
                 Some(GameEvent::AgendaStolen { .. }) => state.active_run.as_ref().map(|run| run.server),
                 _ => None,
             };
-            let here = acting_corp_install(state, ctx).map(|installed| installed.server);
+            // A persistent upgrade the Runner trashed this run (Tucana) is
+            // in no server now, and its "this server" is the attacked one
+            // (CR 9.12.5, the AMAZE Amusements example).
+            let persisting = || {
+                state.active_run.as_ref().filter(|run| ctx.acting_card.is_some_and(|card| run.persistent_trashed_upgrades.contains(card))).map(|run| run.server)
+            };
+            let here = acting_corp_install(state, ctx).map(|installed| installed.server).or_else(persisting);
             if from.is_some() && from == here { Ok(()) } else { Err(RulesError::RequirementNotMet) }
         }
         EffectRequirement::CurrentlyAccessingInstalledCard { rezzed_only } => {
