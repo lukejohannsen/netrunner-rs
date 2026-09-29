@@ -42,7 +42,9 @@ pub use engine::apply_action;
 pub use error::RulesError;
 pub use event::GameEvent;
 pub use payment::{Ask as PaymentAsk, CardQuestion as PaymentCardQuestion, InstallCandidate, InstallQuestion, Pool, Question as PaymentQuestion};
-pub use legal_actions::{apply_sampled_legal_action, current_actor, legal_actions, legal_actions_for};
+pub use legal_actions::{
+    apply_sampled_legal_action, current_actor, legal_actions, legal_actions_for, legal_transitions, legal_transitions_for,
+};
 pub use masking::{
     mask_action_for_player, mask_logged_action_for_player, mask_event_for_player, mask_state_for_player, ConcealedAction, MaskedZone, PublicAction, PublicAccessPhase, PublicAccessState, PublicArchivedCard, PublicCorpState,
     PublicGameState,

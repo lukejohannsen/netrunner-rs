@@ -1,6 +1,6 @@
 //! Automated `netrunner_core` players: a `BotAgent` trait plus baseline
-//! `RandomAgent`, `HeuristicAgent`, `MctsAgent`, and `PuctAgent`
-//! implementations.
+//! `RandomAgent`, `HeuristicAgent`, `PlanningAgent`, `MctsAgent`, and
+//! `PuctAgent` implementations.
 //!
 //! **Phase 2 / masked view:** every agent operates only on a per-side
 //! `netrunner_core::view::ClientView` — never the raw `GameState` — matching
@@ -36,6 +36,7 @@ pub mod onnx_fixture;
 pub mod onnx_policy;
 pub mod observation;
 pub mod personality;
+pub mod planner;
 pub mod policy;
 pub mod puct;
 pub mod random;
@@ -57,6 +58,7 @@ pub use mcts::MctsAgent;
 pub use onnx_policy::{OnnxPolicyError, OnnxPolicyEvaluator};
 pub use observation::{encode_observation, to_observation_vector, OBS_SIZE};
 pub use personality::Personality;
+pub use planner::{PlanStats, PlanningAgent};
 pub use policy::{MixedPriorEvaluator, PolicyEvaluator, SplitEvaluator, UniformPolicyEvaluator};
 pub use puct::{
     pick_action, ActionStat, CycleGuard, PuctAgent, PuctConfig, PuctSearchStats, DEFAULT_DIRICHLET_ALPHA,

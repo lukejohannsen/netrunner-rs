@@ -18,7 +18,7 @@
 //! `StallReason::NoLegalActions { side }` rather than conflating it with
 //! budget exhaustion the way each hand-rolled `else { break }` used to.
 
-use netrunner_bots::{BotAgent, HeuristicAgent, Knowledge, RandomAgent};
+use netrunner_bots::{BotAgent, Knowledge, PlanningAgent, RandomAgent};
 use netrunner_core::cards::{register_playable_cards, CardRegistry};
 use netrunner_core::decks::{self, DeckFile};
 use netrunner_core::format::NsgFormat;
@@ -49,9 +49,14 @@ fn sweep_decks_for_seed(seed: u64) -> (DeckFile, DeckFile) {
 
 /// Which agents sit where. Three seatings, each for a reason:
 ///
-/// - the two heuristic-vs-random pairings are the ones that have found
-///   every deadlock so far — a heuristic side plays purposefully enough to
-///   reach late-game board states;
+/// - the two planner-vs-random pairings are the ones that have found
+///   every deadlock so far — a purposeful side plays well enough to reach
+///   late-game board states. The purposeful seat is `PlanningAgent` since
+///   Phase 5 §25 Stage 4, because it is the chooser a person meets and
+///   the one that reaches the lines one ply never found (an agenda
+///   installed, advanced and scored in one turn); the one-ply chooser it
+///   contains is what it falls back to inside a run or a prompt, so those
+///   states are still reached;
 /// - random-vs-random is the only unbiased seating. `HeuristicAgent`'s
 ///   evaluator shapes what its side reaches: for as long as it had no run
 ///   term and scored an unrezzed install at zero, a heuristic Runner never
@@ -64,25 +69,25 @@ fn sweep_decks_for_seed(seed: u64) -> (DeckFile, DeckFile) {
 ///   random Runner still reaches.
 #[derive(Clone, Copy, Debug)]
 enum Seating {
-    HeuristicCorpRandomRunner,
-    RandomCorpHeuristicRunner,
+    PlannerCorpRandomRunner,
+    RandomCorpPlannerRunner,
     RandomBoth,
 }
 
 impl Seating {
-    const ALL: [Seating; 3] = [Seating::HeuristicCorpRandomRunner, Seating::RandomCorpHeuristicRunner, Seating::RandomBoth];
+    const ALL: [Seating; 3] = [Seating::PlannerCorpRandomRunner, Seating::RandomCorpPlannerRunner, Seating::RandomBoth];
 
-    /// Each heuristic seat knows the deck it plays (`Knowledge`), the
+    /// Each planner seat knows the deck it plays (`Knowledge`), the
     /// way every driver in the workspace seats it; the sweep's pool is
     /// played under no format, so the other chair's cards are Casual's.
     fn agents(self, seed: u64, corp_deck: &DeckFile, runner_deck: &DeckFile) -> (Box<dyn BotAgent>, Box<dyn BotAgent>) {
         let knowing = |deck: &DeckFile| Knowledge::new(NsgFormat::Casual, Some(deck.to_deck()));
         match self {
-            Seating::HeuristicCorpRandomRunner => {
-                (Box::new(HeuristicAgent::new(Side::Corp, seed).with_knowledge(knowing(corp_deck))), Box::new(RandomAgent::new(seed)))
+            Seating::PlannerCorpRandomRunner => {
+                (Box::new(PlanningAgent::new(Side::Corp, seed).with_knowledge(knowing(corp_deck))), Box::new(RandomAgent::new(seed)))
             }
-            Seating::RandomCorpHeuristicRunner => {
-                (Box::new(RandomAgent::new(seed)), Box::new(HeuristicAgent::new(Side::Runner, seed).with_knowledge(knowing(runner_deck))))
+            Seating::RandomCorpPlannerRunner => {
+                (Box::new(RandomAgent::new(seed)), Box::new(PlanningAgent::new(Side::Runner, seed).with_knowledge(knowing(runner_deck))))
             }
             Seating::RandomBoth => (Box::new(RandomAgent::new(seed)), Box::new(RandomAgent::new(seed.wrapping_add(1)))),
         }
@@ -251,7 +256,7 @@ fn no_client_view_or_log_entry_ever_names_a_card_it_conceals() {
         // here as there. A uniform random picker would confound a genuine
         // stall with "random play is just slow", which it did: it hit the
         // step budget on ordinary positions.
-        let mut corp = HeuristicAgent::new(Side::Corp, seed).with_knowledge(Knowledge::new(NsgFormat::Casual, Some(corp_deck.to_deck())));
+        let mut corp = PlanningAgent::new(Side::Corp, seed).with_knowledge(Knowledge::new(NsgFormat::Casual, Some(corp_deck.to_deck())));
         let mut runner = RandomAgent::new(seed);
         let universe = deck_card_universe(&corp_deck.to_deck(), &runner_deck.to_deck());
         let mut session = Session::new(state, registry, Seat::External, Seat::External);

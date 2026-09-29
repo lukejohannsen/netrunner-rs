@@ -284,7 +284,13 @@ impl From<NsgFormat> for FormatArg {
 pub enum BotKind {
     Human,
     Random,
+    /// The one-ply chooser, `netrunner_bots::HeuristicAgent` — the fixed
+    /// reference every stage of the bot rebuild is measured against
+    /// (Phase 5 §25), and the base of every ladder rung until Stage 8.
     Heuristic,
+    /// `netrunner_bots::PlanningAgent`: the same evaluator and sample,
+    /// with the turn planned as a whole (Phase 5 §25 Stage 4).
+    Planner,
     Mcts,
     /// `netrunner_bots::PuctAgent` over the uniform policy — the search
     /// shape self-play trains with, minus the network. The seating a
@@ -320,6 +326,7 @@ impl From<BotKind> for netrunner_client::record::BotKind {
             BotKind::Human => Recorded::Human,
             BotKind::Random => Recorded::Random,
             BotKind::Heuristic => Recorded::Heuristic,
+            BotKind::Planner => Recorded::Planner,
             BotKind::Mcts => Recorded::Mcts,
             BotKind::Puct => Recorded::Puct,
             BotKind::PuctOnnx => Recorded::PuctOnnx,

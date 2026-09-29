@@ -2,7 +2,7 @@ use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 
 use netrunner_core::cards::CardRegistry;
-use netrunner_core::rules::{apply_action, PlayerAction, Side};
+use netrunner_core::rules::{apply_action, GameState, PlayerAction, Side};
 use netrunner_core::view::ClientView;
 
 use crate::agent::BotAgent;
@@ -52,38 +52,54 @@ impl HeuristicAgent {
     }
 }
 
+/// The one-ply choice: every legal action applied to `sample`, the result
+/// scored by `weights` for `side`, the best taken — what `HeuristicAgent`
+/// is, and what `planner::PlanningAgent` plays wherever it does not plan
+/// (a run, a prompt, the opponent's turn). One function so the two agree
+/// to the bit on those decisions, and so the planner is measured against
+/// the chooser it contains rather than a copy of it.
+pub(crate) fn choose_one_ply(
+    view: &ClientView,
+    registry: &CardRegistry,
+    sample: &GameState,
+    side: Side,
+    weights: &Weights,
+    rng: &mut StdRng,
+) -> PlayerAction {
+    let mut best: Option<(f64, usize)> = None;
+    for (index, action) in view.legal_actions.iter().enumerate() {
+        // A deselect scores exactly like the select it undoes — the
+        // board is identical — so the jitter decides, and a one-ply
+        // chooser can walk a card selection forever. See
+        // `agent::is_regressive`.
+        if crate::agent::is_regressive(action, view.pending_decision.as_ref()) {
+            continue;
+        }
+        let Ok((next, _events)) = apply_action(sample, registry, action.clone()) else { continue };
+        let score = evaluate_state_with(&next, side, registry, weights) + rng.random::<f64>() * TIE_BREAK_JITTER;
+        if best.is_none_or(|(best_score, _)| score > best_score) {
+            best = Some((score, index));
+        }
+    }
+
+    // `view.legal_actions` came from `legal_actions_for`, whose
+    // ownership filtering doesn't depend on hidden info (see its doc
+    // comment), so every candidate above should already succeed
+    // against the determinized `sample` too — falling back to the
+    // first entry only guards against a hypothetical future
+    // divergence, not an expected case.
+    best.map_or_else(
+        || crate::agent::progressive(&view.legal_actions, view.pending_decision.as_ref())[0].clone(),
+        |(_, index)| view.legal_actions[index].clone(),
+    )
+}
+
 impl BotAgent for HeuristicAgent {
     fn select_action(&mut self, view: &ClientView, registry: &CardRegistry) -> PlayerAction {
         assert!(!view.legal_actions.is_empty(), "BotAgent::select_action requires at least one legal action");
 
         let sample = determinize(view, registry, &self.knowledge, &mut self.rng);
-
-        let mut best: Option<(f64, usize)> = None;
-        for (index, action) in view.legal_actions.iter().enumerate() {
-            // A deselect scores exactly like the select it undoes — the
-            // board is identical — so the jitter decides, and a one-ply
-            // chooser can walk a card selection forever. See
-            // `agent::is_regressive`.
-            if crate::agent::is_regressive(action, view.pending_decision.as_ref()) {
-                continue;
-            }
-            let Ok((next, _events)) = apply_action(&sample, registry, action.clone()) else { continue };
-            let score = evaluate_state_with(&next, self.side, registry, &self.weights) + self.rng.random::<f64>() * TIE_BREAK_JITTER;
-            if best.is_none_or(|(best_score, _)| score > best_score) {
-                best = Some((score, index));
-            }
-        }
-
-        // `view.legal_actions` came from `legal_actions_for`, whose
-        // ownership filtering doesn't depend on hidden info (see its doc
-        // comment), so every candidate above should already succeed
-        // against the determinized `sample` too — falling back to the
-        // first entry only guards against a hypothetical future
-        // divergence, not an expected case.
-        best.map_or_else(
-            || crate::agent::progressive(&view.legal_actions, view.pending_decision.as_ref())[0].clone(),
-            |(_, index)| view.legal_actions[index].clone(),
-        )
+        choose_one_ply(view, registry, &sample, self.side, &self.weights, &mut self.rng)
     }
 
     fn observe(&mut self, view: &ClientView) {
@@ -96,8 +112,8 @@ mod tests {
     use super::*;
     use netrunner_core::dsl::{CardDefinition, CardId, CardType};
     use netrunner_core::rules::{
-        AgendaPoints, Clicks, CorpState, Credits, GamePhase, GameState, InstallId, InstalledCard, MemoryUnits,
-        PlayerResources, RunnerState, ServerId,
+        AgendaPoints, Clicks, CorpState, Credits, GamePhase, InstallId, InstalledCard, MemoryUnits, PlayerResources,
+        RunnerState, ServerId,
     };
     use netrunner_core::view::build_client_view;
 

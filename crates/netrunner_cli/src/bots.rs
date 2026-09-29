@@ -17,8 +17,8 @@
 //! has no `BotAgent` form to hand a `PlayerSlot::Bot`.
 
 use netrunner_bots::{
-    BotAgent, BotAgentIndexAdapter, HeuristicAgent, Knowledge, Level, MctsAgent, Personality, PuctAgent, PuctConfig,
-    RandomAgent, UniformPolicyEvaluator,
+    BotAgent, BotAgentIndexAdapter, HeuristicAgent, Knowledge, Level, MctsAgent, Personality, PlanningAgent, PuctAgent,
+    PuctConfig, RandomAgent, UniformPolicyEvaluator,
 };
 use netrunner_core::rules::Side;
 use netrunner_bots::Agent;
@@ -148,6 +148,9 @@ pub fn make_agent(kind: BotKind, side: Side, seed: u64, setup: AgentSetup) -> Op
         BotKind::Random => Some(Box::new(RandomAgent::new(seed))),
         BotKind::Heuristic => Some(Box::new(
             HeuristicAgent::with_personality(side, seed, personality).with_knowledge(knowledge),
+        )),
+        BotKind::Planner => Some(Box::new(
+            PlanningAgent::with_personality(side, seed, personality).with_knowledge(knowledge),
         )),
         BotKind::Mcts => {
             let mut agent = match determinizations {
