@@ -1,6 +1,8 @@
 # Core Set (implemented subset) Card Fidelity Audit — September 2026
 
-The System Gateway audit (`docs/system-gateway-card-audit.md`), repeated over the **19 implemented Core Set cards** — the hand-authored baseline set that predates System Gateway. Same three-way rubric: text ↔ DSL against the NetrunnerDB catalog (`data/cards/core.json`, joined on `numeric_id`), engine semantics of every primitive read down to the code, and playability evidence. Status and findings live in `ROADMAP.md`; this file is the per-card record.
+> **Archived 29 September 2026.** A finished audit; its "Documented approximations" are carried in the card pool's known-limits list (`docs/roadmap/nsg-card-pool.md`), which is the live record.
+
+The System Gateway audit (`docs/archive/system-gateway-card-audit.md`), repeated over the **19 implemented Core Set cards** — the hand-authored baseline set that predates System Gateway. Same three-way rubric: text ↔ DSL against the NetrunnerDB catalog (`data/cards/core.json`, joined on `numeric_id`), engine semantics of every primitive read down to the code, and playability evidence. Status and findings live in `ROADMAP.md`; this file is the per-card record.
 
 **Two structural differences from the SG audit:**
 

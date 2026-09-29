@@ -2,7 +2,7 @@
 
 An architectural plan, not a description of what is built. The roadmap entry
 that owns it is **Phase 4 §5** (`docs/roadmap/phase-4-network.md`), which lists
-the stages; this file is the reasoning, the way `docs/jinteki-comparison.md` is
+the stages; this file is the reasoning, the way `docs/archive/jinteki-comparison.md` is
 the reasoning behind Phase 7 §8. Nothing here is locked down — the point is
 that the next person to touch the server knows where a rating is meant to live
 and why, and does not build a second answer beside it.
