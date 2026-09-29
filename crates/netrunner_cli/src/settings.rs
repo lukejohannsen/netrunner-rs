@@ -20,7 +20,7 @@ use clap::ArgMatches;
 pub use netrunner_client::settings::{resolve_settings_file, Settings};
 use netrunner_client::standing::{Answer, Answers, PromptKey};
 
-use crate::config::{Command, Config};
+use crate::config::{Command, Config, DeckAction};
 
 /// Fills each setting into `config` unless the command line named that
 /// flag. `flagged` answers "was this flag typed?" — `was_flagged` over
@@ -71,6 +71,9 @@ pub fn applies_to(config: &Config) -> bool {
     match &config.command {
         None => !config.headless,
         Some(Command::Bench { .. } | Command::Diag { .. }) => false,
+        // `deck matchups` describes what a measurement plays, so it reads
+        // the format the way a measurement does: from the flag alone.
+        Some(Command::Deck { action: DeckAction::Matchups }) => false,
         Some(_) => true,
     }
 }
@@ -135,6 +138,8 @@ mod tests {
         assert!(applies_to(&parse(&["netrunner_cli", "record"])));
         assert!(!applies_to(&parse(&["netrunner_cli", "--headless"])));
         assert!(!applies_to(&parse(&["netrunner_cli", "bench"])));
+        assert!(!applies_to(&parse(&["netrunner_cli", "deck", "matchups"])));
+        assert!(applies_to(&parse(&["netrunner_cli", "deck", "list"])));
     }
 
 }

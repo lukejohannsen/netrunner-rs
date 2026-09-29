@@ -67,7 +67,6 @@ use serde::Serialize;
 use netrunner_bots::mcts::rollout;
 use netrunner_bots::{Weights, determinize};
 use netrunner_core::cards::CardRegistry;
-use netrunner_core::decks as core_decks;
 use netrunner_core::rules::{GameState, Side, apply_action, current_actor};
 use netrunner_core::view::ClientView;
 use netrunner_session::{Seat, Session, SessionStep};
@@ -244,7 +243,7 @@ fn collect_positions(
     registry: &CardRegistry,
     config: &Config,
 ) -> Result<Vec<Position>, Box<dyn std::error::Error>> {
-    let matchups = core_decks::matchups();
+    let matchups = config.matchups(registry)?;
     let mut collected = Vec::new();
     for game in 0..args.games {
         let seed = args.seed.wrapping_add(u64::from(game));

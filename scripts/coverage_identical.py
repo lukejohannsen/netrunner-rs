@@ -80,9 +80,18 @@ def git(*args, cwd=REPO):
     return subprocess.run(["git", *args], cwd=cwd, check=True, capture_output=True, text=True).stdout.strip()
 
 
-def matchup_count(root):
-    """Corp x Runner over the sample decks: `decks::matchups().len()`, read
-    off the ref's own deck files so a pool that grew is played whole."""
+def matchup_count(root, binary, fmt):
+    """One pass of the pool: `decks::matchups().len()`, Corp x Runner over
+    the sample decks, read off the ref's own deck files so a pool that grew
+    is played whole. Under `--format` the pass is the pairings both decks
+    are legal in, which needs the legality rules, so the ref's *binary* is
+    asked (`deck matchups`, one line a pairing) — both refs must carry it
+    (Phase 5 §25 Stage 0 or later)."""
+    if fmt:
+        lines = subprocess.run(
+            [str(binary), "deck", "matchups", "--format", fmt], check=True, capture_output=True, text=True
+        ).stdout.splitlines()
+        return len(lines)
     sides = {"Corp": 0, "Runner": 0}
     for path in (root / "crates" / "netrunner_core" / "data" / "decks").glob("*.json"):
         deck = json.loads(path.read_text())
@@ -104,7 +113,7 @@ def build(root, target_dir, binary):
     shutil.copy2(target_dir / "release" / "netrunner_cli", binary)
 
 
-def pin_ref(ref):
+def pin_ref(ref, fmt):
     """Build `ref` in the shared worktree; return (label, binary, games)."""
     sha = git("rev-parse", "--verify", f"{ref}^{{commit}}")
     if not SOURCE.exists():
@@ -114,10 +123,10 @@ def pin_ref(ref):
         git("checkout", "--detach", "--force", sha, cwd=SOURCE)
     binary = BINARIES / f"netrunner_cli-{sha[:12]}"
     build(SOURCE, BUILD, binary)
-    return f"{ref}@{sha[:12]}", binary, matchup_count(SOURCE)
+    return f"{ref}@{sha[:12]}", binary, matchup_count(SOURCE, binary, fmt)
 
 
-def pin_worktree():
+def pin_worktree(fmt):
     """Build the checkout as it stands, named for the diff it carries."""
     sha = git("rev-parse", "HEAD")
     dirty = subprocess.run(["git", "diff", "HEAD"], cwd=REPO, check=True, capture_output=True).stdout
@@ -125,14 +134,14 @@ def pin_worktree():
     digest = hashlib.md5(dirty + untracked.encode()).hexdigest()[:8]
     binary = BINARIES / f"netrunner_cli-{sha[:12]}-worktree-{digest}"
     build(REPO, REPO / "target", binary)
-    return f"worktree@{sha[:12]}+{digest}", binary, matchup_count(REPO)
+    return f"worktree@{sha[:12]}+{digest}", binary, matchup_count(REPO, binary, fmt)
 
 
-def play(binary, kind, extra, games, seed, out):
+def play(binary, kind, extra, games, seed, fmt, out):
     out.parent.mkdir(parents=True, exist_ok=True)
     subprocess.run(
         [str(binary), "--headless", "--all-matchups", "--games", str(games), "--seed", str(seed),
-         "--corp", kind, "--runner", kind, "--report", str(out), *extra],
+         "--corp", kind, "--runner", kind, "--report", str(out), *(["--format", fmt] if fmt else []), *extra],
         cwd=out.parent,
         check=True,
         stdout=subprocess.DEVNULL,
@@ -196,22 +205,25 @@ def main():
     parser.add_argument("--seed", type=int, default=1)
     parser.add_argument("--games", type=int, help="override one full pass of the pool (never go below it for per-card claims)")
     parser.add_argument("--expect-renames", metavar="OLD=NEW,...", help="Trigger variants renamed on purpose")
+    parser.add_argument("--format", choices=["startup", "standard", "eternal", "snapshot"],
+                        help="play only the sample matchups legal in this format (default: the whole pool, Casual)")
     args = parser.parse_args()
     renames = parse_renames(args.expect_renames)
 
     # Sequential: both refs build in the one shared worktree.
-    base_label, base_binary, base_games = pin_ref(args.base)
-    head_label, head_binary, head_games = pin_worktree() if args.head_worktree else pin_ref(args.head)
+    base_label, base_binary, base_games = pin_ref(args.base, args.format)
+    head_label, head_binary, head_games = pin_worktree(args.format) if args.head_worktree else pin_ref(args.head, args.format)
     games = args.games or max(base_games, head_games)
     if base_games != head_games:
         print(f"note: the sample pool changed ({base_games} -> {head_games} matchups); the reports cannot be identical")
 
-    out = REPO / "target" / "coverage" / "identical" / f"{base_binary.name}--{head_binary.name}"
+    pass_name = f"{base_binary.name}--{head_binary.name}" + (f"--{args.format}" if args.format else "")
+    out = REPO / "target" / "coverage" / "identical" / pass_name
     print(f"{base_label}  vs  {head_label}: {games} games a report, seed {args.seed}\nreports under {out.relative_to(REPO)}")
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=2 * len(REPORTS)) as pool:
         runs = {
-            (name, side): pool.submit(play, binary, kind, extra, games, args.seed, out / f"{name}.{side}.json")
+            (name, side): pool.submit(play, binary, kind, extra, games, args.seed, args.format, out / f"{name}.{side}.json")
             for name, kind, extra in REPORTS
             for side, binary in (("base", base_binary), ("head", head_binary))
         }

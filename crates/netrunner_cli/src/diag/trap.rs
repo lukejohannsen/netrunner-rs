@@ -173,7 +173,7 @@ pub struct TrapReport {
 
 pub fn run(args: &TrapArgs, config: &Config) -> Result<(), Box<dyn std::error::Error>> {
     let registry = decks::sample_deck_registry();
-    let matchups = select(core_decks::matchups(), args.matchup.as_deref(), &registry)?;
+    let matchups = select(config.matchups(&registry)?, args.matchup.as_deref(), &registry)?;
     let pool = match args.threads {
         Some(threads) => rayon::ThreadPoolBuilder::new().num_threads(threads).build()?,
         None => rayon::ThreadPoolBuilder::new().build()?,

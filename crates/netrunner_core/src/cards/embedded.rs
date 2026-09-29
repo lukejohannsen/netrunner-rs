@@ -367,6 +367,77 @@ mod catalog_join_tests {
         assert_set_accounted_for("elev", "Elevation", 82, ELEV_UNIMPLEMENTED);
     }
 
+    /// "Startup is complete" as a gate rather than a sentence (Phase 5 §25
+    /// Stage 0, 29 September 2026): every printing in a `COMPLETE_FORMATS`
+    /// pool that the catalog knows is a playable card, built under its own
+    /// code or its title (the fold `assert_set_accounted_for` uses for a
+    /// reprint), and the codes the catalog does not know are exactly the
+    /// named ones. The per-pack gates above say a *pack* is built; this
+    /// one says a *format* is, which is what a player choosing Startup and
+    /// a bot told the format (Stage 2) are promised — and it fails the day
+    /// a rotation adds a pack to the pool before its cards land.
+    ///
+    /// The other half holds the list honest: a format not on it must be
+    /// short of a card, so completing Standard is a one-line change here
+    /// and never a claim nobody checked.
+    #[test]
+    fn every_card_in_a_complete_formats_pool_is_built_and_playable() {
+        use crate::cards::unimplemented::{COMPLETE_FORMATS, STARTUP_POOL_CODES_OUTSIDE_THE_CATALOG};
+        use crate::format::NsgFormat;
+
+        let catalog = crate::cards::load_embedded_netrunnerdb_sets().expect("catalog should parse");
+        let playable = embedded_playable_cards();
+        let implemented: std::collections::HashSet<u32> =
+            playable.iter().filter_map(|card| card.numeric_id).map(|id| id.0).collect();
+        let titles: std::collections::HashSet<(bool, String)> = playable
+            .iter()
+            .filter(|card| card.is_playable)
+            .map(|card| (card.side == crate::rules::Side::Corp, crate::cards::title_key(&card.title)))
+            .collect();
+
+        // (the cards the pool holds and the catalog knows that are not built,
+        // the pool's codes the catalog does not know)
+        let audit = |format: NsgFormat| -> (Vec<String>, Vec<u32>) {
+            let pool = format.rules().pool.as_ref().unwrap_or_else(|| panic!("{format:?} has a pool"));
+            let mut unbuilt = Vec::new();
+            let mut outside = Vec::new();
+            for code in pool {
+                match catalog.get_by_numeric_id(*code) {
+                    None => outside.push(code.0),
+                    Some(entry) => {
+                        let built = implemented.contains(&code.0)
+                            || titles.contains(&(entry.side == crate::rules::Side::Corp, crate::cards::title_key(&entry.title)));
+                        if !built {
+                            unbuilt.push(format!("{} ({})", entry.title, code.0));
+                        }
+                    }
+                }
+            }
+            unbuilt.sort();
+            outside.sort_unstable();
+            (unbuilt, outside)
+        };
+
+        for format in COMPLETE_FORMATS {
+            let (unbuilt, outside) = audit(*format);
+            assert!(unbuilt.is_empty(), "{format:?} is listed complete but these pool cards are not built: {unbuilt:#?}");
+            let named: &[u32] = match format {
+                NsgFormat::Startup => STARTUP_POOL_CODES_OUTSIDE_THE_CATALOG,
+                other => panic!("{other:?} is listed complete: name the pool codes outside the catalog for it"),
+            };
+            assert_eq!(outside, named, "{format:?}'s pool codes the catalog does not carry; each must be a card built under another code");
+        }
+        let (unbuilt, _) = audit(NsgFormat::Startup);
+        assert!(unbuilt.is_empty());
+        for format in NsgFormat::ALL {
+            if COMPLETE_FORMATS.contains(&format) || format.rules().pool.is_none() {
+                continue;
+            }
+            let (unbuilt, _) = audit(format);
+            assert!(!unbuilt.is_empty(), "{format:?} is now complete: add it to COMPLETE_FORMATS");
+        }
+    }
+
     /// The NSG card-pool plan's packs (docs/roadmap/nsg-card-pool.md), each
     /// gated from the day it was embedded, its list in `cards::unimplemented`
     /// shrinking stage by stage as §8's did for Elevation.

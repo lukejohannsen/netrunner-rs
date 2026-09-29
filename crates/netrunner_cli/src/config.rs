@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 
 use netrunner_bots::{Level, Personality};
+use netrunner_core::cards::CardRegistry;
 use netrunner_core::decks::DeckFile;
 use clap::{Parser, Subcommand, ValueEnum};
 
@@ -224,7 +225,10 @@ pub struct Config {
     #[arg(long = "decks-dir", global = true)]
     pub decks_dir: Option<PathBuf>,
 
-    /// Which format to check deck legality against.
+    /// Which format to check deck legality against, and — for
+    /// `--all-matchups`, `bench` and every `diag` — which sample matchups
+    /// to play: only the pairings both decks are legal in (`startup` is 90
+    /// of the 192).
     ///
     /// Casual is the default (`netrunner_client::settings::DEFAULT_FORMAT`):
     /// every deck the engine can run. It was Startup, until NetrunnerDB's
@@ -791,6 +795,13 @@ pub enum DeckAction {
     /// Check a deck against both validators and report what it finds.
     Validate { name: String },
 
+    /// List the sample matchups a pass of the pool plays under `--format`,
+    /// one `CORP_ID RUNNER_ID` line each, in the order `--all-matchups`,
+    /// `bench` and `diag` play them — so a script can count a format's
+    /// pass (`scripts/coverage_identical.py --format`) without a copy of
+    /// the legality rules.
+    Matchups,
+
     /// Start a new, empty deck.
     New {
         /// Id for the new deck; also its filename.
@@ -892,6 +903,21 @@ impl Config {
             Side::Runner => self.runner,
         };
         kind != BotKind::Human || self.level_for(side).is_some()
+    }
+
+    /// The sample matchups a pass of the pool plays under `--format`:
+    /// `decks::matchups_in`, so `--all-matchups`, `bench` and the `diag`s
+    /// all read the one flag and a Startup measurement is the same 90
+    /// pairings everywhere (Phase 5 §25 Stage 0). Casual is `matchups()`
+    /// game for game. An error rather than an empty list, because every
+    /// caller indexes `matchups[game % len]`.
+    pub fn matchups(&self, registry: &CardRegistry) -> Result<Vec<(DeckFile, DeckFile)>, String> {
+        let format: NsgFormat = self.format.into();
+        let matchups = netrunner_core::decks::matchups_in(format, registry);
+        if matchups.is_empty() {
+            return Err(format!("no sample matchup is legal in {format:?}"));
+        }
+        Ok(matchups)
     }
 
     /// The ladder rung asked for on `side`, if any. `Some` overrides the

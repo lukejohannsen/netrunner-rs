@@ -386,6 +386,30 @@ pub fn matchups() -> Vec<(DeckFile, DeckFile)> {
     corps.iter().flat_map(|corp| runners.iter().map(move |runner| (corp.clone(), runner.clone()))).collect()
 }
 
+/// `matchups()`, keeping only the pairings both decks are legal in
+/// `format` — the pass a measurement of *Startup* play is taken over
+/// (Phase 5 §25 Stage 0), in `matchups()`'s own order so a `Casual` pass
+/// is `matchups()` game for game and every number recorded before the
+/// filter existed still reproduces.
+///
+/// Filtered a deck at a time rather than a pairing at a time: a deck's
+/// legality is `validate` under every rule of the format, and 28 decks
+/// asked once is cheaper than 192 pairs asked twice. NetrunnerDB's lists
+/// have banned cards nine of the sample decks hold, so a Startup pass is
+/// 90 of the 192 pairings, and the gap between the two is why
+/// `coverage_identical.py` refuses to compare passes of different sizes.
+pub fn matchups_in(format: NsgFormat, registry: &CardRegistry) -> Vec<(DeckFile, DeckFile)> {
+    let legal = |side| -> Vec<DeckFile> {
+        for_side(side)
+            .into_iter()
+            .filter(|deck| deck.category == DeckCategory::Sample && deck.validate(registry, format).is_ok())
+            .collect()
+    };
+    let corps = legal(Side::Corp);
+    let runners = legal(Side::Runner);
+    corps.iter().flat_map(|corp| runners.iter().map(move |runner| (corp.clone(), runner.clone()))).collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -678,6 +702,26 @@ mod tests {
             assert_eq!(corp.side, Side::Corp);
             assert_eq!(runner.side, Side::Runner);
         }
+    }
+
+    /// The format filter keeps `matchups()`'s order, so a Casual pass is the
+    /// whole pool unchanged and a Startup pass is the 9 × 10 sample decks
+    /// NetrunnerDB's Startup list admits (Stage 0b pinned which nine it
+    /// refuses). Both counts are load-bearing: every recorded Casual number
+    /// was taken over `matchups()`, and the Startup pass is what Phase 5
+    /// §25 measures Startup play over.
+    #[test]
+    fn matchups_in_a_format_keep_the_pairings_both_decks_are_legal_in() {
+        let registry = registry();
+        assert_eq!(matchups_in(NsgFormat::Casual, &registry), matchups(), "Casual is the whole pool, in order");
+        let startup = matchups_in(NsgFormat::Startup, &registry);
+        assert_eq!(startup.len(), 90, "9 Startup-legal Corp decks x 10 Startup-legal Runner decks");
+        for (corp, runner) in &startup {
+            assert!(corp.validate(&registry, NsgFormat::Startup).is_ok(), "{}", corp.id);
+            assert!(runner.validate(&registry, NsgFormat::Startup).is_ok(), "{}", runner.id);
+        }
+        let order: Vec<_> = matchups().into_iter().filter(|pair| startup.contains(pair)).collect();
+        assert_eq!(startup, order, "the filter never reorders");
     }
 
     #[test]

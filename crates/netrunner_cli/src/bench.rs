@@ -183,7 +183,7 @@ pub fn run(args: &BenchArgs, config: &Config) -> Result<(), Box<dyn std::error::
 
     let registry = decks::sample_deck_registry();
     let base_seed = args.seed.unwrap_or_else(rand::random);
-    let matchups = core_decks::matchups();
+    let matchups = config.matchups(&registry)?;
 
     for pairing in &args.pairings {
         if !args.bots.contains(&pairing.corp) || !args.bots.contains(&pairing.runner) {
