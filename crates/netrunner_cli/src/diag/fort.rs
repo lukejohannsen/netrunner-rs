@@ -157,20 +157,21 @@ fn play(
     let (corp_deck, runner_deck) = &matchups[game as usize % matchups.len()];
     let (state, _events) =
         GameState::setup(&corp_deck.to_deck(), &runner_deck.to_deck(), registry, seed).map_err(|e| format!("{e:?}"))?;
-    let setup = |spec: BotSpec| bots::AgentSetup {
+    let setup = |spec: BotSpec, deck: &core_decks::DeckFile| bots::AgentSetup {
         simulations: args.simulations,
         determinizations: args.determinizations,
         personality: spec.personality,
+        knowledge: config.knowledge(deck),
         ..bots::AgentSetup::new(args.simulations)
     };
-    let corp = bots::make_seat_agent(args.corp.level, args.corp.kind, Side::Corp, seed, setup(args.corp), &config.model)?
+    let corp = bots::make_seat_agent(args.corp.level, args.corp.kind, Side::Corp, seed, setup(args.corp, corp_deck), &config.model)?
         .ok_or("the Corp seat must be a bot that can take one")?;
     let runner = bots::make_seat_agent(
         args.runner.level,
         args.runner.kind,
         Side::Runner,
         seed.wrapping_add(1),
-        setup(args.runner),
+        setup(args.runner, runner_deck),
         &config.model,
     )?
     .ok_or("the Runner seat must be a bot that can take one")?;

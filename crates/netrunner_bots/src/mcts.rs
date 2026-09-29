@@ -12,6 +12,7 @@ use netrunner_core::view::ClientView;
 use crate::agent::BotAgent;
 use crate::determinize::determinize;
 use crate::eval::{evaluate_state_with, Weights};
+use crate::knowledge::Knowledge;
 use crate::personality::Personality;
 use crate::puct::{pick_action, ActionStat, CycleGuard, ESCAPE_RNG_SALT};
 
@@ -108,6 +109,9 @@ pub struct MctsAgent {
     /// and removes the diversity. See ROADMAP Phase 2 §5 item 35 for
     /// which one the Runner chair was actually buying.
     shared_sample: bool,
+    /// What every tree's sample is drawn from — the format, the seat's
+    /// own deck and what it has seen (`BotAgent::observe`).
+    knowledge: Knowledge,
 }
 
 impl MctsAgent {
@@ -145,7 +149,14 @@ impl MctsAgent {
             cycle: CycleGuard::default(),
             weights: Weights::default(),
             shared_sample: false,
+            knowledge: Knowledge::default(),
         }
+    }
+
+    /// The same search, every tree sampling from what `knowledge` admits.
+    pub fn with_knowledge(mut self, knowledge: Knowledge) -> Self {
+        self.knowledge = knowledge;
+        self
     }
 
     /// The same search, scoring leaves and rollouts with
@@ -198,6 +209,7 @@ impl BotAgent for MctsAgent {
         let weights = self.weights;
         let base_seed = self.seed;
         let shared_sample = self.shared_sample;
+        let knowledge = &self.knowledge;
         self.seed = self.seed.wrapping_add(trees as u64);
 
         let per_tree_stats: Vec<Vec<(PlayerAction, u32, f64)>> = (0..trees)
@@ -210,9 +222,9 @@ impl BotAgent for MctsAgent {
                 // `shared_sample` has to pull apart.
                 let sample = if shared_sample {
                     let mut sample_rng = StdRng::seed_from_u64(base_seed);
-                    determinize(view, registry, &mut sample_rng)
+                    determinize(view, registry, knowledge, &mut sample_rng)
                 } else {
-                    determinize(view, registry, &mut rng)
+                    determinize(view, registry, knowledge, &mut rng)
                 };
                 let mut root = Node::new_root(
                     sample,
@@ -254,6 +266,10 @@ impl BotAgent for MctsAgent {
             .unwrap_or_else(|| view.legal_actions[0].clone());
         self.cycle.record(&chosen, !avoid.is_empty());
         chosen
+    }
+
+    fn observe(&mut self, view: &ClientView) {
+        self.knowledge.observe(view);
     }
 }
 

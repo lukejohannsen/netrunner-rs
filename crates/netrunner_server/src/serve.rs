@@ -69,7 +69,7 @@ use tokio::sync::mpsc;
 use tokio_tungstenite::tungstenite::Message as WsMessage;
 use uuid::Uuid;
 
-use netrunner_bots::{BotAgent, HeuristicAgent, Level, MctsAgent, Personality};
+use netrunner_bots::{BotAgent, HeuristicAgent, Knowledge, Level, MctsAgent, Personality};
 use netrunner_core::cards::CardRegistry;
 use netrunner_core::decks::{self, DeckCategory, DeckFile};
 use netrunner_core::format::NsgFormat;
@@ -290,10 +290,10 @@ fn deals_by_format(registry: &CardRegistry, options: &ServeOptions) -> std::io::
     Ok(deals)
 }
 
-fn make_serve_agent(kind: ServeBotKind, side: Side, seed: u64, personality: Personality) -> Box<dyn BotAgent> {
+fn make_serve_agent(kind: ServeBotKind, side: Side, seed: u64, personality: Personality, knowledge: Knowledge) -> Box<dyn BotAgent> {
     match kind {
-        ServeBotKind::Heuristic => Box::new(HeuristicAgent::with_personality(side, seed, personality)),
-        ServeBotKind::Mcts => Box::new(MctsAgent::new(side, seed).with_personality(personality)),
+        ServeBotKind::Heuristic => Box::new(HeuristicAgent::with_personality(side, seed, personality).with_knowledge(knowledge)),
+        ServeBotKind::Mcts => Box::new(MctsAgent::new(side, seed).with_personality(personality).with_knowledge(knowledge)),
         ServeBotKind::None => unreachable!("caller only invokes this for a bot-backed ServeBotKind"),
     }
 }
@@ -1259,14 +1259,18 @@ fn seat_vs_bot(
     // the seed — so the bot's style can come off the deck it is about to
     // play. A pinned deck is an embedded id (`pin_deck`), so `by_id`
     // always resolves; the fallback is only for a future pool that is not.
-    let personality = shared.options.bot_personality.unwrap_or_else(|| {
-        let dealt = shared.decks_for(seed, format);
-        let bot_deck_id = match human_side {
-            Side::Corp => &dealt.runner_id,
-            Side::Runner => &dealt.corp_id,
-        };
-        decks::by_id(bot_deck_id).and_then(|deck| Personality::for_deck(&deck).ok()).unwrap_or_default()
-    });
+    let dealt = shared.decks_for(seed, format);
+    let (bot_deck_id, bot_deck) = match human_side {
+        Side::Corp => (&dealt.runner_id, &dealt.runner),
+        Side::Runner => (&dealt.corp_id, &dealt.corp),
+    };
+    let personality = shared
+        .options
+        .bot_personality
+        .unwrap_or_else(|| decks::by_id(bot_deck_id).and_then(|deck| Personality::for_deck(&deck).ok()).unwrap_or_default());
+    // The bot knows the lobby's format and the deck it is dealt; the
+    // person's deck it knows by its identity alone, like any opponent.
+    let knowledge = Knowledge::new(format, Some(bot_deck.clone()));
     let bot_side = human_side.other();
     let bot_seed = seed.wrapping_add(1);
     let bot = match shared.options.bot_level {
@@ -1274,7 +1278,7 @@ fn seat_vs_bot(
             name: styled(format!("{} bot", level.name()), personality),
             key: None,
             token: Uuid::new_v4(),
-            slot: PlayerSlot::Bot(level.spec(bot_side).with_personality(personality).agent(bot_seed)),
+            slot: PlayerSlot::Bot(level.spec(bot_side).with_personality(personality).agent(bot_seed, knowledge)),
             deck: None,
             lobby: None,
             bot: Some(RecordedBot { side: bot_side, level, personality }),
@@ -1283,7 +1287,7 @@ fn seat_vs_bot(
             name: styled(kind.seat_name().to_string(), personality),
             key: None,
             token: Uuid::new_v4(),
-            slot: PlayerSlot::Bot(make_serve_agent(kind, bot_side, bot_seed, personality)),
+            slot: PlayerSlot::Bot(make_serve_agent(kind, bot_side, bot_seed, personality, knowledge)),
             deck: None,
             lobby: None,
             bot: None,

@@ -48,7 +48,9 @@ use rayon::prelude::*;
 use serde::Serialize;
 
 use netrunner_bots::eval::{covers, server_break_cost};
-use netrunner_bots::Personality;
+use netrunner_bots::{determinize, Knowledge, Personality};
+use rand::rngs::StdRng;
+use rand::SeedableRng;
 use netrunner_core::card::Faction;
 use netrunner_core::cards::CardRegistry;
 use netrunner_core::decks as core_decks;
@@ -661,6 +663,47 @@ impl<'a> Watcher<'a> {
         }
     }
 
+    /// Scores one sample of `side`'s opponent's hidden cards against the
+    /// real ones: how many were drawn, how many are cards the opponent's
+    /// deck holds at all, and how many match the hidden cards themselves
+    /// as a multiset. The hidden zones are the ones the seat cannot see —
+    /// the other side's hand and deck, and for the Runner the Corp's
+    /// facedown installs and Archives too.
+    fn guess(&mut self, side: Side, kind: &'static str, sample: &GameState, real: &GameState, opponent: &netrunner_core::rules::Deck) {
+        let hidden = |state: &GameState| -> Vec<CardId> {
+            match side {
+                Side::Corp => state.runner.grip.iter().chain(&state.runner.stack).cloned().collect(),
+                Side::Runner => state
+                    .corp
+                    .hq
+                    .iter()
+                    .chain(&state.corp.r_and_d)
+                    .chain(state.corp.archives.iter().filter(|a| a.facedown).map(|a| &a.card))
+                    .chain(state.corp.installed.iter().filter(|c| !c.rezzed && !c.seen_by_runner).map(|c| &c.card))
+                    .cloned()
+                    .collect(),
+            }
+        };
+        let guessed = hidden(sample);
+        let real_cards = hidden(real);
+        let mut truth: BTreeMap<&CardId, usize> = BTreeMap::new();
+        for card in &real_cards {
+            *truth.entry(card).or_insert(0) += 1;
+        }
+        let in_deck = |card: &CardId| opponent.cards.iter().any(|(id, _)| id == card);
+        let mut overlap = 0usize;
+        for card in &guessed {
+            if let Some(left) = truth.get_mut(card).filter(|left| **left > 0) {
+                *left -= 1;
+                overlap += 1;
+            }
+        }
+        let name = side_name(side);
+        self.counts.add(leak(format!("{name}.{kind}.sampled")), guessed.len() as f64);
+        self.counts.add(leak(format!("{name}.{kind}.in_deck")), guessed.iter().filter(|card| in_deck(card)).count() as f64);
+        self.counts.add(leak(format!("{name}.{kind}.overlap")), overlap as f64);
+    }
+
     fn finish(mut self) -> (Counts, BTreeMap<String, u32>) {
         if let Some(turn) = self.hq_iced {
             self.counts.bump("corp.hq_iced.games");
@@ -795,6 +838,14 @@ const DERIVED: &[Derived] = derived![
     "runner.14.remote_runs_share" = "runner.runs.remote" / "runner.runs",
     "runner.14.economy_events_per_game" = "runner.events.economy" / GAMES,
     "runner.14.steals_per_game" = "runner.steals" / GAMES,
+    "knowledge.corp.guess_in_deck" = "corp.guess.in_deck" / "corp.guess.sampled",
+    "knowledge.corp.guess_overlap" = "corp.guess.overlap" / "corp.guess.sampled",
+    "knowledge.corp.naive_in_deck" = "corp.naive.in_deck" / "corp.naive.sampled",
+    "knowledge.corp.naive_overlap" = "corp.naive.overlap" / "corp.naive.sampled",
+    "knowledge.runner.guess_in_deck" = "runner.guess.in_deck" / "runner.guess.sampled",
+    "knowledge.runner.guess_overlap" = "runner.guess.overlap" / "runner.guess.sampled",
+    "knowledge.runner.naive_in_deck" = "runner.naive.in_deck" / "runner.naive.sampled",
+    "knowledge.runner.naive_overlap" = "runner.naive.overlap" / "runner.naive.sampled",
     "economy.corp.credits_gained_per_click" = "corp.credits_gained" / "corp.clicks",
     "economy.corp.credit_click_share" = "corp.clicks.credit" / "corp.clicks",
     "economy.corp.draw_click_share" = "corp.clicks.draw" / "corp.clicks",
@@ -855,6 +906,8 @@ const HEADLINE: &[&str] = &[
     "runner.12.economy_assets_trashed_when_accessed",
     "runner.13.runs_on_the_last_click",
     "runner.14.remote_runs_share",
+    "knowledge.corp.guess_in_deck",
+    "knowledge.runner.guess_in_deck",
 ];
 
 #[derive(Debug, Clone, Serialize)]
@@ -946,20 +999,21 @@ fn play(
     };
     let corp_style = style(args.corp, corp_deck)?;
     let runner_style = style(args.runner, runner_deck)?;
-    let setup = |personality: Personality| bots::AgentSetup {
+    let setup = |personality: Personality, deck: &core_decks::DeckFile| bots::AgentSetup {
         simulations: args.simulations,
         determinizations: args.determinizations,
         personality,
+        knowledge: config.knowledge(deck),
         ..bots::AgentSetup::new(args.simulations)
     };
-    let corp = bots::make_seat_agent(args.corp.level, args.corp.kind, Side::Corp, seed, setup(corp_style), &config.model)?
+    let corp = bots::make_seat_agent(args.corp.level, args.corp.kind, Side::Corp, seed, setup(corp_style, corp_deck), &config.model)?
         .ok_or("the Corp seat must be a bot that can take one")?;
     let runner = bots::make_seat_agent(
         args.runner.level,
         args.runner.kind,
         Side::Runner,
         seed.wrapping_add(1),
-        setup(runner_style),
+        setup(runner_style, runner_deck),
         &config.model,
     )?
     .ok_or("the Runner seat must be a bot that can take one")?;
@@ -969,13 +1023,38 @@ fn play(
 
     let mut session = Session::new(state, registry.clone(), Seat::Agent(corp), Seat::Agent(runner));
     let mut watcher = Watcher::new(registry, corp_faction);
+    // What each seat knows, kept beside the bot and shown the same views
+    // (`Session::last_view`), so the guess-quality line samples with the
+    // memory the seat had; `naive` is a seat that knows nothing — Casual,
+    // no deck, no memory — sampled from the same views, the line Stage 2
+    // is measured against.
+    let mut knowledge = [config.knowledge(corp_deck), config.knowledge(runner_deck)];
+    let naive = Knowledge::default();
+    let decks = [corp_deck.to_deck(), runner_deck.to_deck()];
+    let mut guess_rng = StdRng::seed_from_u64(seed ^ 0x6E55_0000_0000_0000);
+    let mut turn_sampled = 0;
     let (winner, end) = loop {
         let before = session.state().clone();
         watcher.open_turn(&before);
         match session.step() {
-            SessionStep::Applied { .. } => {
+            SessionStep::Applied { side } => {
                 if let Some(entry) = session.last_entry() {
                     watcher.record(&before, entry, session.state());
+                }
+                if let Some(view) = session.last_view() {
+                    knowledge[side as usize].observe(view);
+                    // Once a turn, on the turn side's first decision: how
+                    // good a guess the seat's sample of the opponent's
+                    // hidden cards is, against the cards really there.
+                    let turn_side = if before.turn % 2 == 1 { Side::Corp } else { Side::Runner };
+                    if before.turn > 0 && before.turn != turn_sampled && side == turn_side {
+                        turn_sampled = before.turn;
+                        let opponent = &decks[side.other() as usize];
+                        let sample = determinize(view, registry, &knowledge[side as usize], &mut guess_rng);
+                        watcher.guess(side, "guess", &sample, &before, opponent);
+                        let sample = determinize(view, registry, &naive, &mut guess_rng);
+                        watcher.guess(side, "naive", &sample, &before, opponent);
+                    }
                 }
             }
             SessionStep::Ended { winner, reason } => break (Some(winner), format!("{reason:?}")),

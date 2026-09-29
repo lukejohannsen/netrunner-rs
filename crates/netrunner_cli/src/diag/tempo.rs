@@ -431,26 +431,27 @@ fn play(
     let (corp_deck, runner_deck) = &matchups[game as usize % matchups.len()];
     let (state, _events) =
         GameState::setup(&corp_deck.to_deck(), &runner_deck.to_deck(), registry, seed).map_err(|e| format!("{e:?}"))?;
-    let setup = |spec: BotSpec| bots::AgentSetup {
+    let setup = |spec: BotSpec, deck: &core_decks::DeckFile| bots::AgentSetup {
         simulations: args.simulations,
         determinizations: args.determinizations,
         shared_sample: false,
         mcts_depth: None,
         personality: spec.personality,
         stage_gain: args.stage_gain,
+        knowledge: config.knowledge(deck),
     };
     // `make_seat_agent` rather than `make_agent_with_model`, so a chair
     // spelled `level:elite` is the rung the ladder calibrated and not a
     // silently balanced heuristic. Profiling a rung is what Phase 5 §4(a)
     // and §4(b) will want from this.
-    let corp = bots::make_seat_agent(args.corp.level, args.corp.kind, Side::Corp, seed, setup(args.corp), &config.model)?
+    let corp = bots::make_seat_agent(args.corp.level, args.corp.kind, Side::Corp, seed, setup(args.corp, corp_deck), &config.model)?
         .ok_or("the Corp seat must be a bot that can take one")?;
     let runner = bots::make_seat_agent(
         args.runner.level,
         args.runner.kind,
         Side::Runner,
         seed.wrapping_add(1),
-        setup(args.runner),
+        setup(args.runner, runner_deck),
         &config.model,
     )?
     .ok_or("the Runner seat must be a bot that can take one")?;

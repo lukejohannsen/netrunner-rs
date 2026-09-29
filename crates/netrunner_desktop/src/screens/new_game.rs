@@ -352,6 +352,7 @@ fn start_with(core: &ClientCore, choice: &StartChoice, seed: u64, record: Option
         style: choice.style,
         seed,
         rules: Default::default(),
+        format,
         record,
     };
     let handle = MatchHandle::start_local(spec)?;

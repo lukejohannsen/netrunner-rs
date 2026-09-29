@@ -291,23 +291,30 @@ fn play(
     let (corp_deck, runner_deck) = &matchups[job.index as usize % matchups.len()];
     let (state, _events) =
         GameState::setup(&corp_deck.to_deck(), &runner_deck.to_deck(), registry, job.seed).map_err(|e| format!("{e:?}"))?;
-    let setup = |personality| bots::AgentSetup {
+    let setup = |personality, deck| bots::AgentSetup {
         simulations: args.simulations,
         determinizations: args.determinizations,
         shared_sample: args.shared_sample,
         mcts_depth: args.mcts_depth,
         personality,
         stage_gain: args.stage_gain,
+        knowledge: config.knowledge(deck),
     };
-    let corp =
-        bots::make_seat_agent(job.corp.level, job.corp.kind, Side::Corp, job.seed, setup(job.corp.personality), &config.model)?
-            .expect("kinds without a BotAgent form were rejected up front");
+    let corp = bots::make_seat_agent(
+        job.corp.level,
+        job.corp.kind,
+        Side::Corp,
+        job.seed,
+        setup(job.corp.personality, corp_deck),
+        &config.model,
+    )?
+    .expect("kinds without a BotAgent form were rejected up front");
     let runner = bots::make_seat_agent(
         job.runner.level,
         job.runner.kind,
         Side::Runner,
         job.seed.wrapping_add(1),
-        setup(job.runner.personality),
+        setup(job.runner.personality, runner_deck),
         &config.model,
     )?
     .expect("kinds without a BotAgent form were rejected up front");

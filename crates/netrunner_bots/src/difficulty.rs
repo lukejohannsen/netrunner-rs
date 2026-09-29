@@ -109,6 +109,7 @@ use serde::{Deserialize, Serialize};
 use crate::agent::BotAgent;
 use crate::handicap::HandicapAgent;
 use crate::heuristic::HeuristicAgent;
+use crate::knowledge::Knowledge;
 use crate::mcts::MctsAgent;
 use crate::personality::Personality;
 use crate::policy::UniformPolicyEvaluator;
@@ -370,13 +371,15 @@ impl LevelSpec {
         Self { personality, ..self }
     }
 
-    /// The agent this rung seats.
+    /// The agent this rung seats, sampling from what `knowledge` admits —
+    /// the format's pool and the seat's own deck, which the driver that
+    /// seats a rung always has.
     ///
     /// Built here rather than in the CLI because a rung is a *bot policy*
     /// decision and those live in this crate — the CLI's `make_agent`
     /// maps a user's explicit bot choice, which is the other direction.
-    pub fn agent(self, seed: u64) -> Box<dyn BotAgent> {
-        let inner = self.base_agent(seed);
+    pub fn agent(self, seed: u64, knowledge: Knowledge) -> Box<dyn BotAgent> {
+        let inner = self.base_agent(seed, knowledge);
         if self.epsilon == 0.0 {
             return inner;
         }
@@ -385,18 +388,25 @@ impl LevelSpec {
         Box::new(HandicapAgent::new(inner, self.epsilon, seed ^ 0x5AD0_D1FF))
     }
 
-    fn base_agent(self, seed: u64) -> Box<dyn BotAgent> {
+    fn base_agent(self, seed: u64, knowledge: Knowledge) -> Box<dyn BotAgent> {
         match self.kind {
-            LevelKind::Heuristic => Box::new(HeuristicAgent::with_personality(self.side, seed, self.personality)),
+            LevelKind::Heuristic => {
+                Box::new(HeuristicAgent::with_personality(self.side, seed, self.personality).with_knowledge(knowledge))
+            }
             LevelKind::Mcts => Box::new(
-                MctsAgent::with_trees(self.side, seed, self.simulations, self.samples).with_personality(self.personality),
+                MctsAgent::with_trees(self.side, seed, self.simulations, self.samples)
+                    .with_personality(self.personality)
+                    .with_knowledge(knowledge),
             ),
-            LevelKind::Puct => Box::new(PuctAgent::with_config(
-                self.side,
-                seed,
-                UniformPolicyEvaluator::with_personality(self.side, self.personality),
-                PuctConfig { iterations: self.simulations, samples: self.samples, ..PuctConfig::default() },
-            )),
+            LevelKind::Puct => Box::new(
+                PuctAgent::with_config(
+                    self.side,
+                    seed,
+                    UniformPolicyEvaluator::with_personality(self.side, self.personality),
+                    PuctConfig { iterations: self.simulations, samples: self.samples, ..PuctConfig::default() },
+                )
+                .with_knowledge(knowledge),
+            ),
         }
     }
 
@@ -455,7 +465,7 @@ mod tests {
             for side in [Side::Corp, Side::Runner] {
                 let spec = level.spec(side);
                 assert_eq!(spec.level, level);
-                let _: Box<dyn BotAgent> = spec.agent(7);
+                let _: Box<dyn BotAgent> = spec.agent(7, Knowledge::default());
                 assert!(spec.label().starts_with(level.name()));
                 assert!(!spec.describe().is_empty());
             }
@@ -480,7 +490,7 @@ mod tests {
                     (styled.level, styled.side, styled.kind, styled.simulations, styled.samples, styled.epsilon),
                     (plain.level, plain.side, plain.kind, plain.simulations, plain.samples, plain.epsilon)
                 );
-                let _: Box<dyn BotAgent> = styled.agent(3);
+                let _: Box<dyn BotAgent> = styled.agent(3, Knowledge::default());
             }
         }
     }

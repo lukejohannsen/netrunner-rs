@@ -39,7 +39,7 @@ use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 
 use netrunner_core::cards::CardRegistry;
-use netrunner_core::rules::{GameEvent, PlayerAction};
+use netrunner_core::rules::PlayerAction;
 use netrunner_core::view::ClientView;
 
 use crate::agent::BotAgent;
@@ -84,10 +84,11 @@ impl<A: BotAgent> BotAgent for HandicapAgent<A> {
         choices[self.rng.random_range(0..choices.len())].clone()
     }
 
-    /// Forwarded: a handicapped agent is still the same agent, and one
-    /// that tracks state would otherwise see a game it did not play.
-    fn observe(&mut self, event: &GameEvent) {
-        self.inner.observe(event);
+    /// Forwarded whether or not this decision is a blunder: a
+    /// handicapped agent is still the same agent, and one that remembers
+    /// what it has seen would otherwise remember a game it did not play.
+    fn observe(&mut self, view: &ClientView) {
+        self.inner.observe(view);
     }
 }
 

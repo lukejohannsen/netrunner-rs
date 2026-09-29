@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use clap::{Parser, ValueEnum};
 
-use netrunner_bots::{BotAgent, HeuristicAgent, MctsAgent, RandomAgent};
+use netrunner_bots::{BotAgent, HeuristicAgent, Knowledge, MctsAgent, RandomAgent};
 use netrunner_core::rules::{GamePhase, GameState, Side};
 use netrunner_server::serve::{ServeBotKind, ServeOptions, Server};
 use netrunner_server::{fixtures, MatchSession, PlayerSlot, DEFAULT_RECONNECT_GRACE};
@@ -170,11 +170,14 @@ enum BotKind {
     Mcts,
 }
 
-fn make_agent(kind: BotKind, side: Side, seed: u64) -> Box<dyn BotAgent> {
+/// A bot that knows the deck it is dealt; the exhibition runner plays
+/// the sample pool with no format, so its opponent's cards are Casual's.
+fn make_agent(kind: BotKind, side: Side, seed: u64, deck: &netrunner_core::rules::Deck) -> Box<dyn BotAgent> {
+    let knowledge = Knowledge::new(netrunner_core::format::NsgFormat::Casual, Some(deck.clone()));
     match kind {
         BotKind::Random => Box::new(RandomAgent::new(seed)),
-        BotKind::Heuristic => Box::new(HeuristicAgent::new(side, seed)),
-        BotKind::Mcts => Box::new(MctsAgent::new(side, seed)),
+        BotKind::Heuristic => Box::new(HeuristicAgent::new(side, seed).with_knowledge(knowledge)),
+        BotKind::Mcts => Box::new(MctsAgent::new(side, seed).with_knowledge(knowledge)),
     }
 }
 
@@ -207,8 +210,8 @@ async fn run_headless(config: &Config) -> Result<(), Box<dyn std::error::Error>>
         let dealt = fixtures::sample_decks_for_seed(seed);
         let (state, _events) = GameState::setup(&dealt.corp, &dealt.runner, &registry, seed)?;
 
-        let corp_slot = PlayerSlot::Bot(make_agent(corp_kind, Side::Corp, seed));
-        let runner_slot = PlayerSlot::Bot(make_agent(runner_kind, Side::Runner, seed.wrapping_add(1)));
+        let corp_slot = PlayerSlot::Bot(make_agent(corp_kind, Side::Corp, seed, &dealt.corp));
+        let runner_slot = PlayerSlot::Bot(make_agent(runner_kind, Side::Runner, seed.wrapping_add(1), &dealt.runner));
         let session = MatchSession::new(state, registry.clone(), corp_slot, runner_slot);
 
         let final_state = session.run().await;

@@ -243,6 +243,13 @@ pub struct Session {
     undo_depth: usize,
     /// Oldest first. Only the newest can be `free`.
     rewind_points: VecDeque<RewindPoint>,
+    /// The view the last `Seat::Agent` decision was chosen against, kept
+    /// for a driver that watches what a seat was shown — `diag precepts`
+    /// keeps a `Knowledge` of its own beside each bot's and must feed it
+    /// the same views, and rebuilding one costs a legality pass. Moved,
+    /// never cloned; an `External` seat's view goes out in `Awaiting`
+    /// instead.
+    last_view: Option<ClientView>,
 }
 
 impl Session {
@@ -258,6 +265,7 @@ impl Session {
             steps: 0,
             decision_budget: DECISION_BUDGET,
             decision_actions: 0,
+            last_view: None,
             awaiting: None,
             ended: None,
             undo_depth: 0,
@@ -377,8 +385,15 @@ impl Session {
                 self.awaiting = Some(side);
                 return SessionStep::Awaiting { side, view: Box::new(view) };
             }
-            Seat::Agent(agent) => agent.select_action(&view, registry),
+            Seat::Agent(agent) => {
+                // The one door a bot's memory has: shown before it is
+                // asked, so what an access reveals is remembered by the
+                // seat that saw it (`BotAgent::observe`).
+                agent.observe(&view);
+                agent.select_action(&view, registry)
+            }
         };
+        self.last_view = Some(view);
 
         // A `BotAgent` only ever picks from `view.legal_actions`, so a
         // rejection here is a bug in the agent, not a recoverable
@@ -549,6 +564,7 @@ impl Session {
         let point = self.rewind_points.pop_back()?;
         let removed = self.history.len().saturating_sub(point.history_len);
         self.history.truncate(point.history_len);
+        self.last_view = None;
         self.state = point.state;
         self.decision_actions = point.decision_actions;
         self.awaiting = None;
@@ -575,6 +591,13 @@ impl Session {
 
     /// The most recently recorded action. Always `None` when the session
     /// was built `without_history`.
+    /// The view the last in-process agent decision was chosen against —
+    /// see the field. `None` before the first such decision and after a
+    /// `rewind`.
+    pub fn last_view(&self) -> Option<&ClientView> {
+        self.last_view.as_ref()
+    }
+
     pub fn last_entry(&self) -> Option<&HistoryEntry> {
         self.history.entries().last()
     }

@@ -243,14 +243,15 @@ fn play(
     let style = |spec: BotSpec, deck: &core_decks::DeckFile| -> Result<Personality, String> {
         if args.deck_styles { Personality::for_deck(deck) } else { Ok(spec.personality) }
     };
-    let setup = |personality: Personality| bots::AgentSetup {
+    let setup = |personality: Personality, deck: &core_decks::DeckFile| bots::AgentSetup {
         simulations: args.simulations,
         determinizations: args.determinizations,
         personality,
+        knowledge: config.knowledge(deck),
         ..bots::AgentSetup::new(args.simulations)
     };
-    let corp_setup = setup(style(args.corp, corp_deck)?);
-    let runner_setup = setup(style(args.runner, runner_deck)?);
+    let corp_setup = setup(style(args.corp, corp_deck)?, corp_deck);
+    let runner_setup = setup(style(args.runner, runner_deck)?, runner_deck);
     let corp = bots::make_seat_agent(args.corp.level, args.corp.kind, Side::Corp, seed, corp_setup, &config.model)?
         .ok_or("the Corp seat must be a bot that can take one")?;
     let runner = bots::make_seat_agent(

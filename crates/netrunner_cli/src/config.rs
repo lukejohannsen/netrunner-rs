@@ -949,6 +949,16 @@ impl Config {
     /// pairings everywhere (Phase 5 §25 Stage 0). Casual is `matchups()`
     /// game for game. An error rather than an empty list, because every
     /// caller indexes `matchups[game % len]`.
+    /// What a bot seat dealt `deck` knows (`netrunner_bots::Knowledge`):
+    /// the pool `--format` names for the opponent's hidden cards, and its
+    /// own deck exactly. The one place the CLI builds one, so a bench, a
+    /// headless pass, every `diag` and the TUI seat the same knowledge —
+    /// a seat that read a different format from its matchup filter would
+    /// imagine cards its opponent cannot hold.
+    pub fn knowledge(&self, deck: &DeckFile) -> netrunner_bots::Knowledge {
+        netrunner_bots::Knowledge::new(self.format.into(), Some(deck.to_deck()))
+    }
+
     pub fn matchups(&self, registry: &CardRegistry) -> Result<Vec<(DeckFile, DeckFile)>, String> {
         let format: NsgFormat = self.format.into();
         let matchups = netrunner_core::decks::matchups_in(format, registry);

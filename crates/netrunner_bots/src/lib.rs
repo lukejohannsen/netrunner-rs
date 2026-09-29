@@ -28,6 +28,7 @@ pub mod difficulty;
 pub mod eval;
 pub mod handicap;
 pub mod heuristic;
+pub mod knowledge;
 pub mod mcts;
 #[cfg(feature = "onnx")]
 pub mod onnx_fixture;
@@ -50,6 +51,7 @@ pub use difficulty::{Level, LevelKind, LevelSpec};
 pub use eval::{breaker_coverage, evaluate_state, evaluate_state_with, is_unrezzed_threat, Weights};
 pub use handicap::HandicapAgent;
 pub use heuristic::HeuristicAgent;
+pub use knowledge::Knowledge;
 pub use mcts::MctsAgent;
 #[cfg(feature = "onnx")]
 pub use onnx_policy::{OnnxPolicyError, OnnxPolicyEvaluator};

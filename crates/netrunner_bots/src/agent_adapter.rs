@@ -46,6 +46,7 @@ impl<A: BotAgent> BotAgentIndexAdapter<A> {
 impl<A: BotAgent> Agent for BotAgentIndexAdapter<A> {
     fn select_action(&mut self, state: &GameState, registry: &CardRegistry, mask: &[bool]) -> usize {
         let view = build_client_view(state, registry, self.side);
+        self.inner.observe(&view);
         let action = self.inner.select_action(&view, registry);
         if let Some(index) = ActionSpace::index_of(state, &action) {
             debug_assert!(mask[index], "BotAgent chose an action illegal per mask at index {index}");
