@@ -15,6 +15,24 @@
 //! Seeded by `scripts/catalog_sync.py --unimplemented <pack>` when the packs
 //! were embedded (Stage 0, 26 September 2026).
 
+/// The formats whose whole card pool is built, held by
+/// `every_card_in_a_complete_formats_pool_is_built_and_playable`: every
+/// printing in the format's pool that the catalog knows is a playable
+/// card. **The list only grows**, and it grows only there: a format that
+/// is not on it must still be short of a card (the same gate says so), so
+/// the day Standard's last pack lands, Standard is added here or the gate
+/// names it. Startup was verified complete on 29 September 2026 (Phase 5
+/// §25 Stage 0): System Gateway, Elevation and Vantage Point, 225 cards.
+pub(crate) const COMPLETE_FORMATS: &[crate::format::NsgFormat] = &[crate::format::NsgFormat::Startup];
+
+/// Printing codes in a complete format's pool that the embedded catalog
+/// does not carry, named so the gate can tell "not in the catalog" from
+/// "not built": NetrunnerDB lists every printing of a pool card, and
+/// Startup's Sure Gamble and Hedge Fund were also printed in packs the
+/// catalog does not embed (the Revised Core Set and System Core 2019).
+/// Each of the four is a card the pool holds under a System Gateway code.
+pub(crate) const STARTUP_POOL_CODES_OUTSIDE_THE_CATALOG: &[u32] = &[20056, 20132, 25059, 25146];
+
 /// *Vantage Point* (`vp`): tranche 1 of the NSG plan.
 pub(crate) const VP_UNIMPLEMENTED: &[(u32, &str)] = &[];
 

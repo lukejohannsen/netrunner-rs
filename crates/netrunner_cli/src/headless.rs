@@ -23,7 +23,7 @@ use std::io::{self, Write};
 use std::path::Path;
 
 use netrunner_core::cards::CardRegistry;
-use netrunner_core::decks::{self as core_decks, DeckFile};
+use netrunner_core::decks::DeckFile;
 use netrunner_core::rules::{GameState, MatchRules, Side};
 use netrunner_session::coverage::sample_pool_card_ids;
 use netrunner_session::{Coverage, MatchHistory, MatchRecordHeader, Seat, Session, SessionStep};
@@ -49,7 +49,7 @@ fn headless_kind(kind: BotKind) -> BotKind {
 /// `bench` use (the sweeps play the deck-covering schedule instead).
 fn deck_pair(config: &Config, registry: &CardRegistry, index: u32) -> Result<(String, DeckFile, DeckFile), String> {
     if config.all_matchups {
-        let matchups = core_decks::matchups();
+        let matchups = config.matchups(registry)?;
         let (corp, runner) = &matchups[index as usize % matchups.len()];
         return Ok((format!("{}_vs_{}", corp.id, runner.id), corp.clone(), runner.clone()));
     }

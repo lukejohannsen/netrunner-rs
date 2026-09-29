@@ -176,7 +176,7 @@ pub struct RezRateReport {
 
 pub fn run(args: &RezRateArgs, config: &Config) -> Result<(), Box<dyn std::error::Error>> {
     let registry = decks::sample_deck_registry();
-    let matchups = core_decks::matchups();
+    let matchups = config.matchups(&registry)?;
     let pool = match args.threads {
         Some(threads) => rayon::ThreadPoolBuilder::new().num_threads(threads).build()?,
         None => rayon::ThreadPoolBuilder::new().build()?,

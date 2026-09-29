@@ -60,6 +60,12 @@ pub fn run(action: DeckAction, config: &Config) -> Result<(), Box<dyn std::error
             }
         }
 
+        DeckAction::Matchups => {
+            for (corp, runner) in config.matchups(&registry)? {
+                println!("{} {}", corp.id, runner.id);
+            }
+        }
+
         DeckAction::New { name, side, identity } => {
             let side: Side = side.into();
             let identity = find_card(&registry, &identity)?;
