@@ -1,0 +1,53 @@
+{
+  "id": "nonequivalent_exchange",
+  "title": "Nonequivalent Exchange",
+  "side": "Corp",
+  "card_type": "Operation",
+  "cost": 2,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "GainCredits": [
+            "Corp",
+            5
+          ]
+        },
+        {
+          "PresentChoice": {
+            "chooser": "Corp",
+            "options": [
+              {
+                "Sequence": [
+                  {
+                    "GainCredits": [
+                      "Corp",
+                      2
+                    ]
+                  },
+                  {
+                    "GainCredits": [
+                      "Runner",
+                      2
+                    ]
+                  }
+                ]
+              },
+              {
+                "Sequence": []
+              }
+            ],
+            "texts": [
+              "You may have each player gain 2[credit]",
+              ""
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "numeric_id": 33118,
+  "is_playable": true
+}

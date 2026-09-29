@@ -1,0 +1,87 @@
+{
+  "id": "shipment_from_vladisibirsk",
+  "title": "Shipment from Vladisibirsk",
+  "side": "Corp",
+  "card_type": "Operation",
+  "cost": 1,
+  "play_requirement": {
+    "AmountAtLeast": [
+      "RunnerTags",
+      2
+    ]
+  },
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "PromptChooseCards": {
+            "side": "Corp",
+            "source": "OwnInstalled",
+            "filter": "Advanceable",
+            "min": 1,
+            "max": 1,
+            "reveal": false,
+            "shuffle_after": false,
+            "then": {
+              "PlaceAdvancementCounters": {
+                "Fixed": 1
+              }
+            }
+          }
+        },
+        {
+          "PromptChooseCards": {
+            "side": "Corp",
+            "source": "OwnInstalled",
+            "filter": "Advanceable",
+            "min": 1,
+            "max": 1,
+            "reveal": false,
+            "shuffle_after": false,
+            "then": {
+              "PlaceAdvancementCounters": {
+                "Fixed": 1
+              }
+            }
+          }
+        },
+        {
+          "PromptChooseCards": {
+            "side": "Corp",
+            "source": "OwnInstalled",
+            "filter": "Advanceable",
+            "min": 1,
+            "max": 1,
+            "reveal": false,
+            "shuffle_after": false,
+            "then": {
+              "PlaceAdvancementCounters": {
+                "Fixed": 1
+              }
+            }
+          }
+        },
+        {
+          "PromptChooseCards": {
+            "side": "Corp",
+            "source": "OwnInstalled",
+            "filter": "Advanceable",
+            "min": 1,
+            "max": 1,
+            "reveal": false,
+            "shuffle_after": false,
+            "then": {
+              "PlaceAdvancementCounters": {
+                "Fixed": 1
+              }
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "numeric_id": 33119,
+  "is_playable": true
+}

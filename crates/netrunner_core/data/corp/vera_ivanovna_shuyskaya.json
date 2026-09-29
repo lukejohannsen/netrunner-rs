@@ -1,0 +1,79 @@
+{
+  "id": "vera_ivanovna_shuyskaya",
+  "title": "Vera Ivanovna Shuyskaya",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 3,
+  "trash_cost": 3,
+  "unique": true,
+  "triggers": [
+    {
+      "trigger": "OnAgendaScored",
+      "subject": "Any",
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Corp",
+            "options": [
+              {
+                "PromptChooseCards": {
+                  "side": "Corp",
+                  "source": "OpponentHand",
+                  "filter": "Any",
+                  "min": 1,
+                  "max": 1,
+                  "reveal": true,
+                  "shuffle_after": false,
+                  "destination": "OpponentDiscard"
+                }
+              },
+              {
+                "Sequence": []
+              }
+            ],
+            "texts": [
+              "you may reveal the grip. Trash 1 card revealed this way",
+              ""
+            ]
+          }
+        }
+      ],
+      "text": "Whenever an agenda is scored or stolen, you may reveal the grip. Trash 1 card revealed this way."
+    },
+    {
+      "trigger": "OnAgendaStolen",
+      "subject": "Any",
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Corp",
+            "options": [
+              {
+                "PromptChooseCards": {
+                  "side": "Corp",
+                  "source": "OpponentHand",
+                  "filter": "Any",
+                  "min": 1,
+                  "max": 1,
+                  "reveal": true,
+                  "shuffle_after": false,
+                  "destination": "OpponentDiscard"
+                }
+              },
+              {
+                "Sequence": []
+              }
+            ],
+            "texts": [
+              "you may reveal the grip. Trash 1 card revealed this way",
+              ""
+            ]
+          }
+        }
+      ],
+      "text": "Whenever an agenda is scored or stolen, you may reveal the grip. Trash 1 card revealed this way."
+    }
+  ],
+  "numeric_id": 33115,
+  "is_playable": true
+}

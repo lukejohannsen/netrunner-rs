@@ -1,0 +1,44 @@
+{
+  "id": "thule_subsea_safety_below",
+  "title": "Thule Subsea: Safety Below",
+  "side": "Corp",
+  "card_type": "Identity",
+  "cost": 0,
+  "min_deck_size": 45,
+  "triggers": [
+    {
+      "trigger": "OnAgendaStolen",
+      "subject": "Any",
+      "effects": [
+        {
+          "OfferPaidChoice": {
+            "side": "Runner",
+            "cost": {
+              "AllOf": [
+                {
+                  "Clicks": 1
+                },
+                {
+                  "Credits": 2
+                }
+              ]
+            },
+            "if_paid": {
+              "Sequence": []
+            },
+            "if_declined": {
+              "DealDamage": [
+                "Brain",
+                1
+              ]
+            },
+            "text": "do 1 core damage unless they spend [click] and 2[credit]"
+          }
+        }
+      ],
+      "text": "Whenever the Runner steals an agenda, do 1 core damage unless they spend [click] and 2[credit]."
+    }
+  ],
+  "numeric_id": 33095,
+  "is_playable": true
+}

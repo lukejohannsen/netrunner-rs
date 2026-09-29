@@ -1,0 +1,33 @@
+{
+  "id": "reaper_function",
+  "title": "Reaper Function",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 3,
+  "trash_cost": 2,
+  "triggers": [
+    {
+      "trigger": "OnTurnStart",
+      "effects": [
+        {
+          "OfferPaidChoice": {
+            "side": "Corp",
+            "cost": "TrashSelf",
+            "if_paid": {
+              "DealDamage": [
+                "Net",
+                2
+              ]
+            },
+            "if_declined": {
+              "Sequence": []
+            },
+            "text": "you may trash this asset to do 2 net damage"
+          }
+        }
+      ]
+    }
+  ],
+  "numeric_id": 33107,
+  "is_playable": true
+}

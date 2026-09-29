@@ -4840,6 +4840,106 @@ change deck-building rules, which the validator does not model yet
 **Banned:** Dr. Vientiane Keeling, K2CP Turbine, Matryoshka, Nanisivik
 Grid, Tsakhia, World Tree.
 
+#### Stage 1 — ten Corp cards, composed (29 September 2026)
+
+`feat/ph-stage-1-corp-composes`: Thule Subsea: Safety Below, Distributed
+Tracing, Djupstad Grid, Reaper Function, Vampyronassa, Post-Truth Dividend,
+Gaslight, Vera Ivanovna Shuyskaya, Nonequivalent Exchange and Shipment from
+Vladisibirsk. **No new `Effect`, and no change to the engine or the
+clients:** card files, decks and tests only. Parhelion 10 of 63;
+`PH_UNIMPLEMENTED` 63 → 53. The survey's "composes" held for all ten.
+
+- **What each is made of.**
+  - Thule Subsea's "unless they spend [click] and 2[credit]" is
+    Jaguarundi's nested paid choice with `Cost::AllOf` as its price, on
+    Epiphany Analytica's `OnAgendaStolen` about any agenda.
+  - Distributed Tracing is Touch-ups' additional [click] and Public
+    Trail's last-turn requirement, counting `OnAgendaStolen` instead of
+    the successful run.
+  - Djupstad Grid is Tucana's `AgendaCameFromThisCardsServer`, without
+    persistence, doing core damage.
+  - Reaper Function is Clearinghouse: "you may trash this asset to" is a
+    cost (`Cost::TrashSelf`).
+  - Gaslight's "you may trash this asset. **If you do**, search R&D" is
+    not a cost (CR 1.16.11). The trash is the first effect of the "may",
+    and Pivot's search follows it, revealed and shuffled. It asks before
+    the mandatory draw, which waits for it (TAI Stage 1).
+  - Vera Ivanovna Shuyskaya takes two entries, scored and stolen, each a
+    "may" whose yes is a selection of one card from the Runner's grip to
+    their heap, revealed. That is Touch-ups' reading of "reveal the grip":
+    the Corp is shown the whole grip as the selection's candidates.
+  - Vampyronassa's "you may draw 1 or 2 cards" is a three-way choice: 1,
+    2 or none.
+  - Shipment from Vladisibirsk's "a total of 4" is four selections of one
+    advanceable install, each placing 1 counter. A card may be chosen
+    more than once, which is what "a total of" allows.
+  - Post-Truth Dividend and Nonequivalent Exchange are a "may" each.
+- **Fidelity limits.**
+  - Vera's reveal is not a `CardRevealed` of each grip card. The Corp
+    sees the grip through the selection, and only the trashed card is
+    announced as revealed. No card in the pool reads a reveal of the
+    grip.
+  - Shipment's four selections cannot be answered as one. A person picks
+    a card four times, where the printed card would take the whole
+    distribution at once. The outcome is the same.
+- **Client.** Nothing added to the view, the log or a decision, so no
+  ledger line and no ledger row. Thule Subsea's price is worded by
+  `prose`'s existing `AllOf` ("and"), and the pop-up shows the card's own
+  clause.
+- **Decks.**
+  - **Undertow**, a new Corp Sweep deck on Thule Subsea, on Retirement
+    Package's frame. Two Distributed Tracing, two Djupstad Grid, two
+    Shipment from Vladisibirsk, a Vera Ivanovna Shuyskaya and two Reaper
+    Function replace its two Brasília Government Grid, two Caveat Emptor,
+    two Retirement Plan, two Synchrocyclotron and a Sleipnir. Influence
+    14 of 15, 21 points. It is Standard-legal (pinned `not_startup`),
+    since Engineering the Future was the frame's one Core Set card.
+  - **Paid Content** took two Gaslight, two Nonequivalent Exchange, two
+    Post-Truth Dividend and a third Kingmaking. They replace its
+    Neurospike, two Manegarm Skunkworks, two Funhouse, a Send a Message
+    and its Superconducting Hub, and the points stay at 20.
+  - **A Thousand Cuts** took two Vampyronassa for its Ansel 1.0 and a
+    Mindscaping.
+- **DSL ratio (`pool_status.py`):** unchanged at 18 of 91 `Effect`
+  variants single-use, 1 unused (`Trace`), over 390 card files.
+- **Real play**, 96 games of each edited Corp deck against Safety Net
+  (seed 2).
+  - Undertow, random seats: Thule Subsea's trigger fired 203 times.
+    Reaper Function was trashed for its damage 38 times, Vera heard 1
+    score and 10 steals, Distributed Tracing was played twice and
+    Shipment once.
+  - Undertow, heuristic seats: Thule Subsea fired 179 times, Reaper
+    Function 28 and Vera 19. The heuristic Corp never plays Distributed
+    Tracing or Shipment (Phase 5 debt).
+  - Djupstad Grid was installed 80 and 98 times and rezzed 46 and 13, but
+    no agenda was scored from its root in either seating. Its damage is
+    reached by the card's test alone.
+  - Paid Content: Gaslight's turn-start "may" resolved 111 times on
+    random seats and 1206 on heuristic ones. The heuristic Corp keeps it
+    and never trashes it for the search, where random seats trashed it
+    90 times.
+  - Paid Content: Nonequivalent Exchange was played 43 times on random
+    seats and never on heuristic ones (Phase 5 debt). Post-Truth Dividend
+    was scored 5 and 36 times.
+  - A Thousand Cuts: Vampyronassa (rez cost 7) is never rezzed on random
+    seats. On heuristic seats it was rezzed 7 times, with 37 subroutines
+    fired and 15 broken.
+- **Measured.** Both sweeps at 256 seeds are green, the card gate
+  included.
+  - `coverage_identical.py` against `origin/main` has both random
+    seatings **identical**.
+  - Both heuristic seatings moved. The stage changes no engine code, and
+    a Sweep deck is in no `matchups()`, so `determinize` sampling the ten
+    new Corp cards is the one path by which they can. Of 192 games:
+
+    | | main | Stage 1 (view) | Stage 1 (index) |
+    |---|---|---|---|
+    | Corp agenda wins | 80 | 82 | 81 |
+    | Corp flatlines | 15 | 9 | 9 |
+    | Runner agenda wins | 97 | 99 | 100 |
+    | Runner deck-outs | 0 | 2 | 2 |
+    | Steps | 122418 | 122046 | 122033 |
+
 ### 5. Midnight Sun and its Booster Pack — 65 cards (C 22 / V 26 / M 17)
 
 **Decks:** Sweep decks on its five identities.

@@ -1,0 +1,103 @@
+{
+  "id": "undertow",
+  "name": "Undertow",
+  "side": "Corp",
+  "category": "Sweep",
+  "description": "Not a published list: built so the sweeps reach Thule Subsea: Safety Below, Parhelion's Haas-Bioroid identity, whose every steal costs the Runner a core damage unless they spend [click] and 2[credit]. Retirement Package's frame after The Automata Initiative, with two Distributed Tracing, two Djupstad Grid, two Shipment from Vladisibirsk, a Vera Ivanovna Shuyskaya and two Reaper Function for its two Brasília Government Grid, two Caveat Emptor, two Retirement Plan, two Synchrocyclotron and a Sleipnir: a steal is taxed and answered with a tag, a tag with advancement counters, and a score from Djupstad Grid's server with core damage. Standard-legal: Engineering the Future was the frame's one Core Set card.",
+  "style": "glacier",
+  "identity": "thule_subsea_safety_below",
+  "cards": [
+    {
+      "card": "send_a_message",
+      "count": 3
+    },
+    {
+      "card": "perfect_recall",
+      "count": 2
+    },
+    {
+      "card": "bran_1_0",
+      "count": 2
+    },
+    {
+      "card": "reverb",
+      "count": 2
+    },
+    {
+      "card": "ansel_1_0",
+      "count": 1
+    },
+    {
+      "card": "vertigo",
+      "count": 2
+    },
+    {
+      "card": "ansel_2_0",
+      "count": 2
+    },
+    {
+      "card": "corporate_hospitality",
+      "count": 2
+    },
+    {
+      "card": "working_prototype",
+      "count": 2
+    },
+    {
+      "card": "sorocaban_blade",
+      "count": 2
+    },
+    {
+      "card": "warm_reception",
+      "count": 2
+    },
+    {
+      "card": "lightning_laboratory",
+      "count": 2
+    },
+    {
+      "card": "active_policing",
+      "count": 2
+    },
+    {
+      "card": "lycian_multi_munition",
+      "count": 2
+    },
+    {
+      "card": "salvo_testing",
+      "count": 2
+    },
+    {
+      "card": "jaguarundi",
+      "count": 2
+    },
+    {
+      "card": "mic",
+      "count": 2
+    },
+    {
+      "card": "stegodon_mk_iv",
+      "count": 2
+    },
+    {
+      "card": "distributed_tracing",
+      "count": 2
+    },
+    {
+      "card": "djupstad_grid",
+      "count": 2
+    },
+    {
+      "card": "shipment_from_vladisibirsk",
+      "count": 2
+    },
+    {
+      "card": "vera_ivanovna_shuyskaya",
+      "count": 1
+    },
+    {
+      "card": "reaper_function",
+      "count": 2
+    }
+  ]
+}
