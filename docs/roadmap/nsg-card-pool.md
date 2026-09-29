@@ -4613,6 +4613,64 @@ Friere Gonzalez, Oppo Research, S-Dobrado and Capybara. **No new
     | Runner agenda wins | 111 | 127 |
     | Steps | 110799 | 109018 |
 
+#### Stage 8b — a psi game on a successful run, and costs paid in grip cards (29 September 2026)
+
+`feat/tai-stage-8b-adrian-seis-daniela`: Adrian Seis and Daniela Jorge
+Inácio. **No new `Effect`.** The Automata Initiative 61 of 65;
+`TAI_UNIMPLEMENTED` 6 → 4.
+
+- **A cost paid in grip cards** (`Cost::AddRandomFromGripToBottom`):
+  Daniela's "the Runner must add 2 cards from the grip at random to the
+  bottom of the stack". It cannot be paid with fewer cards than that, so
+  then there is no trash or steal (CR 1.16).
+- **Additional costs to steal and to trash that are not credits** (CR
+  1.16.10).
+  - `ContinuousKind::StealCost` is a `Cost` now, not a number of credits:
+    Magistrate Revontulet's is `Credits(3)`.
+  - `ContinuousKind::AdditionalTrashCost` is the trash's
+    (`AccessPhase::PendingChoice::trash_also`), paid with the credits and
+    drawn on the access's facts line ("Trashing it costs 2 credits and:
+    add 2 cards from your grip at random to the bottom of your stack").
+  - Daniela's trash cost binds only while she is rezzed
+    (`CurrentlyAccessingInstalledCard { rezzed_only }` as the `while`):
+    9.1.8 has no exception for a trash cost as 9.1.8e has for a steal.
+  - "To steal an agenda from this server or its root" is
+    `Scope::StealingFromThisServer`: accessed in a breach of her server.
+    It persists for the rest of the run she is trashed in (9.12.5), read
+    from the run's trashed persistent upgrades as Mahkota Langit Grid's
+    trash cost is.
+- **Prohibitions on access, bound to one install, for the rest of a run**
+  (CR 7.4.2): Adrian's psi game. `Prohibition::AccessOthers` ("cannot
+  access cards other than this upgrade") and `Prohibition::Access`
+  ("cannot access this upgrade"), made by `Effect::Prohibit {
+  this_install }` and asked where the candidates are pruned
+  (`lingering::installs_prohibited`). Drawn in the In effect list with the
+  upgrade's name. His move as the turn ends is Vovô Ozetti's.
+- **Deck.** Honor Roll took two Adrian Seis for its two Mahkota Langit
+  Grid, and two Daniela for its two Empiricist. Other decks still carry
+  the cards that left.
+- **DSL ratio:** unchanged at 20 of 91 `Effect` variants single-use.
+- **Real play**, 96 games a seating (seed 2), Honor Roll against Picket
+  Line.
+  - Random seats: Adrian rezzed 73 times and played 44 psi games.
+    Daniela rezzed 56 times and was accessed 83 times.
+  - Heuristic seats: Adrian rezzed 70 times and played 73 psi games.
+    Daniela rezzed 63 times and was accessed 214 times.
+- **Measured.** Both sweeps at 256 seeds are green, the card gate and the
+  concealment check included.
+  - A ref with every engine and client change and neither card nor the
+    deck swap is identical to `origin/main` in all four shapes.
+    Magistrate's cost as a `Cost` moves nothing.
+  - With the cards, the random seatings stay identical. The heuristic
+    seatings move by `determinize`, of 192 games:
+
+    | | before the cards | Stage 8b |
+    |---|---|---|
+    | Corp agenda wins | 55 | 67 |
+    | Corp flatlines | 9 | 13 |
+    | Runner agenda wins | 127 | 112 |
+    | Steps | 109018 | 115913 |
+
 ### 4. Parhelion — 63 cards (C 19 / V 26 / M 18)
 
 **Decks:** Sweep decks on its four identities. Nova Initiumia and Ampère

@@ -131,13 +131,24 @@ pub enum ContinuousKind {
     /// (`CardDefinition::additional_play_cost`), which is the only click
     /// a card in the pool lowers; the action's own click is never lowered.
     PlayClicks(Number),
-    /// Credits the Runner pays, as an additional cost, to steal an agenda —
+    /// What the Runner pays, as an additional cost, to steal an agenda —
     /// Magistrate Revontulet's "as an additional cost to steal an agenda,
-    /// the Runner must pay 3[c]". On top of the agenda's printed
-    /// `steal_cost` (Méliès City Luxury Line), with which it is one price
-    /// (CR 1.16.10: additional costs are paid together with it; the Runner
-    /// may decline to steal rather than pay, CR 1.17.3d).
-    StealCost(Number),
+    /// the Runner must pay 3[c]", Daniela Jorge Inácio's "…the Runner must
+    /// add 2 cards from the grip at random to the bottom of the stack". On
+    /// top of the agenda's printed `steal_cost` (Méliès City Luxury Line),
+    /// with which it is one price (CR 1.16.10: additional costs are paid
+    /// together with it; the Runner may decline to steal rather than pay,
+    /// CR 1.17.3d). A `Cost`, as `ScoreCost` is: it was a number of
+    /// credits until Daniela's was a card.
+    StealCost(crate::dsl::Cost),
+    /// What the Runner pays, beside the trash cost, to trash a card they
+    /// access — Daniela Jorge Inácio's "As an additional cost to trash
+    /// this upgrade, the Runner must add 2 cards from the grip at random to
+    /// the bottom of the stack" (`Scope::This`). Offered with the trash and
+    /// paid with it (CR 1.16.10b), and not payable means no trash (the
+    /// access's `AccessPhase::PendingChoice::trash_also`). Not
+    /// `TrashCost`, which is credits and changes the printed number.
+    AdditionalTrashCost(crate::dsl::Cost),
     /// A cost the Corp pays, as an additional cost, to score an agenda —
     /// Word on the Street's "As an additional cost to score an agenda the
     /// Corp installed this turn, they must add this resource to their score
@@ -285,6 +296,14 @@ pub enum Scope {
     /// An agenda the Runner is stealing, matching the filter — Magistrate
     /// Revontulet's "an agenda".
     Stealing(CardFilter),
+    /// An agenda the Runner is stealing from the server this card is
+    /// installed in — Daniela Jorge Inácio's "to steal an agenda from this
+    /// server or its root": accessed in a breach of that server, so one in
+    /// HQ's hand or R&D's deck as well as in its root. `Stealing`'s filter
+    /// is about the card and cannot say where it was accessed. A
+    /// persistent upgrade trashed during the run keeps it (the run's
+    /// server).
+    StealingFromThisServer,
     /// An agenda the Corp is scoring, matching the filter — Word on the
     /// Street's "an agenda the Corp installed this turn". Asked of the
     /// install being scored (`continuous::Target::Scoring`), so an

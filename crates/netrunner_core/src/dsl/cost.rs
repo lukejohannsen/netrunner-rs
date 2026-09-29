@@ -237,6 +237,16 @@ pub enum Cost {
     /// revealed. Drawn with the state's own PRNG, so a replay trashes the
     /// same cards.
     TrashRandomFromHq(u32),
+    /// The Runner adds `u32` cards from the grip at random to the bottom of
+    /// the stack — Daniela Jorge Inácio's "As an additional cost to trash
+    /// this upgrade, the Runner must add 2 cards from the grip at random to
+    /// the bottom of the stack", and the same to steal an agenda from her
+    /// server. Affordable only with that many in the grip (CR 1.16: a cost
+    /// is paid in full or not at all), so with fewer the Runner cannot
+    /// trash or steal. Drawn with the state's own PRNG, as
+    /// `TrashRandomFromHq` is. Composition didn't work: no cost moved a
+    /// card from the grip, and the only random one was the Corp's.
+    AddRandomFromGripToBottom(u32),
     /// Every listed cost is paid, in order — Humanoid Resources' "[click]
     /// [click][click], [trash]: …", a click cost *and* a self-trash on one
     /// ability. `AnyOf`'s conjunctive twin: affordable only when every

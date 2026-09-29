@@ -26,8 +26,6 @@ pub(crate) const TAI_UNIMPLEMENTED: &[(u32, &str)] = &[
     (34020, "Arissana Rocha Nahu: Street Artist"),
     (34033, "Wage Workers"),
     (34039, "A Teia: IP Recovery"),
-    (34046, "Adrian Seis"),
-    (34047, "Daniela Jorge Inácio"),
     (34049, "Oracle Thinktank"),
 ];
 

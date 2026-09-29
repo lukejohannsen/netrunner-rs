@@ -1818,25 +1818,38 @@ pub enum Prohibition {
     /// to run (`Effect::PromptChooseServer`), which then leave the remotes
     /// out.
     RunOnRemote,
+    /// The Runner cannot access cards other than one install — Adrian
+    /// Seis's "If the bids differ, the Runner cannot access cards other
+    /// than this upgrade for the remainder of that run", always bound to
+    /// that install (`Effect::Prohibit::this_install`). Asked where the
+    /// breach drops what can no longer be accessed (CR 7.4.2,
+    /// `run::access::prune_candidates`).
+    AccessOthers,
+    /// The Runner cannot access one install — Adrian Seis's "If the bids
+    /// match, the Runner cannot access this upgrade for the remainder of
+    /// that run", bound as `AccessOthers` is and asked where it is.
+    Access,
 }
 
 impl Prohibition {
     /// Every prohibition, for a question put about each of them
     /// (`view::build_client_view`'s `standing_cannot`).
-    pub const ALL: [Prohibition; 6] = [
+    pub const ALL: [Prohibition; 8] = [
         Prohibition::ScoreAgendas,
         Prohibition::StealOrTrash,
         Prohibition::SpendOrLoseCreditPool,
         Prohibition::SpendCredits,
         Prohibition::EndTheRun,
         Prohibition::RunOnRemote,
+        Prohibition::AccessOthers,
+        Prohibition::Access,
     ];
 
     /// The player it binds.
     pub fn binds(self) -> Side {
         match self {
             Prohibition::ScoreAgendas | Prohibition::EndTheRun => Side::Corp,
-            Prohibition::StealOrTrash | Prohibition::SpendOrLoseCreditPool | Prohibition::SpendCredits | Prohibition::RunOnRemote => Side::Runner,
+            Prohibition::StealOrTrash | Prohibition::SpendOrLoseCreditPool | Prohibition::SpendCredits | Prohibition::RunOnRemote | Prohibition::AccessOthers | Prohibition::Access => Side::Runner,
         }
     }
 
@@ -1847,7 +1860,7 @@ impl Prohibition {
     pub(crate) fn counted_as(self) -> Option<crate::dsl::Trigger> {
         match self {
             Prohibition::RunOnRemote => Some(crate::dsl::Trigger::OnRunStart),
-            Prohibition::ScoreAgendas | Prohibition::StealOrTrash | Prohibition::SpendOrLoseCreditPool | Prohibition::SpendCredits | Prohibition::EndTheRun => None,
+            Prohibition::ScoreAgendas | Prohibition::StealOrTrash | Prohibition::SpendOrLoseCreditPool | Prohibition::SpendCredits | Prohibition::EndTheRun | Prohibition::AccessOthers | Prohibition::Access => None,
         }
     }
 }

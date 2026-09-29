@@ -1,0 +1,59 @@
+{
+  "id": "adrian_seis",
+  "title": "Adrian Seis",
+  "side": "Corp",
+  "card_type": "Upgrade",
+  "cost": 0,
+  "unique": true,
+  "triggers": [
+    {
+      "trigger": "OnSuccessfulRun",
+      "subject": "This",
+      "effects": [
+        {
+          "PsiGame": {
+            "on_match": {
+              "Prohibit": {
+                "what": "Access",
+                "until": "Run",
+                "this_install": true
+              }
+            },
+            "on_differ": {
+              "Prohibit": {
+                "what": "AccessOthers",
+                "until": "Run",
+                "this_install": true
+              }
+            }
+          }
+        }
+      ],
+      "text": "Whenever the Runner makes a successful run on this server, play a Psi Game."
+    },
+    {
+      "trigger": "OnDiscardPhaseEnd",
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Corp",
+            "options": [
+              "PromptMoveThisCardToAnotherRoot",
+              {
+                "Sequence": []
+              }
+            ],
+            "texts": [
+              "you may move this upgrade to the root of another server",
+              ""
+            ]
+          }
+        }
+      ],
+      "text": "When your turn ends, you may move this upgrade to the root of another server."
+    }
+  ],
+  "trash_cost": 2,
+  "numeric_id": 34046,
+  "is_playable": true
+}

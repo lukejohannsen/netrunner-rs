@@ -133,7 +133,7 @@ fn for_each_applying<'a>(
             if source.own_text_only != is_own_text {
                 continue;
             }
-            if source.server_text_only && !matches!(effect.applies_to, Scope::RootOfThisServer(_) | Scope::RunsOnThisServer) {
+            if source.server_text_only && !matches!(effect.applies_to, Scope::RootOfThisServer(_) | Scope::RunsOnThisServer | Scope::StealingFromThisServer) {
                 continue;
             }
             if !applies(state, &source, &effect.applies_to, &target) {
@@ -218,6 +218,11 @@ fn applies(state: &GameState, source: &Source<'_>, scope: &Scope, target: &Targe
             card.side == source.side && matches!(card.card_type, CardType::Event | CardType::Operation) && card_matches_filter(card, filter)
         }
         (Scope::Stealing(filter), Target::Card(card)) => card.card_type == CardType::Agenda && card_matches_filter(card, filter),
+        (Scope::StealingFromThisServer, Target::Card(card)) => {
+            card.card_type == CardType::Agenda
+                && source.server.is_some()
+                && state.active_run.as_ref().and_then(|run| run.access_state.as_ref()).is_some_and(|access| Some(access.server) == source.server)
+        }
         (Scope::Scoring(filter), Target::Scoring { card, install }) => {
             card.card_type == CardType::Agenda
                 && card_matches_filter(card, filter)
@@ -504,22 +509,42 @@ pub(crate) fn additional_play_cost_of(state: &GameState, registry: &CardRegistry
 /// Archives as a steal it could not miss, ran it four times a turn with
 /// no credits under a rezzed Magistrate, and never clicked for one.
 pub fn steal_price(state: &GameState, registry: &CardRegistry, card: &CardDefinition) -> Option<Cost> {
-    let added = if card.agenda_points.is_some() { steal_cost_added(state, registry, card) } else { 0 };
-    match (card.steal_cost.clone(), added) {
-        (printed, 0) => printed,
-        (None, added) => Some(Cost::Credits(added)),
-        (Some(printed), added) => Some(Cost::AllOf(vec![printed, Cost::Credits(added)])),
+    let added = if card.agenda_points.is_some() { steal_costs_added(state, registry, card) } else { Vec::new() };
+    let mut parts: Vec<Cost> = card.steal_cost.clone().into_iter().chain(added).collect();
+    match parts.len() {
+        0 => None,
+        1 => parts.pop(),
+        _ => Some(Cost::AllOf(parts)),
     }
 }
 
-/// The credits the table adds to the cost of stealing the agenda `card`
-/// (Magistrate Revontulet), 0 when it adds none.
-pub(crate) fn steal_cost_added(state: &GameState, registry: &CardRegistry, card: &CardDefinition) -> u32 {
-    sum(state, registry, Target::Card(card), |kind| match kind {
-        ContinuousKind::StealCost(number) => Some(number),
-        _ => None,
-    })
-    .max(0) as u32
+/// The costs the table adds to stealing the agenda `card` (Magistrate
+/// Revontulet's credits, Daniela Jorge Inácio's grip cards), in the order
+/// their cards are asked.
+pub(crate) fn steal_costs_added(state: &GameState, registry: &CardRegistry, card: &CardDefinition) -> Vec<Cost> {
+    let mut costs = Vec::new();
+    for_each_applying(state, registry, Target::Card(card), |effect, _, _| {
+        if let ContinuousKind::StealCost(cost) = &effect.kind {
+            costs.push(cost.clone());
+        }
+    });
+    costs
+}
+
+/// What the Runner must pay beside the trash cost to trash the card they
+/// are accessing (Daniela Jorge Inácio), or `None`.
+pub(crate) fn additional_trash_cost(state: &GameState, registry: &CardRegistry, card: &CardDefinition) -> Option<Cost> {
+    let mut costs = Vec::new();
+    for_each_applying(state, registry, Target::Card(card), |effect, _, _| {
+        if let ContinuousKind::AdditionalTrashCost(cost) = &effect.kind {
+            costs.push(cost.clone());
+        }
+    });
+    match costs.len() {
+        0 => None,
+        1 => costs.pop(),
+        _ => Some(Cost::AllOf(costs)),
+    }
 }
 
 /// Every additional cost to score the Corp install `install` (Word on the

@@ -472,7 +472,7 @@ mod tests {
         breaching.access_state = Some(access(PublicAccessPhase::SelectNextCard { selectable_cards: Vec::new() }));
         view.active_run = Some(breaching.clone());
         assert_eq!(lit_steps(&view), ["CR 5.7.1f", "CR 6.9.5b", "CR 7.5.4"]);
-        breaching.access_state = Some(access(PublicAccessPhase::PendingChoice { card: None, trash_cost: None, mandatory_steal: false, steal_cost: None }));
+        breaching.access_state = Some(access(PublicAccessPhase::PendingChoice { card: None, trash_cost: None, mandatory_steal: false, steal_cost: None, trash_also: None }));
         view.active_run = Some(breaching);
         let timing = timing(&view);
         assert_eq!(timing.charts.iter().filter(|c| c.lit()).map(|c| c.title).collect::<Vec<_>>(), ["Runner turn", "Run", "Breach", "Access"]);

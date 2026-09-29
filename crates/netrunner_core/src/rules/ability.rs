@@ -2962,6 +2962,7 @@ pub(crate) fn cost_is_affordable(
         Cost::TrashSelf | Cost::RemoveSelfFromGame | Cost::TakeTags(_) | Cost::ClearTags => true,
         Cost::TakeBadPublicity(_) => side == Side::Corp,
         Cost::TrashRandomFromHq(count) => state.corp.hq.len() as u32 >= *count,
+        Cost::AddRandomFromGripToBottom(count) => side == Side::Runner && state.runner.grip.len() as u32 >= *count,
         Cost::RevealSelf | Cost::AddSelfToHq => side == Side::Corp && acting_corp_install(state, ctx).is_some(),
         Cost::DerezSelf => side == Side::Corp && acting_corp_install(state, ctx).is_some_and(|installed| installed.is_rezzed(registry)),
         // Payable while the card is in its owner's hand.
@@ -3108,6 +3109,21 @@ pub(crate) fn pay_cost_ctx(
                 // Revealed as it is trashed, so it lands faceup.
                 state.corp.archives.push(ArchivedCard::faceup(card.clone()));
                 events.push(GameEvent::CardTrashed { side: Side::Corp, card, from: crate::dsl::TrashedFrom::Hand, by: Some(side) });
+            }
+            Ok(events)
+        }
+
+        Cost::AddRandomFromGripToBottom(count) => {
+            if (state.runner.grip.len() as u32) < *count {
+                return Err(RulesError::NotEnoughCardsInGrip { required: *count, available: state.runner.grip.len() as u32 });
+            }
+            let mut events = Vec::new();
+            for _ in 0..*count {
+                let index = (state.next_u64() % state.runner.grip.len() as u64) as usize;
+                let card = state.runner.grip.remove(index);
+                // The top of the stack is its end, so its bottom is the front.
+                state.runner.stack.insert(0, card.clone());
+                events.push(GameEvent::CardAddedToDeck { side: Side::Runner, card, top: false, revealed: false });
             }
             Ok(events)
         }

@@ -308,6 +308,13 @@ pub enum AccessPhase {
         /// `PlayerAction::PassAccessedCard` is illegal while this is set.
         mandatory_steal: bool,
         steal_cost: Option<Cost>,
+        /// What the trash costs beside `trash_cost`'s credits
+        /// (`ContinuousKind::AdditionalTrashCost`, Daniela Jorge Inácio's
+        /// "add 2 cards from the grip at random to the bottom of the
+        /// stack"), paid with them; the trash is not offered while it
+        /// cannot be paid.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        trash_also: Option<Cost>,
     },
 }
 
