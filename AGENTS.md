@@ -41,7 +41,7 @@ No rendering engine is mandated. Any client — terminal, desktop, web — obeys
 | Crate | Role |
 |---|---|
 | `netrunner_core` | Pure deterministic rules engine, card DSL, embedded card/deck data, masking. Everything else depends on this; it depends on nothing. |
-| `netrunner_bots` | Automated players over a masked `ClientView`: `BotAgent`, random/heuristic/MCTS/PUCT agents, `determinize`, RL observation encoding, optional ONNX policy. |
+| `netrunner_bots` | Automated players over a masked `ClientView`: `BotAgent`, random/heuristic/MCTS/PUCT agents, `determinize` over what a seat knows (`Knowledge`: the format's pool, its own deck, and a memory of what it has seen — shown every view it acts on through `BotAgent::observe`), RL observation encoding, optional ONNX policy. |
 | `netrunner_session` | **The one match decision loop.** `Session` (pull-shaped: `step` → `SessionStep`), `Seat`, the single `MAX_STEPS`, `MatchHistory`, and `GameEndReason`/`classify_end_reason`. Every driver in the workspace pumps this. Also the one place a move is taken back: `with_undo` (off by default) keeps the state each of an `External` seat's last moves was made from, and `rewind` restores one and truncates the history to match. |
 | `netrunner_single_player` | Thin index-based adapter over `netrunner_session` (`SinglePlayerSession`) for the RL/`ActionSpace` path. |
 | `netrunner_protocol` | The wire messages, `ClientMessage`/`ServerMessage`, and nothing else: both ends need them and neither may depend on the other. The server re-exports it as its `protocol` module. |

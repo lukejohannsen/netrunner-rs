@@ -27,12 +27,12 @@ use rand::SeedableRng;
 use rayon::prelude::*;
 
 use netrunner_bots::{
-    encode_observation, pick_action, ActionStat, CycleGuard, PolicyEvaluator, PuctAgent, PuctConfig,
+    encode_observation, pick_action, ActionStat, CycleGuard, Knowledge, PolicyEvaluator, PuctAgent, PuctConfig,
     MixedPriorEvaluator, SplitEvaluator, UniformPolicyEvaluator, DEFAULT_DIRICHLET_ALPHA, OBS_SIZE,
 };
 #[cfg(feature = "onnx")]
 use netrunner_bots::OnnxPolicyEvaluator;
-use netrunner_core::rules::{ActionSpace, GamePhase, GameState, PlayerAction, RulesError, Side};
+use netrunner_core::rules::{ActionSpace, Deck, GamePhase, GameState, PlayerAction, RulesError, Side};
 use netrunner_session::{GameEndReason, Seat, Session, SessionStep, StallReason, SubmitError};
 
 use schema::{sparse, GameTrajectory, SelfPlayStep};
@@ -466,7 +466,11 @@ fn play_arena_game(
         } else {
             evaluator
         };
-        Ok(Seat::Agent(Box::new(PuctAgent::with_config(side, seat_seed, evaluator, config))))
+        // Each seat knows its own deck; the arena's pool is dealt under
+        // no format, so the other chair's hidden cards are Casual's.
+        let deck = if side == Side::Corp { &corp_deck } else { &runner_deck };
+        let knowledge = Knowledge::new(netrunner_core::format::NsgFormat::Casual, Some(deck.clone()));
+        Ok(Seat::Agent(Box::new(PuctAgent::with_config(side, seat_seed, evaluator, config).with_knowledge(knowledge))))
     };
     let corp = seat(Side::Corp, seed)?;
     let runner = seat(Side::Runner, seed.wrapping_add(1))?;
@@ -642,8 +646,10 @@ fn play_one_game(game_index: usize, cli: &Cli) -> Result<GameTrajectory, SelfPla
     let evaluator = |side: Side| -> Result<Box<dyn PolicyEvaluator>, SelfPlayError> {
         Ok(ablate(make_evaluator(side, &cli.model_path)?, side, cli.model_uses))
     };
-    let mut corp_agent = PuctAgent::with_config(Side::Corp, seed, evaluator(Side::Corp)?, config);
-    let mut runner_agent = PuctAgent::with_config(Side::Runner, seed.wrapping_add(1), evaluator(Side::Runner)?, config);
+    let knowledge = |deck: &Deck| Knowledge::new(netrunner_core::format::NsgFormat::Casual, Some(deck.clone()));
+    let mut corp_agent = PuctAgent::with_config(Side::Corp, seed, evaluator(Side::Corp)?, config).with_knowledge(knowledge(&corp_deck));
+    let mut runner_agent =
+        PuctAgent::with_config(Side::Runner, seed.wrapping_add(1), evaluator(Side::Runner)?, config).with_knowledge(knowledge(&runner_deck));
     let mut rng = StdRng::seed_from_u64(seed.wrapping_add(2));
 
     let mut steps: Vec<SelfPlayStep> = Vec::new();

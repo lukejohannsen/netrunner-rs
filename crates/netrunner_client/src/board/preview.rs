@@ -33,7 +33,7 @@
 //! for each card that could be played, so a client builds `Asks` when a
 //! view arrives and keeps it, the way it keeps `breaks::routes`.
 
-use netrunner_bots::determinize;
+use netrunner_bots::{determinize, Knowledge};
 use netrunner_core::cards::CardRegistry;
 use netrunner_core::rules::{apply_action, PendingDecision, PlayerAction, Viewer};
 use netrunner_core::view::{build_client_view, ClientView};
@@ -57,7 +57,7 @@ impl Asks {
         if candidates.is_empty() {
             return Self::default();
         }
-        let sample = determinize(view, registry, &mut StdRng::seed_from_u64(0));
+        let sample = determinize(view, registry, &Knowledge::default(), &mut StdRng::seed_from_u64(0));
         let asked = candidates
             .into_iter()
             .filter_map(|action| {

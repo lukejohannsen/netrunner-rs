@@ -34,6 +34,7 @@ use netrunner_core::view::ClientView;
 
 use crate::agent::BotAgent;
 use crate::determinize::{determinize, resample_hidden};
+use crate::knowledge::Knowledge;
 use crate::policy::PolicyEvaluator;
 
 struct Edge {
@@ -304,6 +305,7 @@ fn agent_to_move(state: &GameState, side: Side) -> bool {
 /// whatever order rayon runs the samples in.
 struct Breach<'a> {
     view: &'a ClientView,
+    knowledge: &'a Knowledge,
     seed: u64,
     outcomes: usize,
     draws: std::cell::Cell<u64>,
@@ -321,7 +323,7 @@ impl Breach<'_> {
         self.draws.set(draw + 1);
         let mut rng = StdRng::seed_from_u64(self.seed.wrapping_add(draw).wrapping_mul(BREACH_RNG_SALT));
         let mut state = state.clone();
-        resample_hidden(&mut state, self.view, registry, &mut rng);
+        resample_hidden(&mut state, self.view, registry, self.knowledge, &mut rng);
         state
     }
 }
@@ -578,6 +580,10 @@ pub struct PuctAgent {
     /// chosen exactly that — the input to `pick_action`'s cycle break. See
     /// `MAX_GREEDY_REPEATS` for why a `BotAgent` needs one at all.
     cycle: CycleGuard,
+    /// What every sample and every breach redraw is drawn from — the
+    /// format, the seat's own deck and what it has seen
+    /// (`BotAgent::observe`).
+    knowledge: Knowledge,
 }
 
 impl PuctAgent {
@@ -594,7 +600,13 @@ impl PuctAgent {
             dirichlet_epsilon: config.dirichlet_epsilon.clamp(0.0, 1.0),
             ..config
         };
-        Self { side, seed, evaluator: Box::new(evaluator), config, cycle: CycleGuard::default() }
+        Self { side, seed, evaluator: Box::new(evaluator), config, cycle: CycleGuard::default(), knowledge: Knowledge::default() }
+    }
+
+    /// The same search, sampling from what `knowledge` admits.
+    pub fn with_knowledge(mut self, knowledge: Knowledge) -> Self {
+        self.knowledge = knowledge;
+        self
     }
 
     /// Runs a full PUCT search from `view`/`registry` and returns every
@@ -634,12 +646,13 @@ impl PuctAgent {
         let breach_outcomes = self.config.breach_outcomes;
         let (dirichlet_epsilon, dirichlet_alpha) = (self.config.dirichlet_epsilon, self.config.dirichlet_alpha);
         let dirichlet_alpha_scale = self.config.dirichlet_alpha_scale;
+        let knowledge = &self.knowledge;
 
         let per_sample: Vec<SampleStats> = (0..samples)
             .into_par_iter()
             .map(|sample_index| {
                 let mut rng = StdRng::seed_from_u64(base_seed.wrapping_add(sample_index as u64));
-                let sample = determinize(view, registry, &mut rng);
+                let sample = determinize(view, registry, knowledge, &mut rng);
                 // The evaluator's *absolute* read of this root, taken before
                 // the search runs. `evaluate` rather than `evaluate_from`
                 // because that is the one call whose value means the same
@@ -661,6 +674,7 @@ impl PuctAgent {
                     anchor,
                     breach: Breach {
                         view,
+                        knowledge,
                         seed: base_seed.wrapping_add(sample_index as u64),
                         outcomes: breach_outcomes,
                         draws: std::cell::Cell::new(0),
@@ -1022,6 +1036,10 @@ impl BotAgent for PuctAgent {
         // extends nor resets the count, matching the driver.
         self.cycle.record(&chosen, !avoid.is_empty());
         chosen
+    }
+
+    fn observe(&mut self, view: &ClientView) {
+        self.knowledge.observe(view);
     }
 }
 
@@ -1862,7 +1880,8 @@ mod tests {
 
         let evaluator = UniformPolicyEvaluator::new(Side::Runner);
         let mut rng = StdRng::seed_from_u64(1);
-        let sample = determinize(&view, &registry, &mut rng);
+        let knowledge = Knowledge::default();
+        let sample = determinize(&view, &registry, &knowledge, &mut rng);
         let anchor = evaluator.anchor(&sample, &registry);
         let search = Search {
             registry: &registry,
@@ -1870,7 +1889,7 @@ mod tests {
             side: Side::Runner,
             c_puct: 1.5,
             anchor,
-            breach: Breach { view: &view, seed: 7, outcomes: 3, draws: std::cell::Cell::new(0) },
+            breach: Breach { view: &view, knowledge: &knowledge, seed: 7, outcomes: 3, draws: std::cell::Cell::new(0) },
         };
         let mut root = PuctNode::new(sample);
         root.expand_root(&view.legal_actions, &registry, &evaluator, anchor, None);

@@ -1,5 +1,5 @@
 use netrunner_core::cards::CardRegistry;
-use netrunner_core::rules::{GameEvent, PendingDecision, PlayerAction};
+use netrunner_core::rules::{PendingDecision, PlayerAction};
 use netrunner_core::view::ClientView;
 
 /// Whether `action` would undo progress inside a parked card selection: a
@@ -62,11 +62,16 @@ pub fn progressive(actions: &[PlayerAction], pending: Option<&PendingDecision>) 
 pub trait BotAgent: Send {
     fn select_action(&mut self, view: &ClientView, registry: &CardRegistry) -> PlayerAction;
 
-    /// Optional hook for a stateful agent to observe events as they occur
-    /// (e.g. a future opponent-modeling agent). No-op by default — none of
-    /// this crate's baseline agents need it, since `select_action` already
-    /// receives the full current `view` on every call.
-    fn observe(&mut self, _event: &GameEvent) {}
+    /// Shown every view this seat is asked to act on, before
+    /// `select_action` — the one door a bot's memory has
+    /// (`knowledge::Knowledge::observe`): a card accessed in HQ or looked
+    /// at on top of R&D is in this view and in no later one. Called by
+    /// the driver (`netrunner_session::Session::step`,
+    /// `agent_adapter::BotAgentIndexAdapter`) rather than by each
+    /// agent's `select_action`, so a wrapper that never asks its inner
+    /// agent (`HandicapAgent` on a blunder) still lets it see. No-op by
+    /// default: the random and scripted agents remember nothing.
+    fn observe(&mut self, _view: &ClientView) {}
 }
 
 /// Lets a boxed trait object stand in for `impl BotAgent` — the same
@@ -81,8 +86,8 @@ impl BotAgent for Box<dyn BotAgent> {
         (**self).select_action(view, registry)
     }
 
-    fn observe(&mut self, event: &GameEvent) {
-        (**self).observe(event)
+    fn observe(&mut self, view: &ClientView) {
+        (**self).observe(view)
     }
 }
 

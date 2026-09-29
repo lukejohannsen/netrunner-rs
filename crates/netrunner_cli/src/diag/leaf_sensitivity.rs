@@ -65,7 +65,7 @@ use rayon::prelude::*;
 use serde::Serialize;
 
 use netrunner_bots::mcts::rollout;
-use netrunner_bots::{Weights, determinize};
+use netrunner_bots::{determinize, Knowledge, Weights};
 use netrunner_core::cards::CardRegistry;
 use netrunner_core::rules::{GameState, Side, apply_action, current_actor};
 use netrunner_core::view::ClientView;
@@ -96,6 +96,9 @@ struct Position {
     step: u32,
     side: Side,
     view: ClientView,
+    /// What the seat knew when it was asked (`Knowledge`), so the
+    /// re-sample draws from the same pool the seat's own did.
+    knowledge: Knowledge,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -249,12 +252,16 @@ fn collect_positions(
         let seed = args.seed.wrapping_add(u64::from(game));
         let (corp_deck, runner_deck) = &matchups[game as usize % matchups.len()];
         let (state, _events) = GameState::setup(&corp_deck.to_deck(), &runner_deck.to_deck(), registry, seed)?;
-        let setup = bots::AgentSetup::new(32).with_personality(args.source.personality);
-        let corp = bots::make_agent_with_model(args.source.kind, Side::Corp, seed, setup, &config.model)?
+        let setup = |deck| bots::AgentSetup::new(32).with_personality(args.source.personality).with_knowledge(config.knowledge(deck));
+        let corp = bots::make_agent_with_model(args.source.kind, Side::Corp, seed, setup(corp_deck), &config.model)?
             .ok_or("the position source must be a bot that can take a seat")?;
         let runner =
-            bots::make_agent_with_model(args.source.kind, Side::Runner, seed.wrapping_add(1), setup, &config.model)?
+            bots::make_agent_with_model(args.source.kind, Side::Runner, seed.wrapping_add(1), setup(runner_deck), &config.model)?
                 .ok_or("the position source must be a bot that can take a seat")?;
+        // What each seat samples from, kept beside the seat and shown the
+        // same views (`Session::last_view`), so a position is re-sampled
+        // with the knowledge its seat had at the time.
+        let mut knowledge = [config.knowledge(corp_deck), config.knowledge(runner_deck)];
         let mut session =
             Session::new(state, registry.clone(), Seat::Agent(corp), Seat::Agent(runner)).without_history();
 
@@ -267,11 +274,17 @@ fn collect_positions(
                 // determinization to change; measuring it would dilute
                 // every average with a guaranteed zero.
                 if view.legal_actions.len() > 1 {
-                    seen.push(Position { game, seed, matchup: matchup.clone(), step: session.steps(), side, view });
+                    let knowledge = knowledge[side as usize].clone();
+                    seen.push(Position { game, seed, matchup: matchup.clone(), step: session.steps(), side, view, knowledge });
                 }
             }
             match session.step() {
-                SessionStep::Applied { .. } => continue,
+                SessionStep::Applied { side } => {
+                    if let Some(shown) = session.last_view() {
+                        knowledge[side as usize].observe(shown);
+                    }
+                    continue;
+                }
                 _ => break,
             }
         }
@@ -284,6 +297,7 @@ fn collect_positions(
                 step: seen[i].step,
                 side: seen[i].side,
                 view: seen[i].view.clone(),
+                knowledge: seen[i].knowledge.clone(),
             }));
         }
     }
@@ -314,7 +328,7 @@ fn measure(position: &Position, args: &LeafSensitivityArgs, registry: &CardRegis
     let samples: Vec<GameState> = (0..args.determinizations)
         .map(|i| {
             let mut rng = StdRng::seed_from_u64(base.wrapping_add(i as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15));
-            determinize(&position.view, registry, &mut rng)
+            determinize(&position.view, registry, &position.knowledge, &mut rng)
         })
         .collect();
 

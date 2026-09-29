@@ -102,6 +102,9 @@ pub fn start_starter(core: &ClientCore, starter: Starter) -> Result<ActiveMatch,
         level,
         style: None,
         seed: crate::screens::new_game::seed_from_clock(),
+        // The starter lists are System Gateway's, so Startup is the pool
+        // the bot imagines the person's deck from.
+        format: netrunner_core::format::NsgFormat::Startup,
         record: core.record_path.clone().map(|path| RecordFile { path, player }),
     };
     let handle = MatchHandle::start_local(spec)?;

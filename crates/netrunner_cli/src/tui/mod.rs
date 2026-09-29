@@ -199,7 +199,7 @@ pub fn play_local(terminal: &mut ratatui::DefaultTerminal, config: &Config) -> R
     let (bot_kind, bot_deck) = if human_side == Side::Corp { (config.runner, &runner_deck) } else { (config.corp, &corp_deck) };
     let personality = config.personality_for(bot_side, bot_deck)?;
     let (bot_seat, mut indexed_bot) =
-        build_bot_seat(config.level_for(bot_side), bot_kind, bot_side, seed.wrapping_add(1), &config.model, personality)?;
+        build_bot_seat(config.level_for(bot_side), bot_kind, bot_side, seed.wrapping_add(1), &config.model, personality, config.knowledge(bot_deck))?;
     // Opened before the game so a bad record file fails here, not after
     // an hour of play.
     let seat = record::seat_record(config, human_side, config.level_for(bot_side), bot_kind, personality, seed, &corp_deck.id, &runner_deck.id)?;
@@ -313,9 +313,9 @@ pub fn play_starter_game(
         BotKind::Heuristic,
         human_side.other(),
         seed.wrapping_add(1),
-        bots::AgentSetup::new(DEFAULT_SIMULATIONS).with_personality(personality),
+        bots::AgentSetup::new(DEFAULT_SIMULATIONS).with_personality(personality).with_knowledge(config.knowledge(bot_deck)),
     )
-        .expect("the heuristic always has a BotAgent form");
+    .expect("the heuristic always has a BotAgent form");
     // Recorded like any other local game: the starter game is a person's
     // first real opponent, and its result is the first line of their
     // record.
@@ -434,16 +434,17 @@ fn build_bot_seat(
     seed: u64,
     model: &str,
     personality: Personality,
+    knowledge: netrunner_bots::Knowledge,
 ) -> Result<(Seat, Option<Box<dyn netrunner_bots::Agent>>), String> {
     // A rung is always a `Seat::Agent`: the ladder is built from the four
     // view-based searches, and deliberately excludes the one kind that
     // needs the index path.
     match kind {
         crate::config::BotKind::Onnx if level.is_none() => {
-            Ok((Seat::External, Some(bots::make_driver(kind, side, seed, DEFAULT_SIMULATIONS, model, personality)?)))
+            Ok((Seat::External, Some(bots::make_driver(kind, side, seed, DEFAULT_SIMULATIONS, model, personality, knowledge)?)))
         }
         _ => {
-            let setup = bots::AgentSetup::new(DEFAULT_SIMULATIONS).with_personality(personality);
+            let setup = bots::AgentSetup::new(DEFAULT_SIMULATIONS).with_personality(personality).with_knowledge(knowledge);
             let agent = bots::make_seat_agent(level, kind, side, seed, setup, model)?
                 .ok_or_else(|| "interactive mode needs a bot on the non-human side".to_string())?;
             Ok((Seat::Agent(agent), None))

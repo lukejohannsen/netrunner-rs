@@ -101,9 +101,24 @@ pub fn run(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
             if config.level_for(Side::Corp).is_some() || config.level_for(Side::Runner).is_some() {
                 return Err("--corp-level/--runner-level cannot be seated on the index path (drop --index-path)".into());
             }
-            let corp = bots::make_driver(corp_kind, Side::Corp, seed, config.simulations, &config.model, corp_personality)?;
-            let runner =
-                bots::make_driver(runner_kind, Side::Runner, seed.wrapping_add(1), config.simulations, &config.model, runner_personality)?;
+            let corp = bots::make_driver(
+                corp_kind,
+                Side::Corp,
+                seed,
+                config.simulations,
+                &config.model,
+                corp_personality,
+                config.knowledge(&corp_deck),
+            )?;
+            let runner = bots::make_driver(
+                runner_kind,
+                Side::Runner,
+                seed.wrapping_add(1),
+                config.simulations,
+                &config.model,
+                runner_personality,
+                config.knowledge(&runner_deck),
+            )?;
             let (_state, history, outcome) = SinglePlayerSession::new(state, registry.clone(), corp, runner).run_with_outcome();
             let steps = history.len();
             (history, outcome, steps)
@@ -114,7 +129,7 @@ pub fn run(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
                 corp_kind,
                 Side::Corp,
                 seed,
-                setup.with_personality(corp_personality),
+                setup.clone().with_personality(corp_personality).with_knowledge(config.knowledge(&corp_deck)),
                 &config.model,
             )?
             .expect("headless_kind never resolves to a kind without a BotAgent form");
@@ -123,7 +138,7 @@ pub fn run(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
                 runner_kind,
                 Side::Runner,
                 seed.wrapping_add(1),
-                setup.with_personality(runner_personality),
+                setup.with_personality(runner_personality).with_knowledge(config.knowledge(&runner_deck)),
                 &config.model,
             )?
             .expect("headless_kind never resolves to a kind without a BotAgent form");

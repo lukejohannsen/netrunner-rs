@@ -66,9 +66,10 @@ use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
-use netrunner_bots::{Level, Personality};
+use netrunner_bots::{Knowledge, Level, Personality};
 use netrunner_core::cards::CardRegistry;
 use netrunner_core::decks::DeckFile;
+use netrunner_core::format::NsgFormat;
 use netrunner_core::rules::{DeckOrder, GameState, MatchRules, PlayerAction, Side, Viewer};
 use netrunner_protocol::{ClientMessage, ServerMessage};
 use netrunner_core::view::ClientView;
@@ -114,6 +115,11 @@ pub struct LocalMatchSpec {
     /// guessed from a deck's name is the kind of client-side rule the
     /// crate map forbids (`netrunner_cli::tui::play_starter_game`).
     pub rules: MatchRules,
+    /// The format the game is played in — what the bot draws the
+    /// person's hidden cards from (`netrunner_bots::Knowledge`). The
+    /// form's format, which the decks were checked against; a starter
+    /// game's is Startup, the pool its lists come from.
+    pub format: NsgFormat,
     /// `None` records nothing: a session with no data directory to keep
     /// a record in. Never a choice on a form — a game against a bot is
     /// always casual, so there is no unrecorded kind to ask for.
@@ -259,10 +265,13 @@ impl MatchHandle {
     /// dying on its first frame (Phase 6's rule: a game that fails to
     /// start is a notice, not a drop to the shell).
     pub fn start_local(spec: LocalMatchSpec) -> Result<Self, String> {
-        let LocalMatchSpec { registry, corp, runner, human, level, style, seed, rules, record } = spec;
+        let LocalMatchSpec { registry, corp, runner, human, level, style, seed, rules, format, record } = spec;
         let bot_side = human.other();
         let bot_deck = if bot_side == Side::Corp { &corp } else { &runner };
         let personality = personality_for(style, bot_deck)?;
+        // The bot knows the format and the deck it was dealt, and nothing
+        // of the person's deck but its identity.
+        let knowledge = Knowledge::new(format, Some(bot_deck.to_deck()));
         let (state, _events) =
             GameState::setup_with(&corp.to_deck(), &runner.to_deck(), &registry, seed, rules, DeckOrder::Shuffled).map_err(|e| e.to_string())?;
         // A shuffled deck under `rules`, which is exactly what the
@@ -278,7 +287,7 @@ impl MatchHandle {
         // A rung is always a `Seat::Agent`: the ladder is built from the
         // view-based searches and deliberately excludes the one kind that
         // needs the index path (see `netrunner_cli::tui::build_bot_seat`).
-        let bot = Seat::Agent(level.spec(bot_side).with_personality(personality).agent(seed.wrapping_add(1)));
+        let bot = Seat::Agent(level.spec(bot_side).with_personality(personality).agent(seed.wrapping_add(1), knowledge));
         // Opened before the game so a bad record file fails now, not
         // after an hour of play.
         let record = match record {
@@ -989,7 +998,7 @@ mod tests {
         let registry = Arc::new(crate::decks::sample_deck_registry());
         let corp = netrunner_core::decks::by_id("discretion_advised").expect("built-in deck").clone();
         let runner = netrunner_core::decks::by_id("stolen_goods").expect("built-in deck").clone();
-        LocalMatchSpec { registry, corp, runner, human, level: Level::Novice, style: None, seed, rules: MatchRules::default(), record }
+        LocalMatchSpec { registry, corp, runner, human, level: Level::Novice, style: None, seed, rules: MatchRules::default(), format: NsgFormat::Casual, record }
     }
 
     /// The pump a client is: wait for `Awaiting`, submit the first legal

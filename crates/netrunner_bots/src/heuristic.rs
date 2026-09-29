@@ -8,6 +8,7 @@ use netrunner_core::view::ClientView;
 use crate::agent::BotAgent;
 use crate::determinize::determinize;
 use crate::eval::{evaluate_state_with, Weights};
+use crate::knowledge::Knowledge;
 use crate::personality::Personality;
 
 /// Tiny random jitter added to each candidate's score, purely to break ties
@@ -27,6 +28,9 @@ pub struct HeuristicAgent {
     /// The evaluator's terms — `Weights::default()` unless a
     /// `Personality` was asked for.
     weights: Weights,
+    /// What the sample is drawn from: the format, the seat's own deck and
+    /// what it has seen (`BotAgent::observe`).
+    knowledge: Knowledge,
 }
 
 impl HeuristicAgent {
@@ -36,7 +40,15 @@ impl HeuristicAgent {
 
     /// `new`, scoring with `personality.weights()`.
     pub fn with_personality(side: Side, seed: u64, personality: Personality) -> Self {
-        Self { side, rng: StdRng::seed_from_u64(seed), weights: personality.weights() }
+        Self { side, rng: StdRng::seed_from_u64(seed), weights: personality.weights(), knowledge: Knowledge::default() }
+    }
+
+    /// The same chooser, sampling from what `knowledge` admits — the
+    /// format's pool and the seat's own deck — rather than from every
+    /// card the registry holds.
+    pub fn with_knowledge(mut self, knowledge: Knowledge) -> Self {
+        self.knowledge = knowledge;
+        self
     }
 
     /// How far the position's stage may move the weights this scores with
@@ -52,7 +64,7 @@ impl BotAgent for HeuristicAgent {
     fn select_action(&mut self, view: &ClientView, registry: &CardRegistry) -> PlayerAction {
         assert!(!view.legal_actions.is_empty(), "BotAgent::select_action requires at least one legal action");
 
-        let sample = determinize(view, registry, &mut self.rng);
+        let sample = determinize(view, registry, &self.knowledge, &mut self.rng);
 
         let mut best: Option<(f64, usize)> = None;
         for (index, action) in view.legal_actions.iter().enumerate() {
@@ -80,6 +92,10 @@ impl BotAgent for HeuristicAgent {
             || crate::agent::progressive(&view.legal_actions, view.pending_decision.as_ref())[0].clone(),
             |(_, index)| view.legal_actions[index].clone(),
         )
+    }
+
+    fn observe(&mut self, view: &ClientView) {
+        self.knowledge.observe(view);
     }
 }
 

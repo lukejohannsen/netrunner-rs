@@ -12,7 +12,9 @@
 mod common;
 
 use common::{sg_decks, sg_registry, SG_CORP_CARDS, SG_RUNNER_CARDS};
-use netrunner_bots::{HeuristicAgent, IndexedHeuristicAgent, IndexedRandomAgent, RandomAgent};
+use netrunner_bots::{HeuristicAgent, IndexedHeuristicAgent, IndexedRandomAgent, Knowledge, RandomAgent};
+use netrunner_core::format::NsgFormat;
+use netrunner_core::rules::Deck;
 use netrunner_core::dsl::CardId;
 use netrunner_bots::Agent;
 use netrunner_core::rules::{validate_deck, DeckOrder, GamePhase, GameState, Side, WindowCheckpoint};
@@ -135,13 +137,17 @@ enum Seating {
 impl Seating {
     const ALL: [Seating; 3] = [Seating::HeuristicCorpRandomRunner, Seating::RandomCorpHeuristicRunner, Seating::RandomBoth];
 
-    fn drivers(self, seed: u64) -> (Box<dyn Agent>, Box<dyn Agent>) {
+    /// Each heuristic seat knows the deck it plays (`Knowledge`), as the
+    /// view sweep's do; the pool is played under no format.
+    fn drivers(self, seed: u64, corp_deck: &Deck, runner_deck: &Deck) -> (Box<dyn Agent>, Box<dyn Agent>) {
         let random = |side, seed| -> Box<dyn Agent> { Box::new(IndexedRandomAgent::new(RandomAgent::new(seed), side)) };
-        let heuristic =
-            |side, seed| -> Box<dyn Agent> { Box::new(IndexedHeuristicAgent::new(HeuristicAgent::new(side, seed), side)) };
+        let heuristic = |side, seed, deck: &Deck| -> Box<dyn Agent> {
+            let knowledge = Knowledge::new(NsgFormat::Casual, Some(deck.clone()));
+            Box::new(IndexedHeuristicAgent::new(HeuristicAgent::new(side, seed).with_knowledge(knowledge), side))
+        };
         match self {
-            Seating::HeuristicCorpRandomRunner => (heuristic(Side::Corp, seed), random(Side::Runner, seed)),
-            Seating::RandomCorpHeuristicRunner => (random(Side::Corp, seed), heuristic(Side::Runner, seed)),
+            Seating::HeuristicCorpRandomRunner => (heuristic(Side::Corp, seed, corp_deck), random(Side::Runner, seed)),
+            Seating::RandomCorpHeuristicRunner => (random(Side::Corp, seed), heuristic(Side::Runner, seed, runner_deck)),
             Seating::RandomBoth => (random(Side::Corp, seed), random(Side::Runner, seed.wrapping_add(1))),
         }
     }
@@ -168,7 +174,7 @@ fn no_panics_or_deadlocks_across_many_seeds_system_gateway() {
             let (state, _events) =
                 GameState::setup(&corp_deck, &runner_deck, &registry, seed).expect("legal decks set up cleanly");
 
-            let (corp, runner) = seating.drivers(seed);
+            let (corp, runner) = seating.drivers(seed, &corp_deck, &runner_deck);
             let (final_state, history, outcome) =
                 SinglePlayerSession::new(state, registry.clone(), corp, runner).run_with_outcome();
             // Every seating must reach `GameOver`. Random-vs-random used to
@@ -225,7 +231,7 @@ fn the_anoetic_void_then_skunkworks_position_plays_out() {
     let registry = sg_registry();
     let (corp_deck, runner_deck) = sg_decks();
     let (state, _events) = GameState::setup(&corp_deck, &runner_deck, &registry, seed).expect("legal decks set up cleanly");
-    let (corp, runner) = Seating::RandomBoth.drivers(seed);
+    let (corp, runner) = Seating::RandomBoth.drivers(seed, &corp_deck, &runner_deck);
     let (final_state, _history, outcome) = SinglePlayerSession::new(state, registry, corp, runner).run_with_outcome();
     assert!(
         matches!(final_state.phase, GamePhase::GameOver(_)),
@@ -282,7 +288,7 @@ fn every_sample_deck_matchup_finishes() {
             // Seeds repeat per deck pair; offset by the pair's index so two
             // pairs never replay the same RNG path.
             let seed = seed + 4 * index;
-            let (corp, runner) = seating.drivers(seed);
+            let (corp, runner) = seating.drivers(seed, &corp_deck.to_deck(), &runner_deck.to_deck());
             let (final_state, history, outcome) =
                 SinglePlayerSession::new(state, registry.clone(), corp, runner).run_with_outcome();
             assert!(
@@ -406,7 +412,7 @@ fn the_starter_matchup_plays_to_a_result_at_six_points() {
                 .unwrap_or_else(|e| panic!("starter decks should set up cleanly: {e:?}"));
         assert_eq!(state.rules, rules);
         let seating = if seed % 2 == 0 { Seating::RandomCorpHeuristicRunner } else { Seating::RandomBoth };
-        let (corp_driver, runner_driver) = seating.drivers(seed);
+        let (corp_driver, runner_driver) = seating.drivers(seed, &corp.to_deck(), &runner.to_deck());
         let (final_state, _history, outcome) =
             SinglePlayerSession::new(state, registry.clone(), corp_driver, runner_driver).run_with_outcome();
         let GamePhase::GameOver(winner) = final_state.phase else {

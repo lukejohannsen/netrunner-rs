@@ -256,7 +256,7 @@ fn play(
     let (corp_deck, runner_deck) = &matchups[game as usize % matchups.len()];
     let (state, _events) =
         GameState::setup(&corp_deck.to_deck(), &runner_deck.to_deck(), registry, seed).map_err(|e| format!("{e:?}"))?;
-    let setup = |spec: BotSpec| bots::AgentSetup {
+    let setup = |spec: BotSpec, deck: &core_decks::DeckFile| bots::AgentSetup {
         simulations: args.simulations,
         determinizations: args.determinizations,
         shared_sample: false,
@@ -265,11 +265,12 @@ fn play(
         // Not staged: this diagnostic's numbers were taken on the static
         // evaluator and a stage would make them a different measurement.
         stage_gain: 0.0,
+        knowledge: config.knowledge(deck),
     };
-    let corp = bots::make_agent_with_model(args.corp.kind, Side::Corp, seed, setup(args.corp), &config.model)?
+    let corp = bots::make_agent_with_model(args.corp.kind, Side::Corp, seed, setup(args.corp, corp_deck), &config.model)?
         .ok_or("the Corp seat must be a bot that can take one")?;
     let runner =
-        bots::make_agent_with_model(args.runner.kind, Side::Runner, seed.wrapping_add(1), setup(args.runner), &config.model)?
+        bots::make_agent_with_model(args.runner.kind, Side::Runner, seed.wrapping_add(1), setup(args.runner, runner_deck), &config.model)?
             .ok_or("the Runner seat must be a bot that can take one")?;
     let mut session = Session::new(state, registry.clone(), Seat::Agent(corp), Seat::Agent(runner));
 
