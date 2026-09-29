@@ -12,7 +12,7 @@
 mod common;
 
 use common::{sg_decks, sg_registry, SG_CORP_CARDS, SG_RUNNER_CARDS};
-use netrunner_bots::{HeuristicAgent, IndexedHeuristicAgent, IndexedRandomAgent, Knowledge, RandomAgent};
+use netrunner_bots::{BotAgentIndexAdapter, HeuristicAgent, IndexedHeuristicAgent, IndexedRandomAgent, Knowledge, PlanningAgent, RandomAgent};
 use netrunner_core::format::NsgFormat;
 use netrunner_core::rules::Deck;
 use netrunner_core::dsl::CardId;
@@ -123,31 +123,31 @@ fn sweep_seed_count() -> u64 {
 
 /// Which index-based agents sit where. The same three seatings as
 /// `netrunner_session`'s view-path sweep, for the same reasons — see the
-/// `Seating` there: the heuristic pairings find deadlocks, and
-/// random-vs-random is the only unbiased one — a heuristic Runner runs
+/// `Seating` there: the planner pairings find deadlocks, and
+/// random-vs-random is the only unbiased one — a purposeful Runner runs
 /// only where it can afford the breaks, so an encounter it cannot pay for
 /// is a state only a random Runner reaches.
 #[derive(Clone, Copy, Debug)]
 enum Seating {
-    HeuristicCorpRandomRunner,
-    RandomCorpHeuristicRunner,
+    PlannerCorpRandomRunner,
+    RandomCorpPlannerRunner,
     RandomBoth,
 }
 
 impl Seating {
-    const ALL: [Seating; 3] = [Seating::HeuristicCorpRandomRunner, Seating::RandomCorpHeuristicRunner, Seating::RandomBoth];
+    const ALL: [Seating; 3] = [Seating::PlannerCorpRandomRunner, Seating::RandomCorpPlannerRunner, Seating::RandomBoth];
 
-    /// Each heuristic seat knows the deck it plays (`Knowledge`), as the
+    /// Each planner seat knows the deck it plays (`Knowledge`), as the
     /// view sweep's do; the pool is played under no format.
     fn drivers(self, seed: u64, corp_deck: &Deck, runner_deck: &Deck) -> (Box<dyn Agent>, Box<dyn Agent>) {
         let random = |side, seed| -> Box<dyn Agent> { Box::new(IndexedRandomAgent::new(RandomAgent::new(seed), side)) };
-        let heuristic = |side, seed, deck: &Deck| -> Box<dyn Agent> {
+        let planner = |side, seed, deck: &Deck| -> Box<dyn Agent> {
             let knowledge = Knowledge::new(NsgFormat::Casual, Some(deck.clone()));
-            Box::new(IndexedHeuristicAgent::new(HeuristicAgent::new(side, seed).with_knowledge(knowledge), side))
+            Box::new(BotAgentIndexAdapter::new(PlanningAgent::new(side, seed).with_knowledge(knowledge), side))
         };
         match self {
-            Seating::HeuristicCorpRandomRunner => (heuristic(Side::Corp, seed, corp_deck), random(Side::Runner, seed)),
-            Seating::RandomCorpHeuristicRunner => (random(Side::Corp, seed), heuristic(Side::Runner, seed, runner_deck)),
+            Seating::PlannerCorpRandomRunner => (planner(Side::Corp, seed, corp_deck), random(Side::Runner, seed)),
+            Seating::RandomCorpPlannerRunner => (random(Side::Corp, seed), planner(Side::Runner, seed, runner_deck)),
             Seating::RandomBoth => (random(Side::Corp, seed), random(Side::Runner, seed.wrapping_add(1))),
         }
     }
@@ -282,8 +282,8 @@ fn every_sample_deck_matchup_finishes() {
             // (Docklands Pass) went unseen with one.
             let seating = match (seed, index % 2 == 0) {
                 (2 | 3, _) => Seating::RandomBoth,
-                (_, true) => Seating::RandomCorpHeuristicRunner,
-                (_, false) => Seating::HeuristicCorpRandomRunner,
+                (_, true) => Seating::RandomCorpPlannerRunner,
+                (_, false) => Seating::PlannerCorpRandomRunner,
             };
             // Seeds repeat per deck pair; offset by the pair's index so two
             // pairs never replay the same RNG path.
@@ -411,7 +411,7 @@ fn the_starter_matchup_plays_to_a_result_at_six_points() {
             GameState::setup_with(&corp.to_deck(), &runner.to_deck(), &registry, seed, rules, DeckOrder::Shuffled)
                 .unwrap_or_else(|e| panic!("starter decks should set up cleanly: {e:?}"));
         assert_eq!(state.rules, rules);
-        let seating = if seed % 2 == 0 { Seating::RandomCorpHeuristicRunner } else { Seating::RandomBoth };
+        let seating = if seed % 2 == 0 { Seating::RandomCorpPlannerRunner } else { Seating::RandomBoth };
         let (corp_driver, runner_driver) = seating.drivers(seed, &corp.to_deck(), &runner.to_deck());
         let (final_state, _history, outcome) =
             SinglePlayerSession::new(state, registry.clone(), corp_driver, runner_driver).run_with_outcome();

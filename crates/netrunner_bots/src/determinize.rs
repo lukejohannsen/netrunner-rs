@@ -950,17 +950,22 @@ pub fn determinize(view: &ClientView, registry: &CardRegistry, knowledge: &Knowl
         draw_from_zone(run, &corp, rng);
     }
 
-    // A rollout installs cards of its own, and those ids must not collide
-    // with one the view already carries. The real counter isn't in the
-    // view — nothing needs it — so start just past the highest id sampled,
-    // which is the honest lower bound for it.
+    // A rollout installs cards of its own under the ids the real game
+    // will give them: the counter is public and the view carries it
+    // (`ClientView::next_install_id`). It used to start just past the
+    // highest id the view showed — a lower bound, short by every install
+    // trashed since — which was enough for a search that never named an
+    // install it had made, and not for a planner that names the card it
+    // installed at its next step. Never below the highest id sampled,
+    // so a view built by hand around installs it never counted still
+    // installs without a collision.
     let next_install_id = corp
         .installed
         .iter()
         .map(|c| c.install_id.0)
         .chain(runner.rig.iter().map(|c| c.install_id.0))
         .max()
-        .map_or(1, |highest| highest + 1);
+        .map_or(view.next_install_id, |highest| view.next_install_id.max(highest + 1));
 
     let state = GameState {
         corp,

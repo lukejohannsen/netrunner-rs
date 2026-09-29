@@ -27,7 +27,48 @@ use crate::rules::run::{AccessPhase, RunPhase, ServerId, SubroutineStatus};
 use crate::rules::state::{GamePhase, GameState, InstallId, InstallSlot, Side};
 
 pub fn legal_actions(state: &GameState, registry: &CardRegistry) -> Vec<PlayerAction> {
+    proven(state, registry, |action, _state, _events| action)
+}
+
+/// `legal_actions`, keeping what proving each candidate produced: the
+/// action, the state it leads to and the events on the way. The same list
+/// in the same order — `legal_actions` is this with the results dropped —
+/// so a caller that reads one can compare it with the other.
+///
+/// **For a search that expands every legal move.** `legal_actions` proves
+/// a candidate by applying it and throws the result away, and a search
+/// that then applies each legal action to see where it leads pays for the
+/// whole list twice: a turn planner over a beam expands hundreds of nodes
+/// a turn, and this is the half of its cost that was pure waste
+/// (`netrunner_bots::planner`). `apply_sampled_legal_action` is the
+/// rollout-shaped query, one move for about one application; this is the
+/// expansion-shaped one, every move for one application each.
+pub fn legal_transitions(state: &GameState, registry: &CardRegistry) -> Vec<(PlayerAction, GameState, Vec<GameEvent>)> {
+    proven(state, registry, |action, state, events| (action, state, events))
+}
+
+/// `legal_transitions`, filtered to the moves `side` may submit — the
+/// per-seat slice, exactly as `legal_actions_for` slices `legal_actions`.
+pub fn legal_transitions_for(
+    state: &GameState,
+    registry: &CardRegistry,
+    side: Side,
+) -> Vec<(PlayerAction, GameState, Vec<GameEvent>)> {
+    legal_transitions(state, registry)
+        .into_iter()
+        .filter(|(action, _, _)| action_owner(state, registry, action) == side)
+        .collect()
+}
+
+/// Every deduplicated candidate `apply_action` accepts, in candidate
+/// order, each passed to `keep` with what applying it produced.
+fn proven<T>(
+    state: &GameState,
+    registry: &CardRegistry,
+    mut keep: impl FnMut(PlayerAction, GameState, Vec<GameEvent>) -> T,
+) -> Vec<T> {
     let mut seen: Vec<PlayerAction> = Vec::new();
+    let mut kept: Vec<T> = Vec::new();
     for action in candidate_actions(state, registry) {
         // Deduplicated, and the reason is that a hand is a *multiset*.
         // `candidate_actions` proposes one action per hand position, but a
@@ -50,11 +91,15 @@ pub fn legal_actions(state: &GameState, registry: &CardRegistry) -> Vec<PlayerAc
         // *candidate* count that bounds it) beats hashing `PlayerAction`,
         // and it preserves candidate order, which several callers and the
         // `ActionSpace` round trip depend on.
-        if !seen.contains(&action) && apply_action(state, registry, action.clone()).is_ok() {
-            seen.push(action);
+        if seen.contains(&action) {
+            continue;
+        }
+        if let Ok((next, events)) = apply_action(state, registry, action.clone()) {
+            seen.push(action.clone());
+            kept.push(keep(action, next, events));
         }
     }
-    seen
+    kept
 }
 
 /// Plays one legal action chosen by `pick`, validating only the candidates

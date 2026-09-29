@@ -46,6 +46,7 @@ fn every_field_of_the_view_is_accounted_for(view: ClientView) {
         active_player: _,      // drawn: desktop avatar bar lit for the side whose turn it is, board::timing
         phase: _,              // drawn: board::phase (desktop phase panel), the terminal's header
         turn: _,               // drawn: board::phase, the terminal's header
+        next_install_id: _,    // engine's: the id the next install gets, so a bot's sample installs under the real one; a person never names a card by it
         this_turn: _,          // engine's: the turn log's counts and sums (Pichação's clicks gained during runs among them), read by cards and bots; the log shows each event
         last_turn: _,          // engine's: as this_turn, for the turn before
         rules: _,              // drawn: the points to win, on the HUD's Agendas readout (hud::readouts)

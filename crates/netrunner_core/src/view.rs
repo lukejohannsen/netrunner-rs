@@ -155,6 +155,17 @@ pub struct ClientView {
     /// `GameState::turn` verbatim — public information, and counted per
     /// side's turn rather than per round (see that field's doc comment).
     pub turn: u32,
+    /// `GameState::next_install_id` verbatim: the id the next install will
+    /// be given. Public — every install is an event both players see,
+    /// face down or not, and the counter is how many there have been —
+    /// and carried so that a sample of the hidden state installs under
+    /// the same ids the real game will. A bot that plans its turn names
+    /// the card it just installed by that id at its next step
+    /// (`netrunner_bots::planner`); before the view carried the counter, a
+    /// sample started just past the highest id it could see, which is
+    /// short by every install that has been trashed since, and the plan
+    /// broke at the install every time.
+    pub next_install_id: u32,
     /// What has happened this turn and last, as far as any card asks
     /// (`rules::turn_log`) — `PublicGameState::this_turn` verbatim, the
     /// same to every viewer. `this_turn.actions_finished()` is what
@@ -405,6 +416,7 @@ pub fn build_client_view(state: &GameState, registry: &CardRegistry, viewer: imp
         viewer,
         active_player: active_player(state.phase),
         turn: state.turn,
+        next_install_id: state.next_install_id,
         this_turn: public.this_turn,
         last_turn: public.last_turn,
         rules: state.rules,
