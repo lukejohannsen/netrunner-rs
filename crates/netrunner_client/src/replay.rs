@@ -98,7 +98,7 @@ pub fn opening(header: &MatchRecordHeader, side: Option<Side>, at: Option<Start>
 pub fn title(path: &Path, header: &MatchRecordHeader) -> String {
     let mut title = path.file_name().map(|name| name.to_string_lossy().into_owned()).unwrap_or_else(|| path.display().to_string());
     if let Some(bot) = header.bot {
-        title = format!("{title} — against the {} {:?} {:?}", bot.level, bot.personality, bot.side);
+        title = format!("{title} — against the {} {} {:?}", bot.level, bot.style, bot.side);
     }
     title
 }
@@ -466,11 +466,11 @@ mod tests {
     /// between two bots opens where it always did; a flag wins either way.
     #[test]
     fn a_bug_report_opens_at_its_end_from_the_persons_chair() {
-        use netrunner_bots::{Level, Personality};
+        use netrunner_bots::{Level, Plan, Style};
         let (plain, _, _) = recorded_game(4);
         assert_eq!(opening(&plain, None, None), (Side::Corp, Start::Beginning));
         let report = MatchRecordHeader {
-            bot: Some(netrunner_session::RecordedBot { side: Side::Corp, level: Level::Elite, personality: Personality::Glacier }),
+            bot: Some(netrunner_session::RecordedBot { side: Side::Corp, level: Level::Elite, style: Style::of(Plan::Glacier) }),
             ..plain
         };
         assert_eq!(opening(&report, None, None), (Side::Runner, Start::End));

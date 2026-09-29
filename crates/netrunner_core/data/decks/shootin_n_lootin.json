@@ -4,7 +4,7 @@
   "side": "Runner",
   "category": "Sample",
   "description": "Eighteen run events in twenty-five: MuslihaT runs every turn and profits on the way through.",
-  "style": "aggressive",
+  "style": ["aggressive"],
   "identity": "muslihat",
   "cards": [
     {

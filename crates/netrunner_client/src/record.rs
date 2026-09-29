@@ -46,7 +46,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
 
-use netrunner_bots::{Level, Personality};
+use netrunner_bots::{Level, Style};
 use netrunner_core::rules::Side;
 
 /// How a game ended. This module's own type — it was `netrunner_rating`'s
@@ -144,7 +144,7 @@ pub fn player_name(given: Option<&str>) -> String {
 
 /// The id a bot seat is recorded under. A rung outranks the kind, because
 /// the rung is what the player asked for and what the calibration measured.
-pub fn opponent_id(level: Option<Level>, kind: BotKind, personality: Personality) -> String {
+pub fn opponent_id(level: Option<Level>, kind: BotKind, style: Style) -> String {
     if let Some(level) = level {
         return level.record_id();
     }
@@ -158,9 +158,10 @@ pub fn opponent_id(level: Option<Level>, kind: BotKind, personality: Personality
         BotKind::PuctOnnx => "puct-onnx",
         BotKind::Onnx => "onnx",
     };
-    match personality {
-        Personality::Balanced => format!("bot:{kind}"),
-        personality => format!("bot:{kind}:{personality}"),
+    if style.is_balanced() {
+        format!("bot:{kind}")
+    } else {
+        format!("bot:{kind}:{style}")
     }
 }
 
@@ -390,7 +391,7 @@ pub struct SeatRecordSpec {
     pub human: Side,
     pub level: Option<Level>,
     pub kind: BotKind,
-    pub personality: Personality,
+    pub style: Style,
     pub seed: u64,
     pub corp_deck: String,
     pub runner_deck: String,
@@ -406,7 +407,7 @@ impl SeatRecord {
             log,
             player: spec.player,
             side: spec.human,
-            opponent: opponent_id(spec.level, spec.kind, spec.personality),
+            opponent: opponent_id(spec.level, spec.kind, spec.style),
             seed: spec.seed,
             corp_deck: spec.corp_deck,
             runner_deck: spec.runner_deck,
@@ -484,9 +485,11 @@ mod tests {
 
     #[test]
     fn a_rung_is_recorded_by_its_name_and_a_kind_by_its_own() {
-        assert_eq!(opponent_id(Some(Level::Veteran), BotKind::Random, Personality::Rush), "bot:veteran");
-        assert_eq!(opponent_id(None, BotKind::Heuristic, Personality::Balanced), "bot:heuristic");
-        assert_eq!(opponent_id(None, BotKind::Mcts, Personality::Glacier), "bot:mcts:glacier");
+        use netrunner_bots::Plan;
+        assert_eq!(opponent_id(Some(Level::Veteran), BotKind::Random, Style::of(Plan::FastAdvance)), "bot:veteran");
+        assert_eq!(opponent_id(None, BotKind::Heuristic, Style::BALANCED), "bot:heuristic");
+        assert_eq!(opponent_id(None, BotKind::Mcts, Style::of(Plan::Glacier)), "bot:mcts:glacier");
+        assert_eq!(opponent_id(None, BotKind::Planner, Style::new(&[Plan::Glacier, Plan::FastAdvance]).unwrap()), "bot:planner:glacier+fast-advance");
     }
 
     #[test]

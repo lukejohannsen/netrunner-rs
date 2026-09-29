@@ -55,7 +55,7 @@ pub fn label(path: &Path, header: Option<&MatchRecordHeader>) -> String {
     match header {
         None => format!("{when} · not a record this client can read"),
         Some(header) => match header.bot {
-            Some(bot) => format!("{when} · seed {} · your {} against the {} {:?} {}", header.seed, chair(bot.side.other()), bot.level, bot.personality, chair(bot.side)),
+            Some(bot) => format!("{when} · seed {} · your {} against the {} {} {}", header.seed, chair(bot.side.other()), bot.level, bot.style, chair(bot.side)),
             None => format!("{when} · seed {} · a match between two bots", header.seed),
         },
     }
@@ -84,7 +84,7 @@ fn saved_at(stem: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use netrunner_client::start::{Level, Personality};
+    use netrunner_client::start::{Level, Plan, Style};
     use netrunner_core::rules::MatchRules;
     use std::path::PathBuf;
 
@@ -97,10 +97,10 @@ mod tests {
     #[test]
     fn a_report_is_listed_by_when_and_whom() {
         let path = PathBuf::from("/r/2026-09-22T20-15-03-seed42.jsonl");
-        let bot = netrunner_client::bug_report::RecordedBot { side: Side::Corp, level: Level::Elite, personality: Personality::Glacier };
+        let bot = netrunner_client::bug_report::RecordedBot { side: Side::Corp, level: Level::Elite, style: Style::of(Plan::Glacier) };
         let listed = label(&path, Some(&header(Some(bot))));
         assert!(listed.starts_with("2026-09-22 20:15:03 UTC · seed 42 · your Runner against the "), "{listed}");
-        assert!(listed.ends_with("Glacier Corp"), "{listed}");
+        assert!(listed.ends_with("glacier Corp"), "{listed}");
         assert_eq!(label(&path, Some(&header(None))), "2026-09-22 20:15:03 UTC · seed 42 · a match between two bots");
         assert_eq!(label(&PathBuf::from("game_00001.jsonl"), None), "game_00001 · not a record this client can read");
     }

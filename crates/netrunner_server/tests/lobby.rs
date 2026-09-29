@@ -14,7 +14,7 @@ use tokio_tungstenite::tungstenite::Message as WsMessage;
 use tokio_tungstenite::{MaybeTlsStream, WebSocketStream};
 use uuid::Uuid;
 
-use netrunner_bots::Personality;
+use netrunner_bots::Style;
 use netrunner_core::decks::{self, DeckFile};
 use netrunner_core::dsl::CardId;
 use netrunner_core::format::NsgFormat;
@@ -467,7 +467,7 @@ async fn a_game_against_a_seated_bot_is_rated_by_nobody() {
     let path = dir.join("ratings.json");
     let url = start_server(ServeOptions {
         bot_level: Some(netrunner_bots::Level::Operator),
-        bot_personality: Some(Personality::Balanced),
+        bot_style: Some(Style::BALANCED),
         data_dir: Some(dir.clone()),
         ..bot_daemon()
     })
@@ -492,7 +492,7 @@ async fn a_game_against_a_seated_bot_is_rated_by_nobody() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-/// With no personality pinned, the bot plays the style its dealt deck
+/// With no style pinned, the bot plays the style its dealt deck
 /// names, and its seat says so — a rush Corp and a glacier Corp are
 /// different opponents.
 #[tokio::test]
@@ -501,7 +501,8 @@ async fn an_unpinned_bot_plays_its_dealt_decks_style_and_its_seat_says_so() {
     // is `sample_decks_for_seed(1)` and the Runner deck's style is known.
     let dealt = netrunner_server::fixtures::sample_decks_for_seed(1);
     let runner_deck = decks::by_id(&dealt.runner_id).expect("the dealt deck is embedded");
-    let style = runner_deck.style.clone().expect("every sample deck names a style");
+    assert!(!runner_deck.style.is_empty(), "every sample deck names a style");
+    let style = runner_deck.style_label();
     let url = start_server(bot_daemon()).await;
 
     let mut human = seek(&url, "human", corp("human")).await;

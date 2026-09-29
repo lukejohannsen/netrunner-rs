@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use netrunner_bots::{Level, Personality};
+use netrunner_bots::{Level, Style};
 use netrunner_core::cards::CardRegistry;
 use netrunner_core::decks::DeckFile;
 use clap::{Parser, Subcommand, ValueEnum};
@@ -101,10 +101,13 @@ pub struct Config {
     #[arg(long, value_enum, default_value_t = BotKind::Human)]
     pub runner: BotKind,
 
-    /// The Corp bot's personality: `balanced`, or a Corp archetype —
-    /// `rush` (score early, protect late), `glacier` (build the fort
-    /// first), `trap` (wants the Runner's grip thin). A bias on the
-    /// evaluator `heuristic`, `mcts` and `puct` share; `random` and a
+    /// The Corp bot's style: `balanced`, or the Corp plans it stacks,
+    /// joined with `+` — `glacier` (build the fort first), `fast-advance`
+    /// (score the turn after the install, or from hand), `kill` (tag and
+    /// punish, damage until a trap finishes it), `traps` (bluff with what
+    /// is installed); `glacier+fast-advance` is the guide's "glacier, then
+    /// fast advance". The `planner` plays the whole stack; `heuristic`,
+    /// `mcts` and `puct` play the first plan's profile; `random` and a
     /// network-backed `puct-onnx` ignore it.
     ///
     /// **Unset means the deck's own style** (`DeckFile::style` — every
@@ -112,22 +115,22 @@ pub struct Config {
     /// *Brick Stack* plays like a glacier without being told to. Pass
     /// `balanced` explicitly to override a deck's style with none.
     #[arg(long)]
-    pub corp_personality: Option<Personality>,
+    pub corp_style: Option<Style>,
 
-    /// The Runner bot's personality: `balanced`, or a Runner archetype —
+    /// The Runner bot's style: `balanced`, or a Runner plan —
     /// `aggressive` (runs are worth double, tags and subroutines cost
     /// less), `cautious` (a full rig before a run), `builder` (the rig
     /// first, hand on the table) or `wary` (treats face-down ICE as
-    /// real). See `--corp-personality`; unset means the deck's own style.
+    /// real). See `--corp-style`; unset means the deck's own style.
     #[arg(long)]
-    pub runner_personality: Option<Personality>,
+    pub runner_style: Option<Style>,
 
     /// Seat the Corp as a rung of the difficulty ladder — `novice`,
     /// `apprentice`, `operator`, `veteran`, `elite`, or `1`-`5` — instead
     /// of assembling one out of `--corp` and `--simulations`, both of
-    /// which it overrides. The personality is kept: a rung is a strength
-    /// and a style is a style, and the two cross (`--corp-level 4
-    /// --corp-personality rush`, or a rung playing its deck's own style).
+    /// which it overrides. The style is kept: a rung is a strength and a
+    /// style is a style, and the two cross (`--corp-level 4 --corp-style
+    /// fast-advance`, or a rung playing its deck's own style).
     ///
     /// A rung is a *calibrated* opponent and the flags are not: they let
     /// you build combinations nobody has measured, which is right for a
@@ -335,15 +338,15 @@ impl From<BotKind> for netrunner_client::record::BotKind {
     }
 }
 
-/// A bot for the benchmark: a kind and the personality it plays with,
-/// spelled `kind` or `kind:personality` on the command line.
+/// A bot for the benchmark: a kind and the style it plays with, spelled
+/// `kind` or `kind:style` on the command line (`planner:glacier+fast-advance`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct BotSpec {
     pub kind: BotKind,
-    pub personality: Personality,
+    pub style: Style,
     /// A difficulty rung instead of a hand-assembled bot, spelled
     /// `level:elite` or `level:3`. `Some` overrides `kind` and
-    /// `personality`, and the rung resolves differently on each chair —
+    /// `style`, and the rung resolves differently on each chair —
     /// which is the point of benchmarking one: `elite` as Corp and
     /// `elite` as Runner are different bots, and the rating book already
     /// rates the two roles separately.
@@ -355,25 +358,25 @@ impl std::str::FromStr for BotSpec {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         // `level:elite:glacier` crosses a rung with a style, the way
-        // `--corp-level 5 --corp-personality glacier` does at a seat. Without
-        // it the benchmark could only calibrate the `Balanced` rungs, while
+        // `--corp-level 5 --corp-style glacier` does at a seat. Without
+        // it the benchmark could only calibrate the balanced rungs, while
         // play seats every rung in its deck's own style.
         if let Some(level) = s.strip_prefix("level:") {
-            let (level, personality) = match level.split_once(':') {
-                Some((level, personality)) => (level, personality.parse::<Personality>()?),
-                None => (level, Personality::Balanced),
+            let (level, style) = match level.split_once(':') {
+                Some((level, style)) => (level, style.parse::<Style>()?),
+                None => (level, Style::BALANCED),
             };
-            return Ok(BotSpec { kind: BotKind::Heuristic, personality, level: Some(level.parse::<Level>()?) });
+            return Ok(BotSpec { kind: BotKind::Heuristic, style, level: Some(level.parse::<Level>()?) });
         }
-        let (kind, personality) = match s.split_once(':') {
-            Some((kind, personality)) => (kind, personality.parse::<Personality>()?),
-            None => (s, Personality::Balanced),
+        let (kind, style) = match s.split_once(':') {
+            Some((kind, style)) => (kind, style.parse::<Style>()?),
+            None => (s, Style::BALANCED),
         };
         let kind = BotKind::from_str(kind, true).map_err(|_| {
             let names: Vec<&str> = BotKind::value_variants().iter().filter_map(|k| k.to_possible_value()).map(|v| v.get_name().to_string()).collect::<Vec<_>>().leak().iter().map(String::as_str).collect();
             format!("unknown bot kind {kind:?}; one of {}", names.join(", "))
         })?;
-        Ok(BotSpec { kind, personality, level: None })
+        Ok(BotSpec { kind, style, level: None })
     }
 }
 
@@ -410,7 +413,7 @@ pub enum Command {
     /// replaced.
     Bench {
         /// Bots to seat, comma-separated, each a kind with an optional
-        /// personality after a colon: `heuristic`, `heuristic:rush`,
+        /// style after a colon: `heuristic`, `heuristic:fast-advance`,
         /// `puct:aggressive`. Every ordered pair plays, a bot against
         /// itself included — that pairing is what says whether the Corp
         /// or the Runner chair is the stronger one for a given bot.
@@ -485,6 +488,13 @@ pub enum Command {
         /// saved book.
         #[arg(long)]
         label: Option<String>,
+        /// Seat each chair in its deck's own style (`DeckFile::style`), as
+        /// play does, instead of the style the bot spec names — the
+        /// shipped seating, for a measurement of the plans a deck stacks.
+        /// The participant ids do not change; keep two seatings apart with
+        /// `--label`.
+        #[arg(long)]
+        deck_styles: bool,
     },
 
     /// Measurements over the bots' internals whose product is a number
@@ -904,21 +914,21 @@ pub enum SideArg {
 }
 
 impl Config {
-    /// The personality the bot in `side`'s chair plays with: the flag if
-    /// one was given, else the style its deck names, else balanced.
+    /// The style the bot in `side`'s chair plays with: the flag if one
+    /// was given, else the style its deck names, else balanced.
     ///
     /// One resolver rather than a branch at each seat, so the TUI, the
     /// starter game, the headless runner and (by the same rule, in its own
     /// crate) the daemon cannot disagree about which wins. The flag wins
     /// because it is the more specific request — a deck's style is a
-    /// default, and `--corp-personality balanced` has to be able to switch
-    /// it off for a measurement.
-    pub fn personality_for(&self, side: Side, deck: &DeckFile) -> Result<Personality, String> {
+    /// default, and `--corp-style balanced` has to be able to switch it
+    /// off for a measurement.
+    pub fn style_for(&self, side: Side, deck: &DeckFile) -> Result<Style, String> {
         let flag = match side {
-            Side::Corp => self.corp_personality,
-            Side::Runner => self.runner_personality,
+            Side::Corp => self.corp_style,
+            Side::Runner => self.runner_style,
         };
-        netrunner_client::play::personality_for(flag, deck)
+        netrunner_client::play::style_for(flag, deck)
     }
 
     /// Whether `side`'s chair is a bot: a bot kind, or a rung — which
@@ -960,7 +970,7 @@ impl Config {
     }
 
     /// The ladder rung asked for on `side`, if any. `Some` overrides the
-    /// kind and simulation count for that seat; the personality crosses it.
+    /// kind and simulation count for that seat; the style crosses it.
     pub fn level_for(&self, side: Side) -> Option<Level> {
         match side {
             Side::Corp => self.corp_level,

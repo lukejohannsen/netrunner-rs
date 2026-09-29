@@ -4,7 +4,7 @@
   "side": "Corp",
   "category": "Sample",
   "description": "Ansel 1.0 in threes and Send a Message in threes, with Urtica Cipher for the impatient: a big-agenda deck that protects them.",
-  "style": "glacier",
+  "style": ["glacier", "fast-advance"],
   "identity": "haas_bioroid_precision_design",
   "cards": [
     {

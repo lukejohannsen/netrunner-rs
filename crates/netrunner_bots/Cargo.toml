@@ -28,3 +28,6 @@ rand_distr = "0.5"
 # weight for callers who only need the deterministic baseline
 # (`UniformPolicyEvaluator`)/search machinery (`PuctAgent`).
 onnx = ["dep:ort", "dep:ndarray"]
+
+[dev-dependencies]
+serde_json = { workspace = true }

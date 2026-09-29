@@ -74,6 +74,23 @@
 //! the paid state; the pool split alone is not enumerated, because the
 //! evaluator prices only the credit pool and so always keeps it.
 //!
+//! **An opponent's yes-or-no is answered the way that is worst for the
+//! seat, and the line goes on** (`opponents_answer`, Stage 6). A decision
+//! only the opponent can make ended the line, and a line that ended at a
+//! parked paid choice was scored on the parked state with its clicks
+//! unspent: Public Trail's "give the Runner 1 tag unless they pay 8[c]"
+//! was worth its cost and nothing, because at the leaf no tag had been
+//! given and no credits paid, and the kill plan's tag was a card the
+//! planner never played (0 of 116 times it held it). So when the line
+//! reaches a paid choice offered to the opponent, each of their answers
+//! is applied and settled, the one that leaves the seat worst off is
+//! taken as theirs, and the line continues from there — the opponent
+//! frozen still, but frozen at their best answer to this one question
+//! rather than at no answer. If the real answer is the other one, the
+//! view is not the one predicted and the turn is planned again, which
+//! is the rule every step already plays under. One node of minimax,
+//! never a search of the opponent's turn.
+//!
 //! **The first action is chosen from the view's list, the rest from the
 //! sample's.** A sample is consistent with everything the view shows and
 //! carries no identity (`determinize`), so its legal actions can differ
@@ -104,7 +121,7 @@ use crate::determinize::determinize;
 use crate::eval::{evaluate_state_with, Weights};
 use crate::heuristic::choose_one_ply;
 use crate::knowledge::Knowledge;
-use crate::personality::Personality;
+use crate::plans::Style;
 
 /// Partial lines kept at each ply beside the best line under each first
 /// action. Six, because a click's candidates are about a dozen and the
@@ -133,6 +150,11 @@ pub const KEPT_CLICK_EDGE: f64 = 0.05;
 /// The jitter the one-ply chooser adds, for the same reason: ties broken
 /// by the sample's draw rather than by `legal_actions` order.
 const TIE_BREAK_JITTER: f64 = 1e-3;
+
+/// How many of the opponent's yes-or-nos a line is answered through
+/// (`opponents_answer`): an answer that parks a second question is
+/// answered too, and a third is where the second stands.
+const ANSWER_DEPTH: u8 = 2;
 
 /// One action of a line, with the legal actions the sample offered where
 /// it was chosen — the prediction a real view is checked against before
@@ -170,7 +192,7 @@ pub struct PlanStats {
     pub applications: u64,
 }
 
-/// The seat that plans its turn. `new`, `with_personality` and
+/// The seat that plans its turn. `new`, `with_style` and
 /// `with_knowledge` are `HeuristicAgent`'s, so a driver seats either the
 /// same way.
 pub struct PlanningAgent {
@@ -184,18 +206,20 @@ pub struct PlanningAgent {
 
 impl PlanningAgent {
     pub fn new(side: Side, seed: u64) -> Self {
-        Self::with_personality(side, seed, Personality::Balanced)
+        Self::with_style(side, seed, Style::BALANCED)
     }
 
-    /// `new`, scoring with `personality.weights()` at the guide's rate
-    /// (`Weights::at_the_guides_rate`, Stage 5): the economy terms are
-    /// the planner's, and the one-ply reference keeps the default so the
-    /// planner is measured against a chooser that has not moved.
-    pub fn with_personality(side: Side, seed: u64, personality: Personality) -> Self {
+    /// `new`, scoring with `style.planned_weights()`: the first plan's
+    /// profile at the guide's rate (`Weights::at_the_guides_rate`, Stage
+    /// 5) with every plan the style stacks switched on
+    /// (`Weights::with_plans`, Stage 6). The economy and the plans are
+    /// the planner's; the one-ply reference keeps the profile alone, so
+    /// the planner is measured against a chooser that has not moved.
+    pub fn with_style(side: Side, seed: u64, style: Style) -> Self {
         Self {
             side,
             rng: StdRng::seed_from_u64(seed),
-            weights: personality.weights().at_the_guides_rate(),
+            weights: style.planned_weights(side),
             knowledge: Knowledge::default(),
             plan: None,
             stats: PlanStats::default(),
@@ -259,6 +283,7 @@ impl PlanningAgent {
             root_turn: root.turn,
             root_legal: &view.legal_actions,
             applications: 0,
+            answering: 0,
             rng: &mut self.rng,
         };
         let steps = search.best_line(root);
@@ -294,7 +319,7 @@ impl BotAgent for PlanningAgent {
 }
 
 /// Where a settled state stands, for the line that reached it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 enum Standing {
     /// The seat's own decision, in its own turn, with nothing parked for
     /// the opponent: the line goes on.
@@ -329,6 +354,8 @@ struct Search<'a> {
     /// else — see `expand`.
     root_legal: &'a [PlayerAction],
     applications: usize,
+    /// How many opponent's answers deep `settle` is (`opponents_answer`).
+    answering: u8,
     rng: &'a mut StdRng,
 }
 
@@ -463,8 +490,17 @@ impl Search<'_> {
                         // choice a card of ours hands them — or the seat
                         // is asked something in the opponent's turn. The
                         // line ends here either way; what follows is
-                        // theirs, or one ply's.
-                        Err(_) => return (state, if turn_over { Standing::Ended } else { Standing::Leaf }),
+                        // theirs, or one ply's. A yes-or-no of theirs is
+                        // answered their best way and the line goes on
+                        // (module docs).
+                        Err(_) => {
+                            if !turn_over
+                                && let Some(answered) = self.opponents_answer(&state)
+                            {
+                                return answered;
+                            }
+                            return (state, if turn_over { Standing::Ended } else { Standing::Leaf });
+                        }
                     }
                 }
                 Some(_) => return (state, Standing::Open),
@@ -514,6 +550,43 @@ impl Search<'_> {
             }
         }
         best
+    }
+
+    /// The opponent's answer to the paid choice parked on `state` that
+    /// leaves the seat worst off — each answer applied and settled, the
+    /// settled states scored where they stand — with the state it
+    /// settles to and where that stands, so the line goes on from it;
+    /// `None` when nothing of the kind is parked. Nested at most
+    /// `ANSWER_DEPTH` deep, so an answer that parks another question is
+    /// answered too, and a third is where the second stands.
+    fn opponents_answer(&mut self, state: &GameState) -> Option<(GameState, Standing)> {
+        let opponent = self.side.other();
+        if state.pending_paid_choice.as_ref()?.side != opponent || self.answering >= ANSWER_DEPTH {
+            return None;
+        }
+        let answers: Vec<PlayerAction> = netrunner_core::rules::legal_actions_for(state, self.registry, opponent)
+            .into_iter()
+            .filter(|action| matches!(action, PlayerAction::AcceptPendingPaidChoice { .. } | PlayerAction::DeclinePendingPaidChoice))
+            .collect();
+        self.applications += answers.len();
+        let mut worst: Option<(f64, GameState, Standing)> = None;
+        self.answering += 1;
+        for answer in answers {
+            let Ok((next, _)) = apply_action(state, self.registry, answer) else { continue };
+            // The answer's own steps are the opponent's, not the line's:
+            // the next step's expectation is read off the answered state.
+            let mut theirs = Vec::new();
+            let (settled, standing) = self.settle(next, &mut theirs);
+            let score = match standing {
+                Standing::Ended => self.score(&settled),
+                Standing::Open | Standing::Leaf => self.leaf_score(&settled),
+            };
+            if worst.as_ref().is_none_or(|(w, _, _)| score < *w) {
+                worst = Some((score, settled, standing));
+            }
+        }
+        self.answering -= 1;
+        worst.map(|(_, settled, standing)| (settled, standing))
     }
 
     fn score(&mut self, state: &GameState) -> f64 {
@@ -809,6 +882,66 @@ mod tests {
             assert!(firsts.contains(&first), "first action {first} was pruned: {firsts:?}");
         }
         assert!(kept.windows(2).all(|pair| pair[0].score >= pair[1].score), "kept in score order");
+    }
+
+    /// The kill plan's lever: Public Trail's "give the Runner 1 tag unless
+    /// they pay 8[c]" is a choice only the Runner makes, so a line that
+    /// played it ended at the parked choice and was worth its cost.
+    /// Answered the Runner's worst-for-the-Corp way — a tag, since they
+    /// cannot pay — and continued, a kill Corp holding Scorched Earth
+    /// against a grip of three, with the credits to play it next turn
+    /// but not this one, tags first: the threat is priced. A balanced
+    /// Corp, which reads no leverage in a tag, does not; and the kill
+    /// Corp does not either against a grip the damage would not reach,
+    /// because a tag's leverage alone is under Public Trail's price.
+    /// (With the credits to play Scorched Earth in the same turn, every
+    /// planner tags: the line kills inside the turn and scores the win.)
+    /// Public Trail's shape without its "play only if" (a successful run
+    /// last turn), which a fixture cannot write.
+    #[test]
+    fn a_kill_corp_plays_public_trail_because_the_runners_answer_is_priced() {
+        use crate::plans::{Plan, Style};
+        let mut registry = CardRegistry::new();
+        netrunner_core::cards::register_playable_cards(&mut registry);
+        let trail_card: CardDefinition = serde_json::from_str(r#"{
+            "id": "public_trail_open", "title": "Public Trail", "side": "Corp", "card_type": "Operation", "cost": 4,
+            "triggers": [{ "trigger": "OnPlay", "subject": "This", "effects": [{ "OfferPaidChoice": {
+                "side": "Runner", "cost": { "Credits": 8 }, "if_paid": { "Sequence": [] },
+                "if_declined": { "GiveTags": { "Fixed": 1 } }, "text": "Give the Runner 1 tag unless they pay 8[credit]" } }] }],
+            "is_playable": true }"#).expect("a card file");
+        registry.insert(trail_card);
+        let mut state = GameState::new(0);
+        state.phase = GamePhase::Action(Side::Corp);
+        state.turn = 6;
+        state.next_install_id = 20;
+        state.runner = empty_runner();
+        state.runner.resources.credits = Credits(3);
+        state.runner.grip = vec![CardId("sure_gamble".to_string()); 3];
+        state.runner.stack = vec![CardId("sure_gamble".to_string()); 10];
+        state.corp = CorpState {
+            resources: PlayerResources { credits: Credits(5), clicks: Clicks(3), agenda_points: AgendaPoints(0) },
+            hq: vec![CardId("public_trail_open".to_string()), CardId("scorched_earth".to_string()), CardId("hedge_fund".to_string())],
+            r_and_d: vec![CardId("hedge_fund".to_string()); 10],
+            installed: vec![ice(10, ServerId::Hq), ice(11, ServerId::RnD)],
+            ..Default::default()
+        };
+        for card in &mut state.corp.installed {
+            card.card = CardId("palisade".to_string());
+        }
+        let view = build_client_view(&state, &registry, Side::Corp);
+        let trail = Some(PlayerAction::PlayOperation { card_id: CardId("public_trail_open".to_string()) });
+        assert!(view.legal_actions.contains(trail.as_ref().unwrap()), "the tag is playable: {:?}", view.legal_actions);
+        // The line, not its first action: the Hedge Fund may come first.
+        let plans_to_tag = |agent: &mut PlanningAgent, view: &ClientView| {
+            agent.select_action(view, &registry);
+            agent.plan.as_ref().is_some_and(|plan| plan.steps.iter().any(|step| Some(&step.action) == trail.as_ref()))
+        };
+        assert!(plans_to_tag(&mut PlanningAgent::with_style(Side::Corp, 1, Style::of(Plan::Kill)), &view), "the kill Corp tags this turn");
+        assert!(!plans_to_tag(&mut PlanningAgent::new(Side::Corp, 1), &view), "a balanced Corp sees nothing in the tag");
+        let mut safe = state.clone();
+        safe.runner.grip = vec![CardId("sure_gamble".to_string()); 6];
+        let view = build_client_view(&safe, &registry, Side::Corp);
+        assert!(!plans_to_tag(&mut PlanningAgent::with_style(Side::Corp, 1, Style::of(Plan::Kill)), &view), "no threat against a full grip, and a tag alone is under the price");
     }
 
     #[test]

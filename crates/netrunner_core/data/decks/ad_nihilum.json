@@ -4,7 +4,7 @@
   "side": "Corp",
   "category": "Sweep",
   "description": "Not a published list: built so the sweeps reach Vantage Point's bad publicity cards — Editorial Division, Witch Hunt, Flood the Market, Unleash, Reanimation Protocol, realloc() — with every gray ops and liability card the identity can search for.",
-  "style": "rush",
+  "style": ["fast-advance"],
   "identity": "editorial_division_ad_nihilum",
   "cards": [
     {

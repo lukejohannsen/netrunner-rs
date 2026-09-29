@@ -47,8 +47,8 @@ pub fn sample_deck_registry() -> CardRegistry {
 ///
 /// Returns the authored `DeckFile`s rather than only the runtime `Deck`s
 /// because the seat that plays one needs more than its cards: the bot's
-/// personality comes off `DeckFile::style` when no flag names one
-/// (`Config::personality_for`). `DeckFile::to_deck` is the one-line step
+/// style comes off `DeckFile::style` when no flag names one
+/// (`Config::style_for`). `DeckFile::to_deck` is the one-line step
 /// from here to `GameState::setup`.
 pub fn decks_for_match(
     dir: &Path,

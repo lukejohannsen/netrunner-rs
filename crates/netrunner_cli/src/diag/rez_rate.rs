@@ -261,7 +261,7 @@ fn play(
         determinizations: args.determinizations,
         shared_sample: false,
         mcts_depth: None,
-        personality: spec.personality,
+        style: spec.style,
         knowledge: config.knowledge(deck),
     };
     let corp = bots::make_agent_with_model(args.corp.kind, Side::Corp, seed, setup(args.corp, corp_deck), &config.model)?
@@ -450,7 +450,7 @@ fn server_name(server: ServerId) -> String {
 }
 
 fn describe(spec: BotSpec) -> String {
-    format!("{:?}:{:?}", spec.kind, spec.personality).to_lowercase()
+    format!("{:?}:{}", spec.kind, spec.style).to_lowercase()
 }
 
 fn print_report(report: &RezRateReport) {

@@ -4,7 +4,7 @@
   "side": "Runner",
   "category": "Sweep",
   "description": "Not a published list: built so the sweeps reach Jeitinho, Rebellion Without Rehearsal's Criminal weapon, which the Runner adds to their score area as an assassination agenda after a turn of successful runs on HQ, R&D and Archives, and wins with the third. On Gabriel Santiago, the one Criminal identity no deck plays, whose HQ credits pay for the turn's first run, and on Borrowed Time's frame after Rebellion Without Rehearsal Stage 8b, with three Jeitinho for a Tailgate, a VRcation and a Pennyshaver. Eternal-legal only: Gabriel Santiago is a Core Set card. The Automata Initiative Stage 2: two Shibboleth for two VRcation. The Automata Initiative Stage 3: two Curupira for two Marjanah, fracter for fracter, and two Laser Pointer for two Leech. The Automata Initiative Stage 4: Hermes for the T400 Memory Diamond, memory for memory, and two Saci for two Rotary.",
-  "style": "aggressive",
+  "style": ["aggressive"],
   "identity": "gabriel_santiago",
   "cards": [
     {

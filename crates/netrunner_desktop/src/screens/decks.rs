@@ -298,7 +298,7 @@ fn spawn_tile(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCor
             tile.spawn(Node { flex_direction: FlexDirection::Column, flex_grow: 1.0, flex_basis: px(0), min_width: px(0), row_gap: px(4), ..default() }).with_children(|words| {
                 words.spawn((Text::new(row.deck.name.clone()), theme.font(size::BODY), TextColor(theme.text)));
                 words.spawn(widgets::dim(theme, row.identity.clone()));
-                let style = row.deck.style.as_deref().unwrap_or("balanced");
+                let style = row.deck.style_label();
                 words.spawn(widgets::dim(theme, format!("{:?} · {} cards · a bot plays it {style}", row.deck.side, row.deck.size())));
                 spawn_standing(words, theme, &row.status.standing, format);
                 let others: Vec<&str> = row.status.legal_in.iter().filter(|other| **other != format).map(|other| format_label(*other)).collect();

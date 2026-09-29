@@ -743,7 +743,7 @@ fn drive(terminal: &mut ratatui::DefaultTerminal, menu: &mut Menu) -> Result<(),
 mod tests {
     use super::*;
     use clap::Parser;
-    use netrunner_bots::Personality;
+    use netrunner_bots::{Plan, Style};
     use netrunner_core::format::NsgFormat;
 
     use crate::config::BotKind;
@@ -834,11 +834,11 @@ mod tests {
         else {
             panic!()
         };
-        assert_eq!(config.runner_personality, Some(Personality::Aggressive));
+        assert_eq!(config.runner_style, Some(Style::of(Plan::Aggressive)));
         press(&mut menu, &[KeyCode::Esc]);
         go_to(&mut menu, Entry::Learn);
         let MenuStep::Launch(Launch::Learn { config, .. }) = menu.key(KeyCode::Enter) else { panic!() };
-        assert_eq!((config.corp_personality, config.runner_personality), (None, None));
+        assert_eq!((config.corp_style, config.runner_style), (None, None));
         let _ = std::fs::remove_dir_all(dir);
     }
 

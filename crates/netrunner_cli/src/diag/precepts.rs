@@ -48,7 +48,7 @@ use rayon::prelude::*;
 use serde::Serialize;
 
 use netrunner_bots::eval::{covers, server_break_cost};
-use netrunner_bots::{determinize, Knowledge, Personality};
+use netrunner_bots::{determinize, Knowledge, Style};
 use rand::rngs::StdRng;
 use rand::SeedableRng;
 use netrunner_core::card::Faction;
@@ -71,7 +71,7 @@ pub struct PreceptsArgs {
     pub simulations: usize,
     pub determinizations: Option<usize>,
     pub threads: Option<usize>,
-    /// Seat each chair in its deck's own style (`Personality::for_deck`),
+    /// Seat each chair in its deck's own style (`Style::for_deck`),
     /// as play does, instead of the style the bot spec names — the
     /// shipped seating, and the one the by-style groups are for.
     pub deck_styles: bool,
@@ -948,15 +948,15 @@ fn play(
     let (corp_deck, runner_deck) = &matchups[game as usize % matchups.len()];
     let (state, _events) =
         GameState::setup(&corp_deck.to_deck(), &runner_deck.to_deck(), registry, seed).map_err(|e| format!("{e:?}"))?;
-    let style = |spec: BotSpec, deck: &core_decks::DeckFile| -> Result<Personality, String> {
-        if args.deck_styles { Personality::for_deck(deck) } else { Ok(spec.personality) }
+    let style = |spec: BotSpec, deck: &core_decks::DeckFile| -> Result<Style, String> {
+        if args.deck_styles { Style::for_deck(deck) } else { Ok(spec.style) }
     };
     let corp_style = style(args.corp, corp_deck)?;
     let runner_style = style(args.runner, runner_deck)?;
-    let setup = |personality: Personality, deck: &core_decks::DeckFile| bots::AgentSetup {
+    let setup = |style: Style, deck: &core_decks::DeckFile| bots::AgentSetup {
         simulations: args.simulations,
         determinizations: args.determinizations,
-        personality,
+        style,
         knowledge: config.knowledge(deck),
         ..bots::AgentSetup::new(args.simulations)
     };
@@ -1028,8 +1028,8 @@ fn play(
         seed,
         corp_deck: corp_deck.id.clone(),
         runner_deck: runner_deck.id.clone(),
-        corp_style: format!("{corp_style:?}").to_lowercase(),
-        runner_style: format!("{runner_style:?}").to_lowercase(),
+        corp_style: corp_style.to_string(),
+        runner_style: runner_style.to_string(),
         corp_faction: faction_name(corp_faction),
         runner_faction: faction_name(runner_faction),
         winner: winner.map(|side| format!("{side:?}")),
@@ -1136,8 +1136,8 @@ fn summarise(
 
 fn describe(spec: BotSpec) -> String {
     match spec.level {
-        Some(level) => format!("level:{level:?}:{:?}", spec.personality).to_lowercase(),
-        None => format!("{:?}:{:?}", spec.kind, spec.personality).to_lowercase(),
+        Some(level) => format!("level:{level:?}:{}", spec.style).to_lowercase(),
+        None => format!("{:?}:{}", spec.kind, spec.style).to_lowercase(),
     }
 }
 

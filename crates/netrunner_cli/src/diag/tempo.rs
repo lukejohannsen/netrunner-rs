@@ -31,11 +31,11 @@
 //! rather than in the same total. `HistoryEntry` already carries
 //! `turn_number` and `side`, which is why nothing here reconstructs either.
 //!
-//! **Both chairs name a personality, always.** `--corp`/`--runner` take a
-//! `BotSpec`, whose personality defaults to `Balanced` rather than to the
+//! **Both chairs name a style, always.** `--corp`/`--runner` take a
+//! `BotSpec`, whose style defaults to balanced rather than to the
 //! deck's own style — so every profile here is chair-isolated by
 //! construction, and the trap Phase 5 §3 recorded (an unset
-//! `--corp-personality` *is* the deck's style, which made a like-for-like
+//! `--corp-style` *is* the deck's style, which made a like-for-like
 //! comparison an unlike one) cannot be sprung through this command. A rung
 //! is spelled `level:elite` and is the bot the ladder calibrated.
 //!
@@ -433,7 +433,7 @@ fn play(
         determinizations: args.determinizations,
         shared_sample: false,
         mcts_depth: None,
-        personality: spec.personality,
+        style: spec.style,
         knowledge: config.knowledge(deck),
     };
     // `make_seat_agent` rather than `make_agent_with_model`, so a chair
@@ -570,8 +570,8 @@ fn side_name(side: Side) -> &'static str {
 
 fn describe(spec: BotSpec) -> String {
     match spec.level {
-        Some(level) => format!("level:{level:?}:{:?}", spec.personality).to_lowercase(),
-        None => format!("{:?}:{:?}", spec.kind, spec.personality).to_lowercase(),
+        Some(level) => format!("level:{level:?}:{}", spec.style).to_lowercase(),
+        None => format!("{:?}:{}", spec.kind, spec.style).to_lowercase(),
     }
 }
 

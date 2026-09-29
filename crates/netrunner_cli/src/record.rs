@@ -4,7 +4,7 @@
 //! a game leaves is the same whether the terminal or the desktop client
 //! played it.
 
-use netrunner_bots::{Level, Personality};
+use netrunner_bots::{Level, Style};
 use netrunner_core::rules::Side;
 pub use netrunner_client::record::*;
 
@@ -25,7 +25,7 @@ pub fn seat_record(
     human: Side,
     level: Option<Level>,
     kind: BotKind,
-    personality: Personality,
+    style: Style,
     seed: u64,
     corp_deck: &str,
     runner_deck: &str,
@@ -36,7 +36,7 @@ pub fn seat_record(
         human,
         level,
         kind: kind.into(),
-        personality,
+        style,
         seed,
         corp_deck: corp_deck.to_string(),
         runner_deck: runner_deck.to_string(),

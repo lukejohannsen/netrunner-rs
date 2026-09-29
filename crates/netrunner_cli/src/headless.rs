@@ -91,8 +91,8 @@ pub fn run(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
         // The flag if given, else the deck's own style: a coverage run over
         // `--all-matchups` plays every sample deck the way it is written
         // unless a measurement pins both seats with `balanced`.
-        let corp_personality = config.personality_for(Side::Corp, &corp_deck)?;
-        let runner_personality = config.personality_for(Side::Runner, &runner_deck)?;
+        let corp_style = config.style_for(Side::Corp, &corp_deck)?;
+        let runner_style = config.style_for(Side::Runner, &runner_deck)?;
 
         let (history, outcome, steps) = if config.index_path {
             // A rung is a `BotAgent`, and this path drives the index-based
@@ -107,7 +107,7 @@ pub fn run(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
                 seed,
                 config.simulations,
                 &config.model,
-                corp_personality,
+                corp_style,
                 config.knowledge(&corp_deck),
             )?;
             let runner = bots::make_driver(
@@ -116,7 +116,7 @@ pub fn run(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
                 seed.wrapping_add(1),
                 config.simulations,
                 &config.model,
-                runner_personality,
+                runner_style,
                 config.knowledge(&runner_deck),
             )?;
             let (_state, history, outcome) = SinglePlayerSession::new(state, registry.clone(), corp, runner).run_with_outcome();
@@ -129,7 +129,7 @@ pub fn run(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
                 corp_kind,
                 Side::Corp,
                 seed,
-                setup.clone().with_personality(corp_personality).with_knowledge(config.knowledge(&corp_deck)),
+                setup.clone().with_style(corp_style).with_knowledge(config.knowledge(&corp_deck)),
                 &config.model,
             )?
             .expect("headless_kind never resolves to a kind without a BotAgent form");
@@ -138,7 +138,7 @@ pub fn run(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
                 runner_kind,
                 Side::Runner,
                 seed.wrapping_add(1),
-                setup.with_personality(runner_personality).with_knowledge(config.knowledge(&runner_deck)),
+                setup.with_style(runner_style).with_knowledge(config.knowledge(&runner_deck)),
                 &config.model,
             )?
             .expect("headless_kind never resolves to a kind without a BotAgent form");

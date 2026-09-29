@@ -39,15 +39,15 @@ pub fn open(config: &Config, registry: &CardRegistry) -> Result<StartMenu, Strin
 
 /// Folds the choice into `config` so `run_local` sees the flag form: the
 /// human side `Human`, the bot side a rung (its kind is a placeholder the
-/// rung overrides), the style as the personality flag, the decks by id.
+/// rung overrides), the style as the style flag, the decks by id.
 pub fn apply_choice(choice: &StartChoice, config: &mut Config) {
     let bot = choice.human.other();
     config.corp = if choice.human == Side::Corp { BotKind::Human } else { BotKind::Heuristic };
     config.runner = if choice.human == Side::Runner { BotKind::Human } else { BotKind::Heuristic };
     config.corp_level = (bot == Side::Corp).then_some(choice.level);
     config.runner_level = (bot == Side::Runner).then_some(choice.level);
-    config.corp_personality = if bot == Side::Corp { choice.style } else { None };
-    config.runner_personality = if bot == Side::Runner { choice.style } else { None };
+    config.corp_style = if bot == Side::Corp { choice.style } else { None };
+    config.runner_style = if bot == Side::Runner { choice.style } else { None };
     config.corp_deck = choice.corp_deck.clone();
     config.runner_deck = choice.runner_deck.clone();
 }
@@ -124,14 +124,14 @@ fn draw_pane(frame: &mut Frame, area: Rect, active: bool, title: &str, rows: Vec
 mod tests {
     use super::*;
     use clap::Parser;
-    use netrunner_bots::{Level, Personality};
+    use netrunner_bots::{Level, Plan, Style};
     use netrunner_client::start::{DeckRow, Pane};
 
     fn row(id: &str, side: Side) -> DeckRow {
         DeckRow {
             id: id.to_string(),
             name: id.replace('_', " "),
-            style: Some(if side == Side::Corp { "rush" } else { "aggressive" }.to_string()),
+            style: vec![if side == Side::Corp { "fast-advance" } else { "aggressive" }.to_string()],
             identity: "Someone".to_string(),
             saved: false,
             problem: None,
@@ -157,13 +157,13 @@ mod tests {
         assert_eq!(menu.level(), Level::Operator);
         key(&mut menu, KeyCode::Tab);
         key(&mut menu, KeyCode::Down);
-        assert_eq!(menu.style(), Some(Personality::Aggressive), "the first profile written for the Runner");
+        assert_eq!(menu.style(), Some(Style::of(Plan::Aggressive)), "the first plan written for the Runner");
         key(&mut menu, KeyCode::Tab);
         key(&mut menu, KeyCode::Down);
         match key(&mut menu, KeyCode::Enter) {
             StartKey::Start(choice) => {
                 assert_eq!(choice.level, Level::Operator);
-                assert_eq!(choice.style, Some(Personality::Aggressive));
+                assert_eq!(choice.style, Some(Style::of(Plan::Aggressive)));
                 assert_eq!(choice.runner_deck, "dashing_mad");
             }
             other => panic!("{other:?}"),
@@ -185,7 +185,7 @@ mod tests {
         let choice = StartChoice {
             human: Side::Runner,
             level: Level::Veteran,
-            style: Some(Personality::Glacier),
+            style: Some(Style::of(Plan::Glacier)),
             corp_deck: "brick_stack".to_string(),
             runner_deck: "dashing_mad".to_string(),
         };
@@ -193,14 +193,14 @@ mod tests {
         apply_choice(&choice, &mut config);
         assert_eq!((config.corp, config.runner), (BotKind::Heuristic, BotKind::Human));
         assert_eq!((config.corp_level, config.runner_level), (Some(Level::Veteran), None));
-        assert_eq!((config.corp_personality, config.runner_personality), (Some(Personality::Glacier), None));
+        assert_eq!((config.corp_style, config.runner_style), (Some(Style::of(Plan::Glacier)), None));
         assert_eq!((config.corp_deck.as_str(), config.runner_deck.as_str()), ("brick_stack", "dashing_mad"));
         // The same request as the flags, so the two paths cannot diverge.
         let flags = Config::try_parse_from([
-            "netrunner_cli", "--runner", "human", "--corp", "heuristic", "--corp-level", "veteran", "--corp-personality", "glacier",
+            "netrunner_cli", "--runner", "human", "--corp", "heuristic", "--corp-level", "veteran", "--corp-style", "glacier",
             "--corp-deck", "brick_stack", "--runner-deck", "dashing_mad",
         ])
         .unwrap();
-        assert_eq!((flags.corp, flags.runner, flags.corp_level, flags.corp_personality), (config.corp, config.runner, config.corp_level, config.corp_personality));
+        assert_eq!((flags.corp, flags.runner, flags.corp_level, flags.corp_style), (config.corp, config.runner, config.corp_level, config.corp_style));
     }
 }

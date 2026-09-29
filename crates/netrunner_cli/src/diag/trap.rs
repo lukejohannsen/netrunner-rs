@@ -37,7 +37,7 @@ use rayon::prelude::*;
 use serde::Serialize;
 
 use netrunner_bots::eval::{damage_grows_with_advancement, punishes_access_with_damage};
-use netrunner_bots::Personality;
+use netrunner_bots::Style;
 use netrunner_core::cards::CardRegistry;
 use netrunner_core::decks as core_decks;
 use netrunner_core::dsl::{CardDefinition, CardId};
@@ -59,7 +59,7 @@ pub struct TrapArgs {
     /// Play only this matchup, `CORP_DECK/RUNNER_DECK` by deck id. Without
     /// it, every sample matchup whose Corp deck carries a trap.
     pub matchup: Option<String>,
-    /// Seat each chair in its deck's own style (`Personality::for_deck`),
+    /// Seat each chair in its deck's own style (`Style::for_deck`),
     /// as play does, instead of the style the bot spec names.
     pub deck_styles: bool,
     pub report: Option<PathBuf>,
@@ -240,13 +240,13 @@ fn play(
     let (corp_deck, runner_deck) = &matchups[game as usize % matchups.len()];
     let (state, _events) =
         GameState::setup(&corp_deck.to_deck(), &runner_deck.to_deck(), registry, seed).map_err(|e| format!("{e:?}"))?;
-    let style = |spec: BotSpec, deck: &core_decks::DeckFile| -> Result<Personality, String> {
-        if args.deck_styles { Personality::for_deck(deck) } else { Ok(spec.personality) }
+    let style = |spec: BotSpec, deck: &core_decks::DeckFile| -> Result<Style, String> {
+        if args.deck_styles { Style::for_deck(deck) } else { Ok(spec.style) }
     };
-    let setup = |personality: Personality, deck: &core_decks::DeckFile| bots::AgentSetup {
+    let setup = |style: Style, deck: &core_decks::DeckFile| bots::AgentSetup {
         simulations: args.simulations,
         determinizations: args.determinizations,
-        personality,
+        style,
         knowledge: config.knowledge(deck),
         ..bots::AgentSetup::new(args.simulations)
     };
@@ -476,8 +476,8 @@ fn summarise(corp: String, runner: String, args: &TrapArgs, games: Vec<GameTrap>
 
 fn describe(spec: BotSpec) -> String {
     match spec.level {
-        Some(level) => format!("level:{level:?}:{:?}", spec.personality).to_lowercase(),
-        None => format!("{:?}:{:?}", spec.kind, spec.personality).to_lowercase(),
+        Some(level) => format!("level:{level:?}:{}", spec.style).to_lowercase(),
+        None => format!("{:?}:{}", spec.kind, spec.style).to_lowercase(),
     }
 }
 

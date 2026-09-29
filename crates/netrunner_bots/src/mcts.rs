@@ -13,7 +13,7 @@ use crate::agent::BotAgent;
 use crate::determinize::determinize;
 use crate::eval::{evaluate_state_with, Weights};
 use crate::knowledge::Knowledge;
-use crate::personality::Personality;
+use crate::plans::Style;
 use crate::puct::{pick_action, ActionStat, CycleGuard, ESCAPE_RNG_SALT};
 
 // Both `Node::new` (per expansion) and `rollout` (per rollout ply) call
@@ -160,9 +160,9 @@ impl MctsAgent {
     }
 
     /// The same search, scoring leaves and rollouts with
-    /// `personality.weights()`.
-    pub fn with_personality(mut self, personality: Personality) -> Self {
-        self.weights = personality.weights();
+    /// `style.weights()`.
+    pub fn with_style(mut self, style: Style) -> Self {
+        self.weights = style.weights();
         self
     }
 

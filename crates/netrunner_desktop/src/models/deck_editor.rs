@@ -13,7 +13,7 @@
 //! to edit, and refuses every intent that would change it.
 
 use netrunner_client::deck_builder::{self, CardBook, DeckStatus, Draft, Playability, PoolFilter, PoolSort};
-use netrunner_client::start::Personality;
+use netrunner_client::start::Plan;
 use netrunner_core::card::Faction;
 use netrunner_core::decks::DeckFile;
 use netrunner_core::dsl::{CardDefinition, CardId};
@@ -85,11 +85,12 @@ impl Editor {
         deck_builder::pool(book, &self.filter)
     }
 
-    /// The styles a bot may play this deck in, the deck's own first:
-    /// balanced (`None`), then each profile written for its side.
-    pub fn styles(&self) -> Vec<Option<Personality>> {
+    /// The styles a bot may play this deck in: balanced (`None`), then
+    /// each plan written for its side on its own. A stack is written into
+    /// the file by hand; the editor picks one word.
+    pub fn styles(&self) -> Vec<Option<Plan>> {
         let mut styles = vec![None];
-        styles.extend(Personality::ALL.iter().copied().filter(|p| p.side() == Some(self.draft.deck.side)).map(Some));
+        styles.extend(Plan::for_side(self.draft.deck.side).map(Some));
         styles
     }
 
@@ -122,7 +123,7 @@ impl Editor {
                 None => false,
             },
             Intent::Rename(name) => self.draft.rename(&name),
-            Intent::Style(style) => self.draft.set_style(style),
+            Intent::Style(style) => self.draft.set_style(style.into_iter().collect()),
             Intent::Faction(faction) => return self.view(|filter| filter.faction = faction),
             Intent::Kind(kind) => return self.view(|filter| filter.kind = kind),
             Intent::Query(query) => return self.view(|filter| filter.query = query),
@@ -229,11 +230,11 @@ mod tests {
         let (mut editor, _) = Editor::open(decks::by_id("stolen_goods").unwrap(), false, book, NsgFormat::Startup);
         let styles = editor.styles();
         assert_eq!(styles[0], None);
-        assert!(styles[1..].iter().all(|style| style.unwrap().side() == Some(Side::Runner)));
+        assert!(styles[1..].iter().all(|style| style.unwrap().side() == Side::Runner));
         let current = editor.deck().style.clone();
-        let name = styles[1..].iter().map(|style| style.unwrap().name().to_string()).find(|name| Some(name) != current.as_ref()).unwrap();
+        let name = styles[1..].iter().map(|style| style.unwrap().name().to_string()).find(|name| current != vec![name.clone()]).unwrap();
         assert_eq!(editor.apply(Intent::Style(Some(name.clone())), book), Outcome::Save);
-        assert_eq!(editor.deck().style.as_deref(), Some(name.as_str()));
+        assert_eq!(editor.deck().style, vec![name]);
     }
 
     #[test]

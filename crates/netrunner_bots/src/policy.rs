@@ -9,7 +9,7 @@ use netrunner_core::cards::CardRegistry;
 use netrunner_core::rules::{get_action_mask, GameState, Side};
 
 use crate::eval::{evaluate_state_with, Weights};
-use crate::personality::Personality;
+use crate::plans::Style;
 
 /// Evaluates a leaf `GameState`: a categorical prior over every one of
 /// `ActionSpace::SIZE` fixed action slots (illegal slots MUST be `0.0` —
@@ -72,18 +72,18 @@ const RELATIVE_VALUE_SCALE: f64 = 5.0;
 /// network exists.
 pub struct UniformPolicyEvaluator {
     pub side: Side,
-    /// The value head's terms; a `Personality` biases the search's
-    /// leaves exactly as it biases the one-ply heuristic.
+    /// The value head's terms; a `Style` biases the search's leaves
+    /// exactly as it biases the one-ply heuristic.
     pub weights: Weights,
 }
 
 impl UniformPolicyEvaluator {
     pub fn new(side: Side) -> Self {
-        Self::with_personality(side, Personality::Balanced)
+        Self::with_style(side, Style::BALANCED)
     }
 
-    pub fn with_personality(side: Side, personality: Personality) -> Self {
-        Self { side, weights: personality.weights() }
+    pub fn with_style(side: Side, style: Style) -> Self {
+        Self { side, weights: style.weights() }
     }
 }
 

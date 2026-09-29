@@ -69,7 +69,7 @@ use tokio::sync::mpsc;
 use tokio_tungstenite::tungstenite::Message as WsMessage;
 use uuid::Uuid;
 
-use netrunner_bots::{BotAgent, HeuristicAgent, Knowledge, Level, MctsAgent, Personality};
+use netrunner_bots::{BotAgent, HeuristicAgent, Knowledge, Level, MctsAgent, Style};
 use netrunner_core::cards::CardRegistry;
 use netrunner_core::decks::{self, DeckCategory, DeckFile};
 use netrunner_core::format::NsgFormat;
@@ -114,12 +114,12 @@ pub struct ServeOptions {
     /// Seat a rung of the difficulty ladder instead of `bot_runner`'s
     /// kind — the same override `netrunner_cli --corp-level` makes, so a
     /// daemon's `veteran` and a local `veteran` are the same bot. The
-    /// personality still crosses it. Meaningless with `ServeBotKind::None`,
+    /// style still crosses it. Meaningless with `ServeBotKind::None`,
     /// which `bind` refuses.
     pub bot_level: Option<Level>,
-    /// The bot's `Personality`, or `None` for the style its dealt deck
-    /// names (`DeckFile::style`, balanced when the deck names none).
-    pub bot_personality: Option<Personality>,
+    /// The bot's `Style`, or `None` for the style its dealt deck names
+    /// (`DeckFile::style`, balanced when the deck names none).
+    pub bot_style: Option<Style>,
     /// Base seed every match's seed is derived from (`base + match
     /// index`, the headless driver's policy). `None` picks one at random.
     pub seed: Option<u64>,
@@ -176,7 +176,7 @@ impl Default for ServeOptions {
         ServeOptions {
             bot_runner: ServeBotKind::Heuristic,
             bot_level: None,
-            bot_personality: None,
+            bot_style: None,
             seed: None,
             reconnect_grace: DEFAULT_RECONNECT_GRACE,
             max_matches: None,
@@ -290,10 +290,10 @@ fn deals_by_format(registry: &CardRegistry, options: &ServeOptions) -> std::io::
     Ok(deals)
 }
 
-fn make_serve_agent(kind: ServeBotKind, side: Side, seed: u64, personality: Personality, knowledge: Knowledge) -> Box<dyn BotAgent> {
+fn make_serve_agent(kind: ServeBotKind, side: Side, seed: u64, style: Style, knowledge: Knowledge) -> Box<dyn BotAgent> {
     match kind {
-        ServeBotKind::Heuristic => Box::new(HeuristicAgent::with_personality(side, seed, personality).with_knowledge(knowledge)),
-        ServeBotKind::Mcts => Box::new(MctsAgent::new(side, seed).with_personality(personality).with_knowledge(knowledge)),
+        ServeBotKind::Heuristic => Box::new(HeuristicAgent::with_style(side, seed, style).with_knowledge(knowledge)),
+        ServeBotKind::Mcts => Box::new(MctsAgent::new(side, seed).with_style(style).with_knowledge(knowledge)),
         ServeBotKind::None => unreachable!("caller only invokes this for a bot-backed ServeBotKind"),
     }
 }
@@ -1264,10 +1264,10 @@ fn seat_vs_bot(
         Side::Corp => (&dealt.runner_id, &dealt.runner),
         Side::Runner => (&dealt.corp_id, &dealt.corp),
     };
-    let personality = shared
+    let style = shared
         .options
-        .bot_personality
-        .unwrap_or_else(|| decks::by_id(bot_deck_id).and_then(|deck| Personality::for_deck(&deck).ok()).unwrap_or_default());
+        .bot_style
+        .unwrap_or_else(|| decks::by_id(bot_deck_id).and_then(|deck| Style::for_deck(&deck).ok()).unwrap_or_default());
     // The bot knows the lobby's format and the deck it is dealt; the
     // person's deck it knows by its identity alone, like any opponent.
     let knowledge = Knowledge::new(format, Some(bot_deck.clone()));
@@ -1275,19 +1275,19 @@ fn seat_vs_bot(
     let bot_seed = seed.wrapping_add(1);
     let bot = match shared.options.bot_level {
         Some(level) => SeatedPlayer {
-            name: styled(format!("{} bot", level.name()), personality),
+            name: styled(format!("{} bot", level.name()), style),
             key: None,
             token: Uuid::new_v4(),
-            slot: PlayerSlot::Bot(level.spec(bot_side).with_personality(personality).agent(bot_seed, knowledge)),
+            slot: PlayerSlot::Bot(level.spec(bot_side).with_style(style).agent(bot_seed, knowledge)),
             deck: None,
             lobby: None,
-            bot: Some(RecordedBot { side: bot_side, level, personality }),
+            bot: Some(RecordedBot { side: bot_side, level, style }),
         },
         None => SeatedPlayer {
-            name: styled(kind.seat_name().to_string(), personality),
+            name: styled(kind.seat_name().to_string(), style),
             key: None,
             token: Uuid::new_v4(),
-            slot: PlayerSlot::Bot(make_serve_agent(kind, bot_side, bot_seed, personality, knowledge)),
+            slot: PlayerSlot::Bot(make_serve_agent(kind, bot_side, bot_seed, style, knowledge)),
             deck: None,
             lobby: None,
             bot: None,
@@ -1493,13 +1493,15 @@ fn start_match(shared: &Shared, registry: &mut Registry, match_id: Uuid, seed: u
     });
 }
 
-/// A bot seat's name with the style it plays, when it plays one: "heuristic
-/// bot, rush". `MatchList` is the one place a person sees which opponent a
-/// daemon seated, and a rush Corp and a glacier Corp are different games.
-fn styled(name: String, personality: Personality) -> String {
-    match personality {
-        Personality::Balanced => name,
-        personality => format!("{name}, {personality}"),
+/// A bot seat's name with the style it plays, when it plays one:
+/// "heuristic bot, fast-advance". `MatchList` is the one place a person
+/// sees which opponent a daemon seated, and a fast-advance Corp and a
+/// glacier Corp are different games.
+fn styled(name: String, style: Style) -> String {
+    if style.is_balanced() {
+        name
+    } else {
+        format!("{name}, {style}")
     }
 }
 

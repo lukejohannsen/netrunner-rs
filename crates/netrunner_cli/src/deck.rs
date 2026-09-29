@@ -85,7 +85,7 @@ pub fn run(action: DeckAction, config: &Config) -> Result<(), Box<dyn std::error
                 category: DeckCategory::Custom,
                 description: None,
                 how_to_play: None,
-                style: None,
+                style: Vec::new(),
                 identity: identity.id.clone(),
                 cards: Vec::new(),
             };

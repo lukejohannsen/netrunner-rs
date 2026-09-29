@@ -260,7 +260,7 @@ fn deck_picker(parent: &mut ChildSpawnerCommands, theme: &Theme, pane: Pane, tit
             .collect();
         spawn_dropdown(column, theme, "", choices, cursor, PaneDropdown(pane));
         if let Some(deck) = decks.get(cursor) {
-            let style = deck.style.as_deref().unwrap_or("balanced");
+            let style = if deck.style.is_empty() { "balanced".to_string() } else { deck.style.join("+") };
             column.spawn((widgets::dim(theme, format!("{} · plays {style}", deck.identity)), Node { margin: UiRect::left(px(20)), ..default() }));
             if let Some(problem) = &deck.problem {
                 column.spawn((
@@ -303,7 +303,7 @@ fn spawn_form(parent: &mut ChildSpawnerCommands, theme: &Theme, menu: &StartMenu
             .into_iter()
             .map(|style| match style {
                 None => "Deck's own".to_string(),
-                Some(personality) => capitalised(personality.name()),
+                Some(style) => capitalised(&style.to_string()),
             })
             .collect();
         pills(section, theme, Pane::Style, labels, menu.cursor(Pane::Style));

@@ -4,7 +4,7 @@
   "side": "Corp",
   "category": "Sample",
   "description": "Pharos, Ballista and Syailendra over eleven transactions: build a wall the Runner cannot afford, then score.",
-  "style": "glacier",
+  "style": ["glacier", "fast-advance"],
   "identity": "weyland_consortium_built_to_last",
   "cards": [
     {

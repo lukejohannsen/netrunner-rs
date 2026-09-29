@@ -83,19 +83,19 @@
 //! day a search beats one ply again on either chair its top rungs go back
 //! to it, and the monotonicity tests below still say what that would owe.
 //!
-//! **Personality is not the difficulty dial, and deliberately so.** The
-//! six `Personality` profiles are a *style* axis, and each is written for
-//! one chair — a Runner profile seated as the Corp "touches only the
-//! shared terms, which is harmless and useless" (`personality`'s own doc
-//! comment). A ladder built on them would be asymmetric between the
+//! **A style is not the difficulty dial, and deliberately so.** The
+//! eight `Plan`s a `Style` stacks (`plans`) are a *style* axis, and each
+//! is written for one chair — a Runner plan seated as the Corp "touches
+//! only the shared terms, which is harmless and useless" (`plans`' own
+//! doc comment). A ladder built on them would be asymmetric between the
 //! chairs for a reason that has nothing to do with how hard the opponent
 //! is, which is how the first draft of this table shipped a rung that
 //! was conservative as the Runner and unchanged as the Corp. Every rung
-//! here is `Balanced`; what climbs is the handicap. "A glacier Corp at
+//! here is balanced; what climbs is the handicap. "A glacier Corp at
 //! level 4" is a second axis crossed with this one, not a replacement.
 //! The cross keeps the order, and since §24 it keeps the spacing too:
 //! four Corp styles measured on one `epsilon` curve, so no style carries
-//! a handicap of its own (three once did; `LevelSpec::with_personality`
+//! a handicap of its own (three once did; `LevelSpec::with_style`
 //! records why each went).
 //!
 //! **Machine-independence is a prerequisite, not a detail.** A rung whose
@@ -111,7 +111,9 @@ use crate::handicap::HandicapAgent;
 use crate::heuristic::HeuristicAgent;
 use crate::knowledge::Knowledge;
 use crate::mcts::MctsAgent;
-use crate::personality::Personality;
+use crate::plans::Style;
+#[cfg(test)]
+use crate::plans::Plan;
 use crate::policy::UniformPolicyEvaluator;
 use crate::puct::{PuctAgent, PuctConfig};
 
@@ -177,7 +179,7 @@ pub struct LevelSpec {
     /// (`HandicapAgent`). This is what spaces the ladder; see the module
     /// docs for why it is not the search budget.
     pub epsilon: f64,
-    pub personality: Personality,
+    pub style: Style,
 }
 
 /// Which search a rung uses. Deliberately not `crate::…::Agent`: a rung
@@ -317,7 +319,7 @@ impl Level {
         // Corp's curve is steep near 0 (one decision in twenty thrown away
         // costs it a quarter of its margin), so its handicaps crowd toward
         // the top instead.
-        LevelSpec { level: self, side, kind, simulations, samples, epsilon, personality: Personality::Balanced }
+        LevelSpec { level: self, side, kind, simulations, samples, epsilon, style: Style::BALANCED }
     }
 }
 
@@ -345,16 +347,16 @@ impl std::str::FromStr for Level {
 }
 
 impl LevelSpec {
-    /// The same rung, played in `personality`'s style.
+    /// The same rung, played in `style`.
     ///
     /// Difficulty and style are two axes and this is where they cross.
-    /// `Level::spec` always hands back `Balanced` because a rung is named
+    /// `Level::spec` always hands back balanced because a rung is named
     /// before a deck's style is resolved. A profile is a *bias* on the same
     /// evaluator — it ranks the same legal moves differently, never more or
     /// less deeply — so the rung's strength order survives it (a
     /// handicapped bot with a style is still the same bot with less
     /// handicap at the rung above). Before this existed,
-    /// `--corp-level 4 --corp-personality rush` played `Balanced` and said
+    /// `--corp-level 4 --corp-style fast-advance` played balanced and said
     /// nothing about it.
     ///
     /// **It changes the style and nothing else, on either chair** (Phase 5
@@ -367,8 +369,8 @@ impl LevelSpec {
     /// styles lay on `glacier`'s curve and every search rung ran below
     /// `operator`, so the Corp table became `glacier`'s and the exceptions
     /// had nothing left to except.
-    pub fn with_personality(self, personality: Personality) -> Self {
-        Self { personality, ..self }
+    pub fn with_style(self, style: Style) -> Self {
+        Self { style, ..self }
     }
 
     /// The agent this rung seats, sampling from what `knowledge` admits —
@@ -391,18 +393,18 @@ impl LevelSpec {
     fn base_agent(self, seed: u64, knowledge: Knowledge) -> Box<dyn BotAgent> {
         match self.kind {
             LevelKind::Heuristic => {
-                Box::new(HeuristicAgent::with_personality(self.side, seed, self.personality).with_knowledge(knowledge))
+                Box::new(HeuristicAgent::with_style(self.side, seed, self.style).with_knowledge(knowledge))
             }
             LevelKind::Mcts => Box::new(
                 MctsAgent::with_trees(self.side, seed, self.simulations, self.samples)
-                    .with_personality(self.personality)
+                    .with_style(self.style)
                     .with_knowledge(knowledge),
             ),
             LevelKind::Puct => Box::new(
                 PuctAgent::with_config(
                     self.side,
                     seed,
-                    UniformPolicyEvaluator::with_personality(self.side, self.personality),
+                    UniformPolicyEvaluator::with_style(self.side, self.style),
                     PuctConfig { iterations: self.simulations, samples: self.samples, ..PuctConfig::default() },
                 )
                 .with_knowledge(knowledge),
@@ -473,19 +475,19 @@ mod tests {
     }
 
     /// The style axis crosses the difficulty axis without touching its
-    /// base: a rung with a personality is the same rung — kind, budget,
+    /// base: a rung with a style is the same rung — kind, budget,
     /// and handicap unless the style has a measured one of its own — with
-    /// a different evaluator bias, and a `Balanced` request is exactly
+    /// a different evaluator bias, and a balanced request is exactly
     /// `Level::spec`.
     #[test]
-    fn a_personality_changes_the_evaluator_and_nothing_else_about_a_rung() {
+    fn a_style_changes_the_evaluator_and_nothing_else_about_a_rung() {
         for side in [Side::Corp, Side::Runner] {
             for level in Level::ALL {
                 let plain = level.spec(side);
-                assert_eq!(plain.personality, Personality::Balanced, "the calibrated rung is Balanced");
-                assert_eq!(plain.with_personality(Personality::Balanced), plain);
-                let styled = plain.with_personality(Personality::Aggressive);
-                assert_eq!(styled.personality, Personality::Aggressive);
+                assert_eq!(plain.style, Style::BALANCED, "the calibrated rung is balanced");
+                assert_eq!(plain.with_style(Style::BALANCED), plain);
+                let styled = plain.with_style(Style::of(Plan::Aggressive));
+                assert_eq!(styled.style, Style::of(Plan::Aggressive));
                 assert_eq!(
                     (styled.level, styled.side, styled.kind, styled.simulations, styled.samples, styled.epsilon),
                     (plain.level, plain.side, plain.kind, plain.simulations, plain.samples, plain.epsilon)
@@ -496,25 +498,26 @@ mod tests {
     }
 
     /// Every Corp style climbs the same one-ply ladder (Phase 5 §24):
-    /// the style is the only thing a personality changes, and the
-    /// handicaps are the table §21 read off `glacier`'s curve.
+    /// the style is the only thing a plan changes, and the handicaps
+    /// are the table §21 read off `glacier`'s curve.
     #[test]
     #[allow(clippy::float_cmp)]
     fn every_corp_style_is_one_ply_at_the_same_five_handicaps() {
-        for personality in Personality::ALL {
+        for plan in Plan::ALL {
+            let style = Style::of(plan);
             let table = Level::ALL.map(|level| {
-                let spec = level.spec(Side::Corp).with_personality(personality);
+                let spec = level.spec(Side::Corp).with_style(style);
                 assert_eq!(
-                    (spec.kind, spec.simulations, spec.samples, spec.personality),
-                    (LevelKind::Heuristic, 0, 1, personality),
-                    "{level} {personality:?}"
+                    (spec.kind, spec.simulations, spec.samples, spec.style),
+                    (LevelKind::Heuristic, 0, 1, style),
+                    "{level} {plan:?}"
                 );
-                assert_eq!(spec.with_personality(Personality::Balanced), level.spec(Side::Corp), "{level}");
+                assert_eq!(spec.with_style(Style::BALANCED), level.spec(Side::Corp), "{level}");
                 spec.epsilon
             });
-            assert_eq!(table, [1.0, 0.22, 0.11, 0.05, 0.0], "{personality:?}");
+            assert_eq!(table, [1.0, 0.22, 0.11, 0.05, 0.0], "{plan:?}");
         }
-        let veteran = Level::Veteran.spec(Side::Corp).with_personality(Personality::Trap);
+        let veteran = Level::Veteran.spec(Side::Corp).with_style(Style::of(Plan::Traps));
         assert_eq!(veteran.describe(), "looks one move ahead, and throws away about one decision in 20");
     }
 
@@ -540,9 +543,9 @@ mod tests {
     #[test]
     fn each_rung_is_the_one_below_it_with_less_handicap_or_a_better_base() {
         // In every style, because a style may carry its own handicap.
-        for (side, personality) in [Side::Corp, Side::Runner].into_iter().flat_map(|side| Personality::ALL.map(|p| (side, p))) {
+        for (side, style) in [Side::Corp, Side::Runner].into_iter().flat_map(|side| Plan::ALL.map(|p| (side, Style::of(p)))) {
             for pair in Level::ALL.windows(2) {
-                let (lower, upper) = (pair[0].spec(side).with_personality(personality), pair[1].spec(side).with_personality(personality));
+                let (lower, upper) = (pair[0].spec(side).with_style(style), pair[1].spec(side).with_style(style));
                 let same_base = (lower.kind, lower.simulations, lower.samples) == (upper.kind, upper.simulations, upper.samples);
                 if same_base {
                     assert!(upper.epsilon < lower.epsilon, "{side:?}: {} and {} share a base but not less handicap", lower.label(), upper.label());

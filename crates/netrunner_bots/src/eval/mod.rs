@@ -202,6 +202,127 @@ const TYPICAL_REZ_COST: u32 = 4;
 /// the Runner errs toward the run.
 const TYPICAL_ADVANCEMENT_REQUIREMENT: u32 = 3;
 
+// ---------------------------------------------------------------------
+// The Corp's plans (Phase 5 §25 Stage 6). **Every constant in this block
+// is zero in `Weights::default()` and in every `Plan::weights`**, and set
+// by `Weights::with_plans` for the plans a style stacks, which the turn
+// planner scores with (`Style::planned_weights`) — the same pinning as
+// the block above, for the same reason. The first four are every Corp's,
+// because the guide's sentences are in its "Playing the Corp" chapter,
+// which every Corp plays; the rest are one plan's.
+// ---------------------------------------------------------------------
+
+/// Corp only, every plan: each agenda point the Runner's breach would
+/// reach, subtracted while the run is one the Runner can break
+/// (`read::run_stakes`, on `run_is_breakable`'s gate) — the agenda in
+/// the remote's root, HQ's agendas at one access in its size, R&D's at
+/// the deck's agenda density, every agenda in Archives. **What "rez it
+/// when the run matters" means**: the reference's run term is flat
+/// (`ACTIVE_RUN_AGAINST_WEIGHT` 1.5 for a run on anything), so a rez that
+/// stops a run on an empty remote is worth the same to it as one that
+/// stops a run on a 3-point agenda. With the stakes priced, a rez that
+/// turns the run unbreakable recovers them, and one that does not
+/// recovers nothing. Two a point: a 2-point agenda's run is 4.0 on top
+/// of the flat term, an HQ run at one agenda in five 0.8, and an empty
+/// remote's 0.0. Far under a point of agenda (20.0), since a run is a
+/// chance and not a steal. **The tax rides with it**: the credits the
+/// Runner still has to spend breaking the rezzed ICE ahead
+/// (`read::remaining_break_cost`) are counted as the Corp's at
+/// `OPPONENT_CREDIT_WEIGHT`, because they are about to be — which is what
+/// makes a rez that only taxes worth making when the tax is real (Brân
+/// 1.0 against a Cleaver) and not when it is a credit (Palisade).
+const RUN_STAKES_WEIGHT: f64 = 2.0;
+/// Corp only, every plan: each face-down piece of ICE the Corp could
+/// rez at its printed cost **in the server the Runner is running**,
+/// kept face down ("Rez late. An unrezzed piece of ICE costs the Runner
+/// nothing to pass, but it also tells them nothing. Rez it when the run
+/// matters, not the moment it is approached"). The reference rezzes
+/// every affordable piece at its approach, because the rez is worth
+/// `REZZED_ICE_WEIGHT` and its subroutines whether or not the run
+/// matters: Palisade's rez is +1.2 on an empty remote against a rig
+/// that breaks it for a credit. This is what the rez gives up — the
+/// Runner's ignorance — and the stakes, the tax and the stop are what
+/// win it back: at 1.5 that Palisade stays face down (+1.2 + 0.2 of
+/// tax − 1.5), the same piece approached by a rig with no fracter is
+/// rezzed (+1.2 + 1.2 for what the rig cannot break + 1.5 for the run it
+/// ends + the stakes − 1.5), and Brân 1.0 against a Cleaver is rezzed
+/// for the tax it takes. **Only in the server being run**, because the
+/// decision is made at the approach and the term has to be on the
+/// unrezzed side of it: paid on every face-down piece it was also a
+/// reason to install every affordable piece in hand, and the Corp does
+/// not install during a run.
+///
+/// **Zero, and that is the measurement.** At 1.5 the term does what it
+/// says — the planner's rezzes a game fell 10.4 → 9.3 and the share of
+/// its rezzes the Runner could break 0.46 → 0.41 in the precepts pass —
+/// and it costs the chair: on the balanced Corp legs against the
+/// reference, 384 games a seed, the planner with every term on was
+/// +0.109 / +0.021, and with this one term off +0.122 / +0.073, so the
+/// rez held is −0.013 and −0.052, the second past the seed band, on the
+/// same games. What it holds is the tax: a rez the Runner breaks for
+/// two credits is two credits the reference's Corp takes and this one
+/// lets pass, and over a game of runs the tax is the wall. The reading
+/// stays, at zero, like `UNREZZED_THREAT_WEIGHT`: "rez late" wants a
+/// finer sentence than a flat value on the face-down piece, and the
+/// measurement is the record of what the flat one is worth.
+const REZ_HELD_WEIGHT: f64 = 0.0;
+/// Corp only, every plan: each pair of adjacent pieces on one server
+/// where the outer piece has no run-ending subroutine and the inner
+/// piece has one, subtracted ("ICE that ends the run on the outside, so
+/// the Runner must have the right breaker just to get in, and ICE that
+/// punishes on the inside"). A new piece always goes outermost, so the
+/// term reads the install that would put a taxing piece outside a
+/// stopping one and sends it to another server instead. Small — under
+/// the fort terms and under a credit — because the guide calls the habit
+/// "a starting point, not a law".
+const ICE_ORDER_WEIGHT: f64 = 0.3;
+/// Corp only, every plan: each installed, unscored agenda the Corp could
+/// finish next turn (`read::next_turn_advancements`: its clicks at a
+/// token and a credit each, and the advancement its held operations
+/// declare — Seamless Launch's two for a click and a credit), added, and
+/// each it could not, subtracted: "Count the credits before you install:
+/// an agenda you cannot finish next turn is an agenda sitting in the
+/// open for a second turn." The never-advance line's condition, which
+/// Stage 5 measured at 0.26 unadvanced installs a turn with nothing
+/// reading whether the install was one the Corp could finish. One
+/// advancement token's worth, the same as the taxing window: an
+/// install the Corp can finish next turn is worth making now, and one it
+/// cannot waits in HQ for the credits.
+const NEVER_ADVANCE_WEIGHT: f64 = 1.0;
+/// Corp only, `Plan::Kill`: the Runner's grip is smaller than the damage
+/// the Corp could deal next turn from what it holds
+/// (`read::damage_in_reach`: the fixed damage of the operations in HQ
+/// whose play requirement is met now — Scorched Earth's "if the Runner
+/// is tagged" — within its clicks and credits). "The Runner has to
+/// choose between leaving your agendas alone and taking the risk." Not
+/// the win, which the planner already sees when the line kills inside
+/// its own turn (`WIN_SCORE`), but the threat, which the Runner's next
+/// turn is spent answering: a tag cleared is a click and 2[c], a grip
+/// drawn up is a click a card. Sized as a turn of the Runner's
+/// (three clicks and a few credits at the Corp's rate for them), and
+/// well under a point of agenda.
+const LETHAL_THREAT_WEIGHT: f64 = 3.0;
+/// Corp only, `Plan::Kill`: each tag on the Runner, up to two, while the
+/// Corp holds a card whose text asks for one (`read::punishes_tags`:
+/// Scorched Earth, Retribution, Orbital Superiority's scored half). A tag
+/// is worth only what follows it, which is why the balanced Corp does
+/// not pay Public Trail's 4[c] for one; a kill Corp holding the follow-up
+/// does, at 1.5 a tag against the 1.6 the operation costs, because the
+/// tag is also the Runner's click and 2[c] to clear, or their turn under
+/// the threat. Capped at two because the third tag punishes nothing the
+/// second did not.
+const TAG_LEVERAGE_WEIGHT: f64 = 1.5;
+/// Corp only, `Plan::Traps`: one face-down card that is not an agenda in
+/// the scoring remote ("Put an asset in your scoring server now and
+/// then, so that a Runner has to pay the full price to find out"). The
+/// fort term reads that remote as the fort still (`fort_value`: a bluffed
+/// root keeps the fort), so the asset goes down behind the wall when no
+/// agenda is in hand, and the agenda that comes goes in over it. One,
+/// because a second asset in the fort is a second card the Corp will
+/// not score. About an install's worth over a naked remote, so the
+/// bluff is where the asset goes and never a reason to install one.
+const BLUFF_WEIGHT: f64 = 1.0;
+
 const WIN_SCORE: f64 = 1000.0;
 const AGENDA_POINT_WEIGHT: f64 = 20.0;
 const OWN_CREDIT_WEIGHT: f64 = 0.4;
@@ -1016,9 +1137,84 @@ pub struct Weights {
     /// Runner only: a face-down root card the Corp can afford to finish.
     /// See `FINISHABLE_INSTALL_WEIGHT`.
     pub finishable_install_weight: f64,
+    /// Corp only: each agenda point a breakable run would reach,
+    /// subtracted. See `RUN_STAKES_WEIGHT`. Zero by default, with the
+    /// seven below: the plans' terms (Stage 6), set by `with_plans` for
+    /// the planner.
+    pub run_stakes_weight: f64,
+    /// Corp only: each affordable face-down ICE, kept face down. See
+    /// `REZ_HELD_WEIGHT`.
+    pub rez_held_weight: f64,
+    /// Corp only: each taxing piece outside a stopping one, subtracted.
+    /// See `ICE_ORDER_WEIGHT`.
+    pub ice_order_weight: f64,
+    /// Corp only: each installed agenda the Corp can finish next turn,
+    /// and each it cannot, subtracted. See `NEVER_ADVANCE_WEIGHT`.
+    pub never_advance_weight: f64,
+    /// Corp only, the kill plan: the Runner's grip is under the damage
+    /// the Corp holds. See `LETHAL_THREAT_WEIGHT`.
+    pub lethal_threat_weight: f64,
+    /// Corp only, the kill plan: each tag the Corp holds a punishment
+    /// for. See `TAG_LEVERAGE_WEIGHT`.
+    pub tag_leverage_weight: f64,
+    /// Corp only, the traps plan: a face-down non-agenda in the fort.
+    /// See `BLUFF_WEIGHT`.
+    pub bluff_weight: f64,
+    /// Corp only, "glacier then fast advance": the fort terms fall away
+    /// once the Runner's rig covers every piece of the fort and their
+    /// credits cover the break (`read::fort_beaten`). A condition inside
+    /// the fort terms, never a switch between weight sets: with it off
+    /// the fort is priced all game, which is glacier alone.
+    pub fort_until_beaten: bool,
 }
 
 impl Weights {
+    /// These weights for a planner seat on `side`, with the plans `style`
+    /// stacks switched on (Phase 5 §25 Stage 6): every Corp's four (the
+    /// stakes, the rez held, the ICE order, the never-advance line) for
+    /// any Corp seat, balanced included; the kill plan's lethal check and
+    /// tag leverage, the traps plan's bluff, and the fort's yielding when
+    /// glacier is followed by fast advance. **A plan after the first
+    /// adds its own levers** — the terms that are zero in the default and
+    /// exist for it: `Traps`' ambush terms, `FastAdvance`'s installed
+    /// agenda — and not its profile's dials on the shared terms, which
+    /// are the first plan's (`Style::weights`). What `Style::planned_
+    /// weights` gives the planner; the reference never calls this.
+    pub fn with_plans(self, side: Side, style: &crate::plans::Style) -> Self {
+        use crate::plans::Plan;
+        let mut w = self;
+        if side == Side::Corp {
+            w.run_stakes_weight = RUN_STAKES_WEIGHT;
+            w.rez_held_weight = REZ_HELD_WEIGHT;
+            w.ice_order_weight = ICE_ORDER_WEIGHT;
+            w.never_advance_weight = NEVER_ADVANCE_WEIGHT;
+        }
+        for plan in style.plans().skip(1) {
+            let own = plan.weights();
+            match plan {
+                Plan::Traps => {
+                    w.ambush_weight = own.ambush_weight;
+                    w.ambush_advancement_weight = own.ambush_advancement_weight;
+                    w.ambush_advancement_cap = own.ambush_advancement_cap;
+                }
+                Plan::FastAdvance => w.installed_agenda_weight = own.installed_agenda_weight,
+                Plan::Wary => w.unrezzed_threat_weight = own.unrezzed_threat_weight,
+                Plan::Glacier | Plan::Kill | Plan::Aggressive | Plan::Cautious | Plan::Builder => {}
+            }
+        }
+        if style.has(Plan::Kill) {
+            w.lethal_threat_weight = LETHAL_THREAT_WEIGHT;
+            w.tag_leverage_weight = TAG_LEVERAGE_WEIGHT;
+        }
+        if style.has(Plan::Traps) {
+            w.bluff_weight = BLUFF_WEIGHT;
+        }
+        if style.has(Plan::Glacier) && style.has(Plan::FastAdvance) {
+            w.fort_until_beaten = true;
+        }
+        w
+    }
+
     /// These weights with the economy terms at the guide's rate (Phase 5
     /// §25 Stage 5): the click, the future credit, the card in hand, the
     /// rez reserve, the unaffordable ICE, the taxing window, the forced
@@ -1101,6 +1297,14 @@ impl Default for Weights {
             taxing_window_weight: 0.0,
             forced_rez_weight: 0.0,
             finishable_install_weight: 0.0,
+            run_stakes_weight: 0.0,
+            rez_held_weight: 0.0,
+            ice_order_weight: 0.0,
+            never_advance_weight: 0.0,
+            lethal_threat_weight: 0.0,
+            tag_leverage_weight: 0.0,
+            bluff_weight: 0.0,
+            fort_until_beaten: false,
         }
     }
 }
@@ -1177,7 +1381,7 @@ mod tests {
     }
 
     /// The reference is pinned: every guide's-rate term is zero in the
-    /// default weights and in every personality's, so the one-ply
+    /// default weights and in every plan's profile, so the one-ply
     /// chooser and every ladder rung score exactly as they did before
     /// Stage 5, and `at_the_guides_rate` is what moves.
     #[test]
@@ -1186,14 +1390,61 @@ mod tests {
             [w.click_weight, w.future_credit_weight, w.declared_value_weight, w.rez_reserve_weight, w.unaffordable_ice_weight, w.taxing_window_weight, w.forced_rez_weight, w.finishable_install_weight]
         };
         assert_eq!(off(&Weights::default()), [0.0; 8]);
-        for personality in crate::Personality::ALL {
-            assert_eq!(off(&personality.weights()), [0.0; 8], "{personality:?}");
+        for plan in crate::plans::Plan::ALL {
+            assert_eq!(off(&plan.weights()), [0.0; 8], "{plan:?}");
         }
         let guide = Weights::default().at_the_guides_rate();
         assert!(off(&guide).iter().all(|w| *w > 0.0));
         assert_eq!(Weights { click_weight: 0.0, future_credit_weight: 0.0, declared_value_weight: 0.0, rez_reserve_weight: 0.0, unaffordable_ice_weight: 0.0, taxing_window_weight: 0.0, forced_rez_weight: 0.0, finishable_install_weight: 0.0, ..guide }, Weights::default(), "the guide's rate is those eight and nothing else");
         assert_eq!(guide.click_weight, guide.own_credit_weight, "a click is worth the credit it would buy");
         assert!(guide.future_credit_weight < guide.own_credit_weight, "a credit later is worth less than one now");
+    }
+
+    /// The same pin for the plans' terms (Stage 6): zero in the default
+    /// and in every profile, set by `with_plans` for the plans a style
+    /// stacks, and a plan after the first adds only its own levers.
+    #[test]
+    fn the_plans_terms_are_off_in_every_weights_the_reference_scores_with() {
+        use crate::plans::{Plan, Style};
+        let off = |w: &Weights| {
+            [w.run_stakes_weight, w.rez_held_weight, w.ice_order_weight, w.never_advance_weight, w.lethal_threat_weight, w.tag_leverage_weight, w.bluff_weight]
+        };
+        assert_eq!(off(&Weights::default()), [0.0; 7]);
+        assert!(!Weights::default().fort_until_beaten);
+        for plan in Plan::ALL {
+            assert_eq!(off(&plan.weights()), [0.0; 7], "{plan:?}");
+            assert!(!plan.weights().fort_until_beaten, "{plan:?}");
+            assert_eq!(Style::of(plan).weights(), plan.weights(), "the reference scores with the profile alone");
+        }
+        // Every Corp seat carries the four general terms, balanced
+        // included; a Runner seat carries none of the Corp's.
+        let glacier = Weights::default().with_plans(Side::Corp, &Style::of(Plan::Glacier));
+        assert!(glacier.run_stakes_weight > 0.0 && glacier.ice_order_weight > 0.0 && glacier.never_advance_weight > 0.0);
+        assert_eq!(glacier.rez_held_weight, REZ_HELD_WEIGHT, "measured, and shipped at what it measured");
+        assert_eq!((glacier.lethal_threat_weight, glacier.tag_leverage_weight, glacier.bluff_weight, glacier.fort_until_beaten), (0.0, 0.0, 0.0, false));
+        assert_eq!(Weights::default().with_plans(Side::Corp, &Style::BALANCED).run_stakes_weight, glacier.run_stakes_weight, "a balanced Corp plays the Corp's chapter");
+        assert_eq!(Weights::default().with_plans(Side::Runner, &Style::of(Plan::Aggressive)), Weights::default(), "a Runner seat switches on no Corp term");
+        assert_eq!(Weights::default().with_plans(Side::Runner, &Style::BALANCED), Weights::default());
+        // A plan's own terms.
+        let kill = Weights::default().with_plans(Side::Corp, &Style::of(Plan::Kill));
+        assert!(kill.lethal_threat_weight > 0.0 && kill.tag_leverage_weight > 0.0 && kill.bluff_weight == 0.0);
+        let traps = Weights::default().with_plans(Side::Corp, &Style::of(Plan::Traps));
+        assert!(traps.bluff_weight > 0.0 && traps.lethal_threat_weight == 0.0);
+        // The stack: glacier then fast advance yields the fort; either
+        // alone does not — the pair is the condition, and the order says
+        // which profile leads.
+        let stacked = Style::new(&[Plan::Glacier, Plan::FastAdvance]).unwrap();
+        let planned = stacked.planned_weights(Side::Corp);
+        assert!(planned.fort_until_beaten);
+        assert_eq!(planned.agenda_protection_weight, Plan::Glacier.weights().agenda_protection_weight, "the first plan's dials");
+        assert_eq!(planned.installed_agenda_weight, Plan::FastAdvance.weights().installed_agenda_weight, "the second plan's own lever");
+        assert!(!Style::of(Plan::Glacier).planned_weights(Side::Corp).fort_until_beaten);
+        assert!(!Style::of(Plan::FastAdvance).planned_weights(Side::Corp).fort_until_beaten);
+        // Traps behind the wall: glacier's dials, the ambush terms on.
+        let behind = Style::new(&[Plan::Glacier, Plan::Traps]).unwrap().planned_weights(Side::Corp);
+        assert_eq!(behind.ambush_weight, Plan::Traps.weights().ambush_weight);
+        assert_eq!(behind.agenda_protection_weight, Plan::Glacier.weights().agenda_protection_weight);
+        assert!(!behind.fort_until_beaten);
     }
 
     /// A click left is worth the credit it would buy, at the guide's

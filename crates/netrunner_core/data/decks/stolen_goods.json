@@ -4,7 +4,7 @@
   "side": "Runner",
   "category": "Sample",
   "description": "Nine run events and the Zahya credits they earn: run, get paid, run again.",
-  "style": "aggressive",
+  "style": ["aggressive"],
   "identity": "zahya_sadeghi",
   "cards": [
     {

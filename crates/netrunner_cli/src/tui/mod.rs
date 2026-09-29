@@ -17,7 +17,6 @@ use ratatui::Frame;
 use netrunner_core::cards::CardRegistry;
 use netrunner_core::decks::DeckFile;
 use netrunner_core::dsl::{CardId, CounterKind};
-use netrunner_bots::Personality;
 use netrunner_core::rules::Viewer;
 use netrunner_core::rules::{
     get_action_mask, ActionSpace, DeckOrder, GamePhase, GameState, PlayerAction, RunPhase, ServerId, Side, SubroutineStatus,
@@ -197,12 +196,12 @@ pub fn play_local(terminal: &mut ratatui::DefaultTerminal, config: &Config) -> R
 
     let bot_side = human_side.other();
     let (bot_kind, bot_deck) = if human_side == Side::Corp { (config.runner, &runner_deck) } else { (config.corp, &corp_deck) };
-    let personality = config.personality_for(bot_side, bot_deck)?;
+    let style = config.style_for(bot_side, bot_deck)?;
     let (bot_seat, mut indexed_bot) =
-        build_bot_seat(config.level_for(bot_side), bot_kind, bot_side, seed.wrapping_add(1), &config.model, personality, config.knowledge(bot_deck))?;
+        build_bot_seat(config.level_for(bot_side), bot_kind, bot_side, seed.wrapping_add(1), &config.model, style, config.knowledge(bot_deck))?;
     // Opened before the game so a bad record file fails here, not after
     // an hour of play.
-    let seat = record::seat_record(config, human_side, config.level_for(bot_side), bot_kind, personality, seed, &corp_deck.id, &runner_deck.id)?;
+    let seat = record::seat_record(config, human_side, config.level_for(bot_side), bot_kind, style, seed, &corp_deck.id, &runner_deck.id)?;
 
     let (corp_seat, runner_seat) = match human_side {
         Side::Corp => (Seat::External, bot_seat),
@@ -308,18 +307,18 @@ pub fn play_starter_game(
     let rules = corp.category.match_rules();
     let (state, _events) = GameState::setup_with(&corp.to_deck(), &runner.to_deck(), &registry, seed, rules, DeckOrder::Shuffled)?;
     let bot_deck = if human_side == Side::Corp { runner } else { corp };
-    let personality = config.personality_for(human_side.other(), bot_deck)?;
+    let style = config.style_for(human_side.other(), bot_deck)?;
     let bot = bots::make_agent(
         BotKind::Heuristic,
         human_side.other(),
         seed.wrapping_add(1),
-        bots::AgentSetup::new(DEFAULT_SIMULATIONS).with_personality(personality).with_knowledge(config.knowledge(bot_deck)),
+        bots::AgentSetup::new(DEFAULT_SIMULATIONS).with_style(style).with_knowledge(config.knowledge(bot_deck)),
     )
     .expect("the heuristic always has a BotAgent form");
     // Recorded like any other local game: the starter game is a person's
     // first real opponent, and its result is the first line of their
     // record.
-    let seat = record::seat_record(config, human_side, None, BotKind::Heuristic, personality, seed, &corp.id, &runner.id)?;
+    let seat = record::seat_record(config, human_side, None, BotKind::Heuristic, style, seed, &corp.id, &runner.id)?;
     let (corp_seat, runner_seat) = match human_side {
         Side::Corp => (Seat::External, Seat::Agent(bot)),
         Side::Runner => (Seat::Agent(bot), Seat::External),
@@ -433,7 +432,7 @@ fn build_bot_seat(
     side: Side,
     seed: u64,
     model: &str,
-    personality: Personality,
+    style: netrunner_bots::Style,
     knowledge: netrunner_bots::Knowledge,
 ) -> Result<(Seat, Option<Box<dyn netrunner_bots::Agent>>), String> {
     // A rung is always a `Seat::Agent`: the ladder is built from the four
@@ -441,10 +440,10 @@ fn build_bot_seat(
     // needs the index path.
     match kind {
         crate::config::BotKind::Onnx if level.is_none() => {
-            Ok((Seat::External, Some(bots::make_driver(kind, side, seed, DEFAULT_SIMULATIONS, model, personality, knowledge)?)))
+            Ok((Seat::External, Some(bots::make_driver(kind, side, seed, DEFAULT_SIMULATIONS, model, style, knowledge)?)))
         }
         _ => {
-            let setup = bots::AgentSetup::new(DEFAULT_SIMULATIONS).with_personality(personality).with_knowledge(knowledge);
+            let setup = bots::AgentSetup::new(DEFAULT_SIMULATIONS).with_style(style).with_knowledge(knowledge);
             let agent = bots::make_seat_agent(level, kind, side, seed, setup, model)?
                 .ok_or_else(|| "interactive mode needs a bot on the non-human side".to_string())?;
             Ok((Seat::Agent(agent), None))
