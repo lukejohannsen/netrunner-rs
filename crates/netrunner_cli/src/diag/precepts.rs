@@ -19,9 +19,9 @@
 //! own rule, and §6–§8's finding that a turn clock never beat the board):
 //! `stage` is the guide's three signals reduced to one reading, and the
 //! clicks of each side are binned by it so "plays toward the stage it is
-//! in" is a column and not a feeling. The reading lives here until Stage
-//! 3 puts it in `netrunner_bots::eval` for the terms to read, and then
-//! this report reads it from there, so the two never disagree.
+//! in" is a column and not a feeling. The reading is the evaluator's own
+//! (`netrunner_bots::eval::stage`, Stage 3), so a term that conditions on
+//! a stage and this report can never disagree about which one it is.
 //!
 //! **Reach is the card-testing product.** The report ends with every card
 //! a seat *used* — played, installed, rezzed, activated, advanced or
@@ -78,55 +78,9 @@ pub struct PreceptsArgs {
     pub report: Option<PathBuf>,
 }
 
-/// Where a game is, read off the board the way the guide says to: "how
-/// much ICE is up, how much of each side's economy and tools are
-/// installed, and how close each side is to 7 points."
-///
-/// `Late` when either side is one agenda from winning (within two
-/// points of the target — the pool's common agenda; a 3-pointer is one
-/// agenda away a point sooner, and the reading takes the common case);
-/// `Early` while
-/// the Corp's board is not built — HQ or R&D unprotected, or no remote
-/// with ICE in front of it; `Middle` between. The Runner's tools are not
-/// in this reading yet: the first cut is the Corp's board and the clock,
-/// which are what the guide's early and late paragraphs name first, and
-/// Stage 3 owns refining it with tests before a term reads it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
-#[serde(rename_all = "lowercase")]
-pub enum Stage {
-    Early,
-    Middle,
-    Late,
-}
-
-impl Stage {
-    fn name(self) -> &'static str {
-        match self {
-            Stage::Early => "early",
-            Stage::Middle => "middle",
-            Stage::Late => "late",
-        }
-    }
-}
-
-pub fn stage(state: &GameState) -> Stage {
-    let target = state.rules.winning_agenda_points as i32;
-    let best = state.corp.resources.agenda_points.0.max(state.runner.resources.agenda_points.0);
-    if best >= target - 2 {
-        return Stage::Late;
-    }
-    let centrals_iced = ice_count(state, ServerId::Hq) > 0 && ice_count(state, ServerId::RnD) > 0;
-    let remote_iced = state
-        .corp
-        .installed
-        .iter()
-        .any(|card| card.slot == InstallSlot::Ice && matches!(card.server, ServerId::Remote(_)));
-    if centrals_iced && remote_iced {
-        Stage::Middle
-    } else {
-        Stage::Early
-    }
-}
+// The stage is the evaluator's reading (`netrunner_bots::eval::stage`),
+// so a term that conditions on it and this report bin by one definition.
+use netrunner_bots::eval::{stage, Stage};
 
 fn ice_count(state: &GameState, server: ServerId) -> usize {
     state.corp.installed.iter().filter(|card| card.server == server && card.slot == InstallSlot::Ice).count()
@@ -1217,32 +1171,6 @@ fn print_report(report: &PreceptsReport) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use netrunner_core::rules::{AgendaPoints, InstalledCard};
-
-    fn ice(server: ServerId, rezzed: bool) -> InstalledCard {
-        InstalledCard { card: CardId("ice".to_string()), server, slot: InstallSlot::Ice, rezzed, ..Default::default() }
-    }
-
-    /// The reading, on the guide's three signals: nothing built is early,
-    /// centrals and a remote iced is middle, and a side near the target is
-    /// late whatever the board says.
-    #[test]
-    fn the_stage_is_read_off_the_board_and_the_clock() {
-        let mut state = GameState::new(0);
-        assert_eq!(stage(&state), Stage::Early, "an empty board");
-        state.corp.installed.push(ice(ServerId::Hq, false));
-        state.corp.installed.push(ice(ServerId::RnD, false));
-        assert_eq!(stage(&state), Stage::Early, "centrals iced, no remote");
-        state.corp.installed.push(ice(ServerId::Remote(0), false));
-        assert_eq!(stage(&state), Stage::Middle, "a remote with ICE in front");
-        state.runner.resources.agenda_points = AgendaPoints(4);
-        assert_eq!(stage(&state), Stage::Middle, "two agendas from seven");
-        state.runner.resources.agenda_points = AgendaPoints(5);
-        assert_eq!(stage(&state), Stage::Late, "one agenda from seven");
-        let mut fresh = GameState::new(0);
-        fresh.corp.resources.agenda_points = AgendaPoints(5);
-        assert_eq!(stage(&fresh), Stage::Late, "the clock beats an empty board");
-    }
 
     /// Every ratio's numerator and denominator is a key some counter
     /// writes, or `GAMES` — a typo here would be a line that silently

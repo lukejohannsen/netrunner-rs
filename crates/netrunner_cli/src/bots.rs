@@ -79,16 +79,6 @@ pub struct AgentSetup {
     /// has no evaluator, and a network-backed `PuctOnnx` has its own
     /// value head).
     pub personality: Personality,
-    /// How far the position's stage may move the evaluator's weights, from
-    /// the build archetype toward the pressure one —
-    /// `eval::Weights::stage_gain`, and zero is the static evaluator.
-    ///
-    /// **One field for both chairs, and that is the chair isolation rather
-    /// than a shortcut.** `eval::stage_weights` stages the Runner arm only,
-    /// so a Corp seat handed the same gain is byte-identical to one handed
-    /// zero. A measurement therefore needs no per-chair flag, and cannot
-    /// spring Phase 5 §3's trap of moving both chairs with one constant.
-    pub stage_gain: f64,
     /// What the seat samples hidden cards from: the format's pool, its
     /// own deck and what it has seen — `Config::knowledge` for a seat the
     /// CLI deals a deck. `Knowledge::default()` (Casual, no deck) is a
@@ -107,7 +97,6 @@ impl AgentSetup {
             shared_sample: false,
             mcts_depth: None,
             personality: Personality::Balanced,
-            stage_gain: 0.0,
             knowledge: Knowledge::default(),
         }
     }
@@ -153,12 +142,12 @@ pub fn make_seat_agent(
 }
 
 pub fn make_agent(kind: BotKind, side: Side, seed: u64, setup: AgentSetup) -> Option<Box<dyn BotAgent>> {
-    let AgentSetup { simulations, determinizations, shared_sample, mcts_depth, personality, stage_gain, knowledge } = setup;
+    let AgentSetup { simulations, determinizations, shared_sample, mcts_depth, personality, knowledge } = setup;
     match kind {
         BotKind::Human | BotKind::Onnx | BotKind::PuctOnnx => None,
         BotKind::Random => Some(Box::new(RandomAgent::new(seed))),
         BotKind::Heuristic => Some(Box::new(
-            HeuristicAgent::with_personality(side, seed, personality).with_stage_gain(stage_gain).with_knowledge(knowledge),
+            HeuristicAgent::with_personality(side, seed, personality).with_knowledge(knowledge),
         )),
         BotKind::Mcts => {
             let mut agent = match determinizations {
@@ -171,7 +160,6 @@ pub fn make_agent(kind: BotKind, side: Side, seed: u64, setup: AgentSetup) -> Op
             Some(Box::new(
                 agent
                     .with_personality(personality)
-                    .with_stage_gain(stage_gain)
                     .with_shared_sample(shared_sample)
                     .with_knowledge(knowledge),
             ))
@@ -180,7 +168,7 @@ pub fn make_agent(kind: BotKind, side: Side, seed: u64, setup: AgentSetup) -> Op
             PuctAgent::with_config(
                 side,
                 seed,
-                UniformPolicyEvaluator::with_personality(side, personality).with_stage_gain(stage_gain),
+                UniformPolicyEvaluator::with_personality(side, personality),
                 PuctConfig {
                     iterations: simulations,
                     samples: determinizations.unwrap_or(PuctConfig::default().samples),

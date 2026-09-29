@@ -262,9 +262,6 @@ fn play(
         shared_sample: false,
         mcts_depth: None,
         personality: spec.personality,
-        // Not staged: this diagnostic's numbers were taken on the static
-        // evaluator and a stage would make them a different measurement.
-        stage_gain: 0.0,
         knowledge: config.knowledge(deck),
     };
     let corp = bots::make_agent_with_model(args.corp.kind, Side::Corp, seed, setup(args.corp, corp_deck), &config.model)?
