@@ -66,7 +66,6 @@ pub(crate) const PH_UNIMPLEMENTED: &[(u32, &str)] = &[
     (33117, "Unsmiling Tsarevna"),
     (33120, "Regulatory Capture"),
     (33121, "Kimberlite Field"),
-    (33122, "Hostile Architecture"),
     (33123, "Superdeep Borehole"),
     (33124, "Anvil"),
     (33126, "Yakov Erikovich Avdakov"),

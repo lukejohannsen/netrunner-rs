@@ -5030,6 +5030,72 @@ because it needs two things the engine does not have:
     Corp agenda wins 82 → 70, Corp flatlines 9 → 15, Runner agenda wins
     99 → 107, Runner deck-outs 2 → 0.
 
+#### Stage 2b — the Runner's trash of an installed Corp card, its own included (29 September 2026)
+
+`feat/ph-stage-2b-hostile-architecture`: Hostile Architecture. **No new
+`Effect`.** Parhelion 19 of 63; `PH_UNIMPLEMENTED` 45 → 44. Stage 2 is
+complete.
+
+"The first time each turn the Runner trashes any of your installed cards
+(including this asset), do 2 meat damage."
+
+- **Two moments, one count.** The Runner's trash on access is
+  `OnTrashedFromAccess`, where `when: InstalledCard(Any)` is enough (as
+  for Aggressive Trendsetting). A trash by the Runner's card text is
+  `OnCardTrashed`. The card's two entries are one printed ability, so
+  they share one "first time" (the Turn History Rule).
+- **`EventFilter::All`, a conjunction.** On `OnCardTrashed`, "the
+  Runner's trash of a Corp card" is `OwnedBy` and "that was installed" is
+  `TrashedFrom([Installed])`. Each says half, and a `when` held one
+  filter. A variant for the pair would have been the first of one per
+  pair a card prints.
+  - `listeners::passes` asks every part.
+  - `EventFilter::names_whose` answers whose moment it is for a
+    conjunction as for its parts.
+  - `validate` wants two or more parts, each fitting on its own, and no
+    conjunction nested inside another. The per-filter check moved into
+    `CardDefinition::filter_fits`, so a part is held to what it would be
+    alone.
+  - `turn_log::Occurrences::meant_by` counts the columns every part
+    admits.
+  - `TrashedFrom([Installed])` can now narrow a first time, because the
+    log's columns already say whether the card was installed. Any other
+    pile is still refused.
+  - `prose` words a conjunction as its parts (`describe_when`).
+- **A rezzed card hears its own trash on access** (CR 4.6.6i's Warroid
+  Tracker example: a rezzed card trashed meets its own trigger
+  condition).
+  - A trigger about any card is heard only by active cards. Before this
+    stage, a trashed Hostile Architecture heard its own trash by nothing.
+  - `listeners::Moment::was_active` is read off the access, which still
+    holds the install as it was presented (`pending_install_rezzed`).
+    That makes the subject an active listener for that one moment.
+  - `is_this` still knows it: a handle-less subject is "this" to itself
+    whether it is inactive or was active as it left, and an active copy
+    still on the table keeps its handle, so it is never "this".
+  - **Not built:** a rezzed Hostile Architecture trashed by the Runner's
+    card text. `GameEvent::CardTrashed` does not carry whether the card
+    was rezzed, and adding that to its 42 sites is more than one card
+    wants. Charm Offensive can do it, and no game has.
+- **Client.** Nothing new in the view. The card inspector's "Engine reads
+  it as" words the conjunction.
+- **Decks.** Hostile Bid took two Hostile Architecture for two Hearts and
+  Minds, which Land Grab still carries.
+- **DSL ratio (`pool_status.py`):** unchanged at 17 of 91 `Effect`
+  variants single-use, 1 unused, over 399 card files.
+- **Real play**, 96 games a seating (seed 2), Hostile Bid against Safety
+  Net.
+  - Random seats: rezzed 8 times (it costs 5), and its trigger fired
+    twice.
+  - Heuristic seats: installed 90 times and never rezzed (Phase 5 debt).
+- **Measured.** Both sweeps at 256 seeds are green, the card gate
+  included.
+  - A ref with the conjunction and the listener change but not the card
+    is identical to `origin/main` in all four shapes.
+  - With the card, the random seatings are identical. The heuristic ones
+    move by `determinize` (view, of 192): Corp agenda wins 70 → 71, Corp
+    flatlines 15 → 17, Runner agenda wins 107 → 103.
+
 ### 5. Midnight Sun and its Booster Pack — 65 cards (C 22 / V 26 / M 17)
 
 **Decks:** Sweep decks on its five identities.

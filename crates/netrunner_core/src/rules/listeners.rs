@@ -88,6 +88,20 @@ pub(crate) struct Moment {
     /// `GameEvent::IceFullyBroken::by`), which Lobisomem's "whenever **it**
     /// fully breaks" asks through `EventFilter::ByThis`.
     pub by: Option<InstallId>,
+    /// The card the moment is about was active the instant it happened,
+    /// though it is not now — a rezzed install trashed on access, which
+    /// meets its own trigger condition as it goes (CR 4.6.6i's Warroid
+    /// Tracker: "The Runner trashes a rezzed Warroid Tracker. This meets
+    /// the trigger condition of Warroid Tracker's ability"). Hostile
+    /// Architecture's "the first time each turn the Runner trashes any of
+    /// your installed cards (including this asset)" is about any card, so
+    /// it is heard by active cards, and without this its own trash was
+    /// heard by nothing. Read off the access, which still holds the install
+    /// as it was presented (`AccessState::pending_install_rezzed`).
+    /// **Not said of a trash by a card's text**: `GameEvent::CardTrashed`
+    /// does not carry whether the card was rezzed, and no card in the pool
+    /// has needed it.
+    pub was_active: bool,
 }
 
 /// A card that may hear a moment.
@@ -113,7 +127,7 @@ struct Listener {
 /// `GameEvent` is a decision made here rather than a silence.
 pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
     let card = |card: &CardId, install: Option<InstallId>| About::Card { card: card.clone(), install, installed: install.is_some() };
-    let moment = |trigger, about: &About, of| Moment { trigger, about: about.clone(), of, ice: None, from_hq: None, installed_in: None, trashed_from: None, by: None };
+    let moment = |trigger, about: &About, of| Moment { trigger, about: about.clone(), of, ice: None, from_hq: None, installed_in: None, trashed_from: None, by: None, was_active: false };
     // A moment about the ice at `position` in the run's ice. Where the run
     // or the ice has gone by the time the moment is asked again — a
     // trigger fired after the run ended — it is about nothing, and keeps
@@ -124,7 +138,7 @@ pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
             .as_ref()
             .and_then(|run| run.ice.get(position as usize))
             .map_or(About::Nothing, |ice| About::Card { card: ice.card_id.clone(), install: Some(ice.install_id), installed: true });
-        Moment { trigger, about, of: Some(Side::Runner), ice: Some(facts), from_hq: None, installed_in: None, trashed_from: None, by: None }
+        Moment { trigger, about, of: Some(Side::Runner), ice: Some(facts), from_hq: None, installed_in: None, trashed_from: None, was_active: false, by: None }
     };
     match event {
         GameEvent::EventPlayed { side, card: played } => {
@@ -162,7 +176,9 @@ pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
         }
         GameEvent::CardTrashedFromAccess { card: trashed, install, .. } => {
             let about = About::Card { card: trashed.clone(), install: None, installed: install.is_some() };
-            vec![moment(Trigger::OnTrashedFromAccess, &about, Some(Side::Runner))]
+            let access = state.active_run.as_ref().and_then(|run| run.access_state.as_ref());
+            let was_active = install.is_some() && access.is_some_and(|access| access.pending_install == *install && access.pending_install_rezzed);
+            vec![Moment { was_active, ..moment(Trigger::OnTrashedFromAccess, &about, Some(Side::Runner)) }]
         }
 
         // The agenda reacts from the score area, under the handle it kept
@@ -499,14 +515,19 @@ fn is_this(listener: &Listener, moment: &Moment) -> bool {
         About::Nothing | About::Damage(_) | About::Cards(_) => false,
         About::Card { install: Some(install), .. } => listener.install == Some(*install),
         // A card with no handle left is "this" only to itself, and it is
-        // listening only because it is the subject.
-        About::Card { install: None, card, .. } => !listener.active && &listener.card == card,
+        // listening only because it is the subject — inactive, or active
+        // only for the instant it left (`Moment::was_active`). Never an
+        // active copy still on the table, which keeps its handle.
+        About::Card { install: None, card, .. } => (!listener.active || moment.was_active) && listener.install.is_none() && &listener.card == card,
         About::Server(server) => listener.server == Some(*server),
     }
 }
 
 /// Whether what a moment is about passes a card's `when`.
 fn passes(state: &GameState, registry: &CardRegistry, filter: &EventFilter, moment: &Moment, install: Option<InstallId>) -> bool {
+    if let EventFilter::All(parts) = filter {
+        return parts.iter().all(|part| passes(state, registry, part, moment, install));
+    }
     // "Whenever **it** fully breaks": the object the moment names is the
     // listening install.
     if let EventFilter::ByThis = filter {
@@ -597,7 +618,7 @@ pub(crate) fn when_admits(state: &GameState, registry: &CardRegistry, triggered:
 /// card (installs it, plays it, advances it), so the answer there was
 /// always the controller's.
 fn whose_admits(triggered: &TriggeredEffect, controller: Side, moment: &Moment) -> bool {
-    if matches!(triggered.when, Some(EventFilter::Whose(_) | EventFilter::OwnedBy { .. } | EventFilter::InRoot))
+    if triggered.when.as_ref().is_some_and(EventFilter::names_whose)
         || triggered.subject == Some(Subject::This)
         || triggered.trigger.hears() != Hears::OwnSide
     {
@@ -676,7 +697,7 @@ fn listeners(state: &GameState, registry: &CardRegistry, moments: &[Moment]) -> 
             Some(position) => group.remove(position),
             None => {
                 let server = install.and_then(|install| state.corp.installed.iter().find(|c| c.install_id == install)).map(|c| c.server);
-                Listener { side, card: card.clone(), install: *install, server, active: false, in_heap: false }
+                Listener { side, card: card.clone(), install: *install, server, active: moment.was_active, in_heap: false }
             }
         };
         group.insert(0, subject);

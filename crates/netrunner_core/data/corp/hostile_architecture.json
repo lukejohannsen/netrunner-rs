@@ -1,0 +1,59 @@
+{
+  "id": "hostile_architecture",
+  "title": "Hostile Architecture",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 5,
+  "trash_cost": 4,
+  "unique": true,
+  "triggers": [
+    {
+      "trigger": "OnTrashedFromAccess",
+      "subject": "Any",
+      "when": {
+        "InstalledCard": "Any"
+      },
+      "first_each_turn": true,
+      "effects": [
+        {
+          "DealDamage": [
+            "Meat",
+            2
+          ]
+        }
+      ],
+      "text": "The first time each turn the Runner trashes any of your installed cards (including this asset), do 2 meat damage."
+    },
+    {
+      "trigger": "OnCardTrashed",
+      "subject": "Any",
+      "when": {
+        "All": [
+          {
+            "OwnedBy": {
+              "owner": "Corp",
+              "whose": "Runner"
+            }
+          },
+          {
+            "TrashedFrom": [
+              "Installed"
+            ]
+          }
+        ]
+      },
+      "first_each_turn": true,
+      "effects": [
+        {
+          "DealDamage": [
+            "Meat",
+            2
+          ]
+        }
+      ],
+      "text": "The first time each turn the Runner trashes any of your installed cards (including this asset), do 2 meat damage."
+    }
+  ],
+  "numeric_id": 33122,
+  "is_playable": true
+}

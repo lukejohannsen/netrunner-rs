@@ -375,6 +375,22 @@ impl Occurrences {
     }
 
     pub(crate) fn meant_by(trigger: Trigger, when: Option<&EventFilter>, controller: Side) -> Result<Occurrences, String> {
+        // A conjunction counts what every part admits: the columns all of
+        // them name, of the one player any of them names.
+        if let Some(EventFilter::All(parts)) = when {
+            let mut all = Occurrences { trigger, of: (trigger.hears() == Hears::OwnSide).then_some(controller), columns: None };
+            for part in parts {
+                let one = Occurrences::meant_by(trigger, Some(part), controller)?;
+                if part.names_whose() {
+                    all.of = one.of;
+                }
+                all.columns = match (all.columns, one.columns) {
+                    (Some(a), Some(b)) => Some(a & b),
+                    (a, b) => a.or(b),
+                };
+            }
+            return Ok(all);
+        }
         // Whose moments: the controller's for a trigger about "you",
         // unless the card names the other player's (`EventFilter::Whose`).
         let of = match when {
@@ -420,9 +436,15 @@ impl Occurrences {
             Some(EventFilter::ByThis) => {
                 return Err(format!("the turn counts a {trigger:?} without which object did it, so \"the first\" cannot be narrowed to this card's"));
             }
+            // Whether the card was installed is a column; which pile it
+            // left otherwise is not.
+            Some(EventFilter::TrashedFrom(places)) if places.as_slice() == [crate::dsl::TrashedFrom::Installed] => {
+                Some(Kind::ALL.iter().map(|kind| bit(Class::Card { kind: *kind, installed: true })).fold(0, |mask, column| mask | column))
+            }
             Some(EventFilter::TrashedFrom(_)) => {
                 return Err(format!("the turn counts a {trigger:?} by the card's type and whether it was installed, not which pile it left, so \"the first\" cannot be narrowed to one"));
             }
+            Some(EventFilter::All(_)) => unreachable!("a conjunction is read part by part above"),
             Some(EventFilter::InstalledFromHq(_)) => {
                 return Err(format!("the turn counts a {trigger:?} without where the card came from, so \"the first\" cannot be narrowed by it"));
             }
