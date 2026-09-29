@@ -176,6 +176,8 @@ fn every_field_of_the_view_is_accounted_for(view: ClientView) {
         ice_derezzed: _,         // drawn: hud::in_effect ("This run: a piece of ice has been derezzed"), both clients; Stegodon MK IV's −2 it turns on is in every icebreaker's strength
         subroutine_broken: _,    // engine's: each break is a line of the log and a mark on the ice, and Mercury: Chrome Libertador's bonus access, which it turns off, is an offer the person sees or does not
         reached_success_phase: _, // engine's: whether the run got to the server, which the run's trail and log already draw; Hannah "Wheels" Pilintra's tag it decides is a log line
+        breached: _, // engine's: a breach of another server is the log's "the Runner breached R&D", and every access prompt names the card's server
+        encounters: _, // engine's: a count S-Dobrado reads; each encounter is drawn by board::trail as it happens
         this_encounter: _,       // engine's: a limit the action list and board::breaks already honour, as once_per_run_used; and which kinds of breaker broke the printed subroutines (Virtual Service Agent), each break already a line of the log; and the once-per-encounter abilities used (Slap Vandal), a limit the action list honours
         once_per_run_used: _,    // engine's: a use limit the action list and board::breaks already honour, as once_per_turn_used
         initiated_by: _,         // drawn: names the run's event on the ability it has for the run, actions::describe (both clients' buttons)

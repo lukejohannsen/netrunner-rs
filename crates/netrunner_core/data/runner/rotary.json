@@ -17,7 +17,7 @@
   ],
   "triggers": [
     {
-      "trigger": "OnSuccessfulRun",
+      "trigger": "OnBreach",
       "subject": "Any",
       "when": {
         "Server": [
@@ -46,7 +46,7 @@
       ]
     },
     {
-      "trigger": "OnSuccessfulRun",
+      "trigger": "OnBreach",
       "subject": "Any",
       "when": {
         "Server": [

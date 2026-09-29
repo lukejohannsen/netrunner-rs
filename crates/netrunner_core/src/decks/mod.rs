@@ -435,8 +435,10 @@ mod tests {
             ("honor_roll", &neither),
             ("hostile_bid", &neither),
             // Rebellion Without Rehearsal Stage 5e: Nuvem SA's deck, on
-            // Hostile Bid's frame and its Hedge Funds.
-            ("land_grab", &neither),
+            // Hostile Bid's frame. The Automata Initiative Stage 7 took out
+            // its Ice Wall (for a Tree Line), its one card off the Standard
+            // pool, so it is Standard too.
+            ("land_grab", &not_startup),
             // The Automata Initiative Stage 5: Epiphany Analytica's deck,
             // on Paid Content's frame. Without Making News and Neurospike
             // it holds no Core Set card, so it is Standard too.

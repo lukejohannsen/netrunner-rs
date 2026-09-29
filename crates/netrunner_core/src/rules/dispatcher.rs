@@ -467,6 +467,7 @@ fn still_applies(state: &GameState, due: &DeferredTrigger) -> bool {
         Some(
             GameEvent::ServerApproached { .. }
                 | GameEvent::RunSucceeded { .. }
+                | GameEvent::BreachBegun { .. }
                 | GameEvent::IceEncountered { .. }
                 | GameEvent::RunInitiated { .. }
                 | GameEvent::IcePassed { .. }

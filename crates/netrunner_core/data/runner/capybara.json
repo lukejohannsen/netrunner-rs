@@ -1,0 +1,32 @@
+{
+  "id": "capybara",
+  "title": "Capybara",
+  "side": "Runner",
+  "card_type": "Hardware",
+  "cost": 2,
+  "unique": true,
+  "triggers": [
+    {
+      "trigger": "OnIceBypassed",
+      "subject": "Any",
+      "effects": [
+        {
+          "OfferPaidChoice": {
+            "side": "Runner",
+            "cost": "RemoveSelfFromGame",
+            "if_paid": {
+              "DerezCard": "EncounteredIce"
+            },
+            "if_declined": {
+              "Sequence": []
+            },
+            "text": "you may remove this hardware from the game to derez that ice"
+          }
+        }
+      ],
+      "text": "Whenever you bypass a piece of ice, you may remove this hardware from the game to derez that ice."
+    }
+  ],
+  "numeric_id": 34013,
+  "is_playable": true
+}

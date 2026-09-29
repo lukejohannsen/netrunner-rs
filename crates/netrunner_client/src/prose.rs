@@ -89,6 +89,7 @@ pub fn describe_amount(amount: &Amount) -> String {
         Amount::CardsSelected => "the cards chosen".to_string(),
         Amount::RunCreditsLeftLastRun => "the credits left on it from that run".to_string(),
         Amount::AccessLimit(server) => format!("the cards you may access in {}", describe_server(*server)),
+        Amount::EncountersThisRun => "the times you have encountered ice this run".to_string(),
         Amount::ThreatLevel => "the threat level".to_string(),
         Amount::RunnerTags => "the Runner's tags".to_string(),
         Amount::BadPublicity => "the Corp's bad publicity".to_string(),

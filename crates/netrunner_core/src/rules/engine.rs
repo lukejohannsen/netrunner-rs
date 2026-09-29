@@ -1318,7 +1318,9 @@ fn resume_run(state: &mut GameState, registry: &CardRegistry) -> Result<Vec<Game
     let Some(run) = state.active_run.as_ref() else { return Ok(Vec::new()) };
     match run.phase {
         RunPhase::Initiation => Ok(paid_ability::open_window_if_at_checkpoint(state, registry).into_iter().collect()),
-        RunPhase::Success if run.declared_successful => run::breach(state, registry),
+        // A breach whose beginning parked something waits here too, a
+        // breach with no run included (`run::access::access_server`).
+        RunPhase::Success if run.declared_successful || run.breached.is_some() => run::breach(state, registry),
         _ => Ok(Vec::new()),
     }
 }
@@ -4144,7 +4146,7 @@ mod tests {
         // an empty HQ presents nothing, so the run is over.
         assert_eq!(next.runner.resources.clicks, Clicks(3));
         assert_eq!(next.active_run, None);
-        assert_eq!(events, vec![GameEvent::RunSucceeded { server: ServerId::Hq }, GameEvent::RunCompleted { server: ServerId::Hq }]);
+        assert_eq!(events, vec![GameEvent::RunSucceeded { server: ServerId::Hq }, GameEvent::BreachBegun { server: ServerId::Hq }, GameEvent::RunCompleted { server: ServerId::Hq }]);
     }
 
     #[test]
@@ -4241,6 +4243,7 @@ mod tests {
             events,
             vec![
                 GameEvent::RunSucceeded { server: ServerId::Hq },
+                GameEvent::BreachBegun { server: ServerId::Hq },
                 GameEvent::CardAccessed {
                     card: CardId("hedge_fund".to_string()),
                     server: ServerId::Hq,
@@ -4254,6 +4257,7 @@ mod tests {
             Some(RunState {
                 declared_successful: true,
                 reached_success_phase: true,
+                breached: Some(ServerId::Hq),
                 cards_accessed_count: 1,
                 access_state: Some(run::AccessState { pending_install: None, pending_install_rezzed: false,
                     // Set when the card was presented, and left in place
@@ -4289,7 +4293,7 @@ mod tests {
             apply_action(&state, &registry(), PlayerAction::CompleteRun).expect("action should succeed");
 
         assert_eq!(next.active_run, None);
-        assert_eq!(events, vec![GameEvent::RunSucceeded { server: ServerId::Hq }, GameEvent::RunCompleted { server: ServerId::Hq }]);
+        assert_eq!(events, vec![GameEvent::RunSucceeded { server: ServerId::Hq }, GameEvent::BreachBegun { server: ServerId::Hq }, GameEvent::RunCompleted { server: ServerId::Hq }]);
     }
 
     #[test]
@@ -7005,7 +7009,7 @@ mod tests {
         registry.insert(test_card("card_b", Side::Corp, CardType::Asset, 0, None));
 
         let (state, events) = apply_action(&state, &registry, PlayerAction::CompleteRun).expect("action should succeed");
-        assert_eq!(events, vec![GameEvent::RunSucceeded { server: ServerId::Archives }, GameEvent::ArchivesTurnedFaceup { count: 2 }]);
+        assert_eq!(events, vec![GameEvent::RunSucceeded { server: ServerId::Archives }, GameEvent::BreachBegun { server: ServerId::Archives }, GameEvent::ArchivesTurnedFaceup { count: 2 }]);
         assert!(state.paid_ability_window.is_none());
         assert!(matches!(state.active_run.as_ref().unwrap().access_state.as_ref().unwrap().phase, run::AccessPhase::SelectNextCard { .. }));
 

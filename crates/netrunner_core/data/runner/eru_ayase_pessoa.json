@@ -1,0 +1,75 @@
+{
+  "id": "eru_ayase_pessoa",
+  "title": "Eru Ayase-Pessoa",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 2,
+  "unique": true,
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "requirement": "OncePerTurn",
+      "text": "Once per turn → [click], take 1 tag: Run Archives. If successful, instead of breaching Archives, breach R&D.",
+      "cost": {
+        "AllOf": [
+          {
+            "Clicks": 1
+          },
+          {
+            "TakeTags": 1
+          }
+        ]
+      },
+      "effect": {
+        "Sequence": [
+          {
+            "InitiateRun": "Archives"
+          },
+          {
+            "SetAccessReplacement": {
+              "server": "Archives",
+              "effect": {
+                "Breach": "RnD"
+              }
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnBreach",
+      "subject": "Any",
+      "when": {
+        "Server": [
+          "RnD"
+        ]
+      },
+      "requirement": {
+        "And": [
+          {
+            "AmountAtLeast": [
+              "ThreatLevel",
+              3
+            ]
+          },
+          {
+            "DuringRunOn": "Archives"
+          }
+        ]
+      },
+      "effects": [
+        {
+          "AddAdditionalAccess": {
+            "server": "RnD",
+            "count": 1
+          }
+        }
+      ],
+      "text": "Threat 3 → Whenever you breach R&D during a run on Archives, access 1 additional card."
+    }
+  ],
+  "numeric_id": 34007,
+  "is_playable": true
+}

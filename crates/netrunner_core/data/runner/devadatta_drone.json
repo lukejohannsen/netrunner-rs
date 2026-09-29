@@ -16,7 +16,7 @@
       ]
     },
     {
-      "trigger": "OnSuccessfulRun",
+      "trigger": "OnBreach",
       "subject": "Any",
       "when": {
         "Server": [

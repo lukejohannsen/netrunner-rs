@@ -1,0 +1,90 @@
+{
+  "id": "s_dobrado",
+  "title": "S-Dobrado",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 2,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "PromptChooseServer": {
+            "chooser": "Runner",
+            "rez_cost_delta": 0,
+            "bonus_run_credits": 0,
+            "only_in": "Central"
+          }
+        }
+      ],
+      "text": "Run a central server."
+    },
+    {
+      "trigger": "OnEncounter",
+      "subject": "Any",
+      "requirement": {
+        "Not": {
+          "AmountAtLeast": [
+            "EncountersThisRun",
+            2
+          ]
+        }
+      },
+      "effects": [
+        "BypassEncounteredIce"
+      ],
+      "text": "The first time you encounter a piece of ice during that run, bypass it."
+    },
+    {
+      "trigger": "OnEncounter",
+      "subject": "Any",
+      "requirement": {
+        "And": [
+          {
+            "AmountAtLeast": [
+              "ThreatLevel",
+              4
+            ]
+          },
+          {
+            "And": [
+              {
+                "AmountAtLeast": [
+                  "EncountersThisRun",
+                  2
+                ]
+              },
+              {
+                "Not": {
+                  "AmountAtLeast": [
+                    "EncountersThisRun",
+                    3
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "effects": [
+        {
+          "OfferPaidChoice": {
+            "side": "Runner",
+            "cost": {
+              "Clicks": 1
+            },
+            "if_paid": "BypassEncounteredIce",
+            "if_declined": {
+              "Sequence": []
+            },
+            "text": "you may spend [click] to bypass it"
+          }
+        }
+      ],
+      "text": "Threat 4 → The second time you encounter a piece of ice during that run, you may spend [click] to bypass it."
+    }
+  ],
+  "numeric_id": 34012,
+  "is_playable": true
+}

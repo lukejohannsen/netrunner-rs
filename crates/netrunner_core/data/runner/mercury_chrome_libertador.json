@@ -8,7 +8,7 @@
   "min_deck_size": 45,
   "triggers": [
     {
-      "trigger": "OnSuccessfulRun",
+      "trigger": "OnBreach",
       "subject": "Any",
       "when": {
         "Server": [
@@ -20,7 +20,27 @@
         "And": [
           "OncePerTurn",
           {
-            "Not": "SubroutineBrokenThisRun"
+            "And": [
+              {
+                "Not": "SubroutineBrokenThisRun"
+              },
+              {
+                "Not": {
+                  "And": [
+                    {
+                      "Not": {
+                        "Breaching": "Hq"
+                      }
+                    },
+                    {
+                      "Not": {
+                        "Breaching": "RnD"
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
           }
         ]
       },
@@ -34,7 +54,7 @@
                   {
                     "EffectIf": {
                       "condition": {
-                        "DuringRunOn": "Hq"
+                        "Breaching": "Hq"
                       },
                       "effect": {
                         "AddAdditionalAccess": {
@@ -47,7 +67,7 @@
                   {
                     "EffectIf": {
                       "condition": {
-                        "DuringRunOn": "RnD"
+                        "Breaching": "RnD"
                       },
                       "effect": {
                         "AddAdditionalAccess": {
