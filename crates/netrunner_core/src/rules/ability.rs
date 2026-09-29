@@ -521,8 +521,11 @@ pub fn evaluate_effect(
             if installed.rezzed && !installed.is_rezzed(registry) {
                 return Ok(Vec::new());
             }
-            installed.rezzed = false;
-            Ok(vec![GameEvent::CardDerezzed { install, card: Some(card_id) }])
+            let mut events = Vec::new();
+            if let Some(derezzed) = derez(state, install) {
+                dispatcher::emit(state, registry, &mut events, derezzed)?;
+            }
+            Ok(events)
         }
 
         Effect::GainCreditsPerCounter { side, credits_per_counter } => {
@@ -1106,6 +1109,19 @@ pub fn evaluate_effect(
             Ok(Vec::new())
         }
 
+        Effect::AddToHand => {
+            let card_id = acting_card.ok_or(RulesError::UnresolvedCardTarget)?.clone();
+            let Some(install) = ctx.acting_install.filter(|install| state.runner.rig.iter().any(|c| c.install_id == *install && c.card == card_id)) else {
+                return Ok(Vec::new());
+            };
+            let removed = crate::rules::pending_choice::remove_installed_card(state, registry, Side::Runner, &crate::dsl::CardZoneRef::OwnInstalled, install)?
+                .ok_or(RulesError::InstallNotFound(install))?;
+            let mut events = removed.cascade;
+            state.runner.grip.push(removed.card.clone());
+            events.push(GameEvent::CardAddedToHand { side: Side::Runner, card: Some(removed.card), install, faceup: true });
+            Ok(events)
+        }
+
         Effect::LookAtTopOfDeck { deck, count } => {
             let looker = carried_out_by(registry, ctx).ok_or(RulesError::MissingActingCardContext)?;
             let pile = match deck {
@@ -1219,7 +1235,12 @@ pub fn evaluate_effect(
 
         Effect::BoostStrength { amount, duration } => {
             let acting = acting_card.ok_or(RulesError::UnresolvedCardTarget)?;
-            require_encounter(state)?;
+            // A boost for the turn is no break's: Living Mural's "When you
+            // install this program, it gets +3 strength for the remainder
+            // of the turn" happens at its install.
+            if *duration != EffectDuration::Turn {
+                require_encounter(state)?;
+            }
             let position = acting_rig_position(state, ctx)
                 .ok_or_else(|| RulesError::CardNotInRig { side: Side::Runner, card: acting.clone() })?;
             // A hosted card can lengthen the boost (GAMEDRAGON™ Pro:
@@ -1430,6 +1451,9 @@ pub fn evaluate_effect(
                 Side::Runner => &mut state.runner.resources,
             };
             resources.clicks = Clicks(resources.clicks.0.saturating_add(*amount));
+            if *side == Side::Runner && state.run_in_progress().is_some() {
+                crate::rules::turn_log::record_click_gain_in_a_run(state);
+            }
             Ok(vec![GameEvent::ClicksGained { side: *side, amount: *amount }])
         }
 
@@ -2640,10 +2664,13 @@ pub(crate) fn cascade_trash_hosted_on_rig_card(state: &mut GameState, registry: 
         // The rules trash what its host took with it, not a player.
         events.push(trash_hosted_card(state, registry, hosted.clone(), None));
     }
+    // And what each of those hosted in turn: a Cupellation on a Muse keeps
+    // the Corp card it took, which went nowhere when the Muse was trashed.
     while let Some(position) = state.runner.rig.iter().position(|c| c.hosted_on_rig_card == Some(host)) {
         let removed = state.runner.rig.remove(position);
         state.runner.heap.push(removed.card.clone());
-        events.push(GameEvent::CardTrashed { side: Side::Runner, card: removed.card, installed: true, by: None });
+        events.push(GameEvent::CardTrashed { side: Side::Runner, card: removed.card.clone(), installed: true, by: None });
+        events.extend(cascade_trash_hosted_on_rig_card(state, registry, &removed));
     }
     events
 }
@@ -3051,9 +3078,8 @@ pub(crate) fn pay_cost_ctx(
 
         Cost::DerezSelf => {
             let card_id = acting_card.ok_or(RulesError::MissingActingCardContext)?.clone();
-            let installed = acting_corp_install_mut(state, ctx).filter(|installed| installed.rezzed).ok_or_else(|| RulesError::CardNotInstalled { card: card_id.clone() })?;
-            installed.rezzed = false;
-            Ok(vec![GameEvent::CardDerezzed { install: installed.install_id, card: Some(card_id) }])
+            let install = acting_corp_install_mut(state, ctx).filter(|installed| installed.rezzed).ok_or_else(|| RulesError::CardNotInstalled { card: card_id.clone() })?.install_id;
+            Ok(derez(state, install).into_iter().collect())
         }
 
         Cost::AddSelfToHq => {
@@ -3148,9 +3174,7 @@ pub(crate) fn pay_cost_ctx(
             let installs: Vec<InstallId> = picked.iter().map(|&p| state.corp.installed[p].install_id).collect();
             let mut events = Vec::new();
             for install in installs {
-                let installed = state.corp.installed.iter_mut().find(|c| c.install_id == install).expect("picked from this list");
-                installed.rezzed = false;
-                events.push(GameEvent::CardDerezzed { install, card: Some(installed.card.clone()) });
+                events.extend(derez(state, install));
             }
             Ok(events)
         }
@@ -3287,6 +3311,25 @@ pub(crate) fn dispatch_cost_events(
     Ok(fired)
 }
 
+/// Turns the Corp install `install` facedown and says so — every derez, by
+/// a card's text (`Effect::DerezCard`) or a cost (`Cost::Derez`,
+/// `DerezSelf`), so that one place marks a piece of ice derezzed during a
+/// run (`RunState::ice_derezzed`, Stegodon MK IV). The event is a moment
+/// (`Trigger::OnDerez`, Saci): an effect dispatches it, and a cost's payer
+/// does (`dispatch_cost_events`). `None` if nothing by that handle is
+/// installed.
+fn derez(state: &mut GameState, install: InstallId) -> Option<GameEvent> {
+    let installed = state.corp.installed.iter_mut().find(|c| c.install_id == install)?;
+    installed.rezzed = false;
+    let card = installed.card.clone();
+    if installed.slot == InstallSlot::Ice
+        && let Some(run) = state.active_run.as_mut()
+    {
+        run.ice_derezzed = true;
+    }
+    Some(GameEvent::CardDerezzed { install, card: Some(card) })
+}
+
 /// Checks an `AbilityDef::requirement` gate before its cost/effect resolve —
 /// same "checked before resolution" role as `pay_cost`, but for a
 /// precondition rather than a payment. Called from `engine::activate_ability`.
@@ -3325,6 +3368,9 @@ pub fn check_requirement(
         EffectRequirement::SubroutineResolvedThisRun => {
             if state.active_run.as_ref().is_some_and(|run| run.subroutine_resolved) { Ok(()) } else { Err(RulesError::RequirementNotMet) }
         }
+        EffectRequirement::IceDerezzedThisRun => {
+            if state.run_in_progress().is_some_and(|run| run.ice_derezzed) { Ok(()) } else { Err(RulesError::RequirementNotMet) }
+        }
         EffectRequirement::IdentityFlipped => {
             // The asking side's own flip state — `side` is the resolving
             // card's controller, so a Corp identity reads the Corp's.
@@ -3359,6 +3405,13 @@ pub fn check_requirement(
             let key = OncePerTurnKey { card: ctx.acting_card.cloned(), install: ctx.acting_install };
             match state.run_in_progress() {
                 Some(run) if !run.once_per_run_used.contains(&key) => Ok(()),
+                _ => Err(RulesError::RequirementNotMet),
+            }
+        }
+        EffectRequirement::OncePerEncounter => {
+            let key = OncePerTurnKey { card: ctx.acting_card.cloned(), install: ctx.acting_install };
+            match state.run_in_progress() {
+                Some(run) if run.phase == RunPhase::EncounterIce && !run.this_encounter.once_per_encounter_used.contains(&key) => Ok(()),
                 _ => Err(RulesError::RequirementNotMet),
             }
         }
@@ -3405,7 +3458,14 @@ pub fn check_requirement(
             if matches { Ok(()) } else { Err(RulesError::RequirementNotMet) }
         }
         EffectRequirement::RunAgainstThisServer => {
-            let own_server = acting_corp_install(state, ctx).map(|c| c.server);
+            // A Trojan's server is its host's (Living Mural's "a sentry
+            // protecting this server"), as it is for the listeners
+            // (`active::runner`): every piece of ice a run encounters
+            // protects the attacked server.
+            let own_server = acting_corp_install(state, ctx).map(|c| c.server).or_else(|| {
+                let host = acting_rig_card(state, ctx).and_then(|card| card.hosted_on_ice)?;
+                state.find_corp_install(host).map(|ice| ice.server)
+            });
             let matches = own_server.is_some_and(|own| state.run_in_progress().is_some_and(|run| run.server == own));
             if matches { Ok(()) } else { Err(RulesError::RequirementNotMet) }
         }
@@ -3522,6 +3582,15 @@ pub fn check_requirement(
         EffectRequirement::HostsInstalled(filter) => {
             let hosts = ctx.acting_install.is_some_and(|host| {
                 state.runner.rig.iter().filter(|card| card.hosted_on_rig_card == Some(host)).any(|card| {
+                    registry.get(&card.card).is_some_and(|definition| card_matches_filter(definition, filter))
+                })
+            });
+            if hosts { Ok(()) } else { Err(RulesError::RequirementNotMet) }
+        }
+        EffectRequirement::EncounteredIceHosts(filter) => {
+            let encountered = state.active_run.as_ref().filter(|run| run.phase == RunPhase::EncounterIce).and_then(|run| run.ice.get(run.position)).map(|ice| ice.install_id);
+            let hosts = encountered.is_some_and(|ice| {
+                state.runner.rig.iter().filter(|card| card.hosted_on_ice == Some(ice)).any(|card| {
                     registry.get(&card.card).is_some_and(|definition| card_matches_filter(definition, filter))
                 })
             });
@@ -3790,6 +3859,7 @@ pub(crate) fn resolve_amount(amount: &Amount, ctx: &ResolutionContext<'_>, state
         Amount::ChosenNumber => 0,
         Amount::AgendaPointsScoredThisTurn => state.this_turn.agenda_points_scored(),
         Amount::CardsInstalledFromHqThisTurn => state.this_turn.installed_from_hq(),
+        Amount::ClickGainsInRunsThisTurn => state.this_turn.click_gains_in_runs(),
         Amount::TimesThisTurn(trigger) => state.this_turn.times(*trigger),
         Amount::TimesThisTurnWhen { trigger, when } => {
             let controller = ctx.acting_card.and_then(|card| registry.get(card)).map_or(Side::Runner, |card| card.side);
@@ -3938,6 +4008,11 @@ pub(crate) fn consume_requirement(
                 run.once_per_run_used.insert(OncePerTurnKey { card: ctx.acting_card.cloned(), install: ctx.acting_install });
             }
         }
+        EffectRequirement::OncePerEncounter => {
+            if let Some(run) = state.active_run.as_mut() {
+                run.this_encounter.once_per_encounter_used.insert(OncePerTurnKey { card: ctx.acting_card.cloned(), install: ctx.acting_install });
+            }
+        }
         EffectRequirement::And(a, b) => {
             consume_requirement(state, a, side, ctx);
             consume_requirement(state, b, side, ctx);
@@ -3954,6 +4029,7 @@ pub(crate) fn consume_requirement(
         | EffectRequirement::ActingCardMatches(_)
         | EffectRequirement::ThisAgendaScoredThisTurn
         | EffectRequirement::SubroutineResolvedThisRun
+        | EffectRequirement::IceDerezzedThisRun
         | EffectRequirement::MemoryFull
         | EffectRequirement::RunnerClicksAtLeast(_)
         | EffectRequirement::ZoneHasAtLeast { .. }
@@ -3968,6 +4044,7 @@ pub(crate) fn consume_requirement(
         | EffectRequirement::AccessedAnyCardDuringLastRun
         | EffectRequirement::ThisCardIsInstalled
         | EffectRequirement::HostsInstalled(_)
+        | EffectRequirement::EncounteredIceHosts(_)
         | EffectRequirement::ThisCardCountersAtMost(_)
         | EffectRequirement::ThisCardCountersAtLeast(_)
         | EffectRequirement::EncounteringHostIce

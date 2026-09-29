@@ -621,7 +621,9 @@ fn determinize_run(
         ice_bypassed: false,
         // Public, and what a pass "after fully breaking it" reads (Sipa).
         fully_broken: run.fully_broken,
-        this_encounter: run.this_encounter,
+        // Public, and what Stegodon MK IV's -2 reads.
+        ice_derezzed: run.ice_derezzed,
+        this_encounter: run.this_encounter.clone(),
         once_per_run_used: run.once_per_run_used.iter().cloned().collect(),
         additional_rd_access: 0,
         additional_hq_access: 0,

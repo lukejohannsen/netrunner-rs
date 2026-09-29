@@ -1,0 +1,34 @@
+{
+  "id": "monkeywrench",
+  "title": "Monkeywrench",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 2,
+  "memory_cost": 1,
+  "installs_on_ice": true,
+  "continuous": [
+    {
+      "kind": {
+        "Strength": {
+          "per": -1
+        }
+      },
+      "applies_to": "Host",
+      "text": "Host ice gets −2 strength."
+    },
+    {
+      "kind": {
+        "Strength": {
+          "per": -1
+        }
+      },
+      "applies_to": {
+        "IceProtectingThisServer": "Any"
+      },
+      "text": "Each other piece of ice protecting this server gets −1 strength."
+    }
+  ],
+  "triggers": [],
+  "numeric_id": 34006,
+  "is_playable": true
+}

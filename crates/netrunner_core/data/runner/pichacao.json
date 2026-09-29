@@ -1,0 +1,56 @@
+{
+  "id": "pichacao",
+  "title": "Pichação",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 1,
+  "memory_cost": 1,
+  "installs_on_ice": true,
+  "triggers": [
+    {
+      "trigger": "OnIcePassed",
+      "subject": "Any",
+      "when": "Host",
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Runner",
+            "options": [
+              {
+                "Sequence": [
+                  {
+                    "GainClicks": [
+                      "Runner",
+                      1
+                    ]
+                  },
+                  {
+                    "EffectIf": {
+                      "condition": {
+                        "AmountAtLeast": [
+                          "ClickGainsInRunsThisTurn",
+                          2
+                        ]
+                      },
+                      "effect": "AddToHand"
+                    }
+                  }
+                ]
+              },
+              {
+                "Sequence": []
+              }
+            ],
+            "texts": [
+              "you may gain [click]. If this is not the first time you gained [click] during a run this turn, add this program to your grip",
+              ""
+            ]
+          }
+        }
+      ],
+      "text": "Whenever you pass host ice, you may gain [click]. If this is not the first time you gained [click] during a run this turn, add this program to your grip."
+    }
+  ],
+  "numeric_id": 34025,
+  "is_playable": true
+}

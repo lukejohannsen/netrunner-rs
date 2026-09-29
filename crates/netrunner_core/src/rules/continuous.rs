@@ -228,6 +228,7 @@ fn applies(state: &GameState, source: &Source<'_>, scope: &Scope, target: &Targe
                 && card_matches_filter(card, filter)
                 && crate::rules::pending_choice::copy_matches(state, filter, Some(*install))
         }
+        (Scope::Rig(filter), Target::Rig { card, .. }) => card_matches_filter(card, filter),
         (Scope::RunsOnThisServer, Target::Run { server }) => source.server == Some(*server),
         (Scope::Player(side), Target::Bound(bound)) => side == bound,
         _ => false,

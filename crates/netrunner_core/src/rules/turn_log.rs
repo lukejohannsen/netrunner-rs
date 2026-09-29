@@ -242,6 +242,8 @@ fn concealed(trigger: Trigger, of: Option<Side>) -> bool {
         | Trigger::OnAgendaStolen
         | Trigger::OnForfeit
         | Trigger::OnRez
+        // Only a rezzed card is derezzed, and it was seen as it was rezzed.
+        | Trigger::OnDerez
         | Trigger::OnEncounter
         | Trigger::OnAbilityGainedCredits
         // Broken or bypassed only in an encounter, which only a rezzed
@@ -396,6 +398,9 @@ impl Occurrences {
                     .map(|kind| bit(Class::Card { kind: *kind, installed: false }) | bit(Class::Card { kind: *kind, installed: true }))
                     .fold(0, |mask, column| mask | column),
             ),
+            Some(EventFilter::Host) => {
+                return Err(format!("the turn counts a {trigger:?} without which card hosted what, so \"the first\" cannot be narrowed to this card's host"));
+            }
             Some(EventFilter::ByThis) => {
                 return Err(format!("the turn counts a {trigger:?} without which object did it, so \"the first\" cannot be narrowed to this card's"));
             }
@@ -585,11 +590,18 @@ pub struct TurnLog {
     /// cells are `Unseen` anyway. Public all the same, as the card's
     /// leaving HQ is.
     installed_from_hq: u8,
+    /// The times the Runner gained [click] during a run this turn —
+    /// Pichação's "If this is not the first time you gained [click] during
+    /// a run this turn". A count beside the cells, as `installed_from_hq`
+    /// is: gaining a click is a moment no card hears, and "during a run" is
+    /// no `Class`. Public, as the gain is. Recorded where the click is
+    /// gained (`Effect::GainClicks`), the one way a card gives one.
+    click_gains_in_runs: u8,
 }
 
 impl Default for TurnLog {
     fn default() -> Self {
-        TurnLog { counts: [[[0; CLASSES]; WHOSE]; TRIGGERS], actions_finished: 0, agenda_points_scored: 0, installed_from_hq: 0 }
+        TurnLog { counts: [[[0; CLASSES]; WHOSE]; TRIGGERS], actions_finished: 0, agenda_points_scored: 0, installed_from_hq: 0, click_gains_in_runs: 0 }
     }
 }
 
@@ -623,6 +635,10 @@ impl TurnLog {
 
     pub fn installed_from_hq(&self) -> u32 {
         u32::from(self.installed_from_hq)
+    }
+
+    pub fn click_gains_in_runs(&self) -> u32 {
+        u32::from(self.click_gains_in_runs)
     }
 
     /// How many of `trigger`'s moments this turn its `when` admits, as a
@@ -677,6 +693,8 @@ struct Sparse {
     agenda_points_scored: u8,
     #[serde(default, skip_serializing_if = "is_zero")]
     installed_from_hq: u8,
+    #[serde(default, skip_serializing_if = "is_zero")]
+    click_gains_in_runs: u8,
 }
 
 fn is_zero(count: &u8) -> bool {
@@ -695,7 +713,13 @@ impl From<TurnLog> for Sparse {
                 }
             }
         }
-        Sparse { cells, actions_finished: log.actions_finished, agenda_points_scored: log.agenda_points_scored, installed_from_hq: log.installed_from_hq }
+        Sparse {
+            cells,
+            actions_finished: log.actions_finished,
+            agenda_points_scored: log.agenda_points_scored,
+            installed_from_hq: log.installed_from_hq,
+            click_gains_in_runs: log.click_gains_in_runs,
+        }
     }
 }
 
@@ -705,6 +729,7 @@ impl From<Sparse> for TurnLog {
             actions_finished: sparse.actions_finished,
             agenda_points_scored: sparse.agenda_points_scored,
             installed_from_hq: sparse.installed_from_hq,
+            click_gains_in_runs: sparse.click_gains_in_runs,
             ..TurnLog::default()
         };
         for (trigger, whose, column, count) in sparse.cells {
@@ -747,6 +772,12 @@ pub(crate) fn record(state: &mut GameState, registry: &CardRegistry, event: &Gam
         state.this_turn.installed_from_hq = state.this_turn.installed_from_hq.saturating_add(1);
     }
     AsOf(state.this_turn, copy)
+}
+
+/// The Runner gained [click] during a run — see
+/// `TurnLog::click_gains_in_runs`.
+pub(crate) fn record_click_gain_in_a_run(state: &mut GameState) {
+    state.this_turn.click_gains_in_runs = state.this_turn.click_gains_in_runs.saturating_add(1);
 }
 
 /// An action was finished — see `TurnLog::actions_finished`.

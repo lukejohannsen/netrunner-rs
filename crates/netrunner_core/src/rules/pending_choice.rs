@@ -444,6 +444,9 @@ fn instance_matches_filter(
         CardFilter::All(filters) => {
             filters.iter().all(|filter| instance_matches_filter(state, registry, chooser, zone, position, filter, source))
         }
+        // The definition passed it (`card_matches_filter`), so it is decided
+        // here — Stegodon MK IV's "not protecting the attacked server".
+        CardFilter::Not(filter) if filter.is_about_the_copy_alone() => !instance_matches_filter(state, registry, chooser, zone, position, filter, source),
         _ => true,
     }
 }
@@ -1152,7 +1155,23 @@ pub(crate) fn resolve_confirm_card_selection(
         .map(|ids| positions.iter().filter_map(|p| ids.get(*p).copied()).collect())
         .unwrap_or_default();
 
-    let mut events = vec![GameEvent::CardsSelected { side, cards: selected.clone(), revealed: reveal }];
+    // The Runner picks among the Corp's installs by position (Tāo Salonga,
+    // Hermes), and a facedown one they send back to HQ or R&D is named to
+    // nobody: the mask names a selected card the Runner cannot see only
+    // while it is still facedown on the table, and after this action it is
+    // not. What they could already see is named as before.
+    let hidden_destination = matches!(destination, Some(CardZoneRef::OpponentHand | CardZoneRef::OpponentDeck));
+    let named: Vec<CardId> = if side == Side::Runner && matches!(source, CardZoneRef::OpponentInstalled) && hidden_destination {
+        selected
+            .iter()
+            .zip(&selected_installs)
+            .filter(|(_, install)| state.find_corp_install(**install).is_some_and(|card| card.rezzed || card.seen_by_runner))
+            .map(|(card, _)| card.clone())
+            .collect()
+    } else {
+        selected.clone()
+    };
+    let mut events = vec![GameEvent::CardsSelected { side, cards: named, revealed: reveal }];
     // Cards the Corp trashes out of HQ, counted for one batch event —
     // AU Co.'s "trash 1 or more cards from HQ" (Hansei Review is what
     // does it in its deck).
@@ -1255,6 +1274,16 @@ pub(crate) fn resolve_confirm_card_selection(
                 } else if let Some(zone) = plain_zone_mut(state, side, dest, source_install) {
                     zone.push(card_id.clone());
                     onto_deck += 1;
+                }
+                // An install back in its owner's hand says so, named only
+                // to a viewer who could see it on the table (`masking`) —
+                // Hermes's "add 1 unrezzed card to HQ", Urban Art
+                // Vernissage's "add 1 installed … program to your grip".
+                if matches!(source, CardZoneRef::OpponentInstalled | CardZoneRef::OwnInstalled)
+                    && matches!(dest, CardZoneRef::OwnHq | CardZoneRef::OwnGrip | CardZoneRef::OpponentHand)
+                    && let Some(install) = selected_installs.get(index)
+                {
+                    events.push(GameEvent::CardAddedToHand { side: owning_side(side, dest), card: Some(card_id.clone()), install: *install, faceup: was_public });
                 }
                 // A card moved into a discard pile was trashed, and says so
                 // — `side` is the card's owner, as in `ability::trash_card`

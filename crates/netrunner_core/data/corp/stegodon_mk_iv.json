@@ -1,0 +1,82 @@
+{
+  "id": "stegodon_mk_iv",
+  "title": "Stegodon MK IV",
+  "side": "Corp",
+  "card_type": "Agenda",
+  "cost": 0,
+  "advancement_requirement": 3,
+  "agenda_points": 1,
+  "continuous": [
+    {
+      "kind": {
+        "Strength": {
+          "per": -2
+        }
+      },
+      "applies_to": {
+        "Rig": "Icebreaker"
+      },
+      "while": "IceDerezzedThisRun",
+      "text": "Each run, as long as a piece of ice has been derezzed during that run, each installed icebreaker gets –2 strength."
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnRunStart",
+      "subject": "Any",
+      "requirement": {
+        "And": [
+          "OncePerTurn",
+          {
+            "ZoneHasAtLeast": {
+              "zone": "OwnInstalled",
+              "count": 1,
+              "filter": {
+                "All": [
+                  "Ice",
+                  "Rezzed",
+                  {
+                    "Not": "InAttackedServer"
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      },
+      "effects": [
+        {
+          "OfferPaidChoice": {
+            "side": "Corp",
+            "cost": {
+              "Derez": {
+                "filter": {
+                  "All": [
+                    "Ice",
+                    {
+                      "Not": "InAttackedServer"
+                    }
+                  ]
+                },
+                "count": 1
+              }
+            },
+            "if_paid": {
+              "GainCredits": [
+                "Corp",
+                1
+              ]
+            },
+            "if_declined": {
+              "Sequence": []
+            },
+            "text": "you may derez 1 piece of ice not protecting the attacked server to gain 1[credit]"
+          }
+        }
+      ],
+      "text": "Once per turn → When a run begins, you may derez 1 piece of ice not protecting the attacked server to gain 1[credit]."
+    }
+  ],
+  "numeric_id": 34032,
+  "is_playable": true
+}

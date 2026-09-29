@@ -1,0 +1,83 @@
+{
+  "id": "hermes",
+  "title": "Hermes",
+  "side": "Runner",
+  "card_type": "Hardware",
+  "cost": 2,
+  "unique": true,
+  "continuous": [
+    {
+      "kind": {
+        "Memory": {
+          "per": 1
+        }
+      },
+      "applies_to": "Controller",
+      "text": "+1[mu]"
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnAgendaScored",
+      "subject": "Any",
+      "effects": [
+        {
+          "EffectIf": {
+            "condition": {
+              "ZoneHasAtLeast": {
+                "zone": "OpponentInstalled",
+                "count": 1,
+                "filter": "Unrezzed"
+              }
+            },
+            "effect": {
+              "PromptChooseCards": {
+                "side": "Runner",
+                "source": "OpponentInstalled",
+                "filter": "Unrezzed",
+                "min": 1,
+                "max": 1,
+                "reveal": false,
+                "shuffle_after": false,
+                "destination": "OpponentHand"
+              }
+            }
+          }
+        }
+      ],
+      "text": "Whenever an agenda is scored or stolen, add 1 unrezzed card to HQ."
+    },
+    {
+      "trigger": "OnAgendaStolen",
+      "subject": "Any",
+      "effects": [
+        {
+          "EffectIf": {
+            "condition": {
+              "ZoneHasAtLeast": {
+                "zone": "OpponentInstalled",
+                "count": 1,
+                "filter": "Unrezzed"
+              }
+            },
+            "effect": {
+              "PromptChooseCards": {
+                "side": "Runner",
+                "source": "OpponentInstalled",
+                "filter": "Unrezzed",
+                "min": 1,
+                "max": 1,
+                "reveal": false,
+                "shuffle_after": false,
+                "destination": "OpponentHand"
+              }
+            }
+          }
+        }
+      ],
+      "text": "Whenever an agenda is scored or stolen, add 1 unrezzed card to HQ."
+    }
+  ],
+  "numeric_id": 34014,
+  "is_playable": true
+}

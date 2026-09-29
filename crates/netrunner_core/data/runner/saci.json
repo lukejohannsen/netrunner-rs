@@ -1,0 +1,41 @@
+{
+  "id": "saci",
+  "title": "Saci",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 1,
+  "memory_cost": 1,
+  "installs_on_ice": true,
+  "triggers": [
+    {
+      "trigger": "OnRez",
+      "subject": "Any",
+      "when": "Host",
+      "effects": [
+        {
+          "GainCredits": [
+            "Runner",
+            3
+          ]
+        }
+      ],
+      "text": "Whenever host ice is rezzed or derezzed, gain 3[credit]."
+    },
+    {
+      "trigger": "OnDerez",
+      "subject": "Any",
+      "when": "Host",
+      "effects": [
+        {
+          "GainCredits": [
+            "Runner",
+            3
+          ]
+        }
+      ],
+      "text": "Whenever host ice is rezzed or derezzed, gain 3[credit]."
+    }
+  ],
+  "numeric_id": 34017,
+  "is_playable": true
+}
