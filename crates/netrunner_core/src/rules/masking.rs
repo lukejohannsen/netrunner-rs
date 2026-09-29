@@ -392,6 +392,11 @@ pub struct PublicRunState {
     /// (Sipa).
     #[serde(default)]
     pub fully_broken: bool,
+    /// `RunState::ice_derezzed`: public, as a derez is. Carried so a sample
+    /// built from the view lowers each icebreaker's strength where the real
+    /// game does (Stegodon MK IV).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub ice_derezzed: bool,
     /// `RunState::this_encounter`: public, since both players watched each
     /// break and each trash, and carried so a sample built from the view
     /// is held to Hammer's and Sorocaban Blade's limits where the real
@@ -1207,7 +1212,8 @@ fn mask_run_state(state: &GameState, registry: &CardRegistry, run: &RunState, vi
         bonus_run_credits: run.bonus_run_credits,
         redirect_on_approach: run.redirect_on_approach,
         fully_broken: run.fully_broken,
-        this_encounter: run.this_encounter,
+        ice_derezzed: run.ice_derezzed,
+        this_encounter: run.this_encounter.clone(),
         initiated_by: run.initiated_by.clone(),
         begun_as_the_turn_began: run.begun_as_the_turn_began,
         once_per_run_used: run

@@ -46,7 +46,7 @@ fn every_field_of_the_view_is_accounted_for(view: ClientView) {
         active_player: _,      // drawn: desktop avatar bar lit for the side whose turn it is, board::timing
         phase: _,              // drawn: board::phase (desktop phase panel), the terminal's header
         turn: _,               // drawn: board::phase, the terminal's header
-        this_turn: _,          // engine's: the turn log's counts, read by cards and bots; the log shows each event
+        this_turn: _,          // engine's: the turn log's counts and sums (Pichação's clicks gained during runs among them), read by cards and bots; the log shows each event
         last_turn: _,          // engine's: as this_turn, for the turn before
         rules: _,              // drawn: the points to win, on the HUD's Agendas readout (hud::readouts)
         corp,                  // below
@@ -172,7 +172,8 @@ fn every_field_of_the_view_is_accounted_for(view: ClientView) {
         bonus_run_credits: _,    // drawn: hud::readouts, beside the Runner's credits
         redirect_on_approach: _, // drawn: hud::in_effect ("This run: … the attacked server becomes HQ instead")
         fully_broken: _,         // drawn: every subroutine's broken mark on the encountered ice says it (board::facts)
-        this_encounter: _,       // engine's: a limit the action list and board::breaks already honour, as once_per_run_used; and which kinds of breaker broke the printed subroutines (Virtual Service Agent), each break already a line of the log
+        ice_derezzed: _,         // drawn: hud::in_effect ("This run: a piece of ice has been derezzed"), both clients; Stegodon MK IV's −2 it turns on is in every icebreaker's strength
+        this_encounter: _,       // engine's: a limit the action list and board::breaks already honour, as once_per_run_used; and which kinds of breaker broke the printed subroutines (Virtual Service Agent), each break already a line of the log; and the once-per-encounter abilities used (Slap Vandal), a limit the action list honours
         once_per_run_used: _,    // engine's: a use limit the action list and board::breaks already honour, as once_per_turn_used
         initiated_by: _,         // drawn: names the run's event on the ability it has for the run, actions::describe (both clients' buttons)
         begun_as_the_turn_began: _, // engine's: where the turn goes when the run ends, which board::phase draws when it gets there

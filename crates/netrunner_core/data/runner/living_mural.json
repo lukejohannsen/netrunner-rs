@@ -1,0 +1,70 @@
+{
+  "id": "living_mural",
+  "title": "Living Mural",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 3,
+  "strength": 1,
+  "memory_cost": 1,
+  "installs_on_ice": true,
+  "triggers": [
+    {
+      "trigger": "OnInstall",
+      "subject": "This",
+      "requirement": {
+        "AmountAtLeast": [
+          "ThreatLevel",
+          4
+        ]
+      },
+      "effects": [
+        {
+          "BoostStrength": {
+            "amount": 3,
+            "duration": "Turn"
+          }
+        }
+      ],
+      "text": "Threat 4 → When you install this program, it gets +3 strength for the remainder of the turn."
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "text": "Interface → 1[credit]: Break 1 subroutine on a sentry protecting this server.",
+      "cost": {
+        "Credits": 1
+      },
+      "effect": {
+        "BreakSubroutines": {
+          "count": {
+            "Fixed": 1
+          },
+          "restrict_to": "Sentry"
+        }
+      },
+      "requirement": {
+        "And": [
+          "DuringEncounter",
+          "RunAgainstThisServer"
+        ]
+      }
+    },
+    {
+      "trigger": "Paid",
+      "text": "1[credit]: +2 strength.",
+      "cost": {
+        "Credits": 1
+      },
+      "effect": {
+        "BoostStrength": {
+          "amount": 2,
+          "duration": "Encounter"
+        }
+      },
+      "requirement": "DuringEncounter"
+    }
+  ],
+  "numeric_id": 34024,
+  "is_playable": true
+}

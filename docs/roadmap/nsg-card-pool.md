@@ -4064,6 +4064,157 @@ Automata Initiative 25 of 65; `TAI_UNIMPLEMENTED` 46 → 40.
   all four shapes, the swap's cleared `seen_by_runner` included, so the
   heuristic movement is `determinize` sampling the new cards.
 
+#### Stage 4 — Trojans, host ice, and back to the grip (28 September 2026)
+
+`feat/tai-stage-4-trojans-host-scopes`: Monkeywrench, Saci, Slap Vandal,
+Umbrella, Living Mural, Pichação, Urban Art Vernissage, Hermes and Stegodon
+MK IV. **One new `Effect`** (`AddToHand`). The Automata Initiative 34 of 65;
+`TAI_UNIMPLEMENTED` 40 → 31.
+
+- **A derez is a moment, and "host ice" a filter.** Saci's "Whenever host
+  ice is rezzed or derezzed" needed both.
+  - `Trigger::OnDerez`, about the card turned facedown: `GameEvent::
+    CardDerezzed` was an occurrence of nothing.
+  - Every derez now goes through one function (`ability::derez`): a
+    card's text (`Effect::DerezCard`, dispatched with `emit`) or a cost
+    (`Cost::Derez`, `DerezSelf`, dispatched by the payer).
+  - `EventFilter::Host`: the moment is about the listening install's
+    host, asked as it is heard. Pichação's "Whenever you pass host ice"
+    uses it too. `validate` admits it only on a card that installs on
+    ice.
+- **Once per encounter** (Slap Vandal): `EffectRequirement::
+  OncePerEncounter`, the encounter's twin of `OncePerRun`.
+  - It is kept on the encounter's tally
+    (`EncounterTally::once_per_encounter_used`), so the tally's reset is
+    the limit's end. The tally is no longer `Copy`.
+- **Ice hosting a trojan** (Umbrella's "can only interface with ice
+  hosting a trojan program"): `EffectRequirement::EncounteredIceHosts
+  (filter)`.
+  - Its "If at least 1 subroutine was broken this way" needs no word: the
+    break refuses when there is nothing to break, so the ability never
+    resolves without one.
+  - "Each player may draw 1 card" is two `PresentChoice`s, the Runner's
+    first.
+- **A run in which ice was derezzed, and every installed icebreaker**
+  (Stegodon MK IV's "Each run, as long as a piece of ice has been derezzed
+  during that run, each installed icebreaker gets –2 strength").
+  - `RunState::ice_derezzed`, set by `ability::derez` and read by
+    `EffectRequirement::IceDerezzedThisRun`. It is public: carried in the
+    view, copied by `determinize`, and drawn as an "in effect" line.
+  - `Scope::Rig(filter)`, a continuous effect about the rig's cards.
+  - Its "Once per turn → When a run begins, you may derez…" is Brasília
+    Government Grid's `Cost::Derez` in an `OfferPaidChoice`. The trigger
+    does not fire while no rezzed ice outside the attacked server could
+    be derezzed. Declined, the turn is still spent (the 9.3.6g deviation,
+    recorded).
+- **"Not protecting the attacked server" matched nothing.** A `Not` around
+  a word about the installed copy was decided at the card level, where
+  that word always passes, so the negation always failed.
+  - `CardFilter::is_about_the_copy_alone` names those words. A `Not` of
+    one now passes the card-level half and is decided on the copy
+    (`pending_choice`).
+  - No card before Stegodon negated one.
+- **Clicks gained during runs are counted, and a program goes back to the
+  grip** (Pichação's "If this is not the first time you gained [click]
+  during a run this turn, add this program to your grip").
+  - `TurnLog::click_gains_in_runs`, a sum beside `installed_from_hq`: a
+    click gained is a moment no card hears. It is recorded by
+    `Effect::GainClicks` during a run, and read as `Amount::
+    ClickGainsInRunsThisTurn`.
+  - `Effect::AddToHand`, the acting install to its owner's grip. It is
+    single-use: `PromptChooseCards` cannot say "this install", and
+    `AddToDeck` moves only into a deck.
+- **An install returned to a hand says so, named only to who saw it.**
+  - Hermes's "add 1 unrezzed card to HQ" and Urban Art Vernissage's "add 1
+    installed non-virus trojan program to your grip" are selections with
+    a hand as the destination.
+  - Such a move now announces `CardAddedToHand` (JK's event, masked when
+    facedown).
+  - A Runner's selection of the Corp's installs sent to HQ or R&D leaves
+    the facedown ones out of `CardsSelected`. The mask names a selected
+    card only while it is still facedown on the table, and after the move
+    it is not, so Hermes would have named the card it returned.
+  - Vernissage's "place 2[credit]" follows the selection in a `Sequence`,
+    since a selection's `then` acts as the chosen install. It pays for
+    installs (`PaysFor::Installing(Any)`).
+- **A trojan's "this server" is its host's** for `RunAgainstThisServer`,
+  as it already was for the listeners. Living Mural's "a sentry protecting
+  this server" is that with `Encountering(Sentry)`. A boost "for the
+  remainder of the turn" needs no encounter (Living Mural's threat-4 +3 on
+  install).
+- **Monkeywrench composes.** Its "Host ice gets −2 strength. Each other
+  piece of ice protecting this server gets −1" is −1 on its host and −1 on
+  its server's ice, host included. A Trojan may now say
+  `IceProtectingThisServer`.
+- **Found by the sweep: a host's host lost what it hosted.**
+  - The view sweep's conservation check failed at seed 33 (Fine Print
+    against Spare Parts, whose list this stage changed): a Muse trashed to
+    the memory limit took the Cupellation it hosted to the heap, and the
+    Corp card on the Cupellation to no zone.
+  - The rig's cascade now follows each card it trashes down to what that
+    card hosted (CR 1.13.13, "and all objects hosted on those objects").
+  - It is a bug on main, reached only on the new trajectory.
+- **Client**, both clients:
+  - `RunState::ice_derezzed` is drawn as "This run: a piece of ice has
+    been derezzed", which is why every icebreaker lost 2.
+  - The tally's once-per-encounter set and the turn log's new sum are the
+    engine's (the view ledger says so).
+  - The log names what went back to a hand, and the prose names the new
+    words.
+- **Decks** — swaps into Eternal-only Sweep decks, each card taken out
+  still in another deck the sweeps play:
+  - Retirement Package: two Stegodon MK IV for the Offworld Office and the
+    Vulture Fund, the points kept at 21.
+  - Hit List: Hermes for the T400 Memory Diamond, and two Saci for two
+    Rotary.
+  - Grassroots: two Monkeywrench for two Leech.
+  - Safety Net: two Living Mural for two Echelon, two Umbrella for two
+    Unity, and two Urban Art Vernissage for two Touchstone.
+  - Spare Parts: two Slap Vandal for a Gordian Blade and an Echelon, and
+    two Pichação for two Jailbreak. Taking both Gordian Blades left Safety
+    Net's one copy unseen by the 256-seed card gate.
+- **DSL ratio (`pool_status.py`): 23 of 91 `Effect` variants single-use,
+  1 unused**, over 349 card files (22 of 90 before).
+- **Real play**, 96 games a seating (seed 2). The Runner decks played
+  Hostile Bid; Retirement Package played Safety Net.
+  - Random seats use all nine:
+    - Monkeywrench installed 39 times.
+    - Hermes installed 21 times, returning 61 cards to HQ.
+    - Saci installed 46 times, heard 3 rezzes.
+    - Living Mural installed 46 times.
+    - Umbrella installed 41 times.
+    - Urban Art Vernissage installed 30 times, took back 15 trojans.
+    - Slap Vandal installed 55 times.
+    - Pichação installed 43 times, gained 28 clicks and went back to the
+      grip 5 times.
+    - Stegodon MK IV scored 5 times, its run-start trigger heard 25.
+  - Heuristic seats:
+    - The Corp scores Stegodon MK IV 57 times, its trigger heard 147.
+    - Hermes returned 52 cards to HQ.
+    - Slap Vandal was used 216 times.
+    - Living Mural was used 90 and 193 times.
+    - Umbrella was used 7 times.
+  - The heuristic Runner never installs Monkeywrench, Saci, Pichação or
+    Urban Art Vernissage (Phase 5 debt, beside Laser Pointer and Banner).
+  - Saci's derez was reached by its test alone: Hit List's opponents
+    derez nothing.
+- **Measured.** Both sweeps at 256 seeds are green, the card gate included.
+  - Against `origin/main`, `coverage_identical.py` has both random
+    seatings **identical**. Both heuristic ones moved, of 192 games:
+
+    | | main | Stage 4 |
+    |---|---|---|
+    | Corp agenda wins | 62 | 64 |
+    | Corp flatlines | 18 | 23 |
+    | Runner agenda wins | 110 | 105 |
+    | Deck-outs | 2 | 0 |
+    | Steps | 116542 | 112281 |
+
+  - A pinned ref with every engine and client change and none of the
+    cards, decks or tests is **identical** to main in all four shapes, the
+    cascade fix included.
+  - So the heuristic movement is `determinize` sampling the new cards.
+
 ### 4. Parhelion — 63 cards (C 19 / V 26 / M 18)
 
 **Decks:** Sweep decks on its four identities. Nova Initiumia and Ampère

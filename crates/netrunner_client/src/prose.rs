@@ -79,6 +79,7 @@ pub fn describe_amount(amount: &Amount) -> String {
         Amount::FacedownCardsInArchives => "the number of facedown cards in Archives".to_string(),
         Amount::CardTypesAmongFaceupInArchives => "the number of card types among faceup cards in Archives".to_string(),
         Amount::CardsInstalledFromHqThisTurn => "the cards installed from HQ this turn".to_string(),
+        Amount::ClickGainsInRunsThisTurn => "the times you gained [click] during a run this turn".to_string(),
         Amount::CreditsLostThisResolution => "the credits just lost".to_string(),
         Amount::ClicksRemaining => "the clicks remaining".to_string(),
         Amount::PrintedCost => "its printed cost".to_string(),
@@ -377,6 +378,7 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
         Effect::SetIdentityCopy(copy) => format!("make copy {} of the identity the one in play", describe_amount(copy)),
         Effect::AddToDeck(DeckEnd::Bottom) => "put it on the bottom of its owner's deck".to_string(),
         Effect::AddToDeck(DeckEnd::Top) => "put it on top of its owner's deck".to_string(),
+        Effect::AddToHand => "add it to its owner's grip".to_string(),
         Effect::InstallProgramOnHost { from, .. } => {
             format!("install that program from {} on this card, or a trojan on a piece of ice", describe_zone(from))
         }
@@ -494,6 +496,7 @@ pub fn engine_reading(card: &CardDefinition, registry: &CardRegistry) -> Vec<Str
             Some(EventFilter::Whose(side)) => when = format!("{when}, the {side:?}'s"),
             Some(EventFilter::OwnedBy { owner, whose }) => when = format!("{when}, the {whose:?}'s, of a {owner:?} card"),
             Some(EventFilter::ByThis) => when = format!("{when}, by this card"),
+            Some(EventFilter::Host) => when = format!("{when}, of host ice"),
             Some(EventFilter::InstalledFromHq(true)) => when = format!("{when}, from HQ"),
             Some(EventFilter::InstalledFromHq(false)) => when = format!("{when}, from anywhere except HQ"),
             Some(EventFilter::Ice(facts)) => {
@@ -599,6 +602,7 @@ pub fn describe_continuous(effect: &ContinuousEffect) -> String {
         Scope::Installing(filter) => format!("a card its controller installs ({})", lower(format!("{filter:?}"))),
         Scope::InstallingOntoThis(filter) => format!("a card its controller installs onto this card ({})", lower(format!("{filter:?}"))),
         Scope::Ice => "each piece of ice".to_string(),
+        Scope::Rig(filter) => format!("each installed card of the Runner's ({})", lower(format!("{filter:?}"))),
         Scope::RootOfThisServer(filter) => format!("each card in the root of this server ({})", lower(format!("{filter:?}"))),
         Scope::IceProtectingThisServer(filter) => format!("each piece of ice protecting this server ({})", lower(format!("{filter:?}"))),
         Scope::Playing(filter) if effect.first_each_turn => format!("the first card its controller plays each turn ({})", lower(format!("{filter:?}"))),

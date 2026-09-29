@@ -955,6 +955,14 @@ pub enum Effect {
     /// the card is in none of its owner's zones, per the `TrashCard`
     /// "already gone" precedent.
     AddToDeck(DeckEnd),
+    /// Adds the acting install to its owner's grip — Pichação's "add this
+    /// program to your grip". The install is the "if", as it is for
+    /// `AddToDeck`: gone, or reinstalled under another handle, nothing
+    /// moves. The Runner's alone: the one Corp card that adds itself to HQ
+    /// does so as a cost (`Cost::AddSelfToHq`). Composition didn't work:
+    /// `PromptChooseCards` cannot say "this install", and `AddToDeck` moves
+    /// only into a deck.
+    AddToHand,
     /// Shuffles every card in each of these zones into the acting card's
     /// owner's deck — Read-Write Share's "[trash]: Shuffle all hosted cards
     /// into your stack" (`HostedOnSource`) and Ashen Epilogue's "Shuffle
@@ -1471,6 +1479,13 @@ pub enum Amount {
     /// Composition didn't work: `TimesThisTurn(OnInstall)` counts an
     /// install from Archives or R&D as well.
     CardsInstalledFromHqThisTurn,
+    /// The times the Runner has gained [click] during a run this turn —
+    /// Pichação's "If this is not the first time you gained [click] during
+    /// a run this turn" (`TurnLog::click_gains_in_runs`, a sum beside
+    /// `installed_from_hq`). Composition didn't work: gaining a click is a
+    /// moment no card hears, so no cell of the log counts it, and "during a
+    /// run" is no `Class`.
+    ClickGainsInRunsThisTurn,
     /// Credits actually removed by the most recent `Effect::LoseCredits`
     /// **in this same resolution** (`ResolutionContext::credits_lost` —
     /// the printed amount capped by what the side had), the same
@@ -1959,6 +1974,7 @@ impl Effect {
             | Effect::FlipIdentity
             | Effect::SetIdentityCopy(_)
             | Effect::AddToDeck(_)
+            | Effect::AddToHand
             | Effect::ShuffleIntoDeck(..)
             | Effect::PlaceRunCredits(..)
             | Effect::InstallProgramOnHost { .. }

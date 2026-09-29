@@ -1,0 +1,90 @@
+{
+  "id": "umbrella",
+  "title": "Umbrella",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 3,
+  "strength": 5,
+  "memory_cost": 1,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "text": "Interface → 2[credit]: Break up to 3 code gate subroutines. If at least 1 subroutine was broken this way, each player may draw 1 card.",
+      "cost": {
+        "Credits": 2
+      },
+      "effect": {
+        "Sequence": [
+          {
+            "BreakSubroutines": {
+              "count": {
+                "Fixed": 3
+              },
+              "restrict_to": "CodeGate"
+            }
+          },
+          {
+            "PresentChoice": {
+              "chooser": "Runner",
+              "options": [
+                {
+                  "DrawCards": [
+                    "Runner",
+                    1
+                  ]
+                },
+                {
+                  "Sequence": []
+                }
+              ],
+              "texts": [
+                "each player may draw 1 card",
+                ""
+              ]
+            }
+          },
+          {
+            "PresentChoice": {
+              "chooser": "Corp",
+              "options": [
+                {
+                  "DrawCards": [
+                    "Corp",
+                    1
+                  ]
+                },
+                {
+                  "Sequence": []
+                }
+              ],
+              "texts": [
+                "each player may draw 1 card",
+                ""
+              ]
+            }
+          }
+        ]
+      },
+      "requirement": {
+        "And": [
+          "DuringEncounter",
+          {
+            "EncounteredIceHosts": {
+              "All": [
+                {
+                  "CardType": "Program"
+                },
+                {
+                  "HasSubtype": "Trojan"
+                }
+              ]
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "numeric_id": 34027,
+  "is_playable": true
+}

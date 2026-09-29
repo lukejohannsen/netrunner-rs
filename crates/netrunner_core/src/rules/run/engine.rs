@@ -186,7 +186,7 @@ pub fn start_run(state: &mut GameState, registry: &CardRegistry, server: ServerI
         .flatten()
         .collect();
 
-    state.active_run = Some(RunState { gained_for_the_run: Vec::new(), agendas_stolen_this_run: 0, once_per_run_used: Default::default(), persistent_trashed_upgrades: Vec::new(), redirect_on_approach: None, on_end_effect: None, on_end_card: None, on_end_install: None, subroutine_resolved: false, initiated_by: None, ice_bypassed: false, fully_broken: false, this_encounter: Default::default(),
+    state.active_run = Some(RunState { gained_for_the_run: Vec::new(), agendas_stolen_this_run: 0, once_per_run_used: Default::default(), persistent_trashed_upgrades: Vec::new(), redirect_on_approach: None, on_end_effect: None, on_end_card: None, on_end_install: None, subroutine_resolved: false, ice_derezzed: false, initiated_by: None, ice_bypassed: false, fully_broken: false, this_encounter: Default::default(),
         on_success_effect: None,
         on_success_card: None,
         on_success_install: None,

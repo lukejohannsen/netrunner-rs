@@ -1,0 +1,95 @@
+{
+  "id": "urban_art_vernissage",
+  "title": "Urban Art Vernissage",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 2,
+  "counter_kind": "Credit",
+  "pays_for": [
+    {
+      "Installing": "Any"
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnTurnStart",
+      "effects": [
+        {
+          "EffectIf": {
+            "condition": {
+              "ZoneHasAtLeast": {
+                "zone": "OwnInstalled",
+                "count": 1,
+                "filter": {
+                  "All": [
+                    {
+                      "CardType": "Program"
+                    },
+                    {
+                      "HasSubtype": "Trojan"
+                    },
+                    {
+                      "Not": {
+                        "HasSubtype": "Virus"
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "effect": {
+              "PresentChoice": {
+                "chooser": "Runner",
+                "options": [
+                  {
+                    "Sequence": [
+                      {
+                        "PromptChooseCards": {
+                          "side": "Runner",
+                          "source": "OwnInstalled",
+                          "filter": {
+                            "All": [
+                              {
+                                "CardType": "Program"
+                              },
+                              {
+                                "HasSubtype": "Trojan"
+                              },
+                              {
+                                "Not": {
+                                  "HasSubtype": "Virus"
+                                }
+                              }
+                            ]
+                          },
+                          "min": 1,
+                          "max": 1,
+                          "reveal": false,
+                          "shuffle_after": false,
+                          "destination": "OwnGrip"
+                        }
+                      },
+                      {
+                        "AddCounters": 2
+                      }
+                    ]
+                  },
+                  {
+                    "Sequence": []
+                  }
+                ],
+                "texts": [
+                  "you may add 1 installed non-virus trojan program to your grip. If you do, place 2[credit] on this resource",
+                  ""
+                ]
+              }
+            }
+          }
+        }
+      ],
+      "text": "When your turn begins, you may add 1 installed non-virus trojan program to your grip. If you do, place 2[credit] on this resource."
+    }
+  ],
+  "numeric_id": 34029,
+  "is_playable": true
+}

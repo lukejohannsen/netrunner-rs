@@ -272,6 +272,11 @@ pub enum Scope {
     /// Composition didn't work: `Ice` reaches every piece, and `while` is
     /// asked of the card that prints it, not of the ice.
     IceProtectingThisServer(CardFilter),
+    /// Each card in the Runner's rig, matching the filter — Stegodon MK
+    /// IV's "each installed **icebreaker** gets –2 strength". Composition
+    /// didn't work: every other scope that reaches a rig card is the card's
+    /// own (`This`) or its host (`Host`), and `Ice` is the Corp's table.
+    Rig(CardFilter),
     /// An event or operation its controller is playing, matching the filter
     /// — Synchrocyclotron's "double operation". The play's half of
     /// `Installing`: both price a card from the hand, and `first_each_turn`

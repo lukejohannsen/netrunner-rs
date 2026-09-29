@@ -1107,6 +1107,8 @@ impl CardDefinition {
                 Some(EventFilter::Whose(_)) => triggered.trigger.states_whose(),
                 Some(EventFilter::OwnedBy { .. }) => about == TriggerAbout::Card && triggered.trigger.states_whose(),
                 Some(EventFilter::ByThis) => triggered.trigger == Trigger::OnIceFullyBroken,
+                // Only a card that is hosted has a host to be about.
+                Some(EventFilter::Host) => about == TriggerAbout::Card && self.installs_on_ice,
                 // Only a Corp install's moment says where the card came
                 // from (`listeners::Moment::from_hq`).
                 Some(EventFilter::InstalledFromHq(_)) => triggered.trigger == Trigger::OnInstall && self.side == crate::rules::Side::Corp,
@@ -1370,11 +1372,13 @@ impl CardDefinition {
                 (ContinuousKind::Strength(_), Scope::This) if self.strength.is_none() => {
                     return misfit("Strength", "this card prints no strength to change");
                 }
-                (_, Scope::IceProtectingThisServer(_)) if self.card_type != CardType::Upgrade && self.card_type != CardType::Asset => {
-                    return misfit("IceProtectingThisServer", "only an asset or an upgrade is in a server's root");
+                // A Trojan's server is its host's (Monkeywrench's "each other
+                // piece of ice protecting this server").
+                (_, Scope::IceProtectingThisServer(_)) if self.card_type != CardType::Upgrade && self.card_type != CardType::Asset && !self.installs_on_ice => {
+                    return misfit("IceProtectingThisServer", "only an asset or an upgrade is in a server's root, and only a Trojan is hosted on its ice");
                 }
-                (ContinuousKind::Strength(_), Scope::This | Scope::Host | Scope::Ice | Scope::IceProtectingThisServer(_)) => {}
-                (ContinuousKind::Strength(_), _) => return misfit("Strength", "strength belongs to this card, its host, or ice"),
+                (ContinuousKind::Strength(_), Scope::This | Scope::Host | Scope::Ice | Scope::IceProtectingThisServer(_) | Scope::Rig(_)) => {}
+                (ContinuousKind::Strength(_), _) => return misfit("Strength", "strength belongs to this card, its host, ice, or the rig's cards"),
                 (ContinuousKind::Memory(_), Scope::Controller) if self.side == Side::Runner => {}
                 (ContinuousKind::Memory(_), _) => return misfit("Memory", "memory is the Runner's, so it applies to a Runner card's `Controller`"),
                 (ContinuousKind::Link(_), Scope::Controller) if self.side == Side::Runner => {}
@@ -2014,6 +2018,32 @@ mod tests {
         assert_eq!(asks(Trigger::OnIcePassed, CardSubtype::Decoder).validate(), Ok(()));
         assert_eq!(asks(Trigger::OnEncounterEnded, CardSubtype::Decoder).validate(), refused);
         assert_eq!(asks(Trigger::OnIcePassed, CardSubtype::Virus).validate(), refused, "not an icebreaker's subtype");
+    }
+
+    /// "Host ice" is a Trojan's to say, and only of a moment about a card.
+    #[test]
+    fn validate_refuses_host_ice_on_a_card_with_no_host() {
+        let hears = |installs_on_ice, trigger| CardDefinition {
+            id: CardId("saci".to_string()),
+            side: Side::Runner,
+            card_type: CardType::Program,
+            installs_on_ice,
+            triggers: vec![TriggeredEffect {
+                trigger,
+                subject: Some(Subject::Any),
+                requirement: None,
+                effects: vec![Effect::GainCredits(Side::Runner, 3)],
+                when: Some(EventFilter::Host),
+                acts_on_subject: false,
+                first_each_turn: false,
+                from_heap: false,
+                text: None,
+            }],
+            ..CardDefinition::default()
+        };
+        assert_eq!(hears(true, Trigger::OnDerez).validate(), Ok(()));
+        assert_eq!(hears(false, Trigger::OnDerez).validate(), Err(CardValidationError::TriggerFilterOfTheWrongKind(CardId("saci".to_string()), Trigger::OnDerez)));
+        assert_eq!(hears(true, Trigger::OnRunStart).validate(), Err(CardValidationError::TriggerFilterOfTheWrongKind(CardId("saci".to_string()), Trigger::OnRunStart)), "a run begins on a server");
     }
 
     /// `Amount::ChosenNumber` means something only inside the `then` of the

@@ -95,7 +95,10 @@ pub struct GainedForTheRun {
 /// "cannot break more than 1 of its printed subroutines" and Sorocaban
 /// Blade's "cannot trash more than 1 installed Runner card with this ice".
 /// Public: both players watched each break and each trash.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+///
+/// Not `Copy` since Slap Vandal: the abilities used this encounter are a
+/// set of keys, as the run's are.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct EncounterTally {
     /// Printed subroutines broken by a breaker the ice's `BreakLimit` does
     /// not except.
@@ -119,6 +122,13 @@ pub struct EncounterTally {
     /// after that.
     #[serde(default, skip_serializing_if = "BrokenWith::is_empty")]
     pub printed_broken_with: BrokenWith,
+    /// The abilities printed "Use this ability only once per encounter"
+    /// already used this encounter (`EffectRequirement::OncePerEncounter`)
+    /// — Slap Vandal's — keyed by card and copy as `RunState::
+    /// once_per_run_used` is. On the tally because the tally's reset is the
+    /// encounter's end, so there is no clearing site of its own.
+    #[serde(default, skip_serializing_if = "std::collections::BTreeSet::is_empty")]
+    pub once_per_encounter_used: std::collections::BTreeSet<crate::rules::state::OncePerTurnKey>,
 }
 
 /// A set of the icebreaker subtypes (CR 2.16.7i: AI, decoder, fracter,
@@ -566,6 +576,13 @@ pub struct RunState {
     /// (`EffectRequirement::SubroutineResolvedThisRun`) — Ryō "Phoenix" Ōno.
     #[serde(default)]
     pub subroutine_resolved: bool,
+    /// Whether a piece of ice has been derezzed during this run — Stegodon
+    /// MK IV's "Each run, as long as a piece of ice has been derezzed during
+    /// that run" (`EffectRequirement::IceDerezzedThisRun`). Set where a card
+    /// is turned facedown (`ability::derez`), by a card's text or a cost
+    /// alike; a new run is a new `RunState`, so nothing clears it.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub ice_derezzed: bool,
     /// The card whose effect started this run (`Effect::InitiateRun`,
     /// `Effect::PromptChooseServer`) — `None` for a basic-action run.
     /// `EffectRequirement::RunEventActive` (Sang Kancil) asks whether it
@@ -686,6 +703,7 @@ impl Default for RunState {
             on_end_card: None,
             on_end_install: None,
             subroutine_resolved: false,
+            ice_derezzed: false,
             on_success_card: None,
             on_success_install: None,
         }

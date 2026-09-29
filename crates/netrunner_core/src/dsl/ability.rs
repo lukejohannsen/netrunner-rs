@@ -120,6 +120,12 @@ pub enum EffectRequirement {
     /// deny the pump to the turn's second run, and a lingering prohibition
     /// has nothing to name one ability of one card by.
     OncePerRun,
+    /// "Use this ability only once per encounter" (Slap Vandal) — the
+    /// encounter's twin of `OncePerRun`, kept on the encounter's tally
+    /// (`EncounterTally::once_per_encounter_used`). Composition didn't
+    /// work: `OncePerRun` would refuse the ability at the run's second
+    /// piece of ice.
+    OncePerEncounter,
     /// "Use this ability only during your turn" — the side asking is the
     /// active player (`listeners::active_side`), which holds through the
     /// paid ability windows of that player's own turn, runs included.
@@ -174,7 +180,10 @@ pub enum EffectRequirement {
     /// in, at any step — The Red Room's "use this ability only during a run
     /// against another server" is `And(DuringRun, Not(this))`.
     /// `RezzedDuringRunAgainstThisServer` also asks about the step (before
-    /// the server is reached), which "during a run against" does not.
+    /// the server is reached), which "during a run against" does not. A
+    /// Trojan's server is its host's: Living Mural's "a **sentry protecting
+    /// this server**" is this with `Encountering(Sentry)`, since every piece
+    /// of ice a run encounters protects the attacked server.
     RunAgainstThisServer,
     /// The most recent `Effect::DealDamage` **in this same resolution**
     /// discarded at least one card whose registry `cost` is odd — e.g.
@@ -259,6 +268,12 @@ pub enum EffectRequirement {
     /// (`RunState::subroutine_resolved`) — Ryō "Phoenix" Ōno's "a run becomes
     /// successful after a subroutine resolved during that run".
     SubroutineResolvedThisRun,
+    /// A piece of ice has been derezzed during the active run
+    /// (`RunState::ice_derezzed`) — Stegodon MK IV's "Each run, as long as a
+    /// piece of ice has been derezzed during that run". Composition didn't
+    /// work: the turn log counts derezzes by the turn, and "during that run"
+    /// is the run's own.
+    IceDerezzedThisRun,
     /// The Runner has no unused memory (`memory::available_memory == 0`)
     /// — Dewi Subrotoputri's "if your [mu] is full"; "at least 1 unused
     /// [mu]" is `Not(MemoryFull)`.
@@ -346,6 +361,12 @@ pub enum EffectRequirement {
     /// without being installed, and this asks about kinds of installed
     /// ones.
     HostsInstalled(crate::dsl::CardFilter),
+    /// The ice being encountered hosts an installed card the filter admits
+    /// — Umbrella's "This program can only interface with ice hosting a
+    /// **trojan** program" (`state::InstalledRunnerCard::hosted_on_ice`).
+    /// Composition didn't work: `HostsInstalled` asks about the acting
+    /// card, and `EncounteringHostIce` about the acting card's host.
+    EncounteredIceHosts(crate::dsl::CardFilter),
     /// The advancement just placed by the `Trigger::OnAdvance` event
     /// currently being dispatched was the first one this card has ever
     /// received — e.g. Weyland Consortium: Built to Last's "whenever you
@@ -484,10 +505,12 @@ impl EffectRequirement {
         }
     }
 
-    /// Whether this is, or contains under `And`/`Not`, a `OncePerRun`.
+    /// Whether this is, or contains under `And`/`Not`, a `OncePerRun` — or
+    /// a `OncePerEncounter`, the same use limit over a shorter stretch,
+    /// keyed the same way and held to the same two rules by `validate`.
     pub fn mentions_once_per_run(&self) -> bool {
         match self {
-            EffectRequirement::OncePerRun => true,
+            EffectRequirement::OncePerRun | EffectRequirement::OncePerEncounter => true,
             EffectRequirement::And(one, other) => one.mentions_once_per_run() || other.mentions_once_per_run(),
             EffectRequirement::Not(inner) => inner.mentions_once_per_run(),
             _ => false,

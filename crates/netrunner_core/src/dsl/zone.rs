@@ -361,6 +361,38 @@ impl CardFilter {
 }
 
 impl CardFilter {
+    /// Whether this word is about the copy alone — where it sits, its rez
+    /// state, when it came — so the definition says nothing about it and
+    /// `card_matches_filter` passes it. Under a `Not` such a word is the
+    /// copy's to decide too (`rules::pending_choice`'s instance half):
+    /// Stegodon MK IV's "a piece of ice **not protecting the attacked
+    /// server**". Negated at the definition, it matched nothing.
+    pub fn is_about_the_copy_alone(&self) -> bool {
+        matches!(
+            self,
+            CardFilter::DiscardedThisDiscardPhase
+                | CardFilter::NotSourceCard
+                | CardFilter::Rezzed
+                | CardFilter::Unrezzed
+                | CardFilter::Facedown
+                | CardFilter::Faceup
+                | CardFilter::AccessedDuringLastRun
+                | CardFilter::InAttackedServer
+                | CardFilter::InLastRunServer
+                | CardFilter::InRootOfThisServer
+                | CardFilter::InRootOf(_)
+                | CardFilter::InThisServer
+                | CardFilter::InServer(_)
+                | CardFilter::Advanced
+                | CardFilter::Unadvanced
+                | CardFilter::TopOfZone(_)
+                | CardFilter::Revealed
+                | CardFilter::NotInstalledThisTurn
+                | CardFilter::InstalledThisTurn
+                | CardFilter::ScoredThisTurn
+        )
+    }
+
     /// `InAttackedServer` written over by `InServer(server)`, through `All`
     /// and `AnyOf` — "that server", after the run (`Effect::
     /// with_attacked_server`).
@@ -369,6 +401,7 @@ impl CardFilter {
             CardFilter::InAttackedServer => CardFilter::InServer(server),
             CardFilter::All(filters) => CardFilter::All(filters.into_iter().map(|filter| filter.with_attacked_server(server)).collect()),
             CardFilter::AnyOf(filters) => CardFilter::AnyOf(filters.into_iter().map(|filter| filter.with_attacked_server(server)).collect()),
+            CardFilter::Not(filter) => CardFilter::Not(Box::new(filter.with_attacked_server(server))),
             other => other,
         }
     }
@@ -411,7 +444,8 @@ pub fn card_matches_filter(card: &CardDefinition, filter: &CardFilter) -> bool {
         CardFilter::AccessedDuringLastRun => true,
         CardFilter::All(filters) => filters.iter().all(|filter| card_matches_filter(card, filter)),
         CardFilter::AnyOf(filters) => filters.iter().any(|filter| card_matches_filter(card, filter)),
-        CardFilter::Not(filter) => !card_matches_filter(card, filter),
+        // A word about the copy alone is the copy's to negate.
+        CardFilter::Not(filter) => filter.is_about_the_copy_alone() || !card_matches_filter(card, filter),
         CardFilter::HasSubtype(subtype) => card.subtypes.contains(subtype),
         CardFilter::Unique => card.unique,
         CardFilter::Advanceable => card.advancement_requirement.is_some(),

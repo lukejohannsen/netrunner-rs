@@ -171,6 +171,10 @@ pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
         // to a score area".
         GameEvent::AddedToScoreAreaAsAgenda { .. } | GameEvent::AgendaAddedToScoreArea { .. } => Vec::new(),
         GameEvent::CardAddedToHand { .. } => Vec::new(),
+        // Whoever turned it facedown: Saci hears its host derezzed by a
+        // Tranquilizer as by a Corp's cost.
+        GameEvent::CardDerezzed { install, card: Some(derezzed) } => vec![moment(Trigger::OnDerez, &card(derezzed, Some(*install)), None)],
+        GameEvent::CardDerezzed { card: None, .. } => Vec::new(),
 
         GameEvent::IceRezzed { card: rezzed, install, .. } => vec![moment(Trigger::OnRez, &card(rezzed, Some(*install)), Some(Side::Corp))],
         GameEvent::CardAdvanced { install, card: advanced, .. } => match advanced {
@@ -314,7 +318,6 @@ pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
         | GameEvent::SubroutineGained { .. }
         | GameEvent::RunNotDeclaredSuccessful { .. }
         | GameEvent::IceStrengthModified { .. }
-        | GameEvent::CardDerezzed { .. }
         | GameEvent::IceSwapped { .. }
         | GameEvent::TurnEnded { .. }
         | GameEvent::DiscardPending { .. }
@@ -497,6 +500,14 @@ fn passes(state: &GameState, registry: &CardRegistry, filter: &EventFilter, mome
     // listening install.
     if let EventFilter::ByThis = filter {
         return moment.by.is_some() && moment.by == install;
+    }
+    // "Whenever **host ice** is …": the moment is about the listening
+    // install's host.
+    if let EventFilter::Host = filter {
+        let About::Card { install: Some(about), .. } = moment.about else { return false };
+        return install.is_some_and(|install| {
+            state.runner.rig.iter().any(|card| card.install_id == install && (card.hosted_on_ice == Some(about) || card.hosted_on_rig_card == Some(about)))
+        });
     }
     if let EventFilter::Ice(required) = filter {
         return moment.ice.is_some_and(|facts| required.admits(facts));

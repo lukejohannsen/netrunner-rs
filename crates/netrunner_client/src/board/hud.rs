@@ -304,10 +304,13 @@ pub fn in_effect(view: &ClientView, registry: &CardRegistry) -> Vec<String> {
         let order = if gained.after { "after" } else { "before" };
         format!("This run: {ice} has \u{201c}{}\u{201d} {order} its other subroutines", gained.subroutine.text.trim_end_matches('.'))
     }).collect();
+    // Stegodon MK IV: its −2 is already in every icebreaker's strength,
+    // and this is why (`ice_derezzed`).
+    let derezzed = view.active_run.as_ref().filter(|run| run.ice_derezzed).map(|_| "This run: a piece of ice has been derezzed".to_string());
     // Attini: a prohibition a card's standing effect has in force right
     // now (`standing_cannot`) — why an offer to pay has no Accept.
     let standing = view.standing_cannot.iter().map(|standing| format!("{}: {}", title(&standing.source), cannot_words(standing.what)));
-    redirect.into_iter().chain(event_counters).chain(gained_for_the_run).chain(standing).chain(view.lingering
+    redirect.into_iter().chain(event_counters).chain(gained_for_the_run).chain(derezzed).chain(standing).chain(view.lingering
         .iter()
         .filter_map(|effect| {
             let what = match (&effect.what, &effect.on) {
@@ -703,6 +706,21 @@ mod tests {
         state.active_run = Some(RunState { server: ServerId::Hq, initiated_by: Some(CardId("spree".into())), event_counters: 2, ..Default::default() });
         let view = netrunner_core::view::build_client_view(&state, &registry, Side::Corp);
         assert_eq!(in_effect(&view, &registry), ["This run: Spree has 2 power counters"]);
+    }
+
+    /// Stegodon MK IV's −2 is in every icebreaker's strength; the run says
+    /// why.
+    #[test]
+    fn a_run_says_a_piece_of_ice_was_derezzed_during_it() {
+        use netrunner_core::rules::{RunState, ServerId};
+        let registry = crate::decks::sample_deck_registry();
+        let (corp_deck, runner_deck) = sweep_decks_for_seed(0);
+        let (mut state, _) = GameState::setup(&corp_deck.to_deck(), &runner_deck.to_deck(), &registry, 0).unwrap();
+        state.active_run = Some(RunState { server: ServerId::Hq, ice_derezzed: true, ..Default::default() });
+        for side in [Side::Corp, Side::Runner] {
+            let view = netrunner_core::view::build_client_view(&state, &registry, side);
+            assert_eq!(in_effect(&view, &registry), ["This run: a piece of ice has been derezzed"]);
+        }
     }
 
     /// Thunderbolt Armaments' subroutine is the ice's for the rest of the

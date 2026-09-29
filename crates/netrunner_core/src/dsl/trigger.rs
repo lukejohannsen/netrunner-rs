@@ -344,6 +344,12 @@ pub enum Trigger {
     /// facedown. Composition didn't work: `OnCardTrashed` names no zone,
     /// and the turn log counts it by the card's type.
     OnCardsTrashedFromRnD,
+    /// "Whenever host ice is rezzed **or derezzed**" (Saci) —
+    /// `GameEvent::CardDerezzed`, about the card turned facedown, whoever
+    /// did it: a card's text (Tranquilizer, Maglectric Rapid) or a cost
+    /// (Brasília Government Grid, Stegodon MK IV). Composition didn't work:
+    /// a derez was an occurrence of nothing, so no card could hear one.
+    OnDerez,
 }
 
 /// What a run's moment about a piece of ice says of it beyond the card —
@@ -583,6 +589,16 @@ pub enum EventFilter {
     /// Composition didn't work: the moment is about the ice, and nothing
     /// else a filter reads says which breaker broke it.
     ByThis,
+    /// The card the moment is about is the one this card is hosted on — a
+    /// Trojan's "whenever **host ice** is rezzed or derezzed" (Saci),
+    /// "whenever you pass **host ice**" (Pichação). Asked of the listening
+    /// install, where it is hosted as the moment is heard
+    /// (`InstalledRunnerCard::hosted_on_ice`). Composition didn't work: a
+    /// `Card` filter is about the kind of card, and `Subject::This` is the
+    /// Trojan itself; the one requirement that named a host
+    /// (`EncounteringHostIce`) is an intervening if about the run, which a
+    /// rez is not.
+    Host,
 }
 
 impl Trigger {
@@ -592,7 +608,7 @@ impl Trigger {
     /// `every_trigger_is_listed_at_its_own_index` holds the two together,
     /// and its exhaustive `match` is what stops a new variant compiling
     /// until it is listed here.
-    pub const ALL: [Trigger; 44] = [
+    pub const ALL: [Trigger; 45] = [
         Trigger::OnPlay,
         Trigger::OnRunStart,
         Trigger::OnEncounter,
@@ -637,6 +653,7 @@ impl Trigger {
         Trigger::OnCardMoved,
         Trigger::OnFinishedResolving,
         Trigger::OnCardsTrashedFromRnD,
+        Trigger::OnDerez,
     ];
 
     /// This trigger's position in `ALL`.
@@ -677,6 +694,7 @@ impl Trigger {
             | Trigger::OnWouldBeUninstalled
             | Trigger::OnCardMoved
             | Trigger::OnFinishedResolving
+            | Trigger::OnDerez
             | Trigger::OnActionTaken => TriggerAbout::Card,
             Trigger::OnRunStart
             | Trigger::OnIceApproached
@@ -763,6 +781,7 @@ impl Trigger {
             | Trigger::OnAgendaScored
             | Trigger::OnAgendaStolen
             | Trigger::OnRez
+            | Trigger::OnDerez
             | Trigger::OnEncounter
             // Only the Runner passes, breaks and bypasses ice, so a
             // Runner card's "you pass" and a Corp card's "the Runner
@@ -800,7 +819,7 @@ mod tests {
         // Exhaustive, so a new variant stops here until it is added to
         // `Trigger::ALL` — the turn log indexes a fixed array by it.
         let listed = |trigger: Trigger| match trigger {
-            Trigger::OnPlay | Trigger::OnRunStart | Trigger::OnEncounter | Trigger::OnTurnStart | Trigger::OnAccessed | Trigger::OnTrashedFromAccess | Trigger::OnSuccessfulRun | Trigger::Paid | Trigger::OnInstall | Trigger::OnAgendaScored | Trigger::OnAgendaStolen | Trigger::OnDamageAboutToResolve | Trigger::OnRez | Trigger::OnApproachServer | Trigger::OnRunEnded | Trigger::OnBasicDrawAction | Trigger::OnTagsGiven | Trigger::OnAdvance | Trigger::OnDiscardPhaseEnd | Trigger::OnActionPhaseEnd | Trigger::OnCardInstalled | Trigger::OnDamageDealt | Trigger::OnCardsTrashedFromHq | Trigger::OnAbilityGainedCredits | Trigger::OnForfeit | Trigger::OnIceApproached | Trigger::OnCardPlayed | Trigger::OnTagRemoved | Trigger::OnBadPublicityTaken | Trigger::OnIcePassed | Trigger::OnSubroutineBroken | Trigger::OnIceFullyBroken | Trigger::OnIceBypassed | Trigger::OnEncounterEnded | Trigger::OnCreditsSpentOutsidePool | Trigger::OnArchivesTurnedFaceup | Trigger::OnCardTrashed | Trigger::OnWouldBeUninstalled | Trigger::OnIdentityFlipped | Trigger::OnActionTaken | Trigger::OnVirusCountersPurged | Trigger::OnCardMoved | Trigger::OnFinishedResolving | Trigger::OnCardsTrashedFromRnD => Trigger::ALL.contains(&trigger),
+            Trigger::OnPlay | Trigger::OnRunStart | Trigger::OnEncounter | Trigger::OnTurnStart | Trigger::OnAccessed | Trigger::OnTrashedFromAccess | Trigger::OnSuccessfulRun | Trigger::Paid | Trigger::OnInstall | Trigger::OnAgendaScored | Trigger::OnAgendaStolen | Trigger::OnDamageAboutToResolve | Trigger::OnRez | Trigger::OnApproachServer | Trigger::OnRunEnded | Trigger::OnBasicDrawAction | Trigger::OnTagsGiven | Trigger::OnAdvance | Trigger::OnDiscardPhaseEnd | Trigger::OnActionPhaseEnd | Trigger::OnCardInstalled | Trigger::OnDamageDealt | Trigger::OnCardsTrashedFromHq | Trigger::OnAbilityGainedCredits | Trigger::OnForfeit | Trigger::OnIceApproached | Trigger::OnCardPlayed | Trigger::OnTagRemoved | Trigger::OnBadPublicityTaken | Trigger::OnIcePassed | Trigger::OnSubroutineBroken | Trigger::OnIceFullyBroken | Trigger::OnIceBypassed | Trigger::OnEncounterEnded | Trigger::OnCreditsSpentOutsidePool | Trigger::OnArchivesTurnedFaceup | Trigger::OnCardTrashed | Trigger::OnWouldBeUninstalled | Trigger::OnIdentityFlipped | Trigger::OnActionTaken | Trigger::OnVirusCountersPurged | Trigger::OnCardMoved | Trigger::OnFinishedResolving | Trigger::OnCardsTrashedFromRnD | Trigger::OnDerez => Trigger::ALL.contains(&trigger),
         };
         assert!(Trigger::ALL.iter().all(|trigger| listed(*trigger)));
     }
