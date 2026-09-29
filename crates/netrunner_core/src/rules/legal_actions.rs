@@ -819,7 +819,7 @@ fn access_flow_candidates(state: &GameState, registry: &CardRegistry) -> Vec<Pla
             PlayerAction::PayAccessTrigger { card_id: card_id.clone() },
             PlayerAction::DeclineAccessTrigger { card_id: card_id.clone() },
         ],
-        AccessPhase::PendingChoice { card_id, trash_cost, mandatory_steal, steal_cost } => {
+        AccessPhase::PendingChoice { card_id, trash_cost, mandatory_steal, steal_cost, .. } => {
             let mut candidates = Vec::new();
             // `Effect::PreventStealAndTrashForRemainderOfRun` (e.g. Ansel
             // 1.0) blocks both actions outright for the rest of this run —
@@ -1290,7 +1290,7 @@ mod tests {
                     card_id: CardId("agenda".to_string()),
                     trash_cost: None,
                     mandatory_steal: true,
-                    steal_cost: None,
+                    steal_cost: None, trash_also: None,
                 },
                 ..Default::default()
             }),
@@ -1319,7 +1319,7 @@ mod tests {
                     card_id: CardId("asset".to_string()),
                     trash_cost: Some(2),
                     mandatory_steal: false,
-                    steal_cost: None,
+                    steal_cost: None, trash_also: None,
                 },
                 ..Default::default()
             }),
@@ -1347,7 +1347,7 @@ mod tests {
                     card_id: CardId("asset".to_string()),
                     trash_cost: Some(2),
                     mandatory_steal: false,
-                    steal_cost: None,
+                    steal_cost: None, trash_also: None,
                 },
                 ..Default::default()
             }),

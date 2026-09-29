@@ -107,6 +107,8 @@ fn zone_holds(state: &GameState, server: ServerId, card: &CardId, earlier_copies
 /// back (7.4.2a); the one in the pool persists when its card is trashed.
 fn prune_candidates(state: &mut GameState, registry: &CardRegistry, server: ServerId) {
     let limits = continuous::access_limits(state, registry, server);
+    let only_these = crate::rules::lingering::installs_prohibited(state, Prohibition::AccessOthers);
+    let not_these = crate::rules::lingering::installs_prohibited(state, Prohibition::Access);
     let still_in_root: Vec<InstallId> = state
         .corp
         .installed
@@ -137,6 +139,13 @@ fn prune_candidates(state: &mut GameState, registry: &CardRegistry, server: Serv
             access.candidates.retain(|candidate| matches!(candidate, AccessCandidate::Root(root) if Some(*root) == install));
         }
     }
+    // Adrian Seis's psi game, for the rest of the run: nothing but the
+    // upgrade (bids differ), or everything but it (bids match).
+    for only in &only_these {
+        access.from_zone.clear();
+        access.candidates.retain(|candidate| matches!(candidate, AccessCandidate::Root(root) if root == only));
+    }
+    access.candidates.retain(|candidate| !matches!(candidate, AccessCandidate::Root(root) if not_these.contains(root)));
 }
 
 /// What the Runner may choose among now: the zone, while it has a card
@@ -291,8 +300,11 @@ fn compute_pending_choice(state: &GameState, card_id: &CardId, registry: &CardRe
         .and_then(|c| c.trash_cost)
         .filter(|_| !accessing_in_the_discard_pile(state))
         .map(|printed| (printed as i32 + table).max(0) as u32);
+    // What the card says its trash costs beside the credits (Daniela Jorge
+    // Inácio), only where there is a trash to pay for.
+    let trash_also = trash_cost.and(card_def).and_then(|card| continuous::additional_trash_cost(state, registry, card));
 
-    AccessPhase::PendingChoice { card_id: card_id.clone(), trash_cost, mandatory_steal, steal_cost }
+    AccessPhase::PendingChoice { card_id: card_id.clone(), trash_cost, mandatory_steal, steal_cost, trash_also }
 }
 
 /// Sets `access.phase` to the `PendingChoice` computed from `card_id`'s
@@ -641,6 +653,7 @@ struct PendingAccess {
     mandatory_steal: bool,
     steal_cost: Option<Cost>,
     trash_cost: Option<u32>,
+    trash_also: Option<Cost>,
     /// `AccessState::pending_install` — the instance to take out of play.
     install: Option<InstallId>,
 }
@@ -658,7 +671,7 @@ fn require_pending(state: &GameState, card_id: &CardId) -> Result<PendingAccess,
         return Err(RulesError::NotInAccessPhase);
     }
     let access = run.access_state.as_ref().ok_or(RulesError::NotInAccessPhase)?;
-    let AccessPhase::PendingChoice { card_id: pending, mandatory_steal, steal_cost, trash_cost, .. } =
+    let AccessPhase::PendingChoice { card_id: pending, mandatory_steal, steal_cost, trash_cost, trash_also } =
         &access.phase
     else {
         return Err(RulesError::NotInAccessPhase);
@@ -672,6 +685,7 @@ fn require_pending(state: &GameState, card_id: &CardId) -> Result<PendingAccess,
         mandatory_steal: *mandatory_steal,
         steal_cost: steal_cost.clone(),
         trash_cost: *trash_cost,
+        trash_also: trash_also.clone(),
         install: access.pending_install,
     })
 }
@@ -1054,6 +1068,13 @@ pub fn resolve_trash(
     }
     let pending = require_pending(state, card_id)?;
     let cost = pending.trash_cost.ok_or(RulesError::NotInAccessPhase)?;
+    let also = pending.trash_also.clone();
+    if let Some(also) = &also {
+        let ctx = ability::ResolutionContext::for_card(Some(card_id));
+        if !ability::cost_is_affordable(state, registry, Side::Runner, also, Purpose::TrashCost, &ctx) {
+            return Err(RulesError::CannotAffordTrashCost { card: card_id.clone(), available: 0, requested: cost });
+        }
+    }
 
     // Asked of the scan the payment spends from (`rules::payment`), so a
     // pool that may pay a trash cost — Azimat's hosted credits, and the
@@ -1065,7 +1086,11 @@ pub fn resolve_trash(
         return Err(RulesError::CannotAffordTrashCost { card: card_id.clone(), available, requested: cost });
     }
 
-    let cost_events = ability::pay_cost(state, registry, Side::Runner, &Cost::Credits(cost), Purpose::TrashCost, Some(card_id))?;
+    // Paid together (CR 1.16.10b): the credits, then what the card adds.
+    let mut cost_events = ability::pay_cost(state, registry, Side::Runner, &Cost::Credits(cost), Purpose::TrashCost, Some(card_id))?;
+    if let Some(also) = &also {
+        cost_events.extend(ability::pay_cost(state, registry, Side::Runner, also, Purpose::TrashCost, Some(card_id))?);
+    }
     let mut events = cost_events.clone();
     events.extend(move_to_archives(state, registry, card_id, pending.server, pending.install)?);
     let trashed_event = GameEvent::CardTrashedFromAccess { card: card_id.clone(), cost_paid: cost, install: pending.install };
@@ -2460,7 +2485,7 @@ mod tests {
                 card_id: CardId("ice_wall".to_string()),
                 trash_cost: None,
                 mandatory_steal: false,
-                steal_cost: None,
+                steal_cost: None, trash_also: None,
             }
         );
 
@@ -2927,7 +2952,7 @@ mod tests {
                 card_id: card_id.clone(),
                 trash_cost: None,
                 mandatory_steal: false,
-                steal_cost: None,
+                steal_cost: None, trash_also: None,
             }
         );
         assert_eq!(events, vec![GameEvent::CreditsSpent { side: Side::Runner, amount: 4 }]);
@@ -2976,7 +3001,7 @@ mod tests {
                 card_id: card_id.clone(),
                 trash_cost: None,
                 mandatory_steal: false,
-                steal_cost: None,
+                steal_cost: None, trash_also: None,
             }
         );
         assert_eq!(events[0], GameEvent::AboutToResolve { what: crate::rules::WouldHappen::Damage { kind: DamageType::Net, amount: 2 } });
@@ -3188,7 +3213,7 @@ mod tests {
                 card_id: CardId("snare".to_string()),
                 trash_cost: None,
                 mandatory_steal: false,
-                steal_cost: None,
+                steal_cost: None, trash_also: None,
             }
         );
         assert_eq!(
@@ -3260,7 +3285,7 @@ mod tests {
                 card_id,
                 trash_cost: None,
                 mandatory_steal: false,
-                steal_cost: None,
+                steal_cost: None, trash_also: None,
             }
         );
     }
@@ -3308,7 +3333,7 @@ mod tests {
                 card_id: card_id.clone(),
                 trash_cost: None,
                 mandatory_steal: true,
-                steal_cost: None,
+                steal_cost: None, trash_also: None,
             }
         );
         assert_eq!(

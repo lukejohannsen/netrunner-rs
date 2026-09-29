@@ -1,0 +1,38 @@
+{
+  "id": "daniela_jorge_inacio",
+  "title": "Daniela Jorge Inácio",
+  "side": "Corp",
+  "card_type": "Upgrade",
+  "cost": 2,
+  "unique": true,
+  "continuous": [
+    {
+      "kind": {
+        "AdditionalTrashCost": {
+          "AddRandomFromGripToBottom": 2
+        }
+      },
+      "applies_to": "This",
+      "while": {
+        "CurrentlyAccessingInstalledCard": {
+          "rezzed_only": true
+        }
+      },
+      "text": "As an additional cost to trash this upgrade, the Runner must add 2 cards from the grip at random to the bottom of the stack."
+    },
+    {
+      "kind": {
+        "StealCost": {
+          "AddRandomFromGripToBottom": 2
+        }
+      },
+      "applies_to": "StealingFromThisServer",
+      "text": "Persistent → As an additional cost to steal an agenda from this server or its root, the Runner must add 2 cards from the grip at random to the bottom of the stack."
+    }
+  ],
+  "triggers": [],
+  "trash_cost": 2,
+  "persistent_after_trash": true,
+  "numeric_id": 34047,
+  "is_playable": true
+}

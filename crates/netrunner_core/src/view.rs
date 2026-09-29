@@ -592,7 +592,7 @@ mod tests {
                     card_id: CardId("hedge_fund".to_string()),
                     trash_cost: None,
                     mandatory_steal: false,
-                    steal_cost: None,
+                    steal_cost: None, trash_also: None,
                 },
                 ..Default::default()
             }),

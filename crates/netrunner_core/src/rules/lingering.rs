@@ -302,6 +302,21 @@ pub fn prohibits_install(state: &GameState, what: Prohibition, install: InstallI
         || state.lingering.iter().any(|effect| effect.what == Lingering::Cannot(what) && effect.on == On::Install(install) && effect.holds(state))
 }
 
+/// The installs a prohibition bound to one install holds for right now
+/// (`On::Install`) — Adrian Seis's "the Runner cannot access cards other
+/// than this upgrade".
+pub fn installs_prohibited(state: &GameState, what: Prohibition) -> Vec<InstallId> {
+    state
+        .lingering
+        .iter()
+        .filter(|effect| effect.what == Lingering::Cannot(what) && effect.holds(state))
+        .filter_map(|effect| match effect.on {
+            On::Install(install) => Some(install),
+            _ => None,
+        })
+        .collect()
+}
+
 /// A rig card's strength before the table is asked: what it prints (as
 /// installed) and the pumps still running on it.
 pub fn rig_strength(state: &GameState, card: &InstalledRunnerCard) -> i32 {

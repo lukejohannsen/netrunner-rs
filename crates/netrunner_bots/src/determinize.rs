@@ -467,11 +467,12 @@ fn determinize_access_phase(phase: &PublicAccessPhase, pools: &mut Pools<'_>) ->
             decider: *decider,
             can_pay: *can_pay,
         },
-        PublicAccessPhase::PendingChoice { card, trash_cost, mandatory_steal, steal_cost } => AccessPhase::PendingChoice {
+        PublicAccessPhase::PendingChoice { card, trash_cost, mandatory_steal, steal_cost, trash_also } => AccessPhase::PendingChoice {
             card_id: card.clone().unwrap_or_else(|| pools.draw(Slot::CorpAny)),
             trash_cost: *trash_cost,
             mandatory_steal: *mandatory_steal,
             steal_cost: steal_cost.clone(),
+            trash_also: trash_also.clone(),
         },
     }
 }

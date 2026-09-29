@@ -1216,7 +1216,7 @@ mod tests {
                     card_id: CardId("agenda_x".to_string()),
                     trash_cost: None,
                     mandatory_steal: true,
-                    steal_cost: None,
+                    steal_cost: None, trash_also: None,
                 },
                 ..Default::default()
             }),

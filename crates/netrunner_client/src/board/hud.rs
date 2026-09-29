@@ -276,6 +276,8 @@ fn cannot_words(what: netrunner_core::dsl::Prohibition) -> &'static str {
         Prohibition::SpendCredits => "the Runner cannot spend credits",
         Prohibition::EndTheRun => "subroutines cannot end the run",
         Prohibition::RunOnRemote => "the Runner cannot run on a remote server",
+        Prohibition::AccessOthers => "the Runner cannot access any other card",
+        Prohibition::Access => "the Runner cannot access that card",
     }
 }
 
@@ -339,6 +341,15 @@ pub fn in_effect(view: &ClientView, registry: &CardRegistry) -> Vec<String> {
                 (Lingering::Cannot(Prohibition::EndTheRun), On::Install(ice)) => {
                     let ice = super::facts::card_of(view, *ice).map_or_else(|| "the ice".to_string(), |card| title(&card));
                     format!("subroutines on {ice} cannot end the run")
+                }
+                // Adrian Seis: about the upgrade that played the psi game.
+                (Lingering::Cannot(Prohibition::AccessOthers), On::Install(install)) => {
+                    let card = super::facts::card_of(view, *install).map_or_else(|| "the upgrade".to_string(), |card| title(&card));
+                    format!("the Runner cannot access cards other than {card}")
+                }
+                (Lingering::Cannot(Prohibition::Access), On::Install(install)) => {
+                    let card = super::facts::card_of(view, *install).map_or_else(|| "the upgrade".to_string(), |card| title(&card));
+                    format!("the Runner cannot access {card}")
                 }
                 (Lingering::Cannot(what), _) => cannot_words(*what).to_string(),
                 (Lingering::PreventRunEnding(EndRunPrevention::UnlessCorpTrashesRootCountFromHq), _) => {

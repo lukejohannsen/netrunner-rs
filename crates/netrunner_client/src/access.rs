@@ -62,6 +62,9 @@ pub struct Access {
     pub face: Face,
     pub stage: Stage,
     pub trash_cost: Option<u32>,
+    /// What trashing it costs beside the credits (Daniela Jorge Inácio's
+    /// grip cards), drawn on the same line.
+    pub trash_also: Option<Cost>,
     pub steal_cost: Option<Cost>,
     pub mandatory_steal: bool,
     /// `ClientView::cannot(StealOrTrash)` — Ansel 1.0 and friends. Carried because it is the only thing that explains why a
@@ -94,11 +97,11 @@ impl Access {
             return None;
         }
         let definition = registry.get(&card)?;
-        let (trash_cost, steal_cost, mandatory_steal) = match &access.phase {
-            PublicAccessPhase::PendingChoice { trash_cost, steal_cost, mandatory_steal, .. } => {
-                (*trash_cost, steal_cost.clone(), *mandatory_steal)
+        let (trash_cost, trash_also, steal_cost, mandatory_steal) = match &access.phase {
+            PublicAccessPhase::PendingChoice { trash_cost, trash_also, steal_cost, mandatory_steal, .. } => {
+                (*trash_cost, trash_also.clone(), steal_cost.clone(), *mandatory_steal)
             }
-            _ => (None, None, false),
+            _ => (None, None, None, false),
         };
         Some(Access {
             server: run.server,
@@ -106,6 +109,7 @@ impl Access {
             face: Face::of(definition),
             stage,
             trash_cost,
+            trash_also,
             steal_cost,
             mandatory_steal,
             steal_and_trash_blocked: view.cannot(Prohibition::StealOrTrash),
@@ -139,8 +143,10 @@ impl Access {
                 } else if let Some(cost) = &self.steal_cost {
                     facts.push(format!("Stealing it costs {}", prose::describe_cost(cost)));
                 }
-                if let Some(trash) = self.trash_cost {
-                    facts.push(format!("Trashing it costs {trash} credits"));
+                match (self.trash_cost, &self.trash_also) {
+                    (Some(trash), Some(also)) => facts.push(format!("Trashing it costs {trash} credits and: {}", prose::describe_cost(also))),
+                    (Some(trash), None) => facts.push(format!("Trashing it costs {trash} credits")),
+                    (None, _) => {}
                 }
                 if self.steal_and_trash_blocked {
                     facts.push("You may not steal or trash for the rest of this run".to_string());
@@ -222,6 +228,7 @@ mod tests {
                     trash_cost: definition.trash_cost,
                     mandatory_steal: definition.agenda_points.is_some(),
                     steal_cost: None,
+                    trash_also: None,
                 },
             }),
             jack_out_permitted: false,
@@ -291,7 +298,7 @@ mod tests {
         let registry = registry();
         let mut view = accessing("send_a_message", ServerId::Hq, Viewer::Player(Side::Runner), &registry);
         let access = view.active_run.as_mut().unwrap().access_state.as_mut().unwrap();
-        access.phase = PublicAccessPhase::PendingChoice { card: None, trash_cost: None, mandatory_steal: false, steal_cost: None };
+        access.phase = PublicAccessPhase::PendingChoice { card: None, trash_cost: None, mandatory_steal: false, steal_cost: None, trash_also: None };
         assert!(Access::of(&view, &registry).is_none(), "no card named, nothing to draw");
 
         let access = view.active_run.as_mut().unwrap().access_state.as_mut().unwrap();

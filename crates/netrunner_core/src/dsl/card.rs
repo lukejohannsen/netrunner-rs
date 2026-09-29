@@ -1432,7 +1432,11 @@ impl CardDefinition {
                 (ContinuousKind::PlayCost(_) | ContinuousKind::PlayClicks(_), _) => {
                     return misfit("PlayCost", "a play cost is this card's own or that of a card being `Playing`");
                 }
-                (ContinuousKind::StealCost(_), Scope::Stealing(_)) => {}
+                (ContinuousKind::StealCost(_), Scope::Stealing(_) | Scope::StealingFromThisServer) => {}
+                (ContinuousKind::AdditionalTrashCost(_), Scope::This) => {}
+                (ContinuousKind::AdditionalTrashCost(_), _) => {
+                    return misfit("AdditionalTrashCost", "an additional cost to trash a card the Runner accesses is that card's own");
+                }
                 (ContinuousKind::StealCost(_), _) => {
                     return misfit("StealCost", "an additional cost to steal is about an agenda being `Stealing`; an agenda's own is its `steal_cost`");
                 }

@@ -5365,7 +5365,7 @@ mod system_gateway {
                     card_id: CardId("hedge_fund".to_string()),
                     trash_cost: None,
                     mandatory_steal: false,
-                    steal_cost: None,
+                    steal_cost: None, trash_also: None,
                 },
                 ..Default::default()
             }),
@@ -17777,5 +17777,78 @@ mod the_automata_initiative {
         assert_eq!(prevented.runner.grip, [id("sure_gamble")]);
         assert!(prevented.runner.rig.is_empty(), "when it is empty, trash it");
         assert!(prevented.runner.heap.contains(&id("airbladex_jsrf_ed")));
+    }
+
+    // ---- Stage 8b: a psi game on a successful run, and costs paid in grip cards ----
+
+    fn access_root(state: &GameState, registry: &CardRegistry, install: InstallId) -> (GameState, Vec<GameEvent>) {
+        apply_action(state, registry, PlayerAction::SelectCardToAccess { candidate: crate::rules::AccessCandidate::Root(install) }).expect("access it")
+    }
+
+    fn runner_actions(state: &GameState, registry: &CardRegistry) -> Vec<PlayerAction> {
+        crate::rules::legal_actions_for(state, registry, Side::Runner)
+    }
+
+    #[test]
+    fn daniela_jorge_inacio_costs_two_grip_cards_to_trash_and_persistently_to_steal_from_her_server() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.grip = ["sure_gamble", "diesel", "corroder"].map(id).to_vec();
+        state.runner.stack = vec![id("jailbreak")];
+        state.corp.installed = vec![in_root("daniela_jorge_inacio", 41, ServerId::Remote(0)), unrezzed(in_root("hostile_takeover", 42, ServerId::Remote(0)))];
+        let (breaching, _) = run_to_completion(state.clone(), &registry, ServerId::Remote(0));
+
+        // Her own trash: 2[credit] and two cards from the grip at random.
+        let (daniela, _) = access_root(&breaching, &registry, InstallId(41));
+        let trash = PlayerAction::TrashAccessedCard { card_id: id("daniela_jorge_inacio") };
+        assert!(runner_actions(&daniela, &registry).contains(&trash));
+        let (trashed, _) = apply_action(&daniela, &registry, trash.clone()).expect("trash her");
+        assert_eq!((trashed.runner.resources.credits, trashed.runner.grip.len()), (Credits(8), 1));
+        assert_eq!(trashed.runner.stack.len(), 3);
+        assert_eq!(trashed.runner.stack.last(), Some(&id("jailbreak")), "to the bottom: the top is unchanged");
+
+        // Persistent: trashed during the run, her steal cost stays with it.
+        let steal = PlayerAction::StealAgenda { card_id: id("hostile_takeover") };
+        assert!(!runner_actions(&trashed, &registry).contains(&steal), "one card left in the grip is not two");
+        assert!(runner_actions(&trashed, &registry).contains(&PlayerAction::PassAccessedCard { card_id: id("hostile_takeover") }), "so the Runner passes");
+
+        let (agenda, _) = access_root(&breaching, &registry, InstallId(42));
+        let (stolen, _) = apply_action(&agenda, &registry, steal).expect("steal it for two grip cards");
+        assert_eq!((stolen.runner.grip.len(), stolen.runner.scored_agendas.len()), (1, 1));
+
+        // Unrezzed, her trash costs only its credits (CR 9.1.8 has no
+        // exception for it); an agenda elsewhere costs nothing more.
+        state.corp.installed[0].rezzed = false;
+        let (breaching, _) = run_to_completion(state.clone(), &registry, ServerId::Remote(0));
+        let (daniela, _) = access_root(&breaching, &registry, InstallId(41));
+        let (trashed, _) = apply_action(&daniela, &registry, trash).expect("trash her");
+        assert_eq!(trashed.runner.grip.len(), 3);
+        state.corp.installed = vec![in_root("daniela_jorge_inacio", 41, ServerId::Remote(0)), unrezzed(in_root("hostile_takeover", 42, ServerId::Remote(1)))];
+        let (elsewhere, _) = run_to_completion(state, &registry, ServerId::Remote(1));
+        let (stolen, _) = apply_action(&elsewhere, &registry, PlayerAction::StealAgenda { card_id: id("hostile_takeover") }).expect("steal it");
+        assert_eq!(stolen.runner.grip.len(), 3, "another server");
+    }
+
+    #[test]
+    fn adrian_seis_plays_a_psi_game_on_a_successful_run_and_limits_the_access_to_it_or_away_from_it() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.installed = vec![in_root("adrian_seis", 51, ServerId::Remote(0)), unrezzed(in_root("hostile_takeover", 52, ServerId::Remote(0)))];
+        let bid = |state: &GameState, amount: u32| apply_action(state, &registry, PlayerAction::ChooseNumber { amount }).expect("bid").0;
+        let (asked, _) = run_to_completion(state.clone(), &registry, ServerId::Remote(0));
+        assert!(matches!(asked.pending_decision, Some(PendingDecision::PsiGame { .. })), "{:?}", asked.pending_decision);
+
+        // The bids differ: nothing but Adrian Seis.
+        let (_, events) = apply_action(&bid(&asked, 0), &registry, PlayerAction::ChooseNumber { amount: 1 }).expect("the Runner bids 1");
+        assert_eq!(accessed(&events), [(id("adrian_seis"), ServerId::Remote(0))], "{events:?}");
+
+        // The bids match: everything but Adrian Seis.
+        let (_, events) = apply_action(&bid(&asked, 1), &registry, PlayerAction::ChooseNumber { amount: 1 }).expect("the Runner bids 1");
+        assert_eq!(accessed(&events), [(id("hostile_takeover"), ServerId::Remote(0))], "{events:?}");
+
+        // Unrezzed, he plays nothing.
+        state.corp.installed[0].rezzed = false;
+        let (breached, _) = run_to_completion(state, &registry, ServerId::Remote(0));
+        assert!(!matches!(breached.pending_decision, Some(PendingDecision::PsiGame { .. })));
     }
 }

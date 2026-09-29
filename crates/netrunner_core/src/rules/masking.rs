@@ -314,7 +314,15 @@ pub enum PublicAccessPhase {
     /// so the mask withheld the card from the panel rendering the
     /// decision without withholding it from the player.
     PendingInteractiveTrigger { card: Option<CardId>, cost: Cost, decider: Side, can_pay: bool },
-    PendingChoice { card: Option<CardId>, trash_cost: Option<u32>, mandatory_steal: bool, steal_cost: Option<Cost> },
+    PendingChoice {
+        card: Option<CardId>,
+        trash_cost: Option<u32>,
+        mandatory_steal: bool,
+        steal_cost: Option<Cost>,
+        /// `run::AccessPhase::PendingChoice::trash_also`: public, as the card imposing it is.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        trash_also: Option<Cost>,
+    },
 }
 
 /// `run::AccessState` as seen by a particular viewer. In the real game the
@@ -1194,11 +1202,12 @@ fn mask_access_phase(phase: &AccessPhase, card_visible: bool, viewer: Viewer) ->
             decider: *decider,
             can_pay: *can_pay,
         },
-        AccessPhase::PendingChoice { card_id, trash_cost, mandatory_steal, steal_cost } => PublicAccessPhase::PendingChoice {
+        AccessPhase::PendingChoice { card_id, trash_cost, mandatory_steal, steal_cost, trash_also } => PublicAccessPhase::PendingChoice {
             card: card_visible.then(|| card_id.clone()),
             trash_cost: *trash_cost,
             mandatory_steal: *mandatory_steal,
             steal_cost: steal_cost.clone(),
+            trash_also: trash_also.clone(),
         },
     }
 }
@@ -2058,7 +2067,7 @@ mod tests {
                 card_id: CardId("hedge_fund".to_string()),
                 trash_cost: None,
                 mandatory_steal: false,
-                steal_cost: None,
+                steal_cost: None, trash_also: None,
             },
             ..Default::default()
         };
@@ -2091,7 +2100,7 @@ mod tests {
                 card_id: CardId("cyberdex_trial".to_string()),
                 trash_cost: None,
                 mandatory_steal: false,
-                steal_cost: None,
+                steal_cost: None, trash_also: None,
             },
             ..Default::default()
         };
@@ -2152,7 +2161,7 @@ mod tests {
         // decision still hides an HQ card from the Corp.
         let choice = AccessState {
             pending_install: None,
-            phase: AccessPhase::PendingChoice { card_id: CardId("snare".to_string()), trash_cost: Some(0), mandatory_steal: false, steal_cost: None },
+            phase: AccessPhase::PendingChoice { card_id: CardId("snare".to_string()), trash_cost: Some(0), mandatory_steal: false, steal_cost: None, trash_also: None },
             ..Default::default()
         };
         let state = state_with_run(run_state(ServerId::Hq, Vec::new(), Some(choice)));
@@ -2548,7 +2557,7 @@ mod tests {
                 card_id: CardId("hedge_fund".to_string()),
                 trash_cost: None,
                 mandatory_steal: false,
-                steal_cost: None,
+                steal_cost: None, trash_also: None,
             },
             ..Default::default()
         };

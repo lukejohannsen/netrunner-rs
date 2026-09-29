@@ -163,6 +163,7 @@ pub fn describe_cost(cost: &Cost) -> String {
         Cost::DerezSelf => "derez this card".to_string(),
         Cost::AddSelfToHq => "add this card to HQ".to_string(),
         Cost::TrashRandomFromHq(n) => format!("trash {} at random from HQ", plural(*n, "card", "cards")),
+        Cost::AddRandomFromGripToBottom(n) => format!("add {} from your grip at random to the bottom of your stack", plural(*n, "card", "cards")),
         Cost::AnyOf(options) => options.iter().map(describe_cost).collect::<Vec<_>>().join(" or "),
         Cost::AllOf(parts) => parts.iter().map(describe_cost).collect::<Vec<_>>().join(" and "),
     }
@@ -437,6 +438,8 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
                 (Prohibition::SpendCredits, _) => "the Runner cannot spend credits",
                 (Prohibition::EndTheRun, _) => "subroutines cannot end the run",
                 (Prohibition::RunOnRemote, _) => "the Runner cannot run on a remote server",
+                (Prohibition::AccessOthers, _) => "the Runner cannot access cards other than this card",
+                (Prohibition::Access, _) => "the Runner cannot access this card",
             };
             format!("{what} {}", duration(until))
         }
@@ -642,6 +645,7 @@ pub fn describe_continuous(effect: &ContinuousEffect) -> String {
         Scope::Playing(filter) if effect.first_each_turn => format!("the first card its controller plays each turn ({})", lower(format!("{filter:?}"))),
         Scope::Playing(filter) => format!("a card its controller plays ({})", lower(format!("{filter:?}"))),
         Scope::Stealing(filter) => format!("an agenda the Runner steals ({})", lower(format!("{filter:?}"))),
+        Scope::StealingFromThisServer => "an agenda the Runner steals from this server".to_string(),
         Scope::Scoring(filter) => format!("an agenda the Corp scores ({})", lower(format!("{filter:?}"))),
         Scope::ScoreArea(side) => format!("this agenda, in the {side:?}'s score area"),
         Scope::RunsOnThisServer => "each run against this server".to_string(),
@@ -665,7 +669,8 @@ pub fn describe_continuous(effect: &ContinuousEffect) -> String {
         ContinuousKind::TrashCost(number) => format!("costs {} to trash", signed(number)),
         ContinuousKind::PlayCost(number) => format!("costs {} to play", signed(number)),
         ContinuousKind::PlayClicks(number) => format!("costs {} [click] to play", signed(number)),
-        ContinuousKind::StealCost(number) => format!("costs {} to steal", signed(number)),
+        ContinuousKind::StealCost(cost) => format!("to steal it, also {}", describe_cost(cost)),
+        ContinuousKind::AdditionalTrashCost(cost) => format!("to trash it, also {}", describe_cost(cost)),
         ContinuousKind::ScoreCost(cost) => format!("costs \"{}\" to score", describe_cost(cost)),
         ContinuousKind::BasicTrashCost(cost) => format!("costs the Corp \"{}\" to trash with the basic action", describe_cost(cost)),
         ContinuousKind::AgendaPoints(number) => format!("is worth {} agenda points", signed(number)),
@@ -692,6 +697,8 @@ pub fn describe_continuous(effect: &ContinuousEffect) -> String {
             Prohibition::EndTheRun => "cannot end the run with a subroutine",
             Prohibition::RunOnRemote if effect.first_each_turn => "cannot make the first run each turn on a remote server",
             Prohibition::RunOnRemote => "cannot run on a remote server",
+            Prohibition::AccessOthers => "cannot access cards other than this card",
+            Prohibition::Access => "cannot access this card",
         }
         .to_string(),
     };
