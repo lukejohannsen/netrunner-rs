@@ -708,6 +708,44 @@ pub enum DiagAction {
         #[arg(long)]
         report: Option<PathBuf>,
     },
+    /// How far each chair plays the strategy guide's precepts (Phase 5
+    /// §25): one counter per precept off the log, grouped by style,
+    /// faction and a board-read stage, plus which cards a seat ever used
+    /// (reach). The instrument the bot rebuild is measured by, beside the
+    /// win rate; the stage rule and every ratio are named in the report.
+    Precepts {
+        /// Games to play; game n plays `matchups[n % len]` on `seed + n`.
+        #[arg(long, default_value_t = 96)]
+        games: u32,
+        /// Base seed.
+        #[arg(long, default_value_t = 1)]
+        seed: u64,
+        /// Which bot takes the Corp chair.
+        #[arg(long, default_value = "heuristic")]
+        corp: BotSpec,
+        /// Which bot takes the Runner chair.
+        #[arg(long, default_value = "heuristic")]
+        runner: BotSpec,
+        /// Search iterations for a searching bot in either chair.
+        #[arg(long, default_value_t = 128)]
+        simulations: usize,
+        /// Hidden-state samples per decision for a searching bot.
+        #[arg(long)]
+        determinizations: Option<usize>,
+        /// Seat each chair in its deck's own style, as play does, rather
+        /// than the style the bot spec names (a bare `heuristic` is
+        /// Balanced) — the shipped seating, which the by-style groups
+        /// are for.
+        #[arg(long)]
+        deck_styles: bool,
+        /// Worker threads. All cores if omitted.
+        #[arg(long)]
+        threads: Option<usize>,
+        /// Write every group, the reach list and every game's record as
+        /// JSON here.
+        #[arg(long)]
+        report: Option<PathBuf>,
+    },
     /// *When* in a game does a bot do each thing? One record per side per
     /// turn — that turn's clicks split by what they bought, on a snapshot
     /// of the board they were spent on — reported as a per-turn profile.

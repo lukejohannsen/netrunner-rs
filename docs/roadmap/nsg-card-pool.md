@@ -375,7 +375,7 @@ Each is also a note on its section's row in [rules-conformance.md](rules-conform
 
 ### Bot debts — cards the heuristic never plays (Phase 5 §25's list)
 
-The heuristic seats in the sweeps and `coverage_identical.py` reach these cards through random seats and their tests alone. Each is a blindness of the evaluator, not of the engine, and is the raw material for the precepts work.
+The heuristic seats in the sweeps and `coverage_identical.py` reach these cards through random seats and their tests alone. Each is a blindness of the evaluator, not of the engine, and is the raw material for the precepts work. **Since Phase 5 §25 Stage 1 (29 September 2026) the list is measured, not kept by hand:** `netrunner_cli diag precepts --deck-styles --games 192 --report …` ends with every card a seat used over the pass and the cards in the decks played that no seat ever used (`reach.unused_in_pass`), for the format `--format` names. The entries below are the hand list as it stood, kept for the *reasons* they record (which the report cannot say); a card the report names that is not here is a new debt, and a card here the report no longer names has been paid.
 
 - **Economy resources and programs it does not value**: Friend of a Friend, Valentina Ferreira Carvalho, Coalescence; Laser Pointer, Banner; Monkeywrench, Saci, Pichação, Urban Art Vernissage; Lago Paranoá Shelter; AirbladeX (JSRF Ed.); the Core Set interrupts Decoy, Net Shield and Sacrificial Construct.
 - **Abilities it never uses**: M.I.C.'s trash, Arissana Rocha Nahu's, Epiphany Analytica's counter; identity and multi-click abilities generally (Phase 1 §8); over-advancing for Dividends.
