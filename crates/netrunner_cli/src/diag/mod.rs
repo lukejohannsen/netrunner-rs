@@ -10,6 +10,7 @@
 
 pub mod fort;
 pub mod leaf_sensitivity;
+pub mod precepts;
 pub mod rez_rate;
 pub mod tempo;
 pub mod trap;

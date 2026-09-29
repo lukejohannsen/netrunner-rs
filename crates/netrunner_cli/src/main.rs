@@ -79,6 +79,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             diag::trap::run(&args, &config)
         }
         Some(Command::Diag {
+            action: DiagAction::Precepts { games, seed, corp, runner, simulations, determinizations, deck_styles, threads, report },
+        }) => {
+            let args =
+                diag::precepts::PreceptsArgs { corp, runner, games, seed, simulations, determinizations, threads, deck_styles, report };
+            diag::precepts::run(&args, &config)
+        }
+        Some(Command::Diag {
             action: DiagAction::Tempo { games, seed, corp, runner, simulations, determinizations, turns, stage_gain, threads, report },
         }) => {
             let args =

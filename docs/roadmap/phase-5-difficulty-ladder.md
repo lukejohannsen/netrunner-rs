@@ -27,8 +27,9 @@ strategy guide's precepts, in personalities that fit a deck's strategy and stren
 ## Open
 
 - **§25 — bots that play the strategy guide's precepts**: the brief below, now the plan below it — the
-  decision core rebuilt on the existing harness in eight stages. **Stage 0 built** (29 September 2026);
-  Stage 1, the precepts report, is next.
+  decision core rebuilt on the existing harness in eight stages. **Stages 0 and 1 built** (29 September
+  2026: the Startup gate and format filter; the precepts report and its baseline). Stage 2, what a bot
+  knows, is next, when the person asks.
 - **§4 (a) on the Runner chair**: the Runner ladder has not been re-spaced since §23 moved every
   Corp profile's fort terms; the Corp's (a) and (b) closed with §24, (c) with §19 — this line
   corrects the archived §3 "IN PROGRESS" and §4 "OPEN" headings, which were never updated.
@@ -467,3 +468,58 @@ Every behaviour stage is measured as this phase measures a chair — the bot on 
 "All the cards for Startup are available for play" was true and nowhere checked. Now: `every_card_in_a_complete_formats_pool_is_built_and_playable` (`cards/embedded.rs`) reads each format's pool off `formats.json` and holds every format on `COMPLETE_FORMATS` (`cards/unimplemented.rs`, today `[Startup]`) to having a playable card for every printing the catalog knows — built under its own code or its title, the reprint fold the per-pack gates use — and names the codes the catalog does not carry (`STARTUP_POOL_CODES_OUTSIDE_THE_CATALOG`: four printings of Sure Gamble and Hedge Fund from packs that are not embedded). Its other half holds the list honest: a format not on it must be short of a card, so the day Standard completes the gate says so. `scripts/pool_status.py` prints the same count per format (`startup 225/225 cards built (231 codes, 4 codes not in the catalog) — complete`; Standard 374/613, Eternal 399/797). A per-pack gate said a *pack* was built; this says a *format* is, which is what a player choosing Startup, and a bot told the format in Stage 2, are promised.
 
 The filter: **only 90 of the 192 sample matchups are Startup-legal** (9 Corp × 10 Runner decks; NetrunnerDB's list bans cards nine of the published decks hold, Phase 1 §9 Stage 0b), and every measuring tool played all 192, so there was no "Startup play" number to take. `decks::matchups_in(format, registry)` keeps `matchups()`'s pairings both decks are legal in, in its order — a Casual pass is `matchups()` game for game, so every number recorded before it reproduces — and the one global `--format` flag now chooses the pass for `--headless --all-matchups`, `bench` and every `diag` (`Config::matchups`), read from the flag alone (`settings::applies_to` already kept the settings file out of measurements; `deck matchups`, which lists a pass one pairing a line, joins that exemption because it describes one). `scripts/coverage_identical.py --format startup` asks each pinned binary for its pass through `deck matchups`, so both refs must carry this stage. Checked: the four Casual reports identical against `main`; a Startup pass is 90 games.
+
+#### Stage 1 — The precepts report, and where the bots stand on `main` — DONE (`diag/precepts-report`, 29 September 2026)
+
+`netrunner_cli diag precepts` (`crates/netrunner_cli/src/diag/precepts.rs`), on `diag tempo`'s pattern: one counter per precept of the fourteen above, counted off each applied entry and the states around it, grouped by Corp style, Runner style, each side's faction and a **board-read stage** (`precepts::stage`: *late* when either side is within two points of the target — the pool's common agenda — *early* while HQ or R&D is unprotected or no remote has ICE in front of it, *middle* between; the Runner's tools are not in the reading yet, and Stage 3 owns refining it before a term reads it); every ratio derived once at report time from summed counters with its numerator and denominator named (`DERIVED`, numbered as the brief numbers the precepts), and a **reach** section — every card a seat used over the pass by its owner's own choice (played, installed, rezzed, activated, advanced, scored) and the cards in the decks played that no seat ever used. `--deck-styles` seats each chair in its deck's own style, `--format` picks the pass (Stage 0), `--report` writes every group and every game's record as JSON. `eval::server_break_cost` is the one new engine-side reader: the rig's price to break every rezzed piece of ICE on a server, `remaining_break_cost`'s reading taken off the table, for the taxing window and the Runner's turn-start affordability. No behaviour moved.
+
+**The baseline, `main` at #297.** One full pass a run (192 Casual, 90 Startup), seeds 1 and 2, the shipped seating (`heuristic` with deck styles) and random against random. The precepts as ratios, the Corp win share first (`target/coverage/precepts/*.json`, on the branch's release build):
+
+| ratio | heur C s1 | heur C s2 | heur S s1 | heur S s2 | rand C s1 | rand C s2 |
+|---|---|---|---|---|---|---|
+| Corp win share | 0.458 | 0.401 | 0.544 | 0.522 | 0.385 | 0.370 |
+| `corp.01.centrals_iced_before_first_remote` | 0.561 | 0.505 | 0.523 | 0.558 | 0.164 | 0.090 |
+| `corp.01.ice_per_agenda_install` | 2.104 | 2.139 | 2.195 | 2.213 | 0.343 | 0.439 |
+| `corp.02.scores_runner_could_not_afford` | 0.491 | 0.455 | 0.778 | 0.500 | 0.000 | 0.000 |
+| `corp.03.scores_after_unadvanced_install_turn` | 0.191 | 0.241 | 0.273 | 0.321 | 0.700 | 0.800 |
+| `corp.03.advancement_by_cards_per_game` | 0.365 | 0.406 | 0.400 | 0.533 | 0.422 | 0.526 |
+| `corp.04.scores_same_turn_as_install` | 0.017 | 0.027 | 0.000 | 0.000 | 0.000 | 0.000 |
+| `corp.05.advance_clicks_on_non_agendas` | 0.062 | 0.069 | 0.137 | 0.086 | 0.306 | 0.280 |
+| `corp.05.asset_installs_in_iced_remote_per_game` | 0.286 | 0.286 | 0.300 | 0.233 | 0.766 | 1.182 |
+| `corp.06.etr_installed_over_non_etr` | 0.205 | 0.229 | 0.264 | 0.246 | 0.246 | 0.240 |
+| `corp.06.non_etr_installed_over_etr` | 0.251 | 0.257 | 0.236 | 0.242 | 0.244 | 0.236 |
+| `corp.06.rezzes_the_runner_could_break` | 0.423 | 0.398 | 0.364 | 0.368 | 0.228 | 0.211 |
+| `corp.07.tags_given_per_game` | 1.370 | 1.240 | 1.956 | 2.133 | 1.083 | 1.021 |
+| `corp.07.tagged_resource_trashes_per_game` | 0.000 | 0.000 | 0.000 | 0.000 | 0.141 | 0.120 |
+| `corp.07.flatlines` | 0.089 | 0.052 | 0.144 | 0.167 | 0.385 | 0.370 |
+| `runner.08.central_runs_on_unprotected` | 0.177 | 0.228 | 0.227 | 0.230 | 0.400 | 0.438 |
+| `runner.08.runs_that_forced_a_rez` | 0.638 | 0.649 | 0.652 | 0.689 | 0.209 | 0.200 |
+| `runner.09.hq_runs_into_a_full_hand` | 0.251 | 0.204 | 0.190 | 0.235 | 0.263 | 0.293 |
+| `runner.10.rnd_runs_with_multi_access` | 0.094 | 0.113 | 0.079 | 0.051 | 0.056 | 0.057 |
+| `runner.11.breakers_for_ice_already_shown` | 0.441 | 0.411 | 0.443 | 0.432 | 0.151 | 0.159 |
+| `runner.11.economy_installs_per_game` | 0.375 | 0.422 | 0.267 | 0.289 | 1.651 | 1.630 |
+| `runner.12.economy_assets_trashed_when_accessed` | 0.160 | 0.155 | 0.103 | 0.154 | 0.139 | 0.171 |
+| `runner.13.runs_on_the_last_click` | 0.139 | 0.138 | 0.148 | 0.136 | 0.218 | 0.228 |
+| `runner.13.tags_cleared_per_tag_taken` | 0.939 | 0.861 | 0.886 | 0.896 | 0.260 | 0.281 |
+| `runner.14.remote_runs_share` | 0.227 | 0.209 | 0.192 | 0.197 | 0.354 | 0.357 |
+| `economy.corp.credit_click_share` | 0.411 | 0.413 | 0.375 | 0.362 | 0.128 | 0.127 |
+| `economy.corp.credits_at_turn_start` | 17.2 | 16.6 | 17.1 | 14.9 | 4.1 | 3.9 |
+| `economy.runner.credit_click_share` | 0.511 | 0.507 | 0.527 | 0.519 | 0.114 | 0.110 |
+| `economy.runner.credits_at_turn_start` | 15.3 | 14.8 | 14.0 | 13.6 | 4.4 | 4.4 |
+| `stage.corp.early_turns` / `middle` / `late` | 0.45 / 0.31 / 0.24 | 0.43 / 0.31 / 0.26 | 0.38 / 0.31 / 0.32 | 0.41 / 0.33 / 0.26 | 0.70 / 0.15 / 0.16 | 0.68 / 0.14 / 0.18 |
+| `stage.corp.early.advance_clicks_per_turn` → `late` | 0.025 → 0.783 | 0.021 → 0.636 | 0.047 → 0.663 | 0.036 → 0.782 | 0.199 → 0.233 | 0.219 → 0.232 |
+| `stage.runner.early.runs_per_turn` → `late` | 1.094 → 0.893 | 1.253 → 0.817 | 1.211 → 0.698 | 1.202 → 0.706 | 2.042 → 1.997 | 2.113 → 2.169 |
+| `stage.runner.early.install_clicks_per_turn` → `late.credit_clicks` | 0.252 → 1.977 | 0.293 → 2.032 | 0.262 → 2.311 | 0.258 → 2.118 | 0.511 → 0.394 | 0.494 → 0.385 |
+
+**What the baseline says, precept by precept** (the seeds agree to within a few hundredths everywhere it matters, so one number is quoted):
+
+- **Met, and measured for the first time:** the fort (1: 2.1 ICE per agenda install, no naked agenda in 384 games, against random's 0.4 and 0.7); the taxing window (2) *happens* half the time — 0.49 of scores while the Runner could not afford the remote (0.78 on Startup seed 1) — with no term reading it, so it is the fort's side effect and the term Stage 5 writes has a number to beat; forcing rezzes (8: 0.64 of runs into unrezzed ICE draw one, random 0.21); tags cleared (13: 0.9 per tag, random 0.26).
+- **Not played at all:** score from hand (4: 0.017, 0.000 on Startup; no three-click line is ever found, which is Stage 4's planner); the tag punish (7: **zero** tagged-resource trashes in 384 heuristic games where random takes 0.13 a game — the click is priced at nothing); an asset in the scoring remote (5: 0.29 a game, a third of random's).
+- **Half-played, by accident:** never-advance (3: 0.19–0.32 of scores follow an unadvanced install turn, but `advancement_by_cards` is 0.4 a game either seating — Seamless Launch, Touch-ups and KPI are on the unused list, so those scores are the Corp being slow, not the play); ICE order (6: ETR-over-non-ETR 0.21–0.26 against non-ETR-over-ETR 0.24–0.26 — no preference at all, identical to random); rez timing (6: 0.40 of in-run rezzes are of ICE the rig already breaks).
+- **The Runner's economy is inverted:** 0.51 of the heuristic Runner's clicks are the credit click (random 0.11) and it installs 0.4 economy cards a game (random 1.65) — it clicks for money it would rather have from a card it will not install (11; Phase 2 §5a's owed lever, Stage 5). Breakers come after the ICE they answer is shown 0.44 of the time (11), and economy assets are trashed when accessed 0.16 of the time (12), 0.10 on Startup.
+- **The stage, read off the board, shows the §5 finding in one column each:** the Corp's advance clicks go 0.03 → 0.78 a turn from early to late, which is the fort working; the Runner's runs *fall* 1.1 → 0.9 (Startup 1.2 → 0.7) from early to late while its late credit clicks reach 2.0–2.3 of 4 — the Runner is at its most passive when a person would be going for the last agenda "even if it takes every credit they have".
+- **By style and faction (heuristic, Casual, seed 1):** the Runner styles are within 0.07 of each other on every line, as §22 found; by faction the Criminal runs HQ most (0.43 of runs, Shaper 0.36, Anarch 0.35) and the Shaper plays the most economy events (3.8 a game against 1.1) — both the deck's cards, since nothing reads the faction. The trap Corp deals 6.3 net damage a game and scores 0.75; NBN gives 3.0 tags a game and punishes none of them.
+
+**Reach — the card-testing product.** Over the Casual pass (157 cards in the 28 sample decks, identities included), the heuristic seating used **91** and never used **66**; random used 139 and never used 18 (identities without a usable ability). The 66 the heuristic never touches, on both seeds: *Seamless Launch, Touch-ups, Key Performance Indicators, Nanomanagement, Predictive Planogram, Public Trail, Retribution, Neurospike (Startup), IP Enforcement, Top-Down Solutions, Tread Lightly, Wildcat Strike, Measured Response, Bigger Picture; Docklands Pass, Jailbreak, Conduit, Overclock, Red Team, Transfer of Wealth, Clean Getaway, Fransofia Ward, Tranquilizer (Startup), Botulus, Cacophony, Carnivore, Gourmand, Cookbook, Madani, GAMEDRAGON™ Pro, Telework Contract, Pennyshaver, Rent Rioters, Side Hustle, Sprint, Scrounge, Mutual Favor, Lie Low, Shred, Detente, Azimat, Open Market, Byte!, Illumination, Knickknack O'Brian, Maglectric Rapid, Verbal Plasticity* and 18 identities. Sixteen of them are cards the strategy guide names by title as the way the plan is played. On Startup (136 cards in the 19 decks) the heuristic used 76–79 and never 57–60. `nsg-card-pool.md`'s hand list "Bot debts" now points here.
+
+Random seatings identical to `main` in all four `coverage_identical.py` shapes (no behaviour moved; the diag is read-only over the session).

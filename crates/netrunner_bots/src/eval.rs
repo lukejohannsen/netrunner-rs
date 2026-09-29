@@ -1224,6 +1224,39 @@ fn remaining_break_cost(state: &GameState, run: &RunState, registry: &CardRegist
     Some(total)
 }
 
+/// What the rig would spend to break every *rezzed* piece of ice
+/// protecting `server` outright, or `None` when one of them no rig card
+/// can break — `remaining_break_cost`'s reading taken off the table
+/// instead of a run, so a diagnostic can set the Runner's credits against
+/// the price of the Corp's scoring remote at the moment the Corp scores
+/// (Phase 5 §25 precept 2, the taxing window) and at each Runner turn
+/// start. Each piece is read as a run would first meet it: every printed
+/// subroutine pending, nothing gained. Unrezzed ice costs nothing here,
+/// as it costs nothing in a run, which is the same optimism `run_is_
+/// breakable` has and the same reason: a rez is the Corp's to make.
+pub fn server_break_cost(state: &GameState, server: netrunner_core::rules::ServerId, registry: &CardRegistry) -> Option<u32> {
+    use netrunner_core::rules::{EncounteredSubroutine, InstallSlot, RunIce};
+    let mut total = 0;
+    for installed in state.corp.installed.iter().filter(|c| c.server == server && c.slot == InstallSlot::Ice && c.rezzed) {
+        let def = registry.get(&installed.card)?;
+        let CardType::Ice(ice_type) = def.card_type else { continue };
+        let ice = RunIce {
+            card_id: installed.card.clone(),
+            install_id: installed.install_id,
+            ice_type,
+            subroutines: def
+                .subroutines
+                .iter()
+                .enumerate()
+                .map(|(id, definition)| EncounteredSubroutine { id, definition: definition.clone(), status: SubroutineStatus::Pending, gained: false })
+                .collect(),
+            rezzed: true,
+        };
+        total += cheapest_break_cost(state, &ice, registry)?;
+    }
+    Some(total)
+}
+
 /// What the breach of `run.server` is worth to the Runner, read only off
 /// what its `ClientView` shows: hidden accesses at `active_run_weight`
 /// apiece, advancement tokens on the target's face-down root cards,
@@ -2115,7 +2148,7 @@ fn rig_coverage(state: &GameState, registry: &CardRegistry) -> [bool; 3] {
 /// Sentry. `IceType` is not `Hash`, and three flags say it more plainly
 /// than a set would anyway. Shared with `observation`'s rig and coverage
 /// blocks so the network is shown exactly what this evaluator counts.
-pub(crate) fn covers(def: &CardDefinition) -> [bool; 3] {
+pub fn covers(def: &CardDefinition) -> [bool; 3] {
     let mut covered = [false; 3];
     for ability in &def.abilities {
         ability.effect.for_each_effect(&mut |effect| {
