@@ -361,6 +361,15 @@ pub enum Trigger {
     /// before the random access limit is set (CR 7.3.5b), so the breach
     /// waits for them.
     OnBreach,
+    /// "Whenever you finish taking an action" (Wage Workers) —
+    /// `GameEvent::ActionFinished`, announced once everything the action
+    /// parked has resolved, heard by the player who took it and about no
+    /// card: the moment names which action it was (`SameAction`), for
+    /// "that action" to be counted by (`Amount::TimesThisActionThisTurn`).
+    /// Composition didn't work: `OnActionTaken` is an ability's use, heard
+    /// as its cost is paid, and a basic action was an occurrence of
+    /// nothing.
+    OnActionFinished,
 }
 
 /// What a run's moment about a piece of ice says of it beyond the card —
@@ -674,7 +683,7 @@ impl Trigger {
     /// `every_trigger_is_listed_at_its_own_index` holds the two together,
     /// and its exhaustive `match` is what stops a new variant compiling
     /// until it is listed here.
-    pub const ALL: [Trigger; 46] = [
+    pub const ALL: [Trigger; 47] = [
         Trigger::OnPlay,
         Trigger::OnRunStart,
         Trigger::OnEncounter,
@@ -721,6 +730,7 @@ impl Trigger {
         Trigger::OnCardsTrashedFromRnD,
         Trigger::OnDerez,
         Trigger::OnBreach,
+        Trigger::OnActionFinished,
     ];
 
     /// This trigger's position in `ALL`.
@@ -783,6 +793,7 @@ impl Trigger {
             | Trigger::OnBadPublicityTaken
             | Trigger::OnIdentityFlipped
             | Trigger::OnVirusCountersPurged
+            | Trigger::OnActionFinished
             | Trigger::Paid => TriggerAbout::Nothing,
             // `OnDamageDealt` would be the second, the day a card prints
             // "whenever you do **meat** damage"; none does.
@@ -836,7 +847,8 @@ impl Trigger {
             | Trigger::OnBadPublicityTaken
             | Trigger::OnIdentityFlipped
             | Trigger::OnCardTrashed
-            | Trigger::OnActionTaken => Hears::OwnSide,
+            | Trigger::OnActionTaken
+            | Trigger::OnActionFinished => Hears::OwnSide,
             // `OnPlay` and `OnForfeit` are only ever printed about the card
             // itself, so `Subject::This` already says whose they are.
             Trigger::OnPlay
@@ -888,7 +900,7 @@ mod tests {
         // Exhaustive, so a new variant stops here until it is added to
         // `Trigger::ALL` — the turn log indexes a fixed array by it.
         let listed = |trigger: Trigger| match trigger {
-            Trigger::OnPlay | Trigger::OnRunStart | Trigger::OnEncounter | Trigger::OnTurnStart | Trigger::OnAccessed | Trigger::OnTrashedFromAccess | Trigger::OnSuccessfulRun | Trigger::Paid | Trigger::OnInstall | Trigger::OnAgendaScored | Trigger::OnAgendaStolen | Trigger::OnDamageAboutToResolve | Trigger::OnRez | Trigger::OnApproachServer | Trigger::OnRunEnded | Trigger::OnBasicDrawAction | Trigger::OnTagsGiven | Trigger::OnAdvance | Trigger::OnDiscardPhaseEnd | Trigger::OnActionPhaseEnd | Trigger::OnCardInstalled | Trigger::OnDamageDealt | Trigger::OnCardsTrashedFromHq | Trigger::OnAbilityGainedCredits | Trigger::OnForfeit | Trigger::OnIceApproached | Trigger::OnCardPlayed | Trigger::OnTagRemoved | Trigger::OnBadPublicityTaken | Trigger::OnIcePassed | Trigger::OnSubroutineBroken | Trigger::OnIceFullyBroken | Trigger::OnIceBypassed | Trigger::OnEncounterEnded | Trigger::OnCreditsSpentOutsidePool | Trigger::OnArchivesTurnedFaceup | Trigger::OnCardTrashed | Trigger::OnWouldBeUninstalled | Trigger::OnIdentityFlipped | Trigger::OnActionTaken | Trigger::OnVirusCountersPurged | Trigger::OnCardMoved | Trigger::OnFinishedResolving | Trigger::OnCardsTrashedFromRnD | Trigger::OnDerez | Trigger::OnBreach => Trigger::ALL.contains(&trigger),
+            Trigger::OnPlay | Trigger::OnRunStart | Trigger::OnEncounter | Trigger::OnTurnStart | Trigger::OnAccessed | Trigger::OnTrashedFromAccess | Trigger::OnSuccessfulRun | Trigger::Paid | Trigger::OnInstall | Trigger::OnAgendaScored | Trigger::OnAgendaStolen | Trigger::OnDamageAboutToResolve | Trigger::OnRez | Trigger::OnApproachServer | Trigger::OnRunEnded | Trigger::OnBasicDrawAction | Trigger::OnTagsGiven | Trigger::OnAdvance | Trigger::OnDiscardPhaseEnd | Trigger::OnActionPhaseEnd | Trigger::OnCardInstalled | Trigger::OnDamageDealt | Trigger::OnCardsTrashedFromHq | Trigger::OnAbilityGainedCredits | Trigger::OnForfeit | Trigger::OnIceApproached | Trigger::OnCardPlayed | Trigger::OnTagRemoved | Trigger::OnBadPublicityTaken | Trigger::OnIcePassed | Trigger::OnSubroutineBroken | Trigger::OnIceFullyBroken | Trigger::OnIceBypassed | Trigger::OnEncounterEnded | Trigger::OnCreditsSpentOutsidePool | Trigger::OnArchivesTurnedFaceup | Trigger::OnCardTrashed | Trigger::OnWouldBeUninstalled | Trigger::OnIdentityFlipped | Trigger::OnActionTaken | Trigger::OnVirusCountersPurged | Trigger::OnCardMoved | Trigger::OnFinishedResolving | Trigger::OnCardsTrashedFromRnD | Trigger::OnDerez | Trigger::OnBreach | Trigger::OnActionFinished => Trigger::ALL.contains(&trigger),
         };
         assert!(Trigger::ALL.iter().all(|trigger| listed(*trigger)));
     }

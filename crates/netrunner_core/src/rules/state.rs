@@ -673,6 +673,17 @@ pub struct RunnerState {
 }
 
 impl RunnerState {
+    /// An agenda the Runner stole, by the handle it was given there — an
+    /// ability on it is the Corp's to use from the Runner's score area
+    /// (Oracle Thinktank). A card added "as an agenda" has lost its
+    /// abilities (CR 10.1.3), and one added with no handle has none to name.
+    pub fn find_stolen(&self, install: InstallId) -> Option<&ScoredAgenda> {
+        if install == InstallId::PLACEHOLDER {
+            return None;
+        }
+        self.scored_agendas.iter().find(|scored| scored.install_id == install && scored.as_agenda.is_none())
+    }
+
     /// The cards the Runner may play or install with a basic action: the
     /// grip, followed by every card hosted on a rig card that makes its
     /// hosted cards playable "as if they were in your grip" (Bling). The

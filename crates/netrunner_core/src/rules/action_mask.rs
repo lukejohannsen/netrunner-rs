@@ -782,6 +782,7 @@ fn corp_ability_slot(state: &GameState, id: InstallId) -> Option<usize> {
         .iter()
         .map(|c| c.install_id)
         .chain(state.corp.scored_agendas.iter().map(|s| s.install_id))
+        .chain(runner_scored_corp_cards(state))
         .position(|candidate| candidate == id)?;
     (position < IDENTITY_ABILITY_SLOT).then_some(position)
 }
@@ -794,7 +795,16 @@ fn corp_ability_target(state: &GameState, slot: usize) -> Option<InstallId> {
         .iter()
         .map(|c| c.install_id)
         .chain(state.corp.scored_agendas.iter().map(|s| s.install_id))
+        .chain(runner_scored_corp_cards(state))
         .nth(slot)
+}
+
+/// The agendas the Runner has stolen, by handle, after the Corp's own
+/// cards: an ability on one is the Corp's to use there (Oracle Thinktank).
+/// A card added "as an agenda" has lost its abilities (CR 10.1.3) and has
+/// no handle of its own.
+fn runner_scored_corp_cards(state: &GameState) -> impl Iterator<Item = InstallId> + '_ {
+    state.runner.scored_agendas.iter().map(|s| s.install_id).filter(|install| state.runner.find_stolen(*install).is_some())
 }
 
 fn bounded_position_installed(

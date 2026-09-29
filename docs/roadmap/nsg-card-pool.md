@@ -4724,6 +4724,79 @@ The Automata Initiative 63 of 65; `TAI_UNIMPLEMENTED` 4 → 2.
   - Identities are not sampled by `determinize`, and Sweep decks are in no
     `matchups()`, so the heuristic seatings do not move either.
 
+#### Stage 8d — "the same action", and an agenda used from the Runner's score area (29 September 2026)
+
+`feat/tai-stage-8d-wage-workers-oracle-thinktank`: Wage Workers and Oracle
+Thinktank. **No new `Effect`.** **The Automata Initiative complete, 65 of
+65**; `TAI_UNIMPLEMENTED` 2 → 0.
+
+- **"The same action"** (CR 5.2.5a–b). `turn_log::SameAction` is the
+  basic action, where every install is one action and every play of an
+  operation or event another, or an ability by its card's handle and
+  index. Two copies' abilities are different actions.
+  - The turn log counts each action taken (`TurnLog::times_taken`), in a
+    fixed table of twelve so the log stays `Copy`, with a sparse form on
+    the wire.
+  - `Amount::TimesThisActionThisTurn` reads "that action" off the
+    triggering event.
+  - Recorded, not built: a card in hand has no handle, so two copies'
+    abilities used from HQ (Descent, Tocsin) count as one action there.
+    No card in the pool asks.
+- **"Whenever you finish taking an action"** (CR 5.2.2b, 5.2.2d):
+  `GameEvent::ActionFinished`, heard by `Trigger::OnActionFinished`, the
+  actor's moment and about nothing.
+  - It is announced once everything the action parked has resolved,
+    queued the way Nuvem SA's `FinishedResolving` is.
+  - An action that begins a run or a breach finishes when that run or
+    breach does (`RunState::finishes`), not when the click is spent.
+    Bot samples leave it unset, since only the Corp's own actions are
+    heard.
+  - Wage Workers is `OnActionFinished` with "exactly 3" as `AmountAtLeast`
+    3 and `Not` 4. The log does not narrate the event, because the
+    action's own line already says it was taken.
+- **An agenda's ability used from the Runner's score area** (CR 9.1.8b):
+  Oracle Thinktank's "[click], remove 1 tag: Shuffle this agenda into
+  R&D".
+  - A stolen agenda now takes a handle of its own
+    (`access::resolve_steal`, `RunnerState::find_stolen`). Every lookup
+    of an ability's card asks there too: the engine, the action mask,
+    the action's owner, the payment and the requirement
+    `EffectRequirement::InRunnersScoreArea`.
+  - `AddToDeck` takes the agenda out of the Runner's score area along
+    with its points, and `ShuffleIntoDeck` of R&D alone shuffles it.
+  - Drawn: the score area's rows offer the ability on a stolen agenda
+    (`hud::ScoredCard::install`), and an action names the agenda by its
+    title in either score area (`actions::install_label`).
+- **Decks.**
+  - Paid Content took two Oracle Thinktank for the Tomorrow's Headline and
+    a Neurospike, point for point.
+  - Deterrence took two Wage Workers for its two Corporate Hospitality.
+  - Other decks still carry the cards that left.
+- **DSL ratio (`pool_status.py`):** unchanged at 18 of 91 `Effect`
+  variants single-use, 1 unused.
+- **Real play**, 96 games a seating (seed 2), against Picket Line.
+  - Paid Content: Oracle Thinktank stolen 69 times on random seats, with
+    its tag given 58 times and its ability used 30. On heuristic seats it
+    was stolen 52 times, with 47 tags given and 8 uses.
+  - Deterrence: Wage Workers rezzed 40 times on random seats and gained a
+    click 8 times. On heuristic seats it was rezzed 74 times and gained 84
+    clicks.
+- **Measured.** Both sweeps at 256 seeds are green, the card gate included.
+  - A ref with every engine and client change and neither card nor deck
+    swap differs from `origin/main` in all four shapes by the new event's
+    own count and nothing else: `ActionFinished` 0 → 12147 on random
+    seats, 0 → 20259 on heuristic ones. The stolen agenda's handle, the
+    counts and the announcement move no game.
+  - With the cards, the random seatings stay identical. The heuristic
+    seatings move by `determinize`, of 192 games:
+
+    | | before the cards | Stage 8d |
+    |---|---|---|
+    | Corp agenda wins | 67 | 80 |
+    | Corp flatlines | 13 | 15 |
+    | Runner agenda wins | 112 | 97 |
+    | Steps | 115913 | 122418 |
+
 ### 4. Parhelion — 63 cards (C 19 / V 26 / M 18)
 
 **Decks:** Sweep decks on its four identities. Nova Initiumia and Ampère

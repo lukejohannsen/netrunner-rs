@@ -23,8 +23,6 @@ pub(crate) const RWR_UNIMPLEMENTED: &[(u32, &str)] = &[];
 
 /// *The Automata Initiative* (`tai`): tranche 3 of the NSG plan.
 pub(crate) const TAI_UNIMPLEMENTED: &[(u32, &str)] = &[
-    (34033, "Wage Workers"),
-    (34049, "Oracle Thinktank"),
 ];
 
 /// *Parhelion* (`ph`): tranche 4 of the NSG plan.

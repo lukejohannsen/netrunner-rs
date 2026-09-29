@@ -282,6 +282,13 @@ pub enum EffectRequirement {
     /// prevention window the breach's damage opens. A breach with no run is
     /// not one.
     RunInProgress,
+    /// The acting agenda is in the Runner's score area — Oracle Thinktank's
+    /// "The Corp can use this ability only if this agenda is in the
+    /// Runner's score area". Its ability is found there as well as in the
+    /// Corp's own (`engine::activate_ability`), so this is what keeps it
+    /// out of the Corp's. Composition didn't work: no requirement asked
+    /// where a scored card is.
+    InRunnersScoreArea,
     /// The Runner is at the decision about a specific accessed card
     /// (`run::AccessPhase::PendingChoice`) and it is not an agenda —
     /// Gourmand's "trash the non-agenda card you are accessing". Read from

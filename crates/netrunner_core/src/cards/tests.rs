@@ -17934,4 +17934,73 @@ mod the_automata_initiative {
         let host = select_in_order(&on_ice, &registry, &[0]);
         assert!(host.runner.rig.iter().any(|card| card.card == id("pichacao") && card.hosted_on_ice.is_some()), "{:?}", host.runner.rig);
     }
+
+    // ---- Stage 8d: an agenda used from the Runner's score area, and the same action three times ----
+
+    #[test]
+    fn oracle_thinktank_tags_the_runner_who_steals_it_and_is_shuffled_back_into_rnd_for_a_click_and_a_tag() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.installed = vec![unrezzed(in_root("oracle_thinktank", 61, ServerId::Remote(0)))];
+        let (breached, _) = run_to_completion(state, &registry, ServerId::Remote(0));
+        let (stolen, _) = apply_action(&breached, &registry, PlayerAction::StealAgenda { card_id: id("oracle_thinktank") }).expect("steal it");
+        let (stolen, _) = close_all_windows(stolen, &registry);
+        assert_eq!(stolen.runner.tags, 1, "when the Runner steals this agenda, give them 1 tag");
+        assert_eq!(stolen.runner.resources.agenda_points, crate::rules::AgendaPoints(1));
+        let scored = stolen.runner.scored_agendas.iter().find(|s| s.card == id("oracle_thinktank")).map(|s| s.install_id).expect("in the Runner's score area");
+        let use_it = PlayerAction::ActivateAbility { target: scored, ability_index: 0 };
+
+        let mut corp = stolen;
+        corp.active_run = None;
+        corp.phase = GamePhase::Action(Side::Corp);
+        corp.corp.resources.clicks = Clicks(3);
+        corp.corp.r_and_d = vec![id("hedge_fund"), id("ice_wall")];
+        assert!(crate::rules::legal_actions_for(&corp, &registry, Side::Corp).contains(&use_it));
+        let (back, events) = apply_action(&corp, &registry, use_it.clone()).expect("[click], remove 1 tag");
+        assert_eq!(back.corp.resources.clicks, Clicks(2), "an action");
+        assert_eq!(back.runner.tags, 0);
+        assert!(back.runner.scored_agendas.is_empty());
+        assert_eq!(back.runner.resources.agenda_points, crate::rules::AgendaPoints(0), "its points leave with it");
+        assert_eq!(back.corp.r_and_d.len(), 3);
+        assert!(back.corp.r_and_d.contains(&id("oracle_thinktank")), "{events:?}");
+
+        // No tag, no ability; and the Corp's own copy is not in the Runner's score area.
+        let mut untagged = corp.clone();
+        untagged.runner.tags = 0;
+        assert!(!crate::rules::legal_actions_for(&untagged, &registry, Side::Corp).contains(&use_it));
+        let mut own = corp;
+        own.corp.scored_agendas = std::mem::take(&mut own.runner.scored_agendas);
+        assert!(!crate::rules::legal_actions_for(&own, &registry, Side::Corp).contains(&use_it));
+    }
+
+    #[test]
+    fn wage_workers_gains_a_click_when_an_action_is_taken_for_exactly_the_third_time_this_turn() {
+        let registry = registry();
+        let mut state = corp_turn(&[]);
+        state.corp.installed = vec![in_root("wage_workers", 71, ServerId::Remote(0))];
+        state.corp.r_and_d = vec![id("hedge_fund"); 5];
+        state.corp.resources.clicks = Clicks(4);
+        let take = |state: &GameState, action: PlayerAction| close_all_windows(apply_action(state, &registry, action).expect("an action").0, &registry).0;
+        let credit = PlayerAction::GainCreditClick { side: Side::Corp };
+        let draw = PlayerAction::DrawCardClick { side: Side::Corp };
+
+        // The same basic action three times: the third finishes with a click gained.
+        let once = take(&state, credit.clone());
+        let twice = take(&once, credit.clone());
+        assert_eq!(twice.corp.resources.clicks, Clicks(2));
+        let third = take(&twice, credit.clone());
+        assert_eq!(third.corp.resources.clicks, Clicks(2), "gain [click]");
+        // Exactly 3: the fourth gains nothing.
+        let fourth = take(&third, credit.clone());
+        assert_eq!(fourth.corp.resources.clicks, Clicks(1));
+
+        // Three actions, but not the same one three times.
+        let mixed = take(&take(&take(&state, credit.clone()), draw), credit);
+        assert_eq!(mixed.corp.resources.clicks, Clicks(1));
+
+        // Unrezzed, it hears nothing.
+        state.corp.installed[0].rezzed = false;
+        let third = (0..3).fold(state, |state, _| take(&state, PlayerAction::GainCreditClick { side: Side::Corp }));
+        assert_eq!(third.corp.resources.clicks, Clicks(1));
+    }
 }

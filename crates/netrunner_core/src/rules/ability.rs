@@ -1062,6 +1062,12 @@ pub fn evaluate_effect(
             Ok(Vec::new())
         }
 
+        // R&D named alone: the Corp shuffles it — Oracle Thinktank's
+        // "Shuffle this agenda into R&D", after `AddToDeck` has put it there.
+        Effect::ShuffleIntoDeck(zones) if zones.as_slice() == [crate::dsl::CardZoneRef::OwnRAndD] => {
+            crate::rules::pending_choice::shuffle_decks(state, Side::Corp, &crate::dsl::CardZoneRef::OwnRAndD, None);
+            Ok(Vec::new())
+        }
         Effect::ShuffleIntoDeck(zones) => {
             let mut cards = Vec::new();
             for zone in zones {
@@ -1100,6 +1106,20 @@ pub fn evaluate_effect(
             // Both decks draw from the end of the `Vec`: the end is the top
             // and index 0 the bottom.
             let place = |deck: &mut Vec<CardId>, card: CardId| if top { deck.push(card) } else { deck.insert(0, card) };
+            // An agenda out of the Runner's score area, with its points
+            // (Oracle Thinktank's "Shuffle this agenda into R&D"). Public:
+            // it was faceup there.
+            if let Some(position) = ctx
+                .acting_install
+                .filter(|install| *install != InstallId::PLACEHOLDER)
+                .and_then(|install| state.runner.scored_agendas.iter().position(|s| s.install_id == install && s.card == card_id))
+            {
+                let points = crate::rules::win::agenda_value_in(state, registry, &card_id, Side::Runner);
+                state.runner.scored_agendas.remove(position);
+                state.runner.resources.agenda_points = state.runner.resources.agenda_points.gain(-(points as i32));
+                place(&mut state.corp.r_and_d, card_id.clone());
+                return Ok(vec![GameEvent::CardAddedToDeck { side: Side::Corp, card: card_id, top, revealed: true }]);
+            }
             if registry.get(&card_id).is_some_and(|card| card.side == Side::Corp) {
                 let in_hq = state.corp.hq.iter().position(|c| c == &card_id);
                 if take_revealed(state, Side::Corp, &card_id) {
@@ -3461,6 +3481,10 @@ pub fn check_requirement(
             // Only the Corp's identity comes in copies (CR 1.5.2).
             if side == Side::Corp && state.corp.identity_copy == *copy { Ok(()) } else { Err(RulesError::RequirementNotMet) }
         }
+        EffectRequirement::InRunnersScoreArea => {
+            let there = ctx.acting_install.is_some_and(|install| state.runner.find_stolen(install).is_some());
+            if there { Ok(()) } else { Err(RulesError::RequirementNotMet) }
+        }
         EffectRequirement::RunInProgress => {
             if state.run_in_progress().is_some() { Ok(()) } else { Err(RulesError::RequirementNotMet) }
         }
@@ -3952,6 +3976,10 @@ pub(crate) fn resolve_amount(amount: &Amount, ctx: &ResolutionContext<'_>, state
         Amount::CardsInstalledFromHqThisTurn => state.this_turn.installed_from_hq(),
         Amount::CardsInstalledInRemotesThisTurn => state.this_turn.installed_in_remotes(),
         Amount::ClickGainsInRunsThisTurn => state.this_turn.click_gains_in_runs(),
+        Amount::TimesThisActionThisTurn => match ctx.triggering_event {
+            Some(GameEvent::ActionFinished { action, .. }) => state.this_turn.times_taken(*action),
+            _ => 0,
+        },
         Amount::TimesThisTurn(trigger) => state.this_turn.times(*trigger),
         Amount::TimesThisTurnWhen { trigger, when } => {
             let controller = ctx.acting_card.and_then(|card| registry.get(card)).map_or(Side::Runner, |card| card.side);
@@ -4116,6 +4144,7 @@ pub(crate) fn consume_requirement(
         | EffectRequirement::DuringRunOn(_)
         | EffectRequirement::Breaching(_)
         | EffectRequirement::RunInProgress
+        | EffectRequirement::InRunnersScoreArea
         | EffectRequirement::CurrentlyAccessingNonAgenda
         | EffectRequirement::CurrentlyAccessingInstalledCard { .. }
         | EffectRequirement::AgendaCameFromThisCardsServer

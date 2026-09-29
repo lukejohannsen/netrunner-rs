@@ -123,14 +123,42 @@ pub(crate) fn finished_resolving(
     side: Side,
     card: CardId,
 ) -> Result<(), RulesError> {
+    let event = GameEvent::FinishedResolving { side, card: card.clone() };
+    announce(state, registry, events, Trigger::OnFinishedResolving, card, event)
+}
+
+/// Announces that `side` has finished taking `action` (`GameEvent::
+/// ActionFinished`, Wage Workers), the way `finished_resolving` announces
+/// a resolution's end: an action is finished once everything it parked has
+/// resolved. The queued entry names no card; it is only ever announced.
+pub(crate) fn action_finished(
+    state: &mut GameState,
+    registry: &CardRegistry,
+    events: &mut Vec<GameEvent>,
+    side: Side,
+    action: crate::rules::turn_log::SameAction,
+) -> Result<(), RulesError> {
+    let event = GameEvent::ActionFinished { side, action };
+    announce(state, registry, events, Trigger::OnActionFinished, CardId(String::new()), event)
+}
+
+/// `event` now when nothing waits, or queued behind what does
+/// (`DeferredTrigger::announce`).
+fn announce(
+    state: &mut GameState,
+    registry: &CardRegistry,
+    events: &mut Vec<GameEvent>,
+    trigger: Trigger,
+    card: CardId,
+    event: GameEvent,
+) -> Result<(), RulesError> {
     if state.is_over() {
         return Ok(());
     }
-    let event = GameEvent::FinishedResolving { side, card: card.clone() };
     if state.is_resolution_blocked() || !state.deferred_triggers.is_empty() {
         state.deferred_triggers.push(DeferredTrigger {
             card,
-            trigger: Trigger::OnFinishedResolving,
+            trigger,
             target: None,
             install: None,
             target_install: None,

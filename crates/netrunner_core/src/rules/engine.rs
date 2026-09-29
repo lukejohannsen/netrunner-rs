@@ -286,7 +286,9 @@ fn apply_action_once(
     // Classified before the match consumes `action` — read by the run guard
     // immediately below as well as by `open_post_action_window` at the end.
     let action_kind = classify_action(state, registry, &action);
-    let finishes_action = counts_as_turn_action(state, registry, &action);
+    let finishes_action = counts_as_turn_action(state, registry, &action).then(|| same_action(state, registry, &action)).flatten();
+    // The action a run in progress is part of, finished once the run is.
+    let run_was_part_of = state.active_run.as_ref().map(|run| run.finishes);
     // A run is itself an action in progress: no basic action may begin until
     // it resolves. Neither of the per-handler guards catches this — `phase`
     // stays `Action(Runner)` for the whole run, so `require_phase` never
@@ -396,8 +398,17 @@ fn apply_action_once(
     // The action is finished once its handler returned — what Petty Cash's
     // "have not finished an action yet this turn" counts. Before the drain:
     // a deferred trigger is part of the same action, not a new one.
-    if finishes_action {
-        turn_log::record_action_finished(&mut next);
+    if let Some((side, action)) = finishes_action {
+        turn_log::record_action_finished(&mut next, action);
+        match next.active_run.as_mut() {
+            // It began a run, or a breach: it is finished when that is.
+            Some(run) if run_was_part_of.is_none() => run.finishes = Some(action),
+            _ => dispatcher::action_finished(&mut next, registry, &mut events, side, action)?,
+        }
+    } else if let Some(Some(action)) = run_was_part_of
+        && next.active_run.is_none()
+    {
+        dispatcher::action_finished(&mut next, registry, &mut events, Side::Runner, action)?;
     }
     events.extend(dispatcher::drain_deferred_triggers(&mut next, registry)?);
     // A prevention left parked behind a decision that has now been answered
@@ -563,6 +574,37 @@ fn counts_as_turn_action(state: &GameState, registry: &CardRegistry, action: &Pl
     }
 }
 
+/// Who took `action` and which action it was, for "that action" (CR
+/// 5.2.5a, `turn_log::SameAction`) — asked only of what
+/// `counts_as_turn_action` counts, each of which is taken by the active
+/// player in their action phase.
+fn same_action(state: &GameState, registry: &CardRegistry, action: &PlayerAction) -> Option<(Side, turn_log::SameAction)> {
+    use turn_log::SameAction;
+    let GamePhase::Action(side) = state.phase else { return None };
+    let same = match action {
+        PlayerAction::GainCreditClick { .. } => SameAction::GainCredit,
+        PlayerAction::DrawCardClick { .. } => SameAction::Draw,
+        PlayerAction::InstallCard { .. }
+        | PlayerAction::InstallHardware { .. }
+        | PlayerAction::InstallProgram { .. }
+        | PlayerAction::InstallResource { .. }
+        | PlayerAction::InstallProgramOnIce { .. } => SameAction::Install,
+        PlayerAction::PlayEvent { .. } | PlayerAction::PlayOperation { .. } => SameAction::Play,
+        PlayerAction::AdvanceCard { .. } => SameAction::Advance,
+        PlayerAction::RemoveTag => SameAction::RemoveTag,
+        PlayerAction::TrashResource { .. } => SameAction::TrashResource,
+        PlayerAction::PurgeVirusCounters => SameAction::Purge,
+        PlayerAction::InitiateRun { .. } => SameAction::Run,
+        PlayerAction::ActivateAbility { target, ability_index } => SameAction::Ability { install: *target, index: u8::try_from(*ability_index).ok()? },
+        PlayerAction::ActivateHandAbility { card_id, ability_index } => SameAction::FromHand {
+            card: registry.get(card_id).and_then(|def| def.numeric_id).map_or(0, |id| id.0),
+            index: u8::try_from(*ability_index).ok()?,
+        },
+        _ => return None,
+    };
+    Some((side, same))
+}
+
 /// Whether the paid ability `ActivateAbility { target, ability_index }`
 /// names is an action (`AbilityDef::is_action`). `false` for a target or
 /// index that names nothing, which `activate_ability` then refuses on its
@@ -576,7 +618,8 @@ fn ability_is_action(state: &GameState, registry: &CardRegistry, target: Install
             .find_corp_install(target)
             .map(|c| &c.card)
             .or_else(|| state.corp.find_scored(target).map(|s| &s.card))
-            .or_else(|| state.find_rig_install(target).map(|c| &c.card)),
+            .or_else(|| state.find_rig_install(target).map(|c| &c.card))
+            .or_else(|| state.runner.find_stolen(target).map(|s| &s.card)),
     };
     card.and_then(|card| registry.get(card))
         .and_then(|def| def.abilities.get(ability_index))
@@ -2198,7 +2241,9 @@ fn activate_ability(
     // Proprionegation's "hosted agenda counter: the Runner moves to the
     // outermost position of Archives". A scored agenda is always active —
     // it is faceup in front of its owner, with no rez state to check.
-    let scored = state.corp.find_scored(target);
+    // …or an agenda the Runner stole, whose ability is the Corp's to use
+    // from the Runner's score area (Oracle Thinktank).
+    let scored = state.corp.find_scored(target).or_else(|| state.runner.find_stolen(target));
     let corp_card = if target == InstallId::CORP_IDENTITY {
         state.corp.identity.clone()
     } else {
@@ -3115,6 +3160,7 @@ mod tests {
                 GameEvent::ClickSpent { side: Side::Corp },
                 GameEvent::CardDrawn { side: Side::Corp },
                 GameEvent::BasicDrawActionTaken { side: Side::Corp },
+                GameEvent::ActionFinished { side: Side::Corp, action: crate::rules::turn_log::SameAction::Draw },
             ]
         );
 
@@ -3144,6 +3190,7 @@ mod tests {
                     side: Side::Corp,
                     amount: 1
                 },
+                GameEvent::ActionFinished { side: Side::Corp, action: crate::rules::turn_log::SameAction::GainCredit },
             ]
         );
 
@@ -3167,6 +3214,7 @@ mod tests {
                 GameEvent::ClickSpent { side: Side::Runner },
                 GameEvent::CardDrawn { side: Side::Runner },
                 GameEvent::BasicDrawActionTaken { side: Side::Runner },
+                GameEvent::ActionFinished { side: Side::Runner, action: crate::rules::turn_log::SameAction::Draw },
             ]
         );
     }
@@ -3211,7 +3259,11 @@ mod tests {
         assert_eq!(next.runner.resources.clicks, Clicks(1));
         assert_eq!(
             events,
-            vec![GameEvent::ClickSpent { side: Side::Runner }, GameEvent::BasicDrawActionTaken { side: Side::Runner }]
+            vec![
+                GameEvent::ClickSpent { side: Side::Runner },
+                GameEvent::BasicDrawActionTaken { side: Side::Runner },
+                GameEvent::ActionFinished { side: Side::Runner, action: crate::rules::turn_log::SameAction::Draw },
+            ]
         );
     }
 
@@ -3263,6 +3315,7 @@ mod tests {
                     card: Some(card_id),
                     server: ServerId::Hq, from_hq: true,
                 },
+                GameEvent::ActionFinished { side: Side::Corp, action: crate::rules::turn_log::SameAction::Install },
             ]
         );
 
@@ -3841,6 +3894,7 @@ mod tests {
         assert_eq!(
             next.active_run,
             Some(RunState {
+                finishes: Some(crate::rules::turn_log::SameAction::Run),
                 ..Default::default()
             })
         );
@@ -4085,7 +4139,8 @@ mod tests {
             .expect("jack out should succeed in the movement phase");
 
         assert_eq!(after_jack_out.active_run, None);
-        assert_eq!(events, vec![GameEvent::RunJackedOut { server: ServerId::Hq }]);
+        // The run was the action, and it is finished now it is over.
+        assert_eq!(events, vec![GameEvent::RunJackedOut { server: ServerId::Hq }, GameEvent::ActionFinished { side: Side::Runner, action: crate::rules::turn_log::SameAction::Run }]);
     }
 
     #[test]
@@ -4129,6 +4184,7 @@ mod tests {
         assert_eq!(
             after_initiate.active_run,
             Some(RunState {
+                finishes: Some(crate::rules::turn_log::SameAction::Run),
                 server: ServerId::RnD,
                 phase: RunPhase::Initiation,
                 position: 0,
@@ -4219,6 +4275,7 @@ mod tests {
         assert_eq!(
             after_initiate.active_run,
             Some(RunState {
+                finishes: Some(crate::rules::turn_log::SameAction::Run),
                 server: ServerId::RnD,
                 phase: RunPhase::Initiation,
                 position: 0,
@@ -4467,6 +4524,7 @@ mod tests {
                 GameEvent::ClickSpent { side: Side::Runner },
                 GameEvent::CreditsSpent { side: Side::Runner, amount: 5 },
                 GameEvent::EventPlayed { side: Side::Runner, card: card_id },
+                GameEvent::ActionFinished { side: Side::Runner, action: crate::rules::turn_log::SameAction::Play },
             ]
         );
 
@@ -4503,6 +4561,7 @@ mod tests {
                 GameEvent::TriggerFired { card: CardId("sure_gamble".to_string()), trigger: crate::dsl::Trigger::OnPlay },
                 GameEvent::CreditsGained { side: Side::Runner, amount: 9 },
                 GameEvent::AbilityGainedCredits { side: Side::Runner, card: CardId("sure_gamble".to_string()) },
+                GameEvent::ActionFinished { side: Side::Runner, action: crate::rules::turn_log::SameAction::Play },
             ]
         );
     }
@@ -4606,6 +4665,7 @@ mod tests {
                 GameEvent::CreditsGained { side: Side::Corp, amount: 9 },
                 GameEvent::AbilityGainedCredits { side: Side::Corp, card: CardId("hedge_fund".to_string()) },
                 GameEvent::FinishedResolving { side: Side::Corp, card: card_id.clone() },
+                GameEvent::ActionFinished { side: Side::Corp, action: crate::rules::turn_log::SameAction::Play },
             ]
         );
 
@@ -4771,6 +4831,7 @@ mod tests {
                 // The operation finishes resolving once its trace has: the
                 // announcement waited on the queue behind it.
                 GameEvent::FinishedResolving { side: Side::Corp, card: CardId("sea_source".to_string()) },
+                GameEvent::ActionFinished { side: Side::Corp, action: crate::rules::turn_log::SameAction::Play },
             ]
         );
     }
@@ -4802,6 +4863,7 @@ mod tests {
                 GameEvent::ClickSpent { side: Side::Runner },
                 GameEvent::CreditsSpent { side: Side::Runner, amount: 0 },
                 GameEvent::HardwareInstalled { side: Side::Runner, card: card_id, credits_paid: 0 },
+                GameEvent::ActionFinished { side: Side::Runner, action: crate::rules::turn_log::SameAction::Install },
             ]
         );
     }
@@ -4870,6 +4932,7 @@ mod tests {
                     memory_cost: 3,
                     credits_paid: 0,
                 },
+                GameEvent::ActionFinished { side: Side::Runner, action: crate::rules::turn_log::SameAction::Install },
             ]
         );
     }
@@ -5860,6 +5923,7 @@ mod tests {
                     card: Some(card_id),
                     advancement_tokens: 2,
                 },
+                GameEvent::ActionFinished { side: Side::Corp, action: crate::rules::turn_log::SameAction::Advance },
             ]
         );
     }
@@ -5955,6 +6019,7 @@ mod tests {
                 GameEvent::ClickSpent { side: Side::Runner },
                 GameEvent::CreditsSpent { side: Side::Runner, amount: 2 },
                 GameEvent::TagRemoved { side: Side::Runner, by: Side::Runner },
+                GameEvent::ActionFinished { side: Side::Runner, action: crate::rules::turn_log::SameAction::RemoveTag },
             ]
         );
     }
@@ -6039,6 +6104,7 @@ mod tests {
                 GameEvent::VirusCountersPurged {
                     cards: vec![CardId("botulus".to_string()), CardId("leech".to_string())],
                 },
+                GameEvent::ActionFinished { side: Side::Corp, action: crate::rules::turn_log::SameAction::Purge },
             ]
         );
     }
@@ -6065,7 +6131,7 @@ mod tests {
             apply_action(&state, &registry(), PlayerAction::PurgeVirusCounters).expect("an empty purge is still legal");
 
         assert_eq!(next.corp.resources.clicks, Clicks(0));
-        assert_eq!(events.last(), Some(&GameEvent::VirusCountersPurged { cards: Vec::new() }));
+        assert_eq!(events.iter().rev().nth(1), Some(&GameEvent::VirusCountersPurged { cards: Vec::new() }));
     }
 
     #[test]
@@ -6799,6 +6865,7 @@ mod tests {
                 GameEvent::ClickSpent { side: Side::Corp },
                 GameEvent::CreditsSpent { side: Side::Corp, amount: 2 },
                 GameEvent::CardTrashed { side: Side::Runner, card: card_id, from: crate::dsl::TrashedFrom::Installed, by: Some(Side::Corp) },
+                GameEvent::ActionFinished { side: Side::Corp, action: crate::rules::turn_log::SameAction::TrashResource },
             ]
         );
     }

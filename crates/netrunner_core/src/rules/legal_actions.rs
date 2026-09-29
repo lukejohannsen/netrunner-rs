@@ -284,6 +284,7 @@ fn action_owner(state: &GameState, registry: &CardRegistry, action: &PlayerActio
                     .map(|c| c.card.clone())
                     .or_else(|| state.corp.find_scored(*target).map(|s| s.card.clone()))
                     .or_else(|| state.find_rig_install(*target).map(|c| c.card.clone()))
+                    .or_else(|| state.runner.find_stolen(*target).map(|s| s.card.clone()))
             };
             if let Some(used_by) = card
                 .as_ref()
@@ -736,6 +737,10 @@ fn activate_ability_candidates(state: &GameState, registry: &CardRegistry) -> Ve
     // there, and a scored agenda needs no rez check. A card there "as an
     // agenda" has lost its abilities (CR 10.1.3).
     for scored in state.corp.scored_agendas.iter().filter(|scored| scored.as_agenda.is_none()) {
+        candidates.extend(paid_ability_candidates(&scored.card, scored.install_id, registry));
+    }
+    // An agenda the Runner stole, whose ability the Corp uses there.
+    for scored in state.runner.scored_agendas.iter().filter(|s| state.runner.find_stolen(s.install_id).is_some()) {
         candidates.extend(paid_ability_candidates(&scored.card, scored.install_id, registry));
     }
     for rig_card in &state.runner.rig {

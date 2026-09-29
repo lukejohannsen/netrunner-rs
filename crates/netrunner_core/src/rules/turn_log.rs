@@ -269,6 +269,8 @@ fn concealed(trigger: Trigger, of: Option<Side>) -> bool {
         // An operation resolves in the open, and an expendable card is
         // revealed as it is used from HQ.
         Trigger::OnFinishedResolving => false,
+        // Not about a card: which action it was is `SameAction`, public.
+        Trigger::OnActionFinished => false,
         // A Corp card trashed out of HQ or R&D goes facedown, unseen by
         // the Runner, so the log counts a Corp card's trash without its
         // type. A Runner card's is seen wherever it came from, and counted
@@ -623,11 +625,57 @@ pub struct TurnLog {
     /// no `Class`. Public, as the gain is. Recorded where the click is
     /// gained (`Effect::GainClicks`), the one way a card gives one.
     click_gains_in_runs: u8,
+    /// The times each action was taken this turn, by what makes two
+    /// actions the same (`SameAction`, CR 5.2.5a) — Wage Workers' "if you
+    /// have taken that action exactly 3 times this turn". Beside the cells,
+    /// as `actions_finished` is: an action is no `Class`, and a basic one
+    /// was no moment at all. A fixed table so the log stays `Copy`; a
+    /// turn of more than `SAME_ACTIONS` different actions stops counting
+    /// the new ones, which no turn in the pool comes near.
+    same_actions: [Option<(SameAction, u8)>; SAME_ACTIONS],
+}
+
+/// How many different actions one turn's log tells apart.
+const SAME_ACTIONS: usize = 12;
+
+/// Which action a player took, as the rules tell two apart: "the same if
+/// they are all the same basic action or if all of those actions were
+/// initiated by the same ability from the same card" (CR 5.2.5a). Every
+/// install is the one basic action, whatever it installs, and every play
+/// of an operation or event is another; two copies' abilities are
+/// different actions (CR 5.2.5b), so an ability is its card's handle.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum SameAction {
+    GainCredit,
+    Draw,
+    Install,
+    Play,
+    Advance,
+    TrashResource,
+    Purge,
+    RemoveTag,
+    Run,
+    /// A [click] ability of an installed card, an identity or a scored
+    /// agenda, by its handle and which of its abilities.
+    Ability { install: InstallId, index: u8 },
+    /// A [click] ability used from HQ or the grip (Descent, Tocsin), by
+    /// the card's catalog number: a card in hand has no handle, so two
+    /// copies there are one card to this count. Each is revealed by its
+    /// own cost, so the number is public.
+    FromHand { card: u32, index: u8 },
 }
 
 impl Default for TurnLog {
     fn default() -> Self {
-        TurnLog { counts: [[[0; CLASSES]; WHOSE]; TRIGGERS], actions_finished: 0, agenda_points_scored: 0, installed_from_hq: 0, installed_in_remotes: 0, click_gains_in_runs: 0 }
+        TurnLog {
+            counts: [[[0; CLASSES]; WHOSE]; TRIGGERS],
+            actions_finished: 0,
+            agenda_points_scored: 0,
+            installed_from_hq: 0,
+            installed_in_remotes: 0,
+            click_gains_in_runs: 0,
+            same_actions: [None; SAME_ACTIONS],
+        }
     }
 }
 
@@ -653,6 +701,19 @@ impl TurnLog {
 
     pub fn actions_finished(&self) -> u32 {
         u32::from(self.actions_finished)
+    }
+
+    /// How many times `action` was taken this turn (CR 5.2.5a).
+    pub fn times_taken(&self, action: SameAction) -> u32 {
+        self.same_actions.iter().flatten().find(|(taken, _)| *taken == action).map_or(0, |(_, count)| u32::from(*count))
+    }
+
+    fn take(&mut self, action: SameAction) {
+        if let Some((_, count)) = self.same_actions.iter_mut().flatten().find(|(taken, _)| *taken == action) {
+            *count = count.saturating_add(1);
+        } else if let Some(free) = self.same_actions.iter_mut().find(|slot| slot.is_none()) {
+            *free = Some((action, 1));
+        }
     }
 
     pub fn agenda_points_scored(&self) -> u32 {
@@ -727,6 +788,8 @@ struct Sparse {
     installed_in_remotes: u8,
     #[serde(default, skip_serializing_if = "is_zero")]
     click_gains_in_runs: u8,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    same_actions: Vec<(SameAction, u8)>,
 }
 
 fn is_zero(count: &u8) -> bool {
@@ -752,6 +815,7 @@ impl From<TurnLog> for Sparse {
             installed_from_hq: log.installed_from_hq,
             installed_in_remotes: log.installed_in_remotes,
             click_gains_in_runs: log.click_gains_in_runs,
+            same_actions: log.same_actions.iter().flatten().copied().collect(),
         }
     }
 }
@@ -766,6 +830,9 @@ impl From<Sparse> for TurnLog {
             click_gains_in_runs: sparse.click_gains_in_runs,
             ..TurnLog::default()
         };
+        for (slot, taken) in log.same_actions.iter_mut().zip(sparse.same_actions) {
+            *slot = Some(taken);
+        }
         for (trigger, whose, column, count) in sparse.cells {
             // A cell off the end is a log written by some other build;
             // dropping it beats a panic in a deserializer.
@@ -817,9 +884,11 @@ pub(crate) fn record_click_gain_in_a_run(state: &mut GameState) {
     state.this_turn.click_gains_in_runs = state.this_turn.click_gains_in_runs.saturating_add(1);
 }
 
-/// An action was finished — see `TurnLog::actions_finished`.
-pub(crate) fn record_action_finished(state: &mut GameState) {
+/// An action was finished — see `TurnLog::actions_finished` and
+/// `TurnLog::times_taken`.
+pub(crate) fn record_action_finished(state: &mut GameState, action: SameAction) {
     state.this_turn.actions_finished = state.this_turn.actions_finished.saturating_add(1);
+    state.this_turn.take(action);
 }
 
 /// A turn begins: this turn becomes last turn. The one reset, for both
@@ -868,9 +937,18 @@ mod tests {
         record(&mut state, &registry, &GameEvent::CardDrawn { side: Side::Runner });
         assert_eq!(Sparse::from(state.this_turn).cells.len(), 2);
 
-        record_action_finished(&mut state);
+        record_action_finished(&mut state, SameAction::GainCredit);
         record(&mut state, &registry, &GameEvent::AgendaScored { card: CardId("an_agenda".into()), agenda_points: 3, server: ServerId::Remote(0) });
         assert_eq!((state.this_turn.actions_finished(), state.this_turn.agenda_points_scored()), (1, 3));
+        // The same action is the same basic action, or the same ability on
+        // the same card (CR 5.2.5a).
+        record_action_finished(&mut state, SameAction::GainCredit);
+        record_action_finished(&mut state, SameAction::Ability { install: InstallId(7), index: 0 });
+        record_action_finished(&mut state, SameAction::Ability { install: InstallId(8), index: 0 });
+        assert_eq!(state.this_turn.times_taken(SameAction::GainCredit), 2);
+        assert_eq!(state.this_turn.times_taken(SameAction::Ability { install: InstallId(7), index: 0 }), 1);
+        assert_eq!(state.this_turn.times_taken(SameAction::Draw), 0);
+        assert_eq!(state.this_turn.actions_finished(), 4);
         rotate(&mut state);
         assert_eq!(state.this_turn, TurnLog::default());
         assert_eq!(state.last_turn.times(Trigger::OnSuccessfulRun), 3);
@@ -901,7 +979,8 @@ mod tests {
         let mut state = GameState::default();
         assert_eq!(serde_json::to_string(&state.this_turn).unwrap(), "{}");
         record(&mut state, &registry, &GameEvent::RunSucceeded { server: ServerId::Archives });
-        record_action_finished(&mut state);
+        record_action_finished(&mut state, SameAction::Run);
+        record_action_finished(&mut state, SameAction::FromHand { card: 34125, index: 0 });
         let read: TurnLog = serde_json::from_str(&serde_json::to_string(&state.this_turn).unwrap()).unwrap();
         assert_eq!(read, state.this_turn);
         rotate(&mut state);

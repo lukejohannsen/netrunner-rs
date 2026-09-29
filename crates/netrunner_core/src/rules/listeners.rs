@@ -287,6 +287,9 @@ pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
         GameEvent::CardsTrashedFromHq { .. } => vec![moment(Trigger::OnCardsTrashedFromHq, &About::Nothing, Some(Side::Corp))],
         GameEvent::CardsTrashedFromRnD { by, .. } => vec![moment(Trigger::OnCardsTrashedFromRnD, &About::Nothing, *by)],
         GameEvent::FinishedResolving { side, card: resolved } => vec![moment(Trigger::OnFinishedResolving, &card(resolved, None), Some(*side))],
+        // Which action is the event's to say, for a requirement to read;
+        // the moment is the actor's and about nothing.
+        GameEvent::ActionFinished { side, .. } => vec![moment(Trigger::OnActionFinished, &About::Nothing, Some(*side))],
         // Only the Runner's tags are anyone's trigger, and removing none is
         // not removing one.
         // The moment is the remover's (CR 1.14.3a: either player can remove
