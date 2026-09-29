@@ -648,6 +648,29 @@ pub enum EventFilter {
     /// event said only whether the card had been installed, and a card in
     /// a hand and one on top of a deck were the same trash.
     TrashedFrom(Vec<TrashedFrom>),
+    /// Every one of these — Hostile Architecture's "the Runner trashes any
+    /// of **your installed** cards", on a trash by a card's text: the card
+    /// is the Corp's and the moment the Runner's (`OwnedBy`), **and** it
+    /// was installed (`TrashedFrom([Installed])`). Composition didn't work:
+    /// a `when` held one filter, each of these says half, and a variant for
+    /// the pair would be the first of one per pair a card prints. The
+    /// turn log counts the columns every part admits
+    /// (`turn_log::Occurrences::meant_by`), so a first time narrowed by
+    /// the conjunction is counted as the card means it.
+    All(Vec<EventFilter>),
+}
+
+impl EventFilter {
+    /// Whether this filter says whose moment it is — "the Runner's", "the
+    /// Corp installs" — which `listeners` then reads instead of the
+    /// trigger's own "you".
+    pub(crate) fn names_whose(&self) -> bool {
+        match self {
+            EventFilter::Whose(_) | EventFilter::OwnedBy { .. } | EventFilter::InRoot => true,
+            EventFilter::All(parts) => parts.iter().any(EventFilter::names_whose),
+            _ => false,
+        }
+    }
 }
 
 /// Where a card was when it was trashed (`GameEvent::CardTrashed::from`).

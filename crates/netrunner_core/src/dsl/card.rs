@@ -1042,6 +1042,42 @@ impl CardDefinition {
         CardValidationError::FirstTimeDoesNotFit(self.id.clone(), why)
     }
 
+    /// Whether `filter` can narrow `triggered`: a filter of the wrong kind
+    /// parses and then never passes. A conjunction's parts are each asked
+    /// here, so each is held to what it could be on its own.
+    fn filter_fits(&self, triggered: &TriggeredEffect, filter: &EventFilter) -> bool {
+        let about = triggered.trigger.about();
+        match filter {
+            // A trash does not say whether the card was installed.
+            EventFilter::InstalledCard(_) if triggered.trigger == Trigger::OnCardTrashed => false,
+            EventFilter::Card(_) | EventFilter::InstalledCard(_) => about == TriggerAbout::Card,
+            EventFilter::Server(_) => about == TriggerAbout::Server,
+            EventFilter::Damage(_) => about == TriggerAbout::Damage,
+            EventFilter::AtLeast(_) => about == TriggerAbout::Cards,
+            // Only a moment that names a player can be made one's.
+            EventFilter::Whose(_) => triggered.trigger.states_whose(),
+            EventFilter::OwnedBy { .. } => about == TriggerAbout::Card && triggered.trigger.states_whose(),
+            EventFilter::ByThis => triggered.trigger == Trigger::OnIceFullyBroken,
+            // Only a card that is hosted has a host to be about.
+            EventFilter::Host => about == TriggerAbout::Card && self.installs_on_ice,
+            // Only a Corp install's moment says where the card came
+            // from (`listeners::Moment::from_hq`).
+            EventFilter::InstalledFromHq(_) | EventFilter::InstalledIn(_) => triggered.trigger == Trigger::OnInstall && self.side == crate::rules::Side::Corp,
+            // Only an install is in a root or not.
+            EventFilter::InRoot => triggered.trigger == Trigger::OnInstall,
+            // Only a trash says which pile the card left.
+            EventFilter::TrashedFrom(_) => triggered.trigger == Trigger::OnCardTrashed,
+            // Only what the moment states: a pass says whether the ice
+            // was outermost and fully broken, a break its strength.
+            EventFilter::Ice(required) => {
+                triggered.trigger.is_about_ice_in_a_run() && required.admits(crate::dsl::IceFacts::stated_by(triggered.trigger))
+            }
+            // `validate` reads a conjunction part by part, and refuses one
+            // nested in another.
+            EventFilter::All(_) => false,
+        }
+    }
+
     pub fn validate(&self) -> Result<(), CardValidationError> {
         let is_ice = matches!(self.card_type, CardType::Ice(_));
         let is_breaker_style_program = matches!(self.card_type, CardType::Program);
@@ -1112,32 +1148,13 @@ impl CardDefinition {
             // "act on it" with no card to be "it" resolves as the card
             // itself: both are a card silently doing something else.
             let about = triggered.trigger.about();
+            let fits = |filter: &EventFilter| self.filter_fits(triggered, filter);
             let filter_fits = match &triggered.when {
                 None => true,
-                // A trash does not say whether the card was installed.
-                Some(EventFilter::InstalledCard(_)) if triggered.trigger == Trigger::OnCardTrashed => false,
-                Some(EventFilter::Card(_) | EventFilter::InstalledCard(_)) => about == TriggerAbout::Card,
-                Some(EventFilter::Server(_)) => about == TriggerAbout::Server,
-                Some(EventFilter::Damage(_)) => about == TriggerAbout::Damage,
-                Some(EventFilter::AtLeast(_)) => about == TriggerAbout::Cards,
-                // Only a moment that names a player can be made one's.
-                Some(EventFilter::Whose(_)) => triggered.trigger.states_whose(),
-                Some(EventFilter::OwnedBy { .. }) => about == TriggerAbout::Card && triggered.trigger.states_whose(),
-                Some(EventFilter::ByThis) => triggered.trigger == Trigger::OnIceFullyBroken,
-                // Only a card that is hosted has a host to be about.
-                Some(EventFilter::Host) => about == TriggerAbout::Card && self.installs_on_ice,
-                // Only a Corp install's moment says where the card came
-                // from (`listeners::Moment::from_hq`).
-                Some(EventFilter::InstalledFromHq(_) | EventFilter::InstalledIn(_)) => triggered.trigger == Trigger::OnInstall && self.side == crate::rules::Side::Corp,
-                // Only an install is in a root or not.
-                Some(EventFilter::InRoot) => triggered.trigger == Trigger::OnInstall,
-                // Only a trash says which pile the card left.
-                Some(EventFilter::TrashedFrom(_)) => triggered.trigger == Trigger::OnCardTrashed,
-                // Only what the moment states: a pass says whether the ice
-                // was outermost and fully broken, a break its strength.
-                Some(EventFilter::Ice(required)) => {
-                    triggered.trigger.is_about_ice_in_a_run() && required.admits(crate::dsl::IceFacts::stated_by(triggered.trigger))
-                }
+                // Two or more parts, each fitting on its own; one part is
+                // that part, written plainly.
+                Some(EventFilter::All(parts)) => parts.len() >= 2 && parts.iter().all(|part| !matches!(part, EventFilter::All(_)) && fits(part)),
+                Some(filter) => fits(filter),
             };
             if !filter_fits {
                 return Err(CardValidationError::TriggerFilterOfTheWrongKind(self.id.clone(), triggered.trigger));
@@ -1755,6 +1772,19 @@ mod tests {
             with(Trigger::OnDamageAboutToResolve, None, on_hq(), false).validate(),
             Err(CardValidationError::TriggerFilterOfTheWrongKind(_, Trigger::OnDamageAboutToResolve))
         ));
+        // A conjunction is two or more parts, each fitting on its own
+        // (Hostile Architecture's "the Runner trashes any of your installed
+        // cards"), never one part or a conjunction inside another.
+        let the_runners = || EventFilter::OwnedBy { owner: Side::Corp, whose: Side::Runner };
+        let installed = || EventFilter::TrashedFrom(vec![crate::dsl::TrashedFrom::Installed]);
+        let all = |parts: Vec<EventFilter>| Some(EventFilter::All(parts));
+        assert_eq!(with(Trigger::OnCardTrashed, Some(Subject::Any), all(vec![the_runners(), installed()]), false).validate(), Ok(()));
+        for when in [all(vec![installed()]), all(vec![the_runners(), all(vec![installed(), installed()]).unwrap()]), all(vec![the_runners(), on_hq().unwrap()])] {
+            assert!(matches!(
+                with(Trigger::OnCardTrashed, Some(Subject::Any), when, false).validate(),
+                Err(CardValidationError::TriggerFilterOfTheWrongKind(_, Trigger::OnCardTrashed))
+            ));
+        }
     }
 
     /// "The first time each turn" is read off the turn's count of what the

@@ -495,6 +495,58 @@ pub fn humanize(debug: String) -> String {
     }
     out.split_whitespace().collect::<Vec<_>>().join(" ")
 }
+/// The words for a trigger's `when`, after the trigger's own: "on HQ", "of
+/// a virus program". A conjunction says each of its parts.
+fn describe_when(filter: &EventFilter) -> String {
+    match filter {
+        EventFilter::Server(servers) => {
+            let servers: Vec<String> = servers.iter().map(|server| describe_server(*server)).collect();
+            format!("on {}", servers.join(" or "))
+        }
+        EventFilter::Card(filter) => format!("of {}", humanize(format!("{filter:?}"))),
+        EventFilter::InstalledCard(filter) => format!("of an installed card ({})", humanize(format!("{filter:?}"))),
+        EventFilter::Damage(kind) => format!("of {} damage", format!("{kind:?}").to_lowercase()),
+        EventFilter::AtLeast(least) => format!("{least} or more"),
+        EventFilter::Whose(side) => format!("the {side:?}'s"),
+        EventFilter::OwnedBy { owner, whose } => format!("the {whose:?}'s, of a {owner:?} card"),
+        EventFilter::ByThis => "by this card".to_string(),
+        EventFilter::Host => "of host ice".to_string(),
+        EventFilter::InRoot => "by the Corp, in the root of a server".to_string(),
+        EventFilter::TrashedFrom(places) => {
+            let places: Vec<&str> = places
+                .iter()
+                .map(|place| match place {
+                    TrashedFrom::Installed => "the table",
+                    TrashedFrom::Hand => "a hand",
+                    TrashedFrom::Deck => "a deck",
+                    TrashedFrom::Elsewhere => "anywhere else",
+                })
+                .collect();
+            format!("from {}", places.join(" or "))
+        }
+        EventFilter::InstalledFromHq(true) => "from HQ".to_string(),
+        EventFilter::InstalledFromHq(false) => "from anywhere except HQ".to_string(),
+        EventFilter::InstalledIn(kind) => format!("in {}", match kind {
+            netrunner_core::dsl::ServerKind::Remote => "a remote server",
+            netrunner_core::dsl::ServerKind::Central => "a central server",
+            netrunner_core::dsl::ServerKind::Hq => "HQ",
+            netrunner_core::dsl::ServerKind::RnD => "R&D",
+        }),
+        EventFilter::Ice(facts) => {
+            let words: Vec<&str> = [
+                (facts.outermost, "the outermost ice"),
+                (facts.after_fully_breaking, "after fully breaking it"),
+                (facts.at_most_zero_strength, "on ice with 0 or less strength"),
+            ]
+            .into_iter()
+            .filter_map(|(holds, word)| holds.then_some(word))
+            .collect();
+            words.join(", ")
+        }
+        EventFilter::All(parts) => parts.iter().map(describe_when).collect::<Vec<_>>().join(", "),
+    }
+}
+
 
 /// One line per trigger, ability and subroutine: `[when] clause → engine
 /// reading`. The clause is the printed text the author linked
@@ -509,52 +561,8 @@ pub fn engine_reading(card: &CardDefinition, registry: &CardRegistry) -> Vec<Str
         let mut when = humanize(format!("{:?}", trigger.trigger));
         // "On HQ" and "a virus" used to be in the trigger's name; they are
         // the card's own filter now, and the reading still has to say them.
-        match &trigger.when {
-            Some(EventFilter::Server(servers)) => {
-                let servers: Vec<String> = servers.iter().map(|server| describe_server(*server)).collect();
-                when = format!("{when}, on {}", servers.join(" or "));
-            }
-            Some(EventFilter::Card(filter)) => when = format!("{when}, of {}", humanize(format!("{filter:?}"))),
-            Some(EventFilter::InstalledCard(filter)) => when = format!("{when}, of an installed card ({})", humanize(format!("{filter:?}"))),
-            Some(EventFilter::Damage(kind)) => when = format!("{when}, of {} damage", format!("{kind:?}").to_lowercase()),
-            Some(EventFilter::AtLeast(least)) => when = format!("{when}, {least} or more"),
-            Some(EventFilter::Whose(side)) => when = format!("{when}, the {side:?}'s"),
-            Some(EventFilter::OwnedBy { owner, whose }) => when = format!("{when}, the {whose:?}'s, of a {owner:?} card"),
-            Some(EventFilter::ByThis) => when = format!("{when}, by this card"),
-            Some(EventFilter::Host) => when = format!("{when}, of host ice"),
-            Some(EventFilter::InRoot) => when = format!("{when}, by the Corp, in the root of a server"),
-            Some(EventFilter::TrashedFrom(places)) => {
-                let places: Vec<&str> = places
-                    .iter()
-                    .map(|place| match place {
-                        TrashedFrom::Installed => "the table",
-                        TrashedFrom::Hand => "a hand",
-                        TrashedFrom::Deck => "a deck",
-                        TrashedFrom::Elsewhere => "anywhere else",
-                    })
-                    .collect();
-                when = format!("{when}, from {}", places.join(" or "));
-            }
-            Some(EventFilter::InstalledFromHq(true)) => when = format!("{when}, from HQ"),
-            Some(EventFilter::InstalledFromHq(false)) => when = format!("{when}, from anywhere except HQ"),
-            Some(EventFilter::InstalledIn(kind)) => when = format!("{when}, in {}", match kind {
-                netrunner_core::dsl::ServerKind::Remote => "a remote server",
-                netrunner_core::dsl::ServerKind::Central => "a central server",
-                netrunner_core::dsl::ServerKind::Hq => "HQ",
-                netrunner_core::dsl::ServerKind::RnD => "R&D",
-            }),
-            Some(EventFilter::Ice(facts)) => {
-                let words: Vec<&str> = [
-                    (facts.outermost, "the outermost ice"),
-                    (facts.after_fully_breaking, "after fully breaking it"),
-                    (facts.at_most_zero_strength, "on ice with 0 or less strength"),
-                ]
-                .into_iter()
-                .filter_map(|(holds, word)| holds.then_some(word))
-                .collect();
-                when = format!("{when}, {}", words.join(", "));
-            }
-            None => {}
+        if let Some(filter) = &trigger.when {
+            when = format!("{when}, {}", describe_when(filter));
         }
         if trigger.first_each_turn {
             when = format!("the first time each turn: {when}");

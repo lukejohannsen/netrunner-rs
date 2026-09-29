@@ -18476,4 +18476,83 @@ mod parhelion {
         let (hit, _) = apply_action(&state, &registry, play).expect("remove 1 tag");
         assert_eq!((hit.runner.tags, hit.runner.grip.len(), hit.corp.resources.credits), (1, 1, Credits(7)));
     }
+
+    // ---- Stage 2b: the Runner's trash of an installed Corp card, its own included ----
+
+    /// Runs remote `remote` (no ice) and trashes what is in its root.
+    fn trash_on_access(state: &GameState, registry: &CardRegistry, remote: u32, card: &str) -> GameState {
+        let (state, _) = close_all_windows(state.clone(), registry);
+        let (state, _) = run_to_completion(state, registry, ServerId::Remote(remote));
+        let (state, _) = apply_action(&state, registry, PlayerAction::TrashAccessedCard { card_id: id(card) }).expect("trash it");
+        close_all_windows(state, registry).0
+    }
+
+    fn at(card: &str, install: u32, remote: u32, rezzed: bool) -> crate::rules::InstalledCard {
+        crate::rules::InstalledCard { install_id: InstallId(install), rezzed, ..root_at(card, remote) }
+    }
+
+    #[test]
+    fn hostile_architecture_does_two_meat_damage_the_first_time_each_turn_the_runner_trashes_an_installed_card() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.resources.credits = Credits(20);
+        state.runner.grip = vec![id("sure_gamble"); 5];
+        state.corp.installed = vec![at("hostile_architecture", 80, 0, true), at("pad_campaign", 81, 1, false), at("pad_campaign", 82, 2, false)];
+        let once = trash_on_access(&state, &registry, 1, "pad_campaign");
+        assert_eq!(once.runner.grip.len(), 3, "2 meat damage");
+        let twice = trash_on_access(&once, &registry, 2, "pad_campaign");
+        assert_eq!(twice.runner.grip.len(), 3, "the first time each turn");
+
+        // Unrezzed, it hears nothing.
+        state.corp.installed[0].rezzed = false;
+        assert_eq!(trash_on_access(&state, &registry, 1, "pad_campaign").runner.grip.len(), 5);
+    }
+
+    #[test]
+    fn hostile_architecture_hears_its_own_trash_while_it_was_rezzed() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.grip = vec![id("sure_gamble"); 5];
+        state.corp.installed = vec![at("hostile_architecture", 80, 0, true)];
+        let trashed = trash_on_access(&state, &registry, 0, "hostile_architecture");
+        assert_eq!(trashed.runner.grip.len(), 3, "including this asset");
+        assert!(trashed.corp.installed.is_empty());
+
+        state.corp.installed[0].rezzed = false;
+        assert_eq!(trash_on_access(&state, &registry, 0, "hostile_architecture").runner.grip.len(), 5, "never active, so nothing heard");
+    }
+
+    #[test]
+    fn hostile_architecture_counts_a_trash_by_the_runners_text_with_one_on_access() {
+        let mut registry = registry();
+        // A Runner event whose text trashes an installed Corp card, so the
+        // trash is the Runner's and not an access's.
+        registry.insert(
+            serde_json::from_str(
+                r#"{"id": "a_trashing_event", "title": "A Trashing Event", "side": "Runner", "card_type": "Event", "cost": 0,
+                    "triggers": [{"trigger": "OnPlay", "subject": "This", "effects": [{"PromptChooseCards": {
+                        "side": "Runner", "source": "OpponentInstalled", "filter": "Any", "min": 1, "max": 1,
+                        "reveal": false, "shuffle_after": false, "destination": "OpponentDiscard"}}]}]}"#,
+            )
+            .expect("a card file"),
+        );
+        let mut state = runner_turn();
+        state.runner.resources.credits = Credits(20);
+        state.runner.grip = vec![id("a_trashing_event"), id("sure_gamble"), id("sure_gamble"), id("sure_gamble")];
+        state.corp.installed = vec![at("hostile_architecture", 80, 0, true), at("pad_campaign", 81, 1, false), at("pad_campaign", 82, 2, false)];
+        let (asked, _) = apply_action(&state, &registry, PlayerAction::PlayEvent { card_id: id("a_trashing_event") }).expect("play");
+        let candidates: Vec<usize> = crate::rules::legal_actions_for(&asked, &registry, Side::Runner)
+            .into_iter()
+            .filter_map(|action| match action {
+                PlayerAction::ToggleCardSelection { position } => Some(position),
+                _ => None,
+            })
+            .collect();
+        let (chose, _) = apply_action(&asked, &registry, PlayerAction::ToggleCardSelection { position: candidates[1] }).expect("a PAD Campaign");
+        let (trashed, _) = apply_action(&chose, &registry, PlayerAction::ConfirmCardSelection).expect("trash it");
+        assert_eq!(trashed.runner.grip.len(), 1, "the Runner's text trashed an installed card: 2 meat damage");
+        let mut accessed = trashed;
+        accessed.runner.grip = vec![id("sure_gamble"); 3];
+        assert_eq!(trash_on_access(&accessed, &registry, 2, "pad_campaign").runner.grip.len(), 3, "one count for both kinds of trash");
+    }
 }
