@@ -1,0 +1,103 @@
+{
+  "id": "street_gallery",
+  "name": "Street Gallery",
+  "side": "Runner",
+  "category": "Sweep",
+  "description": "Not a published list: built so the sweeps reach Arissana Rocha Nahu: Street Artist, The Automata Initiative's Shaper identity, who installs a program from the grip during a run and trashes it as the run ends unless it is a trojan. Safety Net's frame of programs and trojans under a new identity (The Automata Initiative Stage 8c).",
+  "style": "builder",
+  "identity": "arissana_rocha_nahu_street_artist",
+  "cards": [
+    {
+      "card": "net_shield",
+      "count": 3
+    },
+    {
+      "card": "sacrificial_construct",
+      "count": 3
+    },
+    {
+      "card": "decoy",
+      "count": 2
+    },
+    {
+      "card": "gordian_blade",
+      "count": 1
+    },
+    {
+      "card": "corsair",
+      "count": 2
+    },
+    {
+      "card": "lampades",
+      "count": 1
+    },
+    {
+      "card": "conduit",
+      "count": 2
+    },
+    {
+      "card": "sipa",
+      "count": 2
+    },
+    {
+      "card": "stowaway",
+      "count": 2
+    },
+    {
+      "card": "beta_build",
+      "count": 2
+    },
+    {
+      "card": "baker",
+      "count": 1
+    },
+    {
+      "card": "aircheck",
+      "count": 2
+    },
+    {
+      "card": "coalescence",
+      "count": 2
+    },
+    {
+      "card": "pressure_spike",
+      "count": 2
+    },
+    {
+      "card": "burner",
+      "count": 2
+    },
+    {
+      "card": "lobisomem",
+      "count": 2
+    },
+    {
+      "card": "spree",
+      "count": 2
+    },
+    {
+      "card": "joy_ride",
+      "count": 2
+    },
+    {
+      "card": "living_mural",
+      "count": 2
+    },
+    {
+      "card": "umbrella",
+      "count": 2
+    },
+    {
+      "card": "urban_art_vernissage",
+      "count": 2
+    },
+    {
+      "card": "beatriz_friere_gonzalez",
+      "count": 2
+    },
+    {
+      "card": "airbladex_jsrf_ed",
+      "count": 2
+    }
+  ]
+}

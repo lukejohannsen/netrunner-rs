@@ -1,0 +1,70 @@
+{
+  "id": "a_teia_ip_recovery",
+  "title": "A Teia: IP Recovery",
+  "side": "Corp",
+  "card_type": "Identity",
+  "cost": 0,
+  "min_deck_size": 45,
+  "continuous": [
+    {
+      "kind": {
+        "RemoteServerLimit": 2
+      },
+      "applies_to": "Controller",
+      "text": "Limit 2 remote servers."
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnInstall",
+      "subject": "Any",
+      "when": {
+        "InstalledIn": "Remote"
+      },
+      "acts_on_subject": true,
+      "requirement": {
+        "Not": {
+          "AmountAtLeast": [
+            "CardsInstalledInRemotesThisTurn",
+            2
+          ]
+        }
+      },
+      "effects": [
+        {
+          "PromptChooseCards": {
+            "side": "Corp",
+            "source": "OwnHq",
+            "filter": {
+              "Not": {
+                "CardType": "Operation"
+              }
+            },
+            "min": 0,
+            "max": 1,
+            "reveal": false,
+            "shuffle_after": false,
+            "then": {
+              "PromptInstallCorpCard": {
+                "origin_zone": "OwnHq",
+                "ignore_costs": true,
+                "remote_only": true,
+                "another_server": true,
+                "if_installed": {
+                  "Prohibit": {
+                    "what": "ScoreAgendas",
+                    "until": "Turn",
+                    "this_install": true
+                  }
+                }
+              }
+            }
+          }
+        }
+      ],
+      "text": "The first time each turn you install a card in the root of or protecting a remote server, you may install 1 card from HQ in the root of or protecting another remote server, ignoring all costs. You cannot score the second card this turn."
+    }
+  ],
+  "numeric_id": 34039,
+  "is_playable": true
+}

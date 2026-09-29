@@ -271,6 +271,18 @@ pub(crate) fn may_be_declared_successful(state: &GameState, registry: &CardRegis
     !any(state, registry, Target::Run { server }, |kind| matches!(kind, ContinuousKind::CannotBeDeclaredSuccessful))
 }
 
+/// The most remote servers the Corp may have (A Teia: IP Recovery), or
+/// `None` with no limit.
+pub fn remote_server_limit(state: &GameState, registry: &CardRegistry) -> Option<u32> {
+    let mut limit: Option<u32> = None;
+    for_each_applying(state, registry, Target::Player(Side::Corp), |effect, _, _| {
+        if let ContinuousKind::RemoteServerLimit(most) = effect.kind {
+            limit = Some(limit.map_or(most, |limit| limit.min(most)));
+        }
+    });
+    limit
+}
+
 /// Every "cannot access more than N cards other than this one" standing on
 /// the run against `server` (`ContinuousKind::AccessOthersAtMost`): the
 /// number, the card that says it, and its install while it is still on

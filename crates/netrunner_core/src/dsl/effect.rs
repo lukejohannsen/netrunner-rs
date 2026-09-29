@@ -1516,6 +1516,12 @@ pub enum Amount {
     /// Composition didn't work: `TimesThisTurn(OnInstall)` counts an
     /// install from Archives or R&D as well.
     CardsInstalledFromHqThisTurn,
+    /// The Corp's installs this turn in the root of or protecting a remote
+    /// server (`TurnLog::installed_in_remotes`) — A Teia: IP Recovery's
+    /// "the first time each turn", which `first_each_turn` cannot narrow
+    /// to a remote (the log's classes hold no server), as `AmountAtLeast`
+    /// … `Not` 2 beside `when: InstalledIn(Remote)`.
+    CardsInstalledInRemotesThisTurn,
     /// The times the Runner has gained [click] during a run this turn —
     /// Pichação's "If this is not the first time you gained [click] during
     /// a run this turn" (`TurnLog::click_gains_in_runs`, a sum beside

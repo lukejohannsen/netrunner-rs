@@ -424,6 +424,9 @@ impl Occurrences {
             Some(EventFilter::InstalledFromHq(_)) => {
                 return Err(format!("the turn counts a {trigger:?} without where the card came from, so \"the first\" cannot be narrowed by it"));
             }
+            Some(EventFilter::InstalledIn(_)) => {
+                return Err(format!("the turn counts a {trigger:?} without the server it went into, so \"the first\" cannot be narrowed by it"));
+            }
             Some(EventFilter::AtLeast(_)) => {
                 return Err(format!("the turn counts a {trigger:?} without how many cards it was about, so \"the first\" cannot be narrowed by a number"));
             }
@@ -607,6 +610,12 @@ pub struct TurnLog {
     /// cells are `Unseen` anyway. Public all the same, as the card's
     /// leaving HQ is.
     installed_from_hq: u8,
+    /// The Corp's installs this turn in the root of or protecting a remote
+    /// server — A Teia: IP Recovery's "The first time each turn you install
+    /// a card in the root of or protecting a remote server". A count beside
+    /// the cells, as `installed_from_hq` is: which server a card went into
+    /// is no `Class`. Public, as where the Corp installs is.
+    installed_in_remotes: u8,
     /// The times the Runner gained [click] during a run this turn —
     /// Pichação's "If this is not the first time you gained [click] during
     /// a run this turn". A count beside the cells, as `installed_from_hq`
@@ -618,7 +627,7 @@ pub struct TurnLog {
 
 impl Default for TurnLog {
     fn default() -> Self {
-        TurnLog { counts: [[[0; CLASSES]; WHOSE]; TRIGGERS], actions_finished: 0, agenda_points_scored: 0, installed_from_hq: 0, click_gains_in_runs: 0 }
+        TurnLog { counts: [[[0; CLASSES]; WHOSE]; TRIGGERS], actions_finished: 0, agenda_points_scored: 0, installed_from_hq: 0, installed_in_remotes: 0, click_gains_in_runs: 0 }
     }
 }
 
@@ -652,6 +661,10 @@ impl TurnLog {
 
     pub fn installed_from_hq(&self) -> u32 {
         u32::from(self.installed_from_hq)
+    }
+
+    pub fn installed_in_remotes(&self) -> u32 {
+        u32::from(self.installed_in_remotes)
     }
 
     pub fn click_gains_in_runs(&self) -> u32 {
@@ -711,6 +724,8 @@ struct Sparse {
     #[serde(default, skip_serializing_if = "is_zero")]
     installed_from_hq: u8,
     #[serde(default, skip_serializing_if = "is_zero")]
+    installed_in_remotes: u8,
+    #[serde(default, skip_serializing_if = "is_zero")]
     click_gains_in_runs: u8,
 }
 
@@ -735,6 +750,7 @@ impl From<TurnLog> for Sparse {
             actions_finished: log.actions_finished,
             agenda_points_scored: log.agenda_points_scored,
             installed_from_hq: log.installed_from_hq,
+            installed_in_remotes: log.installed_in_remotes,
             click_gains_in_runs: log.click_gains_in_runs,
         }
     }
@@ -746,6 +762,7 @@ impl From<Sparse> for TurnLog {
             actions_finished: sparse.actions_finished,
             agenda_points_scored: sparse.agenda_points_scored,
             installed_from_hq: sparse.installed_from_hq,
+            installed_in_remotes: sparse.installed_in_remotes,
             click_gains_in_runs: sparse.click_gains_in_runs,
             ..TurnLog::default()
         };
@@ -787,6 +804,9 @@ pub(crate) fn record(state: &mut GameState, registry: &CardRegistry, event: &Gam
     }
     if let GameEvent::CardInstalled { side: Side::Corp, from_hq: true, .. } = event {
         state.this_turn.installed_from_hq = state.this_turn.installed_from_hq.saturating_add(1);
+    }
+    if let GameEvent::CardInstalled { side: Side::Corp, server: ServerId::Remote(_), .. } = event {
+        state.this_turn.installed_in_remotes = state.this_turn.installed_in_remotes.saturating_add(1);
     }
     AsOf(state.this_turn, copy)
 }

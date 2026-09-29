@@ -23,9 +23,7 @@ pub(crate) const RWR_UNIMPLEMENTED: &[(u32, &str)] = &[];
 
 /// *The Automata Initiative* (`tai`): tranche 3 of the NSG plan.
 pub(crate) const TAI_UNIMPLEMENTED: &[(u32, &str)] = &[
-    (34020, "Arissana Rocha Nahu: Street Artist"),
     (34033, "Wage Workers"),
-    (34039, "A Teia: IP Recovery"),
     (34049, "Oracle Thinktank"),
 ];
 

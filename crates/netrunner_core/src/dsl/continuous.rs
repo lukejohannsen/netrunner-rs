@@ -202,6 +202,14 @@ pub enum ContinuousKind {
     /// the declaration, and everything that hears it, is withheld
     /// (`engine::complete_run`). About `RunsOnThisServer`.
     CannotBeDeclaredSuccessful,
+    /// The Corp may have at most this many remote servers — A Teia: IP
+    /// Recovery's "Limit 2 remote servers" (`Scope::Controller`). Asked
+    /// wherever a new remote would be made: every Corp install
+    /// (`engine::place_corp_card`, which refuses one) and every offer of a
+    /// fresh remote (`legal_actions::may_add_remote`). Composition didn't
+    /// work: nothing limited the servers, and a new remote is not an
+    /// install a `Cannot` could name without its count.
+    RemoteServerLimit(u32),
     /// During a run it applies to, the Runner cannot access more than this
     /// many cards other than the card that says so — Flagship's "the Runner
     /// cannot access more than 1 card other than this upgrade". Once they

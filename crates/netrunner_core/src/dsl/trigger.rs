@@ -583,6 +583,14 @@ pub enum EventFilter {
     /// as an intervening if it would sit where the printed sentence does
     /// not put it.
     InstalledFromHq(bool),
+    /// The Corp installed the card in the root of or protecting a server
+    /// of this kind — A Teia: IP Recovery's "install a card in the root of
+    /// or protecting **a remote server**". Read off the moment, which the
+    /// event states (`GameEvent::CardInstalled::server`), and only on the
+    /// Corp's `OnInstall`, as `InstalledFromHq` is. Composition didn't
+    /// work: `Server` names servers, and a remote's number is not known to
+    /// the card.
+    InstalledIn(crate::dsl::ServerKind),
     /// The card the moment is about is `owner`'s, **and** the moment is
     /// `whose` — Active Policing's "the Runner … trashed a Corp card",
     /// where the Runner's trash of their own program is not one. Neither

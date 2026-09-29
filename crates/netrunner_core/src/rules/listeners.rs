@@ -76,6 +76,9 @@ pub(crate) struct Moment {
     /// read off the event (`GameEvent::CardInstalled::from_hq`) for the
     /// same reason as `ice`.
     pub from_hq: Option<bool>,
+    /// The server a Corp card was installed in, read off the event for
+    /// `EventFilter::InstalledIn`.
+    pub installed_in: Option<ServerId>,
     /// Where a trashed card was (`GameEvent::CardTrashed::from`), for the
     /// same reason as `from_hq`: the card is in a discard pile by the time
     /// its trash is heard (`EventFilter::TrashedFrom`, Strike Fund).
@@ -110,7 +113,7 @@ struct Listener {
 /// `GameEvent` is a decision made here rather than a silence.
 pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
     let card = |card: &CardId, install: Option<InstallId>| About::Card { card: card.clone(), install, installed: install.is_some() };
-    let moment = |trigger, about: &About, of| Moment { trigger, about: about.clone(), of, ice: None, from_hq: None, trashed_from: None, by: None };
+    let moment = |trigger, about: &About, of| Moment { trigger, about: about.clone(), of, ice: None, from_hq: None, installed_in: None, trashed_from: None, by: None };
     // A moment about the ice at `position` in the run's ice. Where the run
     // or the ice has gone by the time the moment is asked again — a
     // trigger fired after the run ended — it is about nothing, and keeps
@@ -121,7 +124,7 @@ pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
             .as_ref()
             .and_then(|run| run.ice.get(position as usize))
             .map_or(About::Nothing, |ice| About::Card { card: ice.card_id.clone(), install: Some(ice.install_id), installed: true });
-        Moment { trigger, about, of: Some(Side::Runner), ice: Some(facts), from_hq: None, trashed_from: None, by: None }
+        Moment { trigger, about, of: Some(Side::Runner), ice: Some(facts), from_hq: None, installed_in: None, trashed_from: None, by: None }
     };
     match event {
         GameEvent::EventPlayed { side, card: played } => {
@@ -146,8 +149,8 @@ pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
         }
         // The Corp's installs. `card` is `None` only in a masked copy of the
         // event, which the engine never dispatches.
-        GameEvent::CardInstalled { side, install, card: installed, from_hq, .. } => match installed {
-            Some(installed) => vec![Moment { from_hq: Some(*from_hq), ..moment(Trigger::OnInstall, &card(installed, Some(*install)), Some(*side)) }],
+        GameEvent::CardInstalled { side, install, card: installed, from_hq, server } => match installed {
+            Some(installed) => vec![Moment { from_hq: Some(*from_hq), installed_in: Some(*server), ..moment(Trigger::OnInstall, &card(installed, Some(*install)), Some(*side)) }],
             None => Vec::new(),
         },
 
@@ -532,6 +535,9 @@ fn passes(state: &GameState, registry: &CardRegistry, filter: &EventFilter, mome
     }
     if let EventFilter::InstalledFromHq(from_hq) = filter {
         return moment.from_hq == Some(*from_hq);
+    }
+    if let EventFilter::InstalledIn(kind) = filter {
+        return moment.installed_in.is_some_and(|server| kind.admits(server));
     }
     if let EventFilter::TrashedFrom(places) = filter {
         return moment.trashed_from.is_some_and(|from| places.contains(&from));
