@@ -431,6 +431,14 @@ pub fn narrate_events(events: &[GameEvent], action: &PublicAction, registry: &Ca
             lines.push(if discarded.is_empty() { took } else { format!("{took}: {} trashed", and_list(&discarded)) });
             continue;
         }
+        // The breach of the server the run just succeeded on goes without
+        // saying; one of another server (Eru Ayase-Pessoa's run on
+        // Archives breaching R&D), or of a server with no run, does not.
+        if let GameEvent::BreachBegun { server } = event
+            && events.iter().any(|e| matches!(e, GameEvent::RunSucceeded { server: run } | GameEvent::RunNotDeclaredSuccessful { server: run } if run == server))
+        {
+            continue;
+        }
         if let Some(line) = narrate_event(event, action, registry, view) {
             lines.push(line);
         }
@@ -584,6 +592,7 @@ pub fn narrate_event(
         // ---- runs and traces ----
         GameEvent::RunSucceeded { server } => format!("the run on {} succeeded", server_name(*server)),
         GameEvent::RunNotDeclaredSuccessful { server } => format!("the run on {} could not be declared successful", server_name(*server)),
+        GameEvent::BreachBegun { server } => format!("the Runner breached {}", server_name(*server)),
         GameEvent::RunJackedOut { server } => format!("the Runner jacked out of {}", server_name(*server)),
         GameEvent::RunEndedByEffect { server } => format!("the run on {} was ended", server_name(*server)),
         GameEvent::RunEndPrevented { server } => format!("the end of the run on {} was prevented", server_name(*server)),
@@ -1165,6 +1174,20 @@ mod tests {
 
         let discard_phase = [GameEvent::CardDiscarded { side: Side::Runner, card: card("sure_gamble") }];
         assert!(narrate_events(&discard_phase, &action, &registry, None).is_empty());
+    }
+
+    /// A breach of the server the run succeeded on goes without saying; a
+    /// breach of another (Eru Ayase-Pessoa's run on Archives breaching R&D)
+    /// is a line of its own.
+    #[test]
+    fn a_breach_of_another_server_is_narrated() {
+        use netrunner_core::rules::ServerId;
+        let registry = crate::decks::sample_deck_registry();
+        let action = PublicAction::Visible(PlayerAction::CompleteRun);
+        let same = [GameEvent::RunSucceeded { server: ServerId::Hq }, GameEvent::BreachBegun { server: ServerId::Hq }];
+        assert_eq!(narrate_events(&same, &action, &registry, None), ["the run on HQ succeeded"]);
+        let other = [GameEvent::RunSucceeded { server: ServerId::Archives }, GameEvent::BreachBegun { server: ServerId::RnD }];
+        assert_eq!(narrate_events(&other, &action, &registry, None), ["the run on Archives succeeded", "the Runner breached R&D"]);
     }
 
     /// The line the whole change exists to produce: the Runner is told

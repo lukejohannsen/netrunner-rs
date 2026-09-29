@@ -1194,6 +1194,13 @@ pub enum Effect {
     /// follows: no successful run, no run ending, no new last run.
     /// Composition didn't work: every breach began at a run's success step
     /// (`CompleteRun`), which a card's text outside a run does not reach.
+    ///
+    /// **As a run's breach is replaced, it names the server breached
+    /// instead** — Eru Ayase-Pessoa's "If successful, instead of breaching
+    /// Archives, breach R&D", `SetAccessReplacement { server: Archives,
+    /// effect: Breach(RnD) }` (`ResolutionContext::replacing_breach`,
+    /// `RunState::breached`). The run goes on, on Archives, to a breach of
+    /// R&D.
     Breach(crate::rules::ServerId),
     /// Reveals `count` cards at random from `side`'s hand — HQ or the grip
     /// — and, with `each`, resolves it as each card in turn: Bring Them
@@ -1632,6 +1639,13 @@ pub enum Amount {
     /// Mary da Silva's "if you are allowed to access 2 or more cards in
     /// R&D during this breach". 0 for any other server, and with no run.
     AccessLimit(ServerId),
+    /// How many times the Runner has encountered ice during the run in
+    /// progress, counting the encounter under way (`RunState::encounters`)
+    /// — S-Dobrado's "the first time you encounter a piece of ice during
+    /// that run" (at most 1 as its encounter begins) and "the second time"
+    /// (exactly 2). 0 with no run. Composition didn't work: the turn log
+    /// counts the turn's encounters, and a run is not a turn.
+    EncountersThisRun,
     /// The strength of the piece of ice being encountered, never below 0
     /// (`continuous::ice_strength`, which may be) — Arruaceiras Crew's
     /// "trash the ice you are encountering if its strength is 0 or less",

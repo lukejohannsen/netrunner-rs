@@ -125,6 +125,14 @@ pub struct ResolutionContext<'a> {
     /// leaves. On the context because the effect that reads it resolves
     /// without parking.
     pub set_aside: Vec<CardId>,
+    /// This resolution is a run's breach being replaced ("If successful,
+    /// instead of breaching Archives, …", `run::access::try_replace_access`),
+    /// so an `Effect::Breach` in it names the server the run breaches
+    /// instead (Eru Ayase-Pessoa, Beatriz Friere Gonzalez) rather than
+    /// starting a breach of its own inside the run, which CR 7.3.8 would
+    /// delay. On the context because the replacement is resolved in one
+    /// call and read nowhere else.
+    pub replacing_breach: bool,
 }
 
 /// What `ResolutionContext::last_known` remembers of an install.
@@ -742,6 +750,11 @@ pub fn evaluate_effect(
             Ok(Vec::new())
         }
 
+        Effect::Breach(server) if ctx.replacing_breach => {
+            let run = state.active_run.as_mut().ok_or(RulesError::NoActiveRun)?;
+            run.breached = Some(*server);
+            Ok(Vec::new())
+        }
         Effect::Breach(server) => crate::rules::run::start_breach(state, registry, *server),
 
         Effect::EndActionPhase => {
@@ -3414,6 +3427,10 @@ pub fn check_requirement(
             // Only the Corp's identity comes in copies (CR 1.5.2).
             if side == Side::Corp && state.corp.identity_copy == *copy { Ok(()) } else { Err(RulesError::RequirementNotMet) }
         }
+        EffectRequirement::Breaching(server) => {
+            let breaching = state.run_in_progress().is_some_and(|run| run.breached == Some(*server));
+            if breaching { Ok(()) } else { Err(RulesError::RequirementNotMet) }
+        }
         EffectRequirement::DuringRunOn(server) => {
             let on = state.run_in_progress().is_some_and(|run| run.server == *server && !matches!(run.phase, RunPhase::Ended));
             if on { Ok(()) } else { Err(RulesError::RequirementNotMet) }
@@ -3884,6 +3901,7 @@ pub(crate) fn resolve_amount(amount: &Amount, ctx: &ResolutionContext<'_>, state
         Amount::RemainingAfterSelection(total) => total.saturating_sub(ctx.selected_count),
         Amount::CardsSelected => ctx.selected_count,
         Amount::RunCreditsLeftLastRun => state.last_completed_run.as_ref().map_or(0, |run| run.run_credits_left),
+        Amount::EncountersThisRun => state.run_in_progress().map_or(0, |run| run.encounters),
         Amount::AccessLimit(server) => state.active_run.as_ref().map_or(0, |run| match server {
             ServerId::Hq => 1 + run.additional_hq_access,
             ServerId::RnD => 1 + run.additional_rd_access,
@@ -4058,6 +4076,7 @@ pub(crate) fn consume_requirement(
         | EffectRequirement::IdentityFlipped
         | EffectRequirement::IdentityCopy(_)
         | EffectRequirement::DuringRunOn(_)
+        | EffectRequirement::Breaching(_)
         | EffectRequirement::CurrentlyAccessingNonAgenda
         | EffectRequirement::CurrentlyAccessingInstalledCard { .. }
         | EffectRequirement::AgendaCameFromThisCardsServer

@@ -1,0 +1,46 @@
+{
+  "id": "slash_and_burn_agriculture",
+  "title": "Slash and Burn Agriculture",
+  "side": "Corp",
+  "card_type": "Agenda",
+  "cost": 0,
+  "advancement_requirement": 4,
+  "agenda_points": 2,
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "from_hand": true,
+      "text": "[click], 1[credit], reveal and trash this agenda from HQ: Place 2 advancement counters on 1 installed card that you can advance.",
+      "cost": {
+        "AllOf": [
+          {
+            "Clicks": 1
+          },
+          {
+            "Credits": 1
+          },
+          "RevealAndTrashSelf"
+        ]
+      },
+      "effect": {
+        "PromptChooseCards": {
+          "side": "Corp",
+          "source": "OwnInstalled",
+          "filter": "Advanceable",
+          "min": 1,
+          "max": 1,
+          "reveal": false,
+          "shuffle_after": false,
+          "then": {
+            "PlaceAdvancementCounters": {
+              "Fixed": 2
+            }
+          }
+        }
+      }
+    }
+  ],
+  "triggers": [],
+  "numeric_id": 34057,
+  "is_playable": true
+}

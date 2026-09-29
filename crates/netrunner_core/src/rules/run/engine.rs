@@ -193,7 +193,7 @@ pub fn start_run(state: &mut GameState, registry: &CardRegistry, server: ServerI
         .flatten()
         .collect();
 
-    state.active_run = Some(RunState { gained_for_the_run: Vec::new(), agendas_stolen_this_run: 0, once_per_run_used: Default::default(), persistent_trashed_upgrades: Vec::new(), redirect_on_approach: None, on_end_effect: None, on_end_card: None, on_end_install: None, subroutine_resolved: false, ice_derezzed: false, subroutine_broken: false, reached_success_phase: false, initiated_by: None, ice_bypassed: false, fully_broken: false, this_encounter: Default::default(),
+    state.active_run = Some(RunState { gained_for_the_run: Vec::new(), agendas_stolen_this_run: 0, once_per_run_used: Default::default(), persistent_trashed_upgrades: Vec::new(), redirect_on_approach: None, on_end_effect: None, on_end_card: None, on_end_install: None, subroutine_resolved: false, ice_derezzed: false, subroutine_broken: false, reached_success_phase: false, breached: None, encounters: 0, initiated_by: None, ice_bypassed: false, fully_broken: false, this_encounter: Default::default(),
         on_success_effect: None,
         on_success_card: None,
         on_success_install: None,
@@ -348,6 +348,7 @@ pub(crate) fn force_encounter(state: &mut GameState, registry: &CardRegistry, in
     run.fully_broken = false;
     run.ice_bypassed = false;
     run.this_encounter = Default::default();
+    run.encounters += 1;
     add_gained_for_the_run(run, position);
     crate::rules::lingering::sweep(state);
     // The movement phase's window, if one was open, belonged to a step the
@@ -890,6 +891,7 @@ fn continue_run(state: &mut GameState, registry: &CardRegistry) -> Result<Vec<Ga
             run.phase = RunPhase::EncounterIce;
             run.fully_broken = false;
             run.this_encounter = Default::default();
+            run.encounters += 1;
             add_gained_for_the_run(run, position);
             // The number the break contest will use, asked once the run is
             // standing on the ice: this read what the ice was built with,

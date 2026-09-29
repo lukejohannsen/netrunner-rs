@@ -1,0 +1,45 @@
+{
+  "id": "beatriz_friere_gonzalez",
+  "title": "Beatriz Friere Gonzalez",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 2,
+  "unique": true,
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "text": "[click][click]: Run HQ. If successful, instead of breaching HQ, breach R&D. When you do, access 1 additional card.",
+      "cost": {
+        "Clicks": 2
+      },
+      "effect": {
+        "Sequence": [
+          {
+            "InitiateRun": "Hq"
+          },
+          {
+            "SetAccessReplacement": {
+              "server": "Hq",
+              "effect": {
+                "Sequence": [
+                  {
+                    "AddAdditionalAccess": {
+                      "server": "RnD",
+                      "count": 1
+                    }
+                  },
+                  {
+                    "Breach": "RnD"
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "triggers": [],
+  "numeric_id": 34028,
+  "is_playable": true
+}

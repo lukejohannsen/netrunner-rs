@@ -263,6 +263,16 @@ pub enum EffectRequirement {
     /// was declared unless a card has moved it. Unlike `DuringRun`, the
     /// breach counts: nothing here moves the run.
     DuringRunOn(crate::rules::ServerId),
+    /// The run in progress is breaching `server` (`RunState::breached`,
+    /// from the breach's beginning to its end) — Mercury: Chrome
+    /// Libertador's "When you breach HQ or R&D **during a run**", whose one
+    /// printed ability needs to know which of the two it is adding an
+    /// access to. Composition didn't work: `DuringRunOn` is the server the
+    /// run is on, and a run on HQ can breach R&D instead (Beatriz Friere
+    /// Gonzalez); `AccessingIn` is false until the first card is accessed,
+    /// which is after "access 1 additional card" must be applied (CR
+    /// 7.3.5b). A breach with no run (Cataloguer's) is not one.
+    Breaching(crate::rules::ServerId),
     /// The Runner is at the decision about a specific accessed card
     /// (`run::AccessPhase::PendingChoice`) and it is not an agenda —
     /// Gourmand's "trash the non-agenda card you are accessing". Read from

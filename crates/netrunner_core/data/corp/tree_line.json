@@ -1,0 +1,76 @@
+{
+  "id": "tree_line",
+  "title": "Tree Line",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Barrier"
+  },
+  "cost": 4,
+  "strength": 4,
+  "advancement_requirement": 0,
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "from_hand": true,
+      "text": "[click], 1[credit], reveal and trash this ice from HQ: Place 3 advancement counters on 1 installed piece of ice.",
+      "cost": {
+        "AllOf": [
+          {
+            "Clicks": 1
+          },
+          {
+            "Credits": 1
+          },
+          "RevealAndTrashSelf"
+        ]
+      },
+      "effect": {
+        "PromptChooseCards": {
+          "side": "Corp",
+          "source": "OwnInstalled",
+          "filter": "Ice",
+          "min": 1,
+          "max": 1,
+          "reveal": false,
+          "shuffle_after": false,
+          "then": {
+            "PlaceAdvancementCounters": {
+              "Fixed": 3
+            }
+          }
+        }
+      }
+    }
+  ],
+  "continuous": [
+    {
+      "kind": {
+        "Strength": {
+          "per": 1,
+          "of": "HostedAdvancementTokens"
+        }
+      },
+      "applies_to": "This",
+      "text": "It gets +1 strength for each hosted advancement counter."
+    }
+  ],
+  "subroutines": [
+    {
+      "text": "Gain 1[credit]. End the run.",
+      "effect": {
+        "Sequence": [
+          {
+            "GainCredits": [
+              "Corp",
+              1
+            ]
+          },
+          "EndTheRun"
+        ]
+      }
+    }
+  ],
+  "triggers": [],
+  "numeric_id": 34059,
+  "is_playable": true
+}

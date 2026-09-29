@@ -629,6 +629,10 @@ fn determinize_run(
         subroutine_broken: run.subroutine_broken,
         // Public, and what makes the run's end unsuccessful or not.
         reached_success_phase: run.reached_success_phase,
+        // Public, and which server a breach that has begun goes on to.
+        breached: run.breached,
+        // Public, and what S-Dobrado's "the second time" reads.
+        encounters: run.encounters,
         this_encounter: run.this_encounter.clone(),
         once_per_run_used: run.once_per_run_used.iter().cloned().collect(),
         additional_rd_access: 0,

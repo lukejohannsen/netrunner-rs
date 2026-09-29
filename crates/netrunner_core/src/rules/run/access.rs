@@ -190,11 +190,12 @@ fn offer_next(state: &mut GameState, registry: &CardRegistry, server: ServerId) 
     match options.len() {
         0 => {
             // A breach with no run ends as nothing a card hears: there was
-            // no run to complete.
-            if super::engine::end_run(state).is_some_and(|run| run.breach_only) {
+            // no run to complete. A run that breached another server is
+            // still a run on the one it attacked (CR 7.3.1).
+            let Some(ended) = super::engine::end_run(state).filter(|run| !run.breach_only) else {
                 return Ok(Vec::new());
-            }
-            let completed_event = GameEvent::RunCompleted { server };
+            };
+            let completed_event = GameEvent::RunCompleted { server: ended.server };
             let mut events = vec![completed_event.clone()];
             events.extend(crate::rules::dispatcher::dispatch_event(state, registry, &completed_event)?);
             Ok(events)
@@ -540,20 +541,60 @@ fn try_replace_access(
 
     let mut ctx = ability::ResolutionContext::for_card(card.as_ref());
     ctx.acting_install = install;
+    ctx.replacing_breach = true;
     let mut events = ability::evaluate_effect(state, &effect, &mut ctx, registry)?;
-    super::engine::end_run(state);
+    // "Instead of breaching Archives, breach R&D": the run goes on, to a
+    // breach of the server the replacement named (`RunState::breached`).
+    if !state.active_run.as_ref().is_some_and(|run| run.breached.is_some()) {
+        super::engine::end_run(state);
+    }
     events.push(GameEvent::AccessReplaced { server });
     Ok(Some(events))
 }
 
+/// The breach step of a run on `server` (CR 6.9.5b), or a breach with no
+/// run: first whether a card replaces it ("instead of breaching", decided
+/// as the breach would begin, CR 6.7.4c), then its beginning
+/// (`GameEvent::BreachBegun`, of the server a replacement named or of
+/// `server`), then the accesses.
+///
+/// **The accesses wait for what the beginning triggered.** "Whenever you
+/// breach R&D, access 1 additional card" must be applied before the random
+/// access limit is set (CR 7.3.5b), and Rotary's asks the Runner whether to
+/// take a tag for it. So a beginning that leaves something parked or
+/// queued returns there, with `RunState::breached` set, and the action that
+/// answers it comes back through `engine::resume_run` to the accesses —
+/// the way a "when successful" ability that parks holds up the breach.
 pub fn access_server(
     state: &mut GameState,
     server: ServerId,
     registry: &CardRegistry,
 ) -> Result<Vec<GameEvent>, RulesError> {
-    if let Some(events) = try_replace_access(state, server, registry)? {
-        return Ok(events);
-    }
+    let mut events = Vec::new();
+    let server = match state.active_run.as_ref().and_then(|run| run.breached) {
+        Some(breached) => breached,
+        None => {
+            let replaced = try_replace_access(state, server, registry)?;
+            let replaced_by_a_breach = state.active_run.as_ref().and_then(|run| run.breached);
+            if let Some(replaced) = replaced {
+                events.extend(replaced);
+                // Replaced by anything else, the breach is over, or waits on
+                // whether it is replaced at all (Account Siphon's "may").
+                if replaced_by_a_breach.is_none() {
+                    return Ok(events);
+                }
+            }
+            let breached = replaced_by_a_breach.unwrap_or(server);
+            if let Some(run) = state.active_run.as_mut() {
+                run.breached = Some(breached);
+                dispatcher::emit(state, registry, &mut events, GameEvent::BreachBegun { server: breached })?;
+                if state.resolution_halted() || !state.deferred_triggers.is_empty() || state.active_run.is_none() {
+                    return Ok(events);
+                }
+            }
+            breached
+        }
+    };
 
     // Counted before the breach turns them (CR 7.3.2): Nurse Hạnh hears
     // how many were facedown.
@@ -561,7 +602,7 @@ pub fn access_server(
     let (candidates, from_zone) = begin_breach(state, server);
     if candidates.is_empty() && from_zone.is_empty() {
         super::engine::end_run(state);
-        return Ok(Vec::new());
+        return Ok(events);
     }
 
     let run = state
@@ -581,7 +622,7 @@ pub fn access_server(
         pending_install_rezzed: false,
         phase: AccessPhase::SelectNextCard { selectable_cards: Vec::new() },
     });
-    let mut events = offer_next(state, registry, server)?;
+    events.extend(offer_next(state, registry, server)?);
     // Dispatched once the first access is offered rather than ahead of it:
     // a reaction that parks (two Nurse Hạnh to order) then waits beside
     // the Runner's choice of card instead of being overwritten by it, and
@@ -688,10 +729,11 @@ fn finish_if_game_over(state: &mut GameState, server: ServerId) -> Option<Vec<Ga
         // — this used to push its own `GameOver` unless the caller's last
         // event was one, and `advance_or_finish` passed an empty slice, so
         // a steal whose identity reaction flatlined emitted it twice.
-        if super::engine::end_run(state).is_some_and(|run| run.breach_only) {
+        let ended = super::engine::end_run(state);
+        if ended.as_ref().is_some_and(|run| run.breach_only) {
             return Some(Vec::new());
         }
-        Some(vec![GameEvent::RunCompleted { server }])
+        Some(vec![GameEvent::RunCompleted { server: ended.map_or(server, |run| run.server) }])
     } else {
         None
     }
@@ -1166,6 +1208,18 @@ pub fn resolve_decline_access_trigger(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// `access_server`'s events after the breach's beginning, which it
+    /// checks is the first of them when there is a run to breach in (and
+    /// nothing replaced it): the accesses are what these tests are about.
+    fn accesses(state: &mut GameState, server: ServerId, registry: &CardRegistry) -> Vec<GameEvent> {
+        let mut events = access_server(state, server, registry).unwrap();
+        if let Some(GameEvent::BreachBegun { server: breached }) = events.first() {
+            assert_eq!(*breached, server);
+            events.remove(0);
+        }
+        events
+    }
     use crate::rules::state::GamePhase;
     use crate::dsl::{AccessInteraction, CardDefinition, CardTarget, CardType, DamageType, Effect, InteractiveOnAccess, Trigger, TriggeredEffect};
     use crate::rules::run::state::RunState;
@@ -1321,7 +1375,7 @@ mod tests {
         );
         state.active_run = Some(run_in_success(ServerId::Hq));
         assert_eq!(
-            access_server(&mut state, ServerId::Hq, &registry()).unwrap(),
+            accesses(&mut state, ServerId::Hq, &registry()),
             vec![GameEvent::CardAccessed {
                 card: CardId("hedge_fund".to_string()),
                 server: ServerId::Hq,
@@ -1347,8 +1401,8 @@ mod tests {
         let mut state_b = game_state(hq, Vec::new(), Vec::new(), Vec::new(), 42);
         state_b.active_run = Some(run_in_success(ServerId::Hq));
 
-        let events_a = access_server(&mut state_a, ServerId::Hq, &registry()).unwrap();
-        let events_b = access_server(&mut state_b, ServerId::Hq, &registry()).unwrap();
+        let events_a = accesses(&mut state_a, ServerId::Hq, &registry());
+        let events_b = accesses(&mut state_b, ServerId::Hq, &registry());
 
         assert_eq!(events_a, events_b);
         assert_eq!(events_a.len(), 1);
@@ -1368,7 +1422,7 @@ mod tests {
             .map(|seed| {
                 let mut state = game_state(hq.clone(), Vec::new(), Vec::new(), Vec::new(), seed);
                 state.active_run = Some(run_in_success(ServerId::Hq));
-                match access_server(&mut state, ServerId::Hq, &registry()).unwrap().into_iter().next() {
+                match accesses(&mut state, ServerId::Hq, &registry()).into_iter().next() {
                     Some(GameEvent::CardAccessed { card, .. }) => card,
                     other => panic!("expected a CardAccessed event, got {other:?}"),
                 }
@@ -1392,7 +1446,7 @@ mod tests {
         );
         state.active_run = Some(run_in_success(ServerId::RnD));
         assert_eq!(
-            access_server(&mut state, ServerId::RnD, &registry()).unwrap(),
+            accesses(&mut state, ServerId::RnD, &registry()),
             vec![GameEvent::CardAccessed {
                 card: CardId("hedge_fund".to_string()),
                 server: ServerId::RnD,
@@ -1415,7 +1469,7 @@ mod tests {
         // "1 candidate from the Corp's deck at a time in turn, working down
         // from the top" (CR 7.4.7): the top card is accessed with nothing to
         // choose, and the next one waits unseen until it is passed.
-        let events = access_server(&mut state, ServerId::RnD, &registry()).unwrap();
+        let events = accesses(&mut state, ServerId::RnD, &registry());
         assert_eq!(events, vec![GameEvent::CardAccessed { card: CardId("top".to_string()), server: ServerId::RnD, install: None }]);
         let access_state = state.active_run.as_ref().unwrap().access_state.as_ref().unwrap();
         assert_eq!(access_state.from_zone, vec![CardId("middle".to_string())]);
@@ -1442,7 +1496,7 @@ mod tests {
         let mut state = game_state(hq, Vec::new(), Vec::new(), Vec::new(), 42);
         state.active_run = Some(RunState { additional_hq_access: 1, ..run_in_success(ServerId::Hq) });
 
-        access_server(&mut state, ServerId::Hq, &registry()).unwrap();
+        accesses(&mut state, ServerId::Hq, &registry());
 
         let reached = reached_from_zone(&state);
         assert_eq!(reached.len(), 2);
@@ -1461,7 +1515,7 @@ mod tests {
         let mut state = game_state(hq, Vec::new(), Vec::new(), Vec::new(), 42);
         state.active_run = Some(RunState { additional_hq_access: 2, ..run_in_success(ServerId::Hq) });
 
-        access_server(&mut state, ServerId::Hq, &registry()).unwrap();
+        accesses(&mut state, ServerId::Hq, &registry());
 
         let reached = reached_from_zone(&state);
         assert_eq!(reached.len(), 3);
@@ -1474,7 +1528,7 @@ mod tests {
         let mut state = game_state(hq, Vec::new(), Vec::new(), Vec::new(), 42);
         state.active_run = Some(RunState { additional_hq_access: 4, ..run_in_success(ServerId::Hq) });
 
-        access_server(&mut state, ServerId::Hq, &registry()).unwrap();
+        accesses(&mut state, ServerId::Hq, &registry());
 
         let reached = reached_from_zone(&state);
         assert_eq!(reached.len(), 2);
@@ -1492,7 +1546,7 @@ mod tests {
         );
         state.active_run = Some(RunState { additional_rd_access: 4, ..run_in_success(ServerId::RnD) });
 
-        access_server(&mut state, ServerId::RnD, &registry()).unwrap();
+        accesses(&mut state, ServerId::RnD, &registry());
 
         assert_eq!(reached_from_zone(&state), vec![CardId("top".to_string()), CardId("bottom".to_string())]);
     }
@@ -1511,7 +1565,7 @@ mod tests {
             ..run_in_success(ServerId::Hq)
         });
 
-        let events = access_server(&mut state, ServerId::Hq, &registry()).unwrap();
+        let events = accesses(&mut state, ServerId::Hq, &registry());
 
         assert_eq!(
             events,
@@ -1538,7 +1592,7 @@ mod tests {
             ..run_in_success(ServerId::Hq)
         });
 
-        let events = access_server(&mut state, ServerId::Hq, &registry()).unwrap();
+        let events = accesses(&mut state, ServerId::Hq, &registry());
 
         // Normal HQ access proceeded — the replacement (parked for RnD)
         // never fired.
@@ -1576,7 +1630,7 @@ mod tests {
         // Upgrade), so nothing is presented until the Runner picks which to
         // resolve first (see
         // `multi_card_sequence_advances_through_each_card_in_order`).
-        assert_eq!(access_server(&mut state, ServerId::Hq, &registry()).unwrap(), Vec::new());
+        assert_eq!(accesses(&mut state, ServerId::Hq, &registry()), Vec::new());
         // The upgrade is offered as the install it is, and HQ as "a random
         // card from HQ" (CR 7.3.4a): neither choice names a card the Runner
         // has not accessed.
@@ -1614,7 +1668,7 @@ mod tests {
             0,
         );
         state.active_run = Some(run_in_success(ServerId::RnD));
-        assert_eq!(access_server(&mut state, ServerId::RnD, &registry()).unwrap(), Vec::new());
+        assert_eq!(accesses(&mut state, ServerId::RnD, &registry()), Vec::new());
         let grid = state.corp.installed[1].install_id;
         let access_state = state.active_run.unwrap().access_state.unwrap();
         assert_eq!(access_state.from_zone, vec![CardId("hedge_fund".to_string())]);
@@ -1631,7 +1685,7 @@ mod tests {
             0,
         );
         state.active_run = Some(run_in_success(ServerId::Archives));
-        assert_eq!(access_server(&mut state, ServerId::Archives, &registry()).unwrap(), vec![GameEvent::ArchivesTurnedFaceup { count: 2 }], "the breach turned both over (CR 7.3.2)");
+        assert_eq!(accesses(&mut state, ServerId::Archives, &registry()), vec![GameEvent::ArchivesTurnedFaceup { count: 2 }], "the breach turned both over (CR 7.3.2)");
         assert_eq!(state.active_run.unwrap().access_state.unwrap().candidates, vec![archived("hedge_fund"), archived("ice_wall")]);
     }
 
@@ -1654,7 +1708,7 @@ mod tests {
         }];
         let mut state = game_state(vec![CardId("secret_agenda".to_string())], Vec::new(), Vec::new(), installed, 0);
         state.active_run = Some(run_in_success(ServerId::Hq));
-        assert_eq!(access_server(&mut state, ServerId::Hq, &registry()).unwrap(), Vec::new(), "nothing is accessed before the Runner chooses");
+        assert_eq!(accesses(&mut state, ServerId::Hq, &registry()), Vec::new(), "nothing is accessed before the Runner chooses");
 
         let access = state.active_run.as_ref().unwrap().access_state.as_ref().unwrap();
         assert_eq!(
@@ -1681,7 +1735,7 @@ mod tests {
         ];
         let mut state = game_state(Vec::new(), Vec::new(), Vec::new(), installed, 0);
         state.active_run = Some(run_in_success(ServerId::Remote(0)));
-        access_server(&mut state, ServerId::Remote(0), &registry()).unwrap();
+        accesses(&mut state, ServerId::Remote(0), &registry());
         resolve_select_card(&mut state, &AccessCandidate::Root(InstallId(1)), &registry()).unwrap();
         let seen = |state: &GameState, id| state.find_corp_install(InstallId(id)).unwrap().seen_by_runner;
         assert!(seen(&state, 1));
@@ -1702,7 +1756,7 @@ mod tests {
         ];
         let mut state = game_state(Vec::new(), Vec::new(), Vec::new(), installed, 0);
         state.active_run = Some(run_in_success(ServerId::Remote(0)));
-        access_server(&mut state, ServerId::Remote(0), &registry()).unwrap();
+        accesses(&mut state, ServerId::Remote(0), &registry());
         resolve_select_card(&mut state, &AccessCandidate::Root(InstallId(1)), &registry()).unwrap();
 
         state.corp.installed.retain(|c| c.install_id != InstallId(2));
@@ -1728,7 +1782,7 @@ mod tests {
             0,
         );
         state.active_run = Some(run_in_success(ServerId::Archives));
-        access_server(&mut state, ServerId::Archives, &registry()).unwrap();
+        accesses(&mut state, ServerId::Archives, &registry());
         assert_eq!(
             state.active_run.unwrap().access_state.unwrap().phase,
             AccessPhase::SelectNextCard { selectable_cards: vec![archived("alpha"), archived("mu"), archived("zeta")] }
@@ -1749,7 +1803,7 @@ mod tests {
         state.active_run = Some(run_in_success(ServerId::Archives));
         let registry = registry();
 
-        access_server(&mut state, ServerId::Archives, &registry).unwrap();
+        accesses(&mut state, ServerId::Archives, &registry);
 
         assert!(state.corp.archives.iter().all(|a| !a.facedown), "{:?}", state.corp.archives);
         let view = crate::view::build_client_view(&state, &registry, Side::Runner);
@@ -1770,7 +1824,7 @@ mod tests {
         run.access_replacement = Some((ServerId::Archives, Effect::GainCredits(Side::Runner, 1), false));
         state.active_run = Some(run);
 
-        access_server(&mut state, ServerId::Archives, &registry()).unwrap();
+        accesses(&mut state, ServerId::Archives, &registry());
 
         assert!(state.corp.archives[0].facedown);
     }
@@ -1802,7 +1856,7 @@ mod tests {
         let mut state = game_state(Vec::new(), Vec::new(), Vec::new(), installed, 0);
         state.active_run = Some(run_in_success(ServerId::Remote(0)));
         assert_eq!(
-            access_server(&mut state, ServerId::Remote(0), &registry()).unwrap(),
+            accesses(&mut state, ServerId::Remote(0), &registry()),
             vec![GameEvent::CardAccessed {
                 card: CardId("pad_campaign".to_string()),
                 server: ServerId::Remote(0),
@@ -1822,17 +1876,17 @@ mod tests {
             ..Default::default()
         }];
         let mut state = game_state(Vec::new(), Vec::new(), Vec::new(), installed, 0);
-        assert_eq!(access_server(&mut state, ServerId::Remote(0), &registry()).unwrap(), Vec::new());
+        assert_eq!(accesses(&mut state, ServerId::Remote(0), &registry()), Vec::new());
         assert_eq!(state.active_run, None);
     }
 
     #[test]
     fn accessing_an_empty_zone_yields_no_events() {
         let mut state = game_state(Vec::new(), Vec::new(), Vec::new(), Vec::new(), 0);
-        assert_eq!(access_server(&mut state, ServerId::Hq, &registry()).unwrap(), Vec::new());
-        assert_eq!(access_server(&mut state, ServerId::RnD, &registry()).unwrap(), Vec::new());
-        assert_eq!(access_server(&mut state, ServerId::Archives, &registry()).unwrap(), Vec::new());
-        assert_eq!(access_server(&mut state, ServerId::Remote(0), &registry()).unwrap(), Vec::new());
+        assert_eq!(accesses(&mut state, ServerId::Hq, &registry()), Vec::new());
+        assert_eq!(accesses(&mut state, ServerId::RnD, &registry()), Vec::new());
+        assert_eq!(accesses(&mut state, ServerId::Archives, &registry()), Vec::new());
+        assert_eq!(accesses(&mut state, ServerId::Remote(0), &registry()), Vec::new());
         assert_eq!(state.active_run, None);
     }
 
@@ -1847,7 +1901,7 @@ mod tests {
             0,
         );
         state.active_run = Some(run_in_success(ServerId::Archives));
-        access_server(&mut state, ServerId::Archives, &registry).unwrap();
+        accesses(&mut state, ServerId::Archives, &registry);
 
         let card_id = CardId("priority_requisition".to_string());
         assert_eq!(
@@ -1881,7 +1935,7 @@ mod tests {
         // R&D: the *top* copy (end of the Vec) goes; a duplicate deeper stays.
         let mut state = game_state(Vec::new(), vec![agenda.clone(), other.clone(), agenda.clone()], Vec::new(), Vec::new(), 0);
         state.active_run = Some(run_in_success(ServerId::RnD));
-        access_server(&mut state, ServerId::RnD, &registry).unwrap();
+        accesses(&mut state, ServerId::RnD, &registry);
         resolve_steal(&mut state, &agenda, &registry).unwrap();
         assert_eq!(state.corp.r_and_d, vec![agenda.clone(), other.clone()], "the top copy left R&D");
         assert_eq!(state.runner.scored_agendas.iter().map(|scored| scored.card.clone()).collect::<Vec<_>>(), vec![agenda.clone()]);
@@ -1889,7 +1943,7 @@ mod tests {
         // HQ.
         let mut state = game_state(vec![agenda.clone()], Vec::new(), Vec::new(), Vec::new(), 0);
         state.active_run = Some(run_in_success(ServerId::Hq));
-        access_server(&mut state, ServerId::Hq, &registry).unwrap();
+        accesses(&mut state, ServerId::Hq, &registry);
         resolve_steal(&mut state, &agenda, &registry).unwrap();
         assert!(state.corp.hq.is_empty(), "the stolen agenda left HQ");
 
@@ -1897,7 +1951,7 @@ mod tests {
         // accessed there stays — that is `move_to_archives`' early return).
         let mut state = game_state(Vec::new(), Vec::new(), vec![agenda.clone()], Vec::new(), 0);
         state.active_run = Some(run_in_success(ServerId::Archives));
-        access_server(&mut state, ServerId::Archives, &registry).unwrap();
+        accesses(&mut state, ServerId::Archives, &registry);
         resolve_steal(&mut state, &agenda, &registry).unwrap();
         assert!(state.corp.archives.is_empty(), "the stolen agenda left Archives");
 
@@ -1922,7 +1976,7 @@ mod tests {
         ];
         let mut state = game_state(Vec::new(), Vec::new(), Vec::new(), installed, 0);
         state.active_run = Some(run_in_success(ServerId::Remote(1)));
-        access_server(&mut state, ServerId::Remote(1), &registry).unwrap();
+        accesses(&mut state, ServerId::Remote(1), &registry);
         resolve_steal(&mut state, &agenda, &registry).unwrap();
         assert_eq!(state.corp.installed.len(), 1);
         assert_eq!(state.corp.installed[0].server, ServerId::Remote(0), "the copy in the run's remote is the one taken");
@@ -1963,7 +2017,7 @@ mod tests {
         // Steal off the top of R&D: the deck copy goes, the remote copy stays.
         let mut state = game_state(Vec::new(), vec![agenda.clone()], Vec::new(), installed(), 0);
         state.active_run = Some(run_in_success(ServerId::RnD));
-        access_server(&mut state, ServerId::RnD, &registry).unwrap();
+        accesses(&mut state, ServerId::RnD, &registry);
         resolve_steal(&mut state, &agenda, &registry).unwrap();
         assert!(state.corp.r_and_d.is_empty(), "the R&D copy was stolen");
         assert_eq!(state.corp.installed.len(), 2, "both installs untouched: {:?}", state.corp.installed);
@@ -1974,7 +2028,7 @@ mod tests {
         let mut state = game_state(vec![asset.clone()], Vec::new(), Vec::new(), installed(), 0);
         state.runner.resources.credits = Credits(5);
         state.active_run = Some(run_in_success(ServerId::Hq));
-        access_server(&mut state, ServerId::Hq, &registry).unwrap();
+        accesses(&mut state, ServerId::Hq, &registry);
         resolve_trash(&mut state, &asset, &registry).unwrap();
         assert!(state.corp.hq.is_empty(), "the HQ copy was trashed");
         assert_eq!(state.corp.archives.len(), 1);
@@ -2009,7 +2063,7 @@ mod tests {
         state.corp.identity = Some(CardId("jinteki_pe_ish".to_string()));
         assert!(state.runner.grip.is_empty());
         state.active_run = Some(run_in_success(ServerId::Hq));
-        access_server(&mut state, ServerId::Hq, &registry).unwrap();
+        accesses(&mut state, ServerId::Hq, &registry);
 
         let events = resolve_steal(&mut state, &agenda, &registry).unwrap();
 
@@ -2037,7 +2091,7 @@ mod tests {
         }];
         let mut state = game_state(Vec::new(), Vec::new(), vec![archived.clone()], installed, 0);
         state.active_run = Some(run_in_success(ServerId::Archives));
-        access_server(&mut state, ServerId::Archives, &registry).unwrap();
+        accesses(&mut state, ServerId::Archives, &registry);
 
         let access = state.active_run.as_ref().unwrap().access_state.as_ref().expect("two cards to access");
         let AccessPhase::SelectNextCard { selectable_cards } = &access.phase else {
@@ -2059,7 +2113,7 @@ mod tests {
         let mut state = game_state(Vec::new(), Vec::new(), vec![archived.clone()], Vec::new(), 0);
         state.runner.resources.credits = Credits(5);
         state.active_run = Some(run_in_success(ServerId::Archives));
-        access_server(&mut state, ServerId::Archives, &registry).unwrap();
+        accesses(&mut state, ServerId::Archives, &registry);
 
         let access = state.active_run.as_ref().unwrap().access_state.as_ref().unwrap();
         assert!(
@@ -2091,7 +2145,7 @@ mod tests {
         let mut state = game_state(Vec::new(), Vec::new(), Vec::new(), installed, 0);
         state.runner.resources.credits = Credits(5);
         state.active_run = Some(run_in_success(ServerId::Archives));
-        access_server(&mut state, ServerId::Archives, &registry).unwrap();
+        accesses(&mut state, ServerId::Archives, &registry);
 
         resolve_trash(&mut state, &upgrade, &registry).expect("an installed upgrade is trashable");
         assert!(state.corp.installed.is_empty());
@@ -2116,7 +2170,7 @@ mod tests {
         state.runner.scored_agendas = vec![crate::rules::ScoredAgenda::plain(CardId("already_scored".to_string()))];
         state.runner.resources.agenda_points = AgendaPoints(4);
         state.active_run = Some(run_in_success(ServerId::Archives));
-        access_server(&mut state, ServerId::Archives, &registry).unwrap();
+        accesses(&mut state, ServerId::Archives, &registry);
 
         let card_id = CardId("priority_requisition".to_string());
         let events = resolve_steal(&mut state, &card_id, &registry).expect("steal should succeed");
@@ -2154,7 +2208,7 @@ mod tests {
         state.runner.scored_agendas = vec![crate::rules::ScoredAgenda::plain(CardId("already_scored".to_string()))];
         state.runner.resources.agenda_points = AgendaPoints(4);
         state.active_run = Some(run_in_success(ServerId::Archives));
-        access_server(&mut state, ServerId::Archives, &registry).unwrap();
+        accesses(&mut state, ServerId::Archives, &registry);
 
         let card_id = CardId("priority_requisition".to_string());
         resolve_select_card(&mut state, &AccessCandidate::Archived(card_id.clone()), &registry).expect("selecting should succeed");
@@ -2187,7 +2241,7 @@ mod tests {
         );
         state.runner.resources.credits = Credits(4);
         state.active_run = Some(run_in_success(ServerId::Archives));
-        access_server(&mut state, ServerId::Archives, &registry).unwrap();
+        accesses(&mut state, ServerId::Archives, &registry);
 
         let card_id = CardId("napd_contract".to_string());
         let events = resolve_steal(&mut state, &card_id, &registry).expect("steal should succeed");
@@ -2216,7 +2270,7 @@ mod tests {
         );
         state.runner.resources.credits = Credits(2);
         state.active_run = Some(run_in_success(ServerId::Archives));
-        access_server(&mut state, ServerId::Archives, &registry).unwrap();
+        accesses(&mut state, ServerId::Archives, &registry);
 
         let card_id = CardId("napd_contract".to_string());
         assert_eq!(
@@ -2249,7 +2303,7 @@ mod tests {
         let mut state = game_state(Vec::new(), Vec::new(), Vec::new(), installed, 0);
         state.runner.resources.credits = Credits(3);
         state.active_run = Some(run_in_success(ServerId::Remote(0)));
-        access_server(&mut state, ServerId::Remote(0), &registry).unwrap();
+        accesses(&mut state, ServerId::Remote(0), &registry);
 
         let card_id = CardId("pad_campaign".to_string());
         let events = resolve_trash(&mut state, &card_id, &registry).expect("trash should succeed");
@@ -2280,7 +2334,7 @@ mod tests {
         let mut state = game_state(Vec::new(), Vec::new(), Vec::new(), installed, 0);
         state.runner.resources.credits = Credits(1);
         state.active_run = Some(run_in_success(ServerId::Remote(0)));
-        access_server(&mut state, ServerId::Remote(0), &registry).unwrap();
+        accesses(&mut state, ServerId::Remote(0), &registry);
 
         let card_id = CardId("pad_campaign".to_string());
         assert_eq!(
@@ -2300,7 +2354,7 @@ mod tests {
             42,
         );
         state.active_run = Some(run_in_success(ServerId::Hq));
-        access_server(&mut state, ServerId::Hq, &registry()).unwrap();
+        accesses(&mut state, ServerId::Hq, &registry());
 
         let card_id = CardId("hedge_fund".to_string());
         let events = resolve_pass(&mut state, &card_id, &registry()).expect("passing should succeed");
@@ -2325,7 +2379,7 @@ mod tests {
             0,
         );
         state.active_run = Some(run_in_success(ServerId::Archives));
-        let first = access_server(&mut state, ServerId::Archives, &registry()).unwrap();
+        let first = accesses(&mut state, ServerId::Archives, &registry());
         assert_eq!(first, vec![GameEvent::ArchivesTurnedFaceup { count: 2 }]);
         assert_eq!(
             state.active_run.as_ref().unwrap().access_state.as_ref().unwrap().phase,
@@ -2386,7 +2440,7 @@ mod tests {
             0,
         );
         state.active_run = Some(run_in_success(ServerId::Archives));
-        access_server(&mut state, ServerId::Archives, &registry()).unwrap();
+        accesses(&mut state, ServerId::Archives, &registry());
 
         let events = resolve_select_card(&mut state, &archived("ice_wall"), &registry())
             .expect("selecting the second card should succeed");
@@ -2439,7 +2493,7 @@ mod tests {
             0,
         );
         state.active_run = Some(run_in_success(ServerId::Archives));
-        access_server(&mut state, ServerId::Archives, &registry()).unwrap();
+        accesses(&mut state, ServerId::Archives, &registry());
 
         resolve_select_card(&mut state, &archived("card_3"), &registry())
             .expect("selecting card_3 should succeed");
@@ -2486,7 +2540,7 @@ mod tests {
             0,
         );
         state.active_run = Some(run_in_success(ServerId::Archives));
-        access_server(&mut state, ServerId::Archives, &registry()).unwrap();
+        accesses(&mut state, ServerId::Archives, &registry());
         resolve_select_card(&mut state, &archived("hedge_fund"), &registry())
             .expect("selecting should succeed");
 
@@ -2522,7 +2576,7 @@ mod tests {
             0,
         );
         state.active_run = Some(run_in_success(ServerId::Archives));
-        access_server(&mut state, ServerId::Archives, &registry()).unwrap();
+        accesses(&mut state, ServerId::Archives, &registry());
 
         let wrong = archived("wrong_card");
         assert_eq!(
@@ -2541,7 +2595,7 @@ mod tests {
             42,
         );
         state.active_run = Some(run_in_success(ServerId::Hq));
-        access_server(&mut state, ServerId::Hq, &registry()).unwrap();
+        accesses(&mut state, ServerId::Hq, &registry());
 
         let card_id = CardId("hedge_fund".to_string());
         assert_eq!(
@@ -2570,7 +2624,7 @@ mod tests {
             42,
         );
         state.active_run = Some(run_in_success(ServerId::Hq));
-        access_server(&mut state, ServerId::Hq, &registry()).unwrap();
+        accesses(&mut state, ServerId::Hq, &registry());
 
         let wrong_id = CardId("wrong_card".to_string());
         assert_eq!(resolve_pass(&mut state, &wrong_id, &registry()), Err(RulesError::NotInAccessPhase));
@@ -2593,7 +2647,7 @@ mod tests {
             42,
         );
         state.active_run = Some(run_in_success(ServerId::Hq));
-        access_server(&mut state, ServerId::Hq, &registry()).unwrap();
+        accesses(&mut state, ServerId::Hq, &registry());
 
         let card_id = CardId("hedge_fund".to_string());
         assert_eq!(resolve_steal(&mut state, &card_id, &registry()), Err(RulesError::NotInAccessPhase));
@@ -2609,7 +2663,7 @@ mod tests {
             42,
         );
         state.active_run = Some(run_in_success(ServerId::Hq));
-        access_server(&mut state, ServerId::Hq, &registry()).unwrap();
+        accesses(&mut state, ServerId::Hq, &registry());
 
         let card_id = CardId("hedge_fund".to_string());
         assert_eq!(resolve_trash(&mut state, &card_id, &registry()), Err(RulesError::NotInAccessPhase));
@@ -2628,7 +2682,7 @@ mod tests {
         ];
         state.active_run = Some(run_in_success(ServerId::Archives));
 
-        let events = access_server(&mut state, ServerId::Archives, &registry).unwrap();
+        let events = accesses(&mut state, ServerId::Archives, &registry);
 
         assert_eq!(state.runner.grip.len(), 1);
         assert_eq!(state.runner.heap.len(), 2);
@@ -2663,7 +2717,7 @@ mod tests {
         state.runner.resources.credits = Credits(3);
         state.runner.grip = vec![CardId("card_a".to_string()), CardId("card_b".to_string())];
         state.active_run = Some(run_in_success(ServerId::Remote(0)));
-        access_server(&mut state, ServerId::Remote(0), &registry).unwrap();
+        accesses(&mut state, ServerId::Remote(0), &registry);
 
         let card_id = CardId("shock".to_string());
         let events = resolve_trash(&mut state, &card_id, &registry).expect("trash should succeed");
@@ -2698,7 +2752,7 @@ mod tests {
             game_state(Vec::new(), Vec::new(), vec![CardId("shock".to_string())], Vec::new(), 0);
         state.runner.grip = vec![CardId("card_a".to_string())];
         state.active_run = Some(run_in_success(ServerId::Archives));
-        access_server(&mut state, ServerId::Archives, &registry).unwrap();
+        accesses(&mut state, ServerId::Archives, &registry);
 
         let card_id = CardId("shock".to_string());
         let events = resolve_pass(&mut state, &card_id, &registry).expect("passing should succeed");
@@ -2731,7 +2785,7 @@ mod tests {
         );
         state.runner.grip = vec![CardId("card_a".to_string()), CardId("card_b".to_string())];
         state.active_run = Some(run_in_success(ServerId::Archives));
-        access_server(&mut state, ServerId::Archives, &registry).unwrap();
+        accesses(&mut state, ServerId::Archives, &registry);
 
         let events = resolve_select_card(&mut state, &archived("snare"), &registry)
             .expect("selecting should succeed");
@@ -2779,7 +2833,7 @@ mod tests {
         );
         state.runner.grip = vec![CardId("card_a".to_string()), CardId("card_b".to_string())];
         state.active_run = Some(run_in_success(ServerId::Archives));
-        access_server(&mut state, ServerId::Archives, &registry).unwrap();
+        accesses(&mut state, ServerId::Archives, &registry);
         resolve_select_card(&mut state, &archived("hedge_fund"), &registry)
             .expect("selecting the first card should succeed");
 
@@ -2820,7 +2874,7 @@ mod tests {
         state.runner.grip = vec![CardId("card_a".to_string()), CardId("card_b".to_string())];
         state.active_run = Some(run_in_success(ServerId::Archives));
 
-        let events = access_server(&mut state, ServerId::Archives, &registry).unwrap();
+        let events = accesses(&mut state, ServerId::Archives, &registry);
 
         assert_eq!(
             events,
@@ -2859,7 +2913,7 @@ mod tests {
         state.runner.resources.credits = Credits(5);
         state.runner.grip = vec![CardId("card_a".to_string()), CardId("card_b".to_string())];
         state.active_run = Some(run_in_success(ServerId::Archives));
-        access_server(&mut state, ServerId::Archives, &registry).unwrap();
+        accesses(&mut state, ServerId::Archives, &registry);
 
         let card_id = CardId("fetal_ai".to_string());
         let events = resolve_pay_access_trigger(&mut state, &card_id, &registry).expect("paying should succeed");
@@ -2906,7 +2960,7 @@ mod tests {
         state.runner.resources.credits = Credits(5);
         state.runner.grip = vec![CardId("card_a".to_string()), CardId("card_b".to_string())];
         state.active_run = Some(run_in_success(ServerId::Archives));
-        access_server(&mut state, ServerId::Archives, &registry).unwrap();
+        accesses(&mut state, ServerId::Archives, &registry);
 
         let card_id = CardId("fetal_ai".to_string());
         let events =
@@ -2945,7 +2999,7 @@ mod tests {
         );
         state.runner.resources.credits = Credits(2);
         state.active_run = Some(run_in_success(ServerId::Archives));
-        access_server(&mut state, ServerId::Archives, &registry).unwrap();
+        accesses(&mut state, ServerId::Archives, &registry);
 
         let card_id = CardId("fetal_ai".to_string());
         assert_eq!(
@@ -2990,7 +3044,7 @@ mod tests {
         );
         state.runner.resources.credits = Credits(5);
         state.active_run = Some(run_in_success(ServerId::Archives));
-        access_server(&mut state, ServerId::Archives, &registry).unwrap();
+        accesses(&mut state, ServerId::Archives, &registry);
 
         let wrong_card = CardId("not_pending".to_string());
         assert_eq!(
@@ -3020,7 +3074,7 @@ mod tests {
         state.runner.resources.credits = Credits(0);
         state.runner.grip = vec![CardId("card_a".to_string()), CardId("card_b".to_string())];
         state.active_run = Some(run_in_success(ServerId::Archives));
-        access_server(&mut state, ServerId::Archives, &registry).unwrap();
+        accesses(&mut state, ServerId::Archives, &registry);
 
         let card_id = CardId("fetal_ai".to_string());
         let events =
@@ -3075,7 +3129,7 @@ mod tests {
         state.phase = crate::rules::state::GamePhase::Action(Side::Runner);
         state.active_run = Some(run_in_success(ServerId::RnD));
 
-        access_server(&mut state, ServerId::RnD, &registry).unwrap();
+        accesses(&mut state, ServerId::RnD, &registry);
         let phase = &state.active_run.as_ref().unwrap().access_state.as_ref().unwrap().phase;
         assert!(
             matches!(phase, AccessPhase::PendingInteractiveTrigger { decider: Side::Corp, .. }),
@@ -3125,7 +3179,7 @@ mod tests {
         );
         state.active_run = Some(run_in_success(ServerId::Archives));
 
-        let events = access_server(&mut state, ServerId::Archives, &registry).unwrap();
+        let events = accesses(&mut state, ServerId::Archives, &registry);
 
         assert_eq!(state.runner.tags, 1, "OnAccessed still fires unconditionally for non-interactive cards");
         assert_eq!(
@@ -3183,7 +3237,7 @@ mod tests {
         );
         state.runner.resources.credits = Credits(5);
         state.active_run = Some(run_in_success(ServerId::Archives));
-        access_server(&mut state, ServerId::Archives, &registry).unwrap();
+        accesses(&mut state, ServerId::Archives, &registry);
 
         let card_id = CardId("fetal_ai".to_string());
         let events = resolve_pay_access_trigger(&mut state, &card_id, &registry).expect("paying should succeed");
@@ -3238,7 +3292,7 @@ mod tests {
         state.runner.resources.credits = Credits(0);
         state.runner.grip = vec![CardId("card_a".to_string()), CardId("card_b".to_string())];
         state.active_run = Some(run_in_success(ServerId::Archives));
-        access_server(&mut state, ServerId::Archives, &registry).unwrap();
+        accesses(&mut state, ServerId::Archives, &registry);
 
         let card_id = CardId("fetal_ai".to_string());
         // Can't afford to pay — decline, taking the damage.
@@ -3289,7 +3343,7 @@ mod tests {
         );
         state.runner.resources.credits = Credits(5);
         state.active_run = Some(run_in_success(ServerId::Archives));
-        access_server(&mut state, ServerId::Archives, &registry).unwrap();
+        accesses(&mut state, ServerId::Archives, &registry);
 
         // Pick the plain card first, then pass it — auto-advancing to the
         // second (and last) card, which carries the interactive trigger.
@@ -3333,7 +3387,7 @@ mod tests {
         );
         state.active_run = Some(run_in_success(ServerId::Hq));
 
-        let events = access_server(&mut state, ServerId::Hq, &registry).unwrap();
+        let events = accesses(&mut state, ServerId::Hq, &registry);
 
         assert_eq!(state.runner.tags, 1);
         assert!(state.corp.hq.is_empty());
@@ -3367,7 +3421,7 @@ mod tests {
         ];
         let mut state = game_state(Vec::new(), Vec::new(), Vec::new(), installed, 0);
         state.active_run = Some(run_in_success(ServerId::Remote(0)));
-        access_server(&mut state, ServerId::Remote(0), &registry).unwrap();
+        accesses(&mut state, ServerId::Remote(0), &registry);
 
         // Both offered, each as its own install.
         resolve_select_card(&mut state, &AccessCandidate::Root(InstallId(1)), &registry).unwrap();
@@ -3398,7 +3452,7 @@ mod tests {
         ];
         let mut state = game_state(Vec::new(), Vec::new(), Vec::new(), installed, 0);
         state.active_run = Some(run_in_success(ServerId::Remote(0)));
-        access_server(&mut state, ServerId::Remote(0), &registry).unwrap();
+        accesses(&mut state, ServerId::Remote(0), &registry);
 
         let events = resolve_select_card(&mut state, &AccessCandidate::Root(InstallId(1)), &registry).unwrap();
         assert!(
@@ -3418,7 +3472,7 @@ mod tests {
         let registry = CardRegistry::from_cards(vec![agenda_card("agenda", 2)]);
         let mut state = game_state(vec![agenda.clone()], Vec::new(), Vec::new(), Vec::new(), 0);
         state.active_run = Some(run_in_success(ServerId::Hq));
-        let events = access_server(&mut state, ServerId::Hq, &registry).unwrap();
+        let events = accesses(&mut state, ServerId::Hq, &registry);
         assert!(events.iter().any(|e| matches!(e, GameEvent::CardAccessed { install: None, .. })), "{events:?}");
         assert_eq!(state.active_run.as_ref().unwrap().access_state.as_ref().unwrap().pending_install, None);
         resolve_steal(&mut state, &agenda, &registry).unwrap();

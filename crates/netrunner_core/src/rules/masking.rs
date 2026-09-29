@@ -412,6 +412,17 @@ pub struct PublicRunState {
     /// real one does (Hannah "Wheels" Pilintra's tag).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub reached_success_phase: bool,
+    /// `RunState::breached`: public, as which server the Runner breaches
+    /// is. Carried so a sample standing where a breach has begun and waits
+    /// on what its beginning asked goes on to breach that server, not the
+    /// attacked one (Eru Ayase-Pessoa's run on Archives breaches R&D).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub breached: Option<ServerId>,
+    /// `RunState::encounters`: public, as every encounter is. Carried so a
+    /// sample asks S-Dobrado's "the second time you encounter a piece of
+    /// ice during that run" where the real game does.
+    #[serde(default)]
+    pub encounters: u32,
     /// `RunState::this_encounter`: public, since both players watched each
     /// break and each trash, and carried so a sample built from the view
     /// is held to Hammer's and Sorocaban Blade's limits where the real
@@ -991,6 +1002,7 @@ pub fn mask_event_for_player(event: &GameEvent, state: &GameState, viewer: impl 
         | GameEvent::IceFullyBroken { .. }
         | GameEvent::ServerApproached { .. }
         | GameEvent::RunSucceeded { .. }
+        | GameEvent::BreachBegun { .. }
         | GameEvent::RunJackedOut { .. }
         | GameEvent::RunCompleted { .. }
         | GameEvent::IceRezzed { .. }
@@ -1231,6 +1243,8 @@ fn mask_run_state(state: &GameState, registry: &CardRegistry, run: &RunState, vi
         ice_derezzed: run.ice_derezzed,
         subroutine_broken: run.subroutine_broken,
         reached_success_phase: run.reached_success_phase,
+        breached: run.breached,
+        encounters: run.encounters,
         this_encounter: run.this_encounter.clone(),
         initiated_by: run.initiated_by.clone(),
         begun_as_the_turn_began: run.begun_as_the_turn_began,

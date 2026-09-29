@@ -2169,6 +2169,8 @@ mod tests {
             ice_derezzed: false,
             subroutine_broken: false,
             reached_success_phase: false,
+            breached: None,
+            encounters: 0,
             run_credits_pay_for: None,
             this_encounter: Default::default(),
             once_per_run_used: Vec::new(),

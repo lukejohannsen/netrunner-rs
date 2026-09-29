@@ -599,6 +599,26 @@ pub struct RunState {
     /// successful is not unsuccessful either (6.8.4a).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub reached_success_phase: bool,
+    /// The server this run's breach is of, from the moment it begins
+    /// (`GameEvent::BreachBegun`, CR 6.9.5b) — the attacked server, or the
+    /// one a card said to breach instead (Eru Ayase-Pessoa's "instead of
+    /// breaching Archives, breach R&D", written by `Effect::Breach` from
+    /// the replacement). `None` until then. State and not context, because
+    /// the breach waits for what its beginning triggered ("access 1
+    /// additional card" is applied before the random access limit is set,
+    /// CR 7.3.5b), and that may be a decision of its own; it is also what
+    /// tells `run::breach` the beginning was announced. Public: both
+    /// players see which server is breached.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub breached: Option<ServerId>,
+    /// How many times the Runner has encountered ice during this run,
+    /// counting the encounter under way — S-Dobrado's "the first time"
+    /// and "the second time you encounter a piece of ice during that run"
+    /// (`Amount::EncountersThisRun`). Counted where an encounter begins,
+    /// a forced one included (CR 6.5.9a: it is an encounter). Not the turn
+    /// log's: that counts the turn, and a second run is a fresh count.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub encounters: u32,
     /// The card whose effect started this run (`Effect::InitiateRun`,
     /// `Effect::PromptChooseServer`) — `None` for a basic-action run.
     /// `EffectRequirement::RunEventActive` (Sang Kancil) asks whether it
@@ -731,6 +751,8 @@ impl Default for RunState {
             ice_derezzed: false,
             subroutine_broken: false,
             reached_success_phase: false,
+            breached: None,
+            encounters: 0,
             on_success_card: None,
             on_success_install: None,
         }

@@ -28,7 +28,7 @@
   ],
   "triggers": [
     {
-      "trigger": "OnSuccessfulRun",
+      "trigger": "OnBreach",
       "subject": "Any",
       "when": {
         "Server": [
@@ -47,7 +47,7 @@
       "text": "Whenever you breach HQ or R&D while you are tagged, access 1 additional card."
     },
     {
-      "trigger": "OnSuccessfulRun",
+      "trigger": "OnBreach",
       "subject": "Any",
       "when": {
         "Server": [

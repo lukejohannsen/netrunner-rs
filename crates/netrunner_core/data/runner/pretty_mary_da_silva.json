@@ -7,7 +7,7 @@
   "unique": true,
   "triggers": [
     {
-      "trigger": "OnSuccessfulRun",
+      "trigger": "OnBreach",
       "subject": "Any",
       "when": {
         "Server": [

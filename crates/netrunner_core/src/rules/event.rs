@@ -104,6 +104,17 @@ pub enum GameEvent {
     /// successful" trigger (ROADMAP Rules Audit T9).
     ServerApproached { server: ServerId },
     RunSucceeded { server: ServerId },
+    /// The Runner begins to breach `server` (CR 7.3.1), before any
+    /// candidate is presented and before the random access limit is set
+    /// (7.3.5b) — the moment "whenever you breach R&D" means. It is the
+    /// run's breach (6.9.5b), of the attacked server or of the one a card
+    /// said to breach instead (Eru Ayase-Pessoa's "instead of breaching
+    /// Archives, breach R&D"), or a breach with no run (Cataloguer). Not
+    /// `RunSucceeded`: a run on Archives that breaches R&D is a successful
+    /// run on Archives and a breach of R&D, and until a run could breach
+    /// another server the two were read as one — every "whenever you
+    /// breach" card heard the success.
+    BreachBegun { server: ServerId },
     RunJackedOut { server: ServerId },
     RunCompleted { server: ServerId },
     /// `install` names which copy landed, and is never masked — an install
@@ -672,6 +683,7 @@ impl GameEvent {
             | GameEvent::EncounterEnded { .. }
             | GameEvent::IceFullyBroken { .. }
             | GameEvent::ServerApproached { .. } | GameEvent::RunSucceeded { .. } | GameEvent::RunJackedOut { .. }
+            | GameEvent::BreachBegun { .. }
             | GameEvent::RunCompleted { .. } | GameEvent::CardInstalled { .. } | GameEvent::CardDerezzed { .. }
             | GameEvent::IceSwapped { .. } | GameEvent::CardMoved { .. } | GameEvent::RunInitiated { .. }
             | GameEvent::EventPlayed { .. } | GameEvent::OperationPlayed { .. } | GameEvent::HardwareInstalled { .. }

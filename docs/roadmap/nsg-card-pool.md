@@ -4461,6 +4461,100 @@ generalised in place. The Automata Initiative 49 of 65;
     move no game. The heuristic movement is `determinize` sampling the
     new cards.
 
+#### Stage 7 — a breach as a moment, and a breach of another server (28 September 2026)
+
+`feat/tai-stage-7-expendables-breach-redirect`: Slash and Burn
+Agriculture, Tree Line, Angelique Garza Correa, Eru Ayase-Pessoa, Beatriz
+Friere Gonzalez, Oppo Research, S-Dobrado and Capybara. **No new
+`Effect`.** The Automata Initiative 57 of 65; `TAI_UNIMPLEMENTED` 16 → 8.
+
+- **A breach begins as a moment of its own** (`GameEvent::BreachBegun`,
+  `Trigger::OnBreach`), before any candidate is presented.
+  - "Access 1 additional card" must be applied before the random access
+    limit is set (CR 7.3.5b), and Rotary asks the Runner first. So the
+    accesses wait: a beginning that leaves something parked or queued
+    returns with `RunState::breached` set, and `engine::resume_run` takes
+    the breach on after the answer, a breach with no run included.
+  - **A deviation corrected.** The seven "whenever you breach" cards
+    (Docklands Pass, Rotary, Manuel Lattes de Moura, "Pretty" Mary da
+    Silva, Devadatta Drone, Cupellation, Mercury: Chrome Libertador) heard
+    the *successful run* on the server. That was the same moment only
+    while every run breached the server it attacked. They hear the breach
+    now, Cataloguer's breach with no run included.
+  - Mercury's one printed ability asks which server is breached
+    (`EffectRequirement::Breaching`, the run's breach only), with "HQ or
+    R&D" said as `Not(And(Not(..), Not(..)))`, since there is no `Or`.
+- **A run's breach of another server** (Eru's "Run Archives. If
+  successful, instead of breaching Archives, breach R&D"; Beatriz's run on
+  HQ).
+  - `SetAccessReplacement { server: Archives, effect: Breach(RnD) }`:
+    `Effect::Breach` resolved as a replacement (`ResolutionContext::
+    replacing_breach`) names the server the run breaches instead. The run
+    stays a run on Archives, to its `RunCompleted`.
+  - Beatriz's "When you do, access 1 additional card" is in the same
+    replacement, ahead of the breach.
+  - Eru's "Threat 3 → Whenever you breach R&D during a run on Archives" is
+    `OnBreach` on R&D with `DuringRunOn(Archives)`.
+  - Drawn: the log says "the Runner breached R&D" when the breach is not
+    of the server the run succeeded on, and is silent otherwise.
+- **The times ice was encountered during a run** (`RunState::encounters`,
+  `Amount::EncountersThisRun`, in the view): S-Dobrado's "the first time"
+  and "the second time you encounter a piece of ice during that run",
+  heard by the run event in the play area. Capybara hears the bypass and
+  derezzes the encountered ice for the cost of removing itself.
+- **The rest composes.** The three Weyland cards are expendable (Tocsin's
+  `from_hand` and `RevealAndTrashSelf`). Tree Line is Ice Wall's
+  advanceable strength. Angelique's access is BANGUN's "while it is
+  rezzed". Oppo Research is Active Policing's play requirement and
+  `EndActionPhase`.
+- **Decks.** Every built identity already has a deck, so the cards went
+  into in-faction Sweep decks, two copies each, in place of cards other
+  decks still carry:
+  - Land Grab took the four Corp cards (Slash and Burn for its Let Them
+    Dream, at the same points). Without its Ice Wall it is Standard-legal,
+    and the pin says so.
+  - Picket Line took S-Dobrado and Capybara, Grassroots took Eru, and Safety
+    Net took Beatriz.
+- **DSL ratio (`pool_status.py`): 20 of 91 `Effect` variants single-use,
+  1 unused**, over 372 card files, from 21: `Breach` has three cards.
+- **Real play**, 96 games a seating (seed 2), Land Grab against each of
+  the three Runner decks.
+  - Random seats:
+    - Slash and Burn used from HQ 31 times, Tree Line 26.
+    - Angelique used from HQ 7 times; she asked about her meat damage on
+      184 accesses.
+    - Oppo Research played 38 times.
+    - Eru used 73 times, his threat access 16. Beatriz used 78 times.
+    - S-Dobrado played 35 times but bypassed once: a random Corp rarely
+      rezzes central ice.
+    - **Capybara was installed 30 times and never heard a bypass.** It is
+      reached by its card test alone.
+  - Heuristic seats use none of the Runner cards. The Corp scores Slash and
+    Burn and rezzes Tree Line, but never uses a card from HQ, never plays
+    Oppo Research, and installs Angelique 10 times in 288 games (Phase 5
+    debt).
+- **Measured.** Both sweeps at 256 seeds are green, the card gate
+  included.
+  - **Attribution.** An engine ref with the breach step and none of the
+    cards moved (the seven kept on `OnSuccessfulRun`) differs from
+    `origin/main` only in the new `BreachBegun` count, in all four
+    shapes: the breach step moves no game.
+  - Moving the seven cards to `OnBreach` moves the random seatings, with
+    fewer trigger-order prompts for the Runner (`ChooseTriggerToResolve`
+    301 → 297). Of 192 games: steps 73018 → 72305, Corp flatlines
+    75 → 74, Runner agenda wins 113 → 114. The heuristic seatings play the
+    same games, their counts renamed.
+  - The new cards and decks leave both random seatings identical: Sweep
+    decks are in no `matchups()`. The heuristic seatings move by
+    `determinize`, of 192 games:
+
+    | | before the cards | Stage 7 |
+    |---|---|---|
+    | Corp agenda wins | 73 | 65 |
+    | Corp flatlines | 16 | 14 |
+    | Runner agenda wins | 101 | 111 |
+    | Steps | 112883 | 110799 |
+
 ### 4. Parhelion — 63 cards (C 19 / V 26 / M 18)
 
 **Decks:** Sweep decks on its four identities. Nova Initiumia and Ampère

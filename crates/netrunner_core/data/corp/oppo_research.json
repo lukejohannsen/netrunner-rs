@@ -1,0 +1,102 @@
+{
+  "id": "oppo_research",
+  "title": "Oppo Research",
+  "side": "Corp",
+  "card_type": "Operation",
+  "cost": 2,
+  "play_requirement": {
+    "Not": {
+      "And": [
+        {
+          "Not": {
+            "AmountAtLeast": [
+              {
+                "TimesLastTurn": "OnAgendaStolen"
+              },
+              1
+            ]
+          }
+        },
+        {
+          "And": [
+            {
+              "Not": {
+                "AmountAtLeast": [
+                  {
+                    "TimesLastTurn": "OnTrashedFromAccess"
+                  },
+                  1
+                ]
+              }
+            },
+            {
+              "Not": {
+                "AmountAtLeast": [
+                  {
+                    "TimesLastTurnWhen": {
+                      "trigger": "OnCardTrashed",
+                      "when": {
+                        "OwnedBy": {
+                          "owner": "Corp",
+                          "whose": "Runner"
+                        }
+                      }
+                    }
+                  },
+                  1
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "Sequence": [
+            {
+              "GiveTags": {
+                "Fixed": 2
+              }
+            },
+            {
+              "EffectIf": {
+                "condition": {
+                  "AmountAtLeast": [
+                    "ThreatLevel",
+                    3
+                  ]
+                },
+                "effect": {
+                  "OfferPaidChoice": {
+                    "side": "Corp",
+                    "cost": {
+                      "Credits": 5
+                    },
+                    "if_paid": {
+                      "GiveTags": {
+                        "Fixed": 2
+                      }
+                    },
+                    "if_declined": {
+                      "Sequence": []
+                    },
+                    "text": "You may pay 5[credit] to give the Runner 2 tags"
+                  }
+                }
+              }
+            },
+            "EndActionPhase"
+          ]
+        }
+      ]
+    }
+  ],
+  "numeric_id": 34055,
+  "is_playable": true
+}
