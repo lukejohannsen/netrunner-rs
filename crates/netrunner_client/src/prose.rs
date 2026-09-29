@@ -417,6 +417,7 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
                 (Prohibition::SpendOrLoseCreditPool, _) => "the Runner cannot lose or spend credits from their credit pool",
                 (Prohibition::SpendCredits, _) => "the Runner cannot spend credits",
                 (Prohibition::EndTheRun, _) => "subroutines cannot end the run",
+                (Prohibition::RunOnRemote, _) => "the Runner cannot run on a remote server",
             };
             format!("{what} {}", duration(until))
         }
@@ -497,6 +498,7 @@ pub fn engine_reading(card: &CardDefinition, registry: &CardRegistry) -> Vec<Str
             Some(EventFilter::OwnedBy { owner, whose }) => when = format!("{when}, the {whose:?}'s, of a {owner:?} card"),
             Some(EventFilter::ByThis) => when = format!("{when}, by this card"),
             Some(EventFilter::Host) => when = format!("{when}, of host ice"),
+            Some(EventFilter::InRoot) => when = format!("{when}, by the Corp, in the root of a server"),
             Some(EventFilter::InstalledFromHq(true)) => when = format!("{when}, from HQ"),
             Some(EventFilter::InstalledFromHq(false)) => when = format!("{when}, from anywhere except HQ"),
             Some(EventFilter::Ice(facts)) => {
@@ -656,6 +658,8 @@ pub fn describe_continuous(effect: &ContinuousEffect) -> String {
             Prohibition::SpendOrLoseCreditPool => "cannot lose or spend credits from their credit pool",
             Prohibition::SpendCredits => "cannot spend credits",
             Prohibition::EndTheRun => "cannot end the run with a subroutine",
+            Prohibition::RunOnRemote if effect.first_each_turn => "cannot make the first run each turn on a remote server",
+            Prohibition::RunOnRemote => "cannot run on a remote server",
         }
         .to_string(),
     };

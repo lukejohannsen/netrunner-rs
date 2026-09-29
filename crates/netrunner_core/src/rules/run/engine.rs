@@ -169,6 +169,13 @@ pub fn start_run(state: &mut GameState, registry: &CardRegistry, server: ServerI
         }
     }
     check_run_may_begin(state)?;
+    // "The first run each turn cannot be made against a remote server"
+    // (Front Company), asked as the server is announced (CR 6.3.2a) —
+    // here, so a run a card's text makes is refused as the basic action's
+    // is.
+    if matches!(server, ServerId::Remote(_)) && crate::rules::continuous::cannot(state, registry, crate::dsl::Prohibition::RunOnRemote) {
+        return Err(RulesError::RunProhibited { server });
+    }
     // Every run, however it was started — see `RunnerState::servers_run_this_turn`.
     state.runner.servers_run_this_turn.push(server);
 

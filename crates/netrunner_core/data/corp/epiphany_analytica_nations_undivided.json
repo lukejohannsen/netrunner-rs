@@ -1,0 +1,99 @@
+{
+  "id": "epiphany_analytica_nations_undivided",
+  "title": "Epiphany Analytica: Nations Undivided",
+  "side": "Corp",
+  "card_type": "Identity",
+  "cost": 0,
+  "min_deck_size": 45,
+  "counter_kind": "Power",
+  "triggers": [
+    {
+      "trigger": "OnAgendaStolen",
+      "subject": "Any",
+      "first_each_turn": true,
+      "effects": [
+        {
+          "AddCounters": 1
+        }
+      ],
+      "text": "The first time each turn the Runner steals or trashes a Corp card, place 1 power counter on this identity."
+    },
+    {
+      "trigger": "OnCardTrashed",
+      "when": {
+        "OwnedBy": {
+          "owner": "Corp",
+          "whose": "Runner"
+        }
+      },
+      "subject": "Any",
+      "first_each_turn": true,
+      "effects": [
+        {
+          "AddCounters": 1
+        }
+      ],
+      "text": "The first time each turn the Runner steals or trashes a Corp card, place 1 power counter on this identity."
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "AllOf": [
+          {
+            "Clicks": 1
+          },
+          {
+            "RemoveCounters": 1
+          }
+        ]
+      },
+      "effect": {
+        "Sequence": [
+          {
+            "LookAtTopOfDeck": {
+              "deck": "Corp",
+              "count": 3
+            }
+          },
+          {
+            "PromptChooseCards": {
+              "side": "Corp",
+              "source": "OwnRAndD",
+              "filter": {
+                "All": [
+                  {
+                    "CardTypeOneOf": [
+                      {
+                        "Ice": "Barrier"
+                      },
+                      "Agenda",
+                      "Asset",
+                      "Upgrade"
+                    ]
+                  },
+                  {
+                    "TopOfZone": 3
+                  }
+                ]
+              },
+              "min": 0,
+              "max": 1,
+              "reveal": false,
+              "shuffle_after": false,
+              "then": {
+                "PromptInstallCorpCard": {
+                  "origin_zone": "OwnRAndD"
+                }
+              }
+            }
+          }
+        ]
+      },
+      "text": "[click], hosted power counter: Look at the top 3 cards of R&D. You may install 1 of those cards."
+    }
+  ],
+  "numeric_id": 34048,
+  "is_playable": true
+}

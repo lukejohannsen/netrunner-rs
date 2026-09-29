@@ -1,0 +1,64 @@
+{
+  "id": "federal_fundraising",
+  "title": "Federal Fundraising",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 0,
+  "trash_cost": 2,
+  "triggers": [
+    {
+      "trigger": "OnTurnStart",
+      "effects": [
+        {
+          "PromptChooseCards": {
+            "side": "Corp",
+            "source": "OwnRAndD",
+            "filter": {
+              "TopOfZone": 3
+            },
+            "min": 0,
+            "max": 3,
+            "reveal": false,
+            "shuffle_after": false,
+            "destination": "OwnRAndD"
+          }
+        },
+        {
+          "EffectIf": {
+            "condition": {
+              "Not": {
+                "AmountAtLeast": [
+                  "IceProtectingThisServer",
+                  1
+                ]
+              }
+            },
+            "effect": {
+              "PresentChoice": {
+                "chooser": "Corp",
+                "options": [
+                  {
+                    "DrawCards": [
+                      "Corp",
+                      1
+                    ]
+                  },
+                  {
+                    "Sequence": []
+                  }
+                ],
+                "texts": [
+                  "you may draw 1 card",
+                  ""
+                ]
+              }
+            }
+          }
+        }
+      ],
+      "text": "When your turn begins, you may look at the top 3 cards of R&D and arrange them in any order. Then, if this server is not protected by ice, you may draw 1 card."
+    }
+  ],
+  "numeric_id": 34052,
+  "is_playable": true
+}

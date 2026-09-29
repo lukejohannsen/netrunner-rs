@@ -219,7 +219,7 @@ fn convert_one(dto: NetrunnerDbCardDto) -> Result<CardDefinition, CardConversion
         trash_when_empty: false,
         may_install_agendas_faceup: false,
         installs_faceup: false,
-        rez_alternatives: Vec::new(),
+        rez_alternatives: Vec::new(), rez_requirement: None,
         continuous: Vec::new(),
         installs_on_ice: false, hosted_cards_playable_from_grip: false, hosts_facedown: false, dividends: None, playable_from_archives: false, click_breakable: false,  persistent_after_trash: false,
         is_playable: false,

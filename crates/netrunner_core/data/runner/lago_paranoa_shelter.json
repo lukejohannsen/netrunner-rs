@@ -1,0 +1,43 @@
+{
+  "id": "lago_paranoa_shelter",
+  "title": "Lago Paranoá Shelter",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 2,
+  "unique": true,
+  "triggers": [
+    {
+      "trigger": "OnInstall",
+      "when": "InRoot",
+      "subject": "Any",
+      "first_each_turn": true,
+      "effects": [
+        {
+          "OfferPaidChoice": {
+            "side": "Runner",
+            "cost": {
+              "Trash": {
+                "from": "TopOfOwnStack",
+                "filter": "Any",
+                "count": 1
+              }
+            },
+            "if_paid": {
+              "DrawCards": [
+                "Runner",
+                1
+              ]
+            },
+            "if_declined": {
+              "Sequence": []
+            },
+            "text": "you may trash the top card of your stack to draw 1 card"
+          }
+        }
+      ],
+      "text": "The first time each turn the Corp installs a card in the root of a server, you may trash the top card of your stack to draw 1 card."
+    }
+  ],
+  "numeric_id": 34009,
+  "is_playable": true
+}

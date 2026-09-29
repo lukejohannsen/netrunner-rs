@@ -131,6 +131,19 @@ pub enum RulesError {
     #[error("{side:?} attempted to spend {requested} credit(s) but only has {available}")]
     NotEnoughCredits { side: Side, available: u32, requested: u32 },
 
+    /// The card prints when it may be rezzed and this is not then — Front
+    /// Company's "Rez only during your turn" (`CardDefinition::
+    /// rez_requirement`). A card's text that would rez it rezzes nothing,
+    /// as an unaffordable rez does.
+    #[error("{card:?} cannot be rezzed now")]
+    RezRestricted { card: CardId },
+
+    /// A run on this server cannot be made now — Front Company's "The first
+    /// run each turn cannot be made against a remote server"
+    /// (`Prohibition::RunOnRemote`).
+    #[error("a run cannot be made on {server:?} now")]
+    RunProhibited { server: crate::rules::run::ServerId },
+
     #[error("{side:?} has no card {card:?} in the rig")]
     CardNotInRig { side: Side, card: CardId },
 

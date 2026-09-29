@@ -26,9 +26,9 @@
 //! rather than being listed: an unrezzed trap hears its own access, an
 //! event hears its own `OnPlay` from the play area, a stolen or forfeited
 //! agenda hears its own leaving. The one audience that is still named is
-//! `CompletedRun::persistent_trashed_upgrades`, because "this ability still
-//! applies for the remainder of this run" (AMAZE Amusements) is a card
-//! saying it outlives being active.
+//! `persistent_trashed_upgrades` (the run's, and the completed run's for
+//! its end), because "this ability still applies for the remainder of this
+//! run" (AMAZE Amusements) is a card saying it outlives being active.
 
 use crate::cards::CardRegistry;
 use crate::dsl::{CardId, EventFilter, Hears, IceFacts, Subject, Trigger, TriggeredEffect};
@@ -509,6 +509,12 @@ fn passes(state: &GameState, registry: &CardRegistry, filter: &EventFilter, mome
             state.runner.rig.iter().any(|card| card.install_id == install && (card.hosted_on_ice == Some(about) || card.hosted_on_rig_card == Some(about)))
         });
     }
+    // "The Corp installs a card in the root of a server": every Corp
+    // install but a piece of ice (CR 3.4.2).
+    if let EventFilter::InRoot = filter {
+        return moment.of == Some(Side::Corp)
+            && matches!(&moment.about, About::Card { card, .. } if registry.get(card).is_some_and(|definition| !matches!(definition.card_type, crate::dsl::CardType::Ice(_))));
+    }
     if let EventFilter::Ice(required) = filter {
         return moment.ice.is_some_and(|facts| required.admits(facts));
     }
@@ -566,7 +572,7 @@ pub(crate) fn when_admits(state: &GameState, registry: &CardRegistry, triggered:
 /// the card names another's (`EventFilter::Whose`, "when the Runner's
 /// discard phase ends"), that one's, which `passes` then checks.
 fn whose_admits(triggered: &TriggeredEffect, controller: Side, moment: &Moment) -> bool {
-    if matches!(triggered.when, Some(EventFilter::Whose(_) | EventFilter::OwnedBy { .. })) || triggered.trigger.hears() != Hears::OwnSide {
+    if matches!(triggered.when, Some(EventFilter::Whose(_) | EventFilter::OwnedBy { .. } | EventFilter::InRoot)) || triggered.trigger.hears() != Hears::OwnSide {
         return true;
     }
     moment.of.is_none_or(|side| side == controller)
@@ -660,6 +666,24 @@ fn listeners(state: &GameState, registry: &CardRegistry, moments: &[Moment]) -> 
             install: None,
             server: Some(completed.server),
             active: false,
+            in_heap: false,
+        }));
+    }
+
+    // …and while the run lasts, a persisting ability hears what it listens
+    // for as any active one does: it "never becomes inactive" (CR 9.12.5b).
+    // Tucana's "whenever an agenda is … stolen from the root of this
+    // server" is heard after the Runner trashed Tucana and then stole the
+    // agenda beside it. Its "this server" is the attacked one (the
+    // listener's `server`, and `EffectRequirement::
+    // AgendaCameFromThisCardsServer`'s fallback).
+    if let Some(run) = &state.active_run {
+        corp.extend(run.persistent_trashed_upgrades.iter().map(|card| Listener {
+            side: Side::Corp,
+            card: card.clone(),
+            install: None,
+            server: Some(run.server),
+            active: true,
             in_heap: false,
         }));
     }

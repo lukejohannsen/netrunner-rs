@@ -1,0 +1,103 @@
+{
+  "id": "ablative_barrier",
+  "title": "Ablative Barrier",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Barrier"
+  },
+  "cost": 2,
+  "strength": 1,
+  "triggers": [
+    {
+      "trigger": "OnRez",
+      "subject": "This",
+      "requirement": {
+        "And": [
+          {
+            "AmountAtLeast": [
+              "ThreatLevel",
+              3
+            ]
+          },
+          "RezzedDuringRunAgainstThisServer"
+        ]
+      },
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Corp",
+            "options": [
+              {
+                "PromptChooseCards": {
+                  "side": "Corp",
+                  "source": "OwnHq",
+                  "filter": {
+                    "CardTypeOneOf": [
+                      {
+                        "Ice": "Barrier"
+                      },
+                      "Asset",
+                      "Upgrade"
+                    ]
+                  },
+                  "min": 1,
+                  "max": 1,
+                  "reveal": false,
+                  "shuffle_after": false,
+                  "then": {
+                    "PromptInstallCorpCard": {
+                      "origin_zone": "OwnHq",
+                      "another_server": true
+                    }
+                  }
+                }
+              },
+              {
+                "PromptChooseCards": {
+                  "side": "Corp",
+                  "source": "OwnArchives",
+                  "filter": {
+                    "CardTypeOneOf": [
+                      {
+                        "Ice": "Barrier"
+                      },
+                      "Asset",
+                      "Upgrade"
+                    ]
+                  },
+                  "min": 1,
+                  "max": 1,
+                  "reveal": false,
+                  "shuffle_after": false,
+                  "then": {
+                    "PromptInstallCorpCard": {
+                      "origin_zone": "OwnArchives",
+                      "another_server": true
+                    }
+                  }
+                }
+              },
+              {
+                "Sequence": []
+              }
+            ],
+            "texts": [
+              "you may install 1 non-agenda card from HQ or Archives in the root of or protecting another server — from HQ",
+              "you may install 1 non-agenda card from HQ or Archives in the root of or protecting another server — from Archives",
+              ""
+            ]
+          }
+        }
+      ],
+      "text": "Threat 3 → When you rez this ice during a run against this server, you may install 1 non-agenda card from HQ or Archives in the root of or protecting another server."
+    }
+  ],
+  "subroutines": [
+    {
+      "text": "End the run.",
+      "effect": "EndTheRun"
+    }
+  ],
+  "numeric_id": 34034,
+  "is_playable": true
+}
