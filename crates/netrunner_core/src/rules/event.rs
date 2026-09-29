@@ -313,12 +313,16 @@ pub enum GameEvent {
     /// emptied of the credits it hosted. Hiram "0mission" Svensson hears
     /// the Runner trash a piece of hardware from any location
     /// (`Trigger::OnCardTrashed`, an occurrence only when `by` names a
-    /// player). `installed`: it was on the table when it was trashed, not
-    /// in a hand, a deck or hosted uninstalled — Boi-tatá's "if you
-    /// trashed any of your installed cards this turn", which the turn log
-    /// counts by `turn_log::Class::Card`'s `installed` and could not while
-    /// every trash was counted as one out of a hand.
-    CardTrashed { side: Side, card: CardId, installed: bool, by: Option<Side> },
+    /// player). `from`: where it was when it was trashed. Installed is
+    /// Boi-tatá's "if you trashed any of your installed cards this turn",
+    /// which the turn log counts by `turn_log::Class::Card`'s `installed`
+    /// and could not while every trash was counted as one out of a hand;
+    /// the pile is Strike Fund's "trashed from your grip or stack"
+    /// (`EventFilter::TrashedFrom`). A card trashed by damage is one out of
+    /// the grip, by the player responsible for the damage (CR 10.4.2a), and
+    /// not a discard: "a trashed card is not considered to have been
+    /// discarded, and vice versa" (CR 1.19.3).
+    CardTrashed { side: Side, card: CardId, from: crate::dsl::TrashedFrom, by: Option<Side> },
     /// A card left play permanently, bypassing the discard pile — Spin
     /// Doctor's `Cost::RemoveSelfFromGame`. Distinct from `CardTrashed`
     /// so a listener can tell "in Archives" from "gone".

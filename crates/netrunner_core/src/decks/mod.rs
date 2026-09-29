@@ -441,6 +441,9 @@ mod tests {
             // on Paid Content's frame. Without Making News and Neurospike
             // it holds no Core Set card, so it is Standard too.
             ("grand_opening", &not_startup),
+            // The Automata Initiative Stage 6: Mercury's deck, on Stolen
+            // Goods' frame, which holds no Core Set card, so it is Standard.
+            ("picket_line", &not_startup),
             // Rebellion Without Rehearsal Stage 8b: Thunderbolt Armaments'
             // deck, on Retirement Package's frame: without Engineering the
             // Future it holds no Core Set card, so it is Standard too.

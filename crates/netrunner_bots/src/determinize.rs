@@ -598,6 +598,7 @@ fn determinize_run(
         // (A barred steal/trash is on `lingering`, carried below.)
         bad_publicity_credits: run.bad_publicity_credits,
         bonus_run_credits: run.bonus_run_credits,
+        run_credits_pay_for: run.run_credits_pay_for.clone(),
         redirect_on_approach: run.redirect_on_approach,
         // Not in the view: a run's end rider and whether a subroutine
         // resolved are known to the seat that set them, not carried. The
@@ -623,6 +624,11 @@ fn determinize_run(
         fully_broken: run.fully_broken,
         // Public, and what Stegodon MK IV's -2 reads.
         ice_derezzed: run.ice_derezzed,
+        // Public, and what Mercury: Chrome Libertador's "if you did not
+        // break any subroutines" reads.
+        subroutine_broken: run.subroutine_broken,
+        // Public, and what makes the run's end unsuccessful or not.
+        reached_success_phase: run.reached_success_phase,
         this_encounter: run.this_encounter.clone(),
         once_per_run_used: run.once_per_run_used.iter().cloned().collect(),
         additional_rd_access: 0,

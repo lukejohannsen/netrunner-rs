@@ -1,0 +1,63 @@
+{
+  "id": "debbie_downtown_moreira",
+  "title": "Debbie \"Downtown\" Moreira",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 1,
+  "unique": true,
+  "counter_kind": "Credit",
+  "pays_for": [
+    "DuringItsRun"
+  ],
+  "triggers": [
+    {
+      "trigger": "OnInstall",
+      "subject": "This",
+      "requirement": {
+        "AmountAtLeast": [
+          "ThreatLevel",
+          4
+        ]
+      },
+      "effects": [
+        {
+          "AddCounters": 2
+        }
+      ],
+      "text": "Threat 4 → When you install this resource, place 2[credit] on it."
+    },
+    {
+      "trigger": "OnCardPlayed",
+      "subject": "Any",
+      "when": {
+        "Card": {
+          "HasSubtype": "Run"
+        }
+      },
+      "effects": [
+        {
+          "AddCounters": 1
+        }
+      ],
+      "text": "Whenever you play a run event, place 1[credit] on this resource."
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "Clicks": 1
+      },
+      "effect": {
+        "PromptChooseServer": {
+          "chooser": "Runner",
+          "rez_cost_delta": 0,
+          "bonus_run_credits": 0
+        }
+      },
+      "text": "[click]: Run any server. You can spend hosted credits during that run."
+    }
+  ],
+  "numeric_id": 34019,
+  "is_playable": true
+}

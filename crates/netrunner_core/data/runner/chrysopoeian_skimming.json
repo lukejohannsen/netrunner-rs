@@ -1,0 +1,101 @@
+{
+  "id": "chrysopoeian_skimming",
+  "title": "Chrysopoeian Skimming",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 1,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Corp",
+            "options": [
+              {
+                "Sequence": [
+                  {
+                    "EffectIf": {
+                      "condition": {
+                        "ZoneHasAtLeast": {
+                          "zone": "OpponentHand",
+                          "count": 1,
+                          "filter": {
+                            "CardType": "Agenda"
+                          }
+                        }
+                      },
+                      "effect": {
+                        "PromptChooseCards": {
+                          "side": "Corp",
+                          "source": "OwnHq",
+                          "filter": {
+                            "CardType": "Agenda"
+                          },
+                          "min": 1,
+                          "max": 1,
+                          "reveal": true,
+                          "shuffle_after": false,
+                          "then": {
+                            "Sequence": [
+                              {
+                                "GainClicks": [
+                                  "Runner",
+                                  1
+                                ]
+                              },
+                              {
+                                "DrawCards": [
+                                  "Runner",
+                                  1
+                                ]
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "EffectIf": {
+                      "condition": {
+                        "Not": {
+                          "ZoneHasAtLeast": {
+                            "zone": "OpponentHand",
+                            "count": 1,
+                            "filter": {
+                              "CardType": "Agenda"
+                            }
+                          }
+                        }
+                      },
+                      "effect": {
+                        "LookAtTopOfDeck": {
+                          "deck": "Corp",
+                          "count": 3
+                        }
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "LookAtTopOfDeck": {
+                  "deck": "Corp",
+                  "count": 3
+                }
+              }
+            ],
+            "texts": [
+              "The Corp may reveal an agenda from HQ. If they do, gain [click] and draw 1 card.",
+              "Otherwise, look at the top 3 cards of R&D."
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "numeric_id": 34011,
+  "is_playable": true
+}

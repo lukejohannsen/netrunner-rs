@@ -404,6 +404,10 @@ fn covers(word: &PaysFor, purpose: Purpose<'_>, host: Option<InstallId>, state: 
         (PaysFor::UsingIcebreakers, Purpose::Ability(card)) => card_matches_filter(card, &crate::dsl::CardFilter::Icebreaker),
         (PaysFor::RemovingTags, Purpose::RemoveTag) => true,
         (PaysFor::DuringRuns, _) => state.active_run.is_some(),
+        (PaysFor::DuringItsRun, _) => {
+            let hosting = host.and_then(|host| state.find_rig_install(host)).map(|card| &card.card);
+            hosting.is_some_and(|card| state.active_run.as_ref().is_some_and(|run| run.initiated_by.as_ref() == Some(card)))
+        }
         (PaysFor::Installing(filter), Purpose::Install(card)) => card_matches_filter(card, filter),
         (PaysFor::RezzingInThisServer, Purpose::Rez(rezzing)) => {
             let installed = |id: InstallId| state.corp.installed.iter().find(|c| c.install_id == id);
@@ -488,7 +492,10 @@ pub(crate) fn sources(
         if from.is_none() {
             push(Pool::BadPublicity, run.bad_publicity_credits);
         }
-        if admits(run.initiated_by.as_ref()) {
+        // What the run's event says its credits pay for, when it says
+        // (Bahia Bands' "to pay trash costs"); anything otherwise.
+        let run_credits_pay = run.run_credits_pay_for.as_ref().is_none_or(|word| covers(word, purpose, None, state, registry));
+        if admits(run.initiated_by.as_ref()) && run_credits_pay {
             push(Pool::Run, run.bonus_run_credits);
         }
     }
@@ -603,7 +610,7 @@ fn class_of(state: &GameState, registry: &CardRegistry, side: Side, pool: Pool) 
         // pool is only ever classed for a payment it covers — so during a
         // run it is as broad as the credit pool, and Cyberfeeder's credit
         // goes before Methuselah's unasked, as it would before the pool's.
-        let during_a_run = state.active_run.is_some() && words.contains(&PaysFor::DuringRuns);
+        let during_a_run = state.active_run.is_some() && (words.contains(&PaysFor::DuringRuns) || words.contains(&PaysFor::DuringItsRun));
         Class {
             breadth: if during_a_run { Breadth::Anything } else { Breadth::Words(words) },
             life: if definition.is_some_and(|d| d.recurring_credits.is_some()) { Life::Turn } else { Life::Kept },
@@ -615,7 +622,14 @@ fn class_of(state: &GameState, registry: &CardRegistry, side: Side, pool: Pool) 
             Side::Runner => state.runner.rig.iter().find(|c| c.install_id == install).map(|c| &c.card),
         }),
         Pool::Identity => of_card(state.corp.identity.as_ref()),
-        Pool::BadPublicity | Pool::Run => Class { breadth: Breadth::Anything, life: Life::Run },
+        Pool::Run => Class {
+            breadth: match state.active_run.as_ref().and_then(|run| run.run_credits_pay_for.clone()) {
+                Some(word) => Breadth::Words(vec![word]),
+                None => Breadth::Anything,
+            },
+            life: Life::Run,
+        },
+        Pool::BadPublicity => Class { breadth: Breadth::Anything, life: Life::Run },
         Pool::Wallet => Class { breadth: Breadth::Anything, life: Life::Kept },
     }
 }

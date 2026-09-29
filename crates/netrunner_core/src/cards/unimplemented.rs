@@ -23,19 +23,12 @@ pub(crate) const RWR_UNIMPLEMENTED: &[(u32, &str)] = &[];
 
 /// *The Automata Initiative* (`tai`): tranche 3 of the NSG plan.
 pub(crate) const TAI_UNIMPLEMENTED: &[(u32, &str)] = &[
-    (34001, "Strike Fund"),
-    (34002, "The Price"),
     (34007, "Eru Ayase-Pessoa"),
-    (34008, "Hannah \"Wheels\" Pilintra"),
-    (34010, "Mercury: Chrome Libertador"),
-    (34011, "Chrysopoeian Skimming"),
     (34012, "S-Dobrado"),
     (34013, "Capybara"),
-    (34019, "Debbie \"Downtown\" Moreira"),
     (34020, "Arissana Rocha Nahu: Street Artist"),
     (34022, "AirbladeX (JSRF Ed.)"),
     (34028, "Beatriz Friere Gonzalez"),
-    (34030, "Bahia Bands"),
     (34033, "Wage Workers"),
     (34039, "A Teia: IP Recovery"),
     (34046, "Adrian Seis"),

@@ -612,6 +612,40 @@ pub enum EventFilter {
     /// trigger about its controller hears the controller's installs, which
     /// for a Runner card are the Runner's.
     InRoot,
+    /// The card was trashed from one of these places — Strike Fund's
+    /// "When this event is trashed **from your grip or stack**". Read off
+    /// the moment, which the event states (`GameEvent::CardTrashed::from`),
+    /// since the card is in its owner's discard pile by the time anything
+    /// hears it. Only on `OnCardTrashed`. Composition didn't work: the
+    /// event said only whether the card had been installed, and a card in
+    /// a hand and one on top of a deck were the same trash.
+    TrashedFrom(Vec<TrashedFrom>),
+}
+
+/// Where a card was when it was trashed (`GameEvent::CardTrashed::from`).
+/// It replaced a flag saying only whether the card was installed, which
+/// Boi-tatá's "your installed cards" still reads (`installed`); Strike
+/// Fund's "from your grip or stack" is the first card to ask which pile.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum TrashedFrom {
+    /// On the table: in a server, in the rig, or hosted there as an
+    /// install.
+    Installed,
+    /// A player's hand — HQ or the grip.
+    Hand,
+    /// A player's deck — R&D or the stack.
+    Deck,
+    /// Anywhere else: hosted on a card without being installed, set aside,
+    /// or a card being accessed that was in none of the above.
+    Elsewhere,
+}
+
+impl TrashedFrom {
+    /// Whether the card was on the table (CR 8.5) — the one fact the event
+    /// carried before it said which pile.
+    pub fn installed(self) -> bool {
+        self == TrashedFrom::Installed
+    }
 }
 
 impl Trigger {

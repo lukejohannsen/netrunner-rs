@@ -881,6 +881,12 @@ pub enum PaysFor {
     /// (`payment::class_of`), and a narrower pool (Cyberfeeder's) is spent
     /// before it unasked.
     DuringRuns,
+    /// Anything, during a run this card's own ability began — Debbie
+    /// "Downtown" Moreira's "[click]: Run any server. You can spend hosted
+    /// credits during that run". `DuringRuns` is every run, and the card's
+    /// run is the one whose `RunState::initiated_by` it is. As broad as
+    /// the credit pool during that run, as `DuringRuns` is during any.
+    DuringItsRun,
 }
 
 /// Semantic checks `serde`'s structural `Deserialize` can't express on its
@@ -1125,6 +1131,8 @@ impl CardDefinition {
                 Some(EventFilter::InstalledFromHq(_)) => triggered.trigger == Trigger::OnInstall && self.side == crate::rules::Side::Corp,
                 // Only an install is in a root or not.
                 Some(EventFilter::InRoot) => triggered.trigger == Trigger::OnInstall,
+                // Only a trash says which pile the card left.
+                Some(EventFilter::TrashedFrom(_)) => triggered.trigger == Trigger::OnCardTrashed,
                 // Only what the moment states: a pass says whether the ice
                 // was outermost and fully broken, a break its strength.
                 Some(EventFilter::Ice(required)) => {

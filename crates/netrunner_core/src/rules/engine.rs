@@ -1252,6 +1252,10 @@ fn complete_run(
     let server = active_run.server;
 
     let mut next = state.clone();
+    // The success phase is reached, whatever is declared (CR 6.8.4a).
+    if let Some(run) = next.active_run.as_mut() {
+        run.reached_success_phase = true;
+    }
     // This is the Runner committing past the approach-server step, and it
     // is the moment the run becomes *successful*: `RunSucceeded` fires
     // here — Jailbreak's rider, Docklands Pass, every "when your run is
@@ -2354,7 +2358,7 @@ fn activate_ability(
     // checkpoint): only a rig card hosts cards, and only its owner's.
     for card in std::mem::take(&mut effect_ctx.set_aside) {
         next.runner.heap.push(card.clone());
-        events.push(GameEvent::CardTrashed { side: Side::Runner, card, installed: false, by: None });
+        events.push(GameEvent::CardTrashed { side: Side::Runner, card, from: crate::dsl::TrashedFrom::Elsewhere, by: None });
     }
     events.extend(ability::dispatch_cost_events(&mut next, registry, &cost_events)?);
     // `check_requirement` above only reads — without this, a `Paid`
@@ -2718,7 +2722,7 @@ fn trash_resource(
     let removed = next.runner.rig.remove(position);
     next.runner.heap.push(removed.card.clone());
     // The Corp's own basic action: it carries the trash out.
-    dispatcher::emit(&mut next, registry, &mut events, GameEvent::CardTrashed { side: Side::Runner, card: card_id, installed: true, by: Some(Side::Corp) })?;
+    dispatcher::emit(&mut next, registry, &mut events, GameEvent::CardTrashed { side: Side::Runner, card: card_id, from: crate::dsl::TrashedFrom::Installed, by: Some(Side::Corp) })?;
     events.extend(ability::cascade_trash_hosted_on_rig_card(&mut next, registry, &removed));
     events.extend(ability::dispatch_cost_events(&mut next, registry, &cost_events)?);
 
@@ -4249,6 +4253,7 @@ mod tests {
             next.active_run,
             Some(RunState {
                 declared_successful: true,
+                reached_success_phase: true,
                 cards_accessed_count: 1,
                 access_state: Some(run::AccessState { pending_install: None, pending_install_rezzed: false,
                     // Set when the card was presented, and left in place
@@ -5339,7 +5344,7 @@ mod tests {
         assert_eq!(
             events,
             vec![
-                GameEvent::CardTrashed { side: Side::Runner, card: card_id.clone(), installed: true, by: Some(Side::Runner) },
+                GameEvent::CardTrashed { side: Side::Runner, card: card_id.clone(), from: crate::dsl::TrashedFrom::Installed, by: Some(Side::Runner) },
                 GameEvent::AbilityActivated { side: Side::Runner, card_id: card_id.clone(), ability_index: 0, install: Some(install_of(&state, &card_id.0)), action: false },
                 GameEvent::CreditsGained { side: Side::Runner, amount: 5 },
                 GameEvent::AbilityGainedCredits { side: Side::Runner, card: card_id },
@@ -6779,7 +6784,7 @@ mod tests {
             vec![
                 GameEvent::ClickSpent { side: Side::Corp },
                 GameEvent::CreditsSpent { side: Side::Corp, amount: 2 },
-                GameEvent::CardTrashed { side: Side::Runner, card: card_id, installed: true, by: Some(Side::Corp) },
+                GameEvent::CardTrashed { side: Side::Runner, card: card_id, from: crate::dsl::TrashedFrom::Installed, by: Some(Side::Corp) },
             ]
         );
     }

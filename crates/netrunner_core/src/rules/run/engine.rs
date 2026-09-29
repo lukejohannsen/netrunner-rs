@@ -193,7 +193,7 @@ pub fn start_run(state: &mut GameState, registry: &CardRegistry, server: ServerI
         .flatten()
         .collect();
 
-    state.active_run = Some(RunState { gained_for_the_run: Vec::new(), agendas_stolen_this_run: 0, once_per_run_used: Default::default(), persistent_trashed_upgrades: Vec::new(), redirect_on_approach: None, on_end_effect: None, on_end_card: None, on_end_install: None, subroutine_resolved: false, ice_derezzed: false, initiated_by: None, ice_bypassed: false, fully_broken: false, this_encounter: Default::default(),
+    state.active_run = Some(RunState { gained_for_the_run: Vec::new(), agendas_stolen_this_run: 0, once_per_run_used: Default::default(), persistent_trashed_upgrades: Vec::new(), redirect_on_approach: None, on_end_effect: None, on_end_card: None, on_end_install: None, subroutine_resolved: false, ice_derezzed: false, subroutine_broken: false, reached_success_phase: false, initiated_by: None, ice_bypassed: false, fully_broken: false, this_encounter: Default::default(),
         on_success_effect: None,
         on_success_card: None,
         on_success_install: None,
@@ -216,7 +216,7 @@ pub fn start_run(state: &mut GameState, registry: &CardRegistry, server: ServerI
         breach_only: false,
         forced_encounter: false,
         event_counters: 0,
-        cards_accessed_count: 0, bonus_run_credits: 0,
+        cards_accessed_count: 0, bonus_run_credits: 0, run_credits_pay_for: None,
         begun_as_the_turn_began,
     });
     Ok(())
@@ -1053,6 +1053,7 @@ pub(crate) fn break_subroutine(state: &mut GameState, registry: &CardRegistry, i
         .map(|definition| definition.subtypes.clone())
         .unwrap_or_default();
     let run = state.active_run.as_mut().expect("transition_subroutine found the run");
+    run.subroutine_broken = true;
     run.this_encounter.broken_by = run.this_encounter.broken_by.and(by);
     let printed = run.ice.get(run.position).and_then(|ice| ice.subroutines.get(index)).is_some_and(|subroutine| !subroutine.gained);
     if printed {
@@ -1090,7 +1091,14 @@ pub(crate) fn end_run(state: &mut GameState) -> Option<RunState> {
     // A breach with no run leaves the last run the last run: Cataloguer's
     // breach is no "run on R&D" for anything that asks about the last.
     if let Some(run) = run.as_ref().filter(|run| !run.breach_only) {
-        state.last_completed_run = Some(CompletedRun::snapshot(run));
+        let mut completed = CompletedRun::snapshot(run);
+        // CR 6.8.4b: a run whose remote has ceased to exist is neither.
+        let server_exists = match run.server {
+            ServerId::Remote(_) => state.corp.installed.iter().any(|card| card.server == run.server),
+            _ => true,
+        };
+        completed.unsuccessful = !run.reached_success_phase && server_exists;
+        state.last_completed_run = Some(completed);
     }
     // Back to the turn's start for a run begun there (`start_run`), with its
     // window, unless the run ended the game.

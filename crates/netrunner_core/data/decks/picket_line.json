@@ -1,0 +1,95 @@
+{
+  "id": "picket_line",
+  "name": "Picket Line",
+  "side": "Runner",
+  "category": "Sweep",
+  "description": "Not a published list: built so the sweeps reach Mercury: Chrome Libertador, The Automata Initiative's Criminal identity (Stage 6), on Stolen Goods' frame of run events and HQ pressure. Debbie “Downtown” Moreira banks a credit for every Jailbreak, Overclock, Tread Lightly and Bahia Bands and spends them on her own runs; Chrysopoeian Skimming asks the Corp for an agenda; Hannah “Wheels” Pilintra, Strike Fund and The Price on influence, The Price trashing Strike Funds off the stack for their 2[credit]. Standard, Eternal and Casual: no card in it is from the Core Set.",
+  "style": "aggressive",
+  "identity": "mercury_chrome_libertador",
+  "cards": [
+    {
+      "card": "jailbreak",
+      "count": 3
+    },
+    {
+      "card": "overclock",
+      "count": 3
+    },
+    {
+      "card": "sure_gamble",
+      "count": 3
+    },
+    {
+      "card": "tread_lightly",
+      "count": 2
+    },
+    {
+      "card": "bahia_bands",
+      "count": 3
+    },
+    {
+      "card": "chrysopoeian_skimming",
+      "count": 3
+    },
+    {
+      "card": "strike_fund",
+      "count": 2
+    },
+    {
+      "card": "the_price",
+      "count": 2
+    },
+    {
+      "card": "mutual_favor",
+      "count": 2
+    },
+    {
+      "card": "docklands_pass",
+      "count": 2
+    },
+    {
+      "card": "pennyshaver",
+      "count": 2
+    },
+    {
+      "card": "t400_memory_diamond",
+      "count": 1
+    },
+    {
+      "card": "red_team",
+      "count": 2
+    },
+    {
+      "card": "smartware_distributor",
+      "count": 2
+    },
+    {
+      "card": "verbal_plasticity",
+      "count": 2
+    },
+    {
+      "card": "debbie_downtown_moreira",
+      "count": 2
+    },
+    {
+      "card": "hannah_wheels_pilintra",
+      "count": 1
+    },
+    {
+      "card": "carmen",
+      "count": 2
+    },
+    {
+      "card": "marjanah",
+      "count": 2
+    },
+    {
+      "card": "buzzsaw",
+      "count": 2
+    },
+    {
+      "card": "leech",
+      "count": 2
+    }
+  ]
+}

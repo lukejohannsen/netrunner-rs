@@ -11,10 +11,10 @@ use crate::rules::state::{GameState, Side};
 /// so it's handled inline here rather than via `win::check_win_conditions`.
 /// The remaining grip is discarded to the heap, `phase` transitions
 /// straight to `GamePhase::GameOver(Side::Corp)`, and only `RunnerFlatlined`
-/// and `GameOver` are emitted (no `DamageTaken`/`CardDiscarded` — the Runner
+/// and `GameOver` are emitted (no `DamageTaken`/`CardTrashed` — the Runner
 /// never actually "takes" damage they didn't survive).
 ///
-/// Otherwise, `amount` cards are discarded from the grip at pseudo-random
+/// Otherwise, `amount` cards are trashed from the grip at pseudo-random
 /// indices via `GameState::next_u64` (mirroring `run::access_server`'s HQ
 /// access roll — see its doc comment), one roll per card against the
 /// shrinking grip. Brain damage additionally permanently increments
@@ -32,8 +32,17 @@ use crate::rules::state::{GameState, Side};
 /// and could be read stale.
 ///
 /// Returned explicitly rather than re-derived from the events: the
-/// flatline path empties the grip without emitting a `CardDiscarded` per
+/// flatline path empties the grip without emitting a `CardTrashed` per
 /// card, so the event stream alone would under-report it.
+///
+/// Each card is *trashed* by the player responsible (CR 10.4.2a: "the
+/// player responsible for the damage trashes 1 randomly-chosen card from
+/// the grip"), a `CardTrashed` out of the hand, and not discarded — a
+/// trashed card is not a discarded one (CR 1.19.3). It was recorded as a
+/// `CardDiscarded`, an occurrence of nothing, so no card could hear a card
+/// that damage took: Strike Fund's "when this event is trashed from your
+/// grip" is the first to. The caller dispatches them with the damage
+/// (`ability::dispatch_damage_taken`, or a cost's payer).
 ///
 /// `responsible` is who did the damage (CR 10.4.1), carried on the
 /// `DamageTaken` it records — see that event.
@@ -65,7 +74,7 @@ pub fn apply_damage(
         let card = state.runner.grip.remove(index);
         state.runner.heap.push(card.clone());
         discarded.push(card.clone());
-        events.push(GameEvent::CardDiscarded { side: Side::Runner, card });
+        events.push(GameEvent::CardTrashed { side: Side::Runner, card, from: crate::dsl::TrashedFrom::Hand, by: responsible });
     }
     (events, discarded)
 }
@@ -152,7 +161,7 @@ mod tests {
         assert_eq!(events[0], GameEvent::DamageTaken { damage_type: DamageType::Net, amount: 2, responsible: Some(Side::Corp) });
         assert_eq!(events.len(), 3);
         for (event, card) in events[1..].iter().zip(state.runner.heap.iter()) {
-            assert_eq!(event, &GameEvent::CardDiscarded { side: Side::Runner, card: card.clone() });
+            assert_eq!(event, &GameEvent::CardTrashed { side: Side::Runner, card: card.clone(), from: crate::dsl::TrashedFrom::Hand, by: Some(Side::Corp) });
         }
     }
 

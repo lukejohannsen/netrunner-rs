@@ -1,0 +1,78 @@
+{
+  "id": "hannah_wheels_pilintra",
+  "title": "Hannah \"Wheels\" Pilintra",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 2,
+  "unique": true,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "Clicks": 1
+      },
+      "requirement": "OncePerTurn",
+      "effect": {
+        "Sequence": [
+          {
+            "GainClicks": [
+              "Runner",
+              1
+            ]
+          },
+          {
+            "PromptChooseServer": {
+              "chooser": "Runner",
+              "rez_cost_delta": 0,
+              "bonus_run_credits": 0,
+              "only_in": "Remote",
+              "on_start": {
+                "SetRunEndedEffect": {
+                  "EffectIf": {
+                    "condition": "LastRunUnsuccessful",
+                    "effect": {
+                      "GiveTags": {
+                        "Fixed": 1
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        ]
+      },
+      "text": "Once per turn → [click]: Gain [click]. Run a remote server. When that run ends, if it was unsuccessful, take 1 tag."
+    },
+    {
+      "trigger": "Paid",
+      "cost": {
+        "AllOf": [
+          {
+            "Clicks": 1
+          },
+          "TrashSelf"
+        ]
+      },
+      "effect": {
+        "Sequence": [
+          {
+            "GainClicks": [
+              "Runner",
+              2
+            ]
+          },
+          {
+            "RemoveTags": {
+              "Fixed": 1
+            }
+          }
+        ]
+      },
+      "text": "[click], [trash]: Gain [click][click]. Remove 1 tag."
+    }
+  ],
+  "numeric_id": 34008,
+  "is_playable": true
+}

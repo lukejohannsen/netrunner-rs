@@ -170,9 +170,12 @@ fn every_field_of_the_view_is_accounted_for(view: ClientView) {
         forced_encounter: _,     // drawn: board::phase ("Encounter ice 1 of 2 again"), the terminal's run strip ("encountering it again")
         bad_publicity_credits: _, // drawn: hud::readouts, beside the Runner's credits
         bonus_run_credits: _,    // drawn: hud::readouts, beside the Runner's credits
+        run_credits_pay_for: _,  // drawn: hud::in_effect ("This run: the 4 [credit] on Bahia Bands may be spent only to pay trash costs"), both clients
         redirect_on_approach: _, // drawn: hud::in_effect ("This run: … the attacked server becomes HQ instead")
         fully_broken: _,         // drawn: every subroutine's broken mark on the encountered ice says it (board::facts)
         ice_derezzed: _,         // drawn: hud::in_effect ("This run: a piece of ice has been derezzed"), both clients; Stegodon MK IV's −2 it turns on is in every icebreaker's strength
+        subroutine_broken: _,    // engine's: each break is a line of the log and a mark on the ice, and Mercury: Chrome Libertador's bonus access, which it turns off, is an offer the person sees or does not
+        reached_success_phase: _, // engine's: whether the run got to the server, which the run's trail and log already draw; Hannah "Wheels" Pilintra's tag it decides is a log line
         this_encounter: _,       // engine's: a limit the action list and board::breaks already honour, as once_per_run_used; and which kinds of breaker broke the printed subroutines (Virtual Service Agent), each break already a line of the log; and the once-per-encounter abilities used (Slap Vandal), a limit the action list honours
         once_per_run_used: _,    // engine's: a use limit the action list and board::breaks already honour, as once_per_turn_used
         initiated_by: _,         // drawn: names the run's event on the ability it has for the run, actions::describe (both clients' buttons)

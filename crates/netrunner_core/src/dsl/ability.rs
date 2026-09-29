@@ -205,6 +205,13 @@ pub enum EffectRequirement {
     /// any agendas during that run". Pairs with `Trigger::OnRunEnded`,
     /// which is the only point at which that snapshot is populated.
     StoleAgendaDuringLastRun,
+    /// The most recently concluded run was unsuccessful
+    /// (`state::CompletedRun::unsuccessful`, CR 6.8.4) — Hannah "Wheels"
+    /// Pilintra's "When that run ends, if it was unsuccessful, take 1 tag",
+    /// asked by the run's end effect (`Effect::SetRunEndedEffect`).
+    /// Composition didn't work: nothing said whether a run had failed, and
+    /// "not successful" is not it (a run Crisium Grid stops is neither).
+    LastRunUnsuccessful,
     /// At least one card in the Corp's Archives is facedown
     /// (`state::ArchivedCard::facedown`) — e.g. Jinteki: Restoring
     /// Humanity's "if there is a facedown card in Archives".
@@ -274,6 +281,12 @@ pub enum EffectRequirement {
     /// work: the turn log counts derezzes by the turn, and "during that run"
     /// is the run's own.
     IceDerezzedThisRun,
+    /// A subroutine has been broken during the active run
+    /// (`RunState::subroutine_broken`) — Mercury: Chrome Libertador's "if
+    /// you did not break any subroutines during that run", under a `Not`.
+    /// Composition didn't work: `SubroutineResolvedThisRun` is the other
+    /// fate of a subroutine, and the turn log counts breaks by the turn.
+    SubroutineBrokenThisRun,
     /// The Runner has no unused memory (`memory::available_memory == 0`)
     /// — Dewi Subrotoputri's "if your [mu] is full"; "at least 1 unused
     /// [mu]" is `Not(MemoryFull)`.

@@ -17,7 +17,7 @@ mod listeners;
 mod masking;
 pub mod memory;
 mod paid_ability;
-mod payment;
+pub(crate) mod payment;
 pub(crate) mod pending_choice;
 mod run;
 mod setup;
