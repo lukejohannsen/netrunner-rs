@@ -1,7 +1,7 @@
 //! Getting through a piece of ICE with one press: every way the Runner's
 //! cards can break *all* of the encountered ICE's subroutines, each with
 //! what it costs, and the one-step-at-a-time driver that carries a chosen
-//! route out (ROADMAP Phase 7 §5.2, borrowed from jinteki.net).
+//! route out (ROADMAP Phase 7 §8 item 2, borrowed from jinteki.net).
 //!
 //! **A route is found by playing it, not by pricing it.** The obvious
 //! planner reads each breaker's JSON — pump cost over pump amount, break

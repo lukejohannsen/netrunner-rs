@@ -1,0 +1,731 @@
+# Phase 2 §5c — the training loop, items 1–42
+
+Moved verbatim from [`docs/roadmap/phase-2-bots-and-training.md`](../phase-2-bots-and-training.md) on 29 September 2026, and added to by every entry that closes since; the live file keeps one sentence per item. Headings are the originals, so an address a code comment cites resolves here.
+
+### 5c. The training loop, chronologically — OPEN
+
+1. **Retrain on the new evaluator** (`feat/puct-onnx-seat-and-retrain`): six ungated iterations collapsed to "the Runner wins" (86–6 by iteration 2), and the trained network was worse than uniform search on both sides. New `puct-onnx` bot kind. Needed: promotion gating, a per-game validation split, then volume.
+2. **Arena gating and the per-game split** (`feat/arena-promotion-gating`): verdicts 0.24–0.42, all refused; self-play stayed balanced. The honest validation loss was 4.3–5.1 against 2.2 under the step split — the network memorised games.
+3. **Volume** (`feat/selfplay-volume`): un-promoted iterations had replayed the *same* games (seed = index; now `--seed-offset`, the seed is recorded and duplicates are refused); trajectories were 97–99% zeros as text (now sparse `[index, value]` pairs, 190 MB → 11 MB per 96 games); `--window N`. **Scaling on a 2,400-game corpus:** policy loss over the entropy floor 1.66 → 1.39 → 1.18 → 1.06 nats at 96 / 288 / 960 / 2,400 games; **the value head never beat predicting zero** (MSE 1.04–1.30 against 1.00). ONNX thread pinning measured 33s → 41s and was reverted; the ~2 ms per evaluation is per-call overhead.
+4. **First 2,400-game run, stopped after five iterations**: refused at 0.27–0.43; **14–23 of 48 arena games were draws** — `MAX_STEPS`, each worth half a point. Checkpoints and logs under `data/runs/uniform_volume_v1/`; the corpus is deleted.
+5. **A cycle break in `select_action`** (`fix/puct-select-cycle-break`): `netrunner_bots::pick_action` strikes the repeated action and samples the rest by visits. Arena draws 14 → 2, score 0.271 → 0.208 (the honest verdict). `PuctSearchStats::root_value` added; `MctsAgent` got the same fix, defensively.
+6. **Value target and weight** (same branch): `--value-target-mix λ` (outcome vs `search_value`), `--value-loss-weight w`. Grid on 960 games:
+
+   | λ | w | MSE vs outcome (predict-zero 1.00) | sign accuracy |
+   |---|---|---|---|
+   | 0 | 1.0 | 1.167 | 64.7% |
+   | **0.5** | **0.25** | **0.896** | **66.1%** |
+   | 1.0 | 1.0 | 1.140 | 46.3% |
+
+   Defaults λ 0.5, w 0.25. **Neither search negated at opponent nodes — fixed** (`select_edge`/`uct` flip the exploitation sign where the opponent decides); it changed little at these budgets. **The root value tracks the point margin (r = 0.92), but the margin predicts the outcome only 45–47% of the time**: about 40% of games end by flatline or deck-out, which the margin does not see. No value target teaches the head much until self-play positions decide games. In the arena the two trainers were indistinguishable (0.219 each).
+7. **Second 2,400-game run: nine iterations, died at iteration 10** (`fix/training-loop-pins-its-engine`): scores 0.23–0.43, mean 0.31, no trend. **Nothing was ever promoted, so every iteration was uniform-search data** — 24,000 games asking whether volume alone beats the search that generated it; it does not. The value head's apparent gain was the baseline moving: **stalled games were 0.8% of games and 24% of recorded decisions**. The loop shelled out to `cargo run` per stage while *Elevation* landed in the same tree: the deck pool went 12 → 20 → 36 matchups mid-window, `set_rank` reindexed the Core Set, then a half-edit failed to compile. **Fixes:** a run builds once and pins its binary (`<ckpt-dir>/bin/`, sha and commit in `iterations.log`, a `"failed"` line with the resume command); `netrunner_core::pool_fingerprint()` recorded per trajectory, mixed corpora refused; `set_rank` orders `sg, core, elev`; the trainer drops `stall_*` games. Checkpoints and logs under `data/runs/mixed_pool_v2/`; the corpus is deleted.
+8. **Third run (`-g 1200 -s 128`), stopped at nine**: 8 of 8 refused, aggregate 141–233–10, 0.380 ± 0.049 (≈ −85 Elo). **Ablation** (`netrunner_bots::SplitEvaluator`, `--candidate-uses both|value-only|priors-only`) on `rejected_iter_008.onnx` at n=192: both 0.3255, value-only 0.4141, priors-only 0.1875 — read at the time as "the priors are the harmful half" (z = 5.1). *Superseded by the chair split in 13.*
+9. **A hand is a multiset** (`fix/action-space-aliases`): three copies of Hedge Fund were three identical legal actions, six mask bits and 3× the uniform prior mass **in every search this repo had run**. `legal_actions` deduplicates; `get_action_mask` is built forwards through `index_of`. 162 → 527 decisions/s. Checkpoints stay structurally valid but were fit against the aliased mask.
+10. **The cycle guard strikes the set** (`fix/cycle-escape-strikes-the-set`): `CycleGuard`, `MAX_CYCLE_WIDTH` 2, a three-rung escape. **Corrected 5 September: it cannot see the real 4–5-wide toggle livelock and never fired on it** (16 removed the cycle instead). No stall reduction claimed.
+11. **Both heads asked from the side to move** (`fix/policy-head-perspective`): the trainer signs the value target by `active_side` and self-play encodes from the awaiting side, so an off-turn observation is out of distribution for *both* heads. One forward pass from `current_actor`, value negated when it is not the agent's side. **Nothing moved** (priors-only 0.1875 → 0.1745, both 0.3255 → 0.2865, value-only 0.4141 → 0.4323; all p > 0.3). Merged as correct-by-distribution; 34.6% of evaluator calls are at opponent nodes.
+12. **The policy head diagnosed offline** (`scripts/diagnose_policy_head.py`, 47,327 held-out steps, no `onnxruntime` needed): top-1 agreement 44.4% against 30.1% uniform; 58.8% of mass on legal slots (the unmasked objective is waste, not the story); **peak prior 0.452 against the search's 0.349** — overconfident, starving the right move (median prior 0.110 when wrong) with **no root Dirichlet noise** in `puct.rs` to recover it. **The ε sweep** (`MixedPriorEvaluator`, `--candidate-prior-mix`; priors-only, n=192): 0.1745 / 0.1771 / 0.2031 / 0.2813 / **0.5755** at ε = 0 / .25 / .5 / .75 / 1 — monotone, no sweet spot. **The ε = 1 control should have scored exactly 0.5**: the chair confound.
+13. **The arena plays both chairs** (`fix/arena-chair-confound`): the matchup index was `game % 192` and the chair `game % 2`, and 12 is even, so the candidate played Corp only against even-indexed Runner decks — the "both sides" doc comment had been false since the pool outgrew 12 matchups. Now `game_index / 2` with the seed per pair; a null candidate scores **exactly** 0.5 (the test asserts `==`); `ArenaSummary { as_corp, as_runner }`. **The chair baseline is Corp 0.742 / Runner 0.258** — about 180 Elo before anyone plays. Re-measured over 384 games:
+
+    | uses | overall | as Corp (vs 0.742) | as Runner (vs 0.258) | draws C / R |
+    |---|---|---|---|---|
+    | both | 0.2878 | 0.232 (**−0.510**) | 0.344 (+0.086) | 25 / 4 |
+    | priors-only | 0.1589 | 0.076 (−0.667) | 0.242 (−0.016) | 1 / 1 |
+    | value-only | 0.3841 | 0.438 (−0.305) | 0.331 (+0.073) | 44 / 17 |
+
+    **The network was broken as the Corp and neutral-to-good as the Runner.** Every earlier "the priors are harmful" verdict averaged two chairs that behave nothing alike. The Corp's failure mode was failing to close — the draws.
+14. **Where the Corp's mass goes** (`diag/policy-head-by-segment`; per-`ActionSpace`-segment model / search ratios): `SCORE AGENDA` **0.31** (legal on 430 of 24,548 Corp steps, where the search puts two thirds of its visits), `activate ability` 0.31, `rez ice` 0.49, `install` 0.82, against `pass priority` **1.73**, `draw` 1.62, `gain credit` 1.56. Passivity: mass leaves the wide segments for the narrow ones. The Runner's dominant segments (`basic action` 1.06, `initiate run` 1.10) are untouched, which is why that chair held up.
+15. **Masking the policy objective** (`train_alpha_netrunner.py --masked-policy`, default off; `--segment-balance` also exists and is mildly harmful): the softmax renormalised over the target's support. A baseline retrain is **sha-identical** to the shipped checkpoint — training is deterministic given window, seed and hyperparameters. Every segment lands within 2% of the search (`SCORE AGENDA` 0.98, `pass priority` 0.99); peak prior 0.452 → 0.336; top-1 47.4%. Hazard: `0 * -inf = NaN` in the reported loss trained correctly but saved no checkpoint — guard with `torch.where`. The mask is the target's support, not the true legal mask.
+16. **"Stalls" were livelocks inside card-selection prompts** (`fix/prompt-livelock-g0`, `fix/session-names-the-livelocked-card`, 5 September 2026). The longest legitimate game in 10,800 recorded was **1,992** actions; every stall was 98.7% `ToggleCardSelection` by one side over 3–5 slots inside a `min == max` prompt — deselect free and reversible, Confirm legal only at exactly `max` and taken once in 9,888. **G0** proved every exact-count subset resolves (41 cases: Plutus 3/3, Anoetic Void 2/2, Sprint 2/2) — a chooser pathology, so no rule changed. **A — bots never deselect** (`agent::{is_regressive, progressive}` at every agent's root and tree): every prompt resolves in at most `max + 1` actions; `ToggleCardSelection` 3,679 → 1,144 over 192 games. **B — `StallReason::DecisionLivelock { side, source_card, actions }`** fires at `DECISION_BUDGET` 256 consecutive actions inside one decision; self-play records `stall_livelock:<card>`, coverage keys `Stalled/DecisionLivelock/<card>`, **the arena scores it as a loss**. **C — prompt cost per card** (`PendingCardSelectionOffered.source`, `CardCoverage::{prompts_offered, prompt_actions, prompt_actions_max}`, `PROMPT_ACTIONS_GATE = 32`; the worst observed is now 4). **D — `MAX_STEPS` 10,000 → 2,500** (max observed 1,992; 1,401 per-seating) and both sweeps stopped tolerating `BudgetExhausted`. **Attribution** (`fix/prompt-attribution-and-cost`): a `then` after a selection acts *as the selected card* (load-bearing for Plutus and Seamless Launch), so parked decisions carry a separate `prompting_card` from `ResolutionContext::prompting_card`; AU Co.'s nested prompt no longer reads as `measured_response`. Rules-neutral by identical report counts. Old stalled seeds cannot be replayed on today's engine — pin the binary.
+17. **The masked model on the fixed arena** (5 September 2026; `bin_arena` — built from `4e94665` — and `masked_iter008.onnx` pinned by sha, kept with the three result files under `data/checkpoints/masked_arena/`). The null control is exactly 0.5 with **zero draws**; the chair baseline on this binary is **Corp 0.724 / Runner 0.276**.
+
+    | leg | overall | as Corp (vs 0.724) | as Runner (vs 0.276) | wall |
+    |---|---|---|---|---|
+    | both | 0.4089 (157–227–0) | 0.536 (**−0.188**; was −0.510) | 0.281 (+0.005) | 630s (was 6,246s) |
+    | value-only | 0.3828 (147–237–0) | 0.469 (**−0.255**) | 0.297 (+0.021) | 619s (was 7,945s) |
+
+    The 25 Corp "draws" were won games the network could not finish. **The value head carries the Corp deficit** (0.469 against the 0.60 decision line; the masked priors add back about +0.07 as Corp). The Runner is neutral in every leg. The old value-only figure matched by coincidence — 61 livelock half-points offset the unfinished games.
+
+18. **The observation shows the value head the board** (`feat/observation-rework`, 5 September 2026). `OBS_SIZE` **990 → 2,262**. The old encoding was 30 scalars and five card-identity count planes: it saw *how many* installs and *which* cards, but not one advancement token, which install was rezzed, the run's target or phase, the encountered ICE's strength or pending subroutines, or what decision was parked — everything `eval::evaluate_state_with` reads and the Corp's game is about. New blocks, each read off `ClientView` only (printed values through a card id the view shows, so an unrezzed install still masks): 16 more scalars (turn, actions this turn, recurring credits, identity counters, agenda counters, servers run this turn); a **Corp install block of 32 slots × 23 indexed by `PublicInstalledCard::position`** — the same index the `AdvanceCard`/`ScoreAgenda`/`RezIce`/`TrashResource` segments use, so "advance slot 3" in the policy target and "slot 3 is an agenda at two of three tokens" in the observation are one index (pinned by `install_slots_match_the_action_space`; a per-server grouping was the alternative and would have left the policy head to learn the mapping); a rig block of 32 × 12 with `eval::covers`; a breaker-coverage summary; a run block (target, phase, 8 ICE slots with strength/subtype/pending-broken-resolved, the access state); and a decision block (which parked state, whose by `current_actor`'s precedence, selection progress). The five planes are unchanged, so the vocabulary tests stand. The rejected `search128_v3` run and its `masked_arena` measurement moved to `data/runs/search128_v3/`; its 2.8 GB width-990 corpus is deleted.
+
+    **Smoke on a pinned binary** (24 games, 32 simulations, 2 epochs, 8-game arena, scratch directories): self-play recorded `observation_size` 2,262 and the trainer built `obs_dim` from it; **mean nonzero entries per step 29 → 105.9** (the sparse format's cost); self-play 4.5 s, training 3.2 s on CUDA, the whole iteration 22 s; the exported ONNX loaded in the pinned binary and the **null control scored exactly 0.5 with zero draws** (Corp 4–0, Runner 0–4: the chair baseline, unchanged). The toy candidate scored 0.0 — two epochs on 24 games is not a claim. `diagnose_policy_head.py` now reads the width from the games rather than a literal 990.
+
+19. **Loop hygiene** (`feat/loop-hygiene`, 5 September 2026; `scripts/run_iteration_loop.py` only). Three defaults changed, each the fix for a way the earlier runs misread themselves. **The trainer is called with `--masked-policy`** unless `--unmasked-policy` — the loop's default flips while the trainer's own stays unmasked, because the trainer's default is what reproduces the recorded runs byte for byte and a new run has no reason to train the objective that put the Corp's prior mass on `pass priority` (items 14–15). **`--arena-games` 48 → 384**: the 48-game verdicts swung 0.22–0.48 with no trend, a 24-game chair against a 0.72/0.28 baseline; 384 is what items 13 and 17 measured at and about a tenth of an iteration's self-play at 1,200 games. **The verdict line carries both chairs** — `corp=W-L-D (score) runner=W-L-D (score)` in `promotions.log` and on the console — because the blend hid a Corp broken at 0.23 behind a Runner at 0.34 for three runs (item 13). Checked on a scratch iteration: the trainer reports "masked to the target support", and a null-shaped 8-game arena prints `corp=4-0-0 (1.000) runner=0-4-0 (0.000)`, the chair baseline in the open.
+
+20. **The fourth volume run: the observation rework measured** (`data/runs/obs_rework_v4/`, 6 September 2026). Sixteen iterations at 1,200 games and 128 simulations, `--window 4`, the loop's new defaults from item 19, on a binary pinned to `0febac4` (sha `4255ced0…`, clean tree). 19,200 self-play games, 6,144 arena games, 9.95 h. **Every iteration was refused**; the last export is `rejected_iter_016.onnx` (byte-identical to `netrunner_policy.onnx`, sha `9378781…`).
+
+    | | mean | sd | range | first 4 → last 4 |
+    |---|---|---|---|---|
+    | arena overall | 0.399 | 0.031 | 0.312–0.456 | 0.375 → 0.413 |
+    | as Corp | 0.456 | 0.051 | 0.333–0.542 | 0.393 → 0.469 |
+    | as Runner | 0.341 | 0.039 | 0.276–0.391 | 0.357 → 0.358 |
+    | value MSE vs outcome (predict-zero 1.000) | 0.926 | 0.033 | 0.869–0.980 | 0.925 → 0.925 |
+
+    **The observation rework did not move the value head, and the run's stated question was already stale.** The launch script asked whether `mse_vs_outcome` beats predict-zero; it does, in all sixteen iterations — but **it already did on the 990-wide observation**, and by slightly more. Read off the archived `iterations.log` files:
+
+    | run | observation | MSE vs outcome (mean, range) | sign accuracy |
+    |---|---|---|---|
+    | `mixed_pool_v2` (item 7) | 990 | 0.856 (0.737–0.993) | 61.4% |
+    | `search128_v3` (item 8) | 990 | 0.910 (0.863–0.958) | 64.7% |
+    | `obs_rework_v4` (this run) | **2,262** | 0.926 (0.869–0.980) | 65.4% |
+
+    Item 3's "the value head never beat predicting zero" (1.04–1.30) was true of the 2,400-game scaling study and has not been true since run 2; **nobody re-read the later runs' own logs before framing this one**, so a question with an answer already on disk cost ten hours. The honest reading of the three rows is a wash — 0.910 → 0.926 and 64.7% → 65.4% move opposite ways, both inside the per-iteration spread. Confounded in run 4's favour, at that: run 3 dropped 15–98 livelocked games an iteration (run 4 drops 4 in total) and trained an unmasked policy objective. **Widening the observation 990 → 2,262 bought no measurable value-head accuracy.**
+
+    **And it bought nothing in the arena.** The Corp chair sat at 0.456 mean and crossed 0.5 twice in sixteen tries; the trend across iterations is flat (first four 0.375, last four 0.413, inside the 0.031 spread). The run's other question — "does `as_corp` move off 0.47" — is answered no. Item 18 is not thereby wrong (the old encoding could not see an advancement token, and the policy head's segment indices now line up with the observation's install slots), but **it is not the reason the Corp loses**, and the next change must come from somewhere else.
+
+    **The chair baseline on this engine, and where the deficit sits** (`data/runs/obs_rework_v4/obs_arena/`, four 384-game legs on the run's own binary against `rejected_iter_016.onnx`; `run.sh` beside the results). The null control is **exactly 0.5 with zero draws**, and the chair baseline is **Corp 0.693 / Runner 0.307** — three points less lopsided than item 17's 0.724 / 0.276 on binary `4e94665`, which is the Corp pressure terms and format work since then, and why a deficit quoted against 0.724 would have been a comparison across engines.
+
+    | leg | overall | as Corp (vs 0.693) | as Runner (vs 0.307) | wall |
+    |---|---|---|---|---|
+    | null | 0.5000 | 0.693 | 0.307 | 1,320s |
+    | both | 0.4557 | 0.531 (**−0.162**) | 0.380 (+0.073) | 1,120s |
+    | value-only | 0.3646 | 0.401 (**−0.292**) | 0.328 (+0.021) | 1,297s |
+    | priors-only | 0.4766 | 0.672 (−0.021) | 0.281 (−0.026) | 1,203s |
+
+    **The priors are neutral on both chairs now** (−0.02 / −0.03 — item 15's masked objective did what it claimed; compare item 13's priors-only Corp at −0.667). **The value head alone loses the Corp chair by 0.29**, and the priors claw a third of that back when both are seated. Item 17 measured value-only at −0.255 on the old observation; on the new one it is −0.292 on a slightly fairer chair — the wider observation did not help the value head *in search* any more than it helped it on the held-out split. The `both` leg reproduced iteration 16's own verdict byte for byte (175–209, 0.531 / 0.380), so the arena is deterministic on a pinned binary. **The null leg is not cheaper than a real one**: the network is still evaluated and then discarded, 1,320 s against 1,120 s.
+
+    **Three facts about the loop, not the network.** (a) **Nothing was promoted, so `--window 4` saturates at 4,800 games from iteration 4 and iterations 4–16 are thirteen redraws of one distribution** — the same trap as item 7, and about seven of the ten hours re-answered what iteration 4 had settled. Four runs have now asked whether more uniform-search data beats uniform search. (b) **The arena is now the dominant cost**: 5.00 h against 2.42 h of self-play and 2.54 h of training, because item 19 raised it 48 → 384 games and it is a network-in-the-loop leg at ~2 ms an evaluation. A 384-game verdict on an iteration that cannot be promoted is the most expensive thing in the run. (c) **The trainer's best epoch was 1 or 2 in nine of sixteen iterations** and never later than 8; ten epochs on a saturated 4,800-game window is mostly overfitting past the checkpoint that gets exported.
+
+    **The livelock work holds under volume** (item 16): **zero draws in all 6,144 arena games** and 4 dropped stall games in 19,200 (one each in iterations 4–7). Self-play stayed at the chair baseline throughout — 3,223 Corp wins to 1,577 Runner in the final window, 67%.
+
+    Not comparable to earlier runs: the policy loss over the entropy floor (+0.088 to +0.108 nats) is a *masked* objective's number and the 1.06–1.66 nats of item 3 are an unmasked one. The 5.9 GB corpus is deleted; checkpoints, logs and the pinned binary are kept.
+
+21. **What the fifth run should change: the network never got the search fix** (`feat/value-target-screen`, 7 September 2026). Item 20 named the value *target* as the next thing to change. Before generating a game, three of its premises were re-checked against HEAD, and two of them are gone.
+
+    **A field changed meaning under one name.** `SelfPlayStep::search_value` is `PuctSearchStats::root_value`. `b251258` made the *static* evaluator's leaves root-relative (`policy.rs`, `tanh((leaf − root) / 5)`) — the change that took the PUCT Runner from 0.219 to 0.411 — while a network's evaluator inherits the default `evaluate_from` and still reports absolute values. So a uniform-search corpus records a mean *advantage* and an ONNX-driven one a mean *position value*, with nothing on disk to tell them apart, and the loop's `--value-target-mix 0.5` blends whichever it gets with the game's outcome. Fixed by recording both: `PuctSearchStats::root_value_absolute` (from `PolicyEvaluator::evaluate`, the one call that is absolute for every evaluator kind) and `SelfPlayStep::search_value_absolute`, `#[serde(default)]` so archived corpora load, with the trainer refusing a nonzero mix against a corpus that lacks it. Measured on the new corpus, the two are distinct quantities — relative mean 0.121 sd 0.301, absolute mean 0.106 sd **0.411**, median |x| 0.164 against 0.318. (An earlier reading of this entry said the relative value was "≈0" and that a 0.5 mix would halve the target; that was wrong — it has real spread, because `root_value` averages backed-up values including terminal ±1. It is the wrong *kind* of quantity, not a degenerate one.)
+
+    **The chair baseline moved, so item 20's deficits cannot be quoted on HEAD.** The null leg on a pinned HEAD binary is exactly 0.5 with zero draws, at **Corp 0.635 / Runner 0.365** against item 20's 0.693 / 0.307 on `0febac4` — the Runner run term and the deck-aware determinization landing in between. Re-baseline per binary; the rule was already written into `obs_arena/run.sh` and is now demonstrated.
+
+    **The deficit is a regime mismatch, not the value head.** Five legs on `rejected_iter_016.onnx`, 384 games each, same binary:
+
+    | leg | overall | as Corp (baseline 0.635) | as Runner (0.365) |
+    |---|---|---|---|
+    | null | 0.500 | 0.635 | 0.365 |
+    | **priors-only** | **0.430** | **0.594** | 0.266 |
+    | value-only | 0.135 | 0.089 | 0.182 |
+    | value-only, FPU = parent Q | 0.120 | 0.057 | 0.182 |
+    | value-only, anchor unscaled | 0.122 | 0.073 | 0.172 |
+    | value-only, anchor / 0.05 – 0.1 – 0.2 | 0.177 / 0.164 / 0.174 | 0.130 / 0.104 / 0.156 | 0.224 / 0.224 / 0.193 |
+    | both | 0.138 | 0.078 | 0.198 |
+
+    `priors-only` takes its value from the *uniform* evaluator and so still gets root-relative leaves; every leg seating the **network's** value runs the absolute regime its opponent has left behind. The separation is 0.430 against 0.135 — about 113 games of 384, ~12σ — and it is why `both` (0.138) collapsed to its `value-only` floor on HEAD where on `0febac4` the priors clawed back a third (0.456 against 0.365). **Item 20's "the value head is the Corp's whole deficit" was sound on a binary where both sides used absolute leaves and does not transfer.** Giving `OnnxPolicyEvaluator` a rescaled anchor is worth a consistent **+0.035** across scales 0.05–0.2 (each ~1.4σ alone; three independent scales landing together is the signal) — real, and a seventh of the gap. First-play urgency at the parent's Q, and an anchor without the rescale, both measured **nothing** (0.5–1.1σ, indistinguishable); the unscaled anchor failed for a nameable reason, that subtracting two already-squashed [−1, 1] outputs shrinks a within-decision gap to ~0.01–0.05 against an exploration term of ~0.13, where the uniform evaluator's divisor *expands* it.
+
+    **Two of item 20's premises do not hold on HEAD**, measured over the 2,400-game corpus (uniform search both seats, 128 simulations, zero stalls): games end `agenda_threshold` 2,093 / `flatline` 301 / `deckout` 6, so **flatline-or-deckout is 12.8%, not the ~40%** item 20 argues from — that figure came from `puct-baseline.json`, puct@32 on an older engine — and self-play is **55.3% Corp, not 67%**. The 40% was the stated reason to suspect the target ("which no board feature and no point margin sees"); at 12.8% that argument is much weaker, and it is the whole motivation for an end-reason-aware target.
+
+    **The honest null is the chair, not zero** (`value_diagnostics` now reports `chair_baseline_mse` beside `baseline_mse`). Predicting zero is the null for a *symmetric* game; a predictor knowing only which chair is to move scores `1 − (2p−1)²` per chair. On run 4's own logs that null is **0.882 and the head averaged 0.926 — it beat the chair in 2 iterations of 16.** Item 20's "the value head already beat predicting zero two runs ago" was measured against the easy null.
+
+    **A control trained on the new corpus** (pure outcome, 6 epochs, `--select-on value`): best epoch **1**, held-out MSE **1.241** against chair-only 0.910 and predict-zero 1.000, sign 63.3%, train value loss 0.269 → 0.036 while validation climbed monotonically. It reproduces the failure this file already records for the outcome-alone target, and shows the mix in run 4 (0.926) was doing real smoothing rather than decoration.
+
+    **Engineering landed on the branch**, all of it measured above or guarding it: the two root values and the schema field; `--value-target {outcome,mixed,discounted,discounted_unforeseeable}` with `--value-discount`, built at the single `set_value_target` seam and always diagnosed against the unchanged signed outcome; `--select-on {blended,value,policy}`, because at `--value-loss-weight 0.25` the exported epoch is chosen almost entirely by the policy term and a value-target change need not move it; `--early-stop-patience`; per-chair prediction means and sign accuracy split by end reason; **`--arena-pair-stride`**, because `matchups()` is corp-major and 48 pairs at stride 1 are the first *four* Corp decks — a short arena at stride 1 is a narrower arena, not a smaller one, which retro-explains the first three runs' 48-game verdicts swinging 0.22–0.48 with no trend; and a two-stage arena in the loop (a stride-4 screen, the full 384 only when it passes, promotion still decided by the full arena). **`OnnxPolicyEvaluator::anchor`/`evaluate_from` are implemented and `ANCHOR_SCALE` is `None`** — left in with its numbers on it the way `BREACH_OUTCOMES` is, because every measurement above is on a checkpoint fit to a 67%-Corp engine and so cannot separate the regime from the staleness; turn it on when a checkpoint trained on *this* engine says so. The FPU experiment is deleted rather than parked: it measured nothing, and its reasoning is recorded on `select_edge` so the next reader does not re-derive it.
+
+    **Where this leaves the fifth run.** Its first change is not the value target: **the network needs the search fix the static evaluator got**, or it is judged in a regime measured to be broken and any target measured through it is measured through a broken instrument. The value-target screen — one corpus, one candidate per target, each on the same value-only leg — runs behind that. **Both halves of this paragraph are now answered, and both answers are no: item 22 ran the screen and neither the regime nor the staleness was the reason.**
+
+**Decision and next step:** item 20 answered the fourth run's question and unasked it — the value head already beat predicting zero two runs ago, the wider observation did not improve it, and the Corp chair did not move — so **the input is ruled out and the next change is not another 1,200-game run of the same shape.** The legs separate what the run could not: **the priors are fixed and the value head is the Corp's whole deficit** (−0.29 alone, priors neutral). So the live suspect is **what the value head is trained toward**, not what it is shown: about 40% of games end by flatline or deck-out and neither a board feature nor the point margin sees that coming (item 6 measured the margin at 45–47% predictive), and half its target is the uniform search's own root belief. **The bootstrap** is the other open question — four runs have trained on nothing but uniform-search data because 0.55 against uniform search has never been reached — but with priors-only scoring 0.48 the priors are already almost the search they were distilled from, and a loop that adopts them unconditionally would be measuring whether self-play with a neutral prior and a harmful value drifts up or down. Either way the loop's economics change first: a 384-game arena on an iteration that cannot be promoted cost 5.00 h of 9.95 h (item 20), and ten epochs on a window that never turns over is overfitting past the exported checkpoint.
+
+22. **The anchor screen: the fifth run's blocking question, sized at 2.5 hours** (`chore/fifth-run-anchor-screen`, 8 September 2026). Item 21 left `ANCHOR_SCALE` at `None` with its numbers on it, because the +0.035 a rescaled anchor is worth was measured on `rejected_iter_016.onnx` — a checkpoint fit to a 67%-Corp engine — and so cannot separate the regime from the staleness. **What is missing is a checkpoint trained on this engine to screen it against, not another volume run**, so `data/checkpoints/launch_overnight.sh` (still the fourth run's until now) is rewritten as a screen: one iteration at 2,400 games and 128 simulations, then six 384-game arena legs on two pinned binaries differing only in `ANCHOR_SCALE` (`None`, `Some(0.1)`) — `null`, `priors-only`, and `value-only`/`both` from each. Scales 0.05 and 0.2 are added only if 0.1 moves; three independent scales landing together was the signal on the stale checkpoint, where one scale alone was ~1.4σ.
+
+    **The corpus is the fifth run's iteration 1, not a throwaway.** Self-play here seats the uniform evaluator (no `-m`) and `ANCHOR_SCALE` only ever touches `OnnxPolicyEvaluator`, so the corpus is byte-identical under either binary and the volume run resumes at `--start-iter 2`.
+
+    **Two of item 20's three economics findings are closed here, and both were flags rather than code.** `--window 4` is *dropped* — the default is every iteration, and with nothing promoted a window of 4 saturates at iteration 4, which made iterations 4–16 of the fourth run thirteen redraws of one distribution and cost about seven of its ten hours. `--early-stop-patience 2` is the other half: the best epoch was 1 or 2 in nine of sixteen iterations and never later than 8, so ten epochs on a window that never turns over is overfitting past the exported checkpoint. The third, the arena's cost, item 21 had already closed with the two-stage screen.
+
+    **The null leg is the gate on every number the screen produces** and it is in the script for the reason `obs_arena/run.sh` first wrote down: the candidate is the network with its priors replaced by the uniform search's own, so it *is* the incumbent and must score exactly 0.5 with zero draws. It also re-establishes the chair baseline on this binary — 0.635 / 0.365 on HEAD against 0.693 / 0.307 on `0febac4` — which is why item 20's deficits cannot be quoted here.
+
+    **The question was checked against disk before the run was written**, which is now part of launching one: item 20 cost ten hours re-answering a question its own earlier `iterations.log` files had settled. Every `value-only` number on disk is from the stale checkpoint, and none of them answers this.
+
+    **The screen ran (8 September 2026, engine `a7ec188`, checkpoint sha `1b743cb5…`, 2,400 games in 41 min, six legs in 1.9 h) and answered its question no — then made the question obsolete.** The null leg gates everything below it and passed exactly: 0.500 with **zero draws**, at Corp 0.635 / Runner 0.365, reproducing item 21's HEAD chair baseline to four places.
+
+    | leg | overall | as Corp (base 0.635) | as Runner (base 0.365) |
+    |---|---|---|---|
+    | null | 0.500 | 0.635 | 0.365 |
+    | **priors-only** | **0.617** | **0.766** | **0.469** |
+    | value-only, anchor off | 0.141 | 0.109 | 0.172 |
+    | value-only, anchor `Some(0.1)` | 0.148 | 0.125 | 0.172 |
+    | both, anchor off | 0.359 | 0.318 | 0.401 |
+    | both, anchor `Some(0.1)` | 0.258 | 0.224 | 0.292 |
+
+    **`ANCHOR_SCALE` stays `None`, and now for a stronger reason than "did not reproduce".** Item 21 measured the rescaled anchor at +0.035 on the stale checkpoint and could not separate the regime from the staleness. On a checkpoint trained on this engine it is worth **+0.008** in `value-only` (0.3σ at 384 games — nothing) and **−0.101 in `both`**, the configuration promotion is actually decided in, which is about 3.9σ and a real harm. The two pinned binaries differ (sha `89cf7d72…` against `b631e70d…`), so this is not the compare-two-copies-of-the-same-code trap. The constant keeps its second set of numbers.
+
+    **And staleness was not the explanation either, which was the whole point of the screen.** This head is much better calibrated than `rejected_iter_016.onnx`: held-out MSE **0.762 against a chair null of 0.911** (predict-zero 1.000) and sign accuracy 71.1%, where run 4's head averaged 0.926 against a chair null of 0.882 — it *lost* to the chair and beat it in 2 iterations of 16. Against its own null this head went from −0.044 to +0.149. In the search it scores **0.141 against the stale checkpoint's 0.135**. A markedly better value head is worth nothing in search, so the collapse is neither its accuracy nor the leaf regime it is judged in. **That is a new question and it was not on item 21's list.**
+
+    **A third premise of item 20's value-target argument is also gone.** That argument was that ~40% of games end by flatline or deck-out and no board feature sees them coming; item 21 cut the 40% to 12.8%. This head's sign accuracy splits **0.835 on `unforeseeable` endings against 0.697 on `foreseeable`** — it is *better* on exactly the games the target was to be reshaped for. The end-reason-aware target should not be built on this reasoning.
+
+    **The finding that redirects the fifth run is the priors.** `priors-only` scores **0.617 with both chairs above baseline** (Corp 0.766, Runner 0.469), against item 21's 0.430 on the stale checkpoint and item 13's −0.667. **This is the first time in five runs that any network component has beaten the search it was distilled from**, and it clears the 0.55 promotion threshold on its own. What sinks it is the value head: seating both drops 0.617 → 0.359. The corpus is the only thing that changed — 2,400 fresh games from this engine, masked objective, unsaturated window, `--early-stop-patience 2` stopping at epoch 4 on best epoch 2.
+
+    **So the fifth run's shape is not item 21's.** It should seat the network's priors and keep its value head out of the search, which today is not expressible: `SplitEvaluator` and the `ablate` seam exist only on the **arena** path (`netrunner_selfplay/src/main.rs:322`), while self-play's `make_evaluator` (line 368, used at 476/478) seats the whole network whenever `-m` is passed. The self-play path needs the same ablation the arena already has, and `run_iteration_loop.py` needs to gate promotion on the configuration self-play actually used. That is the next engineering, and it is small. The corpus stays on disk as iteration 1.
+
+23. **Self-play can seat half a network** (`feat/priors-only-self-play`, 8 September 2026). Item 22's finding was not actionable: `SplitEvaluator` and the `ablate` seam existed only on the **arena** path, while self-play's `make_evaluator` seated the whole network whenever `-m` was passed, so the configuration measured at 0.617 could not generate a single game.
+
+    **`--model-uses {both,priors-only,value-only}`** on `netrunner_selfplay`, defaulting to `both`, reusing the same `ablate` the arena calls (the enum is renamed `NetworkUses`, since it is no longer arena-only). Both seats are ablated identically — the difference from the arena, where the asymmetry is the point because the incumbent is the bar; here the ablation *is* the player being measured, so a corpus comes from one configuration rather than two. **The default path is byte-identical to the pre-change binary across six games** (`ablate(Both)` returns the evaluator untouched), verified against the pinned screen binary rather than asserted.
+
+    **`GameTrajectory::model_uses`** records it, `#[serde(default)]` like `pool_fingerprint` and `end_reason` beside it, for the same reason those exist: a priors-only corpus and a whole-network one are different distributions from the same binary at the same widths, and nothing else on the struct tells them apart — mixing them in one replay window would be invisible the way three *Elevation* deck pools once were. The four archived runs read empty, which is honest; they predate the flag and every one was `both`.
+
+    **`run_iteration_loop.py --model-uses` drives both ends**: self-play seats it, and the arena gates the *candidate* with the same ablation. Promotion measuring a configuration the run never plays would be the same class of error as item 13's blended verdict hiding a broken chair, so `iterations.log` carries `model_uses` on every line.
+
+    **Two guards, both because the failure mode is silence.** Ablating with no `-m` is refused outright — `SplitEvaluator(uniform, uniform)` is just the uniform evaluator, so the run would spend a full iteration producing an ordinary corpus under a label saying otherwise. And `main` now prints the error's *message* rather than its `Debug`: `fn main() -> Result<_, _>` reports with `{:?}`, so every `SelfPlayError` message in this binary had been reaching an operator as a bare variant name (`ModelUsesWithoutModel("priors-only")` in place of the sentence explaining it). A guard whose explanation never prints is not a guard.
+
+    `launch_overnight.sh` is the fifth run: `--model-uses priors-only`, `--start-iter 2` over the screen's corpus, 12 iterations. **Its question is whether a priors-only loop compounds** — one iteration of it scores 0.617, and no run has ever had a promotion, so nobody knows whether iteration 2 trains a stronger prior still or plateaus at once. `--value-loss-weight` stays 0.25 deliberately: the value head is not seated in the search but keeps training, because its diagnostics are the only running measurement of the question item 22 opened and could not answer.
+
+24. **The promotion gate was about to measure the configuration gap, not the candidate** (`fix/incumbent-ablated-like-the-run`, 8 September 2026). Caught in the pre-launch check of the fifth run, before a single game of it ran. Item 23 gave self-play `--model-uses`, but `ablate` was still applied to the **candidate only** — right for the diagnostic the arena was built for, where the incumbent is a fixed bar and moving it would make two legs incomparable, and wrong the moment the ablation became a *run's configuration*. From iteration 2 the incumbent is `latest_policy.onnx`, which self-play deploys priors-only and the arena would have seated whole.
+
+    **Measured, same checkpoint on both sides of the table, 48 games:** candidate priors-only against that incumbent seated whole scores **0.583 — over the 0.55 gate — having improved nothing**; seated alike it is exactly **0.500**. So iteration 2 would have promoted an unchanged network on the 0.617-against-0.359 configuration gap, and every iteration after it would have inherited that promotion. The failure mode item 13 records (promoting unconditionally, six iterations of self-play turned into "the Runner wins") arriving by a new route.
+
+    **`--incumbent-uses`**, defaulting to `both` so the diagnostic ablation keeps its fixed bar, set by `run_iteration_loop.py` to match `--model-uses` so a run gates on what it plays. `ArenaSummary::incumbent_uses` is on every verdict line beside `candidate_uses`, because the pair is what makes one readable: `candidate_uses` alone cannot tell "this candidate is better" from "this candidate was seated in a stronger configuration than the incumbent it beat".
+
+    **The general lesson, and it is the reason this entry exists rather than a quiet fix.** A knob built as a diagnostic acquired a second life as a configuration, and its one-sided-by-design behaviour silently became a bias. The check that caught it is the cheapest one available and belongs before every run: **seat the same checkpoint on both sides and confirm the arena says 0.500.** It is the null leg `obs_arena/run.sh` already demanded for a model's own arena, applied to the flags instead of the network.
+
+25. **A network-in-the-loop iteration costs 4.2 h, and the reason is `batch = 1`** (`fix/onnx-sessions-oversubscribe-the-machine`, 8 September 2026). The fifth run launched and its iteration 2 ran at **6.25 s/game against iteration 1's 0.38** — the same pinned binary, the same 2,400 games, the same 128 simulations, the only difference being a network seated. That is **17×**, not the ~6× the standing open item had recorded, and it put the 12-iteration run at ~55 h rather than an overnight.
+
+    **The first explanation was wrong, and it is recorded because it was expensive to believe.** The self-play process carried **541 threads on 20 cores at load average 53**: every consumer builds one `Session` per side per game and runs games across a rayon pool, while ORT's default intra-op pool is sized to the whole machine and spin-waits. Nested pools oversubscribing a box is a real pathology and it looked like this one. Measured on an idle machine, 40 games at 128 simulations, two binaries pinned side by side: **238.5 s with the default pools against 235.5 s with one thread per session** — 1.2%, inside noise. The corpora came back **byte-identical game for game**, which settles the risk that actually mattered: ORT can reorder floating-point reductions when thread count changes, and here it does not.
+
+    `with_intra_threads(1)` is kept anyway for the smaller reasons — 9% of resident memory (411 MB → 375 MB), and a session whose cost does not change shape with the host's core count, since the default *would* be pathological on a 96-core machine. Rejected: reverting it, which keeps the machine-dependent shape and loses the measurement.
+
+    **The cost is arithmetic, and nothing about the loop's threading can reach it.** A decision is ~128 forward passes, a game ~205 decisions (492,638 steps over 2,400 games), and each pass re-reads all **1,151,471 parameters** (trunk 2262→256→256, policy head → 1,646): **~121 GB of weight traffic per game for 2.3 MFLOPs of arithmetic per pass**, which is memory-bandwidth bound. Per-call cost is **3.85 ms**, not the ~2 ms recorded. Scaling agrees — 32 games at 32 / 64 / 128 simulations cost **2.0 / 3.7 / 5.96 s/game**. There is also **no tree reuse to exploit**: `puct.rs:520` builds a fresh tree per determinization per decision, which is correct rather than an oversight, because a tree built on an earlier sample of hidden state is not valid for a new one.
+
+    **The open lead is batching the leaves.** *(Corrected by item 27: the four-determinizations premise was wrong — `PuctConfig::samples` is 1 everywhere, so there are no sibling leaves in a search to batch. Batching across concurrent **games** is the route that exists, it needs no search change at all, and it was worth 2.6×. The claim below that this "cannot be threaded away" is also too strong: inference throughput peaks at four concurrent streams and collapses past it.)*
+
+    **The run was reshaped rather than the code:** 1,200 games per iteration through iteration 7 instead of 2,400 through 12, ~3.0 h per iteration and ~16 h total. Iteration 2 keeps its 2,400-game corpus (already on disk; `run_iteration_loop.py:229` skips self-play when the directory holds its games), so it costs only training and the arena. 128 simulations is deliberately untouched — comparability with item 22's 0.617 is the point of the run. Five promotion decisions after iteration 2 is what "does a priors-only loop compound?" needs; twelve iterations was a budget, not the question.
+
+26. **The fifth run: a priors-only loop does not compound** — recorded at the time as *trading the Runner seat for the Corp seat*, and **item 32 withdraws that reading**: the per-chair null for this run's configuration is 0.6823 / 0.3177, never measured here, so the ±0.22 chair deltas below are ±0.03 and every σ quoted from parity is wrong. What survives is the blend, which said parity all along — (8–9 September 2026, stopped at iteration 5 of 7 once the answer stopped changing). Item 22 found the priors alone scoring 0.617 against the uniform search with both chairs above baseline, and this run asked the only question that could follow: **does a priors-only loop compound?** It does not, and the way it fails is the finding.
+
+    **Three candidates, three rejections, and the blend hides what happened.**
+
+    | iter | corpus | screen | full arena | as Corp | as Runner |
+    |---|---|---|---|---|---|
+    | 2 | 4,800 | 0.469 | 0.461 | 0.688 | 0.234 |
+    | 3 | 6,000 | 0.542 | 0.523 | 0.729 | 0.318 |
+    | 4 | 7,200 | 0.490 | 0.479 | 0.708 | 0.250 |
+
+    **Pooled over all 1,152 arena games: 0.4878, which is −0.8σ from parity — while the Corp chair is 0.708 (+10.0σ) and the Runner chair 0.267 (−11.2σ).** The candidate is not a weak copy of the network that generated its data; it is violently different in both chairs and the two differences cancel. Every iteration reproduces the shape: about +0.21 as Corp, about −0.23 as Runner, net nothing. **This paragraph is wrong from the second sentence on, and item 32 says why**: a chair's null here is 0.6823 / 0.3177, not 0.5, so the deltas are +0.026 (0.6σ) and −0.050 (1.2σ) and the candidate is an ordinary parity copy on both chairs. The blended −0.8σ was the finding; the chair split added an artifact. Both sides were seated `priors-only` (item 24), so 0.500 is the honest bar and this is priors against priors.
+
+    **Corpus size is not the variable.** 4,800 → 7,200 games moved the blended score 0.461 → 0.523 → 0.479: a per-iteration spread of sd 0.032 against the 0.026 that 384-game sampling noise alone produces. Two of those points briefly looked like a trend toward the 0.55 gate and were read that way in the session; the third showed it was a flat line. This is the same conclusion item 20 reached by a different route, and it is why the run was stopped at iteration 5 rather than played to 7 — iterations 5–7 could only add samples of a quantity already at 0.488 ± 0.015.
+
+    **The mechanism is on the self-play side, and it replicates.** Seating those priors on both seats moves the chair balance about ten points off the engine's own, over four disjoint seed ranges:
+
+    | corpus | seeds | Corp win |
+    |---|---|---|
+    | iter_001 (uniform search) | 0–2399 | 54.8% |
+    | iter_002 (priors-only) | 2400–4799 | 65.7% |
+    | iter_003 (priors-only) | 4800–5999 | 64.9% |
+    | iter_004 (priors-only) | 6000–7199 | 63.9% |
+
+    A network trained on a corpus where the Corp wins ~65% learns the Corp seat and loses the Runner seat, which is exactly what the arena then measures. **The loop's input and its output are the same distortion seen twice.**
+
+    **Two things the training logs got wrong about all this, both worth keeping.** The policy head's distance from its entropy floor is flat — **+0.124, +0.124, +0.125, +0.115** across 2,400 → 7,200 games — while the arena score moved 0.06 between two of those points, so **that loss gap does not track playing strength and should not be used to predict an arena result.** And the value head's raw MSE improved (0.863 → 0.772 → 0.762) while its edge over the chair null *collapsed* (0.048 → 0.095 → **0.018**), because a more chair-skewed corpus makes "predict the chair average" a better strategy and drags the null down with it. Quote the gap, never the MSE alone.
+
+    **What this hands to the gate** — *and item 32 shows the handoff was built on the artifact above, producing floors no honest candidate can clear.* Promotion is a blended score, so "genuinely stronger" and "traded one chair for the other" are indistinguishable to it — a candidate on this trajectory clears 0.55 the moment its Corp chair runs far enough ahead, and would be promoted with a Runner chair near 0.30. That is item 13's failure (a blended verdict concealing a broken chair) still live in the gate, now with a concrete mechanism that produces it. The open work is a promotion rule that reads both chairs, and a chair-weighted training objective — the trainer has `--segment-balance` for rare `ActionSpace` segments but nothing for seats. The 7,200-game corpus is kept for exactly that screen, which is one arena leg rather than another overnight run.
+
+    Also unanswered and now with a second run's worth of evidence behind it: **why a well-calibrated value head is worth nothing at a leaf in this search** (item 22).
+
+27. **Batching across games: self-play is 2.6× faster and the corpus is byte-identical** (`feat/batched-onnx-evaluation`, 9 September 2026). Item 25 named `batch = 1` as the cost and pointed at the four determinizations in a root as the leaves to batch. **That premise was wrong**: `PuctConfig::samples` is `1` in the default, in every test, and in every caller — its own doc comment says "Left in at `1`" — so `search`'s `into_par_iter` is a one-element loop and a search evaluates strictly one leaf at a time. There are no sibling leaves inside a search.
+
+    **The batching that does exist is across concurrent games**, and it needs no search change: self-play already runs one game per worker, each blocked on its own single-row inference, and rows from different games can share a `Session::run`. **A row's answer does not depend on what shares its batch** — verified bitwise against the real 1,151,471-parameter checkpoint on every one of 2 × 1,646 outputs — so this is invisible to every caller.
+
+    **What the cost actually is, measured rather than inferred.** Item 25's "3.85 ms per forward pass" was per-*thread latency under load*, not the cost of a call; single-threaded a call is 199 µs, and single-threaded self-play is 4.36 s/game uniform against 11.1 s/game with the network, which reconciles at ~26,240 evaluations × 257 µs. The real defect is scaling: **uniform self-play scales 11.4× across ~18 workers, the network path 1.87×**, because inference throughput does not scale at all — 5,029 rows/s at one thread, 5,391 at seventeen. It peaks at **four** concurrent streams (13,022 rows/s) and *falls below the single-threaded rate* beyond that, as more copies of the 4.6 MB weights leave L3.
+
+    **And capping concurrency does not fix it**, which is the measurement that found the real mechanism. A semaphore at four streams left wall time unchanged (237.9 s against 238.5 s) while dropping CPU from 1711% to 662%. The reason is cache residency, not parallelism: interleaving 8 MB of unrelated traffic between calls — what tree work does — collapses batch-1 throughput 9× and makes thread count irrelevant, while batching keeps paying:
+
+    | | batch 1 | batch 4 | batch 8 | batch 16 | batch 32 |
+    |---|---|---|---|---|---|
+    | 1 runner | 2,565 | 9,643 | 13,099 | 18,005 | 19,072 |
+    | 2 runners | 2,565 | 9,984 | 16,779 | 22,677 | 26,197 |
+    | 4 runners | 1,753 | 8,203 | 18,171 | 36,683 | 46,229 |
+
+    Batching is the only lever that works because it is the only one that amortizes a weight read over more than one row.
+
+    **The result, on 40 games at 128 simulations, byte-identical corpus throughout:**
+
+    | | wall | CPU | RSS |
+    |---|---|---|---|
+    | before | 238.5 s | 1711% | 411 MB |
+    | batched, default threads | 101.4 s | 894% | 124 MB |
+    | **batched, 64 game threads** | **92.5 s** | 919% | 175 MB |
+
+    **2.6×**, and memory fell because ~36 sessions (one per side per game, 165 MB of duplicated weights and 8.0 ms of graph parsing each) became a shared pool of four. `MAX_RUNNERS` is 4 on measurement: 8 runners cost 129 s and 16 cost 218 s, each runner being another live copy of the weights. Game threads are oversubscribed to 64 only when a network is seated, because they park on the queue rather than run, and a deeper queue is what lets a runner fill a batch; the uniform path keeps one thread per core.
+
+    **The byte-identity extends to the arena, measured after the fact** (9 September 2026, during item 29's screen). The equivalence quoted above was 40 self-play games; the chair-balance screen then had a freshly built batched binary replay a 384-game arena that the pre-batching pinned binary had recorded the night before, on a checkpoint that is byte-identical by sha256. It returned **184-200-0, Corp 136-56, Runner 48-144** — every count the same. Self-play and the arena share the evaluator but not the driver, so this is the second path checked rather than the same one twice.
+
+    **Two bugs found in the building, both worth the entry.** A model whose outputs do not grow with the batch dimension — `onnx_fixture`'s `Constant` nodes, or any checkpoint exported with a static batch axis — would have been handed four rows and returned one row's answer four times; `probe_max_batch` runs one two-row probe at construction and turns batching off for such a model. And the first version let a panic inside a runner strand both its slot and every row queued behind it, converting a loud crash into a **silent hang** — the worst failure mode for an unattended overnight run. The runner now answers its batch with an error and returns its slot before re-raising, so inference failure stays exactly as loud as it was before rows shared a batch.
+
+28. **The promotion gate reads both chairs, not only the blend** (`feat/chair-aware-promotion-gate`, 9 September 2026). **Both floors below are centred on the wrong number and item 32 measures the right one** (item 33 then replaced the two flags with `--promote-chair-margin` and `--arena-screen-chair-margin`, deltas from a measured null): a chair's null is the pool's Corp win rate at that configuration (0.6823 / 0.3177 for the fifth run, 0.7135 / 0.2865 for the sixth), not 0.500. Every "σ under parity" in this entry is therefore σ under the wrong parity, `0.45` asks the Runner chair for +0.13 over its own null and `0.30` sits *above* it. The chair-aware gate is still the right idea; it has to difference against a measured null leg. Item 26 left the gate holding a number that cannot express its own finding. `promoted = candidate_score >= 0.55` is a blend over both seats, and the fifth run's three candidates scored **0.688/0.234, 0.729/0.318 and 0.708/0.250** by chair. All three were rejected — but on the blend (0.461, 0.523, 0.479), which is luck, not judgement: a loop continuing along that Corp trajectory clears 0.55 blended with a Runner chair near 0.30, and the gate would have promoted a network that had *lost a seat*. That is item 13's failure verbatim, still live in the gate that was written to close it.
+
+    `--promote-chair-floor` (default **0.45**) is now checked beside the blend, and `chair_floor_failure` names *which* chair collapsed rather than returning a boolean, because that name is the reading worth keeping in `promotions.log`. Replayed against the three recorded verdicts it stops all three on the Runner chair.
+
+    **0.45 rather than 0.50, and the arithmetic is the whole justification** — *the arithmetic is right and its premise is not; see item 32.* A chair is half the arena: at 192 games a chair score has sd 0.036, so a candidate genuinely at parity on its weak chair clears 0.45 about 92 times in 100, while one genuinely at 0.30 is stopped at 4.2σ. Demanding 0.50 — the intuitive floor — would reject an honest tie half the time and make the gate a coin flip on top of a real one. The alternative rejected was gating on `min(corp, runner)` alone and dropping the blend: it discards the information that a candidate is better *overall*, and two chairs at 0.55 is a real improvement that a min-only rule would rank below one chair at 0.90 and the other at 0.56.
+
+    The cheap screen gained the same reading at a much lower floor (`--arena-screen-chair-floor`, default **0.30**) for the reason the blended screen sits at 0.45: a screen chair is 48 games, sd 0.072, so 0.30 is 2.8σ under parity — an honest tie survives 997 times in 1,000 while the fifth run's ~0.25 Runner chair is stopped about three times in four, saving the 49-minute full arena on exactly the trajectory this loop is on. Both floors take `0` to reproduce a verdict recorded before they existed.
+
+    This is the gate half of ROADMAP "next" item 1. It does not fix the cause — priors-only self-play runs ~65% Corp against the engine's 54.8% — only the gate's blindness to it.
+
+29. **Chair-balanced training weights: the Runner chair moves, the seat trade does not close** (`feat/chair-balanced-objective`, 9 September 2026). **The measured effect stands — all four legs share one null — but item 32 re-reads it**: against that null (0.6823 / 0.3177) cb05 is the only leg at or above parity on *both* chairs, so this is a small real gain rather than a smaller seat trade, and there was no seat trade to close. The input half of ROADMAP "next" item 1, screened on the 7,200-game corpus item 26 kept for it — four training runs and four 384-game arena legs, ~2.5 h, no volume run.
+
+    **Measuring the corpus first changed the design, and would have saved the obvious version of this from doing nothing.** Item 1 proposed weighting seats. But the step split barely moves with the win rate:
+
+    | corpus | Corp wins | Corp steps | Corp steps on the winning side |
+    |---|---|---|---|
+    | `iter_001` (uniform search) | 54.8% | 44.4% | 64.6% |
+    | `iter_002` (priors-only) | 65.7% | 45.6% | 75.2% |
+    | `iter_003` | 64.9% | 45.8% | 75.6% |
+    | `iter_004` | 63.9% | 45.4% | 74.4% |
+
+    A seat reweight corrects 45/55 to 50/50 and leaves the distortion untouched. The imbalance is in the **outcome**: a Runner step carries a loss about three times in four. It is also larger than the win rate suggests — 65.7% of games but 75.2% of Corp steps sit on the winning side — and the same +9.5 gap appears in the *uniform* corpus (54.8% → 64.6%), so that amplification is a property of the game (a game the Corp wins carries proportionally more Corp decisions), not of the loop. So the cell is `(chair, sign of outcome)`, and flattening those six equalizes seat mass and outcome-within-seat mass together. `--chair-balance` weights by `(mean_count / count) ** strength` normalized to mean 1.0, the idiom `--segment-balance` already uses.
+
+    **The result, every leg trained on the identical corpus with one flag changed, each played against the same incumbent all three of item 26's verdicts were measured against, priors-only both sides:**
+
+    | `--chair-balance` | blended | Corp | Runner | chair gap | epoch shipped |
+    |---|---|---|---|---|---|
+    | 0 (control) | 0.4792 | 0.7083 | **0.2500** | 0.458 | 3 |
+    | 0.25 | 0.5182 | 0.7344 | **0.3021** | 0.432 | 2 |
+    | **0.5** | **0.5312** | 0.7396 | **0.3229** | **0.417** | 2 |
+    | 1.0 | 0.5208 | 0.7448 | **0.2969** | 0.448 | 7 |
+
+    **The control is exact, not approximate.** Training is seeded (`np.random.seed` / `torch.manual_seed`), so the control checkpoint is byte-identical by sha256 to `rejected_iter_004.onnx` and its arena leg reproduced item 26's iteration-4 verdict digit for digit (184-200-0, Corp 136-56, Runner 48-144). The treatment legs therefore differ in exactly one flag.
+
+    **The reading.** The Runner chair rises 0.250 → 0.302 → 0.323 and falls back at full inverse frequency, an interior maximum at 0.5 — the over-correction `segment_balance_weights` already warns of. The Runner move at 0.5 is +0.073, above the 0.026–0.047 seed-spread band (Phase 3 §1); the Corp moves (+0.026 / +0.031 / +0.037) sit inside or at it and are **not** claimed. Monotone-then-turnover over four points is the evidence here, not any single leg — there is no second arena seed schedule to average over, because arena seeds are fixed on purpose so verdicts stay comparable.
+
+    **What it does not do is close the trade.** The chair gap goes 0.458 → 0.417, a 9% dent. At the best setting the candidate is still 0.740 as the Corp and 0.323 as the Runner, and **both gates reject it** — 0.531 under the 0.55 threshold and 0.323 under item 28's 0.45 chair floor. Chair balance is a real but small correction to a large asymmetry, not a fix for it.
+
+    **The arena is priors-only, so this is a policy-head result.** `SplitEvaluator` seats the network's priors and the uniform evaluator's value, so the exported value head never plays; every number above is the policy head. It is reached through two paths that this screen cannot separate — the reweighted policy loss, and the reweighted value loss reshaping the shared trunk at `--value-loss-weight 0.25`. A `--value-loss-weight 0` leg would separate them and has not been run.
+
+    **A third training-log reading recorded as unreliable**, joining item 26's two. `best_val_loss` orders the legs 0.25 (1.2185) < control (1.2197) < 0.5 (1.2239) < 1.0 (1.2264); the arena orders them 0.5 > 1.0 > 0.25 > control. The criterion that picks the shipped epoch ranks the control *above* the leg that beats it by 0.052. The policy floor gap is flatter still — +0.1152, +0.1159, +0.1155, +0.1144 across an arena spread of 0.052 — which is item 26's finding again on a tighter case. And `mse_vs_outcome` anti-predicts outright: the 0.5 leg is the only one of the first three *worse* than the 0.780 chair null (0.788) and it is the best in the arena, because that null is precisely the base rate the objective was told not to fit. Under `--chair-balance`, `chair_baseline_mse` stops being the honest null and no weighted null has been put in its place.
+
+    Two confounds stated rather than controlled: early stop picked a different epoch per leg (3, 2, 2, 7), which is part of the pipeline but means the legs differ in more than the flag downstream of training; and `mean_pred_runner` moves −0.124 → −0.105 → −0.088 toward zero across 0 → 0.5, the mechanism visibly working, then jumps to −0.149 at 1.0 on that leg's quite different trajectory.
+
+    **Left off by default**, like `--segment-balance` and for the same reason: the visit-count target is a proper scoring rule whose optimum is the target distribution, and reweighting by an outcome the search did not know moves that optimum. The next volume run should carry `--chair-balance 0.5` explicitly, and item 28's gate is now able to see it if it stops working.
+
+30. **The sixth run: `--chair-balance` does not survive being put in a loop** (9–10 September 2026, six iterations, 3.9 h, no promotion). **The verdict stands, its stated reason does not** — item 32 measures this run's chair null at 0.7135 / 0.2865, so the six Runner-chair rejections below are six chairs within 1.4σ of parity being cut by a floor set above the null. What rejected these candidates on the evidence is the blend (0.396–0.500 against a 0.55 gate), not a collapsed seat. Item 29 measured `--chair-balance 0.5` worth +0.073 on the Runner chair in a single training pass on a fixed corpus. This run asked whether a *generator* carrying that correction compounds it. **It does not, and both halves of the mechanism moved the wrong way.**
+
+    **The run had to be bootstrapped to be a loop at all, and this is the correction to how the fifth run was described.** `--chair-balance` is a trainer flag: it changes the candidate, never the generator. The generator only advances on a promotion, and the fifth run never had one — `latest_policy.onnx` stayed item 22's iteration-1 network for all four iterations. So what item 26 called a loop was **one fixed generator with a growing corpus**, which is why "corpus size is not the variable" was the only thing it could have found. Running that shape again with `--chair-balance` would have re-measured item 29's cb05 leg five times: 0.531 blended, 0.323 on the Runner chair, and 0.323 cannot reach a 0.45 floor. So the incumbent was seated as item 29's cb05 checkpoint (sha256 `0bae34db…`) — **a bootstrap, not a promotion claim**; cb05 was rejected by both gates and stays rejected. Every promotion decision from iteration 5 on was gated normally, floors live.
+
+    **Six iterations, six rejections, every one on the Runner chair.** Only iteration 5 reached a full arena (0.438 / Corp 0.667 / Runner 0.208); the other five were stopped by item 28's screen chair floor, which is what took the run to 3.9 h. **Three of those five (iterations 6, 9 and 10) cleared the blended screen at 0.479, 0.500 and 0.458 and were stopped by the chair floor alone** — a floor 0.0135 above their own Runner null, which at 48 screen games rejects an honest tie 57 times in 100 (item 32).
+
+    | iter | window | corrected | blend | Corp | Runner | gap | floor gap | value edge |
+    |---|---|---|---|---|---|---|---|---|
+    | 5 | 6,000 | 1/4 | 0.469 | 0.604 | 0.333 | 0.271 | 0.1092 | −0.060 |
+    | 6 | 4,800 | 2/4 | 0.479 | 0.708 | 0.250 | 0.458 | 0.1093 | −0.099 |
+    | 7 | 4,800 | 3/4 | 0.396 | 0.604 | 0.188 | 0.417 | 0.1072 | −0.095 |
+    | 8 | 4,800 | 4/4 | 0.438 | 0.625 | 0.250 | 0.375 | 0.0995 | −0.055 |
+    | 9 | 4,800 | 4/4 | 0.500 | 0.750 | 0.250 | 0.500 | 0.0980 | −0.102 |
+    | 10 | 4,800 | 4/4 | 0.458 | 0.729 | 0.188 | 0.542 | 0.0979 | −0.050 |
+
+    **Pooled over all 576 screen games: 0.457 blended, Corp 0.670 (+5.8σ), Runner 0.243 (−8.7σ), chair gap 0.427.** Item 26's seat trade is intact and undiminished.
+
+    **The correction inverts on the self-play side.** Item 26's diagnosis was that the loop's input and output are the same distortion twice, the input being a ~65% Corp corpus against the engine's own 54.8%. A chair-balanced generator makes that **worse**:
+
+    | generator | games | Corp win |
+    |---|---|---|
+    | uniform search (`iter_001`) | 2,400 | 54.8% |
+    | uncorrected priors (`iter_002`–`004`) | 4,800 | 64.9% |
+    | **chair-balanced priors, cb05 (`iter_005`–`010`)** | **7,200** | **70.5%** |
+
+    Six disjoint 1,200-game seed ranges: 69.5 / 70.3 / 69.7 / 71.8 / 71.2 / 70.6. The +5.6-point move is 4.8σ and it replicates six times. **Narrowing the chair gap against a fixed opponent and reducing the seat asymmetry a network shows against itself are different quantities, and item 29 moved only the first.** Item 29's legs all rose on both chairs (Corp +0.031, Runner +0.073); in self-play what survives is the Corp seat improving relative to the network's own Runner seat.
+
+    **Replacing the training window with corrected data changes nothing, which is the cleanest result here.** `--window 4` was carried so the 7,200 pre-correction games could not dominate; the window went 1/4 → 4/4 corrected-generator over iterations 5–8, and **every column's observed sd is below its own sampling sd** — blend 0.036 against 0.051, Corp 0.066 against 0.068, Runner 0.054 against 0.062. Six iterations are six samples of one fixed quantity. A monotone Runner decline over iterations 5–7 (0.333 → 0.250 → 0.188) was read as a possible trend in session and **is withdrawn**: iteration 8 returned to 0.250 and the spread is pure 48-game sampling.
+
+    **The floor gap anti-predicted for a fourth time, and more sharply than before.** It *declined* monotonically after iteration 6 — 0.1093 → 0.1072 → 0.0995 → 0.0980 → 0.0979 — while the arena did not move at all, and `best_epoch` rose 2 → 4 → 5 → 5 → 5 → 6 alongside it. Items 26 and 29 found the gap flat across arena swings of 0.06 and 0.052; this run has it moving on its own while the arena stands still. **It is not a proxy for playing strength in either direction.** The value head's edge over its chair null was negative in all six iterations (−0.050 to −0.102), having been positive throughout the fifth run — though item 29's caveat holds and `chair_baseline_mse` is not an honest null under `--chair-balance`.
+
+    **What this closes.** `--chair-balance` is a one-shot correction against a fixed opponent, not a loop-stable one, and ROADMAP "next" item 1 is answered no. The seat asymmetry is not a training-objective problem: reweighting the objective moved the candidate 0.052 once (item 29) and moved the loop nothing. **The remaining suspect is the thing neither run touched — the search that generates the data.** A prior distilled from a uniform PUCT search inherits whatever chair bias that search has, and Phase 3 §1 already records the PUCT Runner chair as the weak one (0.516 against the Corp's 0.510 only after two fixes, and the heuristic Runner at 0.417). No root Dirichlet noise (standing open item) means self-play has no exploration pressure to find Runner lines the prior already discounts, which is a concrete mechanism for a loop that concentrates on one seat and a change that does not need another volume run to screen.
+
+    **Cost, for comparison with the fifth run's 4.2 h per iteration:** 0.58–0.60 h per iteration end to end, of which self-play was 0.40–0.46 h against the fifth run's 1.95 h for the same 1,200 games. Item 27's cross-game batching is doing better than the 2.6× it claimed, and item 28's screen chair floor skipped five full arenas at 0.31 h each.
+
+31. **Root Dirichlet noise: the generator's chair balance moves about a quarter of the way, and the specification is not the reason it doesn't move further** (`feat/root-dirichlet-noise`, 10 September 2026). ROADMAP "next" item 1 and the last standing open item item 30 named — the one mechanism neither training-side run touched. **5,760 self-play games, ~3.3 h, no volume run and no training.**
+
+    **What landed.** `PuctConfig::dirichlet_epsilon`/`dirichlet_alpha` mix AlphaZero's `P' = (1 − ε)P + ε·η`, `η ~ Dir(α)`, into the root priors in `PuctNode::expand_root` and nowhere else, drawn per decision off a salted stream so the agent stays a pure function of its construction seed. **`ε` defaults to 0.0**, because noise is a property of a generator and not of a player: a bench or arena verdict taken with a noisy searcher scores the dice, and this repo's before/after attribution depends on a heuristic seating being byte-identical run to run. `netrunner_selfplay` is the only caller that turns it on, through `selfplay_config`; `arena_config` is a separate function so that stays a decision rather than a forgotten field. **Verified rather than argued:** a binary built from `main` and one built from this branch produce the same 16-game corpus at `ε = 0`, `sha256 50237a62…`.
+
+    **The screen.** Item 26's `iter_003` configuration exactly — `priors_only_v5/latest_policy.onnx` seated `priors-only`, 128 simulations, seeds from 4800 — with `--dirichlet-epsilon` the only variable. That control is published at **64.9% Corp** over 1,200 games and reproduces here at **64.1%** (384 games, seeds 4800–5183) and **64.8%** (1,536 games, seeds 5184–6719), z = +0.26 between the two blocks. The gap being hunted is the 10.1 points from there to the uniform search's own 54.8%.
+
+    | arm | games | Corp win | Corp steps | Corp share of winning steps |
+    |---|---|---|---|---|
+    | *uniform search (item 28's reference)* | *2,400* | *54.8%* | *44.4%* | *64.6%* |
+    | ε = 0 (control) | 1,920 | 64.6% | 45.7% | 72.6% |
+    | **every noise arm pooled** | **3,840** | **61.8%** | **46.6%** | **69.2%** |
+
+    **Pooled, root noise is worth −2.8 points of Corp win share, z = −2.08** — about a quarter of the gap, in the predicted direction, and too small to be the explanation. The other two columns move by the same fraction: the outcome-within-seat distortion item 28 named as the real one recovers 3.4 of its 8.0 points, and the seat split does not move at all (it drifts the wrong way, 45.7% → 46.6%).
+
+    **Neither dial reaches further.** `ε` saturates immediately — 0.25 and 0.5 are 59.1% and 59.4% on the same 384 games — and **α is not the reason either**, which is the result worth keeping. This game's roots are narrow: over 11,900 recorded decisions the median holds **2 candidates** and 59% hold three or fewer, only the tail being wide (p90 17, max 59). `Dir(0.3)` over two candidates is about `(0.95, 0.05)`, a coin-flip override rather than exploration pressure, where AlphaZero's own `α ≈ 10/n` rule asks for `α = 5` there — nearly uniform. So `dirichlet_alpha_scale` was added and run as a third arm on the same 1,536 seeds. **It lands on the fixed α's number:**
+
+    | arm (seeds 5184–6719) | games | Corp win | Corp share of winning steps |
+    |---|---|---|---|
+    | control | 1,536 | 64.8% | 72.5% |
+    | ε = 0.25, α = 0.3 | 1,536 | 62.6% (z −1.28) | 71.0% |
+    | ε = 0.25, α = 10/n | 1,536 | 62.4% (z −1.39) | 69.1% |
+
+    Two regimes that perturb opposite halves of the decision distribution — the fixed one mostly the wide tail, the scaled one mostly the narrow majority — agree to 0.2 points. The effect is a property of adding root exploration at all, not of how it is shaped.
+
+    **A 384-game block is not enough to price this and the session proved it the hard way.** The first noise arm read 59.1% against a 64.1% control, a 5.0-point move that on 4× the games became 2.2, and its winning-steps column read 65.6% — apparently back onto the uniform search's 64.6% — where the 1,536-game block reads 71.0%. **That reading was recorded in session and is withdrawn.** The control was stable across the same two block sizes, so the instability was entirely in the treatment arm. This is item 26's lesson again (two points that "looked like a trend"): at sd 2.4 points a 384-game block cannot resolve an effect smaller than about 7.
+
+    **What this closes, and what it hands on.** Root noise is implemented, priced and available for free to any future loop, and it is **not** the account of the Corp skew — a quarter of the gap at z = −2.08 is not a mechanism, it is a contribution. The sharper reading of the numbers is the one the screen makes unavoidable: **the uniform PUCT search's own corpus is chair-balanced at 54.8%, and the skew appears only once the priors distilled from it are seated (64.9%).** So the distortion enters at *distillation*, not in the search's shape — a policy head trained on a balanced corpus plays one seat much worse than the other. Item 22 measured that head's top-1 agreement with the search at 44.4% overall and never split it by chair; doing so is the next lead, and it is a diagnostic over an existing checkpoint and an existing corpus rather than a run. **Item 32 ran that diagnostic and the second half of this reading is withdrawn**: the head is equally faithful to the search on both seats (visit-share regret 0.0651 Corp against 0.0657 Runner), and the arena chair scores that motivated "plays one seat much worse" were being differenced against 0.5 instead of a measured null. The first half — that seating priors moves the pool ten points toward the Corp — is confirmed and unexplained. No stalls in any arm — every one of the 5,760 games ended (`agenda_threshold` ~90%, `flatline` ~9%, a handful of `deckout`), so the noise costs nothing in reachability.
+
+32. **The policy head is not failing the Runner chair, and the seat trade was the chair null** (`diag/policy-head-by-chair`, 10 September 2026). ROADMAP "next" item 1, run as specified — a diagnostic over existing checkpoints and a held-out corpus, no self-play loop, no training, no volume run, ~2.5 h. It answers its question **no**, and then finds that the question rested on a null that was never measured. **This entry corrects items 26, 28, 29 and 30.**
+
+    **The corpus.** 400 uniform-search games at 128 simulations, seeds 100000–100399, disjoint from every corpus on disk (0–14399); Corp win share **54.25%** against the engine's recorded 54.8%, so it is a faithful draw from the generator whose balance is the whole subject. Held out matters twice over here: scored against `iter_002` — a corpus the model itself generated — the same head reads **77.7% / 69.4%**, because that search was seeded with the very priors being scored. The honest numbers are eleven points lower. Its own training corpus (`iter_001`) reads 66.6% / 60.1% against 66.0% / 58.5% held out, so overfitting is not the story either.
+
+    **The chair split exists and it is not a defect** (`scripts/policy_head_by_chair.py`, 82,459 held-out decisions, the fifth run's generator `1b743cb5…`):
+
+    | | Corp | Runner |
+    |---|---|---|
+    | top-1 agreement with the search | **66.0%** ±0.5 | **58.5%** ±0.4 |
+    | chance (uniform over legal) | 30.8% | 32.4% |
+    | standardized onto the other chair's difficulty cells | 66.0% | 61.7% |
+    | **visit-share regret / decision** | **0.0651** ±0.0016 | **0.0657** ±0.0013 |
+    | KL(search ‖ prior), nats | 0.157 | 0.117 |
+    | calibration ECE | 0.0032 | 0.0035 |
+
+    The 7.5-point top-1 gap is real and it is nearly all difficulty. Direct standardization over (search max visit share × legal-action count) — the head scored on the other chair's cells — takes it to **4.3 points**, and pricing the same disagreements in the search's own currency closes it entirely: **the head throws away 0.0651 of the search's visit share per Corp decision and 0.0657 per Runner decision**, a difference less than half of its own confidence interval. Top-1 scores a coin flip between two near-tied actions exactly as it scores abandoning a 0.9-visit move, and that is the whole gap: it lives in the bands where the search itself was undecided (peak < 0.30: 32.1% against 22.1%), while at peak ≥ 0.60 the **Runner is equal or better** (80.8% against 78.9%, 93.0% against 91.0%). At matched difficulty the Runner head errs about an eighth more often (38.3% against 34.0%) and its errors cost about a tenth more (0.0717 against 0.0651); as actually encountered in play, where the Runner's decisions really are the closer ones, the two chairs cost the same.
+
+    **Nothing else points at a chair either.** Calibration is excellent and equal (ECE 0.0032 / 0.0035), every `ActionSpace` segment lands within about 10% of the search's mass on **both** chairs — item 15's masked objective closed item 14's `SCORE AGENDA` 0.31 and it has stayed closed — and mean KL is *minimized at ε = 0* on both chairs, so a per-chair `--candidate-prior-mix` is not the fix. Item 12's monotone ε sweep to 0.5755 was the unmasked checkpoint plus item 13's chair confound; on today's objective mixing uniform only makes both chairs worse.
+
+    **And the metric is invariant to the one intervention known to move a chair score.** Item 29's four `--chair-balance` legs, one flag apart on an identical corpus, over the same held-out games:
+
+    | leg | Corp top-1 | Runner top-1 | raw gap | standardized gap | regret gap | arena Runner chair |
+    |---|---|---|---|---|---|---|
+    | cb00 | 0.677 | 0.603 | 0.075 | 0.040 | −0.0057 | 0.250 |
+    | cb025 | 0.680 | 0.605 | 0.075 | 0.044 | −0.0075 | 0.302 |
+    | cb05 | 0.679 | 0.606 | 0.073 | 0.042 | −0.0074 | 0.323 |
+    | cb10 | 0.685 | 0.608 | 0.078 | 0.044 | −0.0064 | 0.297 |
+
+    The arena Runner chair moves 0.250 → 0.323 while every offline chair figure sits flat inside its own noise. Whatever `--chair-balance` did, it was not making the head more faithful to the search on the losing seat — which is the first sign that the arena's chair scores were not measuring what they were read as measuring.
+
+    **The null nobody ran.** The arena plays each deal twice, the candidate in each chair (`arena_matchup_index` advances every two games). With the candidate *equal to* the incumbent both games of a pair are the same trajectory, so `as_corp` under a null is **exactly the pool's Corp win rate at that configuration** and `as_runner` is its complement. The blend is an honest 0.5; the chairs are not, and never were. Item 13 established this (`0.742 / 0.258`, "about 180 Elo before anyone plays") and item 22 re-measured it per binary (`0.635 / 0.365`) for precisely this reason. **Items 26, 28, 29 and 30 then quoted bare chair scores against 0.500.** Two null legs, each seated exactly as its run seated its own — 384 games, `priors-only` both sides, the run's own pinned binary:
+
+    | null leg | overall | draws | as Corp | as Runner |
+    |---|---|---|---|---|
+    | fifth run (`d7869c95`, incumbent `1b743cb5`) | 0.500 | 0 | **0.6823** | **0.3177** |
+    | sixth run (`e0d035ca`, incumbent `0bae34db` = cb05) | 0.500 | 0 | **0.7135** | **0.2865** |
+
+    **Every "seat trade" number collapses against its own null:**
+
+    | | Corp | vs null | Runner | vs null | blended |
+    |---|---|---|---|---|---|
+    | fifth run, pooled 1,152 games | 0.7083 | **+0.026** (0.6σ) | 0.2674 | **−0.050** (1.2σ) | 0.4878 |
+    | sixth run, iteration 5 (384) | 0.6667 | −0.047 | 0.2083 | −0.078 | 0.4375 |
+    | item 29 cb05 | 0.7396 | +0.057 | 0.3229 | **+0.005** | 0.5312 |
+
+    Item 26's "+0.21 as Corp, −0.23 as Runner, net nothing" is **+0.026 and −0.050, net nothing** — a candidate at parity on both chairs, which is what its blended 0.4878 said in the first place. There is no loop trading one seat for the other; there is a chair baseline of about 0.68/0.32 that was being differenced against 0.5. The **+10.0σ / −11.2σ** of item 26 and the ROADMAP index are withdrawn: both σ were taken from parity, and against the measured null they are 0.6σ and 1.2σ.
+
+    **This makes item 28's gate unreachable by construction, and that is the sixth run's six rejections** (re-centred in item 33). `--promote-chair-floor 0.45` asks a candidate to beat its own Runner null by **+0.13**; at 192 games (sd 0.036) that is 3.7σ on the fifth run's null and 4.5σ on the sixth's, so an honest tie clears it roughly once in 10,000 rather than the "92 times in 100" the flag's own comment claims. That comment reasons from a chair parity of 0.50, twenty lines under a comment in the same function that correctly records the baseline as 0.72/0.28. `--arena-screen-chair-floor 0.30` sits *above* the sixth run's Runner null of 0.2865, so at 48 games per screen chair (sd 0.072) it screens out an honest tie **57 times in 100**. The sixth run's Runner screens read 0.250, 0.1875, 0.250, 0.250, 0.1875 against that null of 0.2865: every one within 1.4σ of parity, every one recorded as `chair_floor_failure: runner`. Three of them (iterations 6, 9, 10) cleared the blended screen and were stopped by the chair floor alone.
+
+    **What still stands, and what does not.** No verdict changes: no candidate in either run cleared the blended 0.55, and iterations 6, 9 and 10 would have gone to a full arena on screens of 0.479, 0.500 and 0.458 rather than promoted. Item 29's `--chair-balance` effect stands, because all four legs share one null — and it reads *better* corrected: cb05 is the only leg **at or above its null on both chairs**, so it is a small real gain (blended +0.031, ~1.2σ) rather than a smaller seat trade. What does not stand is the diagnosis built on top: item 26's "violently different in both chairs and the two differences cancel", item 28's floors and their arithmetic, item 30's "six rejections all on the Runner chair" as evidence about the candidate, and this entry's own starting premise — item 31's "a policy head trained on a balanced corpus plays one seat much worse than the other."
+
+    **Where that leaves the Corp skew.** It is still real and still unexplained, but it is now a fact about the *pool under sharper play*, not about the network's seats: the null legs are the same phenomenon with no candidate in them at all — uniform search 54.8% Corp in self-play and 0.635 greedy (item 22), priors-only 64.9% in self-play and **0.682 / 0.714** greedy here. Seating a policy head shifts the chair balance about ten points toward the Corp **for both players equally**, and equally faithfully by every offline measure above. The open question is no longer "which chair is the head failing" but whether this deck pool is simply Corp-favoured as play sharpens — which is a game-balance question, measurable against `bench` and the heuristic ladder rather than in another loop.
+
+33. **The chair floors are deltas from a measured null** (`fix/chair-floors-from-measured-null`, 10 September 2026). ROADMAP "next" item 1, run as specified: the gate item 32 showed could not promote, re-centred, plus the replay that says which recorded verdicts change. A behaviour change and two 96-game null legs, no training and no volume run, ~40 min.
+
+    **What landed.** `netrunner_selfplay --arena-null` seats the incumbent — or the uniform search, when a run has promoted nothing yet — in *both* chairs and prints the ordinary arena summary with `null_leg: true`. A run that has an incumbent could always express this by passing one path to both flags, which is how item 32's two legs were taken; the flag exists for the case that cannot, which is the *first* iteration of every run, where the bar is the uniform search and there is no path to pass. `run_iteration_loop.py` measures one per `(binary, incumbent, arena shape)`, caches it in `<ckpt-dir>/chair_nulls.json`, and derives a floor per chair from it — the two chairs get different floors, because their nulls are complements of each other rather than a shared 0.5. `--promote-chair-floor 0.45` and `--arena-screen-chair-floor 0.30` are gone; `--promote-chair-margin 0.07` and `--arena-screen-chair-margin 0.20` replace them, and `off` disables rather than `0`, since zero is now the meaningful setting "may not fall below its null at all".
+
+    **The margins are sized on the sd of the *difference*, which the old arithmetic omitted.** A chair is compared against a measured baseline, so both terms carry sampling error: at 192 games a chair has sd 0.034 at `p = 0.32`, and against a 192-game null chair of its own that is √2 × 0.034 = 0.047. The old flag's "92 times in 100" was computed from the chair's own sd and would put 0.05 here; at the honest sd 0.05 lets 85 in 100 through, and **0.07 delivers the 93 the old comment promised** while still stopping the collapse the floor exists for — a Runner chair 0.15 under its null, 0.17 against 0.32 — at 1.7σ. The screen keeps the slacker role a cost filter should have: 0.20 is 2.1σ at 48 games a chair, so an honest tie survives 98 times in 100 and only a 0.30 collapse is reliably stopped. The old 0.30 screen floor was not a slack version of the gate at all — it sat *above* the sixth run's Runner null of 0.2865.
+
+    **Each arena shape gets its own null**, because `decks::matchups()` is corp-major and the screen's stride-4 walk is a different 48-pair subset of the pool, not a smaller sample of the same one — and the pool is exactly what a null measures.
+
+    | incumbent | shape | Corp | Runner |
+    |---|---|---|---|
+    | fifth run (`d7869c95`, `1b743cb5`) | 384 games, stride 1 | 0.6823 | 0.3177 |
+    | | **96 games, stride 4 — the screen** | **0.6250** | **0.3750** |
+    | sixth run (`e0d035ca`, `0bae34db` = cb05) | 384 games, stride 1 | 0.7135 | 0.2865 |
+    | | **96 games, stride 4 — the screen** | **0.7083** | **0.2917** |
+
+    Both new legs score an exact 0.500 with zero draws, which is now a *checked* property rather than an observed one: a null off 0.5 means the two seats were not the same player after all — a stride mismatch, a non-deterministic evaluator — so `chair_null` refuses it instead of gating on floors derived from it. The two shapes agree on the sixth run's incumbent (0.7083 against 0.7135) and differ by 5.7 points on the fifth's (0.6250 against 0.6823), which at 48 games a chair is 0.76σ — not a demonstrated property of the strided subset, and not worth arguing about at five minutes a leg.
+
+    **The replay** (`scripts/replay_chair_verdicts.py`, each run's `iterations.log` against its own two nulls). A screened-out iteration cannot be replayed into a promotion: the recorded summary is the screen's 96 games, and the full arena a passing candidate would then have played was never played.
+
+    | run | iter | games | blend | Corp | Runner | Runner vs null | old rule | new rule |
+    |---|---|---|---|---|---|---|---|---|
+    | fifth | 2 | 384 | 0.461 | 0.688 | 0.234 | −1.8σ | rejected: runner | rejected: runner |
+    | fifth | 3 | 384 | 0.523 | 0.729 | 0.318 | +0.0σ | rejected: runner | **rejected: blend** |
+    | fifth | 4 | 384 | 0.479 | 0.708 | 0.250 | −1.4σ | rejected: runner | **rejected: blend** |
+    | sixth | 5 | 384 | 0.438 | 0.667 | 0.208 | −1.7σ | rejected: runner | rejected: runner |
+    | sixth | 6 | 96 | 0.479 | 0.708 | 0.250 | −0.4σ | screened out: runner | **full arena (never run)** |
+    | sixth | 7 | 96 | 0.396 | 0.604 | 0.188 | −1.1σ | screened out: runner | **screened out: blend** |
+    | sixth | 8 | 96 | 0.438 | 0.625 | 0.250 | −0.4σ | screened out: runner | **screened out: blend** |
+    | sixth | 9 | 96 | 0.500 | 0.750 | 0.250 | −0.4σ | screened out: runner | **full arena (never run)** |
+    | sixth | 10 | 96 | 0.458 | 0.729 | 0.188 | −1.1σ | screened out: runner | **full arena (never run)** |
+
+    Seven of nine reasons change; **no verdict does**, which is the point. The sixth run's iteration 5 — the only full arena it played — still collapses on the Runner chair at −1.7σ, so the floor still catches what it was built to catch, and no candidate in either run clears the blended 0.55. Five of the sixth run's six rejections stop being chair-floor verdicts: three go to a full arena and two are rejected on the blend, which is the number that always had the evidence for them. The fifth run predates the floor entirely (item 28 landed after it), so its rows are what today's gate *would* have decided, not what it recorded.
+
+    **Cost and what is now unblocked.** One null leg per shape per incumbent — ~20 min at 384 games, ~5 at 96 — measured lazily (an iteration screened out never pays for the full null) and paid again only when a promotion changes the incumbent, which in six runs has happened once. The gate can promote again, so ROADMAP's "no loop should be gated again until this lands" is closed; the open question moves on to whether this pool is simply Corp-favoured as play sharpens (item 32).
+
+34. **The pool's Corp share is a function of search budget, and seating a policy head is not what moved it** (`diag/corp-share-vs-strength`, 10 September 2026). ROADMAP "next" item 1, run where it said to run it: `bench`, the deck pool and the heuristic ladder, no training loop and no network. A measurement branch — one Python analysis script (`scripts/corp_share_curve.py`), no behaviour change, ~2.5 h wall on 18 threads.
+
+    **`bench`'s self-pairing is the same chair null `--arena-null` measures, at a tenth the cost.** One bot in both chairs over the 192 sample matchups is exactly item 33's null leg; `bench` plays it in 10 s for the heuristic and 6 min for `puct@128`, against ~20 min for a 384-game `netrunner_selfplay` leg. That is what made a curve affordable at all.
+
+    | tier | n | corp share | corp flatline | corp agenda | runner agenda |
+    |---|---|---|---|---|---|
+    | `random` | 960 | 0.4771 ±0.0161 | **0.477** | **0.000** | 0.438 |
+    | `mcts@128` | 960 | **0.3490** ±0.0154 | 0.177 | 0.172 | 0.631 |
+    | `heuristic` | 2,112 | 0.5573 ±0.0108 | 0.183 | 0.374 | 0.441 |
+    | `puct@32` | 1,342 | 0.5492 ±0.0136 | 0.177 | 0.371 | 0.448 |
+    | `puct@128` | 1,344 | 0.5863 ±0.0134 | 0.124 | 0.463 | 0.412 |
+    | `puct@512` | 768 | **0.7031** ±0.0165 | 0.113 | 0.590 | 0.297 |
+    | `puct@1024` | 192 | 0.7135 ±0.0326 | 0.120 | 0.594 | 0.286 |
+    | `puct@2048` | 96 | 0.6875 ±0.0473 | 0.062 | 0.625 | 0.312 |
+
+    **The random baseline was never a balance reading.** At random-vs-random *every* Corp win is a flatline and the Corp scores an agenda in **zero games of 960** — a random Runner kills itself on net damage. Reading 0.477 there as "the pool starts balanced" was reading a damage clock.
+
+    **The ten points are search budget, with the same uniform evaluator and the same decks.** Within one agent family, holding everything but `--simulations`: **0.549 → 0.586 → 0.703**, saturating from 512 on (1024 and 2048 are 0.714 and 0.688, both inside their own sd of 0.703). `puct@512` vs `puct@128` is **+0.117, 5.5σ**. That is the whole of item 31's ten-point shift, reached with **no network in the process at all** — and it lands on the same number as the head's greedy legs, item 32's nulls of **0.6823 and 0.7135**. So the answer to "why does seating a policy head move the pool ten points toward the Corp" is: *because it plays like a deeper search, and a deeper search does that here.* No per-seat defect is needed to explain it, which is consistent with item 32 finding none.
+
+    **It is the Corp chair converting budget, and only the Corp chair.** The heuristic fixed on the other chair, 384 games a cell, all three runs on the same pairing offsets so the cells play the same games:
+
+    | budget | as Corp vs heuristic Runner | as Runner vs heuristic Corp |
+    |---|---|---|
+    | `puct@32` | 0.458 ±0.025 | 0.409 ±0.025 |
+    | `puct@128` | 0.581 ±0.025 | 0.513 ±0.026 |
+    | `puct@512` | **0.714** ±0.023 | **0.461** ±0.025 |
+
+    The control is exact: `heuristic` vs `heuristic` is **0.5625 in all three runs**, the flag not reaching a bot that has no search. The Corp chair gains +0.26 over the budget range and the Runner chair gains nothing past 128 — which is Phase 3's "the search is not budget-bound" (0.483 → 0.481 at 128 → 512) seen from the other side: that measurement was taken on the Runner chair, where it is true, and never taken on the Corp chair, where it is not.
+
+    **The shift is the whole pool, not two broken decks.** `heuristic` → `puct@512`, per deck: **15 of 16 Corp decks** move toward the Corp (only `hyper_velocity` falls, −0.092) and **12 of 12 Runner decks** do. The outcome mix moves with it — Corp agenda wins 0.374 → 0.590, flatlines 0.183 → 0.113 — so this is the Corp learning to score, not a damage clock reappearing.
+
+    **What this does not establish, and the lead it hands over.** 0.70 is an upper bound on how Corp-favoured the pool is, not its balance, because the Runner chair in that measurement is one we can already beat. Across families at 128 simulations, against the same fixed heuristic (pooled over three runs):
+
+    | bot | as Corp | as Runner |
+    |---|---|---|
+    | `heuristic` | 0.570 ±0.016 | 0.430 ±0.016 |
+    | `mcts@128` | **0.507** ±0.021 | **0.589** ±0.021 |
+    | `puct@128` | **0.597** ±0.016 | 0.511 ±0.016 |
+
+    **`mcts` is the pool's best Runner and its worst Corp** — as Runner it is **+0.077 over `puct@128` (2.95σ, n = 576/960)** and +0.159 over the heuristic, while as Corp it is 0.090 *behind* PUCT. Chair skew is a property of each agent family, not of strength: `mcts@128` self-paired sits at 0.349, twenty points *below* random, in the same pool where `puct@512` sits at 0.703. So "sharper play favours the Corp" is true of this search and not of search in general, and the honest form of the finding is that **PUCT's Runner chair is the binding constraint on every chair number this project has recorded** — including the 0.68/0.71 nulls the promotion gate is now centred on.
+
+    **What it validates.** Item 33's decision to measure a null *per incumbent per arena shape* rather than once: a chair null moves **0.55 → 0.70 on search budget alone**, same binary, same decks, same evaluator. A null carried across configurations would have been wrong by more than any effect the gate is trying to detect.
+
+35. **The Runner chair is uncertainty-bound and the Corp chair is depth-bound, and that one fact explains both searches** (`diag/mcts-runner-chair`, 10 September 2026). ROADMAP "next" item 1. Every cell below is 384 games against the **same fixed heuristic** on the other chair, all runs the same two-kind shape on `--seed 1` so each cell plays the *identical* (matchup, seed) games — the `heuristic` vs `heuristic` control is **0.5625 in all nine runs**, which is how you know. Reported paired (McNemar over the discordant games) as well as raw, because pairing is worth about a full sigma here: the games differ enormously in how winnable a chair is, and that variance is common to both cells.
+
+    **The whole of MCTS's Runner-chair lead over PUCT is its determinization count.** Item 34 handed over `mcts@128` at +0.077 on the Runner chair and −0.090 on the Corp chair, and asked what the rollout was doing. It was doing nothing. `MctsAgent` runs `trees` root-parallel searches, each determinizing its own sample and splitting the budget (`iterations / trees`), and on this box that count is **read off `rayon::current_num_threads().clamp(1, 4)`** — so `mcts@128` was 4 × 32 all along, and was a *different bot on a machine with fewer cores*. Pin it to one tree and the lead is gone:
+
+    | Runner chair, 128 total simulations | score | paired vs `puct@128` |
+    |---|---|---|
+    | `mcts`, 4 trees (what item 34 measured) | **0.6354** | +0.1224, **z = +4.46** |
+    | `mcts`, 2 trees | 0.5755 | — |
+    | `mcts`, 1 tree | 0.5104 | −0.0026, **z = −0.09** |
+    | `puct@128` (1 sample) | 0.5130 | — |
+
+    At one sample the two searches land within 0.003 of each other while still differing in everything else they do — leaf evaluation (a 15-ply weighted-random playout against a static `evaluate_state_with`), exploration rule (UCT at `sqrt(2)` over unbounded values against PUCT over `tanh`-squashed ones), and backup convention. **None of it matters on this chair.** The rollout, which was the obvious suspect, is worth nothing.
+
+    **It is samples, not the depth they cost.** Splitting the budget confounds the two, and Phase 3 §1 already said this chair was not budget-bound, so the one-sample depth curve settles it — at *identical* per-tree depth of 32, one sample scores 0.4974 and four score 0.6354 (**−0.1380, z = −4.90**), while at one sample quadrupling depth 32 → 128 is worth nothing (0.4974 → 0.5104, z = −0.48):
+
+    | `mcts`, 1 sample | as Corp | as Runner |
+    |---|---|---|
+    | 16 iterations | 0.314 | 0.458 |
+    | 32 | 0.396 | 0.497 |
+    | 64 | 0.490 | 0.534 |
+    | 128 | 0.522 | 0.510 |
+
+    **The two chairs are bound by different resources.** Depth is worth **+0.208** to the Corp chair over that range and still climbing at 128 (item 34 took it to 512); it is worth +0.076 to the Runner chair and has **saturated by 64**. So trading depth for samples is nearly free for the Runner and expensive for the Corp, which is why the same budget split moves the two chairs in opposite directions (Corp 0.522 → 0.500, Runner 0.510 → 0.635). **This is item 34's whole budget curve from the inside**: raising simulations converts on one chair only, so the pool tilts Corp — and the tilt is a fact about what each chair's search is short of, not about the decks.
+
+    **And it is the diversity of the hidden information, not the extra valuations.** Four trees also re-value each root action four times, so the gain could have been variance reduction on a noisy playout rather than integration over the information set. `--shared-sample` separates them — four trees, one shared determinization, so the averaging survives and the disagreement about what is behind the ICE does not. It scores **0.5417**: **−0.0938 (z = −3.60)** against four independent samples and **+0.0312 (z = +1.14, not significant)** against one. Three quarters of the effect is the diversity. The prediction going in was the opposite, from the PUCT result below.
+
+    **PUCT's own knob does the reverse, which confirms Phase 3 §1 rather than overturning it.** `PuctConfig::samples` is the same dial under another name, and Phase 3 measured it twice at 192 games to nothing (0.219 → 0.219 absolute leaves, 0.411 → 0.406 relative). At 384 paired games it is not merely null, it is **negative on both chairs**: Runner 0.5130 → **0.4115** (−0.1016, z = −3.22), Corp 0.5807 → **0.4922** (−0.0885, z = −2.79). And 0.4115 is essentially item 34's `puct@32` (0.409) — **PUCT's four samples buy nothing at all and it simply pays the depth loss**, where MCTS's four buy +0.138 on top of paying the same loss.
+
+    **The lead that hands over, stated as a hypothesis and not a finding.** The searches differ in what a sample is worth to them, and the candidate explanation is what reads it: MCTS values a leaf by *playing the sampled hidden cards out* for 15 plies, while PUCT values one with `evaluate_state_with` a few plies down, which may barely read the hidden state at all. If the static evaluator is near-blind to what was sampled, then marginalizing over four samples is marginalizing over nothing and only the depth is lost. That is cheap to test without games — draw N determinizations of one `ClientView` and compare the spread of the static evaluation against the spread of the playout value — and it is the next thing to run.
+
+    **What this does not claim.** Nothing here makes `mcts` the better bot: its Corp chair is 0.500 against PUCT's 0.581 on the same games, and its self-pairing sits at 0.349 (item 34). The finding is about which resource each *chair* converts, which is why it bears on every chair number the project has recorded rather than on the bot ladder.
+
+    Scaffolding, all of it permanent and none of it a behaviour change: `bench --determinizations N` (one flag, because `mcts`'s `trees` and `puct`'s `samples` are one dial — and because `mcts`'s default is machine-dependent, a bench run was only reproducible by accident), `bench --shared-sample`, `MctsAgent::with_trees` / `with_shared_sample`, a `bots::AgentSetup` that groups the knobs rather than widening two argument lists past clippy's limit, and a `paired` mode in `scripts/corp_share_curve.py` that finally exploits the same-offset property the script already documented. The `--determinizations 1` leg re-ran the ladder's `puct@128` cell on the rebuilt binary and reproduced it exactly (0.581 / 0.513 / 0.562), which is the pinned-binary check across the refactor.
+
+36. **PUCT's leaf cannot read a determinization at all — not "barely", *at all* — and that is a property of `evaluate_state_with`** (`diag/leaf-hidden-state-sensitivity`, 10 September 2026). ROADMAP "next" item 1. Item 35 left a hypothesis: `mcts` values a leaf by playing the sampled hidden cards out for 16 plies while `puct` reads a static score a few plies down that may barely see them, in which case PUCT marginalizes over nothing and only pays the depth. It asked for the cheap version — draw N determinizations of one `ClientView` and compare the spread — and the answer came back stronger than a spread.
+
+    **The two leaves differ only by the plies in between.** `mcts::rollout` walks a weighted-random policy for `depth_budget` plies and then calls `evaluate_state_with`; `UniformPolicyEvaluator` calls `evaluate_state_with` directly. So one function with the depth swept from 0 gives both searches' leaves **on one scale**, and the comparison needs no normalization — which is why `diag leaf-sensitivity` measures through the real `rollout` (made `pub` for this) rather than a copy. It draws 16 determinizations of each of 768 real decision positions, applies every root action on each, and reports at 0, 1, 2, 4, 8 and 16 plies.
+
+    **Centred per determinization, and paired against a shared-sample control** — both corrections change the reading, so neither is optional. A sample that simply looks better shifts every leaf in its tree together, and *neither* search can use that: `PuctNode` scores leaves with `evaluate_from`, relative to that sample's own root, and `MctsAgent` merges root stats across trees by action, so a common per-sample offset cancels in both. What a sample must move to be worth anything is the **difference between root actions**. And past depth 0, two determinizations also disagree because a 16-ply random playout is noisy; the control is item 35's `--shared-sample` without the games — one determinization copied 16 times, the same rollout seeds — so all of *its* disagreement is dice, and the hidden state's contribution is the gap.
+
+    **At PUCT's leaf the sample is not merely weak, it is absent.**
+
+    | depth 0, the static leaf | Corp chair | Runner chair |
+    |---|---|---|
+    | leaf value **bit-identical** across all 16 samples | **1.000** | 0.924 |
+    | root argmax unanimous across all 16 samples | **1.000** | 0.992 |
+    | between-sample sd, against an action spread of | 0.000 / 95.3 | 0.023 / 36.3 |
+
+    In **every one of 384 Corp positions** the static evaluation of every root action is bit-identical under all sixteen determinizations. Averaging over samples cannot change the choice, because there is nothing to average. On positions drawn from `puct`'s own play the Runner's argmax agreement is **1.000** as well.
+
+    **It is structural, and an audit of `evaluate_state_with` says so in one pass.** Every term reads public counts, board state, or the *evaluating* side's own zones: the agenda-point difference and both credit totals; the Corp arm's bad publicity, own installs, scored agenda counters, protected-agenda ICE and `hq.len()`/`r_and_d.len()` — **lengths**, which `determinize` preserves by construction; the Runner arm's tags, `rig.len()`, memory, `breaker_coverage` and `breaker_savings_shortfall` (its *own* rig and grip, never hidden from it) and `grip.len()`. `strength_shortfall` fires only in `RunPhase::EncounterIce`, where the ICE is already rezzed. And `run_is_breakable`'s own doc comment says the quiet part: **"unrezzed ICE is treated as passable"** — at the one place the Runner most needs to integrate over what is behind the ICE, the evaluator declines to look. **Exactly one term can read a determinized card**: `pending_decision_upside` → `continuation_upside`, over the candidates of a parked `ChooseCards` on the evaluating side. That is the whole of the Runner's 7.6%, and it is why the Corp's figure is exactly 1.000 — a Corp choosing from its own HQ sees no sampled card, a Runner accessing R&D does.
+
+    **At MCTS's leaf the sample is worth something, on one chair.** The paired cost to argmax agreement (control minus independent, per position, over 384):
+
+    | playout plies | Corp chair | Runner chair |
+    |---|---|---|
+    | 0 | +0.000 (z +0.00) | +0.002 (z +1.71) |
+    | 1 | +0.012 (z +3.70) | +0.002 (z +0.78) |
+    | 2 | +0.010 (z +2.93) | +0.010 (z +2.13) |
+    | 4 | +0.006 (z +1.34) | +0.014 (z +3.10) |
+    | 8 | +0.011 (z +2.28) | +0.036 (z +5.09) |
+    | 16 | +0.007 (z +1.57) | **+0.070 (z +7.74)** |
+
+    **The Runner's curve is item 35's chair asymmetry, measured without a game.** It is flat to 2 plies, turns on at 4, and is still climbing at 16 — the Runner's own clicks come first and its own cards are not hidden from it, so nothing sampled is touched until the turn passes. The Corp's is flat, small, and at `mcts`'s actual depth **not significant**. Item 35 found four samples worth **+0.125** on the Runner chair and the same trade *negative* on the Corp chair; this says why, at the leaf: for the Corp, a determinization at 16 plies is indistinguishable from noise, so splitting the budget across four of them buys nothing and pays the depth — exactly its 0.522 → 0.500.
+
+    **Three position sets, one answer.** A second seed and a set drawn from `puct:balanced` self-play rather than the heuristic's (the position sets differ substantially — 9.7 root actions a Corp decision against 5.6):
+
+    | at 16 plies | Corp | Runner |
+    |---|---|---|
+    | heuristic, seed 1 | +0.007 (z +1.57) | +0.070 (z +7.74) |
+    | heuristic, seed 2 | +0.007 (z +1.50) | +0.071 (z +7.87) |
+    | `puct`, seed 1 | +0.019 (z +3.75) | +0.077 (z +7.76) |
+
+    The Corp's effect is small and only sometimes significant; the Runner's is four to ten times larger and never in doubt. Depth 0 is 1.000 Corp-unanimous in all three.
+
+    **What this hands over, and what it rules out.** The fix to PUCT's Runner chair is **a leaf that reads the sampled hidden state**, and the named place is `run_is_breakable`: pricing an unrezzed ICE from the determinization instead of assuming it passable. That is a behaviour change and wants the full strength bar — Phase 3's seed-spread band of **0.026–0.047 over 192 games** — and it is *not* a change that spends more budget, which was the constraint item 34 put on any answer here. What it rules out is the cheaper reading: PUCT's `samples` is not mistuned and does not want a different split, because at `samples` 4 it is averaging four identical numbers. Phase 3 §1 measured that dial to nothing twice and item 35 to −0.102; all three are the same fact.
+
+    Scaffolding: `netrunner_cli diag leaf-sensitivity` (a `diag` subcommand group, so the next measurement has a home), `mcts::rollout` made `pub` with its reason on the function. No behaviour change — `cargo test --workspace` green and clippy silent, with nothing touched that a bot runs.
+
+37. **Every unrezzed ICE in a determinized sample was a toothless Barrier, and nothing downstream repaired it** (`fix/sampled-unrezzed-ice-is-toothless`, 11 September 2026). Found while starting ROADMAP "next" item 1, which asked for an evaluator that prices an unrezzed ICE from the determinization — and the determinization did not carry one to price.
+
+    `determinize_run` builds a masked `RunIce` by drawing the hidden card's identity from the already-sampled `corp.installed`, which is right, and then filling the rest of the struct with **`ice_type: IceType::Barrier` and `subroutines: Vec::new()`** regardless of what it drew. `run::engine::build_run_ice` — the engine's own constructor, and the standard `determinize_run`'s doc comment holds itself to ("a sample in which the two disagree about one install is a state the real game cannot be in") — seeds subtype, strength *and* subroutines from the card definition **whatever the rez state**. So the sample was a state the real game cannot be in.
+
+    **Nothing repaired it later, which is the part that matters.** `run::engine::reconcile_ice` keeps an existing `RunIce` whenever its `card_id` still matches the install and refreshes only the rez flag — and here it matches **by construction**, because the placeholder was built from the sampled install's own card. So a rollout that rezzed this ICE rezzed a Barrier with zero subroutines and walked straight through it. Every search, every sample, for as long as `determinize` has existed. A test now pins it: the ICE pool is made exclusively of Sentries with two subroutines, so the assertion cannot pass by drawing something that happens to match the placeholder — which is how the first version of the test passed and had to be rewritten.
+
+    **The strength effect is nil, and the cells that did not move are the evidence the change is confined where it should be.** 128 games per pairing at 128 simulations, `--seed 1`, before and after on pinned binaries, paired by (matchup, seed) so only discordant games carry signal:
+
+    | pairing (Corp win rate) | before | after | delta | paired z | discordant |
+    |---|---|---|---|---|---|
+    | `heuristic` vs `heuristic` | 0.523 | 0.523 | +0.000 | — | **0** |
+    | `puct@128` vs `heuristic` | 0.555 | 0.555 | +0.000 | — | **0** |
+    | `mcts@128` vs `heuristic` | 0.531 | 0.531 | +0.000 | — | **0** |
+    | `heuristic` vs `puct@128` | 0.539 | 0.555 | +0.016 | +0.58 | 12 |
+    | `heuristic` vs `mcts@128` | 0.383 | 0.367 | −0.016 | −1.41 | 2 |
+    | `mcts@128` vs `mcts@128` | 0.375 | 0.367 | −0.008 | −0.45 | 5 |
+
+    **Three cells are byte-identical, and predictably so.** A Corp is never masked from its own ICE, so the `Some(identity)` branch is the only one its samples take — both searches' Corp chairs are untouched to the game. And the `heuristic` is untouched *on either chair*, because its one-ply score reads `evaluate_state_with`, which item 36 showed is blind to an unrezzed ICE: `run_is_breakable` filters on `rezzed`, `strength_shortfall` fires only in `RunPhase::EncounterIce`. Only a seat that **searches past the rez** can notice, which is exactly the two cells that moved, and neither moved significantly. `--headless --all-matchups --games 132 --corp random --runner random` is byte-identical between the binaries, which is the check that the engine was not touched.
+
+    **This is a fidelity fix and is recorded as one** — the case for it is that the sample must be a state the game can reach, not that it wins more. It also revises what item 36's rollout numbers were measuring: the hidden-state sensitivity it found at 16 plies (+0.070 on the Runner chair) came from sampled HQ and R&D contents, *not* from what was behind the ICE, because what was behind the ICE was a Barrier with no subroutines in every sample. Whether the Runner's leaf should read the real ICE is still open and still item 1 — this only makes it possible to.
+
+38. **The Runner's leaf can read the hidden state now, and reading it this way is worth nothing** (`feat/runner-leaf-reads-unrezzed-ice`, 11 September 2026). ROADMAP "next" item 1, closed — negatively, and the negative is the useful part.
+
+    `unbreakable_unrezzed_ice` counts the unrezzed ICE still ahead of the Runner that the Corp could rez right now and no rig card could then break, subtracted from the Runner arm under `UNREZZED_THREAT_WEIGHT`. **A weighted term rather than a flip of `run_is_breakable`'s bool**, which the item originally proposed: folding unrezzed ICE into that predicate gates `active_run_weight` all-or-nothing and cannot be tuned or measured at strength zero. It counts unbreakable ICE rather than pricing a credit shortfall because `strength_shortfall` already prices the expensive case, for the ICE actually being encountered. Item 37 was its prerequisite — before that, every unrezzed ICE in a sample was a `Barrier` with no subroutines, so `cheapest_break_cost` returned `Some(0)` for all of them and this term would have counted zero at any weight.
+
+    **It does what item 36 said no term did.** `diag leaf-sensitivity`, same shape as item 36, with the weight at 1.5:
+
+    | Runner chair, depth 0 (PUCT's leaf) | item 36 | with the term |
+    |---|---|---|
+    | leaf bit-identical across all 16 samples | 0.924 | 0.857 |
+    | root argmax unanimous | 0.992 | 0.945 |
+    | root argmax agreement | 0.998 | 0.968 |
+    | paired hidden-state cost | +0.002 (z = +1.71) | **+0.032 (z = +4.49)** |
+
+    The Corp chair stays at exactly 1.000 identical and +0.000 cost, which is the control: the term is Runner-arm only, and a Corp is never masked from its own ICE.
+
+    **And it is worth nothing.** 192 games a pairing at 128 simulations, `--determinizations 1`, two seeds, pinned binaries, paired by (matchup, seed). `heuristic` Corp vs `puct` Runner is the binding cell **and the only one with a genuinely fixed opponent** — the term cannot move a Corp — so it is the chair measurement; the others move both sides and are reported as pool effects:
+
+    | Corp win rate | weight 0.0 | 0.6 | 1.5 |
+    |---|---|---|---|
+    | `heuristic` vs `puct@128`, seed 1 | 0.589 | 0.573 (z −0.48) | 0.625 (z +1.18) |
+    | `heuristic` vs `puct@128`, seed 2 | 0.557 | 0.547 (z −0.33) | 0.615 (z +1.76) |
+    | `heuristic` vs `heuristic`, seed 1 | 0.583 | 0.641 (z +1.64) | 0.635 (z +1.51) |
+    | `heuristic` vs `heuristic`, seed 2 | 0.583 | 0.646 (z +1.81) | 0.646 (z +1.81) |
+
+    At 0.6 PUCT's Runner chair gains **+0.016 and +0.010** — both below Phase 3's **0.026–0.047** seed-spread band and both far from significant. At 1.5 it **loses 0.036 and 0.057**. Meanwhile a one-ply Runner is hurt outright and consistently: four measurements of `heuristic` vs `heuristic` across two weights and two seeds, every one **+0.05 to +0.06 to the Corp**. The decision rule was written down before the legs landed and is followed here: nothing clears the band, so the weight ships at **0.0** and the term is apparatus, not behaviour. Landing it changes nothing — the 192-game seed-1 report is byte-identical to the weight-0.0 baseline's, because the term sits behind `if w.unrezzed_threat_weight != 0.0`.
+
+    **Why it fails is the part worth keeping.** The term treats an unrezzed ICE as certain to be rezzed the moment the Corp can afford it, and a real Corp frequently declines — so it systematically over-estimates the threat and makes the Runner passive, on the chair that is already the weak one. The information is there and the leaf can now see it; what is missing is a *probability*, not a *reading*.
+
+    **What this relocates.** Item 36 established that the leaf was blind and inferred that a leaf which could see would be worth something. The first half stands; **the second half is now measured and wrong**. Either the threat needs discounting by how likely the rez actually is — which nothing in a static evaluator knows, and which is the kind of thing a search or a learned value head estimates rather than a hand-weighted term — or PUCT's Runner chair is not leaf-bound at all and item 35's +0.125 for MCTS came from somewhere else entirely. Note that item 37 already moved that suspicion: MCTS's samples differ in HQ and R&D contents, not in what is behind the ICE, so the +0.125 was never about ICE. **The next thing to price is the Corp's rez decision, not the Runner's leaf.**
+
+39. **The Corp does rez it. The ICE just does not stop the run** (`diag/corp-rez-rate`, 12 September 2026). ROADMAP "next" item 1's cheap route, run — and it answers a different question than the one it asked. Item 38 explained its own null by saying the term "treats an unrezzed ICE as certain to be rezzed the moment the Corp can afford it, and a real Corp declines", concluding that "what is missing is a **probability**, not a **reading**". The first clause is measured and false for the Corp that was seated, and the conclusion inverts: what is missing is a reading, and it is printed on the card.
+
+    `diag rez-rate` plays games and records **one observation per approach to an unrezzed ICE** — the rez decision the Corp was actually handed — then reports what it did with it. Two design points carry the entry:
+
+    - **The denominator is the term's own predicate, not a copy.** `unbreakable_unrezzed_ice`'s filter is now `netrunner_bots::is_unrezzed_threat`, public for this caller, evaluated against the *authoritative* state rather than a determinized one. A re-implementation in the CLI would have been free to drift from the term it exists to price.
+    - **Completeness is checked, not assumed.** The engine can walk several run steps inside one applied action, so an approach nobody had a decision in could in principle never be a state the step loop observes. Every leg compares approach steps seen against `GameEvent::IceApproached` emitted: **1075/1075, 1289/1289, 1352/1352, 1054/1054, 1469/1469, 1397/1397** — six legs, no approach missed.
+
+    96 games a leg, the sample-deck matchup schedule, two seeds, three seatings.
+
+    | Corp vs Runner | seed | counted | rezzed | rate | stopped the run | ETR sub | no ETR sub |
+    |---|---|---|---|---|---|---|---|
+    | `heuristic` vs `heuristic` | 1 | 282 | 266 | 0.943 | 0.538 | **0.895** (152) | **0.061** (114) |
+    | `heuristic` vs `heuristic` | 2 | 308 | 282 | 0.916 | 0.532 | 0.926 (149) | 0.090 (133) |
+    | `heuristic` vs `puct@128` | 1 | 201 | 197 | 0.980 | 0.472 | 0.800 (110) | 0.057 (87) |
+    | `heuristic` vs `puct@128` | 2 | 241 | 222 | 0.921 | 0.550 | 0.925 (120) | 0.108 (102) |
+    | `puct@128` vs `heuristic` | 1 | 472 | 230 | 0.487 | 0.535 | 0.906 (128) | 0.069 (102) |
+    | `puct@128` vs `heuristic` | 2 | 340 | 195 | 0.574 | 0.533 | 0.970 (100) | 0.074 (95) |
+
+    "stopped the run" and the two ETR columns are over the approaches the Corp *did* rez, which is the conditional the term asserts.
+
+    **The rez rate is not the problem.** Against the `heuristic` Corp — the Corp in item 38's binding cell, and the only fixed opponent in it — the term's counted ICE are rezzed **967 of 1,032 times, 0.937 pooled**. Item 1's own decision rule was "if that rate is far from 1.0, discount the term by it"; 0.94 is not far from 1.0, and scaling a term that bought +0.016 by 0.94 cannot reach the 0.026–0.047 band. The declines are not even spread: the `heuristic` Corp rezzed **0 of 42** counted ICE at printed cost 8+ across both seeds, which is essentially the whole 6% miss. That route is closed for the reason item 1 named, and it is closed cheaply.
+
+    **The other half of the claim is where it fails, and it fails by half.** Of the counted ICE the Corp rezzed, the run stopped there only **0.47–0.55**. Split by whether any subroutine ends the run, the two halves are **0.904 and 0.077 pooled** (686/759 against 49/633) — and they are near enough an even split of what the term counts, **54.5% ETR to 45.5% not**. `cheapest_break_cost` returning `None` means *no rig card can break it*, which the term reads as "this stops you"; an ICE whose subroutines tag, do damage or drain credits stops nothing, and the Runner walks through it. **That is not a probability a static evaluator cannot know. It is `SubroutineDef::effect`, sitting in the card definition the term already looks up.**
+
+    **A searching Corp *does* decline, which is worth recording even though it is not the fix.** `puct@128` rezzes only **0.487 / 0.574** of the same counted approaches, and the decline is entirely a function of price: 0.99 at printed cost 0–2, 0.73–0.81 at 3–4, **0.08–0.09 at 5–7**. Item 38's premise is right about a Corp that searches and wrong about the one it measured against. Any future measurement of this term against a searching Corp has to expect a denominator half this one, and that is a reason to state which Corp a rez rate was taken over.
+
+    **One bug, found because a number was too good.** The first version resolved "the run got past it" only inside an approach step, so the *innermost* ICE of every run was never resolved — nothing is approached after it — and every run read as having been stopped there. It showed a Corp declining half its rezzes with a 0.98 stop rate, which is what made it obvious. Resolving on every run step instead, including the server step where `position` passes the last ICE, is the fix; `passing_the_innermost_ice_resolves_it_even_though_no_approach_follows` names the case.
+
+    **What this hands over.** Not a discount — a **filter**: count only unrezzed, affordable, unbreakable ICE that has an ETR subroutine, which halves what the term counts and removes the half that is measurably wrong. That is a behaviour change and wants the full strength bar, with item 38's own legs as the baseline (`target/diag/str-*.json`, `s2-*.json`, 192 games a pairing at 128 simulations, two seeds). If it still buys nothing, item 38's alternative stands unchallenged: PUCT's Runner chair is not leaf-bound at all, and item 35's +0.125 for MCTS came from the HQ and R&D contents its samples differ in — which item 37 already made the likelier story.
+
+40. **The term counts the right ICE now, and it is still worth nothing** (`feat/unrezzed-threat-only-when-it-ends-the-run`, 12 September 2026). Item 39's filter, built and measured. The clause is right — it repairs damage that is visible at 2.7σ on the same games — and the repaired term still does not beat not having it, so `UNREZZED_THREAT_WEIGHT` ships at **0.0** for the second time. That second negative is the finding: a correctly specified unrezzed-threat term is worth nothing to PUCT's Runner chair, which is the chair item 34 named as the binding constraint on every chair number in this file.
+
+    `is_unrezzed_threat` gained one clause — the ICE must carry a subroutine that ends the run — expressed as `Effect::can_end_the_run` in `netrunner_core::dsl`, over the existing `for_each_effect` walk. **Over a walk rather than a top-level `matches!` because ICE rarely says it plainly**: a bioroid's subroutine is an `OfferPaidChoice` whose `if_declined` ends the run, and the walk's exhaustive match is what keeps a new nesting variant a compile error instead of a silently harmless subroutine. It sits in core rather than in `netrunner_bots` because "does this end the run" is a rules question two consumers ask — the evaluator and `diag rez-rate`, which must not answer it differently from the term it prices.
+
+    **The predicate is right, measured in its own currency on identical games.** `diag rez-rate`, `heuristic` vs `heuristic`, 96 games, two seeds — the same 1,469 and 1,397 approach steps item 39 saw, because at weight 0.0 no game moves:
+
+    | | item 39 (unfiltered) | with the clause |
+    |---|---|---|
+    | ICE counted | 282 / 308 | **152 / 149** |
+    | of those, rezzed | 0.943 / 0.916 | **1.000 / 1.000** |
+    | of those, the run stopped there | 0.538 / 0.532 | **0.895 / 0.926** |
+
+    The term counted 45% ICE that stopped nothing; it now counts none. What it dropped is exactly item 39's non-ETR column (114 and 133 approaches), and the rez rate rising to 1.000 says the `heuristic` Corp's only systematic declines — the printed-cost-8+ ICE — were all in that column too.
+
+    **And the clause repairs the damage item 38 measured.** Same weights, same seeds, same games, unfiltered binary against filtered (Corp win rate, so negative is the Runner gaining):
+
+    | pairing | 0.6 / seed 1 | 0.6 / seed 2 | 1.5 / seed 1 | 1.5 / seed 2 |
+    |---|---|---|---|---|
+    | `heuristic` vs `heuristic` | −0.052 (z −1.89) | **−0.078 (z −2.61)** | −0.052 (z −1.89) | **−0.083 (z −2.74)** |
+    | `heuristic` vs `puct@128` | +0.042 (z +1.51) | −0.016 (z −0.54) | −0.052 (z −1.89) | **−0.073 (z −2.47)** |
+
+    Item 38's clearest negative result was that a one-ply Runner is hurt outright by this term — four measurements, every one +0.05 to +0.06 to the Corp. **All four are now gone**: against the weight-0.0 baseline the same cell reads +0.005, −0.016, +0.000 and −0.021. The over-count *was* the harm, which is item 39's diagnosis confirmed rather than assumed.
+
+    **The verdict is still no, and the rule was written down first.** Against the weight-0.0 baseline the binding cell — `heuristic` Corp vs `puct@128` Runner, the only cell with a genuinely fixed opponent — reads:
+
+    | weight | seed 1 | seed 2 |
+    |---|---|---|
+    | 0.6 | 0.615 (**+0.026**, z +0.85) | 0.531 (**−0.026**, z −0.96) |
+    | 1.5 | 0.573 (**−0.016**, z −0.54) | 0.542 (**−0.016**, z −0.51) |
+
+    against 0.589 and 0.557. The rule was: clear Phase 3's 0.026–0.047 seed-spread band on **both** seeds at the **same** weight. At 0.6 the two seeds disagree in *sign*; at 1.5 both are −0.016, consistent and well inside the band. Nothing clears it, so the weight stays 0.0 — apparatus, not behaviour, and the weight-0.0 binary reproduces item 38's seed-1 baseline **game for game**, which is also the check that nothing on `main` drifted since.
+
+    **What this closes.** Item 38 left two alternatives: the threat needs discounting by how likely the rez is, or PUCT's Runner chair is not leaf-bound at all. Item 39 killed the first — the rez rate is 0.937 against the Corp actually seated — and this entry kills the strongest remaining form of the reading hypothesis, because the leaf now reads the hidden state *correctly* and a Runner that sees a real wall coming plays no better for it. **The Runner chair is not leaf-bound**, and item 35's +0.125 for `mcts` came from what item 37 said it did: samples that differ in HQ and R&D contents, never in what was behind the ICE. A search that marginalizes over the hidden state beats one that does not *there*, and no static term recovers it.
+
+    `scripts/paired_bench.py` is the apparatus and stays: two `bench --report` JSONs, matched game by game on (pairing, matchup, seed), McNemar's z over the discordant games only. Every leg above is paired, which is why a 0.016 move can be read at all — and it reproduces item 38's own recorded numbers from its reports exactly, which is how it was checked.
+
+41. **`mcts`'s tree count is a decision, not a core count** (`fix/mcts-tree-count-is-a-decision-not-a-core-count`, 12 September 2026). ROADMAP "next" item 2. `MctsAgent::with_iterations` took `rayon::current_num_threads().clamp(1, MAX_TREES)`, so the shipped bot's tree count came off the host. It is now `DEFAULT_TREES = 4`, a number with a measurement behind it.
+
+    **The expression read like a parallelism setting and was not one.** `select_action` splits the budget — `iterations / trees` — so the trees do not buy speed; they trade **hidden-information samples against depth per sample at fixed cost**, and item 35 measured those two going to *different chairs* (384 games a cell against a fixed heuristic, 128 total simulations):
+
+    | trees | as Corp | as Runner |
+    |---|---|---|
+    | 1 | 0.522 | 0.510 |
+    | 4 | 0.500 | **0.635** |
+
+    Four is therefore right on the merits — +0.125 on the Runner chair for −0.022 on the Corp's — and is already what every box with four or more cores got. The bug was never the number; it was that a *smaller* box silently got a different bot, weaker on exactly the chair item 34 named the binding constraint.
+
+    **It reached games through `--threads`, which is the part worth keeping.** Four legs, `bench --bots heuristic,mcts --games 48 --seed 1 --simulations 128`, two pinned binaries × two thread counts:
+
+    | Corp win rate | `--threads 2` | `--threads 18` |
+    |---|---|---|
+    | before | `heuristic` vs `mcts` **0.542**, `mcts` vs `heuristic` 0.500 | 0.312 / 0.458 |
+    | after | 0.312 / 0.458 | 0.312 / 0.458 |
+
+    **52 of 192 games differ** between the two thread counts on the old binary, and `mcts`'s Runner chair loses **0.230** to a flag that names a thread pool. After the fix the two thread counts are identical game for game, and `--threads 18` before equals `--threads 18` after — so **every number this project recorded on this machine stands unchanged**, which is the whole strength argument for a shipped-bot change that is a no-op wherever the numbers were taken. The `heuristic` vs `heuristic` control is 0.396 in all four legs.
+
+    **Two places it was doing quiet damage, both found by reading rather than by measuring.** `netrunner_server` seats `MctsAgent::new` for its `mcts` opponent and rates that seat on `Track::HumanVsBot` — so the hosted bot's *identity* depended on the daemon's host, and one Glicko rating pooled results from what were really different bots. And `netrunner_session/tests/puct_seat.rs` seats `MctsAgent::with_iterations(side, 7, 16)` inside an assertion about *how a bot chooses*; with CI now on three platforms, that test was exercising 4 × 4 on one runner and 16 × 1 on another. Neither is a failure anyone saw, and both are the same family as the `TempDir` clock bug the CI entry records: a latent cross-platform difference that a single-box history could not surface.
+
+    **Eight trees is not the default because nothing has measured eight.** The constant is `pub` so a caller can say what it is deviating from, and `with_trees` remains the way a measurement pins it.
+
+42. **A random playout validates only the move it plays** (`feat/rollouts-validate-only-the-action-they-play`, 13 September 2026). The prerequisite for measuring `mcts` past four samples, which is where item 35 left the Runner chair: 1 → 2 → 4 trees scored 0.510 → 0.576 → 0.635 and the curve was still rising, but a tree costs its whole budget again, so every step up doubles the price of a decision. An engineering change whose product is speed; the policy does not move.
+
+    **Most of a rollout ply was spent proving moves it would not play.** `mcts::rollout` called `legal_actions` each ply, which applies *every* candidate to a clone to keep the ones the engine accepts, and then applied its weighted choice a second time. Counted over 5,866 plies of ordinary sample-deck play: **38.1 `apply_action` calls a ply** — the candidate list is mostly moves the engine refuses (both sides' clicks, every card at every server).
+
+    **`rules::apply_sampled_legal_action(state, registry, pick)`** dedups the candidates the way `legal_actions` does, lets `pick` choose among those not yet refused, applies the choice and returns the result; a refusal removes that candidate and asks again. `legal_actions` *is* the deduplicated candidates `apply_action` accepts, so conditioning a draw over the candidates on acceptance draws from exactly the distribution a caller got by picking from `legal_actions` — only the random stream consumed changes. A closure rather than an RNG, because core has no `rand`; `candidate_actions` stays private, because a public unvalidated superset is a trap for every other caller. A core test walks six sample-deck games and, for every legal action at every position, forces every refused candidate first and checks the target is still on offer and comes back applied exactly as `apply_action` applies it.
+
+    | `bench --bots mcts --games 48 --seed 1 --simulations 128 --determinizations 4 --threads 18`, idle box, two runs each | CPU | wall |
+    |---|---|---|
+    | before | 1,537 s / 1,545 s | 97.2 s / 98.0 s |
+    | after | 941 s / 930 s | 59.4 s / 64.1 s |
+
+    **18.0 calls a ply against 38.1, and 39% less CPU a game** (1.65×). The draw still lands on refused candidates, since they outnumber the legal ones; filtering them without applying them would need the rules the probe exists not to duplicate.
+
+    **The same bot at equal simulations**, paired over 384 games a pairing on `--seed 1` (`scripts/paired_bench.py`, McNemar over the discordant games):
+
+    | Corp win rate | before | after | delta | z | discordant |
+    |---|---|---|---|---|---|
+    | `heuristic` vs `mcts@128` (Runner chair) | 0.359 | 0.396 | +0.036 | +1.46 | 92 |
+    | `mcts@128` vs `heuristic` (Corp chair) | 0.500 | 0.516 | +0.016 | +0.51 | 138 |
+    | `mcts@128` vs `mcts@128` | 0.336 | 0.307 | −0.029 | −0.98 | 125 |
+    | `heuristic` vs `heuristic` | 0.5625 | 0.5625 | 0 | — | 0 |
+
+    Nothing significant, every delta inside the 0.026–0.047 band or at its edge, and the directions disagree across chairs — a re-roll of one policy, which is what a changed random stream is. The before leg also re-measures item 35's cell on today's engine: **0.641** for `mcts@128`×4 as Runner against its recorded 0.635, item 37's repaired ICE sitting between the two. The random-vs-random report (192 games, seed 1) is **byte-identical** — neither `random` nor `heuristic` rolls out — and both 256-seed sweeps are green. `puct` has no rollout and is untouched; `diag leaf-sensitivity`'s playout columns re-roll with the stream.
+
