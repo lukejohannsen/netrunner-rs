@@ -398,18 +398,20 @@ fn action_implies(event: &GameEvent, action: &PublicAction) -> bool {
 /// discipline: a new event has to be classified as narrated or not rather
 /// than silently going unmentioned.
 /// [`narrate_event`] over an entry's events, with the one fold a line
-/// needs its neighbours for: damage names the cards it discarded.
+/// needs its neighbours for: damage names the cards it trashed.
 ///
 /// `rules::damage::apply_damage` records a `DamageTaken` followed by one
-/// `CardDiscarded` per point, and on its own the damage line said only
+/// `CardTrashed` out of the grip per point (CR 10.4.2a; it was a
+/// `CardDiscarded` until Strike Fund needed to hear it, and a trashed card
+/// is not a discarded one, CR 1.19.3), and on its own the damage line said only
 /// "the Runner took 2 net damage" — a Corp reading the log after an
 /// Urtica Cipher went off saw no damage at all, since net damage leaves
 /// no count anywhere and the discards narrated nothing (the report of 22
 /// September 2026). The discards are public: they go face up to the
-/// heap, and the Corp's copy of the log carries them unmasked. Any other
-/// `CardDiscarded` — the discard phase, a Corp discard — stays silent as
-/// before, because its action line already says it or the viewer may
-/// not know the card.
+/// heap, and the Corp's copy of the log carries them unmasked. A
+/// `CardDiscarded` — the discard phase, a Corp discard — stays silent,
+/// because its action line already says it or the viewer may not know
+/// the card.
 pub fn narrate_events(events: &[GameEvent], action: &PublicAction, registry: &CardRegistry, view: Option<&ClientView>) -> Vec<String> {
     let mut lines = Vec::new();
     let mut rest = events.iter().peekable();
@@ -418,7 +420,7 @@ pub fn narrate_events(events: &[GameEvent], action: &PublicAction, registry: &Ca
             let mut discarded = Vec::new();
             while discarded.len() < *amount {
                 match rest.peek() {
-                    Some(GameEvent::CardDiscarded { side: Side::Runner, card }) => {
+                    Some(GameEvent::CardTrashed { side: Side::Runner, card, from: netrunner_core::dsl::TrashedFrom::Hand, .. }) => {
                         discarded.push(card_title(card, registry));
                         rest.next();
                     }
@@ -426,7 +428,7 @@ pub fn narrate_events(events: &[GameEvent], action: &PublicAction, registry: &Ca
                 }
             }
             let took = format!("the Runner took {amount} {} damage", crate::prose::damage_word(damage_type));
-            lines.push(if discarded.is_empty() { took } else { format!("{took}: {} discarded", and_list(&discarded)) });
+            lines.push(if discarded.is_empty() { took } else { format!("{took}: {} trashed", and_list(&discarded)) });
             continue;
         }
         if let Some(line) = narrate_event(event, action, registry, view) {
@@ -1139,26 +1141,27 @@ mod tests {
         (registry, view)
     }
 
-    /// Damage names what it discarded, in one line, and core damage says
+    /// Damage names what it trashed, in one line, and core damage says
     /// "core": a Corp reading the log after an Urtica Cipher went off saw
     /// "the Runner took 2 net damage" and nothing else, and took it for no
     /// damage at all (the report of 22 September 2026). A discard with no
     /// damage before it — the discard phase — is still not narrated.
     #[test]
-    fn damage_names_the_cards_it_discarded() {
+    fn damage_names_the_cards_it_trashed() {
         use netrunner_core::dsl::DamageType;
         let registry = crate::decks::sample_deck_registry();
         let card = |id: &str| CardId(id.to_string());
         let action = PublicAction::Visible(PlayerAction::EndTurn);
+        let trashed = |card: CardId| GameEvent::CardTrashed { side: Side::Runner, card, from: netrunner_core::dsl::TrashedFrom::Hand, by: Some(Side::Corp) };
         let events = [
             GameEvent::DamageTaken { damage_type: DamageType::Net, amount: 2, responsible: Some(Side::Corp) },
-            GameEvent::CardDiscarded { side: Side::Runner, card: card("docklands_pass") },
-            GameEvent::CardDiscarded { side: Side::Runner, card: card("carmen") },
+            trashed(card("docklands_pass")),
+            trashed(card("carmen")),
         ];
-        assert_eq!(narrate_events(&events, &action, &registry, None), ["the Runner took 2 net damage: Docklands Pass and Carmen discarded"]);
+        assert_eq!(narrate_events(&events, &action, &registry, None), ["the Runner took 2 net damage: Docklands Pass and Carmen trashed"]);
 
-        let core = [GameEvent::DamageTaken { damage_type: DamageType::Brain, amount: 1, responsible: Some(Side::Corp) }, GameEvent::CardDiscarded { side: Side::Runner, card: card("sure_gamble") }];
-        assert_eq!(narrate_events(&core, &action, &registry, None), ["the Runner took 1 core damage: Sure Gamble discarded"]);
+        let core = [GameEvent::DamageTaken { damage_type: DamageType::Brain, amount: 1, responsible: Some(Side::Corp) }, trashed(card("sure_gamble"))];
+        assert_eq!(narrate_events(&core, &action, &registry, None), ["the Runner took 1 core damage: Sure Gamble trashed"]);
 
         let discard_phase = [GameEvent::CardDiscarded { side: Side::Runner, card: card("sure_gamble") }];
         assert!(narrate_events(&discard_phase, &action, &registry, None).is_empty());

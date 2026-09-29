@@ -453,7 +453,7 @@ pub fn evaluate_effect(
 
         Effect::RemoveFromGame(CardTarget::ThisCard) => remove_this_card_from_game(state, registry, ctx),
         // Ashen Epilogue's "remove the top 5 cards of your stack from the
-        // game", one card at a time as `MillRnDAmount` trashes; an empty
+        // game", one card at a time as `Mill` trashes; an empty
         // deck has nothing to remove.
         Effect::RemoveFromGame(CardTarget::TopOfStack { side, zone }) => {
             let (deck, removed) = match (side, zone) {
@@ -796,7 +796,7 @@ pub fn evaluate_effect(
             let from_hq_min = count.saturating_sub(rd).min(from_hq_max);
             if from_hq_max == 0 {
                 // Nothing to choose: it all comes off the top of R&D.
-                return evaluate_effect(state, &Effect::MillRnDAmount(Amount::Fixed(*count)), ctx, registry);
+                return evaluate_effect(state, &Effect::Mill { deck: Side::Corp, amount: Amount::Fixed(*count), then: None }, ctx, registry);
             }
             state.pending_decision = Some(PendingDecision::ChooseCards {
                 side: Side::Corp,
@@ -807,7 +807,7 @@ pub fn evaluate_effect(
                 reveal: false,
                 shuffle_after: false,
                 destination: Some(crate::dsl::CardZoneRef::OwnArchives),
-                then: Some(Box::new(Effect::MillRnDAmount(Amount::RemainingAfterSelection(*count)))),
+                then: Some(Box::new(Effect::Mill { deck: Side::Corp, amount: Amount::RemainingAfterSelection(*count), then: None })),
                 selected: Vec::new(),
                 source_card: acting_card.cloned(),
                 prompting_card: ctx.attributed_card(),
@@ -817,24 +817,37 @@ pub fn evaluate_effect(
             Ok(vec![GameEvent::PendingCardSelectionOffered { side: Side::Corp, min: from_hq_min, max: from_hq_max, source: ctx.attributed_card() }])
         }
 
-        Effect::MillRnDAmount(amount) => {
+        Effect::Mill { deck, amount, then } => {
             let count = resolve_amount(amount, ctx, state, registry);
+            let zone = match deck {
+                Side::Corp => StackZone::RAndD,
+                Side::Runner => StackZone::Stack,
+            };
             let mut events = Vec::new();
-            let mut trashed = 0;
+            let mut trashed = Vec::new();
             for _ in 0..count {
-                if state.corp.r_and_d.is_empty() {
-                    break;
-                }
-                let milled = trash_card(state, registry, &CardTarget::TopOfStack { side: Side::Corp, zone: StackZone::RAndD }, ctx)?;
+                let top = match deck {
+                    Side::Corp => state.corp.r_and_d.last(),
+                    Side::Runner => state.runner.stack.last(),
+                };
+                let Some(top) = top.cloned() else { break };
+                let milled = trash_card(state, registry, &CardTarget::TopOfStack { side: *deck, zone }, ctx)?;
                 events.extend(dispatch_trashes(state, registry, &milled)?);
                 events.extend(milled);
-                trashed += 1;
+                trashed.push(top);
             }
             // The batch, after its cards, as HQ's is (Nuvem SA's "the first
             // time you trash a card from R&D").
-            if trashed > 0 {
-                let batch = GameEvent::CardsTrashedFromRnD { count: trashed, by: carried_out_by(registry, ctx) };
+            if *deck == Side::Corp && !trashed.is_empty() {
+                let batch = GameEvent::CardsTrashedFromRnD { count: trashed.len() as u32, by: carried_out_by(registry, ctx) };
                 dispatcher::emit(state, registry, &mut events, batch)?;
+            }
+            if let Some(then) = then {
+                // "Those cards", written in, so the rest can wait: after
+                // the no-op, `evaluate_sequence` pins `then` behind any
+                // ability a trashed card parked, or resolves it now.
+                let then = then.as_ref().clone().with_those_trashed(&trashed);
+                events.extend(evaluate_sequence(state, &[Effect::Sequence(Vec::new()), then], ctx, registry)?);
             }
             Ok(events)
         }
@@ -1012,9 +1025,13 @@ pub fn evaluate_effect(
             }
         }
 
-        Effect::PlaceRunCredits(amount) => {
+        Effect::PlaceRunCredits { amount, pays_for } => {
             let credits = resolve_amount(amount, ctx, state, registry);
-            state.active_run.as_mut().ok_or(RulesError::NoActiveRun)?.bonus_run_credits += credits;
+            let run = state.active_run.as_mut().ok_or(RulesError::NoActiveRun)?;
+            run.bonus_run_credits += credits;
+            if pays_for.is_some() {
+                run.run_credits_pay_for = pays_for.clone();
+            }
             Ok(Vec::new())
         }
 
@@ -2339,7 +2356,7 @@ pub(crate) fn trash_install(
             // Runner is accessing has been seen whatever its rez state.
             let seen = removed.rezzed || runner_is_accessing(state, &removed.card);
             state.corp.archives.push(orient(removed.card.clone(), seen));
-            events.push(GameEvent::CardTrashed { side: Side::Corp, card: removed.card, installed: true, by });
+            events.push(GameEvent::CardTrashed { side: Side::Corp, card: removed.card, from: crate::dsl::TrashedFrom::Installed, by });
             events.extend(cascade_trash_hosted_programs(state, install));
             Ok(events)
         }
@@ -2347,7 +2364,7 @@ pub(crate) fn trash_install(
             let Some(position) = state.runner.rig.iter().position(|c| c.install_id == install) else { return Ok(Vec::new()) };
             let removed = state.runner.rig.remove(position);
             state.runner.heap.push(removed.card.clone());
-            let mut events = vec![GameEvent::CardTrashed { side: Side::Runner, card: removed.card.clone(), installed: true, by }];
+            let mut events = vec![GameEvent::CardTrashed { side: Side::Runner, card: removed.card.clone(), from: crate::dsl::TrashedFrom::Installed, by }];
             events.extend(cascade_trash_hosted_on_rig_card(state, registry, &removed));
             Ok(events)
         }
@@ -2427,7 +2444,9 @@ pub(crate) fn dispatch_damage_taken(
 ) -> Result<Vec<GameEvent>, RulesError> {
     let mut fired = Vec::new();
     for event in events {
-        if matches!(event, GameEvent::DamageTaken { .. }) && !state.is_over() {
+        // The cards the damage trashed out of the grip are the damage's
+        // too (CR 10.4.2a), heard after it.
+        if matches!(event, GameEvent::DamageTaken { .. } | GameEvent::CardTrashed { by: Some(_), .. }) && !state.is_over() {
             fired.extend(dispatcher::dispatch_event(state, registry, event)?);
         }
     }
@@ -2536,7 +2555,7 @@ pub(crate) fn trash_card(
             // already seen it; an unrezzed one they never did.
             let seen = removed.rezzed || runner_is_accessing(state, card);
             state.corp.archives.push(orient(card.clone(), seen));
-            events.push(GameEvent::CardTrashed { side: Side::Corp, card: card.clone(), installed: true, by });
+            events.push(GameEvent::CardTrashed { side: Side::Corp, card: card.clone(), from: crate::dsl::TrashedFrom::Installed, by });
             events.extend(cascade_trash_hosted_programs(state, install));
             Ok(events)
         }
@@ -2568,7 +2587,7 @@ pub(crate) fn trash_card(
                 .ok_or_else(|| RulesError::CardNotInRig { side: Side::Runner, card: card.clone() })?;
             let removed = state.runner.rig.remove(position);
             state.runner.heap.push(removed.card.clone());
-            let mut events = vec![GameEvent::CardTrashed { side: Side::Runner, card: card.clone(), installed: true, by }];
+            let mut events = vec![GameEvent::CardTrashed { side: Side::Runner, card: card.clone(), from: crate::dsl::TrashedFrom::Installed, by }];
             events.extend(cascade_trash_hosted_on_rig_card(state, registry, &removed));
             Ok(events)
         }
@@ -2591,12 +2610,12 @@ pub(crate) fn trash_card(
                 _ => return Err(RulesError::EmptyZone { side: *side, zone: *zone }),
             };
             // An empty pile is nothing to trash, not a failure — what
-            // `MillRnDAmount` always said. As an error it refused the whole
+            // `Mill` always said. As an error it refused the whole
             // resolution: Noise installing a virus against an empty R&D
             // parked a trigger order neither choice of which could be
             // applied, and the Runner had no legal action (seed 181 of
             // Hostile Bid against Pay As You Go, the first deck on Noise).
-            Ok(popped.map(|card| GameEvent::CardTrashed { side: *side, card, installed: false, by }).into_iter().collect())
+            Ok(popped.map(|card| GameEvent::CardTrashed { side: *side, card, from: crate::dsl::TrashedFrom::Deck, by }).into_iter().collect())
         }
 
         // Drawn with the state's own PRNG, as `Cost::TrashRandomFromHq` is,
@@ -2608,7 +2627,7 @@ pub(crate) fn trash_card(
             let index = (state.next_u64() % state.corp.hq.len() as u64) as usize;
             let card = state.corp.hq.remove(index);
             state.corp.archives.push(ArchivedCard::facedown(card.clone()));
-            Ok(vec![GameEvent::CardTrashed { side: Side::Corp, card, installed: false, by }])
+            Ok(vec![GameEvent::CardTrashed { side: Side::Corp, card, from: crate::dsl::TrashedFrom::Hand, by }])
         }
     }
 }
@@ -2649,7 +2668,7 @@ fn trash_hosted_card(state: &mut GameState, registry: &CardRegistry, card: CardI
         Side::Runner => state.runner.heap.push(card.clone()),
         Side::Corp => state.corp.archives.push(ArchivedCard::faceup(card.clone())),
     }
-    GameEvent::CardTrashed { side, card, installed: false, by }
+    GameEvent::CardTrashed { side, card, from: crate::dsl::TrashedFrom::Elsewhere, by }
 }
 
 /// The rig-side twin of `cascade_trash_hosted_programs`: when the rig card
@@ -2674,7 +2693,7 @@ pub(crate) fn cascade_trash_hosted_on_rig_card(state: &mut GameState, registry: 
     while let Some(position) = state.runner.rig.iter().position(|c| c.hosted_on_rig_card == Some(host)) {
         let removed = state.runner.rig.remove(position);
         state.runner.heap.push(removed.card.clone());
-        events.push(GameEvent::CardTrashed { side: Side::Runner, card: removed.card.clone(), installed: true, by: None });
+        events.push(GameEvent::CardTrashed { side: Side::Runner, card: removed.card.clone(), from: crate::dsl::TrashedFrom::Installed, by: None });
         events.extend(cascade_trash_hosted_on_rig_card(state, registry, &removed));
     }
     events
@@ -2685,7 +2704,7 @@ pub(crate) fn cascade_trash_hosted_programs(state: &mut GameState, host: Install
     while let Some(position) = state.runner.rig.iter().position(|c| c.hosted_on_ice == Some(host)) {
         let removed = state.runner.rig.remove(position);
         state.runner.heap.push(removed.card.clone());
-        events.push(GameEvent::CardTrashed { side: Side::Runner, card: removed.card, installed: true, by: None });
+        events.push(GameEvent::CardTrashed { side: Side::Runner, card: removed.card, from: crate::dsl::TrashedFrom::Installed, by: None });
     }
     events
 }
@@ -2808,7 +2827,7 @@ pub(crate) fn trash_this_card(state: &mut GameState, registry: &CardRegistry, ct
         let Some((removed, mut events)) = uninstall::corp_install(state, registry, install)? else { return Ok(Vec::new()) };
         let seen = removed.rezzed || runner_is_accessing(state, card_id);
         state.corp.archives.push(orient(card_id.clone(), seen));
-        events.push(GameEvent::CardTrashed { side: Side::Corp, card: card_id.clone(), installed: true, by });
+        events.push(GameEvent::CardTrashed { side: Side::Corp, card: card_id.clone(), from: crate::dsl::TrashedFrom::Installed, by });
         events.extend(cascade_trash_hosted_programs(state, install));
         return Ok(events);
     }
@@ -2823,19 +2842,19 @@ pub(crate) fn trash_this_card(state: &mut GameState, registry: &CardRegistry, ct
         let seen = runner_is_accessing(state, card_id);
         state.corp.hq.remove(position);
         state.corp.archives.push(orient(card_id.clone(), seen));
-        return Ok(vec![GameEvent::CardTrashed { side: Side::Corp, card: card_id.clone(), installed: false, by }]);
+        return Ok(vec![GameEvent::CardTrashed { side: Side::Corp, card: card_id.clone(), from: crate::dsl::TrashedFrom::Hand, by }]);
     }
     if let Some(position) = state.corp.r_and_d.iter().position(|c| c == card_id) {
         // Milled off R&D — facedown on the same reasoning as HQ above.
         let seen = runner_is_accessing(state, card_id);
         state.corp.r_and_d.remove(position);
         state.corp.archives.push(orient(card_id.clone(), seen));
-        return Ok(vec![GameEvent::CardTrashed { side: Side::Corp, card: card_id.clone(), installed: false, by }]);
+        return Ok(vec![GameEvent::CardTrashed { side: Side::Corp, card: card_id.clone(), from: crate::dsl::TrashedFrom::Deck, by }]);
     }
     if let Some(position) = acting_rig_position(state, ctx) {
         let removed = state.runner.rig.remove(position);
         state.runner.heap.push(removed.card.clone());
-        let mut events = vec![GameEvent::CardTrashed { side: Side::Runner, card: card_id.clone(), installed: true, by }];
+        let mut events = vec![GameEvent::CardTrashed { side: Side::Runner, card: card_id.clone(), from: crate::dsl::TrashedFrom::Installed, by }];
         events.extend(cascade_trash_hosted_on_rig_card(state, registry, &removed));
         return Ok(events);
     }
@@ -2848,7 +2867,7 @@ pub(crate) fn trash_this_card(state: &mut GameState, registry: &CardRegistry, ct
     if let Some(position) = state.runner.grip.iter().position(|c| c == card_id) {
         state.runner.grip.remove(position);
         state.runner.heap.push(card_id.clone());
-        return Ok(vec![GameEvent::CardTrashed { side: Side::Runner, card: card_id.clone(), installed: false, by }]);
+        return Ok(vec![GameEvent::CardTrashed { side: Side::Runner, card: card_id.clone(), from: crate::dsl::TrashedFrom::Hand, by }]);
     }
     Ok(Vec::new())
 }
@@ -3052,7 +3071,7 @@ pub(crate) fn pay_cost_ctx(
                 Side::Corp => state.corp.archives.push(ArchivedCard::faceup(card.clone())),
                 Side::Runner => state.runner.heap.push(card.clone()),
             }
-            Ok(vec![GameEvent::CardRevealed { side, card: card.clone() }, GameEvent::CardTrashed { side, card, installed: false, by: Some(side) }])
+            Ok(vec![GameEvent::CardRevealed { side, card: card.clone() }, GameEvent::CardTrashed { side, card, from: crate::dsl::TrashedFrom::Hand, by: Some(side) }])
         }
 
         Cost::TrashRandomFromHq(count) => {
@@ -3065,7 +3084,7 @@ pub(crate) fn pay_cost_ctx(
                 let card = state.corp.hq.remove(index);
                 // Revealed as it is trashed, so it lands faceup.
                 state.corp.archives.push(ArchivedCard::faceup(card.clone()));
-                events.push(GameEvent::CardTrashed { side: Side::Corp, card, installed: false, by: Some(side) });
+                events.push(GameEvent::CardTrashed { side: Side::Corp, card, from: crate::dsl::TrashedFrom::Hand, by: Some(side) });
             }
             Ok(events)
         }
@@ -3375,6 +3394,12 @@ pub fn check_requirement(
         }
         EffectRequirement::IceDerezzedThisRun => {
             if state.run_in_progress().is_some_and(|run| run.ice_derezzed) { Ok(()) } else { Err(RulesError::RequirementNotMet) }
+        }
+        EffectRequirement::SubroutineBrokenThisRun => {
+            if state.run_in_progress().is_some_and(|run| run.subroutine_broken) { Ok(()) } else { Err(RulesError::RequirementNotMet) }
+        }
+        EffectRequirement::LastRunUnsuccessful => {
+            if state.last_completed_run.as_ref().is_some_and(|run| run.unsuccessful) { Ok(()) } else { Err(RulesError::RequirementNotMet) }
         }
         EffectRequirement::IdentityFlipped => {
             // The asking side's own flip state — `side` is the resolving
@@ -4041,6 +4066,8 @@ pub(crate) fn consume_requirement(
         | EffectRequirement::ThisAgendaScoredThisTurn
         | EffectRequirement::SubroutineResolvedThisRun
         | EffectRequirement::IceDerezzedThisRun
+        | EffectRequirement::SubroutineBrokenThisRun
+        | EffectRequirement::LastRunUnsuccessful
         | EffectRequirement::MemoryFull
         | EffectRequirement::RunnerClicksAtLeast(_)
         | EffectRequirement::ZoneHasAtLeast { .. }
@@ -4678,7 +4705,7 @@ mod tests {
 
         assert!(state.runner.rig.is_empty());
         assert_eq!(state.runner.heap, vec![acting.clone()]);
-        assert_eq!(events, vec![GameEvent::CardTrashed { side: Side::Runner, card: acting, installed: true, by: None }]);
+        assert_eq!(events, vec![GameEvent::CardTrashed { side: Side::Runner, card: acting, from: crate::dsl::TrashedFrom::Installed, by: None }]);
     }
 
     #[test]
@@ -4706,7 +4733,7 @@ mod tests {
         assert_eq!(state.corp.archives, vec![ArchivedCard::faceup(CardId("pad_campaign".to_string()))]);
         assert_eq!(
             events,
-            vec![GameEvent::CardTrashed { side: Side::Corp, card: CardId("pad_campaign".to_string()), installed: true, by: None }]
+            vec![GameEvent::CardTrashed { side: Side::Corp, card: CardId("pad_campaign".to_string()), from: crate::dsl::TrashedFrom::Installed, by: None }]
         );
     }
 
@@ -4734,7 +4761,7 @@ mod tests {
         assert_eq!(state.runner.heap, vec![CardId("gordian_blade".to_string())]);
         assert_eq!(
             events,
-            vec![GameEvent::CardTrashed { side: Side::Runner, card: CardId("gordian_blade".to_string()), installed: true, by: None }]
+            vec![GameEvent::CardTrashed { side: Side::Runner, card: CardId("gordian_blade".to_string()), from: crate::dsl::TrashedFrom::Installed, by: None }]
         );
     }
 
@@ -4754,7 +4781,7 @@ mod tests {
         assert_eq!(state.corp.archives, vec![ArchivedCard::facedown(CardId("hedge_fund".to_string()))]);
         assert_eq!(
             events,
-            vec![GameEvent::CardTrashed { side: Side::Corp, card: CardId("hedge_fund".to_string()), installed: false, by: None }]
+            vec![GameEvent::CardTrashed { side: Side::Corp, card: CardId("hedge_fund".to_string()), from: crate::dsl::TrashedFrom::Deck, by: None }]
         );
     }
 
@@ -4787,7 +4814,7 @@ mod tests {
         assert_eq!(state.runner.heap, vec![CardId("sure_gamble".to_string())]);
         assert_eq!(
             events,
-            vec![GameEvent::CardTrashed { side: Side::Runner, card: CardId("sure_gamble".to_string()), installed: false, by: None }]
+            vec![GameEvent::CardTrashed { side: Side::Runner, card: CardId("sure_gamble".to_string()), from: crate::dsl::TrashedFrom::Deck, by: None }]
         );
     }
 
@@ -4938,7 +4965,7 @@ mod tests {
 
         assert!(state.runner.rig.is_empty());
         assert_eq!(state.runner.heap, vec![acting.clone()]);
-        assert_eq!(events, vec![GameEvent::CardTrashed { side: Side::Runner, card: acting, installed: true, by: Some(Side::Runner) }]);
+        assert_eq!(events, vec![GameEvent::CardTrashed { side: Side::Runner, card: acting, from: crate::dsl::TrashedFrom::Installed, by: Some(Side::Runner) }]);
     }
 
     /// A minimal `CardDefinition` carrying exactly the given `triggers` — everything
@@ -5630,7 +5657,7 @@ mod tests {
     #[test]
     fn gain_credits_per_card_accessed_this_run_reads_the_last_completed_run() {
         let mut state = game_state();
-        state.last_completed_run = Some(CompletedRun { server: ServerId::Hq, cards_accessed: 3, agendas_stolen: 0, persistent_trashed_upgrades: Vec::new(), accessed_cards: Vec::new(), on_end_effect: None, on_end_card: None, on_end_install: None, run_credits_left: 0 });
+        state.last_completed_run = Some(CompletedRun { server: ServerId::Hq, cards_accessed: 3, agendas_stolen: 0, persistent_trashed_upgrades: Vec::new(), accessed_cards: Vec::new(), on_end_effect: None, on_end_card: None, on_end_install: None, run_credits_left: 0, unsuccessful: false });
 
         let events = evaluate_effect(
             &mut state,
@@ -5813,13 +5840,13 @@ mod tests {
     #[test]
     fn last_run_was_on_hq_or_rnd_requirement() {
         let mut state = game_state();
-        state.last_completed_run = Some(CompletedRun { server: ServerId::Archives, cards_accessed: 0, agendas_stolen: 0, persistent_trashed_upgrades: Vec::new(), accessed_cards: Vec::new(), on_end_effect: None, on_end_card: None, on_end_install: None, run_credits_left: 0 });
+        state.last_completed_run = Some(CompletedRun { server: ServerId::Archives, cards_accessed: 0, agendas_stolen: 0, persistent_trashed_upgrades: Vec::new(), accessed_cards: Vec::new(), on_end_effect: None, on_end_card: None, on_end_install: None, run_credits_left: 0, unsuccessful: false });
         assert_eq!(
             check_requirement(&state, &EffectRequirement::LastRunWasOnHqOrRnD, Side::Runner, &ResolutionContext::for_card(None), &CardRegistry::new()),
             Err(RulesError::RequirementNotMet)
         );
 
-        state.last_completed_run = Some(CompletedRun { server: ServerId::Hq, cards_accessed: 2, agendas_stolen: 0, persistent_trashed_upgrades: Vec::new(), accessed_cards: Vec::new(), on_end_effect: None, on_end_card: None, on_end_install: None, run_credits_left: 0 });
+        state.last_completed_run = Some(CompletedRun { server: ServerId::Hq, cards_accessed: 2, agendas_stolen: 0, persistent_trashed_upgrades: Vec::new(), accessed_cards: Vec::new(), on_end_effect: None, on_end_card: None, on_end_install: None, run_credits_left: 0, unsuccessful: false });
         assert_eq!(
             check_requirement(&state, &EffectRequirement::LastRunWasOnHqOrRnD, Side::Runner, &ResolutionContext::for_card(None), &CardRegistry::new()),
             Ok(())

@@ -259,7 +259,7 @@ fn trash(state: &mut GameState, registry: &CardRegistry, side: Side, picked: &[I
             Side::Corp => state.corp.archives.push(if was_public { ArchivedCard::faceup(card.clone()) } else { ArchivedCard::facedown(card.clone()) }),
             Side::Runner => state.runner.heap.push(card.clone()),
         }
-        events.push(GameEvent::CardTrashed { side, card, installed: true, by: Some(side) });
+        events.push(GameEvent::CardTrashed { side, card, from: crate::dsl::TrashedFrom::Installed, by: Some(side) });
         events.extend(cascade);
     }
     let fired = crate::rules::ability::dispatch_trashes(state, registry, &events)?;

@@ -14,7 +14,9 @@
         },
         {
           "PlaceRunCredits": {
-            "Fixed": 4
+            "amount": {
+              "Fixed": 4
+            }
           }
         },
         {
@@ -29,7 +31,9 @@
                     "bonus_run_credits": 0,
                     "only_in": "Remote",
                     "on_start": {
-                      "PlaceRunCredits": "RunCreditsLeftLastRun"
+                      "PlaceRunCredits": {
+                        "amount": "RunCreditsLeftLastRun"
+                      }
                     }
                   }
                 },
@@ -58,7 +62,9 @@
       "effects": [
         {
           "PlaceRunCredits": {
-            "Fixed": 2
+            "amount": {
+              "Fixed": 2
+            }
           }
         },
         {

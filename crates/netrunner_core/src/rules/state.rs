@@ -1294,6 +1294,14 @@ pub struct CompletedRun {
     /// credits carried into the run its end starts.
     #[serde(default)]
     pub run_credits_left: u32,
+    /// Whether the run was unsuccessful (CR 6.8.4): it never reached the
+    /// success phase, and its server still existed — Hannah "Wheels"
+    /// Pilintra's "when that run ends, if it was unsuccessful"
+    /// (`EffectRequirement::LastRunUnsuccessful`). Set by `run::end_run`,
+    /// which knows whether the server is still there; `false` from
+    /// `snapshot` alone.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub unsuccessful: bool,
 }
 
 impl CompletedRun {
@@ -1312,6 +1320,7 @@ impl CompletedRun {
             on_end_card: run.on_end_card.clone(),
             on_end_install: run.on_end_install,
             run_credits_left: run.bonus_run_credits,
+            unsuccessful: false,
         }
     }
 }

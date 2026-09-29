@@ -382,6 +382,10 @@ pub struct PublicRunState {
     /// Run-scoped credits granted by a card for this run only. Public for
     /// the same reason as `bad_publicity_credits`.
     pub bonus_run_credits: u32,
+    /// `RunState::run_credits_pay_for`: public, as the event that says so
+    /// was played faceup (Bahia Bands' "to pay trash costs").
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub run_credits_pay_for: Option<crate::dsl::PaysFor>,
     /// `RunState::redirect_on_approach` — a Maintenance Access run's
     /// announced destination. Public: the event was played face-up.
     #[serde(default)]
@@ -397,6 +401,17 @@ pub struct PublicRunState {
     /// game does (Stegodon MK IV).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub ice_derezzed: bool,
+    /// `RunState::subroutine_broken`: public, since both players watched
+    /// every break. Carried so a sample built from the view asks Mercury:
+    /// Chrome Libertador's "if you did not break any subroutines during
+    /// that run" where the real game does.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub subroutine_broken: bool,
+    /// `RunState::reached_success_phase`: public, as the run reaching the
+    /// server is. Carried so a sample's run ends unsuccessful where the
+    /// real one does (Hannah "Wheels" Pilintra's tag).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub reached_success_phase: bool,
     /// `RunState::this_encounter`: public, since both players watched each
     /// break and each trash, and carried so a sample built from the view
     /// is held to Hammer's and Sorocaban Blade's limits where the real
@@ -1210,9 +1225,12 @@ fn mask_run_state(state: &GameState, registry: &CardRegistry, run: &RunState, vi
         gained_for_the_run: run.gained_for_the_run.clone(),
         bad_publicity_credits: run.bad_publicity_credits,
         bonus_run_credits: run.bonus_run_credits,
+        run_credits_pay_for: run.run_credits_pay_for.clone(),
         redirect_on_approach: run.redirect_on_approach,
         fully_broken: run.fully_broken,
         ice_derezzed: run.ice_derezzed,
+        subroutine_broken: run.subroutine_broken,
+        reached_success_phase: run.reached_success_phase,
         this_encounter: run.this_encounter.clone(),
         initiated_by: run.initiated_by.clone(),
         begun_as_the_turn_began: run.begun_as_the_turn_began,
@@ -2265,13 +2283,13 @@ mod tests {
     fn a_facedown_copy_in_archives_conceals_a_corp_trash() {
         // `cyberdex_trial` sits facedown in Archives; nothing hides `hostile_takeover`.
         let state = game_state(corp_state_with_cards());
-        let hidden = GameEvent::CardTrashed { side: Side::Corp, card: id("cyberdex_trial"), installed: false, by: None };
-        let shown = GameEvent::CardTrashed { side: Side::Corp, card: id("hostile_takeover"), installed: false, by: None };
+        let hidden = GameEvent::CardTrashed { side: Side::Corp, card: id("cyberdex_trial"), from: crate::dsl::TrashedFrom::Hand, by: None };
+        let shown = GameEvent::CardTrashed { side: Side::Corp, card: id("hostile_takeover"), from: crate::dsl::TrashedFrom::Hand, by: None };
         assert_eq!(mask_event_for_player(&hidden, &state, Side::Runner), None);
         assert_eq!(mask_event_for_player(&hidden, &state, Side::Corp), Some(hidden.clone()));
         assert_eq!(mask_event_for_player(&shown, &state, Side::Runner), Some(shown.clone()));
 
-        let runner_trash = GameEvent::CardTrashed { side: Side::Runner, card: id("cyberdex_trial"), installed: false, by: None };
+        let runner_trash = GameEvent::CardTrashed { side: Side::Runner, card: id("cyberdex_trial"), from: crate::dsl::TrashedFrom::Hand, by: None };
         assert_eq!(mask_event_for_player(&runner_trash, &state, Side::Runner), Some(runner_trash.clone()));
     }
 

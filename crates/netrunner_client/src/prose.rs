@@ -30,7 +30,7 @@
 use netrunner_core::cards::CardRegistry;
 use netrunner_core::dsl::{DeckEnd, Discount, 
     Amount, EffectDuration, CardDefinition, CardId, CardTarget, CardZoneRef, ContinuousEffect, ContinuousKind, Cost, DamageType, Effect, EventFilter, Number, PaysFor, Preventable, Prohibition,
-    Scope, SubroutineBreakCount,
+    Scope, SubroutineBreakCount, TrashedFrom,
 };
 use netrunner_core::rules::{PendingDecision, Pool, ServerId, Side};
 use netrunner_core::view::ClientView;
@@ -368,7 +368,17 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
         }
         Effect::ArmRunEndPrevention(_) => "the run cannot be ended by the next end-the-run effect".to_string(),
         Effect::Sabotage(n) => format!("sabotage {n}"),
-        Effect::MillRnDAmount(amount) => format!("trash cards from the top of R&D equal to {}", describe_amount(amount)),
+        Effect::Mill { deck, amount, then } => {
+            let pile = match deck {
+                Side::Corp => "R&D",
+                Side::Runner => "the stack",
+            };
+            let trash = format!("trash cards from the top of {pile} equal to {}", describe_amount(amount));
+            match then {
+                Some(then) => format!("{trash}, then, of those cards: {}", describe_effect(then, registry)),
+                None => trash,
+            }
+        }
         Effect::HostCardOnThisCard(netrunner_core::dsl::HostedCardOrigin::AccessedCard) => "host the card being accessed on this card".to_string(),
         Effect::HostCardOnThisCard(_) => "host a card on this card".to_string(),
         Effect::BypassEncounteredIce => "bypass this ice".to_string(),
@@ -382,7 +392,10 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
         Effect::InstallProgramOnHost { from, .. } => {
             format!("install that program from {} on this card, or a trojan on a piece of ice", describe_zone(from))
         }
-        Effect::PlaceRunCredits(amount) => format!("place {} [credit] on this card, to spend during the run", describe_amount(amount)),
+        Effect::PlaceRunCredits { amount, pays_for: None } => format!("place {} [credit] on this card, to spend during the run", describe_amount(amount)),
+        Effect::PlaceRunCredits { amount, pays_for: Some(word) } => {
+            format!("place {} [credit] on this card, to spend {} for the rest of the run", describe_amount(amount), describe_pays_for(word))
+        }
         Effect::ShuffleIntoDeck(zones) => {
             let zones: Vec<&str> = zones.iter().map(|zone| if *zone == CardZoneRef::HostedOnSource { "all hosted cards" } else { describe_zone(zone) }).collect();
             format!("shuffle {} into your stack", zones.join(" and "))
@@ -499,6 +512,18 @@ pub fn engine_reading(card: &CardDefinition, registry: &CardRegistry) -> Vec<Str
             Some(EventFilter::ByThis) => when = format!("{when}, by this card"),
             Some(EventFilter::Host) => when = format!("{when}, of host ice"),
             Some(EventFilter::InRoot) => when = format!("{when}, by the Corp, in the root of a server"),
+            Some(EventFilter::TrashedFrom(places)) => {
+                let places: Vec<&str> = places
+                    .iter()
+                    .map(|place| match place {
+                        TrashedFrom::Installed => "the table",
+                        TrashedFrom::Hand => "a hand",
+                        TrashedFrom::Deck => "a deck",
+                        TrashedFrom::Elsewhere => "anywhere else",
+                    })
+                    .collect();
+                when = format!("{when}, from {}", places.join(" or "));
+            }
             Some(EventFilter::InstalledFromHq(true)) => when = format!("{when}, from HQ"),
             Some(EventFilter::InstalledFromHq(false)) => when = format!("{when}, from anywhere except HQ"),
             Some(EventFilter::Ice(facts)) => {
@@ -588,6 +613,7 @@ pub fn describe_pays_for(word: &PaysFor) -> String {
         PaysFor::UsingIcebreakers => "to pay for using icebreakers".to_string(),
         PaysFor::RemovingTags => "to take the basic action to remove a tag".to_string(),
         PaysFor::DuringRuns => "during runs".to_string(),
+        PaysFor::DuringItsRun => "during the run this card began".to_string(),
     }
 }
 

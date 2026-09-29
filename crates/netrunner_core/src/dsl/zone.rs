@@ -105,6 +105,27 @@ impl CardZoneRef {
             | CardZoneRef::OpponentRemovedFromGame => false,
         }
     }
+
+    /// Where a card chosen out of this zone was, if it is trashed
+    /// (`GameEvent::CardTrashed::from`). A discard pile, a score area and
+    /// the removed-from-game zone are sources a trash never takes from;
+    /// they are `Elsewhere` rather than a guess.
+    pub fn trashed_from(&self) -> crate::dsl::TrashedFrom {
+        use crate::dsl::TrashedFrom;
+        match self {
+            CardZoneRef::OwnHq | CardZoneRef::OwnGrip | CardZoneRef::OpponentHand => TrashedFrom::Hand,
+            CardZoneRef::OwnRAndD | CardZoneRef::OwnStack | CardZoneRef::TopOfOwnStack | CardZoneRef::OpponentDeck => TrashedFrom::Deck,
+            CardZoneRef::OpponentInstalled | CardZoneRef::OwnInstalled => TrashedFrom::Installed,
+            CardZoneRef::OwnArchives
+            | CardZoneRef::OwnHeap
+            | CardZoneRef::OwnSetAside
+            | CardZoneRef::OpponentDiscard
+            | CardZoneRef::HostedOnSource
+            | CardZoneRef::OpponentScoreArea
+            | CardZoneRef::OwnScoreArea
+            | CardZoneRef::OpponentRemovedFromGame => TrashedFrom::Elsewhere,
+        }
+    }
 }
 
 /// Which cards within a `CardZoneRef` are eligible to be selected.
@@ -338,6 +359,21 @@ pub enum CardFilter {
     /// … that has no advancement counters". Its own word because `Not` is
     /// decided off the definition alone. Instance-level.
     Unadvanced,
+    /// One of these cards — what `TrashedThisWay` is written over as, by
+    /// card, so every copy of a card trashed is one of them (they are the
+    /// same card in the same zone, as `Revealed`'s are). Definition-level:
+    /// a card's id is its definition's.
+    AmongCards(Vec<crate::dsl::CardId>),
+    /// **Those cards**: the ones the `Effect::Mill` whose `then` this is
+    /// trashed — The Price's "You may install 1 of those cards". A
+    /// placeholder, written over when the mill resolves
+    /// (`CardFilter::with_those_trashed`, the convention
+    /// `InRootOfThisServer` follows); unresolved it matches nothing.
+    /// Composition didn't work: `TopOfZone` on the heap found the event
+    /// being played on top of it, since the event lands there in the
+    /// middle of its own resolution, and a discard pile has no order to
+    /// read (CR 4.4.2).
+    TrashedThisWay,
 }
 
 /// Whether `card` is eligible under `filter`. `CardType(CardType::Ice(_))`
@@ -405,6 +441,18 @@ impl CardFilter {
             other => other,
         }
     }
+
+    /// `TrashedThisWay` written over as the cards a mill trashed, through
+    /// `All`, `AnyOf` and `Not`.
+    pub fn with_those_trashed(self, cards: &[crate::dsl::CardId]) -> CardFilter {
+        match self {
+            CardFilter::TrashedThisWay => CardFilter::AmongCards(cards.to_vec()),
+            CardFilter::All(filters) => CardFilter::All(filters.into_iter().map(|filter| filter.with_those_trashed(cards)).collect()),
+            CardFilter::AnyOf(filters) => CardFilter::AnyOf(filters.into_iter().map(|filter| filter.with_those_trashed(cards)).collect()),
+            CardFilter::Not(filter) => CardFilter::Not(Box::new(filter.with_those_trashed(cards))),
+            other => other,
+        }
+    }
 }
 
 pub fn card_matches_filter(card: &CardDefinition, filter: &CardFilter) -> bool {
@@ -467,5 +515,7 @@ pub fn card_matches_filter(card: &CardDefinition, filter: &CardFilter) -> bool {
         CardFilter::NotInstalledThisTurn => true,
         CardFilter::InstalledThisTurn => true,
         CardFilter::ScoredThisTurn => true,
+        CardFilter::AmongCards(cards) => cards.contains(&card.id),
+        CardFilter::TrashedThisWay => false,
     }
 }

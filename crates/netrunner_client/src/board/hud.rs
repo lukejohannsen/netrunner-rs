@@ -308,10 +308,17 @@ pub fn in_effect(view: &ClientView, registry: &CardRegistry) -> Vec<String> {
     // Stegodon MK IV: its −2 is already in every icebreaker's strength,
     // and this is why (`ice_derezzed`).
     let derezzed = view.active_run.as_ref().filter(|run| run.ice_derezzed).map(|_| "This run: a piece of ice has been derezzed".to_string());
+    // Bahia Bands: the run's credits beside the pool ("5 +4") pay for one
+    // thing only (`run_credits_pay_for`), which the sum cannot say.
+    let run_credits_for = view.active_run.as_ref().filter(|run| run.bonus_run_credits > 0).and_then(|run| {
+        let word = run.run_credits_pay_for.as_ref()?;
+        let event = run.initiated_by.as_ref().map_or_else(|| "the run's event".to_string(), &title);
+        Some(format!("This run: the {} [credit] on {event} may be spent only {}", run.bonus_run_credits, crate::prose::describe_pays_for(word)))
+    });
     // Attini: a prohibition a card's standing effect has in force right
     // now (`standing_cannot`) — why an offer to pay has no Accept.
     let standing = view.standing_cannot.iter().map(|standing| format!("{}: {}", title(&standing.source), cannot_words(standing.what)));
-    redirect.into_iter().chain(event_counters).chain(gained_for_the_run).chain(derezzed).chain(standing).chain(view.lingering
+    redirect.into_iter().chain(event_counters).chain(gained_for_the_run).chain(derezzed).chain(run_credits_for).chain(standing).chain(view.lingering
         .iter()
         .filter_map(|effect| {
             let what = match (&effect.what, &effect.on) {
@@ -653,6 +660,24 @@ mod tests {
         });
         let view = netrunner_core::view::build_client_view(&state, &registry, Side::Runner);
         assert_eq!(in_effect(&view, &registry), vec!["Front Company: the Runner cannot run on a remote server".to_string()]);
+    }
+
+    /// Bahia Bands' 4[credit] sit beside the credit pool as "+4", which
+    /// cannot say they pay only trash costs; the line does.
+    #[test]
+    fn bahia_bands_says_its_run_credits_pay_only_trash_costs() {
+        let registry = crate::decks::sample_deck_registry();
+        let (corp_deck, runner_deck) = sweep_decks_for_seed(0);
+        let (mut state, _) = GameState::setup(&corp_deck.to_deck(), &runner_deck.to_deck(), &registry, 0).unwrap();
+        state.active_run = Some(netrunner_core::rules::RunState {
+            server: netrunner_core::rules::ServerId::Hq,
+            initiated_by: Some(CardId("bahia_bands".into())),
+            bonus_run_credits: 4,
+            run_credits_pay_for: Some(netrunner_core::dsl::PaysFor::TrashCosts),
+            ..Default::default()
+        });
+        let view = netrunner_core::view::build_client_view(&state, &registry, Side::Corp);
+        assert_eq!(in_effect(&view, &registry), ["This run: the 4 [credit] on Bahia Bands may be spent only to pay trash costs"]);
     }
 
     /// Lycian Multi-Munition's choice is one line for the piece of ice,

@@ -583,6 +583,22 @@ pub struct RunState {
     /// alike; a new run is a new `RunState`, so nothing clears it.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub ice_derezzed: bool,
+    /// Whether any subroutine has been broken during this run — Mercury:
+    /// Chrome Libertador's "if you did not break any subroutines during
+    /// that run" (`EffectRequirement::SubroutineBrokenThisRun`). Set by
+    /// `run::break_subroutine`, the one place a subroutine is broken; a new
+    /// run is a new `RunState`, so nothing clears it.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub subroutine_broken: bool,
+    /// Whether the run reached the success phase (CR 6.9.5) — set as the
+    /// Runner completes the run past the approach to the server, whether
+    /// or not it is then declared successful. A run that did not, against
+    /// a server that still exists, is unsuccessful (CR 6.8.4:
+    /// `CompletedRun::unsuccessful`, Hannah "Wheels" Pilintra). Not
+    /// `declared_successful`: a run Crisium Grid keeps from being declared
+    /// successful is not unsuccessful either (6.8.4a).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub reached_success_phase: bool,
     /// The card whose effect started this run (`Effect::InitiateRun`,
     /// `Effect::PromptChooseServer`) — `None` for a basic-action run.
     /// `EffectRequirement::RunEventActive` (Sang Kancil) asks whether it
@@ -622,6 +638,14 @@ pub struct RunState {
     /// Usually `0`.
     #[serde(default)]
     pub bonus_run_credits: u32,
+    /// What `bonus_run_credits` may be spent on, when the event hosting
+    /// them says — Bahia Bands' "Place 4[credit] on this event. You can
+    /// spend hosted credits **to pay trash costs** for the remainder of
+    /// this run" (`Effect::PlaceRunCredits::pays_for`). `None`, anything
+    /// (Overclock, Trick Shot). One word for the whole pool: only the
+    /// run's own event places credits in it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub run_credits_pay_for: Option<crate::dsl::PaysFor>,
     /// Whether a card's text began this run as the Runner's turn began
     /// (Alarm Clock), so that its end puts the turn back at its start
     /// (`engine::start_run`, `engine::end_run`). Part of the run, so a new
@@ -690,6 +714,7 @@ impl Default for RunState {
             cards_accessed_count: 0,
             redirect_on_approach: None,
             bonus_run_credits: 0,
+            run_credits_pay_for: None,
             begun_as_the_turn_began: false,
             initiated_by: None,
             ice_bypassed: false,
@@ -704,6 +729,8 @@ impl Default for RunState {
             on_end_install: None,
             subroutine_resolved: false,
             ice_derezzed: false,
+            subroutine_broken: false,
+            reached_success_phase: false,
             on_success_card: None,
             on_success_install: None,
         }

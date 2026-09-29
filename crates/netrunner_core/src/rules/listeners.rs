@@ -76,6 +76,10 @@ pub(crate) struct Moment {
     /// read off the event (`GameEvent::CardInstalled::from_hq`) for the
     /// same reason as `ice`.
     pub from_hq: Option<bool>,
+    /// Where a trashed card was (`GameEvent::CardTrashed::from`), for the
+    /// same reason as `from_hq`: the card is in a discard pile by the time
+    /// its trash is heard (`EventFilter::TrashedFrom`, Strike Fund).
+    pub trashed_from: Option<crate::dsl::TrashedFrom>,
     /// The object whose abilities did it, for a moment that names one —
     /// the install that fully broke the ice (CR 6.5.7b,
     /// `GameEvent::IceFullyBroken::by`), which Lobisomem's "whenever **it**
@@ -106,7 +110,7 @@ struct Listener {
 /// `GameEvent` is a decision made here rather than a silence.
 pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
     let card = |card: &CardId, install: Option<InstallId>| About::Card { card: card.clone(), install, installed: install.is_some() };
-    let moment = |trigger, about: &About, of| Moment { trigger, about: about.clone(), of, ice: None, from_hq: None, by: None };
+    let moment = |trigger, about: &About, of| Moment { trigger, about: about.clone(), of, ice: None, from_hq: None, trashed_from: None, by: None };
     // A moment about the ice at `position` in the run's ice. Where the run
     // or the ice has gone by the time the moment is asked again — a
     // trigger fired after the run ended — it is about nothing, and keeps
@@ -117,7 +121,7 @@ pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
             .as_ref()
             .and_then(|run| run.ice.get(position as usize))
             .map_or(About::Nothing, |ice| About::Card { card: ice.card_id.clone(), install: Some(ice.install_id), installed: true });
-        Moment { trigger, about, of: Some(Side::Runner), ice: Some(facts), from_hq: None, by: None }
+        Moment { trigger, about, of: Some(Side::Runner), ice: Some(facts), from_hq: None, trashed_from: None, by: None }
     };
     match event {
         GameEvent::EventPlayed { side, card: played } => {
@@ -245,8 +249,8 @@ pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
         }
         GameEvent::CreditsSpentFromOutsidePool { .. } => Vec::new(),
         // Heard by whoever carried it out; the rules' trashes are nobody's.
-        GameEvent::CardTrashed { card: trashed, installed, by: Some(by), .. } => {
-            vec![moment(Trigger::OnCardTrashed, &About::Card { card: trashed.clone(), install: None, installed: *installed }, Some(*by))]
+        GameEvent::CardTrashed { card: trashed, from, by: Some(by), .. } => {
+            vec![Moment { trashed_from: Some(*from), ..moment(Trigger::OnCardTrashed, &About::Card { card: trashed.clone(), install: None, installed: from.installed() }, Some(*by)) }]
         }
         GameEvent::CardTrashed { by: None, .. } => Vec::new(),
         // The Corp purges, whatever the card that made it (CR 10.1.2).
@@ -528,6 +532,9 @@ fn passes(state: &GameState, registry: &CardRegistry, filter: &EventFilter, mome
     if let EventFilter::InstalledFromHq(from_hq) = filter {
         return moment.from_hq == Some(*from_hq);
     }
+    if let EventFilter::TrashedFrom(places) = filter {
+        return moment.trashed_from.is_some_and(|from| places.contains(&from));
+    }
     match (filter, &moment.about) {
         (EventFilter::Card(filter), About::Card { card, install, .. }) => {
             registry.get(card).is_some_and(|definition| crate::dsl::card_matches_filter(definition, filter)) && crate::rules::pending_choice::copy_matches(state, filter, *install)
@@ -571,8 +578,19 @@ pub(crate) fn when_admits(state: &GameState, registry: &CardRegistry, triggered:
 /// phrased about "you" (`Hears::OwnSide`), the controller's own — or, where
 /// the card names another's (`EventFilter::Whose`, "when the Runner's
 /// discard phase ends"), that one's, which `passes` then checks.
+///
+/// A trigger about the card itself (`Subject::This`) is no "you": Strike
+/// Fund's "when this event is trashed" is heard whoever trashed it — the
+/// Corp, for a card net damage the Corp did took out of the grip (CR
+/// 10.4.2a). Every other `Subject::This` on a trigger phrased about its
+/// controller is about something only the controller does to their own
+/// card (installs it, plays it, advances it), so the answer there was
+/// always the controller's.
 fn whose_admits(triggered: &TriggeredEffect, controller: Side, moment: &Moment) -> bool {
-    if matches!(triggered.when, Some(EventFilter::Whose(_) | EventFilter::OwnedBy { .. } | EventFilter::InRoot)) || triggered.trigger.hears() != Hears::OwnSide {
+    if matches!(triggered.when, Some(EventFilter::Whose(_) | EventFilter::OwnedBy { .. } | EventFilter::InRoot))
+        || triggered.subject == Some(Subject::This)
+        || triggered.trigger.hears() != Hears::OwnSide
+    {
         return true;
     }
     moment.of.is_none_or(|side| side == controller)

@@ -2680,7 +2680,7 @@ mod tests {
         );
         assert_eq!(events[3], GameEvent::AboutToResolve { what: crate::rules::WouldHappen::Damage { kind: DamageType::Net, amount: 1 } });
         assert_eq!(events[4], GameEvent::DamageTaken { damage_type: DamageType::Net, amount: 1, responsible: Some(Side::Corp) });
-        assert!(matches!(events[5], GameEvent::CardDiscarded { side: Side::Runner, .. }));
+        assert!(matches!(events[5], GameEvent::CardTrashed { side: Side::Runner, from: crate::dsl::TrashedFrom::Hand, by: Some(Side::Corp), .. }));
         assert_eq!(events[6], GameEvent::RunCompleted { server: ServerId::Remote(0) });
         assert_eq!(events.len(), 7);
     }
@@ -3347,7 +3347,7 @@ mod tests {
                 GameEvent::CardAccessed { card: CardId("shock_ish".to_string()), server: ServerId::Hq, install: None },
                 GameEvent::TriggerFired { card: CardId("shock_ish".to_string()), trigger: crate::dsl::Trigger::OnAccessed },
                 GameEvent::TagsGiven { side: Side::Runner, amount: 1, had: 0 },
-                GameEvent::CardTrashed { side: Side::Corp, card: CardId("shock_ish".to_string()), installed: false, by: Some(Side::Corp) },
+                GameEvent::CardTrashed { side: Side::Corp, card: CardId("shock_ish".to_string()), from: crate::dsl::TrashedFrom::Hand, by: Some(Side::Corp) },
                 GameEvent::RunCompleted { server: ServerId::Hq },
             ]
         );

@@ -1,0 +1,78 @@
+{
+  "id": "mercury_chrome_libertador",
+  "title": "Mercury: Chrome Libertador",
+  "side": "Runner",
+  "card_type": "Identity",
+  "cost": 0,
+  "base_link": 0,
+  "min_deck_size": 45,
+  "triggers": [
+    {
+      "trigger": "OnSuccessfulRun",
+      "subject": "Any",
+      "when": {
+        "Server": [
+          "Hq",
+          "RnD"
+        ]
+      },
+      "requirement": {
+        "And": [
+          "OncePerTurn",
+          {
+            "Not": "SubroutineBrokenThisRun"
+          }
+        ]
+      },
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Runner",
+            "options": [
+              {
+                "Sequence": [
+                  {
+                    "EffectIf": {
+                      "condition": {
+                        "DuringRunOn": "Hq"
+                      },
+                      "effect": {
+                        "AddAdditionalAccess": {
+                          "server": "Hq",
+                          "count": 1
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "EffectIf": {
+                      "condition": {
+                        "DuringRunOn": "RnD"
+                      },
+                      "effect": {
+                        "AddAdditionalAccess": {
+                          "server": "RnD",
+                          "count": 1
+                        }
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "Sequence": []
+              }
+            ],
+            "texts": [
+              "you may access 1 additional card",
+              ""
+            ]
+          }
+        }
+      ],
+      "text": "Once per turn → When you breach HQ or R&D during a run, if you did not break any subroutines during that run, you may access 1 additional card."
+    }
+  ],
+  "numeric_id": 34010,
+  "is_playable": true
+}

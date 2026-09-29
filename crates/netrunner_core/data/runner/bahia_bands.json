@@ -1,0 +1,77 @@
+{
+  "id": "bahia_bands",
+  "title": "Bahia Bands",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 2,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "PromptChooseServer": {
+            "chooser": "Runner",
+            "rez_cost_delta": 0,
+            "bonus_run_credits": 0,
+            "on_success": {
+              "ResolveSomeOf": {
+                "chooser": "Runner",
+                "count": 2,
+                "options": [
+                  {
+                    "DrawCards": [
+                      "Runner",
+                      2
+                    ]
+                  },
+                  {
+                    "PromptChooseCards": {
+                      "side": "Runner",
+                      "source": "OwnGrip",
+                      "filter": {
+                        "InstallableRunnerCardWithDiscount": {
+                          "Credits": 1
+                        }
+                      },
+                      "min": 1,
+                      "max": 1,
+                      "reveal": false,
+                      "shuffle_after": false,
+                      "then": {
+                        "InstallRunnerCardFromGripWithDiscount": {
+                          "Credits": 1
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "RemoveTags": {
+                      "Fixed": 1
+                    }
+                  },
+                  {
+                    "PlaceRunCredits": {
+                      "amount": {
+                        "Fixed": 4
+                      },
+                      "pays_for": "TrashCosts"
+                    }
+                  }
+                ],
+                "texts": [
+                  "Draw 2 cards.",
+                  "Install 1 card from your grip, paying 1[credit] less.",
+                  "Remove 1 tag.",
+                  "Place 4[credit] on this event. You can spend hosted credits to pay trash costs for the remainder of this run."
+                ]
+              }
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "numeric_id": 34030,
+  "is_playable": true
+}

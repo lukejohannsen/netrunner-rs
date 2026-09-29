@@ -33,8 +33,11 @@
             "chooser": "Corp",
             "options": [
               {
-                "MillRnDAmount": {
-                  "Fixed": 1
+                "Mill": {
+                  "deck": "Corp",
+                  "amount": {
+                    "Fixed": 1
+                  }
                 }
               },
               {

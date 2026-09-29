@@ -825,14 +825,30 @@ pub enum Effect {
     /// from HQ and/or the top of R&D (Cacophony). Parks a Corp
     /// `PendingDecision::ChooseCards` over HQ whose bounds are computed
     /// from the two zones' sizes — at least what R&D cannot cover, at most
-    /// what HQ holds — with a `MillRnDAmount(RemainingAfterSelection)`
+    /// what HQ holds — with a `Mill` of `RemainingAfterSelection` from R&D as its
     /// `then` for the rest; with nothing in HQ to choose from it mills R&D
     /// directly. An engine variant because the bounds and the "rest" are
     /// decided by state a card author cannot see.
     Sabotage(u32),
-    /// Trashes `Amount` cards from the top of R&D, facedown — the R&D half
-    /// of a sabotage.
-    MillRnDAmount(Amount),
+    /// Trashes `amount` cards from the top of `deck`'s deck, one at a time
+    /// — the R&D half of a sabotage (facedown), Nuvem SA's "trash the top
+    /// card of R&D", The Price's "Trash the top 4 cards of your stack" —
+    /// and then resolves `then` about **those cards**: every
+    /// `CardFilter::TrashedThisWay` in it is written over with the cards
+    /// trashed (`CardFilter::AmongCards`) before it resolves, or before it
+    /// waits behind whatever a trashed card's own ability parked (Strike
+    /// Fund's, between the instructions, CR 9.6.5a). A value the effect
+    /// found, written into the effect that waits, as a chosen number is
+    /// (the State Hygiene Rule): the heap has no order to read "the top 4"
+    /// back from (CR 4.4.2), and the event being played lands on it in the
+    /// middle of the resolution. It was `MillRnDAmount`, R&D's alone, with
+    /// no `then`; The Price generalised it rather than add a variant.
+    Mill {
+        deck: Side,
+        amount: Amount,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        then: Option<Box<Effect>>,
+    },
     /// Moves one card from `HostedCardOrigin` onto the acting rig card's
     /// `hosted_cards`, faceup — Detente's "host 1 card from HQ at random
     /// faceup on this hardware", Bling's "host the top card of your stack
@@ -988,7 +1004,16 @@ pub enum Effect {
     /// run. Composition didn't work: the pool is set only as a run begins
     /// (`PromptChooseServer::bonus_run_credits`), from a number the card
     /// file writes.
-    PlaceRunCredits(Amount),
+    ///
+    /// `pays_for` is what the credits may be spent on, when the card says
+    /// — Bahia Bands' "Place 4[credit] on this event. You can spend hosted
+    /// credits to pay trash costs for the remainder of this run"
+    /// (`RunState::run_credits_pay_for`); `None` is anything.
+    PlaceRunCredits {
+        amount: Amount,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pays_for: Option<crate::dsl::PaysFor>,
+    },
     /// Installs the program this resolves as out of `from`, paying its cost,
     /// onto a host — Muse's "If that program is a trojan, install it on a
     /// piece of ice. Otherwise, install it on this program.", as the `then`
@@ -1819,6 +1844,25 @@ pub enum SubroutineBreakCount {
 }
 
 impl Effect {
+    /// `CardFilter::TrashedThisWay` written over as the cards a mill
+    /// trashed (`Effect::Mill`'s `then`), in every selection the effect
+    /// makes and every choice, sequence or condition around one. The
+    /// shapes a mill's `then` is written in; any other effect is returned
+    /// as it is.
+    pub fn with_those_trashed(self, cards: &[crate::dsl::CardId]) -> Effect {
+        let all = |effects: Vec<Effect>| effects.into_iter().map(|e| e.with_those_trashed(cards)).collect();
+        match self {
+            Effect::PromptChooseCards { side, source, filter, min, max, reveal, shuffle_after, destination, then } => {
+                Effect::PromptChooseCards { side, source, filter: filter.with_those_trashed(cards), min, max, reveal, shuffle_after, destination, then }
+            }
+            Effect::Sequence(effects) => Effect::Sequence(all(effects)),
+            Effect::PresentChoice { chooser, options, texts } => Effect::PresentChoice { chooser, options: all(options), texts },
+            Effect::ResolveSomeOf { chooser, count, options, texts } => Effect::ResolveSomeOf { chooser, count, options: all(options), texts },
+            Effect::EffectIf { condition, effect } => Effect::EffectIf { condition, effect: Box::new(effect.with_those_trashed(cards)) },
+            other => other,
+        }
+    }
+
     /// This effect with every `Amount::ChosenNumber` written over by
     /// `Fixed(number)` — what `Effect::ChooseNumber::then` becomes once the
     /// number is chosen. Stops at a nested `ChooseNumber`'s own `then`,
@@ -1840,7 +1884,7 @@ impl Effect {
             Effect::GiveTags(a) => Effect::GiveTags(amount(a)),
             Effect::RemoveTags(a) => Effect::RemoveTags(amount(a)),
             Effect::PlaceAdvancementCounters(a) => Effect::PlaceAdvancementCounters(amount(a)),
-            Effect::MillRnDAmount(a) => Effect::MillRnDAmount(amount(a)),
+            Effect::Mill { deck, amount: a, then } => Effect::Mill { deck, amount: amount(a), then },
             Effect::DealDamageAmount(kind, a) => Effect::DealDamageAmount(kind, amount(a)),
             Effect::AddAdditionalAccessAmount { server, amount: a } => Effect::AddAdditionalAccessAmount { server, amount: amount(a) },
             Effect::BoostStrengthAmount { amount: a, duration } => Effect::BoostStrengthAmount { amount: amount(a), duration },
@@ -1990,7 +2034,7 @@ impl Effect {
             | Effect::RedirectRunOnApproach(..)
             | Effect::ArmRunEndPrevention(..)
             | Effect::Sabotage(..)
-            | Effect::MillRnDAmount(..)
+            | Effect::Mill { .. }
             | Effect::HostCardOnThisCard(_)
             | Effect::BypassEncounteredIce
             | Effect::PurgeVirusCounters
@@ -2002,7 +2046,7 @@ impl Effect {
             | Effect::AddToDeck(_)
             | Effect::AddToHand
             | Effect::ShuffleIntoDeck(..)
-            | Effect::PlaceRunCredits(..)
+            | Effect::PlaceRunCredits { .. }
             | Effect::InstallProgramOnHost { .. }
             | Effect::AddToScoreAreaAsAgenda(_)
             | Effect::WinTheGame

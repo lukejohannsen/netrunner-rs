@@ -4339,6 +4339,128 @@ Epiphany Analytica: Nations Undivided and Lago Paranoá Shelter. **No new
     log's count of the Corp's ice and the persisting listeners included.
   - So the heuristic movement is `determinize` sampling the new cards.
 
+#### Stage 6 — Runner run words (28 September 2026)
+
+`feat/tai-stage-6-runner-run-cards`: Hannah "Wheels" Pilintra, Mercury:
+Chrome Libertador, Debbie "Downtown" Moreira, Bahia Bands, Chrysopoeian
+Skimming, Strike Fund and The Price. **No new `Effect`**: one was
+generalised in place. The Automata Initiative 49 of 65;
+`TAI_UNIMPLEMENTED` 23 → 16.
+
+- **A trash says which pile the card left** (Strike Fund's "When this
+  event is trashed from your grip or stack").
+  - `GameEvent::CardTrashed::from` (`dsl::TrashedFrom`: installed, a hand,
+    a deck, elsewhere) replaced the flag that said only whether the card
+    was installed. Boi-tatá still reads that flag (`TrashedFrom::installed`).
+    `EventFilter::TrashedFrom` reads the pile off the moment, since the
+    card is in the heap by the time anything hears it.
+  - A trigger about the card itself (`Subject::This`) is heard whoever
+    trashed it (`listeners::whose_admits`). No other card's `This` trigger
+    is about something its controller's opponent does.
+  - **Damage's cards are trashed, not discarded** (CR 10.4.2a, 1.19.3): a
+    `CardTrashed` out of the grip by the player responsible, dispatched
+    with the damage. They were `CardDiscarded`, an occurrence of nothing,
+    so no card could hear what damage took. Hiram "0mission" Svensson now
+    hears hardware that damage the Runner suffers by their own card takes.
+    Both clients' damage line reads "… trashed" instead of "… discarded".
+- **"Those cards"** (The Price's "Trash the top 4 cards of your stack.
+  You may install 1 of those cards, paying 3[credit] less").
+  - `MillRnDAmount`, R&D's alone, became `Effect::Mill { deck, amount,
+    then }`. Its `then` has `CardFilter::TrashedThisWay` written over as
+    the cards it trashed (`CardFilter::AmongCards`) before it resolves, or
+    before it waits behind whatever a trashed card parked. That is the
+    State Hygiene Rule's third case, a value written into the effect that
+    waits.
+  - Composition was tried first and failed. `TopOfZone(4)` on the heap
+    found The Price itself on top: a played event lands there in the
+    middle of its own resolution. A heap has no order to read the cards
+    back from (CR 4.4.2) either.
+  - A Strike Fund trashed this way asks its "may" before The Price's
+    install (CR 9.6.5a). The engine trashes the four one at a time, so one
+    third from the top resolves before the fourth is trashed; nothing in
+    the pool can tell (rules conformance 9.6).
+- **Two facts about a run.**
+  - Whether a subroutine was broken during it (`RunState::
+    subroutine_broken`, `EffectRequirement::SubroutineBrokenThisRun`):
+    Mercury's "if you did not break any subroutines during that run".
+    Mercury's one printed ability is one trigger on HQ or R&D, since two
+    once-per-turn entries would share a use. Its access goes to the server
+    being run (`DuringRunOn`). As with Stegodon MK IV, a declined "may"
+    spends the turn's use (9.3.6g, recorded).
+  - Whether it was unsuccessful (CR 6.8.4): `RunState::
+    reached_success_phase`, set as the Runner completes the run whatever
+    is declared, and `CompletedRun::unsuccessful`, which `run::end_run`
+    sets unless the remote ceased to exist (6.8.4b). Hannah's "When that
+    run ends, if it was unsuccessful, take 1 tag" is her run's end rider
+    under `EffectRequirement::LastRunUnsuccessful`.
+  - Both facts are public and in the view, so a bot's sample asks them
+    where the real game does.
+- **Two hosted-credit words.**
+  - `PaysFor::DuringItsRun`: Debbie's "[click]: Run any server. You can
+    spend hosted credits during that run". `DuringRuns` is every run; hers
+    is the run whose `initiated_by` she is.
+  - Bahia Bands' "Place 4[credit] on this event. You can spend hosted
+    credits to pay trash costs for the remainder of this run".
+    `PlaceRunCredits` took a `pays_for` (`RunState::run_credits_pay_for`),
+    and the run's pool is classed by it.
+  - Drawn: "This run: the 4 [credit] on Bahia Bands may be spent only to
+    pay trash costs" in the In effect list, since "+4" beside the credit
+    pool cannot say it.
+- **The rest composes.**
+  - Chrysopoeian Skimming: the Corp is always asked, so the question shows
+    nothing about HQ. "Reveal" with no agenda there is the "otherwise"
+    (look at the top 3 of R&D).
+  - Debbie's threat 4 load and run-event credit are triggers on herself.
+  - Hannah's first ability: a click gained, then a remote-only
+    `PromptChooseServer`, withheld with no remote to run. Her second:
+    `[click], [trash]`.
+  - Bahia Bands: Key Performance Indicators' `ResolveSomeOf` in the run's
+    `on_success`.
+- **Deck.** Picket Line, a new Runner Sweep deck on Mercury (Standard,
+  Eternal and Casual), on Stolen Goods' frame of run events, with all
+  seven cards.
+- **DSL ratio (`pool_status.py`): 21 of 91 `Effect` variants single-use,
+  1 unused**, over 364 card files, from 23 of 91: `Mill` has two cards and
+  `PlaceRunCredits` two.
+- **Real play**, 96 games a seating (seed 2), Grand Opening against Picket
+  Line.
+  - Random seats use all seven:
+    - Strike Fund played 27 times, heard its own trash 6.
+    - The Price played 26 times, its install offered 25.
+    - Hannah installed 16 times, used 18.
+    - Mercury's trigger fired 381 times.
+    - Chrysopoeian Skimming played 42 times, the Corp revealing 11.
+    - Debbie installed 27 times, used 65, loaded at threat 4 9 times and
+      by a run event 25.
+    - Bahia Bands played 33 times.
+  - Heuristic seats: Strike Fund played 34 times, Mercury's trigger fired
+    493. The heuristic Runner never plays Bahia Bands, Chrysopoeian
+    Skimming or The Price, and never installs Debbie or Hannah (Phase 5
+    debt).
+- **Measured.** Both sweeps at 256 seeds are green, the card gate included.
+  - Against `origin/main`, `coverage_identical.py` reports every shape
+    different. The random seatings play the same games: same outcomes and
+    the same 73018 steps. They differ only in damage's cards being
+    counted as trashes, not discards (`CardDiscarded` 868 → 503,
+    `CardTrashed` 1686 → 2051 by view, and each card's `trashed`). The
+    heuristic seatings moved, of 192 games (view; by index the steps are
+    112879):
+
+    | | main | Stage 6 |
+    |---|---|---|
+    | Corp agenda wins | 60 | 73 |
+    | Corp flatlines | 10 | 16 |
+    | Runner agenda wins | 120 | 101 |
+    | Deck-outs | 2 | 2 |
+    | Steps | 111335 | 112883 |
+
+  - A pinned ref with every engine and client change and none of the
+    cards or the deck differs from main in the same counters and nothing
+    else, in all four shapes: every game is the same game. So the damage
+    trash, the trash pile, the two run facts, the credit words and `Mill`
+    move no game. The heuristic movement is `determinize` sampling the
+    new cards.
+
 ### 4. Parhelion — 63 cards (C 19 / V 26 / M 18)
 
 **Decks:** Sweep decks on its four identities. Nova Initiumia and Ampère
