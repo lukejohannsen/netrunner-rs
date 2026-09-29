@@ -1,0 +1,30 @@
+{
+  "id": "num",
+  "title": "Num",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 4,
+  "strength": 8,
+  "memory_cost": 1,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "Credits": 2
+      },
+      "effect": {
+        "BreakSubroutines": {
+          "count": {
+            "Fixed": 1
+          },
+          "restrict_to": "Sentry"
+        }
+      },
+      "requirement": "DuringEncounter",
+      "text": "Interface → 2[credit]: Break 1 sentry subroutine."
+    }
+  ],
+  "numeric_id": 33073,
+  "is_playable": true
+}

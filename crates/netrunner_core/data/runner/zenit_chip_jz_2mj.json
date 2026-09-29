@@ -1,0 +1,46 @@
+{
+  "id": "zenit_chip_jz_2mj",
+  "title": "Zenit Chip JZ-2MJ",
+  "side": "Runner",
+  "card_type": "Hardware",
+  "cost": 1,
+  "unique": true,
+  "triggers": [
+    {
+      "trigger": "OnInstall",
+      "subject": "This",
+      "effects": [
+        {
+          "DealDamage": [
+            "Brain",
+            1
+          ]
+        }
+      ],
+      "text": "When you install this hardware, suffer 1 core damage."
+    },
+    {
+      "trigger": "OnSuccessfulRun",
+      "subject": "Any",
+      "when": {
+        "Server": [
+          "Hq",
+          "RnD",
+          "Archives"
+        ]
+      },
+      "first_each_turn": true,
+      "effects": [
+        {
+          "DrawCards": [
+            "Runner",
+            1
+          ]
+        }
+      ],
+      "text": "The first time each turn you make a successful run on a central server, draw 1 card."
+    }
+  ],
+  "numeric_id": 33079,
+  "is_playable": true
+}

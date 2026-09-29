@@ -18312,4 +18312,168 @@ mod parhelion {
         let tokens = |card: &str| placing.corp.installed.iter().find(|installed| installed.card == id(card)).map(|installed| installed.advancement_tokens);
         assert_eq!((tokens("hostile_takeover"), tokens("ice_wall"), tokens("pad_campaign")), (Some(3), Some(1), Some(0)));
     }
+
+    // ---- Stage 2a: Runner and Corp cards, composed ----
+
+    fn installed(state: &GameState, card: &str) -> InstallId {
+        state.runner.rig.iter().find(|installed| installed.card == id(card)).map(|installed| installed.install_id).expect("in the rig")
+    }
+
+    fn counters(state: &GameState, card: &str) -> Option<u32> {
+        state.runner.rig.iter().find(|installed| installed.card == id(card)).map(|installed| installed.counters)
+    }
+
+    /// A run on `server`, with no ice, declared successful: stopped at
+    /// whatever that parked, or at the breach.
+    fn successful_run(state: &GameState, registry: &CardRegistry, server: ServerId) -> GameState {
+        let (state, _) = close_all_windows(state.clone(), registry);
+        let (state, _) = apply_action(&state, registry, PlayerAction::InitiateRun { server }).expect("initiate run");
+        succeed(&state, registry)
+    }
+
+    /// The run in progress, with no ice, through movement and declared
+    /// successful.
+    fn succeed(state: &GameState, registry: &CardRegistry) -> GameState {
+        let (state, _) = crate::rules::test_support::through_movement(state, registry).expect("to the server");
+        apply_action(&state, registry, PlayerAction::CompleteRun).expect("successful").0
+    }
+
+    #[test]
+    fn finality_costs_a_core_damage_and_accesses_three_more_from_r_and_d() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.grip = vec![id("finality"), id("sure_gamble")];
+        state.corp.r_and_d = vec![id("hedge_fund"); 6];
+        let (state, _) = apply_action(&state, &registry, PlayerAction::PlayEvent { card_id: id("finality") }).expect("play");
+        assert_eq!((state.runner.brain_damage, state.runner.grip.len()), (1, 0), "1 core damage as a cost");
+        let state = succeed(&state, &registry);
+        let access = state.active_run.as_ref().and_then(|run| run.access_state.as_ref()).expect("accessing");
+        assert_eq!(access.from_zone.len(), 3, "1 access and 3 more");
+
+        let mut broke = runner_turn();
+        broke.runner.grip = vec![id("finality")];
+        broke.runner.resources.credits = Credits(1);
+        assert!(apply_action(&broke, &registry, PlayerAction::PlayEvent { card_id: id("finality") }).is_err(), "2[credit]");
+    }
+
+    #[test]
+    fn katorga_breakout_runs_any_server_and_adds_a_heap_card_to_the_grip_if_successful() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.grip = vec![id("katorga_breakout")];
+        state.runner.heap = vec![id("sure_gamble"), id("corroder")];
+        let (asked, _) = apply_action(&state, &registry, PlayerAction::PlayEvent { card_id: id("katorga_breakout") }).expect("play");
+        let (running, _) = apply_action(&asked, &registry, PlayerAction::ChooseServerForPendingDecision { server: ServerId::Archives }).expect("any server");
+        let succeeded = succeed(&running, &registry);
+        let candidates: Vec<usize> = crate::rules::legal_actions_for(&succeeded, &registry, Side::Runner)
+            .into_iter()
+            .filter_map(|action| match action {
+                PlayerAction::ToggleCardSelection { position } => Some(position),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(candidates, vec![0, 1], "any card in the heap, but not the event still in the play area (CR 8.6.5)");
+        let (state, _) = apply_action(&succeeded, &registry, PlayerAction::ToggleCardSelection { position: 1 }).expect("Corroder");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ConfirmCardSelection).expect("to the grip");
+        assert_eq!((state.runner.grip.clone(), state.runner.heap.contains(&id("corroder"))), (vec![id("corroder")], false));
+    }
+
+    #[test]
+    fn nga_loads_three_and_spends_one_on_the_first_successful_run_each_turn_to_sabotage_then_goes() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.grip = vec![id("nga")];
+        state.corp.hq = vec![id("hedge_fund"), id("ice_wall")];
+        state.corp.r_and_d = vec![id("hedge_fund"); 3];
+        let (state, _) = apply_action(&state, &registry, PlayerAction::InstallProgram { card_id: id("nga"), trash_first: false }).expect("install");
+        assert_eq!(counters(&state, "nga"), Some(3), "load 3 power counters");
+
+        let asked = successful_run(&state, &registry, ServerId::Archives);
+        assert_eq!(asked.pending_paid_choice.as_ref().map(|choice| (choice.side, choice.cost.clone())), Some((Side::Runner, Cost::RemoveCounters(1))));
+        let (sabotaging, _) = apply_action(&asked, &registry, accept()).expect("remove 1 to sabotage 1");
+        assert_eq!(counters(&sabotaging, "nga"), Some(2));
+        assert!(matches!(sabotaging.pending_decision, Some(PendingDecision::ChooseCards { side: Side::Corp, .. })), "the Corp chooses");
+
+        let (declined, _) = apply_action(&asked, &registry, PlayerAction::DeclinePendingPaidChoice).expect("keep them");
+        let (declined, _) = close_all_windows(declined, &registry);
+        let again = successful_run(&declined, &registry, ServerId::Archives);
+        assert!(again.pending_paid_choice.is_none(), "the first time each turn");
+
+        let mut last = asked.clone();
+        last.runner.rig.iter_mut().for_each(|card| card.counters = 1);
+        last.corp.hq.clear();
+        let (emptied, _) = apply_action(&last, &registry, accept()).expect("the last counter");
+        assert_eq!(counters(&emptied, "nga"), None, "when it is empty, trash it");
+        assert!(emptied.runner.heap.contains(&id("nga")));
+    }
+
+    #[test]
+    fn num_breaks_a_sentry_subroutine_for_two_at_strength_eight() {
+        let registry = registry();
+        let num = registry.get(&id("num")).expect("Num");
+        assert_eq!((num.strength, num.memory_cost), (Some(8), Some(1)));
+        let ability = &num.abilities[0];
+        assert_eq!(ability.cost, Some(Cost::Credits(2)));
+        assert!(matches!(&ability.effect, crate::dsl::Effect::BreakSubroutines { restrict_to: Some(crate::dsl::IceType::Sentry), .. }));
+    }
+
+    #[test]
+    fn zenit_chip_costs_a_core_damage_and_draws_on_the_first_successful_central_run_each_turn() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.grip = vec![id("zenit_chip_jz_2mj"), id("sure_gamble")];
+        state.runner.stack = vec![id("corroder"); 3];
+        state.corp.installed = vec![root_at("pad_campaign", 0)];
+        let (state, _) = apply_action(&state, &registry, PlayerAction::InstallHardware { card_id: id("zenit_chip_jz_2mj") }).expect("install");
+        assert_eq!((state.runner.brain_damage, state.runner.grip.len()), (1, 0), "suffer 1 core damage");
+
+        let remote = successful_run(&state, &registry, ServerId::Remote(0));
+        assert_eq!(remote.runner.grip.len(), 0, "a remote server is not central");
+        let archives = successful_run(&state, &registry, ServerId::Archives);
+        assert_eq!(archives.runner.grip, vec![id("corroder")], "draw 1");
+        let (archives, _) = close_all_windows(archives, &registry);
+        assert_eq!(successful_run(&archives, &registry, ServerId::Hq).runner.grip.len(), 1, "the first time each turn");
+    }
+
+    #[test]
+    fn hippocampic_mechanocytes_hosts_two_counters_for_a_meat_damage_and_a_hand_size_each() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.grip = vec![id("hippocampic_mechanocytes"), id("sure_gamble"), id("sure_gamble")];
+        let before = crate::rules::continuous::hand_size(&state, &registry, Side::Runner);
+        let (state, _) = apply_action(&state, &registry, PlayerAction::InstallHardware { card_id: id("hippocampic_mechanocytes") }).expect("install");
+        assert_eq!((counters(&state, "hippocampic_mechanocytes"), state.runner.grip.len()), (Some(2), 1), "2 counters, 1 meat damage");
+        assert_eq!(crate::rules::continuous::hand_size(&state, &registry, Side::Runner), before + 2);
+        let mut one = state.clone();
+        one.runner.rig.iter_mut().for_each(|card| card.counters = 1);
+        assert_eq!(crate::rules::continuous::hand_size(&one, &registry, Side::Runner), before + 1, "for each hosted counter");
+    }
+
+    #[test]
+    fn dr_nuka_vrolyck_spends_a_click_and_a_counter_to_draw_three_twice_then_goes() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.grip = vec![id("dr_nuka_vrolyck")];
+        state.runner.stack = vec![id("sure_gamble"); 6];
+        let (state, _) = apply_action(&state, &registry, PlayerAction::InstallResource { card_id: id("dr_nuka_vrolyck"), host: None }).expect("install");
+        assert_eq!(counters(&state, "dr_nuka_vrolyck"), Some(2));
+        let use_it = PlayerAction::ActivateAbility { target: installed(&state, "dr_nuka_vrolyck"), ability_index: 0 };
+        let (once, _) = apply_action(&state, &registry, use_it.clone()).expect("draw 3");
+        assert_eq!((once.runner.grip.len(), once.runner.resources.clicks, counters(&once, "dr_nuka_vrolyck")), (3, Clicks(2), Some(1)));
+        let (twice, _) = close_all_windows(apply_action(&once, &registry, use_it).expect("draw 3 more").0, &registry);
+        assert_eq!((twice.runner.grip.len(), counters(&twice, "dr_nuka_vrolyck")), (6, None), "when it is empty, trash it");
+    }
+
+    #[test]
+    fn end_of_the_line_removes_a_tag_to_do_four_meat_damage() {
+        let registry = registry();
+        let play = PlayerAction::PlayOperation { card_id: id("end_of_the_line") };
+        let mut state = base_state();
+        state.corp.hq = vec![id("end_of_the_line")];
+        state.runner.grip = vec![id("sure_gamble"); 5];
+        assert!(apply_action(&state, &registry, play.clone()).is_err(), "no tag to remove");
+        state.runner.tags = 2;
+        let (hit, _) = apply_action(&state, &registry, play).expect("remove 1 tag");
+        assert_eq!((hit.runner.tags, hit.runner.grip.len(), hit.corp.resources.credits), (1, 1, Credits(7)));
+    }
 }
