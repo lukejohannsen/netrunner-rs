@@ -2,7 +2,7 @@
 
 This repository contains an asynchronous, turn-based Netrunner card game built in Rust using a modular, decoupled architecture.
 
-**This file is the rules of engagement. `ROADMAP.md` is the single source of truth for status** — what is done, what is open, what is next. It is an index; the per-phase record lives in `docs/roadmap/` (one file per phase, linked from the index), and an entry's address — "Phase 2 §5", "Rules Audit T8" — resolves through that index. Do not track status here; add it to the area roadmap and update `ROADMAP.md`.
+**This file is the rules of engagement. `ROADMAP.md` is the single source of truth for status** — what is done, what is open, what is next. It is an index; the per-phase record lives in `docs/roadmap/` (one file per phase, linked from the index), and an entry's address — "Phase 2 §5", "Rules Audit T8" — resolves through that index. **The closed record lives in `docs/roadmap/archive/`**: when an item closes, its full entry is written as always and moved there verbatim, heading kept, so the same address resolves in the archive; the live area file keeps one sentence and the address. Do not track status here; add it to the area roadmap and update `ROADMAP.md`.
 
 ---
 

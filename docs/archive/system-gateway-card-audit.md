@@ -1,5 +1,7 @@
 # System Gateway Card Fidelity Audit — September 2026
 
+> **Archived 29 September 2026.** A finished audit; its "Documented approximations" are carried in the card pool's known-limits list (`docs/roadmap/nsg-card-pool.md`), which is the live record.
+
 Status and the findings list live in `docs/roadmap/rules-audit.md` (§ System Gateway Card Fidelity Audit); this file is the per-card record. Every one of the 75 playable *System Gateway* cards was read three ways:
 
 1. **Text ↔ DSL** — every clause of the NetrunnerDB `stripped_text` maps to a trigger/ability/subroutine/field, nothing extra, nothing missing; "may" is optional, "unless" is a real payable choice by the right side, "X or Y" is chosen by the side the card names.

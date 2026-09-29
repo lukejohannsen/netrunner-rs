@@ -5539,7 +5539,7 @@ tests green and clippy silent.
 
 ## 8. Borrowed from jinteki — OPEN (19 September 2026)
 
-From [`docs/jinteki-comparison.md`](../jinteki-comparison.md) §5, in the
+From [`docs/archive/jinteki-comparison.md`](../archive/jinteki-comparison.md) §5, in the
 order they would matter to a person playing.
 
 **This list was numbered §5 when it was written on 19 September 2026, and

@@ -14,7 +14,7 @@
 //! (`applies_to`, read relative to the card that prints it) and **whether it
 //! is on** (`while`). The first proposal was `{ kind, value: Amount, while }`
 //! and was too narrow twice over: it could not say which cards, and it
-//! assumed every value is a number (docs/jinteki-comparison.md §6.2).
+//! assumed every value is a number (docs/archive/jinteki-comparison.md §6.2).
 //!
 //! Nothing here is stored. `rules::continuous` scans the active cards at
 //! each question, the way `rules::memory` always derived the budget — there

@@ -1,5 +1,7 @@
 # netrunner-rs beside jinteki.net
 
+> **Archived 29 September 2026.** A finished study; nothing in it is a status. Its engine gaps are Rules Audit backlog items 9 and 10 (`docs/roadmap/rules-audit.md`), its UI borrowings Phase 7 §8 (`docs/roadmap/phase-7-desktop-client.md`).
+
 A study of [jinteki.net](https://github.com/mtgred/netrunner) — the Clojure
 Netrunner server that people have been playing and testing on for over a
 decade — held against this engine, to find where ours is thin. Read at
