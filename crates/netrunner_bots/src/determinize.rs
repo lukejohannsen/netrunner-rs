@@ -1433,6 +1433,38 @@ mod tests {
         assert!(outside_startup, "Casual is every card, and the registry holds cards from every set");
     }
 
+    /// A seat never imagines its own side's cards in the other side's
+    /// zones: from the Runner's chair every hidden Corp card is a Corp
+    /// card and none is a card of the Runner's deck, and the reverse from
+    /// the Corp's — the prior is built per side, and a Corp slot draws
+    /// from the Corp's alone. The seat's own hidden cards are its deck
+    /// exactly, only the order unknown (the person's requirement, 29
+    /// September 2026).
+    #[test]
+    fn a_seat_never_guesses_its_own_sides_cards_into_the_opponents_zones() {
+        let (state, registry) = sample_game("agency", "stolen_goods");
+        let corp_list = decklist("agency");
+        let runner_list = decklist("stolen_goods");
+        let knows = |id: &str| Knowledge::new(NsgFormat::Startup, Some(netrunner_core::decks::by_id(id).unwrap().to_deck()));
+        for seed in 0..8 {
+            let view = build_client_view(&state, &registry, Side::Runner);
+            let sample = determinize(&view, &registry, &knows("stolen_goods"), &mut StdRng::seed_from_u64(seed));
+            for card in every_corp_card(&sample).keys() {
+                assert_eq!(registry.get(card).map(|def| def.side), Some(Side::Corp), "seed {seed}: {} in a Corp zone", card.0);
+                assert!(!runner_list.contains_key(card), "seed {seed}: the Runner's own {} guessed into the Corp's zones", card.0);
+            }
+            assert_eq!(multiset(sample.runner.grip.iter().chain(&sample.runner.stack).cloned()), runner_list, "seed {seed}: its own deck, exactly");
+
+            let view = build_client_view(&state, &registry, Side::Corp);
+            let sample = determinize(&view, &registry, &knows("agency"), &mut StdRng::seed_from_u64(seed));
+            for card in sample.runner.grip.iter().chain(&sample.runner.stack) {
+                assert_eq!(registry.get(card).map(|def| def.side), Some(Side::Runner), "seed {seed}: {} in a Runner zone", card.0);
+                assert!(!corp_list.contains_key(card), "seed {seed}: the Corp's own {} guessed into the Runner's zones", card.0);
+            }
+            assert_eq!(every_corp_card(&sample), corp_list, "seed {seed}: its own deck, exactly");
+        }
+    }
+
     /// Ten operations of one faction, fifteen hidden slots. A card the
     /// seat has seen — faceup in Archives once, then shuffled back — is
     /// drawn into the hidden zones more often than one it has not.
