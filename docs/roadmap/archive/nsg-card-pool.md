@@ -1,0 +1,4599 @@
+# The Null Signal Games card pool — the closed stages
+
+Moved verbatim from [`docs/roadmap/nsg-card-pool.md`](../nsg-card-pool.md) on 29 September 2026, and added to by every stage since as it closes; the live file keeps one line per stage. Headings are the originals under their tranche, so "RWR Stage 3b" resolves here.
+
+## Stage 0 — groundwork
+
+### Stage 0a — the catalog, the gates, the vocabulary (26 September 2026)
+
+`feat/nsg-pool-stage-0a`.
+
+- **The catalog comes from NetrunnerDB by script** (`scripts/catalog_sync.py`,
+  modelled on `rules_sync.py`). It writes `crates/netrunner_core/data/cards/<pack>.json`
+  for fifteen packs, and `--check` compares them against the live API
+  without writing. The script reproduced the three hand-committed files
+  byte for byte: the v2 `data` array, sorted by code, keys sorted,
+  two-space indent, UTF-8 kept. That is the check that the format is the
+  one they used. The two files not already named by pack code were renamed
+  (`system_gateway.json` → `sg.json`, `elevation.json` → `elev.json`).
+  `build.rs` embeds the directory as one array per pack, so a pack joins
+  the catalog by gaining a file, not a Rust constant. NetrunnerDB refuses
+  urllib's default user agent with a 403, so the script sends its own, as
+  `rules_sync.py` does.
+- **846 printings, 839 in the catalog.** Six NSG ice print no Barrier, Code
+  Gate or Sentry: Loot Box, Rime, Konjin, Excalibur, Lycian Multi-Munition
+  and Vicsek. They join Data Mine in `CATALOG_UNMODELABLE` until the tranche
+  that builds the first of them gives `CardType::Ice` a way to say it. That
+  is a mechanic, not a catalog change. The count test is exact now; it was a
+  floor that a missing pack could have passed. (Stage 2b gave the ice a
+  type, `IceType::Other`, and the catalog holds all 846.)
+- **Every NSG pack is gated** (`every_nsg_pack_card_is_implemented_or_explicitly_excluded`).
+  Each pack has a list in `cards/unimplemented.rs`, seeded by
+  `catalog_sync.py --unimplemented <pack>`: 562 entries across twelve
+  lists. A reprint is in every pack that prints it, and leaves them all
+  when it is built.
+  **`assert_set_accounted_for` now counts a printing as built when a
+  playable card carries its code or its title**, and counts the withheld
+  ice as printed. The reprint packs needed both: System Update 2021's
+  Corroder has a code of its own, and a card file carries one
+  `numeric_id`. A mutation check (one Vantage Point entry deleted) fails
+  the gate naming the card.
+- **"The same card" is `cards::title_key`**: typographic apostrophes and
+  quotes made plain, lowercased. NetrunnerDB spells a reprint's title as its
+  editor typed it. The Maker's Eye is straight in the Core Set and curly in
+  System Update 2021, so the planning count took it for unbuilt, and the
+  deck builder's `resolve` and pool, which compared exact titles, would
+  have listed it as a card nothing plays. Both now compare the key.
+- **`CARD_VOCAB` 192 → 1024, and `OBS_SIZE` 2,263 → 6,423.** A card's slot
+  is now three regions:
+  - The first 184 slots are the pool as it stood, in `set_rank` order,
+    closed and pinned (`LEGACY_SLOTS`).
+  - Each NSG pack has a fixed block by printed code (`RESERVED_BLOCKS`,
+    slots 184–757), so a slot is a function of the printing alone. **That
+    is stronger than the plan asked:** a rank per set keeps sets apart, but
+    within a set a card numbered below the ones already built inserted
+    ahead of them, which is how *Elevation*'s stages moved slots mid-set.
+    A reprint built under another code leaves its slot empty.
+  - Everything else goes after the blocks.
+  **The rule this sets for card files:** an NSG card's `numeric_id` is the
+  NSG printing's code, or it lands outside its block. No slot of the 184
+  moved: the pinned slots hold.
+- **`scripts/pool_status.py`** prints, per pack, the printed count, the
+  built count and the length of its list, plus the DSL ratio read off
+  `pub enum Effect` and the card files. **At 0a: 26 of 70 `Effect`
+  variants single-use, 3 unused (`MillRnDAmount`, `RemoveBadPublicity`,
+  `Trace`), over 184 card files.** That is the last hand count's 26 and 3
+  reproduced. The enum has 70 variants, where AGENTS.md's last hand count
+  said 71.
+- **Owed to a later stage:** Blood in the Water (Midnight Sun) prints its
+  advancement requirement as X, which NetrunnerDB records as none. The card
+  face draws no circle for it (`card_face`'s layout test names the card),
+  until the Midnight Sun stage that builds a variable requirement gives
+  `Slot` an X.
+
+### Stage 0b — formats, and a deck's legality per format (26 September 2026)
+
+`feat/nsg-pool-stage-0b`, stacked on 0a.
+
+**The person's decision:**
+- A card can be banned in one format and legal in others.
+- A deck is legal or illegal *per format*, and the builder keeps track of
+  which formats each deck is legal in.
+- A deck holding a banned card is not refused. It is illegal in that
+  format and can still be played casually. If that needs a Casual format,
+  add one.
+
+What landed:
+
+- **The formats come from NetrunnerDB.** `catalog_sync.py` writes
+  `data/formats.json` from the v3 API: the active card pool and restriction
+  list of Startup, Standard, Eternal and Snapshot. `format.rs` parses it
+  once and shares it (`NsgFormat::rules` returns `&'static`, because a
+  builder asks per card and a pool is thousands of codes). The state of
+  NetrunnerDB on 26 September 2026:
+  - **Startup**: SG, Elevation and VP, with 5 bans (Startup Balance Update
+    26.03).
+  - **Standard**: eleven NSG packs, with 29 cards banned (32 printings).
+  - **Eternal**: a 7-point budget.
+  - **Snapshot**: an FFG pool with 17 bans and a restricted list, which is
+    a budget of 1 at a point each.
+
+  `no_shipped_format_restricts_anything_yet` is retired, and tests of what
+  the lists hold replace it.
+- **A pool is printing codes, not packs.** A card file names one printing,
+  and a format admits a card by any of them. The file therefore lists every
+  printing of every card in a pool, and every printing of a banned card.
+  Corroder's file names its Core Set code, and Snapshot admits it through
+  a Revised Core printing that is not embedded, so a pack check would have
+  refused it. `FormatRules::allowed_packs` became `pool` and `in_pool`.
+  `packs` stays for display.
+- **`NsgFormat::Casual`**: every card, no list. It is the default table
+  format in both clients and the CLI (`settings::DEFAULT_FORMAT`), where
+  it was Startup. A deck any list refuses still plays against a bot, and
+  naming a format holds a deck to its list.
+- **A deck's legality is the set of formats it is legal in**
+  (`DeckFile::legal_formats`, both validators, computed, never stored).
+  The builder's `DeckStatus::legal_in` already showed it, and now lists
+  Casual too. `every_shipped_deck_is_legal_in_the_formats_pinned_for_it`
+  pins all 36 shipped decks:
+  - Every deck is legal in Eternal and Casual.
+  - None is legal in Snapshot.
+  - 13 of the 32 published decks are not Startup-legal: Agency, Brutal Efficiency, Discretion
+    Advised, Fashion Lab, Fine Print, Hyper Velocity, Party Hard, Planning
+    Ahead, Quick Returns, both Catalyst decks, and both Syndicate decks.
+  - 13 are not Standard-legal: every deck in the list above but Quick
+    Returns and the two Syndicate decks, plus Gimbatul, Not so subtle and
+    Pork Chops (Touch-ups).
+  - The four Sweep decks are Eternal and Casual only.
+
+  A category's own format (`DeckCategory::format`) is now Casual for
+  everything published, and Eternal for Sweep decks.
+- **The server deals a bot's deck from the part of the pool the lobby's
+  format allows** (`legal_matchups`, worked out per format at bind). It
+  used to refuse to start when any sample deck was illegal, which held
+  while the tables allowed every deck. A daemon with a bot refuses only a
+  format with no legal matchup, which is Snapshot. The default lobbies are
+  therefore Startup, Standard, Eternal and Casual; Snapshot is named to
+  host human-vs-human games.
+- Tests that checked deck construction (size, influence, points) under
+  Startup now check it under Casual. Tests that brought Fine Print or
+  pinned Discretion Advised to a Startup lobby bring Startup-legal decks.
+
+### 1. Vantage Point — 66 cards (C 13 / V 36 / M 17)
+
+#### Stage 1a — every printed subtype, read from the catalog (26 September 2026)
+
+`feat/vp-stage-1-subtypes`. No card yet.
+
+- **`CardSubtype` is Comprehensive Rules 2.16.7's whole list.** That is
+  106 words, each spelled as printed (`#[serde(rename)]` for Code Gate,
+  G-mod, AP, NEXT, Caïssa, Off-site, Consumer-grade). Before this it had
+  ten, each added when a card first read it.
+- **A card's subtypes are its catalog keywords.** The NetrunnerDB
+  conversion reads them into `subtypes`, and `fill_catalog_metadata` copies
+  them onto the card file, as it does faction and influence. The 49 card
+  files that authored `subtypes` no longer do, and
+  `a_card_file_leaves_its_subtypes_to_the_catalog` refuses one that does.
+  Every authored list was a subset of the printed keywords, so nothing was
+  lost. `every_catalog_keyword_is_a_subtype_the_rules_list` holds all 83
+  keywords the catalog prints to the rules' list.
+- **Two cards change: Account Siphon and The Maker's Eye are run events**,
+  and their files never said so. Sang Kancil's "run event" discount
+  (`RunEventActive`) and MuslihaT's "an icebreaker or a run event" did not
+  see them; now they do. It is a card-fidelity fix the subtype list found.
+  No other card gained a subtype a rule reads.
+- `CardSubtype::printed` is the word as the card prints it, so the prose
+  says "fracter", not a Rust name.
+
+#### Stage 1b — the first thirteen cards (26 September 2026)
+
+`feat/vp-stage-1b-first-cards`: Virtual Intelligence P.I. ("Vic"), Sell
+Out, Borrowed Goods, Rotary, Méliès City Luxury Line, Sleipnir, Retirement
+Plan, Nihilo Agent, Grubber, Paywall, Scapegoat, Flywheel, Vulture Fund.
+**No new `Effect`, `Trigger` or `EffectRequirement`.** Vantage Point 13 of
+66; `VP_UNIMPLEMENTED` 66 → 53.
+
+- **One engine change.** An ability a card names the *other* side as the
+  user of now works in both directions. Before, only N-Pot's direction
+  worked: the Runner using a Corp card's ability. Rotary's "[click],
+  2[credit]: Trash this hardware. Only the Corp can use this ability" is a
+  Runner card the Corp uses on its own turn, and `engine::activate_ability`
+  read the user off the phase before it found the card. On the Corp's turn
+  it looked only at the Corp's installs, so the Rotary was never found.
+  The card is now found where the install is, and `used_by` names the user.
+  The phase and priority checks after it still hold that user to their own
+  turn. `legal_actions_for` offers it to the Corp and not the Runner, and a
+  test pins both.
+- **Méliès City Luxury Line is the first card to set `steal_cost`**, a
+  click, and the steal path that was built for it and never exercised
+  holds. The test is one steal with a click to spare and one without.
+- **The Sweep decks** are three, none of them published:
+  - **Retirement Package**: Engineering the Future with the HB and Weyland
+    cards, on Discretion Advised's frame.
+  - **Paid Content**: Making News with the NBN cards, on Hyper Velocity's
+    frame.
+  - **Borrowed Time**: Vic with the Criminal cards, on Stolen Goods' frame.
+
+  The two Corp identities are Core Set cards no deck used. Borrowed Time
+  is legal in every format but Snapshot; the other two in Eternal and
+  Casual (pinned in `every_shipped_deck_is_legal_in_the_formats_pinned_for_it`).
+- **What the new decks surfaced.** They shifted `sweep_decks_for_seed`'s
+  rotation, and `board::diff`'s transitions test, which plays its first
+  six seeds, reached a Petty Cash played from Archives for the first time.
+  The diff had drawn it as a move back into Archives as well as the move to
+  removed from the game, so it is fixed in a commit of its own. Three tests
+  that had written Startup as "System Gateway and Elevation" now ask the
+  format's pool instead.
+- **Fidelity limits:**
+  - Rotary's "whenever you breach HQ or R&D" is a successful run on
+    either, as Docklands Pass's is.
+  - Nihilo Agent's "load … when it is empty, trash it" is three counters
+    and a self-trash after its own removal. Nothing else in the pool
+    removes its counters.
+  - Sleipnir's "from HQ or Archives" is a choice of zone, then a card.
+- **DSL ratio (`pool_status.py`): 25 of 70 `Effect` variants single-use,
+  2 unused** (`MillRnDAmount`, `Trace`), over 197 card files. It was 26
+  and 3: `RemoveBadPublicity` left the unused list for Nihilo Agent and
+  Scapegoat.
+- **Measured.** Both sweeps at 256 seeds are green. `coverage_identical.py
+  main`: the random seatings are **identical**, by view and by index; the
+  heuristic ones moved across the pool (Send a Message scored 44 → 24,
+  Public Access Plaza's turn starts 216 → 133, …). **That is
+  `determinize`, not a rule:** its Corp sample draws hidden cards from
+  every playable Corp card in the registry, and thirteen new ones changed
+  what the heuristic imagines in HQ and R&D. Checked, not inferred: this
+  branch against a copy without the ability-lookup change is identical in
+  all four shapes, so the engine change moves nothing. **Every card a stage
+  adds will do the same**, so a stage's heuristic reports are not diffed
+  against the last stage's — the Elevation rule, for the same reason.
+
+#### Stage 2 — bad publicity, tags and costs (26 September 2026)
+
+`feat/vp-stage-2-bad-publicity`: Editorial Division: Ad Nihilum, Witch
+Hunt, Take a Dive, Kompromat, Reanimation Protocol, Unleash, realloc(),
+Flood the Market. **No new `Effect`.** Vantage Point 21 of 66;
+`VP_UNIMPLEMENTED` 53 → 45. Vicsek is Stage 2b and Synchrocyclotron
+Stage 3 (above).
+
+- **What the cards needed, and where it went:**
+  - **Taking bad publicity is a moment** (`Trigger::OnBadPublicityTaken`,
+    Editorial Division). "Take" and "give" are one event, the Corp's
+    (CR 1.14.2e), so Witch Hunt's "take 1" and Take a Dive's "give the
+    Corp 1" are both heard; `Effect::GiveBadPublicity` now dispatches its
+    event, and a zero is an occurrence of nothing.
+  - **The Runner has a removed-from-game zone**
+    (`RunnerState::removed_from_game`, in the view and the sweeps' card
+    count), and an event that prints "Remove this event from the game" says
+    so as a declaration (`CardDefinition::removed_after_play`) that
+    `engine::play_event` reads when it files the card.
+  - **A derez can be the price** (`Cost::Derez`, Kompromat's nested
+    "unless they derez 1 piece of ice", CR 1.16.11b), asked one card at a
+    time like `Cost::Trash`; the ice is "protecting the attacked server"
+    after the run has ended (`CardFilter::InLastRunServer`), because
+    `InAttackedServer` falling back on the last run would have made LEO
+    Construction usable after a run. A run offer can be narrowed to the
+    servers ice protects (`PromptChooseServer::only_protected_by_ice`).
+  - **"Install and rez … paying a total of 10 less"**
+    (`PromptInstallCorpCard::rez` and `if_rezzed`, Reanimation Protocol).
+    The Corp divides a total between the two costs (CR 1.16.2f); the
+    division taken is install first, which is never more credits. A rez it
+    cannot afford leaves the ice installed and unrezzed (CR 1.16.4b). The
+    offer of servers now prices a discount, which also let Mercia B4LL4RD's
+    1[credit] reach a server it made affordable.
+  - **"If you scored this agenda this turn"** is a fact about the copy
+    (`ScoredAgenda::scored_on_turn`, `EffectRequirement::
+    ThisAgendaScoredThisTurn`, Witch Hunt), not a turn-log count: a
+    second Witch Hunt, or one scored last turn, is not this one.
+  - **"If it is a non-liability ice"** asked as the card itself
+    (`EffectRequirement::ActingCardMatches`).
+  - **A count of servers** (`Amount::ProtectedRemotesWithRootCards`, Flood
+    the Market), and `PlaceAdvancementCounters` takes an `Amount` in place
+    of a number — seven card files rewritten rather than a
+    `PlaceAdvancementCountersAmount` beside it.
+  - `Amount::PrintedInstallCost` is `PrintedCost`: realloc() reads a rez
+    cost, and the printed cost is one number either way.
+- **Three fixes the cards reached.**
+  - A rez of "the chosen card" inside a sequence resolves as that card
+    (`RezInstalled`'s placeholder is the acting install): Unleash rezzes
+    the ice and then resolves one of its subroutines.
+  - Credits a card's text gains are that card's
+    (`AbilityGainedCredits` names the prompting card, not the card a
+    selection resolves as): realloc()'s are an operation's, which The
+    Zwicky Group hears.
+  - An additional play cost's events are dispatched after the play, as
+    every payer's are: Unleash's "remove 1 tag" is a tag removed.
+- **The decks.** **Ad Nihilum**, a new NBN Sweep deck on Editorial
+  Division with every gray ops and liability card the identity searches
+  for, the Weyland, Jinteki and HB operations on influence, and legal in
+  every format but Snapshot. **Take a Dive** replaces Jailbreak in Pay as
+  You Go (Noise), and **Kompromat** replaces Tread Lightly in Borrowed
+  Time (Vic); both cards it replaced are in other decks.
+- **Fidelity limits:**
+  - realloc()'s "choose 2 rezzed pieces of ice" is two choices of one,
+    each resolved before the next is offered. Nothing hidden changes in
+    between, and each card is its own instance of the effect anyway
+    (CR 9.12.2c names realloc()).
+  - Editorial Division shuffles R&D when the search is declined.
+  - The "total" discount is never asked: the Corp is given the division
+    that costs least.
+- **DSL ratio (`pool_status.py`): 23 of 70 `Effect` variants
+  single-use, 2 unused** (`MillRnDAmount`, `Trace`), over 205 card files.
+  It was 25 and 2: `ResolveSubroutineOfSelectedIce` (Unleash, beside
+  Mycoweb) and `SetRunEndedEffect` (Kompromat, beside Charm Offensive) left
+  the single-use list, and nothing joined it. The growth went into the vocabulary of when (`Trigger`), whether
+  (two requirements), what a card reads (`Amount`, `CardFilter`) and what
+  it costs (`Cost::Derez`).
+- **Measured.** Both sweeps at 256 seeds are green, coverage gate
+  included, so every Ad Nihilum card and both Runner events were seen in
+  play. `coverage_identical.py main` (192 games a shape, seed 1):
+  - **Random seatings differ, and the whole play difference is Mercia
+    B4LL4RD's offer.** Against a copy of this branch with only the
+    discount pricing of the install offer reverted, the random reports
+    differ from `main` in one line, `effects_seen: MoveThisCardToRoot`
+    0 → 85 — the effect walk now reaching `PromptInstallCorpCard::then`,
+    which Mercia's rider always resolved through and the report never
+    credited. With the pricing back, a few games branch (Corp flatlines
+    76 → 75, Mercia's action-phase triggers 85 → 87).
+  - **The credit attribution moves nothing:** against a copy without it,
+    all four reports are identical.
+  - **Heuristic seatings move across the pool** (Corp wins 69 → 86 of
+    192; The Zwicky Group's credit triggers 27 → 53, Mercia's 273 → 242).
+    Neither engine change above is it: the heuristic reports are
+    identical with each reverted. What is left is the new cards, which
+    `determinize` samples into every hidden Corp zone (Stage 1b's check),
+    not re-checked card by card here.
+
+#### Stage 2b — ice with none of the three types (26 September 2026)
+
+`feat/vp-stage-2b-ice-with-no-breaker-type`: Vicsek. **No new `Effect`.**
+Vantage Point 22 of 66; `VP_UNIMPLEMENTED` 45 → 44.
+
+- **Ice that prints none of Barrier, Code Gate or Sentry is
+  `IceType::Other`**, a fourth variant, not `CardType::Ice(Option<..>)`.
+  Every reader asks "is this ice a barrier?", and equality with a variant
+  that is none of the three already answers no, so no matcher changed; an
+  `Option` would have put `Some(..)` at about two hundred sites and in
+  every ice card file. Only a breaker with no restriction breaks it (CR
+  3.9.5h), and a card that gains a type reaches it through
+  `ContinuousKind::GainSubtype` as it reaches any ice. `validate` refuses
+  `Other` where it can only mean nothing: a breaker restricted to it, a
+  card gaining it.
+- **`CATALOG_UNMODELABLE` is gone.** The catalog reads an ice's type as the
+  first of the three its keywords name, `Other` for none, so the seven
+  printings it withheld (Data Mine, Loot Box, Rime, Konjin, Excalibur,
+  Lycian Multi-Munition, Vicsek) are in the catalog: 846 of 846. The set
+  gates and the observation's reserved blocks no longer add them back.
+  Hafrún prints two types ("Barrier - Code Gate") and reads as its first
+  until Parhelion builds it.
+- **`GiveTags` takes an `Amount` in place**, as `PlaceAdvancementCounters`
+  did in Stage 2: twenty card files rewritten to `{"Fixed": n}` rather
+  than a `GiveTagsAmount` beside it. Vicsek's "X is equal to the number of
+  tags the Runner has" is read twice, once for the damage and once for the
+  tags, which agree because nothing between them changes the count: the
+  damage's prevention window admits only interrupts, and no interrupt
+  removes a tag. A primitive that fixes X once was not built for the one
+  card in the catalog that uses a defined X twice.
+- **The bots and clients.** The evaluator and the observation keep their
+  three flags: `Other` ice encodes as no one-hot (so `OBS_SIZE` does not
+  move), and the Corp's evaluator counts it broken only by a rig that
+  covers all three types, which an AI does (a rig of three typed breakers
+  reads as breaking it too, the one inexactness). The desktop draws a
+  rezzed one on the untyped tile art in the untyped steel frame.
+- **The deck.** Two Vicsek replace A Thousand Cuts' two Diviner (Jinteki
+  Sweep deck, Personal Evolution); Diviner is still in three other decks.
+- **DSL ratio (`pool_status.py`): 23 of 70 `Effect` variants
+  single-use, 2 unused** (`MillRnDAmount`, `Trace`), over 206 card files —
+  unchanged, one card later.
+- **Measured.** Both sweeps at 256 seeds are green, coverage gate
+  included, so Vicsek was seen in play. `coverage_identical.py main` (192
+  games a shape, seed 1): **the random seatings are identical**, by view
+  and by index. Vicsek is in a Sweep deck, which `--all-matchups` never
+  plays, so that is the engine change measured alone: `IceType::Other`,
+  `GiveTags(Amount)` and the seven printings joining the catalog move no
+  game. **The heuristic seatings move** (Corp wins 86 → 78 of 192: agenda
+  wins 72 → 68, flatlines 14 → 10). Checked, not inferred: this branch
+  without Vicsek's card file and deck swap is identical to `main` in all
+  four shapes, so the movement is the one new playable card `determinize`
+  samples into hidden Corp zones.
+
+#### Stage 3a — standing kinds: play, steal and score prices (26 September 2026)
+
+`feat/vp-stage-3a-standing-kinds`: Tailgate, Reverb, Synchrocyclotron,
+Magistrate Revontulet, Hype Machine, Let Them Dream. **No new `Effect`.**
+Vantage Point 28 of 66; `VP_UNIMPLEMENTED` 44 → 38. Stage 3 was split: the
+turn-log and hosted-counter cards (Chain Reaction, Underdome Irregulars,
+The Red Room, Perfect Recall, Lotus Haze) are Stage 3b. Built on #226,
+the search-shuffle fix Let Them Dream's R&D search needed.
+
+- **Four `ContinuousKind`s, each a price asked in one place:**
+  - `PlayCost` (Tailgate's "lowered by 1[credit] for each piece of ice
+    protecting HQ"), asked by `continuous::play_cost_of` at the play and in
+    the offer (`can_play_operation`), as `install_cost_of` is for installs.
+  - `PlayClicks` (Synchrocyclotron's "costs [click] less"), taken off the
+    Double's additional click (`additional_play_cost_of`), never the
+    action's own: the only click a card in the pool lowers.
+  - `StealCost` (Magistrate Revontulet's "as an additional cost to steal an
+    agenda … 3[credit]"), joined to the agenda's printed `steal_cost` as one
+    price (CR 1.16.10b), which the Runner may decline (1.17.3d).
+  - `AgendaPoints` (Let Them Dream's "worth 1 less" in the Runner's score
+    area). **Asked, never stored:** `win::agenda_value_in` is the one
+    number, and the win check, the stored tally at a score or a steal, a
+    forfeit and `Amount`s that count points all read it. The printed-only
+    `agenda_value` is gone.
+- **Three `Scope`s:** `Playing(filter)`, the play's half of `Installing`;
+  `Stealing(filter)`, an agenda being stolen; `ScoreArea(side)`, the card's
+  own text read only there (`Scope::is_own_text`).
+- **"The first double operation you play each turn"** is a turn-log count:
+  `Kind::DoubleOperation` and `DoubleEvent` are columns of their own, the
+  one subtype the log counts apart (a double is played in the open), and
+  `first_each_turn` on a `Playing` scope reads `Occurrences::plays`.
+- **Two `Amount`s** (`IceProtecting(server)`, `OtherUnrezzedIce`) and a
+  placeholder filter (`CardFilter::InRootOfThisServer`, written over as
+  `InRootOf(server)` when Hype Machine's ability resolves, from the
+  install or from `LastKnown::server` once its "[trash]:" has taken it).
+- **`AddToBottomOfStack` is `AddToBottomOfDeck`**, the Corp's too (Let Them
+  Dream's "the bottom of R&D"); a Corp card's move is hidden from the
+  Runner like a Corp discard.
+- **A sweep finding:** Sell Out's "trash 1 installed resource" asks which
+  when there are two, and `payment::could_ask` listed no play among the
+  actions that can ask; the debug assertion caught it once Borrowed Time
+  reached two resources. A play's additional cost that takes cards is on
+  the list now.
+- **The decks.** Tailgate for Jailbreak (Borrowed Time); Reverb for
+  Whitespace and two Synchrocyclotron for two NICO Campaign (Retirement
+  Package, whose Retirement Plan is the double); Hype Machine for AMAZE
+  Amusements and Magistrate Revontulet for Nihilo Agent (Paid Content); Let
+  Them Dream for Offworld Office (Hostile Bid). Every card replaced is in
+  another deck.
+- **Fidelity limits:** Let Them Dream's search is "HQ, R&D or Archives"
+  as a choice of zone first; a card that prints two types (Hafrún) is
+  still Parhelion's question.
+- **DSL ratio (`pool_status.py`): 22 of 70 `Effect` variants single-use,
+  2 unused**, over 212 card files. It was 23: `AddToBottomOfDeck` has two
+  cards now.
+- **Measured.** Both sweeps at 256 seeds are green, coverage gate
+  included. `coverage_identical.py` against the fix it is built on (192
+  games a shape, seed 1): **the random seatings differ only by the
+  rename** — `AddToBottomOfStack` 35 → `AddToBottomOfDeck` 35, the same
+  seven cards moved — so no game in the pool moved, which is the pricing
+  and scoring questions measured alone (every new card is in a Sweep deck,
+  which `--all-matchups` never plays). The heuristic seatings move (Corp
+  wins 75 → 78 of 192), the movement `determinize` makes of every new
+  playable card; not re-checked card by card this stage.
+
+#### Stage 3b — turn-log counts and hosted counters (26 September 2026)
+
+`feat/vp-stage-3b-turn-counts-and-counters`: Chain Reaction, Underdome
+Irregulars, The Red Room, Perfect Recall, Lotus Haze. **One new `Effect`**
+(`PromptMoveThisCardToAnotherRoot`). Vantage Point 33 of 66;
+`VP_UNIMPLEMENTED` 38 → 33. Stage 3 is complete.
+
+- **"If you made a successful run on HQ, R&D, and Archives this turn",
+  "if a piece of ice was rezzed this turn"** are
+  `Amount::TimesThisTurnWhen { trigger, when }`: the turn-log count
+  narrowed by the same `EventFilter` a trigger's `when` uses, read through
+  `turn_log::Occurrences`. `TimesThisTurn` had named no filter because
+  `Amount` was `Copy`; dropping `Copy` broke nothing in the workspace.
+  `CardFilter::Ice` says "a piece of ice" of any type, which the log counts
+  as one kind.
+- **"Central server only"** is a declaration, `CardDefinition::
+  install_only_in` (`ServerKind::Central`/`Remote`), refused by
+  `place_corp_card` and left out of both install offers, and honoured by a
+  move (CR 8.5.12). Four later cards print "Remote server only".
+- **"During a run against another server"** is `And(DuringRun,
+  Not(RunAgainstThisServer))`, a requirement asked of the card's own
+  server at any step of the run.
+- **"The Runner cannot steal or trash copies of that card"** is a lingering
+  prohibition aimed at copies (`lingering::On::CopiesOf`, made by
+  `Effect::Prohibit { copies_of_it }` as the revealed card), and the four
+  access sites ask `continuous::cannot_about` of the card accessed, so a
+  copy the Runner may not steal may be passed.
+- **"Move 1 rezzed upgrade to the root of another server"** is the new
+  `Effect`: every existing server choice starts a run or installs a card,
+  so it parks `ChooseServer` in a third mode (`move_to_root`) and resolves
+  as `MoveThisCardToRoot`. The servers offered are the ones that exist, its
+  own excepted.
+- **The decks.** Chain Reaction for Overclock (Pay as You Go); Underdome
+  Irregulars for Overclock (Borrowed Time); The Red Room for PAD Campaign
+  and Lotus Haze for Offworld Office (A Thousand Cuts); Perfect Recall for
+  Manegarm Skunkworks (Retirement Package).
+- **Fidelity limit:** Chain Reaction's "trash 2" is two choices of one,
+  each resolved before the next. A move honours an install restriction
+  (CR 8.5.12: it "applies at all times"), so Lotus Haze never offers The
+  Red Room a remote.
+- **DSL ratio (`pool_status.py`): 23 of 71 `Effect` variants
+  single-use, 2 unused**, over 217 card files. It was 22 of 70: the new
+  `PromptMoveThisCardToAnotherRoot` is single-use (Lotus Haze), its reason
+  on the variant; everything else went into the vocabulary of what a card
+  reads (`Amount`, `CardFilter`, `EffectRequirement`) and a declaration.
+- **A gate entry, reasoned:** no agent played Chain Reaction in the 768
+  games of the deep view sweep — it needs successful runs on all three
+  centrals in one turn with a click to spare, which no agent plans and no
+  random seat completed. It is on `CARDS_RARE_WITH_SWEEP_DECKS` with that
+  reason and no batch that demands it; its per-card test is what reaches
+  it, and it stays in Pay as You Go so an agent that does make that turn
+  plays it under the sweep.
+- **Measured.** Both sweeps at 256 seeds are green (the view sweep with the
+  entry above; before it, its only failure was that gate line — no
+  deadlock, no crash). `coverage_identical.py main`: **the random seatings
+  are identical**, by view and by index — the turn-log amount, the install
+  restriction, the copies prohibition and the move change no game in the
+  pool. The heuristic seatings move (Corp wins 78 → 89 of 192), the movement `determinize`
+  makes of every new playable card; not re-checked card by card.
+
+#### Stage 4a — the run's moments about ice (26 September 2026)
+
+`feat/vp-stage-4a-ice-moments`: Vertigo, Sipa, Lethe, ezaM, The Tungsten
+Tailor. **No new `Effect`.** Vantage Point 38 of 66; `VP_UNIMPLEMENTED`
+33 → 28. Stage 4 was split: Lionsmane, Event Horizon and Ansel 2.0 are
+4b, and Shackleton Grid moved to Stage 5 (above).
+
+- **Four moments a card can hear**, each a step the rules name:
+  `Trigger::OnIcePassed`, `OnSubroutineBroken`, `OnIceFullyBroken` (CR
+  6.5.7a, a new `GameEvent::IceFullyBroken`) and `OnIceBypassed` (6.5.8).
+  The three events that already existed (`IcePassed`, `SubroutineBroken`,
+  `IceBypassed`) were occurrences of nothing and are now dispatched: the
+  run engine's own dispatch takes the pass and a click-break, a breaker's
+  break and a bypass go through `dispatcher::emit`.
+- **What was true of the ice is read off the event** (`dsl::IceFacts`,
+  `EventFilter::Ice`): "the outermost piece of ice" (position 0,
+  CR 4.6.9b), "after fully breaking it" (`IcePassed::after_fully_breaking`,
+  CR 6.1.3f: only the encounter just ended) and "a piece of ice with 0 or
+  less strength" (`SubroutineBroken::strength`, the strength it was broken
+  at). On the event rather than the state because a trigger's `when` is
+  asked again where it fires. `validate` admits only the facts a trigger
+  states.
+- **"The first time each turn" counts them.** Sipa's and The Tungsten
+  Tailor's first times are narrower than a card's type, so the turn log
+  counts a moment about ice by its facts (`turn_log::Class::Ice`, eight
+  columns), not as `Kind::Ice`. This was the gap Ryō "Phoenix" Ōno is
+  deferred on, filled for the words these two print; Ryō's "after a
+  subroutine resolved during that run" is still not one of them.
+- **Fully broken is run state** (`RunState::fully_broken`, in the view and
+  the determinized sample): set by `run::break_subroutine`, now the one
+  way any subroutine is broken, and cleared as an encounter begins. Not
+  modelled: ice with no subroutines is fully broken as step 6.9.3b begins
+  (6.5.7c).
+- **A facedown ice is not "this" to itself for these moments.** An
+  unrezzed Vertigo is passed without being encountered, and its "when the
+  Runner passes this ice" is inactive (CR 9.1.7, none of 9.1.8's
+  exceptions): the Listener Rule's "the subject always hears it" does not
+  reach a moment about ice in a run.
+- **`ModifyStrength` takes which ice and how long** (`each_ice`,
+  `duration`) in place of a number, and "each piece of ice gets +1
+  strength for the remainder of this run" is a `Lingering::Strength` on
+  `On::EachIce`, which `lingering::ice_strength` adds and a rig card's
+  strength does not. Leech's file rewritten. **A selection of one swaps
+  it with the card the choice acts as**: ezaM's "this ice", and Sipa's
+  "it" through `acts_on_subject`.
+- **A sweep finding:** Lethe's "add 1 installed Runner card to the grip"
+  failed the view sweep's concealment check (seed 57): the Corp's log
+  named a card now in the grip. The card was faceup on the table when
+  chosen, so the selection is marked revealed, which also gives the
+  Runner's log the line.
+- **The decks.** Sipa for DZMZ Optimizer (Safety Net); The Tungsten Tailor
+  for Scrounge and a Wildcat Strike (Pay as You Go); Vertigo for Tithe
+  (Retirement Package); two ezaM for two Tithe (A Thousand Cuts); two
+  Lethe for two Tithe (Paid Content). Every card replaced is in another
+  deck.
+- **Fidelity limits:** Lethe's first subroutine asks top or bottom before
+  the card. ezaM's "look at the top card" is a selection of it that may
+  be left.
+- **DSL ratio (`pool_status.py`): 21 of 71 `Effect` variants single-use,
+  2 unused**, over 222 card files. It was 23: `SwapInstalledIce` (Tāo
+  Salonga's, now ezaM's and Sipa's too) and `ModifyStrength` (Leech's,
+  now ezaM's) left the single-use list.
+- **Measured.** Both sweeps at 256 seeds are green, coverage gate
+  included, so every new card was seen in play. `coverage_identical.py
+  main` (192 games a shape, seed 1): **the random seatings differ in one
+  line**, `events/IceFullyBroken` 0 → 42, by view and by index — the new
+  event counted where it happens, and no game in the pool moved: the new
+  moments, the facts, the turn-log columns, the dispatch of the three old
+  events and the rewritten Leech change nothing a card in the pool did.
+  The heuristic seatings move (Corp wins 89 → 82 of 192), the movement
+  `determinize` makes of every new playable card; not re-checked card by
+  card.
+
+#### Stage 4b — two costs and a break on this ice (26 September 2026)
+
+`feat/vp-stage-4b-lionsmane-event-horizon-ansel`: Lionsmane, Event
+Horizon, Ansel 2.0. **No new `Effect`.** Vantage Point 41 of 66;
+`VP_UNIMPLEMENTED` 28 → 25. Stage 4 is complete.
+
+- **"Unless the Runner jacks out" is a cost** (`Cost::JackOut`,
+  Lionsmane): CR 1.16.11b makes "[instructions] unless [player] [cost]" a
+  nested cost, so it is an `OfferPaidChoice`'s price, not an effect. It
+  ends the run as a jack-out (`GameEvent::RunJackedOut`, dispatched by the
+  payer), which "when a run ends" hears and Shred's "would end the run"
+  does not stop.
+- **"Lose [click][click]:" is a cost that is not an action**
+  (`Cost::LoseClicks`, Ansel 2.0): CR 9.5.2a makes an ability an action
+  only when its cost begins with [click], so the Runner uses this one in
+  the encounter's window. It spends nothing, so no `ClickSpent`.
+- **"Break … subroutines on this ice"** asks that the acting card be the
+  ice encountered (`EffectRequirement::EncounteringThisIce`). **N-Pot had
+  the bug this closes:** its "3[credit]: Break 1 subroutine on this ice"
+  broke a subroutine on whatever piece of ice the Runner was encountering
+  while an N-Pot was rezzed anywhere. Checked: Ansel 2.0's test fails for
+  N-Pot on the file without the requirement.
+- **"Remove 1 card in the heap from the game"** is a selection's
+  destination (`CardZoneRef::OpponentRemovedFromGame`, each side's
+  `removed_from_game`), recorded as `CardRemovedFromGame`.
+- Event Horizon's "[trash]: End the run. Use this ability only during a
+  run against this server" composes: `Cost::TrashSelf` and Stage 3b's
+  `RunAgainstThisServer`.
+- **The decks.** Two Lionsmane for two Public Trail (A Thousand Cuts); two
+  Event Horizon for two Tithe (Hostile Bid); two Ansel 2.0 for two Ansel
+  1.0 (Retirement Package). Every card replaced is in another deck.
+- **Fidelity limit:** Ansel 2.0's "break up to 2" breaks two when two are
+  left; breaking fewer is never better for the Runner.
+- **DSL ratio (`pool_status.py`): 21 of 71 `Effect` variants
+  single-use, 2 unused**, over 225 card files — unchanged. The growth went
+  into what a card costs (`Cost`, two words), whether it may (one
+  requirement) and where a card goes (one zone).
+- **Measured.** Both sweeps at 256 seeds are green, coverage gate
+  included. `coverage_identical.py origin/main` (192 games a shape, seed
+  1): **the random seatings move, and all of it is the N-Pot fix.**
+  `effects_seen/BreakSubroutinesUnconditionally` 16 → 10 by view and by
+  index — six breaks a random Runner had made with an N-Pot on some other
+  piece of ice — and the games after them branch (Runner agenda wins
+  111 → 112, deck-outs 6 → 5). Checked, not inferred: this branch with
+  only N-Pot's file reverted is **identical** to `main` in both random
+  seatings, so the two costs, the requirement on Ansel 2.0 and the new
+  zone move nothing else. The heuristic seatings move (Corp wins 82 → 88
+  of 192), N-Pot and the `determinize` movement of three new cards
+  together; not separated.
+
+#### Stage 5a — credits during runs, a spend from outside the pool, a next turn's clicks (26 September 2026)
+
+`feat/vp-stage-5a-methuselah-touchstone-shackleton-caveat`: Methuselah,
+Touchstone, Shackleton Grid, Caveat Emptor. **No new `Effect`.** Vantage
+Point 45 of 66; `VP_UNIMPLEMENTED` 25 → 21.
+
+- **"You can spend hosted credits during runs"** is a `PaysFor` word
+  about *when* (`DuringRuns`, Methuselah and Touchstone): CR 1.10.4c lets
+  such credits pay for any purpose while the period runs. During a run
+  the pool is classed as broad as the credit pool (`payment::class_of`),
+  so Cyberfeeder's credit is spent before Methuselah's without a question.
+- **A spend from outside the credit pool is a moment**
+  (`GameEvent::CreditsSpentFromOutsidePool`, once per payment;
+  `Trigger::OnCreditsSpentOutsidePool`, Shackleton Grid). It is about the
+  server of the run it was made in, so "during a run against this server"
+  is `Subject::This`. Only the Runner's spend during a run is a moment; any
+  other spend is an occurrence of nothing. The payer dispatches it after
+  what it paid for. Five sites that did not dispatch their cost's events
+  now do: a text install, a steal cost, an access trash, a paid access
+  interaction and the Runner's trace bid. The dispatch audit named the
+  trace bid.
+- **Two affordability sums gone:** the steal-cost and access-interaction
+  checks counted the credit pool alone, which refused a steal that bad
+  publicity's credits would have paid for. They ask `payment::available`.
+- **`OnOperationPlayed` is `OnCardPlayed`** and hears events too.
+  Touchstone could not listen to `OnPlay`, the play's own resolution step,
+  which nobody orders. The Corp only plays operations, so Nebula Talent
+  Management and Building a Better World hear what they did.
+- **A change to a next turn's allotment is a lingering effect**
+  (`Lingering::AllottedClicks` until `Until::NextTurnOf(side)`, taken as
+  CR 1.11.2's first step assigns the clicks). `GainClicksNextTurn(Side,
+  u32)` became `AllottedClicksNextTurn(Side, i32)`, which Aggressive
+  Trendsetting and Caveat Emptor both use. It was
+  `CorpState::extra_clicks_next_turn`, a field no view carried, so every
+  bot sample after Trendsetting planned the Corp a click short. For the
+  Runner it was a silent no-op.
+- **The decks.** In Safety Net, two Methuselah for two T400 Memory Diamond
+  and three Touchstone for three Smartware Distributor. In Hostile Bid,
+  two Shackleton Grid for two Regolith Mining License. In Retirement
+  Package, two Caveat Emptor for two Hedge Fund. Every card replaced is in
+  another deck.
+- **Fidelity limit:** Shackleton Grid's "you may" always fires. Declining
+  4 meat damage is never better. A declined once-per-turn ability is not
+  used (CR 9.3.6g), and a requirement spent on resolution cannot say that.
+- **DSL ratio (`pool_status.py`): 20 of 71 `Effect` variants
+  single-use, 2 unused**, over 229 card files, down from 21:
+  `AllottedClicksNextTurn` has two cards.
+- **Measured.** Both sweeps at 256 seeds are green, coverage gate
+  included. `coverage_identical.py origin/main --expect-renames
+  OnOperationPlayed=OnCardPlayed` (192 games a shape, seed 1): **the
+  random seatings play the same games.** They differ only in the renamed
+  effect and in the new event now being counted, 50 times by view and by
+  index. The heuristic seatings move: Corp agenda wins 73 → 59 of 192,
+  Runner 103 → 117. Checked, not inferred: this branch without the four
+  card files (engine changes kept) is identical to `main` in all four
+  shapes apart from the new event (17 in heuristic-view). So all of the
+  heuristic movement is the new cards entering `determinize`'s hidden
+  pools; the view now carrying Trendsetting's click moved nothing.
+
+#### Stage 5b — a count on a moment, a Trojan's server (26 September 2026)
+
+`feat/vp-stage-5b-stowaway-nurse-hanh`: Stowaway, Nurse Hạnh. **No new
+`Effect`.** Vantage Point 47 of 66; `VP_UNIMPLEMENTED` 21 → 19.
+
+- **A breach of Archives turning facedown cards faceup is a moment**
+  (`GameEvent::ArchivesTurnedFaceup { count }`, CR 7.3.2;
+  `Trigger::OnArchivesTurnedFaceup`, Nurse Hạnh). It is about a number of
+  cards (`TriggerAbout::Cards`, `listeners::About::Cards`), and "2 or
+  more" is `EventFilter::AtLeast(2)` in the trigger condition, where the
+  printed sentence puts it. The turn log holds no number, so a first time
+  narrowed by one is refused. It is dispatched once the first access is
+  offered, so a reaction that parks waits beside the Runner's choice of
+  card and is not overwritten by it.
+- **A Trojan's "this server" is the server its host ice protects**
+  (`active::runner`: a hosted program's `server` is its host's). Stowaway's
+  "whenever you make a successful run on this server" is then
+  `Subject::This`, as it is for an upgrade. Checked: the test fails with
+  the rig card in no server.
+- **The decks.** In Pay as You Go (Noise mills R&D facedown into
+  Archives), two Nurse Hạnh for two Smartware Distributor. In Safety Net,
+  two Stowaway for two Creative Commission. Every card replaced is in
+  another deck.
+- **The sweep found a bot blind spot, fixed first in its own PR (#233).**
+  The 256-seed view sweep stalled at seed 120 (Paid Content against
+  Borrowed Time, heuristic Runner). With a rezzed Magistrate Revontulet
+  and no credits, the one-ply Runner priced faceup agendas in Archives as
+  certain steals and ran Archives four times a turn until the game ran
+  out of steps. The evaluator now asks the steal price
+  (`continuous::steal_price`, the question the access asks). That fix is
+  identical to `main` in all four shapes. Neither deck in that game
+  changed on this branch, which only reached the position by another
+  trajectory.
+- **DSL ratio (`pool_status.py`): 20 of 71 `Effect` variants
+  single-use, 2 unused**, over 231 card files.
+- **Measured.** Both sweeps at 256 seeds are green, coverage gate
+  included. `coverage_identical.py` against #233 (192 games a shape, seed
+  1): **the random seatings play the same games**, differing only in the
+  new event now being counted (194 by view and by index). The heuristic
+  seatings move: Corp agenda wins 59 → 74 of 192. Checked, not inferred:
+  without the two card files the branch is identical to its base in all
+  four shapes apart from the event count (120 in the heuristic seatings),
+  so all of the heuristic movement is the new cards in `determinize`'s
+  pools.
+
+#### Stage 5c — "that program", through the run it starts (27 September 2026)
+
+`feat/vp-stage-5c-beta-build`: Beta Build. **No new `Effect`.** Vantage
+Point 48 of 66; `VP_UNIMPLEMENTED` 19 → 18.
+
+- **A text install names what it installed.** After
+  `InstallRunnerCardFromGripWithDiscount` installs the resolving card, the
+  rest of the resolution means that install (`ResolutionContext::
+  acting_install`). The server prompt already carries the handle through
+  the park (`PendingDecision::ChooseServer::source_install`), and so does
+  `SetRunEndedEffect`, so "when that run ends, if that program has not
+  been uninstalled" needs no field and no placeholder. Uninstalled, the
+  program has no handle; reinstalled, it has another. Either way nothing
+  moves.
+- **`AddToBottomOfDeck` is `AddToDeck(DeckEnd)`** (five cards), and it
+  takes the acting install out of the rig. `GameEvent::CardAddedToBottomOfDeck`
+  is `CardAddedToDeck { top, revealed }`. `revealed` says whether the card
+  came out of a zone both players see (the heap, the rig), so the opponent
+  may be told which card now sits in the stack. Out of the grip the event
+  is its owner's. It had been shown to the Corp whatever the zone. The
+  view sweep's log check caught Beta Build's return to the stack and now
+  reads the flag, as it reads a revealed `CardsSelected`.
+- **"Ignoring all costs"** is a discount (`dsl::Discount::AllCosts`, with
+  `Credits(n)` for Illumination and Topan), shared by the install and its
+  offer (`CardFilter::InstallableRunnerCardWithDiscount`). The memory
+  limit still applies, since it is not a cost.
+- **"Non-virus" is `CardFilter::Not`**, definition-level.
+- **"Run any server" happens whatever the search finds.** The run with the
+  rider is in the search's continuation, and a plain run is the fallback
+  when the stack holds no program to find. The fallback comes first,
+  because it is read before the search takes anything.
+- **The decks.** In Safety Net, two Beta Build for two Diesel (one Diesel
+  stays; it is in no other deck).
+- **Fidelity limit:** a Trojan is not offered. A text install cannot place
+  one on ice yet (`InstallRunnerCardFromGrip`'s exclusion), so finding one
+  would install nothing.
+- **A test that checked nothing past 200 lines (#235).** The client's log
+  concealment test read each action's lines as the slice the capped log
+  grew by. Past `MAX_LOG_LINES` the slice was empty, so five of its six
+  games went mostly unchecked, and its "the Corp advances" precondition
+  hung on one seed, which this card's movement broke. It now checks every
+  line.
+- **DSL ratio (`pool_status.py`): 20 of 71 `Effect` variants
+  single-use, 2 unused**, over 232 card files.
+- **Measured.** Both sweeps at 256 seeds are green, coverage gate
+  included. `coverage_identical.py origin/main`: **the random seatings
+  play the same games**, differing only in the renamed effect and event
+  (`AddToBottomOfDeck` 36 → `AddToDeck` 36, the event 8 → 8). The
+  heuristic seatings move slightly (Corp flatline wins 12 → 10, Runner
+  deck-outs 0 → 2). Checked: without Beta Build's file the heuristic
+  seatings are byte-identical to `main`.
+
+#### Stage 5d — who trashed it, and a look nobody else sees (27 September 2026)
+
+`feat/vp-stage-5d-hiram`: Hiram "0mission" Svensson: Shadow of the Past,
+on the new Spare Parts Sweep deck. **One new `Effect`**
+(`LookAtTopOfDeck`). Vantage Point 49 of 66; `VP_UNIMPLEMENTED` 18 → 17.
+Stage 5 is complete.
+
+- **A trash says who carried it out** (`GameEvent::CardTrashed::by`, CR
+  1.14.5a: a condition about an effect a player performs is met only when
+  that player carries it out). Assigned by the site that trashes:
+  - text: the controller of the card resolving (`ability::carried_out_by`);
+  - a selection: its chooser;
+  - a cost: its payer;
+  - an install's like-card trash: the player installing (CR 8.5.6);
+  - the Corp's basic action against a tagged Runner's resource: the Corp;
+  - the rules' trashes are `None`: a host's hosted cards, the console
+    limit and the unique rule (CR 3.8.5b, 10.1.1: "are trashed"), and a
+    card emptied of its hosted credits in the middle of a payment.
+  A parked trash carries it too (`WouldHappen::Trash::by`).
+- **`Trigger::OnCardTrashed`** is heard by the player who carried the
+  trash out (`Hears::OwnSide`), about the card; a `None` trash is an
+  occurrence of nothing. Every other trash is dispatched where it happens
+  (`ability::dispatch_trashes`) — effects, selections, a prevented-or-not
+  parked trash, an install's trash, the basic action — and a cost's by its
+  payer, as before. The dispatch audit found no site left out across both
+  256-seed sweeps. The event does not say whether the card was installed,
+  so `validate` refuses an `InstalledCard` filter on the trigger. The turn
+  log counts it without the card's type (`turn_log::concealed`): a Corp
+  card trashed from HQ goes facedown.
+- **"Look at the top card of R&D"** is `Effect::LookAtTopOfDeck { deck,
+  count }` and `GameEvent::CardsLookedAt`, masked for everyone but the
+  looker. Neither player is told R&D's order, so the Corp is not shown it.
+  Composition didn't work: a selection over the deck shows its chooser the
+  cards, but it is a prompt to answer and a card to move. The view sweep's
+  log check reads a look in a seat's own entry as that seat's to know.
+- **Hiram** is two entries, one printed ability: `OnCardInstalled` and
+  `OnCardTrashed`, each `when: Card(CardType(Hardware))`.
+- **The deck.** Spare Parts, a Shaper Sweep deck on Hiram: hardware to
+  install (T400, DZMZ, GAMEDRAGON™ Pro, Touchstone) and to trash
+  (Methuselah's price as a run begins, and a second console beside it).
+  Eternal and Casual, for its Core Set cards.
+- **Fidelity limits.** A card that names another player to carry out its
+  trash (Noise's "the Corp trashes the top card of R&D") is read as its
+  controller's. Damage takes its cards as discards (`CardDiscarded`), so a
+  hardware lost to damage the Runner is responsible for is not heard. The
+  look is in the Runner's log, not in their view, so a bot's sample does
+  not keep the card on top of R&D.
+- **DSL ratio (`pool_status.py`): 21 of 72 `Effect` variants
+  single-use, 2 unused**, over 233 card files (20 of 71 before).
+  `LookAtTopOfDeck` is the one, with its reason on the variant; the
+  vocabulary it adds (`by`, a trigger) is what the next "whenever you
+  trash" card reuses.
+- **Measured.** Both sweeps at 256 seeds are green, coverage gate
+  included. `coverage_identical.py origin/main` is **identical in all four
+  shapes**: Hiram is an identity, which `determinize` never samples, and
+  Spare Parts is a Sweep deck, so no game in the pool hears the new moment.
+  Twenty-four random games of Spare Parts against Hostile Bid (seed 1)
+  show it heard: Hiram's install entry fired 47 times and its trash entry
+  18, for 65 looks, beside Methuselah (203), Shackleton Grid (3) and Beta
+  Build (3).
+
+#### Stage 6a — arrange, a reveal, and the end of an encounter (27 September 2026)
+
+`feat/vp-stage-6a-arrange-reveal-encounter-end`: Cultivate, Knowledge
+Seeker and Esca, on the A Thousand Cuts Sweep deck. **No new `Effect`.**
+Vantage Point 52 of 66; `VP_UNIMPLEMENTED` 17 → 14.
+
+- **Arranging the top of a deck is a selection back onto it** (CR 8.3.3).
+  A selection put onto a deck now lands with the first card chosen on top
+  (it was pushed in the order chosen, so the first went deepest; every
+  card in the pool had put at most one card there). Cultivate is three
+  `PromptChooseCards` over `TopOfZone`: one of the top five to Archives,
+  one of the top four to HQ, and up to three back onto R&D. Knowledge
+  Seeker's second subroutine is the last of those for four. A card left
+  unchosen stays beneath the chosen ones, which is one of the
+  arrangements too, and with fewer cards in R&D the prompt still asks.
+  Composition worked, so no `Effect` was added.
+- **A card taken from a deck is the copy at the place chosen.** It was the
+  first copy from the bottom, so choosing the top card when a lower copy
+  of the same card was in R&D left the chosen card on top (AU Co.,
+  Poétrï, Embedded Reporting, and now Cultivate). Neither this nor the
+  new top-first order applies to a selection that shuffles afterwards: a
+  shuffle's result depends on the order it starts from, and doing either
+  first re-dealt every shuffled R&D in the pool (Sprint, Sleipnir, Next
+  Big Thing and five more).
+- **An encounter's end is a moment:** `GameEvent::EncounterEnded`, heard
+  by `Trigger::OnEncounterEnded` about the ice. An encounter ends when it
+  completes (CR 6.9.3e), when "end the run" ends it with the run
+  (CR 6.1.4), when a subroutine moves the run, when a jack-out is paid
+  as a cost, and when the ice leaves the table or is derezzed during it
+  (`run::encounter_ends`, asked at each). `reconcile_ice` now dispatches
+  the pass and the end it makes itself; two of its three callers handed
+  them on undispatched. Knowledge Seeker's third virus counter purges
+  every virus counter in play, the Runner's included, and derezzes it.
+- **A reveal while accessed** (CR 1.21.7): `ContinuousKind::
+  RevealedWhileAccessed` with `while: AccessingIn(RnD)`. It is a static
+  ability of the card's, so a standing kind with `Scope::This` rather
+  than a word on the access. Esca, Snare! and Byte! all print it; the
+  latter two did not say it until now. The access emits
+  `GameEvent::CardRevealed`, public, and the Corp's view names the card
+  for the rest of the access (CR 1.21.6). `AccessingArchives` became
+  `AccessingIn(ServerId)` when a second server was printed.
+- **What the sweeps found.**
+  - The log concealment check found Esca's trigger named to a spectator
+    when Esca is accessed from HQ or R&D: it is the first card to fire
+    from a hidden zone. It is now the Runner's and the Corp's only.
+  - The same check found Knowledge Seeker's encounter events named to a
+    spectator after it derezzed itself in the action that encountered
+    it. Encounter events of ice now concealed from the viewer are dropped
+    for that viewer. The Runner remembers the ice (`seen_by_runner`, set
+    at the rez), so only a spectator loses them.
+  - The client's trap classifier (`board::rez::gains_nothing`) read
+    Snare!'s new standing effect as a reason to rez it. The reveal is
+    about the access, so the classifier ignores it, and Esca joins the
+    traps.
+- **Deck.** A Thousand Cuts: two Knowledge Seeker for two Palisade, two
+  Esca for two Regolith Mining License, two Cultivate for two
+  Retribution.
+- **Fidelity limits.** The client does not yet word an arrangement as
+  "top first"; the prompt is a card selection. The arranged cards are not
+  made new objects (CR 8.3.3): nothing in the engine remembers a card in
+  R&D by identity.
+- **DSL ratio (`pool_status.py`): 20 of 72 `Effect` variants single-use,
+  2 unused**, over 236 card files (21 before: Knowledge Seeker is the
+  second card to purge). The growth is one `Trigger`, one
+  `ContinuousKind`, and one `EffectRequirement` generalised in place.
+- **Measured.** Both sweeps at 256 seeds are green, coverage gate
+  included. `coverage_identical.py origin/main` differs in all four
+  shapes, and each difference was attributed with a temporary ref:
+  - **Random seatings** moved only through the copy taken from the top
+    of a deck. With that one line reverted, both random shapes differ
+    from main only in the new events' counts (`EncounterEnded` 0 → 911,
+    `CardRevealed` 0 → 4). On HEAD, the Runner's wins on agenda points
+    go 112 → 113 and on the Corp decking 5 → 4.
+  - **Heuristic seatings** moved only through `determinize` sampling the
+    three new cards. With the card files removed, they differ from main
+    only in event counts. They are unmoved by the top-copy fix.
+- **Real play.** Twenty-four random games of A Thousand Cuts against Pay
+  as You Go (seed 1): Esca's trigger fired 31 times, Cultivate 8,
+  Knowledge Seeker's derez once, over 40 ended encounters and 7 reveals.
+
+#### Stage 6b — credits only from stealth cards (27 September 2026)
+
+`feat/vp-stage-6b-stealth-credits`: Corsair, Lampades and Baker, on the
+Safety Net Sweep deck. **No new `Effect`.** Vantage Point 55 of 66;
+`VP_UNIMPLEMENTED` 14 → 11.
+
+- **"Spend credits only from stealth cards"** (CR 1.10.4b, read from the
+  payer's side) is `Cost::CreditsFrom { amount, from }`: `payment::sources`
+  takes a `from` filter, and only a pool on a card it matches pays —
+  hosted credits by their host, the run's own by the card that began the
+  run (`RunState::initiated_by`, which Aircheck will fill). Bad publicity
+  is on no card and the credit pool is not a card, so the pool stays the
+  last source holding nothing: the first payment that cannot reach the
+  credit pool. Affordability and paying read the one scan, as the Payment
+  Rule has it. A cost rather than a word on the ability, because the
+  printed sentence limits the credits and a cost is where the credits
+  are; `amount` is an `Amount` because Lampades's price is "the printed
+  rez or play cost of the card you are accessing"
+  (`Amount::AccessedCardPrintedCost`).
+- **Corsair** breaks barrier subroutines for 1[credit] from anywhere, and
+  its −3 strength (`ModifyStrength` for the encounter) is paid from
+  stealth cards and offered only against a barrier
+  (`EffectRequirement::Encountering(IceType)`, printed or gained, asked
+  as a restricted break is).
+- **Lampades** is an access ability (`AbilityDef::access`, as Gourmand):
+  a hosted power counter and the accessed card's printed cost in stealth
+  credits trash it (`TrashCurrentlyAccessedCard`), and not an agenda,
+  which prints neither cost.
+- **Baker**'s "[click]: Run Archives" is `InitiateRun`, and its "when you
+  would approach Archives, you may pay 1[credit] to instead change the
+  attacked server to HQ or R&D" is a paid ability usable when the run it
+  began has passed all its ice and is about to approach Archives
+  (`ThisCardStartedTheRun`, `AboutToApproach(ServerId)`), whose choice is
+  Maintenance Access's `RedirectRunOnApproach`.
+- **Deck.** Safety Net (Kate, 15 influence, now all spent): two Corsair
+  for two Corroder, Lampades for Mayfly, Baker for a Jailbreak, beside
+  its Methuselah and Touchstone, the stealth cards that pay for them.
+- **Fidelity limits.** Baker's credit is paid in the last paid ability
+  window before the approach (CR 6.9.4e) rather than at it, so the Corp
+  acts in that window after the Runner has chosen. Nothing in the pool
+  cares, but a card that did would see the order.
+- **DSL ratio (`pool_status.py`): 19 of 72 `Effect` variants single-use,
+  2 unused**, over 239 card files (20 before). The growth is one `Cost`,
+  one `Amount` and three `EffectRequirement`s.
+- **What the sweeps found.** The 256-seed view sweep stalled at seed 155
+  (Fine Print against Safety Net): Doomscroll's tag went through the
+  prevention window, NBN: Reality Plus heard it and parked its "gain 2
+  or draw 2", and once that was answered nothing resumed the ice's later
+  subroutines. `prevention::finish` now hands "the subroutines are not
+  finished" to whatever the prevention let through parked. The code was
+  the same on main, where a test reproduces it: fixed in its own PR,
+  #239, identical to main in all four shapes.
+- **Measured.** Both sweeps at 256 seeds are green, coverage gate
+  included. `coverage_identical.py origin/main`: both random seatings
+  **identical** (Safety Net is a Sweep deck, and the payment change moves
+  nothing no card limits). The heuristic seatings moved, and with the
+  three card files removed they are identical in all four shapes:
+  `determinize` sampling the new cards is the whole of it.
+- **Real play.** Ninety-six random games of Safety Net against Hostile Bid
+  (seed 2): Corsair's and Lampades's stealth-paid abilities were used 3
+  times each, Baker's 46, with 2 runs redirected to HQ or R&D. Stealth
+  credits are rarely on hand in random play, which is why the two are
+  rare.
+
+#### Stage 6c — a locked credit pool (27 September 2026)
+
+`feat/vp-stage-6c-aircheck`: Aircheck, on Safety Net. **No new `Effect`.**
+Vantage Point 56 of 66; `VP_UNIMPLEMENTED` 11 → 10. Stage 6 is complete.
+
+- **Composed.** "Place 4[credit] on this event … you can spend hosted
+  credits" is Overclock's shape: `PromptChooseServer` with
+  `bonus_run_credits: 4`, the run's own pool, whose card is the event that
+  began the run (`RunState::initiated_by`). Aircheck is a stealth card, so
+  Corsair, Lampades and Baker may spend those credits (6b's `from`).
+  "Run HQ or R&D" is `allowed_servers`. "When that run ends, if it was
+  successful, you may run a remote server" is an `on_success` that arms a
+  `SetRunEndedEffect`: the run-end rider is set only once the run has
+  succeeded, so no condition on the run's end is needed.
+- **"You cannot lose or spend credits from your credit pool"** is
+  `Prohibition::SpendOrLoseCreditPool`, made by the run's `on_start` for
+  the run (a lingering effect, which the view carries, so a bot's sample
+  sees the lock). `payment::sources` then gives the credit pool nothing,
+  as it does for a payment limited to stealth cards, and
+  `Effect::LoseCredits` takes nothing from it. Those are the only two
+  places a Runner's credit pool goes down.
+- **`PromptChooseServer::only_in: Option<ServerKind>`**: "a remote
+  server", the remotes on the table. The fresh remote that "any server"
+  offers is not one, and with no remote the offer fails rather than park,
+  so the "may" is left with its decline.
+- **Fidelity limits.** The event is taken to be active for the run it
+  makes and no longer, so the second run is an ordinary one: its credits
+  are the credit pool's, and the event's unspent credits are gone with
+  the first run.
+- **DSL ratio (`pool_status.py`): 19 of 72 `Effect` variants single-use,
+  2 unused**, over 240 card files (unchanged). The growth is one
+  `Prohibition` and one offer field.
+- **Measured.** Both sweeps at 256 seeds are green. Against the 6b branch,
+  `coverage_identical.py` has both random seatings **identical**. The
+  heuristic seatings moved, and without Aircheck's card file they are
+  identical in all four shapes (`determinize`).
+- **Real play.** Ninety-six random games of Safety Net against Hostile Bid
+  (seed 2) played Aircheck 33 times.
+
+#### Stage 7a — one door off the table (27 September 2026)
+
+`feat/vp-stage-7a-luana-campos`: Luana Campos, on the Hostile Bid Sweep
+deck. **No new `Effect`.** Vantage Point 57 of 66; `VP_UNIMPLEMENTED`
+10 → 9.
+
+- **A Corp install leaves the table through one door**, `rules::uninstall`.
+  A card is uninstalled "when it stops being installed for any reason"
+  (CR 8.5.1b), and nine places each took the card out of
+  `CorpState::installed` itself. Between them they are every way the pool
+  uninstalls a Corp card: trashed by a card's text, after a prevention
+  window, by a selection or to make room for an install; trashed or
+  stolen by the Runner on access; scored; removed from the game; and
+  trashed by the ◆ rule. Each still decides where
+  the card goes and what leaves with it; the door only takes it off the
+  table, after saying so.
+- **"When this asset would be uninstalled" is a moment**,
+  `Trigger::OnWouldBeUninstalled`, heard as `GameEvent::AboutToBeUninstalled`
+  while the card is still in its root. A "would" is an interrupt (CR
+  9.9.3d), and an interrupt is marked pending only if it is active (CR
+  9.9.4b), so the door announces a card that is rezzed and prints the
+  trigger and no other: an announcement nobody could hear is left out, as
+  a tag or a trash about to happen is when nobody could prevent it, and a
+  facedown card is never named. The ◆ rule's trash is a checkpoint's,
+  which carries out no instruction and so opens no interrupt window (CR
+  9.9.4); it takes the card through the door's other way out, which
+  announces nothing (and which could not: the checkpoint runs inside
+  `dispatch_event`, whose own checkpoint would find the older copy still
+  installed). `OnCardTrashed` could not say it: it is heard after the
+  card has gone, and with it the counters.
+- **Hosted bad publicity is counters on the card.** "Host 1 of your bad
+  publicity counters on this asset" is `RemoveBadPublicity(1)` and
+  `AddCounters(1)`, behind `AmountAtLeast(BadPublicity, 1)` so that
+  nothing is asked with none to host (`Amount::BadPublicity`, the
+  `RunnerTags` of the other side). "Take all hosted bad publicity" is
+  `GiveBadPublicity(HostedCounters)`: the effect takes an `Amount` now, as
+  `GiveTags` came to, and taking none dispatches nothing, so Editorial
+  Division never hears a Luana that hosted nothing.
+  `CounterKind::BadPublicity` names the counters for the view; both
+  clients word them and the desktop badges them with the bad publicity
+  readout's mark.
+- **Deck.** Hostile Bid: two Luana Campos for two PAD Campaign. Its three
+  Hostile Takeovers are what she has to host.
+- **Fidelity limits.** "Uninstalled" for a Corp card only: no Runner card
+  in the pool interrupts its own uninstalling (Nanuq, in Parhelion, is the
+  first that cares, and its words are a replacement, "remove it from the
+  game"). The interrupt resolves in the dispatch that announced it; a
+  second card of the Corp's that heard the same moment would be ordered
+  with it as simultaneous triggers are, but no other card does.
+- **DSL ratio (`pool_status.py`): 19 of 72 `Effect` variants single-use,
+  2 unused**, over 241 card files (unchanged). The growth is a `Trigger`
+  (37 → 38), an `Amount`, a `CounterKind` and an event.
+- **Measured.** Both sweeps at 256 seeds are green. Against `origin/main`,
+  `coverage_identical.py` has both random seatings **identical**. The
+  heuristic seatings moved, and without Luana's card file (and the deck
+  swap) they are identical in all four shapes (`determinize`).
+- **Real play.** Ninety-six random games of Hostile Bid against Safety Net
+  (seed 2) installed Luana 94 times and rezzed her 79; 48 rezzed Luanas
+  were announced on their way out, and one handed a hosted bad publicity
+  back to the Corp.
+
+#### Stage 7b — cards hosted facedown (27 September 2026)
+
+`feat/vp-stage-7b-runner-hosting`: Read-Write Share, on the Spare Parts
+Sweep deck. **One new `Effect`**, `ShuffleHostedIntoDeck`. Vantage Point
+58 of 66; `VP_UNIMPLEMENTED` 9 → 8. Hackerspace, planned beside it, is a
+different mechanic (an install onto a host, which grows the action
+space) and is Stage 7c.
+
+- **A card hosted facedown is its owner's to see** (CR 1.13.7, 1.21.2a).
+  `CardDefinition::hosts_facedown` says so of the host, and the mask reads
+  it: the Corp's and a spectator's view of the host carries
+  `hosted_unseen`, a count, where the Runner's carries the cards. Nothing
+  is seeded onto the install, because every reader holds a registry. The
+  hosting itself is a `PromptChooseCards` from the grip onto
+  `HostedOnSource`, whose `CardsSelected` is already shown only to its
+  chooser. `determinize` draws the cards a Corp sample cannot see from
+  the Runner's unseen pool, as it draws a grip, and the observation counts
+  them with the cards it can.
+- **"Limit 4 hosted cards"** is `Not(AmountAtLeast(HostedCards, 4))` on
+  both triggers, beside a grip with a card in it (`Amount::HostedCards`,
+  cards where `HostedCounters` counts counters).
+- **Cards hosted on a card its own cost trashes are set aside, not
+  trashed** (CR 9.5.5), when the effect acts on them. "[trash]: Shuffle
+  all hosted cards into your stack" took them to the heap with the
+  program, and a "whenever you trash" would have heard each one.
+  `engine::activate_ability` now takes them off the host before paying a
+  cost that `uninstalls_its_source`, when the effect `acts_on_hosted_cards`,
+  puts them on the resolution (`ResolutionContext::set_aside`), and trashes
+  whatever the effect leaves. The context, not the state, because the one
+  effect that reads them never parks.
+- **Why a new `Effect`.** `PromptChooseCards` over `HostedOnSource` finds no
+  host once the cost has trashed it, and asks a question "all" does not;
+  `AddToDeck` moves the acting card. `ShuffleHostedIntoDeck` records no
+  event: which cards is the Runner's to know, and the stack's count says
+  how many.
+- **Deck.** Spare Parts: two Read-Write Share for two Creative Commission.
+- **Fidelity limits.** The cards are not "distinct groups … freely
+  arranged" (CR 1.13.7d) in any sense the view shows: they are a list in
+  the order hosted.
+- **DSL ratio (`pool_status.py`): 20 of 73 `Effect` variants single-use,
+  2 unused**, over 242 card files (was 19 of 72).
+- **Measured.** Both sweeps at 256 seeds are green. Against `origin/main`,
+  `coverage_identical.py` has both random seatings **identical**. The
+  heuristic seatings moved, and without Read-Write Share's card file (and
+  the deck swap) they are identical in all four shapes (`determinize`).
+- **Real play.** Ninety-six random games of Spare Parts against Hostile
+  Bid (seed 2) installed Read-Write Share 57 times, hosted a card on
+  install 53 times and trashed it for the shuffle 56 times; the random
+  Runner trashes it before its turn-start trigger comes round.
+
+#### Stage 7c — a resource installed onto a resource (27 September 2026)
+
+`feat/vp-stage-7c-hackerspace`: Hackerspace, on the Pay as You Go Sweep
+deck. **No new `Effect`.** Vantage Point 59 of 66; `VP_UNIMPLEMENTED`
+8 → 7.
+
+- **An install onto a card is a destination** (CR 8.5.1a, declared with
+  the rest of it at 8.5.16b): `PlayerAction::InstallResource` carries a
+  `host`, the rig card it goes onto (`InstalledRunnerCard::
+  hosted_on_rig_card`, which was `hosted_on_program` until a resource
+  hosted one). A field, as `trash_first` is, because it is the same
+  install to another place. `ActionSpace` 2621 → 3133, **appended**: hand
+  slot by rig slot, as `InstallProgramOnIce` is by the Corp's installs,
+  so every recorded index keeps its meaning and a policy needs a wider
+  head. The hosted card leaves with its host, as GAMEDRAGON™ Pro did.
+- **Which cards may go there is a standing permission of the host's**,
+  `ContinuousKind::MayHost`, about the cards a new scope admits,
+  `Scope::InstallingOntoThis(filter)`. The same scope carries "each
+  resource installed this way costs 1[credit] less", so the permission and
+  the discount name the cards once each, in the card's own words. The
+  scan is asked of a target that knows the host (`Target::InstallingOnto`):
+  `continuous::may_install_onto` for the action list and the install, and
+  `install_cost_onto` for the price, where `install_cost_of` is the same
+  question with no host. `CardFilter::Unique` says "unique (♦)".
+- **"While this resource has a hosted companion and a hosted connection"**
+  is `EffectRequirement::HostsInstalled(filter)`, twice under `And`, on a
+  `HandSize` of +2. **No unique companion is in the pool yet**, so the
+  sweeps cannot reach it; the card test makes one.
+- **Both clients** word the install ("Install Nurse Hạnh onto
+  Hackerspace"), and the desktop's rig cards are drop places, so a card
+  carried onto a host that takes it installs there; the smallest lit
+  place under the pointer wins, so everywhere else in the rig is still
+  the plain install.
+- **Deck.** Pay as You Go: two Hackerspace for two T400 Memory Diamond,
+  and a third Nurse Hạnh (a unique connection) for Smartware Distributor.
+- **DSL ratio (`pool_status.py`): 20 of 73 `Effect` variants single-use,
+  2 unused**, over 243 card files (unchanged). The growth is a kind, a
+  scope, a filter word and a requirement.
+- **Measured.** Both sweeps at 256 seeds are green. Against `origin/main`,
+  `coverage_identical.py` has both random seatings **identical**, the
+  index path included, so the wider `ActionSpace` moved no index a
+  random agent draws from. The heuristic seatings moved, and without
+  Hackerspace's card file (and the deck swap) they are identical in all
+  four shapes (`determinize`).
+- **Real play.** Ninety-six random games of Pay as You Go against
+  Hostile Bid (seed 2) installed Hackerspace 26 times and installed Nurse
+  Hạnh onto it 8 times.
+
+#### Stage 7d — the score area (27 September 2026)
+
+7 → 4.
+
+- **A card added to a score area "as an agenda"** (CR 10.1.3) keeps
+  nothing it printed and has only what the addition gives it:
+  `dsl::AsAgenda`, its points and whether "You cannot forfeit this
+  agenda.", carried on the copy as `ScoredAgenda::as_agenda`. So it is not
+  active (`rules::active`: Word on the Street in the Corp's score area is
+  a −1, not a resource), offers no ability, and was not scored (CR
+  1.17.3f): `GameEvent::AddedToScoreAreaAsAgenda` is an occurrence of
+  nothing. Myōshu adds itself with `Effect::AddToScoreAreaAsAgenda`, out
+  of Archives, where an operation is filed before its text resolves. A
+  forfeit counts only what may be forfeited, in the one list its
+  affordability and its payment read.
+- **A score is signed.** Word on the Street is worth −1, so
+  `AgendaPoints`, the view's points and the end-of-game tally are `i32`,
+  and the win check, the threat level and a client's number read one sum
+  (`rules::score`, CR 1.17.1). A printed agenda is still never worth
+  less than 0.
+- **An additional cost to score** is `ContinuousKind::ScoreCost(Cost)`
+  about `Scope::Scoring(filter)`, asked of the install being scored
+  (`continuous::Target::Scoring`), so "an agenda the Corp installed this
+  turn" is read off the copy. It is paid by the Corp out of the Runner's
+  rig (`Cost::AddToScoreAreaAsAgenda`: the card it is printed on), with
+  the score, and a checkpoint follows before the agenda moves (CR
+  1.16.10b–c). A Corp that will not pay does not score (CR 1.17.3b).
+  `StealCost` stayed a number: what is paid there is credits.
+- **"Installed this turn" and "scored this turn" are read off copies,
+  including scored ones.** A scored agenda keeps whether it was
+  installed the turn it was scored (`ScoredAgenda::
+  installed_on_scoring_turn`); `CardFilter::InstalledThisTurn` (the
+  positive twin, since `Not` is definition-level) and `ScoredThisTurn`
+  read it, in a selection (Myōshu's play requirement, a
+  `ZoneHasAtLeast` over the score area) and in a trigger's `when` (Word
+  on the Street's "an agenda they did not install this turn",
+  `pending_choice::copy_matches`, which `listeners` and the continuous
+  scan share).
+- **Install only faceup** (CR 3.2.3a) is `CardDefinition::installs_faceup`,
+  written as `InstalledCard::rezzed` with no rez, the flag BANGUN's flip
+  already sets; the difference the rule draws is that this agenda's
+  abilities are active on the table and BANGUN's are not. Because the flag
+  is shared, **"rezzed" in the rules' sense is now asked, not read**
+  (`InstalledCard::is_rezzed`, CR 8.1.1): a faceup agenda is neither
+  rezzed nor unrezzed, so `CardFilter::Rezzed`, `Cost::Derez` and
+  `Effect::DerezCard` pass it by. Before, a BANGUN-flipped agenda could be
+  derezzed.
+- **"The first time each turn you advance this agenda"** is counted on
+  the copy. The turn's log counts classes, so a first time about one card
+  had nowhere to be counted, and `validate` refused it. A Corp install
+  now keeps `turn_log::CopyTurn` (dated, never reset), bumped at the same
+  door as the log (`turn_log::record`) for the triggers a card can ask
+  about per copy — advancing, and so far nothing else — and the verdict
+  rides on `AsOf` as the turn's does. Not in the view: a bot's sample
+  starts each copy's turn afresh, as it does `installed_this_turn`.
+- **"You may remove 1 hosted advancement counter to do 1 meat damage"**
+  is an `OfferPaidChoice` over `Cost::RemoveAdvancementCounters`, behind
+  `And(OncePerTurn, Not(RunAgainstThisServer))` for "on another server";
+  `GameEvent::AdvancementCountersRemoved` says it.
+- **Decks.** Hostile Bid: two Sacrifice Zone Expansion for two Off the
+  Books (the points unchanged), two Myōshu for a Hedge Fund and a
+  Measured Response. Borrowed Time: two Word on the Street for two Sure
+  Gamble.
+- **DSL ratio (`pool_status.py`): 20 of 74 `Effect` variants single-use,
+  2 unused**, over 246 card files. The one new `Effect` is Myōshu's; the
+  rest of the growth is a kind, a scope, two costs and two filter words.
+- **Measured.** Both sweeps at 256 seeds are green. Against `origin/main`,
+  `coverage_identical.py` has both random seatings **identical**. The
+  heuristic seatings moved, and without the three card files (and the
+  deck swaps) they are identical in all four shapes (`determinize`). The
+  two heuristic seatings now give one report where they gave two: on
+  `main` the index path parted from the view in a single game (one
+  `PurgeVirusCounters`), which the new trajectories no longer reach.
+- **Real play.** Ninety-six random games of Hostile Bid against Borrowed
+  Time (seed 2) installed Sacrifice Zone Expansion 102 times, paid its
+  first advance 43 times and spent a counter on meat damage 16 times, and
+  Word on the Street paid out 4 times. With the heuristic Corp, Myōshu was
+  played 52 times and Sacrifice Zone Expansion's first advance paid 166
+  times. **No Corp ever scored an agenda installed that turn with Word on
+  the Street out**, so its cost is reached by the card test alone.
+
+#### Stage 7e — a subroutine gained for an encounter (27 September 2026)
+
+4 → 3.
+
+- **Ice gains a subroutine** with `Effect::GainSubroutine`, said by an
+  `OnEncounter` trigger that acts on its subject (Stick and Poke's "it
+  gains “[subroutine] Do 1 net damage. The Runner draws 1 card.”, before
+  its other subroutines, for the remainder of that encounter"). `validate`
+  refuses it anywhere else, where it would find no encounter. Gained from
+  another card's ability and said to come first, it is ordered ahead of
+  every other subroutine, the newest first (CR 9.8.3a); the other
+  categories of 9.8.3 wait for a card that prints them.
+- **It lives in the run's list for the encounter**, where each
+  subroutine's status already lives, not as a lingering effect: a status
+  has to be broken, fired and counted toward "fully broken" with the rest.
+  It is written at the front with every `id` renumbered, because a break
+  and a firing name a subroutine by its place, and marked
+  `EncounteredSubroutine::gained`, which `run::engine::enter_movement` —
+  the one step every encounter the run survives leaves by — drops. Ice
+  fully broken before it gains one stays fully broken (CR 6.5.7d).
+- **Three client sites read the card's printed list by index** and would
+  have named the wrong subroutine once one stood ahead of it: the tile's
+  facts, the run trail's words for a break or a firing, and the
+  click-break label. Each reads the run's own list now.
+  `GameEvent::SubroutineGained` tells the log what the ice gained; it is
+  an occurrence of nothing a card hears.
+- **Deck.** Pay As You Go: two Stick and Poke for two Wildcat Strike.
+- **DSL ratio (`pool_status.py`): 21 of 75 `Effect` variants single-use,
+  2 unused**, over 247 card files — the one new `Effect`, single-use.
+- **Measured.** Both sweeps at 256 seeds are green. Against `origin/main`,
+  `coverage_identical.py` has both random seatings **identical**. The
+  heuristic seatings moved, and without the card file and the deck swap
+  they are identical in all four shapes (`determinize`). The two heuristic
+  seatings part again (one report each), as they did before Stage 7d.
+- **Real play.** Ninety-six random games of Hostile Bid against Pay As You
+  Go (seed 2) installed Stick and Poke 42 times, and ice gained its
+  subroutine 123 times. **The heuristic Runner never installs it** (0 in
+  96 games), so the card gate is met by random seats alone.
+
+#### Stage 7f — an ability used from HQ (27 September 2026)
+
+3 → 2.
+
+- **An ability that can only affect the game from a zone is active
+  there** (CR 9.1.8b). Tocsin's "[click], 1[credit], reveal and trash this
+  ice from HQ:" is `AbilityDef::from_hand`, and it has no ability on the
+  table: `ActivateAbility` refuses it and does not offer it.
+- **Its own action, `PlayerAction::ActivateHandAbility { card_id,
+  ability_index }`**, because `ActivateAbility` names an install and a
+  card in HQ has none. Which copy is `PlayOperation`'s question, with
+  `PlayOperation`'s answer. It is an action (`classify_action`); `validate`
+  holds every hand ability to one, the only kind the pool prints.
+  **`ActionSpace` 3133 → 3261, appended**: each hand's slot by ability
+  slot, HQ then the grip, so every recorded index keeps its meaning
+  (`scripts/action_space_segments.py`, the gym's pin).
+- **`Cost::RevealAndTrashSelf`**: the card leaves the hand revealed
+  (`CardRevealed`), so it lands in Archives faceup (CR 4.4.6b), where
+  `TrashSelf` out of HQ lands facedown.
+- **"Up to 1 barrier and up to 1 sentry", shuffled once**, is two
+  `PromptChooseCards` in a `Sequence`, only the second shuffling. Nested as
+  a `then`, a search that found no barrier would never have looked for a
+  sentry, because a prompt with nothing to choose resolves nothing after
+  it.
+- **Deck.** Hostile Bid: two Tocsin for two Enigma.
+- **The coverage gate never saw the action in either 768-game deep
+  sweep.** A random Corp holding Tocsin also has two dozen places to
+  install it, and the rotation seldom gives Hostile Bid to a random Corp;
+  the heuristic Corp installs and rezzes it (70 and 45 times in 96 games)
+  and never uses it from HQ. So it is a reasoned rare action at 2048
+  games, as `ChooseNumber` is, and the card test holds its `ActionSpace`
+  round trip and its mask bit.
+- **DSL ratio (`pool_status.py`): 21 of 75 `Effect` variants single-use,
+  2 unused**, over 248 card files (no new `Effect`; a cost, a flag and an
+  action).
+- **Measured.** Both sweeps at 256 seeds are green. Against `origin/main`,
+  `coverage_identical.py` has both random seatings **identical**, the
+  index path included, so the wider `ActionSpace` moved nothing a random
+  agent draws. The heuristic seatings moved, and without the card file and
+  the deck swap they are identical in all four shapes (`determinize`).
+- **Real play.** Ninety-six random games of Hostile Bid against Pay As You
+  Go (seed 2) used Tocsin from HQ 10 times, and it was installed 73 times.
+  With the heuristic Corp, it was installed 70 times, rezzed 45, and never
+  used from HQ.
+
+#### Stage 7g — a run not declared successful, and a limit on accesses (27 September 2026)
+
+2 → 1. Stage 7 is complete; Méliès U is the last card of the set.
+
+- **A run is a target.** The continuous layer gains
+  `continuous::Target::Run { server }` and a scope read from the card that
+  prints it, `Scope::RunsOnThisServer` ("Runs against this server",
+  "During each run against this server"). Two kinds the `ContinuousKind`
+  doc had named as deferred come in on it, `CannotBeDeclaredSuccessful`
+  and `AccessOthersAtMost(n)`, each asked by the run's own step and never
+  stored. `validate` holds both to that scope on a card in a root.
+- **Success withheld, breach kept** (CR 6.9.5a–b, 6.8.4a). `CompleteRun`
+  still commits past the approach; when a card says runs there cannot be
+  declared successful, it emits `GameEvent::RunNotDeclaredSuccessful` in
+  place of `RunSucceeded` — so nothing that hears a successful run hears
+  it, and the turn log does not count one — drops Account Siphon's "if
+  successful, instead of breaching", and breaches at once. Nothing can
+  park in between, because no success was dispatched, so the run state
+  gains no field. The run trail remembers the difference, since the view's
+  phase cannot tell it.
+- **The access limit is CR 7.4.2b**, asked where the breach already prunes
+  its candidates (`run::access::prune_candidates`): once the Runner has
+  accessed `n` cards other than the Flagship, every candidate but the
+  Flagship stops being one. It does nothing before the first access,
+  never changes the random access limit, and is asked afresh at each
+  offer (7.4.2a). **Persistent** is the existing persistent-upgrade path,
+  whose server-only sources now read `RunsOnThisServer` too. Flagship's
+  flag is card-wide, which is exact: its other ability is spent before
+  the breach in which it could be trashed.
+- **Found on the way: an unrezzed persistent upgrade persisted.** An
+  access-trash recorded any card with the flag, rezzed or not; CR 9.12.5a
+  keeps only a rezzed card's persistent abilities. AMAZE Amusements and
+  Mahkota Langit Grid trashed unrezzed no longer persist.
+- **"HQ or R&D only"** made `install_only_in` a list of `ServerKind`s (`Hq`
+  and `RnD` join `Central` and `Remote`), asked through
+  `CardDefinition::may_be_installed_in` at the five places that read it.
+- **Deck.** Hostile Bid: two Flagship for two Wall of Static.
+- **DSL ratio (`pool_status.py`): 21 of 75 `Effect` variants single-use,
+  2 unused**, over 249 card files — no new `Effect`: two kinds, a scope, a
+  target and an event.
+- **Real play.** Ninety-six games of Hostile Bid against Pay As You Go
+  (seed 2): with a random Corp, Flagship was installed 83 times and
+  rezzed 41, and 56 runs were breached without being declared successful
+  (169 against the heuristic Runner, which runs more). **The heuristic
+  Corp installs Flagship and never rezzes it** (82 installs, 0 rezzes), so
+  it never withholds a success: a gap in the Corp's rez choices for an
+  upgrade with no printed payoff, owed to Phase 5.
+- **Measured.** Both sweeps at 256 seeds are green. Against `origin/main`,
+  `coverage_identical.py` has both random seatings **identical**. The
+  heuristic seatings moved, and without the card file and the deck swap
+  they are identical in all four shapes — a ref that keeps the persistent
+  fix, so that fix moved no game in a full pass of the pool.
+
+#### Stage 8 — Méliès U, a secret identity with three reverse sides (27 September 2026)
+
+1 → 0. **Vantage Point is complete: 66 of 66**, and with it Startup's pool.
+
+- **Which copy is in play is state, and secret.** CR 1.5.2b: the Corp
+  brings every copy, "secretly sets" one as its identity when its discard
+  phase ends, and the chosen copy always enters front side up. One card
+  file holds the front and all three backs, as a flip identity holds both
+  sides; `CorpState::identity_copy` says which back is the one printed on
+  the card in play, and `EffectRequirement::IdentityCopy(n)` gates each
+  back's text. The flip stays the one bit it was (CR 3.1.1a: only the
+  faceup side is active). The copy is `None` in the Runner's view while
+  the front is up and public once flipped (`PublicCorpState::
+  identity_copy`) — the card turned over. It starts at 0, which no back
+  side reads, rather than asking at setup: the Corp's first discard phase
+  ends before the Runner's first turn, so a copy is always chosen before
+  any run can flip it.
+- **A secret number is a flag on the number, masked in both channels.**
+  `Effect::ChooseNumber` gains `secret`, carried onto the parked decision
+  and `GameEvent::NumberChosen`. The decision itself is public — the
+  Runner sees the Corp is choosing, and from what range — but the answer's
+  log entry is `ConcealedAction::ChoosingSecretly` for the other seat
+  (read off the step's events, as `ChoosingPayment` is), and its
+  `NumberChosen` is dropped for them. `Effect::SetIdentityCopy` writes
+  the number; `validate` refuses it anywhere but inside a secret number's
+  `then` on a Corp identity (`IdentityCopySetInTheOpen`).
+- **"The Runner's" phase, on a Corp card.** "When the Runner's action
+  phase ends, gain 1[credit]" and "when the Runner's discard phase ends,
+  flip this identity" are the two triggers the pool prints about *your*
+  phase, turned on the other player. `EventFilter::Whose(Side)` names
+  whose moment a `Hears::OwnSide` trigger means, replacing its "your";
+  `validate` allows it on no other trigger. **Found on the way:** the
+  fire-time re-check (`listeners::when_admits`) never asked whose moment
+  it was, so a card with two entries for one trigger — Méliès U's own
+  discard phase and the Runner's — would have fired both at either. It
+  now asks through the same function as the scan (`whose_admits`).
+- **A flip is a moment.** `Trigger::OnIdentityFlipped` ("when you flip
+  this identity to this side"), heard only by the side just turned up;
+  `Effect::FlipIdentity` now dispatches `GameEvent::IdentityFlipped`
+  (Dewi Subrotoputri and Nebula Talent Management flip through it too, and
+  nothing of theirs hears it). "During a run on HQ" is
+  `EffectRequirement::DuringRunOn(server)`, which counts the breach,
+  unlike `DuringRun`. The back side composes: a look at the top of R&D,
+  then a "may" whose yes trashes it and takes a card from Archives to HQ —
+  a `PresentChoice` rather than a card selection, because a selection's
+  `then` fires on a choice of none and the Archives card is "if you do".
+- **Deck.** Honor Roll, a new Jinteki Sweep deck on Méliès U (Eternal and
+  Casual), built from the Jinteki and neutral cards A Thousand Cuts leaves
+  out, so Personal Evolution keeps its deck.
+- **DSL ratio (`pool_status.py`): 21 of 76 `Effect` variants single-use,
+  2 unused**, over 250 card files — `SetIdentityCopy` is new and
+  single-use, and `LookAtTopOfDeck` gained its second card.
+- **Real play.** Ninety-six games of Honor Roll against Pay As You Go
+  (seed 2). Random seats: 769 secret choices, 345 flips on a successful
+  central run, and the copy's side matched the server 128 times (37%, a
+  third expected); the Corp took the "may" 67 times. Heuristic seats: 1,349
+  choices, 573 flips, 198 matches — **but the heuristic Corp trashed the
+  top of R&D only 12 times in 198**, and it picks its copy without reading
+  where the Runner runs: both owed to Phase 5, like Flagship's rez.
+- **Measured.** Both sweeps at 256 seeds are green. Against `origin/main`,
+  `coverage_identical.py` has **all four shapes identical** — random and
+  heuristic, by view and by index: the new deck is a Sweep deck, which
+  `matchups()` never yields, and the engine changes (the whose re-check, a
+  flip dispatched, a turn-log row for it) moved no game of the pool.
+
+#### After Vantage Point — both clients show what it added (27 September 2026)
+
+Each stage had put what a card needed into the view; nothing had made
+the clients draw it. A read of every view field Stage 0 to Stage 8 added,
+against what the terminal and the desktop draw, found six gaps, and one
+from before (a flip identity's side, which the view had carried since Dewi
+and Nebula with neither client showing it):
+
+- **Which side of an identity is up** (`board::hud::IdentitySide`): a
+  chip on the desktop's avatar disc ("Front", "Flipped", "Side 2"), a line
+  on the identity's sheet, and a first line in each of the terminal's
+  blocks — which named neither identity until now. Méliès U's copy is the
+  Corp's to see once set and the Runner's once turned over.
+- **Each scored card's worth now** (`CorpClientView::scored_worth`,
+  `RunnerClientView::scored_worth`, beside `scored_agendas`): the score
+  list read printed points, so a stolen Let Them Dream said 2 under a
+  total that counted 1. The one core change; derived, never read back.
+- **What left the game** (`hud::removed_from_game`): the Runner's pile,
+  new with Vantage Point, and the Corp's, which no client had drawn — under
+  the heap's and Archives' sheets on the desktop, on the identity line and
+  in the card picker's zones in the terminal.
+- **What is in effect for a while** (`hud::in_effect`): Aircheck's locked
+  credit pool, Caveat Emptor's and Aggressive Trendsetting's next-turn
+  clicks, a score lock, Tread Lightly's rez tax, Shred's hold — under the
+  desktop's prompt, and under the terminal's servers. A strength is left
+  out; its number is already on the card.
+- **An agenda installed faceup says so** — "faceup" on its tile and in
+  both clients' lists, where the terminal had called it "rezzed" and a
+  Corp saw a faceup agenda the same as a facedown one.
+- **A choice about a card just looked at shows that card**
+  (`Prompt::card_after`): Méliès U's "You may trash that card" showed the
+  identity asking, not the top of R&D, which only the looker's log names.
+  The desktop's pop-up; the terminal already has the log line above it.
+
+**Startup is whole.** Its three packs are built, so every Startup card and
+identity is playable in both deck builders, which
+`every_startup_card_is_playable` now holds: a card a re-sync adds to the
+pool fails it until it is built. No published Startup list is shipped as a
+sample deck yet — the stages were played through Sweep decks — so a person
+reaches Vantage Point's cards by building a deck.
+
+### 2. Rebellion Without Rehearsal — 65 cards (C 7 / V 43 / M 15)
+
+#### Stage 1 — the first nine cards (27 September 2026)
+
+`feat/rwr-stage-1-first-cards`: Friend of a Friend, Coalescence, Pressure
+Spike, Valentina Ferreira Carvalho, Corporate Hospitality, Boto,
+Capacitor, Seraph, The Powers That Be. **No new `Effect` or `Trigger`.**
+Rebellion Without Rehearsal 9 of 65; `RWR_UNIMPLEMENTED` 65 → 56. Eye for
+an Eye went to Stage 3 (above).
+
+- **Two use words, each an `EffectRequirement`.** `OncePerRun`, Pressure
+  Spike's "Use this ability only once per run": `OncePerTurn`'s use
+  limit, keyed the same way (`OncePerTurnKey`), spent where it is used,
+  and held by the run (`RunState::once_per_run_used`), so a new run is
+  the reset and there is no clearing site to forget. `PublicRunState`
+  carries it — a sample that did not would offer the +9 twice — masked
+  as the Corp's once-per-turn set is. `DuringYourTurn`, Coalescence's
+  "only during your turn" and Valentina's "when you install this resource
+  during your turn": the asking side is the active player
+  (`listeners::active_side`). `validate` holds `OncePerRun` to the two
+  rules `OncePerTurn` has (never on a continuous effect; one per card).
+- **A tag removal says who removed it.** `TagRemoved`, `TagsRemoved` and
+  `TagsCleared` carry `by` (CR 1.14.3a: either player removes the
+  Runner's tags to pay a cost): the text's controller, a cost's payer, the
+  Runner's basic action. `OnTagRemoved`'s moment is the remover's, and
+  `EventFilter::Whose` is now allowed on it (`Trigger::states_whose`, the
+  triggers whose moment names a player), so Valentina's "whenever **you**
+  remove 1 or more tags" is `when: Whose(Runner)` and does not hear
+  Synapse Global's "[click], remove 1 tag" — which the log had called
+  "Runner removed 1 tag(s)" and now calls the Corp's.
+- **An operation resolving is not in its own Archives** (CR 8.6.7a). The
+  engine files an operation into Archives as it is played, before its
+  text resolves (Rules Conformance F6, recorded as changing nothing), and
+  Corporate Hospitality's "Add 1 card from Archives to HQ" offered the
+  Corporate Hospitality resolving it — a free replay each time. Its own
+  copy is never eligible now (`pending_choice::resolving_operation_in`,
+  asked by `eligible_positions`, which takes the choosing card); the
+  filing itself stays early, because a resolution parked across actions
+  has no marked end.
+- **The rest composes.** Boto and Capacitor are `Strength` kinds with a
+  `while` (threat 4; the Runner tagged); Boto's "you may trash 1 card
+  from HQ to end the run" is the Corp's `OfferPaidChoice` over
+  `Cost::Trash`, as Anoetic Void's is; Seraph's encounter is the
+  Runner's `OfferPaidChoice` over `AnyOf` two costs; The Powers That Be
+  is Ansel 1.0's install from HQ or Archives with `ignore_costs`.
+- **The clients.** One view field, `PublicRunState::once_per_run_used`,
+  is the engine's in `view_ledger` (a use limit the action list and
+  `board::breaks` honour, as `once_per_turn_used` is). The log words a
+  tag removal by its remover. The requirements reach the inspector's
+  "Engine reads it as" through `prose`'s generic rendering ("once per
+  run", "during your turn"). The paid choices and the install prompt are
+  kinds both clients already draw. No ledger row opened.
+- **Decks** — swaps into Eternal-only Sweep decks, so no Startup pin
+  moves: two Friend of a Friend for two Sure Gamble and two Valentina
+  added in Pay As You Go; two Coalescence and two Pressure Spike for three
+  Telework Contract and a Creative Commission in Safety Net; two Corporate
+  Hospitality for two Government Subsidy in Retirement Package; two
+  Capacitor and two Seraph for three Ping and the Whitespace, two The
+  Powers That Be for two Hedge Fund, in Paid Content; two Boto for two
+  Enigma in Honor Roll. The set's identities (Sebastião, Nuvem SA,
+  Thunderbolt Armaments) get Sweep decks of their own in their stages.
+- **Real play**, 96 games a pairing (seed 2). Random seats use all nine:
+  Friend of a Friend activated 25 times, Valentina's tag trigger 7 and
+  its threat-3 install 14, Coalescence 251 counters spent, Corporate
+  Hospitality played 95 times, The Powers That Be installing off 83
+  scores in one heuristic pairing. **The heuristic Runner never installs
+  Friend of a Friend, Valentina or Coalescence** — the Phase 5 debt of
+  earlier stages (resources and economy programs it does not value).
+- **Fidelity limits:** Pressure Spike's pumps last the encounter, as
+  every breaker's does here. Corporate Hospitality excludes only the copy
+  resolving, found as the last faceup copy of it in Archives.
+- **DSL ratio (`pool_status.py`): 21 of 76 `Effect` variants single-use,
+  2 unused**, over 259 card files — unchanged.
+- **Measured.** Both sweeps at 256 seeds are green. Against
+  `origin/main`, `coverage_identical.py` has the random seatings
+  **identical**, by view and by index; the heuristic ones moved (Corp wins
+  81 → 82 of 192, two deck-outs gone). Checked, not inferred: a ref with
+  the engine changes and without the new cards, their tests and the deck
+  swaps is **identical in all four shapes**, so the movement is
+  `determinize` sampling five new Corp cards, and the tag, use-limit and
+  resolving-operation changes move no game of the pool.
+
+#### Stage 2a — tags and a cost on the Corp's basic trash action (27 September 2026)
+
+`feat/rwr-stage-2a-tags-and-basic-trash-cost`: Sebastião Souza Pessoa:
+Activist Organizer, Manuel Lattes de Moura, Privileged Access, Amanuensis,
+Amelia Earhart, Juli Moreira Lee, Arruaceiras Crew. Rebellion Without
+Rehearsal 16 of 65; `RWR_UNIMPLEMENTED` 56 → 49. Stage 2 was split when it
+was taken: purge and bypass (Malandragem, Physarum Entangler, Heliamphora)
+are Stage 2b.
+
+- **An additional cost on the Corp's basic trash action**
+  (`ContinuousKind::BasicTrashCost`, CR 5.2.6g, 1.16.10). Sebastião's "to
+  trash a **connection** resource with the basic action, the Corp must
+  trash 1 card from HQ" is about a resource being `Scope::Trashing`, and
+  Manuel's "to trash **this** resource" is `Scope::This` under a threat 3
+  `while`. `ScoreCost`'s shape: a `Cost`, asked of the install being
+  trashed (`continuous::basic_trash_costs`) and paid with the action's
+  [click] and 2[credit], all of it or none (1.16.10b), so a Corp with an
+  empty HQ is not offered the trash — the Corp declines by not taking the
+  action (1.16.10a). The card from HQ is asked by the payment's replay, one
+  card at a time (`payment::could_ask` admits `TrashResource`). Both
+  clients' explanation of the action now says a Runner card may add to its
+  price; the question is the card-payment kind they already draw.
+- **"If you had no tags" is on the event.** `TagsGiven` carries `had`, the
+  tags before (both sites that give tags: the prevention door and
+  `Cost::TakeTags`), read by `EffectRequirement::HadNoTags` the way
+  `WasFirstAdvancementThisCard` reads `CardAdvanced`: by the time
+  Sebastião's trigger resolves the state holds the tags just taken.
+- **The use of an action is a moment** (`Trigger::OnActionTaken`, CR
+  9.5.7b): `AbilityActivated` carries the copy used and whether the ability
+  is an action (its cost begins with [click], 9.5.2a), because the listener
+  scan reads no registry, and it is heard with the cost's events after the
+  effect, the order every cost's events already had. Juli Moreira Lee's
+  "the first time each turn you take an action on an installed resource"
+  is that trigger with `when: InstalledCard(CardType(Resource))` and
+  `first_each_turn`. "When your turn ends" (Amanuensis) is
+  `OnDiscardPhaseEnd`, which the rules make the same step (CR 5.7.2d).
+- **Two `Amount`s, one `Effect` fewer.** `CardsAccessedLastRun` is Amelia
+  Earhart's "if you accessed 3 or more cards during that run" under
+  `AmountAtLeast`, and took over `Effect::GainCreditsPerCardAccessedThisRun`
+  — Zahya Sadeghi is `GainCreditsAmount(Runner, CardsAccessedLastRun)` now.
+  `EncounteredIceStrength` (never below 0) is Arruaceiras Crew's "if its
+  strength is 0 or less", `Not(AmountAtLeast(.., 1))`, with
+  `CardTarget::EncounteredIce` to trash it by the run's handle. The
+  heap install took a `Discount` (`InstallRunnerCardFromHeap(Discount)`,
+  Scrounge and Magdalene rewritten to `Credits(0)`) for Privileged Access's
+  "paying 2[credit] less", as `PlayOperation { from }` took Plutus's zone.
+- **The rest composes.** Manuel's "whenever you breach HQ or R&D while you
+  are tagged" is Docklands Pass's `OnSuccessfulRun` per server;
+  Privileged Access is Account Siphon's replacement of the breach;
+  Amanuensis and Amelia are `OfferPaidChoice`s over counter costs.
+- **Deck** — **Grassroots** (`DeckCategory::Sweep`, Eternal and Casual):
+  Sebastião on an Anarch rig of connections (Friend of a Friend, Manuel,
+  Nurse Hạnh, Rent Rioters, Arruaceiras Crew, Hackerspace to host them),
+  Privileged Access and Friend of a Friend to take the first tag, and
+  Amanuensis; Juli Moreira Lee and Amelia Earhart on influence.
+- **Real play**, 96 games of Fine Print against Grassroots (seed 2). Random
+  seats: Sebastião's install trigger 119 times, Privileged Access played
+  29, Manuel's extra access 25, Juli's click 6, Amanuensis's counter 49 and
+  its draw 3, Arruaceiras Crew used 30 times; the Corp took the basic trash
+  action 57 times and trashed from HQ 47 times, which only the two new
+  costs do in these decks. **Amelia Earhart was installed 10 times and
+  never counted a run** — three accesses on one run of HQ or R&D is rare
+  for a random Runner — so her two triggers are reached by the per-card
+  tests alone. The heuristic Runner installs none of the deck's
+  resources (Amanuensis 23 times, Privileged Access played 6), and the
+  heuristic Corp never trashes one: the Phase 5 debt again.
+- **Fidelity limits:** Privileged Access's two installs are conditioned on
+  the Runner being tagged after the tag, so a Decoy that prevents the
+  event's tag on a Runner tagged earlier in the run still lets them
+  happen; and the two "when you take a tag with this event" abilities
+  resolve in printed order rather than the Runner's. Manuel's extra access
+  is heard at the run's success, as every "when you breach" in the pool
+  is, so a run Flagship keeps from being declared successful gets none.
+- **DSL ratio (`pool_status.py`): 19 of 75 `Effect` variants single-use,
+  2 unused**, over 266 card files (21 of 76 over 259 before).
+- **Measured.** Both sweeps at 256 seeds are green. Against
+  `origin/main`, `coverage_identical.py` has the random seatings playing
+  the same games by view and by index: the one difference is the effect
+  Zahya's gain is counted under (`GainCreditsAmount` 316 → 409,
+  `GainCreditsPerCardAccessedThisRun` 93 → 0). The heuristic ones moved
+  (Corp wins 67 → 76 of 192, one Runner deck-out). Checked, not inferred:
+  a ref with the engine changes and without the seven cards and their deck
+  is **the same games in all four shapes**, the rename apart, so the
+  movement is `determinize` sampling seven new Runner cards, and the trash
+  cost, `had`, the dispatched use of an ability and the heap discount move
+  no game of the pool.
+
+#### Stage 2b — purge and bypass (27 September 2026)
+
+`feat/rwr-stage-2b-purge-and-bypass`: Malandragem, Physarum Entangler.
+Rebellion Without Rehearsal 18 of 65; `RWR_UNIMPLEMENTED` 49 → 47.
+Heliamphora went to Stage 3 (above).
+
+- **A purge is a moment** (`Trigger::OnVirusCountersPurged`, CR 10.1.2):
+  `VirusCountersPurged` was recorded and never dispatched; it is now, from
+  the basic action and from Flyswatter's `Effect::PurgeVirusCounters`,
+  heard by every active card whether or not it hosts counters. Physarum
+  Entangler's "when the Corp purges virus counters, trash this program".
+- **A credit cost reckoned as it is paid** (`Cost::CreditsAmount`, CR
+  1.16.2b), over `Amount::EncounteredIceSubroutines`, printed and gained:
+  Physarum's "pay 1[credit] for each subroutine it has", in an
+  `OfferPaidChoice` gated on its host being encountered and not a barrier
+  (`EncounteringHostIce`, `Not(Encountering(Barrier))`). `CreditsFrom`
+  limits where the credits come from; this one takes them from anywhere.
+- **Removal from the game out of the rig.** `Cost::RemoveSelfFromGame`
+  was Spin Doctor's and read only Corp installs; it now removes a rig card
+  too (what it hosted is trashed with it), which is Malandragem's threat 4
+  "remove this program from the game to bypass it". Its "when it is empty,
+  remove it from the game" is `Effect::RemoveFromGame(ThisCard)`, the same
+  move made by the card's text, after the counter its bypass spends.
+  Its strength-3 gate is `Not(AmountAtLeast(EncounteredIceStrength, 4))`.
+- **A card's second trigger on one moment waits for the first** (found by
+  Malandragem's tests). A card's `TriggeredEffect`s for one moment fire in
+  one loop (`ability::fire_card_triggers`), and when the first parked a
+  decision the second parked its own over it: at threat 4 the counter
+  offer was never asked. The rest now wait on the queue behind the parked
+  one, as the rest of a `Sequence` does, counted by
+  `DeferredTrigger::fired`; a bypass by the first still stands the second
+  down. No card before Malandragem had two that could both fire on one
+  moment: Rotary's differ by server, Dewi Subrotoputri's by side and
+  Méliès U's by which copy is up.
+- **Deck** — Grassroots: Malandragem and two Physarum Entangler for the
+  Cleaver, the Shred and a Fermenter (influence 15 of 15).
+- **Real play**, 96 games of Fine Print against Grassroots (seed 2). Random
+  seats: Malandragem's encounter triggers 15 times, Physarum's 12, and 12
+  of the Corp's 88 purges trashed a Physarum; 7 pieces of ice bypassed.
+  The heuristic Runner installs neither and the heuristic Corp never
+  purges: the Phase 5 debt again.
+- **Fidelity limits:** a declined Malandragem bypass has spent its "once
+  per turn", which the rules say it has not (CR 9.3.6g) — the engine
+  spends a trigger's use limit when it fires, as it does Zahya's; recorded
+  in the conformance ledger's 9.3 row. Its two offers are asked in
+  printed order, not the Runner's.
+- **DSL ratio (`pool_status.py`): 19 of 76 `Effect` variants single-use,
+  2 unused**, over 268 card files (19 of 75 over 266 before):
+  `RemoveFromGame` is the one new variant, single-use.
+- **Measured.** Both sweeps at 256 seeds are green. Against
+  `origin/main`, `coverage_identical.py` has the random seatings
+  **identical**, by view and by index; the heuristic ones moved (Corp
+  agenda wins 76 → 67 of 192). Checked, not inferred: a ref with the
+  engine changes — the purge dispatched, the new cost and effect, the
+  queued second trigger — and without the two cards and the deck swap is
+  **identical in all four shapes**, so the movement is `determinize`
+  sampling two new Runner cards.
+
+#### Stage 3a — the small words (27 September 2026)
+
+`feat/rwr-stage-3a-small-words`: Boi-tatá, Meeting of Minds, “Pretty”
+Mary da Silva, Ashen Epilogue. **No new `Effect`: one generalised in
+place.** Rebellion Without Rehearsal 22 of 65; `RWR_UNIMPLEMENTED`
+47 → 43. Stage 3 was split (above): the access abilities are 3b, the run
+words and Muse 3c.
+
+- **A trash says whether the card was installed** (`CardTrashed::
+  installed`), and the turn log counts it: every `OnCardTrashed` moment
+  was counted as a card out of a hand, so "installed" could not be asked.
+  And a **Runner card's trash is counted by its type** — every Runner card
+  trashed goes faceup to the heap, whoever trashed it and from wherever —
+  while a Corp card's stays `Unseen` (`turn_log::seen_anyway`, beside
+  `concealed`). Boi-tatá's "if you trashed any of your installed cards
+  this turn" is then a turn-log count, `TimesThisTurnWhen { OnCardTrashed,
+  InstalledCard(Program, Hardware, Resource) }` under each ability's
+  `cost_discount_if`, as Marjanah's is: the moment is the trasher's, so a
+  Corp trashing the Runner's resource is not counted, and a card out of
+  the grip is not installed.
+- **A shuffle names its zones** (`Effect::ShuffleIntoDeck(zones)`): Read-
+  Write Share's `ShuffleHostedIntoDeck` took the zones when Ashen
+  Epilogue's "shuffle your grip and heap into your stack" needed two more
+  (`HostedOnSource`, `OwnGrip`, `OwnHeap`; the Runner's only, as no Corp
+  card prints one). Its "remove the top 5 cards of your stack from the
+  game" is five `RemoveFromGame(TopOfStack)`, which 2b's effect now
+  resolves, and "remove this event" the existing `removed_after_play`.
+- **Two amounts.** `CardsSelected`, Meeting of Minds's "gain 1[credit]
+  for each card revealed this way", read in the reveal's `then` as
+  `RemainingAfterSelection` is; its two halves are `PromptChooseCards` over
+  the stack (shuffled, to the grip) and over the grip (revealed, kept),
+  one pair per subtype behind a `PresentChoice`. `AccessLimit(server)`,
+  Mary's "if you are allowed to access 2 or more cards in R&D during this
+  breach": 1 plus the additional accesses granted so far (CR 7.3.5a–b),
+  asked as her trigger resolves. Her "whenever you breach" is heard at the
+  run's success, as every "when you breach" in the pool is; a same-moment
+  bonus counts if the Runner orders it first.
+- **Decks** — Grassroots: two Boi-tatá for the Hantu (every self-trash in
+  the deck makes it cheaper) and an Ashen Epilogue for a Wildcat Strike.
+  Spare Parts: two Mary, which The Maker's Eye and Jailbreak give a second
+  R&D access to add to, and two Meeting of Minds for the connections, on
+  six influence — for a Vrcation, a Telework Contract, a Diesel and an
+  Overclock.
+- **Real play**, 96 games of Fine Print against each (seed 2). Random
+  seats: Boi-tatá installed 15 times and used 4, Ashen Epilogue played 8,
+  Mary installed 29 and triggered 5, Meeting of Minds played 6. The
+  heuristic Runner uses Boi-tatá (282 uses in 49 installs) and plays Ashen
+  Epilogue 4 times, and never installs Mary or plays Meeting of Minds.
+- **Fidelity limits:** Meeting of Minds offers every card of the subtype
+  in the grip and lets the Runner pick any number, a reveal of none
+  included, and the stack's search is by subtype over resources only, as
+  printed.
+- **DSL ratio (`pool_status.py`): 17 of 76 `Effect` variants single-use,
+  2 unused**, over 272 card files (19 of 76 over 268 before): the shuffle
+  and `RemoveFromGame` each have a second card.
+- **Measured.** Both sweeps at 256 seeds are green. Against
+  `origin/main`, `coverage_identical.py` has the random seatings
+  **identical**, by view and by index; the heuristic ones moved (Corp
+  agenda wins 67 → 71 of 192, flatlines 15 → 20). Checked, not inferred:
+  a ref with the engine changes — the trash's `installed`, a Runner card's
+  trash counted by type, the shuffle's zones, the two amounts — and
+  without the four cards and the deck swaps is **identical in all four
+  shapes**, so the movement is `determinize` sampling four new Runner
+  cards.
+
+#### Stage 3b — the run's event, and a card hosted as it is accessed (27 September 2026)
+
+`feat/rwr-stage-3b-access`: Eye for an Eye, Cupellation, Heliamphora.
+**No new `Effect`, `Trigger` or `PlayerAction`.** Rebellion Without
+Rehearsal 25 of 65; `RWR_UNIMPLEMENTED` 43 → 40.
+
+- **The event that started the run is active until it ends** (CR 8.6.5):
+  `rules::active` has a fourth place, `Place::PlayArea`, read off
+  `RunState::initiated_by` when it names an event (`run::run_event`). The
+  engine files a played event in the heap as it resolves, so the play area
+  is read from the run, and the event is inactive once its run is over.
+  Its triggers hear the run — Eye for an Eye's "If successful, take 1 tag
+  and access 1 additional card" is an `OnSuccessfulRun` on the event
+  itself, `requirement: ThisCardStartedTheRun` — and its paid abilities
+  are used through `InstallId::RUN_EVENT`, a third id beside the two
+  identities': its "Access → Trash 1 card from your grip: Trash the card
+  you are accessing" is an ordinary `ActivateAbility`, in the Runner's
+  second-to-last `ActionSpace` slot, so the space's size is unchanged
+  (a rig card loses its 31st slot, which no board reaches). Before this,
+  no event text could outlive its play except as a rider on the run.
+- **A card hosted as it is accessed** (`HostedCardOrigin::AccessedCard`,
+  `run::host_currently_accessed_card`): taken from wherever it is — HQ,
+  R&D, Archives, or a root through `uninstall::corp_install` — and hosted
+  faceup, not installed (CR 1.13.2a); the access ends with the move (CR
+  7.1.7), as a trash's does. Cupellation's "Access → 1[credit]" is an
+  access ability on the program, "limit 1 hosted card" its requirement
+  (`Not(AmountAtLeast(HostedCards, 1))`: no rule says more), and its
+  "whenever you breach HQ … pay 1[credit] and trash this program to access
+  2 additional cards" an `OfferPaidChoice` at the run's success.
+- **Heliamphora hears the access** (`OnAccessed`, when it is in Archives'
+  pile, not its root), and its "host it … instead" is a `PresentChoice`
+  resolved before the Runner's decision about the card. Its purge half is
+  2b's trigger with a new target, `CardTarget::RandomFromHq`: "they trash
+  2 cards from HQ at random", facedown, twice, then itself.
+- **The view carries the run's event** (`PublicRunState::initiated_by`,
+  public: only a Runner card starts a run). Both clients name the event on
+  its ability's button, a decision under the prompt since the event is not
+  on the board (`board::action_map`, `actions::install_label`), and
+  `determinize` copies it — so a sample now sees Sang Kancil's "if a run
+  event is active", which it read false in every sample before.
+- **Decks** — Grassroots: two Eye for an Eye for the Take a Dive and a
+  Heliamphora for a Charm Offensive. Spare Parts: two Cupellation, on four
+  more influence (10 of 15), for a Beta Build and a Sure Gamble.
+  Cupellation was meant for Borrowed Time, the Criminal Sweep deck, and
+  would have cost it Startup.
+- **Real play**, 96 games of Fine Print against each (seed 2). Random
+  seats: Eye for an Eye played 18 times, successful 5, its ability used
+  3; Heliamphora installed 13, heard 10 Archives accesses, trashed by 4
+  purges; Cupellation installed 36, hosted 22 cards, its HQ offer heard
+  17 times. The heuristic Runner plays and installs none of the three.
+- **Fidelity limits:** Heliamphora's "instead" is an access, then a
+  host: the card is accessed first, so a card's own "when accessed" in
+  Archives still resolves and it counts as accessed. A true interrupt
+  would park the access before it began, an access phase and a pair of
+  actions of its own. A declined host has spent its "once each time you
+  breach Archives" (the 9.3.6g deviation recorded in 2b). "The Corp
+  trashes" is the Runner's trash, as for Noise (conformance, 1.14).
+- **DSL ratio (`pool_status.py`): 17 of 76 `Effect` variants single-use,
+  2 unused**, over 275 card files (17 of 76 over 272 before).
+- **Measured.** Both sweeps at 256 seeds are green, the fog gate
+  included. Against `origin/main`, `coverage_identical.py` has the random
+  seatings **identical**, by view and by index; the heuristic ones moved
+  (Corp agenda wins 71 → 71 of 192, flatlines 20 → 9). Checked, not
+  inferred: a ref with the engine changes — the run's event active and
+  in the view, `RUN_EVENT`, the accessed card hosted, the random HQ
+  trash — and without the three cards and the deck swaps is **identical
+  in all four shapes**, so the movement is `determinize` sampling three
+  new Runner cards; the samples' Sang Kancil moved no game of the pool.
+
+#### Stage 3c — run words (27 September 2026)
+
+`feat/rwr-stage-3c-run-words`: Trick Shot, Window of Opportunity, Alarm
+Clock. **One new `Effect`.** Rebellion Without Rehearsal 28 of 65;
+`RWR_UNIMPLEMENTED` 40 → 37. Muse went to 3d (above): its install onto a
+host out of three zones is a stage's work of its own.
+
+- **A run begun as the Runner's turn begins** (CR 5.7.1d): Alarm Clock's
+  "When your turn begins, you may run HQ" starts a run in the
+  `StartOfTurn` phase, which the run's windows and steps do not know.
+  `run::start_run` runs it in the action phase's shape — the turn's start
+  window taken down, the phase `Action(Runner)` — and `run::end_run`, the
+  one door every run leaves by, puts the turn back when it ends: the
+  phase, and the window of 5.7.1e whose closing begins the action phase.
+  `RunState::begun_as_the_turn_began` says so, carried in the view
+  (`PublicRunState`) so a sample ends the run where the game does. The
+  basic action is still refused outside the action phase
+  (`engine::initiate_run`). "The first time you encounter a piece of ice
+  during that run, you may spend [click][click] to bypass it" is an
+  `OnEncounter` on the hardware, `ThisCardStartedTheRun` and `OncePerRun`
+  — spent at the first encounter whatever the answer, which is what "the
+  first time" means.
+- **Credits on the run's event** (`Effect::PlaceRunCredits`, new): the
+  run's pool (`RunState::bonus_run_credits`, Overclock's), placed by a
+  card's text rather than only as a run begins. Trick Shot places 4 as it
+  runs R&D and 2 more on success (an `OnSuccessfulRun` on the event, 3b's
+  play area), and its "When that run ends, you may run a remote server"
+  carries what is left into that run: `CompletedRun::run_credits_left`,
+  read as `Amount::RunCreditsLeftLastRun` by the second run's `on_start`.
+  The event is still in play (CR 8.6.5), so its credits are.
+- **Window of Opportunity composes.** The install is a `PresentChoice`
+  over a grip selection of programs and hardware; "When that run begins,
+  derez 1 piece of ice protecting that server" is the run's `on_start`, a
+  selection of rezzed ice in the attacked server whose `then` derezzes it
+  and sets the run's end rider as that ice: the Corp's "may rez the ice
+  derezzed this way, ignoring all costs" is a `PresentChoice` resolving as
+  the ice, so `RezInstalled`'s placeholder is the one derezzed.
+- **Deck** — Spare Parts: two Trick Shot, an Alarm Clock and a Window of
+  Opportunity, on thirteen influence of fifteen, for a Meeting of Minds, a
+  Touchstone, a T400 Memory Diamond and a Diesel. None fits Borrowed Time,
+  which would lose Startup.
+- **Real play**, 96 games of Fine Print against Spare Parts (seed 2).
+  Random seats: Alarm Clock installed 10 times, its turn-start offer heard
+  43 times and its bypass offer 4; Trick Shot played 21 times, successful
+  12; Window of Opportunity played 11, its derez asked 3 times. The
+  heuristic Runner uses none of the three.
+- **Fidelity limits:** Alarm Clock's run is asked for among the Runner's
+  other "when your turn begins" abilities and resolved when it is chosen,
+  so an ability ordered after it resolves after the run, as the rules have
+  it; the Corp's rez window of 5.7.1e comes once, after the run. The
+  heuristic's samples of a turn-start run see the run as the action
+  phase's.
+- **DSL ratio (`pool_status.py`): 18 of 77 `Effect` variants single-use,
+  2 unused**, over 278 card files (17 of 76 over 275 before):
+  `PlaceRunCredits` is the new one, Trick Shot's alone, its reason on the
+  variant.
+- **Measured.** Both sweeps at 256 seeds are green, the fog gate
+  included. Against `origin/main`, `coverage_identical.py` has the random
+  seatings **identical**, by view and by index; the heuristic ones moved
+  (Corp agenda wins 71 → 67 of 192, flatlines 9 → 13). Checked, not
+  inferred: a ref with the engine changes — the run begun at the turn's
+  start and its return, the placed and carried run credits — and without
+  the three cards and the deck swap is **identical in all four shapes**,
+  so the movement is `determinize` sampling three new Runner cards.
+
+#### Stage 3d — a search that installs onto a host (27 September 2026)
+
+`feat/rwr-stage-3d-muse`: Muse. **One new `Effect`.** Rebellion Without
+Rehearsal 29 of 65; `RWR_UNIMPLEMENTED` 37 → 36. **Stage 3 is complete.**
+
+- **A text install onto a host** (`Effect::InstallProgramOnHost`, new):
+  Muse's "search your stack, heap, or grip for 1 non-daemon program … If
+  that program is a trojan, install it on a piece of ice. Otherwise,
+  install it on this program." The search is a `PresentChoice` of the
+  three zones, each a `PromptChooseCards` (the stack's shuffled after),
+  whose `then` is the install: it resolves as the program found, with
+  Muse the acting install. A program goes onto Muse
+  (`InstalledRunnerCard::hosted_on_rig_card`, as Hackerspace hosts a
+  resource, and trashed with it); a Trojan's ice is the Runner's to
+  choose, so the effect parks a selection of ice whose `then` is itself
+  with the program written in — the State Hygiene Rule's third case — and
+  installs on the ice it resolves as. `engine::install_program_onto` is
+  the text install's steps with a host (the memory limit's trash, the
+  price, `ProgramInstalled`); `RunnerCardSource` gained the stack.
+  Nothing happens when the program cannot be installed that way, as for
+  every text install.
+- **Deck** — Spare Parts: two Muse and a Stowaway for it to find and put
+  on ice, in faction, for a DZMZ Optimizer, a Principia and a Mayfly.
+- **Real play**, 96 games of Fine Print against Spare Parts (seed 2).
+  Random seats install Muse 24 times, its search asked 19; the heuristic
+  Runner installs none.
+- **Fidelity limits:** the search offers the programs of one zone at a
+  time, the zone chosen first, where the rules have the Runner search
+  all three. A program hosted on Muse takes memory as any program does —
+  Muse prints nothing otherwise.
+- **DSL ratio (`pool_status.py`): 19 of 78 `Effect` variants single-use,
+  2 unused**, over 279 card files (18 of 77 over 278 before):
+  `InstallProgramOnHost` is the new one, its reason on the variant.
+- **Measured.** Both sweeps at 256 seeds are green, the fog gate
+  included. Against 3c, `coverage_identical.py` has the random seatings
+  **identical**, by view and by index; the heuristic ones moved (Corp
+  agenda wins 67 → 64 of 192, flatlines 13 → 17). Checked, not inferred:
+  a ref with the host install and the stack source and without Muse and
+  the deck swap is **identical in all four shapes**, so the movement is
+  `determinize` sampling Muse.
+
+#### Stage 4a — advancement counters placed and removed (27 September 2026)
+
+`feat/rwr-stage-4a-advancement-words`: Charlotte Caçador, Cohort Guidance
+Program, Logjam, Business As Usual, Kingmaking. **One new `Effect`.**
+Rebellion Without Rehearsal 34 of 65; `RWR_UNIMPLEMENTED` 36 → 31. Stage 4
+was split: Isaac Liberdade and Hearts and Minds are 4b, and The Holo Man,
+Stoke the Embers and Janaína “JK” Dumont Kindelán are 4c, all three needing
+where an install came from ("installed any cards from HQ this turn",
+"install this agenda from anywhere except HQ").
+
+- **A card in Archives turned faceup by a card's text**
+  (`Effect::TurnFaceupInArchives`, new): Cohort Guidance Program's "Turn 1
+  facedown card in Archives faceup", the `then` of a selection of
+  `CardFilter::Facedown` cards there, heard as the breach's turning over is
+  (`ArchivesTurnedFaceup`, one card). "Trash 1 card from HQ. If you do" is
+  a selection whose `destination` is Archives — facedown, as a card out of
+  HQ lands — and whose `then` is the gain and the draw, so it resolves only
+  when a card went; "place 1 advancement counter on an installed card" is
+  any installed card, advanceable or not (CR 1.18.2).
+- **An agenda added to the score area** (CR 1.17.3e): Kingmaking's "You may
+  add 1 agenda worth 1 or less agenda points from HQ to your score area" is
+  a selection whose `destination` is the Corp's score area, which no
+  selection could name before (`ability::add_agenda_to_score_area`). Worth
+  what it prints, never scored (`ScoredAgenda::scored_on_turn` 0), and
+  announced as `GameEvent::AgendaAddedToScoreArea`, an occurrence of
+  nothing; the log and the end-of-game table count it. `CardFilter::
+  AgendaPointsAtMost` is the "worth 1 or less"; "draw up to 3" is a
+  `ChooseNumber`.
+- **"Remove all" is an amount:** `Effect::RemoveCounters` takes an `Amount`
+  (ten card files rewritten to `Fixed`), so Business As Usual's "Remove all
+  virus counters from 1 installed card" is `RemoveCounters(HostedCounters)`
+  on a selection of `CardFilter::HostsCounters(Virus)` — a card with none
+  is never offered.
+- **Business As Usual composes.** "Place 1 advancement counter on each of up
+  to 2 installed cards you can advance" is a selection of one whose `then`
+  places a counter and selects a second from the rest (`NotSourceCard`,
+  the first being the install the second prompt acts as); each placement
+  waits on a card having been chosen (`AmountAtLeast(CardsSelected, 1)`),
+  because a `then` resolves with nothing chosen too, as the parking card.
+  "Threat 3 → You may also resolve the other mode" is a `ResolveSomeOf` of
+  two over the two modes and a decline.
+- **Logjam** is Ice Wall's words and a new amount, `CardTypesAmongFaceupIn
+  Archives` (types, so ice is one type whatever its subtype, CR 2.15.2):
+  "place 1 advancement counter on it plus 1 … for each card type" is two
+  placements. **Charlotte Caçador** composes: "you may remove 1 hosted
+  advancement counter to gain 4" is a nested cost (CR 1.16.11a), an
+  `OfferPaidChoice` of `Cost::RemoveAdvancementCounters`, and "[trash],
+  hosted advancement counter:" is the two costs, the counter first.
+- **Client:** nothing new reaches the view, so `view_ledger` is unmoved;
+  both clients' logs say "added Superconducting Hub to the Corp's score
+  area for 1 point(s)" (`actions`), the end-of-game table counts it
+  (`tally`), and `prose` has words for the new effect, amount and filters.
+- **Decks** — Honor Roll: two Cohort Guidance Program and a Charlotte
+  Caçador for two Regolith Mining License and an Unleash (two PAD Campaign
+  out would have made it Standard-legal, which its pin refuses). Hostile
+  Bid: two Logjam for two Palisade, two Business As Usual for two Petty
+  Cash. Paid Content: two Kingmaking for two Orbital Superiority, with the
+  deck's Superconducting Hub the agenda it adds.
+- **Real play**, 96 games a pairing (seed 2), each deck against a Runner
+  Sweep deck. Honor Roll against Grassroots: random seats install Charlotte
+  Caçador 19 times and trash it for credits 10, and Cohort Guidance
+  Program's turn start is heard 76 times; the heuristic Corp installs both
+  (30 and 66) and hears them 271 and 563 times, and never trashes Charlotte
+  for its 3. Hostile Bid against Pay as You Go: random seats play Business
+  As Usual 87 times; the heuristic Corp plays none, and rezzes Logjam 43
+  times, whose subroutines fire 192. Paid Content against Safety Net:
+  Kingmaking scored 46 times by the heuristic Corp and heard 34 — the other
+  twelve were the game's last points, which end it before the trigger
+  resolves.
+- **Fidelity limits:** Logjam's counters are placed in two steps, heard as
+  two placements by a card that listens (none does). Business As Usual's
+  virus counters are the Runner's cards': no Corp card in the pool hosts
+  one.
+- **DSL ratio (`pool_status.py`): 18 of 79 `Effect` variants single-use,
+  2 unused**, over 284 card files (19 of 78 over 279 before):
+  `TurnFaceupInArchives` is the new one, its reason on the variant, and
+  `DrawCardsAmount` (Kingmaking) and `ResolveSomeOf` (Business As Usual)
+  each found a second card.
+- **Measured.** Both sweeps at 256 seeds are green, the fog gate
+  included. Against `origin/main`, `coverage_identical.py` has the random
+  seatings **identical**, by view and by index; the heuristic ones moved
+  (Corp agenda wins 64 → 63 of 192, flatlines 17 → 16, a Corp deck-out
+  0 → 1). Checked, not inferred: a ref with the engine changes — the
+  faceup turn, the score-area destination, `RemoveCounters` by amount and
+  its ten card files, the three filters and the amount — and without the
+  five cards and the deck swaps is **identical in all four shapes**, so the
+  movement is `determinize` sampling five new Corp cards.
+
+#### Stage 4b — an upgrade that moves, and counters that move (27 September 2026)
+
+`feat/rwr-stage-4b-moving-upgrades`: Isaac Liberdade, Hearts and Minds.
+**One new `Effect` and one new `Trigger`.** Rebellion Without Rehearsal 36
+of 65; `RWR_UNIMPLEMENTED` 31 → 29.
+
+- **A move is heard** (`Trigger::OnCardMoved`, new): Isaac Liberdade's
+  "Whenever this upgrade moves to the root of a server" is
+  `GameEvent::CardMoved`, which `Effect::MoveThisCardToRoot` now
+  dispatches (it was recorded and heard by nothing). About the card that
+  moved, printed only about the card itself, and counted by the turn log
+  as unseen, since a root card moves with its rez state. "When your turn
+  ends, you may move this upgrade to the root of another server" is an
+  `OnDiscardPhaseEnd` offer of Lotus Haze's `PromptMoveThisCardToAnotherRoot`.
+- **A standing effect on the ice of one server**
+  (`Scope::IceProtectingThisServer`, new): "Each advanced piece of ice
+  protecting this server gets +2 strength". Its filter is read off the
+  definition and off the copy (`pending_choice::copy_matches`), so
+  `CardFilter::Advanced` is asked of the ice whose strength is read.
+  `Advanced` and `Unadvanced` are words of their own because `Not` is
+  decided off the definition alone; `InThisServer` (the root and the ice)
+  is written over as `InServer` where the acting card is, as
+  `InRootOfThisServer` is — "a piece of ice protecting that server that
+  has no advancement counters" is `All([Ice, InThisServer, Unadvanced])`.
+- **A counter moved** (`Effect::RemoveAdvancementCounters`, new): Hearts and
+  Minds' "move 1 advancement counter from an installed card to an
+  installed card you can advance" is a selection of an `Advanced` card
+  whose `then` removes one and selects the card it goes to — moving is not
+  advancing (CR 1.18.2). The removal was only ever a cost, paid by the
+  card that prints it. The offer is made only while a card you can advance
+  is installed (`ZoneHasAtLeast` with a filter), so the counter always has
+  somewhere to go; "If this server is not protected by ice, you may also
+  place 1" reads `IceProtectingThisServer`.
+- **Client:** nothing new reaches the view; `prose` has words for the
+  scope, the effect and the filters.
+- **Deck** — Hostile Bid: two Hearts and Minds for a PAD Campaign and a
+  Government Subsidy, and an Isaac Liberdade for a Whitespace.
+- **Real play**, 96 games of Hostile Bid against Pay as You Go (seed 2).
+  Random seats: Isaac Liberdade installed 47 times and rezzed 20, its
+  turn-end move offered 99 times and taken 40, each move heard; Hearts and
+  Minds' turn start heard 176 times. The heuristic Corp installs Isaac 44
+  times and never rezzes it; Hearts and Minds it rezzes 86 times and hears
+  924.
+- **Fidelity limits:** Hearts and Minds' source is chosen before its
+  destination, so a card you can advance may be picked as both — a move
+  onto itself, which changes nothing.
+- **DSL ratio (`pool_status.py`): 17 of 80 `Effect` variants single-use,
+  2 unused**, over 286 card files (18 of 79 over 284 before):
+  `PromptMoveThisCardToAnotherRoot` found its second card (Isaac
+  Liberdade). `RemoveAdvancementCounters` is Hearts and Minds' alone as an
+  effect; the script reads variant names off card-file keys and counts the
+  cost of the same name (Charlotte Caçador, Sacrifice Zone Expansion).
+- **Measured.** Both sweeps at 256 seeds are green, the fog gate
+  included. Against `origin/main` (4a), `coverage_identical.py` has the
+  random seatings **identical**, by view and by index; the heuristic ones
+  moved (Corp agenda wins 63 → 64 of 192, flatlines 16 → 17). Checked, not
+  inferred: a ref with the engine changes — the move dispatched and heard,
+  the scope, the effect, the four filters — and without the two cards and
+  the deck swap is **identical in all four shapes**, so the movement is
+  `determinize` sampling two new Corp cards.
+
+#### Stage 4c — where an install came from, and a card back to HQ (27 September 2026)
+
+`feat/rwr-stage-4c-install-origin`: The Holo Man, Stoke the Embers,
+Janaína “JK” Dumont Kindelán. **No new `Effect` or `Trigger`.** Rebellion
+Without Rehearsal 39 of 65; `RWR_UNIMPLEMENTED` 29 → 26. **Stage 4 is
+complete.**
+
+- **An install says where the card came from**
+  (`GameEvent::CardInstalled::from_hq`): set by `engine::place_corp_card`'s
+  callers — the basic action, a text install out of HQ, Archives or R&D,
+  Word on the Street's agenda out of the Runner's score area — and public,
+  as a card leaving HQ is. Two words read it. Stoke the Embers' "When you
+  install this agenda from anywhere except HQ" is a `when`,
+  `EventFilter::InstalledFromHq(false)`, read off the moment
+  (`listeners::Moment::from_hq`, as `ice` is) and refused by `validate` on
+  anything but a Corp card's `OnInstall`. The Holo Man's "If you have not
+  installed any cards from HQ this turn" is `Amount::
+  CardsInstalledFromHqThisTurn`, a sum the turn log keeps beside
+  `agenda_points_scored` (the Turn History Rule: where a card came from is
+  no `Class`, and every Corp install from HQ is facedown, so its cells are
+  unseen anyway). The view carries it with the log.
+- **Two costs** (`Cost::RevealSelf`, `Cost::AddSelfToHq`): Stoke the Embers'
+  "you may reveal it. If you do, …" is a nested cost (CR 1.16.11a), an
+  `OfferPaidChoice` of revealing the facedown agenda — which stays facedown
+  (CR 1.21.3a) and is remembered by the Runner as an accessed card is
+  (`seen_by_runner`). JK's "[click], add this asset to HQ:" goes through
+  `rules::uninstall`, announced as `GameEvent::CardAddedToHand` (the card
+  named only if it was faceup), and her "Take all credits from this asset"
+  is `GainCreditsAmount(HostedCounters)`, read off the counters she had as
+  she left (`ResolutionContext::last_known`). "You may install 1 card from
+  HQ" waits on a card having been chosen, or the `then` would install JK
+  herself, now in HQ, as the parking card.
+- **The Holo Man** composes otherwise: "move this upgrade to the root of
+  another server" is 4b's offer as the turn begins, and "1 card in the
+  root of or protecting this server" is `CardFilter::InThisServer`.
+- **Client:** nothing new reaches the view; both clients' logs say which
+  card went back to HQ (`actions`), and `prose` has words for the costs,
+  the amount and the filter.
+- **Deck** — Paid Content: two Stoke the Embers for the last Orbital
+  Superiority and the Offworld Office, for The Powers That Be to install
+  out of Archives; The Holo Man for the Hansei Review and JK for the Hedge
+  Fund.
+- **Real play**, 96 games of Paid Content against Safety Net (seed 2).
+  Random seats: The Holo Man installed 50 times, its turn-start move heard
+  129 and its ability used 4; JK installed 58 times and returned to HQ 19;
+  Stoke the Embers installed 90 times, every one from HQ. The heuristic
+  Corp scores Stoke 43 times and returns JK 63, and never uses The Holo
+  Man's ability. **Stoke's "from anywhere except HQ" was not reached in
+  either seating**: The Powers That Be must find it in Archives as an
+  agenda is scored, and the card test is its reach so far.
+- **Fidelity limits:** none found beyond the pool's: no card but JK returns
+  an install to HQ, and no card but Stoke the Embers is revealed where it
+  lies.
+- **DSL ratio (`pool_status.py`): 17 of 80 `Effect` variants single-use,
+  2 unused**, over 289 card files (17 of 80 over 286 before).
+- **Measured.** Both sweeps at 256 seeds are green, the fog gate
+  included — after the gate learned two things the log may name to a
+  seat: a faceup card going back to HQ (`CardAddedToHand { faceup: true }`,
+  seed 60, JK), and a card the Runner accessed, once a view taken after
+  the game ended mid access no longer holds the access (seed 176, Esca's
+  net damage flatlining the Runner in HQ — masking shows every access to
+  the Runner by design; the gate had no rule for the end of a game there,
+  and a new card's sampling reached it). Against `origin/main` (4b),
+  `coverage_identical.py` has the random seatings **identical**, by view
+  and by index; the heuristic ones moved (Corp agenda wins 64 → 66 of
+  192, flatlines 17 → 16). Checked, not inferred: a ref with the engine
+  changes — the install's origin and its sum, the filter, the two costs
+  and the event — and without the three cards and the deck swap is
+  **identical in all four shapes**, so the movement is `determinize`
+  sampling three new Corp cards.
+
+#### Stage 5a — a rez's price, counters on a rez, a mandate (28 September 2026)
+
+`feat/rwr-stage-5a-piranhas-working-prototype-sudden-commandment`:
+Piranhas, Working Prototype, Sudden Commandment. **No new `Effect` or
+`Trigger`.** Rebellion Without Rehearsal 42 of 65; `RWR_UNIMPLEMENTED`
+26 → 23. Stage 5 was split in four when it was taken (the plan, above).
+
+- **Piranhas's additional rez cost** is two `rez_alternatives`, as
+  Plutus's is: "take 1 bad publicity" (`Cost::TakeBadPublicity`, the Corp
+  twin of `TakeTags`, never prevented and heard as bad publicity taken
+  through `dispatch_cost_events`) or "remove 1 tag" (`Cost::RemoveTags`).
+  With one payable it is taken unasked; with both the Corp is asked
+  (`payment::Ask::Alternative`), and paid with the rez (CR 1.16.10b). "End
+  the run if there are more cards in HQ than in the grip" compares two
+  numbers the state decides (`EffectRequirement::MoreThan` over
+  `Amount::CardsInHand`), where `AmountAtLeast` compares one with a number
+  the file writes.
+- **Working Prototype** composes: "whenever you rez a card (including this
+  asset)" is `OnRez` about `Any` — the subject of a rez hears it, so its own
+  counts — and "add 1 installed resource to the top of the stack" is a
+  selection out of the rig onto the Runner's deck, which lands on top.
+- **Sudden Commandment's "the first mandate you played this turn"** is a
+  turn-log column (`turn_log::Kind::MandateOperation`), as Synchrocyclotron's
+  double operation was, read by `TimesThisTurnWhen`. It is judged as the
+  operation begins to resolve and the threat level as the clause is
+  reached (CR 9.3.6f, after the operation it plays): the card is two
+  branches, not-first ahead of first, so a second copy played out of HQ
+  neither takes the first's click nor gives one of its own. "Play 1
+  non-terminal operation from HQ" waits on a card having been chosen.
+- **Client:** nothing new reaches the view; `prose` has words for the cost
+  and the amount.
+- **Decks** — Paid Content: two Piranhas for a Funhouse and a Paywall,
+  rezzed off the deck's tags, and two Sudden Commandment for two Predictive
+  Planogram. Retirement Package: two Working Prototype for the NICO
+  Campaign and the Government Subsidy.
+- **Real play**, 96 games against Safety Net (seed 2). Paid Content,
+  random seats: Piranhas installed 118 times, rezzed 14, 93 subroutines
+  fired; Sudden Commandment played 64 times. Heuristic seats: Piranhas
+  rezzed 24 times and 180 subroutines fired; **the heuristic Corp never
+  plays Sudden Commandment**. Retirement Package: Working Prototype rezzed
+  94 times with random seats and heard 300 rezzes; its abilities were used
+  104 times, and 290 by the heuristic Corp.
+- **Fidelity limits:** none found beyond the pool's: Sudden Commandment is
+  the catalog's only mandate, and no card names a terminal operation's
+  end of the action phase yet (Stage 6), so "non-terminal" only narrows
+  the choice.
+- **DSL ratio (`pool_status.py`): 17 of 80 `Effect` variants single-use,
+  2 unused**, over 292 card files (17 of 80 over 289 before).
+- **Measured.** Both sweeps at 256 seeds are green. Against `origin/main`
+  (4c), `coverage_identical.py` has the random seatings **identical**, by
+  view and by index; the heuristic ones moved (Corp agenda wins 66 of 192
+  unchanged, flatlines 16 → 15, Runner agenda wins 109 → 111, deck-outs
+  1 → 0). Checked, not inferred: a ref with the engine changes — the
+  cost, the requirement and its amount, the mandate column — and without
+  the three cards and the deck swaps is **identical in all four shapes**,
+  so the movement is `determinize` sampling three new Corp cards.
+
+#### Stage 5b — ice that limits its encounter (28 September 2026)
+
+`feat/rwr-stage-5b-hammer-sorocaban-blade-cloud-eater`: Hammer, Sorocaban
+Blade, Cloud Eater. **No new `Effect` or `Trigger`.** Rebellion Without
+Rehearsal 45 of 65; `RWR_UNIMPLEMENTED` 23 → 20.
+
+- **What an encounter allows is said by the ice, of itself**, as two
+  standing kinds about `This` (the Continuous Effect Rule, and `validate`
+  refuses either off ice). Hammer's "the Runner cannot break more than 1
+  of its printed subroutines except using killers" is
+  `ContinuousKind::BreakLimit { at_most, except_using }`: both break
+  effects, and the bioroid click break with it, break no more printed
+  subroutines than the limit leaves (`continuous::breaks_left`), a gained
+  subroutine is never limited (CR 9.8.3a), and an excepted breaker's
+  breaks are not counted. Sorocaban Blade's "you cannot trash more than 1
+  installed Runner card with this ice during each encounter" is
+  `ContinuousKind::TrashLimit`: once spent, a selection the ice's text
+  makes to trash an installed Runner card offers nothing
+  (`continuous::may_trash_with`). A trash is counted where it is carried
+  out — the selection, or the prevention window's end — so one the Runner
+  prevented is not one. Afshar and Akhet print the break limit with no
+  exception and a `while`.
+- **The encounter's counts are on the run** (`RunState::this_encounter`,
+  an `EncounterTally`), cleared where `fully_broken` is — as an encounter
+  begins and by `enter_movement` — and carried in the view, so a bot's
+  sample is held to the limits the game is.
+- **Cloud Eater's "if it was rezzed this turn"** is a count on the copy:
+  `turn_log::CopyTurn` counts rezzing beside advancing, read by
+  `Amount::TimesThisTurnOnThisCopy(OnRez)`. Its encounter-end ability is
+  Seraph's shape, a nested cost the Runner pays or declines (CR 1.16.11b).
+- **Client:** the view carries the tally, which the action list and
+  `board::breaks` already honour (`view_ledger`: engine's); `prose` has
+  words for the two kinds and the amount.
+- **Decks** — Hostile Bid: two Hammer for two Kessleroid. Retirement
+  Package: two Sorocaban Blade for the Palisade and the Pharos. A Thousand
+  Cuts: two Cloud Eater for the Tithe and the Ballista.
+- **Real play**, 96 games against Safety Net (seed 2). Hammer: rezzed 7
+  times with random seats and 44 with heuristic ones, 230 subroutines
+  fired and 34 broken. Sorocaban Blade: rezzed 49 and 52 times, 337 and
+  189 subroutines fired. Cloud Eater costs 10 and **random seats never
+  rezzed it**; heuristic seats rezzed it 8 times, and its encounter-end
+  ability fired 7.
+- **Fidelity limits:** a bot's sample still does not carry a copy's
+  counts for the turn (`determinize` leaves `CopyTurn` empty, as it did
+  for advancing), so a sample of a Cloud Eater rezzed this turn does not
+  see its encounter-end ability coming.
+- **DSL ratio (`pool_status.py`): 17 of 80 `Effect` variants single-use,
+  2 unused**, over 295 card files (17 of 80 over 292 before).
+- **Measured.** Both sweeps at 256 seeds are green. Against `origin/main`
+  (5a), `coverage_identical.py` has the random seatings **identical**, by
+  view and by index; the heuristic ones moved further than any stage
+  before (Corp agenda wins 66 → 77 of 192, Runner agenda wins 111 → 99,
+  deck-outs 0 → 1, flatlines 15 unchanged). Checked, not inferred: a ref
+  with the engine changes — the two kinds and their tally, the copy's
+  rez count and its amount — and without the three cards and the deck
+  swaps is **identical in all four shapes**, so the movement is
+  `determinize` sampling three new pieces of Corp ice, which is a
+  measurement of the bots rather than of the rules.
+
+#### Stage 5c — derez words (28 September 2026)
+
+`feat/rwr-stage-5c-brasilia-warm-reception`: Brasília Government Grid,
+Warm Reception. **No new `Effect` or `Trigger`.** Rebellion Without
+Rehearsal 47 of 65; `RWR_UNIMPLEMENTED` 20 → 18. Lightning Laboratory
+moved to 5d: its "When this turn ends, derez 2 pieces of ice protecting
+that server" is a delayed conditional ability (CR 9.6.13), which nothing
+in the engine is yet.
+
+- **Brasília Government Grid** reacts as itself and acts on the rezzed
+  ice (`acts_on_subject`, the requirement read as the grid: once per
+  turn, a run against its server). "You may derez another installed piece
+  of ice. If you do, …" is a nested cost (CR 1.16.11a, as Stoke the
+  Embers' reveal): `Cost::Derez` over the other ice, and "the rezzed ice
+  gets +3 strength for the remainder of that run" needs a strength on the
+  ice resolving, which need not be encountered — a rez comes as the ice
+  is approached. `ModifyStrength`'s `each_ice` bool became
+  `ice: StrengthOf` (`Encountered`, `EachIce`, `This`); ezaM's file says
+  `EachIce`.
+- **Warm Reception:** "you may install 1 card from HQ. You cannot score
+  that card this turn" is a text install with a rider about the card that
+  landed (`PromptInstallCorpCard::if_installed`, beside `then`, which
+  resolves as the card that offered it, and `if_rezzed`). The rider is a
+  prohibition on that install alone (`Prohibit::this_install`, a
+  `lingering::On::Install` — a public handle, so a facedown card is bound
+  without being named), and a score asks the install
+  (`continuous::cannot_install`), in the action list and the guard alike.
+  "If this server is not protected by ice, you may derez this asset to
+  derez another installed card" is a nested cost of its own,
+  `Cost::DerezSelf`: `Cost::Derez` chooses by a filter, and
+  `Not(NotSourceCard)` is read off a definition, so it would take every
+  copy.
+- **Client:** nothing new reaches the view (a prohibition on an install
+  rides in `lingering`, which both clients draw); `hud::in_effect` says
+  "the Corp cannot score the card it installed", and `prose` has words for
+  the strength's ice, the prohibition and the cost.
+- **Deck** — Retirement Package: two Brasília Government Grid for two
+  Seamless Launch, and two Warm Reception for two Predictive Planogram.
+- **Real play**, 96 games of Retirement Package against Safety Net
+  (seed 2). Random seats: Brasília Government Grid rezzed 129 times (more
+  than it was installed: Warm Reception derezzes it) and its rez trigger
+  fired 42 times; Warm Reception's turn start fired 326 times. Heuristic
+  seats: the grid's trigger fired 24 times, Warm Reception's 1,054.
+- **Fidelity limits:** the grid's "once per turn" is spent when its
+  trigger fires, whether its "may" is taken or not — the deviation from
+  CR 9.3.6g already recorded for Malandragem (`rules-conformance.md`,
+  9.3).
+- **DSL ratio (`pool_status.py`): 17 of 80 `Effect` variants single-use,
+  2 unused**, over 297 card files (17 of 80 over 295 before).
+- **Measured.** Both sweeps at 256 seeds are green. Against `origin/main`
+  (5b), `coverage_identical.py` has the random seatings **identical**, by
+  view and by index; the heuristic ones moved (Corp agenda wins 77 → 79
+  of 192, flatlines 15 → 14, Runner agenda wins 99 → 98). A ref with the
+  engine changes — the strength's ice, the cost, the rider and the
+  prohibition on an install, and ezaM's file rewritten to the new word —
+  and without the two cards and the deck swap is **identical in all four
+  shapes**, so the movement is `determinize` sampling two new Corp cards.
+
+#### Stage 5d — a delayed conditional ability (28 September 2026)
+
+`feat/rwr-stage-5d-lightning-laboratory`: Lightning Laboratory. **One new
+`Effect`.** Rebellion Without Rehearsal 48 of 65; `RWR_UNIMPLEMENTED`
+18 → 17.
+
+- **"When this turn ends, derez 2 pieces of ice protecting that server"**
+  resolves after the resolution that made it. Until now nothing could do
+  that except a run's own end rider (`SetRunEndedEffect`, one slot on the
+  run). It is a delayed conditional ability (CR 9.6.13):
+  `Effect::WhenThisTurnEnds` leaves a `lingering::DelayedAbility` on
+  `GameState::delayed`, dated by the turn and waiting for
+  `Trigger::OnDiscardPhaseEnd` (CR 5.6.3d: the turn and the discard phase
+  end at one step). "That server" is the attacked server, written in as
+  the ability is made (`Effect::with_attacked_server`, which rewrites
+  `CardFilter::InAttackedServer` to `InServer`), because the run is over
+  by the time it resolves.
+- **It is heard like a trigger** (`listeners::plan_for`): it goes in
+  beside its side's reactions to the turn's end, so its controller orders
+  it with them, and it resolves as the card that made it.
+  `dispatcher::dispatch_event` takes it off the list as it is planned, so
+  it resolves once (9.6.13c), and drops any left from an earlier turn. A
+  pending decision is no obstacle: it is a queued continuation like any
+  other.
+- **The rest composes:**
+  - "Whenever a run begins, you may remove 1 hosted agenda counter" is an
+    `OfferPaidChoice` of `Cost::RemoveCounters` on the scored agenda.
+  - "Rez up to 2 pieces of ice protecting the attacked server, ignoring
+    all costs" is two selections of one card, each a free `RezInstalled`.
+    Additional costs are ignored too (CR 1.16.5c), so Piranhas's bad
+    publicity is never asked for.
+  - "Derez 2" is two selections that must each take a card while one is
+    there, so a server with one rezzed piece of ice derezzes that one.
+- **Client:** the view carries the list (`ClientView::delayed`).
+  `hud::in_effect` draws it in both clients as "when this turn ends, …",
+  in `prose`'s words, and a bot's sample resolves it too.
+- **Fixed on the way:** `Effect::for_each_effect` now walks a text
+  install's `if_installed` rider, which 5c left out.
+- **Deck** — Retirement Package: two Lightning Laboratory for two
+  Offworld Office, point for point.
+- **Real play**, 96 games of Retirement Package against Safety Net
+  (seed 2). Random seats: scored 6 times and stolen 77, its run-start
+  offer made 12 times. Heuristic seats: scored 43 times and stolen 36, the
+  offer made 97 times.
+- **DSL ratio (`pool_status.py`): 18 of 81 `Effect` variants single-use,
+  2 unused**, over 298 card files (17 of 80 over 297 before). The new
+  variant is `WhenThisTurnEnds`, which Test Run and the later sets'
+  "when this turn ends" riders will reuse.
+- **Measured.** Both sweeps at 256 seeds are green. Against `origin/main`
+  (5c), `coverage_identical.py` has the random seatings **identical**, by
+  view and by index; the heuristic ones moved (Corp agenda wins 79 → 75
+  of 192, flatlines 14 → 13, Runner agenda wins 98 → 103). A ref with
+  the engine changes — the effect, the delayed ability and its hearing,
+  the view's list — and without the card and the deck swap is
+  **identical in all four shapes**, so the movement is `determinize`
+  sampling a new Corp agenda.
+
+#### Stage 5e — a resolution's end, and a trash from R&D (28 September 2026)
+
+`feat/rwr-stage-5e-nuvem-basalt-spire`: Nuvem SA: Law of the Land, The
+Basalt Spire, and Nuvem's Sweep deck, Land Grab. **No new `Effect`; two
+new `Trigger`s.** Rebellion Without Rehearsal 50 of 65;
+`RWR_UNIMPLEMENTED` 17 → 15. **Stage 5 is complete.**
+
+- **"Whenever you finish resolving an operation or an action on an
+  expendable card"** is a moment the engine did not have. An operation's
+  play is heard before it resolves (`OnCardPlayed`), and its resolution
+  may be parked across several actions, which nothing marked. CR 8.6.7h
+  puts "conditions related to … finishing resolving" after the play
+  abilities and the trash, and that end is now `GameEvent::
+  FinishedResolving`, heard by `Trigger::OnFinishedResolving` about the
+  card. `dispatcher::finished_resolving` announces it at once when
+  nothing waits. Otherwise it goes on the queue behind whatever does
+  (`DeferredTrigger::announce`), because the queue is where the rest of a
+  parked resolution is. An operation announces it at the end of
+  `engine::play_operation_card`, whether played by the basic action or by
+  a card's text. An expendable card announces it when an action
+  (`[click]`) ability used from HQ has resolved, which is Tocsin's today.
+- **"The first time you trash a card from R&D during each of your turns"**
+  is `GameEvent::CardsTrashedFromRnD { count, by }`, the R&D twin of AU
+  Co.'s HQ batch, heard by `Trigger::OnCardsTrashedFromRnD` as the
+  trasher's moment (CR 1.14.5). It is emitted from a mill
+  (`MillRnDAmount`, which Nuvem's "you may trash that card" takes off
+  the unused list), a cost (`Cost::Trash` from R&D) and a selection into
+  Archives alike. Nuvem's first-time ability is `first_each_turn` over it
+  with `DuringYourTurn`. The Runner's trash of a card accessed in R&D is
+  no Corp trash, and is not in the batch.
+- **The Basalt Spire:**
+  - Its "hosted agenda counter, trash the top card of R&D:" cost is
+    `RemoveCounters` with a `Cost::Trash` from R&D over
+    `CardFilter::TopOfZone(1)`.
+  - That found a bug: a cost that trashed out of a deck took the first
+    copy of the card from the bottom, not the one at the position chosen,
+    so with a duplicate lower down the wrong card went. It now takes the
+    chosen copy, as a selection out of a deck already did.
+  - Its steal and score abilities compose.
+- **Client:** nothing new reaches the view. Both clients' logs say
+  "trashed N card(s) from R&D", and a resolution's end is not narrated:
+  the action line already says the operation was played.
+- **Deck** — Land Grab, a new Sweep deck on Nuvem SA over Hostile Bid's
+  frame: three Hostile Takeover out for two The Basalt Spire (23 points in
+  50 cards), and a third copy of Hedge Fund, Measured Response, Myōshu,
+  Business As Usual, Tocsin and Logjam in. It is pinned Eternal-only, and
+  the sweep schedule re-rolls with a Corp deck more, as it did for
+  Vantage Point's Sweep decks.
+- **Real play**, 96 games of Land Grab against Safety Net (seed 2):
+  - Random seats: Nuvem's look fired 154 times and its R&D gain 68.
+  - Heuristic seats: the look fired 146 times and the gain 70; The Basalt
+    Spire was scored 28 times.
+  - **The Basalt Spire's ability was used in neither seating**, and the
+    heuristic Corp never used Tocsin from HQ. The card test is their reach
+    so far.
+- **Fidelity limits:** only Tocsin is an expendable card in the pool, and
+  its action is the one announced. An expendable card's ability that is
+  not an action announces nothing, as the card says.
+- **DSL ratio (`pool_status.py`): 19 of 81 `Effect` variants single-use,
+  1 unused**, over 300 card files (18 of 81, 2 unused, over 298 before).
+  The move is `MillRnDAmount`, from unused to used by one card.
+- **Measured.** Both sweeps at 256 seeds are green. Against `origin/main`
+  (5d), `coverage_identical.py` has the random seatings moved **only in
+  the two new events' counts** (`FinishedResolving` 0 → 395,
+  `CardsTrashedFromRnD` 0 → 15; every other section of the report is
+  identical, so no play moved), and the heuristic ones moved (Corp agenda
+  wins 75 → 70 of 192, flatlines 13 → 11, Runner agenda wins 103 → 110).
+  A ref with the engine changes and without the two cards and the deck
+  differs from `main` in exactly those event counts in all four shapes
+  and in nothing else, so the heuristic movement is `determinize`
+  sampling two new Corp cards.
+
+#### Stage 6a — terminal operations (28 September 2026)
+
+`feat/rwr-stage-6a-terminal-active-policing-bring-them-home`: Active
+Policing, Bring Them Home. **Two new `Effect`s.** Rebellion Without
+Rehearsal 52 of 65; `RWR_UNIMPLEMENTED` 15 → 13.
+
+- **"After you resolve this operation, your action phase ends"** is CR
+  5.4.3, which nothing did until now: an action phase ended only by the
+  basic pass with no clicks left. It is `Effect::EndActionPhase`, last in
+  each card's resolution, which is where "after" puts it. So a decision
+  the operation parks first is answered first, and so is the threat's
+  offer. It announces the action phase's end (`ActionPhaseEnded`) and goes
+  on to the discard step (`turn::force_action_phase_end`). Clicks left are
+  not spent. They are lost with the turn (5.6.3c), and nothing can spend
+  them first, because neither the discard step nor the end-of-turn window
+  admits an action (5.4.3d). Zeroing the clicks instead was rejected: a
+  Corp at 0 clicks still has the action phase's paid ability window, with
+  its rezzes and scores, and 5.4.3a skips it. Outside its player's action
+  phase it does nothing (5.4.4).
+- **"If the Runner stole or trashed a Corp card during their last turn"**
+  needed more of the last turn than its row totals. The Runner's trash of
+  their own program is in the same row. `GameState::last_turn` is now the
+  whole `TurnLog` of the turn that ended (the `LastTurn` totals type is
+  gone). `Amount::TimesLastTurnWhen` narrows it as `TimesThisTurnWhen`
+  narrows this turn's. `EventFilter::OwnedBy { owner, whose }` says "the
+  Runner's moment, about a Corp card"; neither `Whose` nor a `Card` filter
+  says both.
+  - The log can count it because every card it counts `Unseen` is a Corp
+    card. So the Corp's columns are those and every Corp type.
+  - The requirement is stolen, trashed as accessed, or trashed by the
+    Runner, written `Not(And(Not, And(Not, Not)))`, because there is no
+    `Or`.
+- **"Reveal and add 2 cards at random from the grip to the top of the
+  stack"** is `Effect::RevealAtRandom { side, count, then }`:
+  - The cards are drawn together, before any moves, and each is revealed
+    (`CardRevealed`). `then` resolves as each card.
+  - `validate` refuses a `then` that could park, since the cards after it
+    would be dropped.
+  - The revealed card is marked on the resolution context
+    (`revealed_in_hand`), so `AddToDeck` takes it from the grip. Otherwise
+    it searches the heap first and moves another copy. It also moves the
+    card in the open.
+  - The threat's "the Runner shuffles it into the stack" is `AddToDeck`
+    then `ShuffleIntoDeck([])`, which now shuffles the stack alone when it
+    names no zone.
+- **Client:** nothing new reaches the view but the rest of the last turn's
+  log, which `view_ledger` already had as the engine's. Both clients' logs
+  now say "the Corp's action phase ended" when anything but the basic pass
+  ends it, and name a card added to a deck in the open ("added Sure Gamble
+  to the top of the stack").
+- **Decks:**
+  - Retirement Package: two Active Policing for the Predictive Planogram
+    and the Hedge Fund.
+  - A Thousand Cuts: two Bring Them Home for the Regolith Mining License
+    and a Hedge Fund.
+  - Pay As You Go: an Alarm Clock and a Sure Gamble for its Gordian Blade
+    and a Crash Space.
+- **Why Pay As You Go changed:** the 256-seed view sweep's coverage gate
+  failed on Alarm Clock, never installed across 768 games once the Corp
+  decks it met had changed.
+  - It was one copy in Spare Parts, which has no influence left for a
+    second.
+  - Measured over 64 games against A Thousand Cuts, it was installed in 7
+    random games and in no heuristic one. At about 15 Spare Parts seeds a
+    seating, the gate had about a one-in-six chance of missing it on
+    `main` too.
+  - Borrowed Time, in-faction, is the one Runner Sweep deck of Startup
+    cards and would lose Startup, and Grassroots has no influence either.
+- **Real play**, 96 games against Safety Net (seed 2):
+  - Active Policing (Retirement Package): played 40 times by random seats
+    and **never by the heuristic Corp**.
+  - Bring Them Home (A Thousand Cuts): played 23 times in both seatings.
+- **Fidelity limits:**
+  - A terminal card's end does nothing mid-run or with a window open (CR
+    5.4.3b closes them, and the engine has no step for it). No terminal
+    card in the pool resolves anywhere but its player's action window.
+  - Nuvem SA's "finish resolving" is announced after the action phase has
+    ended, not while it is ending. The two are out of faction together.
+- **DSL ratio (`pool_status.py`): 20 of 83 `Effect` variants single-use,
+  1 unused**, over 302 card files (19 of 81 over 300 before).
+  `EndActionPhase` is used by both cards, and `RevealAtRandom` by Bring
+  Them Home.
+- **Measured.** Both sweeps at 256 seeds are green. Against `origin/main`
+  (5e), `coverage_identical.py` has both random seatings **identical**: the
+  pass plays the sample decks' matchups, and every deck changed is a Sweep
+  deck. The heuristic ones moved (Corp agenda wins 70 → 71 of 192,
+  flatlines 11 → 14, Runner agenda wins 110 → 106). A ref with the engine
+  changes and without the two cards and the decks is identical to `main`
+  in all four shapes, so the engine moved nothing a game shows, and the
+  heuristic movement is `determinize` sampling two new Corp cards.
+
+#### Stage 6b — cards that stay revealed (28 September 2026)
+
+`feat/rwr-stage-6b-burner`: Burner. **No new `Effect`.** Rebellion Without
+Rehearsal 53 of 65; `RWR_UNIMPLEMENTED` 13 → 12. Cataloguer went to 6c
+(above): its "[click], hosted power counter: Breach R&D" is a breach with
+no run, which the access machinery, built on `RunState`, has no door for.
+
+- **"Reveal 3 cards in HQ at random. Add 2 of the revealed cards to the
+  top and/or bottom of R&D"** puts a choice after the reveal, among the
+  cards it revealed. CR 1.21.6 keeps them visible "until the entire
+  ability is finished resolving or the card moves", and the choosing
+  parks, so the list is on the state: `GameState::revealed`, one
+  `RevealedCard { side, card }` a card.
+  - An entry comes off as its card moves (`AddToDeck`), and the list is
+    emptied when an action ends with nothing parked or queued.
+  - `CardFilter::Revealed` selects among the list. It works by card, not
+    position: a hand has no order either player sees, and two copies of
+    one card are the same card.
+  - Burner is `SetAccessReplacement` on HQ, then `RevealAtRandom` with
+    nothing to do for each card, then two selections of one revealed card.
+    Each selection's `then` offers the top or the bottom of R&D.
+  - A selection of at least one with nothing eligible is skipped, so a
+    thinner HQ adds what it has.
+- **`RevealAtRandom`'s `then` is now `each`, and optional.** 6a's
+  resolution-context flag (`revealed_in_hand`) is gone. `AddToDeck` reads
+  the list instead, so it takes a revealed card from the hand it was
+  revealed in, and in the open, whichever effect moves it.
+- **The view carries the list** (`ClientView::revealed`: shown to both, so
+  the same to both). `hud::in_effect` draws it in both clients ("revealed
+  in HQ: Hedge Fund"), and the chooser's pop-up already draws the
+  candidates as their cards.
+- **`determinize` seats each revealed card in the sampled hand.** Revealed
+  is known, and a sample that drew HQ anew had nothing for Burner's
+  selection to offer, so both it and `resample_hidden` put the revealed
+  cards back over cards that are not.
+- **Deck** — Safety Net: two Burner for the two Jailbreak, a run on HQ for
+  a run on HQ or R&D.
+- **Real play**, 96 games of Retirement Package against Safety Net (seed
+  2): played 36 times by random seats, with 15 breaches of HQ replaced;
+  **never by the heuristic Runner**.
+- **DSL ratio (`pool_status.py`): 19 of 83 `Effect` variants single-use,
+  1 unused**, over 303 card files (20 of 83 over 302 before):
+  `RevealAtRandom` has its second card.
+- **Measured.** Both sweeps at 256 seeds are green. Against `origin/main`
+  (6a), `coverage_identical.py` has both random seatings **identical** and
+  the heuristic ones moved by one game (Corp agenda wins 71 → 70 of 192,
+  Runner agenda wins 106 → 107). A ref with the engine changes and without
+  Burner and the deck is identical to `main` in all four shapes, so the
+  heuristic movement is `determinize` sampling a new Runner card.
+
+#### Stage 6c — a breach with no run (28 September 2026)
+
+`feat/rwr-stage-6c-cataloguer`: Cataloguer. **One new `Effect`.** Rebellion
+Without Rehearsal 54 of 65; `RWR_UNIMPLEMENTED` 12 → 11.
+
+- **"[click], hosted power counter: Breach R&D"** is CR 7.3.1's "card
+  abilities can also directly instruct the Runner to breach a server",
+  which nothing did: every breach began at a run's success step.
+  `Effect::Breach(server)` (`run::start_breach`) stands the breach in a
+  `RunState` flagged `breach_only`, with no ice and nothing declared
+  successful, because the access machinery, 139 references to
+  `access_state` across the workspace, is the run's.
+  - Moving the access state out of the run was rejected for its size.
+    The flag refuses what only a run has.
+  - `GameState::run_in_progress` is what a card means by "during a run",
+    and it is none: "during a run on", "a run against this server" and
+    "once per run" ask it. `DuringRun` already excluded the access, and
+    an encounter or "this card started the run" cannot hold with no ice
+    and no event.
+  - The breach's end is no `RunCompleted` a card hears, and it leaves
+    `last_completed_run` the last *run*.
+  - It is refused inside a run or another breach. CR 7.3.8 would delay
+    it, and nothing in the pool breaches from inside one.
+  - What blocks actions mid-access still reads `active_run`, so nothing
+    else is taken while the Runner accesses.
+- **"Instead of breaching R&D, you may remove 1 hosted power counter to
+  look at the top 4 cards of R&D and arrange them in any order"** composes:
+  - An optional `SetAccessReplacement` from a successful-run trigger.
+  - The counter's removal, `LookAtTopOfDeck`, and the Runner's selection
+    of the top four back onto R&D, the first chosen on top.
+  - The replacement now remembers the install that set it
+    (`RunState::access_replacement_install`), so the counter comes off
+    the copy that offered it, not the first of two.
+- "When it is empty, trash it" is Juli Moreira Lee's shape, after each
+  removal.
+- **Client:** the view carries the flag (`PublicRunState::breach_only`).
+  Both clients' run displays say "Breach of R&D":
+  - `board::phase` gives the breach a segment with its access as the one
+    step, which the desktop's panel draws.
+  - The terminal's run strip says it without counting ice.
+- **The fog gate learned a chooser's own selection.** The 256-seed view
+  sweep failed at seed 167 on the Runner's arrangement: its
+  `CardsSelected` names R&D cards back in a deck the Runner's view no
+  longer shows. The mask leaves a selection's names to its chooser, who
+  picked each card from the list their view held (`ClientView::
+  selection`), so the gate now counts them as seen, as it did the
+  chooser's own action.
+- **Deck** — Spare Parts: two Cataloguer for a T400 Memory Diamond and a
+  Sure Gamble.
+- **Real play**, 96 games of Retirement Package against Spare Parts (seed
+  2): random seats installed it 30 times and breached with it 3 times,
+  and the replacement was offered 15 times. **The heuristic Runner never
+  installed it.**
+- **Fidelity limits:**
+  - A breach with no run that ends the game mid-access still records a
+    `RunCompleted`, pushed and not dispatched, because the game's end has
+    already taken the run.
+  - The breach is shown with the run's panel and trail.
+- **DSL ratio (`pool_status.py`): 20 of 84 `Effect` variants single-use,
+  1 unused**, over 304 card files (19 of 83 over 303 before). `Breach` is
+  Cataloguer's until the pool's other breach cards (Hades Shard, Raymond
+  Flint) arrive.
+- **Measured.** Both sweeps at 256 seeds are green. Against `origin/main`
+  (6b), `coverage_identical.py` has both random seatings **identical** and
+  the heuristic ones moved (Corp agenda wins 70 → 74 of 192, flatlines
+  14 → 12, Runner agenda wins 107 → 105). A ref with the engine changes
+  and without Cataloguer and the deck is identical to `main` in all four
+  shapes, so the heuristic movement is `determinize` sampling a new
+  Runner card.
+
+#### Stage 6d — cards set aside (28 September 2026)
+
+`feat/rwr-stage-6d-wizards-chest`: The Wizard’s Chest. **One new `Effect`,
+and one renamed to take a zone.** Rebellion Without Rehearsal 55 of 65;
+`RWR_UNIMPLEMENTED` 11 → 10.
+
+- **"Set aside cards from the top of your stack faceup until you set aside
+  2 cards of the chosen type"** is CR 4.8's set-aside zone, which no card
+  had used. The cards wait there while the Runner chooses one to install,
+  and that choice parks, so the zone is on the state:
+  `RunnerState::set_aside`.
+  - The zone is shared by both players (4.8.1). Only the Runner's text
+    sets anything aside yet, so only the Runner's side has a list.
+  - The cards are faceup (4.8.6), so it is public: in `PublicRunnerState`,
+    copied by `determinize`, and struck from the sampled pools.
+  - `Effect::SetAsideFromTopUntil { filter, count }` reads down the stack
+    until `count` cards match or the stack runs out, and announces
+    `GameEvent::CardsSetAside`, which no card hears.
+  - The rest is `CardZoneRef::OwnSetAside`: a selection over it, an
+    install out of it (`RunnerCardSource::SetAside`), and
+    `ShuffleIntoDeck([OwnSetAside])` for "shuffle the rest of the
+    set-aside cards into your stack".
+- **"You may install 1 of those 2 cards, ignoring all costs"** installs
+  out of that zone. `InstallRunnerCardFromHeap(Discount)` took the zone
+  and became `InstallRunnerCardFromZone { from, discount }`, as
+  `PlayOperation { from }` once took Plutus's, rather than a fifth install
+  variant beside the four. Scrounge's, Privileged Access's and Magdalene
+  Keino-Chemutai's files say `from: OwnHeap`.
+- "Choose hardware, program, or resource" is a `PresentChoice` of three.
+  "Use this hardware only if you made a successful run on HQ, R&D, and
+  Archives this turn" is Chain Reaction's requirement.
+- **Client:** `hud::in_effect` lists the set-aside cards in both clients
+  ("set aside: Sure Gamble, Corroder"). The log says what was set aside,
+  and the chooser's pop-up draws the ones it offers as their cards.
+- **Deck** — Grassroots: two The Wizard’s Chest for the Scrounge and a
+  Sure Gamble.
+- **Real play**, 96 games of Retirement Package against Grassroots (seed
+  2): random seats installed it 44 times; the heuristic Runner never did.
+  **Neither seating ever used its ability**, since three successful runs
+  in a turn are rare, so the card test is its reach.
+- **DSL ratio (`pool_status.py`): 21 of 85 `Effect` variants single-use,
+  1 unused**, over 305 card files (20 of 84 over 304 before). The new one
+  is `SetAsideFromTopUntil`.
+- **Measured.** Both sweeps at 256 seeds are green. A ref with the engine
+  changes and without the card and the deck differs from `main` (6c) in
+  the rename alone, in all four shapes: `effects_seen` counts the same
+  heap installs as `InstallRunnerCardFromZone` (202 in the random
+  seatings, 206 in the heuristic), and nothing else moved. With the card,
+  both random seatings are the same, and the heuristic ones moved by a
+  game or two (Corp agenda wins 74 → 73 of 192, flatlines 12 → 11, Runner
+  agenda wins 105 → 107): `determinize` sampling a new Runner card.
+
+#### Stage 6e — an X cost, and the object that fully breaks (28 September 2026)
+
+`feat/rwr-stage-6e-lobisomem`: Lobisomem. **No new `Effect`.** Rebellion
+Without Rehearsal 56 of 65; `RWR_UNIMPLEMENTED` 10 → 9. **Stage 6 is
+complete.**
+
+- **"Interface → X[credit], hosted power counter: Break X barrier
+  subroutines"** is CR 1.16.2c: the payer chooses and announces X before
+  paying. It is `Cost::CreditsX { max }`, asked by the payment's own
+  replay (`payment::Ask::X`, answered by `PlayerAction::ChooseNumber`, so
+  `ActionSpace` is unmoved).
+  - X runs from 0 to the printed bound, capped by what the payer could
+    spend and by `MAX_CHOSEN_NUMBER`. Lobisomem's bound is the encountered
+    ice's subroutines.
+  - X is then paid from wherever credits may be.
+  - X reaches the effect the way every chosen number does: written into it
+    (`Effect::with_chosen_number`, the State Hygiene Rule).
+    `SubroutineBreakCount::ChosenNumber` is the placeholder, and
+    `activate_ability` writes the payment's first answer over it.
+  - That answer is X because `validate` holds an X to the front of its
+    ability's cost, which is also where 1.16.2c puts it.
+- **"Whenever it fully breaks a code gate"** is CR 6.5.7b: "if all its
+  subroutines were broken using abilities on a single object, that object
+  also fully breaks the ice".
+  - The encounter's tally now says whose breaks they were
+    (`EncounterTally::broken_by`: nothing yet, one install, or mixed; a
+    click is no object's). `IceFullyBroken` carries the object (`by`), and
+    the moment does too (`Moment::by`).
+  - `EventFilter::ByThis` says "it", and only on `OnIceFullyBroken`, the
+    one moment that names an object that did it. "A code gate" is the
+    trigger's `Encountering(CodeGate)`, because a `when` holds one filter
+    and the moment is in the encounter.
+  - A tally rather than a mark on each subroutine: the one question is
+    whether every break was one install's, and about thirty subroutine
+    literals would have taken a field.
+- **Client:** both clients word the question ("Choose X, from 0 to 2 — you
+  pay X credits"), and the pop-up's buttons are its numbers. The tally
+  rides in the view as the engine's, beside the encounter's other counts.
+- **Deck** — Safety Net: two Lobisomem for a Gordian Blade and a Sure
+  Gamble, a decoder for a decoder.
+- **Real play**, 96 games of Retirement Package against Safety Net (seed
+  2):
+  - Heuristic seats: installed 29 times, abilities used 169 times, and a
+    code gate fully broken by it alone 101 times. The Runner chose 11
+    numbers against 11 payment questions.
+  - Random seats: installed 11 times, with one code gate fully broken by
+    it.
+- **DSL ratio (`pool_status.py`): 21 of 85 `Effect` variants single-use,
+  1 unused**, over 306 card files, unchanged: the X is a cost and a
+  break count, not an effect.
+- **Measured.** Both sweeps at 256 seeds are green. Against `origin/main`
+  (6d), `coverage_identical.py` has both random seatings **identical**, and
+  the heuristic ones moved (Corp agenda wins 73 → 77 of 192, flatlines
+  11 → 12, Runner agenda wins 107 → 102). A ref with the engine changes
+  and without Lobisomem and the deck is identical to `main` in all four
+  shapes, so the heuristic movement is `determinize` sampling a new
+  Runner card.
+
+#### Stage 7a — expendable cards (28 September 2026)
+
+`feat/rwr-stage-7a-expendable-eminent-domain-descent`: Eminent Domain,
+Descent. **No new `Effect`.** Rebellion Without Rehearsal 58 of 65;
+`RWR_UNIMPLEMENTED` 9 → 7.
+
+- **"[click], 1[credit], reveal and trash this … from HQ:"** is VP Stage
+  7f's action from HQ (`AbilityDef::from_hand`, `Cost::RevealAndTrashSelf`,
+  `PlayerAction::ActivateHandAbility`), on an agenda for the first time.
+  Nothing about it was ice-shaped.
+- **"Install and rez 1 card from HQ, paying a total of 5[credit] less"** is
+  Reanimation Protocol's `PromptInstallCorpCard { rez, discount }`, from
+  HQ: the install takes what it can of the total and the rez the rest (CR
+  1.16.2f). **"Search R&D for 1 card. Install and rez that card, ignoring
+  all costs"** is the same from R&D, after a search that shuffles first
+  (CR 8.7.3), as Poétrï's install from R&D is.
+- **An "install and rez" may choose a card it cannot rez** (CR 8.5.13d),
+  and the card is then revealed. That was new to the engine. An agenda
+  (CR 8.1.2c) stays installed facedown and is revealed (`CardRevealed`,
+  and the Runner remembers it as an accessed card, `seen_by_runner`);
+  `rez_install` would have rezzed it. A card the Corp cannot afford to rez
+  is revealed as well, which also reaches Reanimation Protocol.
+- **"Reveal up to 2 agendas in HQ and/or Archives and shuffle them into
+  R&D"** is a `PresentChoice` of from HQ, from Archives, one from each, or
+  none, as Sleipnir's "from HQ or Archives" is. Every selection shuffles,
+  so a one-from-each whose Archives half finds nothing still leaves R&D
+  shuffled.
+- **"When your turn begins, you may add this ice to HQ"** is Janaína's
+  `Cost::AddSelfToHq` as an `OfferPaidChoice` with nothing after it. The
+  add is the card's effect, not a cost, but nothing prevents a card going
+  to HQ and nothing follows it, so the two read the same. The alternative
+  was an `Effect` one card would use. Active only while rezzed, as an
+  installed card's trigger is.
+- **Client:** nothing new reaches the view. A card revealed on the table
+  is drawn as a remembered Corp card, and the log already says "revealed
+  Offworld Office".
+- **Deck** — Land Grab, whose Nuvem SA looks at the top of R&D after each
+  action on an expendable card: two Eminent Domain for a Sacrifice
+  Zone Expansion and a Hedge Fund (23 agenda points still), and two
+  Descent for two Ice Wall.
+- **Real play**, 96 games of Land Grab against Safety Net (seed 2):
+  - Random seats: Descent used from HQ 9 times and installed 102, Eminent
+    Domain used from HQ 18 times and scored 3.
+  - The heuristic Corp: never used either from HQ, as it never uses
+    Tocsin. It scored Eminent Domain 21 times, and Descent's turn-start
+    offer came 559 times.
+- **DSL ratio (`pool_status.py`): 21 of 85 `Effect` variants single-use,
+  1 unused**, over 308 card files, unchanged.
+- **Measured.** Both sweeps at 256 seeds are green. Against `origin/main`
+  (6e), `coverage_identical.py` has both random seatings **identical**, and
+  the heuristic ones moved (Corp agenda wins 77 → 73 of 192, flatlines
+  12 → 15, Runner agenda wins 102 → 103). A ref with the reveal and
+  without the cards and the deck is identical to `main` in all four
+  shapes, so the heuristic movement is `determinize` sampling new Corp
+  cards.
+
+#### Stage 7b — a psi game (28 September 2026)
+
+`feat/rwr-stage-7b-psi-see-how-they-run`: See How They Run. **One new
+`Effect`.** Rebellion Without Rehearsal 59 of 65; `RWR_UNIMPLEMENTED` 7 → 6.
+
+- **"Play a Psi Game. If the bids differ, do 1 core damage. If the bids
+  match, do 1 net damage"** is CR 10.14.6, which no card had needed. It is
+  `Effect::PsiGame { on_match, on_differ }`, which parks a
+  `PendingDecision::PsiGame`. The Corp bids first, then the Runner, each
+  with `PlayerAction::ChooseNumber`, so `ActionSpace` is unmoved. The
+  Runner's bid reveals both (`GameEvent::PsiBidsRevealed`), both are
+  spent, the active player's first (10.14.4c), and the outcome resolves as
+  the card that asked, all in that one action.
+  - Each bids 0 to 2, and no more than they could spend (10.14.3,
+    `payment::available`, fixed as the game begins). A player who can bid
+    only 0 is not asked, so a Runner with nothing ends the game at the
+    Corp's bid.
+  - **The Corp's bid is hidden until the Runner has bid.** It is
+    `PsiBid::Concealed` in the Runner's view and a spectator's. It is
+    Méliès U's secret `NumberChosen` in the log, which hides the answer
+    and drops the event for the other seat. A bot's sample guesses it
+    uniformly from the bids it could be (`determinize::sample_decision`).
+    The reveal teaches the Runner something (`may_teach_the_actor`), as a
+    trace's bids do.
+  - Composition didn't work. Two secret `ChooseNumber`s cannot compare
+    their numbers, since a nested choice keeps its own placeholder.
+    Branching on the Corp's bid would put the bid into the continuation
+    the Runner's decision carries, which a view passes through whole.
+- **Client:** both clients word each chair's side of it: "play a Psi Game
+  — bid in secret, 0 to 2 credits" to the bidder, "the Corp is bidding in
+  secret" and "the Corp has bid" to the Runner, and "you bid 2" to the
+  Corp while the Runner bids. The buttons are the bids. The log reads
+  "revealed the psi game's bids: the Corp 2[credit], the Runner
+  1[credit] — the bids differ". `view_ledger` has every field of the new
+  decision.
+- **Deck** — A Thousand Cuts: two See How They Run for two Proprionegation,
+  a 2-point, 4-advancement agenda for another.
+- **Real play**, 96 games of A Thousand Cuts against Safety Net (seed 2):
+  - Random seats never scored it: the random Corp flatlined in 80 games.
+  - The heuristic Corp scored it once, and that game played its psi game
+    to the end. The sweeps and the card tests carry the rest.
+- **DSL ratio (`pool_status.py`): 22 of 86 `Effect` variants single-use,
+  1 unused**, over 309 card files (21 of 85 before). `PsiGame` is used by
+  See How They Run alone for now; Adrian Seis, Konjin and Hyoubu Precog
+  Manifold print one too.
+- **Measured.** Both sweeps at 256 seeds are green, the fog gate included.
+  Against `origin/main` (7a), `coverage_identical.py` has both random
+  seatings **identical**, and the heuristic ones moved (Corp agenda wins
+  73 → 76 of 192, flatlines 15 → 16, Runner agenda wins 103 → 100). A ref
+  with the engine, bot and client changes and without the card and the
+  deck is identical to `main` in all four shapes, so the heuristic
+  movement is `determinize` sampling a new Corp card.
+
+#### Stage 7c — ice that moves as a run begins (28 September 2026)
+
+`feat/rwr-stage-7c-tributary`: Tributary. **One new `Effect`.** Rebellion
+Without Rehearsal 60 of 65; `RWR_UNIMPLEMENTED` 6 → 5.
+
+- **"The first time each turn a run begins, you may move this ice to the
+  outermost position protecting the attacked server. (The Runner will
+  approach this ice.)"** is an `OnRunStart` trigger with
+  `first_each_turn`, `subject: Any`, and a `PresentChoice` of
+  `Effect::MoveThisIceToOutermost` or nothing.
+  - The effect takes the ice out of `corp.installed` and puts it back in
+    front of the attacked server's ice, which that list keeps
+    outermost-first per server (CR 6.2.2a). It keeps its rez state,
+    counters and install id, and `CardMoved` is emitted when it changes
+    server.
+  - The run follows through `run::reconcile_ice`: a run at initiation
+    re-anchors on position 0, so the Runner approaches the moved ice
+    (6.2.5a puts the Runner's first position at 6.9.1d, after the run has
+    begun).
+  - Composition didn't work: the only move of ice was `SwapInstalledIce`,
+    which cannot take ice to another server or in front of a server with
+    no ice.
+  - The offer is made on the turn's first run even when Tributary is
+    already outermost there, where accepting does nothing. Refusing it
+    there would take a requirement no other card needs.
+- **"You may install 1 piece of ice from HQ protecting another server,
+  ignoring all costs"** is `PromptInstallCorpCard` with a new word,
+  `another_server`: every destination but the acting install's server,
+  as `remote_only` narrows Peer Review's. **"Each piece of ice gets +2
+  strength for the remainder of this run"** is ezaM's `ModifyStrength`
+  on `EachIce`.
+- **Client:** nothing new reaches the view. The board draws ice where the
+  view has it, the log already says "moved Tributary from R&D to HQ", and
+  the run's strength is in `hud::in_effect` as ezaM's is.
+- **Deck** — A Thousand Cuts: two Tributary for a Karuna and an ezaM, ice
+  for ice. Tributary is banned in Standard, and the Sweep decks are
+  Eternal.
+- **Real play**, 96 games of A Thousand Cuts against Safety Net (seed 2):
+  - Random seats: installed 49 times and rezzed 15. The run-start offer
+    came 60 times and the ice moved 26 times; 130 subroutines fired.
+  - Heuristic seats: installed 68 and rezzed 35. The offer came 139 times
+    and the ice moved 49 times; 202 subroutines fired.
+- **DSL ratio (`pool_status.py`): 23 of 87 `Effect` variants single-use,
+  1 unused**, over 310 card files (22 of 86 before).
+- **Measured.** Both sweeps at 256 seeds are green. Against 7b,
+  `coverage_identical.py` has both random seatings **identical**, and the
+  heuristic ones moved (Corp agenda wins 76 → 79 of 192, flatlines
+  16 → 14, Runner agenda wins 100 → 96, Runner deck-outs 0 → 3). A ref
+  with the effect, the install word and the prose and without the card
+  and the deck is identical to 7b in all four shapes, so the heuristic
+  movement is `determinize` sampling a new Corp card.
+
+#### Stage 7d — an encounter repeated (28 September 2026)
+
+`feat/rwr-stage-7d-sisyphus-protocol`: Sisyphus Protocol. **One new
+`Effect`.** Rebellion Without Rehearsal 61 of 65; `RWR_UNIMPLEMENTED` 5 → 4.
+
+- **"The first time each turn the Runner passes a rezzed code gate or
+  sentry"** is `OnIcePassed` with `first_each_turn`, `subject: Any` and
+  `acts_on_subject`, narrowed by a new `IceFacts` word,
+  `rezzed_code_gate_or_sentry`.
+  - The pass event carries the ice's type if it was rezzed as it was
+    passed (`IcePassed::rezzed_as`, public), and the moment's fact is read
+    off the event, as the other facts are.
+  - A fact rather than a type because the facts are bits of a turn-log
+    column. The fourth doubles the ice's columns to 16, still within the
+    table's widest set (28), which a compile-time assertion now holds.
+- **"You may pay 1[credit] or trash 1 card from HQ. If you do, the Runner
+  encounters that ice again"** is an `OfferPaidChoice` of `AnyOf`, as
+  Cloud Eater's is, whose `if_paid` is `Effect::ForceEncounter`: CR
+  6.5.9a's forced encounter, whose own example is The Twins.
+  - `run::force_encounter` puts the run back into the encounter at that
+    ice's position. It is a new encounter: the ice's printed subroutines
+    again, rebuilt from the install, and `lingering::sweep` for what the
+    last one bought. It clears the movement phase's window, announces
+    `IceEncountered` (so "when encountered" is heard), and opens the
+    encounter's window.
+  - `RunState::forced_encounter` makes that encounter's end a return to
+    the movement phase just inward of the ice, with **no second pass**
+    (`pass_current_ice`). An "end the run" ends both (6.5.9b), as any
+    encounter's does.
+  - Only from the movement phase, and only for ice still protecting the
+    attacked server and rezzed; otherwise nothing, as 6.2.8c's "instead
+    the Runner does nothing".
+  - Composition didn't work: nothing moved a run back into an encounter,
+    and every encounter's end was a pass.
+- **Client:** the new field is drawn. The desktop's phase bar reads
+  "Encounter ice 1 of 2 again" and the terminal's run strip "encountering
+  it again"; the encounter panel is the one any encounter gets.
+- **Deck** — Honor Roll (Méliès U): two Sisyphus Protocol for two
+  Proprionegation, 2 points for 2 (20 still).
+- **Real play**, 96 games of Honor Roll against Safety Net (seed 2):
+  - The heuristic Corp scored it 24 times, and the offer came 28 times.
+  - Random seats never scored it: it was stolen 29 times.
+- **DSL ratio (`pool_status.py`): 24 of 88 `Effect` variants single-use,
+  1 unused**, over 311 card files (23 of 87 before).
+- **Measured.** Both sweeps at 256 seeds are green. Against 7c,
+  `coverage_identical.py` has both random seatings **identical**, and the
+  heuristic ones moved more than the earlier stages' (Corp agenda wins
+  79 → 71 of 192, Runner agenda wins 96 → 104). A ref with the pass
+  event's new field, the fact, the forced encounter and the clients, and
+  without the card and the deck, is identical to 7c in all four shapes.
+  So the whole move is the new card in the bots' samples (`determinize`),
+  not a rule; the Sweep decks are never in `matchups()`.
+
+#### Stage 7e — a trojan hosted by an event's ability (28 September 2026)
+
+`feat/rwr-stage-7e-spree`: Spree. **No new `Effect`.** Rebellion Without
+Rehearsal 62 of 65; `RWR_UNIMPLEMENTED` 4 → 3. **Stage 7 is complete.**
+
+- **"Place 3 power counters on this event, then run any server"** puts
+  counters on a card in the play area (CR 8.6.5), which no card had done.
+  They are kept on the run (`RunState::event_counters`), because the
+  engine files a played event in the heap and reads the play area off the
+  run (`run::run_event`), so the counters go with the run.
+  - They are placed by the rider the event leaves on its run
+    (`PromptChooseServer::on_start`, `AddCounters(3)`), after the run has
+    begun rather than before. Nothing can read them in between.
+  - A counter cost and a counter effect find them when the resolution is
+    the run event's own (`ability::acting_is_run_event`: its paid ability,
+    `InstallId::RUN_EVENT`, or its rider).
+- **"Hosted power counter: Host 1 installed trojan program on a piece of
+  ice protecting the attacked server"** is the run event's paid ability,
+  as Eye for an Eye's is: a selection of a trojan program in the rig, then
+  of ice `InAttackedServer`, then GAMEDRAGON™ Pro's
+  `HostRigCardOnInstall`. That effect now takes a piece of ice as its
+  host (`hosted_on_ice`) as well as a rig card, rather than adding a
+  second effect.
+  - The trojan is chosen first, so the second selection parks as the
+    trojan, and the substitution the effect already had names both
+    installs.
+  - Nothing withholds the ability with no trojan installed. The rules
+    let a player use an ability that turns out to do nothing, and random
+    seats spend counters that way.
+- **Client:** `hud::in_effect` says "This run: Spree has 2 power counters"
+  in both clients, since the play area has no place on the board; a
+  trojan's move is the board's, and the log's "hosted".
+- **Deck** — Safety Net, whose Stowaway is a trojan: two Spree for a
+  Touchstone and a Decoy.
+- **Real play**, 96 games of Retirement Package against Safety Net (seed
+  2):
+  - Random seats: Spree played 45 times and its ability used 90 times, 16
+    of those with a trojan to choose.
+  - The heuristic Runner never plays it, nor installs Stowaway.
+- **DSL ratio (`pool_status.py`): 23 of 88 `Effect` variants single-use,
+  1 unused**, over 312 card files (24 of 88 before):
+  `HostRigCardOnInstall` has its second card.
+- **Measured.** Both sweeps at 256 seeds are green. Against 7d,
+  `coverage_identical.py` has both random seatings **identical**, and the
+  heuristic ones moved (Corp agenda wins 71 → 78 of 192, flatlines
+  14 → 16, Runner agenda wins 104 → 96). A ref with the event's counters,
+  the ice host and the HUD line and without the card and the deck is
+  identical to 7d in all four shapes, so the move is `determinize`
+  sampling a new Runner card.
+
+#### Stage 8a — a subtype chosen at rez, held while rezzed (28 September 2026)
+
+`feat/rwr-stage-8a-lycian-multi-munition`: Lycian Multi-Munition. **One
+new `Effect`.** Rebellion Without Rehearsal 63 of 65; `RWR_UNIMPLEMENTED`
+3 → 2.
+
+- **"Choose 1 or more subtypes among barrier, code gate, and sentry. This
+  ice gains the chosen subtypes while it remains rezzed"** is a choice
+  kept for a duration (CR 9.10.3), and its duration is "until the source
+  becomes inactive" (9.10.3c). So it is a lingering effect and not a
+  continuous one: a declared `GainSubtype` holds while its source is
+  active, and has nowhere to keep which subtype was chosen.
+  - `Lingering::GainSubtype(IceType)`, one per subtype chosen, until a
+    new duration, `Until::WhileRezzed(install)`. It is made by the new
+    `Effect::GainIceSubtype`, which `validate` allows only on ice and
+    never of `IceType::Other`.
+  - `continuous::ice_gains_subtype` reads it beside the table. That is the
+    one question a typed break, Corsair's "the barrier you are
+    encountering" and Lycian's own "if this ice is a code gate"
+    (`Encountering(CodeGate)`, an existing requirement) all ask.
+  - A rez starts a new rezzed period and drops what the last one left
+    (`lingering::forget_rezzed_period`, in `engine::rez_install`). An
+    entry that holds while its card is rezzed would hold again at the
+    next rez, and nothing guarantees a checkpoint sweeps it in between.
+- **Seven answers** (one, two or all three types) are more than the four a
+  decision holds, so the choice is two decisions: one type, or "two or
+  more" and then which.
+- **"When a turn ends, derez this ice"** is either player's discard phase
+  end: two triggers with `when: Whose(..)`, the words Méliès U uses for
+  "the Runner's".
+- **A pass says every type the ice has.** `GameEvent::IcePassed::rezzed_as`
+  is now the list of types, printed and gained (`continuous::ice_types`),
+  because Sisyphus Protocol's "passes a rezzed code gate or sentry" read
+  the printed type alone and would not have heard a Lycian rezzed as a
+  sentry.
+- **Client**, both clients:
+  - On the desktop, the ice's tile is lit as the type it gained, when it
+    prints none of the three (`facts::ice_kind`).
+  - Its sheet says "A barrier and sentry while it remains rezzed".
+  - The in-effect list has one line per piece of ice
+    (`hud::in_effect`).
+  - No view field is new: the choice is in `ClientView::lingering`, which
+    the view ledger already has as drawn.
+- **Deck** — Retirement Package (Engineering the Future): two Lycian
+  Multi-Munition for a Vertigo and a Reverb, ice for ice.
+- **Real play**, 96 games of Retirement Package against Safety Net (seed
+  2):
+  - Random seats: rezzed 66 times, the choice made each time, derezzed
+    at a turn's end 62 times; subroutines fired 202 times and broken
+    twice.
+  - Heuristic seats: rezzed 188 times, derezzed 175 times; subroutines
+    fired 549 times and broken 15 times.
+- **DSL ratio (`pool_status.py`): 24 of 89 `Effect` variants single-use,
+  1 unused**, over 313 card files (23 of 88 before).
+- **Measured.** Both sweeps at 256 seeds are green. Against 7e,
+  `coverage_identical.py` has both random seatings **identical**. The
+  heuristic ones moved: Corp agenda wins 78 → 72 of 192, Runner agenda
+  wins 96 → 103, flatlines 16 → 17, deck-outs 2 → 0.
+  - A ref with the lingering effect, the new effect, the pass's list of
+    types and the clients, and without the card and the deck, is
+    identical to 7e in all four shapes.
+  - So the move is `determinize` sampling a new Corp card, not a rule.
+
+#### Stage 8b — a subroutine gained for the rest of the run (28 September 2026)
+
+`feat/rwr-stage-8b-thunderbolt-armaments`: Thunderbolt Armaments: Peace
+Through Power, on the Deterrence Sweep deck. **No new `Effect`.**
+Rebellion Without Rehearsal 64 of 65; `RWR_UNIMPLEMENTED` 2 → 1.
+
+- **"That ice … gains “[subroutine] End the run unless the Runner trashes
+  1 of their installed cards.” after its other subroutines for the
+  remainder of that run"** is the case Stick and Poke's
+  `Effect::GainSubroutine` said it was waiting for: "after" (CR 9.8.3e),
+  and a subroutine gained for longer than an encounter. So the variant
+  grows the two words, `GainSubroutine { subroutine, after, duration }`,
+  rather than a second variant beside it.
+  - One gained for the run is kept on the run
+    (`RunState::gained_for_the_run`), not in `GameState::lingering`.
+    The lingering list holds flat values a search clone copies in a few
+    words, and a subroutine is an effect tree. It goes with the run, so
+    nothing resets it.
+  - The encounter's list is rebuilt at each encounter. So
+    `run::engine::add_gained_for_the_run` adds the run's entries at both
+    ways an encounter begins, the approach's `Continue` and a forced
+    encounter:
+    - "Before" subroutines go ahead of the ice's own, the newest first
+      (9.8.3a).
+    - "After" subroutines go behind them, the oldest first (9.8.3e).
+    - Both are marked `gained`, so they leave with the encounter.
+  - The ice need not be encountered when it gains it: it is rezzed on
+    approach. If the ice is being encountered, the current encounter gets
+    the subroutine as well.
+  - `validate` accepts a gain for the run from a trigger that acts on its
+    subject as the ice is rezzed or encountered, and refuses one for a
+    turn.
+- **The rest is words the engine had:**
+  - "+1 strength … for the remainder of that run" is Brasília Government
+    Grid's `ModifyStrength { ice: This, duration: Run }`.
+  - "AP or destroyer ice" is `AnyOf` over `HasSubtype`.
+  - "During a run" is the `DuringRun` requirement.
+  - "Unless the Runner trashes 1 of their installed cards" is an
+    `OfferPaidChoice` to the Runner of `Cost::Trash` over `OwnInstalled`.
+- **Client:** `PublicRunState::gained_for_the_run` is new in the view,
+  and the view ledger has it as drawn. Bot samples copy it
+  (`determinize`).
+  - During the encounter, it is in the encounter's list, as any gained
+    subroutine is.
+  - Outside an encounter, the ice's sheet lists it after the printed
+    subroutines, "— for the rest of this run".
+  - The in-effect list says "This run: Tithe has “…” after its other
+    subroutines", in both clients.
+- **Deck — Deterrence**, on Thunderbolt Armaments:
+  - Retirement Package's frame after 8a, with two Tithe for two Vertigo
+    and two Bumi 1.0 for two Reverb, so half its ice is AP or destroyer:
+    Ansel 1.0 and 2.0, Sorocaban Blade, Lycian Multi-Munition, Bumi 1.0,
+    Tithe.
+  - It is Standard as well: Engineering the Future was the frame's one
+    Core Set card.
+- **Why two Runner Sweep decks changed:** a new Corp deck re-pairs every
+  sweep seed.
+  - The 256-seed view sweep's card gate then missed two single copies:
+    Rotary (Borrowed Time) and Ashen Epilogue (Grassroots).
+  - In 48 random games against Deterrence they were installed 7 times and
+    played 5 times. At about 15 random games a Runner deck a sweep, a miss
+    is sampling.
+  - Each is now a two-of: Rotary for a Sell Out, Ashen Epilogue for a
+    Friend of a Friend.
+  - Ashen Epilogue for a Privileged Access moved the miss to Malandragem
+    instead. Grassroots has no influence to double Malandragem, and no
+    other Runner Sweep deck can take it: Borrowed Time would lose Startup,
+    and the rest have no influence left.
+  - This is a fragility of the gate, not a finding. Grassroots holds nine
+    single copies, so the next Corp deck may move a miss again.
+- **Real play**, 96 games of Deterrence against Safety Net (seed 2):
+  - Random seats: the identity fired on 120 of the 143 rezzes of AP or
+    destroyer ice; the other 23 were outside a run.
+  - Heuristic seats: it fired on all 373.
+- **DSL ratio (`pool_status.py`): 23 of 89 `Effect` variants single-use,
+  1 unused**, over 314 card files (24 of 89 before): `GainSubroutine` has
+  its second card.
+- **Measured.** Both sweeps at 256 seeds are green. Against 8a,
+  `coverage_identical.py` has **all four shapes identical**, heuristic
+  included. An identity is not a card `determinize` samples, and
+  Stick and Poke's rewritten effect plays as it did.
+
+#### Stage 8c — a card added to the Runner's score area, and a third way to win (28 September 2026)
+
+`feat/rwr-stage-8c-jeitinho`: Jeitinho, on the Hit List Sweep deck. **One
+new `Effect`.** Rebellion Without Rehearsal 65 of 65; `RWR_UNIMPLEMENTED`
+1 → 0. **Stage 8 is complete, and Rebellion Without Rehearsal with it.**
+
+- **The Runner's score area is a list of `ScoredAgenda`**, as the Corp's
+  is.
+  - It was a bare `CardId` list, which had nowhere to say that a card was
+    added "as an assassination agenda" (CR 10.1.3).
+  - The field has the same type in the state and in the view.
+  - `win::scored_value` takes a side and is the one worth for both score
+    areas.
+  - A steal records its turn.
+- **"You may add this hardware to your score area as an assassination
+  agenda worth 0 agenda points"** is Myōshu's
+  `Effect::AddToScoreAreaAsAgenda`.
+  - A Runner card now comes out of the rig into the Runner's score area.
+    What it hosts is trashed with it, as Word on the Street's cost of the
+    same name does.
+  - `AsAgenda` gains `subtype`, and `GameEvent::AddedToScoreAreaAsAgenda`
+    says whose score area and which subtype.
+  - The turn's three successful runs are three `TimesThisTurnWhen`s over
+    `OnSuccessfulRun`.
+- **"Then, if you have 3 assassination agendas in your score area, you
+  win the game"** is a third way to win, beside the two CR 1.7.2 lists.
+  - The count is `Amount::InScoreAreaWithSubtype`. It has
+    `InHeapWithSubtype`'s shape, because `Amount` is `Copy` and a
+    `CardFilter` is not.
+  - The win is the one new effect, `Effect::WinTheGame`, through
+    `win::end_game`, the one door into `GameOver`.
+  - It is announced first as `GameEvent::WonByCardText`, so
+    `classify_end_reason` names the new `GameEndReason::CardText` rather
+    than guessing from the scores.
+  - It is immediate, as the card says, not a standing check.
+- **"Threat 3 → Whenever you bypass a piece of ice, you may spend [click]
+  to install this hardware from your heap"** can only affect the game
+  from the heap, so it is active there (CR 9.1.8b).
+  - `TriggeredEffect::from_heap` marks such a trigger.
+  - A card in the Runner's heap listens for those triggers and no others
+    (`Listener::in_heap`, `Heard::FromHeap`), and the same card on the
+    table does not hear them. `validate` refuses one on a Corp card.
+  - The install is the existing `InstallRunnerCardFromZone { from:
+    OwnHeap }` on the acting card, and Threat 3 is `AmountAtLeast(
+    ThreatLevel, 3)`.
+- **Client**, both clients:
+  - The score-area row says "Added as an assassination agenda · 0 points".
+  - The log says "added Jeitinho to the Runner's score area as an
+    assassination agenda …" and "the Runner wins the game by Jeitinho".
+  - The desktop's end of game names the reason, and the terminal prints
+    it (`CardText`).
+  - The view ledger now holds the Runner's score entries field by field,
+    as it holds the Corp's.
+- **Deck — Hit List**, on Gabriel Santiago, the one Criminal identity no
+  deck plays: Borrowed Time's frame with three Jeitinho for a Tailgate, a
+  VRcation and a Pennyshaver. No Runner Sweep deck had 4 influence to
+  spare, and Borrowed Time would have lost Startup.
+- **The sweep schedule paired only part of the pool.**
+  - `sweep_decks_for_seed` played `seed % C` against `seed % R`. Hit List
+    made the lists 24 Corp and 18 Runner decks, which share a factor of
+    6.
+  - So 256 seeds were 72 pairings, each Runner deck against 4 Corp
+    decks. The 256-seed card gate then missed Safety Net's Lobisomem,
+    which is installed in about one game in four.
+  - The Runner rotation now steps one deck each `lcm(C, R)` seeds
+    (`coverage::pairing_cycle`), so 256 seeds are 256 pairings again.
+  - For coprime lengths, as through 8b, nothing below `lcm` seeds
+    changes. So 8b's two Sweep deck edits answered a full schedule, and
+    their reason stands.
+- **Real play**, 96 games of Hit List against Retirement Package (seed 2):
+  - Random seats installed Jeitinho 69 times. They never made a
+    successful run on all three centrals in one turn, and Hit List holds
+    no way to bypass ice. So neither the score area nor the heap was ever
+    reached.
+  - The heuristic Runner never installs it.
+  - Adding it to the score area, the win and the heap install are
+    reached by the card's tests alone.
+- **DSL ratio (`pool_status.py`): 24 of 90 `Effect` variants single-use,
+  1 unused**, over 315 card files (23 of 89 before).
+- **Measured.** Both sweeps at 256 seeds are green. Against 8b,
+  `coverage_identical.py` has both random seatings **identical**, and the
+  heuristic ones moved: Corp agenda wins 72 → 70 of 192, flatlines
+  17 → 14, Runner agenda wins 103 → 107, deck-outs 0 → 1.
+  - A ref with the score area, the heap listener, the win, the schedule
+    and the clients, and without the card and the deck, is identical to
+    8b in all four shapes.
+  - So the move is `determinize` sampling a new Runner card, not a rule.
+
+### 3. The Automata Initiative — 65 cards (C 14 / V 35 / M 16)
+
+#### Stage 1 — nine Corp cards, and a standing "cannot" (28 September 2026)
+
+`feat/tai-stage-1-attini-cannot-spend-credits`: Salvo Testing, Fujii Asset
+Retrieval, Jaguarundi, Attini, Mindscaping, Pivot, Cybersand Harvester,
+Behold! and Balanced Coverage. **No new `Effect`.** The Automata
+Initiative 9 of 65; `TAI_UNIMPLEMENTED` 65 → 56.
+
+- **Attini is the one card that did not compose.** "Threat 3 → The Runner
+  cannot spend credits while subroutines on this ice are resolving" is a
+  standing prohibition, and every "cannot" before it had a duration and
+  was made by something that resolved (`Effect::Prohibit`, on the
+  lingering list).
+  - `ContinuousKind::Cannot(Prohibition)`, about the player it binds
+    (`Scope::Player(Side)`; `validate` holds the two together and refuses
+    `Player` on any other kind). `continuous::cannot` reads it beside the
+    lingering list, through a question that walks both tables
+    (`Target::Bound`), because the Corp's ice binds the Runner.
+  - `Prohibition::SpendCredits`: every pool, not only the credit pool
+    (Aircheck's `SpendOrLoseCreditPool`), and no word about a loss.
+    `payment::sources` offers nothing while it holds, so the one door
+    every payment goes through is the one place it is honoured.
+  - `EffectRequirement::ResolvingThisIcesSubroutines`: the run is
+    encountering this ice and a subroutine on it has resolved this
+    encounter — from 6.9.3c's first resolution to the encounter's end,
+    through every window a subroutine opens. CR 9.1.2b's own example is
+    Attini: the Runner cannot pay for an interrupt during a subroutine's
+    net damage either. Not in the break window before it, where Attini
+    is broken with credits like any code gate.
+  - Composing it as "do 1 net damage" at threat 3 was the alternative, and
+    is right for the three "unless the Runner pays" and wrong for any
+    credit-costed interrupt the pool gains.
+- **The mandatory draw now waits for the turn-begins abilities to
+  resolve** (CR 5.6.1d–e; Rules Conformance C1, fixed again).
+  `turn::begin_turn` drew straight after dispatching "turn begins", so an
+  ability that parked a decision had the draw and the window opened
+  underneath it. Balanced Coverage would have looked at the card after
+  the one just drawn, and AU Co.'s dig already did — its test said "the
+  mandatory draw took Ice Wall; the top 3 are now…". Clearinghouse,
+  Charlotte Caçador and Cohort Guidance Program park there too.
+  - The rest of the step is owed while the phase is `StartOfTurn` with no
+    window open, which is true only across such a park, and
+    `engine::apply_action` pays it once nothing is parked or queued
+    (`turn::finish_turn_beginning`). Read off the state, not a flag.
+  - Four tests had the old order written into them; each now says the
+    draw waited.
+- **Balanced Coverage always asks.** "If that card has the chosen type,
+  you may reveal it" as a selection of the matching top card parked only
+  on a match, so the Runner would have learned the top of R&D from the
+  Corp being asked, even when the Corp kept the agenda to itself. The
+  look is followed by a choice the Corp is always offered ("you may reveal
+  it and gain 2[credit]"), and the reveal checks the type
+  (`ZoneHasAtLeast` with the top card's filter). Six answers (five types
+  and none) are more than a decision holds, so asset, operation and
+  upgrade are a second decision.
+- **The rest compose.** Salvo Testing is The Powers That Be's "whenever
+  you score" with a "may"; Fujii is Jinteki: Personal Evolution's two
+  triggers about itself; Jaguarundi's "unless they spend [click]" is a
+  nested `Cost::Clicks` (Funhouse's shape); Mindscaping's "up to 3" is two
+  `EffectIf`s on the tag count; Pivot is Corporate Hospitality's
+  additional click, a search, and Humanoid Resources' install or play from
+  HQ behind the threat; Cybersand Harvester hosts credits for `Installing`
+  and is trashed for what is left (Fermenter's `GainCreditsPerCounter`,
+  read off the card its cost trashed); Behold! is Snare! with two tags.
+- **Found on the way:** `board::diff`'s test named Buzzsaw to the Corp
+  moving from the grip to the stack. Bring Them Home had revealed it and
+  put it back in the one action, so it was in neither view; the entry's
+  own `CardRevealed` now counts as seen. No leak — the edited decks had
+  re-rolled seed 0 onto the path.
+- **Client**, both clients: `ClientView::standing_cannot`, the engine's
+  verdict with the card that says it (drawn: `hud::in_effect`, "Attini:
+  the Runner cannot spend credits", both clients), so the reason an offer
+  to pay has no Accept is on the screen without a client reading the
+  threat level. `ClientView::cannot` reads it too. Behold! is a trap to
+  `board::rez::gains_nothing`, unasked. No ledger row opened.
+- **Decks** — swaps into Eternal-only Sweep decks, point for point:
+  Retirement Package (Salvo Testing, Jaguarundi), A Thousand Cuts (Fujii,
+  Mindscaping, Attini), Paid Content (Balanced Coverage, Behold!), Hostile
+  Bid (Cybersand Harvester, Pivot). No new deck, so the sweep schedule is
+  unchanged.
+- **DSL ratio (`pool_status.py`): 23 of 90 `Effect` variants single-use,
+  1 unused**, over 324 card files (24 of 90 before).
+- **Real play**, 96 games of each edited Corp deck against Safety Net
+  (seed 2):
+  - Random seats use all nine: Salvo Testing scored twice (its trigger
+    twice), Jaguarundi's threat-4 encounter asked 21 times, Fujii stolen
+    44 times (its damage 26), Mindscaping played 43 times, Attini rezzed
+    4 times with 17 subroutines fired, Balanced Coverage heard 246 turn
+    starts, Behold! paid for twice, Cybersand Harvester trashed for its
+    credits 43 times, Pivot played 33 times.
+  - Heuristic seats: Salvo Testing scored 48 times, Attini rezzed 15
+    times, Cybersand Harvester banked on 126 rezzes. The heuristic Corp
+    never plays Mindscaping or Pivot and never pays for Behold! (Phase 5
+    debt).
+  - Whether Attini's prohibition held in play is not in the report: a
+    threat of 3 is rare in these games, so it is reached by the card's
+    test.
+- **Measured.** Both sweeps at 256 seeds are green. Against `origin/main`,
+  `coverage_identical.py` has all four seatings moved, and the move is
+  attributed in three pinned steps:
+  - The standing prohibition, the requirement, the view field and the
+    clients, without the cards, the decks or the turn fix: **identical**
+    to main in all four shapes.
+  - Adding the cards and the deck swaps: both random seatings
+    **identical**; the heuristic ones moved (Corp flatlines 14 → 18,
+    Runner agenda wins 107 → 104, deck-outs 1 → 0, of 192) — `determinize`
+    sampling the new Corp cards.
+  - Adding the turn fix: every seating moved, the random ones by where the
+    draw now falls — AU Co.'s turn-start dig fired 12 → 8 times and asked
+    18 → 12 times by view, steps 74352 → 73018 — and the heuristic Corp
+    agenda wins 70 → 71, Runner agenda wins 104 → 103. That is the rule
+    change, and the one rule change in the stage.
+
+#### Stage 2 — ten cards, and two small words (28 September 2026)
+
+`feat/tai-stage-2-valentao-credits-armed-asset-faceup`: Joy Ride,
+Shibboleth, LilyPAD, Solidarity Badge, Audrey v2, Your Digital Life, Armed
+Asset Protection, Valentão, B-1001 and M.I.C. **No new `Effect`.** The
+Automata Initiative 19 of 65; `TAI_UNIMPLEMENTED` 56 → 46. Five of the ten
+are Corp cards: the plan's "Runner, composes" named the stage by its first
+half.
+
+- **Two words, each a sentence no existing word could say.**
+  - `Amount::Credits(Side)`: Valentão's "End the run if you have more
+    credits than the Runner" is `MoreThan(Credits(Corp), Credits(Runner))`,
+    as Piranhas compared two hands. The credit pool, not what a player could
+    spend (CR 1.10.4); `RunnerCreditsAtMost` and `CorpCreditsAtLeast`
+    compare with a number the card file writes.
+  - `CardFilter::Faceup`: Armed Asset Protection's "if any of those cards
+    are agendas", of the faceup cards it has just counted. `Not(Facedown)`
+    was the obvious spelling and matches nothing, because `Not` is read off
+    a definition and which way up a card lies is not in one.
+- **An operation is not in its own count of Archives.** The engine files an
+  operation in Archives as it is played, and a selection already skipped
+  the copy resolving (RWR Stage 1, CR 8.6.7a); the count of card types among
+  faceup cards in Archives did not, so Armed Asset Protection would always
+  have counted an operation — its own. The count now leaves it out the same
+  way (`pending_choice::resolving_operation_in`). Logjam, the one other card
+  that counts, is ice and unaffected (Rules Conformance 8.6).
+- **The rest compose.**
+  - Joy Ride is Jailbreak's run with R&D alone and "draw 5".
+  - Shibboleth is Gordian Blade with Manuel Lattes de Moura's threat
+    `while` on a −2 `Strength`.
+  - LilyPAD is Pantograph's memory and "the first time each turn you
+    install a program" as `OnCardInstalled` with `first_each_turn`.
+  - Solidarity Badge's "the first time each turn you trash a Corp card" is
+    two entries sharing one count — a trash on access, and a trash of a
+    Corp card the Runner carried out (`OwnedBy`, Active Policing's word) —
+    and its turn-begins "you may remove 1 hosted power counter to draw 1
+    card or remove 1 tag" is Cacophony's paid choice around a choice of two.
+  - Audrey v2 is Botulus's counter-cost break without a host (an AI: any
+    type, strength contested) and Carnivore's grip trash as the price of
+    +3 strength.
+  - Your Digital Life is `GainCreditsAmount` over `CardsInHand(Corp)`.
+  - Valentão is Piranhas's rez alternatives.
+  - B-1001 is The Red Room's "during a run against another server" with
+    Synapse Global's "remove 1 tag" as the Corp's cost.
+  - M.I.C. is Event Horizon's "[trash]: … Use this ability only during a
+    run on this server" with Jaguarundi's "unless the Runner spends
+    [click]" as what the trash buys.
+- **Client**: nothing added to the view, so no ledger line and no drawing.
+  The prose names the new amount ("the Corp's credits").
+- **Decks** — swaps into Eternal-only Sweep decks, count for count, each
+  card taken out still in another deck the sweeps play: Safety Net (Joy
+  Ride for Overclock and Diesel), Spare Parts (LilyPAD for DZMZ Optimizer
+  and T400 Memory Diamond), Hit List (Shibboleth for VRcation), Grassroots
+  (Solidarity Badge for Rent Rioters, Audrey v2 for Buzzsaw), Retirement
+  Package (M.I.C. for two of three Sleipnir), Paid Content (Your Digital
+  Life for Scapegoat, B-1001 for Public Trail and Tithe), Hostile Bid
+  (Valentão for Ballista), Land Grab (Armed Asset Protection for Hedge
+  Fund). No new deck, so the sweep schedule is unchanged.
+- **DSL ratio (`pool_status.py`): 23 of 90 `Effect` variants single-use,
+  1 unused**, over 334 card files (unchanged).
+- **Real play**, 96 games of each edited deck (seed 2; the Corp decks
+  against Safety Net, the Runner decks against Hostile Bid):
+  - Random seats use all ten: Joy Ride played 96 times across four
+    Corp decks, Shibboleth installed 60 times, LilyPAD's draw heard 16
+    times, Solidarity Badge installed 48 times (its counter 22 times, its
+    turn start 38), Audrey v2 installed 29 times with 10 counters from
+    trashes, M.I.C. trashed for its ability 20 times, Your Digital Life
+    played 37 times, Armed Asset Protection 46, Valentão rezzed 28 times
+    over four matchups, B-1001 used 26 times.
+  - Heuristic seats: Audrey v2 and Shibboleth are installed and used (98
+    and 249 activations), Armed Asset Protection played 86 times, Your
+    Digital Life 64, B-1001 used 10 times, M.I.C. and Valentão rezzed.
+    The heuristic Runner never installs Solidarity Badge or plays Joy
+    Ride, and the heuristic Corp never trashes M.I.C. for its ability
+    (Phase 5 debt).
+- **Measured.** Both sweeps at 256 seeds are green, the card gate included.
+  Against `origin/main`, `coverage_identical.py` has both random seatings
+  **identical** and both heuristic ones moved (Corp agenda wins 71 → 74,
+  Corp flatlines 18 → 16, Runner agenda wins 103 → 102, steps 115764 →
+  120976, of 192). A pinned ref with the two words and the count fix but
+  none of the cards, decks or tests is **identical** to main in all four
+  shapes, so the heuristic movement is `determinize` sampling the new
+  cards.
+
+#### Stage 3 — the pass, and the ice's subtypes (28 September 2026)
+
+`feat/tai-stage-3-pass-triggers-banner`: Phoneutria, Tatu-Bola, Virtual
+Service Agent, Curupira, Laser Pointer and Banner. **No new `Effect`.** The
+Automata Initiative 25 of 65; `TAI_UNIMPLEMENTED` 46 → 40.
+
+- **Which kind of breaker broke the printed subroutines is carried out on
+  the pass.** Virtual Service Agent's "whenever the Runner passes this ice
+  after encountering it, if they did not break its printed subroutine with a
+  decoder during that encounter" is asked as the pass's trigger resolves,
+  and the encounter's tally is reset as the movement phase begins, before
+  that.
+  - `EncounterTally::printed_broken_with`, a set of the four icebreaker
+    subtypes (CR 2.16.7i) as bits, because the tally is `Copy`. Written by
+    `run::break_subroutine` from the card whose ability broke a subroutine
+    the ice prints; a click, or a card's text with no breaker, adds nothing.
+  - The pass carries it (`GameEvent::IcePassed::printed_broken_with`), and
+    `EffectRequirement::BrokePrintedSubroutineWith(subtype)` reads it off the
+    triggering event, as `HadNoTags` reads `TagsGiven`. `validate` holds it
+    to an `OnIcePassed` trigger and an icebreaker subtype.
+  - "After encountering it" needs no word: the pass is a moment about the
+    ice only while it is rezzed, and rezzed ice is encountered before it is
+    passed.
+- **A piece of ice's subroutines can be unable to end the run.** Banner's
+  "Interface → 2[credit]: Subroutines on the barrier you are encountering
+  cannot end the run for the remainder of this encounter" is `Effect::Prohibit`
+  with `Prohibition::EndTheRun`, about the encountered ice
+  (`Prohibit::encountered_ice`, `lingering::On::Install`) for the encounter.
+  - `Effect::EndTheRun` asks it while that ice's subroutines are resolving,
+    and does nothing (CR 1.2.2); the rest of the subroutines resolve (1.2.4).
+    That stretch is `run::resolving_subroutines_of`, which Attini's
+    `ResolvingThisIcesSubroutines` now reads too, so the two cannot disagree.
+  - A cannot, not Shred's prevention: nobody uses it and it has no "first
+    time". `validate` admits `Encounter` for this prohibition alone, and
+    only about the encountered ice.
+  - An interface ability that breaks nothing is held to CR 3.9.5g by the
+    card file: `Not(MoreThan(EncounteredIceStrength, ThisCardStrength))`,
+    over one new `Amount`, the acting rig card's strength. Banner is refused
+    against Brân 1.0, 6 to its 5.
+- **"Swap it" is said by the ice passed.** Tatu-Bola's "When the Runner
+  passes this ice, you may swap it with a piece of ice from HQ. If you do,
+  gain 4[credit]" is Mitra Aman's swap with `this_ice`: the install the
+  selection's `then` acts as, rather than the ice being approached, which a
+  pass has none of. It is offered only with ice in HQ, and the gain is in the
+  same `then`, so it is paid only for a swap.
+- **A swapped-in piece of ice is no longer named to the Runner by the card it
+  replaced.** The swap kept the install's `seen_by_runner`, so a rezzed ice
+  swapped for one from HQ would have shown the Runner the new card, facedown.
+  Tatu-Bola is always rezzed as it swaps; Mitra Aman's approached ice could
+  have been seen too. The swap now clears it and the copy's turn with the
+  card (Rules Conformance 6.2).
+- **The rest compose.** Phoneutria is Vertigo's pass with
+  `AmountAtLeast(CardsInHand(Runner), 4)`; Curupira is Malandragem's paid
+  bypass for 3 counters on a barrier and Lobisomem's "whenever it fully
+  breaks" (`ByThis`); Laser Pointer is Malandragem's threat-4 bypass with
+  its own trash as the cost and "AP, destroyer, or observer" as a `when` over
+  the catalog's subtypes.
+- **Client**, both clients: nothing added to the view — the new fields are on
+  the run's tally and an event, and the prohibition is a lingering effect the
+  view already carries. The "in effect" lines name it ("Banner: subroutines on
+  Ice Wall cannot end the run, for this encounter"), and the prose names the
+  new words.
+- **Decks** — swaps into Eternal-only Sweep decks, count for count, each card
+  taken out still in another deck the sweeps play: A Thousand Cuts
+  (Phoneutria for Neurospike, Tatu-Bola for Byte), Paid Content (Virtual
+  Service Agent for Paywall), Hit List (Curupira for Marjanah, Laser Pointer
+  for Leech), Pay As You Go (Banner for two of three Corroder). No new deck,
+  so the sweep schedule is unchanged.
+- **DSL ratio (`pool_status.py`): 22 of 90 `Effect` variants single-use,
+  1 unused**, over 340 card files (23 of 90 before: Tatu-Bola is the swap's
+  second card).
+- **Real play**, 96 games a seating (seed 2; the Corp decks against Safety
+  Net, the Runner decks against Hostile Bid, Hit List against A Thousand Cuts
+  too):
+  - Random seats use all six: Phoneutria rezzed 28 times and its pass tagged
+    once, Tatu-Bola passed and swapped 3 times, Virtual Service Agent's pass
+    tagged 62 times, Curupira installed 66 times and its fully-broken counter
+    placed 7 times, Laser Pointer trashed to bypass 9 times, Banner used 4
+    times.
+  - Heuristic seats: the Corp swapped Tatu-Bola on each of the 46 passes
+    it heard, Virtual Service Agent is broken 132
+    times and tags 23, and the Runner installs Curupira and bypasses with it
+    (49 bypasses, 201 counters against Hostile Bid). The heuristic Runner
+    never installs Laser Pointer or Banner (Phase 5 debt).
+- **Measured.** Both sweeps at 256 seeds are green, the card gate included.
+  Against `origin/main`, `coverage_identical.py` has both random seatings
+  **identical** and both heuristic ones moved (Corp agenda wins 74 → 62,
+  Corp flatlines 16 → 18, Runner agenda wins 102 → 110, deck-outs 0 → 2,
+  steps 120976 → 116542, of 192). A pinned ref with every engine and client
+  change and none of the cards, decks or tests is **identical** to main in
+  all four shapes, the swap's cleared `seen_by_runner` included, so the
+  heuristic movement is `determinize` sampling the new cards.
+
+#### Stage 4 — Trojans, host ice, and back to the grip (28 September 2026)
+
+`feat/tai-stage-4-trojans-host-scopes`: Monkeywrench, Saci, Slap Vandal,
+Umbrella, Living Mural, Pichação, Urban Art Vernissage, Hermes and Stegodon
+MK IV. **One new `Effect`** (`AddToHand`). The Automata Initiative 34 of 65;
+`TAI_UNIMPLEMENTED` 40 → 31.
+
+- **A derez is a moment, and "host ice" a filter.** Saci's "Whenever host
+  ice is rezzed or derezzed" needed both.
+  - `Trigger::OnDerez`, about the card turned facedown: `GameEvent::
+    CardDerezzed` was an occurrence of nothing.
+  - Every derez now goes through one function (`ability::derez`): a
+    card's text (`Effect::DerezCard`, dispatched with `emit`) or a cost
+    (`Cost::Derez`, `DerezSelf`, dispatched by the payer).
+  - `EventFilter::Host`: the moment is about the listening install's
+    host, asked as it is heard. Pichação's "Whenever you pass host ice"
+    uses it too. `validate` admits it only on a card that installs on
+    ice.
+- **Once per encounter** (Slap Vandal): `EffectRequirement::
+  OncePerEncounter`, the encounter's twin of `OncePerRun`.
+  - It is kept on the encounter's tally
+    (`EncounterTally::once_per_encounter_used`), so the tally's reset is
+    the limit's end. The tally is no longer `Copy`.
+- **Ice hosting a trojan** (Umbrella's "can only interface with ice
+  hosting a trojan program"): `EffectRequirement::EncounteredIceHosts
+  (filter)`.
+  - Its "If at least 1 subroutine was broken this way" needs no word: the
+    break refuses when there is nothing to break, so the ability never
+    resolves without one.
+  - "Each player may draw 1 card" is two `PresentChoice`s, the Runner's
+    first.
+- **A run in which ice was derezzed, and every installed icebreaker**
+  (Stegodon MK IV's "Each run, as long as a piece of ice has been derezzed
+  during that run, each installed icebreaker gets –2 strength").
+  - `RunState::ice_derezzed`, set by `ability::derez` and read by
+    `EffectRequirement::IceDerezzedThisRun`. It is public: carried in the
+    view, copied by `determinize`, and drawn as an "in effect" line.
+  - `Scope::Rig(filter)`, a continuous effect about the rig's cards.
+  - Its "Once per turn → When a run begins, you may derez…" is Brasília
+    Government Grid's `Cost::Derez` in an `OfferPaidChoice`. The trigger
+    does not fire while no rezzed ice outside the attacked server could
+    be derezzed. Declined, the turn is still spent (the 9.3.6g deviation,
+    recorded).
+- **"Not protecting the attacked server" matched nothing.** A `Not` around
+  a word about the installed copy was decided at the card level, where
+  that word always passes, so the negation always failed.
+  - `CardFilter::is_about_the_copy_alone` names those words. A `Not` of
+    one now passes the card-level half and is decided on the copy
+    (`pending_choice`).
+  - No card before Stegodon negated one.
+- **Clicks gained during runs are counted, and a program goes back to the
+  grip** (Pichação's "If this is not the first time you gained [click]
+  during a run this turn, add this program to your grip").
+  - `TurnLog::click_gains_in_runs`, a sum beside `installed_from_hq`: a
+    click gained is a moment no card hears. It is recorded by
+    `Effect::GainClicks` during a run, and read as `Amount::
+    ClickGainsInRunsThisTurn`.
+  - `Effect::AddToHand`, the acting install to its owner's grip. It is
+    single-use: `PromptChooseCards` cannot say "this install", and
+    `AddToDeck` moves only into a deck.
+- **An install returned to a hand says so, named only to who saw it.**
+  - Hermes's "add 1 unrezzed card to HQ" and Urban Art Vernissage's "add 1
+    installed non-virus trojan program to your grip" are selections with
+    a hand as the destination.
+  - Such a move now announces `CardAddedToHand` (JK's event, masked when
+    facedown).
+  - A Runner's selection of the Corp's installs sent to HQ or R&D leaves
+    the facedown ones out of `CardsSelected`. The mask names a selected
+    card only while it is still facedown on the table, and after the move
+    it is not, so Hermes would have named the card it returned.
+  - Vernissage's "place 2[credit]" follows the selection in a `Sequence`,
+    since a selection's `then` acts as the chosen install. It pays for
+    installs (`PaysFor::Installing(Any)`).
+- **A trojan's "this server" is its host's** for `RunAgainstThisServer`,
+  as it already was for the listeners. Living Mural's "a sentry protecting
+  this server" is that with `Encountering(Sentry)`. A boost "for the
+  remainder of the turn" needs no encounter (Living Mural's threat-4 +3 on
+  install).
+- **Monkeywrench composes.** Its "Host ice gets −2 strength. Each other
+  piece of ice protecting this server gets −1" is −1 on its host and −1 on
+  its server's ice, host included. A Trojan may now say
+  `IceProtectingThisServer`.
+- **Found by the sweep: a host's host lost what it hosted.**
+  - The view sweep's conservation check failed at seed 33 (Fine Print
+    against Spare Parts, whose list this stage changed): a Muse trashed to
+    the memory limit took the Cupellation it hosted to the heap, and the
+    Corp card on the Cupellation to no zone.
+  - The rig's cascade now follows each card it trashes down to what that
+    card hosted (CR 1.13.13, "and all objects hosted on those objects").
+  - It is a bug on main, reached only on the new trajectory.
+- **Client**, both clients:
+  - `RunState::ice_derezzed` is drawn as "This run: a piece of ice has
+    been derezzed", which is why every icebreaker lost 2.
+  - The tally's once-per-encounter set and the turn log's new sum are the
+    engine's (the view ledger says so).
+  - The log names what went back to a hand, and the prose names the new
+    words.
+- **Decks** — swaps into Eternal-only Sweep decks, each card taken out
+  still in another deck the sweeps play:
+  - Retirement Package: two Stegodon MK IV for the Offworld Office and the
+    Vulture Fund, the points kept at 21.
+  - Hit List: Hermes for the T400 Memory Diamond, and two Saci for two
+    Rotary.
+  - Grassroots: two Monkeywrench for two Leech.
+  - Safety Net: two Living Mural for two Echelon, two Umbrella for two
+    Unity, and two Urban Art Vernissage for two Touchstone.
+  - Spare Parts: two Slap Vandal for a Gordian Blade and an Echelon, and
+    two Pichação for two Jailbreak. Taking both Gordian Blades left Safety
+    Net's one copy unseen by the 256-seed card gate.
+- **DSL ratio (`pool_status.py`): 23 of 91 `Effect` variants single-use,
+  1 unused**, over 349 card files (22 of 90 before).
+- **Real play**, 96 games a seating (seed 2). The Runner decks played
+  Hostile Bid; Retirement Package played Safety Net.
+  - Random seats use all nine:
+    - Monkeywrench installed 39 times.
+    - Hermes installed 21 times, returning 61 cards to HQ.
+    - Saci installed 46 times, heard 3 rezzes.
+    - Living Mural installed 46 times.
+    - Umbrella installed 41 times.
+    - Urban Art Vernissage installed 30 times, took back 15 trojans.
+    - Slap Vandal installed 55 times.
+    - Pichação installed 43 times, gained 28 clicks and went back to the
+      grip 5 times.
+    - Stegodon MK IV scored 5 times, its run-start trigger heard 25.
+  - Heuristic seats:
+    - The Corp scores Stegodon MK IV 57 times, its trigger heard 147.
+    - Hermes returned 52 cards to HQ.
+    - Slap Vandal was used 216 times.
+    - Living Mural was used 90 and 193 times.
+    - Umbrella was used 7 times.
+  - The heuristic Runner never installs Monkeywrench, Saci, Pichação or
+    Urban Art Vernissage (Phase 5 debt, beside Laser Pointer and Banner).
+  - Saci's derez was reached by its test alone: Hit List's opponents
+    derez nothing.
+- **Measured.** Both sweeps at 256 seeds are green, the card gate included.
+  - Against `origin/main`, `coverage_identical.py` has both random
+    seatings **identical**. Both heuristic ones moved, of 192 games:
+
+    | | main | Stage 4 |
+    |---|---|---|
+    | Corp agenda wins | 62 | 64 |
+    | Corp flatlines | 18 | 23 |
+    | Runner agenda wins | 110 | 105 |
+    | Deck-outs | 2 | 0 |
+    | Steps | 116542 | 112281 |
+
+  - A pinned ref with every engine and client change and none of the
+    cards, decks or tests is **identical** to main in all four shapes, the
+    cascade fix included.
+  - So the heuristic movement is `determinize` sampling the new cards.
+
+#### Stage 5 — Corp install and server words (28 September 2026)
+
+`feat/tai-stage-5-corp-install-and-server-words`: Vovô Ozetti, Greasing the
+Palm, Ablative Barrier, Tucana, Front Company, Federal Fundraising,
+Epiphany Analytica: Nations Undivided and Lago Paranoá Shelter. **No new
+`Effect`.** The Automata Initiative 42 of 65; `TAI_UNIMPLEMENTED` 31 → 23.
+
+- **A card can say when it may be rezzed** (Front Company's "Rez only
+  during your turn").
+  - `CardDefinition::rez_requirement`, asked as the card by
+    `engine::rez_install`, the one place a Corp card is turned faceup. So a
+    card's text that would rez it on the Runner's turn rezzes nothing, as
+    an unaffordable rez does (`RulesError::RezRestricted`, swallowed where
+    `NotEnoughCredits` is), and the rez action is refused.
+  - A field beside `play_requirement` and `install_only_in`, the card's
+    other restrictions on its own way into play. Not a continuous effect:
+    those are what an active card does, and a card being rezzed is not
+    active yet.
+- **"The first run each turn cannot be made against a remote server"**
+  (Front Company).
+  - `Prohibition::RunOnRemote`, a standing `Cannot` on the Runner with
+    `ContinuousEffect::first_each_turn`. The first of what is the
+    prohibition's own word (`Prohibition::counted_as`, the turn's runs), so
+    the card writes no count.
+  - Asked where the server is announced (CR 6.3.2a): `run::start_run`,
+    which every run goes through, and the servers a card's text offers to
+    run, which leave the remotes out. The basic action is never offered.
+  - Drawn: "Front Company: the Runner cannot run on a remote server" in
+    the In effect list until the turn's first run.
+  - Its other sentence composes: "the first time each turn a run on
+    Archives begins" is `OnRunStart` with `when: Server([Archives])` and
+    `first_each_turn`; "if this server is not protected by ice" is
+    `Amount::IceProtectingThisServer` under a `Not`, which Federal
+    Fundraising uses too.
+- **"The Corp installs a card in the root of a server"** (Lago Paranoá
+  Shelter): `EventFilter::InRoot`.
+  - Read off the card installed: ice is the only type installed protecting
+    a server and never in a root (CR 3.4.2).
+  - It says whose moment it is, as `Whose` does, since a `Card` filter on
+    an "install" trigger hears its controller's installs.
+  - The turn log now counts a Corp install of ice as ice, which the table
+    shows (`turn_log::seen_anyway`), so "the first" of the Corp's root
+    installs is the first install it counts unseen.
+  - "You may trash the top card of your stack to draw 1 card" is a
+    `Cost::Trash` from `TopOfOwnStack` in an `OfferPaidChoice`.
+- **A persisting ability hears the whole run** (Tucana's "Persistent →
+  Whenever an agenda is scored or stolen from the root of this server").
+  - A persistent upgrade the Runner trashed while accessing it was heard
+    only at the run's end (AMAZE Amusements). It now listens for the rest
+    of the run as an active card does: it "never becomes inactive" (CR
+    9.12.5b). No card but Tucana hears anything new: AMAZE Amusements'
+    one trigger is the run's end, and Flagship and Mahkota Langit Grid
+    have none.
+  - Its "this server" is the attacked one
+    (`EffectRequirement::AgendaCameFromThisCardsServer` falls back to the
+    run's server for it), as in 1.12.6a's AMAZE Amusements example.
+  - The search is Eminent Domain's: a selection of ice out of R&D,
+    shuffled, then an install and rez paying a total of 3[credit] less.
+  - `install_only_in: [Remote]` says "Remote server only".
+- **A rez discount on the ice protecting a server** (Vovô Ozetti):
+  `RezCost` now admits `Scope::IceProtectingThisServer`. Its threat-4
+  root discount is `RootOfThisServer` with a `while`, and "When your turn
+  ends, you may move this upgrade" is Lotus Haze's move, offered by the
+  upgrade itself.
+- **The rest composes.**
+  - Greasing the Palm: an install from HQ whose `if_installed` offers
+    `Cost::RemoveTags(1)` for an advancement counter on that card, asked
+    only of a tagged Runner.
+  - Ablative Barrier: Ping's "when you rez this ice during a run against
+    this server" at threat 3, then a choice of HQ or Archives, each an
+    install with `another_server`.
+  - Federal Fundraising: Knowledge Seeker's arrangement of the top of R&D,
+    then a draw under the "not protected by ice" condition.
+  - Epiphany Analytica: two triggers sharing one first-time count ("steals
+    or trashes a Corp card", the second `OwnedBy { Corp, Runner }`), and
+    Poétrï's install from the top 3 of R&D behind a look.
+- **Decks.**
+  - Grand Opening, a new Corp Sweep deck on Epiphany Analytica (Standard,
+    Eternal and Casual). Paid Content's frame, less its out-of-faction
+    cards and three NBN ones, so Federal Fundraising, Vovô Ozetti, Greasing
+    the Palm, Ablative Barrier and Tucana fit the fifteen influence.
+  - A Thousand Cuts: two Front Company for two Urtica Cipher.
+  - Grassroots: two Lago Paranoá Shelter for two Friend of a Friend.
+  - Every card taken out is still in another deck the sweeps play.
+- **DSL ratio (`pool_status.py`): 23 of 91 `Effect` variants single-use,
+  1 unused**, over 357 card files — unmoved.
+- **Real play**, 96 games a seating (seed 2), Grand Opening and A Thousand
+  Cuts against Grassroots.
+  - Random seats use all eight:
+    - Epiphany Analytica took a counter 215 times and spent one 134 times.
+    - Federal Fundraising asked 354 times as the turn began.
+    - Vovô Ozetti installed 51 times, offered its move 252 times.
+    - Greasing the Palm played 24 times.
+    - Ablative Barrier rezzed 29 times, 9 of them at threat 3 during a run
+      on its server.
+    - Tucana installed 38 times; it heard a steal once and a score never.
+    - Front Company rezzed 31 times, its Archives damage 20 times.
+    - Lago Paranoá Shelter installed 36 times, offered 135 times.
+  - Heuristic seats:
+    - Federal Fundraising asked 1259 times, Vovô Ozetti 530.
+    - Front Company rezzed 54 times, its Archives damage 24 times.
+    - Greasing the Palm played 9 times, Ablative Barrier's rez trigger 9.
+  - The heuristic Corp never spends an Epiphany Analytica counter, and the
+    heuristic Runner never installs Lago Paranoá Shelter (Phase 5 debt).
+  - Tucana's score trigger is reached by its test alone.
+- **Measured.** Both sweeps at 256 seeds are green, the card gate included.
+  - Against `origin/main`, `coverage_identical.py` has both random
+    seatings **identical**. Both heuristic ones moved, of 192 games (view
+    and index alike, but for main's flatline and deck-out counts, 22 and 1
+    by index):
+
+    | | main | Stage 5 |
+    |---|---|---|
+    | Corp agenda wins | 64 | 60 |
+    | Corp flatlines | 23 | 10 |
+    | Runner agenda wins | 105 | 120 |
+    | Deck-outs | 0 | 2 |
+    | Steps | 112281 | 111335 |
+
+  - A pinned ref with every engine and client change and none of the
+    cards or decks is **identical** to main in all four shapes, the turn
+    log's count of the Corp's ice and the persisting listeners included.
+  - So the heuristic movement is `determinize` sampling the new cards.
+
+#### Stage 6 — Runner run words (28 September 2026)
+
+`feat/tai-stage-6-runner-run-cards`: Hannah "Wheels" Pilintra, Mercury:
+Chrome Libertador, Debbie "Downtown" Moreira, Bahia Bands, Chrysopoeian
+Skimming, Strike Fund and The Price. **No new `Effect`**: one was
+generalised in place. The Automata Initiative 49 of 65;
+`TAI_UNIMPLEMENTED` 23 → 16.
+
+- **A trash says which pile the card left** (Strike Fund's "When this
+  event is trashed from your grip or stack").
+  - `GameEvent::CardTrashed::from` (`dsl::TrashedFrom`: installed, a hand,
+    a deck, elsewhere) replaced the flag that said only whether the card
+    was installed. Boi-tatá still reads that flag (`TrashedFrom::installed`).
+    `EventFilter::TrashedFrom` reads the pile off the moment, since the
+    card is in the heap by the time anything hears it.
+  - A trigger about the card itself (`Subject::This`) is heard whoever
+    trashed it (`listeners::whose_admits`). No other card's `This` trigger
+    is about something its controller's opponent does.
+  - **Damage's cards are trashed, not discarded** (CR 10.4.2a, 1.19.3): a
+    `CardTrashed` out of the grip by the player responsible, dispatched
+    with the damage. They were `CardDiscarded`, an occurrence of nothing,
+    so no card could hear what damage took. Hiram "0mission" Svensson now
+    hears hardware that damage the Runner suffers by their own card takes.
+    Both clients' damage line reads "… trashed" instead of "… discarded".
+- **"Those cards"** (The Price's "Trash the top 4 cards of your stack.
+  You may install 1 of those cards, paying 3[credit] less").
+  - `MillRnDAmount`, R&D's alone, became `Effect::Mill { deck, amount,
+    then }`. Its `then` has `CardFilter::TrashedThisWay` written over as
+    the cards it trashed (`CardFilter::AmongCards`) before it resolves, or
+    before it waits behind whatever a trashed card parked. That is the
+    State Hygiene Rule's third case, a value written into the effect that
+    waits.
+  - Composition was tried first and failed. `TopOfZone(4)` on the heap
+    found The Price itself on top: a played event lands there in the
+    middle of its own resolution. A heap has no order to read the cards
+    back from (CR 4.4.2) either.
+  - A Strike Fund trashed this way asks its "may" before The Price's
+    install (CR 9.6.5a). The engine trashes the four one at a time, so one
+    third from the top resolves before the fourth is trashed; nothing in
+    the pool can tell (rules conformance 9.6).
+- **Two facts about a run.**
+  - Whether a subroutine was broken during it (`RunState::
+    subroutine_broken`, `EffectRequirement::SubroutineBrokenThisRun`):
+    Mercury's "if you did not break any subroutines during that run".
+    Mercury's one printed ability is one trigger on HQ or R&D, since two
+    once-per-turn entries would share a use. Its access goes to the server
+    being run (`DuringRunOn`). As with Stegodon MK IV, a declined "may"
+    spends the turn's use (9.3.6g, recorded).
+  - Whether it was unsuccessful (CR 6.8.4): `RunState::
+    reached_success_phase`, set as the Runner completes the run whatever
+    is declared, and `CompletedRun::unsuccessful`, which `run::end_run`
+    sets unless the remote ceased to exist (6.8.4b). Hannah's "When that
+    run ends, if it was unsuccessful, take 1 tag" is her run's end rider
+    under `EffectRequirement::LastRunUnsuccessful`.
+  - Both facts are public and in the view, so a bot's sample asks them
+    where the real game does.
+- **Two hosted-credit words.**
+  - `PaysFor::DuringItsRun`: Debbie's "[click]: Run any server. You can
+    spend hosted credits during that run". `DuringRuns` is every run; hers
+    is the run whose `initiated_by` she is.
+  - Bahia Bands' "Place 4[credit] on this event. You can spend hosted
+    credits to pay trash costs for the remainder of this run".
+    `PlaceRunCredits` took a `pays_for` (`RunState::run_credits_pay_for`),
+    and the run's pool is classed by it.
+  - Drawn: "This run: the 4 [credit] on Bahia Bands may be spent only to
+    pay trash costs" in the In effect list, since "+4" beside the credit
+    pool cannot say it.
+- **The rest composes.**
+  - Chrysopoeian Skimming: the Corp is always asked, so the question shows
+    nothing about HQ. "Reveal" with no agenda there is the "otherwise"
+    (look at the top 3 of R&D).
+  - Debbie's threat 4 load and run-event credit are triggers on herself.
+  - Hannah's first ability: a click gained, then a remote-only
+    `PromptChooseServer`, withheld with no remote to run. Her second:
+    `[click], [trash]`.
+  - Bahia Bands: Key Performance Indicators' `ResolveSomeOf` in the run's
+    `on_success`.
+- **Deck.** Picket Line, a new Runner Sweep deck on Mercury (Standard,
+  Eternal and Casual), on Stolen Goods' frame of run events, with all
+  seven cards.
+- **DSL ratio (`pool_status.py`): 21 of 91 `Effect` variants single-use,
+  1 unused**, over 364 card files, from 23 of 91: `Mill` has two cards and
+  `PlaceRunCredits` two.
+- **Real play**, 96 games a seating (seed 2), Grand Opening against Picket
+  Line.
+  - Random seats use all seven:
+    - Strike Fund played 27 times, heard its own trash 6.
+    - The Price played 26 times, its install offered 25.
+    - Hannah installed 16 times, used 18.
+    - Mercury's trigger fired 381 times.
+    - Chrysopoeian Skimming played 42 times, the Corp revealing 11.
+    - Debbie installed 27 times, used 65, loaded at threat 4 9 times and
+      by a run event 25.
+    - Bahia Bands played 33 times.
+  - Heuristic seats: Strike Fund played 34 times, Mercury's trigger fired
+    493. The heuristic Runner never plays Bahia Bands, Chrysopoeian
+    Skimming or The Price, and never installs Debbie or Hannah (Phase 5
+    debt).
+- **Measured.** Both sweeps at 256 seeds are green, the card gate included.
+  - Against `origin/main`, `coverage_identical.py` reports every shape
+    different. The random seatings play the same games: same outcomes and
+    the same 73018 steps. They differ only in damage's cards being
+    counted as trashes, not discards (`CardDiscarded` 868 → 503,
+    `CardTrashed` 1686 → 2051 by view, and each card's `trashed`). The
+    heuristic seatings moved, of 192 games (view; by index the steps are
+    112879):
+
+    | | main | Stage 6 |
+    |---|---|---|
+    | Corp agenda wins | 60 | 73 |
+    | Corp flatlines | 10 | 16 |
+    | Runner agenda wins | 120 | 101 |
+    | Deck-outs | 2 | 2 |
+    | Steps | 111335 | 112883 |
+
+  - A pinned ref with every engine and client change and none of the
+    cards or the deck differs from main in the same counters and nothing
+    else, in all four shapes: every game is the same game. So the damage
+    trash, the trash pile, the two run facts, the credit words and `Mill`
+    move no game. The heuristic movement is `determinize` sampling the
+    new cards.
+
+#### Stage 7 — a breach as a moment, and a breach of another server (28 September 2026)
+
+`feat/tai-stage-7-expendables-breach-redirect`: Slash and Burn
+Agriculture, Tree Line, Angelique Garza Correa, Eru Ayase-Pessoa, Beatriz
+Friere Gonzalez, Oppo Research, S-Dobrado and Capybara. **No new
+`Effect`.** The Automata Initiative 57 of 65; `TAI_UNIMPLEMENTED` 16 → 8.
+
+- **A breach begins as a moment of its own** (`GameEvent::BreachBegun`,
+  `Trigger::OnBreach`), before any candidate is presented.
+  - "Access 1 additional card" must be applied before the random access
+    limit is set (CR 7.3.5b), and Rotary asks the Runner first. So the
+    accesses wait: a beginning that leaves something parked or queued
+    returns with `RunState::breached` set, and `engine::resume_run` takes
+    the breach on after the answer, a breach with no run included.
+  - **A deviation corrected.** The seven "whenever you breach" cards
+    (Docklands Pass, Rotary, Manuel Lattes de Moura, "Pretty" Mary da
+    Silva, Devadatta Drone, Cupellation, Mercury: Chrome Libertador) heard
+    the *successful run* on the server. That was the same moment only
+    while every run breached the server it attacked. They hear the breach
+    now, Cataloguer's breach with no run included.
+  - Mercury's one printed ability asks which server is breached
+    (`EffectRequirement::Breaching`, the run's breach only), with "HQ or
+    R&D" said as `Not(And(Not(..), Not(..)))`, since there is no `Or`.
+- **A run's breach of another server** (Eru's "Run Archives. If
+  successful, instead of breaching Archives, breach R&D"; Beatriz's run on
+  HQ).
+  - `SetAccessReplacement { server: Archives, effect: Breach(RnD) }`:
+    `Effect::Breach` resolved as a replacement (`ResolutionContext::
+    replacing_breach`) names the server the run breaches instead. The run
+    stays a run on Archives, to its `RunCompleted`.
+  - Beatriz's "When you do, access 1 additional card" is in the same
+    replacement, ahead of the breach.
+  - Eru's "Threat 3 → Whenever you breach R&D during a run on Archives" is
+    `OnBreach` on R&D with `DuringRunOn(Archives)`.
+  - Drawn: the log says "the Runner breached R&D" when the breach is not
+    of the server the run succeeded on, and is silent otherwise.
+- **The times ice was encountered during a run** (`RunState::encounters`,
+  `Amount::EncountersThisRun`, in the view): S-Dobrado's "the first time"
+  and "the second time you encounter a piece of ice during that run",
+  heard by the run event in the play area. Capybara hears the bypass and
+  derezzes the encountered ice for the cost of removing itself.
+- **The rest composes.** The three Weyland cards are expendable (Tocsin's
+  `from_hand` and `RevealAndTrashSelf`). Tree Line is Ice Wall's
+  advanceable strength. Angelique's access is BANGUN's "while it is
+  rezzed". Oppo Research is Active Policing's play requirement and
+  `EndActionPhase`.
+- **Decks.** Every built identity already has a deck, so the cards went
+  into in-faction Sweep decks, two copies each, in place of cards other
+  decks still carry:
+  - Land Grab took the four Corp cards (Slash and Burn for its Let Them
+    Dream, at the same points). Without its Ice Wall it is Standard-legal,
+    and the pin says so.
+  - Picket Line took S-Dobrado and Capybara, Grassroots took Eru, and Safety
+    Net took Beatriz.
+- **DSL ratio (`pool_status.py`): 20 of 91 `Effect` variants single-use,
+  1 unused**, over 372 card files, from 21: `Breach` has three cards.
+- **Real play**, 96 games a seating (seed 2), Land Grab against each of
+  the three Runner decks.
+  - Random seats:
+    - Slash and Burn used from HQ 31 times, Tree Line 26.
+    - Angelique used from HQ 7 times; she asked about her meat damage on
+      184 accesses.
+    - Oppo Research played 38 times.
+    - Eru used 73 times, his threat access 16. Beatriz used 78 times.
+    - S-Dobrado played 35 times but bypassed once: a random Corp rarely
+      rezzes central ice.
+    - **Capybara was installed 30 times and never heard a bypass.** It is
+      reached by its card test alone.
+  - Heuristic seats use none of the Runner cards. The Corp scores Slash and
+    Burn and rezzes Tree Line, but never uses a card from HQ, never plays
+    Oppo Research, and installs Angelique 10 times in 288 games (Phase 5
+    debt).
+- **Measured.** Both sweeps at 256 seeds are green, the card gate
+  included.
+  - **Attribution.** An engine ref with the breach step and none of the
+    cards moved (the seven kept on `OnSuccessfulRun`) differs from
+    `origin/main` only in the new `BreachBegun` count, in all four
+    shapes: the breach step moves no game.
+  - Moving the seven cards to `OnBreach` moves the random seatings, with
+    fewer trigger-order prompts for the Runner (`ChooseTriggerToResolve`
+    301 → 297). Of 192 games: steps 73018 → 72305, Corp flatlines
+    75 → 74, Runner agenda wins 113 → 114. The heuristic seatings play the
+    same games, their counts renamed.
+  - The new cards and decks leave both random seatings identical: Sweep
+    decks are in no `matchups()`. The heuristic seatings move by
+    `determinize`, of 192 games:
+
+    | | before the cards | Stage 7 |
+    |---|---|---|
+    | Corp agenda wins | 73 | 65 |
+    | Corp flatlines | 16 | 14 |
+    | Runner agenda wins | 101 | 111 |
+    | Steps | 112883 | 110799 |
+
+#### Stage 8a — a "when encountered" ability prevented, and subroutines gained by count (28 September 2026)
+
+`feat/tai-stage-8a-starlit-knight-airbladex`: Starlit Knight and AirbladeX
+(JSRF Ed.). Stage 8 is split by mechanic into four PRs (8a–8d). **No new
+`Effect`.** The Automata Initiative 59 of 65; `TAI_UNIMPLEMENTED` 8 → 6.
+
+- **Another card's ability as something to prevent** (CR 9.9.3a, 9.9.5):
+  AirbladeX's "Prevent a “when encountered” ability on a piece of ice".
+  - `Preventable::EncounterAbility`, `WouldHappen::EncounterAbility {
+    ice }`. When the encountered ice's own `OnEncounter` trigger is about
+    to resolve and somebody could prevent it, it is parked with the
+    trigger itself in `PendingPrevention::waiting`
+    (`prevention::encounter_ability`, asked in `dispatcher::fire_one`,
+    which every fired trigger passes through). It resolves after the
+    window unless it was prevented.
+  - Nobody is asked when nobody could prevent it (`could_prevent`), so no
+    game without an AirbladeX moves.
+  - Drawn: "Prevent Paywall's “when encountered” ability?", and the log's
+    "a “when encountered” ability was prevented".
+- **"Use this ability only during a run" for an interrupt**
+  (`EffectRequirement::RunInProgress`): AirbladeX's net damage can come
+  from a card accessed. `DuringRun` stops as the breach begins, and five
+  cards rely on that.
+- **Subroutines gained by count** (`GainSubroutine::count`): Starlit
+  Knight's X "End the run" subroutines, X the Runner's tags, read as they
+  are gained.
+- **A leak fixed.** `GameEvent::CardHosted` named a piece of ice a Runner
+  card was installed on to a viewer who could not identify it (the
+  256-seed view sweep, seed 166: Stowaway on an unrezzed Tithe, reached
+  once this stage's deck swap re-paired the seeds). `host` is now
+  optional and struck out for a viewer who cannot identify it.
+- **Decks.** Grand Opening took two Starlit Knight for its two Capacitor.
+  Safety Net took two AirbladeX for its two Methuselah. Paid Content and
+  Spare Parts still carry the cards that left.
+- **DSL ratio (`pool_status.py`):** unchanged at 20 of 91 `Effect`
+  variants single-use, 1 unused.
+- **Real play**, 96 games a seating (seed 2), Grand Opening against Safety
+  Net.
+  - Random seats: AirbladeX installed 32 times and used 3. Starlit
+    Knight's threat-4 trigger fired 6 times, gaining 10 subroutines.
+  - Heuristic seats: the Runner never installs AirbladeX (Phase 5 debt).
+    Starlit Knight's trigger fired 7 times with the Runner untagged,
+    gaining none.
+- **Measured.** Both sweeps at 256 seeds are green, the card gate
+  included.
+  - A ref with every engine and client change and neither card nor deck
+    swap is identical to `origin/main` in all four shapes. The prevention
+    hook, the count and the masking fix move no game.
+  - With the cards, the random seatings stay identical. The heuristic
+    seatings move by `determinize`, of 192 games:
+
+    | | before the cards | Stage 8a |
+    |---|---|---|
+    | Corp agenda wins | 65 | 55 |
+    | Corp flatlines | 14 | 9 |
+    | Runner agenda wins | 111 | 127 |
+    | Steps | 110799 | 109018 |
+
+#### Stage 8b — a psi game on a successful run, and costs paid in grip cards (29 September 2026)
+
+`feat/tai-stage-8b-adrian-seis-daniela`: Adrian Seis and Daniela Jorge
+Inácio. **No new `Effect`.** The Automata Initiative 61 of 65;
+`TAI_UNIMPLEMENTED` 6 → 4.
+
+- **A cost paid in grip cards** (`Cost::AddRandomFromGripToBottom`):
+  Daniela's "the Runner must add 2 cards from the grip at random to the
+  bottom of the stack". It cannot be paid with fewer cards than that, so
+  then there is no trash or steal (CR 1.16).
+- **Additional costs to steal and to trash that are not credits** (CR
+  1.16.10).
+  - `ContinuousKind::StealCost` is a `Cost` now, not a number of credits:
+    Magistrate Revontulet's is `Credits(3)`.
+  - `ContinuousKind::AdditionalTrashCost` is the trash's
+    (`AccessPhase::PendingChoice::trash_also`), paid with the credits and
+    drawn on the access's facts line ("Trashing it costs 2 credits and:
+    add 2 cards from your grip at random to the bottom of your stack").
+  - Daniela's trash cost binds only while she is rezzed
+    (`CurrentlyAccessingInstalledCard { rezzed_only }` as the `while`):
+    9.1.8 has no exception for a trash cost as 9.1.8e has for a steal.
+  - "To steal an agenda from this server or its root" is
+    `Scope::StealingFromThisServer`: accessed in a breach of her server.
+    It persists for the rest of the run she is trashed in (9.12.5), read
+    from the run's trashed persistent upgrades as Mahkota Langit Grid's
+    trash cost is.
+- **Prohibitions on access, bound to one install, for the rest of a run**
+  (CR 7.4.2): Adrian's psi game. `Prohibition::AccessOthers` ("cannot
+  access cards other than this upgrade") and `Prohibition::Access`
+  ("cannot access this upgrade"), made by `Effect::Prohibit {
+  this_install }` and asked where the candidates are pruned
+  (`lingering::installs_prohibited`). Drawn in the In effect list with the
+  upgrade's name. His move as the turn ends is Vovô Ozetti's.
+- **Deck.** Honor Roll took two Adrian Seis for its two Mahkota Langit
+  Grid, and two Daniela for its two Empiricist. Other decks still carry
+  the cards that left.
+- **DSL ratio:** unchanged at 20 of 91 `Effect` variants single-use.
+- **Real play**, 96 games a seating (seed 2), Honor Roll against Picket
+  Line.
+  - Random seats: Adrian rezzed 73 times and played 44 psi games.
+    Daniela rezzed 56 times and was accessed 83 times.
+  - Heuristic seats: Adrian rezzed 70 times and played 73 psi games.
+    Daniela rezzed 63 times and was accessed 214 times.
+- **Measured.** Both sweeps at 256 seeds are green, the card gate and the
+  concealment check included.
+  - A ref with every engine and client change and neither card nor the
+    deck swap is identical to `origin/main` in all four shapes.
+    Magistrate's cost as a `Cost` moves nothing.
+  - With the cards, the random seatings stay identical. The heuristic
+    seatings move by `determinize`, of 192 games:
+
+    | | before the cards | Stage 8b |
+    |---|---|---|
+    | Corp agenda wins | 55 | 67 |
+    | Corp flatlines | 9 | 13 |
+    | Runner agenda wins | 127 | 112 |
+    | Steps | 109018 | 115913 |
+
+#### Stage 8c — a limit on remote servers, and a program installed during a run (29 September 2026)
+
+`feat/tai-stage-8c-arissana-a-teia`: A Teia: IP Recovery and Arissana Rocha
+Nahu: Street Artist, each on a Sweep deck of its own. **No new `Effect`.**
+The Automata Initiative 63 of 65; `TAI_UNIMPLEMENTED` 4 → 2.
+
+- **"Limit 2 remote servers"** (CR 4.6.8f,
+  `ContinuousKind::RemoteServerLimit`, on the identity's controller).
+  - Every Corp install refuses a new remote past the limit
+    (`engine::place_corp_card`, `RulesError::RemoteServerLimit`).
+  - Every offer of a fresh remote asks the same question
+    (`legal_actions::may_add_remote`): the install action,
+    `corp_install_destinations` for text installs, and the one effect
+    that installs into a new remote unasked.
+- **"The first time each turn you install a card in the root of or
+  protecting a remote server".**
+  - `EventFilter::InstalledIn(ServerKind)` reads the install's server off
+    the moment, as `InstalledFromHq` reads where it came from.
+  - "The first time" cannot be `first_each_turn`, since the turn log's
+    classes hold no server. It is a count beside the cells, as The Holo
+    Man's installs from HQ are: `TurnLog::installed_in_remotes`,
+    `Amount::CardsInstalledInRemotesThisTurn`, under `Not(AmountAtLeast(..,
+    2))`.
+  - The second card is Peer Review's install, restricted to another
+    remote (`another_server` from the first card, by `acts_on_subject`),
+    with Warm Reception's "you cannot score that card this turn".
+- **Arissana's install during a run.**
+  - "Use this ability only during a run" is `RunInProgress`, beside
+    `OncePerTurn`.
+  - The program chosen goes by Muse's words: a trojan onto a piece of ice
+    the Runner picks (`InstallProgramOnHost`), anything else into the rig
+    (`InstallRunnerCardFromGrip`) with a run-end rider trashing it.
+  - `InstallProgramOnHost` no longer asks for a host until it has one to
+    use. A trojan's ice is chosen first, and an identity's ability has no
+    install.
+  - Recorded, not built: the run has one end-of-run rider slot, so
+    Arissana used on a run Hannah "Wheels" Pilintra started replaces
+    Hannah's tag.
+- **Decks.** Second Site (A Teia, on A Thousand Cuts' frame) and Street
+  Gallery (Arissana, on Safety Net's). Both are Eternal-only, being on
+  Core Set frames.
+- **Real play**, 96 games a seating (seed 2), Second Site against Street
+  Gallery.
+  - Random seats: A Teia's trigger resolved 464 times, and Arissana's
+    ability was used 714 times.
+  - Heuristic seats: A Teia's trigger resolved 315 times, but the Runner
+    never uses Arissana's ability (Phase 5 debt).
+- **Measured.** Both sweeps at 256 seeds are green, the card gate included.
+  - `coverage_identical.py` reports every shape identical against
+    `origin/main`, with the cards and without them.
+  - Identities are not sampled by `determinize`, and Sweep decks are in no
+    `matchups()`, so the heuristic seatings do not move either.
+
+#### Stage 8d — "the same action", and an agenda used from the Runner's score area (29 September 2026)
+
+`feat/tai-stage-8d-wage-workers-oracle-thinktank`: Wage Workers and Oracle
+Thinktank. **No new `Effect`.** **The Automata Initiative complete, 65 of
+65**; `TAI_UNIMPLEMENTED` 2 → 0.
+
+- **"The same action"** (CR 5.2.5a–b). `turn_log::SameAction` is the
+  basic action, where every install is one action and every play of an
+  operation or event another, or an ability by its card's handle and
+  index. Two copies' abilities are different actions.
+  - The turn log counts each action taken (`TurnLog::times_taken`), in a
+    fixed table of twelve so the log stays `Copy`, with a sparse form on
+    the wire.
+  - `Amount::TimesThisActionThisTurn` reads "that action" off the
+    triggering event.
+  - Recorded, not built: a card in hand has no handle, so two copies'
+    abilities used from HQ (Descent, Tocsin) count as one action there.
+    No card in the pool asks.
+- **"Whenever you finish taking an action"** (CR 5.2.2b, 5.2.2d):
+  `GameEvent::ActionFinished`, heard by `Trigger::OnActionFinished`, the
+  actor's moment and about nothing.
+  - It is announced once everything the action parked has resolved,
+    queued the way Nuvem SA's `FinishedResolving` is.
+  - An action that begins a run or a breach finishes when that run or
+    breach does (`RunState::finishes`), not when the click is spent.
+    Bot samples leave it unset, since only the Corp's own actions are
+    heard.
+  - Wage Workers is `OnActionFinished` with "exactly 3" as `AmountAtLeast`
+    3 and `Not` 4. The log does not narrate the event, because the
+    action's own line already says it was taken.
+- **An agenda's ability used from the Runner's score area** (CR 9.1.8b):
+  Oracle Thinktank's "[click], remove 1 tag: Shuffle this agenda into
+  R&D".
+  - A stolen agenda now takes a handle of its own
+    (`access::resolve_steal`, `RunnerState::find_stolen`). Every lookup
+    of an ability's card asks there too: the engine, the action mask,
+    the action's owner, the payment and the requirement
+    `EffectRequirement::InRunnersScoreArea`.
+  - `AddToDeck` takes the agenda out of the Runner's score area along
+    with its points, and `ShuffleIntoDeck` of R&D alone shuffles it.
+  - Drawn: the score area's rows offer the ability on a stolen agenda
+    (`hud::ScoredCard::install`), and an action names the agenda by its
+    title in either score area (`actions::install_label`).
+- **Decks.**
+  - Paid Content took two Oracle Thinktank for the Tomorrow's Headline and
+    a Neurospike, point for point.
+  - Deterrence took two Wage Workers for its two Corporate Hospitality.
+  - Other decks still carry the cards that left.
+- **DSL ratio (`pool_status.py`):** unchanged at 18 of 91 `Effect`
+  variants single-use, 1 unused.
+- **Real play**, 96 games a seating (seed 2), against Picket Line.
+  - Paid Content: Oracle Thinktank stolen 69 times on random seats, with
+    its tag given 58 times and its ability used 30. On heuristic seats it
+    was stolen 52 times, with 47 tags given and 8 uses.
+  - Deterrence: Wage Workers rezzed 40 times on random seats and gained a
+    click 8 times. On heuristic seats it was rezzed 74 times and gained 84
+    clicks.
+- **Measured.** Both sweeps at 256 seeds are green, the card gate included.
+  - A ref with every engine and client change and neither card nor deck
+    swap differs from `origin/main` in all four shapes by the new event's
+    own count and nothing else: `ActionFinished` 0 → 12147 on random
+    seats, 0 → 20259 on heuristic ones. The stolen agenda's handle, the
+    counts and the announcement move no game.
+  - With the cards, the random seatings stay identical. The heuristic
+    seatings move by `determinize`, of 192 games:
+
+    | | before the cards | Stage 8d |
+    |---|---|---|
+    | Corp agenda wins | 67 | 80 |
+    | Corp flatlines | 13 | 15 |
+    | Runner agenda wins | 112 | 97 |
+    | Steps | 115913 | 122418 |
+
+### 4. Parhelion — 63 cards (C 19 / V 26 / M 18)
+
+#### Stage 1 — ten Corp cards, composed (29 September 2026)
+
+`feat/ph-stage-1-corp-composes`: Thule Subsea: Safety Below, Distributed
+Tracing, Djupstad Grid, Reaper Function, Vampyronassa, Post-Truth Dividend,
+Gaslight, Vera Ivanovna Shuyskaya, Nonequivalent Exchange and Shipment from
+Vladisibirsk. **No new `Effect`, and no change to the engine or the
+clients:** card files, decks and tests only. Parhelion 10 of 63;
+`PH_UNIMPLEMENTED` 63 → 53. The survey's "composes" held for all ten.
+
+- **What each is made of.**
+  - Thule Subsea's "unless they spend [click] and 2[credit]" is
+    Jaguarundi's nested paid choice with `Cost::AllOf` as its price, on
+    Epiphany Analytica's `OnAgendaStolen` about any agenda.
+  - Distributed Tracing is Touch-ups' additional [click] and Public
+    Trail's last-turn requirement, counting `OnAgendaStolen` instead of
+    the successful run.
+  - Djupstad Grid is Tucana's `AgendaCameFromThisCardsServer`, without
+    persistence, doing core damage.
+  - Reaper Function is Clearinghouse: "you may trash this asset to" is a
+    cost (`Cost::TrashSelf`).
+  - Gaslight's "you may trash this asset. **If you do**, search R&D" is
+    not a cost (CR 1.16.11). The trash is the first effect of the "may",
+    and Pivot's search follows it, revealed and shuffled. It asks before
+    the mandatory draw, which waits for it (TAI Stage 1).
+  - Vera Ivanovna Shuyskaya takes two entries, scored and stolen, each a
+    "may" whose yes is a selection of one card from the Runner's grip to
+    their heap, revealed. That is Touch-ups' reading of "reveal the grip":
+    the Corp is shown the whole grip as the selection's candidates.
+  - Vampyronassa's "you may draw 1 or 2 cards" is a three-way choice: 1,
+    2 or none.
+  - Shipment from Vladisibirsk's "a total of 4" is four selections of one
+    advanceable install, each placing 1 counter. A card may be chosen
+    more than once, which is what "a total of" allows.
+  - Post-Truth Dividend and Nonequivalent Exchange are a "may" each.
+- **Fidelity limits.**
+  - Vera's reveal is not a `CardRevealed` of each grip card. The Corp
+    sees the grip through the selection, and only the trashed card is
+    announced as revealed. No card in the pool reads a reveal of the
+    grip.
+  - Shipment's four selections cannot be answered as one. A person picks
+    a card four times, where the printed card would take the whole
+    distribution at once. The outcome is the same.
+- **Client.** Nothing added to the view, the log or a decision, so no
+  ledger line and no ledger row. Thule Subsea's price is worded by
+  `prose`'s existing `AllOf` ("and"), and the pop-up shows the card's own
+  clause.
+- **Decks.**
+  - **Undertow**, a new Corp Sweep deck on Thule Subsea, on Retirement
+    Package's frame. Two Distributed Tracing, two Djupstad Grid, two
+    Shipment from Vladisibirsk, a Vera Ivanovna Shuyskaya and two Reaper
+    Function replace its two Brasília Government Grid, two Caveat Emptor,
+    two Retirement Plan, two Synchrocyclotron and a Sleipnir. Influence
+    14 of 15, 21 points. It is Standard-legal (pinned `not_startup`),
+    since Engineering the Future was the frame's one Core Set card.
+  - **Paid Content** took two Gaslight, two Nonequivalent Exchange, two
+    Post-Truth Dividend and a third Kingmaking. They replace its
+    Neurospike, two Manegarm Skunkworks, two Funhouse, a Send a Message
+    and its Superconducting Hub, and the points stay at 20.
+  - **A Thousand Cuts** took two Vampyronassa for its Ansel 1.0 and a
+    Mindscaping.
+- **DSL ratio (`pool_status.py`):** unchanged at 18 of 91 `Effect`
+  variants single-use, 1 unused (`Trace`), over 390 card files.
+- **Real play**, 96 games of each edited Corp deck against Safety Net
+  (seed 2).
+  - Undertow, random seats: Thule Subsea's trigger fired 203 times.
+    Reaper Function was trashed for its damage 38 times, Vera heard 1
+    score and 10 steals, Distributed Tracing was played twice and
+    Shipment once.
+  - Undertow, heuristic seats: Thule Subsea fired 179 times, Reaper
+    Function 28 and Vera 19. The heuristic Corp never plays Distributed
+    Tracing or Shipment (Phase 5 debt).
+  - Djupstad Grid was installed 80 and 98 times and rezzed 46 and 13, but
+    no agenda was scored from its root in either seating. Its damage is
+    reached by the card's test alone.
+  - Paid Content: Gaslight's turn-start "may" resolved 111 times on
+    random seats and 1206 on heuristic ones. The heuristic Corp keeps it
+    and never trashes it for the search, where random seats trashed it
+    90 times.
+  - Paid Content: Nonequivalent Exchange was played 43 times on random
+    seats and never on heuristic ones (Phase 5 debt). Post-Truth Dividend
+    was scored 5 and 36 times.
+  - A Thousand Cuts: Vampyronassa (rez cost 7) is never rezzed on random
+    seats. On heuristic seats it was rezzed 7 times, with 37 subroutines
+    fired and 15 broken.
+- **Measured.** Both sweeps at 256 seeds are green, the card gate
+  included.
+  - `coverage_identical.py` against `origin/main` has both random
+    seatings **identical**.
+  - Both heuristic seatings moved. The stage changes no engine code, and
+    a Sweep deck is in no `matchups()`, so `determinize` sampling the ten
+    new Corp cards is the one path by which they can. Of 192 games:
+
+    | | main | Stage 1 (view) | Stage 1 (index) |
+    |---|---|---|---|
+    | Corp agenda wins | 80 | 82 | 81 |
+    | Corp flatlines | 15 | 9 | 9 |
+    | Runner agenda wins | 97 | 99 | 100 |
+    | Runner deck-outs | 0 | 2 | 2 |
+    | Steps | 122418 | 122046 | 122033 |
+
+#### Stage 2a — seven Runner cards and a Weyland operation, composed (29 September 2026)
+
+`feat/ph-stage-2a-runner-composes`: Finality, Katorga Breakout, Nga, Num,
+Zenit Chip JZ-2MJ, Hippocampic Mechanocytes, Dr. Nuka Vrolyck and End of
+the Line. **No new `Effect`, and one rule fix.** Parhelion 18 of 63;
+`PH_UNIMPLEMENTED` 53 → 45.
+
+Stage 2 was split by mechanic. Hostile Architecture moved to Stage 2b,
+because it needs two things the engine does not have:
+- One `when` that says two things: the Runner's trash of a Corp card that
+  was installed.
+- A rezzed card hearing its own trash under "any": "(including this
+  asset)", which is CR 4.6.6i's Warroid Tracker example.
+
+- **What each is made of.**
+  - Finality is The Maker's Eye with 3 additional accesses, and its
+    additional cost is `Cost::SufferDamage` as an `additional_play_cost`.
+  - Katorga Breakout is Overclock's any-server run. Its `on_success`
+    selects one heap card into the grip.
+  - Nga and Dr. Nuka Vrolyck load counters the way Juli Moreira Lee does,
+    and "when it is empty, trash it" follows the spend, as on Cataloguer.
+  - Nga's "you may remove 1 hosted power counter to sabotage 1" is a paid
+    choice priced `Cost::RemoveCounters`, on the first successful run each
+    turn.
+  - Num is a killer at strength 8 with no boost.
+  - Zenit Chip's core damage is an install trigger. Its draw is Gabriel
+    Santiago's first-time `OnSuccessfulRun` with `when` set to the three
+    centrals.
+  - Hippocampic Mechanocytes' hand size is `HandSize { per: 1, of:
+    HostedCounters }`.
+  - End of the Line's additional cost is `Cost::RemoveTags(1)`.
+- **Fixed: a run event could find itself in the heap** (CR 8.6.5).
+  - An event that begins a run stays in the play area until the run is
+    over. The engine files it in the heap as it is played, and reads the
+    play area off the run.
+  - Katorga Breakout's "if successful, add 1 card from your heap" was
+    offered the Katorga Breakout whose run it was.
+  - `pending_choice::run_event_in` now keeps the run's event out of
+    every heap selection, whoever is choosing. It is the sibling of
+    `resolving_operation_in`, which keeps an operation out of its own
+    Archives selection (CR 8.6.7a).
+  - The fix is recorded under 8.6 in
+    [rules-conformance.md](rules-conformance.md).
+- **Found on the way:** `board::diff`'s transitions test assumed that a
+  run is still in progress after the action that began it.
+  - The deck swaps re-rolled seed 0 onto a game where Front Company's
+    damage flatlines the Runner as the run begins. The game ends, and the
+    run with it.
+  - The check is now skipped when the entry holds `GameOver`. This was not
+    a client bug: the transition is right, and there is no run left to
+    compare it with.
+- **Client.** Nothing added to the view, the log or a decision, so no
+  ledger line and no ledger row.
+- **Decks.**
+  - Pay As You Go took two Finality, two Katorga Breakout, two Nga and two
+    Num. They replace two Fermenter, two Leech, a Take a Dive, a
+    Cyberfeeder, a Nurse Hạnh and a Buzzsaw, all of which another deck
+    still carries.
+  - Picket Line took two Zenit Chip JZ-2MJ for two Jailbreak.
+  - Street Gallery took two Hippocampic Mechanocytes and two Dr. Nuka
+    Vrolyck for two Joy Ride and two Living Mural, which Safety Net still
+    carries.
+  - Land Grab took two End of the Line for two Business As Usual. Its
+    Oppo Research gives the tags that End of the Line needs to be played.
+- **DSL ratio (`pool_status.py`): 17 of 91 `Effect` variants
+  single-use** (18 before), 1 unused, over 398 card files.
+- **Real play**, 96 games a seating (seed 2), each Runner deck against
+  Retirement Package and Land Grab against Safety Net.
+  - Random seats: Finality played 20 times, Katorga Breakout 27 (its heap
+    choice asked 6 times), Nga installed 22 times with its successful-run
+    trigger resolving 53 times, and Num installed 11 times.
+  - Random seats: Zenit Chip installed 37 times with its draw heard 92
+    times, Hippocampic Mechanocytes installed 50 times, and Dr. Nuka
+    Vrolyck installed 27 times and used 30. End of the Line was played
+    twice.
+  - Heuristic seats: Finality played 21 times, Num installed 34 times and
+    used 75, and End of the Line played once.
+  - The heuristic Runner never plays Katorga Breakout and never installs
+    Nga, Zenit Chip, Hippocampic Mechanocytes or Dr. Nuka Vrolyck (Phase 5
+    debt).
+- **Measured.** Both sweeps at 256 seeds are green, the card gate
+  included.
+  - `coverage_identical.py` against `origin/main` has both random
+    seatings **identical**.
+  - A ref with the heap fix alone is identical in all four shapes.
+  - With the cards, the heuristic seatings moved: `determinize` samples
+    End of the Line among the Corp's hidden cards. Of 192 games (view):
+    Corp agenda wins 82 → 70, Corp flatlines 9 → 15, Runner agenda wins
+    99 → 107, Runner deck-outs 2 → 0.
+
+#### Stage 2b — the Runner's trash of an installed Corp card, its own included (29 September 2026)
+
+`feat/ph-stage-2b-hostile-architecture`: Hostile Architecture. **No new
+`Effect`.** Parhelion 19 of 63; `PH_UNIMPLEMENTED` 45 → 44. Stage 2 is
+complete.
+
+"The first time each turn the Runner trashes any of your installed cards
+(including this asset), do 2 meat damage."
+
+- **Two moments, one count.** The Runner's trash on access is
+  `OnTrashedFromAccess`, where `when: InstalledCard(Any)` is enough (as
+  for Aggressive Trendsetting). A trash by the Runner's card text is
+  `OnCardTrashed`. The card's two entries are one printed ability, so
+  they share one "first time" (the Turn History Rule).
+- **`EventFilter::All`, a conjunction.** On `OnCardTrashed`, "the
+  Runner's trash of a Corp card" is `OwnedBy` and "that was installed" is
+  `TrashedFrom([Installed])`. Each says half, and a `when` held one
+  filter. A variant for the pair would have been the first of one per
+  pair a card prints.
+  - `listeners::passes` asks every part.
+  - `EventFilter::names_whose` answers whose moment it is for a
+    conjunction as for its parts.
+  - `validate` wants two or more parts, each fitting on its own, and no
+    conjunction nested inside another. The per-filter check moved into
+    `CardDefinition::filter_fits`, so a part is held to what it would be
+    alone.
+  - `turn_log::Occurrences::meant_by` counts the columns every part
+    admits.
+  - `TrashedFrom([Installed])` can now narrow a first time, because the
+    log's columns already say whether the card was installed. Any other
+    pile is still refused.
+  - `prose` words a conjunction as its parts (`describe_when`).
+- **A rezzed card hears its own trash on access** (CR 4.6.6i's Warroid
+  Tracker example: a rezzed card trashed meets its own trigger
+  condition).
+  - A trigger about any card is heard only by active cards. Before this
+    stage, a trashed Hostile Architecture heard its own trash by nothing.
+  - `listeners::Moment::was_active` is read off the access, which still
+    holds the install as it was presented (`pending_install_rezzed`).
+    That makes the subject an active listener for that one moment.
+  - `is_this` still knows it: a handle-less subject is "this" to itself
+    whether it is inactive or was active as it left, and an active copy
+    still on the table keeps its handle, so it is never "this".
+  - **Not built:** a rezzed Hostile Architecture trashed by the Runner's
+    card text. `GameEvent::CardTrashed` does not carry whether the card
+    was rezzed, and adding that to its 42 sites is more than one card
+    wants. Charm Offensive can do it, and no game has.
+- **Client.** Nothing new in the view. The card inspector's "Engine reads
+  it as" words the conjunction.
+- **Decks.** Hostile Bid took two Hostile Architecture for two Hearts and
+  Minds, which Land Grab still carries.
+- **DSL ratio (`pool_status.py`):** unchanged at 17 of 91 `Effect`
+  variants single-use, 1 unused, over 399 card files.
+- **Real play**, 96 games a seating (seed 2), Hostile Bid against Safety
+  Net.
+  - Random seats: rezzed 8 times (it costs 5), and its trigger fired
+    twice.
+  - Heuristic seats: installed 90 times and never rezzed (Phase 5 debt).
+- **Measured.** Both sweeps at 256 seeds are green, the card gate
+  included.
+  - A ref with the conjunction and the listener change but not the card
+    is identical to `origin/main` in all four shapes.
+  - With the card, the random seatings are identical. The heuristic ones
+    move by `determinize` (view, of 192): Corp agenda wins 70 → 71, Corp
+    flatlines 15 → 17, Runner agenda wins 107 → 103.
+
