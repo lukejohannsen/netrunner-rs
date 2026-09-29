@@ -4555,6 +4555,64 @@ Friere Gonzalez, Oppo Research, S-Dobrado and Capybara. **No new
     | Runner agenda wins | 101 | 111 |
     | Steps | 112883 | 110799 |
 
+#### Stage 8a — a "when encountered" ability prevented, and subroutines gained by count (28 September 2026)
+
+`feat/tai-stage-8a-starlit-knight-airbladex`: Starlit Knight and AirbladeX
+(JSRF Ed.). Stage 8 is split by mechanic into four PRs (8a–8d). **No new
+`Effect`.** The Automata Initiative 59 of 65; `TAI_UNIMPLEMENTED` 8 → 6.
+
+- **Another card's ability as something to prevent** (CR 9.9.3a, 9.9.5):
+  AirbladeX's "Prevent a “when encountered” ability on a piece of ice".
+  - `Preventable::EncounterAbility`, `WouldHappen::EncounterAbility {
+    ice }`. When the encountered ice's own `OnEncounter` trigger is about
+    to resolve and somebody could prevent it, it is parked with the
+    trigger itself in `PendingPrevention::waiting`
+    (`prevention::encounter_ability`, asked in `dispatcher::fire_one`,
+    which every fired trigger passes through). It resolves after the
+    window unless it was prevented.
+  - Nobody is asked when nobody could prevent it (`could_prevent`), so no
+    game without an AirbladeX moves.
+  - Drawn: "Prevent Paywall's “when encountered” ability?", and the log's
+    "a “when encountered” ability was prevented".
+- **"Use this ability only during a run" for an interrupt**
+  (`EffectRequirement::RunInProgress`): AirbladeX's net damage can come
+  from a card accessed. `DuringRun` stops as the breach begins, and five
+  cards rely on that.
+- **Subroutines gained by count** (`GainSubroutine::count`): Starlit
+  Knight's X "End the run" subroutines, X the Runner's tags, read as they
+  are gained.
+- **A leak fixed.** `GameEvent::CardHosted` named a piece of ice a Runner
+  card was installed on to a viewer who could not identify it (the
+  256-seed view sweep, seed 166: Stowaway on an unrezzed Tithe, reached
+  once this stage's deck swap re-paired the seeds). `host` is now
+  optional and struck out for a viewer who cannot identify it.
+- **Decks.** Grand Opening took two Starlit Knight for its two Capacitor.
+  Safety Net took two AirbladeX for its two Methuselah. Paid Content and
+  Spare Parts still carry the cards that left.
+- **DSL ratio (`pool_status.py`):** unchanged at 20 of 91 `Effect`
+  variants single-use, 1 unused.
+- **Real play**, 96 games a seating (seed 2), Grand Opening against Safety
+  Net.
+  - Random seats: AirbladeX installed 32 times and used 3. Starlit
+    Knight's threat-4 trigger fired 6 times, gaining 10 subroutines.
+  - Heuristic seats: the Runner never installs AirbladeX (Phase 5 debt).
+    Starlit Knight's trigger fired 7 times with the Runner untagged,
+    gaining none.
+- **Measured.** Both sweeps at 256 seeds are green, the card gate
+  included.
+  - A ref with every engine and client change and neither card nor deck
+    swap is identical to `origin/main` in all four shapes. The prevention
+    hook, the count and the masking fix move no game.
+  - With the cards, the random seatings stay identical. The heuristic
+    seatings move by `determinize`, of 192 games:
+
+    | | before the cards | Stage 8a |
+    |---|---|---|
+    | Corp agenda wins | 65 | 55 |
+    | Corp flatlines | 14 | 9 |
+    | Runner agenda wins | 111 | 127 |
+    | Steps | 110799 | 109018 |
+
 ### 4. Parhelion — 63 cards (C 19 / V 26 / M 18)
 
 **Decks:** Sweep decks on its four identities. Nova Initiumia and Ampère

@@ -1,0 +1,79 @@
+{
+  "id": "airbladex_jsrf_ed",
+  "title": "AirbladeX (JSRF Ed.)",
+  "side": "Runner",
+  "card_type": "Hardware",
+  "cost": 1,
+  "unique": true,
+  "counter_kind": "Power",
+  "triggers": [
+    {
+      "trigger": "OnInstall",
+      "subject": "This",
+      "effects": [
+        {
+          "AddCounters": 3
+        }
+      ],
+      "text": "When you install this hardware, load 3 power counters onto it."
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "text": "[interrupt] → Hosted power counter: Prevent 1 net damage. Use this ability only during a run.",
+      "cost": {
+        "RemoveCounters": 1
+      },
+      "requirement": "RunInProgress",
+      "effect": {
+        "Sequence": [
+          {
+            "Prevent": {
+              "Damage": {
+                "kind": "Net",
+                "up_to": 1
+              }
+            }
+          },
+          {
+            "EffectIf": {
+              "condition": {
+                "ThisCardCountersAtMost": 0
+              },
+              "effect": {
+                "TrashCard": "ThisCard"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "trigger": "Paid",
+      "text": "[interrupt] → Hosted power counter: Prevent a \"when encountered\" ability on a piece of ice.",
+      "cost": {
+        "RemoveCounters": 1
+      },
+      "effect": {
+        "Sequence": [
+          {
+            "Prevent": "EncounterAbility"
+          },
+          {
+            "EffectIf": {
+              "condition": {
+                "ThisCardCountersAtMost": 0
+              },
+              "effect": {
+                "TrashCard": "ThisCard"
+              }
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "numeric_id": 34022,
+  "is_playable": true
+}

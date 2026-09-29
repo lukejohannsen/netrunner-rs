@@ -433,6 +433,11 @@ fn fire_one(
     // one that fired immediately: it rebuilds the same
     // `ability::ResolutionContext`, so a requirement reading the triggering
     // event gets the same answer either way.
+    // A "when encountered" ability on the ice waits, if somebody could
+    // prevent it (AirbladeX), and resolves once nobody has.
+    if let Some(events) = crate::rules::prevention::encounter_ability(state, registry, due)? {
+        return Ok(events);
+    }
     // Announced: every trigger the *game* fires passes through here, so
     // this is where `GameEvent::TriggerFired` becomes an exact record.
     ability::fire_card_triggers(state, registry, due, true)

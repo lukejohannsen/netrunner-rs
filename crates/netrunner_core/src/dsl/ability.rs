@@ -273,6 +273,15 @@ pub enum EffectRequirement {
     /// which is after "access 1 additional card" must be applied (CR
     /// 7.3.5b). A breach with no run (Cataloguer's) is not one.
     Breaching(crate::rules::ServerId),
+    /// A run is in progress, at any step of it, the breach included (CR
+    /// 6.9) — AirbladeX (JSRF Ed.)'s interrupt, "Prevent 1 net damage. Use
+    /// this ability only during a run", whose damage can come from a card
+    /// accessed (Snare!). Not `DuringRun`, which stops as the breach begins,
+    /// where no paid ability window opens: the cards that read it move the
+    /// run or act before the server, and an interrupt is used in the
+    /// prevention window the breach's damage opens. A breach with no run is
+    /// not one.
+    RunInProgress,
     /// The Runner is at the decision about a specific accessed card
     /// (`run::AccessPhase::PendingChoice`) and it is not an agenda —
     /// Gourmand's "trash the non-agenda card you are accessing". Read from

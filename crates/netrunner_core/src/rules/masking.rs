@@ -951,6 +951,8 @@ pub fn mask_event_for_player(event: &GameEvent, state: &GameState, viewer: impl 
             Some(GameEvent::PendingCardSelectionOffered { side: *side, min: *min, max: *max, source: None })
         }
         GameEvent::PendingCardSelectionOffered { .. } => visible(),
+        // A Runner card hosted on a piece of ice the viewer cannot identify.
+        GameEvent::CardHosted { card, host: Some(host) } if concealed(host) => Some(GameEvent::CardHosted { card: card.clone(), host: None }),
         // Every virus host today is a public rig card; this is the strip
         // the variant's doc comment promised for the day a Corp card holds
         // virus counters.
@@ -2461,6 +2463,20 @@ mod tests {
             mask_event_for_player(&purge, &state, Side::Runner),
             Some(GameEvent::VirusCountersPurged { cards: vec![id("botulus")] })
         );
+    }
+
+    /// A Runner card hosted on a piece of ice names its host only to a
+    /// viewer who can identify the ice: Stowaway installed on an unrezzed
+    /// Tithe named the Tithe to the Runner (the 256-seed view sweep, seed
+    /// 166). In this fixture `ice_wall` is facedown and `enigma` rezzed.
+    #[test]
+    fn a_card_hosted_on_facedown_ice_does_not_name_the_ice() {
+        let state = game_state(corp_state_with_cards());
+        let hosted = GameEvent::CardHosted { card: id("stowaway"), host: Some(id("ice_wall")) };
+        assert_eq!(mask_event_for_player(&hosted, &state, Side::Corp), Some(hosted.clone()));
+        assert_eq!(mask_event_for_player(&hosted, &state, Side::Runner), Some(GameEvent::CardHosted { card: id("stowaway"), host: None }));
+        let on_rezzed = GameEvent::CardHosted { card: id("stowaway"), host: Some(id("enigma")) };
+        assert_eq!(mask_event_for_player(&on_rezzed, &state, Side::Runner), Some(on_rezzed.clone()), "the rezzed Enigma is public");
     }
 
     /// A parked trash names an install handle and no card, so the event —

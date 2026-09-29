@@ -1037,7 +1037,7 @@ pub(crate) fn host_currently_accessed_card(state: &mut GameState, registry: &Car
     if let Some(installed) = state.runner.rig.iter_mut().find(|installed| installed.install_id == host) {
         installed.hosted_cards.push(card_id.clone());
     }
-    events.push(GameEvent::CardHosted { card: card_id.clone(), host: host_card });
+    events.push(GameEvent::CardHosted { card: card_id.clone(), host: Some(host_card) });
     events.extend(advance_or_finish(state, registry, server, card_id)?);
     Ok(events)
 }

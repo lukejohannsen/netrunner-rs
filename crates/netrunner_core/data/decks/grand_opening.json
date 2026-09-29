@@ -3,7 +3,7 @@
   "name": "Grand Opening",
   "side": "Corp",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps play Epiphany Analytica: Nations Undivided (The Automata Initiative Stage 5), whose counters come from the Runner's first steal or trash each turn and install from the top of R&D, with the stage's install and server cards — Federal Fundraising, Vovô Ozetti, Greasing the Palm, Ablative Barrier and Tucana — on Paid Content's frame, less its out-of-faction cards so the five fit the fifteen influence. Eternal-legal only.",
+  "description": "Not a published list: built so the sweeps play Epiphany Analytica: Nations Undivided (The Automata Initiative Stage 5), whose counters come from the Runner's first steal or trash each turn and install from the top of R&D, with the stage's install and server cards — Federal Fundraising, Vovô Ozetti, Greasing the Palm, Ablative Barrier and Tucana — on Paid Content's frame, less its out-of-faction cards so the five fit the fifteen influence. Eternal-legal only. The Automata Initiative Stage 8a: two Starlit Knight for its two Capacitor, which Paid Content still carries.",
   "style": "rush",
   "identity": "epiphany_analytica_nations_undivided",
   "cards": [
@@ -33,10 +33,6 @@
     },
     {
       "card": "lethe",
-      "count": 2
-    },
-    {
-      "card": "capacitor",
       "count": 2
     },
     {
@@ -102,6 +98,10 @@
     {
       "card": "tucana",
       "count": 1
+    },
+    {
+      "card": "starlit_knight",
+      "count": 2
     }
   ]
 }

@@ -614,6 +614,9 @@ impl Prompt {
                     };
                     format!("Prevent the trash of {}?", title_of(card, registry))
                 }
+                WouldHappen::EncounterAbility { .. } => {
+                    format!("Prevent {}'s \"when encountered\" ability?", title_of(prevention.source_card.as_ref(), registry))
+                }
             };
             return Some(Prompt { title, detail: format!("{} offers to", title_of(prevention.source_card.as_ref(), registry)) });
         }

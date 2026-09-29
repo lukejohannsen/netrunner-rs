@@ -889,7 +889,7 @@ pub fn evaluate_effect(
             let position = acting_rig_position(state, ctx)
                 .ok_or_else(|| RulesError::CardNotInRig { side: Side::Runner, card: acting.clone() })?;
             state.runner.rig[position].hosted_cards.push(card.clone());
-            Ok(vec![GameEvent::CardHosted { card, host: acting }])
+            Ok(vec![GameEvent::CardHosted { card, host: Some(acting) }])
         }
 
         // A moment Lethe hears, so it goes through the one door.
@@ -950,13 +950,19 @@ pub fn evaluate_effect(
         // "It" is the encountered ice, as the trigger's subject; a
         // resolution that finds the encounter over (a run ended by a
         // trigger ahead of it) has nothing left to add to.
-        Effect::GainSubroutine { subroutine, after, duration } => {
+        Effect::GainSubroutine { subroutine, after, duration, count } => {
             let Some(install) = ctx.acting_install else { return Err(RulesError::MissingActingCardContext) };
+            let copies = match count {
+                Some(amount) => resolve_amount(amount, ctx, state, registry),
+                None => 1,
+            };
             let Some(run) = state.active_run.as_mut() else { return Ok(Vec::new()) };
             // For the rest of the run: kept on the run for every encounter
             // with this ice to come (`run::engine::add_gained_for_the_run`).
             if *duration == crate::dsl::EffectDuration::Run {
-                run.gained_for_the_run.push(run::GainedForTheRun { ice: install, subroutine: (**subroutine).clone(), after: *after });
+                for _ in 0..copies {
+                    run.gained_for_the_run.push(run::GainedForTheRun { ice: install, subroutine: (**subroutine).clone(), after: *after });
+                }
             }
             // And for the encounter in progress, if it is this ice's. "It" is
             // the encountered ice, as the trigger's subject; a resolution that
@@ -967,14 +973,18 @@ pub fn evaluate_effect(
             }
             let position = run.position;
             let Some(ice) = run.ice.get_mut(position).filter(|ice| ice.install_id == install) else { return Ok(Vec::new()) };
-            let gained = run::EncounteredSubroutine { id: 0, definition: (**subroutine).clone(), status: SubroutineStatus::Pending, gained: true };
-            if *after {
-                ice.subroutines.push(gained);
-            } else {
-                ice.subroutines.insert(0, gained);
+            let mut events = Vec::new();
+            for _ in 0..copies {
+                let gained = run::EncounteredSubroutine { id: 0, definition: (**subroutine).clone(), status: SubroutineStatus::Pending, gained: true };
+                if *after {
+                    ice.subroutines.push(gained);
+                } else {
+                    ice.subroutines.insert(0, gained);
+                }
+                events.push(GameEvent::SubroutineGained { card_id: ice.card_id.clone(), text: subroutine.text.clone() });
             }
             run::renumber_subroutines(ice);
-            Ok(vec![GameEvent::SubroutineGained { card_id: ice.card_id.clone(), text: subroutine.text.clone() }])
+            Ok(events)
         }
 
         Effect::WinTheGame => {
@@ -1174,7 +1184,7 @@ pub fn evaluate_effect(
             let hosted = state.runner.rig.iter_mut().find(|c| c.install_id == *card).ok_or(RulesError::InstallNotFound(*card))?;
             hosted.hosted_on_ice = Some(*host);
             hosted.hosted_on_rig_card = None;
-            Ok(vec![GameEvent::CardHosted { card: hosted.card.clone(), host: host_card }])
+            Ok(vec![GameEvent::CardHosted { card: hosted.card.clone(), host: Some(host_card) }])
         }
         Effect::HostRigCardOnInstall { card, host } => {
             if card == host {
@@ -1192,7 +1202,7 @@ pub fn evaluate_effect(
             hosted.hosted_on_rig_card = Some(*host);
             let hosted_card = hosted.card.clone();
             let host_card = state.runner.rig.iter().find(|c| c.install_id == *host).map(|c| c.card.clone()).unwrap();
-            Ok(vec![GameEvent::CardHosted { card: hosted_card, host: host_card }])
+            Ok(vec![GameEvent::CardHosted { card: hosted_card, host: Some(host_card) }])
         }
 
         Effect::InstallRunnerCardFromGrip => {
@@ -3427,6 +3437,9 @@ pub fn check_requirement(
             // Only the Corp's identity comes in copies (CR 1.5.2).
             if side == Side::Corp && state.corp.identity_copy == *copy { Ok(()) } else { Err(RulesError::RequirementNotMet) }
         }
+        EffectRequirement::RunInProgress => {
+            if state.run_in_progress().is_some() { Ok(()) } else { Err(RulesError::RequirementNotMet) }
+        }
         EffectRequirement::Breaching(server) => {
             let breaching = state.run_in_progress().is_some_and(|run| run.breached == Some(*server));
             if breaching { Ok(()) } else { Err(RulesError::RequirementNotMet) }
@@ -4077,6 +4090,7 @@ pub(crate) fn consume_requirement(
         | EffectRequirement::IdentityCopy(_)
         | EffectRequirement::DuringRunOn(_)
         | EffectRequirement::Breaching(_)
+        | EffectRequirement::RunInProgress
         | EffectRequirement::CurrentlyAccessingNonAgenda
         | EffectRequirement::CurrentlyAccessingInstalledCard { .. }
         | EffectRequirement::AgendaCameFromThisCardsServer

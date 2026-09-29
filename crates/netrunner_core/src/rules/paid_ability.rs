@@ -848,6 +848,7 @@ mod tests {
             source_card: None,
             source_install: None,
             resume: PreventionResume::None,
+            waiting: None,
         });
         state.paid_ability_window = Some(PaidAbilityWindow {
             active_priority: Side::Runner,
@@ -904,6 +905,7 @@ mod tests {
             source_card: None,
             source_install: None,
             resume: PreventionResume::ResumeSubroutines,
+            waiting: None,
         });
         state.paid_ability_window = Some(PaidAbilityWindow {
             active_priority: Side::Runner,

@@ -299,6 +299,7 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
             None => format!("prevent up to {up_to} damage"),
         },
         Effect::Prevent(Preventable::Tags(n)) => format!("prevent {n} tag{}", if *n == 1 { "" } else { "s" }),
+        Effect::Prevent(Preventable::EncounterAbility) => "prevent a \"when encountered\" ability on a piece of ice".to_string(),
         Effect::Prevent(Preventable::Trash(filter)) => format!("prevent 1 installed card from being trashed ({})", humanize(format!("{filter:?}")).to_lowercase()),
         Effect::AddCounters(n) => format!("place {}", plural(*n, "counter", "counters")),
         Effect::RemoveCounters(Amount::Fixed(n)) => format!("remove {}", plural(*n, "counter", "counters")),
@@ -402,14 +403,18 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
             format!("shuffle {} into your stack", zones.join(" and "))
         }
         Effect::AddToScoreAreaAsAgenda(as_agenda) => format!("add this card to your score area as {}", as_an_agenda(as_agenda)),
-        Effect::GainSubroutine { subroutine, after, duration } => {
+        Effect::GainSubroutine { subroutine, after, duration, count } => {
             let order = if *after { "after" } else { "before" };
+            let copies = match count {
+                Some(amount) => format!("{} copies of ", describe_amount(amount)),
+                None => String::new(),
+            };
             let how_long = match duration {
                 netrunner_core::dsl::EffectDuration::Encounter => "the rest of the encounter",
                 netrunner_core::dsl::EffectDuration::Run => "the rest of the run",
                 netrunner_core::dsl::EffectDuration::Turn => "the rest of the turn",
             };
-            format!("the ice gains \u{201c}{}\u{201d} {order} its other subroutines, for {how_long}", subroutine.text.trim_end_matches('.'))
+            format!("the ice gains {copies}\u{201c}{}\u{201d} {order} its other subroutines, for {how_long}", subroutine.text.trim_end_matches('.'))
         }
         Effect::WinTheGame => "you win the game".to_string(),
         Effect::GainIceSubtype(kind) => {
