@@ -4659,3 +4659,59 @@ Hypoxia, Mr. Hendrik), 3c harmonic ice (Pulse, Bloop).
 - **Real play**, seed 2, each deck against a Runner Sweep deck (random 96
   games, planner 48): Ontological Dependence scored 5 / 32 times,
   Freedom of Information 4 / 14, Regulatory Capture 0 / 15.
+
+#### Stage 3b — the Corp words: "that many", an operation out of the game, and every click as a price (30 September 2026)
+
+`feat/ph-stage-3b-corp-words`: Simulation Reset, Hypoxia, Mr. Hendrik.
+**No new `Effect`**; one `Cost`, one field. Parhelion 25 of 63;
+`PH_UNIMPLEMENTED` 41 → 38.
+
+- **`PromptChooseCards::count`, "that many".** Simulation Reset trashes
+  up to 5 cards from HQ, then shuffles "that many" from Archives into
+  R&D and draws "that many". `count` is `min` and `max` both, read when
+  the prompt parks: `CardsSelected` inside the `then` of the HQ
+  selection. Nothing is asked at 0, and `validate` wants `min` and `max`
+  written 0 beside it (`CardValidationError::CountBesideBounds`).
+  Composition didn't work: `min` and `max` are printed numbers, and the
+  other way to say it was one `EffectIf` branch per count. A `then`
+  resolves with nothing chosen, so the shuffle is behind
+  `AmountAtLeast(CardsSelected, 1)`.
+- **An operation removed from the game** (CR 8.6.6a): Hypoxia's and
+  Simulation Reset's last line is `removed_after_play`, the events'
+  declaration, now read by `engine::play_operation_card` too. It is filed
+  as the play begins, like an operation out of Archives, so Simulation
+  Reset is in no Archives selection it makes.
+- **`Cost::LoseAllClicks`**, Mr. Hendrik's "If the Runner has any
+  [click] remaining, they may lose all their [click] to prevent this
+  damage": a nested cost (CR 1.16.11b), as Lionsmane's jack-out is,
+  payable only with at least one click, which is the card's "if". It is
+  the Runner's `OfferPaidChoice` inside the Corp's own "you may pay
+  2[credit]". Not `LoseClicks`, whose number is printed; and not
+  `EffectIf(ClicksRemaining)`, which reads the player whose action phase
+  it is. **Fidelity:** a cost is asked before the damage is about to
+  happen, so the Runner answers before the prevention window the damage
+  then opens.
+- **Hypoxia** is `IsTagged`, 1 core damage and `AllottedClicksNextTurn
+  (Runner, −1)`; **Mr. Hendrik**'s trigger is Urtica Cipher's
+  `OnAccessed` with `ThisCardIsInstalled`.
+- **Client.** Nothing new in the view. Mr. Hendrik works face down, so
+  it joins the traps whose rez gains nothing (`board::rez::gains_nothing`
+  reads it off the card; the pool's list in its test grows by one): its
+  rez is on its menu, never lit or waited for. `prose` words the count
+  and the cost.
+- **Decks.** Undertow took two Hypoxia for its two Corporate Hospitality
+  (it gives tags) and two Mr. Hendrik for its two Warm Reception; Second
+  Site two Simulation Reset for two of its three Mindscaping. Every card
+  left is still in another deck.
+- **DSL ratio (`pool_status.py`):** unchanged at 17 of 91 `Effect`
+  variants single-use, 1 unused, over 405 card files.
+- **Measured** against Stage 3a's tip. Both sweeps green at 256 seeds,
+  the card gate included.
+  - A ref with the engine change and no cards is identical in all four
+    shapes.
+  - With the cards, both random seatings are identical; the planner ones
+    move by `determinize` (view, of 192): Corp agenda wins 58 → 60, Corp
+    flatlines 27 → 29, Runner agenda wins 104 → 99, deck-outs 3 → 4.
+- **Real play**, seed 2 (random 96 games / planner 48): Hypoxia played 3
+  / 5 times; Mr. Hendrik's access trigger fired 87 / 1 times (the planner
+  Corp installed it 4 times); Simulation Reset played 44 / 1 times.

@@ -47,7 +47,7 @@ cards each stage takes.
 | 1 | Vantage Point (`vp`) | 66 | 66 | 0 | complete (27 September 2026) |
 | 2 | Rebellion Without Rehearsal (`rwr`) | 65 | 65 | 0 | complete (28 September 2026) |
 | 3 | The Automata Initiative (`tai`) | 65 | 65 | 0 | complete (29 September 2026) |
-| 4 | Parhelion (`ph`) | 63 | 22 | 41 | **Stage 3b next** — the Corp words: Simulation Reset, Hypoxia, Mr. Hendrik; then 3c, harmonic ice: Pulse, Bloop |
+| 4 | Parhelion (`ph`) | 63 | 25 | 38 | **Stage 3c next** — harmonic ice: Pulse, Bloop |
 | 5 | Midnight Sun (`ms`) + Booster (`msbp`) | 65 + 7 | 0 | 65 + 7 | not started |
 | 6 | Uprising (`ur`) + Booster (`urbp`) | 65 + 7 | 0 | 65 + 7 | not started |
 | 7 | Downfall (`df`) | 65 | 0 | 65 | not started |
@@ -657,7 +657,7 @@ change deck-building rules, which the validator does not model yet
    names) **and Corp words**, split by mechanic when it was taken (30
    September 2026): **3a**, the requirement (built): Ontological
    Dependence, Freedom of Information, Regulatory Capture; **3b**, the
-   Corp words: Simulation Reset, Hypoxia, Mr. Hendrik; **3c**, harmonic
+   Corp words (built): Simulation Reset, Hypoxia, Mr. Hendrik; **3c**, harmonic
    ice: Pulse, Bloop.
 4. **Runner standing and breaker words:** Basilar Synthgland 2KVJ, Dr.
    Vientiane Keeling, K2CP Turbine, Tremolo, Time Bomb, Poison Vial, WAKE
@@ -691,6 +691,7 @@ Grid, Tsakhia, World Tree.
 - **Stage 2a** — seven Runner cards and a Weyland operation, composed (`feat/ph-stage-2a-runner-composes`, 29 September 2026).
 - **Stage 2b** — the Runner's trash of an installed Corp card, its own included (`feat/ph-stage-2b-hostile-architecture`, 29 September 2026).
 - **Stage 3a** — the advancement requirement, asked (`feat/ph-stage-3a-advancement-requirement`, 30 September 2026).
+- **Stage 3b** — the Corp words: "that many", an operation out of the game, and every click as a price (`feat/ph-stage-3b-corp-words`, 30 September 2026).
 
 ### 5. Midnight Sun and its Booster Pack — 65 cards (C 22 / V 26 / M 17)
 

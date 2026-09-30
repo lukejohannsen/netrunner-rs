@@ -466,6 +466,16 @@ pub enum Effect {
         destination: Option<CardZoneRef>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         then: Option<Box<Effect>>,
+        /// "That many": `min` and `max` both, read when the prompt parks —
+        /// Simulation Reset's "Shuffle **that many** cards from Archives
+        /// into R&D", `CardsSelected` inside the `then` of the selection
+        /// that trashed them. Nothing is asked when it comes to 0, and
+        /// `validate` wants `min` and `max` written 0 beside it.
+        /// Composition didn't work: `min` and `max` are printed numbers,
+        /// and the only other way to say "the number just chosen" was one
+        /// `EffectIf` branch per count.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        count: Option<Amount>,
     },
     /// Lets `chooser` pick any server to run, then initiates a run against
     /// it — e.g. Tread Lightly ("run any server; during that run, ICE rez
@@ -1909,8 +1919,8 @@ impl Effect {
     pub fn with_those_trashed(self, cards: &[crate::dsl::CardId]) -> Effect {
         let all = |effects: Vec<Effect>| effects.into_iter().map(|e| e.with_those_trashed(cards)).collect();
         match self {
-            Effect::PromptChooseCards { side, source, filter, min, max, reveal, shuffle_after, destination, then } => {
-                Effect::PromptChooseCards { side, source, filter: filter.with_those_trashed(cards), min, max, reveal, shuffle_after, destination, then }
+            Effect::PromptChooseCards { side, source, filter, min, max, reveal, shuffle_after, destination, then, count } => {
+                Effect::PromptChooseCards { side, source, filter: filter.with_those_trashed(cards), min, max, reveal, shuffle_after, destination, then, count }
             }
             Effect::Sequence(effects) => Effect::Sequence(all(effects)),
             Effect::PresentChoice { chooser, options, texts } => Effect::PresentChoice { chooser, options: all(options), texts },
@@ -1976,7 +1986,7 @@ impl Effect {
         let boxed = |effect: Box<Effect>| Box::new(effect.with_attacked_server(server));
         let all = |effects: Vec<Effect>| effects.into_iter().map(|e| e.with_attacked_server(server)).collect();
         match self {
-            Effect::PromptChooseCards { side, source, filter, min, max, reveal, shuffle_after, destination, then } => Effect::PromptChooseCards {
+            Effect::PromptChooseCards { side, source, filter, min, max, reveal, shuffle_after, destination, then, count } => Effect::PromptChooseCards {
                 side,
                 source,
                 filter: filter.with_attacked_server(server),
@@ -1986,6 +1996,7 @@ impl Effect {
                 shuffle_after,
                 destination,
                 then: then.map(boxed),
+                count,
             },
             Effect::Sequence(effects) => Effect::Sequence(all(effects)),
             Effect::PresentChoice { chooser, options, texts } => Effect::PresentChoice { chooser, options: all(options), texts },

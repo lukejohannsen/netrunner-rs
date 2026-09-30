@@ -1,0 +1,47 @@
+{
+  "id": "mr_hendrik",
+  "title": "Mr. Hendrik",
+  "side": "Corp",
+  "card_type": "Upgrade",
+  "cost": 0,
+  "trash_cost": 2,
+  "triggers": [
+    {
+      "trigger": "OnAccessed",
+      "subject": "This",
+      "effects": [
+        {
+          "OfferPaidChoice": {
+            "side": "Corp",
+            "cost": {
+              "Credits": 2
+            },
+            "if_paid": {
+              "OfferPaidChoice": {
+                "side": "Runner",
+                "cost": "LoseAllClicks",
+                "if_paid": {
+                  "Sequence": []
+                },
+                "if_declined": {
+                  "DealDamage": [
+                    "Brain",
+                    1
+                  ]
+                },
+                "text": "they may lose all their [click] to prevent this damage"
+              }
+            },
+            "if_declined": {
+              "Sequence": []
+            },
+            "text": "you may pay 2[credit] to do 1 core damage"
+          }
+        }
+      ],
+      "requirement": "ThisCardIsInstalled"
+    }
+  ],
+  "numeric_id": 33103,
+  "is_playable": true
+}

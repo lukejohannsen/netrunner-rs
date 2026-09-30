@@ -1465,6 +1465,7 @@ mod positions {
                 shuffle_after: false,
                 destination: None,
                 then: Some(Box::new(Effect::PlaceAdvancementCounters(netrunner_core::dsl::Amount::Fixed(1)))),
+                count: None,
             },
             if_declined: Effect::Sequence(Vec::new()),
             source_card: None,

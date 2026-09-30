@@ -46,6 +46,13 @@ pub enum Cost {
     /// This one begins with "lose", so it is used in the encounter's
     /// window. Payable only with that many clicks (CR 1.16.1).
     LoseClicks(u32),
+    /// The payer loses every click they have — Mr. Hendrik's "If the
+    /// Runner has any [click] remaining, they may lose all their [click]
+    /// to prevent this damage", a nested cost (CR 1.16.11b) as
+    /// `JackOut` is Lionsmane's. Payable only with at least one, which is
+    /// the card's "if": a player with none cannot pay it. Not
+    /// `LoseClicks`, whose number is printed.
+    LoseAllClicks,
     /// The Runner jacks out — Lionsmane's "Do 2 net damage unless the
     /// Runner jacks out", a nested cost (CR 1.16.11b: "[instructions]
     /// unless [player] [cost]"), so an `Effect::OfferPaidChoice`'s price.

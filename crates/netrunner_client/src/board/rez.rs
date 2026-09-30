@@ -66,7 +66,7 @@ mod tests {
         let registry = crate::decks::sample_deck_registry();
         let mut idle: Vec<&str> = registry.iter().filter(|card| card.side == Side::Corp && card.card_type != CardType::Agenda && card.card_type != CardType::Identity && gains_nothing(card)).map(|card| card.id.0.as_str()).collect();
         idle.sort_unstable();
-        assert_eq!(idle, ["behold", "byte", "esca", "snare", "urtica_cipher"]);
+        assert_eq!(idle, ["behold", "byte", "esca", "mr_hendrik", "snare", "urtica_cipher"]);
     }
 
     /// The Corp's view of an unrezzed Urtica Cipher (install 1) and an
