@@ -111,12 +111,25 @@ impl<'a> From<ActiveCard<'a>> for Source<'a> {
     }
 }
 
-/// Calls `found` with every effect that applies to `target` right now, its
-/// number resolved as its source.
+/// Calls `found` with every effect of a kind `asked` about that applies to
+/// `target` right now, its number resolved as its source.
+///
+/// **The kind is asked first, and an effect of another kind is never asked
+/// whether it is on.** `asked` was not a parameter: every caller matched the
+/// kind inside `found`, after the scan had evaluated the effect's `while`.
+/// A `while` is a question of its own, and "threat 4" is one put back to
+/// this scan — `Amount::ThreatLevel` is the greater score, a score is what
+/// each card in a score area is worth (`agenda_points_in`), and that asked
+/// the card's own text, whatever the text was about. So a Boto in a score
+/// area — which no game reaches, and a bot's sample did — asked its "+2
+/// strength" whether threat was 4 in order to be told it was not an agenda-
+/// point effect, and never came back. With the kind first, a score reads
+/// only what changes a score.
 fn for_each_applying<'a>(
     state: &'a GameState,
     registry: &'a CardRegistry,
     target: Target<'a>,
+    asked: impl Fn(&ContinuousKind) -> bool,
     mut found: impl FnMut(&'a ContinuousEffect, &Source<'a>, &ResolutionContext<'a>),
 ) {
     let mut ask = |source: Source<'a>| {
@@ -129,6 +142,9 @@ fn for_each_applying<'a>(
             None => ResolutionContext::for_card(Some(source.card)),
         };
         for effect in &definition.continuous {
+            if !asked(&effect.kind) {
+                continue;
+            }
             let is_own_text = effect.applies_to.is_own_text();
             if source.own_text_only != is_own_text {
                 continue;
@@ -249,7 +265,7 @@ fn applies(state: &GameState, source: &Source<'_>, scope: &Scope, target: &Targe
 /// The sum of every applying effect `pick` reads a number off.
 pub(crate) fn sum(state: &GameState, registry: &CardRegistry, target: Target<'_>, pick: fn(&ContinuousKind) -> Option<&Number>) -> i32 {
     let mut total = 0;
-    for_each_applying(state, registry, target, |effect, _, ctx| {
+    for_each_applying(state, registry, target, |kind| pick(kind).is_some(), |effect, _, ctx| {
         if let Some(number) = pick(&effect.kind) {
             total += number.per * ability::resolve_amount(&number.of, ctx, state, registry) as i32;
         }
@@ -260,7 +276,7 @@ pub(crate) fn sum(state: &GameState, registry: &CardRegistry, target: Target<'_>
 /// Whether any applying effect is one `is` accepts.
 pub(crate) fn any(state: &GameState, registry: &CardRegistry, target: Target<'_>, is: impl Fn(&ContinuousKind) -> bool) -> bool {
     let mut found = false;
-    for_each_applying(state, registry, target, |effect, _, _| found |= is(&effect.kind));
+    for_each_applying(state, registry, target, is, |_, _, _| found = true);
     found
 }
 
@@ -275,7 +291,7 @@ pub(crate) fn may_be_declared_successful(state: &GameState, registry: &CardRegis
 /// `None` with no limit.
 pub fn remote_server_limit(state: &GameState, registry: &CardRegistry) -> Option<u32> {
     let mut limit: Option<u32> = None;
-    for_each_applying(state, registry, Target::Player(Side::Corp), |effect, _, _| {
+    for_each_applying(state, registry, Target::Player(Side::Corp), |kind| matches!(kind, ContinuousKind::RemoteServerLimit(_)), |effect, _, _| {
         if let ContinuousKind::RemoteServerLimit(most) = effect.kind {
             limit = Some(limit.map_or(most, |limit| limit.min(most)));
         }
@@ -290,7 +306,7 @@ pub fn remote_server_limit(state: &GameState, registry: &CardRegistry) -> Option
 /// limit and has no install (CR 9.12.5).
 pub(crate) fn access_limits(state: &GameState, registry: &CardRegistry, server: ServerId) -> Vec<(u32, CardId, Option<InstallId>)> {
     let mut limits = Vec::new();
-    for_each_applying(state, registry, Target::Run { server }, |effect, source, _| {
+    for_each_applying(state, registry, Target::Run { server }, |kind| matches!(kind, ContinuousKind::AccessOthersAtMost(_)), |effect, source, _| {
         if let ContinuousKind::AccessOthersAtMost(count) = effect.kind {
             limits.push((count, source.card.clone(), source.install));
         }
@@ -377,7 +393,7 @@ pub(crate) fn breaks_left(state: &GameState, registry: &CardRegistry, ice: &RunI
     let target = Target::corp_install(state, registry, ice.install_id)?;
     let broken = state.active_run.as_ref().map_or(0, |run| run.this_encounter.limited_breaks);
     let mut left: Option<u32> = None;
-    for_each_applying(state, registry, target, |effect, _, _| {
+    for_each_applying(state, registry, target, |kind| matches!(kind, ContinuousKind::BreakLimit { .. }), |effect, _, _| {
         if let ContinuousKind::BreakLimit { at_most, except_using } = effect.kind {
             let excepted = except_using.is_some_and(|subtype| breaker.is_some_and(|def| def.subtypes.contains(&subtype)));
             if !excepted {
@@ -535,7 +551,7 @@ pub fn steal_price(state: &GameState, registry: &CardRegistry, card: &CardDefini
 /// their cards are asked.
 pub(crate) fn steal_costs_added(state: &GameState, registry: &CardRegistry, card: &CardDefinition) -> Vec<Cost> {
     let mut costs = Vec::new();
-    for_each_applying(state, registry, Target::Card(card), |effect, _, _| {
+    for_each_applying(state, registry, Target::Card(card), |kind| matches!(kind, ContinuousKind::StealCost(_)), |effect, _, _| {
         if let ContinuousKind::StealCost(cost) = &effect.kind {
             costs.push(cost.clone());
         }
@@ -547,7 +563,7 @@ pub(crate) fn steal_costs_added(state: &GameState, registry: &CardRegistry, card
 /// are accessing (Daniela Jorge Inácio), or `None`.
 pub(crate) fn additional_trash_cost(state: &GameState, registry: &CardRegistry, card: &CardDefinition) -> Option<Cost> {
     let mut costs = Vec::new();
-    for_each_applying(state, registry, Target::Card(card), |effect, _, _| {
+    for_each_applying(state, registry, Target::Card(card), |kind| matches!(kind, ContinuousKind::AdditionalTrashCost(_)), |effect, _, _| {
         if let ContinuousKind::AdditionalTrashCost(cost) = &effect.kind {
             costs.push(cost.clone());
         }
@@ -567,7 +583,7 @@ pub(crate) fn score_costs(state: &GameState, registry: &CardRegistry, install: I
     let Some(installed) = state.find_corp_install(install) else { return Vec::new() };
     let Some(card) = registry.get(&installed.card) else { return Vec::new() };
     let mut costs = Vec::new();
-    for_each_applying(state, registry, Target::Scoring { card, install }, |effect, source, _| {
+    for_each_applying(state, registry, Target::Scoring { card, install }, |kind| matches!(kind, ContinuousKind::ScoreCost(_)), |effect, source, _| {
         if let ContinuousKind::ScoreCost(cost) = &effect.kind {
             costs.push((cost.clone(), source.card.clone(), source.install));
         }
@@ -583,7 +599,7 @@ pub(crate) fn basic_trash_costs(state: &GameState, registry: &CardRegistry, inst
     let Some(installed) = state.find_rig_install(install) else { return Vec::new() };
     let Some(card) = registry.get(&installed.card) else { return Vec::new() };
     let mut costs = Vec::new();
-    for_each_applying(state, registry, Target::Trashing { card, install }, |effect, source, _| {
+    for_each_applying(state, registry, Target::Trashing { card, install }, |kind| matches!(kind, ContinuousKind::BasicTrashCost(_)), |effect, source, _| {
         if let ContinuousKind::BasicTrashCost(cost) = &effect.kind {
             costs.push((cost.clone(), source.card.clone(), source.install));
         }
@@ -643,8 +659,8 @@ pub fn cannot(state: &GameState, registry: &CardRegistry, what: Prohibition) -> 
 /// it, and it ends when its `while` stops holding, with nothing to sweep.
 pub fn standing_prohibitions<'a>(state: &'a GameState, registry: &'a CardRegistry, what: Prohibition) -> Vec<&'a CardId> {
     let mut found = Vec::new();
-    for_each_applying(state, registry, Target::Bound(what.binds()), |effect, source, _| {
-        if effect.kind == ContinuousKind::Cannot(what) && !found.contains(&source.card) {
+    for_each_applying(state, registry, Target::Bound(what.binds()), |kind| *kind == ContinuousKind::Cannot(what), |_, source, _| {
+        if !found.contains(&source.card) {
             found.push(source.card);
         }
     });
@@ -704,6 +720,34 @@ mod tests {
 
     fn on_the_table(id: &str, install: u32, server: ServerId, slot: InstallSlot, rezzed: bool) -> InstalledCard {
         InstalledCard { install_id: InstallId(install), card: CardId(id.to_string()), server, slot, rezzed, ..Default::default() }
+    }
+
+    /// A question reads only effects of its own kind. Boto's "Threat 4 →
+    /// this ice gets +2 strength" sat in a score area in a bot's sample (a
+    /// masked access the sample named wrongly, then stole), and the score
+    /// asked that effect whether threat was 4 — which is the score — before
+    /// finding it was not about agenda points: `bench --bots planner,mcts
+    /// --pairing mcts/planner --games 192 --seed 2` aborted with a stack
+    /// overflow. The card counts nothing there and the question returns;
+    /// on the table the same text still reads the threat.
+    #[test]
+    fn a_score_never_asks_an_effect_that_is_not_about_agenda_points_whether_it_is_on() {
+        let mut wall = prints("threat_wall", Side::Corp, CardType::Ice(IceType::Barrier), ContinuousKind::Strength(flat(2)), Scope::This);
+        wall.strength = Some(4);
+        wall.continuous[0].condition = Some(crate::dsl::EffectRequirement::AmountAtLeast(Amount::ThreatLevel, 4));
+        let mut agenda = blank("four_points", Side::Corp, CardType::Agenda, 0);
+        agenda.agenda_points = Some(4);
+        let registry = CardRegistry::from_cards(vec![wall.clone(), agenda.clone()]);
+        let mut state = GameState { phase: GamePhase::Action(Side::Runner), ..Default::default() };
+        state.runner.scored_agendas =
+            vec![crate::rules::ScoredAgenda::plain(agenda.id.clone()), crate::rules::ScoredAgenda::plain(wall.id.clone())];
+
+        assert_eq!(agenda_points_in(&state, &registry, &wall, Side::Runner), 0, "not an agenda: worth nothing, and asked nothing");
+        assert_eq!(crate::rules::win::score(&state, &registry, Side::Runner), 4);
+
+        state.corp.installed = vec![on_the_table("threat_wall", 1, ServerId::Hq, InstallSlot::Ice, true)];
+        let target = Target::corp_install(&state, &registry, InstallId(1)).unwrap();
+        assert_eq!(sum(&state, &registry, target, strength), 2, "and its own question still reads the threat");
     }
 
     /// The Listener Rule's sentence, for standing effects: what a card says
