@@ -54,7 +54,8 @@ pub(super) fn access_prospect(state: &GameState, run: &RunState, registry: &Card
             if let Some(cost) = def.trash_cost
                 && cost <= credits
             {
-                let removed = visible_install_value(installed, registry, w, horizon) * w.opponent_board_weight;
+                let removed = visible_install_value(installed, registry, w, horizon) * w.opponent_board_weight
+                    + if installed.rezzed && !matches!(def.card_type, CardType::Ice(_)) { w.dismantle_weight } else { 0.0 };
                 trash_gain += (removed - f64::from(cost) * w.own_credit_weight).max(0.0);
             }
         } else if !seen {
@@ -68,14 +69,31 @@ pub(super) fn access_prospect(state: &GameState, run: &RunState, registry: &Card
             }
         }
     }
+    // The Runner's plans (Stage 7): the stakes as the Runner counts
+    // them on a central, the pressure plan's HQ and the rig plan's R&D,
+    // each per fresh access and on the same breakability gate as the
+    // hidden access itself. Zero at the reference's weights.
+    let mut plans = 0.0;
     match server {
         ServerId::Hq => {
             let held = state.corp.hq.len();
             let accesses = (1 + run.additional_hq_access as usize).min(held);
             let fresh = if held == 0 { 0.0 } else { ((held - 1) as f64 / held as f64).powi(earlier as i32) };
             hidden += accesses as f64 * fresh;
+            if w.runner_stakes_weight != 0.0 || w.hq_pressure_weight != 0.0 {
+                let (hq_points, _) = agenda_points_expected(state, registry);
+                plans += accesses as f64 * fresh * (hq_points * w.runner_stakes_weight + w.hq_pressure_weight);
+            }
         }
-        ServerId::RnD if !seen => hidden += (1 + run.additional_rd_access as usize).min(state.corp.r_and_d.len()) as f64,
+        ServerId::RnD if !seen => {
+            let accesses = (1 + run.additional_rd_access as usize).min(state.corp.r_and_d.len());
+            hidden += accesses as f64;
+            if w.runner_stakes_weight != 0.0 {
+                let (_, density) = agenda_points_expected(state, registry);
+                plans += accesses as f64 * density * w.runner_stakes_weight;
+            }
+            plans += accesses.saturating_sub(1) as f64 * w.rd_access_weight;
+        }
         ServerId::RnD | ServerId::Remote(_) => {}
         ServerId::Archives => {
             for archived in &state.corp.archives {
@@ -115,6 +133,7 @@ pub(super) fn access_prospect(state: &GameState, run: &RunState, registry: &Card
         - ambushes as f64 * w.known_ambush_weight
         - trap
         + trash_gain
+        + plans
 }
 
 /// The credits the Corp would spend rezzing the unrezzed ICE still ahead
@@ -211,13 +230,21 @@ pub(super) fn visible_install_value(installed: &InstalledCard, registry: &CardRe
 /// floored at zero per card; scaled by `held_card_weight`.
 pub(super) fn held_cards_value(state: &GameState, registry: &CardRegistry, w: &Weights, horizon: u32) -> f64 {
     let rig = rig_coverage(state, registry);
+    let shown = shown_for(state, registry, w);
     state
         .runner
         .grip
         .iter()
         .filter_map(|card| registry.get(card))
-        .map(|def| install_delta(def, rig, w, horizon).max(0.0))
+        .map(|def| install_delta(def, rig, shown, w, horizon).max(0.0))
         .sum()
+}
+
+/// The ICE the Corp has shown, for the terms that condition on it, or
+/// every subtype when no term does — so the reference's arithmetic is
+/// untouched by the reading. See `UNSHOWN_BREAKER_WEIGHT`.
+pub(super) fn shown_for(state: &GameState, registry: &CardRegistry, w: &Weights) -> [bool; 3] {
+    if w.unshown_breaker_weight != 0.0 { ice_shown(state, registry) } else { [true; 3] }
 }
 
 /// The future credits the rig's economy cards declare, each read with
@@ -241,12 +268,17 @@ pub(super) fn rig_income(state: &GameState, registry: &CardRegistry, horizon: u3
 /// in hand exactly when the Runner would install it — leaving the memory
 /// out made a held Cleaver worth more than the installed one and the
 /// install a net loss. Zero for anything that is not a program, hardware
-/// or resource.
-pub(super) fn install_delta(def: &CardDefinition, rig: [bool; 3], w: &Weights, horizon: u32) -> f64 {
+/// or resource. A subtype the card would cover that the Corp has not
+/// shown (`shown`, from `shown_for`) is worth its coverage less
+/// `unshown_breaker_weight`, and an R&D access the card promises is
+/// worth `rd_access_weight` (Stage 7; both zero at the reference).
+pub(super) fn install_delta(def: &CardDefinition, rig: [bool; 3], shown: [bool; 3], w: &Weights, horizon: u32) -> f64 {
     if !matches!(def.card_type, CardType::Program | CardType::Hardware | CardType::Resource) {
         return 0.0;
     }
     let new_coverage = covers(def).iter().zip(rig).filter(|(grip, rig)| **grip && !rig).count();
+    let unshown = covers(def).iter().zip(rig).zip(shown).filter(|((grip, rig), shown)| **grip && !rig && !shown).count();
+    let promised = if w.rd_access_weight != 0.0 { f64::from(rd_accesses(def, None)) * w.rd_access_weight } else { 0.0 };
     // The same future credits `rig_income` will count once the card is
     // installed, so an economy card is live in hand exactly when the
     // Runner would install it — the breaker's arithmetic, for money.
@@ -255,7 +287,8 @@ pub(super) fn install_delta(def: &CardDefinition, rig: [bool; 3], w: &Weights, h
     } else {
         0.0
     };
-    w.board_presence_weight + new_coverage as f64 * w.breaker_coverage_weight + income
+    w.board_presence_weight + new_coverage as f64 * w.breaker_coverage_weight + income + promised
+        - unshown as f64 * w.unshown_breaker_weight
         - f64::from(def.cost) * w.own_credit_weight
         - f64::from(def.memory_cost.unwrap_or(0)) * w.memory_weight
 }
@@ -264,8 +297,10 @@ pub(super) fn install_delta(def: &CardDefinition, rig: [bool; 3], w: &Weights, h
 /// installing: one that covers a subtype the rig cannot break and fits in
 /// free memory. Zero with no such card, or once it is affordable. Printed
 /// cost, ignoring install discounts — over-estimating the target only
-/// makes the Runner save one click longer.
-pub(super) fn breaker_savings_shortfall(state: &GameState, registry: &CardRegistry) -> u32 {
+/// makes the Runner save one click longer. Only a breaker for ICE the
+/// Corp has shown is saved for when `shown` says which (Stage 7); the
+/// reference passes every subtype.
+pub(super) fn breaker_savings_shortfall(state: &GameState, registry: &CardRegistry, shown: [bool; 3]) -> u32 {
     let rig = rig_coverage(state, registry);
     let target = state
         .runner
@@ -273,7 +308,7 @@ pub(super) fn breaker_savings_shortfall(state: &GameState, registry: &CardRegist
         .iter()
         .filter_map(|card| registry.get(card))
         .filter(|def| def.memory_cost.unwrap_or(0) <= state.runner.memory_units.0)
-        .filter(|def| covers(def).iter().zip(rig).any(|(grip, rig)| *grip && !rig))
+        .filter(|def| covers(def).iter().zip(rig).zip(shown).any(|((grip, rig), shown)| *grip && !rig && shown))
         .map(|def| def.cost)
         .min();
     target.map_or(0, |cost| cost.saturating_sub(state.runner.resources.credits.0))
@@ -286,7 +321,7 @@ pub(super) fn score(state: &GameState, registry: &CardRegistry, w: &Weights, hor
     *score += state.runner.rig.len() as f64 * w.board_presence_weight;
     *score += state.runner.memory_units.0 as f64 * w.memory_weight;
     *score += breaker_coverage(state, registry) as f64 * w.breaker_coverage_weight;
-    *score -= breaker_savings_shortfall(state, registry) as f64 * w.savings_shortfall_weight;
+    *score -= breaker_savings_shortfall(state, registry, shown_for(state, registry, w)) as f64 * w.savings_shortfall_weight;
     *score -= w.grip_floor.saturating_sub(state.runner.grip.len()) as f64 * w.grip_shortfall_weight;
     *score += held_cards_value(state, registry, w, horizon) * w.held_card_weight;
     *score -= visible_corp_board(state, registry, w, horizon) * w.opponent_board_weight;
@@ -311,6 +346,35 @@ pub(super) fn score(state: &GameState, registry: &CardRegistry, w: &Weights, hor
     // `evaluate_state_with`).
     if w.future_credit_weight != 0.0 {
         *score += rig_income(state, registry, horizon) * w.future_credit_weight;
+    }
+    // The Runner's plans (Stage 7), after the guide's rate; the stakes,
+    // the pressure plan's HQ and the rig plan's run are inside
+    // `access_prospect`, on its gate.
+    if w.unshown_breaker_weight != 0.0 {
+        *score -= unshown_coverage(state, registry) as f64 * w.unshown_breaker_weight;
+    }
+    if w.last_click_run_weight != 0.0
+        && last_click_run(state)
+        && let Some(run) = &state.active_run
+        && unknown_ahead(state, run)
+        && corp_punishes_runs(state, registry)
+    {
+        *score -= w.last_click_run_weight;
+    }
+    if w.feared_flatline_weight != 0.0 && state.runner.grip.len() <= damage_feared(state, registry) {
+        *score -= w.feared_flatline_weight;
+    }
+    if w.dismantle_weight != 0.0 {
+        let trashable = state
+            .corp
+            .installed
+            .iter()
+            .filter(|card| card.rezzed && registry.get(&card.card).is_some_and(|def| !matches!(def.card_type, CardType::Ice(_))))
+            .count();
+        *score -= trashable as f64 * w.dismantle_weight;
+    }
+    if w.rd_access_weight != 0.0 {
+        *score += f64::from(rig_rd_accesses(state, registry)) * w.rd_access_weight;
     }
 }
 
@@ -547,12 +611,12 @@ mod tests {
         state.runner.resources.credits = Credits(0);
         state.runner.memory_units = MemoryUnits(4);
         state.runner.grip = vec![CardId("corroder".to_string())];
-        assert_eq!(breaker_savings_shortfall(&state, &registry), 2);
+        assert_eq!(breaker_savings_shortfall(&state, &registry, [true; 3]), 2);
         state.runner.rig = vec![rig_card("cleaver")];
-        assert_eq!(breaker_savings_shortfall(&state, &registry), 0, "Barrier is already covered");
+        assert_eq!(breaker_savings_shortfall(&state, &registry, [true; 3]), 0, "Barrier is already covered");
         state.runner.rig.clear();
         state.runner.memory_units = MemoryUnits(0);
-        assert_eq!(breaker_savings_shortfall(&state, &registry), 0, "no memory to install it into");
+        assert_eq!(breaker_savings_shortfall(&state, &registry, [true; 3]), 0, "no memory to install it into");
     }
 
     /// The reason this is a penalty on the shortfall and not a bonus on
@@ -950,7 +1014,7 @@ mod tests {
         let w = guide();
         let rig = [false; 3];
         let telework = printed(&pool, "telework_contract");
-        assert!(install_delta(&telework, rig, &w, horizon(Stage::Early)) > install_delta(&telework, rig, &Weights::default(), 9) + 1.0);
+        assert!(install_delta(&telework, rig, [true; 3], &w, horizon(Stage::Early)) > install_delta(&telework, rig, [true; 3], &Weights::default(), 9) + 1.0);
         let mut held = GameState::new(0);
         held.runner.resources.credits = Credits(5);
         held.runner.memory_units = MemoryUnits(4);
@@ -1042,5 +1106,229 @@ mod tests {
         assert_eq!(run(unrezzed(), 0), 0);
         assert_eq!(run(vec![run_ice(3, IceType::Barrier, 1, true)], 10), 0, "rezzed already");
         assert!(w.forced_rez_weight * f64::from(TYPICAL_REZ_COST) < w.active_run_weight, "a forced rez is worth less than the access itself");
+    }
+
+    /// Precept 13's last click: the same run begun with a click in hand
+    /// beats one begun on the last click against a Corp that punishes
+    /// runs, and only against one. Read at the run's initiation, so the
+    /// door a run can be left through is never opened by it.
+    #[test]
+    fn a_run_on_the_last_click_against_a_punishing_corp_costs_the_click_kept() {
+        use netrunner_core::card::Faction;
+        use netrunner_core::rules::{Clicks, ServerId};
+        // The term ships at zero (`LAST_CLICK_RUN_WEIGHT`); this is the
+        // decision it wins when it is on.
+        let w = Weights { last_click_run_weight: 1.0, ..every_runner() };
+        let begun = |faction: Faction, clicks: u32, phase: RunPhase| {
+            let mut state = GameState::new(0);
+            state.phase = GamePhase::Action(Side::Runner);
+            state.corp.hq = corp_cards("hq", 4);
+            state.runner.grip = corp_cards("grip", 5);
+            state.runner.resources.clicks = Clicks(clicks);
+            let (mut state, identity) = against(state, faction);
+            state.active_run = Some(RunState { server: ServerId::Hq, phase, ..Default::default() });
+            let registry = CardRegistry::from_cards(vec![identity]);
+            evaluate_state_with(&state, Side::Runner, &registry, &w)
+        };
+        let kept = begun(Faction::Jinteki, 1, RunPhase::Initiation) - begun(Faction::Jinteki, 0, RunPhase::Initiation);
+        assert!((kept - (w.click_weight + w.last_click_run_weight)).abs() < 1e-9, "{kept}: a click kept, and the fear it answers");
+        let against_hb = begun(Faction::HaasBioroid, 1, RunPhase::Initiation) - begun(Faction::HaasBioroid, 0, RunPhase::Initiation);
+        assert!((against_hb - w.click_weight).abs() < 1e-9, "{against_hb}: no fear of a Corp that does not punish runs");
+        assert_eq!(begun(Faction::Nbn, 0, RunPhase::Initiation), begun(Faction::Jinteki, 0, RunPhase::Initiation), "NBN's tags are feared like Jinteki's damage");
+        let under_way = begun(Faction::Jinteki, 0, RunPhase::Movement) - begun(Faction::HaasBioroid, 0, RunPhase::Movement);
+        assert_eq!(under_way, 0.0, "a run under way is not worth leaving for it");
+    }
+
+    /// A Corp that has shown a tagging or damaging piece of ICE punishes
+    /// runs whatever its faction; a rezzed Barrier that only ends the
+    /// run does not.
+    #[test]
+    fn a_corp_whose_rezzed_ice_tags_punishes_runs_whatever_its_faction() {
+        use netrunner_core::card::Faction;
+        use netrunner_core::dsl::{Amount, SubroutineDef};
+        use netrunner_core::rules::{InstallSlot, ServerId};
+        let mut funhouse = ice("funhouse", 5);
+        funhouse.subroutines = vec![SubroutineDef { text: String::new(), effect: Effect::GiveTags(Amount::Fixed(1)), only_breakable_by: None }];
+        let mut wall = ice("wall", 3);
+        wall.subroutines = vec![SubroutineDef { text: String::new(), effect: Effect::EndTheRun, only_breakable_by: None }];
+        let (state, identity) = against(GameState::new(0), Faction::WeylandConsortium);
+        let registry = CardRegistry::from_cards(vec![funhouse, wall, identity]);
+        let with = |state: &GameState, card: &str, rezzed: bool| {
+            let mut state = state.clone();
+            state.corp.installed = vec![InstalledCard { card: CardId(card.to_string()), install_id: InstallId(1), slot: InstallSlot::Ice, server: ServerId::Hq, rezzed, ..Default::default() }];
+            corp_punishes_runs(&state, &registry)
+        };
+        assert!(!corp_punishes_runs(&state, &registry), "Weyland with nothing shown");
+        assert!(with(&state, "funhouse", true));
+        assert!(!with(&state, "funhouse", false), "face down, the ICE has shown nothing");
+        assert!(!with(&state, "wall", true), "an end-the-run subroutine punishes nothing");
+    }
+
+    /// "Keep your grip larger than the damage you could take": against
+    /// Jinteki the Runner draws up past a Snare!'s three before it runs;
+    /// against Weyland the floor is the floor; a trap it has seen sets
+    /// the number exactly.
+    #[test]
+    fn the_grip_is_kept_larger_than_the_damage_feared() {
+        use netrunner_core::card::Faction;
+        use netrunner_core::rules::ServerId;
+        let w = every_runner();
+        let holding = |faction: Faction, grip: usize, seen_trap: Option<u32>| {
+            let mut state = GameState::new(0);
+            state.runner.grip = corp_cards("grip", grip);
+            let (mut state, identity) = against(state, faction);
+            let mut cards = vec![identity, ambush("urtica_cipher")];
+            if let Some(tokens) = seen_trap {
+                let mut urtica = ambush("urtica_cipher");
+                urtica.triggers[0].effects = vec![Effect::DealDamage(netrunner_core::dsl::DamageType::Net, 2), Effect::DealDamageAmount(netrunner_core::dsl::DamageType::Net, Amount::HostedAdvancementTokens)];
+                cards[1] = urtica;
+                state.corp.installed = vec![InstalledCard { card: CardId("urtica_cipher".to_string()), install_id: InstallId(1), server: ServerId::Remote(0), advancement_tokens: tokens, seen_by_runner: true, ..Default::default() }];
+            }
+            let registry = CardRegistry::from_cards(cards);
+            (evaluate_state_with(&state, Side::Runner, &registry, &w), damage_feared(&state, &registry))
+        };
+        assert_eq!(holding(Faction::Jinteki, 3, None).1, TYPICAL_NET_DAMAGE);
+        let step = holding(Faction::Jinteki, 4, None).0 - holding(Faction::Jinteki, 3, None).0;
+        assert!((step - w.feared_flatline_weight).abs() < 1e-9, "{step}: the fourth card lifts the fear (the floor is met at three)");
+        assert_eq!(holding(Faction::Jinteki, 5, None).0, holding(Faction::Jinteki, 4, None).0, "and a fifth is worth nothing more");
+        assert_eq!(holding(Faction::WeylandConsortium, 3, None).1, 0, "no fear of a Corp that is not Jinteki");
+        assert_eq!(holding(Faction::WeylandConsortium, 4, None).0, holding(Faction::WeylandConsortium, 3, None).0);
+        assert_eq!(holding(Faction::WeylandConsortium, 3, Some(3)).1, 5, "a seen Urtica Cipher with three tokens is five");
+        assert!(holding(Faction::WeylandConsortium, 6, Some(3)).0 > holding(Faction::WeylandConsortium, 5, Some(3)).0 + w.feared_flatline_weight - 1e-9);
+    }
+
+    /// Precept 9 as arithmetic: an HQ run into a Corp that has drawn
+    /// much and scored little is worth more than R&D at the deck's
+    /// density, and one into a Corp that has scored what it drew is
+    /// worth less.
+    #[test]
+    fn an_hq_run_is_worth_the_agendas_the_corp_is_holding() {
+        use netrunner_core::rules::{AgendaPoints, ServerId};
+        // The term ships at zero (`RUNNER_STAKES_WEIGHT`); this is the
+        // decision it wins when it is on.
+        let w = Weights { runner_stakes_weight: 1.0, ..every_runner() };
+        let registry = pool();
+        // A 49-card deck: 20 in R&D, 5 in HQ, 20 face up in Archives and
+        // 4 face down on the table — 29 drawn, 11.8 points' worth
+        // expected of them, and 9 cards the Runner has not seen.
+        let corp_that = |scored: i32, stolen: i32| {
+            let mut state = GameState::new(0);
+            state.corp.r_and_d = corp_cards("rd", 20);
+            state.corp.hq = corp_cards("hq", 5);
+            state.corp.archives = (0..20).map(|i| netrunner_core::rules::ArchivedCard { card: CardId(format!("ar_{i}")), facedown: false }).collect();
+            state.corp.installed = (0..4).map(|i| InstalledCard { card: CardId(format!("in_{i}")), install_id: InstallId(i + 1), server: ServerId::Remote(0), ..Default::default() }).collect();
+            state.corp.resources.agenda_points = AgendaPoints(scored);
+            state.runner.resources.agenda_points = AgendaPoints(stolen);
+            state
+        };
+        let holding = corp_that(2, 2);
+        let (hq, rd) = agenda_points_expected(&holding, &registry);
+        assert!((rd - 20.0 / 49.0).abs() < 1e-9, "{rd}");
+        assert!((hq - (29.0 * 20.0 / 49.0 - 4.0) / 9.0).abs() < 1e-9, "{hq}: 7.8 points unaccounted for over the nine cards not seen — the hand and the face-down roots");
+        let mut buried = holding.clone();
+        buried.corp.archives.iter_mut().for_each(|card| card.facedown = true);
+        let (hq_buried, _) = agenda_points_expected(&buried, &registry);
+        assert!(hq_buried < hq, "a face-down pile could hold them too: {hq_buried} against {hq}");
+        let run = |state: &GameState, server| access_prospect(state, &RunState { server, ..Default::default() }, &registry, &w, 0, 9);
+        assert!(run(&holding, ServerId::Hq) > run(&holding, ServerId::RnD), "HQ over R&D while the Corp holds without scoring");
+        let scoring = corp_that(6, 6);
+        let (hq, _) = agenda_points_expected(&scoring, &registry);
+        assert_eq!(hq, 0.0, "every drawn agenda is accounted for");
+        assert!(run(&scoring, ServerId::Hq) < run(&scoring, ServerId::RnD), "and R&D over HQ once they are");
+        assert_eq!(access_prospect(&holding, &RunState { server: ServerId::Hq, ..Default::default() }, &registry, &Weights::default(), 0, 9), ACTIVE_RUN_WEIGHT, "the reference reads no density");
+    }
+
+    /// Precept 11: a breaker for ICE the Corp has not shown is worth
+    /// less on the table and in hand, and is not saved for; the moment a
+    /// piece of that subtype is rezzed anywhere it is worth what it was.
+    #[test]
+    fn a_breaker_for_ice_the_corp_has_not_shown_is_worth_less_and_not_saved_for() {
+        use netrunner_core::rules::{InstallSlot, MemoryUnits, ServerId};
+        let w = every_runner();
+        let registry = CardRegistry::from_cards(vec![costed_breaker("cleaver", Some(IceType::Barrier), 3), ice("wall", 3)]);
+        let board = |shown: bool, cleaver_in: &str| {
+            let mut state = GameState::new(0);
+            state.runner.resources.credits = Credits(0);
+            state.runner.memory_units = MemoryUnits(4);
+            state.runner.grip = corp_cards("filler", GRIP_FLOOR);
+            match cleaver_in {
+                "rig" => state.runner.rig = vec![rig_card("cleaver")],
+                "grip" => state.runner.grip.push(CardId("cleaver".to_string())),
+                _ => {}
+            }
+            state.corp.installed = vec![InstalledCard { card: CardId("wall".to_string()), install_id: InstallId(1), slot: InstallSlot::Ice, server: ServerId::Hq, rezzed: shown, ..Default::default() }];
+            state
+        };
+        let rig = |shown| evaluate_state_with(&board(shown, "rig"), Side::Runner, &registry, &w) - evaluate_state_with(&board(shown, ""), Side::Runner, &registry, &w);
+        assert!((rig(true) - rig(false) - w.unshown_breaker_weight).abs() < 1e-9, "{} vs {}", rig(true), rig(false));
+        assert!(rig(false) > 0.0, "still worth having");
+        assert_eq!(unshown_coverage(&board(false, "rig"), &registry), 1);
+        assert_eq!(unshown_coverage(&board(true, "rig"), &registry), 0);
+        // With the credits in hand, so the savings term is out of it.
+        let held = |shown| {
+            let mut with = board(shown, "grip");
+            with.runner.resources.credits = Credits(3);
+            let mut without = board(shown, "");
+            without.runner.resources.credits = Credits(3);
+            evaluate_state_with(&with, Side::Runner, &registry, &w) - evaluate_state_with(&without, Side::Runner, &registry, &w)
+        };
+        assert!(held(true) > held(false), "and less live in hand: {} vs {}", held(true), held(false));
+        assert_eq!(breaker_savings_shortfall(&board(false, "grip"), &registry, ice_shown(&board(false, "grip"), &registry)), 0, "not saved for");
+        assert_eq!(breaker_savings_shortfall(&board(true, "grip"), &registry, ice_shown(&board(true, "grip"), &registry)), 3, "saved for once shown");
+        // The reference's arithmetic is untouched by the reading.
+        let reference = |shown| evaluate_state(&board(shown, "rig"), Side::Runner, &registry) - evaluate_state(&board(shown, ""), Side::Runner, &registry);
+        assert_eq!(reference(true), reference(false));
+    }
+
+    /// The dismantle plan trashes at 3[c] where a balanced Runner stops
+    /// at 2[c], and the run that reaches the asset is worth starting for
+    /// it; a Criminal runs HQ over R&D when both are open; a Shaper
+    /// prices The Maker's Eye's accesses and a counter on Conduit.
+    #[test]
+    fn each_runner_plan_prices_its_chapters_lever() {
+        use crate::plans::Plan;
+        use netrunner_core::rules::ServerId;
+        let mut nico = asset("nico_campaign", 2);
+        nico.trash_cost = Some(3);
+        let registry = CardRegistry::from_cards(vec![nico]);
+        let mut state = GameState::new(0);
+        state.runner.resources.credits = Credits(5);
+        state.corp.hq = corp_cards("hq", 4);
+        state.corp.r_and_d = corp_cards("rd", 20);
+        state.corp.installed = vec![InstalledCard { card: CardId("nico_campaign".to_string()), install_id: InstallId(1), server: ServerId::Remote(0), rezzed: true, ..Default::default() }];
+        let remote = RunState { server: ServerId::Remote(0), ..Default::default() };
+        assert_eq!(access_prospect(&state, &remote, &registry, &every_runner(), 5, 9), 0.0, "3[c] is too dear for the balanced Runner");
+        let anarch = planned_runner(&[Plan::Dismantle]);
+        let trash = access_prospect(&state, &remote, &registry, &anarch, 5, 9);
+        assert!(trash > 0.0, "{trash}: the Anarch pays 3[c] for it");
+        let mut trashed = state.clone();
+        trashed.corp.installed.clear();
+        trashed.runner.resources.credits = Credits(2);
+        assert!(evaluate_state_with(&trashed, Side::Runner, &registry, &anarch) > evaluate_state_with(&state, Side::Runner, &registry, &anarch), "and trashes it once accessed");
+        assert!(evaluate_state_with(&trashed, Side::Runner, &registry, &every_runner()) < evaluate_state_with(&state, Side::Runner, &registry, &every_runner()), "where the balanced Runner keeps its credits");
+
+        let criminal = planned_runner(&[Plan::Pressure]);
+        let run = |w: &Weights, server| access_prospect(&state, &RunState { server, ..Default::default() }, &registry, w, 5, 9);
+        assert!(run(&criminal, ServerId::Hq) > run(&criminal, ServerId::RnD), "HQ over R&D under pressure");
+        let without = Weights { hq_pressure_weight: 0.0, ..criminal };
+        assert!((run(&criminal, ServerId::Hq) - run(&without, ServerId::Hq) - criminal.hq_pressure_weight).abs() < 1e-9);
+        assert_eq!(run(&criminal, ServerId::RnD), run(&without, ServerId::RnD));
+
+        let shaper = planned_runner(&[Plan::Rig]);
+        let makers_eye = RunState { server: ServerId::RnD, additional_rd_access: 2, ..Default::default() };
+        let extra = access_prospect(&state, &makers_eye, &registry, &shaper, 5, 9) - access_prospect(&state, &makers_eye, &registry, &every_runner(), 5, 9);
+        assert!((extra - 2.0 * shaper.rd_access_weight).abs() < 1e-9, "{extra}: two accesses beyond the first");
+        let pool = pool();
+        let mut with_conduit = state.clone();
+        with_conduit.runner.rig = vec![InstalledRunnerCard { card: CardId("conduit".to_string()), counters: 3, ..Default::default() }];
+        let mut one_more = with_conduit.clone();
+        one_more.runner.rig[0].counters = 4;
+        let counter = evaluate_state_with(&one_more, Side::Runner, &pool, &shaper) - evaluate_state_with(&with_conduit, Side::Runner, &pool, &shaper);
+        assert!((counter - shaper.rd_access_weight).abs() < 1e-9, "{counter}: a counter on Conduit is an R&D access");
+        assert_eq!(evaluate_state_with(&one_more, Side::Runner, &pool, &every_runner()), evaluate_state_with(&with_conduit, Side::Runner, &pool, &every_runner()), "and nothing to another plan");
+        assert_eq!(rd_accesses(&printed(&pool, "the_makers_eye"), None), 2);
+        assert_eq!(rd_accesses(&printed(&pool, "devadatta_drone"), None), 1);
+        assert_eq!(rd_accesses(&printed(&pool, "conduit"), Some(3)), 3);
+        assert_eq!(rd_accesses(&printed(&pool, "conduit"), None), 0, "in hand, Conduit promises what it places on itself: nothing");
     }
 }

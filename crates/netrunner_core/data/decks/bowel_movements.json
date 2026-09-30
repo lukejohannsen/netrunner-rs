@@ -4,7 +4,7 @@
   "side": "Runner",
   "category": "Sample",
   "description": "Sixteen programs and eight viruses: the rig is the plan — install it, then let the counters do the running.",
-  "style": ["builder"],
+  "style": ["rig", "dismantle"],
   "identity": "rene_loup_arcemont",
   "cards": [
     {

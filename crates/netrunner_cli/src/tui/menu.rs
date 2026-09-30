@@ -834,7 +834,7 @@ mod tests {
         else {
             panic!()
         };
-        assert_eq!(config.runner_style, Some(Style::of(Plan::Aggressive)));
+        assert_eq!(config.runner_style, Some(Style::of(Plan::Dismantle)));
         press(&mut menu, &[KeyCode::Esc]);
         go_to(&mut menu, Entry::Learn);
         let MenuStep::Launch(Launch::Learn { config, .. }) = menu.key(KeyCode::Enter) else { panic!() };

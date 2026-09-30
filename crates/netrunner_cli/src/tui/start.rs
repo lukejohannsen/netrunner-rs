@@ -131,7 +131,7 @@ mod tests {
         DeckRow {
             id: id.to_string(),
             name: id.replace('_', " "),
-            style: vec![if side == Side::Corp { "fast-advance" } else { "aggressive" }.to_string()],
+            style: vec![if side == Side::Corp { "fast-advance" } else { "pressure" }.to_string()],
             identity: "Someone".to_string(),
             saved: false,
             problem: None,
@@ -157,13 +157,13 @@ mod tests {
         assert_eq!(menu.level(), Level::Operator);
         key(&mut menu, KeyCode::Tab);
         key(&mut menu, KeyCode::Down);
-        assert_eq!(menu.style(), Some(Style::of(Plan::Aggressive)), "the first plan written for the Runner");
+        assert_eq!(menu.style(), Some(Style::of(Plan::Dismantle)), "the first plan written for the Runner");
         key(&mut menu, KeyCode::Tab);
         key(&mut menu, KeyCode::Down);
         match key(&mut menu, KeyCode::Enter) {
             StartKey::Start(choice) => {
                 assert_eq!(choice.level, Level::Operator);
-                assert_eq!(choice.style, Some(Style::of(Plan::Aggressive)));
+                assert_eq!(choice.style, Some(Style::of(Plan::Dismantle)));
                 assert_eq!(choice.runner_deck, "dashing_mad");
             }
             other => panic!("{other:?}"),

@@ -486,8 +486,8 @@ mod tests {
                 let plain = level.spec(side);
                 assert_eq!(plain.style, Style::BALANCED, "the calibrated rung is balanced");
                 assert_eq!(plain.with_style(Style::BALANCED), plain);
-                let styled = plain.with_style(Style::of(Plan::Aggressive));
-                assert_eq!(styled.style, Style::of(Plan::Aggressive));
+                let styled = plain.with_style(Style::of(Plan::Pressure));
+                assert_eq!(styled.style, Style::of(Plan::Pressure));
                 assert_eq!(
                     (styled.level, styled.side, styled.kind, styled.simulations, styled.samples, styled.epsilon),
                     (plain.level, plain.side, plain.kind, plain.simulations, plain.samples, plain.epsilon)

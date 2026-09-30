@@ -501,7 +501,8 @@ mod tests {
         assert_eq!(participant_id(spec("heuristic:fast-advance"), 64, None), "heuristic:fast-advance");
         assert_eq!(participant_id(spec("planner:glacier+fast-advance"), 64, None), "planner:glacier+fast-advance");
         assert!("heuristic:rush".parse::<BotSpec>().is_err(), "the old name is gone");
-        assert_eq!(participant_id(spec("mcts:cautious"), 32, Some("abc123")), "mcts@32:cautious#abc123");
+        assert_eq!(participant_id(spec("mcts:pressure"), 32, Some("abc123")), "mcts@32:pressure#abc123");
+        assert!("mcts:cautious".parse::<BotSpec>().is_err(), "the old Runner style is gone");
         assert_eq!(participant_id(spec("level:elite"), 64, None), "level:elite");
         assert_eq!(participant_id(spec("level:5:glacier"), 64, None), "level:elite:glacier");
         assert_eq!(spec("level:elite:balanced"), spec("level:elite"));

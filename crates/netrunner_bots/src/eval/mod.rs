@@ -37,6 +37,15 @@
 //! the Runner reads the Corp's against a rez and an unfinished install.
 //! The one-ply reference scores with the default, so it has not moved
 //! and every ladder rung with it; Stage 8 makes the eight the default.
+//!
+//! **The Corp's plans (Stage 6) and the Runner's (Stage 7)** are two
+//! more blocks of the same shape, switched on by `Weights::with_plans`
+//! for the plans a deck's `Style` stacks: every Corp's four and every
+//! Runner's four, then each plan's own. The Runner's block is where the
+//! evaluator first reads an identity — the Corp's across the table, for
+//! the last-click and feared-flatline terms (`read::corp_faction`), and
+//! the Runner's own, which names its plan when the deck does not
+//! (`plans::Style::or_faction`).
 
 use netrunner_core::cards::CardRegistry;
 use netrunner_core::dsl::{
@@ -65,7 +74,7 @@ use corp::*;
 use fundamentals::*;
 use read::*;
 
-pub use read::{breaker_coverage, covers, damage_grows_with_advancement, is_hand_trap, is_lure_trap, is_unrezzed_threat, punishes_access_with_damage, server_break_cost};
+pub use read::{breaker_coverage, covers, damage_grows_with_advancement, is_hand_trap, is_lure_trap, is_unrezzed_threat, punishes_access_with_damage, punishes_runs, server_break_cost};
 pub use stage::{horizon, stage, Stage};
 
 // ---------------------------------------------------------------------
@@ -322,6 +331,147 @@ const TAG_LEVERAGE_WEIGHT: f64 = 1.5;
 /// not score. About an install's worth over a naked remote, so the
 /// bluff is where the asset goes and never a reason to install one.
 const BLUFF_WEIGHT: f64 = 1.0;
+
+// ---------------------------------------------------------------------
+// The Runner's plans, and the identity both chairs read (Phase 5 §25
+// Stage 7). **Every constant in this block is zero in
+// `Weights::default()` and in every `Plan::weights`**, and set by
+// `Weights::with_plans` for a Runner seat — the same pinning as the two
+// blocks above. The first four are every Runner's, because their
+// sentences are in the guide's "Playing the Runner" chapter, which every
+// Runner plays; the last three are one faction's plan's. What the Runner
+// reads here that it could not before is the identity across the table
+// (`read::corp_faction`) and its own (`Style::or_faction`).
+// ---------------------------------------------------------------------
+
+/// Runner only, every plan: a run begun on the Runner's last click
+/// against a Corp that punishes runs, subtracted — "Don't run on your
+/// last click against a Corp that punishes runs — Jinteki with its net
+/// damage, NBN with its tags. Keep a click to draw back up or to clear a
+/// tag afterwards." A Corp punishes runs when its identity is one of
+/// those two (`read::corp_faction`, public) or when a piece of ICE it
+/// has rezzed tags or damages (`read::corp_punishes_runs`), and only
+/// while there is something unknown in the way: face-down ICE ahead, or
+/// a card the breach would show for the first time
+/// (`read::unknown_ahead`). Read at the run's initiation and nowhere
+/// later (`read::last_click_run`), which is where the planner prices the
+/// run as a leaf, so a run already under way is never worth jacking out
+/// of for it. Stage 4 found the planner running on the last click 0.48
+/// of its runs against the reference's 0.14, because "credit, credit,
+/// credit, run" and "run, credit, credit, credit" price the same at the
+/// leaf and the credits first make the run affordable; this is the term
+/// the Stage 4 and 5 entries deferred to here.
+///
+/// **Zero, and that is the measurement.** At a click and what it buys
+/// back (1.0) the same run one click earlier wins by more than the
+/// jitter, and a run only the last credit made affordable is not made —
+/// and that second decision is the one the bench says is wrong against
+/// this Corp: on the planner's Runner legs against the reference, 384
+/// games a seed, the term cost 0.02 and 0.03 of win share with every
+/// other term on, 0.02 and 0.02 with the Runner's plans as levers alone,
+/// and at 0.4 (a click alone) 0.00 and 0.03 — six legs, every one
+/// negative. The runs it forbids are the poor Runner's, for which the
+/// third credit is the run, and the reference Corp punishes too few of
+/// them for the click kept to pay. The reading stays, at zero, like
+/// `UNREZZED_THREAT_WEIGHT`: the guide's sentence wants a Corp that
+/// punishes, and the record is what the flat fear of one is worth.
+const LAST_CLICK_RUN_WEIGHT: f64 = 0.0;
+/// Runner only, every plan: the grip is no larger than the damage one
+/// access could deal (`read::damage_feared`: the most a known trap on
+/// the table or face up in Archives would do, and against a Jinteki
+/// Corp at least `TYPICAL_NET_DAMAGE`), subtracted — "Keep your grip
+/// larger than the damage you could take. You flatline when you suffer
+/// more damage than you have cards in grip, and an access to a trap can
+/// hit you before you see it coming." The known trap in the breach is
+/// priced exactly (`LETHAL_TRAP_WEIGHT`); this is the fear of the one
+/// not yet seen, read off the identity, and it is paid on the table and
+/// not on the run, so the draw comes before the run and a run under way
+/// is not worth leaving for it. The Corp's `LETHAL_THREAT_WEIGHT`, at
+/// the same size: a turn of the Runner's, and well under a point of
+/// agenda, so a Runner at the fear draws one card before it runs and
+/// does not stop running.
+const FEARED_FLATLINE_WEIGHT: f64 = 3.0;
+/// The net damage a face-down card against a Jinteki Corp is feared to
+/// deal: Snare!'s three, the most the pool's traps deal without
+/// advancement; Urtica Cipher's two plus its tokens is read exactly
+/// once seen.
+const TYPICAL_NET_DAMAGE: usize = 3;
+/// Runner only, every plan: each agenda point a breach of HQ or R&D is
+/// expected to reach, as the Runner can count it
+/// (`read::agenda_points_expected`): R&D at the deck's density — the
+/// points a deck its size must hold (CR 1.4.6) over its cards — and HQ
+/// at what the Corp has drawn less what it has played, scored, lost and
+/// shown, spread over the drawn cards the Runner has not seen. "HQ when
+/// the Corp is holding cards without scoring, and the turn before you
+/// expect them to score": a Corp that draws and does not score is
+/// holding its agendas, and this is that sentence as arithmetic — the
+/// mirror of the Corp's `RUN_STAKES_WEIGHT`, which counts the real
+/// cards. Precept 9, which Stage 1 measured at 0.32 of HQ runs made into
+/// a full hand with no term reading it. The Corp's affordability to
+/// score is not a gate here, on purpose: an agenda the Corp cannot yet
+/// afford to score is an agenda it holds *longer*, which is more reason
+/// to run HQ, not less.
+///
+/// **Zero, and that is the measurement.** At a point (an R&D access at
+/// the pool's density 0.4 on top of the flat 0.6, an HQ access into a
+/// hand holding two agendas' worth 0.8) the term cost the planner's
+/// Runner legs 0.03 and 0.03 of win share against the reference, 384
+/// games a seed; at half a point, 0.01 and 0.03. By the Runner's
+/// faction at half a point the Anarch decks gained 0.06 and 0.04 and
+/// the Criminal and Shaper decks lost 0.01 / 0.08 and 0.02 / 0.06,
+/// on both seeds, and the split is not explained: a stake counted once
+/// a run rather than once an access played byte-identical games, so it
+/// is not the multi-access cards those decks hold (a run event's extra
+/// accesses resolve after the initiation window, past the leaf the
+/// planner prices). The reading stays, at zero, with the record.
+const RUNNER_STAKES_WEIGHT: f64 = 0.0;
+/// Runner only, every plan: each ICE subtype the rig covers that the
+/// Corp has never shown — no piece of it rezzed on the table, none once
+/// rezzed and now face down, none face up in Archives
+/// (`read::ice_shown`) — subtracted from the `BREAKER_COVERAGE_WEIGHT`
+/// it earns, on the table and in hand alike (`install_delta`), and a
+/// breaker for an unshown subtype is not saved for
+/// (`breaker_savings_shortfall`). "Install breakers for the ICE the Corp
+/// has actually rezzed rather than for ICE they might have. A breaker
+/// that sits unused is memory and credits you could have spent
+/// running." Half the coverage: Cleaver for a Barrier nobody has seen
+/// is +0.8 rather than +2.3, still ahead of a credit and behind an
+/// economy card at the guide's rate (Telework Contract's install is
+/// +1.2), which is "economy first, then breakers"; the same Cleaver once
+/// a Barrier is rezzed anywhere is +2.3, as it was. Precept 11.
+const UNSHOWN_BREAKER_WEIGHT: f64 = 1.5;
+/// Runner only, `Plan::Pressure`: each fresh HQ access a breakable run
+/// would make, on top of the hidden access — "they punish an exposed
+/// HQ". A credit's worth, so a Criminal runs HQ (1.0 an access, plus the
+/// stakes) over R&D (0.6, plus the density) whenever both are open, and
+/// still runs the remote the Corp is scoring out of, which is worth two
+/// tokens' more. The run-money events the chapter names (Account
+/// Siphon, Transfer of Wealth) are priced by the line only as the HQ
+/// run they start: their gain is at the breach, past the leaf, and a
+/// reading of an access replacement is a later stage's if the report
+/// says they are held.
+const HQ_PRESSURE_WEIGHT: f64 = 0.4;
+/// Runner only, `Plan::Dismantle`: each rezzed asset or upgrade on the
+/// Corp's table, subtracted, on top of `OPPONENT_BOARD_WEIGHT`'s share of
+/// what it is worth — "Anarchs treat the Corp's board as something to
+/// dismantle. They trash what they access." Half a credit's worth over
+/// a click: the balanced Runner trashes a 2[c] asset (+0.2) and not a
+/// 3[c] one (−0.2); an Anarch trashes at 3[c] (+0.3) and stops at 4[c]
+/// (−0.1), and the run that reaches a rezzed asset is worth starting for
+/// it (`access_prospect`'s trash gain). The same reading Carnivore's and
+/// Gourmand's access abilities are priced on.
+const DISMANTLE_WEIGHT: f64 = 0.5;
+/// Runner only, `Plan::Rig`: each R&D access beyond the first that a
+/// breakable R&D run makes (The Maker's Eye's two, Conduit's counters),
+/// on top of the hidden access, and each R&D access a card on the table
+/// promises (`read::rd_accesses`: a fixed count, or the counters it
+/// hosts) — "once it is complete their runs are cheap and exact — above
+/// all on R&D." A credit's worth, so The Maker's Eye at 2[c] is +0.8 for
+/// its accesses over the plain run and a counter on Conduit is worth
+/// taking. Breakers that scale (Echelon, Unity, Principia) need no term:
+/// `continuous::breaker_strength` reads the rig, so a scaling breaker
+/// prices itself through the cheaper breaks it makes.
+const RD_ACCESS_WEIGHT: f64 = 0.4;
 
 const WIN_SCORE: f64 = 1000.0;
 const AGENDA_POINT_WEIGHT: f64 = 20.0;
@@ -1166,6 +1316,29 @@ pub struct Weights {
     /// the fort terms, never a switch between weight sets: with it off
     /// the fort is priced all game, which is glacier alone.
     pub fort_until_beaten: bool,
+    /// Runner only: a run begun on the last click against a Corp that
+    /// punishes runs, subtracted. See `LAST_CLICK_RUN_WEIGHT`. Zero by
+    /// default, with the six below: the Runner's plan terms (Stage 7),
+    /// set by `with_plans` for a planner Runner seat.
+    pub last_click_run_weight: f64,
+    /// Runner only: the grip is no larger than the damage one access is
+    /// feared to deal, subtracted. See `FEARED_FLATLINE_WEIGHT`.
+    pub feared_flatline_weight: f64,
+    /// Runner only: each agenda point a central breach is expected to
+    /// reach. See `RUNNER_STAKES_WEIGHT`.
+    pub runner_stakes_weight: f64,
+    /// Runner only: each covered subtype the Corp has never shown,
+    /// subtracted from its coverage. See `UNSHOWN_BREAKER_WEIGHT`.
+    pub unshown_breaker_weight: f64,
+    /// Runner only, the pressure plan: each fresh HQ access. See
+    /// `HQ_PRESSURE_WEIGHT`.
+    pub hq_pressure_weight: f64,
+    /// Runner only, the dismantle plan: each rezzed Corp asset or
+    /// upgrade, subtracted. See `DISMANTLE_WEIGHT`.
+    pub dismantle_weight: f64,
+    /// Runner only, the rig plan: each R&D access beyond the first, made
+    /// or promised. See `RD_ACCESS_WEIGHT`.
+    pub rd_access_weight: f64,
 }
 
 impl Weights {
@@ -1174,20 +1347,33 @@ impl Weights {
     /// stakes, the rez held, the ICE order, the never-advance line) for
     /// any Corp seat, balanced included; the kill plan's lethal check and
     /// tag leverage, the traps plan's bluff, and the fort's yielding when
-    /// glacier is followed by fast advance. **A plan after the first
-    /// adds its own levers** — the terms that are zero in the default and
-    /// exist for it: `Traps`' ambush terms, `FastAdvance`'s installed
-    /// agenda — and not its profile's dials on the shared terms, which
-    /// are the first plan's (`Style::weights`). What `Style::planned_
-    /// weights` gives the planner; the reference never calls this.
+    /// glacier is followed by fast advance; and every Runner's four (the
+    /// last click, the feared flatline, the stakes as the Runner counts
+    /// them, the unshown breaker) for any Runner seat, with the pressure
+    /// plan's HQ, the dismantle plan's trash and the rig plan's R&D
+    /// (Stage 7). **A plan after the first adds its own levers** — the
+    /// terms that are zero in the default and exist for it: `Traps`'
+    /// ambush terms, `FastAdvance`'s installed agenda, and each Runner
+    /// plan's one term — and not its profile's dials on the shared
+    /// terms, which are the first plan's (`Style::weights`). What
+    /// `Style::planned_weights` gives the planner; the reference never
+    /// calls this.
     pub fn with_plans(self, side: Side, style: &crate::plans::Style) -> Self {
         use crate::plans::Plan;
         let mut w = self;
-        if side == Side::Corp {
-            w.run_stakes_weight = RUN_STAKES_WEIGHT;
-            w.rez_held_weight = REZ_HELD_WEIGHT;
-            w.ice_order_weight = ICE_ORDER_WEIGHT;
-            w.never_advance_weight = NEVER_ADVANCE_WEIGHT;
+        match side {
+            Side::Corp => {
+                w.run_stakes_weight = RUN_STAKES_WEIGHT;
+                w.rez_held_weight = REZ_HELD_WEIGHT;
+                w.ice_order_weight = ICE_ORDER_WEIGHT;
+                w.never_advance_weight = NEVER_ADVANCE_WEIGHT;
+            }
+            Side::Runner => {
+                w.last_click_run_weight = LAST_CLICK_RUN_WEIGHT;
+                w.feared_flatline_weight = FEARED_FLATLINE_WEIGHT;
+                w.runner_stakes_weight = RUNNER_STAKES_WEIGHT;
+                w.unshown_breaker_weight = UNSHOWN_BREAKER_WEIGHT;
+            }
         }
         for plan in style.plans().skip(1) {
             let own = plan.weights();
@@ -1198,8 +1384,7 @@ impl Weights {
                     w.ambush_advancement_cap = own.ambush_advancement_cap;
                 }
                 Plan::FastAdvance => w.installed_agenda_weight = own.installed_agenda_weight,
-                Plan::Wary => w.unrezzed_threat_weight = own.unrezzed_threat_weight,
-                Plan::Glacier | Plan::Kill | Plan::Aggressive | Plan::Cautious | Plan::Builder => {}
+                Plan::Glacier | Plan::Kill | Plan::Dismantle | Plan::Pressure | Plan::Rig => {}
             }
         }
         if style.has(Plan::Kill) {
@@ -1211,6 +1396,15 @@ impl Weights {
         }
         if style.has(Plan::Glacier) && style.has(Plan::FastAdvance) {
             w.fort_until_beaten = true;
+        }
+        if style.has(Plan::Pressure) {
+            w.hq_pressure_weight = HQ_PRESSURE_WEIGHT;
+        }
+        if style.has(Plan::Dismantle) {
+            w.dismantle_weight = DISMANTLE_WEIGHT;
+        }
+        if style.has(Plan::Rig) {
+            w.rd_access_weight = RD_ACCESS_WEIGHT;
         }
         w
     }
@@ -1305,6 +1499,13 @@ impl Default for Weights {
             tag_leverage_weight: 0.0,
             bluff_weight: 0.0,
             fort_until_beaten: false,
+            last_click_run_weight: 0.0,
+            feared_flatline_weight: 0.0,
+            runner_stakes_weight: 0.0,
+            unshown_breaker_weight: 0.0,
+            hq_pressure_weight: 0.0,
+            dismantle_weight: 0.0,
+            rd_access_weight: 0.0,
         }
     }
 }
@@ -1423,8 +1624,9 @@ mod tests {
         assert_eq!(glacier.rez_held_weight, REZ_HELD_WEIGHT, "measured, and shipped at what it measured");
         assert_eq!((glacier.lethal_threat_weight, glacier.tag_leverage_weight, glacier.bluff_weight, glacier.fort_until_beaten), (0.0, 0.0, 0.0, false));
         assert_eq!(Weights::default().with_plans(Side::Corp, &Style::BALANCED).run_stakes_weight, glacier.run_stakes_weight, "a balanced Corp plays the Corp's chapter");
-        assert_eq!(Weights::default().with_plans(Side::Runner, &Style::of(Plan::Aggressive)), Weights::default(), "a Runner seat switches on no Corp term");
-        assert_eq!(Weights::default().with_plans(Side::Runner, &Style::BALANCED), Weights::default());
+        let runner_off = |w: &Weights| [w.run_stakes_weight, w.rez_held_weight, w.ice_order_weight, w.never_advance_weight, w.lethal_threat_weight, w.tag_leverage_weight, w.bluff_weight];
+        assert_eq!(runner_off(&Weights::default().with_plans(Side::Runner, &Style::of(Plan::Pressure))), [0.0; 7], "a Runner seat switches on no Corp term");
+        assert_eq!(runner_off(&Weights::default().with_plans(Side::Runner, &Style::BALANCED)), [0.0; 7]);
         // A plan's own terms.
         let kill = Weights::default().with_plans(Side::Corp, &Style::of(Plan::Kill));
         assert!(kill.lethal_threat_weight > 0.0 && kill.tag_leverage_weight > 0.0 && kill.bluff_weight == 0.0);
@@ -1445,6 +1647,43 @@ mod tests {
         assert_eq!(behind.ambush_weight, Plan::Traps.weights().ambush_weight);
         assert_eq!(behind.agenda_protection_weight, Plan::Glacier.weights().agenda_protection_weight);
         assert!(!behind.fort_until_beaten);
+    }
+
+    /// The same pin for the Runner's plan terms (Stage 7): zero in the
+    /// default and in every profile; every Runner seat carries the four
+    /// general terms, balanced included, and each plan its own; a Corp
+    /// seat carries none of them.
+    #[test]
+    fn the_runners_plan_terms_are_off_in_every_weights_the_reference_scores_with() {
+        use crate::plans::{Plan, Style};
+        let off = |w: &Weights| [w.last_click_run_weight, w.feared_flatline_weight, w.runner_stakes_weight, w.unshown_breaker_weight, w.hq_pressure_weight, w.dismantle_weight, w.rd_access_weight];
+        assert_eq!(off(&Weights::default()), [0.0; 7]);
+        for plan in Plan::ALL {
+            assert_eq!(off(&plan.weights()), [0.0; 7], "{plan:?}");
+        }
+        let balanced = Weights::default().with_plans(Side::Runner, &Style::BALANCED);
+        assert!(balanced.feared_flatline_weight > 0.0 && balanced.unshown_breaker_weight > 0.0, "every Runner plays the Runner's chapter");
+        assert_eq!((balanced.last_click_run_weight, balanced.runner_stakes_weight), (LAST_CLICK_RUN_WEIGHT, RUNNER_STAKES_WEIGHT), "measured, and shipped at what they measured");
+        assert_eq!((balanced.hq_pressure_weight, balanced.dismantle_weight, balanced.rd_access_weight), (0.0, 0.0, 0.0));
+        assert_eq!(off(&Weights::default().with_plans(Side::Corp, &Style::of(Plan::Glacier))), [0.0; 7], "a Corp seat switches on no Runner term");
+        let pressure = Style::of(Plan::Pressure).planned_weights(Side::Runner);
+        assert!(pressure.hq_pressure_weight > 0.0 && pressure.dismantle_weight == 0.0 && pressure.rd_access_weight == 0.0);
+        assert_eq!(pressure.active_run_weight, Weights::default().active_run_weight, "the profile is the reference's, not the planner's");
+        assert_eq!(Weights { hq_pressure_weight: 0.0, ..pressure }, Style::BALANCED.planned_weights(Side::Runner), "a Runner plan is its lever alone to the planner");
+        let dismantle = Style::of(Plan::Dismantle).planned_weights(Side::Runner);
+        assert!(dismantle.dismantle_weight > 0.0 && dismantle.hq_pressure_weight == 0.0);
+        let rig = Style::of(Plan::Rig).planned_weights(Side::Runner);
+        assert!(rig.rd_access_weight > 0.0 && rig.dismantle_weight == 0.0);
+        // A stacked Runner deck: the first plan's dials, the second's own
+        // lever, and nothing of the second's profile.
+        let stacked = Style::new(&[Plan::Rig, Plan::Dismantle]).unwrap().planned_weights(Side::Runner);
+        assert_eq!(stacked.breaker_coverage_weight, Weights::default().breaker_coverage_weight);
+        assert!(stacked.rd_access_weight > 0.0 && stacked.dismantle_weight > 0.0);
+        let stacked = Style::new(&[Plan::Pressure, Plan::Rig]).unwrap().planned_weights(Side::Runner);
+        assert!(stacked.rd_access_weight > 0.0 && stacked.hq_pressure_weight > 0.0);
+        assert_eq!(Style::of(Plan::Rig).weights(), Plan::Rig.weights(), "and the reference still scores the profile");
+        assert!(stacked.unshown_breaker_weight < stacked.breaker_coverage_weight, "a breaker for unshown ICE is still worth installing");
+        assert!(stacked.feared_flatline_weight < AGENDA_POINT_WEIGHT / 5.0, "the fear is under what a breach may find");
     }
 
     /// A click left is worth the credit it would buy, at the guide's

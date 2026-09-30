@@ -4,7 +4,7 @@
   "side": "Runner",
   "category": "Sample",
   "description": "Fifteen programs, eight viruses and eleven draw effects: Topan draws into a rig and installs it.",
-  "style": ["builder"],
+  "style": ["rig", "dismantle"],
   "identity": "topan",
   "cards": [
     {

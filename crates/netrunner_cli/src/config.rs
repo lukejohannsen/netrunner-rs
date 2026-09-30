@@ -117,11 +117,12 @@ pub struct Config {
     #[arg(long)]
     pub corp_style: Option<Style>,
 
-    /// The Runner bot's style: `balanced`, or a Runner plan —
-    /// `aggressive` (runs are worth double, tags and subroutines cost
-    /// less), `cautious` (a full rig before a run), `builder` (the rig
-    /// first, hand on the table) or `wary` (treats face-down ICE as
-    /// real). See `--corp-style`; unset means the deck's own style.
+    /// The Runner bot's style: `balanced`, or the Runner plans it
+    /// stacks joined with `+` — `dismantle` (Anarch: trash what you
+    /// access), `pressure` (Criminal: run early and often, punish HQ),
+    /// `rig` (Shaper: the rig first, then R&D). See `--corp-style`;
+    /// unset means the deck's own style, and a deck that names none is
+    /// played by the planner in its identity's faction's plan.
     #[arg(long)]
     pub runner_style: Option<Style>,
 
@@ -414,7 +415,7 @@ pub enum Command {
     Bench {
         /// Bots to seat, comma-separated, each a kind with an optional
         /// style after a colon: `heuristic`, `heuristic:fast-advance`,
-        /// `puct:aggressive`. Every ordered pair plays, a bot against
+        /// `puct:pressure`. Every ordered pair plays, a bot against
         /// itself included — that pairing is what says whether the Corp
         /// or the Runner chair is the stronger one for a given bot.
         /// `human` and `onnx` cannot be seated here.
