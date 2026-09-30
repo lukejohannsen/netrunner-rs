@@ -18752,4 +18752,91 @@ mod parhelion {
         card = serde_json::from_str(&json).unwrap();
         assert_eq!(card.validate(), Err(crate::dsl::CardValidationError::CountBesideBounds(id("simulation_reset"))));
     }
+
+    // ---- Stage 3c: harmonic ice ----
+
+    fn ice_at(card: &str, server: ServerId, rezzed: bool) -> crate::rules::InstalledCard {
+        crate::rules::InstalledCard { server, rezzed, ..ice_at_hq(card) }
+    }
+
+    /// Passes priority for whoever holds it until `done` says to stop.
+    fn pass_until(mut state: GameState, registry: &CardRegistry, done: impl Fn(&GameState) -> bool) -> GameState {
+        for _ in 0..12 {
+            if done(&state) {
+                return state;
+            }
+            let side = state.paid_ability_window.as_ref().expect("a window to pass in").active_priority;
+            state = apply_action(&state, registry, PlayerAction::PassPriority { side }).expect("pass").0;
+        }
+        panic!("never reached: {:?}", state.active_run.as_ref().map(|run| run.phase));
+    }
+
+    #[test]
+    fn pulse_takes_a_click_when_rezzed_on_a_run_at_its_server_and_drains_a_credit_per_rezzed_harmonic_ice() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.resources.credits = Credits(10);
+        state.runner.resources.credits = Credits(10);
+        state.corp.installed = vec![ice_at("pulse", ServerId::Hq, false), ice_at("bloop", ServerId::Remote(0), true)];
+        let (running, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("initiate run");
+        let clicks = running.runner.resources.clicks;
+        let (at_ice, _) = crate::rules::test_support::continue_run(&running, &registry).expect("approach the ice");
+        let corps = pass_until(at_ice, &registry, |state| state.paid_ability_window.as_ref().is_some_and(|window| window.active_priority == Side::Corp));
+        let (rezzed, _) = apply_action(&corps, &registry, PlayerAction::RezIce { ice: install_of(&corps, "pulse") }).expect("rez Pulse");
+        assert_eq!(rezzed.runner.resources.clicks.0, clicks.0 - 1, "the Runner loses [click]");
+        let fired = pass_until(rezzed, &registry, |state| state.pending_paid_choice.is_some());
+        assert_eq!(fired.runner.resources.credits, Credits(10 - 2), "1[credit] for each of the two rezzed harmonic ice");
+        let (ended, _) = apply_action(&fired, &registry, PlayerAction::DeclinePendingPaidChoice).expect("decline");
+        assert!(ended.active_run.is_none(), "end the run unless the Runner spends [click]");
+        let (spent, _) = apply_action(&fired, &registry, accept()).expect("spend a click");
+        assert!(spent.active_run.is_some());
+        assert_eq!(spent.runner.resources.clicks.0, clicks.0 - 2);
+    }
+
+    /// Ice is rezzed as it is approached, so both halves are asked on a
+    /// run against HQ, at the Corp's priority on the approach.
+    #[test]
+    fn bloop_is_rezzed_only_by_derezzing_another_harmonic_ice() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.resources.credits = Credits(10);
+        state.corp.installed = vec![ice_at("bloop", ServerId::Hq, false), ice_at("pulse", ServerId::RnD, false)];
+        let approached = |state: &GameState| {
+            let (running, _) = apply_action(state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("initiate run");
+            let (at_ice, _) = crate::rules::test_support::continue_run(&running, &registry).expect("approach the ice");
+            pass_until(at_ice, &registry, |state| state.paid_ability_window.as_ref().is_some_and(|window| window.active_priority == Side::Corp))
+        };
+        let bloop = install_of(&state, "bloop");
+        let unpaid = approached(&state);
+        assert!(apply_action(&unpaid, &registry, PlayerAction::RezIce { ice: bloop }).is_err(), "no rezzed harmonic ice to derez");
+        assert!(!crate::rules::legal_actions_for(&unpaid, &registry, Side::Corp).contains(&PlayerAction::RezIce { ice: bloop }));
+
+        state.corp.installed[1].rezzed = true;
+        let paid = approached(&state);
+        let (rezzed, _) = apply_action(&paid, &registry, PlayerAction::RezIce { ice: bloop }).expect("derez Pulse to rez Bloop");
+        assert!(rezzed.corp.installed[0].rezzed, "Bloop rezzed");
+        assert!(!rezzed.corp.installed[1].rezzed, "Pulse derezzed");
+        assert_eq!(rezzed.corp.resources.credits, Credits(10 - 3));
+    }
+
+    #[test]
+    fn bloop_does_a_core_damage_and_trashes_two_programs() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.installed = vec![ice_at_hq("bloop")];
+        state.runner.grip = vec![id("sure_gamble"); 3];
+        state.runner.rig = ["corroder", "gordian_blade"]
+            .iter()
+            .enumerate()
+            .map(|(i, card)| crate::rules::InstalledRunnerCard { install_id: InstallId(60 + i as u32), card: id(card), ..Default::default() })
+            .collect();
+        let (running, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("initiate run");
+        let (at_ice, _) = crate::rules::test_support::continue_run(&running, &registry).expect("approach the ice");
+        let fired = pass_until(at_ice, &registry, |state| state.pending_decision.is_some());
+        assert_eq!(fired.runner.brain_damage, 1, "1 core damage");
+        let once = select_all(&fired, &registry, &[0]);
+        let twice = select_all(&once, &registry, &[0]);
+        assert!(twice.runner.rig.is_empty(), "two programs trashed");
+        assert_eq!(twice.runner.heap.len(), 3, "a card to the damage and two programs");
+    }
 }

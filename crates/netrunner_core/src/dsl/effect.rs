@@ -1701,6 +1701,16 @@ pub enum Amount {
     /// subroutine it has", `Cost::CreditsAmount`'s number. 0 outside an
     /// encounter. No amount counted subroutines.
     EncounteredIceSubroutines,
+    /// The Corp's installed cards the filter admits — Pulse's "The Runner
+    /// loses 1[credit] for each **rezzed piece of harmonic ice**", `All([
+    /// Ice, Rezzed, HasSubtype(Harmonic)])`. Counted as a selection over
+    /// the Corp's installed cards reads the filter
+    /// (`pending_choice::eligible_positions`), so an instance word
+    /// (`Rezzed`) is asked of each copy and a type of the definition.
+    /// Composition didn't work: every count of installs was one sentence's
+    /// (`OtherUnrezzedIce`, `IceProtectingThisServer`), and a filter is
+    /// what an `Amount` could not hold while it was `Copy`.
+    CorpInstalls(crate::dsl::CardFilter),
     /// Unrezzed pieces of ice other than `acting_card`'s install, wherever
     /// they are — Reverb's "lowered by 1[credit] for each other unrezzed
     /// piece of ice". No amount counted ice by rez state.

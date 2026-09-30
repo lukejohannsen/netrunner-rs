@@ -47,7 +47,7 @@ cards each stage takes.
 | 1 | Vantage Point (`vp`) | 66 | 66 | 0 | complete (27 September 2026) |
 | 2 | Rebellion Without Rehearsal (`rwr`) | 65 | 65 | 0 | complete (28 September 2026) |
 | 3 | The Automata Initiative (`tai`) | 65 | 65 | 0 | complete (29 September 2026) |
-| 4 | Parhelion (`ph`) | 63 | 25 | 38 | **Stage 3c next** — harmonic ice: Pulse, Bloop |
+| 4 | Parhelion (`ph`) | 63 | 27 | 36 | **Stage 4 next** — Runner standing and breaker words: Basilar Synthgland 2KVJ, Dr. Vientiane Keeling, K2CP Turbine, Tremolo, Time Bomb, Poison Vial, WAKE Implant v2A-JRJ, Abaasy |
 | 5 | Midnight Sun (`ms`) + Booster (`msbp`) | 65 + 7 | 0 | 65 + 7 | not started |
 | 6 | Uprising (`ur`) + Booster (`urbp`) | 65 + 7 | 0 | 65 + 7 | not started |
 | 7 | Downfall (`df`) | 65 | 0 | 65 | not started |
@@ -332,6 +332,7 @@ PR that made this list (29 September 2026).
 ### Owed — a card whose printed text is not yet built
 
 - **Blood in the Water** (Midnight Sun): prints its advancement requirement as X, which NetrunnerDB records as none; the face draws no circle for it until the stage that builds a variable requirement (`card_face`'s layout test names the card).
+- **Bloop** (PH 3c): rezzed by a card's text (Send a Message, Mycoweb), it is rezzed without its additional cost — `engine::rez_install` never reads `rez_alternatives` (the engine bug named in `ROADMAP.md`), so no harmonic ice is derezzed.
 - **Hostile Architecture** (PH 2b): a *rezzed* copy trashed by the Runner's card text is not heard — `GameEvent::CardTrashed` does not say whether the card was rezzed, and adding that to its 42 sites is more than one card wants. Charm Offensive can reach it; no game has.
 - **Hafrún** (PH Stage 8): two ice types, which `CardType::Ice(IceType)` cannot say.
 - **Nova Initiumia, Ampère** (PH Stage 5): change deck-building rules the validator does not model (`deck_limit` only).
@@ -658,7 +659,7 @@ change deck-building rules, which the validator does not model yet
    September 2026): **3a**, the requirement (built): Ontological
    Dependence, Freedom of Information, Regulatory Capture; **3b**, the
    Corp words (built): Simulation Reset, Hypoxia, Mr. Hendrik; **3c**, harmonic
-   ice: Pulse, Bloop.
+   ice (built): Pulse, Bloop. Stage 3 is complete.
 4. **Runner standing and breaker words:** Basilar Synthgland 2KVJ, Dr.
    Vientiane Keeling, K2CP Turbine, Tremolo, Time Bomb, Poison Vial, WAKE
    Implant v2A-JRJ, Abaasy.
@@ -692,6 +693,7 @@ Grid, Tsakhia, World Tree.
 - **Stage 2b** — the Runner's trash of an installed Corp card, its own included (`feat/ph-stage-2b-hostile-architecture`, 29 September 2026).
 - **Stage 3a** — the advancement requirement, asked (`feat/ph-stage-3a-advancement-requirement`, 30 September 2026).
 - **Stage 3b** — the Corp words: "that many", an operation out of the game, and every click as a price (`feat/ph-stage-3b-corp-words`, 30 September 2026).
+- **Stage 3c** — harmonic ice: a count of installs, and a derez to pay for a rez (`feat/ph-stage-3c-harmonic-ice`, 30 September 2026).
 
 ### 5. Midnight Sun and its Booster Pack — 65 cards (C 22 / V 26 / M 17)
 

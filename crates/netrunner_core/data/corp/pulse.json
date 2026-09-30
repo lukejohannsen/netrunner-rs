@@ -1,0 +1,62 @@
+{
+  "id": "pulse",
+  "title": "Pulse",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "CodeGate"
+  },
+  "cost": 3,
+  "strength": 1,
+  "triggers": [
+    {
+      "trigger": "OnRez",
+      "subject": "This",
+      "requirement": "RezzedDuringRunAgainstThisServer",
+      "effects": [
+        {
+          "LoseClicks": 1
+        }
+      ],
+      "text": "When you rez this ice during a run against this server, the Runner loses [click]."
+    }
+  ],
+  "subroutines": [
+    {
+      "text": "The Runner loses 1[credit] for each rezzed piece of harmonic ice.",
+      "effect": {
+        "LoseCreditsAmount": [
+          "Runner",
+          {
+            "CorpInstalls": {
+              "All": [
+                "Ice",
+                "Rezzed",
+                {
+                  "HasSubtype": "Harmonic"
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "text": "End the run unless the Runner spends [click].",
+      "effect": {
+        "OfferPaidChoice": {
+          "side": "Runner",
+          "cost": {
+            "Clicks": 1
+          },
+          "if_paid": {
+            "Sequence": []
+          },
+          "if_declined": "EndTheRun",
+          "text": "End the run unless the Runner spends [click]"
+        }
+      }
+    }
+  ],
+  "numeric_id": 33099,
+  "is_playable": true
+}
