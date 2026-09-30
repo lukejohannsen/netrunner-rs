@@ -1747,6 +1747,7 @@ mod tests {
                 shuffle_after: false,
                 destination: Some(CardZoneRef::OwnHq),
                 then: None,
+                count: None,
             })),
             selected: Vec::new(),
             source_card: Some(CardId("au_co".to_string())),

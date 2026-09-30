@@ -573,7 +573,10 @@ pub struct CardDefinition {
     /// than trashed — Take a Dive's and Kompromat's last line, "Remove
     /// this event from the game." It lands in
     /// `RunnerState::removed_from_game`, where nothing that reads the heap
-    /// finds it. A declaration rather than an effect: the event is still
+    /// finds it. An operation's "Remove this operation from the game"
+    /// (Hypoxia, Simulation Reset) is the same declaration, filed by
+    /// `engine::play_operation_card` in `CorpState::removed_from_game`.
+    /// A declaration rather than an effect: the event is still
     /// resolving when its last instruction does, and `engine::play_event`
     /// is what files a played event, so it is the one place that can file
     /// this one elsewhere — an `OnPlay` that parks a decision (Take a
@@ -898,6 +901,8 @@ pub enum PaysFor {
 /// this explicitly.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum CardValidationError {
+    #[error("card {0:?}: a selection of \"that many\" (`count`) writes `min` and `max` 0 — the count is both bounds")]
+    CountBesideBounds(CardId),
     #[error("card {0:?}: `IceType::Other` is ice with none of the three types, never a type — refused on {1}")]
     OtherIsNotAnIceType(CardId, &'static str),
     #[error("card {0:?}: a trigger active in the heap (`from_heap`) is the Runner's — the heap is the only zone listened to")]
@@ -1281,6 +1286,9 @@ impl CardDefinition {
         // breaker with no restriction breaks, which is not what a card
         // restricted to a type means.
         let mut restricted_to_no_type = false;
+        // "That many" (`PromptChooseCards::count`) is both bounds; a `min`
+        // or a `max` written beside it would read as a bound and not be one.
+        let mut count_beside_bounds = false;
         // `SetIdentityCopy` said in the open would tell the Runner the copy
         // the Corp chose, and on anything but a Corp identity there is no
         // copy to set (`CorpState::identity_copy`): every one must be the
@@ -1330,6 +1338,7 @@ impl CardDefinition {
                         || about_the_ice != (*until == EffectDuration::Encounter);
                 }
                 restricted_to_no_type |= matches!(effect, Effect::BreakSubroutines { restrict_to: Some(IceType::Other), .. });
+                count_beside_bounds |= matches!(effect, Effect::PromptChooseCards { count: Some(_), min, max, .. } if *min != 0 || *max != 0);
                 copies_set += usize::from(matches!(effect, Effect::SetIdentityCopy(_)));
                 if let Effect::ChooseNumber { secret: true, then, .. } = effect {
                     copies_set_secretly += sets_a_copy(then);
@@ -1344,6 +1353,9 @@ impl CardDefinition {
         }
         if revealed_cards_wait {
             return Err(CardValidationError::RevealedCardsCannotWait(self.id.clone()));
+        }
+        if count_beside_bounds {
+            return Err(CardValidationError::CountBesideBounds(self.id.clone()));
         }
         let a_corp_identity = self.side == Side::Corp && self.card_type == CardType::Identity;
         if copies_set > 0 && (copies_set > copies_set_secretly || !a_corp_identity) {

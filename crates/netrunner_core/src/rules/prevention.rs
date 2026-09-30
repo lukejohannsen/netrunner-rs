@@ -665,6 +665,7 @@ mod tests {
             shuffle_after: false,
             destination: Some(CardZoneRef::OpponentDiscard),
             then: None,
+            count: None,
         };
         let construct = with_paid_ability(
             "construct",

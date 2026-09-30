@@ -1046,6 +1046,7 @@ pub fn evaluate_effect(
                         shuffle_after: false,
                         destination: None,
                         then: Some(Box::new(Effect::InstallProgramOnHost { card: Some(program), from: from.clone() })),
+                        count: None,
                     };
                     evaluate_effect(state, &choose_ice, ctx, registry)
                 }
@@ -1622,7 +1623,18 @@ pub fn evaluate_effect(
             Ok(vec![GameEvent::NumberChoiceOffered { chooser: *chooser, min: *min, max: most }])
         }
 
-        Effect::PromptChooseCards { side, source, filter, min, max, reveal, shuffle_after, destination, then } => {
+        Effect::PromptChooseCards { side, source, filter, min, max, reveal, shuffle_after, destination, then, count } => {
+            // "That many", read now: both bounds, and nothing to ask at 0.
+            let (min, max) = match count {
+                Some(count) => {
+                    let n = resolve_amount(count, ctx, state, registry);
+                    if n == 0 {
+                        return Ok(Vec::new());
+                    }
+                    (n, n)
+                }
+                None => (*min, *max),
+            };
             let filter = &filter.clone().with_this_server(acting_server(state, ctx));
             let available = crate::rules::pending_choice::eligible_positions(state, registry, *side, source, filter, ctx.acting_install, ctx.acting_card);
             // An installed Runner card trashed by the text of ice whose
@@ -1632,7 +1644,7 @@ pub fn evaluate_effect(
                 && matches!(source, crate::dsl::CardZoneRef::OpponentInstalled)
                 && matches!(destination, Some(crate::dsl::CardZoneRef::OpponentDiscard))
                 && !continuous::may_trash_with(state, registry, ctx.acting_install);
-            if trash_spent || available.is_empty() || available.len() < *min as usize {
+            if trash_spent || available.is_empty() || available.len() < min as usize {
                 // Nothing to do — same "silently no-op" leniency
                 // `DrawCards`/`TrashCard`'s "already gone" case establish.
                 // e.g. Hansei Review's "if there are any cards in HQ".
@@ -1650,8 +1662,8 @@ pub fn evaluate_effect(
                 side: *side,
                 source: source.clone(),
                 filter: filter.clone(),
-                min: *min,
-                max: *max,
+                min,
+                max,
                 reveal: *reveal,
                 shuffle_after: *shuffle_after,
                 destination: destination.clone(),
@@ -1662,7 +1674,7 @@ pub fn evaluate_effect(
                 source_install: ctx.acting_install,
                 resume: PendingChoiceResume::None,
             });
-            Ok(vec![GameEvent::PendingCardSelectionOffered { side: *side, min: *min, max: *max, source: ctx.attributed_card() }])
+            Ok(vec![GameEvent::PendingCardSelectionOffered { side: *side, min, max, source: ctx.attributed_card() }])
         }
 
         Effect::PromptChooseServer {
@@ -2965,6 +2977,7 @@ pub(crate) fn cost_is_affordable(
         // X may be 0.
         Cost::CreditsX { .. } => true,
         Cost::Clicks(amount) | Cost::LoseClicks(amount) => state.resources(side).clicks.0 >= *amount,
+        Cost::LoseAllClicks => state.resources(side).clicks.0 >= 1,
         // A run the Runner is in, and nothing else: there is no "cannot
         // jack out" in the pool.
         Cost::JackOut => side == Side::Runner && state.active_run.is_some(),
@@ -3085,6 +3098,15 @@ pub(crate) fn pay_cost_ctx(
             Ok(std::iter::repeat_n(GameEvent::ClickSpent { side }, *amount as usize).collect())
         }
 
+        // Every click, and at least one (the card's "if any").
+        Cost::LoseAllClicks => {
+            let amount = state.resources(side).clicks.0;
+            if amount == 0 {
+                return Err(RulesError::NotEnoughClicks { side, available: 0, requested: 1 });
+            }
+            state.resources_mut(side).clicks = crate::rules::state::Clicks(0);
+            Ok(vec![GameEvent::ClicksLost { side, amount }])
+        }
         // Lost, not spent: nothing about the ability is an action.
         Cost::LoseClicks(amount) => {
             let clicks = state.resources(side).clicks;

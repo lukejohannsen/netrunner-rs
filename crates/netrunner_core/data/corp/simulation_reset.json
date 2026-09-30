@@ -1,0 +1,59 @@
+{
+  "id": "simulation_reset",
+  "title": "Simulation Reset",
+  "side": "Corp",
+  "card_type": "Operation",
+  "cost": 1,
+  "removed_after_play": true,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "PromptChooseCards": {
+            "side": "Corp",
+            "source": "OwnHq",
+            "filter": "Any",
+            "min": 0,
+            "max": 5,
+            "reveal": false,
+            "shuffle_after": false,
+            "destination": "OwnArchives",
+            "then": {
+              "EffectIf": {
+                "condition": {
+                  "AmountAtLeast": [
+                    "CardsSelected",
+                    1
+                  ]
+                },
+                "effect": {
+                  "PromptChooseCards": {
+                    "side": "Corp",
+                    "source": "OwnArchives",
+                    "filter": "Any",
+                    "min": 0,
+                    "max": 0,
+                    "count": "CardsSelected",
+                    "reveal": false,
+                    "shuffle_after": true,
+                    "destination": "OwnRAndD",
+                    "then": {
+                      "DrawCardsAmount": [
+                        "Corp",
+                        "CardsSelected"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "numeric_id": 33110,
+  "is_playable": true
+}

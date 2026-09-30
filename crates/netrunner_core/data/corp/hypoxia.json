@@ -1,0 +1,31 @@
+{
+  "id": "hypoxia",
+  "title": "Hypoxia",
+  "side": "Corp",
+  "card_type": "Operation",
+  "cost": 1,
+  "play_requirement": "IsTagged",
+  "removed_after_play": true,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "DealDamage": [
+            "Brain",
+            1
+          ]
+        },
+        {
+          "AllottedClicksNextTurn": [
+            "Runner",
+            -1
+          ]
+        }
+      ]
+    }
+  ],
+  "numeric_id": 33101,
+  "is_playable": true
+}

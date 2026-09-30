@@ -147,6 +147,7 @@ pub fn describe_cost(cost: &Cost) -> String {
         Cost::CreditsFrom { amount, from } => format!("credits equal to {}, from {}", describe_amount(amount), humanize(format!("{from:?}")).to_lowercase()),
         Cost::Clicks(n) => plural(*n, "click", "clicks"),
         Cost::LoseClicks(n) => format!("lose {}", plural(*n, "click", "clicks")),
+        Cost::LoseAllClicks => "lose every click".to_string(),
         Cost::JackOut => "jack out".to_string(),
         Cost::TrashSelf => "trash this card".to_string(),
         Cost::ClearTags => "remove all tags".to_string(),
@@ -336,8 +337,12 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
             count,
             options.iter().map(|option| describe_effect(option, registry)).collect::<Vec<_>>().join(" / ")
         ),
-        Effect::PromptChooseCards { side, source, min, max, .. } => {
-            let how_many = if min == max { plural(*min, "card", "cards") } else { format!("{min} to {max} cards") };
+        Effect::PromptChooseCards { side, source, min, max, count, .. } => {
+            let how_many = match count {
+                Some(count) => format!("as many cards as {}", describe_amount(count)),
+                None if min == max => plural(*min, "card", "cards"),
+                None => format!("{min} to {max} cards"),
+            };
             format!("{} chooses {how_many} from {}", who(*side), describe_zone(source))
         }
         Effect::PromptChooseServer { .. } => "choose a server".to_string(),

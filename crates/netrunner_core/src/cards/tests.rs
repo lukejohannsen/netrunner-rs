@@ -18646,4 +18646,110 @@ mod parhelion {
         let scored = score(&state, &registry, "a_dividends_agenda").expect("4 of 3");
         assert_eq!(scored.corp.scored_agendas[0].agenda_counters, 1, "one counter past a requirement of 3");
     }
+
+    // ---- Stage 3b: the Corp words ----
+
+    #[test]
+    fn hypoxia_needs_a_tag_does_a_core_damage_takes_a_click_and_leaves_the_game() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.hq = vec![id("hypoxia")];
+        state.runner.grip = vec![id("sure_gamble"); 3];
+        assert!(apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: id("hypoxia") }).is_err(), "play only if the Runner is tagged");
+        state.runner.tags = 1;
+        let (played, _) = apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: id("hypoxia") }).expect("play it");
+        assert_eq!(played.runner.brain_damage, 1, "1 core damage");
+        assert_eq!(played.runner.grip.len(), 2);
+        assert_eq!(played.corp.removed_from_game, vec![id("hypoxia")], "removed from the game");
+        assert!(!played.corp.archives_contains(&id("hypoxia")), "never trashed");
+        let (ended, _) = apply_action(&crate::rules::test_support::clicks_spent(&played), &registry, PlayerAction::EndTurn).expect("end the turn");
+        let (runners_turn, _) = close_all_windows(ended, &registry);
+        assert_eq!(runners_turn.phase, GamePhase::Action(Side::Runner));
+        assert_eq!(runners_turn.runner.resources.clicks, Clicks(3), "−1 allotted [click]");
+    }
+
+    fn select_all(state: &GameState, registry: &CardRegistry, positions: &[usize]) -> GameState {
+        let mut state = state.clone();
+        for position in positions {
+            state = apply_action(&state, registry, PlayerAction::ToggleCardSelection { position: *position }).expect("select").0;
+        }
+        apply_action(&state, registry, PlayerAction::ConfirmCardSelection).expect("confirm").0
+    }
+
+    #[test]
+    fn simulation_reset_shuffles_as_many_from_archives_as_it_trashed_and_draws_that_many() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.hq = vec![id("simulation_reset"), id("hedge_fund"), id("hedge_fund"), id("ice_wall"), id("ice_wall")];
+        state.corp.archives = vec![crate::rules::ArchivedCard::faceup(id("pad_campaign"))];
+        state.corp.r_and_d = vec![id("enigma"); 6];
+        let (asked, _) = apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: id("simulation_reset") }).expect("play it");
+        assert_eq!(asked.corp.removed_from_game, vec![id("simulation_reset")]);
+        assert!(matches!(asked.pending_decision, Some(PendingDecision::ChooseCards { min: 0, max: 5, .. })), "up to 5");
+        let hedge_funds: Vec<usize> = asked.corp.hq.iter().enumerate().filter(|(_, card)| **card == id("hedge_fund")).map(|(i, _)| i).collect();
+        let trashed = select_all(&asked, &registry, &hedge_funds);
+        assert_eq!(trashed.corp.archives.len(), 3);
+        assert!(matches!(trashed.pending_decision, Some(PendingDecision::ChooseCards { min: 2, max: 2, .. })), "that many: {:?}", trashed.pending_decision);
+        let archived = toggles(&trashed, &registry);
+        assert_eq!(archived.len(), 3, "any card in Archives");
+        let reset = select_all(&trashed, &registry, &archived[..2]);
+        assert!(reset.pending_decision.is_none());
+        assert_eq!(reset.corp.archives.len(), 1);
+        assert_eq!(reset.corp.hq.len(), 4, "2 trashed, 2 drawn");
+        assert_eq!(reset.corp.r_and_d.len(), 6, "2 shuffled in, 2 drawn");
+
+        // None trashed: nothing shuffled and nothing drawn.
+        let none = select_all(&asked, &registry, &[]);
+        assert!(none.pending_decision.is_none());
+        assert_eq!((none.corp.hq.len(), none.corp.r_and_d.len(), none.corp.archives.len()), (4, 6, 1));
+    }
+
+    fn access_mr_hendrik(clicks: u32) -> (CardRegistry, GameState) {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.resources.clicks = Clicks(clicks + 1);
+        state.runner.grip = vec![id("sure_gamble"); 3];
+        state.corp.resources.credits = Credits(5);
+        state.corp.installed = vec![root_at("mr_hendrik", 0)];
+        let (accessed, _) = run_to_completion(state, &registry, ServerId::Remote(0));
+        (registry, accessed)
+    }
+
+    #[test]
+    fn mr_hendrik_may_do_a_core_damage_for_two_unless_the_runner_loses_every_click() {
+        let (registry, accessed) = access_mr_hendrik(2);
+        assert!(accessed.pending_paid_choice.as_ref().is_some_and(|choice| choice.side == Side::Corp), "the Corp may pay 2[credit]");
+        let (declined, _) = apply_action(&accessed, &registry, PlayerAction::DeclinePendingPaidChoice).expect("decline");
+        assert_eq!(declined.runner.brain_damage, 0);
+
+        let (asked, _) = apply_action(&accessed, &registry, accept()).expect("pay 2");
+        assert_eq!(asked.corp.resources.credits, Credits(3));
+        assert!(asked.pending_paid_choice.as_ref().is_some_and(|choice| choice.side == Side::Runner), "the Runner may prevent it");
+        let (lost, _) = apply_action(&asked, &registry, accept()).expect("lose every click");
+        assert_eq!((lost.runner.resources.clicks, lost.runner.brain_damage), (Clicks(0), 0), "every click, and no damage");
+        let (hurt, _) = apply_action(&asked, &registry, PlayerAction::DeclinePendingPaidChoice).expect("take it");
+        assert_eq!((hurt.runner.resources.clicks, hurt.runner.brain_damage), (Clicks(2), 1), "1 core damage");
+    }
+
+    #[test]
+    fn mr_hendriks_damage_cannot_be_prevented_with_no_click_remaining() {
+        let (registry, accessed) = access_mr_hendrik(0);
+        let (asked, _) = apply_action(&accessed, &registry, accept()).expect("pay 2");
+        assert!(apply_action(&asked, &registry, accept()).is_err(), "no click to lose");
+        let offered = crate::rules::legal_actions_for(&asked, &registry, Side::Runner);
+        assert!(!offered.contains(&accept()), "and it is not offered");
+        let (hurt, _) = apply_action(&asked, &registry, PlayerAction::DeclinePendingPaidChoice).expect("take it");
+        assert_eq!(hurt.runner.brain_damage, 1);
+    }
+
+    /// "That many" is both bounds, so a card that writes a bound beside it
+    /// is refused rather than read as one.
+    #[test]
+    fn a_count_beside_a_written_bound_is_refused() {
+        let mut card: crate::dsl::CardDefinition = serde_json::from_str(include_str!("../../data/corp/simulation_reset.json")).expect("the card");
+        assert_eq!(card.validate(), Ok(()));
+        let json = serde_json::to_string(&card).unwrap().replace(r#""min":0,"max":0"#, r#""min":1,"max":1"#);
+        card = serde_json::from_str(&json).unwrap();
+        assert_eq!(card.validate(), Err(crate::dsl::CardValidationError::CountBesideBounds(id("simulation_reset"))));
+    }
 }

@@ -3,7 +3,7 @@
   "name": "Second Site",
   "side": "Corp",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach A Teia: IP Recovery, The Automata Initiative's Jinteki identity, which keeps to two remote servers and installs a second card free in the other the first time each turn. A Thousand Cuts' frame under a new identity (The Automata Initiative Stage 8c).",
+  "description": "Not a published list: built so the sweeps reach A Teia: IP Recovery, The Automata Initiative's Jinteki identity, which keeps to two remote servers and installs a second card free in the other the first time each turn. A Thousand Cuts' frame under a new identity (The Automata Initiative Stage 8c). Parhelion Stage 3b: two Simulation Reset for two of its three Mindscaping.",
   "style": ["traps"],
   "identity": "a_teia_ip_recovery",
   "cards": [
@@ -81,7 +81,7 @@
     },
     {
       "card": "mindscaping",
-      "count": 3
+      "count": 1
     },
     {
       "card": "attini",
@@ -97,6 +97,10 @@
     },
     {
       "card": "front_company",
+      "count": 2
+    },
+    {
+      "card": "simulation_reset",
       "count": 2
     }
   ]

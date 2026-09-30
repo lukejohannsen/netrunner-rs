@@ -1587,11 +1587,12 @@ pub(crate) fn play_operation_card(
     }
     // A played Operation resolved in the open, so the Runner has seen it.
     // One played out of Archives leaves the game instead (Petty Cash's
-    // "after it resolves, remove it from the game") — placed now rather
-    // than after the dispatch so an `OnPlay` that parks a decision still
-    // sees the card where it will end up; nothing reads it back either
-    // way.
-    if from_archives {
+    // "after it resolves, remove it from the game"), and so does one that
+    // says so (Hypoxia's "Remove this operation from the game",
+    // `removed_after_play`) — placed now rather than after the dispatch so
+    // an `OnPlay` that parks a decision still sees the card where it will
+    // end up; nothing reads it back either way.
+    if from_archives || card_def.removed_after_play {
         next.corp.removed_from_game.push(card_id.clone());
         events.push(GameEvent::CardRemovedFromGame { side, card: card_id.clone() });
     } else {
