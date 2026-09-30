@@ -310,3 +310,35 @@ pub(crate) fn fort_registry() -> CardRegistry {
     asset.card_type = CardType::Asset;
     CardRegistry::from_cards(vec![ice("wall", 0), agenda, asset])
 }
+
+/// The planner's weights for a Runner style, named by it (Stage 7).
+pub(crate) fn planned_runner(plans: &[crate::plans::Plan]) -> Weights {
+    crate::plans::Style::new(plans).expect("a style").planned_weights(Side::Runner)
+}
+
+/// The balanced planner Runner's weights: the guide's rate with every
+/// Runner's four plan terms and no plan's own.
+pub(crate) fn every_runner() -> Weights {
+    crate::plans::Style::BALANCED.planned_weights(Side::Runner)
+}
+
+/// A Corp identity of `faction`, for the terms that read the card
+/// across the table.
+pub(crate) fn corp_identity(id: &str, faction: netrunner_core::card::Faction) -> CardDefinition {
+    CardDefinition {
+        id: CardId(id.to_string()),
+        title: id.to_string(),
+        side: Side::Corp,
+        card_type: CardType::Identity,
+        faction: Some(faction),
+        is_playable: true,
+        ..Default::default()
+    }
+}
+
+/// `state` with the Corp seated as `faction`.
+pub(crate) fn against(mut state: GameState, faction: netrunner_core::card::Faction) -> (GameState, CardDefinition) {
+    let id = format!("{faction:?}").to_lowercase();
+    state.corp.identity = Some(CardId(id.clone()));
+    (state, corp_identity(&id, faction))
+}

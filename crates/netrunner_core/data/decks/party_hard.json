@@ -4,7 +4,7 @@
   "side": "Runner",
   "category": "Sample",
   "description": "Eight hardware and fourteen programs: René builds the table first and runs off it.",
-  "style": ["builder"],
+  "style": ["rig", "dismantle"],
   "identity": "rene_loup_arcemont",
   "cards": [
     {

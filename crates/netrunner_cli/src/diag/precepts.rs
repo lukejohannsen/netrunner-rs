@@ -47,7 +47,7 @@ use std::path::PathBuf;
 use rayon::prelude::*;
 use serde::Serialize;
 
-use netrunner_bots::eval::{covers, server_break_cost};
+use netrunner_bots::eval::{covers, punishes_runs, server_break_cost};
 use netrunner_bots::{determinize, Knowledge, Style};
 use rand::rngs::StdRng;
 use rand::SeedableRng;
@@ -164,10 +164,6 @@ fn scoring_remote(state: &GameState) -> Option<ServerId> {
         }
     }
     best.map(|(_, server)| server)
-}
-
-fn punishes_runs(faction: Option<Faction>) -> bool {
-    matches!(faction, Some(Faction::Jinteki | Faction::Nbn))
 }
 
 /// One game's counts, every one a sum a group can add up. Keys are

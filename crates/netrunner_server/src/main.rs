@@ -64,8 +64,8 @@ struct Config {
 
     /// (serve mode) The bot's style: `balanced`, or the plans it stacks
     /// joined with `+` — `glacier`, `fast-advance`, `kill`, `traps` for a
-    /// Corp bot and `aggressive`, `cautious`, `builder`, `wary` for a
-    /// Runner bot. See `netrunner_cli --corp-style`.
+    /// Corp bot and `dismantle`, `pressure`, `rig` for a Runner bot. See
+    /// `netrunner_cli --corp-style`.
     ///
     /// Unset means the bot plays the style its dealt deck names
     /// (`DeckFile::style`); `balanced` switches that off.

@@ -4,7 +4,7 @@
   "side": "Runner",
   "category": "Sample",
   "description": "Seven run events and six jobs: Tāo runs early and moves the ICE out of the way.",
-  "style": ["aggressive"],
+  "style": ["pressure", "rig"],
   "identity": "tao_salonga",
   "cards": [
     {

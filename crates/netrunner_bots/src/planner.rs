@@ -99,6 +99,12 @@
 //! The rest of the line is checked against the real list when it is
 //! played, which is the same rule one step later.
 //!
+//! **What a seat plays is its style, or its identity's plan** (Stage 7):
+//! a Runner seat given no style reads its own identity off the first
+//! view it acts on and plays that faction's chapter (`Style::or_faction`),
+//! so an unstyled deck is not a balanced one to the planner; the
+//! reference reads no identity, and stays balanced on it.
+//!
 //! **Rejected:** planning the run through. The sample's ICE is a guess,
 //! the opponent's rez is theirs, and the mid-run terms already read the
 //! run from the table; a line that assumed a rez would be re-planned at
@@ -198,7 +204,15 @@ pub struct PlanStats {
 pub struct PlanningAgent {
     side: Side,
     rng: StdRng,
+    /// The style the seat was given, kept beside the weights it resolves
+    /// to because the faction it may default to is read off the first
+    /// view (`weights_for`).
+    style: Style,
     weights: Weights,
+    /// Whether `weights` has been resolved against the seat's own
+    /// identity (`Style::or_faction`, Stage 7). Once, since the identity
+    /// is public and set for the game.
+    resolved: bool,
     knowledge: Knowledge,
     plan: Option<Plan>,
     stats: PlanStats,
@@ -212,18 +226,48 @@ impl PlanningAgent {
     /// `new`, scoring with `style.planned_weights()`: the first plan's
     /// profile at the guide's rate (`Weights::at_the_guides_rate`, Stage
     /// 5) with every plan the style stacks switched on
-    /// (`Weights::with_plans`, Stage 6). The economy and the plans are
-    /// the planner's; the one-ply reference keeps the profile alone, so
-    /// the planner is measured against a chooser that has not moved.
+    /// (`Weights::with_plans`, Stage 6) — and, for a Runner seat whose
+    /// style names no plan, its identity's faction's plan
+    /// (`Style::or_faction`, Stage 7), read off the first view the seat
+    /// acts on. The economy and the plans are the planner's; the one-ply
+    /// reference keeps the profile alone, so the planner is measured
+    /// against a chooser that has not moved.
     pub fn with_style(side: Side, seed: u64, style: Style) -> Self {
         Self {
             side,
             rng: StdRng::seed_from_u64(seed),
+            style,
             weights: style.planned_weights(side),
+            resolved: false,
             knowledge: Knowledge::default(),
             plan: None,
             stats: PlanStats::default(),
         }
+    }
+
+    /// The style the seat plays, once its own identity has been read:
+    /// the one it was given, or its faction's plan when it was given
+    /// none. For a report and a test.
+    pub fn style(&self) -> Style {
+        self.style
+    }
+
+    /// Resolves the weights against the seat's own identity in `view`
+    /// the first time a view is seen; the identity is public in both
+    /// chairs' views, so a seat with no deck to read still knows its
+    /// faction. A fixture with no identity keeps the style as given.
+    fn weights_for(&mut self, view: &ClientView, registry: &CardRegistry) {
+        if self.resolved {
+            return;
+        }
+        let identity = match self.side {
+            Side::Corp => view.corp.identity.as_ref(),
+            Side::Runner => view.runner.identity.as_ref(),
+        };
+        let faction = identity.and_then(|id| registry.get(id)).and_then(|def| def.faction);
+        self.style = self.style.or_faction(self.side, faction);
+        self.weights = self.style.planned_weights(self.side);
+        self.resolved = true;
     }
 
     /// The same planner, sampling from what `knowledge` admits.
@@ -303,6 +347,7 @@ impl BotAgent for PlanningAgent {
         if let Some(action) = self.follow(view) {
             return action;
         }
+        self.weights_for(view, registry);
         let sample = determinize(view, registry, &self.knowledge, &mut self.rng);
         if self.plannable(view)
             && let Some(action) = self.plan(sample.clone(), view, registry)
@@ -882,6 +927,43 @@ mod tests {
             assert!(firsts.contains(&first), "first action {first} was pruned: {firsts:?}");
         }
         assert!(kept.windows(2).all(|pair| pair[0].score >= pair[1].score), "kept in score order");
+    }
+
+    /// A Runner seat given no style reads its plan off its own identity
+    /// on the first view — a Criminal is played under pressure — and a
+    /// seat given a style keeps it; a fixture with no identity stays
+    /// balanced. The reference reads nothing of the kind.
+    #[test]
+    fn a_runner_seat_reads_its_plan_off_its_own_identity() {
+        use crate::plans::{Plan, Style};
+        let mut registry = CardRegistry::new();
+        netrunner_core::cards::register_playable_cards(&mut registry);
+        let mut state = GameState::new(0);
+        state.phase = GamePhase::Action(Side::Runner);
+        state.turn = 4;
+        state.runner = empty_runner();
+        state.runner.resources = PlayerResources { credits: Credits(5), clicks: Clicks(4), agenda_points: AgendaPoints(0) };
+        state.runner.grip = vec![CardId("sure_gamble".to_string()); 3];
+        state.runner.stack = vec![CardId("sure_gamble".to_string()); 10];
+        state.corp.hq = vec![CardId("hedge_fund".to_string()); 4];
+        state.corp.r_and_d = vec![CardId("hedge_fund".to_string()); 20];
+        let seated = |identity: Option<&str>, style: Style| {
+            let mut state = state.clone();
+            state.runner.identity = identity.map(|id| CardId(id.to_string()));
+            let view = build_client_view(&state, &registry, Side::Runner);
+            let mut planner = PlanningAgent::with_style(Side::Runner, 3, style);
+            assert_eq!(planner.style(), style, "as given, until a view is seen");
+            let chosen = planner.select_action(&view, &registry);
+            assert!(view.legal_actions.contains(&chosen));
+            (planner.style(), planner.weights)
+        };
+        let (style, weights) = seated(Some("zahya_sadeghi"), Style::BALANCED);
+        assert_eq!(style, Style::of(Plan::Pressure), "a Criminal identity");
+        assert_eq!(weights, Style::of(Plan::Pressure).planned_weights(Side::Runner));
+        assert_eq!(seated(Some("rene_loup_arcemont"), Style::BALANCED).0, Style::of(Plan::Dismantle), "an Anarch identity");
+        assert_eq!(seated(Some("zahya_sadeghi"), Style::of(Plan::Rig)).0, Style::of(Plan::Rig), "the style given overrides the identity");
+        assert_eq!(seated(None, Style::BALANCED).0, Style::BALANCED, "no identity to read");
+        assert_eq!(seated(Some("the_catalyst"), Style::BALANCED).0, Style::BALANCED, "a neutral identity has no chapter");
     }
 
     /// The kill plan's lever: Public Trail's "give the Runner 1 tag unless

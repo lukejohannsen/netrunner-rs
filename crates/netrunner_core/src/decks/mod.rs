@@ -160,7 +160,7 @@ pub struct DeckFile {
     pub how_to_play: Option<String>,
     /// How a bot should play this list: the plans it stacks, in order,
     /// each the name of a `netrunner_bots::Plan` written for the deck's
-    /// side (`["glacier", "fast-advance"]`, `["traps"]`, `["aggressive"]`).
+    /// side (`["glacier", "fast-advance"]`, `["traps"]`, `["rig", "dismantle"]`).
     /// Empty is balanced play.
     ///
     /// Strings rather than the enum because this crate is the bottom of

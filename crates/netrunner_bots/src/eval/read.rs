@@ -918,6 +918,222 @@ pub(super) fn fort_beaten(state: &GameState, fort: netrunner_core::rules::Server
     covered && taxing_cost(state, fort, registry).is_some_and(|cost| cost <= state.runner.resources.credits.0)
 }
 
+// ---------------------------------------------------------------------
+// The Runner's plans, and the identity both chairs read (Stage 7): what
+// the Runner reads off the Corp's identity, the ICE the Corp has shown,
+// and the public count of what the Corp has drawn and not played.
+// ---------------------------------------------------------------------
+
+/// The Corp's faction, read off its identity — public in every view.
+/// `None` in a fixture with no identity.
+pub(super) fn corp_faction(state: &GameState, registry: &CardRegistry) -> Option<netrunner_core::card::Faction> {
+    state.corp.identity.as_ref().and_then(|id| registry.get(id)).and_then(|def| def.faction)
+}
+
+/// Whether a Corp of `faction` is one the guide says punishes runs:
+/// "Jinteki with its net damage, NBN with its tags." Shared with `diag
+/// precepts`, whose last-click line bins by the same two.
+pub fn punishes_runs(faction: Option<netrunner_core::card::Faction>) -> bool {
+    use netrunner_core::card::Faction;
+    matches!(faction, Some(Faction::Jinteki | Faction::Nbn))
+}
+
+/// Whether the Corp across the table punishes runs: by its identity
+/// (`punishes_runs`), or by what it has shown — a rezzed piece of ICE
+/// whose subroutines deal damage or give tags. Either is public. See
+/// `LAST_CLICK_RUN_WEIGHT`.
+pub(super) fn corp_punishes_runs(state: &GameState, registry: &CardRegistry) -> bool {
+    use netrunner_core::rules::InstallSlot;
+    if punishes_runs(corp_faction(state, registry)) {
+        return true;
+    }
+    state
+        .corp
+        .installed
+        .iter()
+        .filter(|card| card.slot == InstallSlot::Ice && card.rezzed)
+        .filter_map(|card| registry.get(&card.card))
+        .any(|def| {
+            let mut punishes = false;
+            for sub in &def.subroutines {
+                sub.effect.for_each_effect(&mut |effect| {
+                    if matches!(effect, Effect::DealDamage(..) | Effect::DealDamageAmount(..) | Effect::GiveTags(_)) {
+                        punishes = true;
+                    }
+                });
+            }
+            punishes
+        })
+}
+
+/// Whether `run` has something unknown in the way: face-down ICE still
+/// ahead of the Runner, or a card the breach would show it for the
+/// first time — HQ's and R&D's are always unknown, a remote's or
+/// Archives' only while face down and never accessed. What there is to
+/// fear on a last-click run; a run through rezzed ICE into cards the
+/// Runner has already seen fears nothing.
+pub(super) fn unknown_ahead(state: &GameState, run: &RunState) -> bool {
+    use netrunner_core::rules::{InstallSlot, ServerId};
+    if run.ice.iter().skip(run.position).any(|ice| !ice.rezzed) {
+        return true;
+    }
+    match run.server {
+        ServerId::Hq | ServerId::RnD => true,
+        ServerId::Archives => state.corp.archives.iter().any(|card| card.facedown),
+        ServerId::Remote(_) => state
+            .corp
+            .installed
+            .iter()
+            .any(|card| card.server == run.server && card.slot == InstallSlot::Root && !card.rezzed && !card.seen_by_runner),
+    }
+}
+
+/// Whether the Runner has just begun a run on its last click: its own
+/// action phase, no clicks left, and the run still at its initiation —
+/// the state the planner prices a run's line at, and no state a
+/// jack-out is offered in (the first movement phase comes after, CR
+/// 6.6.3), so the term this reads for is paid on starting the run and
+/// never on staying in it. See `LAST_CLICK_RUN_WEIGHT`.
+pub(super) fn last_click_run(state: &GameState) -> bool {
+    state.phase == GamePhase::Action(Side::Runner)
+        && state.runner.resources.clicks.0 == 0
+        && state.active_run.as_ref().is_some_and(|run| run.phase == RunPhase::Initiation)
+}
+
+/// The most damage one access is feared to deal: the largest a known
+/// trap would do now — rezzed or seen on the table (`trap_damage`), or
+/// face up in Archives — and, against a Jinteki Corp, at least
+/// `TYPICAL_NET_DAMAGE`, because "a threat of flatline behind every
+/// face-down card" is that faction's chapter. A face-down card never
+/// seen is not read: its identity in a sample is a guess. See
+/// `FEARED_FLATLINE_WEIGHT`.
+pub(super) fn damage_feared(state: &GameState, registry: &CardRegistry) -> usize {
+    use netrunner_core::card::Faction;
+    let mut feared = if corp_faction(state, registry) == Some(Faction::Jinteki) { TYPICAL_NET_DAMAGE } else { 0 };
+    for installed in state.corp.installed.iter().filter(|card| card.rezzed || card.seen_by_runner) {
+        if let Some(def) = registry.get(&installed.card)
+            && punishes_access_with_damage(def)
+        {
+            feared = feared.max(trap_damage(state, installed, def));
+        }
+    }
+    for archived in state.corp.archives.iter().filter(|card| !card.facedown) {
+        if let Some(def) = registry.get(&archived.card)
+            && punishes_access_with_damage(def)
+        {
+            let fixed = InstalledCard { card: archived.card.clone(), ..Default::default() };
+            feared = feared.max(trap_damage(state, &fixed, def));
+        }
+    }
+    feared
+}
+
+/// The ICE subtypes the Corp has shown the Runner, as `rig_coverage`'s
+/// flags: a piece rezzed on the table, one once rezzed and face down
+/// again (`seen_by_runner`, set at the rez), or one face up in
+/// Archives. "Install breakers for the ICE the Corp has actually
+/// rezzed." See `UNSHOWN_BREAKER_WEIGHT`.
+pub(super) fn ice_shown(state: &GameState, registry: &CardRegistry) -> [bool; 3] {
+    use netrunner_core::rules::InstallSlot;
+    let mut shown = [false; 3];
+    let mut show = |card: &netrunner_core::dsl::CardId| {
+        if let Some(CardType::Ice(subtype)) = registry.get(card).map(|def| &def.card_type)
+            && let Some(slot) = subtype_slot(*subtype)
+        {
+            shown[slot] = true;
+        }
+    };
+    for installed in state.corp.installed.iter().filter(|card| card.slot == InstallSlot::Ice && (card.rezzed || card.seen_by_runner)) {
+        show(&installed.card);
+    }
+    for archived in state.corp.archives.iter().filter(|card| !card.facedown) {
+        show(&archived.card);
+    }
+    shown
+}
+
+/// The subtypes the rig covers that the Corp has not shown — a breaker
+/// installed for ICE the Corp might have.
+pub(super) fn unshown_coverage(state: &GameState, registry: &CardRegistry) -> usize {
+    let shown = ice_shown(state, registry);
+    rig_coverage(state, registry).into_iter().zip(shown).filter(|(covered, shown)| *covered && !shown).count()
+}
+
+/// The agenda points one access is expected to find in the Corp's hand
+/// and in its deck, as the Runner can count them: `(hq, rd)`, each per
+/// card. The deck must hold the points its size demands (CR 1.4.6: 18
+/// at 40–44 cards, 20 at 45–49, two more for each five over), and the
+/// Runner counts the deck by every Corp card it can see a place for.
+/// R&D is at the deck's density — its order is nobody's to know. HQ is
+/// what the Corp has drawn less what is accounted for: the points it
+/// scored, the points the Runner stole, the agendas face up in Archives
+/// and the installed agendas the Runner has seen; whatever is left of
+/// the drawn share is somewhere the Runner has not looked — HQ, a
+/// face-down card in Archives, a face-down root it has not accessed —
+/// and is spread over those cards evenly, HQ's share at most the hand's
+/// cards at the pool's dearest point value. (Attributed to HQ alone it
+/// was every agenda the Corp had installed in a remote, and the Runner
+/// ran HQ for the cards on the table.) "HQ when the Corp is holding
+/// cards without scoring." See `RUNNER_STAKES_WEIGHT`.
+pub(super) fn agenda_points_expected(state: &GameState, registry: &CardRegistry) -> (f64, f64) {
+    let points = |card: &netrunner_core::dsl::CardId| registry.get(card).and_then(|def| def.agenda_points).map_or(0.0, f64::from);
+    let counted = state.corp.r_and_d.len() + state.corp.hq.len() + state.corp.archives.len() + state.corp.installed.len()
+        + state.corp.scored_agendas.len()
+        + state.runner.scored_agendas.len();
+    if counted == 0 {
+        return (0.0, 0.0);
+    }
+    // No legal deck is under forty cards (CR 1.4.3: the identity's
+    // minimum, and every identity in the pool prints 40 or more), so a fixture's
+    // handful is read as the smallest deck there is, not as a deck
+    // that is half agendas.
+    let deck = counted.max(SMALLEST_CORP_DECK);
+    let required = f64::from(2 * (deck as u32 / 5) + 2);
+    let density = required / deck as f64;
+    let drawn = (counted - state.corp.r_and_d.len()) as f64;
+    let accounted = f64::from(state.corp.resources.agenda_points.0.max(0)) + f64::from(state.runner.resources.agenda_points.0.max(0))
+        + state.corp.archives.iter().filter(|card| !card.facedown).map(|card| points(&card.card)).sum::<f64>()
+        + state.corp.installed.iter().filter(|card| card.seen_by_runner).map(|card| points(&card.card)).sum::<f64>();
+    let unaccounted = (drawn * density - accounted).max(0.0);
+    let unseen = state.corp.hq.len()
+        + state.corp.archives.iter().filter(|card| card.facedown).count()
+        + state.corp.installed.iter().filter(|card| card.slot == netrunner_core::rules::InstallSlot::Root && !card.rezzed && !card.seen_by_runner).count();
+    let hq = if unseen == 0 { 0.0 } else { (unaccounted / unseen as f64).min(DEAREST_AGENDA_POINTS) };
+    (hq, density)
+}
+
+/// The most points one agenda in the pool is worth, which bounds what
+/// a hand of `n` cards can hold.
+const DEAREST_AGENDA_POINTS: f64 = 3.0;
+/// The fewest cards a Corp deck may have: the least any identity in the
+/// pool prints as its minimum (CR 1.4.3).
+const SMALLEST_CORP_DECK: usize = 40;
+
+/// The R&D accesses `def` declares beyond the first: a fixed count
+/// (`AddAdditionalAccess` on R&D — The Maker's Eye's two, Devadatta
+/// Drone's one) and a count read off its hosted counters
+/// (`AddAdditionalAccessAmount` — Conduit's), at `counters` when the
+/// card is on the table and at what it places on itself when it is in
+/// hand. See `RD_ACCESS_WEIGHT`.
+pub(super) fn rd_accesses(def: &CardDefinition, counters: Option<u32>) -> u32 {
+    use netrunner_core::rules::ServerId;
+    let mut fixed = 0;
+    let mut per_counter = false;
+    for_each_declared_effect(def, &mut |effect| match effect {
+        Effect::AddAdditionalAccess { server: ServerId::RnD, count } => fixed += *count,
+        Effect::AddAdditionalAccessAmount { server: ServerId::RnD, amount: Amount::HostedCounters } => per_counter = true,
+        _ => {}
+    });
+    let hosted = if per_counter { counters.unwrap_or_else(|| declared_income(def).printed_stock) } else { 0 };
+    fixed + hosted
+}
+
+/// The R&D accesses the rig promises: `rd_accesses` summed over the
+/// Runner's installed cards, each at its own counters.
+pub(super) fn rig_rd_accesses(state: &GameState, registry: &CardRegistry) -> u32 {
+    state.runner.rig.iter().filter_map(|card| registry.get(&card.card).map(|def| rd_accesses(def, Some(card.counters)))).sum()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

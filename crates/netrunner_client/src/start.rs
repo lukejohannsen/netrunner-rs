@@ -380,7 +380,7 @@ mod tests {
         DeckRow {
             id: id.to_string(),
             name: id.replace('_', " "),
-            style: vec![if side == Side::Corp { "fast-advance" } else { "aggressive" }.to_string()],
+            style: vec![if side == Side::Corp { "fast-advance" } else { "pressure" }.to_string()],
             identity: "Someone".to_string(),
             saved: false,
             problem: None,
@@ -413,7 +413,7 @@ mod tests {
         assert_eq!(menu.level(), Level::Veteran, "the Runner chair's suggestion");
         let panes = menu.panes();
         assert!(panes[1].1.contains("Corp"), "the opponent is now the Corp: {}", panes[1].1);
-        assert!(panes[2].2.contains(&"fast-advance".to_string()) && !panes[2].2.contains(&"aggressive".to_string()), "{:?}", panes[2].2);
+        assert!(panes[2].2.contains(&"fast-advance".to_string()) && !panes[2].2.contains(&"pressure".to_string()), "{:?}", panes[2].2);
         let choice = menu.choice().unwrap();
         assert_eq!(choice.human, Side::Runner);
         assert_eq!((choice.corp_deck.as_str(), choice.runner_deck.as_str()), ("discretion_advised", "stolen_goods"));
@@ -428,12 +428,12 @@ mod tests {
         assert_eq!(menu.level(), Level::Operator);
         menu.apply(Intent::NextPane);
         menu.apply(Intent::Move(1));
-        assert_eq!(menu.style(), Some(Style::of(Plan::Aggressive)), "the first plan written for the Runner");
+        assert_eq!(menu.style(), Some(Style::of(Plan::Dismantle)), "the first plan written for the Runner");
         menu.apply(Intent::NextPane);
         menu.apply(Intent::Move(1));
         let choice = menu.choice().expect("a choice from any pane");
         assert_eq!(choice.level, Level::Operator);
-        assert_eq!(choice.style, Some(Style::of(Plan::Aggressive)));
+        assert_eq!(choice.style, Some(Style::of(Plan::Dismantle)));
         assert_eq!(choice.runner_deck, "dashing_mad");
     }
 
