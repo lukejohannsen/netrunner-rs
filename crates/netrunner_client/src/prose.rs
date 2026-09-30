@@ -95,6 +95,7 @@ pub fn describe_amount(amount: &Amount) -> String {
         Amount::ThreatLevel => "the threat level".to_string(),
         Amount::RunnerTags => "the Runner's tags".to_string(),
         Amount::BadPublicity => "the Corp's bad publicity".to_string(),
+        Amount::CorpInstalls(filter) => format!("the Corp's installed cards ({})", humanize(format!("{filter:?}")).to_lowercase()),
         Amount::CoreDamageTaken => "the core damage the Runner has taken this game".to_string(),
         Amount::ChosenNumber => "the number chosen".to_string(),
         Amount::InHeapWithSubtype(subtype) => format!("the number of {} cards in the heap", subtype.printed().to_lowercase()),

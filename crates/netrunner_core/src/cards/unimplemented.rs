@@ -68,8 +68,6 @@ pub(crate) const PH_UNIMPLEMENTED: &[(u32, &str)] = &[
     (33093, "Nova Initiumia: Catalyst & Impetus"),
     (33094, "Matryoshka"),
     (33097, "Nightmare Archive"),
-    (33098, "Bloop"),
-    (33099, "Pulse"),
     (33104, "Issuaq Adaptics: Sustaining Diversity"),
     (33105, "Hybrid Release"),
     (33106, "Dr. Vientiane Keeling"),

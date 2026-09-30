@@ -4069,6 +4069,9 @@ pub(crate) fn resolve_amount(amount: &Amount, ctx: &ResolutionContext<'_>, state
         Amount::IceProtecting(server) => {
             state.corp.installed.iter().filter(|c| c.server == *server && c.slot == InstallSlot::Ice).count() as u32
         }
+        Amount::CorpInstalls(filter) => {
+            crate::rules::pending_choice::eligible_positions(state, registry, Side::Corp, &crate::dsl::CardZoneRef::OwnInstalled, filter, None, None).len() as u32
+        }
         Amount::OtherUnrezzedIce => state
             .corp
             .installed

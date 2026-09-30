@@ -4715,3 +4715,45 @@ Hypoxia, Mr. Hendrik), 3c harmonic ice (Pulse, Bloop).
 - **Real play**, seed 2 (random 96 games / planner 48): Hypoxia played 3
   / 5 times; Mr. Hendrik's access trigger fired 87 / 1 times (the planner
   Corp installed it 4 times); Simulation Reset played 44 / 1 times.
+
+#### Stage 3c — harmonic ice: a count of installs, and a derez to pay for a rez (30 September 2026)
+
+`feat/ph-stage-3c-harmonic-ice`: Pulse, Bloop. **No new `Effect`**; one
+`Amount`. Parhelion 27 of 63; `PH_UNIMPLEMENTED` 38 → 36. **Stage 3 is
+complete.**
+
+- **`Amount::CorpInstalls(CardFilter)`**, Pulse's "The Runner loses
+  1[credit] for each rezzed piece of harmonic ice": `All([Ice, Rezzed,
+  HasSubtype(Harmonic)])`, counted as a selection over the Corp's
+  installed cards reads it (`pending_choice::eligible_positions`), so
+  `Rezzed` is asked of each copy. Composition didn't work: every count of
+  installs was one sentence's (`OtherUnrezzedIce`,
+  `IceProtectingThisServer`); `Amount` is no longer `Copy`, so it may
+  carry a filter.
+- **Pulse's rez** is Ping's trigger (`OnRez`,
+  `RezzedDuringRunAgainstThisServer`) losing the Runner a click; its
+  second subroutine is M.I.C.'s "End the run unless the Runner spends
+  [click]".
+- **Bloop's "As an additional cost to rez this ice, derez another piece
+  of harmonic ice"** is its one `rez_alternatives` entry, `Cost::Derez`
+  over harmonic ice (CR 1.16.10b). Only a rezzed card can pay it, so never
+  Bloop itself; with none to derez the rez is refused and not offered.
+  **Fidelity:** rezzed by a card's text (Send a Message, Mycoweb) it pays
+  nothing, since `engine::rez_install` never reads `rez_alternatives` —
+  the engine bug already on `ROADMAP.md`, now with a card that shows it.
+- **Client.** Nothing new in the view; the derez is asked by the
+  payment's own card question, already worded.
+- **Decks.** Retirement Package took two Pulse for its two Vertigo and
+  two Bloop for its two M.I.C., both of which Undertow still carries.
+- **DSL ratio (`pool_status.py`):** unchanged at 17 of 91 `Effect`
+  variants single-use, 1 unused, over 407 card files.
+- **Measured** against Stage 3b's tip. Both sweeps green at 256 seeds,
+  the card gate included.
+  - A ref with the new `Amount` and no cards is identical in all four
+    shapes.
+  - With the cards, both random seatings are identical; the planner ones
+    move by `determinize` (view, of 192): Corp agenda wins 60 → 59,
+    Runner agenda wins 99 → 100.
+- **Real play**, seed 2, Retirement Package against Safety Net (random
+  96 games / planner 48): Pulse rezzed 48 / 39 times, its rez trigger
+  fired 43 / 38; Bloop rezzed 18 / 9 times, each by derezzing a Pulse.
