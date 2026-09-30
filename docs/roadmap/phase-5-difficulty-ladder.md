@@ -16,25 +16,16 @@ anywhere.
 
 ---
 
-**Where it stands (29 September 2026).** Five rungs per chair, each ladder one ply at
-five handicaps (`Level::spec`: `epsilon` 1.0 / 0.22 / 0.11 / 0.05 / 0.0 over
-`heuristic:<deck's style>`), spaced by measurement at 768 games a cell, a deck's style kept by its
-rung, and the Corp's top rung at 0.41–0.43 against the un-handicapped one-ply Runner (§24). §1–§24
-are closed and their record is in [the archive](archive/phase-5-difficulty-ladder.md); what a bot
-session needs of it is in [Reference](#reference) below. **§25 is the open work: bots that play the
-strategy guide's precepts, in plans that fit a deck's strategy and strength.**
+**Where it stands (30 September 2026).** Five rungs per chair, every rung the turn planner at a
+measured handicap (`Level::spec`: `epsilon` 1.0 / 0.22 / 0.11 / 0.05 / 0.0 for the Corp and
+1.0 / 0.45 / 0.25 / 0.10 / 0.0 for the Runner, over the deck's style), spaced by measurement at
+384 games a cell on two seeds, and the one-ply reference deleted (§25 Stage 8). §1–§26 are closed
+and their record is in [the archive](archive/phase-5-difficulty-ladder.md); what a bot session
+needs of it is in [Reference](#reference) below. **A bot change is measured as both chairs' win
+share on pinned binaries, the same games paired by seed, and by `diag precepts`.**
 
 ## Open
 
-- **A line is pruned one step before a free score** (found in §25 Stage 8, porting the reference's position tests
-  to the planner): a glacier Corp with three clicks, 5[c] and an unadvanced 3/2 behind two pieces of ICE plays
-  *advance, install ICE, advance* and scores next turn, where fast advance plays *advance, advance, advance, score*
-  and wins the point now. Not the beam's width (`PLAN_BEAM` 12 tried) and not its budget (306 of 2,500
-  applications spent; 20,000 tried): `prune` keeps the best line under each *first* action, and after glacier's
-  first advance its best-scoring second step is the ICE, so *advance, advance* is dropped one step before the
-  free score it leads to. A free action after the last click is the thing to walk through — the score, a
-  `[click]`-less ability — before a line is judged; a planner item for a later session, recorded rather than
-  tuned around.
 - **Samples carry no identity** (§25 Stage 4): `determinize` sets `identity: None` on every sample, a
   measured decision, so an identity's continuous effects — A Teia's remote limit, every printed
   link and hand size — are invisible to any search; the planner checks each step against the real
@@ -71,6 +62,7 @@ strategy guide's precepts, in plans that fit a deck's strategy and strength.**
 - **§23** — Where the fort goes is how a Corp plays, not a style: every Corp profile builds one (`feat/fort-in-every-corp-profile`, 23 September 2026).
 - **§24** — Every Corp ladder is one ply at five handicaps, `glacier`'s, and no Corp style carries an exception (`feat/every-corp-ladder-is-one-ply`, 23 September 2026).
 - **§25** — Bots that play the strategy guide's precepts: the decision core rebuilt on the harness in nine stages, every rung the turn planner, both ladders re-taken on it and the one-ply reference deleted (25–30 September 2026; the last stage `feat/ladders-on-the-planner`). §4 (a), the Runner ladder's re-spacing, and §22's question about the one-ply Runner closed with it.
+- **§26** — The beam keeps one line per position, and a line is judged by the free score it leads to: the glacier Corp that iced instead of scoring was a beam holding three positions in six slots, not a line judged too early — the judgment alone does not find it (`feat/beam-one-line-per-position`, 30 September 2026).
 
 ## Reference
 

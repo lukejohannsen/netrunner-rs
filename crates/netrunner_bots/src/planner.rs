@@ -40,6 +40,37 @@
 //! a plan; a Corp with a full hand and five servers would otherwise expand
 //! past what a desktop decision can wait for.
 //!
+//! **And it keeps one line per position** (`prune`, Phase 5 §26): two
+//! orders of the same clicks — advance then ICE, ICE then advance — reach
+//! one state and one future, and a beam that held both held three
+//! positions in six slots. That is how a glacier Corp with three clicks,
+//! 5[c] and an unadvanced 3/2 behind two pieces of ICE played advance,
+//! ICE, advance and scored next turn: "advance, advance" missed the last
+//! slot by a tenth of a point, a ply before the free score it led to —
+//! not the beam's width (twelve tried) nor its budget. A line that
+//! reaches the state a kept line reached is dropped, its first action
+//! counted as kept, and the slot goes to a line that reaches somewhere
+//! else; the engine keeps the turn log's same-action table sorted so the
+//! two orders are one `GameState`.
+//!
+//! **A line still being built is judged by the free score it leads to**
+//! (`judged`, §26): a third advance is a third token to the evaluator and
+//! a point to the game, and the beam judged the line before the score.
+//! So an open line's score for the beam is the better of where it stands
+//! and where a score from there would leave it, tried on each installed
+//! agenda with a token on; the score is still a step of its own at the
+//! next ply, and a finished line is scored where it ends. Alone it does
+//! not find the line above — "advance, advance" is dropped a ply before
+//! any free action exists — and with the positions folded it lifts the
+//! third advance to the top of the beam a ply early, which is what a
+//! crowded beam needs; measured as a Corp gain, alone on the same games
+//! (the §26 entry). The Runner has nothing free of the kind to walk
+//! through: the pool's [click]-less abilities are a breaker's inside a
+//! run, an interrupt, or a trash-self. Rejected: walking every free
+//! action through by probing each open node's legal list — the probe
+//! applies every candidate, a dozen a node over some two hundred nodes a
+//! ply, several times the budget.
+//!
 //! **A click left over is worth a credit, and a hair more** (`click_floor`):
 //! a line that ends before its clicks are spent — a run on the first
 //! click, a decision handed to the opponent — is scored where it stands
@@ -117,8 +148,9 @@ use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 
 use netrunner_core::cards::CardRegistry;
+use netrunner_core::dsl::CardType;
 use netrunner_core::rules::PaymentAsk as Ask;
-use netrunner_core::rules::{apply_action, current_actor, legal_transitions_for, GamePhase, GameState, PlayerAction, Side};
+use netrunner_core::rules::{apply_action, current_actor, legal_transitions_for, GamePhase, GameState, InstallId, PlayerAction, Side};
 use netrunner_core::view::ClientView;
 
 use crate::agent::{is_regressive, BotAgent};
@@ -478,7 +510,7 @@ impl Search<'_> {
                 line.push(Step { expected: expected.clone(), action });
                 let (settled, standing) = self.settle(child, &mut line);
                 match standing {
-                    Standing::Open => next.push(Node { score: self.score(&settled), state: settled, steps: line }),
+                    Standing::Open => next.push(Node { score: self.judged(&settled), state: settled, steps: line }),
                     Standing::Ended => finished.push(Finished { score: self.score(&settled), steps: line }),
                     Standing::Leaf => finished.push(Finished { score: self.leaf_score(&settled), steps: line }),
                 }
@@ -633,6 +665,36 @@ impl Search<'_> {
         evaluate_state_with(state, self.side, self.registry, self.weights) + self.rng.random::<f64>() * TIE_BREAK_JITTER
     }
 
+    /// What a line still being built is judged by for the beam: where it
+    /// stands, or where a free score from there would leave it, whichever
+    /// is better — see the module docs ("a free action is walked through
+    /// before a line is judged"). The score is tried on each installed
+    /// agenda and the engine says which are ready; a refused score costs
+    /// nothing, and an installed agenda is a card or two. The line is not
+    /// moved: the score is still a step of its own at the next ply, and a
+    /// finished line is scored where it ends.
+    fn judged(&mut self, state: &GameState) -> f64 {
+        let standing = self.score(state);
+        if self.side != Side::Corp {
+            return standing;
+        }
+        let agendas: Vec<InstallId> = state
+            .corp
+            .installed
+            .iter()
+            .filter(|card| card.advancement_tokens > 0 && self.registry.get(&card.card).is_some_and(|def| def.card_type == CardType::Agenda))
+            .map(|card| card.install_id)
+            .collect();
+        let mut best = standing;
+        for target in agendas {
+            self.applications += 1;
+            if let Ok((scored, _)) = apply_action(state, self.registry, PlayerAction::ScoreAgenda { target }) {
+                best = best.max(self.score(&scored));
+            }
+        }
+        best
+    }
+
     /// The score where a line stands, plus the floor for the clicks it
     /// has not spent — see the module docs.
     fn leaf_score(&mut self, state: &GameState) -> f64 {
@@ -694,7 +756,13 @@ fn click_floor(state: &GameState, side: Side, weights: &Weights) -> f64 {
 }
 
 /// `PLAN_BEAM` best nodes, plus the best node under each first action not
-/// among them — see the module docs for why the first action is kept.
+/// among them — see the module docs for why the first action is kept —
+/// with **one node per position**: a line that reaches the state a kept
+/// line has already reached is the same future under another order of
+/// the same clicks, and is dropped. Two states are compared only when
+/// their scores are within the jitter, since the evaluator is a function
+/// of the state; a full comparison of every pair would cost more than
+/// the ply it prunes.
 fn prune(mut nodes: Vec<Node>) -> Vec<Node> {
     nodes.sort_by(|a, b| b.score.total_cmp(&a.score));
     let mut kept: Vec<Node> = Vec::new();
@@ -705,6 +773,12 @@ fn prune(mut nodes: Vec<Node>) -> Vec<Node> {
         if kept.len() < PLAN_BEAM || new_first {
             if new_first {
                 first_actions.push(first.clone());
+            }
+            if kept.iter().any(|k| (k.score - node.score).abs() <= TIE_BREAK_JITTER && k.state == node.state) {
+                // The first action is recorded all the same: the kept
+                // twin stands for it, and a weaker line that merely
+                // begins the same way would be no addition.
+                continue;
             }
             kept.push(node);
         }
@@ -968,6 +1042,90 @@ mod tests {
         assert!(kept.windows(2).all(|pair| pair[0].score >= pair[1].score), "kept in score order");
     }
 
+    /// One node per position: a line that reaches the state a kept line
+    /// reached is the same clicks in another order and is dropped, and
+    /// its first action counts as kept — the twin stands for it — so the
+    /// slot goes to a line that reaches somewhere else. A state that is
+    /// merely scored alike is not a twin.
+    #[test]
+    fn pruning_folds_two_orders_of_the_same_clicks_into_one_line() {
+        let state_with = |credits: u32| {
+            let mut state = GameState::new(0);
+            state.corp.resources.credits = Credits(credits);
+            state
+        };
+        let node = |first: u32, credits: u32, score: f64| Node {
+            state: state_with(credits),
+            steps: vec![Step { expected: Vec::new(), action: PlayerAction::AdvanceCard { target: InstallId(first) } }],
+            score,
+        };
+        // Enough distinct positions to fill the beam; then six twins of
+        // one position, each under its own first action, scored within
+        // the jitter of each other; a different position scored the same
+        // as one of them; a poorer line under the first action of one of
+        // the twins; and a poorer line under a first action of its own.
+        let mut nodes: Vec<Node> = (0..PLAN_BEAM as u32).map(|n| node(100 + n, 20 + n, 20.0 + f64::from(n))).collect();
+        nodes.extend((0..6).map(|first| node(first, 5, 10.0 + f64::from(first) * TIE_BREAK_JITTER / 10.0)));
+        nodes.push(node(6, 7, 10.0));
+        nodes.push(node(1, 3, 1.0));
+        nodes.push(node(7, 9, 0.5));
+        let kept = prune(nodes);
+        let describe: Vec<(u32, u32)> = kept
+            .iter()
+            .skip(PLAN_BEAM)
+            .map(|n| match n.steps[0].action {
+                PlayerAction::AdvanceCard { target } => (target.0, n.state.corp.resources.credits.0),
+                _ => unreachable!(),
+            })
+            .collect();
+        // After the beam: the 5[c] position once, under the best-scored
+        // twin; the 7[c] position; the 9[c] line for its first action —
+        // and not the 3[c] line, whose first action a twin stands for.
+        assert_eq!(describe, vec![(5, 5), (6, 7), (7, 9)], "{describe:?}");
+    }
+
+    /// An open line is judged by the better of where it stands and the
+    /// free score from there: a third advance is a third token to the
+    /// evaluator and a point to the game, and the beam judged it before
+    /// the score it led to. A finished line is still scored where it ends.
+    #[test]
+    fn an_open_line_is_judged_by_the_free_score_it_leads_to() {
+        let mut registry = CardRegistry::new();
+        let state = corp_with_a_scorable_hand(&mut registry);
+        let mut ready = state.clone();
+        ready.corp.installed.push(InstalledCard {
+            card: CardId("agenda".to_string()),
+            install_id: InstallId(1),
+            server: ServerId::Remote(0),
+            advancement_tokens: 2,
+            ..Default::default()
+        });
+        let mut short = ready.clone();
+        short.corp.installed.last_mut().expect("the agenda").advancement_tokens = 1;
+        let weights = Weights::default();
+        let mut rng = StdRng::seed_from_u64(1);
+        let legal = Vec::new();
+        let mut search = Search {
+            side: Side::Corp,
+            registry: &registry,
+            weights: &weights,
+            root_turn: state.turn,
+            root_legal: &legal,
+            applications: 0,
+            answering: 0,
+            rng: &mut rng,
+        };
+        let scored = apply_action(&ready, &registry, PlayerAction::ScoreAgenda { target: InstallId(1) }).expect("ready to score").0;
+        let judged = search.judged(&ready);
+        assert!(judged > search.score(&ready) + 1.0, "judged by the point the free score wins");
+        assert!((judged - search.score(&scored)).abs() < 2.0 * TIE_BREAK_JITTER, "and by nothing more");
+        assert!((search.judged(&short) - search.score(&short)).abs() < 2.0 * TIE_BREAK_JITTER, "a token short, the score is refused and the line stands where it is");
+        assert_eq!(search.applications, 2, "one try per advanced agenda");
+        let mut runner = Search { side: Side::Runner, ..search };
+        assert!((runner.judged(&ready) - runner.score(&ready)).abs() < 2.0 * TIE_BREAK_JITTER, "nothing is free for the Runner");
+        assert_eq!(runner.applications, 2, "and nothing is tried");
+    }
+
     /// A Runner seat given no style reads its plan off its own identity
     /// on the first view — a Criminal is played under pressure — and a
     /// seat given a style keeps it; a fixture with no identity stays
@@ -1203,16 +1361,23 @@ mod positions {
         state
     }
 
-    /// The archetypes, on the same position: an agenda behind one piece of
-    /// ICE with the centrals iced, an ICE in HQ and the clicks to do
-    /// either. Fast advance advances it first and adds the ICE after;
-    /// glacier puts the second piece in front of it before a token goes
-    /// on. Before every Corp profile carried the fort terms (Phase 5 §23)
-    /// the agenda here was naked and rush advanced it anyway, which is
-    /// the play those terms were measured to cost. (Behind two pieces
-    /// both plans open with the advance: the fort is finished.)
+    /// Every Corp plan finishes the fort around a point it cannot win this
+    /// turn: a 3/2 behind one piece of ICE with the centrals iced, an ICE
+    /// in HQ and two clicks, and each plan ends the turn with the second
+    /// piece in front and one token on — the fort terms every profile
+    /// carries since Phase 5 §23, when the agenda here was naked and rush
+    /// advanced it anyway. Judged by where the turn ends: the beam folds
+    /// two orders of the same clicks into one line (§26), so which is
+    /// played first is the jitter's. This was "a fast-advance Corp
+    /// advances where a glacier Corp installs ICE", a first click read
+    /// off a three-click turn — and once the beam could see the free
+    /// score, every plan won the point (`behind_two_pieces_of_ice_…`),
+    /// and on every variant tried with the point out of reach (two
+    /// clicks, a 4/2, a 5/2, naked or behind one piece) the four plans
+    /// ended the turn in the same place: the first click the test had
+    /// pinned was two orders of one line, told apart by the jitter.
     #[test]
-    fn a_fast_advance_corp_advances_where_a_glacier_corp_installs_ice() {
+    fn every_corp_plan_finishes_the_fort_around_a_point_it_cannot_win_this_turn() {
         let mut registry = CardRegistry::new();
         let mut agenda = blank_card("agenda", CardType::Agenda);
         agenda.advancement_requirement = Some(3);
@@ -1224,7 +1389,7 @@ mod positions {
         state.phase = GamePhase::Action(Side::Corp);
         state.runner = empty_runner();
         state.corp = CorpState {
-            resources: PlayerResources { credits: Credits(5), clicks: Clicks(3), agenda_points: AgendaPoints(0) },
+            resources: PlayerResources { credits: Credits(5), clicks: Clicks(2), agenda_points: AgendaPoints(0) },
             hq: vec![CardId("wall".to_string())],
             installed: std::iter::once(InstalledCard {
                 card: CardId("agenda".to_string()),
@@ -1247,20 +1412,13 @@ mod positions {
             .collect(),
             ..Default::default()
         };
-        let view = build_client_view(&state, &registry, Side::Corp);
-        let advance = PlayerAction::AdvanceCard { target: InstallId(1) };
-        assert!(view.legal_actions.contains(&advance));
-        let ice_in_front = view
-            .legal_actions
-            .iter()
-            .find(|a| matches!(a, PlayerAction::InstallCard { zone: ServerId::Remote(0), .. }))
-            .cloned()
-            .expect("the ICE can be installed in front of the agenda");
-
-        let mut fast = PlanningAgent::with_style(Side::Corp, 1, Style::of(crate::plans::Plan::FastAdvance));
-        assert_eq!(fast.select_action(&view, &registry), advance);
-        let mut glacier = PlanningAgent::with_style(Side::Corp, 1, Style::of(crate::plans::Plan::Glacier));
-        assert_eq!(glacier.select_action(&view, &registry), ice_in_front);
+        for plan in [crate::plans::Plan::FastAdvance, crate::plans::Plan::Glacier, crate::plans::Plan::Traps, crate::plans::Plan::Kill] {
+            let mut agent = PlanningAgent::with_style(Side::Corp, 1, Style::of(plan));
+            let (played, after) = super::tests::play_turn(&mut agent, state.clone(), &registry);
+            let agenda = after.corp.installed.iter().find(|card| card.install_id == InstallId(1)).expect("the agenda stays installed");
+            let ice_in_front = after.corp.installed.iter().filter(|card| card.server == ServerId::Remote(0) && card.slot == netrunner_core::rules::InstallSlot::Ice).count();
+            assert_eq!((agenda.advancement_tokens, ice_in_front), (1, 2), "{plan:?}: (tokens, ICE in front) after {played:?}");
+        }
     }
 
     /// PT Untaian's discard-phase offer, which the Corp declined every
@@ -1453,6 +1611,11 @@ mod positions {
         state.runner = empty_runner();
         state.runner.resources = PlayerResources { credits: Credits(5), clicks: Clicks(3), agenda_points: AgendaPoints(0) };
         state.runner.stack = vec![CardId("filler".to_string()); 5];
+        // A Corp with cards to draw: with R&D empty it decked out at its
+        // next turn start, every turn-ending line was a won game, and the
+        // pin was the jitter's (found in Phase 5 §26).
+        registry.insert(blank_card("corp_filler", CardType::Operation));
+        state.corp.r_and_d = vec![CardId("corp_filler".to_string()); 10];
         let view = build_client_view(&state, &registry, Side::Runner);
         assert!(view.legal_actions.iter().any(|a| matches!(a, PlayerAction::InitiateRun { .. })));
         assert!(view.legal_actions.contains(&PlayerAction::DrawCardClick { side: Side::Runner }));
@@ -1482,9 +1645,27 @@ mod positions {
             let mut state = open_board(&mut registry);
             state.runner.memory_units = MemoryUnits(4);
             state.runner.stack = vec![CardId("filler".to_string()); 10];
-            // Nothing worth running, so the choice is between a draw and a credit.
-            state.corp.hq.clear();
-            state.corp.r_and_d.clear();
+            // Nothing worth running — a rezzed "End the run" barrier on
+            // each central and no breaker — so the choice is between a
+            // draw and a credit. It was an empty HQ and R&D, and a Corp
+            // with no R&D decks out at its next turn start, so every
+            // turn-ending line was a won game and the pin was the
+            // jitter's (found in Phase 5 §26).
+            let mut wall = blank_card("wall", CardType::Ice(IceType::Barrier));
+            wall.strength = Some(1);
+            wall.subroutines = vec![netrunner_core::dsl::SubroutineDef { text: String::new(), effect: Effect::EndTheRun, only_breakable_by: None }];
+            registry.insert(wall);
+            state.corp.resources.credits = Credits(5);
+            for (index, server) in [ServerId::Hq, ServerId::RnD, ServerId::Archives].into_iter().enumerate() {
+                state.corp.installed.push(InstalledCard {
+                    card: CardId("wall".to_string()),
+                    install_id: InstallId(index as u32 + 1),
+                    server,
+                    slot: netrunner_core::rules::InstallSlot::Ice,
+                    rezzed: true,
+                    ..Default::default()
+                });
+            }
             let view = build_client_view(&state, &registry, Side::Runner);
             assert!(view.legal_actions.contains(&PlayerAction::DrawCardClick { side: Side::Runner }));
             PlanningAgent::new(Side::Runner, 3).select_action(&view, &registry)
@@ -1573,11 +1754,15 @@ mod positions {
             .collect();
         assert!(agenda_installs.len() >= 2, "expected both a protected and a naked remote on offer: {agenda_installs:?}");
 
-        let chosen = PlanningAgent::new(Side::Corp, 3).select_action(&view, &registry);
-        assert!(
-            matches!(&chosen, PlayerAction::InstallCard { card_id, zone: ServerId::Remote(0), slot: InstallSlot::Root, .. } if card_id.0 == "agenda"),
-            "should install the agenda behind the ICE: {chosen:?}"
-        );
+        // Judged over the turn: the planner may draw first — its sample
+        // puts one of the registry's three cards on top of R&D, and a
+        // wall there is worth the draw — and the beam holds one line per
+        // position (§26), so which click the install falls on is the
+        // jitter's. Where the agenda goes is not.
+        let mut agent = PlanningAgent::new(Side::Corp, 3);
+        let (played, after) = super::tests::play_turn(&mut agent, state, &registry);
+        let installed = after.corp.installed.iter().find(|card| card.card.0 == "agenda").unwrap_or_else(|| panic!("the agenda was not installed: {played:?}"));
+        assert_eq!(installed.server, ServerId::Remote(0), "should install the agenda behind the ICE: {played:?}");
     }
 
     /// A Runner at the floor with credits, open centrals and something to
@@ -1764,6 +1949,66 @@ mod positions {
         };
         assert_eq!(accessed(2), PlayerAction::TrashAccessedCard { card_id: CardId("nico_campaign".to_string()) });
         assert_eq!(accessed(4), PlayerAction::PassAccessedCard { card_id: CardId("nico_campaign".to_string()) });
+    }
+
+
+    /// The position §25 Stage 8 recorded rather than fixed: the same
+    /// agenda behind *two* pieces of ICE, where the fort is finished and
+    /// the point is three advances and a free score away. The glacier
+    /// planner played advance, ICE, advance and scored next turn, because
+    /// its beam held three pairs of the same clicks in another order
+    /// (advance-then-ICE beside ICE-then-advance) and "advance, advance"
+    /// missed the last slot by a tenth of a point. One node per position
+    /// (`prune`) frees the slots, and the free score is walked through
+    /// before the third advance is judged (`Search::judged`), so every
+    /// Corp plan wins the point now (Phase 5 §26).
+    #[test]
+    fn behind_two_pieces_of_ice_every_corp_plan_scores_the_point_its_third_advance_wins() {
+        let mut registry = CardRegistry::new();
+        let mut agenda = blank_card("agenda", CardType::Agenda);
+        agenda.advancement_requirement = Some(3);
+        agenda.agenda_points = Some(2);
+        registry.insert(agenda);
+        registry.insert(blank_card("wall", CardType::Ice(netrunner_core::dsl::IceType::Barrier)));
+
+        let mut state = GameState::new(0);
+        state.phase = GamePhase::Action(Side::Corp);
+        state.runner = empty_runner();
+        state.corp = CorpState {
+            resources: PlayerResources { credits: Credits(5), clicks: Clicks(3), agenda_points: AgendaPoints(0) },
+            hq: vec![CardId("wall".to_string())],
+            installed: std::iter::once(InstalledCard {
+                card: CardId("agenda".to_string()),
+                install_id: InstallId(1),
+                server: ServerId::Remote(0),
+                ..Default::default()
+            })
+            .chain(
+                [ServerId::Remote(0), ServerId::Remote(0), ServerId::Hq, ServerId::Hq, ServerId::RnD, ServerId::RnD, ServerId::Archives]
+                    .into_iter()
+                    .enumerate()
+                    .map(|(n, server)| InstalledCard {
+                        card: CardId("wall".to_string()),
+                        install_id: InstallId(10 + n as u32),
+                        server,
+                        slot: netrunner_core::rules::InstallSlot::Ice,
+                        ..Default::default()
+                    }),
+            )
+            .collect(),
+            ..Default::default()
+        };
+        let advance = PlayerAction::AdvanceCard { target: InstallId(1) };
+        let score = PlayerAction::ScoreAgenda { target: InstallId(1) };
+        for plan in [crate::plans::Plan::Glacier, crate::plans::Plan::FastAdvance, crate::plans::Plan::Traps] {
+            let mut agent = PlanningAgent::with_style(Side::Corp, 1, Style::of(plan));
+            let (played, after) = super::tests::play_turn(&mut agent, state.clone(), &registry);
+            assert_eq!(played.iter().filter(|a| **a == advance).count(), 3, "{plan:?}: {played:?}");
+            assert!(played.contains(&score), "{plan:?}: {played:?}");
+            assert_eq!(after.corp.resources.agenda_points, AgendaPoints(2), "{plan:?}");
+            let stats = agent.stats();
+            assert_eq!((stats.planned, stats.diverged), (1, 0), "{plan:?}: one plan, followed whole: {stats:?}");
+        }
     }
 
     #[test]

@@ -653,7 +653,11 @@ pub struct TurnLog {
     /// as `actions_finished` is: an action is no `Class`, and a basic one
     /// was no moment at all. A fixed table so the log stays `Copy`; a
     /// turn of more than `SAME_ACTIONS` different actions stops counting
-    /// the new ones, which no turn in the pool comes near.
+    /// the new ones, which no turn in the pool comes near. **Kept sorted**,
+    /// so that two turns that took the same actions in another order are
+    /// one log and one `GameState` — the table is a multiset, and a search
+    /// that folds two orders of the same clicks into one position compares
+    /// the states whole (`netrunner_bots::planner::prune`, Phase 5 §26).
     same_actions: [Option<(SameAction, u8)>; SAME_ACTIONS],
 }
 
@@ -666,7 +670,7 @@ const SAME_ACTIONS: usize = 12;
 /// install is the one basic action, whatever it installs, and every play
 /// of an operation or event is another; two copies' abilities are
 /// different actions (CR 5.2.5b), so an ability is its card's handle.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub enum SameAction {
     GainCredit,
     Draw,
@@ -735,6 +739,16 @@ impl TurnLog {
             *count = count.saturating_add(1);
         } else if let Some(free) = self.same_actions.iter_mut().find(|slot| slot.is_none()) {
             *free = Some((action, 1));
+            // Canonical order (the field's doc): the entries sorted, the
+            // empty slots after them — the order `Sparse` writes and reads
+            // back, so a log equals its own round trip — and the free slot
+            // is still the first `None`.
+            self.same_actions.sort_unstable_by(|a, b| match (a, b) {
+                (Some(a), Some(b)) => a.cmp(b),
+                (Some(_), None) => std::cmp::Ordering::Less,
+                (None, Some(_)) => std::cmp::Ordering::Greater,
+                (None, None) => std::cmp::Ordering::Equal,
+            });
         }
     }
 
@@ -971,6 +985,15 @@ mod tests {
         assert_eq!(state.this_turn.times_taken(SameAction::Ability { install: InstallId(7), index: 0 }), 1);
         assert_eq!(state.this_turn.times_taken(SameAction::Draw), 0);
         assert_eq!(state.this_turn.actions_finished(), 4);
+        // Two turns that took the same actions in another order are one
+        // log: the table is a multiset, and a search that folds two orders
+        // of the same clicks into one position compares the states whole.
+        let mut other = GameState::new(0);
+        for action in [SameAction::Ability { install: InstallId(8), index: 0 }, SameAction::GainCredit, SameAction::Ability { install: InstallId(7), index: 0 }, SameAction::GainCredit] {
+            record_action_finished(&mut other, action);
+        }
+        record(&mut other, &registry, &GameEvent::AgendaScored { card: CardId("an_agenda".into()), agenda_points: 3, server: ServerId::Remote(0) });
+        assert_eq!(other.this_turn.same_actions, state.this_turn.same_actions);
         rotate(&mut state);
         assert_eq!(state.this_turn, TurnLog::default());
         assert_eq!(state.last_turn.times(Trigger::OnSuccessfulRun), 3);
