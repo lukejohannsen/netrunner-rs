@@ -4597,3 +4597,65 @@ complete.
     move by `determinize` (view, of 192): Corp agenda wins 70 → 71, Corp
     flatlines 15 → 17, Runner agenda wins 107 → 103.
 
+
+#### Stage 3a — the advancement requirement, asked (30 September 2026)
+
+`feat/ph-stage-3a-advancement-requirement`: Ontological Dependence,
+Freedom of Information, Regulatory Capture. **No new `Effect`.** Parhelion
+22 of 63; `PH_UNIMPLEMENTED` 44 → 41. Stage 3 was split by mechanic when
+it was taken: 3a the requirement, 3b the Corp words (Simulation Reset,
+Hypoxia, Mr. Hendrik), 3c harmonic ice (Pulse, Bloop).
+
+- **`ContinuousKind::AdvancementRequirement(Number)`**, the kind
+  `dsl::continuous` had named as deferred. About `This`, on an agenda
+  only (`validate`); CR 9.1.8e makes such an ability active while its
+  card is not, which `Scope::This` already is. Composition didn't work:
+  the requirement was the printed field, read by the score.
+- **`continuous::advancement_requirement`** is the one question — printed
+  plus what the card's text adds — asked by `engine::score_agenda`, by its
+  dividends and by the view. **Signed and never floored** (CR 1.1.3): a
+  requirement of −1 is met by no counters (CR 1.17.3a), which the card
+  test scores. `RulesError::AdvancementRequirementNotMet::required` is
+  signed with it.
+- **Dividends** count the counters past the requirement as it stood when
+  the score began, before the agenda moved (CR 10.13.2) — the number the
+  score already asked, read before the uninstall.
+- **`Amount::CoreDamageTaken`** reads `RunnerState::brain_damage`, which
+  nothing removes, so "this game" is all of it. Freedom of Information
+  reads `RunnerTags`.
+- **Regulatory Capture's "for each bad publicity you have up to 4"** is
+  four `−1`s, each `while AmountAtLeast(BadPublicity, k)` for k = 1…4:
+  composed, rather than an `Amount` with a cap for one card.
+- **The view carries the asked requirement**,
+  `PublicInstalledCard::advancement_requirement`, signed, masked with the
+  card (a lowered requirement names the agenda). A client holds a view,
+  not a `GameState`, so it cannot ask the layer itself.
+- **Client.** The desktop's tile badge ("0/1") and the sheet ("advanced 0
+  of 1", and "Prints an advancement requirement of 4; its text makes it
+  1") read it through `board::facts`; the terminal's server line counts an
+  agenda's counters against it ("1/1 adv"), where it showed no
+  requirement before. `view_ledger` says so; tested in `board::facts` and
+  the terminal's `tui::tests`. The inspector's engine reading words the
+  kind and the amount.
+- **Bots.** `eval::corp_install_value` and `finishable_agendas` ask the
+  same question (the state is now passed down), so a lowered requirement
+  is a nearer score; a bot's sample carries tags, bad publicity and core
+  damage, so it asks the same answer.
+- **Decks.** Undertow took two Ontological Dependence for its two
+  Lightning Laboratory, Paid Content two Freedom of Information for two
+  Stoke the Embers, Tag You're It two Regulatory Capture for two
+  Sacrifice Zone Expansion; each card they left is still in another deck.
+- **DSL ratio (`pool_status.py`):** unchanged at 17 of 91 `Effect`
+  variants single-use, 1 unused, over 402 card files.
+- **Measured.** Both sweeps green at 256 seeds, the card gate included.
+  - A ref with the engine change and no cards is identical to
+    `origin/main` in all four shapes: the view's new field, the bots'
+    asked requirement and the score read the printed number wherever no
+    card changes it.
+  - With the cards, both random seatings are identical (Sweep decks are
+    not in `matchups()`); the planner seatings move by `determinize`
+    sampling the new agendas (view, of 192): Corp agenda wins 61 → 58,
+    Corp flatlines 28 → 27, Runner agenda wins 99 → 104, deck-outs 4 → 3.
+- **Real play**, seed 2, each deck against a Runner Sweep deck (random 96
+  games, planner 48): Ontological Dependence scored 5 / 32 times,
+  Freedom of Information 4 / 14, Regulatory Capture 0 / 15.

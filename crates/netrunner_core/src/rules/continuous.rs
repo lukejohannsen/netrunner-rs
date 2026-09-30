@@ -619,6 +619,22 @@ pub fn agenda_points_in(state: &GameState, registry: &CardRegistry, card: &CardD
     .max(0) as u32
 }
 
+/// The advancement requirement of the Corp install `install` right now:
+/// what it prints and what its own text changes (Ontological Dependence,
+/// `ContinuousKind::AdvancementRequirement`), `None` for a card that prints
+/// none. Signed and not floored (CR 1.1.3): a requirement of −1 is met by
+/// no counters at all, which is what CR 1.17.3a's "greater than or equal
+/// to" says. The one question the score, its dividends and the view ask,
+/// so none of them reads the printed number where the table has moved it.
+pub fn advancement_requirement(state: &GameState, registry: &CardRegistry, install: InstallId) -> Option<i32> {
+    let target = Target::corp_install(state, registry, install)?;
+    let printed = target.card()?.advancement_requirement? as i32;
+    Some(printed + sum(state, registry, target, |kind| match kind {
+        ContinuousKind::AdvancementRequirement(number) => Some(number),
+        _ => None,
+    }))
+}
+
 /// What is added to the printed cost of rezzing the Corp install
 /// `install`: what the table adds while it stands (Fransofia Ward's
 /// "+1[c] to rez each piece of ice") and what is lingering (Tread Lightly's

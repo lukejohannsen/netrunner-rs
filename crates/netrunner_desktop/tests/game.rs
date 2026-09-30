@@ -957,7 +957,7 @@ fn a_trojan_is_a_chip_on_its_ice_and_a_ghost_in_the_row() {
             view.corp.servers.push(netrunner_core::view::ServerView { server: ServerId::Hq, ice: Vec::new(), root: Vec::new() });
         }
         let hq = view.corp.servers.iter_mut().find(|s| s.server == ServerId::Hq).unwrap();
-        hq.ice.push(PublicInstalledCard { install_id: ice, position: 0, server: ServerId::Hq, slot: InstallSlot::Ice, rezzed: true, card: Some(CardId("ice_wall".into())), advancement_tokens: 0, counters: Some(0), seen_by_runner: true });
+        hq.ice.push(PublicInstalledCard { install_id: ice, position: 0, server: ServerId::Hq, slot: InstallSlot::Ice, rezzed: true, card: Some(CardId("ice_wall".into())), advancement_tokens: 0, counters: Some(0), advancement_requirement: None, seen_by_runner: true });
         view.runner.rig.push(PublicInstalledRunnerCard { card: CardId("botulus".into()), install_id: trojan, current_strength: 0, hosted_on_ice: Some(ice), hosted_on_rig_card: None, hosted_cards: Vec::new(), hosted_facedown: false, hosted_unseen: 0, hosted_cards_playable: false, counters: 1 });
     }
     // The board redraws when its fit moves; the view changed under it.
@@ -1018,7 +1018,7 @@ fn a_deep_server_is_a_few_strips_and_a_count_and_its_stack_sheet_is_the_whole_of
         {
             let mut model = app.world_mut().resource_mut::<Model>();
             let view = model.0.view.as_mut().unwrap();
-            let card = |id: InstallId, position: usize, slot: InstallSlot, name: &str| PublicInstalledCard { install_id: id, position, server: remote, slot, rezzed: true, card: Some(CardId(name.into())), advancement_tokens: 0, counters: Some(0), seen_by_runner: true };
+            let card = |id: InstallId, position: usize, slot: InstallSlot, name: &str| PublicInstalledCard { install_id: id, position, server: remote, slot, rezzed: true, card: Some(CardId(name.into())), advancement_tokens: 0, counters: Some(0), advancement_requirement: None, seen_by_runner: true };
             view.corp.servers.push(netrunner_core::view::ServerView {
                 server: remote,
                 ice: ice.iter().enumerate().map(|(i, id)| card(*id, i, InstallSlot::Ice, ["ice_wall", "enigma", "palisade", "tithe", "ice_wall"][i])).collect(),

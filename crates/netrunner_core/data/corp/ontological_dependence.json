@@ -1,0 +1,24 @@
+{
+  "id": "ontological_dependence",
+  "title": "Ontological Dependence",
+  "side": "Corp",
+  "card_type": "Agenda",
+  "cost": 0,
+  "advancement_requirement": 4,
+  "agenda_points": 2,
+  "continuous": [
+    {
+      "kind": {
+        "AdvancementRequirement": {
+          "per": -1,
+          "of": "CoreDamageTaken"
+        }
+      },
+      "applies_to": "This",
+      "text": "This agenda gets -1 advancement requirement for each core damage the Runner has taken this game."
+    }
+  ],
+  "triggers": [],
+  "numeric_id": 33096,
+  "is_playable": true
+}

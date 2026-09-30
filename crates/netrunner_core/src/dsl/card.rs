@@ -1479,6 +1479,10 @@ impl CardDefinition {
                 }
                 (ContinuousKind::AgendaPoints(_), Scope::ScoreArea(_)) if self.card_type == CardType::Agenda => {}
                 (ContinuousKind::AgendaPoints(_), _) => return misfit("AgendaPoints", "an agenda's points change in a score area, said by the agenda (`ScoreArea`)"),
+                (ContinuousKind::AdvancementRequirement(_), Scope::This) if self.card_type == CardType::Agenda => {}
+                (ContinuousKind::AdvancementRequirement(_), _) => {
+                    return misfit("AdvancementRequirement", "only an agenda has an advancement requirement (CR 3.2.2), and it says so of itself (`This`)");
+                }
                 (ContinuousKind::BoostsLastTheRun, Scope::This | Scope::Host) => {}
                 (ContinuousKind::BoostsLastTheRun, _) => return misfit("BoostsLastTheRun", "a boost is an icebreaker's: this card or its host"),
                 (ContinuousKind::MayHost, Scope::InstallingOntoThis(_)) => {}
@@ -1967,6 +1971,20 @@ mod tests {
         assert_eq!(worth(flat(-1), unless(crate::dsl::Amount::RunnerTags)).validate(), Ok(()));
         assert!(refused(worth(flat(-1), unless(crate::dsl::Amount::ThreatLevel))));
         assert!(refused(worth(Number { per: 1, of: crate::dsl::Amount::ThreatLevel }, None)));
+
+        // Ontological Dependence's shape: only an agenda has an advancement
+        // requirement (CR 3.2.2), and it says so of itself.
+        let requirement = |card_type: CardType, scope: Scope| {
+            let mut card = with(Side::Corp, card_type, None, ContinuousKind::AdvancementRequirement(flat(-1)), scope);
+            card.agenda_points = Some(2);
+            card.advancement_requirement = Some(4);
+            card
+        };
+        assert_eq!(requirement(CardType::Agenda, Scope::This).validate(), Ok(()));
+        assert!(refused(requirement(CardType::Agenda, Scope::Controller)));
+        let mut asset = requirement(CardType::Asset, Scope::This);
+        asset.agenda_points = None;
+        assert!(refused(asset));
     }
 
     /// A prohibition is for a run or a turn. One for an encounter parses,

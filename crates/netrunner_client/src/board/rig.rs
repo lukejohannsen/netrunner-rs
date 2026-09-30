@@ -302,7 +302,7 @@ mod tests {
         use netrunner_core::rules::{InstallSlot, PublicInstalledCard, ServerId};
         use netrunner_core::view::ServerView;
         let (mut view, registry) = view();
-        let ice = |id: u32, card: Option<&str>| PublicInstalledCard { install_id: InstallId(id), position: 0, server: ServerId::Hq, slot: InstallSlot::Ice, rezzed: card.is_some(), card: card.map(|c| CardId(c.into())), advancement_tokens: 0, counters: None, seen_by_runner: card.is_some() };
+        let ice = |id: u32, card: Option<&str>| PublicInstalledCard { install_id: InstallId(id), position: 0, server: ServerId::Hq, slot: InstallSlot::Ice, rezzed: card.is_some(), card: card.map(|c| CardId(c.into())), advancement_tokens: 0, counters: None, advancement_requirement: None, seen_by_runner: card.is_some() };
         view.corp.servers.retain(|s| s.server != ServerId::Hq);
         view.corp.servers.push(ServerView { server: ServerId::Hq, ice: vec![ice(20, None), ice(21, Some("ice_wall"))], root: Vec::new() });
         assert_eq!(host_label(&view, &registry, InstallId(20)), "unrezzed ice on HQ");

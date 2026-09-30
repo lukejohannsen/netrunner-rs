@@ -3,7 +3,7 @@
   "name": "Tag, You're It",
   "side": "Corp",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps play the strategy guide's kill plan, which no sample deck holds its payoffs for — Scorched Earth and Retribution behind Public Trail, Ping and Funhouse, with Clearinghouse for the damage a trap finishes and Orbital Superiority for the tag a score gives — on Weyland Consortium: Building a Better World, an identity no sample deck uses (Phase 5 §25 Stage 6). The bot plays it under the kill plan: a tag is worth what the Corp holds to punish it, and a grip under the damage in hand is the threat. Eternal-legal only.",
+  "description": "Not a published list: built so the sweeps play the strategy guide's kill plan, which no sample deck holds its payoffs for — Scorched Earth and Retribution behind Public Trail, Ping and Funhouse, with Clearinghouse for the damage a trap finishes and Orbital Superiority for the tag a score gives — on Weyland Consortium: Building a Better World, an identity no sample deck uses (Phase 5 §25 Stage 6). The bot plays it under the kill plan: a tag is worth what the Corp holds to punish it, and a grip under the damage in hand is the threat. Eternal-legal only. Parhelion Stage 3a: two Regulatory Capture for its two Sacrifice Zone Expansion, a requirement of 6 its bad publicity lowers.",
   "style": ["kill"],
   "identity": "weyland_consortium_building_a_better_world",
   "cards": [
@@ -12,7 +12,7 @@
       "count": 3
     },
     {
-      "card": "sacrifice_zone_expansion",
+      "card": "regulatory_capture",
       "count": 2
     },
     {

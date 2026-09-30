@@ -80,9 +80,9 @@ fn is_one(amount: &Amount) -> bool {
 }
 
 /// What changes. Closed, with a payload per kind, and **only the kinds a
-/// card in the pool prints** (the DSL Growth Rule): the ones the comparison
-/// with jinteki.net names and no card here needs yet are "cannot be
-/// broken" and advancement requirements that change while installed.
+/// card in the pool prints** (the DSL Growth Rule): the one the comparison
+/// with jinteki.net names and no card here needs yet is "cannot be
+/// broken".
 /// A "cannot" about a player with a duration is an `Effect::Prohibit`, on
 /// the lingering list; one that stands for as long as its card is active
 /// is `Cannot`, and `continuous::cannot` reads both. The standing ones
@@ -174,6 +174,18 @@ pub enum ContinuousKind {
     /// area's cards (`win::agenda_value_in`), and the stored tally beside it
     /// adds the same number when the card lands.
     AgendaPoints(Number),
+    /// The agenda's advancement requirement, added to what it prints —
+    /// Ontological Dependence's "This agenda gets −1 advancement
+    /// requirement for each core damage the Runner has taken this game".
+    /// Asked, never stored (`continuous::advancement_requirement`), by the
+    /// score, by its dividends (CR 10.13.2, before the agenda moves) and by
+    /// the view; the number may fall to 0 or below (CR 1.1.3), and an
+    /// agenda whose requirement is 0 or less may be scored with no counters
+    /// on it (CR 1.17.3a). About `This`, which CR 9.1.8e makes active
+    /// wherever the agenda is; SanSan City Grid's root-of-this-server
+    /// reading waits for the card. Composition didn't work: the
+    /// requirement was the printed field, read at the score.
+    AdvancementRequirement(Number),
     /// The ice gains a subtype it does not print — Chromatophores.
     GainSubtype(IceType),
     /// A strength boost that would last the encounter lasts the run

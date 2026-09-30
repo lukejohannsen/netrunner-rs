@@ -1588,6 +1588,12 @@ pub enum Amount {
     /// bad publicity counters", which is not offered with none to host.
     /// `RunnerTags`'s sibling: no requirement asked it before.
     BadPublicity,
+    /// The core damage the Runner has taken this game — Ontological
+    /// Dependence's "−1 advancement requirement for each core damage the
+    /// Runner has taken this game". The count that lowers their maximum
+    /// hand size (`RunnerState::brain_damage`), which no card removes, so
+    /// "this game" is all of it. No amount read it.
+    CoreDamageTaken,
     /// The number `Effect::ChooseNumber` was answered with, inside its
     /// `then`. **A placeholder, written over when the number is chosen**
     /// (`Effect::with_chosen_number`, the convention

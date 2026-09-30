@@ -7,7 +7,7 @@ use crate::rules::event::GameEvent;
 use crate::rules::{continuous, lingering};
 use crate::rules::turn_log::TurnLog;
 use crate::rules::run::{AccessCandidate, AccessPhase, AccessState, EncounteredSubroutine, RunIce, RunPhase, RunState, ServerId};
-use crate::rules::state::{ArchivedCard, CorpState, OncePerTurnKey, GamePhase, GameState, InstallId, InstallSlot, InstalledCard, InstalledRunnerCard, MemoryUnits, PaidAbilityWindow, PendingDecision, ScoredAgenda,
+use crate::rules::state::{ArchivedCard, OncePerTurnKey, GamePhase, GameState, InstallId, InstallSlot, InstalledCard, InstalledRunnerCard, MemoryUnits, PaidAbilityWindow, PendingDecision, ScoredAgenda,
     PendingPrevention, PlayerResources, Side, TraceState,
 };
 
@@ -72,6 +72,15 @@ pub struct PublicInstalledCard {
     /// a `CardRegistry` to resolve titles, so duplicating it into the view
     /// would be two sources of truth for one fact.
     pub counters: Option<u32>,
+    /// The card's advancement requirement as the table stands
+    /// (`continuous::advancement_requirement`: Ontological Dependence's
+    /// "−1 for each core damage"), signed, since it may fall below 0.
+    /// Masked with `card`, and `None` for a card that prints none. Carried
+    /// because a client cannot ask the continuous layer: it holds a view,
+    /// not a `GameState`, and the printed number on the card is not what
+    /// the score will ask.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub advancement_requirement: Option<i32>,
     /// Never masked: whether the Runner has seen this card's face
     /// (`InstalledCard::seen_by_runner`). The Corp watched the access, so
     /// it is no secret from them, and it is what lets a client draw a card
@@ -590,7 +599,7 @@ impl Viewer {
 pub fn mask_state_for_player(state: &GameState, registry: &CardRegistry, viewer: impl Into<Viewer>) -> PublicGameState {
     let viewer = viewer.into();
     PublicGameState {
-        corp: mask_corp_state(&state.corp, registry, viewer.is(Side::Corp), viewer.is(Side::Runner)),
+        corp: mask_corp_state(state, registry, viewer.is(Side::Corp), viewer.is(Side::Runner)),
         runner: mask_runner_state(state, registry, viewer.is(Side::Runner)),
         phase: state.phase,
         active_run: state.active_run.as_ref().map(|run| mask_run_state(state, registry, run, viewer)),
@@ -1283,7 +1292,7 @@ fn mask_zone(cards: &[CardId], owner_view: bool) -> MaskedZone {
     }
 }
 
-fn mask_installed_card(installed: &InstalledCard, position: usize, owner_view: bool, runner_view: bool) -> PublicInstalledCard {
+fn mask_installed_card(state: &GameState, registry: &CardRegistry, installed: &InstalledCard, position: usize, owner_view: bool, runner_view: bool) -> PublicInstalledCard {
     // What the Runner has seen they remember (`InstalledCard::
     // seen_by_runner`); a spectator saw nothing but the table.
     let identity_visible = owner_view || installed.rezzed || (runner_view && installed.seen_by_runner);
@@ -1301,6 +1310,11 @@ fn mask_installed_card(installed: &InstalledCard, position: usize, owner_view: b
         // than restating the condition: counters and identity are hidden
         // together or not at all, and two copies of the rule could drift.
         counters: identity_visible.then_some(installed.counters),
+        // Asked, like a strength, and hidden with the card: a requirement
+        // the table lowered names the agenda as surely as its title.
+        advancement_requirement: identity_visible
+            .then(|| crate::rules::continuous::advancement_requirement(state, registry, installed.install_id))
+            .flatten(),
         seen_by_runner: installed.seen_by_runner,
     }
 }
@@ -1345,7 +1359,8 @@ fn mask_archives(archives: &[ArchivedCard], owner_view: bool) -> Vec<PublicArchi
     masked
 }
 
-fn mask_corp_state(corp: &CorpState, registry: &CardRegistry, owner_view: bool, runner_view: bool) -> PublicCorpState {
+fn mask_corp_state(state: &GameState, registry: &CardRegistry, owner_view: bool, runner_view: bool) -> PublicCorpState {
+    let corp = &state.corp;
     let identity_recurring = corp.identity.as_ref().and_then(|identity| registry.get(identity)).and_then(|definition| definition.recurring_credits);
     PublicCorpState {
         identity: corp.identity.clone(),
@@ -1357,7 +1372,7 @@ fn mask_corp_state(corp: &CorpState, registry: &CardRegistry, owner_view: bool, 
             .installed
             .iter()
             .enumerate()
-            .map(|(position, card)| mask_installed_card(card, position, owner_view, runner_view))
+            .map(|(position, card)| mask_installed_card(state, registry, card, position, owner_view, runner_view))
             .collect(),
         scored_agendas: corp.scored_agendas.clone(),
         bad_publicity: corp.bad_publicity,
@@ -1441,7 +1456,7 @@ mod tests {
     fn mask_state_for_player(state: &GameState, viewer: impl Into<Viewer>) -> PublicGameState {
         super::mask_state_for_player(state, &CardRegistry::new(), viewer)
     }
-    use crate::rules::state::RunnerState;
+    use crate::rules::state::{CorpState, RunnerState};
     use crate::rules::state::{AgendaPoints, Clicks, Credits, InstallSlot};
 
     fn game_state(corp: CorpState) -> GameState {

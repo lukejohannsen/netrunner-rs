@@ -4022,6 +4022,7 @@ pub(crate) fn resolve_amount(amount: &Amount, ctx: &ResolutionContext<'_>, state
         // decrement.
         Amount::RunnerTags => state.runner.tags,
         Amount::BadPublicity => state.corp.bad_publicity,
+        Amount::CoreDamageTaken => state.runner.brain_damage as u32,
         Amount::IceProtectingThisServer => acting_corp_install(state, ctx).map_or(0, |installed| {
             state.corp.installed.iter().filter(|other| other.server == installed.server && other.slot == InstallSlot::Ice).count() as u32
         }),

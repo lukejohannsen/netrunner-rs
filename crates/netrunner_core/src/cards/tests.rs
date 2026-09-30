@@ -18555,4 +18555,95 @@ mod parhelion {
         accessed.runner.grip = vec![id("sure_gamble"); 3];
         assert_eq!(trash_on_access(&accessed, &registry, 2, "pad_campaign").runner.grip.len(), 3, "one count for both kinds of trash");
     }
+
+    // ---- Stage 3a: the advancement requirement, asked ----
+
+    fn agenda_at(card: &str, tokens: u32) -> crate::rules::InstalledCard {
+        crate::rules::InstalledCard { advancement_tokens: tokens, ..root_at(card, 0) }
+    }
+
+    fn score(state: &GameState, registry: &CardRegistry, card: &str) -> Result<GameState, crate::rules::RulesError> {
+        apply_action(state, registry, PlayerAction::ScoreAgenda { target: install_of(state, card) }).map(|(state, _)| state)
+    }
+
+    fn requirement(state: &GameState, registry: &CardRegistry, card: &str) -> Option<i32> {
+        crate::rules::continuous::advancement_requirement(state, registry, install_of(state, card))
+    }
+
+    #[test]
+    fn ontological_dependence_gets_minus_one_requirement_for_each_core_damage_taken() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.installed = vec![agenda_at("ontological_dependence", 1)];
+        assert_eq!(requirement(&state, &registry, "ontological_dependence"), Some(4));
+        assert!(matches!(
+            score(&state, &registry, "ontological_dependence"),
+            Err(crate::rules::RulesError::AdvancementRequirementNotMet { current: 1, required: 4, .. })
+        ));
+        state.runner.brain_damage = 3;
+        assert_eq!(requirement(&state, &registry, "ontological_dependence"), Some(1));
+        assert_eq!(score(&state, &registry, "ontological_dependence").expect("1 of 1").corp.resources.agenda_points, AgendaPoints(2));
+
+        // Below 0 (CR 1.1.3), and met by no counters at all (CR 1.17.3a).
+        state.runner.brain_damage = 5;
+        state.corp.installed = vec![agenda_at("ontological_dependence", 0)];
+        assert_eq!(requirement(&state, &registry, "ontological_dependence"), Some(-1));
+        assert!(score(&state, &registry, "ontological_dependence").is_ok(), "scored with no advancement counters");
+    }
+
+    #[test]
+    fn freedom_of_information_gets_minus_one_requirement_for_each_tag() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.installed = vec![agenda_at("freedom_of_information", 2)];
+        state.runner.tags = 1;
+        assert!(score(&state, &registry, "freedom_of_information").is_err(), "3 needed");
+        state.runner.tags = 2;
+        assert_eq!(requirement(&state, &registry, "freedom_of_information"), Some(2));
+        assert!(score(&state, &registry, "freedom_of_information").is_ok());
+    }
+
+    #[test]
+    fn regulatory_capture_counts_bad_publicity_up_to_four() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.installed = vec![agenda_at("regulatory_capture", 2)];
+        for (bad_publicity, needed) in [(0, 6), (1, 5), (3, 3), (4, 2), (7, 2)] {
+            state.corp.bad_publicity = bad_publicity;
+            assert_eq!(requirement(&state, &registry, "regulatory_capture"), Some(needed), "{bad_publicity} bad publicity");
+        }
+        assert!(score(&state, &registry, "regulatory_capture").is_ok(), "2 of 2 at 7 bad publicity");
+    }
+
+    /// The view carries the requirement as the table stands, to whoever
+    /// may see the card, and nobody else: a lowered requirement names the
+    /// agenda.
+    #[test]
+    fn a_lowered_requirement_is_in_the_view_of_whoever_sees_the_card() {
+        let registry = registry();
+        let mut state = base_state();
+        state.runner.tags = 3;
+        state.corp.installed = vec![agenda_at("freedom_of_information", 0)];
+        let corp = crate::rules::mask_state_for_player(&state, &registry, Side::Corp);
+        assert_eq!(corp.corp.installed[0].advancement_requirement, Some(1));
+        let runner = crate::rules::mask_state_for_player(&state, &registry, Side::Runner);
+        assert_eq!(runner.corp.installed[0].card, None);
+        assert_eq!(runner.corp.installed[0].advancement_requirement, None, "masked with the card");
+    }
+
+    /// Dividends read the requirement as it was when the score began
+    /// (CR 10.13.2), lowered where the table lowered it.
+    #[test]
+    fn dividends_count_the_counters_past_the_lowered_requirement() {
+        let mut registry = registry();
+        let mut agenda: crate::dsl::CardDefinition = serde_json::from_str(include_str!("../../data/corp/freedom_of_information.json")).expect("the card");
+        agenda.id = id("a_dividends_agenda");
+        agenda.dividends = Some(1);
+        registry.insert(agenda);
+        let mut state = base_state();
+        state.runner.tags = 1;
+        state.corp.installed = vec![agenda_at("a_dividends_agenda", 4)];
+        let scored = score(&state, &registry, "a_dividends_agenda").expect("4 of 3");
+        assert_eq!(scored.corp.scored_agendas[0].agenda_counters, 1, "one counter past a requirement of 3");
+    }
 }
