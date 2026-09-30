@@ -47,7 +47,7 @@ cards each stage takes.
 | 1 | Vantage Point (`vp`) | 66 | 66 | 0 | complete (27 September 2026) |
 | 2 | Rebellion Without Rehearsal (`rwr`) | 65 | 65 | 0 | complete (28 September 2026) |
 | 3 | The Automata Initiative (`tai`) | 65 | 65 | 0 | complete (29 September 2026) |
-| 4 | Parhelion (`ph`) | 63 | 19 | 44 | **Stage 3 next** — the advancement requirement as the deferred `ContinuousKind`, and the Corp words: Ontological Dependence, Freedom of Information, Regulatory Capture, Pulse, Bloop, Simulation Reset, Hypoxia, Mr. Hendrik |
+| 4 | Parhelion (`ph`) | 63 | 22 | 41 | **Stage 3b next** — the Corp words: Simulation Reset, Hypoxia, Mr. Hendrik; then 3c, harmonic ice: Pulse, Bloop |
 | 5 | Midnight Sun (`ms`) + Booster (`msbp`) | 65 + 7 | 0 | 65 + 7 | not started |
 | 6 | Uprising (`ur`) + Booster (`urbp`) | 65 + 7 | 0 | 65 + 7 | not started |
 | 7 | Downfall (`df`) | 65 | 0 | 65 | not started |
@@ -305,7 +305,7 @@ this file keeps; a stage that builds or widens a mechanic updates the cell.
 | Break restrictions ("cannot be broken", "only by …") | PH: Anvil, Unsmiling Tsarevna, Hafrún | MS Trieste Model Bioroids; UR Akhet, NEXT Activation Command | CR 9.8.5 | — |
 | Charge | PH: Flux Capacitor, Orca | MS Captain Padma Isbister, Rigging Up, “Daeg, First Net-Cat”, Stoneship Chart Room | CR 10.10 | — |
 | Mark | PH: Tunnel Vision, Info Bounty | MS Nyusha "Sable" Sintashta, Carpe Diem, Virtuoso, Backstitching | CR 10.11 | — |
-| An agenda's points or advancement requirement changing | VP: Let Them Dream | PH Ontological Dependence, Freedom of Information, Regulatory Capture; UR Megaprix Qualifier, Project Vacheron; reprints Project Beale, SanSan City Grid | CR 3.2.2, CR 3.2.3b | VP 3a (points); requirement is PH 3, next |
+| An agenda's points or advancement requirement changing | VP: Let Them Dream | PH Ontological Dependence, Freedom of Information, Regulatory Capture; UR Megaprix Qualifier, Project Vacheron; reprints Project Beale, SanSan City Grid | CR 3.2.2, CR 3.2.3b | VP 3a (points); PH 3a (requirement, a card's own) |
 | A choice remembered for a duration (a server, an ice, a subtype, a card's name) | RWR: Lycian Multi-Munition | MS Trieste Model Bioroids; UR Boomerang, Engram Flush; DF Whistleblower, Complete Image, Saisentan; reprints Femme Fatale, Security Testing, Chameleon | CR 9.10.3 | RWR 8a |
 | A triggered ability created by a card that resolved ("when your next run ends…") | DF: In the Groove, Climactic Showdown, Always Have a Backup Plan | reprints Inside Job, Test Run | CR 9.10 | RWR 5d in part (a delayed conditional ability); DF's cards — |
 | Lockdown | UR: SYNC Rerouting, Argus Crackdown, NAPD Cordon, NEXT Activation Command, Hyoubu Precog Manifold | — | CR 3.5.1c | — |
@@ -654,9 +654,11 @@ change deck-building rules, which the validator does not model yet
    Katorga Breakout, Nga, Num, Zenit Chip JZ-2MJ, Hippocampic Mechanocytes, Dr. Nuka
    Vrolyck.
 3. **Advancement requirement** (the deferred `ContinuousKind` its doc
-   names) **and Corp words:** Ontological Dependence, Freedom of
-   Information, Regulatory Capture, Pulse, Bloop, Simulation Reset,
-   Hypoxia, Mr. Hendrik.
+   names) **and Corp words**, split by mechanic when it was taken (30
+   September 2026): **3a**, the requirement (built): Ontological
+   Dependence, Freedom of Information, Regulatory Capture; **3b**, the
+   Corp words: Simulation Reset, Hypoxia, Mr. Hendrik; **3c**, harmonic
+   ice: Pulse, Bloop.
 4. **Runner standing and breaker words:** Basilar Synthgland 2KVJ, Dr.
    Vientiane Keeling, K2CP Turbine, Tremolo, Time Bomb, Poison Vial, WAKE
    Implant v2A-JRJ, Abaasy.
@@ -688,6 +690,7 @@ Grid, Tsakhia, World Tree.
 - **Stage 1** — ten Corp cards, composed (`feat/ph-stage-1-corp-composes`, 29 September 2026).
 - **Stage 2a** — seven Runner cards and a Weyland operation, composed (`feat/ph-stage-2a-runner-composes`, 29 September 2026).
 - **Stage 2b** — the Runner's trash of an installed Corp card, its own included (`feat/ph-stage-2b-hostile-architecture`, 29 September 2026).
+- **Stage 3a** — the advancement requirement, asked (`feat/ph-stage-3a-advancement-requirement`, 30 September 2026).
 
 ### 5. Midnight Sun and its Booster Pack — 65 cards (C 22 / V 26 / M 17)
 

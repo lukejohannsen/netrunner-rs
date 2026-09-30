@@ -2578,8 +2578,10 @@ fn score_agenda(
     if card_def.card_type != CardType::Agenda {
         return Err(RulesError::CardNotAgenda { card: card_id });
     }
-    let required = card_def.advancement_requirement.unwrap_or(0);
-    if advancement_tokens < required {
+    // As the table stands (Ontological Dependence), and signed: a
+    // requirement lowered to 0 or below is met by no counters (CR 1.17.3a).
+    let required = continuous::advancement_requirement(state, registry, target).unwrap_or(0);
+    if (advancement_tokens as i32) < required {
         return Err(RulesError::AdvancementRequirementNotMet {
             card: card_id,
             current: advancement_tokens,
@@ -2622,8 +2624,11 @@ fn score_agenda(
     let install_id = next.corp.installed[position].install_id;
     let (_, announced) = uninstall::corp_install(&mut next, registry, install_id)?.ok_or(RulesError::InstallNotFound(install_id))?;
     // Dividends: every advancement counter past the requirement becomes
-    // `dividends` agenda counters on the scored copy (Off the Books).
-    let agenda_counters = card_def.dividends.unwrap_or(0).saturating_mul(advancement_tokens - required);
+    // `dividends` agenda counters on the scored copy (Off the Books) — the
+    // requirement as it was when the score began, before the agenda moved
+    // (CR 10.13.2), which is `required` above.
+    let past = (advancement_tokens as i32 - required).max(0) as u32;
+    let agenda_counters = card_def.dividends.unwrap_or(0).saturating_mul(past);
     next.corp.scored_agendas.push(ScoredAgenda {
         card: card_id.clone(),
         install_id,

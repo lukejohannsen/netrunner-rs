@@ -280,7 +280,7 @@ pub(super) fn advancement_upside(
         }
         let mut advanced = installed.clone();
         advanced.advancement_tokens += amount;
-        let delta = corp_install_value(&advanced, registry, w, rig, horizon) - corp_install_value(installed, registry, w, rig, horizon);
+        let delta = corp_install_value(state, &advanced, registry, w, rig, horizon) - corp_install_value(state, installed, registry, w, rig, horizon);
         worst = Some(worst.map_or(delta, |worst: f64| worst.min(delta)));
     }
     worst.unwrap_or(0.0).max(0.0)

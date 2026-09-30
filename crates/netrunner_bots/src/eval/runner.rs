@@ -54,7 +54,7 @@ pub(super) fn access_prospect(state: &GameState, run: &RunState, registry: &Card
             if let Some(cost) = def.trash_cost
                 && cost <= credits
             {
-                let removed = visible_install_value(installed, registry, w, horizon) * w.opponent_board_weight
+                let removed = visible_install_value(state, installed, registry, w, horizon) * w.opponent_board_weight
                     + if installed.rezzed && !matches!(def.card_type, CardType::Ice(_)) { w.dismantle_weight } else { 0.0 };
                 trash_gain += (removed - f64::from(cost) * w.own_credit_weight).max(0.0);
             }
@@ -184,7 +184,7 @@ pub(super) fn runs_earlier_this_turn(state: &GameState, server: netrunner_core::
 /// The Corp's board as the Runner's evaluation reads it, summed over
 /// `visible_install_value`; subtracted at `opponent_board_weight`.
 pub(super) fn visible_corp_board(state: &GameState, registry: &CardRegistry, w: &Weights, horizon: u32) -> f64 {
-    state.corp.installed.iter().map(|installed| visible_install_value(installed, registry, w, horizon)).sum()
+    state.corp.installed.iter().map(|installed| visible_install_value(state, installed, registry, w, horizon)).sum()
 }
 
 /// `corp_install_value` for a viewer who cannot see under a face-down
@@ -218,9 +218,9 @@ pub(super) fn visible_corp_board(state: &GameState, registry: &CardRegistry, w: 
 /// the Runner column falls 0.000 to 0.010 a rung — which is why a Corp
 /// column taken on this build is not strictly comparable with one taken
 /// before it: the reference Runner is not byte-identical either.
-pub(super) fn visible_install_value(installed: &InstalledCard, registry: &CardRegistry, w: &Weights, horizon: u32) -> f64 {
+pub(super) fn visible_install_value(state: &GameState, installed: &InstalledCard, registry: &CardRegistry, w: &Weights, horizon: u32) -> f64 {
     if installed.rezzed {
-        corp_install_value(installed, registry, w, [true; 3], horizon)
+        corp_install_value(state, installed, registry, w, [true; 3], horizon)
     } else {
         w.unrezzed_install_weight + f64::from(installed.advancement_tokens) * w.advancement_weight
     }

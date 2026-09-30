@@ -286,7 +286,7 @@ pub enum RulesError {
     CardNotAgenda { card: CardId },
 
     #[error("card {card:?} has {current} advancement token(s) but needs {required} to score")]
-    AdvancementRequirementNotMet { card: CardId, current: u32, required: u32 },
+    AdvancementRequirementNotMet { card: CardId, current: u32, required: i32 },
 
     #[error("the Corp cannot score any further agenda this turn")]
     CannotScoreAgendasThisTurn,

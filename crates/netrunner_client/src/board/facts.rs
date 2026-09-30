@@ -289,7 +289,9 @@ pub fn tile_tokens(view: &ClientView, id: InstallId, registry: &CardRegistry) ->
     let def = card.card.as_ref().and_then(|c| registry.get(c));
     let mut tokens = Vec::new();
     if card.advancement_tokens > 0 || def.is_some_and(|d| d.card_type == CardType::Agenda) {
-        match def.and_then(|d| d.advancement_requirement) {
+        // The requirement as the table stands, which the view carries
+        // (Ontological Dependence lowers its own), never the printed one.
+        match card.advancement_requirement {
             Some(need) => tokens.push(Token { kind: TokenKind::Advancement, amount: format!("{}/{need}", card.advancement_tokens) }),
             None if card.advancement_tokens > 0 => tokens.push(Token { kind: TokenKind::Advancement, amount: card.advancement_tokens.to_string() }),
             None => {}
@@ -343,8 +345,13 @@ pub fn install_facts(view: &ClientView, id: InstallId, registry: &CardRegistry) 
                 lines.push("The Runner has seen it — accessed, and still face down".to_string());
             }
             if let Some(def) = def {
-                if let (Some(points), Some(need)) = (def.agenda_points, def.advancement_requirement) {
+                if let (Some(points), Some(need)) = (def.agenda_points, card.advancement_requirement) {
                     lines.push(format!("Agenda worth {points} point{} — advanced {} of {need}", if points == 1 { "" } else { "s" }, card.advancement_tokens));
+                    // What its text makes of the printed number, when that
+                    // is not what it prints.
+                    if let Some(printed) = def.advancement_requirement.filter(|printed| *printed as i32 != need) {
+                        lines.push(format!("Prints an advancement requirement of {printed}; its text makes it {need}"));
+                    }
                 } else if card.advancement_tokens > 0 {
                     lines.push(format!("{} advancement token{}", card.advancement_tokens, if card.advancement_tokens == 1 { "" } else { "s" }));
                 }
@@ -709,6 +716,31 @@ mod tests {
         assert!(!tile_title(&corp, InstallId(901), &registry).contains("faceup"));
         let runner = netrunner_core::view::build_client_view(&state, &registry, Side::Runner);
         assert!(tile_title(&runner, InstallId(901), &registry).contains("face down"));
+    }
+
+    /// An agenda's badge and sheet read the requirement as the table
+    /// stands — Freedom of Information at 3 tags needs 1, not the 4 it
+    /// prints — and the sheet says what it prints beside it.
+    #[test]
+    fn an_agendas_tokens_are_counted_against_the_requirement_as_it_stands() {
+        let registry = crate::decks::sample_deck_registry();
+        let (corp_deck, runner_deck) = sweep_decks_for_seed(0);
+        let (mut state, _) = GameState::setup(&corp_deck.to_deck(), &runner_deck.to_deck(), &registry, 0).unwrap();
+        state.runner.tags = 3;
+        state.corp.installed = vec![netrunner_core::rules::InstalledCard {
+            install_id: InstallId(900),
+            card: CardId("freedom_of_information".into()),
+            server: netrunner_core::rules::ServerId::Remote(0),
+            ..Default::default()
+        }];
+        let corp = netrunner_core::view::build_client_view(&state, &registry, Side::Corp);
+        let badge = tile_tokens(&corp, InstallId(900), &registry);
+        assert_eq!(badge.iter().map(|token| token.amount.clone()).collect::<Vec<_>>(), ["0/1"]);
+        let sheet = install_facts(&corp, InstallId(900), &registry).unwrap();
+        assert!(sheet.iter().any(|line| line.ends_with("advanced 0 of 1")), "{sheet:?}");
+        assert!(sheet.iter().any(|line| line == "Prints an advancement requirement of 4; its text makes it 1"), "{sheet:?}");
+        let runner = netrunner_core::view::build_client_view(&state, &registry, Side::Runner);
+        assert!(tile_tokens(&runner, InstallId(900), &registry).is_empty(), "a face-down card says nothing of its requirement");
     }
 
     /// To the Corp, a face-down card the Runner has already seen is marked

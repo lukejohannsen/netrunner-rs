@@ -8,12 +8,12 @@ use super::*;
 /// the rez added to the card's value, taken back, and
 /// `revealed_trap_weight` more. Zero for anything that is not a face-up
 /// trap. See `REVEALED_TRAP_WEIGHT`.
-pub(super) fn revealed_trap_cost(installed: &InstalledCard, registry: &CardRegistry, w: &Weights, rig: [bool; 3], horizon: u32) -> f64 {
+pub(super) fn revealed_trap_cost(state: &GameState, installed: &InstalledCard, registry: &CardRegistry, w: &Weights, rig: [bool; 3], horizon: u32) -> f64 {
     if !installed.rezzed || !registry.get(&installed.card).is_some_and(punishes_access_with_damage) {
         return 0.0;
     }
     let face_down = InstalledCard { rezzed: false, ..installed.clone() };
-    corp_install_value(installed, registry, w, rig, horizon) - corp_install_value(&face_down, registry, w, rig, horizon)
+    corp_install_value(state, installed, registry, w, rig, horizon) - corp_install_value(state, &face_down, registry, w, rig, horizon)
         + w.revealed_trap_weight
 }
 
@@ -24,7 +24,7 @@ pub(super) fn revealed_trap_cost(installed: &InstalledCard, registry: &CardRegis
 /// is face up, because a face-down asset pays nothing until its rez,
 /// and the card in hand was already priced for what the rez would buy
 /// (`fundamentals::declared_value`).
-pub(super) fn corp_install_value(installed: &InstalledCard, registry: &CardRegistry, w: &Weights, rig: [bool; 3], horizon: u32) -> f64 {
+pub(super) fn corp_install_value(state: &GameState, installed: &InstalledCard, registry: &CardRegistry, w: &Weights, rig: [bool; 3], horizon: u32) -> f64 {
     let def = registry.get(&installed.card);
     let is_ice = def.is_some_and(|d| matches!(d.card_type, CardType::Ice(_)));
     let mut value = if installed.rezzed {
@@ -60,7 +60,9 @@ pub(super) fn corp_install_value(installed: &InstalledCard, registry: &CardRegis
         let etr = def.subroutines.iter().filter(|sub| sub.effect.can_end_the_run()).count();
         value += etr as f64 * w.etr_subroutine_weight;
     }
-    if let Some(required) = def.and_then(|d| d.advancement_requirement) {
+    // The requirement as the table stands (Ontological Dependence lowers
+    // its own), never below 0: a token past it counts for nothing here.
+    if let Some(required) = continuous::advancement_requirement(state, registry, installed.install_id).map(|required| required.max(0) as u32) {
         value += installed.advancement_tokens.min(required) as f64 * w.advancement_weight;
         // Past the requirement a token is worth what it will *become* at
         // score time — `dividends` agenda counters each — and nothing at
@@ -230,7 +232,10 @@ pub(super) fn finishable_agendas(state: &GameState, registry: &CardRegistry) -> 
     let mut can = 0;
     let mut cannot = 0;
     for card in state.corp.installed.iter().filter(|card| card.slot == InstallSlot::Root) {
-        let Some(required) = registry.get(&card.card).filter(|def| def.card_type == CardType::Agenda).and_then(|def| def.advancement_requirement) else { continue };
+        if !registry.get(&card.card).is_some_and(|def| def.card_type == CardType::Agenda) {
+            continue;
+        }
+        let Some(required) = continuous::advancement_requirement(state, registry, card.install_id).map(|required| required.max(0) as u32) else { continue };
         if required.saturating_sub(card.advancement_tokens) <= reach {
             can += 1;
         } else {
@@ -291,8 +296,8 @@ pub(super) fn score(state: &GameState, registry: &CardRegistry, w: &Weights, hor
     // and `corp_install_value` is called for every one of them.
     let rig = rig_coverage(state, registry);
     for installed in &state.corp.installed {
-        *score += corp_install_value(installed, registry, w, rig, horizon);
-        *score -= revealed_trap_cost(installed, registry, w, rig, horizon);
+        *score += corp_install_value(state, installed, registry, w, rig, horizon);
+        *score -= revealed_trap_cost(state, installed, registry, w, rig, horizon);
     }
     *score += f64::from(scored_agenda_counters(state)) * w.agenda_counter_weight;
     *score += protected_agenda_ice(state, registry, w.agenda_protection_cap) as f64 * w.agenda_protection_weight;

@@ -1,0 +1,74 @@
+{
+  "id": "regulatory_capture",
+  "title": "Regulatory Capture",
+  "side": "Corp",
+  "card_type": "Agenda",
+  "cost": 0,
+  "advancement_requirement": 6,
+  "agenda_points": 2,
+  "continuous": [
+    {
+      "kind": {
+        "AdvancementRequirement": {
+          "per": -1
+        }
+      },
+      "applies_to": "This",
+      "while": {
+        "AmountAtLeast": [
+          "BadPublicity",
+          1
+        ]
+      },
+      "text": "For each bad publicity you have up to 4, this agenda gets −1 advancement requirement."
+    },
+    {
+      "kind": {
+        "AdvancementRequirement": {
+          "per": -1
+        }
+      },
+      "applies_to": "This",
+      "while": {
+        "AmountAtLeast": [
+          "BadPublicity",
+          2
+        ]
+      },
+      "text": "For each bad publicity you have up to 4, this agenda gets −1 advancement requirement."
+    },
+    {
+      "kind": {
+        "AdvancementRequirement": {
+          "per": -1
+        }
+      },
+      "applies_to": "This",
+      "while": {
+        "AmountAtLeast": [
+          "BadPublicity",
+          3
+        ]
+      },
+      "text": "For each bad publicity you have up to 4, this agenda gets −1 advancement requirement."
+    },
+    {
+      "kind": {
+        "AdvancementRequirement": {
+          "per": -1
+        }
+      },
+      "applies_to": "This",
+      "while": {
+        "AmountAtLeast": [
+          "BadPublicity",
+          4
+        ]
+      },
+      "text": "For each bad publicity you have up to 4, this agenda gets −1 advancement requirement."
+    }
+  ],
+  "triggers": [],
+  "numeric_id": 33120,
+  "is_playable": true
+}

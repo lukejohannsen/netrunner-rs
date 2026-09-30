@@ -1499,10 +1499,13 @@ fn format_server(server: &ServerView, view: &ClientView, registry: &CardRegistry
         let hosts = if hosted.is_empty() { String::new() } else { format!(" [hosts {}]", hosted.join(", ")) };
         // The Corp's own face-down card the Runner has already seen.
         let rez = if netrunner_client::board::facts::seen_face_down(view, card) { format!("{rez}, seen by the Runner") } else { rez.to_string() };
-        if card.advancement_tokens > 0 {
-            format!("{label} ({rez}, {} adv{counters}){hosts}", card.advancement_tokens)
-        } else {
-            format!("{label} ({rez}{counters}){hosts}")
+        // An agenda's counters against its requirement as the table
+        // stands (the view's, which Ontological Dependence lowers), the
+        // desktop tile's "2/3"; any other card's counters alone.
+        match (agenda, card.advancement_requirement, card.advancement_tokens) {
+            (true, Some(need), tokens) => format!("{label} ({rez}, {tokens}/{need} adv{counters}){hosts}"),
+            (_, _, 0) => format!("{label} ({rez}{counters}){hosts}"),
+            (_, _, tokens) => format!("{label} ({rez}, {tokens} adv{counters}){hosts}"),
         }
     };
     let cards: Vec<String> = server.ice.iter().chain(server.root.iter()).map(describe).collect();
@@ -1806,7 +1809,7 @@ mod tests {
             view.corp.servers.push(ServerView { server: ServerId::Hq, ice: Vec::new(), root: Vec::new() });
         }
         let hq = view.corp.servers.iter_mut().find(|s| s.server == ServerId::Hq).unwrap();
-        hq.ice.push(PublicInstalledCard { install_id: ice, position: 0, server: ServerId::Hq, slot: InstallSlot::Ice, rezzed: true, card: Some(CardId("ice_wall".into())), advancement_tokens: 0, counters: Some(0), seen_by_runner: true });
+        hq.ice.push(PublicInstalledCard { install_id: ice, position: 0, server: ServerId::Hq, slot: InstallSlot::Ice, rezzed: true, card: Some(CardId("ice_wall".into())), advancement_tokens: 0, counters: Some(0), advancement_requirement: None, seen_by_runner: true });
         view.runner.rig.push(PublicInstalledRunnerCard { card: CardId("botulus".into()), install_id: InstallId(9101), current_strength: 0, hosted_on_ice: Some(ice), hosted_on_rig_card: None, hosted_cards: Vec::new(), hosted_facedown: false, hosted_unseen: 0, hosted_cards_playable: false, counters: 1 });
 
         let mut ui = LocalUiState::new(registry, Side::Runner);
@@ -1818,6 +1821,33 @@ mod tests {
         assert!(rows.iter().any(|row| row.contains("Ice Wall (rezzed) [hosts Botulus]")), "the ice lists its Trojan:\n{}", rows.join("\n"));
         let programs = rows.iter().find(|row| row.contains("Programs:")).unwrap();
         assert!(programs.contains("Botulus (") && programs.contains("on Ice Wall"), "the ghost names its host: {programs}");
+    }
+
+    /// The Corp's server line counts an agenda's advancement against its
+    /// requirement as the table stands: Freedom of Information at 3 tags
+    /// needs 1, not the 4 it prints.
+    #[test]
+    fn an_agenda_on_the_server_line_counts_against_the_requirement_as_it_stands() {
+        use netrunner_core::dsl::CardId;
+        use netrunner_core::rules::{InstallId, InstalledCard, ServerId};
+        use netrunner_core::view::build_client_view;
+
+        let registry = decks::sample_deck_registry();
+        let corp_deck = netrunner_core::decks::by_id("discretion_advised").unwrap().to_deck();
+        let runner_deck = netrunner_core::decks::by_id("stolen_goods").unwrap().to_deck();
+        let (mut state, _events) = GameState::setup(&corp_deck, &runner_deck, &registry, 3).unwrap();
+        state.runner.tags = 3;
+        state.corp.installed = vec![InstalledCard {
+            install_id: InstallId(900),
+            card: CardId("freedom_of_information".into()),
+            server: ServerId::Remote(0),
+            advancement_tokens: 1,
+            ..Default::default()
+        }];
+        let view = build_client_view(&state, &registry, Side::Corp);
+        let remote = view.corp.servers.iter().find(|server| server.server == ServerId::Remote(0)).expect("the remote");
+        let line = format_server(remote, &view, &registry);
+        assert!(line.contains("Freedom of Information (facedown, 1/1 adv)"), "{line}");
     }
 
     /// Each block names its identity, the side up for one that flips,

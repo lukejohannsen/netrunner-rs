@@ -1,0 +1,24 @@
+{
+  "id": "freedom_of_information",
+  "title": "Freedom of Information",
+  "side": "Corp",
+  "card_type": "Agenda",
+  "cost": 0,
+  "advancement_requirement": 4,
+  "agenda_points": 2,
+  "continuous": [
+    {
+      "kind": {
+        "AdvancementRequirement": {
+          "per": -1,
+          "of": "RunnerTags"
+        }
+      },
+      "applies_to": "This",
+      "text": "This agenda gets -1 advancement requirement for each tag the Runner has."
+    }
+  ],
+  "triggers": [],
+  "numeric_id": 33112,
+  "is_playable": true
+}
