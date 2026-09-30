@@ -46,7 +46,7 @@ a reinforcement-learning environment — is a consumer of that one engine.
 - **One match loop.** A single pull-shaped `Session` drives every mode: the terminal client pumps
   it synchronously, the server pumps it inside `tokio`, and the RL environment pumps it from
   Python. Sync versus async is a property of who pumps it, never a fork in rules flow.
-- **Bots and training.** Random, heuristic, MCTS and PUCT agents all play from the same masked
+- **Bots and training.** Random, planner, MCTS and PUCT agents all play from the same masked
   view a human gets, with an optional ONNX policy, a PyO3 gym environment over a fixed action
   space, and a self-play trajectory generator.
 
@@ -104,7 +104,7 @@ left out.
 | Crate | Role |
 |---|---|
 | `netrunner_core` | Pure deterministic rules engine, card DSL, embedded card/deck data, masking. Everything else depends on this; it depends on nothing. |
-| `netrunner_bots` | Automated players over a masked `ClientView`: `BotAgent`, random/heuristic/MCTS/PUCT agents, `determinize`, RL observation encoding, optional ONNX policy. |
+| `netrunner_bots` | Automated players over a masked `ClientView`: `BotAgent`, random/planner/MCTS/PUCT agents (the planner is the ladder's every rung), `determinize`, RL observation encoding, optional ONNX policy. |
 | `netrunner_session` | The one match decision loop. `Session`, `Seat`, the single step budget, `MatchHistory`, and end-of-match classification. Every driver pumps this. |
 | `netrunner_single_player` | Thin index-based adapter over `netrunner_session` for the RL / fixed-action-space path. |
 | `netrunner_protocol` | The wire messages between a server and a client, which both ends depend on and neither owns. |

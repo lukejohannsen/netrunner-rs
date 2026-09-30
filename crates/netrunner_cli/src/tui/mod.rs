@@ -287,8 +287,7 @@ fn replay_key(replay: &mut Replay, key: KeyCode) -> bool {
 
 /// The unguided starter game (ROADMAP Phase 1.75 §8's graduation): the two
 /// preset decks under their own category's rules — 6 points for the
-/// starter lists, Standard 7 with the boosters — against the heuristic
-/// bot. The only path that plays a starter deck at 6 points; ordinary
+/// starter lists, Standard 7 with the boosters — against the planner. The only path that plays a starter deck at 6 points; ordinary
 /// `--corp-deck the_syndicate_starter` play uses Standard rules, because a
 /// saved deck carries no category and guessing one from a name would be
 /// the kind of client-side rule the crate map forbids.
@@ -309,16 +308,16 @@ pub fn play_starter_game(
     let bot_deck = if human_side == Side::Corp { runner } else { corp };
     let style = config.style_for(human_side.other(), bot_deck)?;
     let bot = bots::make_agent(
-        BotKind::Heuristic,
+        BotKind::Planner,
         human_side.other(),
         seed.wrapping_add(1),
         bots::AgentSetup::new(DEFAULT_SIMULATIONS).with_style(style).with_knowledge(config.knowledge(bot_deck)),
     )
-    .expect("the heuristic always has a BotAgent form");
+    .expect("the planner always has a BotAgent form");
     // Recorded like any other local game: the starter game is a person's
     // first real opponent, and its result is the first line of their
     // record.
-    let seat = record::seat_record(config, human_side, None, BotKind::Heuristic, style, seed, &corp.id, &runner.id)?;
+    let seat = record::seat_record(config, human_side, None, BotKind::Planner, style, seed, &corp.id, &runner.id)?;
     let (corp_seat, runner_seat) = match human_side {
         Side::Corp => (Seat::External, Seat::Agent(bot)),
         Side::Runner => (Seat::Agent(bot), Seat::External),

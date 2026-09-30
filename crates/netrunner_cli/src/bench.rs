@@ -6,7 +6,7 @@
 //!
 //! **Why a ladder and not a win rate.** A trained policy is measured by
 //! the arena's head-to-head score against one incumbent, which says
-//! nothing about how it fares against the heuristic or the random bot,
+//! nothing about how it fares against the planner or the random bot,
 //! and a win rate has no error bar. A rating per role against every kind
 //! at once is one number per chair, with an interval that says how much
 //! of it is evidence. `--bots puct,puct-onnx --model X` is the arena with
@@ -124,7 +124,7 @@ pub struct BenchReport {
 /// The participant id a bot rates under: the kind's name, the search
 /// budget for the kinds that have one (`puct@32` and `puct@200` are
 /// different players), the style when it is not balanced
-/// (`heuristic:fast-advance`, `planner:glacier+fast-advance`), and
+/// (`planner:fast-advance`, `planner:glacier+fast-advance`), and
 /// `--label` if given.
 pub fn participant_id(bot: BotSpec, simulations: usize, label: Option<&str>) -> String {
     // A rung rates under its own name, not the bot it happens to be
@@ -432,10 +432,10 @@ mod tests {
         let report_path = dir.join("bench.json");
         let ratings_path = dir.join("ratings.json");
         let (args, config) = parse(&[
-            "--bots", "random,heuristic", "--games", "1", "--seed", "7", "--threads", "2",
+            "--bots", "random,planner", "--games", "1", "--seed", "7", "--threads", "2",
             "--report", report_path.to_str().unwrap(), "--ratings", ratings_path.to_str().unwrap(),
         ]);
-        run(&args, &config).expect("four random/heuristic games play out");
+        run(&args, &config).expect("four random/planner games play out");
 
         let report: serde_json::Value = serde_json::from_str(&fs::read_to_string(&report_path).unwrap()).unwrap();
         assert_eq!(report["games"].as_array().unwrap().len(), 4);
@@ -456,7 +456,7 @@ mod tests {
         // Same seed, fresh book, one thread: the same ladder, because the
         // ratings are applied in game order after the games finish.
         let fresh = dir.join("fresh.json");
-        let (args, config) = parse(&["--bots", "random,heuristic", "--games", "1", "--seed", "7", "--threads", "1", "--ratings", fresh.to_str().unwrap()]);
+        let (args, config) = parse(&["--bots", "random,planner", "--games", "1", "--seed", "7", "--threads", "1", "--ratings", fresh.to_str().unwrap()]);
         run(&args, &config).unwrap();
         let second_book = RatingBook::from_json(&fs::read_to_string(&fresh).unwrap()).unwrap();
         assert_eq!(first_book, second_book);
@@ -473,7 +473,7 @@ mod tests {
         fs::create_dir_all(&dir).unwrap();
         let report = |extra: &[&str], name: &str| {
             let path = dir.join(name);
-            let mut argv = vec!["--bots", "random,heuristic", "--games", "2", "--seed", "11", "--threads", "2", "--report", path.to_str().unwrap()];
+            let mut argv = vec!["--bots", "random,planner", "--games", "2", "--seed", "11", "--threads", "2", "--report", path.to_str().unwrap()];
             argv.extend_from_slice(extra);
             let (args, config) = parse(&argv);
             run(&args, &config).unwrap();
@@ -481,14 +481,14 @@ mod tests {
             report["games"].as_array().unwrap().clone()
         };
         let whole = report(&[], "whole.json");
-        let filtered = report(&["--pairing", "heuristic/random"], "filtered.json");
+        let filtered = report(&["--pairing", "planner/random"], "filtered.json");
 
         assert_eq!(filtered.len(), 2);
-        let same_pairing: Vec<_> = whole.iter().filter(|g| g["corp"] == "heuristic" && g["runner"] == "random").cloned().collect();
+        let same_pairing: Vec<_> = whole.iter().filter(|g| g["corp"] == "planner" && g["runner"] == "random").cloned().collect();
         assert_eq!(filtered, same_pairing, "a filtered game is that game in the whole square");
         assert_eq!(filtered[0]["index"], 4, "the index counts the skipped pairings, so the seed does too");
 
-        let (args, config) = parse(&["--bots", "random", "--pairing", "heuristic/random"]);
+        let (args, config) = parse(&["--bots", "random", "--pairing", "planner/random"]);
         assert!(run(&args, &config).is_err(), "a pairing side outside --bots has no place in the square");
         let _ = fs::remove_dir_all(&dir);
     }
@@ -497,17 +497,18 @@ mod tests {
     fn search_kinds_carry_their_budget_and_styles_their_name_in_the_participant_id() {
         let spec = |s: &str| s.parse::<BotSpec>().unwrap();
         assert_eq!(participant_id(spec("puct"), 64, None), "puct@64");
-        assert_eq!(participant_id(spec("heuristic"), 64, None), "heuristic");
-        assert_eq!(participant_id(spec("heuristic:fast-advance"), 64, None), "heuristic:fast-advance");
+        assert_eq!(participant_id(spec("planner"), 64, None), "planner");
+        assert_eq!(participant_id(spec("planner:fast-advance"), 64, None), "planner:fast-advance");
         assert_eq!(participant_id(spec("planner:glacier+fast-advance"), 64, None), "planner:glacier+fast-advance");
-        assert!("heuristic:rush".parse::<BotSpec>().is_err(), "the old name is gone");
+        assert!("planner:rush".parse::<BotSpec>().is_err(), "the old name is gone");
+        assert!("heuristic".parse::<BotSpec>().is_err(), "the reference is gone");
         assert_eq!(participant_id(spec("mcts:pressure"), 32, Some("abc123")), "mcts@32:pressure#abc123");
         assert!("mcts:cautious".parse::<BotSpec>().is_err(), "the old Runner style is gone");
         assert_eq!(participant_id(spec("level:elite"), 64, None), "level:elite");
         assert_eq!(participant_id(spec("level:5:glacier"), 64, None), "level:elite:glacier");
         assert_eq!(spec("level:elite:balanced"), spec("level:elite"));
         assert!("level:elite:berserk".parse::<BotSpec>().is_err());
-        assert!("heuristic:berserk".parse::<BotSpec>().is_err());
+        assert!("planner:berserk".parse::<BotSpec>().is_err());
         assert!("android".parse::<BotSpec>().is_err());
     }
 

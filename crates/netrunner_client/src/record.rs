@@ -24,7 +24,7 @@
 //! **A bot is recorded under one id per rung** (`Level::record_id`,
 //! `bot:veteran`), not per style: the rung is the strength claim, and a
 //! player's record against it should span the styles it plays. A bot
-//! seated by kind rather than rung is `bot:heuristic`, `bot:mcts:glacier`.
+//! seated by kind rather than rung is `bot:planner`, `bot:mcts:glacier`.
 //!
 //! **A quit is a loss, once the game is under way.** Nothing is at stake
 //! but the suggestion's honesty: a record a player could quit out of would
@@ -66,7 +66,6 @@ pub enum Outcome {
 pub enum BotKind {
     Human,
     Random,
-    Heuristic,
     Planner,
     Mcts,
     Puct,
@@ -151,7 +150,6 @@ pub fn opponent_id(level: Option<Level>, kind: BotKind, style: Style) -> String 
     let kind = match kind {
         BotKind::Human => "human",
         BotKind::Random => "random",
-        BotKind::Heuristic => "heuristic",
         BotKind::Planner => "planner",
         BotKind::Mcts => "mcts",
         BotKind::Puct => "puct",
@@ -487,7 +485,7 @@ mod tests {
     fn a_rung_is_recorded_by_its_name_and_a_kind_by_its_own() {
         use netrunner_bots::Plan;
         assert_eq!(opponent_id(Some(Level::Veteran), BotKind::Random, Style::of(Plan::FastAdvance)), "bot:veteran");
-        assert_eq!(opponent_id(None, BotKind::Heuristic, Style::BALANCED), "bot:heuristic");
+        assert_eq!(opponent_id(None, BotKind::Planner, Style::BALANCED), "bot:planner");
         assert_eq!(opponent_id(None, BotKind::Mcts, Style::of(Plan::Glacier)), "bot:mcts:glacier");
         assert_eq!(opponent_id(None, BotKind::Planner, Style::new(&[Plan::Glacier, Plan::FastAdvance]).unwrap()), "bot:planner:glacier+fast-advance");
     }

@@ -4,7 +4,7 @@
 //! and it is the one that stalled 14–23 of every 48 arena games in the
 //! September 2026 volume run (ROADMAP Phase 2 §5).
 
-use netrunner_bots::{HeuristicAgent, MctsAgent, PolicyEvaluator, PuctAgent, PuctConfig, RandomAgent, UniformPolicyEvaluator};
+use netrunner_bots::{MctsAgent, PlanningAgent, PolicyEvaluator, PuctAgent, PuctConfig, RandomAgent, UniformPolicyEvaluator};
 use netrunner_core::cards::CardRegistry;
 use netrunner_core::dsl::{CardDefinition, CardFilter, CardId, CardType, CardZoneRef, IceType};
 use netrunner_core::rules::{
@@ -159,7 +159,7 @@ fn plutus_pay_pending() -> (GameState, CardRegistry) {
 fn every_agent_kind(side: Side) -> Vec<(&'static str, Seat)> {
     vec![
         ("random", Seat::Agent(Box::new(RandomAgent::new(7)))),
-        ("heuristic", Seat::Agent(Box::new(HeuristicAgent::new(side, 7)))),
+        ("planner", Seat::Agent(Box::new(PlanningAgent::new(side, 7)))),
         ("mcts", Seat::Agent(Box::new(MctsAgent::with_iterations(side, 7, 16)))),
         ("puct/uniform", puct_seat(side, 7, UniformPolicyEvaluator::new(side))),
         ("puct/toggle-lover", puct_seat(side, 7, ToggleLover)),

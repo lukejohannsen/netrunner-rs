@@ -42,8 +42,8 @@ pub fn open(config: &Config, registry: &CardRegistry) -> Result<StartMenu, Strin
 /// rung overrides), the style as the style flag, the decks by id.
 pub fn apply_choice(choice: &StartChoice, config: &mut Config) {
     let bot = choice.human.other();
-    config.corp = if choice.human == Side::Corp { BotKind::Human } else { BotKind::Heuristic };
-    config.runner = if choice.human == Side::Runner { BotKind::Human } else { BotKind::Heuristic };
+    config.corp = if choice.human == Side::Corp { BotKind::Human } else { BotKind::Planner };
+    config.runner = if choice.human == Side::Runner { BotKind::Human } else { BotKind::Planner };
     config.corp_level = (bot == Side::Corp).then_some(choice.level);
     config.runner_level = (bot == Side::Runner).then_some(choice.level);
     config.corp_style = if bot == Side::Corp { choice.style } else { None };
@@ -191,13 +191,13 @@ mod tests {
         };
         let mut config = Config::try_parse_from(["netrunner_cli"]).unwrap();
         apply_choice(&choice, &mut config);
-        assert_eq!((config.corp, config.runner), (BotKind::Heuristic, BotKind::Human));
+        assert_eq!((config.corp, config.runner), (BotKind::Planner, BotKind::Human));
         assert_eq!((config.corp_level, config.runner_level), (Some(Level::Veteran), None));
         assert_eq!((config.corp_style, config.runner_style), (Some(Style::of(Plan::Glacier)), None));
         assert_eq!((config.corp_deck.as_str(), config.runner_deck.as_str()), ("brick_stack", "dashing_mad"));
         // The same request as the flags, so the two paths cannot diverge.
         let flags = Config::try_parse_from([
-            "netrunner_cli", "--runner", "human", "--corp", "heuristic", "--corp-level", "veteran", "--corp-style", "glacier",
+            "netrunner_cli", "--runner", "human", "--corp", "planner", "--corp-level", "veteran", "--corp-style", "glacier",
             "--corp-deck", "brick_stack", "--runner-deck", "dashing_mad",
         ])
         .unwrap();

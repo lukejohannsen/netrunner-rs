@@ -81,13 +81,12 @@ pub use stage::{horizon, stage, Stage};
 // Economy at the guide's rate (Phase 5 §25 Stage 5). **Every constant in
 // this block is zero in `Weights::default()` and set by
 // `Weights::at_the_guides_rate`**, which the turn planner scores with.
-// The one-ply `HeuristicAgent` scores with the default, so it is the
-// fixed reference the planner is measured against and the base of every
-// ladder rung until Stage 8 — a term that moved the default would move
-// the reference and the rungs with it, and the measurement would be of
-// nothing. Stage 8 makes these the default when the reference is
-// deleted. The strategy guide's sentences are quoted where a constant
-// is theirs.
+// The default was the one-ply reference's until Stage 8 deleted it, and
+// it stays the base every profile and every term is a delta from: the
+// evaluator's other readers (`MctsAgent`, the uniform PUCT evaluator, the
+// gym's reward) score with it, and every constant's record is a
+// measurement against it. The strategy guide's sentences are quoted
+// where a constant is theirs.
 // ---------------------------------------------------------------------
 
 /// Each click its owner has left this turn. "A click can always be
@@ -778,8 +777,8 @@ const ETR_SUBROUTINE_WEIGHT: f64 = 1.0;
 /// unrezzed-remote run is worth exactly what it was, a known Archives is
 /// worth nothing and loses to the credit, and a second run on the same
 /// server this turn is worth nothing except on HQ, where every access is a
-/// fresh random card. `Aggressive`'s 1.2 and `Cautious`'s 0.4 keep their
-/// meaning, per card. The successful-run term below is unchanged: it is
+/// fresh random card. (The old `Aggressive` profile's 1.2 and `Cautious`'s
+/// 0.4 kept their meaning, per card; both are gone with the reference.) The successful-run term below is unchanged: it is
 /// the search's door term, sized by its own sweep, and it does not read
 /// the server either.
 const ACTIVE_RUN_WEIGHT: f64 = 0.6;
@@ -1511,8 +1510,8 @@ impl Default for Weights {
 }
 
 /// A rough static evaluation of `state` from `side`'s perspective: positive
-/// favors `side`, negative favors the opponent. Shared by `HeuristicAgent`'s
-/// one-ply scoring, `MctsAgent`'s rollout/leaf evaluation, the uniform
+/// favors `side`, negative favors the opponent. Shared by `PlanningAgent`'s
+/// line and one-ply scoring, `MctsAgent`'s rollout/leaf evaluation, the uniform
 /// PUCT evaluator's value head, and the gym's shaped reward.
 ///
 /// Reads `PlayerResources::agenda_points` directly rather than re-deriving
@@ -1654,7 +1653,7 @@ mod tests {
     /// general terms, balanced included, and each plan its own; a Corp
     /// seat carries none of them.
     #[test]
-    fn the_runners_plan_terms_are_off_in_every_weights_the_reference_scores_with() {
+    fn the_runners_plan_terms_are_off_in_every_profile_and_on_for_a_planner_runner() {
         use crate::plans::{Plan, Style};
         let off = |w: &Weights| [w.last_click_run_weight, w.feared_flatline_weight, w.runner_stakes_weight, w.unshown_breaker_weight, w.hq_pressure_weight, w.dismantle_weight, w.rd_access_weight];
         assert_eq!(off(&Weights::default()), [0.0; 7]);
@@ -1668,7 +1667,7 @@ mod tests {
         assert_eq!(off(&Weights::default().with_plans(Side::Corp, &Style::of(Plan::Glacier))), [0.0; 7], "a Corp seat switches on no Runner term");
         let pressure = Style::of(Plan::Pressure).planned_weights(Side::Runner);
         assert!(pressure.hq_pressure_weight > 0.0 && pressure.dismantle_weight == 0.0 && pressure.rd_access_weight == 0.0);
-        assert_eq!(pressure.active_run_weight, Weights::default().active_run_weight, "the profile is the reference's, not the planner's");
+        assert_eq!(pressure.active_run_weight, Weights::default().active_run_weight, "no Runner plan has a profile");
         assert_eq!(Weights { hq_pressure_weight: 0.0, ..pressure }, Style::BALANCED.planned_weights(Side::Runner), "a Runner plan is its lever alone to the planner");
         let dismantle = Style::of(Plan::Dismantle).planned_weights(Side::Runner);
         assert!(dismantle.dismantle_weight > 0.0 && dismantle.hq_pressure_weight == 0.0);
@@ -1681,7 +1680,6 @@ mod tests {
         assert!(stacked.rd_access_weight > 0.0 && stacked.dismantle_weight > 0.0);
         let stacked = Style::new(&[Plan::Pressure, Plan::Rig]).unwrap().planned_weights(Side::Runner);
         assert!(stacked.rd_access_weight > 0.0 && stacked.hq_pressure_weight > 0.0);
-        assert_eq!(Style::of(Plan::Rig).weights(), Plan::Rig.weights(), "and the reference still scores the profile");
         assert!(stacked.unshown_breaker_weight < stacked.breaker_coverage_weight, "a breaker for unshown ICE is still worth installing");
         assert!(stacked.feared_flatline_weight < AGENDA_POINT_WEIGHT / 5.0, "the fear is under what a breach may find");
     }

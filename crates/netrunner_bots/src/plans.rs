@@ -22,17 +22,17 @@
 //!
 //! **This replaced `Personality`, outright.** A personality was "a bias,
 //! not a plan": a handful of the shared `Weights` moved, one profile per
-//! deck, and nothing that could say "first this, then that". The
+//! deck, and nothing that could say "first this, then that". The Corp
 //! profiles' numbers are kept exactly, under the plans' names
-//! (`Plan::weights`: `Rush` is `FastAdvance`, `Trap` is `Traps`), because
-//! the one-ply `HeuristicAgent` — the fixed reference every stage is
-//! measured against, and the base of every ladder rung until Stage 8 —
-//! scores with `Style::weights`, **the first plan's profile and nothing
-//! else**, so it has not moved by a bit: a deck that now stacks two plans
-//! is played by the reference as it played its one style. Only
-//! `PlanningAgent` reads the whole list (`Style::planned_weights`), which
-//! is where the stack and every Stage 6 term live; Stage 8 makes them the
-//! default when the reference is deleted. There is no `Balanced` plan: a
+//! (`Plan::weights`: `Rush` is `FastAdvance`, `Trap` is `Traps`), and the
+//! planner starts from the first plan's profile (`Style::weights`) and
+//! switches on every plan on the list (`Style::planned_weights`), which
+//! is where the stack and every Stage 6 term live. Until Stage 8 the
+//! one-ply `HeuristicAgent` — the fixed reference every stage was
+//! measured against — scored with `Style::weights` alone, the first
+//! plan's profile and nothing else, so that it never moved; Stage 8
+//! deleted it once the planner had beaten it on both chairs, and the
+//! planner is the bot at every rung. There is no `Balanced` plan: a
 //! balanced bot is an empty style, `Weights::default()`.
 //!
 //! **The Runner's plans are the guide's three factions, and the seat's
@@ -42,16 +42,17 @@
 //! takes the Corp's money (`Pressure`), Shaper builds the rig that makes
 //! every run cheap and exact, above all on R&D (`Rig`). A Runner deck
 //! names them as a Corp deck names its plans, and a deck that names none
-//! is played by the planner in its identity's faction's plan
-//! (`Plan::for_faction`, `Style::or_faction`) — the identity is public,
-//! so the reading costs nothing and a saved deck with no style still
-//! plays its chapter. The reference reads no faction: an unstyled deck
-//! is balanced to it, as it always was. The old Runner styles were
-//! profiles, and two of them keep their numbers under the plans' names
-//! (`Pressure` is `Aggressive`'s, `Rig` is `Builder`'s); `Cautious` and
-//! `Wary` were one deck's and two decks' dials with no chapter of the
-//! guide behind them, and those decks now name their faction's plan.
-//! `Dismantle`, like `Kill`, is the planner's terms and no profile.
+//! is played in its identity's faction's plan (`Plan::for_faction`,
+//! `Style::or_faction`) — the identity is public, so the reading costs
+//! nothing and a saved deck with no style still plays its chapter. **A
+//! Runner plan is its lever alone, and has no profile.** The old Runner
+//! styles were profiles; two of them (`Aggressive`, `Builder`) kept their
+//! numbers under `Pressure` and `Rig` for the reference through Stage 7,
+//! which measured them as a cost to the planner — 0.03 and 0.07 of the
+//! chair, dials tuned against a chooser with no economy term — and Stage
+//! 8 deleted them with the reference. `Cautious` and `Wary` were one
+//! deck's and two decks' dials with no chapter of the guide behind them,
+//! and those decks now name their faction's plan.
 //!
 //! **Every Runner reads the Corp's identity too**: the last-click term
 //! and the feared flatline (`LAST_CLICK_RUN_WEIGHT`,
@@ -185,11 +186,12 @@ impl Plan {
         }
     }
 
-    /// The plan's profile — what the one-ply reference scores with when
-    /// the plan leads a style. Every number here is a ratio against the
-    /// balanced constant it replaces; the reasoning for the balanced value
-    /// is on that constant in `eval`. These are the `Personality` profiles
-    /// as they were measured, unmoved, so the reference is pinned.
+    /// The plan's profile — the dials a seat starts from when the plan
+    /// leads a style. Every number here is a ratio against the balanced
+    /// constant it replaces; the reasoning for the balanced value is on
+    /// that constant in `eval`. The Corp's are the `Personality` profiles
+    /// as they were measured, unmoved; the Runner's plans have none
+    /// (module docs).
     pub fn weights(self) -> Weights {
         let base = Weights::default();
         match self {
@@ -323,74 +325,17 @@ impl Plan {
                 ambush_advancement_cap: 7,
                 ..base
             },
-            // The kill plan is the planner's terms and no profile: the
-            // Corp that plays it is balanced in everything the reference
-            // reads, so a kill deck under the reference is a balanced
-            // Corp, which is what it was before the plan existed.
+            // The kill plan is the planner's terms and no profile: a kill
+            // Corp starts from the balanced dials, which is what it was
+            // before the plan existed.
             Plan::Kill => base,
-            // The dismantle plan is the planner's terms and no profile,
-            // as the kill plan is: an Anarch deck under the reference is
-            // a balanced Runner, which is what an unstyled deck was.
-            Plan::Dismantle => base,
-            Plan::Pressure => Weights {
-                // The old `Aggressive` profile, unmoved. A run at 1.2
-                // beats a credit at every click, and the opponent's
-                // credits are worth denying.
-                //
-                // **Audited against the balanced Corp (ROADMAP Phase 5
-                // §16), and the grip and the subroutine went back to
-                // balanced.** Shipped with a thinner grip (floor 2 at
-                // 0.4 a card) and an unbroken subroutine at 0.7, the
-                // profile lost +0.040 of Corp win share to balanced over
-                // the same 2,304 games (z 4.4), and was flatlined 140
-                // times where balanced was 36: the pressure it bought was
-                // paid for in damage it could not absorb. Repaired, the
-                // Corp's share falls 0.188 → 0.155 (z 5.3), flatlines
-                // 140 → 58, and it falls against every Corp profile while
-                // the profile still runs 20.7 times a game to balanced's
-                // 17.9. **The run weight is the archetype, and it is its
-                // remaining cost**: back at 0.6 it is flat against the
-                // balanced Corp and −0.041 against `rush` (z 4.4). A
-                // Runner that does not run more is not this profile, so
-                // it stays.
-                active_run_weight: 1.2,
-                savings_shortfall_weight: 0.15,
-                tag_weight: 2.5,
-                opponent_credit_weight: 0.4,
-                ..base
-            },
-            Plan::Rig => Weights {
-                // The old `Builder` profile, unmoved. It was distinct
-                // from a `Cautious` profile about safety (grip floor,
-                // tags, savings), which is gone: this is about the rig.
-                //
-                // **Presence is *below* balanced, and that is the profile.**
-                // It was 1.6 — "a rig card beats a credit click by four to
-                // one" — and that made this the worst Runner profile in
-                // the pool: the balanced Corp won 0.305 of 2,304 games
-                // against it (six seeds × 384) where it wins 0.148 against
-                // balanced. A flat bonus on *any* rig card outbids the
-                // click that saves for a breaker, so the Runner spent its
-                // credits on the table and could not pay for the breakers
-                // the coverage term was asking for. At 0.4 — exactly
-                // `own_credit_weight`, so a card that breaks nothing is
-                // worth the credit it costs and no more — the rig is
-                // breakers, and the Corp's win share falls to **0.121**
-                // over the same games (ROADMAP Phase 5 §7). The response
-                // is flat from 0.0 to 0.6 and climbs from there, so the
-                // claim is "no more than a credit", not the digit.
-                // `memory_weight` 0.8 values a console's headroom and
-                // taxes each program's MU by the same coin; it and
-                // `breaker_coverage_weight` measured neutral once presence
-                // was fixed and stay. **The grip floor stays at 3**: at 2
-                // the Runner was flatlined 18 → 26 and 13 → 21 on two of
-                // three seeds. Installing from a thin grip is how a
-                // builder dies.
-                board_presence_weight: 0.4,
-                memory_weight: 0.8,
-                breaker_coverage_weight: 4.0,
-                ..base
-            },
+            // No Runner plan has a profile (module docs): `Pressure` and
+            // `Rig` carried `Aggressive`'s and `Builder`'s numbers for
+            // the reference until Stage 8, and the planner never scored
+            // with them — measured, they cost it 0.03 and 0.07 of the
+            // chair (Stage 7). Their records are in the archive's Phase 5
+            // §7, §16 and §17.
+            Plan::Dismantle | Plan::Pressure | Plan::Rig => base,
         }
     }
 }
@@ -466,7 +411,7 @@ impl Style {
         self.0[0].is_none()
     }
 
-    /// The plan that leads: what the reference scores with.
+    /// The plan that leads: whose profile the seat starts from.
     pub fn first(&self) -> Option<Plan> {
         self.0[0]
     }
@@ -514,8 +459,7 @@ impl Style {
     /// whatever its faction — the list overrides the identity, as the
     /// plan said it would — and the Corp's factions default to nothing,
     /// because the guide's Corp plans are ways to make a window and not a
-    /// faction's. The reference never calls this: an unstyled deck is
-    /// balanced to it, so it has not moved.
+    /// faction's.
     pub fn or_faction(self, side: Side, faction: Option<Faction>) -> Style {
         if !self.is_balanced() {
             return self;
@@ -523,42 +467,25 @@ impl Style {
         faction.and_then(Plan::for_faction).filter(|plan| plan.side() == side).map_or(self, Style::of)
     }
 
-    /// The reference's weights: the first plan's profile, or the default.
-    /// One plan, because the one-ply chooser is the fixed reference and
-    /// scored one profile when these were personalities — a deck that
-    /// stacks two plans is played by the reference as it played its one
-    /// style, so the measurement of the planner is against a chooser that
-    /// did not move (module docs).
+    /// The first plan's profile, or the default: the dials a seat starts
+    /// from before the guide's rate and the plans' terms
+    /// (`planned_weights`), and what the searches (`MctsAgent`, the
+    /// uniform PUCT evaluator) score with whole. One plan, because a
+    /// profile is a set of the shared dials and two cannot both be
+    /// started from; the second plan on a list is its terms alone.
     pub fn weights(&self) -> Weights {
         self.first().map_or_else(Weights::default, Plan::weights)
     }
 
-    /// The planner's weights for a seat on `side`: for the Corp the
-    /// reference's (the first plan's profile), for the Runner the
-    /// balanced dials, at the guide's rate (Stage 5), with every seat's
-    /// plan terms on and every plan on the list switched on (Stages 6 and
-    /// 7, `Weights::with_plans`). The side is the seat's, not the
-    /// style's: a balanced Corp planner still plays the guide's "Playing
-    /// the Corp" chapter.
-    ///
-    /// **A Runner plan is its lever alone to the planner, and its profile
-    /// is the reference's.** The Corp's profiles carried into the planner
-    /// and measured well (Stage 6: glacier's protection, the fort's
-    /// dials). The Runner's did not: with the faction default seating
-    /// them on every unstyled deck, the planner's Runner leg was 0.03 and
-    /// 0.07 of win share under the same leg with no profile (Stage 7's
-    /// ablation, 384 games a seed, the last-click and stakes terms off in
-    /// both), Criminal and Shaper each about 0.1 under Stage 6's. They
-    /// were tuned against a chooser with no economy term — a run at 1.2
-    /// for a seat that already prices what a run finds, a rig card at
-    /// 0.4 for a seat that prices what an economy card pays — and under
-    /// the guide's rate each is a dial turned the wrong way.
+    /// The planner's weights for a seat on `side`: the first plan's
+    /// profile (`weights`; the balanced dials for every Runner plan), at
+    /// the guide's rate (Stage 5), with every seat's plan terms on and
+    /// every plan on the list switched on (Stages 6 and 7,
+    /// `Weights::with_plans`). The side is the seat's, not the style's: a
+    /// balanced Corp planner still plays the guide's "Playing the Corp"
+    /// chapter, and a balanced Runner planner the Runner's.
     pub fn planned_weights(&self, side: Side) -> Weights {
-        let dials = match side {
-            Side::Corp => self.weights(),
-            Side::Runner => Weights::default(),
-        };
-        dials.at_the_guides_rate().with_plans(side, self)
+        self.weights().at_the_guides_rate().with_plans(side, self)
     }
 }
 
@@ -677,33 +604,23 @@ mod tests {
             "Traps deviates from balanced in its ambush terms and nothing else"
         );
         assert_eq!(Plan::Kill.weights(), base, "the kill plan has no profile; its terms are the planner's");
-        assert_eq!(Plan::Dismantle.weights(), base, "the dismantle plan has no profile; its terms are the planner's");
-        let pressure = Plan::Pressure.weights();
-        assert!(pressure.active_run_weight > base.active_run_weight);
-        // A thinner grip got this profile flatlined four times as often as
-        // balanced (ROADMAP Phase 5 §16: repaired, +0.040 → +0.007).
-        assert!(pressure.grip_floor >= base.grip_floor && pressure.grip_shortfall_weight >= base.grip_shortfall_weight);
-        assert!(pressure.pending_subroutine_weight >= base.pending_subroutine_weight);
-        let rig = Plan::Rig.weights();
-        assert!(rig.board_presence_weight < base.board_presence_weight, "a rig pays for coverage, not for cards");
-        assert!(rig.board_presence_weight <= rig.own_credit_weight, "a rig card that breaks nothing is worth no more than a credit");
-        assert!(rig.breaker_coverage_weight > base.breaker_coverage_weight && rig.memory_weight > base.memory_weight);
-        assert_eq!(rig.grip_floor, base.grip_floor, "a builder that installs from a thin grip gets flatlined for it");
-        // No Runner profile reads an unrezzed card: `Wary`'s one term is
-        // gone with the plan, and its record is on the constant.
+        // No Runner plan has a profile: the old ones were the reference's
+        // and went with it (Stage 8), and each plan is its lever.
         for plan in Plan::for_side(Side::Runner) {
-            assert_eq!(plan.weights().unrezzed_threat_weight, 0.0, "{plan:?}");
+            assert_eq!(plan.weights(), base, "{plan:?}");
         }
     }
 
-    /// The reference reads the first plan and nothing else, so a deck
-    /// that stacks two is played by it as it played its one style.
+    /// A style's dials are the first plan's and nothing else's, so the
+    /// second plan on a list is its terms alone.
     #[test]
-    fn the_reference_scores_with_the_first_plans_profile_alone() {
+    fn a_style_starts_from_the_first_plans_profile_alone() {
         let stacked = Style::new(&[Plan::Glacier, Plan::FastAdvance]).unwrap();
         assert_eq!(stacked.weights(), Plan::Glacier.weights());
         assert_eq!(Style::new(&[Plan::Traps, Plan::Glacier]).unwrap().weights(), Plan::Traps.weights());
         assert_ne!(stacked.planned_weights(Side::Corp), stacked.weights().at_the_guides_rate(), "the planner reads the stack");
+        let rig = Style::of(Plan::Rig).planned_weights(Side::Runner);
+        assert_eq!(Weights { rd_access_weight: 0.0, ..rig }, Style::BALANCED.planned_weights(Side::Runner), "a Runner plan is its lever alone");
     }
 
     /// The gate on `DeckFile::style`: the vocabulary lives here, the data
@@ -759,8 +676,7 @@ mod tests {
     /// The identity names the plan when the deck does not: a Criminal
     /// deck with no style is played under pressure, a Shaper's as a rig,
     /// an Anarch's dismantling; a styled deck keeps its list whatever its
-    /// faction, a Corp faction names nothing, and the reference reads no
-    /// faction at all.
+    /// faction, and a Corp faction names nothing.
     #[test]
     fn a_runner_seat_plays_its_factions_plan_when_the_deck_names_none() {
         assert_eq!(Style::BALANCED.or_faction(Side::Runner, Some(Faction::Criminal)), Style::of(Plan::Pressure));
@@ -774,7 +690,6 @@ mod tests {
         let rig = Style::of(Plan::Rig);
         assert_eq!(rig.or_faction(Side::Runner, Some(Faction::Criminal)), rig, "the deck's list overrides the identity");
         assert_eq!(Style::of(Plan::Glacier).or_faction(Side::Corp, Some(Faction::Anarch)), Style::of(Plan::Glacier), "a plan for the other chair is never seated");
-        assert_eq!(Style::BALANCED.or_faction(Side::Runner, Some(Faction::Criminal)).weights(), Plan::Pressure.weights(), "what the reference would score with, were it to read a faction; it does not");
         // Every Runner sample deck reaches a plan one way or the other,
         // and every faction the pool's identities print has its chapter.
         let pool = {

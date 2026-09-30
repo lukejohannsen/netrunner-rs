@@ -1,12 +1,12 @@
 //! Index-based `Agent` adapters bridging this crate's existing view-based
-//! `agent::BotAgent` trait (`random::RandomAgent`, `heuristic::
-//! HeuristicAgent`) and the fixed `policy::PolicyEvaluator` trait
+//! `agent::BotAgent` trait (`random::RandomAgent`, `planner::
+//! PlanningAgent`) and the fixed `policy::PolicyEvaluator` trait
 //! (`onnx_policy::OnnxPolicyEvaluator`, `onnx` feature) to a single,
 //! minimal interface: pick one `0..ActionSpace::SIZE` index, guaranteed
 //! legal per `netrunner_core::rules::get_action_mask`.
 //!
 //! These are pure plumbing, not new decision logic — `RandomAgent`/
-//! `HeuristicAgent`/`OnnxPolicyEvaluator`'s actual behavior is unchanged;
+//! `PlanningAgent`/`OnnxPolicyEvaluator`'s actual behavior is unchanged;
 //! this module only converts between their existing `ClientView`/
 //! `PlayerAction`- or logits-shaped interfaces and a flat `usize` index,
 //! for callers (e.g. a fixed-action-space consumer) that want to work with
@@ -73,9 +73,9 @@ impl<A: BotAgent> Agent for BotAgentIndexAdapter<A> {
 /// wraps — both stay independently reachable.
 pub type IndexedRandomAgent = BotAgentIndexAdapter<crate::random::RandomAgent>;
 
-/// Index-based `heuristic::HeuristicAgent`, via `BotAgentIndexAdapter`.
+/// Index-based `planner::PlanningAgent`, via `BotAgentIndexAdapter`.
 /// Same naming rationale as `IndexedRandomAgent`.
-pub type IndexedHeuristicAgent = BotAgentIndexAdapter<crate::heuristic::HeuristicAgent>;
+pub type IndexedPlanningAgent = BotAgentIndexAdapter<crate::planner::PlanningAgent>;
 
 /// Index-based adapter over `onnx_policy::OnnxPolicyEvaluator`: evaluates
 /// the policy/value network, then argmaxes its priors restricted to
@@ -121,7 +121,7 @@ mod tests {
         RunnerState,
     };
 
-    use crate::heuristic::HeuristicAgent;
+    use crate::planner::PlanningAgent;
     use crate::random::RandomAgent;
 
     fn blank_card(id: &str, side: Side, card_type: CardType, cost: u32) -> CardDefinition {
@@ -173,12 +173,12 @@ mod tests {
     }
 
     #[test]
-    fn indexed_heuristic_agent_always_selects_a_legal_index() {
+    fn indexed_planning_agent_always_selects_a_legal_index() {
         let (registry, state) = sample_corp_turn_state();
         let mask = get_action_mask(&state, &registry);
 
         for seed in 0..20 {
-            let mut agent: IndexedHeuristicAgent = BotAgentIndexAdapter::new(HeuristicAgent::new(Side::Corp, seed), Side::Corp);
+            let mut agent: IndexedPlanningAgent = BotAgentIndexAdapter::new(PlanningAgent::new(Side::Corp, seed), Side::Corp);
             let index = agent.select_action(&state, &registry, &mask);
             assert!(mask[index], "seed {seed} selected illegal index {index}");
         }

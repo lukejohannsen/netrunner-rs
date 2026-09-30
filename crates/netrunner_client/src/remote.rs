@@ -484,7 +484,7 @@ mod tests {
     use netrunner_server::serve::{ServeBotKind, ServeOptions, Server};
 
     async fn start_server() -> std::net::SocketAddr {
-        let options = ServeOptions { bot_runner: ServeBotKind::Heuristic, seed: Some(1), ..ServeOptions::default() };
+        let options = ServeOptions { bot_runner: ServeBotKind::Planner, seed: Some(1), ..ServeOptions::default() };
         let server = Server::bind("127.0.0.1:0", options).await.unwrap();
         let addr = server.local_addr().unwrap();
         tokio::spawn(server.run());
@@ -561,7 +561,7 @@ mod tests {
     async fn a_server_key_is_remembered_by_address_and_a_new_one_refused() {
         let dir = std::env::temp_dir().join(format!("netrunner_remote_pin_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
-        let options = ServeOptions { bot_runner: ServeBotKind::Heuristic, seed: Some(1), data_dir: Some(dir.join("server")), ..ServeOptions::default() };
+        let options = ServeOptions { bot_runner: ServeBotKind::Planner, seed: Some(1), data_dir: Some(dir.join("server")), ..ServeOptions::default() };
         let server = Server::bind("127.0.0.1:0", options).await.unwrap();
         let (addr, server_key) = (server.local_addr().unwrap(), server.public_key());
         tokio::spawn(server.run());
@@ -638,7 +638,7 @@ mod tests {
     }
 
     async fn start_peer_host_with(relay: crate::peer::Relay) -> (crate::peer::PeerHost, String, bool) {
-        let options = ServeOptions { bot_runner: ServeBotKind::Heuristic, seed: Some(1), ..ServeOptions::default() };
+        let options = ServeOptions { bot_runner: ServeBotKind::Planner, seed: Some(1), ..ServeOptions::default() };
         let acceptor = Server::bind("127.0.0.1:0", options).await.unwrap().acceptor();
         let mut host = crate::peer::PeerHost::start(relay, move |stream, who| {
             let acceptor = acceptor.clone();

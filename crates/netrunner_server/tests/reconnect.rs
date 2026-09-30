@@ -23,7 +23,7 @@ async fn start_server(grace: Duration) -> String {
 }
 
 async fn start_server_with(options: ServeOptions) -> String {
-    let options = ServeOptions { bot_runner: ServeBotKind::Heuristic, seed: Some(1), ..options };
+    let options = ServeOptions { bot_runner: ServeBotKind::Planner, seed: Some(1), ..options };
     let server = Server::bind("127.0.0.1:0", options).await.expect("an ephemeral port binds");
     let addr = server.local_addr().unwrap();
     tokio::spawn(server.run());

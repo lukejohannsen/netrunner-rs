@@ -438,7 +438,7 @@ fn play(
     };
     // `make_seat_agent` rather than `make_agent_with_model`, so a chair
     // spelled `level:elite` is the rung the ladder calibrated and not a
-    // silently balanced heuristic. Profiling a rung is what Phase 5 §4(a)
+    // silently balanced planner. Profiling a rung is what Phase 5 §4(a)
     // and §4(b) will want from this.
     let corp = bots::make_seat_agent(args.corp.level, args.corp.kind, Side::Corp, seed, setup(args.corp, corp_deck), &config.model)?
         .ok_or("the Corp seat must be a bot that can take one")?;

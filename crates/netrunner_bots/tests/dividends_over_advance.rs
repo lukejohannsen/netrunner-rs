@@ -22,7 +22,7 @@
 //! found it would mean valuing a counter above a point of agenda, which
 //! is wrong. The evaluator's own preference is pinned below instead.
 
-use netrunner_bots::{BotAgent, HeuristicAgent, PuctAgent, PuctConfig, UniformPolicyEvaluator};
+use netrunner_bots::{BotAgent, PlanningAgent, PuctAgent, PuctConfig, UniformPolicyEvaluator};
 use netrunner_core::cards::CardRegistry;
 use netrunner_core::dsl::{CardDefinition, CardId, CardType};
 use netrunner_core::rules::{
@@ -111,15 +111,28 @@ fn the_same_search_never_over_advances_an_agenda_that_pays_no_dividends() {
 
 /// The limit, stated so a later change to the weight or the search shows
 /// up here rather than in a puzzling report: at the budget the benchmark
-/// and the coverage reports run, neither seat finds this.
+/// and the coverage reports run, the search does not find this.
 #[test]
-fn a_shallow_search_and_the_one_ply_heuristic_both_score_at_once() {
+fn a_shallow_search_scores_at_once() {
     for iterations in [32, 128] {
         assert_eq!(choice_at(Some(1), iterations), SCORE, "puct@{iterations} scores rather than banking a counter");
     }
+}
 
-    let (state, registry) = position(Some(1));
-    let view = build_client_view(&state, &registry, Side::Corp);
-    let mut heuristic = HeuristicAgent::new(Side::Corp, 1);
-    assert_eq!(heuristic.select_action(&view, &registry), SCORE, "one ply cannot see the score that is still there");
+/// The planner finds it at once, because a line is judged where it ends
+/// and "advance, then score" ends a counter richer: the decision the
+/// one-ply reference could never see (it scored at once, every time) and
+/// a 512-iteration search once took to find. For an agenda that pays no
+/// Dividends the same line is a click and a credit poorer, and the
+/// planner never advances it — the score is free, so which click it
+/// falls on is the jitter's.
+#[test]
+fn the_planner_banks_the_counter_before_scoring_a_dividends_agenda() {
+    let first = |dividends| {
+        let (state, registry) = position(dividends);
+        let view = build_client_view(&state, &registry, Side::Corp);
+        PlanningAgent::new(Side::Corp, 1).select_action(&view, &registry)
+    };
+    assert_eq!(first(Some(1)), ADVANCE);
+    assert_ne!(first(None), ADVANCE, "no Dividends, no counter to bank");
 }

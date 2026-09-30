@@ -1,9 +1,9 @@
 //! Integration tests for `netrunner_bots::agent_adapter`: every index-based
-//! `Agent` (`IndexedRandomAgent`/`IndexedHeuristicAgent`, and
+//! `Agent` (`IndexedRandomAgent`/`IndexedPlanningAgent`, and
 //! `IndexedOnnxAgent` under the `onnx` feature) must always select an index
 //! `netrunner_core::rules::get_action_mask` marks legal.
 
-use netrunner_bots::{Agent, BotAgentIndexAdapter, HeuristicAgent, IndexedHeuristicAgent, RandomAgent};
+use netrunner_bots::{Agent, BotAgentIndexAdapter, IndexedPlanningAgent, PlanningAgent, RandomAgent};
 use netrunner_core::cards::CardRegistry;
 use netrunner_core::dsl::{CardDefinition, CardId, CardType};
 use netrunner_core::rules::{
@@ -62,12 +62,12 @@ fn indexed_random_agent_always_selects_a_legal_index() {
 }
 
 #[test]
-fn indexed_heuristic_agent_always_selects_a_legal_index() {
+fn indexed_planning_agent_always_selects_a_legal_index() {
     let (registry, state) = sample_corp_turn_state();
     let mask = get_action_mask(&state, &registry);
 
     for seed in 0..20 {
-        let mut agent: IndexedHeuristicAgent = BotAgentIndexAdapter::new(HeuristicAgent::new(Side::Corp, seed), Side::Corp);
+        let mut agent: IndexedPlanningAgent = BotAgentIndexAdapter::new(PlanningAgent::new(Side::Corp, seed), Side::Corp);
         let index = agent.select_action(&state, &registry, &mask);
         assert!(mask[index], "seed {seed} selected illegal index {index}");
     }

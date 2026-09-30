@@ -168,7 +168,7 @@ pub(super) fn affordance_of(action: &PlayerAction, passing: bool) -> Affordance 
 mod tests {
     use super::*;
     use crate::board::{ActionMap, Pile, Target};
-    use netrunner_bots::{BotAgent, HeuristicAgent, RandomAgent};
+    use netrunner_bots::{BotAgent, PlanningAgent, RandomAgent};
     use netrunner_core::cards::CardRegistry;
     use netrunner_core::rules::{GameState, Side, Viewer};
     use netrunner_session::{sweep_decks_for_seed, Seat, Session, SessionStep};
@@ -215,8 +215,8 @@ mod tests {
             let registry: CardRegistry = crate::decks::sample_deck_registry();
             let (state, _) = GameState::setup(&corp_deck.to_deck(), &runner_deck.to_deck(), &registry, seed).unwrap();
             let mut session = Session::new(state, registry.clone(), Seat::External, Seat::External);
-            let mut corp: Box<dyn BotAgent> = if seed % 2 == 0 { Box::new(HeuristicAgent::new(Side::Corp, seed)) } else { Box::new(RandomAgent::new(seed)) };
-            let mut runner: Box<dyn BotAgent> = if seed % 2 == 0 { Box::new(RandomAgent::new(seed + 7)) } else { Box::new(HeuristicAgent::new(Side::Runner, seed)) };
+            let mut corp: Box<dyn BotAgent> = if seed % 2 == 0 { Box::new(PlanningAgent::new(Side::Corp, seed)) } else { Box::new(RandomAgent::new(seed)) };
+            let mut runner: Box<dyn BotAgent> = if seed % 2 == 0 { Box::new(RandomAgent::new(seed + 7)) } else { Box::new(PlanningAgent::new(Side::Runner, seed)) };
             loop {
                 match session.step() {
                     SessionStep::Awaiting { side, view } => {

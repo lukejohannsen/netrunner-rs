@@ -394,7 +394,7 @@ pub const ACTOR: Side = Side::Runner;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use netrunner_bots::{BotAgent, HeuristicAgent, RandomAgent};
+    use netrunner_bots::{BotAgent, PlanningAgent, RandomAgent};
     use netrunner_core::rules::{GameState, PublicRunIce, Viewer};
     use netrunner_session::{sweep_decks_for_seed, Seat, Session, SessionStep};
 
@@ -413,7 +413,7 @@ mod tests {
             let registry: CardRegistry = crate::decks::sample_deck_registry();
             let (state, _) = GameState::setup(&corp_deck.to_deck(), &runner_deck.to_deck(), &registry, seed).unwrap();
             let mut session = Session::new(state, registry.clone(), Seat::External, Seat::External);
-            let mut corp: Box<dyn BotAgent> = if seed % 2 == 0 { Box::new(HeuristicAgent::new(Side::Corp, seed)) } else { Box::new(RandomAgent::new(seed)) };
+            let mut corp: Box<dyn BotAgent> = if seed % 2 == 0 { Box::new(PlanningAgent::new(Side::Corp, seed)) } else { Box::new(RandomAgent::new(seed)) };
             let mut runner = RandomAgent::new(seed + 7);
             let viewers = [Viewer::Player(Side::Corp), Viewer::Player(Side::Runner)];
             let mut trails: Vec<Option<RunTrail>> = vec![None, None];

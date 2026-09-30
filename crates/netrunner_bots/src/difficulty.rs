@@ -8,83 +8,45 @@
 //! rest of the crate does not provide: an **order**, a **name** a player
 //! can ask for, and a guarantee the order is real.
 //!
-//! **The rungs are a strong bot handicapped, not a weak bot strained,
+//! **A rung is the strongest bot handicapped, not a weaker bot strained,
 //! and that is a measurement.** The first cut of this table dialled the
 //! search budget down for its lower rungs, and calibrating it showed
-//! that does not work on the Corp chair: rungs 2-4 scored **0.562 /
-//! 0.500 / 0.458** against the same fixed opponent — flat, and sloping
-//! the wrong way (Phase 5 §1). The cause is on the record independently:
-//! `puct` as Corp scores 0.458 at 32 simulations, 0.581 at 128 and 0.714
-//! at 512, while the one-ply heuristic Corp scores 0.583 (Phase 2 §5
-//! item 34), so **search does not overtake one ply on that chair until
-//! past 128**. The bots here are three strengths, not five. Rungs are
-//! therefore `(base bot, epsilon)` pairs over `HandicapAgent`, which is
-//! monotone by construction rather than by hope: the same base bot with
-//! more `epsilon` is strictly worse, and only *how much* worse has to be
-//! measured.
+//! that does not work: rungs 2-4 scored 0.562 / 0.500 / 0.458 as the
+//! Corp against the same fixed opponent — flat, and sloping the wrong
+//! way (Phase 5 §1) — because search converts differently on the two
+//! chairs and overtook one ply on neither until far past the budget a
+//! decision can wait for. So a rung is `(base bot, epsilon)` over
+//! `HandicapAgent`, monotone by construction rather than by hope: the
+//! same base bot with more `epsilon` is strictly worse, and only *how
+//! much* worse has to be measured.
 //!
-//! **Per chair, because the game is not symmetric and neither are the
-//! bots.** `netrunner_rating` already rates Corp and Runner separately —
-//! "one number would average two different skills" — and the two chairs
-//! convert search budget completely differently (ROADMAP Phase 2 §5 items
-//! 34, 35): over 16 → 128 simulations the Corp chair gains **+0.208** and
-//! is still climbing at 512, while the Runner chair gains +0.076 and has
-//! **saturated by 64**. So the same rung is a different bot on each side,
-//! and the strongest Corp (`puct` at depth) is not the strongest Runner
-//! (`mcts` at four determinizations, which is where that chair's gains
-//! actually come from).
+//! **Both chairs are one base bot at five handicaps, and the base is the
+//! turn planner** (`PlanningAgent`, Phase 5 §25 Stage 8). The base has
+//! moved three times, each time because a measurement found the stronger
+//! bot: `puct@512` at the Corp's top until every Corp profile built a
+//! fort and one ply outscored it (§24, the fort pays off past a search's
+//! horizon); `mcts@128` at the Runner's top until the evaluator priced
+//! what a run finds and one ply outscored that too (Phase 2 §5a); and
+//! the one-ply chooser on both chairs until the planner beat it on both
+//! — the Corp by 0.12 and 0.07 of win share over two seeds, the Runner
+//! by 0.07 and 0.11 (§25 Stages 5–7) — at which point the reference was
+//! deleted and the ladder re-taken on the planner. `LevelKind`'s search
+//! variants stay, because the day a search beats the planner on either
+//! chair its top rungs go back to it, and the tests below say what that
+//! would owe.
 //!
-//! **The top Runner rung is capped, the cap is measured, and it is the
-//! ladder's one real weakness.** From one ply to the best bot available
-//! is **0.229** of win rate on the Corp chair and **0.104** on the
-//! Runner's, so the top of the Runner ladder has half the room to hold
-//! two rungs in. Nothing in this workspace makes a Runner much stronger
-//! than `mcts@128`: five roadmap entries (36, 38 and 40 negatively; 34
-//! and 35 positively) put that chair's ceiling in hidden-information
-//! sampling, which no deeper search or better leaf has yet recovered.
-//! **Item 43 then took the sampling itself as far as it goes and it is
-//! not the ceiling either** — which corrects this paragraph's earlier
-//! reading that more of it was the way up: 4 → 32 trees and 128 → 1,024
-//! simulations all land between 0.604 and 0.622 against a fixed one-ply
-//! Corp, and a deeper playout is *worse* (0.547 at 32 plies). So
-//! `veteran` and `elite` are about 0.06 apart as Runners against 0.19 as
-//! Corps. What is left to try is the playout policy rather than a bigger
-//! search, and that is Phase 2 §5's Runner-chair work, not a spacing
-//! problem this table can solve.
-//!
-//! **Then the leaf moved and the cap inverted** (15 September 2026):
-//! with the Runner's evaluator pricing what a run can find and what a
-//! card in grip is worth (Phase 2 §5a, reopened), one ply scores 0.865
-//! against the fixed heuristic Corp where `mcts@128` scores 0.677 and
-//! `puct@128` 0.760. A ladder that seated `mcts` above one ply would run
-//! backwards at the top, so the Runner chair is now **one base bot at
-//! five handicaps** — 1.0 / 0.75 / 0.50 / 0.25 / 0.0 — monotone by
-//! construction and cheap at every rung. The Corp chair is unchanged: its
-//! evaluator did not move and `puct@512` still converts depth there.
-//!
-//! **Both chairs now climb at every step, and the calibration is what
-//! says so** (15 September 2026, 768 games a cell over two seeds; the
-//! table is in `docs/roadmap/phase-5-difficulty-ladder.md` §2). The two
-//! paragraphs above are the history of a cap that has moved twice, and
-//! the standing consequence is on the *other* chair now: `puct@512` wins
-//! **0.266** against the un-handicapped one-ply Runner, where the first
-//! calibration measured that cell at 0.714. The Corp ladder is evenly
-//! spaced and tops out too low, which is the Runner chair's old problem
-//! transferred — and like it, the lever is that chair's evaluator rather
-//! than this table.
-//!
-//! **Then the Corp's did the same** (23 September 2026, Phase 5 §24).
-//! Once every Corp profile built a fort (§19, §23) the one-ply Corp scored
-//! about 0.41 against the un-handicapped one-ply Runner, where `puct@512`
-//! scored 0.33 at `elite` and 0.14 at `veteran` — the fort pays off over
-//! turns, past the search's horizon. So **both chairs are now one base bot
-//! at five handicaps**: no rung searches, the order is structural, and only
-//! the spacing is measured. `LevelKind`'s search variants stay, because the
-//! day a search beats one ply again on either chair its top rungs go back
-//! to it, and the monotonicity tests below still say what that would owe.
+//! **Per chair, because the game is not symmetric and neither is the
+//! bot.** `netrunner_rating` rates Corp and Runner separately — "one
+//! number would average two different skills" — and the `epsilon`
+//! curves differ: a Runner's win rate falls about linearly in the share
+//! of decisions thrown away, a Corp's falls steeply near zero (one
+//! decision in twenty costs it a quarter of its margin) and flattens
+//! toward random. So the same rung is a different handicap on each side,
+//! read off each chair's measured curve (`Level::spec`; the calibration
+//! tables are in `docs/roadmap/phase-5-difficulty-ladder.md` §2).
 //!
 //! **A style is not the difficulty dial, and deliberately so.** The
-//! eight `Plan`s a `Style` stacks (`plans`) are a *style* axis, and each
+//! seven `Plan`s a `Style` stacks (`plans`) are a *style* axis, and each
 //! is written for one chair — a Runner plan seated as the Corp "touches
 //! only the shared terms, which is harmless and useless" (`plans`' own
 //! doc comment). A ladder built on them would be asymmetric between the
@@ -94,9 +56,10 @@
 //! here is balanced; what climbs is the handicap. "A glacier Corp at
 //! level 4" is a second axis crossed with this one, not a replacement.
 //! The cross keeps the order, and since §24 it keeps the spacing too:
-//! four Corp styles measured on one `epsilon` curve, so no style carries
+//! every Corp style measured on one `epsilon` curve, so no style carries
 //! a handicap of its own (three once did; `LevelSpec::with_style`
-//! records why each went).
+//! records why each went). A Runner rung with no style plays its
+//! identity's faction's plan, as every planner Runner does.
 //!
 //! **Machine-independence is a prerequisite, not a detail.** A rung whose
 //! strength moved with the host's core count would not be a rung at all;
@@ -108,7 +71,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::agent::BotAgent;
 use crate::handicap::HandicapAgent;
-use crate::heuristic::HeuristicAgent;
+use crate::planner::PlanningAgent;
 use crate::knowledge::Knowledge;
 use crate::mcts::MctsAgent;
 use crate::plans::Style;
@@ -134,24 +97,21 @@ use crate::puct::{PuctAgent, PuctConfig};
 pub enum Level {
     /// Legal moves, chosen at random. Loses to a first-time player who
     /// has understood the rules, which is exactly what a first rung is
-    /// for — the measured floor is 0.012 as Corp and 0.125 as Runner
-    /// against an un-handicapped one ply.
+    /// for.
     Novice,
-    /// One ply, blundering about one decision in five as the Corp and
-    /// three in four as the Runner: it takes the obvious line — advance,
-    /// rez, break, run an open server — and then throws a click away. The
-    /// rung where a new player's mistakes stop being the only ones on the
-    /// table.
+    /// The planner, blundering often: it plans the guide's line —
+    /// install, advance, score; economy, then breakers for the ICE shown
+    /// — and then throws a click away. The rung where a new player's
+    /// mistakes stop being the only ones on the table.
     Apprentice,
-    /// One ply, throwing away about one decision in ten as the Corp and
-    /// every second one as the Runner. No plan beyond the current turn.
+    /// The planner, throwing away about one decision in ten as the Corp
+    /// and one in three as the Runner.
     Operator,
-    /// One ply with a rare blunder — one decision in twenty as the Corp,
-    /// one in four as the Runner: a real opponent with a visible crack in
-    /// it.
+    /// The planner with a rare blunder: a real opponent with a visible
+    /// crack in it.
     Veteran,
-    /// The strongest bot measured on each chair, playing every decision.
-    /// On both chairs today that is one ply; see the module docs.
+    /// The strongest bot measured on each chair, playing every decision:
+    /// the planner, in the deck's style or its faction's plan.
     Elite,
 }
 
@@ -169,8 +129,8 @@ pub struct LevelSpec {
     pub level: Level,
     pub side: Side,
     pub kind: LevelKind,
-    /// Search iterations per decision; ignored by the two rungs with no
-    /// search.
+    /// Search iterations per decision; ignored by the planner, which has
+    /// a budget of its own (`planner::PLAN_BUDGET`).
     pub simulations: usize,
     /// Root-parallel trees (`mcts`) or hidden-state samples (`puct`) —
     /// one dial under two names, always stated rather than defaulted.
@@ -187,7 +147,8 @@ pub struct LevelSpec {
 /// bot, which is a different thing that happens to overlap.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LevelKind {
-    Heuristic,
+    /// `PlanningAgent`: the whole turn planned, one ply inside a run.
+    Planner,
     Mcts,
     Puct,
 }
@@ -230,95 +191,70 @@ impl Level {
 
     /// What this rung is on `side`.
     ///
-    /// Both chairs are one ply at five handicaps (the module docs say how
-    /// each got there); the handicaps differ because the chairs' `epsilon`
-    /// curves do.
+    /// Both chairs are the planner at five handicaps (the module docs say
+    /// how each got there); the handicaps differ because the chairs'
+    /// `epsilon` curves do.
     pub fn spec(self, side: Side) -> LevelSpec {
-        // Anchors, all against a fixed *un-handicapped one-ply* opponent
-        // on the other chair: random 0.012 / 0.125 (Corp / Runner win
-        // rate), one ply 0.43 / 0.833 (Corp re-taken 23 September 2026,
-        // §24, 768 games a cell; Runner 15 September). Every rung is one
-        // of those endpoints mixed toward random by `epsilon`, so the
-        // order needs no measurement and the *spacing* is what Phase 5 §2
-        // calibrates. The figures the first cut used (0.042 / 0.167,
-        // 0.562 / 0.438, `puct@512` 0.714, `mcts@128` 0.792) are still in
-        // the roadmap and are not comparable to these: they were taken on
-        // the pre-`access_prospect` Runner evaluator, which moved the
-        // whole pool — the same 25 cells run 0.471 Corp on this spec
-        // (0.385 on the one it replaced) against the engine's 0.548.
+        // Anchors, all against the un-handicapped planner on the other
+        // chair, each seat in its deck's own style (Phase 5 §25 Stage 8,
+        // 30 September 2026, 768 games a cell): random 0.018 / 0.034
+        // (Corp / Runner win rate), the planner played straight 0.401 /
+        // 0.599. Every rung is one of those endpoints mixed toward random
+        // by `epsilon`, so the order needs no measurement and the
+        // *spacing* is what Phase 5 §2 calibrates. Every earlier figure in
+        // the roadmap (§2, §21, §24) was taken against the one-ply
+        // reference and is not comparable to these.
         let (kind, simulations, samples, epsilon) = match (self, side) {
-            // One ply at `epsilon` 1.0 rather than `LevelKind::Random`,
+            // The planner at `epsilon` 1.0 rather than `LevelKind::Random`,
             // and the two are identical in play: `HandicapAgent` never
-            // consults the inner agent at 1.0, so no heuristic ever runs.
-            // Writing it this way makes the bottom three rungs one base
-            // family with strictly falling handicap — 1.0, 0.25, 0.0 as
-            // the Corp, 1.0, 0.75, 0.50 as the Runner — which is what
+            // consults the inner agent at 1.0, so no plan is ever made.
+            // Writing it this way makes the whole ladder one base family
+            // with strictly falling handicap, which is what
             // `each_rung_is_the_one_below_it_with_less_handicap_or_a_
             // better_base` can actually check.
-            (Level::Novice, _) => (LevelKind::Heuristic, 0, 1, 1.0),
-            // **The Corp's whole ladder is one ply at five handicaps** since
-            // Phase 5 §24 (23 September 2026), the Runner ladder's shape and
-            // `glacier`'s since §21. Once every Corp profile built a fort
-            // (§23), one ply played straight scored 0.417 (`Balanced`) and
-            // 0.409 (`trap`) against the one-ply balanced Runner, where
-            // `puct@512` scored 0.326 / 0.339 at `elite` and 0.146 / 0.138 at
-            // `veteran` — the fort pays off over turns, past a 512-simulation
-            // horizon, so the search rungs ran *below* `operator`. Until then
-            // the Corp's top two rungs were `puct@512` at `epsilon` 0.20 and
-            // 0.0, and §22 had found that no handicap could space them.
-            //
-            // The handicaps are `glacier`'s from §21, read off a measured
-            // curve that is steep near 0 and nowhere near linear. §24
-            // re-measured it in every other Corp style and found the same
-            // curve (ε 0.22 / 0.11 / 0.05 / 0.03: `Balanced` 0.128 / 0.225 /
-            // 0.331 / 0.368, `trap` 0.109 / 0.221 / 0.320 / 0.359, `rush`
-            // 0.139 / 0.246 / 0.358 / 0.402; `glacier` 0.121 / — / 0.311 /
-            // 0.365), so one table serves all four and no style carries a
-            // handicap of its own. One ply is also the cheap base: no Corp
-            // rung searches, so `elite` answers as fast as `operator`.
-            (Level::Apprentice, Side::Corp) => (LevelKind::Heuristic, 0, 1, 0.22),
-            (Level::Operator, Side::Corp) => (LevelKind::Heuristic, 0, 1, 0.11),
-            (Level::Veteran, Side::Corp) => (LevelKind::Heuristic, 0, 1, 0.05),
-            (Level::Elite, Side::Corp) => (LevelKind::Heuristic, 0, 1, 0.0),
-            // The Runner's whole ladder is this one base, so its five
-            // handicaps carry the whole span and are spaced evenly; see
-            // the note below the table.
-            (Level::Apprentice, Side::Runner) => (LevelKind::Heuristic, 0, 1, 0.75),
-            (Level::Operator, Side::Runner) => (LevelKind::Heuristic, 0, 1, 0.50),
-            // **The Runner ladder is five handicaps of one ply** since
-            // 15 September 2026 (Phase 2 §5a, reopened): once the
-            // evaluator priced what a run can find and what a card in
-            // grip is worth, the one-ply Runner scored **0.865** against
-            // the fixed heuristic Corp over 192 games, against 0.760 for
-            // `puct@128` and 0.677 for `mcts@128` — the search Runners
-            // inherit the new leaf but not the policy that plays the
-            // plies before it, and their random playouts wash most of it
-            // out. Seating `mcts` above one ply would make rung 5 easier
-            // than rung 3. So the Runner's `operator` is no longer the
-            // un-handicapped bot: that is `elite`. The order is
-            // structural and the spacing is now measured — the four steps
-            // are even by construction of the note below the table.
-            // When a search Runner beats one ply again —
-            // a one-ply playout policy is the recorded next lever — the
-            // top two rungs go back to it.
-            (Level::Veteran, Side::Runner) => (LevelKind::Heuristic, 0, 1, 0.25),
-            (Level::Elite, Side::Runner) => (LevelKind::Heuristic, 0, 1, 0.0),
+            (Level::Novice, _) => (LevelKind::Planner, 0, 1, 1.0),
+            // **The Corp's handicaps are §21's, read off `glacier`'s
+            // one-ply curve and kept.** That curve is steep near 0 and
+            // nowhere near linear, and the planner's is the same shape:
+            // against the planner Runner it scores 0.018 / 0.143 / 0.224 /
+            // 0.315 / 0.401 on these five (seed 1) and 0.008 / 0.122 /
+            // 0.224 / 0.328 / 0.469 (seed 2) — steps of +0.125, +0.081,
+            // +0.091, +0.086 and +0.115, +0.102, +0.104, +0.141 against an
+            // even 0.096 and 0.115, every one a rise on each seed — so the
+            // table stands. §24 had found the one-ply curve the same in
+            // every Corp style (ε 0.22 / 0.11 / 0.05: `Balanced` 0.128 /
+            // 0.225 / 0.331, `trap` 0.109 / 0.221 / 0.320, `rush` 0.139 /
+            // 0.246 / 0.358, `glacier` 0.121 / — / 0.311), so one table
+            // serves every style and no style carries a handicap of its
+            // own.
+            (Level::Apprentice, Side::Corp) => (LevelKind::Planner, 0, 1, 0.22),
+            (Level::Operator, Side::Corp) => (LevelKind::Planner, 0, 1, 0.11),
+            (Level::Veteran, Side::Corp) => (LevelKind::Planner, 0, 1, 0.05),
+            (Level::Elite, Side::Corp) => (LevelKind::Planner, 0, 1, 0.0),
+            // **The Runner's handicaps were re-spaced for the planner.**
+            // One ply's Runner curve was a line (w ≈ 0.833 − 0.70ε, §2),
+            // so its rungs sat at even `epsilon` — 0.75 / 0.50 / 0.25 —
+            // and the planner's is not: on that table it scored 0.034 /
+            // 0.063 / 0.141 / 0.310 / 0.599 (seed 1) and 0.039 / 0.089 /
+            // 0.180 / 0.328 / 0.531 (seed 2) against the planner Corp,
+            // steps of +0.029, +0.078, +0.169, +0.289 and +0.049, +0.091,
+            // +0.148, +0.203 — crammed at the bottom, the first of them
+            // flat. A plan a random action breaks is planned again from
+            // the board it left, so a blunder costs the planner more than
+            // it cost a chooser that never looked past one action, and the
+            // curve is steep near 0 like the Corp's. Interpolating the
+            // measured curve for four even steps gives 0.45 / 0.25 / 0.10;
+            // re-measured on the same seeds, 0.034 / 0.188 / 0.344 / 0.435
+            // / 0.599 and 0.039 / 0.188 / 0.320 / 0.424 / 0.531 — steps of
+            // +0.154, +0.156, +0.091, +0.164 and +0.148, +0.133, +0.104,
+            // +0.107, every one a rise on each seed at 2.6 sd or more, all
+            // within 0.05 of even — with exactly the ten cells whose Runner
+            // is `novice` or `elite` byte-identical between the two runs.
+            (Level::Apprentice, Side::Runner) => (LevelKind::Planner, 0, 1, 0.45),
+            (Level::Operator, Side::Runner) => (LevelKind::Planner, 0, 1, 0.25),
+            (Level::Veteran, Side::Runner) => (LevelKind::Planner, 0, 1, 0.10),
+            (Level::Elite, Side::Runner) => (LevelKind::Planner, 0, 1, 0.0),
         };
-        // **Both chairs are one base bot at five handicaps, and only the
-        // Runner's are evenly spaced in `epsilon`, because only its curve
-        // is a line.** Calibrated 15 September 2026 at 768 games a cell
-        // (two seeds × 384, Phase 5 §2): the Runner's first cut, 1.0 / 0.5
-        // / 0.25 / 0.10 / 0.0, crammed its top three rungs, scoring 0.125 /
-        // 0.449 / 0.634 / 0.789 / 0.833 against a fixed one-ply Corp — steps
-        // of +0.324, +0.185, +0.155 and **+0.044**, the last one `flat` on
-        // one of the two seeds, which is a level selector a player cannot
-        // feel. `epsilon` turned out to be near-linear in win rate on that
-        // chair (w ≈ 0.833 − 0.70ε fits all five points to 0.034), so
-        // interpolating the measured curve for four even steps of 0.177
-        // gives 0.73 / 0.46 / 0.23 — these round numbers, within 0.03. The
-        // Corp's curve is steep near 0 (one decision in twenty thrown away
-        // costs it a quarter of its margin), so its handicaps crowd toward
-        // the top instead.
         LevelSpec { level: self, side, kind, simulations, samples, epsilon, style: Style::BALANCED }
     }
 }
@@ -392,8 +328,8 @@ impl LevelSpec {
 
     fn base_agent(self, seed: u64, knowledge: Knowledge) -> Box<dyn BotAgent> {
         match self.kind {
-            LevelKind::Heuristic => {
-                Box::new(HeuristicAgent::with_style(self.side, seed, self.style).with_knowledge(knowledge))
+            LevelKind::Planner => {
+                Box::new(PlanningAgent::with_style(self.side, seed, self.style).with_knowledge(knowledge))
             }
             LevelKind::Mcts => Box::new(
                 MctsAgent::with_trees(self.side, seed, self.simulations, self.samples)
@@ -420,15 +356,20 @@ impl LevelSpec {
     }
 
     /// One line of "what am I about to play", for a client that offers
-    /// the choice.
+    /// the choice: how the rung decides, the plans it plays when the seat
+    /// has a style — a balanced Runner rung plays its identity's faction's
+    /// plan, which no spec knows before the deck is dealt, so it names
+    /// none — and how often it blunders.
     pub fn describe(self) -> String {
         // At full handicap the base bot is never asked, so describing it
         // would be a lie about what the player is facing.
         if self.epsilon >= 1.0 {
             return "plays legal moves at random".to_string();
         }
+        let plans = self.style.plans().map(|plan| plan.name()).collect::<Vec<_>>().join(" then ");
         let play = match self.kind {
-            LevelKind::Heuristic => "looks one move ahead".to_string(),
+            LevelKind::Planner if plans.is_empty() => "plans its whole turn".to_string(),
+            LevelKind::Planner => format!("plans its whole turn as {plans}"),
             LevelKind::Mcts => {
                 format!("searches {} playouts over {} readings of your hidden cards", self.simulations, self.samples)
             }
@@ -509,7 +450,7 @@ mod tests {
                 let spec = level.spec(Side::Corp).with_style(style);
                 assert_eq!(
                     (spec.kind, spec.simulations, spec.samples, spec.style),
-                    (LevelKind::Heuristic, 0, 1, style),
+                    (LevelKind::Planner, 0, 1, style),
                     "{level} {plan:?}"
                 );
                 assert_eq!(spec.with_style(Style::BALANCED), level.spec(Side::Corp), "{level}");
@@ -518,7 +459,10 @@ mod tests {
             assert_eq!(table, [1.0, 0.22, 0.11, 0.05, 0.0], "{plan:?}");
         }
         let veteran = Level::Veteran.spec(Side::Corp).with_style(Style::of(Plan::Traps));
-        assert_eq!(veteran.describe(), "looks one move ahead, and throws away about one decision in 20");
+        assert_eq!(veteran.describe(), "plans its whole turn as traps, and throws away about one decision in 20");
+        assert_eq!(Level::Veteran.spec(Side::Corp).describe(), "plans its whole turn, and throws away about one decision in 20");
+        let stacked = Level::Elite.spec(Side::Corp).with_style(Style::new(&[Plan::Glacier, Plan::FastAdvance]).unwrap());
+        assert_eq!(stacked.describe(), "plans its whole turn as glacier then fast-advance");
     }
 
     /// Neither chair's `elite` searches: on each, one ply played straight
@@ -529,7 +473,7 @@ mod tests {
     fn the_top_rung_is_one_ply_played_straight_on_both_chairs() {
         for side in [Side::Corp, Side::Runner] {
             let elite = Level::Elite.spec(side);
-            assert_eq!((elite.kind, elite.simulations, elite.samples, elite.epsilon), (LevelKind::Heuristic, 0, 1, 0.0), "{side:?}");
+            assert_eq!((elite.kind, elite.simulations, elite.samples, elite.epsilon), (LevelKind::Planner, 0, 1, 0.0), "{side:?}");
             assert!(Level::Veteran.spec(side).epsilon > 0.0, "{side:?}");
         }
     }

@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use clap::{Parser, ValueEnum};
 
-use netrunner_bots::{BotAgent, HeuristicAgent, Knowledge, MctsAgent, RandomAgent};
+use netrunner_bots::{BotAgent, Knowledge, MctsAgent, PlanningAgent, RandomAgent};
 use netrunner_core::rules::{GamePhase, GameState, Side};
 use netrunner_server::serve::{ServeBotKind, ServeOptions, Server};
 use netrunner_server::{fixtures, MatchSession, PlayerSlot, DEFAULT_RECONNECT_GRACE};
@@ -51,7 +51,7 @@ struct Config {
     /// (on whichever side the client did not ask for). `none` instead
     /// queues connecting clients and pairs each with the first waiter in
     /// its room as a human-vs-human match.
-    #[arg(long, value_enum, default_value_t = ServeBotKind::Heuristic)]
+    #[arg(long, value_enum, default_value_t = ServeBotKind::Planner)]
     bot_runner: ServeBotKind,
 
     /// (serve mode) Seat a rung of the difficulty ladder — `novice`,
@@ -166,7 +166,7 @@ impl From<ServeFormat> for netrunner_core::format::NsgFormat {
 #[derive(ValueEnum, Clone, Copy, Debug)]
 enum BotKind {
     Random,
-    Heuristic,
+    Planner,
     Mcts,
 }
 
@@ -176,7 +176,7 @@ fn make_agent(kind: BotKind, side: Side, seed: u64, deck: &netrunner_core::rules
     let knowledge = Knowledge::new(netrunner_core::format::NsgFormat::Casual, Some(deck.clone()));
     match kind {
         BotKind::Random => Box::new(RandomAgent::new(seed)),
-        BotKind::Heuristic => Box::new(HeuristicAgent::new(side, seed).with_knowledge(knowledge)),
+        BotKind::Planner => Box::new(PlanningAgent::new(side, seed).with_knowledge(knowledge)),
         BotKind::Mcts => Box::new(MctsAgent::new(side, seed).with_knowledge(knowledge)),
     }
 }

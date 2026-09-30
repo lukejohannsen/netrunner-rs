@@ -161,7 +161,7 @@ impl Onward {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use netrunner_bots::{BotAgent, HeuristicAgent, RandomAgent};
+    use netrunner_bots::{BotAgent, PlanningAgent, RandomAgent};
     use netrunner_core::rules::{GameEvent, GamePhase, GameState};
     use netrunner_session::{sweep_decks_for_seed, Seat, Session, SessionStep};
     use std::collections::BTreeMap;
@@ -238,8 +238,8 @@ mod tests {
             let (corp_deck, runner_deck) = sweep_decks_for_seed(seed);
             let (state, _) = GameState::setup(&corp_deck.to_deck(), &runner_deck.to_deck(), &registry, seed).unwrap();
             let mut session = Session::new(state, registry.clone(), Seat::External, Seat::External);
-            let mut corp: Box<dyn BotAgent> = if seed % 2 == 0 { Box::new(HeuristicAgent::new(Side::Corp, seed)) } else { Box::new(RandomAgent::new(seed)) };
-            let mut runner: Box<dyn BotAgent> = if seed % 3 == 0 { Box::new(HeuristicAgent::new(Side::Runner, seed)) } else { Box::new(RandomAgent::new(seed + 11)) };
+            let mut corp: Box<dyn BotAgent> = if seed % 2 == 0 { Box::new(PlanningAgent::new(Side::Corp, seed)) } else { Box::new(RandomAgent::new(seed)) };
+            let mut runner: Box<dyn BotAgent> = if seed % 3 == 0 { Box::new(PlanningAgent::new(Side::Runner, seed)) } else { Box::new(RandomAgent::new(seed + 11)) };
             while let SessionStep::Awaiting { side, view } = session.step() {
                 let offered: Vec<&PlayerAction> = view.legal_actions.iter().filter(|a| moves_on(a)).collect();
                 assert!(offered.len() <= 1, "seed {seed} {side:?}: {offered:?} offered together");

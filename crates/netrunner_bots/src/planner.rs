@@ -1,7 +1,7 @@
 //! The turn planner: a seat that plans its whole turn and then plays it
 //! (Phase 5 §25 Stage 4).
 //!
-//! **Why a turn and not a ply.** The one-ply chooser (`heuristic`) applies
+//! **Why a turn and not a ply.** A one-ply chooser (`one_ply`) applies
 //! each legal action to one sample of the hidden state and takes the best
 //! score, and a static score cannot want something that takes three
 //! clicks to be worth anything: an agenda installed into a remote is an
@@ -26,8 +26,8 @@
 //! the sample did not foresee) throws the rest of the line away and plans
 //! again from what is there. Every other decision — inside a run, inside a
 //! prompt the plan did not make, on the opponent's turn — is the one-ply
-//! chooser's, through the same function (`heuristic::choose_one_ply`), so
-//! the planner differs from the reference only where it plans.
+//! choice (`one_ply`): every legal action applied to the sample and the
+//! best score taken, which was the whole of the reference chooser.
 //!
 //! **The beam keeps two things** (`prune`): the `PLAN_BEAM` best partial
 //! lines by the score of where they stand, and **the best line under each
@@ -102,8 +102,7 @@
 //! **What a seat plays is its style, or its identity's plan** (Stage 7):
 //! a Runner seat given no style reads its own identity off the first
 //! view it acts on and plays that faction's chapter (`Style::or_faction`),
-//! so an unstyled deck is not a balanced one to the planner; the
-//! reference reads no identity, and stays balanced on it.
+//! so an unstyled deck is not a balanced one to the planner.
 //!
 //! **Rejected:** planning the run through. The sample's ICE is a guess,
 //! the opponent's rez is theirs, and the mid-run terms already read the
@@ -125,7 +124,6 @@ use netrunner_core::view::ClientView;
 use crate::agent::{is_regressive, BotAgent};
 use crate::determinize::determinize;
 use crate::eval::{evaluate_state_with, Weights};
-use crate::heuristic::choose_one_ply;
 use crate::knowledge::Knowledge;
 use crate::plans::Style;
 
@@ -191,16 +189,15 @@ pub struct PlanStats {
     pub followed: u32,
     /// Plans thrown away because the view was not the one predicted.
     pub diverged: u32,
-    /// Decisions handed to the one-ply chooser (runs, prompts, the
-    /// opponent's turn, a plan the beam could not make).
+    /// Decisions made one ply (runs, prompts, the opponent's turn, a
+    /// plan the beam could not make).
     pub one_ply: u32,
     /// Engine applications spent planning, summed over every plan.
     pub applications: u64,
 }
 
-/// The seat that plans its turn. `new`, `with_style` and
-/// `with_knowledge` are `HeuristicAgent`'s, so a driver seats either the
-/// same way.
+/// The seat that plans its turn: the bot a person meets at every rung of
+/// the ladder (`difficulty`), and the one every measurement seats.
 pub struct PlanningAgent {
     side: Side,
     rng: StdRng,
@@ -229,9 +226,7 @@ impl PlanningAgent {
     /// (`Weights::with_plans`, Stage 6) — and, for a Runner seat whose
     /// style names no plan, its identity's faction's plan
     /// (`Style::or_faction`, Stage 7), read off the first view the seat
-    /// acts on. The economy and the plans are the planner's; the one-ply
-    /// reference keeps the profile alone, so the planner is measured
-    /// against a chooser that has not moved.
+    /// acts on.
     pub fn with_style(side: Side, seed: u64, style: Style) -> Self {
         Self {
             side,
@@ -355,7 +350,7 @@ impl BotAgent for PlanningAgent {
             return action;
         }
         self.stats.one_ply += 1;
-        choose_one_ply(view, registry, &sample, self.side, &self.weights, &mut self.rng)
+        one_ply(view, registry, &sample, self.side, &self.weights, &mut self.rng)
     }
 
     fn observe(&mut self, view: &ClientView) {
@@ -645,6 +640,49 @@ impl Search<'_> {
     }
 }
 
+/// The one-ply choice: every legal action applied to `sample`, the result
+/// scored by `weights` for `side`, the best taken — what the planner plays
+/// wherever it does not plan (a run, a prompt, the opponent's turn). It was
+/// the whole of `HeuristicAgent`, the fixed reference every stage of the
+/// rebuild was measured against until Stage 8 deleted it (the planner had
+/// beaten it on both chairs); the function is the planner's own now, and
+/// the ladder's every rung is the planner.
+fn one_ply(
+    view: &ClientView,
+    registry: &CardRegistry,
+    sample: &GameState,
+    side: Side,
+    weights: &Weights,
+    rng: &mut StdRng,
+) -> PlayerAction {
+    let mut best: Option<(f64, usize)> = None;
+    for (index, action) in view.legal_actions.iter().enumerate() {
+        // A deselect scores exactly like the select it undoes — the
+        // board is identical — so the jitter decides, and a one-ply
+        // chooser can walk a card selection forever. See
+        // `agent::is_regressive`.
+        if crate::agent::is_regressive(action, view.pending_decision.as_ref()) {
+            continue;
+        }
+        let Ok((next, _events)) = apply_action(sample, registry, action.clone()) else { continue };
+        let score = evaluate_state_with(&next, side, registry, weights) + rng.random::<f64>() * TIE_BREAK_JITTER;
+        if best.is_none_or(|(best_score, _)| score > best_score) {
+            best = Some((score, index));
+        }
+    }
+
+    // `view.legal_actions` came from `legal_actions_for`, whose
+    // ownership filtering doesn't depend on hidden info (see its doc
+    // comment), so every candidate above should already succeed
+    // against the determinized `sample` too — falling back to the
+    // first entry only guards against a hypothetical future
+    // divergence, not an expected case.
+    best.map_or_else(
+        || crate::agent::progressive(&view.legal_actions, view.pending_decision.as_ref())[0].clone(),
+        |(_, index)| view.legal_actions[index].clone(),
+    )
+}
+
 /// One credit's worth of score, and the edge, for each unspent click —
 /// the least a click buys, and the preference for keeping it. What the
 /// evaluator already prices a click at (`Weights::click_weight`, the
@@ -749,7 +787,7 @@ mod tests {
 
     /// Plays `agent` through its own turn on `state`, returning every
     /// action it took until the turn passed.
-    fn play_turn(agent: &mut PlanningAgent, mut state: GameState, registry: &CardRegistry) -> (Vec<PlayerAction>, GameState) {
+    pub(super) fn play_turn(agent: &mut PlanningAgent, mut state: GameState, registry: &CardRegistry) -> (Vec<PlayerAction>, GameState) {
         let side = Side::Corp;
         let mut played = Vec::new();
         for _ in 0..40 {
@@ -778,10 +816,11 @@ mod tests {
         let mut registry = CardRegistry::new();
         let state = corp_with_a_scorable_hand(&mut registry);
         let view = build_client_view(&state, &registry, Side::Corp);
-        let mut one_ply = crate::heuristic::HeuristicAgent::new(Side::Corp, 1);
+        let mut rng = StdRng::seed_from_u64(1);
+        let sample = determinize(&view, &registry, &Knowledge::default(), &mut rng);
         assert!(
-            !matches!(one_ply.select_action(&view, &registry), PlayerAction::InstallCard { .. }),
-            "the reference chooser does not install a naked agenda"
+            !matches!(one_ply(&view, &registry, &sample, Side::Corp, &Weights::default(), &mut rng), PlayerAction::InstallCard { .. }),
+            "one ply does not install a naked agenda"
         );
 
         let mut planner = PlanningAgent::new(Side::Corp, 1);
@@ -1099,5 +1138,642 @@ mod cost {
         let guide = reference.at_the_guides_rate();
         assert!((click_floor(&state, Side::Corp, &reference) - 2.0 * reference.own_credit_weight * (1.0 + KEPT_CLICK_EDGE)).abs() < 1e-9);
         assert!((click_floor(&state, Side::Corp, &guide) - 2.0 * guide.own_credit_weight * KEPT_CLICK_EDGE).abs() < 1e-9);
+    }
+}
+
+/// The positions the one-ply reference was pinned on, played by the
+/// planner: each is a decision the evaluator makes in one ply (inside a
+/// run, at a prompt) or a turn the plan opens with, and the planner is
+/// held to the same choice.
+#[cfg(test)]
+mod positions {
+    use super::*;
+    use crate::plans::Style;
+    use netrunner_core::dsl::{CardDefinition, CardId, CardType};
+    use netrunner_core::rules::{
+        AgendaPoints, Clicks, CorpState, Credits, GamePhase, InstallId, InstalledCard, MemoryUnits, PlayerResources,
+        RunnerState, ServerId,
+    };
+    use netrunner_core::view::build_client_view;
+
+    fn blank_card(id: &str, card_type: CardType) -> CardDefinition {
+        CardDefinition {
+            id: CardId(id.to_string()),
+            title: id.to_string(),
+            side: Side::Corp,
+            card_type,
+            is_playable: true,
+            ..Default::default()
+        }
+    }
+
+    fn empty_runner() -> RunnerState {
+        RunnerState {
+            resources: PlayerResources { credits: Credits(0), clicks: Clicks(0), agenda_points: AgendaPoints(0) },
+            memory_units: MemoryUnits(0),
+            ..Default::default()
+        }
+    }
+
+    /// A Corp state with 3 clicks, an installed Agenda already advanced to
+    /// meet its scoring requirement, and one other legal click action
+    /// (`GainCreditClick`) — `ScoreAgenda` should dominate `evaluate_state`
+    /// since it's worth an immediate agenda-point swing while the other
+    /// candidate is worth nothing.
+    fn corp_state_with_scorable_agenda(registry: &mut CardRegistry) -> GameState {
+        let mut agenda = blank_card("winning_agenda", CardType::Agenda);
+        agenda.advancement_requirement = Some(3);
+        agenda.agenda_points = Some(2);
+        registry.insert(agenda);
+
+        let mut state = GameState::new(0);
+        state.phase = GamePhase::Action(Side::Corp);
+        state.runner = empty_runner();
+        state.corp = CorpState {
+            resources: PlayerResources { credits: Credits(5), clicks: Clicks(3), agenda_points: AgendaPoints(0) },
+            installed: vec![InstalledCard {
+                card: CardId("winning_agenda".to_string()),
+                install_id: InstallId(1),
+                server: ServerId::Remote(0),
+                advancement_tokens: 3,
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        state
+    }
+
+    /// The archetypes, on the same position: an agenda behind one piece of
+    /// ICE with the centrals iced, an ICE in HQ and the clicks to do
+    /// either. Fast advance advances it first and adds the ICE after;
+    /// glacier puts the second piece in front of it before a token goes
+    /// on. Before every Corp profile carried the fort terms (Phase 5 §23)
+    /// the agenda here was naked and rush advanced it anyway, which is
+    /// the play those terms were measured to cost. (Behind two pieces
+    /// both plans open with the advance: the fort is finished.)
+    #[test]
+    fn a_fast_advance_corp_advances_where_a_glacier_corp_installs_ice() {
+        let mut registry = CardRegistry::new();
+        let mut agenda = blank_card("agenda", CardType::Agenda);
+        agenda.advancement_requirement = Some(3);
+        agenda.agenda_points = Some(2);
+        registry.insert(agenda);
+        registry.insert(blank_card("wall", CardType::Ice(netrunner_core::dsl::IceType::Barrier)));
+
+        let mut state = GameState::new(0);
+        state.phase = GamePhase::Action(Side::Corp);
+        state.runner = empty_runner();
+        state.corp = CorpState {
+            resources: PlayerResources { credits: Credits(5), clicks: Clicks(3), agenda_points: AgendaPoints(0) },
+            hq: vec![CardId("wall".to_string())],
+            installed: std::iter::once(InstalledCard {
+                card: CardId("agenda".to_string()),
+                install_id: InstallId(1),
+                server: ServerId::Remote(0),
+                ..Default::default()
+            })
+            .chain(
+                [ServerId::Remote(0), ServerId::Hq, ServerId::Hq, ServerId::RnD, ServerId::RnD, ServerId::Archives]
+                    .into_iter()
+                    .enumerate()
+                    .map(|(n, server)| InstalledCard {
+                        card: CardId("wall".to_string()),
+                        install_id: InstallId(10 + n as u32),
+                        server,
+                        slot: netrunner_core::rules::InstallSlot::Ice,
+                        ..Default::default()
+                    }),
+            )
+            .collect(),
+            ..Default::default()
+        };
+        let view = build_client_view(&state, &registry, Side::Corp);
+        let advance = PlayerAction::AdvanceCard { target: InstallId(1) };
+        assert!(view.legal_actions.contains(&advance));
+        let ice_in_front = view
+            .legal_actions
+            .iter()
+            .find(|a| matches!(a, PlayerAction::InstallCard { zone: ServerId::Remote(0), .. }))
+            .cloned()
+            .expect("the ICE can be installed in front of the agenda");
+
+        let mut fast = PlanningAgent::with_style(Side::Corp, 1, Style::of(crate::plans::Plan::FastAdvance));
+        assert_eq!(fast.select_action(&view, &registry), advance);
+        let mut glacier = PlanningAgent::with_style(Side::Corp, 1, Style::of(crate::plans::Plan::Glacier));
+        assert_eq!(glacier.select_action(&view, &registry), ice_in_front);
+    }
+
+    /// PT Untaian's discard-phase offer, which the Corp declined every
+    /// one of the 332 times it was made across 192 heuristic-vs-heuristic
+    /// games: pay 1[c] and put an advancement token on an installed card.
+    /// Accepting hands the Corp a `PromptChooseCards`, so before
+    /// `PENDING_DECISION_UPSIDE_WEIGHT` the accept was charged the
+    /// prompt's penalty on top of the credit while declining resolved to
+    /// nothing and was free.
+    #[test]
+    fn accepts_a_paid_choice_that_buys_an_advancement_token() {
+        use netrunner_core::dsl::{CardFilter, CardZoneRef, Cost, Effect};
+        use netrunner_core::rules::{PendingPaidChoice, PendingPaidChoiceResume};
+        let mut registry = CardRegistry::new();
+        let mut agenda = blank_card("agenda", CardType::Agenda);
+        agenda.advancement_requirement = Some(3);
+        agenda.agenda_points = Some(2);
+        registry.insert(agenda);
+
+        let mut state = GameState::new(0);
+        state.phase = GamePhase::Action(Side::Corp);
+        state.runner = empty_runner();
+        state.corp = CorpState {
+            resources: PlayerResources { credits: Credits(5), clicks: Clicks(3), agenda_points: AgendaPoints(0) },
+            installed: vec![InstalledCard {
+                card: CardId("agenda".to_string()),
+                install_id: InstallId(1),
+                server: ServerId::Remote(0),
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        state.pending_paid_choice = Some(PendingPaidChoice {
+            text: None,
+            side: Side::Corp,
+            cost: Cost::Credits(1),
+            if_paid: Effect::PromptChooseCards {
+                side: Side::Corp,
+                source: CardZoneRef::OwnInstalled,
+                filter: CardFilter::All(vec![CardFilter::Advanceable, CardFilter::Unrezzed]),
+                min: 1,
+                max: 1,
+                reveal: false,
+                shuffle_after: false,
+                destination: None,
+                then: Some(Box::new(Effect::PlaceAdvancementCounters(netrunner_core::dsl::Amount::Fixed(1)))),
+            },
+            if_declined: Effect::Sequence(Vec::new()),
+            source_card: None,
+            prompting_card: None,
+            source_install: None,
+            resume: PendingPaidChoiceResume::None,
+        });
+
+        let view = build_client_view(&state, &registry, Side::Corp);
+        assert!(view.legal_actions.contains(&PlayerAction::DeclinePendingPaidChoice));
+        let chosen = PlanningAgent::new(Side::Corp, 1).select_action(&view, &registry);
+        assert_eq!(chosen, PlayerAction::AcceptPendingPaidChoice { cost_option_index: None });
+    }
+
+
+    /// A ready agenda is scored this turn. Not necessarily on the first
+    /// click: the score is free and the turn's credits are the same
+    /// credits before or after it, so the lines tie and the jitter
+    /// orders them — the reference chooser, which saw one action, scored
+    /// at once.
+    #[test]
+    fn scores_a_ready_agenda_this_turn() {
+        let mut registry = CardRegistry::new();
+        let state = corp_state_with_scorable_agenda(&mut registry);
+        let view = build_client_view(&state, &registry, Side::Corp);
+        assert!(view.legal_actions.contains(&PlayerAction::ScoreAgenda { target: InstallId(1) }));
+
+        let mut agent = PlanningAgent::new(Side::Corp, 1);
+        let (played, after) = super::tests::play_turn(&mut agent, state, &registry);
+        assert!(played.contains(&PlayerAction::ScoreAgenda { target: InstallId(1) }), "{played:?}");
+        assert_eq!(after.corp.resources.agenda_points, AgendaPoints(2));
+    }
+
+    /// The Runner-side counterpart: a rezzed ICE the rig cannot break
+    /// makes a run worth less than a credit, and an unrezzed one does not
+    /// (ROADMAP Phase 2 §5's eagerness item).
+    #[test]
+    fn prefers_a_credit_to_running_into_rezzed_ice_it_cannot_break() {
+        use netrunner_core::dsl::{Effect, IceType, SubroutineDef};
+        use netrunner_core::rules::InstallSlot;
+        let mut registry = CardRegistry::new();
+        let mut wall = blank_card("wall", CardType::Ice(IceType::Barrier));
+        wall.strength = Some(1);
+        wall.subroutines = vec![SubroutineDef { text: String::new(), effect: Effect::EndTheRun, only_breakable_by: None }];
+        registry.insert(wall);
+
+        let state_with_ice = |rezzed| {
+            let mut state = GameState::new(0);
+            state.phase = GamePhase::Action(Side::Runner);
+            state.runner = empty_runner();
+            state.runner.resources = PlayerResources { credits: Credits(5), clicks: Clicks(3), agenda_points: AgendaPoints(0) };
+            state.corp.resources.credits = Credits(5);
+            // Something behind the ICE to run for: a run is worth its
+            // hidden accesses, and an empty HQ and R&D would offer none.
+            state.corp.hq = vec![CardId("wall".to_string())];
+            state.corp.r_and_d = vec![CardId("wall".to_string()); 3];
+            for (index, server) in [ServerId::Hq, ServerId::RnD, ServerId::Archives].into_iter().enumerate() {
+                state.corp.installed.push(InstalledCard {
+                    card: CardId("wall".to_string()),
+                    install_id: InstallId(index as u32 + 1),
+                    server,
+                    slot: InstallSlot::Ice,
+                    rezzed,
+                    ..Default::default()
+                });
+            }
+            state
+        };
+
+        let rezzed = state_with_ice(true);
+        let view = build_client_view(&rezzed, &registry, Side::Runner);
+        assert!(view.legal_actions.iter().any(|a| matches!(a, PlayerAction::InitiateRun { .. })));
+        let chosen = PlanningAgent::new(Side::Runner, 3).select_action(&view, &registry);
+        assert!(!matches!(chosen, PlayerAction::InitiateRun { .. }), "ran into rezzed ICE with no breaker: {chosen:?}");
+
+        let unrezzed = state_with_ice(false);
+        let view = build_client_view(&unrezzed, &registry, Side::Runner);
+        let chosen = PlanningAgent::new(Side::Runner, 3).select_action(&view, &registry);
+        assert!(matches!(chosen, PlayerAction::InitiateRun { .. }), "unrezzed ICE is no reason not to run: {chosen:?}");
+    }
+
+    /// With a breaker in grip it cannot yet afford, a rezzed piece of the
+    /// ICE it breaks on the table and open servers to run, the Runner
+    /// clicks for the credit rather than running (ROADMAP Phase 2 §5's
+    /// savings item). The rezzed piece is Stage 7's condition: a breaker
+    /// for ICE the Corp has never shown is not saved for.
+    #[test]
+    fn saves_for_a_breaker_in_grip_instead_of_running_an_open_server() {
+        use netrunner_core::dsl::{Effect, IceType, SubroutineBreakCount, Trigger};
+        use netrunner_core::dsl::AbilityDef;
+        let mut registry = CardRegistry::new();
+        let mut cleaver = blank_card("cleaver", CardType::Program);
+        cleaver.side = Side::Runner;
+        cleaver.cost = 3;
+        cleaver.memory_cost = Some(1);
+        cleaver.abilities = vec![AbilityDef {
+            text: None,
+            trigger: Trigger::Paid,
+            cost: None,
+            requirement: None,
+            effect: Effect::BreakSubroutines { count: SubroutineBreakCount::All, restrict_to: Some(IceType::Barrier) },
+            cost_discount_if: None, used_by: None, access: false, from_hand: false }];
+        registry.insert(cleaver);
+
+        let mut state = GameState::new(0);
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner = empty_runner();
+        state.runner.resources = PlayerResources { credits: Credits(1), clicks: Clicks(3), agenda_points: AgendaPoints(0) };
+        state.runner.memory_units = MemoryUnits(4);
+        state.runner.grip = vec![CardId("cleaver".to_string())];
+        let mut wall = blank_card("wall", CardType::Ice(IceType::Barrier));
+        wall.strength = Some(1);
+        wall.subroutines = vec![netrunner_core::dsl::SubroutineDef { text: String::new(), effect: Effect::EndTheRun, only_breakable_by: None }];
+        registry.insert(wall);
+        state.corp.installed.push(InstalledCard {
+            card: CardId("wall".to_string()),
+            install_id: InstallId(1),
+            server: ServerId::Hq,
+            slot: netrunner_core::rules::InstallSlot::Ice,
+            rezzed: true,
+            ..Default::default()
+        });
+        state.corp.r_and_d = vec![CardId("cleaver".to_string()); 5];
+        let view = build_client_view(&state, &registry, Side::Runner);
+        assert!(view.legal_actions.iter().any(|a| matches!(a, PlayerAction::InitiateRun { .. })));
+        assert!(view.legal_actions.contains(&PlayerAction::GainCreditClick { side: Side::Runner }));
+
+        let chosen = PlanningAgent::new(Side::Runner, 3).select_action(&view, &registry);
+        assert_eq!(chosen, PlayerAction::GainCreditClick { side: Side::Runner }, "should save for Cleaver");
+    }
+
+    /// With an empty grip, open servers and a stack to draw from, the
+    /// Runner draws before it runs (ROADMAP Phase 2 §5's draw item).
+    #[test]
+    fn draws_with_an_empty_grip_instead_of_running_an_open_server() {
+        let mut registry = CardRegistry::new();
+        let mut filler = blank_card("filler", CardType::Resource);
+        filler.side = Side::Runner;
+        filler.cost = 9;
+        registry.insert(filler);
+
+        let mut state = GameState::new(0);
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner = empty_runner();
+        state.runner.resources = PlayerResources { credits: Credits(5), clicks: Clicks(3), agenda_points: AgendaPoints(0) };
+        state.runner.stack = vec![CardId("filler".to_string()); 5];
+        let view = build_client_view(&state, &registry, Side::Runner);
+        assert!(view.legal_actions.iter().any(|a| matches!(a, PlayerAction::InitiateRun { .. })));
+        assert!(view.legal_actions.contains(&PlayerAction::DrawCardClick { side: Side::Runner }));
+
+        let chosen = PlanningAgent::new(Side::Runner, 3).select_action(&view, &registry);
+        assert_eq!(chosen, PlayerAction::DrawCardClick { side: Side::Runner });
+    }
+
+    /// Past the floor the Runner drew only after damage. Now it draws when
+    /// the card its sample puts on top of the stack is one it would
+    /// install: a breaker for a subtype the rig cannot break. The sample's
+    /// stack comes from the registry when no decklist is known, so the
+    /// registry decides what the draw finds.
+    #[test]
+    fn draws_at_the_floor_when_the_stack_holds_a_breaker_and_not_when_it_holds_junk() {
+        use netrunner_core::dsl::{AbilityDef, Effect, IceType, SubroutineBreakCount, Trigger};
+        let runner_card = |id: &str, card_type: CardType, cost: u32| {
+            let mut def = blank_card(id, card_type);
+            def.side = Side::Runner;
+            def.cost = cost;
+            def.memory_cost = Some(1);
+            def
+        };
+        let choose = |card: CardDefinition| {
+            let mut registry = CardRegistry::new();
+            registry.insert(card);
+            let mut state = open_board(&mut registry);
+            state.runner.memory_units = MemoryUnits(4);
+            state.runner.stack = vec![CardId("filler".to_string()); 10];
+            // Nothing worth running, so the choice is between a draw and a credit.
+            state.corp.hq.clear();
+            state.corp.r_and_d.clear();
+            let view = build_client_view(&state, &registry, Side::Runner);
+            assert!(view.legal_actions.contains(&PlayerAction::DrawCardClick { side: Side::Runner }));
+            PlanningAgent::new(Side::Runner, 3).select_action(&view, &registry)
+        };
+        let mut cleaver = runner_card("cleaver", CardType::Program, 3);
+        cleaver.abilities = vec![AbilityDef {
+            text: None,
+            trigger: Trigger::Paid,
+            cost: None,
+            requirement: None,
+            effect: Effect::BreakSubroutines { count: SubroutineBreakCount::All, restrict_to: Some(IceType::Barrier) },
+            cost_discount_if: None,
+            used_by: None,
+            access: false,
+            from_hand: false,
+        }];
+        assert_eq!(choose(cleaver), PlayerAction::DrawCardClick { side: Side::Runner }, "a breaker on top is worth the draw");
+        assert_eq!(
+            choose(runner_card("pricey", CardType::Resource, 4)),
+            PlayerAction::GainCreditClick { side: Side::Runner },
+            "a card the Runner would never install is not"
+        );
+    }
+
+    /// The Corp-side counterpart of the Runner's draw test: with an empty
+    /// HQ and a stocked R&D, the Corp clicks to draw rather than for a
+    /// credit (ROADMAP Phase 2 §5's Corp item).
+    #[test]
+    fn corp_draws_with_an_empty_hq_instead_of_clicking_for_a_credit() {
+        let mut registry = CardRegistry::new();
+        registry.insert(blank_card("filler", CardType::Asset));
+
+        let mut state = GameState::new(0);
+        state.phase = GamePhase::Action(Side::Corp);
+        state.runner = empty_runner();
+        state.corp.resources = PlayerResources { credits: Credits(5), clicks: Clicks(3), agenda_points: AgendaPoints(0) };
+        state.corp.r_and_d = vec![CardId("filler".to_string()); 10];
+        let view = build_client_view(&state, &registry, Side::Corp);
+        assert!(view.legal_actions.contains(&PlayerAction::DrawCardClick { side: Side::Corp }));
+        assert!(view.legal_actions.contains(&PlayerAction::GainCreditClick { side: Side::Corp }));
+
+        let chosen = PlanningAgent::new(Side::Corp, 3).select_action(&view, &registry);
+        assert_eq!(chosen, PlayerAction::DrawCardClick { side: Side::Corp });
+    }
+
+    /// With an ICE-protected remote and a naked one both open, an agenda
+    /// goes behind the ICE (ROADMAP Phase 2 §5's placement item). Two
+    /// pieces, because one is still an exposed agenda to every Corp
+    /// profile (`EXPOSED_AGENDA_WEIGHT`, Phase 5 §23), and a credit click
+    /// beats it.
+    #[test]
+    fn installs_an_agenda_behind_ice_rather_than_into_a_naked_remote() {
+        use netrunner_core::dsl::IceType;
+        use netrunner_core::rules::InstallSlot;
+        let mut registry = CardRegistry::new();
+        let mut agenda = blank_card("agenda", CardType::Agenda);
+        agenda.advancement_requirement = Some(3);
+        agenda.agenda_points = Some(2);
+        registry.insert(agenda);
+        registry.insert(blank_card("wall", CardType::Ice(IceType::Barrier)));
+        registry.insert(blank_card("filler", CardType::Operation));
+
+        let mut state = GameState::new(0);
+        state.phase = GamePhase::Action(Side::Corp);
+        state.runner = empty_runner();
+        state.corp.resources = PlayerResources { credits: Credits(5), clicks: Clicks(3), agenda_points: AgendaPoints(0) };
+        state.corp.r_and_d = vec![CardId("filler".to_string()); 10];
+        state.corp.hq = vec![CardId("agenda".to_string()), CardId("filler".to_string()), CardId("filler".to_string())];
+        // Remote 0 has ICE and an empty root; remote 1 is a naked empty root
+        // (an ICE-less remote is represented by nothing at all, so the
+        // "naked" option is the fresh remote the engine always offers).
+        for n in 1..=2 {
+            state.corp.installed.push(InstalledCard {
+                card: CardId("wall".to_string()),
+                install_id: InstallId(n),
+                server: ServerId::Remote(0),
+                slot: InstallSlot::Ice,
+                ..Default::default()
+            });
+        }
+        let view = build_client_view(&state, &registry, Side::Corp);
+        let agenda_installs: Vec<_> = view
+            .legal_actions
+            .iter()
+            .filter(|a| matches!(a, PlayerAction::InstallCard { card_id, slot: InstallSlot::Root, .. } if card_id.0 == "agenda"))
+            .collect();
+        assert!(agenda_installs.len() >= 2, "expected both a protected and a naked remote on offer: {agenda_installs:?}");
+
+        let chosen = PlanningAgent::new(Side::Corp, 3).select_action(&view, &registry);
+        assert!(
+            matches!(&chosen, PlayerAction::InstallCard { card_id, zone: ServerId::Remote(0), slot: InstallSlot::Root, .. } if card_id.0 == "agenda"),
+            "should install the agenda behind the ICE: {chosen:?}"
+        );
+    }
+
+    /// A Runner at the floor with credits, open centrals and something to
+    /// find in each of them: the position the three tests below vary.
+    fn open_board(registry: &mut CardRegistry) -> GameState {
+        registry.insert(blank_card("filler", CardType::Operation));
+        let mut state = GameState::new(0);
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner = empty_runner();
+        state.runner.resources = PlayerResources { credits: Credits(5), clicks: Clicks(3), agenda_points: AgendaPoints(0) };
+        state.runner.grip = vec![CardId("filler".to_string()); 3];
+        state.corp.hq = vec![CardId("filler".to_string()); 2];
+        state.corp.r_and_d = vec![CardId("filler".to_string()); 5];
+        state
+    }
+
+    /// Urtica Cipher's shape: an asset that deals damage when accessed.
+    fn ambush(id: &str) -> CardDefinition {
+        use netrunner_core::dsl::{DamageType, Effect, Trigger, TriggeredEffect};
+        let mut def = blank_card(id, CardType::Asset);
+        def.triggers = vec![TriggeredEffect {
+            subject: None, when: None, acts_on_subject: false, first_each_turn: false, from_heap: false,
+            text: None,
+            trigger: Trigger::OnAccessed,
+            effects: vec![Effect::DealDamage(DamageType::Net, 2)],
+            requirement: None,
+        }];
+        def
+    }
+
+    /// The person's first desktop game (ROADMAP Phase 7 §3): the
+    /// `operator` Runner ran Archives three times into a face-up Urtica
+    /// Cipher. With the ambush face-up beside a card it has not seen, the
+    /// Runner runs somewhere else.
+    #[test]
+    fn does_not_run_archives_into_an_ambush_it_can_see() {
+        use netrunner_core::rules::ArchivedCard;
+        let mut registry = CardRegistry::new();
+        registry.insert(ambush("urtica_cipher"));
+        let mut state = open_board(&mut registry);
+        state.corp.archives = vec![
+            ArchivedCard::faceup(CardId("urtica_cipher".to_string())),
+            ArchivedCard { card: CardId("filler".to_string()), facedown: true },
+        ];
+        let view = build_client_view(&state, &registry, Side::Runner);
+        assert!(view.legal_actions.contains(&PlayerAction::InitiateRun { server: ServerId::Archives }));
+        for seed in 1..=8 {
+            let chosen = PlanningAgent::new(Side::Runner, seed).select_action(&view, &registry);
+            assert!(matches!(chosen, PlayerAction::InitiateRun { server } if server != ServerId::Archives), "seed {seed}: {chosen:?}");
+        }
+        // Face down, the same card is one more thing to see, and Archives
+        // is as good a run as any central.
+        state.corp.archives[0].facedown = true;
+        let view = build_client_view(&state, &registry, Side::Runner);
+        let runs_archives = (1..=8).any(|seed| {
+            PlanningAgent::new(Side::Runner, seed).select_action(&view, &registry) == PlayerAction::InitiateRun { server: ServerId::Archives }
+        });
+        assert!(runs_archives, "two unseen cards in Archives outrank one in HQ");
+    }
+
+    /// A faceup agenda in Archives is worth running for only when the
+    /// Runner can pay to steal it. Under a rezzed Magistrate Revontulet
+    /// (3[credit] more to steal) with no credits, the one-ply Runner ran
+    /// Archives four times a turn, passed the agenda each time and never
+    /// clicked for a credit, until the game ran out of steps (the 256-seed
+    /// view sweep, seed 120, Paid Content against Borrowed Time).
+    #[test]
+    fn runs_archives_for_a_faceup_agenda_only_when_it_can_pay_to_steal_it() {
+        use netrunner_core::cards::register_playable_cards;
+        use netrunner_core::rules::{ArchivedCard, InstallId, InstallSlot, InstalledCard};
+        let mut registry = CardRegistry::new();
+        register_playable_cards(&mut registry);
+        let mut state = open_board(&mut registry);
+        state.corp.archives = vec![ArchivedCard::faceup(CardId("orbital_superiority".to_string()))];
+        state.corp.installed = vec![InstalledCard {
+            install_id: InstallId(40),
+            card: CardId("magistrate_revontulet".to_string()),
+            server: ServerId::Remote(0),
+            slot: InstallSlot::Root,
+            rezzed: true,
+            ..Default::default()
+        }];
+        let runs_archives = |state: &GameState| {
+            let view = build_client_view(state, &registry, Side::Runner);
+            (1..=8).any(|seed| PlanningAgent::new(Side::Runner, seed).select_action(&view, &registry) == PlayerAction::InitiateRun { server: ServerId::Archives })
+        };
+        assert!(runs_archives(&state), "with 5[credit] the steal is paid for");
+        state.runner.resources.credits = Credits(0);
+        assert!(!runs_archives(&state), "with nothing, the agenda cannot be stolen");
+    }
+
+    /// A trap the Runner has sprung is one it can see (`InstalledCard::
+    /// seen_by_runner`): the same advanced face-down Urtica that draws the
+    /// run while unseen — two tokens are an agenda about to score, as far
+    /// as the Runner knows — is left alone once it has been accessed.
+    #[test]
+    fn does_not_run_back_into_a_trap_it_has_sprung() {
+        use netrunner_core::dsl::{Amount, DamageType, Effect};
+        let mut registry = CardRegistry::new();
+        let mut urtica = ambush("urtica_cipher");
+        urtica.advancement_requirement = Some(0);
+        urtica.triggers[0].effects.push(Effect::DealDamageAmount(DamageType::Net, Amount::HostedAdvancementTokens));
+        registry.insert(urtica);
+        let mut state = open_board(&mut registry);
+        state.corp.installed.push(InstalledCard {
+            card: CardId("urtica_cipher".to_string()),
+            install_id: InstallId(1),
+            server: ServerId::Remote(0),
+            advancement_tokens: 2,
+            ..Default::default()
+        });
+        let runs_it = |state: &GameState| {
+            let view = build_client_view(state, &registry, Side::Runner);
+            (1..=4).filter(|seed| {
+                PlanningAgent::new(Side::Runner, *seed).select_action(&view, &registry)
+                    == PlayerAction::InitiateRun { server: ServerId::Remote(0) }
+            }).count()
+        };
+        assert_eq!(runs_it(&state), 4, "unseen, two tokens are worth the run");
+        state.corp.installed[0].seen_by_runner = true;
+        assert_eq!(runs_it(&state), 0, "seen, it is four net damage into a grip of three");
+    }
+
+    /// Where the Corp is scoring is where the Runner goes: a face-down
+    /// card with two tokens beats every central.
+    #[test]
+    fn runs_the_advanced_remote_before_a_central() {
+        let mut registry = CardRegistry::new();
+        let mut agenda = blank_card("agenda", CardType::Agenda);
+        agenda.advancement_requirement = Some(3);
+        agenda.agenda_points = Some(2);
+        registry.insert(agenda);
+        let mut state = open_board(&mut registry);
+        state.corp.installed.push(InstalledCard {
+            card: CardId("agenda".to_string()),
+            install_id: InstallId(1),
+            server: ServerId::Remote(0),
+            advancement_tokens: 2,
+            ..Default::default()
+        });
+        let view = build_client_view(&state, &registry, Side::Runner);
+        for seed in 1..=4 {
+            let chosen = PlanningAgent::new(Side::Runner, seed).select_action(&view, &registry);
+            assert_eq!(chosen, PlayerAction::InitiateRun { server: ServerId::Remote(0) }, "seed {seed}");
+        }
+    }
+
+    /// The trash lever through the real run: the Runner runs a naked
+    /// remote holding a rezzed asset, reaches the access, and pays 2[c]
+    /// to trash it — but leaves it at 4[c].
+    #[test]
+    fn trashes_an_affordable_asset_on_access_and_leaves_a_dear_one() {
+        use netrunner_core::rules::legal_actions;
+        let accessed = |trash_cost: u32| {
+            let mut registry = CardRegistry::new();
+            let mut nico = blank_card("nico_campaign", CardType::Asset);
+            nico.trash_cost = Some(trash_cost);
+            registry.insert(nico);
+            let mut state = open_board(&mut registry);
+            state.corp.installed.push(InstalledCard {
+                card: CardId("nico_campaign".to_string()),
+                install_id: InstallId(1),
+                server: ServerId::Remote(0),
+                rezzed: true,
+                ..Default::default()
+            });
+            let (mut state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Remote(0) }).unwrap();
+            let trash = PlayerAction::TrashAccessedCard { card_id: CardId("nico_campaign".to_string()) };
+            for _ in 0..20 {
+                let legal = legal_actions(&state, &registry);
+                if legal.contains(&trash) {
+                    break;
+                }
+                let step = legal
+                    .iter()
+                    .find(|a| matches!(a, PlayerAction::PassPriority { .. } | PlayerAction::ContinueRun | PlayerAction::CompleteRun))
+                    .cloned()
+                    .unwrap_or_else(|| panic!("no way forward from {legal:?}"));
+                state = apply_action(&state, &registry, step).unwrap().0;
+            }
+            let view = build_client_view(&state, &registry, Side::Runner);
+            assert!(view.legal_actions.contains(&trash), "reached the access: {:?}", view.legal_actions);
+            PlanningAgent::new(Side::Runner, 1).select_action(&view, &registry)
+        };
+        assert_eq!(accessed(2), PlayerAction::TrashAccessedCard { card_id: CardId("nico_campaign".to_string()) });
+        assert_eq!(accessed(4), PlayerAction::PassAccessedCard { card_id: CardId("nico_campaign".to_string()) });
+    }
+
+    #[test]
+    fn always_returns_a_member_of_legal_actions() {
+        let mut registry = CardRegistry::new();
+        let state = corp_state_with_scorable_agenda(&mut registry);
+        let view = build_client_view(&state, &registry, Side::Corp);
+
+        let mut agent = PlanningAgent::new(Side::Corp, 2);
+        let chosen = agent.select_action(&view, &registry);
+        assert!(view.legal_actions.contains(&chosen));
     }
 }
