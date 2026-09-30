@@ -370,7 +370,7 @@ fn spawn_header(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientC
             for style in editor.styles() {
                 let name = style.map(|style| style.name().to_string());
                 let label = name.as_deref().map_or("Balanced".to_string(), capitalised);
-                let chosen = deck.style == name || (deck.style.is_none() && name.is_none());
+                let chosen = deck.style == name.iter().cloned().collect::<Vec<_>>();
                 if editor.read_only && !chosen {
                     continue;
                 }

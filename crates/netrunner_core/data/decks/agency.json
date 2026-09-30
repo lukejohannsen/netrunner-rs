@@ -4,7 +4,7 @@
   "side": "Corp",
   "category": "Sample",
   "description": "Eleven Bioroids, Brân 1.0 and Syailendra in threes: the fort goes up first and the agendas score behind it.",
-  "style": "glacier",
+  "style": ["glacier", "fast-advance"],
   "identity": "leo_construction_labor_solutions",
   "cards": [
     {

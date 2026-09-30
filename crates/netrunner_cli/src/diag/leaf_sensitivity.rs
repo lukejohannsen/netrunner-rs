@@ -205,7 +205,7 @@ pub fn run(args: &LeafSensitivityArgs, config: &Config) -> Result<(), Box<dyn st
         rayon::ThreadPoolBuilder::new().num_threads(threads).build_global()?;
     }
     let registry = decks::sample_deck_registry();
-    let source = format!("{:?}:{:?}", args.source.kind, args.source.personality).to_lowercase();
+    let source = format!("{:?}:{}", args.source.kind, args.source.style).to_lowercase();
 
     println!("collecting positions from {} games seated {source} vs {source}...", args.games);
     let positions = collect_positions(args, &registry, config)?;
@@ -252,7 +252,7 @@ fn collect_positions(
         let seed = args.seed.wrapping_add(u64::from(game));
         let (corp_deck, runner_deck) = &matchups[game as usize % matchups.len()];
         let (state, _events) = GameState::setup(&corp_deck.to_deck(), &runner_deck.to_deck(), registry, seed)?;
-        let setup = |deck| bots::AgentSetup::new(32).with_personality(args.source.personality).with_knowledge(config.knowledge(deck));
+        let setup = |deck| bots::AgentSetup::new(32).with_style(args.source.style).with_knowledge(config.knowledge(deck));
         let corp = bots::make_agent_with_model(args.source.kind, Side::Corp, seed, setup(corp_deck), &config.model)?
             .ok_or("the position source must be a bot that can take a seat")?;
         let runner =

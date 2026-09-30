@@ -31,6 +31,25 @@ pub(crate) fn guide() -> Weights {
     Weights::default().at_the_guides_rate()
 }
 
+/// Every profile a Corp reference may score with, named: balanced and
+/// each Corp plan's, for a property every one of them must have.
+pub(crate) fn corp_profiles() -> Vec<(String, Weights)> {
+    let mut profiles = vec![("balanced".to_string(), Weights::default())];
+    profiles.extend(crate::plans::Plan::for_side(Side::Corp).map(|plan| (plan.name().to_string(), plan.weights())));
+    profiles
+}
+
+/// The planner's weights for a Corp style, named by it.
+pub(crate) fn planned(plans: &[crate::plans::Plan]) -> Weights {
+    crate::plans::Style::new(plans).expect("a style").planned_weights(Side::Corp)
+}
+
+/// The balanced planner Corp's weights: the guide's rate with every
+/// Corp's four plan terms and no plan's own.
+pub(crate) fn every_corp() -> Weights {
+    crate::plans::Style::BALANCED.planned_weights(Side::Corp)
+}
+
 pub(crate) fn ice(id: &str, cost: u32) -> CardDefinition {
     CardDefinition {
         id: CardId(id.to_string()),

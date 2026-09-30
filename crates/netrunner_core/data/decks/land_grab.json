@@ -4,7 +4,7 @@
   "side": "Corp",
   "category": "Sweep",
   "description": "Not a published list: built so the sweeps reach Rebellion Without Rehearsal's Nuvem SA: Law of the Land and The Basalt Spire — every operation and every action on an expendable card (Tocsin) a look at the top of R&D, and the turn's first trash from it two credits — on Hostile Bid's frame, three Hostile Takeover out for two The Basalt Spire and a third copy of the operations, Tocsin and Logjam in. Eternal-legal only. Rebellion Without Rehearsal Stage 5e; in Stage 7a, two Eminent Domain for a Sacrifice Zone Expansion and a Hedge Fund, and two Descent for two Ice Wall, more expendable cards for Nuvem to look at the top of R&D by. The Automata Initiative Stage 2: two Armed Asset Protection for two Hedge Fund. The Automata Initiative Stage 7: two Slash and Burn Agriculture for its two Let Them Dream (the same points), two Tree Line for its Ice Wall and Palisade, two Angelique Garza Correa for two Myōshu, and two Oppo Research, 4 influence, for two Measured Response — the cards that leave are in Hostile Bid and the other decks. Without its Ice Wall it is Standard-legal. Parhelion Stage 2a: two End of the Line for two Business As Usual, beside the Oppo Research that tags for it.",
-  "style": "trap",
+  "style": ["traps"],
   "identity": "nuvem_sa_law_of_the_land",
   "cards": [
     {

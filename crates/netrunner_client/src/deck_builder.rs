@@ -258,7 +258,7 @@ impl Draft {
         true
     }
 
-    pub fn set_style(&mut self, style: Option<String>) -> bool {
+    pub fn set_style(&mut self, style: Vec<String>) -> bool {
         let changed = self.deck.style != style;
         self.deck.style = style;
         changed
@@ -611,7 +611,7 @@ pub fn new_deck(name: &str, identity: &CardDefinition, taken: &[String]) -> Deck
         category: DeckCategory::Custom,
         description: None,
         how_to_play: None,
-        style: None,
+        style: Vec::new(),
         identity: identity.id.clone(),
         cards: Vec::new(),
     }

@@ -15,7 +15,7 @@ use std::io::{self, BufRead, Write};
 use serde::{Deserialize, Serialize};
 
 use netrunner_bots::difficulty::Level;
-use netrunner_bots::personality::Personality;
+use netrunner_bots::plans::Style;
 
 use netrunner_core::cards::CardRegistry;
 use netrunner_core::rules::{
@@ -133,7 +133,7 @@ fn is_shuffled(order: &DeckOrder) -> bool {
 pub struct RecordedBot {
     pub side: Side,
     pub level: Level,
-    pub personality: Personality,
+    pub style: Style,
 }
 
 impl MatchRecordHeader {

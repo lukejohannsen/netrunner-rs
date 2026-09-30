@@ -9,7 +9,7 @@ use crate::agent::BotAgent;
 use crate::determinize::determinize;
 use crate::eval::{evaluate_state_with, Weights};
 use crate::knowledge::Knowledge;
-use crate::personality::Personality;
+use crate::plans::Style;
 
 /// Tiny random jitter added to each candidate's score, purely to break ties
 /// between otherwise-equal actions without always picking the first one in
@@ -25,8 +25,8 @@ const TIE_BREAK_JITTER: f64 = 1e-3;
 pub struct HeuristicAgent {
     side: Side,
     rng: StdRng,
-    /// The evaluator's terms — `Weights::default()` unless a
-    /// `Personality` was asked for.
+    /// The evaluator's terms — `Weights::default()` unless a `Style`
+    /// was asked for (its first plan's profile: the reference reads one).
     weights: Weights,
     /// What the sample is drawn from: the format, the seat's own deck and
     /// what it has seen (`BotAgent::observe`).
@@ -35,12 +35,13 @@ pub struct HeuristicAgent {
 
 impl HeuristicAgent {
     pub fn new(side: Side, seed: u64) -> Self {
-        Self::with_personality(side, seed, Personality::Balanced)
+        Self::with_style(side, seed, Style::BALANCED)
     }
 
-    /// `new`, scoring with `personality.weights()`.
-    pub fn with_personality(side: Side, seed: u64, personality: Personality) -> Self {
-        Self { side, rng: StdRng::seed_from_u64(seed), weights: personality.weights(), knowledge: Knowledge::default() }
+    /// `new`, scoring with `style.weights()` — the first plan's profile,
+    /// which is what pins this chooser as the reference (`plans`).
+    pub fn with_style(side: Side, seed: u64, style: Style) -> Self {
+        Self { side, rng: StdRng::seed_from_u64(seed), weights: style.weights(), knowledge: Knowledge::default() }
     }
 
     /// The same chooser, sampling from what `knowledge` admits — the
@@ -216,9 +217,9 @@ mod tests {
             .cloned()
             .expect("the ICE can be installed in front of the agenda");
 
-        let mut rush = HeuristicAgent::with_personality(Side::Corp, 1, Personality::Rush);
+        let mut rush = HeuristicAgent::with_style(Side::Corp, 1, Style::of(crate::plans::Plan::FastAdvance));
         assert_eq!(rush.select_action(&view, &registry), advance);
-        let mut glacier = HeuristicAgent::with_personality(Side::Corp, 1, Personality::Glacier);
+        let mut glacier = HeuristicAgent::with_style(Side::Corp, 1, Style::of(crate::plans::Plan::Glacier));
         assert_eq!(glacier.select_action(&view, &registry), ice_in_front);
     }
 

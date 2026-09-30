@@ -35,7 +35,7 @@ pub mod onnx_fixture;
 #[cfg(feature = "onnx")]
 pub mod onnx_policy;
 pub mod observation;
-pub mod personality;
+pub mod plans;
 pub mod planner;
 pub mod policy;
 pub mod puct;
@@ -57,7 +57,7 @@ pub use mcts::MctsAgent;
 #[cfg(feature = "onnx")]
 pub use onnx_policy::{OnnxPolicyError, OnnxPolicyEvaluator};
 pub use observation::{encode_observation, to_observation_vector, OBS_SIZE};
-pub use personality::Personality;
+pub use plans::{Plan, Style};
 pub use planner::{PlanStats, PlanningAgent};
 pub use policy::{MixedPriorEvaluator, PolicyEvaluator, SplitEvaluator, UniformPolicyEvaluator};
 pub use puct::{

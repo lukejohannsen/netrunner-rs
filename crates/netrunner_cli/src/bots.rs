@@ -17,7 +17,7 @@
 //! has no `BotAgent` form to hand a `PlayerSlot::Bot`.
 
 use netrunner_bots::{
-    BotAgent, BotAgentIndexAdapter, HeuristicAgent, Knowledge, Level, MctsAgent, Personality, PlanningAgent, PuctAgent,
+    BotAgent, BotAgentIndexAdapter, HeuristicAgent, Knowledge, Level, MctsAgent, PlanningAgent, PuctAgent, Style,
     PuctConfig, RandomAgent, UniformPolicyEvaluator,
 };
 use netrunner_core::rules::Side;
@@ -33,7 +33,7 @@ use crate::config::BotKind;
 /// the `None` as a human seat — [`make_driver`] is the supported route.
 ///
 /// `simulations` is the per-decision search budget for the two search
-/// agents (`Mcts`, `Puct`); the others ignore it. `personality` biases
+/// agents (`Mcts`, `Puct`); the others ignore it. `style` biases
 /// the evaluator every kind but `Random` scores with (`Random` has no
 /// evaluator, and a network-backed `PuctOnnx` has its own value head).
 ///
@@ -78,7 +78,7 @@ pub struct AgentSetup {
     /// Biases the evaluator every kind but `Random` scores with (`Random`
     /// has no evaluator, and a network-backed `PuctOnnx` has its own
     /// value head).
-    pub personality: Personality,
+    pub style: Style,
     /// What the seat samples hidden cards from: the format's pool, its
     /// own deck and what it has seen — `Config::knowledge` for a seat the
     /// CLI deals a deck. `Knowledge::default()` (Casual, no deck) is a
@@ -96,13 +96,13 @@ impl AgentSetup {
             determinizations: None,
             shared_sample: false,
             mcts_depth: None,
-            personality: Personality::Balanced,
+            style: Style::BALANCED,
             knowledge: Knowledge::default(),
         }
     }
 
-    pub fn with_personality(mut self, personality: Personality) -> Self {
-        self.personality = personality;
+    pub fn with_style(mut self, style: Style) -> Self {
+        self.style = style;
         self
     }
 
@@ -121,10 +121,10 @@ impl AgentSetup {
 /// seat that honoured `--simulations` on top of a rung would not be the
 /// rung anyone calibrated.
 ///
-/// **The personality is the one setting a rung keeps.** Style and
-/// difficulty are two axes (`LevelSpec::with_personality` says why the
-/// order survives the cross), and until this passed it through,
-/// `--corp-level 4 --corp-personality rush` played `Balanced` without
+/// **The style is the one setting a rung keeps.** Style and difficulty
+/// are two axes (`LevelSpec::with_style` says why the order survives the
+/// cross), and until this passed it through, `--corp-level 4
+/// --corp-style fast-advance` played balanced without
 /// saying so — which also meant a deck's own style (`DeckFile::style`)
 /// could never reach a rung.
 pub fn make_seat_agent(
@@ -136,21 +136,21 @@ pub fn make_seat_agent(
     model_path: &str,
 ) -> Result<Option<Box<dyn BotAgent>>, String> {
     match level {
-        Some(level) => Ok(Some(level.spec(side).with_personality(setup.personality).agent(seed, setup.knowledge))),
+        Some(level) => Ok(Some(level.spec(side).with_style(setup.style).agent(seed, setup.knowledge))),
         None => make_agent_with_model(kind, side, seed, setup, model_path),
     }
 }
 
 pub fn make_agent(kind: BotKind, side: Side, seed: u64, setup: AgentSetup) -> Option<Box<dyn BotAgent>> {
-    let AgentSetup { simulations, determinizations, shared_sample, mcts_depth, personality, knowledge } = setup;
+    let AgentSetup { simulations, determinizations, shared_sample, mcts_depth, style, knowledge } = setup;
     match kind {
         BotKind::Human | BotKind::Onnx | BotKind::PuctOnnx => None,
         BotKind::Random => Some(Box::new(RandomAgent::new(seed))),
         BotKind::Heuristic => Some(Box::new(
-            HeuristicAgent::with_personality(side, seed, personality).with_knowledge(knowledge),
+            HeuristicAgent::with_style(side, seed, style).with_knowledge(knowledge),
         )),
         BotKind::Planner => Some(Box::new(
-            PlanningAgent::with_personality(side, seed, personality).with_knowledge(knowledge),
+            PlanningAgent::with_style(side, seed, style).with_knowledge(knowledge),
         )),
         BotKind::Mcts => {
             let mut agent = match determinizations {
@@ -162,7 +162,7 @@ pub fn make_agent(kind: BotKind, side: Side, seed: u64, setup: AgentSetup) -> Op
             }
             Some(Box::new(
                 agent
-                    .with_personality(personality)
+                    .with_style(style)
                     .with_shared_sample(shared_sample)
                     .with_knowledge(knowledge),
             ))
@@ -171,7 +171,7 @@ pub fn make_agent(kind: BotKind, side: Side, seed: u64, setup: AgentSetup) -> Op
             PuctAgent::with_config(
                 side,
                 seed,
-                UniformPolicyEvaluator::with_personality(side, personality),
+                UniformPolicyEvaluator::with_style(side, style),
                 PuctConfig {
                     iterations: simulations,
                     samples: determinizations.unwrap_or(PuctConfig::default().samples),
@@ -245,14 +245,14 @@ pub fn make_driver(
     seed: u64,
     simulations: usize,
     model_path: &str,
-    personality: Personality,
+    style: Style,
     knowledge: Knowledge,
 ) -> Result<Box<dyn Agent>, String> {
     match kind {
         BotKind::Human => Err("make_driver was asked for a bot driver for the human seat".to_string()),
         BotKind::Onnx => make_onnx_driver(side, model_path),
         _ => {
-            let setup = AgentSetup::new(simulations).with_personality(personality).with_knowledge(knowledge);
+            let setup = AgentSetup::new(simulations).with_style(style).with_knowledge(knowledge);
             let agent = make_agent_with_model(kind, side, seed, setup, model_path)?
                 .expect("every kind but Human and Onnx yields a BotAgent");
             Ok(Box::new(BotAgentIndexAdapter::new(agent, side)))
@@ -294,7 +294,7 @@ mod tests {
             panic!("a missing model cannot produce an agent");
         };
         assert!(!error.is_empty());
-        let Err(error) = make_driver(BotKind::PuctOnnx, Side::Corp, 0, 8, "/nonexistent/model.onnx", Personality::Balanced, Knowledge::default()) else {
+        let Err(error) = make_driver(BotKind::PuctOnnx, Side::Corp, 0, 8, "/nonexistent/model.onnx", Style::BALANCED, Knowledge::default()) else {
             panic!("a missing model cannot produce a driver");
         };
         assert!(!error.is_empty());
@@ -323,20 +323,20 @@ mod tests {
     #[test]
     fn the_scripted_kinds_all_produce_drivers() {
         for kind in [BotKind::Random, BotKind::Heuristic, BotKind::Mcts, BotKind::Puct] {
-            assert!(make_driver(kind, Side::Corp, 7, 8, "unused.onnx", Personality::Balanced, Knowledge::default()).is_ok(), "{kind:?}");
+            assert!(make_driver(kind, Side::Corp, 7, 8, "unused.onnx", Style::BALANCED, Knowledge::default()).is_ok(), "{kind:?}");
         }
     }
 
     #[test]
     fn asking_for_a_driver_for_the_human_seat_is_an_error() {
-        assert!(make_driver(BotKind::Human, Side::Corp, 0, 8, "unused.onnx", Personality::Balanced, Knowledge::default()).is_err());
+        assert!(make_driver(BotKind::Human, Side::Corp, 0, 8, "unused.onnx", Style::BALANCED, Knowledge::default()).is_err());
     }
 
     /// Whether the feature is on or off, a missing model must surface as a
     /// readable message rather than a panic.
     #[test]
     fn a_missing_onnx_model_is_a_readable_error() {
-        let Err(error) = make_driver(BotKind::Onnx, Side::Corp, 0, 8, "/nonexistent/model.onnx", Personality::Balanced, Knowledge::default()) else {
+        let Err(error) = make_driver(BotKind::Onnx, Side::Corp, 0, 8, "/nonexistent/model.onnx", Style::BALANCED, Knowledge::default()) else {
             panic!("a missing model cannot produce a driver");
         };
         assert!(!error.is_empty());

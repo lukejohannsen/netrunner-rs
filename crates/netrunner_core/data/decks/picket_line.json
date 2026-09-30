@@ -4,7 +4,7 @@
   "side": "Runner",
   "category": "Sweep",
   "description": "Not a published list: built so the sweeps reach Mercury: Chrome Libertador, The Automata Initiative's Criminal identity (Stage 6), on Stolen Goods' frame of run events and HQ pressure. Debbie “Downtown” Moreira banks a credit for every Jailbreak, Overclock, Tread Lightly and Bahia Bands and spends them on her own runs; Chrysopoeian Skimming asks the Corp for an agenda; Hannah “Wheels” Pilintra, Strike Fund and The Price on influence, The Price trashing Strike Funds off the stack for their 2[credit]. Standard, Eternal and Casual: no card in it is from the Core Set. The Automata Initiative Stage 7: two S-Dobrado and two Capybara, which removes itself from the game to derez what S-Dobrado bypasses, for two Sure Gamble, an Overclock and a Jailbreak. Parhelion Stage 2a: two Zenit Chip JZ-2MJ for two Jailbreak.",
-  "style": "aggressive",
+  "style": ["aggressive"],
   "identity": "mercury_chrome_libertador",
   "cards": [
     {

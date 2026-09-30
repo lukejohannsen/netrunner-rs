@@ -4,7 +4,7 @@
   "side": "Corp",
   "category": "Sweep",
   "description": "Not a published list: built so the sweeps reach Thule Subsea: Safety Below, Parhelion's Haas-Bioroid identity, whose every steal costs the Runner a core damage unless they spend [click] and 2[credit]. Retirement Package's frame after The Automata Initiative, with two Distributed Tracing, two Djupstad Grid, two Shipment from Vladisibirsk, a Vera Ivanovna Shuyskaya and two Reaper Function for its two Brasília Government Grid, two Caveat Emptor, two Retirement Plan, two Synchrocyclotron and a Sleipnir: a steal is taxed and answered with a tag, a tag with advancement counters, and a score from Djupstad Grid's server with core damage. Standard-legal: Engineering the Future was the frame's one Core Set card.",
-  "style": "glacier",
+  "style": ["glacier"],
   "identity": "thule_subsea_safety_below",
   "cards": [
     {

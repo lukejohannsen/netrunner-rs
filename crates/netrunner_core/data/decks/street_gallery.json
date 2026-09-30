@@ -4,7 +4,7 @@
   "side": "Runner",
   "category": "Sweep",
   "description": "Not a published list: built so the sweeps reach Arissana Rocha Nahu: Street Artist, The Automata Initiative's Shaper identity, who installs a program from the grip during a run and trashes it as the run ends unless it is a trojan. Safety Net's frame of programs and trojans under a new identity (The Automata Initiative Stage 8c). Parhelion Stage 2a: two Hippocampic Mechanocytes and two Dr. Nuka Vrolyck for two Joy Ride and two Living Mural, which Safety Net still carries.",
-  "style": "builder",
+  "style": ["builder"],
   "identity": "arissana_rocha_nahu_street_artist",
   "cards": [
     {

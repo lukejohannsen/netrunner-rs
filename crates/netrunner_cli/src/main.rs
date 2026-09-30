@@ -36,9 +36,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // arms can still borrow the global flags (`--decks-dir`, `--format`)
     // alongside their own action.
     match config.command.take() {
-        Some(Command::Bench { bots, games, seed, simulations, determinizations, shared_sample, mcts_depth, pairings, threads, report, ratings, label }) => {
+        Some(Command::Bench { bots, games, seed, simulations, determinizations, shared_sample, mcts_depth, pairings, threads, report, ratings, label, deck_styles }) => {
             let args =
-                bench::BenchArgs { bots, games, seed, simulations, determinizations, shared_sample, mcts_depth, pairings, threads, report, ratings, label };
+                bench::BenchArgs { bots, games, seed, simulations, determinizations, shared_sample, mcts_depth, pairings, threads, report, ratings, label, deck_styles };
             bench::run(&args, &config)
         }
         Some(Command::Diag {

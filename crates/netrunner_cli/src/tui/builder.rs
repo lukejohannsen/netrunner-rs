@@ -37,7 +37,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, List, ListItem, ListState, Paragraph, Wrap};
 use ratatui::Frame;
 
-use netrunner_bots::Personality;
+use netrunner_bots::Plan;
 use netrunner_core::card::Faction;
 use netrunner_core::cards::CardRegistry;
 use netrunner_core::deck::validator::MAX_COPIES_PER_CARD;
@@ -183,7 +183,7 @@ impl DeckScreen {
                 category: DeckCategory::Custom,
                 description: None,
                 how_to_play: None,
-                style: None,
+                style: Vec::new(),
                 identity,
                 cards: Vec::new(),
             },
@@ -417,7 +417,7 @@ impl DeckScreen {
         let deck = &row.stored.deck;
         let mut lines = vec![
             Line::from(Span::styled(deck.name.clone(), Style::default().add_modifier(Modifier::BOLD))),
-            Line::from(format!("{:?} · {} · style: {}", deck.side, row.identity, deck.style.as_deref().unwrap_or("balanced"))),
+            Line::from(format!("{:?} · {} · style: {}", deck.side, row.identity, deck.style_label())),
             verdict_line(&row.verdict.clone().map(|_| format_label(self.format))),
         ];
         if let Some(description) = &deck.description {
@@ -602,12 +602,14 @@ impl Editor {
         self.pool_cursor = 0;
     }
 
-    /// The bot styles for this side, `None` (balanced) first.
+    /// The bot styles for this side, balanced first, then each plan on
+    /// its own: a stack is written into the file by hand, and cycling
+    /// away from one puts a single plan in its place.
     fn cycle_style(&mut self) {
-        let mut styles: Vec<Option<&str>> = vec![None];
-        styles.extend(Personality::ALL.iter().filter(|p| p.side() == Some(self.deck.side)).map(|p| Some(p.name())));
-        let index = styles.iter().position(|style| *style == self.deck.style.as_deref()).unwrap_or(0);
-        self.deck.style = styles[(index + 1) % styles.len()].map(str::to_string);
+        let mut styles: Vec<Vec<String>> = vec![Vec::new()];
+        styles.extend(Plan::for_side(self.deck.side).map(|plan| vec![plan.name().to_string()]));
+        let index = styles.iter().position(|style| *style == self.deck.style).unwrap_or(0);
+        self.deck.style = styles[(index + 1) % styles.len()].clone();
     }
 
     fn key(&mut self, key: KeyCode, registry: &CardRegistry) -> EditorKey {
@@ -725,7 +727,7 @@ impl Editor {
         let mut lines = vec![
             Line::from(vec![
                 Span::styled(name, Style::default().add_modifier(Modifier::BOLD)),
-                Span::raw(format!("  {identity_title} · bot style: {} · saved as you go", self.deck.style.as_deref().unwrap_or("balanced"))),
+                Span::raw(format!("  {identity_title} · bot style: {} · saved as you go", self.deck.style_label())),
             ]),
             tally_line(self.deck.tally(registry).ok().as_ref()),
             verdict_line(&verdict),
@@ -980,7 +982,7 @@ mod tests {
         assert_eq!(deck.id, "brick_stack_copy");
         assert_eq!(deck.category, DeckCategory::Custom);
         assert_eq!(deck.size(), 44);
-        assert_eq!(deck.style.as_deref(), Some("glacier"), "the copy keeps the list's style");
+        assert_eq!(deck.style, vec!["glacier".to_string(), "fast-advance".to_string()], "the copy keeps the list's style");
         deck.validate(&screen.registry, NsgFormat::Startup).expect("a copy of a legal deck is legal");
         screen.key(KeyCode::Esc);
         assert!(matches!(screen.mode, Mode::List));
@@ -1047,7 +1049,7 @@ mod tests {
         press(&mut screen, &[KeyCode::Enter, KeyCode::Char('y')]);
         let saved = on_disk(&dir, "old");
         assert_eq!(saved.name, "New name");
-        assert_eq!(saved.style.as_deref(), Some("rush"), "the first Corp style after balanced");
-        Personality::for_deck(&saved).expect("a style the bots can read");
+        assert_eq!(saved.style, vec!["glacier".to_string()], "the first Corp plan after balanced");
+        netrunner_bots::Style::for_deck(&saved).expect("a style the bots can read");
     }
 }

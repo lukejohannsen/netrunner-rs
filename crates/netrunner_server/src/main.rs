@@ -57,20 +57,20 @@ struct Config {
     /// (serve mode) Seat a rung of the difficulty ladder — `novice`,
     /// `apprentice`, `operator`, `veteran`, `elite`, or `1`-`5` — instead
     /// of `--bot-runner`'s kind. The same bot, and the same rating id
-    /// (`bot:veteran`), as `netrunner_cli --corp-level`; the personality
-    /// still applies.
+    /// (`bot:veteran`), as `netrunner_cli --corp-level`; the style still
+    /// applies.
     #[arg(long)]
     bot_level: Option<netrunner_bots::Level>,
 
-    /// (serve mode) The bot's personality: `balanced`, or `rush`,
-    /// `glacier`, `trap` for a Corp bot and `aggressive`, `cautious`,
-    /// `builder`, `wary` for a Runner bot. See `netrunner_cli
-    /// --corp-personality`.
+    /// (serve mode) The bot's style: `balanced`, or the plans it stacks
+    /// joined with `+` — `glacier`, `fast-advance`, `kill`, `traps` for a
+    /// Corp bot and `aggressive`, `cautious`, `builder`, `wary` for a
+    /// Runner bot. See `netrunner_cli --corp-style`.
     ///
     /// Unset means the bot plays the style its dealt deck names
     /// (`DeckFile::style`); `balanced` switches that off.
     #[arg(long)]
-    bot_personality: Option<netrunner_bots::Personality>,
+    bot_style: Option<netrunner_bots::Style>,
 
     /// (serve mode) How many matches may run at once. A client connecting
     /// at the limit is refused rather than queued. Unlimited if omitted.
@@ -235,7 +235,7 @@ async fn run_serve(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
     let options = ServeOptions {
         bot_runner: config.bot_runner,
         bot_level: config.bot_level,
-        bot_personality: config.bot_personality,
+        bot_style: config.bot_style,
         seed: config.seed,
         reconnect_grace: Duration::from_secs(config.reconnect_grace_secs),
         max_matches: config.max_matches,

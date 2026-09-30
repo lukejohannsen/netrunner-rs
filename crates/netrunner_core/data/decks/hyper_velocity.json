@@ -4,7 +4,7 @@
   "side": "Corp",
   "category": "Sample",
   "description": "Fourteen operations, cheap ICE (Ping, Whitespace, Tithe) and fifteen tag effects: score quickly and tax the Runner for looking.",
-  "style": "rush",
+  "style": ["fast-advance"],
   "identity": "nbn_reality_plus",
   "cards": [
     {

@@ -690,6 +690,234 @@ pub(super) fn taxing_cost(state: &GameState, server: netrunner_core::rules::Serv
     Some(total)
 }
 
+// ---------------------------------------------------------------------
+// The Corp's plans (Stage 6): what the Corp reads about its own board
+// and hand, and the Runner's public state, for the plan terms.
+// ---------------------------------------------------------------------
+
+/// The agenda points a breach of `run`'s server would reach, as the Corp
+/// can count them: the agenda in a remote's root, HQ's agenda points at
+/// one access over its size, R&D's at the deck's agenda density (the
+/// Corp's own deck, whose order it does not know), and every agenda in
+/// Archives, which a breach accesses whole. One access a run; the cards
+/// a run event adds are not read. See `RUN_STAKES_WEIGHT`.
+pub(super) fn run_stakes(state: &GameState, run: &RunState, registry: &CardRegistry) -> f64 {
+    use netrunner_core::rules::{InstallSlot, ServerId};
+    let points = |card: &netrunner_core::dsl::CardId| registry.get(card).and_then(|def| def.agenda_points).map_or(0.0, f64::from);
+    let density = |cards: &[netrunner_core::dsl::CardId]| if cards.is_empty() { 0.0 } else { cards.iter().map(points).sum::<f64>() / cards.len() as f64 };
+    match run.server {
+        ServerId::Hq => density(&state.corp.hq),
+        ServerId::RnD => density(&state.corp.r_and_d),
+        ServerId::Archives => state.corp.archives.iter().map(|card| points(&card.card)).sum(),
+        ServerId::Remote(_) => state
+            .corp
+            .installed
+            .iter()
+            .filter(|card| card.server == run.server && card.slot == InstallSlot::Root)
+            .map(|card| points(&card.card))
+            .sum(),
+    }
+}
+
+/// The advancement tokens the Corp could place next turn: one a click
+/// and a credit, and what the operations in HQ declare
+/// (`PlaceAdvancementCounters` in an `OnPlay`, Seamless Launch's two
+/// for a click and a credit, Touch-ups' two for a click and two), the
+/// declared ones first, within three clicks and the credits it holds.
+/// The never-advance line's arithmetic: "Next turn, Seamless Launch
+/// places 2 advancement counters on a card you did not install this
+/// turn, and one more advance scores a 3-advancement agenda". See
+/// `NEVER_ADVANCE_WEIGHT`.
+pub(super) fn next_turn_advancements(state: &GameState, registry: &CardRegistry) -> u32 {
+    let mut declared: Vec<(u32, u32)> = state
+        .corp
+        .hq
+        .iter()
+        .filter_map(|card| registry.get(card))
+        .filter(|def| def.card_type == CardType::Operation)
+        .filter_map(|def| {
+            let mut tokens = 0;
+            for trigger in def.triggers.iter().filter(|trigger| trigger.trigger == Trigger::OnPlay) {
+                for effect in &trigger.effects {
+                    effect.for_each_effect(&mut |effect| {
+                        if let Effect::PlaceAdvancementCounters(Amount::Fixed(n)) = effect {
+                            tokens += *n;
+                        }
+                    });
+                }
+            }
+            (tokens > 0).then_some((tokens, def.cost))
+        })
+        .collect();
+    declared.sort_by_key(|&(tokens, _)| std::cmp::Reverse(tokens));
+    let mut clicks = CORP_CLICKS_A_TURN;
+    let mut credits = state.corp.resources.credits.0;
+    let mut tokens = 0;
+    for (placed, cost) in declared {
+        if clicks == 0 {
+            break;
+        }
+        if cost <= credits {
+            clicks -= 1;
+            credits -= cost;
+            tokens += placed;
+        }
+    }
+    tokens + clicks.min(credits)
+}
+
+/// The Corp's clicks a turn, for a reading of what next turn can do.
+const CORP_CLICKS_A_TURN: u32 = 3;
+
+/// The fixed damage the operations in HQ could deal next turn — each
+/// `DealDamage` in an `OnPlay` whose play requirement and trigger
+/// requirement are met now (none, or "if the Runner is tagged"), the
+/// largest first, within three clicks and the credits the Corp holds.
+/// Scorched Earth's four against a tagged Runner; nothing for an
+/// operation whose damage reads the turn (Neurospike), which the
+/// planner's own line prices when it scores. See `LETHAL_THREAT_WEIGHT`.
+pub(super) fn damage_in_reach(state: &GameState, registry: &CardRegistry) -> u32 {
+    use netrunner_core::dsl::EffectRequirement;
+    let met = |requirement: &Option<EffectRequirement>| match requirement {
+        None => true,
+        Some(EffectRequirement::IsTagged) => state.runner.tags > 0,
+        Some(_) => false,
+    };
+    let mut held: Vec<(u32, u32)> = state
+        .corp
+        .hq
+        .iter()
+        .filter_map(|card| registry.get(card))
+        .filter(|def| def.card_type == CardType::Operation && met(&def.play_requirement))
+        .filter_map(|def| {
+            let mut damage = 0;
+            for trigger in def.triggers.iter().filter(|trigger| trigger.trigger == Trigger::OnPlay && met(&trigger.requirement)) {
+                for effect in &trigger.effects {
+                    effect.for_each_effect(&mut |effect| {
+                        if let Effect::DealDamage(_, n) = effect {
+                            damage += *n as u32;
+                        }
+                    });
+                }
+            }
+            (damage > 0).then_some((damage, def.cost))
+        })
+        .collect();
+    held.sort_by_key(|&(damage, _)| std::cmp::Reverse(damage));
+    let mut clicks = CORP_CLICKS_A_TURN;
+    let mut credits = state.corp.resources.credits.0;
+    let mut damage = 0;
+    for (dealt, cost) in held {
+        if clicks == 0 {
+            break;
+        }
+        if cost <= credits {
+            clicks -= 1;
+            credits -= cost;
+            damage += dealt;
+        }
+    }
+    damage
+}
+
+/// The face-down ICE the Corp could rez at its printed cost in the
+/// server the Runner is running — the rezzes it is holding — and none
+/// with no run on. See `REZ_HELD_WEIGHT`.
+pub(super) fn held_rezzes(state: &GameState, registry: &CardRegistry) -> usize {
+    use netrunner_core::rules::InstallSlot;
+    let Some(run) = &state.active_run else { return 0 };
+    let credits = state.corp.resources.credits.0;
+    state
+        .corp
+        .installed
+        .iter()
+        .filter(|card| card.server == run.server && card.slot == InstallSlot::Ice && !card.rezzed)
+        .filter_map(|card| registry.get(&card.card))
+        .filter(|def| def.cost <= credits)
+        .count()
+}
+
+/// A card whose text asks for a tag on the Runner: "play only if the
+/// Runner is tagged" (Scorched Earth, Retribution), a trigger with it as
+/// the requirement, or an effect conditioned on it (Orbital
+/// Superiority's scored half). Read off the DSL, as every recogniser
+/// here is. See `TAG_LEVERAGE_WEIGHT`.
+pub fn punishes_tags(def: &CardDefinition) -> bool {
+    use netrunner_core::dsl::EffectRequirement;
+    if matches!(def.play_requirement, Some(EffectRequirement::IsTagged))
+        || def.triggers.iter().any(|trigger| matches!(trigger.requirement, Some(EffectRequirement::IsTagged)))
+    {
+        return true;
+    }
+    let mut found = false;
+    for_each_declared_effect(def, &mut |effect| {
+        if let Effect::EffectIf { condition: EffectRequirement::IsTagged, .. } = effect {
+            found = true;
+        }
+    });
+    found
+}
+
+/// Whether the Corp holds, in HQ, a card that punishes a tag.
+pub(super) fn holds_tag_punishment(state: &GameState, registry: &CardRegistry) -> bool {
+    state.corp.hq.iter().filter_map(|card| registry.get(card)).any(punishes_tags)
+}
+
+/// Adjacent pairs of ICE on one server, outermost first, where the outer
+/// piece cannot end the run and the inner piece can — the taxing piece
+/// outside the stopping one, which the guide's habit puts the other way
+/// round. Every piece, face down or not: the Corp knows its own ICE.
+/// See `ICE_ORDER_WEIGHT`.
+pub(super) fn ice_out_of_order(state: &GameState, registry: &CardRegistry) -> usize {
+    use netrunner_core::rules::InstallSlot;
+    let ends_the_run = |card: &InstalledCard| {
+        registry.get(&card.card).is_some_and(|def| def.subroutines.iter().any(|sub| sub.effect.can_end_the_run()))
+    };
+    let mut servers: Vec<netrunner_core::rules::ServerId> = Vec::new();
+    for card in state.corp.installed.iter().filter(|card| card.slot == InstallSlot::Ice) {
+        if !servers.contains(&card.server) {
+            servers.push(card.server);
+        }
+    }
+    servers
+        .into_iter()
+        .map(|server| {
+            let stops: Vec<bool> = state
+                .corp
+                .installed
+                .iter()
+                .filter(|card| card.server == server && card.slot == InstallSlot::Ice)
+                .map(ends_the_run)
+                .collect();
+            stops.windows(2).filter(|pair| !pair[0] && pair[1]).count()
+        })
+        .sum()
+}
+
+/// Whether the Runner has beaten the wall in front of `fort`: there is a
+/// wall — at least `depth` pieces, the fort's own cap — their rig covers
+/// the subtype of every piece on it, face down or not, and their credits
+/// cover what breaking in would cost with the Corp's affordable rezzes
+/// made (`taxing_cost`). "Once the Runner has spent everything building
+/// a rig that beats the wall, score the last points from hand, where that
+/// rig is no use." A remote with no ICE is not a wall anyone beat: read
+/// without the depth, every fresh remote was "beaten" the turn it was
+/// made and the fort terms fell away before there was a fort. See
+/// `Weights::fort_until_beaten`.
+pub(super) fn fort_beaten(state: &GameState, fort: netrunner_core::rules::ServerId, depth: usize, registry: &CardRegistry) -> bool {
+    use netrunner_core::rules::InstallSlot;
+    let rig = rig_coverage(state, registry);
+    let wall: Vec<&InstalledCard> = state.corp.installed.iter().filter(|card| card.server == fort && card.slot == InstallSlot::Ice).collect();
+    if wall.len() < depth.max(1) {
+        return false;
+    }
+    let covered = wall.iter().all(|card| match registry.get(&card.card).map(|def| &def.card_type) {
+        Some(CardType::Ice(subtype)) => subtype_slot(*subtype).map_or(rig.iter().all(|c| *c), |slot| rig[slot]),
+        _ => true,
+    });
+    covered && taxing_cost(state, fort, registry).is_some_and(|cost| cost <= state.runner.resources.credits.0)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

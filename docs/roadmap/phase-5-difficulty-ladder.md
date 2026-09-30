@@ -8,7 +8,7 @@ can ask for, and a guarantee the order is real — none of which falls out
 of a bot ladder sorted by rating.
 
 **Why it is a phase and not a flag.** The three knobs a player could
-already reach (`--corp`, `--corp-personality`, `--simulations`) build
+already reach (`--corp`, `--corp-style`, `--simulations`) build
 combinations nobody has measured, and two of the three do not move
 strength monotonically at all. A difficulty level is a promise about
 *relative* strength on one chair, and this workspace had no such promise
@@ -22,7 +22,7 @@ five handicaps (`Level::spec`: `epsilon` 1.0 / 0.22 / 0.11 / 0.05 / 0.0 over
 rung, and the Corp's top rung at 0.41–0.43 against the un-handicapped one-ply Runner (§24). §1–§24
 are closed and their record is in [the archive](archive/phase-5-difficulty-ladder.md); what a bot
 session needs of it is in [Reference](#reference) below. **§25 is the open work: bots that play the
-strategy guide's precepts, in personalities that fit a deck's strategy and strength.**
+strategy guide's precepts, in plans that fit a deck's strategy and strength.**
 
 ## Open
 
@@ -33,9 +33,13 @@ strategy guide's precepts, in personalities that fit a deck's strategy and stren
   as modules with a board-read stage and the stage dial deleted; the turn planner, measured against
   the one-ply reference; economy at the guide's rate — eight terms the planner alone scores with,
   which brought the Corp chair back level with the reference and took the Runner chair past it, with
-  the Corp's hand measured as not worth holding). Stage 6, the Corp's plans a deck stacks, is next,
-  when the person asks. Nothing a person meets has moved: every rung is still the one-ply chooser
-  until Stage 8.
+  the Corp's hand measured as not worth holding; the Corp's plans a deck stacks — `Personality`
+  replaced by `plans::{Plan, Style}`, a deck's style a list the reference plays the first plan of
+  and the planner the whole of, with the stakes of a run, the rez held for it, the ICE order, the
+  never-advance line, a kill plan with its Sweep deck, the traps plan's bluff and the fort falling
+  away once the rig beats the wall). Stage 7, the Runner's plans and the identity both chairs read,
+  is next, when the person asks. Nothing a person meets has moved: every rung is still the one-ply
+  chooser until Stage 8.
 - **§4 (a) on the Runner chair**: the Runner ladder has not been re-spaced since §23 moved every
   Corp profile's fort terms; the Corp's (a) and (b) closed with §24, (c) with §19 — this line
   corrects the archived §3 "IN PROGRESS" and §4 "OPEN" headings, which were never updated.
@@ -43,7 +47,6 @@ strategy guide's precepts, in personalities that fit a deck's strategy and stren
   may be exploiting its play against ICE rather than playing better.
 - **A fifth Corp rung needs a stronger `elite`, not a handicap** (§22); `LevelKind::{Mcts, Puct}`
   stay in the code until a search beats one ply again (§24).
-- **Housekeeping** (§25): `difficulty.rs`'s module doc says six personalities; there are eight.
 - **Samples carry no identity** (§25 Stage 4): `determinize` sets `identity: None` on every sample, a
   measured decision, so an identity's continuous effects — A Teia's remote limit, every printed
   link and hand size — are invisible to any search; the planner checks each step against the real
@@ -381,7 +384,7 @@ handicaps §21 read off it serve all four:
 | `glacier` (§21) | 0.079 | 0.121 | 0.189 | — | — | 0.311 | 0.365 |
 
 **So the Corp's `Level::spec` is `glacier`'s table: one ply at 1.0 / 0.22
-/ 0.11 / 0.05 / 0.0.** `LevelSpec::with_personality` now changes the style
+/ 0.11 / 0.05 / 0.0.** `LevelSpec::with_personality` (now `with_style`) now changes the style
 and nothing else. Its three Corp exceptions had nothing left to except:
 `trap`'s own `veteran` ε (§14), `rush`'s top two rungs played as `Balanced`
 (§15, so the top of a rush deck's ladder is a rush again), and `glacier`'s
@@ -680,3 +683,65 @@ Eight terms in the evaluator, each a sentence of the strategy guide's "Clicks, c
 **Rejected.** A flat value per card in HQ (measured, a switch; `RD_DRAW_RESERVE`), and now a declared one (measured, a reason to hold). Pricing the future at the present credit's weight (using an economy card becomes a loss against holding it; the arithmetic is on `FUTURE_CREDIT_WEIGHT`). Counting a click that places counters (Smartware Distributor) as future clicks as well as the stock it places — the click is priced by the stock it adds when it is taken. A rez reserve over the *sum* of unrezzed rez costs — that is the chooser's own hoarding, and the guide's sentence is "the rez that stops it". Reading the unrezzed ICE's real cost for the forced-rez term — it is the sampled card, and the term would read the guess. Turning the two Runner affordance terms off at −0.01 on two seeds — under the band, and `UNREZZED_THREAT_WEIGHT` was shipped off for losing 0.04–0.06, not 0.01.
 
 **Cost** (release, one thread, an idle machine, a 96-game Casual pass): heuristic both chairs 37.3 s; the planner as Corp 175 s (4.7×; Stage 4 128 s), as Runner 191 s (5.1×; 125 s), on both chairs 348 s (9.3×; 211 s). Not the evaluator's terms: the slowest decision seen is **0.42 s** against Stage 4's 0.6 (`planner::cost::planner_cost`, six games at 1.9–6.6 s), and what grew is the number of decisions — the Runner runs 18.6 times a game against 15.7, each run a handful of one-ply decisions on a fresh sample, and games run longer (one of the six reached turn 38). A decision in the desktop client stays well under a second, and the planner is not on the ladder in any case. The 256-seed sweeps, with the planner seated, run 113 s (index) and 171 s (view) in release, against 85 s and 108 s at Stage 4, green. `cargo test --workspace` green, clippy silent; the engine's random and heuristic seatings identical to `main` in all four `coverage_identical.py` shapes.
+
+#### Stage 6 — The Corp's plans, stacked by a deck — DONE (`feat/corp-plans`, 29 September 2026)
+
+**A style is a list of plans; a plan is the terms that exist for it.** `Personality` is gone, replaced outright by `netrunner_bots::plans::{Plan, Style}`: a `Plan` is `Glacier`, `FastAdvance`, `Kill` or `Traps` for the Corp (the guide's "Corp deck styles" chapter) and, until Stage 7 reads them off the faction, `Aggressive`, `Cautious`, `Builder` or `Wary` for the Runner; a `Style` is the plans a deck stacks, up to three, one chair's, no plan twice — `DeckFile::style` is now a list (`["glacier", "fast-advance"]`), `--corp-style`/`--runner-style`, the daemon's `--bot-style` and `bench --bots planner:glacier+fast-advance` spell it with `+`, and `rush` and `trap` are `fast-advance` and `traps`. The eight profiles' numbers are kept exactly under the plans' names (`Plan::weights`), and **the one-ply reference scores with the first plan's profile and nothing else** (`Style::weights`), so a deck that now stacks two plans is played by the reference as it played its one style and the reference has not moved by a bit: the planner's Runner leg on seed 1 is the same 384 games to the game (0 discordant against Stage 5's), and `coverage_identical.py` says identical in all four shapes. Only `PlanningAgent` reads the whole list (`Style::planned_weights(side)`, `Weights::with_plans`): a plan after the first adds its own levers — `Traps`' ambush terms, `FastAdvance`'s installed agenda — and not its profile's dials on the shared terms, which are the first plan's. Four of the 28 sample decks stack two (*Agency*, *Brick Stack* and *Discretion Advised* glacier then fast advance, *Pork Chops* glacier and traps), read off their own how-to-play notes.
+
+**The terms** — every one zero in the default and in every profile, switched on by `with_plans` for a planner seat (the same pin as Stage 5's). Four are every Corp's, because the guide's sentences for them are in its "Playing the Corp" chapter, which every Corp plays, so a balanced planner Corp carries them too: (1) *the stakes of a run* (`RUN_STAKES_WEIGHT` 2.0 an agenda point the breach would reach — the remote's root, HQ's agendas at one access in its size, R&D's at the deck's density, all of Archives — subtracted while the run is breakable, and the credits the Runner still has to spend breaking the rezzed ICE ahead counted as the Corp's at `OPPONENT_CREDIT_WEIGHT`: the reference's run term is flat, so a rez that stops a run on an empty remote was worth the same as one that stops a run on a 3-point agenda); (2) *the rez held* (`REZ_HELD_WEIGHT`, a face-down affordable piece **in the server being run**, kept: "rez it when the run matters, not the moment it is approached" — the reference rezzes every affordable piece at its approach; paid only in the run's server because paid on every face-down piece it was also a reason to install every affordable piece in hand, and the Corp does not install during a run; **measured at 1.5 and shipped at zero**, below); (3) *the ICE order* (`ICE_ORDER_WEIGHT` 0.3 a taxing piece outside a stopping one, the guide's "starting point, not a law"); (4) *the never-advance line's condition* (`NEVER_ADVANCE_WEIGHT` 1.0 an installed agenda the Corp can finish next turn — `read::next_turn_advancements`: three clicks at a token and a credit, and what the operations in HQ declare, Seamless Launch's two for a click and a credit — and −1.0 one it cannot: "an agenda you cannot finish next turn is an agenda sitting in the open for a second turn", the condition Stage 5 said was this stage's). The rest are one plan's: the kill plan's *lethal threat* (`LETHAL_THREAT_WEIGHT` 3.0 when the Runner's grip is under the damage the operations in HQ could deal next turn, their play requirements met now — Scorched Earth's "if the Runner is tagged" — within the Corp's clicks and credits) and *tag leverage* (`TAG_LEVERAGE_WEIGHT` 1.5 a tag, up to two, while the Corp holds a card whose text asks for one, `read::punishes_tags`); the traps plan's *bluff* (`BLUFF_WEIGHT` 1.0 for one face-down card that is no agenda in the scoring remote, which `fort_value` reads as the fort still, so the asset goes down behind the wall and the agenda goes in over it); and the stack, *glacier then fast advance* (`Weights::fort_until_beaten`, one condition inside the fort terms: they fall away once there is a wall of the fort's depth in front of the scoring remote, the Runner's rig covers every piece of it and their credits cover the break, `read::fort_beaten` — "score the last points from hand, where that rig is no use"). Traps beside glacier is "traps behind the wall": glacier's dials, the ambush terms on.
+
+**The planner answers an opponent's yes-or-no the way that is worst for the seat, and goes on** (`planner::opponents_answer`). Found by the kill deck: Public Trail — "give the Runner 1 tag unless they pay 8[c]" — was played 0 times in 116 turns the planner held it, under the kill plan or any other, because a decision only the opponent can make ended the line and the line was scored on the parked state, where no tag had been given and no credits paid, with its clicks unspent at a credit each against lines that spent them. Now each of the opponent's answers is applied and settled, the one that leaves the seat worst off is taken as theirs, and the line continues from there; if the real answer is the other one, the view is not the one predicted and the turn is planned again, which is the rule every step already plays under. One node of minimax, never a search of the opponent's turn. With it, a kill Corp holding Scorched Earth against a grip of three tags first (`a_kill_corp_plays_public_trail_because_the_runners_answer_is_priced`); a balanced Corp, reading no leverage in a tag, does not; and neither does the kill Corp against a grip the damage would not reach, because a tag's leverage alone is under Public Trail's price.
+
+**A Sweep deck holds the kill plan's payoffs** (`tag_youre_it`, *Tag, You're It*: Scorched Earth, Retribution, Public Trail, Clearinghouse and Orbital Superiority behind Ping and Funhouse, on Building a Better World, Eternal-legal, `style: ["kill"]`), because no sample deck holds Scorched Earth (§25's brief, precept 7) and the plan is otherwise a plan with nothing to play. It is played by both agent sweeps and by no measurement over the pool, like every Sweep deck.
+
+**Measured, and what the measurements said.** Three things moved during the stage, each found by a measurement. (1) *The fort fell away before there was a fort*: the first styled legs lost on the stacked decks on both seeds (−0.10 / −0.08 for *glacier then fast advance*) and the precepts pass showed the Corp installing agendas naked from turn two, because `fort_beaten` read a remote with no ICE as covered (nothing to cover) and affordable (nothing to pay) — it now needs a wall of the fort's depth first, and the condition measures level (stack on against stack off on the same games: −0.097 / 0.000 against −0.111 / +0.014). (2) *The kill plan had no lever*: on the kill deck the planner played Public Trail 0 times in 116 turns it held it under either style, because the line ended at the Runner's choice — the planner now answers an opponent's yes-or-no the worst way for the seat and continues (above), and Public Trail is played 10–23 times in 48 games under either style, with flatlines 8 → 14–16 of 48. (3) *The rez held costs the chair*, one term at a time on the balanced Corp legs (a temporary hook, removed): with every term on, +0.109 / +0.021 against the reference on seeds 1 / 2; the stakes off −0.060 / −0.081 (the term carries **+0.17 / +0.10**); the never-advance line off +0.060 / +0.010 (carries +0.05 / +0.01); the order off +0.096 / +0.026 (neutral); **the rez held off +0.122 / +0.073** (it costs 0.013 / 0.052, the second past the band) — it does what it says (rezzes a game 10.4 → 9.3, rezzes the Runner could break 0.46 → 0.41) and what it holds is the tax, so it ships at zero with the record on its constant, as `UNREZZED_THREAT_WEIGHT` does.
+
+**Measured on pinned binaries** (the planner on one chair against the reference on the other, 384 games a leg on each of two seeds, paired game by game, McNemar's z over the discordant games; the styled legs seat both chairs in their decks' own styles, `bench --deck-styles`, new, against the reference seated the same way):
+
+| leg | reference | Stage 5 planner | Stage 6 planner | delta for the planner's chair | z |
+|---|---|---|---|---|---|
+| planner Corp, balanced, seed 1 | Corp 0.432 | 0.464 (+0.031) | Corp **0.555** | **+0.122** | +3.90 |
+| planner Corp, balanced, seed 2 | Corp 0.453 | 0.448 (−0.005) | Corp **0.526** | **+0.073** | +2.30 |
+| planner Corp, deck styles, seed 1 | Corp 0.435 | — | Corp **0.557** | **+0.122** | +4.14 |
+| planner Corp, deck styles, seed 2 | Corp 0.440 | — | Corp **0.534** | **+0.094** | +3.09 |
+| planner Runner, seed 1 / 2 | Runner 0.568 / 0.547 | 0.651 / 0.630 | the same 384 games to the game | +0.083 / +0.083 | — |
+
+By the Corp deck's style, on the styled legs (seed 1 / seed 2; the reference plays the first plan): balanced decks (72 games) +0.278 / +0.181; *fast-advance* (144) +0.097 / +0.056; *traps* (48) +0.167 / +0.021; *glacier* (24) +0.083 / +0.042; *glacier then fast advance* (72) −0.111 / +0.014 — the three decks the reference already plays best (0.63 / 0.54 as glacier), and inside the band at 72 games; *glacier and traps* (24, *Pork Chops*: BANGUN's sixteen damage effects behind the fort) **+0.458 / +0.500**, the ambush terms on beside glacier's dials.
+
+**The Corp chair is past the reference on both seeds, in both seatings, for the first time since the planner existed** (Stage 4 −0.12, Stage 5 level). Both chairs the planner, deck styles, `diag precepts` against the reference (`after-heuristic-*`) and Stage 5's planner (`planner5-*`), Casual seeds 1 / 2 and Startup seeds 1 / 2:
+
+| line | reference Casual | Stage 5 Casual | Stage 6 Casual | reference Startup | Stage 6 Startup |
+|---|---|---|---|---|---|
+| Corp win share | 0.469 / 0.469 | 0.365 / 0.427 | **0.432 / 0.479** | 0.433 / 0.467 | **0.556 / 0.544** |
+| `corp.04.scores_per_game` | 1.58 / 1.52 | 1.46 / 1.58 | 1.53 / 1.48 | 1.33 / 1.63 | 1.41 / 1.67 |
+| `corp.02.scores_runner_could_not_afford` | 0.47 / 0.45 | 0.68 / 0.69 | **0.74 / 0.72** | 0.32 / 0.58 | **0.88 / 0.85** |
+| `corp.03.scores_after_unadvanced_install_turn` | 0.24 / 0.23 | 0.44 / 0.47 | **0.54 / 0.46** | 0.36 / 0.31 | 0.50 / 0.52 |
+| `corp.03.advancement_by_cards_per_game` | 0.49 / 0.51 | 0.57 / 0.67 | **0.73 / 0.62** | 0.53 / 0.70 | **0.82 / 0.74** |
+| `corp.05.agendas_unadvanced_at_turn_end_per_turn` | 0.03 / 0.03 | 0.26 / 0.23 | 0.22 / 0.20 | 0.05 / 0.05 | 0.23 / 0.25 |
+| `corp.05.asset_installs_in_iced_remote_per_game` | 0.32 / 0.20 | 0.22 / 0.20 | 0.23 / 0.35 | 0.24 / 0.31 | 0.34 / 0.29 |
+| `corp.06.non_etr_installed_over_etr` | 0.24 / 0.25 | 0.27 / 0.24 | **0.18 / 0.15** | 0.24 / 0.22 | **0.14 / 0.18** |
+| `corp.06.rezzes_per_game` | 9.0 / 8.8 | 10.4 / 10.2 | 10.1 / 9.9 | 7.7 / 7.8 | 9.9 / 9.6 |
+| `corp.07.meat_damage_per_game` | 0.09 / 0.06 | 0.34 / 0.36 | 0.28 / 0.28 | 0.13 / 0.13 | 0.49 / 0.42 |
+| `corp.07.flatlines` | 0.08 / 0.08 | 0.08 / 0.09 | **0.17 / 0.18** | 0.11 / 0.08 | **0.29 / 0.20** |
+| `corp.07.tags_given_per_game` | 1.36 / 1.32 | 1.68 / 1.81 | 1.70 / 1.59 | 1.48 / 1.94 | 2.28 / 2.57 |
+| `economy.corp.economy_operations_per_game` | 2.84 / 2.70 | 3.54 / 3.35 | 3.47 / 3.29 | 3.29 / 3.50 | 3.86 / 4.08 |
+| `economy.corp.credits_at_turn_start` | 15.1 / 15.8 | 6.1 / 5.5 | 4.9 / 5.2 | 15.6 / 17.1 | 5.7 / 5.2 |
+| `economy.corp.turn_starts_able_to_rez_everything` | 0.70 / 0.70 | 0.51 / 0.49 | 0.50 / 0.50 | 0.68 / 0.68 | 0.51 / 0.51 |
+| `runner.08.runs_per_game` | 14.5 / 14.0 | 18.6 / 18.3 | 17.8 / 18.2 | 13.9 / 15.5 | 17.7 / 16.8 |
+| `runner.14.remote_runs_share` | 0.22 / 0.21 | 0.38 / 0.38 | 0.35 / 0.36 | 0.20 / 0.18 | 0.40 / 0.38 |
+| `runner.13.runs_on_the_last_click` | 0.14 / 0.13 | 0.48 / 0.47 | 0.48 / 0.48 | 0.16 / 0.16 | 0.47 / 0.47 |
+| `runner.14.steals_per_game` | 2.54 / 2.54 | 2.69 / 2.60 | 2.52 / 2.61 | 2.49 / 2.56 | 2.39 / 2.36 |
+
+**What the lines say.**
+
+- **The Corp scores under the window and finishes what it installed.** Scores the Runner could not afford 0.68 → 0.74 / 0.72 (0.88 / 0.85 on Startup, against the reference's 0.32 / 0.58); scores the turn after an unadvanced install 0.44 → 0.54 / 0.46, advancement placed by cards 0.57 → 0.73 / 0.62 a game (Seamless Launch, Touch-ups and Key Performance Indicators all reached, on both formats); unadvanced agendas left at turn end 0.26 → 0.22 / 0.20 a turn and 0.23 / 0.25 on Startup — the never-advance line's condition doing what it says, an install made when it can be finished. Scores a game are the reference's (1.53 / 1.48 against 1.58 / 1.52; 1.41 / 1.67 against 1.33 / 1.63), and the Runner steals fewer (2.52 / 2.61 against Stage 5's 2.69 / 2.60, 2.39 / 2.36 against 2.62 / 2.67 on Startup).
+- **ICE goes down in the guide's order** — a taxing piece installed outside a stopping one 0.27 / 0.24 → 0.18 / 0.15 (0.14 / 0.18 on Startup) — and the Corp still rezzes on approach (10.1 / 9.9 a game; the rez held ships at zero, above).
+- **The Corp plays for the kill it holds.** Flatlines 0.08 → 0.17 / 0.18 of games (0.29 / 0.20 on Startup), meat damage 0.28 / 0.28 a game against the reference's 0.09 / 0.06, on the same tags (1.70 / 1.59 given) — the lethal check inside the turn, which every planner sees now that an opponent's answer is priced, and Pork Chops' damage behind the wall.
+- **Precept 13 is still the Runner's**: runs on the last click 0.48, unchanged since Stage 5, for Stage 7's fear term; the Runner's chair did not move.
+- **Reach**: Casual's never-used list is 42, as Stage 5's (Carnivore, Fransofia Ward and Measured Response newly played; IP Enforcement, Pennyshaver and Tranquilizer fell off); Startup's 44 (Stage 5: 43). Public Trail is played on Casual for the first time (the styled seating's *Not So Subtle* and *Paid Content* hold it).
+
+**The kill plan on its deck** (*Tag, You're It* as the planner against the reference Runner on *Stolen Goods* and *Dashing Mad*, 48 games each, `--corp-style kill` against `balanced` — the same planner without the two kill terms): *kill* 31 / 38 Corp wins of 48 against *balanced*'s 35 / 37, Public Trail played 16 / 20 times against 12 / 12, flatlines 11 / 17 against 17 / 14, tags given 107 / 96 against 102 / 88. **The two kill terms measure level on their own deck** (−0.04 / +0.02 of 48 games each, inside the band), and the plan's lever was the planner's answer to the Runner's choice, which every planner Corp has: before it, Public Trail was played 0 times in 116 turns and the deck flatlined 8 of 48 under either style; after it, 12–20 plays and 14–17 flatlines. The terms stay at the values that win the unit-test decision (a tag when the punishment is in hand and the grip is under its damage), with this recorded, because a kill plan that reads no leverage in a tag is not a plan.
+
+**Rejected.** The rez held on every face-down affordable piece (it was a reason to install every affordable piece in hand; the run's server alone has no such side). A rez-timing term on the rezzed piece, subtracted while the rig breaks it (it cannot be undone, and it read the same on a piece worth rezzing). The fort falling away for any remote (a remote with no ICE is not a wall anyone beat: read without a depth, every fresh remote was "beaten" the turn it was made, the fort terms fell away before there was a fort, and the Corp installed agendas naked from turn two — 0.15 of agenda installs, the first measurement's number). Pricing the opponent's answer as a leaf rather than continuing the line from it (the tag line ended with two clicks unspent at a credit each and lost to any line that spent them). Extending the existing NBN Sweep deck with the kill payoffs (23 influence against 15: the three cards over are the ones that deck exists to reach).
+
+**Cost** (release, one thread, a 96-game Casual pass): the planner as Corp 169 s (Stage 5 175 s), as Runner 183 s (191 s), on both chairs 249 s (348 s: games end sooner, with the Corp scoring under its window and the kill it holds). The reference read 46.5 s in this run against 37.3 s in Stage 5's on byte-identical code — timing noise on the machine, so the ratios are this run's (3.6× / 3.9× / 5.4×) and the absolute numbers are the comparison with Stage 5. The slowest decision seen is **0.34 s** against Stage 5's 0.42 (`planner::cost::planner_cost`, six games at 0.4–7.4 s, one to turn 47), the opponent's answer included. The 256-seed sweeps, with the planner seated, run 116 s (index) and 161 s (view) in release, against 113 s and 171 s at Stage 5, green. `cargo test --workspace` green, clippy silent; the engine's random and heuristic seatings identical to `main` in all four `coverage_identical.py` shapes.

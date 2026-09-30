@@ -160,7 +160,7 @@ fn play(
     let setup = |spec: BotSpec, deck: &core_decks::DeckFile| bots::AgentSetup {
         simulations: args.simulations,
         determinizations: args.determinizations,
-        personality: spec.personality,
+        style: spec.style,
         knowledge: config.knowledge(deck),
         ..bots::AgentSetup::new(args.simulations)
     };
@@ -287,8 +287,8 @@ fn summarise(corp: String, runner: String, args: &FortArgs, games: Vec<GameFort>
 
 fn describe(spec: BotSpec) -> String {
     match spec.level {
-        Some(level) => format!("level:{level:?}:{:?}", spec.personality).to_lowercase(),
-        None => format!("{:?}:{:?}", spec.kind, spec.personality).to_lowercase(),
+        Some(level) => format!("level:{level:?}:{}", spec.style).to_lowercase(),
+        None => format!("{:?}:{}", spec.kind, spec.style).to_lowercase(),
     }
 }
 

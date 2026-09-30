@@ -13,7 +13,7 @@
 
 #![cfg(feature = "onnx")]
 
-use netrunner_bots::{onnx_fixture, Personality};
+use netrunner_bots::{onnx_fixture, Knowledge, Style};
 use netrunner_client::decks;
 use netrunner_core::rules::{GamePhase, GameState, Side};
 use netrunner_single_player::SinglePlayerSession;
@@ -55,10 +55,10 @@ fn a_trained_policy_can_play_a_full_single_player_game() {
 
     // The ONNX policy takes the Corp seat; a scripted agent takes the
     // Runner's, standing in for the human.
-    let corp_driver = bots::make_driver(BotKind::Onnx, Side::Corp, 1, 8, model_path, Personality::Balanced)
+    let corp_driver = bots::make_driver(BotKind::Onnx, Side::Corp, 1, 8, model_path, Style::BALANCED, Knowledge::default())
         .expect("the fixture model loads at the current observation/action shape");
     let runner_driver =
-        bots::make_driver(BotKind::Heuristic, Side::Runner, 2, 8, model_path, Personality::Balanced).expect("heuristic driver");
+        bots::make_driver(BotKind::Heuristic, Side::Runner, 2, 8, model_path, Style::BALANCED, Knowledge::default()).expect("heuristic driver");
 
     let session = SinglePlayerSession::new(state, registry, corp_driver, runner_driver);
     let (final_state, history) = session.run();
@@ -83,7 +83,7 @@ fn a_trained_policy_can_play_a_full_single_player_game() {
 /// before training anything — must explain itself rather than panic.
 #[test]
 fn a_missing_checkpoint_explains_how_to_produce_one() {
-    let Err(error) = bots::make_driver(BotKind::Onnx, Side::Corp, 0, 8, "data/checkpoints/does_not_exist.onnx", Personality::Balanced) else {
+    let Err(error) = bots::make_driver(BotKind::Onnx, Side::Corp, 0, 8, "data/checkpoints/does_not_exist.onnx", Style::BALANCED, Knowledge::default()) else {
         panic!("a missing checkpoint cannot yield a driver");
     };
     assert!(error.contains("run_iteration_loop.py"), "error should point at the training command: {error}");

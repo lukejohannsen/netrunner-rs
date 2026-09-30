@@ -139,8 +139,9 @@ pub(super) fn continuation_upside(
             netrunner_core::rules::amount_on_table(amount, state, registry),
         )),
         // Exact rather than a bound, unusually for this function: ending
-        // the run removes precisely the penalty the Corp branch applies,
-        // so the continuation is worth the term and nothing else. Zero
+        // the run removes precisely the penalty the Corp branch applies —
+        // the flat term, and the stakes when the planner prices them —
+        // so the continuation is worth the terms and nothing else. Zero
         // when there is no run the Corp is paying for — an offer to end a
         // run the Runner cannot finish anyway buys nothing.
         Effect::EndTheRun if side == Side::Corp => Some(
@@ -148,7 +149,7 @@ pub(super) fn continuation_upside(
                 .active_run
                 .as_ref()
                 .filter(|run| run_is_breakable(state, run, registry))
-                .map_or(0.0, |_| w.active_run_against_weight),
+                .map_or(0.0, |run| w.active_run_against_weight + run_stakes(state, run, registry) * w.run_stakes_weight),
         ),
         _ => None,
     }

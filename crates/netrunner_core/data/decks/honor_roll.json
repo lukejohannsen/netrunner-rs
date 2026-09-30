@@ -4,7 +4,7 @@
   "side": "Corp",
   "category": "Sweep",
   "description": "Not a published list: built so the sweeps play Méliès U: Only the Brightest (Vantage Point Stage 8), a secret identity of three reverse sides that flips when the Runner makes a successful run on a central server. Jinteki and neutral cards the other Jinteki deck leaves out — Diviner, Mycoweb, Empiricist, Semak-samun, Peer Review, Mitra Aman, Anoetic Void — with Hansei Review and Longevity Serum to fill Archives for the back sides to draw on. Eternal-legal only. Rebellion Without Rehearsal Stage 1: two Boto for two Enigma. Rebellion Without Rehearsal Stage 4a: two Cohort Guidance Program and a Charlotte Caçador for two Regolith Mining License and an Unleash. Rebellion Without Rehearsal Stage 7d: two Sisyphus Protocol for two Proprionegation, an agenda for an agenda. The Automata Initiative Stage 8b: two Adrian Seis for its two Mahkota Langit Grid, and two Daniela Jorge Inácio for its two Empiricist, which other decks still carry.",
-  "style": "glacier",
+  "style": ["glacier"],
   "identity": "melies_u_only_the_brightest",
   "cards": [
     {

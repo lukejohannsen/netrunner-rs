@@ -68,6 +68,10 @@ pub struct BenchArgs {
     pub threads: Option<usize>,
     pub report: Option<PathBuf>,
     pub ratings: Option<PathBuf>,
+    /// Seat each chair in its deck's own style instead of the spec's —
+    /// `diag precepts --deck-styles`, for the benchmark. Recorded in the
+    /// report beside `determinizations`.
+    pub deck_styles: bool,
     pub label: Option<String>,
 }
 
@@ -119,8 +123,9 @@ pub struct BenchReport {
 
 /// The participant id a bot rates under: the kind's name, the search
 /// budget for the kinds that have one (`puct@32` and `puct@200` are
-/// different players), the personality when it is not `balanced`
-/// (`heuristic:rush`), and `--label` if given.
+/// different players), the style when it is not balanced
+/// (`heuristic:fast-advance`, `planner:glacier+fast-advance`), and
+/// `--label` if given.
 pub fn participant_id(bot: BotSpec, simulations: usize, label: Option<&str>) -> String {
     // A rung rates under its own name, not the bot it happens to be
     // built from: a rung's base has changed under its name before (the
@@ -132,9 +137,9 @@ pub fn participant_id(bot: BotSpec, simulations: usize, label: Option<&str>) -> 
         let mut id = format!("level:{}", level.name());
         // A styled rung is a different opponent from the calibrated
         // `Balanced` one, so it rates under a different id.
-        if bot.personality != netrunner_bots::Personality::Balanced {
+        if !bot.style.is_balanced() {
             id.push(':');
-            id.push_str(bot.personality.name());
+            id.push_str(&bot.style.to_string());
         }
         if let Some(label) = label {
             id.push('#');
@@ -147,9 +152,9 @@ pub fn participant_id(bot: BotSpec, simulations: usize, label: Option<&str>) -> 
         BotKind::Mcts | BotKind::Puct | BotKind::PuctOnnx => format!("{name}@{simulations}"),
         _ => name,
     };
-    if bot.personality != netrunner_bots::Personality::Balanced {
+    if !bot.style.is_balanced() {
         id.push(':');
-        id.push_str(bot.personality.name());
+        id.push_str(&bot.style.to_string());
     }
     if let Some(label) = label {
         id.push('#');
@@ -284,20 +289,23 @@ fn play(
     let (corp_deck, runner_deck) = &matchups[job.index as usize % matchups.len()];
     let (state, _events) =
         GameState::setup(&corp_deck.to_deck(), &runner_deck.to_deck(), registry, job.seed).map_err(|e| format!("{e:?}"))?;
-    let setup = |personality, deck| bots::AgentSetup {
-        simulations: args.simulations,
-        determinizations: args.determinizations,
-        shared_sample: args.shared_sample,
-        mcts_depth: args.mcts_depth,
-        personality,
-        knowledge: config.knowledge(deck),
+    let setup = |style: netrunner_bots::Style, deck: &core_decks::DeckFile| -> Result<bots::AgentSetup, String> {
+        let style = if args.deck_styles { netrunner_bots::Style::for_deck(deck)? } else { style };
+        Ok(bots::AgentSetup {
+            simulations: args.simulations,
+            determinizations: args.determinizations,
+            shared_sample: args.shared_sample,
+            mcts_depth: args.mcts_depth,
+            style,
+            knowledge: config.knowledge(deck),
+        })
     };
     let corp = bots::make_seat_agent(
         job.corp.level,
         job.corp.kind,
         Side::Corp,
         job.seed,
-        setup(job.corp.personality, corp_deck),
+        setup(job.corp.style, corp_deck)?,
         &config.model,
     )?
     .expect("kinds without a BotAgent form were rejected up front");
@@ -306,7 +314,7 @@ fn play(
         job.runner.kind,
         Side::Runner,
         job.seed.wrapping_add(1),
-        setup(job.runner.personality, runner_deck),
+        setup(job.runner.style, runner_deck)?,
         &config.model,
     )?
     .expect("kinds without a BotAgent form were rejected up front");
@@ -407,12 +415,12 @@ mod tests {
         let mut argv = vec!["netrunner_cli", "bench"];
         argv.extend_from_slice(extra);
         let mut config = Config::parse_from(argv);
-        let Some(Command::Bench { bots, games, seed, simulations, determinizations, shared_sample, mcts_depth, pairings, threads, report, ratings, label }) =
+        let Some(Command::Bench { bots, games, seed, simulations, determinizations, shared_sample, mcts_depth, pairings, threads, report, ratings, label, deck_styles }) =
             config.command.take()
         else {
             panic!("parsed a bench command");
         };
-        (BenchArgs { bots, games, seed, simulations, determinizations, shared_sample, mcts_depth, pairings, threads, report, ratings, label }, config)
+        (BenchArgs { bots, games, seed, simulations, determinizations, shared_sample, mcts_depth, pairings, threads, report, ratings, label, deck_styles }, config)
     }
 
     /// Two kinds, one game a pairing, two threads: four games, every seat
@@ -486,11 +494,13 @@ mod tests {
     }
 
     #[test]
-    fn search_kinds_carry_their_budget_and_personalities_their_name_in_the_participant_id() {
+    fn search_kinds_carry_their_budget_and_styles_their_name_in_the_participant_id() {
         let spec = |s: &str| s.parse::<BotSpec>().unwrap();
         assert_eq!(participant_id(spec("puct"), 64, None), "puct@64");
         assert_eq!(participant_id(spec("heuristic"), 64, None), "heuristic");
-        assert_eq!(participant_id(spec("heuristic:rush"), 64, None), "heuristic:rush");
+        assert_eq!(participant_id(spec("heuristic:fast-advance"), 64, None), "heuristic:fast-advance");
+        assert_eq!(participant_id(spec("planner:glacier+fast-advance"), 64, None), "planner:glacier+fast-advance");
+        assert!("heuristic:rush".parse::<BotSpec>().is_err(), "the old name is gone");
         assert_eq!(participant_id(spec("mcts:cautious"), 32, Some("abc123")), "mcts@32:cautious#abc123");
         assert_eq!(participant_id(spec("level:elite"), 64, None), "level:elite");
         assert_eq!(participant_id(spec("level:5:glacier"), 64, None), "level:elite:glacier");

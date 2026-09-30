@@ -16,7 +16,7 @@ use std::path::Path;
 
 /// Re-exported: the form is *about* a rung and a style, and a client
 /// that holds the form should not have to name the bots crate for them.
-pub use netrunner_bots::{Level, Personality};
+pub use netrunner_bots::{Level, Plan, Style};
 use netrunner_core::cards::CardRegistry;
 use netrunner_core::format::NsgFormat;
 use netrunner_core::rules::Side;
@@ -36,7 +36,7 @@ pub const DEFAULT_RUNNER_DECK: &str = "stolen_goods";
 pub struct DeckRow {
     pub id: String,
     pub name: String,
-    pub style: Option<String>,
+    pub style: Vec<String>,
     pub identity: String,
     pub saved: bool,
     /// Why the deck cannot start a game in the format the form was
@@ -50,7 +50,7 @@ pub struct DeckRow {
 
 impl DeckRow {
     pub fn label(&self) -> String {
-        let style = self.style.as_deref().unwrap_or("balanced");
+        let style = if self.style.is_empty() { "balanced".to_string() } else { self.style.join("+") };
         let saved = if self.saved { " (saved)" } else { "" };
         let problem = if self.problem.is_some() { " — not playable here" } else { "" };
         format!("{} · {style} · {}{saved}{problem}", self.name, self.identity)
@@ -88,8 +88,8 @@ pub struct StartChoice {
     pub human: Side,
     pub level: Level,
     /// `None` is the deck's own style, the same as an unset
-    /// `--corp-personality`.
-    pub style: Option<Personality>,
+    /// `--corp-style`.
+    pub style: Option<Style>,
     pub corp_deck: String,
     pub runner_deck: String,
 }
@@ -211,15 +211,17 @@ impl StartMenu {
     }
 
     /// The styles offered for the bot's chair: the deck's own first, then
-    /// every profile written for that chair, then balanced.
-    pub fn styles(&self) -> Vec<Option<Personality>> {
+    /// each plan written for that chair on its own, then balanced. A
+    /// stacked style is a deck's to name (`DeckFile::style`), not the
+    /// form's: the form picks one word.
+    pub fn styles(&self) -> Vec<Option<Style>> {
         let mut styles = vec![None];
-        styles.extend(Personality::ALL.iter().copied().filter(|p| p.side() == Some(self.bot())).map(Some));
-        styles.push(Some(Personality::Balanced));
+        styles.extend(Plan::for_side(self.bot()).map(|plan| Some(Style::of(plan))));
+        styles.push(Some(Style::BALANCED));
         styles
     }
 
-    pub fn style(&self) -> Option<Personality> {
+    pub fn style(&self) -> Option<Style> {
         self.styles()[self.style]
     }
 
@@ -356,7 +358,7 @@ impl StartMenu {
             .into_iter()
             .map(|style| match style {
                 None => "the deck's own style".to_string(),
-                Some(personality) => personality.name().to_string(),
+                Some(style) => style.to_string(),
             })
             .collect();
         let deck_rows = |decks: &[DeckRow]| decks.iter().map(DeckRow::label).collect::<Vec<_>>();
@@ -378,7 +380,7 @@ mod tests {
         DeckRow {
             id: id.to_string(),
             name: id.replace('_', " "),
-            style: Some(if side == Side::Corp { "rush" } else { "aggressive" }.to_string()),
+            style: vec![if side == Side::Corp { "fast-advance" } else { "aggressive" }.to_string()],
             identity: "Someone".to_string(),
             saved: false,
             problem: None,
@@ -411,7 +413,7 @@ mod tests {
         assert_eq!(menu.level(), Level::Veteran, "the Runner chair's suggestion");
         let panes = menu.panes();
         assert!(panes[1].1.contains("Corp"), "the opponent is now the Corp: {}", panes[1].1);
-        assert!(panes[2].2.contains(&"rush".to_string()) && !panes[2].2.contains(&"aggressive".to_string()), "{:?}", panes[2].2);
+        assert!(panes[2].2.contains(&"fast-advance".to_string()) && !panes[2].2.contains(&"aggressive".to_string()), "{:?}", panes[2].2);
         let choice = menu.choice().unwrap();
         assert_eq!(choice.human, Side::Runner);
         assert_eq!((choice.corp_deck.as_str(), choice.runner_deck.as_str()), ("discretion_advised", "stolen_goods"));
@@ -426,12 +428,12 @@ mod tests {
         assert_eq!(menu.level(), Level::Operator);
         menu.apply(Intent::NextPane);
         menu.apply(Intent::Move(1));
-        assert_eq!(menu.style(), Some(Personality::Aggressive), "the first profile written for the Runner");
+        assert_eq!(menu.style(), Some(Style::of(Plan::Aggressive)), "the first plan written for the Runner");
         menu.apply(Intent::NextPane);
         menu.apply(Intent::Move(1));
         let choice = menu.choice().expect("a choice from any pane");
         assert_eq!(choice.level, Level::Operator);
-        assert_eq!(choice.style, Some(Personality::Aggressive));
+        assert_eq!(choice.style, Some(Style::of(Plan::Aggressive)));
         assert_eq!(choice.runner_deck, "dashing_mad");
     }
 
@@ -441,7 +443,7 @@ mod tests {
         let last = StartChoice {
             human: Side::Runner,
             level: Level::Novice,
-            style: Some(Personality::Glacier),
+            style: Some(Style::of(Plan::Glacier)),
             corp_deck: "brick_stack".to_string(),
             runner_deck: "dashing_mad".to_string(),
         };

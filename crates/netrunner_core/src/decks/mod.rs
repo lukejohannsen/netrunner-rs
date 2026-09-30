@@ -158,26 +158,29 @@ pub struct DeckFile {
     /// lists survive being displayed raw.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub how_to_play: Option<String>,
-    /// How a bot should play this list: the name of a
-    /// `netrunner_bots::Personality` (`rush`, `glacier`, `trap`,
-    /// `aggressive`, `cautious`, ...) written for the deck's side. `None`
-    /// is balanced play.
+    /// How a bot should play this list: the plans it stacks, in order,
+    /// each the name of a `netrunner_bots::Plan` written for the deck's
+    /// side (`["glacier", "fast-advance"]`, `["traps"]`, `["aggressive"]`).
+    /// Empty is balanced play.
     ///
-    /// A string rather than the enum because this crate is the bottom of
-    /// the dependency graph and `Personality` lives in `netrunner_bots`,
-    /// which is where the vocabulary belongs — a style is a bias on the
-    /// bot's evaluator, not a property the rules know. `netrunner_bots`
-    /// carries the test that every embedded deck's style parses and is for
-    /// the right chair, so a typo here fails a build rather than seating a
-    /// balanced bot under a rush deck's name. A saved deck may omit it.
+    /// Strings rather than the enum because this crate is the bottom of
+    /// the dependency graph and the vocabulary lives in `netrunner_bots`,
+    /// which is where it belongs — a style is what a bot's evaluator
+    /// reads, not a property the rules know. `netrunner_bots` carries the
+    /// test that every embedded deck's style parses and is for the right
+    /// chair, so a typo here fails a build rather than seating a balanced
+    /// bot under a glacier deck's name. A saved deck may omit it.
     ///
-    /// On the deck rather than the identity because two of these lists
-    /// share an identity and play differently (*Discretion Advised* and
-    /// *Brutal Efficiency* are both *Precision Design*), and because a
-    /// player who builds a deck knows how it wants to be played better
-    /// than a table keyed on the identity could.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub style: Option<String>,
+    /// A list because the strategy guide says most real decks mix two of
+    /// its styles ("glacier, then fast advance"), and the turn planner
+    /// plays the whole list; the one-ply reference plays the first. On the
+    /// deck rather than the identity because two of these lists share an
+    /// identity and play differently (*Discretion Advised* and *Brutal
+    /// Efficiency* are both *Precision Design*), and because a player who
+    /// builds a deck knows how it wants to be played better than a table
+    /// keyed on the identity could.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub style: Vec<String>,
     pub identity: CardId,
     pub cards: Vec<DeckEntry>,
 }
@@ -202,6 +205,16 @@ impl DeckFile {
         Deck {
             identity: self.identity.clone(),
             cards: self.cards.iter().map(|entry| (entry.card.clone(), entry.count)).collect(),
+        }
+    }
+
+    /// The style as one word for a label: the plans joined with `+`, or
+    /// "balanced" for none — the spelling `netrunner_bots::Style` prints.
+    pub fn style_label(&self) -> String {
+        if self.style.is_empty() {
+            "balanced".to_string()
+        } else {
+            self.style.join("+")
         }
     }
 
@@ -458,6 +471,10 @@ mod tests {
             // Vantage Point Stage 8: Méliès U's deck, pinned by the test.
             ("honor_roll", &neither),
             ("hostile_bid", &neither),
+            // Phase 5 §25 Stage 6: the kill plan's deck, on Building a
+            // Better World; Scorched Earth and Ice Wall keep it out of
+            // Standard and Startup.
+            ("tag_youre_it", &neither),
             // Rebellion Without Rehearsal Stage 5e: Nuvem SA's deck, on
             // Hostile Bid's frame. The Automata Initiative Stage 7 took out
             // its Ice Wall (for a Tree Line), its one card off the Standard

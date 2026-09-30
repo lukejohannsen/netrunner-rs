@@ -66,7 +66,7 @@ use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
-use netrunner_bots::{Knowledge, Level, Personality};
+use netrunner_bots::{Knowledge, Level, Style};
 use netrunner_core::cards::CardRegistry;
 use netrunner_core::decks::DeckFile;
 use netrunner_core::format::NsgFormat;
@@ -105,8 +105,8 @@ pub struct LocalMatchSpec {
     pub human: Side,
     pub level: Level,
     /// `None` is the deck's own style (`DeckFile::style`), the same as an
-    /// unset `--corp-personality`.
-    pub style: Option<Personality>,
+    /// unset `--corp-style`.
+    pub style: Option<Style>,
     pub seed: u64,
     /// Standard for a game from the form. A starter game's are its decks'
     /// category's (`DeckCategory::match_rules`, 6 points for the starter
@@ -268,7 +268,7 @@ impl MatchHandle {
         let LocalMatchSpec { registry, corp, runner, human, level, style, seed, rules, format, record } = spec;
         let bot_side = human.other();
         let bot_deck = if bot_side == Side::Corp { &corp } else { &runner };
-        let personality = personality_for(style, bot_deck)?;
+        let style = style_for(style, bot_deck)?;
         // The bot knows the format and the deck it was dealt, and nothing
         // of the person's deck but its identity.
         let knowledge = Knowledge::new(format, Some(bot_deck.to_deck()));
@@ -281,13 +281,13 @@ impl MatchHandle {
             corp_deck: corp.to_deck(),
             runner_deck: runner.to_deck(),
             rules,
-            bot: Some(RecordedBot { side: bot_side, level, personality }),
+            bot: Some(RecordedBot { side: bot_side, level, style }),
             order: Default::default(),
         };
         // A rung is always a `Seat::Agent`: the ladder is built from the
         // view-based searches and deliberately excludes the one kind that
         // needs the index path (see `netrunner_cli::tui::build_bot_seat`).
-        let bot = Seat::Agent(level.spec(bot_side).with_personality(personality).agent(seed.wrapping_add(1), knowledge));
+        let bot = Seat::Agent(level.spec(bot_side).with_style(style).agent(seed.wrapping_add(1), knowledge));
         // Opened before the game so a bad record file fails now, not
         // after an hour of play.
         let record = match record {
@@ -297,7 +297,7 @@ impl MatchHandle {
                 human,
                 level: Some(level),
                 kind: BotKind::Heuristic,
-                personality,
+                style,
                 seed,
                 corp_deck: corp.id.clone(),
                 runner_deck: runner.id.clone(),
@@ -575,13 +575,13 @@ impl Drop for MatchHandle {
 
 /// The style a bot plays a deck in: the flag if one was given, else the
 /// deck's own (`DeckFile::style`). One rule for the terminal's
-/// `Config::personality_for` and the desktop's form, so
-/// `--corp-level 4 --corp-personality rush` and the desktop's "Rush"
-/// choice seat the same bot.
-pub fn personality_for(flag: Option<Personality>, deck: &DeckFile) -> Result<Personality, String> {
+/// `Config::style_for` and the desktop's form, so `--corp-level 4
+/// --corp-style fast-advance` and the desktop's "Fast-advance" choice
+/// seat the same bot.
+pub fn style_for(flag: Option<Style>, deck: &DeckFile) -> Result<Style, String> {
     match flag {
-        Some(personality) => Ok(personality),
-        None => Personality::for_deck(deck),
+        Some(style) => Ok(style),
+        None => Style::for_deck(deck),
     }
 }
 
@@ -1107,7 +1107,7 @@ mod tests {
                 MatchMessage::Awaiting { view } => {
                     decisions += 1;
                     let (header, history) = handle.record().expect("a local match keeps its record");
-                    assert_eq!(header.bot, Some(RecordedBot { side: Side::Corp, level: Level::Novice, personality: header.bot.unwrap().personality }));
+                    assert_eq!(header.bot, Some(RecordedBot { side: Side::Corp, level: Level::Novice, style: header.bot.unwrap().style }));
                     let (mut state, _) = header.setup(&registry).expect("the header sets up");
                     for entry in history.entries() {
                         state = netrunner_core::rules::apply_action(&state, &registry, entry.action.clone()).expect("replays").0;
@@ -1276,9 +1276,11 @@ mod tests {
     #[test]
     fn the_style_is_the_flag_else_the_decks_own() {
         let deck = netrunner_core::decks::by_id("discretion_advised").unwrap();
-        let own = personality_for(None, &deck).unwrap();
-        assert_eq!(Some(own), deck.style.as_deref().and_then(|s| s.parse().ok()).or(Some(Personality::Balanced)));
-        assert_eq!(personality_for(Some(Personality::Glacier), &deck).unwrap(), Personality::Glacier);
+        use netrunner_bots::Plan;
+        let own = style_for(None, &deck).unwrap();
+        assert_eq!(own, deck.style_label().parse::<Style>().unwrap());
+        assert!(own.plans().count() > 1, "Discretion Advised stacks two plans: {own}");
+        assert_eq!(style_for(Some(Style::of(Plan::Glacier)), &deck).unwrap(), Style::of(Plan::Glacier));
     }
 }
 
