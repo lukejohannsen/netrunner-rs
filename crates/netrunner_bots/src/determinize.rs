@@ -598,7 +598,13 @@ fn draw_from_zone(run: &mut RunState, corp: &CorpState, rng: &mut impl Rng) {
     };
 }
 
-fn determinize_access_phase(phase: &PublicAccessPhase, pools: &mut Pools<'_>) -> AccessPhase {
+/// The name a masked access carries until the sample's zones exist to take
+/// one from (`name_the_accessed_card`), as `AccessState::from_zone`'s are.
+fn unnamed() -> CardId {
+    CardId(String::new())
+}
+
+fn determinize_access_phase(phase: &PublicAccessPhase) -> AccessPhase {
     match phase {
         PublicAccessPhase::SelectNextCard { selectable_cards } => AccessPhase::SelectNextCard { selectable_cards: selectable_cards.clone() },
         // `decider` copies straight through rather than being re-derived
@@ -606,18 +612,87 @@ fn determinize_access_phase(phase: &PublicAccessPhase, pools: &mut Pools<'_>) ->
         // that disagreed with reality about whose decision is pending would
         // evaluate the position for the wrong player entirely.
         PublicAccessPhase::PendingInteractiveTrigger { card, cost, decider, can_pay } => AccessPhase::PendingInteractiveTrigger {
-            card_id: card.clone().unwrap_or_else(|| pools.draw(Slot::CorpAny)),
+            card_id: card.clone().unwrap_or_else(unnamed),
             cost: cost.clone(),
             decider: *decider,
             can_pay: *can_pay,
         },
         PublicAccessPhase::PendingChoice { card, trash_cost, mandatory_steal, steal_cost, trash_also } => AccessPhase::PendingChoice {
-            card_id: card.clone().unwrap_or_else(|| pools.draw(Slot::CorpAny)),
+            card_id: card.clone().unwrap_or_else(unnamed),
             trash_cost: *trash_cost,
             mandatory_steal: *mandatory_steal,
             steal_cost: steal_cost.clone(),
             trash_also: trash_also.clone(),
         },
+    }
+}
+
+/// Whether `card`, out of HQ or R&D, could be the card the access `phase`
+/// is of, by what the view says about a card it does not name: the
+/// decision is the engine's reading of the card (`run::access`'s
+/// `compute_pending_choice`), and its public half says whether the card is
+/// an agenda — a steal, free or priced, is offered on nothing else — and
+/// what trashing it costs, which for a card in no root is what it prints.
+/// An interactive trigger is the card's own, at the card's own cost.
+fn fits_the_access(phase: &AccessPhase, card: &CardDefinition) -> bool {
+    match phase {
+        AccessPhase::PendingChoice { mandatory_steal, steal_cost, trash_cost, .. } => {
+            card.agenda_points.is_some() == (*mandatory_steal || steal_cost.is_some()) && card.trash_cost == *trash_cost
+        }
+        AccessPhase::PendingInteractiveTrigger { cost, .. } => card.interactive_on_access.as_ref().is_some_and(|interactive| interactive.cost == *cost),
+        AccessPhase::SelectNextCard { .. } => false,
+    }
+}
+
+/// Names the card of an access the view masks — the Corp's own view of a
+/// card accessed in HQ, R&D or a remote, which it is not shown until the
+/// card lands somewhere public — as **a card the sample has where the
+/// access is**: the install the access pinned, else a card of the sample's
+/// HQ or R&D the public half of the decision is true of
+/// (`fits_the_access`), which is where the real card still is.
+///
+/// It was a draw from the pool with the view's decision copied beside it.
+/// For the Corp the pool is its own deck, all of it already dealt into the
+/// sample's R&D, so the draw fell through to the prior and named any Corp
+/// card in the format: with the Corp parked on Send a Message's rez while
+/// the breach stood at a second agenda, the sample's Runner "must steal" a
+/// Boto, or could trash a Hedge Fund for 2[credit]. The rollout stole the
+/// ice, and a score area holding it overflowed the stack
+/// (`continuous::for_each_applying`, which has the other half of the fix).
+///
+/// A sample whose zone holds no such card — a seat with no deck of its
+/// own, drawing from the prior — takes any Corp card the decision is true
+/// of, and only a registry with none at all keeps a pool draw: the
+/// decision and the card it is about never disagree where a card exists
+/// that they could agree on.
+fn name_the_accessed_card(run: &mut RunState, corp: &CorpState, registry: &CardRegistry, pools: &mut Pools<'_>, rng: &mut impl Rng) {
+    use rand::seq::IndexedRandom;
+    let Some(access) = run.access_state.as_mut() else { return };
+    let named = match &access.phase {
+        AccessPhase::PendingChoice { card_id, .. } | AccessPhase::PendingInteractiveTrigger { card_id, .. } => *card_id != unnamed(),
+        AccessPhase::SelectNextCard { .. } => true,
+    };
+    if named {
+        return;
+    }
+    let pinned = access.pending_install.and_then(|install| corp.installed.iter().find(|card| card.install_id == install)).map(|card| card.card.clone());
+    let zone: &[CardId] = match access.server {
+        ServerId::Hq => &corp.hq,
+        ServerId::RnD => &corp.r_and_d,
+        ServerId::Archives | ServerId::Remote(_) => &[],
+    };
+    let fits = |card: &&CardId| registry.get(card).is_some_and(|definition| fits_the_access(&access.phase, definition));
+    let card = pinned.or_else(|| zone.iter().filter(fits).collect::<Vec<_>>().choose(rng).map(|card| (*card).clone())).unwrap_or_else(|| {
+        // Sorted: a registry iterates in hash order, and a sample is a
+        // function of its seed.
+        let mut anywhere: Vec<&CardId> =
+            registry.iter().filter(|definition| definition.side == Side::Corp && fits_the_access(&access.phase, definition)).map(|definition| &definition.id).collect();
+        anywhere.sort();
+        anywhere.choose(rng).map(|card| (*card).clone()).unwrap_or_else(|| pools.draw(Slot::CorpAny))
+    });
+    match &mut access.phase {
+        AccessPhase::PendingChoice { card_id, .. } | AccessPhase::PendingInteractiveTrigger { card_id, .. } => *card_id = card,
+        AccessPhase::SelectNextCard { .. } => {}
     }
 }
 
@@ -721,7 +796,9 @@ fn determinize_run(
         // breach will reach are cards of that zone.
         from_zone: vec![CardId(String::new()); access.from_zone as usize],
         resolved_cards: determinize_access_cards(&access.resolved_cards, pools),
-        phase: determinize_access_phase(&access.phase, pools),
+        // A card the view masks is named once the sample's zones exist
+        // (`name_the_accessed_card`), for the reason `from_zone` is.
+        phase: determinize_access_phase(&access.phase),
     });
 
     RunState {
@@ -948,6 +1025,7 @@ pub fn determinize(view: &ClientView, registry: &CardRegistry, knowledge: &Knowl
     let mut active_run = view.active_run.as_ref().map(|run| determinize_run(run, registry, &mut pools, &corp.installed));
     if let Some(run) = active_run.as_mut() {
         draw_from_zone(run, &corp, rng);
+        name_the_accessed_card(run, &corp, registry, &mut pools, rng);
     }
 
     // A rollout installs cards of its own under the ids the real game
@@ -1367,6 +1445,110 @@ mod tests {
         let sample = determinize(&view, &registry, &corp_knows, &mut rng);
         assert_eq!(every_corp_card(&sample), decklist("agency"));
         assert_eq!(every_corp_card(&state), decklist("agency"), "and so does the real state, which is the premise");
+    }
+
+    /// The Corp's view of a breach of its own HQ or R&D does not name the
+    /// card being accessed, and says what the decision about it is: a steal
+    /// the Runner must make, a trash at a price. The sample names it as a
+    /// card it has there that the decision is true of. It drew one from the
+    /// pool instead — for the Corp, past the end of its own deck, so from
+    /// every Corp card in the format — and kept the decision: with the
+    /// Corp parked on Send a Message's rez while the breach stood at the
+    /// next agenda, the rollout's Runner stole a Boto, and the score of a
+    /// score area with an ice in it never came back (`bench --bots
+    /// planner,mcts --pairing mcts/planner --games 192 --seed 2` aborted
+    /// with a stack overflow on `5903ab6`).
+    #[test]
+    fn a_masked_access_is_named_as_a_card_of_the_samples_own_zone_that_the_decision_is_true_of() {
+        use netrunner_core::rules::{AccessPhase, AccessState, InstallId, PlayerAction, RunPhase, RunState, ServerId};
+        let (mut state, registry) = sample_game("quick_and_dirty", "tickets_please");
+        let knows = Knowledge::new(NsgFormat::Casual, Some(netrunner_core::decks::by_id("quick_and_dirty").unwrap().to_deck()));
+        let mut deck: Vec<CardId> = state.corp.hq.drain(..).chain(state.corp.r_and_d.drain(..)).collect();
+        let mut take = |id: &str| deck.remove(deck.iter().position(|card| card.0 == id).unwrap());
+        // One agenda in a hand of cards that are not, and the one card of
+        // the list with a trash cost on top of R&D.
+        state.corp.hq = vec![take("hedge_fund"), take("palisade"), take("send_a_message"), take("tithe")];
+        let vault = take("malapert_data_vault");
+        let installed = take("offworld_office");
+        state.corp.r_and_d = deck;
+        state.corp.r_and_d.push(vault.clone());
+        state.corp.installed.push(InstalledCard {
+            card: installed.clone(),
+            install_id: InstallId(40),
+            server: ServerId::Remote(0),
+            slot: CoreInstallSlot::Root,
+            ..Default::default()
+        });
+        state.phase = GamePhase::Action(Side::Runner);
+        let accessing = |server: ServerId, card: &CardId, pending_install: Option<InstallId>| {
+            let definition = registry.get(card).unwrap();
+            RunState {
+                server,
+                phase: RunPhase::AccessingCard,
+                access_state: Some(AccessState {
+                    server,
+                    candidates: Vec::new(),
+                    from_zone: Vec::new(),
+                    resolved_cards: Vec::new(),
+                    currently_accessing: None,
+                    pending_install,
+                    pending_install_rezzed: false,
+                    phase: AccessPhase::PendingChoice {
+                        card_id: card.clone(),
+                        trash_cost: definition.trash_cost,
+                        mandatory_steal: definition.agenda_points.is_some(),
+                        steal_cost: None,
+                        trash_also: None,
+                    },
+                }),
+                ..Default::default()
+            }
+        };
+        let named = |sample: &CoreGameState| sample.active_run.as_ref().unwrap().access_state.as_ref().unwrap().phase.card().cloned().unwrap();
+        let agenda = CardId("send_a_message".to_string());
+
+        for seed in 0..32 {
+            let mut rng = StdRng::seed_from_u64(seed);
+
+            // HQ: the one agenda in it, whatever the seed.
+            state.active_run = Some(accessing(ServerId::Hq, &agenda, None));
+            let view = build_client_view(&state, &registry, Side::Corp);
+            let masked = &view.active_run.as_ref().unwrap().access_state.as_ref().unwrap().phase;
+            assert!(matches!(masked, PublicAccessPhase::PendingChoice { card: None, mandatory_steal: true, .. }), "the premise: {masked:?}");
+            let sample = determinize(&view, &registry, &knows, &mut rng);
+            assert_eq!(named(&sample), agenda, "seed {seed}: a card the Runner must steal is an agenda of this HQ");
+            // And the steal the rollout then makes is of an agenda, scored
+            // as one, with Send a Message's rez parked on the Corp — the
+            // position the search was standing in.
+            let (stolen, _) = netrunner_core::rules::apply_action(&sample, &registry, PlayerAction::StealAgenda { card_id: agenda.clone() }).unwrap();
+            assert_eq!(netrunner_core::rules::score(&stolen, &registry, Side::Runner), 3, "seed {seed}");
+            assert!(!stolen.corp.hq.contains(&agenda), "seed {seed}: and it left the hand it was in");
+
+            // R&D, whose order the Corp does not know: a card of the
+            // sample's R&D that costs what the view says to trash.
+            state.active_run = Some(accessing(ServerId::RnD, &vault, None));
+            let sample = determinize(&build_client_view(&state, &registry, Side::Corp), &registry, &knows, &mut rng);
+            assert_eq!(named(&sample), vault, "seed {seed}: the one card of the list with a trash cost of 4");
+            assert!(sample.corp.r_and_d.contains(&vault), "seed {seed}");
+            assert_eq!(every_corp_card(&sample), decklist("quick_and_dirty"), "seed {seed}: and naming it drew nothing past the deck");
+
+            // A root: the install the access pinned, which the sample has.
+            state.active_run = Some(accessing(ServerId::Remote(0), &installed, Some(InstallId(40))));
+            let sample = determinize(&build_client_view(&state, &registry, Side::Corp), &registry, &knows, &mut rng);
+            assert_eq!(named(&sample), installed, "seed {seed}");
+        }
+
+        // A seat with no deck of its own draws its R&D from the prior, and
+        // may hold no such card there: the name is still one the decision
+        // is true of.
+        state.active_run = Some(accessing(ServerId::RnD, &vault, None));
+        state.corp.identity = None;
+        let view = build_client_view(&state, &registry, Side::Corp);
+        for seed in 0..32 {
+            let sample = determinize(&view, &registry, &Knowledge::default(), &mut StdRng::seed_from_u64(seed));
+            let definition = registry.get(&named(&sample)).unwrap();
+            assert_eq!((definition.agenda_points, definition.trash_cost), (None, Some(4)), "seed {seed}: {}", definition.id.0);
+        }
     }
 
     /// A seat built without a deck still finds its own by its identity

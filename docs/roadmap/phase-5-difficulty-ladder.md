@@ -19,7 +19,7 @@ anywhere.
 **Where it stands (30 September 2026).** Five rungs per chair, every rung the turn planner at a
 measured handicap (`Level::spec`: `epsilon` 1.0 / 0.22 / 0.11 / 0.05 / 0.0 for the Corp and
 1.0 / 0.45 / 0.25 / 0.10 / 0.0 for the Runner, over the deck's style), spaced by measurement at
-384 games a cell on two seeds, and the one-ply reference deleted (§25 Stage 8). §1–§26 are closed
+384 games a cell on two seeds, and the one-ply reference deleted (§25 Stage 8). §1–§27 are closed
 and their record is in [the archive](archive/phase-5-difficulty-ladder.md); what a bot session
 needs of it is in [Reference](#reference) below. **A bot change is measured as both chairs' win
 share on pinned binaries, the same games paired by seed, and by `diag precepts`.**
@@ -63,6 +63,7 @@ share on pinned binaries, the same games paired by seed, and by `diag precepts`.
 - **§24** — Every Corp ladder is one ply at five handicaps, `glacier`'s, and no Corp style carries an exception (`feat/every-corp-ladder-is-one-ply`, 23 September 2026).
 - **§25** — Bots that play the strategy guide's precepts: the decision core rebuilt on the harness in nine stages, every rung the turn planner, both ladders re-taken on it and the one-ply reference deleted (25–30 September 2026; the last stage `feat/ladders-on-the-planner`). §4 (a), the Runner ladder's re-spacing, and §22's question about the one-ply Runner closed with it.
 - **§26** — The beam keeps one line per position, and a line is judged by the free score it leads to: the glacier Corp that iced instead of scoring was a beam holding three positions in six slots, not a line judged too early — the judgment alone does not find it (`feat/beam-one-line-per-position`, 30 September 2026).
+- **§27** — The stack overflow §26 recorded was a bot's sample and the engine together: the Corp's sample named a masked access as a Boto the Runner must steal, and a score asked the stolen ice's strength text whether threat was 4 — a scan now asks only effects of the kind in question, and a masked access is named as a card the sample holds that the decision is true of (`fix/stolen-non-agenda-score-recursion`, 30 September 2026).
 
 ## Reference
 

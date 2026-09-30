@@ -1407,6 +1407,17 @@ impl CardDefinition {
             if !matches!(self.card_type, CardType::Ice(_)) && effect.condition.as_ref().is_some_and(says_protecting_remote) {
                 return misfit("ProtectingRemote", "only a piece of ice protects a server");
             }
+            // A score is the sum of what each card in a score area is worth
+            // (`win::score`), and the threat level is the greater score: an
+            // agenda worth more "at threat 4" would be asked its worth to
+            // answer its own condition, and the scan would never return.
+            // No card prints one; a card file that does is refused here
+            // rather than found by a stack overflow.
+            if let ContinuousKind::AgendaPoints(number) = &effect.kind
+                && (number.of == crate::dsl::Amount::ThreatLevel || effect.condition.as_ref().is_some_and(EffectRequirement::reads_the_score))
+            {
+                return misfit("AgendaPoints", "what an agenda is worth cannot read the threat level, which is a score: the sum of what agendas are worth");
+            }
             match (&effect.kind, &effect.applies_to) {
                 (_, Scope::Host) if !hosted => return misfit("Host", "only a Runner's installed card is hosted on another"),
                 (_, Scope::RootOfThisServer(_)) if self.card_type != CardType::Upgrade && self.card_type != CardType::Asset => {
@@ -1941,6 +1952,21 @@ mod tests {
         };
         assert_eq!(while_protecting(CardType::Ice(IceType::Barrier)).validate(), Ok(()));
         assert!(refused(while_protecting(CardType::Upgrade)));
+
+        // Let Them Dream's shape, and the two ways it could read a score:
+        // what an agenda is worth is what a score sums.
+        let worth = |number: Number, condition: Option<EffectRequirement>| {
+            let mut card = with(Side::Corp, CardType::Agenda, None, ContinuousKind::AgendaPoints(number), Scope::ScoreArea(Side::Runner));
+            card.agenda_points = Some(2);
+            card.advancement_requirement = Some(3);
+            card.continuous[0].condition = condition;
+            card
+        };
+        let unless = |amount: crate::dsl::Amount| Some(EffectRequirement::Not(Box::new(EffectRequirement::AmountAtLeast(amount, 4))));
+        assert_eq!(worth(flat(-1), None).validate(), Ok(()));
+        assert_eq!(worth(flat(-1), unless(crate::dsl::Amount::RunnerTags)).validate(), Ok(()));
+        assert!(refused(worth(flat(-1), unless(crate::dsl::Amount::ThreatLevel))));
+        assert!(refused(worth(Number { per: 1, of: crate::dsl::Amount::ThreatLevel }, None)));
     }
 
     /// A prohibition is for a run or a turn. One for an encounter parses,

@@ -566,6 +566,20 @@ impl EffectRequirement {
         }
     }
 
+    /// Whether this reads `Amount::ThreatLevel` — a score — anywhere under
+    /// `And`/`Not`. What an agenda is worth may not depend on it
+    /// (`CardDefinition::validate`): a score is the sum of those worths.
+    pub fn reads_the_score(&self) -> bool {
+        use crate::dsl::Amount::ThreatLevel;
+        match self {
+            EffectRequirement::AmountAtLeast(amount, _) => *amount == ThreatLevel,
+            EffectRequirement::MoreThan(one, other) => *one == ThreatLevel || *other == ThreatLevel,
+            EffectRequirement::And(one, other) => one.reads_the_score() || other.reads_the_score(),
+            EffectRequirement::Not(inner) => inner.reads_the_score(),
+            _ => false,
+        }
+    }
+
     /// Whether this compares `Amount::TimesThisTurn(trigger)` with a
     /// number, anywhere under `And`/`Not` — see `CardDefinition::validate`.
     pub fn counts_this_turn(&self, trigger: Trigger) -> bool {
