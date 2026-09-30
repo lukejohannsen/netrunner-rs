@@ -1,7 +1,7 @@
 //! Samples one concrete, `ClientView`-consistent `GameState` — the "I" in
 //! Information Set MCTS: `MctsAgent` runs its unchanged Phase-1 search
 //! machinery against a sampled state instead of the real (unavailable) one,
-//! `HeuristicAgent` does the same for its one-ply lookahead, and `PuctAgent`
+//! `PlanningAgent` does the same for its lines and its one-ply lookahead, and `PuctAgent`
 //! searches one sample and redraws it at every breach.
 //!
 //! **Hidden slots are filled from what the seat knows** (`Knowledge`,
@@ -815,7 +815,7 @@ pub fn determinize(view: &ClientView, registry: &CardRegistry, knowledge: &Knowl
     // `pending_choice::zone_card_ids` and `ActionSpace`'s installed-card
     // segments index by exactly that ordering. A sample that disagreed
     // about it made the caller's own `ToggleCardSelection { position }`
-    // decode to a different card, which `HeuristicAgent` then found
+    // decode to a different card, which the one-ply chooser then found
     // illegal, scored nothing, and fell back out of — livelocking on
     // `legal_actions[0]` until the step budget ran out (sweep seed 40,
     // `discretion_advised vs planning_ahead`, on Tāo Salonga's swap).

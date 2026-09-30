@@ -2,7 +2,7 @@
 //!
 //! A tutorial opponent has one job — put the board where the lesson needs
 //! it and otherwise stay out of the way. A `RandomAgent` would wander; a
-//! `HeuristicAgent` would rez, run and score on its own schedule, and the
+//! `PlanningAgent` would rez, run and score on its own schedule, and the
 //! learner's second play-through would look nothing like the first. So this
 //! agent plays exactly the script the lesson author wrote, and when the
 //! script is exhausted (or its head is not yet legal) it does the least

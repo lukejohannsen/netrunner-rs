@@ -17,7 +17,7 @@
 //! has no `BotAgent` form to hand a `PlayerSlot::Bot`.
 
 use netrunner_bots::{
-    BotAgent, BotAgentIndexAdapter, HeuristicAgent, Knowledge, Level, MctsAgent, PlanningAgent, PuctAgent, Style,
+    BotAgent, BotAgentIndexAdapter, Knowledge, Level, MctsAgent, PlanningAgent, PuctAgent, Style,
     PuctConfig, RandomAgent, UniformPolicyEvaluator,
 };
 use netrunner_core::rules::Side;
@@ -146,9 +146,6 @@ pub fn make_agent(kind: BotKind, side: Side, seed: u64, setup: AgentSetup) -> Op
     match kind {
         BotKind::Human | BotKind::Onnx | BotKind::PuctOnnx => None,
         BotKind::Random => Some(Box::new(RandomAgent::new(seed))),
-        BotKind::Heuristic => Some(Box::new(
-            HeuristicAgent::with_style(side, seed, style).with_knowledge(knowledge),
-        )),
         BotKind::Planner => Some(Box::new(
             PlanningAgent::with_style(side, seed, style).with_knowledge(knowledge),
         )),
@@ -308,7 +305,7 @@ mod tests {
     /// `the_default_tree_count_does_not_move_with_the_host_pool`.
     #[test]
     fn every_kind_accepts_an_explicit_determinization_count() {
-        for kind in [BotKind::Random, BotKind::Heuristic, BotKind::Mcts, BotKind::Puct] {
+        for kind in [BotKind::Random, BotKind::Planner, BotKind::Mcts, BotKind::Puct] {
             for side in [Side::Corp, Side::Runner] {
                 for count in [1, 2, 4] {
                     let setup = AgentSetup { determinizations: Some(count), ..AgentSetup::new(8) };
@@ -322,7 +319,7 @@ mod tests {
 
     #[test]
     fn the_scripted_kinds_all_produce_drivers() {
-        for kind in [BotKind::Random, BotKind::Heuristic, BotKind::Mcts, BotKind::Puct] {
+        for kind in [BotKind::Random, BotKind::Planner, BotKind::Mcts, BotKind::Puct] {
             assert!(make_driver(kind, Side::Corp, 7, 8, "unused.onnx", Style::BALANCED, Knowledge::default()).is_ok(), "{kind:?}");
         }
     }

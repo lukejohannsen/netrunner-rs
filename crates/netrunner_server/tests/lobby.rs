@@ -38,7 +38,7 @@ async fn human_daemon() -> String {
 }
 
 fn bot_daemon() -> ServeOptions {
-    ServeOptions { bot_runner: ServeBotKind::Heuristic, seed: Some(1), ..ServeOptions::default() }
+    ServeOptions { bot_runner: ServeBotKind::Planner, seed: Some(1), ..ServeOptions::default() }
 }
 
 async fn open(url: &str, hello: ClientMessage) -> Socket {
@@ -507,7 +507,7 @@ async fn an_unpinned_bot_plays_its_dealt_decks_style_and_its_seat_says_so() {
 
     let mut human = seek(&url, "human", corp("human")).await;
     joined(next(&mut human).await);
-    assert_eq!(list_matches(&url).await.0[0].runner, format!("heuristic bot, {style}"));
+    assert_eq!(list_matches(&url).await.0[0].runner, format!("planner bot, {style}"));
 }
 
 

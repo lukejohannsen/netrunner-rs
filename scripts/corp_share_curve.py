@@ -30,7 +30,7 @@ precede it. Compare a column taken from one report, not across reports.
 
 Usage:
     scripts/corp_share_curve.py curve  reports/*.json
-    scripts/corp_share_curve.py chairs --against heuristic reports/cross512.json
+    scripts/corp_share_curve.py chairs --against planner reports/cross512.json
 """
 import argparse
 import json
@@ -216,7 +216,7 @@ def main():
     parser.add_argument("reports", nargs="+")
     parser.add_argument("--baseline", default="puct@128", help="participant the curve differences against")
     parser.add_argument("--decks", nargs=2, metavar=("FIRST", "LAST"), help="two participants to decompose by deck")
-    parser.add_argument("--against", default="heuristic", help="the fixed opponent on the other chair")
+    parser.add_argument("--against", default="planner", help="the fixed opponent on the other chair")
     parser.add_argument("--chair", default="runner", choices=["corp", "runner"],
                         help="paired mode: which chair the varying participant sits in")
     args = parser.parse_args()

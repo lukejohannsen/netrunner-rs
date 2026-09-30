@@ -36,7 +36,7 @@ class NetrunnerGymEnv(gym.Env):
         self,
         side: str = "runner",
         seed: int = 0,
-        opponent: str = "heuristic",
+        opponent: str = "planner",
         max_episode_steps: int = 200,
     ) -> None:
         super().__init__()

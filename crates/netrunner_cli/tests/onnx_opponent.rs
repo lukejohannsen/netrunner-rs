@@ -58,7 +58,7 @@ fn a_trained_policy_can_play_a_full_single_player_game() {
     let corp_driver = bots::make_driver(BotKind::Onnx, Side::Corp, 1, 8, model_path, Style::BALANCED, Knowledge::default())
         .expect("the fixture model loads at the current observation/action shape");
     let runner_driver =
-        bots::make_driver(BotKind::Heuristic, Side::Runner, 2, 8, model_path, Style::BALANCED, Knowledge::default()).expect("heuristic driver");
+        bots::make_driver(BotKind::Planner, Side::Runner, 2, 8, model_path, Style::BALANCED, Knowledge::default()).expect("planner driver");
 
     let session = SinglePlayerSession::new(state, registry, corp_driver, runner_driver);
     let (final_state, history) = session.run();

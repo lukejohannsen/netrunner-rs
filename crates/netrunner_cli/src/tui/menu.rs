@@ -802,7 +802,7 @@ mod tests {
         let MenuStep::Launch(Launch::Local { config }) = menu.key(KeyCode::Enter) else { panic!("Enter plays") };
         let choice = menu.last_game.clone().expect("the launch is remembered");
         assert_eq!(choice.human, Side::Corp);
-        assert_eq!((config.corp, config.runner), (BotKind::Human, BotKind::Heuristic));
+        assert_eq!((config.corp, config.runner), (BotKind::Human, BotKind::Planner));
         assert_eq!(config.runner_level, Some(choice.level));
         assert_eq!((menu.base.corp, menu.base.runner), (BotKind::Human, BotKind::Human), "a launch clones base");
         let _ = std::fs::remove_dir_all(dir);
@@ -933,7 +933,7 @@ mod tests {
         };
         assert_eq!(seats(&["netrunner_cli"]), (false, false), "the menu");
         assert_eq!(seats(&["netrunner_cli", "--corp-deck", "brick_stack"]), (false, false), "a deck is not a seat");
-        assert_eq!(seats(&["netrunner_cli", "--runner", "heuristic"]), (false, true));
+        assert_eq!(seats(&["netrunner_cli", "--runner", "planner"]), (false, true));
         // What `record` tells a new player to type: a rung is a bot.
         assert_eq!(seats(&["netrunner_cli", "--runner-level", "3"]), (false, true));
         assert_eq!(seats(&["netrunner_cli", "--runner", "human", "--corp-level", "veteran"]), (true, false));

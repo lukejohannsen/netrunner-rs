@@ -106,8 +106,8 @@ pub struct Config {
     /// (score the turn after the install, or from hand), `kill` (tag and
     /// punish, damage until a trap finishes it), `traps` (bluff with what
     /// is installed); `glacier+fast-advance` is the guide's "glacier, then
-    /// fast advance". The `planner` plays the whole stack; `heuristic`,
-    /// `mcts` and `puct` play the first plan's profile; `random` and a
+    /// fast advance". The `planner` plays the whole stack; `mcts` and
+    /// `puct` play the first plan's profile; `random` and a
     /// network-backed `puct-onnx` ignore it.
     ///
     /// **Unset means the deck's own style** (`DeckFile::style` — every
@@ -288,12 +288,11 @@ impl From<NsgFormat> for FormatArg {
 pub enum BotKind {
     Human,
     Random,
-    /// The one-ply chooser, `netrunner_bots::HeuristicAgent` — the fixed
-    /// reference every stage of the bot rebuild is measured against
-    /// (Phase 5 §25), and the base of every ladder rung until Stage 8.
-    Heuristic,
-    /// `netrunner_bots::PlanningAgent`: the same evaluator and sample,
-    /// with the turn planned as a whole (Phase 5 §25 Stage 4).
+    /// `netrunner_bots::PlanningAgent`: the turn planned as a whole on one
+    /// sample of the hidden state (Phase 5 §25 Stage 4), the base of every
+    /// ladder rung and the default bot. The one-ply `heuristic` it was
+    /// measured against was deleted in Stage 8, once the planner had
+    /// beaten it on both chairs.
     Planner,
     Mcts,
     /// `netrunner_bots::PuctAgent` over the uniform policy — the search
@@ -329,7 +328,6 @@ impl From<BotKind> for netrunner_client::record::BotKind {
         match kind {
             BotKind::Human => Recorded::Human,
             BotKind::Random => Recorded::Random,
-            BotKind::Heuristic => Recorded::Heuristic,
             BotKind::Planner => Recorded::Planner,
             BotKind::Mcts => Recorded::Mcts,
             BotKind::Puct => Recorded::Puct,
@@ -367,7 +365,7 @@ impl std::str::FromStr for BotSpec {
                 Some((level, style)) => (level, style.parse::<Style>()?),
                 None => (level, Style::BALANCED),
             };
-            return Ok(BotSpec { kind: BotKind::Heuristic, style, level: Some(level.parse::<Level>()?) });
+            return Ok(BotSpec { kind: BotKind::Planner, style, level: Some(level.parse::<Level>()?) });
         }
         let (kind, style) = match s.split_once(':') {
             Some((kind, style)) => (kind, style.parse::<Style>()?),
@@ -381,7 +379,7 @@ impl std::str::FromStr for BotSpec {
     }
 }
 
-/// One ordered benchmark pairing, spelled `CORP/RUNNER` — `heuristic/mcts`,
+/// One ordered benchmark pairing, spelled `CORP/RUNNER` — `planner/mcts`,
 /// `level:operator/level:elite`. A slash rather than the comma or colon
 /// because both of those are already inside a `BotSpec`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -414,7 +412,7 @@ pub enum Command {
     /// replaced.
     Bench {
         /// Bots to seat, comma-separated, each a kind with an optional
-        /// style after a colon: `heuristic`, `heuristic:fast-advance`,
+        /// style after a colon: `planner`, `planner:fast-advance`,
         /// `puct:pressure`. Every ordered pair plays, a bot against
         /// itself included — that pairing is what says whether the Corp
         /// or the Runner chair is the stronger one for a given bot.
@@ -424,7 +422,7 @@ pub enum Command {
         /// ladder instead, which is how the ladder is calibrated: the
         /// rung ignores `--simulations`, and resolves to a different bot
         /// on each chair. `level:elite:glacier` plays the rung in a style.
-        #[arg(long, value_delimiter = ',', default_value = "random,heuristic")]
+        #[arg(long, value_delimiter = ',', default_value = "random,planner")]
         bots: Vec<BotSpec>,
         /// Games per ordered pairing, rotating through the sample-deck
         /// matchups the way `--headless --all-matchups` does.
@@ -445,7 +443,7 @@ pub enum Command {
         /// search keeps its own default (`mcts` four trees, `puct` one
         /// sample) — a fixed number since ROADMAP Phase 2 §5 item 41,
         /// when `mcts`'s stopped coming off the rayon pool. Ignored by
-        /// `random` and `heuristic`; use `--label` to keep two settings
+        /// `random` and `planner`; use `--label` to keep two settings
         /// apart in a report.
         #[arg(long)]
         determinizations: Option<usize>,
@@ -468,7 +466,7 @@ pub enum Command {
         /// seed it has in the full cross product**, so a filtered game is
         /// the same game an unfiltered run plays and the two reports pair
         /// game for game; what is skipped is only the cost. A one-chair
-        /// measurement — `--bots heuristic,mcts --pairing heuristic/mcts`
+        /// measurement — `--bots planner,mcts --pairing planner/mcts`
         /// — is a quarter of the work of the whole square.
         #[arg(long = "pairing")]
         pairings: Vec<BenchPairing>,
@@ -484,7 +482,7 @@ pub enum Command {
         /// a benchmark's point is the code as it stands today.
         #[arg(long)]
         ratings: Option<PathBuf>,
-        /// Suffix for every participant id (`heuristic#abc123`), so two
+        /// Suffix for every participant id (`planner#abc123`), so two
         /// versions of the same bot rate as different participants in a
         /// saved book.
         #[arg(long)]
@@ -592,7 +590,7 @@ pub enum DiagAction {
         #[arg(long, value_delimiter = ',', default_value = "0,2,4,8,16")]
         depths: Vec<usize>,
         /// Which bot plays the games the positions come from.
-        #[arg(long, default_value = "heuristic")]
+        #[arg(long, default_value = "planner")]
         source: BotSpec,
         /// Worker threads. All cores if omitted.
         #[arg(long)]
@@ -616,11 +614,11 @@ pub enum DiagAction {
         seed: u64,
         /// Which bot takes the Corp chair — the chair whose decision is
         /// being measured.
-        #[arg(long, default_value = "heuristic")]
+        #[arg(long, default_value = "planner")]
         corp: BotSpec,
         /// Which bot takes the Runner chair. It decides which approaches
         /// ever happen, so it is part of the measurement, not a control.
-        #[arg(long, default_value = "heuristic")]
+        #[arg(long, default_value = "planner")]
         runner: BotSpec,
         /// Search iterations for a searching bot in either chair.
         #[arg(long, default_value_t = 128)]
@@ -650,10 +648,10 @@ pub enum DiagAction {
         #[arg(long, default_value_t = 1)]
         seed: u64,
         /// Which bot takes the Corp chair (e.g. `level:operator:glacier`).
-        #[arg(long, default_value = "heuristic")]
+        #[arg(long, default_value = "planner")]
         corp: BotSpec,
         /// Which bot takes the Runner chair.
-        #[arg(long, default_value = "heuristic")]
+        #[arg(long, default_value = "planner")]
         runner: BotSpec,
         /// Search iterations for a searching bot in either chair.
         #[arg(long, default_value_t = 128)]
@@ -689,10 +687,10 @@ pub enum DiagAction {
         #[arg(long, default_value_t = 1)]
         seed: u64,
         /// Which bot takes the Corp chair.
-        #[arg(long, default_value = "heuristic")]
+        #[arg(long, default_value = "planner")]
         corp: BotSpec,
         /// Which bot takes the Runner chair.
-        #[arg(long, default_value = "heuristic")]
+        #[arg(long, default_value = "planner")]
         runner: BotSpec,
         /// Search iterations for a searching bot in either chair.
         #[arg(long, default_value_t = 128)]
@@ -708,7 +706,7 @@ pub enum DiagAction {
         #[arg(long)]
         threads: Option<usize>,
         /// Seat each chair in its deck's own style, as play does, rather
-        /// than the style the bot spec names (a bare `heuristic` is
+        /// than the style the bot spec names (a bare `planner` is
         /// Balanced).
         #[arg(long)]
         deck_styles: bool,
@@ -729,10 +727,10 @@ pub enum DiagAction {
         #[arg(long, default_value_t = 1)]
         seed: u64,
         /// Which bot takes the Corp chair.
-        #[arg(long, default_value = "heuristic")]
+        #[arg(long, default_value = "planner")]
         corp: BotSpec,
         /// Which bot takes the Runner chair.
-        #[arg(long, default_value = "heuristic")]
+        #[arg(long, default_value = "planner")]
         runner: BotSpec,
         /// Search iterations for a searching bot in either chair.
         #[arg(long, default_value_t = 128)]
@@ -741,7 +739,7 @@ pub enum DiagAction {
         #[arg(long)]
         determinizations: Option<usize>,
         /// Seat each chair in its deck's own style, as play does, rather
-        /// than the style the bot spec names (a bare `heuristic` is
+        /// than the style the bot spec names (a bare `planner` is
         /// Balanced) — the shipped seating, which the by-style groups
         /// are for.
         #[arg(long)]
@@ -768,11 +766,11 @@ pub enum DiagAction {
         #[arg(long, default_value_t = 1)]
         seed: u64,
         /// Which bot takes the Corp chair.
-        #[arg(long, default_value = "heuristic")]
+        #[arg(long, default_value = "planner")]
         corp: BotSpec,
         /// Which bot takes the Runner chair. Both chairs are reported, and
         /// each is part of the other's measurement rather than a control.
-        #[arg(long, default_value = "heuristic")]
+        #[arg(long, default_value = "planner")]
         runner: BotSpec,
         /// Search iterations for a searching bot in either chair.
         #[arg(long, default_value_t = 128)]
@@ -811,7 +809,7 @@ pub enum LearnAction {
     },
 
     /// The unguided starter game: Null Signal's preset decks, 6 agenda
-    /// points to win, against the heuristic bot. `--boosted` adds each
+    /// points to win, against the planner. `--boosted` adds each
     /// side's booster pack and plays to the Standard 7.
     Game {
         #[arg(value_enum)]

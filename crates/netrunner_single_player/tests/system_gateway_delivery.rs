@@ -12,7 +12,7 @@
 mod common;
 
 use common::{sg_decks, sg_registry, SG_CORP_CARDS, SG_RUNNER_CARDS};
-use netrunner_bots::{BotAgentIndexAdapter, HeuristicAgent, IndexedHeuristicAgent, IndexedRandomAgent, Knowledge, PlanningAgent, RandomAgent};
+use netrunner_bots::{BotAgentIndexAdapter, IndexedPlanningAgent, IndexedRandomAgent, Knowledge, PlanningAgent, RandomAgent};
 use netrunner_core::format::NsgFormat;
 use netrunner_core::rules::Deck;
 use netrunner_core::dsl::CardId;
@@ -67,7 +67,7 @@ fn a_match_of_system_gateway_decks_plays_to_completion() {
     let (state, _events) = GameState::setup(&corp_deck, &runner_deck, &registry, 11).expect("setup should succeed");
 
     let corp: Box<dyn Agent> =
-        Box::new(IndexedHeuristicAgent::new(HeuristicAgent::new(Side::Corp, 11), Side::Corp));
+        Box::new(IndexedPlanningAgent::new(PlanningAgent::new(Side::Corp, 11), Side::Corp));
     let runner: Box<dyn Agent> = Box::new(IndexedRandomAgent::new(RandomAgent::new(11), Side::Runner));
     let (final_state, history) = SinglePlayerSession::new(state, registry, corp, runner).run();
 
@@ -357,7 +357,7 @@ fn post_action_windows_stay_rare() {
         let mut session = Session::new(
             state,
             registry,
-            Seat::Agent(Box::new(HeuristicAgent::new(Side::Corp, seed))),
+            Seat::Agent(Box::new(PlanningAgent::new(Side::Corp, seed))),
             Seat::Agent(Box::new(RandomAgent::new(seed))),
         );
         let mut was_open = false;

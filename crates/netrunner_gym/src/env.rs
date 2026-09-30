@@ -15,7 +15,7 @@
 
 use std::str::FromStr;
 
-use netrunner_bots::{evaluate_state, BotAgent, HeuristicAgent, IndexedActionError, Knowledge, RandomAgent};
+use netrunner_bots::{evaluate_state, BotAgent, IndexedActionError, Knowledge, PlanningAgent, RandomAgent};
 use netrunner_core::format::NsgFormat;
 use netrunner_core::cards::CardRegistry;
 use netrunner_core::rules::{get_action_mask, ActionSpace, Deck, GamePhase, GameState, Side};
@@ -42,7 +42,7 @@ const INVALID_ACTION_PENALTY: f32 = -1.0;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Opponent {
     Random,
-    Heuristic,
+    Planner,
 }
 
 impl FromStr for Opponent {
@@ -51,8 +51,8 @@ impl FromStr for Opponent {
     fn from_str(value: &str) -> Result<Self, Self::Err> {
         match value {
             "random" => Ok(Opponent::Random),
-            "heuristic" => Ok(Opponent::Heuristic),
-            other => Err(format!("unknown opponent {other:?}; expected \"random\" or \"heuristic\"")),
+            "planner" => Ok(Opponent::Planner),
+            other => Err(format!("unknown opponent {other:?}; expected \"random\" or \"planner\"")),
         }
     }
 }
@@ -63,8 +63,8 @@ impl Opponent {
     fn build(self, side: Side, seed: u64, deck: &Deck) -> Box<dyn BotAgent> {
         match self {
             Opponent::Random => Box::new(RandomAgent::new(seed)),
-            Opponent::Heuristic => {
-                Box::new(HeuristicAgent::new(side, seed).with_knowledge(Knowledge::new(NsgFormat::Casual, Some(deck.clone()))))
+            Opponent::Planner => {
+                Box::new(PlanningAgent::new(side, seed).with_knowledge(Knowledge::new(NsgFormat::Casual, Some(deck.clone()))))
             }
         }
     }

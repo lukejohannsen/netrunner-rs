@@ -21,8 +21,8 @@ be written into AGENTS.md as warnings, and each is enforced here instead:
   sample decks (Corp x Runner), one full pass.
 * **One seating was taken for all of them.** The view path (`Seat::Agent`)
   and the index path (`--index-path`, the `ActionSpace` round trip) reach
-  different code, and random and heuristic bots reach different rules. All
-  four are run: random and heuristic, each by view and by index.
+  different code, and random and planner bots reach different rules. All
+  four are run: random and planner, each by view and by index.
 
 A pair that differs is not just "differs": every number that moved is
 listed by its path in the report, a section at a time, and `triggers_fired`
@@ -71,8 +71,8 @@ BINARIES = PINNED / "bin"
 REPORTS = [
     ("random-view", "random", []),
     ("random-index", "random", ["--index-path"]),
-    ("heuristic-view", "heuristic", []),
-    ("heuristic-index", "heuristic", ["--index-path"]),
+    ("planner-view", "planner", []),
+    ("planner-index", "planner", ["--index-path"]),
 ]
 
 

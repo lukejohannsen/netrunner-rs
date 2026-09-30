@@ -482,7 +482,7 @@ pub fn card_of(view: &ClientView, id: InstallId) -> Option<CardId> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use netrunner_bots::{BotAgent, HeuristicAgent, RandomAgent};
+    use netrunner_bots::{BotAgent, PlanningAgent, RandomAgent};
     use netrunner_core::rules::{GameState, Side, Viewer};
     use netrunner_session::{sweep_decks_for_seed, Seat, Session, SessionStep};
 
@@ -502,7 +502,7 @@ mod tests {
             let registry: CardRegistry = crate::decks::sample_deck_registry();
             let (state, _) = GameState::setup(&corp_deck.to_deck(), &runner_deck.to_deck(), &registry, seed).unwrap();
             let mut session = Session::new(state, registry.clone(), Seat::External, Seat::External);
-            let mut corp: Box<dyn BotAgent> = if seed % 2 == 0 { Box::new(HeuristicAgent::new(Side::Corp, seed)) } else { Box::new(RandomAgent::new(seed)) };
+            let mut corp: Box<dyn BotAgent> = if seed % 2 == 0 { Box::new(PlanningAgent::new(Side::Corp, seed)) } else { Box::new(RandomAgent::new(seed)) };
             let mut runner = RandomAgent::new(seed + 7);
             loop {
                 match session.step() {
@@ -744,7 +744,7 @@ mod tests {
             let registry: CardRegistry = crate::decks::sample_deck_registry();
             let (state, _) = GameState::setup(&corp_deck.to_deck(), &runner_deck.to_deck(), &registry, seed).unwrap();
             let mut session = Session::new(state, registry.clone(), Seat::External, Seat::External);
-            let mut corp = HeuristicAgent::new(Side::Corp, seed);
+            let mut corp = PlanningAgent::new(Side::Corp, seed);
             let mut runner = RandomAgent::new(seed + 7);
             loop {
                 match session.step() {

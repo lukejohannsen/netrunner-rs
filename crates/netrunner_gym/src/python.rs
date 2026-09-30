@@ -44,7 +44,7 @@ pub struct PyNetrunnerEnv {
 #[pymethods]
 impl PyNetrunnerEnv {
     #[new]
-    #[pyo3(signature = (side="runner", seed=0, opponent="heuristic", max_episode_steps=200))]
+    #[pyo3(signature = (side="runner", seed=0, opponent="planner", max_episode_steps=200))]
     fn new(side: &str, seed: u64, opponent: &str, max_episode_steps: u32) -> PyResult<Self> {
         let side = parse_side(side)?;
         let opponent = parse_opponent(opponent)?;

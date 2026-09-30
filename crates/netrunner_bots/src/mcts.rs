@@ -373,7 +373,7 @@ fn pop_untried(untried: &mut Vec<PlayerAction>, rng: &mut StdRng) -> Option<Play
 
 /// Plays `state` forward with a lightweight, heuristically-weighted random
 /// policy until `GamePhase::GameOver` or `depth_budget` is exhausted, then
-/// evaluates the result. Deliberately cheaper than `HeuristicAgent`'s own
+/// evaluates the result. Deliberately cheaper than the planner's own
 /// one-ply lookahead (no per-step `apply_action`-and-evaluate over every
 /// candidate) since a rollout runs many times per expanded node.
 ///

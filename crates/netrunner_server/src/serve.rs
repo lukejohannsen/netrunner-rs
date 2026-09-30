@@ -69,7 +69,7 @@ use tokio::sync::mpsc;
 use tokio_tungstenite::tungstenite::Message as WsMessage;
 use uuid::Uuid;
 
-use netrunner_bots::{BotAgent, HeuristicAgent, Knowledge, Level, MctsAgent, Style};
+use netrunner_bots::{BotAgent, Knowledge, Level, MctsAgent, PlanningAgent, Style};
 use netrunner_core::cards::CardRegistry;
 use netrunner_core::decks::{self, DeckCategory, DeckFile};
 use netrunner_core::format::NsgFormat;
@@ -87,7 +87,7 @@ use crate::{fixtures, net};
 
 #[derive(ValueEnum, Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ServeBotKind {
-    Heuristic,
+    Planner,
     Mcts,
     /// Queue players looking for a game and pair them into
     /// human-vs-human matches, first come first served within a lobby.
@@ -98,7 +98,7 @@ impl ServeBotKind {
     /// What `MatchList` calls a bot seat.
     fn seat_name(self) -> &'static str {
         match self {
-            ServeBotKind::Heuristic => "heuristic bot",
+            ServeBotKind::Planner => "planner bot",
             ServeBotKind::Mcts => "mcts bot",
             ServeBotKind::None => unreachable!("a human-vs-human daemon seats no bot"),
         }
@@ -174,7 +174,7 @@ pub struct ServeOptions {
 impl Default for ServeOptions {
     fn default() -> Self {
         ServeOptions {
-            bot_runner: ServeBotKind::Heuristic,
+            bot_runner: ServeBotKind::Planner,
             bot_level: None,
             bot_style: None,
             seed: None,
@@ -292,7 +292,7 @@ fn deals_by_format(registry: &CardRegistry, options: &ServeOptions) -> std::io::
 
 fn make_serve_agent(kind: ServeBotKind, side: Side, seed: u64, style: Style, knowledge: Knowledge) -> Box<dyn BotAgent> {
     match kind {
-        ServeBotKind::Heuristic => Box::new(HeuristicAgent::with_style(side, seed, style).with_knowledge(knowledge)),
+        ServeBotKind::Planner => Box::new(PlanningAgent::with_style(side, seed, style).with_knowledge(knowledge)),
         ServeBotKind::Mcts => Box::new(MctsAgent::new(side, seed).with_style(style).with_knowledge(knowledge)),
         ServeBotKind::None => unreachable!("caller only invokes this for a bot-backed ServeBotKind"),
     }
@@ -1494,7 +1494,7 @@ fn start_match(shared: &Shared, registry: &mut Registry, match_id: Uuid, seed: u
 }
 
 /// A bot seat's name with the style it plays, when it plays one:
-/// "heuristic bot, fast-advance". `MatchList` is the one place a person
+/// "planner bot, fast-advance". `MatchList` is the one place a person
 /// sees which opponent a daemon seated, and a fast-advance Corp and a
 /// glacier Corp are different games.
 fn styled(name: String, style: Style) -> String {
@@ -1588,7 +1588,7 @@ mod tests {
         assert_eq!(legal_matchups(&registry, NsgFormat::Casual).len(), all);
         assert!(legal_matchups(&registry, NsgFormat::Snapshot).is_empty());
         let snapshot = |bot| ServeOptions { formats: vec![NsgFormat::Snapshot], bot_runner: bot, ..ServeOptions::default() };
-        assert!(deals_by_format(&registry, &snapshot(ServeBotKind::Heuristic)).is_err());
+        assert!(deals_by_format(&registry, &snapshot(ServeBotKind::Planner)).is_err());
         assert!(deals_by_format(&registry, &snapshot(ServeBotKind::None)).is_ok());
     }
 }

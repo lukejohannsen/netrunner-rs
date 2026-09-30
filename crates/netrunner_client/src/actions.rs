@@ -1305,7 +1305,7 @@ mod tests {
     /// event was dropped for that seat and the log said nothing at all.
     #[test]
     fn no_rendered_log_line_names_a_card_the_seat_conceals() {
-        use netrunner_bots::{BotAgent, HeuristicAgent};
+        use netrunner_bots::{BotAgent, PlanningAgent};
         use netrunner_core::cards::register_playable_cards;
         use netrunner_core::rules::GameState;
         use netrunner_session::{sweep_decks_for_seed, Seat, Session, SessionStep};
@@ -1320,7 +1320,7 @@ mod tests {
                 GameState::setup(&corp_deck.to_deck(), &runner_deck.to_deck(), &registry, seed)
                     .expect("sample decks are legal by construction");
 
-            let mut corp = HeuristicAgent::new(Side::Corp, seed);
+            let mut corp = PlanningAgent::new(Side::Corp, seed);
             let mut runner = RandomAgent::new(seed);
             let mut session = Session::new(state, registry, Seat::External, Seat::External);
             let viewer = Viewer::Player(Side::Runner);
