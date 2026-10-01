@@ -1281,7 +1281,7 @@ fn seat_vs_bot(
             slot: PlayerSlot::Bot(level.spec(bot_side).with_style(style).agent(bot_seed, knowledge)),
             deck: None,
             lobby: None,
-            bot: Some(RecordedBot { side: bot_side, level, style }),
+            bot: Some(RecordedBot::rung(bot_side, level, style)),
         },
         None => SeatedPlayer {
             name: styled(kind.seat_name().to_string(), style),
@@ -1355,7 +1355,7 @@ fn start_match(shared: &Shared, registry: &mut Registry, match_id: Uuid, seed: u
         corp_deck: dealt.corp.clone(),
         runner_deck: dealt.runner.clone(),
         rules: MatchRules::default(),
-        bot: corp.bot.or(runner.bot),
+        bot: corp.bot.clone().or_else(|| runner.bot.clone()),
         order: DeckOrder::Shuffled,
     };
     let state = match GameState::setup(&dealt.corp, &dealt.runner, &shared.cards, seed) {

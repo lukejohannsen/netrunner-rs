@@ -93,7 +93,9 @@ impl Pacer {
             // it, so the panel changes with the decision it is about.
             // A clock is for the decision it follows, so it waits in line
             // with it.
-            MatchMessage::Rejected { .. } | MatchMessage::Back { .. } | MatchMessage::Coach(_) | MatchMessage::Clock { .. } => {
+            // A model opponent's line about itself follows the decision it
+            // is about, which is already queued ahead of it.
+            MatchMessage::Rejected { .. } | MatchMessage::Back { .. } | MatchMessage::Coach(_) | MatchMessage::Clock { .. } | MatchMessage::Notice(_) => {
                 self.queue.push_back(Queued { beat: Beat::Apply(message), wait: Duration::ZERO });
                 return;
             }
@@ -191,7 +193,7 @@ mod tests {
         let registry = Arc::new(netrunner_client::decks::sample_deck_registry());
         let corp = netrunner_core::decks::by_id("discretion_advised").unwrap();
         let runner = netrunner_core::decks::by_id("stolen_goods").unwrap();
-        let spec = LocalMatchSpec { registry, corp, runner, human: Side::Corp, level: Level::Novice, style: None, seed: 3, rules: Default::default(), format: netrunner_core::format::NsgFormat::Casual, record: None };
+        let spec = LocalMatchSpec { registry, corp, runner, human: Side::Corp, opponent: netrunner_client::play::Opponent::Ladder(Level::Novice), style: None, seed: 3, rules: Default::default(), format: netrunner_core::format::NsgFormat::Casual, record: None };
         let mut handle = MatchHandle::start_local(spec).unwrap();
         let mut pacer = Pacer::new(Side::Corp, 1.0);
         let mut now = Duration::ZERO;
@@ -229,6 +231,7 @@ mod tests {
                         }
                         in_run = run_now;
                     }
+                    Beat::Apply(MatchMessage::Notice(_)) => unreachable!("a rung sends no notice"),
                     Beat::Apply(MatchMessage::Awaiting { view }) => {
                         // The person: the first legal action, as the panel would.
                         if let Some(action) = view.legal_actions.first() {

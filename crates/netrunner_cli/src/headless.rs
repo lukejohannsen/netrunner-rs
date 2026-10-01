@@ -74,6 +74,13 @@ pub fn run(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
             .into());
         }
     }
+    // A model opponent is a person's own key spent per decision; a
+    // headless pass plays many games with nobody watching the bill.
+    for (flag, model) in [("--corp-model", &config.corp_model), ("--runner-model", &config.runner_model)] {
+        if model.is_some() {
+            return Err(format!("{flag} is not supported in --headless mode; a model opponent plays interactive games only").into());
+        }
+    }
 
     let registry = decks::sample_deck_registry();
     let base_seed = config.seed.unwrap_or_else(rand::random);
@@ -192,6 +199,17 @@ mod tests {
     use clap::Parser;
 
     use super::*;
+
+    /// A model opponent plays interactive games only: a headless pass
+    /// would spend a person's key on games nobody watches.
+    #[test]
+    fn a_model_opponent_is_refused_headless() {
+        let config = Config::parse_from(["netrunner_cli", "--headless", "--corp-model", "claude"]);
+        let error = run(&config).unwrap_err().to_string();
+        assert!(error.contains("--corp-model") && error.contains("--headless"), "{error}");
+        let config = Config::parse_from(["netrunner_cli", "--headless", "--runner-model", "local"]);
+        assert!(run(&config).unwrap_err().to_string().contains("--runner-model"));
+    }
 
     /// `--record` writes one file per game, in play order, each headed by
     /// the seed that game was played with.

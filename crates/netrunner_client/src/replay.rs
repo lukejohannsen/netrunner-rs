@@ -87,7 +87,7 @@ impl std::str::FromStr for Start {
 /// theirs. A record between two bots names no one, so it opens as it
 /// always did — the Corp's chair, at the setup.
 pub fn opening(header: &MatchRecordHeader, side: Option<Side>, at: Option<Start>) -> (Side, Start) {
-    let person = header.bot.map(|bot| bot.side.other());
+    let person = header.bot.as_ref().map(|bot| bot.side.other());
     let side = side.or(person).unwrap_or(Side::Corp);
     let at = at.unwrap_or(if person.is_some() { Start::End } else { Start::Beginning });
     (side, at)
@@ -97,8 +97,8 @@ pub fn opening(header: &MatchRecordHeader, side: Option<Side>, at: Option<Start>
 /// played against when it is a client's bug report.
 pub fn title(path: &Path, header: &MatchRecordHeader) -> String {
     let mut title = path.file_name().map(|name| name.to_string_lossy().into_owned()).unwrap_or_else(|| path.display().to_string());
-    if let Some(bot) = header.bot {
-        title = format!("{title} — against the {} {} {:?}", bot.level, bot.style, bot.side);
+    if let Some(bot) = &header.bot {
+        title = format!("{title} — against {}", bot.describe());
     }
     title
 }
@@ -470,7 +470,7 @@ mod tests {
         let (plain, _, _) = recorded_game(4);
         assert_eq!(opening(&plain, None, None), (Side::Corp, Start::Beginning));
         let report = MatchRecordHeader {
-            bot: Some(netrunner_session::RecordedBot { side: Side::Corp, level: Level::Elite, style: Style::of(Plan::Glacier) }),
+            bot: Some(netrunner_session::RecordedBot::rung(Side::Corp, Level::Elite, Style::of(Plan::Glacier))),
             ..plain
         };
         assert_eq!(opening(&report, None, None), (Side::Runner, Start::End));

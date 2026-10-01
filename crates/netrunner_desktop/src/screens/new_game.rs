@@ -25,7 +25,9 @@ use bevy::prelude::*;
 use netrunner_client::decks::decks_for_match;
 use netrunner_client::play::{LocalMatchSpec, MatchHandle, RecordFile};
 use netrunner_core::tutorial::Lesson;
-use netrunner_client::start::{DeckRow, Level, Pane, StartChoice, StartMenu, DEFAULT_CORP_DECK, DEFAULT_RUNNER_DECK};
+use netrunner_client::start::{DeckRow, Level, OpponentChoice, Pane, StartChoice, StartMenu, DEFAULT_CORP_DECK, DEFAULT_RUNNER_DECK};
+
+use crate::core::TokioRuntime;
 use netrunner_core::rules::Side;
 
 use crate::core::ClientCore;
@@ -157,7 +159,7 @@ fn open_menu(core: &ClientCore) -> Result<StartMenu, String> {
     // listed, so any path that does not exist will do.
     let decks_dir = core.decks_dir.clone().unwrap_or_else(|| std::env::temp_dir().join("netrunner-no-decks"));
     let format = core.settings.format.unwrap_or(netrunner_client::settings::DEFAULT_FORMAT);
-    StartMenu::open(&decks_dir, core.record_path.as_deref(), &core.player_name(), &core.registry, format, defaults())
+    StartMenu::open(&decks_dir, core.record_path.as_deref(), &core.player_name(), &core.registry, format, defaults(), core.settings.opponent_names())
 }
 
 /// What each side does, in a line, on its card.
@@ -286,6 +288,23 @@ fn spawn_form(parent: &mut ChildSpawnerCommands, theme: &Theme, menu: &StartMenu
     });
     let suggested = menu.suggested();
     let level = menu.level();
+    // The model opponents the settings hold, when there are any: a row
+    // of pills after the chair, the built-in bot first.
+    let rows = menu.opponent_rows();
+    if rows.len() > 1 {
+        section(parent, theme, format!("Opponent · the {bot:?}"), |section| {
+            pills(section, theme, Pane::Opponent, rows, menu.cursor(Pane::Opponent));
+        });
+    }
+    if let OpponentChoice::Model(name) = menu.opponent() {
+        section(parent, theme, "Opponent level", |section| {
+            section.spawn((
+                widgets::dim(theme, format!("{name} plays every decision it is asked about; the built-in {} planner plays the rest, and any decision the model fails.", capitalised(suggested.name()))),
+                TextLayout::new(Justify::Left, LineBreak::WordBoundary),
+            ));
+        });
+    }
+    if menu.opponent() == OpponentChoice::BuiltIn {
     section(parent, theme, format!("Opponent level · the {bot:?}"), |section| {
         let labels = Level::ALL
             .iter()
@@ -308,6 +327,7 @@ fn spawn_form(parent: &mut ChildSpawnerCommands, theme: &Theme, menu: &StartMenu
             .collect();
         pills(section, theme, Pane::Style, labels, menu.cursor(Pane::Style));
     });
+    }
     parent.spawn(Node { flex_direction: FlexDirection::Row, column_gap: px(24), ..default() }).with_children(|row| {
         deck_picker(row, theme, Pane::OwnDeck, format!("Your deck · {human:?}"), menu.own_decks(), menu.cursor(Pane::OwnDeck));
         deck_picker(row, theme, Pane::OpponentDeck, format!("Opponent's deck · {bot:?}"), menu.opponent_decks(), menu.cursor(Pane::OpponentDeck));
@@ -326,29 +346,47 @@ pub fn start(core: &ClientCore, choice: &StartChoice) -> Result<ActiveMatch, Str
     start_seeded(core, choice, seed_from_clock())
 }
 
+/// [`start`] with the runtime a model opponent is reached on. The Start
+/// button's path: a model chosen with no runtime is a notice, not a game.
+pub fn start_on(core: &ClientCore, choice: &StartChoice, runtime: Option<&TokioRuntime>) -> Result<ActiveMatch, String> {
+    start_with(core, choice, seed_from_clock(), core.record_path.clone(), runtime.map(TokioRuntime::handle))
+}
+
 /// [`start`] on a given seed: the same deal and the same bot every time,
 /// which is what a test needs — a board state the test depends on (an
 /// unprotected central, a Corp install by turn one) otherwise holds on
 /// some clock seeds and not others, and the test flakes.
 pub fn start_seeded(core: &ClientCore, choice: &StartChoice, seed: u64) -> Result<ActiveMatch, String> {
-    start_with(core, choice, seed, core.record_path.clone())
+    start_with(core, choice, seed, core.record_path.clone(), None)
 }
 
 /// `record` is where the game is logged. Every game a person starts from
 /// the form is — there is no unrecorded kind to ask for, since nothing
 /// rides on a game against a bot — and `None` is the dev hook's, whose
 /// autoplayed games are nobody's record.
-fn start_with(core: &ClientCore, choice: &StartChoice, seed: u64, record: Option<std::path::PathBuf>) -> Result<ActiveMatch, String> {
+fn start_with(core: &ClientCore, choice: &StartChoice, seed: u64, record: Option<std::path::PathBuf>, runtime: Option<tokio::runtime::Handle>) -> Result<ActiveMatch, String> {
     let decks_dir = core.decks_dir.clone().unwrap_or_else(|| std::env::temp_dir().join("netrunner-no-decks"));
     let format = core.settings.format.unwrap_or(netrunner_client::settings::DEFAULT_FORMAT);
     let (corp, runner) = decks_for_match(&decks_dir, &choice.corp_deck, &choice.runner_deck, &core.registry, format)?;
     let record = record.map(|path| RecordFile { path, player: core.player_name() });
+    // A model is named on the form and resolved here: the profile from
+    // the settings, its key from the secrets file, the planner at the
+    // chair's suggested rung behind it (`StartChoice::level`).
+    let opponent = match &choice.opponent {
+        OpponentChoice::BuiltIn => netrunner_client::play::Opponent::Ladder(choice.level),
+        OpponentChoice::Model(name) => {
+            let profile = core.settings.opponent(name).cloned().ok_or_else(|| format!("no AI opponent named {name:?} is set up"))?;
+            let key = core.load_secrets()?.get(name).cloned();
+            let handle = runtime.ok_or_else(|| "there is no runtime to reach the model on".to_string())?;
+            netrunner_client::play::Opponent::model_opponent(profile, key, netrunner_client::play::ModelLink::Http(handle), choice.level)
+        }
+    };
     let spec = LocalMatchSpec {
         registry: Arc::clone(&core.registry),
         corp,
         runner,
         human: choice.human,
-        level: choice.level,
+        opponent,
         style: choice.style,
         seed,
         rules: Default::default(),
@@ -371,12 +409,13 @@ pub fn start_default(core: &ClientCore, side: Side) -> Result<ActiveMatch, Strin
 pub fn start_dev(core: &ClientCore, side: Side, corp_deck: Option<&str>, runner_deck: Option<&str>) -> Result<ActiveMatch, String> {
     let choice = StartChoice {
         human: side,
+        opponent: netrunner_client::start::OpponentChoice::BuiltIn,
         level: Level::Operator,
         style: None,
         corp_deck: corp_deck.unwrap_or(DEFAULT_CORP_DECK).to_string(),
         runner_deck: runner_deck.unwrap_or(DEFAULT_RUNNER_DECK).to_string(),
     };
-    start_with(core, &choice, seed_from_clock(), None).map(|active| ActiveMatch { choice: None, ..active })
+    start_with(core, &choice, seed_from_clock(), None, None).map(|active| ActiveMatch { choice: None, ..active })
 }
 
 fn controls(
@@ -389,6 +428,7 @@ fn controls(
     mut menu: ResMut<Model>,
     mut dirty: ResMut<Dirty>,
     core: Res<ClientCore>,
+    runtime: Option<Res<TokioRuntime>>,
     mut navigate: MessageWriter<Navigate>,
 ) {
     for DropdownChanged { dropdown, index } in chosen.read() {
@@ -417,7 +457,7 @@ fn controls(
                     dirty.notice = Some(problem);
                     continue;
                 }
-                match start(&core, &choice) {
+                match start_on(&core, &choice, runtime.as_deref()) {
                     Ok(active) => {
                         commands.insert_resource(active);
                         navigate.write(Navigate(AppScreen::Game));

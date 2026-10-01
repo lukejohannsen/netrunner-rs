@@ -369,6 +369,17 @@ pub struct Game {
     pub break_stopped: Option<String>,
     pub over: Option<Over>,
     pub stalled: Option<String>,
+    /// A model opponent's line about itself (`MatchMessage::Notice`): the
+    /// decision it failed and the planner that played it, or its budget
+    /// spent. Shown on the rail until the person's own next move, and in
+    /// the log for good.
+    pub model_notice: Option<String>,
+    /// The model opponent's profile name, when one holds the chair: what
+    /// "is thinking…" names.
+    pub model_name: Option<String>,
+    /// What the model's requests cost this game, read off the handle
+    /// when the game ends (`MatchHandle::model_usage`), for the end table.
+    pub model_usage: Option<netrunner_client::llm::Usage>,
     /// Where the last bug report was saved, or why it was not — the
     /// screen's to write (`netrunner_client::bug_report` is file I/O) and
     /// the options' and the stall panel's to show, since the client's
@@ -464,6 +475,9 @@ impl Game {
             break_stopped: None,
             over: None,
             stalled: None,
+            model_notice: None,
+            model_name: None,
+            model_usage: None,
             saved_report: None,
             saved_report_path: None,
             confirm_quit: false,
@@ -486,6 +500,11 @@ impl Game {
     /// A spectator's board: a game online watched, not played.
     pub fn watching(&self) -> bool {
         self.online.as_ref().is_some_and(|online| online.watching)
+    }
+
+    /// The same board against a model opponent, named.
+    pub fn with_model(self, name: Option<String>) -> Self {
+        Game { model_name: name, ..self }
     }
 
     pub fn online(registry: Arc<CardRegistry>, side: Side, online: Online) -> Self {
@@ -897,6 +916,11 @@ impl Game {
                 if let Some(before) = &self.view {
                     self.transitions.extend(transitions(before, &view, &entry));
                 }
+                // The model's line stays while its move is looked at, and
+                // goes with the person's own next move.
+                if entry.side == self.side {
+                    self.model_notice = None;
+                }
                 push_linked_log_line(&mut self.log, &entry, &self.registry, Some(&view));
                 self.tally.add(&entry);
                 self.entries.push(entry);
@@ -1068,6 +1092,11 @@ impl Game {
                 if let Some(over) = &mut self.over {
                     over.rated = Some(netrunner_client::identity::rated_line(side, &before, &after));
                 }
+                Outcome::Redraw
+            }
+            MatchMessage::Notice(text) => {
+                self.log.push(netrunner_client::actions::LogLine { text: format!("           (model: {text})"), names: Vec::new() });
+                self.model_notice = Some(text);
                 Outcome::Redraw
             }
             MatchMessage::Stalled { reason } => {
@@ -1352,7 +1381,7 @@ mod tests {
         let registry = Arc::new(netrunner_client::decks::sample_deck_registry());
         let corp = netrunner_core::decks::by_id("discretion_advised").unwrap();
         let runner = netrunner_core::decks::by_id("stolen_goods").unwrap();
-        let spec = LocalMatchSpec { registry: registry.clone(), corp, runner, human: side, level: Level::Novice, style: None, seed: 11, rules: Default::default(), format: netrunner_core::format::NsgFormat::Casual, record: None };
+        let spec = LocalMatchSpec { registry: registry.clone(), corp, runner, human: side, opponent: netrunner_client::play::Opponent::Ladder(Level::Novice), style: None, seed: 11, rules: Default::default(), format: netrunner_core::format::NsgFormat::Casual, record: None };
         let handle = MatchHandle::start_local(spec).unwrap();
         (Game::new(registry, side), handle)
     }

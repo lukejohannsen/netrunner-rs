@@ -197,11 +197,10 @@ pub fn play_local(terminal: &mut ratatui::DefaultTerminal, config: &Config) -> R
     let bot_side = human_side.other();
     let (bot_kind, bot_deck) = if human_side == Side::Corp { (config.runner, &runner_deck) } else { (config.corp, &corp_deck) };
     let style = config.style_for(bot_side, bot_deck)?;
-    let (bot_seat, mut indexed_bot) =
-        build_bot_seat(config.level_for(bot_side), bot_kind, bot_side, seed.wrapping_add(1), &config.model, style, config.knowledge(bot_deck))?;
+    let (bot_seat, mut indexed_bot, model_notices) = build_bot_seat(config, bot_side, seed.wrapping_add(1), style, bot_deck)?;
     // Opened before the game so a bad record file fails here, not after
     // an hour of play.
-    let seat = record::seat_record(config, human_side, config.level_for(bot_side), bot_kind, style, seed, &corp_deck.id, &runner_deck.id)?;
+    let seat = record::seat_record(config, human_side, config.level_for(bot_side), bot_kind, style, config.model_for(bot_side), seed, &corp_deck.id, &runner_deck.id)?;
 
     let (corp_seat, runner_seat) = match human_side {
         Side::Corp => (Seat::External, bot_seat),
@@ -213,6 +212,7 @@ pub fn play_local(terminal: &mut ratatui::DefaultTerminal, config: &Config) -> R
     let mut session = Session::new(state, registry.clone(), corp_seat, runner_seat).with_undo(UNDO_DEPTH);
 
     let mut ui = LocalUiState::new(registry, human_side);
+    ui.model_notices = model_notices;
     ui.answers = crate::settings::answers();
     drive_local(terminal, &mut session, &mut ui, indexed_bot.as_mut(), human_side, seat)
 }
@@ -317,7 +317,7 @@ pub fn play_starter_game(
     // Recorded like any other local game: the starter game is a person's
     // first real opponent, and its result is the first line of their
     // record.
-    let seat = record::seat_record(config, human_side, None, BotKind::Planner, style, seed, &corp.id, &runner.id)?;
+    let seat = record::seat_record(config, human_side, None, BotKind::Planner, style, None, seed, &corp.id, &runner.id)?;
     let (corp_seat, runner_seat) = match human_side {
         Side::Corp => (Seat::External, Seat::Agent(bot)),
         Side::Runner => (Seat::Agent(bot), Seat::External),
@@ -425,29 +425,73 @@ fn hold_modal(terminal: &mut ratatui::DefaultTerminal, ui: &LocalUiState) -> Res
 /// `GameState` against a fixed `ActionSpace`, so it has no `BotAgent` form
 /// and is pumped through the index-based adapter like the RL path. Giving it
 /// a view-based form would delete this branch — see `bots::make_agent`.
-fn build_bot_seat(
-    level: Option<netrunner_bots::Level>,
-    kind: crate::config::BotKind,
-    side: Side,
-    seed: u64,
-    model: &str,
-    style: netrunner_bots::Style,
-    knowledge: netrunner_bots::Knowledge,
-) -> Result<(Seat, Option<Box<dyn netrunner_bots::Agent>>), String> {
+///
+/// What `build_bot_seat` hands back: the seat, the index-path agent the
+/// loop pumps itself when the kind has no `BotAgent` form, and the
+/// receiver a model opponent's notices arrive on.
+type BotSeat = (Seat, Option<Box<dyn netrunner_bots::Agent>>, Option<std::sync::mpsc::Receiver<String>>);
+
+/// A model opponent (`--corp-model`) is the third shape: a `Seat::Agent`
+/// too, the model asked first and the rung's planner behind it, which
+/// hands back the receiver its notices arrive on so the log can show
+/// them (`LocalUiState::model_notices`).
+fn build_bot_seat(config: &Config, side: Side, seed: u64, style: netrunner_bots::Style, deck: &DeckFile) -> Result<BotSeat, String> {
+    let level = config.level_for(side);
+    let kind = if side == Side::Corp { config.corp } else { config.runner };
+    let knowledge = config.knowledge(deck);
+    if let Some(name) = config.model_for(side) {
+        let (seat, notices) = model_seat(config, name, side, seed, style, knowledge, deck)?;
+        return Ok((seat, None, Some(notices)));
+    }
     // A rung is always a `Seat::Agent`: the ladder is built from the four
     // view-based searches, and deliberately excludes the one kind that
     // needs the index path.
     match kind {
         crate::config::BotKind::Onnx if level.is_none() => {
-            Ok((Seat::External, Some(bots::make_driver(kind, side, seed, DEFAULT_SIMULATIONS, model, style, knowledge)?)))
+            Ok((Seat::External, Some(bots::make_driver(kind, side, seed, DEFAULT_SIMULATIONS, &config.model, style, knowledge)?), None))
         }
         _ => {
             let setup = bots::AgentSetup::new(DEFAULT_SIMULATIONS).with_style(style).with_knowledge(knowledge);
-            let agent = bots::make_seat_agent(level, kind, side, seed, setup, model)?
+            let agent = bots::make_seat_agent(level, kind, side, seed, setup, &config.model)?
                 .ok_or_else(|| "interactive mode needs a bot on the non-human side".to_string())?;
-            Ok((Seat::Agent(agent), None))
+            Ok((Seat::Agent(agent), None, None))
         }
     }
+}
+
+/// The model opponent `name` names in the settings file, over the rung
+/// `--corp-level` asks for or the record suggests. Everything that can
+/// fail fails here — no such profile, an unreadable secrets file — so a
+/// typo is a message at the shell, not a game that falls back on every
+/// decision.
+fn model_seat(
+    config: &Config,
+    name: &str,
+    side: Side,
+    seed: u64,
+    style: netrunner_bots::Style,
+    knowledge: netrunner_bots::Knowledge,
+    deck: &DeckFile,
+) -> Result<(Seat, std::sync::mpsc::Receiver<String>), String> {
+    use netrunner_client::llm::{HttpTransport, LlmAgent, Secrets};
+    let settings = netrunner_client::settings::Settings::load(&netrunner_client::settings::resolve_settings_file()?)?;
+    let profile = settings
+        .opponent(name)
+        .cloned()
+        .ok_or_else(|| format!("no AI opponent named {name:?}; set one up in the desktop client's Settings → AI opponents, or as an [[opponents]] table in settings.toml"))?;
+    let key = Secrets::load(&Secrets::path_in(&netrunner_client::identity::resolve_identity_dir()?))?.get(name).cloned();
+    let level = config.level_for(side).unwrap_or_else(|| {
+        record::resolve_record_file(config.record_file.as_deref())
+            .and_then(|path| netrunner_client::record::LocalRecord::load(&path))
+            .map_or(netrunner_bots::Level::Operator, |log| log.suggest(&record::player_name(config), side))
+    });
+    let planner = level.spec(side).with_style(style).agent(seed, knowledge);
+    let (tx, rx) = std::sync::mpsc::channel();
+    // The main thread is inside `#[tokio::main]`'s runtime, which the
+    // transport sees and blocks in place on.
+    let transport = HttpTransport::new(tokio::runtime::Handle::current(), profile.timeout());
+    let agent = LlmAgent::new(profile, key, Box::new(transport), planner, format!("{} planner", level.name()), deck.to_deck(), tx);
+    Ok((Seat::Agent(Box::new(agent)), rx))
 }
 
 /// The pull loop: step the session, render whatever it reports, and block
@@ -591,6 +635,11 @@ fn log_last(session: &Session, ui: &mut LocalUiState, human_side: Side) {
     if let Some(entry) = session.last_entry_for(human_side) {
         push_log_line(&mut ui.action_log, &entry, &ui.registry, Some(&after));
         ui.last_entry = Some(entry);
+    }
+    if let Some(notices) = &ui.model_notices {
+        while let Ok(notice) = notices.try_recv() {
+            ui.action_log.push(format!("           (model: {notice})"));
+        }
     }
 }
 
@@ -739,6 +788,10 @@ struct LocalUiState {
     view: Option<ClientView>,
     selected: usize,
     action_log: Vec<String>,
+    /// What a model opponent says about itself (`--corp-model`): a
+    /// decision it failed and the planner that played it. Drained into
+    /// the log after every applied action.
+    model_notices: Option<std::sync::mpsc::Receiver<String>>,
     /// The human seat's last masked log entry (`RenderableView::last_entry`).
     last_entry: Option<netrunner_client::play::PublicHistoryEntry>,
     /// The live lesson step's filter over `view.legal_actions`, as handed
@@ -795,6 +848,7 @@ impl LocalUiState {
             view: None,
             selected: 0,
             action_log: Vec::new(),
+            model_notices: None,
             last_entry: None,
             allowed: Vec::new(),
             show_all: false,

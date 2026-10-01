@@ -164,6 +164,7 @@ impl PluginGroup for NetrunnerDesktopPlugins {
             .add(screens::learn::LearnPlugin)
             .add(screens::guide::GuidePlugin)
             .add(screens::settings::SettingsPlugin)
+            .add(screens::opponents::OpponentsPlugin)
             .add(screens::card_browser::CardBrowserPlugin)
             .add(screens::decks::DecksPlugin)
             .add(screens::deck_editor::DeckEditorPlugin)

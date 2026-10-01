@@ -854,7 +854,7 @@ fn text_fields(
             let current = editor.0.filter.query.clone();
             commands.entity(slot).with_children(|parent| {
                 parent.spawn((
-                    TextField { text: current.clone(), max_len: MAX_QUERY_LEN },
+                    TextField::new(current.clone(), MAX_QUERY_LEN),
                     widgets::field_node(px(240)),
                     BackgroundColor(theme.glass_strong),
                     BorderColor::all(theme.accent),
@@ -997,7 +997,7 @@ fn spawn_popup(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCo
                     let current = editor.deck().name.clone();
                     panel.spawn((
                         RenameField,
-                        TextField { text: current.clone(), max_len: deck_builder::MAX_NAME },
+                        TextField::new(current.clone(), deck_builder::MAX_NAME),
                         widgets::field_node(percent(100)),
                         BackgroundColor(theme.glass_strong),
                         BorderColor::all(theme.accent),

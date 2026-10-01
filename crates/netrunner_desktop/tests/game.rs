@@ -217,7 +217,7 @@ fn start_a_game_with(app: &mut App, human: Side, corp_deck: &str) {
     // the bottom rung so the bot answers at once. The record it leaves is
     // under the test's own directory (`ClientCore::in_dir`). `start` is
     // the same function the Start button calls.
-    let choice = StartChoice { human, level: Level::Novice, style: None, corp_deck: corp_deck.to_string(), runner_deck: DEFAULT_RUNNER_DECK.to_string() };
+    let choice = StartChoice { opponent: netrunner_client::start::OpponentChoice::BuiltIn, human, level: Level::Novice, style: None, corp_deck: corp_deck.to_string(), runner_deck: DEFAULT_RUNNER_DECK.to_string() };
     // One seed for every test: the games are real, and a test that leans
     // on a board state (an install by the Runner's first turn, a central
     // left open) must see the same deal each run rather than whatever the
@@ -309,6 +309,51 @@ fn the_end_of_the_match_has_its_table() {
     let tally = app.world().resource::<Model>().0.tally;
     assert!(tally.corp.turns > 0 && tally.runner.turns > 0, "{tally:?}");
     assert!(words.iter().any(|t| *t == tally.runner.clicks_spent.to_string()), "the Runner's clicks are drawn");
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+/// A game against a model that answers from a script — two bad answers,
+/// a few good ones, then a dead server: the board names it, every
+/// failure reaches the log as a line, and the end table says what the
+/// game cost in tokens.
+#[test]
+fn a_model_opponent_names_itself_says_when_it_failed_and_what_it_cost() {
+    use netrunner_client::llm::transport::TransportError;
+    use netrunner_client::llm::{Preset, ScriptedTransport};
+    use netrunner_client::play::{LocalMatchSpec, MatchHandle, ModelLink, Opponent};
+    let (mut app, dir) = headless_client();
+    let mut dev = netrunner_desktop::dev::Dev::default();
+    dev.autoplay = 100_000;
+    app.insert_resource(dev);
+    app.update();
+    app.update();
+    let registry = app.world().resource::<ClientCore>().registry.clone();
+    let corp = netrunner_core::decks::by_id(DEFAULT_CORP_DECK).expect("built-in deck").clone();
+    let runner = netrunner_core::decks::by_id(DEFAULT_RUNNER_DECK).expect("built-in deck").clone();
+    let mut scripted = ScriptedTransport::answering(&["nope", "nope", "1", "1", "1"]);
+    scripted.exhausted = Some(Err(TransportError::Timeout));
+    let opponent = Opponent::model_opponent(Preset::Custom.profile("scripted"), None, ModelLink::Scripted(scripted), Level::Novice);
+    let spec = LocalMatchSpec { registry, corp, runner, human: Side::Runner, opponent, style: None, seed: TEST_SEED, rules: Default::default(), format: netrunner_core::format::NsgFormat::Casual, record: None };
+    let handle = MatchHandle::start_local(spec).expect("the default decks start a game");
+    app.world_mut().insert_resource(ActiveMatch { handle, choice: None, lesson: None, starter: None, online: None });
+    app.world_mut().write_message(Navigate(AppScreen::Game));
+    app.update();
+    app.update();
+    assert_eq!(screen(&app), AppScreen::Game);
+    assert_eq!(app.world().resource::<Model>().0.model_name.as_deref(), Some("scripted"));
+    // The first failure is the mulligan's two bad answers; it reaches the
+    // log early, and the log keeps its last eighty lines, so it is read
+    // while the game is young.
+    wait_for(&mut app, "the first failure in the log", |app| app.world().resource::<Model>().0.log.iter().any(|line| line.text.contains("(model: scripted: the reply named no action number")));
+    wait_for_within(&mut app, Duration::from_secs(120), "the game to end", |app| app.world().resource::<Model>().0.over.is_some());
+    app.update();
+    app.update();
+    let game = &app.world().resource::<Model>().0;
+    assert!(game.log.iter().any(|line| line.text.contains("the request timed out")), "the dead server is in the log to the end");
+    let usage = game.model_usage.expect("the end reads what the game cost");
+    assert!(usage.input >= 5_000 && usage.output >= 50, "{usage:?}: every scripted reply counted");
+    let words = texts(&mut app);
+    assert!(words.iter().any(|t| t.starts_with("scripted: ") && t.contains("tokens in")), "the end table says what it cost: {words:?}");
     let _ = std::fs::remove_dir_all(dir);
 }
 
@@ -1390,7 +1435,7 @@ fn the_autoplay_finishes_a_card_selection_and_never_stalls_on_one() {
     let mut dev = netrunner_desktop::dev::Dev::default();
     dev.autoplay = 300;
     app.insert_resource(dev);
-    let choice = StartChoice { human: Side::Runner, level: Level::Novice, style: None, corp_deck: DEFAULT_CORP_DECK.to_string(), runner_deck: DEFAULT_RUNNER_DECK.to_string() };
+    let choice = StartChoice { opponent: netrunner_client::start::OpponentChoice::BuiltIn, human: Side::Runner, level: Level::Novice, style: None, corp_deck: DEFAULT_CORP_DECK.to_string(), runner_deck: DEFAULT_RUNNER_DECK.to_string() };
     let active = new_game::start_seeded(app.world().resource::<ClientCore>(), &choice, 6).expect("the default decks start a game");
     app.world_mut().insert_resource(active);
     app.world_mut().write_message(Navigate(AppScreen::Game));
@@ -1486,8 +1531,8 @@ fn the_gear_opens_the_options_and_the_toggles_are_saved_and_drawn() {
     let helper = toggle_for(&mut app, netrunner_desktop::models::settings::Row::PlayHelper);
     press_entity(&mut app, helper);
     assert!(app.world().resource::<ClientCore>().settings.desktop.play_helper);
-    let saved = std::fs::read_to_string(dir.join("settings.json")).expect("the settings were saved");
-    assert!(saved.contains("\"play_helper\": true"), "{saved}");
+    let saved = std::fs::read_to_string(dir.join("settings.toml")).expect("the settings were saved");
+    assert!(saved.contains("play_helper = true"), "{saved}");
     assert_eq!(overlays(&mut app), 1, "the options stay open");
     let history = toggle_for(&mut app, netrunner_desktop::models::settings::Row::PlayHistory);
     press_entity(&mut app, history);

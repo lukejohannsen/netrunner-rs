@@ -54,8 +54,8 @@ pub fn label(path: &Path, header: Option<&MatchRecordHeader>) -> String {
     let when = saved_at(&name).unwrap_or(name);
     match header {
         None => format!("{when} · not a record this client can read"),
-        Some(header) => match header.bot {
-            Some(bot) => format!("{when} · seed {} · your {} against the {} {} {}", header.seed, chair(bot.side.other()), bot.level, bot.style, chair(bot.side)),
+        Some(header) => match &header.bot {
+            Some(bot) => format!("{when} · seed {} · your {} against {}", header.seed, chair(bot.side.other()), bot.describe()),
             None => format!("{when} · seed {} · a match between two bots", header.seed),
         },
     }
@@ -97,10 +97,13 @@ mod tests {
     #[test]
     fn a_report_is_listed_by_when_and_whom() {
         let path = PathBuf::from("/r/2026-09-22T20-15-03-seed42.jsonl");
-        let bot = netrunner_client::bug_report::RecordedBot { side: Side::Corp, level: Level::Elite, style: Style::of(Plan::Glacier) };
+        let bot = netrunner_client::bug_report::RecordedBot::rung(Side::Corp, Level::Elite, Style::of(Plan::Glacier));
         let listed = label(&path, Some(&header(Some(bot))));
         assert!(listed.starts_with("2026-09-22 20:15:03 UTC · seed 42 · your Runner against the "), "{listed}");
         assert!(listed.ends_with("glacier Corp"), "{listed}");
+        let model = netrunner_client::bug_report::RecordedBot { model: Some("gpt".to_string()), ..netrunner_client::bug_report::RecordedBot::rung(Side::Corp, Level::Elite, Style::of(Plan::Glacier)) };
+        let listed = label(&path, Some(&header(Some(model))));
+        assert!(listed.contains("against the model \"gpt\" in the Corp's chair"), "{listed}");
         assert_eq!(label(&path, Some(&header(None))), "2026-09-22 20:15:03 UTC · seed 42 · a match between two bots");
         assert_eq!(label(&PathBuf::from("game_00001.jsonl"), None), "game_00001 · not a record this client can read");
     }
