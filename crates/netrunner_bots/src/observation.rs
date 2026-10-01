@@ -237,11 +237,12 @@ pub const OBS_SIZE: usize = PLANES_START + PLANE_COUNT * CARD_VOCAB;
 /// order** — it is the order sets were added to *this vocabulary*, which is
 /// the thing that has to stay stable.
 ///
-/// Sorting purely by `numeric_id` was the original rule, and it delivers
+/// Sorting purely by printing code (`numeric_id` then, `built_from` now)
+/// was the original rule, and it delivers
 /// "a new set appends" only while every new set is numbered *above* the
 /// current pool. That stopped being true the moment the Core Set's printed
 /// metadata was backfilled: those cards were already in the vocabulary (at
-/// the tail, as entries with no `numeric_id`), and their `01xxx` codes sort
+/// the tail, as entries with no printing code), and their `01xxx` codes sort
 /// below System Gateway's `30xxx` — which would have pushed all 75 System
 /// Gateway cards 19 slots along, corrupting every exported policy for a
 /// change that added no new card at all. Ranking the Core Set after the
@@ -272,15 +273,24 @@ pub const OBS_SIZE: usize = PLANES_START + PLANE_COUNT * CARD_VOCAB;
 /// card three along — the same bug, from the other direction.
 /// `CORE_AFTER_ELEVATION` names them and they append; the next late
 /// arrival goes on a list of its own with the next rank.
-fn set_rank(set_code: Option<&str>, id: &str) -> u32 {
-    match set_code {
-        Some("sg") => 0,
-        Some("core") if CORE_AFTER_ELEVATION.contains(&id) => 3,
-        Some("core") if CORE_THIRD_WAVE.contains(&id) => 4,
-        Some("core") => 1,
-        Some("elev") => 2,
+///
+/// The set is the set of the printing the card file was built from
+/// (`CardDefinition::built_from`), by NetrunnerDB v3 id — the set the card
+/// entered this vocabulary under, which a reprint does not change.
+fn set_rank(set: Option<&str>, id: &str) -> u32 {
+    match set {
+        Some("system_gateway") => 0,
+        Some("core_set") if CORE_AFTER_ELEVATION.contains(&id) => 3,
+        Some("core_set") if CORE_THIRD_WAVE.contains(&id) => 4,
+        Some("core_set") => 1,
+        Some("elevation") => 2,
         _ => 5,
     }
+}
+
+/// The set of the printing a card was built from, by v3 id.
+fn built_from_set(card: &netrunner_core::dsl::CardDefinition) -> Option<&'static str> {
+    card.built_from.and_then(netrunner_core::cards::catalog::printing).map(|printing| printing.set.as_str())
 }
 
 /// See `set_rank`.
@@ -301,8 +311,8 @@ const CORE_THIRD_WAVE: [&str; 3] = ["cyberfeeder", "crash_space", "the_toolbox"]
 const LEGACY_SLOTS: usize = 184;
 
 /// A fixed block of slots per NSG pack, in the order the card-pool plan
-/// builds them (docs/roadmap/nsg-card-pool.md): the pack's first printed
-/// code and how many it prints. A card's slot is its block's start plus its
+/// builds them (docs/roadmap/nsg-card-pool.md): the pack's v3 set id, its
+/// first printed code and how many it prints. A card's slot is its block's start plus its
 /// code's offset in the pack — **a function of the printing alone**, so a
 /// slot is the same whichever order the cards land in, and no card landing
 /// ever moves another. Ranking by `set_rank` could only promise that between
@@ -314,22 +324,22 @@ const LEGACY_SLOTS: usize = 184;
 /// Reserved for all twelve packs before any of their cards existed, so the
 /// one reshape covers the whole plan. They end at slot 758.
 const RESERVED_BLOCKS: [(&str, u32, u32); 12] = [
-    ("vp", 36001, 66),
-    ("rwr", 34066, 65),
-    ("tai", 34001, 65),
-    ("ph", 33066, 63),
-    ("msbp", 32001, 7),
-    ("ms", 33001, 65),
-    ("urbp", 27001, 7),
-    ("ur", 26066, 65),
-    ("df", 26001, 65),
-    ("su21", 31001, 82),
-    ("sm", 29001, 18),
-    ("mor", 28001, 6),
+    ("vantage_point", 36001, 66),
+    ("rebellion_without_rehearsal", 34066, 65),
+    ("the_automata_initiative", 34001, 65),
+    ("parhelion", 33066, 63),
+    ("midnight_sun_booster_pack", 32001, 7),
+    ("midnight_sun", 33001, 65),
+    ("uprising_booster_pack", 27001, 7),
+    ("uprising", 26066, 65),
+    ("downfall", 26001, 65),
+    ("system_update_2021", 31001, 82),
+    ("salvaged_memories", 29001, 18),
+    ("magnum_opus_reprint", 28001, 6),
 ];
 
 /// The first slot after every reserved block: where a card with neither a
-/// legacy rank nor a block goes (homebrew, fixtures), in `(numeric_id, id)`
+/// legacy rank nor a block goes (homebrew, fixtures), in `(built_from, id)`
 /// order.
 const RESERVED_END: usize = LEGACY_SLOTS + {
     let mut total = 0;
@@ -342,11 +352,11 @@ const RESERVED_END: usize = LEGACY_SLOTS + {
 };
 
 /// The slot `RESERVED_BLOCKS` gives a printed code, if one does.
-fn reserved_slot(numeric_id: u32) -> Option<usize> {
+fn reserved_slot(code: u32) -> Option<usize> {
     let mut start = LEGACY_SLOTS;
     for (_pack, first, len) in RESERVED_BLOCKS {
-        if (first..first + len).contains(&numeric_id) {
-            return Some(start + (numeric_id - first) as usize);
+        if (first..first + len).contains(&code) {
+            return Some(start + (code - first) as usize);
         }
         start += len as usize;
     }
@@ -355,8 +365,8 @@ fn reserved_slot(numeric_id: u32) -> Option<usize> {
 
 /// Whether a card is one of the pool `LEGACY_SLOTS` closed over: a set that
 /// was in the vocabulary before the NSG packs (`set_rank` below 5).
-fn is_legacy(set_code: Option<&str>, id: &str) -> bool {
-    set_rank(set_code, id) < 5
+fn is_legacy(set: Option<&str>, id: &str) -> bool {
+    set_rank(set, id) < 5
 }
 
 /// Maps a card id to its plane slot.
@@ -364,11 +374,14 @@ fn is_legacy(set_code: Option<&str>, id: &str) -> bool {
 /// Built once from `cards::register_playable_cards` — the canonical
 /// playable pool — rather than from whatever registry a caller passes, so
 /// the mapping is identical for every consumer and stable across processes.
-/// Three regions: the legacy pool in `(set_rank, numeric_id, id)` order
+/// Three regions: the legacy pool in `(set_rank, built_from, id)` order
 /// (`LEGACY_SLOTS`), each NSG pack's reserved block by printed code
-/// (`RESERVED_BLOCKS`), and everything else after them in `(numeric_id,
-/// id)` order. Cards with no `numeric_id` (homebrew, test fixtures) sort
-/// last.
+/// (`RESERVED_BLOCKS`), and everything else after them in `(built_from,
+/// id)` order. Cards with no `built_from` (homebrew, test fixtures) sort
+/// last. Every number here is the printing a card file names, which is the
+/// one the vocabulary was laid out by before the catalog moved to
+/// NetrunnerDB v3 (NSG pool Stage 0d) — a card's newest printing would
+/// have moved twelve Core Set cards into a later set's rank.
 fn vocabulary() -> &'static HashMap<CardId, usize> {
     static VOCABULARY: OnceLock<HashMap<CardId, usize>> = OnceLock::new();
     VOCABULARY.get_or_init(|| {
@@ -379,21 +392,21 @@ fn vocabulary() -> &'static HashMap<CardId, usize> {
         let mut legacy: Vec<(u32, u32, String)> = Vec::new();
         let mut rest: Vec<(u32, String)> = Vec::new();
         for card in registry.iter() {
-            let numeric_id = card.numeric_id.map_or(u32::MAX, |numeric| numeric.0);
-            if let Some(slot) = reserved_slot(numeric_id) {
+            let code = card.built_from.map_or(u32::MAX, |printing| printing.0);
+            if let Some(slot) = reserved_slot(code) {
                 slots.insert(card.id.clone(), slot);
-            } else if is_legacy(card.set_code.as_deref(), &card.id.0) {
-                legacy.push((set_rank(card.set_code.as_deref(), &card.id.0), numeric_id, card.id.0.clone()));
+            } else if is_legacy(built_from_set(card), &card.id.0) {
+                legacy.push((set_rank(built_from_set(card), &card.id.0), code, card.id.0.clone()));
             } else {
-                rest.push((numeric_id, card.id.0.clone()));
+                rest.push((code, card.id.0.clone()));
             }
         }
         legacy.sort();
         rest.sort();
-        for (index, (_rank, _numeric_id, id)) in legacy.into_iter().take(LEGACY_SLOTS).enumerate() {
+        for (index, (_rank, _code, id)) in legacy.into_iter().take(LEGACY_SLOTS).enumerate() {
             slots.insert(CardId(id), index);
         }
-        for (index, (_numeric_id, id)) in rest.into_iter().take(OVERFLOW_SLOT - RESERVED_END).enumerate() {
+        for (index, (_code, id)) in rest.into_iter().take(OVERFLOW_SLOT - RESERVED_END).enumerate() {
             slots.insert(CardId(id), RESERVED_END + index);
         }
         slots
@@ -1033,7 +1046,7 @@ mod tests {
         let vocabulary = vocabulary();
 
         // System Gateway is numbered from 30001, so its cards occupy the
-        // low slots in `numeric_id` order.
+        // low slots in printing-code order.
         let mut by_slot: Vec<(usize, String)> =
             vocabulary.iter().map(|(id, slot)| (*slot, id.0.clone())).collect();
         by_slot.sort();
@@ -1083,9 +1096,12 @@ mod tests {
         let mut lowest = std::collections::HashMap::new();
         for card in registry.iter() {
             let slot = slot_of(&card.id);
-            let set = match card.set_code.as_deref() {
-                Some("core") if CORE_AFTER_ELEVATION.contains(&card.id.0.as_str()) => "core, second wave".to_string(),
-                Some("core") if CORE_THIRD_WAVE.contains(&card.id.0.as_str()) => "core, third wave".to_string(),
+            let set = match built_from_set(card) {
+                Some("core_set") if CORE_AFTER_ELEVATION.contains(&card.id.0.as_str()) => "core, second wave".to_string(),
+                Some("core_set") if CORE_THIRD_WAVE.contains(&card.id.0.as_str()) => "core, third wave".to_string(),
+                Some("core_set") => "core".to_string(),
+                Some("system_gateway") => "sg".to_string(),
+                Some("elevation") => "elev".to_string(),
                 set => set.unwrap_or("none").to_string(),
             };
             highest.entry(set.clone()).and_modify(|top| *top = slot.max(*top)).or_insert(slot);
@@ -1123,8 +1139,8 @@ mod tests {
         netrunner_core::cards::register_playable_cards(&mut registry);
         let legacy = registry
             .iter()
-            .filter(|card| card.numeric_id.and_then(|id| reserved_slot(id.0)).is_none())
-            .filter(|card| is_legacy(card.set_code.as_deref(), &card.id.0))
+            .filter(|card| card.built_from.and_then(|id| reserved_slot(id.0)).is_none())
+            .filter(|card| is_legacy(built_from_set(card), &card.id.0))
             .count();
         assert_eq!(legacy, LEGACY_SLOTS);
     }
@@ -1134,12 +1150,10 @@ mod tests {
     /// the next pack's numbers.
     #[test]
     fn each_reserved_block_is_its_packs_printed_codes() {
-        let catalog = netrunner_core::cards::load_embedded_netrunnerdb_sets().expect("catalog should parse");
         for (pack, first, len) in RESERVED_BLOCKS {
-            let mut codes: Vec<u32> = catalog
-                .iter()
-                .filter(|card| card.set_code.as_deref() == Some(pack))
-                .filter_map(|card| card.numeric_id.map(|id| id.0))
+            let mut codes: Vec<u32> = netrunner_core::cards::catalog::printings()
+                .filter(|printing| printing.set == pack)
+                .map(|printing| printing.id.0)
                 .collect();
             codes.sort_unstable();
             assert!(codes.iter().all(|code| (first..first + len).contains(code)), "{pack}: a code outside {first}..{}", first + len);

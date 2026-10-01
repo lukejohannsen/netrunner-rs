@@ -51,6 +51,6 @@
       "text": "When you rez a piece of ice during a run against this server, you may derez another installed piece of ice. If you do, the rezzed ice gets +3 strength for the remainder of that run."
     }
   ],
-  "numeric_id": 34104,
+  "built_from": 34104,
   "is_playable": true
 }

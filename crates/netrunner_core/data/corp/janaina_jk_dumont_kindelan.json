@@ -77,6 +77,6 @@
       "text": "Take all credits from this asset. You may install 1 card from HQ."
     }
   ],
-  "numeric_id": 34115,
+  "built_from": 34115,
   "is_playable": true
 }

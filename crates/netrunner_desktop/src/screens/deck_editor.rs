@@ -217,15 +217,11 @@ fn build(commands: &mut Commands, theme: &Theme, core: &ClientCore, images: &Car
     let (mut editor, notice) = match deck_store::load(&decks_dir(core), id) {
         Ok(stored) => {
             let read_only = matches!(stored.origin, Origin::Embedded);
-            let (mut editor, resolved) = Editor::open(stored.deck, read_only, book, format_of(core));
-            if resolved {
-                save(core, &mut editor);
-            }
-            (editor, None)
+            (Editor::open(stored.deck, read_only, book, format_of(core)), None)
         }
         Err(error) => {
             let fallback = netrunner_core::decks::by_id(netrunner_client::start::DEFAULT_RUNNER_DECK).expect("the default deck is built in");
-            (Editor::open(fallback, true, book, format_of(core)).0, Some(format!("That deck could not be opened: {error}")))
+            (Editor::open(fallback, true, book, format_of(core)), Some(format!("That deck could not be opened: {error}")))
         }
     };
     if let Some(notice) = notice {
@@ -341,7 +337,7 @@ fn spawn_header(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientC
     let identity = book.get(&deck.identity);
     match identity {
         Some(card) => {
-            let image = card.numeric_id.and_then(|code| images.face(code, FaceSize::Board(HEADER_FACE)));
+            let image = netrunner_client::art::printing_for(card).and_then(|code| images.face(code, FaceSize::Board(HEADER_FACE)));
             spawn_face(parent, theme, &Face::of(card), FaceSize::Board(HEADER_FACE), image, (Button, DeckRowButton::Read(card.id.clone()), Readable(card.id.clone())));
         }
         None => {
@@ -558,7 +554,7 @@ fn spawn_pool(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCor
     }
     for card in cards {
         parent.spawn(Node { flex_direction: FlexDirection::Column, ..default() }).with_children(|cell| {
-            let image = card.numeric_id.and_then(|code| images.face(code, size));
+            let image = netrunner_client::art::printing_for(card).and_then(|code| images.face(code, size));
             spawn_face(cell, theme, &Face::of(card), size, image, (Button, PoolCard(card.id.clone()), Readable(card.id.clone())));
             let copies = editor.draft.copies(&card.id);
             cell.spawn((
@@ -997,7 +993,7 @@ fn spawn_popup(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCo
                         .with_children(|scroll| {
                             scroll.spawn(Node { flex_direction: FlexDirection::Row, flex_wrap: FlexWrap::Wrap, column_gap: px(10), row_gap: px(10), padding: UiRect::all(px(4)), ..default() }).with_children(|grid| {
                                 for identity in deck_builder::identities(&core.registry, editor.deck().side, editor.format) {
-                                    let image = identity.numeric_id.and_then(|code| images.face(code, IDENTITY_FACE));
+                                    let image = netrunner_client::art::printing_for(identity).and_then(|code| images.face(code, IDENTITY_FACE));
                                     let face = spawn_face(grid, theme, &Face::of(identity), IDENTITY_FACE, image, (Button, PopupButton::Identity(identity.id.clone()), Readable(identity.id.clone())));
                                     if identity.id == editor.deck().identity {
                                         grid.commands().entity(face).insert(Outline { width: px(3), offset: px(1), color: theme.accent });

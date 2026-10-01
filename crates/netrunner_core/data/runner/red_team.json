@@ -67,6 +67,6 @@
       "text": "[click]: Run a central server you have not run this turn. If successful, take 3[credit] from this resource."
     }
   ],
-  "numeric_id": 30018,
+  "built_from": 30018,
   "is_playable": true
 }

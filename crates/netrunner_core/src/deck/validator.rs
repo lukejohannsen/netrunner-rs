@@ -5,10 +5,10 @@
 
 use thiserror::Error;
 
-use crate::card::{CardId, Faction};
+use crate::card::Faction;
 use crate::cards::CardRegistry;
 use crate::deck::Decklist;
-use crate::dsl::{CardDefinition, CardType};
+use crate::dsl::{CardDefinition, CardId, CardType};
 use crate::format::{FormatRules, NsgFormat, DEFAULT_INFLUENCE_LIMIT};
 use crate::rules::Side;
 
@@ -72,8 +72,8 @@ pub enum DeckValidationError {
     #[error("card {card:?} is banned in {format:?}")]
     BannedCardIncluded { card: CardId, format: NsgFormat },
 
-    #[error("card {card:?}'s set {set_code:?} is not legal in {format:?}")]
-    PackNotLegal { card: CardId, set_code: String, format: NsgFormat },
+    #[error("card {card:?} is not in {format:?}'s card pool")]
+    NotInPool { card: CardId, format: NsgFormat },
 
     #[error("restricted cards cost {spent} points, over {format:?}'s budget of {budget}")]
     RestrictionBudgetExceeded { spent: u32, budget: u32, format: NsgFormat },
@@ -127,15 +127,15 @@ pub struct AgendaTally {
 /// See `DeckTally`.
 pub fn tally_deck(deck: &Decklist, registry: &CardRegistry) -> Result<DeckTally, DeckValidationError> {
     let identity =
-        registry.get_by_numeric_id(deck.identity).ok_or(DeckValidationError::IdentityNotFound(deck.identity))?;
+        registry.get(&deck.identity).ok_or_else(|| DeckValidationError::IdentityNotFound(deck.identity.clone()))?;
     if identity.card_type != CardType::Identity {
-        return Err(DeckValidationError::NotAnIdentity(deck.identity));
+        return Err(DeckValidationError::NotAnIdentity(deck.identity.clone()));
     }
     let size: u32 = deck.cards.values().sum();
     let mut influence_spent = 0u32;
     let mut points = 0u32;
-    for (&card_id, &count) in &deck.cards {
-        let card = registry.get_by_numeric_id(card_id).ok_or(DeckValidationError::CardNotFound(card_id))?;
+    for (card_id, &count) in &deck.cards {
+        let card = registry.get(card_id).ok_or_else(|| DeckValidationError::CardNotFound(card_id.clone()))?;
         influence_spent += influence_per_copy(card, identity) * count;
         if card.card_type == CardType::Agenda {
             points += card.agenda_points.unwrap_or(0) * count;
@@ -203,11 +203,11 @@ pub fn validate_deck_with_rules(
 ) -> Result<ValidationReport, DeckValidationError> {
 
     let identity =
-        registry.get_by_numeric_id(deck.identity).ok_or(DeckValidationError::IdentityNotFound(deck.identity))?;
+        registry.get(&deck.identity).ok_or_else(|| DeckValidationError::IdentityNotFound(deck.identity.clone()))?;
     if identity.card_type != CardType::Identity {
-        return Err(DeckValidationError::NotAnIdentity(deck.identity));
+        return Err(DeckValidationError::NotAnIdentity(deck.identity.clone()));
     }
-    check_format_legality(deck.identity, identity, format, rules)?;
+    check_format_legality(&deck.identity, format, rules)?;
 
     // A missing `min_deck_size` degrades to "no minimum enforced" rather
     // than a new error variant — every real Identity card carries this
@@ -225,30 +225,30 @@ pub fn validate_deck_with_rules(
     let mut agenda_points = 0u32;
     let mut restriction_spent = 0u32;
 
-    for (&card_id, &count) in &deck.cards {
-        let card = registry.get_by_numeric_id(card_id).ok_or(DeckValidationError::CardNotFound(card_id))?;
+    for (card_id, &count) in &deck.cards {
+        let card = registry.get(card_id).ok_or_else(|| DeckValidationError::CardNotFound(card_id.clone()))?;
 
         if card.side != identity.side {
             return Err(DeckValidationError::FactionMismatch {
-                card: card_id,
+                card: card_id.clone(),
                 expected: identity.side,
                 actual: card.side,
             });
         }
         if identity.side == Side::Runner && card.card_type == CardType::Agenda {
-            return Err(DeckValidationError::RunnerDeckContainsAgenda(card_id));
+            return Err(DeckValidationError::RunnerDeckContainsAgenda(card_id.clone()));
         }
         if card.card_type == CardType::Identity {
-            return Err(DeckValidationError::IdentityInDeck(card_id));
+            return Err(DeckValidationError::IdentityInDeck(card_id.clone()));
         }
         if card.card_type == CardType::Agenda {
             let faction = card.faction.unwrap_or(Faction::NeutralCorp);
             if faction != identity_faction && !is_neutral(faction) {
-                return Err(DeckValidationError::OutOfFactionAgenda { card: card_id, faction, identity_faction });
+                return Err(DeckValidationError::OutOfFactionAgenda { card: card_id.clone(), faction, identity_faction });
             }
         }
 
-        check_format_legality(card_id, card, format, rules)?;
+        check_format_legality(card_id, format, rules)?;
 
         // The copy limit is the card's own; the restriction list is a
         // budget spent below, not a cap on copies. Capping a restricted
@@ -256,10 +256,10 @@ pub fn validate_deck_with_rules(
         // constrains the deck rather than the card — see `FormatRules`.
         let max_copies = card.deck_limit.unwrap_or(MAX_COPIES_PER_CARD);
         if count > max_copies {
-            return Err(DeckValidationError::TooManyCopies { card: card_id, count, max: max_copies });
+            return Err(DeckValidationError::TooManyCopies { card: card_id.clone(), count, max: max_copies });
         }
         // Once per distinct card, whatever the count.
-        restriction_spent = restriction_spent.saturating_add(rules.restriction_points.get(&card_id).copied().unwrap_or(0));
+        restriction_spent = restriction_spent.saturating_add(rules.restriction_points.get(card_id).copied().unwrap_or(0));
 
         influence_spent += influence_per_copy(card, identity) * count;
         if card.card_type == CardType::Agenda {
@@ -312,25 +312,17 @@ fn is_neutral(faction: Faction) -> bool {
     matches!(faction, Faction::NeutralCorp | Faction::NeutralRunner)
 }
 
-fn check_format_legality(
-    card_id: CardId,
-    card: &CardDefinition,
-    format: NsgFormat,
-    rules: &FormatRules,
-) -> Result<(), DeckValidationError> {
-    if rules.banned.contains(&card_id) {
-        return Err(DeckValidationError::BannedCardIncluded { card: card_id, format });
+fn check_format_legality(card_id: &CardId, format: NsgFormat, rules: &FormatRules) -> Result<(), DeckValidationError> {
+    if rules.banned.contains(card_id) {
+        return Err(DeckValidationError::BannedCardIncluded { card: card_id.clone(), format });
     }
-    // By any printing: the pool lists every printing of every card in it
-    // (`FormatRules::pool`), so the one this card's file names is enough.
     if !rules.in_pool(card_id) {
-        let set_code = card.set_code.as_deref().unwrap_or("");
-        return Err(DeckValidationError::PackNotLegal { card: card_id, set_code: set_code.to_string(), format });
+        return Err(DeckValidationError::NotInPool { card: card_id.clone(), format });
     }
     Ok(())
 }
 
-// The fixtures below number their cards 1, 100, 901… — codes no real
+// The fixtures below number their cards 1, 100, 901… — ids no real
 // pool holds — so a test of deck construction judges them in Casual, and a
 // test of a pool supplies its own through `validate_deck_with_rules`.
 #[cfg(test)]
@@ -338,13 +330,16 @@ mod tests {
     use super::*;
     use std::collections::HashMap;
 
-    fn identity(id: u32, side: Side, faction: Faction, min_deck_size: u32, set_code: &str) -> CardDefinition {
+    /// A fixture card's id: its number, as no real card is named.
+    fn c(id: u32) -> CardId {
+        CardId(format!("card_{id}"))
+    }
+
+    fn identity(id: u32, side: Side, faction: Faction, min_deck_size: u32) -> CardDefinition {
         CardDefinition {
-            numeric_id: Some(CardId(id)),
             faction: Some(faction),
-            set_code: Some(set_code.to_string()),
             min_deck_size: Some(min_deck_size),
-            ..crate::cards::common::base_card(&format!("identity_{id}"), &format!("identity_{id}"), side, CardType::Identity, 0)
+            ..crate::cards::common::base_card(&c(id).0, &c(id).0, side, CardType::Identity, 0)
         }
     }
 
@@ -354,32 +349,29 @@ mod tests {
         faction: Faction,
         card_type: CardType,
         influence_cost: Option<u32>,
-        set_code: &str,
     ) -> CardDefinition {
         CardDefinition {
-            numeric_id: Some(CardId(id)),
             faction: Some(faction),
-            set_code: Some(set_code.to_string()),
             influence_cost,
-            ..crate::cards::common::base_card(&format!("card_{id}"), &format!("card_{id}"), side, card_type, 1)
+            ..crate::cards::common::base_card(&c(id).0, &c(id).0, side, card_type, 1)
         }
     }
 
-    fn agenda(id: u32, points: u32, set_code: &str) -> CardDefinition {
-        let mut c = card(id, Side::Corp, Faction::NeutralCorp, CardType::Agenda, None, set_code);
-        c.agenda_points = Some(points);
-        c
+    fn agenda(id: u32, points: u32) -> CardDefinition {
+        let mut agenda = card(id, Side::Corp, Faction::NeutralCorp, CardType::Agenda, None);
+        agenda.agenda_points = Some(points);
+        agenda
     }
 
     /// Registers `total` non-agenda, in-faction Corp filler cards (0
     /// influence), split across as many distinct ids as needed to respect
     /// `MAX_COPIES_PER_CARD`, and returns matching `Decklist.cards` entries.
-    fn corp_filler(registry: &mut CardRegistry, faction: Faction, start_id: u32, total: u32, set_code: &str) -> HashMap<CardId, u32> {
-        filler(registry, Side::Corp, faction, CardType::Asset, start_id, total, set_code)
+    fn corp_filler(registry: &mut CardRegistry, faction: Faction, start_id: u32, total: u32) -> HashMap<CardId, u32> {
+        filler(registry, Side::Corp, faction, CardType::Asset, start_id, total)
     }
 
-    fn runner_filler(registry: &mut CardRegistry, faction: Faction, start_id: u32, total: u32, set_code: &str) -> HashMap<CardId, u32> {
-        filler(registry, Side::Runner, faction, CardType::Event, start_id, total, set_code)
+    fn runner_filler(registry: &mut CardRegistry, faction: Faction, start_id: u32, total: u32) -> HashMap<CardId, u32> {
+        filler(registry, Side::Runner, faction, CardType::Event, start_id, total)
     }
 
     fn filler(
@@ -389,15 +381,14 @@ mod tests {
         card_type: CardType,
         start_id: u32,
         total: u32,
-        set_code: &str,
     ) -> HashMap<CardId, u32> {
         let mut cards = HashMap::new();
         let mut remaining = total;
         let mut id = start_id;
         while remaining > 0 {
             let copies = remaining.min(MAX_COPIES_PER_CARD);
-            registry.insert(card(id, side, faction, card_type.clone(), None, set_code));
-            cards.insert(CardId(id), copies);
+            registry.insert(card(id, side, faction, card_type.clone(), None));
+            cards.insert(c(id), copies);
             remaining -= copies;
             id += 1;
         }
@@ -408,24 +399,24 @@ mod tests {
     /// points, within [20,22]) plus 41 in-faction filler cards.
     fn valid_corp_registry_and_deck() -> (CardRegistry, Decklist) {
         let mut registry = CardRegistry::new();
-        registry.insert(identity(1, Side::Corp, Faction::WeylandConsortium, 45, "sg"));
+        registry.insert(identity(1, Side::Corp, Faction::WeylandConsortium, 45));
 
         let mut cards = HashMap::new();
         for i in 0..4 {
-            registry.insert(agenda(100 + i, 5, "sg"));
-            cards.insert(CardId(100 + i), 1);
+            registry.insert(agenda(100 + i, 5));
+            cards.insert(c(100 + i), 1);
         }
-        cards.extend(corp_filler(&mut registry, Faction::WeylandConsortium, 200, 41, "sg"));
+        cards.extend(corp_filler(&mut registry, Faction::WeylandConsortium, 200, 41));
 
-        (registry, Decklist { identity: CardId(1), cards })
+        (registry, Decklist { identity: c(1), cards })
     }
 
     fn valid_runner_registry_and_deck() -> (CardRegistry, Decklist) {
         let mut registry = CardRegistry::new();
-        registry.insert(identity(2, Side::Runner, Faction::Criminal, 45, "sg"));
-        let cards = runner_filler(&mut registry, Faction::Criminal, 300, 45, "sg");
+        registry.insert(identity(2, Side::Runner, Faction::Criminal, 45));
+        let cards = runner_filler(&mut registry, Faction::Criminal, 300, 45);
 
-        (registry, Decklist { identity: CardId(2), cards })
+        (registry, Decklist { identity: c(2), cards })
     }
 
     #[test]
@@ -448,9 +439,9 @@ mod tests {
     #[test]
     fn deck_size_too_small_is_rejected() {
         let mut registry = CardRegistry::new();
-        registry.insert(identity(1, Side::Corp, Faction::WeylandConsortium, 45, "sg"));
-        let cards = corp_filler(&mut registry, Faction::WeylandConsortium, 200, 10, "sg");
-        let deck = Decklist { identity: CardId(1), cards };
+        registry.insert(identity(1, Side::Corp, Faction::WeylandConsortium, 45));
+        let cards = corp_filler(&mut registry, Faction::WeylandConsortium, 200, 10);
+        let deck = Decklist { identity: c(1), cards };
 
         assert_eq!(
             validate_deck(&deck, &registry, NsgFormat::Casual),
@@ -461,14 +452,14 @@ mod tests {
     #[test]
     fn insufficient_agenda_points_is_rejected() {
         let mut registry = CardRegistry::new();
-        registry.insert(identity(1, Side::Corp, Faction::WeylandConsortium, 45, "sg"));
+        registry.insert(identity(1, Side::Corp, Faction::WeylandConsortium, 45));
         let mut cards = HashMap::new();
-        registry.insert(agenda(100, 5, "sg"));
-        registry.insert(agenda(101, 5, "sg"));
-        cards.insert(CardId(100), 1);
-        cards.insert(CardId(101), 1); // 10 points total, below [20, 22]
-        cards.extend(corp_filler(&mut registry, Faction::WeylandConsortium, 200, 43, "sg"));
-        let deck = Decklist { identity: CardId(1), cards };
+        registry.insert(agenda(100, 5));
+        registry.insert(agenda(101, 5));
+        cards.insert(c(100), 1);
+        cards.insert(c(101), 1); // 10 points total, below [20, 22]
+        cards.extend(corp_filler(&mut registry, Faction::WeylandConsortium, 200, 43));
+        let deck = Decklist { identity: c(1), cards };
 
         assert_eq!(
             validate_deck(&deck, &registry, NsgFormat::Casual),
@@ -479,18 +470,18 @@ mod tests {
     #[test]
     fn influence_exceeded_is_rejected() {
         let mut registry = CardRegistry::new();
-        registry.insert(identity(2, Side::Runner, Faction::Criminal, 45, "sg"));
-        let mut cards = runner_filler(&mut registry, Faction::Criminal, 300, 39, "sg");
+        registry.insert(identity(2, Side::Runner, Faction::Criminal, 45));
+        let mut cards = runner_filler(&mut registry, Faction::Criminal, 300, 39);
         // 3 copies of a 4-influence off-faction (Anarch) card (12) plus 2
         // copies of a second 4-influence off-faction (Shaper) card (8) — 20
         // total, over the 15 budget on its own.
-        registry.insert(card(400, Side::Runner, Faction::Anarch, CardType::Program, Some(4), "sg"));
-        registry.insert(card(401, Side::Runner, Faction::Shaper, CardType::Program, Some(4), "sg"));
-        cards.insert(CardId(400), 3); // 12 influence
-        cards.insert(CardId(401), 2); // 8 influence -> 20 total, over the 15 budget
-        cards.insert(CardId(402), 1);
-        registry.insert(card(402, Side::Runner, Faction::Criminal, CardType::Program, None, "sg"));
-        let deck = Decklist { identity: CardId(2), cards };
+        registry.insert(card(400, Side::Runner, Faction::Anarch, CardType::Program, Some(4)));
+        registry.insert(card(401, Side::Runner, Faction::Shaper, CardType::Program, Some(4)));
+        cards.insert(c(400), 3); // 12 influence
+        cards.insert(c(401), 2); // 8 influence -> 20 total, over the 15 budget
+        cards.insert(c(402), 1);
+        registry.insert(card(402, Side::Runner, Faction::Criminal, CardType::Program, None));
+        let deck = Decklist { identity: c(2), cards };
 
         assert_eq!(
             validate_deck(&deck, &registry, NsgFormat::Casual),
@@ -501,28 +492,27 @@ mod tests {
     #[test]
     fn banned_card_included_is_rejected() {
         let mut registry = CardRegistry::new();
-        registry.insert(card(500, Side::Runner, Faction::Criminal, CardType::Program, None, "sg"));
+        registry.insert(card(500, Side::Runner, Faction::Criminal, CardType::Program, None));
 
         // A format whose rules ban card 500 — built directly rather than via
         // `NsgFormat::rules()`, since no real format's hardcoded banlist
         // includes a synthetic test id.
-        let rules = FormatRules { banned: std::collections::HashSet::from([CardId(500)]), ..Default::default() };
-        let card_500 = registry.get_by_numeric_id(CardId(500)).unwrap();
+        let rules = FormatRules { banned: std::collections::HashSet::from([c(500)]), ..Default::default() };
         assert_eq!(
-            check_format_legality(CardId(500), card_500, NsgFormat::Standard, &rules),
-            Err(DeckValidationError::BannedCardIncluded { card: CardId(500), format: NsgFormat::Standard })
+            check_format_legality(&c(500), NsgFormat::Standard, &rules),
+            Err(DeckValidationError::BannedCardIncluded { card: c(500), format: NsgFormat::Standard })
         );
     }
 
     #[test]
     fn faction_mismatch_is_rejected_when_a_card_side_differs_from_the_identity() {
         let (mut registry, mut deck) = valid_corp_registry_and_deck();
-        registry.insert(card(600, Side::Runner, Faction::Criminal, CardType::Program, None, "sg"));
-        deck.cards.insert(CardId(600), 1);
+        registry.insert(card(600, Side::Runner, Faction::Criminal, CardType::Program, None));
+        deck.cards.insert(c(600), 1);
 
         assert_eq!(
             validate_deck(&deck, &registry, NsgFormat::Casual),
-            Err(DeckValidationError::FactionMismatch { card: CardId(600), expected: Side::Corp, actual: Side::Runner })
+            Err(DeckValidationError::FactionMismatch { card: c(600), expected: Side::Corp, actual: Side::Runner })
         );
     }
 
@@ -532,23 +522,19 @@ mod tests {
     #[test]
     fn a_card_outside_the_pool_is_refused_in_that_format_and_casual_admits_it() {
         let mut registry = CardRegistry::new();
-        registry.insert(identity(2, Side::Runner, Faction::Criminal, 45, "sg"));
-        let mut cards = runner_filler(&mut registry, Faction::Criminal, 300, 44, "sg");
-        registry.insert(card(700, Side::Runner, Faction::Criminal, CardType::Program, None, "future-pack"));
-        cards.insert(CardId(700), 1);
-        let deck = Decklist { identity: CardId(2), cards };
+        registry.insert(identity(2, Side::Runner, Faction::Criminal, 45));
+        let mut cards = runner_filler(&mut registry, Faction::Criminal, 300, 44);
+        registry.insert(card(700, Side::Runner, Faction::Criminal, CardType::Program, None));
+        cards.insert(c(700), 1);
+        let deck = Decklist { identity: c(2), cards };
         let pool = FormatRules {
-            pool: Some(registry.iter().filter_map(|card| card.numeric_id).filter(|code| code.0 != 700).collect()),
+            cards: Some(registry.iter().map(|card| card.id.clone()).filter(|id| *id != c(700)).collect()),
             ..FormatRules::default()
         };
 
         assert_eq!(
             validate_deck_with_rules(&deck, &registry, NsgFormat::Startup, &pool),
-            Err(DeckValidationError::PackNotLegal {
-                card: CardId(700),
-                set_code: "future-pack".to_string(),
-                format: NsgFormat::Startup,
-            })
+            Err(DeckValidationError::NotInPool { card: c(700), format: NsgFormat::Startup })
         );
         assert!(validate_deck(&deck, &registry, NsgFormat::Casual).is_ok());
     }
@@ -567,23 +553,23 @@ mod tests {
     fn the_restriction_budget_constrains_the_deck_not_the_card() {
         use std::collections::HashMap;
         let (mut registry, mut deck) = valid_corp_registry_and_deck();
-        registry.insert(card(901, Side::Corp, Faction::WeylandConsortium, CardType::Asset, None, "sg"));
-        registry.insert(card(902, Side::Corp, Faction::WeylandConsortium, CardType::Asset, None, "sg"));
+        registry.insert(card(901, Side::Corp, Faction::WeylandConsortium, CardType::Asset, None));
+        registry.insert(card(902, Side::Corp, Faction::WeylandConsortium, CardType::Asset, None));
         let listed = |ids: &[u32]| FormatRules {
-            restriction_points: ids.iter().map(|id| (CardId(*id), 1)).collect::<HashMap<_, _>>(),
+            restriction_points: ids.iter().map(|id| (c(*id), 1)).collect::<HashMap<_, _>>(),
             restriction_budget: 1,
             ..FormatRules::default()
         };
 
         // Three copies of one listed card: one point, inside the budget.
-        deck.cards.insert(CardId(901), 3);
+        deck.cards.insert(c(901), 3);
         assert!(
             validate_deck_with_rules(&deck, &registry, NsgFormat::Standard, &listed(&[901, 902])).is_ok(),
             "cost is per card, not per copy"
         );
 
         // One copy each of two listed cards: two points, over it.
-        deck.cards.insert(CardId(902), 1);
+        deck.cards.insert(c(902), 1);
         assert_eq!(
             validate_deck_with_rules(&deck, &registry, NsgFormat::Standard, &listed(&[901, 902])),
             Err(DeckValidationError::RestrictionBudgetExceeded {
@@ -606,18 +592,18 @@ mod tests {
     fn a_restricted_card_keeps_its_own_copy_limit() {
         use std::collections::HashMap;
         let (mut registry, mut deck) = valid_corp_registry_and_deck();
-        let mut limited = card(903, Side::Corp, Faction::WeylandConsortium, CardType::Asset, None, "sg");
+        let mut limited = card(903, Side::Corp, Faction::WeylandConsortium, CardType::Asset, None);
         limited.deck_limit = Some(1);
         registry.insert(limited);
-        deck.cards.insert(CardId(903), 2);
+        deck.cards.insert(c(903), 2);
         let rules = FormatRules {
-            restriction_points: HashMap::from([(CardId(903), 1)]),
+            restriction_points: HashMap::from([(c(903), 1)]),
             restriction_budget: 5,
             ..FormatRules::default()
         };
         assert_eq!(
             validate_deck_with_rules(&deck, &registry, NsgFormat::Standard, &rules),
-            Err(DeckValidationError::TooManyCopies { card: CardId(903), count: 2, max: 1 }),
+            Err(DeckValidationError::TooManyCopies { card: c(903), count: 2, max: 1 }),
             "the card's own limit still applies, and is not the list's doing"
         );
     }
@@ -625,42 +611,42 @@ mod tests {
     #[test]
     fn too_many_copies_is_rejected() {
         let (mut registry, mut deck) = valid_corp_registry_and_deck();
-        registry.insert(card(999, Side::Corp, Faction::WeylandConsortium, CardType::Asset, None, "sg"));
-        deck.cards.insert(CardId(999), 4);
+        registry.insert(card(999, Side::Corp, Faction::WeylandConsortium, CardType::Asset, None));
+        deck.cards.insert(c(999), 4);
 
         assert_eq!(
             validate_deck(&deck, &registry, NsgFormat::Casual),
-            Err(DeckValidationError::TooManyCopies { card: CardId(999), count: 4, max: 3 })
+            Err(DeckValidationError::TooManyCopies { card: c(999), count: 4, max: 3 })
         );
     }
 
     #[test]
     fn a_card_specific_deck_limit_overrides_the_flat_copy_limit() {
         let (mut registry, mut deck) = valid_corp_registry_and_deck();
-        let mut restricted_card = card(998, Side::Corp, Faction::WeylandConsortium, CardType::Asset, None, "sg");
+        let mut restricted_card = card(998, Side::Corp, Faction::WeylandConsortium, CardType::Asset, None);
         restricted_card.deck_limit = Some(1);
         registry.insert(restricted_card);
-        deck.cards.insert(CardId(998), 2);
+        deck.cards.insert(c(998), 2);
 
         assert_eq!(
             validate_deck(&deck, &registry, NsgFormat::Casual),
-            Err(DeckValidationError::TooManyCopies { card: CardId(998), count: 2, max: 1 })
+            Err(DeckValidationError::TooManyCopies { card: c(998), count: 2, max: 1 })
         );
     }
 
     #[test]
     fn identity_not_found_and_not_an_identity_are_rejected() {
         let registry = CardRegistry::new();
-        let deck = Decklist { identity: CardId(9999), cards: HashMap::new() };
+        let deck = Decklist { identity: c(9999), cards: HashMap::new() };
         assert_eq!(
             validate_deck(&deck, &registry, NsgFormat::Casual),
-            Err(DeckValidationError::IdentityNotFound(CardId(9999)))
+            Err(DeckValidationError::IdentityNotFound(c(9999)))
         );
 
         let mut registry = CardRegistry::new();
-        registry.insert(card(1, Side::Corp, Faction::WeylandConsortium, CardType::Asset, None, "sg"));
-        let deck = Decklist { identity: CardId(1), cards: HashMap::new() };
-        assert_eq!(validate_deck(&deck, &registry, NsgFormat::Casual), Err(DeckValidationError::NotAnIdentity(CardId(1))));
+        registry.insert(card(1, Side::Corp, Faction::WeylandConsortium, CardType::Asset, None));
+        let deck = Decklist { identity: c(1), cards: HashMap::new() };
+        assert_eq!(validate_deck(&deck, &registry, NsgFormat::Casual), Err(DeckValidationError::NotAnIdentity(c(1))));
     }
 
     #[test]
@@ -673,15 +659,15 @@ mod tests {
         // points, same size, no influence printed — only the faction rule
         // can refuse it.
         let (mut registry, mut deck) = valid_corp_registry_and_deck();
-        let mut foreign = card(900, Side::Corp, Faction::Jinteki, CardType::Agenda, None, "sg");
+        let mut foreign = card(900, Side::Corp, Faction::Jinteki, CardType::Agenda, None);
         foreign.agenda_points = Some(5);
         registry.insert(foreign);
-        deck.cards.remove(&CardId(100));
-        deck.cards.insert(CardId(900), 1);
+        deck.cards.remove(&c(100));
+        deck.cards.insert(c(900), 1);
         assert_eq!(
             validate_deck(&deck, &registry, NsgFormat::Casual),
             Err(DeckValidationError::OutOfFactionAgenda {
-                card: CardId(900),
+                card: c(900),
                 faction: Faction::Jinteki,
                 identity_faction: Faction::WeylandConsortium
             })
@@ -689,11 +675,11 @@ mod tests {
 
         // And in faction it is fine.
         let (mut registry, mut deck) = valid_corp_registry_and_deck();
-        let mut own = card(901, Side::Corp, Faction::WeylandConsortium, CardType::Agenda, None, "sg");
+        let mut own = card(901, Side::Corp, Faction::WeylandConsortium, CardType::Agenda, None);
         own.agenda_points = Some(5);
         registry.insert(own);
-        deck.cards.remove(&CardId(100));
-        deck.cards.insert(CardId(901), 1);
+        deck.cards.remove(&c(100));
+        deck.cards.insert(c(901), 1);
         validate_deck(&deck, &registry, NsgFormat::Casual).expect("an in-faction agenda is legal");
     }
 
@@ -704,14 +690,14 @@ mod tests {
         // isolate this check from the more general side-mismatch check
         // (real Agendas are always Corp-side, which would trip
         // `FactionMismatch` first).
-        let mut mislabeled = agenda(800, 3, "sg");
+        let mut mislabeled = agenda(800, 3);
         mislabeled.side = Side::Runner;
         registry.insert(mislabeled);
-        deck.cards.insert(CardId(800), 1);
+        deck.cards.insert(c(800), 1);
 
         assert_eq!(
             validate_deck(&deck, &registry, NsgFormat::Casual),
-            Err(DeckValidationError::RunnerDeckContainsAgenda(CardId(800)))
+            Err(DeckValidationError::RunnerDeckContainsAgenda(c(800)))
         );
     }
 
@@ -719,12 +705,12 @@ mod tests {
     #[test]
     fn a_deck_holding_an_identity_is_rejected() {
         let (mut registry, mut deck) = valid_runner_registry_and_deck();
-        registry.insert(identity(801, Side::Runner, Faction::Criminal, 45, "sg"));
-        deck.cards.insert(CardId(801), 1);
+        registry.insert(identity(801, Side::Runner, Faction::Criminal, 45));
+        deck.cards.insert(c(801), 1);
 
         assert_eq!(
             validate_deck(&deck, &registry, NsgFormat::Casual),
-            Err(DeckValidationError::IdentityInDeck(CardId(801)))
+            Err(DeckValidationError::IdentityInDeck(c(801)))
         );
     }
 }

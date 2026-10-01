@@ -127,7 +127,7 @@ fn draw(
     }
     let (Some(id), Some(theme), Some(core), Some(images), Some(root)) = (&reading.0, theme, core, images, roots.iter().next()) else { return };
     let Some(card) = core.registry.get(id) else { return };
-    let image = card.numeric_id.and_then(|code| images.face(code, FaceSize::Large));
+    let image = netrunner_client::art::printing_for(card).and_then(|code| images.face(code, FaceSize::Large));
     commands.entity(root).with_children(|parent| {
         parent
             .spawn((

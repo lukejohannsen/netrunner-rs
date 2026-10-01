@@ -33,6 +33,6 @@
   "triggers": [],
   "trash_cost": 2,
   "persistent_after_trash": true,
-  "numeric_id": 34047,
+  "built_from": 34047,
   "is_playable": true
 }

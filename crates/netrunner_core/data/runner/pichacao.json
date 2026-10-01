@@ -51,6 +51,6 @@
       "text": "Whenever you pass host ice, you may gain [click]. If this is not the first time you gained [click] during a run this turn, add this program to your grip."
     }
   ],
-  "numeric_id": 34025,
+  "built_from": 34025,
   "is_playable": true
 }

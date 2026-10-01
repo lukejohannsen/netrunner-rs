@@ -39,6 +39,6 @@
     }
   ],
   "memory_cost": 1,
-  "numeric_id": 30006,
+  "built_from": 30006,
   "is_playable": true
 }

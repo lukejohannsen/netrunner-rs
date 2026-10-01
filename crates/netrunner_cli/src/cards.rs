@@ -1,36 +1,22 @@
-//! `netrunner_cli cards ...` — lists NetrunnerDB sets or fetches/caches
-//! card data via `netrunner_card_sync`. Purely additive: does not touch the
-//! existing TUI/headless game-play path.
+//! `netrunner_cli cards ...` — the card-image cache, measured against the
+//! embedded catalog's printings, and filled on request through
+//! `netrunner_card_sync`. Purely additive: does not touch the TUI or
+//! headless game-play path.
+//!
+//! `cards sync` and `cards list-sets` fetched NetrunnerDB's v2 card and pack
+//! lists into a cache nothing read; they went with the v2 catalog (NSG pool
+//! Stage 0d). The embedded catalog changes through `scripts/catalog_sync.py`.
 
-use netrunner_card_sync::{CardImageStore, NetrunnerDbSync, SyncScope};
-use netrunner_core::card::CardId;
-use netrunner_core::cards::load_embedded_netrunnerdb_sets;
+use netrunner_card_sync::CardImageStore;
+use netrunner_core::card::PrintingId;
+use netrunner_core::cards::catalog;
 
 use crate::config::CardsAction;
 
 pub async fn run(action: CardsAction) -> Result<(), Box<dyn std::error::Error>> {
-    let sync = NetrunnerDbSync::new()?;
-
     match action {
-        CardsAction::ListSets => {
-            let mut sets = sync.list_available_sets().await?;
-            sets.sort_by(|a, b| a.code.cmp(&b.code));
-            for pack in sets {
-                println!("{:<8} {}", pack.code, pack.name);
-            }
-        }
-        CardsAction::Sync { all, set } => {
-            let scope = match (all, set.is_empty()) {
-                (true, _) => SyncScope::All,
-                (false, false) => SyncScope::Sets(set),
-                (false, true) => return Err("specify --all or at least one --set <code>".into()),
-            };
-            let registry = sync.sync_from_netrunnerdb(scope).await?;
-            println!("Synced. Catalog now has {} card(s).", registry.len());
-        }
         CardsAction::Images { set, download } => images(&set, download).await?,
     }
-
     Ok(())
 }
 
@@ -39,25 +25,22 @@ pub async fn run(action: CardsAction) -> Result<(), Box<dyn std::error::Error>> 
 /// a code on it is a card no client can draw sharply on a large screen,
 /// and the first place to look for a better source.
 async fn images(sets: &[String], download: bool) -> Result<(), Box<dyn std::error::Error>> {
-    let catalog = load_embedded_netrunnerdb_sets()?;
-    let mut printings: Vec<(CardId, String, String)> = catalog
-        .iter()
-        .filter_map(|card| {
-            let set_code = card.set_code.clone().unwrap_or_default();
-            let wanted = sets.is_empty() || sets.contains(&set_code);
-            card.numeric_id.filter(|_| wanted).map(|code| (code, set_code, card.title.clone()))
+    let mut printings: Vec<(PrintingId, String, String)> = catalog::printings()
+        .filter(|printing| sets.is_empty() || sets.contains(&printing.set))
+        .map(|printing| {
+            let title = catalog::cards().get(&printing.card).map_or_else(|| printing.card.0.clone(), |card| card.title.clone());
+            (printing.id, printing.set.clone(), title)
         })
         .collect();
     printings.sort();
-    let codes: Vec<CardId> = printings.iter().map(|(code, ..)| *code).collect();
+    let codes: Vec<PrintingId> = printings.iter().map(|(code, ..)| *code).collect();
 
     let store = CardImageStore::new()?;
     if download {
-        let _ = store.refresh_template().await;
         let report = store.download(codes.clone(), 4, None).await;
         println!("Downloaded {} ({} were already cached, {} failed).", report.fetched, report.already_cached, report.failed.len());
         for (code, reason) in &report.failed {
-            println!("  failed {:05}: {reason}", code.0);
+            println!("  failed {code}: {reason}");
         }
     }
 
@@ -65,8 +48,8 @@ async fn images(sets: &[String], download: bool) -> Result<(), Box<dyn std::erro
     let cached = store.cached_count(&codes);
     let low: Vec<_> = printings.iter().filter(|(code, ..)| low_res.contains(code)).collect();
     println!("{cached} of {} printings cached in {}; {} only at 300 px.", codes.len(), store.dir().display(), low.len());
-    for (code, set_code, title) in low {
-        println!("  {:05}  {:<5} {title}", code.0, set_code);
+    for (code, set, title) in low {
+        println!("  {code}  {set:<20} {title}");
     }
     Ok(())
 }

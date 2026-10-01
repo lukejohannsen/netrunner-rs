@@ -59,6 +59,6 @@
       "text": "When your turn ends, you may move this upgrade to the root of another server."
     }
   ],
-  "numeric_id": 34038,
+  "built_from": 34038,
   "is_playable": true
 }

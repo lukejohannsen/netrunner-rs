@@ -7,6 +7,6 @@
   "min_deck_size": 30,
   "unlimited_influence": true,
   "triggers": [],
-  "numeric_id": 30077,
+  "built_from": 30077,
   "is_playable": true
 }

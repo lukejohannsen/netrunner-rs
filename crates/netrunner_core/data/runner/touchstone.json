@@ -26,6 +26,6 @@
       "text": "The first time each turn you play an event, place 1[credit] on this hardware."
     }
   ],
-  "numeric_id": 36021,
+  "built_from": 36021,
   "is_playable": true
 }

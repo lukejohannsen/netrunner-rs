@@ -21,6 +21,6 @@
       "text": "Once per turn → When the Runner spends credits from outside their credit pool during a run against this server, you may do 4 meat damage."
     }
   ],
-  "numeric_id": 36065,
+  "built_from": 36065,
   "is_playable": true
 }

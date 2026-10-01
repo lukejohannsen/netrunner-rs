@@ -2,18 +2,18 @@ use thiserror::Error;
 
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum CardConversionError {
-    #[error("card code {0:?} is not a valid NetrunnerDB numeric code")]
-    InvalidCardCode(String),
+    #[error("printing id {0:?} is not a NetrunnerDB printing code")]
+    InvalidPrintingId(String),
 
-    #[error("unknown card type_code {0:?}")]
+    #[error("unknown card_type_id {0:?}")]
     UnknownCardType(String),
 
-    #[error("unknown faction_code {0:?}")]
+    #[error("unknown faction_id {0:?}")]
     UnknownFaction(String),
 
-    #[error("unknown side_code {0:?}")]
+    #[error("unknown side_id {0:?}")]
     UnknownSide(String),
 
-    #[error("field {field:?} had a negative value {value}, expected non-negative")]
-    NegativeValue { field: &'static str, value: i32 },
+    #[error("field {field:?} had the value {value:?}, expected a non-negative number")]
+    NotANumber { field: &'static str, value: String },
 }

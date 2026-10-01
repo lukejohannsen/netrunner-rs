@@ -45,6 +45,6 @@
       "text": "You get +2 maximum hand size"
     }
   ],
-  "numeric_id": 30070,
+  "built_from": 30070,
   "is_playable": true
 }

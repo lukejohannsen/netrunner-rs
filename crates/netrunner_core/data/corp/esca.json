@@ -41,6 +41,6 @@
       "text": "When the Runner accesses this asset, they lose 1[credit]. If they are tagged, do 1 net damage."
     }
   ],
-  "numeric_id": 36038,
+  "built_from": 36038,
   "is_playable": true
 }

@@ -632,7 +632,7 @@ fn crop_avatars(
         if crops.0.contains_key(id) {
             continue;
         }
-        let Some(code) = core.registry.get(id).and_then(|card| card.numeric_id) else { continue };
+        let Some(code) = core.registry.get(id).and_then(netrunner_client::art::printing_for) else { continue };
         match images.face(code, AVATAR_SCAN) {
             Some(scan) => {
                 if let Some(image) = assets.get(&scan) {
@@ -3108,7 +3108,7 @@ fn spawn_rig(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore
                         window.spawn(card_row()).with_children(|cards_row| {
                             for (i, card) in cards.iter().enumerate() {
                                 let Some(def) = core.registry.get(&card.card) else { continue };
-                                let image = def.numeric_id.and_then(|code| images.face(code, size));
+                                let image = netrunner_client::art::printing_for(def).and_then(|code| images.face(code, size));
                                 // A drop place too: a resource carried onto a host
                                 // that takes it (Hackerspace) installs there.
                                 let entity = spawn_face(cards_row, theme, &Face::of(def), size, image, (Button, Click::Target(Target::Install(card.install_id)), DropPlace::one(Target::Install(card.install_id))));
@@ -3213,7 +3213,7 @@ fn spawn_hand(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCor
                 let mut faces = Vec::new();
                 for (slot, id) in hand.iter().enumerate() {
                     let Some(def) = core.registry.get(id) else { continue };
-                    let image = def.numeric_id.and_then(|code| images.face(code, size));
+                    let image = netrunner_client::art::printing_for(def).and_then(|code| images.face(code, size));
                     let entity = spawn_face(row, theme, &Face::of(def), size, image, (Button, Click::Target(Target::HandCard(id.clone()))));
                     if own {
                         // Its place in the row, so a drag knows which card
@@ -3929,11 +3929,11 @@ const REMEMBER_CAPTION: &str = "Answer this card's question the same way every t
 fn spawn_choice_card(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore, images: &CardImages, card: Option<&CardId>, concealed: Side, size: FaceSize, marker: impl Bundle) -> Entity {
     match card.and_then(|id| core.registry.get(id).map(|def| (id, def))) {
         Some((id, def)) => {
-            let exact = def.numeric_id.and_then(|code| images.face(code, size));
+            let exact = netrunner_client::art::printing_for(def).and_then(|code| images.face(code, size));
             // Its own width not decoded yet: the sharpest copy the board
             // already has, stretched, and still asking for its own width,
             // which `poll_decoded` puts in place when it lands.
-            let stand_in = if exact.is_none() { def.numeric_id.and_then(|code| images.nearest_face(code).map(|handle| (code, handle))) } else { None };
+            let stand_in = if exact.is_none() { netrunner_client::art::printing_for(def).and_then(|code| images.nearest_face(code).map(|handle| (code, handle))) } else { None };
             let image = exact.or_else(|| stand_in.as_ref().map(|(_, handle)| handle.clone()));
             let entity = spawn_face(parent, theme, &Face::of(def), size, image, marker);
             // A face with no `Button` of its own still needs to know it is
@@ -4079,7 +4079,7 @@ fn fill_run_panel(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &Clien
             // own copy once it has decoded, the sharpest other until then.
             // The rect is a fraction of whichever copy's own size.
             let width = RUN_ART_WIDTH;
-            let scan = card.and_then(|card| card.numeric_id).and_then(|code| images.face(code, FaceSize::Board(width as u16)).or_else(|| images.nearest_face(code)));
+            let scan = card.and_then(netrunner_client::art::printing_for).and_then(|code| images.face(code, FaceSize::Board(width as u16)).or_else(|| images.nearest_face(code)));
             let size = scan.as_ref().and_then(|scan| assets?.get(scan)).map(|image| image.size_f32());
             match scan.zip(size) {
                 Some((scan, size)) => {
@@ -4173,7 +4173,7 @@ fn fill_encounter(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &Clien
             let line = || Node { width: px(RUN_ART_WIDTH), ..default() };
             let wrap = || TextLayout::new(Justify::Left, LineBreak::WordBoundary);
             panel.spawn((Text::new(heading.clone()), theme.font(size::SMALL), TextColor(colour), line()));
-            let scan = card.and_then(|card| card.numeric_id).and_then(|code| images.face(code, FaceSize::Board(RUN_ART_WIDTH as u16)).or_else(|| images.nearest_face(code)));
+            let scan = card.and_then(netrunner_client::art::printing_for).and_then(|code| images.face(code, FaceSize::Board(RUN_ART_WIDTH as u16)).or_else(|| images.nearest_face(code)));
             let size = scan.as_ref().and_then(|scan| assets?.get(scan)).map(|image| image.size_f32());
             let [left, top, right, bottom] = layout::ICE_ART;
             let art = scan.zip(size).and_then(|(scan, size)| {
@@ -4258,7 +4258,7 @@ fn side_panels(
                 game.view.as_ref()?.runner.identity.clone()?
             }
         };
-        core.registry.get(&id)?.numeric_id
+        netrunner_client::art::printing_for(core.registry.get(&id)?)
     });
     if let Some(code) = running {
         let size = FaceSize::Board(RUN_ART_WIDTH as u16);
@@ -4676,7 +4676,7 @@ fn card_sheet(panel: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore
         panel.spawn(widgets::dim(theme, format!("{} is not in the registry", id.0)));
         return;
     };
-    let image = def.numeric_id.and_then(|code| images.face(code, FaceSize::Large));
+    let image = netrunner_client::art::printing_for(def).and_then(|code| images.face(code, FaceSize::Large));
     spawn_face(panel, theme, &Face::of(def), FaceSize::Large, image, ());
 }
 
@@ -4693,7 +4693,7 @@ fn identity_sheet(panel: &mut ChildSpawnerCommands, theme: &Theme, core: &Client
         return;
     };
     panel.spawn((Node { flex_direction: FlexDirection::Row, column_gap: px(16), align_items: AlignItems::FlexStart, ..default() },)).with_children(|row| {
-        let image = def.numeric_id.and_then(|code| images.face(code, FaceSize::Large));
+        let image = netrunner_client::art::printing_for(def).and_then(|code| images.face(code, FaceSize::Large));
         spawn_face(row, theme, &Face::of(def), FaceSize::Large, image, ());
         row.spawn((Node { flex_grow: 1.0, min_width: px(0), flex_direction: FlexDirection::Column, row_gap: px(8), ..default() },)).with_children(|column| {
             column.spawn(widgets::label(theme, "State"));
@@ -4727,7 +4727,7 @@ fn install_sheet(panel: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientC
     panel.spawn((Node { flex_direction: FlexDirection::Row, column_gap: px(16), align_items: AlignItems::FlexStart, ..default() },)).with_children(|row| {
         match def {
             Some(def) => {
-                let image = def.numeric_id.and_then(|code| images.face(code, FaceSize::Large));
+                let image = netrunner_client::art::printing_for(def).and_then(|code| images.face(code, FaceSize::Large));
                 spawn_face(row, theme, &Face::of(def), FaceSize::Large, image, ());
             }
             None => {
@@ -4768,7 +4768,7 @@ fn stack_sheet(panel: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCor
         column.spawn((StackRow(install.install_id), Node { flex_direction: FlexDirection::Row, column_gap: px(16), align_items: AlignItems::FlexStart, flex_shrink: 0.0, ..default() })).with_children(|row| {
             match install.card.as_ref().and_then(|id| core.registry.get(id).map(|def| (id, def))) {
                 Some((id, def)) => {
-                    let image = def.numeric_id.and_then(|code| images.face(code, size));
+                    let image = netrunner_client::art::printing_for(def).and_then(|code| images.face(code, size));
                     spawn_face(row, theme, &Face::of(def), size, image, (Button, Click::Inspect(id.clone())));
                 }
                 None => {
@@ -4923,7 +4923,7 @@ fn zone_sheet(panel: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore
                         match item {
                             Shown::Card(id) => {
                                 if let Some(def) = core.registry.get(&id) {
-                                    let image = def.numeric_id.and_then(|code| images.face(code, size));
+                                    let image = netrunner_client::art::printing_for(def).and_then(|code| images.face(code, size));
                                     spawn_face(row, theme, &Face::of(def), size, image, (Button, Click::Inspect(id.clone())));
                                 }
                             }
@@ -4938,7 +4938,7 @@ fn zone_sheet(panel: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore
                     column.spawn(wrap_row()).with_children(|row| {
                         for id in removed {
                             if let Some(def) = core.registry.get(id) {
-                                let image = def.numeric_id.and_then(|code| images.face(code, size));
+                                let image = netrunner_client::art::printing_for(def).and_then(|code| images.face(code, size));
                                 spawn_face(row, theme, &Face::of(def), size, image, (Button, Click::Inspect(id.clone())));
                             }
                         }
@@ -4981,7 +4981,7 @@ fn score_area_sheet(panel: &mut ChildSpawnerCommands, theme: &Theme, core: &Clie
             for (row, agenda) in agendas.iter().enumerate() {
                 let open = game.expanded == Some(row);
                 let def = core.registry.get(&agenda.card);
-                let code = def.and_then(|d| d.numeric_id);
+                let code = def.and_then(netrunner_client::art::printing_for);
                 list.spawn((
                     ScoreRow(row),
                     Button,

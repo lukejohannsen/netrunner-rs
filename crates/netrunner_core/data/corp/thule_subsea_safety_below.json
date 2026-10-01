@@ -39,6 +39,6 @@
       "text": "Whenever the Runner steals an agenda, do 1 core damage unless they spend [click] and 2[credit]."
     }
   ],
-  "numeric_id": 33095,
+  "built_from": 33095,
   "is_playable": true
 }

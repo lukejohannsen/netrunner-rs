@@ -93,7 +93,7 @@ fn spawn(mut commands: Commands, theme: Res<Theme>, core: Res<ClientCore>, runti
         Some(path) => netrunner_client::record::standing_lines(path, &player).unwrap_or_else(|error| vec![format!("Could not read the record: {error}")]),
         None => vec!["No record file: the OS has no data directory".to_string()],
     };
-    let codes: Vec<_> = core.registry.iter().filter_map(|card| card.numeric_id).collect();
+    let codes: Vec<_> = core.registry.iter().filter_map(netrunner_client::art::printing_for).collect();
     let cached = core.images.cached_count(&codes);
     let path = |p: &Option<std::path::PathBuf>| p.as_ref().map_or_else(|| "unavailable".to_string(), |p| p.display().to_string());
     let paths = [

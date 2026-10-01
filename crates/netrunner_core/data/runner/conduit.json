@@ -58,6 +58,6 @@
     }
   ],
   "counter_kind": "Virus",
-  "numeric_id": 30024,
+  "built_from": 30024,
   "is_playable": true
 }

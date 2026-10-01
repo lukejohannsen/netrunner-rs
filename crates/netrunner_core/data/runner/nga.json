@@ -56,6 +56,6 @@
       "text": "The first time each turn you make a successful run, you may remove 1 hosted power counter to sabotage 1."
     }
   ],
-  "numeric_id": 33072,
+  "built_from": 33072,
   "is_playable": true
 }

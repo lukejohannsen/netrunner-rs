@@ -46,6 +46,6 @@
     }
   ],
   "counter_kind": "Power",
-  "numeric_id": 35031,
+  "built_from": 35031,
   "is_playable": true
 }

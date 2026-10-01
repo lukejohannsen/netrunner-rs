@@ -15,7 +15,7 @@
 //! 0; the face shows a cost on every card that prints one (everything
 //! but agendas and identities), 0 included, because the card does.
 
-use netrunner_core::card::{CardId, Faction};
+use netrunner_core::card::{Faction, PrintingId};
 use netrunner_core::dsl::{CardDefinition, CardType};
 use netrunner_core::rules::Side;
 
@@ -112,11 +112,14 @@ pub struct Face {
     /// that print none.
     pub influence: Option<u32>,
     pub body: Vec<Segment>,
+    /// The flavour of the printing it is drawn as: flavour is a printing's,
+    /// and two printings of one card can carry different lines.
     pub flavor: Option<String>,
     /// Whether the engine can play it (`CardDefinition::is_playable`); a
     /// browser marks the ones it cannot.
     pub implemented: bool,
-    pub code: Option<CardId>,
+    /// The printing it is drawn as (`art::printing_for`).
+    pub code: Option<PrintingId>,
 }
 
 impl Face {
@@ -160,9 +163,9 @@ impl Face {
             bottom_right,
             influence: if is(CardType::Identity) { None } else { card.influence_cost },
             body: card.printed_text.as_deref().map(card_text::segments).unwrap_or_default(),
-            flavor: card.flavor.clone(),
+            flavor: crate::art::printing_record(card).and_then(|printing| printing.flavor.clone()),
             implemented: card.is_playable,
-            code: card.numeric_id,
+            code: crate::art::printing_for(card),
         }
     }
 
@@ -340,8 +343,8 @@ mod tests {
         asset.type_line = Some("Asset: Advertisement".to_string());
         asset.trash_cost = Some(2);
         asset.printed_text = Some("Gain 3[credit].\nTrash this asset.".to_string());
-        asset.flavor = Some("Buy now.".to_string());
-        let face = Face::of(&asset);
+        let mut face = Face::of(&asset);
+        face.flavor = Some("Buy now.".to_string());
         assert_eq!(
             face.lines(false),
             vec!["Asset: Advertisement", "Cost 0 · Trash 2", "", "Gain 3¢.", "Trash this asset.", "", "\"Buy now.\""]
@@ -368,7 +371,7 @@ mod tests {
                 // that builds a variable requirement gives `Slot` an X
                 // (docs/roadmap/nsg-card-pool.md).
                 CardType::Agenda if card.advancement_requirement.is_none() => {
-                    assert_eq!(card.numeric_id.map(|id| id.0), Some(33039), "{} is not the one agenda printed with an X", card.title)
+                    assert_eq!(card.id.0, "blood_in_the_water", "{} is not the one agenda printed with an X", card.title)
                 }
                 CardType::Agenda => assert!(matches!(face.cost, Some(Slot::Advancement(_))), "{}", card.title),
                 _ => assert!(matches!(face.cost, Some(Slot::Cost(_))), "{}", card.title),

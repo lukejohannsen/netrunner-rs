@@ -597,7 +597,7 @@ fn same_action(state: &GameState, registry: &CardRegistry, action: &PlayerAction
         PlayerAction::InitiateRun { .. } => SameAction::Run,
         PlayerAction::ActivateAbility { target, ability_index } => SameAction::Ability { install: *target, index: u8::try_from(*ability_index).ok()? },
         PlayerAction::ActivateHandAbility { card_id, ability_index } => SameAction::FromHand {
-            card: registry.get(card_id).and_then(|def| def.numeric_id).map_or(0, |id| id.0),
+            card: registry.get(card_id).and_then(|def| def.built_from).map_or(0, |id| id.0),
             index: u8::try_from(*ability_index).ok()?,
         },
         _ => return None,

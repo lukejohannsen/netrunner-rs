@@ -34,7 +34,7 @@ fn system_gateway_cards_are_reachable_from_a_consumer_crate_with_default_feature
             .unwrap_or_else(|| panic!("{id} should be in a consumer-built registry"));
 
         assert!(card.is_playable, "{id} should be playable, not a catalog-only stub");
-        assert_eq!(card.set_code.as_deref(), Some("sg"), "{id} should be a System Gateway card");
+        assert!(netrunner_core::cards::catalog::printed_in(&card.id, "system_gateway"), "{id} should be a System Gateway card");
         assert!(
             !card.triggers.is_empty() || !card.abilities.is_empty() || !card.subroutines.is_empty(),
             "{id} should carry real DSL rules, not just metadata"
@@ -114,9 +114,10 @@ fn a_match_of_system_gateway_decks_plays_to_completion() {
 /// deep copy would still be coverage that never runs — nothing in either
 /// workflow passes `--ignored`, and adding it would mean a second test
 /// whose failures nobody has ever seen.
-/// (The one `#[ignore]` precedent, `netrunner_card_sync`'s live sync, is
+/// (The one `#[ignore]` precedent, `netrunner_card_sync`'s live sync, was
 /// gated on network access to a third-party API — an environmental reason,
-/// not merely speed.)
+/// not merely speed — and went with NetrunnerDB's v2 API in NSG pool
+/// Stage 0d.)
 fn sweep_seed_count() -> u64 {
     std::env::var("NETRUNNER_SWEEP_SEEDS").ok().and_then(|value| value.parse().ok()).unwrap_or(32)
 }

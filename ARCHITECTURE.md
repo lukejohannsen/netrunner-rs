@@ -110,12 +110,12 @@ Card behavior is data, never Rust control flow:
 ```
 data/{corp,runner}/*.json  ──build.rs──►  OUT_DIR  ──include_str!──►  cards::embedded
                                                                           │
-                            NetrunnerDB catalog ──join on numeric_id──────┤
+                            NetrunnerDB catalog ──join on card id─────────┤
                                                                           ▼
                                               cards::register_playable_cards ──► CardRegistry
 ```
 
-* Card files own the rules-engine data plus the `numeric_id` join key. Printed metadata (faction, keywords, influence, deck limit, artist, set) is **joined from the embedded catalog**, not restated per card.
+* Card files own the rules-engine data; their `id` is NetrunnerDB v3's card id, which is the join. Printed metadata (faction, keywords, influence, deck limit, text) is **joined from the embedded catalog**, not restated per card. A card is not a printing: the catalog (`cards::catalog`, `data/catalog/`) keeps each card's printings beside it — the set, illustrator, flavour and picture — and legality is per card. A card file's `built_from` names the printing it was checked against, which only the observation vocabulary and the turn log read.
 * `#[serde(deny_unknown_fields)]` on `CardDefinition` and the DSL structs makes a misspelled key a parse error rather than a silently defaulted field.
 * No runtime I/O in the default build. The `fs-loader` feature exists only for *external* card directories (homebrew, custom sets, no-recompile iteration).
 * `is_playable: false` marks catalog-only entries; `rules::deck::validate_deck` rejects any deck referencing one, so `GameState::setup` can never receive an unimplemented card.

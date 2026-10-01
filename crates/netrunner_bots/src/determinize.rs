@@ -138,12 +138,9 @@ impl Prior {
         let mut candidates: Vec<&CardDefinition> = registry
             .iter()
             .filter(|card| card.side == side && !matches!(card.card_type, CardType::Identity))
-            .filter(|card| match card.numeric_id {
-                Some(code) => rules.in_pool(code) && !rules.banned.contains(&code),
-                // A hand-authored card names no printing, so it is in no
-                // format's pool; `Casual` alone holds it.
-                None => rules.pool.is_none(),
-            })
+            // A card no NetrunnerDB pool lists (a test fixture, homebrew) is
+            // in no format's pool; `Casual` alone holds it.
+            .filter(|card| rules.in_pool(&card.id) && !rules.banned.contains(&card.id))
             .collect();
         candidates.sort_by(|a, b| a.id.cmp(&b.id));
 
@@ -1596,9 +1593,7 @@ mod tests {
     /// Whether every Corp card the sample holds is in `format`'s pool.
     fn corp_cards_in_pool(sample: &CoreGameState, registry: &CardRegistry, format: NsgFormat) -> bool {
         let rules = format.rules();
-        every_corp_card(sample).keys().all(|card| {
-            registry.get(card).and_then(|def| def.numeric_id).is_some_and(|code| rules.in_pool(code) && !rules.banned.contains(&code))
-        })
+        every_corp_card(sample).keys().all(|card| registry.get(card).is_some() && rules.in_pool(card) && !rules.banned.contains(card))
     }
 
     /// Under Startup the opponent's hidden cards are Startup cards, every

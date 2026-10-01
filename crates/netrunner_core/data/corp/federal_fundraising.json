@@ -59,6 +59,6 @@
       "text": "When your turn begins, you may look at the top 3 cards of R&D and arrange them in any order. Then, if this server is not protected by ice, you may draw 1 card."
     }
   ],
-  "numeric_id": 34052,
+  "built_from": 34052,
   "is_playable": true
 }

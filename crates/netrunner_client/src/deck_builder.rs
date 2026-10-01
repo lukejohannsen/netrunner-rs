@@ -19,19 +19,21 @@
 //! (`decks::decks_for_match`), not saving one.
 //!
 //! **A card the engine does not play yet is still a card.** The catalog
-//! lists every printing, and one with no gameplay data has the id
-//! `nrdb_<code>` (`cards::netrunnerdb`). A deck may hold one — an import
-//! from a list built elsewhere, or a card added with the pool's "not
-//! playable yet" cards shown — and reads as [`Standing::Unplayable`] until
-//! the card is implemented, when [`Draft::resolve`] swaps the id for the
-//! playable card's.
+//! lists every card by its NetrunnerDB v3 id, the one a card file takes
+//! when the card is built. A deck may hold one — an import from a list
+//! built elsewhere, or a card added with the pool's "not playable yet"
+//! cards shown — and reads as [`Standing::Unplayable`] until the card is
+//! implemented, when the same id plays. (Catalog-only cards were
+//! `nrdb_<code>` until NSG pool Stage 0d, and a draft swapped each for the
+//! playable card's id when one landed; a deck saved then still names the
+//! old id, which no catalog knows.)
 //!
 //! Lifted out of the terminal's builder so the desktop's and the
 //! terminal's are one set of rules with two faces, as `start` was for the
 //! new-game form.
 
 use netrunner_core::card::Faction;
-use netrunner_core::cards::CardRegistry;
+use netrunner_core::cards::{catalog, CardRegistry};
 use netrunner_core::deck::validator::MAX_COPIES_PER_CARD;
 use netrunner_core::deck::DeckTally;
 use netrunner_core::decks::{DeckCategory, DeckEntry, DeckError, DeckFile};
@@ -46,7 +48,7 @@ use crate::settings::{format_label, FORMATS};
 pub const MAX_NAME: usize = 48;
 
 /// Every card a builder can name: the playable registry first, then the
-/// catalog's printings for what the registry does not hold. One lookup,
+/// catalog's cards for what the registry does not hold. One lookup,
 /// so a title, a type and a faction read the same whether or not the
 /// engine plays the card.
 #[derive(Clone, Copy)]
@@ -73,10 +75,7 @@ impl<'a> CardBook<'a> {
         self.registry.get(id).is_some_and(|card| card.is_playable)
     }
 
-    /// The card a title names, the playable one first — a reprint's
-    /// printing that the playable card does not stand in for is a
-    /// catalog-only entry with the same title, and a list naming the
-    /// title means the card, not the printing.
+    /// The card a title names, the playable one first.
     pub fn by_title(&self, title: &str) -> Option<&'a CardDefinition> {
         let wanted = fold(title);
         if wanted.is_empty() {
@@ -149,7 +148,7 @@ pub fn status(deck: &DeckFile, book: CardBook, format: NsgFormat) -> DeckStatus 
 fn standing(deck: &DeckFile, book: CardBook, format: NsgFormat) -> Standing {
     match deck.validate(book.registry, format) {
         Ok(_) => Standing::Legal,
-        Err(error @ (DeckError::UnknownCard(_) | DeckError::NoPrintedMetadata(_) | DeckError::Unplayable(_))) => {
+        Err(error @ (DeckError::UnknownCard(_) | DeckError::Unplayable(_))) => {
             Standing::Unplayable(readable(&error.to_string(), book))
         }
         Err(error @ (DeckError::StarterIdentity(_) | DeckError::Illegal(_))) => Standing::Illegal(readable(&error.to_string(), book)),
@@ -157,9 +156,9 @@ fn standing(deck: &DeckFile, book: CardBook, format: NsgFormat) -> Standing {
 }
 
 /// A validator's message with its card ids replaced by titles. The
-/// validators name cards as `CardId("hedge_fund")` or `CardId(30002)`,
-/// which is right for a log and wrong for a person; the message is
-/// theirs, and only the names are swapped.
+/// validators name cards as `CardId("hedge_fund")`, which is right for a
+/// log and wrong for a person; the message is theirs, and only the names
+/// are swapped.
 pub fn readable(message: &str, book: CardBook) -> String {
     let mut out = String::new();
     let mut rest = message;
@@ -171,12 +170,7 @@ pub fn readable(message: &str, book: CardBook) -> String {
             return out;
         };
         let inner = after[..close].trim_matches('"');
-        let title = match inner.parse::<u32>() {
-            Ok(code) => book.registry.get_by_numeric_id(netrunner_core::card::CardId(code)).map(|card| card.title.clone()).or_else(|| {
-                book.catalog.iter().find(|card| card.numeric_id == Some(netrunner_core::card::CardId(code))).map(|card| card.title.clone())
-            }),
-            Err(_) => book.get(&CardId(inner.to_string())).map(|card| card.title.clone()),
-        };
+        let title = book.get(&CardId(inner.to_string())).map(|card| card.title.clone());
         out.push_str(&title.unwrap_or_else(|| inner.to_string()));
         rest = &after[close + 1..];
     }
@@ -264,43 +258,6 @@ impl Draft {
         changed
     }
 
-    /// Swaps each catalog-only id (`nrdb_<code>`) for the playable card
-    /// that now implements the printing, so a deck imported before a card
-    /// was implemented plays once it is. `true` if any id changed.
-    pub fn resolve(&mut self, book: CardBook) -> bool {
-        let mut changed = false;
-        let swap = |id: &mut CardId, changed: &mut bool| {
-            let Some(printing) = book.catalog.iter().find(|card| &card.id == id) else { return };
-            if book.is_playable(id) {
-                return;
-            }
-            let playable = printing
-                .numeric_id
-                .and_then(|code| book.registry.get_by_numeric_id(code))
-                .filter(|card| card.is_playable)
-                .or_else(|| book.registry.iter().find(|card| card.is_playable && card.side == printing.side && same_title(card, printing)));
-            if let Some(card) = playable {
-                *id = card.id.clone();
-                *changed = true;
-            }
-        };
-        swap(&mut self.deck.identity, &mut changed);
-        for entry in &mut self.deck.cards {
-            swap(&mut entry.card, &mut changed);
-        }
-        if changed {
-            let mut merged: Vec<DeckEntry> = Vec::new();
-            for entry in std::mem::take(&mut self.deck.cards) {
-                match merged.iter_mut().find(|kept| kept.card == entry.card) {
-                    Some(kept) => kept.count += entry.count,
-                    None => merged.push(entry),
-                }
-            }
-            self.deck.cards = merged;
-        }
-        changed
-    }
-
     /// Running totals against the identity's limits, where the list can
     /// be tallied at all (a catalog-only card has no numbers to count).
     pub fn tally(&self, book: CardBook) -> Option<DeckTally> {
@@ -357,7 +314,7 @@ pub fn grouped(deck: &DeckFile, book: CardBook) -> Vec<Group> {
 pub fn identities(registry: &CardRegistry, side: Side, format: NsgFormat) -> Vec<&CardDefinition> {
     let rules = format.rules();
     let mut identities: Vec<&CardDefinition> =
-        registry.iter().filter(|card| card.card_type == CardType::Identity && card.side == side && card.is_playable && card.numeric_id.is_some()).collect();
+        registry.iter().filter(|card| card.card_type == CardType::Identity && card.side == side && card.is_playable).collect();
     identities.sort_by_key(|card| (!legal_in(card, rules), faction_order(card.faction), card.title.clone()));
     identities
 }
@@ -410,7 +367,8 @@ pub enum PoolSort {
     Cost,
     /// Influence, lowest first.
     Influence,
-    /// Release order, then the printing's number in its set.
+    /// Release order, then the card's number in its set — the set and
+    /// number of the printing it is drawn as (`art::printing_for`).
     Set,
 }
 
@@ -443,7 +401,8 @@ pub struct PoolFilter {
     pub side: Side,
     /// Only cards this format's tables allow; `None` is every format.
     pub format: Option<NsgFormat>,
-    /// Only printings from this set (a `set_code`); `None` is every set.
+    /// Only cards printed in this set (a v3 set id), by any printing;
+    /// `None` is every set.
     pub set: Option<String>,
     pub faction: Option<Faction>,
     /// A `cards::type_group` name.
@@ -459,40 +418,28 @@ impl PoolFilter {
     }
 }
 
-/// The cards `filter` leaves, one entry per card — the playable card
-/// once, however many printings it stands in for, and a catalog-only
-/// printing only where no playable card has its title — in the order
+/// The cards `filter` leaves, one entry per card, in the order
 /// `filter.sort` names.
 ///
-/// Every filter is asked of the printing before the card is kept, so a
-/// reprint is found by the set it was printed in: a Core Set Hedge Fund
-/// is in the Core Set's pool even when the System Gateway printing is
-/// the one listed first.
+/// A card is in a set's pool by any of its printings, so a reprint is
+/// found by every set that printed it: Hedge Fund is in the Core Set's pool
+/// and in System Gateway's. The catalog was one entry per printing until
+/// NSG pool Stage 0d, and a catalog-only reprint was folded into the
+/// playable card by title here.
 pub fn pool<'a>(book: CardBook<'a>, filter: &PoolFilter) -> Vec<&'a CardDefinition> {
     let rules = filter.format.map(|format| format.rules());
     let query = filter.query.trim().to_lowercase();
     let mut cards: Vec<&CardDefinition> = Vec::new();
-    for printing in book.catalog {
-        if printing.side != filter.side || printing.card_type == CardType::Identity {
+    for card in book.catalog {
+        if card.side != filter.side || card.card_type == CardType::Identity {
             continue;
         }
-        // The set and the format are asked of the printing; everything
-        // else of the card it is. A reprint the engine plays under
-        // another printing's id (the Core Set's Hedge Fund is a
-        // catalog-only entry beside System Gateway's playable one) is
-        // that playable card, so a set's pool finds it and a format's
-        // pool admits it through whichever printing the format allows.
-        if rules.as_ref().is_some_and(|rules| !legal_in(printing, rules)) {
+        if rules.as_ref().is_some_and(|rules| !legal_in(card, rules)) {
             continue;
         }
-        if filter.set.as_deref().is_some_and(|set| printing.set_code.as_deref() != Some(set)) {
+        if filter.set.as_deref().is_some_and(|set| !catalog::printed_in(&card.id, set)) {
             continue;
         }
-        let card = if printing.is_playable {
-            printing
-        } else {
-            book.registry.iter().find(|playable| playable.is_playable && playable.side == printing.side && same_title(playable, printing)).unwrap_or(printing)
-        };
         if !filter.playability.admits(card.is_playable) {
             continue;
         }
@@ -514,8 +461,11 @@ pub fn pool<'a>(book: CardBook<'a>, filter: &PoolFilter) -> Vec<&'a CardDefiniti
         }
         cards.push(card);
     }
-    let order = set_order(book);
-    let set_rank = |card: &CardDefinition| card.set_code.as_deref().and_then(|code| order.iter().position(|set| set == code)).unwrap_or(usize::MAX);
+    let order = set_order();
+    let drawn_as = |card: &CardDefinition| crate::art::printing_record(card);
+    let set_rank = |card: &CardDefinition| {
+        drawn_as(card).and_then(|printing| order.iter().position(|set| *set == printing.set)).unwrap_or(usize::MAX)
+    };
     let title = |card: &CardDefinition| card.title.to_lowercase();
     match filter.sort {
         PoolSort::Type => cards.sort_by_key(|card| (type_order(&card.card_type), faction_order(card.faction), title(card))),
@@ -523,7 +473,7 @@ pub fn pool<'a>(book: CardBook<'a>, filter: &PoolFilter) -> Vec<&'a CardDefiniti
         PoolSort::Faction => cards.sort_by_key(|card| (faction_order(card.faction), type_order(&card.card_type), title(card))),
         PoolSort::Cost => cards.sort_by_key(|card| (printed_cost(card), title(card))),
         PoolSort::Influence => cards.sort_by_key(|card| (card.influence_cost.unwrap_or(0), title(card))),
-        PoolSort::Set => cards.sort_by_key(|card| (set_rank(card), card.numeric_id, title(card))),
+        PoolSort::Set => cards.sort_by_key(|card| (set_rank(card), drawn_as(card).map(|printing| printing.position), title(card))),
     }
     cards
 }
@@ -537,29 +487,20 @@ fn printed_cost(card: &CardDefinition) -> u32 {
     }
 }
 
-/// Every set the catalog holds, in release order.
-///
-/// **Read off the cards, not a table:** a NetrunnerDB code is the set's
-/// place in release order followed by the card's number in it (the Core
-/// Set's are 01xxx, System Gateway's 30xxx), so a set's lowest code
-/// dates it. A table of set codes would be one more list to extend each
-/// time a set is added, and this is the list a filter offers.
-pub fn set_order(book: CardBook) -> Vec<String> {
-    let mut first: Vec<(u32, String)> = Vec::new();
-    for card in book.catalog {
-        let (Some(code), Some(set)) = (card.numeric_id, card.set_code.as_ref()) else { continue };
-        match first.iter_mut().find(|(_, known)| known == set) {
-            Some(entry) => entry.0 = entry.0.min(code.0),
-            None => first.push((code.0, set.clone())),
-        }
-    }
-    first.sort();
-    first.into_iter().map(|(_, set)| set).collect()
+/// Every set the catalog holds, in release order — the catalog's, read
+/// off NetrunnerDB's release dates (`catalog::sets`, newest first,
+/// reversed). It was read off the printing codes, a set's lowest code
+/// dating it, while the catalog carried no dates.
+pub fn set_order() -> Vec<String> {
+    catalog::sets().iter().rev().map(|set| set.id.clone()).collect()
 }
 
-/// The sets that hold cards of `side`, in release order.
+/// The sets that print cards of `side`, in release order.
 pub fn sets(book: CardBook, side: Side) -> Vec<String> {
-    set_order(book).into_iter().filter(|set| book.catalog.iter().any(|card| card.side == side && card.set_code.as_deref() == Some(set.as_str()))).collect()
+    set_order()
+        .into_iter()
+        .filter(|set| catalog::printings().any(|printing| printing.set == *set && book.get(&printing.card).is_some_and(|card| card.side == side)))
+        .collect()
 }
 
 /// The factions a side's pool has cards of, in `faction_order`.
@@ -685,10 +626,7 @@ pub fn import(text: &str, book: CardBook, taken: &[String]) -> Result<Imported, 
     if trimmed.starts_with('{') {
         let deck = DeckFile::from_json(trimmed).map_err(|e| format!("That is not a deck file: {e}"))?;
         let name = if deck.name.trim().is_empty() { "Imported deck".to_string() } else { deck.name.clone() };
-        let mut deck = DeckFile { id: unique_id(&name, taken), name, category: DeckCategory::Custom, ..deck };
-        let mut draft = Draft::new(deck.clone());
-        draft.resolve(book);
-        deck = draft.deck;
+        let deck = DeckFile { id: unique_id(&name, taken), name, category: DeckCategory::Custom, ..deck };
         return Ok(Imported { deck, skipped: Vec::new() });
     }
 
@@ -809,14 +747,6 @@ fn is_heading(line: &str) -> bool {
 /// same and nothing but letters and digits. NetrunnerDB spells
 /// *Tomorrowʼs Headline* with U+02BC and *Karunā* with a macron; a
 /// person types neither.
-/// Whether two printings are the same card by title: `cards::title_key`,
-/// which a reprint's curly apostrophe does not defeat (System Update 2021's
-/// The Maker’s Eye is the Core Set's The Maker's Eye). Not `fold`, which is
-/// for reading what a person typed and drops more than a title can differ by.
-fn same_title(a: &CardDefinition, b: &CardDefinition) -> bool {
-    netrunner_core::cards::title_key(&a.title) == netrunner_core::cards::title_key(&b.title)
-}
-
 fn fold(title: &str) -> String {
     title
         .chars()
@@ -890,28 +820,29 @@ mod tests {
             let unoffered: Vec<&str> = catalog
                 .iter()
                 .filter(|card| card.card_type == CardType::Identity && card.side == side && legal_in(card, rules))
-                .filter(|card| !offered.iter().any(|identity| same_title(identity, card)))
+                .filter(|card| !offered.iter().any(|identity| identity.id == card.id))
                 .map(|card| card.title.as_str())
                 .collect();
             assert!(unoffered.is_empty(), "{side:?} Startup identities not offered: {unoffered:?}");
         }
     }
 
-    /// A reprint spelled with a curly apostrophe is the card the engine
-    /// plays under its first printing: System Update 2021's The Maker’s Eye
-    /// resolves to the Core Set's playable The Maker's Eye.
+    /// A reprint is the card the engine plays: System Update 2021 prints
+    /// The Maker’s Eye with a curly apostrophe, and its pool holds the Core
+    /// Set's playable The Maker's Eye — no catalog-only copy beside it to
+    /// fold by title, as there was while the catalog was one entry per
+    /// printing.
     #[test]
-    fn a_reprint_with_a_curly_apostrophe_resolves_to_the_playable_card() {
+    fn a_reprint_is_the_playable_card() {
         let registry = registry();
         let catalog = catalog(&registry);
         let book = CardBook::new(&registry, &catalog);
-        let reprint = catalog.iter().find(|card| card.numeric_id.map(|id| id.0) == Some(31029)).expect("System Update 2021's The Maker’s Eye");
-        assert!(!reprint.is_playable);
-        let mut deck = decks::by_id("stolen_goods").unwrap();
-        deck.cards = vec![DeckEntry { card: reprint.id.clone(), count: 1 }];
-        let mut draft = Draft::new(deck);
-        assert!(draft.resolve(book));
-        assert_eq!(draft.deck.cards[0].card.0, "the_makers_eye");
+        let every = PoolFilter { format: None, playability: Playability::All, ..PoolFilter::new(Side::Runner, NsgFormat::Startup) };
+        let su21 = pool(book, &PoolFilter { set: Some("system_update_2021".into()), ..every });
+        let makers_eye: Vec<_> = su21.iter().filter(|card| card.title.contains("Maker")).collect();
+        assert_eq!(makers_eye.len(), 1, "{makers_eye:?}");
+        assert_eq!(makers_eye[0].id.0, "the_makers_eye");
+        assert!(makers_eye[0].is_playable);
     }
 
     /// A short deck cannot be dealt; a Core Set card in a Startup deck
@@ -978,8 +909,8 @@ mod tests {
         assert!(!ice.is_empty() && ice.iter().all(|card| matches!(card.card_type, CardType::Ice(_))));
     }
 
-    /// Sets come in release order, read off the codes; a set narrows the
-    /// pool to its printings, reprints included; the three playability
+    /// Sets come in release order; a set narrows the pool to the cards it
+    /// printed, reprints included; the three playability
     /// answers split the catalog with nothing lost; every sort keeps
     /// the same cards.
     #[test]
@@ -987,16 +918,16 @@ mod tests {
         let registry = registry();
         let catalog = catalog(&registry);
         let book = CardBook::new(&registry, &catalog);
-        let order = set_order(book);
-        assert_eq!(order.first().map(String::as_str), Some("core"), "the Core Set is the oldest: {order:?}");
-        assert!(order.iter().position(|set| set == "sg") < order.iter().position(|set| set == "elev"), "{order:?}");
+        let order = set_order();
+        assert_eq!(order.first().map(String::as_str), Some("core_set"), "the Core Set is the oldest: {order:?}");
+        assert!(order.iter().position(|set| set == "system_gateway") < order.iter().position(|set| set == "elevation"), "{order:?}");
         assert!(sets(book, Side::Corp).iter().all(|set| order.contains(set)));
 
         let every = PoolFilter { format: None, playability: Playability::All, ..PoolFilter::new(Side::Corp, NsgFormat::Startup) };
-        let core = pool(book, &PoolFilter { set: Some("core".into()), ..every.clone() });
+        let core = pool(book, &PoolFilter { set: Some("core_set".into()), ..every.clone() });
         assert!(!core.is_empty() && core.iter().any(|card| card.id.0 == "ice_wall"));
         assert!(core.iter().any(|card| card.title == "Hedge Fund"), "a reprint is found by the set it was printed in");
-        assert!(!pool(book, &PoolFilter { set: Some("elev".into()), ..every.clone() }).iter().any(|card| card.id.0 == "ice_wall"));
+        assert!(!pool(book, &PoolFilter { set: Some("elevation".into()), ..every.clone() }).iter().any(|card| card.id.0 == "ice_wall"));
 
         let all = pool(book, &every);
         let playable = pool(book, &PoolFilter { playability: Playability::Playable, ..every.clone() });
@@ -1018,7 +949,9 @@ mod tests {
         let by_title = pool(book, &PoolFilter { sort: PoolSort::Title, ..every.clone() });
         assert!(by_title.windows(2).all(|pair| pair[0].title.to_lowercase() <= pair[1].title.to_lowercase()));
         let by_set = pool(book, &PoolFilter { sort: PoolSort::Set, ..every });
-        let rank = |card: &CardDefinition| order.iter().position(|set| Some(set.as_str()) == card.set_code.as_deref()).unwrap_or(usize::MAX);
+        let rank = |card: &CardDefinition| {
+            crate::art::printing_record(card).and_then(|printing| order.iter().position(|set| *set == printing.set)).unwrap_or(usize::MAX)
+        };
         assert!(by_set.windows(2).all(|pair| rank(pair[0]) <= rank(pair[1])));
     }
 

@@ -45,7 +45,9 @@ use netrunner_client::cards::{faction_label, legal_formats, set_name};
 use netrunner_client::prose;
 use netrunner_client::settings::{format_label, FORMATS};
 use netrunner_card_sync::ImageStatus;
-use netrunner_core::card::CardId;
+use netrunner_core::card::PrintingId;
+use netrunner_core::cards::catalog;
+use netrunner_core::dsl::CardId;
 use netrunner_core::rules::Side;
 
 use crate::card_images::CardImages;
@@ -92,7 +94,7 @@ pub enum Filter {
 }
 
 /// A thumb in the grid; pressing it opens the card.
-#[derive(Component, Debug, Clone, Copy)]
+#[derive(Component, Debug, Clone)]
 pub struct FaceButton(pub CardId);
 
 /// The filter drop-downs, respawned when a filter changes.
@@ -185,7 +187,14 @@ const GRID_GAP: f32 = 8.0;
 const GRID_PAD: f32 = 4.0;
 
 fn spawn(mut commands: Commands, theme: Res<Theme>, core: Res<ClientCore>, images: Res<CardImages>, downloads: Res<Downloads>) {
-    let browser = Browser::new(core.catalog.clone());
+    let mut browser = Browser::new(core.catalog.clone());
+    // `NETRUNNER_CARD` (`dev`): open on that card, so its inspector — a
+    // reprint's printings, say — can be looked at without a hand on it.
+    if let Ok(id) = std::env::var("NETRUNNER_CARD")
+        && !id.trim().is_empty()
+    {
+        browser.apply(Intent::Select(Some(CardId(id.trim().to_string()))));
+    }
     commands.init_resource::<Dirty>();
     commands.init_resource::<SearchRequested>();
     commands.insert_resource(WasDownloading(downloads.is_running()));
@@ -356,9 +365,16 @@ fn spawn_filters(parent: &mut ChildSpawnerCommands, theme: &Theme, browser: &Bro
     parent.spawn(widgets::button(theme, "Clear", Val::Auto, Control::Clear));
 }
 
+/// Every embedded printing's code: the download fetches every picture, not
+/// only the one each card is drawn as, so a choice of art never waits on
+/// the network.
+fn every_printing() -> Vec<PrintingId> {
+    catalog::printings().map(|printing| printing.id).collect()
+}
+
 /// The download button: what it would fetch, or why it will not.
 fn spawn_download(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore) {
-    let codes: Vec<CardId> = core.catalog.iter().filter_map(|card| card.numeric_id).collect();
+    let codes = every_printing();
     let cached = core.images.cached_count(&codes);
     let label = if !core.settings.desktop.download_images {
         "Card images are off in Settings".to_string()
@@ -373,10 +389,10 @@ fn spawn_download(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &Clien
 fn spawn_grid(parent: &mut ChildSpawnerCommands, theme: &Theme, browser: &Browser, images: &CardImages) {
     for card in browser.visible() {
         let face = Face::of(card);
-        let image = card.numeric_id.and_then(|code| images.face(code, FaceSize::Thumb));
-        let marker = (Button, FaceButton(card.numeric_id.unwrap_or(CardId(0))));
+        let image = netrunner_client::art::printing_for(card).and_then(|code| images.face(code, FaceSize::Thumb));
+        let marker = (Button, FaceButton(card.id.clone()));
         let entity = spawn_face(parent, theme, &face, FaceSize::Thumb, image, marker);
-        if browser.selected == card.numeric_id && card.numeric_id.is_some() {
+        if browser.selected.as_ref() == Some(&card.id) {
             parent.commands().entity(entity).insert(outline(theme));
         }
     }
@@ -392,7 +408,7 @@ fn spawn_inspector(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &Clie
         return;
     };
     let face = Face::of(card);
-    let image = card.numeric_id.and_then(|code| images.face(code, FaceSize::Large));
+    let image = netrunner_client::art::printing_for(card).and_then(|code| images.face(code, FaceSize::Large));
     parent.spawn((Node { justify_content: JustifyContent::Center, ..default() },)).with_children(|centre| {
         spawn_face(centre, theme, &face, FaceSize::Large, image, ());
     });
@@ -414,7 +430,9 @@ fn spawn_inspector(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &Clie
     // outlined (`outline`), which is what says which card this is.
     parent.spawn(widgets::dim(theme, face.type_line.clone()));
     parent.spawn((widgets::dim(theme, Face::of(card).numbers_line()), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
-    // The faction with its mark, the set with its, the code.
+    // The faction with its mark, then each printing: its set with its
+    // mark, its code and its illustrator, newest first — the first is the
+    // one the face is drawn as (`art::printing_for`).
     if let Some(faction) = card.faction {
         parent.spawn((Text::new(""), theme.font(size::SMALL), TextColor(theme.text_dim))).with_children(|spans| {
             if let Some((mark, font)) = theme.faction_icon(faction, size::SMALL) {
@@ -423,12 +441,15 @@ fn spawn_inspector(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &Clie
             spans.spawn((TextSpan::new(faction_label(faction)), theme.font(size::SMALL), TextColor(theme.text_dim)));
         });
     }
-    if let (Some(set), Some(code)) = (card.set_code.as_deref(), card.numeric_id) {
-        parent.spawn((Text::new(""), theme.font(size::SMALL), TextColor(theme.text_dim))).with_children(|spans| {
-            if let Some((mark, font)) = theme.set_icon(set, size::SMALL) {
+    for printing in catalog::printings_of(&card.id) {
+        parent.spawn((Text::new(""), theme.font(size::SMALL), TextColor(theme.text_dim), TextLayout::new(Justify::Left, LineBreak::WordBoundary))).with_children(|spans| {
+            if let Some((mark, font)) = theme.set_icon(&printing.set, size::SMALL) {
                 spans.spawn((TextSpan::new(format!("{mark} ")), font, TextColor(theme.text_dim)));
             }
-            spans.spawn((TextSpan::new(format!("{} · #{:05}", set_name(set), code.0)), theme.font(size::SMALL), TextColor(theme.text_dim)));
+            spans.spawn((TextSpan::new(format!("{} · #{}", set_name(&printing.set), printing.id)), theme.font(size::SMALL), TextColor(theme.text_dim)));
+            if let Some(illustrators) = &printing.illustrators {
+                spans.spawn((TextSpan::new(format!(" · {illustrators}")), theme.font(size::SMALL), TextColor(theme.text_dim)));
+            }
         });
     }
     parent.spawn((widgets::dim(theme, legality_line(card)), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
@@ -436,7 +457,7 @@ fn spawn_inspector(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &Clie
         parent.spawn(widgets::notice(theme, "Not implemented in the engine yet", ()));
     }
     parent.spawn((Text::new(face.body_text(false)), theme.font(size::SMALL), TextColor(theme.text), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
-    if let Some(flavor) = &card.flavor {
+    if let Some(flavor) = &face.flavor {
         parent.spawn((widgets::dim(theme, format!("\u{201c}{flavor}\u{201d}")), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
     }
     let engine = prose::engine_reading(card, &core.registry);
@@ -450,7 +471,7 @@ fn spawn_inspector(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &Clie
             parent.spawn((widgets::dim(theme, line.replace('→', "›")), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
         }
     }
-    if let Some(code) = card.numeric_id {
+    if let Some(code) = netrunner_client::art::printing_for(card) {
         let status = match core.images.status(code) {
             ImageStatus::Cached(_) => "Picture cached".to_string(),
             ImageStatus::Missing => "No picture cached".to_string(),
@@ -510,8 +531,7 @@ fn controls(
                 if !core.settings.desktop.download_images {
                     notices.push("Turn on card images in Settings to download them");
                 } else if let Some(runtime) = &runtime {
-                    let codes: Vec<CardId> = core.catalog.iter().filter_map(|card| card.numeric_id).collect();
-                    if !downloads.start(runtime, core.images.clone(), codes) {
+                    if !downloads.start(runtime, core.images.clone(), every_printing()) {
                         notices.push("A download is already running");
                     }
                 } else {
@@ -531,7 +551,7 @@ fn controls(
         }
     }
     for (interaction, FaceButton(code)) in &faces {
-        if *interaction == Interaction::Pressed && browser.apply(Intent::Select(Some(*code))) {
+        if *interaction == Interaction::Pressed && browser.apply(Intent::Select(Some(code.clone()))) {
             dirty.selection = true;
         }
     }
@@ -666,7 +686,7 @@ fn refresh(
         }
     } else {
         for (entity, FaceButton(code), outlined) in &thumbs {
-            let selected = browser.selected == Some(*code);
+            let selected = browser.selected.as_ref() == Some(code);
             if selected && !outlined {
                 commands.entity(entity).insert(outline(&theme));
             } else if !selected && outlined {

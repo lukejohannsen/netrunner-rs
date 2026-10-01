@@ -96,6 +96,6 @@
       "text": "Abilities that increase its strength last for the remainder of the run"
     }
   ],
-  "numeric_id": 35027,
+  "built_from": 35027,
   "is_playable": true
 }

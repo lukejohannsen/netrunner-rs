@@ -11,12 +11,13 @@
 //! AGENTS.md's "MUST NOT depend on any I/O framework" rule intends, exactly
 //! like the NetrunnerDB catalog.
 //!
-//! The catalog is `data/cards`, one file per pack as `scripts/catalog_sync.py`
-//! writes it, each file already a JSON array: embedded the same way, it is an
-//! array of arrays, one per pack, which `cards::netrunnerdb` flattens. A pack
-//! joins the catalog by gaining a file, with no Rust edit — there used to be
-//! one `include_str!` per pack, and three packs were already three constants
-//! and a loop to keep in step.
+//! The catalog is `data/catalog/cards`, one file per card set as
+//! `scripts/catalog_sync.py` writes it (NetrunnerDB v3's cards and
+//! printings), each file a JSON object: embedded the same way, it is an
+//! array of them, one per set, which `cards::catalog` reads. A set joins the
+//! catalog by gaining a file, with no Rust edit — there used to be one
+//! `include_str!` per pack, and three packs were already three constants and
+//! a loop to keep in step.
 
 use std::path::Path;
 
@@ -53,7 +54,7 @@ fn main() {
     for side in ["corp", "runner"] {
         embed_dir(&manifest_dir, &out_dir, side, &format!("{side}_cards.json"));
     }
-    embed_dir(&manifest_dir, &out_dir, "cards", "catalog.json");
+    embed_dir(&manifest_dir, &out_dir, "catalog/cards", "catalog.json");
     embed_dir(&manifest_dir, &out_dir, "decks", "decks.json");
     // Lessons are one directory per side because the track order is the
     // sorted file order: `01_...json`, `02_...json` — numbering across two

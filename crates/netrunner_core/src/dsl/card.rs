@@ -428,7 +428,7 @@ pub struct CardDefinition {
     /// Corp card is not active, so two may sit side by side until one is
     /// rezzed. This is a rule of play, not a deckbuilding one — three copies
     /// in a deck are legal. Joined from the NetrunnerDB catalog's
-    /// `uniqueness` on `numeric_id`, never authored in card JSON, so it
+    /// `is_unique` by card id, never authored in card JSON, so it
     /// cannot drift from the printed card (ROADMAP Rules Audit T7).
     #[serde(default)]
     pub unique: bool,
@@ -636,12 +636,22 @@ pub struct CardDefinition {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub counter_kind: Option<CounterKind>,
 
-    /// NetrunnerDB's numeric card code, if this definition was sourced from
-    /// or cross-referenced against the NetrunnerDB catalog
-    /// (`cards::netrunnerdb`). `None` for the hand-authored baseline set,
-    /// which predates having one. Indexed by `CardRegistry::by_numeric_id`.
+    /// The printing whose text this card file was written and checked
+    /// against — a card file's own record of which card it read, since a
+    /// card's printings can say different things before an erratum is
+    /// synced. Not the card's identity (that is `id`, NetrunnerDB's v3
+    /// slug, which every printing shares) and not its picture (a client
+    /// shows the printing the person chose, `cards::catalog`); `None` for a
+    /// catalog-only card, homebrew and test fixtures.
+    ///
+    /// Two things read the number because they need one that never moves:
+    /// the observation vocabulary's slot for the card
+    /// (`netrunner_bots::observation`, laid out by these codes before the
+    /// catalog moved to v3), and `rules::turn_log::SameAction::FromHand`,
+    /// which must be `Copy`. Twelve card files name a Core Set printing of a
+    /// card later reprinted, so it cannot be derived from the catalog.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub numeric_id: Option<crate::card::CardId>,
+    pub built_from: Option<crate::card::PrintingId>,
 
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub faction: Option<crate::card::Faction>,
@@ -657,10 +667,6 @@ pub struct CardDefinition {
     /// actually dispatches triggers on.
     #[serde(default)]
     pub keywords: Vec<String>,
-
-    /// NetrunnerDB pack/set code, e.g. `"sg"`.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub set_code: Option<String>,
 
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub influence_cost: Option<u32>,
@@ -688,30 +694,19 @@ pub struct CardDefinition {
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub unlimited_influence: bool,
 
-    /// Illustrator credit, sourced from NetrunnerDB's `illustrator` field.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub artist: Option<String>,
-
     /// The card's printed rules text, for a client to show a person:
     /// NetrunnerDB's `text` with its HTML removed and its line breaks and
-    /// `[credit]`-style symbols kept (`cards::netrunnerdb::strip_markup`),
+    /// `[credit]`-style symbols kept (`cards::catalog::strip_markup`),
     /// not the API's `stripped_text`, which spells the symbols out and
     /// joins the lines. **Never read by the engine**: the rules a card runs
     /// on are `triggers`, `abilities` and `subroutines`, and this is the
-    /// sentence they were written from. Joined from the catalog like
-    /// `artist`, so card files do not restate it and cannot drift from
-    /// what was printed.
+    /// sentence they were written from. Joined from the catalog by card id,
+    /// so card files do not restate it and cannot drift from what was
+    /// printed. It is the card's, not a printing's: v3 keeps one text per
+    /// card, the current one. A printing's illustrator and flavour are
+    /// `cards::catalog::Printing`'s.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub printed_text: Option<String>,
-
-    /// Flavour text, for the same reader. NetrunnerDB's `flavor`.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub flavor: Option<String>,
-
-    /// True placeholder — always `None` today; no fetch/derivation logic
-    /// exists yet.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub image_url: Option<String>,
 
     /// True only for cards with real gameplay data (the hand-authored
     /// baseline set and any future hand-authored card). False for
@@ -1013,18 +1008,14 @@ impl Default for CardDefinition {
             install_only_in: Vec::new(),
             click_breakable: false,
             counter_kind: None,
-            numeric_id: None,
+            built_from: None,
             faction: None,
             type_line: None,
             keywords: Vec::new(),
-            set_code: None,
             influence_cost: None,
             deck_limit: None,
             unlimited_influence: false,
-            artist: None,
             printed_text: None,
-            flavor: None,
-            image_url: None,
             is_playable: false,
             persistent_after_trash: false,
             continuous: Vec::new(),

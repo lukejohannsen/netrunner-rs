@@ -41,6 +41,6 @@
       "text": "The first time each turn you make a successful run on a central server, draw 1 card."
     }
   ],
-  "numeric_id": 33079,
+  "built_from": 33079,
   "is_playable": true
 }

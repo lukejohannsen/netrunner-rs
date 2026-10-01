@@ -18,8 +18,9 @@
 //! under the title the pool prints: a guide that recommended a card the
 //! deck builder cannot find would send a new player looking for nothing.
 
-use netrunner_core::card::CardId;
+use netrunner_core::card::PrintingId;
 use netrunner_core::cards::CardRegistry;
+use netrunner_core::dsl::CardDefinition;
 
 /// The guide's source, as committed.
 pub const SOURCE: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../docs/strategy-guide.md"));
@@ -58,7 +59,7 @@ pub enum Span {
     Text(String),
     Strong(String),
     /// A card, by the title the guide prints and its NetrunnerDB code.
-    Card { title: String, code: CardId },
+    Card { title: String, code: PrintingId },
     /// A link to anything else; a client shows its text.
     Link { text: String, url: String },
 }
@@ -154,7 +155,7 @@ fn spans(line: &str) -> Vec<Span> {
         {
             push_text(&mut out, &mut text);
             out.push(match url.strip_prefix(CARD_URL).and_then(|code| code.parse::<u32>().ok()) {
-                Some(code) => Span::Card { title: label.to_string(), code: CardId(code) },
+                Some(code) => Span::Card { title: label.to_string(), code: PrintingId(code) },
                 None => Span::Link { text: label.to_string(), url: url.to_string() },
             });
             rest = tail;
@@ -183,7 +184,7 @@ fn push_text(out: &mut Vec<Span>, text: &mut String) {
 }
 
 /// Every card the guide names, in order, with repeats.
-pub fn cards(guide: &Guide) -> Vec<(&str, CardId)> {
+pub fn cards(guide: &Guide) -> Vec<(&str, PrintingId)> {
     guide
         .intro
         .iter()
@@ -199,16 +200,22 @@ pub fn cards(guide: &Guide) -> Vec<(&str, CardId)> {
         .collect()
 }
 
+/// The card a guide link names: NetrunnerDB links a card page by one of
+/// its printings' codes, and the catalog says which card that printing is.
+pub fn card_linked(code: PrintingId, registry: &CardRegistry) -> Option<&CardDefinition> {
+    netrunner_core::cards::catalog::printing(code).and_then(|printing| registry.get(&printing.card))
+}
+
 /// The cards the guide names that this client cannot build with, each
 /// with why: no card has the code, the card is not playable, or the
 /// guide prints a title other than the card's.
 pub fn unplayable_cards(guide: &Guide, registry: &CardRegistry) -> Vec<String> {
     cards(guide)
         .into_iter()
-        .filter_map(|(title, code)| match registry.get_by_numeric_id(code) {
-            None => Some(format!("{title} ({}): no card has this code", code.0)),
-            Some(card) if !card.is_playable => Some(format!("{title} ({}): not playable", code.0)),
-            Some(card) if card.title != title => Some(format!("{title} ({}): the card is titled {:?}", code.0, card.title)),
+        .filter_map(|(title, code)| match card_linked(code, registry) {
+            None => Some(format!("{title} ({code}): no card has this code")),
+            Some(card) if !card.is_playable => Some(format!("{title} ({code}): not playable")),
+            Some(card) if card.title != title => Some(format!("{title} ({code}): the card is titled {:?}", card.title)),
             Some(_) => None,
         })
         .collect()
@@ -282,7 +289,7 @@ mod tests {
                 Span::Text("Run ".into()),
                 Span::Strong("HQ".into()),
                 Span::Text(" with ".into()),
-                Span::Card { title: "Jailbreak".into(), code: CardId(30028) },
+                Span::Card { title: "Jailbreak".into(), code: PrintingId(30028) },
                 Span::Text(", see ".into()),
                 Span::Link { text: "this".into(), url: "https://example.com".into() },
                 Span::Text(".".into()),

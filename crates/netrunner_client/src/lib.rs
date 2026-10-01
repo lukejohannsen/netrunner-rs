@@ -40,6 +40,7 @@
 pub mod access;
 pub mod backdrop;
 pub mod actions;
+pub mod art;
 pub mod board;
 pub mod card_face;
 pub mod card_text;

@@ -7,7 +7,7 @@
 //! reachable from the *default* build — no feature flag, no filesystem.
 //!
 //! This is the single source of truth for playable cards. The NetrunnerDB
-//! dumps in `data/cards` (see `cards::netrunnerdb`) are a separate,
+//! catalog in `data/catalog` (see `cards::catalog`) is a separate,
 //! catalog-only pool: metadata for every printed card, `is_playable: false`,
 //! no DSL rules. `cards::loader` (feature `fs-loader`) is a third, optional
 //! path for *external* card directories, not for these sets.
@@ -27,38 +27,33 @@ fn parse_side(json: &str, side: &str) -> Vec<CardDefinition> {
 }
 
 /// Fills each card's printed metadata from the NetrunnerDB catalog, joined on
-/// `numeric_id`.
+/// the card's id — NetrunnerDB's v3 slug, which a card file's `id` is
+/// (`every_card_file_id_is_a_netrunnerdb_card`).
 ///
-/// These fields — faction, keywords, influence, deck limit, artist, set,
-/// the printed text and flavour —
-/// are NetrunnerDB's to state, so card files don't restate them: doing so
-/// invited silent drift (a corrected influence cost upstream, a mistyped
-/// artist) between two copies of the same fact. Card files own the join key
-/// and everything the rules engine actually runs on.
+/// These fields — faction, keywords, influence, deck limit, uniqueness,
+/// link and the printed text — are NetrunnerDB's to state, so card files
+/// don't restate them: doing so invited silent drift (a corrected influence
+/// cost upstream) between two copies of the same fact. Card files own the
+/// id and everything the rules engine actually runs on. What belongs to a
+/// printing — its set, illustrator, flavour and picture — is not copied at
+/// all: it is `cards::catalog`'s, asked for the printing a client shows.
 ///
-/// A card with no `numeric_id`, or one the catalog doesn't carry, simply
-/// keeps whatever it declared — homebrew and test fixtures are not required
-/// to exist upstream.
+/// A card the catalog doesn't carry simply keeps whatever it declared —
+/// homebrew and test fixtures are not required to exist upstream.
 fn fill_catalog_metadata(cards: &mut [CardDefinition]) {
-    let catalog =
-        crate::cards::load_embedded_netrunnerdb_sets().expect("embedded NetrunnerDB catalog should parse");
+    let catalog = crate::cards::catalog::cards();
 
     for card in cards {
-        let Some(numeric_id) = card.numeric_id else { continue };
-        let Some(entry) = catalog.get_by_numeric_id(numeric_id) else { continue };
+        let Some(entry) = catalog.get(&card.id) else { continue };
 
         card.faction = entry.faction;
         card.type_line.clone_from(&entry.type_line);
         card.keywords.clone_from(&entry.keywords);
         card.subtypes.clone_from(&entry.subtypes);
-        card.set_code.clone_from(&entry.set_code);
         card.influence_cost = entry.influence_cost;
         card.deck_limit = entry.deck_limit;
         card.influence_limit = entry.influence_limit;
-        card.artist.clone_from(&entry.artist);
         card.printed_text.clone_from(&entry.printed_text);
-        card.flavor.clone_from(&entry.flavor);
-        card.image_url.clone_from(&entry.image_url);
         card.unique = entry.unique;
         card.base_link = entry.base_link;
     }
@@ -132,29 +127,36 @@ mod tests {
         }
     }
 
-    /// Every playable card must carry its catalog join key, because that key
-    /// is the *only* source of faction, influence cost, deck limit and set
-    /// code — everything deckbuilding legality is computed from. A card
-    /// without one is playable but not deckbuildable: it silently counts as
-    /// neutral, 0 influence, no set, so `deck::validator` would wave through
-    /// a deck it should reject.
+    /// Every card file is a NetrunnerDB card, by its v3 id, because that id
+    /// is the *only* join to its faction, influence cost, deck limit and
+    /// printed text — everything deckbuilding legality is computed from. A
+    /// card file whose id the catalog does not know is playable but not
+    /// deckbuildable: it silently counts as neutral, 0 influence, so
+    /// `deck::validator` would wave through a deck it should reject.
     ///
     /// Nineteen baseline Core Set cards were in exactly that state until
-    /// their metadata was backfilled. This is what stops the next
-    /// hand-authored card from reintroducing the hole.
+    /// their metadata was backfilled, and sixteen ids were not v3's until
+    /// NSG pool Stage 0c renamed them. This is what stops the next one.
+    ///
+    /// **And every card file names the printing it was built from, which is
+    /// a printing of that card**: the observation vocabulary and
+    /// `SameAction::FromHand` read the number, and a code of another card
+    /// would put the card in that card's slot.
     #[test]
-    fn every_playable_card_carries_a_numeric_id() {
-        let missing: Vec<String> = embedded_playable_cards()
-            .into_iter()
-            .filter(|card| card.numeric_id.is_none())
-            .map(|card| format!("{} ({})", card.title, card.id.0))
-            .collect();
-
-        assert!(
-            missing.is_empty(),
-            "these playable cards have no NetrunnerDB join key, so they carry no printed \
-             metadata and cannot be deckbuilt against: {missing:#?}"
-        );
+    fn every_card_file_id_is_a_netrunnerdb_card() {
+        let catalog = crate::cards::catalog::cards();
+        let mut wrong: Vec<String> = Vec::new();
+        for card in embedded_playable_cards() {
+            if catalog.get(&card.id).is_none() {
+                wrong.push(format!("{} ({}): no NetrunnerDB card has this id", card.title, card.id.0));
+            }
+            match card.built_from.and_then(crate::cards::catalog::printing) {
+                Some(printing) if printing.card == card.id => {}
+                Some(printing) => wrong.push(format!("{}: built_from {} prints {}", card.id.0, printing.id, printing.card.0)),
+                None => wrong.push(format!("{}: built_from names no embedded printing ({:?})", card.id.0, card.built_from)),
+            }
+        }
+        assert!(wrong.is_empty(), "{wrong:#?}");
     }
 
     /// A misspelled key used to deserialize silently, leaving the intended
@@ -173,14 +175,13 @@ mod tests {
 }
 
 
-/// System Gateway cards with no DSL implementation yet, keyed by NetrunnerDB
-/// code (titles carry typographic apostrophes, codes don't). Every entry
+/// System Gateway cards with no DSL implementation yet, as (card id, title). Every entry
 /// needs a stated reason — this list is the deliberate exception set for
 /// `every_system_gateway_card_is_implemented_or_explicitly_excluded`, not a
 /// place to silence it. Empty since the two starter identities landed for
 /// *Learn to Play* (ROADMAP Phase 1.75 §2): 77 of 77.
 #[cfg(test)]
-const SG_UNIMPLEMENTED: &[(u32, &str)] = &[];
+const SG_UNIMPLEMENTED: &[(&str, &str)] = &[];
 
 /// *Elevation* cards with no DSL implementation yet — the same gate as
 /// `SG_UNIMPLEMENTED`, for the set being implemented deck by deck (ROADMAP
@@ -191,7 +192,7 @@ const SG_UNIMPLEMENTED: &[(u32, &str)] = &[];
 /// remains. Started at 73 of 82 when Stage 1 (Flow and Ebb, Sabbatical)
 /// landed its nine; 64 after Stage 2 (Enthusiasm, Tickets, please); 56 after Stage 3 (Bowel Movements, Dashing Mad); 48 after Stage 4 (Prick Thyself, Shootin' 'n' Lootin', Professional Opportunities); 40 after Stage 5 (Brick Stack, the first Corp deck); 31 after Stage 6 (Brutal Efficiency, Agency); 21 after Stage 7 (Fashion Lab, Pork Chops); 12 after Stage 8 (Quick Returns, Glyph of Warding); 8 after Stage 9 (Hidden Funds, Peculiarity); **empty after Stage 10 (Fine Print, Gimbatul, Not so subtle), which completes the set**.
 #[cfg(test)]
-const ELEV_UNIMPLEMENTED: &[(u32, &str)] = &[
+const ELEV_UNIMPLEMENTED: &[(&str, &str)] = &[
 ];
 
 #[cfg(test)]
@@ -210,11 +211,10 @@ mod catalog_join_tests {
     /// no printed cost.
     #[test]
     fn printed_values_agree_with_the_netrunnerdb_catalog() {
-        let catalog = crate::cards::load_embedded_netrunnerdb_sets().expect("catalog should parse");
+        let catalog = crate::cards::catalog::cards();
 
         for card in embedded_playable_cards() {
-            let Some(numeric_id) = card.numeric_id else { continue };
-            let Some(entry) = catalog.get_by_numeric_id(numeric_id) else { continue };
+            let Some(entry) = catalog.get(&card.id) else { continue };
 
             let checks: [(&str, Option<i64>, Option<i64>); 7] = [
                 ("cost", Some(i64::from(entry.cost)), Some(i64::from(card.cost))),
@@ -237,7 +237,7 @@ mod catalog_join_tests {
                     Some(upstream),
                     "{} ({}): {field} is {ours:?} but NetrunnerDB prints {upstream}",
                     card.title,
-                    numeric_id.0
+                    card.id.0
                 );
             }
         }
@@ -266,8 +266,11 @@ mod catalog_join_tests {
             "malapert_data_vault",
         ];
         let cards = embedded_playable_cards();
-        let mut flagged: Vec<&str> =
-            cards.iter().filter(|c| c.unique && c.set_code.as_deref() == Some("sg")).map(|c| c.id.0.as_str()).collect();
+        let mut flagged: Vec<&str> = cards
+            .iter()
+            .filter(|c| c.unique && crate::cards::catalog::printed_in(&c.id, "system_gateway"))
+            .map(|c| c.id.0.as_str())
+            .collect();
         flagged.sort_unstable();
         let mut expected: Vec<&str> = expected.to_vec();
         expected.sort_unstable();
@@ -281,41 +284,30 @@ mod catalog_join_tests {
     /// for every set, because "the gate for calling any future set
     /// complete" (ROADMAP Phase 1 §7) has to be the same gate.
     ///
-    /// **A printing is built when a playable card carries its code or its
-    /// title** (`cards::title_key`, with the side). A reprint has a code of
-    /// its own and a card file one `numeric_id`, so a pack that reprints a
-    /// built card — System Update 2021's Corroder — would otherwise read as
-    /// unbuilt.
+    /// **A printing is built when a playable card has its card's id.** A
+    /// reprint is a printing of the same card, so a set that reprints a
+    /// built card — System Update 2021's Corroder — is built there too, with
+    /// no title fold: the v2 catalog keyed a card file by one printing's
+    /// code and had to join the others back by title.
     fn assert_set_accounted_for(
-        set_code: &str,
+        set_id: &str,
         set_name: &str,
         printed: usize,
-        exceptions: &[(u32, &str)],
+        exceptions: &[(&str, &str)],
     ) {
-        let catalog = crate::cards::load_embedded_netrunnerdb_sets().expect("catalog should parse");
-        let playable = embedded_playable_cards();
-        let implemented: std::collections::HashSet<u32> =
-            playable.iter().filter_map(|card| card.numeric_id).map(|id| id.0).collect();
-        // (is the Corp's, title key): `Side` is not `Hash`.
-        let titles: std::collections::HashSet<(bool, String)> = playable
-            .iter()
-            .map(|card| (card.side == crate::rules::Side::Corp, crate::cards::title_key(&card.title)))
-            .collect();
-        let excluded: std::collections::HashSet<u32> = exceptions.iter().map(|(code, _)| *code).collect();
+        let playable: std::collections::HashSet<crate::dsl::CardId> =
+            embedded_playable_cards().into_iter().filter(|card| card.is_playable).map(|card| card.id).collect();
+        let excluded: std::collections::HashSet<&str> = exceptions.iter().map(|(id, _)| *id).collect();
 
         let mut unaccounted: Vec<String> = Vec::new();
-        let mut built: std::collections::HashSet<u32> = std::collections::HashSet::new();
+        let mut built: std::collections::HashSet<&str> = std::collections::HashSet::new();
         let mut total = 0;
-        for entry in catalog.iter() {
-            if entry.set_code.as_deref() != Some(set_code) {
-                continue;
-            }
+        for printing in crate::cards::catalog::printings().filter(|printing| printing.set == set_id) {
             total += 1;
-            let Some(numeric_id) = entry.numeric_id else { continue };
-            if implemented.contains(&numeric_id.0) || titles.contains(&(entry.side == crate::rules::Side::Corp, crate::cards::title_key(&entry.title))) {
-                built.insert(numeric_id.0);
-            } else if !excluded.contains(&numeric_id.0) {
-                unaccounted.push(format!("{} ({})", entry.title, numeric_id.0));
+            if playable.contains(&printing.card) {
+                built.insert(printing.card.0.as_str());
+            } else if !excluded.contains(printing.card.0.as_str()) {
+                unaccounted.push(format!("{} ({})", printing.card.0, printing.id));
             }
         }
 
@@ -323,15 +315,15 @@ mod catalog_join_tests {
         assert_eq!(total, printed, "{set_name} should have {printed} printed cards");
         let stale: Vec<String> = exceptions
             .iter()
-            .filter(|(code, _)| built.contains(code))
-            .map(|(code, reason)| format!("{reason} ({code})"))
+            .filter(|(id, _)| built.contains(id))
+            .map(|(id, title)| format!("{title} ({id})"))
             .collect();
         assert!(stale.is_empty(), "{set_name} exception entries whose card is now implemented: {stale:#?}");
         assert_eq!(
             total - exceptions.len(),
             built.len(),
             "{set_name}: the built count should be the printed set minus the documented exceptions \
-             (an exception naming a code outside the set breaks this too)"
+             (an exception naming a card outside the set breaks this too)"
         );
     }
 
@@ -341,12 +333,12 @@ mod catalog_join_tests {
     /// Holds the 49 files that authored them before VP Stage 1 to it.
     #[test]
     fn a_card_file_leaves_its_subtypes_to_the_catalog() {
-        let catalog = crate::cards::load_embedded_netrunnerdb_sets().expect("catalog should parse");
+        let catalog = crate::cards::catalog::cards();
         let mut authored: Vec<String> = parse_side(CORP_CARDS_JSON, "Corp")
             .into_iter()
             .chain(parse_side(RUNNER_CARDS_JSON, "Runner"))
             .filter(|card| !card.subtypes.is_empty())
-            .filter(|card| card.numeric_id.is_some_and(|id| catalog.get_by_numeric_id(id).is_some()))
+            .filter(|card| catalog.get(&card.id).is_some())
             .map(|card| card.id.0)
             .collect();
         authored.sort();
@@ -357,84 +349,53 @@ mod catalog_join_tests {
 
     #[test]
     fn every_system_gateway_card_is_implemented_or_explicitly_excluded() {
-        assert_set_accounted_for("sg", "System Gateway", 77, SG_UNIMPLEMENTED);
+        assert_set_accounted_for("system_gateway", "System Gateway", 77, SG_UNIMPLEMENTED);
     }
 
     /// The same gate for *Elevation*, whose exception list shrinks one
     /// stage at a time — see `ELEV_UNIMPLEMENTED`.
     #[test]
     fn every_elevation_card_is_implemented_or_explicitly_excluded() {
-        assert_set_accounted_for("elev", "Elevation", 82, ELEV_UNIMPLEMENTED);
+        assert_set_accounted_for("elevation", "Elevation", 82, ELEV_UNIMPLEMENTED);
     }
 
     /// "Startup is complete" as a gate rather than a sentence (Phase 5 §25
-    /// Stage 0, 29 September 2026): every printing in a `COMPLETE_FORMATS`
-    /// pool that the catalog knows is a playable card, built under its own
-    /// code or its title (the fold `assert_set_accounted_for` uses for a
-    /// reprint), and the codes the catalog does not know are exactly the
-    /// named ones. The per-pack gates above say a *pack* is built; this
-    /// one says a *format* is, which is what a player choosing Startup and
-    /// a bot told the format (Stage 2) are promised — and it fails the day
-    /// a rotation adds a pack to the pool before its cards land.
+    /// Stage 0, 29 September 2026): every card in a `COMPLETE_FORMATS` pool
+    /// is a playable card. The per-set gates above say a *set* is built;
+    /// this one says a *format* is, which is what a player choosing Startup
+    /// and a bot told the format (Stage 2) are promised — and it fails the
+    /// day a rotation adds a set to the pool before its cards land. A pool
+    /// is a list of cards, so a card the catalog does not carry fails here
+    /// too: it was a list of printings, some of them in sets this crate does
+    /// not embed, and the gate named those codes as built under another.
     ///
     /// The other half holds the list honest: a format not on it must be
     /// short of a card, so completing Standard is a one-line change here
     /// and never a claim nobody checked.
     #[test]
     fn every_card_in_a_complete_formats_pool_is_built_and_playable() {
-        use crate::cards::unimplemented::{COMPLETE_FORMATS, STARTUP_POOL_CODES_OUTSIDE_THE_CATALOG};
+        use crate::cards::unimplemented::COMPLETE_FORMATS;
         use crate::format::NsgFormat;
 
-        let catalog = crate::cards::load_embedded_netrunnerdb_sets().expect("catalog should parse");
-        let playable = embedded_playable_cards();
-        let implemented: std::collections::HashSet<u32> =
-            playable.iter().filter_map(|card| card.numeric_id).map(|id| id.0).collect();
-        let titles: std::collections::HashSet<(bool, String)> = playable
-            .iter()
-            .filter(|card| card.is_playable)
-            .map(|card| (card.side == crate::rules::Side::Corp, crate::cards::title_key(&card.title)))
-            .collect();
-
-        // (the cards the pool holds and the catalog knows that are not built,
-        // the pool's codes the catalog does not know)
-        let audit = |format: NsgFormat| -> (Vec<String>, Vec<u32>) {
-            let pool = format.rules().pool.as_ref().unwrap_or_else(|| panic!("{format:?} has a pool"));
-            let mut unbuilt = Vec::new();
-            let mut outside = Vec::new();
-            for code in pool {
-                match catalog.get_by_numeric_id(*code) {
-                    None => outside.push(code.0),
-                    Some(entry) => {
-                        let built = implemented.contains(&code.0)
-                            || titles.contains(&(entry.side == crate::rules::Side::Corp, crate::cards::title_key(&entry.title)));
-                        if !built {
-                            unbuilt.push(format!("{} ({})", entry.title, code.0));
-                        }
-                    }
-                }
-            }
+        let playable: std::collections::HashSet<crate::dsl::CardId> =
+            embedded_playable_cards().into_iter().filter(|card| card.is_playable).map(|card| card.id).collect();
+        let unbuilt = |format: NsgFormat| -> Vec<String> {
+            let pool = format.rules().cards.as_ref().unwrap_or_else(|| panic!("{format:?} has a pool"));
+            let mut unbuilt: Vec<String> = pool.iter().filter(|card| !playable.contains(*card)).map(|card| card.0.clone()).collect();
             unbuilt.sort();
-            outside.sort_unstable();
-            (unbuilt, outside)
+            unbuilt
         };
 
         for format in COMPLETE_FORMATS {
-            let (unbuilt, outside) = audit(*format);
+            let unbuilt = unbuilt(*format);
             assert!(unbuilt.is_empty(), "{format:?} is listed complete but these pool cards are not built: {unbuilt:#?}");
-            let named: &[u32] = match format {
-                NsgFormat::Startup => STARTUP_POOL_CODES_OUTSIDE_THE_CATALOG,
-                other => panic!("{other:?} is listed complete: name the pool codes outside the catalog for it"),
-            };
-            assert_eq!(outside, named, "{format:?}'s pool codes the catalog does not carry; each must be a card built under another code");
         }
-        let (unbuilt, _) = audit(NsgFormat::Startup);
-        assert!(unbuilt.is_empty());
+        assert!(unbuilt(NsgFormat::Startup).is_empty());
         for format in NsgFormat::ALL {
-            if COMPLETE_FORMATS.contains(&format) || format.rules().pool.is_none() {
+            if COMPLETE_FORMATS.contains(&format) || format.rules().cards.is_none() {
                 continue;
             }
-            let (unbuilt, _) = audit(format);
-            assert!(!unbuilt.is_empty(), "{format:?} is now complete: add it to COMPLETE_FORMATS");
+            assert!(!unbuilt(format).is_empty(), "{format:?} is now complete: add it to COMPLETE_FORMATS");
         }
     }
 
@@ -444,27 +405,24 @@ mod catalog_join_tests {
     #[test]
     fn every_nsg_pack_card_is_implemented_or_explicitly_excluded() {
         use crate::cards::unimplemented::*;
-        for (set_code, set_name, printed, exceptions) in [
-            ("vp", "Vantage Point", 66, VP_UNIMPLEMENTED),
-            ("rwr", "Rebellion Without Rehearsal", 65, RWR_UNIMPLEMENTED),
-            ("tai", "The Automata Initiative", 65, TAI_UNIMPLEMENTED),
-            ("ph", "Parhelion", 63, PH_UNIMPLEMENTED),
-            ("msbp", "Midnight Sun Booster Pack", 7, MSBP_UNIMPLEMENTED),
-            ("ms", "Midnight Sun", 65, MS_UNIMPLEMENTED),
-            ("urbp", "Uprising Booster Pack", 7, URBP_UNIMPLEMENTED),
-            ("ur", "Uprising", 65, UR_UNIMPLEMENTED),
-            ("df", "Downfall", 65, DF_UNIMPLEMENTED),
-            ("su21", "System Update 2021", 82, SU21_UNIMPLEMENTED),
-            ("sm", "Salvaged Memories", 18, SM_UNIMPLEMENTED),
-            ("mor", "Magnum Opus Reprint", 6, MOR_UNIMPLEMENTED),
+        for (set_id, set_name, printed, exceptions) in [
+            ("vantage_point", "Vantage Point", 66, VP_UNIMPLEMENTED),
+            ("rebellion_without_rehearsal", "Rebellion Without Rehearsal", 65, RWR_UNIMPLEMENTED),
+            ("the_automata_initiative", "The Automata Initiative", 65, TAI_UNIMPLEMENTED),
+            ("parhelion", "Parhelion", 63, PH_UNIMPLEMENTED),
+            ("midnight_sun_booster_pack", "Midnight Sun Booster Pack", 7, MSBP_UNIMPLEMENTED),
+            ("midnight_sun", "Midnight Sun", 65, MS_UNIMPLEMENTED),
+            ("uprising_booster_pack", "Uprising Booster Pack", 7, URBP_UNIMPLEMENTED),
+            ("uprising", "Uprising", 65, UR_UNIMPLEMENTED),
+            ("downfall", "Downfall", 65, DF_UNIMPLEMENTED),
+            ("system_update_2021", "System Update 2021", 82, SU21_UNIMPLEMENTED),
+            ("salvaged_memories", "Salvaged Memories", 18, SM_UNIMPLEMENTED),
+            ("magnum_opus_reprint", "Magnum Opus Reprint", 6, MOR_UNIMPLEMENTED),
         ] {
-            assert_set_accounted_for(set_code, set_name, printed, exceptions);
+            assert_set_accounted_for(set_id, set_name, printed, exceptions);
         }
     }
 
-    /// Card files no longer restate what the catalog owns; the join is what
-    /// puts it back. If the join regressed, every card would silently lose its
-    /// faction/influence/artist and deckbuilding legality checks would go quiet.
     /// Cards whose choice texts are not quotes of the printed text, each
     /// with the reason: the words the choice needs are not on the card.
     const CLAUSE_QUOTE_EXEMPT: &[(&str, &str)] = &[
@@ -625,6 +583,10 @@ mod catalog_join_tests {
         assert!(checked > 100, "{checked} clauses checked");
     }
 
+    /// Card files no longer restate what the catalog owns; the join is what
+    /// puts it back. If the join regressed, every card would silently lose
+    /// its faction and influence, and deckbuilding legality checks would go
+    /// quiet.
     #[test]
     fn catalog_metadata_is_filled_in_from_the_join() {
         let tithe = embedded_playable_cards()
@@ -632,11 +594,12 @@ mod catalog_join_tests {
             .find(|card| card.id.0 == "tithe")
             .expect("tithe should be embedded");
 
-        assert_eq!(tithe.set_code.as_deref(), Some("sg"));
         assert_eq!(tithe.faction, Some(crate::card::Faction::NeutralCorp));
         assert_eq!(tithe.influence_cost, Some(0));
         assert_eq!(tithe.deck_limit, Some(3));
-        assert_eq!(tithe.artist.as_deref(), Some("Scott Uminga"));
+        // What a printing says stays the printing's.
+        let printing = crate::cards::catalog::latest_printing(&tithe.id).expect("Tithe is printed");
+        assert_eq!((printing.set.as_str(), printing.illustrators.as_deref()), ("system_gateway", Some("Scott Uminga")));
         assert!(tithe.keywords.iter().any(|k| k == "Sentry"), "keywords should come from the catalog");
         // The printed text rides the same join: a client shows it, the
         // engine never reads it.

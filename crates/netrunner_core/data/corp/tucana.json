@@ -64,6 +64,6 @@
       "text": "Persistent → Whenever an agenda is scored or stolen from the root of this server, you may search R&D for 1 piece of ice."
     }
   ],
-  "numeric_id": 34064,
+  "built_from": 34064,
   "is_playable": true
 }

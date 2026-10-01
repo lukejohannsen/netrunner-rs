@@ -52,6 +52,6 @@
     }
   ],
   "trash_cost": 2,
-  "numeric_id": 30037,
+  "built_from": 30037,
   "is_playable": true
 }

@@ -68,6 +68,6 @@
       "text": "The first time you trash a card from R&D during each of your turns, gain 2[credit]."
     }
   ],
-  "numeric_id": 34121,
+  "built_from": 34121,
   "is_playable": true
 }

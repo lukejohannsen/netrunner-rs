@@ -395,6 +395,6 @@
       "text": "When your turn begins, you may choose a card type to look at the top card of R&D. If that card has the chosen type, you may reveal it and gain 2[credit]."
     }
   ],
-  "numeric_id": 34050,
+  "built_from": 34050,
   "is_playable": true
 }

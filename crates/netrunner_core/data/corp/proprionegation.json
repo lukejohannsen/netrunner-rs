@@ -30,6 +30,6 @@
       "text": "Hosted agenda counter: The Runner moves to the outermost position of Archives. (They approach any ice in that position.) Use this ability only during a run."
     }
   ],
-  "numeric_id": 35048,
+  "built_from": 35048,
   "is_playable": true
 }

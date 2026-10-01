@@ -14,7 +14,7 @@ use bevy::prelude::*;
 use tokio::sync::{mpsc, oneshot};
 
 use netrunner_card_sync::{CardImageStore, DownloadProgress, DownloadReport};
-use netrunner_core::card::CardId;
+use netrunner_core::card::PrintingId;
 
 use crate::card_images::CardImages;
 use crate::core::{Notices, TokioRuntime};
@@ -50,10 +50,8 @@ enum State {
 }
 
 impl Downloads {
-    /// Starts fetching `codes`, refreshing the URL template first so a
-    /// host move NetrunnerDB has announced is picked up. `false` if one
-    /// is already running.
-    pub fn start(&mut self, runtime: &TokioRuntime, store: Arc<CardImageStore>, codes: Vec<CardId>) -> bool {
+    /// Starts fetching `codes`. `false` if one is already running.
+    pub fn start(&mut self, runtime: &TokioRuntime, store: Arc<CardImageStore>, codes: Vec<PrintingId>) -> bool {
         if self.is_running() {
             return false;
         }
@@ -61,10 +59,6 @@ impl Downloads {
         let (progress_tx, progress) = mpsc::unbounded_channel();
         let (report_tx, report) = oneshot::channel();
         runtime.0.spawn(async move {
-            // A template that will not refresh is not a reason to stop:
-            // the manifest's or the default still points at the CDN, and
-            // a wrong one shows up as failures in the report.
-            let _ = store.refresh_template().await;
             let report = store.download(codes, CONCURRENCY, Some(progress_tx)).await;
             let _ = report_tx.send(report);
         });
@@ -156,7 +150,7 @@ mod tests {
     fn the_status_line_counts_the_low_resolution_scans() {
         let sharp = DownloadReport { fetched: 159, ..DownloadReport::default() };
         assert_eq!(Downloads::default().status_line_for(&sharp), "Downloaded 159 (0 were already cached)");
-        let mixed = DownloadReport { fetched: 2, already_cached: 1, low_res: vec![CardId(1001), CardId(1002)], ..DownloadReport::default() };
+        let mixed = DownloadReport { fetched: 2, already_cached: 1, low_res: vec![PrintingId(1001), PrintingId(1002)], ..DownloadReport::default() };
         assert_eq!(Downloads::default().status_line_for(&mixed), "Downloaded 2 (1 were already cached); 2 only at low resolution");
     }
 }

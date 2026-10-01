@@ -126,10 +126,10 @@ left out.
 ## Card data
 
 Card metadata — titles, printed rules text, factions, influence, set information — comes from
-**[NetrunnerDB](https://netrunnerdb.com/)**. The `netrunner_card_sync` crate pulls from its public
-API v2, and the resulting catalogs are embedded under `crates/netrunner_core/data/cards/`. Card
-files in this repository own only the rules-engine data plus the numeric id used to join against
-that catalog; printed metadata is never restated per card.
+**[NetrunnerDB](https://netrunnerdb.com/)**. `scripts/catalog_sync.py` reads its public API v3,
+and the resulting catalog — cards, their printings and the sets — is embedded under
+`crates/netrunner_core/data/catalog/`. Card files in this repository own only the rules-engine
+data, under NetrunnerDB's own card ids; printed metadata is never restated per card.
 
 NetrunnerDB is an independent community project and is not affiliated with this one.
 
@@ -139,7 +139,7 @@ The source code in this repository is licensed under the
 [GNU General Public License v3.0](LICENSE).
 
 **The GPL covers this project's own source code only.** The card catalogs under
-`crates/netrunner_core/data/cards/` are data dumps from [NetrunnerDB](https://netrunnerdb.com/)
+`crates/netrunner_core/data/catalog/` are data dumps from [NetrunnerDB](https://netrunnerdb.com/)
 and include card titles, rules text, flavor text and illustrator credits. **That content is not
 covered by this license** and is not this project's to license — it remains the property of its
 respective copyright holders, as stated in the disclaimer above.
