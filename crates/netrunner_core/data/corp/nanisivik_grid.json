@@ -1,0 +1,50 @@
+{
+  "id": "nanisivik_grid",
+  "title": "Nanisivik Grid",
+  "side": "Corp",
+  "card_type": "Upgrade",
+  "cost": 2,
+  "trash_cost": 3,
+  "triggers": [
+    {
+      "trigger": "OnApproachServer",
+      "subject": "This",
+      "effects": [
+        {
+          "PromptChooseCards": {
+            "side": "Corp",
+            "source": "OwnArchives",
+            "filter": {
+              "All": [
+                "Ice",
+                "Facedown"
+              ]
+            },
+            "min": 0,
+            "max": 1,
+            "reveal": false,
+            "shuffle_after": false,
+            "then": {
+              "EffectIf": {
+                "condition": {
+                  "AmountAtLeast": [
+                    "CardsSelected",
+                    1
+                  ]
+                },
+                "effect": {
+                  "Sequence": [
+                    "TurnFaceupInArchives",
+                    "ResolveSubroutineOfSelectedIce"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "built_from": 33111,
+  "is_playable": true
+}

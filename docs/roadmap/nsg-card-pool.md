@@ -47,7 +47,7 @@ cards each stage takes.
 | 1 | Vantage Point (`vp`) | 66 | 66 | 0 | complete (27 September 2026) |
 | 2 | Rebellion Without Rehearsal (`rwr`) | 65 | 65 | 0 | complete (28 September 2026) |
 | 3 | The Automata Initiative (`tai`) | 65 | 65 | 0 | complete (29 September 2026) |
-| 4 | Parhelion (`ph`) | 63 | 37 | 26 | **Stage 5b next** — Archives: Hybrid Release, Nanisivik Grid; then 5c (trashes: Kimberlite Field, Yakov Erikovich Avdakov, World Tree) and 5d (Asmund Pudlat, Concerto, Reprise) |
+| 4 | Parhelion (`ph`) | 63 | 39 | 24 | **Stage 5c next** — trashes: Kimberlite Field, Yakov Erikovich Avdakov, World Tree; then 5d (Asmund Pudlat, Concerto, Reprise) |
 | 5 | Midnight Sun (`ms`) + Booster (`msbp`) | 65 + 7 | 0 | 65 + 7 | not started |
 | 6 | Uprising (`ur`) + Booster (`urbp`) | 65 + 7 | 0 | 65 + 7 | not started |
 | 7 | Downfall (`df`) | 65 | 0 | 65 | not started |
@@ -339,6 +339,7 @@ PR that made this list (29 September 2026).
 - **Blood in the Water** (Midnight Sun): prints its advancement requirement as X, which NetrunnerDB records as none; the face draws no circle for it until the stage that builds a variable requirement (`card_face`'s layout test names the card).
 - **Hostile Architecture** (PH 2b): a *rezzed* copy trashed by the Runner's card text is not heard — `GameEvent::CardTrashed` does not say whether the card was rezzed, and adding that to its 42 sites is more than one card wants. Charm Offensive can reach it; no game has.
 - **Hafrún** (PH Stage 8): two ice types, which `CardType::Ice(IceType)` cannot say.
+- **Nanisivik Grid** (PH 5b): a subroutine it resolves reads "this server" as unresolved, where CR 4.6.6i's example makes it Archives; no subroutine in the pool says "this server".
 - **Docklands Pass, Rotary**: "whenever you breach HQ or R&D" is a successful run on either; a breach without a run (Cataloguer, RWR 6c) does not fire them.
 - **Manuel Lattes de Moura**: the extra access is heard at the run's success, as every "when you breach" in the pool is, so a run Flagship keeps from being declared successful gets none.
 - **Kessleroid**: "cannot trash" is unenforced.
@@ -670,7 +671,7 @@ change deck-building rules (`DeckRule`, Stage 5a).
    v2A-JRJ, Abaasy. Stage 4 is complete.
 5. **Zones, selection and deck building**, split by mechanic when it was
    taken (1 October 2026): **5a**, deck building (built): Nova Initiumia:
-   Catalyst & Impetus, Ampère: Cybernetics For Anyone; **5b**, Archives:
+   Catalyst & Impetus, Ampère: Cybernetics For Anyone; **5b**, Archives (built):
    Hybrid Release, Nanisivik Grid; **5c**, trashes: Kimberlite Field, Yakov
    Erikovich Avdakov, World Tree; **5d**, the stack and HQ: Asmund Pudlat,
    Concerto, Reprise.
@@ -705,6 +706,7 @@ Grid, Tsakhia, World Tree.
 - **Stage 4a** — Runner standing words: allotted clicks, the other player's hand size, and "install only if" (`feat/ph-stage-4a-runner-standing-words`, 1 October 2026).
 - **Stage 4b** — breaker words: a cost a credit less per card, a break after a break, and a first time counted on the breaker (`feat/ph-stage-4b-breaker-words`, 1 October 2026).
 - **Stage 5a** — the deckbuilding rules an identity prints (`feat/ph-stage-5a-deck-building-identities`, 1 October 2026).
+- **Stage 5b** — Archives: an install of the copy chosen, and a subroutine of ice in Archives (`feat/ph-stage-5b-archives`, 1 October 2026).
 
 ### 5. Midnight Sun and its Booster Pack — 65 cards (C 22 / V 26 / M 17)
 

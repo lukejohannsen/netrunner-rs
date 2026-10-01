@@ -1,0 +1,45 @@
+{
+  "id": "hybrid_release",
+  "title": "Hybrid Release",
+  "side": "Corp",
+  "card_type": "Agenda",
+  "cost": 0,
+  "advancement_requirement": 2,
+  "agenda_points": 1,
+  "triggers": [
+    {
+      "trigger": "OnAgendaScored",
+      "subject": "This",
+      "effects": [
+        {
+          "PromptChooseCards": {
+            "side": "Corp",
+            "source": "OwnArchives",
+            "filter": "Facedown",
+            "min": 0,
+            "max": 1,
+            "reveal": false,
+            "shuffle_after": false,
+            "then": {
+              "EffectIf": {
+                "condition": {
+                  "AmountAtLeast": [
+                    "CardsSelected",
+                    1
+                  ]
+                },
+                "effect": {
+                  "PromptInstallCorpCard": {
+                    "origin_zone": "OwnArchives"
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "built_from": 33105,
+  "is_playable": true
+}

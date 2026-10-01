@@ -133,6 +133,15 @@ pub struct ResolutionContext<'a> {
     /// delay. On the context because the replacement is resolved in one
     /// call and read nowhere else.
     pub replacing_breach: bool,
+    /// Whether the copy a selection out of the Corp's Archives chose was
+    /// facedown, for the `then` that acts on it — Hybrid Release's
+    /// "install 1 **facedown** card from Archives" chooses a facedown copy,
+    /// and the install took the first copy of that card, faceup or not.
+    /// Two copies of one card with the same face are the same card to both
+    /// players, so the face is all of "which copy". `None` outside such a
+    /// `then`. On the context because the install it picks for parks its
+    /// choice of server with the copy's position already found.
+    pub selected_facedown: Option<bool>,
 }
 
 /// What `ResolutionContext::last_known` remembers of an install.
@@ -1815,9 +1824,13 @@ pub fn evaluate_effect(
             // just selected" and "the first copy" are the same card.
             let position = match origin_zone {
                 crate::dsl::CardZoneRef::OwnHq => state.corp.hq.iter().position(|c| c == &card_id),
-                crate::dsl::CardZoneRef::OwnArchives => {
-                    state.corp.archives.iter().position(|a| a.card == card_id)
-                }
+                // The copy the selection chose, by its face; any copy
+                // when nothing chose one.
+                crate::dsl::CardZoneRef::OwnArchives => state
+                    .corp
+                    .archives
+                    .iter()
+                    .position(|a| a.card == card_id && ctx.selected_facedown.is_none_or(|facedown| a.facedown == facedown)),
                 // Poétrï Luxury Brands installs one of the top 3 cards of
                 // R&D — the selection narrowed the offer to the top three
                 // (`CardFilter::TopOfZone`), but the card is taken from
@@ -1972,6 +1985,9 @@ pub fn evaluate_effect(
             let card_id = acting_card.ok_or(RulesError::UnresolvedCardTarget)?;
             let Some(card_def) = registry.get(card_id) else { return Ok(Vec::new()) };
             let options: Vec<Effect> = card_def.subroutines.iter().map(|sub| sub.effect.clone()).collect();
+            // Each option is the ice's own printed subroutine (the Linked
+            // Clause Rule), not a rendering of its DSL.
+            let texts: Vec<String> = card_def.subroutines.iter().map(|sub| sub.text.clone()).collect();
             // A rezzed piece of ice with no subroutines resolves nothing
             // rather than parking an empty choice — the same leniency an
             // empty `PromptChooseCards` offer takes.
@@ -1984,7 +2000,7 @@ pub fn evaluate_effect(
                 let only = only.clone();
                 return evaluate_effect(state, &only, ctx, registry);
             }
-            evaluate_effect(state, &Effect::PresentChoice { chooser: Side::Corp, options, texts: Vec::new() }, ctx, registry)
+            evaluate_effect(state, &Effect::PresentChoice { chooser: Side::Corp, options, texts }, ctx, registry)
         }
 
         Effect::AllottedClicksNextTurn(side, delta) => {

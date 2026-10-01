@@ -5135,3 +5135,58 @@ Archives in 5b, trashes in 5c, the stack and HQ in 5d.
   All four `coverage_identical.py` shapes are identical: an identity is
   not sampled, the Sweep decks are not in `matchups()`, and no matchup
   deck's identity prints a copy rule.
+
+#### Stage 5b — Archives: an install of the copy chosen, and a subroutine of ice in Archives (1 October 2026)
+
+`feat/ph-stage-5b-archives`: Hybrid Release, Nanisivik Grid. **No new
+`Effect`**, and no new word: both cards compose. Parhelion 39 of 63;
+`PH_UNIMPLEMENTED` 26 → 24.
+
+- **Hybrid Release**'s "When you score this agenda, you may install 1
+  facedown card from Archives" is a selection of `Facedown` cards in
+  Archives (none: no question) whose `then` is `PromptInstallCorpCard`
+  from Archives, behind Janaína's `CardsSelected` guard. **The install
+  takes the copy the selection chose.** It took the first copy of the
+  card, faceup or not, so with a faceup Ice Wall beside a facedown one
+  the faceup one left Archives — a card Hybrid Release cannot install.
+  The selection now tells its `then` which face the chosen copy had
+  (`ResolutionContext::selected_facedown`), and the install looks for
+  that face; two copies with one face are one card to both players.
+  Mycoweb and Reanimation Protocol take the copy their Corp chose too.
+- **Nanisivik Grid**'s "Whenever the Runner approaches this server, you
+  may turn 1 facedown piece of ice in Archives faceup. If you do, resolve
+  1 subroutine on that ice" is an `OnApproachServer` selection of
+  `All([Ice, Facedown])` in Archives whose `then` is
+  `TurnFaceupInArchives` (Cohort Guidance Program's) and
+  `ResolveSubroutineOfSelectedIce` (Mycoweb's), resolved as the ice in
+  Archives. **A subroutine resolved off an encounter is offered as the
+  ice prints it**: the choice between two carried no text, so each option
+  was the engine's rendering of its DSL; it is the subroutine's own text
+  now (the Linked Clause Rule), for Mycoweb's too.
+- **Client.** Nothing new in the view: the selection, the server choice
+  and the subroutine choice are prompts both clients draw, and the last
+  is now labelled with the ice's words. The Archives card turned faceup is
+  `ArchivesTurnedFaceup`, as a breach's is.
+- **Decks.** Honor Roll took two Hybrid Release for its two
+  Superconducting Hub, a point each, and two Nanisivik Grid for its two
+  Mitra Aman; a Jinteki deck's discards and trashes fill Archives with
+  facedown cards for both. It stays Eternal-only.
+- **Known limit.** A subroutine Nanisivik Grid resolves reads "this
+  server" as unresolved, where CR 4.6.6i's example says it is Archives; no
+  subroutine in the pool says "this server".
+- **DSL ratio (`pool_status.py`):** unchanged at 16 of 91 `Effect`
+  variants single-use, 1 unused, over 419 card files.
+- **Measured** against Stage 5a's tip. Both sweeps green at 256 seeds,
+  the card gate included.
+  - A ref with the engine change and no cards is identical in all four
+    shapes: no game in the pass met a faceup and a facedown copy of one
+    card in Archives at a Mycoweb or a Reanimation Protocol.
+  - With the cards, both random seatings are identical; the planner ones
+    move by `determinize` (view and index alike, of 192): Corp flatlines
+    28 → 27, Runner agenda wins 101 → 102.
+- **Real play**, seed 2, Honor Roll against Borrowed Time (random 96 games
+  / planner 48): Hybrid Release scored 10 / 39 times, its install offered
+  9 / 21; Nanisivik Grid rezzed 72 / 28 times and heard 52 / 33
+  approaches, with facedown ice in Archives to offer on 16 / 0 of them.
+- **Bot debts:** the planner Corp never had facedown ice in Archives when
+  the Runner approached a Nanisivik Grid.
