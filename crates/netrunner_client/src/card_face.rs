@@ -15,10 +15,11 @@
 //! 0; the face shows a cost on every card that prints one (everything
 //! but agendas and identities), 0 included, because the card does.
 
-use netrunner_core::card::{Faction, PrintingId};
+use netrunner_core::card::Faction;
 use netrunner_core::dsl::{CardDefinition, CardType};
 use netrunner_core::rules::Side;
 
+use crate::art::{ArtChoices, Picture};
 use crate::card_text::{self, Segment};
 
 /// One printed number, with what it is.
@@ -118,12 +119,16 @@ pub struct Face {
     /// Whether the engine can play it (`CardDefinition::is_playable`); a
     /// browser marks the ones it cannot.
     pub implemented: bool,
-    /// The printing it is drawn as (`art::printing_for`).
-    pub code: Option<PrintingId>,
+    /// The picture it is drawn with (`art::picture_for`), which a client
+    /// that draws pictures puts in place of this layout once it has it.
+    pub picture: Option<Picture>,
 }
 
 impl Face {
-    pub fn of(card: &CardDefinition) -> Face {
+    /// `card` as printed, drawn as the printing `art` chose for it or its
+    /// newest (`ArtChoices::NONE`, which a client drawing no picture
+    /// passes): the flavour and the picture are that printing's.
+    pub fn of(card: &CardDefinition, art: &ArtChoices) -> Face {
         let is = |kind: CardType| card.card_type == kind;
         let ice = matches!(card.card_type, CardType::Ice(_));
         let cost = if is(CardType::Identity) {
@@ -163,9 +168,9 @@ impl Face {
             bottom_right,
             influence: if is(CardType::Identity) { None } else { card.influence_cost },
             body: card.printed_text.as_deref().map(card_text::segments).unwrap_or_default(),
-            flavor: crate::art::printing_record(card).and_then(|printing| printing.flavor.clone()),
+            flavor: crate::art::printing_record(card, art).and_then(|printing| printing.flavor.clone()),
             implemented: card.is_playable,
-            code: crate::art::printing_for(card),
+            picture: crate::art::picture_for(card, art),
         }
     }
 
@@ -240,7 +245,7 @@ mod tests {
         ice.cost = 4;
         ice.strength = Some(3);
         ice.influence_cost = Some(2);
-        let face = Face::of(&ice);
+        let face = Face::of(&ice, &ArtChoices::NONE);
         assert_eq!(face.cost, Some(Slot::Cost(4)));
         assert_eq!(face.bottom_left, Some(Slot::Strength(3)));
         assert!(face.bottom_right.is_empty());
@@ -252,7 +257,7 @@ mod tests {
         let mut agenda = card(CardType::Agenda, Side::Corp);
         agenda.advancement_requirement = Some(3);
         agenda.agenda_points = Some(2);
-        let face = Face::of(&agenda);
+        let face = Face::of(&agenda, &ArtChoices::NONE);
         assert_eq!(face.cost, Some(Slot::Advancement(3)));
         assert_eq!(face.bottom_left, Some(Slot::AgendaPoints(2)));
     }
@@ -263,7 +268,7 @@ mod tests {
         program.cost = 3;
         program.strength = Some(1);
         program.memory_cost = Some(1);
-        let face = Face::of(&program);
+        let face = Face::of(&program, &ArtChoices::NONE);
         assert_eq!(face.cost, Some(Slot::Cost(3)));
         assert_eq!(face.bottom_left, Some(Slot::Strength(1)));
         assert_eq!(face.bottom_right, vec![Slot::Memory(1)]);
@@ -273,7 +278,7 @@ mod tests {
     fn an_asset_prints_its_trash_cost_bottom_right() {
         let mut asset = card(CardType::Asset, Side::Corp);
         asset.trash_cost = Some(2);
-        let face = Face::of(&asset);
+        let face = Face::of(&asset, &ArtChoices::NONE);
         assert_eq!(face.cost, Some(Slot::Cost(0)), "a printed 0 is still printed");
         assert_eq!(face.bottom_left, None);
         assert_eq!(face.bottom_right, vec![Slot::TrashCost(2)]);
@@ -286,20 +291,20 @@ mod tests {
         id.influence_limit = Some(15);
         id.base_link = Some(1);
         id.influence_cost = Some(0);
-        let face = Face::of(&id);
+        let face = Face::of(&id, &ArtChoices::NONE);
         assert_eq!(face.cost, None);
         assert_eq!(face.bottom_left, Some(Slot::DeckSize(45)));
         assert_eq!(face.bottom_right, vec![Slot::InfluenceLimit(Some(15)), Slot::Link(1)]);
         assert_eq!(face.influence, None);
         let mut corp = card(CardType::Identity, Side::Corp);
         corp.unlimited_influence = true;
-        assert_eq!(Face::of(&corp).bottom_right, vec![Slot::InfluenceLimit(None)]);
+        assert_eq!(Face::of(&corp, &ArtChoices::NONE).bottom_right, vec![Slot::InfluenceLimit(None)]);
         assert_eq!(Slot::InfluenceLimit(None).value(), "∞");
     }
 
     #[test]
     fn a_card_with_no_numbers_and_no_text_has_empty_slots() {
-        let face = Face::of(&card(CardType::Event, Side::Runner));
+        let face = Face::of(&card(CardType::Event, Side::Runner), &ArtChoices::NONE);
         assert_eq!(face.bottom_left, None);
         assert!(face.bottom_right.is_empty());
         assert!(face.body.is_empty());
@@ -315,24 +320,24 @@ mod tests {
         ice.cost = 4;
         ice.strength = Some(3);
         ice.influence_cost = Some(2);
-        assert_eq!(Face::of(&ice).numbers_line(), "Cost 4 · Strength 3 · Influence 2");
+        assert_eq!(Face::of(&ice, &ArtChoices::NONE).numbers_line(), "Cost 4 · Strength 3 · Influence 2");
 
         let mut agenda = card(CardType::Agenda, Side::Corp);
         agenda.advancement_requirement = Some(3);
         agenda.agenda_points = Some(1);
-        assert_eq!(Face::of(&agenda).numbers_line(), "Advancement 3 · 1 agenda point", "no Cost 0 on an agenda");
+        assert_eq!(Face::of(&agenda, &ArtChoices::NONE).numbers_line(), "Advancement 3 · 1 agenda point", "no Cost 0 on an agenda");
 
         let mut program = card(CardType::Program, Side::Runner);
         program.cost = 3;
         program.memory_cost = Some(1);
         program.unique = true;
-        assert_eq!(Face::of(&program).numbers_line(), "Cost 3 · 1 MU · Unique");
+        assert_eq!(Face::of(&program, &ArtChoices::NONE).numbers_line(), "Cost 3 · 1 MU · Unique");
 
         let mut id = card(CardType::Identity, Side::Runner);
         id.min_deck_size = Some(45);
         id.influence_limit = Some(15);
         id.base_link = Some(1);
-        assert_eq!(Face::of(&id).numbers_line(), "Deck 45 · Influence limit 15 · Link 1", "an identity prints no cost");
+        assert_eq!(Face::of(&id, &ArtChoices::NONE).numbers_line(), "Deck 45 · Influence limit 15 · Link 1", "an identity prints no cost");
     }
 
     /// The printed card as a text client lays it down: type line,
@@ -343,7 +348,7 @@ mod tests {
         asset.type_line = Some("Asset: Advertisement".to_string());
         asset.trash_cost = Some(2);
         asset.printed_text = Some("Gain 3[credit].\nTrash this asset.".to_string());
-        let mut face = Face::of(&asset);
+        let mut face = Face::of(&asset, &ArtChoices::NONE);
         face.flavor = Some("Buy now.".to_string());
         assert_eq!(
             face.lines(false),
@@ -351,7 +356,7 @@ mod tests {
         );
         assert_eq!(face.lines(true)[3], format!("Gain 3{}.", card_text::Symbol::Credit.glyph()), "the glyph replaces the stand-in");
 
-        let bare = Face::of(&card(CardType::Event, Side::Runner));
+        let bare = Face::of(&card(CardType::Event, Side::Runner), &ArtChoices::NONE);
         assert_eq!(bare.lines(false)[3], "(no printed text on record)");
         assert!(bare.lines(false).iter().all(|line| !line.contains("Sequence")), "the DSL is the inspector's business");
     }
@@ -362,7 +367,7 @@ mod tests {
     fn every_catalog_card_lays_out() {
         let registry = crate::decks::sample_deck_registry();
         for card in crate::cards::catalog(&registry) {
-            let face = Face::of(&card);
+            let face = Face::of(&card, &ArtChoices::NONE);
             match card.card_type {
                 CardType::Identity => assert_eq!(face.cost, None, "{}", card.title),
                 // Blood in the Water (Midnight Sun) prints its advancement

@@ -1126,7 +1126,7 @@ fn draw_frame(frame: &mut Frame, ui: &impl RenderableView, game_over: Option<(Si
 /// chosen between, and the prompt's title already names it.
 fn card_in_question(view: &ClientView, ui: &impl RenderableView) -> Option<(String, Face)> {
     let registry = ui.registry();
-    let face = |id: &CardId| registry.get(id).map(Face::of);
+    let face = |id: &CardId| registry.get(id).map(|card| Face::of(card, &netrunner_client::art::ArtChoices::NONE));
     if let Some(selection) = Selection::of(view, registry) {
         let Some(PlayerAction::ToggleCardSelection { position }) = ui.selected_action() else { return None };
         let candidate = selection.candidate(position)?;
@@ -2098,7 +2098,7 @@ mod tests {
                     // the modal draws printed symbols as their terminal
                     // stand-ins (`¢`, `»`), so a card whose text holds a
                     // `[credit]` token never matches the JSON verbatim.
-                    let rendered = netrunner_client::card_face::Face::of(card).body_text(false);
+                    let rendered = netrunner_client::card_face::Face::of(card, &netrunner_client::art::ArtChoices::NONE).body_text(false);
                     assert!(card_modal(id, &registry).body.contains(rendered.lines().next().unwrap()), "{label}");
                 }
             }

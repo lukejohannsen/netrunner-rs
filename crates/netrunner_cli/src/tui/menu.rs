@@ -309,7 +309,7 @@ enum Screen {
     Decks(Box<DeckScreen>),
     Online(Box<OnlineScreen>),
     Record { lines: Vec<String>, scroll: u16 },
-    Settings(SettingsForm),
+    Settings(Box<SettingsForm>),
 }
 
 pub struct Menu {
@@ -407,7 +407,7 @@ impl Menu {
                 if let Some(saved) = self.settings_path.as_ref().and_then(|path| Settings::load(path).ok()) {
                     self.settings = saved;
                 }
-                self.screen = Screen::Settings(SettingsForm::new(self.settings.clone(), record::player_name(&self.base)));
+                self.screen = Screen::Settings(Box::new(SettingsForm::new(self.settings.clone(), record::player_name(&self.base))));
             }
             Entry::Quit => return MenuStep::Quit,
         }

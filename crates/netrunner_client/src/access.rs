@@ -106,7 +106,9 @@ impl Access {
         Some(Access {
             server: run.server,
             card,
-            face: Face::of(definition),
+            // The terminal is the one client that draws an access from this
+            // face, and it draws no picture: the newest printing's flavour.
+            face: Face::of(definition, &crate::art::ArtChoices::NONE),
             stage,
             trash_cost,
             trash_also,

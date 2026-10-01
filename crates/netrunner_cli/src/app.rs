@@ -612,7 +612,7 @@ pub fn card_modal(id: &CardId, registry: &CardRegistry) -> Modal {
     // `[credit]` tokens this printed before: a terminal has the
     // stand-ins for exactly this, and the tokens were the raw JSON
     // showing through.
-    let mut lines = Face::of(card).lines(false);
+    let mut lines = Face::of(card, &netrunner_client::art::ArtChoices::NONE).lines(false);
 
     // What the engine will actually do, beside the words it was written
     // from: each trigger, ability and subroutine as the engine reads it

@@ -23,6 +23,12 @@
 //! swapped for an `ImageNode` in place, so a download finishing while
 //! the browser is open fills the grid without leaving the screen.
 //!
+//! **Keyed by the picture, never the card** (`netrunner_client::art::
+//! Picture`): a card whose art the person changes asks for a picture this
+//! cache has never seen, so the old one is never drawn in its place, and
+//! a person's own file (the custom-art feature to come) is one more kind
+//! of key with a path, loaded like a scan.
+//!
 //! Every system here runs only where `Assets<Image>` exists: the
 //! headless tests build the client without an asset plugin, and a face
 //! there stays text.
@@ -38,8 +44,9 @@ use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 use bevy::tasks::{AsyncComputeTaskPool, Task};
 
 use netrunner_card_sync::ImageStatus;
+use netrunner_client::art::Picture;
+use netrunner_client::card_face::Face;
 use netrunner_client::settings::CardBacks;
-use netrunner_core::card::PrintingId;
 use netrunner_core::rules::Side;
 
 use crate::assets;
@@ -64,14 +71,14 @@ const IN_FLIGHT: usize = 4;
 
 /// A text face that would rather be its picture. Removed when the
 /// picture is put in its place.
-#[derive(Component, Debug, Clone, Copy)]
+#[derive(Component, Debug, Clone)]
 pub struct WantsImage {
-    pub code: PrintingId,
+    pub picture: Picture,
     pub size: FaceSize,
 }
 
-/// A front at one width: the card and its [`rung`].
-type FaceKey = (PrintingId, u32);
+/// A front at one width: the picture and its [`rung`].
+type FaceKey = (Picture, u32);
 
 #[derive(Resource)]
 pub struct CardImages {
@@ -110,9 +117,16 @@ impl Default for CardImages {
 }
 
 impl CardImages {
-    /// The front for `code` decoded for a face of `size`, if it has been.
-    pub fn face(&self, code: PrintingId, size: FaceSize) -> Option<Handle<Image>> {
-        self.faces.get(&self.key(code, size)).cloned()
+    /// The front for `picture` decoded for a face of `size`, if it has
+    /// been.
+    pub fn face(&self, picture: &Picture, size: FaceSize) -> Option<Handle<Image>> {
+        self.faces.get(&self.key(picture, size)).cloned()
+    }
+
+    /// The front `face` is drawn with at `size`, if it has been decoded —
+    /// what nearly every caller of [`Self::face`] means.
+    pub fn of(&self, face: &Face, size: FaceSize) -> Option<Handle<Image>> {
+        face.picture.as_ref().and_then(|picture| self.face(picture, size))
     }
 
     /// The sharpest copy of `code` already decoded, at whatever width it
@@ -121,12 +135,12 @@ impl CardImages {
     /// board already drew (a hand card, a card in Archives), so drawing
     /// that copy stretched for the moment beats flashing the text face
     /// first. `None` when no copy of the card has been decoded at all.
-    pub fn nearest_face(&self, code: PrintingId) -> Option<Handle<Image>> {
-        self.faces.iter().filter(|((c, _), _)| *c == code).max_by_key(|((_, width), _)| *width).map(|(_, handle)| handle.clone())
+    pub fn nearest_face(&self, picture: &Picture) -> Option<Handle<Image>> {
+        self.faces.iter().filter(|((p, _), _)| p == picture).max_by_key(|((_, width), _)| *width).map(|(_, handle)| handle.clone())
     }
 
-    fn key(&self, code: PrintingId, size: FaceSize) -> FaceKey {
-        (code, rung(size.width() * self.scale))
+    fn key(&self, picture: &Picture, size: FaceSize) -> FaceKey {
+        (picture.clone(), rung(size.width() * self.scale))
     }
 
     pub fn back(&self, side: Side) -> Option<Handle<Image>> {
@@ -135,9 +149,9 @@ impl CardImages {
 
     /// Queues the file at `path` for a face of `size`, unless that width
     /// is known, under way or already queued.
-    pub fn request(&mut self, code: PrintingId, size: FaceSize, path: PathBuf) {
-        let key = self.key(code, size);
-        if self.faces.contains_key(&key) || self.pending.contains_key(&key) || !self.queued.insert(key) {
+    pub fn request(&mut self, picture: &Picture, size: FaceSize, path: PathBuf) {
+        let key = self.key(picture, size);
+        if self.faces.contains_key(&key) || self.pending.contains_key(&key) || !self.queued.insert(key.clone()) {
             return;
         }
         if size == FaceSize::Large {
@@ -154,9 +168,33 @@ impl CardImages {
             && let Some((key, path)) = self.queue.pop_front()
         {
             self.queued.remove(&key);
-            let task = AsyncComputeTaskPool::get().spawn(async move { load_front(&path, key) });
+            let loading = key.clone();
+            let task = AsyncComputeTaskPool::get().spawn(async move { load_front(&path, &loading) });
             self.pending.insert(key, task);
         }
+    }
+}
+
+/// Where `picture`'s file is, if it is on disk to be decoded.
+pub fn cached_path(core: &ClientCore, picture: &Picture) -> Option<PathBuf> {
+    match picture {
+        Picture::Printing(code) => match core.images.status(*code) {
+            ImageStatus::Cached(path) => Some(path),
+            ImageStatus::Missing | ImageStatus::Failed(_) => None,
+        },
+    }
+}
+
+/// The start of a kept copy's name in `sized/`: a printing's five-digit
+/// code, as it always was. Another kind of picture starts with a letter —
+/// a person's own file will be `f` and a hash of its path — so it can
+/// never be read as a printing's copy. Renaming the printings' copies to
+/// match was the first cut, and would have left every copy already kept
+/// (872 MB on the machine this was written on) to be made again beside
+/// the old ones.
+fn copy_stem(picture: &Picture) -> String {
+    match picture {
+        Picture::Printing(code) => format!("{:05}", code.0),
     }
 }
 
@@ -204,12 +242,13 @@ fn eight_bit_srgb(image: Image) -> Image {
 /// in `sized/` beside the scans, in the cache, where anything can be
 /// deleted and made again. It is named for the scan's format as well as
 /// the width, so a `.webp` that replaces a `.jpg` is never shown the
-/// smaller scan's copy. A copy that cannot be written costs only the
-/// decode next time.
-fn load_front(path: &Path, (code, width): FaceKey) -> Option<Image> {
+/// smaller scan's copy, and for the kind of picture (`copy_stem`). A copy
+/// that cannot be written costs only the decode next time.
+fn load_front(path: &Path, (picture, width): &FaceKey) -> Option<Image> {
+    let width = *width;
     let extension = path.extension().and_then(|e| e.to_str()).unwrap_or("jpg");
     let rung_name = if width == WHOLE_SCAN { "whole".to_owned() } else { width.to_string() };
-    let copy = path.parent().map(|dir| dir.join("sized").join(format!("{:05}-{extension}-{rung_name}.rgba", code.0)));
+    let copy = path.parent().map(|dir| dir.join("sized").join(format!("{}-{extension}-{rung_name}.rgba", copy_stem(picture))));
     let modified = |path: &Path| std::fs::metadata(path).and_then(|meta| meta.modified()).ok();
     if let Some(copy) = &copy
         && modified(copy) >= modified(path)
@@ -394,10 +433,10 @@ fn request_wanted(
     all: Query<&WantsImage>,
 ) {
     let recheck = std::mem::take(&mut images.recheck);
-    let wanted: Vec<WantsImage> = if recheck { all.iter().copied().collect() } else { added.iter().copied().collect() };
+    let wanted: Vec<WantsImage> = if recheck { all.iter().cloned().collect() } else { added.iter().cloned().collect() };
     for wants in wanted {
-        if let ImageStatus::Cached(path) = core.images.status(wants.code) {
-            images.request(wants.code, wants.size, path);
+        if let Some(path) = cached_path(&core, &wants.picture) {
+            images.request(&wants.picture, wants.size, path);
         }
     }
 }
@@ -411,7 +450,7 @@ fn poll_decoded(
     wanted: Query<(Entity, &WantsImage, Option<&Node>)>,
 ) {
     let finished: Vec<(FaceKey, Option<Image>)> =
-        images.pending.iter_mut().filter_map(|(key, task)| check_ready(task).map(|image| (*key, image))).collect();
+        images.pending.iter_mut().filter_map(|(key, task)| check_ready(task).map(|image| (key.clone(), image))).collect();
     for (key, image) in finished {
         images.pending.remove(&key);
         if let Some(image) = image {
@@ -421,7 +460,7 @@ fn poll_decoded(
     }
     images.start_queued();
     for (entity, wants, old) in &wanted {
-        if let Some(handle) = images.face(wants.code, wants.size) {
+        if let Some(handle) = images.face(&wants.picture, wants.size) {
             let node = match old {
                 Some(old) => in_place_of(old, picture_node(wants.size)),
                 None => picture_node(wants.size),
@@ -461,6 +500,7 @@ fn in_place_of(old: &Node, new: Node) -> Node {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use netrunner_core::card::PrintingId;
 
     #[test]
     fn a_picture_keeps_the_placement_of_the_face_it_replaces() {
@@ -496,8 +536,9 @@ mod tests {
             assert!(pair[1] as f32 <= pair[0] as f32 * 1.26, "{pair:?}");
         }
         let images = CardImages { scale: 2.0, ..CardImages::default() };
-        assert_eq!(images.key(PrintingId(30001), FaceSize::Thumb), (PrintingId(30001), 344));
-        assert_eq!(images.key(PrintingId(30001), FaceSize::Large), (PrintingId(30001), WHOLE_SCAN));
+        let picture = Picture::Printing(PrintingId(30001));
+        assert_eq!(images.key(&picture, FaceSize::Thumb), (picture.clone(), 344));
+        assert_eq!(images.key(&picture, FaceSize::Large), (picture.clone(), WHOLE_SCAN));
     }
 
     /// A scan wider than its rung is resampled to it, keeping the card's
@@ -522,12 +563,13 @@ mod tests {
         let scan = dir.join("30001.png");
         let pixels: Vec<u8> = (0..40 * 56).flat_map(|i| [(i % 251) as u8, 40, 200, 255]).collect();
         image::RgbaImage::from_raw(40, 56, pixels).unwrap().save(&scan).unwrap();
-        let first = load_front(&scan, (PrintingId(30001), 20)).unwrap();
+        let key = (Picture::Printing(PrintingId(30001)), 20);
+        let first = load_front(&scan, &key).unwrap();
         assert_eq!(first.texture_descriptor.size, Extent3d { width: 20, height: 28, depth_or_array_layers: 1 });
         let copy = dir.join("sized").join("30001-png-20.rgba");
         assert!(copy.is_file());
         std::fs::write(&copy, to_copy(&Image::new(Extent3d { width: 1, height: 1, depth_or_array_layers: 1 }, TextureDimension::D2, vec![9, 9, 9, 9], TextureFormat::Rgba8UnormSrgb, RenderAssetUsages::default())).unwrap()).unwrap();
-        let read_back = load_front(&scan, (PrintingId(30001), 20)).unwrap();
+        let read_back = load_front(&scan, &key).unwrap();
         assert_eq!(read_back.data.as_deref(), Some(&[9, 9, 9, 9][..]), "the kept copy is what is read");
         assert!(from_copy(b"NRFACE1\0\x02\0\0\0\x02\0\0\0short").is_none());
         let _ = std::fs::remove_dir_all(&dir);

@@ -8,6 +8,7 @@
 //! in a query of that marker — so no screen needs its own hover system
 //! and no button needs a closure.
 
+pub mod art;
 pub mod card_face;
 pub mod dropdown;
 pub mod reader;
@@ -39,7 +40,7 @@ impl Plugin for WidgetsPlugin {
             // After every screen has spawned its labels for the frame and
             // before the UI measures them, so a token is never drawn.
             .add_systems(PostUpdate, symbols::draw.before(bevy::ui::UiSystems::Prepare))
-            .add_plugins(reader::plugin);
+            .add_plugins((reader::plugin, art::plugin));
     }
 }
 

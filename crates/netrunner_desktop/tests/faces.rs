@@ -21,7 +21,7 @@ fn every_catalog_card_draws_as_a_text_face_that_says_its_text() {
     app.add_plugins(MinimalPlugins);
     let mut faces = Vec::new();
     for card in &catalog {
-        let face = Face::of(card);
+        let face = Face::of(card, &netrunner_client::art::ArtChoices::NONE);
         let root = app.world_mut().spawn(Node::default()).id();
         let mut entity = None;
         app.world_mut().commands().entity(root).with_children(|parent| {

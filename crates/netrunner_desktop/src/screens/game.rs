@@ -419,12 +419,14 @@ pub struct AvatarBar {
 }
 
 /// The identities' art, cropped for the avatars: the scan and the square
-/// of it the disc shows, by identity. Kept across redraws, because the
+/// of it the disc shows, by the picture the identity is drawn with — so a
+/// change of art crops the new one rather than keeping the old crop under
+/// the card's name. Kept across redraws, because the
 /// crop needs the decoded picture's size and the board is redrawn
 /// without the image assets in hand; the board draws from it the frame
 /// it is filled, so a redraw never shows the stand-in for a frame first.
 #[derive(Resource, Default)]
-pub struct AvatarCrops(std::collections::HashMap<CardId, (Handle<Image>, Rect)>);
+pub struct AvatarCrops(std::collections::HashMap<netrunner_client::art::Picture, (Handle<Image>, Rect)>);
 
 /// The width the avatar's scan is decoded at: its crop is
 /// `layout::AVATAR_ART`'s side of it, enough for the largest disc at a
@@ -629,16 +631,16 @@ fn crop_avatars(
     let (Some(model), Some(assets)) = (model, assets) else { return };
     let Some(view) = &model.0.view else { return };
     for id in [&view.corp.identity, &view.runner.identity].into_iter().flatten() {
-        if crops.0.contains_key(id) {
+        let Some(picture) = core.registry.get(id).and_then(|card| netrunner_client::art::picture_for(card, &core.settings.art)) else { continue };
+        if crops.0.contains_key(&picture) {
             continue;
         }
-        let Some(code) = core.registry.get(id).and_then(netrunner_client::art::printing_for) else { continue };
-        match images.face(code, AVATAR_SCAN) {
+        match images.face(&picture, AVATAR_SCAN) {
             Some(scan) => {
                 if let Some(image) = assets.get(&scan) {
                     let size = image.size_f32();
                     let [x0, y0, x1, y1] = layout::avatar_crop((size.x, size.y));
-                    crops.0.insert(id.clone(), (scan, Rect::new(x0, y0, x1, y1)));
+                    crops.0.insert(picture, (scan, Rect::new(x0, y0, x1, y1)));
                     dirty.board = true;
                 }
             }
@@ -646,8 +648,8 @@ fn crop_avatars(
             // store's status reads the disk, and a scan the person has not
             // downloaded is not going to appear between two frames.
             None if model.is_changed() => {
-                if let netrunner_card_sync::ImageStatus::Cached(path) = core.images.status(code) {
-                    images.request(code, AVATAR_SCAN, path);
+                if let Some(path) = crate::card_images::cached_path(&core, &picture) {
+                    images.request(&picture, AVATAR_SCAN, path);
                 }
             }
             None => {}
@@ -2398,7 +2400,8 @@ fn spawn_avatar_bar(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &Cli
             avatar.with_children(|disc_node| {
                 // The art sits inside the ring's inner edge.
                 let inner = (disc * 0.86).round();
-                match identity.as_ref().and_then(|id| crops.0.get(id)) {
+                let picture = identity.as_ref().and_then(|id| core.registry.get(id)).and_then(|card| netrunner_client::art::picture_for(card, &core.settings.art));
+                match picture.and_then(|picture| crops.0.get(&picture)) {
                     Some((scan, rect)) => {
                         disc_node.spawn((
                             ImageNode { image_mode: NodeImageMode::Stretch, rect: Some(*rect), ..ImageNode::new(scan.clone()) },
@@ -3108,10 +3111,11 @@ fn spawn_rig(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore
                         window.spawn(card_row()).with_children(|cards_row| {
                             for (i, card) in cards.iter().enumerate() {
                                 let Some(def) = core.registry.get(&card.card) else { continue };
-                                let image = netrunner_client::art::printing_for(def).and_then(|code| images.face(code, size));
+                                let drawn = Face::of(def, &core.settings.art);
+                                let image = images.of(&drawn, size);
                                 // A drop place too: a resource carried onto a host
                                 // that takes it (Hackerspace) installs there.
-                                let entity = spawn_face(cards_row, theme, &Face::of(def), size, image, (Button, Click::Target(Target::Install(card.install_id)), DropPlace::one(Target::Install(card.install_id))));
+                                let entity = spawn_face(cards_row, theme, &drawn, size, image, (Button, Click::Target(Target::Install(card.install_id)), DropPlace::one(Target::Install(card.install_id))));
                                 if i > 0 && pull < 0.0 {
                                     cards_row.commands().entity(entity).entry::<Node>().and_modify(move |mut node| node.margin.left = px(pull));
                                 }
@@ -3213,8 +3217,9 @@ fn spawn_hand(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCor
                 let mut faces = Vec::new();
                 for (slot, id) in hand.iter().enumerate() {
                     let Some(def) = core.registry.get(id) else { continue };
-                    let image = netrunner_client::art::printing_for(def).and_then(|code| images.face(code, size));
-                    let entity = spawn_face(row, theme, &Face::of(def), size, image, (Button, Click::Target(Target::HandCard(id.clone()))));
+                    let drawn = Face::of(def, &core.settings.art);
+                    let image = images.of(&drawn, size);
+                    let entity = spawn_face(row, theme, &drawn, size, image, (Button, Click::Target(Target::HandCard(id.clone()))));
                     if own {
                         // Its place in the row, so a drag knows which card
                         // it picked up and where the others sit.
@@ -3929,18 +3934,19 @@ const REMEMBER_CAPTION: &str = "Answer this card's question the same way every t
 fn spawn_choice_card(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore, images: &CardImages, card: Option<&CardId>, concealed: Side, size: FaceSize, marker: impl Bundle) -> Entity {
     match card.and_then(|id| core.registry.get(id).map(|def| (id, def))) {
         Some((id, def)) => {
-            let exact = netrunner_client::art::printing_for(def).and_then(|code| images.face(code, size));
+            let drawn = Face::of(def, &core.settings.art);
+            let exact = images.of(&drawn, size);
             // Its own width not decoded yet: the sharpest copy the board
             // already has, stretched, and still asking for its own width,
             // which `poll_decoded` puts in place when it lands.
-            let stand_in = if exact.is_none() { netrunner_client::art::printing_for(def).and_then(|code| images.nearest_face(code).map(|handle| (code, handle))) } else { None };
+            let stand_in = if exact.is_none() { drawn.picture.clone().and_then(|picture| images.nearest_face(&picture).map(|handle| (picture, handle))) } else { None };
             let image = exact.or_else(|| stand_in.as_ref().map(|(_, handle)| handle.clone()));
-            let entity = spawn_face(parent, theme, &Face::of(def), size, image, marker);
+            let entity = spawn_face(parent, theme, &drawn, size, image, marker);
             // A face with no `Button` of its own still needs to know it is
             // hovered, for the secondary click.
             parent.commands().entity(entity).insert((ChoiceCard(id.clone()), Interaction::None));
-            if let Some((code, _)) = stand_in {
-                parent.commands().entity(entity).insert(WantsImage { code, size });
+            if let Some((picture, _)) = stand_in {
+                parent.commands().entity(entity).insert(WantsImage { picture, size });
             }
             entity
         }
@@ -4079,7 +4085,7 @@ fn fill_run_panel(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &Clien
             // own copy once it has decoded, the sharpest other until then.
             // The rect is a fraction of whichever copy's own size.
             let width = RUN_ART_WIDTH;
-            let scan = card.and_then(netrunner_client::art::printing_for).and_then(|code| images.face(code, FaceSize::Board(width as u16)).or_else(|| images.nearest_face(code)));
+            let scan = card.and_then(|card| netrunner_client::art::picture_for(card, &core.settings.art)).and_then(|picture| images.face(&picture, FaceSize::Board(width as u16)).or_else(|| images.nearest_face(&picture)));
             let size = scan.as_ref().and_then(|scan| assets?.get(scan)).map(|image| image.size_f32());
             match scan.zip(size) {
                 Some((scan, size)) => {
@@ -4173,7 +4179,7 @@ fn fill_encounter(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &Clien
             let line = || Node { width: px(RUN_ART_WIDTH), ..default() };
             let wrap = || TextLayout::new(Justify::Left, LineBreak::WordBoundary);
             panel.spawn((Text::new(heading.clone()), theme.font(size::SMALL), TextColor(colour), line()));
-            let scan = card.and_then(netrunner_client::art::printing_for).and_then(|code| images.face(code, FaceSize::Board(RUN_ART_WIDTH as u16)).or_else(|| images.nearest_face(code)));
+            let scan = card.and_then(|card| netrunner_client::art::picture_for(card, &core.settings.art)).and_then(|picture| images.face(&picture, FaceSize::Board(RUN_ART_WIDTH as u16)).or_else(|| images.nearest_face(&picture)));
             let size = scan.as_ref().and_then(|scan| assets?.get(scan)).map(|image| image.size_f32());
             let [left, top, right, bottom] = layout::ICE_ART;
             let art = scan.zip(size).and_then(|(scan, size)| {
@@ -4258,19 +4264,19 @@ fn side_panels(
                 game.view.as_ref()?.runner.identity.clone()?
             }
         };
-        netrunner_client::art::printing_for(core.registry.get(&id)?)
+        netrunner_client::art::picture_for(core.registry.get(&id)?, &core.settings.art)
     });
-    if let Some(code) = running {
+    if let Some(picture) = running {
         let size = FaceSize::Board(RUN_ART_WIDTH as u16);
-        match images.face(code, size) {
+        match images.face(&picture, size) {
             Some(sharp) => {
                 if drawn.iter().any(|art| art.0 != sharp) {
                     dirty.side = true;
                 }
             }
             None => {
-                if let netrunner_card_sync::ImageStatus::Cached(path) = core.images.status(code) {
-                    images.request(code, size, path);
+                if let Some(path) = crate::card_images::cached_path(&core, &picture) {
+                    images.request(&picture, size, path);
                 }
             }
         }
@@ -4676,8 +4682,9 @@ fn card_sheet(panel: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore
         panel.spawn(widgets::dim(theme, format!("{} is not in the registry", id.0)));
         return;
     };
-    let image = netrunner_client::art::printing_for(def).and_then(|code| images.face(code, FaceSize::Large));
-    spawn_face(panel, theme, &Face::of(def), FaceSize::Large, image, ());
+    let drawn = Face::of(def, &core.settings.art);
+    let image = images.of(&drawn, FaceSize::Large);
+    spawn_face(panel, theme, &drawn, FaceSize::Large, image, ());
 }
 
 /// A side's identity: the card alone, as `card_sheet` draws any card,
@@ -4693,8 +4700,9 @@ fn identity_sheet(panel: &mut ChildSpawnerCommands, theme: &Theme, core: &Client
         return;
     };
     panel.spawn((Node { flex_direction: FlexDirection::Row, column_gap: px(16), align_items: AlignItems::FlexStart, ..default() },)).with_children(|row| {
-        let image = netrunner_client::art::printing_for(def).and_then(|code| images.face(code, FaceSize::Large));
-        spawn_face(row, theme, &Face::of(def), FaceSize::Large, image, ());
+        let drawn = Face::of(def, &core.settings.art);
+        let image = images.of(&drawn, FaceSize::Large);
+        spawn_face(row, theme, &drawn, FaceSize::Large, image, ());
         row.spawn((Node { flex_grow: 1.0, min_width: px(0), flex_direction: FlexDirection::Column, row_gap: px(8), ..default() },)).with_children(|column| {
             column.spawn(widgets::label(theme, "State"));
             for line in facts {
@@ -4727,8 +4735,9 @@ fn install_sheet(panel: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientC
     panel.spawn((Node { flex_direction: FlexDirection::Row, column_gap: px(16), align_items: AlignItems::FlexStart, ..default() },)).with_children(|row| {
         match def {
             Some(def) => {
-                let image = netrunner_client::art::printing_for(def).and_then(|code| images.face(code, FaceSize::Large));
-                spawn_face(row, theme, &Face::of(def), FaceSize::Large, image, ());
+                let drawn = Face::of(def, &core.settings.art);
+                let image = images.of(&drawn, FaceSize::Large);
+                spawn_face(row, theme, &drawn, FaceSize::Large, image, ());
             }
             None => {
                 spawn_back(row, theme, images.back(Side::Corp), Side::Corp, FaceSize::Large, ());
@@ -4768,8 +4777,9 @@ fn stack_sheet(panel: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCor
         column.spawn((StackRow(install.install_id), Node { flex_direction: FlexDirection::Row, column_gap: px(16), align_items: AlignItems::FlexStart, flex_shrink: 0.0, ..default() })).with_children(|row| {
             match install.card.as_ref().and_then(|id| core.registry.get(id).map(|def| (id, def))) {
                 Some((id, def)) => {
-                    let image = netrunner_client::art::printing_for(def).and_then(|code| images.face(code, size));
-                    spawn_face(row, theme, &Face::of(def), size, image, (Button, Click::Inspect(id.clone())));
+                    let drawn = Face::of(def, &core.settings.art);
+                    let image = images.of(&drawn, size);
+                    spawn_face(row, theme, &drawn, size, image, (Button, Click::Inspect(id.clone())));
                 }
                 None => {
                     spawn_back(row, theme, images.back(Side::Corp), Side::Corp, size, ());
@@ -4923,8 +4933,9 @@ fn zone_sheet(panel: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore
                         match item {
                             Shown::Card(id) => {
                                 if let Some(def) = core.registry.get(&id) {
-                                    let image = netrunner_client::art::printing_for(def).and_then(|code| images.face(code, size));
-                                    spawn_face(row, theme, &Face::of(def), size, image, (Button, Click::Inspect(id.clone())));
+                                    let drawn = Face::of(def, &core.settings.art);
+                                    let image = images.of(&drawn, size);
+                                    spawn_face(row, theme, &drawn, size, image, (Button, Click::Inspect(id.clone())));
                                 }
                             }
                             Shown::Back(side) => {
@@ -4938,8 +4949,9 @@ fn zone_sheet(panel: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore
                     column.spawn(wrap_row()).with_children(|row| {
                         for id in removed {
                             if let Some(def) = core.registry.get(id) {
-                                let image = netrunner_client::art::printing_for(def).and_then(|code| images.face(code, size));
-                                spawn_face(row, theme, &Face::of(def), size, image, (Button, Click::Inspect(id.clone())));
+                                let drawn = Face::of(def, &core.settings.art);
+                                let image = images.of(&drawn, size);
+                                spawn_face(row, theme, &drawn, size, image, (Button, Click::Inspect(id.clone())));
                             }
                         }
                     });
@@ -4981,7 +4993,7 @@ fn score_area_sheet(panel: &mut ChildSpawnerCommands, theme: &Theme, core: &Clie
             for (row, agenda) in agendas.iter().enumerate() {
                 let open = game.expanded == Some(row);
                 let def = core.registry.get(&agenda.card);
-                let code = def.and_then(netrunner_client::art::printing_for);
+                let drawn = def.map(|def| Face::of(def, &core.settings.art));
                 list.spawn((
                     ScoreRow(row),
                     Button,
@@ -5001,8 +5013,8 @@ fn score_area_sheet(panel: &mut ChildSpawnerCommands, theme: &Theme, core: &Clie
                         (if open { "–" } else { "+" }, theme.font(size::BODY))
                     };
                     button.spawn((Text::new(marker), font, TextColor(theme.text_dim), Node { width: px(18), ..default() }));
-                    if let Some(def) = def {
-                        spawn_face(button, theme, &Face::of(def), FaceSize::Board(56), code.and_then(|code| images.face(code, FaceSize::Board(56))), ());
+                    if let Some(drawn) = &drawn {
+                        spawn_face(button, theme, drawn, FaceSize::Board(56), images.of(drawn, FaceSize::Board(56)), ());
                     }
                     button.spawn(widgets::label(theme, agenda.line()));
                 });
@@ -5010,15 +5022,15 @@ fn score_area_sheet(panel: &mut ChildSpawnerCommands, theme: &Theme, core: &Clie
                     continue;
                 }
                 list.spawn((ScoreDetails(row), Node { flex_direction: FlexDirection::Row, column_gap: px(16), align_items: AlignItems::FlexStart, padding: UiRect::left(px(28)), flex_shrink: 0.0, ..default() })).with_children(|details| {
-                    if let Some(def) = def {
-                        spawn_face(details, theme, &Face::of(def), FaceSize::Large, code.and_then(|code| images.face(code, FaceSize::Large)), ());
+                    if let Some(drawn) = &drawn {
+                        spawn_face(details, theme, drawn, FaceSize::Large, images.of(drawn, FaceSize::Large), ());
                     }
                     details.spawn((Node { flex_grow: 1.0, min_width: px(0), flex_direction: FlexDirection::Column, row_gap: px(8), ..default() },)).with_children(|column| {
                         for line in agenda.facts(side, &core.registry) {
                             column.spawn((Text::new(line), theme.font(size::SMALL), TextColor(theme.text), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
                         }
-                        if let Some(def) = def {
-                            column.spawn((Text::new(Face::of(def).body_text(false)), theme.font(size::SMALL), TextColor(theme.text_dim), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
+                        if let Some(drawn) = &drawn {
+                            column.spawn((Text::new(drawn.body_text(false)), theme.font(size::SMALL), TextColor(theme.text_dim), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
                         }
                         let entries = agenda.install.map(|id| game.entries_for(&Target::Install(id))).unwrap_or_default();
                         if !entries.is_empty() {
