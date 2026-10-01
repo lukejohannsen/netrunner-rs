@@ -669,6 +669,153 @@ pub fn import(text: &str, book: CardBook, taken: &[String]) -> Result<Imported, 
     Ok(Imported { deck, skipped })
 }
 
+/// A decklist as NetrunnerDB publishes one, before the catalog has seen
+/// it: v3 card ids throughout, the identity among the cards as
+/// `card_slots` lists it, the notes as HTML. Borrowed, so the fetcher's
+/// own type (`netrunner_card_sync::Decklist`) is read without a copy and
+/// this crate names no network type.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Published<'a> {
+    pub name: &'a str,
+    /// The author's user name on NetrunnerDB; empty if unknown.
+    pub author: &'a str,
+    /// The decklist's page, kept with the deck so the credit travels.
+    pub link: &'a str,
+    pub notes: &'a str,
+    /// The identity's card id.
+    pub identity: &'a str,
+    /// Each card's id with its copies.
+    pub cards: &'a [(String, u32)],
+}
+
+/// Reads a decklist NetrunnerDB published (Phase 7 §10 Stage 6). The
+/// ids are v3's and so is the catalog's, so a card is matched by id and
+/// nothing else: a card the catalog does not know is listed in
+/// [`Imported::skipped`] by its id, as the text import lists a line it
+/// could not read, and a card of the other side is skipped by title. The
+/// identity is the one refusal, as in [`import`]: a deck file cannot
+/// exist without one, and NetrunnerDB names it apart from the cards.
+///
+/// The author and the link go in the one-line `description`, and the
+/// notes, HTML made plain ([`plain_text`]), in `how_to_play` — the field
+/// for prose about how the deck wants to be played, which is what a
+/// published list's notes are. Credit for the list stays with the deck
+/// that way; the file is still the person's own copy.
+pub fn from_published(list: Published, book: CardBook, taken: &[String]) -> Result<Imported, String> {
+    let identity_id = CardId(list.identity.to_string());
+    let identity = match book.get(&identity_id) {
+        Some(card) if card.card_type == CardType::Identity => card,
+        Some(card) => return Err(format!("NetrunnerDB names {} as the identity, which is not one", card.title)),
+        None => return Err(format!("NetrunnerDB names an identity this catalog does not know: {}", list.identity)),
+    };
+    let mut cards: Vec<DeckEntry> = Vec::new();
+    let mut skipped = Vec::new();
+    for (id, count) in list.cards {
+        if *id == list.identity {
+            continue;
+        }
+        match book.get(&CardId(id.clone())) {
+            None => skipped.push(id.clone()),
+            Some(card) if card.card_type == CardType::Identity => skipped.push(format!("{} (an identity)", card.title)),
+            Some(card) if card.side != identity.side => skipped.push(format!("{} (a {:?} card)", card.title, card.side)),
+            Some(card) => match cards.iter_mut().find(|entry| entry.card == card.id) {
+                Some(entry) => entry.count += count,
+                None => cards.push(DeckEntry { card: card.id.clone(), count: *count }),
+            },
+        }
+    }
+    let name = if list.name.trim().is_empty() { "NetrunnerDB deck" } else { list.name };
+    let description = match (list.author.trim(), list.link.trim()) {
+        ("", "") => None,
+        ("", link) => Some(format!("From NetrunnerDB: {link}")),
+        (author, "") => Some(format!("By {author} on NetrunnerDB")),
+        (author, link) => Some(format!("By {author} on NetrunnerDB: {link}")),
+    };
+    let notes = plain_text(list.notes);
+    let deck = DeckFile { cards, description, how_to_play: (!notes.is_empty()).then_some(notes), ..new_deck(name, identity, taken) };
+    Ok(Imported { deck, skipped })
+}
+
+/// HTML as plain text: tags dropped, a block's end (or a `<br>`) a line
+/// break, the common entities decoded, runs of blank lines collapsed to
+/// one — so paragraphs stay apart and list items do not. NetrunnerDB
+/// serves a decklist's notes as the HTML its editor saved, and a deck
+/// file is read by people, in both clients, with no HTML renderer
+/// anywhere.
+pub fn plain_text(html: &str) -> String {
+    const BLOCKS: [&str; 13] = ["p", "div", "li", "ul", "ol", "h1", "h2", "h3", "h4", "h5", "h6", "blockquote", "tr"];
+    let mut text = String::new();
+    let mut tag: Option<String> = None;
+    for c in html.chars() {
+        match (&mut tag, c) {
+            (None, '<') => tag = Some(String::new()),
+            (Some(inside), '>') => {
+                let closing = inside.starts_with('/');
+                let name = inside.trim_start_matches('/').split(|c: char| c.is_whitespace() || c == '/').next().unwrap_or("").to_lowercase();
+                if name == "br" || (closing && BLOCKS.contains(&name.as_str())) {
+                    text.push('\n');
+                }
+                tag = None;
+            }
+            (Some(inside), c) => inside.push(c),
+            (None, c) => text.push(c),
+        }
+    }
+    let decoded = decode_entities(&text);
+    let mut lines: Vec<&str> = Vec::new();
+    for line in decoded.lines().map(str::trim) {
+        if line.is_empty() && lines.last().is_none_or(|last| last.is_empty()) {
+            continue;
+        }
+        lines.push(line);
+    }
+    lines.join("\n").trim().to_string()
+}
+
+/// `&amp;`, `&lt;`, `&gt;`, `&quot;`, `&#39;`, `&apos;`, `&nbsp;` and the
+/// numeric forms; anything else is left as written.
+fn decode_entities(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(at) = rest.find('&') {
+        out.push_str(&rest[..at]);
+        rest = &rest[at..];
+        let Some(end) = rest.find(';').filter(|end| *end <= 10) else {
+            out.push('&');
+            rest = &rest[1..];
+            continue;
+        };
+        let entity = &rest[1..end];
+        let decoded = match entity {
+            "amp" => Some('&'),
+            "lt" => Some('<'),
+            "gt" => Some('>'),
+            "quot" => Some('"'),
+            "apos" => Some('\''),
+            "nbsp" => Some(' '),
+            _ => entity
+                .strip_prefix('#')
+                .and_then(|number| match number.strip_prefix(['x', 'X']) {
+                    Some(hex) => u32::from_str_radix(hex, 16).ok(),
+                    None => number.parse().ok(),
+                })
+                .and_then(char::from_u32),
+        };
+        match decoded {
+            Some(c) => {
+                out.push(c);
+                rest = &rest[end + 1..];
+            }
+            None => {
+                out.push('&');
+                rest = &rest[1..];
+            }
+        }
+    }
+    out.push_str(rest);
+    out
+}
+
 /// A list line's count and the rest: "3x Title", "3 Title", "Title x3",
 /// "Title ×3". `None` for a line with no count.
 fn split_count(line: &str) -> (Option<u32>, &str) {
@@ -1025,6 +1172,58 @@ mod tests {
         assert_eq!(imported.deck.id, "stolen_goods_2");
         assert_eq!(imported.deck.category, DeckCategory::Custom);
         assert_eq!(imported.deck.cards, published.cards);
+    }
+
+    /// A published list is matched by id: the identity named apart from
+    /// the cards is the deck's and its slot is not a card, an id the
+    /// catalog does not know is skipped by id, a card of the other side
+    /// by title, and the author, the link and the notes travel with the
+    /// deck as its description and its notes.
+    #[test]
+    fn a_published_list_is_read_by_id_and_keeps_its_credit() {
+        let registry = registry();
+        let catalog = catalog(&registry);
+        let book = CardBook::new(&registry, &catalog);
+        let published = decks::by_id("stolen_goods").unwrap();
+        let identity = published.identity.0.clone();
+        let cards = vec![(identity.clone(), 1), ("sure_gamble".to_string(), 3), ("hedge_fund".to_string(), 2), ("no_such_card".to_string(), 1), ("overclock".to_string(), 1)];
+        let list = Published {
+            name: "Seb's Zahya",
+            author: "seb",
+            link: "https://netrunnerdb.com/en/decklist/1b98e609-0000-0000-0000-000000000000",
+            notes: "<p>Run <em>early</em> &amp; often.</p>\n<p>Then money.</p>",
+            identity: &identity,
+            cards: &cards,
+        };
+        let imported = from_published(list, book, &["seb_s_zahya".to_string()]).unwrap();
+        assert_eq!(imported.deck.identity, published.identity);
+        assert_eq!(imported.deck.side, Side::Runner);
+        assert_eq!(imported.deck.id, "seb_s_zahya_2");
+        assert_eq!(imported.deck.category, DeckCategory::Custom);
+        let draft = Draft::new(imported.deck.clone());
+        assert_eq!(draft.copies(&CardId("sure_gamble".into())), 3);
+        assert_eq!(draft.copies(&CardId("overclock".into())), 1);
+        assert_eq!(draft.copies(&published.identity), 0, "the identity's slot is not a card");
+        assert_eq!(imported.skipped, vec!["Hedge Fund (a Corp card)".to_string(), "no_such_card".to_string()]);
+        assert_eq!(imported.deck.description.as_deref(), Some("By seb on NetrunnerDB: https://netrunnerdb.com/en/decklist/1b98e609-0000-0000-0000-000000000000"));
+        assert_eq!(imported.deck.how_to_play.as_deref(), Some("Run early & often.\n\nThen money."));
+
+        let unnamed = from_published(Published { name: " ", author: "", link: "", notes: "", ..list }, book, &[]).unwrap();
+        assert_eq!(unnamed.deck.name, "NetrunnerDB deck");
+        assert_eq!((unnamed.deck.description, unnamed.deck.how_to_play), (None, None));
+        let unknown = from_published(Published { identity: "nobody", ..list }, book, &[]).unwrap_err();
+        assert!(unknown.contains("nobody"), "{unknown}");
+        let not_one = from_published(Published { identity: "sure_gamble", ..list }, book, &[]).unwrap_err();
+        assert!(not_one.contains("Sure Gamble"), "{not_one}");
+    }
+
+    #[test]
+    fn html_notes_read_as_plain_text() {
+        assert_eq!(plain_text("<p>One</p>\n<p>Two<br>three</p><ul><li>a</li><li>b</li></ul>"), "One\n\nTwo\nthree\na\nb", "paragraphs apart, list items not");
+        assert_eq!(plain_text("<p>One</p><p>Two</p>"), "One\nTwo", "a blank line only where the source had one");
+        assert_eq!(plain_text("A &lt;b&gt; &quot;c&quot; &#39;d&#39; &#x41;&#66; &nbsp;e &unknown; & f"), "A <b> \"c\" 'd' AB  e &unknown; & f");
+        assert_eq!(plain_text("  \n\n <div></div> \n"), "");
+        assert_eq!(plain_text("plain words"), "plain words");
     }
 
     #[test]

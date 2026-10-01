@@ -5756,3 +5756,100 @@ dialog says nothing. Dropping a file on the window still imports it.
   Export to file…. The dialog itself is the portal's and is not drawn
   by the client, so it is tried by hand on the person's desktop.
 - No engine change, so no coverage run or sweeps.
+
+### Stage 6 — A published decklist comes by its link: Import from NetrunnerDB… over the v3 API (`feat/netrunnerdb-deck-import`, 1 October 2026)
+
+**What the person asked for:** "Import a NetrunnerDB deck" by link, on
+v3 like everything else.
+
+**What it does.** The Decks screen's toolbar has Import from
+NetrunnerDB…, which opens a pop-up with one field for a published
+decklist's link or uuid and a Paste beside it. Enter or Fetch asks
+`GET /api/v3/public/decklists/{uuid}` on the tokio runtime; the pop-up
+says "Fetching…" with Fetch greyed until the answer comes. The list is
+read by card id — v3's on both sides since NSG pool Stage 0d — and goes
+through the same save-and-open path a file does: saved as the person's
+own deck whatever its standing, opened in the editor, with the author
+and the link as its one-line description ("By WonkyWombat on
+NetrunnerDB: https://netrunnerdb.com/en/decklist/…") and the notes,
+HTML made plain, as its `how_to_play`. The identity's slot in
+`card_slots` is not a card; an id the catalog does not know is skipped
+by id, a card of the other side by title, and the notice on the shelf
+names both. What NetrunnerDB refuses, or what is not a decklist link,
+is said in the pop-up with the field still holding what was typed;
+Escape closes the field and the pop-up before it leaves the screen.
+This closes §9's download half; the search half stays there.
+
+**Decisions, with the alternative rejected:**
+- **By id, never by title.** `deck_builder::from_published` takes a
+  `Published` (name, author, link, notes, identity id, `(id, copies)`
+  pairs) and matches each id in the `CardBook`; the text import's
+  title folding is not used, because a published list names ids and a
+  title match could pick a different card than the author chose. An
+  unknown id is reported as the id, which is what the person can look
+  up.
+- **The fetch is `netrunner_card_sync`'s** (`decklists`: `DecklistRef`,
+  `Decklist`, `read_decklist`, `fetch_decklist`), the one crate doing
+  network I/O for card data, under the same user agent and timeout as
+  the image downloads. `read_decklist` takes the body, so the shape is
+  pinned against a canned answer trimmed from the live one and CI never
+  reaches the network; one `#[ignore]`d test asks the live API by hand.
+- **What a link is, read off the site.** `netrunnerdb.com/<lang>/decklist/<uuid>[/<slug>]`
+  in either case, with or without a scheme, query or fragment, or the
+  bare uuid. The old numbered link (`/decklist/80000/…`) answers with a
+  301 to the uuid one, so it is refused with that advice rather than
+  followed (following it would be a request to the website, not the
+  API); a private deck's link (`/deck/view/…`) is refused with the
+  reason, because `/api/v3/public/decks` answers 404. The uuid is kept
+  lowercase so one deck has one address.
+- **Off the main thread, answered by poll** (`netrunnerdb::Decklists`,
+  `files::DeckFiles`'s twin): one fetch out at a time, a one-shot
+  channel polled each frame by `fetch_answers`, and
+  `Decklists::scripted(answer)` for a headless test. A request awaited
+  on the main thread would have frozen the window for as long as
+  NetrunnerDB took.
+- **The credit travels with the deck.** The author and the link go in
+  `description`, the notes in `how_to_play` — the field for prose about
+  how the deck wants to be played, which is what a published list's
+  notes are — and the register gets a "Fetched" row for decklists, so
+  the About screen credits them beside the card data and the scans.
+- **The pop-up's field is the editor itself.** There is nothing else to
+  type, so no box-then-editor as the Online form has; Enter commits,
+  Escape cancels (and closes the pop-up through `Cancelled`, with
+  `escape_closes_the_picker` ordered after the text fields so one key
+  does one thing), Ctrl+V and the Paste button both paste. The
+  clipboard's reader is shared with the Online screen (`read_clipboard`,
+  `pub(crate)`): the clipboard is for what nobody types, a ticket there
+  and a link here.
+- **The toolbar is two rows now**: what makes a deck (New deck, the two
+  imports, Back at the right) over how the shelf is looked at (the side,
+  the filters, the sort). With the new button the one row wrapped Sort
+  by onto a second row by itself at 1920 px; a shorter label ("Import
+  file…") was tried and still wrapped it, so the split is made where the
+  row broke anyway, between the actions and the view.
+- **`NETRUNNER_FETCH=<text>`** opens the pop-up with `text` in its field
+  for a screenshot and fetches nothing.
+
+**Checks:**
+- Tests: `netrunner_card_sync` (a reference in every form it comes in,
+  what is refused says why, the v3 answer read with the identity among
+  its cards, the API's refusal and a wrong shape as errors in words; the
+  live check `#[ignore]`d and run by hand: the live answer reads, and a
+  uuid nobody published is the not-found error), `deck_builder` (a
+  published list read by id and keeping its credit; HTML notes as plain
+  text), `models::decks` (a fetched list saved with its notice and
+  an unknown identity refused), `netrunnerdb` (a scripted fetch answers
+  at once and one at a time), and the navigation test
+  `a_netrunnerdb_decklist_is_fetched_by_its_link_and_saved`: the
+  pop-up opens with its field, "just words" is refused in the pop-up
+  with the field kept, a uuid through Fetch saves and opens the
+  scripted list with the identity's slot not a card and the unknown id
+  skipped, the description and notes carried, and the shelf's notice
+  saying so; a refusal from NetrunnerDB is shown in the pop-up; Escape
+  closes the pop-up and only then the screen.
+- `netrunner_desktop`: 236 passed, 0 failed. `cargo clippy --workspace
+  --all-targets`: silent.
+- Screenshot on the virtual compositor at 1920×1080: the Decks screen
+  with the pop-up open on a pasted link, the link wrapped in its field,
+  Paste beside it, Cancel and Fetch under it; the toolbar's two rows.
+- No engine change, so no coverage run or sweeps.

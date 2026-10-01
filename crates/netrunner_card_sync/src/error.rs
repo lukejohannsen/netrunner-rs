@@ -29,4 +29,16 @@ pub enum SyncError {
 
     #[error("failed to write card image {path:?}: {source}")]
     ImageWrite { path: PathBuf, source: std::io::Error },
+
+    #[error("NetrunnerDB has no published decklist {id}: it may be unpublished, or the link may be wrong")]
+    DecklistNotFound { id: String },
+
+    #[error("NetrunnerDB answered {status} for decklist {id}")]
+    DecklistDownload { id: String, status: u16 },
+
+    #[error("NetrunnerDB refused the decklist: {0}")]
+    DecklistRefused(String),
+
+    #[error("NetrunnerDB's answer is not a decklist: {0}")]
+    DecklistShape(String),
 }

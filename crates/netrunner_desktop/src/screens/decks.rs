@@ -25,12 +25,23 @@
 //! Whatever an import could not read is named, and the deck is saved
 //! anyway. Both went through the clipboard until the person asked for
 //! files (30 September 2026), so that a deck can be handed to someone;
-//! the clipboard is the Online screen's now, for a ticket.
+//! the clipboard is the Online screen's now, for a ticket — and this
+//! screen's Paste, for a link.
+//!
+//! **A published decklist comes by its link** (`netrunnerdb`, Phase 7 §10
+//! Stage 6). Import from NetrunnerDB… opens a pop-up with one field for a
+//! decklist's link or uuid and a Paste beside it; Enter or Fetch asks the
+//! v3 API on the tokio runtime, the pop-up says "Fetching…" until the
+//! answer comes, and the deck is saved and opened like an imported file,
+//! its author and link kept as its description. What NetrunnerDB refuses,
+//! or what is not a decklist link, is said in the pop-up with the field
+//! still holding what was typed.
 
 use bevy::prelude::*;
 use bevy::ui::FocusPolicy;
 use bevy::window::FileDragAndDrop;
 
+use netrunner_card_sync::DecklistRef;
 use netrunner_client::card_face::Face;
 use netrunner_client::deck_builder::{self, CardBook, Standing};
 use netrunner_client::cards::faction_label;
@@ -44,11 +55,14 @@ use crate::core::{ClientCore, TokioRuntime};
 use crate::files::{Ask, DeckFiles, Done};
 use crate::models::decks::{Intent, Outcome, Shelf, ShelfRow, ShelfSort};
 use crate::nav::{screen_root, Captures, InputCaptured, Navigate};
+use crate::netrunnerdb::Decklists;
 use crate::screens::deck_editor::EditDeck;
+use crate::screens::online::read_clipboard;
 use crate::screens::AppScreen;
 use crate::theme::{size, Theme};
 use crate::widgets::card_face::{spawn_face, FaceSize};
 use crate::widgets::dropdown::{spawn_dropdown, Choice, DropdownChanged};
+use crate::widgets::text_field::{edit_text_fields, TextField, TextFieldEvent};
 use crate::widgets::{self, ButtonKind, Pressed};
 
 pub struct DecksPlugin;
@@ -59,8 +73,11 @@ impl Plugin for DecksPlugin {
         // headless test does not run; `add_message` is idempotent.
         app.add_message::<FileDragAndDrop>()
             .add_systems(OnEnter(AppScreen::Decks), spawn)
-            .add_systems(Update, escape_closes_the_picker.in_set(Captures).run_if(in_state(AppScreen::Decks)))
-            .add_systems(Update, (controls, dropped_files, file_answers, redraw_new_art, refresh).chain().run_if(in_state(AppScreen::Decks)));
+            // After the text fields: with the link field open, Escape is
+            // the field's (it closes the pop-up through `Cancelled`), and
+            // one key does one thing.
+            .add_systems(Update, escape_closes_the_picker.in_set(Captures).after(edit_text_fields).run_if(in_state(AppScreen::Decks)))
+            .add_systems(Update, (controls, dropped_files, file_answers, fetch_answers, redraw_new_art, refresh).chain().run_if(in_state(AppScreen::Decks)));
     }
 }
 
@@ -105,6 +122,8 @@ fn shelf_entries(shelf: &Shelf, filter: ShelfFilter) -> (Vec<Choice>, Vec<Intent
 pub enum Control {
     New,
     Import,
+    /// Import from NetrunnerDB…: the link pop-up.
+    Fetch,
     Side(Option<Side>),
     Back,
 }
@@ -131,6 +150,10 @@ pub enum PopupButton {
     Side(Side),
     Identity(CardId),
     Delete(bool),
+    /// Import from NetrunnerDB: fetch what the field holds.
+    Fetch,
+    /// Import from NetrunnerDB: the clipboard into the field.
+    Paste,
     Cancel,
 }
 
@@ -143,7 +166,14 @@ pub enum Popup {
     Side,
     /// New deck: which identity?
     Identity(Side),
+    /// Import from NetrunnerDB: which decklist? `typed` is what the field
+    /// holds across a redraw, `problem` why the last try was refused.
+    Fetch { typed: String, problem: Option<String> },
 }
+
+/// The most a decklist's link runs to, with room: a uuid is 36
+/// characters, and a page link with its slug about 120.
+const LINK_MAX: usize = 200;
 
 #[derive(Component)]
 struct ShelfBody;
@@ -174,7 +204,7 @@ fn format_of(core: &ClientCore) -> NsgFormat {
     core.settings.format.unwrap_or(netrunner_client::settings::DEFAULT_FORMAT)
 }
 
-fn spawn(mut commands: Commands, theme: Res<Theme>, core: Res<ClientCore>, images: Res<CardImages>, kept: Option<Res<Model>>) {
+fn spawn(mut commands: Commands, theme: Res<Theme>, core: Res<ClientCore>, images: Res<CardImages>, kept: Option<Res<Model>>, dev: Option<Res<crate::dev::Dev>>) {
     // The notice an editor's Copy or an import left survives the trip
     // back; the rows are re-read, since the editor wrote to them.
     // So does how the shelf was being looked at: its side, filters and
@@ -186,8 +216,17 @@ fn spawn(mut commands: Commands, theme: Res<Theme>, core: Res<ClientCore>, image
     if notice.is_some() {
         shelf.notice = notice;
     }
-    commands.insert_resource(Popup::None);
-    commands.init_resource::<Dirty>();
+    // `NETRUNNER_FETCH`: the link pop-up open for a screenshot.
+    match dev.as_ref().and_then(|dev| dev.fetch.clone()) {
+        Some(typed) => {
+            commands.insert_resource(Popup::Fetch { typed, problem: None });
+            commands.insert_resource(Dirty { shelf: false, popup: true });
+        }
+        None => {
+            commands.insert_resource(Popup::None);
+            commands.init_resource::<Dirty>();
+        }
+    }
 
     let toolbar = commands.spawn((Toolbar, toolbar_node())).id();
     commands.entity(toolbar).with_children(|parent| spawn_toolbar(parent, &theme, &shelf));
@@ -225,26 +264,41 @@ fn spawn(mut commands: Commands, theme: Res<Theme>, core: Res<ClientCore>, image
 }
 
 fn toolbar_node() -> Node {
+    Node { width: percent(100), flex_direction: FlexDirection::Column, row_gap: px(8), ..default() }
+}
+
+fn toolbar_row() -> Node {
     Node { width: percent(100), flex_direction: FlexDirection::Row, flex_wrap: FlexWrap::Wrap, align_items: AlignItems::Center, column_gap: px(10), row_gap: px(8), ..default() }
 }
 
+/// Two rows: what makes a deck (New deck, the two imports, and Back at
+/// the right), then how the shelf is looked at (the side, the filters,
+/// the sort). One row held all of it until Import from NetrunnerDB…
+/// joined (Stage 6), when it wrapped the sort drop-down onto a second
+/// row by itself at 1920 px wide; the split is where the row would
+/// break anyway, between the actions and the view.
 fn spawn_toolbar(parent: &mut ChildSpawnerCommands, theme: &Theme, shelf: &Shelf) {
-    parent.spawn(widgets::styled_button(theme, ButtonKind::Primary, "New deck", Val::Auto, Control::New));
-    parent.spawn(widgets::button(theme, "Import from file…", Val::Auto, Control::Import));
-    parent.spawn((Node { width: px(18), ..default() },));
-    for (label, side) in [("All", None), ("Corp", Some(Side::Corp)), ("Runner", Some(Side::Runner))] {
-        let kind = if shelf.view.side == side { ButtonKind::Secondary } else { ButtonKind::Quiet };
-        let mut button = parent.spawn(widgets::styled_button(theme, kind, label, Val::Auto, Control::Side(side)));
-        if shelf.view.side == side {
-            button.insert(BorderColor::all(theme.accent));
+    parent.spawn(toolbar_row()).with_children(|row| {
+        row.spawn(widgets::styled_button(theme, ButtonKind::Primary, "New deck", Val::Auto, Control::New));
+        row.spawn(widgets::button(theme, "Import from file…", Val::Auto, Control::Import));
+        row.spawn(widgets::button(theme, "Import from NetrunnerDB…", Val::Auto, Control::Fetch));
+        let mut back = row.spawn(widgets::styled_button(theme, ButtonKind::Quiet, "Back", Val::Auto, Control::Back));
+        back.entry::<Node>().and_modify(|mut node| node.margin = UiRect::left(Val::Auto));
+    });
+    parent.spawn(toolbar_row()).with_children(|row| {
+        for (label, side) in [("All", None), ("Corp", Some(Side::Corp)), ("Runner", Some(Side::Runner))] {
+            let kind = if shelf.view.side == side { ButtonKind::Secondary } else { ButtonKind::Quiet };
+            let mut button = row.spawn(widgets::styled_button(theme, kind, label, Val::Auto, Control::Side(side)));
+            if shelf.view.side == side {
+                button.insert(BorderColor::all(theme.accent));
+            }
         }
-    }
-    for (filter, label) in [(ShelfFilter::Faction, "Faction"), (ShelfFilter::Legal, "Legal in"), (ShelfFilter::Sort, "Sort by")] {
-        let (choices, _, current) = shelf_entries(shelf, filter);
-        spawn_dropdown(parent, theme, label, choices, current, filter);
-    }
-    let mut back = parent.spawn(widgets::styled_button(theme, ButtonKind::Quiet, "Back", Val::Auto, Control::Back));
-    back.entry::<Node>().and_modify(|mut node| node.margin = UiRect::left(Val::Auto));
+        row.spawn((Node { width: px(18), ..default() },));
+        for (filter, label) in [(ShelfFilter::Faction, "Faction"), (ShelfFilter::Legal, "Legal in"), (ShelfFilter::Sort, "Sort by")] {
+            let (choices, _, current) = shelf_entries(shelf, filter);
+            spawn_dropdown(row, theme, label, choices, current, filter);
+        }
+    });
 }
 
 fn spawn_shelf(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore, shelf: &Shelf, images: &CardImages) {
@@ -353,6 +407,7 @@ fn controls(
     mut dirty: ResMut<Dirty>,
     core: Res<ClientCore>,
     (mut files, runtime): (ResMut<DeckFiles>, Option<Res<TokioRuntime>>),
+    (fields, mut lists, mut clipboard): (Query<(&TextField, Option<&TextFieldEvent>)>, ResMut<Decklists>, Option<ResMut<bevy::clipboard::Clipboard>>),
     mut navigate: MessageWriter<Navigate>,
 ) {
     let book = book(&core);
@@ -360,6 +415,19 @@ fn controls(
     if wash.iter().any(|interaction| *interaction == Interaction::Pressed) {
         close_popup(&mut shelf.0, &mut popup, book);
         dirty.popup = true;
+    }
+    // The link field: Enter fetches what it holds, Escape closes the
+    // pop-up. The field is the pop-up's only one.
+    let mut fetch: Option<String> = None;
+    for (_, event) in &fields {
+        match event {
+            Some(TextFieldEvent::Committed(text)) => fetch = Some(text.clone()),
+            Some(TextFieldEvent::Cancelled) => {
+                close_popup(&mut shelf.0, &mut popup, book);
+                dirty.popup = true;
+            }
+            None => {}
+        }
     }
     for DropdownChanged { dropdown, index } in chosen.read() {
         let Ok(filter) = filters.get(*dropdown) else { continue };
@@ -388,7 +456,29 @@ fn controls(
                 }
             }
             PopupButton::Delete(yes) => outcome = shelf.0.apply(Intent::ConfirmDelete(*yes), book),
+            PopupButton::Fetch => fetch = Some(fields.iter().map(|(field, _)| field.text.clone()).next().unwrap_or_default()),
+            PopupButton::Paste => {
+                if let Popup::Fetch { typed, problem } = &mut *popup {
+                    match read_clipboard(clipboard.as_deref_mut()) {
+                        Ok(text) => {
+                            *typed = text.lines().map(str::trim).collect();
+                            *problem = None;
+                        }
+                        Err(reason) => *problem = Some(reason),
+                    }
+                }
+            }
         }
+    }
+    if let (Some(text), Popup::Fetch { typed, problem }) = (fetch, &mut *popup) {
+        // The field is redrawn from `typed`, so what was typed survives
+        // a refusal; the request itself answers through `fetch_answers`.
+        *typed = text.clone();
+        *problem = match DecklistRef::parse(&text) {
+            Ok(reference) => lists.fetch(runtime.as_deref(), reference).err(),
+            Err(reason) => Some(reason),
+        };
+        dirty.popup = true;
     }
     for entity in &presses {
         if let Ok(control) = marks.get(*entity) {
@@ -398,6 +488,10 @@ fn controls(
                 }
                 Control::New => {
                     *popup = Popup::Side;
+                    dirty.popup = true;
+                }
+                Control::Fetch => {
+                    *popup = Popup::Fetch { typed: String::new(), problem: None };
                     dirty.popup = true;
                 }
                 Control::Import => {
@@ -504,6 +598,33 @@ fn file_answers(mut files: ResMut<DeckFiles>, mut shelf: ResMut<Model>, mut dirt
     act_on(outcome, &mut dirty, &mut commands, &mut navigate);
 }
 
+/// NetrunnerDB's answer, when it comes: the list is saved and opened like
+/// an imported file, or the pop-up says why there is none — and the
+/// shelf does, if the pop-up was closed in the meantime.
+fn fetch_answers(mut lists: ResMut<Decklists>, mut shelf: ResMut<Model>, mut popup: ResMut<Popup>, mut dirty: ResMut<Dirty>, core: Res<ClientCore>, mut commands: Commands, mut navigate: MessageWriter<Navigate>) {
+    let Some(answer) = lists.poll() else { return };
+    match answer {
+        Ok(list) => {
+            if matches!(*popup, Popup::Fetch { .. }) {
+                *popup = Popup::None;
+            }
+            dirty.popup = true;
+            let outcome = shelf.0.apply(Intent::Fetched(list), book(&core));
+            act_on(outcome, &mut dirty, &mut commands, &mut navigate);
+        }
+        Err(reason) => match &mut *popup {
+            Popup::Fetch { problem, .. } => {
+                *problem = Some(reason);
+                dirty.popup = true;
+            }
+            _ => {
+                shelf.0.notice = Some(format!("Nothing fetched: {reason}"));
+                dirty.shelf = true;
+            }
+        },
+    }
+}
+
 /// The line an export leaves: where the file is, or why there is none.
 pub fn exported(result: Result<std::path::PathBuf, String>) -> String {
     match result {
@@ -547,6 +668,7 @@ fn refresh(
     images: Res<CardImages>,
     shelf: Res<Model>,
     popup: Res<Popup>,
+    lists: Res<Decklists>,
 ) {
     let Dirty { shelf: reshelf, popup: repopup } = std::mem::take(&mut *dirty);
     if reshelf {
@@ -568,12 +690,12 @@ fn refresh(
         node.display = if asking { Display::Flex } else { Display::None };
         commands.entity(layer).despawn_children();
         if asking {
-            commands.entity(layer).with_children(|parent| spawn_popup(parent, &theme, &core, &shelf.0, &popup, &images));
+            commands.entity(layer).with_children(|parent| spawn_popup(parent, &theme, &core, &shelf.0, &popup, &images, lists.is_fetching()));
         }
     }
 }
 
-fn spawn_popup(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore, shelf: &Shelf, popup: &Popup, images: &CardImages) {
+fn spawn_popup(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore, shelf: &Shelf, popup: &Popup, images: &CardImages, fetching: bool) {
     parent
         .spawn((
             Wash,
@@ -630,6 +752,39 @@ fn spawn_popup(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCo
                                 });
                             });
                         panel.spawn(widgets::styled_button(theme, ButtonKind::Quiet, "Cancel", Val::Auto, PopupButton::Cancel));
+                    }
+                    Popup::Fetch { typed, problem } => {
+                        panel.spawn(widgets::heading(theme, "Import from NetrunnerDB"));
+                        panel.spawn(widgets::dim(theme, "A published decklist's link or its uuid. The deck is saved as your own and opens in the editor; the author and the link stay with it."));
+                        // The field is the editor itself — there is
+                        // nothing else to type here — with a Paste for
+                        // the link nobody types (Ctrl+V works too).
+                        panel.spawn(widgets::row(12.0)).with_children(|row| {
+                            row.spawn(Node { flex_grow: 1.0, flex_shrink: 1.0, min_width: px(0), ..default() }).with_children(|slot| {
+                                slot.spawn((
+                                    TextField { text: typed.clone(), max_len: LINK_MAX },
+                                    widgets::field_node(percent(100)),
+                                    BackgroundColor(theme.glass_strong),
+                                    BorderColor::all(theme.accent),
+                                    children![(Text::new(format!("{typed}|")), theme.font(size::BODY), TextColor(theme.text), TextLayout::new(Justify::Left, LineBreak::AnyCharacter))],
+                                ));
+                            });
+                            row.spawn(widgets::small_button(theme, ButtonKind::Secondary, "Paste", PopupButton::Paste));
+                        });
+                        if let Some(problem) = problem {
+                            panel.spawn((widgets::notice(theme, problem.clone(), ()), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
+                        }
+                        panel.spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, justify_content: JustifyContent::FlexEnd, column_gap: px(10), margin: UiRect::top(px(8)), ..default() }).with_children(|row| {
+                            if fetching {
+                                row.spawn(widgets::dim(theme, "Fetching…"));
+                            }
+                            row.spawn(widgets::styled_button(theme, ButtonKind::Quiet, "Cancel", Val::Auto, PopupButton::Cancel));
+                            if fetching {
+                                row.spawn(widgets::disabled_button(theme, "Fetch", px(160), PopupButton::Fetch));
+                            } else {
+                                row.spawn(widgets::styled_button(theme, ButtonKind::Primary, "Fetch", px(160), PopupButton::Fetch));
+                            }
+                        });
                     }
                 }
             });
