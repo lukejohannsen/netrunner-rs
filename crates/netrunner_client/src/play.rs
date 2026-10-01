@@ -1153,7 +1153,10 @@ mod tests {
         spec.opponent = Opponent::model_opponent(Preset::Custom.profile("test"), None, ModelLink::Scripted(scripted), Level::Novice);
         let mut handle = MatchHandle::start_local(spec).unwrap();
         assert_eq!(handle.model_name(), Some("test"));
-        assert_eq!(handle.model_usage(), Some(crate::llm::Usage::default()));
+        // Kept from the start, but not necessarily empty by now: the match
+        // runs on its own thread, and the model holds the Corp's chair,
+        // which acts first.
+        assert!(handle.model_usage().is_some(), "a model in the chair has its usage mirrored");
         let mut notices = Vec::new();
         let last = loop {
             match handle.wait().expect("the thread is alive until it says Ended") {
