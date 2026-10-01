@@ -1458,6 +1458,11 @@ pub(crate) fn resolve_confirm_card_selection(
         } else if let Some(effect) = effect {
             let mut ctx = ability::ResolutionContext::for_parked(acting_install, acting);
             ctx.selected_count = selected.len() as u32;
+            // Which face the chosen Archives copy had, read before anything
+            // moved (no destination: the card is still where it was).
+            if side == Side::Corp && is_corp_archives(side, &source) && destination.is_none() {
+                ctx.selected_facedown = positions.first().and_then(|p| state.corp.archives.get(*p)).map(|archived| archived.facedown);
+            }
             // The `then` acts *as* the selection (above) but *is* still the
             // prompting card's text, so anything it parks is attributed to
             // that card — see `ResolutionContext::prompting_card`.

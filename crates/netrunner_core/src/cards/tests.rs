@@ -19245,4 +19245,73 @@ mod parhelion {
         card.triggers[0].trigger = crate::dsl::Trigger::OnIcePassed;
         assert!(card.validate().is_err());
     }
+
+    // ---- Stage 5b: Archives ----
+
+    /// "Install 1 **facedown** card from Archives": only a facedown card is
+    /// offered, and the install takes the copy chosen — the faceup Ice Wall
+    /// beside the facedown one stays where the Runner can see it.
+    #[test]
+    fn hybrid_release_installs_a_facedown_card_from_archives_when_scored() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.resources.credits = Credits(5);
+        state.corp.installed = vec![agenda_at("hybrid_release", 2)];
+        state.corp.archives = vec![
+            crate::rules::ArchivedCard::faceup(id("ice_wall")),
+            crate::rules::ArchivedCard::facedown(id("ice_wall")),
+            crate::rules::ArchivedCard::faceup(id("pad_campaign")),
+        ];
+        let scored = score(&state, &registry, "hybrid_release").expect("score it");
+        assert_eq!(toggles(&scored, &registry), vec![1], "the facedown card alone");
+        let (asked, _) = pick(&scored, &registry, 1);
+        assert!(matches!(asked.pending_decision, Some(PendingDecision::ChooseServer { .. })), "where to install it");
+        let (installed, _) = apply_action(&asked, &registry, PlayerAction::ChooseServerForPendingDecision { server: ServerId::Hq }).expect("protect HQ");
+        let ice = installed.corp.installed.iter().find(|card| card.card == id("ice_wall")).expect("Ice Wall installed");
+        assert!(!ice.rezzed, "installed facedown");
+        assert_eq!(installed.corp.archives.len(), 2);
+        assert!(installed.corp.archives.iter().all(|archived| !archived.facedown), "the facedown copy went, the faceup one stayed");
+
+        // Declined, and nothing to install: no question at all.
+        let (declined, _) = apply_action(&scored, &registry, PlayerAction::ConfirmCardSelection).expect("decline");
+        assert!(declined.pending_decision.is_none());
+        assert_eq!(declined.corp.archives.len(), 3);
+        state.corp.archives.retain(|archived| !archived.facedown);
+        assert!(score(&state, &registry, "hybrid_release").expect("score it").pending_decision.is_none());
+    }
+
+    /// "Whenever the Runner approaches this server, you may turn 1 facedown
+    /// piece of ice in Archives faceup. If you do, resolve 1 subroutine on
+    /// that ice."
+    #[test]
+    fn nanisivik_grid_turns_a_facedown_ice_in_archives_faceup_and_resolves_its_subroutine() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.installed = vec![rezzed_root_at("nanisivik_grid", 0)];
+        state.corp.archives = vec![crate::rules::ArchivedCard::facedown(id("hedge_fund")), crate::rules::ArchivedCard::facedown(id("ice_wall"))];
+        let (running, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Remote(0) }).expect("initiate run");
+        let (approached, _) = crate::rules::test_support::through_movement(&running, &registry).expect("approach the server");
+        assert_eq!(toggles(&approached, &registry), vec![1], "facedown ice alone");
+        let (ended, events) = pick(&approached, &registry, 1);
+        assert!(ended.active_run.is_none(), "Ice Wall's \"End the run.\"");
+        assert!(!ended.corp.archives[1].facedown, "turned faceup");
+        assert!(ended.corp.archives[0].facedown);
+        assert!(events.iter().any(|event| matches!(event, GameEvent::ArchivesTurnedFaceup { count: 1 })));
+
+        // Two subroutines are a choice, worded as the ice prints them.
+        state.corp.archives = vec![crate::rules::ArchivedCard::facedown(id("enigma"))];
+        let (running, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Remote(0) }).expect("initiate run");
+        let (approached, _) = crate::rules::test_support::through_movement(&running, &registry).expect("approach the server");
+        let (asked, _) = pick(&approached, &registry, 0);
+        let Some(PendingDecision::ChooseEffect { option_texts: texts, .. }) = &asked.pending_decision else { panic!("a choice: {:?}", asked.pending_decision) };
+        assert_eq!(texts, &vec!["The Runner loses 1 click.".to_string(), "End the run.".to_string()]);
+        let clicks = asked.runner.resources.clicks;
+        let (lost, _) = choose(&asked, &registry, 0);
+        assert_eq!(lost.runner.resources.clicks.0, clicks.0 - 1);
+        assert!(lost.active_run.is_some(), "the run goes on");
+
+        // Declined: Archives untouched.
+        let (declined, _) = apply_action(&approached, &registry, PlayerAction::ConfirmCardSelection).expect("decline");
+        assert!(declined.corp.archives[0].facedown);
+    }
 }
