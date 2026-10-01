@@ -48,7 +48,6 @@ use netrunner_server::MatchSummary;
 use crate::core::{ClientCore, TokioRuntime};
 use crate::models::online::{reach_pill, Field, Intent, OnlineForm, Outcome, Page};
 use crate::nav::{screen_root, Captures, InputCaptured, Navigate};
-use crate::screens::decks::{read_clipboard, write_clipboard_text};
 use crate::screens::new_game::ActiveMatch;
 use crate::screens::AppScreen;
 use crate::theme::{size, Theme};
@@ -298,6 +297,28 @@ fn controls(
         let outcome = model.0.apply(intent);
         dirty.0 = true;
         carry_out(outcome, &mut model.0, &mut net, &core, runtime.as_deref(), &mut navigate);
+    }
+}
+
+/// The clipboard's text, or why there is none to read. The clipboard is
+/// this screen's alone — a ticket is pasted in and copied out, and a
+/// deck is a file (`files`) — which is what the `system_clipboard`
+/// feature is kept for.
+fn read_clipboard(clipboard: Option<&mut bevy::clipboard::Clipboard>) -> Result<String, String> {
+    let Some(clipboard) = clipboard else { return Err("There is no clipboard to read here".to_string()) };
+    match clipboard.fetch_text() {
+        bevy::clipboard::ClipboardRead::Ready(Ok(text)) => Ok(text),
+        bevy::clipboard::ClipboardRead::Ready(Err(error)) => Err(format!("The clipboard could not be read: {error}")),
+        _ => Err("The clipboard is not ready; try again".to_string()),
+    }
+}
+
+/// Puts text on the clipboard and says so — a host's ticket or address.
+fn write_clipboard_text(clipboard: Option<&mut bevy::clipboard::Clipboard>, text: String) -> String {
+    match clipboard.map(|clipboard| clipboard.set_text(text)) {
+        Some(Ok(())) => "Copied to the clipboard".to_string(),
+        Some(Err(error)) => format!("The clipboard could not be written: {error}"),
+        None => "There is no clipboard to write here".to_string(),
     }
 }
 

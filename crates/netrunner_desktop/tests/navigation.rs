@@ -582,6 +582,67 @@ fn a_built_in_deck_copies_into_an_editor_that_saves_every_add() {
     assert!(app.world().resource::<Model>().0.rows.iter().any(|row| row.saved && row.deck.id == id));
 }
 
+/// A deck goes out as a file and comes back as one, through the dialog:
+/// Export on a built-in tile writes the decklist where the dialog says,
+/// the file is NetrunnerDB's text shape, and Import from file… on it
+/// saves a deck of the same cards and opens it in the editor. The dialog
+/// is scripted, so no window opens; the buttons and the file are real.
+#[test]
+fn a_deck_is_exported_to_a_file_and_imported_back_from_it() {
+    use netrunner_client::deck_builder::{self, CardBook};
+    use netrunner_desktop::files::DeckFiles;
+    use netrunner_desktop::screens::decks::{Control, Model, TileAction, TileButton};
+    use netrunner_desktop::screens::deck_editor::Model as EditorModel;
+    let (mut app, dir) = headless_client();
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("Stolen Goods.txt");
+    app.insert_resource(DeckFiles::scripted(Some(path.clone())));
+    open_decks(&mut app);
+    let row = app.world().resource::<Model>().0.rows.iter().position(|row| row.deck.id == "stolen_goods").unwrap();
+    let export = find::<TileButton>(&mut app, |button| button.row == row && button.action == TileAction::Export).expect("an Export button");
+    tap(&mut app, export);
+    let text = std::fs::read_to_string(&path).expect("the decklist was written where the dialog said");
+    assert!(text.starts_with("Stolen Goods\n"), "{text}");
+    assert!(app.world().resource::<Model>().0.notice.as_deref().is_some_and(|notice| notice.starts_with("Exported to ")), "{:?}", app.world().resource::<Model>().0.notice);
+    {
+        let core = app.world().resource::<ClientCore>();
+        let book = CardBook::new(&core.registry, &core.catalog);
+        let imported = deck_builder::import(&text, book, &[]).expect("the file imports");
+        assert!(imported.skipped.is_empty());
+        // The same cards and counts; the text shape orders them by type
+        // and title, so the order is its own.
+        let sorted = |mut cards: Vec<netrunner_core::decks::DeckEntry>| {
+            cards.sort_by(|a, b| a.card.cmp(&b.card));
+            cards
+        };
+        assert_eq!(sorted(imported.deck.cards), sorted(netrunner_core::decks::by_id("stolen_goods").unwrap().cards), "the same list");
+    }
+
+    let import = find::<Control>(&mut app, |control| *control == Control::Import).expect("an Import from file… button");
+    tap(&mut app, import);
+    assert_eq!(screen(&app), AppScreen::DeckEditor, "an import opens in the editor");
+    let (id, identity, size) = {
+        let editor = &app.world().resource::<EditorModel>().0;
+        (editor.deck().id.clone(), editor.deck().identity.clone(), editor.deck().size())
+    };
+    let original = netrunner_core::decks::by_id("stolen_goods").unwrap();
+    assert_eq!((identity, size), (original.identity.clone(), original.size()));
+    assert!(dir.join("decks").join(format!("{id}.json")).exists(), "the import was saved");
+
+    // A cancelled dialog does nothing, and says nothing.
+    press(&mut app, KeyCode::Escape, Key::Escape);
+    app.update();
+    app.update();
+    assert_eq!(screen(&app), AppScreen::Decks);
+    app.insert_resource(DeckFiles::scripted(None));
+    let before = app.world().resource::<Model>().0.rows.len();
+    let import = find::<Control>(&mut app, |control| *control == Control::Import).unwrap();
+    tap(&mut app, import);
+    assert_eq!(screen(&app), AppScreen::Decks);
+    assert_eq!(app.world().resource::<Model>().0.rows.len(), before);
+    assert_eq!(app.world().resource::<Model>().0.notice, None);
+}
+
 /// A right-click on a pool card reads it and adds nothing; a click off
 /// the card closes it, and so does Escape without leaving the editor.
 #[test]

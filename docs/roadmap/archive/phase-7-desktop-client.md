@@ -5692,3 +5692,67 @@ played. The pool's Set sort is newest first too.
   the deck editor's filter row and its Set list under Startup (three
   sets) and under Casual.
 - No engine change, so no coverage run or sweeps.
+
+### Stage 5 — A deck is a file: imported from one and exported to one through the native dialog (`feat/deck-files`, 30 September 2026)
+
+**What the person asked for:** no clipboard import or export; import
+from a file instead, so people can share decks. The native OS dialog
+over an in-app file browser, and `.txt` (NetrunnerDB's text shape) for
+export.
+
+**What it does.** The Decks screen's Import from clipboard is Import
+from file…, which opens the OS's file dialog filtered to `.txt` and
+`.json`; the chosen file goes through the same import as a dropped one
+(`deck_builder::import`), is saved whatever it holds, and opens in the
+editor. Every tile's Export is Export… and the editor's Export to
+clipboard is Export to file…: a save dialog offering `<deck name>.txt`
+in Downloads,
+and the decklist written there in the text shape the import reads back.
+The notice says where the file went, or what went wrong; a cancelled
+dialog says nothing. Dropping a file on the window still imports it.
+
+**Decisions, with the alternative rejected:**
+- **The native dialog, not a drawn one.** It is the dialog the person
+  already knows, it knows their folders, and it is one less screen to
+  keep looking like the last one. `rfd` 0.17 over the XDG desktop
+  portal on Linux — the `xdg-portal` feature alone, which links nothing
+  of GTK and brings five small crates — and the system dialogs on
+  Windows and macOS. cargo-deny passed with no change to the allow-list.
+- **On a blocking thread, never the main one** (`files::DeckFiles`).
+  The dialog blocks for as long as it is open, so it runs under
+  `TokioRuntime::spawn_blocking` and answers through a one-shot channel
+  the screen polls each frame (`file_answers`, after `controls` in both
+  screens' chains). The plan said `rfd`'s async dialog on a tokio
+  worker; 0.17 has no `tokio` feature, and a dialog that held one of the
+  two workers for minutes would have stalled a download beside it. The
+  export's text is taken when the dialog opens — the deck as it was
+  when Export was pressed — and written on the same thread.
+- **One dialog at a time.** A second ask while one is open is refused
+  with a notice, rather than two dialogs the person has to find.
+- **A headless test scripts the answer.** `DeckFiles::scripted(path)`
+  answers every dialog with one path at once, so the navigation test
+  drives the real buttons and a real file in a scratch directory, and no
+  dialog opens under CI. The editor's poll acts on an export's answer
+  only; an import is the Decks screen's to ask for.
+- **The clipboard stays, for tickets.** `read_clipboard` and
+  `write_clipboard_text` moved to the Online screen, the one place a
+  ticket is pasted in or copied out, and the `system_clipboard` feature's
+  comment says so; the decklist writer went.
+
+**Checks:**
+- Tests: `files` (a scripted dialog answers at once and one at a time,
+  a cancelled one answers nothing, no runtime means no native dialog;
+  the file name is the deck's with no path in it), and the navigation
+  test `a_deck_is_exported_to_a_file_and_imported_back_from_it`: Export
+  on Stolen Goods's tile writes the decklist where the dialog says, the
+  text imports to the same cards, Import from file… on it saves a deck
+  of the same identity and size and opens the editor, and a cancelled
+  import changes nothing and leaves no notice.
+- `netrunner_desktop`: 233 passed, 0 failed. `cargo clippy --workspace
+  --all-targets`: silent. `cargo deny check`: advisories, bans, licenses
+  and sources ok.
+- Screenshots on the virtual compositor at 1920×1080: the Decks screen
+  with Import from file… and a saved tile's Export; the editor with
+  Export to file…. The dialog itself is the portal's and is not drawn
+  by the client, so it is tried by hand on the person's desktop.
+- No engine change, so no coverage run or sweeps.

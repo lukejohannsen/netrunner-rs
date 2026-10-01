@@ -84,7 +84,7 @@ settled are AGENTS.md §5, which is where to read them. **Open: §4's movement a
 - **§7**: a resume over an iroh ticket is tested only over TCP.
 - **§8 item 4**: the take-back's server half ("the server can take (b) later"). **§8 item 5**: replay notes — a file beside the record, and an editor.
 - **§9**: decklists searched and downloaded from NetrunnerDB, not started. The download half is §10 stage 6.
-- **§10**: the deck builder by format, decks as files and from NetrunnerDB, art per printing. Planned 30 September 2026 and built on NSG pool Stage 0d; Stage 3 (art per printing) and Stage 4 (the format-first builder) are done, Stage 5 is next.
+- **§10**: the deck builder by format, decks as files and from NetrunnerDB, art per printing. Planned 30 September 2026 and built on NSG pool Stage 0d; Stages 3–5 (art per printing, the format-first builder, decks as files) are done, Stage 6 is next.
 
 ## Closed — one line each
 
@@ -338,7 +338,7 @@ names (`netrunner.svg`) are v3's cycle ids, so every embedded set has a
 mark. Stage 0d also left the Cards screen listing one entry per card
 with its printings in the inspector.
 
-**Stages, one PR each, Stage 5 next:**
+**Stages, one PR each, Stage 6 next:**
 - **Stage 3 — art per printing:** done. A card's printings are a strip of
   pictures under the browser's inspector and beside a card opened to
   read, each the button that draws the card with that art everywhere;
@@ -351,7 +351,11 @@ with its printings in the inspector.
   (`card_text::set_icon`, every embedded set), newest first; the Cards
   screen reads in the same order (`feat/deck-builder-format-first`, 30
   September 2026).
-- **Stage 5 — decks as files**, through `rfd` (xdg-portal, no GTK), with
-  the clipboard buttons gone.
+- **Stage 5 — decks as files:** done. Import from file… and Export to
+  file… through the native dialog (`files`: `rfd` over the XDG portal,
+  no GTK, on a blocking thread of the tokio runtime), export as `.txt`
+  offered in Downloads, the clipboard buttons gone and the clipboard
+  left to the Online screen's tickets (`feat/deck-files`, 30 September
+  2026).
 - **Stage 6 — a NetrunnerDB deck by link**, over v3.
 

@@ -16,14 +16,16 @@
 //! and then the identity, as the identity's card, and opens the editor on
 //! the empty deck; the name is changed there.
 //!
-//! **Import and export go through the clipboard, and a file can be
-//! dropped.** Import reads the clipboard as a decklist — this project's
-//! deck file, or the text list NetrunnerDB, jinteki.net or a hand-typed
-//! list writes (`deck_builder::import`) — and Export puts the deck on it
-//! in the same text shape. A `.txt` or `.json` file dropped on the window
-//! is imported the same way, which is the answer to a file picker without
-//! a native dialog. Whatever an import could not read is named, and the
-//! deck is saved anyway.
+//! **Import and export are files, through the native dialog** (`files`,
+//! Phase 7 §10 Stage 5). Import reads a file as a decklist — this
+//! project's deck file, or the text list NetrunnerDB, jinteki.net or a
+//! hand-typed list writes (`deck_builder::import`) — and Export writes the
+//! deck in that text shape, offered as `<name>.txt` in Downloads. A
+//! `.txt` or `.json` file dropped on the window is imported the same way.
+//! Whatever an import could not read is named, and the deck is saved
+//! anyway. Both went through the clipboard until the person asked for
+//! files (30 September 2026), so that a deck can be handed to someone;
+//! the clipboard is the Online screen's now, for a ticket.
 
 use bevy::prelude::*;
 use bevy::ui::FocusPolicy;
@@ -38,7 +40,8 @@ use netrunner_core::format::NsgFormat;
 use netrunner_core::rules::Side;
 
 use crate::card_images::CardImages;
-use crate::core::ClientCore;
+use crate::core::{ClientCore, TokioRuntime};
+use crate::files::{Ask, DeckFiles, Done};
 use crate::models::decks::{Intent, Outcome, Shelf, ShelfRow, ShelfSort};
 use crate::nav::{screen_root, Captures, InputCaptured, Navigate};
 use crate::screens::deck_editor::EditDeck;
@@ -57,7 +60,7 @@ impl Plugin for DecksPlugin {
         app.add_message::<FileDragAndDrop>()
             .add_systems(OnEnter(AppScreen::Decks), spawn)
             .add_systems(Update, escape_closes_the_picker.in_set(Captures).run_if(in_state(AppScreen::Decks)))
-            .add_systems(Update, (controls, dropped_files, redraw_new_art, refresh).chain().run_if(in_state(AppScreen::Decks)));
+            .add_systems(Update, (controls, dropped_files, file_answers, redraw_new_art, refresh).chain().run_if(in_state(AppScreen::Decks)));
     }
 }
 
@@ -207,7 +210,7 @@ fn spawn(mut commands: Commands, theme: Res<Theme>, core: Res<ClientCore>, image
         .with_children(|parent| {
             parent.spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Baseline, column_gap: px(16), ..default() }).with_children(|row| {
                 row.spawn(widgets::title(&theme, AppScreen::Decks.title()));
-                row.spawn(widgets::dim(&theme, format!("Checked against {format}, the format Settings names. To import a file, drop a .txt or .json decklist onto the window.")));
+                row.spawn(widgets::dim(&theme, format!("Checked against {format}, the format Settings names. A .txt or .json decklist dropped onto the window is imported too.")));
             });
         })
         .add_child(toolbar)
@@ -227,7 +230,7 @@ fn toolbar_node() -> Node {
 
 fn spawn_toolbar(parent: &mut ChildSpawnerCommands, theme: &Theme, shelf: &Shelf) {
     parent.spawn(widgets::styled_button(theme, ButtonKind::Primary, "New deck", Val::Auto, Control::New));
-    parent.spawn(widgets::button(theme, "Import from clipboard", Val::Auto, Control::Import));
+    parent.spawn(widgets::button(theme, "Import from file…", Val::Auto, Control::Import));
     parent.spawn((Node { width: px(18), ..default() },));
     for (label, side) in [("All", None), ("Corp", Some(Side::Corp)), ("Runner", Some(Side::Runner))] {
         let kind = if shelf.view.side == side { ButtonKind::Secondary } else { ButtonKind::Quiet };
@@ -310,12 +313,12 @@ fn spawn_tile(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCor
                     if row.saved {
                         buttons.spawn(widgets::small_button(theme, ButtonKind::Secondary, "Edit", TileButton { row: index, action: TileAction::Open }));
                         buttons.spawn(widgets::small_button(theme, ButtonKind::Secondary, "Copy", TileButton { row: index, action: TileAction::Copy }));
-                        buttons.spawn(widgets::small_button(theme, ButtonKind::Secondary, "Export", TileButton { row: index, action: TileAction::Export }));
+                        buttons.spawn(widgets::small_button(theme, ButtonKind::Secondary, "Export…", TileButton { row: index, action: TileAction::Export }));
                         buttons.spawn(widgets::small_button(theme, ButtonKind::Quiet, "Delete", TileButton { row: index, action: TileAction::Delete }));
                     } else {
                         buttons.spawn(widgets::small_button(theme, ButtonKind::Secondary, "View", TileButton { row: index, action: TileAction::Open }));
                         buttons.spawn(widgets::small_button(theme, ButtonKind::Secondary, "Copy to edit", TileButton { row: index, action: TileAction::Copy }));
-                        buttons.spawn(widgets::small_button(theme, ButtonKind::Quiet, "Export", TileButton { row: index, action: TileAction::Export }));
+                        buttons.spawn(widgets::small_button(theme, ButtonKind::Quiet, "Export…", TileButton { row: index, action: TileAction::Export }));
                     }
                 });
             });
@@ -349,7 +352,7 @@ fn controls(
     mut popup: ResMut<Popup>,
     mut dirty: ResMut<Dirty>,
     core: Res<ClientCore>,
-    mut clipboard: Option<ResMut<bevy::clipboard::Clipboard>>,
+    (mut files, runtime): (ResMut<DeckFiles>, Option<Res<TokioRuntime>>),
     mut navigate: MessageWriter<Navigate>,
 ) {
     let book = book(&core);
@@ -398,13 +401,11 @@ fn controls(
                     dirty.popup = true;
                 }
                 Control::Import => {
-                    outcome = match read_clipboard(clipboard.as_deref_mut()) {
-                        Ok(text) => shelf.0.apply(Intent::Import(text), book),
-                        Err(error) => {
-                            shelf.0.notice = Some(error);
-                            Outcome::Changed
-                        }
-                    };
+                    // The dialog answers later, through `file_answers`.
+                    if let Err(error) = files.ask(runtime.as_deref(), Ask::Open) {
+                        shelf.0.notice = Some(error);
+                        outcome = Outcome::Changed;
+                    }
                 }
                 Control::Side(side) => outcome = shelf.0.apply(Intent::Side(*side), book),
             }
@@ -419,8 +420,10 @@ fn controls(
                 TileAction::Export => {
                     if let Some(row) = shelf.0.rows.get(*row) {
                         let text = deck_builder::export_text(&row.deck, book);
-                        shelf.0.notice = Some(write_clipboard(clipboard.as_deref_mut(), text, &row.deck.name));
-                        outcome = Outcome::Changed;
+                        if let Err(error) = files.ask(runtime.as_deref(), Ask::Save { name: row.deck.name.clone(), text }) {
+                            shelf.0.notice = Some(error);
+                            outcome = Outcome::Changed;
+                        }
                     }
                 }
                 TileAction::Delete => {
@@ -453,53 +456,59 @@ fn close_popup(shelf: &mut Shelf, popup: &mut Popup, book: CardBook) {
     }
 }
 
-/// The clipboard's text, or why there is none to read.
-pub fn read_clipboard(clipboard: Option<&mut bevy::clipboard::Clipboard>) -> Result<String, String> {
-    let Some(clipboard) = clipboard else { return Err("There is no clipboard to read here".to_string()) };
-    match clipboard.fetch_text() {
-        bevy::clipboard::ClipboardRead::Ready(Ok(text)) => Ok(text),
-        bevy::clipboard::ClipboardRead::Ready(Err(error)) => Err(format!("The clipboard could not be read: {error}")),
-        _ => Err("The clipboard is not ready; try again".to_string()),
+/// Imports the decklist in the file at `path`: the one way in for a
+/// dropped file and a chosen one.
+fn import_file(shelf: &mut Shelf, book: CardBook, path: &std::path::Path) -> Outcome {
+    match std::fs::read_to_string(path) {
+        Ok(text) => shelf.apply(Intent::Import(text), book),
+        Err(error) => {
+            shelf.notice = Some(format!("{} could not be read: {error}", path.display()));
+            Outcome::Changed
+        }
     }
 }
 
-/// Puts text on the clipboard and says so — a host's ticket or address.
-pub fn write_clipboard_text(clipboard: Option<&mut bevy::clipboard::Clipboard>, text: String) -> String {
-    match clipboard.map(|clipboard| clipboard.set_text(text)) {
-        Some(Ok(())) => "Copied to the clipboard".to_string(),
-        Some(Err(error)) => format!("The clipboard could not be written: {error}"),
-        None => "There is no clipboard to write here".to_string(),
+/// Acts on what an import or export did: a new deck opens, a notice says
+/// where the file went or what went wrong.
+fn act_on(outcome: Outcome, dirty: &mut Dirty, commands: &mut Commands, navigate: &mut MessageWriter<Navigate>) {
+    match outcome {
+        Outcome::Nothing => {}
+        Outcome::Changed => dirty.shelf = true,
+        Outcome::Open(id) => {
+            commands.insert_resource(EditDeck(id));
+            navigate.write(Navigate(AppScreen::DeckEditor));
+        }
     }
 }
 
-/// Puts a decklist on the clipboard and says so.
-pub fn write_clipboard(clipboard: Option<&mut bevy::clipboard::Clipboard>, text: String, name: &str) -> String {
-    match clipboard.map(|clipboard| clipboard.set_text(text)) {
-        Some(Ok(())) => format!("Copied {name} to the clipboard as a decklist"),
-        Some(Err(error)) => format!("The clipboard could not be written: {error}"),
-        None => "There is no clipboard to write here".to_string(),
-    }
-}
-
-/// A file dropped on the window is imported as if pasted.
+/// A file dropped on the window is imported as one chosen in the dialog.
 fn dropped_files(mut drops: MessageReader<FileDragAndDrop>, mut shelf: ResMut<Model>, mut dirty: ResMut<Dirty>, core: Res<ClientCore>, mut commands: Commands, mut navigate: MessageWriter<Navigate>) {
     for drop in drops.read() {
         let FileDragAndDrop::DroppedFile { path_buf, .. } = drop else { continue };
-        let outcome = match std::fs::read_to_string(path_buf) {
-            Ok(text) => shelf.0.apply(Intent::Import(text), book(&core)),
-            Err(error) => {
-                shelf.0.notice = Some(format!("{} could not be read: {error}", path_buf.display()));
-                Outcome::Changed
-            }
-        };
-        match outcome {
-            Outcome::Nothing => {}
-            Outcome::Changed => dirty.shelf = true,
-            Outcome::Open(id) => {
-                commands.insert_resource(EditDeck(id));
-                navigate.write(Navigate(AppScreen::DeckEditor));
-            }
+        let outcome = import_file(&mut shelf.0, book(&core), path_buf);
+        act_on(outcome, &mut dirty, &mut commands, &mut navigate);
+    }
+}
+
+/// The dialog's answer, when it comes: the chosen file is imported, or
+/// the export is reported. A cancelled dialog is nothing.
+fn file_answers(mut files: ResMut<DeckFiles>, mut shelf: ResMut<Model>, mut dirty: ResMut<Dirty>, core: Res<ClientCore>, mut commands: Commands, mut navigate: MessageWriter<Navigate>) {
+    let outcome = match files.poll() {
+        None | Some(Done::Opened(None)) | Some(Done::Saved(None)) => return,
+        Some(Done::Opened(Some(path))) => import_file(&mut shelf.0, book(&core), &path),
+        Some(Done::Saved(Some(result))) => {
+            shelf.0.notice = Some(exported(result));
+            Outcome::Changed
         }
+    };
+    act_on(outcome, &mut dirty, &mut commands, &mut navigate);
+}
+
+/// The line an export leaves: where the file is, or why there is none.
+pub fn exported(result: Result<std::path::PathBuf, String>) -> String {
+    match result {
+        Ok(path) => format!("Exported to {}", path.display()),
+        Err(error) => format!("Not exported: {error}"),
     }
 }
 

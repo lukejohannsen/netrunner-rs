@@ -18,11 +18,18 @@ netrunner_server = { path = "../netrunner_server" }
 # 3D — no PBR, glTF or lighting — so the build carries only what a 2D
 # card game draws. `default_font` rides in with `ui`; the themed
 # font under `assets/fonts` sits on top of it. `system_clipboard` is the
-# deck builder's: `ui` brings a `Clipboard` resource that only ever
-# holds an in-process buffer, and a decklist pasted from NetrunnerDB or
-# copied out to a friend has to cross the process boundary (arboard,
-# which Bevy already chose for its text editing).
+# Online screen's: `ui` brings a `Clipboard` resource that only ever
+# holds an in-process buffer, and a host's ticket copied out to a friend
+# or pasted in from one has to cross the process boundary (arboard,
+# which Bevy already chose for its text editing). Decks used to cross it
+# the same way; they are files now (`files`).
 bevy = { version = "0.19", default-features = false, features = ["ui", "audio", "png", "jpeg", "webp", "system_clipboard"] }
+# The native file dialog a deck is imported from and exported to
+# (`files`): the XDG desktop portal on Linux rather than GTK, so nothing
+# of GTK is linked, awaited on the tokio runtime the client already has.
+rfd = { version = "0.17", default-features = false, features = ["xdg-portal"] }
+# Where the save dialog opens: the person's Downloads folder.
+dirs = "5"
 # A card scan is resampled to the width it is drawn at with `image`: the
 # crate Bevy already decodes with, so nothing new is built.
 image = { version = "0.25", default-features = false }
