@@ -47,14 +47,14 @@ cards each stage takes.
 | 1 | Vantage Point (`vp`) | 66 | 66 | 0 | complete (27 September 2026) |
 | 2 | Rebellion Without Rehearsal (`rwr`) | 65 | 65 | 0 | complete (28 September 2026) |
 | 3 | The Automata Initiative (`tai`) | 65 | 65 | 0 | complete (29 September 2026) |
-| 4 | Parhelion (`ph`) | 63 | 42 | 21 | **Stage 5d next** — the stack and HQ: Asmund Pudlat, Concerto, Reprise |
+| 4 | Parhelion (`ph`) | 63 | 45 | 18 | **Stage 6 next** — charge, mark, set aside, Runner removal from game, counters on a run event: Flux Capacitor, Orca, Tunnel Vision, Info Bounty, Spark of Inspiration, Nanuq, Raindrops Cut Stone |
 | 5 | Midnight Sun (`ms`) + Booster (`msbp`) | 65 + 7 | 0 | 65 + 7 | not started |
 | 6 | Uprising (`ur`) + Booster (`urbp`) | 65 + 7 | 0 | 65 + 7 | not started |
 | 7 | Downfall (`df`) | 65 | 0 | 65 | not started |
 | 8 | System Update 2021 (`su21`), Salvaged Memories (`sm`), Magnum Opus Reprint (`mor`) | 82, 18, 6 | 11, 1, 0 | 71, 17, 6 | not started (the built ones are Core reprints) |
 
 **DSL ratio** (`pool_status.py`, the DSL Growth Rule's number): **15 of 91
-`Effect` variants single-use, 1 unused (`Trace`), over 422 card files** (1
+`Effect` variants single-use, 1 unused (`Trace`), over 425 card files** (1
 October 2026). The baseline at Stage 0a was 26 of 70 single-use, 3 unused,
 over 184 files: 215 cards later the single-use count is *lower*, because the
 growth went into `Trigger`, `EventFilter`, `Amount`, `CardFilter`, `Cost` and
@@ -368,6 +368,7 @@ Each is also a note on its section's row in [rules-conformance.md](rules-conform
 - **Alarm Clock's run** is asked for among the Runner's other "when your turn begins" abilities and resolved when chosen; the Corp's rez window of 5.7.1e comes once, after the run.
 - **Hearts and Minds** chooses its source before its destination, so an advanceable card may be picked as both — a move onto itself.
 - **Pressure Spike's pumps last the encounter**, as every breaker's does here. **Corporate Hospitality** excludes only the copy resolving, found as the last faceup copy in Archives.
+- **Concerto's credits** (PH 5d) are placed on the run as it starts, where the card places them on itself before it; they pay for anything during that run and go with it.
 - **Aircheck's event is active for the run it makes and no longer**; the second run is ordinary, and the event's unspent credits are gone with the first.
 - **Vera Ivanovna Shuyskaya's reveal** is not a `CardRevealed` of each grip card; the Corp sees the grip through the selection and only the trashed card is announced. No card in the pool reads a reveal of the grip.
 - **Business As Usual's virus counters are the Runner's cards'**: no Corp card in the pool hosts one.
@@ -672,8 +673,8 @@ change deck-building rules (`DeckRule`, Stage 5a).
    taken (1 October 2026): **5a**, deck building (built): Nova Initiumia:
    Catalyst & Impetus, Ampère: Cybernetics For Anyone; **5b**, Archives (built):
    Hybrid Release, Nanisivik Grid; **5c**, trashes (built): Kimberlite Field, Yakov
-   Erikovich Avdakov, World Tree; **5d**, the stack and HQ: Asmund Pudlat,
-   Concerto, Reprise.
+   Erikovich Avdakov, World Tree; **5d**, the stack and HQ (built): Asmund
+   Pudlat, Concerto, Reprise. Stage 5 is complete.
 6. **Charge, mark, set aside, Runner removal from game, counters on a run
    event:** Flux Capacitor, Orca, Tunnel Vision, Info Bounty, Spark of
    Inspiration, Nanuq, Raindrops Cut Stone.
@@ -707,6 +708,7 @@ Grid, Tsakhia, World Tree.
 - **Stage 5a** — the deckbuilding rules an identity prints (`feat/ph-stage-5a-deck-building-identities`, 1 October 2026).
 - **Stage 5b** — Archives: an install of the copy chosen, and a subroutine of ice in Archives (`feat/ph-stage-5b-archives`, 1 October 2026).
 - **Stage 5c** — trashes: the card a nested cost took, and where a trashed install stood (`feat/ph-stage-5c-trashes`, 1 October 2026).
+- **Stage 5d** — the stack and HQ: a search for different names, and a run named for the card whose text began it (`feat/ph-stage-5d-stack-and-hq`, 1 October 2026).
 
 ### 5. Midnight Sun and its Booster Pack — 65 cards (C 22 / V 26 / M 17)
 

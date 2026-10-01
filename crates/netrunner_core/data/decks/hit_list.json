@@ -3,16 +3,12 @@
   "name": "Hit List",
   "side": "Runner",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach Jeitinho, Rebellion Without Rehearsal's Criminal weapon, which the Runner adds to their score area as an assassination agenda after a turn of successful runs on HQ, R&D and Archives, and wins with the third. On Gabriel Santiago, the one Criminal identity no deck plays, whose HQ credits pay for the turn's first run, and on Borrowed Time's frame after Rebellion Without Rehearsal Stage 8b, with three Jeitinho for a Tailgate, a VRcation and a Pennyshaver. Eternal-legal only: Gabriel Santiago is a Core Set card. The Automata Initiative Stage 2: two Shibboleth for two VRcation. The Automata Initiative Stage 3: two Curupira for two Marjanah, fracter for fracter, and two Laser Pointer for two Leech. The Automata Initiative Stage 4: Hermes for the T400 Memory Diamond, memory for memory, and two Saci for two Rotary. Parhelion Stage 4b: two WAKE Implant v2A-JRJ for two Docklands Pass, two Poison Vial for two Pennyshaver and two Tremolo for two Buzzsaw, all six of which Borrowed Time still carries.",
+  "description": "Not a published list: built so the sweeps reach Jeitinho, Rebellion Without Rehearsal's Criminal weapon, which the Runner adds to their score area as an assassination agenda after a turn of successful runs on HQ, R&D and Archives, and wins with the third. On Gabriel Santiago, the one Criminal identity no deck plays, whose HQ credits pay for the turn's first run, and on Borrowed Time's frame after Rebellion Without Rehearsal Stage 8b, with three Jeitinho for a Tailgate, a VRcation and a Pennyshaver. Eternal-legal only: Gabriel Santiago is a Core Set card. The Automata Initiative Stage 2: two Shibboleth for two VRcation. The Automata Initiative Stage 3: two Curupira for two Marjanah, fracter for fracter, and two Laser Pointer for two Leech. The Automata Initiative Stage 4: Hermes for the T400 Memory Diamond, memory for memory, and two Saci for two Rotary. Parhelion Stage 4b: two WAKE Implant v2A-JRJ for two Docklands Pass, two Poison Vial for two Pennyshaver and two Tremolo for two Buzzsaw, all six of which Borrowed Time still carries. Parhelion Stage 5d: two Concerto for its two Tailgate, a run paid for by the top of the stack; two Reprise for its two Sell Out, a steal's follow-up; and two Asmund Pudlat for its two Verbal Plasticity, which finds its weapons — Jeitinho, Poison Vial, Laser Pointer — and its Conduit.",
   "style": [
     "pressure"
   ],
   "identity": "gabriel_santiago_consummate_professional",
   "cards": [
-    {
-      "card": "tailgate",
-      "count": 2
-    },
     {
       "card": "mutual_favor",
       "count": 2
@@ -46,10 +42,6 @@
       "count": 3
     },
     {
-      "card": "verbal_plasticity",
-      "count": 2
-    },
-    {
       "card": "tremolo",
       "count": 2
     },
@@ -60,10 +52,6 @@
     {
       "card": "conduit",
       "count": 1
-    },
-    {
-      "card": "sell_out",
-      "count": 2
     },
     {
       "card": "borrowed_goods",
@@ -95,6 +83,18 @@
     },
     {
       "card": "saci",
+      "count": 2
+    },
+    {
+      "card": "concerto",
+      "count": 2
+    },
+    {
+      "card": "reprise",
+      "count": 2
+    },
+    {
+      "card": "asmund_pudlat",
       "count": 2
     }
   ]

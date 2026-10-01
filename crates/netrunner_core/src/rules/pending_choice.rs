@@ -447,6 +447,15 @@ fn instance_matches_filter(
                 state.last_completed_run.as_ref().is_some_and(|completed| completed.accessed_cards.contains(&card))
             })
         }
+        // No other card chosen in this selection has this one's name. A
+        // card already chosen keeps its own place, so it can be toggled
+        // off; it is a second copy that cannot be toggled on.
+        CardFilter::DifferentNames => {
+            let Some(PendingDecision::ChooseCards { selected, .. }) = &state.pending_decision else { return true };
+            let ids = zone_card_ids(state, chooser, zone, source);
+            let this = ids.get(position);
+            !selected.iter().any(|other| *other != position && ids.get(*other) == this)
+        }
         // The parking card is never "one of your other cards": compared by
         // install, so a second copy of the same card stays eligible.
         CardFilter::NotSourceCard => {
@@ -1678,7 +1687,11 @@ pub(crate) fn resolve_choose_server(
         // takes credits from *itself*), so carry its identity onto the run.
         run.on_success_card = source_card.clone();
         run.on_success_install = source_install;
-        run.initiated_by = source_card.clone();
+        // The run is begun by the card whose text it is — Concerto's, not
+        // the card its reveal resolves as; Beta Build's, not the program
+        // its search found. The riders above still resolve as the card
+        // the choice resolves as.
+        run.initiated_by = prompting_card.clone().or_else(|| source_card.clone());
     }
     // The run's start rider (Shred arming itself), as the parking card.
     let mut start_events = Vec::new();
