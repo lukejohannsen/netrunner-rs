@@ -6,6 +6,7 @@
   "cost": 0,
   "min_deck_size": 30,
   "unlimited_influence": true,
+  "deck_rules": ["StarterGameOnly"],
   "triggers": [],
   "built_from": 30077,
   "is_playable": true

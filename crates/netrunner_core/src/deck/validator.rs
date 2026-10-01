@@ -8,7 +8,7 @@ use thiserror::Error;
 use crate::card::Faction;
 use crate::cards::CardRegistry;
 use crate::deck::Decklist;
-use crate::dsl::{CardDefinition, CardId, CardType};
+use crate::dsl::{CardDefinition, CardId, CardType, DeckRule};
 use crate::format::{FormatRules, NsgFormat, DEFAULT_INFLUENCE_LIMIT};
 use crate::rules::Side;
 
@@ -68,6 +68,11 @@ pub enum DeckValidationError {
     /// out-of-faction agenda cost 0 and the deck validated.
     #[error("agenda {card:?} is {faction:?}; a {identity_faction:?} deck may include only its own faction's agendas and neutral ones")]
     OutOfFactionAgenda { card: CardId, faction: Faction, identity_faction: Faction },
+
+    /// Ampère's "up to 2 different agenda cards from each Corp faction"
+    /// (`DeckRule::AgendasFromEachFaction`), broken by a third title.
+    #[error("the deck holds {count} different {faction:?} agendas; its identity allows {max} from each Corp faction")]
+    TooManyAgendasFromFaction { faction: Faction, count: u32, max: u32 },
 
     #[error("card {card:?} is banned in {format:?}")]
     BannedCardIncluded { card: CardId, format: NsgFormat },
@@ -220,10 +225,17 @@ pub fn validate_deck_with_rules(
     }
 
     let identity_faction = identity.faction.unwrap_or(Faction::NeutralCorp);
+    let agendas_from_each_faction = identity.deck_rules.iter().find_map(|rule| match rule {
+        DeckRule::AgendasFromEachFaction(n) => Some(*n),
+        _ => None,
+    });
 
     let mut influence_spent = 0u32;
     let mut agenda_points = 0u32;
     let mut restriction_spent = 0u32;
+    // Different titles, by faction, of the agendas the identity's
+    // `AgendasFromEachFaction` admits from outside its own.
+    let mut foreign_agendas: Vec<Faction> = Vec::new();
 
     for (card_id, &count) in &deck.cards {
         let card = registry.get(card_id).ok_or_else(|| DeckValidationError::CardNotFound(card_id.clone()))?;
@@ -244,7 +256,11 @@ pub fn validate_deck_with_rules(
         if card.card_type == CardType::Agenda {
             let faction = card.faction.unwrap_or(Faction::NeutralCorp);
             if faction != identity_faction && !is_neutral(faction) {
-                return Err(DeckValidationError::OutOfFactionAgenda { card: card_id.clone(), faction, identity_faction });
+                if agendas_from_each_faction.is_none() {
+                    return Err(DeckValidationError::OutOfFactionAgenda { card: card_id.clone(), faction, identity_faction });
+                }
+                // One entry per title: `deck.cards` is keyed by card.
+                foreign_agendas.push(faction);
             }
         }
 
@@ -254,7 +270,7 @@ pub fn validate_deck_with_rules(
         // budget spent below, not a cap on copies. Capping a restricted
         // card at one copy was the old approximation of a rule that
         // constrains the deck rather than the card — see `FormatRules`.
-        let max_copies = card.deck_limit.unwrap_or(MAX_COPIES_PER_CARD);
+        let max_copies = card.copy_limit_under(Some(identity), MAX_COPIES_PER_CARD);
         if count > max_copies {
             return Err(DeckValidationError::TooManyCopies { card: card_id.clone(), count, max: max_copies });
         }
@@ -267,8 +283,18 @@ pub fn validate_deck_with_rules(
         }
     }
 
-    // The starter identities have no influence budget (`unlimited_influence`,
-    // the catalog's `influence_limit: null`); every other identity gets its
+    if let Some(max) = agendas_from_each_faction {
+        for faction in &foreign_agendas {
+            let count = foreign_agendas.iter().filter(|other| *other == faction).count() as u32;
+            if count > max {
+                return Err(DeckValidationError::TooManyAgendasFromFaction { faction: *faction, count, max });
+            }
+        }
+    }
+
+    // The starter identities, Nova Initiumia and Ampère have no influence
+    // budget (`unlimited_influence`, the catalog's `influence_limit: null`);
+    // every other identity gets its
     // printed budget, or the flat default when it prints none.
     let limit = identity.influence_limit.unwrap_or(DEFAULT_INFLUENCE_LIMIT);
     if !identity.unlimited_influence && influence_spent > limit {
@@ -698,6 +724,69 @@ mod tests {
         assert_eq!(
             validate_deck(&deck, &registry, NsgFormat::Casual),
             Err(DeckValidationError::RunnerDeckContainsAgenda(c(800)))
+        );
+    }
+
+    /// Nova Initiumia's "Your deck cannot include more than 1 copy of any
+    /// card": a second copy is refused under the identity and nowhere
+    /// else, and a card that prints a lower limit keeps it.
+    #[test]
+    fn an_identity_that_prints_one_copy_of_each_card_refuses_a_second() {
+        let (mut registry, mut deck) = valid_runner_registry_and_deck();
+        let mut nova = identity(3, Side::Runner, Faction::NeutralRunner, 45);
+        nova.deck_rules = vec![DeckRule::CopiesOfEachCard(1)];
+        registry.insert(nova);
+        deck.identity = c(3);
+        // The fixture's filler holds three copies of each card.
+        assert!(matches!(
+            validate_deck(&deck, &registry, NsgFormat::Casual),
+            Err(DeckValidationError::TooManyCopies { count: 3, max: 1, .. })
+        ));
+        deck.cards = runner_filler_singletons(&mut registry, 1000, 45);
+        validate_deck(&deck, &registry, NsgFormat::Casual).expect("forty-five different cards");
+        assert_eq!(registry.get(&c(1000)).unwrap().copy_limit_under(registry.get(&c(3)), MAX_COPIES_PER_CARD), 1);
+        assert_eq!(registry.get(&c(1000)).unwrap().copy_limit_under(registry.get(&c(2)), MAX_COPIES_PER_CARD), 3);
+    }
+
+    fn runner_filler_singletons(registry: &mut CardRegistry, start_id: u32, total: u32) -> HashMap<CardId, u32> {
+        (start_id..start_id + total)
+            .map(|id| {
+                registry.insert(card(id, Side::Runner, Faction::Criminal, CardType::Event, None));
+                (c(id), 1)
+            })
+            .collect()
+    }
+
+    /// Ampère's "Your deck may include up to 2 different agenda cards from
+    /// each Corp faction": two Jinteki titles are legal under it, a third
+    /// is not, and without the rule the first is refused.
+    #[test]
+    fn an_identity_may_admit_two_different_agendas_from_each_corp_faction() {
+        let (mut registry, mut deck) = valid_corp_registry_and_deck();
+        let mut ampere = identity(4, Side::Corp, Faction::NeutralCorp, 45);
+        ampere.deck_rules = vec![DeckRule::AgendasFromEachFaction(2)];
+        registry.insert(ampere);
+        for (id, faction) in [(910, Faction::Jinteki), (911, Faction::Jinteki), (912, Faction::Jinteki), (913, Faction::Nbn)] {
+            let mut foreign = card(id, Side::Corp, faction, CardType::Agenda, None);
+            foreign.agenda_points = Some(5);
+            registry.insert(foreign);
+        }
+        // Swap the fixture's neutral 5-pointers for foreign ones, keeping
+        // the points and the size.
+        let swap = |deck: &mut Decklist, out: u32, into: u32| {
+            deck.cards.remove(&c(out));
+            deck.cards.insert(c(into), 1);
+        };
+        swap(&mut deck, 100, 910);
+        swap(&mut deck, 101, 911);
+        swap(&mut deck, 102, 913);
+        assert!(matches!(validate_deck(&deck, &registry, NsgFormat::Casual), Err(DeckValidationError::OutOfFactionAgenda { .. })));
+        deck.identity = c(4);
+        validate_deck(&deck, &registry, NsgFormat::Casual).expect("two Jinteki titles and one NBN");
+        swap(&mut deck, 103, 912);
+        assert_eq!(
+            validate_deck(&deck, &registry, NsgFormat::Casual),
+            Err(DeckValidationError::TooManyAgendasFromFaction { faction: Faction::Jinteki, count: 3, max: 2 })
         );
     }
 

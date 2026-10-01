@@ -47,7 +47,7 @@ cards each stage takes.
 | 1 | Vantage Point (`vp`) | 66 | 66 | 0 | complete (27 September 2026) |
 | 2 | Rebellion Without Rehearsal (`rwr`) | 65 | 65 | 0 | complete (28 September 2026) |
 | 3 | The Automata Initiative (`tai`) | 65 | 65 | 0 | complete (29 September 2026) |
-| 4 | Parhelion (`ph`) | 63 | 35 | 28 | **Stage 5 next** — zones, selection and deck building: Hybrid Release, Nanisivik Grid, Kimberlite Field, World Tree, Asmund Pudlat, Concerto, Reprise, Yakov Erikovich Avdakov, Nova Initiumia, Ampère |
+| 4 | Parhelion (`ph`) | 63 | 37 | 26 | **Stage 5b next** — Archives: Hybrid Release, Nanisivik Grid; then 5c (trashes: Kimberlite Field, Yakov Erikovich Avdakov, World Tree) and 5d (Asmund Pudlat, Concerto, Reprise) |
 | 5 | Midnight Sun (`ms`) + Booster (`msbp`) | 65 + 7 | 0 | 65 + 7 | not started |
 | 6 | Uprising (`ur`) + Booster (`urbp`) | 65 + 7 | 0 | 65 + 7 | not started |
 | 7 | Downfall (`df`) | 65 | 0 | 65 | not started |
@@ -339,7 +339,6 @@ PR that made this list (29 September 2026).
 - **Blood in the Water** (Midnight Sun): prints its advancement requirement as X, which NetrunnerDB records as none; the face draws no circle for it until the stage that builds a variable requirement (`card_face`'s layout test names the card).
 - **Hostile Architecture** (PH 2b): a *rezzed* copy trashed by the Runner's card text is not heard — `GameEvent::CardTrashed` does not say whether the card was rezzed, and adding that to its 42 sites is more than one card wants. Charm Offensive can reach it; no game has.
 - **Hafrún** (PH Stage 8): two ice types, which `CardType::Ice(IceType)` cannot say.
-- **Nova Initiumia, Ampère** (PH Stage 5): change deck-building rules the validator does not model (`deck_limit` only).
 - **Docklands Pass, Rotary**: "whenever you breach HQ or R&D" is a successful run on either; a breach without a run (Cataloguer, RWR 6c) does not fire them.
 - **Manuel Lattes de Moura**: the extra access is heard at the run's success, as every "when you breach" in the pool is, so a run Flagship keeps from being declared successful gets none.
 - **Kessleroid**: "cannot trash" is unenforced.
@@ -649,8 +648,7 @@ Division.
 ### 4. Parhelion — 63 cards (C 19 / V 26 / M 18)
 
 **Decks:** Sweep decks on its four identities. Nova Initiumia and Ampère
-change deck-building rules, which the validator does not model yet
-(`deck_limit` only).
+change deck-building rules (`DeckRule`, Stage 5a).
 
 **Stages:**
 1. **Corp, composes:** Thule Subsea: Safety Below, Distributed Tracing, Djupstad Grid,
@@ -670,9 +668,12 @@ change deck-building rules, which the validator does not model yet
    Synthgland 2KVJ, Dr. Vientiane Keeling, K2CP Turbine, Time Bomb;
    **4b**, the breaker words (built): Tremolo, Poison Vial, WAKE Implant
    v2A-JRJ, Abaasy. Stage 4 is complete.
-5. **Zones, selection and deck building:** Hybrid Release, Nanisivik Grid,
-   Kimberlite Field, World Tree, Asmund Pudlat, Concerto, Reprise, Yakov Erikovich Avdakov,
-   Nova Initiumia: Catalyst & Impetus, Ampère: Cybernetics For Anyone.
+5. **Zones, selection and deck building**, split by mechanic when it was
+   taken (1 October 2026): **5a**, deck building (built): Nova Initiumia:
+   Catalyst & Impetus, Ampère: Cybernetics For Anyone; **5b**, Archives:
+   Hybrid Release, Nanisivik Grid; **5c**, trashes: Kimberlite Field, Yakov
+   Erikovich Avdakov, World Tree; **5d**, the stack and HQ: Asmund Pudlat,
+   Concerto, Reprise.
 6. **Charge, mark, set aside, Runner removal from game, counters on a run
    event:** Flux Capacitor, Orca, Tunnel Vision, Info Bounty, Spark of
    Inspiration, Nanuq, Raindrops Cut Stone.
@@ -703,6 +704,7 @@ Grid, Tsakhia, World Tree.
 - **Stage 3c** — harmonic ice: a count of installs, and a derez to pay for a rez (`feat/ph-stage-3c-harmonic-ice`, 30 September 2026).
 - **Stage 4a** — Runner standing words: allotted clicks, the other player's hand size, and "install only if" (`feat/ph-stage-4a-runner-standing-words`, 1 October 2026).
 - **Stage 4b** — breaker words: a cost a credit less per card, a break after a break, and a first time counted on the breaker (`feat/ph-stage-4b-breaker-words`, 1 October 2026).
+- **Stage 5a** — the deckbuilding rules an identity prints (`feat/ph-stage-5a-deck-building-identities`, 1 October 2026).
 
 ### 5. Midnight Sun and its Booster Pack — 65 cards (C 22 / V 26 / M 17)
 

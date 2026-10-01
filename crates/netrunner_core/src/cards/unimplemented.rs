@@ -50,7 +50,6 @@ pub(crate) const PH_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("nanuq", "Nanuq"),
     ("orca", "Orca"),
     ("world_tree", "World Tree"),
-    ("nova_initiumia_catalyst_impetus", "Nova Initiumia: Catalyst & Impetus"),
     ("matryoshka", "Matryoshka"),
     ("nightmare_archive", "Nightmare Archive"),
     ("issuaq_adaptics_sustaining_diversity", "Issuaq Adaptics: Sustaining Diversity"),
@@ -64,7 +63,6 @@ pub(crate) const PH_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("anvil", "Anvil"),
     ("yakov_erikovich_avdakov", "Yakov Erikovich Avdakov"),
     ("zato_city_grid", "ZATO City Grid"),
-    ("ampere_cybernetics_for_anyone", "Ampère: Cybernetics For Anyone"),
 ];
 
 /// *Midnight Sun Booster Pack* (`midnight_sun_booster_pack`): tranche 5 of the NSG plan.

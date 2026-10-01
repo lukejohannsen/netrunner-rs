@@ -1,0 +1,14 @@
+{
+  "id": "nova_initiumia_catalyst_impetus",
+  "title": "Nova Initiumia: Catalyst & Impetus",
+  "side": "Runner",
+  "card_type": "Identity",
+  "cost": 0,
+  "min_deck_size": 40,
+  "base_link": 0,
+  "unlimited_influence": true,
+  "deck_rules": [{ "CopiesOfEachCard": 1 }],
+  "triggers": [],
+  "built_from": 33093,
+  "is_playable": true
+}

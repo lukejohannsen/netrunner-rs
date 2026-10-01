@@ -259,13 +259,18 @@ impl DeckFile {
     /// the full deck construction rules." Those identities print no
     /// influence budget (`CardDefinition::unlimited_influence`), so the
     /// deckbuilding validator could not refuse anything under them and a
-    /// Catalyst deck of every faction validated in Standard. The check is
+    /// Catalyst deck of every faction validated in Standard. What says so
+    /// is their printed "Starter game only." (`DeckRule::StarterGameOnly`),
+    /// not the budget they lack: Nova Initiumia and Ampère print none
+    /// either, and are legal in Standard. The check is
     /// against the lists themselves — the embedded starter and boosted decks
     /// — rather than the file's `category`, because a deck brought to a
     /// server names its own category.
     pub fn validate(&self, registry: &CardRegistry, format: NsgFormat) -> Result<ValidationReport, DeckError> {
         crate::rules::deck::validate_deck(&self.to_deck(), self.side, registry)?;
-        let starter_identity = registry.get(&self.identity).is_some_and(|identity| identity.unlimited_influence);
+        let starter_identity = registry
+            .get(&self.identity)
+            .is_some_and(|identity| identity.deck_rules.contains(&crate::dsl::DeckRule::StarterGameOnly));
         if starter_identity && !self.is_a_learn_to_play_list() {
             return Err(DeckError::StarterIdentity(self.identity.clone()));
         }
@@ -481,6 +486,10 @@ mod tests {
             // Package's frame, which without Engineering the Future holds
             // no Core Set card, so it is Standard too.
             ("undertow", &not_startup),
+            // Parhelion Stage 5a: Nova Initiumia's and Ampère's singleton
+            // decks, of Standard cards alone.
+            ("mixtape", &not_startup),
+            ("sampler", &not_startup),
             // The Automata Initiative Stage 8c: A Teia's and Arissana's
             // decks, on A Thousand Cuts' and Safety Net's frames, whose Core
             // Set cards keep them out of Standard.

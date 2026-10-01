@@ -105,7 +105,7 @@ impl Editor {
         }
         let changed = match intent {
             Intent::Add(id) => match book.get(&id) {
-                Some(card) => match self.draft.add(card) {
+                Some(card) => match self.draft.add(card, book.get(&self.draft.deck.identity)) {
                     Ok(()) => true,
                     Err(refusal) => {
                         self.note = Some(refusal);

@@ -684,15 +684,25 @@ pub struct CardDefinition {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub influence_limit: Option<u32>,
     /// The catalog's `influence_limit: null` — an identity with no
-    /// influence budget at all. True only for the *Learn to Play* starter
-    /// identities, whose preset decks mix every faction; the deckbuilding
-    /// validator skips its influence check for such an identity instead of
-    /// applying the flat `DEFAULT_INFLUENCE_LIMIT`. A flag rather than an
-    /// `Option<u32>` limit because `None` would be ambiguous between
-    /// "unset" and "unlimited", and no identity in the pool carries a
-    /// printed limit other than the default.
+    /// influence budget at all: the *Learn to Play* starter identities,
+    /// whose preset decks mix every faction, and Parhelion's Nova Initiumia
+    /// and Ampère, which pay for theirs in copies (`deck_rules`). The
+    /// deckbuilding validator skips its influence check for such an
+    /// identity instead of applying the flat `DEFAULT_INFLUENCE_LIMIT`. A
+    /// flag rather than an `Option<u32>` limit because `None` would be
+    /// ambiguous between "unset" and "unlimited". **It says nothing about
+    /// where the identity may be played** — that the starters are legal
+    /// only with their own lists is their printed "Starter game only.",
+    /// `DeckRule::StarterGameOnly`; read off this flag, a Nova deck was a
+    /// starter deck no list matched.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub unlimited_influence: bool,
+    /// What an identity prints about the deck it leads, beyond its size
+    /// and influence (CR 1.4.1: "The identity card may also stipulate
+    /// other variances from the standard deckbuilding rules"). Read by both
+    /// validators and the deck builders; an identity only (`validate`).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub deck_rules: Vec<DeckRule>,
 
     /// The card's printed rules text, for a client to show a person:
     /// NetrunnerDB's `text` with its HTML removed and its line breaks and
@@ -833,6 +843,36 @@ fn is_zero(value: &u32) -> bool {
     *value == 0
 }
 
+/// See `CardDefinition::deck_rules` — a deckbuilding rule an identity
+/// prints, in its own words. Only what an identity in the pool prints.
+///
+/// **A word about the deck, never a check about a card:** the copy limit
+/// and the agenda rule were already questions both validators asked of
+/// every card (CR 1.4.7, the faction rule beside 1.4.4), so an identity
+/// that changes one changes the answer there, through
+/// `CardDefinition::copy_limit_under` and the validator's agenda check,
+/// rather than adding a pass of its own.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum DeckRule {
+    /// "Starter game only." — The Catalyst and The Syndicate, which "are
+    /// intended for use only with the decks included in that pack" (CR
+    /// 1.4.1a). `decks::DeckFile::validate` holds such a deck to the
+    /// published lists. It was read off `unlimited_influence`, which was
+    /// the same set of identities until Parhelion printed two more with no
+    /// budget.
+    StarterGameOnly,
+    /// "Your deck cannot include more than 1 copy of any card." — Nova
+    /// Initiumia and Ampère, CR 1.4.7's "Some cards stipulate alternative
+    /// copy limits". The lower of this and a card's own `deck_limit`.
+    CopiesOfEachCard(u32),
+    /// "Your deck may include up to 2 different agenda cards from each Corp
+    /// faction." — Ampère. An agenda of another faction is otherwise
+    /// refused (`DeckValidationError::OutOfFactionAgenda`); under this,
+    /// each faction may send this many different titles, and the copies
+    /// are the copy limit's to count.
+    AgendasFromEachFaction(u32),
+}
+
 /// See `CardDefinition::counter_kind`'s doc comment. Kept minimal, extend as new
 /// counter-kind-gated behavior is needed — mirrors `CardSubtype`'s own
 /// "extend as needed" precedent.
@@ -924,6 +964,8 @@ pub enum CardValidationError {
     SubtypeGainedByNonIce(CardId),
     #[error("Agenda {0:?} must not have subroutines")]
     AgendaHasSubroutines(CardId),
+    #[error("card {0:?}: a deckbuilding rule (`deck_rules`) is printed on an identity, which leads the deck — CR 1.4.1")]
+    DeckRuleOffAnIdentity(CardId),
     #[error("card {0:?}: an ability used from the hand (`from_hand`) must be an action — a paid ability whose cost begins with [click]")]
     HandAbilityNotAnAction(CardId),
     #[error("card {0:?}: only a Runner card's paid ability can be a mid-access ability (`access`, CR 9.3.6b)")]
@@ -1034,6 +1076,7 @@ impl Default for CardDefinition {
             influence_cost: None,
             deck_limit: None,
             unlimited_influence: false,
+            deck_rules: Vec::new(),
             printed_text: None,
             is_playable: false,
             persistent_after_trash: false,
@@ -1043,6 +1086,20 @@ impl Default for CardDefinition {
 }
 
 impl CardDefinition {
+    /// How many copies of this card a deck led by `identity` may hold: its
+    /// own `deck_limit`, else `default` (CR 1.4.7's three, which each
+    /// validator states for itself), and never more than the identity's
+    /// `DeckRule::CopiesOfEachCard`. The one statement of the limit, for
+    /// both validators and both deck builders.
+    pub fn copy_limit_under(&self, identity: Option<&CardDefinition>, default: u32) -> u32 {
+        let own = self.deck_limit.unwrap_or(default);
+        let identity_rule = identity.into_iter().flat_map(|identity| &identity.deck_rules).find_map(|rule| match rule {
+            DeckRule::CopiesOfEachCard(n) => Some(*n),
+            _ => None,
+        });
+        identity_rule.map_or(own, |n| own.min(n))
+    }
+
     /// Whether this card may be installed in, or moved to, `server`'s root
     /// as far as its own restriction goes (`install_only_in`).
     pub fn may_be_installed_in(&self, server: crate::rules::ServerId) -> bool {
@@ -1100,6 +1157,9 @@ impl CardDefinition {
 
         if is_agenda && !self.subroutines.is_empty() {
             return Err(CardValidationError::AgendaHasSubroutines(self.id.clone()));
+        }
+        if !self.deck_rules.is_empty() && self.card_type != CardType::Identity {
+            return Err(CardValidationError::DeckRuleOffAnIdentity(self.id.clone()));
         }
         // Asked by the one door into the rig (`engine::install_into_rig`);
         // a Corp card's install has no such question, and none prints one.
