@@ -355,6 +355,7 @@ pub fn in_effect(view: &ClientView, registry: &CardRegistry) -> Vec<String> {
                 (Lingering::PreventRunEnding(EndRunPrevention::UnlessCorpTrashesRootCountFromHq), _) => {
                     "the first time the Corp would end the run, it ends only if the Corp trashes a card from HQ for each card in the server's root".to_string()
                 }
+                (Lingering::Mark(server), _) => format!("the Runner's mark is {}", crate::board::action_map::server_name(*server)),
                 (Lingering::AllottedClicks(n), on) => {
                     let side = who(on, Side::Runner);
                     let clicks = n.unsigned_abs();
@@ -649,6 +650,23 @@ mod tests {
         assert_eq!(lines.len(), 2, "{lines:?}");
         assert_eq!(lines[0], "Aircheck: the Runner cannot spend or lose credits from their credit pool, for the rest of this run");
         assert!(lines[1].ends_with(": the Runner has 1 fewer allotted click next turn"), "{lines:?}");
+    }
+
+    /// The Runner's mark is in effect for the turn and names its server, in
+    /// both clients, which is what Tunnel Vision's break and Info Bounty's
+    /// credits are about.
+    #[test]
+    fn the_runners_mark_is_listed_for_the_rest_of_the_turn() {
+        use netrunner_core::rules::lingering::{Lingering, LingeringEffect, On, Until};
+        let registry = crate::decks::sample_deck_registry();
+        let mut view = view();
+        view.lingering = vec![LingeringEffect {
+            what: Lingering::Mark(netrunner_core::rules::ServerId::RnD),
+            on: On::Player(Side::Runner),
+            until: Until::EndOfTurn(1),
+            source: CardId("tunnel_vision".into()),
+        }];
+        assert_eq!(in_effect(&view, &registry), vec!["Tunnel Vision: the Runner's mark is R&D, for the rest of this turn".to_string()]);
     }
 
     /// Attini's standing "cannot", in force only while its subroutines

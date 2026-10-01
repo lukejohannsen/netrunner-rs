@@ -306,6 +306,11 @@ pub enum GameEvent {
     CardHosted { card: CardId, host: Option<CardId> },
     /// `Effect::FlipIdentity` turned `side`'s identity over.
     IdentityFlipped { side: Side },
+    /// "Identify your mark" found none and made `server` the Runner's mark
+    /// for the turn (`Effect::IdentifyMark`, CR 10.11.2) — a random central
+    /// server, so the log says which. An occurrence of nothing a card hears;
+    /// public, as the mark is.
+    MarkIdentified { server: ServerId },
     /// `side`'s action phase ended (`turn::end_turn`) — drives
     /// `Trigger::OnActionPhaseEnd`.
     ActionPhaseEnded { side: Side },
@@ -739,7 +744,7 @@ impl GameEvent {
             | GameEvent::ProgramInstalled { .. } | GameEvent::ResourceInstalled { .. }
             | GameEvent::DiscardPending { .. } | GameEvent::DiscardPhaseEnded { .. }
             | GameEvent::CardDiscarded { .. } | GameEvent::CardAddedToDeck { .. }
-            | GameEvent::CardHosted { .. } | GameEvent::IdentityFlipped { .. } | GameEvent::ActionPhaseEnded { .. }
+            | GameEvent::CardHosted { .. } | GameEvent::IdentityFlipped { .. } | GameEvent::MarkIdentified { .. } | GameEvent::ActionPhaseEnded { .. }
             | GameEvent::RunEndPrevented { .. } | GameEvent::RunRedirected { .. } | GameEvent::CreditsSpent { .. }
             | GameEvent::TagsGiven { .. } | GameEvent::TagsCleared { .. } | GameEvent::CardTrashed { .. }
             | GameEvent::CardRemovedFromGame { .. } | GameEvent::AgendaForfeited { .. } | GameEvent::AddedToScoreAreaAsAgenda { .. } | GameEvent::AgendaAddedToScoreArea { .. } | GameEvent::CardAddedToHand { .. }

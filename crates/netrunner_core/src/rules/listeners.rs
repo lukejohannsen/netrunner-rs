@@ -235,6 +235,9 @@ pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
         GameEvent::ActionPhaseEnded { side } => vec![moment(Trigger::OnActionPhaseEnd, &About::Nothing, Some(*side))],
         GameEvent::DiscardPhaseEnded { side } => vec![moment(Trigger::OnDiscardPhaseEnd, &About::Nothing, Some(*side))],
         GameEvent::IdentityFlipped { side } => vec![moment(Trigger::OnIdentityFlipped, &About::Nothing, Some(*side))],
+        // No card in the pool hears a mark being identified; the cards that
+        // read the mark read it (`lingering::mark`).
+        GameEvent::MarkIdentified { .. } => Vec::new(),
         GameEvent::BasicDrawActionTaken { side } => vec![moment(Trigger::OnBasicDrawAction, &About::Nothing, Some(*side))],
 
         GameEvent::RunInitiated { server } => vec![moment(Trigger::OnRunStart, &About::Server(*server), Some(Side::Runner))],
@@ -519,7 +522,7 @@ fn is_first(state: &GameState, definition: &crate::dsl::CardDefinition, listener
         let triggers: Vec<Trigger> = first_time.map(|triggered| triggered.trigger).collect();
         as_of.is_first_on(listener.install, state.turn, &triggers)
     } else {
-        as_of.is_first(&turn_log::first_time_of(definition))
+        as_of.is_first(&turn_log::first_time_on(definition, state))
     }
 }
 
@@ -605,6 +608,7 @@ fn passes(state: &GameState, registry: &CardRegistry, filter: &EventFilter, mome
             registry.get(card).is_some_and(|definition| crate::dsl::card_matches_filter(definition, filter))
         }
         (EventFilter::Server(servers), About::Server(server)) => servers.contains(server),
+        (EventFilter::Mark, About::Server(server)) => crate::rules::lingering::mark(state) == Some(*server),
         (EventFilter::Damage(kind), About::Damage(dealt)) => kind == dealt,
         (EventFilter::AtLeast(least), About::Cards(count)) => count >= least,
         // `CardDefinition::validate` refuses the mismatch in a card file.

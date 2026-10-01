@@ -1,0 +1,51 @@
+{
+  "id": "tunnel_vision",
+  "title": "Tunnel Vision",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 2,
+  "strength": 2,
+  "memory_cost": 2,
+  "triggers": [
+    {
+      "trigger": "OnTurnStart",
+      "effects": [
+        "IdentifyMark"
+      ],
+      "text": "When your turn begins, identify your mark."
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "text": "Interface → 2[credit]: Break up to 2 subroutines on a piece of ice protecting your mark.",
+      "cost": {
+        "Credits": 2
+      },
+      "effect": {
+        "BreakSubroutines": {
+          "count": {
+            "Fixed": 2
+          }
+        }
+      },
+      "requirement": "EncounteringIceProtectingMark"
+    },
+    {
+      "trigger": "Paid",
+      "text": "2[credit]: +2 strength.",
+      "cost": {
+        "Credits": 2
+      },
+      "effect": {
+        "BoostStrength": {
+          "amount": 2,
+          "duration": "Encounter"
+        }
+      },
+      "requirement": "DuringEncounter"
+    }
+  ],
+  "built_from": 33081,
+  "is_playable": true
+}

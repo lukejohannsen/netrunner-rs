@@ -625,6 +625,7 @@ pub fn narrate_event(
         // ---- the shape of the match ----
         GameEvent::GameOver { winner } => format!("the game is over: {winner:?} wins"),
         GameEvent::IdentityFlipped { side } => format!("{side:?}'s identity flipped"),
+        GameEvent::MarkIdentified { server } => format!("{} became the Runner's mark for this turn", server_name(*server)),
         GameEvent::MemoryLimitExceeded { over_by } => format!("the Runner is {over_by} MU over the limit"),
 
         // Not narrated: the entry's action line already carries these, or
@@ -1748,5 +1749,14 @@ mod tests {
             describe_action(&use_it, &registry, Some(&view)),
             "Eye for an Eye: Access → Trash 1 card from your grip: Trash the card you are accessing"
         );
+    }
+
+    /// "Identify your mark" chose at random, so the log says which server.
+    #[test]
+    fn a_mark_identified_names_its_server_in_the_log() {
+        let registry = crate::decks::sample_deck_registry();
+        let event = GameEvent::MarkIdentified { server: ServerId::Archives };
+        let line = narrate_event(&event, &PublicAction::Visible(PlayerAction::EndTurn), &registry, None).expect("news");
+        assert_eq!(line, "Archives became the Runner's mark for this turn");
     }
 }

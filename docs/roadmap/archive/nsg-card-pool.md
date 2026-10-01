@@ -5380,3 +5380,58 @@ word in the trigger condition. Parhelion 47 of 63; `PH_UNIMPLEMENTED`
 - **Real play**, seed 2, Safety Net against Retirement Package (random 96
   games / planner 48): Flux Capacitor installed 44 / 0 times and charged
   once; Orca installed 1 / 1 and charged once under the planner.
+
+#### Stage 6b — the mark (1 October 2026)
+
+`feat/ph-stage-6b-mark`: Tunnel Vision, Info Bounty. **One new `Effect`**
+(`IdentifyMark`, which both cards use). Parhelion 49 of 63;
+`PH_UNIMPLEMENTED` 16 → 14.
+
+- **The mark is a lingering effect** (CR 10.11.4: "treated as a lingering
+  effect that expires at the end of the turn"): `Lingering::Mark(server)`
+  about the Runner until `Until::EndOfTurn`, so nothing resets it and a
+  bot's sample copies it with the view. There is one, shared by every card
+  (10.11.1a), asked with `lingering::mark`.
+- **`Effect::IdentifyMark`**, "identify your mark" (10.11.2): nothing while
+  there is a mark (10.11.3), otherwise a central server drawn from the
+  state's RNG with one chance in three each (10.11.2a), announced as
+  `GameEvent::MarkIdentified`. Composition didn't work: no effect chose a
+  server at random, and the mark is a designation no effect wrote. Midnight
+  Sun's mark cards (Nyusha "Sable" Sintashta, Carpe Diem, Virtuoso,
+  Backstitching) use it too.
+- **`EventFilter::Mark`**, Info Bounty's "a run **on your mark**", read off
+  the state as the scan runs. Its first time each turn is counted on the
+  mark's server class: `turn_log::first_time_on` writes the turn's mark in
+  (`EventFilter::with_mark`) before a count is read, since the mark is a
+  central server and each central has its own column. It replaced
+  `first_time_of`, which read a card alone.
+- **`EffectRequirement::EncounteringIceProtectingMark`**, Tunnel Vision's
+  "break up to 2 subroutines on a piece of ice protecting your mark", read
+  off where the encountered ice is installed rather than the run's server.
+- **`EffectRequirement::BreachedLastRunsServer`** and
+  `CompletedRun::breached`: Info Bounty's "if you breached that server
+  during that run", the intervening if behind its first time — a run on the
+  mark that Ice Wall ends is the turn's first and pays nothing. A
+  successful run is not the same thing: a breach can be replaced by another
+  server's.
+- **10.11.5** ("only checks from the moment that server was designated")
+  needs no word: every card in the pool identifies its mark as the turn
+  begins, before anything is counted.
+- **Client.** The mark is an In effect line in both clients ("Tunnel
+  Vision: the Runner's mark is R&D, for the rest of this turn",
+  `hud::in_effect`), and its identification a log line ("R&D became the
+  Runner's mark for this turn", `actions`), each with a test there.
+  `prose` words the effect and the filter.
+- **Decks.** Hit List took two Tunnel Vision for two of its three
+  Smartware Distributor and two Info Bounty for two of its three Red Team,
+  job for job. It stays Eternal-only.
+- **DSL ratio (`pool_status.py`):** 15 of 92 `Effect` variants
+  single-use, 1 unused, over 429 card files.
+- **Measured** against Stage 6a (`bee5405`). Both sweeps green at 256
+  seeds, the card gate included. A ref with the engine change and no cards
+  and the stage itself are both identical to main in all four shapes, the
+  planner seatings included.
+- **Real play**, seed 2, Hit List against Retirement Package (random 96
+  games / planner 48): a mark identified 282 / 96 times (15 more asks
+  found one already); Tunnel Vision installed 34 / 30 and used 17 / 54
+  times; Info Bounty installed 31 / 0 and paid out 16 / 0 times.

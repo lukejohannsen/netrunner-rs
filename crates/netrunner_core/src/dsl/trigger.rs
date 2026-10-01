@@ -545,6 +545,13 @@ pub enum EventFilter {
     /// "a remote server", which a list of ids could not say and a variant
     /// here would.
     Server(Vec<crate::rules::ServerId>),
+    /// The server the moment is about is the Runner's mark (CR 10.11) —
+    /// Info Bounty's "the first time each turn a run **on your mark**
+    /// ends". Read off the state as the scan runs (`lingering::mark`), and
+    /// matching nothing while there is no mark. Composition didn't work: a
+    /// `Server` list is written in the card file, and the mark is chosen at
+    /// random each turn.
+    Mark,
     /// The card the moment is about matches **and was installed when it
     /// happened** — Aggressive Trendsetting's "the first time the Runner
     /// trashes an **installed** Corp card", against a card trashed out of
@@ -682,6 +689,17 @@ impl EventFilter {
     /// Whether this filter says whose moment it is — "the Runner's", "the
     /// Corp installs" — which `listeners` then reads instead of the
     /// trigger's own "you".
+    /// This filter with "your mark" written as the server it is — or as no
+    /// server, while there is no mark — for a count that has to name a
+    /// column (`turn_log::first_time_on`).
+    pub(crate) fn with_mark(&self, mark: Option<crate::rules::ServerId>) -> EventFilter {
+        match self {
+            EventFilter::Mark => EventFilter::Server(mark.into_iter().collect()),
+            EventFilter::All(parts) => EventFilter::All(parts.iter().map(|part| part.with_mark(mark)).collect()),
+            other => other.clone(),
+        }
+    }
+
     pub(crate) fn names_whose(&self) -> bool {
         match self {
             EventFilter::Whose(_) | EventFilter::OwnedBy { .. } | EventFilter::InRoot | EventFilter::TrashedFromThisServer => true,

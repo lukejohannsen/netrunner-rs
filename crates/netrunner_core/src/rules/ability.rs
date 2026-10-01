@@ -941,6 +941,21 @@ pub fn evaluate_effect(
             Ok(events)
         }
 
+        Effect::IdentifyMark => {
+            if crate::rules::lingering::mark(state).is_some() {
+                return Ok(Vec::new());
+            }
+            let centrals = [ServerId::Hq, ServerId::RnD, ServerId::Archives];
+            let server = centrals[(state.next_u64() % centrals.len() as u64) as usize];
+            state.lingering.push(LingeringEffect {
+                what: Lingering::Mark(server),
+                on: On::Player(Side::Runner),
+                until: lingering::Until::EndOfTurn(state.turn),
+                source: acting_card.ok_or(RulesError::MissingActingCardContext)?.clone(),
+            });
+            Ok(vec![GameEvent::MarkIdentified { server }])
+        }
+
         Effect::SetIdentityCopy(copy) => {
             // `validate` holds this to a Corp identity's secret number; the
             // number is at most the copies the card prints, so it fits.
@@ -3540,6 +3555,10 @@ pub fn check_requirement(
         EffectRequirement::LastRunUnsuccessful => {
             if state.last_completed_run.as_ref().is_some_and(|run| run.unsuccessful) { Ok(()) } else { Err(RulesError::RequirementNotMet) }
         }
+        EffectRequirement::BreachedLastRunsServer => {
+            let breached = state.last_completed_run.as_ref().is_some_and(|run| run.breached == Some(run.server));
+            if breached { Ok(()) } else { Err(RulesError::RequirementNotMet) }
+        }
         EffectRequirement::IdentityFlipped => {
             // The asking side's own flip state — `side` is the resolving
             // card's controller, so a Corp identity reads the Corp's.
@@ -3736,6 +3755,18 @@ pub fn check_requirement(
                 ice.ice_type == *ice_type || continuous::ice_gains_subtype(state, registry, ice.install_id, *ice_type)
             });
             if encountering { Ok(()) } else { Err(RulesError::RequirementNotMet) }
+        }
+        EffectRequirement::EncounteringIceProtectingMark => {
+            let protecting = crate::rules::lingering::mark(state).is_some_and(|mark| {
+                state
+                    .active_run
+                    .as_ref()
+                    .filter(|run| run.phase == RunPhase::EncounterIce)
+                    .and_then(|run| run.ice.get(run.position))
+                    .and_then(|ice| state.find_corp_install(ice.install_id))
+                    .is_some_and(|installed| installed.server == mark)
+            });
+            if protecting { Ok(()) } else { Err(RulesError::RequirementNotMet) }
         }
         EffectRequirement::ThisCardStartedTheRun => {
             let started = ctx.acting_card.is_some_and(|this| state.active_run.as_ref().and_then(|run| run.initiated_by.as_ref()) == Some(this));
@@ -4237,6 +4268,7 @@ pub(crate) fn consume_requirement(
         | EffectRequirement::SubroutineBrokenThisRun
         | EffectRequirement::SubroutineBrokenThisEncounter
         | EffectRequirement::LastRunUnsuccessful
+        | EffectRequirement::BreachedLastRunsServer
         | EffectRequirement::MemoryFull
         | EffectRequirement::RunnerClicksAtLeast(_)
         | EffectRequirement::ZoneHasAtLeast { .. }
@@ -4259,6 +4291,7 @@ pub(crate) fn consume_requirement(
         | EffectRequirement::ResolvingThisIcesSubroutines
         | EffectRequirement::DuringEncounter
         | EffectRequirement::Encountering(_)
+        | EffectRequirement::EncounteringIceProtectingMark
         | EffectRequirement::ThisCardStartedTheRun
         | EffectRequirement::AboutToApproach(_)
         | EffectRequirement::DuringRun
@@ -5826,7 +5859,7 @@ mod tests {
     #[test]
     fn gain_credits_per_card_accessed_this_run_reads_the_last_completed_run() {
         let mut state = game_state();
-        state.last_completed_run = Some(CompletedRun { server: ServerId::Hq, cards_accessed: 3, agendas_stolen: 0, persistent_trashed_upgrades: Vec::new(), accessed_cards: Vec::new(), on_end_effect: None, on_end_card: None, on_end_install: None, run_credits_left: 0, unsuccessful: false });
+        state.last_completed_run = Some(CompletedRun { server: ServerId::Hq, cards_accessed: 3, agendas_stolen: 0, persistent_trashed_upgrades: Vec::new(), accessed_cards: Vec::new(), on_end_effect: None, on_end_card: None, on_end_install: None, run_credits_left: 0, unsuccessful: false, breached: None });
 
         let events = evaluate_effect(
             &mut state,
@@ -6009,13 +6042,13 @@ mod tests {
     #[test]
     fn last_run_was_on_hq_or_rnd_requirement() {
         let mut state = game_state();
-        state.last_completed_run = Some(CompletedRun { server: ServerId::Archives, cards_accessed: 0, agendas_stolen: 0, persistent_trashed_upgrades: Vec::new(), accessed_cards: Vec::new(), on_end_effect: None, on_end_card: None, on_end_install: None, run_credits_left: 0, unsuccessful: false });
+        state.last_completed_run = Some(CompletedRun { server: ServerId::Archives, cards_accessed: 0, agendas_stolen: 0, persistent_trashed_upgrades: Vec::new(), accessed_cards: Vec::new(), on_end_effect: None, on_end_card: None, on_end_install: None, run_credits_left: 0, unsuccessful: false, breached: None });
         assert_eq!(
             check_requirement(&state, &EffectRequirement::LastRunWasOnHqOrRnD, Side::Runner, &ResolutionContext::for_card(None), &CardRegistry::new()),
             Err(RulesError::RequirementNotMet)
         );
 
-        state.last_completed_run = Some(CompletedRun { server: ServerId::Hq, cards_accessed: 2, agendas_stolen: 0, persistent_trashed_upgrades: Vec::new(), accessed_cards: Vec::new(), on_end_effect: None, on_end_card: None, on_end_install: None, run_credits_left: 0, unsuccessful: false });
+        state.last_completed_run = Some(CompletedRun { server: ServerId::Hq, cards_accessed: 2, agendas_stolen: 0, persistent_trashed_upgrades: Vec::new(), accessed_cards: Vec::new(), on_end_effect: None, on_end_card: None, on_end_install: None, run_credits_left: 0, unsuccessful: false, breached: None });
         assert_eq!(
             check_requirement(&state, &EffectRequirement::LastRunWasOnHqOrRnD, Side::Runner, &ResolutionContext::for_card(None), &CardRegistry::new()),
             Ok(())

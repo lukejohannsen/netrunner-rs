@@ -142,6 +142,23 @@ pub enum Lingering {
     /// all see it. Lingering rather than continuous: the subtype was
     /// *chosen*, once, and a declared effect has nowhere to keep a choice.
     GainSubtype(crate::dsl::IceType),
+    /// The Runner's mark (CR 10.11): a server designated by "identify your
+    /// mark" (`Effect::IdentifyMark`), "treated as a lingering effect that
+    /// expires at the end of the turn" (10.11.4), so it is one — about the
+    /// Runner, until `Until::EndOfTurn` — and never a field with a reset.
+    /// There is only ever one (10.11.1a), asked with [`mark`]. Public: the
+    /// rules give it no owner to hide it from, and both players saw the
+    /// random central server chosen.
+    Mark(crate::rules::ServerId),
+}
+
+/// The Runner's mark this turn, if one has been identified (CR 10.11.1a:
+/// one server, shared by every card that refers to a mark).
+pub fn mark(state: &GameState) -> Option<crate::rules::ServerId> {
+    state.lingering.iter().filter(|effect| effect.holds(state)).find_map(|effect| match effect.what {
+        Lingering::Mark(server) => Some(server),
+        _ => None,
+    })
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -203,7 +220,7 @@ pub fn strength(state: &GameState, on: InstallId) -> i32 {
         .filter(|effect| effect.on == On::Install(on) && effect.holds(state))
         .map(|effect| match effect.what {
             Lingering::Strength(delta) => delta,
-            Lingering::RezCost(_) | Lingering::Cannot(_) | Lingering::PreventRunEnding(_) | Lingering::AllottedClicks(_) | Lingering::GainSubtype(_) => 0,
+            Lingering::RezCost(_) | Lingering::Cannot(_) | Lingering::PreventRunEnding(_) | Lingering::AllottedClicks(_) | Lingering::GainSubtype(_) | Lingering::Mark(_) => 0,
         })
         .sum()
 }
@@ -220,7 +237,7 @@ pub fn ice_strength(state: &GameState, on: InstallId) -> i32 {
             .filter(|effect| effect.on == On::EachIce && effect.holds(state))
             .map(|effect| match effect.what {
                 Lingering::Strength(delta) => delta,
-                Lingering::RezCost(_) | Lingering::Cannot(_) | Lingering::PreventRunEnding(_) | Lingering::AllottedClicks(_) | Lingering::GainSubtype(_) => 0,
+                Lingering::RezCost(_) | Lingering::Cannot(_) | Lingering::PreventRunEnding(_) | Lingering::AllottedClicks(_) | Lingering::GainSubtype(_) | Lingering::Mark(_) => 0,
             })
             .sum::<i32>()
 }
@@ -234,7 +251,7 @@ pub fn ice_rez_cost(state: &GameState) -> i32 {
         .filter(|effect| effect.on == On::EachIce && effect.holds(state))
         .map(|effect| match effect.what {
             Lingering::RezCost(delta) => delta,
-            Lingering::Strength(_) | Lingering::Cannot(_) | Lingering::PreventRunEnding(_) | Lingering::AllottedClicks(_) | Lingering::GainSubtype(_) => 0,
+            Lingering::Strength(_) | Lingering::Cannot(_) | Lingering::PreventRunEnding(_) | Lingering::AllottedClicks(_) | Lingering::GainSubtype(_) | Lingering::Mark(_) => 0,
         })
         .sum()
 }

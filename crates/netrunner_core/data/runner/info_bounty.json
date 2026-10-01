@@ -1,0 +1,36 @@
+{
+  "id": "info_bounty",
+  "title": "Info Bounty",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 2,
+  "unique": true,
+  "triggers": [
+    {
+      "trigger": "OnTurnStart",
+      "effects": [
+        "IdentifyMark"
+      ],
+      "text": "When your turn begins, identify your mark."
+    },
+    {
+      "trigger": "OnRunEnded",
+      "subject": "Any",
+      "when": "Mark",
+      "first_each_turn": true,
+      "requirement": "BreachedLastRunsServer",
+      "effects": [
+        {
+          "GainCredits": [
+            "Runner",
+            2
+          ]
+        }
+      ],
+      "text": "The first time each turn a run on your mark ends, gain 2[credit] if you breached that server during that run."
+    }
+  ],
+  "abilities": [],
+  "built_from": 33083,
+  "is_playable": true
+}

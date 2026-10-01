@@ -1138,7 +1138,7 @@ impl CardDefinition {
             // A trash does not say whether the card was installed.
             EventFilter::InstalledCard(_) if triggered.trigger == Trigger::OnCardTrashed => false,
             EventFilter::Card(_) | EventFilter::InstalledCard(_) => about == TriggerAbout::Card,
-            EventFilter::Server(_) => about == TriggerAbout::Server,
+            EventFilter::Server(_) | EventFilter::Mark => about == TriggerAbout::Server,
             EventFilter::Damage(_) => about == TriggerAbout::Damage,
             EventFilter::AtLeast(_) => about == TriggerAbout::Cards,
             // Only a moment that names a player can be made one's.

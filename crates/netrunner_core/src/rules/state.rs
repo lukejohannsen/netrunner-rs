@@ -1336,6 +1336,11 @@ pub struct CompletedRun {
     /// `snapshot` alone.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub unsuccessful: bool,
+    /// `RunState::breached` at conclusion: the server breached during the
+    /// run, if any — the run's own, or another a replacement breached
+    /// instead (`EffectRequirement::BreachedLastRunsServer`, Info Bounty).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub breached: Option<ServerId>,
 }
 
 impl CompletedRun {
@@ -1355,6 +1360,7 @@ impl CompletedRun {
             on_end_install: run.on_end_install,
             run_credits_left: run.bonus_run_credits,
             unsuccessful: false,
+            breached: run.breached,
         }
     }
 }
