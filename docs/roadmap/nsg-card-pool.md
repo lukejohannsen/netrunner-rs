@@ -106,6 +106,38 @@ Both are closed; see [Progress](#progress) for what is next.
 
 - **Stage 0a** — the catalog from NetrunnerDB by script (`scripts/catalog_sync.py`), fifteen packs embedded, a completeness gate per pack, `CARD_VOCAB` grown once to 1024 with a rank reserved per pack, and `scripts/pool_status.py` (`feat/nsg-pool-stage-0a`, 26 September 2026).
 - **Stage 0b** — formats from NetrunnerDB (Standard, Startup, Eternal, Casual), a card banned in one and legal in another, a deck's legality judged per format on its printings, in both clients (`feat/nsg-pool-stage-0b`, 26 September 2026).
+- **Stage 0c** — the sixteen card files whose ids were not NetrunnerDB v3's card ids are renamed to them: fourteen identities now carry their whole title, plus M.I.C. and Maglectric Rapid (`fix/v3-card-ids`, 30 September 2026).
+
+### Stage 0d — the catalog on NetrunnerDB v3 — OPEN (30 September 2026)
+
+**The person's decision (30 September 2026): "everything v3".** The
+embedded catalog is still NetrunnerDB's v2 card arrays
+(`data/cards/<pack>.json`), and every card file names one printing
+(`numeric_id`). That one number decides the card's printed metadata, set,
+picture and legality. Three workarounds exist only because of it:
+- `formats.json` lists every printing of every card in a pool;
+- reprints are joined to cards by `cards::title_key`;
+- the build-legality validator is keyed by printing code.
+
+v3 separates a card (slug id, which is what our card files already use)
+from its printings (the code, which stays as the printing's id: the
+picture, the set, the position in it). Planned in one PR:
+- `catalog_sync.py` writes v3 sets, cards and printings, with formats keyed
+  by card id.
+- Card files lose `numeric_id` for `built_from`, the printing the
+  implementation was checked against. It is still needed to keep every
+  observation-vocabulary slot where it is: twelve of the fourteen card
+  files with more than one printing name the older Core printing, so it
+  cannot be derived.
+- Printings and sets become a side table, `cards::catalog`, with sets
+  newest first by `date_release`.
+- `card::CardId(u32)` becomes `PrintingId`.
+- Catalog-only cards take their v3 slug in place of `nrdb_<code>`.
+- The write-only live registry sync in `netrunner_card_sync` is deleted.
+
+The measurement bar: coverage identical in all four shapes, the vocabulary
+dump identical, and both 256-seed sweeps. The deck builder, file import,
+NetrunnerDB import and art per printing are built on this (Phase 7 §10).
 
 ## The recipe — every stage of every tranche
 

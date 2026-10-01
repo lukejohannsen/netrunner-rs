@@ -139,6 +139,70 @@ What landed:
   Startup now check it under Casual. Tests that brought Fine Print or
   pinned Discretion Advised to a Startup lobby bring Startup-legal decks.
 
+### Stage 0c — card ids are NetrunnerDB v3's (30 September 2026)
+
+`fix/v3-card-ids`. This is the first step of moving the catalog to v3
+(Stage 0d), at the person's decision: "everything v3".
+
+**Why.** v3 names a card by a slug (`sure_gamble`), which is the id our
+card files and saved decks already use. A v3 decklist's `card_slots` and a
+v3 format's restriction list name cards the same way. 391 of the 407 card
+files matched v3 exactly. The sixteen that didn't were fourteen
+identities cut short at their colon, plus two cards whose titles had been
+shortened (M.I.C., and Maglectric Rapid without its "(748 Mod)"):
+
+| was | v3 |
+|---|---|
+| `mic` | `m_i_c` |
+| `maglectric_rapid` | `maglectric_rapid_748_mod` |
+| `the_syndicate` | `the_syndicate_profit_over_principle` |
+| `the_catalyst` | `the_catalyst_convention_breaker` |
+| `noise` | `noise_hacker_extraordinaire` |
+| `gabriel_santiago` | `gabriel_santiago_consummate_professional` |
+| `kate_mccaffrey` | `kate_mac_mccaffrey_digital_tinker` |
+| `rene_loup_arcemont` | `rene_loup_arcemont_party_animal` |
+| `tao_salonga` | `tao_salonga_telepresence_magician` |
+| `zahya_sadeghi` | `zahya_sadeghi_versatile_smuggler` |
+| `barry_baz_wong` | `barry_baz_wong_tri_maf_veteran` |
+| `dewi_subrotoputri` | `dewi_subrotoputri_pedagogical_dhalang` |
+| `magdalene_keino_chemutai` | `magdalene_keino_chemutai_cryptarchitect` |
+| `muslihat` | `muslihat_multifarious_marketeer` |
+| `ryo_phoenix_ono` | `ryo_phoenix_ono_out_of_the_ashes` |
+| `topan` | `topan_ormas_leader` |
+
+Each was resolved through its own printing code, read off v3's
+`printing_ids`, never by guessing a slug from the title.
+
+**What moved.** For each of the sixteen: the card file (renamed and its
+`id` changed) and every quoted reference. That is 18 in deck files (16
+identities, M.I.C. in Undertow, Maglectric Rapid in Professional
+Opportunities) and 76 in Rust tests. No non-test code named any of them.
+The archived Learn to Play entry, which names the starter identities' old
+files, is left as written, since it is the record.
+
+**No shim**, per the rule that nothing is kept for compatibility before a
+release. Three things outside the repository that name an old id stop
+resolving:
+- a saved deck with one of these identities;
+- a bug report or match record whose header holds the deck;
+- a remembered Always/Never answer for one of these cards.
+
+The table above is the map for re-pointing one by hand.
+
+**Measured.**
+- `cargo test --workspace`: 2,419 passed, 0 failed.
+- Clippy silent.
+- Both sweeps at 256 seeds: clean.
+- `scripts/coverage_identical.py main --head-worktree --expect-card-renames …`:
+  all four shapes (random and planner, by view and by index, 192 games
+  each, seed 1) were **identical but for the expected renames**. The
+  planner seatings were expected to re-roll, because `determinize` sorts
+  its candidates by slug, but they didn't.
+- `scripts/coverage_identical.py` gained `--expect-card-renames`. A
+  card's row under `cards` and the card half of a `triggers_fired` key are
+  renamed before comparing, the way `--expect-renames` already handled
+  `Trigger` variants.
+
 ### 1. Vantage Point — 66 cards (C 13 / V 36 / M 17)
 
 #### Stage 1a — every printed subtype, read from the catalog (26 September 2026)

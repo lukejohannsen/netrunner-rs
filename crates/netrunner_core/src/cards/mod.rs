@@ -85,8 +85,8 @@ mod sg_starter_identity_tests {
         let mut registry = CardRegistry::new();
         register_playable_cards(&mut registry);
         for (id, title, min_deck_size) in [
-            ("the_catalyst", "The Catalyst: Convention Breaker", 30),
-            ("the_syndicate", "The Syndicate: Profit over Principle", 30),
+            ("the_catalyst_convention_breaker", "The Catalyst: Convention Breaker", 30),
+            ("the_syndicate_profit_over_principle", "The Syndicate: Profit over Principle", 30),
         ] {
             let card = registry.get(&CardId(id.to_string())).unwrap_or_else(|| panic!("{id} should be registered"));
             assert_eq!(card.title, title);

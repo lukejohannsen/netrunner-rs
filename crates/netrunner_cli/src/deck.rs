@@ -230,7 +230,7 @@ fn describe_report(report: &netrunner_core::deck::ValidationReport) -> String {
 /// Finds a card by registry id, falling back to an exact title match.
 ///
 /// Id first because it is unambiguous and is what deck files store; titles
-/// are the fallback because nobody wants to type `rene_loup_arcemont`. An
+/// are the fallback because nobody wants to type `rene_loup_arcemont_party_animal`. An
 /// ambiguous title lists the candidates' ids rather than picking one — the
 /// same "show what is actually available" convention the deck-name errors
 /// use.

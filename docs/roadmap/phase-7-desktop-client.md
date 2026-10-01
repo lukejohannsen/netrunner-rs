@@ -83,7 +83,8 @@ settled are AGENTS.md §5, which is where to read them. **Open: §4's movement a
 - **§6c**: a lesson hint still echoes its prose. **§6d**: Cleaver's menu entries printed raw symbols ("1[credit]") — check against §4bg before fixing.
 - **§7**: a resume over an iroh ticket is tested only over TCP.
 - **§8 item 4**: the take-back's server half ("the server can take (b) later"). **§8 item 5**: replay notes — a file beside the record, and an editor.
-- **§9**: decklists searched and downloaded from NetrunnerDB, not started.
+- **§9**: decklists searched and downloaded from NetrunnerDB, not started. The download half is §10 stage 6.
+- **§10**: the deck builder by format, decks as files and from NetrunnerDB, art per printing. Planned 30 September 2026 and built on NSG pool Stage 0d.
 
 ## Closed — one line each
 
@@ -302,4 +303,46 @@ import, §5).
   ([nsg-card-pool.md](nsg-card-pool.md)), where current Standard tournament
   lists join the `Sample` pool once Standard is complete. Whichever lands
   first builds the fetch for both.
+- **Read off the API on 30 September 2026.** v3 is the one to use, by the
+  person's decision ("everything v3").
+  - `GET /api/v3/public/decklists/{uuid}` returns `name`, `notes` (HTML),
+    `identity_card_id`, `side_id`, `faction_id`, and `card_slots`, keyed by
+    card slug.
+  - `filter[card_id]=<slug>` works: 1,205 decks name Hoshiko, and
+    `sort=-created_at` puts the newest first.
+  - `filter[search]` and `filter[format_id]` returned 500 that day.
+  - The download half is §10 stage 6; the search half stays here.
+
+## 10. The deck builder by format, decks as files and from NetrunnerDB, art per printing — OPEN (30 September 2026)
+
+**What the person asked for (30 September 2026):**
+- **Playable cards only.** "'Playable' seems like the only reasonable
+  option to build a deck." The Show drop-down goes.
+- **"Legal in" is the leftmost filter, and it narrows Set**, so Startup
+  never offers the Core Set.
+- **Every set's icon**, in the builder and on the Cards screen.
+- **Sets newest to oldest by release date.**
+- **No clipboard import or export.** Import from a file instead, so people
+  can share decks. The native OS dialog was chosen over an in-app browser,
+  and `.txt` (NetrunnerDB's text shape) for export.
+- **Import a NetrunnerDB deck** by link.
+- **Choose a card's art among its printings**, with the person's own art
+  later as a separate feature that this must not build into a corner.
+
+The Cards screen gets the same format-first order.
+
+All of it stands on the v3 catalog (NSG pool Stage 0d), which gives sets
+their `date_release` and the cycle the icon font names its marks by. The
+font's glyph names (`netrunner.svg`) are v3's cycle ids, so every embedded
+set has a mark.
+
+**Stages, one PR each, after Stage 0d:**
+- **Stage 3 — art per printing:** `netrunner_client::art`, kept in the
+  settings file. Every picture is asked through one function, so a later
+  `Art::Custom` slots in.
+- **Stage 4 — the format-first builder:** a playable-only pool, Legal in
+  first and narrowing Set, every set's mark, newest first.
+- **Stage 5 — decks as files**, through `rfd` (xdg-portal, no GTK), with
+  the clipboard buttons gone.
+- **Stage 6 — a NetrunnerDB deck by link**, over v3.
 

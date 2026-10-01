@@ -5,7 +5,7 @@
   "category": "Sample",
   "description": "Seven run events and six jobs: Tāo runs early and moves the ICE out of the way.",
   "style": ["pressure", "rig"],
-  "identity": "tao_salonga",
+  "identity": "tao_salonga_telepresence_magician",
   "cards": [
     {
       "card": "creative_commission",

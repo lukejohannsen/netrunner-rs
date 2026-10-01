@@ -13,7 +13,7 @@ use netrunner_core::dsl::{CardDefinition, CardId, CardType};
 use netrunner_core::rules::{Deck, Side};
 
 const CORP_IDENTITY: &str = "haas_bioroid_engineering_the_future";
-const RUNNER_IDENTITY: &str = "kate_mccaffrey";
+const RUNNER_IDENTITY: &str = "kate_mac_mccaffrey_digital_tinker";
 
 const BASELINE_CORP_CARDS: [&str; 7] =
     ["hedge_fund", "scorched_earth", "hostile_takeover", "pad_campaign", "snare", "enigma", "wall_of_static"];
@@ -96,7 +96,7 @@ pub fn kate_vs_hb_registry() -> CardRegistry {
 /// check influence, so this mixes factions freely to maximise coverage; it
 /// is a test fixture, not a tournament-legal list.
 const SG_CORP_IDENTITY: &str = "nbn_reality_plus";
-const SG_RUNNER_IDENTITY: &str = "zahya_sadeghi";
+const SG_RUNNER_IDENTITY: &str = "zahya_sadeghi_versatile_smuggler";
 
 /// `(card id, copies)`. Corp: 40 cards, 18 agenda points — CR 1.4.6a's
 /// "18 or 19" for 40 to 44 cards. It carried 20 until the band was read

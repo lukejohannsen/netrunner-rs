@@ -4,7 +4,7 @@
   "side": "Corp",
   "category": "Boosted",
   "description": "The Corp starter deck plus its 10-card booster pack (Orbital Superiority, Funhouse, Public Trail, Predictive Planogram, Retribution, AMAZE Amusements): 44 cards, 18 agenda points, played to 7.",
-  "identity": "the_syndicate",
+  "identity": "the_syndicate_profit_over_principle",
   "cards": [
     {
       "card": "offworld_office",

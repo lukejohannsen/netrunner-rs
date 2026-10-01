@@ -2543,7 +2543,7 @@ mod tests {
     fn both_identities_are_public_to_every_viewer() {
         let mut state = game_state(corp_state_with_cards());
         state.corp.identity = Some(id("weyland_consortium_built_to_last"));
-        state.runner.identity = Some(id("zahya_sadeghi"));
+        state.runner.identity = Some(id("zahya_sadeghi_versatile_smuggler"));
         for viewer in [Viewer::from(Side::Corp), Viewer::from(Side::Runner), Viewer::Spectator] {
             let masked = mask_state_for_player(&state, viewer);
             assert_eq!(masked.corp.identity, state.corp.identity);

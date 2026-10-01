@@ -4,7 +4,7 @@
   "side": "Runner",
   "category": "Boosted",
   "description": "The Runner starter deck plus its 10-card booster pack (Wildcat Strike, Mutual Favor, DZMZ Optimizer, Leech, Conduit): 40 cards, played to 7.",
-  "identity": "the_catalyst",
+  "identity": "the_catalyst_convention_breaker",
   "cards": [
     {
       "card": "sure_gamble",
