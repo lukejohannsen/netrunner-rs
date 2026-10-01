@@ -28,6 +28,7 @@
 //! the fallbacks when neither font is.
 
 use netrunner_core::card::Faction;
+use netrunner_core::cards::catalog;
 
 /// An icon Netrunner prints inline with its rules text.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -140,22 +141,67 @@ pub fn faction_icon(faction: Faction) -> char {
     }
 }
 
-/// A set's mark in NetrunnerDB's icon font, by v3 set id, for the sets
-/// whose id is also the name of their mark: the Core Set, the Revised Core
-/// Set, System Core 2019, System Gateway and Elevation. The font has a
-/// mark per *cycle* (`cards::catalog::CardSet::cycle`), so a set whose
-/// cycle is named otherwise gets none here rather than a guess; every
-/// embedded set's mark by its cycle is Phase 7 §10's.
+/// A set's mark in NetrunnerDB's icon font, by v3 set id: the mark of
+/// the cycle the catalog puts it in (`cards::catalog::CardSet::cycle`),
+/// since the font has one mark per cycle and a set wears its cycle's —
+/// Parhelion and Midnight Sun both wear Borealis's. A set the catalog
+/// does not know (homebrew) has none. It was a table of five set ids
+/// until Phase 7 §10 Stage 4, which left ten embedded sets with no mark.
 pub fn set_icon(set: &str) -> Option<char> {
-    match set {
-        "core_set" => Some('\u{e914}'),
-        "revised_core_set" => Some('\u{e924}'),
-        "system_core_2019" => Some('\u{e928}'),
-        "system_gateway" => Some('\u{e92d}'),
-        "elevation" => Some('\u{e934}'),
-        _ => None,
-    }
+    cycle_icon(&catalog::set(set)?.cycle)
 }
+
+/// A cycle's mark in NetrunnerDB's icon font, by v3 cycle id.
+///
+/// The font names its glyphs by the cycle, as NetrunnerDB's `netrunner.svg`
+/// at `ee095c6` spells them: the v3 id with `-` for `_`, except the three
+/// cores, which the site has always called `core`, `core2` and `sc-19`.
+/// Checked against v3's `card_cycles` on 30 September 2026: every cycle
+/// but Draft and NAPD Multiplayer has a glyph, and neither of those is a
+/// set a card pool names. The table is the font's, so a set a future sync
+/// embeds has its mark the day it lands, as long as its cycle is in the
+/// font; a cycle that is not reads as no mark, never a wrong one.
+pub fn cycle_icon(cycle: &str) -> Option<char> {
+    let dashed = cycle.replace('_', "-");
+    let glyph = match cycle {
+        "core_set" => "core",
+        "revised_core_set" => "core2",
+        "system_core_2019" => "sc-19",
+        _ => dashed.as_str(),
+    };
+    CYCLE_GLYPHS.iter().find(|(name, _)| *name == glyph).map(|(_, icon)| *icon)
+}
+
+/// The font's cycle glyphs, in its own code-point order.
+const CYCLE_GLYPHS: [(&str, char); 27] = [
+    ("spin", '\u{e90c}'),
+    ("sansan", '\u{e90d}'),
+    ("order-and-chaos", '\u{e90e}'),
+    ("lunar", '\u{e90f}'),
+    ("honor-and-profit", '\u{e910}'),
+    ("genesis", '\u{e911}'),
+    ("data-and-destiny", '\u{e912}'),
+    ("creation-and-control", '\u{e913}'),
+    ("core", '\u{e914}'),
+    ("mumbad", '\u{e91f}'),
+    ("flashpoint", '\u{e921}'),
+    ("red-sand", '\u{e922}'),
+    ("terminal-directive", '\u{e923}'),
+    ("core2", '\u{e924}'),
+    ("kitara", '\u{e925}'),
+    ("reign-and-reverie", '\u{e926}'),
+    ("magnum-opus", '\u{e927}'),
+    ("sc-19", '\u{e928}'),
+    ("ashes", '\u{e929}'),
+    ("magnum-opus-reprint", '\u{e92a}'),
+    ("salvaged-memories", '\u{e92c}'),
+    ("system-gateway", '\u{e92d}'),
+    ("system-update-2021", '\u{e92e}'),
+    ("borealis", '\u{e931}'),
+    ("liberation", '\u{e933}'),
+    ("elevation", '\u{e934}'),
+    ("vantage-point", '\u{e935}'),
+];
 
 /// One piece of a printed text, in reading order.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -261,9 +307,27 @@ mod tests {
             assert!(seen.insert(faction_icon(faction)), "{faction:?} shares an icon");
         }
         assert_eq!(faction_icon(Faction::NeutralRunner), faction_icon(Faction::NeutralCorp));
-        for set in ["core_set", "system_gateway", "elevation"] {
-            assert!(set_icon(set).is_some_and(in_map), "{set}");
+        for (_, icon) in CYCLE_GLYPHS {
+            assert!(in_map(icon), "{icon:?}");
+            assert!(seen.insert(icon), "{icon:?} shares an icon");
         }
+    }
+
+    /// Every embedded set has a mark, its cycle's: the two Borealis sets
+    /// share one, the Core Set's is `core`, and a set the catalog does not
+    /// know has none.
+    #[test]
+    fn every_embedded_set_has_its_cycles_mark() {
+        for set in catalog::sets() {
+            assert!(set_icon(&set.id).is_some(), "{} ({}) has no mark", set.id, set.cycle);
+            assert_eq!(set_icon(&set.id), cycle_icon(&set.cycle));
+        }
+        assert_eq!(set_icon("parhelion"), set_icon("midnight_sun"));
+        assert_ne!(set_icon("parhelion"), set_icon("elevation"));
+        assert_eq!(set_icon("core_set"), Some('\u{e914}'));
+        assert_eq!(cycle_icon("revised_core_set"), Some('\u{e924}'));
+        assert_eq!(cycle_icon("system_core_2019"), Some('\u{e928}'));
+        assert_eq!(cycle_icon("draft"), None);
         assert_eq!(set_icon("homebrew"), None);
     }
 

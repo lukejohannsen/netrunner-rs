@@ -84,7 +84,7 @@ settled are AGENTS.md §5, which is where to read them. **Open: §4's movement a
 - **§7**: a resume over an iroh ticket is tested only over TCP.
 - **§8 item 4**: the take-back's server half ("the server can take (b) later"). **§8 item 5**: replay notes — a file beside the record, and an editor.
 - **§9**: decklists searched and downloaded from NetrunnerDB, not started. The download half is §10 stage 6.
-- **§10**: the deck builder by format, decks as files and from NetrunnerDB, art per printing. Planned 30 September 2026 and built on NSG pool Stage 0d; Stage 3 (art per printing) is done, Stage 4 is next.
+- **§10**: the deck builder by format, decks as files and from NetrunnerDB, art per printing. Planned 30 September 2026 and built on NSG pool Stage 0d; Stage 3 (art per printing) and Stage 4 (the format-first builder) are done, Stage 5 is next.
 
 ## Closed — one line each
 
@@ -338,15 +338,19 @@ names (`netrunner.svg`) are v3's cycle ids, so every embedded set has a
 mark. Stage 0d also left the Cards screen listing one entry per card
 with its printings in the inspector.
 
-**Stages, one PR each, Stage 4 next:**
+**Stages, one PR each, Stage 5 next:**
 - **Stage 3 — art per printing:** done. A card's printings are a strip of
   pictures under the browser's inspector and beside a card opened to
   read, each the button that draws the card with that art everywhere;
   the choice is kept in the settings file, never sent, and asked through
   `netrunner_client::art::picture_for` (`feat/art-per-printing`, 30
   September 2026).
-- **Stage 4 — the format-first builder:** a playable-only pool, Legal in
-  first and narrowing Set, every set's mark, newest first.
+- **Stage 4 — the format-first builder:** done. The pool is playable
+  cards only; "Legal in" is the first filter and decides the sets the Set
+  filter offers (`deck_builder::sets`), each under its cycle's mark
+  (`card_text::set_icon`, every embedded set), newest first; the Cards
+  screen reads in the same order (`feat/deck-builder-format-first`, 30
+  September 2026).
 - **Stage 5 — decks as files**, through `rfd` (xdg-portal, no GTK), with
   the clipboard buttons gone.
 - **Stage 6 — a NetrunnerDB deck by link**, over v3.

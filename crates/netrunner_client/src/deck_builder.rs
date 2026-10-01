@@ -21,12 +21,13 @@
 //! **A card the engine does not play yet is still a card.** The catalog
 //! lists every card by its NetrunnerDB v3 id, the one a card file takes
 //! when the card is built. A deck may hold one — an import from a list
-//! built elsewhere, or a card added with the pool's "not playable yet"
-//! cards shown — and reads as [`Standing::Unplayable`] until the card is
-//! implemented, when the same id plays. (Catalog-only cards were
+//! built elsewhere — and reads as [`Standing::Unplayable`] until the card
+//! is implemented, when the same id plays. (Catalog-only cards were
 //! `nrdb_<code>` until NSG pool Stage 0d, and a draft swapped each for the
 //! playable card's id when one landed; a deck saved then still names the
-//! old id, which no catalog knows.)
+//! old id, which no catalog knows.) **The pool never offers one**, though:
+//! it is what a match can deal, in the format the person is building for
+//! (see [`pool`]).
 //!
 //! Lifted out of the terminal's builder so the desktop's and the
 //! terminal's are one set of rules with two faces, as `start` was for the
@@ -319,40 +320,6 @@ pub fn identities(registry: &CardRegistry, side: Side, format: NsgFormat) -> Vec
     identities
 }
 
-/// Which printings the pool offers by whether a match can deal them.
-///
-/// It was a switch, "Not playable yet", off by default — a pool that
-/// would show a set whose cards are mostly not in the engine yet as a
-/// handful of cards, with no way to ask for just the rest. Three answers
-/// make both questions one choice: what can be played now, what is
-/// waiting, or everything printed.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Playability {
-    Playable,
-    NotYet,
-    All,
-}
-
-impl Playability {
-    pub const ALL: [Playability; 3] = [Playability::Playable, Playability::NotYet, Playability::All];
-
-    pub fn label(self) -> &'static str {
-        match self {
-            Playability::Playable => "Playable",
-            Playability::NotYet => "Not playable yet",
-            Playability::All => "Every printing",
-        }
-    }
-
-    fn admits(self, playable: bool) -> bool {
-        match self {
-            Playability::Playable => playable,
-            Playability::NotYet => !playable,
-            Playability::All => true,
-        }
-    }
-}
-
 /// The order the pool is listed in. Each key ends on the title, so the
 /// order is total whatever the catalog's.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -367,9 +334,12 @@ pub enum PoolSort {
     Cost,
     /// Influence, lowest first.
     Influence,
-    /// Release order, then the card's number in its set — the set and
+    /// Newest set first, then the card's number in its set — the set and
     /// number of its newest printing, whichever art a person chose for
     /// it: a sort is about where a card was printed, not how it looks.
+    /// Newest first because that is how the Set filter lists them (the
+    /// person's ask, 30 September 2026): the current set is where a deck
+    /// is built from, the Core Set is the end of the list.
     Set,
 }
 
@@ -388,39 +358,59 @@ impl PoolSort {
     }
 }
 
-/// What the pool offers: one side's non-identity cards, narrowed by any
-/// of a format's pool, a set, a faction, a type group, a search and
-/// whether the engine plays them, in the order `sort` names.
+/// What the pool offers: one side's playable non-identity cards legal in
+/// a format, narrowed by any of a set, a faction, a type group and a
+/// search, in the order `sort` names.
 ///
-/// **A format and a set are two filters, not one switch.** The pool was
-/// "Only <the Settings format>" or everything, which was enough while
-/// every card came from the two packs Startup allows; with the Core Set
-/// in the catalog and more sets to come, a person asks "what is legal in
-/// Standard" and "what is in Elevation" as separate questions.
+/// **The format comes first, and a set is one of its sets.** A person
+/// building a deck is building it for a format — the one Settings names
+/// to start with — and a set outside that format has nothing they can
+/// use, so "Legal in" is the leftmost filter and decides which sets the
+/// Set filter offers ([`sets`]). There is no "any format": Casual lists
+/// no pool, so it is already every card. The filter was "Only <the
+/// Settings format>" or everything, then a format and a set as two
+/// unrelated drop-downs, which let a Startup builder pick the Core Set
+/// and see an empty pool.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PoolFilter {
     pub side: Side,
-    /// Only cards this format's tables allow; `None` is every format.
-    pub format: Option<NsgFormat>,
+    /// Only cards this format's tables allow.
+    pub format: NsgFormat,
     /// Only cards printed in this set (a v3 set id), by any printing;
-    /// `None` is every set.
+    /// `None` is every set the format allows.
     pub set: Option<String>,
     pub faction: Option<Faction>,
     /// A `cards::type_group` name.
     pub kind: Option<&'static str>,
     pub query: String,
-    pub playability: Playability,
     pub sort: PoolSort,
 }
 
 impl PoolFilter {
     pub fn new(side: Side, format: NsgFormat) -> Self {
-        Self { side, format: Some(format), set: None, faction: None, kind: None, query: String::new(), playability: Playability::Playable, sort: PoolSort::Type }
+        Self { side, format, set: None, faction: None, kind: None, query: String::new(), sort: PoolSort::Type }
     }
+}
+
+/// Whether `card` is in the pool a deck of `side` is built from in a
+/// format with `rules`: that side's, not an identity, one the engine
+/// plays, and one the format allows. [`pool`] and [`sets`] ask this one
+/// question, so the Set filter never offers a set the pool is empty for.
+fn admitted(card: &CardDefinition, side: Side, rules: &netrunner_core::format::FormatRules) -> bool {
+    card.side == side && card.card_type != CardType::Identity && card.is_playable && legal_in(card, rules)
 }
 
 /// The cards `filter` leaves, one entry per card, in the order
 /// `filter.sort` names.
+///
+/// **Playable cards only.** The pool used to have a Show drop-down —
+/// playable, not playable yet, every printing — and the person said
+/// (30 September 2026) that playable "seems like the only reasonable
+/// option to build a deck": a card the engine cannot deal is not one a
+/// deck can be played with, and a deck that holds one anyway (an
+/// import) still reads as unplayable and keeps the card. What the
+/// engine has yet to build is the Cards screen's to say, which lists
+/// every card.
 ///
 /// A card is in a set's pool by any of its printings, so a reprint is
 /// found by every set that printed it: Hedge Fund is in the Core Set's pool
@@ -428,20 +418,14 @@ impl PoolFilter {
 /// NSG pool Stage 0d, and a catalog-only reprint was folded into the
 /// playable card by title here.
 pub fn pool<'a>(book: CardBook<'a>, filter: &PoolFilter) -> Vec<&'a CardDefinition> {
-    let rules = filter.format.map(|format| format.rules());
+    let rules = filter.format.rules();
     let query = filter.query.trim().to_lowercase();
     let mut cards: Vec<&CardDefinition> = Vec::new();
     for card in book.catalog {
-        if card.side != filter.side || card.card_type == CardType::Identity {
-            continue;
-        }
-        if rules.as_ref().is_some_and(|rules| !legal_in(card, rules)) {
+        if !admitted(card, filter.side, rules) {
             continue;
         }
         if filter.set.as_deref().is_some_and(|set| !catalog::printed_in(&card.id, set)) {
-            continue;
-        }
-        if !filter.playability.admits(card.is_playable) {
             continue;
         }
         if filter.faction.is_some_and(|faction| card.faction != Some(faction)) {
@@ -462,10 +446,10 @@ pub fn pool<'a>(book: CardBook<'a>, filter: &PoolFilter) -> Vec<&'a CardDefiniti
         }
         cards.push(card);
     }
-    let order = set_order();
+    let order = catalog::sets();
     let newest = |card: &CardDefinition| catalog::latest_printing(&card.id);
     let set_rank = |card: &CardDefinition| {
-        newest(card).and_then(|printing| order.iter().position(|set| *set == printing.set)).unwrap_or(usize::MAX)
+        newest(card).and_then(|printing| order.iter().position(|set| set.id == printing.set)).unwrap_or(usize::MAX)
     };
     let title = |card: &CardDefinition| card.title.to_lowercase();
     match filter.sort {
@@ -488,20 +472,13 @@ fn printed_cost(card: &CardDefinition) -> u32 {
     }
 }
 
-/// Every set the catalog holds, in release order — the catalog's, read
-/// off NetrunnerDB's release dates (`catalog::sets`, newest first,
-/// reversed). It was read off the printing codes, a set's lowest code
-/// dating it, while the catalog carried no dates.
-pub fn set_order() -> Vec<String> {
-    catalog::sets().iter().rev().map(|set| set.id.clone()).collect()
-}
-
-/// The sets that print cards of `side`, in release order.
-pub fn sets(book: CardBook, side: Side) -> Vec<String> {
-    set_order()
-        .into_iter()
-        .filter(|set| catalog::printings().any(|printing| printing.set == *set && book.get(&printing.card).is_some_and(|card| card.side == side)))
-        .collect()
+/// The sets the Set filter offers a deck of `side` built for `format`:
+/// those with a card the pool would hold with no set chosen, newest
+/// first (`cards::sets_of`). Startup's are its three; Casual's are every
+/// set a playable card of the side was printed in.
+pub fn sets(book: CardBook, side: Side, format: NsgFormat) -> Vec<String> {
+    let rules = format.rules();
+    crate::cards::sets_of(book.catalog.iter().filter(|card| admitted(card, side, rules)), Some(rules))
 }
 
 /// The factions a side's pool has cards of, in `faction_order`.
@@ -803,19 +780,18 @@ mod tests {
     }
 
     /// Startup is whole: Vantage Point was the last of its three packs to
-    /// be built (NSG pool, VP Stage 8), so a Startup pool asked for what is
-    /// not playable yet is empty on both sides, and every identity Startup
+    /// be built (NSG pool, VP Stage 8), so every card of the catalog that
+    /// Startup allows is one the engine plays, and every identity Startup
     /// allows is one a deck can take. A card added to Startup's pool by a
-    /// re-sync fails here until it is built.
+    /// re-sync fails here until it is built. Asked of the catalog, since
+    /// the pool itself never shows an unplayable card.
     #[test]
     fn every_startup_card_is_playable() {
         let registry = registry();
         let catalog = catalog(&registry);
-        let book = CardBook::new(&registry, &catalog);
         let rules = NsgFormat::Startup.rules();
         for side in [Side::Corp, Side::Runner] {
-            let filter = PoolFilter { playability: Playability::NotYet, ..PoolFilter::new(side, NsgFormat::Startup) };
-            let waiting: Vec<&str> = pool(book, &filter).iter().map(|card| card.title.as_str()).collect();
+            let waiting: Vec<&str> = catalog.iter().filter(|card| card.side == side && legal_in(card, rules) && !card.is_playable).map(|card| card.title.as_str()).collect();
             assert!(waiting.is_empty(), "{side:?} Startup cards not playable yet: {waiting:?}");
             let offered = identities(&registry, side, NsgFormat::Startup);
             let unoffered: Vec<&str> = catalog
@@ -838,7 +814,7 @@ mod tests {
         let registry = registry();
         let catalog = catalog(&registry);
         let book = CardBook::new(&registry, &catalog);
-        let every = PoolFilter { format: None, playability: Playability::All, ..PoolFilter::new(Side::Runner, NsgFormat::Startup) };
+        let every = PoolFilter::new(Side::Runner, NsgFormat::Eternal);
         let su21 = pool(book, &PoolFilter { set: Some("system_update_2021".into()), ..every });
         let makers_eye: Vec<_> = su21.iter().filter(|card| card.title.contains("Maker")).collect();
         assert_eq!(makers_eye.len(), 1, "{makers_eye:?}");
@@ -904,38 +880,70 @@ mod tests {
         assert!(startup.iter().all(|card| card.side == Side::Corp && card.card_type != CardType::Identity && card.is_playable));
         assert_eq!(startup.iter().filter(|card| card.title == "Hedge Fund").count(), 1, "a reprint is one card");
         assert!(!startup.iter().any(|card| card.id.0 == "ice_wall"), "Ice Wall is Core Set");
-        let eternal = pool(book, &PoolFilter { format: None, ..PoolFilter::new(Side::Corp, NsgFormat::Startup) });
+        let eternal = pool(book, &PoolFilter::new(Side::Corp, NsgFormat::Eternal));
         assert!(eternal.iter().any(|card| card.id.0 == "ice_wall"));
-        let ice = pool(book, &PoolFilter { kind: Some("ICE"), query: "wall".into(), format: None, ..PoolFilter::new(Side::Corp, NsgFormat::Startup) });
+        let ice = pool(book, &PoolFilter { kind: Some("ICE"), query: "wall".into(), ..PoolFilter::new(Side::Corp, NsgFormat::Eternal) });
         assert!(!ice.is_empty() && ice.iter().all(|card| matches!(card.card_type, CardType::Ice(_))));
     }
 
-    /// Sets come in release order; a set narrows the pool to the cards it
-    /// printed, reprints included; the three playability
-    /// answers split the catalog with nothing lost; every sort keeps
-    /// the same cards.
+    /// The pool is what a match can deal: never a card the engine does not
+    /// play, in any format, on either side — the catalog holds plenty
+    /// (Midnight Sun's, most of Parhelion's), and none of them is offered.
     #[test]
-    fn the_pool_filters_by_set_and_playability_and_sorts_every_way() {
+    fn the_pool_never_offers_a_card_the_engine_does_not_play() {
         let registry = registry();
         let catalog = catalog(&registry);
         let book = CardBook::new(&registry, &catalog);
-        let order = set_order();
-        assert_eq!(order.first().map(String::as_str), Some("core_set"), "the Core Set is the oldest: {order:?}");
-        assert!(order.iter().position(|set| set == "system_gateway") < order.iter().position(|set| set == "elevation"), "{order:?}");
-        assert!(sets(book, Side::Corp).iter().all(|set| order.contains(set)));
+        assert!(catalog.iter().any(|card| !card.is_playable), "the catalog has cards still to build");
+        for format in NsgFormat::ALL {
+            for side in [Side::Corp, Side::Runner] {
+                let offered = pool(book, &PoolFilter::new(side, format));
+                assert!(offered.iter().all(|card| card.is_playable), "{format:?} {side:?}");
+                assert!(!offered.is_empty());
+            }
+        }
+    }
 
-        let every = PoolFilter { format: None, playability: Playability::All, ..PoolFilter::new(Side::Corp, NsgFormat::Startup) };
+    /// The Set filter offers the format's sets, newest first, and only
+    /// those with a card the pool holds: Startup is its three packs, so a
+    /// Startup builder is never offered the Core Set; Eternal is every set
+    /// a playable card of the side was printed in, the Core Set last.
+    #[test]
+    fn the_sets_offered_are_the_formats_newest_first() {
+        let registry = registry();
+        let catalog = catalog(&registry);
+        let book = CardBook::new(&registry, &catalog);
+        for side in [Side::Corp, Side::Runner] {
+            assert_eq!(sets(book, side, NsgFormat::Startup), vec!["vantage_point", "elevation", "system_gateway"], "{side:?}");
+            let eternal = sets(book, side, NsgFormat::Eternal);
+            assert_eq!(eternal.first().map(String::as_str), Some("vantage_point"), "{eternal:?}");
+            assert_eq!(eternal.last().map(String::as_str), Some("core_set"), "{eternal:?}");
+            assert!(eternal.contains(&"system_update_2021".to_string()), "a reprint puts its set on the list: {eternal:?}");
+            assert!(!eternal.contains(&"midnight_sun".to_string()), "no Midnight Sun card is built yet: {eternal:?}");
+            let order = catalog::sets();
+            let rank = |set: &String| order.iter().position(|known| known.id == *set).unwrap();
+            assert!(eternal.windows(2).all(|pair| rank(&pair[0]) < rank(&pair[1])), "newest first: {eternal:?}");
+            for set in &eternal {
+                assert!(!pool(book, &PoolFilter { set: Some(set.clone()), ..PoolFilter::new(side, NsgFormat::Eternal) }).is_empty(), "{set} is offered with nothing behind it");
+            }
+            assert_eq!(sets(book, side, NsgFormat::Casual), eternal, "Casual lists no pool, so it is every card");
+        }
+    }
+
+    /// A set narrows the pool to the cards it printed, reprints included,
+    /// and every sort keeps the same cards; the set sort is newest first.
+    #[test]
+    fn the_pool_filters_by_set_and_sorts_every_way() {
+        let registry = registry();
+        let catalog = catalog(&registry);
+        let book = CardBook::new(&registry, &catalog);
+        let every = PoolFilter::new(Side::Corp, NsgFormat::Eternal);
         let core = pool(book, &PoolFilter { set: Some("core_set".into()), ..every.clone() });
         assert!(!core.is_empty() && core.iter().any(|card| card.id.0 == "ice_wall"));
         assert!(core.iter().any(|card| card.title == "Hedge Fund"), "a reprint is found by the set it was printed in");
         assert!(!pool(book, &PoolFilter { set: Some("elevation".into()), ..every.clone() }).iter().any(|card| card.id.0 == "ice_wall"));
 
         let all = pool(book, &every);
-        let playable = pool(book, &PoolFilter { playability: Playability::Playable, ..every.clone() });
-        let waiting = pool(book, &PoolFilter { playability: Playability::NotYet, ..every.clone() });
-        assert!(playable.iter().all(|card| card.is_playable) && waiting.iter().all(|card| !card.is_playable));
-        assert_eq!(playable.len() + waiting.len(), all.len(), "the two halves are the whole");
-
         let ids = |cards: &[&CardDefinition]| {
             let mut ids: Vec<String> = cards.iter().map(|card| card.id.0.clone()).collect();
             ids.sort();
@@ -950,10 +958,13 @@ mod tests {
         let by_title = pool(book, &PoolFilter { sort: PoolSort::Title, ..every.clone() });
         assert!(by_title.windows(2).all(|pair| pair[0].title.to_lowercase() <= pair[1].title.to_lowercase()));
         let by_set = pool(book, &PoolFilter { sort: PoolSort::Set, ..every });
+        let order = catalog::sets();
         let rank = |card: &CardDefinition| {
-            catalog::latest_printing(&card.id).and_then(|printing| order.iter().position(|set| *set == printing.set)).unwrap_or(usize::MAX)
+            catalog::latest_printing(&card.id).and_then(|printing| order.iter().position(|set| set.id == printing.set)).unwrap_or(usize::MAX)
         };
         assert!(by_set.windows(2).all(|pair| rank(pair[0]) <= rank(pair[1])));
+        assert!(catalog::printed_in(&by_set[0].id, "vantage_point"), "the newest set leads: {}", by_set[0].title);
+        assert!(catalog::latest_printing(&by_set[by_set.len() - 1].id).is_some_and(|printing| printing.set == "core_set"), "the Core Set ends it: {}", by_set[by_set.len() - 1].title);
     }
 
     #[test]

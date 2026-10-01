@@ -37,6 +37,22 @@ pub fn set_name(set: &str) -> &str {
     catalog::set(set).map_or(set, |set| set.name.as_str())
 }
 
+/// The sets a Set filter offers over `cards` in a format: those any of
+/// the cards was printed in and the format draws from (`FormatRules::sets`,
+/// NetrunnerDB's statement; none listed, as Casual's, is every set), by
+/// v3 id, newest first — the catalog's order (`catalog::sets`, by release
+/// date). Both halves matter: the deck builder passes the pool its format
+/// and side leave, the browser every card its format leaves, so neither
+/// lists a set with nothing behind it; and a reprint does not drag its
+/// old set in — Hedge Fund is Startup-legal and the Core Set printed it,
+/// but Startup is not drawn from the Core Set, so a Startup builder is
+/// never offered it.
+pub fn sets_of<'a>(cards: impl IntoIterator<Item = &'a CardDefinition>, rules: Option<&FormatRules>) -> Vec<String> {
+    let printed_in: std::collections::HashSet<&str> = cards.into_iter().flat_map(|card| catalog::printings_of(&card.id)).map(|printing| printing.set.as_str()).collect();
+    let drawn_from = |set: &str| rules.is_none_or(|rules| rules.sets.is_empty() || rules.sets.iter().any(|drawn| drawn == set));
+    catalog::sets().iter().filter(|set| printed_in.contains(set.id.as_str()) && drawn_from(&set.id)).map(|set| set.id.clone()).collect()
+}
+
 /// Every card in `registry` the format allows, in registry order. Callers
 /// filter by side and type themselves — a deck builder wants one side and
 /// no identities, a browser wants everything.
@@ -174,6 +190,28 @@ mod tests {
         assert_eq!(legal_formats(tithe), vec![Startup, Standard, Eternal, Casual]);
         assert_eq!(set_name("system_gateway"), "System Gateway");
         assert_eq!(set_name("xyz"), "xyz");
+    }
+
+    /// The sets behind a list of cards come newest first; a set none of
+    /// them was printed in is not offered, and nor is one the format is
+    /// not drawn from: the whole catalog is every set, Startup's pool is
+    /// its three though Hedge Fund in it was printed in the Core Set, and
+    /// Casual, which lists no sets, is every set its cards were printed in.
+    #[test]
+    fn the_sets_of_a_pool_are_the_ones_its_cards_were_printed_in_newest_first() {
+        let registry = playable();
+        let catalog = catalog(&registry);
+        let every = sets_of(catalog.iter(), None);
+        assert_eq!(every.len(), netrunner_core::cards::catalog::sets().len());
+        assert_eq!(every.first().map(String::as_str), Some("vantage_point"));
+        assert_eq!(every.last().map(String::as_str), Some("core_set"));
+        let rules = NsgFormat::Startup.rules();
+        let startup: Vec<&CardDefinition> = catalog.iter().filter(|card| legal_in(card, rules)).collect();
+        assert!(startup.iter().any(|card| card.id.0 == "hedge_fund"));
+        assert_eq!(sets_of(startup.iter().copied(), Some(rules)), vec!["vantage_point", "elevation", "system_gateway"]);
+        assert_eq!(sets_of(startup.iter().copied(), None), vec!["vantage_point", "elevation", "system_gateway", "core_set"], "with no format, the Core Set printed Hedge Fund");
+        assert_eq!(sets_of(catalog.iter(), Some(NsgFormat::Casual.rules())), every);
+        assert!(sets_of(std::iter::empty(), None).is_empty());
     }
 
     /// The catalog is every card once, the playable card standing in for

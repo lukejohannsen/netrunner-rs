@@ -31,7 +31,10 @@ pub enum Intent {
     /// A set by v3 id, or every set. A card is in a set by any of its
     /// printings.
     Set(Option<String>),
-    /// Only a format's pool, or every card.
+    /// Only a format's pool, or every card. The format decides which sets
+    /// are offered ([`Browser::sets`]), so a chosen set outside the new
+    /// format is let go rather than left narrowing the grid to nothing
+    /// under a filter the drop-down no longer lists.
     Format(Option<NsgFormat>),
     Query(String),
     Select(Option<CardId>),
@@ -82,7 +85,12 @@ impl Browser {
             }
             Intent::Kind(kind) => self.kind = kind,
             Intent::Set(set) => self.set = set,
-            Intent::Format(format) => self.format = format,
+            Intent::Format(format) => {
+                self.format = format;
+                if self.set.as_ref().is_some_and(|set| !self.sets().contains(set)) {
+                    self.set = None;
+                }
+            }
             Intent::Query(query) => self.query = query,
             Intent::Select(code) => self.selected = code,
             Intent::Step(by) => {
@@ -168,9 +176,15 @@ impl Browser {
         kinds.into_iter().map(|(_, kind)| kind).collect()
     }
 
-    /// The catalog's sets by v3 id, oldest first by release date.
+    /// The sets a choice is offered for, by v3 id, newest first: every set
+    /// with a card the format allows — the format alone, not the side or
+    /// the faction, because a set is where a card was printed and the
+    /// format is the one filter that empties whole sets (the Core Set
+    /// has nothing Startup allows). Oldest first until Phase 7 §10 Stage
+    /// 4, when the person asked for the newest at the top.
     pub fn sets(&self) -> Vec<String> {
-        catalog::sets().iter().rev().map(|set| set.id.clone()).collect()
+        let rules = self.format.map(|format| format.rules());
+        netrunner_client::cards::sets_of(self.cards.iter().filter(|card| rules.as_ref().is_none_or(|rules| legal_in(card, rules))), rules)
     }
 }
 
@@ -276,17 +290,17 @@ mod tests {
         assert_eq!(b.selected, None, "nothing visible, nothing open");
     }
 
-    /// The sets are listed oldest first by release date, and a set filter
+    /// The sets are listed newest first by release date, and a set filter
     /// keeps only the cards it printed.
     #[test]
-    fn the_sets_are_oldest_first_and_a_set_filter_keeps_only_its_cards() {
+    fn the_sets_are_newest_first_and_a_set_filter_keeps_only_its_cards() {
         let mut b = browser();
         assert_eq!(
             b.sets(),
             vec![
-                "core_set", "downfall", "magnum_opus_reprint", "uprising_booster_pack", "uprising", "salvaged_memories",
-                "system_gateway", "system_update_2021", "midnight_sun_booster_pack", "midnight_sun", "parhelion",
-                "the_automata_initiative", "rebellion_without_rehearsal", "elevation", "vantage_point"
+                "vantage_point", "elevation", "rebellion_without_rehearsal", "the_automata_initiative", "parhelion",
+                "midnight_sun", "midnight_sun_booster_pack", "system_update_2021", "system_gateway", "salvaged_memories",
+                "uprising", "uprising_booster_pack", "magnum_opus_reprint", "downfall", "core_set"
             ]
         );
         assert!(b.apply(Intent::Set(Some("elevation".to_string()))));
@@ -314,6 +328,24 @@ mod tests {
         assert!(!b.visible().iter().any(|card| card.title == "Ice Wall"));
         assert!(b.apply(Intent::Format(Some(NsgFormat::Eternal))));
         assert_eq!(b.visible().len(), all, "Eternal is every card");
+    }
+
+    /// The format decides which sets are offered: Startup's are its three,
+    /// and a set chosen outside the format is let go when the format is
+    /// chosen, while one inside it stays.
+    #[test]
+    fn a_format_narrows_the_sets_and_lets_go_of_one_outside_it() {
+        let mut b = browser();
+        assert!(b.apply(Intent::Set(Some("core_set".to_string()))));
+        assert!(b.apply(Intent::Format(Some(NsgFormat::Startup))));
+        assert_eq!(b.sets(), vec!["vantage_point", "elevation", "system_gateway"]);
+        assert_eq!(b.set, None, "the Core Set is outside Startup");
+        assert!(b.apply(Intent::Set(Some("system_gateway".to_string()))));
+        assert!(b.apply(Intent::Format(Some(NsgFormat::Eternal))));
+        assert_eq!(b.set.as_deref(), Some("system_gateway"), "Eternal holds System Gateway too");
+        assert_eq!(b.sets().len(), catalog::sets().len());
+        assert!(b.apply(Intent::Format(None)));
+        assert_eq!(b.set.as_deref(), Some("system_gateway"));
     }
 
     /// Stepping walks the visible list and stops at its ends; with the

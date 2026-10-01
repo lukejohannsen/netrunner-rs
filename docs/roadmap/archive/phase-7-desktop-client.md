@@ -5629,3 +5629,66 @@ no `ClientView` carries it, so the other chair draws its own choices.
     Consortium: Building a Better World's avatar cropped from the Core
     Set's W where the default is System Update 2021's skyline.
 - No engine change, so no coverage run or sweeps.
+
+### Stage 4 — The deck builder is format-first (`feat/deck-builder-format-first`, 30 September 2026)
+
+**What the person asked for:** playable cards only ("'Playable' seems
+like the only reasonable option to build a deck"), "Legal in" as the
+leftmost filter deciding which sets are offered, every set's icon, and
+sets newest to oldest by release date — on the Cards screen too.
+
+**What it does.** The deck builder's pool is the cards a match can deal
+of the deck's side, legal in the format the filter row's first
+drop-down names (Settings' format to start with). The Set drop-down
+beside it lists only that format's sets, newest first, each under its
+cycle's mark from NetrunnerDB's icon font, and the Show drop-down is
+gone. The Cards screen reads Legal in, Side, Set, Faction, Type, with
+Set narrowed by Legal in the same way; it keeps its "Any" format,
+because it lists what was printed where the builder lists what can be
+played. The pool's Set sort is newest first too.
+
+**Decisions, with the alternative rejected:**
+- **A format's sets are the ones it is drawn from, not the ones its
+  cards were printed in.** The first cut listed every set that printed a
+  card the format allows, which offered a Startup builder the Core Set:
+  Hedge Fund is Startup-legal and the Core Set printed it. `cards::sets_of`
+  keeps a set only if `FormatRules::sets` (NetrunnerDB's statement, empty
+  for Casual) names it and one of the cards passed was printed in it, so
+  the list is Startup's three packs, never a set with nothing behind it,
+  and never a set the format is not drawn from. The deck builder passes
+  the pool its format and side leave; the browser every card its format
+  leaves.
+- **A set the new format does not offer is let go.** Choosing a format
+  clears a chosen set that is not in the new list (`Intent::Format` in
+  both models), rather than leaving the pool empty under a filter the
+  drop-down no longer shows. A set both formats hold stays.
+- **No "any format" in the builder.** Casual lists no pool, so it is
+  already every card; "Any" would have been a second spelling of it.
+- **A set's mark is its cycle's** (`card_text::set_icon`, through
+  `cycle_icon`): the font has one glyph per cycle, named by the v3 cycle
+  id with `-` for `_` except `core`, `core2` and `sc-19`, read off
+  NetrunnerDB's `netrunner.svg` at `ee095c6` and checked against v3's
+  `card_cycles` the same day (every cycle but Draft and NAPD Multiplayer
+  has one). The table is the font's 27 cycle glyphs, so a set a later
+  sync embeds has its mark the day it lands. It was five set ids.
+- **The pool is playable only, and the catalog's tests say so**:
+  `every_startup_card_is_playable` is asked of the catalog now, since the
+  pool itself can no longer show what is waiting.
+
+**Checks:**
+- Tests: every embedded set has its cycle's mark and the marks are
+  distinct; `sets_of` over the catalog, Startup and Casual; the
+  builder's sets per format (Startup exactly `vantage_point, elevation,
+  system_gateway`, Eternal newest first with the Core Set last and no
+  Midnight Sun, every offered set with a non-empty pool, Casual equal to
+  Eternal); the pool never offers an unplayable card in any format; the
+  Set sort newest first; the editor and browser models letting go of a
+  set the new format does not offer and keeping one it does. The
+  navigation test's count of five browser filters is unchanged.
+- `netrunner_client`: 295 passed; `netrunner_desktop`: 230 passed, 0
+  failed. `cargo clippy --workspace --all-targets`: silent.
+- Screenshots on the virtual compositor at 1920×1080: the Cards
+  screen's Set list open, fifteen sets newest first under their marks;
+  the deck editor's filter row and its Set list under Startup (three
+  sets) and under Casual.
+- No engine change, so no coverage run or sweeps.
