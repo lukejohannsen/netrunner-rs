@@ -1,0 +1,56 @@
+{
+  "id": "raindrops_cut_stone",
+  "title": "Raindrops Cut Stone",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 1,
+  "counter_kind": "Power",
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "PromptChooseServer": {
+            "chooser": "Runner",
+            "rez_cost_delta": 0,
+            "bonus_run_credits": 0,
+            "on_start": {
+              "SetRunEndedEffect": {
+                "Sequence": [
+                  {
+                    "DrawCardsAmount": [
+                      "Runner",
+                      "HostedCounters"
+                    ]
+                  },
+                  {
+                    "GainCredits": [
+                      "Runner",
+                      3
+                    ]
+                  }
+                ]
+              }
+            }
+          }
+        }
+      ],
+      "text": "Run any server."
+    },
+    {
+      "trigger": "OnSubroutineResolved",
+      "subject": "Any",
+      "requirement": "ThisCardStartedTheRun",
+      "effects": [
+        {
+          "AddCounters": 1
+        }
+      ],
+      "text": "Whenever a subroutine resolves during that run (including a subroutine that ends the run), place 1 power counter on this event."
+    }
+  ],
+  "abilities": [],
+  "built_from": 33068,
+  "is_playable": true
+}

@@ -47,14 +47,14 @@ cards each stage takes.
 | 1 | Vantage Point (`vp`) | 66 | 66 | 0 | complete (27 September 2026) |
 | 2 | Rebellion Without Rehearsal (`rwr`) | 65 | 65 | 0 | complete (28 September 2026) |
 | 3 | The Automata Initiative (`tai`) | 65 | 65 | 0 | complete (29 September 2026) |
-| 4 | Parhelion (`ph`) | 63 | 49 | 14 | **Stage 6c next** — a set-aside program and counters on a run event: Spark of Inspiration, Raindrops Cut Stone |
+| 4 | Parhelion (`ph`) | 63 | 51 | 12 | **Stage 6d next** — a Runner card removed from the game as it leaves the table: Nanuq |
 | 5 | Midnight Sun (`ms`) + Booster (`msbp`) | 65 + 7 | 0 | 65 + 7 | not started |
 | 6 | Uprising (`ur`) + Booster (`urbp`) | 65 + 7 | 0 | 65 + 7 | not started |
 | 7 | Downfall (`df`) | 65 | 0 | 65 | not started |
 | 8 | System Update 2021 (`su21`), Salvaged Memories (`sm`), Magnum Opus Reprint (`mor`) | 82, 18, 6 | 11, 1, 0 | 71, 17, 6 | not started (the built ones are Core reprints) |
 
-**DSL ratio** (`pool_status.py`, the DSL Growth Rule's number): **15 of 92
-`Effect` variants single-use, 1 unused (`Trace`), over 429 card files** (1
+**DSL ratio** (`pool_status.py`, the DSL Growth Rule's number): **14 of 92
+`Effect` variants single-use, 1 unused (`Trace`), over 431 card files** (1
 October 2026). The baseline at Stage 0a was 26 of 70 single-use, 3 unused,
 over 184 files: 215 cards later the single-use count is *lower*, because the
 growth went into `Trigger`, `EventFilter`, `Amount`, `CardFilter`, `Cost` and
@@ -303,7 +303,7 @@ this file keeps; a stage that builds or widens a mechanic updates the cell.
 | Additional costs imposed by another card (steal, score, run, trash) | VP: Magistrate Revontulet | RWR Sebastião Souza Pessoa; TAI Daniela Jorge Inácio; MS Azef Protocol; UR NAPD Cordon, Earth Station: SEA Headquarters; DF Cold Site Server, Reduced Service | CR 1.16.10, CR 6.3.2b | VP 3a (steal, score); RWR 2a (trash); TAI 8b |
 | Terminal: the action phase is forced to end | RWR: Active Policing, Bring Them Home | TAI Oppo Research; MS Big Deal | CR 5.4.3 | RWR 6a |
 | Psi game: a simultaneous secret bid | RWR: See How They Run | TAI Adrian Seis; UR Konjin, Hyoubu Precog Manifold | CR 10.14.6 | RWR 7b; TAI 8b |
-| Set aside | RWR: The Wizard’s Chest | PH Spark of Inspiration; MS Deep Dive; UR Gachapon | CR 4.8 | RWR 6d (faceup only) |
+| Set aside | RWR: The Wizard’s Chest | PH Spark of Inspiration; MS Deep Dive; UR Gachapon | CR 4.8 | RWR 6d (faceup only); PH 6c (Spark composes) |
 | X costs | RWR: Lobisomem | PH Matryoshka; DF Utae; reprints Corporate Troubleshooter, Psychographics | CR 1.16.2c | RWR 6e |
 | Forced or repeated encounter | RWR: Sisyphus Protocol | UR Konjin, Ganked! | CR 6.1.3 | RWR 7d |
 | Losing abilities | PH: Hush, Klevetnik | MS Light the Fire! | CR 9.1.9a | — |
@@ -345,6 +345,7 @@ PR that made this list (29 September 2026).
 - **Embedded Reporting**: does not shuffle. **Next Big Thing** from the Runner's score area is unmodelled. **Detente**'s access outside a run is unmodelled.
 - **Luana Campos** (VP 7a): "uninstalled" is announced for a Corp card only; no Runner card in the pool interrupts its own uninstalling (Nanuq, PH Stage 6, will be the first, and its words are a replacement). The interrupt resolves in the dispatch that announced it.
 - **Shred**: intercepts `EndTheRun` only (a lingering `PreventRunEnding`).
+- **Raindrops Cut Stone** (PH 6c): a subroutine a card's text resolves (Nanisivik Grid's) is not announced, so it is not counted; only an encountered piece of ice's are.
 
 ### Recorded deviations from the Comprehensive Rules
 
@@ -368,6 +369,7 @@ Each is also a note on its section's row in [rules-conformance.md](rules-conform
 - **Alarm Clock's run** is asked for among the Runner's other "when your turn begins" abilities and resolved when chosen; the Corp's rez window of 5.7.1e comes once, after the run.
 - **Hearts and Minds** chooses its source before its destination, so an advanceable card may be picked as both — a move onto itself.
 - **Pressure Spike's pumps last the encounter**, as every breaker's does here. **Corporate Hospitality** excludes only the copy resolving, found as the last faceup copy in Archives.
+- **Raindrops Cut Stone's counters** (PH 6c) are placed as a subroutine is announced, before its effect resolves, so one that ends the run is counted while the run, and the event's place in the play area, still stand — the outcome the card's "(including a subroutine that ends the run)" prints.
 - **Concerto's credits** (PH 5d) are placed on the run as it starts, where the card places them on itself before it; they pay for anything during that run and go with it.
 - **Aircheck's event is active for the run it makes and no longer**; the second run is ordinary, and the event's unspent credits are gone with the first.
 - **Vera Ivanovna Shuyskaya's reveal** is not a `CardRevealed` of each grip card; the Corp sees the grip through the selection and only the trashed card is announced. No card in the pool reads a reveal of the grip.
@@ -384,6 +386,7 @@ The heuristic seats in the sweeps and `coverage_identical.py` reach these cards 
 
 - **Runner hardware and programs it never installs**: Basilar Synthgland 2KVJ, K2CP Turbine, Time Bomb (PH 4a); Poison Vial, WAKE Implant v2A-JRJ (PH 4b); World Tree (PH 5c); Flux Capacitor (PH 6a; Orca, at 10[credit], once in 48 games).
 - **Resources it does not value**, PH 6b: Info Bounty (installed 31 times by random seats in 96 games, never by the planner in 48).
+- **Events it never plays**, PH 6c: Spark of Inspiration and Raindrops Cut Stone (played 14 and 23 times by random seats in 96 games, never by the planner in 48).
 - **Economy resources and programs it does not value**: Friend of a Friend, Valentina Ferreira Carvalho, Coalescence; Laser Pointer, Banner; Monkeywrench, Saci, Pichação, Urban Art Vernissage; Lago Paranoá Shelter; AirbladeX (JSRF Ed.); the Core Set interrupts Decoy, Net Shield and Sacrificial Construct.
 - **Abilities it never uses**: M.I.C.'s trash, Arissana Rocha Nahu's, Epiphany Analytica's counter; identity and multi-click abilities generally (Phase 1 §8); over-advancing for Dividends.
 - **Corp cards it never plays or rezzes**: Distributed Tracing, Shipment from Vladisibirsk, Nonequivalent Exchange (played only by random seats), Hostile Architecture (installed 90 times, never rezzed), Dr. Vientiane Keeling (installed, never rezzed); it never trashes Amanuensis or Privileged Access, never purges (Malandragem, Physarum Entangler).
@@ -679,8 +682,8 @@ change deck-building rules (`DeckRule`, Stage 5a).
 6. **Charge, mark, set aside, Runner removal from game, counters on a run
    event**, split by mechanic when it was taken (1 October 2026): **6a**,
    charge (built): Flux Capacitor, Orca; **6b**, the mark (built): Tunnel
-   Vision, Info Bounty; **6c**, a set-aside program and counters on a run event:
-   Spark of Inspiration, Raindrops Cut Stone; **6d**, a Runner card removed
+   Vision, Info Bounty; **6c**, a set-aside program and counters on a run event
+   (built): Spark of Inspiration, Raindrops Cut Stone; **6d**, a Runner card removed
    from the game as it is uninstalled: Nanuq.
 7. **Winning and the score area:** Issuaq Adaptics: Sustaining Diversity, Superdeep Borehole, Nightmare
    Archive, Matryoshka (X cost).
@@ -715,6 +718,7 @@ Grid, Tsakhia, World Tree.
 - **Stage 5d** — the stack and HQ: a search for different names, and a run named for the card whose text began it (`feat/ph-stage-5d-stack-and-hq`, 1 October 2026).
 - **Stage 6a** — charge, and the first time each encounter (`feat/ph-stage-6a-charge`, 1 October 2026).
 - **Stage 6b** — the mark (`feat/ph-stage-6b-mark`, 1 October 2026).
+- **Stage 6c** — a set-aside program, and a subroutine resolving heard by a run event (`feat/ph-stage-6c-set-aside-and-run-event-counters`, 1 October 2026).
 
 ### 5. Midnight Sun and its Booster Pack — 65 cards (C 22 / V 26 / M 17)
 

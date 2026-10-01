@@ -1007,7 +1007,10 @@ fn step_subroutine(
     if let Some(run) = state.active_run.as_mut() {
         run.subroutine_resolved = true;
     }
-    let mut events = vec![GameEvent::SubroutineFired { card_id, index, effect: effect.clone() }];
+    // Announced before its effect (`Trigger::OnSubroutineResolved`), so a
+    // subroutine that ends the run is heard while the run stands.
+    let mut events = Vec::new();
+    crate::rules::dispatcher::emit(state, registry, &mut events, GameEvent::SubroutineFired { card_id, index, effect: effect.clone() })?;
     events.extend(evaluate_effect(state, &effect, &mut crate::rules::ability::ResolutionContext::default(), registry)?);
     Ok(events)
 }

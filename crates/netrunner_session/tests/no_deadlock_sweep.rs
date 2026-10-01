@@ -317,7 +317,8 @@ fn no_client_view_or_log_entry_ever_names_a_card_it_conceals() {
 /// **No card is ever created or destroyed.** Every card a deck started with
 /// is in exactly one zone at every step: for the Corp, HQ, R&D, Archives,
 /// the table, either score area, or removed from the game; for the Runner,
-/// the grip, stack, heap or rig.
+/// the grip, stack, heap, rig, or set aside (CR 4.8: The Wizard's Chest and
+/// Spark of Inspiration park their "you may install" with the cards there).
 ///
 /// Cheap to state and it catches a whole class at once. Two rules
 /// violations in the Rules Audit were conservation failures — a stolen
@@ -366,6 +367,7 @@ fn assert_cards_are_conserved(state: &GameState, corp_deck: &Deck, runner_deck: 
             .chain(&runner.stack)
             .chain(&runner.heap)
             .chain(&runner.removed_from_game)
+            .chain(&runner.set_aside)
             .chain(runner.rig.iter().map(|c| &c.card))
             // Hosted uninstalled on a rig card (Madani) — in no other zone.
             .chain(runner.rig.iter().flat_map(|c| c.hosted_cards.iter()).filter(|id| !corp_ids.contains_key(&id.0)))
@@ -535,6 +537,11 @@ fn assert_no_concealed_card_is_named_in_log(
         if let GameEvent::CardRevealed { card, .. } = event {
             visible.insert(card.0.as_str());
         }
+        // Set aside faceup is shown to both (CR 4.8.6), though the cards
+        // may be back in the stack by the view this entry is read with.
+        if let GameEvent::CardsSetAside { cards, .. } = event {
+            visible.extend(cards.iter().map(|c| c.0.as_str()));
+        }
         // An access shows the Runner the card (`masking`'s rule for
         // `CardAccessed`), though a view taken once the game has ended mid
         // access — a flatline from the card's own "when accessed" — no
@@ -675,6 +682,8 @@ fn visible_card_ids(view: &netrunner_core::view::ClientView) -> std::collections
     visible.extend(view.runner.scored_agendas.iter().map(|c| c.card.0.as_str()));
     visible.extend(view.runner.heap.iter().map(|c| c.0.as_str()));
     visible.extend(view.runner.removed_from_game.iter().map(|c| c.0.as_str()));
+    // Set aside faceup (CR 4.8.6): shown to both while it waits there.
+    visible.extend(view.runner.set_aside.iter().map(|c| c.0.as_str()));
     visible.extend(view.runner.rig.iter().map(|c| c.card.0.as_str()));
     // Hosted faceup on a rig card (Madani's programs, Detente's HQ cards):
     // as public as the rig, whichever side's card it is.

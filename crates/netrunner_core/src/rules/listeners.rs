@@ -265,6 +265,13 @@ pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
             let position = state.active_run.as_ref().map_or(0, |run| run.position as u32);
             vec![ice_moment(Trigger::OnSubroutineBroken, position, IceFacts { at_most_zero_strength: *strength <= 0, ..IceFacts::default() })]
         }
+        // Only an encountered piece of ice resolves a subroutine here: a
+        // card that resolves one by its text (Nanisivik Grid) announces
+        // nothing.
+        GameEvent::SubroutineFired { .. } => {
+            let position = state.active_run.as_ref().map_or(0, |run| run.position as u32);
+            vec![ice_moment(Trigger::OnSubroutineResolved, position, IceFacts::default())]
+        }
         GameEvent::IceFullyBroken { position, by, .. } => vec![Moment { by: *by, ..ice_moment(Trigger::OnIceFullyBroken, *position, IceFacts::default()) }],
         GameEvent::IceBypassed { position, .. } => vec![ice_moment(Trigger::OnIceBypassed, *position, IceFacts::default())],
         // About the ice by its install, which the event carries: an
@@ -357,7 +364,6 @@ pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
         GameEvent::ClickSpent { .. }
         | GameEvent::CreditsGained { .. }
         | GameEvent::CardDrawn { .. }
-        | GameEvent::SubroutineFired { .. }
         | GameEvent::SubroutineGained { .. }
         | GameEvent::RunNotDeclaredSuccessful { .. }
         | GameEvent::IceStrengthModified { .. }

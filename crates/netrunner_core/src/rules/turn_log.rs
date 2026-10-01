@@ -249,6 +249,7 @@ fn concealed(trigger: Trigger, of: Option<Side>) -> bool {
         // Broken or bypassed only in an encounter, which only a rezzed
         // piece of ice has.
         | Trigger::OnSubroutineBroken
+        | Trigger::OnSubroutineResolved
         | Trigger::OnIceFullyBroken
         | Trigger::OnIceBypassed
         | Trigger::OnEncounterEnded

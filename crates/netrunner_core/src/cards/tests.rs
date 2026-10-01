@@ -19743,4 +19743,73 @@ mod parhelion {
         let (later, _) = run_to_completion(ended, &registry, ServerId::Hq);
         assert_eq!(later.runner.resources.credits, Credits(0), "the first time was the run Ice Wall ended");
     }
+
+    // ---- Stage 6c: a set-aside program, and counters on a run event ----
+
+    #[test]
+    fn spark_of_inspiration_sets_aside_to_a_program_and_installs_it_ten_credits_cheaper() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.resources.credits = Credits(3);
+        state.runner.grip = vec![id("spark_of_inspiration")];
+        // The top of the stack is the end: Sure Gamble, Diesel, then Orca.
+        state.runner.stack = vec![id("sure_gamble"), id("orca"), id("diesel"), id("sure_gamble")];
+        let (asked, _) = apply_action(&state, &registry, PlayerAction::PlayEvent { card_id: id("spark_of_inspiration") }).expect("play it");
+        assert_eq!(asked.runner.set_aside.len(), 3, "until a program");
+        assert_eq!(asked.runner.stack, vec![id("sure_gamble")]);
+        assert_eq!(runner_toggles(&asked, &registry), vec![2], "Orca, the program, at 10[credit] less with 0[credit] in the pool");
+        let (installed, _) = pick(&asked, &registry, 2);
+        assert!(installed.runner.rig.iter().any(|card| card.card == id("orca")));
+        assert_eq!(installed.runner.resources.credits, Credits(0));
+        assert!(installed.runner.set_aside.is_empty());
+        let mut stack = installed.runner.stack.clone();
+        stack.sort_by(|a, b| a.0.cmp(&b.0));
+        assert_eq!(stack, vec![id("diesel"), id("sure_gamble"), id("sure_gamble")], "the rest shuffled in");
+
+        let (declined, _) = apply_action(&asked, &registry, PlayerAction::ConfirmCardSelection).expect("you may");
+        assert_eq!(declined.runner.stack.len(), 4, "the program too");
+        assert!(declined.runner.set_aside.is_empty());
+    }
+
+    /// Raindrops Cut Stone runs `server` and the Runner lets every
+    /// subroutine on the ice resolve; the run is over when this returns.
+    fn raindrops_run(state: &GameState, registry: &CardRegistry, server: ServerId) -> GameState {
+        let (asked, _) = apply_action(state, registry, PlayerAction::PlayEvent { card_id: id("raindrops_cut_stone") }).expect("play it");
+        let (mut running, _) = apply_action(&asked, registry, PlayerAction::ChooseServerForPendingDecision { server }).expect("run");
+        for _ in 0..40 {
+            if running.active_run.is_none() {
+                break;
+            }
+            let at_server = running.active_run.as_ref().is_some_and(|run| run.phase == crate::rules::RunPhase::Success);
+            running = match running.paid_ability_window.as_ref().map(|window| window.active_priority) {
+                Some(side) => apply_action(&running, registry, PlayerAction::PassPriority { side }).expect("pass").0,
+                None if at_server => apply_action(&running, registry, PlayerAction::CompleteRun).expect("complete").0,
+                None => crate::rules::test_support::continue_run(&running, registry).expect("continue").0,
+            };
+        }
+        assert!(running.active_run.is_none(), "the run ended: {:?}", running.active_run.as_ref().map(|run| run.phase));
+        running
+    }
+
+    /// "Including a subroutine that ends the run": Ice Wall's resolves,
+    /// the event holds a counter, and the run it ended draws 1.
+    #[test]
+    fn raindrops_cut_stone_counts_each_subroutine_that_resolves_and_draws_that_many_when_the_run_ends() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.resources.credits = Credits(1);
+        state.runner.grip = vec![id("raindrops_cut_stone")];
+        state.runner.stack = vec![id("sure_gamble"), id("diesel")];
+        let mut walled = state.clone();
+        walled.corp.installed = vec![ice_at_hq("ice_wall")];
+        let ended = raindrops_run(&walled, &registry, ServerId::Hq);
+        assert_eq!(ended.last_completed_run.as_ref().map(|run| run.event_counters), Some(1), "Ice Wall's one subroutine");
+        assert_eq!(ended.runner.grip, vec![id("diesel")], "1 card for the 1 counter");
+        assert_eq!(ended.runner.resources.credits, Credits(3));
+        assert!(ended.runner.heap.contains(&id("raindrops_cut_stone")));
+
+        let open = raindrops_run(&state, &registry, ServerId::Hq);
+        assert!(open.runner.grip.is_empty(), "no subroutine resolved, no card");
+        assert_eq!(open.runner.resources.credits, Credits(3));
+    }
 }
