@@ -329,6 +329,19 @@ pub enum CardFilter {
     /// facedown card in Archives faceup". Instance-level: which way up a
     /// card lies is state, and matches nothing outside Archives.
     Facedown,
+    /// A printed cost of at most this many credits — Kimberlite Field's
+    /// "an installed Runner card with a printed install cost equal to or
+    /// less than the printed rez cost of the Corp card you trashed". The
+    /// amount is read as the selection is offered (`with_resolution`); a
+    /// card with no printed cost (an agenda, an identity) has none to
+    /// compare and is not admitted. Composition didn't work: no filter read
+    /// a number from the resolution.
+    PrintedCostAtMost(Box<crate::dsl::Amount>),
+    /// The same card type as the card a nested cost just trashed — World
+    /// Tree's "trash 1 of your other installed cards to search your stack
+    /// for 1 card **of the same type**", written in as the selection is
+    /// offered (`with_resolution`). Matches nothing anywhere else.
+    SameTypeAsPaidCard,
     /// A faceup card in Archives — Armed Asset Protection's "if any of
     /// those cards are agendas", of the faceup cards it counts. `Facedown`'s
     /// other half. Composition didn't work: `Not` is read off a definition,
@@ -385,6 +398,21 @@ impl CardFilter {
     /// This filter with `InRootOfThisServer` written over as the server the
     /// acting card is in, where one is known; a placeholder left unresolved
     /// matches nothing.
+    /// The words read off the resolution, written in as the selection is
+    /// offered, as `with_this_server` writes in the server: an amount
+    /// becomes the number it is now (`PrintedCostAtMost`), and "the same
+    /// type" becomes the type of the card a nested cost trashed
+    /// (`SameTypeAsPaidCard`). Unresolved, each matches nothing.
+    pub fn with_resolution(self, amount: &dyn Fn(&crate::dsl::Amount) -> u32, paid: Option<&CardType>) -> CardFilter {
+        match self {
+            CardFilter::PrintedCostAtMost(at_most) => CardFilter::PrintedCostAtMost(Box::new(crate::dsl::Amount::Fixed(amount(&at_most)))),
+            CardFilter::SameTypeAsPaidCard => paid.map_or(CardFilter::SameTypeAsPaidCard, |card_type| CardFilter::CardType(card_type.clone())),
+            CardFilter::All(filters) => CardFilter::All(filters.into_iter().map(|filter| filter.with_resolution(amount, paid)).collect()),
+            CardFilter::AnyOf(filters) => CardFilter::AnyOf(filters.into_iter().map(|filter| filter.with_resolution(amount, paid)).collect()),
+            other => other,
+        }
+    }
+
     pub fn with_this_server(self, server: Option<ServerId>) -> CardFilter {
         match self {
             CardFilter::InRootOfThisServer => server.map_or(CardFilter::InRootOfThisServer, CardFilter::InRootOf),
@@ -517,5 +545,10 @@ pub fn card_matches_filter(card: &CardDefinition, filter: &CardFilter) -> bool {
         CardFilter::ScoredThisTurn => true,
         CardFilter::AmongCards(cards) => cards.contains(&card.id),
         CardFilter::TrashedThisWay => false,
+        CardFilter::PrintedCostAtMost(at_most) => match **at_most {
+            crate::dsl::Amount::Fixed(n) => !matches!(card.card_type, CardType::Agenda | CardType::Identity) && card.cost <= n,
+            _ => false,
+        },
+        CardFilter::SameTypeAsPaidCard => false,
     }
 }

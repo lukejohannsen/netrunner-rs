@@ -396,6 +396,8 @@ impl Occurrences {
         let of = match when {
             Some(EventFilter::Whose(side) | EventFilter::OwnedBy { whose: side, .. }) => Some(*side),
             Some(EventFilter::InRoot) => Some(Side::Corp),
+            // "A player trashes."
+            Some(EventFilter::TrashedFromThisServer) => None,
             _ => (trigger.hears() == Hears::OwnSide).then_some(controller),
         };
         let bit = |class: Class| 1u32 << class.column();
@@ -447,6 +449,9 @@ impl Occurrences {
             Some(EventFilter::All(_)) => unreachable!("a conjunction is read part by part above"),
             Some(EventFilter::InstalledFromHq(_)) => {
                 return Err(format!("the turn counts a {trigger:?} without where the card came from, so \"the first\" cannot be narrowed by it"));
+            }
+            Some(EventFilter::TrashedFromThisServer) => {
+                return Err(format!("the turn counts a {trigger:?} without the server the card left, so \"the first\" cannot be narrowed by it"));
             }
             Some(EventFilter::InstalledIn(_)) => {
                 return Err(format!("the turn counts a {trigger:?} without the server it went into, so \"the first\" cannot be narrowed by it"));

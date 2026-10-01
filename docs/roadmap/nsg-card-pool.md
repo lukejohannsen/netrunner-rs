@@ -47,7 +47,7 @@ cards each stage takes.
 | 1 | Vantage Point (`vp`) | 66 | 66 | 0 | complete (27 September 2026) |
 | 2 | Rebellion Without Rehearsal (`rwr`) | 65 | 65 | 0 | complete (28 September 2026) |
 | 3 | The Automata Initiative (`tai`) | 65 | 65 | 0 | complete (29 September 2026) |
-| 4 | Parhelion (`ph`) | 63 | 39 | 24 | **Stage 5c next** — trashes: Kimberlite Field, Yakov Erikovich Avdakov, World Tree; then 5d (Asmund Pudlat, Concerto, Reprise) |
+| 4 | Parhelion (`ph`) | 63 | 42 | 21 | **Stage 5d next** — the stack and HQ: Asmund Pudlat, Concerto, Reprise |
 | 5 | Midnight Sun (`ms`) + Booster (`msbp`) | 65 + 7 | 0 | 65 + 7 | not started |
 | 6 | Uprising (`ur`) + Booster (`urbp`) | 65 + 7 | 0 | 65 + 7 | not started |
 | 7 | Downfall (`df`) | 65 | 0 | 65 | not started |
@@ -337,7 +337,6 @@ PR that made this list (29 September 2026).
 ### Owed — a card whose printed text is not yet built
 
 - **Blood in the Water** (Midnight Sun): prints its advancement requirement as X, which NetrunnerDB records as none; the face draws no circle for it until the stage that builds a variable requirement (`card_face`'s layout test names the card).
-- **Hostile Architecture** (PH 2b): a *rezzed* copy trashed by the Runner's card text is not heard — `GameEvent::CardTrashed` does not say whether the card was rezzed, and adding that to its 42 sites is more than one card wants. Charm Offensive can reach it; no game has.
 - **Hafrún** (PH Stage 8): two ice types, which `CardType::Ice(IceType)` cannot say.
 - **Nanisivik Grid** (PH 5b): a subroutine it resolves reads "this server" as unresolved, where CR 4.6.6i's example makes it Archives; no subroutine in the pool says "this server".
 - **Docklands Pass, Rotary**: "whenever you breach HQ or R&D" is a successful run on either; a breach without a run (Cataloguer, RWR 6c) does not fire them.
@@ -382,7 +381,7 @@ Each is also a note on its section's row in [rules-conformance.md](rules-conform
 
 The heuristic seats in the sweeps and `coverage_identical.py` reach these cards through random seats and their tests alone. Each is a blindness of the evaluator, not of the engine, and is the raw material for the precepts work. **Since Phase 5 §25 Stage 1 (29 September 2026) the list is measured, not kept by hand:** `netrunner_cli diag precepts --deck-styles --games 192 --report …` ends with every card a seat used over the pass and the cards in the decks played that no seat ever used (`reach.unused_in_pass`), for the format `--format` names. The entries below are the hand list as it stood, kept for the *reasons* they record (which the report cannot say); a card the report names that is not here is a new debt, and a card here the report no longer names has been paid.
 
-- **Runner hardware and programs it never installs**: Basilar Synthgland 2KVJ, K2CP Turbine, Time Bomb (PH 4a); Poison Vial, WAKE Implant v2A-JRJ (PH 4b).
+- **Runner hardware and programs it never installs**: Basilar Synthgland 2KVJ, K2CP Turbine, Time Bomb (PH 4a); Poison Vial, WAKE Implant v2A-JRJ (PH 4b); World Tree (PH 5c).
 - **Economy resources and programs it does not value**: Friend of a Friend, Valentina Ferreira Carvalho, Coalescence; Laser Pointer, Banner; Monkeywrench, Saci, Pichação, Urban Art Vernissage; Lago Paranoá Shelter; AirbladeX (JSRF Ed.); the Core Set interrupts Decoy, Net Shield and Sacrificial Construct.
 - **Abilities it never uses**: M.I.C.'s trash, Arissana Rocha Nahu's, Epiphany Analytica's counter; identity and multi-click abilities generally (Phase 1 §8); over-advancing for Dividends.
 - **Corp cards it never plays or rezzes**: Distributed Tracing, Shipment from Vladisibirsk, Nonequivalent Exchange (played only by random seats), Hostile Architecture (installed 90 times, never rezzed), Dr. Vientiane Keeling (installed, never rezzed); it never trashes Amanuensis or Privileged Access, never purges (Malandragem, Physarum Entangler).
@@ -672,7 +671,7 @@ change deck-building rules (`DeckRule`, Stage 5a).
 5. **Zones, selection and deck building**, split by mechanic when it was
    taken (1 October 2026): **5a**, deck building (built): Nova Initiumia:
    Catalyst & Impetus, Ampère: Cybernetics For Anyone; **5b**, Archives (built):
-   Hybrid Release, Nanisivik Grid; **5c**, trashes: Kimberlite Field, Yakov
+   Hybrid Release, Nanisivik Grid; **5c**, trashes (built): Kimberlite Field, Yakov
    Erikovich Avdakov, World Tree; **5d**, the stack and HQ: Asmund Pudlat,
    Concerto, Reprise.
 6. **Charge, mark, set aside, Runner removal from game, counters on a run
@@ -707,6 +706,7 @@ Grid, Tsakhia, World Tree.
 - **Stage 4b** — breaker words: a cost a credit less per card, a break after a break, and a first time counted on the breaker (`feat/ph-stage-4b-breaker-words`, 1 October 2026).
 - **Stage 5a** — the deckbuilding rules an identity prints (`feat/ph-stage-5a-deck-building-identities`, 1 October 2026).
 - **Stage 5b** — Archives: an install of the copy chosen, and a subroutine of ice in Archives (`feat/ph-stage-5b-archives`, 1 October 2026).
+- **Stage 5c** — trashes: the card a nested cost took, and where a trashed install stood (`feat/ph-stage-5c-trashes`, 1 October 2026).
 
 ### 5. Midnight Sun and its Booster Pack — 65 cards (C 22 / V 26 / M 17)
 

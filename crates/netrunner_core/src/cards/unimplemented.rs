@@ -49,17 +49,14 @@ pub(crate) const PH_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("flux_capacitor", "Flux Capacitor"),
     ("nanuq", "Nanuq"),
     ("orca", "Orca"),
-    ("world_tree", "World Tree"),
     ("matryoshka", "Matryoshka"),
     ("nightmare_archive", "Nightmare Archive"),
     ("issuaq_adaptics_sustaining_diversity", "Issuaq Adaptics: Sustaining Diversity"),
     ("hafrun", "Hafrún"),
     ("klevetnik", "Klevetnik"),
     ("unsmiling_tsarevna", "Unsmiling Tsarevna"),
-    ("kimberlite_field", "Kimberlite Field"),
     ("superdeep_borehole", "Superdeep Borehole"),
     ("anvil", "Anvil"),
-    ("yakov_erikovich_avdakov", "Yakov Erikovich Avdakov"),
     ("zato_city_grid", "ZATO City Grid"),
 ];
 

@@ -2325,13 +2325,13 @@ mod tests {
     fn a_facedown_copy_in_archives_conceals_a_corp_trash() {
         // `cyberdex_trial` sits facedown in Archives; nothing hides `hostile_takeover`.
         let state = game_state(corp_state_with_cards());
-        let hidden = GameEvent::CardTrashed { side: Side::Corp, card: id("cyberdex_trial"), from: crate::dsl::TrashedFrom::Hand, by: None };
-        let shown = GameEvent::CardTrashed { side: Side::Corp, card: id("hostile_takeover"), from: crate::dsl::TrashedFrom::Hand, by: None };
+        let hidden = GameEvent::CardTrashed { side: Side::Corp, card: id("cyberdex_trial"), from: crate::dsl::TrashedFrom::Hand, by: None, install: None };
+        let shown = GameEvent::CardTrashed { side: Side::Corp, card: id("hostile_takeover"), from: crate::dsl::TrashedFrom::Hand, by: None, install: None };
         assert_eq!(mask_event_for_player(&hidden, &state, Side::Runner), None);
         assert_eq!(mask_event_for_player(&hidden, &state, Side::Corp), Some(hidden.clone()));
         assert_eq!(mask_event_for_player(&shown, &state, Side::Runner), Some(shown.clone()));
 
-        let runner_trash = GameEvent::CardTrashed { side: Side::Runner, card: id("cyberdex_trial"), from: crate::dsl::TrashedFrom::Hand, by: None };
+        let runner_trash = GameEvent::CardTrashed { side: Side::Runner, card: id("cyberdex_trial"), from: crate::dsl::TrashedFrom::Hand, by: None, install: None };
         assert_eq!(mask_event_for_player(&runner_trash, &state, Side::Runner), Some(runner_trash.clone()));
     }
 

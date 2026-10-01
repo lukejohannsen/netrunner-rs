@@ -1116,7 +1116,7 @@ mod system_gateway {
             let (state, _) = apply_action(&state, &registry, PlayerAction::ToggleCardSelection { position: 0 }).expect("toggle");
             apply_action(&state, &registry, PlayerAction::ConfirmCardSelection).expect("confirm")
         };
-        let trashed = crate::rules::GameEvent::CardTrashed { side: Side::Corp, card: CardId("hedge_fund".to_string()), from: crate::dsl::TrashedFrom::Hand, by: Some(Side::Corp) };
+        let trashed = crate::rules::GameEvent::CardTrashed { side: Side::Corp, card: CardId("hedge_fund".to_string()), from: crate::dsl::TrashedFrom::Hand, by: Some(Side::Corp), install: None };
 
         let (state, events) = run(crate::dsl::CardZoneRef::OwnArchives);
         assert!(events.contains(&trashed), "{events:?}");
@@ -13874,11 +13874,11 @@ mod rebellion_without_rehearsal {
             };
             state.this_turn.times_when(trigger, &when, Side::Runner) > 0
         };
-        let trashed = |card: &str, from, by| GameEvent::CardTrashed { side: Side::Runner, card: id(card), from, by: Some(by) };
+        let trashed = |card: &str, from, by| GameEvent::CardTrashed { side: Side::Runner, card: id(card), from, by: Some(by), install: None };
         assert!(counted(trashed("friend_of_a_friend", crate::dsl::TrashedFrom::Installed, Side::Runner)));
         assert!(!counted(trashed("friend_of_a_friend", crate::dsl::TrashedFrom::Hand, Side::Runner)), "out of the grip");
         assert!(!counted(trashed("friend_of_a_friend", crate::dsl::TrashedFrom::Installed, Side::Corp)), "the Corp trashed it");
-        let corp_card = GameEvent::CardTrashed { side: Side::Corp, card: id("ice_wall"), from: crate::dsl::TrashedFrom::Installed, by: Some(Side::Runner) };
+        let corp_card = GameEvent::CardTrashed { side: Side::Corp, card: id("ice_wall"), from: crate::dsl::TrashedFrom::Installed, by: Some(Side::Runner), install: None };
         assert!(!counted(corp_card), "not one of the Runner's");
     }
 
@@ -14997,9 +14997,9 @@ mod rebellion_without_rehearsal {
             }
             apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: id(card) }).is_ok()
         };
-        let own_program = GameEvent::CardTrashed { side: Side::Runner, card: id("mayfly"), from: crate::dsl::TrashedFrom::Installed, by: Some(Side::Runner) };
-        let by_the_corp = GameEvent::CardTrashed { side: Side::Corp, card: id("pad_campaign"), from: crate::dsl::TrashedFrom::Installed, by: Some(Side::Corp) };
-        let corp_card = GameEvent::CardTrashed { side: Side::Corp, card: id("pad_campaign"), from: crate::dsl::TrashedFrom::Installed, by: Some(Side::Runner) };
+        let own_program = GameEvent::CardTrashed { side: Side::Runner, card: id("mayfly"), from: crate::dsl::TrashedFrom::Installed, by: Some(Side::Runner), install: None };
+        let by_the_corp = GameEvent::CardTrashed { side: Side::Corp, card: id("pad_campaign"), from: crate::dsl::TrashedFrom::Installed, by: Some(Side::Corp), install: None };
+        let corp_card = GameEvent::CardTrashed { side: Side::Corp, card: id("pad_campaign"), from: crate::dsl::TrashedFrom::Installed, by: Some(Side::Runner), install: None };
         let accessed = GameEvent::CardTrashedFromAccess { card: id("pad_campaign"), cost_paid: 4, install: None };
         let stolen = GameEvent::AgendaStolen { card: id("offworld_office"), agenda_points: 2 };
         for card in ["active_policing", "bring_them_home"] {
@@ -19313,5 +19313,142 @@ mod parhelion {
         // Declined: Archives untouched.
         let (declined, _) = apply_action(&approached, &registry, PlayerAction::ConfirmCardSelection).expect("decline");
         assert!(declined.corp.archives[0].facedown);
+    }
+
+
+    // ---- Stage 5c: trashes ----
+
+    /// A Runner event whose text trashes an installed Corp card, so the
+    /// trash is the Runner's and not an access's.
+    fn registry_with_a_trashing_event() -> CardRegistry {
+        let mut registry = registry();
+        registry.insert(
+            serde_json::from_str(
+                r#"{"id": "a_trashing_event", "title": "A Trashing Event", "side": "Runner", "card_type": "Event", "cost": 0,
+                    "triggers": [{"trigger": "OnPlay", "subject": "This", "effects": [{"PromptChooseCards": {
+                        "side": "Runner", "source": "OpponentInstalled", "filter": "Any", "min": 1, "max": 1,
+                        "reveal": false, "shuffle_after": false, "destination": "OpponentDiscard"}}]}]}"#,
+            )
+            .expect("a card file"),
+        );
+        registry
+    }
+
+    /// The Runner plays the trashing event on the Corp install `install`.
+    fn trash_by_text(state: &GameState, registry: &CardRegistry, install: u32) -> GameState {
+        let mut state = state.clone();
+        state.runner.grip.push(id("a_trashing_event"));
+        let (asked, _) = apply_action(&state, registry, PlayerAction::PlayEvent { card_id: id("a_trashing_event") }).expect("play");
+        let position = asked.corp.installed.iter().position(|card| card.install_id == InstallId(install)).expect("installed");
+        let (chose, _) = apply_action(&asked, registry, PlayerAction::ToggleCardSelection { position }).expect("select");
+        close_all_windows(apply_action(&chose, registry, PlayerAction::ConfirmCardSelection).expect("trash it").0, registry).0
+    }
+
+    #[test]
+    fn hostile_architecture_hears_its_own_trash_by_the_runners_text_while_it_was_rezzed() {
+        let registry = registry_with_a_trashing_event();
+        let mut state = runner_turn();
+        state.runner.grip = vec![id("sure_gamble"); 4];
+        state.corp.installed = vec![at("hostile_architecture", 80, 0, true)];
+        assert_eq!(trash_by_text(&state, &registry, 80).runner.grip.len(), 2, "including this asset: 2 meat damage");
+        state.corp.installed[0].rezzed = false;
+        assert_eq!(trash_by_text(&state, &registry, 80).runner.grip.len(), 4, "never active, so nothing heard");
+    }
+
+    #[test]
+    fn yakov_gains_two_for_each_trash_from_its_server_its_own_included() {
+        let registry = registry_with_a_trashing_event();
+        let mut state = runner_turn();
+        state.runner.resources.credits = Credits(20);
+        state.corp.resources.credits = Credits(0);
+        let mut ice = ice_at("ice_wall", ServerId::Remote(0), true);
+        ice.install_id = InstallId(83);
+        state.corp.installed = vec![at("yakov_erikovich_avdakov", 80, 0, true), at("pad_campaign", 81, 0, false), at("pad_campaign", 82, 1, false), ice];
+        let gained = |state: &GameState| state.corp.resources.credits.0;
+        assert_eq!(gained(&trash_by_text(&state, &registry, 81)), 2, "from the root of this server");
+        assert_eq!(gained(&trash_by_text(&state, &registry, 83)), 2, "protecting it");
+        assert_eq!(gained(&trash_by_text(&state, &registry, 82)), 0, "another server");
+        assert_eq!(gained(&trash_by_text(&state, &registry, 80)), 2, "including this upgrade");
+        let mut unprotected = state.clone();
+        unprotected.corp.installed.pop();
+        let (accessing, _) = run_to_completion(close_all_windows(unprotected, &registry).0, &registry, ServerId::Remote(0));
+        let pad = PlayerAction::SelectCardToAccess { candidate: crate::rules::AccessCandidate::Root(InstallId(81)) };
+        let (at_pad, _) = apply_action(&accessing, &registry, pad).expect("access PAD Campaign first");
+        let (trashed, _) = apply_action(&at_pad, &registry, PlayerAction::TrashAccessedCard { card_id: id("pad_campaign") }).expect("trash it");
+        assert_eq!(gained(&trashed), 2, "the Runner's trash on access");
+
+        // Unrezzed, it is not active and hears nothing.
+        state.corp.installed[0].rezzed = false;
+        assert_eq!(gained(&trash_by_text(&state, &registry, 81)), 0);
+        assert_eq!(gained(&trash_by_text(&state, &registry, 80)), 0);
+    }
+
+    /// "Except during installation": a second region installed in its
+    /// server trashes the first (CR 8.5.6), and nothing is gained.
+    #[test]
+    fn yakov_gains_nothing_for_a_trash_made_by_installing() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.resources.credits = Credits(0);
+        state.corp.installed = vec![at("yakov_erikovich_avdakov", 80, 0, true), at("nanisivik_grid", 81, 0, false)];
+        state.corp.hq = vec![id("nanisivik_grid")];
+        let install = PlayerAction::InstallCard { card_id: id("nanisivik_grid"), zone: ServerId::Remote(0), slot: InstallSlot::Root, trash_first: false };
+        let (installed, _) = apply_action(&state, &registry, install).expect("install a second region");
+        assert_eq!(installed.corp.installed.iter().filter(|card| card.card == id("nanisivik_grid")).count(), 1, "the first region is trashed");
+        assert_eq!(installed.corp.resources.credits, Credits(0));
+    }
+
+    #[test]
+    fn kimberlite_field_trashes_a_runner_card_no_dearer_than_the_rezzed_card_the_corp_trashed() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.installed = vec![agenda_at("kimberlite_field", 4), at("pad_campaign", 81, 1, true)];
+        state.runner.rig = vec![rig_card("mayfly", 90), rig_card("carmen", 91)];
+        let scored = score(&state, &registry, "kimberlite_field").expect("score it");
+        assert!(scored.pending_paid_choice.as_ref().is_some_and(|choice| choice.side == Side::Corp), "you may trash 1 of your rezzed cards");
+        let (declined, _) = apply_action(&scored, &registry, PlayerAction::DeclinePendingPaidChoice).expect("decline");
+        assert_eq!((declined.corp.installed.len(), declined.runner.rig.len()), (1, 2));
+
+        let (paid, _) = apply_action(&scored, &registry, accept()).expect("trash PAD Campaign");
+        assert!(paid.corp.installed.is_empty(), "PAD Campaign trashed");
+        assert_eq!(toggles(&paid, &registry), vec![0], "Mayfly (1[credit]) and not Carmen (5[credit]): PAD Campaign's rez cost is 2[credit]");
+        let (trashed, _) = pick(&paid, &registry, 0);
+        assert_eq!(trashed.runner.rig.iter().map(|card| card.card.clone()).collect::<Vec<_>>(), vec![id("carmen")]);
+        assert!(trashed.runner.heap.contains(&id("mayfly")));
+
+        // Nothing rezzed to trash: no offer to pay.
+        state.corp.installed[1].rezzed = false;
+        let unpaid = score(&state, &registry, "kimberlite_field").expect("score it");
+        assert!(apply_action(&unpaid, &registry, accept()).is_err(), "nothing rezzed to trash");
+    }
+
+    #[test]
+    fn world_tree_trades_another_install_for_one_of_its_type_from_the_stack_three_credits_cheaper() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.resources.credits = Credits(3);
+        state.runner.rig = vec![rig_card("world_tree", 90), rig_card("smartware_distributor", 91)];
+        state.runner.stack = vec![id("sure_gamble"), id("red_team"), id("sure_gamble")];
+        let (asked, _) = run_to_completion(state.clone(), &registry, ServerId::Hq);
+        assert!(asked.pending_paid_choice.as_ref().is_some_and(|choice| choice.side == Side::Runner), "the first successful run");
+        let (searching, _) = apply_action(&asked, &registry, accept()).expect("trash Smartware Distributor");
+        assert!(searching.runner.heap.contains(&id("smartware_distributor")));
+        let resources: Vec<usize> = crate::rules::legal_actions_for(&searching, &registry, Side::Runner)
+            .into_iter()
+            .filter_map(|action| match action {
+                PlayerAction::ToggleCardSelection { position } => Some(position),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(resources.len(), 1, "a resource, as the card trashed was");
+        let (chose, _) = apply_action(&searching, &registry, PlayerAction::ToggleCardSelection { position: resources[0] }).expect("Red Team");
+        let (installed, _) = apply_action(&chose, &registry, PlayerAction::ConfirmCardSelection).expect("install it");
+        assert!(installed.runner.rig.iter().any(|card| card.card == id("red_team")), "installed");
+        assert_eq!(installed.runner.resources.credits, Credits(3 - (5 - 3)), "Red Team's 5[credit], paying 3[credit] less");
+        assert_eq!(installed.runner.stack.len(), 2);
+
+        // The second successful run this turn asks nothing.
+        let (again, _) = run_to_completion(close_all_windows(installed, &registry).0, &registry, ServerId::Hq);
+        assert!(again.pending_paid_choice.is_none());
     }
 }

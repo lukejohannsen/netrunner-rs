@@ -781,8 +781,9 @@ pub enum Effect {
     /// as `PlayOperation { from }` took Plutus's zone, and so was the zone
     /// when The Wizard's Chest's "You may install 1 of those 2 cards,
     /// ignoring all costs" installed out of the set-aside zone: it was
-    /// `InstallRunnerCardFromHeap(Discount)`. `from` is `OwnHeap` or
-    /// `OwnSetAside`; anything else is `RulesError::UnresolvedCardTarget`.
+    /// `InstallRunnerCardFromHeap(Discount)`. `from` is `OwnHeap`,
+    /// `OwnSetAside` or `OwnStack` (World Tree's found card); anything else
+    /// is `RulesError::UnresolvedCardTarget`.
     InstallRunnerCardFromZone { from: crate::dsl::CardZoneRef, discount: Discount },
     /// Sets cards aside faceup from the top of the Runner's stack, one at a
     /// time, until `count` of them match `filter` or the stack is empty —
@@ -1573,6 +1574,12 @@ pub enum Amount {
     /// paid ability is the card whose ability it is; the accessed card is
     /// the run's (`AccessPhase::card`). 0 when nothing is being accessed.
     AccessedCardPrintedCost,
+    /// The printed cost of the card a nested cost just trashed
+    /// (`ResolutionContext::paid_with`) — Kimberlite Field's "the printed
+    /// rez cost of the Corp card you trashed". 0 outside what such a cost
+    /// paid for. Composition didn't work: `PrintedCost` reads the acting
+    /// card, which in an `if_paid` is the card whose text it is.
+    PaidCardPrintedCost,
     /// `u32` minus the cards the resolving `PromptChooseCards` selected
     /// (`ResolutionContext::selected_count`) — the R&D half of a sabotage
     /// of `u32`, resolved in the HQ selection's `then`. Saturating.

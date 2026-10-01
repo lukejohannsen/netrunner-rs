@@ -5190,3 +5190,73 @@ Archives in 5b, trashes in 5c, the stack and HQ in 5d.
   approaches, with facedown ice in Archives to offer on 16 / 0 of them.
 - **Bot debts:** the planner Corp never had facedown ice in Archives when
   the Runner approached a Nanisivik Grid.
+
+#### Stage 5c — trashes: the card a nested cost took, and where a trashed install stood (1 October 2026)
+
+`feat/ph-stage-5c-trashes`: Kimberlite Field, Yakov Erikovich Avdakov,
+World Tree. **No new `Effect`**; one `Amount`, two `CardFilter`s, one
+`EventFilter`, and a field on `GameEvent::CardTrashed`. Parhelion 42 of
+63; `PH_UNIMPLEMENTED` 24 → 21.
+
+- **What a nested cost took** (CR 1.16.11a: "may [cost]. If you do" and
+  "may [cost] to" are both nested costs). Kimberlite Field's "you may
+  trash 1 of your rezzed cards. If you do, trash 1 installed Runner card
+  with a printed install cost equal to or less than the printed rez cost
+  of the Corp card you trashed" and World Tree's "you may trash 1 of your
+  other installed cards to search your stack for 1 card of the same type"
+  are `OfferPaidChoice`s of `Cost::Trash` whose `if_paid` reads the card
+  the cost took. The accepted choice now puts the payment's trashed cards
+  on the context (`ResolutionContext::paid_with`), read by
+  `Amount::PaidCardPrintedCost` and `CardFilter::SameTypeAsPaidCard`.
+  Composition didn't work: `PrintedCost` reads the acting card, which in
+  an `if_paid` is the card whose text it is.
+- **A filter read off the resolution.** `CardFilter::PrintedCostAtMost(
+  Amount)` holds an amount, and a selection writes in the number it is as
+  it is offered (`CardFilter::with_resolution`), as it writes in "this
+  server" (`with_this_server`); `SameTypeAsPaidCard` becomes the type of
+  the card paid. Unresolved, each matches nothing.
+- **World Tree installs the card it found** out of the stack, paying
+  3[credit] less (`InstallRunnerCardFromZone` from `OwnStack`, Muse's
+  source); one it cannot afford stays in the shuffled stack (CR 1.16.4b).
+- **Where a trashed install stood.** Yakov's "Whenever a player trashes a
+  card (including this upgrade) from the root of this server or
+  protecting it, except during installation, gain 2[credit]" needs three
+  facts the card no longer says once it is in Archives, so
+  `GameEvent::CardTrashed` carries them for a Corp install
+  (`TrashedInstall { server, rezzed, installing }`), filled at every site
+  that trashes one and marked `installing` at CR 8.5.16c's trash. An
+  access trash reads them off the run. `EventFilter::TrashedFromThisServer`
+  compares the server with the listener's, and a card hearing its own
+  trash takes the one it left as "this server" — CR 4.6.6i, whose example
+  is exactly this (Warroid Tracker). It names no player, so either
+  player's trash is heard; Yakov is an `OnCardTrashed` and an
+  `OnTrashedFromAccess`, the two kinds of trash.
+- **A rezzed install trashed by a card's text hears its own trash.**
+  `TrashedInstall::rezzed` makes the moment `was_active`, as an access
+  trash already was — which closes Hostile Architecture's known limit
+  (PH 2b): its "(including this asset)" now holds for the Runner's text
+  too.
+- **Client.** Nothing new in the view; the new field rides on the trash
+  event both logs already word. The engine reading words the new amount
+  and the server filter.
+- **Decks.** Tag You're It took two Kimberlite Field for two of its three
+  Orbital Superiority and two Yakov Erikovich Avdakov for its two Regolith
+  Mining License; Safety Net two World Tree for its two Conduit. Both stay
+  Eternal-only.
+- **DSL ratio (`pool_status.py`):** unchanged at 16 of 91 `Effect`
+  variants single-use, 1 unused, over 422 card files.
+- **Measured** against Stage 5b's tip. Both sweeps green at 256 seeds,
+  the card gate included.
+  - A ref with the engine change and no cards is identical in all four
+    shapes: Hostile Architecture, which now hears its own trash by text,
+    is in no matchup deck.
+  - With the cards, both random seatings are identical; the planner ones
+    move by `determinize` (view and index alike, of 192): Corp agenda wins
+    59 → 63, Corp flatlines 27 → 28, Runner agenda wins 102 → 97.
+- **Real play**, seed 2, Tag You're It against Safety Net (random 96 games
+  / planner 48): Kimberlite Field scored 1 / 15 times and its offer heard
+  1 / 8; Yakov rezzed 51 / 33 times and paid out 13 / 4 (12 / 4 of them
+  on access trashes); World Tree installed 12 / 0 times and heard 54
+  first successful runs (random).
+- **Bot debts:** the planner Runner never installs World Tree; the
+  planner Corp never trashed a rezzed card for Kimberlite Field.

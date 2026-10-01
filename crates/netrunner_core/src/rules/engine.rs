@@ -2465,7 +2465,7 @@ fn activate_ability(
     // checkpoint): only a rig card hosts cards, and only its owner's.
     for card in std::mem::take(&mut effect_ctx.set_aside) {
         next.runner.heap.push(card.clone());
-        events.push(GameEvent::CardTrashed { side: Side::Runner, card, from: crate::dsl::TrashedFrom::Elsewhere, by: None });
+        events.push(GameEvent::CardTrashed { side: Side::Runner, card, from: crate::dsl::TrashedFrom::Elsewhere, by: None, install: None });
     }
     events.extend(ability::dispatch_cost_events(&mut next, registry, &cost_events)?);
     // `check_requirement` above only reads — without this, a `Paid`
@@ -2862,7 +2862,7 @@ fn trash_resource(
     let removed = next.runner.rig.remove(position);
     next.runner.heap.push(removed.card.clone());
     // The Corp's own basic action: it carries the trash out.
-    dispatcher::emit(&mut next, registry, &mut events, GameEvent::CardTrashed { side: Side::Runner, card: card_id, from: crate::dsl::TrashedFrom::Installed, by: Some(Side::Corp) })?;
+    dispatcher::emit(&mut next, registry, &mut events, GameEvent::CardTrashed { side: Side::Runner, card: card_id, from: crate::dsl::TrashedFrom::Installed, by: Some(Side::Corp), install: None })?;
     events.extend(ability::cascade_trash_hosted_on_rig_card(&mut next, registry, &removed));
     events.extend(ability::dispatch_cost_events(&mut next, registry, &cost_events)?);
 
@@ -5568,7 +5568,7 @@ mod tests {
         assert_eq!(
             events,
             vec![
-                GameEvent::CardTrashed { side: Side::Runner, card: card_id.clone(), from: crate::dsl::TrashedFrom::Installed, by: Some(Side::Runner) },
+                GameEvent::CardTrashed { side: Side::Runner, card: card_id.clone(), from: crate::dsl::TrashedFrom::Installed, by: Some(Side::Runner), install: None },
                 GameEvent::AbilityActivated { side: Side::Runner, card_id: card_id.clone(), ability_index: 0, install: Some(install_of(&state, &card_id.0)), action: false },
                 GameEvent::CreditsGained { side: Side::Runner, amount: 5 },
                 GameEvent::AbilityGainedCredits { side: Side::Runner, card: card_id },
@@ -7011,7 +7011,7 @@ mod tests {
             vec![
                 GameEvent::ClickSpent { side: Side::Corp },
                 GameEvent::CreditsSpent { side: Side::Corp, amount: 2 },
-                GameEvent::CardTrashed { side: Side::Runner, card: card_id, from: crate::dsl::TrashedFrom::Installed, by: Some(Side::Corp) },
+                GameEvent::CardTrashed { side: Side::Runner, card: card_id, from: crate::dsl::TrashedFrom::Installed, by: Some(Side::Corp), install: None },
                 GameEvent::ActionFinished { side: Side::Corp, action: crate::rules::turn_log::SameAction::TrashResource },
             ]
         );
