@@ -2529,8 +2529,9 @@ fn activate_hand_ability(
     Ok((next, events))
 }
 
-/// Places one advancement token on `card_id`, per
-/// `PlayerAction::AdvanceCard`'s doc comment. Corp-only, like `install_card`/
+/// The Corp's basic action "[click], 1[credit]: Advance 1 installed card"
+/// (CR 5.2.6f), per `PlayerAction::AdvanceCard`'s doc comment: the click
+/// and the credit, then `advance`. Corp-only, like `install_card`/
 /// `rez_ice`.
 fn advance_card(
     state: &GameState,
@@ -2548,14 +2549,45 @@ fn advance_card(
 
     let mut events = vec![GameEvent::ClickSpent { side }];
     events.extend(ability::pay_cost(&mut next, registry, side, &Cost::Credits(1), Purpose::Other, Some(&card_id))?);
+    events.extend(advance(&mut next, registry, target)?);
+    Ok((next, events))
+}
 
+/// Advances `target` — CR 1.18.1, "to advance a card is to place an
+/// advancement counter from the bank on it" — **the one place a card is
+/// advanced**, so that `Trigger::OnAdvance` hears every advancement
+/// wherever it comes from. CR 1.18.1 goes on: "the Corp typically
+/// advances cards with a basic action during their action phase, but card
+/// abilities can also advance cards", and the basic action
+/// (`advance_card`) is the only caller today because no card in the
+/// embedded catalog advances by its text: every "advance" printed there is
+/// a card saying it can be (1.18.3), a listener ("whenever you advance",
+/// "did not install or advance this turn"), or a *placement* of counters,
+/// which is not advancing (1.18.2, `Effect::PlaceAdvancementCounters`).
+/// Measured 1 October 2026 over the catalog's fifteen sets; the Rules
+/// Audit's "advancing vs placing" entry has the record. A card ability
+/// that advances would be an `Effect` calling this and nothing else —
+/// never a counter written beside its own `CardAdvanced`, which is how a
+/// second advancing path would have missed the dispatch. The call was the
+/// tail of `advance_card`, under the click and the credit, where an effect
+/// could not reach it.
+///
+/// CR 1.18.3: "the Corp can only advance certain installed cards" — an
+/// agenda, or a card whose text says it can be, which a card file says
+/// with an `advancement_requirement` (`0` for "you can advance this
+/// ice"); everything else is `CardNotAdvanceable`. No "was this the first
+/// advancement?" flag is recorded: the event carries
+/// `advancement_tokens`, and `EffectRequirement::
+/// WasFirstAdvancementThisCard` reads it from the
+/// `ability::ResolutionContext` the dispatch builds.
+pub(crate) fn advance(next: &mut GameState, registry: &CardRegistry, target: InstallId) -> Result<Vec<GameEvent>, RulesError> {
     let installed = next
         .corp
         .installed
         .iter_mut()
         .find(|c| c.install_id == target)
         .ok_or(RulesError::InstallNotFound(target))?;
-
+    let card_id = installed.card.clone();
     let card_def = registry
         .get(&card_id)
         .ok_or_else(|| RulesError::CardNotFoundInRegistry(card_id.clone()))?;
@@ -2566,14 +2598,10 @@ fn advance_card(
     installed.advancement_tokens += 1;
     let advancement_tokens = installed.advancement_tokens;
     let install = installed.install_id;
-    // No "was this the first advancement?" flag is recorded: the event
-    // below already carries `advancement_tokens`, and
-    // `EffectRequirement::WasFirstAdvancementThisCard` reads it from the
-    // `ability::ResolutionContext` the dispatch builds.
+    let mut events = Vec::new();
     let advanced_event = GameEvent::CardAdvanced { install, card: Some(card_id), advancement_tokens };
-    dispatcher::emit(&mut next, registry, &mut events, advanced_event)?;
-
-    Ok((next, events))
+    dispatcher::emit(next, registry, &mut events, advanced_event)?;
+    Ok(events)
 }
 
 /// Resolves `PlayerAction::ScoreAgenda`, per its doc comment. Corp-only,
@@ -3107,6 +3135,70 @@ mod tests {
             phase: GamePhase::Action(Side::Corp),
             ..Default::default()
         }
+    }
+
+    /// Advancing is `advance`, one function the basic action calls after
+    /// its click and credit — so a card ability that advances (CR 1.18.1:
+    /// "card abilities can also advance cards"; none in the pool prints
+    /// one yet) reaches an "on advance" listener by calling it and nothing
+    /// else. Here it is called bare: no click spent, no credit paid, and
+    /// the identity still hears the advancement; and CR 1.18.3 holds at
+    /// the door, not only at the action.
+    #[test]
+    fn advancing_through_the_one_door_is_heard_without_a_click_or_a_credit() {
+        let mut registry = CardRegistry::new();
+        registry.insert(CardDefinition {
+            id: CardId("built_to_last".to_string()),
+            title: "Built to Last".to_string(),
+            side: Side::Corp,
+            card_type: CardType::Identity,
+            triggers: vec![TriggeredEffect {
+                subject: None,
+                when: None,
+                acts_on_subject: false,
+                first_each_turn: false,
+                from_heap: false,
+                text: None,
+                trigger: Trigger::OnAdvance,
+                effects: vec![Effect::GainCredits(Side::Corp, 2)],
+                requirement: None,
+            }],
+            ..Default::default()
+        });
+        registry.insert(CardDefinition {
+            id: CardId("an_agenda".to_string()),
+            title: "An Agenda".to_string(),
+            side: Side::Corp,
+            card_type: CardType::Agenda,
+            advancement_requirement: Some(3),
+            agenda_points: Some(2),
+            ..Default::default()
+        });
+        registry.insert(CardDefinition {
+            id: CardId("an_asset".to_string()),
+            title: "An Asset".to_string(),
+            side: Side::Corp,
+            card_type: CardType::Asset,
+            ..Default::default()
+        });
+        let mut state = corp_state(0, 0);
+        state.corp.identity = Some(CardId("built_to_last".to_string()));
+        state.corp.installed = vec![
+            InstalledCard { card: CardId("an_agenda".to_string()), install_id: InstallId(1), server: ServerId::Remote(0), ..Default::default() },
+            InstalledCard { card: CardId("an_asset".to_string()), install_id: InstallId(2), server: ServerId::Remote(1), ..Default::default() },
+        ];
+
+        let events = advance(&mut state, &registry, InstallId(1)).expect("advance by the door");
+        assert_eq!(state.find_corp_install(InstallId(1)).map(|c| c.advancement_tokens), Some(1));
+        assert!(events.iter().any(|e| matches!(e, GameEvent::CardAdvanced { advancement_tokens: 1, .. })));
+        assert_eq!(state.corp.resources.credits, Credits(2), "the identity heard it, and nothing else was paid");
+        assert_eq!(state.corp.resources.clicks, Clicks(0), "no click: the door is not the action");
+
+        // CR 1.18.3: only an agenda or a card that says it can be advanced.
+        assert!(
+            matches!(advance(&mut state, &registry, InstallId(2)), Err(RulesError::CardNotAdvanceable { .. })),
+            "an asset that does not say it can be advanced"
+        );
     }
 
     /// `stack_size`/`grip_size` are filled with distinct placeholder `CardId`s

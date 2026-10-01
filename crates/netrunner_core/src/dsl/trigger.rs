@@ -132,6 +132,11 @@ pub enum Trigger {
     /// Built to Last's "whenever you advance a card, gain 2 credits if it
     /// had no advancement counters" (combine with `EffectRequirement::
     /// WasFirstAdvancementThisCard` for the "had no counters" half).
+    /// Advancing is `engine::advance`, the one place a counter is placed
+    /// *as an advancement* (CR 1.18.1) — the basic action's and any card
+    /// ability's, should one ever print it — and never a placement
+    /// (CR 1.18.2, `Effect::PlaceAdvancementCounters`), which Built to Last
+    /// does not hear.
     OnAdvance,
     /// The named side's discard phase has just ended — including when it was
     /// skipped entirely because they were already within hand size, since

@@ -195,7 +195,6 @@ Each is a gap noticed in an entry above and left with its reason; none changes a
 - Phật Gioan Baotixita as one prompt, and X costs, which no pool card prints (item 6).
 - The approach-server step as a phase of its own, and a trigger on *passing* ice, wait for a card that needs them (item 7).
 - IP Enforcement's X cost; Détente, which needs item 10; whether damage paid as a cost is Net Shield's "first time each turn" (item 8). `engine::rez_install` not reading `rez_alternatives` was the fourth, fixed 1 October 2026 (below).
-- `Trigger::OnAdvance` is reachable only from the basic action: CR 1.18.1 says card abilities can also advance, and no card in the pool does (Advancing vs placing, below).
 
 9. **A scenario builder for card tests** (§4; was item 6). A deck-and-hand
    spec that reaches a real state through `setup` and actions, plus helpers
@@ -248,11 +247,35 @@ Each is a gap noticed in an entry above and left with its reason; none changes a
   be advanceable is the card's business, expressed as its prompt's
   filter.
 
-**Still open, noticed here and not fixed:** `Trigger::OnAdvance` is
+**Noticed here and not fixed at the time:** `Trigger::OnAdvance` was
 reachable *only* from the basic action. CR 1.18.1 says "card abilities
-can also advance cards", and if one ever does, its trigger will not fire
-until the advancing path dispatches its event. No card in the set
-advances by ability today.
+can also advance cards", and if one ever did, its trigger would not fire
+until the advancing path dispatched its event.
+
+**Closed 1 October 2026** (`fix/advancing-is-one-function`), in two
+halves. *Measured first:* a scan of every card in the embedded catalog —
+all fifteen set files, Core Set and System Update 2021 through Elevation
+and the two reprint packs — for the verb "advance" finds no card that
+advances by its own text. Every hit is a card saying it can be advanced
+(1.18.3: Ice Wall, Pharos, Clearinghouse, Ubiquitous Vig …), a listener on
+advancing (Built to Last, Oaktown Renovation, Sacrifice Zone Expansion,
+Issuaq Adaptics' "did not install or advance this turn"), or an
+instruction to *place* advancement counters on a card "you can advance"
+(AstroScript, Seamless Launch, Shipment from Vladisibirsk, Vladisibirsk
+City Grid, Trick of Light's move …), which 1.18.2 says is not advancing.
+So there was no second path to wire and no card to drive one; the
+"bug" was a path that did not exist. *Then the structural half:*
+advancing is now `engine::advance`, one function that places the counter
+and dispatches `CardAdvanced`, and the basic action (`advance_card`) is
+the click and the credit followed by a call to it. It was the tail of
+`advance_card`, under the click and the credit, where an effect could not
+have reached it — the shape under which a future `Effect::Advance` would
+have written its own counter beside its own event and missed the
+listener scan. No `Effect` is added: the DSL Growth Rule says a variant
+for no card is the expensive move, and the one-function door is what
+makes adding it later a one-line effect arm. Coverage identical by
+construction (the same events in the same order from the same action),
+confirmed with `scripts/coverage_identical.py main --head-worktree`.
 
 ## A card's text that rezzes a card pays its own way — DONE (1 October 2026)
 
