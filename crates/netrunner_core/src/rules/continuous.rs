@@ -339,9 +339,25 @@ pub(crate) fn memory(state: &GameState, registry: &CardRegistry) -> i32 {
 /// What `side`'s active cards add to its maximum hand size: an identity
 /// (Haas-Bioroid: Precision Design), a scored agenda (Superconducting Hub),
 /// a piece of hardware (T400 Memory Diamond) — for as long as each is one.
+/// And what the other side's active cards say about it (`Scope::Player`):
+/// Dr. Vientiane Keeling's "The Runner gets -1 maximum hand size for each
+/// hosted power counter" is the Corp's asset binding the Runner, so it is
+/// asked as a prohibition is, across both tables (`Target::Bound`).
 pub(crate) fn hand_size(state: &GameState, registry: &CardRegistry, side: Side) -> i32 {
+    fn hand_size(kind: &ContinuousKind) -> Option<&Number> {
+        match kind {
+            ContinuousKind::HandSize(number) => Some(number),
+            _ => None,
+        }
+    }
+    sum(state, registry, Target::Player(side), hand_size) + sum(state, registry, Target::Bound(side), hand_size)
+}
+
+/// What `side`'s active cards add to the clicks it gains as its turn
+/// begins (Basilar Synthgland 2KVJ), asked as the allotment is assigned.
+pub(crate) fn allotted_clicks(state: &GameState, registry: &CardRegistry, side: Side) -> i32 {
     sum(state, registry, Target::Player(side), |kind| match kind {
-        ContinuousKind::HandSize(number) => Some(number),
+        ContinuousKind::AllottedClicks(number) => Some(number),
         _ => None,
     })
 }

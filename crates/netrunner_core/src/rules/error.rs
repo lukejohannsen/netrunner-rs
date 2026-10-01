@@ -138,6 +138,15 @@ pub enum RulesError {
     #[error("{card:?} cannot be rezzed now")]
     RezRestricted { card: CardId },
 
+    /// The card prints when it may be installed and this is not then — Time
+    /// Bomb's "Install only if you made a successful run on a central server
+    /// this turn" (`CardDefinition::install_requirement`). Refused by the
+    /// install itself, so a card's text that would install it is refused as
+    /// the basic action is; the gates a text install asks first never offer
+    /// it.
+    #[error("{card:?} cannot be installed now")]
+    InstallRequirementUnmet { card: CardId },
+
     /// A run on this server cannot be made now — Front Company's "The first
     /// run each turn cannot be made against a remote server"
     /// (`Prohibition::RunOnRemote`).

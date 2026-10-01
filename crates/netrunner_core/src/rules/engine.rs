@@ -334,7 +334,7 @@ fn apply_action_once(
         }
         PlayerAction::EndTurn => turn::end_turn(state, registry),
         PlayerAction::DiscardCard { card_id } => turn::discard_card(state, card_id, registry),
-        PlayerAction::KeepHand => setup::keep_hand(state),
+        PlayerAction::KeepHand => setup::keep_hand(state, registry),
         PlayerAction::TakeMulligan => setup::take_mulligan(state, registry),
         PlayerAction::ActivateAbility { target, ability_index } => {
             activate_ability(state, registry, target, ability_index)
@@ -1690,11 +1690,27 @@ fn install_into_rig(
     card_id: &CardId,
     host: Option<InstallId>,
 ) -> Result<Vec<GameEvent>, RulesError> {
+    // "Install only if…", asked here because every Runner install comes
+    // through: the basic actions, a card's text, Hackerspace's host. Nothing
+    // paid before it changes what it asks, and a refusal unwinds the action.
+    if !install_requirement_met(state, registry, card_id) {
+        return Err(RulesError::InstallRequirementUnmet { card: card_id.clone() });
+    }
     let mut rig_card = seed_rig_card(state, registry, card_id.clone())?;
     rig_card.hosted_on_ice = host;
     let install = rig_card.install_id;
     state.runner.rig.push(rig_card);
     payment::place_recurring(state, registry, Side::Runner, Some(install), card_id)
+}
+
+/// Whether `card_id`'s "Install only if…" holds now
+/// (`CardDefinition::install_requirement`), asked as the card. The door
+/// (`install_into_rig`) and every gate that offers a text install ask it,
+/// so they cannot disagree.
+pub(crate) fn install_requirement_met(state: &GameState, registry: &CardRegistry, card_id: &CardId) -> bool {
+    let Some(requirement) = registry.get(card_id).and_then(|definition| definition.install_requirement.as_ref()) else { return true };
+    let ctx = ability::ResolutionContext::for_card(Some(card_id));
+    ability::check_requirement(state, requirement, Side::Runner, &ctx, registry).is_ok()
 }
 
 /// The credit cost installing `card_def` from the grip would charge right
@@ -1796,7 +1812,7 @@ pub(crate) fn can_install_runner_card_from_zone_with_discount(
     source: RunnerCardSource,
     discount: u32,
 ) -> bool {
-    if !source.zone(state).is_some_and(|zone| zone.contains(card_id)) {
+    if !source.zone(state).is_some_and(|zone| zone.contains(card_id)) || !install_requirement_met(state, registry, card_id) {
         return false;
     }
     let Some(card_def) = registry.get(card_id) else { return false };
@@ -1917,7 +1933,7 @@ pub(crate) enum ProgramHost {
 /// affordable. The gate `Effect::InstallProgramOnHost` asks before it
 /// installs, as `can_install_runner_card_from_zone` is for the rig.
 pub(crate) fn can_install_program_onto(state: &GameState, registry: &CardRegistry, card_id: &CardId, source: RunnerCardSource, onto_ice: bool) -> bool {
-    if !source.zone(state).is_some_and(|zone| zone.contains(card_id)) {
+    if !source.zone(state).is_some_and(|zone| zone.contains(card_id)) || !install_requirement_met(state, registry, card_id) {
         return false;
     }
     let Some(card_def) = registry.get(card_id) else { return false };

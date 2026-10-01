@@ -279,7 +279,7 @@ pub(crate) fn finish_turn(
     state.resources_mut(side).clicks = Clicks(0);
     let mut events = vec![GameEvent::TurnEnded { side }];
     events.extend(dispatch_discard_phase_end(state, side, registry)?);
-    enter_start_of_turn(state, &mut events, side.other())?;
+    enter_start_of_turn(state, registry, &mut events, side.other())?;
     Ok(events)
 }
 
@@ -326,6 +326,7 @@ pub fn discard_card(
 /// Corp's first.
 pub(crate) fn enter_start_of_turn(
     next: &mut GameState,
+    registry: &CardRegistry,
     events: &mut Vec<GameEvent>,
     next_side: Side,
 ) -> Result<(), RulesError> {
@@ -342,8 +343,10 @@ pub(crate) fn enter_start_of_turn(
     // and Caveat Emptor's "−1 allotted [click]", made on an earlier turn
     // and taken here — part of the allotment, so inside the `TurnStarted`
     // event's `clicks` count, and any `OnTurnStart` ability that adds
-    // clicks (Otto Campaign) stacks on top of it.
-    let changed = crate::rules::lingering::take_allotted_clicks(next, next_side);
+    // clicks (Otto Campaign) stacks on top of it. What an installed card
+    // adds every turn (Basilar Synthgland 2KVJ) is asked here too, of the
+    // table as the turn begins (CR 5.7.1a).
+    let changed = crate::rules::lingering::take_allotted_clicks(next, next_side) + continuous::allotted_clicks(next, registry, next_side);
     next.resources_mut(next_side).clicks = Clicks(clicks_for(next_side).saturating_add_signed(changed));
 
     // Before the turn's first moment, so the new turn counts from here.

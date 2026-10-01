@@ -1,0 +1,80 @@
+{
+  "id": "time_bomb",
+  "title": "Time Bomb",
+  "side": "Runner",
+  "card_type": "Hardware",
+  "cost": 1,
+  "unique": true,
+  "counter_kind": "Power",
+  "install_requirement": {
+    "AmountAtLeast": [
+      {
+        "TimesThisTurnWhen": {
+          "trigger": "OnSuccessfulRun",
+          "when": {
+            "Server": [
+              "Hq",
+              "RnD",
+              "Archives"
+            ]
+          }
+        }
+      },
+      1
+    ]
+  },
+  "triggers": [
+    {
+      "trigger": "OnInstall",
+      "subject": "This",
+      "effects": [
+        {
+          "AddCounters": 1
+        }
+      ],
+      "text": "When you install this hardware, place 1 power counter on it."
+    },
+    {
+      "trigger": "OnTurnStart",
+      "effects": [
+        {
+          "EffectIf": {
+            "condition": {
+              "ThisCardCountersAtLeast": 3
+            },
+            "effect": {
+              "Sequence": [
+                {
+                  "TrashCard": "ThisCard"
+                },
+                {
+                  "Sabotage": 3
+                }
+              ]
+            }
+          }
+        },
+        {
+          "EffectIf": {
+            "condition": {
+              "And": [
+                {
+                  "Not": {
+                    "ThisCardCountersAtLeast": 3
+                  }
+                },
+                "ThisCardIsInstalled"
+              ]
+            },
+            "effect": {
+              "AddCounters": 1
+            }
+          }
+        }
+      ],
+      "text": "When your turn begins, if there are 3 or more hosted power counters, trash this hardware and sabotage 3."
+    }
+  ],
+  "built_from": 33069,
+  "is_playable": true
+}

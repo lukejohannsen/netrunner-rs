@@ -1,0 +1,33 @@
+{
+  "id": "k2cp_turbine",
+  "title": "K2CP Turbine",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 4,
+  "memory_cost": 1,
+  "continuous": [
+    {
+      "kind": {
+        "Strength": {
+          "per": 2
+        }
+      },
+      "applies_to": {
+        "Rig": {
+          "All": [
+            "Icebreaker",
+            {
+              "Not": {
+                "HasSubtype": "AI"
+              }
+            }
+          ]
+        }
+      },
+      "text": "Each installed non-AI icebreaker gets +2 strength."
+    }
+  ],
+  "triggers": [],
+  "built_from": 33090,
+  "is_playable": true
+}

@@ -1,0 +1,36 @@
+{
+  "id": "basilar_synthgland_2kvj",
+  "title": "Basilar Synthgland 2KVJ",
+  "side": "Runner",
+  "card_type": "Hardware",
+  "cost": 1,
+  "unique": true,
+  "continuous": [
+    {
+      "kind": {
+        "AllottedClicks": {
+          "per": 1
+        }
+      },
+      "applies_to": "Controller",
+      "text": "You get +1 allotted [click] for each of your turns."
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnInstall",
+      "subject": "This",
+      "effects": [
+        {
+          "DealDamage": [
+            "Brain",
+            2
+          ]
+        }
+      ],
+      "text": "When you install this hardware, suffer 2 core damage."
+    }
+  ],
+  "built_from": 33086,
+  "is_playable": true
+}
