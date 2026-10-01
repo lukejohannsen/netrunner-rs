@@ -53,9 +53,9 @@ cards each stage takes.
 | 7 | Downfall (`df`) | 65 | 0 | 65 | not started |
 | 8 | System Update 2021 (`su21`), Salvaged Memories (`sm`), Magnum Opus Reprint (`mor`) | 82, 18, 6 | 11, 1, 0 | 71, 17, 6 | not started (the built ones are Core reprints) |
 
-**DSL ratio** (`pool_status.py`, the DSL Growth Rule's number): **17 of 91
-`Effect` variants single-use, 1 unused (`Trace`), over 399 card files** (29
-September 2026). The baseline at Stage 0a was 26 of 70 single-use, 3 unused,
+**DSL ratio** (`pool_status.py`, the DSL Growth Rule's number): **15 of 91
+`Effect` variants single-use, 1 unused (`Trace`), over 422 card files** (1
+October 2026). The baseline at Stage 0a was 26 of 70 single-use, 3 unused,
 over 184 files: 215 cards later the single-use count is *lower*, because the
 growth went into `Trigger`, `EventFilter`, `Amount`, `CardFilter`, `Cost` and
 `ContinuousKind` words rather than into what an effect does.

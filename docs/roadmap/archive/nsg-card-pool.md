@@ -5174,8 +5174,11 @@ Archives in 5b, trashes in 5c, the stack and HQ in 5d.
 - **Known limit.** A subroutine Nanisivik Grid resolves reads "this
   server" as unresolved, where CR 4.6.6i's example says it is Archives; no
   subroutine in the pool says "this server".
-- **DSL ratio (`pool_status.py`):** unchanged at 16 of 91 `Effect`
-  variants single-use, 1 unused, over 419 card files.
+- **DSL ratio (`pool_status.py`):** 16 → 15 of 91 `Effect` variants
+  single-use, 1 unused, over 419 card files: Nanisivik Grid is the second
+  card on `TurnFaceupInArchives`. (Corrected in Stage 5c: this entry first
+  said "unchanged at 16", a number carried from Stage 5a rather than
+  taken.)
 - **Measured** against Stage 5a's tip. Both sweeps green at 256 seeds,
   the card gate included.
   - A ref with the engine change and no cards is identical in all four
@@ -5243,7 +5246,7 @@ World Tree. **No new `Effect`**; one `Amount`, two `CardFilter`s, one
   Orbital Superiority and two Yakov Erikovich Avdakov for its two Regolith
   Mining License; Safety Net two World Tree for its two Conduit. Both stay
   Eternal-only.
-- **DSL ratio (`pool_status.py`):** unchanged at 16 of 91 `Effect`
+- **DSL ratio (`pool_status.py`):** unchanged at 15 of 91 `Effect`
   variants single-use, 1 unused, over 422 card files.
 - **Measured** against Stage 5b's tip. Both sweeps green at 256 seeds,
   the card gate included.
