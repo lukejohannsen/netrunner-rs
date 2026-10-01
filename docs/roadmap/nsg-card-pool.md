@@ -47,14 +47,14 @@ cards each stage takes.
 | 1 | Vantage Point (`vp`) | 66 | 66 | 0 | complete (27 September 2026) |
 | 2 | Rebellion Without Rehearsal (`rwr`) | 65 | 65 | 0 | complete (28 September 2026) |
 | 3 | The Automata Initiative (`tai`) | 65 | 65 | 0 | complete (29 September 2026) |
-| 4 | Parhelion (`ph`) | 63 | 45 | 18 | **Stage 6 next** — charge, mark, set aside, Runner removal from game, counters on a run event: Flux Capacitor, Orca, Tunnel Vision, Info Bounty, Spark of Inspiration, Nanuq, Raindrops Cut Stone |
+| 4 | Parhelion (`ph`) | 63 | 47 | 16 | **Stage 6b next** — the mark: Tunnel Vision, Info Bounty |
 | 5 | Midnight Sun (`ms`) + Booster (`msbp`) | 65 + 7 | 0 | 65 + 7 | not started |
 | 6 | Uprising (`ur`) + Booster (`urbp`) | 65 + 7 | 0 | 65 + 7 | not started |
 | 7 | Downfall (`df`) | 65 | 0 | 65 | not started |
 | 8 | System Update 2021 (`su21`), Salvaged Memories (`sm`), Magnum Opus Reprint (`mor`) | 82, 18, 6 | 11, 1, 0 | 71, 17, 6 | not started (the built ones are Core reprints) |
 
 **DSL ratio** (`pool_status.py`, the DSL Growth Rule's number): **15 of 91
-`Effect` variants single-use, 1 unused (`Trace`), over 425 card files** (1
+`Effect` variants single-use, 1 unused (`Trace`), over 427 card files** (1
 October 2026). The baseline at Stage 0a was 26 of 70 single-use, 3 unused,
 over 184 files: 215 cards later the single-use count is *lower*, because the
 growth went into `Trigger`, `EventFilter`, `Amount`, `CardFilter`, `Cost` and
@@ -308,7 +308,7 @@ this file keeps; a stage that builds or widens a mechanic updates the cell.
 | Forced or repeated encounter | RWR: Sisyphus Protocol | UR Konjin, Ganked! | CR 6.1.3 | RWR 7d |
 | Losing abilities | PH: Hush, Klevetnik | MS Light the Fire! | CR 9.1.9a | — |
 | Break restrictions ("cannot be broken", "only by …") | PH: Anvil, Unsmiling Tsarevna, Hafrún | MS Trieste Model Bioroids; UR Akhet, NEXT Activation Command | CR 9.8.5 | — |
-| Charge | PH: Flux Capacitor, Orca | MS Captain Padma Isbister, Rigging Up, “Daeg, First Net-Cat”, Stoneship Chart Room | CR 10.10 | — |
+| Charge | PH: Flux Capacitor, Orca | MS Captain Padma Isbister, Rigging Up, “Daeg, First Net-Cat”, Stoneship Chart Room | CR 10.10 | PH 6a (composes: a selection of `HostsCounters(Power)`) |
 | Mark | PH: Tunnel Vision, Info Bounty | MS Nyusha "Sable" Sintashta, Carpe Diem, Virtuoso, Backstitching | CR 10.11 | — |
 | An agenda's points or advancement requirement changing | VP: Let Them Dream | PH Ontological Dependence, Freedom of Information, Regulatory Capture; UR Megaprix Qualifier, Project Vacheron; reprints Project Beale, SanSan City Grid | CR 3.2.2, CR 3.2.3b | VP 3a (points); PH 3a (requirement, a card's own) |
 | A choice remembered for a duration (a server, an ice, a subtype, a card's name) | RWR: Lycian Multi-Munition | MS Trieste Model Bioroids; UR Boomerang, Engram Flush; DF Whistleblower, Complete Image, Saisentan; reprints Femme Fatale, Security Testing, Chameleon | CR 9.10.3 | RWR 8a |
@@ -362,7 +362,7 @@ Each is also a note on its section's row in [rules-conformance.md](rules-conform
 
 - **Two of N as two choices of one**, each resolved before the next (CR 9.12.2c names realloc()): realloc(), Chain Reaction's "trash 2", Logjam's counters (heard as two placements), Shipment from Vladisibirsk's four picks. Editorial Division shuffles R&D when its search is declined; its "total" discount is never asked — the Corp is given the division that costs least.
 - **A zone is chosen before the card**: Sleipnir ("from HQ or Archives"), Let Them Dream ("HQ, R&D or Archives"), Muse (one zone's programs at a time, where the rules search all three; a hosted program takes memory as any does), Lethe (top or bottom before the card).
-- **"Up to N" takes N where fewer is never better**: Ansel 2.0 breaks two when two are left; Shackleton Grid's "may" always fires (declining 4 meat damage is never better).
+- **"Up to N" takes N where fewer is never better**: Ansel 2.0 breaks two when two are left; Orca's "break any number of sentry subroutines" breaks every one pending (PH 6a); Shackleton Grid's "may" always fires (declining 4 meat damage is never better).
 - **Order of two abilities from one card is the printed order, not the player's**: Privileged Access's two "when you take a tag" abilities; Malandragem's two offers. Privileged Access's installs are conditioned on being tagged *after* the tag, so a Decoy preventing the event's tag on a Runner tagged earlier in the run still lets them happen.
 - **Heliamphora's "instead" is an access, then a host**: the card's own "when accessed" in Archives still resolves and it counts as accessed. A true interrupt would park the access before it began.
 - **Alarm Clock's run** is asked for among the Runner's other "when your turn begins" abilities and resolved when chosen; the Corp's rez window of 5.7.1e comes once, after the run.
@@ -382,7 +382,7 @@ Each is also a note on its section's row in [rules-conformance.md](rules-conform
 
 The heuristic seats in the sweeps and `coverage_identical.py` reach these cards through random seats and their tests alone. Each is a blindness of the evaluator, not of the engine, and is the raw material for the precepts work. **Since Phase 5 §25 Stage 1 (29 September 2026) the list is measured, not kept by hand:** `netrunner_cli diag precepts --deck-styles --games 192 --report …` ends with every card a seat used over the pass and the cards in the decks played that no seat ever used (`reach.unused_in_pass`), for the format `--format` names. The entries below are the hand list as it stood, kept for the *reasons* they record (which the report cannot say); a card the report names that is not here is a new debt, and a card here the report no longer names has been paid.
 
-- **Runner hardware and programs it never installs**: Basilar Synthgland 2KVJ, K2CP Turbine, Time Bomb (PH 4a); Poison Vial, WAKE Implant v2A-JRJ (PH 4b); World Tree (PH 5c).
+- **Runner hardware and programs it never installs**: Basilar Synthgland 2KVJ, K2CP Turbine, Time Bomb (PH 4a); Poison Vial, WAKE Implant v2A-JRJ (PH 4b); World Tree (PH 5c); Flux Capacitor (PH 6a; Orca, at 10[credit], once in 48 games).
 - **Economy resources and programs it does not value**: Friend of a Friend, Valentina Ferreira Carvalho, Coalescence; Laser Pointer, Banner; Monkeywrench, Saci, Pichação, Urban Art Vernissage; Lago Paranoá Shelter; AirbladeX (JSRF Ed.); the Core Set interrupts Decoy, Net Shield and Sacrificial Construct.
 - **Abilities it never uses**: M.I.C.'s trash, Arissana Rocha Nahu's, Epiphany Analytica's counter; identity and multi-click abilities generally (Phase 1 §8); over-advancing for Dividends.
 - **Corp cards it never plays or rezzes**: Distributed Tracing, Shipment from Vladisibirsk, Nonequivalent Exchange (played only by random seats), Hostile Architecture (installed 90 times, never rezzed), Dr. Vientiane Keeling (installed, never rezzed); it never trashes Amanuensis or Privileged Access, never purges (Malandragem, Physarum Entangler).
@@ -676,8 +676,11 @@ change deck-building rules (`DeckRule`, Stage 5a).
    Erikovich Avdakov, World Tree; **5d**, the stack and HQ (built): Asmund
    Pudlat, Concerto, Reprise. Stage 5 is complete.
 6. **Charge, mark, set aside, Runner removal from game, counters on a run
-   event:** Flux Capacitor, Orca, Tunnel Vision, Info Bounty, Spark of
-   Inspiration, Nanuq, Raindrops Cut Stone.
+   event**, split by mechanic when it was taken (1 October 2026): **6a**,
+   charge (built): Flux Capacitor, Orca; **6b**, the mark: Tunnel Vision,
+   Info Bounty; **6c**, a set-aside program and counters on a run event:
+   Spark of Inspiration, Raindrops Cut Stone; **6d**, a Runner card removed
+   from the game as it is uninstalled: Nanuq.
 7. **Winning and the score area:** Issuaq Adaptics: Sustaining Diversity, Superdeep Borehole, Nightmare
    Archive, Matryoshka (X cost).
 8. **Losing abilities and break restrictions** (last, because they touch
@@ -709,6 +712,7 @@ Grid, Tsakhia, World Tree.
 - **Stage 5b** — Archives: an install of the copy chosen, and a subroutine of ice in Archives (`feat/ph-stage-5b-archives`, 1 October 2026).
 - **Stage 5c** — trashes: the card a nested cost took, and where a trashed install stood (`feat/ph-stage-5c-trashes`, 1 October 2026).
 - **Stage 5d** — the stack and HQ: a search for different names, and a run named for the card whose text began it (`feat/ph-stage-5d-stack-and-hq`, 1 October 2026).
+- **Stage 6a** — charge, and the first time each encounter (`feat/ph-stage-6a-charge`, 1 October 2026).
 
 ### 5. Midnight Sun and its Booster Pack — 65 cards (C 22 / V 26 / M 17)
 

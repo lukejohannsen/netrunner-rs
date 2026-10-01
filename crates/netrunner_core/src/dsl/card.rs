@@ -318,6 +318,21 @@ pub struct TriggeredEffect {
     /// stolen"), and share one count.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub first_each_turn: bool,
+    /// "The **first time** you break a subroutine **during each
+    /// encounter**" (Flux Capacitor): `first_each_turn` over the
+    /// encounter, judged in the listener scan against the encounter's
+    /// count (`run::EncounterTally::subroutines_broken`), which already
+    /// includes the break being heard. Only what the encounter counts —
+    /// subroutines broken — and never beside `first_each_turn` on one card,
+    /// since the two share the verdict a queued trigger carries.
+    ///
+    /// Composition didn't work: `OncePerEncounter` is a use limit, which a
+    /// card arriving mid-encounter would find unspent (the Turn History
+    /// Rule's reason for `first_each_turn`), and a requirement reading the
+    /// count is asked at resolution, after an ability breaking two has
+    /// counted both, so neither break would be the first.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub first_each_encounter: bool,
     /// Active while the card is in its owner's heap, and only there (CR
     /// 9.1.8b: "abilities that can only affect the game state from a
     /// particular zone are active in that zone") — Jeitinho's "whenever
@@ -1284,6 +1299,20 @@ impl CardDefinition {
                 return Err(self.first_time_misfit("`OncePerTurn` is a use limit on the card, and the first time each turn is a fact about the turn; a card prints one or the other".to_string()));
             }
         }
+        // "The first time … during each encounter" is read off the
+        // encounter's count, which holds subroutines broken and nothing else;
+        // and it shares the queued trigger's verdict with `first_each_turn`.
+        for triggered in self.triggers.iter().filter(|triggered| triggered.first_each_encounter) {
+            if triggered.trigger != Trigger::OnSubroutineBroken {
+                return Err(self.first_time_misfit(format!("the encounter counts only subroutines broken; a {:?} is not counted", triggered.trigger)));
+            }
+            if !first_time.is_empty() {
+                return Err(self.first_time_misfit("a card's first time is each turn's or each encounter's, not both".to_string()));
+            }
+            if triggered.requirement.as_ref().is_some_and(EffectRequirement::mentions_once_per_run) {
+                return Err(self.first_time_misfit("`OncePerEncounter` is a use limit on the card, and the first time each encounter is a fact about the encounter".to_string()));
+            }
+        }
         // One printed ability counts on one thing: the copy, or the turn.
         let about_this = first_time.iter().filter(|triggered| triggered.subject == Some(Subject::This) || triggered.when == Some(EventFilter::ByThis)).count();
         if about_this > 0 && about_this < first_time.len() {
@@ -1670,7 +1699,7 @@ mod tests {
         assert_eq!(
             card.triggers,
             vec![TriggeredEffect {
-                subject: Some(Subject::This), when: None, acts_on_subject: false, first_each_turn: false, from_heap: false,
+                subject: Some(Subject::This), when: None, acts_on_subject: false, first_each_turn: false, first_each_encounter: false, from_heap: false,
                 text: None,
                 trigger: Trigger::OnPlay,
                 effects: vec![Effect::GainCredits(Side::Corp, 9)],
@@ -1692,7 +1721,7 @@ mod tests {
         assert_eq!(
             card.triggers,
             vec![TriggeredEffect {
-                subject: Some(Subject::This), when: None, acts_on_subject: false, first_each_turn: false, from_heap: false,
+                subject: Some(Subject::This), when: None, acts_on_subject: false, first_each_turn: false, first_each_encounter: false, from_heap: false,
                 text: None,
                 trigger: Trigger::OnPlay,
                 effects: vec![Effect::GainCredits(Side::Runner, 9)],
@@ -1858,7 +1887,7 @@ mod tests {
             id: CardId("homebrew".to_string()),
             side: Side::Runner,
             card_type: CardType::Resource,
-            triggers: vec![TriggeredEffect { trigger, subject, when, acts_on_subject, first_each_turn: false, from_heap: false, text: None, effects: vec![], requirement: None }],
+            triggers: vec![TriggeredEffect { trigger, subject, when, acts_on_subject, first_each_turn: false, first_each_encounter: false, from_heap: false, text: None, effects: vec![], requirement: None }],
             ..Default::default()
         };
         let on_hq = || Some(EventFilter::Server(vec![crate::rules::ServerId::Hq]));
@@ -1922,7 +1951,7 @@ mod tests {
             subject,
             when,
             acts_on_subject: false,
-            first_each_turn: true,
+            first_each_turn: true, first_each_encounter: false,
             from_heap: false,
             text: None,
             effects: vec![],
@@ -1968,7 +1997,7 @@ mod tests {
             discount(Scope::Installing(CardFilter::CardType(CardType::Program)), Some(EffectRequirement::OncePerTurn)).validate(),
             Err(CardValidationError::OncePerTurnDoesNotFit(..))
         ));
-        let once = |trigger: Trigger| TriggeredEffect { first_each_turn: false, from_heap: false, ..first(trigger, None, None, Some(EffectRequirement::OncePerTurn)) };
+        let once = |trigger: Trigger| TriggeredEffect { first_each_turn: false, first_each_encounter: false, from_heap: false, ..first(trigger, None, None, Some(EffectRequirement::OncePerTurn)) };
         assert_eq!(card(Side::Corp, vec![once(Trigger::OnTagsGiven)]).validate(), Ok(()));
         assert!(matches!(card(Side::Corp, vec![once(Trigger::OnTagsGiven), once(Trigger::OnTagRemoved)]).validate(), Err(CardValidationError::OncePerTurnDoesNotFit(..))));
         assert!(refused(discount(Scope::Controller, None)));
@@ -2140,7 +2169,7 @@ mod tests {
                 subject: Some(Subject::This),
                 when: None,
                 acts_on_subject: false,
-                first_each_turn: false, from_heap: false,
+                first_each_turn: false, first_each_encounter: false, from_heap: false,
                 text: None,
                 effects: vec![Effect::GainIceSubtype(subtype)],
                 requirement: None,
@@ -2165,7 +2194,7 @@ mod tests {
                 subject: Some(Subject::Any),
                 when: None,
                 acts_on_subject,
-                first_each_turn: false, from_heap: false,
+                first_each_turn: false, first_each_encounter: false, from_heap: false,
                 text: None,
                 effects: vec![gains.clone()],
                 requirement: None,
@@ -2221,7 +2250,7 @@ mod tests {
                 effects: vec![Effect::GiveTags(crate::dsl::Amount::Fixed(1))],
                 when: None,
                 acts_on_subject: false,
-                first_each_turn: false,
+                first_each_turn: false, first_each_encounter: false,
                 from_heap: false,
                 text: None,
             }],
@@ -2248,7 +2277,7 @@ mod tests {
                 effects: vec![Effect::GainCredits(Side::Runner, 3)],
                 when: Some(EventFilter::Host),
                 acts_on_subject: false,
-                first_each_turn: false,
+                first_each_turn: false, first_each_encounter: false,
                 from_heap: false,
                 text: None,
             }],
@@ -2274,7 +2303,7 @@ mod tests {
                 effects: vec![Effect::DrawCards(Side::Runner, 1)],
                 when: Some(EventFilter::InRoot),
                 acts_on_subject: false,
-                first_each_turn: true,
+                first_each_turn: true, first_each_encounter: false,
                 from_heap: false,
                 text: None,
             }],

@@ -432,7 +432,8 @@ pub(crate) fn plan_for(state: &GameState, registry: &CardRegistry, event: &GameE
         // "The first time each turn": one verdict a card, because its
         // first-time entries share a count, judged against the log as the
         // event was recorded rather than as it stands now.
-        let later = definition.triggers.iter().any(|triggered| triggered.first_each_turn) && !is_first(state, definition, &listener, as_of);
+        let later = (definition.triggers.iter().any(|triggered| triggered.first_each_turn) && !is_first(state, definition, &listener, as_of))
+            || (definition.triggers.iter().any(|triggered| triggered.first_each_encounter) && !is_first_this_encounter(state));
         for moment in &moments {
             let mut hearing = definition.triggers.iter().filter(|triggered| hears(state, registry, triggered, &listener, moment, later)).peekable();
             if hearing.peek().is_none() {
@@ -520,6 +521,15 @@ fn is_first(state: &GameState, definition: &crate::dsl::CardDefinition, listener
     } else {
         as_of.is_first(&turn_log::first_time_of(definition))
     }
+}
+
+/// Whether the break being heard is the encounter's first
+/// (`TriggeredEffect::first_each_encounter`). The count is read as the scan
+/// runs, which is as of the break: each `SubroutineBroken` is dispatched
+/// the moment its break is counted (`ability::break_pending`), and
+/// `validate` holds the word to that one trigger.
+fn is_first_this_encounter(state: &GameState) -> bool {
+    state.active_run.as_ref().is_some_and(|run| run.this_encounter.subroutines_broken == 1)
 }
 
 /// Whether `moment` is about `listener` itself — or, for a moment about a
@@ -661,7 +671,7 @@ fn hears(state: &GameState, registry: &CardRegistry, triggered: &TriggeredEffect
     }
     // A second occurrence was never a listener — `first_each_turn` is part
     // of the condition, like `when` below.
-    if triggered.first_each_turn && later {
+    if (triggered.first_each_turn || triggered.first_each_encounter) && later {
         return false;
     }
     if triggered.when.as_ref().is_some_and(|filter| !passes(state, registry, filter, moment, listener.install, listener.server)) {
@@ -836,7 +846,7 @@ mod tests {
             title: id.to_string(),
             side,
             card_type,
-            triggers: vec![TriggeredEffect { subject, when: None, acts_on_subject: false, first_each_turn: false, from_heap: false, text: None, trigger, effects: vec![Effect::GainCredits(side, 1)], requirement: None }],
+            triggers: vec![TriggeredEffect { subject, when: None, acts_on_subject: false, first_each_turn: false, first_each_encounter: false, from_heap: false, text: None, trigger, effects: vec![Effect::GainCredits(side, 1)], requirement: None }],
             ..Default::default()
         }
     }

@@ -1,0 +1,78 @@
+{
+  "id": "orca",
+  "title": "Orca",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 10,
+  "strength": 3,
+  "memory_cost": 2,
+  "triggers": [
+    {
+      "trigger": "OnIceFullyBroken",
+      "subject": "Any",
+      "when": "ByThis",
+      "first_each_turn": true,
+      "effects": [
+        {
+          "PromptChooseCards": {
+            "side": "Runner",
+            "source": "OwnInstalled",
+            "filter": {
+              "HostsCounters": "Power"
+            },
+            "min": 0,
+            "max": 1,
+            "reveal": false,
+            "shuffle_after": false,
+            "then": {
+              "EffectIf": {
+                "condition": {
+                  "AmountAtLeast": [
+                    "CardsSelected",
+                    1
+                  ]
+                },
+                "effect": {
+                  "AddCounters": 1
+                }
+              }
+            }
+          }
+        }
+      ],
+      "text": "The first time each turn this program fully breaks a piece of ice, you may charge 1 of your installed cards."
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "text": "Interface → 2[credit]: Break any number of sentry subroutines.",
+      "cost": {
+        "Credits": 2
+      },
+      "effect": {
+        "BreakSubroutines": {
+          "count": "All",
+          "restrict_to": "Sentry"
+        }
+      },
+      "requirement": "DuringEncounter"
+    },
+    {
+      "trigger": "Paid",
+      "text": "2[credit]: +3 strength.",
+      "cost": {
+        "Credits": 2
+      },
+      "effect": {
+        "BoostStrength": {
+          "amount": 3,
+          "duration": "Encounter"
+        }
+      },
+      "requirement": "DuringEncounter"
+    }
+  ],
+  "built_from": 33089,
+  "is_playable": true
+}

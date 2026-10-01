@@ -771,7 +771,7 @@ mod tests {
             side: Side::Runner,
             card_type: crate::dsl::CardType::Program,
             triggers: vec![crate::dsl::TriggeredEffect {
-                subject: None, when: None, acts_on_subject: false, first_each_turn: false, from_heap: false,
+                subject: None, when: None, acts_on_subject: false, first_each_turn: false, first_each_encounter: false, from_heap: false,
                 text: None,
                 trigger: crate::dsl::Trigger::OnRunEnded,
                 effects: vec![crate::dsl::Effect::GainCredits(Side::Runner, 1)],

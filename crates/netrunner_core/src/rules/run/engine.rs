@@ -1056,6 +1056,7 @@ pub(crate) fn break_subroutine(state: &mut GameState, registry: &CardRegistry, i
         .unwrap_or_default();
     let run = state.active_run.as_mut().expect("transition_subroutine found the run");
     run.subroutine_broken = true;
+    run.this_encounter.subroutines_broken += 1;
     run.this_encounter.broken_by = run.this_encounter.broken_by.and(by);
     let printed = run.ice.get(run.position).and_then(|ice| ice.subroutines.get(index)).is_some_and(|subroutine| !subroutine.gained);
     if printed {

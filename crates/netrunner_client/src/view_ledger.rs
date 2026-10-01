@@ -180,7 +180,7 @@ fn every_field_of_the_view_is_accounted_for(view: ClientView) {
         reached_success_phase: _, // engine's: whether the run got to the server, which the run's trail and log already draw; Hannah "Wheels" Pilintra's tag it decides is a log line
         breached: _, // engine's: a breach of another server is the log's "the Runner breached R&D", and every access prompt names the card's server
         encounters: _, // engine's: a count S-Dobrado reads; each encounter is drawn by board::trail as it happens
-        this_encounter: _,       // engine's: a limit the action list and board::breaks already honour, as once_per_run_used; and which kinds of breaker broke the printed subroutines (Virtual Service Agent), each break already a line of the log; and the once-per-encounter abilities used (Slap Vandal), a limit the action list honours
+        this_encounter: _,       // engine's: a limit the action list and board::breaks already honour, as once_per_run_used; and which kinds of breaker broke the printed subroutines (Virtual Service Agent), each break already a line of the log; and the once-per-encounter abilities used (Slap Vandal), a limit the action list honours; and how many subroutines were broken (Flux Capacitor's first time each encounter), each break a line of the log
         once_per_run_used: _,    // engine's: a use limit the action list and board::breaks already honour, as once_per_turn_used
         initiated_by: _,         // drawn: names the run's event on the ability it has for the run, actions::describe (both clients' buttons)
         begun_as_the_turn_began: _, // engine's: where the turn goes when the run ends, which board::phase draws when it gets there

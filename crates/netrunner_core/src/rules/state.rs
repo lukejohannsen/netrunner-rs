@@ -1426,7 +1426,9 @@ pub struct DeferredTrigger {
     /// Judged once by `listeners::plan_for`, against the count taken as
     /// the event was recorded (`turn_log::AsOf`), and carried for the same
     /// reason as `heard`: by the time a queued entry fires, the turn has
-    /// counted more. `false` for an entry built by hand.
+    /// counted more. `false` for an entry built by hand. A card's
+    /// `first_each_encounter` entries ride on the same verdict, judged
+    /// against the encounter's count (`validate` keeps a card to one).
     #[serde(default)]
     pub not_the_first_this_turn: bool,
     /// How many of the `TriggeredEffect`s this entry fires have already

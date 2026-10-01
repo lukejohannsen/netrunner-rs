@@ -85,7 +85,7 @@ rules bug, with the sweeps; a "not modelled" is taken when a pool card needs it 
 - **9.6** — a delayed ability with a stated duration; a trash by a card's text whose event does not say whether the card was rezzed.
 - **9.9** — expose.
 - **10.9** — a card holds one kind of counter (`CardDefinition::counter_kind`), so counters of another kind never make it look loaded (10.9.3).
-- **10.10 Charge** and **10.11 Mark** — no card in the pool prints either.
+- **10.11 Mark** — no card in the pool prints it yet (Parhelion Stage 6b takes it).
 
 The ledger rows below carry the rest of the "Not modelled" clauses in their notes, each beside the rule it is about.
 
@@ -248,7 +248,7 @@ The ledger rows below carry the rest of the "Not modelled" clauses in their note
 | 10.7 | Link | read in part | Audit: link is identity plus installed; matches. |
 | 10.8 | Traces | read in part | `Effect::Trace` exists, but no card in the pool starts a trace, so no agent reaches it. |
 | 10.9 | Load and Empty | read in part | RWR Stage 2a: a load is a card's own "when you install this, load N counters" (`AddCounters` on `OnInstall`), and "when it is empty" is asked where a counter leaves it (`EffectIf(ThisCardCountersAtMost(0))`, Juli Moreira Lee, as Telework Contract's credits). 10.9.3 is not modelled: a card holds one kind of counter (`CardDefinition::counter_kind`), so counters of another kind never make it look loaded. Cited: 10.9.1. PH Stage 4b: Poison Vial loads 3 power counters and is trashed as its ability takes the last (`EffectIf(ThisCardCountersAtMost(0))` after the break), the shape Nihilo Agent and Malandragem use. |
-| 10.10 | Charge | not modelled | Charge — Rules Audit backlog item 10. |
+| 10.10 | Charge | conforms | PH Stage 6a: "charge 1 of your installed cards" is a selection of the Runner's installed cards with `CardFilter::HostsCounters(Power)` — a card whose kind is power and that hosts at least one (10.10.1), chosen as the instruction's target (10.10.2) — whose `then` places 1 counter on the card chosen; "you may" is a minimum of 0. No new `Effect`: Flux Capacitor and Orca compose. 10.10.3 ("charge a particular card") is printed by no card in the pool. Cited: 10.10.1, 10.10.2. |
 | 10.11 | Mark | not modelled | Mark — Rules Audit backlog item 10. |
 | 10.12 | Sabotage | read in part | `Effect::Sabotage`; not yet read against 10.12. |
 | 10.13 | Dividends | conforms | `CardDefinition::dividends`. PH Stage 3a: 10.13.1–10.13.2, the counters past the requirement as it stood when the score began, before the agenda moved (`engine::score_agenda` reads the asked requirement once, before the uninstall), and none past a requirement the counters do not meet. Cited: 10.13.1, 10.13.2. |
