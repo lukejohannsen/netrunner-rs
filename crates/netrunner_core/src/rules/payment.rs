@@ -544,7 +544,53 @@ pub(crate) fn sources(
 /// **An install asks too** (`Ask::Install`), before it pays: which like
 /// cards it trashes (`install_trash::could_ask`).
 pub(crate) fn could_ask(state: &GameState, registry: &CardRegistry, action: &crate::rules::PlayerAction) -> bool {
-    pools_could_ask(state) || pays_a_cost_that_may_ask(state, registry, action) || crate::rules::install_trash::could_ask(state, registry, action)
+    pools_could_ask(state)
+        || pays_a_cost_that_may_ask(state, registry, action)
+        || crate::rules::install_trash::could_ask(state, registry, action)
+        || a_text_rez_could_ask(state, registry, action)
+}
+
+/// A card's text that rezzes a card and pays for it meets the card's own
+/// ways to pay (`CardDefinition::rez_alternatives`, read by
+/// `engine::rez_install`), and those ask: which way (Biawak's forfeit or
+/// its full price), and what the way takes (which harmonic ice Bloop
+/// derezzes, which three cards Plutus trashes). The rez is the
+/// continuation of a parked decision — Mycoweb's "you may rez 1 installed
+/// piece of ice, paying 2[credit] less" is the `then` of its card
+/// selection, resolved at the confirm — so the action that resumes one is
+/// the action that could ask; and only while some facedown card on the
+/// table prints a way to pay at all. A rez "ignoring all costs" never
+/// asks (CR 1.16.5c), which `Effect::rezzes_paying` reads off the
+/// continuation.
+fn a_text_rez_could_ask(state: &GameState, registry: &CardRegistry, action: &crate::rules::PlayerAction) -> bool {
+    use crate::rules::{PendingDecision, PlayerAction};
+    let a_way_to_pay_on_the_table = state
+        .corp
+        .installed
+        .iter()
+        .any(|card| !card.rezzed && registry.get(&card.card).is_some_and(|def| !def.rez_alternatives.is_empty()));
+    if !a_way_to_pay_on_the_table {
+        return false;
+    }
+    match action {
+        PlayerAction::ToggleCardSelection { .. } | PlayerAction::ConfirmCardSelection => match &state.pending_decision {
+            Some(PendingDecision::ChooseCards { then: Some(then), .. }) => then.rezzes_paying(),
+            _ => false,
+        },
+        PlayerAction::ResolvePendingChoice { .. } => match &state.pending_decision {
+            Some(PendingDecision::ChooseEffect { options, .. }) => options.iter().any(crate::dsl::Effect::rezzes_paying),
+            _ => false,
+        },
+        PlayerAction::AcceptPendingPaidChoice { .. } => state.pending_paid_choice.as_ref().is_some_and(|choice| choice.if_paid.rezzes_paying()),
+        // An install-and-rez that pays (`PromptInstallCorpCard::rez`,
+        // Reanimation Protocol) rezzes the card that just landed, which
+        // could be one with ways of its own.
+        PlayerAction::ChooseServerForPendingDecision { .. } => match &state.pending_decision {
+            Some(PendingDecision::ChooseServer { install: Some(install), .. }) => install.rez && install.pay_cost,
+            _ => false,
+        },
+        _ => false,
+    }
 }
 
 fn pays_a_cost_that_may_ask(state: &GameState, registry: &CardRegistry, action: &crate::rules::PlayerAction) -> bool {

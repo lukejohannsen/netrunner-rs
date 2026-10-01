@@ -2204,6 +2204,20 @@ impl Effect {
         found
     }
 
+    /// Whether this effect, anywhere inside it, rezzes a card *and pays
+    /// for it* (`RezInstalled { pay_cost: true, .. }` — Mycoweb's "paying
+    /// 2[credit] less"), which is when the card's own ways to pay for its
+    /// rez (`CardDefinition::rez_alternatives`) can ask the Corp something
+    /// by the payment's replay. A rez "ignoring all costs" pays nothing and
+    /// asks nothing (CR 1.16.5c). Read by `payment::could_ask`.
+    pub fn rezzes_paying(&self) -> bool {
+        let mut found = false;
+        self.for_each_effect(&mut |effect| {
+            found |= matches!(effect, Effect::RezInstalled { pay_cost: true, .. });
+        });
+        found
+    }
+
     /// The variant name of this effect — `"Sequence"`, `"GainCredits"` —
     /// taken from the `Debug` rendering up to its first payload delimiter.
     /// Used wherever variants are counted by name; adding a variant needs no

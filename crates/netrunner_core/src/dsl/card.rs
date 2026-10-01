@@ -756,16 +756,19 @@ pub struct CardDefinition {
     /// its rez cost" and Plutus's "as an additional cost to rez this asset,
     /// forfeit 1 agenda or reveal and trash 3 cards from HQ".
     ///
-    /// `engine::rez_ice` keeps the alternatives whose `requirement` holds
-    /// **and whose resulting price the Corp can meet** (see
+    /// `engine::rez_install` — the one place a Corp card is turned faceup,
+    /// so a card's text that rezzes a card and pays for it (Mycoweb) meets
+    /// them as the click action does — keeps the alternatives whose cost
+    /// is affordable **and whose resulting price the Corp can meet** (see
     /// `engine::rez_price` for why the second half is not optional),
-    /// resolves the only one directly, and offers a `PresentChoice` when
-    /// more than one survives. An empty list is the ordinary rez; a
-    /// non-empty list with nothing available refuses the rez
-    /// (`RulesError::NoAvailableRezAlternative`), which is how Plutus's
-    /// *additional* cost differs from Biawak's *optional* discount: Biawak
-    /// lists a plain no-op alternative alongside its forfeit, and Plutus
-    /// does not.
+    /// resolves the only one directly, and asks which by the payment's
+    /// replay (`payment::Ask::Alternative`) when more than one survives.
+    /// A rez "ignoring all costs" reads none of them (CR 1.16.5c). An
+    /// empty list is the ordinary rez; a non-empty list with nothing
+    /// available refuses the rez (`RulesError::NoAvailableRezAlternative`),
+    /// which is how Plutus's *additional* cost differs from Biawak's
+    /// *optional* discount: Biawak lists a plain no-op alternative
+    /// alongside its forfeit, and Plutus does not.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub rez_alternatives: Vec<RezAlternative>,
     /// "Rez only during your turn" (Front Company): when this card may be

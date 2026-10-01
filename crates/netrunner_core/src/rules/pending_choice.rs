@@ -1611,9 +1611,12 @@ pub(crate) fn resolve_choose_server(
                         events.extend(ability::evaluate_effect(state, rider, &mut ctx, registry)?);
                     }
                 }
-                // Unaffordable, or not to be rezzed now: installed, not
-                // rezzed (CR 1.16.4b).
-                Err(RulesError::NotEnoughCredits { .. } | RulesError::RezRestricted { .. }) => reveal(state, &mut events),
+                // Unaffordable, not to be rezzed now, or an additional
+                // cost of its own the Corp cannot pay: installed, not
+                // rezzed (CR 1.16.4b–c).
+                Err(
+                    RulesError::NotEnoughCredits { .. } | RulesError::RezRestricted { .. } | RulesError::NoAvailableRezAlternative { .. },
+                ) => reveal(state, &mut events),
                 Err(other) => return Err(other),
             }
         }
