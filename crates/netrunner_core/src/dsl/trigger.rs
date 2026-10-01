@@ -375,6 +375,13 @@ pub enum Trigger {
     /// as its cost is paid, and a basic action was an occurrence of
     /// nothing.
     OnActionFinished,
+    /// "Whenever a subroutine resolves during that run" (Raindrops Cut
+    /// Stone) — `GameEvent::SubroutineFired`, about the ice whose
+    /// subroutine it was. Announced before the subroutine's effect, so a
+    /// run event hears a subroutine that ends its run ("including a
+    /// subroutine that ends the run") while the run, and the event's place
+    /// in the play area, still stand.
+    OnSubroutineResolved,
 }
 
 /// What a run's moment about a piece of ice says of it beyond the card —
@@ -742,7 +749,7 @@ impl Trigger {
     /// `every_trigger_is_listed_at_its_own_index` holds the two together,
     /// and its exhaustive `match` is what stops a new variant compiling
     /// until it is listed here.
-    pub const ALL: [Trigger; 47] = [
+    pub const ALL: [Trigger; 48] = [
         Trigger::OnPlay,
         Trigger::OnRunStart,
         Trigger::OnEncounter,
@@ -790,6 +797,7 @@ impl Trigger {
         Trigger::OnDerez,
         Trigger::OnBreach,
         Trigger::OnActionFinished,
+        Trigger::OnSubroutineResolved,
     ];
 
     /// This trigger's position in `ALL`.
@@ -823,6 +831,7 @@ impl Trigger {
             | Trigger::OnAbilityGainedCredits
             | Trigger::OnIcePassed
             | Trigger::OnSubroutineBroken
+            | Trigger::OnSubroutineResolved
             | Trigger::OnIceFullyBroken
             | Trigger::OnIceBypassed
             | Trigger::OnEncounterEnded
@@ -865,7 +874,7 @@ impl Trigger {
     /// that it says what was true of the ice (`IceFacts`) and a `when` may
     /// ask it (`EventFilter::Ice`).
     pub fn is_about_ice_in_a_run(self) -> bool {
-        matches!(self, Trigger::OnIcePassed | Trigger::OnSubroutineBroken | Trigger::OnIceFullyBroken | Trigger::OnIceBypassed)
+        matches!(self, Trigger::OnIcePassed | Trigger::OnSubroutineBroken | Trigger::OnSubroutineResolved | Trigger::OnIceFullyBroken | Trigger::OnIceBypassed)
     }
 
     /// Whether a `TriggeredEffect` using this trigger must say which
@@ -927,6 +936,7 @@ impl Trigger {
             // passes this ice" hear the one moment.
             | Trigger::OnIcePassed
             | Trigger::OnSubroutineBroken
+            | Trigger::OnSubroutineResolved
             | Trigger::OnIceFullyBroken
             | Trigger::OnIceBypassed
             | Trigger::OnEncounterEnded
@@ -959,7 +969,7 @@ mod tests {
         // Exhaustive, so a new variant stops here until it is added to
         // `Trigger::ALL` — the turn log indexes a fixed array by it.
         let listed = |trigger: Trigger| match trigger {
-            Trigger::OnPlay | Trigger::OnRunStart | Trigger::OnEncounter | Trigger::OnTurnStart | Trigger::OnAccessed | Trigger::OnTrashedFromAccess | Trigger::OnSuccessfulRun | Trigger::Paid | Trigger::OnInstall | Trigger::OnAgendaScored | Trigger::OnAgendaStolen | Trigger::OnDamageAboutToResolve | Trigger::OnRez | Trigger::OnApproachServer | Trigger::OnRunEnded | Trigger::OnBasicDrawAction | Trigger::OnTagsGiven | Trigger::OnAdvance | Trigger::OnDiscardPhaseEnd | Trigger::OnActionPhaseEnd | Trigger::OnCardInstalled | Trigger::OnDamageDealt | Trigger::OnCardsTrashedFromHq | Trigger::OnAbilityGainedCredits | Trigger::OnForfeit | Trigger::OnIceApproached | Trigger::OnCardPlayed | Trigger::OnTagRemoved | Trigger::OnBadPublicityTaken | Trigger::OnIcePassed | Trigger::OnSubroutineBroken | Trigger::OnIceFullyBroken | Trigger::OnIceBypassed | Trigger::OnEncounterEnded | Trigger::OnCreditsSpentOutsidePool | Trigger::OnArchivesTurnedFaceup | Trigger::OnCardTrashed | Trigger::OnWouldBeUninstalled | Trigger::OnIdentityFlipped | Trigger::OnActionTaken | Trigger::OnVirusCountersPurged | Trigger::OnCardMoved | Trigger::OnFinishedResolving | Trigger::OnCardsTrashedFromRnD | Trigger::OnDerez | Trigger::OnBreach | Trigger::OnActionFinished => Trigger::ALL.contains(&trigger),
+            Trigger::OnPlay | Trigger::OnRunStart | Trigger::OnEncounter | Trigger::OnTurnStart | Trigger::OnAccessed | Trigger::OnTrashedFromAccess | Trigger::OnSuccessfulRun | Trigger::Paid | Trigger::OnInstall | Trigger::OnAgendaScored | Trigger::OnAgendaStolen | Trigger::OnDamageAboutToResolve | Trigger::OnRez | Trigger::OnApproachServer | Trigger::OnRunEnded | Trigger::OnBasicDrawAction | Trigger::OnTagsGiven | Trigger::OnAdvance | Trigger::OnDiscardPhaseEnd | Trigger::OnActionPhaseEnd | Trigger::OnCardInstalled | Trigger::OnDamageDealt | Trigger::OnCardsTrashedFromHq | Trigger::OnAbilityGainedCredits | Trigger::OnForfeit | Trigger::OnIceApproached | Trigger::OnCardPlayed | Trigger::OnTagRemoved | Trigger::OnBadPublicityTaken | Trigger::OnIcePassed | Trigger::OnSubroutineBroken | Trigger::OnIceFullyBroken | Trigger::OnIceBypassed | Trigger::OnEncounterEnded | Trigger::OnCreditsSpentOutsidePool | Trigger::OnArchivesTurnedFaceup | Trigger::OnCardTrashed | Trigger::OnWouldBeUninstalled | Trigger::OnIdentityFlipped | Trigger::OnActionTaken | Trigger::OnVirusCountersPurged | Trigger::OnCardMoved | Trigger::OnFinishedResolving | Trigger::OnCardsTrashedFromRnD | Trigger::OnDerez | Trigger::OnBreach | Trigger::OnActionFinished | Trigger::OnSubroutineResolved => Trigger::ALL.contains(&trigger),
         };
         assert!(Trigger::ALL.iter().all(|trigger| listed(*trigger)));
     }

@@ -1341,6 +1341,15 @@ pub struct CompletedRun {
     /// instead (`EffectRequirement::BreachedLastRunsServer`, Info Bounty).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub breached: Option<ServerId>,
+    /// `RunState::initiated_by` and `RunState::event_counters` at
+    /// conclusion: the event that began the run and the counters it held
+    /// in the play area, which go with the run — Raindrops Cut Stone's
+    /// "when that run ends, draw 1 card for each hosted power counter",
+    /// read by its run-end effect as the event (`Amount::HostedCounters`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub initiated_by: Option<CardId>,
+    #[serde(default, skip_serializing_if = "is_zero_u32")]
+    pub event_counters: u32,
 }
 
 impl CompletedRun {
@@ -1361,6 +1370,8 @@ impl CompletedRun {
             run_credits_left: run.bonus_run_credits,
             unsuccessful: false,
             breached: run.breached,
+            initiated_by: run.initiated_by.clone(),
+            event_counters: run.event_counters,
         }
     }
 }
@@ -1454,6 +1465,10 @@ pub struct DeferredTrigger {
     /// the end of the queue ahead of this is the end of the resolution.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub announce: Option<GameEvent>,
+}
+
+fn is_zero_u32(value: &u32) -> bool {
+    *value == 0
 }
 
 fn is_zero_u8(value: &u8) -> bool {

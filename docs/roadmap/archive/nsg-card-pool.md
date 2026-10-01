@@ -5435,3 +5435,59 @@ word in the trigger condition. Parhelion 47 of 63; `PH_UNIMPLEMENTED`
   games / planner 48): a mark identified 282 / 96 times (15 more asks
   found one already); Tunnel Vision installed 34 / 30 and used 17 / 54
   times; Info Bounty installed 31 / 0 and paid out 16 / 0 times.
+
+#### Stage 6c — a set-aside program, and a subroutine resolving heard by a run event (1 October 2026)
+
+`feat/ph-stage-6c-set-aside-and-run-event-counters`: Spark of
+Inspiration, Raindrops Cut Stone. **No new `Effect`**; one `Trigger`.
+Parhelion 51 of 63; `PH_UNIMPLEMENTED` 14 → 12.
+
+- **Spark of Inspiration composes** on The Wizard's Chest's set-aside
+  zone (RWR 6d): `SetAsideFromTopUntil` a program, a selection of it
+  installable at `Discount::Credits(10)`, `InstallRunnerCardFromZone` out of
+  the zone behind an `EffectIf(CardsSelected ≥ 1)`, and `ShuffleIntoDeck`
+  the rest.
+- **`Trigger::OnSubroutineResolved`**, Raindrops Cut Stone's "whenever a
+  subroutine resolves during that run": `GameEvent::SubroutineFired`, which
+  was an occurrence of nothing, is now a moment about the ice and is
+  dispatched at both sites a subroutine resolves (`run::step_subroutine`
+  and the unbroken subroutines' loop) **before its effect**, so "including
+  a subroutine that ends the run" is heard while the run, and the event's
+  place in the play area (CR 8.6.5), still stand. Appended to `Trigger`,
+  so no turn-log row moved. Composition didn't work: no trigger heard a
+  subroutine resolve.
+- **The event's counters go with the run.** `CompletedRun` carries
+  `initiated_by` and `event_counters`, and `Amount::HostedCounters` read by
+  the event's own "when that run ends, draw 1 card for each hosted power
+  counter" (`SetRunEndedEffect`, Hannah's shape) finds them there while no
+  run is under way.
+- **The sweeps' harness learned the set-aside zone.** The conservation
+  check did not count `RunnerState::set_aside`, and the fog gate did not
+  treat it or `CardsSetAside` as public (CR 4.8.6), so the first parked
+  "you may install" out of it — Spark, seed 99 and then seed 162 of the
+  view sweep, where The Wizard's Chest had never once been reached — read
+  as a card lost and then as a card named that was concealed. Both were
+  the test's gaps; the zone was in the view all along.
+- **Client.** Nothing new to draw: the set-aside zone and the run event's
+  counters were drawn by RWR 6d and 7e.
+- **Decks.** Safety Net took two Spark of Inspiration for its two Beta
+  Build, an event that installs a program from the stack for another
+  (Spare Parts still carries Beta Build); Pay As You Go took two Raindrops
+  Cut Stone for its two Sure Gamble.
+- **Approximation.** Raindrops' counter is placed as the subroutine is
+  announced, before its effect resolves. **Known limit:** a subroutine a
+  card's text resolves (Nanisivik Grid's) is not announced and not counted.
+- **DSL ratio (`pool_status.py`):** 14 of 92 `Effect` variants
+  single-use, 1 unused, over 431 card files.
+- **Measured** against Stage 6b (`f578d6b`). Both sweeps green at 256
+  seeds, the card gate included.
+  - A ref with the engine change and no cards is identical in all four
+    shapes: the new dispatch moved nothing.
+  - With the cards, both random seatings are identical; the planner ones
+    move by `determinize` (view and index alike, of 192): Corp agenda wins
+    63 → 62, Corp flatlines 29 → 30.
+- **Real play**, seed 2, against Retirement Package (random 96 games /
+  planner 48): Safety Net played Spark of Inspiration 14 / 0 times; Pay
+  As You Go played Raindrops Cut Stone 23 / 0 times, and a subroutine
+  resolving placed a counter 12 times.
+

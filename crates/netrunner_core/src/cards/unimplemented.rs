@@ -37,10 +37,8 @@ pub(crate) const TAI_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *Parhelion* (`parhelion`): tranche 4 of the NSG plan.
 pub(crate) const PH_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("raindrops_cut_stone", "Raindrops Cut Stone"),
     ("hush", "Hush"),
     ("tsakhia_bankhar_gantulga", "Tsakhia \"Bankhar\" Gantulga"),
-    ("spark_of_inspiration", "Spark of Inspiration"),
     ("nanuq", "Nanuq"),
     ("matryoshka", "Matryoshka"),
     ("nightmare_archive", "Nightmare Archive"),

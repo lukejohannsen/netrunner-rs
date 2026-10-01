@@ -1,0 +1,72 @@
+{
+  "id": "spark_of_inspiration",
+  "title": "Spark of Inspiration",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 3,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "SetAsideFromTopUntil": {
+            "filter": {
+              "CardType": "Program"
+            },
+            "count": 1
+          }
+        },
+        {
+          "PromptChooseCards": {
+            "side": "Runner",
+            "source": "OwnSetAside",
+            "filter": {
+              "All": [
+                {
+                  "CardType": "Program"
+                },
+                {
+                  "InstallableRunnerCardWithDiscount": {
+                    "Credits": 10
+                  }
+                }
+              ]
+            },
+            "min": 0,
+            "max": 1,
+            "reveal": false,
+            "shuffle_after": false,
+            "then": {
+              "EffectIf": {
+                "condition": {
+                  "AmountAtLeast": [
+                    "CardsSelected",
+                    1
+                  ]
+                },
+                "effect": {
+                  "InstallRunnerCardFromZone": {
+                    "from": "OwnSetAside",
+                    "discount": {
+                      "Credits": 10
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "ShuffleIntoDeck": [
+            "OwnSetAside"
+          ]
+        }
+      ],
+      "text": "Set aside cards from the top of your stack faceup until you set aside a program. You may install that program, paying 10[credit] less. Shuffle the set-aside cards into your stack."
+    }
+  ],
+  "abilities": [],
+  "built_from": 33084,
+  "is_playable": true
+}
