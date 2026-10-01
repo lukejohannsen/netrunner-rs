@@ -120,7 +120,7 @@ pub fn load_or_make(path: &Path) -> Result<Identity, String> {
 /// the secret is never on disk with wider access. `create_new`, so two
 /// clients starting at once cannot both write a key and have the second
 /// win after the first has been used.
-fn write_secret(path: &Path, text: &str) -> std::io::Result<()> {
+pub(crate) fn write_secret(path: &Path, text: &str) -> std::io::Result<()> {
     use std::io::Write;
     let mut options = std::fs::OpenOptions::new();
     options.write(true).create_new(true);

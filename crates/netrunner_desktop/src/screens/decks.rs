@@ -762,7 +762,7 @@ fn spawn_popup(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCo
                         panel.spawn(widgets::row(12.0)).with_children(|row| {
                             row.spawn(Node { flex_grow: 1.0, flex_shrink: 1.0, min_width: px(0), ..default() }).with_children(|slot| {
                                 slot.spawn((
-                                    TextField { text: typed.clone(), max_len: LINK_MAX },
+                                    TextField::new(typed.clone(), LINK_MAX),
                                     widgets::field_node(percent(100)),
                                     BackgroundColor(theme.glass_strong),
                                     BorderColor::all(theme.accent),

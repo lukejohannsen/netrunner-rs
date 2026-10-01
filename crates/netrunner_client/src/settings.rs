@@ -39,6 +39,7 @@ use serde::{Deserialize, Serialize};
 use netrunner_core::format::NsgFormat;
 
 use crate::art::ArtChoices;
+use crate::llm::LlmProfile;
 use crate::standing::Answers;
 
 /// Environment variable naming the settings file, for tests and for a
@@ -123,6 +124,25 @@ pub struct Settings {
     /// relay the ticket names.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub relay: Option<String>,
+    /// The model opponents the person has set up (`llm`), each an
+    /// `[[opponents]]` table: name, protocol, URL, model and the dials —
+    /// **never a key**, which is in `secrets.toml` under the same name.
+    /// Shared, because either client may seat one (the terminal by flag).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub opponents: Vec<LlmProfile>,
+}
+
+impl Settings {
+    /// The model opponent of that name, if one is set up.
+    pub fn opponent(&self, name: &str) -> Option<&LlmProfile> {
+        self.opponents.iter().find(|profile| profile.name == name)
+    }
+
+    /// The model opponents' names, in the order the file lists them —
+    /// what the new-game form offers.
+    pub fn opponent_names(&self) -> Vec<String> {
+        self.opponents.iter().map(|profile| profile.name.clone()).collect()
+    }
 }
 
 /// Preferences only the graphical client reads. `#[serde(default)]` on
@@ -537,6 +557,8 @@ mod tests {
         settings.art.set(CardId("hedge_fund".to_string()), Some(Art::Printing(PrintingId(1110))));
         settings.lessons_done.insert("corp-1".to_string());
         settings.lessons_done.insert("runner-3".to_string());
+        settings.opponents.push(crate::llm::Preset::Anthropic.profile("claude"));
+        settings.opponents.push(crate::llm::Preset::Ollama.profile("local"));
         let text = settings.to_text();
         assert_eq!(Settings::parse(&text).unwrap(), settings, "{text}");
         assert!(text.contains("[desktop]"), "{text}");
@@ -544,6 +566,22 @@ mod tests {
         assert!(packed.contains("window_size=[1280,800,]"), "a tuple is an array: {text}");
         assert!(text.contains("[[answers]]"), "{text}");
         assert!(text.contains("[[art]]"), "{text}");
+        assert!(text.contains("[[opponents]]"), "{text}");
+        assert_eq!(settings.opponent_names(), ["claude", "local"]);
+        assert_eq!(settings.opponent("local").map(|p| p.protocol), Some(crate::llm::Protocol::Ollama));
+        assert_eq!(settings.opponent("nobody"), None);
+    }
+
+    /// A key is never in this file, whatever a profile holds: the key's
+    /// type is not a field here, so the settings text cannot carry one.
+    #[test]
+    fn the_settings_file_never_holds_a_key() {
+        let mut settings = Settings::default();
+        settings.opponents.push(crate::llm::Preset::OpenAi.profile("chat"));
+        let mut secrets = crate::llm::Secrets::default();
+        secrets.set("chat", Some(crate::llm::ApiKey::new("not-a-real-key")));
+        let text = settings.to_text();
+        assert!(text.contains("name = \"chat\"") && !text.contains("not-a-real-key"), "{text}");
     }
 
     #[test]

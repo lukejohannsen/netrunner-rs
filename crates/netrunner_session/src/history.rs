@@ -128,12 +128,38 @@ fn is_shuffled(order: &DeckOrder) -> bool {
     *order == DeckOrder::Shuffled
 }
 
-/// The opponent a person played, as a match record names it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+/// The opponent a person played, as a match record names it: the bot's
+/// chair, the rung and style of the planner in it, and — when a language
+/// model was asked first (`netrunner_client::llm`) — the model's profile
+/// name, with the rung then the planner that played whatever the model
+/// did not. `level` is an `Option` only for a record written before a
+/// model could sit there; one is always written now.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RecordedBot {
     pub side: Side,
-    pub level: Level,
+    #[serde(default)]
+    pub level: Option<Level>,
     pub style: Style,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
+}
+
+impl RecordedBot {
+    /// A rung's bot, as every record before a model could play was.
+    pub fn rung(side: Side, level: Level, style: Style) -> Self {
+        RecordedBot { side, level: Some(level), style, model: None }
+    }
+
+    /// "the elite glacier Corp", or "the model \"gpt\" in the Corp's chair
+    /// (the elite glacier planner when it failed)": the one wording the
+    /// replay's title and the desktop's list share.
+    pub fn describe(&self) -> String {
+        let rung = self.level.map_or_else(String::new, |level| format!("{level} "));
+        match &self.model {
+            None => format!("the {rung}{} {:?}", self.style, self.side),
+            Some(model) => format!("the model \"{model}\" in the {:?}'s chair (the {rung}{} planner when it failed)", self.side, self.style),
+        }
+    }
 }
 
 impl MatchRecordHeader {

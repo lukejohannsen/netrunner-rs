@@ -15,6 +15,7 @@ pub mod drag;
 pub mod game;
 pub mod layout;
 pub mod online;
+pub mod opponents;
 pub mod lesson;
 pub mod pace;
 pub mod replay;

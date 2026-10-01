@@ -58,6 +58,7 @@ pub mod identity;
 pub mod online;
 pub mod peer;
 pub mod learn;
+pub mod llm;
 pub mod prose;
 pub mod record;
 pub mod remote;

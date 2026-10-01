@@ -99,7 +99,7 @@ pub fn start_starter(core: &ClientCore, starter: Starter) -> Result<ActiveMatch,
         corp,
         runner,
         human: starter.side,
-        level,
+        opponent: netrunner_client::play::Opponent::Ladder(level),
         style: None,
         seed: crate::screens::new_game::seed_from_clock(),
         // The starter lists are System Gateway's, so Startup is the pool

@@ -879,7 +879,7 @@ fn field_box(parent: &mut ChildSpawnerCommands, theme: &Theme, field: Field, val
 /// (Enter keeps, Escape lets go, Ctrl+V pastes).
 fn spawn_editor(parent: &mut ChildSpawnerCommands, theme: &Theme, field: Field, current: &str) {
     parent.spawn((
-        TextField { text: current.to_string(), max_len: field.max_len() },
+        TextField::new(current.to_string(), field.max_len()),
         widgets::field_node(percent(100)),
         BackgroundColor(theme.glass_strong),
         BorderColor::all(theme.accent),

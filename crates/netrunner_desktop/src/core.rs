@@ -142,6 +142,27 @@ impl ClientCore {
             None => Err("no OS data directory is available, so settings apply to this session only".to_string()),
         }
     }
+
+    /// Where the model opponents' keys are kept: beside the identity key,
+    /// never in the settings file (`netrunner_client::llm::secrets`).
+    pub fn secrets_path(&self) -> Option<PathBuf> {
+        self.identity_dir.as_ref().map(|dir| netrunner_client::llm::Secrets::path_in(dir))
+    }
+
+    /// The keys on disk; none where there is no data directory.
+    pub fn load_secrets(&self) -> Result<netrunner_client::llm::Secrets, String> {
+        match self.secrets_path() {
+            Some(path) => netrunner_client::llm::Secrets::load(&path),
+            None => Ok(netrunner_client::llm::Secrets::default()),
+        }
+    }
+
+    pub fn save_secrets(&self, secrets: &netrunner_client::llm::Secrets) -> Result<(), String> {
+        match self.secrets_path() {
+            Some(path) => secrets.save(&path),
+            None => Err("no OS data directory is available, so the key applies to this session only".to_string()),
+        }
+    }
 }
 
 /// Things the player should be told that are not errors of any one

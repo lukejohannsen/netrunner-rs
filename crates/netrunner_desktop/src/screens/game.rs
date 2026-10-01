@@ -406,6 +406,9 @@ pub struct Avatar(pub Side);
 /// while.
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
 pub struct InEffect;
+/// The model opponent's line on the rail (`Game::model_notice`).
+#[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ModelNotice;
 /// The chip on an identity's disc: the side up for one that flips
 /// ("Front", "Flipped", "Side 2"), else what it holds ("2 of 2",
 /// "3 power counters") — `hud::identity_chip`.
@@ -709,7 +712,7 @@ fn spawn(
                         active.handle.side(),
                         crate::models::game::Online { watching: online.watching, notice: online.notice.clone() },
                     ),
-                    None => Game::new(core.registry.clone(), active.handle.side()),
+                    None => Game::new(core.registry.clone(), active.handle.side()).with_model(active.handle.model_name().map(str::to_string)),
                 },
             };
             Some((game, active.handle.side()))
@@ -1022,6 +1025,13 @@ fn poll(
             && matches!(message, netrunner_client::play::MatchMessage::Stalled { .. })
         {
             saved(&mut model.0, &mut notices, save_report(&core, &active.handle));
+        }
+        // What the model opponent's requests cost, for the end table:
+        // read off the handle's mirror, never asked of the match thread.
+        if let Some(active) = &active
+            && matches!(message, netrunner_client::play::MatchMessage::Ended { .. })
+        {
+            model.0.model_usage = active.handle.model_usage();
         }
         // A lesson is done the moment its last step is, whatever the
         // person does with the closing words: ticked in the settings
@@ -3418,6 +3428,9 @@ fn spawn_rail(parent: &mut ChildSpawnerCommands, theme: &Theme, game: &Game, hel
     if let Some(rejection) = &game.rejection {
         parent.spawn((widgets::notice(theme, format!("Rejected: {rejection}"), ()), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
     }
+    if let Some(notice) = &game.model_notice {
+        parent.spawn((ModelNotice, widgets::notice(theme, notice.clone(), ()), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
+    }
     if let Some(reason) = &game.break_stopped {
         parent.spawn((widgets::notice(theme, reason.clone(), ()), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
     }
@@ -3448,10 +3461,11 @@ fn spawn_rail(parent: &mut ChildSpawnerCommands, theme: &Theme, game: &Game, hel
     if !game.awaiting {
         // A spectator has no opponent, and the view does not say which
         // player holds priority, so the line names nobody.
-        let line = match (&game.view, game.watching()) {
-            (None, _) => "Setting up…",
-            (Some(_), true) => "Watching — the players are deciding…",
-            (Some(_), false) => "Opponent is thinking…",
+        let line = match (&game.view, game.watching(), &game.model_name) {
+            (None, ..) => "Setting up…".to_string(),
+            (Some(_), true, _) => "Watching — the players are deciding…".to_string(),
+            (Some(_), false, Some(name)) => format!("{name} is thinking…"),
+            (Some(_), false, None) => "Opponent is thinking…".to_string(),
         };
         parent.spawn(widgets::dim(theme, line));
         return;
@@ -4470,6 +4484,11 @@ fn spawn_overlay(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &Client
                         panel.spawn(widgets::notice(theme, notice.clone(), ()));
                     }
                     end_table(panel, theme, &game.tally, game.side);
+                    // A count, shown plainly, never a price: prices change
+                    // and are the provider's.
+                    if let (Some(name), Some(usage)) = (&game.model_name, game.model_usage) {
+                        panel.spawn((widgets::dim(theme, format!("{name}: {} tokens in ({} from the cache), {} out", usage.input, usage.cached_input, usage.output)), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
+                    }
                     panel.spawn(widgets::row(12.0)).with_children(|row| {
                         // Online, the next game is found where this one
                         // was: there is nobody here to deal it again.

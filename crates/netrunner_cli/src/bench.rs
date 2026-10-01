@@ -510,6 +510,10 @@ mod tests {
         assert!("level:elite:berserk".parse::<BotSpec>().is_err());
         assert!("planner:berserk".parse::<BotSpec>().is_err());
         assert!("android".parse::<BotSpec>().is_err());
+        // A model opponent is refused by name: a bench is a measurement.
+        let refused = "llm:claude".parse::<BotSpec>().unwrap_err();
+        assert!(refused.contains("cannot be benchmarked") && refused.contains("--corp-model"), "{refused}");
+        assert!("model".parse::<BotSpec>().unwrap_err().contains("cannot be benchmarked"));
     }
 
     #[test]

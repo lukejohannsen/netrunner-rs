@@ -39,6 +39,8 @@ pub enum Control {
     Intent(Intent),
     /// Edit a text row: the player's name or the relay.
     Edit(Row),
+    /// The model opponents' own screen (`screens::opponents`).
+    Opponents,
     Back,
 }
 
@@ -82,7 +84,10 @@ fn spawn(mut commands: Commands, theme: Res<Theme>, core: Res<ClientCore>) {
     commands.spawn((screen_root(AppScreen::Settings, &theme), children![
         widgets::heading(&theme, AppScreen::Settings.title()),
         widgets::dim(&theme, saved_where),
-        widgets::button(&theme, "Back", Val::Auto, Control::Back),
+        (widgets::row(12.0), children![
+            widgets::button(&theme, "Back", Val::Auto, Control::Back),
+            widgets::button(&theme, "AI opponents…", Val::Auto, Control::Opponents),
+        ]),
     ])).add_child(columns);
     commands.entity(rows).with_children(|parent| spawn_rows(parent, &theme, &core, &Row::ALL));
     commands.entity(answers).with_children(|parent| spawn_answers(parent, &theme, &core));
@@ -164,6 +169,9 @@ fn controls(
             Ok(Control::Back) => {
                 navigate.write(Navigate(AppScreen::MainMenu));
             }
+            Ok(Control::Opponents) => {
+                navigate.write(Navigate(AppScreen::Opponents));
+            }
             Ok(Control::Edit(row)) => edit.0 = Some(*row),
             Ok(Control::Intent(intent)) => {
                 let changed = model::apply(&mut core.settings, intent.clone(), &table::available(), &skin::available());
@@ -198,7 +206,7 @@ fn open_field(
     };
     commands.entity(rows).with_children(|parent| {
         parent.spawn((
-            TextField { text: current.clone(), max_len },
+            TextField::new(current.clone(), max_len),
             Editing(row),
             widgets::field_node(Val::Auto),
             BackgroundColor(theme.glass_strong),

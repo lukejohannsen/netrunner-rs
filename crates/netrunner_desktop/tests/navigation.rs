@@ -102,6 +102,7 @@ fn every_screen_can_be_entered_and_left() {
     for target in [
         AppScreen::Profile,
         AppScreen::Settings,
+        AppScreen::Opponents,
         AppScreen::Decks,
         AppScreen::DeckEditor,
         AppScreen::CardBrowser,
@@ -205,6 +206,83 @@ fn the_relay_is_edited_in_settings_and_a_bad_one_is_refused() {
     assert_eq!(app.world().resource::<ClientCore>().settings.relay.as_deref(), Some("off"), "an edit starts from the saved value, and \"offx\" is no relay");
     let saved = std::fs::read_to_string(app.world().resource::<ClientCore>().settings_path.clone().unwrap()).unwrap();
     assert!(saved.contains("relay = \"off\""), "saved to the file: {saved}");
+}
+
+/// The AI opponents screen, off Settings: a profile is added from a
+/// preset, its key typed into a masked field, both saved at once — the
+/// profile to `settings.toml`, the key to `secrets.toml` and never the
+/// settings — and Test shows the (scripted) model's answer. The
+/// new-game form then offers the opponent and hides the rung.
+#[test]
+fn an_ai_opponent_is_added_tested_and_its_key_never_reaches_the_settings_file() {
+    use netrunner_desktop::models::opponents::{Field, Intent};
+    use netrunner_desktop::screens::opponents::{Control, Probes};
+    use netrunner_desktop::widgets::text_field::TextField;
+    let (mut app, dir) = headless_client();
+    app.insert_resource(Probes::scripted(Ok("The model answered: OK".to_string())));
+    app.update();
+    app.update();
+    app.world_mut().write_message(Navigate(AppScreen::Settings));
+    app.update();
+    app.update();
+    let door = find::<netrunner_desktop::screens::settings::Control>(&mut app, |c| *c == netrunner_desktop::screens::settings::Control::Opponents).expect("Settings has an AI opponents button");
+    tap(&mut app, door);
+    assert_eq!(screen(&app), AppScreen::Opponents);
+    let add = find::<Control>(&mut app, |c| *c == Control::Intent(Intent::Add(netrunner_client::llm::Preset::Ollama))).expect("an Add button per preset");
+    tap(&mut app, add);
+    let settings = std::fs::read_to_string(dir.join("settings.toml")).expect("the profile was saved at once");
+    assert!(settings.contains("[[opponents]]") && settings.contains("name = \"ollama\""), "{settings}");
+    // The key: typed into a masked field, saved to the secrets file alone.
+    let edit = find::<Control>(&mut app, |c| *c == Control::Intent(Intent::Edit(Field::Key))).expect("the key row has Edit");
+    tap(&mut app, edit);
+    let field = app.world_mut().query::<&TextField>().iter(app.world()).next().expect("Edit opened the key field").clone();
+    assert!(field.masked && field.text.is_empty());
+    for c in "not-a-real-key".chars() {
+        press(&mut app, KeyCode::KeyA, Key::Character(c.to_string().into()));
+        app.update();
+    }
+    let field = app.world_mut().query::<&TextField>().iter(app.world()).next().unwrap().clone();
+    assert_eq!(field.shown(), "•".repeat(14), "a dot per character, never the key");
+    press(&mut app, KeyCode::Enter, Key::Enter);
+    app.update();
+    app.update();
+    assert_eq!(app.world_mut().query::<&TextField>().iter(app.world()).count(), 0);
+    let secrets = std::fs::read_to_string(dir.join("identity").join("secrets.toml")).expect("the key was saved at once");
+    assert!(secrets.contains("ollama = \"not-a-real-key\""), "{secrets}");
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        assert_eq!(std::fs::metadata(dir.join("identity").join("secrets.toml")).unwrap().permissions().mode() & 0o777, 0o600);
+    }
+    let settings = std::fs::read_to_string(dir.join("settings.toml")).unwrap();
+    assert!(!settings.contains("not-a-real-key"), "the settings file never holds a key: {settings}");
+    let texts = |app: &mut App| app.world_mut().query::<&Text>().iter(app.world()).map(|t| t.0.clone()).collect::<Vec<_>>();
+    assert!(texts(&mut app).iter().any(|t| t == "set"), "the key row says set");
+    // Test: the scripted answer comes back on the next frame.
+    let test = find::<Control>(&mut app, |c| *c == Control::Intent(Intent::Test)).expect("a Test button");
+    tap(&mut app, test);
+    app.update();
+    app.update();
+    assert!(texts(&mut app).iter().any(|t| t == "The model answered: OK"), "{:?}", texts(&mut app));
+    // The new-game form offers the opponent, and choosing it hides the rung.
+    app.world_mut().write_message(Navigate(AppScreen::NewGame));
+    app.update();
+    app.update();
+    assert_eq!(screen(&app), AppScreen::NewGame);
+    assert!(texts(&mut app).iter().any(|t| t == "ollama (AI model)"), "the form offers the model: {:?}", texts(&mut app));
+    let level_pills = |app: &mut App| texts(app).iter().filter(|t| t.ends_with("suggested")).count();
+    assert_eq!(level_pills(&mut app), 1, "the rung pills are drawn for the built-in bot");
+    let model = app
+        .world_mut()
+        .query::<(Entity, &Children)>()
+        .iter(app.world())
+        .find(|(_, children)| children.iter().any(|child| app.world().get::<Text>(child).is_some_and(|t| t.0 == "ollama (AI model)")))
+        .map(|(entity, _)| entity)
+        .expect("the model's pill");
+    tap(&mut app, model);
+    assert_eq!(level_pills(&mut app), 0, "the rung pills are gone");
+    assert!(texts(&mut app).iter().any(|t| t.starts_with("ollama plays every decision")), "{:?}", texts(&mut app));
+    let _ = std::fs::remove_dir_all(dir);
 }
 
 /// The card browser: every card is a face, a face opens in the
@@ -343,7 +421,7 @@ fn a_printing_pressed_in_the_browser_is_the_art_the_card_is_drawn_with() {
     let core = app.world().resource::<ClientCore>();
     assert_eq!(core.settings.art.get(&hedge_fund), Some(&Art::Printing(PrintingId(1110))));
     let saved = std::fs::read_to_string(core.settings_path.clone().unwrap()).unwrap();
-    assert!(saved.contains("\"printing\": 1110"), "kept in the file: {saved}");
+    assert!(saved.contains("printing = 1110"), "kept in the file: {saved}");
     assert_eq!(drawn(&mut app), Some(Picture::Printing(PrintingId(1110))), "the grid draws the chosen printing");
     assert_eq!(printings(&mut app).len(), 2, "the inspector was drawn again with its strip");
 

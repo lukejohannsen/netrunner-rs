@@ -29,6 +29,11 @@ serde_json = { workspace = true }
 # (`toml_parser`, `toml_edit` 0.25, `winnow` 1) is already in the tree,
 # where 0.8 would have brought a second `toml_edit` and `winnow`.
 toml = "0.9"
+# `llm::transport`: the request a model opponent's decision is. The
+# version and features `netrunner_card_sync` uses, so it is one more
+# consumer of a crate already in the tree and no new TLS stack: rustls on
+# `ring`, as `iroh` already links.
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 # The OS data directory saved decks, the record and settings live under. The
 # same version `netrunner_card_sync` uses for the cache directory, so there
 # is one `dirs` in the tree.
