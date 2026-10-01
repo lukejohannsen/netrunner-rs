@@ -70,6 +70,9 @@
 //! - `NETRUNNER_IDENTITIES=1` — with `NETRUNNER_SCREEN=deckeditor` on an
 //!   editable deck, Change identity is opened once, so the identity
 //!   picker can be looked at.
+//! - `NETRUNNER_FETCH=<text>` — with `NETRUNNER_SCREEN=decks`, the Import
+//!   from NetrunnerDB… pop-up is opened with `text` in its field, so the
+//!   pop-up can be looked at; nothing is fetched.
 //! - `NETRUNNER_SHEET=1` — on the board, once the person's decision has
 //!   arrived (after any autoplay), the sheet a secondary click opens on
 //!   the first installed Corp card on the board is opened, so an install's state can be looked at.
@@ -260,6 +263,9 @@ pub struct Dev {
     pub read: Option<usize>,
     /// Open the deck editor's identity picker, once.
     pub identities: bool,
+    /// Open the Decks screen's Import from NetrunnerDB… pop-up with this
+    /// in its field.
+    pub fetch: Option<String>,
     /// `NETRUNNER_ONLINE`: the Play Online page to open.
     pub online: Option<String>,
     /// Hold a run at its first encounter for the screenshot.
@@ -337,6 +343,7 @@ impl Dev {
             lift: std::env::var_os("NETRUNNER_LIFT").is_some_and(|v| !v.is_empty()),
             read: std::env::var("NETRUNNER_READ").ok().and_then(|n| n.trim().parse().ok()).filter(|n| *n > 0),
             identities: std::env::var_os("NETRUNNER_IDENTITIES").is_some_and(|v| !v.is_empty()),
+            fetch: std::env::var("NETRUNNER_FETCH").ok().filter(|text| !text.trim().is_empty()),
             online: std::env::var("NETRUNNER_ONLINE").ok().map(|page| page.trim().to_ascii_lowercase()).filter(|page| !page.is_empty()),
             hold_run: std::env::var_os("NETRUNNER_HOLD_RUN").is_some_and(|v| !v.is_empty()),
             hold_ice: std::env::var_os("NETRUNNER_HOLD_ICE").is_some_and(|v| !v.is_empty()),

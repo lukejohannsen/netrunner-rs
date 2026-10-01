@@ -643,6 +643,101 @@ fn a_deck_is_exported_to_a_file_and_imported_back_from_it() {
     assert_eq!(app.world().resource::<Model>().0.notice, None);
 }
 
+/// A published decklist comes by its link: Import from NetrunnerDB… opens
+/// a pop-up with one field, what is not a decklist link is refused in the
+/// pop-up with the field kept, a uuid fetches (here a scripted answer, so
+/// nothing goes out under CI) and the list is saved as the person's own
+/// and opened in the editor with its author and link, a refusal from
+/// NetrunnerDB is shown in the pop-up, and Escape closes the field and
+/// the pop-up before it leaves the screen.
+#[test]
+fn a_netrunnerdb_decklist_is_fetched_by_its_link_and_saved() {
+    use netrunner_card_sync::{Decklist, DecklistRef};
+    use netrunner_desktop::netrunnerdb::Decklists;
+    use netrunner_desktop::screens::decks::{Control, Model, Popup, PopupButton};
+    use netrunner_desktop::screens::deck_editor::Model as EditorModel;
+    use netrunner_desktop::widgets::text_field::TextField;
+    let uuid = "99ba7131-6cf1-474e-b73f-8b1aefc93d56";
+    let original = netrunner_core::decks::by_id("stolen_goods").unwrap();
+    let mut cards: Vec<(String, u32)> = original.cards.iter().map(|entry| (entry.card.0.clone(), entry.count)).collect();
+    cards.push((original.identity.0.clone(), 1));
+    cards.push(("no_such_card".to_string(), 2));
+    let list = Decklist { reference: DecklistRef::parse(uuid).unwrap(), name: "Someone's Zahya".to_string(), author: "someone".to_string(), notes: "<p>Run.</p>".to_string(), identity: original.identity.0.clone(), cards };
+    let (mut app, dir) = headless_client();
+    app.insert_resource(Decklists::scripted(Ok(list)));
+    open_decks(&mut app);
+    let fields = |app: &mut App| app.world_mut().query::<&TextField>().iter(app.world()).count();
+    let type_into = |app: &mut App, text: &str| {
+        let mut fields = app.world_mut().query::<&mut TextField>();
+        fields.single_mut(app.world_mut()).unwrap().text = text.to_string();
+    };
+
+    let open = find::<Control>(&mut app, |control| *control == Control::Fetch).expect("an Import from NetrunnerDB… button");
+    tap(&mut app, open);
+    assert!(matches!(app.world().resource::<Popup>(), Popup::Fetch { .. }));
+    assert_eq!(fields(&mut app), 1, "the pop-up has the link field, open");
+
+    // Not a link: refused in the pop-up, the field still holding it.
+    type_into(&mut app, "just words");
+    press(&mut app, KeyCode::Enter, Key::Enter);
+    app.update();
+    app.update();
+    app.update();
+    match app.world().resource::<Popup>() {
+        Popup::Fetch { typed, problem } => {
+            assert_eq!(typed, "just words");
+            assert!(problem.as_deref().is_some_and(|problem| problem.starts_with("Not a NetrunnerDB decklist")), "{problem:?}");
+        }
+        other => panic!("the pop-up stays open: {other:?}"),
+    }
+    assert_eq!(screen(&app), AppScreen::Decks);
+    assert_eq!(fields(&mut app), 1);
+
+    // A uuid, through the Fetch button: the scripted list is saved and opens.
+    type_into(&mut app, uuid);
+    let fetch = find::<PopupButton>(&mut app, |button| *button == PopupButton::Fetch).expect("a Fetch button");
+    tap(&mut app, fetch);
+    assert_eq!(screen(&app), AppScreen::DeckEditor, "a fetched list opens in the editor");
+    let (id, deck) = {
+        let editor = &app.world().resource::<EditorModel>().0;
+        (editor.deck().id.clone(), editor.deck().clone())
+    };
+    assert_eq!(deck.name, "Someone's Zahya");
+    assert_eq!((deck.identity.clone(), deck.size()), (original.identity.clone(), original.size()), "the identity's slot is not a card, the unknown one is skipped");
+    assert_eq!(deck.description.as_deref(), Some(format!("By someone on NetrunnerDB: https://netrunnerdb.com/en/decklist/{uuid}").as_str()));
+    assert_eq!(deck.how_to_play.as_deref(), Some("Run."));
+    assert!(dir.join("decks").join(format!("{id}.json")).exists(), "the fetched deck was saved");
+    press(&mut app, KeyCode::Escape, Key::Escape);
+    app.update();
+    app.update();
+    assert_eq!(screen(&app), AppScreen::Decks);
+    assert_eq!(app.world().resource::<Popup>(), &Popup::None, "the pop-up closed with the fetch");
+    assert_eq!(app.world().resource::<Model>().0.notice.as_deref(), Some("Fetched Someone's Zahya from NetrunnerDB; skipped what the catalog does not know: no_such_card"));
+
+    // NetrunnerDB's refusal is the pop-up's to show; Escape closes the
+    // field and the pop-up, and only then the screen.
+    app.insert_resource(Decklists::scripted(Err("NetrunnerDB has no published decklist".to_string())));
+    let open = find::<Control>(&mut app, |control| *control == Control::Fetch).unwrap();
+    tap(&mut app, open);
+    type_into(&mut app, uuid);
+    press(&mut app, KeyCode::Enter, Key::Enter);
+    app.update();
+    app.update();
+    app.update();
+    assert!(matches!(app.world().resource::<Popup>(), Popup::Fetch { problem: Some(problem), .. } if problem == "NetrunnerDB has no published decklist"), "{:?}", app.world().resource::<Popup>());
+    assert_eq!(screen(&app), AppScreen::Decks);
+    press(&mut app, KeyCode::Escape, Key::Escape);
+    app.update();
+    app.update();
+    assert_eq!(app.world().resource::<Popup>(), &Popup::None, "Escape closed the pop-up");
+    assert_eq!(fields(&mut app), 0);
+    assert_eq!(screen(&app), AppScreen::Decks, "and not the screen");
+    press(&mut app, KeyCode::Escape, Key::Escape);
+    app.update();
+    app.update();
+    assert_eq!(screen(&app), AppScreen::MainMenu);
+}
+
 /// A right-click on a pool card reads it and adds nothing; a click off
 /// the card closes it, and so does Escape without leaving the editor.
 #[test]

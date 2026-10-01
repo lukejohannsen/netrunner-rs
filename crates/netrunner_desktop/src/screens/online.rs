@@ -301,10 +301,10 @@ fn controls(
 }
 
 /// The clipboard's text, or why there is none to read. The clipboard is
-/// this screen's alone — a ticket is pasted in and copied out, and a
-/// deck is a file (`files`) — which is what the `system_clipboard`
-/// feature is kept for.
-fn read_clipboard(clipboard: Option<&mut bevy::clipboard::Clipboard>) -> Result<String, String> {
+/// for what nobody types — a ticket pasted in and copied out here, a
+/// NetrunnerDB link pasted on the Decks screen — and a deck is a file
+/// (`files`); that is what the `system_clipboard` feature is kept for.
+pub(crate) fn read_clipboard(clipboard: Option<&mut bevy::clipboard::Clipboard>) -> Result<String, String> {
     let Some(clipboard) = clipboard else { return Err("There is no clipboard to read here".to_string()) };
     match clipboard.fetch_text() {
         bevy::clipboard::ClipboardRead::Ready(Ok(text)) => Ok(text),

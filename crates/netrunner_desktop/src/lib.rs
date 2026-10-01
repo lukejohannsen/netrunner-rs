@@ -107,6 +107,7 @@ pub mod downloads;
 pub mod files;
 pub mod models;
 pub mod nav;
+pub mod netrunnerdb;
 pub mod screens;
 pub mod skin;
 pub mod table;
@@ -154,6 +155,7 @@ impl PluginGroup for NetrunnerDesktopPlugins {
             .add(card_images::CardImagesPlugin)
             .add(downloads::DownloadsPlugin)
             .add(files::plugin)
+            .add(netrunnerdb::plugin)
             .add(screens::boot::BootPlugin)
             .add(screens::splash::SplashPlugin)
             .add(screens::main_menu::MainMenuPlugin)

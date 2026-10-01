@@ -70,7 +70,7 @@ keep their addresses however long §4's alphabet runs.*
 entries built, one PR each, driven by what the person asked for after playing. Every closed entry is
 one line below and whole in [the archive](archive/phase-7-desktop-client.md); the conventions they
 settled are AGENTS.md §5, which is where to read them. **Open: §4's movement and sound, owed since
-§3; §8's remaining items; §9, not started; and the owed list.**
+§3; §8's remaining items; §9's search half, not started; and the owed list.**
 
 ## Owed
 
@@ -83,8 +83,8 @@ settled are AGENTS.md §5, which is where to read them. **Open: §4's movement a
 - **§6c**: a lesson hint still echoes its prose. **§6d**: Cleaver's menu entries printed raw symbols ("1[credit]") — check against §4bg before fixing.
 - **§7**: a resume over an iroh ticket is tested only over TCP.
 - **§8 item 4**: the take-back's server half ("the server can take (b) later"). **§8 item 5**: replay notes — a file beside the record, and an editor.
-- **§9**: decklists searched and downloaded from NetrunnerDB, not started. The download half is §10 stage 6.
-- **§10**: the deck builder by format, decks as files and from NetrunnerDB, art per printing. Planned 30 September 2026 and built on NSG pool Stage 0d; Stages 3–5 (art per printing, the format-first builder, decks as files) are done, Stage 6 is next.
+- **§9**: decklists searched from NetrunnerDB, not started. The download half — a published decklist by its link — is done (§10 Stage 6, 1 October 2026); the search half stays here.
+- **§10**: the deck builder by format, decks as files and from NetrunnerDB, art per printing. Planned 30 September 2026 and built on NSG pool Stage 0d; Stages 3–6 are done (1 October 2026). What the plan left for later: the person's own art (`Art::Custom`, room made in Stage 3), and the terminal client's share of Stages 5–6 (its builder still imports from a pasted list).
 
 ## Closed — one line each
 
@@ -281,13 +281,15 @@ the same kind of work, so they go on this list:
 Not borrowed, with the reasons in the doc: slash commands that edit state,
 and diffs on the wire.
 
-## 9. Decklists searched and downloaded from NetrunnerDB — IDEA, not started (26 September 2026)
+## 9. Decklists searched and downloaded from NetrunnerDB — the download half DONE (1 October 2026), the search half not started
 
 The person's idea, recorded rather than built. A person should be able to
 search NetrunnerDB's published decklists (by identity, card, format or
 name) from the deck builder in either client, and download one as a saved
-deck. Today a list only arrives by pasting its text (`deck_builder`'s
-import, §5).
+deck. **The download half is built** (§10 Stage 6): a published decklist
+comes by its link or uuid, fetched over v3 into the same save-and-open
+path a file takes. The search half stays here, and the terminal client's
+share of both.
 
 - **NetrunnerDB has the API.** v2 has `/api/2.0/public/decklist/{id}` and
   `/decklists/by_date/{date}`, and the v3 API
@@ -311,9 +313,10 @@ import, §5).
   - `filter[card_id]=<slug>` works: 1,205 decks name Hoshiko, and
     `sort=-created_at` puts the newest first.
   - `filter[search]` and `filter[format_id]` returned 500 that day.
-  - The download half is §10 stage 6; the search half stays here.
+  - The download half is §10 Stage 6, done; the search half stays here,
+    on `filter[card_id]` newest first until the other filters answer.
 
-## 10. The deck builder by format, decks as files and from NetrunnerDB, art per printing — OPEN (30 September 2026)
+## 10. The deck builder by format, decks as files and from NetrunnerDB, art per printing — DONE (1 October 2026)
 
 **What the person asked for (30 September 2026):**
 - **Playable cards only.** "'Playable' seems like the only reasonable
@@ -338,7 +341,7 @@ names (`netrunner.svg`) are v3's cycle ids, so every embedded set has a
 mark. Stage 0d also left the Cards screen listing one entry per card
 with its printings in the inspector.
 
-**Stages, one PR each, Stage 6 next:**
+**Stages, one PR each, all done; each whole in the archive under its heading:**
 - **Stage 3 — art per printing:** done. A card's printings are a strip of
   pictures under the browser's inspector and beside a card opened to
   read, each the button that draws the card with that art everywhere;
@@ -357,5 +360,13 @@ with its printings in the inspector.
   offered in Downloads, the clipboard buttons gone and the clipboard
   left to the Online screen's tickets (`feat/deck-files`, 30 September
   2026).
-- **Stage 6 — a NetrunnerDB deck by link**, over v3.
+- **Stage 6 — a NetrunnerDB deck by link:** done. Import from
+  NetrunnerDB… takes a published decklist's link or uuid,
+  `netrunner_card_sync::fetch_decklist` asks the v3 API on the tokio
+  runtime, and `deck_builder::from_published` matches every card by its
+  v3 id, keeping the author and the link as the deck's description;
+  §9's download half (`feat/netrunnerdb-deck-import`, 1 October 2026).
+
+**Left for later, by the plan:** the person's own art (`Art::Custom`,
+room made in Stage 3); the terminal client's share of Stages 5–6.
 

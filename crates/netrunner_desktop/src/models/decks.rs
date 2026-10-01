@@ -105,6 +105,8 @@ pub enum Intent {
     ConfirmDelete(bool),
     /// Save a pasted or dropped list as a new deck.
     Import(String),
+    /// Save a decklist fetched from NetrunnerDB as a new deck.
+    Fetched(netrunner_card_sync::Decklist),
 }
 
 /// What happened, for the screen to act on.
@@ -278,6 +280,26 @@ impl Shelf {
                     Outcome::Changed
                 }
             },
+            Intent::Fetched(list) => {
+                let link = list.reference.page_url();
+                let published = deck_builder::Published { name: &list.name, author: &list.author, link: &link, notes: &list.notes, identity: &list.identity, cards: &list.cards };
+                match deck_builder::from_published(published, book, &self.taken()) {
+                    Ok(imported) => {
+                        // Said even when nothing was skipped: the deck
+                        // opens in the editor, and the line is what the
+                        // person reads when they come back to the shelf.
+                        let mut note = format!("Fetched {} from NetrunnerDB", imported.deck.name);
+                        if !imported.skipped.is_empty() {
+                            note.push_str(&format!("; skipped what the catalog does not know: {}", imported.skipped.join(", ")));
+                        }
+                        self.create(imported.deck, book, Some(note))
+                    }
+                    Err(error) => {
+                        self.notice = Some(format!("Nothing fetched: {error}"));
+                        Outcome::Changed
+                    }
+                }
+            }
         }
     }
 
@@ -482,6 +504,38 @@ mod tests {
         assert!(shelf.notice.as_deref().unwrap().contains("Nothing Real"));
         assert_eq!(shelf.apply(Intent::Import("just words".into()), book), Outcome::Changed);
         assert!(shelf.notice.as_deref().unwrap().starts_with("Nothing imported"));
+    }
+
+    /// A fetched list is saved like an import, its notice names the deck
+    /// and what was skipped, and an identity the catalog does not know is
+    /// the refusal.
+    #[test]
+    fn a_fetched_decklist_is_saved_and_says_where_it_came_from() {
+        use netrunner_card_sync::{Decklist, DecklistRef};
+        let (registry, catalog) = cards();
+        let book = CardBook::new(&registry, &catalog);
+        let dir = Scratch::new("fetched");
+        let mut shelf = Shelf::open(Some(dir.0.clone()), book, NsgFormat::Startup);
+        let identity = netrunner_core::decks::by_id("stolen_goods").unwrap().identity.0.clone();
+        let reference = DecklistRef::parse("99ba7131-6cf1-474e-b73f-8b1aefc93d56").unwrap();
+        let list = Decklist {
+            reference: reference.clone(),
+            name: "Tiny".to_string(),
+            author: "someone".to_string(),
+            notes: "<p>Notes.</p>".to_string(),
+            identity: identity.clone(),
+            cards: vec![(identity, 1), ("sure_gamble".to_string(), 3), ("nothing_real".to_string(), 1)],
+        };
+        let Outcome::Open(id) = shelf.apply(Intent::Fetched(list.clone()), book) else { panic!("a fetched list opens") };
+        let row = &shelf.rows[index_of(&shelf, &id)];
+        assert!(row.saved);
+        assert_eq!(row.deck.size(), 3);
+        assert_eq!(row.deck.description.as_deref(), Some(format!("By someone on NetrunnerDB: {}", reference.page_url()).as_str()));
+        assert_eq!(row.deck.how_to_play.as_deref(), Some("Notes."));
+        assert_eq!(shelf.notice.as_deref(), Some("Fetched Tiny from NetrunnerDB; skipped what the catalog does not know: nothing_real"));
+        let unknown = Decklist { identity: "nobody".to_string(), ..list };
+        assert_eq!(shelf.apply(Intent::Fetched(unknown), book), Outcome::Changed);
+        assert!(shelf.notice.as_deref().unwrap().starts_with("Nothing fetched"), "{:?}", shelf.notice);
     }
 
     #[test]

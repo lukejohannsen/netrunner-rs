@@ -126,6 +126,7 @@ credits everything a player sees, not only what is in the repository.
 |---|---|---|---|---|
 | Card data: titles, rules and flavour text, illustrator credits | Null Signal Games and the card's illustrators, compiled by NetrunnerDB | https://netrunnerdb.com | theirs, not licensed by this project | NetrunnerDB's public API v3 |
 | Card scans, the printed cards | Null Signal Games and each card's illustrator, named on the card | https://nullsignal.games | theirs, not licensed by this project | card-images.netrunnerdb.com (750 × 1050 where it has one, else 300 × 420) |
+| A published decklist, fetched by its link (Import from NetrunnerDB…) | its author, named with the link in the saved deck's description | https://netrunnerdb.com | theirs, published on NetrunnerDB; saved as the player's own copy | NetrunnerDB's public API v3 |
 
 ## Software
 
