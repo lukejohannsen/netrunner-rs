@@ -19061,4 +19061,188 @@ mod parhelion {
         assert!(off.runner.heap.contains(&id("time_bomb")));
         assert!(matches!(off.pending_decision, Some(PendingDecision::ChooseCards { .. })), "sabotage 3: the Corp chooses from HQ");
     }
+
+    // ---- Stage 4b: breaker words ----
+
+    /// A run on HQ, its ice already installed, up to the first encounter.
+    fn encounter(state: &GameState, registry: &CardRegistry) -> GameState {
+        let (state, _) = apply_action(state, registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("initiate run");
+        let (state, _) = crate::rules::test_support::continue_run(&state, registry).expect("approach the ice");
+        pass_until(state, registry, |state| state.active_run.as_ref().is_some_and(|run| run.phase == crate::rules::RunPhase::EncounterIce))
+    }
+
+    /// The Runner uses an ability in the encounter's window, and the Corp,
+    /// given priority by it, passes back.
+    fn use_ability(state: &GameState, registry: &CardRegistry, card: &str, ability_index: usize) -> Result<GameState, RulesError> {
+        let (state, _) = apply_action(state, registry, PlayerAction::ActivateAbility { target: fixture_install_id(card), ability_index })?;
+        Ok(apply_action(&state, registry, PlayerAction::PassPriority { side: Side::Corp }).map_or(state.clone(), |(state, _)| state))
+    }
+
+    fn in_rig(card: &str, strength: i32, counters: u32) -> crate::rules::InstalledRunnerCard {
+        crate::rules::InstalledRunnerCard { install_id: fixture_install_id(card), card: id(card), base_strength: strength, counters, ..Default::default() }
+    }
+
+    fn broken(state: &GameState) -> usize {
+        let run = state.active_run.as_ref().expect("encountering");
+        run.ice[run.position].subroutines.iter().filter(|s| s.status == crate::rules::SubroutineStatus::Broken).count()
+    }
+
+    #[test]
+    fn tremolo_breaks_two_barrier_subroutines_for_a_credit_less_per_cybernetic_hardware() {
+        let registry = registry();
+        for (cybernetics, price) in [(0, 3), (1, 2), (2, 1)] {
+            let mut state = runner_turn();
+            state.corp.installed = vec![ice_at_hq("bran_1_0")];
+            state.runner.rig = vec![in_rig("tremolo", 2, 0)];
+            for card in ["wake_implant_v2a_jrj", "basilar_synthgland_2kvj"].iter().take(cybernetics) {
+                state.runner.rig.push(in_rig(card, 0, 0));
+            }
+            state.runner.rig.push(in_rig("t400_memory_diamond", 0, 0));
+            state.runner.resources.credits = Credits(20);
+            let mut state = encounter(&state, &registry);
+            for _ in 0..2 {
+                state = use_ability(&state, &registry, "tremolo", 1).expect("+2 strength");
+            }
+            let before = state.runner.resources.credits.0;
+            let state = use_ability(&state, &registry, "tremolo", 0).expect("break");
+            assert_eq!(before - state.runner.resources.credits.0, price, "{cybernetics} cybernetic hardware");
+            assert_eq!(broken(&state), 2, "up to 2");
+        }
+
+        // Barriers only.
+        let mut state = runner_turn();
+        state.corp.installed = vec![ice_at_hq("whitespace")];
+        state.runner.rig = vec![in_rig("tremolo", 2, 0)];
+        let state = encounter(&state, &registry);
+        assert!(use_ability(&state, &registry, "tremolo", 0).is_err());
+    }
+
+    #[test]
+    fn poison_vial_breaks_two_more_once_a_subroutine_is_broken_and_is_trashed_when_empty() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.grip = vec![id("poison_vial")];
+        let (vial, _) = apply_action(&state, &registry, PlayerAction::InstallHardware { card_id: id("poison_vial") }).expect("install");
+        assert_eq!(vial.runner.rig[0].counters, 3, "loaded with 3 power counters");
+
+        state.corp.installed = vec![ice_at_hq("bran_1_0")];
+        state.runner.grip.clear();
+        state.runner.rig = vec![in_rig("tremolo", 6, 0), in_rig("poison_vial", 0, 3)];
+        state.runner.resources.credits = Credits(20);
+        let state = encounter(&state, &registry);
+        assert!(use_ability(&state, &registry, "poison_vial", 0).is_err(), "nothing broken yet this encounter");
+        let snapshot = state.clone();
+        let state = use_ability(&state, &registry, "tremolo", 0).expect("Tremolo breaks 2");
+        let state = use_ability(&state, &registry, "poison_vial", 0).expect("then the vial");
+        assert_eq!(broken(&state), 3, "the last one, of any type and any strength");
+        assert_eq!(state.runner.rig[1].counters, 2, "a hosted power counter");
+
+        let mut last = snapshot;
+        last.runner.rig[1].counters = 1;
+        let last = use_ability(&last, &registry, "tremolo", 0).expect("Tremolo breaks 2");
+        let last = use_ability(&last, &registry, "poison_vial", 0).expect("the last counter");
+        assert!(!last.runner.rig.iter().any(|card| card.card == id("poison_vial")), "empty, so trashed");
+        assert!(last.runner.heap.contains(&id("poison_vial")));
+    }
+
+    #[test]
+    fn wake_implant_counts_hq_runs_and_spends_up_to_three_counters_on_r_and_d() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.grip = vec![id("wake_implant_v2a_jrj"), id("sure_gamble"), id("sure_gamble")];
+        let (state, _) = apply_action(&state, &registry, PlayerAction::InstallHardware { card_id: id("wake_implant_v2a_jrj") }).expect("install");
+        assert_eq!(state.runner.grip.len(), 1, "1 meat damage");
+        let (state, _) = run_to_completion(state, &registry, ServerId::Hq);
+        assert_eq!(state.runner.rig[0].counters, 1, "a successful run on HQ");
+        let mut state = state;
+        state.runner.rig[0].counters = 2;
+        state.runner.resources.clicks = Clicks(4);
+        state.corp.r_and_d = vec![id("hedge_fund"); 5];
+        let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::RnD }).expect("initiate run");
+        let (state, _) = crate::rules::test_support::through_movement(&state, &registry).expect("continue run");
+        let (asked, _) = apply_action(&state, &registry, PlayerAction::CompleteRun).expect("complete run");
+        assert!(matches!(asked.pending_decision, Some(PendingDecision::ChooseNumber { .. })), "up to 3, of the 2 hosted: {:?}", asked.pending_decision);
+        let offered: Vec<u32> = crate::rules::legal_actions_for(&asked, &registry, Side::Runner)
+            .into_iter()
+            .filter_map(|action| match action {
+                PlayerAction::ChooseNumber { amount } => Some(amount),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(offered, vec![0, 1, 2]);
+        let (chosen, _) = apply_action(&asked, &registry, PlayerAction::ChooseNumber { amount: 2 }).expect("remove 2");
+        assert_eq!(chosen.runner.rig[0].counters, 0);
+        let run = chosen.active_run.as_ref().expect("still breaching");
+        assert_eq!(run.additional_rd_access, 2, "that many additional cards");
+    }
+
+    #[test]
+    fn abaasy_offers_a_grip_trash_for_a_draw_the_first_time_each_turn_it_fully_breaks_ice() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.installed = vec![ice_at_hq("whitespace"), ice_at_hq("enigma")];
+        state.runner.rig = vec![in_rig("abaasy", 1, 0)];
+        state.runner.grip = vec![id("sure_gamble")];
+        state.runner.stack = vec![id("diesel"), id("corroder")];
+        state.runner.resources.credits = Credits(20);
+        let mut state = encounter(&state, &registry);
+        state = use_ability(&state, &registry, "abaasy", 1).expect("+2 strength");
+        state = use_ability(&state, &registry, "abaasy", 0).expect("break 1");
+        assert!(state.pending_paid_choice.is_none(), "not yet fully broken");
+        state = use_ability(&state, &registry, "abaasy", 0).expect("break the other");
+        let choice = state.pending_paid_choice.as_ref().expect("the first time this turn");
+        assert_eq!(choice.cost, Cost::Trash { from: crate::dsl::CardZoneRef::OwnGrip, filter: crate::dsl::CardFilter::Any, count: 1, reveal: false });
+        let (paid, _) = apply_action(&state, &registry, accept()).expect("trash Sure Gamble");
+        assert_eq!(paid.runner.heap, vec![id("sure_gamble")]);
+        assert_eq!(paid.runner.grip, vec![id("corroder")], "and draw 1");
+
+        // The second piece of ice, the same turn: no offer.
+        let (declined, _) = apply_action(&state, &registry, PlayerAction::DeclinePendingPaidChoice).expect("decline");
+        let first = declined.active_run.as_ref().map(|run| run.position);
+        let mut next = declined;
+        for _ in 0..12 {
+            if next.active_run.as_ref().is_some_and(|run| Some(run.position) != first && run.phase == crate::rules::RunPhase::EncounterIce) {
+                break;
+            }
+            next = match next.paid_ability_window.as_ref().map(|window| window.active_priority) {
+                Some(side) => apply_action(&next, &registry, PlayerAction::PassPriority { side }).expect("pass").0,
+                None => crate::rules::test_support::continue_run(&next, &registry).expect("on to the next ice").0,
+            };
+        }
+        next = use_ability(&next, &registry, "abaasy", 1).expect("+2 strength");
+        next = use_ability(&next, &registry, "abaasy", 0).expect("break 1");
+        next = use_ability(&next, &registry, "abaasy", 0).expect("break the other");
+        assert_eq!(broken(&next), 2, "fully broken again");
+        assert!(next.pending_paid_choice.is_none(), "but not the first time this turn");
+        let abaasy = next.runner.rig.iter().find(|card| card.card == id("abaasy")).expect("installed");
+        assert_eq!(abaasy.this_turn.count(next.turn, crate::dsl::Trigger::OnIceFullyBroken), 2, "counted on the copy, more than once");
+    }
+
+    /// Fully broken by two objects, the ice was fully broken by neither
+    /// (CR 6.5.7b), so Abaasy hears nothing and its first time is still
+    /// to come.
+    #[test]
+    fn abaasy_does_not_hear_ice_another_breaker_helped_break() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.installed = vec![ice_at_hq("enigma")];
+        state.runner.rig = vec![in_rig("abaasy", 3, 0), in_rig("lobisomem", 2, 0)];
+        state.runner.grip = vec![id("sure_gamble")];
+        state.runner.resources.credits = Credits(20);
+        let state = encounter(&state, &registry);
+        let state = use_ability(&state, &registry, "abaasy", 0).expect("Abaasy breaks 1");
+        let state = use_ability(&state, &registry, "lobisomem", 0).expect("Lobisomem the other");
+        assert_eq!(broken(&state), 2);
+        assert!(state.pending_paid_choice.is_none());
+        assert_eq!(state.runner.rig[0].this_turn.count(state.turn, crate::dsl::Trigger::OnIceFullyBroken), 0);
+    }
+
+    /// The copy counts what it did, and only what a card asks of one.
+    #[test]
+    fn a_first_time_by_this_card_is_refused_where_the_copy_does_not_count_it() {
+        let mut card: crate::dsl::CardDefinition = serde_json::from_str(include_str!("../../data/runner/abaasy.json")).expect("the card");
+        assert_eq!(card.validate(), Ok(()));
+        card.triggers[0].trigger = crate::dsl::Trigger::OnIcePassed;
+        assert!(card.validate().is_err());
+    }
 }

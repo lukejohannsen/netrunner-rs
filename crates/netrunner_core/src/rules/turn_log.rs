@@ -533,8 +533,10 @@ pub(crate) struct AsOf(TurnLog, Option<(InstallId, CopyTurn)>);
 impl AsOf {
     /// Whether the occurrence just counted is the first this turn of any
     /// of `triggers` about the copy `install` — "the first time each turn
-    /// you advance **this agenda**". Read off the copy as it was counted,
-    /// for the one install the event was about.
+    /// you advance **this agenda**" — or done by it ("the first time each
+    /// turn **this program** fully breaks a piece of ice"). Read off the
+    /// copy as it was counted, for the one install the event was about or
+    /// whose abilities did it.
     pub(crate) fn is_first_on(&self, install: Option<InstallId>, turn: u32, triggers: &[Trigger]) -> bool {
         let Some((counted, copy)) = self.1 else { return false };
         install == Some(counted) && triggers.iter().map(|trigger| copy.count(turn, *trigger)).sum::<u32>() == 1
@@ -554,9 +556,10 @@ impl AsOf {
     }
 }
 
-/// What has happened to one Corp install this turn: for each trigger,
-/// whether a moment about this copy has been heard once, or more than once
-/// — all "the first time each turn … **this** card" asks. The turn's log
+/// What has happened to one Corp install this turn, or what one rig install
+/// has done (`CopyTurn::counts_by`): for each trigger, whether a moment
+/// about this copy — or by it — has been heard once, or more than once —
+/// all "the first time each turn … **this** card" asks. The turn's log
 /// counts classes (a card's kind, a server's) and has no column for one
 /// copy, and a count per install on `GameState` would be a table to keep in
 /// step with the installs; this rides on the install and leaves with it.
@@ -586,6 +589,14 @@ impl CopyTurn {
     /// rest until a card prints one.
     pub(crate) fn counts(trigger: Trigger) -> bool {
         matches!(trigger, Trigger::OnAdvance | Trigger::OnRez)
+    }
+
+    /// Whether moments of `trigger` are counted on the copy that *did*
+    /// them (`Moment::by`, a rig install): fully breaking a piece of ice
+    /// (Abaasy's "the first time each turn this program fully breaks a
+    /// piece of ice", CR 6.5.7b), and nothing else a card asks yet.
+    pub(crate) fn counts_by(trigger: Trigger) -> bool {
+        matches!(trigger, Trigger::OnIceFullyBroken)
     }
 
     fn bump(&mut self, turn: u32, trigger: Trigger) {
@@ -897,6 +908,16 @@ pub(crate) fn record(state: &mut GameState, registry: &CardRegistry, event: &Gam
             if let Some(installed) = state.corp.installed.iter_mut().find(|installed| installed.install_id == install) {
                 installed.this_turn.bump(turn, moment.trigger);
                 copy = Some((install, installed.this_turn));
+            }
+        }
+        // And on the rig install that did it.
+        if let Some(by) = moment.by
+            && CopyTurn::counts_by(moment.trigger)
+        {
+            let turn = state.turn;
+            if let Some(installed) = state.runner.rig.iter_mut().find(|installed| installed.install_id == by) {
+                installed.this_turn.bump(turn, moment.trigger);
+                copy = Some((by, installed.this_turn));
             }
         }
     }

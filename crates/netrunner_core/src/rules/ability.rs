@@ -3493,6 +3493,13 @@ pub fn check_requirement(
         EffectRequirement::SubroutineBrokenThisRun => {
             if state.run_in_progress().is_some_and(|run| run.subroutine_broken) { Ok(()) } else { Err(RulesError::RequirementNotMet) }
         }
+        EffectRequirement::SubroutineBrokenThisEncounter => {
+            let broken = state
+                .active_run
+                .as_ref()
+                .is_some_and(|run| run.phase == RunPhase::EncounterIce && run.this_encounter.broken_by != crate::rules::run::BrokenBy::Nothing);
+            if broken { Ok(()) } else { Err(RulesError::RequirementNotMet) }
+        }
         EffectRequirement::LastRunUnsuccessful => {
             if state.last_completed_run.as_ref().is_some_and(|run| run.unsuccessful) { Ok(()) } else { Err(RulesError::RequirementNotMet) }
         }
@@ -4078,6 +4085,10 @@ pub(crate) fn resolve_amount(amount: &Amount, ctx: &ResolutionContext<'_>, state
         Amount::CorpInstalls(filter) => {
             crate::rules::pending_choice::eligible_positions(state, registry, Side::Corp, &crate::dsl::CardZoneRef::OwnInstalled, filter, None, None).len() as u32
         }
+        Amount::RunnerInstalls(filter) => {
+            crate::rules::pending_choice::eligible_positions(state, registry, Side::Runner, &crate::dsl::CardZoneRef::OwnInstalled, filter, None, None).len() as u32
+        }
+        Amount::Reduced { amount, by } => resolve_amount(amount, ctx, state, registry).saturating_sub(resolve_amount(by, ctx, state, registry)),
         Amount::OtherUnrezzedIce => state
             .corp
             .installed
@@ -4186,6 +4197,7 @@ pub(crate) fn consume_requirement(
         | EffectRequirement::SubroutineResolvedThisRun
         | EffectRequirement::IceDerezzedThisRun
         | EffectRequirement::SubroutineBrokenThisRun
+        | EffectRequirement::SubroutineBrokenThisEncounter
         | EffectRequirement::LastRunUnsuccessful
         | EffectRequirement::MemoryFull
         | EffectRequirement::RunnerClicksAtLeast(_)

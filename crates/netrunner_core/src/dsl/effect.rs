@@ -1711,6 +1711,21 @@ pub enum Amount {
     /// (`OtherUnrezzedIce`, `IceProtectingThisServer`), and a filter is
     /// what an `Amount` could not hold while it was `Copy`.
     CorpInstalls(crate::dsl::CardFilter),
+    /// The Runner's installed cards the filter admits — Tremolo's "for each
+    /// installed piece of **cybernetic** hardware", `All([CardType(Hardware),
+    /// HasSubtype(Cybernetic)])`. `CorpInstalls`' other side, counted the
+    /// same way (a selection over the Runner's installed cards). Composition
+    /// didn't work: `InstalledIcebreakerCount` is one sentence's count.
+    RunnerInstalls(crate::dsl::CardFilter),
+    /// `amount` less `by`, never below 0 — Tremolo's "3[credit]: … This
+    /// ability costs 1[credit] less to use for each installed piece of
+    /// cybernetic hardware", `Cost::CreditsAmount(Reduced { amount: Fixed(3),
+    /// by: RunnerInstalls(…) })`: a cost lowered past 0 is 0 (CR 1.16.2a).
+    /// Composition didn't work: an `Amount` is a count and every count was
+    /// one number, and a `ContinuousKind` is about a card or a player, not
+    /// one of a card's abilities. The cost's own words, so the ability
+    /// prices itself wherever the payment asks.
+    Reduced { amount: Box<Amount>, by: Box<Amount> },
     /// Unrezzed pieces of ice other than `acting_card`'s install, wherever
     /// they are — Reverb's "lowered by 1[credit] for each other unrezzed
     /// piece of ice". No amount counted ice by rez state.

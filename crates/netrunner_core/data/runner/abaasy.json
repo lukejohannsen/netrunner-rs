@@ -1,0 +1,76 @@
+{
+  "id": "abaasy",
+  "title": "Abaasy",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 2,
+  "strength": 1,
+  "memory_cost": 1,
+  "triggers": [
+    {
+      "trigger": "OnIceFullyBroken",
+      "subject": "Any",
+      "when": "ByThis",
+      "first_each_turn": true,
+      "effects": [
+        {
+          "OfferPaidChoice": {
+            "side": "Runner",
+            "cost": {
+              "Trash": {
+                "from": "OwnGrip",
+                "filter": "Any",
+                "count": 1
+              }
+            },
+            "if_paid": {
+              "DrawCards": [
+                "Runner",
+                1
+              ]
+            },
+            "if_declined": {
+              "Sequence": []
+            },
+            "text": "you may trash 1 card from your grip to draw 1 card"
+          }
+        }
+      ],
+      "text": "The first time each turn this program fully breaks a piece of ice, you may trash 1 card from your grip to draw 1 card."
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "text": "Interface → 1[credit]: Break 1 code gate subroutine.",
+      "cost": {
+        "Credits": 1
+      },
+      "effect": {
+        "BreakSubroutines": {
+          "count": {
+            "Fixed": 1
+          },
+          "restrict_to": "CodeGate"
+        }
+      },
+      "requirement": "DuringEncounter"
+    },
+    {
+      "trigger": "Paid",
+      "text": "2[credit]: +2 strength.",
+      "cost": {
+        "Credits": 2
+      },
+      "effect": {
+        "BoostStrength": {
+          "amount": 2,
+          "duration": "Encounter"
+        }
+      },
+      "requirement": "DuringEncounter"
+    }
+  ],
+  "built_from": 33070,
+  "is_playable": true
+}
