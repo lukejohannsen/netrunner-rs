@@ -4,7 +4,7 @@
   "side": "Runner",
   "category": "Sample",
   "description": "Nine jobs, six run events and four fracters: Baz works for a living and runs when it pays.",
-  "identity": "barry_baz_wong",
+  "identity": "barry_baz_wong_tri_maf_veteran",
   "cards": [
     {
       "card": "clean_getaway",
@@ -39,7 +39,7 @@
       "count": 2
     },
     {
-      "card": "maglectric_rapid",
+      "card": "maglectric_rapid_748_mod",
       "count": 3
     },
     {

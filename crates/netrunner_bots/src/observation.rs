@@ -1043,7 +1043,7 @@ mod tests {
         let head: Vec<&str> = by_slot.iter().take(6).map(|(_, id)| id.as_str()).collect();
         assert_eq!(
             head,
-            vec!["rene_loup_arcemont", "wildcat_strike", "carnivore", "botulus", "buzzsaw", "cleaver"]
+            vec!["rene_loup_arcemont_party_animal", "wildcat_strike", "carnivore", "botulus", "buzzsaw", "cleaver"]
         );
 
         // The Core Set sorts *after* System Gateway despite its far lower

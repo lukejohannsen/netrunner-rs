@@ -34,7 +34,9 @@ first.
 variants on purpose. `triggers_fired` keys are `card/Trigger`, so such a
 change cannot be byte-identical; it passes when renaming the base report's
 keys (summing where two collapse into one) makes the reports equal, and
-fails on anything else.
+fails on anything else. `--expect-card-renames old_id=new_id,...` is the
+same for a change that renames card ids: the `cards` rows and the card
+half of every `triggers_fired` key are renamed before comparing.
 
 `--head-worktree` measures the checkout as it stands, uncommitted changes
 included. The binary is still copied out and named for the diff it was
@@ -159,15 +161,18 @@ def parse_renames(spec):
     return renames
 
 
-def renamed(report, renames):
+def renamed(report, renames, card_renames=None):
     """`report` with its `triggers_fired` keys renamed, counts summed where
-    two triggers collapse into one."""
+    two triggers collapse into one, and each renamed card id replaced in
+    `cards` and in the card half of a `triggers_fired` key."""
+    card_renames = card_renames or {}
     fired = {}
     for key, count in report.get("triggers_fired", {}).items():
         card, _, trigger = key.rpartition("/")
-        key = f"{card}/{renames.get(trigger, trigger)}"
+        key = f"{card_renames.get(card, card)}/{renames.get(trigger, trigger)}"
         fired[key] = fired.get(key, 0) + count
-    return {**report, "triggers_fired": fired}
+    cards = {card_renames.get(card, card): row for card, row in report.get("cards", {}).items()}
+    return {**report, "triggers_fired": fired, **({"cards": cards} if "cards" in report else {})}
 
 
 def flattened(value, prefix=""):
@@ -205,10 +210,12 @@ def main():
     parser.add_argument("--seed", type=int, default=1)
     parser.add_argument("--games", type=int, help="override one full pass of the pool (never go below it for per-card claims)")
     parser.add_argument("--expect-renames", metavar="OLD=NEW,...", help="Trigger variants renamed on purpose")
+    parser.add_argument("--expect-card-renames", metavar="OLD=NEW,...", help="card ids renamed on purpose")
     parser.add_argument("--format", choices=["startup", "standard", "eternal", "snapshot"],
                         help="play only the sample matchups legal in this format (default: the whole pool, Casual)")
     args = parser.parse_args()
     renames = parse_renames(args.expect_renames)
+    card_renames = parse_renames(args.expect_card_renames)
 
     # Sequential: both refs build in the one shared worktree.
     base_label, base_binary, base_games = pin_ref(args.base, args.format)
@@ -237,12 +244,12 @@ def main():
             print(f"  {name:<16} identical  {md5}")
             continue
         base, head = json.loads(base_bytes), json.loads(head_bytes)
-        if renames and renamed(base, renames) == head:
+        if (renames or card_renames) and renamed(base, renames, card_renames) == head:
             print(f"  {name:<16} identical but for the expected renames")
             continue
         failed = True
         print(f"  {name:<16} DIFFERS    {md5} -> {hashlib.md5(head_bytes).hexdigest()}")
-        print("\n".join(describe_difference(renamed(base, renames), head)))
+        print("\n".join(describe_difference(renamed(base, renames, card_renames), head)))
     sys.exit(1 if failed else 0)
 
 

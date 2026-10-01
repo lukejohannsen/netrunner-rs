@@ -93,7 +93,7 @@ fn gabriel_santiago_gains_two_credits_on_first_successful_hq_run_but_not_the_sec
     let registry = registry();
     let mut state = base_state();
     state.phase = GamePhase::Action(Side::Runner);
-    state.runner.identity = Some(CardId("gabriel_santiago".to_string()));
+    state.runner.identity = Some(CardId("gabriel_santiago_consummate_professional".to_string()));
     state.runner.resources.clicks = Clicks(4);
     state.runner.resources.credits = Credits(0);
     // HQ empty: a successful run against it completes immediately with
@@ -967,8 +967,8 @@ mod system_gateway {
     fn printed_link_comes_from_the_catalog() {
         let registry = sg_registry();
         let link = |id: &str| registry.get(&CardId(id.to_string())).expect(id).base_link;
-        assert_eq!(link("kate_mccaffrey"), Some(1));
-        for identity in ["rene_loup_arcemont", "zahya_sadeghi", "tao_salonga"] {
+        assert_eq!(link("kate_mac_mccaffrey_digital_tinker"), Some(1));
+        for identity in ["rene_loup_arcemont_party_animal", "zahya_sadeghi_versatile_smuggler", "tao_salonga_telepresence_magician"] {
             assert_eq!(link(identity), Some(0), "{identity}");
         }
         assert_eq!(link("corroder"), None, "not an identity: no printed link at all");
@@ -1015,7 +1015,7 @@ mod system_gateway {
         let registry = sg_registry();
         let mut state = base_state();
         state.phase = GamePhase::Action(Side::Runner);
-        state.runner.identity = Some(CardId("noise".to_string()));
+        state.runner.identity = Some(CardId("noise_hacker_extraordinaire".to_string()));
         state.runner.resources.clicks = Clicks(4);
         state.runner.resources.credits = Credits(10);
         state.runner.grip = vec![CardId("botulus".to_string())];
@@ -1701,7 +1701,7 @@ mod system_gateway {
         let registry = sg_registry();
         let mut state = base_state();
         state.phase = GamePhase::Action(Side::Runner);
-        state.runner.identity = Some(CardId("rene_loup_arcemont".to_string()));
+        state.runner.identity = Some(CardId("rene_loup_arcemont_party_animal".to_string()));
         state.runner.resources.clicks = Clicks(4);
         state.runner.resources.credits = Credits(5);
         state.runner.stack = vec![CardId("stack_card".to_string())];
@@ -2078,7 +2078,7 @@ mod system_gateway {
         state.phase = GamePhase::Action(Side::Runner);
         state.runner.resources.clicks = Clicks(4);
         state.runner.resources.credits = Credits(0);
-        state.runner.identity = Some(CardId("zahya_sadeghi".to_string()));
+        state.runner.identity = Some(CardId("zahya_sadeghi_versatile_smuggler".to_string()));
         state.corp.installed = vec![corp_ice("palisade", ServerId::RnD)];
         state.corp.hq = vec![CardId("hq_card_0".to_string())];
 
@@ -2133,7 +2133,7 @@ mod system_gateway {
         state.phase = GamePhase::Action(Side::Runner);
         state.runner.resources.clicks = Clicks(4);
         state.runner.resources.credits = Credits(0);
-        state.runner.identity = Some(CardId("zahya_sadeghi".to_string()));
+        state.runner.identity = Some(CardId("zahya_sadeghi_versatile_smuggler".to_string()));
         state.corp.hq = vec![CardId("hq_card_0".to_string())];
 
         let (state, mut events) = run_to_completion(state, &registry, ServerId::Hq);
@@ -4037,7 +4037,7 @@ mod system_gateway {
         let registry = sg_registry();
         let mut state = base_state();
         state.phase = GamePhase::Action(Side::Runner);
-        state.runner.identity = Some(CardId("kate_mccaffrey".to_string()));
+        state.runner.identity = Some(CardId("kate_mac_mccaffrey_digital_tinker".to_string()));
         state.runner.resources.clicks = Clicks(4);
         state.runner.resources.credits = Credits(10);
         state.runner.grip =
@@ -4945,7 +4945,7 @@ mod system_gateway {
     fn tao_salonga_swaps_two_installed_ice_and_the_swap_is_reflected_in_a_later_run() {
         let registry = sg_registry();
         let mut state = base_state();
-        state.runner.identity = Some(CardId("tao_salonga".to_string()));
+        state.runner.identity = Some(CardId("tao_salonga_telepresence_magician".to_string()));
         state.corp.resources.credits = Credits(10);
         // 1 (install) + 2 (advance x2) + 1 (score) = 4 clicks.
         state.corp.resources.clicks = Clicks(4);
@@ -6895,7 +6895,7 @@ mod system_gateway {
         let registry = sg_registry();
         let mut state = base_state();
         state.phase = GamePhase::Action(Side::Runner);
-        state.runner.identity = Some(CardId("magdalene_keino_chemutai".to_string()));
+        state.runner.identity = Some(CardId("magdalene_keino_chemutai_cryptarchitect".to_string()));
         state.runner.resources.clicks = Clicks(0);
         state.runner.resources.credits = Credits(5);
         state.runner.grip = vec![
@@ -7633,7 +7633,7 @@ mod system_gateway {
     fn dewi_subrotoputri_flips_on_a_successful_run_when_memory_is_full_and_back_when_it_is_not() {
         let registry = sg_registry();
         let mut state = runner_turn(5, 4);
-        state.runner.identity = Some(CardId("dewi_subrotoputri".to_string()));
+        state.runner.identity = Some(CardId("dewi_subrotoputri_pedagogical_dhalang".to_string()));
         // `memory_units` is derived (`memory::refresh`): four 1[mu] programs
         // against the base 4[mu] is "full".
         state.runner.rig = ["cleaver", "corroder", "unity", "echelon"].map(|id| rig_card_with_counters(id, 0)).to_vec();
@@ -7651,7 +7651,7 @@ mod system_gateway {
 
         // Flipped, with memory to spare: the back side offers to flip back.
         let mut state = runner_turn(5, 4);
-        state.runner.identity = Some(CardId("dewi_subrotoputri".to_string()));
+        state.runner.identity = Some(CardId("dewi_subrotoputri_pedagogical_dhalang".to_string()));
         state.runner.identity_flipped = true;
         state.runner.rig = ["cleaver", "corroder", "unity"].map(|id| rig_card_with_counters(id, 0)).to_vec();
         state.runner.stack = vec![CardId("s0".to_string())];
@@ -7664,7 +7664,7 @@ mod system_gateway {
 
         // Full memory on the back side: no offer at all.
         let mut state = runner_turn(5, 4);
-        state.runner.identity = Some(CardId("dewi_subrotoputri".to_string()));
+        state.runner.identity = Some(CardId("dewi_subrotoputri_pedagogical_dhalang".to_string()));
         state.runner.identity_flipped = true;
         state.runner.rig = ["cleaver", "corroder", "unity", "echelon"].map(|id| rig_card_with_counters(id, 0)).to_vec();
         let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run");
@@ -7953,7 +7953,7 @@ mod system_gateway {
     fn phoenix_gains_a_credit_and_makes_the_corp_trash_from_hq_after_a_subroutine_resolved() {
         let registry = sg_registry();
         let mut state = runner_turn(10, 4);
-        state.runner.identity = Some(CardId("ryo_phoenix_ono".to_string()));
+        state.runner.identity = Some(CardId("ryo_phoenix_ono_out_of_the_ashes".to_string()));
         state.corp.hq = vec![CardId("hedge_fund".to_string()), CardId("ice_wall".to_string())];
         state.corp.installed = vec![corp_ice("whitespace", ServerId::Remote(0))];
 
@@ -8018,7 +8018,7 @@ mod system_gateway {
     fn topan_installs_one_card_a_turn_for_a_click_two_cheaper_and_suffers_a_meat_damage() {
         let registry = sg_registry();
         let mut state = runner_turn(3, 4);
-        state.runner.identity = Some(CardId("topan".to_string()));
+        state.runner.identity = Some(CardId("topan_ormas_leader".to_string()));
         state.runner.grip = vec![CardId("corroder".to_string()), CardId("sure_gamble".to_string()), CardId("diesel".to_string())];
 
         let legal = crate::rules::legal_actions(&state, &registry);
@@ -8090,7 +8090,7 @@ mod system_gateway {
     fn barry_baz_wong_may_install_a_resource_or_hardware_when_the_corp_rezzes_ice() {
         let registry = sg_registry();
         let mut state = runner_turn(5, 4);
-        state.runner.identity = Some(CardId("barry_baz_wong".to_string()));
+        state.runner.identity = Some(CardId("barry_baz_wong_tri_maf_veteran".to_string()));
         state.runner.grip = vec![CardId("cleaver".to_string()), CardId("telework_contract".to_string())];
         state.corp.resources.credits = Credits(10);
         state.corp.installed = vec![ice_installed("ice_wall", ServerId::Hq, false)];
@@ -8113,7 +8113,7 @@ mod system_gateway {
         state.phase = GamePhase::Action(Side::Corp);
         state.corp.resources.clicks = Clicks(3);
         state.corp.resources.credits = Credits(10);
-        state.runner.identity = Some(CardId("barry_baz_wong".to_string()));
+        state.runner.identity = Some(CardId("barry_baz_wong_tri_maf_veteran".to_string()));
         state.runner.grip = vec![CardId("telework_contract".to_string())];
         state.runner.resources.credits = Credits(5);
         let mut asset = corp_root("pad_campaign", ServerId::Remote(0));
@@ -8130,7 +8130,7 @@ mod system_gateway {
             let mut state = base_state();
             state.phase = GamePhase::Action(Side::Corp);
             state.corp.resources.clicks = Clicks(0);
-            state.runner.identity = Some(CardId("muslihat".to_string()));
+            state.runner.identity = Some(CardId("muslihat_multifarious_marketeer".to_string()));
             state.runner.stack = vec![CardId("diesel".to_string()), CardId("jailbreak".to_string()), CardId(top.to_string())];
             state
         };
@@ -8177,7 +8177,7 @@ mod system_gateway {
     fn maglectric_rapid_trashes_itself_on_a_successful_hq_run_to_derez_a_rezzed_corp_card() {
         let registry = sg_registry();
         let mut state = runner_turn(0, 4);
-        state.runner.rig = vec![rig_card_with_counters("maglectric_rapid", 0)];
+        state.runner.rig = vec![rig_card_with_counters("maglectric_rapid_748_mod", 0)];
         state.corp.installed = vec![corp_root("pad_campaign", ServerId::Remote(0)), corp_ice("ice_wall", ServerId::Remote(0))];
 
         let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run");
@@ -8186,7 +8186,7 @@ mod system_gateway {
         let paid = state.pending_paid_choice.as_ref().expect("the offer");
         assert_eq!((paid.side, &paid.cost), (Side::Runner, &crate::dsl::Cost::TrashSelf));
         let (state, _) = apply_action(&state, &registry, PlayerAction::AcceptPendingPaidChoice { cost_option_index: None }).expect("trash it");
-        assert_eq!(state.runner.heap, vec![CardId("maglectric_rapid".to_string())]);
+        assert_eq!(state.runner.heap, vec![CardId("maglectric_rapid_748_mod".to_string())]);
         let (state, _) = apply_action(&state, &registry, PlayerAction::ToggleCardSelection { position: 1 }).expect("the ice");
         let (state, events) = apply_action(&state, &registry, PlayerAction::ConfirmCardSelection).expect("derez it");
         assert!(events.iter().any(|e| matches!(e, crate::rules::GameEvent::CardDerezzed { card: Some(card), .. } if card.0 == "ice_wall")));
@@ -8195,7 +8195,7 @@ mod system_gateway {
 
         // Nothing rezzed: no offer, and the hardware stays.
         let mut state = runner_turn(0, 4);
-        state.runner.rig = vec![rig_card_with_counters("maglectric_rapid", 0)];
+        state.runner.rig = vec![rig_card_with_counters("maglectric_rapid_748_mod", 0)];
         let mut asset = corp_root("pad_campaign", ServerId::Remote(0));
         asset.rezzed = false;
         state.corp.installed = vec![asset];
@@ -12893,7 +12893,7 @@ mod vantage_point {
     fn run_hq_past_flagship(registry: &CardRegistry) -> (GameState, Vec<crate::rules::GameEvent>) {
         let mut state = base_state();
         state.phase = GamePhase::Action(Side::Runner);
-        state.runner.identity = Some(id("gabriel_santiago"));
+        state.runner.identity = Some(id("gabriel_santiago_consummate_professional"));
         state.runner.resources.credits = Credits(5);
         state.corp.installed.push(flagship_in_hq_root());
         state.corp.hq = vec![id("hedge_fund"), id("ice_wall"), id("palisade")];
@@ -16312,8 +16312,8 @@ mod the_automata_initiative {
     fn mic_is_trashed_during_a_run_on_its_server_to_end_it_unless_the_runner_spends_a_click() {
         let registry = registry();
         let mut state = runner_turn();
-        state.corp.installed = vec![ice_at_hq("mic"), crate::rules::InstalledCard { install_id: InstallId(91), server: ServerId::RnD, ..ice_at_hq("ice_wall") }];
-        let mic = fixture_install_id("mic");
+        state.corp.installed = vec![ice_at_hq("m_i_c"), crate::rules::InstalledCard { install_id: InstallId(91), server: ServerId::RnD, ..ice_at_hq("ice_wall") }];
+        let mic = fixture_install_id("m_i_c");
         let trash_it = PlayerAction::ActivateAbility { target: mic, ability_index: 0 };
         let (elsewhere, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::RnD }).expect("run R&D");
         let (elsewhere, _) = crate::rules::test_support::continue_run(&elsewhere, &registry).expect("approach");
@@ -16325,7 +16325,7 @@ mod the_automata_initiative {
         let (on_hq, _) = apply_action(&on_hq, &registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner passes");
         let (asked, _) = apply_action(&on_hq, &registry, trash_it).expect("trash it");
         assert!(asked.corp.installed.iter().all(|card| card.install_id != mic), "trashed as the cost");
-        assert!(asked.corp.archives.iter().any(|archived| archived.card == id("mic")));
+        assert!(asked.corp.archives.iter().any(|archived| archived.card == id("m_i_c")));
         assert_eq!(asked.pending_paid_choice.as_ref().map(|choice| (choice.side, &choice.cost)), Some((Side::Runner, &Cost::Clicks(1))));
         let (ended, _) = apply_action(&asked, &registry, PlayerAction::DeclinePendingPaidChoice).expect("keep the click");
         assert!(ended.active_run.is_none(), "the run ended");

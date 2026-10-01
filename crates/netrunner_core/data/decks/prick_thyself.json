@@ -5,7 +5,7 @@
   "category": "Sample",
   "description": "Fifteen programs, eight viruses and eleven draw effects: Topan draws into a rig and installs it.",
   "style": ["rig", "dismantle"],
-  "identity": "topan",
+  "identity": "topan_ormas_leader",
   "cards": [
     {
       "card": "charm_offensive",

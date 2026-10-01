@@ -615,7 +615,7 @@ mod tests {
             identity_side(&netrunner_core::view::build_client_view(state, &registry, viewer), side, &registry)
         };
         state.corp.identity = Some(CardId("melies_u_only_the_brightest".into()));
-        state.runner.identity = Some(CardId("dewi_subrotoputri".into()));
+        state.runner.identity = Some(CardId("dewi_subrotoputri_pedagogical_dhalang".into()));
         let front = as_seen(&state, Side::Corp, Side::Corp).expect("Méliès U flips");
         assert_eq!((front.chip().as_str(), front.line().as_str()), ("Front", "Its front is up"), "nothing is set before the first discard phase ends");
         state.corp.identity_copy = 2;

@@ -1154,13 +1154,13 @@ mod tests {
             assert!(view.legal_actions.contains(&chosen));
             (planner.style(), planner.weights)
         };
-        let (style, weights) = seated(Some("zahya_sadeghi"), Style::BALANCED);
+        let (style, weights) = seated(Some("zahya_sadeghi_versatile_smuggler"), Style::BALANCED);
         assert_eq!(style, Style::of(Plan::Pressure), "a Criminal identity");
         assert_eq!(weights, Style::of(Plan::Pressure).planned_weights(Side::Runner));
-        assert_eq!(seated(Some("rene_loup_arcemont"), Style::BALANCED).0, Style::of(Plan::Dismantle), "an Anarch identity");
-        assert_eq!(seated(Some("zahya_sadeghi"), Style::of(Plan::Rig)).0, Style::of(Plan::Rig), "the style given overrides the identity");
+        assert_eq!(seated(Some("rene_loup_arcemont_party_animal"), Style::BALANCED).0, Style::of(Plan::Dismantle), "an Anarch identity");
+        assert_eq!(seated(Some("zahya_sadeghi_versatile_smuggler"), Style::of(Plan::Rig)).0, Style::of(Plan::Rig), "the style given overrides the identity");
         assert_eq!(seated(None, Style::BALANCED).0, Style::BALANCED, "no identity to read");
-        assert_eq!(seated(Some("the_catalyst"), Style::BALANCED).0, Style::BALANCED, "a neutral identity has no chapter");
+        assert_eq!(seated(Some("the_catalyst_convention_breaker"), Style::BALANCED).0, Style::BALANCED, "a neutral identity has no chapter");
     }
 
     /// The kill plan's lever: Public Trail's "give the Runner 1 tag unless
