@@ -58,34 +58,37 @@ impl DeckRow {
 }
 
 /// The panes, in Tab order. Chair first because it decides what the
-/// other four offer.
+/// others offer. `Opponent` is offered only when the settings hold a
+/// model opponent (`StartMenu::order`), and `Level` and `Style` only
+/// while the built-in bot is chosen: a model has no rung, and the rung a
+/// choice then carries is the chair's suggestion, which plays whatever
+/// the model does not.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Pane {
     Chair,
+    Opponent,
     Level,
     Style,
     OpponentDeck,
     OwnDeck,
 }
 
-impl Pane {
-    const ALL: [Pane; 5] = [Pane::Chair, Pane::Level, Pane::Style, Pane::OpponentDeck, Pane::OwnDeck];
-
-    pub fn next(self) -> Pane {
-        let index = Pane::ALL.iter().position(|pane| *pane == self).expect("a pane");
-        Pane::ALL[(index + 1) % Pane::ALL.len()]
-    }
-
-    pub fn previous(self) -> Pane {
-        let index = Pane::ALL.iter().position(|pane| *pane == self).expect("a pane");
-        Pane::ALL[(index + Pane::ALL.len() - 1) % Pane::ALL.len()]
-    }
+/// Who sits in the other chair: the ladder's bot, or a model opponent by
+/// its profile name — a name, which the client resolves to the profile
+/// and its key when the game starts (`play::Opponent::Model`), so the
+/// form holds no key.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum OpponentChoice {
+    BuiltIn,
+    Model(String),
 }
 
 /// What the player chose, in the vocabulary of the flags.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StartChoice {
     pub human: Side,
+    pub opponent: OpponentChoice,
+    /// The rung: the bot's, or the planner's behind a model.
     pub level: Level,
     /// `None` is the deck's own style, the same as an unset
     /// `--corp-style`.
@@ -109,6 +112,11 @@ pub enum Intent {
 pub struct StartMenu {
     pub pane: Pane,
     chair: usize,
+    /// 0 is the built-in bot; `n` is `opponents[n - 1]`.
+    opponent: usize,
+    /// The model opponents the settings hold, by profile name. Empty on
+    /// the terminal, which plays one by flag.
+    opponents: Vec<String>,
     level: usize,
     style: usize,
     opponent_deck: usize,
@@ -150,6 +158,7 @@ impl StartMenu {
         registry: &CardRegistry,
         format: NsgFormat,
         defaults: [String; 2],
+        opponents: Vec<String>,
     ) -> Result<Self, String> {
         let mut decks: [Vec<DeckRow>; 2] = [Vec::new(), Vec::new()];
         let (stored_decks, _unreadable) = deck_store::list_lenient(decks_dir);
@@ -176,7 +185,15 @@ impl StartMenu {
             Some(Ok(log)) => SIDES.map(|side| log.suggest(player, side)),
             _ => [Level::Operator, Level::Operator],
         };
-        Ok(Self::with_decks(decks, suggested, defaults))
+        Ok(Self::with_decks(decks, suggested, defaults).with_opponents(opponents))
+    }
+
+    /// The model opponents to offer, by name. The cursor stays on the
+    /// built-in bot.
+    pub fn with_opponents(mut self, opponents: Vec<String>) -> Self {
+        self.opponents = opponents;
+        self.opponent = 0;
+        self
     }
 
     /// Puts the cursors back on a game just played — same chair, decks
@@ -188,12 +205,31 @@ impl StartMenu {
         self.defaults = [last.corp_deck.clone(), last.runner_deck.clone()];
         self.reset_for_chair();
         self.style = self.styles().iter().position(|style| *style == last.style).unwrap_or(0);
+        // A model still offered is kept; one removed since is the bot.
+        self.opponent = match &last.opponent {
+            OpponentChoice::BuiltIn => 0,
+            OpponentChoice::Model(name) => self.opponents.iter().position(|offered| offered == name).map_or(0, |i| i + 1),
+        };
+        if self.panes().iter().all(|(pane, ..)| *pane != self.pane) {
+            self.pane = Pane::Chair;
+        }
     }
 
     /// The state without the filesystem, for tests and for `open`.
     pub fn with_decks(decks: [Vec<DeckRow>; 2], suggested: [Level; 2], defaults: [String; 2]) -> Self {
-        let mut menu =
-            Self { pane: Pane::Chair, chair: 0, level: 0, style: 0, opponent_deck: 0, own_deck: 0, decks, suggested, defaults };
+        let mut menu = Self {
+            pane: Pane::Chair,
+            chair: 0,
+            opponent: 0,
+            opponents: Vec::new(),
+            level: 0,
+            style: 0,
+            opponent_deck: 0,
+            own_deck: 0,
+            decks,
+            suggested,
+            defaults,
+        };
         menu.reset_for_chair();
         menu
     }
@@ -208,6 +244,39 @@ impl StartMenu {
 
     pub fn level(&self) -> Level {
         Level::ALL[self.level]
+    }
+
+    /// Who sits in the other chair.
+    pub fn opponent(&self) -> OpponentChoice {
+        match self.opponent.checked_sub(1).and_then(|i| self.opponents.get(i)) {
+            Some(name) => OpponentChoice::Model(name.clone()),
+            None => OpponentChoice::BuiltIn,
+        }
+    }
+
+    /// The Opponent pane's rows: the built-in bot, then each model.
+    pub fn opponent_rows(&self) -> Vec<String> {
+        std::iter::once("The built-in bot".to_string()).chain(self.opponents.iter().map(|name| format!("{name} (AI model)"))).collect()
+    }
+
+    /// The panes on offer, in Tab order: the Opponent pane only when a
+    /// model is configured, the rung and style only for the built-in bot.
+    fn order(&self) -> Vec<Pane> {
+        let mut order = vec![Pane::Chair];
+        if !self.opponents.is_empty() {
+            order.push(Pane::Opponent);
+        }
+        if self.opponent() == OpponentChoice::BuiltIn {
+            order.extend([Pane::Level, Pane::Style]);
+        }
+        order.extend([Pane::OpponentDeck, Pane::OwnDeck]);
+        order
+    }
+
+    fn step_pane(&mut self, delta: i32) {
+        let order = self.order();
+        let index = order.iter().position(|pane| *pane == self.pane).unwrap_or(0);
+        self.pane = order[(index as i32 + delta).rem_euclid(order.len() as i32) as usize];
     }
 
     /// The styles offered for the bot's chair: the deck's own first, then
@@ -252,6 +321,7 @@ impl StartMenu {
     fn move_cursor(&mut self, delta: i32) {
         let (cursor, len) = match self.pane {
             Pane::Chair => (&mut self.chair, SIDES.len()),
+            Pane::Opponent => (&mut self.opponent, self.opponents.len() + 1),
             Pane::Level => (&mut self.level, Level::ALL.len()),
             Pane::Style => {
                 let len = self.styles().len();
@@ -283,7 +353,14 @@ impl StartMenu {
             Side::Corp => (own.id.clone(), opponent.id.clone()),
             Side::Runner => (opponent.id.clone(), own.id.clone()),
         };
-        Some(StartChoice { human: self.human(), level: self.level(), style: self.style(), corp_deck, runner_deck })
+        // Behind a model the rung is the chair's suggestion: the planner
+        // that plays what the model does not should be the one the
+        // person would have faced.
+        let level = match self.opponent() {
+            OpponentChoice::BuiltIn => self.level(),
+            OpponentChoice::Model(_) => self.suggested(),
+        };
+        Some(StartChoice { human: self.human(), opponent: self.opponent(), level, style: self.style(), corp_deck, runner_deck })
     }
 
     /// Why the chosen decks cannot start a game, naming the deck — or
@@ -302,8 +379,8 @@ impl StartMenu {
     /// the desktop's drop-downs call `set_cursor` directly.
     pub fn apply(&mut self, intent: Intent) {
         match intent {
-            Intent::NextPane => self.pane = self.pane.next(),
-            Intent::PrevPane => self.pane = self.pane.previous(),
+            Intent::NextPane => self.step_pane(1),
+            Intent::PrevPane => self.step_pane(-1),
             Intent::Move(delta) => self.move_cursor(delta),
         }
     }
@@ -313,6 +390,7 @@ impl StartMenu {
     pub fn cursor(&self, pane: Pane) -> usize {
         match pane {
             Pane::Chair => self.chair,
+            Pane::Opponent => self.opponent,
             Pane::Level => self.level,
             Pane::Style => self.style,
             Pane::OpponentDeck => self.opponent_deck,
@@ -333,6 +411,7 @@ impl StartMenu {
                 self.chair = index;
                 self.reset_for_chair();
             }
+            Pane::Opponent => self.opponent = index,
             Pane::Level => self.level = index,
             Pane::Style => self.style = index,
             Pane::OpponentDeck => self.opponent_deck = index,
@@ -340,12 +419,14 @@ impl StartMenu {
         }
     }
 
-    /// The five lists as `(title, rows, cursor)`, for `draw` and for tests
-    /// that check what a player would see.
+    /// The lists on offer as `(pane, title, rows, cursor)`, in Tab order
+    /// (`order`), for `draw` and for tests that check what a player would
+    /// see. Five with no model configured, which is what the terminal's
+    /// fixed layout draws.
     pub fn panes(&self) -> Vec<(Pane, String, Vec<String>, usize)> {
         let bot = self.bot();
-        let chair_rows = SIDES.iter().map(|side| format!("{side:?}")).collect();
-        let level_rows = Level::ALL
+        let chair_rows: Vec<String> = SIDES.iter().map(|side| format!("{side:?}")).collect();
+        let level_rows: Vec<String> = Level::ALL
             .iter()
             .map(|level| {
                 let spec = level.spec(bot);
@@ -353,7 +434,7 @@ impl StartMenu {
                 format!("{}. {} — {}{mark}", level.rung(), level.name(), spec.describe())
             })
             .collect();
-        let style_rows = self
+        let style_rows: Vec<String> = self
             .styles()
             .into_iter()
             .map(|style| match style {
@@ -362,13 +443,17 @@ impl StartMenu {
             })
             .collect();
         let deck_rows = |decks: &[DeckRow]| decks.iter().map(DeckRow::label).collect::<Vec<_>>();
-        vec![
-            (Pane::Chair, "Your chair".to_string(), chair_rows, self.chair),
-            (Pane::Level, format!("Opponent ({bot:?}) level"), level_rows, self.level),
-            (Pane::Style, "Opponent style".to_string(), style_rows, self.style),
-            (Pane::OpponentDeck, format!("Opponent's deck ({bot:?})"), deck_rows(self.opponent_decks()), self.opponent_deck),
-            (Pane::OwnDeck, format!("Your deck ({:?})", self.human()), deck_rows(self.own_decks()), self.own_deck),
-        ]
+        self.order()
+            .into_iter()
+            .map(|pane| match pane {
+                Pane::Chair => (pane, "Your chair".to_string(), chair_rows.clone(), self.chair),
+                Pane::Opponent => (pane, format!("Opponent ({bot:?})"), self.opponent_rows(), self.opponent),
+                Pane::Level => (pane, format!("Opponent ({bot:?}) level"), level_rows.clone(), self.level),
+                Pane::Style => (pane, "Opponent style".to_string(), style_rows.clone(), self.style),
+                Pane::OpponentDeck => (pane, format!("Opponent's deck ({bot:?})"), deck_rows(self.opponent_decks()), self.opponent_deck),
+                Pane::OwnDeck => (pane, format!("Your deck ({:?})", self.human()), deck_rows(self.own_decks()), self.own_deck),
+            })
+            .collect()
     }
 }
 
@@ -442,6 +527,7 @@ mod tests {
         let mut menu = menu();
         let last = StartChoice {
             human: Side::Runner,
+            opponent: OpponentChoice::BuiltIn,
             level: Level::Novice,
             style: Some(Style::of(Plan::Glacier)),
             corp_deck: "brick_stack".to_string(),
@@ -451,6 +537,68 @@ mod tests {
         let choice = menu.choice().unwrap();
         assert_eq!(choice.level, Level::Veteran, "the suggestion, not the rung last played");
         assert_eq!(choice, StartChoice { level: Level::Veteran, ..last });
+    }
+
+    /// The terminal draws five fixed areas and zips them with `panes()`,
+    /// so with no model configured the list is exactly those five.
+    #[test]
+    fn with_no_model_the_panes_are_the_five_in_order() {
+        let panes: Vec<Pane> = menu().panes().into_iter().map(|(pane, ..)| pane).collect();
+        assert_eq!(panes, [Pane::Chair, Pane::Level, Pane::Style, Pane::OpponentDeck, Pane::OwnDeck]);
+        assert_eq!(menu().opponent(), OpponentChoice::BuiltIn);
+        assert_eq!(menu().choice().unwrap().opponent, OpponentChoice::BuiltIn);
+    }
+
+    /// A model chosen takes the rung and style panes away — a model has
+    /// no rung — and the choice carries the chair's suggested rung as the
+    /// planner behind it.
+    #[test]
+    fn choosing_a_model_hides_the_rung_and_style_and_carries_the_suggested_rung() {
+        let mut menu = menu().with_opponents(vec!["claude".to_string(), "local".to_string()]);
+        let panes: Vec<Pane> = menu.panes().into_iter().map(|(pane, ..)| pane).collect();
+        assert_eq!(panes, [Pane::Chair, Pane::Opponent, Pane::Level, Pane::Style, Pane::OpponentDeck, Pane::OwnDeck]);
+        assert_eq!(menu.opponent_rows(), ["The built-in bot", "claude (AI model)", "local (AI model)"]);
+        menu.apply(Intent::NextPane);
+        assert_eq!(menu.pane, Pane::Opponent, "in Tab order when there are models");
+        menu.set_cursor(Pane::Level, 4);
+        menu.apply(Intent::Move(2));
+        assert_eq!(menu.opponent(), OpponentChoice::Model("local".to_string()));
+        let panes: Vec<Pane> = menu.panes().into_iter().map(|(pane, ..)| pane).collect();
+        assert_eq!(panes, [Pane::Chair, Pane::Opponent, Pane::OpponentDeck, Pane::OwnDeck]);
+        let choice = menu.choice().unwrap();
+        assert_eq!(choice.opponent, OpponentChoice::Model("local".to_string()));
+        assert_eq!(choice.level, Level::Apprentice, "the Corp chair's suggestion, not the rung set while the bot was chosen");
+        menu.apply(Intent::NextPane);
+        assert_eq!(menu.pane, Pane::OpponentDeck, "Tab skips the hidden panes");
+        menu.pane = Pane::Opponent;
+        menu.apply(Intent::Move(1));
+        assert_eq!(menu.opponent(), OpponentChoice::BuiltIn, "the list wraps back to the bot");
+        assert_eq!(menu.choice().unwrap().level, Level::Elite, "and the rung set earlier is back");
+        // A chair change keeps the opponent chosen.
+        menu.set_cursor(Pane::Opponent, 1);
+        menu.set_cursor(Pane::Chair, 1);
+        assert_eq!(menu.opponent(), OpponentChoice::Model("claude".to_string()));
+        assert_eq!(menu.choice().unwrap().level, Level::Veteran);
+    }
+
+    #[test]
+    fn resuming_keeps_a_model_still_offered_and_drops_one_removed() {
+        let mut menu = menu().with_opponents(vec!["claude".to_string()]);
+        let last = StartChoice {
+            human: Side::Corp,
+            opponent: OpponentChoice::Model("claude".to_string()),
+            level: Level::Novice,
+            style: None,
+            corp_deck: "brick_stack".to_string(),
+            runner_deck: "stolen_goods".to_string(),
+        };
+        menu.resume_from(&last);
+        assert_eq!(menu.opponent(), OpponentChoice::Model("claude".to_string()));
+        let mut menu = menu.with_opponents(Vec::new());
+        menu.pane = Pane::Opponent;
+        menu.resume_from(&last);
+        assert_eq!(menu.opponent(), OpponentChoice::BuiltIn, "the profile is gone");
+        assert_eq!(menu.pane, Pane::Chair, "and the cursor is not left on a pane that is not there");
     }
 
     #[test]

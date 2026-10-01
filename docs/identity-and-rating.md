@@ -55,7 +55,7 @@ server stores against the key. Two people may both be called "luke"; a server
 may mark the second for display, and never confuses their ratings.
 
 - **The secret key has its own file**, `<data dir>/netrunner/identity.key`,
-  mode 0600. **Not `settings.json`**: that is the file a person pastes into a
+  mode 0600. **Not `settings.toml`**: that is the file a person pastes into a
   bug report. The "one struct, every client" rule (`netrunner_client::settings`)
   is about two clients erasing each other's fields, and it is kept the same
   way — one `Identity` type in `netrunner_client`, used by both.

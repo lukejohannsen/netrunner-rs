@@ -27,11 +27,11 @@ The relay is only a go-between for encrypted packets. By default it is one
 of the public relays run by n0, the makers of iroh (the library this uses),
 and you are given the nearest. To use a relay of your own, run n0's
 `iroh-relay` somewhere and put its address in your settings file
-(`settings.json` in the client's data folder):
+(`settings.toml` in the client's data folder):
 
-    "relay": "https://relay.example.org"
+    relay = "https://relay.example.org"
 
-`"relay": "off"` uses no relay. The ticket then works only where a direct
+`relay = "off"` uses no relay. The ticket then works only where a direct
 connection can be made: on your network, or over IPv6. Your friend needs no
 setting: their client uses whatever relay your ticket names.
 

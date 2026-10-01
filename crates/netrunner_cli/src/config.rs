@@ -147,6 +147,19 @@ pub struct Config {
     #[arg(long)]
     pub runner_level: Option<Level>,
 
+    /// Seat the Corp as a model opponent, by the name of a profile the
+    /// desktop client's Settings → AI opponents set up (an `[[opponents]]`
+    /// table in `settings.toml`; its key in `secrets.toml` beside it).
+    /// The model is asked each decision and the planner at `--corp-level`
+    /// — or the record's suggested rung — plays whatever it fails, which
+    /// the log says. The screen waits while the model answers.
+    #[arg(long)]
+    pub corp_model: Option<String>,
+
+    /// Seat the Runner as a model opponent. See `--corp-model`.
+    #[arg(long)]
+    pub runner_model: Option<String>,
+
     /// The name your local games are recorded under (`record.json` in the
     /// OS data directory, beside the saved decks) and the one you connect
     /// to a server as. Defaults to your login name.
@@ -366,6 +379,13 @@ impl std::str::FromStr for BotSpec {
                 None => (level, Style::BALANCED),
             };
             return Ok(BotSpec { kind: BotKind::Planner, style, level: Some(level.parse::<Level>()?) });
+        }
+        // A model opponent is a person's own key spent per decision, and
+        // a bench is a measurement that plays hundreds of games: refused
+        // by name, before the rest of the spelling is read as a style.
+        let head = s.split_once(':').map_or(s, |(kind, _)| kind);
+        if head.eq_ignore_ascii_case("llm") || head.eq_ignore_ascii_case("model") {
+            return Err("a model opponent cannot be benchmarked: a bench is a measurement and a paid model is not one; play one with --corp-model or --runner-model".to_string());
         }
         let (kind, style) = match s.split_once(':') {
             Some((kind, style)) => (kind, style.parse::<Style>()?),
@@ -927,7 +947,16 @@ impl Config {
             Side::Corp => self.corp,
             Side::Runner => self.runner,
         };
-        kind != BotKind::Human || self.level_for(side).is_some()
+        kind != BotKind::Human || self.level_for(side).is_some() || self.model_for(side).is_some()
+    }
+
+    /// The model opponent asked for on `side`, by profile name, if any.
+    /// `Some` seats the model over the rung (`level_for`) or kind.
+    pub fn model_for(&self, side: Side) -> Option<&str> {
+        match side {
+            Side::Corp => self.corp_model.as_deref(),
+            Side::Runner => self.runner_model.as_deref(),
+        }
     }
 
     /// The sample matchups a pass of the pool plays under `--format`:

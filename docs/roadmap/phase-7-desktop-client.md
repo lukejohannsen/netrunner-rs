@@ -370,3 +370,117 @@ with its printings in the inspector.
 **Left for later, by the plan:** the person's own art (`Art::Custom`,
 room made in Stage 3); the terminal client's share of Stages 5–6.
 
+
+## 11. An AI opponent on the person's own key — DONE (1 October 2026)
+
+A person configures a language model — Anthropic, OpenAI, Gemini,
+Ollama, or any server that speaks the OpenAI chat shape — on their own
+key, in the GUI, and seats it in the bot's chair instead of the planner.
+Asked for on 1 October 2026 ("BYOK"), with the settings file as TOML and
+every cost lever the client can pull.
+
+**The decisions, each with what was rejected:**
+
+- **The settings file is TOML** (`settings.toml`), the whole file and not
+  a section, because the person asked for TOML and two formats in one
+  directory would have been the worse surprise. No migration: the
+  application is unreleased, so the old JSON is ignored (the person's
+  call, after a migration had been planned). The record, the known
+  servers, decks and bug reports stay JSON — none is edited by hand.
+- **A key is never in the settings file.** Each profile's key lives in
+  `secrets.toml` beside `identity.key`, created owner-only through
+  `identity::write_secret` and rewritten by temp-and-rename so it is
+  never on disk with wider access; `ApiKey` has a redacting `Debug`.
+  Rejected: keys in `settings.toml`, which is the file a person pastes
+  into a bug report — the rule `identity` set for the signing key.
+- **The agent lives in `netrunner_client::llm`, not `netrunner_bots`.**
+  A model has to be shown the board in words, and the words are this
+  crate's (`actions`, `prose`, `card_text`, `board`); a second vocabulary
+  in the bots crate would drift from what a person reads. It implements
+  the bots' `BotAgent`, which `Seat::Agent` takes from anywhere, so the
+  session loop is untouched (the Session Rule).
+- **One request per decision, never a transcript**, with a system prompt
+  built once per game that holds the rules in this project's words and
+  the bot's own deck's card texts, so a provider that caches a repeated
+  prefix serves it at its cache rate and the per-decision message names
+  own cards by title alone. The model answers with a number off a
+  numbered menu of the legal actions (`progressive` → `selection::shown`
+  → `ActionMap` labels); whatever it says, what is played is the menu's
+  entry, so the session never sees what the model wrote.
+- **Token thrift as a design goal** (the person's question, 1 October):
+  a menu of one is taken unasked; `Asks::Clicks` hands priority windows
+  and payment splits to the planner (most of a game's decisions, so
+  roughly a third of the requests), with the Runner's own encounter
+  window kept as the model's because the breaks are the decision; the
+  answer is `{"action": n}` with "why" off unless asked; `effort` low by
+  default and sent only when set (Anthropic's `output_config.effort`,
+  OpenAI's `reasoning_effort`, Ollama's `think: false`); one retry then
+  the planner; every reply's usage summed, shown on the end table as a
+  count (never a price), and an optional per-game token budget after
+  which the planner finishes the game with a notice. Rejected: a 1-hour
+  cache TTL by default (writes at twice the price; a person's turn is
+  usually under five minutes), the Batch API (someone is waiting), a
+  cheaper model as a router (the dial does the job in-process).
+- **When the model fails, the planner plays that one decision** and a
+  line reaches the board (`MatchMessage::Notice`): a bad key, a server
+  down, a refusal, an answer naming no action after one retry. Rejected:
+  ending the game as a stall — a person who set a model up should get a
+  game. The model is asked again at the next decision.
+- **Three wire protocols**, pure request builders and reply readers
+  tested on canned bodies: Anthropic Messages (`x-api-key`,
+  `anthropic-version: 2023-06-01`, the system block marked
+  `cache_control`, no `thinking` field since adaptive thinking is the
+  current models' default), OpenAI chat completions (the shape Gemini,
+  Mistral, Groq, LM Studio, llama.cpp, vLLM and Ollama's compatible
+  endpoint speak; sent without a key when there is none, so a local
+  server works and a hosted provider's 401 is the notice), and Ollama's
+  own `/api/chat`. Gemini is a preset over Google's OpenAI-compatible
+  endpoint with a Google key.
+- **The transport blocks the thread that pumps the session**, because
+  `BotAgent::select_action` is synchronous: `Handle::block_on` on the
+  desktop's match thread, `block_in_place` on the terminal's
+  `#[tokio::main]` thread, chosen by `Handle::try_current`. Every test
+  answers from a `ScriptedTransport`; the one HTTP test talks to a
+  loopback listener.
+- **The record names the model** (`llm:<profile>`), and a game against
+  one moves no rung: `record::level_of` reads only `bot:` ids, so the
+  suggestion is untouched by construction. `RecordedBot` carries the
+  model's name beside the rung behind it and lost `Copy` for it.
+- **The desktop gets the full UI; the terminal a flag.** Settings → AI
+  opponents is its own screen (`AppScreen::Opponents`, a form in
+  `models::opponents` driven by intents and tested pure): profiles added
+  from presets, protocol and preset pills, name, URL and model fields, a
+  masked key field that shows a dot per character and is never read
+  back, the timeout, the Asks dial with its trade in a line, Explain,
+  the budget, and Test, which sends one trivial request on
+  `TokioRuntime` (the `netrunnerdb::Decklists` oneshot pattern, scripted
+  in tests). The new-game form gains an Opponent pane when a profile
+  exists and hides the rung and style for a model, carrying the chair's
+  suggested rung as the planner behind it; the board says "<name> is
+  thinking…". The terminal takes `--corp-model <profile>` /
+  `--runner-model <profile>` (`--corp llm:x` could not carry a name:
+  `BotKind` is a `ValueEnum`), writes the notices into its log, and its
+  screen waits while the model answers — accepted. `bench` and
+  `--headless` refuse a model by name: a measurement is not a thing to
+  spend a person's key on.
+
+**Tests:** the settings' every-section TOML round trip; profile and
+secrets round trips with the mode asserted; the system prompt the same
+bytes across a game and every deck card once; no own-card text in the
+message; the Runner's message without HQ's cards; an encounter's
+subroutines and routes; `is_routine`; the selection prompt folded; each
+protocol built and read; the agent's retry, fallback, lone action,
+Clicks dial, budget and recent moves; a model that always answers "1"
+through whole games in both chairs without an illegal action; a scripted
+model through a whole `MatchHandle` game with its notices and its record;
+the start menu's panes with and without a model; the terminal's flag,
+bench and headless refusals; the desktop form's intents; the AI
+opponents screen driven headless with the key saved owner-only and never
+in the settings; the new-game form offering the model; a scripted model
+on the board with its log lines and its end-table count.
+
+**Left for later:** tool-use answers (a `tool_use` block instead of a
+number), streaming, a terminal editor for profiles, a price readout, a
+native Gemini protocol if the OpenAI-compatible endpoint ever falls
+short, and the model's own memory of the opponent's moves beyond the
+view (it sees the board, not the log).

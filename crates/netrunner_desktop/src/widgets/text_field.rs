@@ -10,6 +10,11 @@
 //!
 //! **Ctrl+V (Cmd+V) pastes**, its line breaks dropped: a host's ticket is
 //! a few hundred characters that nobody types (Phase 7 §7).
+//!
+//! **A masked field shows a dot per character** (`TextField::masked`):
+//! an API key is typed or pasted once and never read back off the
+//! screen, so a person at a shared desk or a screenshot gives nothing
+//! away. The count of dots still says that something was typed.
 
 use bevy::input::keyboard::{Key, KeyboardInput};
 use bevy::input::ButtonState;
@@ -24,6 +29,23 @@ use crate::nav::InputCaptured;
 pub struct TextField {
     pub text: String,
     pub max_len: usize,
+    /// Drawn as one dot per character rather than the text: a secret.
+    pub masked: bool,
+}
+
+impl TextField {
+    pub fn new(text: impl Into<String>, max_len: usize) -> Self {
+        TextField { text: text.into(), max_len, masked: false }
+    }
+
+    pub fn masked(text: impl Into<String>, max_len: usize) -> Self {
+        TextField { text: text.into(), max_len, masked: true }
+    }
+
+    /// What the field draws: the text, or a dot per character.
+    pub fn shown(&self) -> String {
+        if self.masked { "•".repeat(self.text.chars().count()) } else { self.text.clone() }
+    }
 }
 
 /// What the field did this frame. A screen reads it off the component's
@@ -90,7 +112,7 @@ pub fn edit_text_fields(
         }
         for child in children.iter() {
             if let Ok(mut text) = texts.get_mut(child) {
-                text.0 = format!("{}|", field.text);
+                text.0 = format!("{}|", field.shown());
                 break;
             }
         }

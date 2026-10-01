@@ -11,6 +11,16 @@
 //! `desktop`, but it round-trips it, and a name typed in either client
 //! rates the next game in the other.
 //!
+//! **The file is TOML** (`settings.toml`, decided 1 October 2026): a
+//! settings file is the one file a person opens in an editor, and TOML
+//! reads as `player = "case"` and `[desktop]` where JSON read as braces
+//! and quoted keys. It was JSON until then; the application is
+//! unreleased, so an old `settings.json` is not read — nothing migrates
+//! it, and nothing looks for it. The other files beside it (the record,
+//! the known servers, a deck, a bug report) stay JSON: a record is
+//! appended to and a report is a match replayed, and neither is edited
+//! by hand.
+//!
 //! **The format keeps its flag spelling on disk** (`"startup"`, not
 //! `"Startup"`): the file predates this crate and was written with the
 //! CLI's `FormatArg`, whose serde form is lowercase. `NsgFormat`'s own
@@ -29,11 +39,15 @@ use serde::{Deserialize, Serialize};
 use netrunner_core::format::NsgFormat;
 
 use crate::art::ArtChoices;
+use crate::llm::LlmProfile;
 use crate::standing::Answers;
 
 /// Environment variable naming the settings file, for tests and for a
 /// player keeping two setups apart.
 pub const SETTINGS_FILE_ENV: &str = "NETRUNNER_SETTINGS_FILE";
+
+/// The file's name under the data directory.
+pub const SETTINGS_FILE: &str = "settings.toml";
 
 /// Every format, in the order a settings screen cycles them.
 pub const FORMATS: [NsgFormat; 5] = NsgFormat::ALL;
@@ -110,6 +124,25 @@ pub struct Settings {
     /// relay the ticket names.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub relay: Option<String>,
+    /// The model opponents the person has set up (`llm`), each an
+    /// `[[opponents]]` table: name, protocol, URL, model and the dials —
+    /// **never a key**, which is in `secrets.toml` under the same name.
+    /// Shared, because either client may seat one (the terminal by flag).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub opponents: Vec<LlmProfile>,
+}
+
+impl Settings {
+    /// The model opponent of that name, if one is set up.
+    pub fn opponent(&self, name: &str) -> Option<&LlmProfile> {
+        self.opponents.iter().find(|profile| profile.name == name)
+    }
+
+    /// The model opponents' names, in the order the file lists them —
+    /// what the new-game form offers.
+    pub fn opponent_names(&self) -> Vec<String> {
+        self.opponents.iter().map(|profile| profile.name.clone()).collect()
+    }
 }
 
 /// Preferences only the graphical client reads. `#[serde(default)]` on
@@ -319,7 +352,7 @@ impl DesktopPrefs {
     }
 }
 
-/// `$NETRUNNER_SETTINGS_FILE`, else `<data dir>/netrunner/settings.json`,
+/// `$NETRUNNER_SETTINGS_FILE`, else `<data dir>/netrunner/settings.toml`,
 /// beside the saved decks and the record. Not created until the first
 /// save.
 pub fn resolve_settings_file() -> Result<PathBuf, String> {
@@ -334,7 +367,7 @@ fn resolve_settings_file_with(env: Option<std::ffi::OsString>) -> Result<PathBuf
         return Ok(PathBuf::from(path));
     }
     dirs::data_dir()
-        .map(|base| base.join("netrunner").join("settings.json"))
+        .map(|base| base.join("netrunner").join(SETTINGS_FILE))
         .ok_or_else(|| format!("no OS data directory is available; set {SETTINGS_FILE_ENV}"))
 }
 
@@ -344,8 +377,18 @@ impl Settings {
         if !path.exists() {
             return Ok(Self::default());
         }
-        let json = std::fs::read_to_string(path).map_err(|e| format!("could not read {}: {e}", path.display()))?;
-        serde_json::from_str(&json).map_err(|e| format!("{} is not a settings file: {e}", path.display()))
+        let text = std::fs::read_to_string(path).map_err(|e| format!("could not read {}: {e}", path.display()))?;
+        Self::parse(&text).map_err(|e| format!("{} is not a settings file: {e}", path.display()))
+    }
+
+    /// The file's text as settings — TOML, the module comment says why.
+    pub fn parse(text: &str) -> Result<Self, String> {
+        toml::from_str(text).map_err(|e| e.to_string())
+    }
+
+    /// The settings as the file's text.
+    pub fn to_text(&self) -> String {
+        toml::to_string_pretty(self).expect("Settings serializes")
     }
 
     /// Temp file and rename, like the record and the deck store.
@@ -353,9 +396,8 @@ impl Settings {
         if let Some(dir) = path.parent() {
             std::fs::create_dir_all(dir).map_err(|e| format!("could not create {}: {e}", dir.display()))?;
         }
-        let json = serde_json::to_string_pretty(self).expect("Settings serializes");
-        let tmp = path.with_extension("json.tmp");
-        std::fs::write(&tmp, json).map_err(|e| format!("could not write {}: {e}", tmp.display()))?;
+        let tmp = path.with_extension("toml.tmp");
+        std::fs::write(&tmp, self.to_text()).map_err(|e| format!("could not write {}: {e}", tmp.display()))?;
         std::fs::rename(&tmp, path).map_err(|e| format!("could not replace {}: {e}", path.display()))
     }
 }
@@ -413,7 +455,7 @@ mod tests {
 
     fn temp_path(tag: &str) -> (PathBuf, PathBuf) {
         let dir = std::env::temp_dir().join(format!("netrunner_settings_{tag}_{}_{:?}", std::process::id(), std::thread::current().id()));
-        (dir.clone(), dir.join("settings.json"))
+        (dir.clone(), dir.join(SETTINGS_FILE))
     }
 
     /// The table is a bare string in the file, and an unknown one is a
@@ -429,12 +471,12 @@ mod tests {
         assert_eq!(Table::from_name("no-such-table"), Table::Named("no-such-table".to_string()));
         let mut settings = Settings::default();
         settings.desktop.table = Table::Named("neon-alley".to_string());
-        let json = serde_json::to_string(&settings).unwrap();
-        assert!(json.contains(r#""table":"neon-alley""#), "a bare string, not a tagged enum: {json}");
-        assert_eq!(serde_json::from_str::<Settings>(&json).unwrap(), settings);
+        let text = settings.to_text();
+        assert!(text.contains(r#"table = "neon-alley""#), "a bare string, not a tagged enum: {text}");
+        assert_eq!(Settings::parse(&text).unwrap(), settings);
         // The default is skipped along with the rest of an untouched
         // block, so adding this field did not grow a terminal player's file.
-        assert!(!serde_json::to_string(&Settings::default()).unwrap().contains("table"));
+        assert!(!Settings::default().to_text().contains("table"));
     }
 
     #[test]
@@ -444,9 +486,9 @@ mod tests {
         let settings = Settings { player: Some("case".to_string()), format: Some(NsgFormat::Standard), ..Default::default() };
         settings.save(&path).unwrap();
         assert_eq!(Settings::load(&path).unwrap(), settings);
-        let json = std::fs::read_to_string(&path).unwrap();
-        assert!(json.contains("\"standard\""), "formats are stored by their flag spelling: {json}");
-        assert!(!json.contains("desktop"), "untouched desktop preferences are not written");
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert!(text.contains("format = \"standard\""), "formats are stored by their flag spelling: {text}");
+        assert!(!text.contains("desktop"), "untouched desktop preferences are not written");
         std::fs::remove_dir_all(&dir).unwrap();
     }
 
@@ -478,18 +520,68 @@ mod tests {
         settings.art.set(CardId("hedge_fund".to_string()), Some(Art::Printing(PrintingId(1110))));
         settings.save(&path).unwrap();
         assert_eq!(Settings::load(&path).unwrap(), settings);
-        assert!(!serde_json::to_string(&Settings::default()).unwrap().contains("art"));
+        assert!(!Settings::default().to_text().contains("art"));
         std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]
     fn a_file_from_before_a_preference_existed_still_loads() {
-        let settings: Settings = serde_json::from_str(r#"{"player":"case","format":"eternal","desktop":{"sfx_volume":0.1}}"#).unwrap();
+        let settings = Settings::parse("player = \"case\"\nformat = \"eternal\"\n\n[desktop]\nsfx_volume = 0.1\n").unwrap();
         assert_eq!(settings.format, Some(NsgFormat::Eternal));
         assert_eq!(settings.desktop.sfx_volume, 0.1);
         assert_eq!(settings.desktop.animation_speed, 1.0, "unnamed fields take their defaults");
         assert!(!settings.desktop.play_helper && !settings.desktop.play_history, "the board's aids are off until turned on");
-        assert!(serde_json::from_str::<Settings>(r#"{"format":"modern"}"#).is_err(), "an unknown format is an error, not a default");
+        assert!(Settings::parse("format = \"modern\"\n").is_err(), "an unknown format is an error, not a default");
+        assert_eq!(Settings::parse("stray = 1\n").unwrap(), Settings::default(), "a stray key is read past, not refused");
+    }
+
+    /// TOML writes a table's plain values before its sub-tables, and the
+    /// serializer is what keeps that order — this is the test that would
+    /// catch a field added where the writer cannot place it, with every
+    /// section of the file populated at once.
+    #[test]
+    fn every_section_populated_round_trips_through_toml() {
+        use crate::art::Art;
+        use crate::standing::{Answer, PromptKey};
+        use netrunner_core::card::PrintingId;
+        use netrunner_core::dsl::CardId;
+        let mut settings = Settings {
+            player: Some("case".to_string()),
+            format: Some(NsgFormat::Startup),
+            desktop: DesktopPrefs { window_size: Some((1280, 800)), table: Table::Named("neon-alley".to_string()), skin: Skin::Drawn, ..Default::default() },
+            relay: Some("off".to_string()),
+            ..Default::default()
+        };
+        settings.answers.set(PromptKey { card: CardId("daily_casts".to_string()), clauses: vec!["draw 1 card".to_string()] }, Some(Answer::Always));
+        settings.answers.set(PromptKey { card: CardId("hedge_fund".to_string()), clauses: vec!["gain 1[c]".to_string(), "lose 1[c]".to_string()] }, Some(Answer::Never));
+        settings.art.set(CardId("hedge_fund".to_string()), Some(Art::Printing(PrintingId(1110))));
+        settings.lessons_done.insert("corp-1".to_string());
+        settings.lessons_done.insert("runner-3".to_string());
+        settings.opponents.push(crate::llm::Preset::Anthropic.profile("claude"));
+        settings.opponents.push(crate::llm::Preset::Ollama.profile("local"));
+        let text = settings.to_text();
+        assert_eq!(Settings::parse(&text).unwrap(), settings, "{text}");
+        assert!(text.contains("[desktop]"), "{text}");
+        let packed: String = text.split_whitespace().collect();
+        assert!(packed.contains("window_size=[1280,800,]"), "a tuple is an array: {text}");
+        assert!(text.contains("[[answers]]"), "{text}");
+        assert!(text.contains("[[art]]"), "{text}");
+        assert!(text.contains("[[opponents]]"), "{text}");
+        assert_eq!(settings.opponent_names(), ["claude", "local"]);
+        assert_eq!(settings.opponent("local").map(|p| p.protocol), Some(crate::llm::Protocol::Ollama));
+        assert_eq!(settings.opponent("nobody"), None);
+    }
+
+    /// A key is never in this file, whatever a profile holds: the key's
+    /// type is not a field here, so the settings text cannot carry one.
+    #[test]
+    fn the_settings_file_never_holds_a_key() {
+        let mut settings = Settings::default();
+        settings.opponents.push(crate::llm::Preset::OpenAi.profile("chat"));
+        let mut secrets = crate::llm::Secrets::default();
+        secrets.set("chat", Some(crate::llm::ApiKey::new("not-a-real-key")));
+        let text = settings.to_text();
+        assert!(text.contains("name = \"chat\"") && !text.contains("not-a-real-key"), "{text}");
     }
 
     #[test]
@@ -503,8 +595,8 @@ mod tests {
 
     #[test]
     fn the_environment_names_the_file_and_an_empty_value_falls_through() {
-        assert_eq!(resolve_settings_file_with(Some("/from/env/s.json".into())).unwrap(), PathBuf::from("/from/env/s.json"));
-        assert!(resolve_settings_file_with(Some("".into())).unwrap().ends_with("netrunner/settings.json"));
-        assert!(resolve_settings_file_with(None).unwrap().ends_with("netrunner/settings.json"));
+        assert_eq!(resolve_settings_file_with(Some("/from/env/s.toml".into())).unwrap(), PathBuf::from("/from/env/s.toml"));
+        assert!(resolve_settings_file_with(Some("".into())).unwrap().ends_with("netrunner/settings.toml"));
+        assert!(resolve_settings_file_with(None).unwrap().ends_with("netrunner/settings.toml"));
     }
 }

@@ -99,7 +99,7 @@ fn count<C: Component>(app: &mut App) -> usize {
 /// Plays into the Runner's first turn against the bottom rung, saves a
 /// report from the options, and returns the board it was saved over.
 fn a_saved_game(app: &mut App) -> netrunner_core::view::ClientView {
-    let choice = StartChoice { human: Side::Runner, level: Level::Novice, style: None, corp_deck: DEFAULT_CORP_DECK.to_string(), runner_deck: DEFAULT_RUNNER_DECK.to_string() };
+    let choice = StartChoice { opponent: netrunner_client::start::OpponentChoice::BuiltIn, human: Side::Runner, level: Level::Novice, style: None, corp_deck: DEFAULT_CORP_DECK.to_string(), runner_deck: DEFAULT_RUNNER_DECK.to_string() };
     let active = new_game::start_seeded(app.world().resource::<ClientCore>(), &choice, 1).expect("the default decks start a game");
     app.world_mut().insert_resource(active);
     app.world_mut().write_message(Navigate(AppScreen::Game));

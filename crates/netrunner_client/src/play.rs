@@ -91,11 +91,64 @@ pub use netrunner_session::GameEndReason;
 pub use netrunner_session::PublicHistoryEntry;
 
 use crate::connection::Link;
+use crate::llm::{ApiKey, HttpTransport, LlmAgent, LlmProfile, ScriptedTransport, Transport, Usage};
 use crate::record::{self, BotKind, RecordReport, SeatRecord, SeatRecordSpec};
 use crate::remote::Joined;
 
-/// Everything a local game against a rung needs: the two decks, which
-/// chair is the person's, the rung and style of the other, the seed, and
+/// Who sits in the bot's chair: a rung of the ladder, or a language
+/// model the person configured (`crate::llm`), with the rung whose planner
+/// plays every decision the model is not asked about or fails.
+#[derive(Debug, Clone)]
+pub enum Opponent {
+    Ladder(Level),
+    /// Boxed: a rung is a byte and a model's profile and link are a few
+    /// hundred, and the spec is cloned by every screen that starts a game.
+    Model(Box<ModelOpponent>),
+}
+
+/// A model in the chair: the profile and its key, how it is reached,
+/// and the rung whose planner plays whatever the model does not.
+#[derive(Debug, Clone)]
+pub struct ModelOpponent {
+    pub profile: LlmProfile,
+    pub key: Option<ApiKey>,
+    pub link: ModelLink,
+    pub fallback: Level,
+}
+
+impl Opponent {
+    pub fn model_opponent(profile: LlmProfile, key: Option<ApiKey>, link: ModelLink, fallback: Level) -> Self {
+        Opponent::Model(Box::new(ModelOpponent { profile, key, link, fallback }))
+    }
+
+    /// The rung in the chair: the ladder's, or the model's fallback.
+    pub fn level(&self) -> Level {
+        match self {
+            Opponent::Ladder(level) => *level,
+            Opponent::Model(model) => model.fallback,
+        }
+    }
+
+    /// The model's profile name, when there is one.
+    pub fn model(&self) -> Option<&str> {
+        match self {
+            Opponent::Ladder(_) => None,
+            Opponent::Model(model) => Some(&model.profile.name),
+        }
+    }
+}
+
+/// How a model is reached: over HTTP on the runtime the client hands
+/// over, or from a script, which is how a test plays a whole game
+/// against one without a server.
+#[derive(Debug, Clone)]
+pub enum ModelLink {
+    Http(tokio::runtime::Handle),
+    Scripted(ScriptedTransport),
+}
+
+/// Everything a local game needs: the two decks, which chair is the
+/// person's, who sits in the other and at what style, the seed, and
 /// where the result is recorded.
 #[derive(Debug, Clone)]
 pub struct LocalMatchSpec {
@@ -103,7 +156,7 @@ pub struct LocalMatchSpec {
     pub corp: DeckFile,
     pub runner: DeckFile,
     pub human: Side,
-    pub level: Level,
+    pub opponent: Opponent,
     /// `None` is the deck's own style (`DeckFile::style`), the same as an
     /// unset `--corp-style`.
     pub style: Option<Style>,
@@ -184,6 +237,13 @@ pub enum MatchMessage {
     /// The session stopped without a `GameOver`: a stall, or a bot seat
     /// the session could not resolve. Nothing more will arrive.
     Stalled { reason: String },
+    /// A line from the bot's chair about itself: a model opponent that
+    /// failed a decision and which planner played it, or a token budget
+    /// spent (`crate::llm::LlmAgent`). Sent as the match thread hears it,
+    /// so it arrives beside the `Applied` of the decision it is about.
+    /// Its own message rather than a field on `Applied` because most
+    /// games never send one.
+    Notice(String),
     /// A lesson's words for the decision the next `Awaiting` asks: sent
     /// only by a lesson (`MatchHandle::start_lesson`), always immediately
     /// before that `Awaiting`, so a client holds the coaching that belongs
@@ -256,6 +316,11 @@ pub struct MatchHandle {
     /// inside a search for seconds, and a bug report pressed while the bot
     /// thinks must not freeze the window until it answers.
     history: Arc<Mutex<Vec<HistoryEntry>>>,
+    /// What the model opponent's requests have cost so far, mirrored the
+    /// same way (`LlmAgent::usage`); `None` when the chair holds a rung.
+    model_usage: Option<Arc<Mutex<Usage>>>,
+    /// The model opponent's profile name, for "<name> is thinking…".
+    model_name: Option<String>,
 }
 
 impl MatchHandle {
@@ -265,10 +330,11 @@ impl MatchHandle {
     /// dying on its first frame (Phase 6's rule: a game that fails to
     /// start is a notice, not a drop to the shell).
     pub fn start_local(spec: LocalMatchSpec) -> Result<Self, String> {
-        let LocalMatchSpec { registry, corp, runner, human, level, style, seed, rules, format, record } = spec;
+        let LocalMatchSpec { registry, corp, runner, human, opponent, style, seed, rules, format, record } = spec;
         let bot_side = human.other();
         let bot_deck = if bot_side == Side::Corp { &corp } else { &runner };
         let style = style_for(style, bot_deck)?;
+        let level = opponent.level();
         // The bot knows the format and the deck it was dealt, and nothing
         // of the person's deck but its identity.
         let knowledge = Knowledge::new(format, Some(bot_deck.to_deck()));
@@ -281,13 +347,30 @@ impl MatchHandle {
             corp_deck: corp.to_deck(),
             runner_deck: runner.to_deck(),
             rules,
-            bot: Some(RecordedBot { side: bot_side, level, style }),
+            bot: Some(RecordedBot { side: bot_side, level: Some(level), style, model: opponent.model().map(str::to_string) }),
             order: Default::default(),
         };
         // A rung is always a `Seat::Agent`: the ladder is built from the
         // view-based searches and deliberately excludes the one kind that
         // needs the index path (see `netrunner_cli::tui::build_bot_seat`).
-        let bot = Seat::Agent(level.spec(bot_side).with_style(style).agent(seed.wrapping_add(1), knowledge));
+        // A model wraps the rung's agent, which plays whatever the model
+        // is not asked about or fails, and says so down `notices`.
+        let planner = level.spec(bot_side).with_style(style).agent(seed.wrapping_add(1), knowledge);
+        let (bot, notices, model_usage, model_name) = match opponent {
+            Opponent::Ladder(_) => (Seat::Agent(planner), None, None, None),
+            Opponent::Model(model) => {
+                let ModelOpponent { profile, key, link, fallback } = *model;
+                let transport: Box<dyn Transport> = match link {
+                    ModelLink::Http(handle) => Box::new(HttpTransport::new(handle, profile.timeout())),
+                    ModelLink::Scripted(scripted) => Box::new(scripted),
+                };
+                let (tx, rx) = mpsc::channel();
+                let name = profile.name.clone();
+                let agent = LlmAgent::new(profile, key, transport, planner, format!("{} planner", fallback.name()), bot_deck.to_deck(), tx);
+                let usage = agent.usage();
+                (Seat::Agent(Box::new(agent)), Some(rx), Some(usage), Some(name))
+            }
+        };
         // Opened before the game so a bad record file fails now, not
         // after an hour of play.
         let record = match record {
@@ -298,6 +381,7 @@ impl MatchHandle {
                 level: Some(level),
                 kind: BotKind::Planner,
                 style,
+                model: model_name.clone(),
                 seed,
                 corp_deck: corp.id.clone(),
                 runner_deck: runner.id.clone(),
@@ -315,7 +399,7 @@ impl MatchHandle {
         let mirror = Arc::clone(&history);
         let thread = thread::Builder::new()
             .name("netrunner-match".to_string())
-            .spawn(move || drive(session, human, record, &mirror, command_rx, message_tx))
+            .spawn(move || drive(session, human, record, &mirror, command_rx, message_tx, notices))
             .map_err(|e| format!("could not start the match thread: {e}"))?;
         Ok(Self {
             driver: Driver::Local(command_tx),
@@ -327,6 +411,8 @@ impl MatchHandle {
             thread: Some(thread),
             header: Some(header),
             history,
+            model_usage,
+            model_name,
         })
     }
 
@@ -339,6 +425,17 @@ impl MatchHandle {
     /// that will not set up, or whose canned opening the engine refuses,
     /// is a notice on the screen that offered it, not a board that dies on
     /// its first frame. So the opening is played before the thread starts.
+    /// The tokens the model opponent has used so far this game, where
+    /// there is one: read on a frame, never asked of the match thread.
+    pub fn model_usage(&self) -> Option<Usage> {
+        self.model_usage.as_ref().map(|usage| *usage.lock().expect("the usage mirror is never poisoned"))
+    }
+
+    /// The model opponent's profile name, when a model holds the chair.
+    pub fn model_name(&self) -> Option<&str> {
+        self.model_name.as_deref()
+    }
+
     pub fn start_lesson(registry: Arc<CardRegistry>, lesson: Lesson, seed: u64) -> Result<Self, String> {
         let human = lesson.side;
         let (corp, runner) = lesson.decks().map_err(|e| e.to_string())?;
@@ -374,6 +471,8 @@ impl MatchHandle {
             thread: Some(thread),
             header: Some(header),
             history,
+            model_usage: None,
+            model_name: None,
         })
     }
 
@@ -409,6 +508,8 @@ impl MatchHandle {
             thread: Some(thread),
             header: None,
             history: Arc::new(Mutex::new(Vec::new())),
+            model_usage: None,
+            model_name: None,
         })
     }
 
@@ -632,6 +733,7 @@ fn drive(
     history: &Mutex<Vec<HistoryEntry>>,
     commands: Receiver<Command>,
     messages: Sender<MatchMessage>,
+    notices: Option<Receiver<String>>,
 ) {
     // A send to a client that has dropped its handle is a quit.
     let forfeit = |session: &Session, seat: &mut Option<SeatRecord>| {
@@ -641,19 +743,32 @@ fn drive(
             let _ = seat.finish(outcome);
         }
     };
+    // What the model opponent said about itself while the step ran,
+    // forwarded after the `Applied` of the decision it is about.
+    let forward_notices = |messages: &Sender<MatchMessage>| -> Result<(), ()> {
+        if let Some(notices) = &notices {
+            while let Ok(text) = notices.try_recv() {
+                messages.send(MatchMessage::Notice(text)).map_err(|_| ())?;
+            }
+        }
+        Ok(())
+    };
     let mut back = None;
     loop {
         let step = loop {
             match session.step() {
                 SessionStep::Applied { .. } => {
                     mirror(&session, history);
-                    if send_applied(&session, human, &messages).is_err() {
+                    if send_applied(&session, human, &messages).is_err() || forward_notices(&messages).is_err() {
                         return forfeit(&session, &mut seat);
                     }
                 }
                 other => break other,
             }
         };
+        if forward_notices(&messages).is_err() {
+            return forfeit(&session, &mut seat);
+        }
         match step {
             SessionStep::Awaiting { side, view } if side == human => {
                 let rewind = session.can_rewind();
@@ -998,7 +1113,7 @@ mod tests {
         let registry = Arc::new(crate::decks::sample_deck_registry());
         let corp = netrunner_core::decks::by_id("discretion_advised").expect("built-in deck").clone();
         let runner = netrunner_core::decks::by_id("stolen_goods").expect("built-in deck").clone();
-        LocalMatchSpec { registry, corp, runner, human, level: Level::Novice, style: None, seed, rules: MatchRules::default(), format: NsgFormat::Casual, record }
+        LocalMatchSpec { registry, corp, runner, human, opponent: Opponent::Ladder(Level::Novice), style: None, seed, rules: MatchRules::default(), format: NsgFormat::Casual, record }
     }
 
     /// The pump a client is: wait for `Awaiting`, submit the first legal
@@ -1017,8 +1132,52 @@ mod tests {
                 message @ (MatchMessage::Ended { .. } | MatchMessage::Stalled { .. }) => return (message, applied),
                 MatchMessage::Coach(_) | MatchMessage::LessonComplete { .. } => unreachable!("a local match is not a lesson"),
                 MatchMessage::Snapshot { .. } | MatchMessage::Clock { .. } | MatchMessage::Rated { .. } => unreachable!("a local match sends none of these"),
+                MatchMessage::Notice(_) => unreachable!("a rung sends no notice"),
             }
         }
+    }
+
+    /// A whole game against a model that answers from a script — a few
+    /// bad answers, then always the first option, then nothing at all —
+    /// ends like any other, its failures reach the person as notices, and
+    /// the record names the model, not the rung that played for it.
+    #[test]
+    fn a_scripted_model_plays_a_whole_game_and_its_failures_reach_the_person() {
+        use crate::llm::{Preset, ScriptedTransport};
+        let dir = temp_dir("model");
+        let path = dir.join("record.json");
+        let record = Some(RecordFile { path: path.clone(), player: "tester".to_string() });
+        let mut spec = spec(Side::Runner, 5, record);
+        let mut scripted = ScriptedTransport::answering(&["pass", "nope", "{\"action\": 1}", "1", "1", "1", "1", "1", "1", "1"]);
+        scripted.exhausted = Some(Err(crate::llm::transport::TransportError::Timeout));
+        spec.opponent = Opponent::model_opponent(Preset::Custom.profile("test"), None, ModelLink::Scripted(scripted), Level::Novice);
+        let mut handle = MatchHandle::start_local(spec).unwrap();
+        assert_eq!(handle.model_name(), Some("test"));
+        // Kept from the start, but not necessarily empty by now: the match
+        // runs on its own thread, and the model holds the Corp's chair,
+        // which acts first.
+        assert!(handle.model_usage().is_some(), "a model in the chair has its usage mirrored");
+        let mut notices = Vec::new();
+        let last = loop {
+            match handle.wait().expect("the thread is alive until it says Ended") {
+                MatchMessage::Awaiting { view } => handle.submit(view.legal_actions[0].clone()).unwrap(),
+                MatchMessage::Notice(text) => notices.push(text),
+                message @ (MatchMessage::Ended { .. } | MatchMessage::Stalled { .. }) => break message,
+                _ => {}
+            }
+        };
+        assert!(matches!(last, MatchMessage::Ended { .. }), "{last:?}");
+        assert!(notices.iter().any(|n| n.starts_with("test: the reply named no action number") && n.contains("novice planner played this decision")), "{notices:?}");
+        assert!(notices.iter().any(|n| n.contains("the request timed out")), "{notices:?}");
+        let usage = handle.model_usage().unwrap();
+        assert!(usage.input >= 10_000 && usage.output >= 100, "{usage:?}: every scripted reply counted");
+        let (header, _) = handle.record().unwrap();
+        assert_eq!(header.bot.as_ref().unwrap().model.as_deref(), Some("test"));
+        let log = LocalRecord::load(&path).unwrap();
+        let (won, drawn, lost) = log.record_against("tester", Side::Runner, "llm:test");
+        assert_eq!(won + drawn + lost, 1, "recorded under the model's name");
+        assert_eq!(log.suggest("tester", Side::Runner), Level::Operator, "a model moves no rung");
+        let _ = std::fs::remove_dir_all(dir);
     }
 
     /// A whole game against the bottom rung, the human seat played by the
@@ -1079,6 +1238,7 @@ mod tests {
                 message @ (MatchMessage::Ended { .. } | MatchMessage::Stalled { .. }) => break message,
                 MatchMessage::Coach(_) | MatchMessage::LessonComplete { .. } => unreachable!("a local match is not a lesson"),
                 MatchMessage::Snapshot { .. } | MatchMessage::Clock { .. } | MatchMessage::Rated { .. } => unreachable!("a local match sends none of these"),
+                MatchMessage::Notice(_) => unreachable!("a rung sends no notice"),
             }
         };
         assert!(undone, "the first legal action is a click sooner or later");
@@ -1107,7 +1267,7 @@ mod tests {
                 MatchMessage::Awaiting { view } => {
                     decisions += 1;
                     let (header, history) = handle.record().expect("a local match keeps its record");
-                    assert_eq!(header.bot, Some(RecordedBot { side: Side::Corp, level: Level::Novice, style: header.bot.unwrap().style }));
+                    assert_eq!(header.bot, Some(RecordedBot::rung(Side::Corp, Level::Novice, header.bot.as_ref().unwrap().style)));
                     let (mut state, _) = header.setup(&registry).expect("the header sets up");
                     for entry in history.entries() {
                         state = netrunner_core::rules::apply_action(&state, &registry, entry.action.clone()).expect("replays").0;
@@ -1125,6 +1285,7 @@ mod tests {
                 MatchMessage::Ended { .. } | MatchMessage::Stalled { .. } => break,
                 MatchMessage::Coach(_) | MatchMessage::LessonComplete { .. } => unreachable!("a local match is not a lesson"),
                 MatchMessage::Snapshot { .. } | MatchMessage::Clock { .. } | MatchMessage::Rated { .. } => unreachable!("a local match sends none of these"),
+                MatchMessage::Notice(_) => unreachable!("a rung sends no notice"),
             }
         }
         assert!(taken_back >= 2, "the test took {taken_back} moves back; it is about take-backs");
@@ -1202,6 +1363,7 @@ mod tests {
                 MatchMessage::Stalled { reason } => panic!("{reason}"),
                 MatchMessage::Coach(_) | MatchMessage::LessonComplete { .. } => unreachable!("a local match is not a lesson"),
                 MatchMessage::Snapshot { .. } | MatchMessage::Clock { .. } | MatchMessage::Rated { .. } => unreachable!("a local match sends none of these"),
+                MatchMessage::Notice(_) => unreachable!("a rung sends no notice"),
             }
         }
         assert!(lone > 0, "the Runner is asked to pass alone during the Corp's turn");
@@ -1265,6 +1427,7 @@ mod tests {
                 MatchMessage::Stalled { reason } => panic!("{reason}"),
                 MatchMessage::Coach(_) | MatchMessage::LessonComplete { .. } => unreachable!("a local match is not a lesson"),
                 MatchMessage::Snapshot { .. } | MatchMessage::Clock { .. } | MatchMessage::Rated { .. } => unreachable!("a local match sends none of these"),
+                MatchMessage::Notice(_) => unreachable!("a rung sends no notice"),
             }
         }
         }

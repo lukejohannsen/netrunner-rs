@@ -34,7 +34,9 @@ use netrunner_client::deck_store;
 pub fn open(config: &Config, registry: &CardRegistry) -> Result<StartMenu, String> {
     let dir = deck_store::resolve_decks_dir(config.decks_dir.as_deref())?;
     let record_path = record::resolve_record_file(config.record_file.as_deref()).ok();
-    StartMenu::open(&dir, record_path.as_deref(), &record::player_name(config), registry, config.format.into(), [config.corp_deck.clone(), config.runner_deck.clone()])
+    // No model opponents: the terminal plays one by flag (`--corp-model`),
+    // and its fixed five-area layout draws the five panes.
+    StartMenu::open(&dir, record_path.as_deref(), &record::player_name(config), registry, config.format.into(), [config.corp_deck.clone(), config.runner_deck.clone()], Vec::new())
 }
 
 /// Folds the choice into `config` so `run_local` sees the flag form: the
@@ -46,6 +48,12 @@ pub fn apply_choice(choice: &StartChoice, config: &mut Config) {
     config.runner = if choice.human == Side::Runner { BotKind::Human } else { BotKind::Planner };
     config.corp_level = (bot == Side::Corp).then_some(choice.level);
     config.runner_level = (bot == Side::Runner).then_some(choice.level);
+    let model = match &choice.opponent {
+        netrunner_client::start::OpponentChoice::BuiltIn => None,
+        netrunner_client::start::OpponentChoice::Model(name) => Some(name.clone()),
+    };
+    config.corp_model = if bot == Side::Corp { model.clone() } else { None };
+    config.runner_model = if bot == Side::Runner { model } else { None };
     config.corp_style = if bot == Side::Corp { choice.style } else { None };
     config.runner_style = if bot == Side::Runner { choice.style } else { None };
     config.corp_deck = choice.corp_deck.clone();
@@ -184,6 +192,7 @@ mod tests {
     fn the_choice_folds_into_the_flag_form() {
         let choice = StartChoice {
             human: Side::Runner,
+            opponent: netrunner_client::start::OpponentChoice::BuiltIn,
             level: Level::Veteran,
             style: Some(Style::of(Plan::Glacier)),
             corp_deck: "brick_stack".to_string(),
@@ -202,5 +211,17 @@ mod tests {
         ])
         .unwrap();
         assert_eq!((flags.corp, flags.runner, flags.corp_level, flags.corp_style), (config.corp, config.runner, config.corp_level, config.corp_style));
+        assert_eq!((config.corp_model, config.runner_model), (None, None));
+        // A model opponent folds into the model flag for the bot's chair,
+        // with the rung behind it, which is what `--runner-model` seats.
+        let model = StartChoice { human: Side::Corp, opponent: netrunner_client::start::OpponentChoice::Model("claude".to_string()), ..choice };
+        let mut config = Config::try_parse_from(["netrunner_cli"]).unwrap();
+        apply_choice(&model, &mut config);
+        assert_eq!((config.corp_model.as_deref(), config.runner_model.as_deref()), (None, Some("claude")));
+        assert_eq!(config.runner_level, Some(Level::Veteran));
+        assert!(config.seats_bot(Side::Runner) && !config.seats_bot(Side::Corp));
+        let flags = Config::try_parse_from(["netrunner_cli", "--runner-model", "claude"]).unwrap();
+        assert_eq!(flags.model_for(Side::Runner), Some("claude"));
+        assert!(flags.seats_bot(Side::Runner), "a model seats a bot without a kind or a rung");
     }
 }

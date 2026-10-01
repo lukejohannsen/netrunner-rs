@@ -141,8 +141,18 @@ pub fn player_name(given: Option<&str>) -> String {
         .unwrap_or_else(|| DEFAULT_PLAYER.to_string())
 }
 
-/// The id a bot seat is recorded under. A rung outranks the kind, because
-/// the rung is what the player asked for and what the calibration measured.
+/// The id a model opponent is recorded under: `llm:<profile name>`. Its
+/// own prefix, so `level_of` never reads it as a rung and five wins
+/// against a model move the suggestion nowhere — a model is not a rung
+/// of the ladder, and nothing is known about how strong it is.
+pub fn model_id(name: &str) -> String {
+    format!("llm:{name}")
+}
+
+/// The id a bot seat is recorded under. A model outranks a rung, because
+/// the model is what the player asked for and the rung only what played
+/// when it failed; a rung outranks the kind, because the rung is what the
+/// player asked for and what the calibration measured.
 pub fn opponent_id(level: Option<Level>, kind: BotKind, style: Style) -> String {
     if let Some(level) = level {
         return level.record_id();
@@ -217,15 +227,21 @@ impl RecordReport {
         )];
         match self.played {
             Some(played) if played == self.suggested => {}
+            // A game against a model says nothing about the ladder.
+            None if self.opponent.starts_with("llm:") => {}
             _ => lines.push(format!("Next: try {} ({})", self.suggested.name(), self.suggested.rung())),
         }
         lines
     }
 }
 
-/// `bot:veteran` → `veteran`; `bot:mcts:glacier` → `mcts:glacier`.
-fn short_opponent(id: &str) -> &str {
-    id.strip_prefix("bot:").unwrap_or(id)
+/// `bot:veteran` → `veteran`; `bot:mcts:glacier` → `mcts:glacier`;
+/// `llm:gpt` → `gpt (model)`.
+fn short_opponent(id: &str) -> String {
+    match id.strip_prefix("llm:") {
+        Some(name) => format!("{name} (model)"),
+        None => id.strip_prefix("bot:").unwrap_or(id).to_string(),
+    }
 }
 
 impl LocalRecord {
@@ -390,6 +406,9 @@ pub struct SeatRecordSpec {
     pub level: Option<Level>,
     pub kind: BotKind,
     pub style: Style,
+    /// The model's profile name, when a model was asked first; it then
+    /// names the record (`model_id`) and the rung does not.
+    pub model: Option<String>,
     pub seed: u64,
     pub corp_deck: String,
     pub runner_deck: String,
@@ -405,7 +424,7 @@ impl SeatRecord {
             log,
             player: spec.player,
             side: spec.human,
-            opponent: opponent_id(spec.level, spec.kind, spec.style),
+            opponent: spec.model.as_deref().map_or_else(|| opponent_id(spec.level, spec.kind, spec.style), model_id),
             seed: spec.seed,
             corp_deck: spec.corp_deck,
             runner_deck: spec.runner_deck,
@@ -488,6 +507,24 @@ mod tests {
         assert_eq!(opponent_id(None, BotKind::Planner, Style::BALANCED), "bot:planner");
         assert_eq!(opponent_id(None, BotKind::Mcts, Style::of(Plan::Glacier)), "bot:mcts:glacier");
         assert_eq!(opponent_id(None, BotKind::Planner, Style::new(&[Plan::Glacier, Plan::FastAdvance]).unwrap()), "bot:planner:glacier+fast-advance");
+    }
+
+    /// A model is recorded under its own name and never read as a rung:
+    /// however many games it wins, the ladder's suggestion stays where
+    /// the rungs put it.
+    #[test]
+    fn a_model_opponent_is_recorded_under_its_name_and_moves_no_suggestion() {
+        assert_eq!(model_id("gpt"), "llm:gpt");
+        let mut log = LocalRecord::default();
+        for _ in 0..5 {
+            log.record(game("luke", Side::Corp, &model_id("gpt"), Outcome::CorpWin));
+        }
+        assert_eq!(log.suggest("luke", Side::Corp), Level::Operator, "nothing on the ladder was played");
+        let report = log.record(game("luke", Side::Corp, &model_id("gpt"), Outcome::RunnerWin));
+        assert_eq!(report.record, (5, 0, 1));
+        assert_eq!(report.played, None);
+        assert_eq!(report.lines(), vec!["As Corp vs gpt (model): 5–0–1".to_string()], "no rung to try next");
+        assert_eq!(log.record_against("luke", Side::Corp, "llm:gpt"), (5, 0, 1));
     }
 
     #[test]

@@ -765,7 +765,7 @@ mod tests {
             "tester",
         ])
         .unwrap();
-        (Menu::new(config, Settings::default(), Some(dir.join("settings.json"))), dir)
+        (Menu::new(config, Settings::default(), Some(dir.join("settings.toml"))), dir)
     }
 
     fn press(menu: &mut Menu, keys: &[KeyCode]) -> MenuStep {
@@ -891,7 +891,7 @@ mod tests {
         // `q` is a letter while the name is open, not "back".
         press(&mut menu, &[KeyCode::Enter, KeyCode::Char('q'), KeyCode::Char('u'), KeyCode::Char('x'), KeyCode::Backspace, KeyCode::Enter]);
         assert_eq!(menu.base.player.as_deref(), Some("testerqu"), "the name opens on the current one");
-        assert_eq!(Settings::load(&dir.join("settings.json")).unwrap().player.as_deref(), Some("testerqu"));
+        assert_eq!(Settings::load(&dir.join("settings.toml")).unwrap().player.as_deref(), Some("testerqu"));
         assert!(menu.notice.is_none(), "{:?}", menu.notice);
         press(&mut menu, &[KeyCode::Esc]);
         go_to(&mut menu, Entry::PlayComputer);
@@ -909,7 +909,7 @@ mod tests {
         assert_eq!(menu.base.format, FormatArg::Startup, "wraps forwards from Casual");
         press(&mut menu, &[KeyCode::Left, KeyCode::Left]);
         assert_eq!(menu.base.format, FormatArg::Snapshot, "wraps backwards");
-        assert_eq!(Settings::load(&dir.join("settings.json")).unwrap().format, Some(NsgFormat::Snapshot));
+        assert_eq!(Settings::load(&dir.join("settings.toml")).unwrap().format, Some(NsgFormat::Snapshot));
         let _ = std::fs::remove_dir_all(dir);
     }
 

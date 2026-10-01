@@ -502,7 +502,7 @@ fn legality_line(card: &netrunner_core::dsl::CardDefinition) -> String {
 
 fn spawn_search_field(parent: &mut ChildSpawnerCommands, theme: &Theme, current: &str) {
     parent.spawn((
-        TextField { text: current.to_string(), max_len: MAX_QUERY_LEN },
+        TextField::new(current.to_string(), MAX_QUERY_LEN),
         widgets::field_node(px(240)),
         BackgroundColor(theme.glass_strong),
         BorderColor::all(theme.accent),

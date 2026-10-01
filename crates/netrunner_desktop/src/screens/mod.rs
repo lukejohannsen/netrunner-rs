@@ -22,6 +22,7 @@ pub mod online;
 pub mod profile;
 pub mod replay;
 pub mod settings;
+pub mod opponents;
 pub mod splash;
 
 use bevy::prelude::*;
@@ -38,6 +39,9 @@ pub enum AppScreen {
     MainMenu,
     Profile,
     Settings,
+    /// The model opponents a person sets up on their own key, off
+    /// Settings (Phase 7 §11).
+    Opponents,
     Decks,
     DeckEditor,
     CardBrowser,
@@ -53,12 +57,13 @@ pub enum AppScreen {
 }
 
 impl AppScreen {
-    pub const ALL: [AppScreen; 15] = [
+    pub const ALL: [AppScreen; 16] = [
         AppScreen::Boot,
         AppScreen::Splash,
         AppScreen::MainMenu,
         AppScreen::Profile,
         AppScreen::Settings,
+        AppScreen::Opponents,
         AppScreen::Decks,
         AppScreen::DeckEditor,
         AppScreen::CardBrowser,
@@ -94,6 +99,7 @@ impl AppScreen {
             AppScreen::MainMenu => Some("main-menu"),
             AppScreen::Profile => Some("profile"),
             AppScreen::Settings => Some("settings"),
+            AppScreen::Opponents => Some("opponents"),
             AppScreen::Decks => Some("decks"),
             AppScreen::DeckEditor => Some("deck-editor"),
             AppScreen::CardBrowser => Some("cards"),
@@ -113,6 +119,7 @@ impl AppScreen {
             AppScreen::MainMenu => "Netrunner",
             AppScreen::Profile => "Profile",
             AppScreen::Settings => "Settings",
+            AppScreen::Opponents => "AI opponents",
             AppScreen::Decks => "Decks",
             AppScreen::DeckEditor => "Deck editor",
             AppScreen::CardBrowser => "Cards",

@@ -172,7 +172,7 @@ fn a_header_names_the_bot_and_one_without_it_still_reads() {
     let (read, _) = MatchHistory::read_jsonl(format!("{old}\n").as_bytes()).expect("an old header reads");
     assert_eq!(read, plain);
 
-    let bot = RecordedBot { side: Side::Corp, level: Level::Veteran, style: Style::of(Plan::Glacier) };
+    let bot = RecordedBot::rung(Side::Corp, Level::Veteran, Style::of(Plan::Glacier));
     let named = MatchRecordHeader { bot: Some(bot), ..plain };
     let text = serde_json::to_string(&named).expect("a header serializes");
     assert!(text.contains("\"level\":\"veteran\"") && text.contains("\"style\":[\"glacier\"]"), "{text}");

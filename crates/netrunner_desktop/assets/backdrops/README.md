@@ -72,6 +72,7 @@ own picture improves on it rather than being needed before it.
 | `cards` | Cards: the card browser | a grid of card faces sits over it, so a strong dim is wise |
 | `profile` | Profile | |
 | `settings` | Settings | |
+| `opponents` | AI opponents, off Settings | a form, so keep it quiet |
 | `replay` | Replay | |
 | `about` | About | whose work is in the client |
 
