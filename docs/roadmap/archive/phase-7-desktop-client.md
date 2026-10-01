@@ -5546,3 +5546,86 @@ to the file and refuses a bad one. Screenshots at 2560×1600 of the
 spectator's board from each side and of the settings screen. Desktop
 tests green and clippy silent.
 
+
+## 10. The deck builder by format, decks as files and from NetrunnerDB, art per printing — OPEN (30 September 2026)
+
+### Stage 3 — A card is drawn with the printing a person chose (`feat/art-per-printing`, 30 September 2026)
+
+**What the person asked for:** "allow choosing art per printing", with
+their own imported art later as a separate feature that this must not
+build into a corner.
+
+**What it does.** A card printed more than once shows its printings as
+a strip of pictures: under the face in the Cards screen's inspector, and
+beside a card opened to read (`widgets::reader`) in the deck builder and
+on the decks screen. Each picture is the button that draws the card with
+that art, with the set's mark and the printing's number under it and the
+one in use outlined. From then on the card wears that art everywhere a
+picture is drawn: the browser's grid, the deck builder's pool, header and
+pickers, the decks screen's tiles, every face and sheet on the board, and
+an identity's avatar disc. The choice is kept in the settings file
+(`Settings::art`, a list of `{card, art}`) and never sent: no server and
+no `ClientView` carries it, so the other chair draws its own choices.
+
+**Decisions, with the alternative rejected:**
+- **What is chosen and what is drawn are two types.** `art::Art` is the
+  choice the file stores (`{"printing": 1110}`); `art::Picture` is what an
+  image cache is keyed by. Custom art is then one variant on each,
+  `Art::Custom` naming a file in the player's folder and `Picture::File`
+  its path. `Picture` is `Clone` and not `Copy` for that reason. The
+  desktop's face cache, `WantsImage` and the avatar crops are keyed by
+  the `Picture`, never by the card, so a change of art asks for a picture
+  the cache has not seen and never draws the old one under the card's
+  name.
+- **One question, asked everywhere.** `art::picture_for(card, &choices)`
+  (and `printing_for` for the flavour) is what every picture asks.
+  `card_face::Face::of` now takes the choices, and its `code` became
+  `picture`. `CardImages::of(&face, size)` turned the desktop's call sites'
+  `printing_for(card).and_then(|code| images.face(code, size))` into one
+  call. The terminal draws no picture and passes `ArtChoices::NONE`, so it
+  shows the newest printing's flavour.
+- **The card is its own button.** The plan named a "Use this art" button
+  per printing and a "Default" button. Pictures as buttons follow the
+  board's rule that a choice between cards shows the cards, and need no
+  words beside them.
+- **The newest printing is the default, so choosing it forgets the
+  choice.** A card left on its newest is drawn as a reprint when the
+  catalog gains one, and no third button is needed for "default". A
+  choice the catalog cannot honour (another card's printing, a printing
+  no longer embedded) is passed over for the newest printing rather than
+  drawing the wrong card.
+- **Not on the board.** Art is chosen while looking at a card, and a
+  sheet on the board carries no buttons; the reader's strip is its one
+  set of buttons, recorded in AGENTS §5.
+- **The resampled copies keep their names.** The plan renamed a
+  printing's copy in `sized/` to `p<code>-…` to leave room for custom
+  art. That would have left every copy already kept (872 MB, 1,954 files,
+  on the machine it was written on) to be made again beside the old ones.
+  A printing's copy stays `<code>-…`, and another kind of picture starts
+  with a letter, which five digits can never be.
+- **A set sort reads the newest printing**, not the chosen art: where a
+  card was printed is not how it looks (`deck_builder::PoolSort::Set`).
+- **The profile counts every printing's image**, as the browser's
+  download does, because a choice of art draws any of them.
+
+**Checks:**
+- Tests: `art` (a choice honoured and cleared, one the catalog cannot
+  honour falling back, the file's shape), the settings round trip,
+  `choosing_the_newest_printing_is_choosing_nothing`, and a headless
+  navigation test that presses Hedge Fund's Core Set printing in the
+  browser. In that test the grid's thumb asks for that picture, the
+  choice is in the settings file, and pressing the newest printing
+  empties the list.
+- `cargo test --workspace`: 2,406 passed, 0 failed, 3 ignored.
+- `cargo clippy --workspace --all-targets`: silent (the terminal's
+  `Screen::Settings` boxed, as its other large variants are, since
+  `Settings` grew a field).
+- Screenshots on the virtual compositor at 1920×1080:
+  - the Cards screen on Hedge Fund with the Core Set printing chosen,
+    the inspector drawing it and its thumb outlined;
+  - the deck builder's reader on Hostile Takeover with its two
+    printings;
+  - the board from the Corp chair on Hostile Bid, with Weyland
+    Consortium: Building a Better World's avatar cropped from the Core
+    Set's W where the default is System Update 2021's skyline.
+- No engine change, so no coverage run or sweeps.

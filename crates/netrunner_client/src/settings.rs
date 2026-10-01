@@ -1,6 +1,7 @@
 //! What a player sets once and expects to stay set: the name they are
 //! recorded under, the format their decks are checked against, the
-//! desktop client's preferences, and the prompts they answered for good.
+//! desktop client's preferences, the prompts they answered for good and
+//! the art they chose for a card.
 //!
 //! **One file, one struct, every client.** The file has no
 //! `deny_unknown_fields` — a hand-edited file with a stray key should be
@@ -27,6 +28,7 @@ use serde::{Deserialize, Serialize};
 
 use netrunner_core::format::NsgFormat;
 
+use crate::art::ArtChoices;
 use crate::standing::Answers;
 
 /// Environment variable naming the settings file, for tests and for a
@@ -89,6 +91,11 @@ pub struct Settings {
     /// than in `desktop` because both clients honour it.
     #[serde(default, skip_serializing_if = "Answers::is_empty")]
     pub answers: Answers,
+    /// The printing each card is drawn as, where the person chose one
+    /// (`art`). Here rather than in `desktop` because it is about a card,
+    /// not a toolkit, and never leaves this machine.
+    #[serde(default, skip_serializing_if = "ArtChoices::is_empty")]
+    pub art: ArtChoices,
     /// The Learn to Play lessons this person has finished, by id: every
     /// step advanced and the closing words reached. Shared, like
     /// `answers`, because either client can play a lesson and both show
@@ -456,6 +463,22 @@ mod tests {
         let again = Settings::load(&path).unwrap();
         assert_eq!(again.desktop, desktop);
         assert_eq!(again.player.as_deref(), Some("molly"));
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// A card's chosen art is kept in the file, and an untouched list is
+    /// not written.
+    #[test]
+    fn chosen_art_round_trips_through_the_file() {
+        use crate::art::Art;
+        use netrunner_core::card::PrintingId;
+        use netrunner_core::dsl::CardId;
+        let (dir, path) = temp_path("art");
+        let mut settings = Settings::default();
+        settings.art.set(CardId("hedge_fund".to_string()), Some(Art::Printing(PrintingId(1110))));
+        settings.save(&path).unwrap();
+        assert_eq!(Settings::load(&path).unwrap(), settings);
+        assert!(!serde_json::to_string(&Settings::default()).unwrap().contains("art"));
         std::fs::remove_dir_all(&dir).unwrap();
     }
 

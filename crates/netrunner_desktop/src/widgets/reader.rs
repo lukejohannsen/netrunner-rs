@@ -7,7 +7,10 @@
 //! and header, and both identity pickers. The card is drawn at
 //! `FaceSize::Large`, the board's sheet's size, **centred**, over a wash;
 //! a click anywhere off the card or Escape closes it, as a sheet on the
-//! board closes, and it carries no buttons.
+//! board closes. Its one set of buttons is the card's printings beside it
+//! (`widgets::art`), where a card with more than one has art to choose:
+//! a preference, not anything the card does, and where the person is
+//! looking at the card already.
 //!
 //! **Centred, where the board's reading surfaces sit at the right**
 //! (§4as): that placement keeps the field in view for a second chair
@@ -29,6 +32,7 @@ use netrunner_client::card_face::Face;
 use netrunner_core::dsl::CardId;
 
 use crate::card_images::CardImages;
+use crate::widgets::art::{self, ArtChanged};
 use crate::core::ClientCore;
 use crate::nav::{Captures, InputCaptured};
 use crate::screens::AppScreen;
@@ -118,8 +122,12 @@ fn draw(
     shown: Query<Entity, With<ReaderWash>>,
     roots: Query<Entity, (With<DespawnOnExit<AppScreen>>, With<Node>)>,
     (theme, core, images): (Option<Res<Theme>>, Option<Res<ClientCore>>, Option<Res<CardImages>>),
+    mut art_changed: MessageReader<ArtChanged>,
 ) {
-    if !reading.is_changed() {
+    // A change of art is drawn at once: the card and the outline in the
+    // strip both move.
+    let art_changed = art_changed.read().count() > 0;
+    if !reading.is_changed() && !art_changed {
         return;
     }
     for entity in &shown {
@@ -127,7 +135,8 @@ fn draw(
     }
     let (Some(id), Some(theme), Some(core), Some(images), Some(root)) = (&reading.0, theme, core, images, roots.iter().next()) else { return };
     let Some(card) = core.registry.get(id) else { return };
-    let image = netrunner_client::art::printing_for(card).and_then(|code| images.face(code, FaceSize::Large));
+    let drawn = Face::of(card, &core.settings.art);
+    let image = images.of(&drawn, FaceSize::Large);
     commands.entity(root).with_children(|parent| {
         parent
             .spawn((
@@ -155,10 +164,33 @@ fn draw(
             .with_children(|wash| {
                 // The card blocks the press, so only a click that misses
                 // it closes the reader.
-                wash.spawn((Interaction::None, FocusPolicy::Block, Node { flex_direction: FlexDirection::Column, row_gap: px(8), ..default() })).with_children(|column| {
-                    spawn_face(column, &theme, &Face::of(card), FaceSize::Large, image, ());
-                    if !card.is_playable {
-                        column.spawn((Text::new("The engine does not play this card yet."), theme.font(size::SMALL), TextColor(theme.danger)));
+                // The printings stand beside the card rather than under it,
+                // so a card with art to choose is no taller than one
+                // without, and the reader fits any window the card does.
+                wash.spawn((Interaction::None, FocusPolicy::Block, Node { flex_direction: FlexDirection::Row, column_gap: px(16), align_items: AlignItems::FlexStart, ..default() })).with_children(|row| {
+                    row.spawn((Node { flex_direction: FlexDirection::Column, row_gap: px(8), ..default() },)).with_children(|column| {
+                        spawn_face(column, &theme, &drawn, FaceSize::Large, image, ());
+                        if !card.is_playable {
+                            column.spawn((Text::new("The engine does not play this card yet."), theme.font(size::SMALL), TextColor(theme.danger)));
+                        }
+                    });
+                    if art::has_art_to_choose(&card.id) {
+                        // On glass of its own: the wash lets the screen behind
+                        // show through, and the captions are small.
+                        row.spawn((
+                            Node {
+                                flex_direction: FlexDirection::Column,
+                                row_gap: px(8),
+                                width: px(art::STRIP_COLUMN + 2.0 * 10.0),
+                                padding: UiRect::all(px(10)),
+                                border_radius: BorderRadius::all(px(crate::theme::shape::PANEL_RADIUS)),
+                                ..default()
+                            },
+                            BackgroundColor(theme.glass_strong),
+                        ))
+                        .with_children(|column| {
+                            art::spawn_strip(column, &theme, &core, &images, card);
+                        });
                     }
                 });
             });

@@ -57,7 +57,7 @@ impl Plugin for DecksPlugin {
         app.add_message::<FileDragAndDrop>()
             .add_systems(OnEnter(AppScreen::Decks), spawn)
             .add_systems(Update, escape_closes_the_picker.in_set(Captures).run_if(in_state(AppScreen::Decks)))
-            .add_systems(Update, (controls, dropped_files, refresh).chain().run_if(in_state(AppScreen::Decks)));
+            .add_systems(Update, (controls, dropped_files, redraw_new_art, refresh).chain().run_if(in_state(AppScreen::Decks)));
     }
 }
 
@@ -288,8 +288,9 @@ fn spawn_tile(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCor
         .with_children(|tile| {
             match identity {
                 Some(card) => {
-                    let image = netrunner_client::art::printing_for(card).and_then(|code| images.face(code, FaceSize::Board(TILE_FACE)));
-                    spawn_face(tile, theme, &Face::of(card), FaceSize::Board(TILE_FACE), image, ());
+                    let drawn = Face::of(card, &core.settings.art);
+                    let image = images.of(&drawn, FaceSize::Board(TILE_FACE));
+                    spawn_face(tile, theme, &drawn, FaceSize::Board(TILE_FACE), image, ());
                 }
                 None => {
                     tile.spawn((Node { width: px(TILE_FACE as f32), height: px(TILE_FACE as f32 * 1.4), flex_shrink: 0.0, ..default() }, BackgroundColor(theme.panel)));
@@ -516,6 +517,15 @@ fn escape_closes_the_picker(keys: Res<ButtonInput<KeyCode>>, mut captured: ResMu
     }
 }
 
+/// A card's art chosen in the reader (`widgets::art`): the shelf's
+/// identity faces and a picker are drawn again.
+fn redraw_new_art(mut changed: MessageReader<crate::widgets::art::ArtChanged>, mut dirty: ResMut<Dirty>) {
+    if changed.read().count() > 0 {
+        dirty.shelf = true;
+        dirty.popup = true;
+    }
+}
+
 fn refresh(
     mut commands: Commands,
     mut dirty: ResMut<Dirty>,
@@ -604,8 +614,9 @@ fn spawn_popup(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCo
                                         // secondary click: an identity is chosen by
                                         // what its text says.
                                         let size = FaceSize::Board(crate::models::layout::DECK_FACE as u16);
-                                        let image = netrunner_client::art::printing_for(identity).and_then(|code| images.face(code, size));
-                                        spawn_face(grid, theme, &Face::of(identity), size, image, (Button, PopupButton::Identity(identity.id.clone()), crate::widgets::reader::Readable(identity.id.clone())));
+                                        let drawn = Face::of(identity, &core.settings.art);
+                                        let image = images.of(&drawn, size);
+                                        spawn_face(grid, theme, &drawn, size, image, (Button, PopupButton::Identity(identity.id.clone()), crate::widgets::reader::Readable(identity.id.clone())));
                                     }
                                 });
                             });

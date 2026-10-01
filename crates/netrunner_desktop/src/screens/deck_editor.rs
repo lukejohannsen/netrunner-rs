@@ -53,7 +53,7 @@ impl Plugin for DeckEditorPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(OnEnter(AppScreen::DeckEditor), spawn)
             .add_systems(Update, escape_closes_the_popup.in_set(Captures).run_if(in_state(AppScreen::DeckEditor)))
-            .add_systems(Update, (controls, text_fields, rebuild, fit_pool, refresh).chain().run_if(in_state(AppScreen::DeckEditor)));
+            .add_systems(Update, (controls, text_fields, rebuild, fit_pool, redraw_new_art, refresh).chain().run_if(in_state(AppScreen::DeckEditor)));
     }
 }
 
@@ -337,8 +337,9 @@ fn spawn_header(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientC
     let identity = book.get(&deck.identity);
     match identity {
         Some(card) => {
-            let image = netrunner_client::art::printing_for(card).and_then(|code| images.face(code, FaceSize::Board(HEADER_FACE)));
-            spawn_face(parent, theme, &Face::of(card), FaceSize::Board(HEADER_FACE), image, (Button, DeckRowButton::Read(card.id.clone()), Readable(card.id.clone())));
+            let drawn = Face::of(card, &core.settings.art);
+            let image = images.of(&drawn, FaceSize::Board(HEADER_FACE));
+            spawn_face(parent, theme, &drawn, FaceSize::Board(HEADER_FACE), image, (Button, DeckRowButton::Read(card.id.clone()), Readable(card.id.clone())));
         }
         None => {
             parent.spawn((Node { width: px(HEADER_FACE as f32), height: px(HEADER_FACE as f32 * 1.4), flex_shrink: 0.0, ..default() }, BackgroundColor(theme.panel)));
@@ -554,8 +555,9 @@ fn spawn_pool(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCor
     }
     for card in cards {
         parent.spawn(Node { flex_direction: FlexDirection::Column, ..default() }).with_children(|cell| {
-            let image = netrunner_client::art::printing_for(card).and_then(|code| images.face(code, size));
-            spawn_face(cell, theme, &Face::of(card), size, image, (Button, PoolCard(card.id.clone()), Readable(card.id.clone())));
+            let drawn = Face::of(card, &core.settings.art);
+            let image = images.of(&drawn, size);
+            spawn_face(cell, theme, &drawn, size, image, (Button, PoolCard(card.id.clone()), Readable(card.id.clone())));
             let copies = editor.draft.copies(&card.id);
             cell.spawn((
                 PoolBadge(card.id.clone()),
@@ -876,6 +878,16 @@ fn escape_closes_the_popup(keys: Res<ButtonInput<KeyCode>>, mut captured: ResMut
     }
 }
 
+/// A card's art chosen in the reader (`widgets::art`): every face of it
+/// on the screen is drawn again — the header, the pool and a picker.
+fn redraw_new_art(mut changed: MessageReader<crate::widgets::art::ArtChanged>, mut dirty: ResMut<Dirty>) {
+    if changed.read().count() > 0 {
+        dirty.deck = true;
+        dirty.pool = true;
+        dirty.popup = true;
+    }
+}
+
 fn refresh(
     mut commands: Commands,
     mut dirty: ResMut<Dirty>,
@@ -993,8 +1005,9 @@ fn spawn_popup(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCo
                         .with_children(|scroll| {
                             scroll.spawn(Node { flex_direction: FlexDirection::Row, flex_wrap: FlexWrap::Wrap, column_gap: px(10), row_gap: px(10), padding: UiRect::all(px(4)), ..default() }).with_children(|grid| {
                                 for identity in deck_builder::identities(&core.registry, editor.deck().side, editor.format) {
-                                    let image = netrunner_client::art::printing_for(identity).and_then(|code| images.face(code, IDENTITY_FACE));
-                                    let face = spawn_face(grid, theme, &Face::of(identity), IDENTITY_FACE, image, (Button, PopupButton::Identity(identity.id.clone()), Readable(identity.id.clone())));
+                                    let drawn = Face::of(identity, &core.settings.art);
+                                    let image = images.of(&drawn, IDENTITY_FACE);
+                                    let face = spawn_face(grid, theme, &drawn, IDENTITY_FACE, image, (Button, PopupButton::Identity(identity.id.clone()), Readable(identity.id.clone())));
                                     if identity.id == editor.deck().identity {
                                         grid.commands().entity(face).insert(Outline { width: px(3), offset: px(1), color: theme.accent });
                                     }

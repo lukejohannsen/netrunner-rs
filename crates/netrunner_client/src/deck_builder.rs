@@ -368,7 +368,8 @@ pub enum PoolSort {
     /// Influence, lowest first.
     Influence,
     /// Release order, then the card's number in its set — the set and
-    /// number of the printing it is drawn as (`art::printing_for`).
+    /// number of its newest printing, whichever art a person chose for
+    /// it: a sort is about where a card was printed, not how it looks.
     Set,
 }
 
@@ -462,9 +463,9 @@ pub fn pool<'a>(book: CardBook<'a>, filter: &PoolFilter) -> Vec<&'a CardDefiniti
         cards.push(card);
     }
     let order = set_order();
-    let drawn_as = |card: &CardDefinition| crate::art::printing_record(card);
+    let newest = |card: &CardDefinition| catalog::latest_printing(&card.id);
     let set_rank = |card: &CardDefinition| {
-        drawn_as(card).and_then(|printing| order.iter().position(|set| *set == printing.set)).unwrap_or(usize::MAX)
+        newest(card).and_then(|printing| order.iter().position(|set| *set == printing.set)).unwrap_or(usize::MAX)
     };
     let title = |card: &CardDefinition| card.title.to_lowercase();
     match filter.sort {
@@ -473,7 +474,7 @@ pub fn pool<'a>(book: CardBook<'a>, filter: &PoolFilter) -> Vec<&'a CardDefiniti
         PoolSort::Faction => cards.sort_by_key(|card| (faction_order(card.faction), type_order(&card.card_type), title(card))),
         PoolSort::Cost => cards.sort_by_key(|card| (printed_cost(card), title(card))),
         PoolSort::Influence => cards.sort_by_key(|card| (card.influence_cost.unwrap_or(0), title(card))),
-        PoolSort::Set => cards.sort_by_key(|card| (set_rank(card), drawn_as(card).map(|printing| printing.position), title(card))),
+        PoolSort::Set => cards.sort_by_key(|card| (set_rank(card), newest(card).map(|printing| printing.position), title(card))),
     }
     cards
 }
@@ -950,7 +951,7 @@ mod tests {
         assert!(by_title.windows(2).all(|pair| pair[0].title.to_lowercase() <= pair[1].title.to_lowercase()));
         let by_set = pool(book, &PoolFilter { sort: PoolSort::Set, ..every });
         let rank = |card: &CardDefinition| {
-            crate::art::printing_record(card).and_then(|printing| order.iter().position(|set| *set == printing.set)).unwrap_or(usize::MAX)
+            catalog::latest_printing(&card.id).and_then(|printing| order.iter().position(|set| *set == printing.set)).unwrap_or(usize::MAX)
         };
         assert!(by_set.windows(2).all(|pair| rank(pair[0]) <= rank(pair[1])));
     }

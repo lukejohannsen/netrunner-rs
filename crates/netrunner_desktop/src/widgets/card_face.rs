@@ -128,8 +128,8 @@ pub fn spawn_face(parent: &mut ChildSpawnerCommands, theme: &Theme, face: &Face,
         BackgroundColor(theme.panel),
         BorderColor::all(faction),
     ));
-    if let Some(code) = face.code {
-        root.insert(WantsImage { code, size });
+    if let Some(picture) = face.picture.clone() {
+        root.insert(WantsImage { picture, size });
     }
     root.with_children(|card| {
         // Title row: the cost circle, then the title, which takes the rest.

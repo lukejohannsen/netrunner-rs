@@ -236,7 +236,7 @@ fn the_card_browser_lists_faces_filters_as_typed_and_escapes_in_three() {
         // The catalog, not the registry: the browser lists every card,
         // and the first can be one the engine does not play yet.
         let card = core.catalog.iter().find(|card| card.id == first).expect("the thumb's card is in the catalog");
-        netrunner_client::card_face::Face::of(card).numbers_line()
+        netrunner_client::card_face::Face::of(card, &netrunner_client::art::ArtChoices::NONE).numbers_line()
     };
     assert!(texts(&mut app).contains(&numbers), "the first card is open in the inspector from the start: {numbers}");
 
@@ -294,6 +294,62 @@ fn the_card_browser_lists_faces_filters_as_typed_and_escapes_in_three() {
     app.update();
     assert_eq!(screen(&app), AppScreen::MainMenu, "the third leaves");
     assert_eq!(roots(&mut app, AppScreen::CardBrowser), 0);
+}
+
+/// Art per printing (Phase 7 §10 Stage 3): a card printed twice shows
+/// both printings under the inspector's face; pressing the older draws
+/// the card with it — its thumb in the grid asks for that picture — and
+/// keeps the choice in the settings file, and pressing the newest goes
+/// back to the default and forgets it.
+#[test]
+fn a_printing_pressed_in_the_browser_is_the_art_the_card_is_drawn_with() {
+    use netrunner_client::art::{Art, Picture};
+    use netrunner_core::card::PrintingId;
+    use netrunner_core::dsl::CardId;
+    use netrunner_desktop::card_images::WantsImage;
+    use netrunner_desktop::screens::card_browser::FaceButton;
+    use netrunner_desktop::widgets::art::ArtButton;
+    let (mut app, _dir) = headless_client();
+    app.update();
+    app.update();
+    app.world_mut().write_message(Navigate(AppScreen::CardBrowser));
+    app.update();
+    app.update();
+    let hedge_fund = CardId("hedge_fund".to_string());
+    let thumb = |app: &mut App| app.world_mut().query::<(Entity, &FaceButton)>().iter(app.world()).find(|(_, f)| f.0 == hedge_fund).map(|(e, _)| e).expect("Hedge Fund has a thumb");
+    let drawn = |app: &mut App| {
+        let thumb = thumb(app);
+        app.world().get::<WantsImage>(thumb).map(|wants| wants.picture.clone())
+    };
+    assert_eq!(drawn(&mut app), Some(Picture::Printing(PrintingId(30075))), "drawn as its newest printing");
+    let opened = thumb(&mut app);
+    app.world_mut().entity_mut(opened).insert(Interaction::Pressed);
+    app.update();
+    app.update();
+    let printings = |app: &mut App| {
+        let mut found: Vec<PrintingId> = app.world_mut().query::<&ArtButton>().iter(app.world()).filter(|b| b.card == hedge_fund).map(|b| b.printing).collect();
+        found.sort();
+        found
+    };
+    assert_eq!(printings(&mut app), vec![PrintingId(1110), PrintingId(30075)], "both printings are in the strip");
+    let press_printing = |app: &mut App, printing: PrintingId| {
+        let button = app.world_mut().query::<(Entity, &ArtButton)>().iter(app.world()).find(|(_, b)| b.printing == printing).map(|(e, _)| e).expect("the printing has a button");
+        app.world_mut().entity_mut(button).insert(Interaction::Pressed);
+        app.update();
+        app.update();
+    };
+
+    press_printing(&mut app, PrintingId(1110));
+    let core = app.world().resource::<ClientCore>();
+    assert_eq!(core.settings.art.get(&hedge_fund), Some(&Art::Printing(PrintingId(1110))));
+    let saved = std::fs::read_to_string(core.settings_path.clone().unwrap()).unwrap();
+    assert!(saved.contains("\"printing\": 1110"), "kept in the file: {saved}");
+    assert_eq!(drawn(&mut app), Some(Picture::Printing(PrintingId(1110))), "the grid draws the chosen printing");
+    assert_eq!(printings(&mut app).len(), 2, "the inspector was drawn again with its strip");
+
+    press_printing(&mut app, PrintingId(30075));
+    assert!(app.world().resource::<ClientCore>().settings.art.is_empty(), "the newest is the default, so nothing is kept");
+    assert_eq!(drawn(&mut app), Some(Picture::Printing(PrintingId(30075))));
 }
 
 /// The filter drop-downs: pressing a head opens its list, choosing an

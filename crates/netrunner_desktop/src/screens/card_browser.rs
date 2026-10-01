@@ -14,7 +14,10 @@
 //! with the terminal's card modal and the access pop-up), the faction and
 //! set with their marks, which formats allow the card, the flavour, the
 //! engine's reading (`prose::engine_reading`), whether the engine plays
-//! it, and whether its picture is cached.
+//! it, and whether its picture is cached. A card printed more than once
+//! has its printings as a strip of pictures under the face, each the
+//! button that draws the card with that art everywhere (`widgets::art`,
+//! Phase 7 §10 Stage 3).
 //!
 //! **What is redrawn when.** A filter chosen from a drop-down respawns
 //! the drop-downs (their choices depend on the side), the grid and the
@@ -45,6 +48,7 @@ use netrunner_client::cards::{faction_label, legal_formats, set_name};
 use netrunner_client::prose;
 use netrunner_client::settings::{format_label, FORMATS};
 use netrunner_card_sync::ImageStatus;
+use netrunner_client::art::Picture;
 use netrunner_core::card::PrintingId;
 use netrunner_core::cards::catalog;
 use netrunner_core::dsl::CardId;
@@ -60,6 +64,7 @@ use crate::theme::{size, Theme};
 use crate::widgets::card_face::{spawn_face, FaceSize};
 use crate::widgets::dropdown::{spawn_dropdown, Choice, Dropdown, DropdownChanged};
 use crate::widgets::text_field::{TextField, TextFieldEvent};
+use crate::widgets::art::ArtChanged;
 use crate::widgets::{self, Pressed};
 
 pub struct CardBrowserPlugin;
@@ -232,7 +237,7 @@ fn spawn(mut commands: Commands, theme: Res<Theme>, core: Res<ClientCore>, image
             },
         ))
         .id();
-    commands.entity(grid).with_children(|parent| spawn_grid(parent, &theme, &browser, &images));
+    commands.entity(grid).with_children(|parent| spawn_grid(parent, &theme, &core, &browser, &images));
     let grid_scroll = commands
         .spawn((
             GridScroll,
@@ -386,10 +391,10 @@ fn spawn_download(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &Clien
     parent.spawn(widgets::button(theme, label, Val::Auto, Control::Download));
 }
 
-fn spawn_grid(parent: &mut ChildSpawnerCommands, theme: &Theme, browser: &Browser, images: &CardImages) {
+fn spawn_grid(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore, browser: &Browser, images: &CardImages) {
     for card in browser.visible() {
-        let face = Face::of(card);
-        let image = netrunner_client::art::printing_for(card).and_then(|code| images.face(code, FaceSize::Thumb));
+        let face = Face::of(card, &core.settings.art);
+        let image = images.of(&face, FaceSize::Thumb);
         let marker = (Button, FaceButton(card.id.clone()));
         let entity = spawn_face(parent, theme, &face, FaceSize::Thumb, image, marker);
         if browser.selected.as_ref() == Some(&card.id) {
@@ -407,11 +412,12 @@ fn spawn_inspector(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &Clie
         parent.spawn(widgets::dim(theme, "Choose a card to open it here."));
         return;
     };
-    let face = Face::of(card);
-    let image = netrunner_client::art::printing_for(card).and_then(|code| images.face(code, FaceSize::Large));
+    let face = Face::of(card, &core.settings.art);
+    let image = images.of(&face, FaceSize::Large);
     parent.spawn((Node { justify_content: JustifyContent::Center, ..default() },)).with_children(|centre| {
         spawn_face(centre, theme, &face, FaceSize::Large, image, ());
     });
+    crate::widgets::art::spawn_strip(parent, theme, core, images, card);
     // No title under the face, for the reason the game's card sheet has
     // none over it: the card prints its own name in both tiers — a
     // cached NetrunnerDB scan *is* the printed card, and the text face
@@ -429,10 +435,10 @@ fn spawn_inspector(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &Clie
     // you have scrolled past the face. The grid keeps the selected card
     // outlined (`outline`), which is what says which card this is.
     parent.spawn(widgets::dim(theme, face.type_line.clone()));
-    parent.spawn((widgets::dim(theme, Face::of(card).numbers_line()), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
+    parent.spawn((widgets::dim(theme, face.numbers_line()), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
     // The faction with its mark, then each printing: its set with its
-    // mark, its code and its illustrator, newest first — the first is the
-    // one the face is drawn as (`art::printing_for`).
+    // mark, its code and its illustrator, newest first — the strip above
+    // says which one the face is drawn as.
     if let Some(faction) = card.faction {
         parent.spawn((Text::new(""), theme.font(size::SMALL), TextColor(theme.text_dim))).with_children(|spans| {
             if let Some((mark, font)) = theme.faction_icon(faction, size::SMALL) {
@@ -471,8 +477,8 @@ fn spawn_inspector(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &Clie
             parent.spawn((widgets::dim(theme, line.replace('→', "›")), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
         }
     }
-    if let Some(code) = netrunner_client::art::printing_for(card) {
-        let status = match core.images.status(code) {
+    if let Some(Picture::Printing(code)) = &face.picture {
+        let status = match core.images.status(*code) {
             ImageStatus::Cached(_) => "Picture cached".to_string(),
             ImageStatus::Missing => "No picture cached".to_string(),
             ImageStatus::Failed(reason) => format!("Picture failed: {reason}"),
@@ -515,7 +521,13 @@ fn controls(
     mut downloads: ResMut<Downloads>,
     mut notices: ResMut<Notices>,
     mut navigate: MessageWriter<Navigate>,
+    mut art_changed: MessageReader<ArtChanged>,
 ) {
+    // A card drawn with new art: its thumb and the inspector are drawn
+    // again, the way a filter redraws them.
+    if art_changed.read().count() > 0 {
+        dirty.grid = true;
+    }
     for Pressed(entity) in pressed.read() {
         match marks.get(*entity) {
             Ok(Control::Back) => {
@@ -680,7 +692,7 @@ fn refresh(
         commands.entity(download_slot).despawn_children().with_children(|parent| spawn_download(parent, &theme, &core));
     }
     if regrid {
-        commands.entity(grid).despawn_children().with_children(|parent| spawn_grid(parent, &theme, browser, &images));
+        commands.entity(grid).despawn_children().with_children(|parent| spawn_grid(parent, &theme, &core, browser, &images));
         for mut text in &mut count {
             text.0 = count_line(browser);
         }
