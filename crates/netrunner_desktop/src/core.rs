@@ -110,7 +110,7 @@ impl ClientCore {
             catalog: Arc::new(netrunner_client::cards::catalog(&registry)),
             registry: Arc::new(registry),
             settings: Settings::default(),
-            settings_path: Some(dir.join("settings.json")),
+            settings_path: Some(dir.join(netrunner_client::settings::SETTINGS_FILE)),
             decks_dir: Some(dir.join("decks")),
             record_path: Some(dir.join("record.json")),
             reports_dir: Some(dir.join("reports")),

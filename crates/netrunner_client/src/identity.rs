@@ -1,7 +1,7 @@
 //! Who this player is to a server: their key, and the servers' keys they
 //! have met (Phase 4 §5 stage b, `docs/identity-and-rating.md`).
 //!
-//! **The key has its own file, never `settings.json`.** The settings file
+//! **The key has its own file, never `settings.toml`.** The settings file
 //! is the one a person pastes into a bug report, and the key is the one
 //! thing on this machine a rating is filed under. `identity.key` sits
 //! beside the settings, is made the first time a connection wants it, and

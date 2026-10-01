@@ -1486,8 +1486,8 @@ fn the_gear_opens_the_options_and_the_toggles_are_saved_and_drawn() {
     let helper = toggle_for(&mut app, netrunner_desktop::models::settings::Row::PlayHelper);
     press_entity(&mut app, helper);
     assert!(app.world().resource::<ClientCore>().settings.desktop.play_helper);
-    let saved = std::fs::read_to_string(dir.join("settings.json")).expect("the settings were saved");
-    assert!(saved.contains("\"play_helper\": true"), "{saved}");
+    let saved = std::fs::read_to_string(dir.join("settings.toml")).expect("the settings were saved");
+    assert!(saved.contains("play_helper = true"), "{saved}");
     assert_eq!(overlays(&mut app), 1, "the options stay open");
     let history = toggle_for(&mut app, netrunner_desktop::models::settings::Row::PlayHistory);
     press_entity(&mut app, history);

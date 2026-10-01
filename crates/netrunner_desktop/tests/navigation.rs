@@ -204,7 +204,7 @@ fn the_relay_is_edited_in_settings_and_a_bad_one_is_refused() {
     type_in(&mut app, "x");
     assert_eq!(app.world().resource::<ClientCore>().settings.relay.as_deref(), Some("off"), "an edit starts from the saved value, and \"offx\" is no relay");
     let saved = std::fs::read_to_string(app.world().resource::<ClientCore>().settings_path.clone().unwrap()).unwrap();
-    assert!(saved.contains("\"relay\": \"off\""), "saved to the file: {saved}");
+    assert!(saved.contains("relay = \"off\""), "saved to the file: {saved}");
 }
 
 /// The card browser: every card is a face, a face opens in the
