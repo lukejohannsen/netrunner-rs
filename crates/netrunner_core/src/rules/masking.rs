@@ -889,7 +889,7 @@ pub fn mask_event_for_player(event: &GameEvent, state: &GameState, viewer: impl 
         // because two installs trading places is on the table for anyone to
         // see and no `PlayerAction` names it.
         GameEvent::IceSwapped { a, b, a_card, b_card }
-            if a_card.as_ref().is_some_and(&concealed) || b_card.as_ref().is_some_and(&concealed) =>
+            if a_card.as_ref().is_some_and(concealed) || b_card.as_ref().is_some_and(concealed) =>
         {
             let keep = |card: &Option<CardId>| card.clone().filter(|card| !concealed(card));
             Some(GameEvent::IceSwapped { a: *a, b: *b, a_card: keep(a_card), b_card: keep(b_card) })
