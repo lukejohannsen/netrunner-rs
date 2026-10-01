@@ -1944,8 +1944,12 @@ pub fn evaluate_effect(
             // "you may rez ... paying 2[c] less" and both branches of
             // Biawak's forfeit choice must resolve to *something*, and a
             // failing effect would leave the decision that parked them
-            // unresolvable. `AlreadyRezzed`/`InstallNotFound` still error —
-            // those mean the card was named wrongly, not priced wrongly.
+            // unresolvable. So is a card whose own ways to pay for its rez
+            // are all unavailable (Bloop with no rezzed harmonic ice to
+            // derez): CR 1.16.4c, an additional cost the Corp cannot pay
+            // leaves the card unrezzed. `AlreadyRezzed`/`InstallNotFound`
+            // still error — those mean the card was named wrongly, not
+            // priced wrongly.
             // The placeholder is "the card this resolves as": a selection's
             // `then` substitutes it when the rez is the whole `then` (Send a
             // Message), and inside a `Sequence` it is read here instead —
@@ -1957,7 +1961,9 @@ pub fn evaluate_effect(
                 *install
             };
             match crate::rules::engine::rez_install(state, registry, install, *pay_cost, *discount) {
-                Err(RulesError::NotEnoughCredits { .. } | RulesError::RezRestricted { .. }) => Ok(Vec::new()),
+                Err(RulesError::NotEnoughCredits { .. } | RulesError::RezRestricted { .. } | RulesError::NoAvailableRezAlternative { .. }) => {
+                    Ok(Vec::new())
+                }
                 other => other,
             }
         }

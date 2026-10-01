@@ -194,7 +194,7 @@ Each is a gap noticed in an entry above and left with its reason; none changes a
 - No view carries a pending access replacement; owed when a card a person plays parks one (item 6).
 - Phật Gioan Baotixita as one prompt, and X costs, which no pool card prints (item 6).
 - The approach-server step as a phase of its own, and a trigger on *passing* ice, wait for a card that needs them (item 7).
-- IP Enforcement's X cost; Détente, which needs item 10; `Effect::RezInstalled` → `engine::rez_install` never reads `rez_alternatives`; whether damage paid as a cost is Net Shield's "first time each turn" (item 8).
+- IP Enforcement's X cost; Détente, which needs item 10; whether damage paid as a cost is Net Shield's "first time each turn" (item 8). `engine::rez_install` not reading `rez_alternatives` was the fourth, fixed 1 October 2026 (below).
 - `Trigger::OnAdvance` is reachable only from the basic action: CR 1.18.1 says card abilities can also advance, and no card in the pool does (Advancing vs placing, below).
 
 9. **A scenario builder for card tests** (§4; was item 6). A deck-and-hand
@@ -253,3 +253,18 @@ reachable *only* from the basic action. CR 1.18.1 says "card abilities
 can also advance cards", and if one ever does, its trigger will not fire
 until the advancing path dispatches its event. No card in the set
 advances by ability today.
+
+## A card's text that rezzes a card pays its own way — DONE (1 October 2026)
+
+`fix/text-rez-pays-its-additional-cost`, from the "found and not fixed" list under item 8: `Effect::RezInstalled` called `engine::rez_install`, and only the click action (`rez_ice`) read `CardDefinition::rez_alternatives` ahead of it. So Mycoweb's "you may rez 1 installed piece of ice, paying 2[credit] less" rezzed Bloop for 1[c] and derezzed nothing — and rezzed it with *no rezzed harmonic ice at all*, an additional cost skipped rather than declined — and would have rezzed Biawak at its full price with no forfeit offered, and Plutus with no forfeit and no three cards.
+
+**The rule, read first.** CR 1.16.5a: a discount removes nothing but what it names — "any other costs (usually additional costs) that are not specified to be ignored still apply normally". CR 1.16.5c: "ignoring all costs" removes "all elements of the relevant cost ... including additional costs". CR 1.16.4c: a player directed to rez a card with an additional cost they cannot pay does not rez it. So of the five cards in the pool that rez by text, four ("ignoring all costs": Send a Message, Unleash, Lightning Laboratory, Window of Opportunity's Corp half) were already right by accident — `rez_install` read no alternative, and none applies — and Mycoweb was the one wrong.
+
+**Decisions, with the alternative rejected.**
+
+- **The ways to pay moved into `rez_install`, the one door**, with the rez itself as the private `rez_priced` beneath it; `rez_ice` now calls `rez_install` plain. A second reading of the list in `Effect::RezInstalled` would have been the third copy of one transition, which is what the effect's own doc comment says the convergence on `rez_install` was for.
+- **`pay_cost: false` reads none of them** (1.16.5c), and the text rez's `discount` stacks with the way's own (Biawak through Mycoweb, forfeiting: 14 − 10 − 2).
+- **The question is the same question, by the same replay**: `payment::Ask::Alternative` from inside a card's text as from the click, and `Cost::Derez`'s "which harmonic ice" the same way. What changed is `payment::could_ask`, which has to admit the action that resumes a parked decision whose continuation rezzes and pays (`Effect::rezzes_paying`, a walker beside `Effect::prevents`) while some facedown card on the table prints a way to pay — the confirm of Mycoweb's selection, a `PresentChoice`'s pick, a paid choice accepted, and an install-and-rez's server. Left off, the debug assertion in `engine::apply_action` is what would have said so.
+- **`NoAvailableRezAlternative` joins the errors a text rez swallows** (beside `NotEnoughCredits` and `RezRestricted`, in `Effect::RezInstalled` and the install-and-rez): a "may" that cannot be paid for resolves to nothing, as 1.16.4c says, rather than stranding the decision that parked it.
+
+Four tests beside the Mycoweb test: Bloop through Mycoweb derezzes Pulse and pays 1; Bloop through Mycoweb with nothing to derez rezzes nothing and pays nothing; Biawak through Mycoweb is asked which way and the discounts stack; Bloop through Send a Message derezzes nothing (1.16.5c). All three Mycoweb tests fail on the engine before the change. Both sweeps clean at 32 and 256 seeds, `cargo test --workspace` green, clippy silent. **Measured** with `scripts/coverage_identical.py main --head-worktree` (pinned binaries, 192 games a report, seed 1): all four reports — random and planner, by view and by index — `identical`, so no game in a pass of the pool rezzes Bloop, Biawak or Plutus by a card's text; the change is reached by the scripted tests alone, which is why it had sat on the list since Rules Audit item 8.

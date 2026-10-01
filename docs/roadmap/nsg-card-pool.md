@@ -337,7 +337,6 @@ PR that made this list (29 September 2026).
 ### Owed — a card whose printed text is not yet built
 
 - **Blood in the Water** (Midnight Sun): prints its advancement requirement as X, which NetrunnerDB records as none; the face draws no circle for it until the stage that builds a variable requirement (`card_face`'s layout test names the card).
-- **Bloop** (PH 3c): rezzed by a card's text (Send a Message, Mycoweb), it is rezzed without its additional cost — `engine::rez_install` never reads `rez_alternatives` (the engine bug named in `ROADMAP.md`), so no harmonic ice is derezzed.
 - **Hostile Architecture** (PH 2b): a *rezzed* copy trashed by the Runner's card text is not heard — `GameEvent::CardTrashed` does not say whether the card was rezzed, and adding that to its 42 sites is more than one card wants. Charm Offensive can reach it; no game has.
 - **Hafrún** (PH Stage 8): two ice types, which `CardType::Ice(IceType)` cannot say.
 - **Nova Initiumia, Ampère** (PH Stage 5): change deck-building rules the validator does not model (`deck_limit` only).

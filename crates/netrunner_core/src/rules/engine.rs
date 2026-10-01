@@ -1019,77 +1019,9 @@ fn rez_ice(
     }
 
     let mut next = state.clone();
-    // Cards that print another way to pay for their own rez — Biawak's
-    // "you can forfeit 1 agenda ... to pay for 10[c] of its rez cost" and
-    // Plutus's "as an additional cost to rez this asset, forfeit 1 agenda
-    // or reveal and trash 3 cards from HQ". Each way the Corp could
-    // complete is offered, the Corp is asked which when more than one is,
-    // its cost is paid beside the rez's credits in this one action, and a
-    // card whose ways are all unavailable cannot be rezzed at all. Biawak
-    // lists a plain rez beside its forfeit, which is exactly the
-    // difference between an optional discount and an additional cost.
-    if !card_def.rez_alternatives.is_empty() {
-        let ctx = ability::ResolutionContext::for_card(Some(&ice_id));
-        let mut cheapest = u32::MAX;
-        let mut wallet = 0;
-        let offered: Vec<u32> = card_def
-            .rez_alternatives
-            .iter()
-            .enumerate()
-            .filter(|(_, alternative)| {
-                alternative.cost.as_ref().is_none_or(|cost| ability::cost_is_affordable(&next, registry, side, cost, Purpose::Other, &ctx))
-            })
-            // …and priced: an alternative the Corp cannot finish paying is
-            // not offered. See `rez_price`.
-            .filter(|(_, alternative)| {
-                let (cost, available) = rez_price(&next, registry, ice, true, alternative.discount);
-                if cost < cheapest {
-                    cheapest = cost;
-                    wallet = available;
-                }
-                available >= cost
-            })
-            .map(|(index, _)| index as u32)
-            .collect();
-        let chosen = match offered.len() {
-            // Nothing available at all is the card's own restriction;
-            // something available but unaffordable is the ordinary
-            // "cannot pay", reported as such so the two read differently.
-            0 if cheapest == u32::MAX => return Err(RulesError::NoAvailableRezAlternative { card: ice_id }),
-            0 => return Err(RulesError::NotEnoughCredits { side, available: wallet, requested: cheapest }),
-            // One way to pay is not a choice; take it rather than ask.
-            1 => offered[0],
-            // Which way is part of paying, so it is asked the way the rest
-            // of the payment is — by replay (`payment::Ask::Alternative`),
-            // ahead of anything the way it names asks in turn.
-            _ if next.payment_answers.is_empty() => {
-                let count = offered.len() as u32;
-                return Err(RulesError::PaymentChoiceNeeded {
-                    side,
-                    amount: count,
-                    question: crate::rules::payment::Ask::Alternative { card: ice_id.clone(), offered },
-                });
-            }
-            _ => {
-                let answer = next.payment_answers.remove(0);
-                if !offered.contains(&answer) {
-                    return Err(RulesError::InvalidChoiceIndex(answer as usize));
-                }
-                answer
-            }
-        };
-        let alternative = &card_def.rez_alternatives[chosen as usize];
-        let paid = match &alternative.cost {
-            Some(cost) => ability::pay_cost_ctx(&mut next, registry, side, cost, Purpose::Other, &ctx)?,
-            None => Vec::new(),
-        };
-        let mut events = paid.clone();
-        events.extend(rez_install(&mut next, registry, ice, true, alternative.discount)?);
-        events.extend(ability::dispatch_cost_events(&mut next, registry, &paid)?);
-        paid_ability::note_window_action(&mut next, side);
-        return Ok((next, events));
-    }
-
+    // The card's own ways to pay for its rez (`rez_alternatives`) are
+    // read by `rez_install`, the one door, so a card's text that rezzes a
+    // card and pays for it meets them as this action does.
     let events = rez_install(&mut next, registry, ice, true, 0)?;
     // Rez stays priority-independent (either side can act regardless of
     // whose priority it currently is), but still gives the other side a
@@ -1113,7 +1045,7 @@ fn corp_may_install_agendas_faceup(state: &GameState, registry: &CardRegistry) -
 /// What rezzing `ice` would cost right now and what the Corp could put
 /// towards it: `(cost, available, whether a region's hosted credits count)`.
 ///
-/// Split out of `rez_install` because `rez_ice` has to price each of a
+/// Split out of `rez_priced` because `rez_install` has to price each of a
 /// card's `rez_alternatives` *before* offering it. Offering one the Corp
 /// cannot complete is not a harmless dead end: `Effect::RezInstalled` is
 /// lenient, so the rez would quietly not happen while the action counted
@@ -1148,18 +1080,118 @@ fn rez_price(
 /// Flips an installed Corp card faceup and pays for it — the half of
 /// `rez_ice` that is not about *when* a rez is allowed, shared with
 /// `Effect::RezInstalled` (Send a Message rezzing for free, Mycoweb
-/// rezzing 2[c] cheaper, Biawak's two forfeit branches). The timing rules
-/// stay in the action handler: a card effect rezzes ice the Runner is not
+/// rezzing 2[c] cheaper) and the install-and-rez of
+/// `PromptInstallCorpCard` (Reanimation Protocol). The timing rules stay
+/// in the action handler: a card effect rezzes ice the Runner is not
 /// approaching, which is exactly what `rez_ice` must refuse.
 ///
-/// `pay_cost: false` waives the cost entirely; otherwise the printed cost,
-/// plus the run's and the rig's rez-cost modifiers, less `discount`, is
-/// paid — from a region's hosted rez credits first (Mahkota Langit Grid),
-/// then the wallet, and `RulesError::NotEnoughCredits` if that is not
-/// enough. `Effect::RezInstalled` is the caller that *swallows* that error
-/// (a card offering an unaffordable rez must resolve, not fail and strand
-/// the decision that parked it); the click action reports it.
+/// `pay_cost: false` is "ignoring all costs" — CR 1.16.5c: "all elements
+/// of the relevant cost are removed, including additional costs" — so
+/// nothing is paid, Bloop's derez and Plutus's forfeit included.
+/// Otherwise the printed cost, plus the run's and the rig's rez-cost
+/// modifiers, less `discount`, is paid — from a region's hosted rez
+/// credits first (Mahkota Langit Grid), then the wallet, and
+/// `RulesError::NotEnoughCredits` if that is not enough — **and the
+/// card's own ways to pay for its rez are met here** (`CardDefinition::
+/// rez_alternatives`): Biawak's "you can forfeit 1 agenda ... to pay for
+/// 10[c] of its rez cost", Plutus's "as an additional cost to rez this
+/// asset, forfeit 1 agenda or reveal and trash 3 cards from HQ", Bloop's
+/// "derez another piece of harmonic ice". Each way the Corp could complete
+/// is offered, the Corp is asked which when more than one is
+/// (`payment::Ask::Alternative`, by replay), its cost is paid beside the
+/// rez's credits, and a card whose ways are all unavailable cannot be
+/// rezzed at all (`NoAvailableRezAlternative`). Biawak lists a plain rez
+/// beside its forfeit, which is exactly the difference between an optional
+/// discount and an additional cost. The ways used to be read by `rez_ice`
+/// alone, ahead of this call, so Mycoweb's "paying 2[credit] less" rezzed
+/// Bloop for 1[c] and derezzed nothing — an additional cost a discount
+/// does not remove (CR 1.16.5a: "any other costs ... still apply
+/// normally"). `discount` stacks with the way's own: Biawak through
+/// Mycoweb, forfeiting, costs 14 − 10 − 2.
+///
+/// `Effect::RezInstalled` and the install-and-rez are the callers that
+/// *swallow* `NotEnoughCredits`, `RezRestricted` and
+/// `NoAvailableRezAlternative` (a card offering an unaffordable rez must
+/// resolve, not fail and strand the decision that parked it; CR 1.16.4b–c,
+/// the card is not rezzed); the click action reports them.
 pub(crate) fn rez_install(
+    next: &mut GameState,
+    registry: &CardRegistry,
+    ice: InstallId,
+    pay_cost: bool,
+    discount: u32,
+) -> Result<Vec<GameEvent>, RulesError> {
+    let side = Side::Corp;
+    let installed = next.corp.installed.iter().find(|c| c.install_id == ice).ok_or(RulesError::InstallNotFound(ice))?;
+    let ice_id = installed.card.clone();
+    let card_def = registry.get(&ice_id).ok_or_else(|| RulesError::CardNotFoundInRegistry(ice_id.clone()))?;
+    if !pay_cost || card_def.rez_alternatives.is_empty() {
+        return rez_priced(next, registry, ice, pay_cost, discount);
+    }
+
+    let ctx = ability::ResolutionContext::for_card(Some(&ice_id));
+    let mut cheapest = u32::MAX;
+    let mut wallet = 0;
+    let offered: Vec<u32> = card_def
+        .rez_alternatives
+        .iter()
+        .enumerate()
+        .filter(|(_, alternative)| {
+            alternative.cost.as_ref().is_none_or(|cost| ability::cost_is_affordable(next, registry, side, cost, Purpose::Other, &ctx))
+        })
+        // …and priced: an alternative the Corp cannot finish paying is
+        // not offered. See `rez_price`.
+        .filter(|(_, alternative)| {
+            let (cost, available) = rez_price(next, registry, ice, true, discount.saturating_add(alternative.discount));
+            if cost < cheapest {
+                cheapest = cost;
+                wallet = available;
+            }
+            available >= cost
+        })
+        .map(|(index, _)| index as u32)
+        .collect();
+    let chosen = match offered.len() {
+        // Nothing available at all is the card's own restriction;
+        // something available but unaffordable is the ordinary
+        // "cannot pay", reported as such so the two read differently.
+        0 if cheapest == u32::MAX => return Err(RulesError::NoAvailableRezAlternative { card: ice_id }),
+        0 => return Err(RulesError::NotEnoughCredits { side, available: wallet, requested: cheapest }),
+        // One way to pay is not a choice; take it rather than ask.
+        1 => offered[0],
+        // Which way is part of paying, so it is asked the way the rest
+        // of the payment is — by replay (`payment::Ask::Alternative`),
+        // ahead of anything the way it names asks in turn.
+        _ if next.payment_answers.is_empty() => {
+            let count = offered.len() as u32;
+            return Err(RulesError::PaymentChoiceNeeded {
+                side,
+                amount: count,
+                question: crate::rules::payment::Ask::Alternative { card: ice_id.clone(), offered },
+            });
+        }
+        _ => {
+            let answer = next.payment_answers.remove(0);
+            if !offered.contains(&answer) {
+                return Err(RulesError::InvalidChoiceIndex(answer as usize));
+            }
+            answer
+        }
+    };
+    let alternative = &card_def.rez_alternatives[chosen as usize];
+    let paid = match &alternative.cost {
+        Some(cost) => ability::pay_cost_ctx(next, registry, side, cost, Purpose::Other, &ctx)?,
+        None => Vec::new(),
+    };
+    let mut events = paid.clone();
+    events.extend(rez_priced(next, registry, ice, true, discount.saturating_add(alternative.discount))?);
+    events.extend(ability::dispatch_cost_events(next, registry, &paid)?);
+    Ok(events)
+}
+
+/// The rez itself, at a settled price: `rez_install` once the card's own
+/// ways to pay have been read. Never called around it.
+fn rez_priced(
     next: &mut GameState,
     registry: &CardRegistry,
     ice: InstallId,

@@ -9209,6 +9209,111 @@ mod system_gateway {
         assert!(state.active_run.is_none(), "Enigma's subroutine, resolved through Mycoweb");
     }
 
+    /// The Runner meets a rezzed Mycoweb on HQ and its first subroutine
+    /// is passed over; the state is parked on the second's "you may rez
+    /// 1 installed piece of ice, paying 2[credit] less".
+    fn at_mycowebs_rez(installed: Vec<crate::rules::InstalledCard>, credits: u32) -> (CardRegistry, GameState) {
+        let registry = sg_registry();
+        let mut state = runner_turn(5, 4);
+        state.corp.resources.credits = Credits(credits);
+        state.corp.archives = vec![];
+        state.corp.installed = installed;
+        state.corp.installed.push(ice_installed("mycoweb", ServerId::Hq, true));
+        let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run");
+        let (state, _) = crate::rules::test_support::continue_run(&state, &registry).expect("approach");
+        // Subroutine 1 has nothing in Archives to offer and resolves to
+        // nothing; subroutine 2 parks its selection.
+        let state = advance_until_choice(state, &registry);
+        assert!(
+            matches!(&state.pending_decision, Some(crate::rules::PendingDecision::ChooseCards { filter: crate::dsl::CardFilter::UnrezzedIce, .. })),
+            "parked on which ice to rez: {:?}",
+            state.pending_decision
+        );
+        (registry, state)
+    }
+
+    /// A card's text that rezzes a card and pays for it meets the card's
+    /// own additional cost (CR 1.16.5a: a discount removes nothing else).
+    /// Mycoweb's rez of Bloop used to pay 1[credit] and derez nothing,
+    /// because only the click action read `rez_alternatives`.
+    #[test]
+    fn mycoweb_rezzing_bloop_derezzes_a_harmonic_ice_as_the_click_would() {
+        let (registry, state) =
+            at_mycowebs_rez(vec![ice_installed("bloop", ServerId::RnD, false), ice_installed("pulse", ServerId::Archives, true)], 5);
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ToggleCardSelection { position: position_of(&state, "bloop") }).expect("pick Bloop");
+        let (state, events) = apply_action(&state, &registry, PlayerAction::ConfirmCardSelection).expect("rez it");
+        assert!(state.corp.installed.iter().any(|c| c.card.0 == "bloop" && c.rezzed), "Bloop rezzed");
+        assert!(state.corp.installed.iter().any(|c| c.card.0 == "pulse" && !c.rezzed), "Pulse derezzed to pay for it");
+        assert_eq!(state.corp.resources.credits, Credits(5 - (3 - 2)), "3 less 2");
+        assert!(events.iter().any(|e| matches!(e, crate::rules::GameEvent::CardDerezzed { .. })), "the cost's event is in the record");
+    }
+
+    /// With no rezzed harmonic ice to derez, Bloop's additional cost
+    /// cannot be paid, and the Corp directed to rez it does not (CR
+    /// 1.16.4c) — quietly, since the text is a "may" that must resolve.
+    #[test]
+    fn mycoweb_rezzing_bloop_with_nothing_to_derez_rezzes_nothing() {
+        let (registry, state) = at_mycowebs_rez(vec![ice_installed("bloop", ServerId::RnD, false)], 5);
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ToggleCardSelection { position: position_of(&state, "bloop") }).expect("pick Bloop");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ConfirmCardSelection).expect("the may resolves");
+        assert!(state.corp.installed.iter().any(|c| c.card.0 == "bloop" && !c.rezzed), "Bloop stays unrezzed");
+        assert_eq!(state.corp.resources.credits, Credits(5), "and nothing was paid");
+        assert!(state.pending_decision.is_none() && state.pending_payment.is_none(), "nothing left parked");
+    }
+
+    /// Two ways to pay are asked about by the payment's replay from
+    /// inside a card's text as from the click, and Mycoweb's discount
+    /// stacks with Biawak's: 14, less 10 for the forfeit, less 2.
+    #[test]
+    fn mycoweb_rezzing_biawak_asks_which_way_and_stacks_the_discount() {
+        let (registry, mut state) = at_mycowebs_rez(vec![ice_installed("biawak", ServerId::RnD, false)], 12);
+        state.corp.scored_agendas = vec![crate::rules::ScoredAgenda::plain(CardId("offworld_office".to_string()))];
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ToggleCardSelection { position: position_of(&state, "biawak") }).expect("pick Biawak");
+        let (asked, _) = apply_action(&state, &registry, PlayerAction::ConfirmCardSelection).expect("parks the question");
+        let Some(crate::rules::PendingPayment { question: crate::rules::PaymentAsk::Alternative { offered, .. }, side: Side::Corp, .. }) = &asked.pending_payment else {
+            panic!("asked which way: {:?}", asked.pending_payment);
+        };
+        assert_eq!(offered, &vec![0, 1], "the forfeit for 2[credit] and the full price at 12");
+        assert!(asked.corp.installed.iter().all(|c| !(c.card.0 == "biawak" && c.rezzed)), "not rezzed until answered");
+
+        let (forfeited, _) = apply_action(&asked, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("forfeit");
+        assert!(forfeited.corp.installed.iter().any(|c| c.card.0 == "biawak" && c.rezzed));
+        assert!(forfeited.corp.scored_agendas.is_empty(), "the agenda forfeited");
+        assert_eq!(forfeited.corp.resources.credits, Credits(12 - (14 - 10 - 2)));
+
+        let (paid, _) = apply_action(&asked, &registry, PlayerAction::ResolvePendingChoice { option_index: 1 }).expect("full price");
+        assert!(paid.corp.installed.iter().any(|c| c.card.0 == "biawak" && c.rezzed));
+        assert_eq!(paid.corp.scored_agendas.len(), 1, "the agenda kept");
+        assert_eq!(paid.corp.resources.credits, Credits(0), "14 less 2");
+    }
+
+    /// "Ignoring all costs" removes the additional cost too (CR 1.16.5c):
+    /// Send a Message rezzes Bloop and derezzes nothing.
+    #[test]
+    fn send_a_message_rezzes_bloop_without_its_additional_cost() {
+        let registry = sg_registry();
+        let mut state = base_state();
+        state.corp.resources.credits = Credits(0);
+        state.corp.installed = vec![
+            crate::rules::InstalledCard {
+                install_id: InstallId(1020),
+                card: CardId("send_a_message".to_string()),
+                server: ServerId::Remote(0),
+                advancement_tokens: 5,
+                ..Default::default()
+            },
+            ice_installed("bloop", ServerId::RnD, false),
+            ice_installed("pulse", ServerId::Archives, true),
+        ];
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ScoreAgenda { target: install_of(&state, "send_a_message") }).expect("score");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("may rez");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ToggleCardSelection { position: position_of(&state, "bloop") }).expect("pick Bloop");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ConfirmCardSelection).expect("rez it");
+        assert!(state.corp.installed.iter().any(|c| c.card.0 == "bloop" && c.rezzed), "Bloop rezzed");
+        assert!(state.corp.installed.iter().any(|c| c.card.0 == "pulse" && c.rezzed), "Pulse kept: no cost was paid");
+        assert_eq!(state.corp.resources.credits, Credits(0));
+    }
+
     #[test]
     fn touch_ups_costs_an_extra_click_advances_twice_and_shuffles_two_cards_of_one_type_away() {
         let registry = sg_registry();
