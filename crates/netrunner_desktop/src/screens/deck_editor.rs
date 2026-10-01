@@ -36,11 +36,12 @@ use netrunner_core::dsl::{CardDefinition, CardId};
 use netrunner_core::format::NsgFormat;
 
 use crate::card_images::CardImages;
-use crate::core::ClientCore;
+use crate::core::{ClientCore, TokioRuntime};
+use crate::files::{Ask, DeckFiles, Done};
 use crate::models::deck_editor::{Editor, Intent, Outcome};
 use crate::models::decks::{Intent as ShelfIntent, Outcome as ShelfOutcome, Shelf};
 use crate::nav::{screen_root, Captures, InputCaptured, Navigate};
-use crate::screens::decks::{spawn_standing, write_clipboard};
+use crate::screens::decks::{exported, spawn_standing};
 use crate::screens::AppScreen;
 use crate::theme::{size, Theme};
 use crate::models::layout::{self, DECK_FACE};
@@ -56,7 +57,7 @@ impl Plugin for DeckEditorPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(OnEnter(AppScreen::DeckEditor), spawn)
             .add_systems(Update, escape_closes_the_popup.in_set(Captures).run_if(in_state(AppScreen::DeckEditor)))
-            .add_systems(Update, (controls, text_fields, rebuild, fit_pool, redraw_new_art, refresh).chain().run_if(in_state(AppScreen::DeckEditor)));
+            .add_systems(Update, (controls, file_answers, text_fields, rebuild, fit_pool, redraw_new_art, refresh).chain().run_if(in_state(AppScreen::DeckEditor)));
     }
 }
 
@@ -324,6 +325,16 @@ fn build(commands: &mut Commands, theme: &Theme, core: &ClientCore, images: &Car
     read_only
 }
 
+/// The export dialog's answer, when it comes: where the file went, or
+/// why there is none. A cancelled dialog is nothing, and so is a file
+/// chosen to import, which only the Decks screen asks for.
+fn file_answers(mut files: ResMut<DeckFiles>, mut editor: ResMut<Model>, mut dirty: ResMut<Dirty>) {
+    if let Some(Done::Saved(Some(result))) = files.poll() {
+        editor.0.note = Some(exported(result));
+        dirty.notice = true;
+    }
+}
+
 /// A column that scrolls `content`.
 fn scroll_column(commands: &mut Commands, content: Entity) -> Entity {
     commands
@@ -389,7 +400,7 @@ fn spawn_header(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientC
             buttons.spawn(widgets::styled_button(theme, ButtonKind::Primary, "Done", px(250), Control::Done));
             buttons.spawn(widgets::button(theme, "Save a copy", px(250), Control::Copy));
         }
-        buttons.spawn(widgets::button(theme, "Export to clipboard", px(250), Control::Export));
+        buttons.spawn(widgets::button(theme, "Export to file…", px(250), Control::Export));
         if editor.read_only {
             buttons.spawn(widgets::styled_button(theme, ButtonKind::Quiet, "Back", px(250), Control::Done));
         } else {
@@ -646,7 +657,7 @@ fn controls(
     mut editor: ResMut<Model>,
     (mut popup, mut dirty, mut search, mut rebuild): (ResMut<Popup>, ResMut<Dirty>, ResMut<SearchRequested>, ResMut<Rebuild>),
     (core, theme): (Res<ClientCore>, Res<Theme>),
-    mut clipboard: Option<ResMut<bevy::clipboard::Clipboard>>,
+    (mut files, runtime): (ResMut<DeckFiles>, Option<Res<TokioRuntime>>),
     mut navigate: MessageWriter<Navigate>,
 ) {
     let book = book(&core);
@@ -715,10 +726,13 @@ fn controls(
                 navigate.write(Navigate(AppScreen::Decks));
             }
             Control::Export => {
+                // The dialog answers later, through `file_answers`.
                 let text = deck_builder::export_text(editor.0.deck(), book);
                 let name = editor.0.deck().name.clone();
-                editor.0.note = Some(write_clipboard(clipboard.as_deref_mut(), text, &name));
-                dirty.notice = true;
+                if let Err(error) = files.ask(runtime.as_deref(), Ask::Save { name, text }) {
+                    editor.0.note = Some(error);
+                    dirty.notice = true;
+                }
             }
             Control::Copy => {
                 // The copy is made the way the Decks screen makes one, so
