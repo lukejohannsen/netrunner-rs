@@ -1,0 +1,79 @@
+{
+  "id": "nanuq",
+  "title": "Nanuq",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 4,
+  "strength": 3,
+  "memory_cost": 2,
+  "triggers": [
+    {
+      "trigger": "OnCardTrashed",
+      "subject": "This",
+      "when": {
+        "TrashedFrom": [
+          "Installed"
+        ]
+      },
+      "effects": [
+        {
+          "RemoveFromGame": "ThisCard"
+        }
+      ],
+      "text": "When this program is uninstalled, remove it from the game."
+    },
+    {
+      "trigger": "OnAgendaScored",
+      "subject": "Any",
+      "effects": [
+        {
+          "RemoveFromGame": "ThisCard"
+        }
+      ],
+      "text": "When an agenda is scored or stolen, remove this program from the game."
+    },
+    {
+      "trigger": "OnAgendaStolen",
+      "subject": "Any",
+      "effects": [
+        {
+          "RemoveFromGame": "ThisCard"
+        }
+      ],
+      "text": "When an agenda is scored or stolen, remove this program from the game."
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "text": "Interface → 2[credit]: Break up to 2 subroutines.",
+      "cost": {
+        "Credits": 2
+      },
+      "effect": {
+        "BreakSubroutines": {
+          "count": {
+            "Fixed": 2
+          }
+        }
+      },
+      "requirement": "DuringEncounter"
+    },
+    {
+      "trigger": "Paid",
+      "text": "1[credit]: +1 strength.",
+      "cost": {
+        "Credits": 1
+      },
+      "effect": {
+        "BoostStrength": {
+          "amount": 1,
+          "duration": "Encounter"
+        }
+      },
+      "requirement": "DuringEncounter"
+    }
+  ],
+  "built_from": 33088,
+  "is_playable": true
+}

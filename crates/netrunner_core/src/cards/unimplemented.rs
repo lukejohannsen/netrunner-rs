@@ -39,7 +39,6 @@ pub(crate) const TAI_UNIMPLEMENTED: &[(&str, &str)] = &[
 pub(crate) const PH_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("hush", "Hush"),
     ("tsakhia_bankhar_gantulga", "Tsakhia \"Bankhar\" Gantulga"),
-    ("nanuq", "Nanuq"),
     ("matryoshka", "Matryoshka"),
     ("nightmare_archive", "Nightmare Archive"),
     ("issuaq_adaptics_sustaining_diversity", "Issuaq Adaptics: Sustaining Diversity"),

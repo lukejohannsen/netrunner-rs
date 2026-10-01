@@ -5491,3 +5491,43 @@ Parhelion 51 of 63; `PH_UNIMPLEMENTED` 14 → 12.
   As You Go played Raindrops Cut Stone 23 / 0 times, and a subroutine
   resolving placed a counter 12 times.
 
+#### Stage 6d — a Runner card removed from the game as it leaves the table (1 October 2026)
+
+`feat/ph-stage-6d-nanuq`: Nanuq. **No new `Effect`**, and no new word.
+Parhelion 52 of 63; `PH_UNIMPLEMENTED` 12 → 11. **Stage 6 is complete.**
+
+- **"When this program is uninstalled, remove it from the game"** is heard
+  as the program's trash from the table (`OnCardTrashed`, `subject: This`,
+  `TrashedFrom::Installed`), which the subject hears from the heap — the
+  one way a program leaves the rig in the pool but by its own removal.
+  `Effect::RemoveFromGame(ThisCard)` now also takes a Runner card from the
+  heap when it is reacting to its own trash from the table, keyed on the
+  triggering `CardTrashed` rather than on the rig, where a second copy by
+  the same name may still be installed (a test holds two copies).
+- **"When an agenda is scored or stolen, remove this program from the
+  game"** composes: `OnAgendaScored` and `OnAgendaStolen`, Vera Ivanovna
+  Shuyskaya's pair, each `RemoveFromGame(ThisCard)` out of the rig.
+- **Known limit:** an uninstall to the grip or the stack would not remove
+  it; no card in the pool does that to a program. The Luana Campos line
+  that said Nanuq would be the first Runner interrupt of its own
+  uninstalling is corrected: its words are a trigger, not an interrupt.
+- **Client.** Nothing new to draw: the removed-from-game pile is drawn
+  (VP, #250).
+- **Decks.** Street Gallery took two Nanuq for its two Conduit; eight
+  other decks still carry Conduit.
+- **#331's commit message is empty** on `main` (`17a601d`, subject
+  " (#331)"): the squash merge was given a message file from the wrong
+  directory. Its message is the pull request's description, and its
+  record is Stage 6c above.
+- **DSL ratio (`pool_status.py`):** 14 of 92 `Effect` variants
+  single-use, 1 unused, over 432 card files.
+- **Measured** against Stage 6c (`d7a49fc`). Both sweeps green at 256
+  seeds, the card gate included. A ref with the engine change and no card
+  is identical in all four shapes; with Nanuq the random seatings are
+  identical and the planner ones move by `determinize` with no game's end
+  changed (steps 110,845 → 111,049 of 192 games).
+- **Real play**, seed 2, Street Gallery against Retirement Package (random
+  96 games / planner 48): Nanuq installed 9 / 34 times and used 0 / 23,
+  removed from the game after its trash from the table 6 / 9 times, a
+  steal 1 / 19 and a score 0 / 1.
+

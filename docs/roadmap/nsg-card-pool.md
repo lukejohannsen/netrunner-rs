@@ -47,14 +47,14 @@ cards each stage takes.
 | 1 | Vantage Point (`vp`) | 66 | 66 | 0 | complete (27 September 2026) |
 | 2 | Rebellion Without Rehearsal (`rwr`) | 65 | 65 | 0 | complete (28 September 2026) |
 | 3 | The Automata Initiative (`tai`) | 65 | 65 | 0 | complete (29 September 2026) |
-| 4 | Parhelion (`ph`) | 63 | 51 | 12 | **Stage 6d next** — a Runner card removed from the game as it leaves the table: Nanuq |
+| 4 | Parhelion (`ph`) | 63 | 52 | 11 | **Stage 7 next** — winning and the score area: Issuaq Adaptics, Superdeep Borehole, Nightmare Archive, Matryoshka |
 | 5 | Midnight Sun (`ms`) + Booster (`msbp`) | 65 + 7 | 0 | 65 + 7 | not started |
 | 6 | Uprising (`ur`) + Booster (`urbp`) | 65 + 7 | 0 | 65 + 7 | not started |
 | 7 | Downfall (`df`) | 65 | 0 | 65 | not started |
 | 8 | System Update 2021 (`su21`), Salvaged Memories (`sm`), Magnum Opus Reprint (`mor`) | 82, 18, 6 | 11, 1, 0 | 71, 17, 6 | not started (the built ones are Core reprints) |
 
 **DSL ratio** (`pool_status.py`, the DSL Growth Rule's number): **14 of 92
-`Effect` variants single-use, 1 unused (`Trace`), over 431 card files** (1
+`Effect` variants single-use, 1 unused (`Trace`), over 432 card files** (1
 October 2026). The baseline at Stage 0a was 26 of 70 single-use, 3 unused,
 over 184 files: 215 cards later the single-use count is *lower*, because the
 growth went into `Trigger`, `EventFilter`, `Amount`, `CardFilter`, `Cost` and
@@ -343,7 +343,8 @@ PR that made this list (29 September 2026).
 - **Manuel Lattes de Moura**: the extra access is heard at the run's success, as every "when you breach" in the pool is, so a run Flagship keeps from being declared successful gets none.
 - **Kessleroid**: "cannot trash" is unenforced.
 - **Embedded Reporting**: does not shuffle. **Next Big Thing** from the Runner's score area is unmodelled. **Detente**'s access outside a run is unmodelled.
-- **Luana Campos** (VP 7a): "uninstalled" is announced for a Corp card only; no Runner card in the pool interrupts its own uninstalling (Nanuq, PH Stage 6, will be the first, and its words are a replacement). The interrupt resolves in the dispatch that announced it.
+- **Luana Campos** (VP 7a): "uninstalled" is announced for a Corp card only, and no Runner card in the pool interrupts its own uninstalling. The interrupt resolves in the dispatch that announced it.
+- **Nanuq** (PH 6d): "when this program is uninstalled" is heard as its trash from the table — the only way a program leaves the rig in the pool but by its own removal — so an uninstall to the grip or the stack would not remove it.
 - **Shred**: intercepts `EndTheRun` only (a lingering `PreventRunEnding`).
 - **Raindrops Cut Stone** (PH 6c): a subroutine a card's text resolves (Nanisivik Grid's) is not announced, so it is not counted; only an encountered piece of ice's are.
 
@@ -684,7 +685,7 @@ change deck-building rules (`DeckRule`, Stage 5a).
    charge (built): Flux Capacitor, Orca; **6b**, the mark (built): Tunnel
    Vision, Info Bounty; **6c**, a set-aside program and counters on a run event
    (built): Spark of Inspiration, Raindrops Cut Stone; **6d**, a Runner card removed
-   from the game as it is uninstalled: Nanuq.
+   from the game as it is uninstalled (built): Nanuq. Stage 6 is complete.
 7. **Winning and the score area:** Issuaq Adaptics: Sustaining Diversity, Superdeep Borehole, Nightmare
    Archive, Matryoshka (X cost).
 8. **Losing abilities and break restrictions** (last, because they touch
@@ -719,6 +720,7 @@ Grid, Tsakhia, World Tree.
 - **Stage 6a** — charge, and the first time each encounter (`feat/ph-stage-6a-charge`, 1 October 2026).
 - **Stage 6b** — the mark (`feat/ph-stage-6b-mark`, 1 October 2026).
 - **Stage 6c** — a set-aside program, and a subroutine resolving heard by a run event (`feat/ph-stage-6c-set-aside-and-run-event-counters`, 1 October 2026).
+- **Stage 6d** — a Runner card removed from the game as it leaves the table (`feat/ph-stage-6d-nanuq`, 1 October 2026).
 
 ### 5. Midnight Sun and its Booster Pack — 65 cards (C 22 / V 26 / M 17)
 
