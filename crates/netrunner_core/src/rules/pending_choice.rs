@@ -612,13 +612,14 @@ pub(crate) fn remove_installed_card(
             } else {
                 Vec::new()
             };
-            Ok(Some(RemovedInstall { card: removed.card, was_public: removed.rezzed, announced, cascade }))
+            let trashed = Some(crate::rules::event::TrashedInstall::of(&removed, false));
+            Ok(Some(RemovedInstall { card: removed.card, was_public: removed.rezzed, announced, cascade, trashed }))
         }
         Side::Runner => {
             let Some(pos) = state.runner.rig.iter().position(|c| c.install_id == install_id) else { return Ok(None) };
             let removed = state.runner.rig.remove(pos);
             let cascade = ability::cascade_trash_hosted_on_rig_card(state, registry, &removed);
-            Ok(Some(RemovedInstall { card: removed.card, was_public: true, announced: Vec::new(), cascade }))
+            Ok(Some(RemovedInstall { card: removed.card, was_public: true, announced: Vec::new(), cascade, trashed: None }))
         }
     }
 }
@@ -633,6 +634,8 @@ pub(crate) struct RemovedInstall {
     pub announced: Vec<GameEvent>,
     /// What left with it.
     pub cascade: Vec<GameEvent>,
+    /// How a Corp install stood as it left, for its `CardTrashed`.
+    pub trashed: Option<crate::rules::event::TrashedInstall>,
 }
 
 /// The positions in `zone` a `Cost::Trash` takes, asking the payer only
@@ -720,6 +723,7 @@ pub(crate) fn trash_as_cost(
     let mut trashed_from_hq = 0u32;
     for (index, card_id) in selected.iter().enumerate() {
         let mut cascade = Vec::new();
+        let mut trashed = None;
         let was_public = match (&installs, zone) {
             (Some(ids), _) => {
                 let install = ids.get(positions[index]).copied().ok_or(RulesError::CardNotEligibleForSelection(positions[index]))?;
@@ -727,6 +731,7 @@ pub(crate) fn trash_as_cost(
                     remove_installed_card(state, registry, side, zone, install)?.ok_or(RulesError::CardNotEligibleForSelection(positions[index]))?;
                 events.extend(removed.announced);
                 cascade = removed.cascade;
+                trashed = removed.trashed;
                 removed.was_public
             }
             (None, _) => {
@@ -753,7 +758,7 @@ pub(crate) fn trash_as_cost(
         } else {
             state.runner.heap.push(card_id.clone());
         }
-        events.push(GameEvent::CardTrashed { side: owning_side(side, &discard), card: card_id.clone(), from: if installs.is_some() { crate::dsl::TrashedFrom::Installed } else { zone.trashed_from() }, by: Some(side) });
+        events.push(GameEvent::CardTrashed { side: owning_side(side, &discard), card: card_id.clone(), from: if installs.is_some() { crate::dsl::TrashedFrom::Installed } else { zone.trashed_from() }, by: Some(side), install: trashed });
         if matches!(zone, CardZoneRef::OwnHq) && side == Side::Corp {
             trashed_from_hq += 1;
         }
@@ -851,7 +856,16 @@ pub(crate) fn resolve_accept(
     let paid = cost_events.clone();
     let mut events = cost_events;
     events.push(GameEvent::PendingPaidChoiceAccepted { side: pending.side });
-    let mut ctx = ability::ResolutionContext { last_known, ..payer };
+    // The cards the cost trashed, for "the card you trashed" in what it
+    // paid for (`ResolutionContext::paid_with`).
+    let paid_with: Vec<CardId> = paid
+        .iter()
+        .filter_map(|event| match event {
+            GameEvent::CardTrashed { card, .. } => Some(card.clone()),
+            _ => None,
+        })
+        .collect();
+    let mut ctx = ability::ResolutionContext { last_known, paid_with, ..payer };
     ctx.prompting_card = pending.prompting_card.as_ref().or(pending.source_card.as_ref());
     events.extend(ability::evaluate_effect(state, &pending.if_paid, &mut ctx, registry)?);
     events.extend(ability::dispatch_cost_events(state, registry, &paid)?);
@@ -1221,6 +1235,7 @@ pub(crate) fn resolve_confirm_card_selection(
             // Archives. A card from a hidden zone (HQ, R&D) was not seen; a
             // rezzed install or any Runner card was.
             let mut cascade = Vec::new();
+            let mut trashed = None;
             // One card of the other player's, trashed off the table by a
             // card's text, is about to be trashed before it is: if somebody
             // could prevent that, `rules::prevention` parks it and the card
@@ -1248,6 +1263,7 @@ pub(crate) fn resolve_confirm_card_selection(
                     Some(install_id) => remove_installed_card(state, registry, side, &source, *install_id)?.map(|removed| {
                         events.extend(removed.announced);
                         cascade = removed.cascade;
+                        trashed = removed.trashed;
                         removed.was_public
                     }),
                     None => None,
@@ -1319,7 +1335,7 @@ pub(crate) fn resolve_confirm_card_selection(
                 // `CardTrashed`, so this changes no rules. (A trash somebody
                 // could prevent never gets here: see the top of this loop.)
                 if is_discard_pile(dest) {
-                    events.push(GameEvent::CardTrashed { side: owning_side(side, dest), card: card_id.clone(), from: source.trashed_from(), by: Some(side) });
+                    events.push(GameEvent::CardTrashed { side: owning_side(side, dest), card: card_id.clone(), from: source.trashed_from(), by: Some(side), install: trashed });
                     // The encountered ice's trash, when its text chose the
                     // card (Sorocaban Blade's limit).
                     if matches!(source, CardZoneRef::OpponentInstalled) && side == Side::Corp {

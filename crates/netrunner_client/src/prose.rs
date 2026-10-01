@@ -86,6 +86,7 @@ pub fn describe_amount(amount: &Amount) -> String {
         Amount::ClicksRemaining => "the clicks remaining".to_string(),
         Amount::PrintedCost => "its printed cost".to_string(),
         Amount::AccessedCardPrintedCost => "the printed cost of the card being accessed".to_string(),
+        Amount::PaidCardPrintedCost => "the printed cost of the card trashed to pay".to_string(),
         Amount::ProtectedRemotesWithRootCards => "the number of remote servers with a card in the root and protected by ice".to_string(),
         Amount::RemainingAfterSelection(n) => format!("{n} less the cards chosen"),
         Amount::CardsSelected => "the cards chosen".to_string(),
@@ -521,6 +522,7 @@ fn describe_when(filter: &EventFilter) -> String {
         EventFilter::ByThis => "by this card".to_string(),
         EventFilter::Host => "of host ice".to_string(),
         EventFilter::InRoot => "by the Corp, in the root of a server".to_string(),
+        EventFilter::TrashedFromThisServer => "from the root of this server or protecting it, except during installation".to_string(),
         EventFilter::TrashedFrom(places) => {
             let places: Vec<&str> = places
                 .iter()

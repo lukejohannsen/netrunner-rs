@@ -102,6 +102,11 @@ pub(crate) struct Moment {
     /// does not carry whether the card was rezzed, and no card in the pool
     /// has needed it.
     pub was_active: bool,
+    /// How a Corp install stood as it was trashed off the table — read off
+    /// the event (`GameEvent::CardTrashed::install`), or for an access
+    /// trash off the run, since the card is in Archives by the time either
+    /// is heard (`EventFilter::TrashedFromThisServer`).
+    pub trashed_install: Option<crate::rules::TrashedInstall>,
 }
 
 /// A card that may hear a moment.
@@ -127,7 +132,7 @@ struct Listener {
 /// `GameEvent` is a decision made here rather than a silence.
 pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
     let card = |card: &CardId, install: Option<InstallId>| About::Card { card: card.clone(), install, installed: install.is_some() };
-    let moment = |trigger, about: &About, of| Moment { trigger, about: about.clone(), of, ice: None, from_hq: None, installed_in: None, trashed_from: None, by: None, was_active: false };
+    let moment = |trigger, about: &About, of| Moment { trigger, about: about.clone(), of, ice: None, from_hq: None, installed_in: None, trashed_from: None, by: None, was_active: false, trashed_install: None };
     // A moment about the ice at `position` in the run's ice. Where the run
     // or the ice has gone by the time the moment is asked again — a
     // trigger fired after the run ended — it is about nothing, and keeps
@@ -138,7 +143,7 @@ pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
             .as_ref()
             .and_then(|run| run.ice.get(position as usize))
             .map_or(About::Nothing, |ice| About::Card { card: ice.card_id.clone(), install: Some(ice.install_id), installed: true });
-        Moment { trigger, about, of: Some(Side::Runner), ice: Some(facts), from_hq: None, installed_in: None, trashed_from: None, was_active: false, by: None }
+        Moment { trigger, about, of: Some(Side::Runner), ice: Some(facts), from_hq: None, installed_in: None, trashed_from: None, was_active: false, by: None, trashed_install: None }
     };
     match event {
         GameEvent::EventPlayed { side, card: played } => {
@@ -178,7 +183,10 @@ pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
             let about = About::Card { card: trashed.clone(), install: None, installed: install.is_some() };
             let access = state.active_run.as_ref().and_then(|run| run.access_state.as_ref());
             let was_active = install.is_some() && access.is_some_and(|access| access.pending_install == *install && access.pending_install_rezzed);
-            vec![Moment { was_active, ..moment(Trigger::OnTrashedFromAccess, &about, Some(Side::Runner)) }]
+            // Accessed in the root of the server the run is on; never ice.
+            let server = state.active_run.as_ref().map(|run| run.server);
+            let trashed_install = install.and(server).map(|server| crate::rules::TrashedInstall { server, rezzed: was_active, installing: false });
+            vec![Moment { was_active, trashed_install, ..moment(Trigger::OnTrashedFromAccess, &about, Some(Side::Runner)) }]
         }
 
         // The agenda reacts from the score area, under the handle it kept
@@ -269,8 +277,13 @@ pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
         }
         GameEvent::CreditsSpentFromOutsidePool { .. } => Vec::new(),
         // Heard by whoever carried it out; the rules' trashes are nobody's.
-        GameEvent::CardTrashed { card: trashed, from, by: Some(by), .. } => {
-            vec![Moment { trashed_from: Some(*from), ..moment(Trigger::OnCardTrashed, &About::Card { card: trashed.clone(), install: None, installed: from.installed() }, Some(*by)) }]
+        // A rezzed install was active the instant it left, and hears its
+        // own trash as one (CR 4.6.6i): Hostile Architecture's and Yakov
+        // Erikovich Avdakov's "(including this …)".
+        GameEvent::CardTrashed { card: trashed, from, by: Some(by), install, .. } => {
+            let about = About::Card { card: trashed.clone(), install: None, installed: from.installed() };
+            let was_active = install.is_some_and(|install| install.rezzed);
+            vec![Moment { trashed_from: Some(*from), was_active, trashed_install: *install, ..moment(Trigger::OnCardTrashed, &about, Some(*by)) }]
         }
         GameEvent::CardTrashed { by: None, .. } => Vec::new(),
         // The Corp purges, whatever the card that made it (CR 10.1.2).
@@ -525,9 +538,16 @@ fn is_this(listener: &Listener, moment: &Moment) -> bool {
 }
 
 /// Whether what a moment is about passes a card's `when`.
-fn passes(state: &GameState, registry: &CardRegistry, filter: &EventFilter, moment: &Moment, install: Option<InstallId>) -> bool {
+/// `here` is the server the listening card is in or protecting — or was,
+/// for a card trashed out of it that hears its own trash.
+fn passes(state: &GameState, registry: &CardRegistry, filter: &EventFilter, moment: &Moment, install: Option<InstallId>, here: Option<ServerId>) -> bool {
     if let EventFilter::All(parts) = filter {
-        return parts.iter().all(|part| passes(state, registry, part, moment, install));
+        return parts.iter().all(|part| passes(state, registry, part, moment, install, here));
+    }
+    // "From the root of this server or protecting it, except during
+    // installation."
+    if let EventFilter::TrashedFromThisServer = filter {
+        return moment.trashed_install.is_some_and(|trashed| !trashed.installing && Some(trashed.server) == here);
     }
     // "Whenever **it** fully breaks": the object the moment names is the
     // listening install.
@@ -593,7 +613,7 @@ fn passes(state: &GameState, registry: &CardRegistry, filter: &EventFilter, mome
 /// Whose moment it was is asked again too (`whose_admits`), for the same
 /// reason: Méliès U hears the discard phase ending on its own "your" and
 /// on "the Runner's", and the queued trigger stands for both entries.
-pub(crate) fn when_admits(state: &GameState, registry: &CardRegistry, triggered: &TriggeredEffect, controller: Side, install: Option<InstallId>, event: Option<&GameEvent>) -> bool {
+pub(crate) fn when_admits(state: &GameState, registry: &CardRegistry, triggered: &TriggeredEffect, controller: Side, card: &CardId, install: Option<InstallId>, event: Option<&GameEvent>) -> bool {
     let Some(event) = event else { return triggered.when.is_none() };
     let mut meant = moments(state, event).into_iter().filter(|moment| moment.trigger == triggered.trigger).peekable();
     // A trigger queued with an event that is no occurrence of it (a
@@ -602,7 +622,13 @@ pub(crate) fn when_admits(state: &GameState, registry: &CardRegistry, triggered:
         return true;
     }
     meant.any(|moment| {
-        whose_admits(triggered, controller, &moment) && triggered.when.as_ref().is_none_or(|filter| passes(state, registry, filter, &moment, install))
+        // Where the card is — or, for the card the moment is about and no
+        // longer on the table, where it was.
+        let here = install.and_then(|install| state.find_corp_install(install)).map(|installed| installed.server).or_else(|| match &moment.about {
+            About::Card { card: about, .. } if about == card => moment.trashed_install.map(|trashed| trashed.server),
+            _ => None,
+        });
+        whose_admits(triggered, controller, &moment) && triggered.when.as_ref().is_none_or(|filter| passes(state, registry, filter, &moment, install, here))
     })
 }
 
@@ -638,7 +664,7 @@ fn hears(state: &GameState, registry: &CardRegistry, triggered: &TriggeredEffect
     if triggered.first_each_turn && later {
         return false;
     }
-    if triggered.when.as_ref().is_some_and(|filter| !passes(state, registry, filter, moment, listener.install)) {
+    if triggered.when.as_ref().is_some_and(|filter| !passes(state, registry, filter, moment, listener.install, listener.server)) {
         return false;
     }
     if !whose_admits(triggered, listener.side, moment) {
@@ -697,7 +723,10 @@ fn listeners(state: &GameState, registry: &CardRegistry, moments: &[Moment]) -> 
         let subject = match install.and_then(|install| group.iter().position(|l| l.install == Some(install))) {
             Some(position) => group.remove(position),
             None => {
-                let server = install.and_then(|install| state.corp.installed.iter().find(|c| c.install_id == install)).map(|c| c.server);
+                let server = install
+                    .and_then(|install| state.corp.installed.iter().find(|c| c.install_id == install))
+                    .map(|c| c.server)
+                    .or(moment.trashed_install.map(|trashed| trashed.server));
                 Listener { side, card: card.clone(), install: *install, server, active: moment.was_active, in_heap: false }
             }
         };

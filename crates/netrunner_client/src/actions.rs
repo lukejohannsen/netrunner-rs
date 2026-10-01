@@ -1178,7 +1178,7 @@ mod tests {
         let registry = crate::decks::sample_deck_registry();
         let card = |id: &str| CardId(id.to_string());
         let action = PublicAction::Visible(PlayerAction::EndTurn);
-        let trashed = |card: CardId| GameEvent::CardTrashed { side: Side::Runner, card, from: netrunner_core::dsl::TrashedFrom::Hand, by: Some(Side::Corp) };
+        let trashed = |card: CardId| GameEvent::CardTrashed { side: Side::Runner, card, from: netrunner_core::dsl::TrashedFrom::Hand, by: Some(Side::Corp), install: None };
         let events = [
             GameEvent::DamageTaken { damage_type: DamageType::Net, amount: 2, responsible: Some(Side::Corp) },
             trashed(card("docklands_pass")),

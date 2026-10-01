@@ -653,6 +653,19 @@ pub enum EventFilter {
     /// event said only whether the card had been installed, and a card in
     /// a hand and one on top of a deck were the same trash.
     TrashedFrom(Vec<TrashedFrom>),
+    /// The card was trashed from the root of, or protecting, the server
+    /// this card is in, and not as a step of installing another (CR
+    /// 8.5.16c) — Yakov Erikovich Avdakov's "whenever a player trashes a
+    /// card (including this upgrade) **from the root of this server or
+    /// protecting it, except during installation**". Read off the moment
+    /// (`GameEvent::CardTrashed::install`, or the run for an access trash),
+    /// since the card is in Archives when its trash is heard, and "this
+    /// server" is the listener's — the one it was trashed out of, for the
+    /// upgrade hearing its own trash. It names no player, so either
+    /// player's trash is heard. Only on `OnCardTrashed` and
+    /// `OnTrashedFromAccess`. Composition didn't work: `Server` is about a
+    /// moment that is about a server, and a trash is about a card.
+    TrashedFromThisServer,
     /// Every one of these — Hostile Architecture's "the Runner trashes any
     /// of **your installed** cards", on a trash by a card's text: the card
     /// is the Corp's and the moment the Runner's (`OwnedBy`), **and** it
@@ -671,7 +684,7 @@ impl EventFilter {
     /// trigger's own "you".
     pub(crate) fn names_whose(&self) -> bool {
         match self {
-            EventFilter::Whose(_) | EventFilter::OwnedBy { .. } | EventFilter::InRoot => true,
+            EventFilter::Whose(_) | EventFilter::OwnedBy { .. } | EventFilter::InRoot | EventFilter::TrashedFromThisServer => true,
             EventFilter::All(parts) => parts.iter().any(EventFilter::names_whose),
             _ => false,
         }

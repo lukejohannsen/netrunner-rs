@@ -1139,6 +1139,11 @@ impl CardDefinition {
             EventFilter::InRoot => triggered.trigger == Trigger::OnInstall,
             // Only a trash says which pile the card left.
             EventFilter::TrashedFrom(_) => triggered.trigger == Trigger::OnCardTrashed,
+            // Only a trash says where a card was trashed from, and only a
+            // Corp card is in a server.
+            EventFilter::TrashedFromThisServer => {
+                matches!(triggered.trigger, Trigger::OnCardTrashed | Trigger::OnTrashedFromAccess) && self.side == crate::rules::Side::Corp
+            }
             // Only what the moment states: a pass says whether the ice
             // was outermost and fully broken, a break its strength.
             EventFilter::Ice(required) => {

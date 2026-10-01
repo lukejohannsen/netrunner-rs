@@ -4,6 +4,33 @@ use crate::dsl::{EffectDuration, CardId, DamageType, Effect};
 use crate::rules::run::ServerId;
 use crate::rules::state::{InstallId, Side, WouldHappen};
 
+/// A Corp install as it was the instant it was trashed off the table
+/// (`GameEvent::CardTrashed::install`). Yakov Erikovich Avdakov's
+/// "whenever a player trashes a card (including this upgrade) **from the
+/// root of this server or protecting it, except during installation**"
+/// reads all three, and Hostile Architecture's "(including this asset)"
+/// the second. The card is in Archives by the time anything hears its
+/// trash, so the event says it or nothing can. Composition didn't work:
+/// `TrashedFrom::Installed` says only that the card was on the table.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TrashedInstall {
+    /// The server it was in the root of or protecting.
+    pub server: ServerId,
+    /// It was rezzed, and so active, as it went — the Warroid Tracker
+    /// reading of CR 4.6.6i, which `listeners::Moment::was_active` takes
+    /// for an access already.
+    pub rezzed: bool,
+    /// It was trashed as a step of installing another card (CR 8.5.16c).
+    pub installing: bool,
+}
+
+impl TrashedInstall {
+    /// How `card` stood on the table as it was trashed.
+    pub(crate) fn of(card: &crate::rules::state::InstalledCard, installing: bool) -> Self {
+        TrashedInstall { server: card.server, rezzed: card.rezzed, installing }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum GameEvent {
     ClickSpent { side: Side },
@@ -337,7 +364,19 @@ pub enum GameEvent {
     /// the grip, by the player responsible for the damage (CR 10.4.2a), and
     /// not a discard: "a trashed card is not considered to have been
     /// discarded, and vice versa" (CR 1.19.3).
-    CardTrashed { side: Side, card: CardId, from: crate::dsl::TrashedFrom, by: Option<Side> },
+    ///
+    /// `install` is a Corp install trashed off the table as it was there —
+    /// its server, whether it was rezzed, whether the trash was a step of
+    /// installing another card — which the card no longer says once it is
+    /// in Archives. `None` for anything else.
+    CardTrashed {
+        side: Side,
+        card: CardId,
+        from: crate::dsl::TrashedFrom,
+        by: Option<Side>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        install: Option<TrashedInstall>,
+    },
     /// A card left play permanently, bypassing the discard pile — Spin
     /// Doctor's `Cost::RemoveSelfFromGame`. Distinct from `CardTrashed`
     /// so a listener can tell "in Archives" from "gone".

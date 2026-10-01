@@ -74,7 +74,7 @@ pub fn apply_damage(
         let card = state.runner.grip.remove(index);
         state.runner.heap.push(card.clone());
         discarded.push(card.clone());
-        events.push(GameEvent::CardTrashed { side: Side::Runner, card, from: crate::dsl::TrashedFrom::Hand, by: responsible });
+        events.push(GameEvent::CardTrashed { side: Side::Runner, card, from: crate::dsl::TrashedFrom::Hand, by: responsible, install: None });
     }
     (events, discarded)
 }
@@ -161,7 +161,7 @@ mod tests {
         assert_eq!(events[0], GameEvent::DamageTaken { damage_type: DamageType::Net, amount: 2, responsible: Some(Side::Corp) });
         assert_eq!(events.len(), 3);
         for (event, card) in events[1..].iter().zip(state.runner.heap.iter()) {
-            assert_eq!(event, &GameEvent::CardTrashed { side: Side::Runner, card: card.clone(), from: crate::dsl::TrashedFrom::Hand, by: Some(Side::Corp) });
+            assert_eq!(event, &GameEvent::CardTrashed { side: Side::Runner, card: card.clone(), from: crate::dsl::TrashedFrom::Hand, by: Some(Side::Corp), install: None });
         }
     }
 

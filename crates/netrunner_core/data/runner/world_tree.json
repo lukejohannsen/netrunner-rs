@@ -1,0 +1,64 @@
+{
+  "id": "world_tree",
+  "title": "World Tree",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 6,
+  "memory_cost": 2,
+  "triggers": [
+    {
+      "trigger": "OnSuccessfulRun",
+      "subject": "Any",
+      "first_each_turn": true,
+      "effects": [
+        {
+          "OfferPaidChoice": {
+            "side": "Runner",
+            "cost": {
+              "Trash": {
+                "from": "OwnInstalled",
+                "filter": "NotSourceCard",
+                "count": 1
+              }
+            },
+            "if_paid": {
+              "PromptChooseCards": {
+                "side": "Runner",
+                "source": "OwnStack",
+                "filter": "SameTypeAsPaidCard",
+                "min": 0,
+                "max": 1,
+                "reveal": false,
+                "shuffle_after": true,
+                "then": {
+                  "EffectIf": {
+                    "condition": {
+                      "AmountAtLeast": [
+                        "CardsSelected",
+                        1
+                      ]
+                    },
+                    "effect": {
+                      "InstallRunnerCardFromZone": {
+                        "from": "OwnStack",
+                        "discount": {
+                          "Credits": 3
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "if_declined": {
+              "Sequence": []
+            },
+            "text": "you may trash 1 of your other installed cards to search your stack for 1 card of the same type"
+          }
+        }
+      ]
+    }
+  ],
+  "built_from": 33091,
+  "is_playable": true
+}

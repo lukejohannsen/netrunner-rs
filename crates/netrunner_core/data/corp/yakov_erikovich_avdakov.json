@@ -1,0 +1,41 @@
+{
+  "id": "yakov_erikovich_avdakov",
+  "title": "Yakov Erikovich Avdakov",
+  "side": "Corp",
+  "card_type": "Upgrade",
+  "cost": 2,
+  "trash_cost": 2,
+  "unique": true,
+  "triggers": [
+    {
+      "trigger": "OnCardTrashed",
+      "subject": "Any",
+      "when": "TrashedFromThisServer",
+      "effects": [
+        {
+          "GainCredits": [
+            "Corp",
+            2
+          ]
+        }
+      ],
+      "text": "Whenever a player trashes a card (including this upgrade) from the root of this server or protecting it, except during installation, gain 2[credit]."
+    },
+    {
+      "trigger": "OnTrashedFromAccess",
+      "subject": "Any",
+      "when": "TrashedFromThisServer",
+      "effects": [
+        {
+          "GainCredits": [
+            "Corp",
+            2
+          ]
+        }
+      ],
+      "text": "Whenever a player trashes a card (including this upgrade) from the root of this server or protecting it, except during installation, gain 2[credit]."
+    }
+  ],
+  "built_from": 33126,
+  "is_playable": true
+}
