@@ -1,0 +1,50 @@
+{
+  "id": "flux_capacitor",
+  "title": "Flux Capacitor",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 0,
+  "unique": true,
+  "memory_cost": 1,
+  "installs_on_ice": true,
+  "triggers": [
+    {
+      "trigger": "OnSubroutineBroken",
+      "subject": "Any",
+      "when": "Host",
+      "first_each_encounter": true,
+      "effects": [
+        {
+          "PromptChooseCards": {
+            "side": "Runner",
+            "source": "OwnInstalled",
+            "filter": {
+              "HostsCounters": "Power"
+            },
+            "min": 0,
+            "max": 1,
+            "reveal": false,
+            "shuffle_after": false,
+            "then": {
+              "EffectIf": {
+                "condition": {
+                  "AmountAtLeast": [
+                    "CardsSelected",
+                    1
+                  ]
+                },
+                "effect": {
+                  "AddCounters": 1
+                }
+              }
+            }
+          }
+        }
+      ],
+      "text": "The first time you break a subroutine during each encounter with host ice, you may charge 1 of your installed cards."
+    }
+  ],
+  "abilities": [],
+  "built_from": 33087,
+  "is_playable": true
+}

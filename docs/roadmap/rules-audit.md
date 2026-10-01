@@ -203,7 +203,8 @@ Each is a gap noticed in an entry above and left with its reason; none changes a
     several run-replacement effects and the Runner's choice among them
     (`RunState::access_replacement` is one `Option`), reveal as an event,
     a set-aside zone (masking: needs an explicit who-may-see rule), expose,
-    facedown Runner installs, the mark, charge, per-host card and MU
+    facedown Runner installs, the mark, charge (composed, Parhelion Stage
+    6a: a selection of cards hosting a power counter), per-host card and MU
     limits, agenda points and advancement requirements that change while
     installed. **And one question to put to the Comprehensive Rules:**
     whether the Runner is entitled to the arrival order of facedown cards

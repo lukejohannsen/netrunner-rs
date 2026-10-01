@@ -19546,4 +19546,103 @@ mod parhelion {
         assert!(!emptied.runner.rig.iter().any(|card| card.card == id("asmund_pudlat")), "no more hosted cards: trashed");
         assert!(emptied.runner.heap.contains(&id("asmund_pudlat")));
     }
+
+    // ---- Stage 6a: charge ----
+
+    /// The counters on the rig card `card`.
+    fn counters_on(state: &GameState, card: &str) -> u32 {
+        state.runner.rig.iter().find(|installed| installed.card == id(card)).expect("installed").counters
+    }
+
+    /// "Charge 1 of your installed cards" (CR 10.10.1): only a card that
+    /// already hosts a power counter is offered — Cataloguer with none is
+    /// not — and Cleaver breaking two of Brân's subroutines at once is one
+    /// first time, not two: the encounter had counted one break when the
+    /// first was heard.
+    #[test]
+    fn flux_capacitor_charges_the_first_time_a_subroutine_on_its_host_is_broken_each_encounter() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.installed = vec![ice_at_hq("bran_1_0")];
+        let flux = crate::rules::InstalledRunnerCard { hosted_on_ice: Some(fixture_install_id("bran_1_0")), ..in_rig("flux_capacitor", 0, 0) };
+        state.runner.rig = vec![flux, in_rig("cleaver", 6, 0), in_rig("time_bomb", 0, 1), in_rig("cataloguer", 0, 0)];
+        state.runner.resources.credits = Credits(20);
+        let at_ice = encounter(&state, &registry);
+        let charging = use_ability(&at_ice, &registry, "cleaver", 0).expect("break up to 2 barrier subroutines");
+        assert_eq!(broken(&charging), 2);
+        assert_eq!(runner_toggles(&charging, &registry), vec![2], "Time Bomb, the one card with a power counter");
+        let (charged, _) = pick(&charging, &registry, 2);
+        assert_eq!(counters_on(&charged, "time_bomb"), 2);
+        assert_eq!(counters_on(&charged, "cataloguer"), 0);
+        assert_eq!(charged.active_run.as_ref().map(|run| run.this_encounter.subroutines_broken), Some(2));
+
+        let charged = match charged.paid_ability_window.as_ref().map(|window| window.active_priority) {
+            Some(Side::Corp) => apply_action(&charged, &registry, PlayerAction::PassPriority { side: Side::Corp }).expect("the Corp passes back").0,
+            _ => charged,
+        };
+        let again = use_ability(&charged, &registry, "cleaver", 0).expect("break the third");
+        assert_eq!(broken(&again), 3);
+        assert!(again.pending_decision.is_none(), "not the first break this encounter");
+        assert_eq!(counters_on(&again, "time_bomb"), 2);
+
+        // Declined, nothing is charged.
+        let (declined, _) = apply_action(&charging, &registry, PlayerAction::ConfirmCardSelection).expect("you may");
+        assert_eq!(counters_on(&declined, "time_bomb"), 1);
+
+        // On other ice it hears nothing.
+        let mut elsewhere = state;
+        elsewhere.corp.installed.push(crate::rules::InstalledCard { server: ServerId::RnD, ..ice_at_hq("ice_wall") });
+        elsewhere.runner.rig[0].hosted_on_ice = Some(fixture_install_id("ice_wall"));
+        let broke = use_ability(&encounter(&elsewhere, &registry), &registry, "cleaver", 0).expect("break 2");
+        assert!(broke.pending_decision.is_none(), "not its host");
+    }
+
+    /// The word is the encounter's, and only for what it counts.
+    #[test]
+    fn a_first_time_each_encounter_is_refused_for_what_the_encounter_does_not_count() {
+        let mut card: crate::dsl::CardDefinition = serde_json::from_str(include_str!("../../data/runner/flux_capacitor.json")).expect("the card");
+        assert_eq!(card.validate(), Ok(()));
+        card.triggers[0].trigger = crate::dsl::Trigger::OnIceFullyBroken;
+        assert!(card.validate().is_err(), "the encounter counts subroutines broken");
+        card.triggers[0].trigger = crate::dsl::Trigger::OnSubroutineBroken;
+        card.triggers[0].first_each_turn = true;
+        assert!(card.validate().is_err(), "each turn's or each encounter's, not both");
+    }
+
+    #[test]
+    fn orca_breaks_every_sentry_subroutine_and_charges_the_first_time_each_turn_it_fully_breaks_ice() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.installed = vec![ice_at_hq("flywheel"), ice_at_hq("karuna")];
+        state.runner.rig = vec![in_rig("orca", 3, 0), in_rig("time_bomb", 0, 1)];
+        state.runner.resources.credits = Credits(20);
+        let at_ice = encounter(&state, &registry);
+        let charging = use_ability(&at_ice, &registry, "orca", 0).expect("2[credit]: break any number of sentry subroutines");
+        assert_eq!(broken(&charging), 2, "both, for one payment");
+        assert_eq!(charging.runner.resources.credits, Credits(18));
+        assert_eq!(runner_toggles(&charging, &registry), vec![1]);
+        let (charged, _) = pick(&charging, &registry, 1);
+        assert_eq!(counters_on(&charged, "time_bomb"), 2);
+
+        // The second piece of ice, the same turn: fully broken, not charged.
+        let first = charged.active_run.as_ref().map(|run| run.position);
+        let mut next = charged;
+        for _ in 0..12 {
+            if next.active_run.as_ref().is_some_and(|run| Some(run.position) != first && run.phase == crate::rules::RunPhase::EncounterIce) {
+                break;
+            }
+            next = match next.paid_ability_window.as_ref().map(|window| window.active_priority) {
+                Some(side) => apply_action(&next, &registry, PlayerAction::PassPriority { side }).expect("pass").0,
+                None => crate::rules::test_support::continue_run(&next, &registry).expect("on to the next ice").0,
+            };
+        }
+        let next = use_ability(&next, &registry, "orca", 0).expect("break the second");
+        assert_eq!(broken(&next), 2);
+        assert!(next.pending_decision.is_none(), "not the first time this turn");
+        assert_eq!(counters_on(&next, "time_bomb"), 2);
+
+        // A code gate's subroutines are not a sentry's.
+        state.corp.installed = vec![ice_at_hq("enigma")];
+        assert!(use_ability(&encounter(&state, &registry), &registry, "orca", 0).is_err());
+    }
 }

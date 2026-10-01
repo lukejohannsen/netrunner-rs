@@ -2283,7 +2283,7 @@ pub(crate) fn fire_card_triggers(
                 // A heap ability resolves only as heard from the heap, and
                 // a card in play never resolves one (`Heard::FromHeap`).
                 && t.from_heap == (due.heard == crate::rules::state::Heard::FromHeap)
-                && !(t.first_each_turn && due.not_the_first_this_turn)
+                && !((t.first_each_turn || t.first_each_encounter) && due.not_the_first_this_turn)
                 && listeners::when_admits(state, registry, t, card_side, card_id, due.install, triggering_event)
         })
         .collect();
@@ -5157,7 +5157,7 @@ mod tests {
         let registry = CardRegistry::from_cards(vec![card_with_triggers(
             "snare",
             vec![TriggeredEffect {
-                subject: None, when: None, acts_on_subject: false, first_each_turn: false, from_heap: false,
+                subject: None, when: None, acts_on_subject: false, first_each_turn: false, first_each_encounter: false, from_heap: false,
                 text: None,
                 trigger: Trigger::OnAccessed,
                 effects: vec![Effect::GiveTags(Amount::Fixed(1)), Effect::GainCredits(Side::Corp, 2)],
@@ -5195,7 +5195,7 @@ mod tests {
         let on = |server: ServerId, credits: u32| TriggeredEffect {
             subject: Some(crate::dsl::Subject::Any),
             when: Some(crate::dsl::EventFilter::Server(vec![server])),
-            acts_on_subject: false, first_each_turn: false, from_heap: false,
+            acts_on_subject: false, first_each_turn: false, first_each_encounter: false, from_heap: false,
             text: None,
             trigger: Trigger::OnSuccessfulRun,
             effects: vec![Effect::GainCredits(Side::Runner, credits)],
@@ -5221,7 +5221,7 @@ mod tests {
         let registry = CardRegistry::from_cards(vec![card_with_triggers(
             "hedge_fund",
             vec![TriggeredEffect {
-                subject: None, when: None, acts_on_subject: false, first_each_turn: false, from_heap: false,
+                subject: None, when: None, acts_on_subject: false, first_each_turn: false, first_each_encounter: false, from_heap: false,
                 text: None,
                 trigger: Trigger::OnPlay,
                 effects: vec![Effect::GainCredits(Side::Corp, 9)],

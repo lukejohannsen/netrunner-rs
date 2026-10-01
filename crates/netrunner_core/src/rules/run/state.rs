@@ -129,7 +129,18 @@ pub struct EncounterTally {
     /// encounter's end, so there is no clearing site of its own.
     #[serde(default, skip_serializing_if = "std::collections::BTreeSet::is_empty")]
     pub once_per_encounter_used: std::collections::BTreeSet<crate::rules::state::OncePerTurnKey>,
+    /// Subroutines broken this encounter, by anything — what Flux
+    /// Capacitor's "the **first time** you break a subroutine during each
+    /// encounter with host ice" counts (`TriggeredEffect::
+    /// first_each_encounter`). Counted as each break happens, and its
+    /// `SubroutineBroken` is dispatched at once, so the listener scan reads
+    /// it as of that break: an ability that breaks two has counted one when
+    /// the first is heard. `subroutine_broken` on the run reaches back to
+    /// the run's earlier ice.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub subroutines_broken: u32,
 }
+
 
 /// A set of the icebreaker subtypes (CR 2.16.7i: AI, decoder, fracter,
 /// killer) — `EncounterTally::printed_broken_with`. Bits rather than a

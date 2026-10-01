@@ -5317,3 +5317,66 @@ World Tree. **No new `Effect`**; one `Amount`, two `CardFilter`s, one
   games / planner 48): Concerto played 28 / 26 times; Reprise 4 / 4;
   Asmund Pudlat installed 36 / 8 times and handed a hosted card over on
   70 / 7 turn starts.
+
+#### Stage 6a — charge, and the first time each encounter (1 October 2026)
+
+`feat/ph-stage-6a-charge`: Flux Capacitor, Orca. **No new `Effect`**; one
+word in the trigger condition. Parhelion 47 of 63; `PH_UNIMPLEMENTED`
+18 → 16. Stage 6 was split by mechanic when it was taken: 6b the mark,
+6c a set-aside program and counters on a run event, 6d Nanuq.
+
+- **Charge composes** (CR 10.10). "Charge 1 of your installed cards" is a
+  selection of the Runner's installed cards with
+  `CardFilter::HostsCounters(Power)`: a card whose kind is power and that
+  hosts at least one, which is 10.10.1's "cards with no hosted power
+  counters cannot be charged" — and the chosen card is the instruction's
+  target (10.10.2). Its `then` places 1 counter on the card chosen, behind
+  an `EffectIf(CardsSelected ≥ 1)`, since a `then` resolves as the parking
+  card when nothing was chosen; "you may" is a minimum of 0. Middle Sun's
+  charge cards (Captain Padma Isbister, Rigging Up, Daeg, Stoneship Chart
+  Room) compose on the same selection.
+- **`TriggeredEffect::first_each_encounter`**, Flux Capacitor's "the
+  **first time** you break a subroutine during each encounter with host
+  ice": `first_each_turn` over the encounter, judged in the listener scan
+  against `EncounterTally::subroutines_broken`, a count kept as each break
+  happens. Each `SubroutineBroken` is dispatched the moment its break is
+  counted (`ability::break_pending`), so Cleaver breaking two of Brân's
+  subroutines at once is heard as one first time and one second.
+  Composition didn't work: `OncePerEncounter` is a use limit, which a card
+  arriving mid-encounter would find unspent (the Turn History Rule's
+  reason for `first_each_turn`), and a requirement reading the count is
+  asked at resolution, after an ability breaking two has counted both.
+  `validate` holds the word to `OnSubroutineBroken`, the one thing the
+  encounter counts, never beside `first_each_turn` on one card (the two
+  share the queued trigger's verdict, `DeferredTrigger::
+  not_the_first_this_turn`) and never beside a `OncePerEncounter`.
+- **Orca composes**: "the first time each turn this program fully breaks
+  a piece of ice" is Abaasy's `ByThis` first time on the copy, and "break
+  any number of sentry subroutines" is `BreakSubroutines { count: All }`.
+- **Client.** Nothing new to draw: the charge is a card selection, worded
+  by its trigger's printed clause in both clients, and the tally's count
+  is the engine's (`view_ledger`: each break is already a line of the
+  log).
+- **Decks.** Safety Net took two Flux Capacitor for its two Stowaway,
+  trojan for trojan, and two Orca, a killer beside its Living Mural, for
+  its two Pressure Spike; both charge its Lampades, Coalescence, Lobisomem
+  and AirbladeX. Street Gallery and Spare Parts still carry Stowaway, and
+  Street Gallery Pressure Spike.
+- **Approximation.** Orca's "any number" breaks every sentry subroutine
+  pending, as "up to N" takes N.
+- **The conformance ledger's count** in `ROADMAP.md` read 14 conform, 50
+  read in part, 43 unreviewed, which earlier stages had left behind the
+  table; with 10.10 now conforming it is 17, 49 and 42, counted off the
+  table.
+- **DSL ratio (`pool_status.py`):** unchanged at 15 of 91 `Effect`
+  variants single-use, 1 unused, over 427 card files.
+- **Measured** against Stage 5d (`32b5fb1`). Both sweeps green at 256
+  seeds, the card gate included.
+  - A ref with the engine change and no cards is identical in all four
+    shapes.
+  - With the cards, both random seatings are identical; the planner ones
+    move by `determinize` (view and index alike, of 192): Corp agenda
+    wins 62 → 63, Runner agenda wins 97 → 96.
+- **Real play**, seed 2, Safety Net against Retirement Package (random 96
+  games / planner 48): Flux Capacitor installed 44 / 0 times and charged
+  once; Orca installed 1 / 1 and charged once under the planner.
