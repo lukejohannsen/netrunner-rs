@@ -297,7 +297,7 @@ pub fn in_effect(view: &ClientView, registry: &CardRegistry) -> Vec<String> {
     // Spree: counters on the event in the play area, which has no place
     // on the board of its own (`event_counters`).
     let event_counters = view.active_run.as_ref().filter(|run| run.event_counters > 0).map(|run| {
-        let event = run.initiated_by.as_ref().map_or_else(|| "the run's event".to_string(), &title);
+        let event = run.initiated_by.as_ref().map_or_else(|| "the run's event".to_string(), title);
         format!("This run: {event} has {} power counter{}", run.event_counters, if run.event_counters == 1 { "" } else { "s" })
     });
     // Thunderbolt Armaments: a subroutine a piece of ice has for the rest
@@ -314,7 +314,7 @@ pub fn in_effect(view: &ClientView, registry: &CardRegistry) -> Vec<String> {
     // thing only (`run_credits_pay_for`), which the sum cannot say.
     let run_credits_for = view.active_run.as_ref().filter(|run| run.bonus_run_credits > 0).and_then(|run| {
         let word = run.run_credits_pay_for.as_ref()?;
-        let event = run.initiated_by.as_ref().map_or_else(|| "the run's event".to_string(), &title);
+        let event = run.initiated_by.as_ref().map_or_else(|| "the run's event".to_string(), title);
         Some(format!("This run: the {} [credit] on {event} may be spent only {}", run.bonus_run_credits, crate::prose::describe_pays_for(word)))
     });
     // Attini: a prohibition a card's standing effect has in force right
