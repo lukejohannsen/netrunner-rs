@@ -4943,3 +4943,74 @@ complete.**
 - **Real play**, seed 2, Retirement Package against Safety Net (random
   96 games / planner 48): Pulse rezzed 48 / 39 times, its rez trigger
   fired 43 / 38; Bloop rezzed 18 / 9 times, each by derezzing a Pulse.
+
+#### Stage 4a — Runner standing words: allotted clicks, the other player's hand size, and "install only if" (1 October 2026)
+
+`feat/ph-stage-4a-runner-standing-words`: Basilar Synthgland 2KVJ, Dr.
+Vientiane Keeling, K2CP Turbine, Time Bomb. **No new `Effect`**; one
+`ContinuousKind`, one card field. Parhelion 31 of 63; `PH_UNIMPLEMENTED`
+36 → 32. Stage 4 was split by mechanic when it was taken: the standing
+words here, the breaker words in 4b.
+
+- **`ContinuousKind::AllottedClicks(Number)`**, Basilar Synthgland's "You
+  get +1 allotted [click] for each of your turns" (`Scope::Controller`),
+  asked by `turn::enter_start_of_turn` as the turn gains its clicks (CR
+  1.11.2, 5.7.1a), beside the lingering `Lingering::AllottedClicks` an
+  earlier turn made for this one. Composition didn't work: that one is
+  made once by something that resolved and is spent on the turn it names.
+  `enter_start_of_turn` now takes the registry, and so do the mulligan's
+  two ways into the Corp's first turn. "When you install this hardware,
+  suffer 2 core damage" is Hippocampic Mechanocytes' shape; with one card
+  in the grip it flatlines the Runner (CR 1.7.2b).
+- **A hand size about the other player.** Dr. Vientiane Keeling's "The
+  Runner gets -1 maximum hand size for each hosted power counter" is a
+  `HandSize` about `Scope::Player(Runner)`, which `validate` now admits for
+  a hand size as well as a prohibition, and only for the player who does
+  not control the card. `continuous::hand_size` asks it across both tables
+  (`Target::Bound`), as `continuous::cannot` does, beside the side's own
+  `Controller` effects (CR 5.5.3b). Its counters are an `OnRez` and an
+  `OnTurnStart`, as Nico Campaign's are.
+- **`CardDefinition::install_requirement`**, Time Bomb's "Install only if
+  you made a successful run on a central server this turn"
+  (`AmountAtLeast(TimesThisTurnWhen { OnSuccessfulRun, Server([Hq, RnD,
+  Archives]) }, 1)`): a constraint on when a card may be installed is a
+  restriction (CR 9.3.3b), beside `play_requirement` and
+  `rez_requirement`. Asked as the card by `engine::install_into_rig`, the
+  one door into the rig (`RulesError::InstallRequirementUnmet`), and by the
+  gates a text install asks before it offers one
+  (`can_install_runner_card_from_zone`, `can_install_program_onto`), so
+  the two cannot disagree. `validate` refuses it off a Runner program,
+  hardware or resource. Time Bomb's "if there are 3 or more hosted power
+  counters, trash this hardware and sabotage 3. Otherwise, place 1 power
+  counter" is two `EffectIf`s, the trash first and the counter guarded by
+  `ThisCardIsInstalled`, so a third counter placed this turn does not go
+  off until the next.
+- **K2CP Turbine composes**: `Strength(+2)` about `Rig(All([Icebreaker,
+  Not(HasSubtype(AI))]))`, Stegodon MK IV's scope.
+- **Client.** Nothing new in the view: the allotment is the clicks the
+  view already carries, the hand size is asked at the discard step, and an
+  install that is refused is not offered. The engine reading words the new
+  kind ("gets +1 allotted [click] each turn").
+- **Decks.** Street Gallery took two Basilar Synthgland for two Coalescence
+  and two K2CP Turbine for two Beta Build, all of which Safety Net still
+  carries; Pay As You Go two Time Bomb for two Nurse Hạnh (Grassroots);
+  A Thousand Cuts two Dr. Vientiane Keeling for two Cultivate (Second
+  Site). All three stay Eternal-only.
+- **DSL ratio (`pool_status.py`):** unchanged at 17 of 91 `Effect`
+  variants single-use, 1 unused, over 411 card files.
+- **Measured** against `main` (`77c1579`). Both sweeps green at 256 seeds,
+  the card gate included.
+  - A ref with the engine change and no cards is identical to `main` in
+    all four shapes.
+  - With the cards, both random seatings are identical; the planner ones
+    move by `determinize` (view and index alike, of 192): Corp agenda wins
+    59 → 58, Corp flatlines 29 → 27, Runner agenda wins 100 → 103.
+- **Real play**, seed 2, A Thousand Cuts against Pay As You Go and against
+  Street Gallery (random 96 games / planner 48 each): Keeling installed
+  62 + 41 / 30 + 43 times and rezzed 24 + 24 / 0, its turn-start counter
+  placed 121 times on random seats; Time Bomb installed 7 / 0 times, its
+  turn-start trigger fired 15; Basilar Synthgland installed 17 / 0; K2CP
+  Turbine 14 / 0.
+- **Bot debts:** the planner Corp installs Dr. Vientiane Keeling and never
+  rezzes it; the planner Runner never installs Basilar Synthgland, K2CP
+  Turbine or Time Bomb.

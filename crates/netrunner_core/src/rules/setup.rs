@@ -205,11 +205,11 @@ fn return_hand_to_deck(state: &mut GameState, side: Side) {
 
 /// Resolves `PlayerAction::KeepHand`, per its doc comment. Legal only
 /// during `GamePhase::Mulligan(side)` for whichever side is deciding.
-pub(crate) fn keep_hand(state: &GameState) -> Result<(GameState, Vec<GameEvent>), RulesError> {
+pub(crate) fn keep_hand(state: &GameState, registry: &CardRegistry) -> Result<(GameState, Vec<GameEvent>), RulesError> {
     let side = require_mulligan_phase(state)?;
     let mut next = state.clone();
     let mut events = vec![GameEvent::HandKept { side }];
-    advance_past_mulligan(&mut next, &mut events, side)?;
+    advance_past_mulligan(&mut next, registry, &mut events, side)?;
     Ok((next, events))
 }
 
@@ -233,7 +233,7 @@ pub(crate) fn take_mulligan(
         registry,
     )?);
 
-    advance_past_mulligan(&mut next, &mut events, side)?;
+    advance_past_mulligan(&mut next, registry, &mut events, side)?;
     Ok((next, events))
 }
 
@@ -248,12 +248,13 @@ pub(crate) fn take_mulligan(
 /// "fix" a correct implementation, caught by the Rules Audit.)
 fn advance_past_mulligan(
     next: &mut GameState,
+    registry: &CardRegistry,
     events: &mut Vec<GameEvent>,
     side: Side,
 ) -> Result<(), RulesError> {
     match side {
         Side::Corp => next.phase = GamePhase::Mulligan(Side::Runner),
-        Side::Runner => turn::enter_start_of_turn(next, events, Side::Corp)?,
+        Side::Runner => turn::enter_start_of_turn(next, registry, events, Side::Corp)?,
     }
     Ok(())
 }

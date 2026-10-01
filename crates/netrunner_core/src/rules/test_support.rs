@@ -258,3 +258,11 @@ pub(crate) fn clicks_spent(state: &GameState) -> GameState {
     }
     state
 }
+
+/// Begins `side`'s turn from wherever `state` stands: the allotment, the
+/// turn's first window (CR 5.6.1, 5.7.1), as `turn::finish_turn` begins it.
+/// For a test about what happens as a turn begins, which would otherwise
+/// have to play out the other side's turn to get there.
+pub(crate) fn enter_start_of_turn(state: &mut GameState, registry: &crate::cards::CardRegistry, side: crate::rules::state::Side) {
+    crate::rules::turn::enter_start_of_turn(state, registry, &mut Vec::new(), side).expect("the turn starts");
+}

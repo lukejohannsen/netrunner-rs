@@ -686,6 +686,7 @@ pub fn describe_continuous(effect: &ContinuousEffect) -> String {
         ContinuousKind::Strength(number) => format!("gets {} strength", signed(number)),
         ContinuousKind::Memory(number) => format!("gets {} memory", signed(number)),
         ContinuousKind::HandSize(number) => format!("gets {} maximum hand size", signed(number)),
+        ContinuousKind::AllottedClicks(number) => format!("gets {} allotted [click] each turn", signed(number)),
         ContinuousKind::Link(number) => format!("gets {} link", signed(number)),
         ContinuousKind::InstallCost(number) => format!("costs {} to install", signed(number)),
         ContinuousKind::RezCost(number) => format!("costs {} to rez", signed(number)),

@@ -47,7 +47,7 @@ cards each stage takes.
 | 1 | Vantage Point (`vp`) | 66 | 66 | 0 | complete (27 September 2026) |
 | 2 | Rebellion Without Rehearsal (`rwr`) | 65 | 65 | 0 | complete (28 September 2026) |
 | 3 | The Automata Initiative (`tai`) | 65 | 65 | 0 | complete (29 September 2026) |
-| 4 | Parhelion (`ph`) | 63 | 27 | 36 | **Stage 4 next** — Runner standing and breaker words: Basilar Synthgland 2KVJ, Dr. Vientiane Keeling, K2CP Turbine, Tremolo, Time Bomb, Poison Vial, WAKE Implant v2A-JRJ, Abaasy |
+| 4 | Parhelion (`ph`) | 63 | 31 | 32 | **Stage 4b next** — breaker words: Tremolo, Poison Vial, WAKE Implant v2A-JRJ, Abaasy |
 | 5 | Midnight Sun (`ms`) + Booster (`msbp`) | 65 + 7 | 0 | 65 + 7 | not started |
 | 6 | Uprising (`ur`) + Booster (`urbp`) | 65 + 7 | 0 | 65 + 7 | not started |
 | 7 | Downfall (`df`) | 65 | 0 | 65 | not started |
@@ -382,9 +382,10 @@ Each is also a note on its section's row in [rules-conformance.md](rules-conform
 
 The heuristic seats in the sweeps and `coverage_identical.py` reach these cards through random seats and their tests alone. Each is a blindness of the evaluator, not of the engine, and is the raw material for the precepts work. **Since Phase 5 §25 Stage 1 (29 September 2026) the list is measured, not kept by hand:** `netrunner_cli diag precepts --deck-styles --games 192 --report …` ends with every card a seat used over the pass and the cards in the decks played that no seat ever used (`reach.unused_in_pass`), for the format `--format` names. The entries below are the hand list as it stood, kept for the *reasons* they record (which the report cannot say); a card the report names that is not here is a new debt, and a card here the report no longer names has been paid.
 
+- **Runner hardware and programs it never installs**: Basilar Synthgland 2KVJ, K2CP Turbine, Time Bomb (PH 4a).
 - **Economy resources and programs it does not value**: Friend of a Friend, Valentina Ferreira Carvalho, Coalescence; Laser Pointer, Banner; Monkeywrench, Saci, Pichação, Urban Art Vernissage; Lago Paranoá Shelter; AirbladeX (JSRF Ed.); the Core Set interrupts Decoy, Net Shield and Sacrificial Construct.
 - **Abilities it never uses**: M.I.C.'s trash, Arissana Rocha Nahu's, Epiphany Analytica's counter; identity and multi-click abilities generally (Phase 1 §8); over-advancing for Dividends.
-- **Corp cards it never plays or rezzes**: Distributed Tracing, Shipment from Vladisibirsk, Nonequivalent Exchange (played only by random seats), Hostile Architecture (installed 90 times, never rezzed); it never trashes Amanuensis or Privileged Access, never purges (Malandragem, Physarum Entangler).
+- **Corp cards it never plays or rezzes**: Distributed Tracing, Shipment from Vladisibirsk, Nonequivalent Exchange (played only by random seats), Hostile Architecture (installed 90 times, never rezzed), Dr. Vientiane Keeling (installed, never rezzed); it never trashes Amanuensis or Privileged Access, never purges (Malandragem, Physarum Entangler).
 - **Heap installs, hosted credits and hardware** (Phase 1 §8); the Corp undervalues paying for Byte! (Rules Audit, Masking).
 - **A sample does not carry a copy's turn counts** (`determinize` leaves `CopyTurn` empty), so a sample of a Cloud Eater rezzed this turn does not see its encounter-end ability coming.
 - **Chain Reaction** needs successful runs on all three centrals in one turn with a click to spare, which no agent plans: on `CARDS_RARE_WITH_SWEEP_DECKS` with that reason.
@@ -664,9 +665,11 @@ change deck-building rules, which the validator does not model yet
    Dependence, Freedom of Information, Regulatory Capture; **3b**, the
    Corp words (built): Simulation Reset, Hypoxia, Mr. Hendrik; **3c**, harmonic
    ice (built): Pulse, Bloop. Stage 3 is complete.
-4. **Runner standing and breaker words:** Basilar Synthgland 2KVJ, Dr.
-   Vientiane Keeling, K2CP Turbine, Tremolo, Time Bomb, Poison Vial, WAKE
-   Implant v2A-JRJ, Abaasy.
+4. **Runner standing and breaker words**, split by mechanic when it was
+   taken (1 October 2026): **4a**, the standing words (built): Basilar
+   Synthgland 2KVJ, Dr. Vientiane Keeling, K2CP Turbine, Time Bomb;
+   **4b**, the breaker words: Tremolo, Poison Vial, WAKE Implant
+   v2A-JRJ, Abaasy.
 5. **Zones, selection and deck building:** Hybrid Release, Nanisivik Grid,
    Kimberlite Field, World Tree, Asmund Pudlat, Concerto, Reprise, Yakov Erikovich Avdakov,
    Nova Initiumia: Catalyst & Impetus, Ampère: Cybernetics For Anyone.
@@ -698,6 +701,7 @@ Grid, Tsakhia, World Tree.
 - **Stage 3a** — the advancement requirement, asked (`feat/ph-stage-3a-advancement-requirement`, 30 September 2026).
 - **Stage 3b** — the Corp words: "that many", an operation out of the game, and every click as a price (`feat/ph-stage-3b-corp-words`, 30 September 2026).
 - **Stage 3c** — harmonic ice: a count of installs, and a derez to pay for a rez (`feat/ph-stage-3c-harmonic-ice`, 30 September 2026).
+- **Stage 4a** — Runner standing words: allotted clicks, the other player's hand size, and "install only if" (`feat/ph-stage-4a-runner-standing-words`, 1 October 2026).
 
 ### 5. Midnight Sun and its Booster Pack — 65 cards (C 22 / V 26 / M 17)
 

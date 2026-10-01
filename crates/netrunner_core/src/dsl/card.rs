@@ -781,6 +781,19 @@ pub struct CardDefinition {
     /// *active* card does, and a card being rezzed is not active yet.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rez_requirement: Option<EffectRequirement>,
+    /// "Install only if you made a successful run on a central server this
+    /// turn" (Time Bomb): when this card may be installed, asked as the card
+    /// by the one door every Runner install goes through
+    /// (`engine::install_into_rig`) and by the gates a card's text asks
+    /// before it offers an install (`can_install_runner_card_from_zone`,
+    /// `can_install_program_onto`), so an install by text is held to it as
+    /// the basic action is. `rez_requirement`'s shape and reason: a
+    /// constraint on when a card can be installed is a restriction (CR
+    /// 9.3.3b), on the card's own way into play, which holds before the
+    /// card is active. A Runner card's: `validate` refuses it on a Corp
+    /// card, which no card in the pool prints.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub install_requirement: Option<EffectRequirement>,
     /// What this card does for as long as it is active — "+1[mu]", "costs
     /// 2[c] less to install if…", "host ice gains barrier". **A standing
     /// effect goes here, never in a field of its own**: see
@@ -899,6 +912,8 @@ pub enum PaysFor {
 /// this explicitly.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum CardValidationError {
+    #[error("card {0:?}: \"install only if\" (`install_requirement`) is asked as a Runner card goes into the rig — a program, hardware or resource")]
+    InstallRequirementOffTheRig(CardId),
     #[error("card {0:?}: a selection of \"that many\" (`count`) writes `min` and `max` 0 — the count is both bounds")]
     CountBesideBounds(CardId),
     #[error("card {0:?}: `IceType::Other` is ice with none of the three types, never a type — refused on {1}")]
@@ -1006,6 +1021,7 @@ impl Default for CardDefinition {
             installs_faceup: false,
             rez_alternatives: Vec::new(),
             rez_requirement: None,
+            install_requirement: None,
             influence_limit: None,
             additional_play_cost: None,
             install_only_in: Vec::new(),
@@ -1084,6 +1100,11 @@ impl CardDefinition {
 
         if is_agenda && !self.subroutines.is_empty() {
             return Err(CardValidationError::AgendaHasSubroutines(self.id.clone()));
+        }
+        // Asked by the one door into the rig (`engine::install_into_rig`);
+        // a Corp card's install has no such question, and none prints one.
+        if self.install_requirement.is_some() && (self.side != Side::Runner || !matches!(self.card_type, CardType::Program | CardType::Hardware | CardType::Resource)) {
+            return Err(CardValidationError::InstallRequirementOffTheRig(self.id.clone()));
         }
         if is_ice && self.strength.is_none() {
             return Err(CardValidationError::IceMissingStrength(self.id.clone()));
@@ -1444,7 +1465,15 @@ impl CardDefinition {
                 (ContinuousKind::Link(_), Scope::Controller) if self.side == Side::Runner => {}
                 (ContinuousKind::Link(_), _) => return misfit("Link", "link is the Runner's, so it applies to a Runner card's `Controller`"),
                 (ContinuousKind::HandSize(_), Scope::Controller) => {}
-                (ContinuousKind::HandSize(_), _) => return misfit("HandSize", "a maximum hand size is a player's, so it applies to the card's `Controller`"),
+                // Dr. Vientiane Keeling's "The Runner gets -1 maximum hand
+                // size": the other player, named by side. The card's own
+                // player is its `Controller`, so naming them is refused.
+                (ContinuousKind::HandSize(_), Scope::Player(side)) if *side != self.side => {}
+                (ContinuousKind::HandSize(_), _) => {
+                    return misfit("HandSize", "a maximum hand size is a player's: the card's `Controller`, or the other player named by side (`Player`)");
+                }
+                (ContinuousKind::AllottedClicks(_), Scope::Controller) => {}
+                (ContinuousKind::AllottedClicks(_), _) => return misfit("AllottedClicks", "a player's allotted clicks are theirs, so they apply to the card's `Controller`"),
                 (_, Scope::InstallingOntoThis(_)) if !hosted || self.side != Side::Runner => {
                     return misfit("InstallingOntoThis", "only a Runner's installed card has cards installed onto it");
                 }
@@ -1499,7 +1528,7 @@ impl CardDefinition {
                     return misfit("RunsOnThisServer", "a run's success and its accesses are said of the runs on this card's server, by a card in its root");
                 }
                 (kind, Scope::Player(_)) if !matches!(kind, ContinuousKind::Cannot(_)) => {
-                    return misfit("Player", "only a prohibition is about a player named by side");
+                    return misfit("Player", "only a prohibition or the other player's hand size is about a player named by side");
                 }
                 (_, Scope::RunsOnThisServer) => return misfit("RunsOnThisServer", "only a run's success and its accesses are about the runs on a server"),
                 (ContinuousKind::BreakLimit { .. } | ContinuousKind::TrashLimit(_), Scope::This) if matches!(self.card_type, CardType::Ice(_)) => {}

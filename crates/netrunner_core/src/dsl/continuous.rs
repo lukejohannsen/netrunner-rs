@@ -105,6 +105,15 @@ pub enum ContinuousKind {
     /// trashed T400 Memory Diamond and a forfeited Superconducting Hub kept
     /// paying.
     HandSize(Number),
+    /// Clicks the player gains as their turn begins, on top of the rules'
+    /// allotment (CR 1.11.2, 5.7.1a) — Basilar Synthgland 2KVJ's "You get
+    /// +1 allotted [click] for each of your turns" (`Scope::Controller`).
+    /// Asked by `turn::enter_start_of_turn` as it assigns the allotment,
+    /// beside the lingering `Lingering::AllottedClicks` an earlier turn made
+    /// for this one. Composition didn't work: that one is made once by
+    /// something that resolved and is spent on the turn it names; this one
+    /// is made by nothing and holds every turn the card is installed.
+    AllottedClicks(Number),
     /// The Runner's link — The Toolbox's "+2[link]". What an identity prints
     /// is its `CardDefinition::base_link`; this is what an installed card
     /// adds while it is installed. Link was the other standing number still
@@ -347,7 +356,10 @@ pub enum Scope {
     /// A player, named by side — Attini's "**The Runner** cannot spend
     /// credits". Not a card, so it is reached only by a question about a
     /// player that walks both sides' cards (`continuous::Target::Bound`):
-    /// the Corp's ice binds the Runner. Only a `Cannot` is about one.
+    /// the Corp's ice binds the Runner. A `Cannot` is about one, and so is
+    /// a `HandSize` about the other player (Dr. Vientiane Keeling's "The
+    /// Runner gets -1 maximum hand size"), asked the same way by
+    /// `continuous::hand_size`.
     Player(Side),
 }
 

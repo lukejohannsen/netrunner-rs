@@ -18944,4 +18944,121 @@ mod parhelion {
         assert!(twice.runner.rig.is_empty(), "two programs trashed");
         assert_eq!(twice.runner.heap.len(), 3, "a card to the damage and two programs");
     }
+
+    // ---- Stage 4a: Runner standing words ----
+
+    fn rig_card(card: &str, install: u32) -> crate::rules::InstalledRunnerCard {
+        crate::rules::InstalledRunnerCard { install_id: InstallId(install), card: id(card), ..Default::default() }
+    }
+
+    /// Begins `side`'s turn and closes its windows, so its turn-begins
+    /// abilities have resolved or are asking.
+    fn begin_the_turn_of(mut state: GameState, registry: &CardRegistry, side: Side) -> GameState {
+        crate::rules::test_support::enter_start_of_turn(&mut state, registry, side);
+        close_all_windows(state, registry).0
+    }
+
+    #[test]
+    fn basilar_synthgland_does_two_core_damage_and_allots_a_fifth_click_while_installed() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.grip = vec![id("basilar_synthgland_2kvj"), id("sure_gamble"), id("sure_gamble"), id("sure_gamble")];
+        let (installed, _) = apply_action(&state, &registry, PlayerAction::InstallHardware { card_id: id("basilar_synthgland_2kvj") }).expect("install");
+        assert_eq!(installed.runner.brain_damage, 2, "2 core damage");
+        assert_eq!(installed.runner.grip.len(), 1);
+
+        let next_turn = begin_the_turn_of(installed.clone(), &registry, Side::Runner);
+        assert_eq!(next_turn.runner.resources.clicks, Clicks(5), "+1 allotted [click]");
+        let mut trashed = installed;
+        trashed.runner.rig.clear();
+        assert_eq!(begin_the_turn_of(trashed, &registry, Side::Runner).runner.resources.clicks, Clicks(4), "while it is installed");
+        let mut corps = runner_turn();
+        corps.runner.rig = vec![rig_card("basilar_synthgland_2kvj", 70)];
+        assert_eq!(begin_the_turn_of(corps, &registry, Side::Corp).corp.resources.clicks, Clicks(3), "the Runner's turns only");
+    }
+
+    #[test]
+    fn basilar_synthgland_flatlines_a_runner_with_one_card_in_the_grip() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.grip = vec![id("basilar_synthgland_2kvj"), id("sure_gamble")];
+        let (installed, _) = apply_action(&state, &registry, PlayerAction::InstallHardware { card_id: id("basilar_synthgland_2kvj") }).expect("install");
+        assert!(installed.is_over(), "more damage than cards in the grip (CR 1.7.2b)");
+    }
+
+    #[test]
+    fn dr_vientiane_keeling_takes_a_card_of_the_runners_hand_size_per_counter() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.installed = vec![root_at("dr_vientiane_keeling", 0)];
+        let keeling = install_of(&state, "dr_vientiane_keeling");
+        assert_eq!(crate::rules::continuous::hand_size(&state, &registry, Side::Runner), 0, "unrezzed, it is not active");
+        let (rezzed, _) = apply_action(&state, &registry, PlayerAction::RezIce { ice: keeling }).expect("rez");
+        assert_eq!(rezzed.corp.installed[0].counters, 1, "a counter as it is rezzed");
+        assert_eq!(crate::rules::continuous::hand_size(&rezzed, &registry, Side::Runner), -1);
+        assert_eq!(crate::rules::continuous::hand_size(&rezzed, &registry, Side::Corp), 0, "the Runner's, not the Corp's");
+
+        let next = begin_the_turn_of(rezzed.clone(), &registry, Side::Corp);
+        assert_eq!(next.corp.installed[0].counters, 2, "and one as the Corp's turn begins");
+        assert_eq!(crate::rules::continuous::hand_size(&next, &registry, Side::Runner), -2);
+        let runners = begin_the_turn_of(rezzed.clone(), &registry, Side::Runner);
+        assert_eq!(runners.corp.installed[0].counters, 1, "not the Runner's turn");
+
+        let mut discarding = next;
+        discarding.phase = GamePhase::Action(Side::Runner);
+        discarding.runner.grip = vec![id("sure_gamble"); 5];
+        assert_eq!(discards_owed_at_end_of_turn(&discarding, &registry), 2, "a maximum hand size of 3");
+    }
+
+    #[test]
+    fn k2cp_turbine_gives_each_non_ai_icebreaker_two_strength() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.rig = vec![rig_card("corroder", 60), rig_card("mayfly", 61), rig_card("k2cp_turbine", 62)];
+        for card in &mut state.runner.rig {
+            card.base_strength = registry.get(&card.card).and_then(|definition| definition.strength).unwrap_or(0);
+        }
+        let strength = |state: &GameState, at: usize| crate::rules::continuous::breaker_strength(state, &registry, &state.runner.rig[at]);
+        assert_eq!(strength(&state, 0), 2 + 2, "Corroder is a fracter");
+        assert_eq!(strength(&state, 1), 1, "Mayfly is an AI");
+        state.runner.rig.pop();
+        assert_eq!(strength(&state, 0), 2, "while K2CP is installed");
+    }
+
+    #[test]
+    fn time_bomb_installs_only_after_a_successful_run_on_a_central_server() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.grip = vec![id("time_bomb")];
+        let install = PlayerAction::InstallHardware { card_id: id("time_bomb") };
+        assert_eq!(apply_action(&state, &registry, install.clone()).map(|_| ()), Err(RulesError::InstallRequirementUnmet { card: id("time_bomb") }));
+        assert!(!crate::rules::legal_actions_for(&state, &registry, Side::Runner).contains(&install), "and it is not offered");
+
+        let (remote, _) = run_to_completion(state.clone(), &registry, ServerId::Remote(0));
+        assert!(apply_action(&remote, &registry, install.clone()).is_err(), "a remote server is not central");
+
+        let (central, _) = run_to_completion(state, &registry, ServerId::Archives);
+        assert!(crate::rules::legal_actions_for(&central, &registry, Side::Runner).contains(&install));
+        let (installed, _) = apply_action(&central, &registry, install).expect("install");
+        assert_eq!(installed.runner.rig[0].counters, 1, "a power counter as it is installed");
+    }
+
+    #[test]
+    fn time_bomb_counts_up_each_turn_and_goes_off_at_three() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.hq = vec![id("hedge_fund"); 3];
+        state.corp.r_and_d = vec![id("ice_wall"); 5];
+        state.runner.rig = vec![crate::rules::InstalledRunnerCard { counters: 1, ..rig_card("time_bomb", 70) }];
+        let once = begin_the_turn_of(state, &registry, Side::Runner);
+        assert_eq!(once.runner.rig[0].counters, 2, "otherwise, a power counter");
+        let twice = begin_the_turn_of(once, &registry, Side::Runner);
+        assert_eq!(twice.runner.rig[0].counters, 3, "the third");
+        assert!(twice.pending_decision.is_none(), "nothing goes off at the turn the third lands");
+
+        let off = begin_the_turn_of(twice, &registry, Side::Runner);
+        assert!(off.runner.rig.is_empty(), "trashed");
+        assert!(off.runner.heap.contains(&id("time_bomb")));
+        assert!(matches!(off.pending_decision, Some(PendingDecision::ChooseCards { .. })), "sabotage 3: the Corp chooses from HQ");
+    }
 }
