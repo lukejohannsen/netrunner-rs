@@ -57,6 +57,38 @@ mod sg_starter_identity_tests {
             assert!(card.triggers.is_empty() && card.abilities.is_empty(), "{id} is blank: \"Starter game only.\"");
             assert_eq!(card.min_deck_size, Some(min_deck_size), "{id}: the catalog's printed minimum");
             assert!(card.unlimited_influence, "{id}: the catalog's influence_limit is null");
+            assert_eq!(card.deck_rules, [crate::dsl::DeckRule::StarterGameOnly], "{id}: \"Starter game only.\"");
+        }
+    }
+
+    /// An identity's deckbuilding sentences are its `deck_rules`, held to
+    /// the printed text so a new identity that prints one cannot be built
+    /// without it: "Starter game only.", "cannot include more than 1 copy
+    /// of any card", "up to 2 different agenda cards from each Corp
+    /// faction". And no budget in the catalog is `unlimited_influence` in
+    /// the card file — the flag a validator reads.
+    #[test]
+    fn every_identity_states_the_deckbuilding_rules_it_prints() {
+        use crate::dsl::DeckRule;
+        let mut registry = CardRegistry::new();
+        register_playable_cards(&mut registry);
+        let catalog = catalog::cards();
+        for card in registry.iter().filter(|card| card.card_type == crate::dsl::CardType::Identity) {
+            let text = card.printed_text.as_deref().unwrap_or_default();
+            let mut printed = Vec::new();
+            if text.contains("Starter game only.") {
+                printed.push(DeckRule::StarterGameOnly);
+            }
+            if text.contains("Your deck cannot include more than 1 copy of any card.") {
+                printed.push(DeckRule::CopiesOfEachCard(1));
+            }
+            if text.contains("Your deck may include up to 2 different agenda cards from each Corp faction.") {
+                printed.push(DeckRule::AgendasFromEachFaction(2));
+            }
+            assert_eq!(card.deck_rules, printed, "{}", card.id.0);
+            if let Some(entry) = catalog.get(&card.id) {
+                assert_eq!(card.unlimited_influence, entry.influence_limit.is_none(), "{}: the catalog's influence_limit", card.id.0);
+            }
         }
     }
 }

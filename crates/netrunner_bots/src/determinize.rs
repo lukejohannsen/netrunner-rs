@@ -120,8 +120,9 @@ impl Prior {
     /// 1 once differed from *themselves* in 262 report keys).
     ///
     /// Each candidate's copies are its playset (a card's own `deck_limit`,
-    /// else three; one for a ◆ card, which a deck runs one or two of and
-    /// the table holds one of) less the copies the view shows. Its
+    /// else three, and no more than the identity allows — one under Nova
+    /// Initiumia or Ampère; one for a ◆ card, which a deck runs one or two
+    /// of and the table holds one of) less the copies the view shows. Its
     /// weight is `SEEN_COPY_WEIGHT` when the seat has seen the card at
     /// all, 1 for an unseen card of the identity's faction or a neutral
     /// one, and for an unseen out-of-faction card the share of the
@@ -163,7 +164,7 @@ impl Prior {
         let entries = candidates
             .into_iter()
             .filter_map(|card| {
-                let playset = if card.unique { 1 } else { card.deck_limit.unwrap_or(PLAYSET) };
+                let playset = if card.unique { 1 } else { card.copy_limit_under(identity, PLAYSET) };
                 let shown = visible.get(&card.id).copied().unwrap_or(0) as u32;
                 let copies = playset.saturating_sub(shown);
                 if copies == 0 {

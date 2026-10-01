@@ -195,16 +195,18 @@ impl Draft {
         self.deck.cards.iter().filter(|entry| &entry.card == id).map(|entry| entry.count).sum()
     }
 
-    /// One more copy of `card`, refused past its limit (`deck_limit`, else
-    /// three), for an identity, and for the other side's card.
-    pub fn add(&mut self, card: &CardDefinition) -> Result<(), String> {
+    /// One more copy of `card`, refused past its limit under the deck's
+    /// `identity` (`CardDefinition::copy_limit_under`: its own
+    /// `deck_limit`, else three, and one under Nova Initiumia or Ampère),
+    /// for an identity, and for the other side's card.
+    pub fn add(&mut self, card: &CardDefinition, identity: Option<&CardDefinition>) -> Result<(), String> {
         if card.card_type == CardType::Identity {
             return Err(format!("{} is an identity; change the deck's identity instead", card.title));
         }
         if card.side != self.deck.side {
             return Err(format!("{} is a {:?} card and this is a {:?} deck", card.title, card.side, self.deck.side));
         }
-        let limit = card.deck_limit.unwrap_or(MAX_COPIES_PER_CARD);
+        let limit = card.copy_limit_under(identity, MAX_COPIES_PER_CARD);
         if self.copies(&card.id) >= limit {
             return Err(format!("{} is at its limit of {limit}", card.title));
         }
@@ -996,17 +998,29 @@ mod tests {
         let mut draft = Draft::new(new_deck("Mine", identities(&registry, Side::Runner, NsgFormat::Startup)[0], &[]));
         let sure_gamble = registry.get(&CardId("sure_gamble".into())).unwrap();
         for _ in 0..3 {
-            draft.add(sure_gamble).unwrap();
+            draft.add(sure_gamble, None).unwrap();
         }
-        assert!(draft.add(sure_gamble).unwrap_err().contains("limit of 3"));
+        assert!(draft.add(sure_gamble, None).unwrap_err().contains("limit of 3"));
         assert_eq!(draft.copies(&sure_gamble.id), 3);
         let hedge_fund = registry.get(&CardId("hedge_fund".into())).unwrap();
-        assert!(draft.add(hedge_fund).is_err(), "a Corp card in a Runner deck");
+        assert!(draft.add(hedge_fund, None).is_err(), "a Corp card in a Runner deck");
         assert!(draft.remove(&sure_gamble.id));
         assert_eq!(draft.copies(&sure_gamble.id), 2);
         assert!(draft.remove_all(&sure_gamble.id));
         assert!(draft.deck.cards.is_empty());
         assert!(!draft.remove(&sure_gamble.id));
+    }
+
+    /// Nova Initiumia prints "Your deck cannot include more than 1 copy of
+    /// any card", so the builder stops at one under it.
+    #[test]
+    fn adding_stops_at_one_copy_under_an_identity_that_says_so() {
+        let registry = registry();
+        let nova = registry.get(&CardId("nova_initiumia_catalyst_impetus".into())).unwrap();
+        let mut draft = Draft::new(new_deck("Mine", nova, &[]));
+        let sure_gamble = registry.get(&CardId("sure_gamble".into())).unwrap();
+        draft.add(sure_gamble, Some(nova)).unwrap();
+        assert!(draft.add(sure_gamble, Some(nova)).unwrap_err().contains("limit of 1"));
     }
 
     #[test]

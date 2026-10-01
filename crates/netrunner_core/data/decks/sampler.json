@@ -1,0 +1,193 @@
+{
+  "id": "sampler",
+  "name": "Sampler",
+  "side": "Corp",
+  "category": "Sweep",
+  "description": "Not a published list: built so the sweeps reach Ampère: Cybernetics For Anyone, Parhelion's neutral Corp identity, which prints no influence limit, allows one copy of each card, and may take up to two different agendas from each Corp faction. Forty-five different cards: five neutral agendas, two Haas-Bioroid ones (Salvo Testing, Project Ingatan) and one each from Jinteki, NBN and Weyland, for 21 points, around every faction's most-played economy and ice (Parhelion Stage 5a).",
+  "style": [
+    "glacier"
+  ],
+  "identity": "ampere_cybernetics_for_anyone",
+  "cards": [
+    {
+      "card": "send_a_message",
+      "count": 1
+    },
+    {
+      "card": "offworld_office",
+      "count": 1
+    },
+    {
+      "card": "orbital_superiority",
+      "count": 1
+    },
+    {
+      "card": "superconducting_hub",
+      "count": 1
+    },
+    {
+      "card": "let_them_dream",
+      "count": 1
+    },
+    {
+      "card": "salvo_testing",
+      "count": 1
+    },
+    {
+      "card": "project_ingatan",
+      "count": 1
+    },
+    {
+      "card": "sericulture_expansion",
+      "count": 1
+    },
+    {
+      "card": "tomorrows_headline",
+      "count": 1
+    },
+    {
+      "card": "above_the_law",
+      "count": 1
+    },
+    {
+      "card": "kessleroid",
+      "count": 1
+    },
+    {
+      "card": "hedge_fund",
+      "count": 1
+    },
+    {
+      "card": "petty_cash",
+      "count": 1
+    },
+    {
+      "card": "predictive_planogram",
+      "count": 1
+    },
+    {
+      "card": "seamless_launch",
+      "count": 1
+    },
+    {
+      "card": "public_trail",
+      "count": 1
+    },
+    {
+      "card": "retribution",
+      "count": 1
+    },
+    {
+      "card": "hansei_review",
+      "count": 1
+    },
+    {
+      "card": "peer_review",
+      "count": 1
+    },
+    {
+      "card": "government_subsidy",
+      "count": 1
+    },
+    {
+      "card": "regolith_mining_license",
+      "count": 1
+    },
+    {
+      "card": "spin_doctor",
+      "count": 1
+    },
+    {
+      "card": "nico_campaign",
+      "count": 1
+    },
+    {
+      "card": "urtica_cipher",
+      "count": 1
+    },
+    {
+      "card": "clearinghouse",
+      "count": 1
+    },
+    {
+      "card": "manegarm_skunkworks",
+      "count": 1
+    },
+    {
+      "card": "anoetic_void",
+      "count": 1
+    },
+    {
+      "card": "mahkota_langit_grid",
+      "count": 1
+    },
+    {
+      "card": "amaze_amusements",
+      "count": 1
+    },
+    {
+      "card": "tithe",
+      "count": 1
+    },
+    {
+      "card": "whitespace",
+      "count": 1
+    },
+    {
+      "card": "flyswatter",
+      "count": 1
+    },
+    {
+      "card": "palisade",
+      "count": 1
+    },
+    {
+      "card": "lamplighter",
+      "count": 1
+    },
+    {
+      "card": "ping",
+      "count": 1
+    },
+    {
+      "card": "funhouse",
+      "count": 1
+    },
+    {
+      "card": "doomscroll",
+      "count": 1
+    },
+    {
+      "card": "bran_1_0",
+      "count": 1
+    },
+    {
+      "card": "ansel_1_0",
+      "count": 1
+    },
+    {
+      "card": "bumi_1_0",
+      "count": 1
+    },
+    {
+      "card": "semak_samun",
+      "count": 1
+    },
+    {
+      "card": "karuna",
+      "count": 1
+    },
+    {
+      "card": "diviner",
+      "count": 1
+    },
+    {
+      "card": "pharos",
+      "count": 1
+    },
+    {
+      "card": "ballista",
+      "count": 1
+    }
+  ]
+}

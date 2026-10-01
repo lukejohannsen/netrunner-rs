@@ -538,7 +538,8 @@ impl Editor {
 
     /// One more copy, up to the card's own limit.
     fn add(&mut self, id: &CardId, registry: &CardRegistry) -> bool {
-        let limit = registry.get(id).and_then(|card| card.deck_limit).unwrap_or(MAX_COPIES_PER_CARD);
+        let identity = registry.get(&self.deck.identity);
+        let limit = registry.get(id).map_or(MAX_COPIES_PER_CARD, |card| card.copy_limit_under(identity, MAX_COPIES_PER_CARD));
         if self.copies(id) >= limit {
             self.note = Some(format!("{} is at its limit of {limit}", registry.get(id).map_or(id.0.as_str(), |card| card.title.as_str())));
             return false;

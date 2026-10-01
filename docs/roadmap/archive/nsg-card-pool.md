@@ -5085,3 +5085,53 @@ v2A-JRJ, Abaasy. **No new `Effect`**; two `Amount`s, one
   first-time trigger fired once (random).
 - **Bot debts:** the planner Runner never installs Poison Vial or WAKE
   Implant, and its Abaasy never fully broke a piece of ice on its own.
+
+#### Stage 5a — the deckbuilding rules an identity prints (1 October 2026)
+
+`feat/ph-stage-5a-deck-building-identities`: Nova Initiumia: Catalyst &
+Impetus, Ampère: Cybernetics For Anyone. **No new `Effect`**; one card
+field and its enum. Parhelion 37 of 63; `PH_UNIMPLEMENTED` 28 → 26.
+Stage 5 was split by mechanic when it was taken: deck building here,
+Archives in 5b, trashes in 5c, the stack and HQ in 5d.
+
+- **`CardDefinition::deck_rules: Vec<DeckRule>`**, what an identity
+  prints about the deck it leads (CR 1.4.1's "other variances from the
+  standard deckbuilding rules"), on an identity only (`validate`).
+  Three words, each what an identity in the pool prints:
+  - `CopiesOfEachCard(1)`, Nova's and Ampère's "Your deck cannot include
+    more than 1 copy of any card" — CR 1.4.7's "alternative copy
+    limits". `CardDefinition::copy_limit_under(identity, default)` is the
+    one statement of a card's limit (its own `deck_limit`, else three,
+    never more than the identity's), read by both validators, both deck
+    builders' add (the desktop's `Draft::add` now takes the identity, the
+    terminal's reads it off the registry) and `determinize`'s playset.
+  - `AgendasFromEachFaction(2)`, Ampère's "Your deck may include up to 2
+    different agenda cards from each Corp faction": the faction rule's
+    `OutOfFactionAgenda` gives way to a count of titles per faction,
+    refused past two as `TooManyAgendasFromFaction`. Neither identity
+    has an influence budget (the catalog's `null`, `unlimited_influence`).
+  - `StarterGameOnly`, The Catalyst's and The Syndicate's "Starter game
+    only." (CR 1.4.1a). `DeckFile::validate` held a deck to the published
+    *Learn to Play* lists whenever its identity had no influence budget,
+    which was the same two identities until Parhelion printed two more:
+    read that way, every Nova deck was a starter deck no list matched.
+  A test holds every identity's `deck_rules` to its printed text and its
+  `unlimited_influence` to the catalog's `null`.
+- **Client.** Nothing new in the view. Both builders stop at one copy
+  under Nova or Ampère ("… is at its limit of 1"), and the verdict words
+  the new refusal through the validator's own message.
+- **Decks.** Two singleton Sweep decks, Standard-legal: **Mixtape**
+  (Nova), forty Runner cards from every faction, and **Sampler**
+  (Ampère), forty-five Corp cards with five neutral agendas, two
+  Haas-Bioroid and one each from Jinteki, NBN and Weyland for 21 points.
+  Each card is the most-played of its kind elsewhere, and every one was
+  seen in the 256-seed sweep. The re-pairing left Spare Parts' one
+  Meeting of Minds unseen; Spare Parts has no influence for a second, so
+  Mixtape took one for a Maintenance Access.
+- **DSL ratio (`pool_status.py`):** unchanged at 16 of 91 `Effect`
+  variants single-use, 1 unused, over 417 card files.
+- **Measured** against `main` (`0f4b531`). Both sweeps green at 256
+  seeds, the card gate included, every card of both singleton decks seen.
+  All four `coverage_identical.py` shapes are identical: an identity is
+  not sampled, the Sweep decks are not in `matchups()`, and no matchup
+  deck's identity prints a copy rule.

@@ -67,7 +67,7 @@ pub fn validate_deck(deck: &Deck, side: Side, registry: &CardRegistry) -> Result
         if card.card_type == CardType::Identity {
             return Err(RulesError::DeckContainsIdentity { card: card_id.clone() });
         }
-        let max_copies = card.deck_limit.unwrap_or(MAX_COPIES_PER_CARD);
+        let max_copies = card.copy_limit_under(Some(identity), MAX_COPIES_PER_CARD);
         if *count > max_copies {
             return Err(RulesError::TooManyCopies { card: card_id.clone(), count: *count, max: max_copies });
         }

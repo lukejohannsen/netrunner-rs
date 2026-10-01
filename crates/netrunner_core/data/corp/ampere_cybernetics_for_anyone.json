@@ -1,0 +1,13 @@
+{
+  "id": "ampere_cybernetics_for_anyone",
+  "title": "Ampère: Cybernetics For Anyone",
+  "side": "Corp",
+  "card_type": "Identity",
+  "cost": 0,
+  "min_deck_size": 45,
+  "unlimited_influence": true,
+  "deck_rules": [{ "CopiesOfEachCard": 1 }, { "AgendasFromEachFaction": 2 }],
+  "triggers": [],
+  "built_from": 33128,
+  "is_playable": true
+}
