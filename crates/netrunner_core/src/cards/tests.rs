@@ -19451,4 +19451,99 @@ mod parhelion {
         let (again, _) = run_to_completion(close_all_windows(installed, &registry).0, &registry, ServerId::Hq);
         assert!(again.pending_paid_choice.is_none());
     }
+
+
+    // ---- Stage 5d: the stack and HQ ----
+
+    fn runner_toggles(state: &GameState, registry: &CardRegistry) -> Vec<usize> {
+        crate::rules::legal_actions_for(state, registry, Side::Runner)
+            .into_iter()
+            .filter_map(|action| match action {
+                PlayerAction::ToggleCardSelection { position } => Some(position),
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn reprise_plays_after_a_steal_adds_an_install_to_hq_and_may_run() {
+        let registry = registry_with_a_plain_agenda();
+        let mut state = runner_turn();
+        state.runner.resources.credits = Credits(10);
+        state.runner.grip = vec![id("reprise")];
+        state.corp.installed = vec![root_at("a_plain_agenda", 0), at("pad_campaign", 81, 1, false)];
+        let play = PlayerAction::PlayEvent { card_id: id("reprise") };
+        assert!(apply_action(&state, &registry, play.clone()).is_err(), "play only if you stole an agenda this turn");
+
+        let (accessed, _) = run_to_completion(state, &registry, ServerId::Remote(0));
+        let (stolen, _) = apply_action(&accessed, &registry, PlayerAction::StealAgenda { card_id: id("a_plain_agenda") }).expect("steal");
+        let (asked, _) = apply_action(&close_all_windows(stolen, &registry).0, &registry, play).expect("play Reprise");
+        assert_eq!(runner_toggles(&asked, &registry), vec![0], "PAD Campaign, the one install left");
+        let (chose, _) = apply_action(&asked, &registry, PlayerAction::ToggleCardSelection { position: 0 }).expect("select");
+        let (offered, _) = apply_action(&chose, &registry, PlayerAction::ConfirmCardSelection).expect("add it to HQ");
+        assert!(offered.corp.installed.is_empty());
+        assert!(offered.corp.hq.contains(&id("pad_campaign")));
+        assert_eq!(options(&offered), Some(2), "you may run any server");
+        let (choosing, _) = choose(&offered, &registry, 0);
+        let (running, _) = apply_action(&choosing, &registry, PlayerAction::ChooseServerForPendingDecision { server: ServerId::Hq }).expect("run HQ");
+        assert_eq!(running.active_run.as_ref().and_then(|run| run.initiated_by.clone()), Some(id("reprise")));
+    }
+
+    #[test]
+    fn concerto_reveals_the_top_card_into_the_grip_and_runs_with_its_cost_in_credits() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.grip = vec![id("concerto")];
+        state.runner.stack = vec![id("mayfly"), id("sure_gamble")];
+        let (asked, _) = apply_action(&state, &registry, PlayerAction::PlayEvent { card_id: id("concerto") }).expect("play Concerto");
+        assert_eq!(runner_toggles(&asked, &registry), vec![0], "the top card, the zone's one card");
+        let (chose, _) = apply_action(&asked, &registry, PlayerAction::ToggleCardSelection { position: 0 }).expect("select");
+        let (revealed, events) = apply_action(&chose, &registry, PlayerAction::ConfirmCardSelection).expect("reveal it");
+        assert!(events.iter().any(|event| matches!(event, GameEvent::CardsSelected { revealed: true, .. })), "revealed");
+        assert_eq!(revealed.runner.grip, vec![id("sure_gamble")]);
+        let (running, _) = apply_action(&revealed, &registry, PlayerAction::ChooseServerForPendingDecision { server: ServerId::Hq }).expect("run HQ");
+        let run = running.active_run.as_ref().expect("a run");
+        assert_eq!(run.bonus_run_credits, 5, "Sure Gamble's printed play cost");
+        assert_eq!(run.initiated_by, Some(id("concerto")), "the run is Concerto's, not the revealed card's");
+
+        // An empty stack reveals nothing and still runs.
+        state.runner.stack.clear();
+        let (choosing, _) = apply_action(&state, &registry, PlayerAction::PlayEvent { card_id: id("concerto") }).expect("play Concerto");
+        let (running, _) = apply_action(&choosing, &registry, PlayerAction::ChooseServerForPendingDecision { server: ServerId::Hq }).expect("run HQ");
+        assert_eq!(running.active_run.as_ref().map(|run| run.bonus_run_credits), Some(0));
+        assert!(running.pending_decision.is_none());
+    }
+
+    #[test]
+    fn asmund_pudlat_hosts_two_different_viruses_and_hands_one_over_each_turn_until_empty() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.resources.credits = Credits(5);
+        state.runner.grip = vec![id("asmund_pudlat")];
+        state.runner.stack = vec![id("leech"), id("sure_gamble"), id("leech"), id("botulus")];
+        let (asked, _) = apply_action(&state, &registry, PlayerAction::InstallResource { card_id: id("asmund_pudlat"), host: None }).expect("install");
+        assert_eq!(runner_toggles(&asked, &registry), vec![0, 2, 3], "virus or weapon cards");
+        let (one, _) = apply_action(&asked, &registry, PlayerAction::ToggleCardSelection { position: 0 }).expect("a Leech");
+        assert_eq!(runner_toggles(&one, &registry), vec![0, 3], "not a second Leech, and the first may be put back");
+        let (two, _) = apply_action(&one, &registry, PlayerAction::ToggleCardSelection { position: 3 }).expect("Botulus");
+        let (hosted, _) = apply_action(&two, &registry, PlayerAction::ConfirmCardSelection).expect("host them");
+        let asmund = hosted.runner.rig.iter().find(|card| card.card == id("asmund_pudlat")).expect("installed");
+        assert_eq!(asmund.hosted_cards, vec![id("leech"), id("botulus")]);
+        assert_eq!(hosted.runner.stack.len(), 2, "searched, and shuffled");
+
+        let asked = begin_the_turn_of(hosted, &registry, Side::Runner);
+        let (first, _) = apply_action(&asked, &registry, PlayerAction::ToggleCardSelection { position: 0 }).expect("a hosted card");
+        let (kept, _) = apply_action(&first, &registry, PlayerAction::ConfirmCardSelection).expect("to the grip");
+        assert!(kept.runner.grip.contains(&id("leech")));
+        assert!(kept.runner.rig.iter().any(|card| card.card == id("asmund_pudlat")), "one card still hosted");
+
+        let mut next = kept;
+        next.phase = GamePhase::Action(Side::Runner);
+        let asked = begin_the_turn_of(next, &registry, Side::Runner);
+        let (last, _) = apply_action(&asked, &registry, PlayerAction::ToggleCardSelection { position: 0 }).expect("the last hosted card");
+        let (emptied, _) = apply_action(&last, &registry, PlayerAction::ConfirmCardSelection).expect("to the grip");
+        assert!(emptied.runner.grip.contains(&id("botulus")));
+        assert!(!emptied.runner.rig.iter().any(|card| card.card == id("asmund_pudlat")), "no more hosted cards: trashed");
+        assert!(emptied.runner.heap.contains(&id("asmund_pudlat")));
+    }
 }

@@ -342,6 +342,14 @@ pub enum CardFilter {
     /// for 1 card **of the same type**", written in as the selection is
     /// offered (`with_resolution`). Matches nothing anywhere else.
     SameTypeAsPaidCard,
+    /// No other card chosen in the same selection has this one's name —
+    /// Asmund Pudlat's "search your stack for up to 2 virus or weapon cards
+    /// **with different names**". Instance-level: it reads the selection
+    /// in progress, so a second copy of a chosen card cannot be toggled on
+    /// and a chosen card can still be toggled off. Composition didn't
+    /// work: `max` counts cards, and nothing else read what was already
+    /// chosen.
+    DifferentNames,
     /// A faceup card in Archives — Armed Asset Protection's "if any of
     /// those cards are agendas", of the faceup cards it counts. `Facedown`'s
     /// other half. Composition didn't work: `Not` is read off a definition,
@@ -435,6 +443,7 @@ impl CardFilter {
         matches!(
             self,
             CardFilter::DiscardedThisDiscardPhase
+                | CardFilter::DifferentNames
                 | CardFilter::NotSourceCard
                 | CardFilter::Rezzed
                 | CardFilter::Unrezzed
@@ -550,5 +559,7 @@ pub fn card_matches_filter(card: &CardDefinition, filter: &CardFilter) -> bool {
             _ => false,
         },
         CardFilter::SameTypeAsPaidCard => false,
+        // Instance-level: the selection in progress.
+        CardFilter::DifferentNames => true,
     }
 }

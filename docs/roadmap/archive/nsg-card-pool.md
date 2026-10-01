@@ -5263,3 +5263,57 @@ World Tree. **No new `Effect`**; one `Amount`, two `CardFilter`s, one
   first successful runs (random).
 - **Bot debts:** the planner Runner never installs World Tree; the
   planner Corp never trashed a rezzed card for Kimberlite Field.
+
+#### Stage 5d — the stack and HQ: a search for different names, and a run named for the card whose text began it (1 October 2026)
+
+`feat/ph-stage-5d-stack-and-hq`: Asmund Pudlat, Concerto, Reprise.
+**No new `Effect`**; one `CardFilter`. Parhelion 45 of 63;
+`PH_UNIMPLEMENTED` 21 → 18. **Stage 5 is complete.**
+
+- **`CardFilter::DifferentNames`**, Asmund Pudlat's "search your stack
+  for up to 2 virus or weapon cards **with different names**". Read off
+  the selection in progress: a card is eligible while no *other* chosen
+  card has its name, so a second copy cannot be toggled on and a chosen
+  card can still be toggled off. Composition didn't work: `max` counts
+  cards, and nothing read what was already chosen. Its hosted cards are
+  Madani's faceup `HostedOnSource`, and "When your turn begins, you may
+  add 1 hosted card to your grip. If there are no more hosted cards,
+  trash this resource" is a selection followed by an `EffectIf` on the
+  hosted zone.
+- **A run is named for the card whose text began it** (CR 8.6.5).
+  Concerto's "Reveal the top card of your stack and place credits equal
+  to its printed play or install cost on this event. Add the revealed
+  card to your grip. Run any server." offers its run as the reveal
+  resolves, so the choice resolves *as the revealed card* — which is what
+  lets `on_start`'s `PlaceRunCredits { amount: PrintedCost }` read its
+  cost. The run took that card as `RunState::initiated_by`, which would
+  have made a revealed event the run's active event; it is now the
+  decision's `prompting_card`, the card whose text it is. Beta Build's run
+  was the found program's, and is Beta Build's now; its riders still
+  resolve as the program. An empty stack reveals nothing and still runs
+  (`RunInProgress` guards the second branch).
+- **Reprise composes**: "Play only if you stole an agenda this turn" is
+  `TimesThisTurn(OnAgendaStolen)`; "Add 1 installed Corp card to HQ" is
+  Hermes's selection; "You may run any server" a `PresentChoice`.
+- **Client.** Nothing new in the view: the run's `initiated_by`, already
+  drawn, now names the event.
+- **Decks.** Hit List took two Concerto for its two Tailgate, two Reprise
+  for its two Sell Out and two Asmund Pudlat for its two Verbal
+  Plasticity, which finds its weapons (Jeitinho, Poison Vial, Laser
+  Pointer) and its Conduit. It stays Eternal-only.
+- **Approximation.** Concerto's credits are placed on the run as it
+  starts, where the card places them on itself before; they pay for
+  anything during that run, as the card says, and go with it.
+- **DSL ratio (`pool_status.py`):** unchanged at 15 of 91 `Effect`
+  variants single-use, 1 unused, over 425 card files.
+- **Measured** against Stage 5c's tip. Both sweeps green at 256 seeds,
+  the card gate included.
+  - A ref with the engine change and no cards is identical in all four
+    shapes: Beta Build, whose run is now its own, is in no matchup deck.
+  - With the cards, both random seatings are identical; the planner ones
+    move by `determinize` (view and index alike, of 192): Corp agenda wins
+    63 → 62, Corp flatlines 28 → 29.
+- **Real play**, seed 2, Hit List against Retirement Package (random 96
+  games / planner 48): Concerto played 28 / 26 times; Reprise 4 / 4;
+  Asmund Pudlat installed 36 / 8 times and handed a hosted card over on
+  70 / 7 turn starts.

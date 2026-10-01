@@ -1,0 +1,76 @@
+{
+  "id": "asmund_pudlat",
+  "title": "Asmund Pudlat",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 2,
+  "unique": true,
+  "triggers": [
+    {
+      "trigger": "OnInstall",
+      "subject": "This",
+      "effects": [
+        {
+          "PromptChooseCards": {
+            "side": "Runner",
+            "source": "OwnStack",
+            "filter": {
+              "All": [
+                {
+                  "AnyOf": [
+                    {
+                      "HasSubtype": "Virus"
+                    },
+                    {
+                      "HasSubtype": "Weapon"
+                    }
+                  ]
+                },
+                "DifferentNames"
+              ]
+            },
+            "min": 0,
+            "max": 2,
+            "reveal": true,
+            "shuffle_after": true,
+            "destination": "HostedOnSource"
+          }
+        }
+      ]
+    },
+    {
+      "trigger": "OnTurnStart",
+      "effects": [
+        {
+          "PromptChooseCards": {
+            "side": "Runner",
+            "source": "HostedOnSource",
+            "filter": "Any",
+            "min": 0,
+            "max": 1,
+            "reveal": false,
+            "shuffle_after": false,
+            "destination": "OwnGrip"
+          }
+        },
+        {
+          "EffectIf": {
+            "condition": {
+              "Not": {
+                "ZoneHasAtLeast": {
+                  "zone": "HostedOnSource",
+                  "count": 1
+                }
+              }
+            },
+            "effect": {
+              "TrashCard": "ThisCard"
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "built_from": 33082,
+  "is_playable": true
+}
