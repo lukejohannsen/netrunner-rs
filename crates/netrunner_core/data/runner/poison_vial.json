@@ -1,0 +1,53 @@
+{
+  "id": "poison_vial",
+  "title": "Poison Vial",
+  "side": "Runner",
+  "card_type": "Hardware",
+  "cost": 2,
+  "counter_kind": "Power",
+  "triggers": [
+    {
+      "trigger": "OnInstall",
+      "subject": "This",
+      "effects": [
+        {
+          "AddCounters": 3
+        }
+      ],
+      "text": "When you install this hardware, load 3 power counters onto it."
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "text": "Hosted power counter: Break up to 2 subroutines. Use this ability only if you have already broken a subroutine during this encounter.",
+      "cost": {
+        "RemoveCounters": 1
+      },
+      "effect": {
+        "Sequence": [
+          {
+            "BreakSubroutinesUnconditionally": {
+              "count": {
+                "Fixed": 2
+              }
+            }
+          },
+          {
+            "EffectIf": {
+              "condition": {
+                "ThisCardCountersAtMost": 0
+              },
+              "effect": {
+                "TrashCard": "ThisCard"
+              }
+            }
+          }
+        ]
+      },
+      "requirement": "SubroutineBrokenThisEncounter"
+    }
+  ],
+  "built_from": 33077,
+  "is_playable": true
+}

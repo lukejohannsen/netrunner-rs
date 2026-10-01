@@ -1195,7 +1195,14 @@ impl CardDefinition {
         // load and then count the wrong thing, or nothing.
         let first_time: Vec<&TriggeredEffect> = self.triggers.iter().filter(|triggered| triggered.first_each_turn).collect();
         for triggered in &first_time {
-            if let Err(why) = crate::rules::turn_log::Occurrences::meant_by(triggered.trigger, triggered.when.as_ref(), self.side) {
+            // "The first time each turn **this program** fully breaks…" is
+            // counted on the copy that did it (`InstalledRunnerCard::
+            // this_turn`), not on the turn, whose log counts the ice.
+            if triggered.when == Some(EventFilter::ByThis) {
+                if !crate::rules::turn_log::CopyTurn::counts_by(triggered.trigger) {
+                    return Err(self.first_time_misfit(format!("the copy that did it counts only what a card asks of it, which is fully breaking ice; a {:?} by this card is not counted", triggered.trigger)));
+                }
+            } else if let Err(why) = crate::rules::turn_log::Occurrences::meant_by(triggered.trigger, triggered.when.as_ref(), self.side) {
                 return Err(self.first_time_misfit(why));
             }
             // "The first time each turn you advance this agenda" is counted
@@ -1213,7 +1220,7 @@ impl CardDefinition {
             }
         }
         // One printed ability counts on one thing: the copy, or the turn.
-        let about_this = first_time.iter().filter(|triggered| triggered.subject == Some(Subject::This)).count();
+        let about_this = first_time.iter().filter(|triggered| triggered.subject == Some(Subject::This) || triggered.when == Some(EventFilter::ByThis)).count();
         if about_this > 0 && about_this < first_time.len() {
             return Err(self.first_time_misfit("a card's first-time entries share one count, and it is either this copy's or the turn's".to_string()));
         }

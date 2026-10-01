@@ -495,12 +495,13 @@ pub(crate) fn delayed_hears_on(delayed: &crate::rules::lingering::DelayedAbility
 
 /// Whether the occurrence `as_of` counted is the first this turn of what
 /// `definition`'s "first time each turn" entries listen for. A card whose
-/// first time is about itself ("you advance **this agenda**") is judged on
-/// its copy, the rest on the turn; `validate` keeps a card to one or the
+/// first time is about itself ("you advance **this agenda**") or done by
+/// itself ("**this program** fully breaks", `EventFilter::ByThis`) is judged
+/// on its copy, the rest on the turn; `validate` keeps a card to one or the
 /// other.
 fn is_first(state: &GameState, definition: &crate::dsl::CardDefinition, listener: &Listener, as_of: &AsOf) -> bool {
     let first_time = definition.triggers.iter().filter(|triggered| triggered.first_each_turn);
-    if first_time.clone().any(|triggered| triggered.subject == Some(Subject::This)) {
+    if first_time.clone().any(|triggered| triggered.subject == Some(Subject::This) || triggered.when == Some(EventFilter::ByThis)) {
         let triggers: Vec<Trigger> = first_time.map(|triggered| triggered.trigger).collect();
         as_of.is_first_on(listener.install, state.turn, &triggers)
     } else {

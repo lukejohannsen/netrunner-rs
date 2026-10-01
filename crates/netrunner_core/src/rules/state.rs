@@ -553,6 +553,17 @@ pub struct InstalledRunnerCard {
     /// numbers a grip card's. See `RunnerState::playable_hand`.
     #[serde(default)]
     pub hosted_cards_playable: bool,
+    /// What this copy has done this turn — Abaasy's "the first time each
+    /// turn **this program** fully breaks a piece of ice". The Corp
+    /// install's `InstalledCard::this_turn` counts what happens *to* a copy;
+    /// this counts what a copy *does*, the moments whose object is this
+    /// install (`listeners::Moment::by`), which the turn's log cannot say
+    /// because it counts the ice's class. Counted at the same door
+    /// (`turn_log::record`) and dated rather than reset. Not in the view,
+    /// as the Corp install's is not: a bot's sample starts each copy's turn
+    /// afresh.
+    #[serde(default)]
+    pub this_turn: crate::rules::turn_log::CopyTurn,
 }
 
 /// Every field at its neutral value, for test fixtures — see
@@ -570,6 +581,7 @@ impl Default for InstalledRunnerCard {
             hosted_on_rig_card: None,
             hosted_cards: Vec::new(),
             hosted_cards_playable: false,
+            this_turn: Default::default(),
         }
     }
 }

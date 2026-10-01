@@ -1,0 +1,62 @@
+{
+  "id": "tremolo",
+  "title": "Tremolo",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 3,
+  "strength": 2,
+  "memory_cost": 1,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "text": "Interface → 3[credit]: Break up to 2 barrier subroutines. This ability costs 1[credit] less to use for each installed piece of cybernetic hardware.",
+      "cost": {
+        "CreditsAmount": {
+          "Reduced": {
+            "amount": {
+              "Fixed": 3
+            },
+            "by": {
+              "RunnerInstalls": {
+                "All": [
+                  {
+                    "CardType": "Hardware"
+                  },
+                  {
+                    "HasSubtype": "Cybernetic"
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+      "effect": {
+        "BreakSubroutines": {
+          "count": {
+            "Fixed": 2
+          },
+          "restrict_to": "Barrier"
+        }
+      },
+      "requirement": "DuringEncounter"
+    },
+    {
+      "trigger": "Paid",
+      "text": "2[credit]: +2 strength.",
+      "cost": {
+        "Credits": 2
+      },
+      "effect": {
+        "BoostStrength": {
+          "amount": 2,
+          "duration": "Encounter"
+        }
+      },
+      "requirement": "DuringEncounter"
+    }
+  ],
+  "built_from": 33080,
+  "is_playable": true
+}

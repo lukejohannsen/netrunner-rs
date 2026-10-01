@@ -5014,3 +5014,74 @@ words here, the breaker words in 4b.
 - **Bot debts:** the planner Corp installs Dr. Vientiane Keeling and never
   rezzes it; the planner Runner never installs Basilar Synthgland, K2CP
   Turbine or Time Bomb.
+
+#### Stage 4b — breaker words: a cost a credit less per card, a break after a break, and a first time counted on the breaker (1 October 2026)
+
+`feat/ph-stage-4b-breaker-words`: Tremolo, Poison Vial, WAKE Implant
+v2A-JRJ, Abaasy. **No new `Effect`**; two `Amount`s, one
+`EffectRequirement`. Parhelion 35 of 63; `PH_UNIMPLEMENTED` 32 → 28.
+**Stage 4 is complete.**
+
+- **`Amount::Reduced { amount, by }` and `Amount::RunnerInstalls(CardFilter)`**,
+  Tremolo's "3[credit]: Break up to 2 barrier subroutines. This ability
+  costs 1[credit] less to use for each installed piece of cybernetic
+  hardware": `Cost::CreditsAmount(Reduced { Fixed(3), RunnerInstalls(All([
+  CardType(Hardware), HasSubtype(Cybernetic)])) })`, floored at 0 (CR
+  1.16.2a). `RunnerInstalls` is `CorpInstalls`' other side, counted as a
+  selection over the rig reads its filter. Composition didn't work: every
+  `Amount` was one number, and a `ContinuousKind` is about a card or a
+  player, not one of a card's abilities.
+- **`EffectRequirement::SubroutineBrokenThisEncounter`**, Poison Vial's
+  "Use this ability only if you have already broken a subroutine during
+  this encounter", read off the encounter's tally
+  (`EncounterTally::broken_by`), which any break marks, a click's
+  included, and which ends with the encounter. `SubroutineBrokenThisRun`
+  reaches back to the run's earlier ice. Its "Hosted power counter: Break
+  up to 2 subroutines" is Botulus's unconditional break, with no strength
+  contest, and "When it is empty, trash it" is an `EffectIf` after the
+  break, as Malandragem's is.
+- **A first time counted on the breaker** (CR 6.5.7b). Abaasy's "The
+  first time each turn this program fully breaks a piece of ice" is
+  `OnIceFullyBroken`, `when: ByThis`, `first_each_turn`. The turn's log
+  counts the ice's class and cannot say which object broke it, so a rig
+  install now carries the `CopyTurn` a Corp install does
+  (`InstalledRunnerCard::this_turn`), counting what the copy *did*:
+  `turn_log::record` bumps the install a moment's `by` names, for the
+  triggers `CopyTurn::counts_by` admits (only `OnIceFullyBroken`), and
+  `listeners::is_first` judges a `ByThis` first time on that copy.
+  `validate` admits `ByThis` beside `first_each_turn` only for a trigger
+  the copy counts. Ice broken by two objects is fully broken by neither,
+  so it counts for neither. Not in the view, as the Corp install's is
+  not. Its "you may trash 1 card from your grip to draw 1 card" is an
+  `OfferPaidChoice` of `Cost::Trash` from the grip.
+- **WAKE Implant composes**: "Whenever you breach R&D, you may remove up
+  to 3 hosted power counters to access that many additional cards" is a
+  `ChooseNumber` up to 3 *of* its counters, whose `then` removes that many
+  and adds that many accesses (`AddAdditionalAccessAmount`); the HQ count
+  is an `OnSuccessfulRun` on HQ.
+- **Client.** Nothing new in the view; the number, the paid choice and
+  the abilities carry their printed clauses. The engine reading words the
+  two amounts.
+- **Decks.** Hit List took two WAKE Implant for two Docklands Pass, two
+  Poison Vial for two Pennyshaver and two Tremolo for two Buzzsaw, all of
+  which Borrowed Time still carries; Pay As You Go two Abaasy for two
+  Botulus, which six sample decks carry. Both stay Eternal-only.
+- **DSL ratio (`pool_status.py`):** 17 → 16 of 91 `Effect` variants
+  single-use, 1 unused, over 415 card files: Poison Vial is the second
+  card on `BreakSubroutinesUnconditionally`.
+- **Measured** against Stage 4a's tip, every ref built by the same
+  compiler (Rust 1.99). Both sweeps green at 256 seeds, the card gate
+  included.
+  - A ref with the engine change and no cards is identical in all four
+    shapes.
+  - With the cards, both random seatings are identical; the planner ones
+    move by `determinize` (view and index alike, of 192): Corp agenda wins
+    58 → 59, Corp flatlines 27 → 28, Runner agenda wins 103 → 101.
+- **Real play**, seed 2, Hit List and Pay As You Go against Retirement
+  Package (random 96 games / planner 48 each): Tremolo installed 22 / 14
+  times and used 20 / 15; Poison Vial installed 22 / 0 and used 3; WAKE
+  Implant installed 32 / 0, its HQ counter placed 27 times and its R&D
+  offer heard 29; Abaasy installed 28 / 25 and used 18 / 47, its
+  first-time trigger fired once (random).
+- **Bot debts:** the planner Runner never installs Poison Vial or WAKE
+  Implant, and its Abaasy never fully broke a piece of ice on its own.

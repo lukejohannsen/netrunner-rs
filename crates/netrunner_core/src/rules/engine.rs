@@ -1671,6 +1671,7 @@ fn seed_rig_card(
         hosted_on_rig_card: None,
         hosted_cards: Vec::new(),
         hosted_cards_playable: card_def.hosted_cards_playable_from_grip,
+        this_turn: Default::default(),
     })
 }
 

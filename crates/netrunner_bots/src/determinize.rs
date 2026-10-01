@@ -992,6 +992,8 @@ pub fn determinize(view: &ClientView, registry: &CardRegistry, knowledge: &Knowl
             // drawn like the grip they came from (Read-Write Share).
             hosted_cards: card.hosted_cards.iter().cloned().chain(pools.draw_n(Slot::RunnerAny, card.hosted_unseen)).collect(),
             hosted_cards_playable: card.hosted_cards_playable,
+            // Not in the view, as the Corp install's is not.
+            this_turn: Default::default(),
         })
         .collect();
 

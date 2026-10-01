@@ -313,6 +313,14 @@ pub enum EffectRequirement {
     /// Composition didn't work: `SubroutineResolvedThisRun` is the other
     /// fate of a subroutine, and the turn log counts breaks by the turn.
     SubroutineBrokenThisRun,
+    /// The Runner is encountering a piece of ice and has already broken a
+    /// subroutine during this encounter — Poison Vial's "Use this ability
+    /// only if you have already broken a subroutine during this encounter".
+    /// Read off the encounter's tally (`EncounterTally::broken_by`), which
+    /// a break by any means marks — a breaker's, a click's — and which is
+    /// reset as the encounter ends. Composition didn't work:
+    /// `SubroutineBrokenThisRun` reaches back to the run's earlier ice.
+    SubroutineBrokenThisEncounter,
     /// The Runner has no unused memory (`memory::available_memory == 0`)
     /// — Dewi Subrotoputri's "if your [mu] is full"; "at least 1 unused
     /// [mu]" is `Not(MemoryFull)`.
