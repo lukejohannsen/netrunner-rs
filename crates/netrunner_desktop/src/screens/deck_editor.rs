@@ -2,14 +2,17 @@
 //! top, the card pool on the left and the deck on the right.
 //!
 //! **A press on a card in the pool adds a copy; the deck's rows take one
-//! away or add one back.** The pool is the format's by default, as the
-//! terminal builder's is, with a switch for every printing and another
-//! for the printings the engine does not play yet — a deck may hold one,
-//! and says it cannot be played until the card is in. Each card in the
-//! pool carries its count in the deck, so the pool is also the list of
-//! what is left to add. A secondary click on a card, in the pool or the
-//! deck, reads it (the game's rule: the right button, or Ctrl or Cmd
-//! with the primary).
+//! away or add one back.** The pool is what a match can deal in the
+//! format the deck is built for — Settings' format to start with, and
+//! "Legal in" is the first filter, deciding which sets the Set filter
+//! offers (Phase 7 §10 Stage 4; there was a Show drop-down for the
+//! cards the engine does not play yet, and the person said playable is
+//! "the only reasonable option to build a deck"). A deck may still hold
+//! an unplayable card from an import, and says it cannot be played until
+//! the card is in. Each card in the pool carries its count in the deck,
+//! so the pool is also the list of what is left to add. A secondary
+//! click on a card, in the pool or the deck, reads it (the game's rule:
+//! the right button, or Ctrl or Cmd with the primary).
 //!
 //! **Every edit is saved as it is made** (`models::deck_editor`), and the
 //! verdict under the name is re-read with it: the validators' words, in
@@ -25,7 +28,7 @@ use bevy::ui::FocusPolicy;
 
 use netrunner_client::card_face::Face;
 use netrunner_client::cards::{faction_label, set_name};
-use netrunner_client::deck_builder::{self, CardBook, Playability, PoolSort};
+use netrunner_client::deck_builder::{self, CardBook, PoolSort};
 use netrunner_client::deck_store::{self, Origin};
 use netrunner_client::settings::{format_label, FORMATS};
 use netrunner_core::card::Faction;
@@ -100,13 +103,13 @@ enum PopupButton {
     Cancel,
 }
 
+/// Which filter a drop-down is, in the order they are laid out.
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
 enum Filter {
+    Format,
+    Set,
     Faction,
     Kind,
-    Set,
-    Format,
-    Playability,
     Sort,
 }
 
@@ -441,64 +444,58 @@ fn spawn_notes(parent: &mut ChildSpawnerCommands, theme: &Theme, editor: &Editor
 }
 
 /// A filter's drop-down: its choices, the intent each one applies, and
-/// which is chosen now. The first four narrow the pool and start at
-/// "All"; playability and the sort are always one of their values.
-fn filter_entries(core: &ClientCore, editor: &Editor, filter: Filter) -> (Vec<Choice>, Vec<Intent>, usize) {
+/// which is chosen now. The format and the sort are always one of their
+/// values; the set, faction and type narrow the pool and start at "All".
+/// The sets are the format's (`deck_builder::sets`), each under its mark.
+fn filter_entries(theme: &Theme, core: &ClientCore, editor: &Editor, filter: Filter) -> (Vec<Choice>, Vec<Intent>, usize) {
     let side = editor.deck().side;
-    let mut entries: Vec<(String, Intent, bool)> = Vec::new();
+    let mut entries: Vec<(Choice, Intent, bool)> = Vec::new();
     match filter {
-        Filter::Faction => {
-            entries.push(("All".into(), Intent::Faction(None), editor.filter.faction.is_none()));
-            for faction in deck_builder::factions(book(core), side) {
-                entries.push((faction_label(faction).into(), Intent::Faction(Some(faction)), editor.filter.faction == Some(faction)));
-            }
-        }
-        Filter::Kind => {
-            entries.push(("All".into(), Intent::Kind(None), editor.filter.kind.is_none()));
-            for kind in deck_builder::kinds(side) {
-                entries.push(((*kind).into(), Intent::Kind(Some(kind)), editor.filter.kind == Some(*kind)));
+        Filter::Format => {
+            for format in FORMATS {
+                entries.push((Choice::plain(format_label(format)), Intent::Format(format), editor.filter.format == format));
             }
         }
         Filter::Set => {
-            entries.push(("All sets".into(), Intent::Set(None), editor.filter.set.is_none()));
-            for set in deck_builder::sets(book(core), side) {
+            entries.push((Choice::plain("All sets"), Intent::Set(None), editor.filter.set.is_none()));
+            for set in deck_builder::sets(book(core), side, editor.filter.format) {
                 let chosen = editor.filter.set.as_deref() == Some(set.as_str());
-                entries.push((set_name(&set).to_string(), Intent::Set(Some(set)), chosen));
+                let icon = theme.set_icon(&set, size::SMALL).map(|(glyph, _)| glyph);
+                entries.push((Choice::with_icon(set_name(&set), icon, theme.text), Intent::Set(Some(set)), chosen));
             }
         }
-        Filter::Format => {
-            entries.push(("Any format".into(), Intent::Format(None), editor.filter.format.is_none()));
-            for format in FORMATS {
-                entries.push((format_label(format).to_string(), Intent::Format(Some(format)), editor.filter.format == Some(format)));
+        Filter::Faction => {
+            entries.push((Choice::plain("All"), Intent::Faction(None), editor.filter.faction.is_none()));
+            for faction in deck_builder::factions(book(core), side) {
+                let icon = theme.faction_icon(faction, size::SMALL).map(|(glyph, _)| glyph);
+                entries.push((Choice::with_icon(faction_label(faction), icon, theme.faction(Some(faction))), Intent::Faction(Some(faction)), editor.filter.faction == Some(faction)));
             }
         }
-        Filter::Playability => {
-            for playability in Playability::ALL {
-                entries.push((playability.label().into(), Intent::Playability(playability), editor.filter.playability == playability));
+        Filter::Kind => {
+            entries.push((Choice::plain("All"), Intent::Kind(None), editor.filter.kind.is_none()));
+            for kind in deck_builder::kinds(side) {
+                entries.push((Choice::plain(*kind), Intent::Kind(Some(kind)), editor.filter.kind == Some(*kind)));
             }
         }
         Filter::Sort => {
             for sort in PoolSort::ALL {
-                entries.push((sort.label().into(), Intent::Sort(sort), editor.filter.sort == sort));
+                entries.push((Choice::plain(sort.label()), Intent::Sort(sort), editor.filter.sort == sort));
             }
         }
     }
     let current = entries.iter().position(|(_, _, chosen)| *chosen).unwrap_or(0);
-    let (choices, intents) = entries.into_iter().map(|(text, intent, _)| (Choice::plain(text), intent)).unzip();
+    let (choices, intents) = entries.into_iter().map(|(choice, intent, _)| (choice, intent)).unzip();
     (choices, intents, current)
 }
 
+/// The filters, "Legal in" first (the person's ask, 30 September 2026):
+/// the format decides which sets the Set filter offers, so it reads
+/// before Set; then the faction and the type, which narrow within the
+/// format; then how the pool is sorted; then Clear.
 fn spawn_filters(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore, editor: &Editor) {
-    let filters = [
-        (Filter::Faction, "Faction"),
-        (Filter::Kind, "Type"),
-        (Filter::Set, "Set"),
-        (Filter::Format, "Legal in"),
-        (Filter::Playability, "Show"),
-        (Filter::Sort, "Sort by"),
-    ];
+    let filters = [(Filter::Format, "Legal in"), (Filter::Set, "Set"), (Filter::Faction, "Faction"), (Filter::Kind, "Type"), (Filter::Sort, "Sort by")];
     for (filter, label) in filters {
-        let (choices, _, current) = filter_entries(core, editor, filter);
+        let (choices, _, current) = filter_entries(theme, core, editor, filter);
         spawn_dropdown(parent, theme, label, choices, current, filter);
     }
     parent.spawn(widgets::styled_button(theme, ButtonKind::Quiet, "Clear", Val::Auto, Control::Clear));
@@ -648,7 +645,7 @@ fn controls(
     (keys, mouse, mut reading): (Res<ButtonInput<KeyCode>>, Res<ButtonInput<MouseButton>>, ResMut<Reading>),
     mut editor: ResMut<Model>,
     (mut popup, mut dirty, mut search, mut rebuild): (ResMut<Popup>, ResMut<Dirty>, ResMut<SearchRequested>, ResMut<Rebuild>),
-    core: Res<ClientCore>,
+    (core, theme): (Res<ClientCore>, Res<Theme>),
     mut clipboard: Option<ResMut<bevy::clipboard::Clipboard>>,
     mut navigate: MessageWriter<Navigate>,
 ) {
@@ -693,7 +690,7 @@ fn controls(
     }
     for DropdownChanged { dropdown, index } in chosen.read() {
         let Ok(filter) = filters.get(*dropdown) else { continue };
-        let (_, filter_intents, _) = filter_entries(&core, &editor.0, *filter);
+        let (_, filter_intents, _) = filter_entries(&theme, &core, &editor.0, *filter);
         if let Some(intent) = filter_intents.get(*index) {
             intents.push(intent.clone());
         }

@@ -12,7 +12,7 @@
 //! editor shows it — the cards, the verdict, how to play it — with Copy
 //! to edit, and refuses every intent that would change it.
 
-use netrunner_client::deck_builder::{self, CardBook, DeckStatus, Draft, Playability, PoolFilter, PoolSort};
+use netrunner_client::deck_builder::{self, CardBook, DeckStatus, Draft, PoolFilter, PoolSort};
 use netrunner_client::start::Plan;
 use netrunner_core::card::Faction;
 use netrunner_core::decks::DeckFile;
@@ -32,11 +32,13 @@ pub enum Intent {
     /// A `cards::type_group` name.
     Kind(Option<&'static str>),
     Query(String),
-    /// Only a format's pool, or every format.
-    Format(Option<NsgFormat>),
+    /// The format the pool is legal in. It decides which sets the Set
+    /// filter offers, so a chosen set the new format has no card of is
+    /// let go, rather than leaving the pool empty under a filter the
+    /// drop-down no longer lists.
+    Format(NsgFormat),
     /// Only the cards one set printed (a v3 set id), or every set.
     Set(Option<String>),
-    Playability(Playability),
     Sort(PoolSort),
     /// Every filter back to where the editor opened it; the sort stays,
     /// because it is how the person reads the pool, not what they asked
@@ -127,9 +129,16 @@ impl Editor {
             Intent::Faction(faction) => return self.view(|filter| filter.faction = faction),
             Intent::Kind(kind) => return self.view(|filter| filter.kind = kind),
             Intent::Query(query) => return self.view(|filter| filter.query = query),
-            Intent::Format(format) => return self.view(|filter| filter.format = format),
+            Intent::Format(format) => {
+                let offered = deck_builder::sets(book, self.draft.deck.side, format);
+                return self.view(|filter| {
+                    filter.format = format;
+                    if filter.set.as_ref().is_some_and(|set| !offered.contains(set)) {
+                        filter.set = None;
+                    }
+                });
+            }
             Intent::Set(set) => return self.view(|filter| filter.set = set),
-            Intent::Playability(playability) => return self.view(|filter| filter.playability = playability),
             Intent::Sort(sort) => return self.view(|filter| filter.sort = sort),
             Intent::ClearFilters => {
                 let fresh = PoolFilter { sort: self.filter.sort, ..PoolFilter::new(self.draft.deck.side, self.format) };
@@ -183,20 +192,39 @@ mod tests {
         assert_eq!(editor.apply(Intent::Add(first.clone()), book), Outcome::Save);
     }
 
-    /// The set, format, playability and sort each redraw; Clear puts the
-    /// filters back and keeps the sort.
+    /// The set, format and sort each redraw; Clear puts the filters back
+    /// and keeps the sort.
     #[test]
     fn the_pool_narrows_by_set_and_format_and_clear_keeps_the_sort() {
         let (registry, catalog) = cards();
         let book = CardBook::new(&registry, &catalog);
         let mut editor = Editor::open(decks::by_id("stolen_goods").unwrap(), false, book, NsgFormat::Startup);
-        assert_eq!(editor.apply(Intent::Format(None), book), Outcome::View);
+        assert_eq!(editor.apply(Intent::Format(NsgFormat::Eternal), book), Outcome::View);
         assert_eq!(editor.apply(Intent::Set(Some("core_set".into())), book), Outcome::View);
         assert!(!editor.pool(book).is_empty());
-        assert_eq!(editor.apply(Intent::Playability(Playability::All), book), Outcome::View);
         assert_eq!(editor.apply(Intent::Sort(PoolSort::Cost), book), Outcome::View);
         assert_eq!(editor.apply(Intent::ClearFilters, book), Outcome::View);
         assert_eq!(editor.filter, PoolFilter { sort: PoolSort::Cost, ..PoolFilter::new(Side::Runner, NsgFormat::Startup) });
+    }
+
+    /// The format decides the sets: a set chosen under Eternal that
+    /// Startup has no card of is let go when Startup is chosen, and one
+    /// both formats hold stays.
+    #[test]
+    fn a_format_lets_go_of_a_set_it_does_not_offer() {
+        let (registry, catalog) = cards();
+        let book = CardBook::new(&registry, &catalog);
+        let mut editor = Editor::open(decks::by_id("stolen_goods").unwrap(), false, book, NsgFormat::Startup);
+        assert_eq!(editor.apply(Intent::Format(NsgFormat::Eternal), book), Outcome::View);
+        assert_eq!(editor.apply(Intent::Set(Some("core_set".into())), book), Outcome::View);
+        assert_eq!(editor.apply(Intent::Format(NsgFormat::Startup), book), Outcome::View);
+        assert_eq!(editor.filter.set, None, "Startup has no Core Set card");
+        assert_eq!(editor.filter.format, NsgFormat::Startup);
+        assert!(!editor.pool(book).is_empty());
+        assert_eq!(editor.apply(Intent::Set(Some("elevation".into())), book), Outcome::View);
+        assert_eq!(editor.apply(Intent::Format(NsgFormat::Eternal), book), Outcome::View);
+        assert_eq!(editor.filter.set.as_deref(), Some("elevation"), "Eternal holds Elevation too");
+        assert_eq!(editor.apply(Intent::Format(NsgFormat::Eternal), book), Outcome::Nothing);
     }
 
     #[test]

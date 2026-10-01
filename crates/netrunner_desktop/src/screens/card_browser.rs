@@ -362,8 +362,12 @@ fn entries(browser: &Browser, theme: &Theme, filter: Filter) -> (Vec<Choice>, Ve
     (choices, intents, current)
 }
 
+/// The filters, "Legal in" first: it decides which sets the Set filter
+/// offers (`Browser::sets`), so it reads before Set, as it does in the
+/// deck builder. The browser keeps an "Any" the builder has not, because
+/// it lists what was printed and the builder what can be played.
 fn spawn_filters(parent: &mut ChildSpawnerCommands, theme: &Theme, browser: &Browser) {
-    for (filter, label) in [(Filter::Side, "Side"), (Filter::Faction, "Faction"), (Filter::Kind, "Type"), (Filter::Set, "Set"), (Filter::Format, "Format")] {
+    for (filter, label) in [(Filter::Format, "Legal in"), (Filter::Side, "Side"), (Filter::Set, "Set"), (Filter::Faction, "Faction"), (Filter::Kind, "Type")] {
         let (choices, _, current) = entries(browser, theme, filter);
         spawn_dropdown(parent, theme, label, choices, current, filter);
     }
