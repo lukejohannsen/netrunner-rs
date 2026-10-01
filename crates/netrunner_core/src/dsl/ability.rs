@@ -212,6 +212,14 @@ pub enum EffectRequirement {
     /// Composition didn't work: nothing said whether a run had failed, and
     /// "not successful" is not it (a run Crisium Grid stops is neither).
     LastRunUnsuccessful,
+    /// The Runner breached the server of the most recently concluded run
+    /// during it (`state::CompletedRun::breached`) — Info Bounty's "gain
+    /// 2[credit] **if you breached that server during that run**", asked
+    /// as the run ends. Composition didn't work: a successful run is not a
+    /// breach of its server (a breach can be replaced by another server's,
+    /// and Flagship's run breaches without succeeding), and nothing kept
+    /// the breach past the run.
+    BreachedLastRunsServer,
     /// At least one card in the Corp's Archives is facedown
     /// (`state::ArchivedCard::facedown`) — e.g. Jinteki: Restoring
     /// Humanity's "if there is a facedown card in Archives".
@@ -372,6 +380,14 @@ pub enum EffectRequirement {
     /// strength cut would be offered, and paid for, against a sentry.
     /// Asked the way a restricted break is (`Effect::BreakSubroutines`).
     Encountering(crate::dsl::IceType),
+    /// The Runner is encountering a piece of ice protecting their mark (CR
+    /// 10.11, `lingering::mark`) — Tunnel Vision's "Break up to 2
+    /// subroutines on a piece of ice **protecting your mark**". Read off
+    /// where the ice is installed, not the run's server, so ice that moved
+    /// or a forced encounter is judged by the server it protects; false
+    /// while there is no mark. Composition didn't work: no requirement
+    /// reads the mark, which is chosen each turn.
+    EncounteringIceProtectingMark,
     /// The active run was begun by this card (`RunState::initiated_by`) —
     /// Baker's "[click]: Run Archives. When you would approach Archives…",
     /// whose second sentence is about the run its first began.

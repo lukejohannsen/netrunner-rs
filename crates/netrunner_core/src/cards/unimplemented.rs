@@ -40,8 +40,6 @@ pub(crate) const PH_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("raindrops_cut_stone", "Raindrops Cut Stone"),
     ("hush", "Hush"),
     ("tsakhia_bankhar_gantulga", "Tsakhia \"Bankhar\" Gantulga"),
-    ("tunnel_vision", "Tunnel Vision"),
-    ("info_bounty", "Info Bounty"),
     ("spark_of_inspiration", "Spark of Inspiration"),
     ("nanuq", "Nanuq"),
     ("matryoshka", "Matryoshka"),

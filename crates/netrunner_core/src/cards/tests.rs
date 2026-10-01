@@ -19645,4 +19645,102 @@ mod parhelion {
         state.corp.installed = vec![ice_at_hq("enigma")];
         assert!(use_ability(&encounter(&state, &registry), &registry, "orca", 0).is_err());
     }
+
+    // ---- Stage 6b: the mark ----
+
+    /// `server` is the Runner's mark for the rest of this turn, as if
+    /// identified (CR 10.11.2).
+    fn marked(mut state: GameState, server: ServerId) -> GameState {
+        state.lingering.push(crate::rules::lingering::LingeringEffect {
+            what: crate::rules::lingering::Lingering::Mark(server),
+            on: crate::rules::lingering::On::Player(Side::Runner),
+            until: crate::rules::lingering::Until::EndOfTurn(state.turn),
+            source: id("tunnel_vision"),
+        });
+        state
+    }
+
+    fn identify(state: &mut GameState, registry: &CardRegistry) -> Vec<GameEvent> {
+        crate::rules::evaluate_effect(state, &crate::dsl::Effect::IdentifyMark, &mut crate::rules::ResolutionContext::for_card(Some(&id("tunnel_vision"))), registry)
+            .expect("identify your mark")
+    }
+
+    /// "If you don't have a mark, a random central server becomes your
+    /// mark for this turn" (CR 10.11.2), each of the three as likely
+    /// (10.11.2a); a mark already there stays (10.11.3), and it is gone
+    /// when the turn is (10.11.4).
+    #[test]
+    fn identifying_the_mark_picks_a_random_central_server_once_a_turn() {
+        let registry = registry();
+        let mut seen = std::collections::BTreeMap::new();
+        for seed in 0..300 {
+            let mut state = runner_turn();
+            state.seed = seed;
+            let events = identify(&mut state, &registry);
+            let mark = crate::rules::lingering::mark(&state).expect("a mark");
+            assert_eq!(events, vec![GameEvent::MarkIdentified { server: mark }]);
+            *seen.entry(format!("{mark:?}")).or_insert(0) += 1;
+
+            let step = state.rng_step;
+            assert!(identify(&mut state, &registry).is_empty(), "already identified: nothing");
+            assert_eq!((crate::rules::lingering::mark(&state), state.rng_step), (Some(mark), step), "the mark is immutable for the turn");
+            state.turn += 1;
+            assert_eq!(crate::rules::lingering::mark(&state), None, "a lingering effect that expires at the end of the turn");
+        }
+        assert_eq!(seen.keys().cloned().collect::<Vec<_>>(), vec!["Archives", "Hq", "RnD"]);
+        assert!(seen.values().all(|&count| count > 70), "about a third each: {seen:?}");
+    }
+
+    #[test]
+    fn tunnel_vision_identifies_the_mark_as_the_turn_begins() {
+        let registry = registry();
+        let mut state = base_state();
+        state.runner.rig = vec![in_rig("tunnel_vision", 2, 0)];
+        let begun = begin_the_turn_of(state, &registry, Side::Runner);
+        let mark = crate::rules::lingering::mark(&begun).expect("identified");
+        assert!(matches!(mark, ServerId::Hq | ServerId::RnD | ServerId::Archives));
+    }
+
+    #[test]
+    fn tunnel_vision_breaks_only_on_ice_protecting_the_mark() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.installed = vec![ice_at_hq("enigma")];
+        state.runner.rig = vec![in_rig("tunnel_vision", 2, 0)];
+        assert!(use_ability(&encounter(&state, &registry), &registry, "tunnel_vision", 0).is_err(), "no mark");
+        assert!(use_ability(&encounter(&marked(state.clone(), ServerId::RnD), &registry), &registry, "tunnel_vision", 0).is_err(), "R&D is the mark");
+        let broke = use_ability(&encounter(&marked(state, ServerId::Hq), &registry), &registry, "tunnel_vision", 0).expect("2[credit]: break up to 2");
+        assert_eq!(broken(&broke), 2, "both of Enigma's");
+        assert_eq!(broke.runner.resources.credits, Credits(8));
+    }
+
+    /// The first run each turn that ends on the mark is the one heard,
+    /// breached or not; the 2[credit] is for a breach.
+    #[test]
+    fn info_bounty_pays_for_a_breach_on_the_first_run_on_the_mark_each_turn() {
+        let registry = registry();
+        let mut state = marked(runner_turn(), ServerId::Hq);
+        state.runner.rig = vec![in_rig("info_bounty", 0, 0)];
+        state.runner.resources.credits = Credits(0);
+
+        let (elsewhere, _) = run_to_completion(state.clone(), &registry, ServerId::RnD);
+        assert_eq!(elsewhere.runner.resources.credits, Credits(0), "R&D is not the mark");
+        let (first, _) = run_to_completion(elsewhere, &registry, ServerId::Hq);
+        assert_eq!(first.runner.resources.credits, Credits(2), "breached HQ");
+        let (again, _) = run_to_completion(first, &registry, ServerId::Hq);
+        assert_eq!(again.runner.resources.credits, Credits(2), "not the first time this turn");
+
+        // Turned back by Ice Wall: the first run on the mark, and no breach.
+        let mut walled = state;
+        walled.corp.installed = vec![ice_at_hq("ice_wall")];
+        let at_ice = encounter(&walled, &registry);
+        let (ended, _) = apply_action(&at_ice, &registry, PlayerAction::PassPriority { side: Side::Runner }).expect("the Runner lets it fire");
+        let ended = close_all_windows(ended, &registry).0;
+        assert!(ended.active_run.is_none(), "the run ended");
+        assert_eq!(ended.runner.resources.credits, Credits(0), "no breach");
+        let mut ended = ended;
+        ended.corp.installed.clear();
+        let (later, _) = run_to_completion(ended, &registry, ServerId::Hq);
+        assert_eq!(later.runner.resources.credits, Credits(0), "the first time was the run Ice Wall ended");
+    }
 }

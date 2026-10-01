@@ -414,6 +414,10 @@ impl Occurrences {
                     })
                     .fold(0, |mask, column| mask | column),
             ),
+            // Always a central server (CR 10.11.2), and which one is the
+            // state's: `first_time_on` writes the turn's mark in before a
+            // count is read, so this is only what `validate` checks.
+            Some(EventFilter::Mark) => Some(bit(Class::Server(ServerClass::Hq)) | bit(Class::Server(ServerClass::RnD)) | bit(Class::Server(ServerClass::Archives))),
             Some(EventFilter::Damage(kind)) => Some(bit(Class::Damage(*kind))),
             // By owner: a card counted `Unseen` is always a Corp card —
             // installed facedown, advanced, accessed, trashed out of HQ or
@@ -481,13 +485,19 @@ impl Occurrences {
 /// What `definition`'s "first time each turn" entries count, together: one
 /// printed ability in as many entries as it has triggers. An entry
 /// `Occurrences::meant_by` refuses counts nothing — `validate` has already
-/// refused the card file.
-pub(crate) fn first_time_of(definition: &CardDefinition) -> Vec<Occurrences> {
+/// refused the card file. Read on `state`: "on your mark" is the turn's
+/// mark (CR 10.11.1a), and no server at all while there is none, so nothing
+/// counted is a first time of it.
+pub(crate) fn first_time_on(definition: &CardDefinition, state: &crate::rules::GameState) -> Vec<Occurrences> {
+    let mark = crate::rules::lingering::mark(state);
     definition
         .triggers
         .iter()
         .filter(|triggered| triggered.first_each_turn)
-        .filter_map(|triggered| Occurrences::meant_by(triggered.trigger, triggered.when.as_ref(), definition.side).ok())
+        .filter_map(|triggered| {
+            let when = triggered.when.as_ref().map(|filter| filter.with_mark(mark));
+            Occurrences::meant_by(triggered.trigger, when.as_ref(), definition.side).ok()
+        })
         .collect()
 }
 

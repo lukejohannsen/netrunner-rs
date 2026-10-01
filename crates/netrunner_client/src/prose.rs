@@ -400,6 +400,7 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
         Effect::PurgeVirusCounters => "purge virus counters".to_string(),
         Effect::TurnFaceupInArchives => "turn it faceup in Archives".to_string(),
         Effect::FlipIdentity => "flip the identity".to_string(),
+        Effect::IdentifyMark => "identify your mark".to_string(),
         Effect::SetIdentityCopy(copy) => format!("make copy {} of the identity the one in play", describe_amount(copy)),
         Effect::AddToDeck(DeckEnd::Bottom) => "put it on the bottom of its owner's deck".to_string(),
         Effect::AddToDeck(DeckEnd::Top) => "put it on top of its owner's deck".to_string(),
@@ -509,6 +510,7 @@ pub fn humanize(debug: String) -> String {
 /// a virus program". A conjunction says each of its parts.
 fn describe_when(filter: &EventFilter) -> String {
     match filter {
+        EventFilter::Mark => "on your mark".to_string(),
         EventFilter::Server(servers) => {
             let servers: Vec<String> = servers.iter().map(|server| describe_server(*server)).collect();
             format!("on {}", servers.join(" or "))

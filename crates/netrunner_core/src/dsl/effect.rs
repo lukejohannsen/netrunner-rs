@@ -961,6 +961,16 @@ pub enum Effect {
     /// the one-bit flip (`FlipIdentity`) cannot tell three reverse sides
     /// apart.
     SetIdentityCopy(Amount),
+    /// "Identify your mark" (CR 10.11.2): if no server is the Runner's mark,
+    /// a random central server becomes it for the remainder of the turn —
+    /// `lingering::Lingering::Mark` until the end of the turn, drawn from
+    /// the state's own RNG with equal odds for HQ, R&D and Archives
+    /// (10.11.2a); if one already is, nothing (10.11.3). Announced as
+    /// `GameEvent::MarkIdentified`. Tunnel Vision and Info Bounty, and
+    /// Midnight Sun's mark cards after them. Composition didn't work: no
+    /// effect chooses a server at random, and the mark is a designation no
+    /// effect wrote.
+    IdentifyMark,
     /// Flips the Runner's identity to its other side
     /// (`RunnerState::identity_flipped`) — Dewi Subrotoputri. A flag rather
     /// than swapping the identity card: one card, two sides, and every
@@ -2143,6 +2153,7 @@ impl Effect {
             | Effect::LoseCreditsAmount(..)
             | Effect::FlipIdentity
             | Effect::SetIdentityCopy(_)
+            | Effect::IdentifyMark
             | Effect::AddToDeck(_)
             | Effect::AddToHand
             | Effect::ShuffleIntoDeck(..)
