@@ -38,6 +38,6 @@
       "text": "Once per turn → [click], 1[credit]: Draw 1 card and remove 1 tag."
     }
   ],
-  "numeric_id": 36009,
+  "built_from": 36009,
   "is_playable": true
 }

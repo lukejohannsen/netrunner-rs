@@ -237,6 +237,6 @@
       "text": "[trash]: Choose hardware, program, or resource. Set aside cards from the top of your stack faceup until you set aside 2 cards of the chosen type. You may install 1 of those 2 cards, ignoring all costs. Shuffle the rest of the set-aside cards into your stack."
     }
   ],
-  "numeric_id": 34070,
+  "built_from": 34070,
   "is_playable": true
 }

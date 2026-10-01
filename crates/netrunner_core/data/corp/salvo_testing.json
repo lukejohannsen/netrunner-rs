@@ -35,6 +35,6 @@
       "text": "Whenever you score an agenda (including this one), you may do 1 core damage."
     }
   ],
-  "numeric_id": 34031,
+  "built_from": 34031,
   "is_playable": true
 }

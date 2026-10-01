@@ -85,6 +85,6 @@
       "text": "Threat 4 → The second time you encounter a piece of ice during that run, you may spend [click] to bypass it."
     }
   ],
-  "numeric_id": 34012,
+  "built_from": 34012,
   "is_playable": true
 }

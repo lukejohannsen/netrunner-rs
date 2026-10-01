@@ -46,6 +46,6 @@
       "text": "The first time each turn the Runner passes a rezzed code gate or sentry, you may pay 1[credit] or trash 1 card from HQ. If you do, the Runner encounters that ice again."
     }
   ],
-  "numeric_id": 34106,
+  "built_from": 34106,
   "is_playable": true
 }

@@ -1018,8 +1018,8 @@ mod tests {
         for id in &startup.pool {
             let card = registry.get(id).unwrap();
             assert_eq!(card.side, Side::Corp);
-            // In Startup's pool (by any printing), not a fixed pack list.
-            assert!(card.numeric_id.is_some_and(|code| NsgFormat::Startup.rules().in_pool(code)), "{} is {:?}", card.title, card.set_code);
+            // In Startup's pool, not a fixed pack list.
+            assert!(NsgFormat::Startup.rules().in_pool(&card.id), "{} is outside Startup", card.title);
         }
         let mut editor = startup;
         let all = editor.visible_pool(&registry).len();

@@ -331,12 +331,17 @@ import, §5).
 
 The Cards screen gets the same format-first order.
 
-All of it stands on the v3 catalog (NSG pool Stage 0d), which gives sets
-their `date_release` and the cycle the icon font names its marks by. The
-font's glyph names (`netrunner.svg`) are v3's cycle ids, so every embedded
-set has a mark.
+All of it stands on the v3 catalog (NSG pool Stage 0d, done 30 September
+2026), which gives sets their `date_release` and the cycle the icon font
+names its marks by (`cards::catalog::CardSet::cycle`). The font's glyph
+names (`netrunner.svg`) are v3's cycle ids, so every embedded set has a
+mark. Stage 0d also left two things these stages build on: every picture
+a client draws is already asked through one function,
+`netrunner_client::art::printing_for` (the newest printing, for now), and
+the Cards screen already lists one entry per card with its printings in
+the inspector.
 
-**Stages, one PR each, after Stage 0d:**
+**Stages, one PR each, Stage 3 next:**
 - **Stage 3 — art per printing:** `netrunner_client::art`, kept in the
   settings file. Every picture is asked through one function, so a later
   `Art::Custom` slots in.

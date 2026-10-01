@@ -46,6 +46,6 @@
       "text": "Move 1 rezzed upgrade to the root of another server."
     }
   ],
-  "numeric_id": 36037,
+  "built_from": 36037,
   "is_playable": true
 }

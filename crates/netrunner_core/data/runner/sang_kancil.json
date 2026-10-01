@@ -43,6 +43,6 @@
       "text": "3[credit]: +2 strength. If a run event is active, this ability costs 2[credit] less to use."
     }
   ],
-  "numeric_id": 35020,
+  "built_from": 35020,
   "is_playable": true
 }

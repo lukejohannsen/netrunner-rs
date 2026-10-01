@@ -58,6 +58,6 @@
       "text": "The first time each turn you pass the outermost piece of ice protecting a server after fully breaking it"
     }
   ],
-  "numeric_id": 36023,
+  "built_from": 36023,
   "is_playable": true
 }

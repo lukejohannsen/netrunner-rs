@@ -1,8 +1,8 @@
+pub mod catalog;
 pub(crate) mod common;
 mod embedded;
 #[cfg(feature = "fs-loader")]
 mod loader;
-pub mod netrunnerdb;
 mod registry;
 #[cfg(test)]
 mod unimplemented;
@@ -13,7 +13,6 @@ mod tests;
 pub use embedded::{embedded_playable_cards, register_embedded_cards};
 #[cfg(feature = "fs-loader")]
 pub use loader::{load_registry_from_dirs, LoaderError};
-pub use netrunnerdb::{convert_dtos, convert_dtos_lenient, load_embedded_netrunnerdb_sets, EmbeddedSetsError};
 pub use registry::CardRegistry;
 
 /// Registers every hand-authored, gameplay-complete card into `registry` —
@@ -28,42 +27,6 @@ pub use registry::CardRegistry;
 /// cards a given match never uses is free.
 pub fn register_playable_cards(registry: &mut CardRegistry) {
     register_embedded_cards(registry);
-}
-
-/// A card's title as the key "the same card" is judged by across its
-/// printings: typographic apostrophes and quotes made plain, lowercased.
-///
-/// A reprint has a code of its own, so a card file — which carries one
-/// `numeric_id`, its first embedded printing's — cannot be found from a
-/// later printing's code, and the title is what joins them. NetrunnerDB
-/// spells a reprint's title as its editor typed it: *The Maker's Eye* is a
-/// straight apostrophe in the Core Set and a curly one in System Update 2021,
-/// so an exact match took the reprint for a card nothing implements. Every
-/// place that asks "is this printing a card we play" compares this key and
-/// the side, never the title.
-pub fn title_key(title: &str) -> String {
-    title
-        .chars()
-        .map(|ch| match ch {
-            '\u{2019}' | '\u{2018}' | '\u{02bc}' => '\'',
-            '\u{201c}' | '\u{201d}' => '"',
-            other => other,
-        })
-        .flat_map(char::to_lowercase)
-        .collect()
-}
-
-#[cfg(test)]
-mod title_key_tests {
-    use super::title_key;
-
-    #[test]
-    fn a_reprint_spelled_with_a_curly_apostrophe_is_the_same_card() {
-        assert_eq!(title_key("The Maker\u{2019}s Eye"), title_key("The Maker's Eye"));
-        assert_eq!(title_key("Pauleʼs Café"), title_key("Paule's Café"));
-        assert_eq!(title_key("\u{201c}Pretty\u{201d} Mary da Silva"), title_key("\"Pretty\" Mary da Silva"));
-        assert_ne!(title_key("Hedge Fund"), title_key("Hedge Funds"));
-    }
 }
 
 #[cfg(test)]
@@ -99,46 +62,25 @@ mod sg_starter_identity_tests {
 }
 
 #[cfg(test)]
-mod sg_reprint_dedup_tests {
+mod reprint_tests {
     use super::*;
+    use crate::dsl::CardId;
 
-    /// Sure Gamble, Hedge Fund, and Cleaver are exact System Gateway
-    /// reprints of existing hand-authored baseline cards (see
-    /// `data/corp/hedge_fund.json`/`data/runner/sure_gamble.json`/
-    /// `data/runner/cleaver.json`'s SG metadata). Loading the
-    /// hand-authored baseline JSON alongside the embedded NetrunnerDB
-    /// catalog conversion necessarily produces *two* distinct
-    /// `CardRegistry` entries per title, not one merged entry — the
-    /// NetrunnerDB conversion path slugs every card `nrdb_<numeric_id>`
-    /// (`cards::netrunnerdb::convert_one`), which never collides with the
-    /// hand-authored `hedge_fund`/`sure_gamble`/`cleaver` `dsl::CardId`
-    /// slug. This test proves only one of them ever ends up
-    /// `is_playable: true` — `rules::deck::validate_deck` rejects the
-    /// rest — not that the registry deduplicates them into a single
-    /// entry.
-    ///
-    /// The expected count differs per title because these cards have been
-    /// printed a different number of times: *Hedge Fund* and *Sure Gamble*
-    /// are in the Core Set catalog as well as System Gateway's, so each
-    /// contributes its own `nrdb_<code>` entry, while *Cleaver* is System
-    /// Gateway only. Spelled out per title rather than collapsed to "more
-    /// than one" so an unexpected extra printing still fails here.
+    /// A reprint is a printing, never a second card. Sure Gamble and Hedge
+    /// Fund are printed in the Core Set and System Gateway, and each is one
+    /// entry in the catalog and one in the playable registry, under the same
+    /// v3 id: the v2 catalog made one `nrdb_<code>` entry per printing, so
+    /// the playable card sat beside two catalog copies of itself and a
+    /// title fold was what told them apart.
     #[test]
-    fn hedge_fund_and_sure_gamble_have_exactly_one_playable_entry_after_merging_baseline_and_sg_catalog() {
+    fn a_reprinted_card_is_one_card_with_several_printings() {
         let mut registry = CardRegistry::new();
         register_playable_cards(&mut registry);
-        let sg_catalog = load_embedded_netrunnerdb_sets().expect("embedded sets should parse");
-        registry.merge(sg_catalog.iter().cloned());
-
-        for (title, printings) in [("Hedge Fund", 3), ("Sure Gamble", 3), ("Cleaver", 2)] {
-            let matches: Vec<_> = registry.iter().filter(|c| c.title == title).collect();
-            assert_eq!(
-                matches.len(),
-                printings,
-                "expected the hand-authored {title} entry to coexist with its catalog printings"
-            );
-            let playable: Vec<_> = matches.iter().filter(|c| c.is_playable).collect();
-            assert_eq!(playable.len(), 1, "expected exactly one playable {title} entry, found {playable:?}");
+        for (id, printings) in [("hedge_fund", 2), ("sure_gamble", 2), ("cleaver", 1)] {
+            let id = CardId(id.to_string());
+            assert!(registry.get(&id).is_some_and(|card| card.is_playable), "{} is playable", id.0);
+            assert!(catalog::cards().get(&id).is_some_and(|card| !card.is_playable), "{} is in the catalog", id.0);
+            assert_eq!(catalog::printings_of(&id).count(), printings, "{}", id.0);
         }
     }
 }

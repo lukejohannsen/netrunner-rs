@@ -8,6 +8,6 @@
   "base_link": 0,
   "unlimited_influence": true,
   "triggers": [],
-  "numeric_id": 30076,
+  "built_from": 30076,
   "is_playable": true
 }

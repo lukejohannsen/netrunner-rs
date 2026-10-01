@@ -79,6 +79,6 @@
       "text": "When your turn begins, you may remove 1 hosted power counter to draw 1 card or remove 1 tag."
     }
   ],
-  "numeric_id": 34003,
+  "built_from": 34003,
   "is_playable": true
 }

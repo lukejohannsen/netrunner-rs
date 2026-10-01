@@ -1,13 +1,11 @@
 //! Deckbuilding-time decklists, validated against the same unified
 //! `cards::CardRegistry`/`dsl::CardDefinition` model the rules engine plays
-//! from — but keyed by `card::CardId` (NetrunnerDB's numeric codes, via
-//! `CardRegistry::get_by_numeric_id`) and checking deckbuilding-legality
-//! concerns (`influence_cost`, `set_code`, `faction`) against NSG's
-//! competitive formats (`format::NsgFormat`).
+//! from, checking deckbuilding-legality concerns (`influence_cost`,
+//! `faction`, the format's pool and lists) against NSG's competitive formats
+//! (`format::NsgFormat`).
 //!
 //! Distinct from `rules::deck::Deck`/`rules::deck::validate_deck`, which
-//! validate a deck against the same `CardRegistry` but keyed by the
-//! engine-native `dsl::CardId` string slug and checking gameplay-
+//! validate a deck against the same `CardRegistry` and checking gameplay-
 //! executability only — structural rules plus `CardDefinition::is_playable`,
 //! no influence/faction/pack legality. A NetrunnerDB-sourced `Decklist` may
 //! legitimately reference cards this engine has no DSL data for yet
@@ -38,10 +36,12 @@
 //!
 //! `Decklist` is reached by *converting* a `DeckFile`, never by parsing
 //! user-supplied NetrunnerDB JSON — deckbuilding happens against the cards
-//! this engine implements. The numeric-keyed shape exists because printed
-//! legality is defined over NetrunnerDB's metadata, and `numeric_id` is the
-//! join. That mapping is total for the embedded pool: every playable card
-//! carries a code, pinned by `every_playable_card_carries_a_numeric_id`.
+//! this engine implements. Both are keyed by the card's id, NetrunnerDB's
+//! v3 slug: the decklist used to be keyed by printing code, because printed
+//! legality was defined over NetrunnerDB's v2 metadata and a card file's
+//! one printing (`numeric_id`) was the join. A format's pool and lists are
+//! cards now (`format::FormatRules`), so the decklist is the deck's counts
+//! summed per card and nothing else.
 //!
 //! The one rule the two validators share is `rules::deck::agenda_point_range`,
 //! called from both. `MAX_COPIES_PER_CARD` is deliberately duplicated rather
@@ -49,85 +49,22 @@
 
 use std::collections::HashMap;
 
-use serde::{Deserialize, Deserializer, Serialize};
+use serde::{Deserialize, Serialize};
 
-use crate::card::CardId;
+use crate::dsl::CardId;
 
 pub mod validator;
 
 pub use validator::{influence_per_copy, tally_deck, validate_deck, validate_deck_with_rules, AgendaTally, DeckTally, DeckValidationError, ValidationReport};
 
 /// A deckbuilding-time decklist: an identity plus a card pool, each entry
-/// paired with how many copies are included. Deserializes from the common
-/// NetrunnerDB/community-tool JSON deck-export shape:
-/// `{"identity": "30001", "cards": {"30002": 3, "30015": 2}}` — `cards`'
-/// keys are always JSON strings (the JSON spec has no non-string object
-/// key), which `CardId`'s own `Deserialize` impl already parses correctly
-/// as a map key (serde_json routes primitive-typed map keys through the
-/// same string-parsing path regardless of the surrounding value's JSON
-/// syntax). `identity` additionally accepts a bare JSON integer, since some
-/// export tools emit unquoted card codes for scalar fields even though
-/// `cards`' keys are necessarily quoted.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+/// paired with how many copies are included, every card by id —
+/// `{"identity": "zahya_sadeghi_versatile_smuggler", "cards": {"sure_gamble": 3}}`,
+/// the shape of NetrunnerDB v3's `card_slots`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Decklist {
     pub identity: CardId,
     pub cards: HashMap<CardId, u32>,
-}
-
-impl<'de> Deserialize<'de> for Decklist {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        #[derive(Deserialize)]
-        struct Raw {
-            identity: FlexibleCardId,
-            cards: HashMap<CardId, u32>,
-        }
-        let raw = Raw::deserialize(deserializer)?;
-        Ok(Decklist { identity: raw.identity.0, cards: raw.cards })
-    }
-}
-
-/// A `CardId` that deserializes from either a JSON string (`"30001"`, the
-/// common case — NetrunnerDB codes are conventionally zero-padded, and
-/// `u32`'s own string parsing tolerates the leading zeros) or a bare JSON
-/// integer (`30001`).
-struct FlexibleCardId(CardId);
-
-impl<'de> Deserialize<'de> for FlexibleCardId {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        struct Visitor;
-        impl serde::de::Visitor<'_> for Visitor {
-            type Value = FlexibleCardId;
-
-            fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-                write!(f, "a NetrunnerDB card code, as a numeric string or a bare integer")
-            }
-
-            fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
-            where
-                E: serde::de::Error,
-            {
-                v.parse::<u32>()
-                    .map(|code| FlexibleCardId(CardId(code)))
-                    .map_err(|_| E::invalid_value(serde::de::Unexpected::Str(v), &self))
-            }
-
-            fn visit_u64<E>(self, v: u64) -> Result<Self::Value, E>
-            where
-                E: serde::de::Error,
-            {
-                u32::try_from(v)
-                    .map(|code| FlexibleCardId(CardId(code)))
-                    .map_err(|_| E::invalid_value(serde::de::Unexpected::Unsigned(v), &self))
-            }
-        }
-        deserializer.deserialize_any(Visitor)
-    }
 }
 
 #[cfg(test)]
@@ -135,42 +72,20 @@ mod tests {
     use super::*;
 
     #[test]
-    fn deserializes_the_standard_netrunnerdb_export_shape() {
-        let json = r#"{"identity": "30001", "cards": {"30002": 3, "30015": 2}}"#;
+    fn deserializes_card_ids_as_netrunnerdb_v3_writes_them() {
+        let json = r#"{"identity": "rene_loup_arcemont_party_animal", "cards": {"wildcat_strike": 3, "sure_gamble": 2}}"#;
         let deck: Decklist = serde_json::from_str(json).expect("valid decklist JSON");
 
-        assert_eq!(deck.identity, CardId(30001));
-        assert_eq!(deck.cards.get(&CardId(30002)), Some(&3));
-        assert_eq!(deck.cards.get(&CardId(30015)), Some(&2));
-    }
-
-    #[test]
-    fn deserializes_an_integer_identity_code() {
-        let json = r#"{"identity": 30001, "cards": {}}"#;
-        let deck: Decklist = serde_json::from_str(json).expect("valid decklist JSON");
-
-        assert_eq!(deck.identity, CardId(30001));
-    }
-
-    #[test]
-    fn tolerates_zero_padded_identity_codes() {
-        let json = r#"{"identity": "01001", "cards": {}}"#;
-        let deck: Decklist = serde_json::from_str(json).expect("valid decklist JSON");
-
-        assert_eq!(deck.identity, CardId(1001));
-    }
-
-    #[test]
-    fn rejects_a_non_numeric_identity_code() {
-        let json = r#"{"identity": "not-a-code", "cards": {}}"#;
-        assert!(serde_json::from_str::<Decklist>(json).is_err());
+        assert_eq!(deck.identity, CardId("rene_loup_arcemont_party_animal".to_string()));
+        assert_eq!(deck.cards.get(&CardId("wildcat_strike".to_string())), Some(&3));
+        assert_eq!(deck.cards.get(&CardId("sure_gamble".to_string())), Some(&2));
     }
 
     #[test]
     fn round_trips_through_serialization() {
         let mut cards = HashMap::new();
-        cards.insert(CardId(30002), 3);
-        let deck = Decklist { identity: CardId(30001), cards };
+        cards.insert(CardId("wildcat_strike".to_string()), 3);
+        let deck = Decklist { identity: CardId("rene_loup_arcemont_party_animal".to_string()), cards };
 
         let json = serde_json::to_string(&deck).expect("serializes");
         let round_tripped: Decklist = serde_json::from_str(&json).expect("deserializes back");

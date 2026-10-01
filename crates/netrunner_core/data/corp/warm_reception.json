@@ -96,6 +96,6 @@
       "text": "When your turn begins, you may install 1 card from HQ. You cannot score that card this turn. If this server is not protected by ice, you may derez this asset to derez another installed card."
     }
   ],
-  "numeric_id": 34098,
+  "built_from": 34098,
   "is_playable": true
 }

@@ -20,6 +20,6 @@
   ],
   "trash_cost": 3,
   "persistent_after_trash": true,
-  "numeric_id": 30058,
+  "built_from": 30058,
   "is_playable": true
 }

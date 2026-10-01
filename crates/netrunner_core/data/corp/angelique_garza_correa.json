@@ -67,6 +67,6 @@
       "text": "When the Runner accesses this upgrade while it is rezzed, you may pay 2[credit] to do 2 meat damage."
     }
   ],
-  "numeric_id": 34063,
+  "built_from": 34063,
   "is_playable": true
 }

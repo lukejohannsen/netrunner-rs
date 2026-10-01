@@ -78,6 +78,6 @@
       "text": "Whenever an agenda is scored or stolen, add 1 unrezzed card to HQ."
     }
   ],
-  "numeric_id": 34014,
+  "built_from": 34014,
   "is_playable": true
 }

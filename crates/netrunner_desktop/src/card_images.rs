@@ -39,7 +39,7 @@ use bevy::tasks::{AsyncComputeTaskPool, Task};
 
 use netrunner_card_sync::ImageStatus;
 use netrunner_client::settings::CardBacks;
-use netrunner_core::card::CardId;
+use netrunner_core::card::PrintingId;
 use netrunner_core::rules::Side;
 
 use crate::assets;
@@ -66,12 +66,12 @@ const IN_FLIGHT: usize = 4;
 /// picture is put in its place.
 #[derive(Component, Debug, Clone, Copy)]
 pub struct WantsImage {
-    pub code: CardId,
+    pub code: PrintingId,
     pub size: FaceSize,
 }
 
 /// A front at one width: the card and its [`rung`].
-type FaceKey = (CardId, u32);
+type FaceKey = (PrintingId, u32);
 
 #[derive(Resource)]
 pub struct CardImages {
@@ -111,7 +111,7 @@ impl Default for CardImages {
 
 impl CardImages {
     /// The front for `code` decoded for a face of `size`, if it has been.
-    pub fn face(&self, code: CardId, size: FaceSize) -> Option<Handle<Image>> {
+    pub fn face(&self, code: PrintingId, size: FaceSize) -> Option<Handle<Image>> {
         self.faces.get(&self.key(code, size)).cloned()
     }
 
@@ -121,11 +121,11 @@ impl CardImages {
     /// board already drew (a hand card, a card in Archives), so drawing
     /// that copy stretched for the moment beats flashing the text face
     /// first. `None` when no copy of the card has been decoded at all.
-    pub fn nearest_face(&self, code: CardId) -> Option<Handle<Image>> {
+    pub fn nearest_face(&self, code: PrintingId) -> Option<Handle<Image>> {
         self.faces.iter().filter(|((c, _), _)| *c == code).max_by_key(|((_, width), _)| *width).map(|(_, handle)| handle.clone())
     }
 
-    fn key(&self, code: CardId, size: FaceSize) -> FaceKey {
+    fn key(&self, code: PrintingId, size: FaceSize) -> FaceKey {
         (code, rung(size.width() * self.scale))
     }
 
@@ -135,7 +135,7 @@ impl CardImages {
 
     /// Queues the file at `path` for a face of `size`, unless that width
     /// is known, under way or already queued.
-    pub fn request(&mut self, code: CardId, size: FaceSize, path: PathBuf) {
+    pub fn request(&mut self, code: PrintingId, size: FaceSize, path: PathBuf) {
         let key = self.key(code, size);
         if self.faces.contains_key(&key) || self.pending.contains_key(&key) || !self.queued.insert(key) {
             return;
@@ -496,8 +496,8 @@ mod tests {
             assert!(pair[1] as f32 <= pair[0] as f32 * 1.26, "{pair:?}");
         }
         let images = CardImages { scale: 2.0, ..CardImages::default() };
-        assert_eq!(images.key(CardId(30001), FaceSize::Thumb), (CardId(30001), 344));
-        assert_eq!(images.key(CardId(30001), FaceSize::Large), (CardId(30001), WHOLE_SCAN));
+        assert_eq!(images.key(PrintingId(30001), FaceSize::Thumb), (PrintingId(30001), 344));
+        assert_eq!(images.key(PrintingId(30001), FaceSize::Large), (PrintingId(30001), WHOLE_SCAN));
     }
 
     /// A scan wider than its rung is resampled to it, keeping the card's
@@ -522,12 +522,12 @@ mod tests {
         let scan = dir.join("30001.png");
         let pixels: Vec<u8> = (0..40 * 56).flat_map(|i| [(i % 251) as u8, 40, 200, 255]).collect();
         image::RgbaImage::from_raw(40, 56, pixels).unwrap().save(&scan).unwrap();
-        let first = load_front(&scan, (CardId(30001), 20)).unwrap();
+        let first = load_front(&scan, (PrintingId(30001), 20)).unwrap();
         assert_eq!(first.texture_descriptor.size, Extent3d { width: 20, height: 28, depth_or_array_layers: 1 });
         let copy = dir.join("sized").join("30001-png-20.rgba");
         assert!(copy.is_file());
         std::fs::write(&copy, to_copy(&Image::new(Extent3d { width: 1, height: 1, depth_or_array_layers: 1 }, TextureDimension::D2, vec![9, 9, 9, 9], TextureFormat::Rgba8UnormSrgb, RenderAssetUsages::default())).unwrap()).unwrap();
-        let read_back = load_front(&scan, (CardId(30001), 20)).unwrap();
+        let read_back = load_front(&scan, (PrintingId(30001), 20)).unwrap();
         assert_eq!(read_back.data.as_deref(), Some(&[9, 9, 9, 9][..]), "the kept copy is what is read");
         assert!(from_copy(b"NRFACE1\0\x02\0\0\0\x02\0\0\0short").is_none());
         let _ = std::fs::remove_dir_all(&dir);

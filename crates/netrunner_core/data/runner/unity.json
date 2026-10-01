@@ -39,6 +39,6 @@
       "text": "1[credit]: +X strength. X is equal to the number of installed icebreakers (including this one)."
     }
   ],
-  "numeric_id": 30026,
+  "built_from": 30026,
   "is_playable": true
 }

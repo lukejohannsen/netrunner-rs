@@ -34,6 +34,6 @@
       "text": "When this agenda is scored or stolen, do 2 net damage."
     }
   ],
-  "numeric_id": 34040,
+  "built_from": 34040,
   "is_playable": true
 }

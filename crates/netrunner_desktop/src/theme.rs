@@ -339,11 +339,11 @@ impl Theme {
 
     /// A set's mark in the icon font, or nothing without it or for a
     /// set the font has no mark for.
-    pub fn set_icon(&self, set_code: &str, size: f32) -> Option<(String, TextFont)> {
+    pub fn set_icon(&self, set: &str, size: f32) -> Option<(String, TextFont)> {
         if !self.has_icons() {
             return None;
         }
-        card_text::set_icon(set_code).map(|icon| (icon.to_string(), self.icon_font(size)))
+        card_text::set_icon(set).map(|icon| (icon.to_string(), self.icon_font(size)))
     }
 }
 

@@ -685,7 +685,8 @@ pub enum SameAction {
     /// agenda, by its handle and which of its abilities.
     Ability { install: InstallId, index: u8 },
     /// A [click] ability used from HQ or the grip (Descent, Tocsin), by
-    /// the card's catalog number: a card in hand has no handle, so two
+    /// the printing its card file was built from (`built_from`, the same
+    /// number for every copy): a card in hand has no handle, so two
     /// copies there are one card to this count. Each is revealed by its
     /// own cost, so the number is public.
     FromHand { card: u32, index: u8 },

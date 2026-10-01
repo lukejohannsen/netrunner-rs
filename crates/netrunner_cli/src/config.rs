@@ -877,25 +877,12 @@ pub enum DeckAction {
 
 #[derive(Subcommand, Debug, Clone)]
 pub enum CardsAction {
-    /// List NetrunnerDB sets (packs) available to sync.
-    ListSets,
-
-    /// Fetch and cache card data from NetrunnerDB.
-    Sync {
-        /// Sync every set.
-        #[arg(long)]
-        all: bool,
-
-        /// Sync only these set codes (repeatable), e.g. `--set sg --set elev`.
-        #[arg(long = "set")]
-        set: Vec<String>,
-    },
-
     /// Report the card-image cache: how many printings have a scan, and
     /// which are only at 300 pixels because NetrunnerDB has no 750-pixel
     /// scan of them.
     Images {
-        /// Only these set codes (repeatable), e.g. `--set sg --set elev`.
+        /// Only these sets, by NetrunnerDB v3 id (repeatable), e.g.
+        /// `--set system_gateway --set elevation`.
         #[arg(long = "set")]
         set: Vec<String>,
 

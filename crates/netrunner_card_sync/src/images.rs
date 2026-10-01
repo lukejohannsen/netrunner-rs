@@ -10,27 +10,30 @@
 //! **Never committed, never under the repo.** NetrunnerDB serves Null
 //! Signal Games' art under its own terms, not this project's GPL, so the
 //! files live in the player's cache directory and only ever get there
-//! through this store. That is also why `CardDefinition::image_url` stays
-//! `None`: the join is by NetrunnerDB code, and the store, not the card,
-//! knows where the picture is.
+//! through this store. A picture belongs to a printing, so the store is
+//! keyed by `card::PrintingId`: the card does not know where its picture
+//! is, and a card has as many pictures as it has printings.
 //!
-//! **The URL template is read off the API, with a fallback.** NetrunnerDB's
-//! cards envelope carries `imageUrlTemplate`; the value seen when this was
-//! written is [`DEFAULT_IMAGE_URL_TEMPLATE`]. The template last seen is
-//! kept in `manifest.json` beside the images, so a client that has never
-//! synced still knows where to look and a host move is picked up by the
-//! next refresh rather than by a release.
+//! **The URLs are NetrunnerDB v3's.** A v3 printing names its scans under
+//! `images.nrdb_classic`, and the two this store fetches are
+//! [`HIRES_IMAGE_URL_TEMPLATE`] and [`DEFAULT_IMAGE_URL_TEMPLATE`]. The
+//! smaller one used to be read off the v2 cards envelope's
+//! `imageUrlTemplate` before every download and kept in `manifest.json`;
+//! that was the only thing the v2 API was still asked for, and it went with
+//! it (NSG pool Stage 0d).
 //!
-//! **Two sizes, the larger first.** The API's template names `large`,
-//! 300 × 420 — narrower than the 380-point face the sheets and the card
-//! browser draw, so it was stretched on every screen and blurred on a
-//! high-resolution one. NetrunnerDB also serves `xlarge`, 750 × 1050 as
-//! WebP ([`HIRES_IMAGE_URL_TEMPLATE`]), for every Null Signal Games
-//! printing; the Fantasy Flight Core Set has none. So a download asks
-//! for `xlarge` first and falls back to the API's template only on a
-//! 403 or 404, and the codes that fell back are kept in the manifest
-//! ([`CardImageStore::low_res`]) — both so they are not asked for again
-//! on every download and so the list of cards still at 300 pixels is
+//! **Two sizes, the larger first.** `large` is 300 × 420 — narrower than
+//! the 380-point face the sheets and the card browser draw, so it was
+//! stretched on every screen and blurred on a high-resolution one.
+//! NetrunnerDB also serves `xlarge`, 750 × 1050 as WebP, for every Null
+//! Signal Games printing of a set it scanned whole; the Fantasy Flight
+//! Core Set has none, and nor do System Update 2021, Salvaged Memories or
+//! the Magnum Opus Reprint. So a download asks for `xlarge` first — unless
+//! the catalog says the printing has none (`catalog::Printing::has_xlarge`),
+//! which spares 219 requests that could only fail — and falls back to
+//! `large` on a 403 or 404. The codes that fell back are kept in the
+//! manifest ([`CardImageStore::low_res`]), both so they are not asked for
+//! again on every download and so the list of cards still at 300 pixels is
 //! one call away rather than a guess.
 //!
 //! Null Signal Games' print-and-play PDFs were measured as the other
@@ -56,20 +59,21 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc::UnboundedSender;
 use tokio::sync::Semaphore;
 
-use netrunner_core::card::CardId;
+use netrunner_core::card::PrintingId;
+use netrunner_core::cards::catalog;
 
 use crate::cache_path::resolve_images_dir;
 use crate::error::SyncError;
-use crate::sync::{http_client, temp_file_path, NetrunnerDbEnvelope, NETRUNNERDB_CARDS_URL};
+use crate::http::{http_client, temp_file_path};
 
-/// Where NetrunnerDB served card images when this crate was written.
-/// `{code}` is the five-digit printing code (`30001`).
+/// Where NetrunnerDB serves the 300 × 420 scans: v3's
+/// `images.nrdb_classic.large`. `{code}` is the five-digit printing code
+/// (`30001`).
 pub const DEFAULT_IMAGE_URL_TEMPLATE: &str = "https://card-images.netrunnerdb.com/v2/large/{code}.jpg";
 
-/// Where NetrunnerDB serves the 750 × 1050 scans, tried before the
-/// template. Not read off the API, whose `imageUrlTemplate` names only
-/// `large`; a code this 403s or 404s is fetched from the template
-/// instead and recorded as low-resolution.
+/// Where NetrunnerDB serves the 750 × 1050 scans, v3's `xlarge`, tried
+/// first; a code this 403s or 404s is fetched from
+/// [`DEFAULT_IMAGE_URL_TEMPLATE`] instead and recorded as low-resolution.
 pub const HIRES_IMAGE_URL_TEMPLATE: &str = "https://card-images.netrunnerdb.com/v2/xlarge/{code}.webp";
 
 const MANIFEST_FILE: &str = "manifest.json";
@@ -92,7 +96,7 @@ pub struct DownloadProgress {
     pub done: usize,
     pub total: usize,
     pub failed: usize,
-    pub last: CardId,
+    pub last: PrintingId,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -101,17 +105,20 @@ pub struct DownloadReport {
     pub already_cached: usize,
     /// Each failure with the reason, so a screen can show which cards
     /// have no picture and why.
-    pub failed: Vec<(CardId, String)>,
+    pub failed: Vec<(PrintingId, String)>,
     /// The requested codes whose picture is the 300-pixel one, because
     /// NetrunnerDB has no larger — fetched now or earlier.
-    pub low_res: Vec<CardId>,
+    pub low_res: Vec<PrintingId>,
 }
 
+/// What is kept beside the images. A manifest written before Stage 0d
+/// also holds the `image_url_template` read off the v2 API, which is
+/// ignored.
 #[derive(Debug, Serialize, Deserialize)]
 struct Manifest {
-    image_url_template: String,
-    /// Codes NetrunnerDB answered 403 or 404 for at `xlarge`. Defaulted,
-    /// so a manifest written before the larger size still loads.
+    /// Codes NetrunnerDB answered 403 or 404 for at `xlarge`, or that the
+    /// catalog says have none. Defaulted, so a manifest written before the
+    /// larger size still loads.
     #[serde(default)]
     no_hires: BTreeSet<u32>,
 }
@@ -129,39 +136,26 @@ enum Fetched {
 #[derive(Debug)]
 pub struct CardImageStore {
     dir: PathBuf,
-    template: Mutex<String>,
     no_hires: Mutex<BTreeSet<u32>>,
     http: reqwest::Client,
-    failed: Mutex<HashMap<CardId, String>>,
+    failed: Mutex<HashMap<PrintingId, String>>,
 }
 
 impl CardImageStore {
-    /// The OS cache directory's `images/`, reading the template last seen
-    /// if a manifest is there. Creates nothing.
+    /// The OS cache directory's `images/`, reading the manifest if one is
+    /// there. Creates nothing.
     pub fn new() -> Result<Self, SyncError> {
         Ok(Self::with_dir(resolve_images_dir()?))
     }
 
-    /// An explicit directory — the seam tests use, as
-    /// `NetrunnerDbSync::with_cache_file` is.
+    /// An explicit directory — the seam tests use.
     pub fn with_dir(dir: PathBuf) -> Self {
-        let manifest = read_manifest(&dir);
-        let template = manifest
-            .as_ref()
-            .map(|m| m.image_url_template.clone())
-            .filter(|t| t.contains("{code}"))
-            .unwrap_or_else(|| DEFAULT_IMAGE_URL_TEMPLATE.to_string());
-        let no_hires = manifest.map(|m| m.no_hires).unwrap_or_default();
-        Self { dir, template: Mutex::new(template), no_hires: Mutex::new(no_hires), http: http_client(), failed: Mutex::new(HashMap::new()) }
+        let no_hires = read_manifest(&dir).map(|m| m.no_hires).unwrap_or_default();
+        Self { dir, no_hires: Mutex::new(no_hires), http: http_client(), failed: Mutex::new(HashMap::new()) }
     }
 
     pub fn dir(&self) -> &Path {
         &self.dir
-    }
-
-    /// The template in use: the manifest's, else the default.
-    pub fn template(&self) -> String {
-        self.template.lock().expect("template lock").clone()
     }
 
     /// The file a client should draw for `code`: the 750-pixel
@@ -169,12 +163,12 @@ impl CardImageStore {
     /// that exists.
     ///
     /// The code is written as NetrunnerDB prints it: five digits,
-    /// zero-padded. `CardId` is a `u32`, so the Core Set's `"01001"` is
+    /// zero-padded. `PrintingId` is a `u32`, so the Core Set's `"01001"` is
     /// `1001` in memory, and the first cut of this store asked the CDN
     /// for `1001.jpg` — a different card's picture, or nothing. System
     /// Gateway and later sets have five significant digits, so the
     /// padding changes nothing for them.
-    pub fn path_for(&self, code: CardId) -> PathBuf {
+    pub fn path_for(&self, code: PrintingId) -> PathBuf {
         let hires = self.hires_path_for(code);
         if hires.is_file() {
             hires
@@ -184,38 +178,38 @@ impl CardImageStore {
     }
 
     /// `<dir>/<code>.webp`, the `xlarge` scan, whether or not it exists.
-    pub fn hires_path_for(&self, code: CardId) -> PathBuf {
-        self.dir.join(format!("{}.webp", padded(code)))
+    pub fn hires_path_for(&self, code: PrintingId) -> PathBuf {
+        self.dir.join(format!("{}.webp", code))
     }
 
-    /// `<dir>/<code>.jpg`, the template's scan, whether or not it exists.
-    pub fn fallback_path_for(&self, code: CardId) -> PathBuf {
-        self.dir.join(format!("{}.jpg", padded(code)))
+    /// `<dir>/<code>.jpg`, the `large` scan, whether or not it exists.
+    pub fn fallback_path_for(&self, code: PrintingId) -> PathBuf {
+        self.dir.join(format!("{}.jpg", code))
     }
 
-    /// The URL the template gives for `code`, padded as `path_for` pads.
-    pub fn url_for(&self, code: CardId) -> String {
-        self.template().replace("{code}", &padded(code))
+    /// The `large` URL for `code`, padded as `path_for` pads.
+    pub fn url_for(&self, code: PrintingId) -> String {
+        DEFAULT_IMAGE_URL_TEMPLATE.replace("{code}", &code.to_string())
     }
 
     /// The `xlarge` URL for `code`.
-    pub fn hires_url_for(&self, code: CardId) -> String {
-        HIRES_IMAGE_URL_TEMPLATE.replace("{code}", &padded(code))
+    pub fn hires_url_for(&self, code: PrintingId) -> String {
+        HIRES_IMAGE_URL_TEMPLATE.replace("{code}", &code.to_string())
     }
 
     /// Every code on disk only at 300 pixels because NetrunnerDB has no
     /// larger scan of it, in code order. Read from the manifest, so it
     /// lists what earlier downloads found without asking again.
-    pub fn low_res(&self) -> Vec<CardId> {
+    pub fn low_res(&self) -> Vec<PrintingId> {
         let no_hires = self.no_hires.lock().expect("no_hires lock");
-        no_hires.iter().map(|&code| CardId(code)).filter(|&code| self.fallback_path_for(code).is_file()).collect()
+        no_hires.iter().map(|&code| PrintingId(code)).filter(|&code| self.fallback_path_for(code).is_file()).collect()
     }
 
     /// Whether a download has anything left to do for `code`: no
     /// `xlarge` on disk, and not a code known to have none whose smaller
     /// scan is already here. A `.jpg` cached before the larger size
     /// existed is asked for again, which is how an old cache upgrades.
-    fn needs_fetch(&self, code: CardId) -> bool {
+    fn needs_fetch(&self, code: PrintingId) -> bool {
         if self.hires_path_for(code).is_file() {
             return false;
         }
@@ -223,7 +217,7 @@ impl CardImageStore {
         !(known_low && self.fallback_path_for(code).is_file())
     }
 
-    pub fn status(&self, code: CardId) -> ImageStatus {
+    pub fn status(&self, code: PrintingId) -> ImageStatus {
         let path = self.path_for(code);
         if path.is_file() {
             return ImageStatus::Cached(path);
@@ -236,29 +230,12 @@ impl CardImageStore {
 
     /// How many of `codes` are on disk — the "cached / total" a settings
     /// screen shows.
-    pub fn cached_count(&self, codes: &[CardId]) -> usize {
+    pub fn cached_count(&self, codes: &[PrintingId]) -> usize {
         codes.iter().filter(|code| self.path_for(**code).is_file()).count()
     }
 
-    /// Asks NetrunnerDB for its current image URL template and keeps it.
-    /// One cards request, the same one a catalog sync makes; the card data
-    /// in the response is not used here.
-    pub async fn refresh_template(&self) -> Result<String, SyncError> {
-        let envelope: NetrunnerDbEnvelope<serde_json::Value> = self.http.get(NETRUNNERDB_CARDS_URL).send().await?.json().await?;
-        let Some(template) = envelope.image_url_template.filter(|t| t.contains("{code}")) else {
-            return Ok(self.template());
-        };
-        self.set_template(template.clone()).await?;
-        Ok(template)
-    }
-
-    async fn set_template(&self, template: String) -> Result<(), SyncError> {
-        *self.template.lock().expect("template lock") = template;
-        self.write_manifest().await
-    }
-
     async fn write_manifest(&self) -> Result<(), SyncError> {
-        let manifest = Manifest { image_url_template: self.template(), no_hires: self.no_hires.lock().expect("no_hires lock").clone() };
+        let manifest = Manifest { no_hires: self.no_hires.lock().expect("no_hires lock").clone() };
         write_atomically(&self.dir.join(MANIFEST_FILE), &serde_json::to_vec_pretty(&manifest)?).await
     }
 
@@ -268,7 +245,7 @@ impl CardImageStore {
     /// continue: one missing scan should not stop the other two hundred.
     pub async fn download(
         &self,
-        codes: Vec<CardId>,
+        codes: Vec<PrintingId>,
         concurrency: usize,
         progress: Option<UnboundedSender<DownloadProgress>>,
     ) -> DownloadReport {
@@ -282,7 +259,10 @@ impl CardImageStore {
                 continue;
             }
             let permit = limit.clone();
-            let urls = (self.hires_url_for(code), self.url_for(code));
+            // A printing the catalog says has no `xlarge` is not asked for
+            // one; a code it does not know is.
+            let hires = catalog::printing(code).is_none_or(|printing| printing.has_xlarge);
+            let urls = (hires.then(|| self.hires_url_for(code)), self.url_for(code));
             let paths = (self.hires_path_for(code), self.fallback_path_for(code));
             let http = self.http.clone();
             tasks.spawn(async move {
@@ -330,41 +310,43 @@ impl CardImageStore {
     }
 }
 
-/// `xlarge` first; on a 403 or 404 there — the CDN's two words for "no
-/// such file" — the template's scan, unless it is already on disk. Any
-/// other failure at `xlarge` is a failure, not a reason to settle for the
-/// smaller picture. Either file replaces nothing it should not: a new
-/// `.webp` retires the `.jpg` it outranks.
+/// `xlarge` first, when there is one to ask for; on a 403 or 404 there —
+/// the CDN's two words for "no such file" — the `large` scan, unless it is
+/// already on disk. Any other failure at `xlarge` is a failure, not a
+/// reason to settle for the smaller picture. Either file replaces nothing
+/// it should not: a new `.webp` retires the `.jpg` it outranks.
 async fn fetch_one(
     http: &reqwest::Client,
-    (hires_url, fallback_url): &(String, String),
+    (hires_url, fallback_url): &(Option<String>, String),
     (hires_path, fallback_path): &(PathBuf, PathBuf),
-    code: CardId,
+    code: PrintingId,
 ) -> Result<Fetched, SyncError> {
-    let response = http.get(hires_url).send().await?;
-    let status = response.status();
-    if status.is_success() {
-        let bytes = response.bytes().await?;
-        if !is_webp(&bytes) {
-            return Err(SyncError::ImageInvalid { code: code.0 });
+    if let Some(hires_url) = hires_url {
+        let response = http.get(hires_url).send().await?;
+        let status = response.status();
+        if status.is_success() {
+            let bytes = response.bytes().await?;
+            if !is_webp(&bytes) {
+                return Err(SyncError::ImageInvalid { code });
+            }
+            write_atomically(hires_path, &bytes).await?;
+            let _ = tokio::fs::remove_file(fallback_path).await;
+            return Ok(Fetched::Hires);
         }
-        write_atomically(hires_path, &bytes).await?;
-        let _ = tokio::fs::remove_file(fallback_path).await;
-        return Ok(Fetched::Hires);
-    }
-    if !matches!(status.as_u16(), 403 | 404) {
-        return Err(SyncError::ImageDownload { code: code.0, status: status.as_u16() });
+        if !matches!(status.as_u16(), 403 | 404) {
+            return Err(SyncError::ImageDownload { code, status: status.as_u16() });
+        }
     }
     if fallback_path.is_file() {
         return Ok(Fetched::LowRes(false));
     }
     let response = http.get(fallback_url).send().await?;
     if !response.status().is_success() {
-        return Err(SyncError::ImageDownload { code: code.0, status: response.status().as_u16() });
+        return Err(SyncError::ImageDownload { code, status: response.status().as_u16() });
     }
     let bytes = response.bytes().await?;
     if !is_jpeg(&bytes) {
-        return Err(SyncError::ImageInvalid { code: code.0 });
+        return Err(SyncError::ImageInvalid { code });
     }
     write_atomically(fallback_path, &bytes).await?;
     Ok(Fetched::LowRes(true))
@@ -385,11 +367,6 @@ async fn write_atomically(target: &Path, contents: &[u8]) -> Result<(), SyncErro
 fn read_manifest(dir: &Path) -> Option<Manifest> {
     let bytes = std::fs::read(dir.join(MANIFEST_FILE)).ok()?;
     serde_json::from_slice(&bytes).ok()
-}
-
-/// NetrunnerDB's five-digit spelling of a code.
-fn padded(code: CardId) -> String {
-    format!("{:05}", code.0)
 }
 
 /// A RIFF container of type `WEBP`.
@@ -413,23 +390,12 @@ mod tests {
     }
 
     #[test]
-    fn a_store_with_no_manifest_uses_the_default_template() {
+    fn a_store_asks_netrunnerdb_v3s_urls() {
         let store = CardImageStore::with_dir(temp_dir("default"));
-        assert_eq!(store.template(), DEFAULT_IMAGE_URL_TEMPLATE);
-        assert_eq!(store.url_for(CardId(30001)), "https://card-images.netrunnerdb.com/v2/large/30001.jpg");
-        assert!(store.path_for(CardId(30001)).ends_with("30001.jpg"));
-        assert_eq!(store.status(CardId(30001)), ImageStatus::Missing);
-    }
-
-    #[tokio::test]
-    async fn the_template_persists_in_the_manifest_and_a_bad_one_is_ignored() {
-        let dir = temp_dir("manifest");
-        let store = CardImageStore::with_dir(dir.clone());
-        store.set_template("https://example.test/{code}.png".to_string()).await.unwrap();
-        assert_eq!(CardImageStore::with_dir(dir.clone()).url_for(CardId(7)), "https://example.test/00007.png");
-        std::fs::write(dir.join(MANIFEST_FILE), r#"{"image_url_template":"no placeholder"}"#).unwrap();
-        assert_eq!(CardImageStore::with_dir(dir.clone()).template(), DEFAULT_IMAGE_URL_TEMPLATE);
-        let _ = std::fs::remove_dir_all(&dir);
+        assert_eq!(store.url_for(PrintingId(30001)), "https://card-images.netrunnerdb.com/v2/large/30001.jpg");
+        assert_eq!(store.hires_url_for(PrintingId(30001)), "https://card-images.netrunnerdb.com/v2/xlarge/30001.webp");
+        assert!(store.path_for(PrintingId(30001)).ends_with("30001.jpg"));
+        assert_eq!(store.status(PrintingId(30001)), ImageStatus::Missing);
     }
 
     #[test]
@@ -438,30 +404,19 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(dir.join("30001.jpg"), b"not really a jpeg").unwrap();
         let store = CardImageStore::with_dir(dir.clone());
-        assert_eq!(store.status(CardId(30001)), ImageStatus::Cached(dir.join("30001.jpg")));
-        assert_eq!(store.cached_count(&[CardId(30001), CardId(30002)]), 1);
+        assert_eq!(store.status(PrintingId(30001)), ImageStatus::Cached(dir.join("30001.jpg")));
+        assert_eq!(store.cached_count(&[PrintingId(30001), PrintingId(30002)]), 1);
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// The envelope parses with and without the template key, since the
-    /// packs response and every fixture lack it.
-    #[test]
-    fn the_envelope_carries_the_template_when_present() {
-        let with: NetrunnerDbEnvelope<serde_json::Value> =
-            serde_json::from_str(r#"{"success":true,"data":[],"imageUrlTemplate":"https://x/{code}.jpg"}"#).unwrap();
-        assert_eq!(with.image_url_template.as_deref(), Some("https://x/{code}.jpg"));
-        let without: NetrunnerDbEnvelope<serde_json::Value> = serde_json::from_str(r#"{"success":true,"data":[]}"#).unwrap();
-        assert_eq!(without.image_url_template, None);
-    }
-
     /// A Core Set code keeps its leading zero on disk and in the URL:
-    /// `CardId(1001)` is NetrunnerDB's `01001`.
+    /// `PrintingId(1001)` is NetrunnerDB's `01001`.
     #[test]
     fn core_set_codes_are_five_digits_on_disk_and_in_the_url() {
         let store = CardImageStore::with_dir(temp_dir("pad"));
-        assert_eq!(store.path_for(CardId(1001)).file_name().unwrap(), "01001.jpg");
-        assert_eq!(store.url_for(CardId(1001)), "https://card-images.netrunnerdb.com/v2/large/01001.jpg");
-        assert_eq!(store.path_for(CardId(30001)).file_name().unwrap(), "30001.jpg");
+        assert_eq!(store.path_for(PrintingId(1001)).file_name().unwrap(), "01001.jpg");
+        assert_eq!(store.url_for(PrintingId(1001)), "https://card-images.netrunnerdb.com/v2/large/01001.jpg");
+        assert_eq!(store.path_for(PrintingId(30001)).file_name().unwrap(), "30001.jpg");
     }
 
     /// An already-cached card is skipped without a request, so a download
@@ -473,10 +428,10 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(dir.join("30001.webp"), b"webp").unwrap();
         std::fs::write(dir.join("01001.jpg"), b"jpeg").unwrap();
-        std::fs::write(dir.join(MANIFEST_FILE), format!(r#"{{"image_url_template":"{DEFAULT_IMAGE_URL_TEMPLATE}","no_hires":[1001]}}"#)).unwrap();
+        std::fs::write(dir.join(MANIFEST_FILE), r#"{"no_hires":[1001]}"#).unwrap();
         let store = CardImageStore::with_dir(dir.clone());
-        let report = store.download(vec![CardId(30001), CardId(1001)], 4, None).await;
-        assert_eq!(report, DownloadReport { fetched: 0, already_cached: 2, failed: vec![], low_res: vec![CardId(1001)] });
+        let report = store.download(vec![PrintingId(30001), PrintingId(1001)], 4, None).await;
+        assert_eq!(report, DownloadReport { fetched: 0, already_cached: 2, failed: vec![], low_res: vec![PrintingId(1001)] });
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -487,14 +442,14 @@ mod tests {
         let dir = temp_dir("rank");
         std::fs::create_dir_all(&dir).unwrap();
         let store = CardImageStore::with_dir(dir.clone());
-        assert_eq!(store.path_for(CardId(30001)), dir.join("30001.jpg"));
+        assert_eq!(store.path_for(PrintingId(30001)), dir.join("30001.jpg"));
         std::fs::write(dir.join("30001.jpg"), b"jpeg").unwrap();
         std::fs::write(dir.join("30002.webp"), b"webp").unwrap();
-        assert_eq!(store.status(CardId(30001)), ImageStatus::Cached(dir.join("30001.jpg")));
+        assert_eq!(store.status(PrintingId(30001)), ImageStatus::Cached(dir.join("30001.jpg")));
         std::fs::write(dir.join("30001.webp"), b"webp").unwrap();
-        assert_eq!(store.status(CardId(30001)), ImageStatus::Cached(dir.join("30001.webp")));
-        assert_eq!(store.cached_count(&[CardId(30001), CardId(30002), CardId(30003)]), 2);
-        assert_eq!(store.hires_url_for(CardId(1001)), "https://card-images.netrunnerdb.com/v2/xlarge/01001.webp");
+        assert_eq!(store.status(PrintingId(30001)), ImageStatus::Cached(dir.join("30001.webp")));
+        assert_eq!(store.cached_count(&[PrintingId(30001), PrintingId(30002), PrintingId(30003)]), 2);
+        assert_eq!(store.hires_url_for(PrintingId(1001)), "https://card-images.netrunnerdb.com/v2/xlarge/01001.webp");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -507,30 +462,29 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(dir.join("30001.jpg"), b"jpeg").unwrap();
         std::fs::write(dir.join("01001.jpg"), b"jpeg").unwrap();
-        std::fs::write(dir.join(MANIFEST_FILE), format!(r#"{{"image_url_template":"{DEFAULT_IMAGE_URL_TEMPLATE}","no_hires":[1001,1002]}}"#)).unwrap();
+        std::fs::write(dir.join(MANIFEST_FILE), r#"{"no_hires":[1001,1002]}"#).unwrap();
         let store = CardImageStore::with_dir(dir.clone());
-        assert!(store.needs_fetch(CardId(30001)));
-        assert!(!store.needs_fetch(CardId(1001)));
-        assert!(store.needs_fetch(CardId(1002)), "known to have no xlarge, but no file either");
-        assert_eq!(store.low_res(), vec![CardId(1001)]);
+        assert!(store.needs_fetch(PrintingId(30001)));
+        assert!(!store.needs_fetch(PrintingId(1001)));
+        assert!(store.needs_fetch(PrintingId(1002)), "known to have no xlarge, but no file either");
+        assert_eq!(store.low_res(), vec![PrintingId(1001)]);
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// The list survives a manifest rewrite, and a manifest written
-    /// before it existed still loads, template and all.
+    /// The list survives a manifest rewrite, and a manifest written before
+    /// Stage 0d — a v2 template beside the list — still loads its list.
     #[tokio::test]
     async fn the_low_resolution_list_persists_and_old_manifests_load() {
         let dir = temp_dir("no_hires");
         std::fs::create_dir_all(&dir).unwrap();
-        std::fs::write(dir.join(MANIFEST_FILE), r#"{"image_url_template":"https://example.test/{code}.jpg"}"#).unwrap();
+        std::fs::write(dir.join(MANIFEST_FILE), r#"{"image_url_template":"https://example.test/{code}.jpg","no_hires":[1002]}"#).unwrap();
         let store = CardImageStore::with_dir(dir.clone());
-        assert_eq!(store.template(), "https://example.test/{code}.jpg");
+        assert_eq!(*store.no_hires.lock().unwrap(), BTreeSet::from([1002]));
         store.no_hires.lock().unwrap().insert(1001);
         store.write_manifest().await.unwrap();
         std::fs::write(dir.join("01001.jpg"), b"jpeg").unwrap();
         let again = CardImageStore::with_dir(dir.clone());
-        assert_eq!(again.low_res(), vec![CardId(1001)]);
-        assert_eq!(again.template(), "https://example.test/{code}.jpg");
+        assert_eq!(again.low_res(), vec![PrintingId(1001)]);
         let _ = std::fs::remove_dir_all(&dir);
     }
 

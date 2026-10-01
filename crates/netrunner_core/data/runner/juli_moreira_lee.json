@@ -55,6 +55,6 @@
       "text": "The first time each turn you take an action on an installed resource, remove 1 hosted power counter and gain [click]."
     }
   ],
-  "numeric_id": 34084,
+  "built_from": 34084,
   "is_playable": true
 }

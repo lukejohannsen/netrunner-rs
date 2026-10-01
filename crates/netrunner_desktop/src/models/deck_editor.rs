@@ -34,7 +34,7 @@ pub enum Intent {
     Query(String),
     /// Only a format's pool, or every format.
     Format(Option<NsgFormat>),
-    /// Only one set's printings (a `set_code`), or every set.
+    /// Only the cards one set printed (a v3 set id), or every set.
     Set(Option<String>),
     Playability(Playability),
     Sort(PoolSort),
@@ -65,15 +65,15 @@ pub struct Editor {
 }
 
 impl Editor {
-    /// Opens `deck`; a saved deck's catalog-only ids are swapped for the
-    /// playable card where one now exists (`Draft::resolve`), which is an
-    /// edit, so the first redraw saves it.
-    pub fn open(deck: DeckFile, read_only: bool, book: CardBook, format: NsgFormat) -> (Self, bool) {
-        let mut draft = Draft::new(deck);
-        let resolved = !read_only && draft.resolve(book);
+    /// Opens `deck`. A card the engine does not play yet keeps its id,
+    /// which is the id it plays under once it is built — there is nothing
+    /// to swap on opening, as there was while catalog-only cards were
+    /// `nrdb_<code>` (until NSG pool Stage 0d).
+    pub fn open(deck: DeckFile, read_only: bool, book: CardBook, format: NsgFormat) -> Self {
+        let draft = Draft::new(deck);
         let filter = PoolFilter::new(draft.deck.side, format);
         let status = deck_builder::status(&draft.deck, book, format);
-        (Editor { draft, read_only, format, filter, status, note: None }, resolved)
+        Editor { draft, read_only, format, filter, status, note: None }
     }
 
     pub fn deck(&self) -> &DeckFile {
@@ -169,7 +169,7 @@ mod tests {
     fn an_edit_is_saved_and_re_judged_and_a_filter_only_redraws() {
         let (registry, catalog) = cards();
         let book = CardBook::new(&registry, &catalog);
-        let (mut editor, _) = Editor::open(decks::by_id("stolen_goods").unwrap(), false, book, NsgFormat::Startup);
+        let mut editor = Editor::open(decks::by_id("stolen_goods").unwrap(), false, book, NsgFormat::Startup);
         assert_eq!(editor.status.standing, Standing::Legal);
         let first = editor.deck().cards[0].card.clone();
         for _ in 0..3 {
@@ -189,9 +189,9 @@ mod tests {
     fn the_pool_narrows_by_set_and_format_and_clear_keeps_the_sort() {
         let (registry, catalog) = cards();
         let book = CardBook::new(&registry, &catalog);
-        let (mut editor, _) = Editor::open(decks::by_id("stolen_goods").unwrap(), false, book, NsgFormat::Startup);
+        let mut editor = Editor::open(decks::by_id("stolen_goods").unwrap(), false, book, NsgFormat::Startup);
         assert_eq!(editor.apply(Intent::Format(None), book), Outcome::View);
-        assert_eq!(editor.apply(Intent::Set(Some("core".into())), book), Outcome::View);
+        assert_eq!(editor.apply(Intent::Set(Some("core_set".into())), book), Outcome::View);
         assert!(!editor.pool(book).is_empty());
         assert_eq!(editor.apply(Intent::Playability(Playability::All), book), Outcome::View);
         assert_eq!(editor.apply(Intent::Sort(PoolSort::Cost), book), Outcome::View);
@@ -203,8 +203,7 @@ mod tests {
     fn a_built_in_deck_refuses_every_edit_and_still_filters() {
         let (registry, catalog) = cards();
         let book = CardBook::new(&registry, &catalog);
-        let (mut editor, resolved) = Editor::open(decks::by_id("stolen_goods").unwrap(), true, book, NsgFormat::Startup);
-        assert!(!resolved);
+        let mut editor = Editor::open(decks::by_id("stolen_goods").unwrap(), true, book, NsgFormat::Startup);
         let first = editor.deck().cards[0].card.clone();
         assert_eq!(editor.apply(Intent::Remove(first.clone()), book), Outcome::View);
         assert!(editor.note.as_deref().unwrap().contains("copy it"));
@@ -217,7 +216,7 @@ mod tests {
     fn the_copy_limit_is_a_note_not_an_edit() {
         let (registry, catalog) = cards();
         let book = CardBook::new(&registry, &catalog);
-        let (mut editor, _) = Editor::open(decks::by_id("stolen_goods").unwrap(), false, book, NsgFormat::Startup);
+        let mut editor = Editor::open(decks::by_id("stolen_goods").unwrap(), false, book, NsgFormat::Startup);
         let full = editor.deck().cards.iter().find(|entry| entry.count == 3).unwrap().card.clone();
         assert_eq!(editor.apply(Intent::Add(full), book), Outcome::View);
         assert!(editor.note.as_deref().unwrap().contains("limit"));
@@ -227,7 +226,7 @@ mod tests {
     fn the_styles_are_balanced_then_the_sides_profiles() {
         let (registry, catalog) = cards();
         let book = CardBook::new(&registry, &catalog);
-        let (mut editor, _) = Editor::open(decks::by_id("stolen_goods").unwrap(), false, book, NsgFormat::Startup);
+        let mut editor = Editor::open(decks::by_id("stolen_goods").unwrap(), false, book, NsgFormat::Startup);
         let styles = editor.styles();
         assert_eq!(styles[0], None);
         assert!(styles[1..].iter().all(|style| style.unwrap().side() == Side::Runner));
@@ -241,7 +240,7 @@ mod tests {
     fn an_identity_of_the_other_side_is_refused() {
         let (registry, catalog) = cards();
         let book = CardBook::new(&registry, &catalog);
-        let (mut editor, _) = Editor::open(decks::by_id("stolen_goods").unwrap(), false, book, NsgFormat::Startup);
+        let mut editor = Editor::open(decks::by_id("stolen_goods").unwrap(), false, book, NsgFormat::Startup);
         let corp = decks::by_id("discretion_advised").unwrap().identity;
         assert_eq!(editor.apply(Intent::Identity(corp), book), Outcome::View);
         assert!(editor.note.is_some());

@@ -82,6 +82,6 @@
       "text": "While this resource has a hosted companion and a hosted connection, you get +2 maximum hand size."
     }
   ],
-  "numeric_id": 36006,
+  "built_from": 36006,
   "is_playable": true
 }

@@ -55,10 +55,10 @@ fn roots(app: &mut App, screen: AppScreen) -> usize {
 /// The browser's thumbs in grid order — their parent's child order,
 /// because a query iterates by table and an outlined thumb sits in a
 /// different table from the rest.
-fn thumbs_in_order(app: &mut App) -> Vec<(Entity, netrunner_core::card::CardId)> {
+fn thumbs_in_order(app: &mut App) -> Vec<(Entity, netrunner_core::dsl::CardId)> {
     use netrunner_desktop::screens::card_browser::FaceButton;
-    let mut thumbs: Vec<(Entity, netrunner_core::card::CardId, Entity)> =
-        app.world_mut().query::<(Entity, &FaceButton, &ChildOf)>().iter(app.world()).map(|(e, f, p)| (e, f.0, p.parent())).collect();
+    let mut thumbs: Vec<(Entity, netrunner_core::dsl::CardId, Entity)> =
+        app.world_mut().query::<(Entity, &FaceButton, &ChildOf)>().iter(app.world()).map(|(e, f, p)| (e, f.0.clone(), p.parent())).collect();
     let order = |app: &App, entity: Entity, parent: Entity| app.world().get::<Children>(parent).map_or(usize::MAX, |c| c.iter().position(|child| child == entity).unwrap_or(usize::MAX));
     thumbs.sort_by_key(|(e, _, p)| order(app, *e, *p));
     thumbs.into_iter().map(|(e, code, _)| (e, code)).collect()
@@ -207,7 +207,7 @@ fn the_relay_is_edited_in_settings_and_a_bad_one_is_refused() {
     assert!(saved.contains("\"relay\": \"off\""), "saved to the file: {saved}");
 }
 
-/// The card browser: every printing is a face, a face opens in the
+/// The card browser: every card is a face, a face opens in the
 /// inspector, the arrows move the open card, typing narrows the grid,
 /// and Escape clears, closes, then leaves — three presses, because the
 /// search field captures the first two.
@@ -224,47 +224,49 @@ fn the_card_browser_lists_faces_filters_as_typed_and_escapes_in_three() {
     assert_eq!(screen(&app), AppScreen::CardBrowser);
     let faces = |app: &mut App| app.world_mut().query::<&FaceButton>().iter(app.world()).count();
     let all = faces(&mut app);
-    assert!(all > 200, "{all} faces: every printing in the catalog");
+    assert_eq!(all, netrunner_core::cards::catalog::cards().len(), "{all} faces: every card in the catalog, once");
     let texts = |app: &mut App| app.world_mut().query::<&Text>().iter(app.world()).map(|t| t.0.clone()).collect::<Vec<_>>();
     // The first card's numbers line, whatever kind of card it is: the
     // line comes from `card_face::Face`, so an agenda leads with its
     // advancement requirement and an identity with its deck size rather
     // than the `Cost 0` the browser used to print on both.
-    let first = thumbs_in_order(&mut app)[0].1;
+    let first = thumbs_in_order(&mut app)[0].1.clone();
     let numbers = {
         let core = app.world().resource::<ClientCore>();
-        // The catalog, not the registry: the browser lists every printing,
+        // The catalog, not the registry: the browser lists every card,
         // and the first can be one the engine does not play yet.
-        let card = core.catalog.iter().find(|card| card.numeric_id == Some(first)).expect("the thumb's card is in the catalog");
+        let card = core.catalog.iter().find(|card| card.id == first).expect("the thumb's card is in the catalog");
         netrunner_client::card_face::Face::of(card).numbers_line()
     };
     assert!(texts(&mut app).contains(&numbers), "the first card is open in the inspector from the start: {numbers}");
 
     // Press a thumb the way a pointer would: the second, so the
     // inspector visibly changes.
-    let (second, code) = thumbs_in_order(&mut app)[1];
+    let (second, id) = thumbs_in_order(&mut app)[1].clone();
+    let code = netrunner_core::cards::catalog::latest_printing(&id).expect("a catalog card is printed").id;
     app.world_mut().entity_mut(second).insert(Interaction::Pressed);
     app.update();
     app.update();
     let spans = |app: &mut App| app.world_mut().query::<&TextSpan>().iter(app.world()).map(|t| t.0.clone()).collect::<Vec<_>>();
-    assert!(spans(&mut app).iter().any(|t| t.ends_with(&format!("#{:05}", code.0))), "the inspector shows the pressed card's code");
+    assert!(spans(&mut app).iter().any(|t| t.ends_with(&format!("#{code}"))), "the inspector shows the pressed card's printing");
     assert!(texts(&mut app).iter().any(|t| t.starts_with("Legal in ")), "and which formats allow it");
-    let outlined = |app: &mut App| app.world_mut().query_filtered::<&FaceButton, With<Outline>>().iter(app.world()).map(|f| f.0).collect::<Vec<_>>();
-    assert_eq!(outlined(&mut app), vec![code], "the pressed thumb is the outlined one");
+    let outlined = |app: &mut App| app.world_mut().query_filtered::<&FaceButton, With<Outline>>().iter(app.world()).map(|f| f.0.clone()).collect::<Vec<_>>();
+    assert_eq!(outlined(&mut app), vec![id.clone()], "the pressed thumb is the outlined one");
 
     // The arrows move the open card: Right to the third, Left back, and
     // the outline follows without the grid being respawned.
-    let third = thumbs_in_order(&mut app)[2].1;
+    let third = thumbs_in_order(&mut app)[2].1.clone();
+    let third_code = netrunner_core::cards::catalog::latest_printing(&third).expect("a catalog card is printed").id;
     press(&mut app, KeyCode::ArrowRight, Key::ArrowRight);
     app.update();
     app.update();
     assert_eq!(outlined(&mut app), vec![third], "Right moved the selection one on");
-    assert!(spans(&mut app).iter().any(|t| t.ends_with(&format!("#{:05}", third.0))), "and the inspector followed");
+    assert!(spans(&mut app).iter().any(|t| t.ends_with(&format!("#{third_code}"))), "and the inspector followed");
     assert_eq!(second, thumbs_in_order(&mut app)[1].0, "the thumbs were not respawned");
     press(&mut app, KeyCode::ArrowLeft, Key::ArrowLeft);
     app.update();
     app.update();
-    assert_eq!(outlined(&mut app), vec![code]);
+    assert_eq!(outlined(&mut app), vec![id]);
 
     // Type into the search field, which is open from the start.
     assert_eq!(app.world_mut().query::<&TextField>().iter(app.world()).count(), 1);

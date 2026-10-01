@@ -70,6 +70,6 @@
       "text": "Threat 3 → Whenever you breach R&D during a run on Archives, access 1 additional card."
     }
   ],
-  "numeric_id": 34007,
+  "built_from": 34007,
   "is_playable": true
 }

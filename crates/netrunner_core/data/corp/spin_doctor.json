@@ -38,6 +38,6 @@
       "text": "Remove this asset from the game: Shuffle up to 2 cards from Archives into R&D."
     }
   ],
-  "numeric_id": 30053,
+  "built_from": 30053,
   "is_playable": true
 }

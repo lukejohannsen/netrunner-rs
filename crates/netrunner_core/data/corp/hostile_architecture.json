@@ -54,6 +54,6 @@
       "text": "The first time each turn the Runner trashes any of your installed cards (including this asset), do 2 meat damage."
     }
   ],
-  "numeric_id": 33122,
+  "built_from": 33122,
   "is_playable": true
 }

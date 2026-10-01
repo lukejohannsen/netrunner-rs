@@ -38,6 +38,6 @@
       "text": "The first time each turn the Corp installs a card in the root of a server, you may trash the top card of your stack to draw 1 card."
     }
   ],
-  "numeric_id": 34009,
+  "built_from": 34009,
   "is_playable": true
 }

@@ -26,6 +26,6 @@
   "triggers": [],
   "trash_cost": 4,
   "persistent_after_trash": true,
-  "numeric_id": 36064,
+  "built_from": 36064,
   "is_playable": true
 }

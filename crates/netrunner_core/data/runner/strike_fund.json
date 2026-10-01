@@ -51,6 +51,6 @@
       "text": "When this event is trashed from your grip or stack, you may gain 2[credit]."
     }
   ],
-  "numeric_id": 34001,
+  "built_from": 34001,
   "is_playable": true
 }

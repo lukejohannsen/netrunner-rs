@@ -54,6 +54,6 @@
       "text": "Place 4[credit] on this event. While this event is active, you can spend hosted credits, and you cannot lose or spend credits from your credit pool. Run HQ or R&D. When that run ends, if it was successful, you may run a remote server."
     }
   ],
-  "numeric_id": 36018,
+  "built_from": 36018,
   "is_playable": true
 }

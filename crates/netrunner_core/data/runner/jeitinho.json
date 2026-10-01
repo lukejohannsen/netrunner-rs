@@ -136,6 +136,6 @@
       "text": "Threat 3 → Whenever you bypass a piece of ice, you may spend [click] to install this hardware from your heap."
     }
   ],
-  "numeric_id": 34079,
+  "built_from": 34079,
   "is_playable": true
 }

@@ -49,6 +49,6 @@
       "text": "Once per turn → 0[credit]: Install 1 hosted program (paying its install cost)."
     }
   ],
-  "numeric_id": 35028,
+  "built_from": 35028,
   "is_playable": true
 }

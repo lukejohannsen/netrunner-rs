@@ -138,6 +138,6 @@
       "text": "When your turn begins, you may add this ice to HQ."
     }
   ],
-  "numeric_id": 34125,
+  "built_from": 34125,
   "is_playable": true
 }

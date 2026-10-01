@@ -288,7 +288,7 @@ fn spawn_tile(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCor
         .with_children(|tile| {
             match identity {
                 Some(card) => {
-                    let image = card.numeric_id.and_then(|code| images.face(code, FaceSize::Board(TILE_FACE)));
+                    let image = netrunner_client::art::printing_for(card).and_then(|code| images.face(code, FaceSize::Board(TILE_FACE)));
                     spawn_face(tile, theme, &Face::of(card), FaceSize::Board(TILE_FACE), image, ());
                 }
                 None => {
@@ -604,7 +604,7 @@ fn spawn_popup(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCo
                                         // secondary click: an identity is chosen by
                                         // what its text says.
                                         let size = FaceSize::Board(crate::models::layout::DECK_FACE as u16);
-                                        let image = identity.numeric_id.and_then(|code| images.face(code, size));
+                                        let image = netrunner_client::art::printing_for(identity).and_then(|code| images.face(code, size));
                                         spawn_face(grid, theme, &Face::of(identity), size, image, (Button, PopupButton::Identity(identity.id.clone()), crate::widgets::reader::Readable(identity.id.clone())));
                                     }
                                 });

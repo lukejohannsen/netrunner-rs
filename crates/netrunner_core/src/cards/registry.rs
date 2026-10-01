@@ -2,53 +2,26 @@ use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 
-use crate::card::CardId as NumericCardId;
 use crate::dsl::{CardDefinition, CardId};
 
 /// A pure, in-memory index of parsed `dsl::CardDefinition` definitions,
-/// keyed primarily by the engine-native slug `CardId`, with a secondary
-/// index by NetrunnerDB's numeric `card::CardId` for cards that carry one
-/// (`CardDefinition::numeric_id`). Per AGENTS.md's I/O-free rule for
-/// `netrunner_core`, this has no filesystem constructor — walking a
-/// directory of card JSON files, or fetching live NetrunnerDB data, is a
-/// caller's job (`cards::loader`, `netrunner_card_sync`); `from_json` and
-/// `from_cards` only ever take already-in-memory data.
+/// keyed by the card's id — NetrunnerDB's v3 slug, the one key a card has
+/// (a printing's code is `cards::catalog`'s, and a registry never holds
+/// one). Per AGENTS.md's I/O-free rule for `netrunner_core`, this has no
+/// filesystem constructor — walking a directory of card JSON files is a
+/// caller's job (`cards::loader`); `from_json` and `from_cards` only ever
+/// take already-in-memory data.
 ///
-/// Derives `Serialize`/`Deserialize` (via `CardRegistryWire`, so a
-/// deserialized registry always rebuilds `by_numeric_id` through `insert`
-/// rather than trusting a stale/absent index in the wire data) so a whole
-/// loaded card pool can be snapshotted/transmitted or cached to disk in one
-/// shot.
-#[derive(Debug, Clone, Default, Serialize)]
+/// Derives `Serialize`/`Deserialize` so a whole loaded card pool can be
+/// snapshotted/transmitted or cached to disk in one shot.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct CardRegistry {
     cards: HashMap<CardId, CardDefinition>,
-    #[serde(skip)]
-    by_numeric_id: HashMap<NumericCardId, CardId>,
-}
-
-#[derive(Deserialize)]
-struct CardRegistryWire {
-    cards: HashMap<CardId, CardDefinition>,
-}
-
-impl From<CardRegistryWire> for CardRegistry {
-    fn from(wire: CardRegistryWire) -> Self {
-        Self::from_cards(wire.cards.into_values().collect())
-    }
-}
-
-impl<'de> Deserialize<'de> for CardRegistry {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        CardRegistryWire::deserialize(deserializer).map(Self::from)
-    }
 }
 
 impl CardRegistry {
     pub fn new() -> Self {
-        Self { cards: HashMap::new(), by_numeric_id: HashMap::new() }
+        Self { cards: HashMap::new() }
     }
 
     /// Builds a registry from already-in-memory `CardDefinition`s. A
@@ -63,9 +36,6 @@ impl CardRegistry {
     }
 
     pub fn insert(&mut self, card: CardDefinition) {
-        if let Some(numeric_id) = card.numeric_id {
-            self.by_numeric_id.insert(numeric_id, card.id.clone());
-        }
         self.cards.insert(card.id.clone(), card);
     }
 
@@ -79,10 +49,6 @@ impl CardRegistry {
 
     pub fn get(&self, id: &CardId) -> Option<&CardDefinition> {
         self.cards.get(id)
-    }
-
-    pub fn get_by_numeric_id(&self, id: NumericCardId) -> Option<&CardDefinition> {
-        self.by_numeric_id.get(&id).and_then(|slug| self.cards.get(slug))
     }
 
     /// Linear scan by title — only exercised in tests/tooling, so no title
@@ -166,28 +132,6 @@ mod tests {
         let mut ids: Vec<String> = registry.iter().map(|card| card.id.0.clone()).collect();
         ids.sort();
         assert_eq!(ids, vec!["a".to_string(), "b".to_string()]);
-    }
-
-    #[test]
-    fn get_by_numeric_id_finds_a_card_with_a_matching_numeric_id() {
-        let mut card = blank_card("hedge_fund_like");
-        card.numeric_id = Some(NumericCardId(1234));
-        let registry = CardRegistry::from_cards(vec![card]);
-
-        assert_eq!(registry.get_by_numeric_id(NumericCardId(1234)).unwrap().id, CardId("hedge_fund_like".to_string()));
-        assert!(registry.get_by_numeric_id(NumericCardId(9999)).is_none());
-    }
-
-    #[test]
-    fn numeric_id_index_survives_a_json_round_trip() {
-        let mut card = blank_card("hedge_fund_like");
-        card.numeric_id = Some(NumericCardId(1234));
-        let registry = CardRegistry::from_cards(vec![card]);
-
-        let json = serde_json::to_string(&registry).expect("registry should serialize");
-        let restored: CardRegistry = serde_json::from_str(&json).expect("registry should deserialize");
-
-        assert_eq!(restored.get_by_numeric_id(NumericCardId(1234)).unwrap().id, CardId("hedge_fund_like".to_string()));
     }
 
     #[test]

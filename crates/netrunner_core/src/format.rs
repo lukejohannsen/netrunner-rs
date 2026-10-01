@@ -1,9 +1,9 @@
 //! Null Signal Games (NSG) competitive format definitions, and Casual.
 //!
-//! Distinct from `card::pack::PackInfo` (raw pack metadata) and
+//! Distinct from `cards::catalog` (the cards, printings and sets) and
 //! `cards::CardRegistry` (the full card pool) — this module answers "given a
-//! format, which cards are legal," a question neither of those types
-//! answers on its own.
+//! format, which cards are legal," a question neither of those answers on
+//! its own.
 //!
 //! **The tables are NetrunnerDB's, embedded** (Phase 1 §9 Stage 0b, 26
 //! September 2026). `data/formats.json` is written by
@@ -15,12 +15,14 @@
 //! pinned by a test that failed the day a real list arrived, so that adding
 //! one was deliberate. This is that day.
 //!
-//! **A pool is a set of printing codes, not packs.** A card file names one
-//! printing (`numeric_id`), and a format admits a card by any of its
-//! printings: Corroder's file names its Core Set code, which no current
-//! pool prints, while the card is reprinted elsewhere. So the file lists
-//! every printing of every card in the pool, and a ban every printing of
-//! the banned card.
+//! **A pool is a set of cards, by NetrunnerDB v3 card id.** A format admits
+//! a card by any of its printings — Corroder is in Standard by its System
+//! Update 2021 printing although the Core Set's is in no current pool — and
+//! v3 says so per card, so the file lists the cards and a ban names the card.
+//! Until NSG pool Stage 0d it listed every printing code of every card in
+//! the pool and of every banned card, because a card was known by the one
+//! printing its file named; a card is now known by its id, and a printing is
+//! only its picture and its set.
 //!
 //! **A ban is the banning format's alone** (the person's decision, 26
 //! September 2026). A card banned in Standard and not in Eternal makes a
@@ -43,7 +45,7 @@ use std::sync::OnceLock;
 
 use serde::{Deserialize, Serialize};
 
-use crate::card::CardId;
+use crate::dsl::CardId;
 
 /// A format a deck is judged in: Null Signal Games' four, and Casual.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -86,11 +88,13 @@ impl NsgFormat {
 /// job.
 #[derive(Debug, Clone)]
 pub struct FormatRules {
-    /// The printing codes of every card in the pool. `None` is every card.
-    pub pool: Option<HashSet<CardId>>,
-    /// The pool's packs, NetrunnerDB's pack codes — for a builder's "which
-    /// sets" and nothing legal is decided by it. Empty for every card.
-    pub packs: Vec<String>,
+    /// Every card in the pool, by id. `None` is every card.
+    pub cards: Option<HashSet<CardId>>,
+    /// The pool's card sets, by v3 id, NetrunnerDB's statement of which
+    /// sets it is drawn from — for a builder's "which sets", and nothing
+    /// legal is decided by it (a card is in the pool by `cards`). It names
+    /// sets this crate does not embed. Empty for every card.
+    pub sets: Vec<String>,
     /// The ban list's name, when the format has one ("Startup Balance
     /// Update 26.03").
     pub list: Option<String>,
@@ -111,8 +115,8 @@ impl Default for FormatRules {
     /// every deck illegal the moment a card was listed.
     fn default() -> Self {
         FormatRules {
-            pool: None,
-            packs: Vec::new(),
+            cards: None,
+            sets: Vec::new(),
             list: None,
             banned: HashSet::new(),
             restriction_points: HashMap::new(),
@@ -122,9 +126,9 @@ impl Default for FormatRules {
 }
 
 impl FormatRules {
-    /// Whether the pool holds a printing: any printing of a card in it.
-    pub fn in_pool(&self, code: CardId) -> bool {
-        self.pool.as_ref().is_none_or(|pool| pool.contains(&code))
+    /// Whether the pool holds a card.
+    pub fn in_pool(&self, card: &CardId) -> bool {
+        self.cards.as_ref().is_none_or(|pool| pool.contains(card))
     }
 }
 
@@ -139,8 +143,8 @@ pub const DEFAULT_INFLUENCE_LIMIT: u32 = 15;
 /// One format as `data/formats.json` holds it.
 #[derive(Deserialize)]
 struct FormatData {
-    packs: Vec<String>,
-    pool: Vec<String>,
+    sets: Vec<String>,
+    cards: Vec<String>,
     restriction: Option<String>,
     banned: Vec<String>,
     restricted: Vec<String>,
@@ -150,23 +154,23 @@ struct FormatData {
 
 const FORMATS_JSON: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/data/formats.json"));
 
-fn code(text: &str) -> CardId {
-    CardId(text.parse().unwrap_or_else(|_| panic!("formats.json holds printing codes, not {text:?}")))
+fn card(id: &str) -> CardId {
+    CardId(id.to_string())
 }
 
 fn from_data(data: &FormatData) -> FormatRules {
     // A restricted list is a budget of one at a point each; a points list
     // is its own budget. NetrunnerDB's lists carry one or the other.
     let (restriction_points, restriction_budget) = if !data.restricted.is_empty() {
-        (data.restricted.iter().map(|c| (code(c), 1)).collect(), 1)
+        (data.restricted.iter().map(|c| (card(c), 1)).collect(), 1)
     } else {
-        (data.points.iter().map(|(c, points)| (code(c), *points)).collect(), data.point_limit.unwrap_or(u32::MAX))
+        (data.points.iter().map(|(c, points)| (card(c), *points)).collect(), data.point_limit.unwrap_or(u32::MAX))
     };
     FormatRules {
-        pool: Some(data.pool.iter().map(|c| code(c)).collect()),
-        packs: data.packs.clone(),
+        cards: Some(data.cards.iter().map(|c| card(c)).collect()),
+        sets: data.sets.clone(),
         list: data.restriction.clone(),
-        banned: data.banned.iter().map(|c| code(c)).collect(),
+        banned: data.banned.iter().map(|c| card(c)).collect(),
         restriction_points,
         restriction_budget,
     }
@@ -186,7 +190,7 @@ impl NsgFormat {
 
     /// The legality rules for this format, parsed once from the embedded
     /// tables and shared: a builder asks for them per card, and a pool is
-    /// thousands of codes.
+    /// thousands of cards.
     pub fn rules(self) -> &'static FormatRules {
         static RULES: OnceLock<HashMap<NsgFormat, FormatRules>> = OnceLock::new();
         let rules = RULES.get_or_init(|| {
@@ -210,44 +214,53 @@ impl NsgFormat {
 mod tests {
     use super::*;
 
+    fn id(text: &str) -> CardId {
+        CardId(text.to_string())
+    }
+
     /// The pools, read off NetrunnerDB on 26 September 2026: Startup is
     /// System Gateway, Elevation and Vantage Point; Standard adds Ashes,
     /// Borealis and Liberation; Casual is everything. A re-sync that moves
     /// a pool fails here, so a rotation is read before it is shipped.
     #[test]
     fn each_format_holds_the_pool_netrunnerdb_publishes() {
-        assert_eq!(NsgFormat::Startup.rules().packs, ["elev", "sg", "vp"]);
+        assert_eq!(NsgFormat::Startup.rules().sets, ["elevation", "system_gateway", "vantage_point"]);
         assert_eq!(
-            NsgFormat::Standard.rules().packs,
-            ["df", "elev", "ms", "msbp", "ph", "rwr", "sg", "tai", "ur", "urbp", "vp"]
+            NsgFormat::Standard.rules().sets,
+            [
+                "downfall", "elevation", "midnight_sun", "midnight_sun_booster_pack", "parhelion",
+                "rebellion_without_rehearsal", "system_gateway", "the_automata_initiative", "uprising",
+                "uprising_booster_pack", "vantage_point"
+            ]
         );
-        assert!(NsgFormat::Eternal.rules().packs.iter().any(|pack| pack == "core"));
-        assert!(NsgFormat::Casual.rules().pool.is_none());
-        // Hedge Fund's System Gateway printing is in Startup; the Core
-        // Set's Ice Wall is not, and is Eternal.
-        assert!(NsgFormat::Startup.rules().in_pool(CardId(30075)));
-        assert!(!NsgFormat::Startup.rules().in_pool(CardId(1103)));
-        assert!(NsgFormat::Eternal.rules().in_pool(CardId(1103)));
+        assert!(NsgFormat::Eternal.rules().sets.iter().any(|set| set == "core_set"));
+        assert!(NsgFormat::Casual.rules().cards.is_none());
+        assert_eq!(NsgFormat::Startup.rules().cards.as_ref().map(HashSet::len), Some(225));
+        // Hedge Fund is in Startup; Ice Wall, printed only in the Core Set,
+        // is not, and is Eternal.
+        assert!(NsgFormat::Startup.rules().in_pool(&id("hedge_fund")));
+        assert!(!NsgFormat::Startup.rules().in_pool(&id("ice_wall")));
+        assert!(NsgFormat::Eternal.rules().in_pool(&id("ice_wall")));
     }
 
-    /// A card is in a pool by any of its printings: Hedge Fund's Core Set
-    /// printing is in Standard because its System Gateway one is.
+    /// A card is in a pool by any of its printings: Hedge Fund is in
+    /// Standard by its System Gateway printing, and is one card with its
+    /// Core Set printing, which no Standard set holds.
     #[test]
     fn a_pool_admits_a_card_by_any_printing() {
-        assert!(NsgFormat::Standard.rules().in_pool(CardId(30075)));
-        assert!(NsgFormat::Standard.rules().in_pool(CardId(1110)), "the Core Set's Hedge Fund");
+        assert!(NsgFormat::Standard.rules().in_pool(&id("hedge_fund")));
+        assert!(crate::cards::catalog::printed_in(&id("hedge_fund"), "core_set"));
     }
 
-    /// The lists: Startup's balance update bans Cleaver (System Gateway's
-    /// 30006) and Standard's ban list does too; Eternal is a points budget
+    /// The lists: Startup's balance update bans Cleaver and Standard's ban list does too; Eternal is a points budget
     /// of 7; Snapshot's restricted list is a budget of one; Casual lists
     /// nothing.
     #[test]
     fn each_format_holds_the_list_netrunnerdb_publishes() {
         let startup = NsgFormat::Startup.rules();
         assert_eq!(startup.list.as_deref(), Some("Startup Balance Update 26.03"));
-        assert!(startup.banned.contains(&CardId(30006)));
-        assert!(NsgFormat::Standard.rules().banned.contains(&CardId(30006)));
+        assert!(startup.banned.contains(&id("cleaver")));
+        assert!(NsgFormat::Standard.rules().banned.contains(&id("cleaver")));
         assert_eq!(NsgFormat::Eternal.rules().restriction_budget, 7);
         assert!(!NsgFormat::Eternal.rules().restriction_points.is_empty());
         assert_eq!(NsgFormat::Snapshot.rules().restriction_budget, 1);

@@ -10,6 +10,9 @@
 //! - `NETRUNNER_DECK=<id>` — with `NETRUNNER_SCREEN=deckeditor`, the
 //!   deck the editor opens: a saved deck is editable, a built-in one
 //!   read-only (`NETRUNNER_DECKS_DIR` points it at a scratch directory).
+//! - `NETRUNNER_CARD=<card id>` — with `NETRUNNER_SCREEN=cards`, the card
+//!   the browser opens on, so its inspector (a reprint's printings) can be
+//!   looked at.
 //! - `NETRUNNER_GAME=corp|runner` — boot starts an unrecorded game on the
 //!   default decks against the middle rung, the person in that chair,
 //!   and goes to the board (unless `NETRUNNER_SCREEN` says elsewhere) —

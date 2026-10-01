@@ -152,6 +152,6 @@
       "text": "Whenever a run begins, you may remove 1 hosted agenda counter to rez up to 2 pieces of ice protecting the attacked server, ignoring all costs. When this turn ends, derez 2 pieces of ice protecting that server."
     }
   ],
-  "numeric_id": 34097,
+  "built_from": 34097,
   "is_playable": true
 }

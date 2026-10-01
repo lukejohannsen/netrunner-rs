@@ -1,0 +1,152 @@
+[
+  {
+    "card_cycle_id": "core_set",
+    "date_release": "2012-09-06",
+    "first_printing_id": "01001",
+    "id": "core_set",
+    "legacy_code": "core",
+    "name": "Core Set",
+    "position": 1,
+    "size": 113
+  },
+  {
+    "card_cycle_id": "ashes",
+    "date_release": "2019-03-18",
+    "first_printing_id": "26001",
+    "id": "downfall",
+    "legacy_code": "df",
+    "name": "Downfall",
+    "position": 1,
+    "size": 65
+  },
+  {
+    "card_cycle_id": "elevation",
+    "date_release": "2025-04-24",
+    "first_printing_id": "35001",
+    "id": "elevation",
+    "legacy_code": "elev",
+    "name": "Elevation",
+    "position": 1,
+    "size": 82
+  },
+  {
+    "card_cycle_id": "magnum_opus_reprint",
+    "date_release": "2019-07-24",
+    "first_printing_id": "28001",
+    "id": "magnum_opus_reprint",
+    "legacy_code": "mor",
+    "name": "Magnum Opus Reprint",
+    "position": 1,
+    "size": 6
+  },
+  {
+    "card_cycle_id": "borealis",
+    "date_release": "2022-07-22",
+    "first_printing_id": "33001",
+    "id": "midnight_sun",
+    "legacy_code": "ms",
+    "name": "Midnight Sun",
+    "position": 2,
+    "size": 65
+  },
+  {
+    "card_cycle_id": "borealis",
+    "date_release": "2022-03-18",
+    "first_printing_id": "32001",
+    "id": "midnight_sun_booster_pack",
+    "legacy_code": "msbp",
+    "name": "Midnight Sun Booster Pack",
+    "position": 1,
+    "size": 7
+  },
+  {
+    "card_cycle_id": "borealis",
+    "date_release": "2022-12-09",
+    "first_printing_id": "33066",
+    "id": "parhelion",
+    "legacy_code": "ph",
+    "name": "Parhelion",
+    "position": 3,
+    "size": 63
+  },
+  {
+    "card_cycle_id": "liberation",
+    "date_release": "2024-03-18",
+    "first_printing_id": "34066",
+    "id": "rebellion_without_rehearsal",
+    "legacy_code": "rwr",
+    "name": "Rebellion Without Rehearsal",
+    "position": 2,
+    "size": 65
+  },
+  {
+    "card_cycle_id": "salvaged_memories",
+    "date_release": "2020-12-18",
+    "first_printing_id": "29001",
+    "id": "salvaged_memories",
+    "legacy_code": "sm",
+    "name": "Salvaged Memories",
+    "position": 1,
+    "size": 18
+  },
+  {
+    "card_cycle_id": "system_gateway",
+    "date_release": "2021-03-28",
+    "first_printing_id": "30001",
+    "id": "system_gateway",
+    "legacy_code": "sg",
+    "name": "System Gateway",
+    "position": 1,
+    "size": 77
+  },
+  {
+    "card_cycle_id": "system_update_2021",
+    "date_release": "2021-03-28",
+    "first_printing_id": "31001",
+    "id": "system_update_2021",
+    "legacy_code": "su21",
+    "name": "System Update 2021",
+    "position": 1,
+    "size": 82
+  },
+  {
+    "card_cycle_id": "liberation",
+    "date_release": "2023-07-31",
+    "first_printing_id": "34001",
+    "id": "the_automata_initiative",
+    "legacy_code": "tai",
+    "name": "The Automata Initiative",
+    "position": 1,
+    "size": 65
+  },
+  {
+    "card_cycle_id": "ashes",
+    "date_release": "2019-12-31",
+    "first_printing_id": "26066",
+    "id": "uprising",
+    "legacy_code": "ur",
+    "name": "Uprising",
+    "position": 3,
+    "size": 65
+  },
+  {
+    "card_cycle_id": "ashes",
+    "date_release": "2019-09-09",
+    "first_printing_id": "27001",
+    "id": "uprising_booster_pack",
+    "legacy_code": "urbp",
+    "name": "Uprising Booster Pack",
+    "position": 2,
+    "size": 7
+  },
+  {
+    "card_cycle_id": "vantage_point",
+    "date_release": "2026-03-02",
+    "first_printing_id": "36001",
+    "id": "vantage_point",
+    "legacy_code": "vp",
+    "name": "Vantage Point",
+    "position": 1,
+    "size": 66
+  }
+]

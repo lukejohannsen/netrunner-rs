@@ -65,6 +65,6 @@
       "text": "Threat 3 → When you install this resource during your turn, you may remove 1 tag or gain 2[credit]."
     }
   ],
-  "numeric_id": 34095,
+  "built_from": 34095,
   "is_playable": true
 }

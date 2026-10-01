@@ -48,6 +48,6 @@
       "text": "The first time each turn a run on Archives begins, if this server is not protected by ice, do 2 net damage."
     }
   ],
-  "numeric_id": 34041,
+  "built_from": 34041,
   "is_playable": true
 }

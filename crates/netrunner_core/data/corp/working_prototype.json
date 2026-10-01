@@ -78,6 +78,6 @@
       "text": "5 hosted power counters: Gain 6[credit]. Add 1 installed resource to the top of the stack."
     }
   ],
-  "numeric_id": 34099,
+  "built_from": 34099,
   "is_playable": true
 }

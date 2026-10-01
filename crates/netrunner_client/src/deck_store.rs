@@ -241,9 +241,8 @@ pub fn load_for_side(dir: &Path, name: &str, side: Side) -> Result<StoredDeck, S
 ///
 /// Temp-file-plus-rename in the *same* directory, so the rename is
 /// same-filesystem and therefore atomic — an interrupted write cannot leave
-/// a truncated deck behind. Copied from
-/// `netrunner_card_sync::NetrunnerDbSync::write_cache_atomically`, which
-/// made the same call for the same reason.
+/// a truncated deck behind — the call `netrunner_card_sync`'s image store
+/// makes for the same reason.
 pub fn save(dir: &Path, deck: &DeckFile) -> Result<PathBuf, String> {
     if decks::by_id(&deck.id).is_some() {
         return Err(format!(

@@ -22,6 +22,6 @@
       "text": "Whenever 2 or more facedown cards in Archives are turned faceup, draw 2 cards."
     }
   ],
-  "numeric_id": 36007,
+  "built_from": 36007,
   "is_playable": true
 }

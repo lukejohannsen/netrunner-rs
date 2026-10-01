@@ -203,6 +203,128 @@ The table above is the map for re-pointing one by hand.
   renamed before comparing, the way `--expect-renames` already handled
   `Trigger` variants.
 
+### Stage 0d — the catalog on NetrunnerDB v3 (30 September 2026)
+
+`feat/v3-catalog`, the person's decision: "everything v3". Stage 0c gave
+every card file its v3 card id; this stage moved the catalog under it.
+
+**Why.** The embedded catalog was NetrunnerDB's v2 card arrays
+(`data/cards/<pack>.json`), one entry per printing, and every card file
+named one printing (`numeric_id`). That one number decided a card's
+printed metadata, its set, its picture and its legality, and three things
+existed only because of it: `formats.json` listed every printing code of
+every card in a pool and of every banned card; a reprint was joined back
+to its card by `cards::title_key`; and the deckbuilding validator
+(`deck::Decklist`) was keyed by printing code through
+`CardRegistry::get_by_numeric_id`. v3 splits a card (slug id, the rules
+object) from its printings (the code: picture, set, place in it), which is
+the split this engine needed.
+
+**What is true now.**
+- `scripts/catalog_sync.py` reads only v3. It writes
+  `data/catalog/sets.json` (fifteen sets: id, name, v2 `legacy_code`,
+  cycle, `date_release`, position, size, first printing) and
+  `data/catalog/cards/<set id>.json`, each `{"cards", "printings"}`: a card
+  once, in the file of its earliest embedded printing; a printing with its
+  card, position, quantity, illustrators, flavour and whether a 750-pixel
+  scan exists. 797 cards, 846 printings. `--check` is clean against the
+  live API.
+- **Two things are folded, both so a reader sees what the card says:** a
+  card with more than one face (the flip identities, Méliès U) has its
+  other faces' text appended as v2 spelled it ("Flip side:", "Side 2:"),
+  because the Linked Clause gate quotes the flip side; and a printing's
+  flavour carries its faces' flavour and the card's design credit. Checked
+  against every v2 printing before the v2 files were deleted: text,
+  flavour and illustrators reproduce exactly; every number and subtype
+  matched; the only differences were v3's identity type ids
+  (`corp_identity`) and identities' influence, `null` in v3 where v2 wrote 0.
+- `cards::catalog` is the side table: `cards()` (one catalog-only
+  definition per card, by v3 id), `printing(code)`, `printings_of(card)`
+  (newest first), `latest_printing`, `printed_in(card, set)`, `set(id)`,
+  `sets()` (newest first by `date_release`, System Update 2021 ahead of
+  System Gateway on the day they share). Parsed once; it replaced
+  `load_embedded_netrunnerdb_sets`, which re-parsed the whole catalog on
+  every call, including every `embedded_playable_cards()`.
+- `card::CardId(u32)` is `card::PrintingId`, which is what it was.
+- `CardDefinition` lost `numeric_id`, `set_code`, `artist`, `flavor` and
+  `image_url` (always `None`). Card files carry `built_from` in place of
+  `numeric_id` — the printing the implementation was checked against —
+  read by the observation vocabulary and `SameAction::FromHand`, nothing
+  else. `fill_catalog_metadata` joins on the card id.
+- **Legality is per card.** `formats.json` holds per format its v3 sets and
+  its cards by id (v3's own `card_pool_ids`), and its ban and restriction
+  lists by id. `FormatRules::{cards, sets}`, `in_pool(&CardId)`.
+  `deck::Decklist` and the validator are keyed by card id;
+  `DeckValidationError::PackNotLegal { set_code }` became `NotInPool`,
+  and `DeckError::NoPrintedMetadata` went, since nothing is left to join.
+- The gates re-keyed on card id: `printed_values_agree_with_the_netrunnerdb_catalog`,
+  every set's `assert_set_accounted_for` (a printing is built when a
+  playable card has its card's id — no title fold), the `*_UNIMPLEMENTED`
+  lists as `(card id, title)`, the System Gateway uniqueness gate (cards
+  with a printing in `system_gateway`), and the complete-formats gate,
+  where `STARTUP_POOL_CODES_OUTSIDE_THE_CATALOG` went: a card-level pool
+  holds no printing the catalog lacks. New:
+  `every_card_file_id_is_a_netrunnerdb_card`, which also holds each
+  `built_from` to a printing of that very card.
+- `netrunner_card_sync`'s live registry sync (`NetrunnerDbSync`, the v2
+  `/cards` and `/packs` calls, and the CLI's `cards sync` and `cards
+  list-sets`) is deleted: it wrote a cache nothing read. The image store
+  is keyed by `PrintingId`, its file names unchanged; it no longer reads
+  the v2 envelope's `imageUrlTemplate` before every download, and it skips
+  the `xlarge` request for the 219 embedded printings the catalog says
+  have none (the Core Set, System Update 2021, Salvaged Memories, the
+  Magnum Opus Reprint — the same 219 a local cache's manifest had learned
+  by 404).
+- `netrunner_client::art::printing_for` is the one question every picture
+  asks: the newest embedded printing. **So the twelve card files built
+  from a Core Set printing later reprinted show their newer scan** —
+  eleven from System Update 2021 (Ice Wall, Corroder, Hostile Takeover…)
+  and Scorched Earth from Salvaged Memories — and Phase 7 §10 Stage 3 lets
+  a person choose.
+- The Cards screen lists one entry per card (797, was 846), and its
+  inspector lists the card's printings — set mark, set name, code,
+  illustrator. The survey's finding that the Core Set's Hedge Fund read
+  "Not implemented in the engine yet" beside the System Gateway one that
+  was is gone with it. A set filter admits a card by any printing.
+- The deck builder's pool lost its title fold, and `Draft::resolve`,
+  which swapped a catalog-only `nrdb_<code>` id for the playable card's,
+  went: a card's id is the one it plays under once built.
+- `scripts/pool_status.py` reads the v3 catalog; its per-set numbers are
+  the ones it printed on `main`.
+
+**What moved, on purpose.**
+- **Snapshot's pool gained seven embedded cards** (Abagnale, Ayla "Bios"
+  Rahim, Colossus, Egret, Hortum, Marilyn Campaign, Steve Cambridge), from
+  NetrunnerDB's own word: v3 lists them in the Snapshot pool through the
+  Terminal Directive Cards set, which the old walk over the pool's sets
+  missed. Eternal gained 43 cards the same way, none of them embedded.
+  Startup and Standard are the same cards as before.
+- The Cards screen's set list is in release-date order (it was by lowest
+  printing code, which put Uprising ahead of its booster pack).
+- **The person's data, no shim:** a saved deck holding a catalog-only
+  `nrdb_<code>` id no longer finds the card.
+
+**Measured.**
+- The observation vocabulary, every slot dumped on `main` and on the
+  branch: **identical** (407 cards).
+- `scripts/coverage_identical.py main`: all four shapes (random and
+  planner, by view and by index, 192 games each, seed 1) **byte-identical**
+  to `main` — no renames to declare, since no card id moved. A catalog
+  migration that changed a subtype, a link or a uniqueness flag would
+  have moved the random seating first.
+- Both sweeps at 256 seeds: clean.
+- `cargo test --workspace`: 2,400 passed, 0 failed (2,419 on `main`; the
+  difference is the tests of the deleted v2 DTOs, the numeric registry
+  index, the printing-keyed decklist shape and the live sync). Clippy
+  silent.
+- `scripts/catalog_sync.py --check`: clean against the live v3 API.
+- `scripts/pool_status.py`: every set's printed and built counts as on
+  `main`; Snapshot's catalog-known cards 130 → 137 (the seven above).
+- The Cards screen, screenshotted on a virtual compositor with the new
+  `NETRUNNER_CARD=ice_wall` hook: 797 of 797 cards, and Ice Wall's
+  inspector listing System Update 2021 #31077 (Zoe Cohen), the scan it is
+  drawn as, then Core Set #01103 (Matt Zeilinger).
+
 ### 1. Vantage Point — 66 cards (C 13 / V 36 / M 17)
 
 #### Stage 1a — every printed subtype, read from the catalog (26 September 2026)

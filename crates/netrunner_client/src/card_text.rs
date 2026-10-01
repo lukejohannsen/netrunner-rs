@@ -140,19 +140,19 @@ pub fn faction_icon(faction: Faction) -> char {
     }
 }
 
-/// A set's mark in NetrunnerDB's icon font, for the pack codes the
-/// embedded catalog carries (`core`, `sg`, `elev`) and the two other
-/// codes that name their icon outright (`core2`, `sc19`). The font has
-/// a mark per *cycle*, and a pack code that is not a cycle name needs a
-/// table this crate does not have, so a set it cannot place gets none
-/// rather than a guess.
-pub fn set_icon(set_code: &str) -> Option<char> {
-    match set_code {
-        "core" => Some('\u{e914}'),
-        "core2" => Some('\u{e924}'),
-        "sc19" => Some('\u{e928}'),
-        "sg" => Some('\u{e92d}'),
-        "elev" => Some('\u{e934}'),
+/// A set's mark in NetrunnerDB's icon font, by v3 set id, for the sets
+/// whose id is also the name of their mark: the Core Set, the Revised Core
+/// Set, System Core 2019, System Gateway and Elevation. The font has a
+/// mark per *cycle* (`cards::catalog::CardSet::cycle`), so a set whose
+/// cycle is named otherwise gets none here rather than a guess; every
+/// embedded set's mark by its cycle is Phase 7 §10's.
+pub fn set_icon(set: &str) -> Option<char> {
+    match set {
+        "core_set" => Some('\u{e914}'),
+        "revised_core_set" => Some('\u{e924}'),
+        "system_core_2019" => Some('\u{e928}'),
+        "system_gateway" => Some('\u{e92d}'),
+        "elevation" => Some('\u{e934}'),
         _ => None,
     }
 }
@@ -261,7 +261,7 @@ mod tests {
             assert!(seen.insert(faction_icon(faction)), "{faction:?} shares an icon");
         }
         assert_eq!(faction_icon(Faction::NeutralRunner), faction_icon(Faction::NeutralCorp));
-        for set in ["core", "sg", "elev"] {
+        for set in ["core_set", "system_gateway", "elevation"] {
             assert!(set_icon(set).is_some_and(in_map), "{set}");
         }
         assert_eq!(set_icon("homebrew"), None);
@@ -320,8 +320,7 @@ mod tests {
     /// a face.
     #[test]
     fn every_catalog_text_has_only_known_tokens() {
-        let catalog = netrunner_core::cards::load_embedded_netrunnerdb_sets().unwrap();
-        for card in catalog.iter() {
+        for card in netrunner_core::cards::catalog::cards().iter() {
             let Some(text) = &card.printed_text else { continue };
             for segment in segments(text) {
                 if let Segment::Text(text) = segment {

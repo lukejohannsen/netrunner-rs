@@ -43,7 +43,6 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use crate::rules::MatchRules;
-use crate::card::CardId as NumericCardId;
 use crate::cards::CardRegistry;
 use crate::deck::{DeckValidationError, Decklist, ValidationReport};
 use crate::dsl::CardId;
@@ -223,31 +222,24 @@ impl DeckFile {
         self.cards.iter().map(|entry| entry.count).sum()
     }
 
-    /// The numeric-keyed `deck::Decklist` this deck describes, which is what
-    /// the deckbuilding validator speaks.
+    /// The `deck::Decklist` this deck describes, which is what the
+    /// deckbuilding validator speaks: the same cards by the same ids, the
+    /// counts summed per card.
     ///
-    /// The two shapes exist because they answer different questions and are
-    /// keyed differently: a `DeckFile` names cards by the engine-native slug
-    /// it plays from, while deckbuilding legality is defined over
-    /// NetrunnerDB's printed metadata, keyed by card code. `numeric_id` is
-    /// the join between them.
-    ///
-    /// Total for the embedded pool — `every_playable_card_carries_a_numeric_id`
-    /// keeps it so — but still fallible, because a homebrew card loaded
-    /// through the `fs-loader` feature need not carry a code.
+    /// It was keyed by printing code, joined through each card file's
+    /// `numeric_id`, until the catalog moved to NetrunnerDB v3 (NSG pool
+    /// Stage 0d): legality is per card now, so the only thing left to fail
+    /// on is a card the registry does not hold.
     pub fn to_decklist(&self, registry: &CardRegistry) -> Result<Decklist, DeckError> {
-        fn code(registry: &CardRegistry, card: &CardId) -> Result<NumericCardId, DeckError> {
-            let definition = registry.get(card).ok_or_else(|| DeckError::UnknownCard(card.clone()))?;
-            definition.numeric_id.ok_or_else(|| DeckError::NoPrintedMetadata(card.clone()))
-        }
+        let known = |card: &CardId| registry.get(card).map(|_| card.clone()).ok_or_else(|| DeckError::UnknownCard(card.clone()));
 
         let mut cards = HashMap::new();
         for entry in &self.cards {
             // Summed rather than inserted: a deck file may legitimately list
             // the same card twice, and the copy limit is about the total.
-            *cards.entry(code(registry, &entry.card)?).or_insert(0) += entry.count;
+            *cards.entry(known(&entry.card)?).or_insert(0) += entry.count;
         }
-        Ok(Decklist { identity: code(registry, &self.identity)?, cards })
+        Ok(Decklist { identity: known(&self.identity)?, cards })
     }
 
     /// Checks this deck against **both** of the engine's validators and
@@ -326,12 +318,6 @@ impl DeckFile {
 pub enum DeckError {
     #[error("deck references {0:?}, which is not a card this engine implements")]
     UnknownCard(CardId),
-
-    #[error(
-        "card {0:?} carries no NetrunnerDB code, so it has no faction, influence cost or set, \
-         and its deckbuilding legality cannot be checked"
-    )]
-    NoPrintedMetadata(CardId),
 
     /// CR 1.4.1a — see [`DeckFile::validate`].
     #[error("{0:?} is a Learn to Play identity, legal only with its own starter or boosted list")]
@@ -811,16 +797,18 @@ mod tests {
     }
 
     #[test]
-    fn to_decklist_maps_slugs_to_netrunnerdb_codes() {
+    fn to_decklist_sums_each_cards_copies_under_its_id() {
         let registry = registry();
         let deck = by_id("party_hard").expect("party_hard is embedded");
 
-        let decklist = deck.to_decklist(&registry).expect("every sample card carries a code");
+        let decklist = deck.to_decklist(&registry).expect("every sample card is in the registry");
 
-        // René "Loup" Arcemont is 30001; the deck runs 3 Sure Gamble (30029).
-        assert_eq!(decklist.identity, NumericCardId(30001));
+        assert_eq!(decklist.identity, CardId("rene_loup_arcemont_party_animal".to_string()));
         assert_eq!(decklist.cards.values().sum::<u32>(), deck.size());
-        assert_eq!(decklist.cards.get(&NumericCardId(30029)), Some(&3));
+        for entry in &deck.cards {
+            let copies: u32 = deck.cards.iter().filter(|other| other.card == entry.card).map(|other| other.count).sum();
+            assert_eq!(decklist.cards.get(&entry.card), Some(&copies), "{}", entry.card.0);
+        }
     }
 
     #[test]
@@ -872,8 +860,8 @@ mod tests {
         swap.card = CardId("ice_wall".to_string());
 
         match deck.validate(&registry, NsgFormat::Startup) {
-            Err(DeckError::Illegal(DeckValidationError::PackNotLegal { set_code, .. })) => {
-                assert_eq!(set_code, "core", "Ice Wall is a Core Set printing, and Startup is sg+elev");
+            Err(DeckError::Illegal(DeckValidationError::NotInPool { card, format })) => {
+                assert_eq!((card.0.as_str(), format), ("ice_wall", NsgFormat::Startup), "Ice Wall is printed only in the Core Set");
             }
             other => panic!("expected Ice Wall to be outside Startup's pool, got {other:?}"),
         }

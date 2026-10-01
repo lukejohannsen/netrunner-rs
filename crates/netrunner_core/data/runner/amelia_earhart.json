@@ -62,6 +62,6 @@
       "text": "When your turn begins, you may remove 3 hosted power counters and trash this resource. If you do, the Corp loses 10[credit]."
     }
   ],
-  "numeric_id": 34083,
+  "built_from": 34083,
   "is_playable": true
 }

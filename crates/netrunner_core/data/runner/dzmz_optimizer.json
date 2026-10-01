@@ -30,6 +30,6 @@
       "text": "The first program you install each turn costs 1[credit] less to install."
     }
   ],
-  "numeric_id": 30022,
+  "built_from": 30022,
   "is_playable": true
 }

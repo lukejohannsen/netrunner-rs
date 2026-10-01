@@ -49,6 +49,6 @@
       "text": "Whenever a run begins, you may trash 1 piece of hardware from your grip to place 2[credit] on this hardware."
     }
   ],
-  "numeric_id": 36020,
+  "built_from": 36020,
   "is_playable": true
 }

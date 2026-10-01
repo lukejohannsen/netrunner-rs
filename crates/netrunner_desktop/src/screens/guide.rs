@@ -142,7 +142,7 @@ fn fill_page(commands: &mut Commands, page: Entity, theme: &Theme, guide: &Guide
             }
             let mut named: Vec<(String, netrunner_core::dsl::CardId)> = Vec::new();
             for (title, code) in guide::cards(&Guide { title: String::new(), intro: Vec::new(), chapters: vec![chapter.clone()] }) {
-                if let Some(card) = core.registry.get_by_numeric_id(code)
+                if let Some(card) = guide::card_linked(code, &core.registry)
                     && !named.iter().any(|(_, id)| *id == card.id)
                 {
                     named.push((title.to_string(), card.id.clone()));

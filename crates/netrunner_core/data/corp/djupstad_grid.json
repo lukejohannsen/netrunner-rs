@@ -21,6 +21,6 @@
       "text": "Whenever you score an agenda from the root of this server, do 1 core damage."
     }
   ],
-  "numeric_id": 33102,
+  "built_from": 33102,
   "is_playable": true
 }
