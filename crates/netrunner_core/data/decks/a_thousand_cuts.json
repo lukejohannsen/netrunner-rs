@@ -3,7 +3,7 @@
   "name": "A Thousand Cuts",
   "side": "Corp",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach the prevention window from the other chair. Personal Evolution dealing net damage, giving tags and trashing programs — Snare!, Urtica Cipher, Neurospike, Public Trail, Retribution, Ansel 1.0, Ballista, and Vantage Point's Vicsek, ice of none of the three types that turns tags into more tags. Eternal-legal only. Vantage Point Stage 3b: The Red Room for PAD Campaign, Lotus Haze for Offworld Office. Vantage Point Stage 4a: two ezaM for two Tithe. Vantage Point Stage 4b: two Lionsmane for two Public Trail. Vantage Point Stage 6a: two Knowledge Seeker for two Palisade, two Esca for two Regolith Mining License, two Cultivate for two Retribution. Rebellion Without Rehearsal Stage 5b: two Cloud Eater for the Tithe and the Ballista. Rebellion Without Rehearsal Stage 6a: two Bring Them Home for the Regolith Mining License and a Hedge Fund. Rebellion Without Rehearsal Stage 7b: two See How They Run for two Proprionegation, an agenda for an agenda. Rebellion Without Rehearsal Stage 7c: two Tributary for a Karuna and an ezaM, ice for ice. The Automata Initiative Stage 1: two Fujii Asset Retrieval for Longevity Serum, Proprionegation and a Sericulture Expansion, six points for six; three Mindscaping for two Hedge Fund and the slot that left; two Attini for two Karuna. The Automata Initiative Stage 3: two Phoneutria for two Neurospike, and two Tatu-Bola for two Byte. The Automata Initiative Stage 5: two Front Company for two Urtica Cipher, an asset for an asset. Parhelion Stage 1: two Vampyronassa for its Ansel 1.0 and a Mindscaping. Parhelion Stage 4a: two Dr. Vientiane Keeling for two Cultivate, which Second Site still carries.",
+  "description": "Not a published list: built so the sweeps reach the prevention window from the other chair. Personal Evolution dealing net damage, giving tags and trashing programs — Snare!, Urtica Cipher, Neurospike, Public Trail, Retribution, Ansel 1.0, Ballista, and Vantage Point's Vicsek, ice of none of the three types that turns tags into more tags. Eternal-legal only. Vantage Point Stage 3b: The Red Room for PAD Campaign, Lotus Haze for Offworld Office. Vantage Point Stage 4a: two ezaM for two Tithe. Vantage Point Stage 4b: two Lionsmane for two Public Trail. Vantage Point Stage 6a: two Knowledge Seeker for two Palisade, two Esca for two Regolith Mining License, two Cultivate for two Retribution. Rebellion Without Rehearsal Stage 5b: two Cloud Eater for the Tithe and the Ballista. Rebellion Without Rehearsal Stage 6a: two Bring Them Home for the Regolith Mining License and a Hedge Fund. Rebellion Without Rehearsal Stage 7b: two See How They Run for two Proprionegation, an agenda for an agenda. Rebellion Without Rehearsal Stage 7c: two Tributary for a Karuna and an ezaM, ice for ice. The Automata Initiative Stage 1: two Fujii Asset Retrieval for Longevity Serum, Proprionegation and a Sericulture Expansion, six points for six; three Mindscaping for two Hedge Fund and the slot that left; two Attini for two Karuna. The Automata Initiative Stage 3: two Phoneutria for two Neurospike, and two Tatu-Bola for two Byte. The Automata Initiative Stage 5: two Front Company for two Urtica Cipher, an asset for an asset. Parhelion Stage 1: two Vampyronassa for its Ansel 1.0 and a Mindscaping. Parhelion Stage 4a: two Dr. Vientiane Keeling for two Cultivate, which Second Site still carries. Midnight Sun Stage 1: two Anemone for its two Phoneutria, a sentry rezzed on a run at its server for one, and two Bladderwort for its two Esca, an asset that hurts for an asset that hurts. Permafrost and Second Site keep both.",
   "style": [
     "traps"
   ],
@@ -50,10 +50,6 @@
       "count": 2
     },
     {
-      "card": "esca",
-      "count": 2
-    },
-    {
       "card": "dr_vientiane_keeling",
       "count": 2
     },
@@ -86,10 +82,6 @@
       "count": 2
     },
     {
-      "card": "phoneutria",
-      "count": 2
-    },
-    {
       "card": "tatu_bola",
       "count": 2
     },
@@ -99,6 +91,14 @@
     },
     {
       "card": "vampyronassa",
+      "count": 2
+    },
+    {
+      "card": "anemone",
+      "count": 2
+    },
+    {
+      "card": "bladderwort",
       "count": 2
     }
   ]

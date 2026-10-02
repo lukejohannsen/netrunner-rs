@@ -5781,3 +5781,104 @@ share one question — what a card can still do — and were measured once.
     → 56, Corp flatlines 30 → 31, Runner agenda wins 98 → 98, Runner
     deck-outs 8 → 7.
 
+
+### 5. Midnight Sun and its Booster Pack — 65 cards (C 22 / V 26 / M 17)
+
+#### Stage 1 — eleven Corp cards, composed (2 October 2026)
+
+`claude/serene-einstein-6bhlig`: Anemone, Élivágar Bifurcation, Refuge
+Campaign, Bladderwort, Artificial Cryptocrash, Ubiquitous Vig, Vasilisa,
+Pravdivost Consulting: Political Solutions, Svyatogor Excavator,
+Maskirovka and Extract. **No new `Effect`, and no change to the engine or
+the clients:** card files, decks and tests only. Midnight Sun 11 of 65,
+its booster pack 1 of 7; `MS_UNIMPLEMENTED` 65 → 54 and
+`MSBP_UNIMPLEMENTED` 7 → 6. The survey's "composes" held for all eleven.
+
+- **What each is made of.** Artificial Cryptocrash is Hostile Takeover's
+  score trigger with Magistrate Revontulet's `LoseCredits`. Refuge Campaign
+  is PAD Campaign at 2[credit]. Bladderwort is PAD Campaign with an
+  `EffectIf` after the gain, `Not(AmountAtLeast(Credits(Corp), 5))`, so the
+  "4[credit] or less" is read after the credit arrives, as the card orders
+  it; a trigger `requirement` would have read it before. Élivágar
+  Bifurcation is a `PromptChooseCards` over rezzed installs into
+  `DerezCard`, Warm Reception's derez. Extract is Hedge Fund's gain and
+  Kimberlite Field's `OfferPaidChoice` with a `Cost::Trash` of an install.
+  Svyatogor Excavator is Anvil's "1 of your other installed cards" as a
+  cost (`NotSourceCard`) on Clearinghouse's turn-start offer. Ubiquitous
+  Vig is Idiosyncresis: `advancement_requirement: 0` and
+  `GainCreditsAmount` of `HostedAdvancementTokens`. Maskirovka is two
+  subroutines. Vasilisa is Anvil's encounter offer paid in credits, as Mr.
+  Hendrik's, into Syailendra's `Advanceable` prompt and
+  `PlaceAdvancementCounters`, which is placing, not advancing (CR
+  1.18.2). Anemone is Hafrún's rez trigger
+  (`RezzedDuringRunAgainstThisServer`, a card from HQ as the cost) with
+  `DealDamage` for its payoff. Pravdivost Consulting hears
+  `OnSuccessfulRun` with `subject: Any` and `first_each_turn`, NGA's and
+  World Tree's word, from the Corp's side as Méliès U does.
+- **A "may" over a selection is guarded.** Élivágar's and Pravdivost's
+  prompts take `min: 0`, and confirming with nothing chosen ran the `then`
+  with no card: `UnresolvedCardTarget` and `CardNotInstalled`, so the legal
+  action probe never offered declining. Their `then` is wrapped in
+  `EffectIf(AmountAtLeast(CardsSelected, 1))`, as Warm Reception's is.
+  Syailendra and Key Performance Indicators carry the unguarded shape and
+  are left for a change of their own, since this stage changes no card it
+  did not build.
+- **Anemone is the pool's first NSG reprint built:** the booster pack's
+  32005 and Midnight Sun's 33043. Both lists drop it, and `built_from` is
+  the earlier printing, 32005.
+- **Fidelity limits:** none. Each card's clauses map one to one onto
+  existing words.
+- **Client.** Nothing added to the view, the log or a decision, so no
+  ledger line and no ledger row.
+- **Decks.** Spin Cycle, a new Sweep deck on Pravdivost Consulting, is
+  Paid Content with its identity swapped, two Artificial Cryptocrash for
+  two Kingmaking, two Ubiquitous Vig for its two Balanced Coverage and two
+  Vasilisa for its two Capacitor. Without NBN: Making News it is
+  Standard-legal, so it is pinned `not_startup`. Hostile Bid takes two
+  Maskirovka for two Ice Wall and two Svyatogor Excavator for its two
+  Luana Campos. Deterrence takes two Extract for its two Caveat Emptor, in
+  faction where they were Haas-Bioroid's, and keeps its pin: Extract is
+  Standard-legal, Svyatogor is not, and Svyatogor went to Hostile Bid,
+  which is Eternal-only already. Myoshu was the first choice for Extract's
+  slot and was rejected: it scores itself as two agenda points.
+  Retirement Package takes two Élivágar Bifurcation for its two Stegodon
+  MK IV, point for point, and two Refuge Campaign for its two
+  Synchrocyclotron. A Thousand Cuts takes two Anemone for its two
+  Phoneutria and two Bladderwort for its two Esca. Every card given up is
+  still in another Sweep deck.
+- **DSL ratio** (`pool_status.py`): unchanged at 17 of 97 `Effect`
+  variants single-use, 1 unused (`Trace`), now over 454 card files.
+- **Real play** (`--headless`, each edited deck against Safety Net, seed
+  2; random seats 96 games, planner seats 48; each pair below is random /
+  planner). Pravdivost Consulting's
+  trigger fired 837 / 571 times and asked 617 / 441 times. Ubiquitous Vig
+  paid at 249 / 701 turn starts. Vasilisa's encounter offer fired 64 / 133
+  times, and her subroutine 73 / 120. Artificial Cryptocrash was scored 1
+  / 20 times. Svyatogor Excavator's offer came at 223 / 379 turn starts.
+  Maskirovka's subroutines fired 96 / 288 times. Extract was played 27 /
+  48 times. Élivágar Bifurcation was scored 12 / 25 times, asking each
+  time. Refuge Campaign paid at 227 / 133 turn starts. Anemone was rezzed
+  on a run at its server 20 / 24 times. Bladderwort's turn start fired 63
+  / 31 times. No card is a bot debt: the planner plays all eleven.
+- **A planner test was pinned to one sample.**
+  `a_kill_corp_plays_public_trail_because_the_runners_answer_is_priced`
+  asserted that a balanced Corp does not plan Public Trail on agent seed
+  1. Eleven more cards in the pool moved that seed's sample, and the
+  balanced Corp tagged. Over twenty seeds, `main` before the stage already
+  had the balanced Corp tag on 7 of them, and 6 after; the kill Corp
+  tagged on all 20, and against a full grip on none, both before and
+  after. Withholding any one of eight of the new card files flipped seed 1
+  back. The test now counts the twenty seeds: the kill Corp on every one,
+  against a full grip on none, the balanced Corp on fewer than half. Its
+  doc comment says what the claim was and why one seed could only witness
+  it. The deck builder's set test, which named Midnight Sun as the set
+  with nothing built, names Uprising now, and checks that Midnight Sun is
+  offered to the Corp and not yet the Runner.
+- **Measured.** Both sweeps are green at 256 seeds, the card gate
+  included, so every new card was seen in play. `coverage_identical.py`
+  against `origin/main` (7ea5faf, 192 games a report): random identical,
+  view and index alike, because the sample matchups hold no Sweep deck.
+  The planner seatings move by `determinize`, whose prior now holds eleven
+  more cards (view and index alike, of 192): Corp agenda wins 56 → 57,
+  Corp flatlines 31 → 32, Runner agenda wins 98 → 99, Runner deck-outs 7 →
+  4.

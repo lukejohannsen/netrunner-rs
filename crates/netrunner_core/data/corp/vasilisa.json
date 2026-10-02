@@ -1,0 +1,59 @@
+{
+  "id": "vasilisa",
+  "title": "Vasilisa",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Sentry"
+  },
+  "cost": 2,
+  "strength": 2,
+  "triggers": [
+    {
+      "trigger": "OnEncounter",
+      "subject": "This",
+      "effects": [
+        {
+          "OfferPaidChoice": {
+            "side": "Corp",
+            "cost": {
+              "Credits": 1
+            },
+            "if_paid": {
+              "PromptChooseCards": {
+                "side": "Corp",
+                "source": "OwnInstalled",
+                "filter": "Advanceable",
+                "min": 1,
+                "max": 1,
+                "reveal": false,
+                "shuffle_after": false,
+                "then": {
+                  "PlaceAdvancementCounters": {
+                    "Fixed": 1
+                  }
+                }
+              }
+            },
+            "if_declined": {
+              "Sequence": []
+            },
+            "text": "you may pay 1[credit]. If you do, place 1 advancement counter on an installed card you can advance"
+          }
+        }
+      ],
+      "text": "When the Runner encounters this ice, you may pay 1[credit]. If you do, place 1 advancement counter on an installed card you can advance."
+    }
+  ],
+  "subroutines": [
+    {
+      "text": "Give the Runner 1 tag.",
+      "effect": {
+        "GiveTags": {
+          "Fixed": 1
+        }
+      }
+    }
+  ],
+  "built_from": 33054,
+  "is_playable": true
+}

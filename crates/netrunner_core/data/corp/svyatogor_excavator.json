@@ -1,0 +1,39 @@
+{
+  "id": "svyatogor_excavator",
+  "title": "Svyatogor Excavator",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 0,
+  "trash_cost": 4,
+  "triggers": [
+    {
+      "trigger": "OnTurnStart",
+      "effects": [
+        {
+          "OfferPaidChoice": {
+            "side": "Corp",
+            "cost": {
+              "Trash": {
+                "from": "OwnInstalled",
+                "filter": "NotSourceCard",
+                "count": 1
+              }
+            },
+            "if_paid": {
+              "GainCredits": [
+                "Corp",
+                3
+              ]
+            },
+            "if_declined": {
+              "Sequence": []
+            },
+            "text": "you may trash 1 of your other installed cards. If you do, gain 3[credit]"
+          }
+        }
+      ]
+    }
+  ],
+  "built_from": 33059,
+  "is_playable": true
+}

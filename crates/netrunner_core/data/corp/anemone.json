@@ -1,0 +1,55 @@
+{
+  "id": "anemone",
+  "title": "Anemone",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Sentry"
+  },
+  "cost": 3,
+  "strength": 2,
+  "triggers": [
+    {
+      "trigger": "OnRez",
+      "subject": "This",
+      "requirement": "RezzedDuringRunAgainstThisServer",
+      "effects": [
+        {
+          "OfferPaidChoice": {
+            "side": "Corp",
+            "cost": {
+              "Trash": {
+                "from": "OwnHq",
+                "filter": "Any",
+                "count": 1
+              }
+            },
+            "if_paid": {
+              "DealDamage": [
+                "Net",
+                2
+              ]
+            },
+            "if_declined": {
+              "Sequence": []
+            },
+            "text": "you may trash 1 card from HQ to do 2 net damage"
+          }
+        }
+      ],
+      "text": "When you rez this ice during a run against this server, you may trash 1 card from HQ to do 2 net damage."
+    }
+  ],
+  "subroutines": [
+    {
+      "text": "Do 1 net damage.",
+      "effect": {
+        "DealDamage": [
+          "Net",
+          1
+        ]
+      }
+    }
+  ],
+  "built_from": 32005,
+  "is_playable": true
+}

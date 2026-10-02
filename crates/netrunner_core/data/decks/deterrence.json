@@ -3,8 +3,10 @@
   "name": "Deterrence",
   "side": "Corp",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach Thunderbolt Armaments: Peace Through Power, Rebellion Without Rehearsal's Haas-Bioroid identity, whose AP and destroyer ice gain strength and a subroutine as they are rezzed during a run. Retirement Package's frame after Rebellion Without Rehearsal Stage 8a, with two Tithe for its two Vertigo and two Bumi 1.0 for its two Reverb, so that half its ice is AP or destroyer: Ansel 1.0, Ansel 2.0, Sorocaban Blade, Lycian Multi-Munition, Bumi 1.0 and Tithe. Standard-legal: Engineering the Future was the frame's one Core Set card. The Automata Initiative Stage 8d: two Wage Workers for two Corporate Hospitality, for a glacier deck that spends its turns clicking for credits and installing.",
-  "style": ["glacier"],
+  "description": "Not a published list: built so the sweeps reach Thunderbolt Armaments: Peace Through Power, Rebellion Without Rehearsal's Haas-Bioroid identity, whose AP and destroyer ice gain strength and a subroutine as they are rezzed during a run. Retirement Package's frame after Rebellion Without Rehearsal Stage 8a, with two Tithe for its two Vertigo and two Bumi 1.0 for its two Reverb, so that half its ice is AP or destroyer: Ansel 1.0, Ansel 2.0, Sorocaban Blade, Lycian Multi-Munition, Bumi 1.0 and Tithe. Standard-legal: Engineering the Future was the frame's one Core Set card. The Automata Initiative Stage 8d: two Wage Workers for two Corporate Hospitality, for a glacier deck that spends its turns clicking for credits and installing. Midnight Sun Stage 1: two Extract for its two Caveat Emptor, six credits for six credits, in faction where Caveat Emptor was Haas-Bioroid's; Retirement Package keeps Caveat Emptor.",
+  "style": [
+    "glacier"
+  ],
   "identity": "thunderbolt_armaments_peace_through_power",
   "cards": [
     {
@@ -56,10 +58,6 @@
       "count": 2
     },
     {
-      "card": "caveat_emptor",
-      "count": 2
-    },
-    {
       "card": "working_prototype",
       "count": 2
     },
@@ -97,6 +95,10 @@
     },
     {
       "card": "wage_workers",
+      "count": 2
+    },
+    {
+      "card": "extract",
       "count": 2
     }
   ]

@@ -1,0 +1,44 @@
+{
+  "id": "bladderwort",
+  "title": "Bladderwort",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 1,
+  "trash_cost": 3,
+  "triggers": [
+    {
+      "trigger": "OnTurnStart",
+      "effects": [
+        {
+          "GainCredits": [
+            "Corp",
+            1
+          ]
+        },
+        {
+          "EffectIf": {
+            "condition": {
+              "Not": {
+                "AmountAtLeast": [
+                  {
+                    "Credits": "Corp"
+                  },
+                  5
+                ]
+              }
+            },
+            "effect": {
+              "DealDamage": [
+                "Net",
+                1
+              ]
+            }
+          }
+        }
+      ],
+      "text": "When your turn begins, gain 1[credit]. Then, if you have 4[credit] or less, do 1 net damage."
+    }
+  ],
+  "built_from": 33041,
+  "is_playable": true
+}
