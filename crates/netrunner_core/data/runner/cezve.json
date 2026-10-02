@@ -1,0 +1,16 @@
+{
+  "id": "cezve",
+  "title": "Cezve",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 2,
+  "memory_cost": 1,
+  "counter_kind": "Credit",
+  "recurring_credits": 2,
+  "pays_for": [
+    "DuringRunsOnCentralServers"
+  ],
+  "triggers": [],
+  "built_from": 33017,
+  "is_playable": true
+}

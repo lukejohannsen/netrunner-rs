@@ -1,0 +1,78 @@
+{
+  "id": "daeg_first_net_cat",
+  "title": "Daeg, First Net-Cat",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 1,
+  "unique": true,
+  "triggers": [
+    {
+      "trigger": "OnAgendaScored",
+      "subject": "Any",
+      "effects": [
+        {
+          "PromptChooseCards": {
+            "side": "Runner",
+            "source": "OwnInstalled",
+            "filter": {
+              "HostsCounters": "Power"
+            },
+            "min": 0,
+            "max": 1,
+            "reveal": false,
+            "shuffle_after": false,
+            "then": {
+              "EffectIf": {
+                "condition": {
+                  "AmountAtLeast": [
+                    "CardsSelected",
+                    1
+                  ]
+                },
+                "effect": {
+                  "AddCounters": 1
+                }
+              }
+            }
+          }
+        }
+      ],
+      "text": "Whenever an agenda is scored or stolen, you may charge 1 of your installed cards."
+    },
+    {
+      "trigger": "OnAgendaStolen",
+      "subject": "Any",
+      "effects": [
+        {
+          "PromptChooseCards": {
+            "side": "Runner",
+            "source": "OwnInstalled",
+            "filter": {
+              "HostsCounters": "Power"
+            },
+            "min": 0,
+            "max": 1,
+            "reveal": false,
+            "shuffle_after": false,
+            "then": {
+              "EffectIf": {
+                "condition": {
+                  "AmountAtLeast": [
+                    "CardsSelected",
+                    1
+                  ]
+                },
+                "effect": {
+                  "AddCounters": 1
+                }
+              }
+            }
+          }
+        }
+      ],
+      "text": "Whenever an agenda is scored or stolen, you may charge 1 of your installed cards."
+    }
+  ],
+  "built_from": 33028,
+  "is_playable": true
+}

@@ -4263,6 +4263,7 @@ pub(crate) fn resolve_amount(amount: &Amount, ctx: &ResolutionContext<'_>, state
         Amount::CardsSelected => ctx.selected_count,
         Amount::RunCreditsLeftLastRun => state.last_completed_run.as_ref().map_or(0, |run| run.run_credits_left),
         Amount::EncountersThisRun => state.run_in_progress().map_or(0, |run| run.encounters),
+        Amount::IcePassedThisRun => state.run_in_progress().map_or(0, |run| run.ice_passed),
         Amount::AccessLimit(server) => state.active_run.as_ref().map_or(0, |run| match server {
             ServerId::Hq => 1 + run.additional_hq_access,
             ServerId::RnD => 1 + run.additional_rd_access,
@@ -5267,7 +5268,7 @@ mod tests {
         assert_eq!(
             events,
             vec![
-                GameEvent::CreditsSpentFromOutsidePool { side: Side::Runner, amount: 3, run_against: Some(state.active_run.as_ref().unwrap().server) },
+                GameEvent::CreditsSpentFromOutsidePool { side: Side::Runner, amount: 3, run_against: Some(state.active_run.as_ref().unwrap().server), from_installed: 0 },
                 GameEvent::BadPublicityCreditsSpent { amount: 3 },
                 GameEvent::CreditsSpent { side: Side::Runner, amount: 5 },
             ]

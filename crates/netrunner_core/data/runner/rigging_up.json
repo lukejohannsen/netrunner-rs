@@ -1,0 +1,84 @@
+{
+  "id": "rigging_up",
+  "title": "Rigging Up",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 0,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "PromptChooseCards": {
+            "side": "Runner",
+            "source": "OwnGrip",
+            "filter": {
+              "All": [
+                {
+                  "CardTypeOneOf": [
+                    "Program",
+                    "Hardware"
+                  ]
+                },
+                {
+                  "InstallableRunnerCardWithDiscount": {
+                    "Credits": 3
+                  }
+                }
+              ]
+            },
+            "min": 1,
+            "max": 1,
+            "reveal": false,
+            "shuffle_after": false,
+            "then": {
+              "Sequence": [
+                {
+                  "InstallRunnerCardFromGripWithDiscount": {
+                    "Credits": 3
+                  }
+                },
+                {
+                  "EffectIf": {
+                    "condition": {
+                      "And": [
+                        {
+                          "ActingCardMatches": {
+                            "HostsCounters": "Power"
+                          }
+                        },
+                        {
+                          "ThisCardCountersAtLeast": 1
+                        }
+                      ]
+                    },
+                    "effect": {
+                      "PresentChoice": {
+                        "chooser": "Runner",
+                        "options": [
+                          {
+                            "AddCounters": 1
+                          },
+                          {
+                            "Sequence": []
+                          }
+                        ],
+                        "texts": [
+                          "You may charge that card if able.",
+                          ""
+                        ]
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "built_from": 33024,
+  "is_playable": true
+}

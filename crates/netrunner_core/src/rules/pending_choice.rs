@@ -379,6 +379,9 @@ fn instance_matches_filter(
             let from = match zone {
                 CardZoneRef::OwnGrip => Some(RunnerCardSource::Grip),
                 CardZoneRef::OwnHeap => Some(RunnerCardSource::Heap),
+                // Into the Depths' "search your stack for a program. Install
+                // it": offered only what could be installed.
+                CardZoneRef::OwnStack => Some(RunnerCardSource::Stack),
                 CardZoneRef::OwnSetAside => Some(RunnerCardSource::SetAside),
                 CardZoneRef::HostedOnSource => source.map(RunnerCardSource::Hosted),
                 _ => None,

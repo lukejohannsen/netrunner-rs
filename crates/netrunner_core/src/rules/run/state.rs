@@ -637,6 +637,14 @@ pub struct RunState {
     /// log's: that counts the turn, and a second run is a fresh count.
     #[serde(default, skip_serializing_if = "is_zero")]
     pub encounters: u32,
+    /// How many times the Runner has passed ice during this run — Into the
+    /// Depths' "for each time you passed ice this run"
+    /// (`Amount::IcePassedThisRun`). Counted where `GameEvent::IcePassed`
+    /// is announced (`run::engine::pass_current_ice`), an unrezzed piece of
+    /// ice and a bypassed one included; a forced encounter's end passes
+    /// nothing (CR 6.5.9a). A run's own count, as `encounters` is.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub ice_passed: u32,
     /// The action this run (or breach) is part of, which finishes when it
     /// ends: a run is an action in progress until it is over (CR 5.2.2a),
     /// and so is the event or ability that began one (Dirty Laundry,
@@ -780,6 +788,7 @@ impl Default for RunState {
             reached_success_phase: false,
             breached: None,
             encounters: 0,
+            ice_passed: 0,
             on_success_card: None,
             on_success_install: None,
         }

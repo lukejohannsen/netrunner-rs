@@ -2012,7 +2012,8 @@ fn install_hardware(
     let cost = continuous::install_cost_of(&next, registry, card_def);
 
     let mut events = vec![GameEvent::ClickSpent { side }];
-    events.extend(ability::pay_cost(&mut next, registry, side, &Cost::Credits(cost), Purpose::Install(card_def), Some(&card_id))?);
+    let paid = ability::pay_cost(&mut next, registry, side, &Cost::Credits(cost), Purpose::Install(card_def), Some(&card_id))?;
+    events.extend(paid.iter().cloned());
     events.extend(install_into_rig(&mut next, registry, &card_id, None)?);
     // A console's memory is deliberately *not* applied here: memory is derived
     // from what is installed (`memory::available_memory`), so a console's
@@ -2029,6 +2030,9 @@ fn install_hardware(
     let installed_event = GameEvent::HardwareInstalled { side, card: card_id, credits_paid: cost };
     dispatcher::emit(&mut next, registry, &mut events, installed_event)?;
 
+    // Paid off a card, the spend is the Runner's to hear (The Twinning)
+    // — after the effect it paid for (`ability::dispatch_cost_events`).
+    events.extend(ability::dispatch_cost_events(&mut next, registry, &paid)?);
     Ok((next, events))
 }
 
@@ -2072,7 +2076,8 @@ fn install_program(
     // independently on top of the once-per-turn discount above.
     let cost = continuous::install_cost_of(&next, registry, card_def);
 
-    events.extend(ability::pay_cost(&mut next, registry, side, &Cost::Credits(cost), Purpose::Install(card_def), Some(&card_id))?);
+    let paid = ability::pay_cost(&mut next, registry, side, &Cost::Credits(cost), Purpose::Install(card_def), Some(&card_id))?;
+    events.extend(paid.iter().cloned());
     events.extend(install_into_rig(&mut next, registry, &card_id, None)?);
     // Noise: Hacker Extraordinaire-style identity reaction (Virus-subtype
     // Programs only, unconditional otherwise — no per-turn gate) resolved by
@@ -2083,6 +2088,9 @@ fn install_program(
         GameEvent::ProgramInstalled { side, card: card_id, memory_cost: memory_cost as u8, credits_paid: cost };
     dispatcher::emit(&mut next, registry, &mut events, installed_event)?;
 
+    // Paid off a card, the spend is the Runner's to hear (The Twinning)
+    // — after the effect it paid for (`ability::dispatch_cost_events`).
+    events.extend(ability::dispatch_cost_events(&mut next, registry, &paid)?);
     Ok((next, events))
 }
 
@@ -2135,11 +2143,15 @@ fn install_program_on_ice(
 
     let cost = continuous::install_cost_of(&next, registry, card_def);
 
-    events.extend(ability::pay_cost(&mut next, registry, side, &Cost::Credits(cost), Purpose::Install(card_def), Some(&card_id))?);
+    let paid = ability::pay_cost(&mut next, registry, side, &Cost::Credits(cost), Purpose::Install(card_def), Some(&card_id))?;
+    events.extend(paid.iter().cloned());
     events.extend(install_into_rig(&mut next, registry, &card_id, Some(host))?);
     let installed_event = GameEvent::ProgramInstalled { side, card: card_id, memory_cost: memory_cost as u8, credits_paid: cost };
     dispatcher::emit(&mut next, registry, &mut events, installed_event)?;
 
+    // Paid off a card, the spend is the Runner's to hear (The Twinning)
+    // — after the effect it paid for (`ability::dispatch_cost_events`).
+    events.extend(ability::dispatch_cost_events(&mut next, registry, &paid)?);
     Ok((next, events))
 }
 
@@ -2179,7 +2191,8 @@ fn install_resource(
     let cost = continuous::install_cost_onto(&next, registry, card_def, host);
 
     let mut events = vec![GameEvent::ClickSpent { side }];
-    events.extend(ability::pay_cost(&mut next, registry, side, &Cost::Credits(cost), Purpose::Install(card_def), Some(&card_id))?);
+    let paid = ability::pay_cost(&mut next, registry, side, &Cost::Credits(cost), Purpose::Install(card_def), Some(&card_id))?;
+    events.extend(paid.iter().cloned());
     events.extend(install_into_rig(&mut next, registry, &card_id, None)?);
     if let Some(host) = host
         && let Some(installed) = next.runner.rig.last_mut()
@@ -2189,6 +2202,9 @@ fn install_resource(
     let installed_event = GameEvent::ResourceInstalled { side, card: card_id, credits_paid: cost };
     dispatcher::emit(&mut next, registry, &mut events, installed_event)?;
 
+    // Paid off a card, the spend is the Runner's to hear (The Twinning)
+    // — after the effect it paid for (`ability::dispatch_cost_events`).
+    events.extend(ability::dispatch_cost_events(&mut next, registry, &paid)?);
     Ok((next, events))
 }
 
@@ -2762,7 +2778,8 @@ fn remove_tag(state: &GameState, registry: &CardRegistry) -> Result<(GameState, 
     spend_click(&mut next, side)?;
 
     let mut events = vec![GameEvent::ClickSpent { side }];
-    events.extend(ability::pay_cost(&mut next, registry, side, &Cost::Credits(2), Purpose::RemoveTag, None)?);
+    let paid = ability::pay_cost(&mut next, registry, side, &Cost::Credits(2), Purpose::RemoveTag, None)?;
+    events.extend(paid.iter().cloned());
 
     next.runner.tags -= 1;
     let removed = GameEvent::TagRemoved { side, by: side };
@@ -2770,6 +2787,9 @@ fn remove_tag(state: &GameState, registry: &CardRegistry) -> Result<(GameState, 
     // (Synapse Global: Faster than Thought).
     dispatcher::emit(&mut next, registry, &mut events, removed)?;
 
+    // Paid off a card, the spend is the Runner's to hear (The Twinning)
+    // — after the effect it paid for (`ability::dispatch_cost_events`).
+    events.extend(ability::dispatch_cost_events(&mut next, registry, &paid)?);
     Ok((next, events))
 }
 

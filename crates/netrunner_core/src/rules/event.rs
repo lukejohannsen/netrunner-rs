@@ -572,7 +572,17 @@ pub enum GameEvent {
     /// progress as the credits were spent, on the event because the
     /// payer dispatches it after the effect it paid for (`ability::
     /// dispatch_cost_events`), which may have ended the run.
-    CreditsSpentFromOutsidePool { side: Side, amount: u32, run_against: Option<ServerId> },
+    ///
+    /// `from_installed` is how many of them came off installed cards'
+    /// hosted pools — The Twinning's "spend credits from an installed
+    /// card" (`Trigger::OnCreditsSpentFromInstalledCard`).
+    CreditsSpentFromOutsidePool {
+        side: Side,
+        amount: u32,
+        run_against: Option<ServerId>,
+        #[serde(default, skip_serializing_if = "crate::rules::state::is_zero")]
+        from_installed: u32,
+    },
     /// A breach of Archives turned `count` facedown cards faceup (CR
     /// 7.3.2), once per breach — Nurse Hạnh's "whenever 2 or more facedown
     /// cards in Archives are turned faceup". Never emitted for none.

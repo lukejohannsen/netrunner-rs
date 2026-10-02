@@ -282,10 +282,21 @@ pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
         // Only the Runner's spending is anyone's trigger, and only during a
         // run: Shackleton Grid's "during a run against this server" is the
         // moment's server, as "this server" is for every run moment.
-        GameEvent::CreditsSpentFromOutsidePool { side: Side::Runner, run_against: Some(server), .. } => {
-            vec![moment(Trigger::OnCreditsSpentOutsidePool, &About::Server(*server), Some(Side::Runner))]
+        // Only the Runner's spending is anyone's trigger: Shackleton Grid's
+        // only during a run, and spending off an installed card (The
+        // Twinning) in a run or out of one. The Corp's spending is an
+        // occurrence of nothing until a card listens for it.
+        GameEvent::CreditsSpentFromOutsidePool { side: Side::Runner, run_against, from_installed, .. } => {
+            let mut heard = Vec::new();
+            if let Some(server) = run_against {
+                heard.push(moment(Trigger::OnCreditsSpentOutsidePool, &About::Server(*server), Some(Side::Runner)));
+            }
+            if *from_installed > 0 {
+                heard.push(moment(Trigger::OnCreditsSpentFromInstalledCard, &About::Nothing, Some(Side::Runner)));
+            }
+            heard
         }
-        GameEvent::CreditsSpentFromOutsidePool { .. } => Vec::new(),
+        GameEvent::CreditsSpentFromOutsidePool { side: Side::Corp, .. } => Vec::new(),
         // Heard by whoever carried it out; the rules' trashes are nobody's.
         // A rezzed install was active the instant it left, and hears its
         // own trash as one (CR 4.6.6i): Hostile Architecture's and Yakov
@@ -318,10 +329,18 @@ pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
 
         // "Whenever you do damage" is the responsible player's (CR 10.4.1),
         // and damage nobody is responsible for is nobody's to hear.
-        GameEvent::DamageTaken { responsible, .. } => match responsible {
-            Some(side) => vec![moment(Trigger::OnDamageDealt, &About::Nothing, Some(*side))],
-            None => Vec::new(),
-        },
+        // And suffering it is the Runner's — the only player damage is
+        // dealt to (CR 10.4.1) — whoever was responsible, a cost included.
+        GameEvent::DamageTaken { responsible, damage_type, amount } => {
+            let mut heard = Vec::new();
+            if let Some(side) = responsible {
+                heard.push(moment(Trigger::OnDamageDealt, &About::Nothing, Some(*side)));
+            }
+            if *amount > 0 {
+                heard.push(moment(Trigger::OnDamageSuffered, &About::Damage(*damage_type), Some(Side::Runner)));
+            }
+            heard
+        }
         // One occurrence per batch, not per card: "trash 1 **or more**".
         GameEvent::CardsTrashedFromHq { .. } => vec![moment(Trigger::OnCardsTrashedFromHq, &About::Nothing, Some(Side::Corp))],
         GameEvent::CardsTrashedFromRnD { by, .. } => vec![moment(Trigger::OnCardsTrashedFromRnD, &About::Nothing, *by)],

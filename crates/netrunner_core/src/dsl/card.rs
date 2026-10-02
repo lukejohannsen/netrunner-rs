@@ -982,6 +982,13 @@ pub enum PaysFor {
     /// run is the one whose `RunState::initiated_by` it is. As broad as
     /// the credit pool during that run, as `DuringRuns` is during any.
     DuringItsRun,
+    /// Anything, during a run on a central server — Cezve's "You can spend
+    /// hosted credits during runs on central servers". `DuringRuns`
+    /// narrowed by the server of the run in progress, and as broad as the
+    /// credit pool during such a run. A word of its own rather than a
+    /// server list on `DuringRuns`, which every card that prints it would
+    /// then have to write out.
+    DuringRunsOnCentralServers,
 }
 
 /// Semantic checks `serde`'s structural `Deserialize` can't express on its

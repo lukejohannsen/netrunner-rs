@@ -404,6 +404,7 @@ fn covers(word: &PaysFor, purpose: Purpose<'_>, host: Option<InstallId>, state: 
         (PaysFor::UsingIcebreakers, Purpose::Ability(card)) => card_matches_filter(card, &crate::dsl::CardFilter::Icebreaker),
         (PaysFor::RemovingTags, Purpose::RemoveTag) => true,
         (PaysFor::DuringRuns, _) => state.active_run.is_some(),
+        (PaysFor::DuringRunsOnCentralServers, _) => during_a_central_run(state),
         (PaysFor::DuringItsRun, _) => {
             let hosting = host.and_then(|host| state.find_rig_install(host)).map(|card| &card.card);
             hosting.is_some_and(|card| state.active_run.as_ref().is_some_and(|run| run.initiated_by.as_ref() == Some(card)))
@@ -639,6 +640,12 @@ fn pays_a_cost_that_may_ask(state: &GameState, registry: &CardRegistry, action: 
     }
 }
 
+/// Whether a run on HQ, R&D or Archives is in progress — Cezve's "during
+/// runs on central servers" (`PaysFor::DuringRunsOnCentralServers`).
+fn during_a_central_run(state: &GameState) -> bool {
+    state.active_run.as_ref().is_some_and(|run| !matches!(run.server, crate::rules::ServerId::Remote(_)))
+}
+
 fn pools_could_ask(state: &GameState) -> bool {
     let run_pool = state.active_run.as_ref().is_some_and(|run| run.bad_publicity_credits > 0 || run.bonus_run_credits > 0);
     let runner = usize::from(run_pool) + state.runner.rig.iter().filter(|card| card.counters > 0).count();
@@ -659,7 +666,8 @@ fn class_of(state: &GameState, registry: &CardRegistry, side: Side, pool: Pool) 
         // pool is only ever classed for a payment it covers — so during a
         // run it is as broad as the credit pool, and Cyberfeeder's credit
         // goes before Methuselah's unasked, as it would before the pool's.
-        let during_a_run = state.active_run.is_some() && (words.contains(&PaysFor::DuringRuns) || words.contains(&PaysFor::DuringItsRun));
+        let during_a_run = (state.active_run.is_some() && (words.contains(&PaysFor::DuringRuns) || words.contains(&PaysFor::DuringItsRun)))
+            || (during_a_central_run(state) && words.contains(&PaysFor::DuringRunsOnCentralServers));
         Class {
             breadth: if during_a_run { Breadth::Anything } else { Breadth::Words(words) },
             life: if definition.is_some_and(|d| d.recurring_credits.is_some()) { Life::Turn } else { Life::Kept },
@@ -740,7 +748,8 @@ pub(crate) fn pay_from(
     let elsewhere: u32 = planned.spend.iter().filter(|(pool, _)| *pool != Pool::Wallet).map(|(_, spend)| spend).sum();
     if elsewhere > 0 {
         let run_against = state.active_run.as_ref().map(|run| run.server);
-        events.push(GameEvent::CreditsSpentFromOutsidePool { side, amount: elsewhere, run_against });
+        let from_installed = planned.spend.iter().filter(|(pool, _)| matches!(pool, Pool::Hosted(_))).map(|(_, spend)| spend).sum();
+        events.push(GameEvent::CreditsSpentFromOutsidePool { side, amount: elsewhere, run_against, from_installed });
     }
     let mut from_hosted = 0;
     for (pool, spend) in planned.spend {

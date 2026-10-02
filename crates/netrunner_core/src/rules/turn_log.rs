@@ -306,6 +306,8 @@ fn concealed(trigger: Trigger, of: Option<Side>) -> bool {
         | Trigger::OnCardsTrashedFromRnD
         | Trigger::OnBadPublicityTaken
         | Trigger::OnDamageAboutToResolve
+        | Trigger::OnDamageSuffered
+        | Trigger::OnCreditsSpentFromInstalledCard
         | Trigger::OnIdentityFlipped
         | Trigger::OnVirusCountersPurged
         | Trigger::Paid => false,
