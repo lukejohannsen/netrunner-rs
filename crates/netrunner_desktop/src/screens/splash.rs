@@ -15,10 +15,11 @@
 //!
 //! **Three tiers, like everything else.** The picture behind it is the
 //! `splash` backdrop slot (`crate::backdrop`), and the mark over it is
-//! `backdrops/splash-logo.png`, fitted to a box in the middle. With no
-//! logo the mark is the name in the theme's face with the accent under
-//! it — the drawn tier, which is the fallback and, under basic graphics,
-//! all there is.
+//! the wordmark the main menu wears too (`widgets::logo`,
+//! `backdrops/logo.png`), fitted to a box in the middle. With no logo the
+//! mark is the name in the theme's face with the accent under it — the
+//! drawn tier, which is the fallback and, under basic graphics, all
+//! there is.
 
 use std::time::Duration;
 
@@ -28,14 +29,12 @@ use crate::core::ClientCore;
 use crate::nav::{screen_root, Navigate};
 use crate::screens::AppScreen;
 use crate::theme::Theme;
+use crate::widgets;
 
 /// The shortest a splash stays up without being skipped.
 pub const SPLASH_MIN: Duration = Duration::from_millis(1500);
 /// The longest it waits for the fonts.
 pub const SPLASH_MAX: Duration = Duration::from_secs(5);
-
-/// The logo file, beside the backdrops.
-pub const LOGO_FILE: &str = "backdrops/splash-logo.png";
 
 /// The box the logo is fitted into, in logical pixels.
 const LOGO_BOX: Vec2 = Vec2::new(720.0, 360.0);
@@ -54,17 +53,12 @@ struct Shown(Duration);
 
 fn spawn(mut commands: Commands, theme: Res<Theme>, core: Res<ClientCore>, images: Option<ResMut<Assets<Image>>>) {
     commands.insert_resource(Shown::default());
-    let logo = images.filter(|_| !core.settings.desktop.basic_graphics).and_then(|mut images| {
-        let image = crate::card_images::decode(&crate::assets::read(LOGO_FILE)?, "png")?;
-        let size = image.size().as_vec2();
-        Some((images.add(image), size))
-    });
+    let logo = widgets::logo(images, core.settings.desktop.basic_graphics, LOGO_BOX);
     let mut root = commands.spawn(screen_root(AppScreen::Splash, &theme));
     root.entry::<Node>().and_modify(|mut node| node.justify_content = JustifyContent::Center);
     root.with_children(|parent| match logo {
         Some((image, size)) => {
-            let fitted = size * (LOGO_BOX / size).min_element().min(1.0);
-            parent.spawn((ImageNode::new(image), Node { width: px(fitted.x), height: px(fitted.y), ..default() }));
+            parent.spawn((image, Node { width: px(size.x), height: px(size.y), ..default() }));
         }
         None => {
             parent.spawn((Text::new("NETRUNNER"), theme.font(72.0), TextColor(theme.text)));
