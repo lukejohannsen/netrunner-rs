@@ -39,6 +39,7 @@ use netrunner_client::record::LocalRecord;
 use netrunner_core::rules::Side;
 use netrunner_core::tutorial::{self, Lesson};
 
+use crate::audio::{ButtonSound, Sfx};
 use crate::core::ClientCore;
 use crate::nav::{screen_root, Navigate};
 use crate::screens::new_game::{ActiveMatch, Starter};
@@ -138,7 +139,7 @@ fn spawn(mut commands: Commands, theme: Res<Theme>, core: Res<ClientCore>) {
         // move this screen expects.
         root.spawn(widgets::styled_button(&theme, ButtonKind::Secondary, "Strategy guide", Val::Auto, GuideButton));
         root.spawn((StartError, widgets::notice(&theme, "", ())));
-        root.spawn(widgets::styled_button(&theme, ButtonKind::Quiet, "Back", Val::Auto, BackButton));
+        root.spawn(widgets::styled_button(&theme, ButtonKind::Quiet, "Back", Val::Auto, (BackButton, ButtonSound(Sfx::Back))));
     });
 }
 

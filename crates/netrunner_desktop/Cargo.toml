@@ -13,7 +13,8 @@ netrunner_card_sync = { path = "../netrunner_card_sync" }
 netrunner_server = { path = "../netrunner_server" }
 # A feature subset, not the defaults: `ui` is the flexbox layer every
 # screen and the board are built from (it brings the windowing, rendering,
-# picking and text it needs), `audio` the sound bank, `png`/`jpeg`/`webp`
+# picking and text it needs), `audio` the sound bank and the music (Ogg Vorbis), `wav` the
+# sounds `audio::synth` draws when a set has no recording, `png`/`jpeg`/`webp`
 # the card images (NetrunnerDB's 750-pixel scans are WebP only). Nothing
 # 3D — no PBR, glTF or lighting — so the build carries only what a 2D
 # card game draws. `default_font` rides in with `ui`; the themed
@@ -23,7 +24,7 @@ netrunner_server = { path = "../netrunner_server" }
 # or pasted in from one has to cross the process boundary (arboard,
 # which Bevy already chose for its text editing). Decks used to cross it
 # the same way; they are files now (`files`).
-bevy = { version = "0.19", default-features = false, features = ["ui", "audio", "png", "jpeg", "webp", "system_clipboard"] }
+bevy = { version = "0.19", default-features = false, features = ["ui", "audio", "wav", "png", "jpeg", "webp", "system_clipboard"] }
 # The native file dialog a deck is imported from and exported to
 # (`files`): the XDG desktop portal on Linux rather than GTK, so nothing
 # of GTK is linked, awaited on the tokio runtime the client already has.

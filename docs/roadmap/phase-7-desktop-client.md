@@ -69,12 +69,12 @@ keep their addresses however long §4's alphabet runs.*
 **Where it stands (29 September 2026).** §1–§3 and §5–§7 are built; §4 has sixty-four lettered
 entries built, one PR each, driven by what the person asked for after playing. Every closed entry is
 one line below and whole in [the archive](archive/phase-7-desktop-client.md); the conventions they
-settled are AGENTS.md §5, which is where to read them. **Open: §4's movement and sound, owed since
-§3; §8's remaining items; §9's search half, not started; and the owed list.**
+settled are AGENTS.md §5, which is where to read them. **Open: §4's movement, owed since
+§3 (its sound is done); §8's remaining items; §9's search half, not started; and the owed list.**
 
 ## Owed
 
-- **Movement and sound** (§3 → §4): the transitions are highlights, not tweened movement, and the `Sfx`/audio and tween modules exist only in the plan (`assets/sfx/README.md` cites this).
+- **Movement** (§3 → §4): the transitions are highlights, not tweened movement, and the tween module exists only in the plan. **Sound is built** (`feat/desktop-sound-and-tables`, 1 October 2026): `audio` plays the board's sounds off its `Transition`s (`models::sound::cues`), the interface's (toggle, switch, back, a deck's add) and the music — the menus' theme and a game's shuffled tracks — with Kenney's CC0 recordings and six AI-assisted tracks; five AI-assisted tables ship with it (a sixth was tried on the board and dropped). On Linux it needs ALSA to reach the speakers — `pipewire-alsa` on a PipeWire desktop, without which cpal falls back to a silent HDMI port (`assets/sfx/README.md`).
 - **§3's other gaps**: a `ChooseCards` prompt's positions are reachable only from the panel; the log keeps 80 lines.
 - **§4m**: a 3D or perspective board — deferred, not refused; revisit when a run should feel dramatic.
 - **§4n, §4r — art still on the drawn tier**: panels' own art, the remaining icons, player bars, the fanned hand, the hovered card, the right-hand side; and `"tint": "state"` is promised by the skin guide and not wired (§4q delivered the contact shadows; §4t tried and removed a central's mark).

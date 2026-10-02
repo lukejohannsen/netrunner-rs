@@ -125,7 +125,7 @@ fn escape_goes_back(
     }
 }
 
-fn apply_navigation(mut messages: MessageReader<Navigate>, mut next: ResMut<NextState<AppScreen>>) {
+pub fn apply_navigation(mut messages: MessageReader<Navigate>, mut next: ResMut<NextState<AppScreen>>) {
     if let Some(Navigate(screen)) = messages.read().last() {
         next.set(*screen);
     }

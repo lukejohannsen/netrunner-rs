@@ -4,11 +4,23 @@ A **table** is the picture under the board. It is where the board's sense
 of depth comes from: every card on the board is drawn at one size, so the
 perspective has to be in the art.
 
-Nothing is committed here yet. The client paints a ground of its own
-(`src/table.rs`) that needs no files at all, so the game runs without
-this directory existing — but that ground is the fallback and the
-basic-graphics mode, not the look. **This folder is where the shipped
-tables go**, several of them, one drawn at random per match.
+**Five tables ship here**, and Random draws one per match:
+
+| Folder | Name | Picture |
+|---|---|---|
+| `bronze-weave/` | Bronze Weave | carbon-fibre weave under a bronze glow |
+| `brushed-steel/` | Brushed Steel | brushed steel inside an engraved border, lit gold |
+| `ice-weave/` | Ice Weave | carbon-fibre weave under a cold blue light |
+| `violet-weave/` | Violet Weave | carbon-fibre weave in a violet light |
+| `core-net/` | Core Net | a chip's glass core streaming data |
+
+They were generated with AI assistance for the project (1 October 2026)
+and re-encoded at JPEG quality 88, a megabyte each where the originals
+were three; each has its row in [`../CREDITS.md`](../CREDITS.md). They
+are 2816 × 1536 or 2624 × 1632 and are stretched to the window like any
+table. The client also paints a ground of its own (`src/table.rs`) that
+needs no files at all — but that ground is the fallback and the
+basic-graphics mode, not the look.
 
 ## Where they go
 

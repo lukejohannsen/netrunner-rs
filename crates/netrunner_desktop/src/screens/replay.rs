@@ -31,6 +31,7 @@ use bevy::prelude::*;
 use netrunner_client::play::MatchMessage;
 use netrunner_client::replay::{Replay, Start};
 
+use crate::audio::{ButtonSound, Sfx};
 use crate::core::ClientCore;
 use crate::models::game::{Game, Intent, ReplayAt};
 use crate::models::pace::Pacer;
@@ -141,7 +142,7 @@ fn spawn(mut commands: Commands, theme: Res<Theme>, core: Res<ClientCore>, waiti
     });
     root.add_child(body);
     root.with_children(|root| {
-        root.spawn(widgets::button(&theme, "Back", Val::Auto, BackButton));
+        root.spawn(widgets::button(&theme, "Back", Val::Auto, (BackButton, ButtonSound(Sfx::Back))));
     });
 }
 

@@ -21,3 +21,4 @@ pub mod pace;
 pub mod replay;
 pub mod settings;
 pub mod shortcuts;
+pub mod sound;

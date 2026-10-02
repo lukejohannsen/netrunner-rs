@@ -24,6 +24,7 @@ use bevy::prelude::*;
 use netrunner_client::identity::{self, KnownServers};
 use netrunner_client::remote;
 
+use crate::audio::{ButtonSound, Sfx};
 use crate::core::{ClientCore, TokioRuntime};
 use crate::nav::{screen_root, Navigate};
 use crate::screens::AppScreen;
@@ -125,7 +126,7 @@ fn spawn(mut commands: Commands, theme: Res<Theme>, core: Res<ClientCore>, runti
         })))),
         (widgets::row(12.0), children![
             widgets::button(&theme, "Settings", Val::Auto, ProfileButton::Settings),
-            widgets::button(&theme, "Back", Val::Auto, ProfileButton::Back),
+            widgets::button(&theme, "Back", Val::Auto, (ProfileButton::Back, ButtonSound(Sfx::Back))),
         ]),
     ]));
 }

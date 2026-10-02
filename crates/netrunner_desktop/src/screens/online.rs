@@ -45,6 +45,7 @@ use netrunner_core::rules::{Side, Viewer};
 use netrunner_server::serve::{ServeBotKind, ServeOptions, Server};
 use netrunner_server::MatchSummary;
 
+use crate::audio::{ButtonSound, Sfx};
 use crate::core::{ClientCore, TokioRuntime};
 use crate::models::online::{reach_pill, Field, Intent, OnlineForm, Outcome, Page};
 use crate::nav::{screen_root, Captures, InputCaptured, Navigate};
@@ -723,7 +724,7 @@ fn spawn_home(parent: &mut ChildSpawnerCommands, theme: &Theme) {
         });
     }
     buttons(parent, |row| {
-        row.spawn(widgets::styled_button(theme, ButtonKind::Quiet, "Back", Val::Auto, Control::Back));
+        row.spawn(widgets::styled_button(theme, ButtonKind::Quiet, "Back", Val::Auto, (Control::Back, ButtonSound(Sfx::Back))));
     });
 }
 
@@ -742,7 +743,7 @@ fn spawn_host(parent: &mut ChildSpawnerCommands, theme: &Theme, form: &OnlineFor
     format_section(parent, theme, form, "The format this game is played in: your opponent joins with a deck legal in it.");
     deck_section(parent, theme, form);
     buttons(parent, |row| {
-        row.spawn(widgets::styled_button(theme, ButtonKind::Quiet, "Back", Val::Auto, Control::Back));
+        row.spawn(widgets::styled_button(theme, ButtonKind::Quiet, "Back", Val::Auto, (Control::Back, ButtonSound(Sfx::Back))));
         row.spawn(widgets::styled_button(theme, ButtonKind::Primary, "Start hosting", px(220), Control::Go));
     });
 }
@@ -757,7 +758,7 @@ fn spawn_join(parent: &mut ChildSpawnerCommands, theme: &Theme, form: &OnlineFor
     });
     deck_section(parent, theme, form);
     buttons(parent, |row| {
-        row.spawn(widgets::styled_button(theme, ButtonKind::Quiet, "Back", Val::Auto, Control::Back));
+        row.spawn(widgets::styled_button(theme, ButtonKind::Quiet, "Back", Val::Auto, (Control::Back, ButtonSound(Sfx::Back))));
         row.spawn(widgets::styled_button(theme, ButtonKind::Primary, "Connect", px(220), Control::Go));
     });
 }
@@ -791,7 +792,7 @@ fn spawn_watch(parent: &mut ChildSpawnerCommands, theme: &Theme, form: &OnlineFo
         });
     }
     buttons(parent, |row| {
-        row.spawn(widgets::styled_button(theme, ButtonKind::Quiet, "Back", Val::Auto, Control::Back));
+        row.spawn(widgets::styled_button(theme, ButtonKind::Quiet, "Back", Val::Auto, (Control::Back, ButtonSound(Sfx::Back))));
     });
 }
 

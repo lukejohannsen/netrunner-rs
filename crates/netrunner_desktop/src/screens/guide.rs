@@ -23,6 +23,7 @@
 use bevy::prelude::*;
 use netrunner_client::guide::{self, Block, Guide, Span};
 
+use crate::audio::{ButtonSound, Sfx};
 use crate::core::ClientCore;
 use crate::nav::{screen_root, Navigate};
 use crate::screens::AppScreen;
@@ -109,7 +110,7 @@ fn spawn(mut commands: Commands, theme: Res<Theme>, text: Res<GuideText>, mut ch
     });
     root.add_child(body);
     root.with_children(|root| {
-        root.spawn(widgets::styled_button(&theme, ButtonKind::Quiet, "Back", Val::Auto, BackButton));
+        root.spawn(widgets::styled_button(&theme, ButtonKind::Quiet, "Back", Val::Auto, (BackButton, ButtonSound(Sfx::Back))));
     });
 }
 
