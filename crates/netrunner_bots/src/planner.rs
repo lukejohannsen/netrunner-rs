@@ -674,9 +674,9 @@ impl Search<'_> {
     /// moved: the score is still a step of its own at the next ply, and a
     /// finished line is scored where it ends.
     fn judged(&mut self, state: &GameState) -> f64 {
-        let mut best = self.score(state);
+        let standing = self.score(state);
         if self.side != Side::Corp {
-            return best;
+            return standing;
         }
         let agendas: Vec<InstallId> = state
             .corp
@@ -685,6 +685,7 @@ impl Search<'_> {
             .filter(|card| card.advancement_tokens > 0 && self.registry.get(&card.card).is_some_and(|def| def.card_type == CardType::Agenda))
             .map(|card| card.install_id)
             .collect();
+        let mut best = standing;
         for target in agendas {
             self.applications += 1;
             if let Ok((scored, _)) = apply_action(state, self.registry, PlayerAction::ScoreAgenda { target }) {
