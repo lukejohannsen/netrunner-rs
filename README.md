@@ -8,8 +8,15 @@ A deterministic, data-driven engine for the **Netrunner** card game, written in 
 
 The rules engine is a pure state machine with no I/O, no async runtime, and no rendering
 dependencies. Card behaviour is expressed as JSON parsed into a small DSL rather than hardcoded in
-Rust, and everything else in the workspace — a terminal client, an authoritative server, bots, and
-a reinforcement-learning environment — is a consumer of that one engine.
+Rust, and everything else in the workspace — a graphical desktop client, a terminal client, an
+authoritative server, bots, and a reinforcement-learning environment — is a consumer of that one
+engine.
+
+<p align="center">
+  <a href="docs/screenshots/table-corp.webp"><img src="docs/screenshots/table-corp.webp" width="49%" alt="The desktop client from the Corp's chair on turn 36: Haas-Bioroid's three centrals and four remotes iced, a hand of operations and ICE along the bottom edge, and the Runner's rig across the table mid-run on Remote 2"></a>
+  <a href="docs/screenshots/table-runner.webp"><img src="docs/screenshots/table-runner.webp" width="49%" alt="The desktop client from the Runner's chair on turn 20: Zahya Sadeghi's programs, hardware and resources in three rows under the Corp's servers, a successful run on HQ in progress"></a>
+</p>
+<p align="center"><sub>The desktop client deep into a game against the built-in bot — from the Corp's chair on turn 36 (left) and the Runner's on turn 20 (right).</sub></p>
 
 > **Disclaimer**
 >
@@ -35,8 +42,11 @@ a reinforcement-learning environment — is a consumer of that one engine.
   copy limits).
 - **Cards are data, not code.** Card files under `crates/netrunner_core/data/{corp,runner}/` are
   parsed into DSL primitives and embedded at compile time by `build.rs`. Adding a card normally
-  means writing JSON, not Rust. All 75 playable *System Gateway* cards are implemented, with a
-  test that fails if any printed card is neither implemented nor explicitly excluded.
+  means writing JSON, not Rust. *System Gateway*, *Elevation*, *Vantage Point*, *Rebellion
+  Without Rehearsal* and *The Automata Initiative* are complete — the whole Startup format —
+  with *Parhelion* under way and the rest of NetrunnerDB's pool following set by set
+  ([progress](docs/roadmap/nsg-card-pool.md#progress)). Each set has a gate that fails if any
+  printed card is neither implemented nor explicitly excluded.
 - **Legality has exactly one definition.** `legal_actions` generates candidates and keeps only
   those `apply_action` actually accepts on a cloned state, so what a UI or bot is offered can
   never drift from what the engine permits.
@@ -48,7 +58,13 @@ a reinforcement-learning environment — is a consumer of that one engine.
   Python. Sync versus async is a property of who pumps it, never a fork in rules flow.
 - **Bots and training.** Random, planner, MCTS and PUCT agents all play from the same masked
   view a human gets, with an optional ONNX policy, a PyO3 gym environment over a fixed action
-  space, and a self-play trajectory generator.
+  space, and a self-play trajectory generator. The planner is the opponent at every rung of the
+  difficulty ladder, playing in the style its deck declares.
+- **Two clients on one core.** A Bevy desktop client and a ratatui terminal client share
+  `netrunner_client`: matches against the bots or online, lessons and the strategy guide, a
+  deck builder with NetrunnerDB import, a card browser, and replays of saved games. Online play
+  is hosted from a player's own machine; players are identified by an Ed25519 key rather than an
+  account.
 
 ## Quick start
 
@@ -60,7 +76,8 @@ cargo run -p netrunner_cli
 
 # The graphical client (Bevy; on Linux it needs the ALSA and udev headers,
 # `libasound2-dev libudev-dev` on Debian). Shares its decks, record and
-# settings with the terminal client. Menu, profile and settings so far.
+# settings with the terminal client. Run it through cargo so it finds its
+# assets; the first build is slow.
 cargo run -p netrunner_desktop
 
 # Or skip the menu with flags, e.g. a game as the Runner against rung 3
@@ -103,16 +120,20 @@ left out.
 
 | Crate | Role |
 |---|---|
-| `netrunner_core` | Pure deterministic rules engine, card DSL, embedded card/deck data, masking. Everything else depends on this; it depends on nothing. |
-| `netrunner_bots` | Automated players over a masked `ClientView`: `BotAgent`, random/planner/MCTS/PUCT agents (the planner is the ladder's every rung), `determinize`, RL observation encoding, optional ONNX policy. |
-| `netrunner_session` | The one match decision loop. `Session`, `Seat`, the single step budget, `MatchHistory`, and end-of-match classification. Every driver pumps this. |
+| `netrunner_core` | Pure deterministic rules engine, card DSL, embedded card catalog and decks, masking. Everything else depends on this; it depends on nothing but `serde` and `thiserror`. |
+| `netrunner_bots` | Automated players over a masked `ClientView`: random, planner, MCTS and PUCT agents, the difficulty ladder and deck styles, `determinize` over what a seat knows, RL observation encoding, optional ONNX policy. |
+| `netrunner_session` | The one match decision loop: `Session`, `Seat`, the single step budget, `MatchHistory`, end-of-match classification and take-backs. Every driver pumps this. |
 | `netrunner_single_player` | Thin index-based adapter over `netrunner_session` for the RL / fixed-action-space path. |
 | `netrunner_protocol` | The wire messages between a server and a client, which both ends depend on and neither owns. |
-| `netrunner_server` | Authoritative async host: `MatchSession`, the `ClientMessage`/`ServerMessage` protocol, WebSocket transport. |
-| `netrunner_cli` | Reference client: ratatui TUI, headless runner, local and remote modes, card/deck subcommands. |
+| `netrunner_server` | Authoritative async host: `MatchSession`, per-seat masked state updates, WebSocket transport, key-based login and the rating book. |
+| `netrunner_client` | The toolkit-agnostic core both clients stand on: running a match locally or against a host, settings, saved decks and the deck builder, replays and bug reports, the board's layout rules and the words on every action, lessons and the strategy guide, a language-model opponent, and hosting and joining games over the internet. No rendering, no rules. |
+| `netrunner_desktop` | The graphical client (Bevy): a plugin per screen, rendering only the `ClientView` it is given. |
+| `netrunner_cli` | The terminal client (ratatui) and the reference for the client contract, plus the headless runner, the bot benchmark, and card, deck and replay subcommands. |
+| `netrunner_identity` | A player's Ed25519 key and the signed login statement that binds a proof to one server and one nonce. Pure: no files, no clock, no RNG. |
+| `netrunner_rating` | Glicko-2 ratings, one per track, participant and role (Corp and Runner rated separately). Pure: whoever owns the file reads and writes it. |
+| `netrunner_card_sync` | The card-image cache and NetrunnerDB decklist import — the only crate doing network I/O for card data. |
 | `netrunner_gym` | PyO3 reinforcement-learning environment over the fixed action space. |
 | `netrunner_selfplay` | High-volume self-play data generation for training. |
-| `netrunner_card_sync` | Async NetrunnerDB API sync and cross-platform disk caching — the only crate doing network I/O for card data. |
 
 ## Documentation
 
