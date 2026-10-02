@@ -1,0 +1,51 @@
+{
+  "id": "captain_padma_isbister_intrepid_explorer",
+  "title": "Captain Padma Isbister: Intrepid Explorer",
+  "side": "Runner",
+  "card_type": "Identity",
+  "cost": 0,
+  "min_deck_size": 45,
+  "triggers": [
+    {
+      "trigger": "OnRunStart",
+      "subject": "Any",
+      "when": {
+        "Server": [
+          "RnD"
+        ]
+      },
+      "first_each_turn": true,
+      "effects": [
+        {
+          "PromptChooseCards": {
+            "side": "Runner",
+            "source": "OwnInstalled",
+            "filter": {
+              "HostsCounters": "Power"
+            },
+            "min": 0,
+            "max": 1,
+            "reveal": false,
+            "shuffle_after": false,
+            "then": {
+              "EffectIf": {
+                "condition": {
+                  "AmountAtLeast": [
+                    "CardsSelected",
+                    1
+                  ]
+                },
+                "effect": {
+                  "AddCounters": 1
+                }
+              }
+            }
+          }
+        }
+      ],
+      "text": "The first time each turn a run on R&D begins, you may charge 1 of your installed cards."
+    }
+  ],
+  "built_from": 33021,
+  "is_playable": true
+}

@@ -1,0 +1,54 @@
+{
+  "id": "begemot",
+  "title": "Begemot",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 5,
+  "strength": 2,
+  "memory_cost": 2,
+  "continuous": [
+    {
+      "kind": {
+        "Strength": {
+          "per": 1,
+          "of": "CoreDamageTaken"
+        }
+      },
+      "applies_to": "This",
+      "text": "This program gets +1 strength for each core damage you have taken this game."
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnInstall",
+      "subject": "This",
+      "effects": [
+        {
+          "DealDamage": [
+            "Brain",
+            1
+          ]
+        }
+      ],
+      "text": "When you install this program, suffer 1 core damage."
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "text": "Interface → 1[credit]: Break any number of barrier subroutines.",
+      "cost": {
+        "Credits": 1
+      },
+      "effect": {
+        "BreakSubroutines": {
+          "count": "All",
+          "restrict_to": "Barrier"
+        }
+      },
+      "requirement": "DuringEncounter"
+    }
+  ],
+  "built_from": 33007,
+  "is_playable": true
+}

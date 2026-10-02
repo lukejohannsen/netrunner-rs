@@ -504,6 +504,11 @@ mod tests {
             ("street_gallery", &neither),
             ("pay_as_you_go", &neither),
             ("safety_net", &neither),
+            // Midnight Sun Stage 3: Esâ Afontov's and Captain Padma
+            // Isbister's decks, on Pay As You Go's and Safety Net's frames,
+            // whose Core Set cards keep them out of Standard.
+            ("burn_rate", &neither),
+            ("dead_reckoning", &neither),
             // Vantage Point Stage 5d: Hiram's deck carries Core Set cards
             // (Net Shield among them), as Safety Net does.
             ("spare_parts", &neither),

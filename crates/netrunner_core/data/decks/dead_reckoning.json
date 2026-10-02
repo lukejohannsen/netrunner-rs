@@ -1,0 +1,105 @@
+{
+  "id": "dead_reckoning",
+  "name": "Dead Reckoning",
+  "side": "Runner",
+  "category": "Sweep",
+  "description": "Not a published list: built so the sweeps reach Captain Padma Isbister: Intrepid Explorer, Midnight Sun's Shaper identity, which may charge one of the Runner's cards the first time each turn a run on R&D begins, and the Shaper cards of Midnight Sun Stage 3. On Safety Net's frame after Midnight Sun Stage 2, whose Endurance, Hyperbaric, Propeller, Environmental Testing, Flux Capacitor and Lampades are the cards a charge feeds, its identity swapped: two Rigging Up for its two Spark of Inspiration, an install that may charge what it installed; two Into the Depths for its two Joy Ride, a run paid for by the ice it passes; two Stoneship Chart Room for its two Aircheck; and two Daeg, First Net-Cat for its two Spree, a charge whenever an agenda is scored or stolen. Safety Net keeps every card given up here.",
+  "style": [
+    "rig"
+  ],
+  "identity": "captain_padma_isbister_intrepid_explorer",
+  "cards": [
+    {
+      "card": "net_shield",
+      "count": 3
+    },
+    {
+      "card": "sacrificial_construct",
+      "count": 3
+    },
+    {
+      "card": "decoy",
+      "count": 2
+    },
+    {
+      "card": "gordian_blade",
+      "count": 1
+    },
+    {
+      "card": "lampades",
+      "count": 1
+    },
+    {
+      "card": "sipa",
+      "count": 2
+    },
+    {
+      "card": "flux_capacitor",
+      "count": 2
+    },
+    {
+      "card": "baker",
+      "count": 1
+    },
+    {
+      "card": "coalescence",
+      "count": 2
+    },
+    {
+      "card": "orca",
+      "count": 2
+    },
+    {
+      "card": "burner",
+      "count": 2
+    },
+    {
+      "card": "lobisomem",
+      "count": 2
+    },
+    {
+      "card": "living_mural",
+      "count": 2
+    },
+    {
+      "card": "beatriz_friere_gonzalez",
+      "count": 2
+    },
+    {
+      "card": "world_tree",
+      "count": 2
+    },
+    {
+      "card": "endurance",
+      "count": 2
+    },
+    {
+      "card": "hyperbaric",
+      "count": 2
+    },
+    {
+      "card": "propeller",
+      "count": 2
+    },
+    {
+      "card": "environmental_testing",
+      "count": 2
+    },
+    {
+      "card": "rigging_up",
+      "count": 2
+    },
+    {
+      "card": "into_the_depths",
+      "count": 2
+    },
+    {
+      "card": "stoneship_chart_room",
+      "count": 2
+    },
+    {
+      "card": "daeg_first_net_cat",
+      "count": 2
+    }
+  ]
+}

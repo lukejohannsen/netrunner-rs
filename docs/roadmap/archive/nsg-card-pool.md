@@ -5977,3 +5977,104 @@ cards; two needed an existing word widened, each for every card.
   `determinize`, whose prior holds eleven more cards (view and index
   alike): Corp agenda wins 57 → 59, Corp flatlines 32 → 31, Runner agenda
   wins 99 → 98.
+
+#### Stage 3 — charge and core damage (2 October 2026)
+
+`claude/serene-einstein-6bhlig`: Captain Padma Isbister: Intrepid
+Explorer, Rigging Up, Daeg, First Net-Cat, Stoneship Chart Room, Into the
+Depths, Esâ Afontov: Eco-Insurrectionist, Begemot, Ghosttongue, The
+Twinning and Cezve. **No new `Effect`.** Midnight Sun 32 of 65;
+`MS_UNIMPLEMENTED` 43 → 33. Six compose; four needed a word each, every
+one in the vocabulary of *when* or *what is read* rather than of what an
+effect does.
+
+- **Charge composes on Parhelion's rule.** Padma (the first time each
+  turn a run on R&D begins: `OnRunStart`, `when: Server([RnD])`,
+  `first_each_turn`), Daeg (`OnAgendaScored` and `OnAgendaStolen`, one
+  printed sentence, two entries), Stoneship Chart Room (two `TrashSelf`
+  abilities) and Into the Depths' third option are Flux Capacitor's
+  selection over `HostsCounters(Power)`. With nothing to charge, Stoneship
+  is trashed and nothing is asked.
+- **Rigging Up: "charge that card" (CR 10.10.3).** The install from the
+  grip at 3[credit] less is Illumination's
+  `InstallRunnerCardFromGripWithDiscount`, whose resolution goes on as the
+  card it installed; "you may charge that card if able" is an `EffectIf`
+  on that install's own counters and kind. The install is an instruction
+  of its own, so a checkpoint follows it (CR 10.3.5) and Propeller's
+  "when you install" places its 4 counters before the charge makes 5 —
+  the engine already resolved it that way, and the test holds it.
+- **Begemot and Ghosttongue compose.** Begemot is Marrow's core damage on
+  install, Rising Tide's `Strength` over Ontological Dependence's
+  `CoreDamageTaken`, and Orca's "any number" for barriers. Ghosttongue is
+  the core damage and Tailgate's `PlayCost`, scoped to every event.
+- **Esâ Afontov: damage suffered is the Runner's moment.**
+  `Trigger::OnDamageSuffered`, from `GameEvent::DamageTaken`, about the
+  kind of damage (`when: Damage(Brain)`) and heard by the Runner whoever
+  was responsible, a cost's damage included (CR 10.4.1). Composition
+  didn't work: `OnDamageDealt` is the responsible player's and
+  `OnDamageAboutToResolve` a "would". "You may draw 1 card and sabotage 2"
+  is one `PresentChoice`.
+- **The Twinning: a spend off an installed card is a moment.**
+  `Trigger::OnCreditsSpentFromInstalledCard`, read off
+  `CreditsSpentFromOutsidePool`'s new `from_installed`, the Runner's in a
+  run or out of one, once per payment. `OnCreditsSpentOutsidePool` is
+  about the run's server and counts bad publicity's and a run event's
+  credits. Out of a run the event had been nobody's, and the debug
+  audit named five payers that never dispatched it — the click installs
+  of a program, a trojan, hardware and a resource, and the basic action
+  to remove a tag; each now dispatches its payment after the effect, as
+  a text install already did. The Corp's spends stay an occurrence of
+  nothing. Its breach half is WAKE Implant's `ChooseNumber` over the
+  hosted counters, once for HQ and once for R&D.
+- **Into the Depths: the run counts the ice it passes.**
+  `RunState::ice_passed`, counted where `IcePassed` is announced (an
+  unrezzed or bypassed piece of ice included, a forced encounter's end
+  not), read by `Amount::IcePassedThisRun` and carried in the view for a
+  sample. "For each time you passed ice, resolve 1 of the following that
+  you have not yet resolved" is `ResolveSomeOf` with a count of 1, 2 or 3
+  behind three exclusive `EffectIf`s. Its search widened
+  `InstallableRunnerCardWithDiscount` to the stack, which the install
+  already took.
+- **Cezve: `PaysFor::DuringRunsOnCentralServers`**, `DuringRuns` narrowed
+  to HQ, R&D and Archives, as broad as the credit pool there (CR 1.10.4c).
+- **Fidelity limits:** Into the Depths' search offers only a program that
+  could be installed; The Twinning hears one moment per payment. Both on
+  the known-limits list, both with the printed outcome.
+- **Client.** `PublicRunState::ice_passed` is the view's one new field,
+  an engine's line in `view_ledger` (each pass is drawn by
+  `board::trail`); `PaysFor` and `Amount` have their prose.
+- **Decks.** **Burn Rate**, a new Sweep deck on Esâ Afontov: Pay As You
+  Go's frame, its Running Hot and Marrow the identity's fuel, with two
+  Begemot for its two Take a Dive, two Ghosttongue for two Time Bomb and
+  two The Twinning for two Friend of a Friend. **Dead Reckoning**, a new
+  Sweep deck on Captain Padma Isbister: Safety Net's frame, whose
+  Endurance, Hyperbaric, Propeller, Environmental Testing, Flux Capacitor
+  and Lampades a charge feeds, with two Rigging Up for two Spark of
+  Inspiration, two Into the Depths for two Joy Ride, two Stoneship Chart
+  Room for two Aircheck and two Daeg for two Spree. Hit List takes two
+  Cezve for two of its three Kompromat. Every card given up is still in
+  another deck; both new decks are Eternal-only, pinned beside their
+  frames.
+- **DSL ratio** (`pool_status.py`): unchanged at 17 of 97 `Effect`
+  variants single-use, 1 unused (`Trace`), now over 475 card files.
+- **Real play** (`--headless`, each edited deck against Hostile Bid, seed
+  2; random seats 96 games, planner seats 48; each pair is random /
+  planner). Esâ Afontov's trigger fired 104 / 67 times, its "may" offered
+  56 / 43; Begemot installed 11 / 8 and used 1 / 38 times; Ghosttongue
+  installed 19 / 0; The Twinning installed 11 / 0, its breach heard 34 /
+  0 times and its spend off an installed card never in those 96 games —
+  once in 384 random games on seed 5, where a payment off a card came 99
+  times; Captain Padma Isbister's trigger fired 460 / 261 times; Rigging
+  Up played 38 / 19; Daeg installed 35 / 1, hearing 87 / 1 scores and
+  steals; Stoneship Chart Room installed 51 / 37 and used 51 / 32 times;
+  Into the Depths played 34 / 0; Cezve installed 33 / 40. **Bot debts:**
+  the planner never plays Into the Depths, Ghosttongue or The Twinning in
+  48 games and installs Daeg once; on the bot-debts list.
+- **Measured.** Both sweeps are green at 256 seeds, the card gate
+  included, so every new card was seen in play. `coverage_identical.py`
+  against Stage 2 (38ca89f, 192 games a report): random identical, view
+  and index alike — the sample matchups hold no Sweep deck, and the four
+  new words change nothing there, the five newly dispatched payments
+  included. The planner seatings move by `determinize`, whose prior holds
+  ten more cards (view and index alike): Corp agenda wins 59 → 58, Runner
+  agenda wins 98 → 99.

@@ -1,0 +1,93 @@
+{
+  "id": "the_twinning",
+  "title": "The Twinning",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 3,
+  "unique": true,
+  "counter_kind": "Power",
+  "triggers": [
+    {
+      "trigger": "OnCreditsSpentFromInstalledCard",
+      "first_each_turn": true,
+      "effects": [
+        {
+          "AddCounters": 1
+        }
+      ],
+      "text": "The first time each turn you spend credits from an installed card, place 1 power counter on this resource."
+    },
+    {
+      "trigger": "OnBreach",
+      "subject": "Any",
+      "when": {
+        "Server": [
+          "Hq"
+        ]
+      },
+      "effects": [
+        {
+          "ChooseNumber": {
+            "chooser": "Runner",
+            "max": {
+              "Fixed": 2
+            },
+            "of": "HostedCounters",
+            "then": {
+              "Sequence": [
+                {
+                  "RemoveCounters": "ChosenNumber"
+                },
+                {
+                  "AddAdditionalAccessAmount": {
+                    "server": "Hq",
+                    "amount": "ChosenNumber"
+                  }
+                }
+              ]
+            },
+            "text": "you may remove up to 2 hosted power counters to access that many additional cards"
+          }
+        }
+      ],
+      "text": "Whenever you breach HQ or R&D, you may remove up to 2 hosted power counters to access that many additional cards."
+    },
+    {
+      "trigger": "OnBreach",
+      "subject": "Any",
+      "when": {
+        "Server": [
+          "RnD"
+        ]
+      },
+      "effects": [
+        {
+          "ChooseNumber": {
+            "chooser": "Runner",
+            "max": {
+              "Fixed": 2
+            },
+            "of": "HostedCounters",
+            "then": {
+              "Sequence": [
+                {
+                  "RemoveCounters": "ChosenNumber"
+                },
+                {
+                  "AddAdditionalAccessAmount": {
+                    "server": "RnD",
+                    "amount": "ChosenNumber"
+                  }
+                }
+              ]
+            },
+            "text": "you may remove up to 2 hosted power counters to access that many additional cards"
+          }
+        }
+      ],
+      "text": "Whenever you breach HQ or R&D, you may remove up to 2 hosted power counters to access that many additional cards."
+    }
+  ],
+  "built_from": 33010,
+  "is_playable": true
+}

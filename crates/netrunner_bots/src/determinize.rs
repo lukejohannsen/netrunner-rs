@@ -853,6 +853,9 @@ fn determinize_run(
         breached: run.breached,
         // Public, and what S-Dobrado's "the second time" reads.
         encounters: run.encounters,
+        // Public, and what Into the Depths' "for each time you passed ice"
+        // reads.
+        ice_passed: run.ice_passed,
         // Not in the view: which action the run is part of. Only its end
         // announces it (`GameEvent::ActionFinished`), and the only card
         // that hears one is the Corp's, about the Corp's own actions.

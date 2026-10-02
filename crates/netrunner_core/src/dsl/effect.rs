@@ -1755,6 +1755,12 @@ pub enum Amount {
     /// (exactly 2). 0 with no run. Composition didn't work: the turn log
     /// counts the turn's encounters, and a run is not a turn.
     EncountersThisRun,
+    /// How many times the Runner has passed ice during the run in progress
+    /// (`RunState::ice_passed`) — Into the Depths' "for each time you
+    /// passed ice this run". 0 with no run. Composition didn't work:
+    /// `EncountersThisRun` counts encounters, and an unrezzed piece of ice
+    /// is passed without one, a forced encounter met without a pass.
+    IcePassedThisRun,
     /// The strength of the piece of ice being encountered, never below 0
     /// (`continuous::ice_strength`, which may be) — Arruaceiras Crew's
     /// "trash the ice you are encountering if its strength is 0 or less",

@@ -93,6 +93,7 @@ pub fn describe_amount(amount: &Amount) -> String {
         Amount::RunCreditsLeftLastRun => "the credits left on it from that run".to_string(),
         Amount::AccessLimit(server) => format!("the cards you may access in {}", describe_server(*server)),
         Amount::EncountersThisRun => "the times you have encountered ice this run".to_string(),
+        Amount::IcePassedThisRun => "the times you have passed ice this run".to_string(),
         Amount::ThreatLevel => "the threat level".to_string(),
         Amount::RunnerTags => "the Runner's tags".to_string(),
         Amount::BadPublicity => "the Corp's bad publicity".to_string(),
@@ -666,6 +667,7 @@ pub fn describe_pays_for(word: &PaysFor) -> String {
         PaysFor::RemovingTags => "to take the basic action to remove a tag".to_string(),
         PaysFor::DuringRuns => "during runs".to_string(),
         PaysFor::DuringItsRun => "during the run this card began".to_string(),
+        PaysFor::DuringRunsOnCentralServers => "during runs on central servers".to_string(),
     }
 }
 

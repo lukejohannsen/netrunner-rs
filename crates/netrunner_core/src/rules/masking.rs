@@ -446,6 +446,11 @@ pub struct PublicRunState {
     /// ice during that run" where the real game does.
     #[serde(default)]
     pub encounters: u32,
+    /// `RunState::ice_passed`: public, as every pass is. Carried so a
+    /// sample prices Into the Depths' "for each time you passed ice this
+    /// run" where the real game does.
+    #[serde(default)]
+    pub ice_passed: u32,
     /// `RunState::this_encounter`: public, since both players watched each
     /// break and each trash, and carried so a sample built from the view
     /// is held to Hammer's and Sorocaban Blade's limits where the real
@@ -1274,6 +1279,7 @@ fn mask_run_state(state: &GameState, registry: &CardRegistry, run: &RunState, vi
         reached_success_phase: run.reached_success_phase,
         breached: run.breached,
         encounters: run.encounters,
+        ice_passed: run.ice_passed,
         this_encounter: run.this_encounter.clone(),
         initiated_by: run.initiated_by.clone(),
         begun_as_the_turn_began: run.begun_as_the_turn_began,
