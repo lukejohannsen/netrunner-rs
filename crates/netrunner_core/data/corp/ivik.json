@@ -1,0 +1,50 @@
+{
+  "id": "ivik",
+  "title": "Ivik",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Barrier"
+  },
+  "cost": 7,
+  "strength": 5,
+  "continuous": [
+    {
+      "kind": {
+        "RezCost": {
+          "per": -1,
+          "of": {
+            "CorpInstalls": {
+              "All": [
+                "Ice",
+                "Rezzed",
+                {
+                  "IceOfType": "CodeGate"
+                }
+              ]
+            }
+          }
+        }
+      },
+      "applies_to": "This",
+      "text": "The rez cost of this ice is lowered by 1[credit] for each rezzed piece of code gate ice."
+    }
+  ],
+  "triggers": [],
+  "subroutines": [
+    {
+      "text": "Do 2 net damage.",
+      "effect": {
+        "DealDamage": [
+          "Net",
+          2
+        ]
+      }
+    },
+    {
+      "text": "End the run.",
+      "effect": "EndTheRun"
+    }
+  ],
+  "built_from": 33045,
+  "is_playable": true
+}

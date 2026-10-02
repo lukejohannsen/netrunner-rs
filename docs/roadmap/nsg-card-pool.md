@@ -48,14 +48,14 @@ cards each stage takes.
 | 2 | Rebellion Without Rehearsal (`rwr`) | 65 | 65 | 0 | complete (28 September 2026) |
 | 3 | The Automata Initiative (`tai`) | 65 | 65 | 0 | complete (29 September 2026) |
 | 4 | Parhelion (`ph`) | 63 | 63 | 0 | complete (2 October 2026) |
-| 5 | Midnight Sun (`ms`) + Booster (`msbp`) | 65 + 7 | 41 + 4 | 24 + 3 | Stages 1–4 built (2 October 2026); **Stage 5 next** — ice words |
+| 5 | Midnight Sun (`ms`) + Booster (`msbp`) | 65 + 7 | 48 + 5 | 17 + 2 | Stages 1–5 built (2 October 2026); **Stage 6 next** — mark on PH's rule, then access outside a breach |
 | 6 | Uprising (`ur`) + Booster (`urbp`) | 65 + 7 | 0 | 65 + 7 | not started |
 | 7 | Downfall (`df`) | 65 | 0 | 65 | not started |
 | 8 | System Update 2021 (`su21`), Salvaged Memories (`sm`), Magnum Opus Reprint (`mor`) | 82, 18, 6 | 11, 1, 0 | 71, 17, 6 | not started (the built ones are Core reprints) |
 
 **DSL ratio** (`pool_status.py`, the DSL Growth Rule's number): **17 of 97
-`Effect` variants single-use, 1 unused (`Trace`), over 484 card files** (2
-October 2026, with Midnight Sun Stage 4, which added none). The baseline at Stage 0a was 26 of 70 single-use, 3 unused,
+`Effect` variants single-use, 1 unused (`Trace`), over 491 card files** (2
+October 2026, with Midnight Sun Stage 5, which added none). The baseline at Stage 0a was 26 of 70 single-use, 3 unused,
 over 184 files: 281 cards later the single-use count is *lower*, because the
 growth went into `Trigger`, `EventFilter`, `Amount`, `CardFilter`, `Cost` and
 `ContinuousKind` words rather than into what an effect does.
@@ -348,6 +348,7 @@ PR that made this list (29 September 2026).
 - **Shred**: intercepts `EndTheRun` only (a lingering `PreventRunEnding`).
 - **Raindrops Cut Stone** (PH 6c): a subroutine a card's text resolves (Nanisivik Grid's) is not announced, so it is not counted; only an encountered piece of ice's are.
 - **Tsakhia "Bankhar" Gantulga** (PH 8): the chosen server lasts the Runner's turn it was chosen in, so a run on the Corp's turn after it finds none. Its replacement is made as the encounter begins, by a trigger the Runner orders with the encounter's other abilities, and outlives Tsakhia leaving the table mid-encounter. A subroutine a card's text resolves off the encounter (ZATO City Grid's, Mycoweb's) is not replaced.
+- **Cat's Cradle, Ivik** (MS 5): "code gate ice" is a code gate as printed (`CardFilter::IceOfType`, a definition word), so ice that gained the subtype for a run is neither taxed by Cat's Cradle nor counted by Ivik; no card in the pool gives ice a subtype before it is rezzed, and Ivik counts rezzed ice outside any run.
 - **Hush, Klevetnik** (PH 8): CR 9.12.1d's order of dependent effects is not built; a card's loss is read off the cards hosted on it and the lingering list directly, which is the order 9.12.1e gives hosted objects and all the pool needs.
 
 ### Recorded deviations from the Comprehensive Rules
@@ -405,6 +406,7 @@ A card on the list is a term to write or a reading to repair, never a card to ta
 - **Midnight Sun Stage 2's cards it never plays** (each Runner deck against Hostile Bid, seed 2, 48 planner games): Endurance (8[credit]; random seats installed it twice in 96 games and never used its break, which only its test reaches), Environmental Testing, PAN-Weave (its meat damage) and Chastushka (a sabotage the Corp chooses).
 - **Midnight Sun Stage 3's cards it never plays** (Burn Rate and Dead Reckoning against Hostile Bid, seed 2, 48 planner games): Into the Depths (34 plays by random seats in 96 games), Ghosttongue, The Twinning; Daeg, First Net-Cat installed once.
 - **Midnight Sun Stage 4's cards it never plays** (each edited Corp deck against Safety Net, seed 2, 48 planner games): Mutually Assured Destruction; Drago Ivanov's and Vladisibirsk City Grid's abilities (installed 59 and 65 times, never used); Mestnichestvo's encounter offer, because it never advances the ice; Moon Pool used once; Mavirus never rezzed.
+- **Midnight Sun Stage 5's cards it barely plays** (the Corp decks against Safety Net, Hit List against Hostile Bid, seed 2, 48 planner games): Trust Operation played once (19 times by random seats in 96 games); Cat's Cradle installed seven times (38).
 - **Economy resources and programs it does not value**: Friend of a Friend, Valentina Ferreira Carvalho, Coalescence; Laser Pointer, Banner; Monkeywrench, Saci, Pichação, Urban Art Vernissage; Lago Paranoá Shelter; AirbladeX (JSRF Ed.); the Core Set interrupts Decoy, Net Shield and Sacrificial Construct.
 - **Abilities it never uses**: M.I.C.'s trash, Arissana Rocha Nahu's, Epiphany Analytica's counter; identity and multi-click abilities generally (Phase 1 §8); over-advancing for Dividends.
 - **Breaks the evaluator could not price** — paid: Matryoshka's hosted copies, Lobisomem's and Audrey v2's counters, Hantu's counter pump and Tremolo's reduced cost are read as the engine charges them since Phase 5 §28 (2 October 2026), and the planner hosts a copy of Matryoshka ahead of a run worth the two clicks (0 → 11 hosts over 144 Hit List games). **Still owed:** Botulus and Poison Vial, whose `BreakSubroutinesUnconditionally` no evaluator reading prices (Botulus's would also need its host-ICE requirement read); a standing value for stock on the rig, so a copy is hosted on a turn with no run worth both clicks. Madani's hosted programs are paid (Phase 5 §30).
@@ -761,8 +763,8 @@ Grid, Tsakhia, World Tree.
 4. **Advancement counters** (built, 2 October 2026): Vladisibirsk City Grid, Drago Ivanov,
    Mestnichestvo, Chekist Scion, Mutually Assured Destruction, Moon Pool, Azef Protocol,
    Midnight-3 Arcology, Mavirus. Stage 4 is complete.
-5. **Ice words:** Cat's Cradle, Ivik, Wave, Bathynomus, Stavka, Hákarl 1.0,
-   Trust Operation.
+5. **Ice words** (built, 2 October 2026): Cat's Cradle, Ivik, Wave, Bathynomus, Stavka, Hákarl 1.0,
+   Trust Operation. Stage 5 is complete.
 6. **Mark on PH's rule, then access outside a breach:** Nyusha "Sable"
    Sintashta, Carpe Diem, Backstitching, Virtuoso, Pinhole Threading, Deep
    Dive.
@@ -788,6 +790,7 @@ Excavator.
 - **Stage 2** — eleven Runner cards, composed, with two words widened: a virus program counted apart in the turn log, and a breaker's strength remembered past its own trash cost (`claude/serene-einstein-6bhlig`, 2 October 2026).
 - **Stage 3** — charge and core damage: ten Runner cards with no new `Effect`, a damage suffered and a spend off an installed card as moments, a count of ice passed this run, a payment word for runs on central servers, and two Sweep decks, Burn Rate (Esâ Afontov) and Dead Reckoning (Captain Padma Isbister) (`claude/serene-einstein-6bhlig`, 2 October 2026).
 - **Stage 4** — advancement counters: nine Corp cards with no new `Effect`, an agenda's own additional cost to score, a discard step skipped for a turn, and one amount plus another (`claude/serene-einstein-6bhlig`, 2 October 2026).
+- **Stage 5** — ice words: seven cards with no new `Effect`, a scope over each piece of ice of a kind, ice protecting a named server, and the Runner kept off the paid abilities printed on bioroid ice (`claude/serene-einstein-6bhlig`, 2 October 2026).
 
 ### 6. Uprising and its Booster Pack — 65 cards (C 10 / V 37 / M 18)
 

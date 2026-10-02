@@ -1,0 +1,60 @@
+{
+  "id": "trust_operation",
+  "title": "Trust Operation",
+  "side": "Corp",
+  "card_type": "Operation",
+  "cost": 0,
+  "play_requirement": "IsTagged",
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "PromptChooseCards": {
+            "side": "Corp",
+            "source": "OpponentInstalled",
+            "filter": {
+              "CardType": "Resource"
+            },
+            "min": 1,
+            "max": 1,
+            "reveal": false,
+            "shuffle_after": false,
+            "destination": "OpponentDiscard"
+          }
+        },
+        {
+          "PromptChooseCards": {
+            "side": "Corp",
+            "source": "OwnArchives",
+            "filter": {
+              "CardTypeOneOf": [
+                {
+                  "Ice": "Barrier"
+                },
+                "Agenda",
+                "Asset",
+                "Upgrade"
+              ]
+            },
+            "min": 1,
+            "max": 1,
+            "reveal": false,
+            "shuffle_after": false,
+            "then": {
+              "PromptInstallCorpCard": {
+                "origin_zone": "OwnArchives",
+                "ignore_costs": true,
+                "rez": true
+              }
+            }
+          }
+        }
+      ],
+      "text": "Trash 1 installed resource. Install and rez 1 card from Archives, ignoring all costs."
+    }
+  ],
+  "built_from": 33065,
+  "is_playable": true
+}

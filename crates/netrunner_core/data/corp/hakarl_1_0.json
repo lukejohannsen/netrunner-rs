@@ -1,0 +1,76 @@
+{
+  "id": "hakarl_1_0",
+  "title": "Hákarl 1.0",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Barrier"
+  },
+  "cost": 5,
+  "strength": 4,
+  "triggers": [
+    {
+      "trigger": "OnRez",
+      "subject": "This",
+      "requirement": "RezzedDuringRunAgainstThisServer",
+      "effects": [
+        {
+          "OfferPaidChoice": {
+            "side": "Corp",
+            "cost": {
+              "Derez": {
+                "filter": "NotSourceCard",
+                "count": 1
+              }
+            },
+            "if_paid": {
+              "Prohibit": {
+                "what": "BioroidIceAbilities",
+                "until": "Turn"
+              }
+            },
+            "if_declined": {
+              "Sequence": []
+            },
+            "text": "you may derez another installed card. If you do, the Runner cannot use paid abilities printed on bioroid ice for the remainder of this turn"
+          }
+        }
+      ],
+      "text": "When you rez this ice during a run against this server, you may derez another installed card. If you do, the Runner cannot use paid abilities printed on bioroid ice for the remainder of this turn."
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "used_by": "Runner",
+      "cost": {
+        "LoseClicks": 1
+      },
+      "requirement": "EncounteringThisIce",
+      "effect": {
+        "BreakSubroutinesUnconditionally": {
+          "count": {
+            "Fixed": 1
+          }
+        }
+      },
+      "text": "Lose [click]: Break 1 subroutine on this ice. Only the Runner can use this ability."
+    }
+  ],
+  "subroutines": [
+    {
+      "text": "Do 1 core damage.",
+      "effect": {
+        "DealDamage": [
+          "Brain",
+          1
+        ]
+      }
+    },
+    {
+      "text": "End the run.",
+      "effect": "EndTheRun"
+    }
+  ],
+  "built_from": 32004,
+  "is_playable": true
+}

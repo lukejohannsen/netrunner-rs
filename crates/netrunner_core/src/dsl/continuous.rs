@@ -331,8 +331,16 @@ pub enum Scope {
     /// price asked onto nothing cannot know (`continuous::Target::
     /// InstallingOnto`).
     InstallingOntoThis(CardFilter),
-    /// Each piece of ice.
-    Ice,
+    /// Each piece of ice matching the filter — Fransofia Ward's "each piece
+    /// of ice" (`Any`), Cat's Cradle's "each piece of **code gate** ice".
+    /// The filter is read off the definition and off the copy, as
+    /// `IceProtectingThisServer`'s is; `IceOfType` is a definition word, so
+    /// a code gate is one as printed (a subtype gained for a run is not
+    /// asked of a rez cost — on the known-limits list). It was a bare `Ice`
+    /// until Cat's Cradle: no scope said "each piece of ice of a kind"
+    /// anywhere on the table, and `IceProtectingThisServer` is about one
+    /// server.
+    Ice(CardFilter),
     /// Each card in the root of the server this one is installed in,
     /// matching the filter.
     RootOfThisServer(CardFilter),

@@ -527,6 +527,14 @@ pub enum EffectRequirement {
     /// that is not one of three, which a list of ids cannot say
     /// (`EventFilter::Server`'s doc has the same sentence).
     ProtectingRemote,
+    /// This card is installed protecting this server — Bathynomus's "while
+    /// this ice is protecting **Archives**", `ProtectingRemote`'s sibling
+    /// for a server with a name. Composition didn't work: `ProtectingRemote`
+    /// is every server but three, and `ActingCardMatches(InServer(..))`
+    /// reads the definition, which has no place; a scope that reads the
+    /// copy (`IceProtectingThisServer`) is about every ice in a server,
+    /// not this one.
+    Protecting(crate::rules::ServerId),
     CurrentlyAccessingInstalledCard {
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
         rezzed_only: bool,

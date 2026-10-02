@@ -290,6 +290,7 @@ fn cannot_words(what: netrunner_core::dsl::Prohibition) -> &'static str {
         Prohibition::Access => "the Runner cannot access that card",
         Prohibition::BreakSubroutines => "the Runner's abilities cannot break subroutines",
         Prohibition::DiscardStep => "the Corp skips their discard step",
+        Prohibition::BioroidIceAbilities => "the Runner cannot use paid abilities printed on bioroid ice",
     }
 }
 

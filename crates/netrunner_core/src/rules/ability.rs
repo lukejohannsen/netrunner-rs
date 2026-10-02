@@ -4050,6 +4050,10 @@ pub fn check_requirement(
                 .is_some_and(|installed| installed.slot == InstallSlot::Ice && matches!(installed.server, ServerId::Remote(_)));
             if protecting { Ok(()) } else { Err(RulesError::RequirementNotMet) }
         }
+        EffectRequirement::Protecting(server) => {
+            let protecting = acting_corp_install(state, ctx).is_some_and(|installed| installed.slot == InstallSlot::Ice && installed.server == *server);
+            if protecting { Ok(()) } else { Err(RulesError::RequirementNotMet) }
+        }
         EffectRequirement::AgendaCameFromThisCardsServer => {
             // `AgendaScored` names the server; a steal names none, so it
             // comes off the run the steal necessarily happened during.
@@ -4459,6 +4463,7 @@ pub(crate) fn consume_requirement(
         | EffectRequirement::CurrentlyAccessingInstalledCard { .. }
         | EffectRequirement::AgendaCameFromThisCardsServer
         | EffectRequirement::ProtectingRemote
+        | EffectRequirement::Protecting(_)
         | EffectRequirement::ActingCardMatches(_)
         | EffectRequirement::ThisAgendaScoredThisTurn
         | EffectRequirement::SubroutineResolvedThisRun

@@ -1587,7 +1587,7 @@ impl CardDefinition {
             let hosted = matches!(self.card_type, CardType::Program | CardType::Hardware | CardType::Resource);
             let played = matches!(self.card_type, CardType::Event | CardType::Operation);
             if !matches!(self.card_type, CardType::Ice(_)) && effect.condition.as_ref().is_some_and(says_protecting_remote) {
-                return misfit("ProtectingRemote", "only a piece of ice protects a server");
+                return misfit("Protecting", "only a piece of ice protects a server");
             }
             // A score is the sum of what each card in a score area is worth
             // (`win::score`), and the threat level is the greater score: an
@@ -1613,7 +1613,7 @@ impl CardDefinition {
                 (_, Scope::IceProtectingThisServer(_)) if self.card_type != CardType::Upgrade && self.card_type != CardType::Asset && !self.installs_on_ice => {
                     return misfit("IceProtectingThisServer", "only an asset or an upgrade is in a server's root, and only a Trojan is hosted on its ice");
                 }
-                (ContinuousKind::Strength(_), Scope::This | Scope::Host | Scope::Ice | Scope::IceProtectingThisServer(_) | Scope::Rig(_)) => {}
+                (ContinuousKind::Strength(_), Scope::This | Scope::Host | Scope::Ice(_) | Scope::IceProtectingThisServer(_) | Scope::Rig(_)) => {}
                 (ContinuousKind::Strength(_), _) => return misfit("Strength", "strength belongs to this card, its host, ice, or the rig's cards"),
                 (ContinuousKind::Memory(_), Scope::Controller) if self.side == Side::Runner => {}
                 (ContinuousKind::Memory(_), _) => return misfit("Memory", "memory is the Runner's, so it applies to a Runner card's `Controller`"),
@@ -1638,14 +1638,14 @@ impl CardDefinition {
                 }
                 (ContinuousKind::InstallCost(_), Scope::This | Scope::Installing(_) | Scope::InstallingOntoThis(_)) => {}
                 (ContinuousKind::InstallCost(_), _) => return misfit("InstallCost", "an install cost is this card's own or that of a card being `Installing`"),
-                (ContinuousKind::RezCost(_), Scope::This | Scope::Ice | Scope::RootOfThisServer(_) | Scope::IceProtectingThisServer(_)) => {}
+                (ContinuousKind::RezCost(_), Scope::This | Scope::Ice(_) | Scope::RootOfThisServer(_) | Scope::IceProtectingThisServer(_)) => {}
                 (ContinuousKind::RezCost(_), _) => return misfit("RezCost", "only an installed Corp card is rezzed"),
                 (ContinuousKind::TrashCost(_), Scope::This | Scope::RootOfThisServer(_)) => {}
                 (ContinuousKind::TrashCost(_), _) => return misfit("TrashCost", "a trash cost is this card's own or that of a card in its server's root"),
                 (ContinuousKind::GainSubtype(IceType::Other), _) => {
                     return Err(CardValidationError::OtherIsNotAnIceType(self.id.clone(), "a card gaining it"));
                 }
-                (ContinuousKind::GainSubtype(_), Scope::This | Scope::Host | Scope::Ice) => {}
+                (ContinuousKind::GainSubtype(_), Scope::This | Scope::Host | Scope::Ice(_)) => {}
                 (ContinuousKind::GainSubtype(_), _) => return misfit("GainSubtype", "an ice subtype is gained by ice: this card, its host, or each piece"),
                 (ContinuousKind::PlayCost(_) | ContinuousKind::PlayClicks(_), Scope::This) if !played => {
                     return misfit("PlayCost", "only an event or an operation is played");
@@ -1729,10 +1729,11 @@ fn broke_printed_with(requirement: &EffectRequirement, named: &mut Vec<CardSubty
     }
 }
 
-/// Whether `requirement` asks `ProtectingRemote` anywhere in it.
+/// Whether `requirement` asks `ProtectingRemote` or `Protecting` anywhere
+/// in it.
 fn says_protecting_remote(requirement: &EffectRequirement) -> bool {
     match requirement {
-        EffectRequirement::ProtectingRemote => true,
+        EffectRequirement::ProtectingRemote | EffectRequirement::Protecting(_) => true,
         EffectRequirement::Not(inner) => says_protecting_remote(inner),
         EffectRequirement::And(a, b) => says_protecting_remote(a) || says_protecting_remote(b),
         _ => false,
@@ -2139,7 +2140,7 @@ mod tests {
         assert_eq!(with(Side::Runner, CardType::Hardware, None, ContinuousKind::Strength(flat(1)), Scope::Host).validate(), Ok(()));
         assert_eq!(with(Side::Runner, CardType::Hardware, None, ContinuousKind::Memory(flat(1)), Scope::Controller).validate(), Ok(()));
         assert_eq!(with(Side::Corp, CardType::Identity, None, ContinuousKind::HandSize(flat(2)), Scope::Controller).validate(), Ok(()));
-        assert_eq!(with(Side::Runner, CardType::Resource, None, ContinuousKind::RezCost(flat(1)), Scope::Ice).validate(), Ok(()));
+        assert_eq!(with(Side::Runner, CardType::Resource, None, ContinuousKind::RezCost(flat(1)), Scope::Ice(crate::dsl::CardFilter::Any)).validate(), Ok(()));
         assert_eq!(with(Side::Corp, CardType::Upgrade, None, ContinuousKind::TrashCost(flat(2)), Scope::RootOfThisServer(asset())).validate(), Ok(()));
 
         // A strength with nothing to change; memory for a player who has none.
@@ -2149,7 +2150,7 @@ mod tests {
         assert!(refused(with(Side::Corp, CardType::Ice(IceType::Barrier), Some(1), ContinuousKind::GainSubtype(IceType::Sentry), Scope::Host)));
         assert!(refused(with(Side::Corp, CardType::Ice(IceType::Barrier), Some(1), ContinuousKind::TrashCost(flat(1)), Scope::RootOfThisServer(asset()))));
         // A kind aimed at something it cannot change.
-        assert!(refused(with(Side::Runner, CardType::Hardware, None, ContinuousKind::Memory(flat(1)), Scope::Ice)));
+        assert!(refused(with(Side::Runner, CardType::Hardware, None, ContinuousKind::Memory(flat(1)), Scope::Ice(crate::dsl::CardFilter::Any))));
         assert!(refused(with(Side::Runner, CardType::Hardware, None, ContinuousKind::HandSize(flat(1)), Scope::This)));
         assert!(refused(with(Side::Runner, CardType::Hardware, None, ContinuousKind::InstallCost(flat(-1)), Scope::Controller)));
         assert!(refused(with(Side::Runner, CardType::Hardware, None, ContinuousKind::BoostsLastTheRun, Scope::Controller)));

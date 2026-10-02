@@ -21497,4 +21497,170 @@ mod midnight_sun {
         assert_eq!(counters_on(&trashed, "leech"), Some(0), "purge virus counters");
         assert!(trashed.corp.installed.is_empty());
     }
+
+    // ---- Stage 5: ice words ----
+
+    /// The run in progress, its windows passed, up to the encounter.
+    fn on_to_the_encounter(mut state: GameState, registry: &CardRegistry) -> GameState {
+        for _ in 0..12 {
+            if state.active_run.as_ref().is_some_and(|run| run.phase == crate::rules::RunPhase::EncounterIce) {
+                return state;
+            }
+            let action = match &state.paid_ability_window {
+                Some(window) => PlayerAction::PassPriority { side: window.active_priority },
+                None => PlayerAction::ContinueRun,
+            };
+            state = apply_action(&state, registry, action).expect("onward").0;
+        }
+        panic!("never encountered: {:?}", state.active_run.as_ref().map(|run| run.phase));
+    }
+
+    fn rez_cost_delta(state: &GameState, registry: &CardRegistry, card: &str) -> i32 {
+        crate::rules::continuous::rez_cost_delta(state, registry, install_of(state, card))
+    }
+
+    /// "Each piece of **code gate** ice": the scope reads a filter now, and
+    /// a barrier is not taxed.
+    #[test]
+    fn cats_cradle_raises_every_code_gate_rez_by_one_and_breaks_code_gate_subroutines() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.rig = vec![in_rig("cats_cradle", 1, 0)];
+        state.corp.installed = vec![ice_at("enigma", ServerId::Hq, false), ice_at("ice_wall", ServerId::Remote(0), false)];
+        assert_eq!(rez_cost_delta(&state, &registry, "enigma"), 1, "a code gate");
+        assert_eq!(rez_cost_delta(&state, &registry, "ice_wall"), 0, "a barrier");
+
+        let rezzed = rez_on_approach(&state, &registry, "enigma");
+        assert_eq!(rezzed.corp.resources.credits, Credits(6), "3 printed + 1");
+        let encountering = on_to_the_encounter(rezzed, &registry);
+        assert!(use_ability(&encountering, &registry, "cats_cradle", 0).is_err(), "strength 1 against 2");
+        let boosted = use_ability(&encountering, &registry, "cats_cradle", 1).expect("1[credit]: +1 strength");
+        assert_eq!(strength_of(&boosted, &registry, "cats_cradle"), 2);
+        let broke = use_ability(&boosted, &registry, "cats_cradle", 0).expect("1[credit]: break 1 code gate subroutine");
+        assert_eq!((broken(&broke), broke.runner.resources.credits), (1, Credits(8)));
+    }
+
+    #[test]
+    fn ivik_costs_a_credit_less_to_rez_for_each_rezzed_code_gate_and_does_net_damage_then_ends_the_run() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.grip = vec![id("sure_gamble"); 3];
+        state.corp.installed = vec![
+            ice_at("ivik", ServerId::Hq, false),
+            ice_at("enigma", ServerId::RnD, true),
+            ice_at("wave", ServerId::Archives, true),
+            ice_at("pulse", ServerId::Remote(0), false),
+            ice_at("ice_wall", ServerId::Remote(1), true),
+        ];
+        assert_eq!(rez_cost_delta(&state, &registry, "ivik"), -2, "two rezzed code gates: not the unrezzed Pulse, not the barrier");
+        let rezzed = rez_on_approach(&state, &registry, "ivik");
+        assert_eq!(rezzed.corp.resources.credits, Credits(5), "7 - 2");
+        let (done, _) = pass_until_settled(on_to_the_encounter(rezzed, &registry), &registry);
+        assert_eq!(done.runner.grip.len(), 1, "do 2 net damage");
+        assert!(done.active_run.is_none(), "end the run");
+    }
+
+    #[test]
+    fn wave_rezzed_on_a_run_at_its_server_may_fetch_ice_from_rnd_and_pays_per_rezzed_harmonic() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.r_and_d = vec![id("hedge_fund"), id("ice_wall")];
+        state.corp.installed = vec![ice_at("wave", ServerId::Hq, false), ice_at("pulse", ServerId::RnD, true)];
+        let asked = rez_on_approach(&state, &registry, "wave");
+        assert_eq!(offered(&asked), Some(2), "you may search R&D");
+        assert!(!choosing_cards(&choose(&asked, &registry, 1)), "declined: no search");
+        let searching = choose(&asked, &registry, 0);
+        assert_eq!(toggles(&searching, &registry).len(), 1, "a piece of ice: not Hedge Fund");
+        let (found, _) = pick(&searching, &registry, toggles(&searching, &registry)[0]);
+        assert_eq!((found.corp.hq.clone(), found.corp.r_and_d.clone()), (vec![id("ice_wall")], vec![id("hedge_fund")]), "added to HQ");
+        assert_eq!(found.corp.resources.credits, Credits(8));
+        let (done, _) = pass_until_settled(on_to_the_encounter(found, &registry), &registry);
+        assert_eq!(done.corp.resources.credits, Credits(10), "Wave and Pulse: 2 rezzed harmonic ice");
+
+        let mut elsewhere = runner_turn();
+        elsewhere.corp.installed = vec![ice_at("wave", ServerId::Hq, true)];
+        assert!(offered(&to_the_encounter(&elsewhere, &registry)).is_none(), "already rezzed: nothing asks");
+    }
+
+    #[test]
+    fn bathynomus_gets_three_strength_only_while_protecting_archives() {
+        let registry = registry();
+        for (server, strength) in [(ServerId::Archives, 4), (ServerId::Hq, 1)] {
+            let mut state = runner_turn();
+            state.corp.installed = vec![ice_at("bathynomus", server, true)];
+            let (running, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server }).expect("run");
+            let (approached, _) = crate::rules::test_support::continue_run(&running, &registry).expect("approach");
+            assert_eq!(crate::rules::test_support::ice_strength_in_run(&approached, &registry, 0), strength, "{server:?}");
+        }
+    }
+
+    #[test]
+    fn stavka_may_trash_another_install_as_it_is_rezzed_for_five_strength_this_run() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.installed = vec![ice_at("stavka", ServerId::Hq, false), rezzed_root_at("pad_campaign", 0)];
+        let asked = rez_on_approach(&state, &registry, "stavka");
+        let choice = asked.pending_paid_choice.as_ref().expect("when you rez this ice");
+        assert!(matches!(&choice.cost, Cost::Trash { from: crate::dsl::CardZoneRef::OwnInstalled, count: 1, .. }), "{:?}", choice.cost);
+        let (paid, _) = apply_action(&asked, &registry, accept()).expect("trash the PAD Campaign");
+        assert!(!paid.corp.installed.iter().any(|card| card.card == id("pad_campaign")));
+        assert_eq!(crate::rules::test_support::ice_strength_in_run(&paid, &registry, 0), 7, "2 + 5");
+        let declined = decline(&asked, &registry);
+        assert_eq!(crate::rules::test_support::ice_strength_in_run(&declined, &registry, 0), 2);
+    }
+
+    /// The bioroid's own break is the paid ability it forbids, so a derez
+    /// turns Hákarl's way through off for the turn.
+    #[test]
+    fn hakarl_may_derez_another_card_to_forbid_the_paid_abilities_on_bioroid_ice_for_the_turn() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.installed = vec![ice_at("hakarl_1_0", ServerId::Hq, false), rezzed_root_at("pad_campaign", 0)];
+        let hakarl = PlayerAction::ActivateAbility { target: fixture_install_id("hakarl_1_0"), ability_index: 0 };
+        let asked = rez_on_approach(&state, &registry, "hakarl_1_0");
+        let choice = asked.pending_paid_choice.as_ref().expect("rezzed during a run against this server");
+        assert!(matches!(&choice.cost, Cost::Derez { count: 1, .. }), "{:?}", choice.cost);
+
+        let (paid, _) = apply_action(&asked, &registry, accept()).expect("derez the PAD Campaign");
+        assert!(!paid.corp.installed.iter().any(|card| card.card == id("pad_campaign") && card.rezzed), "derezzed");
+        assert!(crate::rules::continuous::cannot(&paid, &registry, crate::dsl::Prohibition::BioroidIceAbilities));
+        let locked = on_to_the_encounter(paid, &registry);
+        assert!(!crate::rules::legal_actions_for(&locked, &registry, Side::Runner).contains(&hakarl), "not offered");
+        assert!(matches!(apply_action(&locked, &registry, hakarl.clone()), Err(RulesError::AbilityProhibited { .. })));
+
+        let open = on_to_the_encounter(decline(&asked, &registry), &registry);
+        assert!(crate::rules::legal_actions_for(&open, &registry, Side::Runner).contains(&hakarl));
+        let broke = use_ability(&open, &registry, "hakarl_1_0", 0).expect("lose [click]: break 1 subroutine on this ice");
+        assert_eq!((broken(&broke), broke.runner.resources.clicks), (1, Clicks(2)), "a click for the run and one for the break");
+    }
+
+    /// Stavka rezzed by Trust Operation, outside any run: its "may trash"
+    /// is still asked, and the strength "for the remainder of the run" has
+    /// no run to last.
+    #[test]
+    fn trust_operation_needs_a_tag_trashes_a_resource_and_installs_and_rezzes_from_archives_for_free() {
+        let registry = registry();
+        let mut state = base_state();
+        state.runner.tags = 1;
+        state.runner.rig = vec![in_rig("telework_contract", 0, 0)];
+        state.corp.hq = vec![id("trust_operation")];
+        state.corp.archives = vec![ArchivedCard { card: id("stavka"), facedown: true }];
+        state.corp.installed = vec![rezzed_root_at("pad_campaign", 0)];
+        let play = PlayerAction::PlayOperation { card_id: id("trust_operation") };
+        let (asked, _) = apply_action(&state, &registry, play.clone()).expect("play");
+        let (trashed, _) = pick(&asked, &registry, toggles(&asked, &registry)[0]);
+        assert!(trashed.runner.rig.is_empty(), "trash 1 installed resource");
+        assert_eq!(trashed.runner.heap, vec![id("telework_contract")]);
+        let (chosen, _) = pick(&trashed, &registry, 0);
+        let (landed, _) = apply_action(&chosen, &registry, PlayerAction::ChooseServerForPendingDecision { server: ServerId::Hq }).expect("install");
+        let stavka = landed.corp.installed.iter().find(|card| card.card == id("stavka")).expect("installed");
+        assert!(stavka.rezzed, "and rezzed");
+        assert_eq!(landed.corp.resources.credits, Credits(10), "ignoring all costs");
+        assert!(landed.pending_paid_choice.is_some(), "Stavka's rez asks");
+        let (paid, _) = apply_action(&landed, &registry, accept()).expect("no run: the trash happens, the strength has nowhere to last");
+        assert!(paid.lingering.is_empty());
+
+        state.runner.tags = 0;
+        assert!(apply_action(&state, &registry, play).is_err(), "play only if the Runner is tagged");
+    }
 }

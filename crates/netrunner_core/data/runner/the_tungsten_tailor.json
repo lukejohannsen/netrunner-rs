@@ -11,7 +11,9 @@
           "per": -1
         }
       },
-      "applies_to": "Ice",
+      "applies_to": {
+        "Ice": "Any"
+      },
       "text": "Each piece of ice gets −1 strength."
     }
   ],

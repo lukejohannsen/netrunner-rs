@@ -2395,6 +2395,18 @@ fn activate_ability(
     // and phase checks below, so they are applied to the side that will
     // actually be spending.
     let side = ability.used_by.unwrap_or(side);
+    // Hákarl 1.0's "the Runner cannot use paid abilities printed on
+    // bioroid ice": asked of the user, so a bioroid's ability the Corp
+    // uses is untouched, and here rather than in the action list, which
+    // probes this.
+    if side == Side::Runner
+        && card_def.side == Side::Corp
+        && matches!(card_def.card_type, CardType::Ice(_))
+        && card_def.subtypes.contains(&crate::dsl::CardSubtype::Bioroid)
+        && continuous::cannot(state, registry, crate::dsl::Prohibition::BioroidIceAbilities)
+    {
+        return Err(RulesError::AbilityProhibited { card: card_id });
+    }
     // A [click] ability is an action (CR 9.5.2a), taken in the action
     // window of its user's turn: never in a paid ability window, which
     // admits no actions (CR 9.2.7b). Mid-run it is refused already, by

@@ -6176,3 +6176,83 @@ every card.
   `determinize`, whose prior holds nine more cards (view and index
   alike): Corp agenda wins 58 → 55, Corp flatlines 31 → 27, Runner
   agenda wins 99 → 103, Runner deck-outs 4 → 7.
+
+#### Stage 5 — ice words (2 October 2026)
+
+`claude/serene-einstein-6bhlig`: Cat's Cradle, Ivik, Wave, Bathynomus,
+Stavka, Hákarl 1.0 and Trust Operation. **No new `Effect`.** Midnight Sun
+48 of 65, its booster pack 5 of 7; `MS_UNIMPLEMENTED` 24 → 17 and
+`MSBP_UNIMPLEMENTED` 3 → 2 (Hákarl 1.0 is a booster-pack card reprinted in
+the set, built from 32004). Four cards composed; three needed a word, each
+for every card.
+
+- **What each is made of.** Ivik's discount is Reverb's `RezCost` on its
+  own text, counted over Pulse's `CorpInstalls` with `IceOfType(CodeGate)`.
+  Wave is Pulse's `RezzedDuringRunAgainstThisServer` rez trigger over a
+  `PresentChoice` — "you *may* search", so a declined search shuffles
+  nothing — whose search is Tocsin's reveal from R&D into HQ, and its
+  subroutine Pulse's count of rezzed harmonic ice as a gain. Stavka is
+  Anvil's "you may trash 1 of your other installed cards" (`Cost::Trash`
+  with `NotSourceCard`) as an `OnRez` offer whose `if_paid` is Brasília
+  Government Grid's `ModifyStrength` on this ice for the run, under an
+  `EffectIf(RunInProgress)`: rezzed by Trust Operation outside a run, the
+  trash is still offered and the strength has no run to last. Trust
+  Operation is Hypoxia's `play_requirement: IsTagged`, Above the Law's
+  resource trash, and Reanimation Protocol's install `rez: true` with The
+  Powers That Be's `ignore_costs` out of Archives; an agenda installed by
+  it is revealed and left unrezzed, as the install already does. Cat's
+  Cradle is Abaasy's decoder; Hákarl's break is Ansel 2.0's
+  `BreakSubroutinesUnconditionally` for one click lost; Bathynomus's net
+  damage and Ivik's two subroutines are words the pool already had.
+- **Three words.** `Scope::Ice` takes a `CardFilter`: Cat's Cradle's "the
+  rez cost of each piece of **code gate** ice" is the first standing
+  effect about each piece of ice of a kind, read off the definition and
+  the copy as `IceProtectingThisServer`'s filter is; Fransofia Ward and
+  The Tungsten Tailor say `{"Ice": "Any"}`. `EffectRequirement::
+  Protecting(ServerId)`, `ProtectingRemote`'s sibling: Bathynomus's
+  "while this ice is protecting **Archives**" — `ActingCardMatches(InServer)`
+  reads the definition, which has no place, and a scope over a server's
+  ice is about every piece in it. `validate` holds it to ice as it holds
+  `ProtectingRemote`. And `Prohibition::BioroidIceAbilities`: Hákarl's "the
+  Runner cannot use paid abilities printed on bioroid ice for the
+  remainder of this turn", a lingering `Cannot` that
+  `engine::activate_ability` asks of a bioroid's ability the Runner would
+  use (`RulesError::AbilityProhibited`), so the action list, which probes
+  it, never offers one. Hákarl's derez is Kompromat's `Cost::Derez` over
+  any other rezzed install, as Brasília's is over ice.
+- **Fidelity limits:** "code gate ice" is a code gate as printed, so a
+  subtype gained for a run is neither taxed by Cat's Cradle nor counted by
+  Ivik (on the known-limits list).
+- **Client.** No new view field. `Prohibition::BioroidIceAbilities` has its
+  words in `prose` and the HUD's in-effect list, and a filtered
+  `Scope::Ice` reads "each piece of ice (…)" in the inspector's engine
+  reading.
+- **Decks.** Hit List takes two Cat's Cradle for its Conduit and its
+  Smartware Distributor; A Thousand Cuts two Ivik for two Tatu-Bola and
+  two Bathynomus for two Lionsmane; Retirement Package two Wave for two
+  Jaguarundi — a fourth harmonic ice beside Pulse, Reverb and Bloop — and
+  two Hákarl 1.0 for two Brân 1.0, bioroid barrier for bioroid barrier;
+  Tag, You're It two Trust Operation for two Retribution, gray op for gray
+  op, both needing a tag; Hostile Bid two Stavka for two Event Horizon,
+  destroyer sentry for destroyer sentry. Every card given up is still in
+  another Sweep deck.
+- **DSL ratio** (`pool_status.py`): unchanged at 17 of 97 `Effect`
+  variants single-use, 1 unused (`Trace`), now over 491 card files.
+- **Real play** (`--headless`, seed 2; random seats 96 games, planner
+  seats 48; each pair random / planner; the Corp decks against Safety Net,
+  Hit List against Hostile Bid). Ivik installed 74 / 37 and rezzed 0 / 6
+  (seven credits less its code gates is more than a random Corp saves);
+  Bathynomus rezzed 10 / 21, its subroutine fired 17 / 29 times; Wave
+  rezzed 70 / 52, its rez trigger fired 66 / 52 times; Hákarl 1.0 rezzed
+  33 / 18, its rez trigger 28 / 18, its click break used 25 / 30 times;
+  Stavka rezzed 13 / 25, its rez offer 13 / 25 times; Trust Operation
+  played 19 / 1; Cat's Cradle installed 38 / 7 and used 13 / 16 times.
+  **Bot debts:** the planner plays Trust Operation once in 48 games and
+  installs Cat's Cradle seven times; on the bot-debts list.
+- **Measured.** Both sweeps are green at 256 seeds, the card gate
+  included, so every new card was seen in play. `coverage_identical.py`
+  against Stage 4 (2f7c610, 192 games a report): random identical, view
+  and index alike — the sample matchups hold no Sweep deck, and the three
+  words change nothing there. The planner seatings move by `determinize`,
+  whose prior holds seven more cards (view and index alike): Corp agenda
+  wins 58 → 59, Corp flatlines 27 → 28, Runner agenda wins 101 → 99.

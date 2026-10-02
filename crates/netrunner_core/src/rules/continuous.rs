@@ -251,7 +251,11 @@ fn applies(state: &GameState, source: &Source<'_>, scope: &Scope, target: &Targe
                 && crate::rules::pending_choice::copy_matches(state, filter, Some(*install))
         }
         (Scope::Trashing(filter), Target::Trashing { card, .. }) => card.card_type == CardType::Resource && card_matches_filter(card, filter),
-        (Scope::Ice, Target::Corp { card, root: false, .. }) => matches!(card.card_type, CardType::Ice(_)),
+        (Scope::Ice(filter), Target::Corp { card, root: false, install, .. }) => {
+            matches!(card.card_type, CardType::Ice(_))
+                && card_matches_filter(card, filter)
+                && crate::rules::pending_choice::copy_matches(state, filter, Some(*install))
+        }
         (Scope::RootOfThisServer(filter), Target::Corp { card, server, root: true, .. }) => {
             source.server == Some(*server) && card_matches_filter(card, filter)
         }

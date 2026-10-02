@@ -1995,12 +1995,23 @@ pub enum Prohibition {
     /// kind of its own: a step the player may not take for a duration is
     /// what `Lingering::Cannot` already is, and it rides in the view.
     DiscardStep,
+    /// The Runner cannot use paid abilities printed on **bioroid** ice —
+    /// Hákarl 1.0's "If you do, the Runner cannot use paid abilities
+    /// printed on bioroid ice for the remainder of this turn": the "Lose
+    /// [click]: Break 1 subroutine on this ice" that a bioroid prints for
+    /// the Runner (Ansel 2.0's, Hákarl's own). Asked by
+    /// `engine::activate_ability` of an ability on a bioroid the Runner
+    /// would use, so the action list, which probes that, never offers one.
+    /// Not `BreakSubroutines`, which is about one Runner install's
+    /// abilities, and not a `CardFilter` payload: a prohibition is `Copy`
+    /// and every one is asked by name (`Prohibition::ALL`).
+    BioroidIceAbilities,
 }
 
 impl Prohibition {
     /// Every prohibition, for a question put about each of them
     /// (`view::build_client_view`'s `standing_cannot`).
-    pub const ALL: [Prohibition; 10] = [
+    pub const ALL: [Prohibition; 11] = [
         Prohibition::ScoreAgendas,
         Prohibition::StealOrTrash,
         Prohibition::SpendOrLoseCreditPool,
@@ -2011,13 +2022,14 @@ impl Prohibition {
         Prohibition::Access,
         Prohibition::BreakSubroutines,
         Prohibition::DiscardStep,
+        Prohibition::BioroidIceAbilities,
     ];
 
     /// The player it binds.
     pub fn binds(self) -> Side {
         match self {
             Prohibition::ScoreAgendas | Prohibition::EndTheRun | Prohibition::DiscardStep => Side::Corp,
-            Prohibition::StealOrTrash | Prohibition::SpendOrLoseCreditPool | Prohibition::SpendCredits | Prohibition::RunOnRemote | Prohibition::AccessOthers | Prohibition::Access | Prohibition::BreakSubroutines => Side::Runner,
+            Prohibition::StealOrTrash | Prohibition::SpendOrLoseCreditPool | Prohibition::SpendCredits | Prohibition::RunOnRemote | Prohibition::AccessOthers | Prohibition::Access | Prohibition::BreakSubroutines | Prohibition::BioroidIceAbilities => Side::Runner,
         }
     }
 
@@ -2028,7 +2040,7 @@ impl Prohibition {
     pub(crate) fn counted_as(self) -> Option<crate::dsl::Trigger> {
         match self {
             Prohibition::RunOnRemote => Some(crate::dsl::Trigger::OnRunStart),
-            Prohibition::ScoreAgendas | Prohibition::StealOrTrash | Prohibition::SpendOrLoseCreditPool | Prohibition::SpendCredits | Prohibition::EndTheRun | Prohibition::AccessOthers | Prohibition::Access | Prohibition::BreakSubroutines | Prohibition::DiscardStep => None,
+            Prohibition::ScoreAgendas | Prohibition::StealOrTrash | Prohibition::SpendOrLoseCreditPool | Prohibition::SpendCredits | Prohibition::EndTheRun | Prohibition::AccessOthers | Prohibition::Access | Prohibition::BreakSubroutines | Prohibition::DiscardStep | Prohibition::BioroidIceAbilities => None,
         }
     }
 }

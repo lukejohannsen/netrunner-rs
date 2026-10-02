@@ -29,7 +29,7 @@
 
 use netrunner_core::cards::CardRegistry;
 use netrunner_core::dsl::{DeckEnd, Discount, 
-    Amount, EffectDuration, CardDefinition, CardId, CardTarget, CardZoneRef, ContinuousEffect, ContinuousKind, Cost, DamageType, Effect, EventFilter, Number, PaysFor, Preventable, Prohibition,
+    Amount, EffectDuration, CardDefinition, CardFilter, CardId, CardTarget, CardZoneRef, ContinuousEffect, ContinuousKind, Cost, DamageType, Effect, EventFilter, Number, PaysFor, Preventable, Prohibition,
     Scope, SubroutineBreakCount, TrashedFrom,
 };
 use netrunner_core::rules::{PendingDecision, Pool, ServerId, Side};
@@ -463,6 +463,7 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
                 (Prohibition::BreakSubroutines, _) if *this_install => "that card's abilities cannot break subroutines",
                 (Prohibition::BreakSubroutines, _) => "the Runner's abilities cannot break subroutines",
                 (Prohibition::DiscardStep, _) => "the Corp skips their discard step",
+                (Prohibition::BioroidIceAbilities, _) => "the Runner cannot use paid abilities printed on bioroid ice",
             };
             format!("{what} {}", duration(until))
         }
@@ -685,7 +686,8 @@ pub fn describe_continuous(effect: &ContinuousEffect) -> String {
         Scope::Installing(filter) if effect.first_each_turn => format!("the first card its controller installs each turn ({})", lower(format!("{filter:?}"))),
         Scope::Installing(filter) => format!("a card its controller installs ({})", lower(format!("{filter:?}"))),
         Scope::InstallingOntoThis(filter) => format!("a card its controller installs onto this card ({})", lower(format!("{filter:?}"))),
-        Scope::Ice => "each piece of ice".to_string(),
+        Scope::Ice(CardFilter::Any) => "each piece of ice".to_string(),
+        Scope::Ice(filter) => format!("each piece of ice ({})", lower(format!("{filter:?}"))),
         Scope::Rig(filter) => format!("each installed card of the Runner's ({})", lower(format!("{filter:?}"))),
         Scope::RootOfThisServer(filter) => format!("each card in the root of this server ({})", lower(format!("{filter:?}"))),
         Scope::IceProtectingThisServer(filter) => format!("each piece of ice protecting this server ({})", lower(format!("{filter:?}"))),
@@ -752,6 +754,7 @@ pub fn describe_continuous(effect: &ContinuousEffect) -> String {
             Prohibition::Access => "cannot access this card",
             Prohibition::BreakSubroutines => "cannot break subroutines",
             Prohibition::DiscardStep => "skips their discard step",
+            Prohibition::BioroidIceAbilities => "cannot use paid abilities printed on bioroid ice",
         }
         .to_string(),
         ContinuousKind::LosesAbilities => "loses all abilities except its printed subroutines".to_string(),
