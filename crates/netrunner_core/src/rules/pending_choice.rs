@@ -357,6 +357,12 @@ fn instance_matches_filter(
             corp_install.is_some_and(|c| c.installed_this_turn) || scored.is_some_and(|scored| installed_this_turn(state, scored))
         }
         CardFilter::ScoredThisTurn => scored.is_some_and(|scored| scored_this_turn(state, scored)),
+        // An install is advanced by the copy's own record; a scored one by
+        // what it kept as it left the table.
+        CardFilter::NotAdvancedThisTurn => {
+            corp_install.is_some_and(|c| c.this_turn.count(state.turn, crate::dsl::Trigger::OnAdvance) == 0)
+                || scored.is_some_and(|scored| !advanced_this_turn(state, scored))
+        }
         // Only an unrezzed installed Corp card can be a rez target. The
         // Runner has no rez state, so a rig card is never eligible.
         CardFilter::UnrezzedIce => corp_install.is_some_and(|c| !c.rezzed),
@@ -496,6 +502,12 @@ pub(crate) fn installed_this_turn(state: &GameState, scored: &crate::rules::stat
     scored_this_turn(state, scored) && scored.installed_on_scoring_turn
 }
 
+/// Whether the agenda in a score area was advanced this turn: scored this
+/// turn, and advanced on the turn it was scored.
+pub(crate) fn advanced_this_turn(state: &GameState, scored: &crate::rules::state::ScoredAgenda) -> bool {
+    scored_this_turn(state, scored) && scored.advanced_on_scoring_turn
+}
+
 /// The copy's half of a card filter, for the words about when a copy was
 /// installed or scored — Word on the Street's "when the Corp scores an
 /// agenda they **did not install this turn**" in a trigger's `when`, and
@@ -522,6 +534,10 @@ pub(crate) fn copy_matches(state: &GameState, filter: &crate::dsl::CardFilter, i
             installed.is_some_and(|c| !c.installed_this_turn) || scored.is_some_and(|scored| !installed_this_turn(state, scored))
         }
         CardFilter::ScoredThisTurn => scored.is_some_and(|scored| scored_this_turn(state, scored)),
+        CardFilter::NotAdvancedThisTurn => {
+            installed.is_some_and(|c| c.this_turn.count(state.turn, crate::dsl::Trigger::OnAdvance) == 0)
+                || scored.is_some_and(|scored| !advanced_this_turn(state, scored))
+        }
         // Isaac Liberdade's "each advanced piece of ice", asked of the ice
         // whose strength is read (`Scope::IceProtectingThisServer`).
         CardFilter::Advanced => installed.is_some_and(|c| c.advancement_tokens > 0),

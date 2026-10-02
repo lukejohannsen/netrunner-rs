@@ -183,6 +183,15 @@ pub enum ContinuousKind {
     /// area's cards (`win::agenda_value_in`), and the stored tally beside it
     /// adds the same number when the card lands.
     AgendaPoints(Number),
+    /// The agenda points the player needs to win, added to the match's
+    /// threshold (`MatchRules::winning_agenda_points`) — Issuaq Adaptics:
+    /// Sustaining Diversity's "For each hosted power counter, you need 1
+    /// less agenda point to win the game" (`Scope::Controller`, a negative
+    /// `per` of `HostedCounters`). Asked, never stored
+    /// (`continuous::points_to_win`), by the win check at every checkpoint
+    /// (CR 10.3.1c) and by the view. Composition didn't work: the
+    /// threshold was a match rule, read off the state.
+    AgendaPointsToWin(Number),
     /// The agenda's advancement requirement, added to what it prints —
     /// Ontological Dependence's "This agenda gets −1 advancement
     /// requirement for each core damage the Runner has taken this game".

@@ -81,6 +81,7 @@ fn every_field_of_the_view_is_accounted_for(view: ClientView) {
         servers,                // below
         scored_agendas,         // below
         scored_worth: _,        // drawn: hud::score_area, each row's points
+        points_to_win: _,       // drawn: hud::readouts ("3/5"), the score sheet's caption, the terminal's status line
         removed_from_game: _,   // drawn: under Archives' sheet; the terminal's identity line and card picker
         identity_counters: _,   // drawn: hud::identity_facts / identity_chip (AU Co.'s power counters)
         identity_flipped: _,    // drawn: hud::identity_side — the avatar chip, the identity sheet, the terminal's identity line
@@ -106,6 +107,7 @@ fn every_field_of_the_view_is_accounted_for(view: ClientView) {
         link_strength: _,       // drawn: hud::details
         scored_agendas: runner_scored, // below, as the Corp's
         scored_worth: _,        // drawn: hud::score_area, each row's points
+        points_to_win: _,       // drawn: as the Corp's
         servers_run_this_turn: _, // engine's: Red Team's legality and the evaluator; each run is in the log
         discarded_this_discard_phase: _, // engine's: re-evaluating a parked Magdalene choice in a sample; the discards are in the heap
         identity_flipped: _,    // drawn: hud::identity_side
@@ -140,6 +142,7 @@ fn every_field_of_the_view_is_accounted_for(view: ClientView) {
         agenda_counters: _,          // drawn: hud::ScoredCard::facts
         scored_on_turn: _,           // engine's: "scored this turn" filters; the score is in the log
         installed_on_scoring_turn: _, // engine's: "installed this turn" filters on a score-area copy
+        advanced_on_scoring_turn: _,  // engine's: "advanced this turn" filters on a score-area copy (Issuaq Adaptics)
         as_agenda: _,                // drawn: hud::ScoredCard::facts ("Added as an assassination agenda", "Cannot be forfeited")
     } in scored_agendas.into_iter().chain(runner_scored)
     {}
@@ -153,6 +156,7 @@ fn every_field_of_the_view_is_accounted_for(view: ClientView) {
         hosted_cards: _,          // drawn: board::facts ("Hosts …")
         hosted_facedown: _,       // drawn: board::facts ("Hosts facedown …")
         hosted_unseen: _,         // drawn: board::facts ("Hosts 2 cards facedown")
+        turned_facedown: _,       // drawn: board::rig::hosted_chip ("3 hosted, 1 facedown") on both clients' rig lines; board::facts
         hosted_cards_playable: _, // engine's: the action list offers the hosted cards; drawn as they are hosted
         counters: _,              // drawn: the rig's chip line, board::facts
     } in rig

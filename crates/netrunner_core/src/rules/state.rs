@@ -428,6 +428,13 @@ pub struct ScoredAgenda {
     /// (`CardFilter::InstalledThisTurn`).
     #[serde(default)]
     pub installed_on_scoring_turn: bool,
+    /// Whether it was advanced on the turn it was scored — the copy's
+    /// `InstalledCard::this_turn` count of `OnAdvance` as it left the table;
+    /// a counter a card's text placed is not advancing (CR 1.18.2). Issuaq Adaptics: Sustaining Diversity's "an agenda that
+    /// you did not install **or advance** this turn"
+    /// (`CardFilter::NotAdvancedThisTurn`). Read with `scored_on_turn`.
+    #[serde(default)]
+    pub advanced_on_scoring_turn: bool,
     /// Set when this is not an agenda but a card added "as an agenda"
     /// (CR 10.1.3): Myōshu, Word on the Street. It has only these
     /// properties — its points, and whether it may be forfeited — and none
@@ -442,7 +449,7 @@ impl ScoredAgenda {
     /// A scored agenda with no counters and no install handle — the shape
     /// tests and fixtures want when only the card's identity matters.
     pub fn plain(card: CardId) -> Self {
-        ScoredAgenda { card, install_id: InstallId::PLACEHOLDER, agenda_counters: 0, scored_on_turn: 0, installed_on_scoring_turn: false, as_agenda: None }
+        ScoredAgenda { card, install_id: InstallId::PLACEHOLDER, agenda_counters: 0, scored_on_turn: 0, installed_on_scoring_turn: false, advanced_on_scoring_turn: false, as_agenda: None }
     }
 }
 
@@ -545,6 +552,21 @@ pub struct InstalledRunnerCard {
     /// installed out of here by `Effect::InstallRunnerCardFromHost`.
     #[serde(default)]
     pub hosted_cards: Vec<CardId>,
+    /// How many of `hosted_cards` have been **turned facedown** — Matryoshka's copies,
+    /// turned facedown to pay for a break and faceup again as its turn
+    /// begins. A count rather than a flag per card: cards hosted facedown
+    /// without being installed are a group, "not ordered" (CR 1.13.7d), and
+    /// the only cards in the pool turned this way are copies of their host,
+    /// so which ones is nothing anybody can ask. Public, as the rig is: each
+    /// was faceup when hosted, and what was turned facedown is open
+    /// information (CR 1.13.7c). Never more than `hosted_cards`; read
+    /// through [`InstalledRunnerCard::faceup_hosted`]. Nothing takes a card
+    /// off a host that turns them facedown but its leaving play, which
+    /// takes the count with it. Not `CardDefinition::hosts_facedown`: Read-
+    /// Write Share hosts every card facedown, hidden from the Corp, and
+    /// none of them was ever faceup.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub turned_facedown: u32,
     /// Whether `hosted_cards` may be played or installed through the
     /// ordinary grip actions — Bling. Seeded from
     /// `CardDefinition::hosted_cards_playable_from_grip` at install, and
@@ -580,10 +602,22 @@ impl Default for InstalledRunnerCard {
             hosted_on_ice: None,
             hosted_on_rig_card: None,
             hosted_cards: Vec::new(),
+            turned_facedown: 0,
             hosted_cards_playable: false,
             this_turn: Default::default(),
         }
     }
+}
+
+impl InstalledRunnerCard {
+    /// How many of `hosted_cards` are faceup: all but `turned_facedown`.
+    pub fn faceup_hosted(&self) -> u32 {
+        u32::try_from(self.hosted_cards.len()).unwrap_or(u32::MAX).saturating_sub(self.turned_facedown)
+    }
+}
+
+pub(crate) fn is_zero(n: &u32) -> bool {
+    *n == 0
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]

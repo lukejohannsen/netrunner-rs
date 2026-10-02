@@ -344,13 +344,14 @@ fn enter_pending_choice(
     }
 
     // The trigger just fired may have trashed `card_id` itself (e.g. a
-    // self-trashing trap via `Effect::TrashCard(CardTarget::ThisCard)`) —
-    // presenting a `PendingChoice` for a card that's already gone would let
-    // the Runner "trash"/"steal" it a second time (`move_to_archives`
-    // doesn't verify the card is still where it thinks, so this would
-    // duplicate it into Archives). Treat a self-trash as this card's
-    // resolution instead, same as an explicit `TrashAccessedCard`.
-    if was_trashed(&events, card_id) {
+    // self-trashing trap via `Effect::TrashCard(CardTarget::ThisCard)`) or
+    // moved it elsewhere (`move_currently_accessed_card`) — presenting a
+    // `PendingChoice` for a card that's already gone would let the Runner
+    // "trash"/"steal" it a second time (`move_to_archives` doesn't verify
+    // the card is still where it thinks, so this would duplicate it into
+    // Archives). Treat it as this card's resolution instead, same as an
+    // explicit `TrashAccessedCard` (CR 7.1.7).
+    if left_its_place(&events, card_id) {
         events.extend(advance_or_finish(state, registry, server, card_id.clone())?);
         return Ok(events);
     }
@@ -368,6 +369,19 @@ fn enter_pending_choice(
 /// card's own trigger/avoidance effects.
 fn was_trashed(events: &[GameEvent], card_id: &CardId) -> bool {
     events.iter().any(|e| matches!(e, GameEvent::CardTrashed { card, .. } if card == card_id))
+}
+
+/// `was_trashed`, or moved anywhere else by a card's text while it was
+/// being accessed (`move_currently_accessed_card`): out of the game, into
+/// the Runner's score area, onto a rig card. Each ends the access (CR
+/// 7.1.7).
+fn left_its_place(events: &[GameEvent], card_id: &CardId) -> bool {
+    was_trashed(events, card_id)
+        || events.iter().any(|e| match e {
+            GameEvent::CardRemovedFromGame { side: Side::Corp, card } | GameEvent::CardHosted { card, .. } => card == card_id,
+            GameEvent::AddedToScoreAreaAsAgenda { side: Side::Runner, card, .. } => card == card_id,
+            _ => false,
+        })
 }
 
 /// Like `enter_pending_choice`, but for callers (`resolve_pay_access_trigger`/
@@ -1032,32 +1046,98 @@ pub fn trash_currently_accessed_card_without_cost(
     Ok(events)
 }
 
-/// Hosts the card being accessed faceup on the rig card `host` and ends
-/// its access, as a trash does (CR 7.1.7: "If a card moves to another
-/// location while it is being accessed, the access ends immediately") —
-/// `HostedCardOrigin::AccessedCard`: Cupellation's mid-access ability and
-/// Heliamphora's. It leaves its zone the way a trashed card does
-/// (`remove_from_corp_zone`, an install through `uninstall::corp_install`),
-/// a card in Archives included, and is hosted, not installed (CR 1.13.2a).
-/// `RulesError::NotInAccessPhase` when no card is at its access decision.
-pub(crate) fn host_currently_accessed_card(state: &mut GameState, registry: &CardRegistry, host: InstallId) -> Result<Vec<GameEvent>, RulesError> {
+/// Where a card's text puts the card the Runner is accessing — see
+/// [`move_currently_accessed_card`].
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum AccessedTo {
+    /// Faceup on the rig card `host`, not installed (CR 1.13.2a) —
+    /// `HostedCardOrigin::AccessedCard`: Cupellation's mid-access ability
+    /// and Heliamphora's.
+    Hosted(InstallId),
+    /// Out of the game — Nightmare Archive's "remove this asset from the
+    /// game", `Effect::RemoveFromGame(ThisCard)` resolving as the card
+    /// being accessed.
+    RemovedFromGame,
+    /// The Runner's score area as an agenda (CR 10.1.3) — Nightmare
+    /// Archive's "they may add it to their score area as an agenda worth
+    /// -1 agenda point", `Effect::AddToScoreAreaAsAgenda` resolving as the
+    /// card being accessed. Only the Runner accesses, so "their" is the
+    /// Runner's.
+    RunnerScoreArea(crate::dsl::AsAgenda),
+}
+
+/// Whether `card` is the card the Runner is accessing right now: at its
+/// access decision, or presented and still resolving its own "when
+/// accessed" (`AccessState::currently_accessing`). What a card's text says
+/// it does with itself then is what [`move_currently_accessed_card`] does.
+pub(crate) fn is_being_accessed(state: &GameState, card: &CardId) -> bool {
+    breaching(state)
+        && state.active_run.as_ref().and_then(|run| run.access_state.as_ref()).is_some_and(|access| match &access.phase {
+            AccessPhase::PendingChoice { card_id, .. } => card_id == card,
+            _ => access.currently_accessing.as_ref() == Some(card),
+        })
+}
+
+/// Moves the card being accessed to `to` and ends its access (CR 7.1.7:
+/// "If a card moves to another location while it is being accessed, the
+/// access ends immediately"), as a trash does. It leaves its zone the way a
+/// trashed card does (`remove_from_corp_zone`, an install through
+/// `uninstall::corp_install`), a card in Archives included.
+///
+/// At the access decision the breach moves on from here
+/// (`advance_or_finish`). Out of the card's own "when accessed", before
+/// the decision exists, `enter_pending_choice` sees the card has left
+/// (`left_its_place`) and moves on itself. A card that is no longer where
+/// it was accessed is not moved again. `RulesError::NotInAccessPhase` with
+/// nothing being accessed.
+///
+/// One function for the three places a card's text sends it: Cupellation
+/// hosted it, and Nightmare Archive was the second and third, which is
+/// when the host's version became this.
+pub(crate) fn move_currently_accessed_card(state: &mut GameState, registry: &CardRegistry, to: AccessedTo) -> Result<Vec<GameEvent>, RulesError> {
     let run = state.active_run.as_ref().ok_or(RulesError::NotInAccessPhase)?;
     if run.phase != RunPhase::AccessingCard {
         return Err(RulesError::NotInAccessPhase);
     }
     let access = run.access_state.as_ref().ok_or(RulesError::NotInAccessPhase)?;
-    let AccessPhase::PendingChoice { card_id, .. } = &access.phase else {
-        return Err(RulesError::NotInAccessPhase);
+    let (card_id, at_decision) = match &access.phase {
+        AccessPhase::PendingChoice { card_id, .. } => (card_id.clone(), true),
+        _ => (access.currently_accessing.clone().ok_or(RulesError::NotInAccessPhase)?, false),
     };
-    let (card_id, server, install) = (card_id.clone(), access.server, access.pending_install);
-    let host_card = state.find_rig_install(host).map(|installed| installed.card.clone()).ok_or(RulesError::InstallNotFound(host))?;
-    let (_, mut events) = remove_from_corp_zone(state, registry, &card_id, server, install)?;
-    if let Some(installed) = state.runner.rig.iter_mut().find(|installed| installed.install_id == host) {
-        installed.hosted_cards.push(card_id.clone());
+    let (server, install) = (access.server, access.pending_install);
+    let host_card = match to {
+        AccessedTo::Hosted(host) => Some(state.find_rig_install(host).map(|installed| installed.card.clone()).ok_or(RulesError::InstallNotFound(host))?),
+        _ => None,
+    };
+    let (from, mut events) = remove_from_corp_zone(state, registry, &card_id, server, install)?;
+    if matches!(from, RemovedFrom::Nowhere) {
+        return Ok(events);
     }
-    events.push(GameEvent::CardHosted { card: card_id.clone(), host: Some(host_card) });
-    events.extend(advance_or_finish(state, registry, server, card_id)?);
+    match to {
+        AccessedTo::Hosted(host) => {
+            if let Some(installed) = state.runner.rig.iter_mut().find(|installed| installed.install_id == host) {
+                installed.hosted_cards.push(card_id.clone());
+            }
+            events.push(GameEvent::CardHosted { card: card_id.clone(), host: host_card });
+        }
+        AccessedTo::RemovedFromGame => {
+            state.corp.removed_from_game.push(card_id.clone());
+            events.push(GameEvent::CardRemovedFromGame { side: Side::Corp, card: card_id.clone() });
+        }
+        AccessedTo::RunnerScoreArea(as_agenda) => {
+            events.push(ability::add_to_score_area_as_agenda(state, Side::Runner, card_id.clone(), as_agenda));
+        }
+    }
+    if at_decision {
+        events.extend(advance_or_finish(state, registry, server, card_id)?);
+    }
     Ok(events)
+}
+
+/// Hosts the card being accessed faceup on the rig card `host` and ends
+/// its access — [`move_currently_accessed_card`] to `AccessedTo::Hosted`.
+pub(crate) fn host_currently_accessed_card(state: &mut GameState, registry: &CardRegistry, host: InstallId) -> Result<Vec<GameEvent>, RulesError> {
+    move_currently_accessed_card(state, registry, AccessedTo::Hosted(host))
 }
 
 /// Resolves `PlayerAction::TrashAccessedCard`. See its doc comment for the

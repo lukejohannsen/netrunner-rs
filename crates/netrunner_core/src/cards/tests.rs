@@ -11673,7 +11673,7 @@ mod vantage_point {
         let registry = registry();
         let mut state = base_state();
         state.corp.scored_agendas =
-            vec![crate::rules::ScoredAgenda { card: id("lotus_haze"), install_id: InstallId(95), agenda_counters: 1, scored_on_turn: 0, installed_on_scoring_turn: false, as_agenda: None }];
+            vec![crate::rules::ScoredAgenda { card: id("lotus_haze"), install_id: InstallId(95), agenda_counters: 1, scored_on_turn: 0, installed_on_scoring_turn: false, advanced_on_scoring_turn: false, as_agenda: None }];
         state.corp.installed = vec![
             crate::rules::InstalledCard { install_id: InstallId(96), card: id("the_red_room"), server: ServerId::Hq, slot: InstallSlot::Root, rezzed: true, ..Default::default() },
             root_at("vulture_fund", 0),
@@ -19870,5 +19870,210 @@ mod parhelion {
         let broke = use_ability(&encounter(&state, &registry), &registry, "nanuq", 0).expect("2[credit]: break up to 2");
         assert_eq!(broken(&broke), 2);
         assert_eq!(broke.runner.resources.credits, Credits(8));
+    }
+
+    /// An agenda advanced to its requirement on an earlier turn and scored
+    /// now earns Issuaq Adaptics a power counter, and each counter takes a
+    /// point off what the Corp needs to win, in the win check and in the
+    /// view; an agenda advanced this turn earns nothing, and a counter a
+    /// card placed is not advancing.
+    #[test]
+    fn issuaq_adaptics_counts_old_agendas_and_lowers_the_corps_target() {
+        let registry = registry_with_a_plain_agenda();
+        let mut state = base_state();
+        state.corp.identity = Some(id("issuaq_adaptics_sustaining_diversity"));
+        let old = crate::rules::InstalledCard { advancement_tokens: 2, ..root_at("a_plain_agenda", 0) };
+        let fresh = crate::rules::InstalledCard { install_id: InstallId(4242), advancement_tokens: 1, ..root_at("a_plain_agenda", 1) };
+        let (old_id, fresh_id) = (old.install_id, fresh.install_id);
+        state.corp.installed = vec![old, fresh];
+        assert_eq!(crate::rules::continuous::points_to_win(&state, &registry, Side::Corp), 7);
+
+        let (scored, _) = apply_action(&state, &registry, PlayerAction::ScoreAgenda { target: old_id }).expect("score the old one");
+        let (scored, _) = pass_until_settled(scored, &registry);
+        assert_eq!(scored.corp.identity_counters, 1, "not installed or advanced this turn");
+        assert_eq!(crate::rules::continuous::points_to_win(&scored, &registry, Side::Corp), 6);
+        assert_eq!(crate::rules::continuous::points_to_win(&scored, &registry, Side::Runner), 7, "the Runner's target is the match's");
+        let view = crate::view::build_client_view(&scored, &registry, Side::Runner);
+        assert_eq!((view.corp.points_to_win, view.runner.points_to_win), (6, 7));
+
+        let (advanced, _) = apply_action(&scored, &registry, PlayerAction::AdvanceCard { target: fresh_id }).expect("advance");
+        let (again, _) = apply_action(&advanced, &registry, PlayerAction::ScoreAgenda { target: fresh_id }).expect("score the fresh one");
+        let (again, _) = pass_until_settled(again, &registry);
+        assert_eq!(again.corp.identity_counters, 1, "advanced this turn");
+
+        // Placed, not advanced (CR 1.18.2): the copy was never advanced.
+        let mut placed = scored.clone();
+        if let Some(card) = placed.corp.installed.iter_mut().find(|card| card.install_id == fresh_id) {
+            card.advancement_tokens = 2;
+        }
+        let (placed, _) = apply_action(&placed, &registry, PlayerAction::ScoreAgenda { target: fresh_id }).expect("score it");
+        let (placed, _) = pass_until_settled(placed, &registry);
+        assert_eq!(placed.corp.identity_counters, 2);
+    }
+
+    /// Two counters and five points win: the check asks the Corp's own
+    /// target at the checkpoint after the score, as it asks the 7.
+    #[test]
+    fn issuaq_adaptics_wins_short_of_seven() {
+        let registry = registry_with_a_plain_agenda();
+        let mut state = base_state();
+        state.corp.identity = Some(id("issuaq_adaptics_sustaining_diversity"));
+        state.corp.identity_counters = 1;
+        state.corp.scored_agendas = vec![crate::rules::ScoredAgenda::plain(id("a_plain_agenda")); 4];
+        let old = crate::rules::InstalledCard { advancement_tokens: 2, ..root_at("a_plain_agenda", 0) };
+        let target = old.install_id;
+        state.corp.installed = vec![old];
+        let (won, _) = apply_action(&state, &registry, PlayerAction::ScoreAgenda { target }).expect("score");
+        let (won, _) = pass_until_settled(won, &registry);
+        assert_eq!(won.corp.identity_counters, 2);
+        assert_eq!(won.phase, GamePhase::GameOver(Side::Corp), "5 points against a target of 5");
+    }
+
+    /// Rezzed, it is loaded with 6 bad publicity, which does the Runner no
+    /// good while hosted; each Corp turn takes one, and the turn that
+    /// empties it wins the game.
+    #[test]
+    fn superdeep_borehole_loads_six_bad_publicity_and_wins_when_it_is_empty() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.installed = vec![root_at("superdeep_borehole", 0)];
+        state.corp.r_and_d = vec![id("hedge_fund"); 3];
+        let target = state.corp.installed[0].install_id;
+        let (rezzed, _) = apply_action(&state, &registry, PlayerAction::RezIce { ice: target }).expect("rez for 6");
+        let (rezzed, _) = pass_until_settled(rezzed, &registry);
+        assert_eq!(rezzed.corp.installed[0].counters, 6, "loaded");
+        assert_eq!(rezzed.corp.bad_publicity, 0, "hosted, not the Corp's");
+
+        let mut next = rezzed.clone();
+        next.phase = GamePhase::Action(Side::Runner);
+        let next = begin_the_turn_of(next, &registry, Side::Corp);
+        assert_eq!(next.corp.installed[0].counters, 5);
+        assert_eq!(next.corp.bad_publicity, 1, "taken from it");
+        assert!(!next.is_over());
+
+        let mut last = rezzed;
+        last.phase = GamePhase::Action(Side::Runner);
+        last.corp.installed[0].counters = 1;
+        let mut won = last;
+        crate::rules::test_support::enter_start_of_turn(&mut won, &registry, Side::Corp);
+        let (won, _) = close_all_windows(won, &registry);
+        assert_eq!(won.corp.installed[0].counters, 0);
+        assert_eq!(won.phase, GamePhase::GameOver(Side::Corp), "empty: the Corp wins");
+    }
+
+    /// Accessed on top of R&D, Nightmare Archive is revealed, and the
+    /// Runner may take it as a −1: it leaves R&D for their score area and
+    /// the access ends with it, the run with nothing left to access.
+    #[test]
+    fn nightmare_archive_taken_is_a_minus_one_in_the_runners_score_area() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.r_and_d = vec![id("hedge_fund"), id("nightmare_archive")];
+        let (asked, events) = run_to_completion(state, &registry, ServerId::RnD);
+        assert!(events.iter().any(|event| matches!(event, GameEvent::CardRevealed { card, .. } if *card == id("nightmare_archive"))), "revealed in R&D");
+        assert_eq!(options(&asked), Some(2), "the Runner chooses");
+        let (taken, _) = choose(&asked, &registry, 0);
+        assert_eq!(taken.corp.r_and_d, vec![id("hedge_fund")]);
+        let scored = &taken.runner.scored_agendas;
+        assert_eq!(scored.iter().map(|entry| (entry.card.clone(), entry.as_agenda.map(|a| a.points))).collect::<Vec<_>>(), vec![(id("nightmare_archive"), Some(-1))]);
+        assert_eq!(crate::rules::score(&taken, &registry, Side::Runner), -1);
+        assert_eq!(taken.runner.brain_damage, 0);
+        assert!(taken.active_run.is_none(), "its access ended and nothing else was to be accessed");
+        assert!(!crate::rules::legal_actions(&taken, &registry).iter().any(|action| matches!(action, PlayerAction::TrashAccessedCard { .. } | PlayerAction::PassAccessedCard { .. })));
+    }
+
+    /// Refused, it does 1 core damage and leaves the game from its remote,
+    /// unrezzed as it was.
+    #[test]
+    fn nightmare_archive_refused_is_core_damage_and_gone_from_the_game() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.grip = vec![id("sure_gamble"), id("sure_gamble")];
+        state.corp.installed = vec![root_at("nightmare_archive", 0)];
+        let (asked, _) = run_to_completion(state, &registry, ServerId::Remote(0));
+        assert_eq!(options(&asked), Some(2));
+        let (refused, _) = choose(&asked, &registry, 1);
+        let (refused, _) = pass_until_settled(refused, &registry);
+        assert_eq!(refused.runner.brain_damage, 1, "1 core damage");
+        assert!(refused.corp.installed.is_empty());
+        assert_eq!(refused.corp.removed_from_game, vec![id("nightmare_archive")]);
+        assert!(refused.corp.archives.is_empty(), "removed, never trashed");
+        assert!(refused.runner.scored_agendas.is_empty());
+        assert!(refused.active_run.is_none());
+    }
+
+    /// With a second card to access, the breach goes on to it once
+    /// Nightmare Archive has left: the next card on R&D is the one offered.
+    #[test]
+    fn nightmare_archive_ends_its_own_access_and_the_breach_moves_on() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.grip = vec![id("the_makers_eye")];
+        state.corp.r_and_d = vec![id("hedge_fund"), id("hedge_fund"), id("nightmare_archive")];
+        let (state, _) = apply_action(&state, &registry, PlayerAction::PlayEvent { card_id: id("the_makers_eye") }).expect("The Maker's Eye");
+        let (state, _) = crate::rules::test_support::through_movement(&state, &registry).expect("continue to success");
+        let (asked, _) = apply_action(&state, &registry, PlayerAction::CompleteRun).expect("breach R&D");
+        let (taken, _) = choose(&asked, &registry, 0);
+        let access = taken.active_run.as_ref().and_then(|run| run.access_state.as_ref()).expect("still breaching");
+        assert!(matches!(&access.phase, crate::rules::AccessPhase::PendingChoice { card_id, .. } if *card_id == id("hedge_fund")), "{:?}", access.phase);
+        assert_eq!(taken.runner.scored_agendas.len(), 1);
+    }
+
+    /// Installed, it hosts copies of itself from the grip, a click each;
+    /// each break of X subroutines costs X[credit] and turns one hosted
+    /// copy facedown, so with none faceup it cannot break; and its turn
+    /// turns them faceup again.
+    #[test]
+    fn matryoshka_hosts_its_copies_and_spends_one_facedown_on_each_break() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.grip = vec![id("matryoshka"), id("matryoshka"), id("sure_gamble")];
+        state.runner.resources.credits = Credits(10);
+        let (state, _) = apply_action(&state, &registry, PlayerAction::InstallProgram { card_id: id("matryoshka"), trash_first: false }).expect("install");
+        let install = state.runner.rig[0].install_id;
+        let host = PlayerAction::ActivateAbility { target: install, ability_index: 0 };
+        let (asked, _) = apply_action(&state, &registry, host.clone()).expect("host a copy");
+        let (hosted, _) = apply_action(&asked, &registry, PlayerAction::ToggleCardSelection { position: 0 }).expect("the copy");
+        let (hosted, _) = apply_action(&hosted, &registry, PlayerAction::ConfirmCardSelection).expect("hosted");
+        assert_eq!(hosted.runner.rig[0].hosted_cards, vec![id("matryoshka")]);
+        assert_eq!(hosted.runner.grip, vec![id("sure_gamble")]);
+        assert_eq!(hosted.runner.rig.len(), 1, "hosted, not installed");
+        assert!(!crate::rules::legal_actions(&hosted, &registry).contains(&host), "no copy left in the grip");
+
+        let mut running = hosted;
+        running.corp.installed = vec![ice_at_hq("reverb")];
+        let encountering = encounter(&running, &registry);
+        let break_x = PlayerAction::ActivateAbility { target: install, ability_index: 1 };
+        let (asked, _) = apply_action(&encountering, &registry, break_x.clone()).expect("asks for X");
+        assert_eq!(asked.pending_payment.as_ref().map(|payment| payment.question.clone()), Some(crate::rules::PaymentAsk::X { max: 2 }));
+        let (broke, _) = apply_action(&asked, &registry, PlayerAction::ChooseNumber { amount: 2 }).expect("X = 2");
+        assert_eq!(broke.runner.resources.credits, Credits(5), "3 to install, 2 for X");
+        assert_eq!(broken(&broke), 2, "an AI breaks any subroutine");
+        assert_eq!(broke.runner.rig[0].turned_facedown, 1);
+        assert_eq!(broke.runner.rig[0].faceup_hosted(), 0);
+        let view = crate::view::build_client_view(&broke, &registry, Side::Corp);
+        assert_eq!(view.runner.rig[0].turned_facedown, 1, "public: it was faceup when hosted");
+        assert!(apply_action(&broke, &registry, break_x).is_err(), "no faceup copy to turn");
+
+        let mut next = broke;
+        next.active_run = None;
+        next.phase = GamePhase::Action(Side::Corp);
+        let next = begin_the_turn_of(next, &registry, Side::Runner);
+        assert_eq!(next.runner.rig[0].turned_facedown, 0, "turned faceup as the Runner's turn begins");
+        assert_eq!(next.runner.rig[0].hosted_cards.len(), 1);
+    }
+
+    /// Trashed, it takes its hosted copies to the heap with it, facedown
+    /// ones turned faceup (CR 8.1.4c).
+    #[test]
+    fn matryoshka_trashed_takes_its_copies_to_the_heap() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.rig = vec![crate::rules::InstalledRunnerCard { hosted_cards: vec![id("matryoshka"); 2], turned_facedown: 1, ..in_rig("matryoshka", 2, 0) }];
+        let card = id("matryoshka");
+        let mut ctx = crate::rules::ResolutionContext::for_install(fixture_install_id("matryoshka"), &card);
+        crate::rules::evaluate_effect(&mut state, &crate::dsl::Effect::TrashCard(crate::dsl::CardTarget::ThisCard), &mut ctx, &registry).expect("trash it");
+        assert!(state.runner.rig.is_empty());
+        assert_eq!(state.runner.heap.iter().filter(|card| **card == id("matryoshka")).count(), 3);
     }
 }

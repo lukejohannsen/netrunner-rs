@@ -682,6 +682,11 @@ fn visible_card_ids(view: &netrunner_core::view::ClientView) -> std::collections
     visible.extend(view.runner.scored_agendas.iter().map(|c| c.card.0.as_str()));
     visible.extend(view.runner.heap.iter().map(|c| c.0.as_str()));
     visible.extend(view.runner.removed_from_game.iter().map(|c| c.0.as_str()));
+    // Revealed from a hand (`PublicGameState::revealed`, shown to both):
+    // Burner reveals three cards from HQ and asks the Runner which go to
+    // R&D, so its selection names them. A facedown install of the same
+    // title is not given away by a card both players have just seen.
+    visible.extend(view.revealed.iter().map(|c| c.card.0.as_str()));
     // Set aside faceup (CR 4.8.6): shown to both while it waits there.
     visible.extend(view.runner.set_aside.iter().map(|c| c.0.as_str()));
     visible.extend(view.runner.rig.iter().map(|c| c.card.0.as_str()));

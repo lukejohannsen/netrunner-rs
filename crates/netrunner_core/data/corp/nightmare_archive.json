@@ -1,0 +1,58 @@
+{
+  "id": "nightmare_archive",
+  "title": "Nightmare Archive",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 0,
+  "trash_cost": 0,
+  "continuous": [
+    {
+      "kind": "RevealedWhileAccessed",
+      "applies_to": "This",
+      "while": {
+        "AccessingIn": "RnD"
+      },
+      "text": "While the Runner is accessing this asset in R&D, they must reveal it."
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnAccessed",
+      "subject": "This",
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Runner",
+            "options": [
+              {
+                "AddToScoreAreaAsAgenda": {
+                  "points": -1
+                }
+              },
+              {
+                "Sequence": [
+                  {
+                    "DealDamage": [
+                      "Brain",
+                      1
+                    ]
+                  },
+                  {
+                    "RemoveFromGame": "ThisCard"
+                  }
+                ]
+              }
+            ],
+            "texts": [
+              "they may add it to their score area as an agenda worth -1 agenda point",
+              "If they do not, do 1 core damage and remove this asset from the game"
+            ]
+          }
+        }
+      ],
+      "text": "When the Runner accesses this asset, they may add it to their score area as an agenda worth -1 agenda point. If they do not, do 1 core damage and remove this asset from the game."
+    }
+  ],
+  "built_from": 33097,
+  "is_playable": true
+}

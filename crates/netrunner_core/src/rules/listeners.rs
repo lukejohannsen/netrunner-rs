@@ -1131,7 +1131,7 @@ mod tests {
         trendsetting.triggers[0].first_each_turn = true;
         let registry = registry(vec![trendsetting, listens("pad_campaign", Side::Corp, CardType::Asset, Trigger::OnTurnStart, None)]);
         let mut state = GameState { phase: GamePhase::Action(Side::Runner), ..Default::default() };
-        state.corp.scored_agendas = vec![crate::rules::state::ScoredAgenda { card: CardId("aggressive_trendsetting".to_string()), install_id: InstallId(7), agenda_counters: 0, scored_on_turn: 0, installed_on_scoring_turn: false, as_agenda: None }];
+        state.corp.scored_agendas = vec![crate::rules::state::ScoredAgenda { card: CardId("aggressive_trendsetting".to_string()), install_id: InstallId(7), agenda_counters: 0, scored_on_turn: 0, installed_on_scoring_turn: false, advanced_on_scoring_turn: false, as_agenda: None }];
 
         let trash = |install| GameEvent::CardTrashedFromAccess { card: CardId("pad_campaign".to_string()), cost_paid: 4, install };
         let as_of = turn_log::record(&mut state, &registry, &trash(None));

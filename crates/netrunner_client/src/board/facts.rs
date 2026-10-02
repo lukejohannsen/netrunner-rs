@@ -420,6 +420,11 @@ pub fn install_facts(view: &ClientView, id: InstallId, registry: &CardRegistry) 
                 let facedown = if rig.hosted_facedown { " facedown" } else { "" };
                 lines.push(format!("Hosts{facedown} {}", rig.hosted_cards.iter().map(|c| card_title(c, registry)).collect::<Vec<_>>().join(", ")));
             }
+            // Matryoshka's copies, spent on a break until its turn begins.
+            if rig.turned_facedown > 0 {
+                let n = rig.turned_facedown;
+                lines.push(format!("{n} of them turned facedown until your turn begins"));
+            }
             // Read-Write Share's cards, to anyone but their owner: a count.
             if rig.hosted_unseen > 0 {
                 let n = rig.hosted_unseen;

@@ -154,6 +154,20 @@ pub fn stacked<'a>(view: &'a ClientView, registry: &CardRegistry, chair: Side, a
     })
 }
 
+/// The chip a rig card's hosted cards get on its line: how many it hosts,
+/// and how many of those are turned facedown — Matryoshka's copies spent on
+/// a break this turn (`PublicInstalledRunnerCard::turned_facedown`), which
+/// is what says how many breaks it has left. `None` when it hosts nothing.
+/// Both clients' rig lines draw it.
+pub fn hosted_chip(card: &PublicInstalledRunnerCard) -> Option<String> {
+    let hosted = card.hosted_cards.len() + card.hosted_unseen;
+    match (hosted, card.turned_facedown) {
+        (0, _) => None,
+        (hosted, 0) => Some(format!("{hosted} hosted")),
+        (hosted, facedown) => Some(format!("{hosted} hosted, {facedown} facedown")),
+    }
+}
+
 /// Whether `a` and `b` are copies nothing tells apart (see [`stacked`]).
 fn identical(view: &ClientView, actions: Option<&ActionMap>, a: &PublicInstalledRunnerCard, b: &PublicInstalledRunnerCard) -> bool {
     let used = |card: &PublicInstalledRunnerCard| view.runner.once_per_turn_used.iter().any(|key: &OncePerTurnKey| key.install == Some(card.install_id));
@@ -217,6 +231,7 @@ mod tests {
             hosted_cards: Vec::new(),
             hosted_facedown: false,
             hosted_unseen: 0,
+            turned_facedown: 0,
             hosted_cards_playable: false,
             counters: 0,
         }

@@ -969,6 +969,11 @@ pub fn evaluate_effect(
         // is this one.
         Effect::AddToScoreAreaAsAgenda(as_agenda) => {
             let card_id = acting_card.ok_or(RulesError::MissingActingCardContext)?.clone();
+            // A Corp card the Runner is accessing, into the Runner's score
+            // area, ending its access (Nightmare Archive).
+            if run::is_being_accessed(state, &card_id) {
+                return run::move_currently_accessed_card(state, registry, run::AccessedTo::RunnerScoreArea(*as_agenda));
+            }
             // A Runner card, out of the rig into the Runner's score area.
             // Leaving the rig is leaving play, so what it hosts is trashed
             // with it, as the cost of the same name does.
@@ -1023,6 +1028,13 @@ pub fn evaluate_effect(
             }
             run::renumber_subroutines(ice);
             Ok(events)
+        }
+
+        Effect::TurnHostedFaceup => {
+            if let Some(position) = acting_rig_position(state, ctx) {
+                state.runner.rig[position].turned_facedown = 0;
+            }
+            Ok(Vec::new())
         }
 
         Effect::WinTheGame => {
@@ -2868,14 +2880,14 @@ fn runner_is_accessing(state: &GameState, card_id: &CardId) -> bool {
 /// it was. A fresh handle, since the card is a new object where it lands;
 /// the stored tally moves as a score does, by the points the addition gave
 /// it, which may be negative.
-fn add_to_score_area_as_agenda(state: &mut GameState, side: Side, card: CardId, as_agenda: crate::dsl::AsAgenda) -> GameEvent {
+pub(crate) fn add_to_score_area_as_agenda(state: &mut GameState, side: Side, card: CardId, as_agenda: crate::dsl::AsAgenda) -> GameEvent {
     let install_id = state.allocate_install_id();
     let entry = crate::rules::state::ScoredAgenda {
         card: card.clone(),
         install_id,
         agenda_counters: 0,
         scored_on_turn: state.turn,
-        installed_on_scoring_turn: false,
+        installed_on_scoring_turn: false, advanced_on_scoring_turn: false,
         as_agenda: Some(as_agenda),
     };
     let (scored, resources) = match side {
@@ -2899,7 +2911,7 @@ pub(crate) fn add_agenda_to_score_area(state: &mut GameState, registry: &CardReg
         install_id,
         agenda_counters: 0,
         scored_on_turn: 0,
-        installed_on_scoring_turn: false,
+        installed_on_scoring_turn: false, advanced_on_scoring_turn: false,
         as_agenda: None,
     });
     state.corp.resources.agenda_points = state.corp.resources.agenda_points.gain(agenda_points as i32);
@@ -2924,6 +2936,12 @@ fn forfeitable(state: &GameState) -> Vec<usize> {
 /// as when a host is trashed.
 fn remove_this_card_from_game(state: &mut GameState, registry: &CardRegistry, ctx: &ResolutionContext<'_>) -> Result<Vec<GameEvent>, RulesError> {
     let card_id = ctx.acting_card.ok_or(RulesError::MissingActingCardContext)?.clone();
+    // The card the Runner is accessing, from wherever it was accessed —
+    // HQ, R&D, Archives or a root — ending its access (CR 7.1.7):
+    // Nightmare Archive's "remove this asset from the game".
+    if run::is_being_accessed(state, &card_id) {
+        return run::move_currently_accessed_card(state, registry, run::AccessedTo::RemovedFromGame);
+    }
     if let Some(position) = acting_corp_position(state, ctx) {
         let install = state.corp.installed[position].install_id;
         let (_, mut events) = uninstall::corp_install(state, registry, install)?.ok_or_else(|| RulesError::CardNotInstalled { card: card_id.clone() })?;
@@ -3078,6 +3096,7 @@ pub(crate) fn cost_is_affordable(
         Cost::TakeBadPublicity(_) => side == Side::Corp,
         Cost::TrashRandomFromHq(count) => state.corp.hq.len() as u32 >= *count,
         Cost::AddRandomFromGripToBottom(count) => side == Side::Runner && state.runner.grip.len() as u32 >= *count,
+        Cost::TurnHostedFacedown => side == Side::Runner && acting_rig_card(state, ctx).is_some_and(|card| card.faceup_hosted() > 0),
         Cost::RevealSelf | Cost::AddSelfToHq => side == Side::Corp && acting_corp_install(state, ctx).is_some(),
         Cost::DerezSelf => side == Side::Corp && acting_corp_install(state, ctx).is_some_and(|installed| installed.is_rezzed(registry)),
         // Payable while the card is in its owner's hand.
@@ -3253,6 +3272,15 @@ pub(crate) fn pay_cost_ctx(
         }
 
         Cost::RemoveSelfFromGame => remove_this_card_from_game(state, registry, ctx),
+
+        // Turned over where it is: still hosted, not active, and nothing
+        // hears it (Matryoshka's copies are not installed).
+        Cost::TurnHostedFacedown => {
+            let card_id = acting_card.ok_or(RulesError::MissingActingCardContext)?.clone();
+            let position = acting_rig_position(state, ctx).filter(|&position| state.runner.rig[position].faceup_hosted() > 0).ok_or(RulesError::CardNotInstalled { card: card_id })?;
+            state.runner.rig[position].turned_facedown += 1;
+            Ok(Vec::new())
+        }
 
         // Shown and left as it was (CR 1.21.3a): still facedown, and
         // remembered by the Runner as an accessed card is.

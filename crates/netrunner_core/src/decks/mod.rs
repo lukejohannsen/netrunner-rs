@@ -494,6 +494,9 @@ mod tests {
             // decks, on A Thousand Cuts' and Safety Net's frames, whose Core
             // Set cards keep them out of Standard.
             ("second_site", &neither),
+            // Parhelion Stage 7: Issuaq Adaptics' deck, on A Thousand Cuts'
+            // frame, whose Core Set cards keep it out of Standard.
+            ("permafrost", &neither),
             ("street_gallery", &neither),
             ("pay_as_you_go", &neither),
             ("safety_net", &neither),

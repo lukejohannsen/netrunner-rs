@@ -1670,6 +1670,7 @@ fn seed_rig_card(
         hosted_on_ice: None,
         hosted_on_rig_card: None,
         hosted_cards: Vec::new(),
+        turned_facedown: 0,
         hosted_cards_playable: card_def.hosted_cards_playable_from_grip,
         this_turn: Default::default(),
     })
@@ -2676,6 +2677,10 @@ fn score_agenda(
     // turn's last click could not be scored until the next turn (ROADMAP
     // Rules Audit T6).
     let installed_this_turn = state.corp.installed[position].installed_this_turn;
+    // Advanced this turn, by the copy's own record (`turn_log::CopyTurn`).
+    // A counter placed by a card's text is not advancing (CR 1.18.2), and
+    // the log counts only `CardAdvanced` as `OnAdvance`.
+    let advanced_this_turn = state.corp.installed[position].this_turn.count(state.turn, crate::dsl::Trigger::OnAdvance) > 0;
     let mut next = state.clone();
     // Additional costs to score (Word on the Street), paid with the score
     // and followed by a checkpoint before the agenda moves (CR 1.16.10b–c).
@@ -2713,6 +2718,7 @@ fn score_agenda(
         agenda_counters,
         scored_on_turn: next.turn,
         installed_on_scoring_turn: installed_this_turn,
+        advanced_on_scoring_turn: advanced_this_turn,
         as_agenda: None,
     });
     next.corp.resources.agenda_points = next.corp.resources.agenda_points.gain(agenda_points as i32);

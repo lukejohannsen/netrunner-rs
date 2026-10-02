@@ -1304,7 +1304,7 @@ fn draw_header(frame: &mut Frame, area: Rect, app: &impl RenderableView) {
         GamePhase::GameOver(winner) => format!("Game over — {winner:?} wins"),
     };
     let text = format!(
-        "Turn {} | Phase: {phase_label} | You: {} | Corp: {}c {} AP:{}/{to_win} BP:{} | Runner: {}c {} Tags:{} MU:{} AP:{}/{to_win}",
+        "Turn {} | Phase: {phase_label} | You: {} | Corp: {}c {} AP:{}/{corp_to_win} BP:{} | Runner: {}c {} Tags:{} MU:{} AP:{}/{runner_to_win}",
         view.turn,
         match app.viewer() {
             Viewer::Player(side) => format!("{side:?}"),
@@ -1321,7 +1321,8 @@ fn draw_header(frame: &mut Frame, area: Rect, app: &impl RenderableView) {
         view.runner.tags,
         view.runner.memory_units,
         view.runner.agenda_points,
-        to_win = view.rules.winning_agenda_points,
+        corp_to_win = view.corp.points_to_win,
+        runner_to_win = view.runner.points_to_win,
     );
     let text = match app.decision_clock() {
         Some((side, remaining)) => format!("{text} | Clock: {side:?} {}s", remaining.as_secs()),
@@ -1440,7 +1441,8 @@ fn draw_board(frame: &mut Frame, area: Rect, app: &impl RenderableView) {
             let counters = counter_label(Some(&card.card), card.counters, app.registry());
             let strength = app.registry().get(&card.card).and_then(|def| def.strength).map(|_| format!("str {}", card.current_strength));
             let host = card.hosted_on_ice.map(|ice| format!("on {}", netrunner_client::board::rig::host_label(view, app.registry(), ice)));
-            let facts = [strength.unwrap_or_default(), counters.trim_start_matches(", ").to_string(), host.unwrap_or_default()].into_iter().filter(|f| !f.is_empty()).collect::<Vec<_>>().join(", ");
+            let hosted = netrunner_client::board::rig::hosted_chip(card);
+            let facts = [strength.unwrap_or_default(), counters.trim_start_matches(", ").to_string(), hosted.unwrap_or_default(), host.unwrap_or_default()].into_iter().filter(|f| !f.is_empty()).collect::<Vec<_>>().join(", ");
             let title = match stacks[i].count() {
                 1 => card_title(&card.card, app.registry()),
                 n => format!("{} ×{n}", card_title(&card.card, app.registry())),
@@ -1864,7 +1866,7 @@ mod tests {
         }
         let hq = view.corp.servers.iter_mut().find(|s| s.server == ServerId::Hq).unwrap();
         hq.ice.push(PublicInstalledCard { install_id: ice, position: 0, server: ServerId::Hq, slot: InstallSlot::Ice, rezzed: true, card: Some(CardId("ice_wall".into())), advancement_tokens: 0, counters: Some(0), advancement_requirement: None, seen_by_runner: true });
-        view.runner.rig.push(PublicInstalledRunnerCard { card: CardId("botulus".into()), install_id: InstallId(9101), current_strength: 0, hosted_on_ice: Some(ice), hosted_on_rig_card: None, hosted_cards: Vec::new(), hosted_facedown: false, hosted_unseen: 0, hosted_cards_playable: false, counters: 1 });
+        view.runner.rig.push(PublicInstalledRunnerCard { card: CardId("botulus".into()), install_id: InstallId(9101), current_strength: 0, hosted_on_ice: Some(ice), hosted_on_rig_card: None, hosted_cards: Vec::new(), hosted_facedown: false, hosted_unseen: 0, turned_facedown: 0, hosted_cards_playable: false, counters: 1 });
 
         let mut ui = LocalUiState::new(registry, Side::Runner);
         ui.begin_decision(view);

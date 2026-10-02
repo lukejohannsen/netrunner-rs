@@ -1,0 +1,50 @@
+{
+  "id": "superdeep_borehole",
+  "title": "Superdeep Borehole",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 6,
+  "trash_cost": 6,
+  "counter_kind": "BadPublicity",
+  "triggers": [
+    {
+      "trigger": "OnRez",
+      "subject": "This",
+      "effects": [
+        {
+          "AddCounters": 6
+        }
+      ],
+      "text": "When you rez this asset, load 6 bad publicity counters onto it."
+    },
+    {
+      "trigger": "OnTurnStart",
+      "requirement": {
+        "ThisCardCountersAtLeast": 1
+      },
+      "effects": [
+        {
+          "RemoveCounters": {
+            "Fixed": 1
+          }
+        },
+        {
+          "GiveBadPublicity": {
+            "Fixed": 1
+          }
+        },
+        {
+          "EffectIf": {
+            "condition": {
+              "ThisCardCountersAtMost": 0
+            },
+            "effect": "WinTheGame"
+          }
+        }
+      ],
+      "text": "When your turn begins, take 1 bad publicity from this asset."
+    }
+  ],
+  "built_from": 33123,
+  "is_playable": true
+}

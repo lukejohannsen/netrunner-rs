@@ -1,0 +1,43 @@
+{
+  "id": "issuaq_adaptics_sustaining_diversity",
+  "title": "Issuaq Adaptics: Sustaining Diversity",
+  "side": "Corp",
+  "card_type": "Identity",
+  "cost": 0,
+  "min_deck_size": 45,
+  "counter_kind": "Power",
+  "continuous": [
+    {
+      "kind": {
+        "AgendaPointsToWin": {
+          "per": -1,
+          "of": "HostedCounters"
+        }
+      },
+      "applies_to": "Controller",
+      "text": "For each hosted power counter, you need 1 less agenda point to win the game."
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnAgendaScored",
+      "subject": "Any",
+      "when": {
+        "Card": {
+          "All": [
+            "NotInstalledThisTurn",
+            "NotAdvancedThisTurn"
+          ]
+        }
+      },
+      "effects": [
+        {
+          "AddCounters": 1
+        }
+      ],
+      "text": "Whenever you score an agenda that you did not install or advance this turn, place 1 power counter on this identity."
+    }
+  ],
+  "built_from": 33104,
+  "is_playable": true
+}

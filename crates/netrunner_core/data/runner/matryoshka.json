@@ -1,0 +1,90 @@
+{
+  "id": "matryoshka",
+  "title": "Matryoshka",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 3,
+  "strength": 2,
+  "memory_cost": 2,
+  "triggers": [
+    {
+      "trigger": "OnTurnStart",
+      "effects": [
+        "TurnHostedFaceup"
+      ],
+      "text": "When your turn begins, turn each hosted card faceup."
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "Clicks": 1
+      },
+      "requirement": {
+        "ZoneHasAtLeast": {
+          "zone": "OwnGrip",
+          "count": 1,
+          "filter": {
+            "AmongCards": [
+              "matryoshka"
+            ]
+          }
+        }
+      },
+      "effect": {
+        "PromptChooseCards": {
+          "side": "Runner",
+          "source": "OwnGrip",
+          "filter": {
+            "AmongCards": [
+              "matryoshka"
+            ]
+          },
+          "min": 1,
+          "max": 1,
+          "reveal": false,
+          "shuffle_after": false,
+          "destination": "HostedOnSource"
+        }
+      },
+      "text": "[click]: Host a copy of Matryoshka from your grip faceup on this program. (It is not installed.)"
+    },
+    {
+      "trigger": "Paid",
+      "text": "Interface → X[credit], turn 1 hosted copy of Matryoshka facedown: Break X subroutines.",
+      "cost": {
+        "AllOf": [
+          {
+            "CreditsX": {
+              "max": "EncounteredIceSubroutines"
+            }
+          },
+          "TurnHostedFacedown"
+        ]
+      },
+      "effect": {
+        "BreakSubroutines": {
+          "count": "ChosenNumber"
+        }
+      },
+      "requirement": "DuringEncounter"
+    },
+    {
+      "trigger": "Paid",
+      "text": "1[credit]: +1 strength.",
+      "cost": {
+        "Credits": 1
+      },
+      "effect": {
+        "BoostStrength": {
+          "amount": 1,
+          "duration": "Encounter"
+        }
+      },
+      "requirement": "DuringEncounter"
+    }
+  ],
+  "built_from": 33094,
+  "is_playable": true
+}

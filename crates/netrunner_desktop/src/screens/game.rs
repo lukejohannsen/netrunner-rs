@@ -3177,9 +3177,8 @@ fn spawn_rig(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore
                             if def.card_type == CardType::Program && def.strength.is_some() {
                                 chips.push(format!("str {}", card.current_strength));
                             }
-                            let hosted = card.hosted_cards.len() + card.hosted_unseen;
-                            if hosted > 0 {
-                                chips.push(format!("{hosted} hosted"));
+                            if let Some(hosted) = netrunner_client::board::rig::hosted_chip(card) {
+                                chips.push(hosted);
                             }
                             if let Some(host) = card.hosted_on_ice {
                                 chips.push(format!("on {}", netrunner_client::board::rig::host_label(view, &core.registry, host)));
@@ -5011,7 +5010,7 @@ fn zone_sheet(panel: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore
 #[allow(clippy::too_many_arguments)]
 fn score_area_sheet(panel: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore, images: &CardImages, game: &Game, view: &ClientView, side: Side) {
     let agendas = hud::score_area(view, side, &core.registry);
-    let (points, to_win) = (if side == Side::Corp { view.corp.agenda_points } else { view.runner.agenda_points }, view.rules.winning_agenda_points);
+    let (points, to_win) = (if side == Side::Corp { view.corp.agenda_points } else { view.runner.agenda_points }, hud::points_to_win(view, side));
     let caption = match agendas.len() {
         0 => format!("None yet · {points} of {to_win} points"),
         1 => format!("1 agenda · {points} of {to_win} points"),

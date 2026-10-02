@@ -5531,3 +5531,119 @@ Parhelion 52 of 63; `PH_UNIMPLEMENTED` 12 → 11. **Stage 6 is complete.**
   removed from the game after its trash from the table 6 / 9 times, a
   steal 1 / 19 and a score 0 / 1.
 
+#### Stage 7 — winning and the score area: a target a card lowers, a card that wins when it is empty, an accessed card moved by its own text, and copies turned facedown (2 October 2026)
+
+`claude/serene-einstein-6bhlig`: Issuaq Adaptics: Sustaining Diversity,
+Superdeep Borehole, Nightmare Archive, Matryoshka. **One new `Effect`**
+(`TurnHostedFaceup`), one `Cost`, one `ContinuousKind`, one `CardFilter`.
+Parhelion 49 of 63; `PH_UNIMPLEMENTED` 18 → 14. Taken ahead of Stage 6,
+at the person's request: nothing here needs charge, mark or set aside.
+Not split: four cards, each its own mechanic, measured once.
+
+- **`ContinuousKind::AgendaPointsToWin(Number)`**, Issuaq Adaptics's "For
+  each hosted power counter, you need 1 less agenda point to win the
+  game" (`Scope::Controller`, `{ per: -1, of: HostedCounters }`).
+  `continuous::points_to_win` is the match's threshold
+  (`MatchRules::winning_agenda_points`) plus what the side's active cards
+  add, and the win check asks it of each side at every checkpoint (CR
+  1.7.2a, 10.3.1c). The view carries it per side
+  (`CorpClientView::points_to_win`, `RunnerClientView::points_to_win`),
+  so every "to win" a client prints is the engine's number
+  (`hud::points_to_win`: the readout's "3/5", the score sheet's caption,
+  the terminal's status line). The bots' stage
+  (`netrunner_bots::eval::stage`) still reads the match rule: a reading
+  with no registry, left as it was.
+- **"An agenda that you did not install or advance this turn"** is
+  `when: Card(All[NotInstalledThisTurn, NotAdvancedThisTurn])` on
+  `OnAgendaScored`. `CardFilter::NotAdvancedThisTurn` reads the copy's own
+  record (`InstalledCard::this_turn`'s `OnAdvance` count), kept on the
+  scored copy as it leaves the table (`ScoredAgenda::advanced_on_scoring_turn`,
+  beside `installed_on_scoring_turn`). A counter Seamless Launch places is
+  not advancing (CR 1.18.2), which is the way the deck scores the Issuaq way.
+- **Superdeep Borehole composes** in Juli Moreira Lee's shape (CR 10.9):
+  "load 6 bad publicity counters" an `OnRez` `AddCounters`
+  (`counter_kind: BadPublicity`, Luana Campos's), "take 1 bad publicity
+  from this asset" a turn-start `RemoveCounters` and `GiveBadPublicity`,
+  and "When it is empty, you win the game" an `EffectIf(ThisCardCountersAtMost(0),
+  WinTheGame)` after the take — nothing else in the pool removes a counter
+  from it. Hosted bad publicity is not "on" the Corp (CR 1.13.3, whose
+  example is this card): the Runner's fund never counts it.
+- **An accessed card moved by its own text** (CR 7.1.7). Nightmare
+  Archive's "they may add it to their score area as an agenda worth -1
+  agenda point. If they do not, do 1 core damage and remove this asset
+  from the game" is a Runner's `PresentChoice` out of its `OnAccessed`
+  between `AddToScoreAreaAsAgenda { points: -1 }` and core damage then
+  `RemoveFromGame(ThisCard)`. Both effects, resolving as the card being
+  accessed (`run::is_being_accessed`), go through
+  `run::move_currently_accessed_card`: the card leaves whatever zone it
+  was accessed in, lands in the Runner's score area or out of the game,
+  and its access ends — at the access decision by moving the breach on,
+  and before it by `enter_pending_choice` seeing it gone (`left_its_place`,
+  which was `was_trashed`). Cupellation's and Heliamphora's host is the
+  third destination of the same function. "Their score area" is the
+  Runner's because only the Runner accesses.
+- **Matryoshka's copies, hosted and turned facedown** (CR 1.13.7c–d).
+  "[click]: Host a copy of Matryoshka from your grip faceup on this
+  program" is Madani's selection with `AmongCards(["matryoshka"])`; the
+  break is `AllOf[CreditsX { max: EncounteredIceSubroutines },
+  TurnHostedFacedown]` (Lobisomem's X); "When your turn begins, turn each
+  hosted card faceup" is `Effect::TurnHostedFaceup`. Which copies are
+  facedown is nobody's to ask — they are copies of the host, an unordered
+  group — so the state keeps a count beside the hosted cards
+  (`InstalledRunnerCard::turned_facedown`, `faceup_hosted()`), public
+  because each was faceup when hosted. It is not `hosts_facedown`, Read-
+  Write Share's, whose cards were never faceup. "Limit 6 per deck" is the
+  catalog's `deck_limit`.
+- **Client.** Two new view fields, both drawn: `points_to_win` (above),
+  and `PublicInstalledRunnerCard::turned_facedown`, the rig chip
+  `board::rig::hosted_chip` ("3 hosted, 1 facedown") on both clients' rig
+  lines — the terminal's showed no hosted cards before — and a line of
+  the card's facts. Issuaq's power counters are AU Co.'s
+  `identity_counters`, already drawn. Nightmare Archive is a trap to
+  `board::rez::gains_nothing`, which `exactly_the_traps_gain_nothing_by_a_rez`
+  now lists.
+- **Decks.** **Permafrost**, a new Sweep deck on Issuaq Adaptics: A
+  Thousand Cuts' frame with two Seamless Launch for its two Mindscaping.
+  Hostile Bid took two Superdeep Borehole for its two Business as Usual;
+  Undertow two Nightmare Archive for its two Working Prototype; Hit List
+  four Matryoshka for its two Carmen and two Smartware Distributor.
+- **DSL ratio (`pool_status.py`):** 15 of 92 `Effect` variants
+  single-use, 1 unused, over 429 card files.
+- **Measured** against the branch's previous tip (`99c46dd`). Both sweeps
+  green at 256 seeds, the card gate included.
+  - With the four card files taken out of the tree, the engine change is
+    identical in all four `coverage_identical.py` shapes: no sample deck
+    holds a card the new words reach. (Marking a card `is_playable:
+    false` is not the way to take it out: `register_playable_cards`
+    registers every card file, so `determinize` still draws it.)
+  - With the cards, both random seatings are identical; the planner ones
+    move by `determinize`, whose prior now holds four more cards (view
+    and index alike, of 192): Corp agenda wins 62 → 56, Corp flatlines
+    29 → 30, Runner agenda wins 97 → 98, Runner deck-outs 4 → 8.
+- **Real play**, seed 2, each new Corp deck against Hit List (random 96
+  games / planner 48):
+  - Permafrost: Issuaq Adaptics placed a counter once in random play and
+    never for the planner, which scores an agenda the turn it reaches
+    its requirement.
+  - Hostile Bid: Superdeep Borehole installed 94 / 56 times, rezzed 5 / 4
+    and gave up a bad publicity on 12 / 0 turn starts; no game ran long
+    enough for it to empty.
+  - Undertow: Nightmare Archive accessed 59 / 31 times, and its choice
+    fired on every access (`OnAccessed` 59 / 31). The report does not
+    split the Runner's answers: Jeitinho, in Hit List, is added to a
+    score area as an agenda too.
+  - Hit List: Matryoshka installed 135 / 119 times over the three
+    pairings and turned faceup on 605 / 754 turn starts. Random play
+    hosted a copy 28 times; the planner never did, so its Matryoshka
+    breaks with nothing — a bot blindness, not a rule, left for the bots'
+    record.
+
+  **Landed after Stage 6, not ahead of it** (2 October 2026). Stage 6
+  merged to `main` while this stage was being built, so the commit was
+  rebased onto it before landing, and three numbers above are its own
+  base's rather than `main`'s. Parhelion is 56 of 63, not 49, and
+  `PH_UNIMPLEMENTED` went 11 -> 7. Stage 6b had already traded two of Hit
+  List's three Smartware Distributor for Tunnel Vision, so Matryoshka
+  took only its two Carmen and Hit List is 48 cards, not 46. The DSL
+  ratio is the merged tree's, re-measured on the area page.
+

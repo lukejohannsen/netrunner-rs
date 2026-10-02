@@ -208,8 +208,11 @@ pub enum Effect {
     /// empty, remove it from the game". Only `CardTarget::ThisCard` is
     /// printed; any other target is `RulesError::UnresolvedCardTarget`.
     /// The same move as `Cost::RemoveSelfFromGame`, made by a card's text
-    /// rather than paid. Composition didn't work: `TrashCard` sends a card
-    /// to its owner's discard pile, where Scrounge finds it again.
+    /// rather than paid. `ThisCard` the Runner is accessing is taken from
+    /// wherever it was accessed and its access ends (Nightmare Archive's
+    /// "remove this asset from the game", `run::move_currently_accessed_card`).
+    /// Composition didn't work: `TrashCard` sends a card to its owner's
+    /// discard pile, where Scrounge finds it again.
     RemoveFromGame(CardTarget),
     /// Boosts a Runner rig card's own strength — unlike `ModifyStrength`,
     /// which always targets whatever ICE is currently being encountered,
@@ -1064,9 +1067,13 @@ pub enum Effect {
     /// (`ScoredAgenda::as_agenda`). An operation is filed in Archives before
     /// its text resolves (`engine::play_operation_card`), so that is where
     /// it is taken from; a Runner card is taken out of the rig, what it
-    /// hosts trashed with it as `Cost::AddToScoreAreaAsAgenda` does. A no-op
-    /// when it is not there. Composition didn't work: no effect moves a
-    /// card into a score area without scoring or stealing it.
+    /// hosts trashed with it as `Cost::AddToScoreAreaAsAgenda` does. A Corp
+    /// card the Runner is accessing goes to the *Runner's* score area and
+    /// its access ends (CR 7.1.7) — Nightmare Archive's "they may add it to
+    /// their score area as an agenda worth -1 agenda point", the Runner's
+    /// choice out of the Corp's ability (`run::move_currently_accessed_card`).
+    /// A no-op when it is not there. Composition didn't work: no effect
+    /// moves a card into a score area without scoring or stealing it.
     AddToScoreAreaAsAgenda(AsAgenda),
     /// The acting card's controller wins the game — Jeitinho's "Then, if
     /// you have 3 assassination agendas in your score area, you win the
@@ -1079,6 +1086,12 @@ pub enum Effect {
     /// Composition didn't work: nothing ends the game but the standing
     /// checks and the failed draw.
     WinTheGame,
+    /// Every card hosted facedown on the acting rig card is turned faceup —
+    /// Matryoshka's "When your turn begins, turn each hosted card faceup",
+    /// undoing what `Cost::TurnHostedFacedown` paid. A no-op on a card
+    /// hosting none. Composition didn't work: nothing turned a hosted card
+    /// over.
+    TurnHostedFaceup,
     /// The acting install — a piece of ice, reached through
     /// `TriggeredEffect::acts_on_subject` — gains `subroutine`, before or
     /// after its other subroutines, for `duration`:
@@ -2161,6 +2174,7 @@ impl Effect {
             | Effect::InstallProgramOnHost { .. }
             | Effect::AddToScoreAreaAsAgenda(_)
             | Effect::WinTheGame
+            | Effect::TurnHostedFaceup
             | Effect::GainSubroutine { .. }
             | Effect::GainIceSubtype(_)
             | Effect::LookAtTopOfDeck { .. }

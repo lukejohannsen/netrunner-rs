@@ -196,6 +196,12 @@ pub struct PublicInstalledRunnerCard {
     /// printed on it, so public.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub hosted_facedown: bool,
+    /// How many of `hosted_cards` have been turned facedown — Matryoshka's
+    /// copies, spent on a break until its turn begins
+    /// (`state::InstalledRunnerCard::turned_facedown`). Public: each was
+    /// faceup when hosted (CR 1.13.7c).
+    #[serde(default, skip_serializing_if = "crate::rules::state::is_zero")]
+    pub turned_facedown: u32,
     /// How many hosted cards the viewer may not see: the Corp's and a
     /// spectator's count of a card hosted facedown. A number and never the
     /// cards, as a grip is to the Corp (`MaskedZone`).
@@ -1417,6 +1423,7 @@ fn mask_installed_runner_card(state: &GameState, registry: &CardRegistry, card: 
         hosted_cards: if hidden { Vec::new() } else { card.hosted_cards.clone() },
         hosted_facedown,
         hosted_unseen: if hidden { card.hosted_cards.len() } else { 0 },
+        turned_facedown: card.turned_facedown,
         hosted_cards_playable: card.hosted_cards_playable,
         counters: card.counters,
     }
@@ -1940,6 +1947,7 @@ mod tests {
             hosted_cards: Vec::new(),
             hosted_facedown: false,
             hosted_unseen: 0,
+            turned_facedown: 0,
             hosted_cards_playable: false,
             counters: 0,
         }];
