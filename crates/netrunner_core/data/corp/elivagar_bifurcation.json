@@ -1,0 +1,44 @@
+{
+  "id": "elivagar_bifurcation",
+  "title": "Élivágar Bifurcation",
+  "side": "Corp",
+  "card_type": "Agenda",
+  "cost": 0,
+  "advancement_requirement": 2,
+  "agenda_points": 1,
+  "triggers": [
+    {
+      "trigger": "OnAgendaScored",
+      "subject": "This",
+      "effects": [
+        {
+          "PromptChooseCards": {
+            "side": "Corp",
+            "source": "OwnInstalled",
+            "filter": "Rezzed",
+            "min": 0,
+            "max": 1,
+            "reveal": false,
+            "shuffle_after": false,
+            "then": {
+              "EffectIf": {
+                "condition": {
+                  "AmountAtLeast": [
+                    "CardsSelected",
+                    1
+                  ]
+                },
+                "effect": {
+                  "DerezCard": "ThisCard"
+                }
+              }
+            }
+          }
+        }
+      ],
+      "text": "When you score this agenda, you may derez 1 installed card."
+    }
+  ],
+  "built_from": 33031,
+  "is_playable": true
+}

@@ -1,0 +1,25 @@
+{
+  "id": "artificial_cryptocrash",
+  "title": "Artificial Cryptocrash",
+  "side": "Corp",
+  "card_type": "Agenda",
+  "cost": 0,
+  "advancement_requirement": 4,
+  "agenda_points": 2,
+  "triggers": [
+    {
+      "trigger": "OnAgendaScored",
+      "subject": "This",
+      "effects": [
+        {
+          "LoseCredits": [
+            "Runner",
+            7
+          ]
+        }
+      ]
+    }
+  ],
+  "built_from": 33049,
+  "is_playable": true
+}

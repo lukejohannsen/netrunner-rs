@@ -48,15 +48,15 @@ cards each stage takes.
 | 2 | Rebellion Without Rehearsal (`rwr`) | 65 | 65 | 0 | complete (28 September 2026) |
 | 3 | The Automata Initiative (`tai`) | 65 | 65 | 0 | complete (29 September 2026) |
 | 4 | Parhelion (`ph`) | 63 | 63 | 0 | complete (2 October 2026) |
-| 5 | Midnight Sun (`ms`) + Booster (`msbp`) | 65 + 7 | 0 | 65 + 7 | **Stage 1 next** — Corp, composes |
+| 5 | Midnight Sun (`ms`) + Booster (`msbp`) | 65 + 7 | 11 + 1 | 54 + 6 | Stage 1 built (2 October 2026); **Stage 2 next** — Runner, composes |
 | 6 | Uprising (`ur`) + Booster (`urbp`) | 65 + 7 | 0 | 65 + 7 | not started |
 | 7 | Downfall (`df`) | 65 | 0 | 65 | not started |
 | 8 | System Update 2021 (`su21`), Salvaged Memories (`sm`), Magnum Opus Reprint (`mor`) | 82, 18, 6 | 11, 1, 0 | 71, 17, 6 | not started (the built ones are Core reprints) |
 
 **DSL ratio** (`pool_status.py`, the DSL Growth Rule's number): **17 of 97
-`Effect` variants single-use, 1 unused (`Trace`), over 443 card files** (2
-October 2026, with Parhelion Stage 8). The baseline at Stage 0a was 26 of 70 single-use, 3 unused,
-over 184 files: 252 cards later the single-use count is *lower*, because the
+`Effect` variants single-use, 1 unused (`Trace`), over 454 card files** (2
+October 2026, with Midnight Sun Stage 1, which added none). The baseline at Stage 0a was 26 of 70 single-use, 3 unused,
+over 184 files: 270 cards later the single-use count is *lower*, because the
 growth went into `Trigger`, `EventFilter`, `Amount`, `CardFilter`, `Cost` and
 `ContinuousKind` words rather than into what an effect does.
 
@@ -731,9 +731,10 @@ Grid, Tsakhia, World Tree.
 **Decks:** Sweep decks on its five identities.
 
 **Stages:**
-1. **Corp, composes:** Anemone, Élivágar Bifurcation, Refuge Campaign, Bladderwort,
-   Artificial Cryptocrash, Ubiquitous Vig, Vasilisa, Pravdivost
-   Consulting: Political Solutions, Svyatogor Excavator, Maskirovka, Extract.
+1. **Corp, composes** (built, 2 October 2026): Anemone, Élivágar Bifurcation,
+   Refuge Campaign, Bladderwort, Artificial Cryptocrash, Ubiquitous Vig,
+   Vasilisa, Pravdivost Consulting: Political Solutions, Svyatogor Excavator,
+   Maskirovka, Extract. Stage 1 is complete.
 2. **Runner, composes:** Revolver, Chastushka, Running Hot, Marrow,
    Avgustina Ivanovskaya, PAN-Weave, No Free Lunch, Endurance, Hyperbaric, Propeller, Environmental Testing.
 3. **Charge on PH's rule, core damage words:** Captain Padma Isbister, Rigging Up,
@@ -762,6 +763,10 @@ Grid, Tsakhia, World Tree.
 
 **Banned:** Drago Ivanov, Endurance, Nyusha "Sable" Sintashta, Svyatogor
 Excavator.
+
+**Closed stages** — one line each; the record is in [the archive](archive/nsg-card-pool.md) under the same heading.
+
+- **Stage 1** — eleven Corp cards, composed (`claude/serene-einstein-6bhlig`, 2 October 2026).
 
 ### 6. Uprising and its Booster Pack — 65 cards (C 10 / V 37 / M 18)
 

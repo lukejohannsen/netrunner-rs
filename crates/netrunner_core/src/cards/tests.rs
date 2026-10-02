@@ -20354,3 +20354,333 @@ mod parhelion {
         assert!(encounter_at(&elsewhere, &registry, ServerId::Hq).pending_paid_choice.is_none(), "not protecting this server");
     }
 }
+
+/// *Midnight Sun* and its booster pack (tranche 5 of the NSG plan). The
+/// helpers are `mod parhelion`'s, copied rather than shared because they
+/// are private there and each tranche's module stands alone.
+mod midnight_sun {
+    use super::*;
+    use crate::dsl::Cost;
+    use crate::rules::{GameEvent, PendingDecision};
+
+    fn id(card: &str) -> CardId {
+        CardId(card.to_string())
+    }
+
+    fn root_at(card: &str, remote: u32) -> crate::rules::InstalledCard {
+        crate::rules::InstalledCard {
+            install_id: fixture_install_id(card),
+            card: id(card),
+            server: ServerId::Remote(remote),
+            slot: InstallSlot::Root,
+            ..Default::default()
+        }
+    }
+
+    fn rezzed_root_at(card: &str, remote: u32) -> crate::rules::InstalledCard {
+        crate::rules::InstalledCard { rezzed: true, ..root_at(card, remote) }
+    }
+
+    fn ice_at(card: &str, server: ServerId, rezzed: bool) -> crate::rules::InstalledCard {
+        crate::rules::InstalledCard {
+            install_id: fixture_install_id(card),
+            card: id(card),
+            server,
+            slot: InstallSlot::Ice,
+            rezzed,
+            ..Default::default()
+        }
+    }
+
+    fn runner_turn() -> GameState {
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state
+    }
+
+    fn accept() -> PlayerAction {
+        PlayerAction::AcceptPendingPaidChoice { cost_option_index: None }
+    }
+
+    fn decline(state: &GameState, registry: &CardRegistry) -> GameState {
+        apply_action(state, registry, PlayerAction::DeclinePendingPaidChoice).expect("decline").0
+    }
+
+    fn pick(state: &GameState, registry: &CardRegistry, position: usize) -> (GameState, Vec<GameEvent>) {
+        let (state, mut events) = apply_action(state, registry, PlayerAction::ToggleCardSelection { position }).expect("select a card");
+        let (state, more) = apply_action(&state, registry, PlayerAction::ConfirmCardSelection).expect("confirm the selection");
+        events.extend(more);
+        (state, events)
+    }
+
+    /// Confirms a "may" selection with nothing selected.
+    fn none(state: &GameState, registry: &CardRegistry) -> GameState {
+        apply_action(state, registry, PlayerAction::ConfirmCardSelection).expect("choose none").0
+    }
+
+    fn toggles(state: &GameState, registry: &CardRegistry) -> Vec<usize> {
+        crate::rules::legal_actions_for(state, registry, Side::Corp)
+            .into_iter()
+            .filter_map(|action| match action {
+                PlayerAction::ToggleCardSelection { position } => Some(position),
+                _ => None,
+            })
+            .collect()
+    }
+
+    fn choosing_cards(state: &GameState) -> bool {
+        matches!(state.pending_decision, Some(PendingDecision::ChooseCards { .. }))
+    }
+
+    fn tokens(state: &GameState, card: &str) -> u32 {
+        state.corp.installed.iter().find(|installed| installed.card == id(card)).expect("installed").advancement_tokens
+    }
+
+    fn score(state: &GameState, registry: &CardRegistry, agenda: &str) -> GameState {
+        apply_action(state, registry, PlayerAction::ScoreAgenda { target: install_of(state, agenda) }).expect("score").0
+    }
+
+    /// Begins `side`'s turn and closes its windows, so its turn-begins
+    /// abilities have resolved or are asking.
+    fn begin_the_turn_of(mut state: GameState, registry: &CardRegistry, side: Side) -> GameState {
+        crate::rules::test_support::enter_start_of_turn(&mut state, registry, side);
+        close_all_windows(state, registry).0
+    }
+
+    /// A run on HQ, its ice installed, up to the first thing that asks or
+    /// the first encounter's window.
+    fn to_the_encounter(state: &GameState, registry: &CardRegistry) -> GameState {
+        let (state, _) = apply_action(state, registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("initiate run");
+        let (state, _) = crate::rules::test_support::continue_run(&state, registry).expect("approach the ice");
+        let mut state = state;
+        for _ in 0..12 {
+            let encountering = state.active_run.as_ref().is_some_and(|run| run.phase == crate::rules::RunPhase::EncounterIce);
+            if encountering || state.pending_paid_choice.is_some() || state.pending_decision.is_some() {
+                return state;
+            }
+            let side = state.paid_ability_window.as_ref().expect("a window to pass in").active_priority;
+            state = apply_action(&state, registry, PlayerAction::PassPriority { side }).expect("pass").0;
+        }
+        panic!("never encountered: {:?}", state.active_run.as_ref().map(|run| run.phase));
+    }
+
+    /// A run on HQ up to the Corp's rez of the unrezzed `ice` as it is
+    /// approached, with whatever its rez parks.
+    fn rez_on_approach(state: &GameState, registry: &CardRegistry, ice: &str) -> GameState {
+        let (running, _) = apply_action(state, registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("initiate run");
+        let (mut state, _) = crate::rules::test_support::continue_run(&running, registry).expect("approach the ice");
+        for _ in 0..12 {
+            let window = state.paid_ability_window.as_ref().expect("a window to pass in");
+            if window.active_priority == Side::Corp {
+                return apply_action(&state, registry, PlayerAction::RezIce { ice: install_of(&state, ice) }).expect("rez").0;
+            }
+            state = apply_action(&state, registry, PlayerAction::PassPriority { side: Side::Runner }).expect("pass").0;
+        }
+        panic!("the Corp never had priority on the approach");
+    }
+
+    /// A run on HQ, with no ice, declared successful and played out.
+    fn successful_run_on_hq(state: &GameState, registry: &CardRegistry) -> GameState {
+        let (state, _) = close_all_windows(state.clone(), registry);
+        let (state, _) = apply_action(&state, registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("initiate run");
+        let (state, _) = crate::rules::test_support::through_movement(&state, registry).expect("to the server");
+        apply_action(&state, registry, PlayerAction::CompleteRun).expect("successful").0
+    }
+
+    // ---- Stage 1: Corp, composes ----
+
+    #[test]
+    fn artificial_cryptocrash_takes_seven_credits_when_scored_or_all_the_runner_has() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.installed = vec![crate::rules::InstalledCard { advancement_tokens: 4, ..root_at("artificial_cryptocrash", 0) }];
+        let scored = score(&state, &registry, "artificial_cryptocrash");
+        assert_eq!(scored.corp.resources.agenda_points, AgendaPoints(2));
+        assert_eq!(scored.runner.resources.credits, Credits(3), "10 - 7");
+
+        state.runner.resources.credits = Credits(5);
+        assert_eq!(score(&state, &registry, "artificial_cryptocrash").runner.resources.credits, Credits(0), "all 5");
+    }
+
+    #[test]
+    fn bladderwort_gains_a_credit_then_does_net_damage_only_at_four_credits_or_less() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.installed = vec![rezzed_root_at("bladderwort", 0)];
+        state.corp.r_and_d = vec![id("hedge_fund"); 3];
+        state.runner.grip = vec![id("sure_gamble"); 3];
+        state.corp.resources.credits = Credits(3);
+        let poor = begin_the_turn_of(state.clone(), &registry, Side::Corp);
+        assert_eq!(poor.corp.resources.credits, Credits(4), "gain 1[credit] first");
+        assert_eq!(poor.runner.grip.len(), 2, "then 4[credit] or less: 1 net damage");
+
+        state.corp.resources.credits = Credits(4);
+        let rich = begin_the_turn_of(state, &registry, Side::Corp);
+        assert_eq!(rich.corp.resources.credits, Credits(5));
+        assert_eq!(rich.runner.grip.len(), 3, "5[credit] after the gain: no damage");
+    }
+
+    #[test]
+    fn elivagar_bifurcation_may_derez_one_rezzed_card_when_scored() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.installed = vec![
+            crate::rules::InstalledCard { advancement_tokens: 2, ..root_at("elivagar_bifurcation", 0) },
+            rezzed_root_at("pad_campaign", 1),
+            root_at("refuge_campaign", 2),
+        ];
+        let asked = score(&state, &registry, "elivagar_bifurcation");
+        assert_eq!(asked.corp.resources.agenda_points, AgendaPoints(1));
+        assert!(choosing_cards(&asked), "you may derez 1 installed card");
+        assert_eq!(toggles(&asked, &registry).len(), 1, "only the rezzed PAD Campaign: an unrezzed card has nothing to derez");
+
+        let (derezzed, _) = pick(&asked, &registry, toggles(&asked, &registry)[0]);
+        assert!(!derezzed.corp.installed.iter().find(|card| card.card == id("pad_campaign")).expect("still installed").rezzed);
+        let kept = none(&asked, &registry);
+        assert!(kept.corp.installed.iter().find(|card| card.card == id("pad_campaign")).expect("installed").rezzed, "\"may\": declined");
+    }
+
+    #[test]
+    fn extract_gains_six_and_may_trash_an_install_for_three_more() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.hq = vec![id("extract")];
+        state.corp.installed = vec![rezzed_root_at("pad_campaign", 0)];
+        let (asked, _) = apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: id("extract") }).expect("play");
+        assert_eq!(asked.corp.resources.credits, Credits(10 - 3 + 6), "gain 6[credit]");
+        let choice = asked.pending_paid_choice.as_ref().expect("you may trash 1 of your installed cards");
+        assert_eq!(choice.side, Side::Corp);
+        assert!(matches!(&choice.cost, Cost::Trash { from: crate::dsl::CardZoneRef::OwnInstalled, filter: crate::dsl::CardFilter::Any, count: 1, .. }), "{:?}", choice.cost);
+
+        let (paid, _) = apply_action(&asked, &registry, accept()).expect("trash PAD Campaign");
+        assert!(paid.corp.installed.is_empty());
+        assert_eq!(paid.corp.resources.credits, Credits(16));
+        assert_eq!(decline(&asked, &registry).corp.resources.credits, Credits(13));
+    }
+
+    #[test]
+    fn maskirovka_gains_two_credits_then_ends_the_run() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.installed = vec![ice_at("maskirovka", ServerId::Hq, true)];
+        let at_ice = to_the_encounter(&state, &registry);
+        let (done, _) = pass_until_settled(at_ice, &registry);
+        assert_eq!(done.corp.resources.credits, Credits(12), "gain 2[credit]");
+        assert!(done.active_run.is_none(), "end the run");
+    }
+
+    #[test]
+    fn pravdivost_consulting_may_place_a_counter_on_the_runners_first_successful_run_each_turn() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.identity = Some(id("pravdivost_consulting_political_solutions"));
+        state.corp.installed = vec![root_at("hostile_takeover", 0), rezzed_root_at("pad_campaign", 1)];
+        let asked = successful_run_on_hq(&state, &registry);
+        assert!(choosing_cards(&asked), "the first successful run this turn");
+        assert_eq!(toggles(&asked, &registry).len(), 1, "an installed card you can advance: the agenda, not PAD Campaign");
+        let (placed, _) = pick(&asked, &registry, toggles(&asked, &registry)[0]);
+        assert_eq!(tokens(&placed, "hostile_takeover"), 1);
+
+        let (after, _) = pass_until_settled(placed, &registry);
+        let again = successful_run_on_hq(&after, &registry);
+        assert!(!choosing_cards(&again), "the second successful run this turn asks nothing");
+        assert_eq!(tokens(&again, "hostile_takeover"), 1);
+
+        let declined = none(&asked, &registry);
+        assert_eq!(tokens(&declined, "hostile_takeover"), 0, "\"may\": declined");
+    }
+
+    #[test]
+    fn refuge_campaign_gains_two_credits_as_the_corps_turn_begins() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.installed = vec![rezzed_root_at("refuge_campaign", 0)];
+        state.corp.r_and_d = vec![id("hedge_fund"); 3];
+        assert_eq!(begin_the_turn_of(state, &registry, Side::Corp).corp.resources.credits, Credits(12));
+    }
+
+    #[test]
+    fn svyatogor_excavator_may_trash_another_install_not_itself_for_three_credits() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.installed = vec![rezzed_root_at("svyatogor_excavator", 0), ice_at("ice_wall", ServerId::Hq, false)];
+        state.corp.r_and_d = vec![id("hedge_fund"); 3];
+        let asked = begin_the_turn_of(state.clone(), &registry, Side::Corp);
+        let choice = asked.pending_paid_choice.as_ref().expect("you may trash 1 of your other installed cards");
+        assert_eq!(choice.side, Side::Corp);
+        assert!(matches!(&choice.cost, Cost::Trash { from: crate::dsl::CardZoneRef::OwnInstalled, filter: crate::dsl::CardFilter::NotSourceCard, count: 1, .. }), "{:?}", choice.cost);
+
+        let (paid, _) = apply_action(&asked, &registry, accept()).expect("trash the Ice Wall");
+        assert_eq!(paid.corp.installed.iter().map(|card| card.card.clone()).collect::<Vec<_>>(), vec![id("svyatogor_excavator")], "not itself");
+        assert_eq!(paid.corp.resources.credits, Credits(13));
+        let kept = decline(&asked, &registry);
+        assert_eq!((kept.corp.installed.len(), kept.corp.resources.credits), (2, Credits(10)));
+
+        state.corp.installed.truncate(1);
+        let alone = begin_the_turn_of(state, &registry, Side::Corp);
+        assert!(apply_action(&alone, &registry, accept()).is_err(), "no other installed card to trash");
+    }
+
+    #[test]
+    fn ubiquitous_vig_can_be_advanced_and_pays_a_credit_per_counter_as_the_turn_begins() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.installed = vec![rezzed_root_at("ubiquitous_vig", 0)];
+        let (advanced, _) =
+            apply_action(&state, &registry, PlayerAction::AdvanceCard { target: install_of(&state, "ubiquitous_vig") }).expect("you can advance this asset");
+        assert_eq!(tokens(&advanced, "ubiquitous_vig"), 1);
+
+        let mut runner = runner_turn();
+        runner.corp.installed = vec![crate::rules::InstalledCard { advancement_tokens: 3, ..rezzed_root_at("ubiquitous_vig", 0) }];
+        runner.corp.r_and_d = vec![id("hedge_fund"); 3];
+        assert_eq!(begin_the_turn_of(runner, &registry, Side::Corp).corp.resources.credits, Credits(13), "3 hosted counters");
+    }
+
+    #[test]
+    fn vasilisa_may_be_paid_a_credit_on_encounter_to_place_a_counter_and_tags() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.installed = vec![ice_at("vasilisa", ServerId::Hq, true), root_at("hostile_takeover", 0)];
+        let asked = to_the_encounter(&state, &registry);
+        let choice = asked.pending_paid_choice.as_ref().expect("when the Runner encounters this ice");
+        assert_eq!((choice.side, &choice.cost), (Side::Corp, &Cost::Credits(1)));
+
+        let (paid, _) = apply_action(&asked, &registry, accept()).expect("pay 1[credit]");
+        assert_eq!(paid.corp.resources.credits, Credits(9));
+        assert!(choosing_cards(&paid));
+        let (placed, _) = pick(&paid, &registry, toggles(&paid, &registry)[0]);
+        assert_eq!(tokens(&placed, "hostile_takeover"), 1);
+
+        let declined = decline(&asked, &registry);
+        assert_eq!((declined.corp.resources.credits, tokens(&declined, "hostile_takeover")), (Credits(10), 0));
+        let (done, _) = pass_until_settled(declined, &registry);
+        assert_eq!(done.runner.tags, 1, "give the Runner 1 tag");
+    }
+
+    #[test]
+    fn anemone_rezzed_on_a_run_at_its_server_may_trash_from_hq_for_two_net_damage() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.hq = vec![id("hedge_fund")];
+        state.corp.installed = vec![ice_at("anemone", ServerId::Hq, false)];
+        state.runner.grip = vec![id("sure_gamble"); 4];
+        let asked = rez_on_approach(&state, &registry, "anemone");
+        let choice = asked.pending_paid_choice.as_ref().expect("rezzed during a run against this server");
+        assert_eq!(choice.side, Side::Corp);
+        assert!(matches!(&choice.cost, Cost::Trash { from: crate::dsl::CardZoneRef::OwnHq, filter: crate::dsl::CardFilter::Any, count: 1, .. }), "{:?}", choice.cost);
+
+        let (paid, _) = apply_action(&asked, &registry, accept()).expect("trash Hedge Fund");
+        assert!(paid.corp.hq.is_empty());
+        assert_eq!(paid.runner.grip.len(), 2, "2 net damage");
+        let declined = decline(&asked, &registry);
+        assert_eq!((declined.corp.hq.len(), declined.runner.grip.len()), (1, 4));
+
+        let mut rezzed = runner_turn();
+        rezzed.corp.installed = vec![ice_at("anemone", ServerId::Hq, true)];
+        rezzed.runner.grip = vec![id("sure_gamble"); 4];
+        let at_ice = to_the_encounter(&rezzed, &registry);
+        assert!(at_ice.pending_paid_choice.is_none(), "already rezzed: nothing asks");
+        let (done, _) = pass_until_settled(at_ice, &registry);
+        assert_eq!(done.runner.grip.len(), 3, "do 1 net damage");
+    }
+}

@@ -1,0 +1,24 @@
+{
+  "id": "ubiquitous_vig",
+  "title": "Ubiquitous Vig",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 1,
+  "advancement_requirement": 0,
+  "trash_cost": 4,
+  "triggers": [
+    {
+      "trigger": "OnTurnStart",
+      "effects": [
+        {
+          "GainCreditsAmount": [
+            "Corp",
+            "HostedAdvancementTokens"
+          ]
+        }
+      ]
+    }
+  ],
+  "built_from": 33052,
+  "is_playable": true
+}

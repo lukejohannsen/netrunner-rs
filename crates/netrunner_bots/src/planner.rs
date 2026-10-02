@@ -1170,9 +1170,18 @@ mod tests {
     /// cannot pay — and continued, a kill Corp holding Scorched Earth
     /// against a grip of three, with the credits to play it next turn
     /// but not this one, tags first: the threat is priced. A balanced
-    /// Corp, which reads no leverage in a tag, does not; and the kill
-    /// Corp does not either against a grip the damage would not reach,
-    /// because a tag's leverage alone is under Public Trail's price.
+    /// Corp, which reads no leverage in a tag, does so only when a
+    /// sample happens to make the line pay; and the kill Corp does not
+    /// against a grip the damage would not reach, because a tag's
+    /// leverage alone is under Public Trail's price.
+    ///
+    /// **Counted over twenty agent seeds, not read off one.** The test
+    /// pinned seed 1 until Midnight Sun Stage 1 (2 October 2026), when
+    /// eleven more cards in the pool moved that one sample and the
+    /// balanced Corp tagged. On `main` before the stage the balanced
+    /// Corp already tagged on 7 seeds of 20 (6 after it), the kill Corp
+    /// on all 20 and, against the full grip, on none: the claim is the
+    /// difference between the plans, which one seed could only witness.
     /// (With the credits to play Scorched Earth in the same turn, every
     /// planner tags: the line kills inside the turn and scores the win.)
     /// Public Trail's shape without its "play only if" (a successful run
@@ -1215,12 +1224,25 @@ mod tests {
             agent.select_action(view, &registry);
             agent.plan.as_ref().is_some_and(|plan| plan.steps.iter().any(|step| Some(&step.action) == trail.as_ref()))
         };
-        assert!(plans_to_tag(&mut PlanningAgent::with_style(Side::Corp, 1, Style::of(Plan::Kill)), &view), "the kill Corp tags this turn");
-        assert!(!plans_to_tag(&mut PlanningAgent::new(Side::Corp, 1), &view), "a balanced Corp sees nothing in the tag");
+        const SEEDS: u64 = 20;
+        let tagging = |plan: Option<Plan>, view: &ClientView| {
+            (1..=SEEDS)
+                .filter(|&seed| {
+                    let mut agent = match plan {
+                        Some(plan) => PlanningAgent::with_style(Side::Corp, seed, Style::of(plan)),
+                        None => PlanningAgent::new(Side::Corp, seed),
+                    };
+                    plans_to_tag(&mut agent, view)
+                })
+                .count() as u64
+        };
+        assert_eq!(tagging(Some(Plan::Kill), &view), SEEDS, "the kill Corp tags this turn, whatever the sample");
+        let balanced = tagging(None, &view);
+        assert!(balanced * 2 < SEEDS, "a balanced Corp sees nothing in the tag but a lucky sample: {balanced} of {SEEDS}");
         let mut safe = state.clone();
         safe.runner.grip = vec![CardId("sure_gamble".to_string()); 6];
         let view = build_client_view(&safe, &registry, Side::Corp);
-        assert!(!plans_to_tag(&mut PlanningAgent::with_style(Side::Corp, 1, Style::of(Plan::Kill)), &view), "no threat against a full grip, and a tag alone is under the price");
+        assert_eq!(tagging(Some(Plan::Kill), &view), 0, "no threat against a full grip, and a tag alone is under the price");
     }
 
     #[test]

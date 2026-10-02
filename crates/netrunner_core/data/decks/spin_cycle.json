@@ -1,0 +1,109 @@
+{
+  "id": "spin_cycle",
+  "name": "Spin Cycle",
+  "side": "Corp",
+  "category": "Sweep",
+  "description": "Not a published list: built so the sweeps reach Pravdivost Consulting: Political Solutions, Midnight Sun's NBN identity, which answers the Runner's first successful run each turn with an advancement counter on a card it can advance, and the NBN cards of Midnight Sun Stage 1. On Paid Content's frame after Parhelion Stage 8, its identity swapped: two Artificial Cryptocrash for two of its three Kingmaking, agenda point for agenda point; two Ubiquitous Vig for its two Balanced Coverage, an advanceable asset for an advanceable asset, which the identity's counters pay; and two Vasilisa for its two Capacitor, a sentry that pays a credit to place a counter as the Runner meets it. Paid Content keeps every card given up here. Standard-legal, where its frame is not: NBN: Making News was the frame's one Core Set card.",
+  "style": [
+    "fast-advance"
+  ],
+  "identity": "pravdivost_consulting_political_solutions",
+  "cards": [
+    {
+      "card": "send_a_message",
+      "count": 2
+    },
+    {
+      "card": "hype_machine",
+      "count": 2
+    },
+    {
+      "card": "grubber",
+      "count": 2
+    },
+    {
+      "card": "magistrate_revontulet",
+      "count": 2
+    },
+    {
+      "card": "lethe",
+      "count": 2
+    },
+    {
+      "card": "the_powers_that_be",
+      "count": 2
+    },
+    {
+      "card": "kingmaking",
+      "count": 1
+    },
+    {
+      "card": "freedom_of_information",
+      "count": 2
+    },
+    {
+      "card": "the_holo_man",
+      "count": 1
+    },
+    {
+      "card": "janaina_jk_dumont_kindelan",
+      "count": 1
+    },
+    {
+      "card": "sudden_commandment",
+      "count": 2
+    },
+    {
+      "card": "behold",
+      "count": 2
+    },
+    {
+      "card": "your_digital_life",
+      "count": 2
+    },
+    {
+      "card": "b_1001",
+      "count": 2
+    },
+    {
+      "card": "virtual_service_agent",
+      "count": 2
+    },
+    {
+      "card": "oracle_thinktank",
+      "count": 2
+    },
+    {
+      "card": "gaslight",
+      "count": 2
+    },
+    {
+      "card": "nonequivalent_exchange",
+      "count": 2
+    },
+    {
+      "card": "post_truth_dividend",
+      "count": 2
+    },
+    {
+      "card": "klevetnik",
+      "count": 2
+    },
+    {
+      "card": "unsmiling_tsarevna",
+      "count": 2
+    },
+    {
+      "card": "artificial_cryptocrash",
+      "count": 2
+    },
+    {
+      "card": "ubiquitous_vig",
+      "count": 2
+    },
+    {
+      "card": "vasilisa",
+      "count": 2
+    }
+  ]
+}

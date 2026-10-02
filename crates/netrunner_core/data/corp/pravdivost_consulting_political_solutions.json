@@ -1,0 +1,46 @@
+{
+  "id": "pravdivost_consulting_political_solutions",
+  "title": "Pravdivost Consulting: Political Solutions",
+  "side": "Corp",
+  "card_type": "Identity",
+  "cost": 0,
+  "min_deck_size": 45,
+  "triggers": [
+    {
+      "trigger": "OnSuccessfulRun",
+      "subject": "Any",
+      "first_each_turn": true,
+      "effects": [
+        {
+          "PromptChooseCards": {
+            "side": "Corp",
+            "source": "OwnInstalled",
+            "filter": "Advanceable",
+            "min": 0,
+            "max": 1,
+            "reveal": false,
+            "shuffle_after": false,
+            "then": {
+              "EffectIf": {
+                "condition": {
+                  "AmountAtLeast": [
+                    "CardsSelected",
+                    1
+                  ]
+                },
+                "effect": {
+                  "PlaceAdvancementCounters": {
+                    "Fixed": 1
+                  }
+                }
+              }
+            }
+          }
+        }
+      ],
+      "text": "The first time each turn the Runner makes a successful run, you may place 1 advancement counter on an installed card you can advance."
+    }
+  ],
+  "built_from": 33048,
+  "is_playable": true
+}

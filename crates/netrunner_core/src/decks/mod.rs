@@ -497,6 +497,10 @@ mod tests {
             // Parhelion Stage 7: Issuaq Adaptics' deck, on A Thousand Cuts'
             // frame, whose Core Set cards keep it out of Standard.
             ("permafrost", &neither),
+            // Midnight Sun Stage 1: Pravdivost Consulting's deck, on Paid
+            // Content's frame, which without NBN: Making News holds no Core
+            // Set card, so it is Standard too.
+            ("spin_cycle", &not_startup),
             ("street_gallery", &neither),
             ("pay_as_you_go", &neither),
             ("safety_net", &neither),

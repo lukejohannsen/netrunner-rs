@@ -1,0 +1,23 @@
+{
+  "id": "refuge_campaign",
+  "title": "Refuge Campaign",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 4,
+  "trash_cost": 4,
+  "triggers": [
+    {
+      "trigger": "OnTurnStart",
+      "effects": [
+        {
+          "GainCredits": [
+            "Corp",
+            2
+          ]
+        }
+      ]
+    }
+  ],
+  "built_from": 33033,
+  "is_playable": true
+}

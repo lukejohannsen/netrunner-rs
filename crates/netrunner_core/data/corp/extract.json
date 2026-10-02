@@ -1,0 +1,45 @@
+{
+  "id": "extract",
+  "title": "Extract",
+  "side": "Corp",
+  "card_type": "Operation",
+  "cost": 3,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "GainCredits": [
+            "Corp",
+            6
+          ]
+        },
+        {
+          "OfferPaidChoice": {
+            "side": "Corp",
+            "cost": {
+              "Trash": {
+                "from": "OwnInstalled",
+                "filter": "Any",
+                "count": 1
+              }
+            },
+            "if_paid": {
+              "GainCredits": [
+                "Corp",
+                3
+              ]
+            },
+            "if_declined": {
+              "Sequence": []
+            },
+            "text": "You may trash 1 of your installed cards to gain 3[credit]"
+          }
+        }
+      ]
+    }
+  ],
+  "built_from": 33063,
+  "is_playable": true
+}

@@ -1080,7 +1080,10 @@ mod tests {
             assert_eq!(eternal.first().map(String::as_str), Some("vantage_point"), "{eternal:?}");
             assert_eq!(eternal.last().map(String::as_str), Some("core_set"), "{eternal:?}");
             assert!(eternal.contains(&"system_update_2021".to_string()), "a reprint puts its set on the list: {eternal:?}");
-            assert!(!eternal.contains(&"midnight_sun".to_string()), "no Midnight Sun card is built yet: {eternal:?}");
+            assert!(!eternal.contains(&"uprising".to_string()), "no Uprising card is built yet: {eternal:?}");
+            // Midnight Sun Stage 1 built Corp cards only, so the set is the
+            // Corp's to be offered and not yet the Runner's.
+            assert_eq!(eternal.contains(&"midnight_sun".to_string()), side == Side::Corp, "{side:?}: {eternal:?}");
             let order = catalog::sets();
             let rank = |set: &String| order.iter().position(|known| known.id == *set).unwrap();
             assert!(eternal.windows(2).all(|pair| rank(&pair[0]) < rank(&pair[1])), "newest first: {eternal:?}");

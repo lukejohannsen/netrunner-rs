@@ -1,0 +1,28 @@
+{
+  "id": "maskirovka",
+  "title": "Maskirovka",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Barrier"
+  },
+  "cost": 3,
+  "strength": 3,
+  "subroutines": [
+    {
+      "text": "Gain 2[credit].",
+      "effect": {
+        "GainCredits": [
+          "Corp",
+          2
+        ]
+      }
+    },
+    {
+      "text": "End the run.",
+      "effect": "EndTheRun"
+    }
+  ],
+  "triggers": [],
+  "built_from": 33061,
+  "is_playable": true
+}
