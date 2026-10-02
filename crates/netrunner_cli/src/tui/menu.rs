@@ -579,14 +579,12 @@ impl Menu {
             Screen::Record { lines, scroll } => draw_record(frame, body, lines, *scroll),
             Screen::Settings(form) => self.draw_settings(frame, body, form),
         }
-        let line = match &self.notice {
-            Some(notice) => Line::from(Span::styled(notice.clone(), Style::default().fg(Color::Red))),
-            None => Line::from(Span::styled(
-                format!("Playing as {} · {} format", record::player_name(&self.base), format_name(self.base.format)),
-                Style::default().fg(Color::DarkGray),
-            )),
-        };
-        frame.render_widget(Paragraph::new(line), footer);
+        // The footer is the notice's alone. It said "Playing as <name> ·
+        // <format> format" when there was none, until the person asked for
+        // that line off the menus (2 October 2026).
+        if let Some(notice) = &self.notice {
+            frame.render_widget(Paragraph::new(Line::from(Span::styled(notice.clone(), Style::default().fg(Color::Red)))), footer);
+        }
     }
 
     fn draw_main(&self, frame: &mut Frame, area: Rect) {

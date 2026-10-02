@@ -116,17 +116,15 @@ const LOGO_BOX: Vec2 = Vec2::new(560.0, 120.0);
 const LOGO_MIN_HEIGHT: f32 = 40.0;
 
 fn spawn(mut commands: Commands, theme: Res<Theme>, core: Res<ClientCore>, notices: Res<Notices>, images: Option<ResMut<Assets<Image>>>) {
-    let format = netrunner_client::settings::format_name(core.settings.format.unwrap_or(netrunner_core::format::NsgFormat::Startup));
     let logo = widgets::logo(images, core.settings.desktop.basic_graphics, LOGO_BOX);
-    let playing_as = format!("Playing as {} · {format} format", core.player_name());
-    // The wordmark and the line under it are the column's own children,
-    // not a box of their own: the column is held to the window, and a box
-    // round them would have had to shrink with the wordmark and let the
-    // line under it spill onto the panel.
+    // The wordmark is the column's own child, not a box of its own: the
+    // column is held to the window, and the wordmark is what shrinks.
+    // Nothing sits under it — the "Playing as <name> · <format> format"
+    // line that did was removed at the person's request (2 October 2026);
+    // the name is on the Profile and the format is chosen with the game.
     let heading = SpawnWith({
         let theme = theme.clone();
         move |parent: &mut ChildSpawner| {
-            let tucked = UiRect::bottom(px(-10));
             match logo {
                 // Sized by its height, with the width following, so it
                 // shrinks as one picture; the panel under it never shrinks
@@ -138,13 +136,11 @@ fn spawn(mut commands: Commands, theme: Res<Theme>, core: Res<ClientCore>, notic
                         min_height: px(LOGO_MIN_HEIGHT),
                         aspect_ratio: Some(size.x / size.y),
                         flex_shrink: 1.0,
-                        margin: tucked,
                         ..default()
                     },
                 )),
-                None => parent.spawn((widgets::title(&theme, "NETRUNNER"), widgets::title_shadow(), Node { margin: tucked, ..default() })),
+                None => parent.spawn((widgets::title(&theme, "NETRUNNER"), widgets::title_shadow())),
             };
-            parent.spawn((widgets::dim(&theme, playing_as), Node { margin: UiRect::bottom(px(8)), ..default() }));
         }
     });
     let panel = (
