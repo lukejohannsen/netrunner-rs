@@ -4355,6 +4355,7 @@ pub(crate) fn resolve_amount(amount: &Amount, ctx: &ResolutionContext<'_>, state
             crate::rules::pending_choice::eligible_positions(state, registry, Side::Runner, &crate::dsl::CardZoneRef::OwnInstalled, filter, None, None).len() as u32
         }
         Amount::Reduced { amount, by } => resolve_amount(amount, ctx, state, registry).saturating_sub(resolve_amount(by, ctx, state, registry)),
+        Amount::Increased { amount, by } => resolve_amount(amount, ctx, state, registry).saturating_add(resolve_amount(by, ctx, state, registry)),
         Amount::OtherUnrezzedIce => state
             .corp
             .installed

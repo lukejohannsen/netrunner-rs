@@ -2726,7 +2726,9 @@ fn score_agenda(
     }
     // Scored is uninstalled (CR 1.17.5), so it leaves by the door. No
     // agenda prints an interrupt about leaving, so nothing is announced.
-    let install_id = next.corp.installed[position].install_id;
+    // The agenda is named by its install, not by `position`: a cost that
+    // trashed a card ahead of it (Azef Protocol's) moved it down the list.
+    let install_id = target;
     let (_, announced) = uninstall::corp_install(&mut next, registry, install_id)?.ok_or(RulesError::InstallNotFound(install_id))?;
     // Dividends: every advancement counter past the requirement becomes
     // `dividends` agenda counters on the scored copy (Off the Books) — the

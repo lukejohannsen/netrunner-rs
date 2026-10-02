@@ -1,0 +1,31 @@
+{
+  "id": "chekist_scion",
+  "title": "Chekist Scion",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 0,
+  "advancement_requirement": 0,
+  "trash_cost": 0,
+  "triggers": [
+    {
+      "trigger": "OnAccessed",
+      "subject": "This",
+      "requirement": "ThisCardIsInstalled",
+      "effects": [
+        {
+          "GiveTags": {
+            "Increased": {
+              "amount": {
+                "Fixed": 1
+              },
+              "by": "HostedAdvancementTokens"
+            }
+          }
+        }
+      ],
+      "text": "When the Runner accesses this asset while it is installed, give them 1 tag plus 1 tag for each hosted advancement counter."
+    }
+  ],
+  "built_from": 33050,
+  "is_playable": true
+}

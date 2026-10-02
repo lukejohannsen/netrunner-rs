@@ -21288,4 +21288,213 @@ mod midnight_sun {
         let (remote, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Remote(0) }).expect("run on a remote");
         assert_eq!(available(&remote), 10, "not on a remote");
     }
+
+
+    // ---- Stage 4: advancement counters ----
+
+    fn activate(state: &GameState, registry: &CardRegistry, install: InstallId) -> Result<GameState, RulesError> {
+        apply_action(state, registry, PlayerAction::ActivateAbility { target: install, ability_index: 0 }).map(|(state, _)| state)
+    }
+
+    fn advanced(card: &str, remote: u32, tokens: u32) -> crate::rules::InstalledCard {
+        crate::rules::InstalledCard { advancement_tokens: tokens, ..rezzed_root_at(card, remote) }
+    }
+
+    #[test]
+    fn vladisibirsk_city_grid_can_be_advanced_and_moves_two_counters_once_per_turn_onto_another_card_in_its_root() {
+        let registry = registry();
+        let mut state = base_state();
+        let grid = fixture_install_id("vladisibirsk_city_grid");
+        state.corp.installed = vec![advanced("vladisibirsk_city_grid", 0, 0), advanced("chekist_scion", 0, 0), root_at("hostile_takeover", 1)];
+        let (once, _) = apply_action(&state, &registry, PlayerAction::AdvanceCard { target: grid }).expect("you can advance this upgrade");
+        assert_eq!(tokens(&once, "vladisibirsk_city_grid"), 1);
+        assert!(activate(&once, &registry, grid).is_err(), "2 hosted advancement counters");
+
+        state.corp.installed[0].advancement_tokens = 4;
+        let asked = activate(&state, &registry, grid).expect("remove 2");
+        assert_eq!(tokens(&asked, "vladisibirsk_city_grid"), 2);
+        assert_eq!(toggles(&asked, &registry).len(), 1, "another card you can advance in the root of this server: not the grid, not the agenda in another server");
+        let (placed, _) = pick(&asked, &registry, toggles(&asked, &registry)[0]);
+        assert_eq!(tokens(&placed, "chekist_scion"), 2);
+        assert!(activate(&placed, &registry, grid).is_err(), "once per turn");
+    }
+
+    #[test]
+    fn drago_ivanov_trades_two_counters_for_a_tag_only_during_the_corps_turn() {
+        let registry = registry();
+        let mut state = base_state();
+        let drago = fixture_install_id("drago_ivanov");
+        state.corp.installed = vec![advanced("drago_ivanov", 0, 2)];
+        let tagged = activate(&state, &registry, drago).expect("on the Corp's turn");
+        assert_eq!((tagged.runner.tags, tokens(&tagged, "drago_ivanov")), (1, 0));
+        assert!(activate(&tagged, &registry, drago).is_err(), "2 hosted advancement counters");
+
+        let mut runner = runner_turn();
+        runner.corp.installed = vec![advanced("drago_ivanov", 0, 2)];
+        let (mut running, _) = apply_action(&runner, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run");
+        while running.paid_ability_window.as_ref().is_some_and(|window| window.active_priority == Side::Runner) {
+            running = apply_action(&running, &registry, PlayerAction::PassPriority { side: Side::Runner }).expect("pass").0;
+        }
+        assert!(running.paid_ability_window.is_some(), "the Corp has priority in the Runner's turn");
+        let use_it = PlayerAction::ActivateAbility { target: drago, ability_index: 0 };
+        assert!(!crate::rules::legal_actions_for(&running, &registry, Side::Corp).contains(&use_it), "only during your turn");
+    }
+
+    #[test]
+    fn mestnichestvo_may_spend_a_counter_on_encounter_for_three_credits_then_takes_three_and_ends_the_run() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.installed = vec![crate::rules::InstalledCard { advancement_tokens: 1, ..ice_at("mestnichestvo", ServerId::Hq, true) }];
+        let asked = to_the_encounter(&state, &registry);
+        let choice = asked.pending_paid_choice.as_ref().expect("when the Runner encounters this ice");
+        assert_eq!((choice.side, &choice.cost), (Side::Corp, &Cost::RemoveAdvancementCounters(1)));
+        let (paid, _) = apply_action(&asked, &registry, accept()).expect("remove 1 hosted advancement counter");
+        assert_eq!((paid.runner.resources.credits, tokens(&paid, "mestnichestvo")), (Credits(7), 0));
+        let (done, _) = pass_until_settled(paid, &registry);
+        assert_eq!(done.runner.resources.credits, Credits(4), "the Runner loses 3[credit]");
+        assert!(done.active_run.is_none(), "end the run");
+
+        state.corp.installed[0].advancement_tokens = 0;
+        assert!(to_the_encounter(&state, &registry).pending_paid_choice.is_none(), "no counter to remove: nothing asks");
+    }
+
+    #[test]
+    fn chekist_scion_gives_a_tag_plus_one_per_counter_in_one_instruction_when_accessed_installed() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.installed = vec![crate::rules::InstalledCard { advancement_tokens: 2, ..root_at("chekist_scion", 0) }];
+        let (accessed, events) = run_to_completion(state.clone(), &registry, ServerId::Remote(0));
+        assert_eq!(accessed.runner.tags, 3, "1 tag plus 1 for each of 2 counters");
+        let given: Vec<_> = events.iter().filter(|e| matches!(e, GameEvent::TagsGiven { .. })).collect();
+        assert_eq!(given.len(), 1, "one instruction, one tag event: {given:?}");
+
+        state.corp.installed.clear();
+        state.corp.hq = vec![id("chekist_scion")];
+        let (from_hq, _) = run_to_completion(state, &registry, ServerId::Hq);
+        assert_eq!(from_hq.runner.tags, 0, "only while it is installed");
+    }
+
+    #[test]
+    fn mutually_assured_destruction_costs_three_clicks_and_tags_once_per_rezzed_card_trashed() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.hq = vec![id("mutually_assured_destruction")];
+        state.corp.installed = vec![rezzed_root_at("pad_campaign", 0), ice_at("ice_wall", ServerId::Hq, true), root_at("refuge_campaign", 1)];
+        let (asked, _) = apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: id("mutually_assured_destruction") }).expect("play");
+        assert_eq!((asked.corp.resources.clicks, asked.corp.resources.credits), (Clicks(0), Credits(6)), "[click] plus [click][click], and 4[credit]");
+        let offered = toggles(&asked, &registry);
+        assert_eq!(offered.len(), 2, "your rezzed cards: not the unrezzed Refuge Campaign");
+
+        let (one, _) = apply_action(&asked, &registry, PlayerAction::ToggleCardSelection { position: offered[0] }).expect("first");
+        let (two, _) = apply_action(&one, &registry, PlayerAction::ToggleCardSelection { position: offered[1] }).expect("second");
+        let (trashed, _) = apply_action(&two, &registry, PlayerAction::ConfirmCardSelection).expect("trash both");
+        assert_eq!(trashed.runner.tags, 2, "1 tag for each card trashed this way");
+        assert_eq!(trashed.corp.installed.iter().map(|card| card.card.clone()).collect::<Vec<_>>(), vec![id("refuge_campaign")]);
+        assert_eq!(none(&asked, &registry).runner.tags, 0, "any number: none");
+
+        let mut two_clicks = state;
+        two_clicks.corp.resources.clicks = Clicks(2);
+        assert!(apply_action(&two_clicks, &registry, PlayerAction::PlayOperation { card_id: id("mutually_assured_destruction") }).is_err(), "a triple");
+    }
+
+    #[test]
+    fn moon_pool_trashes_from_hq_and_shuffles_revealed_agendas_back_for_a_counter_each() {
+        let registry = registry();
+        let mut state = base_state();
+        let pool = fixture_install_id("moon_pool");
+        state.corp.hq = vec![id("hedge_fund")];
+        state.corp.archives = vec![ArchivedCard { card: id("hostile_takeover"), facedown: true }, ArchivedCard { card: id("pad_campaign"), facedown: true }];
+        state.corp.installed = vec![rezzed_root_at("moon_pool", 0), advanced("chekist_scion", 1, 0)];
+        let asked = activate(&state, &registry, pool).expect("remove this asset from the game");
+        assert_eq!(asked.corp.removed_from_game, vec![id("moon_pool")]);
+        let (trashed, _) = pick(&asked, &registry, toggles(&asked, &registry)[0]);
+        assert!(trashed.corp.hq.is_empty(), "trash up to 2 cards from HQ");
+        assert_eq!(toggles(&trashed, &registry).len(), 3, "the facedown cards in Archives, Hedge Fund among them");
+
+        let agenda = trashed.corp.archives.iter().position(|card| card.card == id("hostile_takeover")).expect("in Archives");
+        let (revealed, _) = pick(&trashed, &registry, agenda);
+        assert!(revealed.corp.r_and_d.contains(&id("hostile_takeover")), "shuffled into R&D");
+        assert!(choosing_cards(&revealed), "an agenda was revealed: you may place a counter");
+        let (placed, _) = pick(&revealed, &registry, toggles(&revealed, &registry)[0]);
+        assert_eq!(tokens(&placed, "chekist_scion"), 1);
+
+        let asset = placed.corp.archives.iter().position(|card| card.card == id("pad_campaign")).expect("in Archives");
+        let (second, _) = pick(&placed, &registry, asset);
+        assert!(second.corp.r_and_d.contains(&id("pad_campaign")));
+        assert!(!choosing_cards(&second), "not an agenda: no counter");
+        assert_eq!(tokens(&second, "chekist_scion"), 1);
+    }
+
+    #[test]
+    fn azef_protocol_asks_for_another_install_to_trash_as_it_is_scored_then_does_two_meat_damage() {
+        let registry = registry();
+        let mut state = base_state();
+        state.runner.grip = vec![id("sure_gamble"); 3];
+        // The agenda last, so the card its cost trashes stands ahead of it.
+        state.corp.installed = vec![
+            rezzed_root_at("pad_campaign", 1),
+            ice_at("ice_wall", ServerId::Hq, true),
+            crate::rules::InstalledCard { advancement_tokens: 3, ..root_at("azef_protocol", 0) },
+        ];
+        let target = install_of(&state, "azef_protocol");
+        let (asked, _) = apply_action(&state, &registry, PlayerAction::ScoreAgenda { target }).expect("score asks which card");
+        assert!(asked.pending_payment.is_some(), "trash 1 of your other installed cards: two could go");
+        let offered = toggles(&asked, &registry);
+        assert_eq!(offered.len(), 2, "never the agenda itself");
+        let wall = asked.corp.installed.iter().position(|card| card.card == id("ice_wall")).expect("installed");
+        let (scored, _) = apply_action(&asked, &registry, PlayerAction::ToggleCardSelection { position: wall }).expect("pay: the Ice Wall");
+        assert_eq!(scored.corp.resources.agenda_points, AgendaPoints(2));
+        assert_eq!(scored.corp.installed.iter().map(|card| card.card.clone()).collect::<Vec<_>>(), vec![id("pad_campaign")]);
+        assert_eq!(scored.runner.grip.len(), 1, "2 meat damage");
+
+        state.corp.installed.drain(..2);
+        assert!(apply_action(&state, &registry, PlayerAction::ScoreAgenda { target }).is_err(), "no other installed card: it cannot be scored");
+    }
+
+    #[test]
+    fn midnight_3_arcology_draws_three_and_skips_the_discard_step_of_that_turn_only() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.hq = vec![id("hedge_fund"); 4];
+        state.corp.r_and_d = vec![id("hedge_fund"); 6];
+        state.corp.installed = vec![crate::rules::InstalledCard { advancement_tokens: 4, ..root_at("midnight_3_arcology", 0) }];
+        let scored = score(&state, &registry, "midnight_3_arcology");
+        assert_eq!((scored.corp.resources.agenda_points, scored.corp.hq.len()), (AgendaPoints(2), 7), "draw 3 cards");
+        assert!(crate::rules::continuous::cannot(&scored, &registry, crate::dsl::Prohibition::DiscardStep));
+        assert_eq!(discards_owed_at_end_of_turn(&scored, &registry), 0, "skip your discard step this turn");
+
+        let (ended, _) = apply_action(&crate::rules::test_support::clicks_spent(&scored), &registry, PlayerAction::EndTurn).expect("end turn");
+        let (ended, _) = close_all_windows(ended, &registry);
+        assert_eq!(ended.corp.hq.len(), 7, "nothing discarded");
+        assert!(!crate::rules::continuous::cannot(&ended, &registry, crate::dsl::Prohibition::DiscardStep), "this turn only");
+
+        let mut unscored = state;
+        unscored.corp.hq = vec![id("hedge_fund"); 7];
+        assert_eq!(discards_owed_at_end_of_turn(&unscored, &registry), 2, "a turn without it discards");
+    }
+
+    #[test]
+    fn mavirus_may_purge_when_accessed_does_a_net_damage_only_rezzed_and_purges_as_it_is_trashed() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.grip = vec![id("sure_gamble"); 3];
+        state.runner.rig = vec![in_rig("leech", 0, 3)];
+        state.corp.installed = vec![root_at("mavirus", 0)];
+        let (asked, _) = run_to_completion(state.clone(), &registry, ServerId::Remote(0));
+        assert_eq!(offered(&asked), Some(2), "you may purge virus counters");
+        let purged = choose(&asked, &registry, 0);
+        assert_eq!((counters_on(&purged, "leech"), purged.runner.grip.len()), (Some(0), 3), "purged; unrezzed, no damage");
+        assert_eq!(counters_on(&choose(&asked, &registry, 1), "leech"), Some(3), "\"may\": declined");
+
+        state.corp.installed = vec![rezzed_root_at("mavirus", 0)];
+        let (rezzed, _) = run_to_completion(state.clone(), &registry, ServerId::Remote(0));
+        assert_eq!(choose(&rezzed, &registry, 1).runner.grip.len(), 2, "rezzed: 1 net damage");
+
+        let mut corp = base_state();
+        corp.runner.rig = vec![in_rig("leech", 0, 3)];
+        corp.corp.installed = vec![rezzed_root_at("mavirus", 0)];
+        let trashed = activate(&corp, &registry, install_of(&corp, "mavirus")).expect("[trash]");
+        assert_eq!(counters_on(&trashed, "leech"), Some(0), "purge virus counters");
+        assert!(trashed.corp.installed.is_empty());
+    }
 }

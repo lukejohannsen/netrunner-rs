@@ -6078,3 +6078,101 @@ effect does.
   included. The planner seatings move by `determinize`, whose prior holds
   ten more cards (view and index alike): Corp agenda wins 59 → 58, Runner
   agenda wins 98 → 99.
+
+#### Stage 4 — advancement counters (2 October 2026)
+
+`claude/serene-einstein-6bhlig`: Vladisibirsk City Grid, Drago Ivanov,
+Mestnichestvo, Chekist Scion, Mutually Assured Destruction, Moon Pool,
+Azef Protocol, Midnight-3 Arcology and Mavirus. **No new `Effect`.**
+Midnight Sun 41 of 65, its booster pack 4 of 7; `MS_UNIMPLEMENTED` 33 →
+24 and `MSBP_UNIMPLEMENTED` 5 → 3 (Vladisibirsk City Grid and Azef
+Protocol are booster-pack cards reprinted in the set, built from 32006
+and 32007). Six cards composed; three needed a word widened, each for
+every card.
+
+- **What each is made of.** "You can advance this" is
+  `advancement_requirement: 0`, as on Ubiquitous Vig; Vladisibirsk City
+  Grid is the first upgrade to print it, and the advance action asked no
+  more than that. Its ability is Charlotte Caçador's
+  `RemoveAdvancementCounters` as a cost, `OncePerTurn`, into Hype
+  Machine's `Advanceable` and `InRootOfThisServer` prompt with
+  `NotSourceCard`, so the grid is never its own target. Drago Ivanov is
+  the same cost with `DuringYourTurn`, Coalescence's word, into
+  `GiveTags`. Mestnichestvo is Vasilisa's encounter offer paid with a
+  counter, its trigger asked only with a counter to pay, and two
+  subroutines. Mutually Assured Destruction is a Double operation's
+  `additional_play_cost` at two clicks and Simulation Reset's selection
+  over rezzed installs into Archives, then `GiveTags(CardsSelected)`,
+  guarded as Stage 1 learned. Moon Pool is Spin Doctor's
+  `RemoveSelfFromGame` over a `Sequence`: an HQ trash, then two picks of
+  one facedown Archives card each, revealed and shuffled into R&D, each
+  followed, when `ActingCardMatches` an agenda, by an optional counter
+  (Reanimation Protocol's word). Mavirus is Snare!'s reveal in R&D, a
+  `PresentChoice` over `PurgeVirusCounters` and
+  `CurrentlyAccessingInstalledCard { rezzed_only }` around its net
+  damage, and a `TrashSelf` purge.
+- **Three words widened.** `Amount::Increased`, `Reduced`'s other half:
+  Chekist Scion's "1 tag plus 1 tag for each hosted advancement counter"
+  is one instruction (CR 9.12.2c), one `TagsGiven` and one prevention
+  window, where two `GiveTags` would have been two. `Prohibition::
+  DiscardStep`: Midnight-3 Arcology's "skip your discard step this turn"
+  is a lingering `Cannot` that `turn::begin_discard_step` asks before
+  any hand size, going straight to the end-of-turn window (CR 5.5.4d) —
+  a step forbidden for a duration is what `Lingering::Cannot` already
+  is, and it rides in the view with no new field. And an agenda's own
+  `ScoreCost` with `Scope::This`: `validate` admits it on an agenda
+  only; the scan asks a card its own text first, active or not, so the
+  facedown agenda prices its own score; `payment::pays_a_cost_that_may_ask`
+  gains `ScoreAgenda`, since Azef Protocol's "trash 1 of your other
+  installed cards" asks which by the payment's replay.
+- **A rules bug the view sweep found.** `engine::score_agenda` took the
+  agenda's position in the installed list before the score's costs were
+  paid and uninstalled by it after; Azef's cost trashing a card ahead of
+  the agenda left the position past the end, and the 256-seed view sweep
+  panicked on it. The agenda is named by its install now, and Azef's
+  test puts the agenda behind the card its cost trashes.
+- **Fidelity limits:** Moon Pool's two reveals are two picks of one, each
+  shuffled in and its counter answered before the next, and its counter
+  is offered on the Corp's own installs; the Corp knows every card either
+  way, so the outcome is the printed one (on the known-limits list).
+- **Client.** No new field. `Prohibition::DiscardStep` and
+  `Amount::Increased` have their words in `prose` and the HUD's
+  in-effect list. Chekist Scion joins the traps whose rez earns no glow
+  (`board::rez::gains_nothing`): it works face down, as Urtica Cipher
+  does.
+- **Decks.** Paid Content takes two Drago Ivanov, two Vladisibirsk City
+  Grid and two Chekist Scion for its two Behold, two Gaslight and two
+  Balanced Coverage — advanceable cards to share a root with the grid —
+  and stays Eternal-only, which Drago's ban needs. Spin Cycle takes two
+  Mestnichestvo for two Virtual Service Agent and keeps its pin. Tag,
+  You're It takes two Mutually Assured Destruction for two Government
+  Subsidy; Hostile Bid two Azef Protocol for two Let Them Dream, point
+  for point; Retirement Package two Midnight-3 Arcology for two Lightning
+  Laboratory, point for point; A Thousand Cuts two Moon Pool and two
+  Mavirus for two Mindscaping and two Front Company. Every card given up
+  is still in another Sweep deck.
+- **DSL ratio** (`pool_status.py`): unchanged at 17 of 97 `Effect`
+  variants single-use, 1 unused (`Trace`), now over 484 card files.
+- **Real play** (`--headless`, each edited deck against Safety Net, seed
+  2; random seats 96 games, planner seats 48; each pair is random /
+  planner). Drago Ivanov installed 77 / 59 and used 6 / 0 times;
+  Vladisibirsk City Grid installed 93 / 65 and used 14 / 0; Chekist
+  Scion's access fired 36 / 56 times; Mestnichestvo installed 86 / 53,
+  its encounter offer fired 35 / 0 times and its subroutines 100 / 132;
+  Mutually Assured Destruction played 8 / 0; Azef Protocol scored 1 / 22,
+  its meat damage fired 1 / 15 times (a score that wins ends the game
+  before its trigger); Midnight-3 Arcology scored 2 / 8, its trigger 2 /
+  6; Moon Pool installed 73 / 45 and used 27 / 1; Mavirus installed 61 /
+  6, its access fired 78 / 42 times. **Bot debts:** the planner never
+  plays Mutually Assured Destruction, never uses Drago Ivanov or
+  Vladisibirsk City Grid, never advances Mestnichestvo so its offer never
+  comes, uses Moon Pool once and rezzes no Mavirus in 48 games; on the
+  bot-debts list.
+- **Measured.** Both sweeps are green at 256 seeds, the card gate
+  included, so every new card was seen in play. `coverage_identical.py`
+  against Stage 3 (6ad6988, 192 games a report): random identical, view
+  and index alike — the sample matchups hold no Sweep deck, and the three
+  widened words change nothing there. The planner seatings move by
+  `determinize`, whose prior holds nine more cards (view and index
+  alike): Corp agenda wins 58 → 55, Corp flatlines 31 → 27, Runner
+  agenda wins 99 → 103, Runner deck-outs 4 → 7.

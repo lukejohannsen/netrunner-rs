@@ -622,6 +622,11 @@ fn pays_a_cost_that_may_ask(state: &GameState, registry: &CardRegistry, action: 
         PlayerAction::TrashResource { target } => {
             crate::rules::continuous::basic_trash_costs(state, registry, *target).iter().any(|(cost, ..)| cost.may_ask())
         }
+        // Azef Protocol's "trash 1 of your other installed cards" asks
+        // which whenever two installs could go.
+        PlayerAction::ScoreAgenda { target } => {
+            crate::rules::continuous::score_costs(state, registry, *target).iter().any(|(cost, ..)| cost.may_ask())
+        }
         // An additional cost to play that takes cards asks which: Sell
         // Out's "trash 1 installed resource" with two installed. Left off
         // this list, the 256-seed view sweep's debug assertion found it

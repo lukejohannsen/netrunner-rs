@@ -289,6 +289,7 @@ fn cannot_words(what: netrunner_core::dsl::Prohibition) -> &'static str {
         Prohibition::AccessOthers => "the Runner cannot access any other card",
         Prohibition::Access => "the Runner cannot access that card",
         Prohibition::BreakSubroutines => "the Runner's abilities cannot break subroutines",
+        Prohibition::DiscardStep => "the Corp skips their discard step",
     }
 }
 

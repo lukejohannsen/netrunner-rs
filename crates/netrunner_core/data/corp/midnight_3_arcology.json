@@ -1,0 +1,32 @@
+{
+  "id": "midnight_3_arcology",
+  "title": "Midnight-3 Arcology",
+  "side": "Corp",
+  "card_type": "Agenda",
+  "cost": 0,
+  "advancement_requirement": 4,
+  "agenda_points": 2,
+  "triggers": [
+    {
+      "trigger": "OnAgendaScored",
+      "subject": "This",
+      "effects": [
+        {
+          "DrawCards": [
+            "Corp",
+            3
+          ]
+        },
+        {
+          "Prohibit": {
+            "what": "DiscardStep",
+            "until": "Turn"
+          }
+        }
+      ],
+      "text": "When you score this agenda, draw 3 cards. Skip your discard step this turn."
+    }
+  ],
+  "built_from": 33032,
+  "is_playable": true
+}

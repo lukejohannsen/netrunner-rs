@@ -1,0 +1,67 @@
+{
+  "id": "mavirus",
+  "title": "Mavirus",
+  "side": "Corp",
+  "card_type": "Upgrade",
+  "cost": 3,
+  "trash_cost": 0,
+  "continuous": [
+    {
+      "kind": "RevealedWhileAccessed",
+      "applies_to": "This",
+      "while": {
+        "AccessingIn": "RnD"
+      },
+      "text": "While the Runner is accessing this upgrade in R&D, they must reveal it."
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnAccessed",
+      "subject": "This",
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Corp",
+            "options": [
+              "PurgeVirusCounters",
+              {
+                "Sequence": []
+              }
+            ],
+            "texts": [
+              "you may purge virus counters",
+              ""
+            ]
+          }
+        },
+        {
+          "EffectIf": {
+            "condition": {
+              "CurrentlyAccessingInstalledCard": {
+                "rezzed_only": true
+              }
+            },
+            "effect": {
+              "DealDamage": [
+                "Net",
+                1
+              ]
+            }
+          }
+        }
+      ],
+      "text": "When the Runner accesses this upgrade, you may purge virus counters. If this upgrade is rezzed, do 1 net damage."
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": "TrashSelf",
+      "effect": "PurgeVirusCounters",
+      "text": "[trash]: Purge virus counters."
+    }
+  ],
+  "built_from": 33047,
+  "is_playable": true
+}
