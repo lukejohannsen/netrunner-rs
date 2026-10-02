@@ -3,16 +3,12 @@
   "name": "Hit List",
   "side": "Runner",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach Jeitinho, Rebellion Without Rehearsal's Criminal weapon, which the Runner adds to their score area as an assassination agenda after a turn of successful runs on HQ, R&D and Archives, and wins with the third. On Gabriel Santiago, the one Criminal identity no deck plays, whose HQ credits pay for the turn's first run, and on Borrowed Time's frame after Rebellion Without Rehearsal Stage 8b, with three Jeitinho for a Tailgate, a VRcation and a Pennyshaver. Eternal-legal only: Gabriel Santiago is a Core Set card. The Automata Initiative Stage 2: two Shibboleth for two VRcation. The Automata Initiative Stage 3: two Curupira for two Marjanah, fracter for fracter, and two Laser Pointer for two Leech. The Automata Initiative Stage 4: Hermes for the T400 Memory Diamond, memory for memory, and two Saci for two Rotary. Parhelion Stage 4b: two WAKE Implant v2A-JRJ for two Docklands Pass, two Poison Vial for two Pennyshaver and two Tremolo for two Buzzsaw, all six of which Borrowed Time still carries. Parhelion Stage 5d: two Concerto for its two Tailgate, a run paid for by the top of the stack; two Reprise for its two Sell Out, a steal's follow-up; and two Asmund Pudlat for its two Verbal Plasticity, which finds its weapons — Jeitinho, Poison Vial, Laser Pointer — and its Conduit. Parhelion Stage 6b: two Tunnel Vision for two of its three Smartware Distributor, and two Info Bounty for two of its three Red Team, job for job, so the turn begins by identifying a mark that Tunnel Vision breaks on and Info Bounty pays for. Parhelion Stage 7: four Matryoshka for its two Carmen, one installed hosting the others, a click each, and each break of X subroutines turning one copy facedown until the Runner's turn; the two Smartware Distributor Stage 7 was first written to take had already gone to Tunnel Vision in Stage 6b, so the deck is two cards over its 46, at 48.",
+  "description": "Not a published list: built so the sweeps reach Jeitinho, Rebellion Without Rehearsal's Criminal weapon, which the Runner adds to their score area as an assassination agenda after a turn of successful runs on HQ, R&D and Archives, and wins with the third. On Gabriel Santiago, the one Criminal identity no deck plays, whose HQ credits pay for the turn's first run, and on Borrowed Time's frame after Rebellion Without Rehearsal Stage 8b, with three Jeitinho for a Tailgate, a VRcation and a Pennyshaver. Eternal-legal only: Gabriel Santiago is a Core Set card. The Automata Initiative Stage 2: two Shibboleth for two VRcation. The Automata Initiative Stage 3: two Curupira for two Marjanah, fracter for fracter, and two Laser Pointer for two Leech. The Automata Initiative Stage 4: Hermes for the T400 Memory Diamond, memory for memory, and two Saci for two Rotary. Parhelion Stage 4b: two WAKE Implant v2A-JRJ for two Docklands Pass, two Poison Vial for two Pennyshaver and two Tremolo for two Buzzsaw, all six of which Borrowed Time still carries. Parhelion Stage 5d: two Concerto for its two Tailgate, a run paid for by the top of the stack; two Reprise for its two Sell Out, a steal's follow-up; and two Asmund Pudlat for its two Verbal Plasticity, which finds its weapons — Jeitinho, Poison Vial, Laser Pointer — and its Conduit. Parhelion Stage 6b: two Tunnel Vision for two of its three Smartware Distributor, and two Info Bounty for two of its three Red Team, job for job, so the turn begins by identifying a mark that Tunnel Vision breaks on and Info Bounty pays for. Parhelion Stage 7: four Matryoshka for its two Carmen, one installed hosting the others, a click each, and each break of X subroutines turning one copy facedown until the Runner's turn; the two Smartware Distributor Stage 7 was first written to take had already gone to Tunnel Vision in Stage 6b, so the deck is two cards over its 46, at 48. Midnight Sun Stage 2: two Revolver, a killer, for its two Word on the Street; two PAN-Weave for its two Borrowed Goods, an HQ run paying a credit beside Gabriel's; and two No Free Lunch for its two Mutual Favor. Borrowed Time still carries all three.",
   "style": [
     "pressure"
   ],
   "identity": "gabriel_santiago_consummate_professional",
   "cards": [
-    {
-      "card": "mutual_favor",
-      "count": 2
-    },
     {
       "card": "underdome_irregulars",
       "count": 3
@@ -48,14 +44,6 @@
     {
       "card": "conduit",
       "count": 1
-    },
-    {
-      "card": "borrowed_goods",
-      "count": 2
-    },
-    {
-      "card": "word_on_the_street",
-      "count": 2
     },
     {
       "card": "jeitinho",
@@ -104,6 +92,18 @@
     {
       "card": "matryoshka",
       "count": 4
+    },
+    {
+      "card": "revolver",
+      "count": 2
+    },
+    {
+      "card": "pan_weave",
+      "count": 2
+    },
+    {
+      "card": "no_free_lunch",
+      "count": 2
     }
   ]
 }

@@ -1,0 +1,50 @@
+{
+  "id": "pan_weave",
+  "title": "PAN-Weave",
+  "side": "Runner",
+  "card_type": "Hardware",
+  "cost": 2,
+  "unique": true,
+  "triggers": [
+    {
+      "trigger": "OnInstall",
+      "subject": "This",
+      "effects": [
+        {
+          "DealDamage": [
+            "Meat",
+            1
+          ]
+        }
+      ],
+      "text": "When you install this hardware, suffer 1 meat damage."
+    },
+    {
+      "trigger": "OnSuccessfulRun",
+      "subject": "Any",
+      "when": {
+        "Server": [
+          "Hq"
+        ]
+      },
+      "first_each_turn": true,
+      "effects": [
+        {
+          "LoseCredits": [
+            "Corp",
+            1
+          ]
+        },
+        {
+          "GainCreditsAmount": [
+            "Runner",
+            "CreditsLostThisResolution"
+          ]
+        }
+      ],
+      "text": "The first time each turn you make a successful run on HQ, the Corp loses 1[credit]. If they do, gain 1[credit]."
+    }
+  ],
+  "built_from": 33014,
+  "is_playable": true
+}

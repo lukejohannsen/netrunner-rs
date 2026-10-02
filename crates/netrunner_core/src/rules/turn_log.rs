@@ -116,10 +116,15 @@ pub enum Kind {
     /// is both a double and a mandate, so a card has one column
     /// (`of_card` reads double first).
     MandateOperation,
+    /// A **virus** program, the third subtype given a column, for
+    /// Avgustina Ivanovskaya's "the first time each turn you install a
+    /// virus program" — the Runner installs faceup, so as public as any
+    /// program. A virus is always a program, so a card has one column.
+    VirusProgram,
 }
 
 impl Kind {
-    const COUNT: usize = 14;
+    const COUNT: usize = 15;
     const ALL: [Kind; Kind::COUNT] = [
         Kind::Unseen,
         Kind::Agenda,
@@ -135,17 +140,20 @@ impl Kind {
         Kind::DoubleOperation,
         Kind::DoubleEvent,
         Kind::MandateOperation,
+        Kind::VirusProgram,
     ];
 
-    /// The column a card is counted in: its type, or its type's double or
-    /// mandate.
+    /// The column a card is counted in: its type, or its type's double,
+    /// mandate or virus.
     fn of_card(definition: &CardDefinition) -> Kind {
         let double = definition.subtypes.contains(&CardSubtype::Double);
         let mandate = definition.subtypes.contains(&CardSubtype::Mandate);
+        let virus = definition.subtypes.contains(&CardSubtype::Virus);
         match Kind::of(&definition.card_type) {
             Kind::Operation if double => Kind::DoubleOperation,
             Kind::Operation if mandate => Kind::MandateOperation,
             Kind::Event if double => Kind::DoubleEvent,
+            Kind::Program if virus => Kind::VirusProgram,
             kind => kind,
         }
     }
@@ -155,6 +163,7 @@ impl Kind {
         match Kind::of(card_type) {
             Kind::Operation => vec![Kind::Operation, Kind::DoubleOperation, Kind::MandateOperation],
             Kind::Event => vec![Kind::Event, Kind::DoubleEvent],
+            Kind::Program => vec![Kind::Program, Kind::VirusProgram],
             kind => vec![kind],
         }
     }
@@ -162,7 +171,7 @@ impl Kind {
     /// A Runner card's type: every Runner card trashed goes faceup to the
     /// heap, from wherever it was, so both players see what it was.
     fn is_runners(self) -> bool {
-        matches!(self, Kind::Hardware | Kind::Resource | Kind::Program | Kind::Event | Kind::DoubleEvent)
+        matches!(self, Kind::Hardware | Kind::Resource | Kind::Program | Kind::VirusProgram | Kind::Event | Kind::DoubleEvent)
     }
 
     fn of(card_type: &CardType) -> Kind {
@@ -504,8 +513,8 @@ pub(crate) fn first_time_on(definition: &CardDefinition, state: &crate::rules::G
 
 /// The `Kind`s a card filter admits, where it is no finer than one.
 fn kinds(filter: &CardFilter) -> Result<Vec<Kind>, String> {
-    // "A double operation", "a mandate": the subtypes the log counts
-    // apart.
+    // "A double operation", "a mandate", "a virus program": the subtypes
+    // the log counts apart.
     if let CardFilter::All(parts) = filter
         && let [first, second] = parts.as_slice()
     {
@@ -518,6 +527,7 @@ fn kinds(filter: &CardFilter) -> Result<Vec<Kind>, String> {
             Some((CardType::Operation, CardSubtype::Double)) => return Ok(vec![Kind::DoubleOperation]),
             Some((CardType::Event, CardSubtype::Double)) => return Ok(vec![Kind::DoubleEvent]),
             Some((CardType::Operation, CardSubtype::Mandate)) => return Ok(vec![Kind::MandateOperation]),
+            Some((CardType::Program, CardSubtype::Virus)) => return Ok(vec![Kind::VirusProgram]),
             _ => {}
         }
     }

@@ -2425,7 +2425,7 @@ fn activate_ability(
     let mut events = Vec::new();
     // Taken before the cost, which may trash the card the effect reads
     // (Fermenter): see `ResolutionContext::last_known`.
-    let last_known = ability::last_known(&next, &ability_ctx(is_identity, target, &card_id));
+    let last_known = ability::last_known(&next, &ability_ctx(is_identity, target, &card_id), registry);
     // Set aside, not trashed, when the cost uninstalls the card and the
     // effect acts on what it hosts (CR 9.5.5): Read-Write Share's hosted
     // cards go into the stack, and a "whenever you trash" hears nothing.

@@ -1,0 +1,29 @@
+{
+  "id": "chastushka",
+  "title": "Chastushka",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 3,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "InitiateRun": "Hq"
+        },
+        {
+          "SetAccessReplacement": {
+            "server": "Hq",
+            "effect": {
+              "Sabotage": 4
+            }
+          }
+        }
+      ],
+      "text": "Run HQ. If successful, instead of breaching HQ, sabotage 4."
+    }
+  ],
+  "built_from": 33002,
+  "is_playable": true
+}
