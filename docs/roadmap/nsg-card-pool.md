@@ -47,16 +47,16 @@ cards each stage takes.
 | 1 | Vantage Point (`vp`) | 66 | 66 | 0 | complete (27 September 2026) |
 | 2 | Rebellion Without Rehearsal (`rwr`) | 65 | 65 | 0 | complete (28 September 2026) |
 | 3 | The Automata Initiative (`tai`) | 65 | 65 | 0 | complete (29 September 2026) |
-| 4 | Parhelion (`ph`) | 63 | 52 | 11 | **Stage 7 next** — winning and the score area: Issuaq Adaptics, Superdeep Borehole, Nightmare Archive, Matryoshka |
+| 4 | Parhelion (`ph`) | 63 | 56 | 7 | **Stage 8 next** — losing abilities and break restrictions: Hush, Klevetnik, Anvil, Unsmiling Tsarevna, Hafrún, Tsakhia, ZATO City Grid |
 | 5 | Midnight Sun (`ms`) + Booster (`msbp`) | 65 + 7 | 0 | 65 + 7 | not started |
 | 6 | Uprising (`ur`) + Booster (`urbp`) | 65 + 7 | 0 | 65 + 7 | not started |
 | 7 | Downfall (`df`) | 65 | 0 | 65 | not started |
 | 8 | System Update 2021 (`su21`), Salvaged Memories (`sm`), Magnum Opus Reprint (`mor`) | 82, 18, 6 | 11, 1, 0 | 71, 17, 6 | not started (the built ones are Core reprints) |
 
-**DSL ratio** (`pool_status.py`, the DSL Growth Rule's number): **14 of 92
-`Effect` variants single-use, 1 unused (`Trace`), over 432 card files** (1
-October 2026). The baseline at Stage 0a was 26 of 70 single-use, 3 unused,
-over 184 files: 215 cards later the single-use count is *lower*, because the
+**DSL ratio** (`pool_status.py`, the DSL Growth Rule's number): **14 of 93
+`Effect` variants single-use, 1 unused (`Trace`), over 436 card files** (2
+October 2026, with Parhelion Stage 7). The baseline at Stage 0a was 26 of 70 single-use, 3 unused,
+over 184 files: 252 cards later the single-use count is *lower*, because the
 growth went into `Trigger`, `EventFilter`, `Amount`, `CardFilter`, `Cost` and
 `ContinuousKind` words rather than into what an effect does.
 
@@ -297,14 +297,14 @@ this file keeps; a stage that builds or widens a mechanic updates the cell.
 | Arrange | VP: Cultivate, Knowledge Seeker | RWR Cataloguer; TAI Federal Fundraising | CR 8.3.1 | VP 6a |
 | Reveal as a step other cards can read | VP: Esca, Perfect Recall, Tocsin | RWR Burner, Bring Them Home | CR 1.21.3 | VP 6a; RWR 6b (stays revealed) |
 | Abilities active outside play (Expendable from HQ; from Archives or the heap) | VP: Tocsin | RWR Eminent Domain, Descent; TAI Slash and Burn Agriculture, Tree Line, Angelique; reprints Subliminal Messaging, Crowdfunding | CR 9.1.8b | VP 7f; RWR 7a; TAI 7 |
-| A card added to a score area "as an agenda" | VP: Word on the Street, Myōshu | RWR Jeitinho, Kingmaking; PH Nightmare Archive; MS Regenesis, Backroom Machinations | CR 1.17.3f | VP 7d; RWR 8c (the Runner's) |
-| Hosting in general: install onto a card, facedown hosted cards, host limits | VP: Hackerspace, Read-Write Share, Luana Campos | RWR Spree; PH Matryoshka | CR 1.13.5, CR 1.13.7 | VP 7b, 7c; RWR 3d (onto a host); TAI 4 |
+| A card added to a score area "as an agenda" | VP: Word on the Street, Myōshu | RWR Jeitinho, Kingmaking; PH Nightmare Archive; MS Regenesis, Backroom Machinations | CR 1.17.3f | VP 7d; RWR 8c (the Runner's); PH 7 (an accessed Corp card, into the Runner's) |
+| Hosting in general: install onto a card, facedown hosted cards, host limits | VP: Hackerspace, Read-Write Share, Luana Campos | RWR Spree; PH Matryoshka | CR 1.13.5, CR 1.13.7 | VP 7b, 7c; RWR 3d (onto a host); TAI 4; PH 7 (turned facedown) |
 | Runner cards removed from the game | VP: Take a Dive, Kompromat | TAI Capybara; PH Nanuq; UR Devil Charm, The Back, Buffer Drive | CR 4.9 | RWR 2b (`RemoveFromGame`); TAI 7 |
 | Additional costs imposed by another card (steal, score, run, trash) | VP: Magistrate Revontulet | RWR Sebastião Souza Pessoa; TAI Daniela Jorge Inácio; MS Azef Protocol; UR NAPD Cordon, Earth Station: SEA Headquarters; DF Cold Site Server, Reduced Service | CR 1.16.10, CR 6.3.2b | VP 3a (steal, score); RWR 2a (trash); TAI 8b |
 | Terminal: the action phase is forced to end | RWR: Active Policing, Bring Them Home | TAI Oppo Research; MS Big Deal | CR 5.4.3 | RWR 6a |
 | Psi game: a simultaneous secret bid | RWR: See How They Run | TAI Adrian Seis; UR Konjin, Hyoubu Precog Manifold | CR 10.14.6 | RWR 7b; TAI 8b |
 | Set aside | RWR: The Wizard’s Chest | PH Spark of Inspiration; MS Deep Dive; UR Gachapon | CR 4.8 | RWR 6d (faceup only); PH 6c (Spark composes) |
-| X costs | RWR: Lobisomem | PH Matryoshka; DF Utae; reprints Corporate Troubleshooter, Psychographics | CR 1.16.2c | RWR 6e |
+| X costs | RWR: Lobisomem | PH Matryoshka; DF Utae; reprints Corporate Troubleshooter, Psychographics | CR 1.16.2c | RWR 6e; PH 7 |
 | Forced or repeated encounter | RWR: Sisyphus Protocol | UR Konjin, Ganked! | CR 6.1.3 | RWR 7d |
 | Losing abilities | PH: Hush, Klevetnik | MS Light the Fire! | CR 9.1.9a | — |
 | Break restrictions ("cannot be broken", "only by …") | PH: Anvil, Unsmiling Tsarevna, Hafrún | MS Trieste Model Bioroids; UR Akhet, NEXT Activation Command | CR 9.8.5 | — |
@@ -686,8 +686,9 @@ change deck-building rules (`DeckRule`, Stage 5a).
    Vision, Info Bounty; **6c**, a set-aside program and counters on a run event
    (built): Spark of Inspiration, Raindrops Cut Stone; **6d**, a Runner card removed
    from the game as it is uninstalled (built): Nanuq. Stage 6 is complete.
-7. **Winning and the score area:** Issuaq Adaptics: Sustaining Diversity, Superdeep Borehole, Nightmare
-   Archive, Matryoshka (X cost).
+7. **Winning and the score area** (built, 2 October 2026): Issuaq Adaptics:
+   Sustaining Diversity, Superdeep Borehole, Nightmare Archive, Matryoshka
+   (X cost). Stage 7 is complete.
 8. **Losing abilities and break restrictions** (last, because they touch
    every read of an ability): Hush, Klevetnik, Anvil, Unsmiling Tsarevna,
    Hafrún (two ice types, which `CardType::Ice(IceType)` cannot say), Tsakhia,
@@ -696,8 +697,6 @@ change deck-building rules (`DeckRule`, Stage 5a).
 **Riskiest:**
 - Hush.
 - Tsakhia: replaces every subroutine's resolution for an encounter.
-- Matryoshka.
-- Nightmare Archive: a non-agenda worth −1 in a score area.
 - Hafrún.
 
 **Banned:** Dr. Vientiane Keeling, K2CP Turbine, Matryoshka, Nanisivik
@@ -721,6 +720,7 @@ Grid, Tsakhia, World Tree.
 - **Stage 6b** — the mark (`feat/ph-stage-6b-mark`, 1 October 2026).
 - **Stage 6c** — a set-aside program, and a subroutine resolving heard by a run event (`feat/ph-stage-6c-set-aside-and-run-event-counters`, 1 October 2026).
 - **Stage 6d** — a Runner card removed from the game as it leaves the table (`feat/ph-stage-6d-nanuq`, 1 October 2026).
+- **Stage 7** — winning and the score area: a target a card lowers, a card that wins when it is empty, an accessed card moved by its own text, and copies turned facedown (`claude/serene-einstein-6bhlig`, 2 October 2026).
 
 ### 5. Midnight Sun and its Booster Pack — 65 cards (C 22 / V 26 / M 17)
 

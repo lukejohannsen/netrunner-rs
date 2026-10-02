@@ -362,6 +362,23 @@ pub(crate) fn allotted_clicks(state: &GameState, registry: &CardRegistry, side: 
     })
 }
 
+/// The agenda points `side` needs to win right now (CR 1.7.2a, 10.3.1c):
+/// the match's threshold — 7, or 6 in a starter game — and what `side`'s
+/// active cards change it by (`ContinuousKind::AgendaPointsToWin`, Issuaq
+/// Adaptics's "you need 1 less agenda point to win the game" for each
+/// power counter it hosts). **Asked, never kept:** the win check and the
+/// view put it. The bots' stage (`netrunner_bots::eval::stage`) still reads
+/// the match rule: it is a reading of the board, and has no registry. Signed and unbounded below, since nothing
+/// in the rules stops it: a player who needs 0 or fewer has a score that
+/// meets it at the next checkpoint.
+pub fn points_to_win(state: &GameState, registry: &CardRegistry, side: Side) -> i32 {
+    let threshold = i32::try_from(state.rules.winning_agenda_points).unwrap_or(i32::MAX);
+    threshold.saturating_add(sum(state, registry, Target::Player(side), |kind| match kind {
+        ContinuousKind::AgendaPointsToWin(number) => Some(number),
+        _ => None,
+    }))
+}
+
 /// The Runner's link right now: what their identity prints and what their
 /// active cards add (The Toolbox) for as long as each is installed. **Asked,
 /// never kept** — the trace, the view and the bots' encoding all ask here.

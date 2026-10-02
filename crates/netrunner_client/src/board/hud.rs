@@ -56,8 +56,18 @@ pub const PER_ROW: usize = 6;
 /// header carries the count ("HQ · 4"), so an "HQ" readout said the same
 /// number twice, as the R&D and Archives line `details` dropped did. The
 /// Runner's grip has no column, so its count stays.
+/// The agenda points `side` needs to win, as the engine asks it
+/// (`continuous::points_to_win`): the match's threshold less what a card
+/// takes off it (Issuaq Adaptics: Sustaining Diversity's power counters).
+/// Every "to win" a client prints reads this, never the match rule.
+pub fn points_to_win(view: &ClientView, side: Side) -> i32 {
+    match side {
+        Side::Corp => view.corp.points_to_win,
+        Side::Runner => view.runner.points_to_win,
+    }
+}
+
 pub fn readouts(view: &ClientView, side: Side) -> Vec<Readout> {
-    let to_win = view.rules.winning_agenda_points;
     let quiet = |label, value: String| Readout { label, value, alarm: false, opens: None };
     let threat = |label, n: u32| Readout { label, value: n.to_string(), alarm: n > 0, opens: None };
     // Two points short is one agenda from the win in every sample deck
@@ -66,7 +76,7 @@ pub fn readouts(view: &ClientView, side: Side) -> Vec<Readout> {
     // the agendas, and "Points" did not say there was a pile behind it.
     // Signed: Word on the Street can put a score below 0.
     let points = |side, points: i32| {
-        let to_win = i32::try_from(to_win).unwrap_or(i32::MAX);
+        let to_win = points_to_win(view, side);
         Readout { label: "Agendas", value: format!("{points}/{to_win}"), alarm: points + 2 >= to_win && points > 0, opens: Some(Pile::Agendas(side)) }
     };
     match side {
@@ -547,11 +557,22 @@ mod tests {
     #[test]
     fn points_read_against_the_total_and_warn_one_agenda_out() {
         let mut view = view();
-        let to_win = view.rules.winning_agenda_points;
+        let to_win = view.corp.points_to_win;
         assert_eq!(readouts(&view, Side::Corp)[2].value, format!("0/{to_win}"));
         assert!(!readouts(&view, Side::Corp)[2].alarm);
-        view.corp.agenda_points = to_win as i32 - 2;
+        view.corp.agenda_points = to_win - 2;
         assert!(readouts(&view, Side::Corp)[2].alarm);
+    }
+
+    /// Issuaq Adaptics: Sustaining Diversity takes a point off what the Corp
+    /// needs for each power counter it hosts, so the readout's total is the
+    /// view's own number, not the match rule's, and only the Corp's moves.
+    #[test]
+    fn the_total_is_the_engines_number_for_each_side() {
+        let mut view = view();
+        view.corp.points_to_win = view.rules.winning_agenda_points as i32 - 2;
+        assert_eq!(readouts(&view, Side::Corp)[2].value, format!("0/{}", view.rules.winning_agenda_points - 2));
+        assert_eq!(readouts(&view, Side::Runner)[2].value, format!("0/{}", view.runner.points_to_win));
     }
 
     #[test]

@@ -65,6 +65,12 @@ pub struct CorpClientView {
     /// and never read back into a state.
     #[serde(default)]
     pub scored_worth: Vec<i32>,
+    /// The agenda points the Corp needs to win right now
+    /// (`continuous::points_to_win`): the match's threshold, less one for
+    /// each power counter on Issuaq Adaptics: Sustaining Diversity. Derived
+    /// and public, as the score beside it is, so a client says "to win"
+    /// with the engine's number rather than the match rule's.
+    pub points_to_win: i32,
     /// Public — see `PublicCorpState::removed_from_game`.
     #[serde(default)]
     pub removed_from_game: Vec<CardId>,
@@ -121,6 +127,9 @@ pub struct RunnerClientView {
     /// said "2 points" summed to more than the total beside it.
     #[serde(default)]
     pub scored_worth: Vec<i32>,
+    /// The agenda points the Runner needs to win right now — see
+    /// `CorpClientView::points_to_win`.
+    pub points_to_win: i32,
     /// Servers run this turn, oldest first — public, see
     /// `PublicRunnerState::servers_run_this_turn`.
     #[serde(default)]
@@ -380,6 +389,7 @@ pub fn build_client_view(state: &GameState, registry: &CardRegistry, viewer: imp
         servers: group_by_server(&public.corp.installed),
         scored_worth: state.corp.scored_agendas.iter().map(|scored| crate::rules::scored_value(state, registry, scored, Side::Corp)).collect(),
         scored_agendas: public.corp.scored_agendas,
+        points_to_win: crate::rules::continuous::points_to_win(state, registry, Side::Corp),
         removed_from_game: public.corp.removed_from_game,
     };
 
@@ -398,6 +408,7 @@ pub fn build_client_view(state: &GameState, registry: &CardRegistry, viewer: imp
         set_aside: public.runner.set_aside,
         rig: public.runner.rig,
         link_strength: public.runner.link_strength,
+        points_to_win: crate::rules::continuous::points_to_win(state, registry, Side::Runner),
         servers_run_this_turn: public.runner.servers_run_this_turn.clone(),
         discarded_this_discard_phase: public.runner.discarded_this_discard_phase.clone(),
         identity_flipped: public.runner.identity_flipped,

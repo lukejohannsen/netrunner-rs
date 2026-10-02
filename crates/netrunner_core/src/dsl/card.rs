@@ -1573,6 +1573,10 @@ impl CardDefinition {
                 (ContinuousKind::HandSize(_), _) => {
                     return misfit("HandSize", "a maximum hand size is a player's: the card's `Controller`, or the other player named by side (`Player`)");
                 }
+                (ContinuousKind::AgendaPointsToWin(_), Scope::Controller) => {}
+                (ContinuousKind::AgendaPointsToWin(_), _) => {
+                    return misfit("AgendaPointsToWin", "the points a player needs to win are theirs, so they apply to the card's `Controller`");
+                }
                 (ContinuousKind::AllottedClicks(_), Scope::Controller) => {}
                 (ContinuousKind::AllottedClicks(_), _) => return misfit("AllottedClicks", "a player's allotted clicks are theirs, so they apply to the card's `Controller`"),
                 (_, Scope::InstallingOntoThis(_)) if !hosted || self.side != Side::Runner => {

@@ -1,0 +1,105 @@
+{
+  "id": "permafrost",
+  "name": "Permafrost",
+  "side": "Corp",
+  "category": "Sweep",
+  "description": "Not a published list: built so the sweeps reach Issuaq Adaptics: Sustaining Diversity, Parhelion's Jinteki identity, which earns a power counter for each agenda scored that was not installed or advanced that turn, and needs a point less to win for each. A Thousand Cuts' frame under a new identity, with two Seamless Launch for its two Mindscaping: placing counters is not advancing, so an agenda installed on an earlier turn and launched over its requirement is scored the Issuaq way (Parhelion Stage 7).",
+  "style": [
+    "traps"
+  ],
+  "identity": "issuaq_adaptics_sustaining_diversity",
+  "cards": [
+    {
+      "card": "sericulture_expansion",
+      "count": 2
+    },
+    {
+      "card": "lotus_haze",
+      "count": 3
+    },
+    {
+      "card": "snare",
+      "count": 3
+    },
+    {
+      "card": "urtica_cipher",
+      "count": 1
+    },
+    {
+      "card": "the_red_room",
+      "count": 2
+    },
+    {
+      "card": "retribution",
+      "count": 1
+    },
+    {
+      "card": "vicsek",
+      "count": 2
+    },
+    {
+      "card": "knowledge_seeker",
+      "count": 2
+    },
+    {
+      "card": "ezam",
+      "count": 1
+    },
+    {
+      "card": "lionsmane",
+      "count": 2
+    },
+    {
+      "card": "esca",
+      "count": 2
+    },
+    {
+      "card": "dr_vientiane_keeling",
+      "count": 2
+    },
+    {
+      "card": "cloud_eater",
+      "count": 2
+    },
+    {
+      "card": "bring_them_home",
+      "count": 2
+    },
+    {
+      "card": "see_how_they_run",
+      "count": 2
+    },
+    {
+      "card": "tributary",
+      "count": 2
+    },
+    {
+      "card": "fujii_asset_retrieval",
+      "count": 2
+    },
+    {
+      "card": "attini",
+      "count": 2
+    },
+    {
+      "card": "phoneutria",
+      "count": 2
+    },
+    {
+      "card": "tatu_bola",
+      "count": 2
+    },
+    {
+      "card": "front_company",
+      "count": 2
+    },
+    {
+      "card": "vampyronassa",
+      "count": 2
+    },
+    {
+      "card": "seamless_launch",
+      "count": 2
+    }
+  ]
+}

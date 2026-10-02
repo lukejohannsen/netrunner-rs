@@ -171,6 +171,7 @@ pub fn describe_cost(cost: &Cost) -> String {
         Cost::DerezSelf => "derez this card".to_string(),
         Cost::AddSelfToHq => "add this card to HQ".to_string(),
         Cost::TrashRandomFromHq(n) => format!("trash {} at random from HQ", plural(*n, "card", "cards")),
+        Cost::TurnHostedFacedown => "turn 1 hosted card facedown".to_string(),
         Cost::AddRandomFromGripToBottom(n) => format!("add {} from your grip at random to the bottom of your stack", plural(*n, "card", "cards")),
         Cost::AnyOf(options) => options.iter().map(describe_cost).collect::<Vec<_>>().join(" or "),
         Cost::AllOf(parts) => parts.iter().map(describe_cost).collect::<Vec<_>>().join(" and "),
@@ -431,6 +432,7 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
             format!("the ice gains {copies}\u{201c}{}\u{201d} {order} its other subroutines, for {how_long}", subroutine.text.trim_end_matches('.'))
         }
         Effect::WinTheGame => "you win the game".to_string(),
+        Effect::TurnHostedFaceup => "turn each hosted card faceup".to_string(),
         Effect::GainIceSubtype(kind) => {
             format!("this ice gains {} while it remains rezzed", crate::board::facts::ice_type_words(&[*kind]))
         }
@@ -692,6 +694,7 @@ pub fn describe_continuous(effect: &ContinuousEffect) -> String {
         ContinuousKind::Strength(number) => format!("gets {} strength", signed(number)),
         ContinuousKind::Memory(number) => format!("gets {} memory", signed(number)),
         ContinuousKind::HandSize(number) => format!("gets {} maximum hand size", signed(number)),
+        ContinuousKind::AgendaPointsToWin(number) => format!("needs {} agenda points to win", signed(number)),
         ContinuousKind::AllottedClicks(number) => format!("gets {} allotted [click] each turn", signed(number)),
         ContinuousKind::Link(number) => format!("gets {} link", signed(number)),
         ContinuousKind::InstallCost(number) => format!("costs {} to install", signed(number)),

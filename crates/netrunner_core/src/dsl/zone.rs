@@ -235,6 +235,14 @@ pub enum CardFilter {
     /// (`ScoredAgenda::installed_on_scoring_turn`, when it was scored this
     /// turn).
     InstalledThisTurn,
+    /// An agenda in a score area that was not advanced on the turn it was
+    /// scored — Issuaq Adaptics: Sustaining Diversity's "an agenda that you
+    /// did not install or **advance** this turn", in an `OnAgendaScored`
+    /// `when` beside `NotInstalledThisTurn`. Instance-level, read off
+    /// `ScoredAgenda::advanced_on_scoring_turn`; a counter a card placed is
+    /// not advancing (CR 1.18.2). The negative word, as `NotInstalledThisTurn`
+    /// is, because `Not` is definition-level and would admit nothing.
+    NotAdvancedThisTurn,
     /// An agenda in a score area that was **scored** this turn — Myōshu's
     /// "you scored an agenda this turn". Instance-level, read off
     /// `ScoredAgenda::scored_on_turn`. A card added "as an agenda" was not
@@ -461,6 +469,7 @@ impl CardFilter {
                 | CardFilter::TopOfZone(_)
                 | CardFilter::Revealed
                 | CardFilter::NotInstalledThisTurn
+                | CardFilter::NotAdvancedThisTurn
                 | CardFilter::InstalledThisTurn
                 | CardFilter::ScoredThisTurn
         )
@@ -550,6 +559,7 @@ pub fn card_matches_filter(card: &CardDefinition, filter: &CardFilter) -> bool {
         // Instance-level, not definition-level — see the variant's doc
         // comment. `eligible_cards` applies the real check.
         CardFilter::NotInstalledThisTurn => true,
+        CardFilter::NotAdvancedThisTurn => true,
         CardFilter::InstalledThisTurn => true,
         CardFilter::ScoredThisTurn => true,
         CardFilter::AmongCards(cards) => cards.contains(&card.id),

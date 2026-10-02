@@ -98,12 +98,13 @@ pub fn check_win_conditions(state: &mut GameState, registry: &CardRegistry) -> V
         return Vec::new();
     }
     // The threshold is a match rule (7 in Standard, 6 in the starter game),
-    // read off the state rather than a const — see `MatchRules`.
-    let winning = state.rules.winning_agenda_points;
-    let winning = i32::try_from(winning).unwrap_or(i32::MAX);
-    if score(state, registry, Side::Corp) >= winning {
+    // read off the state rather than a const — see `MatchRules` — and what
+    // each player's cards change it by (Issuaq Adaptics: Sustaining
+    // Diversity), asked of each side for itself.
+    let winning = |side| crate::rules::continuous::points_to_win(state, registry, side);
+    if score(state, registry, Side::Corp) >= winning(Side::Corp) {
         end_game(state, Side::Corp)
-    } else if score(state, registry, Side::Runner) >= winning {
+    } else if score(state, registry, Side::Runner) >= winning(Side::Runner) {
         end_game(state, Side::Runner)
     } else {
         Vec::new()

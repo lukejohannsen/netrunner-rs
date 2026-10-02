@@ -254,6 +254,14 @@ pub enum Cost {
     /// `TrashRandomFromHq` is. Composition didn't work: no cost moved a
     /// card from the grip, and the only random one was the Corp's.
     AddRandomFromGripToBottom(u32),
+    /// One faceup card hosted on the acting rig card is turned facedown —
+    /// Matryoshka's "Interface → X[credit], **turn 1 hosted copy of
+    /// Matryoshka facedown**: Break X subroutines." Payable while one is
+    /// faceup (`InstalledRunnerCard::faceup_hosted`). No filter: the card's
+    /// only way to host is "a copy of Matryoshka", so every card it hosts is
+    /// one. Composition didn't work: no cost changed which way up a card
+    /// is, and a hosted card had no way up to change.
+    TurnHostedFacedown,
     /// Every listed cost is paid, in order — Humanoid Resources' "[click]
     /// [click][click], [trash]: …", a click cost *and* a self-trash on one
     /// ability. `AnyOf`'s conjunctive twin: affordable only when every
