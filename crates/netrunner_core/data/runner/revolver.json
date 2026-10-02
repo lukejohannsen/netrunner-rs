@@ -1,0 +1,70 @@
+{
+  "id": "revolver",
+  "title": "Revolver",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 2,
+  "strength": 1,
+  "memory_cost": 1,
+  "counter_kind": "Power",
+  "triggers": [
+    {
+      "trigger": "OnInstall",
+      "subject": "This",
+      "effects": [
+        {
+          "AddCounters": 6
+        }
+      ],
+      "text": "When you install this program, place 6 power counters on it."
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "text": "Interface → [trash] or hosted power counter: Break 1 sentry subroutine. — [trash]",
+      "cost": "TrashSelf",
+      "effect": {
+        "BreakSubroutines": {
+          "count": {
+            "Fixed": 1
+          },
+          "restrict_to": "Sentry"
+        }
+      },
+      "requirement": "DuringEncounter"
+    },
+    {
+      "trigger": "Paid",
+      "text": "Interface → [trash] or hosted power counter: Break 1 sentry subroutine. — hosted power counter",
+      "cost": {
+        "RemoveCounters": 1
+      },
+      "effect": {
+        "BreakSubroutines": {
+          "count": {
+            "Fixed": 1
+          },
+          "restrict_to": "Sentry"
+        }
+      },
+      "requirement": "DuringEncounter"
+    },
+    {
+      "trigger": "Paid",
+      "text": "2[credit]: +3 strength.",
+      "cost": {
+        "Credits": 2
+      },
+      "effect": {
+        "BoostStrength": {
+          "amount": 3,
+          "duration": "Encounter"
+        }
+      },
+      "requirement": "DuringEncounter"
+    }
+  ],
+  "built_from": 32002,
+  "is_playable": true
+}

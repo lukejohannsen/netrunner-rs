@@ -1,0 +1,50 @@
+{
+  "id": "environmental_testing",
+  "title": "Environmental Testing",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 3,
+  "counter_kind": "Power",
+  "triggers": [
+    {
+      "trigger": "OnCardInstalled",
+      "subject": "Any",
+      "when": {
+        "Card": {
+          "CardTypeOneOf": [
+            "Program",
+            "Hardware"
+          ]
+        }
+      },
+      "effects": [
+        {
+          "AddCounters": 1
+        },
+        {
+          "EffectIf": {
+            "condition": {
+              "ThisCardCountersAtLeast": 4
+            },
+            "effect": {
+              "Sequence": [
+                {
+                  "TrashCard": "ThisCard"
+                },
+                {
+                  "GainCredits": [
+                    "Runner",
+                    9
+                  ]
+                }
+              ]
+            }
+          }
+        }
+      ],
+      "text": "Whenever you install a program or piece of hardware, place 1 power counter on this resource."
+    }
+  ],
+  "built_from": 33029,
+  "is_playable": true
+}

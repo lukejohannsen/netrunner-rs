@@ -48,15 +48,15 @@ cards each stage takes.
 | 2 | Rebellion Without Rehearsal (`rwr`) | 65 | 65 | 0 | complete (28 September 2026) |
 | 3 | The Automata Initiative (`tai`) | 65 | 65 | 0 | complete (29 September 2026) |
 | 4 | Parhelion (`ph`) | 63 | 63 | 0 | complete (2 October 2026) |
-| 5 | Midnight Sun (`ms`) + Booster (`msbp`) | 65 + 7 | 11 + 1 | 54 + 6 | Stage 1 built (2 October 2026); **Stage 2 next** — Runner, composes |
+| 5 | Midnight Sun (`ms`) + Booster (`msbp`) | 65 + 7 | 22 + 2 | 43 + 5 | Stages 1–2 built (2 October 2026); **Stage 3 next** — charge and core damage |
 | 6 | Uprising (`ur`) + Booster (`urbp`) | 65 + 7 | 0 | 65 + 7 | not started |
 | 7 | Downfall (`df`) | 65 | 0 | 65 | not started |
 | 8 | System Update 2021 (`su21`), Salvaged Memories (`sm`), Magnum Opus Reprint (`mor`) | 82, 18, 6 | 11, 1, 0 | 71, 17, 6 | not started (the built ones are Core reprints) |
 
 **DSL ratio** (`pool_status.py`, the DSL Growth Rule's number): **17 of 97
-`Effect` variants single-use, 1 unused (`Trace`), over 454 card files** (2
-October 2026, with Midnight Sun Stage 1, which added none). The baseline at Stage 0a was 26 of 70 single-use, 3 unused,
-over 184 files: 270 cards later the single-use count is *lower*, because the
+`Effect` variants single-use, 1 unused (`Trace`), over 465 card files** (2
+October 2026, with Midnight Sun Stage 2, which added none). The baseline at Stage 0a was 26 of 70 single-use, 3 unused,
+over 184 files: 281 cards later the single-use count is *lower*, because the
 growth went into `Trigger`, `EventFilter`, `Amount`, `CardFilter`, `Cost` and
 `ContinuousKind` words rather than into what an effect does.
 
@@ -341,6 +341,7 @@ PR that made this list (29 September 2026).
 - **Docklands Pass, Rotary**: "whenever you breach HQ or R&D" is a successful run on either; a breach without a run (Cataloguer, RWR 6c) does not fire them.
 - **Manuel Lattes de Moura**: the extra access is heard at the run's success, as every "when you breach" in the pool is, so a run Flagship keeps from being declared successful gets none.
 - **Kessleroid**: "cannot trash" is unenforced.
+- **Environmental Testing** (MS 2): "when there are 4 or more hosted power counters" is asked as its own install trigger places a counter; a charge (Orca, Flux Capacitor) that brings it to 4 is not heard until its next program or hardware install, because no trigger hears counters placed.
 - **Embedded Reporting**: does not shuffle. **Next Big Thing** from the Runner's score area is unmodelled. **Detente**'s access outside a run is unmodelled.
 - **Luana Campos** (VP 7a): "uninstalled" is announced for a Corp card only, and no Runner card in the pool interrupts its own uninstalling. The interrupt resolves in the dispatch that announced it.
 - **Nanuq** (PH 6d): "when this program is uninstalled" is heard as its trash from the table — the only way a program leaves the rig in the pool but by its own removal — so an uninstall to the grip or the stack would not remove it.
@@ -398,6 +399,7 @@ A card on the list is a term to write or a reading to repair, never a card to ta
 - **Runner hardware and programs it never installs**: Basilar Synthgland 2KVJ, K2CP Turbine, Time Bomb (PH 4a); Poison Vial, WAKE Implant v2A-JRJ (PH 4b); World Tree (PH 5c); Flux Capacitor (PH 6a; Orca, at 10[credit], once in 48 games).
 - **Resources it does not value**, PH 6b: Info Bounty (installed 31 times by random seats in 96 games, never by the planner in 48).
 - **Events it never plays**, PH 6c: Spark of Inspiration and Raindrops Cut Stone (played 14 and 23 times by random seats in 96 games, never by the planner in 48).
+- **Midnight Sun Stage 2's cards it never plays** (each Runner deck against Hostile Bid, seed 2, 48 planner games): Endurance (8[credit]; random seats installed it twice in 96 games and never used its break, which only its test reaches), Environmental Testing, PAN-Weave (its meat damage) and Chastushka (a sabotage the Corp chooses).
 - **Economy resources and programs it does not value**: Friend of a Friend, Valentina Ferreira Carvalho, Coalescence; Laser Pointer, Banner; Monkeywrench, Saci, Pichação, Urban Art Vernissage; Lago Paranoá Shelter; AirbladeX (JSRF Ed.); the Core Set interrupts Decoy, Net Shield and Sacrificial Construct.
 - **Abilities it never uses**: M.I.C.'s trash, Arissana Rocha Nahu's, Epiphany Analytica's counter; identity and multi-click abilities generally (Phase 1 §8); over-advancing for Dividends.
 - **Breaks the evaluator could not price** — paid: Matryoshka's hosted copies, Lobisomem's and Audrey v2's counters, Hantu's counter pump and Tremolo's reduced cost are read as the engine charges them since Phase 5 §28 (2 October 2026), and the planner hosts a copy of Matryoshka ahead of a run worth the two clicks (0 → 11 hosts over 144 Hit List games). **Still owed:** Botulus and Poison Vial, whose `BreakSubroutinesUnconditionally` no evaluator reading prices (Botulus's would also need its host-ICE requirement read); a standing value for stock on the rig, so a copy is hosted on a turn with no run worth both clicks. Madani's hosted programs are paid (Phase 5 §30).
@@ -742,8 +744,9 @@ Grid, Tsakhia, World Tree.
    Refuge Campaign, Bladderwort, Artificial Cryptocrash, Ubiquitous Vig,
    Vasilisa, Pravdivost Consulting: Political Solutions, Svyatogor Excavator,
    Maskirovka, Extract. Stage 1 is complete.
-2. **Runner, composes:** Revolver, Chastushka, Running Hot, Marrow,
+2. **Runner, composes** (built, 2 October 2026): Revolver, Chastushka, Running Hot, Marrow,
    Avgustina Ivanovskaya, PAN-Weave, No Free Lunch, Endurance, Hyperbaric, Propeller, Environmental Testing.
+   Stage 2 is complete.
 3. **Charge on PH's rule, core damage words:** Captain Padma Isbister, Rigging Up,
    “Daeg, First Net-Cat”, Stoneship Chart Room, Into the Depths, Esâ Afontov: Eco-Insurrectionist, Begemot,
    Ghosttongue, The Twinning, Cezve.
@@ -774,6 +777,7 @@ Excavator.
 **Closed stages** — one line each; the record is in [the archive](archive/nsg-card-pool.md) under the same heading.
 
 - **Stage 1** — eleven Corp cards, composed (`claude/serene-einstein-6bhlig`, 2 October 2026).
+- **Stage 2** — eleven Runner cards, composed, with two words widened: a virus program counted apart in the turn log, and a breaker's strength remembered past its own trash cost (`claude/serene-einstein-6bhlig`, 2 October 2026).
 
 ### 6. Uprising and its Booster Pack — 65 cards (C 10 / V 37 / M 18)
 

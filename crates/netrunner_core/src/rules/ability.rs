@@ -109,8 +109,9 @@ pub struct ResolutionContext<'a> {
     /// trash written as the effect's last step instead, the trash could be
     /// prevented, which a cost cannot be (1.16.1a).
     ///
-    /// Taken by the payer (`last_known`) and read only by `counters_of` and
-    /// `advancement_tokens_of`, and by them only when `acting_install` is
+    /// Taken by the payer (`last_known`) and read only by `counters_of`,
+    /// `advancement_tokens_of` and a break's strength contest
+    /// (`Effect::BreakSubroutines`), and by them only when `acting_install` is
     /// `Some` and has left play — so it is the same object's memory and
     /// never a sibling copy's. On the context rather than on `GameState`
     /// because it is read within this one resolution: both cards read it
@@ -162,18 +163,27 @@ pub struct LastKnown {
     /// The server a Corp install was in — Hype Machine's "the root of this
     /// server", after its "[trash]:" has taken it off the table.
     pub server: Option<ServerId>,
+    /// A rig card's strength — Revolver's "Interface → [trash]: Break 1
+    /// sentry subroutine", whose break is still a contest after its cost
+    /// has trashed the program. CR 3.9.5g asks for the strength as the
+    /// interface ability is used; once its trigger cost is paid the
+    /// ability is independent of its source (CR 9.5.4), which is
+    /// remembered as it last was (CR 1.12.6). Without it the break found
+    /// no breaker in the rig, and the legal-action probe never offered it.
+    pub strength: Option<i32>,
 }
 
 /// The acting install's numbers now, for a payer to put on the effect's
 /// context before a cost can remove the install. `None` without an install
 /// to remember.
-pub(crate) fn last_known(state: &GameState, ctx: &ResolutionContext<'_>) -> Option<LastKnown> {
+pub(crate) fn last_known(state: &GameState, ctx: &ResolutionContext<'_>, registry: &CardRegistry) -> Option<LastKnown> {
     ctx.acting_install?;
     let counters = counters_of(state, ctx)?;
     Some(LastKnown {
         counters,
         advancement_tokens: advancement_tokens_of(state, ctx).unwrap_or(0),
         server: acting_corp_install(state, ctx).map(|installed| installed.server),
+        strength: acting_rig_card(state, ctx).map(|breaker| continuous::breaker_strength(state, registry, breaker)),
     })
 }
 
@@ -1402,9 +1412,14 @@ pub fn evaluate_effect(
                 return Err(RulesError::NotInEncounter);
             }
 
-            let breaker = acting_rig_card(state, ctx)
-                .ok_or_else(|| RulesError::CardNotInRig { side: Side::Runner, card: acting.clone() })?;
-            let breaker_strength = continuous::breaker_strength(state, registry, breaker);
+            // A breaker its own cost trashed (Revolver) contests with the
+            // strength it had as the ability was used (`LastKnown::strength`).
+            let breaker_strength = match acting_rig_card(state, ctx) {
+                Some(breaker) => continuous::breaker_strength(state, registry, breaker),
+                None => remembered(state, ctx)
+                    .and_then(|known| known.strength)
+                    .ok_or_else(|| RulesError::CardNotInRig { side: Side::Runner, card: acting.clone() })?,
+            };
 
             let run = state.active_run.as_ref().unwrap();
             let ice = &run.ice[run.position];

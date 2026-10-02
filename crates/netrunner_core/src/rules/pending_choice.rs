@@ -885,7 +885,7 @@ pub(crate) fn resolve_accept(
     let payer = ability::ResolutionContext::for_parked(pending.source_install, pending.source_card.as_ref());
     // Taken before the cost, which may trash the card `if_paid` reads
     // (Clearinghouse): see `ResolutionContext::last_known`.
-    let last_known = ability::last_known(state, &payer);
+    let last_known = ability::last_known(state, &payer, registry);
     let cost_events = ability::pay_cost_ctx(state, registry, pending.side, &cost_to_pay, Purpose::Other, &payer)?;
     // Dispatched after `if_paid`: see `ability::dispatch_cost_events`.
     // A tag paid as a cost (Funhouse's "end the run unless the Runner

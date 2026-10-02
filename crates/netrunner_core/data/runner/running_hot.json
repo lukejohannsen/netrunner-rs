@@ -1,0 +1,30 @@
+{
+  "id": "running_hot",
+  "title": "Running Hot",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 1,
+  "additional_play_cost": {
+    "SufferDamage": [
+      "Brain",
+      1
+    ]
+  },
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "GainClicks": [
+            "Runner",
+            3
+          ]
+        }
+      ],
+      "text": "Gain [click][click][click]."
+    }
+  ],
+  "built_from": 33003,
+  "is_playable": true
+}

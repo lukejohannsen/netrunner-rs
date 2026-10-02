@@ -1,0 +1,33 @@
+{
+  "id": "no_free_lunch",
+  "title": "No Free Lunch",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 0,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "text": "[trash]: Gain 3[credit].",
+      "cost": "TrashSelf",
+      "effect": {
+        "GainCredits": [
+          "Runner",
+          3
+        ]
+      }
+    },
+    {
+      "trigger": "Paid",
+      "text": "[trash]: Remove 1 tag.",
+      "cost": "TrashSelf",
+      "effect": {
+        "RemoveTags": {
+          "Fixed": 1
+        }
+      }
+    }
+  ],
+  "built_from": 33020,
+  "is_playable": true
+}

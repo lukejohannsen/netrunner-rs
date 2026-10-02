@@ -1,0 +1,55 @@
+{
+  "id": "marrow",
+  "title": "Marrow",
+  "side": "Runner",
+  "card_type": "Hardware",
+  "cost": 2,
+  "unique": true,
+  "continuous": [
+    {
+      "kind": {
+        "Memory": {
+          "per": 1
+        }
+      },
+      "applies_to": "Controller",
+      "text": "+1[mu]"
+    },
+    {
+      "kind": {
+        "HandSize": {
+          "per": 3
+        }
+      },
+      "applies_to": "Controller",
+      "text": "You get +3 maximum hand size."
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnInstall",
+      "subject": "This",
+      "effects": [
+        {
+          "DealDamage": [
+            "Brain",
+            1
+          ]
+        }
+      ],
+      "text": "When you install this hardware, suffer 1 core damage."
+    },
+    {
+      "trigger": "OnAgendaScored",
+      "subject": "Any",
+      "effects": [
+        {
+          "Sabotage": 1
+        }
+      ],
+      "text": "Whenever the Corp scores an agenda, sabotage 1."
+    }
+  ],
+  "built_from": 33006,
+  "is_playable": true
+}

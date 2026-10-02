@@ -1,0 +1,35 @@
+{
+  "id": "avgustina_ivanovskaya",
+  "title": "Avgustina Ivanovskaya",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 1,
+  "unique": true,
+  "triggers": [
+    {
+      "trigger": "OnCardInstalled",
+      "subject": "Any",
+      "when": {
+        "Card": {
+          "All": [
+            {
+              "CardType": "Program"
+            },
+            {
+              "HasSubtype": "Virus"
+            }
+          ]
+        }
+      },
+      "first_each_turn": true,
+      "effects": [
+        {
+          "Sabotage": 1
+        }
+      ],
+      "text": "The first time each turn you install a virus program, sabotage 1."
+    }
+  ],
+  "built_from": 33008,
+  "is_playable": true
+}

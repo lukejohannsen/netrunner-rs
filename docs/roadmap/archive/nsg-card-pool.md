@@ -5882,3 +5882,98 @@ its booster pack 1 of 7; `MS_UNIMPLEMENTED` 65 → 54 and
   more cards (view and index alike, of 192): Corp agenda wins 56 → 57,
   Corp flatlines 31 → 32, Runner agenda wins 98 → 99, Runner deck-outs 7 →
   4.
+
+#### Stage 2 — eleven Runner cards, composed (2 October 2026)
+
+`claude/serene-einstein-6bhlig`: Revolver, Chastushka, Running Hot,
+Marrow, Avgustina Ivanovskaya, PAN-Weave, No Free Lunch, Endurance,
+Hyperbaric, Propeller and Environmental Testing. **No new `Effect`.**
+Midnight Sun 22 of 65, its booster pack 2 of 7; `MS_UNIMPLEMENTED` 54 →
+43 and `MSBP_UNIMPLEMENTED` 6 → 5. The survey's "composes" held for nine
+cards; two needed an existing word widened, each for every card.
+
+- **What each is made of.** Chastushka is Account Siphon's
+  `SetAccessReplacement` on HQ, not optional, with Cacophony's
+  `Sabotage(4)`. Running Hot is Finality's `additional_play_cost` of 1 core
+  damage (`SufferDamage(Brain, 1)`, a cost and so never prevented) and
+  `GainClicks`. Marrow is T400 Memory Diamond's `Memory` and `HandSize`,
+  Zenit Chip's core damage on install and Pantograph's `OnAgendaScored`
+  with `Sabotage(1)`; it is a console by its catalog subtype, so the
+  checkpoint trashes the older of two (CR 3.8.5b). PAN-Weave is WAKE
+  Implant's meat damage on install and Transfer of Wealth's
+  `LoseCredits` then `GainCreditsAmount(CreditsLostThisResolution)` — "if
+  they do" is what was lost — on NGA's first successful run each turn,
+  narrowed to HQ. No Free Lunch is two `TrashSelf` abilities, Friend of a
+  Friend's shape; nothing withholds the tag removal at no tags, which the
+  rules allow. Endurance is Poison Vial: a counter cost into
+  `BreakSubroutinesUnconditionally`, since a break printed on a card that
+  is not an icebreaker is no interface ability and contests nothing (CR
+  3.9.5e), with Nga's first successful run each turn placing a counter.
+  Hyperbaric is Rising Tide's `Strength` over Hippocampic Mechanocytes'
+  `HostedCounters`, Gordian
+  Blade's interface and a 2[credit] ability that places a counter in any
+  paid ability window. Propeller is Orca's pump with a counter for its
+  cost. Environmental Testing is Cookbook's `OnCardInstalled` over
+  `CardTypeOneOf([Program, Hardware])`, with Side Hustle's `EffectIf` on its
+  own count.
+- **Avgustina Ivanovskaya: a virus program is a column of the turn log.**
+  "The first time each turn you install a virus program" is
+  `first_each_turn` over `when: Card(All([Program, HasSubtype(Virus)]))`,
+  and `validate` refused it: the log counts a card by its type, and a
+  subtype only where a card needs it (double, mandate). `Kind::VirusProgram`
+  is the third, `Kind::of_card` counts a virus program there, and a filter
+  on programs reads both columns (`Kind::all_of`), so nothing that counts
+  programs moved. The Runner installs faceup, so the column is as public as
+  any program's.
+- **Revolver: a breaker its own cost trashed still contests.** "Interface
+  → [trash] or hosted power counter: Break 1 sentry subroutine" is two
+  abilities, one per cost. The `TrashSelf` one found no breaker in the rig
+  by the time `BreakSubroutines` asked for its strength, so the probe never
+  offered it. `LastKnown`, which the payer takes before the cost, now holds
+  a rig card's strength, and the break reads it when the install has left:
+  CR 3.9.5g asks as the ability is used, the paid ability is independent of
+  its source (9.5.4), and the source is remembered as it last was
+  (1.12.6). A pump bought this encounter is in that strength.
+- **Revolver is a booster reprint** (32002, 33018): both lists drop it and
+  `built_from` is the earlier printing.
+- **Fidelity limits:** Environmental Testing's "when there are 4 or more
+  hosted power counters" is asked as its own trigger places a counter; a
+  charge (Orca, Flux Capacitor) that brings it to 4 waits for its next
+  program or hardware install, because nothing hears counters being placed.
+  On the known-limits list.
+- **Client.** Nothing added to the view, the log or a decision, so no
+  ledger line and no ledger row. The deck builder's set test, which said
+  Midnight Sun was the Corp's only, now has it offered to both sides.
+- **Decks.** Pay As You Go (Noise) takes two Chastushka for its two
+  Hackerspace, two Running Hot for its two Stick and Poke, and two Marrow,
+  a console beside its The Toolbox, for its Alarm Clock and Buzzsaw.
+  Grassroots (Sebastião) takes two Avgustina Ivanovskaya, for its six
+  virus programs, for its Wildcat Strike and Charm Offensive. Safety Net
+  (Kate) takes two Endurance for its two AirbladeX, two Hyperbaric for two
+  Umbrella, two Propeller for two Corsair, and two Environmental Testing
+  for two Urban Art Vernissage. Hit List (Gabriel) takes two Revolver for
+  its two Word on the Street, two PAN-Weave for two Borrowed Goods and two
+  No Free Lunch for two Mutual Favor. Every card given up is still in
+  another deck.
+- **DSL ratio** (`pool_status.py`): unchanged at 17 of 97 `Effect`
+  variants single-use, 1 unused (`Trace`), now over 465 card files.
+- **Real play** (`--headless`, each edited deck against Hostile Bid, seed
+  2; random seats 96 games, planner seats 48; each pair is random /
+  planner). Chastushka played 24 / 0 times; Running Hot 29 / 32; Marrow
+  installed 23 / 12, its sabotage on a Corp score 4 / 25 times; Avgustina
+  installed 32 / 4, sabotaging 12 / 1 times; Endurance installed 2 / 0,
+  its break never used; Hyperbaric installed 34 / 21 and used 105 / 91
+  times; Propeller installed 61 / 29 and used 42 / 82 times; Environmental
+  Testing installed 24 / 0, counting 41 installs; Revolver installed 42 /
+  14 and used 13 / 25 times; PAN-Weave installed 26 / 0, skimming 27 times;
+  No Free Lunch used 45 / 25 times. **Bot debts:** the planner never plays
+  Chastushka, Endurance, Environmental Testing or PAN-Weave in 48 games;
+  on the bot-debts list.
+- **Measured.** Both sweeps are green at 256 seeds, the card gate
+  included, so every new card was seen in play. `coverage_identical.py`
+  against Stage 1 (d7fafdd, 192 games a report): random identical, view
+  and index alike — the sample matchups hold no Sweep deck, and the two
+  widened words change nothing there. The planner seatings move by
+  `determinize`, whose prior holds eleven more cards (view and index
+  alike): Corp agenda wins 57 → 59, Corp flatlines 32 → 31, Runner agenda
+  wins 99 → 98.

@@ -2022,6 +2022,11 @@ mod tests {
         assert_eq!(card(Side::Runner, vec![first(Trigger::OnCardInstalled, any, programs(), None)]).validate(), Ok(()));
         assert_eq!(card(Side::Corp, vec![first(Trigger::OnAgendaScored, any, None, None), first(Trigger::OnAgendaStolen, any, None, None)]).validate(), Ok(()));
 
+        // A virus program is a column of its own (Avgustina Ivanovskaya); a
+        // virus with no type is not one the log names.
+        let virus_programs = Some(EventFilter::Card(CardFilter::All(vec![CardFilter::CardType(CardType::Program), CardFilter::HasSubtype(crate::dsl::CardSubtype::Virus)])));
+        assert_eq!(card(Side::Runner, vec![first(Trigger::OnCardInstalled, any, virus_programs, None)]).validate(), Ok(()));
+
         // Finer than a class, or a filter on a card a player did not see.
         assert!(refused(card(Side::Runner, vec![first(Trigger::OnCardInstalled, any, Some(EventFilter::Card(CardFilter::HasSubtype(crate::dsl::CardSubtype::Virus))), None)])));
         assert!(refused(card(Side::Corp, vec![first(Trigger::OnInstall, any, Some(EventFilter::Card(CardFilter::CardType(CardType::Agenda))), None)])));

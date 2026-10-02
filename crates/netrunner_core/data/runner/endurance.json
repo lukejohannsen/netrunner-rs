@@ -1,0 +1,62 @@
+{
+  "id": "endurance",
+  "title": "Endurance",
+  "side": "Runner",
+  "card_type": "Hardware",
+  "cost": 8,
+  "unique": true,
+  "counter_kind": "Power",
+  "continuous": [
+    {
+      "kind": {
+        "Memory": {
+          "per": 2
+        }
+      },
+      "applies_to": "Controller",
+      "text": "+2[mu]"
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnInstall",
+      "subject": "This",
+      "effects": [
+        {
+          "AddCounters": 3
+        }
+      ],
+      "text": "When you install this hardware, place 3 power counters on it."
+    },
+    {
+      "trigger": "OnSuccessfulRun",
+      "subject": "Any",
+      "first_each_turn": true,
+      "effects": [
+        {
+          "AddCounters": 1
+        }
+      ],
+      "text": "The first time each turn you make a successful run, place 1 power counter on this hardware."
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "text": "2 hosted power counters: Break up to 2 subroutines.",
+      "cost": {
+        "RemoveCounters": 2
+      },
+      "effect": {
+        "BreakSubroutinesUnconditionally": {
+          "count": {
+            "Fixed": 2
+          }
+        }
+      },
+      "requirement": "DuringEncounter"
+    }
+  ],
+  "built_from": 33025,
+  "is_playable": true
+}
