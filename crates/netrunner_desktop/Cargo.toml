@@ -11,6 +11,10 @@ netrunner_client = { path = "../netrunner_client" }
 netrunner_card_sync = { path = "../netrunner_card_sync" }
 # Hosting runs a server in this process, as the terminal's Host a game does.
 netrunner_server = { path = "../netrunner_server" }
+# The dev hook's planner (`dev::Planner`, `NETRUNNER_AUTOPLAY_PLANNER`):
+# a match's bots are `netrunner_client::play`'s, and this is the one place
+# the client builds an agent of its own, for a screenshot.
+netrunner_bots = { path = "../netrunner_bots" }
 # A feature subset, not the defaults: `ui` is the flexbox layer every
 # screen and the board are built from (it brings the windowing, rendering,
 # picking and text it needs), `audio` the sound bank and the music (Ogg Vorbis), `wav` the

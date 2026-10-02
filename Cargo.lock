@@ -5195,6 +5195,7 @@ dependencies = [
  "bevy",
  "dirs",
  "image",
+ "netrunner_bots",
  "netrunner_card_sync",
  "netrunner_client",
  "netrunner_core",
