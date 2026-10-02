@@ -36,10 +36,28 @@ pub(super) fn run_is_breakable(state: &GameState, run: &RunState, registry: &Car
 /// come back and the agenda does not.
 pub(super) fn remaining_break_cost(state: &GameState, run: &RunState, registry: &CardRegistry) -> Option<u32> {
     let mut total = 0;
+    let mut stock = fresh_stock(state);
     for ice in run.ice.iter().skip(run.position).filter(|ice| ice.rezzed) {
-        total += cheapest_break_cost(state, ice, registry)?;
+        total += cheapest_break_cost(state, ice, registry, &mut stock)?;
     }
     Some(total)
+}
+
+/// How much of each rig card's stock — the counters a break removes, the
+/// hosted copies it turns facedown — a server's pricing has spent so far,
+/// one count per rig position: the ledger `cheapest_break_cost` draws on
+/// and adds to as it walks a server's ICE, so that one hosted copy of
+/// Matryoshka does not price a two-ICE server as breakable twice over.
+/// Greedy, ICE by ICE in the order the run meets them: the cheapest card
+/// for the first piece may be the only card that could have taken the
+/// second, and a server of two or three pieces does not need better. Each
+/// card holds one kind of stock (no card in the pool pays in both counters
+/// and copies), so one count a card is enough.
+pub(super) type Stock = Vec<u32>;
+
+/// A ledger with nothing spent, for one server's pricing.
+pub(super) fn fresh_stock(state: &GameState) -> Stock {
+    vec![0; state.runner.rig.len()]
 }
 
 /// What the rig would spend to break every *rezzed* piece of ice
@@ -55,6 +73,7 @@ pub(super) fn remaining_break_cost(state: &GameState, run: &RunState, registry: 
 pub fn server_break_cost(state: &GameState, server: netrunner_core::rules::ServerId, registry: &CardRegistry) -> Option<u32> {
     use netrunner_core::rules::{EncounteredSubroutine, InstallSlot, RunIce};
     let mut total = 0;
+    let mut stock = fresh_stock(state);
     for installed in state.corp.installed.iter().filter(|c| c.server == server && c.slot == InstallSlot::Ice && c.rezzed) {
         let def = registry.get(&installed.card)?;
         let CardType::Ice(ice_type) = def.card_type else { continue };
@@ -70,7 +89,7 @@ pub fn server_break_cost(state: &GameState, server: netrunner_core::rules::Serve
                 .collect(),
             rezzed: true,
         };
-        total += cheapest_break_cost(state, &ice, registry)?;
+        total += cheapest_break_cost(state, &ice, registry, &mut stock)?;
     }
     Some(total)
 }
@@ -159,63 +178,174 @@ pub fn is_unrezzed_threat(state: &GameState, ice: &RunIce, registry: &CardRegist
         // construction, so this reads the same set `cheapest_break_cost`
         // prices.
         && ice.subroutines.iter().any(|subroutine| subroutine.definition.effect.can_end_the_run())
-        && cheapest_break_cost(state, ice, registry).is_none()
+        && cheapest_break_cost(state, ice, registry, &mut fresh_stock(state)).is_none()
 }
 
 /// The fewest credits any rig card needs to pump up to `ice`'s strength
-/// and break all of its pending subroutines; `None` when no rig card can.
-/// An ICE with nothing pending costs nothing whatever the rig holds.
-pub(super) fn cheapest_break_cost(state: &GameState, ice: &RunIce, registry: &CardRegistry) -> Option<u32> {
+/// and break all of its pending subroutines, with what it has left of its
+/// stock after `stock` says what this server's earlier ICE took; `None`
+/// when no rig card can. The card chosen has its spend added to the
+/// ledger. Ties go to the card that spends the least stock, so a plain
+/// credit breaker is used ahead of a counter it could save. An ICE with
+/// nothing pending costs nothing whatever the rig holds.
+pub(super) fn cheapest_break_cost(state: &GameState, ice: &RunIce, registry: &CardRegistry, stock: &mut Stock) -> Option<u32> {
     if pending_on(ice) == 0 {
         return Some(0);
     }
-    state.runner.rig.iter().filter_map(|card| break_cost(state, card, ice, registry)).min()
+    let (credits, spent, position) = state
+        .runner
+        .rig
+        .iter()
+        .enumerate()
+        .filter_map(|(position, card)| {
+            let already = stock.get(position).copied().unwrap_or(0);
+            break_cost(state, card, ice, registry, already).map(|spend| (spend.credits, spend.stock, position))
+        })
+        .min_by_key(|(credits, spent, _)| (*credits, *spent))?;
+    if let Some(slot) = stock.get_mut(position) {
+        *slot += spent;
+    }
+    Some(credits)
+}
+
+/// What a rig card spends breaking one piece of ICE: credits, and the
+/// units of its stock the activations draw.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) struct Spend {
+    pub credits: u32,
+    pub stock: u32,
+}
+
+/// What one activation of a breaker's ability costs, and how many times
+/// the card can pay it right now — `None` for a cost this reading does
+/// not price, which skips the ability as an unpriced cost always has.
+struct Price {
+    credits: u32,
+    /// How many activations the card's stock covers: counters for
+    /// `RemoveCounters`, faceup hosted copies for `TurnHostedFacedown`;
+    /// `None` for a cost with no stock, payable as often as the credits
+    /// allow.
+    stock: Option<u32>,
+}
+
+/// A printed cost read the way the engine would charge it, for a break of
+/// `pending` subroutines (Phase 5 §28). Every cost shape a breaker in the
+/// pool prints is here, and what each one charges:
+///
+/// - `Credits(c)`: `c`.
+/// - `CreditsX`: the X of "X[credit]: Break X subroutines" is chosen to
+///   cover them all, so one activation costs `pending` (Matryoshka,
+///   Lobisomem).
+/// - `CreditsAmount`: the table's number (Tremolo's "3[credit], 1 less for
+///   each installed cybernetic hardware"), read by the engine's own
+///   `amount_on_table`.
+/// - `RemoveCounters(n)`: free, and only as many times as the card's
+///   counters cover (Audrey v2's break, Hantu's pump).
+/// - `TurnHostedFacedown`: free, and only as many times as the card has a
+///   copy still faceup (Matryoshka) — `faceup_hosted`, never every hosted
+///   copy: one turned facedown on the turn's first run is not back until
+///   the Runner's next turn begins.
+/// - `AllOf`: the credits summed, the tightest stock.
+///
+/// Before this, only `Credits` was priced and every other break was
+/// skipped, so Matryoshka with a copy hosted and Lobisomem with a counter
+/// read as breaking nothing — and a hosted copy, which the evaluator
+/// could not see paying for anything, was never worth the click that
+/// hosts it. Botulus's and Poison Vial's counter-costed
+/// `BreakSubroutinesUnconditionally` is still not a spend this reading is
+/// about (Botulus's is on its host ICE alone, which no cost says), and
+/// Audrey v2's pump pays in a grip card, which is not priced either.
+fn price_of(cost: Option<&Cost>, card: &InstalledRunnerCard, pending: u32, state: &GameState, registry: &CardRegistry) -> Option<Price> {
+    Some(match cost {
+        None => Price { credits: 0, stock: None },
+        Some(Cost::Credits(credits)) => Price { credits: *credits, stock: None },
+        Some(Cost::CreditsX { .. }) => Price { credits: pending, stock: None },
+        Some(Cost::CreditsAmount(amount)) => Price { credits: netrunner_core::rules::amount_on_table(amount, state, registry), stock: None },
+        Some(Cost::RemoveCounters(each)) => Price { credits: 0, stock: Some(card.counters / (*each).max(1)) },
+        Some(Cost::TurnHostedFacedown) => Price { credits: 0, stock: Some(card.faceup_hosted()) },
+        Some(Cost::AllOf(parts)) => {
+            let mut price = Price { credits: 0, stock: None };
+            for part in parts {
+                let part = price_of(Some(part), card, pending, state, registry)?;
+                price.credits += part.credits;
+                price.stock = match (price.stock, part.stock) {
+                    (Some(a), Some(b)) => Some(a.min(b)),
+                    (a, b) => a.or(b),
+                };
+            }
+            price
+        }
+        Some(_) => return None,
+    })
+}
+
+/// Whether `card` could pay `cost` at least once right now, as far as its
+/// stock goes — a break whose copies are all facedown, or whose counters
+/// are gone, is a break the card does not have.
+fn stocked(cost: Option<&Cost>, card: &InstalledRunnerCard, pending: u32, state: &GameState, registry: &CardRegistry) -> bool {
+    price_of(cost, card, pending, state, registry).is_some_and(|price| price.stock.is_none_or(|stock| stock > 0))
 }
 
 /// What `card` would spend to break `ice` outright: pump credits to close
 /// any strength shortfall, then break credits for every pending
-/// subroutine, both read off its `Paid` abilities. Only credit-costed
-/// abilities are priced — Botulus's counter-costed
-/// `BreakSubroutinesUnconditionally` is not a spend this term is about.
-/// `None` if the card has no break matching `ice`'s subtype, or a
-/// shortfall and no pump. `BoostStrengthAmount` (Unity's +X) is priced as
-/// +1 per activation: X counts Unity itself so it is at least 1, and
-/// over-estimating a cost only makes the Runner save one click longer.
-pub(super) fn break_cost(state: &GameState, card: &InstalledRunnerCard, ice: &RunIce, registry: &CardRegistry) -> Option<u32> {
+/// subroutine, both read off its `Paid` abilities and each cost priced by
+/// `price_of`, with `already` units of the card's stock spent on this
+/// server's earlier ICE. `None` if the card has no break matching `ice`'s
+/// subtype, a shortfall and no pump, or too little stock left for the
+/// activations it would take. A requirement on the ability is not read
+/// (Poison Vial's "only if you have already broken a subroutine"). The
+/// pump and the break are bounded by the same stock separately, which is
+/// exact while no card pays for both out of one pool. `BoostStrengthAmount`
+/// (Unity's +X) is priced as +1 per activation: X counts Unity itself so
+/// it is at least 1, and over-estimating a cost only makes the Runner save
+/// one click longer.
+pub(super) fn break_cost(state: &GameState, card: &InstalledRunnerCard, ice: &RunIce, registry: &CardRegistry, already: u32) -> Option<Spend> {
     let def = registry.get(&card.card)?;
     let pending = pending_on(ice);
     // The number the break contest uses — a pump bought inside the search
     // and what the table adds (Echelon, Rising Tide) included.
     let shortfall = (continuous::ice_strength(state, registry, ice) - continuous::breaker_strength(state, registry, card)).max(0) as u32;
-    let mut cheapest_break: Option<u32> = None;
-    let mut cheapest_pump: Option<u32> = None;
-    let keep_min = |slot: &mut Option<u32>, cost: u32| *slot = Some(slot.map_or(cost, |c| c.min(cost)));
+    let mut cheapest_break: Option<(u32, u32)> = None;
+    let mut cheapest_pump: Option<(u32, u32)> = None;
+    let keep_min = |slot: &mut Option<(u32, u32)>, cost: (u32, u32)| *slot = Some(slot.map_or(cost, |c| c.min(cost)));
     for ability in def.abilities.iter().filter(|a| a.trigger == Trigger::Paid) {
-        let credits = match ability.cost {
-            None => 0,
-            Some(Cost::Credits(c)) => c,
-            Some(_) => continue,
+        let Some(price) = price_of(ability.cost.as_ref(), card, pending, state, registry) else { continue };
+        let left = price.stock.map(|stock| stock.saturating_sub(already));
+        // `(credits, stock drawn)` for `activations` of this ability, or
+        // nothing when the stock does not cover them.
+        let spend = |activations: u32| -> Option<(u32, u32)> {
+            if left.is_some_and(|left| left < activations) {
+                return None;
+            }
+            Some((price.credits * activations, if price.stock.is_some() { activations } else { 0 }))
         };
         ability.effect.for_each_effect(&mut |effect| match effect {
             Effect::BreakSubroutines { count, restrict_to } if restrict_to.is_none_or(|r| ice_is(state, ice, r, registry)) => {
                 let activations = match count {
                     SubroutineBreakCount::Fixed(n) => pending.div_ceil((*n).max(1)),
-                    // X is chosen to cover them all; only an X cost names
-                    // it, and one is not a plain credit cost, so this is
-                    // skipped above.
+                    // X is chosen to cover them all (`price_of`).
                     SubroutineBreakCount::All | SubroutineBreakCount::ChosenNumber => 1,
                 };
-                keep_min(&mut cheapest_break, credits * activations);
+                if let Some(cost) = spend(activations) {
+                    keep_min(&mut cheapest_break, cost);
+                }
             }
             Effect::BoostStrength { amount, .. } => {
-                keep_min(&mut cheapest_pump, credits * shortfall.div_ceil((*amount).max(1)));
+                if let Some(cost) = spend(shortfall.div_ceil((*amount).max(1))) {
+                    keep_min(&mut cheapest_pump, cost);
+                }
             }
-            Effect::BoostStrengthAmount { .. } => keep_min(&mut cheapest_pump, credits * shortfall),
+            Effect::BoostStrengthAmount { .. } => {
+                if let Some(cost) = spend(shortfall) {
+                    keep_min(&mut cheapest_pump, cost);
+                }
+            }
             _ => {}
         });
     }
-    let pump = if shortfall == 0 { 0 } else { cheapest_pump? };
-    Some(cheapest_break? + pump)
+    let (break_credits, break_stock) = cheapest_break?;
+    let (pump_credits, pump_stock) = if shortfall == 0 { (0, 0) } else { cheapest_pump? };
+    Some(Spend { credits: break_credits + pump_credits, stock: break_stock + pump_stock })
 }
 
 /// Subroutines on `ice` still waiting to be broken or resolved.
@@ -251,11 +381,13 @@ pub(super) fn ice_is(state: &GameState, ice: &RunIce, subtype: IceType, registry
 }
 
 /// Whether `card`'s abilities include a `BreakSubroutines` that applies to
-/// `ice` — restricted to a subtype it has, or unrestricted.
+/// `ice` — restricted to a subtype it has, or unrestricted — **that the
+/// card could pay for right now** (`stocked`): a Matryoshka with every
+/// copy facedown matches nothing, so there is nothing to pump.
 pub(super) fn breaks_subtype(state: &GameState, card: &netrunner_core::rules::InstalledRunnerCard, ice: &RunIce, registry: &CardRegistry) -> bool {
     let Some(def) = registry.get(&card.card) else { return false };
     let mut found = false;
-    for ability in &def.abilities {
+    for ability in def.abilities.iter().filter(|ability| stocked(ability.cost.as_ref(), card, pending_on(ice), state, registry)) {
         ability.effect.for_each_effect(&mut |effect| {
             if let Effect::BreakSubroutines { restrict_to, .. } = effect
                 && restrict_to.is_none_or(|r| ice_is(state, ice, r, registry))
@@ -664,6 +796,7 @@ pub(super) fn taxing_cost(state: &GameState, server: netrunner_core::rules::Serv
     use netrunner_core::rules::{EncounteredSubroutine, InstallSlot, RunIce};
     let mut total = 0;
     let mut budget = state.corp.resources.credits.0;
+    let mut stock = fresh_stock(state);
     for installed in state.corp.installed.iter().filter(|c| c.server == server && c.slot == InstallSlot::Ice) {
         let def = registry.get(&installed.card)?;
         if !installed.rezzed {
@@ -685,7 +818,7 @@ pub(super) fn taxing_cost(state: &GameState, server: netrunner_core::rules::Serv
                 .collect(),
             rezzed: true,
         };
-        total += cheapest_break_cost(state, &ice, registry)?;
+        total += cheapest_break_cost(state, &ice, registry, &mut stock)?;
     }
     Some(total)
 }
@@ -1376,5 +1509,120 @@ mod tests {
     fn with_etr(mut ice: CardDefinition) -> CardDefinition {
         ice.subroutines = vec![netrunner_core::dsl::SubroutineDef { text: String::new(), effect: Effect::EndTheRun, only_breakable_by: None }];
         ice
+    }
+
+    /// A break paid in hosted copies (Matryoshka, Phase 5 §28) is priced
+    /// at the X it names and bounded by the copies still faceup: with
+    /// none hosted the card breaks nothing, one copy breaks one piece of
+    /// ICE at a credit a subroutine, and a server of two pieces needs two
+    /// copies — the ledger carries the first piece's spend to the second.
+    #[test]
+    fn a_break_paid_in_hosted_copies_is_priced_and_bounded_by_them() {
+        let pool = pool();
+        let registry = CardRegistry::from_cards(vec![printed(&pool, "matryoshka")]);
+        let copies = |hosted: usize, facedown: u32| InstalledRunnerCard {
+            base_strength: 2,
+            hosted_cards: vec![CardId("matryoshka".to_string()); hosted],
+            turned_facedown: facedown,
+            ..rig_card("matryoshka")
+        };
+        let ice = run_ice(2, IceType::Sentry, 2, true);
+        let registry = with_printed_ice(&registry, std::slice::from_ref(&ice));
+        let mut state = GameState::new(0);
+        let price = |state: &GameState| cheapest_break_cost(state, &ice, &registry, &mut fresh_stock(state));
+
+        state.runner.rig = vec![copies(0, 0)];
+        assert_eq!(price(&state), None, "nothing hosted, nothing to turn facedown");
+        state.runner.rig = vec![copies(1, 0)];
+        assert_eq!(price(&state), Some(2), "X[c] for X subroutines, one copy turned");
+        state.runner.rig = vec![copies(1, 1)];
+        assert_eq!(price(&state), None, "a copy already turned facedown is not back until the turn begins");
+        state.runner.rig = vec![copies(2, 1)];
+        assert_eq!(price(&state), Some(2));
+
+        // Two pieces in one server: one copy prices the first and is
+        // spent; the second is unbreakable until a second copy is hosted.
+        let two = |state: &GameState| {
+            let mut stock = fresh_stock(state);
+            let first = cheapest_break_cost(state, &ice, &registry, &mut stock);
+            let second = cheapest_break_cost(state, &ice, &registry, &mut stock);
+            (first, second)
+        };
+        state.runner.rig = vec![copies(1, 0)];
+        assert_eq!(two(&state), (Some(2), None));
+        state.runner.rig = vec![copies(2, 0)];
+        assert_eq!(two(&state), (Some(2), Some(2)));
+
+        // The same reading through a run: `remaining_break_cost` prices
+        // the whole server, so the planner's run leaf sees it.
+        let run = |ice: Vec<RunIce>| RunState { server: netrunner_core::rules::ServerId::Hq, ice, position: 0, ..Default::default() };
+        state.runner.rig = vec![copies(1, 0)];
+        assert_eq!(remaining_break_cost(&state, &run(vec![ice.clone()]), &registry), Some(2));
+        assert_eq!(remaining_break_cost(&state, &run(vec![ice.clone(), ice.clone()]), &registry), None);
+        state.runner.rig = vec![copies(2, 0)];
+        assert_eq!(remaining_break_cost(&state, &run(vec![ice.clone(), ice.clone()]), &registry), Some(4));
+
+        // A pump against a stockless card has nothing to pump: the
+        // break the card cannot pay for is not a break it has.
+        let tall = run_ice(4, IceType::Sentry, 1, true);
+        let registry = with_printed_ice(&registry, std::slice::from_ref(&tall));
+        state.runner.rig = vec![copies(0, 0)];
+        assert!(!breaks_subtype(&state, &state.runner.rig[0], &tall, &registry));
+        state.runner.rig = vec![copies(1, 0)];
+        assert!(breaks_subtype(&state, &state.runner.rig[0], &tall, &registry));
+        assert_eq!(cheapest_break_cost(&state, &tall, &registry, &mut fresh_stock(&state)), Some(3), "two pumps at 1[c] and one subroutine at 1[c]");
+    }
+
+    /// Every other cost shape a breaker in the pool prints, read as the
+    /// engine charges it: a counter a break (Audrey v2) and a counter a
+    /// pump (Hantu), each bounded by the counters; X[c] with a counter
+    /// (Lobisomem); and a credit cost the table reduces (Tremolo).
+    #[test]
+    fn counter_and_reduced_costs_are_priced_as_the_engine_charges_them() {
+        use netrunner_core::dsl::CardSubtype;
+        let pool = pool();
+        let registry = CardRegistry::from_cards(vec![
+            printed(&pool, "audrey_v2"),
+            printed(&pool, "hantu"),
+            printed(&pool, "lobisomem"),
+            printed(&pool, "tremolo"),
+            CardDefinition { subtypes: vec![CardSubtype::Cybernetic], ..printed(&pool, "t400_memory_diamond") },
+        ]);
+        let with_counters = |id: &str, counters: u32, strength: i32| InstalledRunnerCard { counters, base_strength: strength, ..rig_card(id) };
+        let price = |state: &GameState, ice: &RunIce| {
+            let registry = with_printed_ice(&registry, std::slice::from_ref(ice));
+            cheapest_break_cost(state, ice, &registry, &mut fresh_stock(state))
+        };
+        let mut state = GameState::new(0);
+
+        // Audrey v2: a counter breaks up to two; three subroutines take
+        // two counters and no credits.
+        let three = run_ice(0, IceType::Barrier, 3, true);
+        state.runner.rig = vec![with_counters("audrey_v2", 1, 0)];
+        assert_eq!(price(&state, &three), None, "one counter covers two of three");
+        state.runner.rig = vec![with_counters("audrey_v2", 2, 0)];
+        assert_eq!(price(&state, &three), Some(0));
+
+        // Hantu: 1[c] a subroutine, a counter for +2; strength 4 against
+        // its 2 takes one counter.
+        let sentry = run_ice(4, IceType::Sentry, 1, true);
+        state.runner.rig = vec![with_counters("hantu", 0, 2)];
+        assert_eq!(price(&state, &sentry), None, "no counter to pump with");
+        state.runner.rig = vec![with_counters("hantu", 1, 2)];
+        assert_eq!(price(&state, &sentry), Some(1));
+
+        // Lobisomem: X[c] and a power counter for X barrier subroutines.
+        let barrier = run_ice(2, IceType::Barrier, 3, true);
+        state.runner.rig = vec![with_counters("lobisomem", 0, 2)];
+        assert_eq!(price(&state, &barrier), None);
+        state.runner.rig = vec![with_counters("lobisomem", 1, 2)];
+        assert_eq!(price(&state, &barrier), Some(3));
+
+        // Tremolo: 3[c] for up to two, 1[c] less per cybernetic hardware.
+        let two = run_ice(2, IceType::Barrier, 2, true);
+        state.runner.rig = vec![with_counters("tremolo", 0, 2)];
+        assert_eq!(price(&state, &two), Some(3));
+        state.runner.rig.push(rig_card("t400_memory_diamond"));
+        assert_eq!(price(&state, &two), Some(2), "one cybernetic hardware installed");
     }
 }

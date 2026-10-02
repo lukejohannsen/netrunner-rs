@@ -578,6 +578,10 @@ impl<'a> Watcher<'a> {
                         self.counts.bump("corp.scores.after_unadvanced_install_turn");
                     }
                 }
+                // Priced only where every rezzed piece has a rig card
+                // that can pay to break it right now — a breaker whose
+                // stock is spent (a Matryoshka with no copy hosted) is
+                // no breaker here, since Phase 5 §28.
                 if let Some(cost) = server_break_cost(before, *server, self.registry) {
                     self.counts.bump("corp.scores.priced");
                     if before.runner.resources.credits.0 < cost {
