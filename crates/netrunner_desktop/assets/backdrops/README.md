@@ -125,12 +125,15 @@ itself.
 
 ## The splash
 
-The splash is the `splash` slot plus an optional mark drawn over it:
+The splash is the `splash` slot plus the wordmark drawn over it. The
+main menu wears the same `logo.png` above its entries, fitted to
+560 × 120, and falls back to NETRUNNER in the theme's face over a text
+shadow (`widgets::logo`, which both screens call):
 
 | File | Box (logical) | Draw at | Fit | Drawn default |
 |---|---|---|---|---|
 | `splash.jpg` (or the shared `menu.jpg`) | the whole window | 2560 × 1600 | cover | the flat ground |
-| `splash-logo.png` | up to 720 × 360, centred | **1440 × 720**, with alpha | fit, never enlarged past 1:1 | the word NETRUNNER in the theme's face over an accent bar |
+| `logo.png` | up to 720 × 360, centred | **1440** wide, with alpha | fit, never enlarged past 1:1 | the word NETRUNNER in the theme's face over an accent bar |
 
 The splash holds for 1.5 seconds and until the fonts have loaded, never
 longer than 5 seconds, and any key or click skips it. It is never shown

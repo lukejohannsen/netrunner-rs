@@ -1,3 +1,5 @@
+<p align="center"><img src="crates/netrunner_desktop/assets/backdrops/logo.png" width="640" alt="Netrunner"></p>
+
 # netrunner-rs
 
 [![CI](https://github.com/lukejohannsen/netrunner-rs/actions/workflows/ci.yml/badge.svg)](https://github.com/lukejohannsen/netrunner-rs/actions/workflows/ci.yml)

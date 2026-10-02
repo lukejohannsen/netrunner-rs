@@ -4,6 +4,7 @@
 //! screens only a graphical client has a reason for — the card browser
 //! and the profile — so a player who knows one client knows the other.
 
+use bevy::ecs::spawn::SpawnWith;
 use bevy::prelude::*;
 
 use crate::core::{ClientCore, Notices};
@@ -106,28 +107,65 @@ impl Entry {
     }
 }
 
-fn spawn(mut commands: Commands, theme: Res<Theme>, core: Res<ClientCore>, notices: Res<Notices>) {
+/// The box the wordmark is fitted into on a window with room for it.
+const LOGO_BOX: Vec2 = Vec2::new(560.0, 120.0);
+
+/// The shortest the wordmark is drawn. On a short window it gives way to
+/// the entries — a 720-high window had no height to spare even for the
+/// text title — down to this, rather than pushing Quit off the window.
+const LOGO_MIN_HEIGHT: f32 = 40.0;
+
+fn spawn(mut commands: Commands, theme: Res<Theme>, core: Res<ClientCore>, notices: Res<Notices>, images: Option<ResMut<Assets<Image>>>) {
     let format = netrunner_client::settings::format_name(core.settings.format.unwrap_or(netrunner_core::format::NsgFormat::Startup));
-    commands.spawn((screen_root(AppScreen::MainMenu, &theme), children![
-        (Node { flex_direction: FlexDirection::Column, align_items: AlignItems::Center, row_gap: px(16), margin: UiRect::vertical(Val::Auto), ..default() }, children![
-            (Node { flex_direction: FlexDirection::Column, align_items: AlignItems::Center, row_gap: px(6), margin: UiRect::bottom(px(8)), ..default() }, children![
-                (widgets::title(&theme, "NETRUNNER"), widgets::title_shadow()),
-                widgets::dim(&theme, format!("Playing as {} · {format} format", core.player_name())),
-            ]),
-            (widgets::roomy_panel(&theme, px(780)), Children::spawn(SpawnIter(Entry::ALL.into_iter().map({
-                let theme = theme.clone();
-                move |entry| {
-                    (widgets::row(20.0), children![
-                        widgets::styled_button(&theme, entry.kind(), entry.label(), px(230), entry),
-                        // The blurb takes whatever the row has left and wraps
-                        // there, rather than pushing on the button.
-                        (widgets::dim(&theme, entry.blurb()), Node { flex_grow: 1.0, flex_shrink: 1.0, min_width: px(0), ..default() }),
-                    ])
-                }
-            })))),
-            widgets::notice(&theme, notices.latest().unwrap_or(""), ()),
-        ]),
-    ]));
+    let logo = widgets::logo(images, core.settings.desktop.basic_graphics, LOGO_BOX);
+    let playing_as = format!("Playing as {} · {format} format", core.player_name());
+    // The wordmark and the line under it are the column's own children,
+    // not a box of their own: the column is held to the window, and a box
+    // round them would have had to shrink with the wordmark and let the
+    // line under it spill onto the panel.
+    let heading = SpawnWith({
+        let theme = theme.clone();
+        move |parent: &mut ChildSpawner| {
+            let tucked = UiRect::bottom(px(-10));
+            match logo {
+                // Sized by its height, with the width following, so it
+                // shrinks as one picture; the panel under it never shrinks
+                // below its entries, so the wordmark is what gives way.
+                Some((image, size)) => parent.spawn((
+                    image,
+                    Node {
+                        height: px(size.y),
+                        min_height: px(LOGO_MIN_HEIGHT),
+                        aspect_ratio: Some(size.x / size.y),
+                        flex_shrink: 1.0,
+                        margin: tucked,
+                        ..default()
+                    },
+                )),
+                None => parent.spawn((widgets::title(&theme, "NETRUNNER"), widgets::title_shadow(), Node { margin: tucked, ..default() })),
+            };
+            parent.spawn((widgets::dim(&theme, playing_as), Node { margin: UiRect::bottom(px(8)), ..default() }));
+        }
+    });
+    let panel = (
+        widgets::roomy_panel(&theme, px(780)),
+        Children::spawn(SpawnIter(Entry::ALL.into_iter().map({
+            let theme = theme.clone();
+            move |entry| {
+                (widgets::row(20.0), children![
+                    widgets::styled_button(&theme, entry.kind(), entry.label(), px(230), entry),
+                    // The blurb takes whatever the row has left and wraps
+                    // there, rather than pushing on the button.
+                    (widgets::dim(&theme, entry.blurb()), Node { flex_grow: 1.0, flex_shrink: 1.0, min_width: px(0), ..default() }),
+                ])
+            }
+        }))),
+    );
+    let notice = widgets::notice(&theme, notices.latest().unwrap_or(""), ());
+    commands.spawn((screen_root(AppScreen::MainMenu, &theme), children![(
+        Node { flex_direction: FlexDirection::Column, align_items: AlignItems::Center, row_gap: px(16), margin: UiRect::vertical(Val::Auto), max_height: percent(100), ..default() },
+        Children::spawn((heading, Spawn(panel), Spawn(notice))),
+    )]));
 }
 
 fn choose(mut pressed: MessageReader<Pressed>, entries: Query<&Entry>, mut navigate: MessageWriter<Navigate>, mut exit: MessageWriter<AppExit>) {

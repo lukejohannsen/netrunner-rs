@@ -199,6 +199,38 @@ pub fn title_shadow() -> TextShadow {
     TextShadow { offset: Vec2::new(3.0, 4.0), color: Color::srgba(0.0, 0.0, 0.0, 0.85) }
 }
 
+/// The wordmark, beside the backdrops: one file for the splash and the
+/// main menu, so the name a person sees first is the name the menu wears.
+pub const LOGO_FILE: &str = "backdrops/logo.png";
+
+/// The wordmark and the size it fits `max` at, in logical pixels, or
+/// `None` when the screen should draw its own title instead — no file
+/// in either tier, or basic graphics, under which the drawn tier is all
+/// there is.
+///
+/// Its pixels are its logical size and it is never enlarged past that.
+/// The file is drawn about twice the width of the largest box it is
+/// shown in, so a HiDPI window gets every pixel and a 1:1 one is only
+/// ever scaled down.
+///
+/// It is transparent around the letters, so it stands on whatever the
+/// screen's backdrop is and needs no `title_shadow` of its own: its glow
+/// is what separates it from the picture.
+///
+/// The caller makes the `Node`, because the two screens size it
+/// differently: the splash has the window to itself, and the menu's
+/// wordmark gives way to the entries under it on a short window.
+pub fn logo(images: Option<ResMut<Assets<Image>>>, basic_graphics: bool, max: Vec2) -> Option<(ImageNode, Vec2)> {
+    if basic_graphics {
+        return None;
+    }
+    let mut images = images?;
+    let image = crate::card_images::decode(&crate::assets::read(LOGO_FILE)?, "png")?;
+    let size = image.size().as_vec2();
+    let fitted = size * (max / size).min_element().min(1.0);
+    Some((ImageNode::new(images.add(image)), fitted))
+}
+
 /// The name of a group inside a panel ("YOUR SIDE"): small capitals in
 /// the accent — it labels what follows rather than being read.
 pub fn overline<T: Into<String>>(theme: &Theme, text: T) -> impl Bundle + use<T> {
