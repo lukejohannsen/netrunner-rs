@@ -32,6 +32,15 @@
 //!   legal action by itself, `n` times, cycling through the list so the
 //!   game develops (installs, runs, rezzes) — how a board forty actions
 //!   in is looked at without a hand on it. Never set for a person.
+//! - `NETRUNNER_AUTOPLAY_PLANNER=1` — the autoplay asks the planner at the
+//!   opponent's rung for each decision instead of wandering, so the game
+//!   it reaches is one two players could have played. The wandering pick
+//!   plays no plan: in the games tried (1 October 2026) a Corp seat had
+//!   lost by its 25th decision and a Runner seat by its 53rd, so a board
+//!   *deep* in a game — the README's two pictures, a Corp chair at turn
+//!   36 and a Runner chair at turn 20 — was out of its reach. The
+//!   planner searches on a thread of its own, as the opponent's does,
+//!   and the board waits for its answer as it waits for a person's.
 //! - `NETRUNNER_OPTIONS=1` — on the board, the gear menu is opened once
 //!   the person's first decision has arrived, so the options window can
 //!   be looked at over a real board.
@@ -247,6 +256,8 @@ pub struct Dev {
     /// How many decisions the board takes by itself, and how many it has.
     pub autoplay: u32,
     pub autoplayed: u32,
+    /// Take the autoplay's decisions from the planner (`Planner`).
+    pub autoplay_planner: bool,
     /// Open the options window on the board, once.
     pub options: bool,
     /// Open the list of keys on the board, once.
@@ -334,6 +345,7 @@ impl Dev {
             runner_deck: std::env::var("NETRUNNER_RUNNER_DECK").ok().filter(|id| !id.trim().is_empty()),
             autoplay: std::env::var("NETRUNNER_AUTOPLAY").ok().and_then(|n| n.trim().parse().ok()).unwrap_or(0),
             autoplayed: 0,
+            autoplay_planner: std::env::var_os("NETRUNNER_AUTOPLAY_PLANNER").is_some_and(|v| !v.is_empty()),
             dropdown: std::env::var("NETRUNNER_DROPDOWN").ok().and_then(|n| n.trim().parse().ok()).filter(|n| *n > 0),
             options: std::env::var_os("NETRUNNER_OPTIONS").is_some_and(|v| !v.is_empty()),
             keys: std::env::var_os("NETRUNNER_KEYS").is_some_and(|v| !v.is_empty()),
@@ -408,6 +420,64 @@ impl Dev {
     /// a splash.
     pub fn named_screen(&self) -> Option<AppScreen> {
         self.screen.or((self.game.is_some() || self.lesson.is_some()).then_some(AppScreen::Game)).or(self.replay.is_some().then_some(AppScreen::Replay))
+    }
+}
+
+/// The person's chair played by the planner, for `NETRUNNER_AUTOPLAY_PLANNER`.
+///
+/// A worker thread owns the agent, because Bevy runs on the main thread
+/// and a search at a middle rung takes longer than a frame; the board asks
+/// once per decision and polls. Kept in the autoplay system's `Local`
+/// rather than on [`Dev`], because a `Receiver` is not `Sync` and a
+/// resource must be.
+pub struct Planner {
+    views: std::sync::mpsc::Sender<netrunner_core::view::ClientView>,
+    actions: std::sync::mpsc::Receiver<netrunner_core::rules::PlayerAction>,
+    asked: bool,
+}
+
+impl Planner {
+    /// The opponent's rung (`new_game::start_dev`), knowing the format's
+    /// pool and not its own deck: what it draws the other side's hidden
+    /// cards from is all the knowledge changes, and a dev game's deck is
+    /// not worth threading here for a screenshot.
+    pub fn new(side: netrunner_core::rules::Side, registry: Arc<netrunner_core::cards::CardRegistry>, format: netrunner_core::format::NsgFormat) -> Self {
+        use netrunner_bots::BotAgent;
+        let (views, inbox) = std::sync::mpsc::channel::<netrunner_core::view::ClientView>();
+        let (outbox, actions) = std::sync::mpsc::channel();
+        let mut agent = netrunner_bots::Level::Operator.spec(side).agent(0, netrunner_bots::Knowledge::new(format, None));
+        std::thread::spawn(move || {
+            for view in inbox {
+                agent.observe(&view);
+                if outbox.send(agent.select_action(&view, &registry)).is_err() {
+                    break;
+                }
+            }
+        });
+        Planner { views, actions, asked: false }
+    }
+
+    /// The planner's action for `view`: pending while it searches, and
+    /// `None` once it never will (the worker is gone), so the caller can
+    /// fall back to the wandering pick.
+    pub fn choose(&mut self, view: &netrunner_core::view::ClientView) -> std::task::Poll<Option<netrunner_core::rules::PlayerAction>> {
+        use std::sync::mpsc::TryRecvError;
+        use std::task::Poll;
+        if !self.asked {
+            if self.views.send(view.clone()).is_err() {
+                return Poll::Ready(None);
+            }
+            self.asked = true;
+            return Poll::Pending;
+        }
+        match self.actions.try_recv() {
+            Ok(action) => {
+                self.asked = false;
+                Poll::Ready(Some(action))
+            }
+            Err(TryRecvError::Empty) => Poll::Pending,
+            Err(TryRecvError::Disconnected) => Poll::Ready(None),
+        }
     }
 }
 

@@ -1099,6 +1099,7 @@ fn autoplay(
     mut pending: ResMut<Pending>,
     nodes: Query<(&Click, &ComputedNode, &UiGlobalTransform)>,
     client: Res<ClientCore>,
+    mut planner: Local<Option<crate::dev::Planner>>,
 ) {
     let (Some(mut dev), Some(model)) = (dev, model) else { return };
     // A match that has stopped has no decisions left to take, so the
@@ -1257,8 +1258,23 @@ fn autoplay(
         dev.autoplayed = dev.autoplay;
         return;
     }
+    // The planner's pick, when the hook asked for one: the decision waits
+    // for its answer, and an answer the list does not hold (or a worker
+    // that died) falls through to the wandering pick.
+    let planned = match model.0.view.as_ref().filter(|_| dev.autoplay_planner) {
+        Some(view) => {
+            let format = client.settings.format.unwrap_or(netrunner_client::settings::DEFAULT_FORMAT);
+            let planner = planner.get_or_insert_with(|| crate::dev::Planner::new(model.0.side, client.registry.clone(), format));
+            match planner.choose(view) {
+                std::task::Poll::Pending => return,
+                std::task::Poll::Ready(action) => action,
+            }
+        }
+        None => None,
+    };
     dev.autoplayed += 1;
     let entries = &model.0.actions.entries;
+    let planned = planned.and_then(|action| entries.iter().position(|entry| entry.action == action));
     // At a card selection the wandering index toggled one card on and off
     // until the session's stall guard ended the game (Phase 5 §19 found
     // it, on Mutual Favor): a toggle leaves the same list behind, so
@@ -1269,13 +1285,13 @@ fn autoplay(
         Some(PendingDecision::ChooseCards { selected, .. }) => Some(selected.clone()),
         _ => None,
     });
-    let index = selecting
-        .and_then(|selected| {
+    let index = planned
+        .or_else(|| selecting.and_then(|selected| {
             let confirm = entries.iter().position(|entry| entry.action == PlayerAction::ConfirmCardSelection);
             confirm.or_else(|| {
                 entries.iter().position(|entry| matches!(&entry.action, PlayerAction::ToggleCardSelection { position } if !selected.contains(position)))
             })
-        })
+        }))
         // A Trojan hosted the moment one can be: still a listed entry,
         // taken ahead of the wandering pick.
         .or_else(|| dev.hold_trojan.then(|| entries.iter().position(|entry| matches!(entry.action, PlayerAction::InstallProgramOnIce { .. }))).flatten())
