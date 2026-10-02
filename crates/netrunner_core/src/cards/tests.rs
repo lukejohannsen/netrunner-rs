@@ -19812,4 +19812,63 @@ mod parhelion {
         assert!(open.runner.grip.is_empty(), "no subroutine resolved, no card");
         assert_eq!(open.runner.resources.credits, Credits(3));
     }
+
+    // ---- Stage 6d: a Runner card removed from the game as it leaves the table ----
+
+    /// Bumi 1.0's "Trash 1 installed program" takes Nanuq, and
+    /// Nanuq leaves the heap for the removed-from-game pile, where nothing
+    /// brings it back.
+    #[test]
+    fn nanuq_is_removed_from_the_game_when_it_is_trashed() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.installed = vec![ice_at_hq("bumi_1_0")];
+        state.runner.rig = vec![in_rig("nanuq", 3, 0)];
+        state.runner.grip = vec![id("sure_gamble"); 3];
+        let at_ice = encounter(&state, &registry);
+        let asked = pass_until(at_ice, &registry, |state| state.pending_decision.is_some());
+        let (trashed, _) = pick(&asked, &registry, 0);
+        assert!(trashed.runner.rig.is_empty());
+        assert!(!trashed.runner.heap.contains(&id("nanuq")), "{:?}", trashed.runner.heap);
+        assert_eq!(trashed.runner.removed_from_game, vec![id("nanuq")]);
+
+        // A second copy still installed is not the one that goes.
+        let mut two = state;
+        two.runner.rig.push(crate::rules::InstalledRunnerCard { install_id: InstallId(77), ..in_rig("nanuq", 3, 0) });
+        let asked = pass_until(encounter(&two, &registry), &registry, |state| state.pending_decision.is_some());
+        let (trashed, _) = pick(&asked, &registry, 0);
+        assert_eq!(trashed.runner.rig.len(), 1, "the other copy stays");
+        assert_eq!(trashed.runner.removed_from_game, vec![id("nanuq")]);
+        assert!(!trashed.runner.heap.contains(&id("nanuq")));
+    }
+
+    #[test]
+    fn nanuq_is_removed_from_the_game_when_an_agenda_is_scored_or_stolen() {
+        let registry = registry_with_a_plain_agenda();
+        let mut state = base_state();
+        state.corp.installed = vec![agenda_at("a_plain_agenda", 2)];
+        state.runner.rig = vec![in_rig("nanuq", 3, 0)];
+        let scored = score(&state, &registry, "a_plain_agenda").expect("score");
+        assert!(scored.runner.rig.is_empty(), "scored");
+        assert_eq!(scored.runner.removed_from_game, vec![id("nanuq")]);
+        assert!(scored.runner.heap.is_empty());
+
+        let mut stealing = runner_turn();
+        stealing.corp.installed = vec![root_at("a_plain_agenda", 0)];
+        stealing.runner.rig = vec![in_rig("nanuq", 3, 0)];
+        let stolen = steal(stealing, &registry, "a_plain_agenda");
+        assert!(stolen.runner.rig.is_empty(), "stolen");
+        assert_eq!(stolen.runner.removed_from_game, vec![id("nanuq")]);
+    }
+
+    #[test]
+    fn nanuq_breaks_two_subroutines_for_two_credits() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.installed = vec![ice_at_hq("enigma")];
+        state.runner.rig = vec![in_rig("nanuq", 3, 0)];
+        let broke = use_ability(&encounter(&state, &registry), &registry, "nanuq", 0).expect("2[credit]: break up to 2");
+        assert_eq!(broken(&broke), 2);
+        assert_eq!(broke.runner.resources.credits, Credits(8));
+    }
 }

@@ -2918,7 +2918,8 @@ fn forfeitable(state: &GameState) -> Vec<usize> {
 
 /// Removes the acting install from the game — `Cost::RemoveSelfFromGame`
 /// (Spin Doctor, Malandragem) and `Effect::RemoveFromGame(ThisCard)`
-/// (Malandragem's "when it is empty"). Deliberately not a discard pile: a
+/// (Malandragem's "when it is empty", and Nanuq's from the heap its trash
+/// put it in). Deliberately not a discard pile: a
 /// removed card is gone for good. What a rig card hosted is trashed with it,
 /// as when a host is trashed.
 fn remove_this_card_from_game(state: &mut GameState, registry: &CardRegistry, ctx: &ResolutionContext<'_>) -> Result<Vec<GameEvent>, RulesError> {
@@ -2929,6 +2930,20 @@ fn remove_this_card_from_game(state: &mut GameState, registry: &CardRegistry, ct
         state.corp.removed_from_game.push(card_id.clone());
         events.push(GameEvent::CardRemovedFromGame { side: Side::Corp, card: card_id });
         return Ok(events);
+    }
+    // A Runner card that has already left the table and is removed from
+    // where it went: Nanuq's "when this program is uninstalled, remove it
+    // from the game", heard as the subject of its own trash from the rig,
+    // with no handle left. Read off the trash it is reacting to, not off
+    // the rig, where a second copy by the same name may still be installed;
+    // it takes the copy that trash put on top of the heap.
+    let own_trash = matches!(ctx.triggering_event, Some(GameEvent::CardTrashed { side: Side::Runner, card, from: crate::dsl::TrashedFrom::Installed, .. }) if card == &card_id);
+    if own_trash
+        && let Some(position) = state.runner.heap.iter().rposition(|card| card == &card_id)
+    {
+        state.runner.heap.remove(position);
+        state.runner.removed_from_game.push(card_id.clone());
+        return Ok(vec![GameEvent::CardRemovedFromGame { side: Side::Runner, card: card_id }]);
     }
     let position = acting_rig_position(state, ctx).ok_or_else(|| RulesError::CardNotInstalled { card: card_id.clone() })?;
     let removed = state.runner.rig.remove(position);
