@@ -32,9 +32,18 @@ use super::*;
 /// card-started path (`Effect::InitiateRun` through `run/engine.rs`'s
 /// deduplicating push) records a repeat run once, and that run is priced
 /// as if it were the first — the cheaper direction.
+///
+/// **The breach is of the server the run will approach, not the one it
+/// attacked** (Phase 5 §31): Maintenance Access's "run Archives; if you
+/// pass all ice, this run becomes a run on HQ instead" is
+/// `RunState::redirect_on_approach`, so its run is read as the HQ access
+/// it is, through Archives' ICE. And the accesses the run's own rider
+/// adds (`rider_accesses`, Jailbreak) are counted with the ones the run
+/// already carries.
 pub(super) fn access_prospect(state: &GameState, run: &RunState, registry: &CardRegistry, w: &Weights, credits: u32, horizon: u32) -> f64 {
     use netrunner_core::rules::{InstallSlot, ServerId};
-    let server = run.server;
+    let server = run.redirect_on_approach.unwrap_or(run.server);
+    let promised = rider_accesses(run, server);
     let earlier = runs_earlier_this_turn(state, server);
     let seen = earlier > 0;
     let mut hidden = 0.0_f64;
@@ -77,7 +86,7 @@ pub(super) fn access_prospect(state: &GameState, run: &RunState, registry: &Card
     match server {
         ServerId::Hq => {
             let held = state.corp.hq.len();
-            let accesses = (1 + run.additional_hq_access as usize).min(held);
+            let accesses = (1 + (run.additional_hq_access + promised) as usize).min(held);
             let fresh = if held == 0 { 0.0 } else { ((held - 1) as f64 / held as f64).powi(earlier as i32) };
             hidden += accesses as f64 * fresh;
             if w.runner_stakes_weight != 0.0 || w.hq_pressure_weight != 0.0 {
@@ -86,7 +95,7 @@ pub(super) fn access_prospect(state: &GameState, run: &RunState, registry: &Card
             }
         }
         ServerId::RnD if !seen => {
-            let accesses = (1 + run.additional_rd_access as usize).min(state.corp.r_and_d.len());
+            let accesses = (1 + (run.additional_rd_access + promised) as usize).min(state.corp.r_and_d.len());
             hidden += accesses as f64;
             if w.runner_stakes_weight != 0.0 {
                 let (_, density) = agenda_points_expected(state, registry);
@@ -141,11 +150,18 @@ pub(super) fn access_prospect(state: &GameState, run: &RunState, registry: &Card
 /// Corp has, outermost first, until it runs out — what precept 8's run
 /// makes the Corp pay. See `FORCED_REZ_WEIGHT`. Reads the Corp's
 /// credits and the ICE's position, never the sampled card under it.
+/// **What the run adds to every rez is added** (Phase 5 §31): Tread
+/// Lightly's "the rez cost of each piece of ice is increased by
+/// 3[credit]" is a lingering effect on each piece of ICE
+/// (`lingering::ice_rez_cost`), and a rez under it costs the Corp that
+/// much more of what it has — the card's whole point, and the one term
+/// at the guide's rate that reads the Corp's rez.
 pub(super) fn forced_rez_credits(state: &GameState, run: &RunState) -> u32 {
     let mut budget = state.corp.resources.credits.0;
     let mut spent = 0;
+    let each = TYPICAL_REZ_COST.saturating_add_signed(netrunner_core::rules::lingering::ice_rez_cost(state));
     for _ in run.ice.iter().skip(run.position).filter(|ice| !ice.rezzed) {
-        let rez = TYPICAL_REZ_COST.min(budget);
+        let rez = each.min(budget);
         budget -= rez;
         spent += rez;
     }
@@ -399,9 +415,21 @@ pub(super) fn score(state: &GameState, registry: &CardRegistry, w: &Weights, hor
         *score += w.successful_run_weight;
     }
     if let Some(run) = &state.active_run {
-        let pool = state.runner.resources.credits.0 + run.bad_publicity_credits;
+        let pool = run_pool(state, run);
         if let Some(due) = remaining_break_cost(state, run, registry).filter(|due| *due <= pool) {
             *score += access_prospect(state, run, registry, w, pool - due, horizon);
+            // What the card that began the run put on it (Phase 5 §31).
+            // The run's own credits pay the breaks the Runner's would
+            // have, and are gone when the run is: worth the breaks they
+            // cover and no more (Overclock). The run is never charged
+            // for its breaks (see `remaining_break_cost`), so this is
+            // the one reading of them — what the Runner keeps. The
+            // rider pays on success, at the rate a play is read at: a
+            // credit a credit, a card a click (Clean Getaway, Red Team's
+            // run, Joy Ride).
+            *score += f64::from(due.min(run_credits_for_breaking(run))) * w.own_credit_weight;
+            let (credits, cards) = rider_income(run, Side::Runner);
+            *score += f64::from(credits) * w.own_credit_weight + f64::from(cards) * w.click_weight;
         }
         *score -= pending_subroutines(run) as f64 * w.pending_subroutine_weight;
         *score -= strength_shortfall(state, run, registry) as f64 * w.strength_shortfall_weight;
@@ -1464,5 +1492,108 @@ mod tests {
         assert_eq!(rd_accesses(&printed(&pool, "devadatta_drone"), None), 1);
         assert_eq!(rd_accesses(&printed(&pool, "conduit"), Some(3)), 3);
         assert_eq!(rd_accesses(&printed(&pool, "conduit"), None), 0, "in hand, Conduit promises what it places on itself: nothing");
+    }
+
+    /// A run a card's text began is priced with what the text put on it
+    /// (Phase 5 §31), each read off the run the engine built: the run's
+    /// own credits make a break the Runner cannot pay for payable and are
+    /// worth the breaks they cover (Overclock), and nothing when their word
+    /// is not breaking; the rider pays its credits at a credit each on
+    /// success (Clean Getaway, and Red Team's "if this card is installed"
+    /// as if it were); a run redirected on approach is the breach of the
+    /// server it goes to (Maintenance Access); a standing run-ending
+    /// prevention passes the first unbreakable piece over a root with a
+    /// card in it and nothing over an empty one (Shred); and a rez tax on
+    /// each piece of ICE is what the forced rez costs the Corp (Tread
+    /// Lightly).
+    #[test]
+    fn a_run_a_card_began_is_priced_with_what_the_card_put_on_it() {
+        use netrunner_core::dsl::{EffectRequirement, EndRunPrevention, PaysFor};
+        use netrunner_core::rules::lingering::{Lingering, LingeringEffect, On, Until};
+        use netrunner_core::rules::{InstallSlot, ServerId};
+        let w = guide();
+        let registry = CardRegistry::from_cards(vec![priced_breaker("cleaver", Some(IceType::Barrier), (1, 2), (2, 1))]);
+        let wall = run_ice(1, IceType::Barrier, 2, true);
+        let sentry = run_ice(1, IceType::Sentry, 1, true);
+        let registry = with_printed_ice(&registry, &[wall.clone(), sentry.clone()]);
+        let mut base = GameState::new(0);
+        base.runner.rig = vec![InstalledRunnerCard { base_strength: 1, ..rig_card("cleaver") }];
+        base.corp.hq = corp_cards("hq", 3);
+        let score = |state: &GameState| evaluate_state_with(state, Side::Runner, &registry, &w);
+        let with_run = |state: &GameState, run: RunState| {
+            let mut state = state.clone();
+            state.active_run = Some(run);
+            state
+        };
+        let hq = |ice: Vec<RunIce>| RunState { server: ServerId::Hq, ice, position: 0, ..Default::default() };
+
+        // Overclock: 0[c] against a 1[c] break is no run; five run
+        // credits make it one, worth the access and the credit kept.
+        let broke = with_run(&base, hq(vec![wall.clone()]));
+        let overclocked = with_run(&base, RunState { bonus_run_credits: 5, ..hq(vec![wall.clone()]) });
+        let gained = score(&overclocked) - score(&broke);
+        assert!((gained - (w.active_run_weight + w.own_credit_weight)).abs() < 1e-9, "{gained}");
+        let for_trashing = with_run(&base, RunState { bonus_run_credits: 5, run_credits_pay_for: Some(PaysFor::TrashCosts), ..hq(vec![wall.clone()]) });
+        assert_eq!(score(&for_trashing), score(&broke), "credits that pay for trashing break nothing");
+        let for_breakers = with_run(&base, RunState { bonus_run_credits: 5, run_credits_pay_for: Some(PaysFor::UsingIcebreakers), ..hq(vec![wall.clone()]) });
+        assert_eq!(score(&for_breakers), score(&overclocked));
+
+        // Clean Getaway and Red Team: the rider's credits on success.
+        let mut paid = base.clone();
+        paid.runner.resources.credits = Credits(1);
+        let plain = with_run(&paid, hq(vec![wall.clone()]));
+        let getaway = with_run(&paid, RunState { on_success_effect: Some(Box::new(Effect::GainCredits(Side::Runner, 6))), ..hq(vec![wall.clone()]) });
+        let rider = score(&getaway) - score(&plain);
+        assert!((rider - 6.0 * w.own_credit_weight).abs() < 1e-9, "{rider}");
+        let red_team = Effect::EffectIf {
+            condition: EffectRequirement::ThisCardIsInstalled,
+            effect: Box::new(Effect::Sequence(vec![Effect::RemoveCounters(Amount::Fixed(3)), Effect::GainCredits(Side::Runner, 3)])),
+        };
+        let team = with_run(&paid, RunState { on_success_effect: Some(Box::new(red_team)), ..hq(vec![wall.clone()]) });
+        assert!((score(&team) - score(&plain) - 3.0 * w.own_credit_weight).abs() < 1e-9);
+        assert_eq!(score(&with_run(&base, RunState { on_success_effect: Some(Box::new(Effect::GainCredits(Side::Runner, 6))), ..hq(vec![wall.clone()]) })), score(&broke), "no rider pays on a run that cannot get in");
+
+        // Maintenance Access: a run on an empty Archives that becomes a
+        // run on HQ is the HQ access.
+        let archives = with_run(&base, RunState { server: ServerId::Archives, ..Default::default() });
+        let redirected = with_run(&base, RunState { server: ServerId::Archives, redirect_on_approach: Some(ServerId::Hq), ..Default::default() });
+        assert!((score(&redirected) - score(&archives) - w.active_run_weight).abs() < 1e-9);
+
+        // Shred: a sentry nothing in the rig breaks stops the run, unless
+        // the first "end the run" is held off — over a root with a card.
+        let mut remote = base.clone();
+        remote.corp.installed.push(InstalledCard { card: CardId("hq1".to_string()), install_id: InstallId(7), server: ServerId::Remote(0), slot: InstallSlot::Root, ..Default::default() });
+        let prevention = LingeringEffect {
+            what: Lingering::PreventRunEnding(EndRunPrevention::UnlessCorpTrashesRootCountFromHq),
+            on: On::Player(Side::Corp),
+            until: Until::EndOfRun,
+            source: CardId("shred".to_string()),
+        };
+        let run = |ice: Vec<RunIce>| RunState { server: ServerId::Remote(0), ice, position: 0, ..Default::default() };
+        // The prevention holds for the run, so it is read on a state
+        // the run is on.
+        let due = |state: &GameState, ice: Vec<RunIce>| {
+            let state = with_run(state, run(ice));
+            remaining_break_cost(&state, state.active_run.as_ref().unwrap(), &registry)
+        };
+        assert_eq!(due(&remote, vec![sentry.clone()]), None);
+        let mut shredded = remote.clone();
+        shredded.lingering = vec![prevention.clone()];
+        assert_eq!(due(&shredded, vec![sentry.clone()]), Some(0), "the first is passed");
+        assert_eq!(due(&shredded, vec![sentry.clone(), wall.clone()]), Some(1), "and the wall still costs its credit");
+        assert_eq!(due(&shredded, vec![sentry.clone(), sentry.clone()]), None, "the second is not");
+        let mut empty_root = base.clone();
+        empty_root.lingering = vec![prevention];
+        assert_eq!(due(&empty_root, vec![sentry.clone()]), None, "nothing to pay over an empty root, so the run ends");
+        assert!(score(&with_run(&shredded, run(vec![sentry.clone()]))) > score(&with_run(&remote, run(vec![sentry]))));
+
+        // Tread Lightly: 3[c] more on each rez the run forces.
+        let mut taxed = base.clone();
+        taxed.corp.resources.credits = Credits(20);
+        let unrezzed = || vec![run_ice(3, IceType::Barrier, 1, false), run_ice(3, IceType::Barrier, 1, false)];
+        assert_eq!(forced_rez_credits(&taxed, &hq(unrezzed())), 2 * TYPICAL_REZ_COST);
+        taxed.lingering = vec![LingeringEffect { what: Lingering::RezCost(3), on: On::EachIce, until: Until::EndOfRun, source: CardId("tread_lightly".to_string()) }];
+        let run = with_run(&taxed, hq(unrezzed()));
+        assert_eq!(forced_rez_credits(&run, run.active_run.as_ref().unwrap()), 2 * (TYPICAL_REZ_COST + 3));
     }
 }

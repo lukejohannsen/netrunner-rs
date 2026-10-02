@@ -1828,6 +1828,77 @@ mod positions {
         );
     }
 
+    /// A run event is played for what it puts on the run (Phase 5 §31):
+    /// with 1[c], a Cleaver and HQ behind a barrier that costs 2[c] to
+    /// break, the Runner plays Overclock and runs HQ on its five run
+    /// credits rather than clicking for the credits first — the run the
+    /// leaf could not see while it read the Runner's own credits alone,
+    /// so the planner played Overclock in 0 of 192 games. The grip holds
+    /// three other cards because an emptied grip is the flatline fear,
+    /// not the point.
+    #[test]
+    fn plays_overclock_to_run_through_ice_it_cannot_otherwise_afford() {
+        use netrunner_core::dsl::{Effect, IceType, SubroutineDef};
+        use netrunner_core::rules::InstallSlot;
+        let mut registry = CardRegistry::new();
+        netrunner_core::cards::register_playable_cards(&mut registry);
+        let mut wall = blank_card("wall", CardType::Ice(IceType::Barrier));
+        wall.strength = Some(3);
+        let etr = || SubroutineDef { text: String::new(), effect: Effect::EndTheRun, only_breakable_by: None };
+        wall.subroutines = vec![etr(), etr(), etr()];
+        registry.insert(wall);
+
+        let mut state = GameState::new(0);
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner = empty_runner();
+        state.runner.resources = PlayerResources { credits: Credits(1), clicks: Clicks(3), agenda_points: AgendaPoints(0) };
+        state.runner.memory_units = MemoryUnits(3);
+        state.runner.grip = vec![CardId("overclock".to_string()), CardId("wall".to_string()), CardId("wall".to_string()), CardId("wall".to_string())];
+        state.runner.rig = vec![netrunner_core::rules::InstalledRunnerCard { card: CardId("cleaver".to_string()), install_id: InstallId(10), base_strength: 3, ..Default::default() }];
+        state.corp.resources.credits = Credits(5);
+        state.corp.hq = vec![CardId("wall".to_string()); 3];
+        state.corp.r_and_d = vec![CardId("wall".to_string()); 3];
+        for (index, server) in [ServerId::Hq, ServerId::RnD, ServerId::Archives].into_iter().enumerate() {
+            state.corp.installed.push(InstalledCard {
+                card: CardId("wall".to_string()),
+                install_id: InstallId(index as u32 + 1),
+                server,
+                slot: InstallSlot::Ice,
+                rezzed: true,
+                ..Default::default()
+            });
+        }
+        let view = build_client_view(&state, &registry, Side::Runner);
+        let play = PlayerAction::PlayEvent { card_id: CardId("overclock".to_string()) };
+        assert!(view.legal_actions.contains(&play), "{:?}", view.legal_actions);
+
+        let mut agent = PlanningAgent::new(Side::Runner, 3);
+        let mut actions = Vec::new();
+        for _ in 0..20 {
+            match current_actor(&state) {
+                Some(Side::Corp) => {
+                    let Ok((next, _)) = apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Corp }) else { break };
+                    state = next;
+                }
+                Some(Side::Runner) => {
+                    let view = build_client_view(&state, &registry, Side::Runner);
+                    agent.observe(&view);
+                    let action = agent.select_action(&view, &registry);
+                    assert!(view.legal_actions.contains(&action), "{action:?} is not legal");
+                    state = apply_action(&state, &registry, action.clone()).expect("the plan's action applies").0;
+                    actions.push(action);
+                    if state.active_run.is_some() {
+                        break;
+                    }
+                }
+                None => break,
+            }
+        }
+        assert_eq!(actions.first(), Some(&play), "should play Overclock: {actions:?}");
+        let run = state.active_run.as_ref().expect("and run on it");
+        assert_eq!((run.server, run.bonus_run_credits), (ServerId::Hq, 5), "{actions:?}");
+    }
+
     /// With an empty grip, open servers and a stack to draw from, the
     /// Runner draws before it runs (ROADMAP Phase 2 §5's draw item).
     #[test]
