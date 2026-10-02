@@ -284,6 +284,7 @@ fn every_field_of_the_view_is_accounted_for(view: ClientView) {
                 on_start: _,        // engine's
                 install: _,         // drawn: placement::Placement
                 move_to_root: _,    // drawn: placement::Placement's question
+                remember: _,        // drawn: Prompt::of's "choose a server" and the buttons' "Choose HQ" (actions)
                 on_success: _,      // engine's
                 source_card: _,     // drawn: Prompt::of
                 prompting_card: _,  // drawn: Prompt::of

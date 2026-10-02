@@ -288,6 +288,7 @@ fn cannot_words(what: netrunner_core::dsl::Prohibition) -> &'static str {
         Prohibition::RunOnRemote => "the Runner cannot run on a remote server",
         Prohibition::AccessOthers => "the Runner cannot access any other card",
         Prohibition::Access => "the Runner cannot access that card",
+        Prohibition::BreakSubroutines => "the Runner's abilities cannot break subroutines",
     }
 }
 
@@ -361,7 +362,41 @@ pub fn in_effect(view: &ClientView, registry: &CardRegistry) -> Vec<String> {
                     let card = super::facts::card_of(view, *install).map_or_else(|| "the upgrade".to_string(), |card| title(&card));
                     format!("the Runner cannot access {card}")
                 }
+                // Hafrún: about the Runner card it chose.
+                (Lingering::Cannot(Prohibition::BreakSubroutines), On::Install(install)) => {
+                    let card = super::facts::card_of(view, *install).map_or_else(|| "that card".to_string(), |card| title(&card));
+                    format!("{card}'s abilities cannot break subroutines")
+                }
                 (Lingering::Cannot(what), _) => cannot_words(*what).to_string(),
+                // Klevetnik: the resource it chose.
+                (Lingering::LosesAbilities, on) => {
+                    let card = match on {
+                        On::Install(install) => super::facts::card_of(view, *install).map_or_else(|| "that card".to_string(), |card| title(&card)),
+                        _ => "that card".to_string(),
+                    };
+                    format!("{card} has lost all its abilities")
+                }
+                // Anvil, Unsmiling Tsarevna: about the ice itself.
+                (Lingering::BreakLimit(at_most), on) => {
+                    let ice = match on {
+                        On::Install(install) => super::facts::card_of(view, *install).map_or_else(|| "the ice".to_string(), |card| title(&card)),
+                        _ => "the ice".to_string(),
+                    };
+                    match at_most {
+                        0 => format!("the Runner cannot break {ice}'s printed subroutines"),
+                        n => format!("the Runner cannot break more than {n} of {ice}'s printed subroutines each encounter"),
+                    }
+                }
+                // Tsakhia: the server it chose, and the encounter it spent it on.
+                (Lingering::ChosenServer(server), _) => format!("the chosen server is {}", crate::board::action_map::server_name(*server)),
+                (Lingering::SubroutinesReplaced, on) => {
+                    let ice = match on {
+                        On::Install(install) => super::facts::card_of(view, *install).map_or_else(|| "the ice".to_string(), |card| title(&card)),
+                        _ => "the ice".to_string(),
+                    };
+                    let instead = registry.get(&effect.source).and_then(|card| card.subroutines.first()).map_or_else(String::new, |sub| sub.text.trim_end_matches('.').to_string());
+                    format!("each subroutine on {ice} resolves as \u{201c}{instead}\u{201d}")
+                }
                 (Lingering::PreventRunEnding(EndRunPrevention::UnlessCorpTrashesRootCountFromHq), _) => {
                     "the first time the Corp would end the run, it ends only if the Corp trashes a card from HQ for each card in the server's root".to_string()
                 }
@@ -375,7 +410,13 @@ pub fn in_effect(view: &ClientView, registry: &CardRegistry) -> Vec<String> {
             let until = match effect.until {
                 Until::EndOfEncounter(_) => ", for this encounter",
                 Until::EndOfRun => ", for the rest of this run",
-                Until::EndOfTurn(_) => ", for the rest of this turn",
+                Until::EndOfTurn(turn) if turn <= view.turn => ", for the rest of this turn",
+                // Klevetnik's "until your next turn ends": the turn of the
+                // player whose card it is.
+                Until::EndOfTurn(_) => match registry.get(&effect.source).map(|card| card.side) {
+                    Some(Side::Runner) => ", until the end of the Runner's next turn",
+                    _ => ", until the end of the Corp's next turn",
+                },
                 Until::NextTurnOf(_) => "",
                 Until::WhileRezzed(_) => ", while it remains rezzed",
             };
@@ -684,10 +725,44 @@ mod tests {
         view.lingering = vec![LingeringEffect {
             what: Lingering::Mark(netrunner_core::rules::ServerId::RnD),
             on: On::Player(Side::Runner),
-            until: Until::EndOfTurn(1),
+            until: Until::EndOfTurn(view.turn),
             source: CardId("tunnel_vision".into()),
         }];
         assert_eq!(in_effect(&view, &registry), vec!["Tunnel Vision: the Runner's mark is R&D, for the rest of this turn".to_string()]);
+    }
+
+    /// Parhelion Stage 8's lasting rules, each with the card that made it:
+    /// a loss that ends with a later turn says whose, and a replaced
+    /// subroutine quotes what resolves instead.
+    #[test]
+    fn a_lost_ability_a_limit_on_breaking_and_a_replaced_subroutine_are_listed() {
+        use netrunner_core::dsl::Prohibition;
+        use netrunner_core::rules::lingering::{Lingering, LingeringEffect, On, Until};
+        use netrunner_core::rules::ServerId;
+        let registry = crate::decks::sample_deck_registry();
+        let mut view = view();
+        let made = |what, on, until, source: &str| LingeringEffect { what, on, until, source: CardId(source.into()) };
+        let turn = view.turn;
+        view.lingering = vec![
+            made(Lingering::LosesAbilities, On::Install(InstallId(901)), Until::EndOfTurn(turn + 1), "klevetnik"),
+            made(Lingering::BreakLimit(0), On::Install(InstallId(902)), Until::EndOfEncounter(InstallId(902)), "anvil"),
+            made(Lingering::BreakLimit(1), On::Install(InstallId(903)), Until::EndOfRun, "unsmiling_tsarevna"),
+            made(Lingering::Cannot(Prohibition::BreakSubroutines), On::Install(InstallId(904)), Until::EndOfRun, "hafrun"),
+            made(Lingering::ChosenServer(ServerId::Hq), On::Player(Side::Runner), Until::EndOfTurn(turn), "tsakhia_bankhar_gantulga"),
+            made(Lingering::SubroutinesReplaced, On::Install(InstallId(905)), Until::EndOfEncounter(InstallId(905)), "tsakhia_bankhar_gantulga"),
+        ];
+        let lines = in_effect(&view, &registry);
+        assert_eq!(
+            lines,
+            [
+                "Klevetnik: that card has lost all its abilities, until the end of the Corp's next turn",
+                "Anvil: the Runner cannot break the ice's printed subroutines, for this encounter",
+                "Unsmiling Tsarevna: the Runner cannot break more than 1 of the ice's printed subroutines each encounter, for the rest of this run",
+                "Hafrún: that card's abilities cannot break subroutines, for the rest of this run",
+                "Tsakhia \"Bankhar\" Gantulga: the chosen server is HQ, for the rest of this turn",
+                "Tsakhia \"Bankhar\" Gantulga: each subroutine on the ice resolves as \u{201c}Do 1 net damage\u{201d}, for this encounter",
+            ]
+        );
     }
 
     /// Attini's standing "cannot", in force only while its subroutines

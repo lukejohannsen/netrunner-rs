@@ -288,6 +288,9 @@ fn close_window(
 pub(crate) fn has_usable_paid_ability(state: &GameState, registry: &CardRegistry, side: Side) -> bool {
     active_cards_of(state, side).into_iter().any(|(install, card_id)| {
         let Some(card) = registry.get(&card_id) else { return false };
+        if card.abilities.is_empty() || crate::rules::active::lost_abilities(state, registry, install) {
+            return false;
+        }
         // Asked per *install*, as `activate_ability` will resolve it: a
         // `Cost::RemoveCounters` is affordable by the copy that holds the
         // counters, and `OncePerTurn` is spent per copy.
@@ -771,7 +774,7 @@ mod tests {
             side: Side::Runner,
             card_type: crate::dsl::CardType::Program,
             triggers: vec![crate::dsl::TriggeredEffect {
-                subject: None, when: None, acts_on_subject: false, first_each_turn: false, first_each_encounter: false, from_heap: false,
+                subject: None, when: None, acts_on_subject: false, first_each_turn: false, first_each_encounter: false, granted: false, from_heap: false,
                 text: None,
                 trigger: crate::dsl::Trigger::OnRunEnded,
                 effects: vec![crate::dsl::Effect::GainCredits(Side::Runner, 1)],

@@ -279,6 +279,29 @@ pub enum ContinuousKind {
     /// resolved (`Effect::Prohibit`), and this one is made by nothing — it
     /// is on while its `while` holds.
     Cannot(crate::dsl::Prohibition),
+    /// The card loses all its abilities but its printed subroutines (CR
+    /// 9.1.9a) — Hush's "Host ice … loses all abilities except its printed
+    /// subroutines" (`Scope::Host`). A lost ability "is completely
+    /// ignored": no trigger of the card's is heard (`listeners`), none of
+    /// its standing effects applies (this scan), none of its paid abilities
+    /// is used and no credits it hosts are spent; `rules::active::
+    /// lost_abilities` is the one question all of them put. **A printed
+    /// subroutine is never lost**: the one card in the pool that takes a
+    /// piece of ice's abilities keeps them, and the other loss in the pool
+    /// (Klevetnik's, `Lingering::LosesAbilities`) is of a resource, which
+    /// prints none. Read by a direct scan of the rig, never through this
+    /// one, so a card's loss never depends on what it has lost (CR
+    /// 9.12.1e: a hosted object's effects do not depend on its host's).
+    /// Composition didn't work: nothing took a card's abilities away.
+    LosesAbilities,
+    /// The card cannot gain abilities (CR 9.1.9) — Hush's "Host ice cannot
+    /// gain abilities" (`Scope::Host`): no subroutine is added to it
+    /// (`Effect::GainSubroutine`, a run's `gained_for_the_run`) and no
+    /// ability another card grants it is heard (`TriggeredEffect::
+    /// granted`, ZATO City Grid's). Apart from `LosesAbilities`, which
+    /// keeps what is printed: the two are two sentences on the card, and
+    /// a granted ability gained before Hush arrived is lost by the first.
+    CannotGainAbilities,
 }
 
 /// Which cards an effect is about, read from the card that prints it.

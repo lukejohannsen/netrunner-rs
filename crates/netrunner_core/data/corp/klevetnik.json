@@ -1,0 +1,70 @@
+{
+  "id": "klevetnik",
+  "title": "Klevetnik",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Barrier"
+  },
+  "cost": 3,
+  "strength": 3,
+  "triggers": [
+    {
+      "trigger": "OnRez",
+      "subject": "This",
+      "requirement": "RezzedDuringRunAgainstThisServer",
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Corp",
+            "options": [
+              {
+                "Sequence": [
+                  {
+                    "GainCredits": [
+                      "Runner",
+                      2
+                    ]
+                  },
+                  {
+                    "PromptChooseCards": {
+                      "side": "Corp",
+                      "source": "OpponentInstalled",
+                      "filter": {
+                        "CardType": "Resource"
+                      },
+                      "min": 1,
+                      "max": 1,
+                      "reveal": false,
+                      "shuffle_after": false,
+                      "then": {
+                        "LoseAbilities": {
+                          "until": "ThroughYourNextTurn"
+                        }
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "Sequence": []
+              }
+            ],
+            "texts": [
+              "you may have the Runner gain 2[credit]. If you do, choose 1 installed resource. That resource loses all abilities until your next turn ends",
+              ""
+            ]
+          }
+        }
+      ],
+      "text": "When you rez this ice during a run against this server, you may have the Runner gain 2[credit]. If you do, choose 1 installed resource. That resource loses all abilities until your next turn ends."
+    }
+  ],
+  "subroutines": [
+    {
+      "text": "End the run.",
+      "effect": "EndTheRun"
+    }
+  ],
+  "built_from": 33116,
+  "is_playable": true
+}

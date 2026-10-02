@@ -482,7 +482,9 @@ pub(crate) fn sources(
         let install = card.install?;
         let definition = registry.get(card.card)?;
         let pays = definition.pays_for.iter().any(|word| covers(word, purpose, Some(install), state, registry));
-        (pays && admits(Some(card.card))).then_some(install)
+        // What its hosted credits may be spent on is the card's text, and a
+        // card that has lost its abilities says nothing (CR 9.1.9a).
+        (pays && admits(Some(card.card)) && !active::lost_abilities(state, registry, install)).then_some(install)
     })
     .collect();
     for install in hosts {
@@ -796,6 +798,9 @@ pub(crate) fn refill(state: &mut GameState, registry: &CardRegistry, side: Side)
     // identity hosts nothing: neither prints recurring credits in this
     // pool, and `validate` refuses the second.
     .filter(|card| card.place == Place::Installed || (card.place == Place::Identity && side == Side::Corp))
+    // "N[recurring-credit]" is an ability, and a card that has lost its
+    // abilities is not refilled (CR 9.1.9a).
+    .filter(|card| card.install.is_none_or(|install| !active::lost_abilities(state, registry, install)))
     .filter_map(|card| recurring(card.card).map(|credits| (card.install, card.card.clone(), credits)))
     .collect();
     let mut events = Vec::new();

@@ -1,0 +1,79 @@
+{
+  "id": "anvil",
+  "title": "Anvil",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "CodeGate"
+  },
+  "cost": 4,
+  "strength": 3,
+  "triggers": [
+    {
+      "trigger": "OnEncounter",
+      "subject": "This",
+      "effects": [
+        {
+          "OfferPaidChoice": {
+            "side": "Corp",
+            "cost": {
+              "Trash": {
+                "from": "OwnInstalled",
+                "filter": "NotSourceCard",
+                "count": 1
+              }
+            },
+            "if_paid": {
+              "LimitBreaks": {
+                "at_most": 0,
+                "until": "Encounter"
+              }
+            },
+            "if_declined": {
+              "Sequence": []
+            },
+            "text": "you may trash 1 of your other installed cards. If you do, the Runner cannot break this ice's printed subroutines for the remainder of this encounter"
+          }
+        }
+      ],
+      "text": "When the Runner encounters this ice, you may trash 1 of your other installed cards. If you do, the Runner cannot break this ice's printed subroutines for the remainder of this encounter."
+    }
+  ],
+  "subroutines": [
+    {
+      "text": "Gain 1[credit]. The Runner loses 1[credit].",
+      "effect": {
+        "Sequence": [
+          {
+            "GainCredits": [
+              "Corp",
+              1
+            ]
+          },
+          {
+            "LoseCredits": [
+              "Runner",
+              1
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "text": "The Runner trashes 1 of their installed cards.",
+      "effect": {
+        "PromptChooseCards": {
+          "side": "Runner",
+          "source": "OwnInstalled",
+          "filter": "Any",
+          "min": 1,
+          "max": 1,
+          "reveal": false,
+          "shuffle_after": false,
+          "destination": "OwnHeap"
+        }
+      }
+    }
+  ],
+  "built_from": 33124,
+  "is_playable": true
+}

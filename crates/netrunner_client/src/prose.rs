@@ -222,6 +222,7 @@ fn duration(d: &EffectDuration) -> &'static str {
         EffectDuration::Encounter => "for this encounter",
         EffectDuration::Run => "for this run",
         EffectDuration::Turn => "for this turn",
+        EffectDuration::ThroughYourNextTurn => "until your next turn ends",
     }
 }
 
@@ -254,6 +255,7 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
                 EffectDuration::Encounter => "this encounter",
                 EffectDuration::Run => "this run",
                 EffectDuration::Turn => "this turn",
+                EffectDuration::ThroughYourNextTurn => "your next turn",
             };
             format!("{which} {sign}{delta} strength for the remainder of {until}")
         }
@@ -428,6 +430,7 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
                 netrunner_core::dsl::EffectDuration::Encounter => "the rest of the encounter",
                 netrunner_core::dsl::EffectDuration::Run => "the rest of the run",
                 netrunner_core::dsl::EffectDuration::Turn => "the rest of the turn",
+                netrunner_core::dsl::EffectDuration::ThroughYourNextTurn => "the rest of your next turn",
             };
             format!("the ice gains {copies}\u{201c}{}\u{201d} {order} its other subroutines, for {how_long}", subroutine.text.trim_end_matches('.'))
         }
@@ -455,6 +458,8 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
                 (Prohibition::RunOnRemote, _) => "the Runner cannot run on a remote server",
                 (Prohibition::AccessOthers, _) => "the Runner cannot access cards other than this card",
                 (Prohibition::Access, _) => "the Runner cannot access this card",
+                (Prohibition::BreakSubroutines, _) if *this_install => "that card's abilities cannot break subroutines",
+                (Prohibition::BreakSubroutines, _) => "the Runner's abilities cannot break subroutines",
             };
             format!("{what} {}", duration(until))
         }
@@ -468,6 +473,13 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
         Effect::MoveThisIceToOutermost => "move this ice to the outermost position protecting the attacked server".to_string(),
         Effect::PlayOperation { .. } => "play an operation".to_string(),
         Effect::ResolveSubroutineOfSelectedIce => "resolve a subroutine of the chosen ice".to_string(),
+        Effect::LoseAbilities { until } => format!("it loses all abilities {}", duration(until)),
+        Effect::LimitBreaks { at_most: 0, until } => format!("the Runner cannot break this ice's printed subroutines {}", duration(until)),
+        Effect::LimitBreaks { at_most, until } => {
+            format!("during each encounter with this ice, the Runner cannot break more than {at_most} of its printed subroutines, {}", duration(until))
+        }
+        Effect::ChooseServer => "choose a server".to_string(),
+        Effect::ReplaceSubroutines => "for this encounter, the Corp resolves this card's subroutine instead of each subroutine on the ice".to_string(),
         Effect::MoveRunToOutermost(server) => format!("move the run to the outermost ice of {}", describe_server(*server)),
         Effect::InstallAgendaFromRunnerScoreArea => "install an agenda from the Runner's score area".to_string(),
         Effect::SwapApproachedIceWithCard { this_ice: true, .. } => "swap this ice with a card".to_string(),
@@ -734,8 +746,11 @@ pub fn describe_continuous(effect: &ContinuousEffect) -> String {
             Prohibition::RunOnRemote => "cannot run on a remote server",
             Prohibition::AccessOthers => "cannot access cards other than this card",
             Prohibition::Access => "cannot access this card",
+            Prohibition::BreakSubroutines => "cannot break subroutines",
         }
         .to_string(),
+        ContinuousKind::LosesAbilities => "loses all abilities except its printed subroutines".to_string(),
+        ContinuousKind::CannotGainAbilities => "cannot gain abilities".to_string(),
     };
     match &effect.condition {
         Some(condition) => format!("{whom} {what}, while {}", lower(format!("{condition:?}"))),
@@ -830,9 +845,10 @@ pub fn decision_prompt(view: &ClientView, registry: &CardRegistry) -> Option<Str
             let chosen = crate::selection::Selection::of(view, registry).map(|s| format!(" ({})", s.summary())).unwrap_or_default();
             asks(format!("choose {how_many} from {}{chosen}", describe_zone(source)))
         }
-        PendingDecision::ChooseServer { install, .. } => match crate::placement::Placement::of(view, registry) {
+        PendingDecision::ChooseServer { install, remember, .. } => match crate::placement::Placement::of(view, registry) {
             Some(placement) => asks(placement.question()),
             None if install.is_some() => asks("installing a card".to_string()),
+            None if *remember => asks("choose a server".to_string()),
             None => asks("choose a server to run".to_string()),
         },
         PendingDecision::ChooseTriggerOrder { .. } => Some("Choose which trigger resolves first".to_string()),

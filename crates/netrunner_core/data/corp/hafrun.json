@@ -1,0 +1,62 @@
+{
+  "id": "hafrun",
+  "title": "Hafrún",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Barrier"
+  },
+  "cost": 2,
+  "strength": 3,
+  "triggers": [
+    {
+      "trigger": "OnRez",
+      "subject": "This",
+      "requirement": "RezzedDuringRunAgainstThisServer",
+      "effects": [
+        {
+          "OfferPaidChoice": {
+            "side": "Corp",
+            "cost": {
+              "Trash": {
+                "from": "OwnHq",
+                "filter": "Any",
+                "count": 1
+              }
+            },
+            "if_paid": {
+              "PromptChooseCards": {
+                "side": "Corp",
+                "source": "OpponentInstalled",
+                "filter": "Any",
+                "min": 1,
+                "max": 1,
+                "reveal": false,
+                "shuffle_after": false,
+                "then": {
+                  "Prohibit": {
+                    "what": "BreakSubroutines",
+                    "until": "Run",
+                    "this_install": true
+                  }
+                }
+              }
+            },
+            "if_declined": {
+              "Sequence": []
+            },
+            "text": "you may trash 1 card from HQ. If you do, choose 1 installed Runner card. That card's abilities cannot break subroutines for the remainder of that run"
+          }
+        }
+      ],
+      "text": "When you rez this ice during a run against this server, you may trash 1 card from HQ. If you do, choose 1 installed Runner card. That card's abilities cannot break subroutines for the remainder of that run."
+    }
+  ],
+  "subroutines": [
+    {
+      "text": "End the run.",
+      "effect": "EndTheRun"
+    }
+  ],
+  "built_from": 33108,
+  "is_playable": true
+}

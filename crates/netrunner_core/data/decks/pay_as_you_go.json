@@ -3,7 +3,7 @@
   "name": "Pay As You Go",
   "side": "Runner",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach a payment two pools could make. Noise with the Core Set's three pool cards — Cyberfeeder, The Toolbox, Crash Space — beside Overclock, whose credits compete with theirs on every pump and break; viruses for Cyberfeeder to install. Vantage Point's Take a Dive in Jailbreak's place, so an Anarch run gives the Corp bad publicity. Eternal-legal only. Vantage Point Stage 3b: Chain Reaction for Overclock. Vantage Point Stage 4a: The Tungsten Tailor for Scrounge and a Wildcat Strike. Stage 5b: Nurse Hạnh for two Smartware Distributor. Stage 7c: two Hackerspace for two T400 Memory Diamond, and a third Nurse Hạnh for Smartware Distributor, to be installed onto one. Stage 7e: two Stick and Poke for two Wildcat Strike, so the first ice each turn gains a subroutine. Rebellion Without Rehearsal Stage 1: two Friend of a Friend for two Sure Gamble, and two Valentina Ferreira Carvalho, which the tags Friend of a Friend takes and removes pay. Rebellion Without Rehearsal Stage 6a: an Alarm Clock and a Sure Gamble for the Gordian Blade and a Crash Space. Spare Parts' one copy, with no influence left for a second, was installed in about one random game in nine and never by the heuristic Runner, and a 256-seed sweep missed it altogether once the Corp decks it met changed. The Automata Initiative Stage 3: two Banner for two of the three Corroder, fracter for fracter. Parhelion Stage 2a: two Finality, two Katorga Breakout, two Nga and two Num for two Fermenter, two Leech, a Take a Dive, a Cyberfeeder, a Nurse Hạnh and a Buzzsaw. Parhelion Stage 4a: two Time Bomb for two Nurse Hạnh, which Grassroots still carries. Parhelion Stage 4b: two Abaasy for two Botulus, which six sample decks still carry. Parhelion Stage 6c: two Raindrops Cut Stone for its two Sure Gamble, a run that pays 3[credit] and a card for each subroutine that resolves against it.",
+  "description": "Not a published list: built so the sweeps reach a payment two pools could make. Noise with the Core Set's three pool cards — Cyberfeeder, The Toolbox, Crash Space — beside Overclock, whose credits compete with theirs on every pump and break; viruses for Cyberfeeder to install. Vantage Point's Take a Dive in Jailbreak's place, so an Anarch run gives the Corp bad publicity. Eternal-legal only. Vantage Point Stage 3b: Chain Reaction for Overclock. Vantage Point Stage 4a: The Tungsten Tailor for Scrounge and a Wildcat Strike. Stage 5b: Nurse Hạnh for two Smartware Distributor. Stage 7c: two Hackerspace for two T400 Memory Diamond, and a third Nurse Hạnh for Smartware Distributor, to be installed onto one. Stage 7e: two Stick and Poke for two Wildcat Strike, so the first ice each turn gains a subroutine. Rebellion Without Rehearsal Stage 1: two Friend of a Friend for two Sure Gamble, and two Valentina Ferreira Carvalho, which the tags Friend of a Friend takes and removes pay. Rebellion Without Rehearsal Stage 6a: an Alarm Clock and a Sure Gamble for the Gordian Blade and a Crash Space. Spare Parts' one copy, with no influence left for a second, was installed in about one random game in nine and never by the heuristic Runner, and a 256-seed sweep missed it altogether once the Corp decks it met changed. The Automata Initiative Stage 3: two Banner for two of the three Corroder, fracter for fracter. Parhelion Stage 2a: two Finality, two Katorga Breakout, two Nga and two Num for two Fermenter, two Leech, a Take a Dive, a Cyberfeeder, a Nurse Hạnh and a Buzzsaw. Parhelion Stage 4a: two Time Bomb for two Nurse Hạnh, which Grassroots still carries. Parhelion Stage 4b: two Abaasy for two Botulus, which six sample decks still carry. Parhelion Stage 6c: two Raindrops Cut Stone for its two Sure Gamble, a run that pays 3[credit] and a card for each subroutine that resolves against it. Parhelion Stage 8: two Hush for two Mayfly, and two Tsakhia \"Bankhar\" Gantulga for the Leech and the Fermenter.",
   "style": [
     "rig",
     "dismantle"
@@ -31,20 +31,8 @@
       "count": 1
     },
     {
-      "card": "mayfly",
-      "count": 2
-    },
-    {
       "card": "hantu",
       "count": 2
-    },
-    {
-      "card": "fermenter",
-      "count": 1
-    },
-    {
-      "card": "leech",
-      "count": 1
     },
     {
       "card": "abaasy",
@@ -108,6 +96,14 @@
     },
     {
       "card": "num",
+      "count": 2
+    },
+    {
+      "card": "hush",
+      "count": 2
+    },
+    {
+      "card": "tsakhia_bankhar_gantulga",
       "count": 2
     }
   ]

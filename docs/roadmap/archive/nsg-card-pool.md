@@ -5647,3 +5647,137 @@ Not split: four cards, each its own mechanic, measured once.
   took only its two Carmen and Hit List is 48 cards, not 46. The DSL
   ratio is the merged tree's, re-measured on the area page.
 
+#### Stage 8 — losing abilities and break restrictions: a host that keeps only its printed subroutines, a resource without its abilities, limits on breaking for a duration and on one Runner card, a server chosen for the turn, and an ability one card gives another (2 October 2026)
+
+`claude/serene-einstein-6bhlig`: Hush, Klevetnik, Anvil, Unsmiling
+Tsarevna, Hafrún, Tsakhia "Bankhar" Gantulga, ZATO City Grid. **Four new
+`Effect`s** (`LoseAbilities`, `LimitBreaks`, `ChooseServer`,
+`ReplaceSubroutines`), two `ContinuousKind`s, four `Lingering` kinds, one
+`Prohibition`, one `EffectDuration`, two `CardFilter`s and one word on a
+trigger (`granted`). Parhelion 63 of 63; `PH_UNIMPLEMENTED` 7 → 0.
+**Stage 8 is complete, and Parhelion with it.** Not split: the seven
+share one question — what a card can still do — and were measured once.
+
+- **Losing abilities** (CR 9.1.9a: a lost ability "is completely
+  ignored"). Hush's "Host ice cannot gain abilities and loses all
+  abilities except its printed subroutines" is two `ContinuousKind`s about
+  its `Host` (`LosesAbilities`, `CannotGainAbilities`); Klevetnik's "That
+  resource loses all abilities until your next turn ends" is
+  `Effect::LoseAbilities` on the chosen resource, a lingering
+  `Lingering::LosesAbilities` until `EffectDuration::ThroughYourNextTurn`
+  (the Corp's next turn, which turns alternating makes the next turn or
+  the one after). **One question,** `rules::active::lost_abilities`, put
+  by everything that reads what a card can do: the listener scan (a card
+  that has lost its abilities hears nothing), the continuous scan (none of
+  its standing effects applies, its own text included), a paid ability
+  (`RulesError::AbilitiesLost`) and the window that would open for one, an
+  interrupt (`prevention::could_prevent`), hosted credits
+  (`payment::sources`), a recurring-credit refill, and a bioroid's
+  click-break, which is the ice's own ability. It is read off the rig and
+  the lingering list directly — never through the scan it gates — which is
+  CR 9.12.1e's order for hosted objects and all the pool needs; 9.12.1d's
+  dependency order is not built. A printed subroutine is never lost: the
+  one card that takes ice's abilities keeps them.
+  `Until::EndOfTurn(n)` now holds through turn n (`turn <= n`) rather than
+  during it, which reads the same for every entry made before, each made
+  in the turn it names.
+- **Cannot gain abilities.** A card Hush is on gains no subroutine
+  (`Effect::GainSubroutine`, and a run's `gained_for_the_run` at each
+  encounter) and has no ability another card grants it.
+- **An ability one card gives another** (CR 9.1.3b: its source is the
+  card that has it). ZATO City Grid's "Each piece of ice protecting this
+  server gains "When the Runner encounters this ice, …"" is ZATO's
+  trigger, heard while ZATO is active, marked `TriggeredEffect::granted`:
+  it acts on the ice (`acts_on_subject`, which `validate` requires beside
+  it) and is not heard for ice that cannot gain abilities or has lost them
+  (`active::may_have_granted`). "Protecting this server" is
+  `CardFilter::InThisServer` in an `EventFilter::Card` — the listener scan
+  now writes the listener's server into a `when`'s card filter, and
+  `copy_matches` reads `InServer` — so no new `EventFilter`. "Choose 1
+  subroutine on it. You may trash this ice to resolve that subroutine" is
+  an `OfferPaidChoice` costing `TrashSelf`, as the ice, whose `if_paid` is
+  Mycoweb's `ResolveSubroutineOfSelectedIce`.
+- **Break restrictions with a duration and on one card** (CR 9.8.5).
+  Anvil's "the Runner cannot break this ice's printed subroutines for the
+  remainder of this encounter" (0, `Encounter`) and Unsmiling Tsarevna's
+  "during each encounter with this ice for the remainder of that run, the
+  Runner cannot break more than 1 of its printed subroutines" (1, `Run`)
+  are `Effect::LimitBreaks`, Hammer's `BreakLimit` made by an ability that
+  resolved (`Lingering::BreakLimit`, read by `continuous::breaks_left`
+  beside the ice's own, against the same count). Hafrún's "choose 1
+  installed Runner card. That card's abilities cannot break subroutines
+  for the remainder of that run" is `Prohibit { BreakSubroutines,
+  this_install }` on the card the selection chose
+  (`Prohibition::BreakSubroutines`), asked by both break effects of the
+  breaking install (`ability::breakable_now`), which then find nothing to
+  break, so the ability is not offered. "You may trash 1 of your other
+  installed cards. If you do" and "trash 1 card from HQ" are nested costs
+  (CR 1.16.11a), `Cost::Trash`, as Kimberlite Field's.
+- **Two ice types.** Hafrún is a "Barrier - Code Gate". `CardType::Ice`
+  holds one type and the catalog's subtypes hold both
+  (`CardDefinition::is_ice_of_type`), which `continuous::ice_gains_subtype`
+  reads beside the types gained — every reader asks "the type it carries,
+  or this" — and `CardFilter::IceOfType` reads too, so a decoder breaks it
+  and a pass of "a rezzed code gate" sees it. A list on `CardType::Ice`
+  would have touched every ice file for one card.
+- **A server chosen for the turn, and a subroutine replaced.** Tsakhia's
+  "When your turn begins, you may choose a server" is `Effect::ChooseServer`
+  in a `PresentChoice`: a `PendingDecision::ChooseServer` that remembers
+  rather than runs (`remember`), its answer a `Lingering::ChosenServer`
+  that is the card's for the turn. "During the first encounter each turn
+  with a piece of ice protecting the chosen server, whenever the Corp would
+  resolve a subroutine, instead they resolve "[subroutine] Do 1 net
+  damage."" is an `OnEncounter` trigger whose `when` is
+  `Card(All[Ice, InChosenServer])` (written over with the card's choice by
+  the listener scan) and whose `Effect::ReplaceSubroutines` makes
+  `Lingering::SubroutinesReplaced` for the encounter and spends the choice
+  — which is what makes it the first encounter. The resource prints the
+  subroutine (`subroutines`), and `run::transition_subroutine`, the one
+  place both sites resolve a subroutine, resolves that instead.
+- **Client**, both clients through `netrunner_client`: an install's facts
+  say it "Has lost all its abilities but its printed subroutines (Hush)"
+  or "Has lost all its abilities (Klevetnik)" (`facts::
+  lost_abilities_words`); the In effect list words each new lingering
+  kind (Hafrún's "Cleaver's abilities cannot break subroutines", Anvil's
+  and Tsarevna's limits, Tsakhia's chosen server and replaced
+  subroutines) and an end of turn that is not this one ("until the end of
+  the Corp's next turn"); the server choice reads "choose a server" and
+  its buttons "Choose HQ" rather than a run; `prose` words every new
+  effect and kind. One new decision field, `ChooseServer::remember`, in
+  the view ledger as drawn. No new view field, event or action.
+- **Decks.** Permafrost two Hafrún for two Lionsmane; Paid Content two
+  Klevetnik for two Seraph and two Unsmiling Tsarevna for two Piranhas;
+  Hostile Bid two Anvil for two Hammer and two ZATO City Grid for two
+  Shackleton Grid; Pay as You Go two Hush for two Mayfly and two Tsakhia
+  for the Leech and the Fermenter. Each card that left is still in
+  another deck.
+- **DSL ratio (`pool_status.py`):** 17 of 97 `Effect` variants
+  single-use, 1 unused (`Trace`), over 443 card files — three single-use
+  variants for seven cards (`LimitBreaks` is two cards'; Tsakhia's two
+  and Klevetnik's one are each a mechanic's first card).
+- **Found by the debug audit, and fixed:** a cost that trashes Luana
+  Campos dispatched her "would be uninstalled" interrupt, and everything it
+  did, twice — once at `uninstall::corp_install`, which must announce it
+  while she is still on the table, and again in the payer's
+  `ability::dispatch_cost_events`. Unreachable until a cost trash met her
+  in a deck (Anvil's, in Hostile Bid); the debug schedule of
+  `every_sample_deck_matchup_finishes` caught it inside a planner's
+  payment replay. The payer now skips each announcement, from its
+  `AboutToBeUninstalled` to the event saying that card left.
+- **Measured.** Both sweeps green at 256 seeds (`netrunner_session`,
+  `netrunner_single_player`, `--release`), the card gate included, so
+  every one of the seven was seen in play.
+  - The engine change with none of the seven cards in the tree (its own
+    ref, the decks as they were) is **identical in all four
+    `coverage_identical.py` shapes** against `main` (`62294da`): random
+    and planner, by view and by index. Hafrún's second type read off the
+    printed subtypes, `Until::EndOfTurn` holding through its turn, and
+    the listener scan writing a server into a `when` reach no card in a
+    sample deck.
+  - With the cards and the decks, both random seatings are identical — no
+    sample deck holds one, and Sweep decks are not in `matchups()` — and
+    the planner seatings move by `determinize`, whose prior now holds
+    seven more cards (view and index alike, of 192): Corp agenda wins 56
+    → 56, Corp flatlines 30 → 31, Runner agenda wins 98 → 98, Runner
+    deck-outs 8 → 7.
+

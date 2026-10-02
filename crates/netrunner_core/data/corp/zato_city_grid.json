@@ -1,0 +1,43 @@
+{
+  "id": "zato_city_grid",
+  "title": "ZATO City Grid",
+  "side": "Corp",
+  "card_type": "Upgrade",
+  "cost": 3,
+  "trash_cost": 3,
+  "install_only_in": [
+    "Remote"
+  ],
+  "triggers": [
+    {
+      "trigger": "OnEncounter",
+      "subject": "Any",
+      "when": {
+        "Card": {
+          "All": [
+            "Ice",
+            "InThisServer"
+          ]
+        }
+      },
+      "acts_on_subject": true,
+      "granted": true,
+      "effects": [
+        {
+          "OfferPaidChoice": {
+            "side": "Corp",
+            "cost": "TrashSelf",
+            "if_paid": "ResolveSubroutineOfSelectedIce",
+            "if_declined": {
+              "Sequence": []
+            },
+            "text": "choose 1 subroutine on it. You may trash this ice to resolve that subroutine"
+          }
+        }
+      ],
+      "text": "Each piece of ice protecting this server gains \"When the Runner encounters this ice, choose 1 subroutine on it. You may trash this ice to resolve that subroutine.\"."
+    }
+  ],
+  "built_from": 33127,
+  "is_playable": true
+}

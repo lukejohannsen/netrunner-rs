@@ -132,9 +132,15 @@ fn for_each_applying<'a>(
     asked: impl Fn(&ContinuousKind) -> bool,
     mut found: impl FnMut(&'a ContinuousEffect, &Source<'a>, &ResolutionContext<'a>),
 ) {
+    // A card that has lost its abilities applies none of them (CR 9.1.9a):
+    // Hush's host, Klevetnik's resource. Read once for the scan.
+    let lost = active::installs_without_abilities(state, registry);
     let mut ask = |source: Source<'a>| {
         let Some(definition) = registry.get(source.card) else { return };
         if definition.continuous.is_empty() {
+            return;
+        }
+        if source.install.is_some_and(|install| lost.contains(&install)) {
             return;
         }
         let ctx = match source.install {
@@ -422,10 +428,14 @@ pub fn ice_strength(state: &GameState, registry: &CardRegistry, ice: &RunIce) ->
 /// killers"), or `None` when nothing limits it: no limit stands, or every
 /// one that does excepts this breaker. A click breaks as no icebreaker
 /// (`None` breaker), so an exception never covers one.
+///
+/// A limit made for a duration (Anvil's 0 for the encounter, Unsmiling
+/// Tsarevna's 1 for the run, `lingering::break_limit`) is read beside the
+/// ice's own, against the same count, and excepts no breaker.
 pub(crate) fn breaks_left(state: &GameState, registry: &CardRegistry, ice: &RunIce, breaker: Option<&CardDefinition>) -> Option<u32> {
-    let target = Target::corp_install(state, registry, ice.install_id)?;
     let broken = state.active_run.as_ref().map_or(0, |run| run.this_encounter.limited_breaks);
-    let mut left: Option<u32> = None;
+    let mut left: Option<u32> = lingering::break_limit(state, ice.install_id).map(|at_most| at_most.saturating_sub(broken));
+    let Some(target) = Target::corp_install(state, registry, ice.install_id) else { return left };
     for_each_applying(state, registry, target, |kind| matches!(kind, ContinuousKind::BreakLimit { .. }), |effect, _, _| {
         if let ContinuousKind::BreakLimit { at_most, except_using } = effect.kind {
             let excepted = except_using.is_some_and(|subtype| breaker.is_some_and(|def| def.subtypes.contains(&subtype)));
@@ -478,15 +488,21 @@ pub(crate) fn revealed_while_accessed(state: &GameState, registry: &CardRegistry
     any(state, registry, Target::Card(definition), |kind| matches!(kind, ContinuousKind::RevealedWhileAccessed))
 }
 
-/// Whether the ice `install` has gained `subtype` — on top of the one it
-/// prints, which the caller already knows: from the table (a declared
-/// `GainSubtype`) or from a choice that is still holding (Lycian
-/// Multi-Munition's, `lingering::gains_subtype`).
+/// Whether the ice `install` has `subtype` beyond the one type a run's ice
+/// carries (`RunIce::ice_type`), which the caller already knows: a second
+/// type it prints (Hafrún's "Barrier - Code Gate", `CardDefinition::
+/// is_ice_of_type`), one the table gives it (a declared `GainSubtype`), or
+/// one from a choice that is still holding (Lycian Multi-Munition's,
+/// `lingering::gains_subtype`). Every reader asks "the type it carries, or
+/// this", so the printed second type is here rather than at each of them.
 pub fn ice_gains_subtype(state: &GameState, registry: &CardRegistry, install: InstallId, subtype: IceType) -> bool {
     if crate::rules::lingering::gains_subtype(state, install, subtype) {
         return true;
     }
     let Some(target) = Target::corp_install(state, registry, install) else { return false };
+    if target.card().is_some_and(|card| card.is_ice_of_type(subtype)) {
+        return true;
+    }
     any(state, registry, target, |kind| *kind == ContinuousKind::GainSubtype(subtype))
 }
 

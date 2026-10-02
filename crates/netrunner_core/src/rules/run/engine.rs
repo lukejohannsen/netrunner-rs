@@ -269,8 +269,14 @@ fn enter_movement(run: &mut RunState, position: usize) {
 /// first (9.8.3e). Marked `gained`, so they go when the encounter does and
 /// the next encounter adds them again. Called by both ways an encounter
 /// begins: the approach's `Continue` and a forced encounter.
-fn add_gained_for_the_run(run: &mut RunState, position: usize) {
+///
+/// Nothing for ice that cannot gain abilities now (Hush moved onto it
+/// since), which `may_gain` says: the run is borrowed here.
+fn add_gained_for_the_run(run: &mut RunState, position: usize, may_gain: bool) {
     let Some(install) = run.ice.get(position).map(|ice| ice.install_id) else { return };
+    if !may_gain {
+        return;
+    }
     let gained: Vec<GainedForTheRun> = run.gained_for_the_run.iter().filter(|gained| gained.ice == install).cloned().collect();
     if gained.is_empty() {
         return;
@@ -339,6 +345,7 @@ pub(crate) fn force_encounter(state: &mut GameState, registry: &CardRegistry, in
         return Ok(Vec::new());
     }
     let Some(fresh) = build_run_ice(installed, registry)? else { return Ok(Vec::new()) };
+    let may_gain = crate::rules::active::may_have_granted(state, registry, install);
     let run = state.active_run.as_mut().expect("checked above");
     run.ice[position] = fresh;
     run.position = position;
@@ -349,7 +356,7 @@ pub(crate) fn force_encounter(state: &mut GameState, registry: &CardRegistry, in
     run.ice_bypassed = false;
     run.this_encounter = Default::default();
     run.encounters += 1;
-    add_gained_for_the_run(run, position);
+    add_gained_for_the_run(run, position, may_gain);
     crate::rules::lingering::sweep(state);
     // The movement phase's window, if one was open, belonged to a step the
     // run has left.
@@ -838,6 +845,14 @@ pub(crate) fn swap_approached_ice_with_card(
 }
 
 fn continue_run(state: &mut GameState, registry: &CardRegistry) -> Result<Vec<GameEvent>, RulesError> {
+    // Asked before the run is borrowed: whether the ice an approach commits
+    // to may have what it gained for the run (`add_gained_for_the_run`).
+    let may_gain = state
+        .active_run
+        .as_ref()
+        .filter(|run| run.phase == RunPhase::ApproachIce && !run.gained_for_the_run.is_empty())
+        .and_then(|run| run.ice.get(run.position))
+        .is_none_or(|ice| crate::rules::active::may_have_granted(state, registry, ice.install_id));
     let run = state.active_run.as_mut().expect("active_run checked by advance_run");
 
     match run.phase {
@@ -892,7 +907,7 @@ fn continue_run(state: &mut GameState, registry: &CardRegistry) -> Result<Vec<Ga
             run.fully_broken = false;
             run.this_encounter = Default::default();
             run.encounters += 1;
-            add_gained_for_the_run(run, position);
+            add_gained_for_the_run(run, position, may_gain);
             // The number the break contest will use, asked once the run is
             // standing on the ice: this read what the ice was built with,
             // a third reading beside the contest's and the view's.
@@ -969,6 +984,7 @@ pub(crate) fn bypass_encountered_ice(state: &mut GameState) -> Result<Vec<GameEv
 /// phase/bounds/status checks instead of maintaining two copies of them.
 pub(crate) fn transition_subroutine(
     state: &mut GameState,
+    registry: &CardRegistry,
     index: usize,
     to: SubroutineStatus,
 ) -> Result<(CardId, Effect), RulesError> {
@@ -988,8 +1004,20 @@ pub(crate) fn transition_subroutine(
         return Err(RulesError::SubroutineAlreadyHandled);
     }
 
-    let effect = subroutine.definition.effect.clone();
+    let mut effect = subroutine.definition.effect.clone();
     subroutine.status = to;
+    let install = ice.install_id;
+    // "Whenever the Corp would resolve a subroutine, instead they resolve
+    // "[subroutine] Do 1 net damage."" (Tsakhia, `Lingering::
+    // SubroutinesReplaced`): the subroutine resolving is the one the card
+    // that said so prints. Here, where both sites that resolve one take it.
+    if to == SubroutineStatus::Resolved
+        && let Some(instead) = crate::rules::lingering::subroutines_replaced_by(state, install)
+            .and_then(|card| registry.get(card))
+            .and_then(|card| card.subroutines.first())
+    {
+        effect = instead.effect.clone();
+    }
     Ok((card_id, effect))
 }
 
@@ -1003,7 +1031,7 @@ fn step_subroutine(
         // A click is no object's ability.
         return break_subroutine(state, registry, index, None);
     }
-    let (card_id, effect) = transition_subroutine(state, index, SubroutineStatus::Resolved)?;
+    let (card_id, effect) = transition_subroutine(state, registry, index, SubroutineStatus::Resolved)?;
     if let Some(run) = state.active_run.as_mut() {
         run.subroutine_resolved = true;
     }
@@ -1046,7 +1074,7 @@ pub(crate) fn break_subroutine(state: &mut GameState, registry: &CardRegistry, i
         .as_ref()
         .and_then(|run| run.ice.get(run.position))
         .map_or(0, |ice| continuous::ice_strength(state, registry, ice));
-    let (card_id, _) = transition_subroutine(state, index, SubroutineStatus::Broken)?;
+    let (card_id, _) = transition_subroutine(state, registry, index, SubroutineStatus::Broken)?;
     let mut events = vec![GameEvent::SubroutineBroken { card_id: card_id.clone(), index, strength }];
     // What kind of icebreaker broke it, when it was printed (Virtual
     // Service Agent's "its printed subroutine with a decoder"): the

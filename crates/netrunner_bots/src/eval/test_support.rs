@@ -247,7 +247,7 @@ pub(crate) fn corp_cards(prefix: &str, n: usize) -> Vec<CardId> {
 pub(crate) fn ambush(id: &str) -> CardDefinition {
     let mut def = asset(id, 0);
     def.triggers = vec![TriggeredEffect {
-        subject: None, when: None, acts_on_subject: false, first_each_turn: false, first_each_encounter: false, from_heap: false,
+        subject: None, when: None, acts_on_subject: false, first_each_turn: false, first_each_encounter: false, granted: false, from_heap: false,
         text: None,
         trigger: Trigger::OnAccessed,
         effects: vec![Effect::DealDamage(DamageType::Net, 2)],

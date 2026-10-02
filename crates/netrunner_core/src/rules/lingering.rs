@@ -150,6 +150,32 @@ pub enum Lingering {
     /// rules give it no owner to hide it from, and both players saw the
     /// random central server chosen.
     Mark(crate::rules::ServerId),
+    /// The install loses all its abilities (CR 9.1.9a) — Klevetnik's "That
+    /// resource loses all abilities until your next turn ends", made by
+    /// `Effect::LoseAbilities`. Read with Hush's standing loss by
+    /// `rules::active::lost_abilities`, the one question every reader of a
+    /// card's abilities puts. Public: both players watched the resource
+    /// chosen.
+    LosesAbilities,
+    /// During each encounter with the ice, the Runner cannot break more
+    /// than this many of its printed subroutines — Anvil's 0 for the
+    /// encounter, Unsmiling Tsarevna's 1 for the run (`Effect::
+    /// LimitBreaks`). Read by `continuous::breaks_left` beside the ice's
+    /// own `BreakLimit`, against the same count of the encounter's breaks.
+    BreakLimit(u32),
+    /// The server a card chose this turn (`Effect::ChooseServer`) — Tsakhia
+    /// "Bankhar" Gantulga's "you may choose a server" — about the player
+    /// who chose, its card the entry's `source`. Read back as "the chosen
+    /// server" (`chosen_server`, `CardFilter::InChosenServer`) and spent by
+    /// the card's replacement (`Effect::ReplaceSubroutines`). Public: the
+    /// rules make a choice like it open, and the Corp has to know which
+    /// ice will do net damage.
+    ChosenServer(crate::rules::ServerId),
+    /// Whenever the Corp would resolve a subroutine on the ice, it resolves
+    /// instead the subroutine the entry's `source` prints — Tsakhia's
+    /// "[subroutine] Do 1 net damage." (`Effect::ReplaceSubroutines`,
+    /// read by `run::transition_subroutine`).
+    SubroutinesReplaced,
 }
 
 /// The Runner's mark this turn, if one has been identified (CR 10.11.1a:
@@ -166,7 +192,10 @@ pub enum Until {
     /// The end of the encounter with this ice.
     EndOfEncounter(InstallId),
     EndOfRun,
-    /// The end of this turn, by `GameState::turn`.
+    /// The end of the turn numbered so, by `GameState::turn`: this turn
+    /// for every duration but one, and a later one for "until your next
+    /// turn ends" (Klevetnik's, `EffectDuration::ThroughYourNextTurn`),
+    /// which holds through the turns before it too.
     EndOfTurn(u32),
     /// Until `side`'s next turn begins, where the effect is taken
     /// (`Lingering::AllottedClicks`): it holds until then, and nothing
@@ -190,7 +219,7 @@ impl LingeringEffect {
                 run.phase == RunPhase::EncounterIce && run.ice.get(run.position).is_some_and(|encountered| encountered.install_id == ice)
             }),
             Until::EndOfRun => state.active_run.is_some(),
-            Until::EndOfTurn(turn) => state.turn == turn,
+            Until::EndOfTurn(turn) => state.turn <= turn,
             Until::NextTurnOf(_) => true,
             Until::WhileRezzed(install) => state.corp.installed.iter().any(|card| card.install_id == install && card.rezzed),
         }
@@ -198,10 +227,17 @@ impl LingeringEffect {
 }
 
 /// When a duration a card names ends, fixed at the moment the effect is
-/// made: *this* encounter, *this* turn.
-pub(crate) fn until(state: &GameState, duration: EffectDuration) -> Result<Until, RulesError> {
+/// made: *this* encounter, *this* turn, `controller`'s next turn.
+pub(crate) fn until(state: &GameState, duration: EffectDuration, controller: Side) -> Result<Until, RulesError> {
     let run = state.active_run.as_ref();
     match duration {
+        // Turns alternate (`GameState::turn` counts both players'), so the
+        // controller's next turn is the next one, or the one after when
+        // this one is already theirs.
+        EffectDuration::ThroughYourNextTurn => {
+            let theirs_now = crate::rules::listeners::active_side(state) == controller;
+            Ok(Until::EndOfTurn(state.turn + if theirs_now { 2 } else { 1 }))
+        }
         EffectDuration::Encounter => run
             .filter(|run| run.phase == RunPhase::EncounterIce)
             .and_then(|run| run.ice.get(run.position))
@@ -220,7 +256,7 @@ pub fn strength(state: &GameState, on: InstallId) -> i32 {
         .filter(|effect| effect.on == On::Install(on) && effect.holds(state))
         .map(|effect| match effect.what {
             Lingering::Strength(delta) => delta,
-            Lingering::RezCost(_) | Lingering::Cannot(_) | Lingering::PreventRunEnding(_) | Lingering::AllottedClicks(_) | Lingering::GainSubtype(_) | Lingering::Mark(_) => 0,
+            Lingering::RezCost(_) | Lingering::Cannot(_) | Lingering::PreventRunEnding(_) | Lingering::AllottedClicks(_) | Lingering::GainSubtype(_) | Lingering::Mark(_) | Lingering::LosesAbilities | Lingering::BreakLimit(_) | Lingering::ChosenServer(_) | Lingering::SubroutinesReplaced => 0,
         })
         .sum()
 }
@@ -237,7 +273,7 @@ pub fn ice_strength(state: &GameState, on: InstallId) -> i32 {
             .filter(|effect| effect.on == On::EachIce && effect.holds(state))
             .map(|effect| match effect.what {
                 Lingering::Strength(delta) => delta,
-                Lingering::RezCost(_) | Lingering::Cannot(_) | Lingering::PreventRunEnding(_) | Lingering::AllottedClicks(_) | Lingering::GainSubtype(_) | Lingering::Mark(_) => 0,
+                Lingering::RezCost(_) | Lingering::Cannot(_) | Lingering::PreventRunEnding(_) | Lingering::AllottedClicks(_) | Lingering::GainSubtype(_) | Lingering::Mark(_) | Lingering::LosesAbilities | Lingering::BreakLimit(_) | Lingering::ChosenServer(_) | Lingering::SubroutinesReplaced => 0,
             })
             .sum::<i32>()
 }
@@ -251,7 +287,7 @@ pub fn ice_rez_cost(state: &GameState) -> i32 {
         .filter(|effect| effect.on == On::EachIce && effect.holds(state))
         .map(|effect| match effect.what {
             Lingering::RezCost(delta) => delta,
-            Lingering::Strength(_) | Lingering::Cannot(_) | Lingering::PreventRunEnding(_) | Lingering::AllottedClicks(_) | Lingering::GainSubtype(_) | Lingering::Mark(_) => 0,
+            Lingering::Strength(_) | Lingering::Cannot(_) | Lingering::PreventRunEnding(_) | Lingering::AllottedClicks(_) | Lingering::GainSubtype(_) | Lingering::Mark(_) | Lingering::LosesAbilities | Lingering::BreakLimit(_) | Lingering::ChosenServer(_) | Lingering::SubroutinesReplaced => 0,
         })
         .sum()
 }
@@ -271,6 +307,53 @@ pub fn listed_subtype(held: &[LingeringEffect], on: InstallId, subtype: crate::d
 
 fn gained(list: &[LingeringEffect], on: InstallId, subtype: crate::dsl::IceType, holds: impl Fn(&LingeringEffect) -> bool) -> bool {
     list.iter().any(|effect| effect.what == Lingering::GainSubtype(subtype) && effect.on == On::Install(on) && holds(effect))
+}
+
+/// Whether a lingering effect that still holds takes away the abilities
+/// of `install` (Klevetnik's). `rules::active::lost_abilities` asks it
+/// beside Hush's standing loss.
+pub fn loses_abilities(state: &GameState, install: InstallId) -> bool {
+    state.lingering.iter().any(|effect| effect.what == Lingering::LosesAbilities && effect.on == On::Install(install) && effect.holds(state))
+}
+
+/// The fewest printed subroutines a lingering limit lets the Runner break
+/// on the ice `install` this encounter (Anvil, Unsmiling Tsarevna), or
+/// `None` with none standing.
+pub fn break_limit(state: &GameState, install: InstallId) -> Option<u32> {
+    state
+        .lingering
+        .iter()
+        .filter(|effect| effect.on == On::Install(install) && effect.holds(state))
+        .filter_map(|effect| match effect.what {
+            Lingering::BreakLimit(at_most) => Some(at_most),
+            _ => None,
+        })
+        .min()
+}
+
+/// The server `card` chose this turn (`Effect::ChooseServer`), if it chose
+/// one and has not spent it.
+pub fn chosen_server(state: &GameState, card: &CardId) -> Option<crate::rules::ServerId> {
+    state.lingering.iter().filter(|effect| &effect.source == card && effect.holds(state)).find_map(|effect| match effect.what {
+        Lingering::ChosenServer(server) => Some(server),
+        _ => None,
+    })
+}
+
+/// Spends `card`'s chosen server: Tsakhia's replacement is for the first
+/// encounter with ice protecting it.
+pub(crate) fn spend_chosen_server(state: &mut GameState, card: &CardId) {
+    state.lingering.retain(|effect| !(matches!(effect.what, Lingering::ChosenServer(_)) && &effect.source == card));
+}
+
+/// The card whose printed subroutine resolves instead of each subroutine on
+/// the ice `install` (Tsakhia), while that holds.
+pub fn subroutines_replaced_by(state: &GameState, install: InstallId) -> Option<&CardId> {
+    state
+        .lingering
+        .iter()
+        .find(|effect| effect.what == Lingering::SubroutinesReplaced && effect.on == On::Install(install) && effect.holds(state))
+        .map(|effect| &effect.source)
 }
 
 /// Drops what an earlier rezzed period of `install` left: a rez starts a
@@ -448,13 +531,19 @@ mod tests {
     #[test]
     fn a_duration_is_resolved_against_the_state_it_was_named_in() {
         let mut state = encountering(vec![ice(10)], 0);
-        assert_eq!(until(&state, EffectDuration::Encounter), Ok(Until::EndOfEncounter(InstallId(10))));
-        assert_eq!(until(&state, EffectDuration::Run), Ok(Until::EndOfRun));
-        assert_eq!(until(&state, EffectDuration::Turn), Ok(Until::EndOfTurn(state.turn)));
+        assert_eq!(until(&state, EffectDuration::Encounter, Side::Runner), Ok(Until::EndOfEncounter(InstallId(10))));
+        assert_eq!(until(&state, EffectDuration::Run, Side::Runner), Ok(Until::EndOfRun));
+        assert_eq!(until(&state, EffectDuration::Turn, Side::Runner), Ok(Until::EndOfTurn(state.turn)));
         state.active_run.as_mut().unwrap().phase = RunPhase::ApproachIce;
-        assert_eq!(until(&state, EffectDuration::Encounter), Err(RulesError::NotInEncounter));
+        assert_eq!(until(&state, EffectDuration::Encounter, Side::Runner), Err(RulesError::NotInEncounter));
         state.active_run = None;
-        assert_eq!(until(&state, EffectDuration::Run), Err(RulesError::NoActiveRun));
+        assert_eq!(until(&state, EffectDuration::Run, Side::Runner), Err(RulesError::NoActiveRun));
+        // "Until your next turn ends", made on the Runner's turn: the Corp's
+        // is the next one; made on the Corp's own, the one after that.
+        state.phase = crate::rules::GamePhase::Action(Side::Runner);
+        assert_eq!(until(&state, EffectDuration::ThroughYourNextTurn, Side::Corp), Ok(Until::EndOfTurn(state.turn + 1)));
+        state.phase = crate::rules::GamePhase::Action(Side::Corp);
+        assert_eq!(until(&state, EffectDuration::ThroughYourNextTurn, Side::Corp), Ok(Until::EndOfTurn(state.turn + 2)));
     }
 
     #[test]

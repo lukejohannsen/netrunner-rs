@@ -746,7 +746,7 @@ fn break_subroutine_with_click_candidates(state: &GameState, registry: &CardRegi
         return Vec::new();
     }
     let Some(ice) = run.ice.get(run.position) else { return Vec::new() };
-    if !registry.get(&ice.card_id).is_some_and(|c| c.click_breakable) {
+    if !registry.get(&ice.card_id).is_some_and(|c| c.click_breakable) || crate::rules::active::lost_abilities(state, registry, ice.install_id) {
         return Vec::new();
     }
     let limit_spent = crate::rules::continuous::breaks_left(state, registry, ice, None) == Some(0);

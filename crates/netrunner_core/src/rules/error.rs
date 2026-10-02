@@ -165,6 +165,11 @@ pub enum RulesError {
     #[error("{side:?}'s card {card:?} is not in an active zone (installed+rezzed for Corp, in the Rig for Runner)")]
     CardNotActive { side: Side, card: CardId },
 
+    /// The card has lost all its abilities (CR 9.1.9a: Hush's host,
+    /// Klevetnik's resource), so it has none to use.
+    #[error("{card:?} has lost all its abilities")]
+    AbilitiesLost { card: CardId },
+
     #[error("ability index {0} is out of range")]
     InvalidAbilityIndex(usize),
 
