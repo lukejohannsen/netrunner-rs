@@ -436,7 +436,13 @@ pub(crate) fn plan_for(state: &GameState, registry: &CardRegistry, event: &GameE
         return Vec::new();
     }
     let mut plan = Vec::new();
+    // A card that has lost its abilities hears nothing (CR 9.1.9a): its
+    // triggers are among what is lost.
+    let lost = active::installs_without_abilities(state, registry);
     for listener in listeners(state, registry, &moments) {
+        if !listener.in_heap && listener.install.is_some_and(|install| lost.contains(&install)) {
+            continue;
+        }
         let Some(definition) = registry.get(&listener.card) else { continue };
         // "The first time each turn": one verdict a card, because its
         // first-time entries share a count, judged against the log as the
@@ -559,9 +565,9 @@ fn is_this(listener: &Listener, moment: &Moment) -> bool {
 /// Whether what a moment is about passes a card's `when`.
 /// `here` is the server the listening card is in or protecting — or was,
 /// for a card trashed out of it that hears its own trash.
-fn passes(state: &GameState, registry: &CardRegistry, filter: &EventFilter, moment: &Moment, install: Option<InstallId>, here: Option<ServerId>) -> bool {
+fn passes(state: &GameState, registry: &CardRegistry, filter: &EventFilter, moment: &Moment, listener_card: &CardId, install: Option<InstallId>, here: Option<ServerId>) -> bool {
     if let EventFilter::All(parts) = filter {
-        return parts.iter().all(|part| passes(state, registry, part, moment, install, here));
+        return parts.iter().all(|part| passes(state, registry, part, moment, listener_card, install, here));
     }
     // "From the root of this server or protecting it, except during
     // installation."
@@ -608,7 +614,8 @@ fn passes(state: &GameState, registry: &CardRegistry, filter: &EventFilter, mome
     }
     match (filter, &moment.about) {
         (EventFilter::Card(filter), About::Card { card, install, .. }) => {
-            registry.get(card).is_some_and(|definition| crate::dsl::card_matches_filter(definition, filter)) && crate::rules::pending_choice::copy_matches(state, filter, *install)
+            registry.get(card).is_some_and(|definition| crate::dsl::card_matches_filter(definition, filter))
+                && crate::rules::pending_choice::copy_matches(state, &placed(state, filter, listener_card, here), *install)
         }
         (EventFilter::InstalledCard(filter), About::Card { card, installed: true, .. }) => {
             registry.get(card).is_some_and(|definition| crate::dsl::card_matches_filter(definition, filter))
@@ -620,6 +627,26 @@ fn passes(state: &GameState, registry: &CardRegistry, filter: &EventFilter, mome
         // `CardDefinition::validate` refuses the mismatch in a card file.
         _ => false,
     }
+}
+
+/// A card filter in a `when` with the listener's own places written in:
+/// "protecting **this server**" (ZATO City Grid, `CardFilter::InThisServer`)
+/// and "protecting **the chosen server**" (Tsakhia, `InChosenServer`). A
+/// filter that names neither is returned borrowed, so the scan copies
+/// nothing for the cards that do not ask.
+fn placed<'f>(state: &GameState, filter: &'f crate::dsl::CardFilter, card: &CardId, here: Option<ServerId>) -> std::borrow::Cow<'f, crate::dsl::CardFilter> {
+    use crate::dsl::CardFilter;
+    fn names_a_place(filter: &CardFilter) -> bool {
+        match filter {
+            CardFilter::InThisServer | CardFilter::InChosenServer => true,
+            CardFilter::All(parts) | CardFilter::AnyOf(parts) => parts.iter().any(names_a_place),
+            _ => false,
+        }
+    }
+    if !names_a_place(filter) {
+        return std::borrow::Cow::Borrowed(filter);
+    }
+    std::borrow::Cow::Owned(filter.clone().with_this_server(here).with_chosen_server(crate::rules::lingering::chosen_server(state, card)))
 }
 
 /// Whether `triggered`'s `when` admits the event a queued trigger carries —
@@ -648,7 +675,7 @@ pub(crate) fn when_admits(state: &GameState, registry: &CardRegistry, triggered:
             About::Card { card: about, .. } if about == card => moment.trashed_install.map(|trashed| trashed.server),
             _ => None,
         });
-        whose_admits(triggered, controller, &moment) && triggered.when.as_ref().is_none_or(|filter| passes(state, registry, filter, &moment, install, here))
+        whose_admits(triggered, controller, &moment) && triggered.when.as_ref().is_none_or(|filter| passes(state, registry, filter, &moment, card, install, here))
     })
 }
 
@@ -684,7 +711,7 @@ fn hears(state: &GameState, registry: &CardRegistry, triggered: &TriggeredEffect
     if (triggered.first_each_turn || triggered.first_each_encounter) && later {
         return false;
     }
-    if triggered.when.as_ref().is_some_and(|filter| !passes(state, registry, filter, moment, listener.install, listener.server)) {
+    if triggered.when.as_ref().is_some_and(|filter| !passes(state, registry, filter, moment, &listener.card, listener.install, listener.server)) {
         return false;
     }
     if !whose_admits(triggered, listener.side, moment) {
@@ -692,6 +719,12 @@ fn hears(state: &GameState, registry: &CardRegistry, triggered: &TriggeredEffect
     }
     // A heap listener hears its heap triggers, and nothing else does.
     if triggered.from_heap != listener.in_heap {
+        return false;
+    }
+    // An ability this card gives the subject is the subject's (ZATO City
+    // Grid's): a subject that cannot gain abilities, or has lost them
+    // (Hush's host), does not have it.
+    if triggered.granted && !matches!(moment.about, About::Card { install: Some(install), .. } if active::may_have_granted(state, registry, install)) {
         return false;
     }
     if listener.in_heap {
@@ -856,7 +889,7 @@ mod tests {
             title: id.to_string(),
             side,
             card_type,
-            triggers: vec![TriggeredEffect { subject, when: None, acts_on_subject: false, first_each_turn: false, first_each_encounter: false, from_heap: false, text: None, trigger, effects: vec![Effect::GainCredits(side, 1)], requirement: None }],
+            triggers: vec![TriggeredEffect { subject, when: None, acts_on_subject: false, first_each_turn: false, first_each_encounter: false, granted: false, from_heap: false, text: None, trigger, effects: vec![Effect::GainCredits(side, 1)], requirement: None }],
             ..Default::default()
         }
     }

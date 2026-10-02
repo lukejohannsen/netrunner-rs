@@ -1408,6 +1408,51 @@ pub enum Effect {
     /// (Ansel 1.0's install-inward) finds no host and no-ops, since the
     /// encountered ice is Mycoweb.
     ResolveSubroutineOfSelectedIce,
+    /// The install the resolution acts as loses all its abilities for a
+    /// duration (CR 9.1.9a) — Klevetnik's "choose 1 installed resource.
+    /// That resource loses all abilities until your next turn ends", the
+    /// chosen resource being what the selection's `then` acts as. A
+    /// `rules::lingering` entry about that install (`Lingering::
+    /// LosesAbilities`), read with Hush's standing loss by `rules::active::
+    /// lost_abilities`. Composition didn't work: nothing took a card's
+    /// abilities away; Hush's is a standing effect of the card hosted on
+    /// the loser, and this one is made once and outlives its maker.
+    LoseAbilities { until: EffectDuration },
+    /// During each encounter with the ice the resolution acts as, for the
+    /// duration, the Runner cannot break more than `at_most` of its printed
+    /// subroutines — Anvil's "the Runner cannot break this ice's printed
+    /// subroutines for the remainder of this encounter" (0, `Encounter`),
+    /// Unsmiling Tsarevna's "during each encounter with this ice for the
+    /// remainder of that run, the Runner cannot break more than 1 of its
+    /// printed subroutines" (1, `Run`). Hammer's `ContinuousKind::
+    /// BreakLimit` with a duration and no exception: a `rules::lingering`
+    /// entry about the ice (`Lingering::BreakLimit`), which `continuous::
+    /// breaks_left` reads beside the table's. Composition didn't work:
+    /// `BreakLimit` is declared and holds for as long as its ice is active,
+    /// and these are made by an ability that resolved.
+    LimitBreaks { at_most: u32, until: EffectDuration },
+    /// The acting card's controller chooses a server, and the choice is
+    /// remembered for the rest of the turn as that card's (`Lingering::
+    /// ChosenServer`) — Tsakhia "Bankhar" Gantulga's "When your turn begins,
+    /// you may choose a server" (the "may" is a `PresentChoice` around it).
+    /// The card reads it back as "the chosen server" (`CardFilter::
+    /// InChosenServer`). Parked as a `PendingDecision::ChooseServer` that
+    /// remembers rather than runs (`remember`), over the servers that
+    /// exist. Composition didn't work: every server choice started a run,
+    /// installed or moved a card, and the mark is chosen at random.
+    ChooseServer,
+    /// For the rest of the encounter, whenever the Corp would resolve a
+    /// subroutine on the encountered ice, it resolves instead the acting
+    /// card's own printed subroutine — Tsakhia "Bankhar" Gantulga's
+    /// "whenever the Corp would resolve a subroutine, instead they resolve
+    /// "[subroutine] Do 1 net damage."", printed on the resource as a
+    /// subroutine and read off it (`run::transition_subroutine`). Spends
+    /// the card's chosen server (`Lingering::ChosenServer`), which is what
+    /// makes it "the first encounter each turn with a piece of ice
+    /// protecting the chosen server": the trigger that resolves this hears
+    /// only an encounter with such ice, and a second one finds no choice.
+    /// Composition didn't work: nothing replaced a subroutine's effect.
+    ReplaceSubroutines,
     /// Moves the run to the outermost position of `ServerId` — Proprionegation's
     /// "the Runner moves to the outermost position of Archives. (They
     /// approach any ice in that position.)". The run's ice list is rebuilt
@@ -1812,6 +1857,13 @@ pub enum EffectDuration {
     Run,
     /// Until the end of the turn it was made in, whoever's that is.
     Turn,
+    /// Until the next turn of the resolving card's controller ends —
+    /// Klevetnik's "until your next turn ends", made on the Runner's turn
+    /// and lasting through the Corp's turn after it. Resolved to the number
+    /// of that turn when the effect is made (`lingering::until`): turns
+    /// alternate, so a player's next turn is the turn after this one, or
+    /// the one after that when this turn is already theirs.
+    ThroughYourNextTurn,
 }
 
 /// What an `Effect::Prevent` prevents, as the card prints it after the word
@@ -1913,12 +1965,19 @@ pub enum Prohibition {
     /// match, the Runner cannot access this upgrade for the remainder of
     /// that run", bound as `AccessOthers` is and asked where it is.
     Access,
+    /// One install's abilities cannot break subroutines — Hafrún's "choose
+    /// 1 installed Runner card. That card's abilities cannot break
+    /// subroutines for the remainder of that run", bound to the card the
+    /// selection chose (`Effect::Prohibit::this_install`). Asked by the two
+    /// break effects of the breaking install (`ability::breakable_now`),
+    /// which then find nothing to break, so the ability is not offered.
+    BreakSubroutines,
 }
 
 impl Prohibition {
     /// Every prohibition, for a question put about each of them
     /// (`view::build_client_view`'s `standing_cannot`).
-    pub const ALL: [Prohibition; 8] = [
+    pub const ALL: [Prohibition; 9] = [
         Prohibition::ScoreAgendas,
         Prohibition::StealOrTrash,
         Prohibition::SpendOrLoseCreditPool,
@@ -1927,13 +1986,14 @@ impl Prohibition {
         Prohibition::RunOnRemote,
         Prohibition::AccessOthers,
         Prohibition::Access,
+        Prohibition::BreakSubroutines,
     ];
 
     /// The player it binds.
     pub fn binds(self) -> Side {
         match self {
             Prohibition::ScoreAgendas | Prohibition::EndTheRun => Side::Corp,
-            Prohibition::StealOrTrash | Prohibition::SpendOrLoseCreditPool | Prohibition::SpendCredits | Prohibition::RunOnRemote | Prohibition::AccessOthers | Prohibition::Access => Side::Runner,
+            Prohibition::StealOrTrash | Prohibition::SpendOrLoseCreditPool | Prohibition::SpendCredits | Prohibition::RunOnRemote | Prohibition::AccessOthers | Prohibition::Access | Prohibition::BreakSubroutines => Side::Runner,
         }
     }
 
@@ -1944,7 +2004,7 @@ impl Prohibition {
     pub(crate) fn counted_as(self) -> Option<crate::dsl::Trigger> {
         match self {
             Prohibition::RunOnRemote => Some(crate::dsl::Trigger::OnRunStart),
-            Prohibition::ScoreAgendas | Prohibition::StealOrTrash | Prohibition::SpendOrLoseCreditPool | Prohibition::SpendCredits | Prohibition::EndTheRun | Prohibition::AccessOthers | Prohibition::Access => None,
+            Prohibition::ScoreAgendas | Prohibition::StealOrTrash | Prohibition::SpendOrLoseCreditPool | Prohibition::SpendCredits | Prohibition::EndTheRun | Prohibition::AccessOthers | Prohibition::Access | Prohibition::BreakSubroutines => None,
         }
     }
 }
@@ -2192,6 +2252,10 @@ impl Effect {
             | Effect::ForceEncounter
             | Effect::PlayOperation { .. }
             | Effect::ResolveSubroutineOfSelectedIce
+            | Effect::LoseAbilities { .. }
+            | Effect::LimitBreaks { .. }
+            | Effect::ChooseServer
+            | Effect::ReplaceSubroutines
             | Effect::MoveRunToOutermost(..)
             | Effect::InstallAgendaFromRunnerScoreArea
             | Effect::SwapApproachedIceWithCard { .. }

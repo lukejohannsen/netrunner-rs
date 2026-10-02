@@ -1310,6 +1310,12 @@ pub enum PendingDecision {
         /// `Effect::PromptMoveThisCardToAnotherRoot`, Lotus Haze.
         #[serde(default)]
         move_to_root: bool,
+        /// The fourth: the chosen server is remembered for the turn as the
+        /// parking card's choice (`Lingering::ChosenServer`), and nothing
+        /// else happens — `Effect::ChooseServer`, Tsakhia "Bankhar"
+        /// Gantulga's "you may choose a server".
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        remember: bool,
         /// Seeded onto the resulting `run::RunState::on_success_effect` —
         /// see `Effect::PromptChooseServer::on_success`.
         on_success: Option<Box<Effect>>,

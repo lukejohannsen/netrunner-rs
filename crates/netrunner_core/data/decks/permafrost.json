@@ -3,7 +3,7 @@
   "name": "Permafrost",
   "side": "Corp",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach Issuaq Adaptics: Sustaining Diversity, Parhelion's Jinteki identity, which earns a power counter for each agenda scored that was not installed or advanced that turn, and needs a point less to win for each. A Thousand Cuts' frame under a new identity, with two Seamless Launch for its two Mindscaping: placing counters is not advancing, so an agenda installed on an earlier turn and launched over its requirement is scored the Issuaq way (Parhelion Stage 7).",
+  "description": "Not a published list: built so the sweeps reach Issuaq Adaptics: Sustaining Diversity, Parhelion's Jinteki identity, which earns a power counter for each agenda scored that was not installed or advanced that turn, and needs a point less to win for each. A Thousand Cuts' frame under a new identity, with two Seamless Launch for its two Mindscaping: placing counters is not advancing, so an agenda installed on an earlier turn and launched over its requirement is scored the Issuaq way (Parhelion Stage 7). Parhelion Stage 8: two Hafrún for two Lionsmane, ice for ice.",
   "style": [
     "traps"
   ],
@@ -44,10 +44,6 @@
     {
       "card": "ezam",
       "count": 1
-    },
-    {
-      "card": "lionsmane",
-      "count": 2
     },
     {
       "card": "esca",
@@ -99,6 +95,10 @@
     },
     {
       "card": "seamless_launch",
+      "count": 2
+    },
+    {
+      "card": "hafrun",
       "count": 2
     }
   ]

@@ -43,6 +43,18 @@ pub enum IceType {
     Other,
 }
 
+impl IceType {
+    /// The printed subtype this type is, if it is one of the three.
+    pub fn subtype(self) -> Option<CardSubtype> {
+        match self {
+            IceType::Barrier => Some(CardSubtype::Barrier),
+            IceType::CodeGate => Some(CardSubtype::CodeGate),
+            IceType::Sentry => Some(CardSubtype::Sentry),
+            IceType::Other => None,
+        }
+    }
+}
+
 /// A printed subtype: every word Comprehensive Rules 2.16.7 lists, spelled
 /// as the card prints it (`#[serde(rename)]` where Rust cannot), so a card's
 /// subtypes are its catalog keywords read into this type. Distinct from
@@ -333,6 +345,20 @@ pub struct TriggeredEffect {
     /// counted both, so neither break would be the first.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub first_each_encounter: bool,
+    /// The ability is one this card gives the card the moment is about —
+    /// ZATO City Grid's "Each piece of ice protecting this server **gains**
+    /// "When the Runner encounters this ice, …"". It is that card's ability
+    /// (CR 9.1.3b), so it is not heard for a subject that cannot gain
+    /// abilities or has lost them (Hush, `rules::active::may_have_granted`),
+    /// and its effects act on the subject (`acts_on_subject`, which
+    /// `CardDefinition::validate` requires beside it). Heard by this card,
+    /// because the grant lasts as long as this card is active, and a scan
+    /// of every piece of ice for what the table gives it would be one per
+    /// event. Composition didn't work: `acts_on_subject` alone is Cookbook,
+    /// whose "place 1 virus counter on it" is Cookbook's own ability, which
+    /// a host that cannot gain abilities does not stop.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub granted: bool,
     /// Active while the card is in its owner's heap, and only there (CR
     /// 9.1.8b: "abilities that can only affect the game state from a
     /// particular zone are active in that zone") — Jeitinho's "whenever
@@ -1019,6 +1045,8 @@ pub enum CardValidationError {
     TriggerFilterOfTheWrongKind(CardId, Trigger),
     #[error("card {0:?}: a {1:?} trigger is not about a card, so its effects cannot act on one (`acts_on_subject`)")]
     TriggerActsOnNoCard(CardId, Trigger),
+    #[error("card {0:?}: a {1:?} ability given to another card (`granted`) is that card's, so its effects act on it (`acts_on_subject`)")]
+    GrantedActsOnSubject(CardId, Trigger),
     #[error("card {0:?}: \"the first time each turn\" (`first_each_turn`) does not fit — {1}")]
     FirstTimeDoesNotFit(CardId, String),
     #[error("card {0:?}: `OncePerTurn` does not fit — {1}")]
@@ -1113,6 +1141,21 @@ impl CardDefinition {
             _ => None,
         });
         identity_rule.map_or(own, |n| own.min(n))
+    }
+
+    /// Whether this card is a piece of ice of `ice_type` as printed: its
+    /// type, or a second one it prints beside it — Hafrún is a "Barrier -
+    /// Code Gate". `CardType::Ice` holds one type, which is the one a
+    /// breaker's sheet and a client's tile read first; the printed subtypes
+    /// (`subtypes`, filled from the catalog) hold every one, so the second
+    /// is read there rather than by a list on `CardType::Ice`, which would
+    /// have touched every ice card file for one card. A type the ice has
+    /// *gained* is the table's (`continuous::ice_gains_subtype`).
+    pub fn is_ice_of_type(&self, ice_type: IceType) -> bool {
+        match self.card_type {
+            CardType::Ice(printed) => printed == ice_type || ice_type.subtype().is_some_and(|subtype| self.subtypes.contains(&subtype)),
+            _ => false,
+        }
     }
 
     /// Whether this card may be installed in, or moved to, `server`'s root
@@ -1261,6 +1304,10 @@ impl CardDefinition {
             }
             if triggered.acts_on_subject && about != TriggerAbout::Card {
                 return Err(CardValidationError::TriggerActsOnNoCard(self.id.clone(), triggered.trigger));
+            }
+            // A granted ability is the subject's, so it acts on the subject.
+            if triggered.granted && !triggered.acts_on_subject {
+                return Err(CardValidationError::GrantedActsOnSubject(self.id.clone(), triggered.trigger));
             }
             // `requirement: AmountAtLeast(TimesThisTurn(own trigger), …)` is
             // "the first time" spelled as an intervening if: asked when the
@@ -1496,7 +1543,7 @@ impl CardDefinition {
                 && match duration {
                     EffectDuration::Encounter => triggered.trigger == Trigger::OnEncounter,
                     EffectDuration::Run => matches!(triggered.trigger, Trigger::OnEncounter | Trigger::OnRez),
-                    EffectDuration::Turn => false,
+                    EffectDuration::Turn | EffectDuration::ThroughYourNextTurn => false,
                 }
         };
         if self.triggers.iter().any(|triggered| triggered.effects.iter().flat_map(gains).any(|duration| !fits(triggered, duration)))
@@ -1644,6 +1691,10 @@ impl CardDefinition {
                 (ContinuousKind::RevealedWhileAccessed, _) => {
                     return misfit("RevealedWhileAccessed", "only a Corp card is accessed, and it says so of itself (`This`)");
                 }
+                (ContinuousKind::LosesAbilities | ContinuousKind::CannotGainAbilities, Scope::Host) => {}
+                (ContinuousKind::LosesAbilities | ContinuousKind::CannotGainAbilities, _) => {
+                    return misfit("LosesAbilities", "what a card loses or cannot gain is said by the card hosted on it (`Host`)");
+                }
                 (ContinuousKind::Cannot(what), Scope::Player(side)) if what.binds() == *side => {}
                 (ContinuousKind::Cannot(_), _) => return misfit("Cannot", "a prohibition is about the player it binds (`Player`)"),
             }
@@ -1703,7 +1754,7 @@ mod tests {
         assert_eq!(
             card.triggers,
             vec![TriggeredEffect {
-                subject: Some(Subject::This), when: None, acts_on_subject: false, first_each_turn: false, first_each_encounter: false, from_heap: false,
+                subject: Some(Subject::This), when: None, acts_on_subject: false, first_each_turn: false, first_each_encounter: false, granted: false, from_heap: false,
                 text: None,
                 trigger: Trigger::OnPlay,
                 effects: vec![Effect::GainCredits(Side::Corp, 9)],
@@ -1725,7 +1776,7 @@ mod tests {
         assert_eq!(
             card.triggers,
             vec![TriggeredEffect {
-                subject: Some(Subject::This), when: None, acts_on_subject: false, first_each_turn: false, first_each_encounter: false, from_heap: false,
+                subject: Some(Subject::This), when: None, acts_on_subject: false, first_each_turn: false, first_each_encounter: false, granted: false, from_heap: false,
                 text: None,
                 trigger: Trigger::OnPlay,
                 effects: vec![Effect::GainCredits(Side::Runner, 9)],
@@ -1891,7 +1942,7 @@ mod tests {
             id: CardId("homebrew".to_string()),
             side: Side::Runner,
             card_type: CardType::Resource,
-            triggers: vec![TriggeredEffect { trigger, subject, when, acts_on_subject, first_each_turn: false, first_each_encounter: false, from_heap: false, text: None, effects: vec![], requirement: None }],
+            triggers: vec![TriggeredEffect { trigger, subject, when, acts_on_subject, first_each_turn: false, first_each_encounter: false, granted: false, from_heap: false, text: None, effects: vec![], requirement: None }],
             ..Default::default()
         };
         let on_hq = || Some(EventFilter::Server(vec![crate::rules::ServerId::Hq]));
@@ -1955,7 +2006,7 @@ mod tests {
             subject,
             when,
             acts_on_subject: false,
-            first_each_turn: true, first_each_encounter: false,
+            first_each_turn: true, first_each_encounter: false, granted: false,
             from_heap: false,
             text: None,
             effects: vec![],
@@ -2001,7 +2052,7 @@ mod tests {
             discount(Scope::Installing(CardFilter::CardType(CardType::Program)), Some(EffectRequirement::OncePerTurn)).validate(),
             Err(CardValidationError::OncePerTurnDoesNotFit(..))
         ));
-        let once = |trigger: Trigger| TriggeredEffect { first_each_turn: false, first_each_encounter: false, from_heap: false, ..first(trigger, None, None, Some(EffectRequirement::OncePerTurn)) };
+        let once = |trigger: Trigger| TriggeredEffect { first_each_turn: false, first_each_encounter: false, granted: false, from_heap: false, ..first(trigger, None, None, Some(EffectRequirement::OncePerTurn)) };
         assert_eq!(card(Side::Corp, vec![once(Trigger::OnTagsGiven)]).validate(), Ok(()));
         assert!(matches!(card(Side::Corp, vec![once(Trigger::OnTagsGiven), once(Trigger::OnTagRemoved)]).validate(), Err(CardValidationError::OncePerTurnDoesNotFit(..))));
         assert!(refused(discount(Scope::Controller, None)));
@@ -2173,7 +2224,7 @@ mod tests {
                 subject: Some(Subject::This),
                 when: None,
                 acts_on_subject: false,
-                first_each_turn: false, first_each_encounter: false, from_heap: false,
+                first_each_turn: false, first_each_encounter: false, granted: false, from_heap: false,
                 text: None,
                 effects: vec![Effect::GainIceSubtype(subtype)],
                 requirement: None,
@@ -2198,7 +2249,7 @@ mod tests {
                 subject: Some(Subject::Any),
                 when: None,
                 acts_on_subject,
-                first_each_turn: false, first_each_encounter: false, from_heap: false,
+                first_each_turn: false, first_each_encounter: false, granted: false, from_heap: false,
                 text: None,
                 effects: vec![gains.clone()],
                 requirement: None,
@@ -2254,7 +2305,7 @@ mod tests {
                 effects: vec![Effect::GiveTags(crate::dsl::Amount::Fixed(1))],
                 when: None,
                 acts_on_subject: false,
-                first_each_turn: false, first_each_encounter: false,
+                first_each_turn: false, first_each_encounter: false, granted: false,
                 from_heap: false,
                 text: None,
             }],
@@ -2281,7 +2332,7 @@ mod tests {
                 effects: vec![Effect::GainCredits(Side::Runner, 3)],
                 when: Some(EventFilter::Host),
                 acts_on_subject: false,
-                first_each_turn: false, first_each_encounter: false,
+                first_each_turn: false, first_each_encounter: false, granted: false,
                 from_heap: false,
                 text: None,
             }],
@@ -2307,7 +2358,7 @@ mod tests {
                 effects: vec![Effect::DrawCards(Side::Runner, 1)],
                 when: Some(EventFilter::InRoot),
                 acts_on_subject: false,
-                first_each_turn: true, first_each_encounter: false,
+                first_each_turn: true, first_each_encounter: false, granted: false,
                 from_heap: false,
                 text: None,
             }],

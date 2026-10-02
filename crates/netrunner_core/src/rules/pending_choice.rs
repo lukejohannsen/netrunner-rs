@@ -431,6 +431,7 @@ fn instance_matches_filter(
         CardFilter::InRootOfThisServer => false,
         CardFilter::InServer(server) => corp_install.is_some_and(|c| c.server == *server),
         CardFilter::InThisServer => false,
+        CardFilter::InChosenServer => false,
         CardFilter::Advanced => corp_install.is_some_and(|c| c.advancement_tokens > 0),
         CardFilter::Unadvanced => corp_install.is_some_and(|c| c.advancement_tokens == 0),
         // Either zone an operation can be played from: HQ (Humanoid
@@ -466,6 +467,12 @@ fn instance_matches_filter(
         // install, so a second copy of the same card stays eligible.
         CardFilter::NotSourceCard => {
             zone_install_ids(state, chooser, zone).and_then(|ids| ids.get(position).copied()) != source || source.is_none()
+        }
+        // Hush's "another installed piece of ice": not the one the parking
+        // Trojan is hosted on.
+        CardFilter::NotThisCardsHost => {
+            let host = source.and_then(|source| state.find_rig_install(source)).and_then(|card| card.hosted_on_ice);
+            host.is_none() || zone_install_ids(state, chooser, zone).and_then(|ids| ids.get(position).copied()) != host
         }
         // Only a heap card can have been discarded; the list is the
         // Runner's own, so `chooser` must be the Runner for `OwnHeap` to
@@ -542,6 +549,12 @@ pub(crate) fn copy_matches(state: &GameState, filter: &crate::dsl::CardFilter, i
         // whose strength is read (`Scope::IceProtectingThisServer`).
         CardFilter::Advanced => installed.is_some_and(|c| c.advancement_tokens > 0),
         CardFilter::Unadvanced => installed.is_some_and(|c| c.advancement_tokens == 0),
+        // ZATO City Grid's "each piece of ice protecting this server" and
+        // Tsakhia's "protecting the chosen server", in a `when`: the place
+        // is written in by the listener scan (`listeners::placed`), and one
+        // not written in — no server, no choice — admits nothing.
+        CardFilter::InServer(server) => installed.is_some_and(|c| c.server == *server),
+        CardFilter::InThisServer | CardFilter::InChosenServer => false,
         _ => true,
     }
 }
@@ -1550,7 +1563,7 @@ pub(crate) fn resolve_choose_server(
     registry: &CardRegistry,
     server: crate::rules::run::ServerId,
 ) -> Result<Vec<GameEvent>, RulesError> {
-    let PendingDecision::ChooseServer { rez_cost_delta, bonus_run_credits, allowed_servers, on_success, on_start, install, move_to_root, source_card, prompting_card, source_install, resume, .. } =
+    let PendingDecision::ChooseServer { chooser, rez_cost_delta, bonus_run_credits, allowed_servers, on_success, on_start, install, move_to_root, remember, source_card, prompting_card, source_install, resume } =
         state.pending_decision.take().ok_or(RulesError::NoPendingDecision)?
     else {
         return Err(RulesError::NoPendingDecision);
@@ -1562,6 +1575,19 @@ pub(crate) fn resolve_choose_server(
         && !allowed.contains(&server)
     {
         return Err(RulesError::ServerNotAllowedForChoice { server });
+    }
+
+    // The remembered choice (Tsakhia): the server is the card's for the
+    // rest of the turn, and nothing else happens.
+    if remember {
+        let card = source_card.ok_or(RulesError::UnresolvedCardTarget)?;
+        state.lingering.push(crate::rules::lingering::LingeringEffect {
+            what: crate::rules::lingering::Lingering::ChosenServer(server),
+            on: crate::rules::lingering::On::Player(chooser),
+            until: crate::rules::lingering::Until::EndOfTurn(state.turn),
+            source: card,
+        });
+        return Ok(vec![GameEvent::PendingChoiceResolved { chooser, option_index: 0 }]);
     }
 
     // The move-shaped resolution (Lotus Haze): the parking install moves,

@@ -398,6 +398,7 @@ pub fn install_facts(view: &ClientView, id: InstallId, registry: &CardRegistry) 
             if !hosted.is_empty() {
                 lines.push(format!("Hosts {}", hosted.join(", ")));
             }
+            lines.extend(lost_abilities_words(view, id, registry));
         }
         Found::Rig(rig) => {
             let def = registry.get(&rig.card);
@@ -430,9 +431,30 @@ pub fn install_facts(view: &ClientView, id: InstallId, registry: &CardRegistry) 
                 let n = rig.hosted_unseen;
                 lines.push(format!("Hosts {n} card{} facedown", if n == 1 { "" } else { "s" }));
             }
+            lines.extend(lost_abilities_words(view, id, registry));
         }
     }
     Some(lines)
+}
+
+/// Why the install `id` has no abilities, when it has none (CR 9.1.9a): a
+/// card hosted on it says so (Hush, `ContinuousKind::LosesAbilities`), or
+/// a lingering effect does (Klevetnik's, `Lingering::LosesAbilities`) —
+/// the line its sheet carries, since nothing on its face says it. Both are
+/// public: the view carries the rig and the lingering list whole.
+pub fn lost_abilities_words(view: &ClientView, id: InstallId, registry: &CardRegistry) -> Option<String> {
+    use netrunner_core::dsl::{ContinuousKind, Scope};
+    use netrunner_core::rules::lingering::{Lingering, On};
+    let hosted_loss = view.runner.rig.iter().filter(|card| card.hosted_on_ice == Some(id) || card.hosted_on_rig_card == Some(id)).find(|card| {
+        registry.get(&card.card).is_some_and(|definition| definition.continuous.iter().any(|effect| effect.kind == ContinuousKind::LosesAbilities && effect.applies_to == Scope::Host))
+    });
+    if let Some(card) = hosted_loss {
+        return Some(format!("Has lost all its abilities but its printed subroutines ({})", card_title(&card.card, registry)));
+    }
+    view.lingering
+        .iter()
+        .find(|effect| effect.what == Lingering::LosesAbilities && effect.on == On::Install(id))
+        .map(|effect| format!("Has lost all its abilities ({})", card_title(&effect.source, registry)))
 }
 
 /// The types a piece of ice has gained while it remains rezzed, as the
@@ -497,6 +519,27 @@ mod tests {
     use netrunner_bots::{BotAgent, PlanningAgent, RandomAgent};
     use netrunner_core::rules::{GameState, Side, Viewer};
     use netrunner_session::{sweep_decks_for_seed, Seat, Session, SessionStep};
+
+    /// A piece of ice Hush is hosted on says so on its sheet, to both
+    /// players, and names the card; one without has no such line.
+    #[test]
+    fn an_install_that_has_lost_its_abilities_says_so_and_why() {
+        use netrunner_core::rules::{InstallId, InstallSlot, InstalledCard, InstalledRunnerCard, ServerId};
+        let registry = crate::decks::sample_deck_registry();
+        let (corp_deck, runner_deck) = sweep_decks_for_seed(0);
+        let (mut state, _) = GameState::setup(&corp_deck.to_deck(), &runner_deck.to_deck(), &registry, 0).unwrap();
+        let (wall, other) = (InstallId(901), InstallId(902));
+        for install in [wall, other] {
+            state.corp.installed.push(InstalledCard { install_id: install, card: CardId("ice_wall".into()), server: ServerId::Hq, slot: InstallSlot::Ice, rezzed: true, ..Default::default() });
+        }
+        state.runner.rig.push(InstalledRunnerCard { install_id: InstallId(903), card: CardId("hush".into()), hosted_on_ice: Some(wall), ..Default::default() });
+        for side in [Side::Corp, Side::Runner] {
+            let view = netrunner_core::view::build_client_view(&state, &registry, side);
+            let facts = install_facts(&view, wall, &registry).expect("on the board");
+            assert!(facts.contains(&"Has lost all its abilities but its printed subroutines (Hush)".to_string()), "{side:?}: {facts:?}");
+            assert_eq!(lost_abilities_words(&view, other, &registry), None);
+        }
+    }
 
     /// Real games as both viewers: every install on the board has a tile
     /// label that says whether it is rezzed (or face down, or how far an

@@ -906,7 +906,7 @@ pub fn describe_action(action: &PlayerAction, registry: &CardRegistry, view: Opt
         // run. "Choose Remote(1)" said neither.
         PlayerAction::ChooseServerForPendingDecision { server } => match view.and_then(|view| crate::placement::Placement::of(view, registry)) {
             Some(placement) => placement.label(*server),
-            None if matches!(view.and_then(|v| v.pending_decision.as_ref()), Some(PendingDecision::ChooseServer { install: None, .. })) => {
+            None if matches!(view.and_then(|v| v.pending_decision.as_ref()), Some(PendingDecision::ChooseServer { install: None, remember: false, .. })) => {
                 format!("Run on {}", crate::board::action_map::server_name(*server))
             }
             None => format!("Choose {}", crate::board::action_map::server_name(*server)),

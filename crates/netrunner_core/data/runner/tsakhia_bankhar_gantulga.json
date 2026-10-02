@@ -1,0 +1,59 @@
+{
+  "id": "tsakhia_bankhar_gantulga",
+  "title": "Tsakhia \"Bankhar\" Gantulga",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 1,
+  "triggers": [
+    {
+      "trigger": "OnTurnStart",
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Runner",
+            "options": [
+              "ChooseServer",
+              {
+                "Sequence": []
+              }
+            ],
+            "texts": [
+              "you may choose a server",
+              ""
+            ]
+          }
+        }
+      ],
+      "text": "When your turn begins, you may choose a server."
+    },
+    {
+      "trigger": "OnEncounter",
+      "subject": "Any",
+      "when": {
+        "Card": {
+          "All": [
+            "Ice",
+            "InChosenServer"
+          ]
+        }
+      },
+      "effects": [
+        "ReplaceSubroutines"
+      ],
+      "text": "During the first encounter each turn with a piece of ice protecting the chosen server, whenever the Corp would resolve a subroutine, instead they resolve \"[subroutine] Do 1 net damage.\"."
+    }
+  ],
+  "subroutines": [
+    {
+      "text": "Do 1 net damage.",
+      "effect": {
+        "DealDamage": [
+          "Net",
+          1
+        ]
+      }
+    }
+  ],
+  "built_from": 33074,
+  "is_playable": true
+}

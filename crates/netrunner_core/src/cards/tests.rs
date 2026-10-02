@@ -20076,4 +20076,281 @@ mod parhelion {
         assert!(state.runner.rig.is_empty());
         assert_eq!(state.runner.heap.iter().filter(|card| **card == id("matryoshka")).count(), 3);
     }
+
+    // ---- Stage 8: losing abilities and break restrictions ----
+
+    /// A run on `server`, its ice already rezzed, up to the first encounter
+    /// — or to what the encounter's own abilities park.
+    fn encounter_at(state: &GameState, registry: &CardRegistry, server: ServerId) -> GameState {
+        let (state, _) = apply_action(state, registry, PlayerAction::InitiateRun { server }).expect("initiate run");
+        let (state, _) = crate::rules::test_support::continue_run(&state, registry).expect("approach the ice");
+        pass_until(state, registry, |state| state.active_run.as_ref().is_some_and(|run| run.phase == crate::rules::RunPhase::EncounterIce))
+    }
+
+    /// A run on HQ, up to the Corp's rez of the unrezzed `ice` as it is
+    /// approached — with whatever its rez parks.
+    fn rez_on_approach(state: &GameState, registry: &CardRegistry, ice: &str) -> GameState {
+        let (running, _) = apply_action(state, registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("initiate run");
+        let (at_ice, _) = crate::rules::test_support::continue_run(&running, registry).expect("approach the ice");
+        let corps = pass_until(at_ice, registry, |state| state.paid_ability_window.as_ref().is_some_and(|window| window.active_priority == Side::Corp));
+        apply_action(&corps, registry, PlayerAction::RezIce { ice: install_of(&corps, ice) }).expect("rez").0
+    }
+
+    fn encountering(state: GameState, registry: &CardRegistry) -> GameState {
+        pass_until(state, registry, |state| state.active_run.as_ref().is_some_and(|run| run.phase == crate::rules::RunPhase::EncounterIce))
+    }
+
+    fn hush_on(ice: &str) -> crate::rules::InstalledRunnerCard {
+        crate::rules::InstalledRunnerCard { hosted_on_ice: Some(fixture_install_id(ice)), ..in_rig("hush", 0, 0) }
+    }
+
+    /// Hosted on Anvil, Hush takes its encounter ability — the Corp is
+    /// offered nothing — and leaves its printed subroutines; on Brân, the
+    /// click-break is the ice's own ability and goes with the rest; on Ice
+    /// Wall, its "+1 strength for each hosted advancement counter" no
+    /// longer applies; and the host cannot gain an ability either.
+    #[test]
+    fn hush_takes_every_ability_of_its_host_but_its_printed_subroutines() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.installed = vec![ice_at_hq("anvil"), root_at("pad_campaign", 0)];
+        assert!(encounter(&state, &registry).pending_paid_choice.is_some(), "Anvil's own: the Corp may trash a card");
+        state.runner.rig = vec![hush_on("anvil")];
+        let hushed = encounter(&state, &registry);
+        assert!(hushed.pending_paid_choice.is_none(), "lost");
+        let run = hushed.active_run.as_ref().expect("encountering");
+        assert_eq!(run.ice[run.position].subroutines.len(), 2, "its printed subroutines stay");
+        assert!(!crate::rules::active::may_have_granted(&hushed, &registry, fixture_install_id("anvil")), "and it cannot gain one");
+
+        let clicks = |state: &GameState| {
+            crate::rules::legal_actions_for(state, &registry, Side::Runner).iter().filter(|action| matches!(action, PlayerAction::BreakSubroutineWithClick { .. })).count()
+        };
+        let mut bran = runner_turn();
+        bran.corp.installed = vec![ice_at_hq("bran_1_0")];
+        assert_eq!(clicks(&encounter(&bran, &registry)), 3, "[click]: break 1 subroutine on this ice");
+        bran.runner.rig = vec![hush_on("bran_1_0")];
+        assert_eq!(clicks(&encounter(&bran, &registry)), 0, "the ice's ability, lost");
+
+        let strength = |state: &GameState| {
+            let run = state.active_run.as_ref().expect("encountering");
+            crate::rules::continuous::ice_strength(state, &registry, &run.ice[run.position])
+        };
+        let mut wall = runner_turn();
+        wall.corp.installed = vec![crate::rules::InstalledCard { advancement_tokens: 2, ..ice_at_hq("ice_wall") }];
+        assert_eq!(strength(&encounter(&wall, &registry)), 3);
+        wall.runner.rig = vec![hush_on("ice_wall")];
+        assert_eq!(strength(&encounter(&wall, &registry)), 1, "printed strength only");
+    }
+
+    /// "[click]: Host this program on another installed piece of ice": its
+    /// own host is not offered.
+    #[test]
+    fn hush_moves_to_another_piece_of_ice() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.installed = vec![ice_at_hq("ice_wall"), crate::rules::InstalledCard { server: ServerId::RnD, ..ice_at_hq("enigma") }];
+        state.runner.rig = vec![hush_on("ice_wall")];
+        let (asked, _) = apply_action(&state, &registry, PlayerAction::ActivateAbility { target: fixture_install_id("hush"), ability_index: 0 }).expect("[click]");
+        assert_eq!(runner_toggles(&asked, &registry), vec![1], "not Ice Wall, its host");
+        let (moved, _) = pick(&asked, &registry, 1);
+        assert_eq!(moved.runner.rig[0].hosted_on_ice, Some(fixture_install_id("enigma")));
+        assert!(crate::rules::active::lost_abilities(&moved, &registry, fixture_install_id("enigma")));
+        assert!(!crate::rules::active::lost_abilities(&moved, &registry, fixture_install_id("ice_wall")));
+    }
+
+    /// Paid for, the chosen resource has no abilities until the Corp's next
+    /// turn ends: no interrupt it prints is offered, its recurring credits
+    /// are not refilled, and its hosted credits pay for nothing.
+    #[test]
+    fn klevetnik_takes_a_resources_abilities_until_the_end_of_the_corps_next_turn() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.resources.credits = Credits(10);
+        state.corp.installed = vec![ice_at("klevetnik", ServerId::Hq, false)];
+        state.runner.rig = vec![in_rig("crash_space", 0, 0)];
+        let credits = state.runner.resources.credits.0;
+        let asked = rez_on_approach(&state, &registry, "klevetnik");
+        assert_eq!(options(&asked), Some(2), "you may");
+        let (choosing, _) = choose(&asked, &registry, 0);
+        assert_eq!(choosing.runner.resources.credits, Credits(credits + 2), "the Runner gains 2[credit]");
+        assert_eq!(toggles(&choosing, &registry), vec![0], "Crash Space, the one resource");
+        let (chosen, _) = pick(&choosing, &registry, 0);
+        let crash = fixture_install_id("crash_space");
+        assert!(crate::rules::active::lost_abilities(&chosen, &registry, crash));
+        let meat = crate::rules::WouldHappen::Damage { kind: crate::dsl::DamageType::Meat, amount: 1 };
+        assert!(!crate::rules::prevention::could_prevent(&chosen, &registry, &meat), "its interrupt is lost");
+
+        let mut later = chosen;
+        later.active_run = None;
+        let mut refilled = later.clone();
+        crate::rules::payment::refill(&mut refilled, &registry, Side::Runner).expect("refill");
+        assert_eq!(refilled.runner.rig[0].counters, 0, "N[recurring-credit] is an ability");
+        later.turn += 1;
+        assert!(crate::rules::active::lost_abilities(&later, &registry, crash), "through the Corp's next turn");
+        later.turn += 1;
+        assert!(!crate::rules::active::lost_abilities(&later, &registry, crash), "and no longer");
+        assert!(crate::rules::prevention::could_prevent(&later, &registry, &meat));
+
+        let (declined, _) = choose(&asked, &registry, 1);
+        assert_eq!(declined.runner.resources.credits, Credits(credits));
+        assert!(!crate::rules::active::lost_abilities(&declined, &registry, crash));
+    }
+
+    /// Paid for with another installed card, none of Anvil's printed
+    /// subroutines can be broken for the encounter; declined, they can.
+    #[test]
+    fn anvil_paid_for_cannot_have_its_printed_subroutines_broken_that_encounter() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.installed = vec![ice_at_hq("anvil"), root_at("pad_campaign", 0)];
+        state.runner.rig = vec![in_rig("gordian_blade", 3, 0)];
+        state.runner.resources.credits = Credits(10);
+        let asked = encounter(&state, &registry);
+        assert!(asked.pending_paid_choice.is_some());
+        let (declined, _) = apply_action(&asked, &registry, PlayerAction::DeclinePendingPaidChoice).expect("decline");
+        assert_eq!(broken(&use_ability(&declined, &registry, "gordian_blade", 1).expect("break a code gate subroutine")), 1);
+
+        let (paid, _) = apply_action(&asked, &registry, accept()).expect("trash Pad Campaign");
+        assert!(paid.corp.archives.iter().any(|archived| archived.card == id("pad_campaign")), "its other installed card");
+        assert!(paid.corp.installed.iter().any(|card| card.card == id("anvil")), "not itself");
+        assert!(use_ability(&paid, &registry, "gordian_blade", 1).is_err(), "the Runner cannot break its printed subroutines");
+        let run = paid.active_run.as_ref().expect("encountering");
+        assert_eq!(crate::rules::lingering::break_limit(&paid, run.ice[run.position].install_id), Some(0));
+    }
+
+    /// A cost that trashes Luana Campos announces her uninstalling once:
+    /// the door (`uninstall::corp_install`) dispatches the interrupt while
+    /// she is still there, and the payer's dispatch of its cost's events
+    /// does not dispatch it again — which the debug audit refused, the
+    /// first time a cost trash (Anvil's) met her in a deck (Hostile Bid).
+    #[test]
+    fn a_cost_that_trashes_luana_campos_announces_it_once() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.installed = vec![ice_at_hq("anvil"), crate::rules::InstalledCard { counters: 2, ..rezzed_root_at("luana_campos", 0) }];
+        let asked = encounter(&state, &registry);
+        assert!(asked.pending_paid_choice.is_some());
+        let (paid, events) = apply_action(&asked, &registry, accept()).expect("trash Luana Campos, announced once");
+        assert!(paid.corp.archives.iter().any(|archived| archived.card == id("luana_campos")));
+        assert_eq!(events.iter().filter(|event| matches!(event, GameEvent::AboutToBeUninstalled { .. })).count(), 1);
+        assert_eq!(paid.corp.bad_publicity, asked.corp.bad_publicity + 2, "her interrupt resolved, once");
+    }
+
+    /// Paid for at its rez, the Runner breaks one printed subroutine an
+    /// encounter, whatever the breaker could break; declined, all three.
+    #[test]
+    fn unsmiling_tsarevna_paid_for_lets_one_printed_subroutine_be_broken_each_encounter_that_run() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.resources.credits = Credits(10);
+        state.corp.installed = vec![ice_at("unsmiling_tsarevna", ServerId::Hq, false)];
+        state.runner.rig = vec![in_rig("orca", 3, 0)];
+        state.runner.resources.credits = Credits(10);
+        let asked = rez_on_approach(&state, &registry, "unsmiling_tsarevna");
+        assert_eq!(options(&asked), Some(2));
+        let (limited, _) = choose(&asked, &registry, 0);
+        assert_eq!(limited.runner.resources.credits, Credits(12));
+        let broke = use_ability(&encountering(limited, &registry), &registry, "orca", 0).expect("break any number of sentry subroutines");
+        assert_eq!(broken(&broke), 1, "no more than 1 of its printed subroutines");
+        assert!(use_ability(&broke, &registry, "orca", 0).is_err(), "and no more this encounter");
+
+        let (free, _) = choose(&asked, &registry, 1);
+        assert_eq!(broken(&use_ability(&encountering(free, &registry), &registry, "orca", 0).expect("break")), 3);
+    }
+
+    /// Paid for with a card from HQ, the chosen Runner card's abilities
+    /// break nothing for the rest of the run; another card's still do —
+    /// and Hafrún is a code gate as well as a barrier.
+    #[test]
+    fn hafrun_paid_for_stops_one_runner_cards_breaks_for_the_run() {
+        let registry = registry();
+        let hafrun = registry.get(&id("hafrun")).expect("Hafrún");
+        assert!(hafrun.is_ice_of_type(crate::dsl::IceType::Barrier) && hafrun.is_ice_of_type(crate::dsl::IceType::CodeGate));
+        assert!(!hafrun.is_ice_of_type(crate::dsl::IceType::Sentry));
+        assert!(crate::dsl::card_matches_filter(hafrun, &crate::dsl::CardFilter::IceOfType(crate::dsl::IceType::CodeGate)));
+
+        let mut state = runner_turn();
+        state.corp.resources.credits = Credits(10);
+        state.corp.hq = vec![id("hedge_fund")];
+        state.corp.installed = vec![ice_at("hafrun", ServerId::Hq, false)];
+        state.runner.rig = vec![in_rig("cleaver", 4, 0), in_rig("gordian_blade", 4, 0)];
+        state.runner.resources.credits = Credits(10);
+        let asked = rez_on_approach(&state, &registry, "hafrun");
+        assert!(asked.pending_paid_choice.is_some());
+        let (choosing, _) = apply_action(&asked, &registry, accept()).expect("trash a card from HQ");
+        assert!(choosing.corp.hq.is_empty());
+        let (bound, _) = pick(&choosing, &registry, 0);
+        let at_ice = encountering(bound, &registry);
+        assert!(use_ability(&at_ice, &registry, "cleaver", 0).is_err(), "Cleaver's abilities cannot break subroutines");
+        assert_eq!(broken(&use_ability(&at_ice, &registry, "gordian_blade", 1).expect("a decoder, on a code gate")), 1);
+    }
+
+    /// Chosen as the turn begins, HQ's first encounter does 1 net damage
+    /// where its subroutine would have ended the run, and the second
+    /// encounter there is an ordinary one.
+    #[test]
+    fn tsakhia_turns_the_first_encounter_each_turn_at_the_chosen_server_into_net_damage() {
+        let registry = registry();
+        let mut state = base_state();
+        state.runner.rig = vec![in_rig("tsakhia_bankhar_gantulga", 0, 0)];
+        state.corp.installed = vec![ice_at_hq("ice_wall"), crate::rules::InstalledCard { install_id: InstallId(4242), ..ice_at_hq("ice_wall") }];
+        let asked = begin_the_turn_of(state, &registry, Side::Runner);
+        assert_eq!(options(&asked), Some(2), "you may choose a server");
+        let (choosing, _) = choose(&asked, &registry, 0);
+        let (chosen, _) = apply_action(&choosing, &registry, PlayerAction::ChooseServerForPendingDecision { server: ServerId::Hq }).expect("HQ");
+        assert_eq!(crate::rules::lingering::chosen_server(&chosen, &id("tsakhia_bankhar_gantulga")), Some(ServerId::Hq));
+        let (mut ready, _) = close_all_windows(chosen, &registry);
+        ready.runner.grip = vec![id("sure_gamble"), id("sure_gamble"), id("sure_gamble")];
+        let at_ice = encounter(&ready, &registry);
+        let (done, _) = pass_until_settled(at_ice, &registry);
+        assert_eq!(done.runner.grip.len(), 2, "1 net damage, instead of \"End the run.\"");
+        assert!(done.active_run.is_none(), "the second Ice Wall ends the run");
+        assert_eq!(crate::rules::lingering::chosen_server(&done, &id("tsakhia_bankhar_gantulga")), None, "spent");
+
+        let (declined, _) = choose(&asked, &registry, 1);
+        let (mut ready, _) = close_all_windows(declined, &registry);
+        ready.runner.grip = vec![id("sure_gamble"); 3];
+        let (done, _) = pass_until_settled(encounter(&ready, &registry), &registry);
+        assert_eq!(done.runner.grip.len(), 3, "no server chosen: the first Ice Wall ends the run");
+        assert!(done.active_run.is_none());
+    }
+
+    /// An ability given to another card is that card's, so it acts on it;
+    /// and only a card hosted on another says what that one loses.
+    #[test]
+    fn a_granted_ability_acts_on_its_holder_and_a_loss_is_said_by_a_hosted_card() {
+        let mut zato: crate::dsl::CardDefinition = serde_json::from_str(include_str!("../../data/corp/zato_city_grid.json")).expect("the card");
+        assert_eq!(zato.validate(), Ok(()));
+        zato.triggers[0].acts_on_subject = false;
+        assert!(zato.validate().is_err(), "granted, but acting as ZATO");
+        let mut hush: crate::dsl::CardDefinition = serde_json::from_str(include_str!("../../data/runner/hush.json")).expect("the card");
+        assert_eq!(hush.validate(), Ok(()));
+        hush.continuous[1].applies_to = crate::dsl::Scope::This;
+        assert!(hush.validate().is_err(), "a card does not lose its own abilities by its own text");
+    }
+
+    /// Ice protecting ZATO's server has its ability: the Corp may trash it
+    /// to resolve one of its subroutines. Ice elsewhere has not, and Hush's
+    /// host cannot gain it.
+    #[test]
+    fn zato_city_grid_lets_the_corp_trash_ice_protecting_its_server_to_resolve_a_subroutine() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.installed = vec![rezzed_root_at("zato_city_grid", 0), ice_at("ice_wall", ServerId::Remote(0), true)];
+        let asked = encounter_at(&state, &registry, ServerId::Remote(0));
+        assert!(asked.pending_paid_choice.is_some(), "the ability Ice Wall gained");
+        let (trashed, _) = apply_action(&asked, &registry, accept()).expect("trash Ice Wall");
+        assert!(trashed.corp.archives.iter().any(|archived| archived.card == id("ice_wall")));
+        assert!(trashed.active_run.is_none(), "its subroutine resolved: End the run");
+        let (kept, _) = apply_action(&asked, &registry, PlayerAction::DeclinePendingPaidChoice).expect("decline");
+        assert!(kept.corp.installed.iter().any(|card| card.card == id("ice_wall")));
+
+        let mut hushed = state.clone();
+        hushed.runner.rig = vec![hush_on("ice_wall")];
+        assert!(encounter_at(&hushed, &registry, ServerId::Remote(0)).pending_paid_choice.is_none(), "cannot gain abilities");
+
+        let mut elsewhere = state;
+        elsewhere.corp.installed[1].server = ServerId::Hq;
+        assert!(encounter_at(&elsewhere, &registry, ServerId::Hq).pending_paid_choice.is_none(), "not protecting this server");
+    }
 }

@@ -93,6 +93,9 @@ pub(crate) fn could_prevent(state: &GameState, registry: &CardRegistry, what: &W
     [Side::Runner, Side::Corp].into_iter().any(|side| {
         paid_ability::active_cards_of(state, side).into_iter().any(|(install, card_id)| {
             let Some(card) = registry.get(&card_id) else { return false };
+            if card.abilities.is_empty() || crate::rules::active::lost_abilities(state, registry, install) {
+                return false;
+            }
             let ctx = ResolutionContext::for_install(install, &card_id);
             card.abilities.iter().any(|ability| {
                 let user = ability.used_by.unwrap_or(side);

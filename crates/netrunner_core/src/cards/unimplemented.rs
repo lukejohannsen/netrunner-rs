@@ -36,15 +36,7 @@ pub(crate) const TAI_UNIMPLEMENTED: &[(&str, &str)] = &[
 ];
 
 /// *Parhelion* (`parhelion`): tranche 4 of the NSG plan.
-pub(crate) const PH_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("hush", "Hush"),
-    ("tsakhia_bankhar_gantulga", "Tsakhia \"Bankhar\" Gantulga"),
-    ("hafrun", "Hafrún"),
-    ("klevetnik", "Klevetnik"),
-    ("unsmiling_tsarevna", "Unsmiling Tsarevna"),
-    ("anvil", "Anvil"),
-    ("zato_city_grid", "ZATO City Grid"),
-];
+pub(crate) const PH_UNIMPLEMENTED: &[(&str, &str)] = &[];
 
 /// *Midnight Sun Booster Pack* (`midnight_sun_booster_pack`): tranche 5 of the NSG plan.
 pub(crate) const MSBP_UNIMPLEMENTED: &[(&str, &str)] = &[

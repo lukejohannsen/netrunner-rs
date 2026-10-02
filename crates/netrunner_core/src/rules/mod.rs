@@ -1,6 +1,6 @@
 mod ability;
 mod action;
-mod active;
+pub(crate) mod active;
 mod action_mask;
 mod checkpoint;
 pub mod continuous;
@@ -26,7 +26,7 @@ mod state;
 pub(crate) mod test_support;
 mod trace;
 mod turn;
-mod prevention;
+pub(crate) mod prevention;
 pub mod turn_log;
 mod uninstall;
 mod win;

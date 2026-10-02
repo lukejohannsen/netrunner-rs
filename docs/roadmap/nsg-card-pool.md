@@ -47,15 +47,15 @@ cards each stage takes.
 | 1 | Vantage Point (`vp`) | 66 | 66 | 0 | complete (27 September 2026) |
 | 2 | Rebellion Without Rehearsal (`rwr`) | 65 | 65 | 0 | complete (28 September 2026) |
 | 3 | The Automata Initiative (`tai`) | 65 | 65 | 0 | complete (29 September 2026) |
-| 4 | Parhelion (`ph`) | 63 | 56 | 7 | **Stage 8 next** — losing abilities and break restrictions: Hush, Klevetnik, Anvil, Unsmiling Tsarevna, Hafrún, Tsakhia, ZATO City Grid |
-| 5 | Midnight Sun (`ms`) + Booster (`msbp`) | 65 + 7 | 0 | 65 + 7 | not started |
+| 4 | Parhelion (`ph`) | 63 | 63 | 0 | complete (2 October 2026) |
+| 5 | Midnight Sun (`ms`) + Booster (`msbp`) | 65 + 7 | 0 | 65 + 7 | **Stage 1 next** — Corp, composes |
 | 6 | Uprising (`ur`) + Booster (`urbp`) | 65 + 7 | 0 | 65 + 7 | not started |
 | 7 | Downfall (`df`) | 65 | 0 | 65 | not started |
 | 8 | System Update 2021 (`su21`), Salvaged Memories (`sm`), Magnum Opus Reprint (`mor`) | 82, 18, 6 | 11, 1, 0 | 71, 17, 6 | not started (the built ones are Core reprints) |
 
-**DSL ratio** (`pool_status.py`, the DSL Growth Rule's number): **14 of 93
-`Effect` variants single-use, 1 unused (`Trace`), over 436 card files** (2
-October 2026, with Parhelion Stage 7). The baseline at Stage 0a was 26 of 70 single-use, 3 unused,
+**DSL ratio** (`pool_status.py`, the DSL Growth Rule's number): **17 of 97
+`Effect` variants single-use, 1 unused (`Trace`), over 443 card files** (2
+October 2026, with Parhelion Stage 8). The baseline at Stage 0a was 26 of 70 single-use, 3 unused,
 over 184 files: 252 cards later the single-use count is *lower*, because the
 growth went into `Trigger`, `EventFilter`, `Amount`, `CardFilter`, `Cost` and
 `ContinuousKind` words rather than into what an effect does.
@@ -306,12 +306,12 @@ this file keeps; a stage that builds or widens a mechanic updates the cell.
 | Set aside | RWR: The Wizard’s Chest | PH Spark of Inspiration; MS Deep Dive; UR Gachapon | CR 4.8 | RWR 6d (faceup only); PH 6c (Spark composes) |
 | X costs | RWR: Lobisomem | PH Matryoshka; DF Utae; reprints Corporate Troubleshooter, Psychographics | CR 1.16.2c | RWR 6e; PH 7 |
 | Forced or repeated encounter | RWR: Sisyphus Protocol | UR Konjin, Ganked! | CR 6.1.3 | RWR 7d |
-| Losing abilities | PH: Hush, Klevetnik | MS Light the Fire! | CR 9.1.9a | — |
-| Break restrictions ("cannot be broken", "only by …") | PH: Anvil, Unsmiling Tsarevna, Hafrún | MS Trieste Model Bioroids; UR Akhet, NEXT Activation Command | CR 9.8.5 | — |
+| Losing abilities | PH: Hush, Klevetnik | MS Light the Fire! | CR 9.1.9a | PH 8 (`ContinuousKind::LosesAbilities`, `Lingering::LosesAbilities`; one question, `active::lost_abilities`) |
+| Break restrictions ("cannot be broken", "only by …") | PH: Anvil, Unsmiling Tsarevna, Hafrún | MS Trieste Model Bioroids; UR Akhet, NEXT Activation Command | CR 9.8.5 | RWR 5b (Hammer's, standing); PH 8 (for a duration, `Lingering::BreakLimit`; one Runner card's, `Prohibition::BreakSubroutines`) |
 | Charge | PH: Flux Capacitor, Orca | MS Captain Padma Isbister, Rigging Up, “Daeg, First Net-Cat”, Stoneship Chart Room | CR 10.10 | PH 6a (composes: a selection of `HostsCounters(Power)`) |
 | Mark | PH: Tunnel Vision, Info Bounty | MS Nyusha "Sable" Sintashta, Carpe Diem, Virtuoso, Backstitching | CR 10.11 | PH 6b (`Lingering::Mark`, `Effect::IdentifyMark`) |
 | An agenda's points or advancement requirement changing | VP: Let Them Dream | PH Ontological Dependence, Freedom of Information, Regulatory Capture; UR Megaprix Qualifier, Project Vacheron; reprints Project Beale, SanSan City Grid | CR 3.2.2, CR 3.2.3b | VP 3a (points); PH 3a (requirement, a card's own) |
-| A choice remembered for a duration (a server, an ice, a subtype, a card's name) | RWR: Lycian Multi-Munition | MS Trieste Model Bioroids; UR Boomerang, Engram Flush; DF Whistleblower, Complete Image, Saisentan; reprints Femme Fatale, Security Testing, Chameleon | CR 9.10.3 | RWR 8a |
+| A choice remembered for a duration (a server, an ice, a subtype, a card's name) | RWR: Lycian Multi-Munition | MS Trieste Model Bioroids; UR Boomerang, Engram Flush; DF Whistleblower, Complete Image, Saisentan; reprints Femme Fatale, Security Testing, Chameleon | CR 9.10.3 | RWR 8a; PH 8 (a server, for the turn: Tsakhia's `Effect::ChooseServer`) |
 | A triggered ability created by a card that resolved ("when your next run ends…") | DF: In the Groove, Climactic Showdown, Always Have a Backup Plan | reprints Inside Job, Test Run | CR 9.10 | RWR 5d in part (a delayed conditional ability); DF's cards — |
 | Lockdown | UR: SYNC Rerouting, Argus Crackdown, NAPD Cordon, NEXT Activation Command, Hyoubu Precog Manifold | — | CR 3.5.1c | — |
 
@@ -337,7 +337,6 @@ PR that made this list (29 September 2026).
 ### Owed — a card whose printed text is not yet built
 
 - **Blood in the Water** (Midnight Sun): prints its advancement requirement as X, which NetrunnerDB records as none; the face draws no circle for it until the stage that builds a variable requirement (`card_face`'s layout test names the card).
-- **Hafrún** (PH Stage 8): two ice types, which `CardType::Ice(IceType)` cannot say.
 - **Nanisivik Grid** (PH 5b): a subroutine it resolves reads "this server" as unresolved, where CR 4.6.6i's example makes it Archives; no subroutine in the pool says "this server".
 - **Docklands Pass, Rotary**: "whenever you breach HQ or R&D" is a successful run on either; a breach without a run (Cataloguer, RWR 6c) does not fire them.
 - **Manuel Lattes de Moura**: the extra access is heard at the run's success, as every "when you breach" in the pool is, so a run Flagship keeps from being declared successful gets none.
@@ -347,6 +346,8 @@ PR that made this list (29 September 2026).
 - **Nanuq** (PH 6d): "when this program is uninstalled" is heard as its trash from the table — the only way a program leaves the rig in the pool but by its own removal — so an uninstall to the grip or the stack would not remove it.
 - **Shred**: intercepts `EndTheRun` only (a lingering `PreventRunEnding`).
 - **Raindrops Cut Stone** (PH 6c): a subroutine a card's text resolves (Nanisivik Grid's) is not announced, so it is not counted; only an encountered piece of ice's are.
+- **Tsakhia "Bankhar" Gantulga** (PH 8): the chosen server lasts the Runner's turn it was chosen in, so a run on the Corp's turn after it finds none. Its replacement is made as the encounter begins, by a trigger the Runner orders with the encounter's other abilities, and outlives Tsakhia leaving the table mid-encounter. A subroutine a card's text resolves off the encounter (ZATO City Grid's, Mycoweb's) is not replaced.
+- **Hush, Klevetnik** (PH 8): CR 9.12.1d's order of dependent effects is not built; a card's loss is read off the cards hosted on it and the lingering list directly, which is the order 9.12.1e gives hosted objects and all the pool needs.
 
 ### Recorded deviations from the Comprehensive Rules
 
@@ -371,6 +372,8 @@ Each is also a note on its section's row in [rules-conformance.md](rules-conform
 - **Hearts and Minds** chooses its source before its destination, so an advanceable card may be picked as both — a move onto itself.
 - **Pressure Spike's pumps last the encounter**, as every breaker's does here. **Corporate Hospitality** excludes only the copy resolving, found as the last faceup copy in Archives.
 - **Raindrops Cut Stone's counters** (PH 6c) are placed as a subroutine is announced, before its effect resolves, so one that ends the run is counted while the run, and the event's place in the play area, still stand — the outcome the card's "(including a subroutine that ends the run)" prints.
+- **ZATO City Grid** (PH 8): the subroutine is chosen after the ice is trashed, not before; the Corp makes both choices knowing everything, so the outcome is the printed one. "1 subroutine on it" offers what the ice prints.
+- **Klevetnik, Unsmiling Tsarevna** (PH 8): "you may have the Runner gain 2[credit]. If you do, …" is a choice whose first option gives the credits — a nested cost (CR 1.16.11a) no `Cost` word says, with the printed outcome.
 - **Concerto's credits** (PH 5d) are placed on the run as it starts, where the card places them on itself before it; they pay for anything during that run and go with it.
 - **Aircheck's event is active for the run it makes and no longer**; the second run is ordinary, and the event's unspent credits are gone with the first.
 - **Vera Ivanovna Shuyskaya's reveal** is not a `CardRevealed` of each grip card; the Corp sees the grip through the selection and only the trashed card is announced. No card in the pool reads a reveal of the grip.
@@ -689,10 +692,9 @@ change deck-building rules (`DeckRule`, Stage 5a).
 7. **Winning and the score area** (built, 2 October 2026): Issuaq Adaptics:
    Sustaining Diversity, Superdeep Borehole, Nightmare Archive, Matryoshka
    (X cost). Stage 7 is complete.
-8. **Losing abilities and break restrictions** (last, because they touch
-   every read of an ability): Hush, Klevetnik, Anvil, Unsmiling Tsarevna,
-   Hafrún (two ice types, which `CardType::Ice(IceType)` cannot say), Tsakhia,
-   ZATO City Grid.
+8. **Losing abilities and break restrictions** (built, 2 October 2026):
+   Hush, Klevetnik, Anvil, Unsmiling Tsarevna, Hafrún, Tsakhia "Bankhar"
+   Gantulga, ZATO City Grid. Stage 8 is complete, and Parhelion with it.
 
 **Riskiest:**
 - Hush.
@@ -721,6 +723,7 @@ Grid, Tsakhia, World Tree.
 - **Stage 6c** — a set-aside program, and a subroutine resolving heard by a run event (`feat/ph-stage-6c-set-aside-and-run-event-counters`, 1 October 2026).
 - **Stage 6d** — a Runner card removed from the game as it leaves the table (`feat/ph-stage-6d-nanuq`, 1 October 2026).
 - **Stage 7** — winning and the score area: a target a card lowers, a card that wins when it is empty, an accessed card moved by its own text, and copies turned facedown (`claude/serene-einstein-6bhlig`, 2 October 2026).
+- **Stage 8** — losing abilities and break restrictions: a host that keeps only its printed subroutines, a resource without its abilities, limits on breaking for a duration and on one Runner card, a server chosen for the turn, and an ability one card gives another (`claude/serene-einstein-6bhlig`, 2 October 2026). **Parhelion is complete: 63 of 63.**
 
 ### 5. Midnight Sun and its Booster Pack — 65 cards (C 22 / V 26 / M 17)
 

@@ -199,6 +199,12 @@ pub enum CardFilter {
     /// "1 of your *other* installed cards". Instance-level: it compares
     /// installs, so a second copy of the same card is still eligible.
     NotSourceCard,
+    /// Any card but the one the parking card is hosted on — Hush's "Host
+    /// this program on **another** installed piece of ice". Instance-level,
+    /// compared by install as `NotSourceCard` is. Composition didn't work:
+    /// the parking card is a Trojan in the rig, so `NotSourceCard` admits
+    /// every piece of ice, its host among them.
+    NotThisCardsHost,
     /// `InstallableRunnerCard` priced `u32` cheaper — the offer half of
     /// `Effect::InstallRunnerCardFromGripWithDiscount`.
     InstallableRunnerCardWithDiscount(crate::dsl::Discount),
@@ -376,6 +382,16 @@ pub enum CardFilter {
     /// `InServer` where the acting card's server is known (`with_this_server`)
     /// and matching nothing where it is not.
     InThisServer,
+    /// An installed Corp card in, or protecting, the server the acting card
+    /// chose this turn (`Effect::ChooseServer`, `Lingering::ChosenServer`)
+    /// — Tsakhia "Bankhar" Gantulga's "a piece of ice protecting **the
+    /// chosen server**". A placeholder, as `InThisServer` is: written over
+    /// as `InServer` where the card's choice is known
+    /// (`with_chosen_server`) and matching nothing where it is not, so a
+    /// turn with no choice made hears nothing. Composition didn't work: the
+    /// server is chosen as the game goes, and `InServer` is written in the
+    /// card file.
+    InChosenServer,
     /// A card in this server, its root or its ice. `InRootOf` is the root
     /// alone; a card "protecting" a server is `All([Ice, InServer(..)])`.
     InServer(ServerId),
@@ -429,6 +445,18 @@ impl CardFilter {
         }
     }
 
+    /// This filter with `InChosenServer` written over as the server the
+    /// card chose (`Effect::ChooseServer`), where it chose one; left
+    /// unresolved, it matches nothing.
+    pub fn with_chosen_server(self, server: Option<ServerId>) -> CardFilter {
+        match self {
+            CardFilter::InChosenServer => server.map_or(CardFilter::InChosenServer, CardFilter::InServer),
+            CardFilter::All(filters) => CardFilter::All(filters.into_iter().map(|filter| filter.with_chosen_server(server)).collect()),
+            CardFilter::AnyOf(filters) => CardFilter::AnyOf(filters.into_iter().map(|filter| filter.with_chosen_server(server)).collect()),
+            other => other,
+        }
+    }
+
     pub fn with_this_server(self, server: Option<ServerId>) -> CardFilter {
         match self {
             CardFilter::InRootOfThisServer => server.map_or(CardFilter::InRootOfThisServer, CardFilter::InRootOf),
@@ -453,6 +481,8 @@ impl CardFilter {
             CardFilter::DiscardedThisDiscardPhase
                 | CardFilter::DifferentNames
                 | CardFilter::NotSourceCard
+                | CardFilter::NotThisCardsHost
+                | CardFilter::InChosenServer
                 | CardFilter::Rezzed
                 | CardFilter::Unrezzed
                 | CardFilter::Facedown
@@ -528,6 +558,8 @@ pub fn card_matches_filter(card: &CardDefinition, filter: &CardFilter) -> bool {
         // Purely instance-level; the definition says nothing about it.
         CardFilter::DiscardedThisDiscardPhase => true,
         CardFilter::NotSourceCard => true,
+        CardFilter::NotThisCardsHost => true,
+        CardFilter::InChosenServer => true,
         CardFilter::Rezzed => true,
         CardFilter::Unrezzed => true,
         CardFilter::AgendaPointsAtMostRunnerTags => card.agenda_points.is_some(),
@@ -554,7 +586,7 @@ pub fn card_matches_filter(card: &CardDefinition, filter: &CardFilter) -> bool {
         CardFilter::PlayableOperation => card.card_type == CardType::Operation,
         // Purely instance-level: where the card sits in its zone.
         CardFilter::TopOfZone(_) | CardFilter::Revealed => true,
-        CardFilter::IceOfType(ice_type) => matches!(&card.card_type, CardType::Ice(t) if t == ice_type),
+        CardFilter::IceOfType(ice_type) => card.is_ice_of_type(*ice_type),
         CardFilter::InstallableRunnerCardWithDiscount(_) => card_matches_filter(card, &CardFilter::InstallableRunnerCard),
         // Instance-level, not definition-level — see the variant's doc
         // comment. `eligible_cards` applies the real check.

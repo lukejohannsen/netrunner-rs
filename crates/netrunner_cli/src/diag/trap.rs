@@ -530,7 +530,7 @@ mod tests {
                 subject: Some(Subject::This),
                 when: None,
                 acts_on_subject: false,
-                first_each_turn: false, first_each_encounter: false, from_heap: false,
+                first_each_turn: false, first_each_encounter: false, granted: false, from_heap: false,
                 text: None,
                 trigger: Trigger::OnAccessed,
                 effects: vec![Effect::DealDamageAmount(DamageType::Net, netrunner_core::dsl::Amount::HostedAdvancementTokens)],

@@ -20,7 +20,7 @@
 //! Word on the Street in the Corp's score area is a −1, not a resource.
 
 use crate::cards::CardRegistry;
-use crate::dsl::{CardId, CardType};
+use crate::dsl::{CardId, CardType, ContinuousKind};
 use crate::rules::run::ServerId;
 use crate::rules::state::{GameState, InstallId, Side};
 
@@ -101,4 +101,70 @@ pub(crate) fn runner<'a>(state: &'a GameState, registry: &'a CardRegistry) -> im
         place: Place::PlayArea,
     });
     identity.chain(rig).chain(run_event)
+}
+
+/// Whether the install `install` has lost all its abilities (CR 9.1.9a):
+/// a card hosted on it says so for as long as it stays there (Hush's
+/// `ContinuousKind::LosesAbilities`, about its `Host`), or a lingering
+/// effect does (Klevetnik's, `lingering::loses_abilities`). **The one
+/// question**, put by everything that reads what a card can do: who hears
+/// an event (`listeners`), whose standing effects apply (`continuous`), who
+/// may use a paid ability or an interrupt, and whose hosted credits pay.
+/// A lost ability "is completely ignored", so each of them skips the card
+/// rather than ask what it says.
+///
+/// A printed subroutine is not among what is lost — the one card in the
+/// pool that takes a piece of ice's abilities keeps them — so a run's ice
+/// is never asked this about its subroutines.
+///
+/// Read off the rig and the lingering list directly, never through the
+/// continuous scan, which asks this of every source: a hosted card's effect
+/// does not depend on its host's (CR 9.12.1e), so nothing here can loop.
+pub(crate) fn lost_abilities(state: &GameState, registry: &CardRegistry, install: InstallId) -> bool {
+    crate::rules::lingering::loses_abilities(state, install) || hosted_says(state, registry, install, ContinuousKind::LosesAbilities)
+}
+
+/// Whether the install `install` may have an ability another card gives it
+/// (`TriggeredEffect::granted`, ZATO City Grid's): not if a card hosted on
+/// it says it cannot gain abilities (Hush's `CannotGainAbilities`), and not
+/// if it has lost them — a granted ability is lost with the rest.
+pub(crate) fn may_have_granted(state: &GameState, registry: &CardRegistry, install: InstallId) -> bool {
+    !hosted_says(state, registry, install, ContinuousKind::CannotGainAbilities) && !lost_abilities(state, registry, install)
+}
+
+/// Every install that has lost its abilities right now — what a scan that
+/// asks [`lost_abilities`] of many cards reads instead, once. Empty, and
+/// unallocated, in every game where no card takes abilities away.
+pub(crate) fn installs_without_abilities(state: &GameState, registry: &CardRegistry) -> Vec<InstallId> {
+    let mut lost: Vec<InstallId> = state
+        .lingering
+        .iter()
+        .filter(|effect| effect.what == crate::rules::lingering::Lingering::LosesAbilities && effect.holds(state))
+        .filter_map(|effect| match effect.on {
+            crate::rules::lingering::On::Install(install) => Some(install),
+            _ => None,
+        })
+        .collect();
+    for card in state.runner.rig.iter().filter(|card| card.hosted_on_ice.is_some() || card.hosted_on_rig_card.is_some()) {
+        if host_says(registry, &card.card, ContinuousKind::LosesAbilities)
+            && let Some(host) = card.hosted_on_ice.or(card.hosted_on_rig_card)
+        {
+            lost.push(host);
+        }
+    }
+    lost
+}
+
+/// Whether a card hosted on `install` declares `kind` about its host.
+fn hosted_says(state: &GameState, registry: &CardRegistry, install: InstallId, kind: ContinuousKind) -> bool {
+    state
+        .runner
+        .rig
+        .iter()
+        .filter(|card| card.hosted_on_ice == Some(install) || card.hosted_on_rig_card == Some(install))
+        .any(|card| host_says(registry, &card.card, kind.clone()))
+}
+
+fn host_says(registry: &CardRegistry, card: &CardId, kind: ContinuousKind) -> bool {
+    registry.get(card).is_some_and(|definition| definition.continuous.iter().any(|effect| effect.kind == kind && effect.applies_to == crate::dsl::Scope::Host))
 }

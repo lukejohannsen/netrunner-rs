@@ -886,7 +886,7 @@ mod tests {
             card_type: CardType::Operation,
             cost: 5,
             triggers: vec![TriggeredEffect {
-                subject: None, when: None, acts_on_subject: false, first_each_turn: false, first_each_encounter: false, from_heap: false,
+                subject: None, when: None, acts_on_subject: false, first_each_turn: false, first_each_encounter: false, granted: false, from_heap: false,
                 text: None,
                 trigger: Trigger::OnPlay,
                 effects: vec![Effect::GainCredits(Side::Corp, 9)],
@@ -1433,6 +1433,7 @@ mod tests {
         state.phase = GamePhase::Action(Side::Runner);
         state.pending_decision = Some(crate::rules::state::PendingDecision::ChooseServer {
             move_to_root: false,
+            remember: false,
             install: None,
             chooser: Side::Runner,
             rez_cost_delta: 3,
