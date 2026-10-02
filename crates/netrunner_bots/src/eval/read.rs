@@ -14,8 +14,48 @@ use super::*;
 /// a run that stops at the third ICE is worth no more than one that stops
 /// at the first.
 pub(super) fn run_is_breakable(state: &GameState, run: &RunState, registry: &CardRegistry) -> bool {
-    remaining_break_cost(state, run, registry)
-        .is_some_and(|total| total <= state.runner.resources.credits.0 + run.bad_publicity_credits)
+    remaining_break_cost(state, run, registry).is_some_and(|total| total <= run_pool(state, run))
+}
+
+/// The credits the Runner can put towards breaking in `run`: its own,
+/// the run's bad-publicity pool, and the credits the card that began the
+/// run brought with it (Phase 5 §31) — Overclock's "you get 5[credit] to
+/// spend during that run", `RunState::bonus_run_credits`. The last are
+/// counted only when the card lets them pay for a break: the run's own
+/// word (`run_credits_pay_for`) is read the way the engine reads it, with
+/// no word meaning anything. Before this the leaf read the Runner's own
+/// credits and nothing else, so an Overclock run through ICE the Runner
+/// could not otherwise afford read as unbreakable — the card's one
+/// reason — and the planner played it in 0 of 192 games.
+pub(super) fn run_pool(state: &GameState, run: &RunState) -> u32 {
+    state.runner.resources.credits.0 + run.bad_publicity_credits + run_credits_for_breaking(run)
+}
+
+/// What `run_pool` counts of the run's own credits: all of them when
+/// they pay for anything or for using icebreakers, none otherwise.
+pub(super) fn run_credits_for_breaking(run: &RunState) -> u32 {
+    use netrunner_core::dsl::PaysFor;
+    match &run.run_credits_pay_for {
+        None | Some(PaysFor::UsingIcebreakers) => run.bonus_run_credits,
+        Some(_) => 0,
+    }
+}
+
+/// Whether a run-ending prevention a card armed stands over `run` and
+/// would hold the first "end the run" off (Phase 5 §31): Shred's "the
+/// first time the Corp would end that run, prevent the run from ending
+/// unless the Corp reveals and trashes X cards from HQ at random", read
+/// as the engine resolves it (`prevention::run_ending`) — nothing is
+/// prevented over an empty root, because X is then nothing to pay. Over a
+/// root with a card in it the Corp either pays in cards from HQ or the
+/// run goes on, and this reading takes the run as going on: the Corp's
+/// HQ paying for a run it could not otherwise have stopped is the other
+/// thing the card is for.
+pub(super) fn run_ending_prevented(state: &GameState, run: &RunState) -> bool {
+    use netrunner_core::rules::lingering::Lingering;
+    use netrunner_core::rules::InstallSlot;
+    state.lingering.iter().any(|effect| matches!(effect.what, Lingering::PreventRunEnding(_)) && effect.holds(state))
+        && state.corp.installed.iter().any(|card| card.server == run.server && card.slot == InstallSlot::Root)
 }
 
 /// The credits still to be spent breaking this run's rezzed ICE, or
@@ -34,11 +74,22 @@ pub(super) fn run_is_breakable(state: &GameState, run: &RunState, registry: &Car
 /// × 192) and +0.029 on the trap decks (six seeds × 216, t 4.4). A
 /// breach is worth more than the credits it costs, because the credits
 /// come back and the agenda does not.
+///
+/// **One piece no rig card can break is passed for nothing when a
+/// run-ending prevention stands** (`run_ending_prevented`, Shred): the
+/// first "end the run" is held off once, so the first such piece stops
+/// nothing — its other subroutines fire, which the encounter's own terms
+/// price when the run gets there — and a second is unbreakable as ever.
 pub(super) fn remaining_break_cost(state: &GameState, run: &RunState, registry: &CardRegistry) -> Option<u32> {
     let mut total = 0;
     let mut stock = fresh_stock(state);
+    let mut prevention = run_ending_prevented(state, run);
     for ice in run.ice.iter().skip(run.position).filter(|ice| ice.rezzed) {
-        total += cheapest_break_cost(state, ice, registry, &mut stock)?;
+        match cheapest_break_cost(state, ice, registry, &mut stock) {
+            Some(cost) => total += cost,
+            None if prevention => prevention = false,
+            None => return None,
+        }
     }
     Some(total)
 }
@@ -644,6 +695,42 @@ fn tally(effect: &Effect, side: Side) -> Tally {
         }
         _ => Tally::default(),
     }
+}
+
+/// What the rider on `run` pays `side` when the run succeeds (Phase 5
+/// §31): the credits and cards its `on_success_effect` declares, tallied
+/// as a play is (`tally`: a `Sequence` summed, an `EffectIf` as if its
+/// condition held, the opponent's choice at its worst) — Clean Getaway's
+/// "if successful, gain 6[credit]", Red Team's "take 3[credit] from this
+/// resource", Jailbreak's and Joy Ride's draws. A rider that pays in
+/// anything else is nothing here; the accesses it adds are
+/// `rider_accesses`. The rider is seeded onto the run by the card that
+/// began it and is read here only off a run the search itself began, so
+/// it is never a sampled guess: a run in progress when the view was taken
+/// carries none (`determinize` leaves it `None`).
+pub(super) fn rider_income(run: &RunState, side: Side) -> (i32, u32) {
+    let sum = run.on_success_effect.as_deref().map(|effect| tally(effect, side)).unwrap_or_default();
+    (sum.credits, sum.cards.max(0) as u32)
+}
+
+/// The accesses the rider on `run` adds to a breach of `server` beyond
+/// the first — Jailbreak's "access 1 additional card" (`Effect::
+/// AddAdditionalAccess`, rewritten to the chosen server when the run was
+/// begun). Read off the rider because the run's own count
+/// (`additional_hq_access`, `additional_rd_access`) is written only when
+/// the run succeeds.
+pub(super) fn rider_accesses(run: &RunState, server: netrunner_core::rules::ServerId) -> u32 {
+    let mut count = 0;
+    if let Some(effect) = run.on_success_effect.as_deref() {
+        effect.for_each_effect(&mut |effect| {
+            if let Effect::AddAdditionalAccess { server: added, count: n } = effect
+                && *added == server
+            {
+                count += *n;
+            }
+        });
+    }
+    count
 }
 
 /// `Income` for `def`, read as the struct's docs say.
