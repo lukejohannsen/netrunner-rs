@@ -2908,3 +2908,35 @@ The Corp scores more and advances more where the guide says the scoring happens,
 **Rejected.** Growing `diag precepts` with a second seating of its own: the report is one seating by design (its groups are the seating's styles and factions), and two JSONs it already writes are the honest input. Splitting `activated` by ability index in the coverage report: a per-ability count would say which ability, but the host is the only prompt Matryoshka's and Madani's text opens, so `prompts_offered` already says it for the cards in question; the split is owed when a card's two abilities both matter.
 
 **Verified.** The script runs on the four §29 pairs and on the §28 coverage pairs; no Rust changed, so no sweep or coverage comparison applies.
+
+## 30. A program hosted on Madani is one turn from the table, and the grip promises its installer half a click: the planner installs Madani, hosts on it and installs from it — DONE (`feat/madani-hosts-the-rig`, 2 October 2026)
+
+**The card §29's list put first.** Madani — "[click]: host any number of programs from your grip faceup on this hardware", "once per turn → 0[credit]: install 1 hosted program" — was the card random seats used most that the planner never touched (115 / 163 casual, 71 / 77 startup, planner 0), in two sample decks. Nothing in the evaluator read a hosted program: `held_cards_value` summed the grip, so Madani's host was a click that made the grip's programs vanish, and an empty Madani was a 2[c] hardware worth its presence and nothing.
+
+**What it is now** (`eval::runner::hosted_installs_value`, read off the DSL — a rig card whose `Paid` ability holds `Effect::InstallRunnerCardFromHost` is an installer, never by name; Matryoshka's hosted copies are a break's stock and are read by nothing here):
+- **A hosted program is a program one turn from the table:** its `install_delta` less a click — the turn's wait at the guide's rate — not the grip's half, because its install is free and certain, and not the whole, because it is not on the table yet.
+- **A grip program promises its installer half a click:** the install will cost none, once a host click still to be paid has been. Over the programs the Runner would install at all (`install_delta` above zero), capped at the turns the stage expects. That half is what puts Madani on the table: beside programs the Runner cannot yet afford, the click that would have been a credit installs Madani instead (`installs_madani_for_its_promise_and_installs_a_hosted_program_free`).
+- Then one strong breaker hosted is worth half its delta over the host click, and the free install that follows is worth the click. A breaker the Runner can afford is still installed outright — a strong card on the table now beats one parked — so Madani's place is the programs that are waiting: for credits, for memory, for the turns to install them one a click.
+
+**Three readings were measured and rejected on the way, each on pinned binaries at 384 games paired by index on two seeds, with the four Madani deck pairings at 48 planner games (random 96):**
+1. *Hosted programs at a click each, the grip promising nothing:* Madani installed in 1 of 192 games. An installer with nothing hosted promised nothing, so it never reached the table.
+2. *Grip and hosted programs promising a click each:* Madani installed at random's rate (22–33 of 48) and hosted on in 1–10 games against random's 29–48 — a host was a click for nothing once the grip already promised the click — and the self-pairing read a Runner loss: every discordant game a Madani deck, the Corp winning 19 of 28 (seed 1 +0.021, z +1.89; seed 2 +0.010, z +1.26).
+3. *Hosted a whole click, grip half a click:* Madani installed in 4–17 of 48 and hosted on in **0**. Hosting two programs was a tie with a credit click and three a fifth of a click, which the grip floor outbid.
+Reading 2 was first measured with a beam change beside it — a line parked inside the seat's own card selection judged by its confirm, so that "host both" was not dropped a ply before the confirm that made it the better line — which moved every game (121 and 142 discordant of 384, the two seeds in opposite directions) and made the view path and the index path of `coverage_identical.py` disagree for the first time; it was reverted, the paths agree again, and partial hosting ties with full hosting under the reading that landed, so nothing needed it.
+
+**Measured, the reading that landed.**
+- `coverage_identical.py main --head-worktree`: both random shapes identical to `main` (`57e361e0…`); both planner shapes moved, to one hash (`7b88db04…`), as an evaluator change must.
+- Planner self-paired, `--deck-styles`, 384 games: Corp share **0.458 → 0.458** (seed 1, 10 discordant, 5 : 5, 342 of 384 games identical in winner and length) and **0.417 → 0.398** (seed 2, −0.018, z −1.94, 13 discordant, the Runner winning 10 of them, 344 identical). Every discordant game is Professional Opportunities or Enthusiasm, the two sample decks that hold Madani. Under the seed-spread band; the Runner's way where it moves.
+- `diag precepts --deck-styles` (planner both chairs; casual 192, startup 90; seeds 1 and 2): no derived ratio moved past noise; Corp share 0.464 / 0.406 → 0.453 / 0.406 casual, 0.478 / 0.533 → 0.444 / 0.533 startup. **`blind_cards.py` no longer lists Madani** (used 99 / 70 casual, 116 / 5 startup); the list is 20 / 22 / 15 / 14 cards, Pennyshaver first.
+- The card itself, seed 2, planner both chairs over 48 games a pairing, random 96 beside:
+
+  | pairing | Madani installed | prompts (hosts and free installs) |
+  |---|---|---|
+  | Brutal Efficiency vs Professional Opportunities | 1 → **8** (random 25) | 0 → **14** (random 39) |
+  | Peculiarity vs Professional Opportunities | 0 → **4** (random 21) | 0 → **1** (random 29) |
+  | Brutal Efficiency vs Enthusiasm | 0 → **17** (random 36) | 0 → **3** (random 41) |
+  | Peculiarity vs Enthusiasm | 0 → **8** (random 36) | 0 → **6** (random 48) |
+
+  Installed in 37 of 192 games where it was installed in 1, hosted on and installed from 24 times where it was never — about half random's rate of installs and a third of its prompts, because the planner installs a breaker it can afford outright and parks only what waits. `activated` (84–248 a pairing) is not quoted: Madani's free install is a 0[c] ability the engine accepts with nothing hosted, which resolves to nothing, and both seatings take it once a turn.
+
+**Verified.** `cargo test --workspace` green, clippy silent, both 256-seed sweeps green in release.
