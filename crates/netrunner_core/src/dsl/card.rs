@@ -1665,7 +1665,12 @@ impl CardDefinition {
                     return misfit("StealCost", "an additional cost to steal is about an agenda being `Stealing`; an agenda's own is its `steal_cost`");
                 }
                 (ContinuousKind::ScoreCost(_), Scope::Scoring(_)) => {}
-                (ContinuousKind::ScoreCost(_), _) => return misfit("ScoreCost", "an additional cost to score is about an agenda being `Scoring`"),
+                // Azef Protocol's "as an additional cost to score this
+                // agenda": the agenda's own text, read wherever it is.
+                (ContinuousKind::ScoreCost(_), Scope::This) if self.card_type == CardType::Agenda => {}
+                (ContinuousKind::ScoreCost(_), _) => {
+                    return misfit("ScoreCost", "an additional cost to score is about an agenda being `Scoring`, or an agenda's own (`This`)");
+                }
                 (ContinuousKind::BasicTrashCost(_), Scope::This) if self.card_type == CardType::Resource => {}
                 (ContinuousKind::BasicTrashCost(_), Scope::Trashing(_)) => {}
                 (ContinuousKind::BasicTrashCost(_), _) => {
@@ -2188,6 +2193,20 @@ mod tests {
         let mut asset = requirement(CardType::Asset, Scope::This);
         asset.agenda_points = None;
         assert!(refused(asset));
+
+        // Azef Protocol's shape: an additional cost to score is an agenda's
+        // own, or about an agenda being scored — never an asset's own.
+        let score_cost = |card_type: CardType| {
+            let agenda = card_type == CardType::Agenda;
+            let mut card = with(Side::Corp, card_type, None, ContinuousKind::ScoreCost(crate::dsl::Cost::Credits(1)), Scope::This);
+            if agenda {
+                card.agenda_points = Some(2);
+                card.advancement_requirement = Some(3);
+            }
+            card
+        };
+        assert_eq!(score_cost(CardType::Agenda).validate(), Ok(()));
+        assert!(refused(score_cost(CardType::Asset)));
     }
 
     /// A prohibition is for a run or a turn. One for an encounter parses,

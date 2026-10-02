@@ -43,8 +43,6 @@ pub(crate) const MSBP_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("light_the_fire", "Light the Fire!"),
     ("deep_dive", "Deep Dive"),
     ("hakarl_1_0", "Hákarl 1.0"),
-    ("vladisibirsk_city_grid", "Vladisibirsk City Grid"),
-    ("azef_protocol", "Azef Protocol"),
 ];
 
 /// *Midnight Sun* (`midnight_sun`): tranche 5 of the NSG plan.
@@ -58,7 +56,6 @@ pub(crate) const MS_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("cats_cradle", "Cat's Cradle"),
     ("backstitching", "Backstitching"),
     ("deep_dive", "Deep Dive"),
-    ("midnight_3_arcology", "Midnight-3 Arcology"),
     ("trieste_model_bioroids", "Trieste Model Bioroids"),
     ("echo", "Echo"),
     ("hakarl_1_0", "Hákarl 1.0"),
@@ -66,21 +63,13 @@ pub(crate) const MS_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("big_deal", "Big Deal"),
     ("blood_in_the_water", "Blood in the Water"),
     ("regenesis", "Regenesis"),
-    ("moon_pool", "Moon Pool"),
     ("bathynomus", "Bathynomus"),
     ("ivik", "Ivik"),
     ("mitosis", "Mitosis"),
-    ("mavirus", "Mavirus"),
-    ("chekist_scion", "Chekist Scion"),
-    ("drago_ivanov", "Drago Ivanov"),
-    ("mestnichestvo", "Mestnichestvo"),
     ("backroom_machinations", "Backroom Machinations"),
-    ("vladisibirsk_city_grid", "Vladisibirsk City Grid"),
     ("ob_superheavy_logistics_extract_export_excel", "Ob Superheavy Logistics: Extract. Export. Excel."),
-    ("azef_protocol", "Azef Protocol"),
     ("envelopment", "Envelopment"),
     ("stavka", "Stavka"),
-    ("mutually_assured_destruction", "Mutually Assured Destruction"),
     ("trust_operation", "Trust Operation"),
 ];
 

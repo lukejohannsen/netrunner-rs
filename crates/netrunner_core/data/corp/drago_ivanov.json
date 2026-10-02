@@ -1,0 +1,28 @@
+{
+  "id": "drago_ivanov",
+  "title": "Drago Ivanov",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 0,
+  "unique": true,
+  "advancement_requirement": 0,
+  "trash_cost": 1,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "RemoveAdvancementCounters": 2
+      },
+      "requirement": "DuringYourTurn",
+      "effect": {
+        "GiveTags": {
+          "Fixed": 1
+        }
+      },
+      "text": "2 hosted advancement counters: Give the Runner 1 tag."
+    }
+  ],
+  "built_from": 33051,
+  "is_playable": true
+}

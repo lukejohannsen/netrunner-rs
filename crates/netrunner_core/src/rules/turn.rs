@@ -1,5 +1,5 @@
 use crate::cards::CardRegistry;
-use crate::dsl::CardId;
+use crate::dsl::{CardId, Prohibition};
 use crate::rules::continuous;
 use crate::rules::dispatcher;
 use crate::rules::error::RulesError;
@@ -226,6 +226,12 @@ fn begin_discard_step(state: &mut GameState, side: Side, registry: &CardRegistry
     if side == Side::Runner && max_hand_size(state, side, registry) < 0 {
         events.push(GameEvent::RunnerFlatlined);
         events.extend(win::end_game(state, Side::Corp));
+        return Ok(events);
+    }
+    // "Skip your discard step" (Midnight-3 Arcology): straight on to the
+    // step after it, with no hand size checked (CR 5.5.4d).
+    if side == Prohibition::DiscardStep.binds() && continuous::cannot(state, registry, Prohibition::DiscardStep) {
+        events.push(open_end_of_turn_window(state, side));
         return Ok(events);
     }
     let over_by = cards_over_hand_limit(state, side, registry);

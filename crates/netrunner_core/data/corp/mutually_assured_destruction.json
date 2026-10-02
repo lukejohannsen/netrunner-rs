@@ -1,0 +1,45 @@
+{
+  "id": "mutually_assured_destruction",
+  "title": "Mutually Assured Destruction",
+  "side": "Corp",
+  "card_type": "Operation",
+  "cost": 4,
+  "additional_play_cost": {
+    "Clicks": 2
+  },
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "PromptChooseCards": {
+            "side": "Corp",
+            "source": "OwnInstalled",
+            "filter": "Rezzed",
+            "min": 0,
+            "max": 99,
+            "reveal": false,
+            "shuffle_after": false,
+            "destination": "OwnArchives",
+            "then": {
+              "EffectIf": {
+                "condition": {
+                  "AmountAtLeast": [
+                    "CardsSelected",
+                    1
+                  ]
+                },
+                "effect": {
+                  "GiveTags": "CardsSelected"
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "built_from": 33064,
+  "is_playable": true
+}

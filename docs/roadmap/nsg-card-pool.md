@@ -48,14 +48,14 @@ cards each stage takes.
 | 2 | Rebellion Without Rehearsal (`rwr`) | 65 | 65 | 0 | complete (28 September 2026) |
 | 3 | The Automata Initiative (`tai`) | 65 | 65 | 0 | complete (29 September 2026) |
 | 4 | Parhelion (`ph`) | 63 | 63 | 0 | complete (2 October 2026) |
-| 5 | Midnight Sun (`ms`) + Booster (`msbp`) | 65 + 7 | 32 + 2 | 33 + 5 | Stages 1–3 built (2 October 2026); **Stage 4 next** — advancement counters |
+| 5 | Midnight Sun (`ms`) + Booster (`msbp`) | 65 + 7 | 41 + 4 | 24 + 3 | Stages 1–4 built (2 October 2026); **Stage 5 next** — ice words |
 | 6 | Uprising (`ur`) + Booster (`urbp`) | 65 + 7 | 0 | 65 + 7 | not started |
 | 7 | Downfall (`df`) | 65 | 0 | 65 | not started |
 | 8 | System Update 2021 (`su21`), Salvaged Memories (`sm`), Magnum Opus Reprint (`mor`) | 82, 18, 6 | 11, 1, 0 | 71, 17, 6 | not started (the built ones are Core reprints) |
 
 **DSL ratio** (`pool_status.py`, the DSL Growth Rule's number): **17 of 97
-`Effect` variants single-use, 1 unused (`Trace`), over 475 card files** (2
-October 2026, with Midnight Sun Stage 3, which added none). The baseline at Stage 0a was 26 of 70 single-use, 3 unused,
+`Effect` variants single-use, 1 unused (`Trace`), over 484 card files** (2
+October 2026, with Midnight Sun Stage 4, which added none). The baseline at Stage 0a was 26 of 70 single-use, 3 unused,
 over 184 files: 281 cards later the single-use count is *lower*, because the
 growth went into `Trigger`, `EventFilter`, `Amount`, `CardFilter`, `Cost` and
 `ContinuousKind` words rather than into what an effect does.
@@ -300,7 +300,7 @@ this file keeps; a stage that builds or widens a mechanic updates the cell.
 | A card added to a score area "as an agenda" | VP: Word on the Street, Myōshu | RWR Jeitinho, Kingmaking; PH Nightmare Archive; MS Regenesis, Backroom Machinations | CR 1.17.3f | VP 7d; RWR 8c (the Runner's); PH 7 (an accessed Corp card, into the Runner's) |
 | Hosting in general: install onto a card, facedown hosted cards, host limits | VP: Hackerspace, Read-Write Share, Luana Campos | RWR Spree; PH Matryoshka | CR 1.13.5, CR 1.13.7 | VP 7b, 7c; RWR 3d (onto a host); TAI 4; PH 7 (turned facedown) |
 | Runner cards removed from the game | VP: Take a Dive, Kompromat | TAI Capybara; PH Nanuq; UR Devil Charm, The Back, Buffer Drive | CR 4.9 | RWR 2b (`RemoveFromGame`); TAI 7 |
-| Additional costs imposed by another card (steal, score, run, trash) | VP: Magistrate Revontulet | RWR Sebastião Souza Pessoa; TAI Daniela Jorge Inácio; MS Azef Protocol; UR NAPD Cordon, Earth Station: SEA Headquarters; DF Cold Site Server, Reduced Service | CR 1.16.10, CR 6.3.2b | VP 3a (steal, score); RWR 2a (trash); TAI 8b |
+| Additional costs imposed by another card (steal, score, run, trash) | VP: Magistrate Revontulet | RWR Sebastião Souza Pessoa; TAI Daniela Jorge Inácio; MS Azef Protocol; UR NAPD Cordon, Earth Station: SEA Headquarters; DF Cold Site Server, Reduced Service | CR 1.16.10, CR 6.3.2b | VP 3a (steal, score); RWR 2a (trash); TAI 8b; MS 4 (an agenda's own, to score it) |
 | Terminal: the action phase is forced to end | RWR: Active Policing, Bring Them Home | TAI Oppo Research; MS Big Deal | CR 5.4.3 | RWR 6a |
 | Psi game: a simultaneous secret bid | RWR: See How They Run | TAI Adrian Seis; UR Konjin, Hyoubu Precog Manifold | CR 10.14.6 | RWR 7b; TAI 8b |
 | Set aside | RWR: The Wizard’s Chest | PH Spark of Inspiration; MS Deep Dive; UR Gachapon | CR 4.8 | RWR 6d (faceup only); PH 6c (Spark composes) |
@@ -382,6 +382,7 @@ Each is also a note on its section's row in [rules-conformance.md](rules-conform
 - **Tocsin** is the pool's only expendable whose ability is an action, so it is the one announced; an expendable ability that is not an action announces nothing.
 - **Nihilo Agent's "load … when it is empty, trash it"** is three counters and a self-trash after its own removal; nothing else in the pool removes its counters.
 - **Into the Depths' search** (MS 3) offers only a program that could be installed, as Privileged Access's heap does; the printed search may find one it then cannot install, and either way nothing is installed and the stack is shuffled.
+- **Moon Pool's reveal** (MS 4) is two choices of one card, each shuffled into R&D, and its counter answered, before the next is chosen; the counter is offered on the Corp's own installed cards, where the printed "an installed card" admits the Runner's, on which a counter does nothing. The Corp knows every card either way, so the outcome is the printed one.
 - **The Twinning's "spend credits from an installed card"** (MS 3) is one moment per payment, however many cards paid toward it; only the first each turn places a counter, so the count is the printed one.
 - **Meeting of Minds** offers every card of the subtype in the grip and lets the Runner pick any number, a reveal of none included.
 - **Hiram Svensson**: damage takes its cards as discards (`CardDiscarded`), so a hardware lost to damage the Runner is responsible for is not heard. **Hiram, ezaM, MuslihaT**: the look is in the Runner's log, not their view (MuslihaT's is shown only when it matches), so a bot's sample does not keep the card on top of R&D.
@@ -403,6 +404,7 @@ A card on the list is a term to write or a reading to repair, never a card to ta
 - **Events it never plays**, PH 6c: Spark of Inspiration and Raindrops Cut Stone (played 14 and 23 times by random seats in 96 games, never by the planner in 48).
 - **Midnight Sun Stage 2's cards it never plays** (each Runner deck against Hostile Bid, seed 2, 48 planner games): Endurance (8[credit]; random seats installed it twice in 96 games and never used its break, which only its test reaches), Environmental Testing, PAN-Weave (its meat damage) and Chastushka (a sabotage the Corp chooses).
 - **Midnight Sun Stage 3's cards it never plays** (Burn Rate and Dead Reckoning against Hostile Bid, seed 2, 48 planner games): Into the Depths (34 plays by random seats in 96 games), Ghosttongue, The Twinning; Daeg, First Net-Cat installed once.
+- **Midnight Sun Stage 4's cards it never plays** (each edited Corp deck against Safety Net, seed 2, 48 planner games): Mutually Assured Destruction; Drago Ivanov's and Vladisibirsk City Grid's abilities (installed 59 and 65 times, never used); Mestnichestvo's encounter offer, because it never advances the ice; Moon Pool used once; Mavirus never rezzed.
 - **Economy resources and programs it does not value**: Friend of a Friend, Valentina Ferreira Carvalho, Coalescence; Laser Pointer, Banner; Monkeywrench, Saci, Pichação, Urban Art Vernissage; Lago Paranoá Shelter; AirbladeX (JSRF Ed.); the Core Set interrupts Decoy, Net Shield and Sacrificial Construct.
 - **Abilities it never uses**: M.I.C.'s trash, Arissana Rocha Nahu's, Epiphany Analytica's counter; identity and multi-click abilities generally (Phase 1 §8); over-advancing for Dividends.
 - **Breaks the evaluator could not price** — paid: Matryoshka's hosted copies, Lobisomem's and Audrey v2's counters, Hantu's counter pump and Tremolo's reduced cost are read as the engine charges them since Phase 5 §28 (2 October 2026), and the planner hosts a copy of Matryoshka ahead of a run worth the two clicks (0 → 11 hosts over 144 Hit List games). **Still owed:** Botulus and Poison Vial, whose `BreakSubroutinesUnconditionally` no evaluator reading prices (Botulus's would also need its host-ICE requirement read); a standing value for stock on the rig, so a copy is hosted on a turn with no run worth both clicks. Madani's hosted programs are paid (Phase 5 §30).
@@ -753,9 +755,9 @@ Grid, Tsakhia, World Tree.
 3. **Charge on PH's rule, core damage words** (built, 2 October 2026): Captain Padma Isbister, Rigging Up,
    “Daeg, First Net-Cat”, Stoneship Chart Room, Into the Depths, Esâ Afontov: Eco-Insurrectionist, Begemot,
    Ghosttongue, The Twinning, Cezve. Stage 3 is complete.
-4. **Advancement counters:** Vladisibirsk City Grid, Drago Ivanov,
+4. **Advancement counters** (built, 2 October 2026): Vladisibirsk City Grid, Drago Ivanov,
    Mestnichestvo, Chekist Scion, Mutually Assured Destruction, Moon Pool, Azef Protocol,
-   Midnight-3 Arcology, Mavirus.
+   Midnight-3 Arcology, Mavirus. Stage 4 is complete.
 5. **Ice words:** Cat's Cradle, Ivik, Wave, Bathynomus, Stavka, Hákarl 1.0,
    Trust Operation.
 6. **Mark on PH's rule, then access outside a breach:** Nyusha "Sable"
@@ -782,6 +784,7 @@ Excavator.
 - **Stage 1** — eleven Corp cards, composed (`claude/serene-einstein-6bhlig`, 2 October 2026).
 - **Stage 2** — eleven Runner cards, composed, with two words widened: a virus program counted apart in the turn log, and a breaker's strength remembered past its own trash cost (`claude/serene-einstein-6bhlig`, 2 October 2026).
 - **Stage 3** — charge and core damage: ten Runner cards with no new `Effect`, a damage suffered and a spend off an installed card as moments, a count of ice passed this run, a payment word for runs on central servers, and two Sweep decks, Burn Rate (Esâ Afontov) and Dead Reckoning (Captain Padma Isbister) (`claude/serene-einstein-6bhlig`, 2 October 2026).
+- **Stage 4** — advancement counters: nine Corp cards with no new `Effect`, an agenda's own additional cost to score, a discard step skipped for a turn, and one amount plus another (`claude/serene-einstein-6bhlig`, 2 October 2026).
 
 ### 6. Uprising and its Booster Pack — 65 cards (C 10 / V 37 / M 18)
 

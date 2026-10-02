@@ -1807,6 +1807,14 @@ pub enum Amount {
     /// one of a card's abilities. The cost's own words, so the ability
     /// prices itself wherever the payment asks.
     Reduced { amount: Box<Amount>, by: Box<Amount> },
+    /// `amount` plus `by` — Chekist Scion's "give them 1 tag plus 1 tag for
+    /// each hosted advancement counter", `GiveTags(Increased { amount:
+    /// Fixed(1), by: HostedAdvancementTokens })`. `Reduced`'s other half.
+    /// Composition didn't work: two `GiveTags` in a row are two
+    /// instructions, so two tag events, two prevention windows and two
+    /// "whenever the Runner takes tags", where taking a number of tags in
+    /// one instruction is one aggregated effect (CR 9.12.2c).
+    Increased { amount: Box<Amount>, by: Box<Amount> },
     /// Unrezzed pieces of ice other than `acting_card`'s install, wherever
     /// they are — Reverb's "lowered by 1[credit] for each other unrezzed
     /// piece of ice". No amount counted ice by rez state.
@@ -1978,12 +1986,21 @@ pub enum Prohibition {
     /// break effects of the breaking install (`ability::breakable_now`),
     /// which then find nothing to break, so the ability is not offered.
     BreakSubroutines,
+    /// The Corp skips their discard step — Midnight-3 Arcology's "Skip
+    /// your discard step this turn", for the turn it is scored in. The
+    /// game goes from the start of the discard phase straight to the step
+    /// after the discard step: no hand size is checked and nothing is
+    /// discarded (CR 5.5.4d). Asked by `turn::begin_discard_step`. Not a
+    /// hand size, which the discard would still read, and not a lingering
+    /// kind of its own: a step the player may not take for a duration is
+    /// what `Lingering::Cannot` already is, and it rides in the view.
+    DiscardStep,
 }
 
 impl Prohibition {
     /// Every prohibition, for a question put about each of them
     /// (`view::build_client_view`'s `standing_cannot`).
-    pub const ALL: [Prohibition; 9] = [
+    pub const ALL: [Prohibition; 10] = [
         Prohibition::ScoreAgendas,
         Prohibition::StealOrTrash,
         Prohibition::SpendOrLoseCreditPool,
@@ -1993,12 +2010,13 @@ impl Prohibition {
         Prohibition::AccessOthers,
         Prohibition::Access,
         Prohibition::BreakSubroutines,
+        Prohibition::DiscardStep,
     ];
 
     /// The player it binds.
     pub fn binds(self) -> Side {
         match self {
-            Prohibition::ScoreAgendas | Prohibition::EndTheRun => Side::Corp,
+            Prohibition::ScoreAgendas | Prohibition::EndTheRun | Prohibition::DiscardStep => Side::Corp,
             Prohibition::StealOrTrash | Prohibition::SpendOrLoseCreditPool | Prohibition::SpendCredits | Prohibition::RunOnRemote | Prohibition::AccessOthers | Prohibition::Access | Prohibition::BreakSubroutines => Side::Runner,
         }
     }
@@ -2010,7 +2028,7 @@ impl Prohibition {
     pub(crate) fn counted_as(self) -> Option<crate::dsl::Trigger> {
         match self {
             Prohibition::RunOnRemote => Some(crate::dsl::Trigger::OnRunStart),
-            Prohibition::ScoreAgendas | Prohibition::StealOrTrash | Prohibition::SpendOrLoseCreditPool | Prohibition::SpendCredits | Prohibition::EndTheRun | Prohibition::AccessOthers | Prohibition::Access | Prohibition::BreakSubroutines => None,
+            Prohibition::ScoreAgendas | Prohibition::StealOrTrash | Prohibition::SpendOrLoseCreditPool | Prohibition::SpendCredits | Prohibition::EndTheRun | Prohibition::AccessOthers | Prohibition::Access | Prohibition::BreakSubroutines | Prohibition::DiscardStep => None,
         }
     }
 }

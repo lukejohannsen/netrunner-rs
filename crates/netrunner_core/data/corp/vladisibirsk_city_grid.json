@@ -1,0 +1,44 @@
+{
+  "id": "vladisibirsk_city_grid",
+  "title": "Vladisibirsk City Grid",
+  "side": "Corp",
+  "card_type": "Upgrade",
+  "cost": 3,
+  "advancement_requirement": 0,
+  "trash_cost": 4,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "RemoveAdvancementCounters": 2
+      },
+      "requirement": "OncePerTurn",
+      "effect": {
+        "PromptChooseCards": {
+          "side": "Corp",
+          "source": "OwnInstalled",
+          "filter": {
+            "All": [
+              "Advanceable",
+              "InRootOfThisServer",
+              "NotSourceCard"
+            ]
+          },
+          "min": 1,
+          "max": 1,
+          "reveal": false,
+          "shuffle_after": false,
+          "then": {
+            "PlaceAdvancementCounters": {
+              "Fixed": 2
+            }
+          }
+        }
+      },
+      "text": "Once per turn → 2 hosted advancement counters: Place 2 advancement counters on another card you can advance in the root of this server."
+    }
+  ],
+  "built_from": 32006,
+  "is_playable": true
+}

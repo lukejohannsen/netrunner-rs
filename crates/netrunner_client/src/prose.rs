@@ -100,6 +100,7 @@ pub fn describe_amount(amount: &Amount) -> String {
         Amount::CorpInstalls(filter) => format!("the Corp's installed cards ({})", humanize(format!("{filter:?}")).to_lowercase()),
         Amount::RunnerInstalls(filter) => format!("the Runner's installed cards ({})", humanize(format!("{filter:?}")).to_lowercase()),
         Amount::Reduced { amount, by } => format!("{} less {}, at least 0", describe_amount(amount), describe_amount(by)),
+        Amount::Increased { amount, by } => format!("{} plus {}", describe_amount(amount), describe_amount(by)),
         Amount::CoreDamageTaken => "the core damage the Runner has taken this game".to_string(),
         Amount::ChosenNumber => "the number chosen".to_string(),
         Amount::InHeapWithSubtype(subtype) => format!("the number of {} cards in the heap", subtype.printed().to_lowercase()),
@@ -461,6 +462,7 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
                 (Prohibition::Access, _) => "the Runner cannot access this card",
                 (Prohibition::BreakSubroutines, _) if *this_install => "that card's abilities cannot break subroutines",
                 (Prohibition::BreakSubroutines, _) => "the Runner's abilities cannot break subroutines",
+                (Prohibition::DiscardStep, _) => "the Corp skips their discard step",
             };
             format!("{what} {}", duration(until))
         }
@@ -749,6 +751,7 @@ pub fn describe_continuous(effect: &ContinuousEffect) -> String {
             Prohibition::AccessOthers => "cannot access cards other than this card",
             Prohibition::Access => "cannot access this card",
             Prohibition::BreakSubroutines => "cannot break subroutines",
+            Prohibition::DiscardStep => "skips their discard step",
         }
         .to_string(),
         ContinuousKind::LosesAbilities => "loses all abilities except its printed subroutines".to_string(),

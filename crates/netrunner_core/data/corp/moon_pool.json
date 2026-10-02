@@ -1,0 +1,148 @@
+{
+  "id": "moon_pool",
+  "title": "Moon Pool",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 3,
+  "trash_cost": 3,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": "RemoveSelfFromGame",
+      "effect": {
+        "Sequence": [
+          {
+            "PromptChooseCards": {
+              "side": "Corp",
+              "source": "OwnHq",
+              "filter": "Any",
+              "min": 0,
+              "max": 2,
+              "reveal": false,
+              "shuffle_after": false,
+              "destination": "OwnArchives"
+            }
+          },
+          {
+            "PromptChooseCards": {
+              "side": "Corp",
+              "source": "OwnArchives",
+              "filter": "Facedown",
+              "min": 0,
+              "max": 1,
+              "reveal": true,
+              "shuffle_after": true,
+              "destination": "OwnRAndD",
+              "then": {
+                "EffectIf": {
+                  "condition": {
+                    "And": [
+                      {
+                        "AmountAtLeast": [
+                          "CardsSelected",
+                          1
+                        ]
+                      },
+                      {
+                        "ActingCardMatches": {
+                          "CardType": "Agenda"
+                        }
+                      }
+                    ]
+                  },
+                  "effect": {
+                    "PromptChooseCards": {
+                      "side": "Corp",
+                      "source": "OwnInstalled",
+                      "filter": "Any",
+                      "min": 0,
+                      "max": 1,
+                      "reveal": false,
+                      "shuffle_after": false,
+                      "then": {
+                        "EffectIf": {
+                          "condition": {
+                            "AmountAtLeast": [
+                              "CardsSelected",
+                              1
+                            ]
+                          },
+                          "effect": {
+                            "PlaceAdvancementCounters": {
+                              "Fixed": 1
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          {
+            "PromptChooseCards": {
+              "side": "Corp",
+              "source": "OwnArchives",
+              "filter": "Facedown",
+              "min": 0,
+              "max": 1,
+              "reveal": true,
+              "shuffle_after": true,
+              "destination": "OwnRAndD",
+              "then": {
+                "EffectIf": {
+                  "condition": {
+                    "And": [
+                      {
+                        "AmountAtLeast": [
+                          "CardsSelected",
+                          1
+                        ]
+                      },
+                      {
+                        "ActingCardMatches": {
+                          "CardType": "Agenda"
+                        }
+                      }
+                    ]
+                  },
+                  "effect": {
+                    "PromptChooseCards": {
+                      "side": "Corp",
+                      "source": "OwnInstalled",
+                      "filter": "Any",
+                      "min": 0,
+                      "max": 1,
+                      "reveal": false,
+                      "shuffle_after": false,
+                      "then": {
+                        "EffectIf": {
+                          "condition": {
+                            "AmountAtLeast": [
+                              "CardsSelected",
+                              1
+                            ]
+                          },
+                          "effect": {
+                            "PlaceAdvancementCounters": {
+                              "Fixed": 1
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        ]
+      },
+      "text": "Remove this asset from the game: Trash up to 2 cards from HQ. Reveal up to 2 facedown cards in Archives and shuffle them into R&D. For each agenda revealed this way, you may place 1 advancement counter on an installed card."
+    }
+  ],
+  "built_from": 33042,
+  "is_playable": true
+}

@@ -1,0 +1,61 @@
+{
+  "id": "mestnichestvo",
+  "title": "Mestnichestvo",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "CodeGate"
+  },
+  "cost": 5,
+  "strength": 4,
+  "advancement_requirement": 0,
+  "triggers": [
+    {
+      "trigger": "OnEncounter",
+      "subject": "This",
+      "requirement": {
+        "AmountAtLeast": [
+          "HostedAdvancementTokens",
+          1
+        ]
+      },
+      "effects": [
+        {
+          "OfferPaidChoice": {
+            "side": "Corp",
+            "cost": {
+              "RemoveAdvancementCounters": 1
+            },
+            "if_paid": {
+              "LoseCredits": [
+                "Runner",
+                3
+              ]
+            },
+            "if_declined": {
+              "Sequence": []
+            },
+            "text": "you may remove 1 hosted advancement counter. If you do, the Runner loses 3[credit]"
+          }
+        }
+      ],
+      "text": "When the Runner encounters this ice, you may remove 1 hosted advancement counter. If you do, the Runner loses 3[credit]."
+    }
+  ],
+  "subroutines": [
+    {
+      "text": "The Runner loses 3[credit].",
+      "effect": {
+        "LoseCredits": [
+          "Runner",
+          3
+        ]
+      }
+    },
+    {
+      "text": "End the run.",
+      "effect": "EndTheRun"
+    }
+  ],
+  "built_from": 33053,
+  "is_playable": true
+}

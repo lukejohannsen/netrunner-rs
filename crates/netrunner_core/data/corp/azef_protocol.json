@@ -1,0 +1,41 @@
+{
+  "id": "azef_protocol",
+  "title": "Azef Protocol",
+  "side": "Corp",
+  "card_type": "Agenda",
+  "cost": 0,
+  "advancement_requirement": 3,
+  "agenda_points": 2,
+  "continuous": [
+    {
+      "kind": {
+        "ScoreCost": {
+          "Trash": {
+            "from": "OwnInstalled",
+            "filter": "NotSourceCard",
+            "count": 1
+          }
+        }
+      },
+      "applies_to": "This",
+      "text": "As an additional cost to score this agenda, trash 1 of your other installed cards."
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnAgendaScored",
+      "subject": "This",
+      "effects": [
+        {
+          "DealDamage": [
+            "Meat",
+            2
+          ]
+        }
+      ],
+      "text": "When you score this agenda, do 2 meat damage."
+    }
+  ],
+  "built_from": 32007,
+  "is_playable": true
+}

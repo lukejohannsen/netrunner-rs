@@ -3,7 +3,7 @@
   "name": "Hostile Bid",
   "side": "Corp",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps reach bad publicity, which no other deck gives — Hostile Takeover is the only card in the pool that does — and meat damage for Crash Space to prevent (Measured Response). Weyland Consortium: Building a Better World, an identity no sample deck uses. Eternal-legal only. Vantage Point Stage 3a: Let Them Dream for Offworld Office. Vantage Point Stage 4b: two Event Horizon for two Tithe. Stage 5a: Shackleton Grid for Regolith Mining License. Stage 7a: two Luana Campos for two PAD Campaign. Stage 7d: two Sacrifice Zone Expansion for two Off the Books, and two Myōshu for a Hedge Fund and a Measured Response. Stage 7f: two Tocsin for two Enigma, to be used from HQ for a barrier and a sentry. Stage 7g: two Flagship for two Wall of Static, for runs on HQ or R&D that are breached and not declared successful. Rebellion Without Rehearsal Stage 4a: two Logjam for two Palisade, two Business As Usual for two Petty Cash. Rebellion Without Rehearsal Stage 4b: two Hearts and Minds for a PAD Campaign and a Government Subsidy, and an Isaac Liberdade for a Whitespace. Rebellion Without Rehearsal Stage 5b: two Hammer for two Kessleroid. The Automata Initiative Stage 1: two Cybersand Harvester for two Hedge Fund, and two Pivot for two Measured Response. The Automata Initiative Stage 2: two Valentão for two Ballista. Parhelion Stage 2b: two Hostile Architecture for two Hearts and Minds, which Land Grab still carries. Parhelion Stage 7: two Superdeep Borehole for its two Business as Usual, loaded with six bad publicity when rezzed and a win when the last is taken. Parhelion Stage 8: two Anvil for two Hammer, a limit on breaking for a limit on breaking, and two ZATO City Grid for two Shackleton Grid, a region for a region. Midnight Sun Stage 1: two Maskirovka for two of its three Ice Wall, a barrier that ends the run for one that ends the run, and two Svyatogor Excavator for its two Luana Campos, an economy asset for an economy asset, which trashes a spent trap for credits. Tag, You're It keeps Ice Wall and Land Grab keeps Luana Campos.",
+  "description": "Not a published list: built so the sweeps reach bad publicity, which no other deck gives — Hostile Takeover is the only card in the pool that does — and meat damage for Crash Space to prevent (Measured Response). Weyland Consortium: Building a Better World, an identity no sample deck uses. Eternal-legal only. Vantage Point Stage 3a: Let Them Dream for Offworld Office. Vantage Point Stage 4b: two Event Horizon for two Tithe. Stage 5a: Shackleton Grid for Regolith Mining License. Stage 7a: two Luana Campos for two PAD Campaign. Stage 7d: two Sacrifice Zone Expansion for two Off the Books, and two Myōshu for a Hedge Fund and a Measured Response. Stage 7f: two Tocsin for two Enigma, to be used from HQ for a barrier and a sentry. Stage 7g: two Flagship for two Wall of Static, for runs on HQ or R&D that are breached and not declared successful. Rebellion Without Rehearsal Stage 4a: two Logjam for two Palisade, two Business As Usual for two Petty Cash. Rebellion Without Rehearsal Stage 4b: two Hearts and Minds for a PAD Campaign and a Government Subsidy, and an Isaac Liberdade for a Whitespace. Rebellion Without Rehearsal Stage 5b: two Hammer for two Kessleroid. The Automata Initiative Stage 1: two Cybersand Harvester for two Hedge Fund, and two Pivot for two Measured Response. The Automata Initiative Stage 2: two Valentão for two Ballista. Parhelion Stage 2b: two Hostile Architecture for two Hearts and Minds, which Land Grab still carries. Parhelion Stage 7: two Superdeep Borehole for its two Business as Usual, loaded with six bad publicity when rezzed and a win when the last is taken. Parhelion Stage 8: two Anvil for two Hammer, a limit on breaking for a limit on breaking, and two ZATO City Grid for two Shackleton Grid, a region for a region. Midnight Sun Stage 1: two Maskirovka for two of its three Ice Wall, a barrier that ends the run for one that ends the run, and two Svyatogor Excavator for its two Luana Campos, an economy asset for an economy asset, which trashes a spent trap for credits. Tag, You're It keeps Ice Wall and Land Grab keeps Luana Campos. Midnight Sun Stage 4: two Azef Protocol for its two Let Them Dream, point for point.",
   "style": [
     "traps"
   ],
@@ -24,10 +24,6 @@
     {
       "card": "greenmail",
       "count": 3
-    },
-    {
-      "card": "let_them_dream",
-      "count": 2
     },
     {
       "card": "orbital_superiority",
@@ -107,6 +103,10 @@
     },
     {
       "card": "svyatogor_excavator",
+      "count": 2
+    },
+    {
+      "card": "azef_protocol",
       "count": 2
     }
   ]
