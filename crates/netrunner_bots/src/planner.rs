@@ -1597,6 +1597,110 @@ mod positions {
         assert_eq!(chosen, PlayerAction::GainCreditClick { side: Side::Runner }, "should save for Cleaver");
     }
 
+    /// A Matryoshka with nothing hosted breaks nothing, and a copy in the
+    /// grip is the click that makes it a breaker (Phase 5 §28): every
+    /// server behind a rezzed piece it could then break, and a remote with
+    /// an advanced card in it, the Runner hosts the copy and runs the
+    /// remote rather than clicking for credits — the line the evaluator
+    /// could not see while a break paid in copies was an unpriced cost,
+    /// so the planner never hosted one (0 of 144 Hit List games at seed
+    /// 2, Parhelion Stage 7). The remote is what pays for the two clicks:
+    /// a hosted copy has no standing value of its own, so a central's one
+    /// hidden access (0.6) does not buy the host click and the run click
+    /// (0.8) at the balanced rate — a host is planned only ahead of a run
+    /// worth both, which is the reading §28 measured and accepted. The
+    /// grip holds three other cards because an emptied grip is the
+    /// flatline fear, not the point.
+    #[test]
+    fn hosts_a_copy_of_matryoshka_before_running() {
+        use netrunner_core::dsl::{Effect, IceType, SubroutineDef};
+        use netrunner_core::rules::InstallSlot;
+        let mut registry = CardRegistry::new();
+        netrunner_core::cards::register_playable_cards(&mut registry);
+        let mut wall = blank_card("wall", CardType::Ice(IceType::Sentry));
+        wall.strength = Some(2);
+        wall.subroutines = vec![SubroutineDef { text: String::new(), effect: Effect::EndTheRun, only_breakable_by: None }];
+        registry.insert(wall);
+
+        let mut state = GameState::new(0);
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner = empty_runner();
+        state.runner.resources = PlayerResources { credits: Credits(5), clicks: Clicks(3), agenda_points: AgendaPoints(0) };
+        state.runner.memory_units = MemoryUnits(2);
+        state.runner.grip = vec![CardId("matryoshka".to_string()), CardId("wall".to_string()), CardId("wall".to_string()), CardId("wall".to_string())];
+        state.runner.rig = vec![netrunner_core::rules::InstalledRunnerCard {
+            card: CardId("matryoshka".to_string()),
+            install_id: InstallId(10),
+            base_strength: 2,
+            ..Default::default()
+        }];
+        state.corp.resources.credits = Credits(5);
+        state.corp.hq = vec![CardId("wall".to_string())];
+        state.corp.r_and_d = vec![CardId("wall".to_string()); 3];
+        for (index, server) in [ServerId::Hq, ServerId::RnD, ServerId::Archives].into_iter().enumerate() {
+            state.corp.installed.push(InstalledCard {
+                card: CardId("wall".to_string()),
+                install_id: InstallId(index as u32 + 1),
+                server,
+                slot: InstallSlot::Ice,
+                rezzed: true,
+                ..Default::default()
+            });
+        }
+        // A remote worth the run: a face-down card with two tokens on,
+        // behind a piece the hosted copy breaks.
+        state.corp.installed.push(InstalledCard {
+            card: CardId("wall".to_string()),
+            install_id: InstallId(4),
+            server: ServerId::Remote(0),
+            slot: InstallSlot::Ice,
+            rezzed: true,
+            ..Default::default()
+        });
+        state.corp.installed.push(InstalledCard {
+            card: CardId("wall".to_string()),
+            install_id: InstallId(5),
+            server: ServerId::Remote(0),
+            slot: InstallSlot::Root,
+            advancement_tokens: 2,
+            ..Default::default()
+        });
+        let view = build_client_view(&state, &registry, Side::Runner);
+        let host = PlayerAction::ActivateAbility { target: InstallId(10), ability_index: 0 };
+        assert!(view.legal_actions.contains(&host), "{:?}", view.legal_actions);
+
+        // The Runner's clicks up to the run it starts; the Corp passes
+        // every window it is handed in between.
+        let mut agent = PlanningAgent::new(Side::Runner, 3);
+        let mut actions = Vec::new();
+        for _ in 0..20 {
+            match current_actor(&state) {
+                Some(Side::Corp) => {
+                    // A window the Corp is handed is passed; its own turn
+                    // means the Runner's is over.
+                    let Ok((next, _)) = apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Corp }) else { break };
+                    state = next;
+                }
+                Some(Side::Runner) => {
+                    let view = build_client_view(&state, &registry, Side::Runner);
+                    agent.observe(&view);
+                    let action = agent.select_action(&view, &registry);
+                    assert!(view.legal_actions.contains(&action), "{action:?} is not legal");
+                    state = apply_action(&state, &registry, action.clone()).expect("the plan's action applies").0;
+                    let ran = matches!(action, PlayerAction::InitiateRun { .. });
+                    actions.push(action);
+                    if ran {
+                        break;
+                    }
+                }
+                None => break,
+            }
+        }
+        assert_eq!(actions.first(), Some(&host), "should host the copy first: {actions:?}");
+        assert!(matches!(actions.last(), Some(PlayerAction::InitiateRun { .. })), "and then run: {actions:?}");
+        assert_eq!(state.runner.rig[0].hosted_cards.len(), 1);
+    }
+
     /// With an empty grip, open servers and a stack to draw from, the
     /// Runner draws before it runs (ROADMAP Phase 2 §5's draw item).
     #[test]
