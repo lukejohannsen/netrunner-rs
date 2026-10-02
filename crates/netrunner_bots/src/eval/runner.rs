@@ -240,6 +240,72 @@ pub(super) fn held_cards_value(state: &GameState, registry: &CardRegistry, w: &W
         .sum()
 }
 
+/// What an installer on the table is worth (Phase 5 §30): `(hosted,
+/// promised)` — what the programs it hosts are worth where they are, and
+/// the clicks the programs still in the grip promise. An installer is a
+/// rig card whose text installs from the cards it hosts — a `Paid`
+/// ability with `Effect::InstallRunnerCardFromHost` in it (Madani's
+/// "once per turn → 0[credit]: install 1 hosted program"), read off the
+/// DSL and never the name; a card hosted as a break's stock (Matryoshka's
+/// copies) is not read here, because nothing installs it.
+///
+/// **A hosted program is a program one turn from the table:** its
+/// `install_delta` less a click, the turn's wait at the guide's rate —
+/// not the grip's half, because its install is free and certain, and not
+/// the whole, because it is not on the table yet. **A grip program
+/// promises half a click:** the install will cost none, once a host
+/// click still to be paid has been. Both over the programs the Runner
+/// would install at all (`install_delta` above zero), the promise capped
+/// at the turns the stage expects (`horizon`).
+///
+/// Three readings were measured before this one (the §30 entry). With
+/// the promise read off hosted cards alone, an empty Madani was worth its
+/// presence and nothing, and the planner installed it in 1 of 192 games.
+/// With the grip and the host promising the same click it put Madani on
+/// the table at random's rate and hosted on it in 1–10 games of 48
+/// against random's 29–48: a host was a click for nothing, and an
+/// unhosted Madani cost the Runner its games. With a hosted program at a
+/// whole click and a grip one at half, the host was a tie with a credit
+/// click at two programs and a fifth of a click at three, which the grip
+/// floor outbid, and the planner hosted on it in 0 games. The wait is
+/// what a hosted program is worth over a held one, and it is what makes
+/// the host a move: one strong breaker hosted is worth half its delta
+/// over the click, and the free install that follows is worth the click.
+pub(super) fn hosted_installs_value(state: &GameState, registry: &CardRegistry, w: &Weights, horizon: u32) -> (f64, f64) {
+    let rig = rig_coverage(state, registry);
+    let shown = shown_for(state, registry, w);
+    // Programs: what the installer installs. A grip hardware is not a
+    // click it will ever save.
+    let delta = |def: &CardDefinition| {
+        if def.card_type == CardType::Program { install_delta(def, rig, shown, w, horizon).max(0.0) } else { 0.0 }
+    };
+    let mut hosted = 0.0;
+    let mut promised = 0.0;
+    for host in state.runner.rig.iter().filter(|host| registry.get(&host.card).is_some_and(installs_from_host)) {
+        hosted += host
+            .hosted_cards
+            .iter()
+            .filter_map(|card| registry.get(card))
+            .map(|def| (delta(def) - w.click_weight).max(0.0))
+            .sum::<f64>();
+        promised += 0.5 * state.runner.grip.iter().filter_map(|card| registry.get(card)).filter(|def| delta(def) > 0.0).count() as f64;
+    }
+    (hosted, promised.min(f64::from(horizon)))
+}
+
+/// Whether a card's text installs the cards it hosts.
+pub(super) fn installs_from_host(def: &CardDefinition) -> bool {
+    def.abilities.iter().filter(|ability| ability.trigger == Trigger::Paid).any(|ability| {
+        let mut found = false;
+        ability.effect.for_each_effect(&mut |effect| {
+            if matches!(effect, Effect::InstallRunnerCardFromHost) {
+                found = true;
+            }
+        });
+        found
+    })
+}
+
 /// The ICE the Corp has shown, for the terms that condition on it, or
 /// every subtype when no term does — so the reference's arithmetic is
 /// untouched by the reading. See `UNSHOWN_BREAKER_WEIGHT`.
@@ -324,6 +390,10 @@ pub(super) fn score(state: &GameState, registry: &CardRegistry, w: &Weights, hor
     *score -= breaker_savings_shortfall(state, registry, shown_for(state, registry, w)) as f64 * w.savings_shortfall_weight;
     *score -= w.grip_floor.saturating_sub(state.runner.grip.len()) as f64 * w.grip_shortfall_weight;
     *score += held_cards_value(state, registry, w, horizon) * w.held_card_weight;
+    // A program hosted on an installer is one turn from the table, and
+    // the grip's programs promise it clicks (`hosted_installs_value`).
+    let (hosted, promised) = hosted_installs_value(state, registry, w, horizon);
+    *score += hosted + promised * w.click_weight;
     *score -= visible_corp_board(state, registry, w, horizon) * w.opponent_board_weight;
     if state.this_turn.times(Trigger::OnSuccessfulRun) > 0 {
         *score += w.successful_run_weight;
@@ -635,6 +705,70 @@ mod tests {
         installed.runner.memory_units = MemoryUnits(3);
         installed.runner.rig = vec![rig_card("cleaver")];
         assert!(evaluate_state(&installed, Side::Runner, &registry) > evaluate_state(&clicked, Side::Runner, &registry));
+    }
+
+    /// A program hosted on an installer is one turn from the table — its
+    /// install delta less a click — and the grip's programs promise half
+    /// a click each, one a turn over the horizon; a program not worth
+    /// installing is worth nothing either way, and a copy hosted on
+    /// Matryoshka — a break's stock, which nothing installs — is read by
+    /// nothing here (Phase 5 §30).
+    #[test]
+    fn a_hosted_program_is_one_turn_from_the_table_and_the_grip_promises_half_a_click() {
+        let pool = pool();
+        let registry = CardRegistry::from_cards(vec![
+            printed(&pool, "madani"),
+            printed(&pool, "matryoshka"),
+            costed_breaker("cleaver", Some(IceType::Barrier), 1),
+            costed_breaker("carmen", Some(IceType::Sentry), 1),
+            costed_breaker("dear_corroder", Some(IceType::Barrier), 9),
+        ]);
+        let w = guide();
+        let board = |host: &str, hosted: &[&str], grip: &[&str]| {
+            let mut state = GameState::new(0);
+            state.runner.rig = vec![InstalledRunnerCard {
+                hosted_cards: hosted.iter().map(|c| CardId(c.to_string())).collect(),
+                ..rig_card(host)
+            }];
+            state.runner.grip = grip.iter().map(|c| CardId(c.to_string())).collect();
+            state
+        };
+        let delta = |id: &str| install_delta(&printed(&registry, id), [false; 3], [true; 3], &w, 9);
+        assert!(delta("cleaver") > w.click_weight && delta("carmen") > w.click_weight);
+        assert!(delta("dear_corroder") < 0.0, "9[c] for one subtype is not worth installing");
+
+        let hosted = board("madani", &["cleaver", "carmen"], &[]);
+        let waiting = delta("cleaver") - w.click_weight + delta("carmen") - w.click_weight;
+        assert_eq!(hosted_installs_value(&hosted, &registry, &w, 9), (waiting, 0.0));
+        let in_grip = board("madani", &[], &["cleaver", "carmen"]);
+        assert_eq!(hosted_installs_value(&in_grip, &registry, &w, 9), (0.0, 1.0), "the grip's programs promise half a click each");
+        let crowded = board("madani", &[], &["cleaver", "carmen", "cleaver"]);
+        assert_eq!(hosted_installs_value(&crowded, &registry, &w, 1).1, 1.0, "one install a turn, one turn left");
+        let dead = board("madani", &["dear_corroder"], &["dear_corroder"]);
+        assert_eq!(hosted_installs_value(&dead, &registry, &w, 9), (0.0, 0.0), "a program never installed is worth nothing hosted and promises nothing");
+        let stock = board("matryoshka", &["matryoshka"], &["cleaver"]);
+        assert_eq!(hosted_installs_value(&stock, &registry, &w, 9), (0.0, 0.0), "a hosted copy is a break's stock, not a program waiting");
+        let none = board("cleaver", &[], &["carmen"]);
+        assert_eq!(hosted_installs_value(&none, &registry, &w, 9), (0.0, 0.0), "no installer, no promise");
+
+        // The whole score: Madani on the table is worth the clicks the
+        // grip promises over a hardware with no text, which is what puts
+        // it there; and hosting the two is worth their wait over the
+        // grip's half and the promise, less the grip floor.
+        let cleaver = delta("cleaver");
+        let carmen = delta("carmen");
+        let mut registry = registry;
+        registry.insert(CardDefinition { card_type: CardType::Hardware, side: Side::Runner, ..ice("plain", 2) });
+        let mut bare = in_grip.clone();
+        bare.runner.rig = vec![rig_card("plain")];
+        let with = evaluate_state_with(&in_grip, Side::Runner, &registry, &w);
+        let without = evaluate_state_with(&bare, Side::Runner, &registry, &w);
+        assert!((with - without - w.click_weight).abs() < 1e-9, "{with} vs {without}");
+        let hosted_score = evaluate_state_with(&hosted, Side::Runner, &registry, &w);
+        let held_in_grip = (cleaver + carmen) * w.held_card_weight + w.click_weight;
+        let expected = waiting - held_in_grip - 2.0 * w.grip_shortfall_weight;
+        assert!((hosted_score - with - expected).abs() < 1e-9, "{hosted_score} vs {with}: expected {expected}");
+        assert!(expected + 2.0 * w.grip_shortfall_weight > w.click_weight, "hosting two breakers is worth the click, floor aside");
     }
 
     /// The grip term is a shortfall below a floor: each card up to the

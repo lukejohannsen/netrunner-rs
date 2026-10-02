@@ -1723,6 +1723,111 @@ mod positions {
         assert_eq!(state.runner.rig[0].hosted_cards.len(), 1);
     }
 
+    /// Madani is installed for the clicks it promises on the programs the
+    /// grip holds, and a program hosted on it is installed for no click
+    /// (Phase 5 §30): with Madani and three breakers in hand the Runner
+    /// cannot yet afford, the click puts Madani on the table rather than
+    /// a credit in the pool; and with a breaker already hosted and one
+    /// click left the free install is taken and the click is still spent
+    /// on something else. A breaker the Runner can afford is installed
+    /// outright — a strong card on the table now beats one parked at half
+    /// its value — so Madani's place is the programs that are waiting:
+    /// for credits, for memory, for the turns to install them one a
+    /// click. Hosting itself is not pinned: it is worth the other half of
+    /// each program's click, which a grip at the floor or a run worth more
+    /// outbids, and is measured in play rather than asserted.
+    #[test]
+    fn installs_madani_for_its_promise_and_installs_a_hosted_program_free() {
+        use netrunner_core::dsl::{AbilityDef, Effect, IceType, SubroutineBreakCount, Trigger};
+        let mut registry = CardRegistry::new();
+        netrunner_core::cards::register_playable_cards(&mut registry);
+        for (id, subtype) in [("fracter", IceType::Barrier), ("killer", IceType::Sentry)] {
+            let mut breaker = blank_card(id, CardType::Program);
+            breaker.side = Side::Runner;
+            breaker.cost = 1;
+            breaker.memory_cost = Some(1);
+            breaker.abilities = vec![AbilityDef {
+                text: None,
+                trigger: Trigger::Paid,
+                cost: None,
+                requirement: None,
+                effect: Effect::BreakSubroutines { count: SubroutineBreakCount::All, restrict_to: Some(subtype) },
+                cost_discount_if: None, used_by: None, access: false, from_hand: false }];
+            registry.insert(breaker);
+        }
+        let filler = || vec![CardId("madani".to_string()); 3];
+        let base = |clicks: u32| {
+            let mut state = GameState::new(0);
+            state.phase = GamePhase::Action(Side::Runner);
+            state.runner = empty_runner();
+            state.runner.resources = PlayerResources { credits: Credits(6), clicks: Clicks(clicks), agenda_points: AgendaPoints(0) };
+            state.runner.memory_units = MemoryUnits(4);
+            state.corp.hq = vec![CardId("madani".to_string()); 3];
+            state.corp.r_and_d = vec![CardId("madani".to_string()); 5];
+            state
+        };
+        let play = |mut state: GameState, registry: &CardRegistry| {
+            let mut agent = PlanningAgent::new(Side::Runner, 3);
+            let mut actions = Vec::new();
+            for _ in 0..20 {
+                match current_actor(&state) {
+                    Some(Side::Corp) => {
+                        let Ok((next, _)) = apply_action(&state, registry, PlayerAction::PassPriority { side: Side::Corp }) else { break };
+                        state = next;
+                    }
+                    Some(Side::Runner) => {
+                        let view = build_client_view(&state, registry, Side::Runner);
+                        agent.observe(&view);
+                        let action = agent.select_action(&view, registry);
+                        assert!(view.legal_actions.contains(&action), "{action:?} is not legal");
+                        state = apply_action(&state, registry, action.clone()).expect("the plan's action applies").0;
+                        actions.push(action);
+                    }
+                    None => break,
+                }
+            }
+            (actions, state)
+        };
+
+        // Madani in hand beside three breakers it cannot afford, and a
+        // click that would otherwise be a credit: installed.
+        let mut dear = registry.clone();
+        for id in ["fracter", "killer"] {
+            let mut card = dear.get(&CardId(id.to_string())).expect("registered").clone();
+            card.cost = 4;
+            dear.insert(card);
+        }
+        let mut decoder = dear.get(&CardId("fracter".to_string())).expect("registered").clone();
+        decoder.id = CardId("decoder".to_string());
+        decoder.abilities[0].effect = Effect::BreakSubroutines { count: SubroutineBreakCount::All, restrict_to: Some(IceType::CodeGate) };
+        dear.insert(decoder);
+        let mut state = base(1);
+        state.runner.resources.credits = Credits(3);
+        state.runner.grip = [vec![CardId("madani".to_string()), CardId("fracter".to_string()), CardId("killer".to_string()), CardId("decoder".to_string())], filler()].concat();
+        let (actions, after) = play(state, &dear);
+        assert!(actions.contains(&PlayerAction::InstallHardware { card_id: CardId("madani".to_string()) }), "{actions:?}");
+        assert!(after.runner.rig.iter().any(|card| card.card.0 == "madani"));
+
+        // A breaker hosted on Madani and one click: the free install, and
+        // the click spent besides.
+        let mut state = base(1);
+        state.runner.grip = [vec![CardId("killer".to_string())], filler()].concat();
+        state.runner.rig = vec![netrunner_core::rules::InstalledRunnerCard {
+            card: CardId("madani".to_string()),
+            install_id: InstallId(10),
+            hosted_cards: vec![CardId("fracter".to_string())],
+            ..Default::default()
+        }];
+        let install_free = PlayerAction::ActivateAbility { target: InstallId(10), ability_index: 1 };
+        let (actions, after) = play(state, &registry);
+        assert!(actions.contains(&install_free), "should install the hosted program free: {actions:?}");
+        assert!(after.runner.rig.iter().any(|card| card.card.0 == "fracter"), "{:?}", after.runner.rig);
+        assert!(
+            actions.iter().any(|a| matches!(a, PlayerAction::InstallProgram { .. } | PlayerAction::GainCreditClick { .. } | PlayerAction::InitiateRun { .. } | PlayerAction::DrawCardClick { .. })),
+            "the click is still spent: {actions:?}"
+        );
+    }
+
     /// With an empty grip, open servers and a stack to draw from, the
     /// Runner draws before it runs (ROADMAP Phase 2 §5's draw item).
     #[test]
