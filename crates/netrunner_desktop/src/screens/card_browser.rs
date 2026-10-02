@@ -54,6 +54,7 @@ use netrunner_core::cards::catalog;
 use netrunner_core::dsl::CardId;
 use netrunner_core::rules::Side;
 
+use crate::audio::{ButtonSound, Sfx};
 use crate::card_images::CardImages;
 use crate::core::{ClientCore, Notices, TokioRuntime};
 use crate::downloads::Downloads;
@@ -215,7 +216,7 @@ fn spawn(mut commands: Commands, theme: Res<Theme>, core: Res<ClientCore>, image
         .with_children(|parent| {
             // Pushed to the right end of the row. Spawned then adjusted:
             // a bundle may not carry a `Node` twice and the button brings one.
-            let mut back = parent.spawn(widgets::button(&theme, "Back", Val::Auto, Control::Back));
+            let mut back = parent.spawn(widgets::button(&theme, "Back", Val::Auto, (Control::Back, ButtonSound(Sfx::Back))));
             back.entry::<Node>().and_modify(|mut node| node.margin = UiRect::left(Val::Auto));
         })
         .id();

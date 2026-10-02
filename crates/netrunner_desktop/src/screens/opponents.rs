@@ -22,6 +22,7 @@ use tokio::sync::oneshot;
 
 use netrunner_client::llm::{self, ApiKey, Asks, LlmProfile, Preset, Protocol};
 
+use crate::audio::{ButtonSound, Sfx};
 use crate::core::{ClientCore, Notices, TokioRuntime};
 use crate::models::opponents::{self as model, Field, Intent, Opponents};
 use crate::nav::{screen_root, Navigate};
@@ -151,7 +152,7 @@ fn spawn(mut commands: Commands, theme: Res<Theme>, core: Res<ClientCore>, mut n
             widgets::heading(&theme, AppScreen::Opponents.title()),
             (widgets::dim(&theme, "A language model in the bot's chair, on your own key: Anthropic, OpenAI, Gemini, Ollama, or any server that speaks the OpenAI shape. Pick it on the Play vs Computer form."), TextLayout::new(Justify::Center, LineBreak::WordBoundary)),
             widgets::dim(&theme, saved_where),
-            widgets::button(&theme, "Back", Val::Auto, Control::Back),
+            widgets::button(&theme, "Back", Val::Auto, (Control::Back, ButtonSound(Sfx::Back))),
             (widgets::notice(&theme, "", NoticeLine), TextLayout::new(Justify::Center, LineBreak::WordBoundary)),
         ]))
         .add_child(columns);
@@ -240,7 +241,7 @@ fn spawn_editor(parent: &mut ChildSpawnerCommands, theme: &Theme, form: &Opponen
     pills(parent, theme, Asks::ALL.into_iter().map(|a| (a.label().to_string(), profile.asks == a, Intent::Asks(a))).collect());
     parent.spawn((widgets::dim(theme, profile.asks.note()), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
     row(parent, theme, "Explains its moves", if profile.explain { "on".to_string() } else { "off".to_string() }, |controls| {
-        controls.spawn(widgets::button(theme, "Toggle", Val::Auto, Control::Intent(Intent::ToggleExplain)));
+        controls.spawn(widgets::button(theme, "Toggle", Val::Auto, (Control::Intent(Intent::ToggleExplain), ButtonSound(Sfx::Toggle))));
     });
     row(parent, theme, "Budget per game", form.budget_label(), |controls| {
         controls.spawn(widgets::round_button(theme, "<", Control::Intent(Intent::StepBudget(-1))));

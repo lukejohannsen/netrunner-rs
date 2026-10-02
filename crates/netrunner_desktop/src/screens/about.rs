@@ -14,6 +14,7 @@
 
 use bevy::prelude::*;
 
+use crate::audio::{ButtonSound, Sfx};
 use crate::credits::{self, Asset, Credit};
 use crate::nav::{screen_root, Navigate};
 use crate::screens::AppScreen;
@@ -165,7 +166,7 @@ fn spawn(mut commands: Commands, theme: Res<Theme>) {
     });
     root.add_child(body);
     root.with_children(|root| {
-        root.spawn(widgets::button(&theme, "Back", Val::Auto, Back));
+        root.spawn(widgets::button(&theme, "Back", Val::Auto, (Back, ButtonSound(Sfx::Back))));
     });
 }
 

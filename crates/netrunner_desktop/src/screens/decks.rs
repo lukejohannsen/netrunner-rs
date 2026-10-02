@@ -50,6 +50,7 @@ use netrunner_core::dsl::{CardDefinition, CardId};
 use netrunner_core::format::NsgFormat;
 use netrunner_core::rules::Side;
 
+use crate::audio::{ButtonSound, Sfx};
 use crate::card_images::CardImages;
 use crate::core::{ClientCore, TokioRuntime};
 use crate::files::{Ask, DeckFiles, Done};
@@ -282,7 +283,7 @@ fn spawn_toolbar(parent: &mut ChildSpawnerCommands, theme: &Theme, shelf: &Shelf
         row.spawn(widgets::styled_button(theme, ButtonKind::Primary, "New deck", Val::Auto, Control::New));
         row.spawn(widgets::button(theme, "Import from file…", Val::Auto, Control::Import));
         row.spawn(widgets::button(theme, "Import from NetrunnerDB…", Val::Auto, Control::Fetch));
-        let mut back = row.spawn(widgets::styled_button(theme, ButtonKind::Quiet, "Back", Val::Auto, Control::Back));
+        let mut back = row.spawn(widgets::styled_button(theme, ButtonKind::Quiet, "Back", Val::Auto, (Control::Back, ButtonSound(Sfx::Back))));
         back.entry::<Node>().and_modify(|mut node| node.margin = UiRect::left(Val::Auto));
     });
     parent.spawn(toolbar_row()).with_children(|row| {

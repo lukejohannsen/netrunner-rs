@@ -27,6 +27,7 @@ use netrunner_client::play::{LocalMatchSpec, MatchHandle, RecordFile};
 use netrunner_core::tutorial::Lesson;
 use netrunner_client::start::{DeckRow, Level, OpponentChoice, Pane, StartChoice, StartMenu, DEFAULT_CORP_DECK, DEFAULT_RUNNER_DECK};
 
+use crate::audio::{ButtonSound, Sfx};
 use crate::core::TokioRuntime;
 use netrunner_core::rules::Side;
 
@@ -127,7 +128,7 @@ fn spawn(mut commands: Commands, theme: Res<Theme>, core: Res<ClientCore>, last:
     let buttons = commands
         .spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, justify_content: JustifyContent::FlexEnd, column_gap: px(12), margin: UiRect::top(px(8)), ..default() })
         .with_children(|parent| {
-            parent.spawn(widgets::styled_button(&theme, ButtonKind::Quiet, "Back", Val::Auto, Control::Back));
+            parent.spawn(widgets::styled_button(&theme, ButtonKind::Quiet, "Back", Val::Auto, (Control::Back, ButtonSound(Sfx::Back))));
             parent.spawn(widgets::styled_button(&theme, ButtonKind::Primary, "Start", px(200), Control::Start));
         })
         .id();
@@ -189,7 +190,7 @@ fn pills(parent: &mut ChildSpawnerCommands, theme: &Theme, pane: Pane, labels: V
     parent.spawn(Node { flex_direction: FlexDirection::Row, flex_wrap: FlexWrap::Wrap, column_gap: px(10), row_gap: px(10), ..default() }).with_children(|row| {
         for (index, label) in labels.into_iter().enumerate() {
             let kind = if index == cursor { ButtonKind::Primary } else { ButtonKind::Secondary };
-            row.spawn(widgets::styled_button(theme, kind, label, Val::Auto, PaneChoice { pane, index }));
+            row.spawn(widgets::styled_button(theme, kind, label, Val::Auto, (PaneChoice { pane, index }, ButtonSound(Sfx::Toggle))));
         }
     });
 }
@@ -209,6 +210,7 @@ fn side_card(parent: &mut ChildSpawnerCommands, theme: &Theme, side: Side, index
             Button,
             widgets::Themed,
             PaneChoice { pane: Pane::Chair, index },
+            ButtonSound(Sfx::Toggle),
             Node {
                 flex_grow: 1.0,
                 flex_basis: px(0),

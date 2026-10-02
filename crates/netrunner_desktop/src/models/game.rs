@@ -83,6 +83,7 @@ use netrunner_core::view::ClientView;
 use crate::models::drag::{insert_at, Drag, Release};
 use crate::models::lesson::LessonBoard;
 use crate::models::shortcuts::Shortcut;
+use crate::models::sound::{self, Sfx};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Intent {
@@ -325,6 +326,11 @@ pub struct Game {
     /// What the last applied action changed, for the screen to
     /// highlight on its next redraw; cleared by `take_transitions`.
     pub transitions: Vec<Transition>,
+    /// The sounds the applied actions make (`models::sound::cues`), for
+    /// the screen to play; drained by `take_sounds`. Kept apart from
+    /// `transitions` because those are taken by a redraw, which a run's
+    /// beats can hold back, while a sound is played as its message lands.
+    pub sounds: Vec<Sfx>,
     /// The human may act: an `Awaiting` arrived and nothing has been
     /// submitted since. Off while the opponent thinks or a submit is in
     /// flight, so a double click cannot send two actions.
@@ -458,6 +464,7 @@ impl Game {
             prompt: None,
             log: Vec::new(),
             transitions: Vec::new(),
+            sounds: Vec::new(),
             awaiting: false,
             sheet: None,
             inspecting: None,
@@ -597,6 +604,10 @@ impl Game {
 
     pub fn take_transitions(&mut self) -> Vec<Transition> {
         std::mem::take(&mut self.transitions)
+    }
+
+    pub fn take_sounds(&mut self) -> Vec<Sfx> {
+        std::mem::take(&mut self.sounds)
     }
 
     /// The entries a press on `target` could mean, now: none while the
@@ -914,7 +925,9 @@ impl Game {
             MatchMessage::Applied { entry, view } => {
                 self.run_pass.see(&view);
                 if let Some(before) = &self.view {
-                    self.transitions.extend(transitions(before, &view, &entry));
+                    let moved = transitions(before, &view, &entry);
+                    self.sounds.extend(sound::cues(&moved));
+                    self.transitions.extend(moved);
                 }
                 // The model's line stays while its move is looked at, and
                 // goes with the person's own next move.

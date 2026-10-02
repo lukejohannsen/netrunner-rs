@@ -73,3 +73,24 @@ pub fn list_dirs(relative: &str) -> Vec<String> {
     names.dedup();
     names
 }
+
+/// The names of the files in `relative` (`sfx`) ending in `.extension`,
+/// across both tiers, sorted and without duplicates — [`list_dirs`] for
+/// files, with the same reasoning: a sound dropped into the override
+/// directory adds a recording to the bundled ones, and a name in both is
+/// one name whose bytes `read` then takes from the override.
+pub fn list_files(relative: &str, extension: &str) -> Vec<String> {
+    let mut names: Vec<String> = override_dir()
+        .map(|dir| dir.join(relative))
+        .into_iter()
+        .chain(std::iter::once(bundled_dir().join(relative)))
+        .filter_map(|dir| std::fs::read_dir(dir).ok())
+        .flatten()
+        .filter_map(Result::ok)
+        .filter(|entry| entry.path().is_file() && entry.path().extension().is_some_and(|ext| ext.eq_ignore_ascii_case(extension)))
+        .filter_map(|entry| entry.file_name().into_string().ok())
+        .collect();
+    names.sort();
+    names.dedup();
+    names
+}

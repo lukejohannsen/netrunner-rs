@@ -96,6 +96,7 @@ use bevy::app::PluginGroupBuilder;
 use bevy::prelude::*;
 
 pub mod assets;
+pub mod audio;
 pub mod backdrop;
 pub mod board_art;
 pub mod card_back;
@@ -150,6 +151,7 @@ impl PluginGroup for NetrunnerDesktopPlugins {
             .add(skin::SkinPlugin)
             .add(backdrop::BackdropPlugin)
             .add(nav::NavPlugin)
+            .add(audio::SoundPlugin)
             .add(widgets::WidgetsPlugin)
             .add(ScrollPlugins)
             .add(card_images::CardImagesPlugin)

@@ -12,6 +12,7 @@ use bevy::prelude::*;
 use netrunner_client::record::player_name;
 use netrunner_client::standing::describe;
 
+use crate::audio::{ButtonSound, Sfx};
 use crate::core::{ClientCore, Notices};
 use crate::models::settings::{self as model, Intent, Row, MAX_NAME_LEN};
 use netrunner_client::settings::Table;
@@ -85,7 +86,7 @@ fn spawn(mut commands: Commands, theme: Res<Theme>, core: Res<ClientCore>) {
         widgets::heading(&theme, AppScreen::Settings.title()),
         widgets::dim(&theme, saved_where),
         (widgets::row(12.0), children![
-            widgets::button(&theme, "Back", Val::Auto, Control::Back),
+            widgets::button(&theme, "Back", Val::Auto, (Control::Back, ButtonSound(Sfx::Back))),
             widgets::button(&theme, "AI opponents…", Val::Auto, Control::Opponents),
         ]),
     ])).add_child(columns);
@@ -149,7 +150,7 @@ pub fn spawn_rows(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &Clien
             } else if matches!(row, Row::Player | Row::Relay) {
                 controls.spawn(widgets::button(theme, "Edit", Val::Auto, Control::Edit(row)));
             } else {
-                controls.spawn(widgets::button(theme, "Toggle", Val::Auto, Control::Intent(Intent::Toggle(row))));
+                controls.spawn(widgets::button(theme, "Toggle", Val::Auto, (Control::Intent(Intent::Toggle(row)), ButtonSound(Sfx::Toggle))));
             }
         });
     }

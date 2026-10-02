@@ -35,6 +35,7 @@ use netrunner_core::card::Faction;
 use netrunner_core::dsl::{CardDefinition, CardId};
 use netrunner_core::format::NsgFormat;
 
+use crate::audio::{ButtonSound, PlaySfx, Sfx};
 use crate::card_images::CardImages;
 use crate::core::{ClientCore, TokioRuntime};
 use crate::files::{Ask, DeckFiles, Done};
@@ -402,7 +403,7 @@ fn spawn_header(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientC
         }
         buttons.spawn(widgets::button(theme, "Export to file…", px(250), Control::Export));
         if editor.read_only {
-            buttons.spawn(widgets::styled_button(theme, ButtonKind::Quiet, "Back", px(250), Control::Done));
+            buttons.spawn(widgets::styled_button(theme, ButtonKind::Quiet, "Back", px(250), (Control::Done, ButtonSound(Sfx::Back))));
         } else {
             buttons.spawn(widgets::dim(theme, "Every change is saved as it is made"));
         }
@@ -658,7 +659,7 @@ fn controls(
     (mut popup, mut dirty, mut search, mut rebuild): (ResMut<Popup>, ResMut<Dirty>, ResMut<SearchRequested>, ResMut<Rebuild>),
     (core, theme): (Res<ClientCore>, Res<Theme>),
     (mut files, runtime): (ResMut<DeckFiles>, Option<Res<TokioRuntime>>),
-    mut navigate: MessageWriter<Navigate>,
+    (mut navigate, mut sounds): (MessageWriter<Navigate>, MessageWriter<PlaySfx>),
 ) {
     let book = book(&core);
     let mut intents: Vec<Intent> = Vec::new();
@@ -766,6 +767,9 @@ fn controls(
         }
     }
     for intent in intents {
+        // Heard only when the deck took the card: a refused add (a third
+        // copy, influence over the limit) is a note, not a click.
+        let adds = matches!(intent, Intent::Add(_));
         match editor.0.apply(intent, book) {
             Outcome::Nothing => {}
             Outcome::View => {
@@ -773,6 +777,9 @@ fn controls(
                 dirty.notice = true;
             }
             Outcome::Save => {
+                if adds {
+                    sounds.write(PlaySfx::now(Sfx::DeckAdd));
+                }
                 save(&core, &mut editor.0);
                 dirty.deck = true;
                 dirty.notice = true;

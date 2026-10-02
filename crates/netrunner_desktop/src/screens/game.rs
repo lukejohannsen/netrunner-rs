@@ -131,6 +131,7 @@ use netrunner_core::dsl::{CardId, CardType};
 use netrunner_core::rules::{GamePhase, InstallId, InstallSlot, PendingDecision, PlayerAction, RunPhase, ServerId, Side, SubroutineStatus};
 use netrunner_core::view::{ClientView, ServerView};
 
+use crate::audio::{ButtonSound, PlaySfx, Sfx, STAGGER};
 use crate::card_images::{CardImages, WantsImage};
 use crate::core::{ClientCore, Notices};
 use crate::models::game::{Anchor, Game, Intent, MatchMessageRef, Outcome};
@@ -182,7 +183,22 @@ impl Plugin for GamePlugin {
             // Likewise its own line: it reads what the chain wrote and
             // orders against none of it, and a menu placed a frame late
             // is a menu that was on the window the whole time.
-            .add_systems(Update, place_menu.run_if(in_state(AppScreen::Game)));
+            .add_systems(Update, place_menu.run_if(in_state(AppScreen::Game)))
+            // The sounds of what was applied, as the message lands; they
+            // order against nothing on the board.
+            .add_systems(Update, play_sounds.run_if(in_state(AppScreen::Game)));
+    }
+}
+
+/// Hands the model's queued sounds (`models::sound::cues`) to the sound
+/// bank, each a [`STAGGER`] after the one before, so an action that drew
+/// three cards is heard drawing three.
+fn play_sounds(model: Option<ResMut<Model>>, mut out: MessageWriter<PlaySfx>) {
+    // Read before it is written: a frame with nothing to play must not
+    // mark the model changed.
+    let Some(mut model) = model.filter(|model| !model.0.sounds.is_empty()) else { return };
+    for (index, sfx) in model.0.take_sounds().into_iter().enumerate() {
+        out.write(PlaySfx::after(sfx, STAGGER * index as u32));
     }
 }
 
@@ -724,7 +740,7 @@ fn spawn(
         commands.spawn((screen_root(AppScreen::Game, &theme), children![
             widgets::heading(&theme, AppScreen::Game.title()),
             widgets::dim(&theme, "No game in progress. Start one from Play vs Computer."),
-            widgets::button(&theme, "Back", Val::Auto, Click::Back),
+            widgets::button(&theme, "Back", Val::Auto, (Click::Back, ButtonSound(Sfx::Back))),
         ]));
         return;
     };
@@ -1503,6 +1519,7 @@ fn shortcuts(
     mut core: ResMut<ClientCore>,
     mut notices: ResMut<Notices>,
     mut dirty: ResMut<Dirty>,
+    mut sounds: MessageWriter<PlaySfx>,
 ) {
     let Some(model) = model else {
         keyboard.clear();
@@ -1549,6 +1566,7 @@ fn shortcuts(
                 }
                 let row = if shortcut == Shortcut::PhaseBar { Row::PhaseBar } else { Row::PlayHelper };
                 settings_model::apply(&mut core.settings, settings_model::Intent::Toggle(row), &table::available(), &skin::available());
+                sounds.write(PlaySfx::now(Sfx::Toggle));
                 if let Err(error) = core.save_settings() {
                     notices.push(format!("Settings not saved: {error}"));
                 }
