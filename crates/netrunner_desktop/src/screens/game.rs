@@ -2115,6 +2115,51 @@ fn welcome(area: &mut EntityCommands, theme: &Theme, welcomes: bool) {
     }
 }
 
+/// The server a run is on glows red: its one-pixel border made a
+/// three-pixel line by an `Outline` just outside it, and a halo of
+/// fainter rings round that.
+///
+/// The border alone was the indicator until 2 October 2026, when the
+/// person found it too thin to pick out. **Nothing here is layout**: the
+/// border keeps its one pixel, because `layout::SERVER_CHROME_V` budgets
+/// the column's height to the pixel and a thicker border under a run
+/// would grow the column the moment a run began; an outline is drawn
+/// outside the node and measured by nothing, and the rings are
+/// absolutely placed, so they take no room in the column either.
+///
+/// **Rings, not a `BoxShadow`**, though a shadow blurs more smoothly: a
+/// shadow is painted under the whole node (`Theme::solid` says the same
+/// of a pill), and a column is translucent, so the first try flooded the
+/// whole server red. An outline paints only outside its node. Each ring
+/// is a node of its own, the column's size, because a node has one
+/// `Outline` and the column's is the line itself; the rings ignore the
+/// pointer, so a click still lands on the tile under them.
+fn under_attack(column: &mut EntityCommands, theme: &Theme) {
+    /// Each ring's distance out from the line and its opacity, nearest
+    /// first: four 2-pixel steps fading out over 8 pixels.
+    const HALO: [(f32, f32); 4] = [(2.0, 0.45), (4.0, 0.28), (6.0, 0.15), (8.0, 0.06)];
+    column.insert(Outline { width: px(2), offset: px(0), color: theme.runner });
+    column.with_children(|column| {
+        for (offset, alpha) in HALO {
+            column.spawn((
+                Node {
+                    position_type: PositionType::Absolute,
+                    // Out over the column's own border, so a ring's
+                    // offset is measured from the column's outer edge.
+                    left: px(-1),
+                    right: px(-1),
+                    top: px(-1),
+                    bottom: px(-1),
+                    border_radius: BorderRadius::all(px(6)),
+                    ..default()
+                },
+                Outline { width: px(2), offset: px(offset), color: theme.runner.with_alpha(alpha) },
+                bevy::picking::Pickable::IGNORE,
+            ));
+        }
+    });
+}
+
 fn outline(theme: &Theme) -> Outline {
     Outline { width: px(3), offset: px(1), color: theme.accent }
 }
@@ -2669,7 +2714,7 @@ fn spawn_servers(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &Client
                 } else {
                     (theme.panel_border, Slot::ServerColumn)
                 };
-                row.spawn((
+                let mut column_node = row.spawn((
                     ServerColumn(server.server),
                     DropPlace::one(Target::Server(server.server)),
                     Node {
@@ -2691,8 +2736,11 @@ fn spawn_servers(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &Client
                     // The column is what sits on the table; its tiles sit
                     // on the column, one row nearer the light.
                     Contact(depth),
-                ))
-                .with_children(|column| {
+                ));
+                if under_run && !welcomes {
+                    under_attack(&mut column_node, theme);
+                }
+                column_node.with_children(|column| {
                     // Plate, root and ice in the chair's order
                     // (`layout::column_top_down`): the plate nearest the
                     // Corp, the ice out toward the Runner, outermost
