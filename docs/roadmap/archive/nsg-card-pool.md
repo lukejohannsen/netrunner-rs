@@ -6321,3 +6321,80 @@ access outside a breach (Pinhole Threading, Deep Dive).
   report): random identical, view and index alike. The planner seatings
   move by `determinize`, whose prior holds four more cards: Corp agenda
   wins 59 → 57, Runner agenda wins 99 → 101, flatlines unchanged.
+
+#### Stage 6b — access outside a breach (3 October 2026)
+
+`claude/serene-einstein-6bhlig`: Pinhole Threading and Deep Dive. **One
+new `Effect`, which both use.** Midnight Sun 54 of 65, its booster pack 6
+of 7; `MS_UNIMPLEMENTED` 13 → 11 and `MSBP_UNIMPLEMENTED` 2 → 1 (Deep Dive
+is a booster-pack card reprinted in the set, built from 32003). **Stage 6
+is complete.**
+
+- **`Effect::Access { from, filter, count, then }`**: the Runner accesses
+  `count` of the cards in `from` that `filter` admits, choosing each, not
+  as a breach (CR 7.1.9, 7.1.10; `run::access_cards`,
+  `AccessState::outside_breach`). Each access is a breach's access steps,
+  through the same `present_card_for_access`; the procedure ends once the
+  number named has been chosen (7.1.10), with no `BreachBegun` and no
+  random access limit. The candidates are `pending_choice::
+  eligible_positions`'s, so an access is offered what a selection over the
+  same zone would be. Composition didn't work: every access began at a
+  breach, whose candidates are a server's. **`then` is part of it**
+  because an access in progress parks nothing a `Sequence` waits behind;
+  it resolves as the card once the accesses end, or queues as a
+  continuation behind whatever they left parked.
+  - Inside a run only as the run's breach is replaced: the replacement no
+    longer ends the run when it left an access, which ends the run when it
+    does, never having breached (Info Bounty's "if you breached" is false).
+  - Outside a run it stands in Cataloguer's run-less `RunState`, on R&D.
+- **Pinhole Threading** is `PromptChooseServer` (Into the Depths' "run any
+  server") whose `on_success` is a `SetAccessReplacement`: the chosen
+  server is now written into it, as into `AddAdditionalAccess`, so "instead
+  of breaching the attacked server" is whichever was run. The replacement
+  forbids stealing or trashing agendas for the rest of the run, then
+  accesses 1 root card matching `Not(InAttackedServer)`.
+  **`Prohibition::StealOrTrashAgendas`**: "If that card is an agenda, you
+  cannot steal or trash it during this access" — the access is the run's
+  last act, so the rest of the run is this access, and made before the card
+  is chosen it shows no facedown card's type in the in-effect list.
+  `continuous::cannot_about` asks it beside `StealOrTrash` of an agenda,
+  so the four sites that ask about a steal or a trash need no change.
+- **Deep Dive** is Chain Reaction's `play_requirement`, then
+  `SetAsideFromTopUntil` with a new `deck: Corp` ("the top 8 cards of R&D"
+  is "until 8 of any card"), an `Access` over the new
+  `CardZoneRef::OpponentSetAside` whose `then` is the "you may spend
+  [click]" `OfferPaidChoice` of a second `Access`, each path ending in
+  `ShuffleIntoDeck([OpponentSetAside])`, which shuffles into R&D.
+  **The Corp's set-aside zone** (`CorpState::set_aside`, CR 4.8): faceup,
+  so public — in the view, copied by `determinize` and struck from its
+  pools, counted by the sweeps' conservation check and fog gate. A set-aside
+  card is accessed by name (`AccessCandidate::SetAside`) and leaves the
+  zone when stolen or trashed.
+- **Fidelity limit:** Deep Dive's accesses stand on R&D, so they name R&D
+  as their server and both clients say "Breach of R&D" (on the known-limits
+  list).
+- **Client.** `hud::in_effect` lists the Corp's set-aside cards ("set aside
+  from R&D: …") in both clients; `outside_breach` is in the view and the
+  ledger marks it the engine's; `prose` words `Access`, the zone, the deck
+  and the prohibition, and the access pop-up names a set-aside candidate by
+  its card.
+- **Decks.** Encore takes three Pinhole Threading for its two Strike Fund
+  and a Chrysopoeian Skimming; Safety Net two Deep Dive for its two
+  Burner. Picket Line keeps the first two, Dead Reckoning and Street
+  Gallery Burner. Deep Dive joins Chain Reaction on
+  `CARDS_RARE_WITH_SWEEP_DECKS`, for the same reason: no agent makes three
+  successful central runs in a turn, and its per-card test is what reaches
+  it.
+- **DSL ratio** (`pool_status.py`): 17 of 98 `Effect` variants
+  single-use, 1 unused (`Trace`), over 497 card files (17 of 97 over 495
+  before; `Access` is used twice).
+- **Real play** (`--headless`, seed 2; random seats 96 games / planner
+  48): Encore against Retirement Package, Pinhole Threading played 47 / 0
+  times, its breach replaced by the access 20 times; Safety Net against
+  Hostile Bid, Deep Dive played by neither. **Bot debts:** the planner
+  never plays Pinhole Threading; on the bot-debts list.
+- **Measured.** Both sweeps are green at 256 seeds, the card gate
+  included. `coverage_identical.py` against Stage 6a (30a85f4, 192 games a
+  report): random identical, view and index alike. The planner seatings
+  move by `determinize`'s prior, two cards larger: Corp agenda wins 57 →
+  58, Corp flatlines 28 → 29, Runner agenda wins 101 → 99.

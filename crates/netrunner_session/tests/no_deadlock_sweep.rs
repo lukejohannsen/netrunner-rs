@@ -355,6 +355,7 @@ fn assert_cards_are_conserved(state: &GameState, corp_deck: &Deck, runner_deck: 
             // counted with the Runner's below.
             .chain(state.runner.scored_agendas.iter().map(|s| &s.card).filter(|id| corp_ids.contains_key(&id.0)))
             .chain(&corp.removed_from_game)
+            .chain(&corp.set_aside)
             .chain(hosted_corp),
     );
     assert_eq!(corp_cards, deck_tally(corp_deck), "seed {seed} ({matchup}): Corp cards are not conserved");
@@ -679,6 +680,7 @@ fn visible_card_ids(view: &netrunner_core::view::ClientView) -> std::collections
     visible.extend(view.corp.archives.iter().filter_map(|a| a.card.as_ref()).map(|c| c.0.as_str()));
     visible.extend(view.corp.scored_agendas.iter().map(|c| c.card.0.as_str()));
     visible.extend(view.corp.removed_from_game.iter().map(|c| c.0.as_str()));
+    visible.extend(view.corp.set_aside.iter().map(|c| c.0.as_str()));
     visible.extend(view.runner.scored_agendas.iter().map(|c| c.card.0.as_str()));
     visible.extend(view.runner.heap.iter().map(|c| c.0.as_str()));
     visible.extend(view.runner.removed_from_game.iter().map(|c| c.0.as_str()));

@@ -1,0 +1,111 @@
+{
+  "id": "deep_dive",
+  "title": "Deep Dive",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 2,
+  "play_requirement": {
+    "And": [
+      {
+        "And": [
+          {
+            "AmountAtLeast": [
+              {
+                "TimesThisTurnWhen": {
+                  "trigger": "OnSuccessfulRun",
+                  "when": {
+                    "Server": [
+                      "Hq"
+                    ]
+                  }
+                }
+              },
+              1
+            ]
+          },
+          {
+            "AmountAtLeast": [
+              {
+                "TimesThisTurnWhen": {
+                  "trigger": "OnSuccessfulRun",
+                  "when": {
+                    "Server": [
+                      "RnD"
+                    ]
+                  }
+                }
+              },
+              1
+            ]
+          }
+        ]
+      },
+      {
+        "AmountAtLeast": [
+          {
+            "TimesThisTurnWhen": {
+              "trigger": "OnSuccessfulRun",
+              "when": {
+                "Server": [
+                  "Archives"
+                ]
+              }
+            }
+          },
+          1
+        ]
+      }
+    ]
+  },
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "SetAsideFromTopUntil": {
+            "filter": "Any",
+            "count": 8,
+            "deck": "Corp"
+          }
+        },
+        {
+          "Access": {
+            "from": "OpponentSetAside",
+            "filter": "Any",
+            "count": 1,
+            "then": {
+              "OfferPaidChoice": {
+                "side": "Runner",
+                "cost": {
+                  "Clicks": 1
+                },
+                "if_paid": {
+                  "Access": {
+                    "from": "OpponentSetAside",
+                    "filter": "Any",
+                    "count": 1,
+                    "then": {
+                      "ShuffleIntoDeck": [
+                        "OpponentSetAside"
+                      ]
+                    }
+                  }
+                },
+                "if_declined": {
+                  "ShuffleIntoDeck": [
+                    "OpponentSetAside"
+                  ]
+                },
+                "text": "You may spend [click] to access another 1 of those cards"
+              }
+            }
+          }
+        }
+      ],
+      "text": "The Corp must set aside the top 8 cards of R&D faceup. Access 1 of those cards. You may spend [click] to access another 1 of those cards. Then, the Corp shuffles the set-aside cards into R&D."
+    }
+  ],
+  "built_from": 32003,
+  "is_playable": true
+}

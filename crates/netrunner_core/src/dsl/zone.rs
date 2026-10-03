@@ -27,6 +27,10 @@ pub enum CardZoneRef {
     /// those 2 cards", chosen from what it set aside. Faceup, so a
     /// selection over it shows nothing new.
     OwnSetAside,
+    /// The Corp's cards in the set-aside zone (`CorpState::set_aside`, CR
+    /// 4.8), named from the Runner's side — Deep Dive's "Access 1 of those
+    /// cards" and "the Corp shuffles the set-aside cards into R&D". Faceup.
+    OpponentSetAside,
     /// The opposing side's installed cards (Corp's `installed` if the
     /// chooser is Runner, or the Runner's `rig` if the chooser is Corp).
     /// Eligibility filtering is done by the enclosing `Effect::
@@ -96,6 +100,7 @@ impl CardZoneRef {
             | CardZoneRef::OwnGrip
             | CardZoneRef::OwnHeap
             | CardZoneRef::OwnSetAside
+            | CardZoneRef::OpponentSetAside
             | CardZoneRef::OpponentInstalled
             | CardZoneRef::OpponentDiscard
             | CardZoneRef::OwnInstalled
@@ -119,6 +124,7 @@ impl CardZoneRef {
             CardZoneRef::OwnArchives
             | CardZoneRef::OwnHeap
             | CardZoneRef::OwnSetAside
+            | CardZoneRef::OpponentSetAside
             | CardZoneRef::OpponentDiscard
             | CardZoneRef::HostedOnSource
             | CardZoneRef::OpponentScoreArea

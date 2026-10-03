@@ -129,6 +129,7 @@ pub fn describe_zone(zone: &CardZoneRef) -> &'static str {
         CardZoneRef::OwnGrip => "the grip",
         CardZoneRef::OwnHeap => "the heap",
         CardZoneRef::OwnSetAside => "the cards set aside",
+        CardZoneRef::OpponentSetAside => "the Corp's cards set aside",
         CardZoneRef::OpponentInstalled => "the opponent's installed cards",
         CardZoneRef::OpponentDiscard => "the opponent's discard pile",
         CardZoneRef::OwnInstalled => "your installed cards",
@@ -368,8 +369,10 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
         Effect::InstallRunnerCardFromZone { from, discount: Discount::Credits(0) } => format!("install a card from {}", describe_zone(from)),
         Effect::InstallRunnerCardFromZone { from, discount: Discount::Credits(n) } => format!("install a card from {}, paying {n} less", describe_zone(from)),
         Effect::InstallRunnerCardFromZone { from, discount: Discount::AllCosts } => format!("install a card from {}, ignoring all costs", describe_zone(from)),
-        Effect::SetAsideFromTopUntil { filter, count } => {
-            format!("set aside cards from the top of the stack until {count} ({}) are set aside", humanize(format!("{filter:?}")).to_lowercase())
+        Effect::SetAsideFromTopUntil { filter: CardFilter::Any, count, deck: Side::Corp } => format!("the Corp sets aside the top {count} cards of R&D faceup"),
+        Effect::SetAsideFromTopUntil { filter, count, deck } => {
+            let from = if *deck == Side::Corp { "R&D" } else { "the stack" };
+            format!("set aside cards from the top of {from} until {count} ({}) are set aside", humanize(format!("{filter:?}")).to_lowercase())
         }
         Effect::InstallRunnerCardFromGripWithDiscount(Discount::Credits(n)) => format!("install a card from the grip, paying {n} less"),
         Effect::InstallRunnerCardFromGripWithDiscount(Discount::AllCosts) => "install a card from the grip, ignoring all costs".to_string(),
@@ -379,6 +382,17 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
         Effect::WhenThisTurnEnds(effect) => format!("when this turn ends, {}", describe_effect(effect, registry)),
         Effect::EndActionPhase => "your action phase ends".to_string(),
         Effect::Breach(server) => format!("breach {}", describe_server(*server)),
+        Effect::Access { from, filter, count, then } => {
+            let which = match filter {
+                CardFilter::Any => String::new(),
+                filter => format!(" ({})", humanize(format!("{filter:?}")).to_lowercase()),
+            };
+            let access = format!("access {count} of {}{which}, not as a breach", describe_zone(from));
+            match then {
+                Some(then) => format!("{access}, then {}", describe_effect(then, registry)),
+                None => access,
+            }
+        }
         Effect::RevealAtRandom { side, count, each } => {
             let hand = if *side == Side::Corp { "HQ" } else { "the grip" };
             match each {
@@ -464,6 +478,7 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
                 (Prohibition::BreakSubroutines, _) => "the Runner's abilities cannot break subroutines",
                 (Prohibition::DiscardStep, _) => "the Corp skips their discard step",
                 (Prohibition::BioroidIceAbilities, _) => "the Runner cannot use paid abilities printed on bioroid ice",
+                (Prohibition::StealOrTrashAgendas, _) => "the Runner cannot steal or trash agendas",
             };
             format!("{what} {}", duration(until))
         }
@@ -745,6 +760,7 @@ pub fn describe_continuous(effect: &ContinuousEffect) -> String {
         ContinuousKind::Cannot(what) => match what {
             Prohibition::ScoreAgendas => "cannot score agendas",
             Prohibition::StealOrTrash => "cannot steal or trash cards",
+            Prohibition::StealOrTrashAgendas => "cannot steal or trash agendas",
             Prohibition::SpendOrLoseCreditPool => "cannot lose or spend credits from their credit pool",
             Prohibition::SpendCredits => "cannot spend credits",
             Prohibition::EndTheRun => "cannot end the run with a subroutine",

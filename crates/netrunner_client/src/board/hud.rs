@@ -281,6 +281,7 @@ fn cannot_words(what: netrunner_core::dsl::Prohibition) -> &'static str {
     use netrunner_core::dsl::Prohibition;
     match what {
         Prohibition::StealOrTrash => "the Runner cannot steal or trash cards",
+        Prohibition::StealOrTrashAgendas => "the Runner cannot steal or trash agendas",
         Prohibition::ScoreAgendas => "the Corp cannot score agendas",
         Prohibition::SpendOrLoseCreditPool => "the Runner cannot spend or lose credits from their credit pool",
         Prohibition::SpendCredits => "the Runner cannot spend credits",
@@ -455,6 +456,12 @@ pub fn in_effect(view: &ClientView, registry: &CardRegistry) -> Vec<String> {
         .chain((!view.runner.set_aside.is_empty()).then(|| {
             let names: Vec<String> = view.runner.set_aside.iter().map(&title).collect();
             format!("set aside: {}", names.join(", "))
+        }))
+        // The Corp's (Deep Dive's top 8 of R&D while the Runner accesses
+        // them): faceup too, and the Corp's cards.
+        .chain((!view.corp.set_aside.is_empty()).then(|| {
+            let names: Vec<String> = view.corp.set_aside.iter().map(&title).collect();
+            format!("set aside from R&D: {}", names.join(", "))
         }))
         .collect()
 }
@@ -841,6 +848,9 @@ mod tests {
         view.revealed.clear();
         view.runner.set_aside = vec![CardId("sure_gamble".into()), CardId("corroder".into())];
         assert_eq!(in_effect(&view, &registry), ["set aside: Sure Gamble, Corroder"]);
+        view.runner.set_aside.clear();
+        view.corp.set_aside = vec![CardId("hedge_fund".into()), CardId("ice_wall".into())];
+        assert_eq!(in_effect(&view, &registry), ["set aside from R&D: Hedge Fund, Ice Wall"]);
     }
 
     /// During a run the Runner's credits read "pool +run": the bad

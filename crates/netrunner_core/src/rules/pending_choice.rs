@@ -103,6 +103,7 @@ pub(crate) fn zone_card_ids(state: &GameState, chooser: Side, zone: &CardZoneRef
         CardZoneRef::OwnGrip => state.runner.grip.clone(),
         CardZoneRef::OwnHeap => state.runner.heap.clone(),
         CardZoneRef::OwnSetAside => state.runner.set_aside.clone(),
+        CardZoneRef::OpponentSetAside => state.corp.set_aside.clone(),
         CardZoneRef::OpponentDiscard => match owner {
             Side::Corp => state.corp.archives.iter().map(|a| a.card.clone()).collect(),
             Side::Runner => state.runner.heap.clone(),
@@ -580,6 +581,7 @@ fn plain_zone_mut<'a>(state: &'a mut GameState, chooser: Side, zone: &CardZoneRe
         CardZoneRef::OwnGrip => Some(&mut state.runner.grip),
         CardZoneRef::OwnHeap => Some(&mut state.runner.heap),
         CardZoneRef::OwnSetAside => Some(&mut state.runner.set_aside),
+        CardZoneRef::OpponentSetAside => Some(&mut state.corp.set_aside),
         CardZoneRef::OpponentDiscard => match owner {
             Side::Corp => None,
             Side::Runner => Some(&mut state.runner.heap),
@@ -1538,8 +1540,9 @@ pub(crate) fn resolve_confirm_card_selection(
 }
 
 /// Resolves `PlayerAction::ChooseServerForPendingDecision`.
-/// Rewrites any `AddAdditionalAccess` inside a `PromptChooseServer::
-/// on_success` effect to name the server the player actually chose — its
+/// Rewrites any `AddAdditionalAccess` (or `SetAccessReplacement`) inside a
+/// `PromptChooseServer::on_success` effect to name the server the player
+/// actually chose — its
 /// authored `server` is an ignored placeholder, since the real target isn't
 /// known until resolution. Same "placeholder substituted at resolution
 /// time" convention `PromptChooseCards::then` uses for
@@ -1550,6 +1553,10 @@ fn substitute_chosen_server(effect: Effect, server: crate::rules::run::ServerId)
         Effect::AddAdditionalAccess { count, .. } => Effect::AddAdditionalAccess { server, count },
         // Mercia B4LL4RD follows the ice it installed.
         Effect::MoveThisCardToRoot(_) => Effect::MoveThisCardToRoot(server),
+        // "Run any server. If successful, instead of breaching the attacked
+        // server, …" (Pinhole Threading): the breach replaced is the chosen
+        // server's.
+        Effect::SetAccessReplacement { effect, optional, .. } => Effect::SetAccessReplacement { server, effect, optional },
         Effect::Sequence(effects) => {
             Effect::Sequence(effects.into_iter().map(|e| substitute_chosen_server(e, server)).collect())
         }

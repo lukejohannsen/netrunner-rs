@@ -110,7 +110,7 @@ pub fn action_card(action: &PlayerAction, view: &ClientView) -> Option<CardId> {
         // accessed.
         PlayerAction::SelectCardToAccess { candidate } => match candidate {
             AccessCandidate::Root(install) => resolve_install(view, *install),
-            AccessCandidate::Archived(card_id) => Some(card_id.clone()),
+            AccessCandidate::Archived(card_id) | AccessCandidate::SetAside(card_id) => Some(card_id.clone()),
             AccessCandidate::Zone => None,
         },
         PlayerAction::RezIce { ice } => resolve_install(view, *ice),

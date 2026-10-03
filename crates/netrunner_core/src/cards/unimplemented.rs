@@ -41,15 +41,12 @@ pub(crate) const PH_UNIMPLEMENTED: &[(&str, &str)] = &[];
 /// *Midnight Sun Booster Pack* (`midnight_sun_booster_pack`): tranche 5 of the NSG plan.
 pub(crate) const MSBP_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("light_the_fire", "Light the Fire!"),
-    ("deep_dive", "Deep Dive"),
 ];
 
 /// *Midnight Sun* (`midnight_sun`): tranche 5 of the NSG plan.
 pub(crate) const MS_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("steelskin_scarring", "Steelskin Scarring"),
     ("light_the_fire", "Light the Fire!"),
-    ("pinhole_threading", "Pinhole Threading"),
-    ("deep_dive", "Deep Dive"),
     ("trieste_model_bioroids", "Trieste Model Bioroids"),
     ("echo", "Echo"),
     ("big_deal", "Big Deal"),

@@ -737,9 +737,15 @@ pub fn standing_prohibitions<'a>(state: &'a GameState, registry: &'a CardRegistr
 }
 
 /// [`cannot`] about one card: also what binds only copies of it (Perfect
-/// Recall). An access asks this, of the card accessed.
-pub fn cannot_about(state: &GameState, _registry: &CardRegistry, what: Prohibition, card: &CardId) -> bool {
+/// Recall). An access asks this, of the card accessed. A steal or trash of
+/// an agenda is also what `StealOrTrashAgendas` forbids (Pinhole
+/// Threading), so the four sites that ask about a steal or a trash need no
+/// second question.
+pub fn cannot_about(state: &GameState, registry: &CardRegistry, what: Prohibition, card: &CardId) -> bool {
     lingering::prohibits_about(state, what, card)
+        || (what == Prohibition::StealOrTrash
+            && registry.get(card).is_some_and(|definition| definition.card_type == crate::dsl::CardType::Agenda)
+            && lingering::prohibits_about(state, Prohibition::StealOrTrashAgendas, card))
 }
 
 /// [`cannot`] about one install: also what binds only it (Warm

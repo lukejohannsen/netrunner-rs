@@ -721,21 +721,28 @@ pub fn evaluate_effect(
 
         // Read down the stack from its top (the end of the `Vec`) until
         // enough match; each card goes faceup into the set-aside zone.
-        Effect::SetAsideFromTopUntil { filter, count } => {
+        Effect::SetAsideFromTopUntil { filter, count, deck } => {
             let mut matched = 0;
             let mut cards = Vec::new();
             while matched < *count {
-                let Some(card) = state.runner.stack.pop() else { break };
+                let top = match deck {
+                    Side::Runner => state.runner.stack.pop(),
+                    Side::Corp => state.corp.r_and_d.pop(),
+                };
+                let Some(card) = top else { break };
                 if registry.get(&card).is_some_and(|definition| crate::dsl::card_matches_filter(definition, filter)) {
                     matched += 1;
                 }
-                state.runner.set_aside.push(card.clone());
+                match deck {
+                    Side::Runner => state.runner.set_aside.push(card.clone()),
+                    Side::Corp => state.corp.set_aside.push(card.clone()),
+                }
                 cards.push(card);
             }
             if cards.is_empty() {
                 return Ok(Vec::new());
             }
-            Ok(vec![GameEvent::CardsSetAside { side: Side::Runner, cards }])
+            Ok(vec![GameEvent::CardsSetAside { side: *deck, cards }])
         }
 
         Effect::InstallRunnerCardFromGripWithDiscount(discount) => {
@@ -798,6 +805,17 @@ pub fn evaluate_effect(
             Ok(Vec::new())
         }
         Effect::Breach(server) => crate::rules::run::start_breach(state, registry, *server),
+        Effect::Access { from, filter, count, then } => crate::rules::run::access_cards(
+            state,
+            registry,
+            from,
+            filter,
+            *count,
+            then.clone(),
+            acting_card.cloned(),
+            ctx.acting_install,
+            ctx.replacing_breach,
+        ),
 
         Effect::EndActionPhase => {
             let side = carried_out_by(registry, ctx).ok_or(RulesError::MissingActingCardContext)?;
@@ -1140,6 +1158,16 @@ pub fn evaluate_effect(
         // R&D named alone: the Corp shuffles it — Oracle Thinktank's
         // "Shuffle this agenda into R&D", after `AddToDeck` has put it there.
         Effect::ShuffleIntoDeck(zones) if zones.as_slice() == [crate::dsl::CardZoneRef::OwnRAndD] => {
+            crate::rules::pending_choice::shuffle_decks(state, Side::Corp, &crate::dsl::CardZoneRef::OwnRAndD, None);
+            Ok(Vec::new())
+        }
+        // The Corp's set-aside cards, back into R&D — Deep Dive's "Then,
+        // the Corp shuffles the set-aside cards into R&D", a Runner card's
+        // text about the Corp's deck. They were faceup, so nothing is
+        // hidden by recording nothing; R&D's count says how many.
+        Effect::ShuffleIntoDeck(zones) if zones.as_slice() == [crate::dsl::CardZoneRef::OpponentSetAside] => {
+            let cards = std::mem::take(&mut state.corp.set_aside);
+            state.corp.r_and_d.extend(cards);
             crate::rules::pending_choice::shuffle_decks(state, Side::Corp, &crate::dsl::CardZoneRef::OwnRAndD, None);
             Ok(Vec::new())
         }

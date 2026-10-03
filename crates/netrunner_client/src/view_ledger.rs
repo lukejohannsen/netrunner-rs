@@ -83,6 +83,7 @@ fn every_field_of_the_view_is_accounted_for(view: ClientView) {
         scored_worth: _,        // drawn: hud::score_area, each row's points
         points_to_win: _,       // drawn: hud::readouts ("3/5"), the score sheet's caption, the terminal's status line
         removed_from_game: _,   // drawn: under Archives' sheet; the terminal's identity line and card picker
+        set_aside: _,           // drawn: hud::in_effect ("set aside: …"), both clients, as the Runner's is; the access pop-up draws the ones offered
         identity_counters: _,   // drawn: hud::identity_facts / identity_chip (AU Co.'s power counters)
         identity_flipped: _,    // drawn: hud::identity_side — the avatar chip, the identity sheet, the terminal's identity line
         identity_copy: _,       // drawn: hud::identity_side ("Side 2")
@@ -211,6 +212,7 @@ fn every_field_of_the_view_is_accounted_for(view: ClientView) {
             from_zone: _,       // drawn: access::Access
             resolved_cards: _,  // drawn: board::trail
             pending_install: _, // engine's: which install is being accessed; access::Access shows the card
+            outside_breach: _,  // engine's: the count left and the card's continuation; the choice of card shows the candidates, and the card's text is on its face
             phase: _,           // drawn: access::Access and Prompt::of
         }) = access_state
         {}

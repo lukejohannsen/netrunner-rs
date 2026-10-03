@@ -4519,7 +4519,7 @@ mod tests {
                 reached_success_phase: true,
                 breached: Some(ServerId::Hq),
                 cards_accessed_count: 1,
-                access_state: Some(run::AccessState { pending_install: None, pending_install_rezzed: false,
+                access_state: Some(run::AccessState { pending_install: None, pending_install_rezzed: false, outside_breach: None,
                     // Set when the card was presented, and left in place
                     // for the rest of its `PendingChoice`.
                     currently_accessing: Some(CardId("hedge_fund".to_string())),

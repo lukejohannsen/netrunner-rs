@@ -323,7 +323,7 @@ pub fn install_label(id: &InstallId, registry: &CardRegistry, view: Option<&Clie
 pub fn candidate_label(candidate: &AccessCandidate, registry: &CardRegistry, view: Option<&ClientView>) -> String {
     match candidate {
         AccessCandidate::Root(install) => install_label(install, registry, view),
-        AccessCandidate::Archived(card_id) => card_title(card_id, registry),
+        AccessCandidate::Archived(card_id) | AccessCandidate::SetAside(card_id) => card_title(card_id, registry),
         AccessCandidate::Zone => match view.and_then(|view| view.active_run.as_ref()).map(|run| run.server) {
             Some(ServerId::Hq) => "a random card from HQ".to_string(),
             Some(ServerId::RnD) => "the top card of R&D".to_string(),

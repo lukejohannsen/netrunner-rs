@@ -595,10 +595,13 @@ pub const EVENTS_RARE_WITH_SWEEP_DECKS: &[(&str, &str, u64)] = &[
 /// (Vantage Point Stage 3b), so there is no rate to set a batch from; it
 /// is demanded of no sweep this project runs, and its per-card test is
 /// what reaches it. It stays in the deck so that the day an agent does
-/// make that turn, its play is under the sweep.
+/// make that turn, its play is under the sweep. Deep Dive (Midnight Sun
+/// Stage 6b, in *Safety Net*) plays on the same condition, for the same
+/// reason.
 pub const CARDS_RARE_WITH_SWEEP_DECKS: &[(&str, &str, u64)] = &[
     ("the_toolbox", "a 9[c] console in one sweep deck, installed only by a random seat: the heuristic Runner has no term for a pool card", 2048),
     ("chain_reaction", "needs successful runs on all three centrals in one turn; 0 of 768 deep-sweep games, so no batch demands it", 1_000_000),
+    ("deep_dive", "plays only after successful runs on all three centrals in one turn, Chain Reaction's condition; its per-card test reaches it", 1_000_000),
 ];
 
 /// Every non-identity card the sample decks (`decks::matchups()`) contain,

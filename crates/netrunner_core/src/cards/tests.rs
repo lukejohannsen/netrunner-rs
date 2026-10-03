@@ -21785,4 +21785,120 @@ mod midnight_sun {
         assert_eq!(done.runner.resources.credits, Credits(13), "the first rider resolved");
         assert!(done.active_run.as_ref().is_some_and(|run| run.breach_only), "and Virtuoso's breach of HQ");
     }
+
+    // ---- Stage 6b: access outside a breach ----
+
+    /// Pinhole Threading on HQ, up to the moment its replacement would
+    /// begin the breach: `CompleteRun` is where the run's breach is.
+    fn pinhole_on_hq(state: &GameState, registry: &CardRegistry) -> (GameState, Vec<GameEvent>) {
+        let (asked, _) = apply_action(state, registry, PlayerAction::PlayEvent { card_id: id("pinhole_threading") }).expect("play");
+        let (running, _) = apply_action(&asked, registry, PlayerAction::ChooseServerForPendingDecision { server: ServerId::Hq }).expect("run HQ");
+        let (at_server, _) = crate::rules::test_support::through_movement(&running, registry).expect("to the server");
+        apply_action(&at_server, registry, PlayerAction::CompleteRun).expect("successful")
+    }
+
+    fn select(state: &GameState, registry: &CardRegistry, candidate: crate::rules::AccessCandidate) -> GameState {
+        apply_action(state, registry, PlayerAction::SelectCardToAccess { candidate }).expect("access it").0
+    }
+
+    fn runner_can(state: &GameState, registry: &CardRegistry, action: &PlayerAction) -> bool {
+        crate::rules::legal_actions_for(state, registry, Side::Runner).contains(action)
+    }
+
+    /// "Instead of breaching the attacked server, access 1 card in the root
+    /// of another server": the Runner picks among the roots of the other
+    /// servers, an asset may be trashed and an agenda neither stolen nor
+    /// trashed; one access and the run is over, with no breach.
+    #[test]
+    fn pinhole_threading_accesses_one_root_card_elsewhere_and_cannot_steal_an_agenda() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.grip = vec![id("pinhole_threading")];
+        let mut in_hq = root_at("pad_campaign", 0);
+        in_hq.server = ServerId::Hq;
+        in_hq.install_id = crate::rules::InstallId(900);
+        state.corp.installed = vec![root_at("offworld_office", 1), root_at("pad_campaign", 2), in_hq];
+        let (asked, events) = pinhole_on_hq(&state, &registry);
+        assert!(!events.iter().any(|event| matches!(event, GameEvent::BreachBegun { .. })), "not a breach");
+        let offered = match asked.active_run.as_ref().and_then(|run| run.access_state.as_ref()).map(|access| &access.phase) {
+            Some(crate::rules::AccessPhase::SelectNextCard { selectable_cards }) => selectable_cards.clone(),
+            other => panic!("a choice of card: {other:?}"),
+        };
+        let agenda = crate::rules::AccessCandidate::Root(install_of(&state, "offworld_office"));
+        let asset = crate::rules::AccessCandidate::Root(fixture_install_id("pad_campaign"));
+        assert_eq!(offered, vec![agenda.clone(), asset.clone()], "the roots of the other servers, not HQ's own");
+
+        let accessing = select(&asked, &registry, agenda);
+        assert!(!runner_can(&accessing, &registry, &PlayerAction::StealAgenda { card_id: id("offworld_office") }), "you cannot steal it");
+        let (passed, events) = apply_action(&accessing, &registry, PlayerAction::PassAccessedCard { card_id: id("offworld_office") }).expect("pass it");
+        assert!(passed.active_run.is_none(), "1 card, and the run is over");
+        assert!(events.iter().any(|event| matches!(event, GameEvent::RunCompleted { server: ServerId::Hq })));
+        assert!(passed.runner.scored_agendas.is_empty());
+        assert!(passed.corp.installed.iter().any(|card| card.card == id("offworld_office")), "still installed");
+        assert_eq!(passed.last_completed_run.as_ref().and_then(|run| run.breached), None, "HQ was never breached");
+
+        let accessing = select(&asked, &registry, asset);
+        let (trashed, _) = apply_action(&accessing, &registry, PlayerAction::TrashAccessedCard { card_id: id("pad_campaign") }).expect("an asset may be trashed");
+        assert!(trashed.corp.archives.iter().any(|archived| archived.card == id("pad_campaign")));
+        assert!(trashed.active_run.is_none());
+
+        let mut alone = state;
+        alone.corp.installed.retain(|card| card.server == ServerId::Hq);
+        let (nothing, _) = pinhole_on_hq(&alone, &registry);
+        assert!(nothing.active_run.is_none(), "no root card in another server: nothing to access, and the run ends");
+    }
+
+    /// Successful runs on HQ, R&D and Archives this turn, each with nothing
+    /// to access but R&D's top card, passed.
+    fn three_centrals(mut state: GameState, registry: &CardRegistry) -> GameState {
+        for server in [ServerId::Hq, ServerId::Archives] {
+            state = run_to_completion(state, registry, server).0;
+        }
+        let (accessing, _) = run_to_completion(state, registry, ServerId::RnD);
+        let top = accessing.corp.r_and_d.last().cloned().expect("a card in R&D");
+        apply_action(&accessing, registry, PlayerAction::PassAccessedCard { card_id: top }).expect("pass it").0
+    }
+
+    /// "The Corp must set aside the top 8 cards of R&D faceup. Access 1 of
+    /// those cards. You may spend [click] to access another 1 of those
+    /// cards. Then, the Corp shuffles the set-aside cards into R&D."
+    #[test]
+    fn deep_dive_sets_aside_eight_accesses_one_and_may_spend_a_click_for_another() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.resources.clicks = Clicks(6);
+        state.runner.grip = vec![id("deep_dive")];
+        // The top of R&D is the end: Offworld Office among the top 8.
+        state.corp.r_and_d = [vec![id("ice_wall"), id("ice_wall")], vec![id("hedge_fund"); 6], vec![id("offworld_office"), id("pad_campaign")]].concat();
+        let play = PlayerAction::PlayEvent { card_id: id("deep_dive") };
+        assert!(apply_action(&state, &registry, play.clone()).is_err(), "play only after successful runs on HQ, R&D and Archives");
+
+        let ready = three_centrals(state, &registry);
+        let (asked, events) = apply_action(&ready, &registry, play).expect("play");
+        assert!(events.iter().any(|event| matches!(event, GameEvent::CardsSetAside { side: Side::Corp, cards } if cards.len() == 8)));
+        assert_eq!(asked.corp.set_aside.len(), 8);
+        assert_eq!(asked.corp.r_and_d, vec![id("ice_wall"), id("ice_wall")]);
+        let corp_view = crate::view::build_client_view(&asked, &registry, Side::Corp);
+        assert_eq!(corp_view.corp.set_aside.len(), 8, "faceup: the Corp sees them too");
+
+        let stealing = select(&asked, &registry, crate::rules::AccessCandidate::SetAside(id("offworld_office")));
+        let (stolen, _) = apply_action(&stealing, &registry, PlayerAction::StealAgenda { card_id: id("offworld_office") }).expect("steal it");
+        assert_eq!(stolen.runner.scored_agendas.len(), 1);
+        assert_eq!(stolen.corp.set_aside.len(), 7, "it left the set-aside zone");
+        assert!(stolen.pending_paid_choice.is_some(), "you may spend [click]");
+
+        let (again, _) = apply_action(&stolen, &registry, accept()).expect("spend [click]");
+        let clicks = again.runner.resources.clicks;
+        let second = select(&again, &registry, crate::rules::AccessCandidate::SetAside(id("pad_campaign")));
+        let (done, _) = apply_action(&second, &registry, PlayerAction::PassAccessedCard { card_id: id("pad_campaign") }).expect("pass it");
+        assert_eq!(clicks, Clicks(1), "6 - 3 runs - Deep Dive - the click spent");
+        assert!(done.active_run.is_none());
+        assert!(done.corp.set_aside.is_empty(), "shuffled back");
+        assert_eq!(done.corp.r_and_d.len(), 9, "all but the stolen agenda");
+
+        let declined = decline(&stolen, &registry);
+        assert!(declined.corp.set_aside.is_empty());
+        assert_eq!(declined.corp.r_and_d.len(), 9);
+        assert!(declined.active_run.is_none());
+    }
 }

@@ -380,6 +380,15 @@ pub struct CorpState {
     /// only, since nothing in this card pool ever reads a card back out.
     #[serde(default)]
     pub removed_from_game: Vec<CardId>,
+    /// The Corp's cards in the set-aside zone (CR 4.8), set aside faceup by
+    /// a card's text — Deep Dive's "The Corp must set aside the top 8 cards
+    /// of R&D faceup" while the Runner accesses 1 or 2 of them. The
+    /// Runner's text sets them aside, but they are the Corp's cards, so the
+    /// Corp's list (`RunnerState::set_aside` is the Runner's). Faceup, so
+    /// public (4.8.6), and emptied by the same resolution, which shuffles
+    /// the rest back into R&D.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub set_aside: Vec<CardId>,
     /// Ids of the cards in this deck that can be *played from Archives*
     /// (`CardDefinition::playable_from_archives` — Petty Cash's "[click]:
     /// Play this operation from Archives"). Seeded once by

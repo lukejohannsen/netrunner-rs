@@ -796,7 +796,17 @@ pub enum Effect {
     /// (`GameEvent::CardsSetAside`). Composition didn't work: no effect
     /// reads down a deck until a condition holds, and a card left in the
     /// stack cannot wait for the install choice that follows.
-    SetAsideFromTopUntil { filter: crate::dsl::CardFilter, count: u32 },
+    ///
+    /// `deck` is whose deck is read and whose set-aside zone the cards go
+    /// to: the Runner's by default, the Corp's for Deep Dive's "The Corp
+    /// must set aside the top 8 cards of R&D faceup" (`filter: Any`, `count:
+    /// 8`, `CorpState::set_aside`) — the top N being "until N of any card".
+    SetAsideFromTopUntil {
+        filter: crate::dsl::CardFilter,
+        count: u32,
+        #[serde(default = "crate::dsl::effect::the_runner", skip_serializing_if = "crate::dsl::effect::is_the_runner")]
+        deck: crate::rules::Side,
+    },
     /// `InstallRunnerCardFromGrip` paying `u32` less — Illumination's
     /// "install up to 3 cards from your grip, paying 1[c] less for each".
     /// Paired with `CardFilter::InstallableRunnerCardWithDiscount` so the
@@ -1241,6 +1251,32 @@ pub enum Effect {
     /// `RunState::breached`). The run goes on, on Archives, to a breach of
     /// R&D.
     Breach(crate::rules::ServerId),
+    /// The Runner accesses `count` of the cards in `from` that match
+    /// `filter`, one at a time, choosing each, and then `then` resolves —
+    /// an access that is not a breach (CR 7.1.9, 7.1.10): Pinhole
+    /// Threading's "instead of breaching the attacked server, access 1 card
+    /// in the root of another server" (`from: OpponentInstalled`, a root
+    /// card, `filter` saying which) and Deep Dive's "Access 1 of those
+    /// cards" over what it set aside (`OpponentSetAside`). Each access
+    /// follows a breach's steps (`run::access`, `OutsideBreach`), and "the
+    /// procedure ends once the designated number of cards have been chosen
+    /// for access" (7.1.10). Inside a run only as the run's breach is
+    /// replaced, which the run then ends after; outside one it stands in a
+    /// `RunState` flagged `breach_only`, as `Breach` does.
+    ///
+    /// Composition didn't work: every access began at a breach
+    /// (`access::access_server`), whose candidates are a server's. **`then`
+    /// is part of the effect** because an access in progress parks nothing
+    /// a `Sequence` waits behind (`resolution_halted`), so "You may spend
+    /// [click] to access another 1 of those cards. Then, the Corp shuffles
+    /// the set-aside cards into R&D" would resolve under the first access.
+    Access {
+        from: crate::dsl::CardZoneRef,
+        filter: crate::dsl::CardFilter,
+        count: u32,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        then: Option<Box<Effect>>,
+    },
     /// Reveals `count` cards at random from `side`'s hand — HQ or the grip
     /// — and, with `each`, resolves it as each card in turn: Bring Them
     /// Home's "Reveal and add 2 cards at random from the grip to the top of
@@ -1933,6 +1969,17 @@ pub enum Prohibition {
     ScoreAgendas,
     /// The Runner cannot steal or trash the cards they access.
     StealOrTrash,
+    /// The Runner cannot steal or trash an agenda they access — Pinhole
+    /// Threading's "If that card is an agenda, you cannot steal or trash it
+    /// during this access", made for the rest of the run before the card is
+    /// chosen: the access is the run's last act, so "for the rest of this
+    /// run" is "during this access", and a prohibition made after the card
+    /// is seen, on whether it is an agenda, would show a facedown card's
+    /// type in the view's in-effect list. Asked with `StealOrTrash` by
+    /// `continuous::cannot_about`, of an agenda only. Composition didn't
+    /// work: `StealOrTrash` would forbid trashing the asset Pinhole
+    /// Threading is for.
+    StealOrTrashAgendas,
     /// The Runner cannot lose or spend credits from their credit pool —
     /// Aircheck's "while this event is active, … you cannot lose or spend
     /// credits from your credit pool", for the run it makes. Asked by
@@ -2011,9 +2058,10 @@ pub enum Prohibition {
 impl Prohibition {
     /// Every prohibition, for a question put about each of them
     /// (`view::build_client_view`'s `standing_cannot`).
-    pub const ALL: [Prohibition; 11] = [
+    pub const ALL: [Prohibition; 12] = [
         Prohibition::ScoreAgendas,
         Prohibition::StealOrTrash,
+        Prohibition::StealOrTrashAgendas,
         Prohibition::SpendOrLoseCreditPool,
         Prohibition::SpendCredits,
         Prohibition::EndTheRun,
@@ -2029,7 +2077,7 @@ impl Prohibition {
     pub fn binds(self) -> Side {
         match self {
             Prohibition::ScoreAgendas | Prohibition::EndTheRun | Prohibition::DiscardStep => Side::Corp,
-            Prohibition::StealOrTrash | Prohibition::SpendOrLoseCreditPool | Prohibition::SpendCredits | Prohibition::RunOnRemote | Prohibition::AccessOthers | Prohibition::Access | Prohibition::BreakSubroutines | Prohibition::BioroidIceAbilities => Side::Runner,
+            Prohibition::StealOrTrash | Prohibition::StealOrTrashAgendas | Prohibition::SpendOrLoseCreditPool | Prohibition::SpendCredits | Prohibition::RunOnRemote | Prohibition::AccessOthers | Prohibition::Access | Prohibition::BreakSubroutines | Prohibition::BioroidIceAbilities => Side::Runner,
         }
     }
 
@@ -2040,7 +2088,7 @@ impl Prohibition {
     pub(crate) fn counted_as(self) -> Option<crate::dsl::Trigger> {
         match self {
             Prohibition::RunOnRemote => Some(crate::dsl::Trigger::OnRunStart),
-            Prohibition::ScoreAgendas | Prohibition::StealOrTrash | Prohibition::SpendOrLoseCreditPool | Prohibition::SpendCredits | Prohibition::EndTheRun | Prohibition::AccessOthers | Prohibition::Access | Prohibition::BreakSubroutines | Prohibition::DiscardStep | Prohibition::BioroidIceAbilities => None,
+            Prohibition::ScoreAgendas | Prohibition::StealOrTrash | Prohibition::StealOrTrashAgendas | Prohibition::SpendOrLoseCreditPool | Prohibition::SpendCredits | Prohibition::EndTheRun | Prohibition::AccessOthers | Prohibition::Access | Prohibition::BreakSubroutines | Prohibition::DiscardStep | Prohibition::BioroidIceAbilities => None,
         }
     }
 }
@@ -2201,7 +2249,8 @@ impl Effect {
                 on_match.for_each_effect(f);
                 on_differ.for_each_effect(f);
             }
-            Effect::PromptChooseCards { then: Some(effect), .. } => effect.for_each_effect(f),
+            Effect::PromptChooseCards { then: Some(effect), .. } | Effect::Access { then: Some(effect), .. } => effect.for_each_effect(f),
+            Effect::Access { then: None, .. } => {}
             Effect::PromptChooseServer { on_success, on_start, .. } => {
                 for effect in [on_success, on_start].into_iter().flatten() {
                     effect.for_each_effect(f);
@@ -2373,6 +2422,17 @@ impl Effect {
         let rendered = format!("{self:?}");
         rendered.split(['(', '{', ' ']).next().unwrap_or(&rendered).to_string()
     }
+}
+
+
+/// `SetAsideFromTopUntil::deck`'s default: every card but Deep Dive reads
+/// the Runner's own stack.
+pub(crate) fn the_runner() -> crate::rules::Side {
+    crate::rules::Side::Runner
+}
+
+pub(crate) fn is_the_runner(side: &crate::rules::Side) -> bool {
+    *side == crate::rules::Side::Runner
 }
 
 #[cfg(test)]

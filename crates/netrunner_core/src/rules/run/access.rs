@@ -6,7 +6,7 @@ use crate::rules::dispatcher;
 use crate::rules::error::RulesError;
 use crate::rules::payment::{self, Purpose};
 use crate::rules::event::GameEvent;
-use crate::rules::run::state::{AccessCandidate, AccessPhase, AccessState, RunPhase, ServerId};
+use crate::rules::run::state::{AccessCandidate, AccessPhase, AccessState, OutsideBreach, RunPhase, RunState, ServerId};
 use crate::rules::state::{ArchivedCard, GameState, InstallId, InstallSlot, ScoredAgenda, Side};
 use crate::rules::uninstall;
 
@@ -109,14 +109,18 @@ fn prune_candidates(state: &mut GameState, registry: &CardRegistry, server: Serv
     let limits = continuous::access_limits(state, registry, server);
     let only_these = crate::rules::lingering::installs_prohibited(state, Prohibition::AccessOthers);
     let not_these = crate::rules::lingering::installs_prohibited(state, Prohibition::Access);
+    // Accesses outside a breach name roots in other servers (Pinhole
+    // Threading): any root still holds its candidate there.
+    let outside_breach = state.active_run.as_ref().and_then(|run| run.access_state.as_ref()).is_some_and(|access| access.outside_breach.is_some());
     let still_in_root: Vec<InstallId> = state
         .corp
         .installed
         .iter()
-        .filter(|c| c.server == server && c.slot == InstallSlot::Root)
+        .filter(|c| (outside_breach || c.server == server) && c.slot == InstallSlot::Root)
         .map(|c| c.install_id)
         .collect();
     let pile: Vec<CardId> = state.corp.archives.iter().map(|a| a.card.clone()).collect();
+    let set_aside = state.corp.set_aside.clone();
     let Some(access) = state.active_run.as_ref().and_then(|run| run.access_state.as_ref()) else { return };
     let mut from_zone = Vec::with_capacity(access.from_zone.len());
     for card in &access.from_zone {
@@ -130,6 +134,7 @@ fn prune_candidates(state: &mut GameState, registry: &CardRegistry, server: Serv
     access.candidates.retain(|candidate| match candidate {
         AccessCandidate::Root(install) => still_in_root.contains(install),
         AccessCandidate::Archived(card) => pile.contains(card),
+        AccessCandidate::SetAside(card) => set_aside.contains(card),
         AccessCandidate::Zone => false,
     });
     for (count, card, install) in limits {
@@ -151,6 +156,11 @@ fn prune_candidates(state: &mut GameState, registry: &CardRegistry, server: Serv
 /// What the Runner may choose among now: the zone, while it has a card
 /// left to give, then the specific candidates.
 fn selectable(access: &AccessState) -> Vec<AccessCandidate> {
+    // "The procedure ends once the designated number of cards have been
+    // chosen for access" (CR 7.1.10).
+    if access.outside_breach.as_ref().is_some_and(|outside| outside.left == 0) {
+        return Vec::new();
+    }
     let zone = (!access.from_zone.is_empty()).then_some(AccessCandidate::Zone);
     zone.into_iter().chain(access.candidates.iter().cloned()).collect()
 }
@@ -161,10 +171,13 @@ fn selectable(access: &AccessState) -> Vec<AccessCandidate> {
 fn take_candidate(state: &mut GameState, candidate: &AccessCandidate) -> Option<(CardId, Option<InstallId>)> {
     let card = match candidate {
         AccessCandidate::Root(install) => state.find_corp_install(*install).map(|c| c.card.clone()),
-        AccessCandidate::Archived(card) => Some(card.clone()),
+        AccessCandidate::Archived(card) | AccessCandidate::SetAside(card) => Some(card.clone()),
         AccessCandidate::Zone => None,
     };
     let access = state.active_run.as_mut()?.access_state.as_mut()?;
+    if let Some(outside) = access.outside_breach.as_mut() {
+        outside.left = outside.left.saturating_sub(1);
+    }
     match candidate {
         AccessCandidate::Zone => {
             if access.from_zone.is_empty() {
@@ -177,7 +190,7 @@ fn take_candidate(state: &mut GameState, candidate: &AccessCandidate) -> Option<
             access.candidates.remove(position);
             Some((card?, Some(*install)))
         }
-        AccessCandidate::Archived(_) => {
+        AccessCandidate::Archived(_) | AccessCandidate::SetAside(_) => {
             let position = access.candidates.iter().position(|c| c == candidate)?;
             access.candidates.remove(position);
             Some((card?, None))
@@ -198,15 +211,21 @@ fn offer_next(state: &mut GameState, registry: &CardRegistry, server: ServerId) 
     let options = selectable(access);
     match options.len() {
         0 => {
+            // What the card that asked for accesses outside a breach
+            // resolves once they are over (Deep Dive's click for another).
+            let after = access.outside_breach.as_mut().and_then(|outside| outside.then.take().map(|then| (then, outside.card.clone(), outside.install)));
             // A breach with no run ends as nothing a card hears: there was
             // no run to complete. A run that breached another server is
             // still a run on the one it attacked (CR 7.3.1).
-            let Some(ended) = super::engine::end_run(state).filter(|run| !run.breach_only) else {
-                return Ok(Vec::new());
-            };
-            let completed_event = GameEvent::RunCompleted { server: ended.server };
-            let mut events = vec![completed_event.clone()];
-            events.extend(crate::rules::dispatcher::dispatch_event(state, registry, &completed_event)?);
+            let mut events = Vec::new();
+            if let Some(ended) = super::engine::end_run(state).filter(|run| !run.breach_only) {
+                let completed_event = GameEvent::RunCompleted { server: ended.server };
+                events.push(completed_event.clone());
+                events.extend(crate::rules::dispatcher::dispatch_event(state, registry, &completed_event)?);
+            }
+            if let Some((then, card, install)) = after {
+                events.extend(resolve_after_accesses(state, registry, *then, card, install)?);
+            }
             Ok(events)
         }
         1 => {
@@ -234,6 +253,103 @@ pub(crate) fn accessing_in_the_discard_pile(state: &GameState) -> bool {
         .as_ref()
         .and_then(|run| run.access_state.as_ref())
         .is_some_and(|access| access.server == ServerId::Archives && access.pending_install.is_none())
+}
+
+/// `Effect::Access`: the Runner accesses `count` of the cards `from`
+/// holds that `filter` admits, choosing each, not as a breach (CR 7.1.9,
+/// 7.1.10) — so no `BreachBegun`, no random access limit, and nothing a
+/// breach of a server would add. An installed card is a candidate in a
+/// root (CR 7.4.1a's kind of candidate; a piece of ice protecting a server
+/// is not in one); a set-aside card by its name, faceup.
+///
+/// Inside a run it is the run's breach replaced (`replacing_breach`), and
+/// the run goes on to these accesses and ends when they do; anywhere else
+/// in a run it is refused, as `Breach` is. Outside a run it stands in a
+/// `RunState` flagged `breach_only`, on R&D, with nothing declared
+/// successful: the access machinery is the run's (`run::engine::
+/// start_breach`'s reasoning).
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn access_cards(
+    state: &mut GameState,
+    registry: &CardRegistry,
+    from: &crate::dsl::CardZoneRef,
+    filter: &crate::dsl::CardFilter,
+    count: u32,
+    then: Option<Box<crate::dsl::Effect>>,
+    card: Option<CardId>,
+    install: Option<InstallId>,
+    replacing_breach: bool,
+) -> Result<Vec<GameEvent>, RulesError> {
+    use crate::dsl::CardZoneRef;
+    // The cards a selection over `from` would offer: the filter read off
+    // each definition and each copy (`InAttackedServer` is the copy's).
+    let admitted = crate::rules::pending_choice::eligible_positions(state, registry, Side::Runner, from, filter, None, None);
+    let candidates: Vec<AccessCandidate> = match from {
+        CardZoneRef::OpponentInstalled => admitted
+            .into_iter()
+            .filter_map(|position| state.corp.installed.get(position))
+            .filter(|installed| installed.slot == InstallSlot::Root)
+            .map(|installed| AccessCandidate::Root(installed.install_id))
+            .collect(),
+        CardZoneRef::OpponentSetAside => {
+            let mut cards: Vec<CardId> = admitted.into_iter().filter_map(|position| state.corp.set_aside.get(position).cloned()).collect();
+            // Faceup, and one choice per name: two copies are one card to
+            // choose (`AccessState::candidates`' rule for Archives).
+            cards.sort();
+            cards.into_iter().map(AccessCandidate::SetAside).collect()
+        }
+        _ => return Err(RulesError::UnresolvedCardTarget),
+    };
+    match state.active_run.as_ref() {
+        Some(run) if !replacing_breach || run.access_state.is_some() => return Err(RulesError::RunAlreadyInProgress),
+        Some(_) => {}
+        None => state.active_run = Some(RunState { server: ServerId::RnD, phase: RunPhase::Success, breach_only: true, ..RunState::default() }),
+    }
+    let run = state.active_run.as_mut().expect("stood up above");
+    let server = run.server;
+    run.phase = RunPhase::AccessingCard;
+    run.access_state = Some(AccessState {
+        server,
+        candidates,
+        outside_breach: Some(OutsideBreach { left: count, then, card, install }),
+        ..AccessState::default()
+    });
+    offer_next(state, registry, server)
+}
+
+/// Resolves what a card asked for once its accesses outside a breach are
+/// over, as that card — or queues it behind whatever the accesses left
+/// parked, to resolve when that is answered (`DeferredTrigger::
+/// continuation`, how a `Sequence` waits).
+fn resolve_after_accesses(
+    state: &mut GameState,
+    registry: &CardRegistry,
+    then: crate::dsl::Effect,
+    card: Option<CardId>,
+    install: Option<InstallId>,
+) -> Result<Vec<GameEvent>, RulesError> {
+    if state.resolution_halted() {
+        if let Some(card) = card
+            && !state.is_over()
+        {
+            state.deferred_triggers.push(crate::rules::state::DeferredTrigger {
+                announce: None,
+                card,
+                trigger: crate::dsl::Trigger::OnPlay,
+                target: None,
+                install,
+                target_install: None,
+                event: None,
+                continuation: Some(then),
+                heard: Default::default(),
+                not_the_first_this_turn: false,
+                fired: 0,
+            });
+        }
+        return Ok(Vec::new());
+    }
+    let mut ctx = ability::ResolutionContext::for_parked(install, card.as_ref());
+    ability::evaluate_effect(state, &then, &mut ctx, registry)
 }
 
 /// The breach of a run declared successful (CR 6.9.5b), which ends the
@@ -416,6 +532,16 @@ fn present_card_for_access(
     card_id: &CardId,
     install: Option<InstallId>,
 ) -> Result<Vec<GameEvent>, RulesError> {
+    // Outside a breach a root card is accessed in its own server (Pinhole
+    // Threading's "in the root of another server"), and the access says so.
+    let outside_breach = state.active_run.as_ref().and_then(|run| run.access_state.as_ref()).is_some_and(|access| access.outside_breach.is_some());
+    let server = match install.and_then(|install| state.find_corp_install(install)) {
+        Some(installed) if outside_breach => installed.server,
+        _ => server,
+    };
+    if outside_breach && let Some(access) = state.active_run.as_mut().and_then(|run| run.access_state.as_mut()) {
+        access.server = server;
+    }
     // Pin the instance first: every later step of this card's resolution
     // (its `OnAccessed` trigger, a trash, a steal) reads it from here.
     let rezzed = install.and_then(|install| state.find_corp_install(install)).is_some_and(|c| c.rezzed);
@@ -571,7 +697,10 @@ fn try_replace_access(
     let mut events = ability::evaluate_effect(state, &effect, &mut ctx, registry)?;
     // "Instead of breaching Archives, breach R&D": the run goes on, to a
     // breach of the server the replacement named (`RunState::breached`).
-    if !state.active_run.as_ref().is_some_and(|run| run.breached.is_some()) {
+    // "Instead of breaching …, access 1 card in the root of another
+    // server" (Pinhole Threading): the run goes on to those accesses, and
+    // ends when they do (`offer_next`).
+    if !state.active_run.as_ref().is_some_and(|run| run.breached.is_some() || run.access_state.is_some()) {
         super::engine::end_run(state);
     }
     events.push(GameEvent::AccessReplaced { server });
@@ -646,6 +775,7 @@ pub fn access_server(
         currently_accessing: None,
         pending_install: None,
         pending_install_rezzed: false,
+        outside_breach: None,
         phase: AccessPhase::SelectNextCard { selectable_cards: Vec::new() },
     });
     events.extend(offer_next(state, registry, server)?);
@@ -868,6 +998,8 @@ enum RemovedFrom {
     Hand,
     Deck,
     Archives,
+    /// The Corp's set-aside zone (Deep Dive).
+    SetAside,
     /// `rezzed`: whether it was, which is what makes a persistent ability
     /// persist (CR 9.12.5a).
     Installed { slot: InstallSlot, rezzed: bool },
@@ -904,6 +1036,16 @@ fn remove_from_corp_zone(
             None => (RemovedFrom::Nowhere, Vec::new()),
         })
     };
+    // A card set aside faceup and accessed there (Deep Dive) leaves the
+    // set-aside zone; its access is not a breach, so `server` names no zone.
+    let outside_breach = state.active_run.as_ref().and_then(|run| run.access_state.as_ref()).is_some_and(|access| access.outside_breach.is_some());
+    if install.is_none()
+        && outside_breach
+        && let Some(position) = state.corp.set_aside.iter().position(|c| c == card_id)
+    {
+        state.corp.set_aside.remove(position);
+        return Ok((RemovedFrom::SetAside, Vec::new()));
+    }
     // The access pinned the exact instance: take that one and nothing
     // else. Two copies of one upgrade in a root used to both resolve to
     // the lower-indexed install (ROADMAP Rules Audit follow-ups).
@@ -1443,7 +1585,7 @@ mod tests {
         seed: u64,
     ) -> GameState {
         GameState {
-            corp: crate::rules::state::CorpState { identity: None, identity_counters: 0, identity_flipped: false, identity_copy: 0, bad_publicity: 0, removed_from_game: Vec::new(), once_per_turn_used: Default::default(),
+            corp: crate::rules::state::CorpState { identity: None, identity_counters: 0, identity_flipped: false, identity_copy: 0, bad_publicity: 0, removed_from_game: Vec::new(), set_aside: Vec::new(), once_per_turn_used: Default::default(),
                 scored_agendas: Vec::new(),
                 playable_from_archives: Vec::new(),
                 resources: PlayerResources {

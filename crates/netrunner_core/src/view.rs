@@ -74,6 +74,9 @@ pub struct CorpClientView {
     /// Public — see `PublicCorpState::removed_from_game`.
     #[serde(default)]
     pub removed_from_game: Vec<CardId>,
+    /// Public — see `CorpState::set_aside`.
+    #[serde(default)]
+    pub set_aside: Vec<CardId>,
     /// Power counters on the Corp's identity (AU Co.) — public, and
     /// carried so a determinized sample can pay a cost that spends them.
     #[serde(default)]
@@ -391,6 +394,7 @@ pub fn build_client_view(state: &GameState, registry: &CardRegistry, viewer: imp
         scored_agendas: public.corp.scored_agendas,
         points_to_win: crate::rules::continuous::points_to_win(state, registry, Side::Corp),
         removed_from_game: public.corp.removed_from_game,
+        set_aside: public.corp.set_aside,
     };
 
     let runner = RunnerClientView {
