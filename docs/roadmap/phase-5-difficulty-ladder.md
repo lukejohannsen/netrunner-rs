@@ -26,12 +26,11 @@ share on pinned binaries, the same games paired by seed, and by `diag precepts`.
 
 ## Open
 
-- **Samples carry no identity** (§25 Stage 4): `determinize` sets `identity: None` on every sample, a
-  measured decision, so an identity's continuous effects — A Teia's remote limit, every printed
-  link and hand size — are invisible to any search; the planner checks each step against the real
-  list, so a line the identity forbids is dropped and re-planned, never played, and the cost is the
-  beam it spent on it. Carrying the identity into the sample is a measured change, owed when a
-  search needs it.
+- **A paid end-the-run is priced against what the run threatens** (§33): ending a run returns the Corp's
+  active-run term and the run's stakes whatever the run would have reached, so LEO Construction
+  trades a bioroid — Mercia B4LL4RD, whose turn-by-turn barrier install no term reads, or a piece of
+  ice — for a run on Archives or one that has met no ice yet; in the two Agency pairings the Corp's
+  wins fell 18 → 8 and 15 → 10 of 48 once it could.
 - **`LevelKind::{Mcts, Puct}` stay in the code** until a search beats the planner on either chair (§24, §25
   Stage 8); a sixth rung on either chair would need a stronger `elite`, not a handicap (§22).
 
@@ -65,6 +64,7 @@ share on pinned binaries, the same games paired by seed, and by `diag precepts`.
 - **§26** — The beam keeps one line per position, and a line is judged by the free score it leads to: the glacier Corp that iced instead of scoring was a beam holding three positions in six slots, not a line judged too early — the judgment alone does not find it (`feat/beam-one-line-per-position`, 30 September 2026).
 - **§27** — The stack overflow §26 recorded was a bot's sample and the engine together: the Corp's sample named a masked access as a Boto the Runner must steal, and a score asked the stolen ice's strength text whether threat was 4 — a scan now asks only effects of the kind in question, and a masked access is named as a card the sample holds that the decision is true of (`fix/stolen-non-agenda-score-recursion`, 30 September 2026).
 - **§32** — A card that pays on a run is worth what its runs will pay: a click ability that begins a run pays its rider per use and is not charged its click (Red Team), a trigger on every successful run pays once a turn (Pennyshaver), the rig's breach accesses are the run's (Docklands Pass) and the counters a card's own runs place are R&D accesses promised (Conduit, under the rig plan) — the four installed and used where their decks hold them, off the blind list on every pass; the self-pairing flat and Runner-ward, the four card pairings 128 → 113 Runner wins, recorded (`feat/run-paying-installs`, 2 October 2026).
+- **§33** — A sample carries both identities: an identity's ability was in the view's list and no sample's, so the planner never used one — Topan's install, Synapse Global's tag and LEO Construction's end-the-run now played, off the blind list on every pass; the self-pairing inside the band both ways; LEO's trade of a bioroid for an ended run measured as the Corp's own loss and owed next; Hit List takes two Malandragem for the sweep gate (`feat/samples-carry-identities`, 2 October 2026).
 - **§31** — A run a card's text began is priced with what the text put on it: the run's own credits break ICE and are worth the breaks they cover (Overclock), the rider pays on success (Clean Getaway, Red Team's run, Jailbreak's draw and access), the breach is of the server the run approaches (Maintenance Access), an armed prevention passes the first unbreakable piece (Shred) and a rez tax is what the forced rez costs (Tread Lightly) — Overclock 0 → 58, Clean Getaway 0 → 46, Shred 0 → 25, Maintenance Access 0 → 7 plays over a planner pass of the pool, the four off the blind list; the self-pairing moved within the band in opposite directions on two seeds (`feat/run-riders-at-the-leaf`, 2 October 2026).
 - **§30** — A program hosted on Madani is one turn from the table (its install delta less a click) and the grip promises its installer half a click: the planner installs Madani beside programs that wait, hosts on it and installs from it — 1 → 37 installs and 0 → 24 hosts-or-free-installs over 192 games, Madani off the blind list; three readings measured and rejected first, one of them with a beam change that moved every game (`feat/madani-hosts-the-rig`, 2 October 2026).
 - **§29** — The cards the planner never plays are the difference between seatings, measured: `scripts/blind_cards.py` over a random pass and a planner pass of `diag precepts` lists every card random seats use at least five times that the planner never does — 26 on `main` at #341, Madani first at 115–163 uses a pass — where "no seat used it" could not see a card the planner installs and never uses (`diag/blind-cards`, 2 October 2026).
