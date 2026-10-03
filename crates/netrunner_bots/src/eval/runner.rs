@@ -62,6 +62,18 @@ pub(super) fn access_prospect(state: &GameState, run: &RunState, registry: &Card
     let first_trash = identities::on_trash_while_accessing(state, registry, server);
     let first_trash = f64::from(first_trash.runner_credits) * w.own_credit_weight + f64::from(first_trash.runner_cards) * w.click_weight;
     let mut first_trash_lift = 0.0_f64;
+    // What both identities print about a steal (§36) — Jinteki: Personal
+    // Evolution's net damage, Thule Subsea's core damage or its click and
+    // 2[credit], Poétrï's install — paid for every agenda the breach
+    // takes: the ones it cannot miss (`known_steals`), and the chance of
+    // one in each card it has not seen (`expected_steals`), an agenda
+    // being `TYPICAL_AGENDA_POINTS` of the points the Runner expects
+    // there.
+    let steal = identities::on_steal(state, registry, server, credits);
+    let reads_steals = steal != identities::Pays::default();
+    let (hq_points, density) = if reads_steals { agenda_points_expected(state, registry) } else { (0.0, 0.0) };
+    let mut known_steals = 0u32;
+    let mut expected_steals = 0.0_f64;
     let corp_credits = state.corp.resources.credits.0;
     for installed in state.corp.installed.iter().filter(|card| card.server == server && card.slot == InstallSlot::Root) {
         if installed.rezzed || installed.seen_by_runner {
@@ -84,6 +96,7 @@ pub(super) fn access_prospect(state: &GameState, run: &RunState, registry: &Card
             // steal it had never priced.
             if def.card_type == CardType::Agenda && can_pay_to_steal(state, registry, def, credits) {
                 trash_gain += f64::from(def.agenda_points.unwrap_or(0)) * w.agenda_point_weight;
+                known_steals += 1;
             }
             if let Some(cost) = def.trash_cost
                 && cost <= credits
@@ -96,6 +109,7 @@ pub(super) fn access_prospect(state: &GameState, run: &RunState, registry: &Card
             }
         } else if !seen {
             hidden += 1.0;
+            expected_steals += hq_points / TYPICAL_AGENDA_POINTS;
             tokens += installed.advancement_tokens;
             // "Read the counters on it and the Corp's credits": the
             // Corp's credits are public, the card's requirement is not,
@@ -116,6 +130,7 @@ pub(super) fn access_prospect(state: &GameState, run: &RunState, registry: &Card
             let accesses = (1 + (run.additional_hq_access + promised) as usize).min(held);
             let fresh = if held == 0 { 0.0 } else { ((held - 1) as f64 / held as f64).powi(earlier as i32) };
             hidden += accesses as f64 * fresh;
+            expected_steals += accesses as f64 * fresh * hq_points / TYPICAL_AGENDA_POINTS;
             if w.runner_stakes_weight != 0.0 || w.hq_pressure_weight != 0.0 {
                 let (hq_points, _) = agenda_points_expected(state, registry);
                 plans += accesses as f64 * fresh * (hq_points * w.runner_stakes_weight + w.hq_pressure_weight);
@@ -124,6 +139,7 @@ pub(super) fn access_prospect(state: &GameState, run: &RunState, registry: &Card
         ServerId::RnD if !seen => {
             let accesses = (1 + (run.additional_rd_access + promised) as usize).min(state.corp.r_and_d.len());
             hidden += accesses as f64;
+            expected_steals += accesses as f64 * density / TYPICAL_AGENDA_POINTS;
             if w.runner_stakes_weight != 0.0 {
                 let (_, density) = agenda_points_expected(state, registry);
                 plans += accesses as f64 * density * w.runner_stakes_weight;
@@ -136,6 +152,7 @@ pub(super) fn access_prospect(state: &GameState, run: &RunState, registry: &Card
                 if archived.facedown {
                     if !seen {
                         hidden += 1.0;
+                        expected_steals += hq_points / TYPICAL_AGENDA_POINTS;
                     }
                 } else if let Some(def) = registry.get(&archived.card) {
                     if punishes_access_with_damage(def) {
@@ -152,27 +169,52 @@ pub(super) fn access_prospect(state: &GameState, run: &RunState, registry: &Card
                     // sweep, seed 120).
                     if def.card_type == CardType::Agenda && can_pay_to_steal(state, registry, def, credits) {
                         trash_gain += f64::from(def.agenda_points.unwrap_or(0)) * w.agenda_point_weight;
+                        known_steals += 1;
                     }
                 }
             }
         }
     }
+    // A steal the breach cannot miss deals its damage as a trap does,
+    // toward the same flatline.
+    damage += known_steals as usize * steal.damage as usize;
     // "The Runner is flatlined immediately if they suffer more damage than
     // they have cards in their grip" (CR 1.7.2b).
-    let trap = if damage > state.runner.grip.len() {
+    let grip = state.runner.grip.len();
+    let trap = if damage > grip {
         w.lethal_trap_weight
     } else {
         damage as f64 * w.known_trap_damage_weight
     };
+    // A steal the breach may make deals its damage at its chance — and
+    // when that damage would be the flatline, the chance of an agenda is
+    // the chance of losing the game: an empty grip on a run into R&D
+    // under Jinteki: Personal Evolution.
+    let risked = if steal.damage > 0 && damage <= grip && damage + steal.damage as usize > grip {
+        expected_steals.min(1.0) * w.lethal_trap_weight
+    } else {
+        expected_steals * f64::from(steal.damage) * w.known_trap_damage_weight
+    };
+    // NBN: Reality Plus's 2[credit] for the turn's first tag, on the tags
+    // the breach deals.
+    let tagged = identities::on_tags(state, registry, server, tags).to_runner(w);
     hidden * w.active_run_weight + f64::from(tokens) * w.advanced_card_prospect_weight
         + finishable as f64 * w.finishable_install_weight
         - ambushes as f64 * w.known_ambush_weight
         - trap
         - f64::from(tags) * w.tag_weight
+        + tagged
         + trash_gain
         + first_trash_lift
         + plans
+        + (f64::from(known_steals) + expected_steals) * steal.to_runner(w)
+        - risked
 }
+
+/// The points of an agenda the Runner expects to find, for turning the
+/// points a breach is expected to reach (`agenda_points_expected`) into
+/// the agendas it is expected to steal: the pool's 44 agendas average 1.9.
+const TYPICAL_AGENDA_POINTS: f64 = 2.0;
 
 /// The credits the Corp would spend rezzing the unrezzed ICE still ahead
 /// of the Runner in `run`, `TYPICAL_REZ_COST` a piece out of what the
@@ -429,6 +471,7 @@ pub(super) fn breaker_savings_shortfall(state: &GameState, registry: &CardRegist
 /// always added them — see `corp::score`.
 pub(super) fn score(state: &GameState, registry: &CardRegistry, w: &Weights, horizon: u32, score: &mut f64) {
     *score -= state.runner.tags as f64 * w.tag_weight;
+    *score -= state.runner.brain_damage as f64 * w.core_damage_weight;
     *score += state.runner.rig.len() as f64 * w.board_presence_weight;
     *score += state.runner.memory_units.0 as f64 * w.memory_weight;
     *score += breaker_coverage(state, registry) as f64 * w.breaker_coverage_weight;

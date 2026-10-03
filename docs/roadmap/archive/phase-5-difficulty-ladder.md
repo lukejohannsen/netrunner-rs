@@ -3093,3 +3093,50 @@ Reading 2 was first measured with a beam change beside it — a line parked insi
 **Still owed, as stages 3 and 4 of the Open item**, and one thing found here: Off the Books' counter (and any stored counter whose use is a search) is held rather than spent once the planner judges the offer, which is `AGENDA_COUNTER_WEIGHT`'s question, not the turn's end's.
 
 **Verified.** `cargo test --workspace` green, clippy silent, both 256-seed sweeps green in release.
+
+## 36. Steals, scores and tags across the table: core damage is a hand size, Thule Subsea's tax is paid, Synapse Global's and Poétrï's installs are taken, and a faceup BANGUN agenda is worth its punishment — DONE (`feat/identities-steals-scores-tags`, 3 October 2026)
+
+**The third stage of the Open item on the identities' text.** Measured first, on `main` (`fda92c8`), planner both chairs, 48 games a pairing on seed 2, the identities that act when an agenda is scored or stolen or a tag is given or removed:
+
+- **Thule Subsea**: of its "do 1 core damage unless they spend [click] and 2[credit]" the Runner paid 6 and 14 times and took the damage 114 and 118. Nothing on either chair read core damage — `RunnerState::brain_damage` had no term — so the payment was a click and two credits against nothing.
+- **Synapse Global**: its "you may reveal and install 1 card from HQ, ignoring all costs" was offered 129 and 122 times and taken about 5 and 4 (the prompt's actions beyond its confirm). **Poétrï Luxury Brands**: 127 and 98 offers, about 9 and 4 taken. Both are asked in the Runner's turn, where the planner played one ply, and `fundamentals::pending_decision_upside` prices a "may" at its worst resolution — choosing nothing — so a toggle left the selection open and lost to a confirm with nothing chosen.
+- **Jinteki: Personal Evolution**: every Corp win in its pairings was a flatline (4 and 7 of 48), and no leaf priced the net damage a steal deals.
+- **BANGUN**: agendas went faceup 124 and 118 times, priced as rezzed assets (`REZZED_ASSET_WEIGHT`), not for the punishment the identity deals.
+- **NBN: Reality Plus**'s first-tag credits and **Tāo Salonga**'s swap: see below.
+
+**What it is now.**
+- `CORE_DAMAGE_WEIGHT` (1.5): each point of core damage the Runner has taken is a hand size, subtracted by the Runner and added by the Corp (CR 5.5.3b). Above the guide's click and two credits (1.2), so a Runner who can pay Thule does.
+- `eval::identities` reads a steal and a tag: `on_steal` (Personal Evolution's damage, Thule's tax as the payer's cheaper side of the ones it can afford, Poétrï's install when HQ holds a card the selection would offer — the engine's own `eligible_positions`, now exported beside `check_requirement`) and `on_tags` (Reality Plus, the turn's first tag). `access_prospect` charges a steal's pays for every agenda the breach cannot miss and, at its chance (the expected points over `TYPICAL_AGENDA_POINTS`, the pool's 44 agendas averaging 1.9), for each card it has not seen; a steal's damage that would empty the grip is the flatline at that chance — an empty grip on an R&D run under Personal Evolution.
+- `planner::its_identitys_selection`: a selection the seat's own identity parks on it, over its own cards, is a root to plan from and, while the seat still owes the decision, a step of the line — the selection, its confirm and the server the install asks for — wherever it stands (`Search::deciding`). Over its own cards only, because that is what the evaluator prices where it stands.
+- A faceup agenda is an install whose text is not active, worth what its access does to the Runner at the Corp's rates (`corp::faceup_agenda_punishment`: the grip below `opponent_grip_floor`, the hand size core damage takes, a tag the Corp holds a punishment for) — not a rezzed asset's weight.
+
+Tests: `takes_its_identitys_free_install_when_the_runner_removes_a_tag` and `installs_from_hq_when_its_agenda_is_stolen` fail with the planning branch switched off (nothing is installed); `personal_evolution_and_thule_subsea_charge_a_steal`, `poetri_installs_on_a_steal_when_hq_holds_a_card_to_install`, `reality_plus_is_paid_for_the_turns_first_tag`, `a_run_on_rnd_under_personal_evolution_with_an_empty_grip_risks_the_flatline`, `core_damage_is_a_hand_size_both_chairs_read`, `a_faceup_agenda_is_worth_its_punishment_and_not_an_assets_weight`.
+
+**Measured** (pinned binaries, `main` at `fda92c8`):
+- `coverage_identical.py main --head-worktree`: both random shapes identical (`57e361e0…`); planner shapes `501c7f5d…` (§35's, reproduced) → `6d72a95a…`.
+- Planner self-paired, `--deck-styles`, 384 games: Corp share **0.419 → 0.393** (seed 1, −0.026, z −1.96, 26 discordant) and **0.354 → 0.365** (seed 2, +0.010, z +0.69, 34 discordant) — opposite directions, inside the band.
+- `diag precepts --deck-styles` (planner both chairs): Corp share casual 0.432 → 0.391 and 0.302 → 0.333 (192 games), startup 0.611 → 0.611 and 0.533 → 0.500 (90). The blind list by drift: casual 9 / 6 → 9 / 8 (Neurospike and Tread Lightly on seed 2), startup 3 / 5 → 3 / 3 (Byte! and Transfer of Wealth off). The pool's one core-damage card in these passes, Bumi 1.0, was used about as often (138 / 134 / 60 / 47 → 130 / 134 / 57 / 51).
+- The identities, seed 2, planner both chairs, 48 games a pairing:
+
+  | pairing | identity | uses | Corp wins |
+  |---|---|---|---|
+  | Undertow vs Stolen Goods | Thule Subsea | Runner pays 14 → **77**, takes it 118 → 51 | 2 → 1 |
+  | Undertow vs Dashing Mad | Thule Subsea | Runner pays 6 → **79**, takes it 114 → 49 | 2 → 4 |
+  | Gimbatul vs Stolen Goods | Synapse Global | cards chosen 5 → **54** in 127 offers | 22 → **26** |
+  | Gimbatul vs Dashing Mad | Synapse Global | cards chosen 4 → **61** in 124 offers | 12 → **16** |
+  | Fashion Lab vs Stolen Goods | Poétrï | cards chosen 9 → **96** | 14 → 14 |
+  | Fashion Lab vs Dashing Mad | Poétrï | cards chosen 4 → **81** | 6 → **11** |
+  | A Thousand Cuts vs Stolen Goods | Jinteki: Personal Evolution | flatlines 7 → 6 | 7 → 6 |
+  | A Thousand Cuts vs Dashing Mad | Jinteki: Personal Evolution | flatlines 4 → 2 | 4 → 2 |
+  | Pork Chops vs Stolen Goods | BANGUN | faceup 118 → 119, scored 49 → 35 | 35 → 33 |
+  | Pork Chops vs Dashing Mad | BANGUN | faceup 124 → 109, scored 49 → 30 | 33 → 33 |
+  | Hyper Velocity vs Stolen Goods, Fine Print vs Dashing Mad | NBN: Reality Plus | identical | 14, 15 |
+  | Peculiarity vs Planning Ahead, Brick Stack vs Flow and Ebb | Tāo Salonga | identical / 183 → 179 offers | 15, 20 → 22 |
+
+  BANGUN's Corp scores fewer agendas and wins as often: its wins are flatlines (29 → 31 and 31 → 31). Why it scores fewer was not traced; recorded rather than explained. NBN: Reality Plus's pairings are byte-identical: its 2[credit] on the tags a breach deals is read and changed no decision.
+
+**Not done, and why.**
+- **Tāo Salonga's swap** stays one ply (an Open item of its own): what two pieces of ICE are worth in each other's places is where each stands against the rig, which no term reads off a run, so planned, the swap and the decline would tie and the jitter would swap at random. Personal Evolution's damage on a *score* needed nothing: it lands in the Corp's own line, and the Runner's feared flatline already reads a Jinteki Corp at three.
+- **Synapse Global's tags as standing credits** were ruled out by arithmetic rather than measured: a carried tag worth the cash-out to the Corp makes cashing it in the line a tie with holding it (0.8 either way at the guide's rate), when the Runner clears a held tag on its turn. The click itself was already in the Corp's line (§33).
+
+**Verified.** `cargo test --workspace` green, clippy silent, both 256-seed sweeps green in release.
