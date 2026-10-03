@@ -26,6 +26,23 @@ share on pinned binaries, the same games paired by seed, and by `diag precepts`.
 
 ## Open
 
+- **The evaluators read both identities' text, not just the Corp's faction** (owed since §33, flagged by
+  the person 3 October 2026 as a huge miss). §33 put the identities into every sample, so their
+  abilities are steps of a plan, but no evaluator term reads what an identity *does*: every card
+  reading walks the rig or the Corp's installs — `read::declared_income`, `rig_breach_accesses`,
+  `rig_rd_accesses`, `rig_coverage`, `corp::corp_install_value`, `runner::held_cards_value`,
+  twenty-nine call sites — and the identity is in neither list. The one read of an identity
+  anywhere in `eval` is `read::corp_faction`, for two Runner terms. So, on both chairs and for
+  both sides' identities: an identity's income is nobody's (Synapse Global's click and tag,
+  Weyland Consortium: Built to Last's 2[credit] on a first advance, recurring credits hosted on an
+  identity), its run and breach triggers are no run's (Gabriel Santiago's HQ credits), what it
+  makes an install or a run worth is not read (Topan's 2[credit] off an install, PT Untaian's
+  advance), and neither chair reads the *opponent's* identity as a threat or a tax beyond the
+  Corp's faction (the Runner's mill or damage identities to the Corp; a Corp identity that
+  punishes a run, a steal or a tag to the Runner). The fix is a reading of the identity beside
+  the rig and the installs wherever the evaluator reads cards, the same readings with no
+  per-identity code, measured per the §26 recipe; it comes before the blind list's next cards,
+  because every one of them is priced on a board whose identities are read as blank.
 - **A paid end-the-run is priced against what the run threatens** (§33): ending a run returns the Corp's
   active-run term and the run's stakes whatever the run would have reached, so LEO Construction
   trades a bioroid — Mercia B4LL4RD, whose turn-by-turn barrier install no term reads, or a piece of
