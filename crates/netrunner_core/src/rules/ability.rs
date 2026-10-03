@@ -1939,7 +1939,10 @@ pub fn evaluate_effect(
             Ok(vec![GameEvent::PendingServerChoiceOffered { chooser: Side::Corp }])
         }
 
-        Effect::PromptInstallCorpCard { origin_zone, ignore_costs, discount, then, remote_only, another_server, new_remote, rez, if_rezzed, if_installed } => {
+        Effect::PromptInstallCorpCard { origin_zone, ignore_costs, discount, then, remote_only, another_server, new_remote, rez, if_rezzed, if_installed, ignore_credit_costs } => {
+            // "Ignoring credit costs": a discount of every credit, which a
+            // price never goes below 0 for.
+            let discount = &if *ignore_credit_costs { u32::MAX } else { *discount };
             let card_id = acting_card.ok_or(RulesError::UnresolvedCardTarget)?.clone();
             // First match by position: two copies of one card in HQ are
             // indistinguishable and interchangeable, so "the copy the Corp
@@ -4339,6 +4342,10 @@ pub(crate) fn resolve_amount(amount: &Amount, ctx: &ResolutionContext<'_>, state
         },
         Amount::PrintedCost => ctx.acting_card.and_then(|card| registry.get(card)).map_or(0, |def| def.cost),
         Amount::PaidCardPrintedCost => ctx.paid_with.first().and_then(|card| registry.get(card)).map_or(0, |def| def.cost),
+        Amount::TriggeringCardPrintedCost => match ctx.triggering_event {
+            Some(GameEvent::CardTrashed { card, .. }) => registry.get(card).map_or(0, |def| def.cost),
+            _ => 0,
+        },
         Amount::AccessedCardPrintedCost => state
             .active_run
             .as_ref()

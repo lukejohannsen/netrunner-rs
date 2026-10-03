@@ -98,9 +98,8 @@ pub(crate) struct Moment {
     /// it is heard by active cards, and without this its own trash was
     /// heard by nothing. Read off the access, which still holds the install
     /// as it was presented (`AccessState::pending_install_rezzed`).
-    /// **Not said of a trash by a card's text**: `GameEvent::CardTrashed`
-    /// does not carry whether the card was rezzed, and no card in the pool
-    /// has needed it.
+    /// A trash by a card's text says so itself
+    /// (`GameEvent::CardTrashed::install`'s `rezzed`).
     pub was_active: bool,
     /// How a Corp install stood as it was trashed off the table — read off
     /// the event (`GameEvent::CardTrashed::install`), or for an access
@@ -592,6 +591,10 @@ fn passes(state: &GameState, registry: &CardRegistry, filter: &EventFilter, mome
     // installation."
     if let EventFilter::TrashedFromThisServer = filter {
         return moment.trashed_install.is_some_and(|trashed| !trashed.installing && Some(trashed.server) == here);
+    }
+    // "A rezzed card, except during installation."
+    if let EventFilter::TrashedRezzed = filter {
+        return moment.trashed_install.is_some_and(|trashed| trashed.rezzed && !trashed.installing);
     }
     // "Whenever **it** fully breaks": the object the moment names is the
     // listening install.

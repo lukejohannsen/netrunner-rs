@@ -770,6 +770,16 @@ pub enum Effect {
         /// was rezzed too; neither is the card installed, unrezzed.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         if_installed: Option<Box<Effect>>,
+        /// "…ignoring **credit** costs" (CR 1.16.5b) — Ob Superheavy
+        /// Logistics' "Install and rez the card you found, ignoring credit
+        /// costs": every credit of the install and of the rez is removed,
+        /// and every other cost stays — an additional cost to rez (CR
+        /// 8.5.13c's own example is Ob finding Archer), a card's way to pay
+        /// for its rez (`rez_alternatives`). `ignore_costs` is "ignoring
+        /// **all** costs" (1.16.5c), which removes those too. Paid as a
+        /// discount of everything, so the rez's alternatives are still met.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        ignore_credit_costs: bool,
     },
     /// Installs the resolving card — `acting_card`, a card sitting in the
     /// Runner's grip — into the rig, **paying** its install cost (with the
@@ -1729,6 +1739,15 @@ pub enum Amount {
     /// paid for. Composition didn't work: `PrintedCost` reads the acting
     /// card, which in an `if_paid` is the card whose text it is.
     PaidCardPrintedCost,
+    /// The printed cost of the card the triggering trash is about — Ob
+    /// Superheavy Logistics' "the trashed card's printed rez cost", read
+    /// off `ResolutionContext::triggering_event` (`GameEvent::CardTrashed`)
+    /// as `TimesThisActionThisTurn` is. 0 for any other event or none: a
+    /// trash is the only moment a card in the pool reads it from. Composition didn't
+    /// work: `PrintedCost` reads the acting card, and making the trashed
+    /// card the acting one (`acts_on_subject`) would key Ob's "once per
+    /// turn" and its prompt on the card in Archives.
+    TriggeringCardPrintedCost,
     /// `u32` minus the cards the resolving `PromptChooseCards` selected
     /// (`ResolutionContext::selected_count`) — the R&D half of a sabotage
     /// of `u32`, resolved in the HQ selection's `then`. Saturating.

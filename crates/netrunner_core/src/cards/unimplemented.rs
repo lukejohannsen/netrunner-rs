@@ -42,9 +42,7 @@ pub(crate) const PH_UNIMPLEMENTED: &[(&str, &str)] = &[];
 pub(crate) const MSBP_UNIMPLEMENTED: &[(&str, &str)] = &[];
 
 /// *Midnight Sun* (`midnight_sun`): tranche 5 of the NSG plan.
-pub(crate) const MS_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("ob_superheavy_logistics_extract_export_excel", "Ob Superheavy Logistics: Extract. Export. Excel."),
-];
+pub(crate) const MS_UNIMPLEMENTED: &[(&str, &str)] = &[];
 
 /// *Uprising Booster Pack* (`uprising_booster_pack`): tranche 6 of the NSG plan.
 pub(crate) const URBP_UNIMPLEMENTED: &[(&str, &str)] = &[

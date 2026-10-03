@@ -48,7 +48,7 @@ cards each stage takes.
 | 2 | Rebellion Without Rehearsal (`rwr`) | 65 | 65 | 0 | complete (28 September 2026) |
 | 3 | The Automata Initiative (`tai`) | 65 | 65 | 0 | complete (29 September 2026) |
 | 4 | Parhelion (`ph`) | 63 | 63 | 0 | complete (2 October 2026) |
-| 5 | Midnight Sun (`ms`) + Booster (`msbp`) | 65 + 7 | 64 + 7 | 1 + 0 | Stages 1–7, 8a and 8b built (3 October 2026); **Stage 8c next** — the trash chain |
+| 5 | Midnight Sun (`ms`) + Booster (`msbp`) | 65 + 7 | 65 + 7 | 0 | complete (3 October 2026) |
 | 6 | Uprising (`ur`) + Booster (`urbp`) | 65 + 7 | 0 | 65 + 7 | not started |
 | 7 | Downfall (`df`) | 65 | 0 | 65 | not started |
 | 8 | System Update 2021 (`su21`), Salvaged Memories (`sm`), Magnum Opus Reprint (`mor`) | 82, 18, 6 | 11, 1, 0 | 71, 17, 6 | not started (the built ones are Core reprints) |
@@ -785,8 +785,10 @@ Grid, Tsakhia, World Tree.
 8. **Subroutine lists and ability layers:** split by mechanic when it was
    taken. **8a, subroutine lists** (built, 3 October 2026): Echo,
    Envelopment. **8b, ability layers** (built, 3 October 2026): Trieste
-   Model Bioroids, Light the Fire!. **8c, the trash chain:** Ob Superheavy Logistics, on a Sweep deck
-   of its own.
+   Model Bioroids, Light the Fire!. **8c, the trash chain** (built, 3 October
+   2026): Ob Superheavy Logistics, on a Sweep deck of its own, Supply Chain.
+   Stage 8 is complete, and Midnight Sun with it, 65 of 65 and its booster
+   pack 7 of 7.
 
 **Riskiest:**
 - Ob Superheavy Logistics: a general trash trigger, a search keyed on the
@@ -812,6 +814,7 @@ Excavator.
 - **Stage 7b** — the turn: Big Deal and Mitosis, one new `Effect` (`Score`, the action's scoring shared with a card's text), a card kept from being rezzed for a turn, and an install into a new remote only (`claude/serene-einstein-6bhlig`, 3 October 2026).
 - **Stage 8a** — subroutine lists: Echo and Envelopment with no new `Effect`, the subroutines a piece of ice gains by its own static ability, counted, in the rules' order, and ice with none fully broken as it is encountered (`claude/serene-einstein-6bhlig`, 3 October 2026).
 - **Stage 8b** — ability layers: Trieste Model Bioroids and Light the Fire! with no new `Effect`, a piece of ice Runner cards cannot break while the card that chose it is rezzed, the root of the attacked server losing its abilities for a run, and every card in it trashed (`claude/serene-einstein-6bhlig`, 3 October 2026).
+- **Stage 8c** — the trash chain: Ob Superheavy Logistics with no new `Effect`, a trash heard as of a rezzed card outside an install, the trashed card's printed cost, an exact printed cost, and an install-and-rez ignoring credit costs alone; Ob's Sweep deck, Supply Chain (`claude/serene-einstein-6bhlig`, 3 October 2026). **Midnight Sun is complete: 65 of 65, its booster pack 7 of 7.**
 
 ### 6. Uprising and its Booster Pack — 65 cards (C 10 / V 37 / M 18)
 

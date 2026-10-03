@@ -1206,6 +1206,9 @@ impl CardDefinition {
             EventFilter::TrashedFrom(_) => triggered.trigger == Trigger::OnCardTrashed,
             // Only a trash says where a card was trashed from, and only a
             // Corp card is in a server.
+            // Only a trash says how the card stood, and only a Corp card
+            // is rezzed.
+            EventFilter::TrashedRezzed => triggered.trigger == Trigger::OnCardTrashed,
             EventFilter::TrashedFromThisServer => {
                 matches!(triggered.trigger, Trigger::OnCardTrashed | Trigger::OnTrashedFromAccess) && self.side == crate::rules::Side::Corp
             }

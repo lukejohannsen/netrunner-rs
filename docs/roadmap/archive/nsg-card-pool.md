@@ -6625,3 +6625,53 @@ Midnight Sun 62 of 65, its booster pack 6 of 7; `MS_UNIMPLEMENTED` 5 → 3.
   `determinize`'s prior, which now holds both cards: Corp agenda wins
   58 → 54, Runner agenda wins 100 → 105, decked Runners 5 → 4, flatlines
   29 → 29.
+
+#### Stage 8c — the trash chain (3 October 2026)
+
+`claude/serene-einstein-6bhlig`: Ob Superheavy Logistics: Extract. Export.
+Excel., on a Sweep deck of its own. **No new `Effect`.** Midnight Sun 65 of
+65, its booster pack 7 of 7; `MS_UNIMPLEMENTED` empty. **Stage 8 is
+complete, and Midnight Sun with it.**
+
+- **`EventFilter::TrashedRezzed`**: "When you trash a rezzed card, except
+  during installation" — the card was rezzed as it went and was not trashed
+  as a step of installing another (CR 8.5.16c), both read off the event
+  (`GameEvent::CardTrashed::install`, which had carried them since Yakov).
+  One word for both halves, as `TrashedFromThisServer` fuses the same
+  exception. "You trash" is `OnCardTrashed`'s own: a trash the Runner
+  carried out (Light the Fire!, an access) is not the Corp's. Two stale
+  comments that said the event did not carry the rez state are corrected.
+- **`Amount::TriggeringCardPrintedCost`**: the trashed card's printed cost,
+  read off the trash that fired the trigger. Making the trashed card the
+  acting one (`acts_on_subject` with `PrintedCost`) was rejected: it would
+  key Ob's "once per turn" and its prompt on the card in Archives.
+- **`CardFilter::PrintedCostExactly`**: `PrintedCostAtMost`'s "equal to",
+  resolved as the selection is offered, while the trash is still on the
+  context. Ob's search is Eminent Domain's: ice, an asset or an upgrade
+  (the types with a rez cost, CR 2.3.5) at exactly one less, "may" by its
+  minimum of 0, R&D shuffled after. A trashed card printed at 0 has none
+  to find, and the requirement `AmountAtLeast(TriggeringCardPrintedCost, 1)`
+  keeps `Reduced` from flooring it to 0 — and keeps the turn's use unspent.
+- **`PromptInstallCorpCard::ignore_credit_costs`** (CR 1.16.5b): every
+  credit of the install and of the rez is removed and any other cost stays,
+  which is CR 8.5.13c's own Ob example (Archer's forfeit). Paid as a
+  discount of everything; `engine::rez_price` now reads a discount past
+  `i32::MAX` as the whole price rather than wrapping.
+- **Supply Chain** (Sweep, Eternal; 45 cards, Weyland and neutral, no
+  influence): the fifth Midnight Sun identity's deck. Every rez cost from 1
+  to 5 twice over; Envelopment, Regolith Mining License and Cybersand
+  Harvester trash themselves, Svyatogor Excavator and Stavka another card,
+  Kimberlite Field and Azef Protocol a card as they are scored.
+- **Client.** `prose` words the filter, the amount and the install. Nothing
+  new reaches the view.
+- **DSL ratio** (`pool_status.py`): 17 of 99 `Effect` variants
+  single-use, 1 unused (`Trace`), over 508 card files.
+- **Real play** (`--headless`, Supply Chain against Burn Rate, seed 2;
+  random seats 96 games / planner 48): Ob's trigger fired 171 / 31 times
+  and offered a card to install 157 / 30 times. The planner's games split
+  24 / 24 on agenda wins. Regolith Mining License was used 56 / 126 times,
+  Envelopment rezzed 18 / 28.
+- **Measured.** Both sweeps are green at 256 seeds with Supply Chain in
+  the rotation, the card gate included. `coverage_identical.py` against
+  Stage 8b (dceab7e, 192 games a report): **identical in all four shapes**,
+  random and planner, view and index.

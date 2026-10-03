@@ -1067,7 +1067,9 @@ fn rez_price(
     // lingering (Tread Lightly), never allowed to take the cost below 0.
     let added = continuous::rez_cost_delta(state, registry, ice);
     let rez_cost = if pay_cost {
-        (card_def.cost as i32 + added).max(0).saturating_sub(discount as i32).max(0) as u32
+        // A discount past any price is the whole of it (Ob Superheavy
+        // Logistics' "ignoring credit costs" is `u32::MAX`), never a wrap.
+        (card_def.cost as i32 + added).max(0).saturating_sub(i32::try_from(discount).unwrap_or(i32::MAX)).max(0) as u32
     } else {
         0
     };

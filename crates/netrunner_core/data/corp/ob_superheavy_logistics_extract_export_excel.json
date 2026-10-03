@@ -1,0 +1,71 @@
+{
+  "id": "ob_superheavy_logistics_extract_export_excel",
+  "title": "Ob Superheavy Logistics: Extract. Export. Excel.",
+  "side": "Corp",
+  "card_type": "Identity",
+  "cost": 0,
+  "min_deck_size": 45,
+  "triggers": [
+    {
+      "trigger": "OnCardTrashed",
+      "subject": "Any",
+      "when": "TrashedRezzed",
+      "requirement": {
+        "And": [
+          "OncePerTurn",
+          {
+            "AmountAtLeast": [
+              "TriggeringCardPrintedCost",
+              1
+            ]
+          }
+        ]
+      },
+      "effects": [
+        {
+          "PromptChooseCards": {
+            "side": "Corp",
+            "source": "OwnRAndD",
+            "filter": {
+              "All": [
+                {
+                  "CardTypeOneOf": [
+                    {
+                      "Ice": "Barrier"
+                    },
+                    "Asset",
+                    "Upgrade"
+                  ]
+                },
+                {
+                  "PrintedCostExactly": {
+                    "Reduced": {
+                      "amount": "TriggeringCardPrintedCost",
+                      "by": {
+                        "Fixed": 1
+                      }
+                    }
+                  }
+                }
+              ]
+            },
+            "min": 0,
+            "max": 1,
+            "reveal": false,
+            "shuffle_after": true,
+            "then": {
+              "PromptInstallCorpCard": {
+                "origin_zone": "OwnRAndD",
+                "rez": true,
+                "ignore_credit_costs": true
+              }
+            }
+          }
+        }
+      ],
+      "text": "Once per turn → When you trash a rezzed card, except during installation, you may search R&D for 1 card with a printed rez cost exactly 1[credit] less than the trashed card's printed rez cost. Install and rez the card you found, ignoring credit costs."
+    }
+  ],
+  "built_from": 33057,
+  "is_playable": true
+}

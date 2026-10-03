@@ -22378,4 +22378,109 @@ mod midnight_sun {
         let encountering = on_to_the_encounter(running, &registry);
         assert!(breaks_offered(&encountering, &registry, "carmen"), "Trieste has lost the ability that reads its choice");
     }
+
+    // ---- Stage 8c: the trash chain ----
+
+    const OB: &str = "ob_superheavy_logistics_extract_export_excel";
+
+    fn ob_turn() -> GameState {
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Corp);
+        state.corp.identity = Some(id(OB));
+        state
+    }
+
+    /// What Ob hears of a trash the Corp carried out, the card having stood
+    /// as `install` says.
+    fn trash_heard(state: &GameState, registry: &CardRegistry, card: &str, by: Side, rezzed: bool, installing: bool) -> GameState {
+        let mut state = state.clone();
+        let event = GameEvent::CardTrashed {
+            side: Side::Corp,
+            card: id(card),
+            from: crate::dsl::TrashedFrom::Installed,
+            by: Some(by),
+            install: Some(crate::rules::TrashedInstall { server: ServerId::Remote(0), rezzed, installing }),
+        };
+        crate::rules::dispatch_event(&mut state, registry, &event).expect("dispatch");
+        state
+    }
+
+    /// "When you trash a rezzed card, except during installation": a
+    /// rezzed card the Corp trashed, and nothing else — not one the Runner
+    /// trashed, not an unrezzed one, not one trashed by an install, and not
+    /// a 0-cost card, which has nothing 1[credit] cheaper.
+    #[test]
+    fn ob_hears_only_the_corps_trash_of_a_rezzed_card_outside_an_install() {
+        let registry = registry();
+        let mut state = ob_turn();
+        state.corp.r_and_d = vec![id("ice_wall"), id("pad_campaign")];
+        let asked = |state: &GameState| matches!(state.pending_decision, Some(PendingDecision::ChooseCards { .. }));
+        assert!(asked(&trash_heard(&state, &registry, "regolith_mining_license", Side::Corp, true, false)), "a rezzed card you trashed");
+        assert!(!asked(&trash_heard(&state, &registry, "regolith_mining_license", Side::Runner, true, false)), "the Runner's trash");
+        assert!(!asked(&trash_heard(&state, &registry, "regolith_mining_license", Side::Corp, false, false)), "an unrezzed card");
+        assert!(!asked(&trash_heard(&state, &registry, "regolith_mining_license", Side::Corp, true, true)), "during installation");
+        assert!(!asked(&trash_heard(&state, &registry, "clearinghouse", Side::Corp, true, false)), "printed rez cost 0");
+
+        // An install over a rezzed asset in a root trashes it as a step of
+        // the install (CR 8.5.16c): nothing is asked.
+        state.corp.installed = vec![crate::rules::InstalledCard { counters: 3, ..rezzed_root_at("regolith_mining_license", 0) }];
+        state.corp.hq = vec![id("pad_campaign")];
+        let (installed, _) = apply_action(
+            &state,
+            &registry,
+            PlayerAction::InstallCard { card_id: id("pad_campaign"), zone: ServerId::Remote(0), slot: InstallSlot::Root, trash_first: false },
+        )
+        .expect("install over it");
+        assert!(installed.corp.archives.iter().any(|card| card.card == id("regolith_mining_license")));
+        assert!(!asked(&installed));
+    }
+
+    /// Regolith Mining License (printed rez cost 2) trashes itself empty:
+    /// Ob finds a card that costs 1 — Ice Wall or Tithe, never PAD Campaign
+    /// or an operation — and installs and rezzes it ignoring credit costs,
+    /// the install tax of a protected server included. Once per turn: a
+    /// Cybersand Harvester trashed next finds nothing.
+    #[test]
+    fn ob_installs_and_rezzes_a_card_one_credit_cheaper_than_the_rezzed_card_trashed_once_per_turn() {
+        let registry = registry();
+        let mut state = ob_turn();
+        state.corp.r_and_d = vec![id("hedge_fund"), id("ice_wall"), id("pad_campaign"), id("tithe")];
+        state.corp.installed = vec![
+            crate::rules::InstalledCard { counters: 3, ..rezzed_root_at("regolith_mining_license", 0) },
+            crate::rules::InstalledCard { counters: 2, ..rezzed_root_at("cybersand_harvester", 1) },
+            ice_at("enigma", ServerId::Hq, true),
+        ];
+        let (asked, _) = apply_action(&state, &registry, PlayerAction::ActivateAbility { target: install_of(&state, "regolith_mining_license"), ability_index: 0 }).expect("take 3");
+        assert!(asked.corp.archives.iter().any(|card| card.card == id("regolith_mining_license")), "empty: trashed");
+        let offered: Vec<CardId> = toggles(&asked, &registry).into_iter().map(|position| asked.corp.r_and_d[position].clone()).collect();
+        assert_eq!(offered.len(), 2, "{offered:?}");
+        assert!(offered.contains(&id("ice_wall")) && offered.contains(&id("tithe")));
+        let credits = asked.corp.resources.credits;
+        let wall = asked.corp.r_and_d.iter().position(|card| card == &id("ice_wall")).expect("in R&D");
+        let (found, _) = pick(&asked, &registry, wall);
+        let (installed, _) = apply_action(&found, &registry, PlayerAction::ChooseServerForPendingDecision { server: ServerId::Hq }).expect("protecting HQ");
+        let wall = installed.corp.installed.iter().find(|card| card.card == id("ice_wall")).expect("installed");
+        assert!(wall.rezzed && wall.server == ServerId::Hq, "installed and rezzed");
+        assert_eq!(installed.corp.resources.credits, credits, "ignoring credit costs: the tax of 1 and the rez of 1");
+        assert_eq!(installed.corp.r_and_d.len(), 3);
+
+        let (again, _) = apply_action(&installed, &registry, PlayerAction::ActivateAbility { target: install_of(&installed, "cybersand_harvester"), ability_index: 0 }).expect("[trash]");
+        assert!(again.pending_decision.is_none(), "once per turn");
+    }
+
+    /// Envelopment's "Trash this ice." is the Corp's trash of a rezzed card
+    /// costing 5: Ob, mid-run, finds a card that costs 4.
+    #[test]
+    fn ob_hears_envelopment_trash_itself_and_finds_a_card_costing_four() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.identity = Some(id(OB));
+        state.corp.r_and_d = vec![id("stavka"), id("maskirovka")];
+        state.corp.installed = vec![ice_at("envelopment", ServerId::Hq, true)];
+        let (encountering, _) = encounter_with_events(&state, &registry);
+        let (asked, _) = pass_until_settled(encountering, &registry);
+        assert!(asked.corp.installed.iter().all(|card| card.card != id("envelopment")), "trash this ice");
+        let offered: Vec<&CardId> = toggles(&asked, &registry).into_iter().map(|position| &asked.corp.r_and_d[position]).collect();
+        assert_eq!(offered, [&id("stavka")]);
+    }
 }
