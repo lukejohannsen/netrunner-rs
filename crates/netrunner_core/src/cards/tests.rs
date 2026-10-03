@@ -21901,4 +21901,114 @@ mod midnight_sun {
         assert_eq!(declined.corp.r_and_d.len(), 9);
         assert!(declined.active_run.is_none());
     }
+
+    // ---- Stage 7a: the score area ----
+
+    #[test]
+    fn backroom_machinations_removes_a_tag_and_joins_the_score_area_as_a_one_point_agenda() {
+        let registry = registry();
+        let mut state = base_state();
+        state.runner.tags = 1;
+        state.corp.hq = vec![id("backroom_machinations")];
+        let play = PlayerAction::PlayOperation { card_id: id("backroom_machinations") };
+        let (played, _) = apply_action(&state, &registry, play.clone()).expect("play");
+        assert_eq!(played.runner.tags, 0, "remove 1 tag: the additional cost");
+        assert_eq!(played.corp.resources.agenda_points, AgendaPoints(1), "an agenda worth 1 agenda point");
+        assert_eq!(played.corp.scored_agendas.iter().map(|scored| scored.card.clone()).collect::<Vec<_>>(), vec![id("backroom_machinations")]);
+        assert!(played.corp.archives.is_empty(), "in the score area, not Archives");
+        assert_eq!(played.this_turn.added_to_archives(), 0, "it never reached Archives (CR 8.2.7)");
+
+        state.runner.tags = 0;
+        assert!(apply_action(&state, &registry, play).is_err(), "no tag to remove");
+    }
+
+    fn with_regenesis_advanced(mut state: GameState) -> GameState {
+        state.corp.installed = vec![crate::rules::InstalledCard { advancement_tokens: 3, ..root_at("regenesis", 0) }];
+        state.corp.archives = vec![
+            ArchivedCard::facedown(id("hostile_takeover")),
+            ArchivedCard::faceup(id("hostile_takeover")),
+            ArchivedCard::facedown(id("hedge_fund")),
+        ];
+        state
+    }
+
+    #[test]
+    fn regenesis_adds_a_facedown_agenda_from_archives_to_the_score_area_if_nothing_was_archived_this_turn() {
+        let registry = registry();
+        let state = with_regenesis_advanced(base_state());
+        let scored = score(&state, &registry, "regenesis");
+        assert_eq!(scored.corp.resources.agenda_points, AgendaPoints(1));
+        assert_eq!(toggles(&scored, &registry), vec![0], "the facedown agenda: not the faceup one, not the operation");
+        let (added, events) = pick(&scored, &registry, 0);
+        assert_eq!(added.corp.resources.agenda_points, AgendaPoints(2), "added, worth its 1 point");
+        assert_eq!(added.corp.scored_agendas.len(), 2);
+        assert!(!events.iter().any(|event| matches!(event, GameEvent::AgendaScored { .. })), "added, never scored (CR 1.17.3e)");
+        assert_eq!(added.corp.archives.len(), 2);
+        assert_eq!(none(&scored, &registry).corp.resources.agenda_points, AgendaPoints(1), "\"you may\": declined");
+
+        // An operation played this turn went to Archives: no Corp card may
+        // have been added.
+        let mut played = with_regenesis_advanced(base_state());
+        played.corp.hq = vec![id("hedge_fund")];
+        let (played, _) = apply_action(&played, &registry, PlayerAction::PlayOperation { card_id: id("hedge_fund") }).expect("play Hedge Fund");
+        assert_eq!(played.this_turn.added_to_archives(), 1);
+        let scored = score(&played, &registry, "regenesis");
+        assert!(!choosing_cards(&scored), "a Corp card was added to Archives this turn");
+        assert_eq!(scored.corp.resources.agenda_points, AgendaPoints(1));
+
+        // Last turn's additions are last turn's.
+        let mut rotated = played;
+        crate::rules::turn_log::rotate(&mut rotated);
+        assert!(choosing_cards(&score(&rotated, &registry, "regenesis")));
+    }
+
+    #[test]
+    fn blood_in_the_water_needs_as_many_advancements_as_the_runner_has_cards_in_grip() {
+        let registry = registry();
+        let mut state = base_state();
+        state.runner.grip = vec![id("sure_gamble"); 4];
+        state.corp.installed = vec![crate::rules::InstalledCard { advancement_tokens: 3, ..root_at("blood_in_the_water", 0) }];
+        let requirement = |state: &GameState| crate::rules::continuous::advancement_requirement(state, &registry, install_of(state, "blood_in_the_water"));
+        assert_eq!(requirement(&state), Some(4), "X is equal to the number of cards in the Runner's grip");
+        assert!(apply_action(&state, &registry, PlayerAction::ScoreAgenda { target: install_of(&state, "blood_in_the_water") }).is_err(), "3 of 4");
+        state.runner.grip.pop();
+        assert_eq!(requirement(&state), Some(3));
+        assert_eq!(score(&state, &registry, "blood_in_the_water").corp.resources.agenda_points, AgendaPoints(2));
+
+        state.runner.grip.clear();
+        state.corp.installed[0].advancement_tokens = 0;
+        assert_eq!(score(&state, &registry, "blood_in_the_water").corp.resources.agenda_points, AgendaPoints(2), "an empty grip: scored with none");
+    }
+
+    #[test]
+    fn steelskin_scarring_draws_three_and_two_more_when_trashed_from_the_grip_but_not_when_discarded() {
+        let registry = registry();
+        let mut played = runner_turn();
+        played.runner.grip = vec![id("steelskin_scarring")];
+        played.runner.stack = vec![id("sure_gamble"); 4];
+        let (played, _) = apply_action(&played, &registry, PlayerAction::PlayEvent { card_id: id("steelskin_scarring") }).expect("play it");
+        assert_eq!(played.runner.grip.len(), 3, "draw 3 cards");
+        assert!(played.pending_decision.is_none(), "played, not trashed from the grip");
+
+        // Scorched Earth's 4 meat damage trashes it from the grip.
+        let mut state = base_state();
+        state.runner.tags = 1;
+        state.corp.hq = vec![id("scorched_earth")];
+        state.runner.grip = ["steelskin_scarring", "sure_gamble", "sure_gamble", "sure_gamble"].map(id).to_vec();
+        state.runner.stack = vec![id("sure_gamble"); 4];
+        let (damaged, _) = apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: id("scorched_earth") }).expect("play Scorched Earth");
+        assert_eq!(offered(&damaged), Some(2), "you may draw 2 cards");
+        assert_eq!(choose(&damaged, &registry, 0).runner.grip.len(), 2);
+        assert!(choose(&damaged, &registry, 1).runner.grip.is_empty(), "declined");
+
+        // Discarded at the end of the turn is not trashed (CR 1.19.3).
+        let mut long = runner_turn();
+        long.runner.grip = vec![id("steelskin_scarring"), id("sure_gamble"), id("sure_gamble"), id("sure_gamble"), id("sure_gamble"), id("sure_gamble")];
+        long.runner.stack = vec![id("sure_gamble"); 4];
+        let (ending, _) = apply_action(&crate::rules::test_support::clicks_spent(&long), &registry, PlayerAction::EndTurn).expect("end turn");
+        assert_eq!(ending.phase, GamePhase::Discard { side: Side::Runner, required: 1 });
+        let (discarded, _) = apply_action(&ending, &registry, PlayerAction::DiscardCard { card_id: id("steelskin_scarring") }).expect("discard");
+        assert_eq!(offered(&discarded), None, "a discard offers nothing");
+        assert_eq!(discarded.runner.grip.len(), 5);
+    }
 }

@@ -1023,7 +1023,9 @@ pub fn evaluate_effect(
             let Some(position) = state.corp.archives.iter().rposition(|archived| archived.card == card_id && !archived.facedown) else {
                 return Ok(Vec::new());
             };
-            state.corp.archives.remove(position);
+            // Never trashed, by the rules: it leaves for the score area as
+            // it resolves, so it was never added to Archives either.
+            crate::rules::turn_log::unfile_resolving_operation(state, position);
             Ok(vec![add_to_score_area_as_agenda(state, Side::Corp, card_id, *as_agenda)])
         }
 
@@ -2607,7 +2609,7 @@ pub(crate) fn trash_install(
             // A rezzed install was faceup on the table, and a card the
             // Runner is accessing has been seen whatever its rez state.
             let seen = removed.rezzed || runner_is_accessing(state, &removed.card);
-            state.corp.archives.push(orient(removed.card.clone(), seen));
+            crate::rules::turn_log::file_in_archives(state, orient(removed.card.clone(), seen));
             let trashed = Some(crate::rules::event::TrashedInstall::of(&removed, false));
             events.push(GameEvent::CardTrashed { side: Side::Corp, card: removed.card, from: crate::dsl::TrashedFrom::Installed, by, install: trashed });
             events.extend(cascade_trash_hosted_programs(state, install));
@@ -2807,7 +2809,7 @@ pub(crate) fn trash_card(
             // A rezzed install was face-up on the table, so the Runner has
             // already seen it; an unrezzed one they never did.
             let seen = removed.rezzed || runner_is_accessing(state, card);
-            state.corp.archives.push(orient(card.clone(), seen));
+            crate::rules::turn_log::file_in_archives(state, orient(card.clone(), seen));
             let trashed = Some(crate::rules::event::TrashedInstall::of(&removed, false));
             events.push(GameEvent::CardTrashed { side: Side::Corp, card: card.clone(), from: crate::dsl::TrashedFrom::Installed, by, install: trashed });
             events.extend(cascade_trash_hosted_programs(state, install));
@@ -2854,7 +2856,7 @@ pub(crate) fn trash_card(
             // Runner, hence facedown.
             let popped = match (side, zone) {
                 (Side::Corp, StackZone::RAndD) => state.corp.r_and_d.pop().inspect(|card| {
-                    state.corp.archives.push(ArchivedCard::facedown(card.clone()));
+                    crate::rules::turn_log::file_in_archives(state, ArchivedCard::facedown(card.clone()));
                 }),
                 (Side::Runner, StackZone::Stack) => state.runner.stack.pop().inspect(|card| {
                     state.runner.heap.push(card.clone());
@@ -2880,7 +2882,7 @@ pub(crate) fn trash_card(
             }
             let index = (state.next_u64() % state.corp.hq.len() as u64) as usize;
             let card = state.corp.hq.remove(index);
-            state.corp.archives.push(ArchivedCard::facedown(card.clone()));
+            crate::rules::turn_log::file_in_archives(state, ArchivedCard::facedown(card.clone()));
             Ok(vec![GameEvent::CardTrashed { side: Side::Corp, card, from: crate::dsl::TrashedFrom::Hand, by, install: None }])
         }
     }
@@ -2920,7 +2922,7 @@ fn trash_hosted_card(state: &mut GameState, registry: &CardRegistry, card: CardI
     let side = registry.get(&card).map_or(Side::Runner, |def| def.side);
     match side {
         Side::Runner => state.runner.heap.push(card.clone()),
-        Side::Corp => state.corp.archives.push(ArchivedCard::faceup(card.clone())),
+        Side::Corp => crate::rules::turn_log::file_in_archives(state, ArchivedCard::faceup(card.clone())),
     }
     GameEvent::CardTrashed { side, card, from: crate::dsl::TrashedFrom::Elsewhere, by, install: None }
 }
@@ -3101,7 +3103,7 @@ pub(crate) fn trash_this_card(state: &mut GameState, registry: &CardRegistry, ct
         let install = state.corp.installed[position].install_id;
         let Some((removed, mut events)) = uninstall::corp_install(state, registry, install)? else { return Ok(Vec::new()) };
         let seen = removed.rezzed || runner_is_accessing(state, card_id);
-        state.corp.archives.push(orient(card_id.clone(), seen));
+        crate::rules::turn_log::file_in_archives(state, orient(card_id.clone(), seen));
         let trashed = Some(crate::rules::event::TrashedInstall::of(&removed, false));
         events.push(GameEvent::CardTrashed { side: Side::Corp, card: card_id.clone(), from: crate::dsl::TrashedFrom::Installed, by, install: trashed });
         events.extend(cascade_trash_hosted_programs(state, install));
@@ -3117,14 +3119,14 @@ pub(crate) fn trash_this_card(state: &mut GameState, registry: &CardRegistry, ct
         // itself on access, say), in which case they have seen it.
         let seen = runner_is_accessing(state, card_id);
         state.corp.hq.remove(position);
-        state.corp.archives.push(orient(card_id.clone(), seen));
+        crate::rules::turn_log::file_in_archives(state, orient(card_id.clone(), seen));
         return Ok(vec![GameEvent::CardTrashed { side: Side::Corp, card: card_id.clone(), from: crate::dsl::TrashedFrom::Hand, by, install: None }]);
     }
     if let Some(position) = state.corp.r_and_d.iter().position(|c| c == card_id) {
         // Milled off R&D — facedown on the same reasoning as HQ above.
         let seen = runner_is_accessing(state, card_id);
         state.corp.r_and_d.remove(position);
-        state.corp.archives.push(orient(card_id.clone(), seen));
+        crate::rules::turn_log::file_in_archives(state, orient(card_id.clone(), seen));
         return Ok(vec![GameEvent::CardTrashed { side: Side::Corp, card: card_id.clone(), from: crate::dsl::TrashedFrom::Deck, by, install: None }]);
     }
     if let Some(position) = acting_rig_position(state, ctx) {
@@ -3356,7 +3358,7 @@ pub(crate) fn pay_cost_ctx(
             let position = hand.iter().position(|c| *c == card).ok_or_else(|| RulesError::CardNotInHand { side, card: card.clone() })?;
             hand.remove(position);
             match side {
-                Side::Corp => state.corp.archives.push(ArchivedCard::faceup(card.clone())),
+                Side::Corp => crate::rules::turn_log::file_in_archives(state, ArchivedCard::faceup(card.clone())),
                 Side::Runner => state.runner.heap.push(card.clone()),
             }
             Ok(vec![GameEvent::CardRevealed { side, card: card.clone() }, GameEvent::CardTrashed { side, card, from: crate::dsl::TrashedFrom::Hand, by: Some(side), install: None }])
@@ -3371,7 +3373,7 @@ pub(crate) fn pay_cost_ctx(
                 let index = (state.next_u64() % state.corp.hq.len() as u64) as usize;
                 let card = state.corp.hq.remove(index);
                 // Revealed as it is trashed, so it lands faceup.
-                state.corp.archives.push(ArchivedCard::faceup(card.clone()));
+                crate::rules::turn_log::file_in_archives(state, ArchivedCard::faceup(card.clone()));
                 events.push(GameEvent::CardTrashed { side: Side::Corp, card, from: crate::dsl::TrashedFrom::Hand, by: Some(side), install: None });
             }
             Ok(events)
@@ -4310,6 +4312,7 @@ pub(crate) fn resolve_amount(amount: &Amount, ctx: &ResolutionContext<'_>, state
         Amount::CardsInstalledFromHqThisTurn => state.this_turn.installed_from_hq(),
         Amount::CardsInstalledInRemotesThisTurn => state.this_turn.installed_in_remotes(),
         Amount::ClickGainsInRunsThisTurn => state.this_turn.click_gains_in_runs(),
+        Amount::CorpCardsAddedToArchivesThisTurn => state.this_turn.added_to_archives(),
         Amount::TimesThisActionThisTurn => match ctx.triggering_event {
             Some(GameEvent::ActionFinished { action, .. }) => state.this_turn.times_taken(*action),
             _ => 0,

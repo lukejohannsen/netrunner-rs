@@ -45,15 +45,11 @@ pub(crate) const MSBP_UNIMPLEMENTED: &[(&str, &str)] = &[
 
 /// *Midnight Sun* (`midnight_sun`): tranche 5 of the NSG plan.
 pub(crate) const MS_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("steelskin_scarring", "Steelskin Scarring"),
     ("light_the_fire", "Light the Fire!"),
     ("trieste_model_bioroids", "Trieste Model Bioroids"),
     ("echo", "Echo"),
     ("big_deal", "Big Deal"),
-    ("blood_in_the_water", "Blood in the Water"),
-    ("regenesis", "Regenesis"),
     ("mitosis", "Mitosis"),
-    ("backroom_machinations", "Backroom Machinations"),
     ("ob_superheavy_logistics_extract_export_excel", "Ob Superheavy Logistics: Extract. Export. Excel."),
     ("envelopment", "Envelopment"),
 ];

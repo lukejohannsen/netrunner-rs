@@ -1,0 +1,25 @@
+{
+  "id": "backroom_machinations",
+  "title": "Backroom Machinations",
+  "side": "Corp",
+  "card_type": "Operation",
+  "cost": 2,
+  "additional_play_cost": {
+    "RemoveTags": 1
+  },
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "AddToScoreAreaAsAgenda": {
+            "points": 1
+          }
+        }
+      ]
+    }
+  ],
+  "built_from": 33055,
+  "is_playable": true
+}

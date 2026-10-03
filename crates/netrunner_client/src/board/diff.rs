@@ -321,6 +321,9 @@ mod tests {
             .chain(view.runner.scored_agendas.iter().map(|scored| scored.card.clone()))
             .chain(view.corp.identity.iter().cloned())
             .chain(view.runner.identity.iter().cloned())
+            // A card a prompt showed its chooser by name — ezaM's "Look at
+            // the top card of R&D" — which a later move may name.
+            .chain(view.selection.iter().filter_map(|candidate| candidate.card.clone()))
             .collect()
     }
 

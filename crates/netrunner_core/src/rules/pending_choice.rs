@@ -797,7 +797,7 @@ pub(crate) fn trash_as_cost(
         };
         if owning_side(side, zone) == Side::Corp {
             let seen = was_public || reveal;
-            state.corp.archives.push(if seen { ArchivedCard::faceup(card_id.clone()) } else { ArchivedCard::facedown(card_id.clone()) });
+            crate::rules::turn_log::file_in_archives(state, if seen { ArchivedCard::faceup(card_id.clone()) } else { ArchivedCard::facedown(card_id.clone()) });
         } else {
             state.runner.heap.push(card_id.clone());
         }
@@ -1346,7 +1346,7 @@ pub(crate) fn resolve_confirm_card_selection(
                     // Serum, Hansei Review, Anoetic Void) lands them facedown —
                     // the Runner has not seen them. A rezzed install it trashes
                     // was on the table and stays faceup.
-                    state.corp.archives.push(if was_public {
+                    crate::rules::turn_log::file_in_archives(state, if was_public {
                         ArchivedCard::faceup(card_id.clone())
                     } else {
                         ArchivedCard::facedown(card_id.clone())

@@ -502,8 +502,8 @@ impl ScoredCard {
             (Side::Corp, None) => "Scored by the Corp".to_string(),
             (Side::Runner, None) => "Stolen by the Runner".to_string(),
         };
-        match def.and_then(|d| d.advancement_requirement).filter(|_| self.as_agenda.is_none()) {
-            Some(need) => lines.push(format!("{how} · {} point{} · advancement requirement {need}", self.points, if self.points == 1 { "" } else { "s" })),
+        match def.and_then(crate::card_face::advancement_slot).filter(|_| self.as_agenda.is_none()) {
+            Some(need) => lines.push(format!("{how} · {} point{} · advancement requirement {}", self.points, if self.points == 1 { "" } else { "s" }, need.value())),
             None => lines.push(format!("{how} · {} point{}", self.points, if self.points == 1 { "" } else { "s" })),
         }
         // What the table makes of it, when that is not what it prints:

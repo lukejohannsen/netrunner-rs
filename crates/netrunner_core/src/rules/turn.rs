@@ -126,7 +126,7 @@ fn take_from_hand(state: &mut GameState, side: Side, card_id: &CardId) -> Result
 fn discard_to_pile(state: &mut GameState, side: Side, card_id: CardId) {
     match side {
         // A Corp discard from HQ goes facedown — the Runner never saw it.
-        Side::Corp => state.corp.archives.push(ArchivedCard::facedown(card_id)),
+        Side::Corp => crate::rules::turn_log::file_in_archives(state, ArchivedCard::facedown(card_id)),
         Side::Runner => state.runner.heap.push(card_id),
     }
 }

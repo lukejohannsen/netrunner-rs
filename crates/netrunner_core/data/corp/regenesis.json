@@ -1,0 +1,47 @@
+{
+  "id": "regenesis",
+  "title": "Regenesis",
+  "side": "Corp",
+  "card_type": "Agenda",
+  "cost": 0,
+  "advancement_requirement": 3,
+  "agenda_points": 1,
+  "triggers": [
+    {
+      "trigger": "OnAgendaScored",
+      "subject": "This",
+      "requirement": {
+        "Not": {
+          "AmountAtLeast": [
+            "CorpCardsAddedToArchivesThisTurn",
+            1
+          ]
+        }
+      },
+      "effects": [
+        {
+          "PromptChooseCards": {
+            "side": "Corp",
+            "source": "OwnArchives",
+            "filter": {
+              "All": [
+                "Facedown",
+                {
+                  "CardType": "Agenda"
+                }
+              ]
+            },
+            "min": 0,
+            "max": 1,
+            "reveal": true,
+            "shuffle_after": false,
+            "destination": "OwnScoreArea"
+          }
+        }
+      ],
+      "text": "When you score this agenda, if no Corp cards have been added to Archives this turn, you may reveal 1 facedown agenda in Archives and add it to your score area."
+    }
+  ],
+  "built_from": 33040,
+  "is_playable": true
+}

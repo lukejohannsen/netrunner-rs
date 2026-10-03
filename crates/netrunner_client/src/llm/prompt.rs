@@ -85,8 +85,8 @@ fn glossary_line(id: &CardId, registry: &CardRegistry) -> String {
     let mut facts: Vec<String> = vec![type_word(&card.card_type).to_string()];
     match card.card_type {
         CardType::Agenda => {
-            if let Some(req) = card.advancement_requirement {
-                facts.push(format!("advance {req}"));
+            if let Some(req) = crate::card_face::advancement_slot(card) {
+                facts.push(format!("advance {}", req.value()));
             }
             if let Some(points) = card.agenda_points {
                 facts.push(format!("{points} points"));

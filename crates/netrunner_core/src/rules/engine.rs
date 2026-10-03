@@ -1628,7 +1628,7 @@ pub(crate) fn play_operation_card(
         next.corp.removed_from_game.push(card_id.clone());
         events.push(GameEvent::CardRemovedFromGame { side, card: card_id.clone() });
     } else {
-        next.corp.archives.push(ArchivedCard::faceup(card_id.clone()));
+        crate::rules::turn_log::file_in_archives(next, ArchivedCard::faceup(card_id.clone()));
     }
     // `dispatch_event` resolves both `OnPlay` and, for Transaction-subtype
     // Operations, the Weyland Consortium: Building a Better World-style

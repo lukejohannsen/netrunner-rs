@@ -349,8 +349,8 @@ pub fn install_facts(view: &ClientView, id: InstallId, registry: &CardRegistry) 
                     lines.push(format!("Agenda worth {points} point{} — advanced {} of {need}", if points == 1 { "" } else { "s" }, card.advancement_tokens));
                     // What its text makes of the printed number, when that
                     // is not what it prints.
-                    if let Some(printed) = def.advancement_requirement.filter(|printed| *printed as i32 != need) {
-                        lines.push(format!("Prints an advancement requirement of {printed}; its text makes it {need}"));
+                    if let Some(printed) = crate::card_face::advancement_slot(def).filter(|printed| *printed != crate::card_face::Slot::Advancement(need.max(0) as u32)) {
+                        lines.push(format!("Prints an advancement requirement of {}; its text makes it {need}", printed.value()));
                     }
                 } else if card.advancement_tokens > 0 {
                     lines.push(format!("{} advancement token{}", card.advancement_tokens, if card.advancement_tokens == 1 { "" } else { "s" }));

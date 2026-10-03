@@ -6398,3 +6398,59 @@ is complete.**
   report): random identical, view and index alike. The planner seatings
   move by `determinize`'s prior, two cards larger: Corp agenda wins 57 →
   58, Corp flatlines 28 → 29, Runner agenda wins 101 → 99.
+
+#### Stage 7a — the score area (3 October 2026)
+
+`claude/serene-einstein-6bhlig`: Backroom Machinations, Regenesis, Blood in
+the Water, Steelskin Scarring. **No new `Effect`.** Midnight Sun 58 of 65,
+its booster pack 6 of 7; `MS_UNIMPLEMENTED` 11 → 7. Stage 7 was split by
+mechanic when it was taken, as Stage 6 was: 7b is Big Deal and Mitosis.
+
+- **One door into Archives.** Regenesis's "if no Corp cards have been added
+  to Archives this turn" is a sum beside `agenda_points_scored` in the turn
+  log (`TurnLog::added_to_archives`, the Turn History Rule), with
+  `Amount::CorpCardsAddedToArchivesThisTurn` to read it. No event is common
+  to every way into Archives — a trash, an operation filed, a card a prompt
+  sends there, and the Corp's discard at the end of their turn, which is
+  dispatched to nobody — so the eighteen pushes in the engine became one
+  function, `turn_log::file_in_archives`, and a test scans the source for
+  any other. The log rides in the view whole and `determinize` copies it,
+  so no masking or sample change.
+- **An operation is trashed once it has resolved** (CR 8.2.7). The engine
+  files a played operation in Archives before its text resolves; Backroom
+  Machinations leaves for the score area as it resolves, so it was never
+  added, and `turn_log::unfile_resolving_operation` gives the count back.
+- **Composed.** Backroom Machinations is Unleash's additional cost and
+  Myōshu's `AddToScoreAreaAsAgenda`. Regenesis is Kingmaking's selection
+  with a `destination` (CR 1.17.3e), over a facedown agenda in Archives,
+  revealed. Steelskin Scarring is Strike Fund's trigger, so a discard
+  offers nothing (CR 1.19.3). Blood in the Water is a printed 0 that
+  Ontological Dependence's `ContinuousKind::AdvancementRequirement` makes
+  the number of cards in the grip.
+- **Client.** The X Blood in the Water prints was owed to this stage:
+  `card_face::Slot::AdvancementX` and `card_face::advancement_slot`, which
+  the face, the score-area sheet, the card facts and the language model's
+  glossary all ask, so none says 0. The known limit is struck.
+  `board::diff`'s invariant test now counts a card a prompt showed its
+  chooser by name (ezaM's "look at the top card of R&D") as seen: the new
+  decks put Bring Them Home there at seed 0.
+- **Decks.** A Thousand Cuts takes two Regenesis and two Blood in the
+  Water for two Sericulture Expansion and a Lotus Haze, six points for six;
+  Spin Cycle two Backroom Machinations for two Your Digital Life; Burn Rate
+  two Steelskin Scarring for two Raindrops Cut Stone. Permafrost, Paid
+  Content and Pay As You Go keep what was given up.
+- **DSL ratio** (`pool_status.py`): 17 of 98 `Effect` variants
+  single-use, 1 unused (`Trace`), over 501 card files.
+- **Real play** (`--headless`, seed 2; random seats 96 games / planner
+  48), against Burn Rate: A Thousand Cuts scored Regenesis 3 / 3 times,
+  its choice offered 2 / 1 times, and Blood in the Water 13 / 7; Spin
+  Cycle played Backroom Machinations 7 / 3 times; Steelskin Scarring was
+  played 11 / 23 times and drew again as it was trashed from the grip or
+  stack 17 / 12 times (against A Thousand Cuts). **No bot debt:** the
+  planner plays all four.
+- **Measured.** Both sweeps are green at 256 seeds, the card gate
+  included. `coverage_identical.py` against Stage 6b (d1be87e, 192 games a
+  report): random identical, view and index alike — the door moved no rule.
+  The planner seatings move by `determinize`'s prior, four cards larger:
+  Corp agenda wins 58 → 59, Corp flatlines 29 → 28, Runner agenda wins
+  99 → 100, decked Runners 6 → 5.

@@ -821,7 +821,7 @@ pub(crate) fn swap_approached_ice_with_card(
     installed.this_turn = Default::default();
     match origin {
         crate::dsl::CardZoneRef::OwnHq => state.corp.hq.push(displaced.clone()),
-        _ => state.corp.archives.push(if was_rezzed {
+        _ => crate::rules::turn_log::file_in_archives(state, if was_rezzed {
             crate::rules::state::ArchivedCard::faceup(displaced.clone())
         } else {
             crate::rules::state::ArchivedCard::facedown(displaced.clone())

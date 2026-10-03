@@ -1644,6 +1644,13 @@ pub enum Amount {
     /// moment no card hears, so no cell of the log counts it, and "during a
     /// run" is no `Class`.
     ClickGainsInRunsThisTurn,
+    /// The Corp cards added to Archives this turn, by any route —
+    /// Regenesis's "if no Corp cards have been added to Archives this
+    /// turn" (`TurnLog::added_to_archives`, a sum beside
+    /// `installed_from_hq`). Composition didn't work: no `Trigger` hears
+    /// every way into Archives — the Corp's discard at the end of their
+    /// turn is dispatched to nobody — so no cell of the log counts it.
+    CorpCardsAddedToArchivesThisTurn,
     /// The times this turn the action just finished was taken, counting it
     /// — Wage Workers' "if you have taken that action exactly 3 times this
     /// turn" (`TurnLog::times_taken`), with "that action" read off the

@@ -1151,7 +1151,7 @@ fn move_to_archives(
         }
     }
     // The Runner just accessed this card, so it lands faceup.
-    state.corp.archives.push(ArchivedCard::faceup(card_id.clone()));
+    crate::rules::turn_log::file_in_archives(state, ArchivedCard::faceup(card_id.clone()));
     Ok(announced)
 }
 
