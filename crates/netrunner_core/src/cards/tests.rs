@@ -22122,4 +22122,147 @@ mod midnight_sun {
         assert!(done.pending_decision.is_none());
         assert_eq!(done.corp.installed.len(), 2);
     }
+
+    // ---- Stage 8a: subroutine lists ----
+
+    fn corp_counters(state: &GameState, card: &str) -> u32 {
+        state.corp.installed.iter().find(|installed| installed.card == id(card)).map_or(0, |installed| installed.counters)
+    }
+
+    /// The encountered ice's subroutines, as (text, gained).
+    fn encountered_list(state: &GameState) -> Vec<(String, bool)> {
+        let run = state.active_run.as_ref().expect("encountering");
+        run.ice[run.position].subroutines.iter().map(|s| (s.definition.text.clone(), s.gained)).collect()
+    }
+
+    /// A run on HQ up to its first encounter, with every event on the way.
+    fn encounter_with_events(state: &GameState, registry: &CardRegistry) -> (GameState, Vec<GameEvent>) {
+        let (mut state, mut events) = apply_action(state, registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("initiate run");
+        for _ in 0..12 {
+            if state.active_run.as_ref().is_some_and(|run| run.phase == crate::rules::RunPhase::EncounterIce) {
+                return (state, events);
+            }
+            let action = match &state.paid_ability_window {
+                Some(window) => PlayerAction::PassPriority { side: window.active_priority },
+                None => PlayerAction::ContinueRun,
+            };
+            let (next, more) = apply_action(&state, registry, action).expect("onward");
+            state = next;
+            events.extend(more);
+        }
+        panic!("never encountered");
+    }
+
+    fn etr(n: usize) -> Vec<(String, bool)> {
+        vec![("End the run.".to_string(), true); n]
+    }
+
+    /// "Whenever you rez a piece of harmonic ice": Echo's own rez is one,
+    /// Pulse's is another, an Ice Wall's is not — and each counter is an
+    /// "End the run." it gains after its (no) printed subroutines.
+    #[test]
+    fn echo_gains_an_end_the_run_for_each_harmonic_ice_rezzed() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.installed = vec![ice_at("echo", ServerId::Hq, false)];
+        let rezzed = rez_on_approach(&state, &registry, "echo");
+        assert_eq!(corp_counters(&rezzed, "echo"), 1, "this ice is a piece of harmonic ice");
+        assert_eq!(encountered_list(&on_to_the_encounter(rezzed, &registry)), etr(1));
+
+        let mut state = runner_turn();
+        state.corp.installed = vec![
+            crate::rules::InstalledCard { counters: 1, ..ice_at("echo", ServerId::RnD, true) },
+            ice_at("pulse", ServerId::Hq, false),
+        ];
+        let asked = rez_on_approach(&state, &registry, "pulse");
+        // Pulse's own "when you rez this ice" beside it: the Corp's to order.
+        let Some(PendingDecision::ChooseTriggerOrder { pending, .. }) = &asked.pending_decision else { panic!("{:?}", asked.pending_decision) };
+        let index = pending.iter().position(|due| due.card == id("echo")).expect("Echo hears it");
+        let pulsed = apply_action(&asked, &registry, PlayerAction::ChooseTriggerToResolve { index }).expect("order").0;
+        assert_eq!(corp_counters(&pulsed, "echo"), 2, "Pulse is harmonic");
+        state.corp.installed[1] = ice_at("ice_wall", ServerId::Hq, false);
+        assert_eq!(corp_counters(&rez_on_approach(&state, &registry, "ice_wall"), "echo"), 1, "Ice Wall is not");
+
+        let mut two = runner_turn();
+        two.corp.installed = vec![crate::rules::InstalledCard { counters: 2, ..ice_at("echo", ServerId::Hq, true) }];
+        let (encountering, events) = encounter_with_events(&two, &registry);
+        assert_eq!(encountered_list(&encountering), etr(2));
+        assert!(!events.iter().any(|event| matches!(event, GameEvent::IceFullyBroken { .. })));
+        let (done, _) = pass_until_settled(encountering, &registry);
+        assert!(done.active_run.is_none(), "end the run");
+    }
+
+    /// CR 6.5.7c: with no counters Echo has no subroutines, and the Runner
+    /// fully breaks it as the encounter begins — by no object.
+    #[test]
+    fn echo_with_no_counters_is_fully_broken_as_the_encounter_begins() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.installed = vec![ice_at("echo", ServerId::Hq, true)];
+        let (encountering, events) = encounter_with_events(&state, &registry);
+        assert!(encountered_list(&encountering).is_empty());
+        assert!(encountering.active_run.as_ref().is_some_and(|run| run.fully_broken));
+        let fully: Vec<_> = events.iter().filter(|event| matches!(event, GameEvent::IceFullyBroken { .. })).collect();
+        assert_eq!(fully, [&GameEvent::IceFullyBroken { card_id: id("echo"), position: 0, by: None }]);
+        let (done, _) = pass_until_settled(encountering, &registry);
+        assert!(done.active_run.is_some_and(|run| run.phase != crate::rules::RunPhase::Ended), "passed, and the run goes on");
+    }
+
+    /// Hush on Echo: the gain is Echo's own ability, which Hush takes.
+    #[test]
+    fn echo_under_hush_gains_nothing() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.installed = vec![crate::rules::InstalledCard { counters: 2, ..ice_at("echo", ServerId::Hq, true) }];
+        state.runner.rig = vec![crate::rules::InstalledRunnerCard { hosted_on_ice: Some(fixture_install_id("echo")), ..in_rig("hush", 0, 0) }];
+        assert!(encountered_list(&encounter_with_events(&state, &registry).0).is_empty());
+    }
+
+    /// Four counters as it is rezzed, one fewer each time the Corp's turn
+    /// begins (not the Runner's), each an "End the run." ahead of "Trash
+    /// this ice" — which, reached, trashes it.
+    #[test]
+    fn envelopment_ends_the_run_before_its_own_subroutine_once_for_each_counter_and_loses_one_each_corp_turn() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.corp.resources.credits = Credits(10);
+        state.corp.installed = vec![ice_at("envelopment", ServerId::Hq, false)];
+        let rezzed = rez_on_approach(&state, &registry, "envelopment");
+        assert_eq!(corp_counters(&rezzed, "envelopment"), 4);
+        let mut list = etr(4);
+        list.push(("Trash this ice.".to_string(), false));
+        assert_eq!(encountered_list(&on_to_the_encounter(rezzed, &registry)), list);
+
+        let mut placed = runner_turn();
+        placed.corp.installed = vec![crate::rules::InstalledCard { counters: 4, ..ice_at("envelopment", ServerId::Hq, true) }];
+        let corps = begin_the_turn_of(placed.clone(), &registry, Side::Corp);
+        assert_eq!(corp_counters(&corps, "envelopment"), 3, "when your turn begins");
+        let runners = begin_the_turn_of(placed, &registry, Side::Runner);
+        assert_eq!(corp_counters(&runners, "envelopment"), 4, "not the Runner's");
+
+        let mut spent = runner_turn();
+        spent.corp.installed = vec![ice_at("envelopment", ServerId::Hq, true)];
+        let (encountering, _) = encounter_with_events(&spent, &registry);
+        assert_eq!(encountered_list(&encountering), [("Trash this ice.".to_string(), false)]);
+        let (done, _) = pass_until_settled(encountering, &registry);
+        assert!(done.corp.installed.is_empty(), "trash this ice");
+        assert_eq!(done.corp.archives.len(), 1);
+    }
+
+    /// CR 9.8.2: another card's "before" first (9.8.3a), then the ice's own
+    /// "before" (9.8.3b), what it prints (9.8.3c), and another card's
+    /// "after" last (9.8.3e).
+    #[test]
+    fn envelopments_own_subroutines_stand_between_another_cards_before_and_after() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.rig = vec![in_rig("stick_and_poke", 0, 0)];
+        state.runner.grip = vec![id("sure_gamble"); 2];
+        state.corp.installed = vec![crate::rules::InstalledCard { counters: 1, ..ice_at("envelopment", ServerId::Hq, true) }];
+        let (mut running, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("initiate run");
+        let after = crate::dsl::SubroutineDef { text: "Gain 1[credit].".to_string(), effect: crate::dsl::Effect::GainCredits(Side::Corp, 1), only_breakable_by: None };
+        running.active_run.as_mut().expect("running").gained_for_the_run.push(crate::rules::GainedForTheRun { ice: fixture_install_id("envelopment"), subroutine: after, after: true });
+        let texts: Vec<String> = encountered_list(&on_to_the_encounter(running, &registry)).into_iter().map(|(text, _)| text).collect();
+        assert_eq!(texts, ["Do 1 net damage. The Runner draws 1 card.", "End the run.", "Trash this ice.", "Gain 1[credit]."]);
+    }
 }

@@ -647,6 +647,9 @@ mod tests {
                     strength: 0,
                     subroutine_count: 0,
                 },
+                // No subroutines at all: fully broken as the encounter begins, by
+                // no object (CR 6.5.7c).
+                GameEvent::IceFullyBroken { card_id: CardId("ice_wall".to_string()), position: 0, by: None },
                 GameEvent::PaidAbilityWindowOpened { side: Side::Runner },
             ]
         );

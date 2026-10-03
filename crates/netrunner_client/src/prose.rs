@@ -778,6 +778,16 @@ pub fn describe_continuous(effect: &ContinuousEffect) -> String {
             Prohibition::Rez => "cannot rez this card",
         }
         .to_string(),
+        ContinuousKind::Subroutines { subroutine, count, before } => format!(
+            "gains \"[subroutine] {}\"{} {}",
+            subroutine.text,
+            if *before { " before its other subroutines" } else { "" },
+            match (&count.of, count.per) {
+                (Amount::Fixed(1), per) => format!("{per} times"),
+                (of, 1) => format!("once for each of {}", describe_amount(of)),
+                (of, per) => format!("{per} times for each of {}", describe_amount(of)),
+            }
+        ),
         ContinuousKind::LosesAbilities => "loses all abilities except its printed subroutines".to_string(),
         ContinuousKind::CannotGainAbilities => "cannot gain abilities".to_string(),
     };

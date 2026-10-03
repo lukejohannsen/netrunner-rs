@@ -1,0 +1,53 @@
+{
+  "id": "echo",
+  "title": "Echo",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Barrier"
+  },
+  "cost": 2,
+  "strength": 0,
+  "counter_kind": "Power",
+  "triggers": [
+    {
+      "trigger": "OnRez",
+      "subject": "Any",
+      "when": {
+        "Card": {
+          "All": [
+            "Ice",
+            {
+              "HasSubtype": "Harmonic"
+            }
+          ]
+        }
+      },
+      "effects": [
+        {
+          "AddCounters": 1
+        }
+      ],
+      "text": "Whenever you rez a piece of harmonic ice, place 1 power counter on this ice."
+    }
+  ],
+  "continuous": [
+    {
+      "kind": {
+        "Subroutines": {
+          "subroutine": {
+            "text": "End the run.",
+            "effect": "EndTheRun"
+          },
+          "count": {
+            "per": 1,
+            "of": "HostedCounters"
+          }
+        }
+      },
+      "applies_to": "This",
+      "text": "This ice gains \"[subroutine] End the run.\" for each hosted power counter."
+    }
+  ],
+  "built_from": 33035,
+  "is_playable": true
+}

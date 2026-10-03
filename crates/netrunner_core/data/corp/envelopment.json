@@ -1,0 +1,63 @@
+{
+  "id": "envelopment",
+  "title": "Envelopment",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Barrier"
+  },
+  "cost": 5,
+  "strength": 5,
+  "counter_kind": "Power",
+  "subroutines": [
+    {
+      "text": "Trash this ice.",
+      "effect": {
+        "TrashCard": "ThisCard"
+      }
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnRez",
+      "subject": "This",
+      "effects": [
+        {
+          "AddCounters": 4
+        }
+      ],
+      "text": "When you rez this ice, place 4 power counters on it."
+    },
+    {
+      "trigger": "OnTurnStart",
+      "effects": [
+        {
+          "RemoveCounters": {
+            "Fixed": 1
+          }
+        }
+      ],
+      "text": "When your turn begins, remove 1 hosted power counter."
+    }
+  ],
+  "continuous": [
+    {
+      "kind": {
+        "Subroutines": {
+          "subroutine": {
+            "text": "End the run.",
+            "effect": "EndTheRun"
+          },
+          "count": {
+            "per": 1,
+            "of": "HostedCounters"
+          },
+          "before": true
+        }
+      },
+      "applies_to": "This",
+      "text": "This ice gains \"[subroutine] End the run.\" before its other subroutines for each hosted power counter."
+    }
+  ],
+  "built_from": 33060,
+  "is_playable": true
+}

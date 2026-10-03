@@ -48,7 +48,7 @@ cards each stage takes.
 | 2 | Rebellion Without Rehearsal (`rwr`) | 65 | 65 | 0 | complete (28 September 2026) |
 | 3 | The Automata Initiative (`tai`) | 65 | 65 | 0 | complete (29 September 2026) |
 | 4 | Parhelion (`ph`) | 63 | 63 | 0 | complete (2 October 2026) |
-| 5 | Midnight Sun (`ms`) + Booster (`msbp`) | 65 + 7 | 60 + 6 | 5 + 1 | Stages 1–7 built (3 October 2026); **Stage 8 next** — subroutine lists and ability layers |
+| 5 | Midnight Sun (`ms`) + Booster (`msbp`) | 65 + 7 | 62 + 6 | 3 + 1 | Stages 1–7 and 8a built (3 October 2026); **Stage 8b next** — ability layers, then 8c, the trash chain |
 | 6 | Uprising (`ur`) + Booster (`urbp`) | 65 + 7 | 0 | 65 + 7 | not started |
 | 7 | Downfall (`df`) | 65 | 0 | 65 | not started |
 | 8 | System Update 2021 (`su21`), Salvaged Memories (`sm`), Magnum Opus Reprint (`mor`) | 82, 18, 6 | 11, 1, 0 | 71, 17, 6 | not started (the built ones are Core reprints) |
@@ -294,7 +294,7 @@ this file keeps; a stage that builds or widens a mechanic updates the cell.
 | Mechanic | First needed | Also in | Rule | Built in |
 |---|---|---|---|---|
 | Credits spendable only from stealth cards (a restriction on the *payer*, the reverse of `PaysFor`) | VP: Corsair, Lampades, Baker | UR: Mu Safecracker, Afterimage, Penrose | CR 1.10.4b | VP 6b |
-| Additional subroutines, ordered | VP: Stick and Poke | RWR Thunderbolt Armaments; TAI Starlit Knight; MS Echo, Envelopment; UR Winchester | CR 9.8.2, CR 9.8.3, CR 6.5.7d | VP 7e; RWR 8b (for the run); TAI 8a (by count) |
+| Additional subroutines, ordered | VP: Stick and Poke | RWR Thunderbolt Armaments; TAI Starlit Knight; MS Echo, Envelopment; UR Winchester | CR 9.8.2, CR 9.8.3, CR 6.5.7d | VP 7e; RWR 8b (for the run); TAI 8a (by count); MS 8a (the ice's own, counted, 9.8.3b and d: `ContinuousKind::Subroutines`; and 6.5.7c, none at all) |
 | Arrange | VP: Cultivate, Knowledge Seeker | RWR Cataloguer; TAI Federal Fundraising | CR 8.3.1 | VP 6a |
 | Reveal as a step other cards can read | VP: Esca, Perfect Recall, Tocsin | RWR Burner, Bring Them Home | CR 1.21.3 | VP 6a; RWR 6b (stays revealed) |
 | Abilities active outside play (Expendable from HQ; from Archives or the heap) | VP: Tocsin | RWR Eminent Domain, Descent; TAI Slash and Burn Agriculture, Tree Line, Angelique; reprints Subliminal Messaging, Crowdfunding | CR 9.1.8b | VP 7f; RWR 7a; TAI 7 |
@@ -412,6 +412,7 @@ A card on the list is a term to write or a reading to repair, never a card to ta
 - **Midnight Sun Stage 5's cards it barely plays** (the Corp decks against Safety Net, Hit List against Hostile Bid, seed 2, 48 planner games): Trust Operation played once (19 times by random seats in 96 games); Cat's Cradle installed seven times (38).
 - **Midnight Sun Stage 6a's cards it never installs** (Encore against Retirement Package, seed 2, 48 planner games): Backstitching and Virtuoso (35 and 20 installs by random seats in 96 games). It plays Carpe Diem (46) and gains Nyusha's click (131 times).
 - **Midnight Sun Stage 7b's cards it barely plays** (each Corp deck against Burn Rate, seed 2, 48 planner games): Big Deal once (Retirement Package; random seats 12 times in 96 games) — 17[credit] is rarely the planner's best click — and Mitosis twice (Permafrost; 13).
+- **Midnight Sun Stage 8a's ice it prices short** (each Corp deck against Burn Rate, seed 2): the planner rezzes Echo (32 times in 48 games; random seats 54 in 96) and Envelopment (22; 6) and their subroutines fire, but the evaluator reads a piece of ice's printed subroutines (`eval::corp`'s end-the-run count, `eval::read`'s "can end the run"), so Echo reads as ice that never ends the run and Envelopment as ice that only trashes itself. A reading to repair: ask `continuous::own_subroutines` beside the printed list.
 - **Midnight Sun Stage 6b's cards it never plays** (seed 2, 48 planner games): Pinhole Threading (Encore against Retirement Package; random seats played it 47 times in 96 games, 20 of them reaching the access). Deep Dive is played by no seat, as Chain Reaction is: three successful central runs in one turn (on the sweeps' rare list).
 - **Economy resources and programs it does not value**: Friend of a Friend, Valentina Ferreira Carvalho, Coalescence; Laser Pointer, Banner; Monkeywrench, Saci, Pichação, Urban Art Vernissage; Lago Paranoá Shelter; AirbladeX (JSRF Ed.); the Core Set interrupts Decoy, Net Shield and Sacrificial Construct.
 - **Abilities it never uses**: M.I.C.'s trash, Arissana Rocha Nahu's, Epiphany Analytica's counter; identity and multi-click abilities generally (Phase 1 §8); over-advancing for Dividends.
@@ -780,8 +781,11 @@ Grid, Tsakhia, World Tree.
    **7a, the score area** (built, 3 October 2026): Backroom Machinations,
    Regenesis, Blood in the Water, Steelskin Scarring. **7b, the turn** (built,
    3 October 2026): Big Deal, Mitosis. Stage 7 is complete.
-8. **Subroutine lists and ability layers:** Echo, Envelopment, Light the
-   Fire!, Trieste Model Bioroids, Ob Superheavy Logistics.
+8. **Subroutine lists and ability layers:** split by mechanic when it was
+   taken. **8a, subroutine lists** (built, 3 October 2026): Echo,
+   Envelopment. **8b, ability layers:** Trieste Model Bioroids, Light the
+   Fire!. **8c, the trash chain:** Ob Superheavy Logistics, on a Sweep deck
+   of its own.
 
 **Riskiest:**
 - Ob Superheavy Logistics: a general trash trigger, a search keyed on the
@@ -805,6 +809,7 @@ Excavator.
 - **Stage 6b** — access outside a breach: Pinhole Threading and Deep Dive, one new `Effect` both use (`Access`), the Corp's set-aside zone, and the Runner kept from stealing or trashing an agenda (`claude/serene-einstein-6bhlig`, 3 October 2026).
 - **Stage 7a** — the score area: four cards with no new `Effect`, one door into Archives counted in the turn log, and an agenda printed with an X (`claude/serene-einstein-6bhlig`, 3 October 2026).
 - **Stage 7b** — the turn: Big Deal and Mitosis, one new `Effect` (`Score`, the action's scoring shared with a card's text), a card kept from being rezzed for a turn, and an install into a new remote only (`claude/serene-einstein-6bhlig`, 3 October 2026).
+- **Stage 8a** — subroutine lists: Echo and Envelopment with no new `Effect`, the subroutines a piece of ice gains by its own static ability, counted, in the rules' order, and ice with none fully broken as it is encountered (`claude/serene-einstein-6bhlig`, 3 October 2026).
 
 ### 6. Uprising and its Booster Pack — 65 cards (C 10 / V 37 / M 18)
 

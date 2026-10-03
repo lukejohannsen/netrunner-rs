@@ -293,6 +293,44 @@ fn add_gained_for_the_run(run: &mut RunState, position: usize, may_gain: bool) {
     renumber_subroutines(ice);
 }
 
+/// Adds to the ice at `position`, as an encounter with it begins, the
+/// subroutines it gains by its own static ability
+/// (`continuous::own_subroutines`: Echo's and Envelopment's): `before`
+/// ahead of its printed ones (CR 9.8.3b) and `after` behind them (9.8.3d).
+/// Called ahead of `add_gained_for_the_run`, which then puts another
+/// card's grants outside both (9.8.3a first, 9.8.3e last), so the list
+/// stands in CR 9.8.2's order. Marked `gained`, so they go with the
+/// encounter and the next one counts again: read as each encounter begins,
+/// because nothing in the pool moves the count during one (Echo's on a
+/// rez, Envelopment's as a turn begins).
+fn add_own_subroutines(run: &mut RunState, position: usize, (before, after): (Vec<crate::dsl::SubroutineDef>, Vec<crate::dsl::SubroutineDef>)) {
+    let Some(ice) = run.ice.get_mut(position) else { return };
+    if before.is_empty() && after.is_empty() {
+        return;
+    }
+    let gained = |definition| EncounteredSubroutine { id: 0, definition, status: SubroutineStatus::Pending, gained: true };
+    let printed = std::mem::take(&mut ice.subroutines);
+    ice.subroutines = before.into_iter().map(gained).chain(printed).chain(after.into_iter().map(gained)).collect();
+    renumber_subroutines(ice);
+}
+
+/// CR 6.5.7c: "If an encountered piece of ice has no subroutines, the
+/// Runner fully breaks it when step 6.9.3b of the encounter begins. No
+/// objects fully break the ice in this case." Asked once the encounter's
+/// list is whole — printed, its own and another card's grants — and so
+/// after `IceEncountered`, whose "when encountered" abilities come first
+/// (6.9.3a). Echo with no power counters is the first ice in the pool with
+/// none.
+fn fully_broken_with_nothing_to_break(run: &mut RunState, position: usize) -> Option<GameEvent> {
+    let ice = run.ice.get(position)?;
+    if !ice.subroutines.is_empty() || run.fully_broken {
+        return None;
+    }
+    let card_id = ice.card_id.clone();
+    run.fully_broken = true;
+    Some(GameEvent::IceFullyBroken { card_id, position: position as u32, by: None })
+}
+
 /// Keeps each subroutine's `id` equal to its place in the list, which is
 /// what a break and a firing name it by.
 pub(crate) fn renumber_subroutines(ice: &mut RunIce) {
@@ -347,6 +385,7 @@ pub(crate) fn force_encounter(state: &mut GameState, registry: &CardRegistry, in
     }
     let Some(fresh) = build_run_ice(installed, registry)? else { return Ok(Vec::new()) };
     let may_gain = crate::rules::active::may_have_granted(state, registry, install);
+    let own = continuous::own_subroutines(state, registry, install);
     let run = state.active_run.as_mut().expect("checked above");
     run.ice[position] = fresh;
     run.position = position;
@@ -357,7 +396,9 @@ pub(crate) fn force_encounter(state: &mut GameState, registry: &CardRegistry, in
     run.ice_bypassed = false;
     run.this_encounter = Default::default();
     run.encounters += 1;
+    add_own_subroutines(run, position, own);
     add_gained_for_the_run(run, position, may_gain);
+    let nothing_to_break = fully_broken_with_nothing_to_break(run, position);
     crate::rules::lingering::sweep(state);
     // The movement phase's window, if one was open, belonged to a step the
     // run has left.
@@ -372,6 +413,9 @@ pub(crate) fn force_encounter(state: &mut GameState, registry: &CardRegistry, in
     };
     let mut events = Vec::new();
     crate::rules::dispatcher::emit(state, registry, &mut events, encountered)?;
+    if let Some(fully_broken) = nothing_to_break {
+        crate::rules::dispatcher::emit(state, registry, &mut events, fully_broken)?;
+    }
     events.extend(crate::rules::paid_ability::open_window_if_at_checkpoint(state, registry));
     Ok(events)
 }
@@ -854,6 +898,15 @@ fn continue_run(state: &mut GameState, registry: &CardRegistry) -> Result<Vec<Ga
         .filter(|run| run.phase == RunPhase::ApproachIce && !run.gained_for_the_run.is_empty())
         .and_then(|run| run.ice.get(run.position))
         .is_none_or(|ice| crate::rules::active::may_have_granted(state, registry, ice.install_id));
+    // And what it gains by its own static ability, asked the same way.
+    let own = state
+        .active_run
+        .as_ref()
+        .filter(|run| run.phase == RunPhase::ApproachIce)
+        .and_then(|run| run.ice.get(run.position))
+        .filter(|ice| ice.rezzed)
+        .map(|ice| continuous::own_subroutines(state, registry, ice.install_id))
+        .unwrap_or_default();
     let run = state.active_run.as_mut().expect("active_run checked by advance_run");
 
     match run.phase {
@@ -908,7 +961,9 @@ fn continue_run(state: &mut GameState, registry: &CardRegistry) -> Result<Vec<Ga
             run.fully_broken = false;
             run.this_encounter = Default::default();
             run.encounters += 1;
+            add_own_subroutines(run, position, own);
             add_gained_for_the_run(run, position, may_gain);
+            let nothing_to_break = fully_broken_with_nothing_to_break(run, position);
             // The number the break contest will use, asked once the run is
             // standing on the ice: this read what the ice was built with,
             // a third reading beside the contest's and the view's.
@@ -918,7 +973,7 @@ fn continue_run(state: &mut GameState, registry: &CardRegistry) -> Result<Vec<Ga
                 strength: continuous::ice_strength(state, registry, ice),
                 subroutine_count: ice.subroutines.len(),
             };
-            Ok(vec![event])
+            Ok(std::iter::once(event).chain(nothing_to_break).collect())
         }
         RunPhase::EncounterIce => {
             let position = run.position;
@@ -1067,8 +1122,8 @@ pub(crate) fn resolving_subroutines_of(state: &GameState) -> Option<crate::rules
 ///
 /// A subroutine that resolved is not broken, so ice whose encounter
 /// resolved one is never fully broken; ice with no subroutines at all is
-/// fully broken when step 6.9.3b begins (6.5.7c), which this does not
-/// model — no card in the pool that asks is met by one.
+/// fully broken when step 6.9.3b begins (6.5.7c), by no object, which is
+/// `fully_broken_with_nothing_to_break`'s.
 pub(crate) fn break_subroutine(state: &mut GameState, registry: &CardRegistry, index: usize, by: Option<crate::rules::state::InstallId>) -> Result<Vec<GameEvent>, RulesError> {
     let strength = state
         .active_run

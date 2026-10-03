@@ -6512,3 +6512,54 @@ which Big Deal alone uses.** Midnight Sun 60 of 65, its booster pack 6 of
   report): random identical, view and index alike — the scoring refactor
   moved no rule. The planner seatings move by `determinize`'s prior: Corp
   agenda wins 59 → 58, Corp flatlines 28 → 29.
+
+#### Stage 8a — subroutine lists (3 October 2026)
+
+`claude/serene-einstein-6bhlig`: Echo and Envelopment. **No new `Effect`.**
+Midnight Sun 62 of 65, its booster pack 6 of 7; `MS_UNIMPLEMENTED` 5 → 3.
+
+- **`ContinuousKind::Subroutines { subroutine, count, before }`**: the
+  subroutines a piece of ice gains by its own static ability (CR 9.8.3b,
+  "before its other subroutines"; 9.8.3d, after or in no stated order),
+  `count` copies read as the ice (`HostedCounters`). About `This`, on ice,
+  and nothing else: another card's grant is 9.8.3a or 9.8.3e, which
+  `Effect::GainSubroutine` already says. A "when encountered" trigger with
+  `GainSubroutine` was the stopgap and was rejected: AirbladeX could prevent
+  it, and it would sort among another card's grants. Being a standing
+  effect, it is read through the continuous scan, so Hush's host — which
+  has lost its abilities — gains nothing with no word of its own.
+- **Where it applies**: `run::engine::add_own_subroutines`, as each
+  encounter begins (the approach's `Continue` and a forced encounter),
+  ahead of `add_gained_for_the_run`, which then puts another card's grants
+  outside both: 9.8.3a, b, c, d, e in CR 9.8.2's order. Marked `gained`, so
+  they go with the encounter and the next one counts again. Read then and
+  not when the run's ice is built, because Echo's count moves on a rez
+  further out and Envelopment's as a turn begins; nothing in the pool moves
+  either during an encounter.
+- **CR 6.5.7c**: ice with no subroutines is fully broken as 6.9.3b begins,
+  by no object. Echo with no counters is the first ice in the pool with
+  none; `IceFullyBroken { by: None }` is announced after `IceEncountered`
+  once the list is whole, and the pass is "after fully breaking it". Two
+  engine tests whose fixture Ice Wall prints no subroutines now expect it.
+- **Echo** hears every rez of harmonic ice, its own included (`OnRez`,
+  `Any`, `when` harmonic ice), as Working Prototype hears its own.
+  **Envelopment**: four counters as it is rezzed, one off as the Corp's
+  turn begins, and its printed "Trash this ice." after them.
+- **Client.** `prose` words the kind. Nothing new reaches the view: the
+  run's subroutine list already carries what the ice gained.
+- **Decks.** Retirement Package takes two Echo for two Sorocaban Blade
+  (Deterrence and Undertow keep it), beside four harmonic ice; Hostile Bid
+  two Envelopment for two Logjam (Land Grab keeps it).
+- **DSL ratio** (`pool_status.py`): 18 of 99 `Effect` variants single-use,
+  1 unused (`Trace`), over 505 card files (503 before).
+- **Real play** (`--headless`, seed 2, against Burn Rate; random seats 96
+  games / planner 48): Echo rezzed 54 / 32 times, its subroutines fired 124
+  / 171; Envelopment rezzed 6 / 22, fired 10 / 32, and lost a counter at
+  159 of the planner's turn starts. **Bot debt:** the evaluator reads only
+  printed subroutines, so it prices Echo as ice that never ends the run.
+- **Measured.** Both sweeps are green at 256 seeds, the card gate
+  included. `coverage_identical.py` against Stage 7b (cdc7d09, 192 games a
+  report): random identical, view and index alike — no sample deck prints
+  a card the stage touched. The planner seatings move by `determinize`'s
+  prior and end the same: Corp agenda wins 58, flatlines 29, Runner agenda
+  wins 100, decked Runners 5, before and after.

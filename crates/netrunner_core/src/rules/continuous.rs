@@ -452,6 +452,24 @@ pub(crate) fn breaks_left(state: &GameState, registry: &CardRegistry, ice: &RunI
     left
 }
 
+/// The subroutines the ice `install` gains by its own static ability
+/// (`ContinuousKind::Subroutines`, Echo's and Envelopment's), as copies to
+/// put before its printed ones (CR 9.8.3b) and after them (9.8.3d), each
+/// count read as the ice right now. Within a category every copy is the
+/// same subroutine, so the order among them is nothing a player can see.
+pub(crate) fn own_subroutines(state: &GameState, registry: &CardRegistry, install: InstallId) -> (Vec<crate::dsl::SubroutineDef>, Vec<crate::dsl::SubroutineDef>) {
+    let (mut before, mut after) = (Vec::new(), Vec::new());
+    let Some(target) = Target::corp_install(state, registry, install) else { return (before, after) };
+    for_each_applying(state, registry, target, |kind| matches!(kind, ContinuousKind::Subroutines { .. }), |effect, _, ctx| {
+        if let ContinuousKind::Subroutines { subroutine, count, before: first } = &effect.kind {
+            let copies = (count.per * ability::resolve_amount(&count.of, ctx, state, registry) as i32).max(0) as usize;
+            let into = if *first { &mut before } else { &mut after };
+            into.extend(std::iter::repeat_n((**subroutine).clone(), copies));
+        }
+    });
+    (before, after)
+}
+
 /// Whether the Corp may still trash an installed Runner card with the text
 /// of `install` (`ContinuousKind::TrashLimit`, Sorocaban Blade's "you
 /// cannot trash more than 1 installed Runner card with this ice during

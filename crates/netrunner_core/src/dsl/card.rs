@@ -1703,6 +1703,10 @@ impl CardDefinition {
                 (ContinuousKind::RevealedWhileAccessed, _) => {
                     return misfit("RevealedWhileAccessed", "only a Corp card is accessed, and it says so of itself (`This`)");
                 }
+                (ContinuousKind::Subroutines { .. }, Scope::This) if matches!(self.card_type, CardType::Ice(_)) => {}
+                (ContinuousKind::Subroutines { .. }, _) => {
+                    return misfit("Subroutines", "a subroutine a piece of ice gains by its own static ability is said by the ice of itself (`This`, CR 9.8.3b/d); another card's grant is `GainSubroutine`");
+                }
                 (ContinuousKind::LosesAbilities | ContinuousKind::CannotGainAbilities, Scope::Host) => {}
                 (ContinuousKind::LosesAbilities | ContinuousKind::CannotGainAbilities, _) => {
                     return misfit("LosesAbilities", "what a card loses or cannot gain is said by the card hosted on it (`Host`)");

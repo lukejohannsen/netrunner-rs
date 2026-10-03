@@ -4658,6 +4658,9 @@ mod tests {
                     strength: 0,
                     subroutine_count: 0,
                 },
+                // No subroutines at all: fully broken as the encounter begins, by
+                // no object (CR 6.5.7c).
+                GameEvent::IceFullyBroken { card_id: CardId("ice_wall".to_string()), position: 0, by: None },
                 GameEvent::PaidAbilityWindowOpened { side: Side::Runner },
             ]
         );
@@ -4678,7 +4681,8 @@ mod tests {
                 GameEvent::PriorityPassed { side: Side::Corp },
                 GameEvent::PaidAbilityWindowClosed,
                 GameEvent::EncounterEnded { card_id: CardId("ice_wall".to_string()), install: crate::rules::state::InstallId(0) },
-                GameEvent::IcePassed { server: ServerId::Hq, position: 0, after_fully_breaking: false, rezzed_as: vec![crate::dsl::IceType::Barrier], printed_broken_with: Default::default() },
+                // Fully broken as it was encountered, having none (CR 6.5.7c).
+                GameEvent::IcePassed { server: ServerId::Hq, position: 0, after_fully_breaking: true, rezzed_as: vec![crate::dsl::IceType::Barrier], printed_broken_with: Default::default() },
             ]
         );
 
