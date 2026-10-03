@@ -44,8 +44,9 @@ pub(super) fn access_prospect(state: &GameState, run: &RunState, registry: &Card
     use netrunner_core::rules::{InstallSlot, ServerId};
     let server = run.redirect_on_approach.unwrap_or(run.server);
     // What the rig adds at the breach (Docklands Pass, `rig_breach_accesses`)
-    // beside what the run's own rider adds (Phase 5 §32).
-    let promised = rider_accesses(run, server) + rig_breach_accesses(state, registry, server);
+    // beside what the run's own rider adds (Phase 5 §32), and what the
+    // identities print about the breach (Mercury Chrome, §34).
+    let promised = rider_accesses(run, server) + rig_breach_accesses(state, registry, server) + identities::run_success(state, registry, run).accesses;
     let earlier = runs_earlier_this_turn(state, server);
     let seen = earlier > 0;
     let mut hidden = 0.0_f64;
@@ -53,7 +54,14 @@ pub(super) fn access_prospect(state: &GameState, run: &RunState, registry: &Card
     let mut finishable = 0usize;
     let mut ambushes = 0usize;
     let mut damage = 0usize;
+    let mut tags = 0u32;
     let mut trash_gain = 0.0;
+    // The first trash of the turn pays what the identities print about it
+    // (René "Loup" Arcemont's credit and card, §34): one card's trash, the
+    // one it lifts most from not worth it to worth it.
+    let first_trash = identities::on_trash_while_accessing(state, registry, server);
+    let first_trash = f64::from(first_trash.runner_credits) * w.own_credit_weight + f64::from(first_trash.runner_cards) * w.click_weight;
+    let mut first_trash_lift = 0.0_f64;
     let corp_credits = state.corp.resources.credits.0;
     for installed in state.corp.installed.iter().filter(|card| card.server == server && card.slot == InstallSlot::Root) {
         if installed.rezzed || installed.seen_by_runner {
@@ -62,12 +70,29 @@ pub(super) fn access_prospect(state: &GameState, run: &RunState, registry: &Card
                 ambushes += 1;
                 damage += trap_damage(state, installed, def);
             }
+            // What the Corp's identity does to an access of this card
+            // (BANGUN's 2 meat damage and a tag for a faceup agenda, §34),
+            // counted with a trap's damage toward the flatline it can be.
+            let punished = identities::on_access(state, registry, server, def, installed);
+            damage += punished.damage as usize;
+            tags += punished.tags;
+            // A faceup agenda, or one the Runner has accessed and could not
+            // steal, is a steal the breach cannot miss — the Archives
+            // reading below, in a root. Only a BANGUN Corp turns an agenda
+            // faceup on the table, so before §34 this was nowhere, and the
+            // planner Runner walked into 2 meat damage and a tag for a
+            // steal it had never priced.
+            if def.card_type == CardType::Agenda && can_pay_to_steal(state, registry, def, credits) {
+                trash_gain += f64::from(def.agenda_points.unwrap_or(0)) * w.agenda_point_weight;
+            }
             if let Some(cost) = def.trash_cost
                 && cost <= credits
             {
                 let removed = visible_install_value(state, installed, registry, w, horizon) * w.opponent_board_weight
                     + if installed.rezzed && !matches!(def.card_type, CardType::Ice(_)) { w.dismantle_weight } else { 0.0 };
-                trash_gain += (removed - f64::from(cost) * w.own_credit_weight).max(0.0);
+                let gain = removed - f64::from(cost) * w.own_credit_weight;
+                trash_gain += gain.max(0.0);
+                first_trash_lift = first_trash_lift.max((gain + first_trash).max(0.0) - gain.max(0.0));
             }
         } else if !seen {
             hidden += 1.0;
@@ -143,7 +168,9 @@ pub(super) fn access_prospect(state: &GameState, run: &RunState, registry: &Card
         + finishable as f64 * w.finishable_install_weight
         - ambushes as f64 * w.known_ambush_weight
         - trap
+        - f64::from(tags) * w.tag_weight
         + trash_gain
+        + first_trash_lift
         + plans
 }
 
@@ -432,6 +459,13 @@ pub(super) fn score(state: &GameState, registry: &CardRegistry, w: &Weights, hor
             *score += f64::from(due.min(run_credits_for_breaking(run))) * w.own_credit_weight;
             let (credits, cards) = rider_income(run, Side::Runner);
             *score += f64::from(credits) * w.own_credit_weight + f64::from(cards) * w.click_weight;
+            // What both identities print about the run succeeding, at the
+            // same rates (§34): Gabriel Santiago's 2[credit] for the turn's
+            // first HQ run, Zahya Sadeghi's credit an access, Dewi
+            // Subrotoputri's credit or card — and what the Corp's pays it.
+            let pays = identities::run_success(state, registry, run);
+            *score += f64::from(pays.runner_credits) * w.own_credit_weight + f64::from(pays.runner_cards) * w.click_weight
+                - f64::from(pays.corp_credits + pays.corp_cards) * w.opponent_credit_weight;
         }
         *score -= pending_subroutines(run) as f64 * w.pending_subroutine_weight;
         *score -= strength_shortfall(state, run, registry) as f64 * w.strength_shortfall_weight;

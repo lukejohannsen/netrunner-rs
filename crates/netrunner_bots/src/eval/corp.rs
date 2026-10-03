@@ -326,6 +326,13 @@ pub(super) fn score(state: &GameState, registry: &CardRegistry, w: &Weights, hor
         && run_is_breakable(state, run, registry)
     {
         *score -= w.active_run_against_weight;
+        // And what both identities print about its success (§34), read as
+        // the Runner reads it: the credits and cards a Gabriel Santiago or
+        // a Zahya Sadeghi takes are the Runner's, which ending the run
+        // denies, and what the Corp's own identity takes is the Corp's.
+        let pays = identities::run_success(state, registry, run);
+        *score -= f64::from(pays.runner_credits + pays.runner_cards) * w.opponent_credit_weight;
+        *score += f64::from(pays.corp_credits) * w.own_credit_weight + f64::from(pays.corp_cards) * w.click_weight;
     }
     // The guide's-rate terms, after everything above (see
     // `evaluate_state_with`).
