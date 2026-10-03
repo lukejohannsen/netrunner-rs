@@ -10,7 +10,9 @@
 //! a floating-point sum follows its order, and `coverage_identical.py`
 //! in all four shapes is what says the games did not move. `read` holds
 //! what both arms read off the cards and the board (break costs, the
-//! trap recognisers, rig coverage, the fort's ice), and `stage` reads
+//! trap recognisers, rig coverage, the fort's ice), `identities` what
+//! both identities print about a moment a leaf prices ahead of time (a
+//! run's success, breach, accesses and end — Phase 5 §34), and `stage` reads
 //! where the game is off the board — the reading `diag precepts` bins
 //! by, kept here so the report and any term that later conditions on it
 //! share one definition.
@@ -60,6 +62,7 @@ use netrunner_core::rules::{
 
 pub mod corp;
 pub mod fundamentals;
+pub mod identities;
 pub mod read;
 pub mod runner;
 pub mod stage;

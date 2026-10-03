@@ -31,7 +31,11 @@ pub mod turn_log;
 mod uninstall;
 mod win;
 
-pub use ability::{amount_on_table, evaluate_effect, process_card_triggers, resolve_unbroken_subroutines, ResolutionContext};
+// `check_requirement` is public for the bots' evaluator, which reads an
+// identity's intervening "if" as the engine would at a moment it prices
+// ahead of time (`netrunner_bots::eval::identities`) — one definition of
+// what a requirement means, never a copy of it in the bot.
+pub use ability::{amount_on_table, check_requirement, evaluate_effect, process_card_triggers, resolve_unbroken_subroutines, ResolutionContext};
 pub use action::{PlayerAction, ServerTarget, TargetZone};
 pub use action_mask::{get_action_mask, ActionSpace};
 pub use damage::apply_damage;
