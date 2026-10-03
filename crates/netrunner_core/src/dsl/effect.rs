@@ -728,6 +728,14 @@ pub enum Effect {
         /// the install's.
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
         another_server: bool,
+        /// Offer only a new remote server — Mitosis's "Install up to 2 cards
+        /// from HQ, **creating a new remote server each time**": the one
+        /// remote the Corp would create (`legal_actions::fresh_remote_id`),
+        /// and nothing at all when the Corp may create no more. A field for
+        /// the reason `remote_only` is one; ice goes protecting the new
+        /// server, an agenda, asset or upgrade into its root.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        new_remote: bool,
         /// "Install **and rez**" — Reanimation Protocol's "Install and rez 1
         /// piece of ice from Archives, paying a total of 10[credit] less".
         /// The card is rezzed as it lands, paying its rez cost (unless
@@ -1237,6 +1245,16 @@ pub enum Effect {
     /// Corp at 0 clicks still has the action phase's paid ability window,
     /// with its rezzes and scores, which 5.4.3a skips.
     EndActionPhase,
+    /// The Corp scores the card this resolves as, if able — Big Deal's
+    /// "You may score that card, if able", the card its selection chose
+    /// (`engine::score_install`, which the basic action shares, so the costs,
+    /// the dividends and the `AgendaScored` are the same). Not a card that
+    /// cannot be scored now (`engine::scorable`): that resolves to nothing,
+    /// "if able". Composition didn't work: scoring was only
+    /// `PlayerAction::ScoreAgenda`, the Corp's with their own action phase's
+    /// priority and no window open, and Big Deal scores in the middle of its
+    /// resolution, just before it ends that phase.
+    Score,
     /// The Runner breaches this server, with no run — Cataloguer's
     /// "[click], hosted power counter: Breach R&D" (CR 7.3.1; `run::engine::
     /// start_breach`). Accessed as any breach is, and nothing a run owes
@@ -2060,12 +2078,22 @@ pub enum Prohibition {
     /// abilities, and not a `CardFilter` payload: a prohibition is `Copy`
     /// and every one is asked by name (`Prohibition::ALL`).
     BioroidIceAbilities,
+    /// The Corp cannot rez one install — Mitosis's "You cannot score or rez
+    /// either of those cards this turn", bound to each card it installed
+    /// (`Effect::Prohibit::this_install`, made by
+    /// `PromptInstallCorpCard::if_installed`). Asked by `engine::rez_install`,
+    /// the one place a Corp card is turned faceup, so the rez action, the
+    /// action list's probe of it and a card's text that rezzes are all
+    /// refused (`RulesError::RezRestricted`, which a text rez treats as an
+    /// unaffordable one). Not a rez requirement, which a card prints about
+    /// itself; this is another card's word about it, for a duration.
+    Rez,
 }
 
 impl Prohibition {
     /// Every prohibition, for a question put about each of them
     /// (`view::build_client_view`'s `standing_cannot`).
-    pub const ALL: [Prohibition; 12] = [
+    pub const ALL: [Prohibition; 13] = [
         Prohibition::ScoreAgendas,
         Prohibition::StealOrTrash,
         Prohibition::StealOrTrashAgendas,
@@ -2078,12 +2106,13 @@ impl Prohibition {
         Prohibition::BreakSubroutines,
         Prohibition::DiscardStep,
         Prohibition::BioroidIceAbilities,
+        Prohibition::Rez,
     ];
 
     /// The player it binds.
     pub fn binds(self) -> Side {
         match self {
-            Prohibition::ScoreAgendas | Prohibition::EndTheRun | Prohibition::DiscardStep => Side::Corp,
+            Prohibition::ScoreAgendas | Prohibition::EndTheRun | Prohibition::DiscardStep | Prohibition::Rez => Side::Corp,
             Prohibition::StealOrTrash | Prohibition::StealOrTrashAgendas | Prohibition::SpendOrLoseCreditPool | Prohibition::SpendCredits | Prohibition::RunOnRemote | Prohibition::AccessOthers | Prohibition::Access | Prohibition::BreakSubroutines | Prohibition::BioroidIceAbilities => Side::Runner,
         }
     }
@@ -2095,7 +2124,7 @@ impl Prohibition {
     pub(crate) fn counted_as(self) -> Option<crate::dsl::Trigger> {
         match self {
             Prohibition::RunOnRemote => Some(crate::dsl::Trigger::OnRunStart),
-            Prohibition::ScoreAgendas | Prohibition::StealOrTrash | Prohibition::StealOrTrashAgendas | Prohibition::SpendOrLoseCreditPool | Prohibition::SpendCredits | Prohibition::EndTheRun | Prohibition::AccessOthers | Prohibition::Access | Prohibition::BreakSubroutines | Prohibition::DiscardStep | Prohibition::BioroidIceAbilities => None,
+            Prohibition::ScoreAgendas | Prohibition::StealOrTrash | Prohibition::StealOrTrashAgendas | Prohibition::SpendOrLoseCreditPool | Prohibition::SpendCredits | Prohibition::EndTheRun | Prohibition::AccessOthers | Prohibition::Access | Prohibition::BreakSubroutines | Prohibition::DiscardStep | Prohibition::BioroidIceAbilities | Prohibition::Rez => None,
         }
     }
 }
@@ -2353,6 +2382,7 @@ impl Effect {
             | Effect::SwapApproachedIceWithCard { .. }
             | Effect::AllottedClicksNextTurn(..)
             | Effect::EndActionPhase
+            | Effect::Score
             | Effect::Breach(_)
             | Effect::GainCreditsAmount(..) => {}
         }

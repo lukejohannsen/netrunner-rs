@@ -22011,4 +22011,115 @@ mod midnight_sun {
         assert_eq!(offered(&discarded), None, "a discard offers nothing");
         assert_eq!(discarded.runner.grip.len(), 5);
     }
+
+    // ---- Stage 7b: the turn ----
+
+    fn play_big_deal(mut state: GameState, registry: &CardRegistry, on: &str) -> (GameState, Vec<GameEvent>) {
+        state.corp.resources.credits = Credits(20);
+        state.corp.hq = vec![id("big_deal")];
+        let (played, _) = apply_action(&state, registry, PlayerAction::PlayOperation { card_id: id("big_deal") }).expect("play Big Deal");
+        assert_eq!(played.corp.resources.credits, Credits(3), "17[credit]");
+        let target = played.corp.installed.iter().position(|card| card.card == id(on)).expect("installed");
+        pick(&played, registry, target)
+    }
+
+    #[test]
+    fn big_deal_places_four_counters_may_score_that_card_if_able_and_ends_the_action_phase() {
+        let registry = with_a_plain_agenda(registry());
+        let mut state = base_state();
+        state.corp.installed = vec![root_at("a_plain_agenda", 0), ice_at("ice_wall", ServerId::Hq, true)];
+        let (asked, _) = play_big_deal(state.clone(), &registry, "a_plain_agenda");
+        assert_eq!(tokens(&asked, "a_plain_agenda"), 4, "place 4 advancement counters");
+        assert_eq!(offered(&asked), Some(2), "you may score that card");
+        assert_eq!(asked.phase, GamePhase::Action(Side::Corp), "the action phase ends after the operation resolves");
+
+        let (scored, events) = apply_action(&asked, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("score it");
+        assert!(events.iter().any(|event| matches!(event, GameEvent::AgendaScored { card, .. } if *card == id("a_plain_agenda"))), "scored, as the action scores");
+        assert_eq!(scored.corp.resources.agenda_points, AgendaPoints(1));
+        assert!(events.iter().any(|event| matches!(event, GameEvent::ActionPhaseEnded { side: Side::Corp })), "your action phase ends");
+        assert_eq!(scored.corp.resources.clicks, Clicks(2), "with a click unspent");
+        assert_ne!(close_all_windows(scored.clone(), &registry).0.phase, GamePhase::Action(Side::Corp));
+        assert_eq!(scored.corp.removed_from_game, vec![id("big_deal")], "remove this operation from the game");
+        assert!(scored.corp.archives.is_empty());
+
+        let declined = choose(&asked, &registry, 1);
+        assert_eq!((tokens(&declined, "a_plain_agenda"), declined.corp.resources.agenda_points), (4, AgendaPoints(0)), "\"may\": declined");
+        assert_ne!(close_all_windows(declined, &registry).0.phase, GamePhase::Action(Side::Corp));
+
+        // On ice: counters, nothing to score, and the phase still ends.
+        let (on_ice, _) = play_big_deal(state.clone(), &registry, "ice_wall");
+        assert_eq!((tokens(&on_ice, "ice_wall"), offered(&on_ice)), (4, None), "if able: ice is not");
+        assert_ne!(close_all_windows(on_ice, &registry).0.phase, GamePhase::Action(Side::Corp));
+
+        // Short of its requirement, or barred from scoring: not offered.
+        state.corp.installed = vec![root_at("send_a_message", 0)];
+        let (short, _) = play_big_deal(state.clone(), &registry, "send_a_message");
+        assert_eq!((tokens(&short, "send_a_message"), offered(&short)), (4, None), "4 of 5");
+        state.corp.installed = vec![root_at("a_plain_agenda", 0)];
+        let install = install_of(&state, "a_plain_agenda");
+        state.lingering.push(crate::rules::lingering::LingeringEffect {
+            what: crate::rules::lingering::Lingering::Cannot(crate::dsl::Prohibition::ScoreAgendas),
+            on: crate::rules::lingering::On::Install(install),
+            until: crate::rules::lingering::Until::EndOfTurn(state.turn),
+            source: id("warm_reception"),
+        });
+        let (barred, _) = play_big_deal(state, &registry, "a_plain_agenda");
+        assert_eq!(offered(&barred), None, "it cannot be scored this turn");
+    }
+
+    fn into_a_new_remote(state: &GameState, registry: &CardRegistry, card: &str) -> GameState {
+        let position = state.corp.hq.iter().position(|held| held == &id(card)).expect("in HQ");
+        let (asked, _) = pick(state, registry, position);
+        let servers: Vec<ServerId> = crate::rules::legal_actions_for(&asked, registry, Side::Corp)
+            .into_iter()
+            .filter_map(|action| match action {
+                PlayerAction::ChooseServerForPendingDecision { server } => Some(server),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(servers.len(), 1, "creating a new remote server each time: {servers:?}");
+        let fresh = servers[0];
+        assert!(matches!(fresh, ServerId::Remote(_)) && !asked.corp.installed.iter().any(|card| card.server == fresh), "a new one");
+        apply_action(&asked, registry, PlayerAction::ChooseServerForPendingDecision { server: fresh }).expect("install").0
+    }
+
+    #[test]
+    fn mitosis_installs_two_cards_each_in_a_new_remote_with_two_counters_that_cannot_be_scored_or_rezzed_this_turn() {
+        let registry = with_a_plain_agenda(registry());
+        let mut state = base_state();
+        state.corp.hq = vec![id("mitosis"), id("a_plain_agenda"), id("pad_campaign"), id("ice_wall")];
+        state.corp.installed = vec![root_at("pad_campaign", 0)];
+        let (played, _) = apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: id("mitosis") }).expect("play Mitosis");
+        assert_eq!((played.corp.resources.clicks, played.corp.resources.credits), (Clicks(1), Credits(7)), "spend [click] as well; 3[credit]");
+        assert!(!toggles(&played, &registry).contains(&played.corp.hq.iter().position(|card| card == &id("mitosis")).unwrap_or(usize::MAX)));
+
+        let first = into_a_new_remote(&played, &registry, "a_plain_agenda");
+        let both = into_a_new_remote(&first, &registry, "pad_campaign");
+        let agenda = both.corp.installed.iter().find(|card| card.card == id("a_plain_agenda")).expect("installed");
+        let asset = both.corp.installed.iter().rfind(|card| card.card == id("pad_campaign")).expect("installed");
+        assert_ne!(agenda.server, asset.server, "two new remotes");
+        assert!(agenda.server != ServerId::Remote(0) && asset.server != ServerId::Remote(0));
+        assert_eq!((agenda.advancement_tokens, asset.advancement_tokens), (2, 2), "2 advancement counters on each");
+        let (agenda, asset) = (agenda.install_id, asset.install_id);
+
+        // "You cannot score or rez either of those cards this turn."
+        let actions = crate::rules::legal_actions_for(&both, &registry, Side::Corp);
+        assert!(!actions.contains(&PlayerAction::ScoreAgenda { target: agenda }), "2 of 2, and it cannot be scored");
+        assert!(!actions.contains(&PlayerAction::RezIce { ice: asset }), "nor rezzed");
+        assert!(apply_action(&both, &registry, PlayerAction::RezIce { ice: asset }).is_err());
+        let older = install_of(&both, "pad_campaign");
+        assert!(actions.contains(&PlayerAction::RezIce { ice: older }), "the other PAD Campaign may be rezzed");
+        let mut next = both;
+        next.turn += 1;
+        let actions = crate::rules::legal_actions_for(&next, &registry, Side::Corp);
+        assert!(actions.contains(&PlayerAction::ScoreAgenda { target: agenda }) && actions.contains(&PlayerAction::RezIce { ice: asset }), "this turn only");
+
+        // "Up to 2": the second may be none, and ice protects a new remote.
+        let one = into_a_new_remote(&played, &registry, "ice_wall");
+        let wall = one.corp.installed.iter().find(|card| card.card == id("ice_wall")).expect("installed");
+        assert_eq!((wall.slot, wall.advancement_tokens), (InstallSlot::Ice, 2));
+        let done = none(&one, &registry);
+        assert!(done.pending_decision.is_none());
+        assert_eq!(done.corp.installed.len(), 2);
+    }
 }

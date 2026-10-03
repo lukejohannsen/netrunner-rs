@@ -365,6 +365,7 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
         }
         Effect::SwapInstalledIce(..) => "swap two pieces of ice".to_string(),
         Effect::InstallFromZoneIgnoringCost { .. } => "install a card, ignoring its cost".to_string(),
+        Effect::PromptInstallCorpCard { new_remote: true, .. } => "install a card in a new remote server".to_string(),
         Effect::PromptInstallCorpCard { .. } => "install a card".to_string(),
         Effect::InstallRunnerCardFromGrip => "install a card from the grip".to_string(),
         Effect::InstallRunnerCardFromZone { from, discount: Discount::Credits(0) } => format!("install a card from {}", describe_zone(from)),
@@ -382,6 +383,7 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
         Effect::SetRunEndedEffect(effect) => format!("when the run ends, {}", describe_effect(effect, registry)),
         Effect::WhenThisTurnEnds(effect) => format!("when this turn ends, {}", describe_effect(effect, registry)),
         Effect::EndActionPhase => "your action phase ends".to_string(),
+        Effect::Score => "score that card, if able".to_string(),
         Effect::Breach(server) => format!("breach {}", describe_server(*server)),
         Effect::Access { from, filter, count, then } => {
             let which = match filter {
@@ -480,6 +482,7 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
                 (Prohibition::DiscardStep, _) => "the Corp skips their discard step",
                 (Prohibition::BioroidIceAbilities, _) => "the Runner cannot use paid abilities printed on bioroid ice",
                 (Prohibition::StealOrTrashAgendas, _) => "the Runner cannot steal or trash agendas",
+                (Prohibition::Rez, _) => "the Corp cannot rez that card",
             };
             format!("{what} {}", duration(until))
         }
@@ -772,6 +775,7 @@ pub fn describe_continuous(effect: &ContinuousEffect) -> String {
             Prohibition::BreakSubroutines => "cannot break subroutines",
             Prohibition::DiscardStep => "skips their discard step",
             Prohibition::BioroidIceAbilities => "cannot use paid abilities printed on bioroid ice",
+            Prohibition::Rez => "cannot rez this card",
         }
         .to_string(),
         ContinuousKind::LosesAbilities => "loses all abilities except its printed subroutines".to_string(),

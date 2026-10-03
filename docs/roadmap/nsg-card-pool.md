@@ -48,14 +48,15 @@ cards each stage takes.
 | 2 | Rebellion Without Rehearsal (`rwr`) | 65 | 65 | 0 | complete (28 September 2026) |
 | 3 | The Automata Initiative (`tai`) | 65 | 65 | 0 | complete (29 September 2026) |
 | 4 | Parhelion (`ph`) | 63 | 63 | 0 | complete (2 October 2026) |
-| 5 | Midnight Sun (`ms`) + Booster (`msbp`) | 65 + 7 | 58 + 6 | 7 + 1 | Stages 1–6 and 7a built (3 October 2026); **Stage 7b next** — the turn |
+| 5 | Midnight Sun (`ms`) + Booster (`msbp`) | 65 + 7 | 60 + 6 | 5 + 1 | Stages 1–7 built (3 October 2026); **Stage 8 next** — subroutine lists and ability layers |
 | 6 | Uprising (`ur`) + Booster (`urbp`) | 65 + 7 | 0 | 65 + 7 | not started |
 | 7 | Downfall (`df`) | 65 | 0 | 65 | not started |
 | 8 | System Update 2021 (`su21`), Salvaged Memories (`sm`), Magnum Opus Reprint (`mor`) | 82, 18, 6 | 11, 1, 0 | 71, 17, 6 | not started (the built ones are Core reprints) |
 
-**DSL ratio** (`pool_status.py`, the DSL Growth Rule's number): **17 of 98
-`Effect` variants single-use, 1 unused (`Trace`), over 501 card files** (3
-October 2026, with Midnight Sun Stage 7a, which added no `Effect`). The baseline at Stage 0a was 26 of 70 single-use, 3 unused,
+**DSL ratio** (`pool_status.py`, the DSL Growth Rule's number): **18 of 99
+`Effect` variants single-use, 1 unused (`Trace`), over 503 card files** (3
+October 2026, with Midnight Sun Stage 7b, whose one new `Effect`, `Score`, Big
+Deal alone uses). The baseline at Stage 0a was 26 of 70 single-use, 3 unused,
 over 184 files: 281 cards later the single-use count is *lower*, because the
 growth went into `Trigger`, `EventFilter`, `Amount`, `CardFilter`, `Cost` and
 `ContinuousKind` words rather than into what an effect does.
@@ -410,6 +411,7 @@ A card on the list is a term to write or a reading to repair, never a card to ta
 - **Midnight Sun Stage 4's cards it never plays** (each edited Corp deck against Safety Net, seed 2, 48 planner games): Mutually Assured Destruction; Drago Ivanov's and Vladisibirsk City Grid's abilities (installed 59 and 65 times, never used); Mestnichestvo's encounter offer, because it never advances the ice; Moon Pool used once; Mavirus never rezzed.
 - **Midnight Sun Stage 5's cards it barely plays** (the Corp decks against Safety Net, Hit List against Hostile Bid, seed 2, 48 planner games): Trust Operation played once (19 times by random seats in 96 games); Cat's Cradle installed seven times (38).
 - **Midnight Sun Stage 6a's cards it never installs** (Encore against Retirement Package, seed 2, 48 planner games): Backstitching and Virtuoso (35 and 20 installs by random seats in 96 games). It plays Carpe Diem (46) and gains Nyusha's click (131 times).
+- **Midnight Sun Stage 7b's cards it barely plays** (each Corp deck against Burn Rate, seed 2, 48 planner games): Big Deal once (Retirement Package; random seats 12 times in 96 games) — 17[credit] is rarely the planner's best click — and Mitosis twice (Permafrost; 13).
 - **Midnight Sun Stage 6b's cards it never plays** (seed 2, 48 planner games): Pinhole Threading (Encore against Retirement Package; random seats played it 47 times in 96 games, 20 of them reaching the access). Deep Dive is played by no seat, as Chain Reaction is: three successful central runs in one turn (on the sweeps' rare list).
 - **Economy resources and programs it does not value**: Friend of a Friend, Valentina Ferreira Carvalho, Coalescence; Laser Pointer, Banner; Monkeywrench, Saci, Pichação, Urban Art Vernissage; Lago Paranoá Shelter; AirbladeX (JSRF Ed.); the Core Set interrupts Decoy, Net Shield and Sacrificial Construct.
 - **Abilities it never uses**: M.I.C.'s trash, Arissana Rocha Nahu's, Epiphany Analytica's counter; identity and multi-click abilities generally (Phase 1 §8); over-advancing for Dividends.
@@ -776,8 +778,8 @@ Grid, Tsakhia, World Tree.
    is complete.
 7. **The score area and the turn:** split by mechanic when it was taken.
    **7a, the score area** (built, 3 October 2026): Backroom Machinations,
-   Regenesis, Blood in the Water, Steelskin Scarring. **7b, the turn:** Big
-   Deal, Mitosis.
+   Regenesis, Blood in the Water, Steelskin Scarring. **7b, the turn** (built,
+   3 October 2026): Big Deal, Mitosis. Stage 7 is complete.
 8. **Subroutine lists and ability layers:** Echo, Envelopment, Light the
    Fire!, Trieste Model Bioroids, Ob Superheavy Logistics.
 
@@ -802,6 +804,7 @@ Excavator.
 - **Stage 6a** — the mark: four Criminal cards with no new `Effect`, the mark asked by server, a run's end effects kept as a list, and a Sweep deck on Nyusha "Sable" Sintashta, Encore (`claude/serene-einstein-6bhlig`, 3 October 2026).
 - **Stage 6b** — access outside a breach: Pinhole Threading and Deep Dive, one new `Effect` both use (`Access`), the Corp's set-aside zone, and the Runner kept from stealing or trashing an agenda (`claude/serene-einstein-6bhlig`, 3 October 2026).
 - **Stage 7a** — the score area: four cards with no new `Effect`, one door into Archives counted in the turn log, and an agenda printed with an X (`claude/serene-einstein-6bhlig`, 3 October 2026).
+- **Stage 7b** — the turn: Big Deal and Mitosis, one new `Effect` (`Score`, the action's scoring shared with a card's text), a card kept from being rezzed for a turn, and an install into a new remote only (`claude/serene-einstein-6bhlig`, 3 October 2026).
 
 ### 6. Uprising and its Booster Pack — 65 cards (C 10 / V 37 / M 18)
 

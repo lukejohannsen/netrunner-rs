@@ -566,6 +566,13 @@ pub enum EffectRequirement {
     /// OnAgendaScored), 1)`: that is *an* agenda, and a second Witch Hunt,
     /// or an earlier one, would have given the Runner 3 tags again.
     ThisAgendaScoredThisTurn,
+    /// The card this resolves as could be scored now (`engine::scorable`)
+    /// — Big Deal's "if able", asked ahead of its "you may score that
+    /// card" so the choice is offered only when there is a score to take.
+    /// Composition didn't work: `ActingCardMatches` reads the definition,
+    /// and whether an agenda can be scored is the table's — its counters,
+    /// its requirement as it stands, a lock, a cost.
+    Scorable,
 }
 
 impl EffectRequirement {

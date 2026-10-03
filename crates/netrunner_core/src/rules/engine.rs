@@ -1124,6 +1124,11 @@ pub(crate) fn rez_install(
     let side = Side::Corp;
     let installed = next.corp.installed.iter().find(|c| c.install_id == ice).ok_or(RulesError::InstallNotFound(ice))?;
     let ice_id = installed.card.clone();
+    // Mitosis's "You cannot … rez either of those cards this turn": first,
+    // ahead of any way to pay, since a forbidden rez asks nothing.
+    if continuous::cannot_install(next, registry, Prohibition::Rez, ice) {
+        return Err(RulesError::RezRestricted { card: ice_id });
+    }
     let card_def = registry.get(&ice_id).ok_or_else(|| RulesError::CardNotFoundInRegistry(ice_id.clone()))?;
     if !pay_cost || card_def.rez_alternatives.is_empty() {
         return rez_priced(next, registry, ice, pay_cost, discount);
@@ -2663,9 +2668,45 @@ fn score_agenda(
     registry: &CardRegistry,
     target: InstallId,
 ) -> Result<(GameState, Vec<GameEvent>), RulesError> {
-    let side = Side::Corp;
-    require_phase(state, GamePhase::Action(side))?;
+    require_phase(state, GamePhase::Action(Side::Corp))?;
     paid_ability::require_no_window(state)?;
+    let mut next = state.clone();
+    let events = score_install(&mut next, registry, target)?;
+    Ok((next, events))
+}
+
+/// Whether the Corp could score `target` now, whoever asks — Big Deal's
+/// "You may score that card, **if able**" (`EffectRequirement::Scorable`),
+/// offered only when it is. Everything `score_install` refuses, asked
+/// without paying: an agenda, not forbidden, its requirement met as the
+/// table stands, and its additional costs to score affordable. Not the
+/// action's phase and window, which are the action's (`score_agenda`), not
+/// the score's: a card's text scores in the middle of its own resolution.
+pub(crate) fn scorable(state: &GameState, registry: &CardRegistry, target: InstallId) -> bool {
+    let Some(installed) = state.find_corp_install(target) else { return false };
+    let Some(card_def) = registry.get(&installed.card) else { return false };
+    if card_def.card_type != CardType::Agenda || continuous::cannot_install(state, registry, Prohibition::ScoreAgendas, target) {
+        return false;
+    }
+    let required = continuous::advancement_requirement(state, registry, target).unwrap_or(0);
+    (installed.advancement_tokens as i32) >= required
+        && continuous::score_costs(state, registry, target).iter().all(|(cost, source, source_install)| {
+            let ctx = match source_install {
+                Some(install) => ability::ResolutionContext::for_install(*install, source),
+                None => ability::ResolutionContext::for_card(Some(source)),
+            };
+            ability::cost_is_affordable(state, registry, Side::Corp, cost, Purpose::Other, &ctx)
+        })
+}
+
+/// Scores the agenda at `target` into `next`: the score itself, which the
+/// action (`score_agenda`) and a card's text (`Effect::Score`, Big Deal)
+/// share, so a score by text pays the same costs, keeps the same
+/// dividends and is heard as the same `AgendaScored`. Was the body of
+/// `score_agenda` until a card scored outside the action phase.
+pub(crate) fn score_install(next: &mut GameState, registry: &CardRegistry, target: InstallId) -> Result<Vec<GameEvent>, RulesError> {
+    let side = Side::Corp;
+    let state: &GameState = next;
     // Luminal Transubstantiation's lockout. Asked here and by
     // `legal_actions`, of the same predicate, so the two can't disagree.
     if continuous::cannot_install(state, registry, Prohibition::ScoreAgendas, target) {
@@ -2715,25 +2756,24 @@ fn score_agenda(
     // A counter placed by a card's text is not advancing (CR 1.18.2), and
     // the log counts only `CardAdvanced` as `OnAdvance`.
     let advanced_this_turn = state.corp.installed[position].this_turn.count(state.turn, crate::dsl::Trigger::OnAdvance) > 0;
-    let mut next = state.clone();
     // Additional costs to score (Word on the Street), paid with the score
     // and followed by a checkpoint before the agenda moves (CR 1.16.10b–c).
     // Scoring has no cost of its own to add them to, and a Corp that will
     // not pay them simply does not score (CR 1.17.3b), so an unpayable one
     // refuses the score, which is what keeps it off the action list.
     let mut cost_events = Vec::new();
-    for (cost, source, source_install) in continuous::score_costs(&next, registry, target) {
+    for (cost, source, source_install) in continuous::score_costs(next, registry, target) {
         let ctx = match source_install {
             Some(install) => ability::ResolutionContext::for_install(install, &source),
             None => ability::ResolutionContext::for_card(Some(&source)),
         };
-        cost_events.extend(ability::pay_cost_ctx(&mut next, registry, side, &cost, Purpose::Other, &ctx)?);
+        cost_events.extend(ability::pay_cost_ctx(next, registry, side, &cost, Purpose::Other, &ctx)?);
     }
     let mut events = cost_events.clone();
     if !cost_events.is_empty() {
-        events.extend(checkpoint::state_based(&mut next, registry, None));
+        events.extend(checkpoint::state_based(next, registry, None));
         if next.is_over() {
-            return Ok((next, events));
+            return Ok(events);
         }
     }
     // Scored is uninstalled (CR 1.17.5), so it leaves by the door. No
@@ -2741,7 +2781,7 @@ fn score_agenda(
     // The agenda is named by its install, not by `position`: a cost that
     // trashed a card ahead of it (Azef Protocol's) moved it down the list.
     let install_id = target;
-    let (_, announced) = uninstall::corp_install(&mut next, registry, install_id)?.ok_or(RulesError::InstallNotFound(install_id))?;
+    let (_, announced) = uninstall::corp_install(next, registry, install_id)?.ok_or(RulesError::InstallNotFound(install_id))?;
     // Dividends: every advancement counter past the requirement becomes
     // `dividends` agenda counters on the scored copy (Off the Books) — the
     // requirement as it was when the score began, before the agenda moved
@@ -2771,12 +2811,12 @@ fn score_agenda(
     // per-turn gate.
     // The win is the checkpoint's, and it comes first: `dispatch_event`
     // checks the score areas before it plans a trigger.
-    events.extend(dispatcher::dispatch_event(&mut next, registry, &scored_event)?);
+    events.extend(dispatcher::dispatch_event(next, registry, &scored_event)?);
     // The additional cost's own events, after, as every payer dispatches
     // them (`ability::dispatch_cost_events`).
-    events.extend(ability::dispatch_cost_events(&mut next, registry, &cost_events)?);
+    events.extend(ability::dispatch_cost_events(next, registry, &cost_events)?);
 
-    Ok((next, events))
+    Ok(events)
 }
 
 /// Resolves `PlayerAction::RemoveTag`, per its doc comment. Runner-only.

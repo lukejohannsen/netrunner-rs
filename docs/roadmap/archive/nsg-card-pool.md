@@ -6454,3 +6454,61 @@ mechanic when it was taken, as Stage 6 was: 7b is Big Deal and Mitosis.
   The planner seatings move by `determinize`'s prior, four cards larger:
   Corp agenda wins 58 → 59, Corp flatlines 29 → 28, Runner agenda wins
   99 → 100, decked Runners 6 → 5.
+
+#### Stage 7b — the turn (3 October 2026)
+
+`claude/serene-einstein-6bhlig`: Big Deal and Mitosis. **One new `Effect`,
+which Big Deal alone uses.** Midnight Sun 60 of 65, its booster pack 6 of
+7; `MS_UNIMPLEMENTED` 7 → 5. **Stage 7 is complete.**
+
+- **`Effect::Score`**: the Corp scores the card this resolves as, if able.
+  Scoring was only `PlayerAction::ScoreAgenda`, the Corp's with their action
+  phase's priority and no window open, and Big Deal scores in the middle of
+  its own resolution (CR 1.2.1 over 1.17.3). `engine::score_agenda` is now
+  the action's phase and window around `engine::score_install` — the score
+  itself, from the `ScoreAgendas` lock through costs, dividends and the
+  dispatched `AgendaScored` — which the effect shares, so a score by text is
+  heard as any other. `engine::scorable` asks the same questions without
+  paying, and **`EffectRequirement::Scorable`** puts it to the card being
+  resolved, so "You may score that card, if able" is offered only when there
+  is a score to take: `ActingCardMatches` reads the definition, and whether
+  an agenda can be scored is the table's. `payment::could_ask` admits the
+  choice's answer when any install's cost to score could ask (Azef
+  Protocol's).
+- **Big Deal** is a selection of 1 installed card whose `then` places 4
+  advancement counters and offers the score, then `EndActionPhase`, last,
+  where "after" puts it; `removed_after_play`, and the catalog's trash cost
+  of 3 (CR 3.5.3).
+- **`Prohibition::Rez`**: Mitosis's "You cannot score or rez either of
+  those cards this turn", bound to each card it installed through
+  `PromptInstallCorpCard::if_installed`, as Warm Reception's score lock is.
+  Asked by `engine::rez_install`, the one place a Corp card is turned
+  faceup, ahead of any way to pay, so the action, the action list's probe
+  and a card's text that rezzes are all refused (`RezRestricted`, which a
+  text rez treats as an unaffordable one).
+- **`PromptInstallCorpCard::new_remote`**: "creating a new remote server
+  each time" offers the one remote the Corp would create, and nothing when
+  it may create no more. Mitosis is two of Warm Reception's selections in a
+  `Sequence`, each over `Not(CardType(Operation))` in HQ, "up to" by its
+  minimum of 0.
+- **Client.** `prose` words the effect, the prohibition ("the Corp cannot
+  rez that card") and the new remote; `hud::cannot_words` lists the
+  prohibition with the rest. Nothing new reaches the view: the lingering
+  list already carries it.
+- **Decks.** Retirement Package takes two Big Deal for two Retirement Plan
+  (Deterrence keeps it), Permafrost two Mitosis for two Seamless Launch
+  (Brutal Efficiency and The Syndicate keep it). Big Deal needed no rare
+  entry: the card gate counts an access, and the deep sweep accesses it.
+- **DSL ratio** (`pool_status.py`): 18 of 99 `Effect` variants
+  single-use, 1 unused (`Trace`), over 503 card files (17 of 98 over 501
+  before; `Score` is used once).
+- **Real play** (`--headless`, seed 2; random seats 96 games / planner
+  48), against Burn Rate: Retirement Package played Big Deal 12 / 1 times,
+  Permafrost Mitosis 13 / 2. The report does not say how many of Big Deal's
+  plays scored; the per-card test does. **Bot debts:** on the list — the
+  planner barely plays either.
+- **Measured.** Both sweeps are green at 256 seeds, the card gate
+  included. `coverage_identical.py` against Stage 7a (e73ac08, 192 games a
+  report): random identical, view and index alike — the scoring refactor
+  moved no rule. The planner seatings move by `determinize`'s prior: Corp
+  agenda wins 59 → 58, Corp flatlines 28 → 29.

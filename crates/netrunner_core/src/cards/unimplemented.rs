@@ -48,8 +48,6 @@ pub(crate) const MS_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("light_the_fire", "Light the Fire!"),
     ("trieste_model_bioroids", "Trieste Model Bioroids"),
     ("echo", "Echo"),
-    ("big_deal", "Big Deal"),
-    ("mitosis", "Mitosis"),
     ("ob_superheavy_logistics_extract_export_excel", "Ob Superheavy Logistics: Extract. Export. Excel."),
     ("envelopment", "Envelopment"),
 ];

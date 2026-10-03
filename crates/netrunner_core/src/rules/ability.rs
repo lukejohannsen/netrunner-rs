@@ -822,6 +822,14 @@ pub fn evaluate_effect(
             crate::rules::turn::force_action_phase_end(state, side, registry)
         }
 
+        Effect::Score => {
+            let Some(install) = ctx.acting_install else { return Err(RulesError::MissingActingCardContext) };
+            if !crate::rules::engine::scorable(state, registry, install) {
+                return Ok(Vec::new());
+            }
+            crate::rules::engine::score_install(state, registry, install)
+        }
+
         // Drawn together and first, so the `each` that moves one cannot be
         // dealt it again; revealed, so each is public (CR 1.21.3) and stays
         // so until it moves (`GameState::revealed`).
@@ -1923,7 +1931,7 @@ pub fn evaluate_effect(
             Ok(vec![GameEvent::PendingServerChoiceOffered { chooser: Side::Corp }])
         }
 
-        Effect::PromptInstallCorpCard { origin_zone, ignore_costs, discount, then, remote_only, another_server, rez, if_rezzed, if_installed } => {
+        Effect::PromptInstallCorpCard { origin_zone, ignore_costs, discount, then, remote_only, another_server, new_remote, rez, if_rezzed, if_installed } => {
             let card_id = acting_card.ok_or(RulesError::UnresolvedCardTarget)?.clone();
             // First match by position: two copies of one card in HQ are
             // indistinguishable and interchangeable, so "the copy the Corp
@@ -1959,6 +1967,12 @@ pub fn evaluate_effect(
             if *another_server {
                 let own = acting_corp_position(state, ctx).map(|position| state.corp.installed[position].server);
                 allowed.retain(|server| Some(*server) != own);
+            }
+            // The destinations hold the fresh remote only while the Corp
+            // may create one (`corp_install_destinations`).
+            if *new_remote {
+                let fresh = crate::rules::run::ServerId::Remote(crate::rules::legal_actions::fresh_remote_id(&crate::rules::legal_actions::existing_remote_ids(state)));
+                allowed.retain(|server| *server == fresh);
             }
             if allowed.is_empty() {
                 return Ok(Vec::new());
@@ -4070,6 +4084,10 @@ pub fn check_requirement(
             let matches = ctx.acting_card.and_then(|card| registry.get(card)).is_some_and(|card| card_matches_filter(card, filter));
             if matches { Ok(()) } else { Err(RulesError::RequirementNotMet) }
         }
+        EffectRequirement::Scorable => {
+            let scorable = ctx.acting_install.is_some_and(|install| crate::rules::engine::scorable(state, registry, install));
+            if scorable { Ok(()) } else { Err(RulesError::RequirementNotMet) }
+        }
         EffectRequirement::ThisAgendaScoredThisTurn => {
             let scored_now = ctx.acting_install.is_some_and(|install| {
                 state.corp.scored_agendas.iter().any(|scored| scored.install_id == install && scored.scored_on_turn == state.turn)
@@ -4498,6 +4516,7 @@ pub(crate) fn consume_requirement(
         | EffectRequirement::Protecting(_)
         | EffectRequirement::ActingCardMatches(_)
         | EffectRequirement::ThisAgendaScoredThisTurn
+        | EffectRequirement::Scorable
         | EffectRequirement::SubroutineResolvedThisRun
         | EffectRequirement::IceDerezzedThisRun
         | EffectRequirement::SubroutineBrokenThisRun
