@@ -28,25 +28,47 @@
 //! the Runner. A choice is its chooser's best option; a selection's
 //! `then` (Pravdivost Consulting's counter, Ryō "Phoenix" Ōno's discard)
 //! and a flip are not read — the cheaper direction.
+//!
+//! **A steal and a tag are moments too** (Phase 5 §36). Jinteki: Personal
+//! Evolution's net damage and Thule Subsea's core damage on a steal,
+//! Poétrï Luxury Brands' install from HQ when one is stolen, and NBN:
+//! Reality Plus's 2[credit] for the turn's first tag happen inside a run,
+//! after the leaf that prices it. A "do 1 core damage unless they spend [click] and 2[credit]"
+//! is its payer's cheaper side, and the side they can afford; a selection
+//! whose `then` installs a Corp card is an install when its zone holds a
+//! card the selection would offer (`eligible_positions`, the engine's own
+//! question). Tāo Salonga's swap is read as nothing: what two pieces of
+//! ICE are worth in each other's places is a reading of where each one
+//! stands against the rig, which no term makes off a run.
 
 use super::*;
-use netrunner_core::dsl::{EffectRequirement, EventFilter, Subject, TriggeredEffect};
+use netrunner_core::dsl::{Cost, DamageType, EffectRequirement, EventFilter, Subject, TriggeredEffect};
 use netrunner_core::rules::turn_log::{Class, ServerClass};
-use netrunner_core::rules::{check_requirement, ResolutionContext, ServerId};
+use netrunner_core::rules::{check_requirement, eligible_positions, ResolutionContext, ServerId};
 
 /// What the identities' text pays at a moment, to each side.
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
 pub(super) struct Pays {
     pub runner_credits: i32,
     pub runner_cards: i32,
+    /// Clicks the Runner spends (Thule Subsea's "unless they spend [click]
+    /// and 2[credit]").
+    pub runner_clicks: i32,
     pub corp_credits: i32,
     pub corp_cards: i32,
+    /// Cards the Corp's text installs (Poétrï's "you may install 1
+    /// non-agenda card from HQ", Synapse Global's "install 1 card from HQ,
+    /// ignoring all costs").
+    pub corp_installs: i32,
     /// Cards the breach accesses beyond the ones the run already makes
     /// (Mercury Chrome's "access 1 additional card").
     pub accesses: u32,
     /// Damage and tags the Runner takes (BANGUN's "do 2 meat damage and
     /// give the Runner 1 tag").
     pub damage: u32,
+    /// Of `damage`, the points that are core damage: each discards a card
+    /// as the rest do and lowers the hand size for good besides.
+    pub core_damage: u32,
     pub tags: u32,
 }
 
@@ -55,24 +77,47 @@ impl Pays {
         Pays {
             runner_credits: self.runner_credits + other.runner_credits,
             runner_cards: self.runner_cards + other.runner_cards,
+            runner_clicks: self.runner_clicks + other.runner_clicks,
             corp_credits: self.corp_credits + other.corp_credits,
             corp_cards: self.corp_cards + other.corp_cards,
+            corp_installs: self.corp_installs + other.corp_installs,
             accesses: self.accesses + other.accesses,
             damage: self.damage + other.damage,
+            core_damage: self.core_damage + other.core_damage,
             tags: self.tags + other.tags,
         }
     }
 
-    /// How a chooser compares two options of a choice: a credit, a card,
-    /// an access, a point of damage and a tag about a click's worth each,
-    /// for the side they help, as `Tally::worth` compares a play's.
-    fn worth(self, side: Side) -> i32 {
-        let runner = self.runner_credits + self.runner_cards + self.accesses as i32 - self.damage as i32 - self.tags as i32;
-        let corp = self.corp_credits + self.corp_cards;
+    /// How a chooser compares two options of a choice, in credits: a
+    /// credit, a card, a click, an access, an install and a point of
+    /// damage about one each, for the side they help, as `Tally::worth`
+    /// compares a play's — and a tag and a point of core damage what the
+    /// evaluator prices them at over a credit, so a payer who can spend a
+    /// click and 2[credit] to keep their hand size does (Thule Subsea).
+    fn worth(self, side: Side) -> f64 {
+        let tag = TAG_WEIGHT / OWN_CREDIT_WEIGHT;
+        let core = CORE_DAMAGE_WEIGHT / OWN_CREDIT_WEIGHT;
+        let runner = f64::from(self.runner_credits + self.runner_cards + self.runner_clicks) + f64::from(self.accesses)
+            - f64::from(self.damage)
+            - f64::from(self.tags) * tag
+            - f64::from(self.core_damage) * core;
+        let corp = f64::from(self.corp_credits + self.corp_cards + self.corp_installs);
         match side {
             Side::Runner => runner - corp,
             Side::Corp => corp - runner,
         }
+    }
+
+    /// What these pays are worth to the Runner at `w`'s rates, its damage
+    /// aside — the caller counts that toward the flatline it can be, with
+    /// a trap's. A card and a click at the click's rate, the Corp's
+    /// credits, cards and installs at the rate the Runner reads the
+    /// Corp's credits, a tag and a point of core damage at their weights.
+    pub fn to_runner(self, w: &Weights) -> f64 {
+        f64::from(self.runner_credits) * w.own_credit_weight + f64::from(self.runner_cards + self.runner_clicks) * w.click_weight
+            - f64::from(self.corp_credits + self.corp_cards + self.corp_installs) * w.opponent_credit_weight
+            - f64::from(self.tags) * w.tag_weight
+            - f64::from(self.core_damage) * w.core_damage_weight
     }
 }
 
@@ -83,6 +128,9 @@ struct At {
     server: ServerId,
     accesses: u32,
     accessing: Option<Accessing>,
+    /// What the Runner will have to pay a cost the moment offers it — the
+    /// run's credits after its breaks, at a leaf.
+    runner_credits: u32,
 }
 
 #[derive(Clone, Copy)]
@@ -102,9 +150,10 @@ struct Accessing {
 pub(super) fn run_success(state: &GameState, registry: &CardRegistry, run: &RunState) -> Pays {
     let server = run.redirect_on_approach.unwrap_or(run.server);
     let promised = rider_accesses(run, server) + rig_breach_accesses(state, registry, server);
-    let breach = heard(state, registry, &[Trigger::OnBreach], &At { server, accesses: breach_accesses(state, run, server, promised), accessing: None });
+    let credits = state.runner.resources.credits.0;
+    let breach = heard(state, registry, &[Trigger::OnBreach], &At { server, accesses: breach_accesses(state, run, server, promised), accessing: None, runner_credits: credits });
     let accesses = breach_accesses(state, run, server, promised + breach.accesses);
-    let after = heard(state, registry, &[Trigger::OnSuccessfulRun, Trigger::OnRunEnded], &At { server, accesses, accessing: None });
+    let after = heard(state, registry, &[Trigger::OnSuccessfulRun, Trigger::OnRunEnded], &At { server, accesses, accessing: None, runner_credits: credits });
     // The breach's own added accesses are the reading's; what its triggers
     // pay besides is counted with the rest.
     breach.add(after)
@@ -115,14 +164,34 @@ pub(super) fn run_success(state: &GameState, registry: &CardRegistry, run: &RunS
 /// installed agenda, do 2 meat damage and give the Runner 1 tag".
 pub(super) fn on_access(state: &GameState, registry: &CardRegistry, server: ServerId, def: &CardDefinition, installed: &InstalledCard) -> Pays {
     let accessing = Accessing { agenda: def.card_type == CardType::Agenda, installed: true, rezzed: installed.rezzed };
-    heard(state, registry, &[Trigger::OnAccessed], &At { server, accesses: 1, accessing: Some(accessing) })
+    heard(state, registry, &[Trigger::OnAccessed], &At { server, accesses: 1, accessing: Some(accessing), runner_credits: state.runner.resources.credits.0 })
 }
 
 /// What both identities print about the Runner trashing a card it is
 /// accessing in `server`: René "Loup" Arcemont's "the first time each turn
 /// you trash a card you are accessing, gain 1[credit] and draw 1 card".
 pub(super) fn on_trash_while_accessing(state: &GameState, registry: &CardRegistry, server: ServerId) -> Pays {
-    heard(state, registry, &[Trigger::OnTrashedFromAccess], &At { server, accesses: 1, accessing: None })
+    heard(state, registry, &[Trigger::OnTrashedFromAccess], &At { server, accesses: 1, accessing: None, runner_credits: state.runner.resources.credits.0 })
+}
+
+/// What both identities print about the Runner stealing an agenda in
+/// `server` with `credits` to pay what the steal asks: Jinteki: Personal
+/// Evolution's "whenever an agenda is scored or stolen, do 1 net damage",
+/// Thule Subsea's "do 1 core damage unless they spend [click] and
+/// 2[credit]" (the Runner's cheaper side, if it can pay at all), and
+/// Poétrï's "you may install 1 non-agenda card from HQ".
+pub(super) fn on_steal(state: &GameState, registry: &CardRegistry, server: ServerId, credits: u32) -> Pays {
+    heard(state, registry, &[Trigger::OnAgendaStolen], &At { server, accesses: 1, accessing: None, runner_credits: credits })
+}
+
+/// What both identities print about the Runner taking tags at a moment in
+/// `server`, when `tags` is any: NBN: Reality Plus's "the first time each
+/// turn the Runner takes a tag, gain 2[credit] or draw 2 cards".
+pub(super) fn on_tags(state: &GameState, registry: &CardRegistry, server: ServerId, tags: u32) -> Pays {
+    if tags == 0 {
+        return Pays::default();
+    }
+    heard(state, registry, &[Trigger::OnTagsGiven], &At { server, accesses: 0, accessing: None, runner_credits: state.runner.resources.credits.0 })
 }
 
 /// The cards a breach of `server` accesses: one from HQ or R&D and every
@@ -226,6 +295,7 @@ fn paid(state: &GameState, registry: &CardRegistry, side: Side, ctx: &Resolution
         Effect::DrawCards(Side::Runner, n) => Pays { runner_cards: *n as i32, ..Pays::default() },
         Effect::DrawCards(Side::Corp, n) => Pays { corp_cards: *n as i32, ..Pays::default() },
         Effect::AddAdditionalAccess { server, count } if *server == at.server => Pays { accesses: *count, ..Pays::default() },
+        Effect::DealDamage(DamageType::Brain, n) => Pays { damage: *n as u32, core_damage: *n as u32, ..Pays::default() },
         Effect::DealDamage(_, n) => Pays { damage: *n as u32, ..Pays::default() },
         Effect::GiveTags(Amount::Fixed(n)) => Pays { tags: *n, ..Pays::default() },
         Effect::Sequence(effects) => effects.iter().fold(Pays::default(), |sum, effect| sum.add(paid(state, registry, side, ctx, effect, at))),
@@ -233,10 +303,62 @@ fn paid(state: &GameState, registry: &CardRegistry, side: Side, ctx: &Resolution
         Effect::PresentChoice { chooser, options, .. } => options
             .iter()
             .map(|option| paid(state, registry, side, ctx, option, at))
-            .max_by_key(|pays| pays.worth(*chooser))
+            .max_by(|a, b| a.worth(*chooser).total_cmp(&b.worth(*chooser)))
             .unwrap_or_default(),
+        // "Unless they spend": the payer's cheaper side, of the ones it
+        // can take — a cost it cannot pay leaves it the other.
+        Effect::OfferPaidChoice { side: payer, cost, if_paid, if_declined, .. } => {
+            let declined = paid(state, registry, side, ctx, if_declined, at);
+            match price(state, *payer, cost, at) {
+                Some(price) => {
+                    let accepted = price.add(paid(state, registry, side, ctx, if_paid, at));
+                    if accepted.worth(*payer) >= declined.worth(*payer) { accepted } else { declined }
+                }
+                None => declined,
+            }
+        }
+        // "You may install 1 card from HQ": an install, when the zone
+        // holds a card the selection would offer. Which card, and where
+        // it goes, is the Corp's to choose when the moment comes.
+        Effect::PromptChooseCards { side: Side::Corp, source, filter, then: Some(then), .. }
+            if installs_a_corp_card(then)
+                && !eligible_positions(state, registry, Side::Corp, source, filter, None, None).is_empty() =>
+        {
+            Pays { corp_installs: 1, ..Pays::default() }
+        }
         _ => Pays::default(),
     }
+}
+
+/// What paying `cost` takes from `payer`, when it can pay it at `at`: a
+/// cost of credits and clicks only. `None` for anything else, or one it
+/// cannot afford.
+fn price(state: &GameState, payer: Side, cost: &Cost, at: &At) -> Option<Pays> {
+    fn needs(cost: &Cost) -> Option<(u32, u32)> {
+        match cost {
+            Cost::Credits(n) => Some((*n, 0)),
+            Cost::Clicks(n) => Some((0, *n)),
+            Cost::AllOf(parts) => parts.iter().try_fold((0, 0), |(c, k), part| needs(part).map(|(pc, pk)| (c + pc, k + pk))),
+            _ => None,
+        }
+    }
+    let (credits, clicks) = needs(cost)?;
+    match payer {
+        Side::Runner => (credits <= at.runner_credits && clicks <= state.runner.resources.clicks.0)
+            .then_some(Pays { runner_credits: -(credits as i32), runner_clicks: -(clicks as i32), ..Pays::default() }),
+        Side::Corp => (clicks == 0 && credits <= state.corp.resources.credits.0).then_some(Pays { corp_credits: -(credits as i32), ..Pays::default() }),
+    }
+}
+
+/// Whether a selection's `then` installs the card chosen.
+fn installs_a_corp_card(then: &Effect) -> bool {
+    let mut found = false;
+    then.for_each_effect(&mut |effect| {
+        if matches!(effect, Effect::PromptInstallCorpCard { .. }) {
+            found = true;
+        }
+    });
+    found
 }
 
 #[cfg(test)]
@@ -347,6 +469,76 @@ mod tests {
         let rene = prospect(&state);
         state.runner.identity = None;
         assert!(rene > prospect(&state), "{rene} against {}", prospect(&state));
+    }
+
+    /// A steal under the Corp's identity (§36): Jinteki: Personal
+    /// Evolution's net damage, and Thule Subsea's core damage — or the
+    /// click and 2[credit] that keep it off, when the Runner has them.
+    #[test]
+    fn personal_evolution_and_thule_subsea_charge_a_steal() {
+        use netrunner_core::rules::Clicks;
+        let pool = pool();
+        let mut state = table();
+        state.corp.identity = id("jinteki_personal_evolution");
+        let net = on_steal(&state, &pool, ServerId::Hq, 5);
+        assert_eq!((net.damage, net.core_damage), (1, 0), "\"do 1 net damage\"");
+        state.corp.identity = id("thule_subsea_safety_below");
+        state.runner.resources.clicks = Clicks(1);
+        let paid = on_steal(&state, &pool, ServerId::Hq, 5);
+        assert_eq!((paid.runner_clicks, paid.runner_credits, paid.damage), (-1, -2, 0), "a Runner who can pay keeps its hand size");
+        let short = on_steal(&state, &pool, ServerId::Hq, 1);
+        assert_eq!((short.damage, short.core_damage), (1, 1), "one who cannot takes the core damage");
+        state.runner.resources.clicks = Clicks(0);
+        assert_eq!(on_steal(&state, &pool, ServerId::Hq, 5).core_damage, 1, "nor one with no click to spend");
+        state.corp.identity = None;
+        assert_eq!(on_steal(&state, &pool, ServerId::Hq, 5), Pays::default());
+    }
+
+    /// Poétrï's "you may install 1 non-agenda card from HQ" is an install
+    /// when HQ holds a card the selection would offer, and nothing when it
+    /// does not.
+    #[test]
+    fn poetri_installs_on_a_steal_when_hq_holds_a_card_to_install() {
+        let pool = pool();
+        let mut state = table();
+        state.corp.identity = id("poetri_luxury_brands_all_the_rage");
+        state.corp.hq = vec![CardId("hedge_fund".to_string())];
+        assert_eq!(on_steal(&state, &pool, ServerId::Hq, 5).corp_installs, 0, "an operation is not installed");
+        state.corp.hq.push(CardId("pad_campaign".to_string()));
+        assert_eq!(on_steal(&state, &pool, ServerId::Hq, 5).corp_installs, 1);
+    }
+
+    /// NBN: Reality Plus's "the first time each turn the Runner takes a
+    /// tag, gain 2[credit] or draw 2 cards" — on the turn's first tag only.
+    #[test]
+    fn reality_plus_is_paid_for_the_turns_first_tag() {
+        let pool = pool();
+        let mut state = table();
+        state.corp.identity = id("nbn_reality_plus");
+        let first = on_tags(&state, &pool, ServerId::Remote(0), 1);
+        assert_eq!(first.corp_credits + first.corp_cards, 2);
+        assert_eq!(on_tags(&state, &pool, ServerId::Remote(0), 0), Pays::default(), "no tag, no moment");
+        netrunner_core::rules::dispatch_event(&mut state, &pool, &GameEvent::TagsGiven { side: Side::Runner, amount: 1, had: 0 }).expect("a tag is given");
+        assert_eq!(on_tags(&state, &pool, ServerId::Remote(0), 1), Pays::default(), "the turn's first tag has been taken");
+    }
+
+    /// The breach prices what a steal costs under the Corp's identity: with
+    /// a grip Personal Evolution's net damage would empty past, the chance
+    /// of an agenda in R&D is the chance of the flatline.
+    #[test]
+    fn a_run_on_rnd_under_personal_evolution_with_an_empty_grip_risks_the_flatline() {
+        let pool = pool();
+        let w = crate::plans::Style::BALANCED.planned_weights(Side::Runner);
+        let mut state = table();
+        state.runner.grip.clear();
+        let prospect = |state: &GameState| access_prospect(state, &run_on(ServerId::RnD), &pool, &w, 5, 9);
+        let blank = prospect(&state);
+        state.corp.identity = id("jinteki_personal_evolution");
+        let empty = prospect(&state);
+        assert!(empty < blank - w.lethal_trap_weight * 0.1, "an agenda in R&D is the flatline: {empty} against {blank}");
+        state.runner.grip = corp_cards("grip", 3);
+        let held = prospect(&state);
+        assert!(held < blank && held > blank - 1.0, "with cards to lose, the damage at its chance: {held} against {blank}");
     }
 
     /// The Corp reads the same run: what Gabriel Santiago's success would

@@ -148,9 +148,9 @@ use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 
 use netrunner_core::cards::CardRegistry;
-use netrunner_core::dsl::CardType;
+use netrunner_core::dsl::{CardId, CardType};
 use netrunner_core::rules::PaymentAsk as Ask;
-use netrunner_core::rules::{apply_action, current_actor, legal_transitions_for, GamePhase, GameState, InstallId, PlayerAction, Side};
+use netrunner_core::rules::{apply_action, current_actor, legal_transitions_for, GamePhase, GameState, InstallId, PendingDecision, PlayerAction, Side};
 use netrunner_core::view::ClientView;
 
 use crate::agent::{is_regressive, BotAgent};
@@ -308,10 +308,15 @@ impl PlanningAgent {
     }
 
     /// Whether `view` is a decision to plan from: the seat's own action
-    /// phase with nothing parked and no window open, or a decision parked
+    /// phase with nothing parked and no window open, a decision parked
     /// on the seat in the other side's start of turn — its own turn's end
-    /// (`owes_its_turns_end`). Everything else is played one ply.
+    /// (`owes_its_turns_end`) — or a selection its own identity parked on
+    /// it (`its_identitys_selection`), wherever it stands. Everything else
+    /// is played one ply.
     fn plannable(&self, view: &ClientView) -> bool {
+        if its_identitys_selection(view.pending_decision.as_ref(), self.identity(view), self.side) {
+            return true;
+        }
         // When no standing plan reached it: a plan is dropped at a turn the
         // view's counter has left (`follow`), and this one has.
         if matches!(view.phase, GamePhase::StartOfTurn(side) if side != self.side)
@@ -352,16 +357,26 @@ impl PlanningAgent {
         Some(step.action.clone())
     }
 
+    /// The seat's own identity, as the view shows it to both chairs.
+    fn identity<'v>(&self, view: &'v ClientView) -> Option<&'v CardId> {
+        match self.side {
+            Side::Corp => view.corp.identity.as_ref(),
+            Side::Runner => view.runner.identity.as_ref(),
+        }
+    }
+
     /// Searches the beam from `root` and keeps the best line. `None` when
     /// no line could be made, which is a root with no progressive action
     /// — not a state a seat is asked to act on.
     fn plan(&mut self, root: GameState, view: &ClientView, registry: &CardRegistry) -> Option<PlayerAction> {
+        let deciding = its_identitys_selection(view.pending_decision.as_ref(), self.identity(view), self.side);
         let mut search = Search {
             side: self.side,
             registry,
             weights: &self.weights,
             root_turn: root.turn,
             root_legal: &view.legal_actions,
+            deciding,
             applications: 0,
             answering: 0,
             rng: &mut self.rng,
@@ -434,6 +449,12 @@ struct Search<'a> {
     /// The view's own legal actions, which the root expands and nothing
     /// else — see `expand`.
     root_legal: &'a [PlayerAction],
+    /// Whether the root is a selection the seat's own identity parked on
+    /// it (`its_identitys_selection`): the line goes on while the seat
+    /// still owes a decision — the selection, and the install its `then`
+    /// asks where to put — in a run or the other side's turn, and stands
+    /// where the decision leaves it.
+    deciding: bool,
     applications: usize,
     /// How many opponent's answers deep `settle` is (`opponents_answer`).
     answering: u8,
@@ -536,6 +557,9 @@ impl Search<'_> {
         loop {
             if matches!(state.phase, GamePhase::GameOver(_)) {
                 return (state, Standing::Ended);
+            }
+            if self.deciding && current_actor(&state) == Some(self.side) && state.is_resolution_blocked() {
+                return (state, Standing::Open);
             }
             if state.active_run.is_some() {
                 return (state, Standing::Leaf);
@@ -736,6 +760,43 @@ fn owes_its_turns_end(state: &GameState, side: Side, root_turn: u32) -> bool {
         && (state.turn == root_turn || state.turn == root_turn + 1)
         && state.active_run.is_none()
         && state.is_resolution_blocked()
+}
+
+/// Whether `decision` is a selection of the seat's own cards that its own
+/// identity's text parked on it (Phase 5 §36): Synapse Global's "you may
+/// reveal and install 1 card from HQ, ignoring all costs" when a tag is
+/// removed, Poétrï Luxury Brands' install from HQ when an agenda is
+/// stolen. Both come in the Runner's turn, one inside its run, where the
+/// seat played one ply: a toggle left the selection open and a confirm
+/// with nothing chosen closed it, and `fundamentals::pending_decision_
+/// upside` prices a "may" at its worst resolution — choosing nothing — so
+/// nothing was chosen. Synapse Global was offered its free install 129
+/// times in 48 games and took it about five; Poétrï 127 and about nine.
+/// Planned, the selection, its confirm and the server the install asks
+/// for are steps of a line scored where the install leaves the board.
+///
+/// **Over the seat's own cards only**, because that is what the evaluator
+/// prices where it stands. Tāo Salonga's swap selects the Corp's ICE, and
+/// what two pieces are worth in each other's places is a reading of where
+/// each stands against the rig that no term makes off a run: planned, the
+/// swap and the decline would tie and the jitter would swap at random.
+fn its_identitys_selection(decision: Option<&PendingDecision>, identity: Option<&CardId>, side: Side) -> bool {
+    use netrunner_core::dsl::CardZoneRef;
+    let Some(PendingDecision::ChooseCards { side: chooser, source, source_card, prompting_card, .. }) = decision else { return false };
+    let own = matches!(
+        source,
+        CardZoneRef::OwnHq
+            | CardZoneRef::OwnArchives
+            | CardZoneRef::OwnRAndD
+            | CardZoneRef::OwnStack
+            | CardZoneRef::OwnGrip
+            | CardZoneRef::OwnHeap
+            | CardZoneRef::OwnSetAside
+            | CardZoneRef::OwnInstalled
+            | CardZoneRef::HostedOnSource
+            | CardZoneRef::TopOfOwnStack
+    );
+    *chooser == side && own && identity.is_some_and(|id| prompting_card.as_ref().or(source_card.as_ref()) == Some(id))
 }
 
 /// The one-ply choice: every legal action applied to `sample`, the result
@@ -1147,6 +1208,7 @@ mod tests {
             weights: &weights,
             root_turn: state.turn,
             root_legal: &legal,
+            deciding: false,
             applications: 0,
             answering: 0,
             rng: &mut rng,
@@ -2119,6 +2181,100 @@ mod positions {
         assert!(offered, "the premise: PT Untaian's offer was made");
         assert_eq!(state.corp.installed[0].advancement_tokens, 2, "the counter is placed on Send a Message");
         assert_eq!(state.corp.resources.credits.0, 7, "for 1[credit]");
+    }
+
+    /// Synapse Global's "the first time each turn a tag is removed, you may
+    /// reveal and install 1 card from HQ, ignoring all costs" is asked of
+    /// the Corp in the Runner's turn, where it played one ply and chose
+    /// nothing (Phase 5 §36): a selection of its identity's is planned to
+    /// the install.
+    #[test]
+    fn takes_its_identitys_free_install_when_the_runner_removes_a_tag() {
+        let mut registry = CardRegistry::new();
+        netrunner_core::cards::register_playable_cards(&mut registry);
+        let mut state = GameState::new(0);
+        state.phase = GamePhase::Action(Side::Runner);
+        state.corp.identity = Some(CardId("synapse_global_faster_than_thought".to_string()));
+        state.corp.resources = PlayerResources { credits: Credits(0), clicks: Clicks(0), agenda_points: AgendaPoints(0) };
+        state.corp.r_and_d = vec![CardId("hedge_fund".to_string()); 10];
+        state.corp.hq = vec![CardId("hedge_fund".to_string()), CardId("pad_campaign".to_string())];
+        state.runner.resources = PlayerResources { credits: Credits(5), clicks: Clicks(3), agenda_points: AgendaPoints(0) };
+        state.runner.tags = 1;
+        state.runner.grip = vec![CardId("sure_gamble".to_string()); 5];
+        state.runner.stack = vec![CardId("sure_gamble".to_string()); 10];
+        state = apply_action(&state, &registry, PlayerAction::RemoveTag).expect("the Runner removes its tag").0;
+        assert!(state.pending_decision.is_some(), "the premise: Synapse Global asks the Corp");
+        let mut agent = PlanningAgent::new(Side::Corp, 3);
+        for _ in 0..10 {
+            if current_actor(&state) != Some(Side::Corp) {
+                break;
+            }
+            let view = build_client_view(&state, &registry, Side::Corp);
+            agent.observe(&view);
+            let action = agent.select_action(&view, &registry);
+            state = apply_action(&state, &registry, action).expect("the agent's action applies").0;
+        }
+        assert!(state.pending_decision.is_none(), "the selection is resolved");
+        assert!(
+            state.corp.installed.iter().any(|card| card.card.0 == "pad_campaign"),
+            "PAD Campaign is installed for nothing: {:?}",
+            state.corp.installed
+        );
+        assert_eq!(state.corp.resources.credits.0, 0, "ignoring all costs");
+    }
+
+    /// Poétrï Luxury Brands' "whenever an agenda is stolen, you may install
+    /// 1 non-agenda card from HQ" comes in the Runner's turn, as the run
+    /// that stole it ends (§36).
+    #[test]
+    fn installs_from_hq_when_its_agenda_is_stolen() {
+        let mut registry = CardRegistry::new();
+        netrunner_core::cards::register_playable_cards(&mut registry);
+        let mut state = GameState::new(0);
+        state.phase = GamePhase::Action(Side::Runner);
+        state.corp.identity = Some(CardId("poetri_luxury_brands_all_the_rage".to_string()));
+        state.corp.resources = PlayerResources { credits: Credits(5), clicks: Clicks(0), agenda_points: AgendaPoints(0) };
+        state.corp.r_and_d = vec![CardId("hedge_fund".to_string()); 10];
+        state.corp.hq = vec![CardId("hedge_fund".to_string()), CardId("pad_campaign".to_string())];
+        state.corp.installed.push(InstalledCard {
+            card: CardId("offworld_office".to_string()),
+            install_id: InstallId(1),
+            server: ServerId::Remote(0),
+            slot: netrunner_core::rules::InstallSlot::Root,
+            ..Default::default()
+        });
+        state.runner.resources = PlayerResources { credits: Credits(5), clicks: Clicks(3), agenda_points: AgendaPoints(0) };
+        state.runner.grip = vec![CardId("sure_gamble".to_string()); 5];
+        state.runner.stack = vec![CardId("sure_gamble".to_string()); 10];
+        state = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Remote(0) }).expect("the Runner runs").0;
+        let mut agent = PlanningAgent::new(Side::Corp, 3);
+        let mut asked = false;
+        for _ in 0..60 {
+            if state.active_run.is_none() && state.pending_decision.is_none() {
+                break;
+            }
+            let Some(actor) = current_actor(&state) else { break };
+            let view = build_client_view(&state, &registry, actor);
+            let action = if actor == Side::Corp {
+                asked |= state.pending_decision.is_some();
+                agent.observe(&view);
+                agent.select_action(&view, &registry)
+            } else {
+                // The Runner goes on and steals what it finds.
+                let pick = |action: &&PlayerAction| {
+                    matches!(action, PlayerAction::ContinueRun | PlayerAction::SelectCardToAccess { .. } | PlayerAction::StealAgenda { .. } | PlayerAction::PassPriority { .. })
+                };
+                view.legal_actions.iter().find(pick).cloned().unwrap_or_else(|| view.legal_actions[0].clone())
+            };
+            state = apply_action(&state, &registry, action).expect("the action applies").0;
+        }
+        assert!(asked, "the premise: Poétrï asks the Corp");
+        assert_eq!(state.runner.resources.agenda_points.0, 2, "the premise: Offworld Office is stolen");
+        assert!(
+            state.corp.installed.iter().any(|card| card.card.0 == "pad_campaign"),
+            "PAD Campaign is installed from HQ: {:?}",
+            state.corp.installed
+        );
     }
 
     /// With an empty grip, open servers and a stack to draw from, the

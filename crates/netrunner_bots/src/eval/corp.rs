@@ -27,7 +27,17 @@ pub(super) fn revealed_trap_cost(state: &GameState, installed: &InstalledCard, r
 pub(super) fn corp_install_value(state: &GameState, installed: &InstalledCard, registry: &CardRegistry, w: &Weights, rig: [bool; 3], horizon: u32) -> f64 {
     let def = registry.get(&installed.card);
     let is_ice = def.is_some_and(|d| matches!(d.card_type, CardType::Ice(_)));
-    let mut value = if installed.rezzed {
+    let mut value = if installed.rezzed
+        && let Some(def) = def
+        && def.card_type == CardType::Agenda
+    {
+        // A faceup agenda (BANGUN: When Disaster Strikes) is an install
+        // whose text is not active — "this does not make their abilities
+        // active" — and is worth what its access does to the Runner
+        // (§36). It was priced as a rezzed asset, so every agenda went
+        // faceup for the asset's weight, whatever the access would cost.
+        w.unrezzed_install_weight + faceup_agenda_punishment(state, installed, def, registry, w)
+    } else if installed.rezzed {
         w.board_presence_weight + if is_ice { w.rezzed_ice_weight } else { w.rezzed_asset_weight }
     } else {
         w.unrezzed_install_weight
@@ -286,6 +296,24 @@ pub(super) fn protected_agenda_ice(state: &GameState, registry: &CardRegistry, c
         .sum()
 }
 
+/// What the Corp's identity does to the Runner for accessing `agenda`
+/// faceup, at the rates the Corp reads the Runner's grip and tags by:
+/// BANGUN's "do 2 meat damage and give the Runner 1 tag" is the grip it
+/// takes below `opponent_grip_floor`, the hand size core damage would take,
+/// and a tag the Corp holds a card to punish (`tag_leverage_weight`, the
+/// kill plan's). Damage past the grip is counted to the grip's end: the
+/// Runner reads that access as its flatline (§34) and stays out until it
+/// has drawn, which is the agenda kept and no more. Zero for a Runner the
+/// access cannot hurt, where the faceup agenda is the facedown one shown.
+fn faceup_agenda_punishment(state: &GameState, installed: &InstalledCard, agenda: &CardDefinition, registry: &CardRegistry, w: &Weights) -> f64 {
+    let pays = identities::on_access(state, registry, installed.server, agenda, installed);
+    let grip = state.runner.grip.len();
+    let shortfall = |held: usize| w.opponent_grip_floor.saturating_sub(held) as f64;
+    let taken = (shortfall(grip.saturating_sub(pays.damage as usize)) - shortfall(grip)) * w.opponent_grip_shortfall_weight;
+    let tagged = if pays.tags > 0 && holds_tag_punishment(state, registry) { f64::from(pays.tags.min(2)) * w.tag_leverage_weight } else { 0.0 };
+    taken + f64::from(pays.core_damage) * w.core_damage_weight + tagged
+}
+
 /// The Corp's terms, added to `score` in the order `evaluate_state_with`
 /// always added them — a sum's rounding follows its order, and this
 /// module split is byte-identical to the one file it replaces.
@@ -315,6 +343,7 @@ pub(super) fn score(state: &GameState, registry: &CardRegistry, w: &Weights, hor
         *score += held_traps(state, registry) as f64 * w.held_trap_weight;
     }
     *score += w.opponent_grip_floor.saturating_sub(state.runner.grip.len()) as f64 * w.opponent_grip_shortfall_weight;
+    *score += state.runner.brain_damage as f64 * w.core_damage_weight;
     if state.corp.r_and_d.len() >= w.rd_draw_reserve {
         *score -= w.hq_floor.saturating_sub(state.corp.hq.len()) as f64 * w.hq_shortfall_weight;
     }
@@ -400,6 +429,31 @@ mod tests {
     use crate::plans::{Plan, Style};
     use netrunner_core::dsl::{CardId, DamageType, Trigger, TriggeredEffect};
     use netrunner_core::rules::{Credits, GameState, InstallId, InstalledRunnerCard};
+
+    /// A faceup agenda under BANGUN: When Disaster Strikes is an install
+    /// worth what its access does to the Runner (§36), not a rezzed
+    /// asset's weight — the same as the facedown one against a grip two
+    /// meat damage cannot bring below the floor, more against one it can.
+    #[test]
+    fn a_faceup_agenda_is_worth_its_punishment_and_not_an_assets_weight() {
+        let pool = pool();
+        let w = every_corp();
+        let mut state = GameState::new(0);
+        state.corp.identity = Some(CardId("bangun_when_disaster_strikes".to_string()));
+        let agenda = |rezzed: bool| InstalledCard {
+            card: CardId("offworld_office".to_string()),
+            install_id: InstallId(1),
+            server: netrunner_core::rules::ServerId::Remote(0),
+            slot: netrunner_core::rules::InstallSlot::Root,
+            rezzed,
+            ..Default::default()
+        };
+        let value = |state: &GameState, rezzed: bool| corp_install_value(state, &agenda(rezzed), &pool, &w, [true; 3], 9);
+        state.runner.grip = corp_cards("grip", 9);
+        assert!((value(&state, true) - value(&state, false)).abs() < 1e-9, "a full grip: {} against {}", value(&state, true), value(&state, false));
+        state.runner.grip.truncate(4);
+        assert!(value(&state, true) >= value(&state, false) + 2.0 * w.opponent_grip_shortfall_weight - 1e-9, "two meat into four cards");
+    }
 
     #[test]
     fn advancement_is_valued_up_to_the_requirement_and_no_further() {

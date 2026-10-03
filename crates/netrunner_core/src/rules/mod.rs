@@ -36,6 +36,10 @@ mod win;
 // ahead of time (`netrunner_bots::eval::identities`) — one definition of
 // what a requirement means, never a copy of it in the bot.
 pub use ability::{amount_on_table, check_requirement, evaluate_effect, process_card_triggers, resolve_unbroken_subroutines, ResolutionContext};
+// `eligible_positions` likewise: whether an identity's "you may install 1
+// card from HQ" has a card to install is the selection's own question
+// (Phase 5 §36), asked of the zone as the engine will ask it.
+pub use pending_choice::eligible_positions;
 pub use action::{PlayerAction, ServerTarget, TargetZone};
 pub use action_mask::{get_action_mask, ActionSpace};
 pub use damage::apply_damage;

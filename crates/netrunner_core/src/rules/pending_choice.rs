@@ -252,7 +252,7 @@ fn hosted_cards_of_mut(state: &mut GameState, source: Option<InstallId>) -> Opti
 ///
 /// `source_card` is the card whose text is choosing: an operation among
 /// its own Archives never finds itself (`resolving_operation_in`).
-pub(crate) fn eligible_positions(
+pub fn eligible_positions(
     state: &GameState,
     registry: &CardRegistry,
     chooser: Side,

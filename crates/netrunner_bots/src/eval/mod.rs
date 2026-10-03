@@ -481,6 +481,18 @@ const OWN_CREDIT_WEIGHT: f64 = 0.4;
 const OPPONENT_CREDIT_WEIGHT: f64 = 0.2;
 const BAD_PUBLICITY_WEIGHT: f64 = 3.0;
 const TAG_WEIGHT: f64 = 4.0;
+/// Both chairs, every plan: each point of core damage the Runner has
+/// taken, subtracted by the Runner and added by the Corp — "core damage
+/// is permanent: each point lowers your maximum hand size for the rest of
+/// the game" (CR 5.5.3b). The card it discards is the state's already;
+/// this is the hand size, which nothing read before Phase 5 §36, so
+/// Thule Subsea's "do 1 core damage unless they spend [click] and
+/// 2[credit]" was a click and two credits against nothing and the Runner
+/// took the damage 114–118 times in 48 games and paid 6–14. Above what
+/// the guide prices a click and two credits at (1.2), so a Runner who can
+/// pay does; under a point of agenda by far, so a click it buys that
+/// steals one is still worth a point of it (Running Hot).
+const CORE_DAMAGE_WEIGHT: f64 = 1.5;
 const BOARD_PRESENCE_WEIGHT: f64 = 1.0;
 const MEMORY_WEIGHT: f64 = 0.5;
 
@@ -1169,6 +1181,7 @@ pub struct Weights {
     pub opponent_credit_weight: f64,
     pub bad_publicity_weight: f64,
     pub tag_weight: f64,
+    pub core_damage_weight: f64,
     pub board_presence_weight: f64,
     pub memory_weight: f64,
     pub rezzed_ice_weight: f64,
@@ -1440,6 +1453,7 @@ impl Default for Weights {
             opponent_credit_weight: OPPONENT_CREDIT_WEIGHT,
             bad_publicity_weight: BAD_PUBLICITY_WEIGHT,
             tag_weight: TAG_WEIGHT,
+            core_damage_weight: CORE_DAMAGE_WEIGHT,
             board_presence_weight: BOARD_PRESENCE_WEIGHT,
             memory_weight: MEMORY_WEIGHT,
             rezzed_ice_weight: REZZED_ICE_WEIGHT,
@@ -1571,6 +1585,34 @@ mod tests {
     use super::*;
     use crate::eval::test_support::*;
     use netrunner_core::rules::{AgendaPoints, GameState};
+
+    /// Core damage is the hand size it takes, on both chairs (§36): the
+    /// card it discards is the state's already.
+    #[test]
+    fn core_damage_is_a_hand_size_both_chairs_read() {
+        use netrunner_core::rules::{Clicks, Credits};
+        let w = crate::plans::Style::BALANCED.planned_weights(Side::Runner);
+        let mut state = GameState::new(0);
+        state.runner.grip = corp_cards("g", 4);
+        let before = (evaluate_state_with(&state, Side::Runner, &empty(), &w), evaluate_state_with(&state, Side::Corp, &empty(), &w));
+        state.runner.brain_damage = 1;
+        assert!((evaluate_state_with(&state, Side::Runner, &empty(), &w) - before.0 + w.core_damage_weight).abs() < 1e-9);
+        assert!((evaluate_state_with(&state, Side::Corp, &empty(), &w) - before.1 - w.core_damage_weight).abs() < 1e-9);
+        // Thule Subsea's "do 1 core damage unless they spend [click] and
+        // 2[credit]": a Runner with them spends them.
+        let mut base = GameState::new(0);
+        base.runner.grip = corp_cards("g", 4);
+        base.runner.resources.credits = Credits(5);
+        base.runner.resources.clicks = Clicks(2);
+        let mut paid = base.clone();
+        paid.runner.resources.credits = Credits(3);
+        paid.runner.resources.clicks = Clicks(1);
+        let mut took = base.clone();
+        took.runner.grip.pop();
+        took.runner.brain_damage = 1;
+        let score = |state: &GameState| evaluate_state_with(state, Side::Runner, &empty(), &w);
+        assert!(score(&paid) > score(&took), "paid {} against took {}", score(&paid), score(&took));
+    }
 
     #[test]
     fn the_default_weights_are_the_constants_and_score_identically() {
