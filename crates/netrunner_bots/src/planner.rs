@@ -308,9 +308,18 @@ impl PlanningAgent {
     }
 
     /// Whether `view` is a decision to plan from: the seat's own action
-    /// phase with nothing parked and no window open. Everything else is
-    /// played one ply.
+    /// phase with nothing parked and no window open, or a decision parked
+    /// on the seat in the other side's start of turn — its own turn's end
+    /// (`owes_its_turns_end`). Everything else is played one ply.
     fn plannable(&self, view: &ClientView) -> bool {
+        // When no standing plan reached it: a plan is dropped at a turn the
+        // view's counter has left (`follow`), and this one has.
+        if matches!(view.phase, GamePhase::StartOfTurn(side) if side != self.side)
+            && view.active_run.is_none()
+            && (view.pending_paid_choice.is_some() || view.pending_decision.is_some())
+        {
+            return true;
+        }
         view.phase == GamePhase::Action(self.side)
             && view.active_player == self.side
             && view.active_run.is_none()
@@ -554,6 +563,9 @@ impl Search<'_> {
                 || matches!(state.phase, GamePhase::Action(side) | GamePhase::Discard { side, .. } | GamePhase::StartOfTurn(side) if side != self.side);
             match current_actor(&state) {
                 None => return (state, Standing::Ended),
+                // The seat's own turn's end, still resolving: a decision
+                // its discard step's triggers handed it (Phase 5 §35).
+                Some(actor) if actor == self.side && owes_its_turns_end(&state, self.side, self.root_turn) => return (state, Standing::Open),
                 Some(actor) if actor != self.side || turn_over => {
                     self.applications += 1;
                     match apply_action(&state, self.registry, PlayerAction::PassPriority { side: actor }) {
@@ -700,6 +712,30 @@ impl Search<'_> {
     fn leaf_score(&mut self, state: &GameState) -> f64 {
         self.score(state) + click_floor(state, self.side, self.weights)
     }
+}
+
+/// Whether `state` is the tail of `side`'s own turn with a decision
+/// parked on it (Phase 5 §35). The engine ends a turn in one step
+/// (`turn::finish_turn`): the discard phase's end is dispatched, and the
+/// other side's turn is entered — its phase and the turn counter — before
+/// a decision those triggers parked is answered. So PT Untaian's "you may
+/// pay 1[credit] to place 1 advancement counter", Magdalene Keino-
+/// Chemutai's install from what she discarded and Méliès U.'s number are
+/// asked of the seat in the *opponent's* start of turn, and by the counter
+/// its turn is over. A line reached them, could not pass them, and ended
+/// there with the decision unmade; the decision itself fell to the one-ply
+/// chooser, whose bound on the selection that follows is the worst card
+/// the filter could match (`fundamentals::advancement_upside` — a sprung
+/// trap makes it zero), and it declined PT Untaian's advance with a card
+/// to put it on 5 times in 16. A decision
+/// the seat owes in the other side's start of turn, on the turn its own
+/// ended or the next, with no run, is that turn's end: a step of the line,
+/// and a root to plan from (`PlanningAgent::plannable`).
+fn owes_its_turns_end(state: &GameState, side: Side, root_turn: u32) -> bool {
+    matches!(state.phase, GamePhase::StartOfTurn(other) if other != side)
+        && (state.turn == root_turn || state.turn == root_turn + 1)
+        && state.active_run.is_none()
+        && state.is_resolution_blocked()
 }
 
 /// The one-ply choice: every legal action applied to `sample`, the result
@@ -2024,6 +2060,65 @@ mod positions {
         }
         assert!(actions.contains(&topan), "should use Topan's install: {actions:?}");
         assert!(state.runner.rig.iter().any(|card| card.card.0 == "pennyshaver"), "and install Pennyshaver with it: {actions:?}");
+    }
+
+    /// PT Untaian's "when your discard phase ends … you may pay 1[credit]
+    /// to place 1 advancement counter" is asked after the engine has moved
+    /// into the Runner's start of turn, and was the one-ply chooser's to
+    /// decline (Phase 5 §35). The board is one a recorded game declined
+    /// on: Send a Message with a counter on it, the Corp's clicks spent.
+    #[test]
+    fn takes_its_identitys_advance_at_the_end_of_its_turn() {
+        let mut registry = CardRegistry::new();
+        netrunner_core::cards::register_playable_cards(&mut registry);
+        let mut state = GameState::new(0);
+        state.phase = GamePhase::Action(Side::Corp);
+        state.corp.identity = Some(CardId("pt_untaian_lifes_building_blocks".to_string()));
+        state.corp.resources = PlayerResources { credits: Credits(8), clicks: Clicks(0), agenda_points: AgendaPoints(0) };
+        state.corp.r_and_d = vec![CardId("hedge_fund".to_string()); 10];
+        state.runner.grip = vec![CardId("sure_gamble".to_string()); 5];
+        state.runner.stack = vec![CardId("sure_gamble".to_string()); 10];
+        state.corp.installed.push(InstalledCard {
+            card: CardId("send_a_message".to_string()),
+            install_id: InstallId(1),
+            server: ServerId::Remote(0),
+            slot: netrunner_core::rules::InstallSlot::Root,
+            advancement_tokens: 1,
+            ..Default::default()
+        });
+        // A trap the Runner has sprung, which another counter buys nothing:
+        // the one-ply bound on the selection takes the worst card the
+        // filter could match, and this one makes it zero
+        // (`fundamentals::advancement_upside`).
+        state.corp.installed.push(InstalledCard {
+            card: CardId("urtica_cipher".to_string()),
+            install_id: InstallId(2),
+            server: ServerId::Remote(1),
+            slot: netrunner_core::rules::InstallSlot::Root,
+            rezzed: true,
+            seen_by_runner: true,
+            ..Default::default()
+        });
+        let mut agent = PlanningAgent::new(Side::Corp, 3);
+        let mut offered = false;
+        for _ in 0..40 {
+            if state.phase == GamePhase::Action(Side::Runner) {
+                break;
+            }
+            let Some(actor) = current_actor(&state) else { break };
+            offered |= state.pending_paid_choice.is_some();
+            let action = if actor == Side::Corp {
+                let view = build_client_view(&state, &registry, Side::Corp);
+                agent.observe(&view);
+                agent.select_action(&view, &registry)
+            } else {
+                PlayerAction::PassPriority { side: actor }
+            };
+            state = apply_action(&state, &registry, action).expect("the agent's action applies").0;
+        }
+        assert!(offered, "the premise: PT Untaian's offer was made");
+        assert_eq!(state.corp.installed[0].advancement_tokens, 2, "the counter is placed on Send a Message");
+        assert_eq!(state.corp.resources.credits.0, 7, "for 1[credit]");
     }
 
     /// With an empty grip, open servers and a stack to draw from, the
