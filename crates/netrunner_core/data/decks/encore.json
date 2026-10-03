@@ -1,0 +1,97 @@
+{
+  "id": "encore",
+  "name": "Encore",
+  "side": "Runner",
+  "category": "Sweep",
+  "description": "Not a published list: built so the sweeps reach Midnight Sun's mark, on Nyusha \"Sable\" Sintashta, the Criminal identity no other deck plays, whose first successful run on the mark each turn gains a click. Midnight Sun Stage 6a: three Carpe Diem, which run the mark; three Backstitching, which bypass the mark's ice; and two Virtuoso, which breach HQ after a run on any other mark, around Parhelion's Tunnel Vision and Info Bounty, Picket Line's money and its three breakers. Eternal-legal only: Nyusha is banned in Standard.",
+  "style": [
+    "pressure"
+  ],
+  "identity": "nyusha_sable_sintashta_symphonic_prodigy",
+  "cards": [
+    {
+      "card": "carpe_diem",
+      "count": 3
+    },
+    {
+      "card": "backstitching",
+      "count": 3
+    },
+    {
+      "card": "virtuoso",
+      "count": 2
+    },
+    {
+      "card": "tunnel_vision",
+      "count": 2
+    },
+    {
+      "card": "info_bounty",
+      "count": 2
+    },
+    {
+      "card": "sure_gamble",
+      "count": 3
+    },
+    {
+      "card": "overclock",
+      "count": 2
+    },
+    {
+      "card": "tread_lightly",
+      "count": 2
+    },
+    {
+      "card": "docklands_pass",
+      "count": 2
+    },
+    {
+      "card": "red_team",
+      "count": 2
+    },
+    {
+      "card": "carmen",
+      "count": 2
+    },
+    {
+      "card": "marjanah",
+      "count": 2
+    },
+    {
+      "card": "buzzsaw",
+      "count": 2
+    },
+    {
+      "card": "mutual_favor",
+      "count": 2
+    },
+    {
+      "card": "the_price",
+      "count": 2
+    },
+    {
+      "card": "strike_fund",
+      "count": 2
+    },
+    {
+      "card": "chrysopoeian_skimming",
+      "count": 2
+    },
+    {
+      "card": "debbie_downtown_moreira",
+      "count": 2
+    },
+    {
+      "card": "verbal_plasticity",
+      "count": 2
+    },
+    {
+      "card": "leech",
+      "count": 2
+    },
+    {
+      "card": "capybara",
+      "count": 2
+    }
+  ]
+}

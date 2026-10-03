@@ -826,9 +826,7 @@ fn determinize_run(
         // search-quality limit, recorded in ROADMAP Phase 1 §8 Stage 3.
         // (Shred's armed prevention was a third; it is on `lingering`,
         // carried below, since it stopped being a field of the run.)
-        on_end_effect: None,
-        on_end_card: None,
-        on_end_install: None,
+        on_end: Vec::new(),
         subroutine_resolved: false,
         // Public since RWR Stage 3b: the run's event has abilities of its
         // own for the run (Eye for an Eye), and Sang Kancil's boost asks

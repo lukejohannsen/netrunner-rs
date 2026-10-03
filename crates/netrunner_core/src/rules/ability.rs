@@ -772,9 +772,7 @@ pub fn evaluate_effect(
 
         Effect::SetRunEndedEffect(effect) => {
             let run = state.active_run.as_mut().ok_or(RulesError::NoActiveRun)?;
-            run.on_end_effect = Some(effect.clone());
-            run.on_end_card = acting_card.cloned();
-            run.on_end_install = ctx.acting_install;
+            run.on_end.push(crate::rules::run::RunEndRider { effect: effect.clone(), card: acting_card.cloned(), install: ctx.acting_install });
             Ok(Vec::new())
         }
 
@@ -3944,6 +3942,9 @@ pub fn check_requirement(
             });
             if protecting { Ok(()) } else { Err(RulesError::RequirementNotMet) }
         }
+        EffectRequirement::MarkIs(server) => {
+            if crate::rules::lingering::mark(state) == Some(*server) { Ok(()) } else { Err(RulesError::RequirementNotMet) }
+        }
         EffectRequirement::ThisCardStartedTheRun => {
             let started = ctx.acting_card.is_some_and(|this| state.active_run.as_ref().and_then(|run| run.initiated_by.as_ref()) == Some(this));
             if started { Ok(()) } else { Err(RulesError::RequirementNotMet) }
@@ -4115,7 +4116,7 @@ fn counters_of(state: &GameState, ctx: &ResolutionContext<'_>) -> Option<u32> {
 }
 
 /// The counters the event that began the run just ended held, for its own
-/// "when that run ends" (`RunState::on_end_effect`, resolved as the card
+/// "when that run ends" (`RunState::on_end`, resolved as the card
 /// with no install once the run is gone): Raindrops Cut Stone's "for each
 /// hosted power counter". Only while no run is under way, so a later run's
 /// event never reads an earlier one's.
@@ -4495,6 +4496,7 @@ pub(crate) fn consume_requirement(
         | EffectRequirement::DuringEncounter
         | EffectRequirement::Encountering(_)
         | EffectRequirement::EncounteringIceProtectingMark
+        | EffectRequirement::MarkIs(_)
         | EffectRequirement::ThisCardStartedTheRun
         | EffectRequirement::AboutToApproach(_)
         | EffectRequirement::DuringRun
@@ -6062,7 +6064,7 @@ mod tests {
     #[test]
     fn gain_credits_per_card_accessed_this_run_reads_the_last_completed_run() {
         let mut state = game_state();
-        state.last_completed_run = Some(CompletedRun { server: ServerId::Hq, cards_accessed: 3, agendas_stolen: 0, persistent_trashed_upgrades: Vec::new(), accessed_cards: Vec::new(), on_end_effect: None, on_end_card: None, on_end_install: None, run_credits_left: 0, unsuccessful: false, breached: None, initiated_by: None, event_counters: 0 });
+        state.last_completed_run = Some(CompletedRun { server: ServerId::Hq, cards_accessed: 3, agendas_stolen: 0, persistent_trashed_upgrades: Vec::new(), accessed_cards: Vec::new(), on_end: Vec::new(), run_credits_left: 0, unsuccessful: false, breached: None, initiated_by: None, event_counters: 0 });
 
         let events = evaluate_effect(
             &mut state,
@@ -6245,13 +6247,13 @@ mod tests {
     #[test]
     fn last_run_was_on_hq_or_rnd_requirement() {
         let mut state = game_state();
-        state.last_completed_run = Some(CompletedRun { server: ServerId::Archives, cards_accessed: 0, agendas_stolen: 0, persistent_trashed_upgrades: Vec::new(), accessed_cards: Vec::new(), on_end_effect: None, on_end_card: None, on_end_install: None, run_credits_left: 0, unsuccessful: false, breached: None, initiated_by: None, event_counters: 0 });
+        state.last_completed_run = Some(CompletedRun { server: ServerId::Archives, cards_accessed: 0, agendas_stolen: 0, persistent_trashed_upgrades: Vec::new(), accessed_cards: Vec::new(), on_end: Vec::new(), run_credits_left: 0, unsuccessful: false, breached: None, initiated_by: None, event_counters: 0 });
         assert_eq!(
             check_requirement(&state, &EffectRequirement::LastRunWasOnHqOrRnD, Side::Runner, &ResolutionContext::for_card(None), &CardRegistry::new()),
             Err(RulesError::RequirementNotMet)
         );
 
-        state.last_completed_run = Some(CompletedRun { server: ServerId::Hq, cards_accessed: 2, agendas_stolen: 0, persistent_trashed_upgrades: Vec::new(), accessed_cards: Vec::new(), on_end_effect: None, on_end_card: None, on_end_install: None, run_credits_left: 0, unsuccessful: false, breached: None, initiated_by: None, event_counters: 0 });
+        state.last_completed_run = Some(CompletedRun { server: ServerId::Hq, cards_accessed: 2, agendas_stolen: 0, persistent_trashed_upgrades: Vec::new(), accessed_cards: Vec::new(), on_end: Vec::new(), run_credits_left: 0, unsuccessful: false, breached: None, initiated_by: None, event_counters: 0 });
         assert_eq!(
             check_requirement(&state, &EffectRequirement::LastRunWasOnHqOrRnD, Side::Runner, &ResolutionContext::for_card(None), &CardRegistry::new()),
             Ok(())

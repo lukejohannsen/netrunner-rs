@@ -419,6 +419,17 @@ impl Default for AccessState {
     }
 }
 
+/// One `Effect::SetRunEndedEffect`: what resolves when the run ends, and
+/// the card and install it resolves as.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RunEndRider {
+    pub effect: Box<Effect>,
+    #[serde(default)]
+    pub card: Option<CardId>,
+    #[serde(default)]
+    pub install: Option<InstallId>,
+}
+
 /// A run in progress (or just concluded) — the sub-state-machine embedded in
 /// `GameState::active_run`. `ice` is ordered outermost-to-innermost (index 0
 /// is the first ICE approached) and follows the attacked server's installs
@@ -581,15 +592,15 @@ pub struct RunState {
     pub on_success_card: Option<CardId>,
     #[serde(default)]
     pub on_success_install: Option<InstallId>,
-    /// `Effect::SetRunEndedEffect` — resolved as `on_end_card`/
-    /// `on_end_install` when this run ends, carried over into
-    /// `CompletedRun` for the `OnRunEnded` dispatch to take. Charm Offensive.
+    /// `Effect::SetRunEndedEffect` — each resolved as the card that set it
+    /// when this run ends, in the order they were set, carried over into
+    /// `CompletedRun` for the `OnRunEnded` dispatch to take. Charm
+    /// Offensive. **A list, not one slot**: Virtuoso's "breach HQ when the
+    /// run ends" is set as a run on the mark succeeds, and one slot let it
+    /// overwrite what the run's own event had already set (Raindrops Cut
+    /// Stone's draw, Trick Shot's run).
     #[serde(default)]
-    pub on_end_effect: Option<Box<Effect>>,
-    #[serde(default)]
-    pub on_end_card: Option<CardId>,
-    #[serde(default)]
-    pub on_end_install: Option<InstallId>,
+    pub on_end: Vec<RunEndRider>,
     /// Whether any subroutine has resolved during this run
     /// (`EffectRequirement::SubroutineResolvedThisRun`) — Ryō "Phoenix" Ōno.
     #[serde(default)]
@@ -779,9 +790,7 @@ impl Default for RunState {
             agendas_stolen_this_run: 0,
             persistent_trashed_upgrades: Vec::new(),
             on_success_effect: None,
-            on_end_effect: None,
-            on_end_card: None,
-            on_end_install: None,
+            on_end: Vec::new(),
             subroutine_resolved: false,
             ice_derezzed: false,
             subroutine_broken: false,

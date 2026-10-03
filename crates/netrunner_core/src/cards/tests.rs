@@ -21663,4 +21663,126 @@ mod midnight_sun {
         state.runner.tags = 0;
         assert!(apply_action(&state, &registry, play).is_err(), "play only if the Runner is tagged");
     }
+
+    // ---- Stage 6a: the mark ----
+
+    /// `server` is the Runner's mark for the rest of this turn, as if
+    /// identified (CR 10.11.2).
+    fn marked(mut state: GameState, server: ServerId) -> GameState {
+        state.lingering.push(crate::rules::lingering::LingeringEffect {
+            what: crate::rules::lingering::Lingering::Mark(server),
+            on: crate::rules::lingering::On::Player(Side::Runner),
+            until: crate::rules::lingering::Until::EndOfTurn(state.turn),
+            source: id("tunnel_vision"),
+        });
+        state
+    }
+
+    #[test]
+    fn nyusha_gains_a_click_the_first_time_each_turn_a_run_on_the_mark_succeeds() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.identity = Some(id("nyusha_sable_sintashta_symphonic_prodigy"));
+        let begun = begin_the_turn_of(state.clone(), &registry, Side::Runner);
+        assert!(crate::rules::lingering::mark(&begun).is_some(), "when your turn begins, identify your mark");
+
+        let state = marked(state, ServerId::Hq);
+        let (elsewhere, _) = run_to_completion(state, &registry, ServerId::RnD);
+        assert_eq!(elsewhere.runner.resources.clicks, Clicks(3), "R&D is not the mark");
+        let (first, _) = run_to_completion(elsewhere, &registry, ServerId::Hq);
+        assert_eq!(first.runner.resources.clicks, Clicks(3), "a click for the run, and one gained");
+        let (again, _) = run_to_completion(first, &registry, ServerId::Hq);
+        assert_eq!(again.runner.resources.clicks, Clicks(2), "not the first time this turn");
+    }
+
+    /// "You may run your mark": the run offered is the mark's, whichever
+    /// central it is, and it may be declined.
+    #[test]
+    fn carpe_diem_gains_four_and_may_run_the_mark() {
+        let registry = registry();
+        for mark in [ServerId::Hq, ServerId::RnD, ServerId::Archives] {
+            let mut state = marked(runner_turn(), mark);
+            state.runner.grip = vec![id("carpe_diem")];
+            let (asked, _) = apply_action(&state, &registry, PlayerAction::PlayEvent { card_id: id("carpe_diem") }).expect("play");
+            assert_eq!(asked.runner.resources.credits, Credits(13), "1 to play, 4 gained");
+            assert_eq!(offered(&asked), Some(2), "you may run your mark");
+            let running = choose(&asked, &registry, 0);
+            assert_eq!(running.active_run.as_ref().map(|run| run.server), Some(mark));
+            assert!(choose(&asked, &registry, 1).active_run.is_none(), "declined");
+        }
+
+        let mut unmarked = runner_turn();
+        unmarked.runner.grip = vec![id("carpe_diem")];
+        let (asked, _) = apply_action(&unmarked, &registry, PlayerAction::PlayEvent { card_id: id("carpe_diem") }).expect("play");
+        let mark = crate::rules::lingering::mark(&asked).expect("identify your mark");
+        assert_eq!(choose(&asked, &registry, 0).active_run.as_ref().map(|run| run.server), Some(mark));
+    }
+
+    /// A run on the mark, not ice protecting it: the offer is read off the
+    /// run's server.
+    #[test]
+    fn backstitching_may_be_trashed_to_bypass_ice_only_during_a_run_on_the_mark() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.rig = vec![in_rig("backstitching", 0, 0)];
+        state.corp.installed = vec![ice_at("ice_wall", ServerId::Hq, true)];
+
+        let elsewhere = to_the_encounter(&marked(state.clone(), ServerId::RnD), &registry);
+        assert!(elsewhere.pending_paid_choice.is_none(), "R&D is the mark");
+        let unmarked = to_the_encounter(&state, &registry);
+        assert!(unmarked.pending_paid_choice.is_none(), "no mark");
+
+        let asked = to_the_encounter(&marked(state, ServerId::Hq), &registry);
+        assert!(matches!(asked.pending_paid_choice.as_ref().map(|choice| &choice.cost), Some(Cost::TrashSelf)));
+        let (bypassed, _) = apply_action(&asked, &registry, accept()).expect("trash it");
+        assert_eq!(bypassed.runner.heap, vec![id("backstitching")]);
+        let (done, _) = pass_until_settled(bypassed, &registry);
+        assert!(done.active_run.as_ref().is_some_and(|run| run.phase == crate::rules::RunPhase::Success), "Ice Wall's subroutine never resolved");
+    }
+
+    /// On an HQ mark the breach of HQ accesses one more; on any other the
+    /// run ends and HQ is breached; and only the first time each turn.
+    #[test]
+    fn virtuoso_accesses_one_more_on_an_hq_mark_and_otherwise_breaches_hq_when_the_run_ends() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.rig = vec![in_rig("virtuoso", 0, 0)];
+        state.corp.hq = vec![id("hedge_fund"), id("hedge_fund"), id("hedge_fund")];
+        assert_eq!(crate::rules::memory::memory_balance(&state, &registry), 5, "+1[mu]");
+        let begun = begin_the_turn_of(state.clone(), &registry, Side::Runner);
+        assert!(crate::rules::lingering::mark(&begun).is_some(), "when your turn begins, identify your mark");
+
+        let (hq, _) = run_to_completion(marked(state.clone(), ServerId::Hq), &registry, ServerId::Hq);
+        let access = hq.active_run.as_ref().and_then(|run| run.access_state.as_ref()).expect("breaching HQ");
+        assert_eq!(access.from_zone.len() + access.resolved_cards.len() + usize::from(matches!(access.phase, crate::rules::AccessPhase::PendingChoice { .. })), 2, "1 additional card");
+
+        let (rnd, events) = run_to_completion(marked(state, ServerId::RnD), &registry, ServerId::RnD);
+        assert!(events.iter().any(|event| matches!(event, GameEvent::RunCompleted { server: ServerId::RnD })), "the run on R&D ended");
+        let breach = rnd.active_run.as_ref().expect("then HQ is breached");
+        assert!(breach.breach_only);
+        assert_eq!(breach.access_state.as_ref().map(|access| access.server), Some(ServerId::Hq));
+
+        let mut again = rnd;
+        again.active_run = None;
+        let (second, _) = run_to_completion(again, &registry, ServerId::RnD);
+        assert!(second.active_run.is_none(), "not the first time this turn");
+    }
+
+    /// Virtuoso's breach is set as the run succeeds, after whatever the
+    /// run's own event set for its end; both resolve, in that order.
+    #[test]
+    fn virtuoso_breach_waits_behind_a_run_end_effect_already_set() {
+        let registry = registry();
+        let mut state = marked(runner_turn(), ServerId::RnD);
+        state.runner.rig = vec![in_rig("virtuoso", 0, 0)];
+        state.corp.hq = vec![id("hedge_fund")];
+        let (running, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::RnD }).expect("run");
+        let mut running = running;
+        let rider = crate::dsl::Effect::SetRunEndedEffect(Box::new(crate::dsl::Effect::GainCredits(Side::Runner, 3)));
+        crate::rules::evaluate_effect(&mut running, &rider, &mut crate::rules::ResolutionContext::for_card(Some(&id("raindrops_cut_stone"))), &registry).expect("set it");
+        let (through, _) = crate::rules::test_support::through_movement(&running, &registry).expect("to the server");
+        let (done, _) = apply_action(&through, &registry, PlayerAction::CompleteRun).expect("complete");
+        assert_eq!(done.runner.resources.credits, Credits(13), "the first rider resolved");
+        assert!(done.active_run.as_ref().is_some_and(|run| run.breach_only), "and Virtuoso's breach of HQ");
+    }
 }

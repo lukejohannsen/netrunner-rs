@@ -823,7 +823,7 @@ pub enum Effect {
     /// because the redirect happens at a later step of the same run.
     RedirectRunOnApproach(ServerId),
     /// Registers `Effect` to resolve as the parking card when the active
-    /// run ends, however it ends (`RunState::on_end_effect`, evaluated by
+    /// run ends, however it ends (`RunState::on_end`, evaluated by
     /// the `OnRunEnded` dispatch) — Charm Offensive's "When that run ends,
     /// you may trash 1 rezzed copy of a card you accessed". The run-end
     /// twin of `PromptChooseServer::on_success`, for an Event that is in

@@ -48,11 +48,7 @@ pub(crate) const MSBP_UNIMPLEMENTED: &[(&str, &str)] = &[
 pub(crate) const MS_UNIMPLEMENTED: &[(&str, &str)] = &[
     ("steelskin_scarring", "Steelskin Scarring"),
     ("light_the_fire", "Light the Fire!"),
-    ("nyusha_sable_sintashta_symphonic_prodigy", "Nyusha \"Sable\" Sintashta: Symphonic Prodigy"),
-    ("carpe_diem", "Carpe Diem"),
     ("pinhole_threading", "Pinhole Threading"),
-    ("virtuoso", "Virtuoso"),
-    ("backstitching", "Backstitching"),
     ("deep_dive", "Deep Dive"),
     ("trieste_model_bioroids", "Trieste Model Bioroids"),
     ("echo", "Echo"),

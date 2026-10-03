@@ -1,0 +1,34 @@
+{
+  "id": "nyusha_sable_sintashta_symphonic_prodigy",
+  "title": "Nyusha \"Sable\" Sintashta: Symphonic Prodigy",
+  "side": "Runner",
+  "card_type": "Identity",
+  "cost": 0,
+  "min_deck_size": 45,
+  "triggers": [
+    {
+      "trigger": "OnTurnStart",
+      "effects": [
+        "IdentifyMark"
+      ],
+      "text": "When your turn begins, identify your mark."
+    },
+    {
+      "trigger": "OnSuccessfulRun",
+      "subject": "Any",
+      "when": "Mark",
+      "first_each_turn": true,
+      "effects": [
+        {
+          "GainClicks": [
+            "Runner",
+            1
+          ]
+        }
+      ],
+      "text": "The first time each turn you make a successful run on your mark, gain [click]."
+    }
+  ],
+  "built_from": 33011,
+  "is_playable": true
+}

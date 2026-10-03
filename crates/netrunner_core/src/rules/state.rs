@@ -1354,15 +1354,11 @@ pub struct CompletedRun {
     /// `CardFilter::AccessedDuringLastRun` (Charm Offensive).
     #[serde(default)]
     pub accessed_cards: Vec<CardId>,
-    /// `RunState::on_end_effect` and the card it resolves as, carried here
-    /// because the run has already left `active_run` when `OnRunEnded`
-    /// is dispatched; the dispatch takes it, so it fires once.
+    /// `RunState::on_end`, carried here because the run has already left
+    /// `active_run` when `OnRunEnded` is dispatched; the dispatch takes
+    /// each, so each fires once.
     #[serde(default)]
-    pub on_end_effect: Option<Box<Effect>>,
-    #[serde(default)]
-    pub on_end_card: Option<CardId>,
-    #[serde(default)]
-    pub on_end_install: Option<InstallId>,
+    pub on_end: Vec<crate::rules::run::RunEndRider>,
     /// `RunState::bonus_run_credits` at conclusion: the credits the run's
     /// event still hosted — `Amount::RunCreditsLeftLastRun`, Trick Shot's
     /// credits carried into the run its end starts.
@@ -1404,9 +1400,7 @@ impl CompletedRun {
             agendas_stolen: run.agendas_stolen_this_run,
             persistent_trashed_upgrades: run.persistent_trashed_upgrades.clone(),
             accessed_cards: run.access_state.as_ref().map(|access| access.resolved_cards.clone()).unwrap_or_default(),
-            on_end_effect: run.on_end_effect.clone(),
-            on_end_card: run.on_end_card.clone(),
-            on_end_install: run.on_end_install,
+            on_end: run.on_end.clone(),
             run_credits_left: run.bonus_run_credits,
             unsuccessful: false,
             breached: run.breached,

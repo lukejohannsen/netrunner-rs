@@ -16,7 +16,7 @@ pub(crate) use engine::{
     swap_approached_ice_with_card, transition_subroutine,
 };
 pub use state::{
-    AccessCandidate, AccessPhase, AccessState, BrokenBy, BrokenWith, EncounterTally, EncounteredSubroutine, GainedForTheRun, RunIce, RunPhase, RunState, ServerId,
+    AccessCandidate, AccessPhase, AccessState, BrokenBy, BrokenWith, EncounterTally, EncounteredSubroutine, GainedForTheRun, RunEndRider, RunIce, RunPhase, RunState, ServerId,
     SubroutineStatus,
 };
 

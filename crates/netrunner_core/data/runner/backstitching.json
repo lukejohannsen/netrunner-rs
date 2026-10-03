@@ -1,0 +1,100 @@
+{
+  "id": "backstitching",
+  "title": "Backstitching",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 2,
+  "triggers": [
+    {
+      "trigger": "OnTurnStart",
+      "effects": [
+        "IdentifyMark"
+      ],
+      "text": "When your turn begins, identify your mark."
+    },
+    {
+      "trigger": "OnEncounter",
+      "subject": "Any",
+      "effects": [
+        {
+          "EffectIf": {
+            "condition": {
+              "And": [
+                {
+                  "DuringRunOn": "Hq"
+                },
+                {
+                  "MarkIs": "Hq"
+                }
+              ]
+            },
+            "effect": {
+              "OfferPaidChoice": {
+                "side": "Runner",
+                "cost": "TrashSelf",
+                "if_paid": "BypassEncounteredIce",
+                "if_declined": {
+                  "Sequence": []
+                },
+                "text": "you may trash this resource to bypass that ice"
+              }
+            }
+          }
+        },
+        {
+          "EffectIf": {
+            "condition": {
+              "And": [
+                {
+                  "DuringRunOn": "RnD"
+                },
+                {
+                  "MarkIs": "RnD"
+                }
+              ]
+            },
+            "effect": {
+              "OfferPaidChoice": {
+                "side": "Runner",
+                "cost": "TrashSelf",
+                "if_paid": "BypassEncounteredIce",
+                "if_declined": {
+                  "Sequence": []
+                },
+                "text": "you may trash this resource to bypass that ice"
+              }
+            }
+          }
+        },
+        {
+          "EffectIf": {
+            "condition": {
+              "And": [
+                {
+                  "DuringRunOn": "Archives"
+                },
+                {
+                  "MarkIs": "Archives"
+                }
+              ]
+            },
+            "effect": {
+              "OfferPaidChoice": {
+                "side": "Runner",
+                "cost": "TrashSelf",
+                "if_paid": "BypassEncounteredIce",
+                "if_declined": {
+                  "Sequence": []
+                },
+                "text": "you may trash this resource to bypass that ice"
+              }
+            }
+          }
+        }
+      ],
+      "text": "Whenever you encounter a piece of ice during a run on your mark, you may trash this resource to bypass that ice."
+    }
+  ],
+  "built_from": 33019,
+  "is_playable": true
+}

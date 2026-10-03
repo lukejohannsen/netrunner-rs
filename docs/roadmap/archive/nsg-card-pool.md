@@ -6256,3 +6256,68 @@ for every card.
   words change nothing there. The planner seatings move by `determinize`,
   whose prior holds seven more cards (view and index alike): Corp agenda
   wins 58 → 59, Corp flatlines 27 → 28, Runner agenda wins 101 → 99.
+
+#### Stage 6a — the mark (3 October 2026)
+
+`claude/serene-einstein-6bhlig`: Nyusha "Sable" Sintashta, Carpe Diem,
+Backstitching and Virtuoso. **No new `Effect`.** Midnight Sun 52 of 65,
+its booster pack 5 of 7; `MS_UNIMPLEMENTED` 17 → 13. Stage 6 was split by
+mechanic when it was taken: 6a the mark, on Parhelion Stage 6b's rule; 6b
+access outside a breach (Pinhole Threading, Deep Dive).
+
+- **What each is made of.** Each identifies its mark as the turn begins
+  (Tunnel Vision's `OnTurnStart` `IdentifyMark`; Carpe Diem identifies as
+  it resolves). Nyusha's "the first time each turn you make a successful
+  run on your mark, gain [click]" is Info Bounty's `when: Mark` with
+  `first_each_turn`, on `OnSuccessfulRun`. Backstitching is Laser
+  Pointer's `OfferPaidChoice` of `TrashSelf` for `BypassEncounteredIce` on
+  `OnEncounter`. Virtuoso's `+1[mu]` is Pennyshaver's; its HQ branch is
+  `AddAdditionalAccess` under `DuringRunOn(Hq)` — the trigger resolves at
+  the run's success, before the breach's access limit is set — and its
+  other branch is `SetRunEndedEffect(Breach(Hq))`, Cataloguer's breach with
+  no run, started once the run has left `active_run`.
+- **One word, `EffectRequirement::MarkIs(ServerId)`**: "your mark is this
+  server". Carpe Diem's "You may run your mark" is three `EffectIf` branches,
+  one per central, each Alarm Clock's `PresentChoice` of a run or nothing;
+  Backstitching's "during a run on your mark" is three `EffectIf`s of
+  `And(DuringRunOn(X), MarkIs(X))` around one offer, read off the run's
+  server rather than where the ice is, as printed (Tunnel Vision's
+  "protecting your mark" reads the ice). Composition didn't work: a run's
+  target is a `ServerId`, which has no word for the mark, and
+  `EncounteringIceProtectingMark` asks about an encountered ice. There is
+  no `Or` requirement, so the branches are the disjunction.
+- **A run's end effects are a list** (`RunState::on_end`,
+  `CompletedRun::on_end`, `run::RunEndRider`), resolved in the order set,
+  each taken as it starts, the rest waiting behind one that parks. It was
+  one slot, and Virtuoso's breach, set as a run on the mark succeeds, would
+  have overwritten what the run's own event set at its start (Raindrops
+  Cut Stone's draw, Trick Shot's run). A test sets both.
+- **Fidelity limit (a CR 10.11.5 deviation):** a first time on the mark is
+  counted over the turn's runs on that server, so a mark Carpe Diem
+  identifies mid-turn on a server already run successfully that turn
+  gives Virtuoso and Nyusha no first time, where 10.11.5's own example
+  says it does. On the known-limits list and the conformance row.
+- **Client.** No new view field and no new words: requirements have no
+  prose, and the mark is already an In effect line and a log line.
+- **Decks.** Encore, a Sweep deck on Nyusha, the Criminal identity no other
+  deck plays: three Carpe Diem, three Backstitching, two Virtuoso,
+  Parhelion's Tunnel Vision and Info Bounty, and Picket Line's money and
+  breakers (Carmen, Marjanah, Buzzsaw). Eternal-only: Nyusha is banned in
+  Standard and Midnight Sun is not in Startup's pool. **Spare Parts** took
+  a second Beta Build for its Sure Gamble: the 256-seed view sweep failed
+  on its one copy going unseen once Encore joined the rotation (no other
+  deck carries Beta Build), as Safety Net's one Gordian Blade once did.
+- **DSL ratio** (`pool_status.py`): unchanged at 17 of 97 `Effect`
+  variants single-use, 1 unused (`Trace`), now over 495 card files.
+- **Real play** (`--headless`, seed 2, Encore against Retirement Package;
+  random seats 96 games / planner 48). A mark identified 1,126 / 632
+  times; Nyusha's click gained 171 / 131 times; Carpe Diem played 48 / 46;
+  Backstitching installed 35 / 0, its offer heard on 108 encounters, and
+  trashed 34 times by random seats; Virtuoso installed 20 / 0, its run on
+  the mark heard 20 times. **Bot debts:** the planner never installs
+  Backstitching or Virtuoso; on the bot-debts list.
+- **Measured.** Both sweeps are green at 256 seeds, the card gate
+  included. `coverage_identical.py` against Stage 5 (a71d47e, 192 games a
+  report): random identical, view and index alike. The planner seatings
+  move by `determinize`, whose prior holds four more cards: Corp agenda
+  wins 59 → 57, Runner agenda wins 99 → 101, flatlines unchanged.

@@ -388,6 +388,14 @@ pub enum EffectRequirement {
     /// while there is no mark. Composition didn't work: no requirement
     /// reads the mark, which is chosen each turn.
     EncounteringIceProtectingMark,
+    /// The Runner's mark is `server` (CR 10.11, `lingering::mark`) — Carpe
+    /// Diem's "You may run **your mark**", written as one branch per central
+    /// server, and Backstitching's "during a run **on your mark**", which
+    /// pairs it with `DuringRunOn`. False while there is no mark.
+    /// Composition didn't work: a run's target is a `ServerId`, which has
+    /// no word for the mark, and `EncounteringIceProtectingMark` asks where
+    /// an encountered ice is installed, not which server the mark is.
+    MarkIs(crate::rules::ServerId),
     /// The active run was begun by this card (`RunState::initiated_by`) —
     /// Baker's "[click]: Run Archives. When you would approach Archives…",
     /// whose second sentence is about the run its first began.
