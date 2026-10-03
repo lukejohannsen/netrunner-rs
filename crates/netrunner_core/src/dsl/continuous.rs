@@ -294,6 +294,25 @@ pub enum ContinuousKind {
     /// 9.12.1e: a hosted object's effects do not depend on its host's).
     /// Composition didn't work: nothing took a card's abilities away.
     LosesAbilities,
+    /// The ice has `count` copies of `subroutine` beside the ones it prints
+    /// — Echo's "This ice gains “[subroutine] End the run.” for each hosted
+    /// power counter" (after, CR 9.8.3d) and Envelopment's "…**before its
+    /// other subroutines** for each hosted power counter" (9.8.3b). About
+    /// `This`, on ice, and nothing else: a subroutine another card grants
+    /// is 9.8.3a or 9.8.3e, which `Effect::GainSubroutine` already says.
+    /// Written into the encountered ice's list as each encounter begins
+    /// (`run::engine::add_own_subroutines`), between those two categories,
+    /// so the five fall in CR 9.8.2's order. Composition didn't work:
+    /// `GainSubroutine` is triggered, and a "when encountered" trigger is
+    /// one AirbladeX could prevent and would sort among another card's
+    /// grants; this is a static ability of the ice, and it is never
+    /// prevented, only lost (Hush, which this scan already reads).
+    Subroutines {
+        subroutine: Box<crate::dsl::SubroutineDef>,
+        count: Number,
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        before: bool,
+    },
     /// The card cannot gain abilities (CR 9.1.9) — Hush's "Host ice cannot
     /// gain abilities" (`Scope::Host`): no subroutine is added to it
     /// (`Effect::GainSubroutine`, a run's `gained_for_the_run`) and no
@@ -331,8 +350,16 @@ pub enum Scope {
     /// price asked onto nothing cannot know (`continuous::Target::
     /// InstallingOnto`).
     InstallingOntoThis(CardFilter),
-    /// Each piece of ice.
-    Ice,
+    /// Each piece of ice matching the filter — Fransofia Ward's "each piece
+    /// of ice" (`Any`), Cat's Cradle's "each piece of **code gate** ice".
+    /// The filter is read off the definition and off the copy, as
+    /// `IceProtectingThisServer`'s is; `IceOfType` is a definition word, so
+    /// a code gate is one as printed (a subtype gained for a run is not
+    /// asked of a rez cost — on the known-limits list). It was a bare `Ice`
+    /// until Cat's Cradle: no scope said "each piece of ice of a kind"
+    /// anywhere on the table, and `IceProtectingThisServer` is about one
+    /// server.
+    Ice(CardFilter),
     /// Each card in the root of the server this one is installed in,
     /// matching the filter.
     RootOfThisServer(CardFilter),

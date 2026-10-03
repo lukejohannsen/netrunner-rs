@@ -3,7 +3,7 @@
   "name": "Tag, You're It",
   "side": "Corp",
   "category": "Sweep",
-  "description": "Not a published list: built so the sweeps play the strategy guide's kill plan, which no sample deck holds its payoffs for — Scorched Earth and Retribution behind Public Trail, Ping and Funhouse, with Clearinghouse for the damage a trap finishes and Orbital Superiority for the tag a score gives — on Weyland Consortium: Building a Better World, an identity no sample deck uses (Phase 5 §25 Stage 6). The bot plays it under the kill plan: a tag is worth what the Corp holds to punish it, and a grip under the damage in hand is the threat. Eternal-legal only. Parhelion Stage 3a: two Regulatory Capture for its two Sacrifice Zone Expansion, a requirement of 6 its bad publicity lowers. Parhelion Stage 5c: two Kimberlite Field for two of its three Orbital Superiority, a scored agenda that trashes a rezzed card for a Runner card no dearer, and two Yakov Erikovich Avdakov for its two Regolith Mining License, credits for every trash from its server. Midnight Sun Stage 4: two Mutually Assured Destruction for its two Government Subsidy.",
+  "description": "Not a published list: built so the sweeps play the strategy guide's kill plan, which no sample deck holds its payoffs for — Scorched Earth and Retribution behind Public Trail, Ping and Funhouse, with Clearinghouse for the damage a trap finishes and Orbital Superiority for the tag a score gives — on Weyland Consortium: Building a Better World, an identity no sample deck uses (Phase 5 §25 Stage 6). The bot plays it under the kill plan: a tag is worth what the Corp holds to punish it, and a grip under the damage in hand is the threat. Eternal-legal only. Parhelion Stage 3a: two Regulatory Capture for its two Sacrifice Zone Expansion, a requirement of 6 its bad publicity lowers. Parhelion Stage 5c: two Kimberlite Field for two of its three Orbital Superiority, a scored agenda that trashes a rezzed card for a Runner card no dearer, and two Yakov Erikovich Avdakov for its two Regolith Mining License, credits for every trash from its server. Midnight Sun Stage 4: two Mutually Assured Destruction for its two Government Subsidy. Midnight Sun Stage 5: two Trust Operation for its two Retribution, a gray op that needs a tag for a gray op that needs a tag; four other Sweep decks keep Retribution.",
   "style": [
     "kill"
   ],
@@ -36,10 +36,6 @@
     {
       "card": "scorched_earth",
       "count": 3
-    },
-    {
-      "card": "retribution",
-      "count": 2
     },
     {
       "card": "public_trail",
@@ -99,6 +95,10 @@
     },
     {
       "card": "mutually_assured_destruction",
+      "count": 2
+    },
+    {
+      "card": "trust_operation",
       "count": 2
     }
   ]

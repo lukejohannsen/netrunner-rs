@@ -124,6 +124,9 @@ pub struct PublicCorpState {
     /// leak whenever a second copy sat hidden in HQ or R&D.
     #[serde(default)]
     pub removed_from_game: Vec<CardId>,
+    /// Never masked: faceup (`CorpState::set_aside`, Deep Dive).
+    #[serde(default)]
+    pub set_aside: Vec<CardId>,
     /// `CorpState::identity_counters` — power counters on the Corp's
     /// identity (AU Co.). Never masked: an identity is faceup, and its
     /// counters are tokens on the table, the same rule
@@ -362,6 +365,11 @@ pub struct PublicAccessState {
     /// being resolved, not what it is.
     #[serde(default)]
     pub pending_install: Option<InstallId>,
+    /// `AccessState::outside_breach`, never masked: how many more cards a
+    /// card's text lets the Runner choose, the card (played in the open)
+    /// and what its printed text resolves after.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub outside_breach: Option<crate::rules::run::OutsideBreach>,
     pub phase: PublicAccessPhase,
 }
 
@@ -1242,6 +1250,7 @@ fn mask_access_state(access: &AccessState, card_visible: bool, revealed: bool, v
         from_zone: access.from_zone.len() as u32,
         resolved_cards: mask_zone(&access.resolved_cards, card_visible),
         pending_install: access.pending_install,
+        outside_breach: access.outside_breach.clone(),
         phase: mask_access_phase(&access.phase, card_visible || revealed, viewer),
     }
 }
@@ -1390,6 +1399,7 @@ fn mask_corp_state(state: &GameState, registry: &CardRegistry, owner_view: bool,
         scored_agendas: corp.scored_agendas.clone(),
         bad_publicity: corp.bad_publicity,
         removed_from_game: corp.removed_from_game.clone(),
+        set_aside: corp.set_aside.clone(),
         identity_counters: corp.identity_counters,
         identity_flipped: corp.identity_flipped,
         identity_copy: (owner_view || corp.identity_flipped).then_some(corp.identity_copy),

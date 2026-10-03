@@ -95,6 +95,15 @@ pub enum CardTarget {
     /// resolving card's controller's (`CardTrashed::by`), as every "the
     /// Corp trashes" a Runner card prints is (conformance ledger, 1.14).
     RandomFromHq,
+    /// Every card in the root of the attacked server — Light the Fire!'s
+    /// "When that run is successful, trash all cards in the root of the
+    /// attacked server". Only meaningful for `Effect::TrashCard`; each card
+    /// is trashed by the resolving card's controller, one after another,
+    /// and nothing happens outside a run. Composition didn't work: a
+    /// `PromptChooseCards` with a `count` of every root card parks a choice
+    /// of everything, and trash prevention is offered only for a single
+    /// selected card.
+    AttackedServerRoot,
 }
 
 /// Where `Effect::HostCardOnThisCard` takes the card from.
@@ -728,6 +737,14 @@ pub enum Effect {
         /// the install's.
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
         another_server: bool,
+        /// Offer only a new remote server — Mitosis's "Install up to 2 cards
+        /// from HQ, **creating a new remote server each time**": the one
+        /// remote the Corp would create (`legal_actions::fresh_remote_id`),
+        /// and nothing at all when the Corp may create no more. A field for
+        /// the reason `remote_only` is one; ice goes protecting the new
+        /// server, an agenda, asset or upgrade into its root.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        new_remote: bool,
         /// "Install **and rez**" — Reanimation Protocol's "Install and rez 1
         /// piece of ice from Archives, paying a total of 10[credit] less".
         /// The card is rezzed as it lands, paying its rez cost (unless
@@ -753,6 +770,16 @@ pub enum Effect {
         /// was rezzed too; neither is the card installed, unrezzed.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         if_installed: Option<Box<Effect>>,
+        /// "…ignoring **credit** costs" (CR 1.16.5b) — Ob Superheavy
+        /// Logistics' "Install and rez the card you found, ignoring credit
+        /// costs": every credit of the install and of the rez is removed,
+        /// and every other cost stays — an additional cost to rez (CR
+        /// 8.5.13c's own example is Ob finding Archer), a card's way to pay
+        /// for its rez (`rez_alternatives`). `ignore_costs` is "ignoring
+        /// **all** costs" (1.16.5c), which removes those too. Paid as a
+        /// discount of everything, so the rez's alternatives are still met.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        ignore_credit_costs: bool,
     },
     /// Installs the resolving card — `acting_card`, a card sitting in the
     /// Runner's grip — into the rig, **paying** its install cost (with the
@@ -796,7 +823,17 @@ pub enum Effect {
     /// (`GameEvent::CardsSetAside`). Composition didn't work: no effect
     /// reads down a deck until a condition holds, and a card left in the
     /// stack cannot wait for the install choice that follows.
-    SetAsideFromTopUntil { filter: crate::dsl::CardFilter, count: u32 },
+    ///
+    /// `deck` is whose deck is read and whose set-aside zone the cards go
+    /// to: the Runner's by default, the Corp's for Deep Dive's "The Corp
+    /// must set aside the top 8 cards of R&D faceup" (`filter: Any`, `count:
+    /// 8`, `CorpState::set_aside`) — the top N being "until N of any card".
+    SetAsideFromTopUntil {
+        filter: crate::dsl::CardFilter,
+        count: u32,
+        #[serde(default = "crate::dsl::effect::the_runner", skip_serializing_if = "crate::dsl::effect::is_the_runner")]
+        deck: crate::rules::Side,
+    },
     /// `InstallRunnerCardFromGrip` paying `u32` less — Illumination's
     /// "install up to 3 cards from your grip, paying 1[c] less for each".
     /// Paired with `CardFilter::InstallableRunnerCardWithDiscount` so the
@@ -823,7 +860,7 @@ pub enum Effect {
     /// because the redirect happens at a later step of the same run.
     RedirectRunOnApproach(ServerId),
     /// Registers `Effect` to resolve as the parking card when the active
-    /// run ends, however it ends (`RunState::on_end_effect`, evaluated by
+    /// run ends, however it ends (`RunState::on_end`, evaluated by
     /// the `OnRunEnded` dispatch) — Charm Offensive's "When that run ends,
     /// you may trash 1 rezzed copy of a card you accessed". The run-end
     /// twin of `PromptChooseServer::on_success`, for an Event that is in
@@ -1227,6 +1264,16 @@ pub enum Effect {
     /// Corp at 0 clicks still has the action phase's paid ability window,
     /// with its rezzes and scores, which 5.4.3a skips.
     EndActionPhase,
+    /// The Corp scores the card this resolves as, if able — Big Deal's
+    /// "You may score that card, if able", the card its selection chose
+    /// (`engine::score_install`, which the basic action shares, so the costs,
+    /// the dividends and the `AgendaScored` are the same). Not a card that
+    /// cannot be scored now (`engine::scorable`): that resolves to nothing,
+    /// "if able". Composition didn't work: scoring was only
+    /// `PlayerAction::ScoreAgenda`, the Corp's with their own action phase's
+    /// priority and no window open, and Big Deal scores in the middle of its
+    /// resolution, just before it ends that phase.
+    Score,
     /// The Runner breaches this server, with no run — Cataloguer's
     /// "[click], hosted power counter: Breach R&D" (CR 7.3.1; `run::engine::
     /// start_breach`). Accessed as any breach is, and nothing a run owes
@@ -1241,6 +1288,32 @@ pub enum Effect {
     /// `RunState::breached`). The run goes on, on Archives, to a breach of
     /// R&D.
     Breach(crate::rules::ServerId),
+    /// The Runner accesses `count` of the cards in `from` that match
+    /// `filter`, one at a time, choosing each, and then `then` resolves —
+    /// an access that is not a breach (CR 7.1.9, 7.1.10): Pinhole
+    /// Threading's "instead of breaching the attacked server, access 1 card
+    /// in the root of another server" (`from: OpponentInstalled`, a root
+    /// card, `filter` saying which) and Deep Dive's "Access 1 of those
+    /// cards" over what it set aside (`OpponentSetAside`). Each access
+    /// follows a breach's steps (`run::access`, `OutsideBreach`), and "the
+    /// procedure ends once the designated number of cards have been chosen
+    /// for access" (7.1.10). Inside a run only as the run's breach is
+    /// replaced, which the run then ends after; outside one it stands in a
+    /// `RunState` flagged `breach_only`, as `Breach` does.
+    ///
+    /// Composition didn't work: every access began at a breach
+    /// (`access::access_server`), whose candidates are a server's. **`then`
+    /// is part of the effect** because an access in progress parks nothing
+    /// a `Sequence` waits behind (`resolution_halted`), so "You may spend
+    /// [click] to access another 1 of those cards. Then, the Corp shuffles
+    /// the set-aside cards into R&D" would resolve under the first access.
+    Access {
+        from: crate::dsl::CardZoneRef,
+        filter: crate::dsl::CardFilter,
+        count: u32,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        then: Option<Box<Effect>>,
+    },
     /// Reveals `count` cards at random from `side`'s hand — HQ or the grip
     /// — and, with `each`, resolves it as each card in turn: Bring Them
     /// Home's "Reveal and add 2 cards at random from the grip to the top of
@@ -1417,7 +1490,18 @@ pub enum Effect {
     /// lost_abilities`. Composition didn't work: nothing took a card's
     /// abilities away; Hush's is a standing effect of the card hosted on
     /// the loser, and this one is made once and outlives its maker.
-    LoseAbilities { until: EffectDuration },
+    LoseAbilities {
+        until: EffectDuration,
+        /// The cards that lose them are every card in the root of the
+        /// attacked server, read whenever it is asked — Light the Fire!'s
+        /// "During that run, cards in the root of the attacked server lose
+        /// all abilities" (`lingering::On::RootOfAttackedServer`), so a card
+        /// installed there mid-run loses them too and a redirect is
+        /// followed. A field, for the reason `Prohibit`'s `this_install` and
+        /// `encountered_ice` are: what the loss is about is the effect's.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        attacked_root: bool,
+    },
     /// During each encounter with the ice the resolution acts as, for the
     /// duration, the Runner cannot break more than `at_most` of its printed
     /// subroutines — Anvil's "the Runner cannot break this ice's printed
@@ -1608,6 +1692,13 @@ pub enum Amount {
     /// moment no card hears, so no cell of the log counts it, and "during a
     /// run" is no `Class`.
     ClickGainsInRunsThisTurn,
+    /// The Corp cards added to Archives this turn, by any route —
+    /// Regenesis's "if no Corp cards have been added to Archives this
+    /// turn" (`TurnLog::added_to_archives`, a sum beside
+    /// `installed_from_hq`). Composition didn't work: no `Trigger` hears
+    /// every way into Archives — the Corp's discard at the end of their
+    /// turn is dispatched to nobody — so no cell of the log counts it.
+    CorpCardsAddedToArchivesThisTurn,
     /// The times this turn the action just finished was taken, counting it
     /// — Wage Workers' "if you have taken that action exactly 3 times this
     /// turn" (`TurnLog::times_taken`), with "that action" read off the
@@ -1648,6 +1739,15 @@ pub enum Amount {
     /// paid for. Composition didn't work: `PrintedCost` reads the acting
     /// card, which in an `if_paid` is the card whose text it is.
     PaidCardPrintedCost,
+    /// The printed cost of the card the triggering trash is about — Ob
+    /// Superheavy Logistics' "the trashed card's printed rez cost", read
+    /// off `ResolutionContext::triggering_event` (`GameEvent::CardTrashed`)
+    /// as `TimesThisActionThisTurn` is. 0 for any other event or none: a
+    /// trash is the only moment a card in the pool reads it from. Composition didn't
+    /// work: `PrintedCost` reads the acting card, and making the trashed
+    /// card the acting one (`acts_on_subject`) would key Ob's "once per
+    /// turn" and its prompt on the card in Archives.
+    TriggeringCardPrintedCost,
     /// `u32` minus the cards the resolving `PromptChooseCards` selected
     /// (`ResolutionContext::selected_count`) — the R&D half of a sabotage
     /// of `u32`, resolved in the HQ selection's `then`. Saturating.
@@ -1878,6 +1978,16 @@ pub enum EffectDuration {
     /// alternate, so a player's next turn is the turn after this one, or
     /// the one after that when this turn is already theirs.
     ThroughYourNextTurn,
+    /// For as long as the card that made it stays rezzed (CR 9.10.3c: a
+    /// lingering effect that keeps a choice lasts until its source becomes
+    /// inactive) — Trieste Model Bioroids' chosen ice, chosen as it is
+    /// rezzed. Resolved to `Until::WhileRezzed` of the card whose text this
+    /// is (`ResolutionContext::prompting_install`, since inside a
+    /// selection's `then` the acting install is the card chosen), so a
+    /// derez, a trash or a second rez ends it. Composition didn't work:
+    /// Lycian Multi-Munition's `WhileRezzed` is its own, hard-wired into
+    /// `GainIceSubtype`, and every duration here was a span of the game.
+    WhileRezzed,
 }
 
 /// What an `Effect::Prevent` prevents, as the card prints it after the word
@@ -1933,6 +2043,17 @@ pub enum Prohibition {
     ScoreAgendas,
     /// The Runner cannot steal or trash the cards they access.
     StealOrTrash,
+    /// The Runner cannot steal or trash an agenda they access — Pinhole
+    /// Threading's "If that card is an agenda, you cannot steal or trash it
+    /// during this access", made for the rest of the run before the card is
+    /// chosen: the access is the run's last act, so "for the rest of this
+    /// run" is "during this access", and a prohibition made after the card
+    /// is seen, on whether it is an agenda, would show a facedown card's
+    /// type in the view's in-effect list. Asked with `StealOrTrash` by
+    /// `continuous::cannot_about`, of an agenda only. Composition didn't
+    /// work: `StealOrTrash` would forbid trashing the asset Pinhole
+    /// Threading is for.
+    StealOrTrashAgendas,
     /// The Runner cannot lose or spend credits from their credit pool —
     /// Aircheck's "while this event is active, … you cannot lose or spend
     /// credits from your credit pool", for the run it makes. Asked by
@@ -1995,14 +2116,47 @@ pub enum Prohibition {
     /// kind of its own: a step the player may not take for a duration is
     /// what `Lingering::Cannot` already is, and it rides in the view.
     DiscardStep,
+    /// The Runner cannot use paid abilities printed on **bioroid** ice —
+    /// Hákarl 1.0's "If you do, the Runner cannot use paid abilities
+    /// printed on bioroid ice for the remainder of this turn": the "Lose
+    /// [click]: Break 1 subroutine on this ice" that a bioroid prints for
+    /// the Runner (Ansel 2.0's, Hákarl's own). Asked by
+    /// `engine::activate_ability` of an ability on a bioroid the Runner
+    /// would use, so the action list, which probes that, never offers one.
+    /// Not `BreakSubroutines`, which is about one Runner install's
+    /// abilities, and not a `CardFilter` payload: a prohibition is `Copy`
+    /// and every one is asked by name (`Prohibition::ALL`).
+    BioroidIceAbilities,
+    /// The Corp cannot rez one install — Mitosis's "You cannot score or rez
+    /// either of those cards this turn", bound to each card it installed
+    /// (`Effect::Prohibit::this_install`, made by
+    /// `PromptInstallCorpCard::if_installed`). Asked by `engine::rez_install`,
+    /// the one place a Corp card is turned faceup, so the rez action, the
+    /// action list's probe of it and a card's text that rezzes are all
+    /// refused (`RulesError::RezRestricted`, which a text rez treats as an
+    /// unaffordable one). Not a rez requirement, which a card prints about
+    /// itself; this is another card's word about it, for a duration.
+    Rez,
+    /// Runner card abilities cannot break subroutines on one piece of ice
+    /// — Trieste Model Bioroids' "choose 1 rezzed piece of bioroid ice.
+    /// Runner card abilities cannot break subroutines on the chosen ice",
+    /// bound to the chosen ice (`Effect::Prohibit::this_install`) for as
+    /// long as Trieste is rezzed (`EffectDuration::WhileRezzed`). Asked by
+    /// the two break effects (`ability::breakable_now`) when the breaker
+    /// is a Runner card, so the ice's own "[click]: break" and the
+    /// Runner-usable abilities a bioroid prints are untouched — they are
+    /// Corp card abilities. Not `BreakSubroutines`, which is about the
+    /// breaking install, never the broken one.
+    BreakSubroutinesOnIce,
 }
 
 impl Prohibition {
     /// Every prohibition, for a question put about each of them
     /// (`view::build_client_view`'s `standing_cannot`).
-    pub const ALL: [Prohibition; 10] = [
+    pub const ALL: [Prohibition; 14] = [
         Prohibition::ScoreAgendas,
         Prohibition::StealOrTrash,
+        Prohibition::StealOrTrashAgendas,
         Prohibition::SpendOrLoseCreditPool,
         Prohibition::SpendCredits,
         Prohibition::EndTheRun,
@@ -2011,13 +2165,16 @@ impl Prohibition {
         Prohibition::Access,
         Prohibition::BreakSubroutines,
         Prohibition::DiscardStep,
+        Prohibition::BioroidIceAbilities,
+        Prohibition::Rez,
+        Prohibition::BreakSubroutinesOnIce,
     ];
 
     /// The player it binds.
     pub fn binds(self) -> Side {
         match self {
-            Prohibition::ScoreAgendas | Prohibition::EndTheRun | Prohibition::DiscardStep => Side::Corp,
-            Prohibition::StealOrTrash | Prohibition::SpendOrLoseCreditPool | Prohibition::SpendCredits | Prohibition::RunOnRemote | Prohibition::AccessOthers | Prohibition::Access | Prohibition::BreakSubroutines => Side::Runner,
+            Prohibition::ScoreAgendas | Prohibition::EndTheRun | Prohibition::DiscardStep | Prohibition::Rez => Side::Corp,
+            Prohibition::StealOrTrash | Prohibition::StealOrTrashAgendas | Prohibition::SpendOrLoseCreditPool | Prohibition::SpendCredits | Prohibition::RunOnRemote | Prohibition::AccessOthers | Prohibition::Access | Prohibition::BreakSubroutines | Prohibition::BioroidIceAbilities | Prohibition::BreakSubroutinesOnIce => Side::Runner,
         }
     }
 
@@ -2028,7 +2185,7 @@ impl Prohibition {
     pub(crate) fn counted_as(self) -> Option<crate::dsl::Trigger> {
         match self {
             Prohibition::RunOnRemote => Some(crate::dsl::Trigger::OnRunStart),
-            Prohibition::ScoreAgendas | Prohibition::StealOrTrash | Prohibition::SpendOrLoseCreditPool | Prohibition::SpendCredits | Prohibition::EndTheRun | Prohibition::AccessOthers | Prohibition::Access | Prohibition::BreakSubroutines | Prohibition::DiscardStep => None,
+            Prohibition::ScoreAgendas | Prohibition::StealOrTrash | Prohibition::StealOrTrashAgendas | Prohibition::SpendOrLoseCreditPool | Prohibition::SpendCredits | Prohibition::EndTheRun | Prohibition::AccessOthers | Prohibition::Access | Prohibition::BreakSubroutines | Prohibition::DiscardStep | Prohibition::BioroidIceAbilities | Prohibition::Rez | Prohibition::BreakSubroutinesOnIce => None,
         }
     }
 }
@@ -2189,7 +2346,8 @@ impl Effect {
                 on_match.for_each_effect(f);
                 on_differ.for_each_effect(f);
             }
-            Effect::PromptChooseCards { then: Some(effect), .. } => effect.for_each_effect(f),
+            Effect::PromptChooseCards { then: Some(effect), .. } | Effect::Access { then: Some(effect), .. } => effect.for_each_effect(f),
+            Effect::Access { then: None, .. } => {}
             Effect::PromptChooseServer { on_success, on_start, .. } => {
                 for effect in [on_success, on_start].into_iter().flatten() {
                     effect.for_each_effect(f);
@@ -2285,6 +2443,7 @@ impl Effect {
             | Effect::SwapApproachedIceWithCard { .. }
             | Effect::AllottedClicksNextTurn(..)
             | Effect::EndActionPhase
+            | Effect::Score
             | Effect::Breach(_)
             | Effect::GainCreditsAmount(..) => {}
         }
@@ -2361,6 +2520,17 @@ impl Effect {
         let rendered = format!("{self:?}");
         rendered.split(['(', '{', ' ']).next().unwrap_or(&rendered).to_string()
     }
+}
+
+
+/// `SetAsideFromTopUntil::deck`'s default: every card but Deep Dive reads
+/// the Runner's own stack.
+pub(crate) fn the_runner() -> crate::rules::Side {
+    crate::rules::Side::Runner
+}
+
+pub(crate) fn is_the_runner(side: &crate::rules::Side) -> bool {
+    *side == crate::rules::Side::Runner
 }
 
 #[cfg(test)]

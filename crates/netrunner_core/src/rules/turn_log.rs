@@ -57,7 +57,7 @@ use crate::dsl::{CardDefinition, CardFilter, CardSubtype, CardType, EventFilter,
 use crate::rules::event::GameEvent;
 use crate::rules::listeners::{self, About, Moment};
 use crate::rules::run::ServerId;
-use crate::rules::state::{GameState, InstallId, Side};
+use crate::rules::state::{ArchivedCard, GameState, InstallId, Side};
 
 const TRIGGERS: usize = Trigger::ALL.len();
 /// The widest of the four column sets: a card's `Kind`, once for a card
@@ -469,6 +469,9 @@ impl Occurrences {
             Some(EventFilter::TrashedFromThisServer) => {
                 return Err(format!("the turn counts a {trigger:?} without the server the card left, so \"the first\" cannot be narrowed by it"));
             }
+            Some(EventFilter::TrashedRezzed) => {
+                return Err(format!("the turn counts a {trigger:?} without whether the card was rezzed, so \"the first\" cannot be narrowed by it"));
+            }
             Some(EventFilter::InstalledIn(_)) => {
                 return Err(format!("the turn counts a {trigger:?} without the server it went into, so \"the first\" cannot be narrowed by it"));
             }
@@ -686,6 +689,15 @@ pub struct TurnLog {
     /// no `Class`. Public, as the gain is. Recorded where the click is
     /// gained (`Effect::GainClicks`), the one way a card gives one.
     click_gains_in_runs: u8,
+    /// Corp cards added to Archives this turn, by any route — Regenesis's
+    /// "if no Corp cards have been added to Archives this turn". A count
+    /// beside the cells, as `installed_from_hq` is: no one event is common
+    /// to every way into Archives (a trash, a discard at the end of the
+    /// Corp's turn — which is dispatched to nobody — an operation filed
+    /// after it resolves, a card a prompt sends there), so it is bumped by
+    /// the one door every addition goes through, `file_in_archives`.
+    /// Public, as a card's arriving in Archives is, faceup or not.
+    added_to_archives: u8,
     /// The times each action was taken this turn, by what makes two
     /// actions the same (`SameAction`, CR 5.2.5a) — Wage Workers' "if you
     /// have taken that action exactly 3 times this turn". Beside the cells,
@@ -740,6 +752,7 @@ impl Default for TurnLog {
             installed_from_hq: 0,
             installed_in_remotes: 0,
             click_gains_in_runs: 0,
+            added_to_archives: 0,
             same_actions: [None; SAME_ACTIONS],
         }
     }
@@ -808,6 +821,10 @@ impl TurnLog {
         u32::from(self.click_gains_in_runs)
     }
 
+    pub fn added_to_archives(&self) -> u32 {
+        u32::from(self.added_to_archives)
+    }
+
     /// How many of `trigger`'s moments this turn its `when` admits, as a
     /// card on `controller`'s side means them (`Occurrences::meant_by`);
     /// 0 for a filter finer than the log counts, which `validate` refuses.
@@ -864,6 +881,8 @@ struct Sparse {
     installed_in_remotes: u8,
     #[serde(default, skip_serializing_if = "is_zero")]
     click_gains_in_runs: u8,
+    #[serde(default, skip_serializing_if = "is_zero")]
+    added_to_archives: u8,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     same_actions: Vec<(SameAction, u8)>,
 }
@@ -891,6 +910,7 @@ impl From<TurnLog> for Sparse {
             installed_from_hq: log.installed_from_hq,
             installed_in_remotes: log.installed_in_remotes,
             click_gains_in_runs: log.click_gains_in_runs,
+            added_to_archives: log.added_to_archives,
             same_actions: log.same_actions.iter().flatten().copied().collect(),
         }
     }
@@ -904,6 +924,7 @@ impl From<Sparse> for TurnLog {
             installed_from_hq: sparse.installed_from_hq,
             installed_in_remotes: sparse.installed_in_remotes,
             click_gains_in_runs: sparse.click_gains_in_runs,
+            added_to_archives: sparse.added_to_archives,
             ..TurnLog::default()
         };
         for (slot, taken) in log.same_actions.iter_mut().zip(sparse.same_actions) {
@@ -968,6 +989,25 @@ pub(crate) fn record(state: &mut GameState, registry: &CardRegistry, event: &Gam
 /// `TurnLog::click_gains_in_runs`.
 pub(crate) fn record_click_gain_in_a_run(state: &mut GameState) {
     state.this_turn.click_gains_in_runs = state.this_turn.click_gains_in_runs.saturating_add(1);
+}
+
+/// A Corp card is added to Archives — the one door into the zone, so
+/// `TurnLog::added_to_archives` cannot miss a route. A source scan holds
+/// every other push out of the engine (`tests::archives_has_one_door`).
+pub(crate) fn file_in_archives(state: &mut GameState, card: ArchivedCard) {
+    state.corp.archives.push(card);
+    state.this_turn.added_to_archives = state.this_turn.added_to_archives.saturating_add(1);
+}
+
+/// The operation at `position` in Archives leaves for somewhere else as
+/// its own text resolves (Backroom Machinations' "Add this operation to
+/// your score area"). The engine files a played operation in Archives
+/// before its text resolves (`engine::play_operation_card`), where the
+/// rules trash it only once it has resolved (CR 8.2.7) — so this one was
+/// never added to Archives, and the count gives it back.
+pub(crate) fn unfile_resolving_operation(state: &mut GameState, position: usize) -> ArchivedCard {
+    state.this_turn.added_to_archives = state.this_turn.added_to_archives.saturating_sub(1);
+    state.corp.archives.remove(position)
 }
 
 /// An action was finished — see `TurnLog::actions_finished` and
@@ -1081,5 +1121,49 @@ mod tests {
         rotate(&mut state);
         let read: TurnLog = serde_json::from_str(&serde_json::to_string(&state.last_turn).unwrap()).unwrap();
         assert_eq!(read, state.last_turn);
+    }
+
+    #[test]
+    fn a_card_filed_in_archives_is_counted_until_the_turn_ends() {
+        let mut state = GameState::default();
+        file_in_archives(&mut state, ArchivedCard::facedown(CardId("an_agenda".into())));
+        file_in_archives(&mut state, ArchivedCard::faceup(CardId("an_agenda".into())));
+        assert_eq!((state.corp.archives.len(), state.this_turn.added_to_archives()), (2, 2));
+        let read: TurnLog = serde_json::from_str(&serde_json::to_string(&state.this_turn).unwrap()).unwrap();
+        assert_eq!(read, state.this_turn);
+        // An operation the engine filed early that leaves as it resolves
+        // was never added (CR 8.2.7).
+        unfile_resolving_operation(&mut state, 1);
+        assert_eq!((state.corp.archives.len(), state.this_turn.added_to_archives()), (1, 1));
+        rotate(&mut state);
+        assert_eq!((state.this_turn.added_to_archives(), state.last_turn.added_to_archives()), (0, 1));
+    }
+
+    /// `file_in_archives` is the one door into Archives: a push anywhere
+    /// else in the engine is a way in that `TurnLog::added_to_archives`
+    /// would not count, and Regenesis would fire after it.
+    #[test]
+    fn archives_has_one_door() {
+        fn scan(dir: &std::path::Path, found: &mut Vec<String>) {
+            for entry in std::fs::read_dir(dir).unwrap() {
+                let path = entry.unwrap().path();
+                if path.is_dir() {
+                    scan(&path, found);
+                // This file holds the door, and this test's own patterns.
+                } else if path.extension().is_some_and(|extension| extension == "rs") && !path.ends_with("rules/turn_log.rs") {
+                    let source = std::fs::read_to_string(&path).unwrap();
+                    // Tests too: a fixture builds Archives by assignment.
+                    for (number, line) in source.lines().enumerate() {
+                        let pushes = ["corp.archives.push(", "corp.archives.extend(", "corp.archives.insert(", "corp.archives.append("].iter().any(|push| line.contains(push));
+                        if pushes {
+                            found.push(format!("{}:{}", path.display(), number + 1));
+                        }
+                    }
+                }
+            }
+        }
+        let mut found = Vec::new();
+        scan(&std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src"), &mut found);
+        assert!(found.is_empty(), "a way into Archives around `turn_log::file_in_archives`: {found:?}");
     }
 }

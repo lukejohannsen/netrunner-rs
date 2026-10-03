@@ -29,7 +29,7 @@
 
 use netrunner_core::cards::CardRegistry;
 use netrunner_core::dsl::{DeckEnd, Discount, 
-    Amount, EffectDuration, CardDefinition, CardId, CardTarget, CardZoneRef, ContinuousEffect, ContinuousKind, Cost, DamageType, Effect, EventFilter, Number, PaysFor, Preventable, Prohibition,
+    Amount, EffectDuration, CardDefinition, CardFilter, CardId, CardTarget, CardZoneRef, ContinuousEffect, ContinuousKind, Cost, DamageType, Effect, EventFilter, Number, PaysFor, Preventable, Prohibition,
     Scope, SubroutineBreakCount, TrashedFrom,
 };
 use netrunner_core::rules::{PendingDecision, Pool, ServerId, Side};
@@ -81,12 +81,14 @@ pub fn describe_amount(amount: &Amount) -> String {
         Amount::CardsInstalledFromHqThisTurn => "the cards installed from HQ this turn".to_string(),
         Amount::CardsInstalledInRemotesThisTurn => "the cards installed in remote servers this turn".to_string(),
         Amount::ClickGainsInRunsThisTurn => "the times you gained [click] during a run this turn".to_string(),
+        Amount::CorpCardsAddedToArchivesThisTurn => "the Corp cards added to Archives this turn".to_string(),
         Amount::TimesThisActionThisTurn => "the times you have taken that action this turn".to_string(),
         Amount::CreditsLostThisResolution => "the credits just lost".to_string(),
         Amount::ClicksRemaining => "the clicks remaining".to_string(),
         Amount::PrintedCost => "its printed cost".to_string(),
         Amount::AccessedCardPrintedCost => "the printed cost of the card being accessed".to_string(),
         Amount::PaidCardPrintedCost => "the printed cost of the card trashed to pay".to_string(),
+        Amount::TriggeringCardPrintedCost => "the printed cost of the trashed card".to_string(),
         Amount::ProtectedRemotesWithRootCards => "the number of remote servers with a card in the root and protected by ice".to_string(),
         Amount::RemainingAfterSelection(n) => format!("{n} less the cards chosen"),
         Amount::CardsSelected => "the cards chosen".to_string(),
@@ -129,6 +131,7 @@ pub fn describe_zone(zone: &CardZoneRef) -> &'static str {
         CardZoneRef::OwnGrip => "the grip",
         CardZoneRef::OwnHeap => "the heap",
         CardZoneRef::OwnSetAside => "the cards set aside",
+        CardZoneRef::OpponentSetAside => "the Corp's cards set aside",
         CardZoneRef::OpponentInstalled => "the opponent's installed cards",
         CardZoneRef::OpponentDiscard => "the opponent's discard pile",
         CardZoneRef::OwnInstalled => "your installed cards",
@@ -207,6 +210,7 @@ fn describe_target(target: &CardTarget, registry: &CardRegistry) -> String {
         CardTarget::HostedOnThisCard => "the card hosted here".to_string(),
         CardTarget::EncounteredIce => "the ice being encountered".to_string(),
         CardTarget::RandomFromHq => "a random card from HQ".to_string(),
+        CardTarget::AttackedServerRoot => "every card in the root of the attacked server".to_string(),
     }
 }
 
@@ -225,6 +229,7 @@ fn duration(d: &EffectDuration) -> &'static str {
         EffectDuration::Run => "for this run",
         EffectDuration::Turn => "for this turn",
         EffectDuration::ThroughYourNextTurn => "until your next turn ends",
+        EffectDuration::WhileRezzed => "while this card is rezzed",
     }
 }
 
@@ -258,6 +263,7 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
                 EffectDuration::Run => "this run",
                 EffectDuration::Turn => "this turn",
                 EffectDuration::ThroughYourNextTurn => "your next turn",
+                EffectDuration::WhileRezzed => "the time this card is rezzed",
             };
             format!("{which} {sign}{delta} strength for the remainder of {until}")
         }
@@ -363,13 +369,16 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
         }
         Effect::SwapInstalledIce(..) => "swap two pieces of ice".to_string(),
         Effect::InstallFromZoneIgnoringCost { .. } => "install a card, ignoring its cost".to_string(),
+        Effect::PromptInstallCorpCard { new_remote: true, .. } => "install a card in a new remote server".to_string(),
         Effect::PromptInstallCorpCard { .. } => "install a card".to_string(),
         Effect::InstallRunnerCardFromGrip => "install a card from the grip".to_string(),
         Effect::InstallRunnerCardFromZone { from, discount: Discount::Credits(0) } => format!("install a card from {}", describe_zone(from)),
         Effect::InstallRunnerCardFromZone { from, discount: Discount::Credits(n) } => format!("install a card from {}, paying {n} less", describe_zone(from)),
         Effect::InstallRunnerCardFromZone { from, discount: Discount::AllCosts } => format!("install a card from {}, ignoring all costs", describe_zone(from)),
-        Effect::SetAsideFromTopUntil { filter, count } => {
-            format!("set aside cards from the top of the stack until {count} ({}) are set aside", humanize(format!("{filter:?}")).to_lowercase())
+        Effect::SetAsideFromTopUntil { filter: CardFilter::Any, count, deck: Side::Corp } => format!("the Corp sets aside the top {count} cards of R&D faceup"),
+        Effect::SetAsideFromTopUntil { filter, count, deck } => {
+            let from = if *deck == Side::Corp { "R&D" } else { "the stack" };
+            format!("set aside cards from the top of {from} until {count} ({}) are set aside", humanize(format!("{filter:?}")).to_lowercase())
         }
         Effect::InstallRunnerCardFromGripWithDiscount(Discount::Credits(n)) => format!("install a card from the grip, paying {n} less"),
         Effect::InstallRunnerCardFromGripWithDiscount(Discount::AllCosts) => "install a card from the grip, ignoring all costs".to_string(),
@@ -378,7 +387,19 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
         Effect::SetRunEndedEffect(effect) => format!("when the run ends, {}", describe_effect(effect, registry)),
         Effect::WhenThisTurnEnds(effect) => format!("when this turn ends, {}", describe_effect(effect, registry)),
         Effect::EndActionPhase => "your action phase ends".to_string(),
+        Effect::Score => "score that card, if able".to_string(),
         Effect::Breach(server) => format!("breach {}", describe_server(*server)),
+        Effect::Access { from, filter, count, then } => {
+            let which = match filter {
+                CardFilter::Any => String::new(),
+                filter => format!(" ({})", humanize(format!("{filter:?}")).to_lowercase()),
+            };
+            let access = format!("access {count} of {}{which}, not as a breach", describe_zone(from));
+            match then {
+                Some(then) => format!("{access}, then {}", describe_effect(then, registry)),
+                None => access,
+            }
+        }
         Effect::RevealAtRandom { side, count, each } => {
             let hand = if *side == Side::Corp { "HQ" } else { "the grip" };
             match each {
@@ -433,6 +454,7 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
                 netrunner_core::dsl::EffectDuration::Run => "the rest of the run",
                 netrunner_core::dsl::EffectDuration::Turn => "the rest of the turn",
                 netrunner_core::dsl::EffectDuration::ThroughYourNextTurn => "the rest of your next turn",
+                netrunner_core::dsl::EffectDuration::WhileRezzed => "as long as this card is rezzed",
             };
             format!("the ice gains {copies}\u{201c}{}\u{201d} {order} its other subroutines, for {how_long}", subroutine.text.trim_end_matches('.'))
         }
@@ -463,6 +485,10 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
                 (Prohibition::BreakSubroutines, _) if *this_install => "that card's abilities cannot break subroutines",
                 (Prohibition::BreakSubroutines, _) => "the Runner's abilities cannot break subroutines",
                 (Prohibition::DiscardStep, _) => "the Corp skips their discard step",
+                (Prohibition::BioroidIceAbilities, _) => "the Runner cannot use paid abilities printed on bioroid ice",
+                (Prohibition::StealOrTrashAgendas, _) => "the Runner cannot steal or trash agendas",
+                (Prohibition::Rez, _) => "the Corp cannot rez that card",
+                (Prohibition::BreakSubroutinesOnIce, _) => "Runner card abilities cannot break subroutines on that ice",
             };
             format!("{what} {}", duration(until))
         }
@@ -476,7 +502,8 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
         Effect::MoveThisIceToOutermost => "move this ice to the outermost position protecting the attacked server".to_string(),
         Effect::PlayOperation { .. } => "play an operation".to_string(),
         Effect::ResolveSubroutineOfSelectedIce => "resolve a subroutine of the chosen ice".to_string(),
-        Effect::LoseAbilities { until } => format!("it loses all abilities {}", duration(until)),
+        Effect::LoseAbilities { until, attacked_root: false } => format!("it loses all abilities {}", duration(until)),
+        Effect::LoseAbilities { until, attacked_root: true } => format!("cards in the root of the attacked server lose all abilities {}", duration(until)),
         Effect::LimitBreaks { at_most: 0, until } => format!("the Runner cannot break this ice's printed subroutines {}", duration(until)),
         Effect::LimitBreaks { at_most, until } => {
             format!("during each encounter with this ice, the Runner cannot break more than {at_most} of its printed subroutines, {}", duration(until))
@@ -542,6 +569,7 @@ fn describe_when(filter: &EventFilter) -> String {
         EventFilter::Host => "of host ice".to_string(),
         EventFilter::InRoot => "by the Corp, in the root of a server".to_string(),
         EventFilter::TrashedFromThisServer => "from the root of this server or protecting it, except during installation".to_string(),
+        EventFilter::TrashedRezzed => "a rezzed card, except during installation".to_string(),
         EventFilter::TrashedFrom(places) => {
             let places: Vec<&str> = places
                 .iter()
@@ -685,7 +713,8 @@ pub fn describe_continuous(effect: &ContinuousEffect) -> String {
         Scope::Installing(filter) if effect.first_each_turn => format!("the first card its controller installs each turn ({})", lower(format!("{filter:?}"))),
         Scope::Installing(filter) => format!("a card its controller installs ({})", lower(format!("{filter:?}"))),
         Scope::InstallingOntoThis(filter) => format!("a card its controller installs onto this card ({})", lower(format!("{filter:?}"))),
-        Scope::Ice => "each piece of ice".to_string(),
+        Scope::Ice(CardFilter::Any) => "each piece of ice".to_string(),
+        Scope::Ice(filter) => format!("each piece of ice ({})", lower(format!("{filter:?}"))),
         Scope::Rig(filter) => format!("each installed card of the Runner's ({})", lower(format!("{filter:?}"))),
         Scope::RootOfThisServer(filter) => format!("each card in the root of this server ({})", lower(format!("{filter:?}"))),
         Scope::IceProtectingThisServer(filter) => format!("each piece of ice protecting this server ({})", lower(format!("{filter:?}"))),
@@ -743,6 +772,7 @@ pub fn describe_continuous(effect: &ContinuousEffect) -> String {
         ContinuousKind::Cannot(what) => match what {
             Prohibition::ScoreAgendas => "cannot score agendas",
             Prohibition::StealOrTrash => "cannot steal or trash cards",
+            Prohibition::StealOrTrashAgendas => "cannot steal or trash agendas",
             Prohibition::SpendOrLoseCreditPool => "cannot lose or spend credits from their credit pool",
             Prohibition::SpendCredits => "cannot spend credits",
             Prohibition::EndTheRun => "cannot end the run with a subroutine",
@@ -752,8 +782,21 @@ pub fn describe_continuous(effect: &ContinuousEffect) -> String {
             Prohibition::Access => "cannot access this card",
             Prohibition::BreakSubroutines => "cannot break subroutines",
             Prohibition::DiscardStep => "skips their discard step",
+            Prohibition::BioroidIceAbilities => "cannot use paid abilities printed on bioroid ice",
+            Prohibition::Rez => "cannot rez this card",
+            Prohibition::BreakSubroutinesOnIce => "cannot break subroutines on this ice with Runner card abilities",
         }
         .to_string(),
+        ContinuousKind::Subroutines { subroutine, count, before } => format!(
+            "gains \"[subroutine] {}\"{} {}",
+            subroutine.text,
+            if *before { " before its other subroutines" } else { "" },
+            match (&count.of, count.per) {
+                (Amount::Fixed(1), per) => format!("{per} times"),
+                (of, 1) => format!("once for each of {}", describe_amount(of)),
+                (of, per) => format!("{per} times for each of {}", describe_amount(of)),
+            }
+        ),
         ContinuousKind::LosesAbilities => "loses all abilities except its printed subroutines".to_string(),
         ContinuousKind::CannotGainAbilities => "cannot gain abilities".to_string(),
     };

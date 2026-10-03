@@ -1,0 +1,56 @@
+{
+  "id": "steelskin_scarring",
+  "title": "Steelskin Scarring",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 1,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "DrawCards": [
+            "Runner",
+            3
+          ]
+        }
+      ]
+    },
+    {
+      "trigger": "OnCardTrashed",
+      "subject": "This",
+      "when": {
+        "TrashedFrom": [
+          "Hand",
+          "Deck"
+        ]
+      },
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Runner",
+            "options": [
+              {
+                "DrawCards": [
+                  "Runner",
+                  2
+                ]
+              },
+              {
+                "Sequence": []
+              }
+            ],
+            "texts": [
+              "you may draw 2 cards",
+              ""
+            ]
+          }
+        }
+      ],
+      "text": "When this event is trashed from your grip or stack, you may draw 2 cards."
+    }
+  ],
+  "built_from": 33004,
+  "is_playable": true
+}

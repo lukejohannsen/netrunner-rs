@@ -1067,7 +1067,9 @@ fn rez_price(
     // lingering (Tread Lightly), never allowed to take the cost below 0.
     let added = continuous::rez_cost_delta(state, registry, ice);
     let rez_cost = if pay_cost {
-        (card_def.cost as i32 + added).max(0).saturating_sub(discount as i32).max(0) as u32
+        // A discount past any price is the whole of it (Ob Superheavy
+        // Logistics' "ignoring credit costs" is `u32::MAX`), never a wrap.
+        (card_def.cost as i32 + added).max(0).saturating_sub(i32::try_from(discount).unwrap_or(i32::MAX)).max(0) as u32
     } else {
         0
     };
@@ -1124,6 +1126,11 @@ pub(crate) fn rez_install(
     let side = Side::Corp;
     let installed = next.corp.installed.iter().find(|c| c.install_id == ice).ok_or(RulesError::InstallNotFound(ice))?;
     let ice_id = installed.card.clone();
+    // Mitosis's "You cannot … rez either of those cards this turn": first,
+    // ahead of any way to pay, since a forbidden rez asks nothing.
+    if continuous::cannot_install(next, registry, Prohibition::Rez, ice) {
+        return Err(RulesError::RezRestricted { card: ice_id });
+    }
     let card_def = registry.get(&ice_id).ok_or_else(|| RulesError::CardNotFoundInRegistry(ice_id.clone()))?;
     if !pay_cost || card_def.rez_alternatives.is_empty() {
         return rez_priced(next, registry, ice, pay_cost, discount);
@@ -1628,7 +1635,7 @@ pub(crate) fn play_operation_card(
         next.corp.removed_from_game.push(card_id.clone());
         events.push(GameEvent::CardRemovedFromGame { side, card: card_id.clone() });
     } else {
-        next.corp.archives.push(ArchivedCard::faceup(card_id.clone()));
+        crate::rules::turn_log::file_in_archives(next, ArchivedCard::faceup(card_id.clone()));
     }
     // `dispatch_event` resolves both `OnPlay` and, for Transaction-subtype
     // Operations, the Weyland Consortium: Building a Better World-style
@@ -2395,6 +2402,18 @@ fn activate_ability(
     // and phase checks below, so they are applied to the side that will
     // actually be spending.
     let side = ability.used_by.unwrap_or(side);
+    // Hákarl 1.0's "the Runner cannot use paid abilities printed on
+    // bioroid ice": asked of the user, so a bioroid's ability the Corp
+    // uses is untouched, and here rather than in the action list, which
+    // probes this.
+    if side == Side::Runner
+        && card_def.side == Side::Corp
+        && matches!(card_def.card_type, CardType::Ice(_))
+        && card_def.subtypes.contains(&crate::dsl::CardSubtype::Bioroid)
+        && continuous::cannot(state, registry, crate::dsl::Prohibition::BioroidIceAbilities)
+    {
+        return Err(RulesError::AbilityProhibited { card: card_id });
+    }
     // A [click] ability is an action (CR 9.5.2a), taken in the action
     // window of its user's turn: never in a paid ability window, which
     // admits no actions (CR 9.2.7b). Mid-run it is refused already, by
@@ -2651,9 +2670,45 @@ fn score_agenda(
     registry: &CardRegistry,
     target: InstallId,
 ) -> Result<(GameState, Vec<GameEvent>), RulesError> {
-    let side = Side::Corp;
-    require_phase(state, GamePhase::Action(side))?;
+    require_phase(state, GamePhase::Action(Side::Corp))?;
     paid_ability::require_no_window(state)?;
+    let mut next = state.clone();
+    let events = score_install(&mut next, registry, target)?;
+    Ok((next, events))
+}
+
+/// Whether the Corp could score `target` now, whoever asks — Big Deal's
+/// "You may score that card, **if able**" (`EffectRequirement::Scorable`),
+/// offered only when it is. Everything `score_install` refuses, asked
+/// without paying: an agenda, not forbidden, its requirement met as the
+/// table stands, and its additional costs to score affordable. Not the
+/// action's phase and window, which are the action's (`score_agenda`), not
+/// the score's: a card's text scores in the middle of its own resolution.
+pub(crate) fn scorable(state: &GameState, registry: &CardRegistry, target: InstallId) -> bool {
+    let Some(installed) = state.find_corp_install(target) else { return false };
+    let Some(card_def) = registry.get(&installed.card) else { return false };
+    if card_def.card_type != CardType::Agenda || continuous::cannot_install(state, registry, Prohibition::ScoreAgendas, target) {
+        return false;
+    }
+    let required = continuous::advancement_requirement(state, registry, target).unwrap_or(0);
+    (installed.advancement_tokens as i32) >= required
+        && continuous::score_costs(state, registry, target).iter().all(|(cost, source, source_install)| {
+            let ctx = match source_install {
+                Some(install) => ability::ResolutionContext::for_install(*install, source),
+                None => ability::ResolutionContext::for_card(Some(source)),
+            };
+            ability::cost_is_affordable(state, registry, Side::Corp, cost, Purpose::Other, &ctx)
+        })
+}
+
+/// Scores the agenda at `target` into `next`: the score itself, which the
+/// action (`score_agenda`) and a card's text (`Effect::Score`, Big Deal)
+/// share, so a score by text pays the same costs, keeps the same
+/// dividends and is heard as the same `AgendaScored`. Was the body of
+/// `score_agenda` until a card scored outside the action phase.
+pub(crate) fn score_install(next: &mut GameState, registry: &CardRegistry, target: InstallId) -> Result<Vec<GameEvent>, RulesError> {
+    let side = Side::Corp;
+    let state: &GameState = next;
     // Luminal Transubstantiation's lockout. Asked here and by
     // `legal_actions`, of the same predicate, so the two can't disagree.
     if continuous::cannot_install(state, registry, Prohibition::ScoreAgendas, target) {
@@ -2703,25 +2758,24 @@ fn score_agenda(
     // A counter placed by a card's text is not advancing (CR 1.18.2), and
     // the log counts only `CardAdvanced` as `OnAdvance`.
     let advanced_this_turn = state.corp.installed[position].this_turn.count(state.turn, crate::dsl::Trigger::OnAdvance) > 0;
-    let mut next = state.clone();
     // Additional costs to score (Word on the Street), paid with the score
     // and followed by a checkpoint before the agenda moves (CR 1.16.10b–c).
     // Scoring has no cost of its own to add them to, and a Corp that will
     // not pay them simply does not score (CR 1.17.3b), so an unpayable one
     // refuses the score, which is what keeps it off the action list.
     let mut cost_events = Vec::new();
-    for (cost, source, source_install) in continuous::score_costs(&next, registry, target) {
+    for (cost, source, source_install) in continuous::score_costs(next, registry, target) {
         let ctx = match source_install {
             Some(install) => ability::ResolutionContext::for_install(install, &source),
             None => ability::ResolutionContext::for_card(Some(&source)),
         };
-        cost_events.extend(ability::pay_cost_ctx(&mut next, registry, side, &cost, Purpose::Other, &ctx)?);
+        cost_events.extend(ability::pay_cost_ctx(next, registry, side, &cost, Purpose::Other, &ctx)?);
     }
     let mut events = cost_events.clone();
     if !cost_events.is_empty() {
-        events.extend(checkpoint::state_based(&mut next, registry, None));
+        events.extend(checkpoint::state_based(next, registry, None));
         if next.is_over() {
-            return Ok((next, events));
+            return Ok(events);
         }
     }
     // Scored is uninstalled (CR 1.17.5), so it leaves by the door. No
@@ -2729,7 +2783,7 @@ fn score_agenda(
     // The agenda is named by its install, not by `position`: a cost that
     // trashed a card ahead of it (Azef Protocol's) moved it down the list.
     let install_id = target;
-    let (_, announced) = uninstall::corp_install(&mut next, registry, install_id)?.ok_or(RulesError::InstallNotFound(install_id))?;
+    let (_, announced) = uninstall::corp_install(next, registry, install_id)?.ok_or(RulesError::InstallNotFound(install_id))?;
     // Dividends: every advancement counter past the requirement becomes
     // `dividends` agenda counters on the scored copy (Off the Books) — the
     // requirement as it was when the score began, before the agenda moved
@@ -2759,12 +2813,12 @@ fn score_agenda(
     // per-turn gate.
     // The win is the checkpoint's, and it comes first: `dispatch_event`
     // checks the score areas before it plans a trigger.
-    events.extend(dispatcher::dispatch_event(&mut next, registry, &scored_event)?);
+    events.extend(dispatcher::dispatch_event(next, registry, &scored_event)?);
     // The additional cost's own events, after, as every payer dispatches
     // them (`ability::dispatch_cost_events`).
-    events.extend(ability::dispatch_cost_events(&mut next, registry, &cost_events)?);
+    events.extend(ability::dispatch_cost_events(next, registry, &cost_events)?);
 
-    Ok((next, events))
+    Ok(events)
 }
 
 /// Resolves `PlayerAction::RemoveTag`, per its doc comment. Runner-only.
@@ -4507,7 +4561,7 @@ mod tests {
                 reached_success_phase: true,
                 breached: Some(ServerId::Hq),
                 cards_accessed_count: 1,
-                access_state: Some(run::AccessState { pending_install: None, pending_install_rezzed: false,
+                access_state: Some(run::AccessState { pending_install: None, pending_install_rezzed: false, outside_breach: None,
                     // Set when the card was presented, and left in place
                     // for the rest of its `PendingChoice`.
                     currently_accessing: Some(CardId("hedge_fund".to_string())),
@@ -4606,6 +4660,9 @@ mod tests {
                     strength: 0,
                     subroutine_count: 0,
                 },
+                // No subroutines at all: fully broken as the encounter begins, by
+                // no object (CR 6.5.7c).
+                GameEvent::IceFullyBroken { card_id: CardId("ice_wall".to_string()), position: 0, by: None },
                 GameEvent::PaidAbilityWindowOpened { side: Side::Runner },
             ]
         );
@@ -4626,7 +4683,8 @@ mod tests {
                 GameEvent::PriorityPassed { side: Side::Corp },
                 GameEvent::PaidAbilityWindowClosed,
                 GameEvent::EncounterEnded { card_id: CardId("ice_wall".to_string()), install: crate::rules::state::InstallId(0) },
-                GameEvent::IcePassed { server: ServerId::Hq, position: 0, after_fully_breaking: false, rezzed_as: vec![crate::dsl::IceType::Barrier], printed_broken_with: Default::default() },
+                // Fully broken as it was encountered, having none (CR 6.5.7c).
+                GameEvent::IcePassed { server: ServerId::Hq, position: 0, after_fully_breaking: true, rezzed_as: vec![crate::dsl::IceType::Barrier], printed_broken_with: Default::default() },
             ]
         );
 

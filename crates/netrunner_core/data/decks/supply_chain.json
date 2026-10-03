@@ -1,0 +1,93 @@
+{
+  "id": "supply_chain",
+  "name": "Supply Chain",
+  "side": "Corp",
+  "category": "Sweep",
+  "description": "Not a published list: built so the sweeps reach Ob Superheavy Logistics: Extract. Export. Excel., Midnight Sun's Weyland identity, whose once-per-turn search for a card one credit cheaper than a rezzed card the Corp has just trashed, installed and rezzed free of credits, no other deck can reach. Midnight Sun Stage 8c. Every rez cost from 1 to 5 is stocked twice over, so a trash always has a rung below it: Envelopment trashes itself with its own subroutine (5, finding Stavka or Event Horizon), Regolith Mining License trashes itself when its credits are gone (2, finding Ice Wall or Tithe), Svyatogor Excavator trashes another installed card as the turn begins, Stavka as it is rezzed, Kimberlite Field as it is scored and Azef Protocol to be scored. Weyland and neutral cards only, so no influence. Eternal-legal.",
+  "style": [
+    "glacier"
+  ],
+  "identity": "ob_superheavy_logistics_extract_export_excel",
+  "cards": [
+    {
+      "card": "send_a_message",
+      "count": 3
+    },
+    {
+      "card": "kimberlite_field",
+      "count": 3
+    },
+    {
+      "card": "azef_protocol",
+      "count": 2
+    },
+    {
+      "card": "greenmail",
+      "count": 2
+    },
+    {
+      "card": "envelopment",
+      "count": 2
+    },
+    {
+      "card": "stavka",
+      "count": 2
+    },
+    {
+      "card": "event_horizon",
+      "count": 2
+    },
+    {
+      "card": "maskirovka",
+      "count": 2
+    },
+    {
+      "card": "kessleroid",
+      "count": 2
+    },
+    {
+      "card": "ice_wall",
+      "count": 3
+    },
+    {
+      "card": "tithe",
+      "count": 2
+    },
+    {
+      "card": "regolith_mining_license",
+      "count": 3
+    },
+    {
+      "card": "svyatogor_excavator",
+      "count": 2
+    },
+    {
+      "card": "anthill_excavation_contract",
+      "count": 2
+    },
+    {
+      "card": "cybersand_harvester",
+      "count": 2
+    },
+    {
+      "card": "pad_campaign",
+      "count": 2
+    },
+    {
+      "card": "zato_city_grid",
+      "count": 2
+    },
+    {
+      "card": "hedge_fund",
+      "count": 3
+    },
+    {
+      "card": "pivot",
+      "count": 2
+    },
+    {
+      "card": "petty_cash",
+      "count": 2
+    }
+  ]
+}

@@ -271,6 +271,10 @@ pub enum AccessCandidate {
     Zone,
     /// A card in Archives, faceup since the breach began.
     Archived(CardId),
+    /// A card the Corp set aside faceup (`CorpState::set_aside`), accessed
+    /// outside a breach — Deep Dive's "Access 1 of those cards". Named, as
+    /// an Archives card is: it is faceup.
+    SetAside(CardId),
 }
 
 /// One card the Runner is currently being asked to make a choice about,
@@ -395,7 +399,35 @@ pub struct AccessState {
     /// already left the table.
     #[serde(default)]
     pub pending_install_rezzed: bool,
+    /// Set when these accesses are not a breach (`Effect::Access`, CR
+    /// 7.1.9–7.1.10): how many more may be chosen, and what the card that
+    /// asked for them resolves once they are done. `None` for a breach.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub outside_breach: Option<OutsideBreach>,
     pub phase: AccessPhase,
+}
+
+/// Accesses a card's text asked for outside a breach (`Effect::Access`):
+/// Pinhole Threading's "access 1 card in the root of another server",
+/// Deep Dive's "Access 1 of those cards". They follow a breach's procedure
+/// except that the candidates are the ones the card names, and "the
+/// procedure ends once the designated number of cards have been chosen for
+/// access" (CR 7.1.10).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct OutsideBreach {
+    /// Candidates the Runner may still choose; at 0 the accesses are over,
+    /// whatever candidates are left.
+    pub left: u32,
+    /// What the card resolves once these accesses are over (Deep Dive's
+    /// "You may spend [click] to access another 1 of those cards"), as
+    /// `card` and `install`. An access in progress parks nothing a
+    /// `Sequence` waits behind, so what follows it is carried here.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub then: Option<Box<Effect>>,
+    #[serde(default)]
+    pub card: Option<CardId>,
+    #[serde(default)]
+    pub install: Option<InstallId>,
 }
 
 /// Every field at its neutral value, for test fixtures — see
@@ -414,9 +446,21 @@ impl Default for AccessState {
             currently_accessing: None,
             pending_install: None,
             pending_install_rezzed: false,
+            outside_breach: None,
             phase: AccessPhase::SelectNextCard { selectable_cards: Vec::new() },
         }
     }
+}
+
+/// One `Effect::SetRunEndedEffect`: what resolves when the run ends, and
+/// the card and install it resolves as.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RunEndRider {
+    pub effect: Box<Effect>,
+    #[serde(default)]
+    pub card: Option<CardId>,
+    #[serde(default)]
+    pub install: Option<InstallId>,
 }
 
 /// A run in progress (or just concluded) — the sub-state-machine embedded in
@@ -581,15 +625,15 @@ pub struct RunState {
     pub on_success_card: Option<CardId>,
     #[serde(default)]
     pub on_success_install: Option<InstallId>,
-    /// `Effect::SetRunEndedEffect` — resolved as `on_end_card`/
-    /// `on_end_install` when this run ends, carried over into
-    /// `CompletedRun` for the `OnRunEnded` dispatch to take. Charm Offensive.
+    /// `Effect::SetRunEndedEffect` — each resolved as the card that set it
+    /// when this run ends, in the order they were set, carried over into
+    /// `CompletedRun` for the `OnRunEnded` dispatch to take. Charm
+    /// Offensive. **A list, not one slot**: Virtuoso's "breach HQ when the
+    /// run ends" is set as a run on the mark succeeds, and one slot let it
+    /// overwrite what the run's own event had already set (Raindrops Cut
+    /// Stone's draw, Trick Shot's run).
     #[serde(default)]
-    pub on_end_effect: Option<Box<Effect>>,
-    #[serde(default)]
-    pub on_end_card: Option<CardId>,
-    #[serde(default)]
-    pub on_end_install: Option<InstallId>,
+    pub on_end: Vec<RunEndRider>,
     /// Whether any subroutine has resolved during this run
     /// (`EffectRequirement::SubroutineResolvedThisRun`) — Ryō "Phoenix" Ōno.
     #[serde(default)]
@@ -779,9 +823,7 @@ impl Default for RunState {
             agendas_stolen_this_run: 0,
             persistent_trashed_upgrades: Vec::new(),
             on_success_effect: None,
-            on_end_effect: None,
-            on_end_card: None,
-            on_end_install: None,
+            on_end: Vec::new(),
             subroutine_resolved: false,
             ice_derezzed: false,
             subroutine_broken: false,

@@ -280,7 +280,7 @@ fn chip(theme: &Theme, faction: Color, slot: Slot, size: FaceSize) -> impl Bundl
     let (label, label_font) = match icon {
         Some(symbol) => theme.symbol(symbol, size.small()),
         None => match slot {
-            Slot::Strength(_) | Slot::AgendaPoints(_) | Slot::Cost(_) | Slot::Advancement(_) => (String::new(), theme.font(size.small())),
+            Slot::Strength(_) | Slot::AgendaPoints(_) | Slot::Cost(_) | Slot::Advancement(_) | Slot::AdvancementX => (String::new(), theme.font(size.small())),
             _ => (slot.caption().to_string(), theme.font(size.small())),
         },
     };

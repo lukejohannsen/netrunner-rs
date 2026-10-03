@@ -1,0 +1,26 @@
+{
+  "id": "blood_in_the_water",
+  "title": "Blood in the Water",
+  "side": "Corp",
+  "card_type": "Agenda",
+  "cost": 0,
+  "advancement_requirement": 0,
+  "agenda_points": 2,
+  "continuous": [
+    {
+      "kind": {
+        "AdvancementRequirement": {
+          "per": 1,
+          "of": {
+            "CardsInHand": "Runner"
+          }
+        }
+      },
+      "applies_to": "This",
+      "text": "X is equal to the number of cards in the Runner's grip."
+    }
+  ],
+  "triggers": [],
+  "built_from": 33039,
+  "is_playable": true
+}

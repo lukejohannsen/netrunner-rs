@@ -285,7 +285,7 @@ pub(crate) mod audit {
 /// The two effects a run carries for itself rather than on a card:
 /// `RunState::on_success_effect` ("if successful, …" on an Event such as
 /// Jailbreak, which is never installed and so can declare no trigger) and
-/// `CompletedRun::on_end_effect` (`Effect::SetRunEndedEffect`, Charm
+/// `CompletedRun::on_end` (`Effect::SetRunEndedEffect`, Charm
 /// Offensive). Each is taken, so it resolves once, and resolves before the
 /// cards' own triggers — an access bonus has to be in place for the breach
 /// the same success begins.
@@ -324,14 +324,18 @@ fn resolve_run_riders(
     }
 }
 
-/// Resolves the ended run's `on_end_effect`, if it still has one.
+/// Resolves the ended run's `on_end` riders still waiting, in the order
+/// they were set, each taken as it starts; one that parks leaves the rest
+/// for `drain_deferred_triggers`.
 fn resolve_run_end_rider(state: &mut GameState, registry: &CardRegistry) -> Result<Vec<GameEvent>, RulesError> {
-    let rider = state.last_completed_run.as_mut().and_then(|completed| {
-        completed.on_end_effect.take().map(|effect| (effect, completed.on_end_card.clone(), completed.on_end_install))
-    });
-    let Some((effect, card, install)) = rider else { return Ok(Vec::new()) };
-    let mut ctx = ability::ResolutionContext::for_parked(install, card.as_ref());
-    ability::evaluate_effect(state, &effect, &mut ctx, registry)
+    let mut events = Vec::new();
+    while !state.resolution_halted() {
+        let rider = state.last_completed_run.as_mut().and_then(|completed| (!completed.on_end.is_empty()).then(|| completed.on_end.remove(0)));
+        let Some(rider) = rider else { break };
+        let mut ctx = ability::ResolutionContext::for_parked(rider.install, rider.card.as_ref());
+        events.extend(ability::evaluate_effect(state, &rider.effect, &mut ctx, registry)?);
+    }
+    Ok(events)
 }
 
 /// Fires one side's ordered plan of triggers, stopping and queueing the
@@ -1326,7 +1330,7 @@ mod tests {
             ..Default::default()
         }];
         state.last_completed_run = Some(crate::rules::state::CompletedRun {
-            accessed_cards: Vec::new(), on_end_effect: None, on_end_card: None, on_end_install: None, run_credits_left: 0, unsuccessful: false, breached: None, initiated_by: None, event_counters: 0,
+            accessed_cards: Vec::new(), on_end: Vec::new(), run_credits_left: 0, unsuccessful: false, breached: None, initiated_by: None, event_counters: 0,
             server: ServerId::Hq,
             cards_accessed: 0,
             agendas_stolen: 0,

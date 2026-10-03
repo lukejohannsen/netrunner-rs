@@ -2239,6 +2239,7 @@ mod tests {
                 from_zone: 0,
                 resolved_cards: MaskedZone::Hidden { count: 0 },
                 pending_install: None,
+                outside_breach: None,
                 phase: PublicAccessPhase::PendingChoice { card: Some(card.clone()), trash_cost: None, mandatory_steal: true, steal_cost: None, trash_also: None },
             }),
             jack_out_permitted: false,

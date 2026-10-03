@@ -1,0 +1,97 @@
+{
+  "id": "carpe_diem",
+  "title": "Carpe Diem",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 1,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        "IdentifyMark",
+        {
+          "GainCredits": [
+            "Runner",
+            4
+          ]
+        },
+        {
+          "EffectIf": {
+            "condition": {
+              "MarkIs": "Hq"
+            },
+            "effect": {
+              "PresentChoice": {
+                "chooser": "Runner",
+                "options": [
+                  {
+                    "InitiateRun": "Hq"
+                  },
+                  {
+                    "Sequence": []
+                  }
+                ],
+                "texts": [
+                  "You may run your mark",
+                  ""
+                ]
+              }
+            }
+          }
+        },
+        {
+          "EffectIf": {
+            "condition": {
+              "MarkIs": "RnD"
+            },
+            "effect": {
+              "PresentChoice": {
+                "chooser": "Runner",
+                "options": [
+                  {
+                    "InitiateRun": "RnD"
+                  },
+                  {
+                    "Sequence": []
+                  }
+                ],
+                "texts": [
+                  "You may run your mark",
+                  ""
+                ]
+              }
+            }
+          }
+        },
+        {
+          "EffectIf": {
+            "condition": {
+              "MarkIs": "Archives"
+            },
+            "effect": {
+              "PresentChoice": {
+                "chooser": "Runner",
+                "options": [
+                  {
+                    "InitiateRun": "Archives"
+                  },
+                  {
+                    "Sequence": []
+                  }
+                ],
+                "texts": [
+                  "You may run your mark",
+                  ""
+                ]
+              }
+            }
+          }
+        }
+      ],
+      "text": "Gain 4[credit]. You may run your mark."
+    }
+  ],
+  "built_from": 33012,
+  "is_playable": true
+}

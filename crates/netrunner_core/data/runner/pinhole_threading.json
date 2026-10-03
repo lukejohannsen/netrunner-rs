@@ -1,0 +1,49 @@
+{
+  "id": "pinhole_threading",
+  "title": "Pinhole Threading",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 1,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "subject": "This",
+      "effects": [
+        {
+          "PromptChooseServer": {
+            "chooser": "Runner",
+            "rez_cost_delta": 0,
+            "bonus_run_credits": 0,
+            "on_success": {
+              "SetAccessReplacement": {
+                "server": "Hq",
+                "effect": {
+                  "Sequence": [
+                    {
+                      "Prohibit": {
+                        "what": "StealOrTrashAgendas",
+                        "until": "Run"
+                      }
+                    },
+                    {
+                      "Access": {
+                        "from": "OpponentInstalled",
+                        "filter": {
+                          "Not": "InAttackedServer"
+                        },
+                        "count": 1
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      ],
+      "text": "Run any server. If successful, instead of breaching the attacked server, access 1 card in the root of another server. If that card is an agenda, you cannot steal or trash it during this access."
+    }
+  ],
+  "built_from": 33013,
+  "is_playable": true
+}

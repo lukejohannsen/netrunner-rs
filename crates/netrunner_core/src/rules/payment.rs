@@ -627,6 +627,24 @@ fn pays_a_cost_that_may_ask(state: &GameState, registry: &CardRegistry, action: 
         PlayerAction::ScoreAgenda { target } => {
             crate::rules::continuous::score_costs(state, registry, *target).iter().any(|(cost, ..)| cost.may_ask())
         }
+        // …and so does a score by a card's text (Big Deal's "You may score
+        // that card"), resolved as its choice is answered: a necessary
+        // condition, any install's costs, since the choice does not say
+        // which card it scores.
+        PlayerAction::ResolvePendingChoice { .. } => {
+            let scores = match &state.pending_decision {
+                Some(crate::rules::PendingDecision::ChooseEffect { options, .. }) => options.iter().any(|option| {
+                    let mut found = false;
+                    option.for_each_effect(&mut |effect| found |= matches!(effect, crate::dsl::Effect::Score));
+                    found
+                }),
+                _ => false,
+            };
+            scores
+                && state.corp.installed.iter().any(|installed| {
+                    crate::rules::continuous::score_costs(state, registry, installed.install_id).iter().any(|(cost, ..)| cost.may_ask())
+                })
+        }
         // An additional cost to play that takes cards asks which: Sell
         // Out's "trash 1 installed resource" with two installed. Left off
         // this list, the 256-seed view sweep's debug assertion found it

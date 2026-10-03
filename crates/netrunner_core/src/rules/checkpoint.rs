@@ -124,7 +124,7 @@ fn enforce_unique(state: &mut GameState, registry: &CardRegistry, event: Option<
     let active = active_copies(&mut active::corp(state, registry));
     for install in older_copies(&active, just_rezzed) {
         let Some(trashed) = uninstall::corp_install_at_checkpoint(state, install) else { continue };
-        state.corp.archives.push(ArchivedCard::faceup(trashed.card.clone()));
+        crate::rules::turn_log::file_in_archives(state, ArchivedCard::faceup(trashed.card.clone()));
         let install = Some(crate::rules::event::TrashedInstall::of(&trashed, false));
         events.push(GameEvent::CardTrashed { side: Side::Corp, card: trashed.card, from: crate::dsl::TrashedFrom::Installed, by: None, install });
     }

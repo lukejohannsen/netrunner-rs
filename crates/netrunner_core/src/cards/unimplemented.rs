@@ -39,39 +39,10 @@ pub(crate) const TAI_UNIMPLEMENTED: &[(&str, &str)] = &[
 pub(crate) const PH_UNIMPLEMENTED: &[(&str, &str)] = &[];
 
 /// *Midnight Sun Booster Pack* (`midnight_sun_booster_pack`): tranche 5 of the NSG plan.
-pub(crate) const MSBP_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("light_the_fire", "Light the Fire!"),
-    ("deep_dive", "Deep Dive"),
-    ("hakarl_1_0", "Hákarl 1.0"),
-];
+pub(crate) const MSBP_UNIMPLEMENTED: &[(&str, &str)] = &[];
 
 /// *Midnight Sun* (`midnight_sun`): tranche 5 of the NSG plan.
-pub(crate) const MS_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("steelskin_scarring", "Steelskin Scarring"),
-    ("light_the_fire", "Light the Fire!"),
-    ("nyusha_sable_sintashta_symphonic_prodigy", "Nyusha \"Sable\" Sintashta: Symphonic Prodigy"),
-    ("carpe_diem", "Carpe Diem"),
-    ("pinhole_threading", "Pinhole Threading"),
-    ("virtuoso", "Virtuoso"),
-    ("cats_cradle", "Cat's Cradle"),
-    ("backstitching", "Backstitching"),
-    ("deep_dive", "Deep Dive"),
-    ("trieste_model_bioroids", "Trieste Model Bioroids"),
-    ("echo", "Echo"),
-    ("hakarl_1_0", "Hákarl 1.0"),
-    ("wave", "Wave"),
-    ("big_deal", "Big Deal"),
-    ("blood_in_the_water", "Blood in the Water"),
-    ("regenesis", "Regenesis"),
-    ("bathynomus", "Bathynomus"),
-    ("ivik", "Ivik"),
-    ("mitosis", "Mitosis"),
-    ("backroom_machinations", "Backroom Machinations"),
-    ("ob_superheavy_logistics_extract_export_excel", "Ob Superheavy Logistics: Extract. Export. Excel."),
-    ("envelopment", "Envelopment"),
-    ("stavka", "Stavka"),
-    ("trust_operation", "Trust Operation"),
-];
+pub(crate) const MS_UNIMPLEMENTED: &[(&str, &str)] = &[];
 
 /// *Uprising Booster Pack* (`uprising_booster_pack`): tranche 6 of the NSG plan.
 pub(crate) const URBP_UNIMPLEMENTED: &[(&str, &str)] = &[

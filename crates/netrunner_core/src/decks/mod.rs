@@ -509,6 +509,13 @@ mod tests {
             // whose Core Set cards keep them out of Standard.
             ("burn_rate", &neither),
             ("dead_reckoning", &neither),
+            // Midnight Sun Stage 6a: Nyusha "Sable" Sintashta's deck, the
+            // mark's; she is banned in Standard, and Midnight Sun is out of
+            // Startup's pool.
+            ("encore", &neither),
+            // Midnight Sun Stage 8c: Ob Superheavy Logistics' deck, of
+            // Weyland and neutral cards; pinned as the test reads it.
+            ("supply_chain", &neither),
             // Vantage Point Stage 5d: Hiram's deck carries Core Set cards
             // (Net Shield among them), as Safety Net does.
             ("spare_parts", &neither),

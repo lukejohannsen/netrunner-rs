@@ -1,0 +1,85 @@
+{
+  "id": "stavka",
+  "title": "Stavka",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Sentry"
+  },
+  "cost": 4,
+  "strength": 2,
+  "triggers": [
+    {
+      "trigger": "OnRez",
+      "subject": "This",
+      "effects": [
+        {
+          "OfferPaidChoice": {
+            "side": "Corp",
+            "cost": {
+              "Trash": {
+                "from": "OwnInstalled",
+                "filter": "NotSourceCard",
+                "count": 1
+              }
+            },
+            "if_paid": {
+              "EffectIf": {
+                "condition": "RunInProgress",
+                "effect": {
+                  "ModifyStrength": {
+                    "delta": 5,
+                    "ice": "This",
+                    "duration": "Run"
+                  }
+                }
+              }
+            },
+            "if_declined": {
+              "Sequence": []
+            },
+            "text": "you may trash 1 of your other installed cards. If you do, this ice gets +5 strength for the remainder of the run"
+          }
+        }
+      ],
+      "text": "When you rez this ice, you may trash 1 of your other installed cards. If you do, this ice gets +5 strength for the remainder of the run."
+    }
+  ],
+  "subroutines": [
+    {
+      "text": "Trash 1 installed program.",
+      "effect": {
+        "PromptChooseCards": {
+          "side": "Corp",
+          "source": "OpponentInstalled",
+          "filter": {
+            "CardType": "Program"
+          },
+          "min": 1,
+          "max": 1,
+          "reveal": false,
+          "shuffle_after": false,
+          "destination": "OpponentDiscard"
+        }
+      }
+    },
+    {
+      "text": "Trash 1 installed program.",
+      "effect": {
+        "PromptChooseCards": {
+          "side": "Corp",
+          "source": "OpponentInstalled",
+          "filter": {
+            "CardType": "Program"
+          },
+          "min": 1,
+          "max": 1,
+          "reveal": false,
+          "shuffle_after": false,
+          "destination": "OpponentDiscard"
+        }
+      }
+    }
+  ],
+  "built_from": 33062,
+  "is_playable": true
+}

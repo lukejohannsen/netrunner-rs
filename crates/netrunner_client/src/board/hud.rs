@@ -281,6 +281,7 @@ fn cannot_words(what: netrunner_core::dsl::Prohibition) -> &'static str {
     use netrunner_core::dsl::Prohibition;
     match what {
         Prohibition::StealOrTrash => "the Runner cannot steal or trash cards",
+        Prohibition::StealOrTrashAgendas => "the Runner cannot steal or trash agendas",
         Prohibition::ScoreAgendas => "the Corp cannot score agendas",
         Prohibition::SpendOrLoseCreditPool => "the Runner cannot spend or lose credits from their credit pool",
         Prohibition::SpendCredits => "the Runner cannot spend credits",
@@ -290,6 +291,9 @@ fn cannot_words(what: netrunner_core::dsl::Prohibition) -> &'static str {
         Prohibition::Access => "the Runner cannot access that card",
         Prohibition::BreakSubroutines => "the Runner's abilities cannot break subroutines",
         Prohibition::DiscardStep => "the Corp skips their discard step",
+        Prohibition::BioroidIceAbilities => "the Runner cannot use paid abilities printed on bioroid ice",
+        Prohibition::Rez => "the Corp cannot rez that card",
+        Prohibition::BreakSubroutinesOnIce => "Runner card abilities cannot break subroutines on that ice",
     }
 }
 
@@ -368,11 +372,18 @@ pub fn in_effect(view: &ClientView, registry: &CardRegistry) -> Vec<String> {
                     let card = super::facts::card_of(view, *install).map_or_else(|| "that card".to_string(), |card| title(&card));
                     format!("{card}'s abilities cannot break subroutines")
                 }
+                // Trieste Model Bioroids: about the ice it chose.
+                (Lingering::Cannot(Prohibition::BreakSubroutinesOnIce), On::Install(ice)) => {
+                    let ice = super::facts::card_of(view, *ice).map_or_else(|| "the chosen ice".to_string(), |card| title(&card));
+                    format!("Runner card abilities cannot break subroutines on {ice}")
+                }
                 (Lingering::Cannot(what), _) => cannot_words(*what).to_string(),
                 // Klevetnik: the resource it chose.
                 (Lingering::LosesAbilities, on) => {
                     let card = match on {
                         On::Install(install) => super::facts::card_of(view, *install).map_or_else(|| "that card".to_string(), |card| title(&card)),
+                        // Light the Fire!: whatever is in the root now.
+                        On::RootOfAttackedServer => return Some("cards in the root of the attacked server have lost all their abilities".to_string()),
                         _ => "that card".to_string(),
                     };
                     format!("{card} has lost all its abilities")
@@ -455,6 +466,12 @@ pub fn in_effect(view: &ClientView, registry: &CardRegistry) -> Vec<String> {
             let names: Vec<String> = view.runner.set_aside.iter().map(&title).collect();
             format!("set aside: {}", names.join(", "))
         }))
+        // The Corp's (Deep Dive's top 8 of R&D while the Runner accesses
+        // them): faceup too, and the Corp's cards.
+        .chain((!view.corp.set_aside.is_empty()).then(|| {
+            let names: Vec<String> = view.corp.set_aside.iter().map(&title).collect();
+            format!("set aside from R&D: {}", names.join(", "))
+        }))
         .collect()
 }
 
@@ -494,8 +511,8 @@ impl ScoredCard {
             (Side::Corp, None) => "Scored by the Corp".to_string(),
             (Side::Runner, None) => "Stolen by the Runner".to_string(),
         };
-        match def.and_then(|d| d.advancement_requirement).filter(|_| self.as_agenda.is_none()) {
-            Some(need) => lines.push(format!("{how} · {} point{} · advancement requirement {need}", self.points, if self.points == 1 { "" } else { "s" })),
+        match def.and_then(crate::card_face::advancement_slot).filter(|_| self.as_agenda.is_none()) {
+            Some(need) => lines.push(format!("{how} · {} point{} · advancement requirement {}", self.points, if self.points == 1 { "" } else { "s" }, need.value())),
             None => lines.push(format!("{how} · {} point{}", self.points, if self.points == 1 { "" } else { "s" })),
         }
         // What the table makes of it, when that is not what it prints:
@@ -840,6 +857,9 @@ mod tests {
         view.revealed.clear();
         view.runner.set_aside = vec![CardId("sure_gamble".into()), CardId("corroder".into())];
         assert_eq!(in_effect(&view, &registry), ["set aside: Sure Gamble, Corroder"]);
+        view.runner.set_aside.clear();
+        view.corp.set_aside = vec![CardId("hedge_fund".into()), CardId("ice_wall".into())];
+        assert_eq!(in_effect(&view, &registry), ["set aside from R&D: Hedge Fund, Ice Wall"]);
     }
 
     /// During a run the Runner's credits read "pool +run": the bad

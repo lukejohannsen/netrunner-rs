@@ -6176,3 +6176,502 @@ every card.
   `determinize`, whose prior holds nine more cards (view and index
   alike): Corp agenda wins 58 → 55, Corp flatlines 31 → 27, Runner
   agenda wins 99 → 103, Runner deck-outs 4 → 7.
+
+#### Stage 5 — ice words (2 October 2026)
+
+`claude/serene-einstein-6bhlig`: Cat's Cradle, Ivik, Wave, Bathynomus,
+Stavka, Hákarl 1.0 and Trust Operation. **No new `Effect`.** Midnight Sun
+48 of 65, its booster pack 5 of 7; `MS_UNIMPLEMENTED` 24 → 17 and
+`MSBP_UNIMPLEMENTED` 3 → 2 (Hákarl 1.0 is a booster-pack card reprinted in
+the set, built from 32004). Four cards composed; three needed a word, each
+for every card.
+
+- **What each is made of.** Ivik's discount is Reverb's `RezCost` on its
+  own text, counted over Pulse's `CorpInstalls` with `IceOfType(CodeGate)`.
+  Wave is Pulse's `RezzedDuringRunAgainstThisServer` rez trigger over a
+  `PresentChoice` — "you *may* search", so a declined search shuffles
+  nothing — whose search is Tocsin's reveal from R&D into HQ, and its
+  subroutine Pulse's count of rezzed harmonic ice as a gain. Stavka is
+  Anvil's "you may trash 1 of your other installed cards" (`Cost::Trash`
+  with `NotSourceCard`) as an `OnRez` offer whose `if_paid` is Brasília
+  Government Grid's `ModifyStrength` on this ice for the run, under an
+  `EffectIf(RunInProgress)`: rezzed by Trust Operation outside a run, the
+  trash is still offered and the strength has no run to last. Trust
+  Operation is Hypoxia's `play_requirement: IsTagged`, Above the Law's
+  resource trash, and Reanimation Protocol's install `rez: true` with The
+  Powers That Be's `ignore_costs` out of Archives; an agenda installed by
+  it is revealed and left unrezzed, as the install already does. Cat's
+  Cradle is Abaasy's decoder; Hákarl's break is Ansel 2.0's
+  `BreakSubroutinesUnconditionally` for one click lost; Bathynomus's net
+  damage and Ivik's two subroutines are words the pool already had.
+- **Three words.** `Scope::Ice` takes a `CardFilter`: Cat's Cradle's "the
+  rez cost of each piece of **code gate** ice" is the first standing
+  effect about each piece of ice of a kind, read off the definition and
+  the copy as `IceProtectingThisServer`'s filter is; Fransofia Ward and
+  The Tungsten Tailor say `{"Ice": "Any"}`. `EffectRequirement::
+  Protecting(ServerId)`, `ProtectingRemote`'s sibling: Bathynomus's
+  "while this ice is protecting **Archives**" — `ActingCardMatches(InServer)`
+  reads the definition, which has no place, and a scope over a server's
+  ice is about every piece in it. `validate` holds it to ice as it holds
+  `ProtectingRemote`. And `Prohibition::BioroidIceAbilities`: Hákarl's "the
+  Runner cannot use paid abilities printed on bioroid ice for the
+  remainder of this turn", a lingering `Cannot` that
+  `engine::activate_ability` asks of a bioroid's ability the Runner would
+  use (`RulesError::AbilityProhibited`), so the action list, which probes
+  it, never offers one. Hákarl's derez is Kompromat's `Cost::Derez` over
+  any other rezzed install, as Brasília's is over ice.
+- **Fidelity limits:** "code gate ice" is a code gate as printed, so a
+  subtype gained for a run is neither taxed by Cat's Cradle nor counted by
+  Ivik (on the known-limits list).
+- **Client.** No new view field. `Prohibition::BioroidIceAbilities` has its
+  words in `prose` and the HUD's in-effect list, and a filtered
+  `Scope::Ice` reads "each piece of ice (…)" in the inspector's engine
+  reading.
+- **Decks.** Hit List takes two Cat's Cradle for its Conduit and its
+  Smartware Distributor; A Thousand Cuts two Ivik for two Tatu-Bola and
+  two Bathynomus for two Lionsmane; Retirement Package two Wave for two
+  Jaguarundi — a fourth harmonic ice beside Pulse, Reverb and Bloop — and
+  two Hákarl 1.0 for two Brân 1.0, bioroid barrier for bioroid barrier;
+  Tag, You're It two Trust Operation for two Retribution, gray op for gray
+  op, both needing a tag; Hostile Bid two Stavka for two Event Horizon,
+  destroyer sentry for destroyer sentry. Every card given up is still in
+  another Sweep deck.
+- **DSL ratio** (`pool_status.py`): unchanged at 17 of 97 `Effect`
+  variants single-use, 1 unused (`Trace`), now over 491 card files.
+- **Real play** (`--headless`, seed 2; random seats 96 games, planner
+  seats 48; each pair random / planner; the Corp decks against Safety Net,
+  Hit List against Hostile Bid). Ivik installed 74 / 37 and rezzed 0 / 6
+  (seven credits less its code gates is more than a random Corp saves);
+  Bathynomus rezzed 10 / 21, its subroutine fired 17 / 29 times; Wave
+  rezzed 70 / 52, its rez trigger fired 66 / 52 times; Hákarl 1.0 rezzed
+  33 / 18, its rez trigger 28 / 18, its click break used 25 / 30 times;
+  Stavka rezzed 13 / 25, its rez offer 13 / 25 times; Trust Operation
+  played 19 / 1; Cat's Cradle installed 38 / 7 and used 13 / 16 times.
+  **Bot debts:** the planner plays Trust Operation once in 48 games and
+  installs Cat's Cradle seven times; on the bot-debts list.
+- **Measured.** Both sweeps are green at 256 seeds, the card gate
+  included, so every new card was seen in play. `coverage_identical.py`
+  against Stage 4 (2f7c610, 192 games a report): random identical, view
+  and index alike — the sample matchups hold no Sweep deck, and the three
+  words change nothing there. The planner seatings move by `determinize`,
+  whose prior holds seven more cards (view and index alike): Corp agenda
+  wins 58 → 59, Corp flatlines 27 → 28, Runner agenda wins 101 → 99.
+
+#### Stage 6a — the mark (3 October 2026)
+
+`claude/serene-einstein-6bhlig`: Nyusha "Sable" Sintashta, Carpe Diem,
+Backstitching and Virtuoso. **No new `Effect`.** Midnight Sun 52 of 65,
+its booster pack 5 of 7; `MS_UNIMPLEMENTED` 17 → 13. Stage 6 was split by
+mechanic when it was taken: 6a the mark, on Parhelion Stage 6b's rule; 6b
+access outside a breach (Pinhole Threading, Deep Dive).
+
+- **What each is made of.** Each identifies its mark as the turn begins
+  (Tunnel Vision's `OnTurnStart` `IdentifyMark`; Carpe Diem identifies as
+  it resolves). Nyusha's "the first time each turn you make a successful
+  run on your mark, gain [click]" is Info Bounty's `when: Mark` with
+  `first_each_turn`, on `OnSuccessfulRun`. Backstitching is Laser
+  Pointer's `OfferPaidChoice` of `TrashSelf` for `BypassEncounteredIce` on
+  `OnEncounter`. Virtuoso's `+1[mu]` is Pennyshaver's; its HQ branch is
+  `AddAdditionalAccess` under `DuringRunOn(Hq)` — the trigger resolves at
+  the run's success, before the breach's access limit is set — and its
+  other branch is `SetRunEndedEffect(Breach(Hq))`, Cataloguer's breach with
+  no run, started once the run has left `active_run`.
+- **One word, `EffectRequirement::MarkIs(ServerId)`**: "your mark is this
+  server". Carpe Diem's "You may run your mark" is three `EffectIf` branches,
+  one per central, each Alarm Clock's `PresentChoice` of a run or nothing;
+  Backstitching's "during a run on your mark" is three `EffectIf`s of
+  `And(DuringRunOn(X), MarkIs(X))` around one offer, read off the run's
+  server rather than where the ice is, as printed (Tunnel Vision's
+  "protecting your mark" reads the ice). Composition didn't work: a run's
+  target is a `ServerId`, which has no word for the mark, and
+  `EncounteringIceProtectingMark` asks about an encountered ice. There is
+  no `Or` requirement, so the branches are the disjunction.
+- **A run's end effects are a list** (`RunState::on_end`,
+  `CompletedRun::on_end`, `run::RunEndRider`), resolved in the order set,
+  each taken as it starts, the rest waiting behind one that parks. It was
+  one slot, and Virtuoso's breach, set as a run on the mark succeeds, would
+  have overwritten what the run's own event set at its start (Raindrops
+  Cut Stone's draw, Trick Shot's run). A test sets both.
+- **Fidelity limit (a CR 10.11.5 deviation):** a first time on the mark is
+  counted over the turn's runs on that server, so a mark Carpe Diem
+  identifies mid-turn on a server already run successfully that turn
+  gives Virtuoso and Nyusha no first time, where 10.11.5's own example
+  says it does. On the known-limits list and the conformance row.
+- **Client.** No new view field and no new words: requirements have no
+  prose, and the mark is already an In effect line and a log line.
+- **Decks.** Encore, a Sweep deck on Nyusha, the Criminal identity no other
+  deck plays: three Carpe Diem, three Backstitching, two Virtuoso,
+  Parhelion's Tunnel Vision and Info Bounty, and Picket Line's money and
+  breakers (Carmen, Marjanah, Buzzsaw). Eternal-only: Nyusha is banned in
+  Standard and Midnight Sun is not in Startup's pool. **Spare Parts** took
+  a second Beta Build for its Sure Gamble: the 256-seed view sweep failed
+  on its one copy going unseen once Encore joined the rotation (no other
+  deck carries Beta Build), as Safety Net's one Gordian Blade once did.
+- **DSL ratio** (`pool_status.py`): unchanged at 17 of 97 `Effect`
+  variants single-use, 1 unused (`Trace`), now over 495 card files.
+- **Real play** (`--headless`, seed 2, Encore against Retirement Package;
+  random seats 96 games / planner 48). A mark identified 1,126 / 632
+  times; Nyusha's click gained 171 / 131 times; Carpe Diem played 48 / 46;
+  Backstitching installed 35 / 0, its offer heard on 108 encounters, and
+  trashed 34 times by random seats; Virtuoso installed 20 / 0, its run on
+  the mark heard 20 times. **Bot debts:** the planner never installs
+  Backstitching or Virtuoso; on the bot-debts list.
+- **Measured.** Both sweeps are green at 256 seeds, the card gate
+  included. `coverage_identical.py` against Stage 5 (a71d47e, 192 games a
+  report): random identical, view and index alike. The planner seatings
+  move by `determinize`, whose prior holds four more cards: Corp agenda
+  wins 59 → 57, Runner agenda wins 99 → 101, flatlines unchanged.
+
+#### Stage 6b — access outside a breach (3 October 2026)
+
+`claude/serene-einstein-6bhlig`: Pinhole Threading and Deep Dive. **One
+new `Effect`, which both use.** Midnight Sun 54 of 65, its booster pack 6
+of 7; `MS_UNIMPLEMENTED` 13 → 11 and `MSBP_UNIMPLEMENTED` 2 → 1 (Deep Dive
+is a booster-pack card reprinted in the set, built from 32003). **Stage 6
+is complete.**
+
+- **`Effect::Access { from, filter, count, then }`**: the Runner accesses
+  `count` of the cards in `from` that `filter` admits, choosing each, not
+  as a breach (CR 7.1.9, 7.1.10; `run::access_cards`,
+  `AccessState::outside_breach`). Each access is a breach's access steps,
+  through the same `present_card_for_access`; the procedure ends once the
+  number named has been chosen (7.1.10), with no `BreachBegun` and no
+  random access limit. The candidates are `pending_choice::
+  eligible_positions`'s, so an access is offered what a selection over the
+  same zone would be. Composition didn't work: every access began at a
+  breach, whose candidates are a server's. **`then` is part of it**
+  because an access in progress parks nothing a `Sequence` waits behind;
+  it resolves as the card once the accesses end, or queues as a
+  continuation behind whatever they left parked.
+  - Inside a run only as the run's breach is replaced: the replacement no
+    longer ends the run when it left an access, which ends the run when it
+    does, never having breached (Info Bounty's "if you breached" is false).
+  - Outside a run it stands in Cataloguer's run-less `RunState`, on R&D.
+- **Pinhole Threading** is `PromptChooseServer` (Into the Depths' "run any
+  server") whose `on_success` is a `SetAccessReplacement`: the chosen
+  server is now written into it, as into `AddAdditionalAccess`, so "instead
+  of breaching the attacked server" is whichever was run. The replacement
+  forbids stealing or trashing agendas for the rest of the run, then
+  accesses 1 root card matching `Not(InAttackedServer)`.
+  **`Prohibition::StealOrTrashAgendas`**: "If that card is an agenda, you
+  cannot steal or trash it during this access" — the access is the run's
+  last act, so the rest of the run is this access, and made before the card
+  is chosen it shows no facedown card's type in the in-effect list.
+  `continuous::cannot_about` asks it beside `StealOrTrash` of an agenda,
+  so the four sites that ask about a steal or a trash need no change.
+- **Deep Dive** is Chain Reaction's `play_requirement`, then
+  `SetAsideFromTopUntil` with a new `deck: Corp` ("the top 8 cards of R&D"
+  is "until 8 of any card"), an `Access` over the new
+  `CardZoneRef::OpponentSetAside` whose `then` is the "you may spend
+  [click]" `OfferPaidChoice` of a second `Access`, each path ending in
+  `ShuffleIntoDeck([OpponentSetAside])`, which shuffles into R&D.
+  **The Corp's set-aside zone** (`CorpState::set_aside`, CR 4.8): faceup,
+  so public — in the view, copied by `determinize` and struck from its
+  pools, counted by the sweeps' conservation check and fog gate. A set-aside
+  card is accessed by name (`AccessCandidate::SetAside`) and leaves the
+  zone when stolen or trashed.
+- **Fidelity limit:** Deep Dive's accesses stand on R&D, so they name R&D
+  as their server and both clients say "Breach of R&D" (on the known-limits
+  list).
+- **Client.** `hud::in_effect` lists the Corp's set-aside cards ("set aside
+  from R&D: …") in both clients; `outside_breach` is in the view and the
+  ledger marks it the engine's; `prose` words `Access`, the zone, the deck
+  and the prohibition, and the access pop-up names a set-aside candidate by
+  its card.
+- **Decks.** Encore takes three Pinhole Threading for its two Strike Fund
+  and a Chrysopoeian Skimming; Safety Net two Deep Dive for its two
+  Burner. Picket Line keeps the first two, Dead Reckoning and Street
+  Gallery Burner. Deep Dive joins Chain Reaction on
+  `CARDS_RARE_WITH_SWEEP_DECKS`, for the same reason: no agent makes three
+  successful central runs in a turn, and its per-card test is what reaches
+  it.
+- **DSL ratio** (`pool_status.py`): 17 of 98 `Effect` variants
+  single-use, 1 unused (`Trace`), over 497 card files (17 of 97 over 495
+  before; `Access` is used twice).
+- **Real play** (`--headless`, seed 2; random seats 96 games / planner
+  48): Encore against Retirement Package, Pinhole Threading played 47 / 0
+  times, its breach replaced by the access 20 times; Safety Net against
+  Hostile Bid, Deep Dive played by neither. **Bot debts:** the planner
+  never plays Pinhole Threading; on the bot-debts list.
+- **Measured.** Both sweeps are green at 256 seeds, the card gate
+  included. `coverage_identical.py` against Stage 6a (30a85f4, 192 games a
+  report): random identical, view and index alike. The planner seatings
+  move by `determinize`'s prior, two cards larger: Corp agenda wins 57 →
+  58, Corp flatlines 28 → 29, Runner agenda wins 101 → 99.
+
+#### Stage 7a — the score area (3 October 2026)
+
+`claude/serene-einstein-6bhlig`: Backroom Machinations, Regenesis, Blood in
+the Water, Steelskin Scarring. **No new `Effect`.** Midnight Sun 58 of 65,
+its booster pack 6 of 7; `MS_UNIMPLEMENTED` 11 → 7. Stage 7 was split by
+mechanic when it was taken, as Stage 6 was: 7b is Big Deal and Mitosis.
+
+- **One door into Archives.** Regenesis's "if no Corp cards have been added
+  to Archives this turn" is a sum beside `agenda_points_scored` in the turn
+  log (`TurnLog::added_to_archives`, the Turn History Rule), with
+  `Amount::CorpCardsAddedToArchivesThisTurn` to read it. No event is common
+  to every way into Archives — a trash, an operation filed, a card a prompt
+  sends there, and the Corp's discard at the end of their turn, which is
+  dispatched to nobody — so the eighteen pushes in the engine became one
+  function, `turn_log::file_in_archives`, and a test scans the source for
+  any other. The log rides in the view whole and `determinize` copies it,
+  so no masking or sample change.
+- **An operation is trashed once it has resolved** (CR 8.2.7). The engine
+  files a played operation in Archives before its text resolves; Backroom
+  Machinations leaves for the score area as it resolves, so it was never
+  added, and `turn_log::unfile_resolving_operation` gives the count back.
+- **Composed.** Backroom Machinations is Unleash's additional cost and
+  Myōshu's `AddToScoreAreaAsAgenda`. Regenesis is Kingmaking's selection
+  with a `destination` (CR 1.17.3e), over a facedown agenda in Archives,
+  revealed. Steelskin Scarring is Strike Fund's trigger, so a discard
+  offers nothing (CR 1.19.3). Blood in the Water is a printed 0 that
+  Ontological Dependence's `ContinuousKind::AdvancementRequirement` makes
+  the number of cards in the grip.
+- **Client.** The X Blood in the Water prints was owed to this stage:
+  `card_face::Slot::AdvancementX` and `card_face::advancement_slot`, which
+  the face, the score-area sheet, the card facts and the language model's
+  glossary all ask, so none says 0. The known limit is struck.
+  `board::diff`'s invariant test now counts a card a prompt showed its
+  chooser by name (ezaM's "look at the top card of R&D") as seen: the new
+  decks put Bring Them Home there at seed 0.
+- **Decks.** A Thousand Cuts takes two Regenesis and two Blood in the
+  Water for two Sericulture Expansion and a Lotus Haze, six points for six;
+  Spin Cycle two Backroom Machinations for two Your Digital Life; Burn Rate
+  two Steelskin Scarring for two Raindrops Cut Stone. Permafrost, Paid
+  Content and Pay As You Go keep what was given up.
+- **DSL ratio** (`pool_status.py`): 17 of 98 `Effect` variants
+  single-use, 1 unused (`Trace`), over 501 card files.
+- **Real play** (`--headless`, seed 2; random seats 96 games / planner
+  48), against Burn Rate: A Thousand Cuts scored Regenesis 3 / 3 times,
+  its choice offered 2 / 1 times, and Blood in the Water 13 / 7; Spin
+  Cycle played Backroom Machinations 7 / 3 times; Steelskin Scarring was
+  played 11 / 23 times and drew again as it was trashed from the grip or
+  stack 17 / 12 times (against A Thousand Cuts). **No bot debt:** the
+  planner plays all four.
+- **Measured.** Both sweeps are green at 256 seeds, the card gate
+  included. `coverage_identical.py` against Stage 6b (d1be87e, 192 games a
+  report): random identical, view and index alike — the door moved no rule.
+  The planner seatings move by `determinize`'s prior, four cards larger:
+  Corp agenda wins 58 → 59, Corp flatlines 29 → 28, Runner agenda wins
+  99 → 100, decked Runners 6 → 5.
+
+#### Stage 7b — the turn (3 October 2026)
+
+`claude/serene-einstein-6bhlig`: Big Deal and Mitosis. **One new `Effect`,
+which Big Deal alone uses.** Midnight Sun 60 of 65, its booster pack 6 of
+7; `MS_UNIMPLEMENTED` 7 → 5. **Stage 7 is complete.**
+
+- **`Effect::Score`**: the Corp scores the card this resolves as, if able.
+  Scoring was only `PlayerAction::ScoreAgenda`, the Corp's with their action
+  phase's priority and no window open, and Big Deal scores in the middle of
+  its own resolution (CR 1.2.1 over 1.17.3). `engine::score_agenda` is now
+  the action's phase and window around `engine::score_install` — the score
+  itself, from the `ScoreAgendas` lock through costs, dividends and the
+  dispatched `AgendaScored` — which the effect shares, so a score by text is
+  heard as any other. `engine::scorable` asks the same questions without
+  paying, and **`EffectRequirement::Scorable`** puts it to the card being
+  resolved, so "You may score that card, if able" is offered only when there
+  is a score to take: `ActingCardMatches` reads the definition, and whether
+  an agenda can be scored is the table's. `payment::could_ask` admits the
+  choice's answer when any install's cost to score could ask (Azef
+  Protocol's).
+- **Big Deal** is a selection of 1 installed card whose `then` places 4
+  advancement counters and offers the score, then `EndActionPhase`, last,
+  where "after" puts it; `removed_after_play`, and the catalog's trash cost
+  of 3 (CR 3.5.3).
+- **`Prohibition::Rez`**: Mitosis's "You cannot score or rez either of
+  those cards this turn", bound to each card it installed through
+  `PromptInstallCorpCard::if_installed`, as Warm Reception's score lock is.
+  Asked by `engine::rez_install`, the one place a Corp card is turned
+  faceup, ahead of any way to pay, so the action, the action list's probe
+  and a card's text that rezzes are all refused (`RezRestricted`, which a
+  text rez treats as an unaffordable one).
+- **`PromptInstallCorpCard::new_remote`**: "creating a new remote server
+  each time" offers the one remote the Corp would create, and nothing when
+  it may create no more. Mitosis is two of Warm Reception's selections in a
+  `Sequence`, each over `Not(CardType(Operation))` in HQ, "up to" by its
+  minimum of 0.
+- **Client.** `prose` words the effect, the prohibition ("the Corp cannot
+  rez that card") and the new remote; `hud::cannot_words` lists the
+  prohibition with the rest. Nothing new reaches the view: the lingering
+  list already carries it.
+- **Decks.** Retirement Package takes two Big Deal for two Retirement Plan
+  (Deterrence keeps it), Permafrost two Mitosis for two Seamless Launch
+  (Brutal Efficiency and The Syndicate keep it). Big Deal needed no rare
+  entry: the card gate counts an access, and the deep sweep accesses it.
+- **DSL ratio** (`pool_status.py`): 18 of 99 `Effect` variants
+  single-use, 1 unused (`Trace`), over 503 card files (17 of 98 over 501
+  before; `Score` is used once).
+- **Real play** (`--headless`, seed 2; random seats 96 games / planner
+  48), against Burn Rate: Retirement Package played Big Deal 12 / 1 times,
+  Permafrost Mitosis 13 / 2. The report does not say how many of Big Deal's
+  plays scored; the per-card test does. **Bot debts:** on the list — the
+  planner barely plays either.
+- **Measured.** Both sweeps are green at 256 seeds, the card gate
+  included. `coverage_identical.py` against Stage 7a (e73ac08, 192 games a
+  report): random identical, view and index alike — the scoring refactor
+  moved no rule. The planner seatings move by `determinize`'s prior: Corp
+  agenda wins 59 → 58, Corp flatlines 28 → 29.
+
+#### Stage 8a — subroutine lists (3 October 2026)
+
+`claude/serene-einstein-6bhlig`: Echo and Envelopment. **No new `Effect`.**
+Midnight Sun 62 of 65, its booster pack 6 of 7; `MS_UNIMPLEMENTED` 5 → 3.
+
+- **`ContinuousKind::Subroutines { subroutine, count, before }`**: the
+  subroutines a piece of ice gains by its own static ability (CR 9.8.3b,
+  "before its other subroutines"; 9.8.3d, after or in no stated order),
+  `count` copies read as the ice (`HostedCounters`). About `This`, on ice,
+  and nothing else: another card's grant is 9.8.3a or 9.8.3e, which
+  `Effect::GainSubroutine` already says. A "when encountered" trigger with
+  `GainSubroutine` was the stopgap and was rejected: AirbladeX could prevent
+  it, and it would sort among another card's grants. Being a standing
+  effect, it is read through the continuous scan, so Hush's host — which
+  has lost its abilities — gains nothing with no word of its own.
+- **Where it applies**: `run::engine::add_own_subroutines`, as each
+  encounter begins (the approach's `Continue` and a forced encounter),
+  ahead of `add_gained_for_the_run`, which then puts another card's grants
+  outside both: 9.8.3a, b, c, d, e in CR 9.8.2's order. Marked `gained`, so
+  they go with the encounter and the next one counts again. Read then and
+  not when the run's ice is built, because Echo's count moves on a rez
+  further out and Envelopment's as a turn begins; nothing in the pool moves
+  either during an encounter.
+- **CR 6.5.7c**: ice with no subroutines is fully broken as 6.9.3b begins,
+  by no object. Echo with no counters is the first ice in the pool with
+  none; `IceFullyBroken { by: None }` is announced after `IceEncountered`
+  once the list is whole, and the pass is "after fully breaking it". Two
+  engine tests whose fixture Ice Wall prints no subroutines now expect it.
+- **Echo** hears every rez of harmonic ice, its own included (`OnRez`,
+  `Any`, `when` harmonic ice), as Working Prototype hears its own.
+  **Envelopment**: four counters as it is rezzed, one off as the Corp's
+  turn begins, and its printed "Trash this ice." after them.
+- **Client.** `prose` words the kind. Nothing new reaches the view: the
+  run's subroutine list already carries what the ice gained.
+- **Decks.** Retirement Package takes two Echo for two Sorocaban Blade
+  (Deterrence and Undertow keep it), beside four harmonic ice; Hostile Bid
+  two Envelopment for two Logjam (Land Grab keeps it).
+- **DSL ratio** (`pool_status.py`): 18 of 99 `Effect` variants single-use,
+  1 unused (`Trace`), over 505 card files (503 before).
+- **Real play** (`--headless`, seed 2, against Burn Rate; random seats 96
+  games / planner 48): Echo rezzed 54 / 32 times, its subroutines fired 124
+  / 171; Envelopment rezzed 6 / 22, fired 10 / 32, and lost a counter at
+  159 of the planner's turn starts. **Bot debt:** the evaluator reads only
+  printed subroutines, so it prices Echo as ice that never ends the run.
+- **Measured.** Both sweeps are green at 256 seeds, the card gate
+  included. `coverage_identical.py` against Stage 7b (cdc7d09, 192 games a
+  report): random identical, view and index alike — no sample deck prints
+  a card the stage touched. The planner seatings move by `determinize`'s
+  prior and end the same: Corp agenda wins 58, flatlines 29, Runner agenda
+  wins 100, decked Runners 5, before and after.
+
+#### Stage 8b — ability layers (3 October 2026)
+
+`claude/serene-einstein-6bhlig`: Trieste Model Bioroids and Light the Fire!.
+**No new `Effect`.** Midnight Sun 64 of 65, its booster pack 7 of 7
+(`MSBP_UNIMPLEMENTED` empty); `MS_UNIMPLEMENTED` 3 → 1.
+
+- **`Prohibition::BreakSubroutinesOnIce`**: Trieste's "Runner card
+  abilities cannot break subroutines on the chosen ice", bound to the ice
+  its rez selection chose (`Prohibit::this_install`). Asked by both break
+  effects (`ability::breakable_now`) only when the breaker is a Runner card,
+  so Ansel 2.0's "Lose [click]: Break 1 subroutine on this ice" — a Corp
+  card's ability the Runner uses — and a 1.0's click-break stand. Not
+  Hafrún's `BreakSubroutines`, which is about the breaking install.
+- **`EffectDuration::WhileRezzed`**: the choice lasts while Trieste is
+  rezzed (CR 9.10.3c), resolved to `Until::WhileRezzed` of the card whose
+  decision it was — `ResolutionContext::prompting_install`, set where a
+  selection's `then` resolves as the chosen card, since the acting install
+  there is the ice. A derez, a trash or a second rez ends it (the last by
+  `forget_rezzed_period`, already Lycian's). `lingering::until` takes the
+  making install for it.
+- **A choice remembered by a lost ability**: the prohibition is Trieste's
+  static ability reading its choice, so while Trieste has lost its
+  abilities (Light the Fire! on its server) the entry holds and says
+  nothing (`continuous::runner_cards_may_break`, CR 9.1.9a).
+- **Light the Fire!**: `[click], [trash], suffer 1 core damage` is
+  `Cost::AllOf`, the first ability in the pool to suffer damage inside one;
+  the run is Hannah's `PromptChooseServer { only_in: Remote }`. Its two
+  riders are words widened, not effects added:
+  - `Effect::LoseAbilities::attacked_root` makes the loss about
+    `lingering::On::RootOfAttackedServer`, read when asked against the run's
+    server, so a card installed there mid-run loses them and a redirect is
+    followed — the reason `On` has no fixed `Server`. `lingering::
+    loses_abilities` and `active::installs_without_abilities` read it.
+  - `CardTarget::AttackedServerRoot` is "trash all cards in the root of the
+    attacked server", each by its handle, by the Runner, as the run is
+    declared successful (`on_success`) and so before the breach. A
+    `PromptChooseCards` with a count of every root card was rejected: a
+    forced choice of everything, and prevention asks about one card. No
+    Corp card in the pool prevents a trash.
+- **Client.** `prose` and `hud` word the prohibition ("Runner card
+  abilities cannot break subroutines on Ansel 2.0"), the duration, the root
+  loss and the target. Nothing new reaches the view: the lingering list
+  carries both entries.
+- **Decks.** Retirement Package takes two Trieste for two Working Prototype
+  (Deterrence keeps it), beside Ansel 1.0, Ansel 2.0 and Hákarl 1.0; Burn
+  Rate two Light the Fire! for two Valentina Ferreira Carvalho (Pay As You
+  Go keeps her).
+- **DSL ratio** (`pool_status.py`): 17 of 99 `Effect` variants
+  single-use, 1 unused (`Trace`), over 507 card files — `LoseAbilities`
+  has a second card.
+- **Real play** (`--headless`, seed 2, Burn Rate against Retirement Package
+  and Hostile Bid; random seats 96 games / planner 48): Trieste rezzed 82 /
+  25 times, its choice made at every rez with rezzed bioroid ice to choose;
+  Light the Fire! used 15 and 22 times by random seats, **never by the
+  planner** (installed once each) — on the bot-debt list.
+- **Measured.** Both sweeps are green at 256 seeds, the card gate
+  included. `coverage_identical.py` against Stage 8a (6d63c08, 192 games a
+  report): random identical, view and index. The planner seatings move by
+  `determinize`'s prior, which now holds both cards: Corp agenda wins
+  58 → 54, Runner agenda wins 100 → 105, decked Runners 5 → 4, flatlines
+  29 → 29.
+
+#### Stage 8c — the trash chain (3 October 2026)
+
+`claude/serene-einstein-6bhlig`: Ob Superheavy Logistics: Extract. Export.
+Excel., on a Sweep deck of its own. **No new `Effect`.** Midnight Sun 65 of
+65, its booster pack 7 of 7; `MS_UNIMPLEMENTED` empty. **Stage 8 is
+complete, and Midnight Sun with it.**
+
+- **`EventFilter::TrashedRezzed`**: "When you trash a rezzed card, except
+  during installation" — the card was rezzed as it went and was not trashed
+  as a step of installing another (CR 8.5.16c), both read off the event
+  (`GameEvent::CardTrashed::install`, which had carried them since Yakov).
+  One word for both halves, as `TrashedFromThisServer` fuses the same
+  exception. "You trash" is `OnCardTrashed`'s own: a trash the Runner
+  carried out (Light the Fire!, an access) is not the Corp's. Two stale
+  comments that said the event did not carry the rez state are corrected.
+- **`Amount::TriggeringCardPrintedCost`**: the trashed card's printed cost,
+  read off the trash that fired the trigger. Making the trashed card the
+  acting one (`acts_on_subject` with `PrintedCost`) was rejected: it would
+  key Ob's "once per turn" and its prompt on the card in Archives.
+- **`CardFilter::PrintedCostExactly`**: `PrintedCostAtMost`'s "equal to",
+  resolved as the selection is offered, while the trash is still on the
+  context. Ob's search is Eminent Domain's: ice, an asset or an upgrade
+  (the types with a rez cost, CR 2.3.5) at exactly one less, "may" by its
+  minimum of 0, R&D shuffled after. A trashed card printed at 0 has none
+  to find, and the requirement `AmountAtLeast(TriggeringCardPrintedCost, 1)`
+  keeps `Reduced` from flooring it to 0 — and keeps the turn's use unspent.
+- **`PromptInstallCorpCard::ignore_credit_costs`** (CR 1.16.5b): every
+  credit of the install and of the rez is removed and any other cost stays,
+  which is CR 8.5.13c's own Ob example (Archer's forfeit). Paid as a
+  discount of everything; `engine::rez_price` now reads a discount past
+  `i32::MAX` as the whole price rather than wrapping.
+- **Supply Chain** (Sweep, Eternal; 45 cards, Weyland and neutral, no
+  influence): the fifth Midnight Sun identity's deck. Every rez cost from 1
+  to 5 twice over; Envelopment, Regolith Mining License and Cybersand
+  Harvester trash themselves, Svyatogor Excavator and Stavka another card,
+  Kimberlite Field and Azef Protocol a card as they are scored.
+- **Client.** `prose` words the filter, the amount and the install. Nothing
+  new reaches the view.
+- **DSL ratio** (`pool_status.py`): 17 of 99 `Effect` variants
+  single-use, 1 unused (`Trace`), over 508 card files.
+- **Real play** (`--headless`, Supply Chain against Burn Rate, seed 2;
+  random seats 96 games / planner 48): Ob's trigger fired 171 / 31 times
+  and offered a card to install 157 / 30 times. The planner's games split
+  24 / 24 on agenda wins. Regolith Mining License was used 56 / 126 times,
+  Envelopment rezzed 18 / 28.
+- **Measured.** Both sweeps are green at 256 seeds with Supply Chain in
+  the rotation, the card gate included. `coverage_identical.py` against
+  Stage 8b (dceab7e, 192 games a report): **identical in all four shapes**,
+  random and planner, view and index.

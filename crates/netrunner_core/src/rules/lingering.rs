@@ -101,6 +101,12 @@ pub enum On {
     /// that card for the remainder of this run". A copy is the same card
     /// by id; a revealed card, so the id rides in a view unmasked.
     CopiesOf(CardId),
+    /// Every card in the root of the attacked server, read whenever it is
+    /// asked (`active_run.server`) — Light the Fire!'s "cards in the root of
+    /// the attacked server lose all abilities". The server is not fixed when
+    /// the effect is made, which is the reason there is no `Server`: a
+    /// redirect moves it. Nothing outside a run.
+    RootOfAttackedServer,
 }
 
 /// What changes. Only what a card in the pool does for a duration.
@@ -227,8 +233,9 @@ impl LingeringEffect {
 }
 
 /// When a duration a card names ends, fixed at the moment the effect is
-/// made: *this* encounter, *this* turn, `controller`'s next turn.
-pub(crate) fn until(state: &GameState, duration: EffectDuration, controller: Side) -> Result<Until, RulesError> {
+/// made: *this* encounter, *this* turn, `controller`'s next turn, or while
+/// `made_by` — the install whose text it is — stays rezzed.
+pub(crate) fn until(state: &GameState, duration: EffectDuration, controller: Side, made_by: Option<InstallId>) -> Result<Until, RulesError> {
     let run = state.active_run.as_ref();
     match duration {
         // Turns alternate (`GameState::turn` counts both players'), so the
@@ -245,6 +252,7 @@ pub(crate) fn until(state: &GameState, duration: EffectDuration, controller: Sid
             .ok_or(RulesError::NotInEncounter),
         EffectDuration::Run => run.map(|_| Until::EndOfRun).ok_or(RulesError::NoActiveRun),
         EffectDuration::Turn => Ok(Until::EndOfTurn(state.turn)),
+        EffectDuration::WhileRezzed => made_by.map(Until::WhileRezzed).ok_or(RulesError::UnresolvedCardTarget),
     }
 }
 
@@ -313,7 +321,29 @@ fn gained(list: &[LingeringEffect], on: InstallId, subtype: crate::dsl::IceType,
 /// of `install` (Klevetnik's). `rules::active::lost_abilities` asks it
 /// beside Hush's standing loss.
 pub fn loses_abilities(state: &GameState, install: InstallId) -> bool {
-    state.lingering.iter().any(|effect| effect.what == Lingering::LosesAbilities && effect.on == On::Install(install) && effect.holds(state))
+    state.lingering.iter().any(|effect| effect.what == Lingering::LosesAbilities && effect.holds(state) && reaches(state, &effect.on, install))
+}
+
+/// Whether an entry's `on` is about the install `install`: that install,
+/// or a card in the root of the attacked server when that is what it says.
+fn reaches(state: &GameState, on: &On, install: InstallId) -> bool {
+    match on {
+        On::Install(about) => *about == install,
+        On::RootOfAttackedServer => in_attacked_root(state).any(|card| card == install),
+        On::EachIce | On::Player(_) | On::CopiesOf(_) => false,
+    }
+}
+
+/// The installs in the root of the attacked server right now; none outside
+/// a run.
+pub(crate) fn in_attacked_root(state: &GameState) -> impl Iterator<Item = InstallId> + '_ {
+    let server = state.active_run.as_ref().map(|run| run.server);
+    state
+        .corp
+        .installed
+        .iter()
+        .filter(move |card| Some(card.server) == server && card.slot == crate::rules::state::InstallSlot::Root)
+        .map(|card| card.install_id)
 }
 
 /// The fewest printed subroutines a lingering limit lets the Runner break
@@ -531,19 +561,19 @@ mod tests {
     #[test]
     fn a_duration_is_resolved_against_the_state_it_was_named_in() {
         let mut state = encountering(vec![ice(10)], 0);
-        assert_eq!(until(&state, EffectDuration::Encounter, Side::Runner), Ok(Until::EndOfEncounter(InstallId(10))));
-        assert_eq!(until(&state, EffectDuration::Run, Side::Runner), Ok(Until::EndOfRun));
-        assert_eq!(until(&state, EffectDuration::Turn, Side::Runner), Ok(Until::EndOfTurn(state.turn)));
+        assert_eq!(until(&state, EffectDuration::Encounter, Side::Runner, None), Ok(Until::EndOfEncounter(InstallId(10))));
+        assert_eq!(until(&state, EffectDuration::Run, Side::Runner, None), Ok(Until::EndOfRun));
+        assert_eq!(until(&state, EffectDuration::Turn, Side::Runner, None), Ok(Until::EndOfTurn(state.turn)));
         state.active_run.as_mut().unwrap().phase = RunPhase::ApproachIce;
-        assert_eq!(until(&state, EffectDuration::Encounter, Side::Runner), Err(RulesError::NotInEncounter));
+        assert_eq!(until(&state, EffectDuration::Encounter, Side::Runner, None), Err(RulesError::NotInEncounter));
         state.active_run = None;
-        assert_eq!(until(&state, EffectDuration::Run, Side::Runner), Err(RulesError::NoActiveRun));
+        assert_eq!(until(&state, EffectDuration::Run, Side::Runner, None), Err(RulesError::NoActiveRun));
         // "Until your next turn ends", made on the Runner's turn: the Corp's
         // is the next one; made on the Corp's own, the one after that.
         state.phase = crate::rules::GamePhase::Action(Side::Runner);
-        assert_eq!(until(&state, EffectDuration::ThroughYourNextTurn, Side::Corp), Ok(Until::EndOfTurn(state.turn + 1)));
+        assert_eq!(until(&state, EffectDuration::ThroughYourNextTurn, Side::Corp, None), Ok(Until::EndOfTurn(state.turn + 1)));
         state.phase = crate::rules::GamePhase::Action(Side::Corp);
-        assert_eq!(until(&state, EffectDuration::ThroughYourNextTurn, Side::Corp), Ok(Until::EndOfTurn(state.turn + 2)));
+        assert_eq!(until(&state, EffectDuration::ThroughYourNextTurn, Side::Corp, None), Ok(Until::EndOfTurn(state.turn + 2)));
     }
 
     #[test]

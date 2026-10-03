@@ -1,0 +1,69 @@
+{
+  "id": "wave",
+  "title": "Wave",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "CodeGate"
+  },
+  "cost": 2,
+  "strength": 3,
+  "triggers": [
+    {
+      "trigger": "OnRez",
+      "subject": "This",
+      "requirement": "RezzedDuringRunAgainstThisServer",
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Corp",
+            "options": [
+              {
+                "PromptChooseCards": {
+                  "side": "Corp",
+                  "source": "OwnRAndD",
+                  "filter": "Ice",
+                  "min": 0,
+                  "max": 1,
+                  "reveal": true,
+                  "shuffle_after": true,
+                  "destination": "OwnHq"
+                }
+              },
+              {
+                "Sequence": []
+              }
+            ],
+            "texts": [
+              "you may search R&D for a piece of ice and reveal it",
+              ""
+            ]
+          }
+        }
+      ],
+      "text": "When you rez this ice during a run against this server, you may search R&D for a piece of ice and reveal it. (Shuffle R&D after searching it.) Add that ice to HQ."
+    }
+  ],
+  "subroutines": [
+    {
+      "text": "Gain 1[credit] for each rezzed piece of harmonic ice.",
+      "effect": {
+        "GainCreditsAmount": [
+          "Corp",
+          {
+            "CorpInstalls": {
+              "All": [
+                "Ice",
+                "Rezzed",
+                {
+                  "HasSubtype": "Harmonic"
+                }
+              ]
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "built_from": 33037,
+  "is_playable": true
+}

@@ -27,6 +27,10 @@ pub enum CardZoneRef {
     /// those 2 cards", chosen from what it set aside. Faceup, so a
     /// selection over it shows nothing new.
     OwnSetAside,
+    /// The Corp's cards in the set-aside zone (`CorpState::set_aside`, CR
+    /// 4.8), named from the Runner's side — Deep Dive's "Access 1 of those
+    /// cards" and "the Corp shuffles the set-aside cards into R&D". Faceup.
+    OpponentSetAside,
     /// The opposing side's installed cards (Corp's `installed` if the
     /// chooser is Runner, or the Runner's `rig` if the chooser is Corp).
     /// Eligibility filtering is done by the enclosing `Effect::
@@ -96,6 +100,7 @@ impl CardZoneRef {
             | CardZoneRef::OwnGrip
             | CardZoneRef::OwnHeap
             | CardZoneRef::OwnSetAside
+            | CardZoneRef::OpponentSetAside
             | CardZoneRef::OpponentInstalled
             | CardZoneRef::OpponentDiscard
             | CardZoneRef::OwnInstalled
@@ -119,6 +124,7 @@ impl CardZoneRef {
             CardZoneRef::OwnArchives
             | CardZoneRef::OwnHeap
             | CardZoneRef::OwnSetAside
+            | CardZoneRef::OpponentSetAside
             | CardZoneRef::OpponentDiscard
             | CardZoneRef::HostedOnSource
             | CardZoneRef::OpponentScoreArea
@@ -351,6 +357,14 @@ pub enum CardFilter {
     /// compare and is not admitted. Composition didn't work: no filter read
     /// a number from the resolution.
     PrintedCostAtMost(Box<crate::dsl::Amount>),
+    /// A printed cost of exactly this many credits — Ob Superheavy
+    /// Logistics' "a printed rez cost exactly 1[credit] less than the
+    /// trashed card's printed rez cost". `PrintedCostAtMost`'s word for
+    /// "equal to": read as the selection is offered, and admitting no
+    /// agenda or identity. Composition didn't work: "at most N" and "not at
+    /// most N − 1" is the same card twice over an amount read twice, and
+    /// `Not` of a resolved filter is not resolved.
+    PrintedCostExactly(Box<crate::dsl::Amount>),
     /// The same card type as the card a nested cost just trashed — World
     /// Tree's "trash 1 of your other installed cards to search your stack
     /// for 1 card **of the same type**", written in as the selection is
@@ -438,6 +452,7 @@ impl CardFilter {
     pub fn with_resolution(self, amount: &dyn Fn(&crate::dsl::Amount) -> u32, paid: Option<&CardType>) -> CardFilter {
         match self {
             CardFilter::PrintedCostAtMost(at_most) => CardFilter::PrintedCostAtMost(Box::new(crate::dsl::Amount::Fixed(amount(&at_most)))),
+            CardFilter::PrintedCostExactly(exactly) => CardFilter::PrintedCostExactly(Box::new(crate::dsl::Amount::Fixed(amount(&exactly)))),
             CardFilter::SameTypeAsPaidCard => paid.map_or(CardFilter::SameTypeAsPaidCard, |card_type| CardFilter::CardType(card_type.clone())),
             CardFilter::All(filters) => CardFilter::All(filters.into_iter().map(|filter| filter.with_resolution(amount, paid)).collect()),
             CardFilter::AnyOf(filters) => CardFilter::AnyOf(filters.into_iter().map(|filter| filter.with_resolution(amount, paid)).collect()),
@@ -598,6 +613,10 @@ pub fn card_matches_filter(card: &CardDefinition, filter: &CardFilter) -> bool {
         CardFilter::TrashedThisWay => false,
         CardFilter::PrintedCostAtMost(at_most) => match **at_most {
             crate::dsl::Amount::Fixed(n) => !matches!(card.card_type, CardType::Agenda | CardType::Identity) && card.cost <= n,
+            _ => false,
+        },
+        CardFilter::PrintedCostExactly(exactly) => match **exactly {
+            crate::dsl::Amount::Fixed(n) => !matches!(card.card_type, CardType::Agenda | CardType::Identity) && card.cost == n,
             _ => false,
         },
         CardFilter::SameTypeAsPaidCard => false,

@@ -1,0 +1,38 @@
+{
+  "id": "bathynomus",
+  "title": "Bathynomus",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Sentry"
+  },
+  "cost": 3,
+  "strength": 1,
+  "continuous": [
+    {
+      "kind": {
+        "Strength": {
+          "per": 3
+        }
+      },
+      "applies_to": "This",
+      "while": {
+        "Protecting": "Archives"
+      },
+      "text": "While this ice is protecting Archives, it gets +3 strength."
+    }
+  ],
+  "triggers": [],
+  "subroutines": [
+    {
+      "text": "Do 3 net damage.",
+      "effect": {
+        "DealDamage": [
+          "Net",
+          3
+        ]
+      }
+    }
+  ],
+  "built_from": 33044,
+  "is_playable": true
+}

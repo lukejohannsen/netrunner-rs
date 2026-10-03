@@ -16,7 +16,7 @@
 //! but agendas and identities), 0 included, because the card does.
 
 use netrunner_core::card::Faction;
-use netrunner_core::dsl::{CardDefinition, CardType};
+use netrunner_core::dsl::{CardDefinition, CardType, ContinuousKind, Scope};
 use netrunner_core::rules::Side;
 
 use crate::art::{ArtChoices, Picture};
@@ -30,6 +30,10 @@ pub enum Slot {
     Strength(i32),
     /// An agenda's advancement requirement, where a cost would sit.
     Advancement(u32),
+    /// An agenda's requirement printed as X, which its own text defines
+    /// (Blood in the Water's "X is equal to the number of cards in the
+    /// Runner's grip").
+    AdvancementX,
     AgendaPoints(u32),
     TrashCost(u32),
     Memory(u32),
@@ -51,6 +55,7 @@ impl Slot {
             Slot::Strength(n) => n.to_string(),
             Slot::InfluenceLimit(Some(n)) => n.to_string(),
             Slot::InfluenceLimit(None) => "∞".to_string(),
+            Slot::AdvancementX => "X".to_string(),
         }
     }
 
@@ -65,6 +70,7 @@ impl Slot {
             Slot::Cost(n) => format!("Cost {n}"),
             Slot::Strength(n) => format!("Strength {n}"),
             Slot::Advancement(n) => format!("Advancement {n}"),
+            Slot::AdvancementX => "Advancement X".to_string(),
             Slot::AgendaPoints(n) => format!("{n} agenda point{}", if n == 1 { "" } else { "s" }),
             Slot::TrashCost(n) => format!("Trash {n}"),
             Slot::Memory(n) => format!("{n} MU"),
@@ -79,7 +85,7 @@ impl Slot {
         match self {
             Slot::Cost(_) => "cost",
             Slot::Strength(_) => "strength",
-            Slot::Advancement(_) => "advance",
+            Slot::Advancement(_) | Slot::AdvancementX => "advance",
             Slot::AgendaPoints(_) => "points",
             Slot::TrashCost(_) => "trash",
             Slot::Memory(_) => "MU",
@@ -88,6 +94,18 @@ impl Slot {
             Slot::Link(_) => "link",
         }
     }
+}
+
+/// An agenda's printed advancement requirement, X where it prints one.
+/// An X is what a card file cannot write: it is a printed 0 that the
+/// agenda's own continuous effect makes the number (NetrunnerDB records
+/// the X as none). Ontological Dependence prints a 4 it changes, and is a
+/// 4. Every place that says what an agenda prints asks this, so none says
+/// "0" for Blood in the Water.
+pub fn advancement_slot(card: &CardDefinition) -> Option<Slot> {
+    let x = card.advancement_requirement == Some(0)
+        && card.continuous.iter().any(|effect| matches!(effect.kind, ContinuousKind::AdvancementRequirement(_)) && effect.applies_to == Scope::This);
+    if x { Some(Slot::AdvancementX) } else { card.advancement_requirement.map(Slot::Advancement) }
 }
 
 /// A card laid out for drawing.
@@ -134,7 +152,7 @@ impl Face {
         let cost = if is(CardType::Identity) {
             None
         } else if is(CardType::Agenda) {
-            card.advancement_requirement.map(Slot::Advancement)
+            advancement_slot(card)
         } else {
             Some(Slot::Cost(card.cost))
         };
@@ -371,11 +389,9 @@ mod tests {
             match card.card_type {
                 CardType::Identity => assert_eq!(face.cost, None, "{}", card.title),
                 // Blood in the Water (Midnight Sun) prints its advancement
-                // requirement as X, which NetrunnerDB records as none. The
-                // face draws no circle for it until the Midnight Sun stage
-                // that builds a variable requirement gives `Slot` an X
-                // (docs/roadmap/nsg-card-pool.md).
-                CardType::Agenda if card.advancement_requirement.is_none() => {
+                // requirement as X, which NetrunnerDB records as none and
+                // its card file as a printed 0 its own text defines.
+                CardType::Agenda if face.cost == Some(Slot::AdvancementX) => {
                     assert_eq!(card.id.0, "blood_in_the_water", "{} is not the one agenda printed with an X", card.title)
                 }
                 CardType::Agenda => assert!(matches!(face.cost, Some(Slot::Advancement(_))), "{}", card.title),

@@ -285,8 +285,10 @@ pub enum Trigger {
     /// who carried the trash out (CR 1.14.5a: "these conditions are only
     /// met when that player is the one to carry out the relevant effect"),
     /// about the card trashed. A trash the rules make (`by: None`) is an
-    /// occurrence of nothing. Which card is the `when`'s to say; whether it
-    /// was installed is not on the event, so `InstalledCard` is refused.
+    /// occurrence of nothing. Which card is the `when`'s to say; where it
+    /// was is `TrashedFrom`'s, and how an install stood as it went
+    /// (`TrashedRezzed`, `TrashedFromThisServer`) the event's `install`.
+    /// `InstalledCard` is refused, because the card is no longer installed.
     /// Composition didn't work: `OnTrashedFromAccess` is one kind of trash
     /// and `OnCardsTrashedFromHq` a batch from one zone.
     OnCardTrashed,
@@ -696,6 +698,16 @@ pub enum EventFilter {
     /// `OnTrashedFromAccess`. Composition didn't work: `Server` is about a
     /// moment that is about a server, and a trash is about a card.
     TrashedFromThisServer,
+    /// The card was rezzed as it was trashed, and was not trashed as a
+    /// step of installing another (CR 8.5.16c) — Ob Superheavy Logistics'
+    /// "When you trash **a rezzed card, except during installation**".
+    /// Read off the moment (`GameEvent::CardTrashed::install`), since the
+    /// card is in Archives when its trash is heard. The two halves are one
+    /// word, as `TrashedFromThisServer` fuses the same exception: the one
+    /// card that asks whether a trashed card was rezzed asks both. Only on
+    /// `OnCardTrashed`. Composition didn't work: a `Card` filter's
+    /// `Rezzed` asks the card as it stands now, which is in Archives.
+    TrashedRezzed,
     /// Every one of these — Hostile Architecture's "the Runner trashes any
     /// of **your installed** cards", on a trash by a card's text: the card
     /// is the Corp's and the moment the Runner's (`OwnedBy`), **and** it

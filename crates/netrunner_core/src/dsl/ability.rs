@@ -388,6 +388,14 @@ pub enum EffectRequirement {
     /// while there is no mark. Composition didn't work: no requirement
     /// reads the mark, which is chosen each turn.
     EncounteringIceProtectingMark,
+    /// The Runner's mark is `server` (CR 10.11, `lingering::mark`) — Carpe
+    /// Diem's "You may run **your mark**", written as one branch per central
+    /// server, and Backstitching's "during a run **on your mark**", which
+    /// pairs it with `DuringRunOn`. False while there is no mark.
+    /// Composition didn't work: a run's target is a `ServerId`, which has
+    /// no word for the mark, and `EncounteringIceProtectingMark` asks where
+    /// an encountered ice is installed, not which server the mark is.
+    MarkIs(crate::rules::ServerId),
     /// The active run was begun by this card (`RunState::initiated_by`) —
     /// Baker's "[click]: Run Archives. When you would approach Archives…",
     /// whose second sentence is about the run its first began.
@@ -527,6 +535,14 @@ pub enum EffectRequirement {
     /// that is not one of three, which a list of ids cannot say
     /// (`EventFilter::Server`'s doc has the same sentence).
     ProtectingRemote,
+    /// This card is installed protecting this server — Bathynomus's "while
+    /// this ice is protecting **Archives**", `ProtectingRemote`'s sibling
+    /// for a server with a name. Composition didn't work: `ProtectingRemote`
+    /// is every server but three, and `ActingCardMatches(InServer(..))`
+    /// reads the definition, which has no place; a scope that reads the
+    /// copy (`IceProtectingThisServer`) is about every ice in a server,
+    /// not this one.
+    Protecting(crate::rules::ServerId),
     CurrentlyAccessingInstalledCard {
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
         rezzed_only: bool,
@@ -550,6 +566,13 @@ pub enum EffectRequirement {
     /// OnAgendaScored), 1)`: that is *an* agenda, and a second Witch Hunt,
     /// or an earlier one, would have given the Runner 3 tags again.
     ThisAgendaScoredThisTurn,
+    /// The card this resolves as could be scored now (`engine::scorable`)
+    /// — Big Deal's "if able", asked ahead of its "you may score that
+    /// card" so the choice is offered only when there is a score to take.
+    /// Composition didn't work: `ActingCardMatches` reads the definition,
+    /// and whether an agenda can be scored is the table's — its counters,
+    /// its requirement as it stands, a lock, a cost.
+    Scorable,
 }
 
 impl EffectRequirement {

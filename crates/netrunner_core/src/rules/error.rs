@@ -170,6 +170,12 @@ pub enum RulesError {
     #[error("{card:?} has lost all its abilities")]
     AbilitiesLost { card: CardId },
 
+    /// The Runner may not use this card's paid abilities now — Hákarl 1.0's
+    /// "the Runner cannot use paid abilities printed on bioroid ice"
+    /// (`Prohibition::BioroidIceAbilities`).
+    #[error("the Runner cannot use {card:?}'s paid abilities now")]
+    AbilityProhibited { card: CardId },
+
     #[error("ability index {0} is out of range")]
     InvalidAbilityIndex(usize),
 

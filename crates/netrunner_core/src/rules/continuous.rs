@@ -251,7 +251,11 @@ fn applies(state: &GameState, source: &Source<'_>, scope: &Scope, target: &Targe
                 && crate::rules::pending_choice::copy_matches(state, filter, Some(*install))
         }
         (Scope::Trashing(filter), Target::Trashing { card, .. }) => card.card_type == CardType::Resource && card_matches_filter(card, filter),
-        (Scope::Ice, Target::Corp { card, root: false, .. }) => matches!(card.card_type, CardType::Ice(_)),
+        (Scope::Ice(filter), Target::Corp { card, root: false, install, .. }) => {
+            matches!(card.card_type, CardType::Ice(_))
+                && card_matches_filter(card, filter)
+                && crate::rules::pending_choice::copy_matches(state, filter, Some(*install))
+        }
         (Scope::RootOfThisServer(filter), Target::Corp { card, server, root: true, .. }) => {
             source.server == Some(*server) && card_matches_filter(card, filter)
         }
@@ -446,6 +450,41 @@ pub(crate) fn breaks_left(state: &GameState, registry: &CardRegistry, ice: &RunI
         }
     });
     left
+}
+
+/// The subroutines the ice `install` gains by its own static ability
+/// (`ContinuousKind::Subroutines`, Echo's and Envelopment's), as copies to
+/// put before its printed ones (CR 9.8.3b) and after them (9.8.3d), each
+/// count read as the ice right now. Within a category every copy is the
+/// same subroutine, so the order among them is nothing a player can see.
+pub(crate) fn own_subroutines(state: &GameState, registry: &CardRegistry, install: InstallId) -> (Vec<crate::dsl::SubroutineDef>, Vec<crate::dsl::SubroutineDef>) {
+    let (mut before, mut after) = (Vec::new(), Vec::new());
+    let Some(target) = Target::corp_install(state, registry, install) else { return (before, after) };
+    for_each_applying(state, registry, target, |kind| matches!(kind, ContinuousKind::Subroutines { .. }), |effect, _, ctx| {
+        if let ContinuousKind::Subroutines { subroutine, count, before: first } = &effect.kind {
+            let copies = (count.per * ability::resolve_amount(&count.of, ctx, state, registry) as i32).max(0) as usize;
+            let into = if *first { &mut before } else { &mut after };
+            into.extend(std::iter::repeat_n((**subroutine).clone(), copies));
+        }
+    });
+    (before, after)
+}
+
+/// Whether a Runner card's abilities may break subroutines on the ice
+/// `ice` (`Prohibition::BreakSubroutinesOnIce`, Trieste Model Bioroids'
+/// "Runner card abilities cannot break subroutines on the chosen ice").
+/// The choice is remembered on the lingering list for as long as Trieste
+/// is rezzed, but the sentence that reads it is Trieste's static ability,
+/// and a Trieste that has lost its abilities (Light the Fire! on its
+/// server, CR 9.1.9a) says nothing: so an entry whose source has lost them
+/// does not hold here while the loss does.
+pub(crate) fn runner_cards_may_break(state: &GameState, registry: &CardRegistry, ice: InstallId) -> bool {
+    !state.lingering.iter().any(|effect| {
+        effect.what == lingering::Lingering::Cannot(Prohibition::BreakSubroutinesOnIce)
+            && effect.on == lingering::On::Install(ice)
+            && effect.holds(state)
+            && !matches!(effect.until, lingering::Until::WhileRezzed(source) if active::lost_abilities(state, registry, source))
+    })
 }
 
 /// Whether the Corp may still trash an installed Runner card with the text
@@ -733,9 +772,15 @@ pub fn standing_prohibitions<'a>(state: &'a GameState, registry: &'a CardRegistr
 }
 
 /// [`cannot`] about one card: also what binds only copies of it (Perfect
-/// Recall). An access asks this, of the card accessed.
-pub fn cannot_about(state: &GameState, _registry: &CardRegistry, what: Prohibition, card: &CardId) -> bool {
+/// Recall). An access asks this, of the card accessed. A steal or trash of
+/// an agenda is also what `StealOrTrashAgendas` forbids (Pinhole
+/// Threading), so the four sites that ask about a steal or a trash need no
+/// second question.
+pub fn cannot_about(state: &GameState, registry: &CardRegistry, what: Prohibition, card: &CardId) -> bool {
     lingering::prohibits_about(state, what, card)
+        || (what == Prohibition::StealOrTrash
+            && registry.get(card).is_some_and(|definition| definition.card_type == crate::dsl::CardType::Agenda)
+            && lingering::prohibits_about(state, Prohibition::StealOrTrashAgendas, card))
 }
 
 /// [`cannot`] about one install: also what binds only it (Warm
