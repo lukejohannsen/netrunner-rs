@@ -48,7 +48,7 @@ cards each stage takes.
 | 2 | Rebellion Without Rehearsal (`rwr`) | 65 | 65 | 0 | complete (28 September 2026) |
 | 3 | The Automata Initiative (`tai`) | 65 | 65 | 0 | complete (29 September 2026) |
 | 4 | Parhelion (`ph`) | 63 | 63 | 0 | complete (2 October 2026) |
-| 5 | Midnight Sun (`ms`) + Booster (`msbp`) | 65 + 7 | 62 + 6 | 3 + 1 | Stages 1–7 and 8a built (3 October 2026); **Stage 8b next** — ability layers, then 8c, the trash chain |
+| 5 | Midnight Sun (`ms`) + Booster (`msbp`) | 65 + 7 | 64 + 7 | 1 + 0 | Stages 1–7, 8a and 8b built (3 October 2026); **Stage 8c next** — the trash chain |
 | 6 | Uprising (`ur`) + Booster (`urbp`) | 65 + 7 | 0 | 65 + 7 | not started |
 | 7 | Downfall (`df`) | 65 | 0 | 65 | not started |
 | 8 | System Update 2021 (`su21`), Salvaged Memories (`sm`), Magnum Opus Reprint (`mor`) | 82, 18, 6 | 11, 1, 0 | 71, 17, 6 | not started (the built ones are Core reprints) |
@@ -307,12 +307,12 @@ this file keeps; a stage that builds or widens a mechanic updates the cell.
 | Set aside | RWR: The Wizard’s Chest | PH Spark of Inspiration; MS Deep Dive; UR Gachapon | CR 4.8 | RWR 6d (faceup only); PH 6c (Spark composes) |
 | X costs | RWR: Lobisomem | PH Matryoshka; DF Utae; reprints Corporate Troubleshooter, Psychographics | CR 1.16.2c | RWR 6e; PH 7 |
 | Forced or repeated encounter | RWR: Sisyphus Protocol | UR Konjin, Ganked! | CR 6.1.3 | RWR 7d |
-| Losing abilities | PH: Hush, Klevetnik | MS Light the Fire! | CR 9.1.9a | PH 8 (`ContinuousKind::LosesAbilities`, `Lingering::LosesAbilities`; one question, `active::lost_abilities`) |
-| Break restrictions ("cannot be broken", "only by …") | PH: Anvil, Unsmiling Tsarevna, Hafrún | MS Trieste Model Bioroids; UR Akhet, NEXT Activation Command | CR 9.8.5 | RWR 5b (Hammer's, standing); PH 8 (for a duration, `Lingering::BreakLimit`; one Runner card's, `Prohibition::BreakSubroutines`) |
+| Losing abilities | PH: Hush, Klevetnik | MS Light the Fire! | CR 9.1.9a | PH 8 (`ContinuousKind::LosesAbilities`, `Lingering::LosesAbilities`; one question, `active::lost_abilities`); MS 8b (the root of the attacked server, read when asked: `lingering::On::RootOfAttackedServer`) |
+| Break restrictions ("cannot be broken", "only by …") | PH: Anvil, Unsmiling Tsarevna, Hafrún | MS Trieste Model Bioroids; UR Akhet, NEXT Activation Command | CR 9.8.5 | RWR 5b (Hammer's, standing); PH 8 (for a duration, `Lingering::BreakLimit`; one Runner card's, `Prohibition::BreakSubroutines`); MS 8b (one piece of ice, against Runner cards only: `Prohibition::BreakSubroutinesOnIce`) |
 | Charge | PH: Flux Capacitor, Orca | MS Captain Padma Isbister, Rigging Up, “Daeg, First Net-Cat”, Stoneship Chart Room | CR 10.10 | PH 6a (composes: a selection of `HostsCounters(Power)`) |
 | Mark | PH: Tunnel Vision, Info Bounty | MS Nyusha "Sable" Sintashta, Carpe Diem, Virtuoso, Backstitching | CR 10.11 | PH 6b (`Lingering::Mark`, `Effect::IdentifyMark`) |
 | An agenda's points or advancement requirement changing | VP: Let Them Dream | PH Ontological Dependence, Freedom of Information, Regulatory Capture; UR Megaprix Qualifier, Project Vacheron; reprints Project Beale, SanSan City Grid | CR 3.2.2, CR 3.2.3b | VP 3a (points); PH 3a (requirement, a card's own) |
-| A choice remembered for a duration (a server, an ice, a subtype, a card's name) | RWR: Lycian Multi-Munition | MS Trieste Model Bioroids; UR Boomerang, Engram Flush; DF Whistleblower, Complete Image, Saisentan; reprints Femme Fatale, Security Testing, Chameleon | CR 9.10.3 | RWR 8a; PH 8 (a server, for the turn: Tsakhia's `Effect::ChooseServer`) |
+| A choice remembered for a duration (a server, an ice, a subtype, a card's name) | RWR: Lycian Multi-Munition | MS Trieste Model Bioroids; UR Boomerang, Engram Flush; DF Whistleblower, Complete Image, Saisentan; reprints Femme Fatale, Security Testing, Chameleon | CR 9.10.3 | RWR 8a; PH 8 (a server, for the turn: Tsakhia's `Effect::ChooseServer`); MS 8b (a piece of ice, while the chooser is rezzed: `EffectDuration::WhileRezzed`) |
 | A triggered ability created by a card that resolved ("when your next run ends…") | DF: In the Groove, Climactic Showdown, Always Have a Backup Plan | reprints Inside Job, Test Run | CR 9.10 | RWR 5d in part (a delayed conditional ability); DF's cards — |
 | Lockdown | UR: SYNC Rerouting, Argus Crackdown, NAPD Cordon, NEXT Activation Command, Hyoubu Precog Manifold | — | CR 3.5.1c | — |
 
@@ -412,6 +412,7 @@ A card on the list is a term to write or a reading to repair, never a card to ta
 - **Midnight Sun Stage 5's cards it barely plays** (the Corp decks against Safety Net, Hit List against Hostile Bid, seed 2, 48 planner games): Trust Operation played once (19 times by random seats in 96 games); Cat's Cradle installed seven times (38).
 - **Midnight Sun Stage 6a's cards it never installs** (Encore against Retirement Package, seed 2, 48 planner games): Backstitching and Virtuoso (35 and 20 installs by random seats in 96 games). It plays Carpe Diem (46) and gains Nyusha's click (131 times).
 - **Midnight Sun Stage 7b's cards it barely plays** (each Corp deck against Burn Rate, seed 2, 48 planner games): Big Deal once (Retirement Package; random seats 12 times in 96 games) — 17[credit] is rarely the planner's best click — and Mitosis twice (Permafrost; 13).
+- **Midnight Sun Stage 8b's resource it never uses** (Burn Rate against Retirement Package and Hostile Bid, seed 2, 48 planner games each): Light the Fire! installed once in each and never used (random seats used it 15 and 22 times in 96 games). A click, the card and a core damage for a run on a remote is a price no term reads as buying the root. The planner rezzes Trieste Model Bioroids (25 of 35 installs) and makes its choice.
 - **Midnight Sun Stage 8a's ice it prices short** (each Corp deck against Burn Rate, seed 2): the planner rezzes Echo (32 times in 48 games; random seats 54 in 96) and Envelopment (22; 6) and their subroutines fire, but the evaluator reads a piece of ice's printed subroutines (`eval::corp`'s end-the-run count, `eval::read`'s "can end the run"), so Echo reads as ice that never ends the run and Envelopment as ice that only trashes itself. A reading to repair: ask `continuous::own_subroutines` beside the printed list.
 - **Midnight Sun Stage 6b's cards it never plays** (seed 2, 48 planner games): Pinhole Threading (Encore against Retirement Package; random seats played it 47 times in 96 games, 20 of them reaching the access). Deep Dive is played by no seat, as Chain Reaction is: three successful central runs in one turn (on the sweeps' rare list).
 - **Economy resources and programs it does not value**: Friend of a Friend, Valentina Ferreira Carvalho, Coalescence; Laser Pointer, Banner; Monkeywrench, Saci, Pichação, Urban Art Vernissage; Lago Paranoá Shelter; AirbladeX (JSRF Ed.); the Core Set interrupts Decoy, Net Shield and Sacrificial Construct.
@@ -783,8 +784,8 @@ Grid, Tsakhia, World Tree.
    3 October 2026): Big Deal, Mitosis. Stage 7 is complete.
 8. **Subroutine lists and ability layers:** split by mechanic when it was
    taken. **8a, subroutine lists** (built, 3 October 2026): Echo,
-   Envelopment. **8b, ability layers:** Trieste Model Bioroids, Light the
-   Fire!. **8c, the trash chain:** Ob Superheavy Logistics, on a Sweep deck
+   Envelopment. **8b, ability layers** (built, 3 October 2026): Trieste
+   Model Bioroids, Light the Fire!. **8c, the trash chain:** Ob Superheavy Logistics, on a Sweep deck
    of its own.
 
 **Riskiest:**
@@ -810,6 +811,7 @@ Excavator.
 - **Stage 7a** — the score area: four cards with no new `Effect`, one door into Archives counted in the turn log, and an agenda printed with an X (`claude/serene-einstein-6bhlig`, 3 October 2026).
 - **Stage 7b** — the turn: Big Deal and Mitosis, one new `Effect` (`Score`, the action's scoring shared with a card's text), a card kept from being rezzed for a turn, and an install into a new remote only (`claude/serene-einstein-6bhlig`, 3 October 2026).
 - **Stage 8a** — subroutine lists: Echo and Envelopment with no new `Effect`, the subroutines a piece of ice gains by its own static ability, counted, in the rules' order, and ice with none fully broken as it is encountered (`claude/serene-einstein-6bhlig`, 3 October 2026).
+- **Stage 8b** — ability layers: Trieste Model Bioroids and Light the Fire! with no new `Effect`, a piece of ice Runner cards cannot break while the card that chose it is rezzed, the root of the attacked server losing its abilities for a run, and every card in it trashed (`claude/serene-einstein-6bhlig`, 3 October 2026).
 
 ### 6. Uprising and its Booster Pack — 65 cards (C 10 / V 37 / M 18)
 

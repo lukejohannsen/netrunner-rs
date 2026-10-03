@@ -6563,3 +6563,65 @@ Midnight Sun 62 of 65, its booster pack 6 of 7; `MS_UNIMPLEMENTED` 5 → 3.
   a card the stage touched. The planner seatings move by `determinize`'s
   prior and end the same: Corp agenda wins 58, flatlines 29, Runner agenda
   wins 100, decked Runners 5, before and after.
+
+#### Stage 8b — ability layers (3 October 2026)
+
+`claude/serene-einstein-6bhlig`: Trieste Model Bioroids and Light the Fire!.
+**No new `Effect`.** Midnight Sun 64 of 65, its booster pack 7 of 7
+(`MSBP_UNIMPLEMENTED` empty); `MS_UNIMPLEMENTED` 3 → 1.
+
+- **`Prohibition::BreakSubroutinesOnIce`**: Trieste's "Runner card
+  abilities cannot break subroutines on the chosen ice", bound to the ice
+  its rez selection chose (`Prohibit::this_install`). Asked by both break
+  effects (`ability::breakable_now`) only when the breaker is a Runner card,
+  so Ansel 2.0's "Lose [click]: Break 1 subroutine on this ice" — a Corp
+  card's ability the Runner uses — and a 1.0's click-break stand. Not
+  Hafrún's `BreakSubroutines`, which is about the breaking install.
+- **`EffectDuration::WhileRezzed`**: the choice lasts while Trieste is
+  rezzed (CR 9.10.3c), resolved to `Until::WhileRezzed` of the card whose
+  decision it was — `ResolutionContext::prompting_install`, set where a
+  selection's `then` resolves as the chosen card, since the acting install
+  there is the ice. A derez, a trash or a second rez ends it (the last by
+  `forget_rezzed_period`, already Lycian's). `lingering::until` takes the
+  making install for it.
+- **A choice remembered by a lost ability**: the prohibition is Trieste's
+  static ability reading its choice, so while Trieste has lost its
+  abilities (Light the Fire! on its server) the entry holds and says
+  nothing (`continuous::runner_cards_may_break`, CR 9.1.9a).
+- **Light the Fire!**: `[click], [trash], suffer 1 core damage` is
+  `Cost::AllOf`, the first ability in the pool to suffer damage inside one;
+  the run is Hannah's `PromptChooseServer { only_in: Remote }`. Its two
+  riders are words widened, not effects added:
+  - `Effect::LoseAbilities::attacked_root` makes the loss about
+    `lingering::On::RootOfAttackedServer`, read when asked against the run's
+    server, so a card installed there mid-run loses them and a redirect is
+    followed — the reason `On` has no fixed `Server`. `lingering::
+    loses_abilities` and `active::installs_without_abilities` read it.
+  - `CardTarget::AttackedServerRoot` is "trash all cards in the root of the
+    attacked server", each by its handle, by the Runner, as the run is
+    declared successful (`on_success`) and so before the breach. A
+    `PromptChooseCards` with a count of every root card was rejected: a
+    forced choice of everything, and prevention asks about one card. No
+    Corp card in the pool prevents a trash.
+- **Client.** `prose` and `hud` word the prohibition ("Runner card
+  abilities cannot break subroutines on Ansel 2.0"), the duration, the root
+  loss and the target. Nothing new reaches the view: the lingering list
+  carries both entries.
+- **Decks.** Retirement Package takes two Trieste for two Working Prototype
+  (Deterrence keeps it), beside Ansel 1.0, Ansel 2.0 and Hákarl 1.0; Burn
+  Rate two Light the Fire! for two Valentina Ferreira Carvalho (Pay As You
+  Go keeps her).
+- **DSL ratio** (`pool_status.py`): 17 of 99 `Effect` variants
+  single-use, 1 unused (`Trace`), over 507 card files — `LoseAbilities`
+  has a second card.
+- **Real play** (`--headless`, seed 2, Burn Rate against Retirement Package
+  and Hostile Bid; random seats 96 games / planner 48): Trieste rezzed 82 /
+  25 times, its choice made at every rez with rezzed bioroid ice to choose;
+  Light the Fire! used 15 and 22 times by random seats, **never by the
+  planner** (installed once each) — on the bot-debt list.
+- **Measured.** Both sweeps are green at 256 seeds, the card gate
+  included. `coverage_identical.py` against Stage 8a (6d63c08, 192 games a
+  report): random identical, view and index. The planner seatings move by
+  `determinize`'s prior, which now holds both cards: Corp agenda wins
+  58 → 54, Runner agenda wins 100 → 105, decked Runners 5 → 4, flatlines
+  29 → 29.

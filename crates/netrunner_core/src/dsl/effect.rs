@@ -95,6 +95,15 @@ pub enum CardTarget {
     /// resolving card's controller's (`CardTrashed::by`), as every "the
     /// Corp trashes" a Runner card prints is (conformance ledger, 1.14).
     RandomFromHq,
+    /// Every card in the root of the attacked server — Light the Fire!'s
+    /// "When that run is successful, trash all cards in the root of the
+    /// attacked server". Only meaningful for `Effect::TrashCard`; each card
+    /// is trashed by the resolving card's controller, one after another,
+    /// and nothing happens outside a run. Composition didn't work: a
+    /// `PromptChooseCards` with a `count` of every root card parks a choice
+    /// of everything, and trash prevention is offered only for a single
+    /// selected card.
+    AttackedServerRoot,
 }
 
 /// Where `Effect::HostCardOnThisCard` takes the card from.
@@ -1471,7 +1480,18 @@ pub enum Effect {
     /// lost_abilities`. Composition didn't work: nothing took a card's
     /// abilities away; Hush's is a standing effect of the card hosted on
     /// the loser, and this one is made once and outlives its maker.
-    LoseAbilities { until: EffectDuration },
+    LoseAbilities {
+        until: EffectDuration,
+        /// The cards that lose them are every card in the root of the
+        /// attacked server, read whenever it is asked — Light the Fire!'s
+        /// "During that run, cards in the root of the attacked server lose
+        /// all abilities" (`lingering::On::RootOfAttackedServer`), so a card
+        /// installed there mid-run loses them too and a redirect is
+        /// followed. A field, for the reason `Prohibit`'s `this_install` and
+        /// `encountered_ice` are: what the loss is about is the effect's.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        attacked_root: bool,
+    },
     /// During each encounter with the ice the resolution acts as, for the
     /// duration, the Runner cannot break more than `at_most` of its printed
     /// subroutines — Anvil's "the Runner cannot break this ice's printed
@@ -1939,6 +1959,16 @@ pub enum EffectDuration {
     /// alternate, so a player's next turn is the turn after this one, or
     /// the one after that when this turn is already theirs.
     ThroughYourNextTurn,
+    /// For as long as the card that made it stays rezzed (CR 9.10.3c: a
+    /// lingering effect that keeps a choice lasts until its source becomes
+    /// inactive) — Trieste Model Bioroids' chosen ice, chosen as it is
+    /// rezzed. Resolved to `Until::WhileRezzed` of the card whose text this
+    /// is (`ResolutionContext::prompting_install`, since inside a
+    /// selection's `then` the acting install is the card chosen), so a
+    /// derez, a trash or a second rez ends it. Composition didn't work:
+    /// Lycian Multi-Munition's `WhileRezzed` is its own, hard-wired into
+    /// `GainIceSubtype`, and every duration here was a span of the game.
+    WhileRezzed,
 }
 
 /// What an `Effect::Prevent` prevents, as the card prints it after the word
@@ -2088,12 +2118,23 @@ pub enum Prohibition {
     /// unaffordable one). Not a rez requirement, which a card prints about
     /// itself; this is another card's word about it, for a duration.
     Rez,
+    /// Runner card abilities cannot break subroutines on one piece of ice
+    /// — Trieste Model Bioroids' "choose 1 rezzed piece of bioroid ice.
+    /// Runner card abilities cannot break subroutines on the chosen ice",
+    /// bound to the chosen ice (`Effect::Prohibit::this_install`) for as
+    /// long as Trieste is rezzed (`EffectDuration::WhileRezzed`). Asked by
+    /// the two break effects (`ability::breakable_now`) when the breaker
+    /// is a Runner card, so the ice's own "[click]: break" and the
+    /// Runner-usable abilities a bioroid prints are untouched — they are
+    /// Corp card abilities. Not `BreakSubroutines`, which is about the
+    /// breaking install, never the broken one.
+    BreakSubroutinesOnIce,
 }
 
 impl Prohibition {
     /// Every prohibition, for a question put about each of them
     /// (`view::build_client_view`'s `standing_cannot`).
-    pub const ALL: [Prohibition; 13] = [
+    pub const ALL: [Prohibition; 14] = [
         Prohibition::ScoreAgendas,
         Prohibition::StealOrTrash,
         Prohibition::StealOrTrashAgendas,
@@ -2107,13 +2148,14 @@ impl Prohibition {
         Prohibition::DiscardStep,
         Prohibition::BioroidIceAbilities,
         Prohibition::Rez,
+        Prohibition::BreakSubroutinesOnIce,
     ];
 
     /// The player it binds.
     pub fn binds(self) -> Side {
         match self {
             Prohibition::ScoreAgendas | Prohibition::EndTheRun | Prohibition::DiscardStep | Prohibition::Rez => Side::Corp,
-            Prohibition::StealOrTrash | Prohibition::StealOrTrashAgendas | Prohibition::SpendOrLoseCreditPool | Prohibition::SpendCredits | Prohibition::RunOnRemote | Prohibition::AccessOthers | Prohibition::Access | Prohibition::BreakSubroutines | Prohibition::BioroidIceAbilities => Side::Runner,
+            Prohibition::StealOrTrash | Prohibition::StealOrTrashAgendas | Prohibition::SpendOrLoseCreditPool | Prohibition::SpendCredits | Prohibition::RunOnRemote | Prohibition::AccessOthers | Prohibition::Access | Prohibition::BreakSubroutines | Prohibition::BioroidIceAbilities | Prohibition::BreakSubroutinesOnIce => Side::Runner,
         }
     }
 
@@ -2124,7 +2166,7 @@ impl Prohibition {
     pub(crate) fn counted_as(self) -> Option<crate::dsl::Trigger> {
         match self {
             Prohibition::RunOnRemote => Some(crate::dsl::Trigger::OnRunStart),
-            Prohibition::ScoreAgendas | Prohibition::StealOrTrash | Prohibition::StealOrTrashAgendas | Prohibition::SpendOrLoseCreditPool | Prohibition::SpendCredits | Prohibition::EndTheRun | Prohibition::AccessOthers | Prohibition::Access | Prohibition::BreakSubroutines | Prohibition::DiscardStep | Prohibition::BioroidIceAbilities | Prohibition::Rez => None,
+            Prohibition::ScoreAgendas | Prohibition::StealOrTrash | Prohibition::StealOrTrashAgendas | Prohibition::SpendOrLoseCreditPool | Prohibition::SpendCredits | Prohibition::EndTheRun | Prohibition::AccessOthers | Prohibition::Access | Prohibition::BreakSubroutines | Prohibition::DiscardStep | Prohibition::BioroidIceAbilities | Prohibition::Rez | Prohibition::BreakSubroutinesOnIce => None,
         }
     }
 }

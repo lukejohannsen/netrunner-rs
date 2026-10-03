@@ -39,14 +39,10 @@ pub(crate) const TAI_UNIMPLEMENTED: &[(&str, &str)] = &[
 pub(crate) const PH_UNIMPLEMENTED: &[(&str, &str)] = &[];
 
 /// *Midnight Sun Booster Pack* (`midnight_sun_booster_pack`): tranche 5 of the NSG plan.
-pub(crate) const MSBP_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("light_the_fire", "Light the Fire!"),
-];
+pub(crate) const MSBP_UNIMPLEMENTED: &[(&str, &str)] = &[];
 
 /// *Midnight Sun* (`midnight_sun`): tranche 5 of the NSG plan.
 pub(crate) const MS_UNIMPLEMENTED: &[(&str, &str)] = &[
-    ("light_the_fire", "Light the Fire!"),
-    ("trieste_model_bioroids", "Trieste Model Bioroids"),
     ("ob_superheavy_logistics_extract_export_excel", "Ob Superheavy Logistics: Extract. Export. Excel."),
 ];
 

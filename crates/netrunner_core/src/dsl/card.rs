@@ -1550,7 +1550,7 @@ impl CardDefinition {
                 && match duration {
                     EffectDuration::Encounter => triggered.trigger == Trigger::OnEncounter,
                     EffectDuration::Run => matches!(triggered.trigger, Trigger::OnEncounter | Trigger::OnRez),
-                    EffectDuration::Turn | EffectDuration::ThroughYourNextTurn => false,
+                    EffectDuration::Turn | EffectDuration::ThroughYourNextTurn | EffectDuration::WhileRezzed => false,
                 }
         };
         if self.triggers.iter().any(|triggered| triggered.effects.iter().flat_map(gains).any(|duration| !fits(triggered, duration)))

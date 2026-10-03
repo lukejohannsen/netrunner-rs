@@ -1,0 +1,45 @@
+{
+  "id": "trieste_model_bioroids",
+  "title": "Trieste Model Bioroids",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 2,
+  "trash_cost": 3,
+  "triggers": [
+    {
+      "trigger": "OnRez",
+      "subject": "This",
+      "effects": [
+        {
+          "PromptChooseCards": {
+            "side": "Corp",
+            "source": "OwnInstalled",
+            "filter": {
+              "All": [
+                "Ice",
+                "Rezzed",
+                {
+                  "HasSubtype": "Bioroid"
+                }
+              ]
+            },
+            "min": 1,
+            "max": 1,
+            "reveal": false,
+            "shuffle_after": false,
+            "then": {
+              "Prohibit": {
+                "what": "BreakSubroutinesOnIce",
+                "until": "WhileRezzed",
+                "this_install": true
+              }
+            }
+          }
+        }
+      ],
+      "text": "When you rez this asset, choose 1 rezzed piece of bioroid ice. Runner card abilities cannot break subroutines on the chosen ice."
+    }
+  ],
+  "built_from": 33034,
+  "is_playable": true
+}

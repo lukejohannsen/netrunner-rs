@@ -293,6 +293,7 @@ fn cannot_words(what: netrunner_core::dsl::Prohibition) -> &'static str {
         Prohibition::DiscardStep => "the Corp skips their discard step",
         Prohibition::BioroidIceAbilities => "the Runner cannot use paid abilities printed on bioroid ice",
         Prohibition::Rez => "the Corp cannot rez that card",
+        Prohibition::BreakSubroutinesOnIce => "Runner card abilities cannot break subroutines on that ice",
     }
 }
 
@@ -371,11 +372,18 @@ pub fn in_effect(view: &ClientView, registry: &CardRegistry) -> Vec<String> {
                     let card = super::facts::card_of(view, *install).map_or_else(|| "that card".to_string(), |card| title(&card));
                     format!("{card}'s abilities cannot break subroutines")
                 }
+                // Trieste Model Bioroids: about the ice it chose.
+                (Lingering::Cannot(Prohibition::BreakSubroutinesOnIce), On::Install(ice)) => {
+                    let ice = super::facts::card_of(view, *ice).map_or_else(|| "the chosen ice".to_string(), |card| title(&card));
+                    format!("Runner card abilities cannot break subroutines on {ice}")
+                }
                 (Lingering::Cannot(what), _) => cannot_words(*what).to_string(),
                 // Klevetnik: the resource it chose.
                 (Lingering::LosesAbilities, on) => {
                     let card = match on {
                         On::Install(install) => super::facts::card_of(view, *install).map_or_else(|| "that card".to_string(), |card| title(&card)),
+                        // Light the Fire!: whatever is in the root now.
+                        On::RootOfAttackedServer => return Some("cards in the root of the attacked server have lost all their abilities".to_string()),
                         _ => "that card".to_string(),
                     };
                     format!("{card} has lost all its abilities")

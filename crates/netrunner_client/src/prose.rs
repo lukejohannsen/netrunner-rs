@@ -209,6 +209,7 @@ fn describe_target(target: &CardTarget, registry: &CardRegistry) -> String {
         CardTarget::HostedOnThisCard => "the card hosted here".to_string(),
         CardTarget::EncounteredIce => "the ice being encountered".to_string(),
         CardTarget::RandomFromHq => "a random card from HQ".to_string(),
+        CardTarget::AttackedServerRoot => "every card in the root of the attacked server".to_string(),
     }
 }
 
@@ -227,6 +228,7 @@ fn duration(d: &EffectDuration) -> &'static str {
         EffectDuration::Run => "for this run",
         EffectDuration::Turn => "for this turn",
         EffectDuration::ThroughYourNextTurn => "until your next turn ends",
+        EffectDuration::WhileRezzed => "while this card is rezzed",
     }
 }
 
@@ -260,6 +262,7 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
                 EffectDuration::Run => "this run",
                 EffectDuration::Turn => "this turn",
                 EffectDuration::ThroughYourNextTurn => "your next turn",
+                EffectDuration::WhileRezzed => "the time this card is rezzed",
             };
             format!("{which} {sign}{delta} strength for the remainder of {until}")
         }
@@ -450,6 +453,7 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
                 netrunner_core::dsl::EffectDuration::Run => "the rest of the run",
                 netrunner_core::dsl::EffectDuration::Turn => "the rest of the turn",
                 netrunner_core::dsl::EffectDuration::ThroughYourNextTurn => "the rest of your next turn",
+                netrunner_core::dsl::EffectDuration::WhileRezzed => "as long as this card is rezzed",
             };
             format!("the ice gains {copies}\u{201c}{}\u{201d} {order} its other subroutines, for {how_long}", subroutine.text.trim_end_matches('.'))
         }
@@ -483,6 +487,7 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
                 (Prohibition::BioroidIceAbilities, _) => "the Runner cannot use paid abilities printed on bioroid ice",
                 (Prohibition::StealOrTrashAgendas, _) => "the Runner cannot steal or trash agendas",
                 (Prohibition::Rez, _) => "the Corp cannot rez that card",
+                (Prohibition::BreakSubroutinesOnIce, _) => "Runner card abilities cannot break subroutines on that ice",
             };
             format!("{what} {}", duration(until))
         }
@@ -496,7 +501,8 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
         Effect::MoveThisIceToOutermost => "move this ice to the outermost position protecting the attacked server".to_string(),
         Effect::PlayOperation { .. } => "play an operation".to_string(),
         Effect::ResolveSubroutineOfSelectedIce => "resolve a subroutine of the chosen ice".to_string(),
-        Effect::LoseAbilities { until } => format!("it loses all abilities {}", duration(until)),
+        Effect::LoseAbilities { until, attacked_root: false } => format!("it loses all abilities {}", duration(until)),
+        Effect::LoseAbilities { until, attacked_root: true } => format!("cards in the root of the attacked server lose all abilities {}", duration(until)),
         Effect::LimitBreaks { at_most: 0, until } => format!("the Runner cannot break this ice's printed subroutines {}", duration(until)),
         Effect::LimitBreaks { at_most, until } => {
             format!("during each encounter with this ice, the Runner cannot break more than {at_most} of its printed subroutines, {}", duration(until))
@@ -776,6 +782,7 @@ pub fn describe_continuous(effect: &ContinuousEffect) -> String {
             Prohibition::DiscardStep => "skips their discard step",
             Prohibition::BioroidIceAbilities => "cannot use paid abilities printed on bioroid ice",
             Prohibition::Rez => "cannot rez this card",
+            Prohibition::BreakSubroutinesOnIce => "cannot break subroutines on this ice with Runner card abilities",
         }
         .to_string(),
         ContinuousKind::Subroutines { subroutine, count, before } => format!(

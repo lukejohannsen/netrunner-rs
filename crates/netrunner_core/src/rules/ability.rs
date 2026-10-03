@@ -100,6 +100,14 @@ pub struct ResolutionContext<'a> {
     /// (`play_operation_card`, a fired trigger) builds a context with this
     /// `None`, so a prompt parked by a card Plutus replays is that card's.
     pub prompting_card: Option<&'a CardId>,
+    /// The install of the card whose decision this is a continuation of,
+    /// when that differs from `acting_install` — `prompting_card`'s
+    /// install. Read only by a duration that lasts while that card stays
+    /// rezzed (`EffectDuration::WhileRezzed`): Trieste Model Bioroids'
+    /// chosen ice is what its selection's `then` acts as, and the choice
+    /// holds for as long as Trieste, not the ice, is rezzed. `None` means
+    /// "the acting install".
+    pub prompting_install: Option<InstallId>,
     /// The acting install as it was just before its cost was paid, for an
     /// effect that reads a card its own cost has taken off the table —
     /// Fermenter's "[click], [trash]: Gain 2[credit] for each hosted virus
@@ -347,7 +355,7 @@ pub fn evaluate_effect(
             if *which == crate::dsl::StrengthOf::This {
                 let install = ctx.acting_install.filter(|install| state.corp.installed.iter().any(|c| c.install_id == *install && c.slot == crate::rules::state::InstallSlot::Ice));
                 let (Some(install), Some(card_id)) = (install, acting_card.cloned()) else { return Err(RulesError::UnresolvedCardTarget) };
-                let until = lingering::until(state, *duration, controller(ctx, state, registry))?;
+                let until = lingering::until(state, *duration, controller(ctx, state, registry), ctx.prompting_install.or(ctx.acting_install))?;
                 state.lingering.push(LingeringEffect { what: Lingering::Strength(*delta), on: On::Install(install), until, source: ctx.attributed_card().unwrap_or_else(|| card_id.clone()) });
                 return Ok(Vec::new());
             }
@@ -355,7 +363,7 @@ pub fn evaluate_effect(
             // every piece of ice, the ones installed later too, which is
             // `On::EachIce` asked at every read — not one entry per ice.
             if *which == crate::dsl::StrengthOf::EachIce {
-                let until = lingering::until(state, *duration, controller(ctx, state, registry))?;
+                let until = lingering::until(state, *duration, controller(ctx, state, registry), ctx.prompting_install.or(ctx.acting_install))?;
                 let encountered = state.active_run.as_ref().filter(|run| run.phase == RunPhase::EncounterIce).and_then(|run| run.ice.get(run.position)).cloned();
                 let fallback = encountered.as_ref().map_or_else(|| CardId(String::new()), |ice| ice.card_id.clone());
                 state.lingering.push(LingeringEffect { what: Lingering::Strength(*delta), on: On::EachIce, until, source: source(&fallback) });
@@ -378,7 +386,7 @@ pub fn evaluate_effect(
             // "For the remainder of this encounter" (Leech). This wrote the
             // delta into `RunIce::current_strength`, where nothing took it
             // back out, so it lasted the run.
-            let until = lingering::until(state, *duration, controller(ctx, state, registry))?;
+            let until = lingering::until(state, *duration, controller(ctx, state, registry), ctx.prompting_install.or(ctx.acting_install))?;
             let (on, source) = (ice.install_id, source(&card_id));
             state.lingering.push(LingeringEffect { what: Lingering::Strength(*delta), on: On::Install(on), until, source });
             let run = state.active_run.as_ref().ok_or(RulesError::NoActiveRun)?;
@@ -1359,7 +1367,7 @@ pub fn evaluate_effect(
         }
 
         Effect::Prohibit { what, until, copies_of_it, this_install, encountered_ice } => {
-            let until = lingering::until(state, *until, controller(ctx, state, registry))?;
+            let until = lingering::until(state, *until, controller(ctx, state, registry), ctx.prompting_install.or(ctx.acting_install))?;
             // The card whose text it is, for whoever shows it; a prohibition
             // with no card behind it has nothing to be shown as. About
             // copies, the acting card is the one revealed, and the text is
@@ -1430,7 +1438,7 @@ pub fn evaluate_effect(
                 EffectDuration::Encounter if lasts_the_run => EffectDuration::Run,
                 other => *other,
             };
-            let until = lingering::until(state, duration, controller(ctx, state, registry))?;
+            let until = lingering::until(state, duration, controller(ctx, state, registry), ctx.prompting_install.or(ctx.acting_install))?;
             state.lingering.push(LingeringEffect { what: Lingering::Strength(*amount as i32), on: On::Install(host_install), until, source: acting.clone() });
             let new_strength = lingering::rig_strength(state, &state.runner.rig[position]);
             Ok(vec![GameEvent::StrengthBoosted {
@@ -2102,8 +2110,14 @@ pub fn evaluate_effect(
             }
         }
 
-        Effect::LoseAbilities { until } => {
-            let until = lingering::until(state, *until, controller(ctx, state, registry))?;
+        Effect::LoseAbilities { until, attacked_root: true } => {
+            let until = lingering::until(state, *until, controller(ctx, state, registry), ctx.prompting_install.or(ctx.acting_install))?;
+            let source = ctx.attributed_card().ok_or(RulesError::UnresolvedCardTarget)?;
+            state.lingering.push(LingeringEffect { what: Lingering::LosesAbilities, on: On::RootOfAttackedServer, until, source });
+            Ok(Vec::new())
+        }
+        Effect::LoseAbilities { until, attacked_root: false } => {
+            let until = lingering::until(state, *until, controller(ctx, state, registry), ctx.prompting_install.or(ctx.acting_install))?;
             let Some(install) = ctx.acting_install else { return Err(RulesError::UnresolvedCardTarget) };
             // A card gone from the table between the choice and now has
             // nothing left to lose.
@@ -2116,7 +2130,7 @@ pub fn evaluate_effect(
         }
 
         Effect::LimitBreaks { at_most, until } => {
-            let until = lingering::until(state, *until, controller(ctx, state, registry))?;
+            let until = lingering::until(state, *until, controller(ctx, state, registry), ctx.prompting_install.or(ctx.acting_install))?;
             let install = ctx
                 .acting_install
                 .filter(|install| state.corp.installed.iter().any(|c| c.install_id == *install && c.slot == crate::rules::state::InstallSlot::Ice))
@@ -2601,7 +2615,9 @@ fn installed_target(state: &GameState, registry: &CardRegistry, target: &CardTar
             state.corp.installed.iter().position(|installed| installed.install_id == host).map(corp)
         }
         CardTarget::RunnerRig(card) => state.runner.rig.iter().position(|installed| &installed.card == card).map(rig),
-        CardTarget::TopOfStack { .. } | CardTarget::HostedOnThisCard | CardTarget::RandomFromHq => None,
+        // Many cards, trashed one after another by `trash_card`: no Corp
+        // card in the pool prevents a trash, so nobody would be asked.
+        CardTarget::TopOfStack { .. } | CardTarget::HostedOnThisCard | CardTarget::RandomFromHq | CardTarget::AttackedServerRoot => None,
     }
 }
 
@@ -2685,7 +2701,7 @@ fn resolve_corp_installed_target(
             let installed = state.find_corp_install(install).ok_or(RulesError::UnresolvedCardTarget)?;
             Ok((install, installed.card.clone(), installed.server))
         }
-        CardTarget::RunnerRig(_) | CardTarget::TopOfStack { .. } | CardTarget::HostedOnThisCard | CardTarget::RandomFromHq => {
+        CardTarget::RunnerRig(_) | CardTarget::TopOfStack { .. } | CardTarget::HostedOnThisCard | CardTarget::RandomFromHq | CardTarget::AttackedServerRoot => {
             Err(RulesError::UnresolvedCardTarget)
         }
     }
@@ -2847,6 +2863,17 @@ pub(crate) fn trash_card(
         // Handled by `evaluate_effect`'s `TrashCard` arm before it gets
         // here (it needs the registry to route each card home).
         CardTarget::HostedOnThisCard => Err(RulesError::UnresolvedCardTarget),
+
+        // Each by its handle, the root read once before the first goes, so
+        // what a trash's own consequences install there is not taken too.
+        CardTarget::AttackedServerRoot => {
+            let root: Vec<InstallId> = crate::rules::lingering::in_attacked_root(state).collect();
+            let mut events = Vec::new();
+            for install in root {
+                events.extend(trash_install(state, registry, Side::Corp, install, by)?);
+            }
+            Ok(events)
+        }
 
         CardTarget::RunnerRig(card) => {
             let position = state
@@ -4235,7 +4262,11 @@ fn subroutine_breakable_by(subroutine: &crate::rules::run::EncounteredSubroutine
 /// so it is never limited.
 ///
 /// Nothing at all for a breaker whose abilities cannot break subroutines
-/// (Hafrún's `Prohibition::BreakSubroutines`, bound to its install `by`).
+/// (Hafrún's `Prohibition::BreakSubroutines`, bound to its install `by`),
+/// nor for a Runner card on ice whose subroutines Runner card abilities
+/// cannot break (Trieste Model Bioroids', `continuous::
+/// runner_cards_may_break`) — which leaves a bioroid's own break, an
+/// ability of the Corp's card, alone.
 fn breakable_now(
     state: &GameState,
     registry: &CardRegistry,
@@ -4244,6 +4275,9 @@ fn breakable_now(
     by: Option<InstallId>,
 ) -> Vec<(usize, bool)> {
     if by.is_some_and(|install| lingering::prohibits_install(state, crate::dsl::Prohibition::BreakSubroutines, install)) {
+        return Vec::new();
+    }
+    if breaker.is_some_and(|definition| definition.side == Side::Runner) && !continuous::runner_cards_may_break(state, registry, ice.install_id) {
         return Vec::new();
     }
     let mut left = continuous::breaks_left(state, registry, ice, breaker);

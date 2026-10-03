@@ -1526,6 +1526,7 @@ pub(crate) fn resolve_confirm_card_selection(
             // prompting card's text, so anything it parks is attributed to
             // that card — see `ResolutionContext::prompting_card`.
             ctx.prompting_card = prompting_card.as_ref().or(source_card.as_ref());
+            ctx.prompting_install = source_install;
             events.extend(ability::evaluate_effect(state, &effect, &mut ctx, registry)?);
         }
     }

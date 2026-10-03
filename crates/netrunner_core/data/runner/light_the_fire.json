@@ -1,0 +1,47 @@
+{
+  "id": "light_the_fire",
+  "title": "Light the Fire!",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 1,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "AllOf": [
+          {
+            "Clicks": 1
+          },
+          "TrashSelf",
+          {
+            "SufferDamage": [
+              "Brain",
+              1
+            ]
+          }
+        ]
+      },
+      "effect": {
+        "PromptChooseServer": {
+          "chooser": "Runner",
+          "rez_cost_delta": 0,
+          "bonus_run_credits": 0,
+          "only_in": "Remote",
+          "on_start": {
+            "LoseAbilities": {
+              "until": "Run",
+              "attacked_root": true
+            }
+          },
+          "on_success": {
+            "TrashCard": "AttackedServerRoot"
+          }
+        }
+      },
+      "text": "[click], [trash], suffer 1 core damage: Run a remote server. During that run, cards in the root of the attacked server lose all abilities. When that run is successful, trash all cards in the root of the attacked server."
+    }
+  ],
+  "built_from": 32001,
+  "is_playable": true
+}

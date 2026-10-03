@@ -140,9 +140,10 @@ pub(crate) fn installs_without_abilities(state: &GameState, registry: &CardRegis
         .lingering
         .iter()
         .filter(|effect| effect.what == crate::rules::lingering::Lingering::LosesAbilities && effect.holds(state))
-        .filter_map(|effect| match effect.on {
-            crate::rules::lingering::On::Install(install) => Some(install),
-            _ => None,
+        .flat_map(|effect| match effect.on {
+            crate::rules::lingering::On::Install(install) => vec![install],
+            crate::rules::lingering::On::RootOfAttackedServer => crate::rules::lingering::in_attacked_root(state).collect(),
+            _ => Vec::new(),
         })
         .collect();
     for card in state.runner.rig.iter().filter(|card| card.hosted_on_ice.is_some() || card.hosted_on_rig_card.is_some()) {

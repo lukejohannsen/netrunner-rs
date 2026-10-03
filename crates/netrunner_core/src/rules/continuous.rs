@@ -470,6 +470,23 @@ pub(crate) fn own_subroutines(state: &GameState, registry: &CardRegistry, instal
     (before, after)
 }
 
+/// Whether a Runner card's abilities may break subroutines on the ice
+/// `ice` (`Prohibition::BreakSubroutinesOnIce`, Trieste Model Bioroids'
+/// "Runner card abilities cannot break subroutines on the chosen ice").
+/// The choice is remembered on the lingering list for as long as Trieste
+/// is rezzed, but the sentence that reads it is Trieste's static ability,
+/// and a Trieste that has lost its abilities (Light the Fire! on its
+/// server, CR 9.1.9a) says nothing: so an entry whose source has lost them
+/// does not hold here while the loss does.
+pub(crate) fn runner_cards_may_break(state: &GameState, registry: &CardRegistry, ice: InstallId) -> bool {
+    !state.lingering.iter().any(|effect| {
+        effect.what == lingering::Lingering::Cannot(Prohibition::BreakSubroutinesOnIce)
+            && effect.on == lingering::On::Install(ice)
+            && effect.holds(state)
+            && !matches!(effect.until, lingering::Until::WhileRezzed(source) if active::lost_abilities(state, registry, source))
+    })
+}
+
 /// Whether the Corp may still trash an installed Runner card with the text
 /// of `install` (`ContinuousKind::TrashLimit`, Sorocaban Blade's "you
 /// cannot trash more than 1 installed Runner card with this ice during

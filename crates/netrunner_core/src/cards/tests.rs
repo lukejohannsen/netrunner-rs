@@ -22265,4 +22265,117 @@ mod midnight_sun {
         let texts: Vec<String> = encountered_list(&on_to_the_encounter(running, &registry)).into_iter().map(|(text, _)| text).collect();
         assert_eq!(texts, ["Do 1 net damage. The Runner draws 1 card.", "End the run.", "Trash this ice.", "Gain 1[credit]."]);
     }
+
+    // ---- Stage 8b: ability layers ----
+
+    fn breaks_offered(state: &GameState, registry: &CardRegistry, card: &str) -> bool {
+        let install = fixture_install_id(card);
+        crate::rules::legal_actions_for(state, registry, Side::Runner)
+            .iter()
+            .any(|action| matches!(action, PlayerAction::ActivateAbility { target, ability_index: 0 } if *target == install))
+    }
+
+    /// The Corp rezzes Trieste in a remote and chooses Ansel 2.0 on HQ; then
+    /// the Runner's turn, with Carmen at strength 5 in the rig.
+    fn trieste_chose_ansel(registry: &CardRegistry) -> GameState {
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Corp);
+        state.corp.installed = vec![
+            ice_at("ansel_2_0", ServerId::Hq, true),
+            ice_at("ice_wall", ServerId::RnD, true),
+            ice_at("bumi_1_0", ServerId::Archives, false),
+            root_at("trieste_model_bioroids", 0),
+        ];
+        let (asked, _) = apply_action(&state, registry, PlayerAction::RezIce { ice: install_of(&state, "trieste_model_bioroids") }).expect("rez");
+        assert_eq!(toggles(&asked, registry).len(), 1, "rezzed bioroid ice only: not Ice Wall, not the unrezzed Bumi");
+        let (chosen, _) = pick(&asked, registry, toggles(&asked, registry)[0]);
+        assert!(chosen.pending_decision.is_none());
+        let mut runner = chosen;
+        runner.phase = GamePhase::Action(Side::Runner);
+        runner.runner.resources.clicks = Clicks(4);
+        runner.runner.rig = vec![in_rig("carmen", 5, 0)];
+        runner
+    }
+
+    /// "Runner card abilities cannot break subroutines on the chosen ice":
+    /// Carmen cannot, Ansel 2.0's own "Lose [click]: Break 1 subroutine on
+    /// this ice" — a Corp card's ability — still can, and the choice goes
+    /// with Trieste.
+    #[test]
+    fn trieste_keeps_runner_cards_from_breaking_the_chosen_bioroid_while_it_is_rezzed() {
+        let registry = registry();
+        let chosen = trieste_chose_ansel(&registry);
+        let encountering = to_the_encounter(&chosen, &registry);
+        assert!(!breaks_offered(&encountering, &registry, "carmen"), "Carmen cannot break Ansel's subroutines");
+        assert!(breaks_offered(&encountering, &registry, "ansel_2_0"), "Ansel 2.0's own ability is not a Runner card's");
+
+        let mut trashed = chosen.clone();
+        trashed.corp.installed.retain(|card| card.card != id("trieste_model_bioroids"));
+        assert!(breaks_offered(&to_the_encounter(&trashed, &registry), &registry, "carmen"), "gone with Trieste");
+        let mut derezzed = chosen.clone();
+        derezzed.corp.installed.iter_mut().filter(|card| card.card == id("trieste_model_bioroids")).for_each(|card| card.rezzed = false);
+        assert!(breaks_offered(&to_the_encounter(&derezzed, &registry), &registry, "carmen"), "and with its rez");
+        let (again, _) = apply_action(&{ let mut corp = derezzed.clone(); corp.phase = GamePhase::Action(Side::Corp); corp }, &registry, PlayerAction::RezIce { ice: install_of(&derezzed, "trieste_model_bioroids") }).expect("rez again");
+        assert!(again.pending_decision.is_some(), "a new rez asks again");
+    }
+
+    /// "[click], [trash], suffer 1 core damage: Run a remote server": the
+    /// root's Flagship loses "runs against this server cannot be declared
+    /// successful", so the run is, and its root — Flagship and an unrezzed
+    /// PAD Campaign — is trashed before the breach, by the Runner.
+    #[test]
+    fn light_the_fire_blanks_the_root_of_a_remote_for_its_run_and_trashes_it_when_the_run_succeeds() {
+        let registry = registry();
+        let mut state = runner_turn();
+        state.runner.rig = vec![in_rig("light_the_fire", 0, 0)];
+        state.runner.grip = vec![id("sure_gamble"); 3];
+        state.corp.installed = vec![rezzed_root_at("flagship", 0), root_at("pad_campaign", 0), ice_at("ice_wall", ServerId::Hq, true)];
+        let (asked, _) = apply_action(&state, &registry, PlayerAction::ActivateAbility { target: fixture_install_id("light_the_fire"), ability_index: 0 }).expect("use it");
+        assert_eq!(asked.runner.resources.clicks, Clicks(3));
+        assert_eq!((asked.runner.brain_damage, asked.runner.grip.len()), (1, 2), "1 core damage");
+        assert!(asked.runner.heap.contains(&id("light_the_fire")) && asked.runner.rig.is_empty(), "[trash]");
+        let Some(PendingDecision::ChooseServer { allowed_servers: Some(servers), .. }) = &asked.pending_decision else { panic!("{:?}", asked.pending_decision) };
+        assert_eq!(servers, &[ServerId::Remote(0)], "a remote server");
+
+        let running = apply_action(&asked, &registry, PlayerAction::ChooseServerForPendingDecision { server: ServerId::Remote(0) }).expect("run").0;
+        let flagship = install_of(&running, "flagship");
+        assert!(crate::rules::active::lost_abilities(&running, &registry, flagship), "during that run");
+        let (there, _) = crate::rules::test_support::through_movement(&running, &registry).expect("to the server");
+        let (done, events) = apply_action(&there, &registry, PlayerAction::CompleteRun).expect("successful, Flagship's text lost");
+        let trashed: Vec<_> = events
+            .iter()
+            .filter_map(|event| match event {
+                GameEvent::CardTrashed { card, by: Some(Side::Runner), .. } => Some(card.0.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(trashed, ["flagship", "pad_campaign"], "trash all cards in the root");
+        assert!(!events.iter().any(|event| matches!(event, GameEvent::CardAccessed { .. })), "nothing left to access");
+        let (done, _) = close_all_windows(done, &registry);
+        assert!(done.active_run.is_none());
+        assert_eq!(done.corp.installed.len(), 1);
+        assert!(!crate::rules::active::lost_abilities(&done, &registry, flagship));
+
+        // Jacked out: the run is not successful, and nothing is trashed.
+        let (moving, _) = crate::rules::test_support::continue_run(&running, &registry).expect("to the movement phase");
+        let (jacked, _) = apply_action(&moving, &registry, PlayerAction::JackOut).expect("jack out");
+        let (jacked, _) = close_all_windows(jacked, &registry);
+        assert_eq!(jacked.corp.installed.len(), 3);
+    }
+
+    /// Trieste is in the root: Light the Fire! takes its abilities for the
+    /// run, so the choice it remembers says nothing during it.
+    #[test]
+    fn light_the_fire_on_triestes_server_lets_runner_cards_break_the_chosen_ice_for_that_run() {
+        let registry = registry();
+        let mut chosen = trieste_chose_ansel(&registry);
+        let ansel = install_of(&chosen, "ansel_2_0");
+        chosen.corp.installed.iter_mut().filter(|card| card.install_id == ansel).for_each(|card| card.server = ServerId::Remote(0));
+        chosen.runner.rig.push(in_rig("light_the_fire", 0, 0));
+        chosen.runner.grip = vec![id("sure_gamble"); 3];
+        let (asked, _) = apply_action(&chosen, &registry, PlayerAction::ActivateAbility { target: fixture_install_id("light_the_fire"), ability_index: 0 }).expect("use it");
+        let running = apply_action(&asked, &registry, PlayerAction::ChooseServerForPendingDecision { server: ServerId::Remote(0) }).expect("run").0;
+        let encountering = on_to_the_encounter(running, &registry);
+        assert!(breaks_offered(&encountering, &registry, "carmen"), "Trieste has lost the ability that reads its choice");
+    }
 }
