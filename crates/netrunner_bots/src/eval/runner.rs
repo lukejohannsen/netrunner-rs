@@ -43,7 +43,9 @@ use super::*;
 pub(super) fn access_prospect(state: &GameState, run: &RunState, registry: &CardRegistry, w: &Weights, credits: u32, horizon: u32) -> f64 {
     use netrunner_core::rules::{InstallSlot, ServerId};
     let server = run.redirect_on_approach.unwrap_or(run.server);
-    let promised = rider_accesses(run, server);
+    // What the rig adds at the breach (Docklands Pass, `rig_breach_accesses`)
+    // beside what the run's own rider adds (Phase 5 §32).
+    let promised = rider_accesses(run, server) + rig_breach_accesses(state, registry, server);
     let earlier = runs_earlier_this_turn(state, server);
     let seen = earlier > 0;
     let mut hidden = 0.0_f64;
@@ -360,7 +362,7 @@ pub(super) fn install_delta(def: &CardDefinition, rig: [bool; 3], shown: [bool; 
     }
     let new_coverage = covers(def).iter().zip(rig).filter(|(grip, rig)| **grip && !rig).count();
     let unshown = covers(def).iter().zip(rig).zip(shown).filter(|((grip, rig), shown)| **grip && !rig && !shown).count();
-    let promised = if w.rd_access_weight != 0.0 { f64::from(rd_accesses(def, None)) * w.rd_access_weight } else { 0.0 };
+    let promised = if w.rd_access_weight != 0.0 { f64::from(rd_accesses(def, None, horizon)) * w.rd_access_weight } else { 0.0 };
     // The same future credits `rig_income` will count once the card is
     // installed, so an economy card is live in hand exactly when the
     // Runner would install it — the breaker's arithmetic, for money.
@@ -472,7 +474,7 @@ pub(super) fn score(state: &GameState, registry: &CardRegistry, w: &Weights, hor
         *score -= trashable as f64 * w.dismantle_weight;
     }
     if w.rd_access_weight != 0.0 {
-        *score += f64::from(rig_rd_accesses(state, registry)) * w.rd_access_weight;
+        *score += f64::from(rig_rd_accesses(state, registry, horizon)) * w.rd_access_weight;
     }
 }
 
@@ -1488,10 +1490,20 @@ mod tests {
         let counter = evaluate_state_with(&one_more, Side::Runner, &pool, &shaper) - evaluate_state_with(&with_conduit, Side::Runner, &pool, &shaper);
         assert!((counter - shaper.rd_access_weight).abs() < 1e-9, "{counter}: a counter on Conduit is an R&D access");
         assert_eq!(evaluate_state_with(&one_more, Side::Runner, &pool, &every_runner()), evaluate_state_with(&with_conduit, Side::Runner, &pool, &every_runner()), "and nothing to another plan");
-        assert_eq!(rd_accesses(&printed(&pool, "the_makers_eye"), None), 2);
-        assert_eq!(rd_accesses(&printed(&pool, "devadatta_drone"), None), 1);
-        assert_eq!(rd_accesses(&printed(&pool, "conduit"), Some(3)), 3);
-        assert_eq!(rd_accesses(&printed(&pool, "conduit"), None), 0, "in hand, Conduit promises what it places on itself: nothing");
+        assert_eq!(rd_accesses(&printed(&pool, "the_makers_eye"), None, 9), 2);
+        assert_eq!(rd_accesses(&printed(&pool, "devadatta_drone"), None, 9), 1);
+        assert_eq!(rd_accesses(&printed(&pool, "conduit"), Some(3), 9), 3 + 9, "its counters, and one its runs place a turn");
+        assert_eq!(rd_accesses(&printed(&pool, "conduit"), None, 5), 5, "in hand, the counters its runs will place (Phase 5 §32)");
+        assert_eq!(rd_accesses(&printed(&pool, "leech"), None, 9), 0, "a counter a run places is an access only on a card that accesses by its counters");
+
+        // The rig's breach access is the run's (Phase 5 §32): Docklands
+        // Pass makes an HQ run one more fresh access, and an R&D run none.
+        let mut docklands = state.clone();
+        docklands.runner.rig = vec![InstalledRunnerCard { card: CardId("docklands_pass".to_string()), ..Default::default() }];
+        let on = |state: &GameState, server| access_prospect(state, &RunState { server, ..Default::default() }, &pool, &every_runner(), 5, 9);
+        let hq_more = on(&docklands, ServerId::Hq) - on(&state, ServerId::Hq);
+        assert!((hq_more - every_runner().active_run_weight).abs() < 1e-9, "{hq_more}: one more HQ access");
+        assert_eq!(on(&docklands, ServerId::RnD), on(&state, ServerId::RnD));
     }
 
     /// A run a card's text began is priced with what the text put on it

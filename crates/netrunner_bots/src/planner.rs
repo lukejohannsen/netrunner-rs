@@ -1899,6 +1899,75 @@ mod positions {
         assert_eq!((run.server, run.bonus_run_credits), (ServerId::Hq, 5), "{actions:?}");
     }
 
+    /// A card that pays on a run is installed for what its runs will pay
+    /// (Phase 5 §32): with 6[c], four clicks and the centrals behind ICE
+    /// the rig cannot break, the Runner installs Red Team over clicking
+    /// for credits — four runs of 3[c] over the turns ahead, its click
+    /// buying a run the Runner makes anyway — and Pennyshaver beside it,
+    /// a credit each successful run. Before, the declared income read
+    /// neither (a run's rider and a run's trigger were nobody's income),
+    /// and the planner installed them in 0 of 192 games.
+    #[test]
+    fn installs_the_cards_that_pay_on_a_run() {
+        use netrunner_core::dsl::{Effect, IceType, SubroutineDef};
+        use netrunner_core::rules::InstallSlot;
+        let mut registry = CardRegistry::new();
+        netrunner_core::cards::register_playable_cards(&mut registry);
+        let mut wall = blank_card("wall", CardType::Ice(IceType::Barrier));
+        wall.strength = Some(5);
+        let etr = || SubroutineDef { text: String::new(), effect: Effect::EndTheRun, only_breakable_by: None };
+        wall.subroutines = vec![etr(), etr()];
+        registry.insert(wall);
+
+        for (card, cost) in [("red_team", 5), ("pennyshaver", 3)] {
+            let mut state = GameState::new(0);
+            state.phase = GamePhase::Action(Side::Runner);
+            state.runner = empty_runner();
+            state.runner.resources = PlayerResources { credits: Credits(cost + 1), clicks: Clicks(4), agenda_points: AgendaPoints(0) };
+            state.runner.memory_units = MemoryUnits(4);
+            state.runner.grip = vec![CardId(card.to_string()), CardId("wall".to_string()), CardId("wall".to_string()), CardId("wall".to_string())];
+            state.corp.resources.credits = Credits(5);
+            state.corp.hq = vec![CardId("wall".to_string()); 3];
+            state.corp.r_and_d = vec![CardId("wall".to_string()); 10];
+            for (index, server) in [ServerId::Hq, ServerId::RnD, ServerId::Archives].into_iter().enumerate() {
+                state.corp.installed.push(InstalledCard {
+                    card: CardId("wall".to_string()),
+                    install_id: InstallId(index as u32 + 1),
+                    server,
+                    slot: InstallSlot::Ice,
+                    rezzed: true,
+                    ..Default::default()
+                });
+            }
+            let view = build_client_view(&state, &registry, Side::Runner);
+            let install = view
+                .legal_actions
+                .iter()
+                .find(|action| match action {
+                    PlayerAction::InstallResource { card_id, .. } | PlayerAction::InstallHardware { card_id } => card_id.0 == card,
+                    _ => false,
+                })
+                .cloned()
+                .unwrap_or_else(|| panic!("{card} is installable: {:?}", view.legal_actions));
+            // The Runner's turn, its clicks and nothing after them.
+            let mut agent = PlanningAgent::new(Side::Runner, 3);
+            let mut actions = Vec::new();
+            while state.phase == GamePhase::Action(Side::Runner) && state.runner.resources.clicks.0 > 0 && actions.len() < 12 {
+                if current_actor(&state) != Some(Side::Runner) {
+                    let Ok((next, _)) = apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Corp }) else { break };
+                    state = next;
+                    continue;
+                }
+                let view = build_client_view(&state, &registry, Side::Runner);
+                agent.observe(&view);
+                let action = agent.select_action(&view, &registry);
+                state = apply_action(&state, &registry, action.clone()).expect("the plan's action applies").0;
+                actions.push(action);
+            }
+            assert!(actions.contains(&install), "should install {card} this turn: {actions:?}");
+        }
+    }
+
     /// With an empty grip, open servers and a stack to draw from, the
     /// Runner draws before it runs (ROADMAP Phase 2 §5's draw item).
     #[test]

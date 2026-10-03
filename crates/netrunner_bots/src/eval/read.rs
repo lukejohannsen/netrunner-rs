@@ -631,6 +631,23 @@ pub(super) struct Income {
     /// the click is priced by the stock it adds when it is taken, so the
     /// future counts the stock and not the clicks.
     pub click_places: bool,
+    /// The click ability begins a run (Red Team's "[click]: Run a central
+    /// server … if successful, take 3[credit]"), so its click buys the run
+    /// and is not charged against what the rider pays: the Runner makes
+    /// more than one run a turn (18.6 runs in 13.1 turns, the planner's
+    /// casual pass at Phase 5 §31), and a run it began by this card is one
+    /// it would have made anyway. `click_credits` is then the rider's.
+    pub click_runs: bool,
+    /// Credits each successful run pays while the card is active, taken
+    /// at one successful run a turn (the planner's casual pass: 11.6 in
+    /// 13.1 turns, startup 10.2 in 12.6): a trigger on any successful run
+    /// that gains credits, or that places counters on a card whose text
+    /// cashes them (Pennyshaver's "whenever you make a successful run,
+    /// place 1[credit] on this hardware"). Only a trigger about every
+    /// successful run, with no condition — one narrowed to a server
+    /// (Gabriel Santiago's HQ) or to this card's (Stowaway) is not a run
+    /// a turn and is counted as nothing, the cheaper direction.
+    pub run_credits: u32,
     /// Credits per hosted counter a trash-and-cash ability pays.
     pub cashout_per_counter: u32,
     /// The credits come off hosted counters, so the counters bound them;
@@ -749,6 +766,9 @@ pub(super) fn declared_income(def: &CardDefinition) -> Income {
         income.play_clicks = play.clicks;
         return income;
     }
+    // Counters every successful run places, cashed below if the card's
+    // text cashes them.
+    let mut run_counters = 0;
     for trigger in &def.triggers {
         let sum = trigger.effects.iter().fold(Tally::default(), |sum, effect| sum.add(tally(effect, side)));
         match trigger.trigger {
@@ -760,6 +780,10 @@ pub(super) fn declared_income(def: &CardDefinition) -> Income {
                 }
             }
             Trigger::OnRez | Trigger::OnInstall => income.printed_stock += sum.counters.max(0) as u32,
+            Trigger::OnSuccessfulRun if about_every_run(trigger) => {
+                income.run_credits += sum.credits.max(0) as u32;
+                run_counters += sum.counters.max(0) as u32;
+            }
             _ => {}
         }
     }
@@ -769,7 +793,11 @@ pub(super) fn declared_income(def: &CardDefinition) -> Income {
         if clicks == 0 && !trashes {
             continue;
         }
-        let sum = tally(&ability.effect, side);
+        // A run the ability begins pays what its rider declares on
+        // success (`run_rider`); the ability's own text around the run is
+        // tallied as any other.
+        let rider = run_rider(&ability.effect);
+        let sum = tally(&ability.effect, side).add(rider.flatten().map(|rider| tally(rider, side)).unwrap_or_default());
         if sum.cashout_per_counter > 0 {
             income.cashout_per_counter = income.cashout_per_counter.max(sum.cashout_per_counter);
             continue;
@@ -789,12 +817,39 @@ pub(super) fn declared_income(def: &CardDefinition) -> Income {
             income.click_cost = clicks;
             income.click_trashes = trashes;
             income.click_places = sum.credits <= 0;
+            income.click_runs = rider.is_some();
             if sum.counters < 0 {
                 income.stocked = true;
             }
         }
     }
+    income.run_credits += run_counters * income.cashout_per_counter;
     income
+}
+
+/// Whether a trigger on a successful run is about every successful run:
+/// any run's, on any server, with no condition to meet.
+fn about_every_run(trigger: &netrunner_core::dsl::TriggeredEffect) -> bool {
+    use netrunner_core::dsl::Subject;
+    trigger.subject != Some(Subject::This) && trigger.when.is_none() && trigger.requirement.is_none() && !trigger.first_each_turn
+}
+
+/// The rider a click ability's run pays on success, if the ability begins
+/// a run: `Some(Some(_))` for `PromptChooseServer`'s `on_success` (Red
+/// Team's "take 3[credit] from this resource"), `Some(None)` for a run
+/// with no rider (`InitiateRun`, Conduit's — whose accesses are read as
+/// accesses, not income), `None` for an ability that begins no run.
+fn run_rider(effect: &Effect) -> Option<Option<&Effect>> {
+    match effect {
+        Effect::PromptChooseServer { on_success, .. } => Some(on_success.as_deref()),
+        Effect::InitiateRun(_) => Some(None),
+        Effect::Sequence(effects) => {
+            let riders: Vec<_> = effects.iter().filter_map(run_rider).collect();
+            if riders.is_empty() { None } else { Some(riders.into_iter().flatten().next()) }
+        }
+        Effect::EffectIf { effect, .. } => run_rider(effect),
+        _ => None,
+    }
 }
 
 /// The clicks a cost takes and whether it trashes the card.
@@ -817,14 +872,21 @@ fn click_cost(cost: Option<&Cost>) -> (u32, bool) {
 /// for what it takes over the credit the click would have bought, both
 /// bounded by the stock when the credits come off counters (`hosted`, or
 /// the printed stock for a card not yet on the table), and its counters
-/// cashed at the rate its text names. Zero for a card that declares no
-/// economy.
+/// cashed at the rate its text names. What a successful run pays it is a
+/// run a turn's, and a click ability that begins a run is not charged its
+/// click (Phase 5 §32: Pennyshaver, Red Team). Zero for a card that
+/// declares no economy.
 pub(super) fn future_credits(income: &Income, hosted: Option<u32>, horizon: u32) -> f64 {
     let stock = if income.stocked { Some(hosted.unwrap_or(income.printed_stock)) } else { None };
     let turn = (income.turn_credits + income.turn_cards) * horizon;
     let turn = stock.map_or(turn, |stock| turn.min(stock));
-    let click = if income.click_credits > income.click_cost && !income.click_places {
-        let net = income.click_credits - income.click_cost;
+    // A run's credits are a run a turn's (`Income::run_credits`), and the
+    // stock they are placed into is not printed, so nothing bounds them.
+    let run = income.run_credits * horizon;
+    // A click that begins a run buys the run (`Income::click_runs`).
+    let charged = if income.click_runs { 0 } else { income.click_cost };
+    let click = if income.click_credits > charged && !income.click_places {
+        let net = income.click_credits - charged;
         if income.click_trashes {
             net
         } else {
@@ -835,7 +897,7 @@ pub(super) fn future_credits(income: &Income, hosted: Option<u32>, horizon: u32)
         0
     };
     let cashout = income.cashout_per_counter * hosted.unwrap_or(income.printed_stock);
-    f64::from(turn + click + cashout)
+    f64::from(turn + run + click + cashout)
 }
 
 /// The Corp's rez reserve: the printed cost of the dearest unrezzed piece
@@ -1335,7 +1397,16 @@ const SMALLEST_CORP_DECK: usize = 40;
 /// (`AddAdditionalAccessAmount` — Conduit's), at `counters` when the
 /// card is on the table and at what it places on itself when it is in
 /// hand. See `RD_ACCESS_WEIGHT`.
-pub(super) fn rd_accesses(def: &CardDefinition, counters: Option<u32>) -> u32 {
+///
+/// **The counters its own successful runs place are promised too**
+/// (Phase 5 §32): Conduit's "whenever a successful run on R&D ends, you
+/// may place 1 virus counter on this program" grows the count every run
+/// it makes, at a run a turn over `horizon` — the rate `Income::
+/// run_credits` reads a run at. Before, Conduit in hand promised what it
+/// places on itself on install, nothing, and the rig plan never
+/// installed it; the growth is read on the table as in hand, so the
+/// install takes nothing the hand had.
+pub(super) fn rd_accesses(def: &CardDefinition, counters: Option<u32>, horizon: u32) -> u32 {
     use netrunner_core::rules::ServerId;
     let mut fixed = 0;
     let mut per_counter = false;
@@ -1345,13 +1416,74 @@ pub(super) fn rd_accesses(def: &CardDefinition, counters: Option<u32>) -> u32 {
         _ => {}
     });
     let hosted = if per_counter { counters.unwrap_or_else(|| declared_income(def).printed_stock) } else { 0 };
-    fixed + hosted
+    // A counter placed on a successful run, the "you may" taken: a
+    // choice's options are compared by what they pay (`Tally::worth`),
+    // which a counter is not, so the placement is looked for outright.
+    let grows = per_counter
+        && def.triggers.iter().filter(|trigger| trigger.trigger == Trigger::OnSuccessfulRun && trigger.requirement.is_none()).any(|trigger| {
+            let mut places = false;
+            for effect in &trigger.effects {
+                effect.for_each_effect(&mut |effect| places |= matches!(effect, Effect::AddCounters(n) if *n > 0));
+            }
+            places
+        });
+    fixed + hosted + if grows { horizon } else { 0 }
 }
 
 /// The R&D accesses the rig promises: `rd_accesses` summed over the
 /// Runner's installed cards, each at its own counters.
-pub(super) fn rig_rd_accesses(state: &GameState, registry: &CardRegistry) -> u32 {
-    state.runner.rig.iter().filter_map(|card| registry.get(&card.card).map(|def| rd_accesses(def, Some(card.counters)))).sum()
+pub(super) fn rig_rd_accesses(state: &GameState, registry: &CardRegistry, horizon: u32) -> u32 {
+    state.runner.rig.iter().filter_map(|card| registry.get(&card.card).map(|def| rd_accesses(def, Some(card.counters), horizon))).sum()
+}
+
+/// The accesses beyond the first the rig adds when the run on `server`
+/// breaches it (Phase 5 §32): a rig card's trigger on a breach or a
+/// successful run of that server whose text adds accesses outright —
+/// Docklands Pass's "the first time each turn you breach HQ, access 1
+/// additional card". Its "first time" is read off the turn log, as the
+/// engine judges it (`TriggeredEffect::first_each_turn`): a run on HQ
+/// after the turn's first HQ breach gets nothing. Counted only where the
+/// access is free and certain: a trigger with a condition (Manuel Lattes
+/// de Moura's tag, Pretty Mary da Silva's access limit) or an access
+/// behind a cost (Rotary's tag, Devadatta Drone's counter, Cupellation's
+/// trash) is nothing here, the cheaper direction. The run leaf prices a
+/// run before its breach, so without this the card that pays at the
+/// breach was worth nothing to the run it pays on, and the planner never
+/// installed it.
+pub(super) fn rig_breach_accesses(state: &GameState, registry: &CardRegistry, server: netrunner_core::rules::ServerId) -> u32 {
+    use netrunner_core::dsl::{EventFilter, Subject};
+    use netrunner_core::rules::ServerId;
+    use netrunner_core::rules::turn_log::{Class, ServerClass};
+    let class = match server {
+        ServerId::Hq => ServerClass::Hq,
+        ServerId::RnD => ServerClass::RnD,
+        // A breach of Archives or a remote accesses every card already.
+        ServerId::Archives | ServerId::Remote(_) => return 0,
+    };
+    fn outright(effect: &Effect, server: ServerId) -> u32 {
+        match effect {
+            Effect::AddAdditionalAccess { server: added, count } if *added == server => *count,
+            Effect::Sequence(effects) => effects.iter().map(|effect| outright(effect, server)).sum(),
+            Effect::EffectIf { effect, .. } => outright(effect, server),
+            _ => 0,
+        }
+    }
+    state
+        .runner
+        .rig
+        .iter()
+        .filter_map(|card| registry.get(&card.card))
+        .flat_map(|def| def.triggers.iter())
+        .filter(|trigger| matches!(trigger.trigger, Trigger::OnBreach | Trigger::OnSuccessfulRun))
+        .filter(|trigger| trigger.subject != Some(Subject::This) && trigger.requirement.is_none())
+        .filter(|trigger| match &trigger.when {
+            None => true,
+            Some(EventFilter::Server(servers)) => servers.contains(&server),
+            Some(_) => false,
+        })
+        .filter(|trigger| !trigger.first_each_turn || state.this_turn.times_about(trigger.trigger, Class::Server(class)) == 0)
+        .map(|trigger| trigger.effects.iter().map(|effect| outright(effect, server)).sum::<u32>())
+        .sum()
 }
 
 #[cfg(test)]
@@ -1550,6 +1682,61 @@ mod tests {
         assert_eq!(future("fermenter", Some(4), 9), 8.0, "cashed at 2 a counter");
         assert_eq!(future("rent_rioters", None, 9), 6.0, "9 for three clicks, once");
         assert_eq!(future("palisade", None, 9), 0.0);
+    }
+
+    /// A card that pays on a run (Phase 5 §32). Red Team's click begins a
+    /// run whose rider takes 3[credit] off its twelve: the rider's credits
+    /// are the click's, the click is not charged because it buys the run,
+    /// and the counters bound it to four uses. Pennyshaver's successful
+    /// runs place a credit each, cashed by its click: a credit a turn,
+    /// unbounded. A trigger narrowed to a server or to this card's server
+    /// is not a run a turn, and a run ability with no rider pays nothing.
+    #[test]
+    fn a_card_that_pays_on_a_run_is_read_at_a_run_a_turn() {
+        let pool = pool();
+        let income = |id: &str| declared_income(&printed(&pool, id));
+        let future = |id: &str, hosted: Option<u32>, horizon: u32| future_credits(&income(id), hosted, horizon);
+        let red_team = income("red_team");
+        assert_eq!((red_team.click_credits, red_team.click_runs, red_team.stocked, red_team.printed_stock), (3, true, true, 12));
+        assert_eq!(future("red_team", None, 9), 12.0, "four runs of 3, the click buying the run");
+        assert_eq!(future("red_team", Some(3), 9), 3.0, "one run left on it");
+        assert_eq!(future("red_team", None, 2), 6.0, "two runs in the turns left");
+        let penny = income("pennyshaver");
+        assert_eq!((penny.run_credits, penny.cashout_per_counter), (1, 1));
+        assert_eq!(future("pennyshaver", None, 9), 9.0, "a credit a successful run, a run a turn");
+        assert_eq!(future("pennyshaver", Some(3), 5), 8.0, "and what it holds, cashed");
+        assert_eq!(income("stowaway").run_credits, 0, "a run on its own server is not a run a turn");
+        assert_eq!(income("gabriel_santiago_consummate_professional").run_credits, 0, "nor is the first on HQ");
+        assert_eq!(income("leech").run_credits, 0, "counters nothing cashes are not credits");
+        assert_eq!(income("baker"), Income::default(), "a run with no rider pays nothing");
+        assert_eq!(future("regolith_mining_license", None, 9), 10.0, "a click that begins no run is still charged");
+    }
+
+    /// The accesses the rig adds at the breach are the run's (Phase 5
+    /// §32): Docklands Pass's on HQ, the first time each turn, and on no
+    /// other server; a condition or a cost in the way counts nothing.
+    #[test]
+    fn the_rigs_breach_accesses_are_the_runs_the_first_time_each_turn() {
+        use netrunner_core::rules::turn_log::Class;
+        use netrunner_core::rules::ServerId;
+        let pool = pool();
+        let mut state = GameState::new(0);
+        state.runner.rig = vec![InstalledRunnerCard { card: CardId("docklands_pass".to_string()), ..Default::default() }];
+        assert_eq!(rig_breach_accesses(&state, &pool, ServerId::Hq), 1);
+        assert_eq!(rig_breach_accesses(&state, &pool, ServerId::RnD), 0);
+        assert_eq!(rig_breach_accesses(&state, &pool, ServerId::Archives), 0);
+        // The turn's first HQ breach, counted as the engine counts it (on
+        // a table with nothing to hear it).
+        let mut breached = GameState::new(0);
+        netrunner_core::rules::dispatch_event(&mut breached, &pool, &netrunner_core::rules::GameEvent::BreachBegun { server: ServerId::Hq }).expect("a breach nobody hears");
+        let hq = netrunner_core::rules::turn_log::ServerClass::Hq;
+        assert_eq!(breached.this_turn.times_about(Trigger::OnBreach, Class::Server(hq)), 1);
+        breached.runner.rig = state.runner.rig.clone();
+        assert_eq!(rig_breach_accesses(&breached, &pool, ServerId::Hq), 0, "the turn's second HQ breach");
+        for id in ["rotary", "manuel_lattes_de_moura", "devadatta_drone", "cupellation", "pretty_mary_da_silva"] {
+            state.runner.rig = vec![InstalledRunnerCard { card: CardId(id.to_string()), ..Default::default() }];
+            assert_eq!(rig_breach_accesses(&state, &pool, ServerId::Hq) + rig_breach_accesses(&state, &pool, ServerId::RnD), 0, "{id}: behind a condition or a cost");
+        }
     }
 
     /// The rez reserve is the dearest face-down piece, wherever it is;
