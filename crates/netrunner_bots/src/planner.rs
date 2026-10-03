@@ -123,10 +123,10 @@
 //! never a search of the opponent's turn.
 //!
 //! **The first action is chosen from the view's list, the rest from the
-//! sample's.** A sample is consistent with everything the view shows and
-//! carries no identity (`determinize`), so its legal actions can differ
-//! from the real ones at the root — A Teia's remote limit is the
-//! identity's — and the root is the one step whose real list is in hand.
+//! sample's.** A sample is consistent with everything the view shows, not
+//! identical to it — its hidden cards are drawn (`determinize`) — so its
+//! legal actions can differ from the real ones at the root, and the root
+//! is the one step whose real list is in hand.
 //! The rest of the line is checked against the real list when it is
 //! played, which is the same rule one step later.
 //!
@@ -465,11 +465,11 @@ impl Search<'_> {
             // At the root the real list is known, and it is the one the
             // first action is chosen from — the one-ply chooser's own rule
             // ("every candidate from the view, applied to the sample").
-            // The sample carries no identity (`determinize` says why), so
-            // it can offer what the real state refuses: a third remote
-            // under A Teia's limit, played unchecked, was the 256-seed
-            // sweep's seed 106. A sample that offers less than the view
-            // only narrows the choice.
+            // A sample can offer what the real state refuses: while it
+            // carried no identity, a third remote under A Teia's limit,
+            // played unchecked, was the 256-seed sweep's seed 106. A
+            // sample that offers less than the view only narrows the
+            // choice.
             let at_root = steps.is_empty();
             if at_root {
                 transitions.retain(|(action, _, _)| self.root_legal.contains(action));
@@ -1966,6 +1966,64 @@ mod positions {
             }
             assert!(actions.contains(&install), "should install {card} this turn: {actions:?}");
         }
+    }
+
+    /// An identity's ability is a step of the plan (Phase 5 §33). Topan's
+    /// install at 2[credit] less is the only way to Pennyshaver on 1[credit],
+    /// and while samples carried no identity it was in the view's list and
+    /// no sample's, so the root dropped it and a credit click won.
+    #[test]
+    fn plays_its_identitys_ability() {
+        use netrunner_core::dsl::{Effect, IceType, SubroutineDef};
+        use netrunner_core::rules::InstallSlot;
+        let mut registry = CardRegistry::new();
+        netrunner_core::cards::register_playable_cards(&mut registry);
+        let mut wall = blank_card("wall", CardType::Ice(IceType::Barrier));
+        wall.strength = Some(5);
+        let etr = || SubroutineDef { text: String::new(), effect: Effect::EndTheRun, only_breakable_by: None };
+        wall.subroutines = vec![etr(), etr()];
+        registry.insert(wall);
+
+        let mut state = GameState::new(0);
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner = empty_runner();
+        state.runner.identity = Some(CardId("topan_ormas_leader".to_string()));
+        state.runner.resources = PlayerResources { credits: Credits(1), clicks: Clicks(4), agenda_points: AgendaPoints(0) };
+        state.runner.memory_units = MemoryUnits(4);
+        state.runner.grip = vec![CardId("pennyshaver".to_string()), CardId("wall".to_string()), CardId("wall".to_string()), CardId("wall".to_string())];
+        state.corp.resources.credits = Credits(5);
+        state.corp.hq = vec![CardId("wall".to_string()); 3];
+        state.corp.r_and_d = vec![CardId("wall".to_string()); 10];
+        for (index, server) in [ServerId::Hq, ServerId::RnD, ServerId::Archives].into_iter().enumerate() {
+            state.corp.installed.push(InstalledCard {
+                card: CardId("wall".to_string()),
+                install_id: InstallId(index as u32 + 1),
+                server,
+                slot: InstallSlot::Ice,
+                rezzed: true,
+                ..Default::default()
+            });
+        }
+        let topan = PlayerAction::ActivateAbility { target: InstallId::RUNNER_IDENTITY, ability_index: 0 };
+        let view = build_client_view(&state, &registry, Side::Runner);
+        assert!(view.legal_actions.contains(&topan), "the premise: {:?}", view.legal_actions);
+
+        let mut agent = PlanningAgent::new(Side::Runner, 3);
+        let mut actions = Vec::new();
+        while state.phase == GamePhase::Action(Side::Runner) && state.runner.resources.clicks.0 > 0 && actions.len() < 12 {
+            if current_actor(&state) != Some(Side::Runner) {
+                let Ok((next, _)) = apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Corp }) else { break };
+                state = next;
+                continue;
+            }
+            let view = build_client_view(&state, &registry, Side::Runner);
+            agent.observe(&view);
+            let action = agent.select_action(&view, &registry);
+            state = apply_action(&state, &registry, action.clone()).expect("the plan's action applies").0;
+            actions.push(action);
+        }
+        assert!(actions.contains(&topan), "should use Topan's install: {actions:?}");
+        assert!(state.runner.rig.iter().any(|card| card.card.0 == "pennyshaver"), "and install Pennyshaver with it: {actions:?}");
     }
 
     /// With an empty grip, open servers and a stack to draw from, the

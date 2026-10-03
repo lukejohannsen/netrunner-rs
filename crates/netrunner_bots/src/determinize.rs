@@ -905,20 +905,20 @@ pub fn determinize(view: &ClientView, registry: &CardRegistry, knowledge: &Knowl
     let installed: Vec<InstalledCard> = placed.into_iter().map(|(_, card)| card).collect();
 
     let corp = CorpState {
-        // Deliberately not `view.corp.identity`, though the view carries
-        // it. With the identity set, every identity trigger fires in the
-        // rollouts — the truth, and once believed to cost the search
-        // (0.516 → 0.406 over the registry pool, 0.500 → 0.469 over the
-        // decklist one). **That reading was one seed.** Over seeds 1, 2
-        // and 3 the carry changes sign in two of three configurations and
-        // its mean never leaves the seating's seed-spread band: −0.016 at
-        // 128 simulations, −0.002 at 512, −0.016 at 512 over four
-        // samples, against a band of 0.026–0.047 (ROADMAP Phase 3 §1).
-        // So this is not a strength decision either way, and it stays
-        // `None` for the ordinary reason a default stays: nothing
-        // measured makes the carry better. `identities_choose_the_pool_
-        // but_are_not_carried_into_the_sample` keeps it a deliberate one.
-        identity: None,
+        // Carried: public in every view, and the card whose text the
+        // sample plays. Without it (Phase 3 §1 to Phase 5 §33) no
+        // identity's ability was a transition of any sample, so the
+        // planner — which takes the root from the view's list but every
+        // step after it, and every judgment of a line, from the sample's —
+        // never used one: Topan's install, Synapse Global's tag and LEO
+        // Construction's end-the-run were the blind list's identities,
+        // and every evaluator term that reads the Corp's identity across
+        // the table (`eval::read::corp_faction`) read `None` at every
+        // leaf. The carry was measured once under MCTS and found inside
+        // the seed-spread band (Phase 3 §1: −0.016 at 128 simulations,
+        // −0.002 at 512), so it was left off as a default with nothing
+        // measured for it; Phase 5 §33 is what was measured for it.
+        identity: view.corp.identity.clone(),
         bad_publicity: view.corp.bad_publicity,
         // Public (visible tokens on the granting card) and carried by the
         // view; zeroing them narrowed the Corp's affordable actions and
@@ -932,9 +932,9 @@ pub fn determinize(view: &ClientView, registry: &CardRegistry, knowledge: &Knowl
         // Public, and carried: a flipped Corp identity has different text.
         identity_flipped: view.corp.identity_flipped,
         // Carried where the view has it. A copy the Runner has not seen
-        // is 0, which no back side reads — and no sample carries the
-        // identity (above), so its text never runs in one: guessing a copy
-        // would spend the sample's randomness on nothing.
+        // is 0, which no back side reads: the view shows the copy as soon
+        // as the identity flips (`masking`), so guessing one while the
+        // front is up would spend the sample's randomness on nothing.
         identity_copy: view.corp.identity_copy.unwrap_or(0),
         removed_from_game: view.corp.removed_from_game.clone(),
         scored_agendas: view.corp.scored_agendas.clone(),
@@ -1004,8 +1004,8 @@ pub fn determinize(view: &ClientView, registry: &CardRegistry, knowledge: &Knowl
         .collect();
 
     let runner = RunnerState {
-        // Not carried — see `corp.identity` above.
-        identity: None,
+        // Carried — see `corp.identity` above.
+        identity: view.runner.identity.clone(),
         scored_agendas: view.runner.scored_agendas.clone(),
         resources: PlayerResources {
             credits: Credits(view.runner.credits),
@@ -1579,22 +1579,21 @@ mod tests {
         assert_eq!(every_corp_card(&sample), decklist("discretion_advised"), "the hand the Corp sees picks its own list");
     }
 
-    /// The identities shape the prior (faction, influence) but are not
-    /// carried into the sample's *state*. Carrying them measures inside
-    /// the seed-spread band rather than worse, which is a correction of
-    /// what this comment used to claim — see `determinize`'s
-    /// `identity: None`. This pins the decision so that re-enabling it is
-    /// a deliberate, measured change rather than a drive-by.
+    /// The identities shape the prior (faction, influence) and are
+    /// carried into the sample's state, both of them, from either chair:
+    /// they are public, and an identity's ability is a transition only
+    /// of a state that has the identity (Phase 5 §33 — the planner never
+    /// used one while samples left them off).
     #[test]
-    fn identities_shape_the_prior_but_are_not_carried_into_the_sample() {
+    fn identities_shape_the_prior_and_are_carried_into_the_sample() {
         let (state, registry) = sample_game("agency", "stolen_goods");
         assert!(state.corp.identity.is_some() && state.runner.identity.is_some(), "the premise");
         for viewer in [Side::Corp, Side::Runner] {
             let view = build_client_view(&state, &registry, viewer);
             assert_eq!(view.corp.identity, state.corp.identity, "the view carries it");
             let sample = determinize(&view, &registry, &Knowledge::default(), &mut StdRng::seed_from_u64(1));
-            assert_eq!(sample.corp.identity, None);
-            assert_eq!(sample.runner.identity, None);
+            assert_eq!(sample.corp.identity, state.corp.identity, "{viewer:?}");
+            assert_eq!(sample.runner.identity, state.runner.identity, "{viewer:?}");
         }
     }
 
